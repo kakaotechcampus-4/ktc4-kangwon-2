@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ssuksak
+      POSTGRES_PASSWORD: ssuksak
+      POSTGRES_DB: ssuksak
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ssuksak -d ssuksak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      # .env 가 있으면 그 값을, 없으면 기본값을 쓴다 (.env.example 과 동일)
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ssuksak:ssuksak@db:5432/ssuksak}
+      ELICE_API_KEY: ${ELICE_API_KEY:-dummy}
+      LLM_MODE: ${LLM_MODE:-mock}
+      IS_SERVER: ${IS_SERVER:-0}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
