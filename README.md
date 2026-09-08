@@ -1,2 +1,12 @@
-# ktc4-team-02
-카카오테크 캠퍼스 4기 2단계 팀 프로젝트 — 강원대 2팀
+# 쓱싹요정
+
+## 실행
+
+```bash
+docker compose up
+```
+
+## 문서
+
+- [디렉터리 구조](docs/structure.md)
+- [브랜치 전략](docs/branch-strategy.md)

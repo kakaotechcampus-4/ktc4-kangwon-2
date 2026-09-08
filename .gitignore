@@ -70,3 +70,14 @@ target/
 *.sqlite3
 *.db
 .terraform/
+
+# ── 로컬 에이전트 도구 산출물 ──────────────────────
+.omc/
+
+# ── 린트·타입 캐시 ──────────────────────────────────
+.ruff_cache/
+.mypy_cache/
+*.tsbuildinfo
+
+# ── Docker 로컬 오버라이드 ──────────────────────────
+docker-compose.override.yml

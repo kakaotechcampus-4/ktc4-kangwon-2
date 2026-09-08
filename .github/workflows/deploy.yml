@@ -1,0 +1,21 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        # 배포 대상 인프라가 정해지면 이 스텝을 실제 배포 명령으로 교체한다.
+        run: echo "배포 스텝 미구성 — 인프라 결정 후 채운다."
+
+      - name: Health check
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: curl -fsS "${HEALTHCHECK_URL}/health"
