@@ -15,7 +15,6 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 | `backend/` | FastAPI 애플리케이션. Python 코드는 전부 여기 |
 | `frontend/` | Next.js 애플리케이션 (App Router, TypeScript) |
 | `docs/` | 팀 문서 |
-| `tests/` | backend·frontend 어느 한쪽에 속하지 않는 공통 테스트 |
 | `.github/` | PR 템플릿과 GitHub Actions |
 
 ### 루트 파일
@@ -179,20 +178,6 @@ from app.features.centers import models as _centers  # noqa: F401
 > 첫 모델을 추가하기 전에 팀에서 먼저 확정한다.
 
 초기 마이그레이션은 만들지 않았다. 첫 모델을 추가하는 사람이 만든다.
-
----
-
-## tests
-
-`tests/golden/` — golden set. 같은 입력에 같은 출력이 나오는지 고정해 두고,
-기능을 추가한 뒤 재실행해 기존 동작이 깨지지 않았는지 확인한다.
-
-**아직 비어 있다(`.gitkeep` 만 있음).** 픽스처도 실행 가능한 테스트도 없다.
-
-`backend/` 밖에 있는 이유는 golden set 이 FE·BE 를 아우르는 공통 기준이기 때문이다.
-
-backend 단위 테스트를 `backend/` 안에 둘지 여기 둘지는 아직 정하지 않았다.
-첫 테스트를 쓰는 사람이 정하고 이 문서를 갱신한다.
 
 ---
 
