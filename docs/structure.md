@@ -168,14 +168,35 @@ from app.features.centers import models as _centers  # noqa: F401
 자동 스캔을 쓰지 않는다. **이 줄을 빠뜨리면 `--autogenerate` 가 해당 테이블을
 "코드에 없다"고 판단해 `DROP TABLE` 마이그레이션을 만든다.**
 
-### 마이그레이션 생성 절차는 아직 확정되지 않았다
+### 마이그레이션 생성 절차
 
-> `docker compose exec backend alembic revision ...` 로 만들면 파일이 컨테이너
-> 안에만 생긴다. backend 서비스에 소스 마운트가 없어 호스트의
-> `backend/alembic/versions/` 에는 나타나지 않고, 컨테이너를 지우면 사라진다.
->
-> 개발 환경 구성을 정리한 뒤 이 절에 실제 명령을 추가한다.
-> 첫 모델을 추가하기 전에 팀에서 먼저 확정한다.
+`--autogenerate` 는 라이브 DB 와 비교하므로 먼저 `docker compose up -d` 로 db 를
+띄운다. 위의 `env.py` 모델 import 도 빠뜨리지 않는다.
+
+macOS·Windows에서는 레포 루트에서 다음 명령을 실행한다.
+
+```bash
+# 레포 루트에서 실행한다
+docker compose run --rm -v "$(pwd)/backend:/app" backend \
+  alembic revision --autogenerate -m "add centers table"
+```
+
+Linux에서는 생성 파일이 root 소유가 되지 않도록 `--user` 를 붙인다.
+
+```bash
+# 레포 루트에서 실행한다
+docker compose run --rm -v "$(pwd)/backend:/app" --user "$(id -u):$(id -g)" backend \
+  alembic revision --autogenerate -m "add centers table"
+```
+
+일회성 컨테이너에 `-v` 로 호스트의 `backend/` 를 마운트하므로 생성 파일이
+호스트의 `backend/alembic/versions/` 에 남는다. `docker compose exec backend alembic
+revision ...` 은 쓰지 않는다. backend 서비스에는 마운트가 없어 파일이 컨테이너
+안에만 생기고 컨테이너를 지우면 사라진다.
+
+Ctrl-C 로 중단했다면 `docker compose down --remove-orphans` 로 정리한다.
+`backend/` 안에서 실행하면 `alembic.ini not found`, db 가 떠 있지 않으면
+`connection refused` 로 실패한다.
 
 초기 마이그레이션은 만들지 않았다. 첫 모델을 추가하는 사람이 만든다.
 
