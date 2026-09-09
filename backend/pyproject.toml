@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff"]
+dev = ["ruff==0.16.6"]
 
 [build-system]
 requires = ["hatchling"]

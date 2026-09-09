@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install ruff
-        run: pip install ruff
+        run: pip install ruff==0.16.6
       - name: ruff check
         run: ruff check .
       - name: ruff format --check
@@ -39,7 +39,7 @@ jobs:
         run: npm ci
       - name: ESLint
         run: npm run lint
-      - name: prettier --check
-        run: npx prettier --check .
+      - name: prettier (format:check)
+        run: npm run format:check
       - name: next build
         run: npm run build
