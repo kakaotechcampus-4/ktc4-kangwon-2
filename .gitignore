@@ -84,3 +84,4 @@ docker-compose.override.yml
 
 # PM 개인 기획 메모 — 팀 공유 대상 아님
 .planning/
+CLAUDE.local.md
