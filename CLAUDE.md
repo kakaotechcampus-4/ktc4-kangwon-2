@@ -140,10 +140,10 @@ docker compose ps                  # 세 개 다 Up, db 는 healthy
 docker compose logs -f backend
 curl -f http://localhost:8000/health
 
-# 마이그레이션 — 생성 절차는 docs/structure.md
-docker compose exec backend alembic upgrade head
-docker compose exec backend alembic downgrade -1
-docker compose exec backend alembic check     # 모델과 마이그레이션이 어긋났나
+# 마이그레이션 — 상세는 docs/structure.md. exec 로 돌리지 않는다 (아래 참조)
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check
 
 # 린트
 cd backend  && ruff check . && ruff format .
@@ -161,5 +161,5 @@ Base.metadata.create_all()    이미 있는 테이블을 안 고친다. 컬럼 �
 hwp5txt                       표를 통째로 버린다
 postgres:latest               메이저 버전이 올라가며 깨진다. postgres:15 로 고정
 docker compose up (-d 없이)    터미널이 잡힌다. 로그는 logs -f 로 본다
-docker compose exec backend alembic revision   컨테이너 안에만 파일이 생긴다. structure.md 의 run --rm 형태를 쓴다
+docker compose exec backend alembic ...        backend 에 마운트가 없어 호스트 파일을 못 본다. 만든 마이그레이션을 못 찾고도 성공한 것처럼 끝난다. run --rm -v 형태만 쓴다
 ```

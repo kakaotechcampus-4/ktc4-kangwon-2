@@ -170,7 +170,7 @@ from app.features.centers import models as _centers  # noqa: F401
 
 ### 마이그레이션 생성 절차
 
-`--autogenerate` 는 라이브 DB 와 비교하므로 먼저 `docker compose up -d` 로 db 를
+`--autogenerate` 는 라이브 DB 와 비교하므로 먼저 `docker compose up -d db` 로 db 를
 띄운다. 위의 `env.py` 모델 import 도 빠뜨리지 않는다.
 
 macOS·Windows에서는 레포 루트에서 다음 명령을 실행한다.
@@ -190,13 +190,37 @@ docker compose run --rm -v "$(pwd)/backend:/app" --user "$(id -u):$(id -g)" back
 ```
 
 일회성 컨테이너에 `-v` 로 호스트의 `backend/` 를 마운트하므로 생성 파일이
-호스트의 `backend/alembic/versions/` 에 남는다. `docker compose exec backend alembic
-revision ...` 은 쓰지 않는다. backend 서비스에는 마운트가 없어 파일이 컨테이너
-안에만 생기고 컨테이너를 지우면 사라진다.
+호스트의 `backend/alembic/versions/` 에 남는다.
 
-Ctrl-C 로 중단했다면 `docker compose down --remove-orphans` 로 정리한다.
-`backend/` 안에서 실행하면 `alembic.ini not found`, db 가 떠 있지 않으면
-`connection refused` 로 실패한다.
+**생성된 파일을 열어서 확인한다.** 의도한 `op.create_table("...")` 이 다 있는지,
+없어야 할 `op.drop_table` 이 없는지, `downgrade()` 가 비어 있지 않은지 본다.
+`env.py` import 를 빠뜨리면 빈 `upgrade()` 가 정상처럼 생성되므로 파일을 보지
+않으면 알 수 없다.
+
+### 적용·확인도 같은 형태로 한다
+
+```bash
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check
+```
+
+**`docker compose exec backend alembic ...` 은 쓰지 않는다.** backend 서비스에는
+마운트가 없어서 `/app/alembic/versions/` 가 이미지에 구워진 사본이다. 방금 만든
+마이그레이션이 그 안에 없으므로 `upgrade head` 가 **아무것도 적용하지 않고 성공한
+것처럼 끝난다.** 이미지를 다시 빌드했는지에 따라 결과가 갈리므로 형태를 하나로 통일한다.
+
+### 실패하는 경우
+
+| 증상 | 원인 |
+|---|---|
+| `alembic.ini not found` | `backend/` 안에서 실행했다. 레포 루트에서 실행한다 |
+| `connection refused` | db 가 떠 있지 않다 |
+| 빈 `upgrade()` | `env.py` 에 모델 import 를 빠뜨렸다 |
+
+Ctrl-C 로 중단하면 일회성 컨테이너가 남는다. `docker compose down --remove-orphans`
+로 정리할 수 있지만 이 명령은 **해당 compose 프로젝트 전체를 내린다.** db 를 계속
+쓰려면 남은 컨테이너만 `docker rm` 한다.
 
 초기 마이그레이션은 만들지 않았다. 첫 모델을 추가하는 사람이 만든다.
 
