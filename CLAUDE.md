@@ -134,6 +134,9 @@ if os.getenv("LLM_MODE") == "real" and not os.getenv("IS_SERVER"):
 ## 명령어
 
 ```bash
+# 최초 1회 — .env 가 없으면 docker compose 가 기동을 거부한다
+cp .env.example .env               # 비밀번호를 바꾼다. .env 는 커밋하지 않는다
+
 # 로컬 실행
 docker compose up -d --build
 docker compose ps                  # 세 개 다 Up, db 는 healthy
@@ -153,6 +156,10 @@ cd frontend && npm run lint && npx prettier --write .
 ssh ktc-server
 cd ~/ktc4-kangwon-2 && git pull && docker compose up -d --build
 ```
+
+`.env` 의 `POSTGRES_PASSWORD` 와 `DATABASE_URL` 안의 비밀번호는 **같은 값**이어야 한다.
+서버의 `.env` 는 이미 만들어진 `pgdata` 볼륨의 비밀번호와 맞춰야 한다.
+볼륨이 이미 있으면 `POSTGRES_PASSWORD` 를 바꿔도 DB 비밀번호는 안 바뀐다 — 최초 생성 때만 쓰인다.
 
 ## 쓰지 않는 명령
 
