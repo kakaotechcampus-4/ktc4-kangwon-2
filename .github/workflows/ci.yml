@@ -3,6 +3,12 @@ name: CI
 on:
   pull_request:
 
+# 같은 PR 에 연달아 push 하면 이전 실행을 취소한다.
+# 최신 커밋 결과만 보는데 러너는 계속 점유된다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: backend (ruff)
@@ -21,6 +27,42 @@ jobs:
         run: ruff check .
       - name: ruff format --check
         run: ruff format --check .
+
+  migration:
+    name: backend (alembic check)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      db:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ssuksak
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: ssuksak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ssuksak -d ssuksak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://ssuksak:ci-only-not-a-secret@localhost:5432/ssuksak
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install .
+      # models.py 를 고치고 마이그레이션을 안 만들면 로컬은 되는데
+      # 배포 후 컬럼이 없어서 터진다. 그 어긋남을 여기서 잡는다.
+      - name: alembic upgrade head
+        run: alembic upgrade head
+      - name: alembic check
+        run: alembic check
 
   frontend:
     name: frontend (eslint · prettier · build)
