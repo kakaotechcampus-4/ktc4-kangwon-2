@@ -103,7 +103,8 @@ SQLAlchemy 2.0.52 · Alembic 1.19.2 · PostgreSQL 15 에서 확인했다.
 |---|---|
 | 생성 전 DB 가 비었나 | `pg_tables` 조회 0행. `pgdata` 는 영속 볼륨이라 잔재가 있으면 「초기」가 아니다 |
 | `create_table` | 4개. 빈 마이그레이션이 아니므로 `env.py` import 누락 없음 |
-| 제약 이름 | 16개가 `naming_convention` 대로. `ck_` 접두사 중복 없음 |
+| 제약 이름 | 14개 — CHECK 6 · PK 4 · FK 2 · UNIQUE 2. 규약대로이고 `ck_` 중복 없음 |
+| 인덱스 이름 | 2개. `ix_activities_tags`(GIN) · `ix_children_class_id` |
 | CHECK 식 | 모델과 동일. `alembic check` 는 CHECK 식을 비교하지 않아 눈으로 봤다 |
 | GIN | `ix_activities_tags gin (tags)` 가 실제 DB 에 생성 |
 | DEFAULT | `safety_flags` · `tags` 에 DB DEFAULT 없음. timestamp 는 `WITH TIME ZONE` |
