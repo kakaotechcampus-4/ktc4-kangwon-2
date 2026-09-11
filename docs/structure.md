@@ -175,6 +175,7 @@ from app.features.centers import models as _centers  # noqa: F401
 
 ```bash
 docker compose up -d db
+# Dockerfile 이나 pyproject.toml 을 고쳤으면 --build 를 붙인다
 docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
 ```
 
@@ -182,14 +183,15 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
 
 ```bash
 # 레포 루트에서 실행한다. backend/ 안에서 실행하면 alembic.ini not found 로 실패한다
-docker compose run --rm -v "$(pwd)/backend:/app" backend \
+docker compose run --rm -v "$(pwd)/backend:/app" --user "$(id -u):$(id -g)" backend \
   alembic revision --autogenerate -m "add centers table"
 ```
 
 일회성 컨테이너에 `-v` 로 호스트의 `backend/` 를 마운트하므로 생성 파일이
-호스트의 `backend/alembic/versions/` 에 남는다. Linux 는 컨테이너가 root 로 돌아
-생성 파일이 root 소유가 될 수 있으니 `--user "$(id -u):$(id -g)"` 를 붙인다
-(macOS 에서만 실측했다. Linux 는 확인이 필요하다).
+호스트의 `backend/alembic/versions/` 에 남는다. `--user` 는 그 파일의 소유자를
+실행한 사람으로 맞추기 위한 것이다 — 컨테이너가 root 로 돌아서(`Dockerfile` 에
+`USER` 지시가 없다) 빼면 root 소유로 생길 수 있다. 호스트에 파일을 만드는 명령은
+`revision` 뿐이므로 나머지 명령에는 붙이지 않는다.
 
 **적용하기 전에 생성된 파일을 열어서 확인한다.** 의도한 `op.create_table` 이 다 있고
 없어야 할 `op.drop_table` 이 없는지, `downgrade()` 가 비어 있지 않은지 본다. 위의
