@@ -7,6 +7,7 @@
 의존성:  pip install pyhwp six olefile    (hwp5html CLI가 PATH에 있어야 한다)
 읽기 전용이다. 쓰기는 hwpx를 직접 만들거나 docx로 낸다.
 """
+
 import html
 import re
 import shutil
@@ -35,7 +36,11 @@ class _Tables(HTMLParser):
             self.stack[-1].append([])
         elif tag in ("td", "th") and self.stack and self.stack[-1]:
             self.stack[-1][-1].append(
-                {"text": "", "rowspan": int(a.get("rowspan", 1)), "colspan": int(a.get("colspan", 1))}
+                {
+                    "text": "",
+                    "rowspan": int(a.get("rowspan", 1)),
+                    "colspan": int(a.get("colspan", 1)),
+                }
             )
 
     def handle_startendtag(self, tag, attrs):
@@ -87,8 +92,13 @@ def from_hwpx(path):
         for tr in re.findall(r"<hp:tr\b.*?</hp:tr>", tbl, re.S):
             rows.append(
                 [
-                    {"text": re.sub(r"\s+", " ", "".join(re.findall(r"<hp:t>(.*?)</hp:t>", tc, re.S))).strip(),
-                     "rowspan": 1, "colspan": 1}
+                    {
+                        "text": re.sub(
+                            r"\s+", " ", "".join(re.findall(r"<hp:t>(.*?)</hp:t>", tc, re.S))
+                        ).strip(),
+                        "rowspan": 1,
+                        "colspan": 1,
+                    }
                     for tc in re.findall(r"<hp:tc\b.*?</hp:tc>", tr, re.S)
                 ]
             )
@@ -110,7 +120,7 @@ def _selfcheck():
     src = """<table><tr><td rowspan="2">출결<br/>사항</td><td colspan="3">월요일</td></tr>
              <tr><td>출석</td><td>명</td><td><table><tr><td>중첩</td></tr></table></td></tr></table>"""
     t = from_html(src)
-    assert len(t) == 2, t                      # 바깥 표 + 중첩 표
+    assert len(t) == 2, t  # 바깥 표 + 중첩 표
     outer = max(t, key=len)
     assert outer[0][0]["text"] == "출결 사항", outer[0][0]
     assert outer[0][0]["rowspan"] == 2 and outer[0][1]["colspan"] == 3
@@ -124,6 +134,8 @@ if __name__ == "__main__":
         print(f"표 {len(tabs)}개")
         for i, t in enumerate(tabs, 1):
             n = sum(len(r) for r in t)
-            print(f"[{i}] {len(t)}행 {n}셀 :: {[c['text'] for r in t for c in r if c['text']][:12]}")
+            print(
+                f"[{i}] {len(t)}행 {n}셀 :: {[c['text'] for r in t for c in r if c['text']][:12]}"
+            )
     else:
         _selfcheck()

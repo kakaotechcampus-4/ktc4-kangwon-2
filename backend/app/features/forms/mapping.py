@@ -8,6 +8,7 @@
 DB 를 쓰지 않는다 — plans 등 다른 기능이 표준 키를 받아 자기 컬럼에 어떻게
 넣을지는 그쪽 몫이다. 여기는 "라벨 문구 -> 표준 키" 변환까지만 한다.
 """
+
 import json
 import re
 from functools import lru_cache

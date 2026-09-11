@@ -19,9 +19,10 @@ def parse_form(file: UploadFile) -> ParseResponse:
     """
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in _ALLOWED_SUFFIXES:
+        shown = suffix or "(확장자 없음)"
         raise HTTPException(
             status_code=400,
-            detail=f"지원하지 않는 파일 형식입니다: {suffix or '(확장자 없음)'} (.hwp, .hwpx만 허용)",
+            detail=f"지원하지 않는 파일 형식입니다: {shown} (.hwp, .hwpx만 허용)",
         )
 
     # hwp_form.extract() 가 경로를 요구하므로 업로드 내용을 임시 파일에 쓴다.
