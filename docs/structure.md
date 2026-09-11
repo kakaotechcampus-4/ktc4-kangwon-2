@@ -82,8 +82,8 @@ app/
 **한 feature 는 다른 feature 를 직접 import 하지 않는다.** 다른 기능의 데이터가
 필요하면 그 소유자의 service 를 통한다.
 
-**파일을 미리 만들어 두지 않는다.** 지금 각 폴더에는 `__init__.py` 하나뿐이다.
-아래 파일은 필요해진 사람이 그때 추가한다.
+**파일을 미리 만들어 두지 않는다.** `centers` 와 `activities` 에는 DB 테이블이
+필요해져 `models.py` 가 생겼다. 아래 파일은 필요해진 사람이 그때 추가한다.
 
 | 파일 | 언제 만드는가 |
 |---|---|
@@ -151,17 +151,18 @@ JSON · YAML 로 둔다. **이런 데이터를 코드에 하드코딩하지 않�
 | 경로 | 무엇을 두는가 |
 |---|---|
 | `env.py` | 모델 목록 연결. `DATABASE_URL` 을 환경변수에서 읽는다 |
-| `versions/` | 마이그레이션 파일. 아직 비어 있다(`.gitkeep` 만 있음) |
+| `versions/` | 마이그레이션 파일. 초기 마이그레이션 1개가 있다 |
 | `script.py.mako` | 마이그레이션 파일 템플릿 |
 
 설정 파일 `alembic.ini` 는 이 폴더가 아니라 `backend/` 바로 아래에 있다.
 
 ### models.py 를 만들면 env.py 도 같이 고친다
 
-`env.py` 에는 지금 `Base` 만 연결돼 있다. 새 `models.py` 를 만들면 **같은 PR 에서**
-import 한 줄을 추가한다.
+`env.py` 에는 지금 `Base` 와 두 모델 모듈이 연결돼 있다. 새 `models.py` 를 만들면
+**같은 PR 에서** import 한 줄을 추가한다.
 
 ```python
+from app.features.activities import models as _activities  # noqa: F401
 from app.features.centers import models as _centers  # noqa: F401
 ```
 
@@ -184,7 +185,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
 ```bash
 # 레포 루트에서 실행한다. backend/ 안에서 실행하면 alembic.ini not found 로 실패한다
 docker compose run --rm -v "$(pwd)/backend:/app" --user "$(id -u):$(id -g)" backend \
-  alembic revision --autogenerate -m "add centers table"
+  alembic revision --autogenerate -m "add plans table"
 ```
 
 일회성 컨테이너에 `-v` 로 호스트의 `backend/` 를 마운트하므로 생성 파일이
@@ -210,7 +211,8 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 마운트가 없어 방금 만든 마이그레이션을 못 보고, 그런데도 **아무것도 적용하지 않고
 성공한 것처럼 끝난다.**
 
-초기 마이그레이션은 만들지 않았다. 첫 모델을 추가하는 사람이 만든다.
+초기 마이그레이션 `20260911_0029_91f8d595e285_initial_schema.py` 가
+`centers` · `classes` · `children` · `activities` 테이블을 만든다.
 
 ---
 
