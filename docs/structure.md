@@ -168,14 +168,47 @@ from app.features.centers import models as _centers  # noqa: F401
 자동 스캔을 쓰지 않는다. **이 줄을 빠뜨리면 `--autogenerate` 가 해당 테이블을
 "코드에 없다"고 판단해 `DROP TABLE` 마이그레이션을 만든다.**
 
-### 마이그레이션 생성 절차는 아직 확정되지 않았다
+### 마이그레이션 생성 절차
 
-> `docker compose exec backend alembic revision ...` 로 만들면 파일이 컨테이너
-> 안에만 생긴다. backend 서비스에 소스 마운트가 없어 호스트의
-> `backend/alembic/versions/` 에는 나타나지 않고, 컨테이너를 지우면 사라진다.
->
-> 개발 환경 구성을 정리한 뒤 이 절에 실제 명령을 추가한다.
-> 첫 모델을 추가하기 전에 팀에서 먼저 확정한다.
+먼저 db 를 띄우고 DB 를 최신 리비전까지 올린다. `--autogenerate` 는 라이브 DB 와
+비교하는데, DB 가 뒤처져 있으면 `Target database is not up to date` 로 거부한다.
+
+```bash
+docker compose up -d db
+# Dockerfile 이나 pyproject.toml 을 고쳤으면 --build 를 붙인다
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
+```
+
+그다음 마이그레이션을 만든다. 위의 `env.py` 모델 import 를 빠뜨리지 않는다.
+
+```bash
+# 레포 루트에서 실행한다. backend/ 안에서 실행하면 alembic.ini not found 로 실패한다
+docker compose run --rm -v "$(pwd)/backend:/app" --user "$(id -u):$(id -g)" backend \
+  alembic revision --autogenerate -m "add centers table"
+```
+
+일회성 컨테이너에 `-v` 로 호스트의 `backend/` 를 마운트하므로 생성 파일이
+호스트의 `backend/alembic/versions/` 에 남는다. `--user` 는 그 파일의 소유자를
+실행한 사람으로 맞추기 위한 것이다 — 컨테이너가 root 로 돌아서(`Dockerfile` 에
+`USER` 지시가 없다) 빼면 root 소유로 생길 수 있다. 호스트에 파일을 만드는 명령은
+`revision` 뿐이므로 나머지 명령에는 붙이지 않는다.
+
+**적용하기 전에 생성된 파일을 열어서 확인한다.** 의도한 `op.create_table` 이 다 있고
+없어야 할 `op.drop_table` 이 없는지, `downgrade()` 가 비어 있지 않은지 본다. 위의
+import 를 빠뜨리면 `DROP TABLE` 이 들어가므로, 확인 전에 적용하면 `pgdata` 의 테이블이
+실제로 지워진다.
+
+확인이 끝나면 적용한다.
+
+```bash
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   # 되돌릴 때
+```
+
+**`docker compose exec backend alembic ...` 은 쓰지 않는다.** backend 서비스에는
+마운트가 없어 방금 만든 마이그레이션을 못 보고, 그런데도 **아무것도 적용하지 않고
+성공한 것처럼 끝난다.**
 
 초기 마이그레이션은 만들지 않았다. 첫 모델을 추가하는 사람이 만든다.
 
