@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
 
-from app.features.forms import hwp_form
+from app.features.forms import hwp_form, mapping
 from app.features.forms.schemas import ParseResponse
 
 router = APIRouter(prefix="/forms", tags=["forms"])
@@ -38,8 +38,10 @@ def parse_form(file: UploadFile) -> ParseResponse:
             # 손상된 파일, 변환 실패 등 요청 자체의 문제
             raise HTTPException(status_code=422, detail=f"양식 파싱에 실패했습니다: {e}") from e
 
+    labels = hwp_form.labels(tables)
     return ParseResponse(
         filename=file.filename or "",
         tables=tables,
-        labels=hwp_form.labels(tables),
+        labels=labels,
+        label_map=mapping.map_labels(labels),
     )
