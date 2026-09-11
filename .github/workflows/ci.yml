@@ -3,6 +3,12 @@ name: CI
 on:
   pull_request:
 
+# 같은 PR 에 연달아 push 하면 이전 실행을 취소한다.
+# 어차피 최신 커밋 결과만 보는데 러너는 계속 점유된다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: backend (ruff)
