@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ssuksak
+      # 비밀번호만 .env 에서 받는다. 기본값을 두면 저장소에 비밀번호가 남고
+      # 아무도 .env 를 만들지 않는다. 없으면 기동 전에 멈춘다.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env 가 없다 — cp .env.example .env 후 값을 채운다}
+      POSTGRES_DB: ssuksak
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ssuksak -d ssuksak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      # DATABASE_URL 안에도 비밀번호가 들어 있어 기본값을 두지 않는다.
+      # .env 의 POSTGRES_PASSWORD 와 여기 비밀번호는 같은 값이어야 한다.
+      DATABASE_URL: ${DATABASE_URL:?.env 가 없다 — cp .env.example .env 후 값을 채운다}
+      ELICE_API_KEY: ${ELICE_API_KEY:-}
+      LLM_MODE: ${LLM_MODE:-mock}
+      IS_SERVER: ${IS_SERVER:-0}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
