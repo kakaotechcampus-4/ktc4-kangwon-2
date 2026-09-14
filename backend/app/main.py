@@ -2,7 +2,6 @@ from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from app.db import SessionLocal
-
 from app.features.forms.router import router as forms_router
 
 app = FastAPI(title="쓱싹요정 API")
