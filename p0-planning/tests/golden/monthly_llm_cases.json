@@ -1,0 +1,502 @@
+{
+  "schema_version": "ssuksak.golden.monthly-llm.v1",
+  "suite_id": "ssuksak.monthly-llm-planner-golden",
+  "suite_version": "monthly-llm-planner-golden-v1",
+  "created_on": "2026-09-14",
+  "contract_stage": "L9_FINAL_FREEZE",
+  "purpose": "Monthly LLM Planner v1의 Application Contract를 결정론적으로 고정한다. 실제 GPT 문장이 아니라 '주어진 Proposal에 대해 Application이 무엇을 하는가'를 고정한다.",
+  "scope_note": "monthly_cases.json(Rule-only Golden)을 대체하지 않는다. 두 Golden은 서로 다른 것을 지킨다 — 저쪽은 Rule 경로의 기존 동작, 이쪽은 LLM 경로의 Application 계약이다.",
+  "assertion_policy": {
+    "deterministic_source": "FakeLLM에 고정 Proposal을 주입한다. 네트워크도 실제 모델도 쓰지 않는다.",
+    "exact_text_allowed": [
+      "FakeLLM fixture가 명시적으로 반환한 문자열",
+      "확정 Parent Yearly Theme",
+      "승인 Activity Reference label",
+      "오류 식별자(violated_rule)"
+    ],
+    "exact_text_forbidden": [
+      "실제 GPT가 만든 experience 문장",
+      "실제 GPT가 만든 LLM_SYNTHESIZED 활동명",
+      "month_flow_rationale 자연어"
+    ],
+    "why": "모델이 정상적인 다른 문장을 만들어도 회귀 실패가 되면 Golden이 품질 장치가 아니라 방해물이 된다. 자연어 품질은 LIVE_QUALITY_SMOKE가 사람 관찰로 다룬다."
+  },
+  "reference_fixtures": {
+    "template_rule_only": {
+      "template_id": "ssuksak.monthly-template-a",
+      "template_version": "monthly-template-a-v0.1.0",
+      "note": "focus Section 없음. RULE_ONLY 호환용"
+    },
+    "template_llm": {
+      "template_id": "ssuksak.monthly-template-a",
+      "template_version": "monthly-template-a-v0.2.0",
+      "note": "focus 활성. LLM Planner 전용"
+    },
+    "activity_catalog": {
+      "catalog_id": "test.outdoor-activity-reference",
+      "catalog_version": "test-activity-reference-v1",
+      "note": "Golden 전용 결정론 Catalog. 승인 Artifact를 건드리지 않는다"
+    },
+    "planner_rule": {
+      "rule_id": "monthly.llm.evidence_grounded_planner",
+      "rule_version": "v1"
+    },
+    "prompt": {
+      "plan_monthly": "monthly-planner-prompt-v0.1.1",
+      "regenerate_cell": "monthly-cell-regeneration-prompt-v0.1.0"
+    },
+    "planner_model": "golden/deterministic-fake"
+  },
+  "frozen_invariants": {
+    "generation_mode": "LLM_PLANNER",
+    "status_after_generate": "DRAFT",
+    "week_order_basis": "PLANNER_COMPOSED",
+    "theme_provenance": {
+      "generation_method": "RULE_ONLY",
+      "evidence_types": [
+        "THEME_REFERENCE",
+        "PARENT_PLAN"
+      ],
+      "note": "LLM이 만든 것으로 표시하지 않는다. 확정 Yearly에서 Rule이 파생한다"
+    },
+    "focus_provenance": {
+      "cell_state": "FILLED",
+      "generation_method": "RULE_LLM",
+      "evidence": [],
+      "note": "빈 Evidence는 '근거 없음'이 아니라 '특정 record를 인용하지 않았다'는 뜻이다"
+    },
+    "outdoor_reference_provenance": {
+      "generation_method": "RULE_LLM",
+      "evidence_type": "ACTIVITY_REFERENCE",
+      "source_version": "pinned catalog_version"
+    },
+    "outdoor_synthesized_provenance": {
+      "generation_method": "RULE_LLM",
+      "evidence_type": "INSTITUTION_SAMPLE",
+      "source_id": "실제 Evidence record_id",
+      "source_version": "Evidence Store content SHA"
+    },
+    "safety": {
+      "cell_state": "EMPTY_UNRESOLVED",
+      "verification": "NOT_VERIFIED_SOURCE_REQUIRED",
+      "evidence": [],
+      "note": "LLM이 배치하지 않는다. 확정 후에도 그대로다"
+    },
+    "forbidden_evidence_source_types": [
+      "LLM_SYNTHESIZED",
+      "AI",
+      "TEACHER_EDIT"
+    ]
+  },
+  "llm_fixtures": {
+    "case_a_reference_only": {
+      "note": "2026-06(4주) 모든 주차를 승인 Catalog에서 고른 Proposal",
+      "origins": [
+        "REFERENCE",
+        "REFERENCE",
+        "REFERENCE",
+        "REFERENCE"
+      ]
+    },
+    "case_b_mixed": {
+      "note": "2026-07(5주) REFERENCE와 LLM_SYNTHESIZED가 섞인 Proposal",
+      "origins": [
+        "REFERENCE",
+        "LLM_SYNTHESIZED",
+        "REFERENCE",
+        "LLM_SYNTHESIZED",
+        "REFERENCE"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "case_id": "llm_generate_reference_only",
+      "classification": "SUCCESS",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "LLM_PLANNER Generate",
+        "focus 저장",
+        "REFERENCE Provenance"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only"
+      },
+      "expected": {
+        "status": "DRAFT",
+        "generation_mode": "LLM_PLANNER",
+        "template_version": "monthly-template-a-v0.2.0",
+        "monthly_plan_persisted": true,
+        "save_count": 1,
+        "llm_call_count": 1,
+        "validation_repair_count": 0,
+        "focus_cells_equal_week_count": true,
+        "outdoor_origins": [
+          "REFERENCE",
+          "REFERENCE",
+          "REFERENCE",
+          "REFERENCE"
+        ],
+        "week_count": 4
+      }
+    },
+    {
+      "case_id": "llm_generate_mixed_origins",
+      "classification": "SUCCESS",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "LLM_SYNTHESIZED Provenance",
+        "INSTITUTION_SAMPLE Evidence"
+      ],
+      "arrange": {
+        "fixture": "case_b_mixed"
+      },
+      "expected": {
+        "status": "DRAFT",
+        "monthly_plan_persisted": true,
+        "save_count": 1,
+        "llm_call_count": 1,
+        "synthesized_weeks_have_institution_sample_evidence": true,
+        "synthesized_source_version_is_evidence_store_sha": true,
+        "week_count": 5,
+        "outdoor_origins": [
+          "REFERENCE",
+          "LLM_SYNTHESIZED",
+          "REFERENCE",
+          "LLM_SYNTHESIZED",
+          "REFERENCE"
+        ]
+      }
+    },
+    {
+      "case_id": "llm_generate_requires_focus_template",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "Mode/Template 조합",
+        "silent data loss 금지"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "template_version": "monthly-template-a-v0.1.0"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "violated_rule": "llm_planner_mode_requires_a_week_experience_section",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "llm_generate_requires_planner_dependency",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "silent RULE_ONLY fallback 금지"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "planner": null
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "violated_rule": "llm_planner_mode_requires_a_planner_dependency",
+        "monthly_plan_persisted": false
+      }
+    },
+    {
+      "case_id": "llm_generate_unavailable_saves_nothing",
+      "classification": "LLM_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "LLM 실패 원자성",
+        "fallback 금지"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "llm_mode": "UNAVAILABLE"
+      },
+      "expected": {
+        "raises": "LLMUnavailableError",
+        "monthly_plan_persisted": false,
+        "save_count": 0
+      }
+    },
+    {
+      "case_id": "llm_generate_rejected_proposal_saves_nothing",
+      "classification": "LLM_OUTPUT_VALIDATION",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "L5 Validator",
+        "exact-copy 거부",
+        "저장 0"
+      ],
+      "arrange": {
+        "fixture": "case_b_mixed",
+        "synthesized_copies_source": true,
+        "repair_also_copies": true
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "violated_rule": "monthly_llm_proposal_must_pass_deterministic_validation",
+        "monthly_plan_persisted": false,
+        "llm_call_count": 2
+      }
+    },
+    {
+      "case_id": "llm_generate_repair_then_success",
+      "classification": "SUCCESS",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "repair orchestration",
+        "1회 재요청 후 성공"
+      ],
+      "arrange": {
+        "fixture": "case_b_mixed",
+        "synthesized_copies_source": true,
+        "repair_also_copies": false
+      },
+      "expected": {
+        "status": "DRAFT",
+        "monthly_plan_persisted": true,
+        "save_count": 1,
+        "llm_call_count": 2,
+        "validation_repair_count": 1
+      }
+    },
+    {
+      "case_id": "llm_regenerate_focus_target_only",
+      "classification": "SUCCESS",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "Cell-only mutation",
+        "paired Cell 보존"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "target_section": "focus"
+      },
+      "expected": {
+        "changed_cells": 1,
+        "changed_section": "focus",
+        "generation_method": "RULE_LLM",
+        "evidence": [],
+        "audit_contains": [
+          "CREATED",
+          "REGENERATED"
+        ],
+        "save_count_delta": 1
+      }
+    },
+    {
+      "case_id": "llm_regenerate_outdoor_target_only",
+      "classification": "SUCCESS",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "Cell-only mutation",
+        "REFERENCE Provenance 교체"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "target_section": "outdoor_play"
+      },
+      "expected": {
+        "changed_cells": 1,
+        "changed_section": "outdoor_play",
+        "generation_method": "RULE_LLM",
+        "save_count_delta": 1
+      }
+    },
+    {
+      "case_id": "llm_regenerate_theme_uses_rule_not_llm",
+      "classification": "SUCCESS",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "theme은 parent anchor Rule 재파생"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "target_section": "theme"
+      },
+      "expected": {
+        "generation_method": "RULE_ONLY",
+        "cell_llm_call_count": 0
+      }
+    },
+    {
+      "case_id": "llm_regenerate_safety_still_blocked",
+      "classification": "GATE_FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "안전교육 배치 source 없음 (OD-M04)"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "target_section": "safety_education"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "violated_rule": "regenerate_requires_resolved_candidate_source",
+        "cell_llm_call_count": 0
+      }
+    },
+    {
+      "case_id": "llm_confirmed_plan_is_read_only",
+      "classification": "GATE_FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "CONFIRMED read-only",
+        "provider 호출 전 차단"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "confirm_first": true
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "violated_rule": "confirmed_monthly_plan_is_read_only",
+        "cell_llm_call_count": 0,
+        "save_count_delta": 0
+      }
+    },
+    {
+      "case_id": "llm_generate_configuration_missing",
+      "classification": "LLM_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "설정 부재를 RULE_ONLY로 대체하지 않는다"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "llm_mode": "CONFIGURATION_ERROR"
+      },
+      "expected": {
+        "raises": "LLMConfigurationError",
+        "monthly_plan_persisted": false,
+        "save_count": 0
+      }
+    },
+    {
+      "case_id": "llm_regenerate_mode_must_match_the_plan",
+      "classification": "GATE_FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "silent mode switching 금지 (§26)"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "requested_mode": "RULE_ONLY"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "violated_rule": "regenerate_mode_must_match_the_plan_generation_path",
+        "cell_llm_call_count": 0,
+        "save_count_delta": 0
+      }
+    },
+    {
+      "case_id": "llm_regenerate_rejected_cell_proposal_saves_nothing",
+      "classification": "LLM_OUTPUT_VALIDATION",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "Cell 재생성도 같은 Validator를 지난다",
+        "실패 시 Cell 보존"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only",
+        "cell_copies_source": true
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "cell_unchanged": true,
+        "save_count_delta": 0
+      }
+    },
+    {
+      "case_id": "llm_full_lifecycle",
+      "classification": "E2E",
+      "operation": "Generate → Regenerate → Edit → Regenerate → Confirm",
+      "covers": [
+        "L9 §11 최종 E2E"
+      ],
+      "arrange": {
+        "fixture": "case_a_reference_only"
+      },
+      "expected": {
+        "final_status": "CONFIRMED",
+        "audit_chain": [
+          "CREATED",
+          "REGENERATED",
+          "TEACHER_EDITED",
+          "REGENERATED"
+        ],
+        "safety_verification": "NOT_VERIFIED_SOURCE_REQUIRED",
+        "mutations_blocked_after_confirm": true
+      }
+    }
+  ],
+  "product_contracts": [
+    "LLM_PLANNER 실패가 RULE_ONLY 결과로 대체되지 않는다 (OD-N15)",
+    "Theme은 확정 Yearly anchor에서 Rule이 파생한다. LLM이 만들지 않는다",
+    "focus는 특정 EvidenceRecord를 직접 근거로 주장하지 않는다 (OD-N18)",
+    "안전교육은 LLM이 생성·배치하지 않는다 (CLAUDE.md §5)",
+    "Cell 재생성은 Target 하나만 바꾼다",
+    "교사 수정은 AI 결과보다 우선하며 Audit history는 지워지지 않는다",
+    "CONFIRMED Plan은 read-only이며 provider 호출 전에 차단된다"
+  ],
+  "failure_semantics": {
+    "note": "L9 §13 — 실패가 조용한 성공이나 조용한 RULE_ONLY로 바뀌지 않는다. 7가지 실패 의미를 각각 고정한다.",
+    "kinds": [
+      {
+        "kind": "MODE_TEMPLATE_MISMATCH",
+        "case_id": "llm_generate_requires_focus_template",
+        "category": "PREREQUISITE_GATE",
+        "llm_called": false,
+        "saved": false
+      },
+      {
+        "kind": "MISSING_PLANNER",
+        "case_id": "llm_generate_requires_planner_dependency",
+        "category": "PREREQUISITE_GATE",
+        "llm_called": false,
+        "saved": false
+      },
+      {
+        "kind": "LLM_UNAVAILABLE",
+        "case_id": "llm_generate_unavailable_saves_nothing",
+        "category": "TRANSPORT",
+        "llm_called": true,
+        "saved": false
+      },
+      {
+        "kind": "LLM_CONFIGURATION",
+        "case_id": "llm_generate_configuration_missing",
+        "category": "CONFIGURATION",
+        "llm_called": true,
+        "saved": false
+      },
+      {
+        "kind": "PROPOSAL_REJECTED",
+        "case_id": "llm_generate_rejected_proposal_saves_nothing",
+        "category": "LLM_OUTPUT_VALIDATION",
+        "llm_called": true,
+        "saved": false
+      },
+      {
+        "kind": "MODE_MISMATCH_ON_REGENERATE",
+        "case_id": "llm_regenerate_mode_must_match_the_plan",
+        "category": "PREREQUISITE_GATE",
+        "llm_called": false,
+        "saved": false
+      },
+      {
+        "kind": "CONFIRMED_READ_ONLY",
+        "case_id": "llm_confirmed_plan_is_read_only",
+        "category": "PREREQUISITE_GATE",
+        "llm_called": false,
+        "saved": false
+      }
+    ],
+    "common": "어떤 실패도 Plan을 저장하지 않고, 어떤 실패도 RULE_ONLY 결과로 대체되지 않는다."
+  }
+}

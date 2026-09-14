@@ -1,0 +1,935 @@
+{
+  "schema_version": "yearly-golden.schema.v0",
+  "suite_id": "ssuksak.generate-yearly-plan.p0",
+  "suite_version": "yearly-golden-v0.1.2",
+  "created_on": "2026-09-10",
+  "purpose": "GenerateYearlyPlan 중심의 첫 Vertical Slice를 문장 exact match 없이 구조·Rule·Reference·Gate·Validation으로 검증한다.",
+  "contract_stage": "APPLICATION_TEST_FIXTURE_NOT_HTTP_OR_DB_CONTRACT",
+  "reference_fixture": {
+    "path": "../../data/themes/theme_reference_v0.json",
+    "catalog_id": "ssuksak.yearly-theme-reference",
+    "catalog_version": "theme-reference-v0.1.2",
+    "current_review_state": "HUMAN_APPROVED",
+    "positive_case_precondition": "같은 catalog_version의 근거와 매핑이 사람에게 승인되어 활성 상태여야 한다. v0.1.2는 2026-09-11에 승인되어 이 전제를 충족한다. 미승인 카탈로그 차단은 gate_unapproved_theme_reference가 PENDING_HUMAN_REVIEW를 주입해 계속 검증한다."
+  },
+  "assertion_policy": {
+    "exact_sentence_match": false,
+    "exact_theme_label_match": false,
+    "assert_structure": true,
+    "assert_rule_boundaries": true,
+    "assert_reference_resolution": true,
+    "assert_validation_result": true,
+    "assert_provenance_axes_separately": true,
+    "notes": [
+      "Yearly Application DTO의 기간 필드명은 month_periods로 고정한다. HTTP/DB의 물리 표현은 별도 Contract에서 확정한다.",
+      "failure_category와 rule_id는 Golden Set 내부 의미 식별자이며 공개 HTTP 오류 코드가 아니다.",
+      "선택된 theme 표현은 달라질 수 있지만 theme_id의 의미와 Reference 적합성은 유지해야 한다."
+    ]
+  },
+  "academic_calendar": {
+    "school_year": 2026,
+    "ordered_periods": [
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08",
+      "2026-09",
+      "2026-10",
+      "2026-11",
+      "2026-12",
+      "2027-01",
+      "2027-02"
+    ]
+  },
+  "fixtures": {
+    "daycare_valid": {
+      "daycare_ref": "daycare_fixture_alpha",
+      "name": "테스트어린이집",
+      "director_name": "테스트원장",
+      "region": {
+        "region_ref": "region_fixture_seoul",
+        "display_name": "서울특별시"
+      }
+    },
+    "planning_setup_complete": {
+      "completed": true,
+      "start_mode": "CREATE_NEW"
+    },
+    "classrooms": {
+      "age3": {
+        "classroom_ref": "classroom_fixture_age3",
+        "name": "새싹반",
+        "ages": [
+          3
+        ],
+        "teacher_name": "테스트담임"
+      },
+      "age4": {
+        "classroom_ref": "classroom_fixture_age4",
+        "name": "햇살반",
+        "ages": [
+          4
+        ],
+        "teacher_name": "테스트담임"
+      },
+      "age5": {
+        "classroom_ref": "classroom_fixture_age5",
+        "name": "별빛반",
+        "ages": [
+          5
+        ],
+        "teacher_name": "테스트담임"
+      },
+      "mixed_3_4": {
+        "classroom_ref": "classroom_fixture_mixed_3_4",
+        "name": "나무반",
+        "ages": [
+          3,
+          4
+        ],
+        "teacher_name": "테스트담임"
+      }
+    },
+    "event_autumn_forest": {
+      "event_id": "event_fixture_autumn_forest_2026",
+      "label": "가을 숲 체험",
+      "starts_on": "2026-10-16",
+      "status": "CONFIRMED",
+      "fixture_notice": "테스트 입력으로 명시된 가상 행사이며 외부 사실이 아니다."
+    },
+    "optional_context_none": {
+      "events": [],
+      "trend": null,
+      "weather": null,
+      "climate_profile": null,
+      "daycare_optional_profile": null,
+      "classroom_optional_profile": null
+    }
+  },
+  "common_success_invariants": [
+    {
+      "rule_id": "yearly.output.status_is_draft",
+      "expected": true
+    },
+    {
+      "rule_id": "yearly.output.school_year_preserved",
+      "expected": 2026
+    },
+    {
+      "rule_id": "yearly.output.classroom_owner_preserved",
+      "expected": true
+    },
+    {
+      "rule_id": "yearly.period.count",
+      "expected": 12
+    },
+    {
+      "rule_id": "yearly.period.academic_order",
+      "expected": [
+        "2026-03",
+        "2026-04",
+        "2026-05",
+        "2026-06",
+        "2026-07",
+        "2026-08",
+        "2026-09",
+        "2026-10",
+        "2026-11",
+        "2026-12",
+        "2027-01",
+        "2027-02"
+      ]
+    },
+    {
+      "rule_id": "yearly.theme.required_and_non_blank_each_period",
+      "expected": true
+    },
+    {
+      "rule_id": "yearly.item.stable_address",
+      "expected": {
+        "item_id_present": true,
+        "semantic_key_present": true,
+        "label_or_array_index_not_used_as_address": true
+      }
+    },
+    {
+      "rule_id": "yearly.reference.catalog_version_exact",
+      "expected": "theme-reference-v0.1.2"
+    },
+    {
+      "rule_id": "yearly.reference.theme_id_resolves",
+      "expected": true
+    },
+    {
+      "rule_id": "yearly.reference.month_eligible",
+      "expected": true
+    },
+    {
+      "rule_id": "yearly.reference.age_set_eligible",
+      "expected": true
+    },
+    {
+      "rule_id": "yearly.provenance.axes_are_separate",
+      "expected": {
+        "evidence_source": {
+          "source_type": "THEME_REFERENCE",
+          "source_id_resolves_to_theme_id": true,
+          "source_version_present": true
+        },
+        "generation_method_allowed": [
+          "RULE_ONLY",
+          "RULE_LLM"
+        ],
+        "audit_contains": [
+          "CREATED"
+        ]
+      }
+    },
+    {
+      "rule_id": "yearly.llm_does_not_select_or_replace_theme",
+      "expected": true
+    },
+    {
+      "rule_id": "yearly.no_unprovided_facts_or_events",
+      "expected": true
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "generate_age3_no_events_no_optional_context",
+      "classification": "SUCCESS",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "만3세",
+        "행사 없음",
+        "Optional Context 없음",
+        "Fallback"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age3",
+        "optional_context_none"
+      ],
+      "input": {
+        "school_year": 2026,
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "HUMAN_APPROVED"
+        }
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "include_common_success_invariants": true,
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.optional_context.absence_does_not_block",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.event.evidence_absent_when_no_event_input",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.trend.evidence_absent_when_no_trend_input",
+            "expected": true
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "generate_age4_with_confirmed_event",
+      "classification": "SUCCESS",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "만4세",
+        "행사 있음",
+        "행사 Provenance"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age4",
+        "event_autumn_forest"
+      ],
+      "input": {
+        "school_year": 2026,
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "HUMAN_APPROVED"
+        },
+        "optional_context": {
+          "events": [
+            "event_autumn_forest"
+          ],
+          "trend": null,
+          "weather": null,
+          "climate_profile": null
+        }
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "include_common_success_invariants": true,
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.event.claims_are_subset_of_input_event_ids",
+            "expected": [
+              "event_fixture_autumn_forest_2026"
+            ]
+          },
+          {
+            "rule_id": "yearly.event.if_used_period_matches_event_date",
+            "expected": "2026-10"
+          },
+          {
+            "rule_id": "yearly.event.if_used_has_event_evidence",
+            "expected": {
+              "source_type": "EVENT",
+              "source_id": "event_fixture_autumn_forest_2026"
+            }
+          },
+          {
+            "rule_id": "yearly.event.does_not_bypass_theme_reference",
+            "expected": true
+          }
+        ],
+        "not_asserted": [
+          "행사가 반드시 theme label을 바꾼다",
+          "행사와 Theme의 구체 점수 또는 우선순위"
+        ]
+      }
+    },
+    {
+      "case_id": "generate_age5_without_event",
+      "classification": "SUCCESS",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "만5세",
+        "행사 없음",
+        "2월 성장·전이 후보"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age5",
+        "optional_context_none"
+      ],
+      "input": {
+        "school_year": 2026,
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "HUMAN_APPROVED"
+        }
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "include_common_success_invariants": true,
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.age_context.is_exact_set",
+            "expected": [
+              5
+            ]
+          },
+          {
+            "rule_id": "yearly.february.reference_is_age_eligible",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.event.evidence_absent_when_no_event_input",
+            "expected": true
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "generate_mixed_age_3_4_no_optional_context",
+      "classification": "SUCCESS",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "혼합연령",
+        "만3+4세",
+        "Optional Context 없음",
+        "classroom 단일 Plan"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.mixed_3_4",
+        "optional_context_none"
+      ],
+      "input": {
+        "school_year": 2026,
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "HUMAN_APPROVED"
+        }
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "include_common_success_invariants": true,
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.mixed_age.preserve_age_set",
+            "expected": [
+              3,
+              4
+            ]
+          },
+          {
+            "rule_id": "yearly.mixed_age.one_plan_per_classroom",
+            "expected_plan_count": 1
+          },
+          {
+            "rule_id": "yearly.mixed_age.no_single_age_collapse",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.reference.supports_every_selected_age",
+            "expected": true
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "generate_age5_trend_timeout_uses_fallback",
+      "classification": "SUCCESS_WITH_FALLBACK",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "Optional dependency 실패",
+        "Fallback",
+        "Trend 없음"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age5"
+      ],
+      "input": {
+        "school_year": 2026,
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "HUMAN_APPROVED"
+        },
+        "optional_context": {
+          "events": [],
+          "trend_provider": {
+            "result": "TIMEOUT"
+          },
+          "weather": null,
+          "climate_profile": null
+        }
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "include_common_success_invariants": true,
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.optional_dependency.failure_does_not_fail_core",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.fallback.uses_base_reference",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.trend.evidence_absent_after_timeout",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.generation_run.records_fallback",
+            "expected": true
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "gate_unapproved_theme_reference",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "Theme Reference human-review Gate"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age3",
+        "optional_context_none"
+      ],
+      "input": {
+        "school_year": 2026,
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "PENDING_HUMAN_REVIEW"
+        }
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "only_human_approved_versioned_theme_reference_is_eligible",
+        "plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "reference_unknown_catalog_version",
+      "classification": "REFERENCE_FAILURE",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "잘못된 Reference Version"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age4",
+        "optional_context_none"
+      ],
+      "input": {
+        "school_year": 2026,
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.0.0-does-not-exist",
+          "activation_status": "HUMAN_APPROVED"
+        }
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REFERENCE_VALIDATION",
+        "violated_rule": "catalog_id_and_version_must_resolve_exactly",
+        "plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "reference_unknown_selected_theme_id",
+      "classification": "REFERENCE_FAILURE",
+      "operation": "ValidateGeneratedYearlyPlan",
+      "covers": [
+        "존재하지 않는 Reference ID"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age5",
+        "optional_context_none"
+      ],
+      "arrange": {
+        "base_case": "generate_age5_without_event",
+        "output_mutation": {
+          "period": "2026-06",
+          "replace_theme_id_with": "yr_theme_does_not_exist"
+        }
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REFERENCE_VALIDATION",
+        "violated_rule": "every_theme_id_must_resolve_in_exact_catalog_version",
+        "invalid_plan_saved_as_success": false
+      }
+    },
+    {
+      "case_id": "reference_theme_source_version_mismatch",
+      "classification": "REFERENCE_FAILURE",
+      "operation": "ValidateGeneratedYearlyPlan",
+      "covers": [
+        "Theme Reference source_version 불일치"
+      ],
+      "arrange": {
+        "base_case": "generate_age3_no_events_no_optional_context",
+        "output_mutation": {
+          "period": "2026-04",
+          "keep_theme_id": "yr_theme_spring",
+          "replace_source_version_with": "theme-reference-v0.0.0-does-not-exist"
+        }
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REFERENCE_VALIDATION",
+        "violated_rule": "theme_id_and_source_version_must_resolve_in_exact_catalog_version",
+        "invalid_plan_saved_as_success": false
+      }
+    },
+    {
+      "case_id": "reference_no_age_and_month_eligible_candidate",
+      "classification": "REFERENCE_FAILURE",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "후보 공백",
+        "LLM 자유 생성 금지"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "classrooms.age3",
+        "optional_context_none"
+      ],
+      "arrange": {
+        "catalog_mutation": "2026-06에 적용 가능하고 만3세를 지원하는 모든 후보를 제거"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REFERENCE_CANDIDATE_EMPTY",
+        "violated_rule": "rule_must_select_from_eligible_reference_candidates",
+        "llm_may_invent_replacement_theme": false,
+        "plan_persisted": false
+      }
+    },
+    {
+      "case_id": "validation_rejects_eleven_periods",
+      "classification": "OUTPUT_VALIDATION_FAILURE",
+      "operation": "ValidateGeneratedYearlyPlan",
+      "covers": [
+        "정확히 12 MonthPeriod"
+      ],
+      "arrange": {
+        "base_case": "generate_age3_no_events_no_optional_context",
+        "output_mutation": "2027-02 MonthPeriod 제거"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "STRUCTURE_VALIDATION",
+        "violated_rule": "yearly_plan_has_exactly_twelve_month_periods",
+        "invalid_plan_saved_as_success": false
+      }
+    },
+    {
+      "case_id": "validation_rejects_wrong_academic_month_order",
+      "classification": "OUTPUT_VALIDATION_FAILURE",
+      "operation": "ValidateGeneratedYearlyPlan",
+      "covers": [
+        "3월~다음 해 2월 순서",
+        "중복 월 거부"
+      ],
+      "arrange": {
+        "base_case": "generate_age4_with_confirmed_event",
+        "output_mutation": "2026-09를 중복하고 2026-10을 누락"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "PERIOD_VALIDATION",
+        "violated_rule": "academic_months_are_complete_unique_and_ordered",
+        "invalid_plan_saved_as_success": false
+      }
+    },
+    {
+      "case_id": "validation_rejects_blank_theme",
+      "classification": "OUTPUT_VALIDATION_FAILURE",
+      "operation": "ValidateGeneratedYearlyPlan",
+      "covers": [
+        "각 월 theme 필수",
+        "빈 문자열 거부"
+      ],
+      "arrange": {
+        "base_case": "generate_age5_without_event",
+        "output_mutation": {
+          "period": "2026-11",
+          "theme_value": "   "
+        }
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REQUIRED_VALUE_VALIDATION",
+        "violated_rule": "theme_is_required_and_non_blank_for_every_period",
+        "invalid_plan_saved_as_success": false
+      }
+    },
+    {
+      "case_id": "validation_rejects_mixed_age_with_one_selected_age",
+      "classification": "INPUT_VALIDATION_FAILURE",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "혼합연령 Validation"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "planning_setup_complete",
+        "optional_context_none"
+      ],
+      "input": {
+        "school_year": 2026,
+        "classroom": {
+          "classroom_ref": "classroom_fixture_invalid_mixed",
+          "name": "잘못된혼합반",
+          "age_mode": "MIXED",
+          "ages": [
+            4
+          ],
+          "teacher_name": "테스트담임"
+        },
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "HUMAN_APPROVED"
+        }
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "INPUT_VALIDATION",
+        "violated_rule": "mixed_age_requires_at_least_two_distinct_supported_ages",
+        "plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_planning_setup_incomplete",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateYearlyPlan",
+      "covers": [
+        "Yearly 생성 선행조건 Gate"
+      ],
+      "fixture_refs": [
+        "daycare_valid",
+        "classrooms.age3",
+        "optional_context_none"
+      ],
+      "input": {
+        "school_year": 2026,
+        "planning_setup": {
+          "completed": false,
+          "start_mode": null
+        },
+        "reference_catalog": {
+          "catalog_id": "ssuksak.yearly-theme-reference",
+          "catalog_version": "theme-reference-v0.1.2",
+          "activation_status": "HUMAN_APPROVED"
+        }
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "planning_initial_setup_must_be_complete",
+        "plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_monthly_generation_requires_confirmed_yearly",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "scope_note": "Yearly Slice가 다음 단계 Gate를 올바르게 제공하는지만 검증하며 Monthly 구현을 요구하지 않는다.",
+      "covers": [
+        "상위 Plan CONFIRMED Gate"
+      ],
+      "arrange": {
+        "parent_yearly_plan_case": "generate_age3_no_events_no_optional_context",
+        "parent_yearly_plan_status": "DRAFT"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "CONFIRMATION_GATE",
+        "violated_rule": "monthly_generation_requires_confirmed_yearly_plan",
+        "monthly_plan_persisted": false
+      }
+    },
+    {
+      "case_id": "regenerate_one_theme_preserves_other_items",
+      "classification": "SUCCESS",
+      "operation": "RegenerateYearlyPlanItem",
+      "covers": [
+        "이 칸만 다시 생성",
+        "비선택 Item 보존",
+        "Reference 재검증"
+      ],
+      "arrange": {
+        "existing_plan_case": "generate_age3_no_events_no_optional_context",
+        "existing_plan_status": "DRAFT",
+        "target": {
+          "period": "2026-10",
+          "semantic_key": "yearly.month.10.theme"
+        }
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.regenerate.only_target_item_may_change",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.regenerate.non_target_item_ids_values_and_evidence_preserved",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.regenerate.target_item_id_and_semantic_key_stable",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.regenerate.new_reference_is_month_and_age_eligible",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.regenerate.audit_appends",
+            "expected": "REGENERATED"
+          },
+          {
+            "rule_id": "yearly.regenerate.plan_remains_draft",
+            "expected": true
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edit_one_theme_keeps_original_evidence",
+      "classification": "SUCCESS",
+      "operation": "EditYearlyPlanItem",
+      "covers": [
+        "교사 편집",
+        "Evidence 보존",
+        "Audit 분리"
+      ],
+      "arrange": {
+        "existing_plan_case": "generate_age5_without_event",
+        "existing_plan_status": "DRAFT",
+        "target": {
+          "period": "2026-05",
+          "semantic_key": "yearly.month.05.theme"
+        },
+        "teacher_value": "소중한 나와 가족"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.edit.only_target_item_changes",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.edit.original_reference_evidence_preserved",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.edit.does_not_create_teacher_edit_evidence_source",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.edit.audit_appends",
+            "expected": "TEACHER_EDITED"
+          },
+          {
+            "rule_id": "yearly.edit.plan_remains_draft",
+            "expected": true
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "confirm_yearly_with_opaque_actor",
+      "classification": "SUCCESS",
+      "operation": "ConfirmYearlyPlan",
+      "covers": [
+        "DRAFT→CONFIRMED",
+        "opaque actor_id",
+        "자동 제출 금지"
+      ],
+      "arrange": {
+        "existing_plan_case": "generate_mixed_age_3_4_no_optional_context",
+        "existing_plan_status": "DRAFT",
+        "actor_id": "user_fixture_teacher_001"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "scenario_invariants": [
+          {
+            "rule_id": "yearly.confirm.status_transition",
+            "expected": "CONFIRMED"
+          },
+          {
+            "rule_id": "yearly.confirm.actor_is_opaque_id_not_teacher_display_name",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.confirm.audit_appends",
+            "expected": "CONFIRMED"
+          },
+          {
+            "rule_id": "yearly.confirm.does_not_submit_or_send",
+            "expected": true
+          },
+          {
+            "rule_id": "yearly.confirm.plan_becomes_read_only",
+            "expected": true
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "confirm_yearly_without_actor_fails",
+      "classification": "INPUT_VALIDATION_FAILURE",
+      "operation": "ConfirmYearlyPlan",
+      "covers": [
+        "Confirm Actor Validation"
+      ],
+      "arrange": {
+        "existing_plan_case": "generate_age4_with_confirmed_event",
+        "existing_plan_status": "DRAFT",
+        "actor_id": null,
+        "teacher_name_present": true
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "ACTOR_VALIDATION",
+        "violated_rule": "confirm_requires_opaque_actor_id",
+        "teacher_display_name_may_substitute_actor_id": false,
+        "plan_status_after_failure": "DRAFT"
+      }
+    },
+    {
+      "case_id": "edit_confirmed_yearly_is_blocked",
+      "classification": "PLAN_STATE_GATE_FAILURE",
+      "operation": "EditYearlyPlanItem",
+      "covers": [
+        "CONFIRMED read-only",
+        "교사 편집 차단"
+      ],
+      "arrange": {
+        "existing_plan_case": "confirm_yearly_with_opaque_actor",
+        "existing_plan_status": "CONFIRMED",
+        "target": {
+          "period": "2026-05",
+          "semantic_key": "yearly.month.05.theme"
+        },
+        "teacher_value": "확정 후에는 바뀌면 안 되는 값"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PLAN_STATE_GATE",
+        "violated_rule": "confirmed_yearly_plan_is_read_only",
+        "plan_unchanged": true,
+        "audit_event_not_appended": "TEACHER_EDITED"
+      }
+    },
+    {
+      "case_id": "regenerate_confirmed_yearly_is_blocked",
+      "classification": "PLAN_STATE_GATE_FAILURE",
+      "operation": "RegenerateYearlyPlanItem",
+      "covers": [
+        "CONFIRMED read-only",
+        "재생성 차단"
+      ],
+      "arrange": {
+        "existing_plan_case": "confirm_yearly_with_opaque_actor",
+        "existing_plan_status": "CONFIRMED",
+        "target": {
+          "period": "2026-10",
+          "semantic_key": "yearly.month.10.theme"
+        }
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PLAN_STATE_GATE",
+        "violated_rule": "confirmed_yearly_plan_is_read_only",
+        "plan_unchanged": true,
+        "llm_called": false,
+        "audit_event_not_appended": "REGENERATED"
+      }
+    }
+  ]
+}

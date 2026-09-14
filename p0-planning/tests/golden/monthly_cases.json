@@ -1,0 +1,1191 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "ssuksak.monthly-golden",
+  "suite_version": "monthly-golden-v0.1.2-m1d",
+  "created_on": "2026-09-11",
+  "purpose": "Monthly M1 Vertical Slice의 Gate와 Generate 구조를 고정한다. M1-B 범위만 담고 M1-C/M1-D에서 같은 suite에 additive로 확장한다.",
+  "contract_stage": "M1-D",
+  "scope_note": "Monthly M1 Core의 Gate / Generate / Edit / Regenerate / Confirm 전 범위를 담는다. Reference invalidation의 세부 변형은 Application test가 담당하고 Golden은 Contract 대표 case를 유지한다.",
+  "assertion_policy": {
+    "exact_sentence_match": false,
+    "exact_theme_label_match": false,
+    "assert_structure": true,
+    "assert_gate_order": true,
+    "assert_reference_resolution": true,
+    "assert_validation_result": true
+  },
+  "reference_fixtures": {
+    "template": {
+      "path": "../../data/templates/monthly_template_a.json",
+      "template_id": "ssuksak.monthly-template-a",
+      "template_version": "monthly-template-a-v0.1.0",
+      "current_review_state": "HUMAN_APPROVED",
+      "precondition": "monthly-template-a-v0.1.0은 2026-09-11에 승인됐고 runtime_active가 approval에서 파생된다. 미승인 차단은 template_unapproved case가 approval_override로 계속 검증한다."
+    },
+    "safety_legal_rule": {
+      "path": "../../data/rules/safety_education_legal_v1.json",
+      "legal_rule_version": "child-welfare-act-decree-annex6-2022-06-21",
+      "current_review_state": "HUMAN_APPROVED",
+      "precondition": "아동복지법 시행령 별표6 <개정 2022. 6. 21.> 전사본이며 2026-09-11에 승인됐다."
+    },
+    "parent_catalog": {
+      "catalog_id": "ssuksak.yearly-theme-reference",
+      "catalog_version": "theme-reference-v0.1.2"
+    }
+  },
+  "week_policy": {
+    "policy_name": "SSUKSAK_P0_CANONICAL_WEEK_POLICY",
+    "rule_id": "monthly.week_periods.ssuksak_p0_canonical",
+    "rule_version": "v1",
+    "note": "국가·법정 표준이 아니라 제품 내부 deterministic policy다.",
+    "expected_week_counts": {
+      "2026-09": 5,
+      "2026-03": 4
+    }
+  },
+  "fixtures": {
+    "parent_confirmed": {
+      "plan_id": "y_plan_golden",
+      "school_year": 2026,
+      "classroom_ref": "classroom_golden",
+      "status": "CONFIRMED",
+      "confirmed_by": "teacher_golden_001"
+    },
+    "daycare": {
+      "daycare_ref": "daycare_golden"
+    },
+    "classroom_age4": {
+      "classroom_ref": "classroom_golden",
+      "ages": [
+        4
+      ]
+    },
+    "planning_setup_complete": {
+      "completed": true,
+      "start_mode": "CREATE_NEW"
+    }
+  },
+  "common_success_invariants": [
+    {
+      "rule_id": "monthly_status_is_draft",
+      "expected": "DRAFT",
+      "why": "AI 생성 결과는 항상 DRAFT로 시작한다."
+    },
+    {
+      "rule_id": "target_month_matches_request",
+      "expected": true
+    },
+    {
+      "rule_id": "school_year_preserved",
+      "expected": true
+    },
+    {
+      "rule_id": "plan_owner_classroom_matches_parent",
+      "expected": true
+    },
+    {
+      "rule_id": "week_periods_match_canonical_policy",
+      "expected": true,
+      "why": "OD-M02가 확정한 산출 규칙과 개수·순서가 일치해야 한다."
+    },
+    {
+      "rule_id": "week_ids_are_unique_and_ordered",
+      "expected": true
+    },
+    {
+      "rule_id": "week_dates_not_clipped_to_month",
+      "expected": true,
+      "why": "첫 주가 전월에 시작하거나 마지막 주가 다음 월에 끝날 수 있다."
+    },
+    {
+      "rule_id": "active_sections_match_template_exactly",
+      "expected": [
+        "theme",
+        "week_axis",
+        "outdoor_play",
+        "safety_education"
+      ]
+    },
+    {
+      "rule_id": "inactive_sections_are_not_generated",
+      "expected": [
+        "focus",
+        "goals",
+        "habits",
+        "emergency_response",
+        "drill",
+        "indoor_alternative",
+        "special_program",
+        "event_schedule"
+      ]
+    },
+    {
+      "rule_id": "every_section_has_explicit_display_mode",
+      "expected": true,
+      "why": "전역 fallback display_mode를 쓰지 않는다. AXIS는 해당 없음이다."
+    },
+    {
+      "rule_id": "cell_count_matches_display_mode",
+      "expected": true,
+      "why": "merged=1, weekly=활성 주 수, AXIS=0."
+    },
+    {
+      "rule_id": "every_cell_has_stable_item_id",
+      "expected": true
+    },
+    {
+      "rule_id": "every_cell_address_resolves",
+      "expected": true,
+      "why": "MonthlyCellAddress(target_month, section_key, week_id)로 되찾을 수 있어야 한다."
+    },
+    {
+      "rule_id": "merged_cell_has_null_week_id",
+      "expected": true
+    },
+    {
+      "rule_id": "weekly_cell_references_active_week_id",
+      "expected": true
+    },
+    {
+      "rule_id": "parent_lineage_fields_are_snapshotted",
+      "expected": true
+    },
+    {
+      "rule_id": "parent_theme_id_is_immutable_anchor",
+      "expected": true,
+      "why": "theme Cell의 THEME_REFERENCE Evidence가 anchor와 일치해야 한다."
+    },
+    {
+      "rule_id": "provenance_three_axes_present",
+      "expected": true,
+      "why": "Evidence Source / Generation Method / Audit History. AI와 TEACHER_EDIT은 Evidence가 아니다."
+    },
+    {
+      "rule_id": "no_llm_call_in_m1",
+      "expected": true,
+      "why": "M1은 구조·Gate 검증이며 빈 Cell을 GPT로 채우지 않는다."
+    },
+    {
+      "rule_id": "safety_unresolved_is_not_a_fallback",
+      "expected": true,
+      "why": "fallbacks_used가 아니라 unresolved_requirements에 들어간다."
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "gate_monthly_requires_parent_yearly",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "상위 Plan 존재 Gate"
+      ],
+      "arrange": {
+        "parent": null
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "CONFIRMATION_GATE",
+        "violated_rule": "monthly_generation_requires_confirmed_yearly_plan",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_monthly_requires_confirmed_parent",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "상위 Plan CONFIRMED Gate"
+      ],
+      "arrange": {
+        "parent_status": "DRAFT"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "CONFIRMATION_GATE",
+        "violated_rule": "monthly_generation_requires_confirmed_yearly_plan",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_monthly_requires_matching_classroom",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "Plan 소유 classroom 일치"
+      ],
+      "arrange": {
+        "parent_classroom_ref": "classroom_other"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "CONFIRMATION_GATE",
+        "violated_rule": "monthly_plan_owner_must_match_parent_yearly_classroom",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_target_month_outside_academic_year",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "학년도 3월~다음 해 2월 범위"
+      ],
+      "arrange": {
+        "target_month": "2027-03"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "PERIOD_VALIDATION",
+        "violated_rule": "target_month_must_belong_to_parent_academic_year",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_parent_month_period_missing",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "상위 MonthPeriod 존재"
+      ],
+      "arrange": {
+        "drop_parent_month": "2026-09"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "PERIOD_VALIDATION",
+        "violated_rule": "parent_yearly_month_period_must_exist",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_unapproved_monthly_template",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "사람 승인 Template만 활성"
+      ],
+      "arrange": {
+        "template_approval": "PENDING_HUMAN_REVIEW"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "only_human_approved_template_instance_is_eligible",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_unapproved_safety_legal_rule",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "사람 승인 법정 Rule만 활성"
+      ],
+      "arrange": {
+        "safety_approval": "PENDING_HUMAN_REVIEW"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "only_human_approved_safety_legal_rule_is_eligible",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_unknown_template_version",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "Template version 정확 resolve"
+      ],
+      "arrange": {
+        "template_version": "monthly-template-a-v9.9.9"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REFERENCE_VALIDATION",
+        "violated_rule": "template_id_and_version_must_resolve_exactly",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_unknown_safety_rule_version",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "법정 Rule version 정확 resolve"
+      ],
+      "arrange": {
+        "safety_rule_version": "unknown-legal-rule-v0"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REFERENCE_VALIDATION",
+        "violated_rule": "safety_legal_rule_version_must_resolve_exactly",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_catalog_version_mismatch_with_parent",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "lineage catalog 정합"
+      ],
+      "arrange": {
+        "catalog_version": "theme-reference-v9.9.9"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REFERENCE_VALIDATION",
+        "violated_rule": "requested_catalog_version_must_match_parent_theme_evidence",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "gate_planning_setup_incomplete",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "계획안 최초 세팅 완료"
+      ],
+      "arrange": {
+        "planning_setup_completed": false
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "planning_initial_setup_must_be_complete",
+        "monthly_plan_persisted": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "generate_september_2026_age4",
+      "classification": "SUCCESS",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "5주 canonical WeekPeriod",
+        "활성 4 Section",
+        "11 content Cell",
+        "Safety unresolved"
+      ],
+      "arrange": {
+        "target_month": "2026-09"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "status": "DRAFT",
+        "week_period_count": 5,
+        "content_cell_count": 11,
+        "cells_by_section": {
+          "theme": 1,
+          "week_axis": 0,
+          "outdoor_play": 5,
+          "safety_education": 5
+        },
+        "cell_states": {
+          "theme": "FILLED",
+          "outdoor_play": "EMPTY_VALID",
+          "safety_education": "EMPTY_UNRESOLVED"
+        },
+        "constraint": {
+          "kind": "STATUTORY_SAFETY_EDUCATION",
+          "verification": "NOT_VERIFIED_SOURCE_REQUIRED"
+        },
+        "monthly_plan_persisted": true,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "generate_march_2026_age4",
+      "classification": "SUCCESS",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "4주 canonical WeekPeriod",
+        "9 content Cell"
+      ],
+      "arrange": {
+        "target_month": "2026-03"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "status": "DRAFT",
+        "week_period_count": 4,
+        "content_cell_count": 9,
+        "cells_by_section": {
+          "theme": 1,
+          "week_axis": 0,
+          "outdoor_play": 4,
+          "safety_education": 4
+        },
+        "monthly_plan_persisted": true,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "generate_mixed_age_3_4",
+      "classification": "SUCCESS",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "혼합연령도 classroom당 하나의 Plan"
+      ],
+      "arrange": {
+        "ages": [
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "status": "DRAFT",
+        "age_mode": "MIXED",
+        "monthly_plan_persisted": true,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "generate_with_optional_context_failure",
+      "classification": "SUCCESS",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "Optional Dependency 실패 무해"
+      ],
+      "arrange": {
+        "optional_context": "RAISES"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "status": "DRAFT",
+        "used_fallback": true,
+        "monthly_plan_persisted": true,
+        "llm_called": false,
+        "note": "Optional Context 실패는 fallbacks_used에 기록되고, Safety unresolved는 거기 들어가지 않는다."
+      }
+    },
+    {
+      "case_id": "generate_blocked_by_existing_draft_monthly",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "Duplicate Monthly Product Contract",
+        "DRAFT 기존 Plan"
+      ],
+      "arrange": {
+        "existing_monthly": "DRAFT"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "monthly_plan_is_unique_per_classroom_and_target_month",
+        "monthly_plan_persisted_again": false,
+        "existing_plan_preserved": true,
+        "existing_plan_mutated": false,
+        "llm_called": false,
+        "note": "기존 DRAFT Plan을 Edit/Regenerate하도록 유도한다."
+      }
+    },
+    {
+      "case_id": "generate_blocked_by_existing_confirmed_monthly",
+      "classification": "GATE_FAILURE",
+      "operation": "GenerateMonthlyPlan",
+      "covers": [
+        "Duplicate Monthly Product Contract",
+        "CONFIRMED 기존 Plan"
+      ],
+      "arrange": {
+        "existing_monthly": "CONFIRMED"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "monthly_plan_is_unique_per_classroom_and_target_month",
+        "monthly_plan_persisted_again": false,
+        "existing_plan_preserved": true,
+        "existing_plan_mutated": false,
+        "llm_called": false,
+        "note": "CONFIRMED Plan은 read-only다."
+      }
+    },
+    {
+      "case_id": "edit_theme_success",
+      "classification": "SUCCESS",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "merged Cell 편집",
+        "Generation Method 보존"
+      ],
+      "arrange": {
+        "section_key": "theme",
+        "week_id": null,
+        "new_value": "우리나라와 가을 이야기"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "cell_state": "FILLED",
+        "audit_event": "TEACHER_EDITED",
+        "generation_method": "RULE_ONLY",
+        "evidence_preserved": true,
+        "saved": true
+      }
+    },
+    {
+      "case_id": "edit_outdoor_to_filled",
+      "classification": "SUCCESS",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "weekly Cell 편집"
+      ],
+      "arrange": {
+        "section_key": "outdoor_play",
+        "week_id": "2026-09-W2",
+        "new_value": "가을 숲 산책"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "cell_state": "FILLED",
+        "audit_event": "TEACHER_EDITED",
+        "saved": true
+      }
+    },
+    {
+      "case_id": "edit_outdoor_to_empty_valid",
+      "classification": "SUCCESS",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "빈 문자열 허용 Section"
+      ],
+      "arrange": {
+        "section_key": "outdoor_play",
+        "week_id": "2026-09-W2",
+        "seed_value": "가을 숲 산책",
+        "new_value": ""
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "cell_state": "EMPTY_VALID",
+        "audit_event": "TEACHER_EDITED",
+        "saved": true
+      }
+    },
+    {
+      "case_id": "edit_safety_to_filled",
+      "classification": "SUCCESS",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "교사 직접 입력 값"
+      ],
+      "arrange": {
+        "section_key": "safety_education",
+        "week_id": "2026-09-W1",
+        "new_value": "교통안전 - 신호등의 의미 알기"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "cell_state": "FILLED",
+        "audit_event": "TEACHER_EDITED",
+        "saved": true
+      }
+    },
+    {
+      "case_id": "edit_safety_to_empty_stays_unresolved",
+      "classification": "SUCCESS",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "Constraint 기반 CellState 판정"
+      ],
+      "arrange": {
+        "section_key": "safety_education",
+        "week_id": "2026-09-W1",
+        "seed_value": "교통안전",
+        "new_value": ""
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "cell_state": "EMPTY_UNRESOLVED",
+        "audit_event": "TEACHER_EDITED",
+        "saved": true,
+        "note": "교사가 지웠다는 이유만으로 EMPTY_VALID로 바꾸지 않는다."
+      }
+    },
+    {
+      "case_id": "edit_theme_blank_is_blocked",
+      "classification": "FAILURE",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "theme non-blank 강제"
+      ],
+      "arrange": {
+        "section_key": "theme",
+        "week_id": null,
+        "new_value": "   "
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REQUIRED_VALUE_VALIDATION",
+        "violated_rule": "theme_cell_is_required_and_non_blank",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "edit_invalid_address_is_blocked",
+      "classification": "FAILURE",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "merged Section에 week_id 지정 금지"
+      ],
+      "arrange": {
+        "section_key": "theme",
+        "week_id": "2026-09-W1",
+        "new_value": "x"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "INPUT_VALIDATION",
+        "violated_rule": "merged_section_address_must_omit_week_id",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "edit_on_confirmed_plan_is_blocked",
+      "classification": "FAILURE",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "CONFIRMED read-only"
+      ],
+      "arrange": {
+        "plan_status": "CONFIRMED",
+        "section_key": "theme",
+        "week_id": null,
+        "new_value": "x"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PLAN_STATE_GATE",
+        "violated_rule": "confirmed_monthly_plan_is_read_only",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "regenerate_theme_success",
+      "classification": "SUCCESS",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "parent anchor 재파생",
+        "LLM 미사용"
+      ],
+      "arrange": {
+        "section_key": "theme",
+        "week_id": null,
+        "seed_value": "교사가 바꾼 값"
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "cell_state": "FILLED",
+        "audit_event": "REGENERATED",
+        "generation_method": "RULE_ONLY",
+        "value_equals_parent_anchor_value": true,
+        "saved": true,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "regenerate_theme_same_value_is_success",
+      "classification": "SUCCESS",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "동일 value도 성공"
+      ],
+      "arrange": {
+        "section_key": "theme",
+        "week_id": null
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "value_changed": false,
+        "audit_event": "REGENERATED",
+        "saved": true,
+        "llm_called": false,
+        "note": "Regenerate가 반드시 값을 바꿔야 한다는 Contract가 아니다."
+      }
+    },
+    {
+      "case_id": "regenerate_outdoor_is_blocked",
+      "classification": "FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "Activity Reference 부재"
+      ],
+      "arrange": {
+        "section_key": "outdoor_play",
+        "week_id": "2026-09-W1"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "regenerate_requires_resolved_candidate_source",
+        "saved": false,
+        "plan_mutated": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "regenerate_safety_is_blocked",
+      "classification": "FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "안전교육 배치 source 부재"
+      ],
+      "arrange": {
+        "section_key": "safety_education",
+        "week_id": "2026-09-W1"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "regenerate_requires_resolved_candidate_source",
+        "saved": false,
+        "plan_mutated": false,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "regenerate_invalid_address_is_blocked",
+      "classification": "FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "주소 검증"
+      ],
+      "arrange": {
+        "section_key": "theme",
+        "week_id": "2026-09-W1"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "INPUT_VALIDATION",
+        "violated_rule": "merged_section_address_must_omit_week_id",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "regenerate_on_confirmed_plan_is_blocked",
+      "classification": "FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "CONFIRMED read-only"
+      ],
+      "arrange": {
+        "plan_status": "CONFIRMED",
+        "section_key": "theme",
+        "week_id": null
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PLAN_STATE_GATE",
+        "violated_rule": "confirmed_monthly_plan_is_read_only",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "confirm_draft_success",
+      "classification": "SUCCESS",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "DRAFT -> CONFIRMED",
+        "Plan-level CONFIRMED Audit"
+      ],
+      "arrange": {},
+      "expected": {
+        "outcome": "SUCCESS",
+        "status": "CONFIRMED",
+        "audit_event": "CONFIRMED",
+        "saved": true,
+        "llm_called": false
+      }
+    },
+    {
+      "case_id": "confirm_succeeds_with_unresolved_safety",
+      "classification": "SUCCESS",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "CONFIRMED != Safety verified"
+      ],
+      "arrange": {},
+      "expected": {
+        "outcome": "SUCCESS",
+        "status": "CONFIRMED",
+        "audit_event": "CONFIRMED",
+        "saved": true,
+        "llm_called": false,
+        "constraint_verification_after": "NOT_VERIFIED_SOURCE_REQUIRED",
+        "safety_cell_state": "EMPTY_UNRESOLVED",
+        "note": "안전교육 Cell이 비어 있고 Constraint가 미검증이어도 확정할 수 있다."
+      }
+    },
+    {
+      "case_id": "confirm_with_all_safety_cells_filled_keeps_unresolved",
+      "classification": "SUCCESS",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "Cell content completeness != Safety source verification"
+      ],
+      "arrange": {
+        "fill_all_safety": true
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "status": "CONFIRMED",
+        "audit_event": "CONFIRMED",
+        "saved": true,
+        "llm_called": false,
+        "constraint_verification_after": "NOT_VERIFIED_SOURCE_REQUIRED",
+        "safety_cell_state": "FILLED",
+        "note": "교사가 모든 안전교육 Cell을 채워도 Constraint는 미검증으로 남는다. 일반 Cell Edit는 Safety placement source 등록이 아니다."
+      }
+    },
+    {
+      "case_id": "confirm_requires_opaque_actor",
+      "classification": "FAILURE",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "opaque ActorId 필수"
+      ],
+      "arrange": {
+        "actor": null
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "ACTOR_VALIDATION",
+        "violated_rule": "confirm_requires_opaque_actor_id",
+        "status_after": "DRAFT",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "confirm_already_confirmed_is_blocked",
+      "classification": "FAILURE",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "CONFIRMED read-only",
+        "idempotent success로 처리하지 않음"
+      ],
+      "arrange": {
+        "pre_confirm": true
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "PLAN_STATE_GATE",
+        "violated_rule": "confirmed_monthly_plan_is_read_only",
+        "status_after": "CONFIRMED",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "confirm_blocked_by_unapproved_template",
+      "classification": "FAILURE",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "Confirm 시점 exact Template 재검증"
+      ],
+      "arrange": {
+        "template_approval": "PENDING_HUMAN_REVIEW"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "only_human_approved_template_instance_is_eligible",
+        "status_after": "DRAFT",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "confirm_blocked_by_unapproved_safety_rule",
+      "classification": "FAILURE",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "Confirm 시점 exact Safety Rule 재검증"
+      ],
+      "arrange": {
+        "safety_approval": "PENDING_HUMAN_REVIEW"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PREREQUISITE_GATE",
+        "violated_rule": "only_human_approved_safety_legal_rule_is_eligible",
+        "status_after": "DRAFT",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "confirm_blocked_by_corrupted_plan",
+      "classification": "FAILURE",
+      "operation": "ConfirmMonthlyPlan",
+      "covers": [
+        "Confirm 전 전체 Validation"
+      ],
+      "arrange": {
+        "corrupt": "blank_theme"
+      },
+      "expected": {
+        "outcome": "VALIDATION_FAILED",
+        "failure_category": "REQUIRED_VALUE_VALIDATION",
+        "violated_rule": "theme_cell_is_required_and_non_blank",
+        "status_after": "DRAFT",
+        "saved": false
+      }
+    },
+    {
+      "case_id": "edit_after_confirm_is_blocked",
+      "classification": "FAILURE",
+      "operation": "EditMonthlyPlanItem",
+      "covers": [
+        "Confirm 이후 read-only"
+      ],
+      "arrange": {
+        "pre_confirm": true,
+        "section_key": "theme",
+        "week_id": null,
+        "new_value": "확정 후 수정"
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PLAN_STATE_GATE",
+        "violated_rule": "confirmed_monthly_plan_is_read_only",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "regenerate_after_confirm_is_blocked",
+      "classification": "FAILURE",
+      "operation": "RegenerateMonthlyPlanItem",
+      "covers": [
+        "Confirm 이후 read-only"
+      ],
+      "arrange": {
+        "pre_confirm": true,
+        "section_key": "theme",
+        "week_id": null
+      },
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "PLAN_STATE_GATE",
+        "violated_rule": "confirmed_monthly_plan_is_read_only",
+        "saved": false,
+        "plan_mutated": false
+      }
+    },
+    {
+      "case_id": "weekly_gate_passes_for_confirmed_monthly",
+      "classification": "SUCCESS",
+      "operation": "RequireConfirmedParentMonthly",
+      "covers": [
+        "Weekly Gate",
+        "Safety 미해결이 Weekly를 막지 않음"
+      ],
+      "arrange": {
+        "pre_confirm": true
+      },
+      "expected": {
+        "outcome": "SUCCESS",
+        "note": "CONFIRMED != Safety verified이므로 Constraint 미해결로 Gate를 막지 않는다."
+      }
+    },
+    {
+      "case_id": "weekly_gate_blocks_draft_monthly",
+      "classification": "FAILURE",
+      "operation": "RequireConfirmedParentMonthly",
+      "covers": [
+        "Weekly Gate"
+      ],
+      "arrange": {},
+      "expected": {
+        "outcome": "BLOCKED",
+        "failure_category": "CONFIRMATION_GATE",
+        "violated_rule": "weekly_generation_requires_confirmed_monthly_plan"
+      }
+    }
+  ],
+  "product_contracts": {
+    "duplicate_monthly": {
+      "rule": "동일 (classroom_ref, target_month)에 MonthlyPlan은 최대 1개",
+      "decided_on": "2026-09-11",
+      "nature": "SSUKSAK P0 Product Contract. 국가·법정 규칙이 아니다.",
+      "violated_rule": "monthly_plan_is_unique_per_classroom_and_target_month",
+      "note": "target_month가 YYYY-MM이므로 school_year를 uniqueness key에 중복 포함하지 않는다. duplicate 생성으로 revision/version을 흉내 내지 않는다."
+    },
+    "empty_cell_policy": {
+      "theme": "빈 문자열 금지. FILLED 유지",
+      "outdoor_play": "빈 문자열 허용 -> EMPTY_VALID",
+      "safety_education": "빈 문자열 허용. Constraint가 NOT_VERIFIED_SOURCE_REQUIRED면 EMPTY_UNRESOLVED 유지",
+      "note": "RENDER_EMPTY_CELL은 표시·구조 정책이며 모든 semantic content가 선택사항이라는 뜻이 아니다."
+    },
+    "regeneratable_cells_m1": {
+      "allowed": [
+        "theme"
+      ],
+      "blocked": [
+        "outdoor_play",
+        "safety_education"
+      ],
+      "note": "Reference·Rule 근거 없이 GPT가 내용을 만드는 우회 경로를 만들지 않는다."
+    },
+    "confirm_semantics": {
+      "decided_on": "2026-09-11",
+      "means": "교사가 해당 Monthly Plan의 작성 결과를 확정했다.",
+      "does_not_mean": [
+        "법정 안전교육 충족",
+        "Safety placement 검증 완료",
+        "법률 준수 판정",
+        "Constraint 해결 완료"
+      ],
+      "coexistence": "MonthlyPlan.status=CONFIRMED 와 ConstraintVerification=NOT_VERIFIED_SOURCE_REQUIRED 는 동시에 존재할 수 있다.",
+      "violated_rule_when_already_confirmed": "confirmed_monthly_plan_is_read_only"
+    },
+    "teacher_input_semantics": {
+      "decided_on": "2026-09-11",
+      "rule": "일반 Monthly Cell Edit는 Safety placement source 등록 행위가 아니다.",
+      "detail": "Teacher Cell Edit != Safety Placement Source 등록 != Legal Requirement Verification. safety Cell이 전부 FILLED여도 ConstraintVerification은 NOT_VERIFIED_SOURCE_REQUIRED로 남는다.",
+      "teacher_input_source_kind_note": "required_source_kinds의 TEACHER_INPUT은 M2에서 정의할 명시적 Teacher Safety Placement Source를 뜻하며 단순 value 입력이 아니다."
+    },
+    "weekly_gate": {
+      "rule_id": "weekly_generation_requires_confirmed_monthly_plan",
+      "judges": "부모 Monthly가 교사에 의해 CONFIRMED 되었는가",
+      "does_not_judge": [
+        "Safety compliance",
+        "Activity completeness",
+        "outdoor Cell completeness",
+        "ConstraintVerification",
+        "LLM 수행 여부"
+      ]
+    }
+  },
+  "common_edit_invariants": [
+    {
+      "rule_id": "only_selected_cell_changes",
+      "expected": true
+    },
+    {
+      "rule_id": "sibling_cells_are_immutable",
+      "expected": true
+    },
+    {
+      "rule_id": "cell_address_is_immutable",
+      "expected": true,
+      "why": "item_id / semantic_key / week_id가 변하지 않는다."
+    },
+    {
+      "rule_id": "parent_lineage_is_immutable",
+      "expected": true
+    },
+    {
+      "rule_id": "parent_theme_anchor_is_immutable",
+      "expected": true
+    },
+    {
+      "rule_id": "template_ref_and_week_periods_are_immutable",
+      "expected": true
+    },
+    {
+      "rule_id": "constraint_assessments_are_immutable",
+      "expected": true
+    },
+    {
+      "rule_id": "plan_status_stays_draft",
+      "expected": "DRAFT"
+    },
+    {
+      "rule_id": "no_llm_call_in_m1",
+      "expected": true
+    }
+  ],
+  "common_confirm_invariants": [
+    {
+      "rule_id": "status_becomes_confirmed",
+      "expected": "CONFIRMED"
+    },
+    {
+      "rule_id": "exactly_one_confirmed_audit_appended",
+      "expected": true
+    },
+    {
+      "rule_id": "confirm_audit_preserves_actor",
+      "expected": true
+    },
+    {
+      "rule_id": "confirm_audit_uses_clock_port",
+      "expected": true
+    },
+    {
+      "rule_id": "parent_lineage_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "parent_theme_anchor_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "template_ref_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "week_periods_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "sections_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "all_cell_values_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "all_cell_states_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "all_cell_generation_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "all_cell_evidence_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "constraint_assessments_unchanged",
+      "expected": true
+    },
+    {
+      "rule_id": "no_cell_level_audit_added",
+      "expected": true
+    },
+    {
+      "rule_id": "no_llm_call_in_m1",
+      "expected": true
+    },
+    {
+      "rule_id": "save_count_increases_by_one",
+      "expected": true
+    }
+  ]
+}
