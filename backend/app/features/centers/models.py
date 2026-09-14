@@ -59,7 +59,7 @@ class Class(Base):
 class Child(Base):
     """아동. 실명을 평문 저장한다 (ADR-004).
 
-    개발 DB 에 실제 아동 실명을 넣지 않는다. 테스트는 가명으로 (ADR-004:64).
+    개발 DB 에 실제 아동 실명을 넣지 않는다. 테스트는 가명으로 (ADR-004:77).
     """
 
     __tablename__ = "children"
