@@ -10,6 +10,11 @@ on:
 
 # 같은 PR 에 연달아 push 하면 이전 실행을 취소한다.
 # 최신 커밋 결과만 보는데 러너는 계속 점유된다.
+#
+# push 를 넣으면서 develop·main 도 같은 그룹이 됐다. 연속 머지 때 앞 머지의
+# run 이 취소되지만, 뒤 머지의 run 이 두 변경을 합친 상태를 검사하므로 깨짐
+# 자체는 잡힌다. 어느 머지가 깼는지 안 보일 뿐이다.
+# PR 과 push 는 ref 가 달라(refs/pull/N/merge vs refs/heads/develop) 안 겹친다.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
