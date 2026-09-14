@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 91f8d595e285
+Revision ID: 979d1991638a
 Revises: 
-Create Date: 2026-09-11 00:29:57.846851
+Create Date: 2026-09-14 14:09:14.837515
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '91f8d595e285'
+revision: str = '979d1991638a'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -48,6 +48,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('center_id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=50), nullable=False, comment='반 이름'),
+    sa.Column('school_year', sa.Integer(), nullable=False, comment='학년도. 3월 시작 — 2026 은 2026-03~2027-02'),
     sa.Column('age_min', sa.Integer(), nullable=False, comment='반 최저 연령. 학년도 기준 연 나이'),
     sa.Column('age_max', sa.Integer(), nullable=False, comment='단일 연령반은 age_min 과 같은 값'),
     sa.Column('teacher_id', sa.Integer(), nullable=True, comment='담임. users.id 예정. FK 와 인덱스는 인증 PR(8주차)에서'),
@@ -58,7 +59,7 @@ def upgrade() -> None:
     sa.CheckConstraint('age_min BETWEEN 3 AND 5', name=op.f('ck_classes_age_min_range')),
     sa.ForeignKeyConstraint(['center_id'], ['centers.id'], name=op.f('fk_classes_center_id_centers')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_classes')),
-    sa.UniqueConstraint('center_id', 'name', name=op.f('uq_classes_center_id_name'))
+    sa.UniqueConstraint('center_id', 'name', 'school_year', name=op.f('uq_classes_center_id_name_school_year'))
     )
     op.create_table('children',
     sa.Column('id', sa.Integer(), nullable=False),

@@ -27,11 +27,15 @@ class Center(Base):
 
 
 class Class(Base):
-    """반. 이 테이블은 «현재 설정»이다 — plans 가 생성 시점 값을 스냅샷한다(ADR-010)."""
+    """반. 학년도마다 새 행이다 — 2026 씨앗반과 2027 씨앗반은 다른 반이다.
+
+    담임·연령대가 해마다 바뀌므로 행을 재사용하면 작년 값이 덮어써진다.
+    plans 는 여기 값을 생성 시점에 스냅샷한다 (ADR-010).
+    """
 
     __tablename__ = "classes"
     __table_args__ = (
-        UniqueConstraint("center_id", "name"),
+        UniqueConstraint("center_id", "name", "school_year"),
         CheckConstraint("age_min <= age_max", name="age_range"),
         CheckConstraint("age_min BETWEEN 3 AND 5", name="age_min_range"),
         CheckConstraint("age_max BETWEEN 3 AND 5", name="age_max_range"),
@@ -40,6 +44,7 @@ class Class(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     center_id: Mapped[int] = mapped_column(ForeignKey("centers.id"))
     name: Mapped[str] = mapped_column(String(50), comment="반 이름")
+    school_year: Mapped[int] = mapped_column(comment="학년도. 3월 시작 — 2026 은 2026-03~2027-02")
     age_min: Mapped[int] = mapped_column(comment="반 최저 연령. 학년도 기준 연 나이")
     age_max: Mapped[int] = mapped_column(comment="단일 연령반은 age_min 과 같은 값")
     teacher_id: Mapped[int | None] = mapped_column(
