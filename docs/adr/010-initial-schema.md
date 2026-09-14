@@ -20,6 +20,8 @@ ADR-005 는 `age_min` · `age_max` · `safety_flags` 를 첫 마이그레이션�
 4. `safety_flags` 를 `tags` 와 같은 JSONB 로 둔다.
 5. FK 의 `ON DELETE` 를 지정하지 않고 `NO ACTION` 으로 둔다.
 6. `String` 길이는 code 80, title 200, center.name 100, class·child.name 50으로 둔다.
+7. `classes` 에 `school_year` 를 두고 `UNIQUE(center_id, name, school_year)` 로 간다.
+   반은 학년도마다 새 행이다. **초안의 「학년도는 `plans` 가 든다」를 뒤집는다.**
 
 ## 근거
 
@@ -95,6 +97,38 @@ code 80, title 200, center.name 100, class·child.name 50은 잠정값이다.
   넣을지(겹침), 넣지 않을지(커버)는 DB 가 아니라 코드가 정한다.
 - `plans` PR 은 결정 1의 스냅샷 규칙을 지킨다.
 
+### 결정 7 — 학년도를 `classes` 에 둔다
+
+초안은 `school_year` 를 넣지 않기로 하고 근거를 이렇게 적었다 — 「학년도는 `plans` 가
+든다. 순차 게이트 질의의 주체가 `plans` 다」. 순차 게이트(연간 `CONFIRMED` → 월간 생성)에
+한해서는 맞는 말이고, 그래서 초안은 그대로 통과했다.
+
+뒤집는 이유는 그 근거가 답하지 않은 두 가지다.
+
+**하나 — 같은 이름의 반이 두 학년도에 공존하지 못한다.** `UNIQUE(center_id, name)` 이라
+한 원에 「씨앗반」은 하나뿐이다. 매년 3월에 같은 행을 재사용하는 수밖에 없다.
+
+**둘 — 재사용하면 그 해의 값이 덮어써진다.** `classes` 에는 해마다 바뀌는 값이 두 개
+있다.
+
+    teacher_id     담임. 매년 바뀐다
+    age_min/max    반 이름이 코호트를 따라가면 바뀐다
+
+`plans` 스냅샷이 이를 보전하지만, **계획안을 만들지 않은 반은 남는 기록이 없다.**
+스냅샷은 발행된 문서의 보호 장치지 원본 이력의 대체물이 아니다.
+
+비용이 비대칭이라 지금 넣는다. 지금은 빈 DB 라 컬럼 하나 추가이고, `plans` PR 이후면
+두 번째 마이그레이션 + 기존 행 백필 + `UNIQUE` 재정의가 된다. 결정 6 의 `naming_convention`
+을 첫 마이그레이션에 넣은 것과 같은 이유다 — 첫 마이그레이션이 유일한 무비용 시점이다.
+반대로 이 판단이 틀렸다면 대가는 「항상 올해 값인 컬럼 하나」뿐이다.
+
+**해결하지 않는 것** — 아동의 반 이동 이력. `children.class_id` 는 여전히 현재 소속
+하나뿐이다. 반편성이 매년 바뀌는 것을 담으려면 `class_memberships` 가 필요한데,
+계획안(P0)은 반 단위 문서라 아동을 참조하지 않으므로(ADR-004:56 `[실측]`) P1 로 미룬다.
+그때는 아동 데이터가 아직 없어 백필 비용도 없다.
+
+Codex 리뷰 지적에서 출발했다.
+
 ## 검증 `[실측]`
 
 SQLAlchemy 2.0.52 · Alembic 1.19.2 · PostgreSQL 15 에서 확인했다.
@@ -104,6 +138,7 @@ SQLAlchemy 2.0.52 · Alembic 1.19.2 · PostgreSQL 15 에서 확인했다.
 | 생성 전 DB 가 비었나 | `pg_tables` 조회 0행. `pgdata` 는 영속 볼륨이라 잔재가 있으면 「초기」가 아니다 |
 | `create_table` | 4개. 빈 마이그레이션이 아니므로 `env.py` import 누락 없음 |
 | 제약 이름 | 14개 — CHECK 6 · PK 4 · FK 2 · UNIQUE 2. 규약대로이고 `ck_` 중복 없음 |
+| `school_year` | `classes.school_year` integer NOT NULL. `UNIQUE` 가 `uq_classes_center_id_name_school_year` 로 생성됨 |
 | 인덱스 이름 | 2개. `ix_activities_tags`(GIN) · `ix_children_class_id` |
 | CHECK 식 | 모델과 동일. `alembic check` 는 CHECK 식을 비교하지 않아 눈으로 봤다 |
 | GIN | `ix_activities_tags gin (tags)` 가 실제 DB 에 생성 |
