@@ -195,9 +195,13 @@ docker compose run --rm -v "$(pwd)/backend:/app" --user "$(id -u):$(id -g)" back
 
 일회성 컨테이너에 `-v` 로 호스트의 `backend/` 를 마운트하므로 생성 파일이
 호스트의 `backend/alembic/versions/` 에 남는다. `--user` 는 그 파일의 소유자를
-실행한 사람으로 맞추기 위한 것이다 — 컨테이너가 root 로 돌아서(`Dockerfile` 에
-`USER` 지시가 없다) 빼면 root 소유로 생길 수 있다. 호스트에 파일을 만드는 명령은
-`revision` 뿐이므로 나머지 명령에는 붙이지 않는다.
+실행한 사람으로 맞추기 위한 것이다. `Dockerfile` 이 `USER app`(uid 1000)을 지정하므로
+root 소유로 생기지는 않지만, 호스트 uid 가 1000 이 아닌 환경(macOS 는 보통 501)에서는
+빼면 소유자가 어긋난다. 서버의 `ubuntu` 가 uid 1000 이라 거기서는 없어도 맞는다.
+호스트에 파일을 만드는 명령은 `revision` 뿐이므로 나머지 명령에는 붙이지 않는다.
+
+실측: macOS(uid 501)에서 `--user "$(id -u):$(id -g)"` 로 생성하면 소유자가
+실행한 사용자로 찍힌다.
 
 **적용하기 전에 생성된 파일을 열어서 확인한다.** 의도한 `op.create_table` 이 다 있고
 없어야 할 `op.drop_table` 이 없는지, `downgrade()` 가 비어 있지 않은지 본다. 위의
