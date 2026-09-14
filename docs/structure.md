@@ -220,7 +220,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 마운트가 없어 방금 만든 마이그레이션을 못 보고, 그런데도 **아무것도 적용하지 않고
 성공한 것처럼 끝난다.**
 
-초기 마이그레이션 `20260911_0029_91f8d595e285_initial_schema.py` 가
+초기 마이그레이션 `20260914_1409_979d1991638a_initial_schema.py` 가
 `centers` · `classes` · `children` · `activities` 테이블을 만든다.
 
 ---

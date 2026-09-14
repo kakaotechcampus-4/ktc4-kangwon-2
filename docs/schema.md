@@ -28,8 +28,8 @@ activities   (독립. plans 가 생기면 연결된다)
 2. `plans` 가 생기면 셀은 생성 시점 값(반 이름·연령·담임·학년도)을 **스냅샷**한다.
    `classes` · `activities` FK 는 출처 표시용이며 렌더링에 쓰지 않는다.
 3. `children.name` 은 평문 실명이다. **개발 DB 에 실제 아동 실명을 넣지 않는다.
-   테스트는 가명으로**(ADR-004:64). LLM 호출 직전 치환기(`shared/childCode`)는 P1 에
-   만든다(ADR-004:47).
+   테스트는 가명으로**(ADR-004:77). LLM 호출 직전 치환기(`shared/childCode`)는 P1 에
+   만든다(ADR-004:19-20).
 4. `safety_flags` · `tags` 는 JSONB 라 **DB 가 모양도 어휘도 막지 않는다.** 시드
    스크립트의 YAML 대조가 유일한 방어선이다.
 5. `classes` 행은 **학년도마다 새로 만든다.** 재사용하면 그 해의 담임·연령대가
@@ -43,7 +43,7 @@ activities   (독립. plans 가 생기면 연결된다)
 
 | 없는 것 | 이유 |
 |---|---|
-| `children.birth_date` | ADR-007:52 가 발달평가를 스펙아웃해 쓸 기능이 사라졌다. ADR-004:58 은 "이름만 받는다"고 정한다 |
+| `children.birth_date` | ADR-007:52 가 발달평가를 스펙아웃해 쓸 기능이 사라졌다. ADR-004:71 은 "이름만 받는다"고 정한다 |
 | `users` / `classes.teacher_id` 의 FK | 인증이 8주차다. `teacher_id` 는 nullable 컬럼으로만 있다 |
 | `plans` | 계획안 테이블이다. 다음 PR 에서 만든다 |
 | `centers.region` | 활동 쪽 지역 축이 미정이라 한쪽만 있으면 매칭이 안 된다 |
