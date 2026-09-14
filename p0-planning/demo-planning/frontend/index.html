@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>쓱싹요정 Planning Demo — 연간 → 월간</title>
+    <!--
+      Planning Integration Demo. 버려도 되는 코드이며 Production Frontend가 아니다.
+      모든 버튼은 Demo Backend(/api/*)를 통해 **실제 Use Case**를 호출한다.
+      status·Gate·선택 결과를 Front가 만들어 내지 않는다.
+    -->
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__title">
+        쓱싹요정 Planning Demo
+        <span class="topbar__sub">연간 → 월간 통합 실행</span>
+      </div>
+      <span id="yearlyMode" class="topbar__mode"></span>
+      <div class="topbar__spacer"></div>
+      <label class="toggle">
+        <input type="checkbox" id="devToggle" />
+        개발 정보 보기
+      </label>
+      <button type="button" id="resetButton" class="ghost">세션 초기화</button>
+      <span class="topbar__warn">DEMO · 제출용 문서 아님</span>
+    </header>
+
+    <div id="banner" class="banner is-hidden"></div>
+
+    <main class="layout">
+      <!-- ============================================ 1단계: 조건 입력 -->
+      <section class="panel" id="stepInput">
+        <h2><span class="step">1</span> 조건 입력</h2>
+        <div class="form">
+          <label>
+            학년도
+            <input type="number" id="schoolYear" value="2026" min="2020" max="2100" />
+            <small>3월 ~ 다음 해 2월</small>
+          </label>
+          <label>
+            연령 구성
+            <select id="ageMode">
+              <option value="SINGLE">단일연령</option>
+              <option value="MIXED">혼합연령</option>
+            </select>
+          </label>
+          <fieldset id="ageBox">
+            <legend>연령</legend>
+            <label class="chk"><input type="checkbox" value="3" /> 만 3세</label>
+            <label class="chk"><input type="checkbox" value="4" checked /> 만 4세</label>
+            <label class="chk"><input type="checkbox" value="5" /> 만 5세</label>
+          </fieldset>
+          <label>
+            원 (daycare_ref)
+            <input type="text" id="daycareRef" value="demo_daycare_001" />
+          </label>
+          <label>
+            반 (classroom_ref)
+            <input type="text" id="classroomRef" value="demo_classroom_001" />
+          </label>
+        </div>
+        <div class="actions">
+          <button type="button" id="yearlyGenerate" class="primary">
+            연간계획 생성
+          </button>
+          <span class="hint">
+            실제 <code>GenerateYearlyPlan(use_llm=True)</code> — LLM을 실제로
+            호출하므로 몇 초 걸릴 수 있습니다.
+          </span>
+        </div>
+      </section>
+
+      <!-- ============================================ 2단계: 연간 결과 -->
+      <section class="panel is-hidden" id="stepYearly">
+        <h2>
+          <span class="step">2</span> 연간계획안
+          <span id="yearlyBadge"></span>
+        </h2>
+        <p class="doc-caption" id="yearlyCaption"></p>
+
+        <table class="doc-table" id="yearlyTable">
+          <thead>
+            <tr>
+              <th class="col-month">월</th>
+              <th>생활주제</th>
+              <th class="col-act no-print dev-only">동작</th>
+            </tr>
+          </thead>
+          <tbody id="yearlyBody"></tbody>
+        </table>
+
+        <div class="actions">
+          <button type="button" id="yearlyConfirm" class="primary">
+            연간계획 확정
+          </button>
+          <span class="hint">
+            실제 <code>ConfirmYearlyPlan</code>. 확정 후에는 수정·재생성이 차단됩니다.
+          </span>
+        </div>
+
+        <details class="dev-block dev-only">
+          <summary>연간 개발 정보</summary>
+          <div id="yearlyDev"></div>
+        </details>
+      </section>
+
+      <!-- ============================================ 3단계: 월 선택 -->
+      <section class="panel is-hidden" id="stepMonthPick">
+        <h2><span class="step">3</span> 월간계획 생성</h2>
+        <p class="gate" id="monthlyGate"></p>
+        <div class="actions">
+          <label class="inline">
+            대상 월
+            <select id="targetMonth"></select>
+          </label>
+          <button type="button" id="monthlyGenerate" class="primary">
+            월간계획 생성
+          </button>
+          <span class="hint">
+            실제 <code>GenerateMonthlyPlan</code> — Activity Reference 사용, LLM 0회.
+          </span>
+        </div>
+      </section>
+
+      <!-- ============================================ 4단계: 월간 결과 -->
+      <section class="panel is-hidden" id="stepMonthly">
+        <h2>
+          <span class="step">4</span> <span id="monthlyTitle"></span>
+          <span id="monthlyBadge"></span>
+        </h2>
+
+        <!--
+          화면 모드 전환. 문서 미리보기는 저장된 MonthlyPlan을 **다시 그리기만**
+          한다. 새 Plan을 만들지 않고 LLM을 다시 호출하지 않는다.
+        -->
+        <div class="viewtabs no-print" id="monthlyViewTabs" role="tablist">
+          <button type="button" class="viewtab is-active" id="tabEditor"
+                  role="tab" aria-selected="true" aria-controls="monthlyEditorView">
+            편집하기
+          </button>
+          <button type="button" class="viewtab" id="tabDocument"
+                  role="tab" aria-selected="false" aria-controls="monthlyDocumentView">
+            문서 미리보기
+          </button>
+          <span class="viewtabs__spacer"></span>
+          <button type="button" class="ghost is-hidden" id="printDocument">
+            인쇄 / PDF 저장
+          </button>
+        </div>
+
+        <div id="monthlyEditorView">
+        <table class="meta-table">
+          <tbody>
+            <tr>
+              <th>반</th>
+              <td id="monthlyClassroom"></td>
+              <th>연령</th>
+              <td id="monthlyAge"></td>
+            </tr>
+            <tr>
+              <th>주제</th>
+              <td id="monthlyTheme" colspan="3"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table class="doc-table plan-table">
+          <thead id="monthlyHead"></thead>
+          <tbody id="monthlyBody"></tbody>
+        </table>
+
+        <p class="legend-line">
+          <span class="chip chip--filled"></span> 작성됨
+          <span class="chip chip--valid"></span> 비워 두는 것이 정상
+          <span class="chip chip--unresolved"></span> 근거가 없어 비워 둠
+        </p>
+
+        <div class="actions">
+          <button type="button" id="monthlyConfirm" class="primary">
+            월간계획 확정
+          </button>
+          <span class="hint" id="monthlyConfirmHint"></span>
+        </div>
+
+        <details class="dev-block dev-only">
+          <summary>월간 개발 정보 · Selection Trace</summary>
+          <div id="monthlyDev"></div>
+        </details>
+        </div><!-- /#monthlyEditorView -->
+
+        <!-- 문서 미리보기. 편집 control을 넣지 않는다. -->
+        <div id="monthlyDocumentView" class="docview is-hidden"></div>
+      </section>
+
+      <!-- ============================================ 실행 기록 -->
+      <section class="panel dev-only" id="stepLog">
+        <h2>실행 기록</h2>
+        <div id="logBox" class="log"></div>
+        <details class="dev-block">
+          <summary>사용 중인 Reference / LLM</summary>
+          <div id="refBox"></div>
+        </details>
+      </section>
+    </main>
+
+    <div id="busy" class="busy is-hidden"><div class="busy__box" id="busyText"></div></div>
+
+    <script src="document_view.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

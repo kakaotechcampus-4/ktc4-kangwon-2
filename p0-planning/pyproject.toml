@@ -1,0 +1,30 @@
+[project]
+name = "ssuksak-planning"
+version = "0.1.0"
+description = "쓱싹요정 P0 Planning Core — GenerateYearlyPlan Vertical Slice"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    # Elice MLAPI는 OpenAI-compatible API를 제공한다. base_url만 MLAPI로
+    # 지정해 사용하며, OpenAI 직접 API를 호출하는 것이 아니다.
+    "openai>=1.60",
+    # 로컬 개발 편의를 위한 .env 로딩. 실제 환경 경로에서만 사용된다.
+    "python-dotenv>=1.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+# Live API 호출은 기본 실행에서 제외한다. 실행에는 RUN_LIVE_LLM_TESTS=1과
+# Elice MLAPI 환경변수가 모두 필요하다.
+addopts = "-q -m 'not live'"
+markers = [
+    "live: 실제 Elice MLAPI를 호출한다. opt-in에서만 실행된다.",
+]

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>월간보육계획안 Demo</title>
+    <!--
+      쓱싹요정 P0 — Monthly 임시 시각화 Demo.
+
+      · Production Frontend가 아니다. 버려도 되는 코드다.
+      · Backend를 호출하지도 import하지도 않는다. fixtures/*.js 정적 스냅샷만 읽는다.
+      · 빌드 도구 / 프레임워크 / 상태관리 / 라우팅 / 인증 / DB를 쓰지 않는다.
+    -->
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- 개발용 도구 막대. 인쇄 시 숨겨진다. -->
+    <div class="toolbar no-print">
+      <span class="toolbar__label">Fixture</span>
+      <select id="fixtureSelect" aria-label="표시할 fixture 선택"></select>
+
+      <label>
+        <input type="checkbox" id="provenanceToggle" />
+        Activity 근거 표시
+      </label>
+
+      <button type="button" id="printButton">인쇄 미리보기</button>
+
+      <span class="toolbar__spacer"></span>
+      <span id="colCount" class="toolbar__label"></span>
+      <span class="toolbar__warning">DEMO · 실제 제출용 문서 아님</span>
+    </div>
+
+    <main class="sheet">
+      <p class="fixture-banner" id="fixtureBanner"></p>
+
+      <h1 class="doc-title">월간보육계획안</h1>
+      <p class="doc-subtitle" id="docSubtitle"></p>
+
+      <table class="meta-table">
+        <tbody>
+          <tr>
+            <th scope="row">기간</th>
+            <td id="metaMonth"></td>
+            <th scope="row">상태</th>
+            <td id="metaStatus"></td>
+          </tr>
+          <tr>
+            <th scope="row">반</th>
+            <td id="metaClassroom"></td>
+            <th scope="row">연령</th>
+            <td id="metaAge"></td>
+          </tr>
+          <tr>
+            <th scope="row">주제</th>
+            <td id="metaTheme" colspan="3"></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="plan-table">
+        <thead id="planHead"></thead>
+        <tbody id="planBody"></tbody>
+      </table>
+
+      <section class="legend">
+        <h2>셀 상태</h2>
+        <ul>
+          <li>
+            <span class="swatch swatch--filled"></span>
+            <span><strong>FILLED</strong> — Rule이 근거를 찾아 채운 칸</span>
+          </li>
+          <li>
+            <span class="swatch swatch--empty-valid"></span>
+            <span><strong>EMPTY_VALID</strong> — 채울 근거가 없는 것이 정상인 빈 칸</span>
+          </li>
+          <li>
+            <span class="swatch swatch--empty-unresolved"></span>
+            <span
+              ><strong>EMPTY_UNRESOLVED</strong> — 채워야 하는데 배치 source가
+              없는 칸</span
+            >
+          </li>
+        </ul>
+        <p style="margin: 8px 0 0">
+          확정(CONFIRMED)은 교사가 작성 결과를 확정했다는 뜻이며 법정 안전교육
+          충족을 뜻하지 않습니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer" id="docFooter"></footer>
+    </main>
+
+    <!-- 정적 fixture. 생성기: demo-frontend/tools/export_fixtures.py -->
+    <script src="fixtures/monthly_2026_09_age4.js"></script>
+    <script src="fixtures/monthly_2026_09_confirmed.js"></script>
+    <script src="fixtures/monthly_2026_09_no_activity.js"></script>
+    <script src="fixtures/monthly_2026_03_age4.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

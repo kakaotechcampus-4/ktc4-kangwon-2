@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------- Secrets
+# 실제 API Key와 개인 endpoint는 절대 커밋하지 않는다.
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# ---------------------------------------------------------------- Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------- Editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

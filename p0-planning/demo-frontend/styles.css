@@ -1,0 +1,393 @@
+/* 쓱싹요정 Monthly 임시 시각화 Demo — 버려도 되는 코드.
+   제품 디자인 시스템이 아니다. 문서 가독성만 목표로 한다. */
+
+:root {
+  --ink: #1b1b1b;
+  --ink-soft: #555;
+  --ink-faint: #8a8a8a;
+  --rule: #b9b9b9;
+  --rule-strong: #6d6d6d;
+  --paper: #ffffff;
+  --desk: #e9e7e2;
+  --empty-valid-bg: #f4f4f4;
+  --unresolved-bg: #fdf6e3;
+  --unresolved-ink: #8a6100;
+  --unresolved-rule: #e0c37a;
+  --badge-draft-bg: #eef2f7;
+  --badge-draft-ink: #3c5a7a;
+  --badge-confirmed-bg: #e8f3ea;
+  --badge-confirmed-ink: #2c6238;
+  --a4-width: 210mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--desk);
+}
+
+body {
+  margin: 0;
+  padding: 24px 16px 64px;
+  color: var(--ink);
+  font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo",
+    "Noto Sans KR", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* ------------------------------------------------------------ 개발용 도구 막대 */
+
+.toolbar {
+  max-width: var(--a4-width);
+  margin: 0 auto 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fbfbfa;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.toolbar__label {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.toolbar select,
+.toolbar button {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.toolbar button {
+  cursor: pointer;
+}
+
+.toolbar__spacer {
+  flex: 1;
+}
+
+.toolbar__warning {
+  color: #8a3b00;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------- 용지 */
+
+.sheet {
+  width: var(--a4-width);
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 18mm 16mm;
+  background: var(--paper);
+  border: 1px solid #d3d0c9;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.fixture-banner {
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border: 1px dashed var(--unresolved-rule);
+  background: var(--unresolved-bg);
+  color: var(--unresolved-ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fixture-banner strong {
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------------------------------------------- 제목 */
+
+.doc-title {
+  margin: 0 0 4px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.doc-subtitle {
+  margin: 0 0 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* --------------------------------------------------------------- 머리글 표 */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.meta-table {
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.meta-table th,
+.meta-table td {
+  border: 1px solid var(--rule);
+  padding: 6px 9px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.meta-table th {
+  width: 15%;
+  background: #f6f6f4;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.theme-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ Badge */
+
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+
+.badge--draft {
+  background: var(--badge-draft-bg);
+  color: var(--badge-draft-ink);
+  border: 1px solid #c3d2e2;
+}
+
+.badge--confirmed {
+  background: var(--badge-confirmed-bg);
+  color: var(--badge-confirmed-ink);
+  border: 1px solid #b6d7bf;
+}
+
+/* --------------------------------------------------------------- 본문 격자 */
+
+.plan-table {
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.plan-table th,
+.plan-table td {
+  border: 1px solid var(--rule);
+  padding: 9px 8px;
+  vertical-align: top;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.plan-table thead th {
+  background: #f6f6f4;
+  text-align: center;
+  font-weight: 600;
+  border-bottom-color: var(--rule-strong);
+}
+
+.plan-table thead th .week-range {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.plan-table .row-head {
+  width: 20%;
+  background: #f6f6f4;
+  text-align: center;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.cell {
+  min-height: 52px;
+}
+
+.cell__value {
+  display: block;
+}
+
+.cell--filled .cell__value {
+  color: var(--ink);
+}
+
+.cell--empty-valid {
+  background: var(--empty-valid-bg);
+}
+
+.cell--empty-unresolved {
+  background: var(--unresolved-bg);
+}
+
+.cell__note {
+  display: block;
+  margin-top: 4px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+.cell--empty-unresolved .cell__note {
+  color: var(--unresolved-ink);
+}
+
+.cell__provenance {
+  display: block;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dotted var(--rule);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+  font-family: Consolas, "D2Coding", monospace;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------------- 범례 */
+
+.legend {
+  margin-top: 16px;
+  border: 1px solid var(--rule);
+  padding: 10px 12px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.legend h2 {
+  margin: 0 0 7px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.legend ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 12px;
+}
+
+.legend li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.swatch {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 1px solid var(--rule);
+}
+
+.swatch--filled {
+  background: #fff;
+}
+.swatch--empty-valid {
+  background: var(--empty-valid-bg);
+}
+.swatch--empty-unresolved {
+  background: var(--unresolved-bg);
+  border-color: var(--unresolved-rule);
+}
+
+/* ------------------------------------------------------------------- 꼬리말 */
+
+.doc-footer {
+  margin-top: 18px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+
+/* --------------------------------------------------------------- 인쇄 CSS */
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+
+  body {
+    padding: 0;
+    font-size: 11pt;
+  }
+
+  .toolbar,
+  .no-print {
+    display: none !important;
+  }
+
+  .sheet {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .plan-table {
+    page-break-inside: avoid;
+  }
+
+  .plan-table th,
+  .plan-table td,
+  .meta-table th,
+  .meta-table td {
+    border-color: #333;
+  }
+
+  /* 배경색은 브라우저 기본 설정에서 꺼질 수 있으므로 테두리로도 구분한다 */
+  .cell--empty-unresolved {
+    outline: 1px solid var(--unresolved-rule);
+    outline-offset: -1px;
+  }
+}
+
+@media (max-width: 820px) {
+  .sheet {
+    width: 100%;
+    padding: 16px;
+  }
+  .legend ul {
+    grid-template-columns: 1fr;
+  }
+}

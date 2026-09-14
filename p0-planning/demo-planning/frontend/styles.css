@@ -1,0 +1,469 @@
+/* Planning Integration Demo — 버려도 되는 코드.
+   제품 디자인 시스템이 아니다. 문서 가독성과 흐름 확인만 목표로 한다. */
+
+:root {
+  --ink: #1b1b1b;
+  --ink-soft: #555;
+  --ink-faint: #8a8a8a;
+  --rule: #c2c2c2;
+  --paper: #fff;
+  --desk: #edebe6;
+  --accent: #2f5d8a;
+  --valid-bg: #f3f3f3;
+  --unresolved-bg: #fdf6e3;
+  --unresolved-ink: #8a6100;
+  --unresolved-rule: #e0c37a;
+  --err-bg: #fdeceb;
+  --err-ink: #8d2b21;
+  --err-rule: #e3aba5;
+  --ok-bg: #e8f3ea;
+  --ok-ink: #2c6238;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--desk); }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo",
+    "Noto Sans KR", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+code {
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 0.92em;
+  background: #f2f2f0;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* ------------------------------------------------------------------ 상단 */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  background: #fbfbfa;
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.topbar__title { font-weight: 700; letter-spacing: 0.02em; }
+.topbar__sub { color: var(--ink-faint); font-weight: 400; margin-left: 6px; font-size: 12px; }
+.topbar__spacer { flex: 1; }
+.topbar__warn { color: #8a3b00; font-weight: 700; font-size: 12px; }
+
+.toggle { font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+
+.topbar__mode {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ok-ink);
+  background: var(--ok-bg);
+  border: 1px solid #b6d7bf;
+  border-radius: 10px;
+  padding: 2px 10px;
+}
+.topbar__mode--off {
+  color: var(--unresolved-ink);
+  background: var(--unresolved-bg);
+  border-color: var(--unresolved-rule);
+}
+
+/* ------------------------------------------------------------------ 배너 */
+
+.banner {
+  max-width: 940px;
+  margin: 14px auto 0;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.banner--error { background: var(--err-bg); color: var(--err-ink); border: 1px solid var(--err-rule); }
+.banner--ok { background: var(--ok-bg); color: var(--ok-ink); border: 1px solid #b6d7bf; }
+
+/* ------------------------------------------------------------------ 레이아웃 */
+
+.layout {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 18px 16px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.panel {
+  background: var(--paper);
+  border: 1px solid #d6d3cc;
+  border-radius: 5px;
+  padding: 18px 20px 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ 입력 */
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-soft); }
+.form small { color: var(--ink-faint); font-size: 11px; }
+
+input[type="text"],
+input[type="number"],
+select {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--ink);
+}
+
+fieldset {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 6px 10px 9px;
+  margin: 0;
+}
+fieldset legend { font-size: 12px; color: var(--ink-soft); padding: 0 4px; }
+.chk { flex-direction: row !important; align-items: center; gap: 4px !important; font-size: 13px; }
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); }
+.hint { font-size: 12px; color: var(--ink-faint); }
+
+button {
+  font: inherit;
+  padding: 7px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.ghost { padding: 4px 10px; font-size: 12px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.mini { padding: 2px 8px; font-size: 11px; }
+
+/* ------------------------------------------------------------------ 문서 표 */
+
+table { width: 100%; border-collapse: collapse; }
+
+.doc-caption { margin: 0 0 10px; font-size: 12px; color: var(--ink-faint); }
+
+.doc-table { font-size: 13px; margin-bottom: 6px; }
+.doc-table th,
+.doc-table td {
+  border: 1px solid var(--rule);
+  padding: 7px 9px;
+  vertical-align: top;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.doc-table thead th { background: #f6f6f4; text-align: center; font-weight: 600; }
+.col-month { width: 74px; text-align: center; }
+.col-act { width: 132px; }
+.doc-table td.col-month { text-align: center; background: #fafafa; font-weight: 600; }
+
+.meta-table { font-size: 13px; margin-bottom: 12px; }
+.meta-table th,
+.meta-table td { border: 1px solid var(--rule); padding: 6px 9px; text-align: left; }
+.meta-table th { width: 14%; background: #f6f6f4; color: var(--ink-soft); font-weight: 600; white-space: nowrap; }
+
+.plan-table { table-layout: fixed; }
+.plan-table .row-head { width: 18%; background: #f6f6f4; text-align: center; font-weight: 600; vertical-align: middle; }
+.plan-table thead th .week-range { display: block; margin-top: 2px; font-size: 10px; font-weight: 400; color: var(--ink-faint); }
+
+.cell { min-height: 56px; }
+.cell--filled { background: #fff; }
+.cell--empty-valid { background: var(--valid-bg); }
+.cell--empty-unresolved { background: var(--unresolved-bg); }
+.cell__note { display: block; margin-top: 3px; font-size: 10.5px; color: var(--ink-faint); }
+.cell--empty-unresolved .cell__note { color: var(--unresolved-ink); }
+.cell__prov {
+  display: block;
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px dotted var(--rule);
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+.cell__tools { display: block; margin-top: 6px; }
+
+/* ------------------------------------------------------------------ Badge */
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.badge--draft { background: #eef2f7; color: #3c5a7a; border: 1px solid #c3d2e2; }
+.badge--confirmed { background: var(--ok-bg); color: var(--ok-ink); border: 1px solid #b6d7bf; }
+
+.gate {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #f6f6f4;
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+}
+.gate--blocked { background: var(--unresolved-bg); border-color: var(--unresolved-rule); color: var(--unresolved-ink); }
+
+.legend-line { font-size: 11.5px; color: var(--ink-soft); margin: 6px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chip { display: inline-block; width: 13px; height: 13px; border: 1px solid var(--rule); margin-left: 8px; }
+.chip--filled { background: #fff; }
+.chip--valid { background: var(--valid-bg); }
+.chip--unresolved { background: var(--unresolved-bg); border-color: var(--unresolved-rule); }
+
+/* ------------------------------------------------------------------ 개발 정보 */
+
+.dev-block { margin-top: 14px; font-size: 12px; }
+.dev-block summary { cursor: pointer; color: var(--ink-soft); }
+.dev-block table { margin-top: 8px; font-size: 11.5px; }
+.dev-block th, .dev-block td { border: 1px solid #e0e0e0; padding: 4px 7px; text-align: left; }
+.dev-block th { background: #f8f8f6; white-space: nowrap; }
+.kv { font-family: Consolas, "D2Coding", monospace; }
+
+body:not(.dev) .dev-only { display: none !important; }
+
+.log { font-family: Consolas, "D2Coding", monospace; font-size: 11.5px; max-height: 190px; overflow: auto; border: 1px solid #e5e5e5; padding: 8px; background: #fafafa; }
+.log div { padding: 1px 0; }
+.log .bad { color: var(--err-ink); }
+
+.is-hidden { display: none !important; }
+
+/* ------------------------------------------------------------------ 진행중 */
+
+.busy { position: fixed; inset: 0; background: rgba(255, 255, 255, 0.72); display: flex; align-items: center; justify-content: center; z-index: 20; }
+.busy__box { background: #fff; border: 1px solid var(--rule); border-radius: 5px; padding: 16px 26px; font-size: 14px; box-shadow: 0 3px 14px rgba(0, 0, 0, 0.12); }
+
+/* ------------------------------------------------- 화면 모드 전환 (월간) */
+
+.viewtabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.viewtabs__spacer { flex: 1; }
+
+.viewtab {
+  padding: 5px 14px;
+  font-size: 13px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--ink-soft);
+}
+.viewtab.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------- 문서 미리보기 */
+
+/* 문서 모드에서는 본문 칼럼(940px)보다 A4 가로(297mm ≈ 1122px)가 넓다.
+   칼럼 폭에 맞춰 종이를 줄이면 인쇄 결과와 달라지므로, 종이를 줄이는 대신
+   레이아웃을 A4가 들어갈 만큼만 넓힌다. 여기서도 좁으면 `.docview`가 가로
+   스크롤한다 — 문서 구조를 카드로 쪼개지 않는다. */
+body.doc-mode .layout { max-width: 1220px; }
+
+/* 회색 책상 위의 흰 종이. A4 가로 비율을 유지한다.
+   화면이 넓어도 문서 폭이 무한정 늘어나지 않게 최대 폭을 고정한다. */
+.docview {
+  background: var(--desk);
+  padding: 20px;
+  margin: 0 -20px -20px;
+  overflow-x: auto;   /* 좁은 화면에서는 가로 스크롤. 문서 구조는 그대로 둔다 */
+}
+
+.paper {
+  --paper-w: 297mm;   /* A4 landscape */
+  --paper-h: 210mm;
+  width: var(--paper-w);
+  min-height: var(--paper-h);
+  margin: 0 auto;
+  padding: 14mm 12mm;
+  background: #fff;
+  border: 1px solid #cfcbc3;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  /* 실제 행정 문서에 가깝게. gradient·큰 아이콘·둥근 카드를 쓰지 않는다. */
+  color: #111;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.paper__title {
+  margin: 0 0 10mm;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.paper__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 32px;
+  margin-bottom: 4px;
+}
+.paper__meta-item { display: flex; align-items: baseline; gap: 8px; }
+.paper__meta-key {
+  min-width: 3.6em;
+  color: #444;
+  font-weight: 600;
+}
+.paper__meta-key::after { content: ":"; }
+.paper__meta-value { font-weight: 500; }
+
+.paper__theme {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6mm;
+}
+.paper__theme-value { font-weight: 700; font-size: 15px; }
+
+.paper__grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  /* 표가 페이지 중간에서 잘리지 않게 한다. */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.paper__col-head { width: 22mm; }
+
+.paper__grid th,
+.paper__grid td {
+  border: 1px solid #333;
+  padding: 6px 8px;
+  vertical-align: top;
+  /* 긴 focus 문장을 `...`으로 자르지 않는다. 전부 보여야 한다. */
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.paper__grid thead th {
+  background: #efefec;
+  text-align: center;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.paper__week-label { display: block; }
+.paper__week-range {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: #555;
+}
+
+.paper__row-head {
+  background: #f6f6f4;
+  text-align: center;
+  font-weight: 700;
+  vertical-align: middle;
+  word-break: keep-all;
+}
+
+.paper__cell { height: 26mm; }
+.paper__cell.is-unresolved { color: #666; }
+.paper__cell-text { display: block; }
+
+.paper__footer { margin-top: auto; padding-top: 6mm; }
+.paper__footnote,
+.paper__disclaimer {
+  margin: 0;
+  font-size: 10.5px;
+  color: #666;
+}
+.paper__disclaimer { margin-top: 3px; color: #8a3b00; }
+
+/* ------------------------------------------------------------------ 인쇄 */
+
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+@media print {
+  .topbar, .actions, .busy, #stepInput, #stepLog, .no-print, .dev-block, .legend-line { display: none !important; }
+  html, body { background: #fff; }
+  .layout { max-width: none; padding: 0; gap: 0; }
+  .panel { border: none; box-shadow: none; padding: 0 0 14mm; }
+
+  /* 문서 모드에서는 문서만 인쇄한다.
+     toggle·인쇄 버튼·편집 화면·단계 제목·개발 정보를 전부 뺀다. */
+  body.doc-mode #banner,
+  body.doc-mode #stepYearly,
+  body.doc-mode #stepMonthPick,
+  body.doc-mode #monthlyEditorView,
+  body.doc-mode .viewtabs,
+  body.doc-mode #stepMonthly > h2 { display: none !important; }
+
+  body.doc-mode #stepMonthly { padding: 0; }
+  body.doc-mode .docview {
+    background: #fff;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+  }
+  body.doc-mode .paper {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+}
