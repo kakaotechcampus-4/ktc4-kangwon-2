@@ -166,8 +166,13 @@ from app.features.activities import models as _activities  # noqa: F401
 from app.features.centers import models as _centers  # noqa: F401
 ```
 
-자동 스캔을 쓰지 않는다. **이 줄을 빠뜨리면 `--autogenerate` 가 해당 테이블을
-"코드에 없다"고 판단해 `DROP TABLE` 마이그레이션을 만든다.**
+자동 스캔을 쓰지 않는다. 이 줄을 빠뜨리면 상황에 따라 실패 방향이 다르다.
+
+- **새 모델을 추가할 때 — 빈 마이그레이션이 생긴다.** 메타데이터에도 DB 에도 없으니
+  차이가 0 이다. 에러 없이 성공한 것처럼 끝나므로 **생성된 파일을 열어 `create_table`
+  이 있는지 확인한다.**
+- **이미 적용된 테이블의 import 를 지웠을 때 — `DROP TABLE` 이 생긴다.** DB 에는
+  있는데 코드에 없다고 판단한다.
 
 ### 마이그레이션 생성 절차
 
