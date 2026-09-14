@@ -84,12 +84,13 @@
 
 계획안(P0)은 반 단위 문서라 아동 이름이 들어가지 않는다. 상세는 ADR-004.
 
-- 아동 실명을 **DB에 저장한다.** 파일럿부터 법정대리인 동의서를 받는다.
+- 아동 실명을 **DB에 저장한다.**
+- **동의서를 우리가 받지 않는다.** 원이 보호자에게 받고, 우리는 확인 문구만 띄운다. 파일 업로드를 만들지 않는다.
 - **LLM 호출 직전에 아동 코드로 치환한다.** 프롬프트·응답·로그에 실명이 남으면 안 된다.
 - 치환은 `shared/childCode` 한 곳에서만.
 - **치환 실패 시 호출하지 않고 에러를 낸다.**
 - 치환 토큰은 **받침 있는 더미 한글 이름.** 영문 토큰이면 조사가 복원 후 틀어진다.
-- 아동 명단 입력칸은 **동의 확인 체크박스 뒤에서만** 활성화한다.
+- 아동 명단 입력칸은 **확인 문구 체크박스 뒤에서만** 활성화한다.
 - **아동에게서 이름만 받는다.** 생년월일·성별·건강정보를 받지 않는다.
 - **개발 DB에 실제 아동 실명을 넣지 않는다.** 테스트는 가명으로.
 
@@ -134,16 +135,20 @@ if os.getenv("LLM_MODE") == "real" and not os.getenv("IS_SERVER"):
 ## 명령어
 
 ```bash
+# 최초 1회 — .env 가 없으면 docker compose 가 기동을 거부한다
+cp .env.example .env               # 비밀번호를 바꾼다. .env 는 커밋하지 않는다
+
 # 로컬 실행
 docker compose up -d --build
 docker compose ps                  # 세 개 다 Up, db 는 healthy
 docker compose logs -f backend
-curl -f http://localhost:8000/health
+curl -f http://localhost:8000/health          # 프로세스만
+curl -f http://localhost:8000/health/ready    # DB 까지. 배포 판정은 이쪽
 
 # 마이그레이션 — 상세는 docs/structure.md
 docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
 docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1
-docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check   # CI 도 이걸 돌린다
 
 # 린트
 cd backend  && ruff check . && ruff format .
@@ -153,6 +158,10 @@ cd frontend && npm run lint && npx prettier --write .
 ssh ktc-server
 cd ~/ktc4-kangwon-2 && git pull && docker compose up -d --build
 ```
+
+`.env` 의 `POSTGRES_PASSWORD` 와 `DATABASE_URL` 안의 비밀번호는 **같은 값**이어야 한다.
+`POSTGRES_PASSWORD` 는 `pgdata` 볼륨 최초 생성 때만 쓰인다 — **볼륨이 이미 있으면 값을 바꿔도 DB 비밀번호는 안 바뀐다.**
+서버 `.env` 는 지금 볼륨의 비밀번호와 맞춰야 한다.
 
 ## 쓰지 않는 명령
 
