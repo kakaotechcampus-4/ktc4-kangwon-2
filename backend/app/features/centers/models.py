@@ -27,7 +27,7 @@ class Center(Base):
 
 
 class Class(Base):
-    """반. 이 테이블은 «현재 설정»이다 — plans 가 생성 시점 값을 스냅샷한다(ADR-009)."""
+    """반. 이 테이블은 «현재 설정»이다 — plans 가 생성 시점 값을 스냅샷한다(ADR-010)."""
 
     __tablename__ = "classes"
     __table_args__ = (
