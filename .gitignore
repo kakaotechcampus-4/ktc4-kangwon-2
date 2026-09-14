@@ -72,6 +72,9 @@ target/
 *.dump
 *.sql.gz
 backups/
+# pg_dump 평문 출력. 아동 실명이 들어간다 — public repo 라 사고가 되돌려지지 않는다.
+# SQL fixture 가 필요해지면 그 경로만 ! 로 되살린다 (예: !backend/**/fixtures/*.sql).
+*.sql
 .terraform/
 
 # ── 로컬 에이전트 도구 산출물 ──────────────────────
