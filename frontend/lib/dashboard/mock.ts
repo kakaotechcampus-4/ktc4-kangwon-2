@@ -20,7 +20,7 @@ export interface DashboardTask {
 export const TODAY_TASKS: DashboardTask[] = [
   { id: "records", title: "확인이 필요한 기록", description: "관찰 기록 2건을 확인해 주세요.", count: 2, cta: "기록 확인", href: "/home", icon: "record", tone: "sage" },
   { id: "drafts", title: "검토할 AI 문서", description: "기록을 바탕으로 생성된 초안을 확인해 주세요.", count: 2, cta: "초안 검토", href: "/home", icon: "sparkle", tone: "mint" },
-  { id: "weekly-plan", title: "처리해야 할 업무", description: "이번 주 주간계획안을 등록해 주세요.", count: 1, cta: "업무 보기", href: "/plans/create", icon: "eval", tone: "peach" },
+  { id: "weekly-plan", title: "처리해야 할 업무", description: "이번 주 주간계획안을 등록해 주세요.", count: 1, cta: "업무 보기", href: "/plans/annual/new", icon: "eval", tone: "peach" },
 ];
 
 export interface Attendance {
@@ -28,7 +28,6 @@ export interface Attendance {
   present: number;
   absent: number;
 }
-export const TODAY_ATTENDANCE: Attendance = { total: 18, present: 16, absent: 2 };
 
 export type RecordStatus = "review" | "draft" | "confirmed";
 export interface RecentRecord {

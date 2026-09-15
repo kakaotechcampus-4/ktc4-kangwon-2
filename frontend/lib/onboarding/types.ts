@@ -2,15 +2,18 @@ import type { AgeGroup } from "@/lib/plan-generator/types";
 
 export type { AgeGroup };
 
-/** 온보딩 3단계 + 완료 */
-export type OnboardingStep = 1 | 2 | 3 | "done";
+/** 온보딩 4단계 + 완료 */
+export type OnboardingStep = 1 | 2 | 3 | 4 | "done";
 
 export interface ChildEntry {
+  code?: string;
   id: string;
   name: string;
 }
 
+export type SelectedAge = 3 | 4 | 5;
 export interface ClassroomEntry {
+  selectedAges?: SelectedAge[];
   id: string;
   className: string;
   ageGroup: AgeGroup | "";
@@ -48,6 +51,7 @@ export const DEFAULT_CHARACTER_MESSAGES: CharacterMessages = {
  * 팀 화면 명세의 원 정보 / 반 정보 / 성품인사 요구사항을 반영한다.
  */
 export interface ClassSettings {
+  primaryClassId?: string;
   orgName: string;
   directorName: string;
   regionProvince: string;
@@ -81,15 +85,24 @@ export const EMPTY_CLASS_SETTINGS: ClassSettings = {
   characterMessages: { ...DEFAULT_CHARACTER_MESSAGES },
 };
 
-/** 온보딩 명세 기준으로 3·4·5세만 노출한다. 계획안 생성 페이지는 혼합반 타입을 계속 지원할 수 있다. */
-export const AGE_OPTIONS: { value: Exclude<AgeGroup, "mixed">; label: string }[] = [
+/** 반 정보와 계획안 생성에서 사용하는 연령 선택지. */
+export const AGE_OPTIONS: { value: AgeGroup; label: string }[] = [
   { value: "3", label: "3세" },
   { value: "4", label: "4세" },
   { value: "5", label: "5세" },
+  { value: "mixed", label: "혼합" },
 ];
 
 export const STEP_LABELS: Record<Exclude<OnboardingStep, "done">, string> = {
   1: "원 정보",
   2: "반 정보",
-  3: "성품인사",
+  3: "아동 명단",
+  4: "성품인사",
 };
+
+/** Explicit empty selection stays empty; only legacy values use migration. */
+export function selectedAgesFor(value:{selectedAges?:unknown;ageGroup?:unknown}):SelectedAge[]{
+ if(Array.isArray(value.selectedAges))return [3,4,5].filter(age=>value.selectedAges instanceof Array && value.selectedAges.includes(age)) as SelectedAge[];
+ return value.ageGroup==="mixed"?[3,4,5]:["3","4","5"].includes(String(value.ageGroup))?[Number(value.ageGroup) as SelectedAge]:[];
+}
+export function ageSelectionLabel(ages:readonly SelectedAge[]):string {return ages.length?"만 "+ages.join("·")+"세반":"연령 미선택";}

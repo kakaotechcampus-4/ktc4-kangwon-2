@@ -5,7 +5,7 @@ import { Icon } from "./icons";
 import { formatKoreanDate } from "@/lib/greeting";
 
 /**
- * 콘텐츠 영역 상단 헤더. 홈에서는 인사말 + 검색/알림, 계획안 페이지에서는 제목 + 조직 칩.
+ * 콘텐츠 영역 상단 헤더. 홈에서는 인사말 + 검색/알림, 계획안 페이지에서는 제목과 설명.
  * (모바일에서는 세로로 쌓이고 검색창이 full width)
  */
 export default function AppHeader({
@@ -64,6 +64,3 @@ export function HeaderTools({ placeholder = "기록, 원아, 문서 검색" }: {
   );
 }
 
-export function OrgChip({ children }: { children: ReactNode }) {
-  return <span className="text-[13px] px-3 py-[7px] rounded-full bg-paper border border-line text-ink-soft whitespace-nowrap">{children}</span>;
-}

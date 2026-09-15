@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import AppSidebar from "./AppSidebar";
+import TeacherMenu from "@/components/auth/TeacherMenu";
 
 /**
  * 온보딩 이후 일반 서비스 화면의 공통 셸.
@@ -16,14 +17,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div className="min-w-0 pb-[84px] lg:pb-0">
         {/* 모바일 전용 상단 바 (사이드바 브랜드 영역 대체) */}
         <div className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-paper border-b border-line">
-          <Link href="/home" className="flex items-center gap-2">
+          <Link href="/onboarding/center" className="flex items-center gap-2">
             <svg width="26" height="26" viewBox="0 0 30 30" aria-hidden="true">
               <circle cx="12" cy="15" r="9" className="fill-sage" />
               <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
             </svg>
-            <span className="font-display text-lg text-ink">새싹플랜</span>
+            <span className="font-display text-lg text-ink">쓱싹요정</span>
           </Link>
-          <Link href="/onboarding" aria-label="내 정보" className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-sage-tint text-sage-ink font-bold text-[13px]">김</Link>
+          <TeacherMenu compact />
         </div>
         {children}
       </div>

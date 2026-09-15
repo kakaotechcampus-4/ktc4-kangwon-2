@@ -2,7 +2,7 @@ import { STEP_LABELS, type OnboardingStep } from "@/lib/onboarding/types";
 
 type StepState = "done" | "current" | "pending";
 
-function stateOf(n: 1 | 2 | 3, current: OnboardingStep): StepState {
+function stateOf(n: Exclude<OnboardingStep, "done">, current: OnboardingStep): StepState {
   if (current === "done") return "done";
   if (n < current) return "done";
   if (n === current) return "current";
@@ -10,12 +10,12 @@ function stateOf(n: 1 | 2 | 3, current: OnboardingStep): StepState {
 }
 
 /**
- * [● 기본 정보] ─ [○ 반·아동] ─ [○ 성품인사]
+ * [● 원 정보] ─ [○ 반 정보] ─ [○ 아동 명단] ─ [○ 성품인사]
  * 현재: Main #AFCDB5 · 완료: Dark #7EAD8B · 미진행: 중립 회색
  * 모바일에서는 라벨이 원 아래로 내려가 폭을 절약한다.
  */
 export default function OnboardingStepIndicator({ current }: { current: OnboardingStep }) {
-  const steps: (1 | 2 | 3)[] = [1, 2, 3];
+  const steps: Exclude<OnboardingStep, "done">[] = [1, 2, 3];
   return (
     <ol className="flex items-center justify-center" aria-label="온보딩 진행 단계">
       {steps.map((n, i) => {
@@ -48,7 +48,7 @@ export default function OnboardingStepIndicator({ current }: { current: Onboardi
             {i < steps.length - 1 && (
               <span
                 aria-hidden="true"
-                className={`h-[1.5px] w-7 lg:w-14 mx-1.5 lg:mx-3.5 self-start mt-[14px] lg:self-center lg:mt-0 rounded ${connectorDone ? "bg-sage-ink" : "bg-line"}`}
+                className={`h-[1.5px] w-4 sm:w-7 lg:w-8 mx-1.5 lg:mx-3 self-start mt-[14px] lg:self-center lg:mt-0 rounded ${connectorDone ? "bg-sage-ink" : "bg-line"}`}
               />
             )}
           </li>

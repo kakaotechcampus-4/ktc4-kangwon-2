@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { Icon } from "@/components/app/icons";
 import type { Attendance } from "@/lib/dashboard/mock";
 
 /** 오늘의 등원 인원 — 전체 / 등원 / 결석 + 출석률 progress */
@@ -9,9 +7,6 @@ export default function AttendanceSummary({ data }: { data: Attendance }) {
     <section aria-labelledby="att-title">
       <div className="flex items-center justify-between font-display text-[16px] text-ink">
         <h2 id="att-title">오늘의 등원 인원</h2>
-        <Link href="/home" aria-label="등원 현황 자세히" className="text-ink-soft hover:text-sage-ink">
-          <Icon name="chevron" className="w-3.5 h-3.5" />
-        </Link>
       </div>
       <dl className="grid grid-cols-[1.3fr_1fr_1fr] gap-3 mt-3.5 items-end tabular-nums">
         <div>
@@ -35,6 +30,9 @@ export default function AttendanceSummary({ data }: { data: Attendance }) {
           <div className="h-full rounded-full bg-sage-ink" style={{ width: `${rate}%` }} />
         </div>
       </div>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-ink-soft">
+        저장된 원아 수 기준으로 전원 등원을 기본 표시해요. 실제 출결 기록은 아니에요.
+      </p>
     </section>
   );
 }

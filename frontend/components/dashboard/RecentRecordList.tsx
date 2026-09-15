@@ -13,7 +13,7 @@ export default function RecentRecordList({ records }: { records: RecentRecord[] 
     <section aria-labelledby="rec-title">
       <div className="flex items-center justify-between font-display text-[16px] text-ink">
         <h2 id="rec-title">최근 기록</h2>
-        <Link href="/home" className="text-[12.5px] font-body text-ink-soft hover:text-sage-ink">기록 관리 →</Link>
+        <Link href="/records" className="text-[12.5px] font-body text-ink-soft hover:text-sage-ink">기록 관리 →</Link>
       </div>
       <div className="mt-3 rounded-2xl border border-line overflow-hidden">
         <div className="grid grid-cols-[88px_minmax(0,1fr)_auto] lg:grid-cols-[96px_minmax(0,1fr)_auto] gap-2.5 px-3.5 py-2 text-[11px] text-ink-soft bg-cream">

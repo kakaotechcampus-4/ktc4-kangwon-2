@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { loadClassSettings } from "@/lib/onboarding/settings";
 import { Icon, type IconName } from "./icons";
+import TeacherMenu from "@/components/auth/TeacherMenu";
 
 interface NavItem {
   key: string;
@@ -15,28 +14,19 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { key: "home", label: "홈", href: "/home", icon: "home" },
-  { key: "plans", label: "계획안", href: "/plans/create", icon: "plan", match: (p) => p.startsWith("/plans") },
-  { key: "records", label: "기록", icon: "record" },
-  { key: "docs", label: "문서", icon: "doc" },
-  { key: "eval", label: "평가제", icon: "eval" },
+  { key: "home", label: "홈", href: "/", icon: "home" },
+  { key: "plans", label: "계획안", href: "/plans/annual/new", icon: "plan", match: (p) => p.startsWith("/plans") || p==="/templates" || p==="/trends" },
+  { key: "records", label: "기록", href:"/records", icon: "record", match: p=>p==="/records"||p==="/compare" },
+  { key: "docs", label: "문서", href:"/documents", icon: "doc" },
+  { key: "eval", label: "평가제", href:"/evaluation", icon: "eval" },
 ];
 
 /**
  * 좌측 고정 사이드바 (데스크톱) / 하단 네비게이션 (모바일).
  * Active 메뉴는 Main 을 옅게 탄 sage-tint 배경 + Dark 아이콘.
  */
-export default function AppSidebar({
-  teacherName = "김민지 선생님", // 가입 시 저장된 값
-}: {
-  teacherName?: string;
-}) {
+export default function AppSidebar() {
   const pathname = usePathname() ?? "";
-  const [className, setClassName] = useState("햇살반");
-  useEffect(() => {
-    const s = loadClassSettings();
-    if (s?.className) setClassName(s.className);
-  }, []);
 
   const isActive = (item: NavItem) => (item.match ? item.match(pathname) : item.href === pathname);
 
@@ -57,14 +47,14 @@ export default function AppSidebar({
         "fixed bottom-0 inset-x-0 flex flex-row border-t px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:static lg:inset-auto"
       }
     >
-      <Link href="/home" className="hidden lg:flex items-center gap-2.5 px-2 pt-1.5 pb-5">
+      <Link href="/onboarding/center" className="hidden lg:flex items-center gap-2.5 px-2 pt-1.5 pb-5">
         <span className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-[11px] bg-sage-tint">
           <svg width="22" height="22" viewBox="0 0 30 30" aria-hidden="true">
             <circle cx="12" cy="15" r="9" className="fill-sage" />
             <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
           </svg>
         </span>
-        <span className="font-display text-xl text-ink">새싹플랜</span>
+        <span className="font-display text-xl text-ink">쓱싹요정</span>
       </Link>
 
       <nav className="contents lg:flex lg:flex-col lg:gap-1">
@@ -85,18 +75,13 @@ export default function AppSidebar({
       </nav>
 
       <div className="contents lg:flex lg:flex-col lg:gap-1.5 lg:mt-auto">
-        <Link href="/onboarding" aria-current={pathname === "/onboarding" ? "page" : undefined} className={`${itemBase} ${idle}`}>
+        <Link href="/settings" aria-current={pathname === "/settings" ? "page" : undefined} className={`${itemBase} ${idle}`}>
           <Icon name="settings" className="w-5 h-5 shrink-0" />
           <span>설정</span>
         </Link>
-        <Link href="/onboarding" title="반 설정 다시 보기" className="hidden lg:flex items-center gap-2.5 px-2 pt-3.5 pb-1.5 mt-2 border-t border-line">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-sage-tint text-sage-ink font-bold text-sm shrink-0">{teacherName.slice(0, 1)}</span>
-          <span className="min-w-0">
-            <span className="block text-sm font-bold text-ink truncate">{teacherName}</span>
-            <span className="block text-xs text-ink-soft truncate">{className} 담임</span>
-          </span>
-          <Icon name="chevron" className="w-4 h-4 ml-auto text-ink-soft" />
-        </Link>
+        <div className="hidden lg:block pt-3.5 mt-2 border-t border-line">
+          <TeacherMenu />
+        </div>
       </div>
     </aside>
   );

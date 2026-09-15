@@ -1,6 +1,6 @@
 ﻿export type AgeGroup = "3" | "4" | "5" | "mixed";
 
-export type PlanType = "monthly" | "weekly" | "daily";
+export type PlanType = "annual" | "monthly" | "weekly" | "daily";
 
 export type GenerationPhase = "idle" | "generating" | "done";
 
@@ -18,6 +18,7 @@ export interface DailyPeriod {
 }
 
 export interface PeriodState {
+  annual: { year: number };
   monthly: MonthlyPeriod;
   weekly: WeeklyPeriod;
   daily: DailyPeriod;
@@ -38,12 +39,14 @@ export const AGE_LABEL: Record<AgeGroup, string> = {
 };
 
 export const PLAN_TYPE_LABEL: Record<PlanType, string> = {
+  annual: "연간",
   monthly: "월간",
   weekly: "주간",
   daily: "일간",
 };
 
 export const PLAN_TYPE_HELP: Record<PlanType, string> = {
+  annual: "한 해 놀이 흐름",
   monthly: "한 달 놀이 흐름",
   weekly: "한 주 세부 활동",
   daily: "하루 시간표",

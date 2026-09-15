@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes } from "react";
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
 const base =
-  "inline-flex items-center justify-center gap-1.5 rounded-2xl px-5 py-3 min-h-[48px] text-[15px] " +
+  "inline-flex items-center justify-center gap-1.5 rounded-2xl px-5 py-3 min-h-[48px] xl:min-h-[56px] xl:px-7 text-[15px] xl:text-[17px] " +
   "transition-colors active:translate-y-px disabled:cursor-not-allowed " +
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-ink";
 

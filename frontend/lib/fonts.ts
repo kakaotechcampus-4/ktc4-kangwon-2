@@ -1,12 +1,39 @@
-import { Gowun_Dodum, JetBrains_Mono, Noto_Sans_KR } from "next/font/google";
+import localFont from "next/font/local";
 
 /**
- * 새싹플랜 공통 폰트. next/font 는 모듈 스코프에서만 호출할 수 있으므로
- * 여기서 한 번 선언하고 루트 레이아웃 <html> 에 variable 클래스를 붙인다.
- * (tailwind: font-display / font-body / font-mono 가 이 CSS 변수를 참조)
+ * 자체 호스팅 폰트 (public/fonts, 전부 woff2).
+ * - display: Gowun Dodum — 제목/헤딩용. 라틴·한글 subset을 나눠 필요한 것만 받는다.
+ * - body:    Pretendard Variable — 본문/입력 UI용. 한 파일로 100~900 굵기를 모두 제공한다.
+ * - mono:    JetBrains Mono — 숫자·코드성 라벨용.
  */
-export const display = Gowun_Dodum({ subsets: ["korean"], weight: "400", variable: "--font-display" });
-export const body = Noto_Sans_KR({ subsets: ["korean"], weight: ["400", "500", "700", "900"], variable: "--font-body" });
-export const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono" });
+export const display = localFont({
+  src: [
+    { path: "../public/fonts/GowunDodum-Latin.woff2", weight: "400", style: "normal" },
+    { path: "../public/fonts/GowunDodum-Korean.woff2", weight: "400", style: "normal" },
+  ],
+  variable: "--font-display",
+  display: "swap",
+  preload: true,
+  fallback: ["Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "sans-serif"],
+});
+
+export const body = localFont({
+  src: "../public/fonts/PretendardVariable.woff2",
+  weight: "45 920",
+  style: "normal",
+  variable: "--font-body",
+  display: "swap",
+  preload: true,
+  fallback: ["Apple SD Gothic Neo", "Malgun Gothic", "system-ui", "sans-serif"],
+});
+
+export const mono = localFont({
+  src: "../public/fonts/JetBrainsMono.ttf",
+  weight: "100 800",
+  variable: "--font-mono",
+  display: "swap",
+  preload: false,
+  fallback: ["ui-monospace", "SFMono-Regular", "monospace"],
+});
 
 export const fontClassName = `${display.variable} ${body.variable} ${mono.variable}`;

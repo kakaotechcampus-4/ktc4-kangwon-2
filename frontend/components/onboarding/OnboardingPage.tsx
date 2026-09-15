@@ -1,6 +1,7 @@
 "use client";
+import AgeSelection from "./AgeSelection";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import OnboardingLayout, { StepFooter, StepHeading } from "./OnboardingLayout";
 import FormField, { TextInput } from "./FormField";
@@ -9,8 +10,9 @@ import ChildList from "./ChildList";
 import CharacterMessageGrid from "./CharacterMessageGrid";
 import PrimaryButton, { GhostButton, TextButton } from "./PrimaryButton";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
+import { completeAccountOnboarding, onboardingDestination } from "@/lib/auth/local-account";
 import {
-  AGE_OPTIONS,
+  selectedAgesFor, ageSelectionLabel,
   DEFAULT_CHARACTER_MESSAGES,
   EMPTY_CLASS_SETTINGS,
   MONTH_ORDER,
@@ -22,8 +24,11 @@ import {
   type OnboardingStep,
 } from "@/lib/onboarding/types";
 import { AGE_LABEL } from "@/lib/plan-generator/types";
+import { PROVINCE_OPTIONS, districtsFor, normalizeProvince } from "@/lib/onboarding/regions";
 
-const HOME_PATH = "/home";
+import { syncCenter, syncClasses, rememberConsent, hasConsent, migrateChildren, loadServerClasses, loadServerChildren, addServerChild, removeServerChild } from "@/lib/api/onboarding";
+
+const HOME_PATH = "/";
 const WELCOME_KEY = "saessak.welcome";
 
 function uid(prefix: string) {
@@ -34,46 +39,80 @@ function uid(prefix: string) {
   }
 }
 
-export default function OnboardingPage() {
+export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) {
   const router = useRouter();
-  const [step, setStep] = useState<OnboardingStep>(1);
+  const [ready, setReady] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [busy,setBusy]=useState(false);
+  const saving=useRef(false);
   const [settings, setSettings] = useState<ClassSettings>(EMPTY_CLASS_SETTINGS);
 
   useEffect(() => {
     const saved = loadClassSettings();
-    if (saved) setSettings(saved);
-  }, []);
+    if (saved) setSettings({ ...saved, regionProvince: normalizeProvince(saved.regionProvince), regionDistrict: saved.regionDistrict.trim() });
+    const destination = onboardingDestination();
+    if ((step === 2 || step === 3) && destination === "/onboarding/center") router.replace(destination);
+    else if (step === 3 && destination === "/onboarding/classes") router.replace(destination);
+    else if(saved && (step===2 || step===3)) {
+      const load=async()=>{
+        try{
+          if(step===2) setSettings(await loadServerClasses(saved));
+          else {
+            // Existing local lists are migrated only after explicit consent.
+            await syncClasses(saved);
+            const classes=[];
+            for(const c of saved.classes){
+              if(c.guardianConsent)await migrateChildren(c);
+              const loaded=await loadServerChildren(c);
+              classes.push({...loaded,guardianConsent:loaded.guardianConsent||hasConsent(c.id)});
+            }
+            setSettings({...saved,classes});
+          }
+        }catch(e){setSaveError(e instanceof Error?e.message:"목록을 불러오지 못했어요.");}
+        finally{setReady(true);}
+      };void load();
+    }else setReady(true);
+  }, [step, router]);
 
-  function patch(p: Partial<ClassSettings>) {
-    setSettings((s) => ({ ...s, ...p }));
+
+
+  function patch(p:Partial<ClassSettings>){const next={...settings,...p};next.primaryClassId=next.classes.some(c=>c.id===next.primaryClassId)?next.primaryClassId:next.classes[0]?.id;setSettings(next);if(step===3&&!saveClassSettings(next))setSaveError("로컬 화면 캐시 저장 실패");}
+  async function go(next: OnboardingStep) {
+    if(saving.current)return;saving.current=true;setBusy(true);setSaveError("");
+    try {
+      if(step===1&&next===2)await syncCenter(settings);
+      if(step===2&&next===3){await syncClasses(settings);rememberConsent(settings.classes);}
+      if(!saveClassSettings(settings))throw new Error("설정을 저장하지 못했어요.");
+      router.push(next===1?"/onboarding/center":next===2?"/onboarding/classes":next===3?"/onboarding/children":"/settings");
+    }catch(e){setSaveError(e instanceof Error?e.message:"저장 실패");}
+    finally{saving.current=false;setBusy(false);}
+  }
+  async function finish() {
+    if(saving.current)return;saving.current=true;setBusy(true);setSaveError("");
+    try {
+      await syncClasses(settings);
+      const done={...settings,completedAt:new Date().toISOString()};
+      if(!saveClassSettings(done)||!completeAccountOnboarding())throw new Error("설정을 저장하지 못했어요.");
+      setSettings(done);
+      try{sessionStorage.setItem(WELCOME_KEY,"1");}catch{}
+      router.push(HOME_PATH);
+    }catch(e){setSaveError(e instanceof Error?e.message:"저장 실패");}
+    finally{saving.current=false;setBusy(false);}
   }
 
-  function go(next: OnboardingStep) {
-    setStep(next);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function finish() {
-    const done = { ...settings, completedAt: new Date().toISOString() };
-    setSettings(done);
-    saveClassSettings(done);
-    try { sessionStorage.setItem(WELCOME_KEY, "1"); } catch { /* noop */ }
-    go("done");
-  }
-
-  const orgLabel = useMemo(() => {
-    const firstTeacher = settings.classes.find((c) => c.teacherName.trim())?.teacherName.trim();
-    if (settings.orgName && firstTeacher) return `🌼 ${settings.orgName} · ${firstTeacher} 선생님`;
-    if (settings.orgName) return `🌼 ${settings.orgName}`;
-    return undefined;
-  }, [settings.orgName, settings.classes]);
+  if (!ready) return <p role="status" className="p-6">설정을 불러오고 있어요.</p>;
 
   return (
-    <OnboardingLayout step={step} orgLabel={orgLabel}>
+    <OnboardingLayout step={step}>
+      {saveError && <p role="alert" className="text-peach-ink">{saveError}</p>}
+      {busy && <p role="status">저장 중이에요.</p>}
+      <fieldset disabled={busy} className="contents">
       {step === 1 && <StepOrgInfo settings={settings} onChange={patch} onNext={() => go(2)} />}
       {step === 2 && <StepClasses settings={settings} onChange={patch} onPrev={() => go(1)} onNext={() => go(3)} />}
-      {step === 3 && <StepCharacterMessages settings={settings} onChange={patch} onPrev={() => go(2)} onFinish={finish} />}
+      {step === 3 && <StepChildren settings={settings} onChange={patch} onPrev={() => go(2)} onNext={finish} />}
+      {step === 4 && <StepCharacterMessages settings={settings} onChange={patch} onPrev={() => go(3)} onFinish={finish} />}
       {step === "done" && <StepDone settings={settings} onReview={() => go(1)} onHome={() => router.push(HOME_PATH)} />}
+      </fieldset>
     </OnboardingLayout>
   );
 }
@@ -88,11 +127,11 @@ function StepOrgInfo({
   onChange: (p: Partial<ClassSettings>) => void;
   onNext: () => void;
 }) {
+  const districts = districtsFor(settings.regionProvince);
   const canNext =
     settings.orgName.trim() !== "" &&
     settings.directorName.trim() !== "" &&
-    settings.regionProvince.trim() !== "" &&
-    settings.regionDistrict.trim() !== "";
+    districts.includes(settings.regionDistrict);
 
   return (
     <>
@@ -105,7 +144,7 @@ function StepOrgInfo({
         <TextInput
           id="orgName"
           value={settings.orgName}
-          placeholder="예: 햇살어린이집"
+          placeholder="기관명을 입력해주세요"
           onChange={(e) => onChange({ orgName: e.target.value })}
         />
       </FormField>
@@ -121,17 +160,20 @@ function StepOrgInfo({
 
       <FormField label="지역">
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          <TextInput
+          <Select
             id="regionProvince"
             value={settings.regionProvince}
-            placeholder="시·도  예: 경기도"
+            options={PROVINCE_OPTIONS}
+            placeholder="시·도 선택"
             aria-label="시·도"
-            onChange={(e) => onChange({ regionProvince: e.target.value })}
+            onChange={(e) => onChange({ regionProvince: e.target.value, regionDistrict: e.target.value === "세종특별자치시" ? "세종특별자치시" : "" })}
           />
-          <TextInput
+          <Select
             id="regionDistrict"
-            value={settings.regionDistrict}
-            placeholder="시·군·구  예: 군포시"
+            value={districts.includes(settings.regionDistrict) ? settings.regionDistrict : ""}
+            options={districts.map((value) => ({ value, label: value }))}
+            disabled={districts.length === 0}
+            placeholder={districts.length === 0 ? "시·도를 먼저 선택해주세요" : "시·군·구 선택"}
             aria-label="시·군·구"
             onChange={(e) => onChange({ regionDistrict: e.target.value })}
           />
@@ -146,7 +188,7 @@ function StepOrgInfo({
 }
 
 // ---------------------------------------------------------------------
-// STEP 2 — 반 정보 · 반복 입력 + 아동 명단
+// STEP 2 — 반 정보 · 법정대리인 동의
 // ---------------------------------------------------------------------
 function StepClasses({
   settings, onChange, onPrev, onNext,
@@ -172,16 +214,14 @@ function StepClasses({
   }
 
   const canNext = settings.classes.length > 0 && settings.classes.every((c) =>
-    c.className.trim() !== "" && c.ageGroup !== "" && c.teacherName.trim() !== ""
+    c.className.trim() !== "" && selectedAgesFor(c).length > 0 && c.teacherName.trim() !== ""
   );
-
-  const totalChildren = settings.classes.reduce((sum, c) => sum + c.children.length, 0);
 
   return (
     <>
       <StepHeading
         title="우리 반 정보를 설정해주세요"
-        description="우리 반 아동의 이름을 한 명씩 입력해주세요."
+        description="반 정보와 법정대리인 동의 여부를 확인해주세요. 아동 명단은 다음 단계에서 입력해요."
       />
 
       <div className="flex flex-col gap-5">
@@ -197,11 +237,11 @@ function StepClasses({
         ))}
       </div>
 
+      {settings.classes.length > 1 && <FormField id="primaryClassId" label="내 담당 반"><Select id="primaryClassId" value={settings.primaryClassId || settings.classes[0]?.id || ""} options={settings.classes.map((c,i)=>({value:c.id,label:c.className || "반 " + (i+1)}))} onChange={e=>onChange({primaryClassId:e.target.value})}/></FormField>}
       <GhostButton onClick={addClass} className="self-start">+ 반 추가</GhostButton>
 
       <StepFooter
         left={<GhostButton onClick={onPrev}>이전</GhostButton>}
-        note={totalChildren === 0 ? "아동 명단은 나중에 입력할 수도 있어요" : `현재 ${totalChildren}명의 아동이 등록되어 있어요`}
         right={<PrimaryButton disabled={!canNext} onClick={onNext} className="flex-1 lg:flex-none lg:min-w-[120px]">다음</PrimaryButton>}
       />
     </>
@@ -221,8 +261,6 @@ function ClassroomCard({
   onChange: (p: Partial<ClassroomEntry>) => void;
   onRemove: () => void;
 }) {
-  const ageValue = classroom.ageGroup === "mixed" ? "" : classroom.ageGroup;
-  const childInputDisabled = !classroom.guardianConsent || classroom.childrenSkipped;
 
   return (
     <section className="rounded-[20px] border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
@@ -231,28 +269,28 @@ function ClassroomCard({
           <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-sage-tint text-sage-ink font-mono text-[11px]">{index + 1}</span>
           <h2 className="font-display text-[16px] text-ink">반 정보</h2>
         </div>
-        {canRemove && <TextButton onClick={onRemove}>이 반 삭제</TextButton>}
+        {canRemove && (
+          <button type="button" onClick={onRemove} aria-label={`${classroom.className || `${index + 1}번 반`} 삭제`}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border-[1.5px] border-red-200 bg-red-50 px-3 py-2 min-h-[40px] text-[12.5px] font-medium text-red-500 hover:bg-red-100 hover:border-red-300 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-300">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+            </svg>
+            삭제
+          </button>
+        )}
       </div>
 
       <FormField id={`className-${classroom.id}`} label="반 이름">
         <TextInput
           id={`className-${classroom.id}`}
           value={classroom.className}
-          placeholder="예: 햇살반"
+          placeholder="반 이름을 입력해주세요"
           onChange={(e) => onChange({ className: e.target.value })}
         />
       </FormField>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField id={`ageGroup-${classroom.id}`} label="연령">
-          <Select<Exclude<AgeGroup, "mixed">>
-            id={`ageGroup-${classroom.id}`}
-            value={ageValue as Exclude<AgeGroup, "mixed"> | ""}
-            placeholder="연령을 선택해주세요"
-            options={AGE_OPTIONS}
-            onChange={(e) => onChange({ ageGroup: e.target.value as AgeGroup | "" })}
-          />
-        </FormField>
+        <AgeSelection value={selectedAgesFor(classroom)} onChange={selectedAges => onChange({selectedAges, ageGroup:selectedAges.length===1?String(selectedAges[0]) as AgeGroup:""})} />
 
         <FormField id={`currentChildCount-${classroom.id}`} label="현재 원아 수" optional>
           <TextInput
@@ -291,37 +329,63 @@ function ClassroomCard({
         </label>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="font-display text-[15px] text-ink">아동 명단</h3>
-        <TextButton
-          onClick={() => onChange({ childrenSkipped: !classroom.childrenSkipped })}
-          className={classroom.childrenSkipped ? "bg-sage-tint text-sage-ink" : ""}
-        >
-          {classroom.childrenSkipped ? "지금 입력하기" : "나중에 입력할래요"}
-        </TextButton>
-      </div>
-
-      {classroom.childrenSkipped ? (
-        <div className="rounded-[18px] border border-dashed border-line bg-sage-tint px-4 py-4 text-[13px] leading-relaxed text-ink-soft">
-          아동 명단은 나중에 입력할 수 있어요. 아동별 기록 기능을 사용할 때 다시 등록하면 됩니다.
-        </div>
-      ) : (
-        <ChildList
-          idPrefix={`child-${classroom.id}`}
-          children={classroom.children}
-          disabled={childInputDisabled}
-          onAdd={(name) => onChange({ children: [...classroom.children, { id: uid("child"), name }] })}
-          onRemove={(id) => onChange({ children: classroom.children.filter((c) => c.id !== id) })}
-        />
-      )}
     </section>
   );
 }
 
 // ---------------------------------------------------------------------
-// STEP 3 — 월별 성품인사
+// STEP 3 — 반별 아동 명단
 // ---------------------------------------------------------------------
-function StepCharacterMessages({
+function StepChildren({ settings, onChange, onPrev, onNext }: {
+  settings: ClassSettings;
+  onChange: (p: Partial<ClassSettings>) => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <>
+      <StepHeading title="우리 반 아동 명단을 입력해주세요" description="반별로 아동의 이름을 한 명씩 등록해주세요. 아동 명단은 나중에 입력할 수도 있어요." />
+      <div className="flex flex-col gap-5">
+        {settings.classes.map((classroom) => (
+          <ClassroomChildrenCard
+            key={classroom.id}
+            classroom={classroom}
+            onChange={(patch) => onChange({ classes: settings.classes.map((c) => c.id === classroom.id ? { ...c, ...patch } : c) })}
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-[54px] mt-1 border-t border-line">
+        <div className="justify-self-start"><GhostButton onClick={onPrev}>이전</GhostButton></div>
+        <p className="text-center text-[13px] text-ink-soft whitespace-nowrap">아동 명단은 나중에 등록할 수 있습니다.</p>
+        <div className="justify-self-end"><PrimaryButton onClick={onNext} className="lg:min-w-[120px]">설정 완료</PrimaryButton></div>
+      </div>
+    </>
+  );
+}
+
+function ClassroomChildrenCard({ classroom, onChange }: {
+  classroom: ClassroomEntry;
+  onChange: (p: Partial<ClassroomEntry>) => void;
+}) {
+  return (
+    <section className="rounded-[20px] border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
+      <h2 className="font-display text-[17px] text-ink">{classroom.className} · 아동 명단</h2>
+      {classroom.currentChildCount!=="" && classroom.children.length!==classroom.currentChildCount && <p className="text-xs text-ink-soft">현재 원아 수는 {classroom.currentChildCount}명으로 설정되어 있고, 현재 명단에는 {classroom.children.length}명이 등록되어 있습니다.</p>}
+      <ChildList
+        idPrefix={`child-${classroom.id}`}
+        children={classroom.children}
+        onAdd={async(name) => { const child=await addServerChild(classroom,name);onChange({ children: [...classroom.children, child] }); }}
+        onRemove={async(id) => { await removeServerChild(id);onChange({ children: classroom.children.filter((c) => c.id !== id) }); }}
+      />
+
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------
+// STEP 4 — 월별 성품인사
+// ---------------------------------------------------------------------
+export function StepCharacterMessages({
   settings, onChange, onPrev, onFinish,
 }: {
   settings: ClassSettings;
@@ -373,7 +437,7 @@ function StepDone({ settings, onReview, onHome }: { settings: ClassSettings; onR
   const edited = MONTH_ORDER.filter((m) => settings.characterMessages[m] !== DEFAULT_CHARACTER_MESSAGES[m]).length;
   const totalChildren = settings.classes.reduce((sum, c) => sum + c.children.length, 0);
   const firstClass = settings.classes[0];
-  const firstAge = firstClass?.ageGroup ? AGE_LABEL[firstClass.ageGroup].replace("만 ", "") : "";
+  const firstAge = firstClass ? ageSelectionLabel(selectedAgesFor(firstClass)) : "";
 
   return (
     <div className="flex flex-col items-center text-center gap-[18px] py-2">
@@ -391,7 +455,7 @@ function StepDone({ settings, onReview, onHome }: { settings: ClassSettings; onR
 
       <div>
         <h1 className="font-display text-2xl text-ink">초기 설정이 완료되었어요!</h1>
-        <p className="mt-2.5 text-[14.5px] leading-relaxed text-ink-soft">이제 메인 화면에서 새싹플랜을 시작할 수 있어요.</p>
+        <p className="mt-2.5 text-[14.5px] leading-relaxed text-ink-soft">이제 메인 화면에서 쓱싹요정을 시작할 수 있어요.</p>
       </div>
 
       <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-2.5 w-full max-w-[640px]">
@@ -413,3 +477,5 @@ function StepDone({ settings, onReview, onHome }: { settings: ClassSettings; onR
     </div>
   );
 }
+
+
