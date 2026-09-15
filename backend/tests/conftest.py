@@ -8,6 +8,7 @@ import pytest
 if not os.environ.get("DATABASE_URL"):
     raise RuntimeError(
         "DATABASE_URL 이 없다. 로컬에서는:\n"
+        "  cp .env.example .env\n"
         "  docker compose up -d db\n"
         "  DATABASE_URL='postgresql+psycopg://ssuksak:<.env 의 비밀번호>"
         "@localhost:5432/ssuksak' pytest"
