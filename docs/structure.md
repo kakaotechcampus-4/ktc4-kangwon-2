@@ -33,6 +33,8 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 
 ## backend
 
+`tests/` — pytest. DB 가 필요 없는 것만 둔다.
+
 ### 루트 파일
 
 | 파일 | 무엇을 두는가 | 언제 고치는가 |
@@ -254,7 +256,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 
 | 파일 | 무엇을 하는가 |
 |---|---|
-| `.github/workflows/ci.yml` | PR 마다 Ruff · ESLint · Prettier · `next build` |
+| `.github/workflows/ci.yml` | PR 마다 Ruff · pytest · alembic check · backend 이미지 빌드 · ESLint · Prettier · `next build` |
 | `.github/workflows/deploy.yml` | `main` push 시 배포. 아직 골격만 |
 | `.github/pull_request_template.md` | PR 템플릿 |
 
