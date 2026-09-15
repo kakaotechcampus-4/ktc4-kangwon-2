@@ -33,7 +33,7 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 
 ## backend
 
-`tests/` — pytest. DB 가 필요 없는 것만 둔다.
+`tests/` — pytest. `/health/ready` 200 검증에 postgres 가 필요하다.
 
 ### 루트 파일
 
