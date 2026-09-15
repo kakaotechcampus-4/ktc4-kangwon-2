@@ -43,8 +43,9 @@ backend 이미지 빌드는 실행하지 않는다. 파서의 `_selfcheck()` 는
   이 터지게 만드는 데는 3줄이면 되지만, 성공을 흉내내려면 `__enter__` ·
   `__exit__` · `execute` 를 갖춘 객체가 필요해 5줄이 든다. postgres 를 띄우면
   200 은 모의 없이, 503 은 3줄로 — 둘 다 검증된다.
-- **[실측]** `deploy.yml` 의 `HEALTHCHECK_URL` 이 배포 성공 판정에 쓰는 응답이
-  `/health/ready` 의 200 이다.
+- **[실측]** `main.py` docstring 과 `CLAUDE.md` 는 배포 판정을 `/health/ready` 로
+  정해뒀는데 `deploy.yml` 은 `/health` 를 보고 있었다. 배포 판정이 DB 를 안 보는
+  상태였다. 이 PR 에서 맞췄다.
 
 ## 대안
 
