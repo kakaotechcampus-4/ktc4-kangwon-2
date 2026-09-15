@@ -35,24 +35,24 @@ FROZEN_ARTIFACTS = {
     # L9 §17 — 두 Template version이 **공존**한다. 하나가 다른 하나를
     # 대체하지 않는다. RULE_ONLY가 v0.1.0을, LLM_PLANNER가 v0.2.0을 쓴다.
     "templates/monthly_template_a.json": (
-        "1f35322dd52f832bffc3057953ecbd64d52c2d855ada964af68472ebba1a7c34"
+        "a65b5f7355a4ac86f33d0973f1c94f8237434dc03fe593cad28aa0388cab2aaf"
     ),
     "templates/monthly_template_a_v0_2_0.json": (
-        "cb3fa9d15ea5ad55c961cc52588bc08e2bd31a720aa67a5dea0bb1fee644c3c5"
+        "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
     ),
     # L9 §18
     "evidence/institution_evidence_v0_1_0.json": (
         "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a"
     ),
     "activities/activity_reference_v0_2_1.json": (
-        "ddbbe43f570cf64ef86db44e7de04e127aec4e663cdb41c26a8fe3c1002dc2ac"
+        "fa9f3215c3af212ea727835c5ab06ef903b0d7ee5c1f0c615d5eaf4bc156da1a"
     ),
     # 법정 근거. LLM 작업이 이 파일을 건드리면 안 된다.
     "rules/safety_education_legal_v1.json": (
-        "5831809b19a28505844cf10363c95eeb09ec4641d5fe54a26afdb1891c3ddba5"
+        "bd5c04864eb4eca66e51c24d58224723dbb401ead1b72f5e3b09d3a32057b3e9"
     ),
     "themes/theme_reference_v0.json": (
-        "c12999fa141d5c5fdecf39110adfb2227fc0ab98725991e8bdbca098b3ff4197"
+        "dae9f62db452c56b3b529aaa8e620411e9c11a2072163d6f9cc2a9d2ebc4d902"
     ),
 }
 

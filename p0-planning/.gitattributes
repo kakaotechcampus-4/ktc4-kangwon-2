@@ -1,0 +1,17 @@
+# P0 Planning — 동결(freeze) JSON의 바이트 표현을 모든 OS에서 같게 만든다.
+#
+# 왜 필요한가
+# ----------
+# Freeze 테스트는 승인 Artifact의 **raw bytes SHA-256**을 고정한다. 그런데
+# `core.autocrlf=true`인 Windows에서는 checkout이 LF를 CRLF로 바꾸므로, 같은
+# commit인데도 OS마다 워킹트리 bytes가 달라져 해시가 어긋난다.
+#
+#     Windows(autocrlf=true)   CRLF  →  5831809b…
+#     Linux / CI / Docker      LF    →  bd5c0486…
+#
+# JSON 내용은 한 글자도 다르지 않은데 테스트만 깨졌다. 그래서 **LF를 정식
+# 표현으로 정하고** 모든 환경에서 동일하게 유지한다.
+#
+# 이 규칙은 p0-planning subtree에만 적용된다. 팀 Repository의 backend·frontend
+# JSON에는 영향을 주지 않는다.
+*.json text eol=lf

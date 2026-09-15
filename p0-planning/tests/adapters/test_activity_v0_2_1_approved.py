@@ -37,7 +37,7 @@ VER_1 = "activity-reference-v0.2.1"
 OUTDOOR = "outdoor_play"
 
 V0_2_0_SHA = "e27ebca3342a84327c6624c5ba258b9bc98aef37ba5362b61f283c47ece0bde6"
-DRAFT_SHA = "a64af4331cd850031fbb99f8ae3f283e609b3623da68b8ea118afb94e92faa63"
+DRAFT_SHA = "a3ec9f7956bf84fb6a510605dfff6064627de5482b1e56dc584e2ceb734f608a"
 
 REVIEWER = "reviewer_ai_lead_001"
 

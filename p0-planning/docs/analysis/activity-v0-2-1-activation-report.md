@@ -50,6 +50,21 @@ v0.2.0 승인본(`activity_reference_v0_2.json`)과 같은 방식을 그대로 �
 }
 ```
 
+> **2026-09-15 LF canonicalization 이후 주의.**
+> 위 표와 이 코드 블록의 SHA는 **승인 당시(2026-09-13)의 값이며 그대로 둔다.**
+> 그때 Repository의 JSON 워킹트리가 CRLF였기 때문이다.
+>
+> 이후 `*.json text eol=lf` 정책이 도입되어 정식 바이트 표현이 LF가 되었고,
+> 실제 파일과 Freeze 기대값은 아래 값으로 옮겨졌다. **JSON 의미·승인 판단·
+> reviewer·approved_at·catalog version은 바뀌지 않았다.**
+>
+> | 대상 | 승인 당시 (CRLF) | 현재 canonical (LF) |
+> |---|---|---|
+> | Draft | `a64af4331cd850031fbb99f8ae3f283e609b3623da68b8ea118afb94e92faa63` | `a3ec9f7956bf84fb6a510605dfff6064627de5482b1e56dc584e2ceb734f608a` |
+> | Approved | `ddbbe43f570cf64ef86db44e7de04e127aec4e663cdb41c26a8fe3c1002dc2ac` | `fa9f3215c3af212ea727835c5ab06ef903b0d7ee5c1f0c615d5eaf4bc156da1a` |
+>
+> 근거: `docs/analysis/frozen-json-lf-canonicalization.md`
+
 ---
 
 ## 2. Draft → Approved Semantic Diff
