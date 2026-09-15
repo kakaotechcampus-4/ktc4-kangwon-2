@@ -95,3 +95,43 @@ jobs:
         run: npm run format:check
       - name: next build
         run: npm run build
+
+  test:
+    name: backend (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # -e 로 깐다. 비편집 설치면 app 이 site-packages 에서 import 되고
+      # mapping.py 의 parents[3] 가 site-packages 를 가리켜
+      # resources/forms/label_mapping.json 을 못 찾는다.
+      - name: Install
+        run: pip install -e ".[dev]"
+      # postgres 를 띄우지 않는다. conftest.py 가 DATABASE_URL 을 못 붙는
+      # 주소로 박아서 /health/ready 의 503 분기를 모의 없이 검증한다.
+      # 여기 services: db 를 붙이면 그 테스트가 조용히 무의미해진다. ADR-011.
+      - name: pytest
+        run: pytest
+
+  docker:
+    name: backend (docker build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # docker compose 를 쓰지 않는다 — POSTGRES_PASSWORD·DATABASE_URL 이
+      # ${VAR:?} 라 .env 없이는 보간 단계에서 죽는다.
+      # frontend 이미지도 빌드하지 않는다 — npm ci + next build 재실행이라
+      # frontend job 과 신호가 같다. ADR-011.
+      - name: docker build
+        run: docker build -t ssuksak-backend:ci ./backend
+      # 빌드만으로는 COPY 한 줄이 빠진 걸 모른다. import 까지 해본다.
+      - name: 이미지가 앱을 import 하나
+        run: >-
+          docker run --rm
+          -e DATABASE_URL=postgresql+psycopg://x:x@127.0.0.1:1/x
+          ssuksak-backend:ci python -c "import app.main"
