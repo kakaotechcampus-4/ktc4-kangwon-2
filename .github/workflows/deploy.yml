@@ -18,4 +18,4 @@ jobs:
       - name: Health check
         env:
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
-        run: curl -fsS "${HEALTHCHECK_URL}/health"
+        run: curl -fsS "${HEALTHCHECK_URL}/health/ready"

@@ -102,6 +102,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      db:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ssuksak
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: ssuksak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ssuksak -d ssuksak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://ssuksak:ci-only-not-a-secret@localhost:5432/ssuksak
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -112,9 +128,8 @@ jobs:
       # resources/forms/label_mapping.json 을 못 찾는다.
       - name: Install
         run: pip install -e ".[dev]"
-      # postgres 를 띄우지 않는다. conftest.py 가 DATABASE_URL 을 못 붙는
-      # 주소로 박아서 /health/ready 의 503 분기를 모의 없이 검증한다.
-      # 여기 services: db 를 붙이면 그 테스트가 조용히 무의미해진다. ADR-011.
+      # postgres 를 띄운다. /health/ready 200 이 배포 성공 판정이 보는 응답이라
+      # 실제 DB 로 확인한다. 503 은 SessionLocal 을 모의해서 본다. ADR-011.
       - name: pytest
         run: pytest
 
