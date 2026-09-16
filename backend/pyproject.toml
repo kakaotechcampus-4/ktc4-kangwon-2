@@ -14,10 +14,11 @@ dependencies = [
   "six",
   "olefile",
   "lxml",
+  "python-multipart",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff==0.16.6"]
+dev = ["ruff==0.16.6", "pytest", "httpx"]
 
 [build-system]
 requires = ["hatchling"]

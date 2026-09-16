@@ -1,0 +1,9 @@
+@import "../styles/plan-generator-tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  word-break: keep-all;
+}

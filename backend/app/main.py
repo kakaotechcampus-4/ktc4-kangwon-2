@@ -2,10 +2,11 @@ from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from app.db import SessionLocal
+from app.features.forms.router import router as forms_router
 
 app = FastAPI(title="쓱싹요정 API")
 
-# feature router 는 여기서 app.include_router(...) 로 연결한다.
+app.include_router(forms_router)
 
 
 @app.get("/health")
