@@ -14,12 +14,18 @@ from app.db import Base
 
 
 class Center(Base):
-    """원. region 은 활동 쪽 지역 축이 미정이라 넣지 않는다."""
+    """원. 계획안 결재란과 지역 연계 활동에 쓰는 값을 든다."""
 
     __tablename__ = "centers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), comment="원 이름")
+    director_name: Mapped[str] = mapped_column(
+        String(50), comment="결재란 「원장」. 계획안에 인쇄된다 (docs/PRD.md S1)"
+    )
+    region: Mapped[str] = mapped_column(
+        String(50), comment="시·도 + 시·군·구. 지역사회 연계 활동 선별에 쓴다 (docs/PRD.md S1)"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -47,8 +53,15 @@ class Class(Base):
     school_year: Mapped[int] = mapped_column(comment="학년도. 3월 시작 — 2026 은 2026-03~2027-02")
     age_min: Mapped[int] = mapped_column(comment="반 최저 연령. 학년도 기준 연 나이")
     age_max: Mapped[int] = mapped_column(comment="단일 연령반은 age_min 과 같은 값")
+    teacher_name: Mapped[str] = mapped_column(
+        String(50),
+        comment="담임 이름. 계획안에 인쇄된다. teacher_id 와 다르다 (ADR-010 결과)",
+    )
+    child_count: Mapped[int | None] = mapped_column(
+        comment="현재 원아 수. 선택. 아동 명단 입력 진행률에 쓴다 (docs/PRD.md S2)"
+    )
     teacher_id: Mapped[int | None] = mapped_column(
-        comment="담임. users.id 예정. FK 와 인덱스는 인증 PR(8주차)에서"
+        comment="담임 계정. users.id 예정. FK 와 인덱스는 인증 PR(8주차)에서"
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
