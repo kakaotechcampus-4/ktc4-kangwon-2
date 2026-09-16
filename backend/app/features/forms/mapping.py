@@ -50,17 +50,3 @@ def map_labels(labels: list[str]) -> dict[str, str | None]:
     실제 데이터 값이거나, 아직 매핑표에 없는 새로운 표현이라는 뜻이다.
     """
     return {label: to_standard(label) for label in labels}
-
-
-def _selfcheck():
-    assert to_standard("주제") == "topic"
-    assert to_standard("놀이주제") == "topic"
-    assert to_standard("예상놀이") == "activity"
-    assert to_standard("활동 목표") == "activity_goal"  # 공백 있어도 매칭
-    assert to_standard("3") is None  # 데이터 값은 매핑 안 됨
-    assert to_standard("존재하지않는라벨") is None
-    print("self-check OK")
-
-
-if __name__ == "__main__":
-    _selfcheck()

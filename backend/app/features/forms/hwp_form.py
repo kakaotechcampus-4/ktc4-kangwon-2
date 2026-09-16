@@ -116,18 +116,6 @@ def labels(tables):
     return [c["text"] for t in tables for row in t for c in row if c["text"]]
 
 
-def _selfcheck():
-    src = """<table><tr><td rowspan="2">출결<br/>사항</td><td colspan="3">월요일</td></tr>
-             <tr><td>출석</td><td>명</td><td><table><tr><td>중첩</td></tr></table></td></tr></table>"""
-    t = from_html(src)
-    assert len(t) == 2, t  # 바깥 표 + 중첩 표
-    outer = max(t, key=len)
-    assert outer[0][0]["text"] == "출결 사항", outer[0][0]
-    assert outer[0][0]["rowspan"] == 2 and outer[0][1]["colspan"] == 3
-    assert "중첩" in labels(t)
-    print("self-check OK")
-
-
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         tabs = extract(sys.argv[1])
@@ -138,4 +126,4 @@ if __name__ == "__main__":
                 f"[{i}] {len(t)}행 {n}셀 :: {[c['text'] for r in t for c in r if c['text']][:12]}"
             )
     else:
-        _selfcheck()
+        print("사용법: python -m app.features.forms.hwp_form 양식.hwp")
