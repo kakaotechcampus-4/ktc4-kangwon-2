@@ -69,4 +69,25 @@ target/
 # ── 기타 ────────────────────────────────────────────
 *.sqlite3
 *.db
+*.dump
+*.sql.gz
+backups/
+# pg_dump 평문 출력. 아동 실명이 들어간다 — public repo 라 사고가 되돌려지지 않는다.
+# SQL fixture 가 필요해지면 그 경로만 ! 로 되살린다 (예: !backend/**/fixtures/*.sql).
+*.sql
 .terraform/
+
+# ── 로컬 에이전트 도구 산출물 ──────────────────────
+.omc/
+
+# ── 린트·타입 캐시 ──────────────────────────────────
+.ruff_cache/
+.mypy_cache/
+*.tsbuildinfo
+
+# ── Docker 로컬 오버라이드 ──────────────────────────
+docker-compose.override.yml
+
+# PM 개인 기획 메모 — 팀 공유 대상 아님
+.planning/
+CLAUDE.local.md
