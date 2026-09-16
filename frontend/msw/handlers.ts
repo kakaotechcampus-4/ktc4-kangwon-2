@@ -1,0 +1,158 @@
+import { http, HttpResponse } from "msw";
+import { failure, scenario } from "./scenarios";
+import { findCenter, addCenter, putConfig } from "./data/centers";
+import { findClass, listClasses, addClass } from "./data/classes";
+import { hasChild, listChildren, addChild, removeChild } from "./data/children";
+import { findPlan, addPlan, patchMonth, confirmPlan } from "./data/annual-plans";
+import type {
+  CenterInput,
+  ClassInput,
+  PlanConfig,
+  AnnualInput,
+  MonthInput,
+} from "../lib/api/types";
+const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
+const integer = (v: unknown): v is number => Number.isInteger(v);
+const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
+const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
+async function body(request: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const b = await request.json();
+    return b && typeof b === "object" && !Array.isArray(b) ? b : null;
+  } catch {
+    return null;
+  }
+}
+export const handlers = [
+  http.post("*/api/centers", async ({ request }) => {
+    console.info("[MSW] intercepted POST /api/centers");
+    const s = await scenario(request, "center");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    for (const k of ["name", "director_name", "region"]) if (!text(b[k])) return bad(k);
+    return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+  }),
+  http.post("*/api/centers/:centerId/classes", async ({ request, params }) => {
+    const s = await scenario(request, "class-create");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id)) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    for (const k of ["name", "teacher_name"]) if (!text(b[k])) return bad(k);
+    const ages = b.selected_ages;
+    if (!Array.isArray(ages) || ages.length === 0 || ages.length > 3) return bad("selected_ages");
+    if (!ages.every((a) => integer(a) && Number(a) >= 3 && Number(a) <= 5))
+      return bad("selected_ages");
+    if (new Set(ages).size !== ages.length) return bad("selected_ages");
+    if (b.child_count != null && (!integer(b.child_count) || Number(b.child_count) < 0))
+      return bad("child_count");
+    return HttpResponse.json(addClass(id, b as unknown as ClassInput), { status: 201 });
+  }),
+  http.get("*/api/centers/:centerId/classes", async ({ request, params }) => {
+    const s = await scenario(request, "classes");
+    if (s) return s;
+    const id = Number(params.centerId);
+    return findCenter(id) ? HttpResponse.json({ items: listClasses(id) }) : missing();
+  }),
+  http.get("*/api/classes/:classId/children", async ({ request, params }) => {
+    const s = await scenario(request, "children");
+    if (s) return s;
+    const id = Number(params.classId);
+    if (!findClass(id)) return missing();
+    const items = listChildren(id);
+    return HttpResponse.json({ items, count: items.length });
+  }),
+  http.post("*/api/classes/:classId/children", async ({ request, params }) => {
+    const s = await scenario(request, "child-create");
+    if (s) return s;
+    const id = Number(params.classId);
+    if (!findClass(id)) return missing();
+    const b = await body(request);
+    if (!b || !text(b.name) || Object.keys(b).some((k) => k !== "name")) return bad("name");
+    return HttpResponse.json(addChild(id, b.name.trim()), { status: 201 });
+  }),
+  http.delete("*/api/children/:id", async ({ request, params }) => {
+    const s = await scenario(request, "child-delete");
+    if (s) return s;
+    const id = Number(params.id);
+    if (!hasChild(id)) return missing();
+    removeChild(id);
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.put("*/api/centers/:centerId/plan-config", async ({ request, params }) => {
+    const s = await scenario(request, "plan-config");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id)) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (typeof b.uses_monthly !== "boolean") return bad("uses_monthly");
+    if (
+      !["SEPARATE_WEEKLY", "DAILY_LOG_PLAN_CELL", "WEEKLY_LOG_PLAN_CELL"].includes(
+        String(b.weekly_location),
+      )
+    )
+      return bad("weekly_location");
+    if (
+      typeof b.safety_edu_hours !== "number" ||
+      !Number.isFinite(b.safety_edu_hours) ||
+      b.safety_edu_hours < 0
+    )
+      return bad("safety_edu_hours");
+    putConfig(id, b as unknown as PlanConfig);
+    // TODO(BE): 응답 미확정. mock은 임시 204, FE는 body에 의존하지 않음.
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post("*/api/plans/annual", async ({ request }) => {
+    const s = await scenario(request, "annual", 1200);
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (!integer(b.class_id)) return bad("class_id");
+    if (!findClass(Number(b.class_id))) return missing();
+    if (!integer(b.school_year)) return bad("school_year");
+    if (!["FROM_SCRATCH", "FROM_UPLOAD"].includes(String(b.source))) return bad("source");
+    if (b.source === "FROM_UPLOAD" && (!integer(b.upload_id) || Number(b.upload_id) <= 0))
+      return bad("upload_id");
+    if (b.source === "FROM_SCRATCH" && b.upload_id !== null) return bad("upload_id");
+    if (request.signal.aborted) return HttpResponse.error();
+    return HttpResponse.json(addPlan(b as unknown as AnnualInput), { status: 201 });
+  }),
+  http.get("*/api/plans/annual/:id", async ({ request, params }) => {
+    const s = await scenario(request, "annual-get");
+    if (s) return s;
+    const plan = findPlan(Number(params.id));
+    return plan ? HttpResponse.json(plan) : missing();
+  }),
+  http.patch("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
+    const s = await scenario(request, "month");
+    if (s) return s;
+    const id = Number(params.id),
+      month = Number(params.month),
+      plan = findPlan(id);
+    if (!plan || !plan.months.some((m) => m.month === month)) return missing();
+    if (plan.status === "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안은 수정할 수 없습니다.");
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (typeof b.theme !== "string") return bad("theme");
+    if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
+      return bad("sub_themes");
+    return HttpResponse.json(patchMonth(id, month, b as unknown as MonthInput));
+  }),
+  http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
+    const s = await scenario(request, "confirm");
+    if (s) return s;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return missing();
+    const invalid = plan.months.find(
+      (m) => !m.theme.trim() || !m.sub_themes.length || m.sub_themes.some((t) => !t.trim()),
+    );
+    if (invalid)
+      return failure("VALIDATION_FAILED", "빈 칸을 확인해주세요.", "months." + invalid.month);
+    return HttpResponse.json(confirmPlan(id));
+  }),
+];
