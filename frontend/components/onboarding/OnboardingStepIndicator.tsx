@@ -26,7 +26,12 @@ export default function OnboardingStepIndicator({ current }: { current: Onboardi
             : st === "current"
               ? "bg-sage border-sage-ink text-ink"
               : "bg-paper border-line text-ink-soft";
-        const label = st === "done" ? "text-sage-ink" : st === "current" ? "text-ink font-bold" : "text-ink-soft";
+        const label =
+          st === "done"
+            ? "text-sage-ink"
+            : st === "current"
+              ? "text-ink font-bold"
+              : "text-ink-soft";
         const connectorDone = current === "done" || n < current;
         return (
           <li key={n} className="flex items-center">
@@ -37,13 +42,22 @@ export default function OnboardingStepIndicator({ current }: { current: Onboardi
               >
                 {st === "done" ? (
                   <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 12.5L9.5 18L20 6" stroke="currentColor" strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    <path
+                      d="M4 12.5L9.5 18L20 6"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 ) : (
                   n
                 )}
               </span>
-              <span className={`text-[11.5px] lg:text-[13.5px] whitespace-nowrap ${label}`}>{STEP_LABELS[n]}</span>
+              <span className={`text-[11.5px] lg:text-[13.5px] whitespace-nowrap ${label}`}>
+                {STEP_LABELS[n]}
+              </span>
             </div>
             {i < steps.length - 1 && (
               <span

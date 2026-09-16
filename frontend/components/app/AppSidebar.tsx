@@ -15,10 +15,22 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: "home", label: "홈", href: "/", icon: "home" },
-  { key: "plans", label: "계획안", href: "/plans/annual/new", icon: "plan", match: (p) => p.startsWith("/plans") || p==="/templates" || p==="/trends" },
-  { key: "records", label: "기록", href:"/records", icon: "record", match: p=>p==="/records"||p==="/compare" },
-  { key: "docs", label: "문서", href:"/documents", icon: "doc" },
-  { key: "eval", label: "평가제", href:"/evaluation", icon: "eval" },
+  {
+    key: "plans",
+    label: "계획안",
+    href: "/plans/annual/new",
+    icon: "plan",
+    match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
+  },
+  {
+    key: "records",
+    label: "기록",
+    href: "/records",
+    icon: "record",
+    match: (p) => p === "/records" || p === "/compare",
+  },
+  { key: "docs", label: "문서", href: "/documents", icon: "doc" },
+  { key: "eval", label: "평가제", href: "/evaluation", icon: "eval" },
 ];
 
 /**
@@ -47,7 +59,10 @@ export default function AppSidebar() {
         "fixed bottom-0 inset-x-0 flex flex-row border-t px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:static lg:inset-auto"
       }
     >
-      <Link href="/onboarding/center" className="hidden lg:flex items-center gap-2.5 px-2 pt-1.5 pb-5">
+      <Link
+        href="/onboarding/center"
+        className="hidden lg:flex items-center gap-2.5 px-2 pt-1.5 pb-5"
+      >
         <span className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-[11px] bg-sage-tint">
           <svg width="22" height="22" viewBox="0 0 30 30" aria-hidden="true">
             <circle cx="12" cy="15" r="9" className="fill-sage" />
@@ -60,22 +75,37 @@ export default function AppSidebar() {
       <nav className="contents lg:flex lg:flex-col lg:gap-1">
         {NAV.map((item) =>
           item.href ? (
-            <Link key={item.key} href={item.href} aria-current={isActive(item) ? "page" : undefined} className={`${itemBase} ${isActive(item) ? active : idle}`}>
+            <Link
+              key={item.key}
+              href={item.href}
+              aria-current={isActive(item) ? "page" : undefined}
+              className={`${itemBase} ${isActive(item) ? active : idle}`}
+            >
               <Icon name={item.icon} className="w-5 h-5 shrink-0" />
               <span>{item.label}</span>
             </Link>
           ) : (
-            <span key={item.key} className={`${itemBase} opacity-60 cursor-default`} title="준비 중인 메뉴예요">
+            <span
+              key={item.key}
+              className={`${itemBase} opacity-60 cursor-default`}
+              title="준비 중인 메뉴예요"
+            >
               <Icon name={item.icon} className="w-5 h-5 shrink-0" />
               <span>{item.label}</span>
-              <span className="hidden lg:inline ml-auto font-mono text-[10px] tracking-wide text-ink-soft border border-line rounded-full px-1.5 py-px">준비 중</span>
+              <span className="hidden lg:inline ml-auto font-mono text-[10px] tracking-wide text-ink-soft border border-line rounded-full px-1.5 py-px">
+                준비 중
+              </span>
             </span>
           ),
         )}
       </nav>
 
       <div className="contents lg:flex lg:flex-col lg:gap-1.5 lg:mt-auto">
-        <Link href="/settings" aria-current={pathname === "/settings" ? "page" : undefined} className={`${itemBase} ${idle}`}>
+        <Link
+          href="/settings"
+          aria-current={pathname === "/settings" ? "page" : undefined}
+          className={`${itemBase} ${idle}`}
+        >
           <Icon name="settings" className="w-5 h-5 shrink-0" />
           <span>설정</span>
         </Link>

@@ -40,13 +40,31 @@ function normalizeClassroom(value: unknown, index: number, usedIds: Set<string>)
     className: stringValue(raw.className),
     teacherName: stringValue(raw.teacherName),
     selectedAges: selectedAgesFor(raw),
-    ageGroup: raw.ageGroup === "3" || raw.ageGroup === "4" || raw.ageGroup === "5" || raw.ageGroup === "mixed" ? raw.ageGroup : "",
-    currentChildCount: typeof raw.currentChildCount === "number" && Number.isSafeInteger(raw.currentChildCount) && raw.currentChildCount >= 0 ? raw.currentChildCount : "",
+    ageGroup:
+      raw.ageGroup === "3" ||
+      raw.ageGroup === "4" ||
+      raw.ageGroup === "5" ||
+      raw.ageGroup === "mixed"
+        ? raw.ageGroup
+        : "",
+    currentChildCount:
+      typeof raw.currentChildCount === "number" &&
+      Number.isSafeInteger(raw.currentChildCount) &&
+      raw.currentChildCount >= 0
+        ? raw.currentChildCount
+        : "",
     guardianConsent: raw.guardianConsent === true,
     childrenSkipped: raw.childrenSkipped === true,
-    children: Array.isArray(raw.children) ? raw.children.filter(isRecord)
-      .filter((child) => stringValue(child.name).trim() !== "")
-      .map((child, i) => ({ id: uniqueId(child.id, `child-${i + 1}`, childIds), name: stringValue(child.name).trim(), ...(typeof child.code === "string" ? {code: child.code} : {}) })) : [],
+    children: Array.isArray(raw.children)
+      ? raw.children
+          .filter(isRecord)
+          .filter((child) => stringValue(child.name).trim() !== "")
+          .map((child, i) => ({
+            id: uniqueId(child.id, `child-${i + 1}`, childIds),
+            name: stringValue(child.name).trim(),
+            ...(typeof child.code === "string" ? { code: child.code } : {}),
+          }))
+      : [],
   };
 }
 
@@ -58,28 +76,31 @@ function normalizeSettings(parsed: Record<string, unknown>): ClassSettings {
     ? (parsed.classes as Partial<ClassroomEntry>[])
     : null;
 
-  const legacyClass = !rawClasses && (
-    typeof parsed.className === "string" ||
-    typeof parsed.ageGroup === "string" ||
-    Array.isArray(parsed.children)
-  )
-    ? [{
-        id: "class-1",
-        className: typeof parsed.className === "string" ? parsed.className : "",
-        ageGroup: typeof parsed.ageGroup === "string" ? parsed.ageGroup : "",
-        currentChildCount: "",
-        teacherName: "",
-        guardianConsent: false,
-        childrenSkipped: false,
-        children: Array.isArray(parsed.children) ? parsed.children : [],
-      } as Partial<ClassroomEntry>]
-    : null;
+  const legacyClass =
+    !rawClasses &&
+    (typeof parsed.className === "string" ||
+      typeof parsed.ageGroup === "string" ||
+      Array.isArray(parsed.children))
+      ? [
+          {
+            id: "class-1",
+            className: typeof parsed.className === "string" ? parsed.className : "",
+            ageGroup: typeof parsed.ageGroup === "string" ? parsed.ageGroup : "",
+            currentChildCount: "",
+            teacherName: "",
+            guardianConsent: false,
+            childrenSkipped: false,
+            children: Array.isArray(parsed.children) ? parsed.children : [],
+          } as Partial<ClassroomEntry>,
+        ]
+      : null;
 
   const classesSource = rawClasses ?? legacyClass ?? EMPTY_CLASS_SETTINGS.classes;
   const classIds = new Set<string>();
-  const classes = classesSource.length > 0
-    ? classesSource.map((c, i) => normalizeClassroom(c, i, classIds))
-    : [createEmptyClassroom()];
+  const classes =
+    classesSource.length > 0
+      ? classesSource.map((c, i) => normalizeClassroom(c, i, classIds))
+      : [createEmptyClassroom()];
 
   const characterMessages = { ...DEFAULT_CHARACTER_MESSAGES };
   if (isRecord(parsed.characterMessages)) {
@@ -96,10 +117,13 @@ function normalizeSettings(parsed: Record<string, unknown>): ClassSettings {
     regionProvince: typeof parsed.regionProvince === "string" ? parsed.regionProvince : "",
     regionDistrict: typeof parsed.regionDistrict === "string" ? parsed.regionDistrict : "",
     classes,
-    primaryClassId: classes.some(c => c.id === parsed.primaryClassId) ? String(parsed.primaryClassId) : classes[0]?.id,
-    characterEducationEnabled: typeof parsed.characterEducationEnabled === "boolean"
-      ? parsed.characterEducationEnabled
-      : true,
+    primaryClassId: classes.some((c) => c.id === parsed.primaryClassId)
+      ? String(parsed.primaryClassId)
+      : classes[0]?.id,
+    characterEducationEnabled:
+      typeof parsed.characterEducationEnabled === "boolean"
+        ? parsed.characterEducationEnabled
+        : true,
     characterMessages,
     completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,
   };
@@ -140,21 +164,39 @@ export function clearClassSettings() {
 
 /** 등록 명단을 우선 합산하고, 빈 명단만 초기 참고 인원을 사용한다. */
 export function totalChildrenFor(settings: ClassSettings | null): number {
-  return settings?.classes.reduce((total, classroom) =>
-    total + (classroom.children.length > 0 ? classroom.children.length : classroom.currentChildCount === "" ? 0 : classroom.currentChildCount), 0) ?? 0;
+  return (
+    settings?.classes.reduce(
+      (total, classroom) =>
+        total +
+        (classroom.children.length > 0
+          ? classroom.children.length
+          : classroom.currentChildCount === ""
+            ? 0
+            : classroom.currentChildCount),
+      0,
+    ) ?? 0
+  );
 }
 
 /** 계획안 생성 화면의 기본 반으로 첫 번째 반을 사용한다. */
 export function primaryClassFor(settings: ClassSettings | null): ClassroomEntry | null {
   if (!settings || settings.classes.length === 0) return null;
-  return settings.classes.find(c => c.id === settings.primaryClassId) ?? settings.classes[0] ?? null;
+  return (
+    settings.classes.find((c) => c.id === settings.primaryClassId) ?? settings.classes[0] ?? null
+  );
 }
 
 /** 로그인 계정명을 우선하고, 이름이 없는 이전 계정만 해당 계정의 반 설정을 사용한다. */
 export function planHeaderFor(settings: ClassSettings | null, teacherName: string | null): string {
   const classroom = primaryClassFor(settings);
   const name = teacherName?.trim();
-  return [settings?.orgName.trim() || "기관 미설정", name ? `${name} 선생님` : "선생님", classroom?.className.trim()].filter(Boolean).join(" · ");
+  return [
+    settings?.orgName.trim() || "기관 미설정",
+    name ? `${name} 선생님` : "선생님",
+    classroom?.className.trim(),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** 성품인사에서 특정 월의 문구만 꺼낼 때 (계획안 생성 시 활용) */

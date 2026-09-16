@@ -5,7 +5,11 @@ import { Icon } from "@/components/app/icons";
 import { calendarMarksFor, type Tone } from "@/lib/dashboard/mock";
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
-const MARK: Record<Tone, string> = { sage: "bg-sage-ink", mint: "bg-mint-strong", peach: "bg-peach-strong" };
+const MARK: Record<Tone, string> = {
+  sage: "bg-sage-ink",
+  mint: "bg-mint-strong",
+  peach: "bg-peach-strong",
+};
 
 /** 월간 달력 (UI만). 오늘 = Main 배경, 일정/기록 있는 날 = Point 컬러 dot */
 export default function CalendarCard({ today = new Date() }: { today?: Date }) {
@@ -32,19 +36,31 @@ export default function CalendarCard({ today = new Date() }: { today?: Date }) {
   return (
     <section aria-label="달력">
       <div className="flex items-center justify-between">
-        <button type="button" onClick={() => move(-1)} aria-label="이전 달" className="w-8 h-8 rounded-[10px] inline-flex items-center justify-center text-ink-soft hover:bg-cream hover:text-ink">
+        <button
+          type="button"
+          onClick={() => move(-1)}
+          aria-label="이전 달"
+          className="w-8 h-8 rounded-[10px] inline-flex items-center justify-center text-ink-soft hover:bg-cream hover:text-ink"
+        >
           <Icon name="chevronLeft" className="w-4 h-4" strokeWidth={1.8} />
         </button>
         <span className="font-mono text-[13px] font-medium text-ink">
           {ym.y}년 {ym.m + 1}월
         </span>
-        <button type="button" onClick={() => move(1)} aria-label="다음 달" className="w-8 h-8 rounded-[10px] inline-flex items-center justify-center text-ink-soft hover:bg-cream hover:text-ink">
+        <button
+          type="button"
+          onClick={() => move(1)}
+          aria-label="다음 달"
+          className="w-8 h-8 rounded-[10px] inline-flex items-center justify-center text-ink-soft hover:bg-cream hover:text-ink"
+        >
           <Icon name="chevron" className="w-4 h-4" strokeWidth={1.8} />
         </button>
       </div>
       <div className="grid grid-cols-7 gap-y-0.5 mt-2.5 font-mono tabular-nums">
         {DOW.map((d) => (
-          <div key={d} className="text-center text-[10.5px] text-ink-soft pt-1 pb-2">{d}</div>
+          <div key={d} className="text-center text-[10.5px] text-ink-soft pt-1 pb-2">
+            {d}
+          </div>
         ))}
         {cells.map((c, i) => {
           const isToday = !c.out && isThisMonth && c.n === today.getDate();
@@ -56,7 +72,12 @@ export default function CalendarCard({ today = new Date() }: { today?: Date }) {
               className={`relative h-9 flex items-center justify-center rounded-[10px] text-[12px] ${c.out ? "text-ink-soft opacity-45" : "text-ink"} ${isToday ? "bg-sage font-bold" : ""}`}
             >
               {c.n}
-              {mark && <span className={`absolute bottom-1 w-1 h-1 rounded-full ${isToday ? "bg-ink" : MARK[mark]}`} aria-hidden="true" />}
+              {mark && (
+                <span
+                  className={`absolute bottom-1 w-1 h-1 rounded-full ${isToday ? "bg-ink" : MARK[mark]}`}
+                  aria-hidden="true"
+                />
+              )}
             </div>
           );
         })}

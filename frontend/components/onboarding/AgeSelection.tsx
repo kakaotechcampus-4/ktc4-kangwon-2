@@ -9,7 +9,13 @@ import { ageSelectionLabel, type SelectedAge } from "@/lib/onboarding/types";
  */
 const AGES = [3, 4, 5] as const satisfies readonly SelectedAge[];
 
-export default function AgeSelection({ value, onChange }: { value: SelectedAge[]; onChange: (value: SelectedAge[]) => void }) {
+export default function AgeSelection({
+  value,
+  onChange,
+}: {
+  value: SelectedAge[];
+  onChange: (value: SelectedAge[]) => void;
+}) {
   const fieldId = useId();
 
   return (
@@ -24,17 +30,31 @@ export default function AgeSelection({ value, onChange }: { value: SelectedAge[]
             id={`${fieldId}-age-${age}`}
             label={`만 ${age}세`}
             checked={value.includes(age)}
-            onChange={(checked) => onChange(AGES.filter((a) => (a === age ? checked : value.includes(a))))}
+            onChange={(checked) =>
+              onChange(AGES.filter((a) => (a === age ? checked : value.includes(a))))
+            }
           />
         ))}
       </div>
 
-      <p className="text-[12.5px] xl:text-sm text-ink-soft" aria-live="polite">{ageSelectionLabel(value)}</p>
+      <p className="text-[12.5px] xl:text-sm text-ink-soft" aria-live="polite">
+        {ageSelectionLabel(value)}
+      </p>
     </fieldset>
   );
 }
 
-function AgeCheckbox({ id, label, checked, onChange }: { id: string; label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+function AgeCheckbox({
+  id,
+  label,
+  checked,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
   return (
     <label
       htmlFor={id}

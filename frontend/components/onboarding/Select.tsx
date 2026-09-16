@@ -23,7 +23,12 @@ export default function Select<V extends string>({
     <select
       {...rest}
       className={`${inputBase} appearance-none pr-10 ${className}`}
-      style={{ backgroundImage: CHEVRON_BG, backgroundRepeat: "no-repeat", backgroundPosition: "right 14px center", backgroundSize: "15px" }}
+      style={{
+        backgroundImage: CHEVRON_BG,
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "right 14px center",
+        backgroundSize: "15px",
+      }}
     >
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       {options.map((o) => (

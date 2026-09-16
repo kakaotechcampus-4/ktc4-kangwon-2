@@ -33,6 +33,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 }
 
 /** 헤더 아래 콘텐츠 여백을 통일하는 래퍼 */
-export function PageContainer({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`px-4 pt-[18px] pb-8 lg:px-10 lg:pt-[26px] lg:pb-12 min-w-0 ${className}`}>{children}</div>;
+export function PageContainer({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`px-4 pt-[18px] pb-8 lg:px-10 lg:pt-[26px] lg:pb-12 min-w-0 ${className}`}>
+      {children}
+    </div>
+  );
 }

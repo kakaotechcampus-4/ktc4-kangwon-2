@@ -12,7 +12,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ko" className={fontClassName}>
-      <body className="font-body bg-cream text-ink antialiased [word-break:keep-all]"><MockProvider>{children}</MockProvider></body>
+      <body className="font-body bg-cream text-ink antialiased [word-break:keep-all]">
+        <MockProvider>{children}</MockProvider>
+      </body>
     </html>
   );
 }

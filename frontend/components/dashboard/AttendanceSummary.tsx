@@ -10,7 +10,9 @@ export default function AttendanceSummary({ data }: { data: Attendance }) {
       </div>
       <dl className="grid grid-cols-[1.3fr_1fr_1fr] gap-3 mt-3.5 items-end tabular-nums">
         <div>
-          <dd className="font-display text-[30px] lg:text-[34px] leading-none text-ink">{data.total}</dd>
+          <dd className="font-display text-[30px] lg:text-[34px] leading-none text-ink">
+            {data.total}
+          </dd>
           <dt className="text-[12px] text-ink-soft mt-1.5">전체 원아</dt>
         </div>
         <div>
@@ -18,7 +20,9 @@ export default function AttendanceSummary({ data }: { data: Attendance }) {
           <dt className="text-[12px] text-ink-soft mt-1.5">등원</dt>
         </div>
         <div>
-          <dd className="font-display text-[22px] leading-[1.1] text-peach-strong">{data.absent}</dd>
+          <dd className="font-display text-[22px] leading-[1.1] text-peach-strong">
+            {data.absent}
+          </dd>
           <dt className="text-[12px] text-ink-soft mt-1.5">결석</dt>
         </div>
       </dl>
@@ -26,7 +30,13 @@ export default function AttendanceSummary({ data }: { data: Attendance }) {
         <span>
           출석률 <b className="text-ink">{rate.toFixed(1)}%</b>
         </span>
-        <div className="flex-1 h-1.5 rounded-full bg-line overflow-hidden" role="progressbar" aria-valuenow={Math.round(rate)} aria-valuemin={0} aria-valuemax={100}>
+        <div
+          className="flex-1 h-1.5 rounded-full bg-line overflow-hidden"
+          role="progressbar"
+          aria-valuenow={Math.round(rate)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div className="h-full rounded-full bg-sage-ink" style={{ width: `${rate}%` }} />
         </div>
       </div>

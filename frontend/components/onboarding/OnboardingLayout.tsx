@@ -40,11 +40,22 @@ export default function OnboardingLayout({
 }
 
 /** 각 단계 상단의 제목/설명 블록 */
-export function StepHeading({ title, description, eyebrow }: { title: string; description: string; eyebrow?: ReactNode }) {
+export function StepHeading({
+  title,
+  description,
+  eyebrow,
+}: {
+  title: string;
+  description: string;
+  eyebrow?: ReactNode;
+}) {
   return (
     <div>
       {eyebrow}
-      <h1 className={`font-display text-[21px] lg:text-2xl xl:text-[32px] text-ink ${eyebrow ? "mt-3" : ""}`} style={{ textWrap: "balance" }}>
+      <h1
+        className={`font-display text-[21px] lg:text-2xl xl:text-[32px] text-ink ${eyebrow ? "mt-3" : ""}`}
+        style={{ textWrap: "balance" }}
+      >
         {title}
       </h1>
       <p className="mt-2 text-[14.5px] xl:text-base leading-relaxed text-ink-soft">{description}</p>
@@ -53,7 +64,15 @@ export function StepHeading({ title, description, eyebrow }: { title: string; de
 }
 
 /** 하단 [이전] [다음] 영역 — 모바일에서는 다음 버튼이 넓게 늘어난다 */
-export function StepFooter({ left, right, note }: { left?: ReactNode; right: ReactNode; note?: ReactNode }) {
+export function StepFooter({
+  left,
+  right,
+  note,
+}: {
+  left?: ReactNode;
+  right: ReactNode;
+  note?: ReactNode;
+}) {
   return (
     <div className="flex items-center gap-3 pt-[22px] mt-1 border-t border-line flex-wrap">
       {left}

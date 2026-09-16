@@ -101,8 +101,20 @@ export const STEP_LABELS: Record<Exclude<OnboardingStep, "done">, string> = {
 };
 
 /** Explicit empty selection stays empty; only legacy values use migration. */
-export function selectedAgesFor(value:{selectedAges?:unknown;ageGroup?:unknown}):SelectedAge[]{
- if(Array.isArray(value.selectedAges))return [3,4,5].filter(age=>value.selectedAges instanceof Array && value.selectedAges.includes(age)) as SelectedAge[];
- return value.ageGroup==="mixed"?[3,4,5]:["3","4","5"].includes(String(value.ageGroup))?[Number(value.ageGroup) as SelectedAge]:[];
+export function selectedAgesFor(value: {
+  selectedAges?: unknown;
+  ageGroup?: unknown;
+}): SelectedAge[] {
+  if (Array.isArray(value.selectedAges))
+    return [3, 4, 5].filter(
+      (age) => value.selectedAges instanceof Array && value.selectedAges.includes(age),
+    ) as SelectedAge[];
+  return value.ageGroup === "mixed"
+    ? [3, 4, 5]
+    : ["3", "4", "5"].includes(String(value.ageGroup))
+      ? [Number(value.ageGroup) as SelectedAge]
+      : [];
 }
-export function ageSelectionLabel(ages:readonly SelectedAge[]):string {return ages.length?"만 "+ages.join("·")+"세반":"연령 미선택";}
+export function ageSelectionLabel(ages: readonly SelectedAge[]): string {
+  return ages.length ? "만 " + ages.join("·") + "세반" : "연령 미선택";
+}

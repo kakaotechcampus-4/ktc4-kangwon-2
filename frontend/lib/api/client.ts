@@ -3,7 +3,14 @@ export class ApiError extends Error {
   readonly body: unknown;
   constructor(status: number, body: unknown) {
     // 서버가 준 메시지는 그대로 쓰고, 없으면 사용자용 문구를 쓴다. 상태/본문은 아래 필드에 그대로 남는다.
-    super(typeof body === "object" && body !== null && "error" in body && typeof (body as {error?:{message?:unknown}}).error?.message === "string" ? (body as {error:{message:string}}).error.message : "요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.");
+    super(
+      typeof body === "object" &&
+        body !== null &&
+        "error" in body &&
+        typeof (body as { error?: { message?: unknown } }).error?.message === "string"
+        ? (body as { error: { message: string } }).error.message
+        : "요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.",
+    );
     this.name = "ApiError";
     this.status = status;
     this.body = body;
@@ -19,7 +26,9 @@ export class MswTransportError extends Error {
   readonly path: string;
   readonly body: string;
   constructor(status: number, path: string, body: string) {
-    super("개발용 API(MSW)가 요청을 가로채지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
+    super(
+      "개발용 API(MSW)가 요청을 가로채지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.",
+    );
     this.name = "MswTransportError";
     this.status = status;
     this.path = path;
@@ -28,9 +37,9 @@ export class MswTransportError extends Error {
 }
 
 const looksLikeHtml = (contentType: string | null, text: string) =>
-  (contentType ?? "").toLowerCase().includes("text/html")
-  || /<!DOCTYPE html/i.test(text)
-  || text.includes("This page could not be found");
+  (contentType ?? "").toLowerCase().includes("text/html") ||
+  /<!DOCTYPE html/i.test(text) ||
+  text.includes("This page could not be found");
 
 /** 서버 응답의 envelope/error code를 변환하지 않고 그대로 유지합니다. */
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -43,14 +52,21 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 
   // HTML 응답은 JSON API 응답이 아니다 → ApiError가 아니라 전송 오류로 분리한다.
   if (text && looksLikeHtml(response.headers.get("content-type"), text)) {
-    console.error("[API] " + method + " " + path + " → " + response.status + " (HTML)", text.slice(0, 120));
-    console.warn("[API] MSW가 이 요청을 가로채지 못했습니다(서비스워커 미제어 또는 NEXT_PUBLIC_API_MOCKING 미설정).");
+    console.error(
+      "[API] " + method + " " + path + " → " + response.status + " (HTML)",
+      text.slice(0, 120),
+    );
+    console.warn(
+      "[API] MSW가 이 요청을 가로채지 못했습니다(서비스워커 미제어 또는 NEXT_PUBLIC_API_MOCKING 미설정).",
+    );
     throw new MswTransportError(response.status, path, text);
   }
 
   let body: unknown = undefined;
   if (text) {
-    try { body = JSON.parse(text); } catch {
+    try {
+      body = JSON.parse(text);
+    } catch {
       if (response.ok) throw new Error("API returned invalid JSON");
       body = text;
     }

@@ -2,7 +2,11 @@
 import { readAccount } from "./account-store";
 const KEY = "saessak.demoSession";
 export function currentAccountEmail(): string | null {
-  try { return window.sessionStorage.getItem("saessak.accountEmail"); } catch { return null; }
+  try {
+    return window.sessionStorage.getItem("saessak.accountEmail");
+  } catch {
+    return null;
+  }
 }
 export function accountStorageKey(base: string): string {
   const email = currentAccountEmail();
@@ -15,7 +19,9 @@ export function hasDemoSession(): boolean {
   try {
     const email = currentAccountEmail();
     if (window.sessionStorage.getItem(KEY) === "active" && email && readAccount(email)) return true;
-  } catch { /* 저장소 오류도 로그인 상태로 인정하지 않는다. */ }
+  } catch {
+    /* 저장소 오류도 로그인 상태로 인정하지 않는다. */
+  }
   endDemoSession();
   return false;
 }
@@ -23,13 +29,23 @@ export function hasDemoSession(): boolean {
 export function startDemoSession(): boolean {
   try {
     const email = currentAccountEmail();
-    if (!email || !readAccount(email)) { endDemoSession(); return false; }
-    window.sessionStorage.setItem(KEY, "active"); return true;
+    if (!email || !readAccount(email)) {
+      endDemoSession();
+      return false;
+    }
+    window.sessionStorage.setItem(KEY, "active");
+    return true;
+  } catch {
+    return false;
   }
-  catch { return false; }
 }
 
 export function endDemoSession(): boolean {
-  try { window.sessionStorage.removeItem(KEY); window.sessionStorage.removeItem("saessak.accountEmail"); return true; }
-  catch { return false; }
+  try {
+    window.sessionStorage.removeItem(KEY);
+    window.sessionStorage.removeItem("saessak.accountEmail");
+    return true;
+  } catch {
+    return false;
+  }
 }

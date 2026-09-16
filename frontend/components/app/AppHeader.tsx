@@ -24,9 +24,13 @@ export default function AppHeader({
   divider?: boolean;
 }) {
   return (
-    <header className={`flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3.5 lg:gap-5 px-4 pt-[18px] pb-4 lg:px-10 lg:pt-7 lg:pb-[22px] ${divider ? "border-b border-line" : ""}`}>
+    <header
+      className={`flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3.5 lg:gap-5 px-4 pt-[18px] pb-4 lg:px-10 lg:pt-7 lg:pb-[22px] ${divider ? "border-b border-line" : ""}`}
+    >
       <div>
-        <div className="font-mono text-[12px] tracking-[.06em] text-ink-soft">{formatKoreanDate(date)}</div>
+        <div className="font-mono text-[12px] tracking-[.06em] text-ink-soft">
+          {formatKoreanDate(date)}
+        </div>
         <h1 className="font-display text-[22px] lg:text-[26px] text-ink mt-1.5 flex items-center gap-3 flex-wrap">
           {title}
           {badge}
@@ -54,13 +58,24 @@ export function HeaderTools({ placeholder = "기록, 원아, 문서 검색" }: {
     <>
       <label className="flex items-center gap-2 flex-1 lg:flex-none lg:w-[250px] min-h-[44px] px-3.5 rounded-[14px] border-[1.5px] border-line bg-paper text-ink-soft">
         <Icon name="search" className="w-[17px] h-[17px] shrink-0" strokeWidth={1.8} />
-        <input type="search" placeholder={placeholder} aria-label="검색" className="w-full bg-transparent border-0 outline-none text-[13.5px] text-ink placeholder:text-ink-soft" />
+        <input
+          type="search"
+          placeholder={placeholder}
+          aria-label="검색"
+          className="w-full bg-transparent border-0 outline-none text-[13.5px] text-ink placeholder:text-ink-soft"
+        />
       </label>
-      <button type="button" aria-label="알림" className="relative inline-flex items-center justify-center w-11 h-11 rounded-[14px] border-[1.5px] border-line bg-paper text-ink-soft hover:border-sage-ink hover:text-ink transition-colors">
+      <button
+        type="button"
+        aria-label="알림"
+        className="relative inline-flex items-center justify-center w-11 h-11 rounded-[14px] border-[1.5px] border-line bg-paper text-ink-soft hover:border-sage-ink hover:text-ink transition-colors"
+      >
         <Icon name="bell" className="w-[19px] h-[19px]" />
-        <span className="absolute top-2.5 right-[11px] w-[7px] h-[7px] rounded-full bg-peach-strong border-[1.5px] border-paper" aria-hidden="true" />
+        <span
+          className="absolute top-2.5 right-[11px] w-[7px] h-[7px] rounded-full bg-peach-strong border-[1.5px] border-paper"
+          aria-hidden="true"
+        />
       </button>
     </>
   );
 }
-

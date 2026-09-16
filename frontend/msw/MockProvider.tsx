@@ -17,21 +17,32 @@ export default function MockProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     // startMockWorker()는 서비스워커가 현재 페이지를 "제어"할 때만 resolve한다.
     // 제어하지 못하면 reject되고, 그 경우 children을 렌더하지 않아 API 요청 자체가 시작되지 않는다.
-    import("./browser").then(module => module.startMockWorker()).then(() => {
-      if (!navigator.serviceWorker?.controller) throw new Error("[MSW] 서비스워커가 이 페이지를 제어하지 않습니다.");
-      console.info("[MSW] worker started (controlled)");
-      if (mounted) setReady(true);
-    }).catch(error => {
-      console.error("[MSW] Worker initialization failed", error);
-      if (mounted) setFailed(true);
-    });
-    return () => { mounted = false; };
+    import("./browser")
+      .then((module) => module.startMockWorker())
+      .then(() => {
+        if (!navigator.serviceWorker?.controller)
+          throw new Error("[MSW] 서비스워커가 이 페이지를 제어하지 않습니다.");
+        console.info("[MSW] worker started (controlled)");
+        if (mounted) setReady(true);
+      })
+      .catch((error) => {
+        console.error("[MSW] Worker initialization failed", error);
+        if (mounted) setFailed(true);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (failed) {
     return (
-      <div role="alert" className="mx-auto flex max-w-md flex-col items-center gap-3 p-8 text-center">
-        <p className="text-[14.5px] leading-relaxed text-ink-soft">개발용 API를 준비하지 못했습니다. 페이지를 새로고침해주세요.</p>
+      <div
+        role="alert"
+        className="mx-auto flex max-w-md flex-col items-center gap-3 p-8 text-center"
+      >
+        <p className="text-[14.5px] leading-relaxed text-ink-soft">
+          개발용 API를 준비하지 못했습니다. 페이지를 새로고침해주세요.
+        </p>
         <button
           type="button"
           onClick={() => window.location.reload()}
