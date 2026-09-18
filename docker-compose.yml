@@ -40,5 +40,18 @@ services:
     ports:
       - "3000:3000"
 
+  # 서버의 유일한 입구. 보안그룹에서 80 만 열고 8000 · 3000 은 닫는다.
+  # 업로드 크기 제한이 여기 있다 — 앱보다 앞에서 끊어야 메모리·대역폭이 안 샌다.
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
 volumes:
   pgdata:
