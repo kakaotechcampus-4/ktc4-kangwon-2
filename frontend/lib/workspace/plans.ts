@@ -36,7 +36,10 @@ export function templatePlan(
   period: PeriodState,
   memo: string,
   template?: Template,
+  /** [3,5] 같은 실제 선택 연령 표기. 없으면 기존 AgeGroup 라벨을 쓴다. */
+  ageLabel?: string,
 ): PlanContent {
+  const ageText = ageLabel || AGE_LABEL[age];
   const months = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
   const annualThemes = [
     "새로운 우리 반",
@@ -84,10 +87,10 @@ export function templatePlan(
         ? template.headings
             .map(
               (h) =>
-                `${h}: ${h.includes("대상") ? AGE_LABEL[age] : h.includes("주제") ? titles[i] : "우리 반에 맞는 내용을 작성해주세요."}`,
+                `${h}: ${h.includes("대상") ? ageText : h.includes("주제") ? titles[i] : "우리 반에 맞는 내용을 작성해주세요."}`,
             )
             .join("\n")
-        : `놀이 목표: ${AGE_LABEL[age]}의 흥미와 경험을 바탕으로 ${titles[i]} 주제를 탐색해요.\n놀이 제안: 아이들이 고른 자료로 놀이하고, 다양한 표현을 시도할 수 있도록 공간을 준비해요.\n교사 지원: 안전한 자료와 충분한 시간을 제공하고, 아이들의 제안에 따라 활동을 조정해요.\n준비물: 활동에 맞는 안전한 놀이 자료\n${memo ? `교사 요청 메모: ${memo}` : "실행 후 아이들의 반응과 다음 지원을 기록해주세요."}`,
+        : `놀이 목표: ${ageText}의 흥미와 경험을 바탕으로 ${titles[i]} 주제를 탐색해요.\n놀이 제안: 아이들이 고른 자료로 놀이하고, 다양한 표현을 시도할 수 있도록 공간을 준비해요.\n교사 지원: 안전한 자료와 충분한 시간을 제공하고, 아이들의 제안에 따라 활동을 조정해요.\n준비물: 활동에 맞는 안전한 놀이 자료\n${memo ? `교사 요청 메모: ${memo}` : "실행 후 아이들의 반응과 다음 지원을 기록해주세요."}`,
     })),
   };
 }
