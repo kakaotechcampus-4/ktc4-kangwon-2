@@ -23,11 +23,16 @@ const source = {
   classId: "c1",
   childId: "a1",
 };
-// 브라우저가 보내는 요청을 흉내낸다 — Origin 은 브라우저가 붙이는 값이다.
+// 브라우저가 보내는 요청을 흉내낸다 — Origin · Host 는 브라우저와 fetch 가 붙이는 값이라
+// new Request() 로는 안 생긴다. sameOriginGuard 가 둘을 비교하므로 직접 넣는다.
 const request = (body) =>
   new Request("http://localhost:3000/api/assistant", {
     method: "POST",
-    headers: { "Content-Type": "application/json", origin: "http://localhost:3000" },
+    headers: {
+      "Content-Type": "application/json",
+      origin: "http://localhost:3000",
+      host: "localhost:3000",
+    },
     body: JSON.stringify(body),
   });
 function response(data) {
@@ -113,7 +118,7 @@ test("API rejects malformed input and oversized bodies before any provider call"
   );
   const cross = new Request("http://localhost:3000/api/assistant", {
     method: "POST",
-    headers: { origin: "https://foreign.example" },
+    headers: { origin: "https://foreign.example", host: "localhost:3000" },
     body: "{}",
   });
   assert.equal((await POST(cross)).status, 403);
@@ -126,6 +131,14 @@ test("API rejects malformed input and oversized bodies before any provider call"
     body: JSON.stringify({ task: "template", payload: { text: "안녕" } }),
   });
   assert.equal((await POST(headless)).status, 403, "Origin 이 없는 요청도 막는다");
+
+  // Origin 이 URL 형태가 아니면 파싱이 터진다. 터진 채로 통과시키지 않는다.
+  const garbled = new Request("http://localhost:3000/api/assistant", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", origin: "null", host: "localhost:3000" },
+    body: JSON.stringify({ task: "template", payload: { text: "안녕" } }),
+  });
+  assert.equal((await POST(garbled)).status, 403, "Origin 이 URL 이 아니어도 막는다");
 });
 test("concurrent body reads cannot bypass the two-request limit", async () => {
   const originalFetch = globalThis.fetch;
