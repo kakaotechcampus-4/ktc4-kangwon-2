@@ -215,3 +215,16 @@ export function matchesSchema(value: unknown, schema: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * 같은 사이트 화면에서 온 요청인지 본다. 아니면 403 응답을, 맞으면 null 을 준다.
+ *
+ * Origin 은 브라우저만 붙인다 — curl · 스크립트 · 다른 서버는 안 붙인다.
+ * 그래서 "없으면 통과"로 두면 검사가 사실상 없는 것과 같다.
+ * 두 경로 다 Vercel 로 공개 배포돼 있고 각각 OpenAI 키와 파일 파싱을 쓰므로
+ * 없는 경우도 막는다(fail-closed). 서버 간 호출이 필요해지면 별도 인증을 붙인다.
+ */
+export function sameOriginGuard(request: Request): Response | null {
+  if (request.headers.get("origin") === new URL(request.url).origin) return null;
+  return Response.json({ error: "허용되지 않은 요청입니다." }, { status: 403 });
+}

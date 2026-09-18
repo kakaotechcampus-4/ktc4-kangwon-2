@@ -23,10 +23,11 @@ const source = {
   classId: "c1",
   childId: "a1",
 };
+// 브라우저가 보내는 요청을 흉내낸다 — Origin 은 브라우저가 붙이는 값이다.
 const request = (body) =>
   new Request("http://localhost:3000/api/assistant", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", origin: "http://localhost:3000" },
     body: JSON.stringify(body),
   });
 function response(data) {
@@ -116,6 +117,15 @@ test("API rejects malformed input and oversized bodies before any provider call"
     body: "{}",
   });
   assert.equal((await POST(cross)).status, 403);
+
+  // Origin 은 브라우저만 붙인다. curl·스크립트·다른 서버는 헤더 자체가 없다.
+  // "없으면 통과"로 두면 공개 배포된 이 경로로 우리 OpenAI 키를 그냥 쓸 수 있다.
+  const headless = new Request("http://localhost:3000/api/assistant", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task: "template", payload: { text: "안녕" } }),
+  });
+  assert.equal((await POST(headless)).status, 403, "Origin 이 없는 요청도 막는다");
 });
 test("concurrent body reads cannot bypass the two-request limit", async () => {
   const originalFetch = globalThis.fetch;
