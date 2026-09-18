@@ -156,6 +156,11 @@ jobs:
       # 실제 DB 로 확인한다. 503 은 SessionLocal 을 모의해서 본다. ADR-011.
       - name: pytest
         run: pytest
+      # p0-planning 은 backend 와 별도 패키지라 위 pytest 가 보지 않는다.
+      # job 을 새로 만들지 않고 스텝으로 붙인다 — job 개수는 멘토 리뷰 후 정한다.
+      - name: planning core pytest
+        working-directory: p0-planning
+        run: pip install -e . && pytest
 
   docker:
     name: backend (docker build)
