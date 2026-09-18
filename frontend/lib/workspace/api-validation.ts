@@ -49,6 +49,17 @@ function sources(value: unknown) {
     new Set(value.map((v) => v.id)).size === value.length
   );
 }
+/** 계획안 요청의 실제 선택 연령([3,5] 등). 없을 수도 있고, 있으면 3·4·5 중 중복 없는 값만 허용한다. */
+function validSelectedAges(value: unknown) {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.length > 0 &&
+      value.length <= 3 &&
+      value.every((age) => age === 3 || age === 4 || age === 5) &&
+      new Set(value).size === value.length)
+  );
+}
 export function validAIInput(task: string, payload: unknown): boolean {
   if (!isObject(payload)) return false;
   if (task === "template") return text(payload.text);
@@ -131,6 +142,7 @@ export function validAIInput(task: string, payload: unknown): boolean {
     if (
       !["annual", "monthly", "weekly", "daily"].includes(payload.type as string) ||
       !["3", "4", "5", "mixed"].includes(payload.age as string) ||
+      !validSelectedAges(payload.ages) ||
       typeof payload.memo !== "string" ||
       payload.memo.length > 6000 ||
       !isObject(payload.period)

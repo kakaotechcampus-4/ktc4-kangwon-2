@@ -95,6 +95,30 @@ jobs:
         run: npm run format:check
       - name: next build
         run: npm run build
+      # 통합 테스트는 실제 서버가 필요하다(SAESSAK_TEST_URL이 없으면 node:test가 skip한다).
+      # build 결과를 그대로 띄우고, 준비된 것을 확인한 뒤에만 테스트를 시작한다.
+      - name: frontend tests
+        env:
+          SAESSAK_TEST_URL: http://127.0.0.1:3000
+        run: |
+          npm run start -- --hostname 127.0.0.1 --port 3000 > /tmp/saessak-next.log 2>&1 &
+          NEXT_PID=$!
+          trap 'kill $NEXT_PID 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS "$SAESSAK_TEST_URL/login" > /dev/null; then break; fi
+            if ! kill -0 "$NEXT_PID" 2>/dev/null; then
+              echo "Next.js server exited before becoming ready."
+              cat /tmp/saessak-next.log
+              exit 1
+            fi
+            sleep 1
+          done
+          if ! curl -fsS "$SAESSAK_TEST_URL/login" > /dev/null; then
+            echo "Next.js server did not become ready."
+            cat /tmp/saessak-next.log
+            exit 1
+          fi
+          npm test
 
   test:
     name: backend (pytest)
