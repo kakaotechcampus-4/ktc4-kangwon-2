@@ -9,6 +9,7 @@ from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import ItemId, PlanId
+from ..domain.theme_reference import ThemeCatalog
 
 TPlan = TypeVar("TPlan")
 
@@ -20,6 +21,15 @@ class PlanRepository(Protocol, Generic[TPlan]):
     def save(self, plan_id: PlanId, plan: TPlan) -> None: ...
 
     def get(self, plan_id: PlanId) -> TPlan | None: ...
+
+
+@runtime_checkable
+class ThemeReferenceRepository(Protocol):
+    """Read an exact versioned Theme Catalog without choosing persistence."""
+
+    def get_catalog(
+        self, catalog_id: str, catalog_version: str
+    ) -> ThemeCatalog | None: ...
 
 
 @runtime_checkable
