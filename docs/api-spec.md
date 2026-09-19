@@ -68,14 +68,21 @@ Content     application/json
 **Request**
 
 ```json
-{ "name": "서충주어린이집", "director_name": "김원장", "region": "충청북도 충주시" }
+{ "name": "서충주어린이집", "director_name": "김원장",
+  "region_sido": "충청북도", "region_sigungu": "충주시" }
 ```
 
 **Response** `201`
 
 ```json
-{ "id": 1, "name": "...", "director_name": "...", "region": "...", "created_at": "..." }
+{ "id": 1, "name": "...", "director_name": "...",
+  "region_sido": "...", "region_sigungu": "...", "created_at": "..." }
 ```
+
+**지역을 두 값으로 받는다.** PRD S1 이 「시·도 → 시·군·구 2단」 드롭다운으로 정했고,
+화면이 두 번 고르는데 서버가 한 문자열로 받으면 붙였다 쪼갰다를 두 번 한다.
+활동 쪽 지역 축이 정해질 때 「충청북도 전체」와 「충주시만」을 구분해야 하는데,
+`"충청북도 충주시"` 한 덩어리로는 못 나눈다.
 
 **UI states**
 
@@ -500,24 +507,29 @@ POST   /api/centers/{center_id}/forms     양식 등록 (§8)
    → 멘토 리뷰(PR #17) — "각각의 쓰기 생명주기가 다르니 하나의 테이블에 넣지 말 것"
    → Evidence · Generation · Audit 을 분리한다
 
-□  evidence.source_id 의 작명 규칙                 담당 미정
+□  evidence.source_id 의 작명 규칙                 성진
    → theme-ref-2026 처럼 자료마다 불변 슬러그
-□  generation.rule_id · rule_version 의 발급 주체   담당 미정
-   → RULE_ONLY · RULE_LLM 이면 둘 다 필수다
-□  가명 Pool 의 실제 목록                           담당 미정
-   → backend/resources/.  받침 있는 한글 이름
-□  LLM 호출 위치와 예산 카운터                       팀 논의
+□  generation.rule_id · rule_version 의 발급 주체   하민
+   → 규칙 엔진이 발급한다. RULE_ONLY · RULE_LLM 이면 둘 다 필수다
+■  가명 Pool 의 실제 목록                           완료 — PM
+   → backend/resources/pseudonyms.yaml.  받침 있음 30 · 없음 30
+   → 원본 이름의 받침과 같은 쪽에서 뽑는다. 다른 쪽에서 뽑으면 복원 후 조사가 틀어진다
+□  LLM 호출 위치와 예산 카운터                       하민 · 성진 (7주차 논의)
    → shared/llm 을 거치지 않으면 70% 경고·90% 차단이 동작하지 않는다
+□  재생성 횟수 상한                                 하민 · 성진 (7주차 논의)
+   → 검사(ADR-014)가 위반을 내면 몇 번까지 다시 만드나. 예산과 같이 정한다
 ```
 
 **위 세 명은 원래 담당이다** — 「각 Response 필드명」·「생성 소요 시간」은 이전 판에 적혀 있었고,
 「Audit 테이블」은 PR #17 답변(*"해당 기능 담당했던 하민, 성진에게 전달하여…"*)에 근거한다.
-**아래 「담당 미정」은 이번에 새로 생긴 항목이라 PM 이 배정한다.**
+**2026-09-19 PM 배정 완료.** 「담당 미정」이었던 4건을 위와 같이 나눴다.
 
 **이 계약이 요구하는데 DB 에 아직 없는 것** — 마이그레이션 PR 이 따로 필요하다.
 체크리스트에 안 적으면 담당자가 필드 갭을 통째로 놓친다.
 
 ```
+centers.region_sido            VARCHAR                   §1  region 을 둘로 나눈다
+centers.region_sigungu         VARCHAR                   §1  기존 region 컬럼은 제거
 classes.consent_confirmed_at   TIMESTAMPTZ nullable      §2  consent_confirmed
 children.code                  VARCHAR                   §2-1
 UNIQUE(class_id, code)         children 제약              §2-1
