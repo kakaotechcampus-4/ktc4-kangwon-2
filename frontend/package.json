@@ -8,10 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "node --test"
   },
   "dependencies": {
+    "mammoth": "^1.12.3",
     "next": "16.3.4",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -19,9 +22,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.5.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "jszip": "^3.10.2",
+    "msw": "^2.15.0",
+    "postcss": "^8.5.28",
     "prettier": "^3.9.6",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5"
   }
 }

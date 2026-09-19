@@ -57,7 +57,24 @@ RDS 가 승인되면 `DATABASE_URL` 한 줄만 바꾸면 된다. 어댑터처럼
 
 - `pgdata` named volume 이 필수다. 없으면 `docker compose down` 한 번에 DB 가 초기화된다.
 - `ports: 5432:5432` 는 로컬 개발에 필요하지만 서버에서는 불필요하다.
-  서버용 override 파일로 덮는다.
+  **다만 override 파일로 「덮이지」 않는다.** `docker compose` 는 `ports`·`volumes`
+  같은 리스트를 **합친다**. 실측:
+
+  ```
+                base        override      합친 결과
+  image      postgres:15   postgres:16   postgres:16     덮인다
+  restart       "no"         always        always        덮인다
+  ports         5432          9999      5432 + 9999      ★ 둘 다 남는다
+  ```
+
+  덮으려면 `ports: !override` 를, 없애려면 `!reset` 을 쓴다(Compose v2.24+).
+  이걸 모르고 override 만 두면 **서버에 5432 가 열린 채로 남는다.**
+
+- **소스 마운트를 base `docker-compose.yml` 에 두지 않는다.** `override` 에만 둔다.
+  base 에 `- ./backend:/app` 이 있으면 서버가 GHCR 이미지를 받아도 마운트가
+  이미지 안 `/app` 을 체크아웃한 코드로 덮어쓴다. **이미지 태그로 롤백해도
+  실제로 도는 코드가 안 바뀐다** — 태그는 맞는데 동작만 다른, 찾기 어려운 사고다.
+  서버에는 `docker-compose.override.yml` 을 두지 않는다.
 - **서버를 「중지」하지 않는다. 재부팅만.** Elastic IP 가 불가해서 중지 후 시작하면 IP 가 바뀐다.
 - 배포는 SSH agent forwarding + 수동(5주차) → GHCR pull(6주차).
   IAM 키와 Deploy key 가 둘 다 막혀서 나온 경로다.
