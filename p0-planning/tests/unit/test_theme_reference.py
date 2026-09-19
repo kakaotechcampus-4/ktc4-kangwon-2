@@ -19,6 +19,7 @@ def _candidate(
     months: tuple[int, ...] = (9,),
     ages: tuple[int, ...] = (3, 4, 5),
     allow_mixed: bool = True,
+    require_all_supported: bool = True,
     evidence_months: tuple[int, ...] = (9,),
 ) -> ThemeCandidate:
     return ThemeCandidate(
@@ -27,7 +28,7 @@ def _candidate(
         applicable_months=months,
         supported_ages=ages,
         allow_mixed_age=allow_mixed,
-        mixed_age_requires_all_supported=True,
+        mixed_age_requires_all_supported=require_all_supported,
         source_version="v-test",
         origin_id="sample.test",
         evidence=tuple(
@@ -92,6 +93,24 @@ def test_mixed_age_flag_must_allow_a_mixed_selection():
 
     assert candidate.supports_age_set(frozenset({3}))
     assert not candidate.supports_age_set(frozenset({3, 4}))
+
+
+def test_current_p0_policy_requires_all_mixed_ages_to_be_supported():
+    candidate = _candidate(ages=(3, 4, 5))
+
+    assert candidate.supports_age_set(frozenset({3}))
+    assert candidate.supports_age_set(frozenset({3, 4}))
+    assert candidate.supports_age_set(frozenset({3, 4, 5}))
+    assert not candidate.supports_age_set(frozenset({2, 3}))
+    assert not candidate.supports_age_set(frozenset())
+
+
+def test_current_p0_policy_rejects_disabling_all_supported_requirement():
+    with pytest.raises(
+        InvalidDomainValueError,
+        match="mixed_age_requires_all_supported must be true",
+    ):
+        _candidate(require_all_supported=False)
 
 
 def test_evidence_strength_counts_only_the_requested_month():
