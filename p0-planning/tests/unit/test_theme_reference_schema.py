@@ -140,6 +140,19 @@ def test_duplicate_theme_ids_are_reported_as_schema_failure():
         parse_theme_reference_payload(payload)
 
 
+def test_false_mixed_age_policy_is_reported_as_schema_failure():
+    payload = _payload()
+    payload["themes"][0]["age_conditions"][
+        "mixed_age_requires_all_supported"
+    ] = False
+
+    with pytest.raises(
+        ThemeReferenceSchemaError,
+        match="mixed_age_requires_all_supported must be true",
+    ):
+        parse_theme_reference_payload(payload)
+
+
 @pytest.mark.parametrize("payload", [None, [], "not an object", 42])
 def test_non_object_payload_is_rejected(payload):
     with pytest.raises(ThemeReferenceSchemaError):

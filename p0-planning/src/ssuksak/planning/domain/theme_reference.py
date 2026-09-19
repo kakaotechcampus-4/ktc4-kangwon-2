@@ -125,6 +125,11 @@ class ThemeCandidate:
             raise InvalidDomainValueError(
                 "ThemeCandidate.mixed_age_requires_all_supported must be a boolean"
             )
+        if not self.mixed_age_requires_all_supported:
+            raise InvalidDomainValueError(
+                "ThemeCandidate.mixed_age_requires_all_supported must be true "
+                "for the current P0 policy"
+            )
         if not isinstance(self.curriculum_links, tuple):
             raise InvalidDomainValueError(
                 "ThemeCandidate.curriculum_links must be a tuple"
@@ -140,8 +145,6 @@ class ThemeCandidate:
             return False
         if len(ages) >= 2 and not self.allow_mixed_age:
             return False
-        if len(ages) >= 2 and self.mixed_age_requires_all_supported:
-            return ages.issubset(self.supported_ages)
         return True
 
     def evidence_strength_for_month(self, calendar_month: int) -> int:
