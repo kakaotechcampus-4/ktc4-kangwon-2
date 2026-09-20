@@ -46,16 +46,20 @@ Content     application/json
 |---|---|---|
 | `VALIDATION_FAILED` | 422 | 입력값이 규격 밖 |
 | `NOT_FOUND` | 404 | 대상 없음 |
-| `GATE_BLOCKED` | 409 | 층 게이트 — 연간이 확정 전인데 월간 요청 |
+| `GATE_BLOCKED` | 409 | 층 게이트 — 아래 층이 확정 전인데 위 층을 요청 (§4 월간 · §11 주간 보육일지 · `stale` 문서 확정) |
 | `ALREADY_EXISTS` | 409 | 같은 대상에 이미 있음. 조회로 찾는다 |
-| `ALREADY_CONFIRMED` | 409 | 확정된 계획안을 수정하려 함. 되돌리기는 P1 |
+| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 되돌리기는 P1 |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 팀 LLM 예산 한도 도달. 운영 문의. **아직 낼 수 있는 서버가 없다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
+| `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§11) |
 
-**409 가 셋이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
+**409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
 "연간부터 확정해주세요" / "이미 있습니다, 기존 것으로 이동" / "확정된 문서는 수정할 수 없어요".
+
+**`PUT /api/documents/{id}` 의 `updated_at` 불일치도 409 다.** 위 셋과 달라서
+`code` 는 `ALREADY_EXISTS` 가 아니라 **`STALE_WRITE`** 를 쓴다 — 아래 표에 추가한다.
 
 > **`LLM_BUDGET_EXCEEDED` 는 예약된 코드다.** 지금 LLM 을 부르는 유일한 곳이
 > `frontend/app/api/assistant/route.ts`(Next.js 라우트)라 **`shared/llm` 토큰 카운터를 거치지 않는다.**
@@ -91,7 +95,7 @@ Content     application/json
 | loading | 저장 중 — 버튼 비활성 |
 | empty | 해당 없음 |
 | success | S2 로 이동 |
-| error | `VALIDATION_FAILED` — 입력값 유지, 해당 칸에 표시 |
+| error | `VALIDATION_FAILED` 422 — 입력값 유지, 해당 칸에 표시 |
 
 **중복 생성을 막지 않는다.** 이름만으로 `UNIQUE` 를 걸면 다른 지역의 같은 이름 원이 막힌다.
 계정 단위 판단은 인증이 붙는 P1 이다.
@@ -524,7 +528,7 @@ POST   /api/centers/{center_id}/forms     양식 등록 (§8)
 ```
 
 **`class_name` · `child_name` 을 같이 준다.** 목록 화면이 반·아이 이름을 그리는데
-매번 §2 · §2-1 을 다시 부르면 N+1 이 된다.
+매번 §2 · §2-1 을 다시 부르면 N+1 이 된다. §11 도 같다.
 
 **`child_code` 도 같이 준다.** 화면에 배지로 보여준다 — 교사가 "LLM 에는 이 이름이 나간다"를 안다.
 
@@ -536,7 +540,7 @@ POST   /api/centers/{center_id}/forms     양식 등록 (§8)
 
 **`context` 는 선택이다.** 빈 문자열을 허용한다 — 상황을 안 적고 사실만 남기는 교사가 있다.
 
-**`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED`.
+**`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED` 422.
 
 **조회** `GET /api/observations?class_id=1&child_id=5&from=2026-09-01&to=2026-09-30`
 → `{ "items": [...] }`. 네 값 모두 선택이고, 없으면 교사가 접근 가능한 전체다.
@@ -628,10 +632,32 @@ assessment   영유아 평가      아동 단위   기간
 ```
 
 **`사실` 은 `sources` 의 `text` 를 `\n\n` 으로 이은 것과 **정확히 같아야 한다**.**
-한 글자라도 다르면 `VALIDATION_FAILED`. **문자열 비교이고 모델이 판정하지 않는다.**
+한 글자라도 다르면 `VALIDATION_FAILED` 422. **문자열 비교이고 모델이 판정하지 않는다.**
 
 **`해석` · `지원` 은 관찰되지 않은 것을 쓰지 않는다.** 행동 · 발언 · 성취 · 빈도 · 진단을
 추가하면 안 된다. 각 항목의 `source_ids` 는 **실제로 근거가 된 `sources[].id` 만** 담는다.
+
+### `source_ids` 가 가리키는 것은 `kind` 마다 다르다
+
+```
+dailyLog      관찰 기록 id           §10
+observation   관찰 기록 id           §10
+assessment    관찰 기록 id           §10
+weeklyLog     확정된 일일 보육일지 id   §11   ← 관찰 기록이 아니다
+```
+
+**주간 보육일지는 일일 보육일지를 근거로 쓴다.** 관찰 기록에서 바로 뽑지 않는다.
+층이 하나 더 있는 셈이다 — §4 의 「연간이 확정돼야 월간」과 같은 구조다.
+
+```
+관찰 기록  →  일일 보육일지  →  주간 보육일지
+```
+
+**근거로 쓸 일일 보육일지는 `CONFIRMED` 여야 한다.** `DRAFT` 를 근거로 쓰면
+그게 바뀔 때 주간이 통째로 흔들린다. 확정 전이면 `GATE_BLOCKED` 409 다.
+
+**문서를 근거로 쓸 때 `sources[].text` 는 그 문서의 `사실` 항목이다.**
+`해석` · `지원` 은 담지 않는다 — 해석 위에 해석을 쌓지 않는다.
 
 ### 거절 규칙
 
@@ -643,49 +669,120 @@ source_ids 에 중복이 있다
 source 의 class_id 가 문서와 다르다
 child_id 가 있는데 source 의 child_id 가 다르다
 source 의 date 가 start ~ end 밖이다
+sections 의 heading 이 사실 · 해석 · 지원 이 아니다
 sections 에 빈 body 가 있다
+해석 · 지원이 20자 미만이다
+해석 · 지원이 "잘 지원하겠습니다" 류의 상투어로만 돼 있다
 ```
 
-**전부 `VALIDATION_FAILED` 400 이다.**
+**마지막 둘은 화면이 이미 막고 있다.** 서버도 같이 막아야 API 를 직접 부를 때 뚫리지 않는다.
+「활동 · 방법 · 후속 관찰」이 들어가야 교사가 그대로 제출할 수 있다.
+
+**전부 `VALIDATION_FAILED` 422 다.** `fields` 에 어디가 틀렸는지 담는다 — `sections.해석` · `sources.3`.
 
 ### `stale` — 원본이 바뀌었다는 표시
 
 ```
-false   원본 기록과 일치한다
-true    §10 에서 원본이 수정·삭제됐다.  교사가 다시 봐야 한다
+false   원본과 일치한다
+true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 ```
 
-**`stale` 이 `true` 면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
+**전파는 연쇄다.** 관찰 기록 하나를 고치면 그 아래가 전부 `stale` 이 된다.
+
+```
+관찰 기록 수정
+      ↓
+그 기록을 근거로 쓴 일일 보육일지        stale
+      ↓
+그 일일 보육일지를 근거로 쓴 주간 보육일지  stale
+      ↓
+그 기록을 근거로 쓴 영유아 평가          stale
+```
+
+**멈출 때까지 따라간다.** 화면의 `invalidateDependents()` 가 이미 그렇게 돈다.
+
+**판정 기준 — 하나라도 다르면 `stale`**
+
+```
+근거가 관찰 기록일 때    fact · date · class_id · child_id
+근거가 문서일 때         사실 항목 · class_id · child_id · start · status
+근거가 사라졌을 때       "원본 없음"
+```
+
+**`stale` 이면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
+**문서를 지우지 않는다** — 교사가 보고 판단한다.
 
 ### 상태와 출처
 
 ```
-status   DRAFT → CONFIRMED          확정하면 수정 불가
-origin   AI | TEACHER | IMPORT      누가 만들었나
+status   DRAFT → CONFIRMED          한 방향이다.  되돌리기는 P1
+origin   AI                         LLM 이 초안을 만들었다
+         TEACHER                    교사가 직접 썼다
+         TEMPLATE                   기관 양식에서 뼈대만 만들었다 (§8)
+         IMPORT                     교사가 기존 문서를 올렸다
 ```
 
-**`IMPORT` 는 교사가 기존 문서를 올린 것이다.** `sources` 가 비고 `sections` 는
-`첨부 원문` 하나뿐이다. 위 거절 규칙을 적용하지 않는다.
+**`CONFIRMED` 를 수정하면 `ALREADY_CONFIRMED` 409 다.**
+
+**`IMPORT` 는 거절 규칙을 적용하지 않는다.** `sources` 가 비고 `sections` 는
+`첨부 원문` 하나뿐이다. 우리가 만든 문서가 아니라 증빙이다.
+
+### 동시에 고치면 뒤엣것이 이긴다 — 막는다
+
+**`PUT` 은 `updated_at` 을 같이 받는다.** 서버 값과 다르면 `STALE_WRITE` 409 로 거절한다.
+
+```json
+{ "sections": [...], "review_note": "...", "updated_at": "2026-09-22T10:31:00+09:00" }
+```
+
+**두 화면을 열어 두고 고치면 한쪽 수정이 조용히 사라진다.** 교사가 제출할 문서라 덮어쓰기를 허용하지 않는다.
+화면의 `assertDocumentUnchanged()` 가 같은 일을 하고 있다.
 
 ### 나머지 엔드포인트
 
 ```
-GET    /api/documents?kind=&class_id=&child_id=&status=       → { "items": [...] }
-GET    /api/documents/{id}                                    단건
-PUT    /api/documents/{id}                                    sections · review_note 만
-POST   /api/documents/{id}/confirm                            DRAFT → CONFIRMED
-DELETE /api/documents/{id}                                    204
+GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": [...] }
+GET    /api/documents/{id}                                       단건
+GET    /api/documents/{id}/related                               겹치는 확정 문서
+PUT    /api/documents/{id}                                       title · sections · review_note
+POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED
+DELETE /api/documents/{id}                                       204
 ```
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
-교사가 사실을 고치려면 §10 에서 원본을 고친다.
+교사가 사실을 고치려면 §10 에서 원본을 고친다. 그러면 이 문서가 `stale` 이 되고 다시 검토한다.
+
+**`title` 은 서버가 만든다.** `{아이 이름} {문서 종류} ({기간})` 이다.
+교사가 바꾸고 싶으면 `PUT` 으로 보낸다 — 그때만 클라이언트 값을 쓴다.
+
+**`GET /api/documents` 는 `sections` · `sources` 를 담지 않는다.** 목록이라 무거워진다.
+단건 조회에서만 준다. 목록에는 `stale` · `status` · `sources_count` 를 담는다.
 
 | | |
 |---|---|
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 400 · `GATE_BLOCKED` 409 · `AI_UNAVAILABLE` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+
+### 겹치는 문서를 찾아준다 — `/compare` 화면
+
+```
+GET /api/documents/{id}/related    → { "items": [...] }
+```
+
+**같은 반 · 같은 아이 · 기간이 겹치는 `CONFIRMED` 문서를 준다.**
+교사가 "이 관찰일지가 그 주 보육일지랑 안 맞는데" 를 눈으로 대조한다.
+
+**문서 종류마다 있어야 할 짝이 다르다.**
+
+```
+weeklyLog     dailyLog
+assessment    observation · dailyLog
+그 외          dailyLog · observation
+```
+
+**없다고 막지 않는다. 화면에 "아직 없음" 으로 표시만 한다.**
 
 ### 개인정보
 
@@ -743,9 +840,11 @@ plans · plan_items             연간계획안 본체             §4 · §5 ·
 greetings                      enabled + 12개월 items      §3  (7주차)
 forms                          원 귀속 양식                §8  (7주차)
 observations                   관찰 기록 본체              §10
-documents                      일지 본체                  §11
+INDEX(class_id, date)          observations 조회           §10  목록이 반·기간으로 거른다
+documents                      일지 본체 + stale 플래그      §11
 document_sections              사실 · 해석 · 지원           §11
 document_sources               생성 시점의 원문 사본        §11  원본이 바뀌어도 남아야 한다
+INDEX(source_kind, source_id)  document_sources            §11  stale 전파가 역방향으로 찾는다
 ```
 
 `classes.school_year` 는 **컬럼이 이미 있다.** 서버가 채우는 로직만 만들면 된다.
