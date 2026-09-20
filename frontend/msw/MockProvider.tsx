@@ -15,14 +15,13 @@ export default function MockProvider({ children }: { children: ReactNode }) {
     console.info("[MSW] mocking:", process.env.NEXT_PUBLIC_API_MOCKING ?? "(unset)");
     if (!enabled) return;
     let mounted = true;
-    // startMockWorker()는 서비스워커가 현재 페이지를 "제어"할 때만 resolve한다.
-    // 제어하지 못하면 reject되고, 그 경우 children을 렌더하지 않아 API 요청 자체가 시작되지 않는다.
+    // startMockWorker()는 서비스워커가 실제 MSW health 요청(/api/__msw_health)을 가로채는 것까지
+    // 확인한 뒤 resolve한다. 실패하면 reject되고, 그 경우 children을 렌더하지 않아
+    // API 요청 자체가 시작되지 않는다. controller 존재 여부는 최종 판정 기준이 아니다.
     import("./browser")
       .then((module) => module.startMockWorker())
       .then(() => {
-        if (!navigator.serviceWorker?.controller)
-          throw new Error("[MSW] 서비스워커가 이 페이지를 제어하지 않습니다.");
-        console.info("[MSW] worker started (controlled)");
+        console.info("[MSW] worker started (interception verified)");
         if (mounted) setReady(true);
       })
       .catch((error) => {

@@ -1,10 +1,9 @@
 import { analyzeText } from "@/lib/workspace/model";
-import { BodyLimitError, readLimitedBody } from "@/lib/workspace/api-validation";
+import { BodyLimitError, readLimitedBody, sameOriginGuard } from "@/lib/workspace/api-validation";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
-    return Response.json({ error: "허용되지 않은 요청입니다." }, { status: 403 });
+  const blocked = sameOriginGuard(request);
+  if (blocked) return blocked;
   if (Number(request.headers.get("content-length") || 0) > 6 * 1024 * 1024)
     return Response.json({ error: "5MB 이하 파일을 업로드해주세요." }, { status: 413 });
   try {
