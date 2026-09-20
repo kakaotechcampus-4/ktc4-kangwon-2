@@ -1,0 +1,12 @@
+/* 폰트 @font-face 는 next/font/local 이 아니라 여기서 온다 — unicode-range 를 줘야 해서다. */
+@import "../styles/pretendard-dynamic-subset.css";
+@import "../styles/gowun-dodum-dynamic-subset.css";
+@import "../styles/plan-generator-tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  word-break: keep-all;
+}

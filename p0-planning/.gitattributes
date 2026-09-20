@@ -1,0 +1,3 @@
+# Approved JSON artifacts are frozen by their raw SHA-256 bytes.
+# Keep their representation stable across Windows, Linux, CI, and containers.
+*.json text eol=lf

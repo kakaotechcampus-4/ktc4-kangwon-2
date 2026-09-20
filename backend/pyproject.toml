@@ -14,10 +14,13 @@ dependencies = [
   "six",
   "olefile",
   "lxml",
+  "python-multipart",
+  # 규칙 엔진이 resources/rules/*.yaml 을 읽는다 (ADR-005).
+  "pyyaml",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff==0.16.6"]
+dev = ["ruff==0.16.6", "pytest", "httpx"]
 
 [build-system]
 requires = ["hatchling"]

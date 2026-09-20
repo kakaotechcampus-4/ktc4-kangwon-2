@@ -33,6 +33,8 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 
 ## backend
 
+`tests/` — pytest. `/health/ready` 200 검증에 postgres 가 필요하다.
+
 ### 루트 파일
 
 | 파일 | 무엇을 두는가 | 언제 고치는가 |
@@ -82,8 +84,8 @@ app/
 **한 feature 는 다른 feature 를 직접 import 하지 않는다.** 다른 기능의 데이터가
 필요하면 그 소유자의 service 를 통한다.
 
-**파일을 미리 만들어 두지 않는다.** 지금 각 폴더에는 `__init__.py` 하나뿐이다.
-아래 파일은 필요해진 사람이 그때 추가한다.
+**파일을 미리 만들어 두지 않는다.** `centers` 와 `activities` 에는 DB 테이블이
+필요해져 `models.py` 가 생겼다. 아래 파일은 필요해진 사람이 그때 추가한다.
 
 | 파일 | 언제 만드는가 |
 |---|---|
@@ -151,22 +153,28 @@ JSON · YAML 로 둔다. **이런 데이터를 코드에 하드코딩하지 않�
 | 경로 | 무엇을 두는가 |
 |---|---|
 | `env.py` | 모델 목록 연결. `DATABASE_URL` 을 환경변수에서 읽는다 |
-| `versions/` | 마이그레이션 파일. 아직 비어 있다(`.gitkeep` 만 있음) |
+| `versions/` | 마이그레이션 파일. 초기 마이그레이션 1개가 있다 |
 | `script.py.mako` | 마이그레이션 파일 템플릿 |
 
 설정 파일 `alembic.ini` 는 이 폴더가 아니라 `backend/` 바로 아래에 있다.
 
 ### models.py 를 만들면 env.py 도 같이 고친다
 
-`env.py` 에는 지금 `Base` 만 연결돼 있다. 새 `models.py` 를 만들면 **같은 PR 에서**
-import 한 줄을 추가한다.
+`env.py` 에는 지금 `Base` 와 두 모델 모듈이 연결돼 있다. 새 `models.py` 를 만들면
+**같은 PR 에서** import 한 줄을 추가한다.
 
 ```python
+from app.features.activities import models as _activities  # noqa: F401
 from app.features.centers import models as _centers  # noqa: F401
 ```
 
-자동 스캔을 쓰지 않는다. **이 줄을 빠뜨리면 `--autogenerate` 가 해당 테이블을
-"코드에 없다"고 판단해 `DROP TABLE` 마이그레이션을 만든다.**
+자동 스캔을 쓰지 않는다. 이 줄을 빠뜨리면 상황에 따라 실패 방향이 다르다.
+
+- **새 모델을 추가할 때 — 빈 마이그레이션이 생긴다.** 메타데이터에도 DB 에도 없으니
+  차이가 0 이다. 에러 없이 성공한 것처럼 끝나므로 **생성된 파일을 열어 `create_table`
+  이 있는지 확인한다.**
+- **이미 적용된 테이블의 import 를 지웠을 때 — `DROP TABLE` 이 생긴다.** DB 에는
+  있는데 코드에 없다고 판단한다.
 
 ### 마이그레이션 생성 절차
 
@@ -184,14 +192,18 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
 ```bash
 # 레포 루트에서 실행한다. backend/ 안에서 실행하면 alembic.ini not found 로 실패한다
 docker compose run --rm -v "$(pwd)/backend:/app" --user "$(id -u):$(id -g)" backend \
-  alembic revision --autogenerate -m "add centers table"
+  alembic revision --autogenerate -m "add plans table"
 ```
 
 일회성 컨테이너에 `-v` 로 호스트의 `backend/` 를 마운트하므로 생성 파일이
 호스트의 `backend/alembic/versions/` 에 남는다. `--user` 는 그 파일의 소유자를
-실행한 사람으로 맞추기 위한 것이다 — 컨테이너가 root 로 돌아서(`Dockerfile` 에
-`USER` 지시가 없다) 빼면 root 소유로 생길 수 있다. 호스트에 파일을 만드는 명령은
-`revision` 뿐이므로 나머지 명령에는 붙이지 않는다.
+실행한 사람으로 맞추기 위한 것이다. `Dockerfile` 이 `USER app`(uid 1000)을 지정하므로
+root 소유로 생기지는 않지만, 호스트 uid 가 1000 이 아닌 환경(macOS 는 보통 501)에서는
+빼면 소유자가 어긋난다. 서버의 `ubuntu` 가 uid 1000 이라 거기서는 없어도 맞는다.
+호스트에 파일을 만드는 명령은 `revision` 뿐이므로 나머지 명령에는 붙이지 않는다.
+
+실측: macOS(uid 501)에서 `--user "$(id -u):$(id -g)"` 로 생성하면 소유자가
+실행한 사용자로 찍힌다.
 
 **적용하기 전에 생성된 파일을 열어서 확인한다.** 의도한 `op.create_table` 이 다 있고
 없어야 할 `op.drop_table` 이 없는지, `downgrade()` 가 비어 있지 않은지 본다. 위의
@@ -210,7 +222,8 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 마운트가 없어 방금 만든 마이그레이션을 못 보고, 그런데도 **아무것도 적용하지 않고
 성공한 것처럼 끝난다.**
 
-초기 마이그레이션은 만들지 않았다. 첫 모델을 추가하는 사람이 만든다.
+초기 마이그레이션 `20260914_1409_979d1991638a_initial_schema.py` 가
+`centers` · `classes` · `children` · `activities` 테이블을 만든다.
 
 ---
 
@@ -243,7 +256,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 
 | 파일 | 무엇을 하는가 |
 |---|---|
-| `.github/workflows/ci.yml` | PR 마다 Ruff · ESLint · Prettier · `next build` |
+| `.github/workflows/ci.yml` | PR 마다 Ruff · pytest · alembic check · backend 이미지 빌드 · ESLint · Prettier · `next build` |
 | `.github/workflows/deploy.yml` | `main` push 시 배포. 아직 골격만 |
 | `.github/pull_request_template.md` | PR 템플릿 |
 
