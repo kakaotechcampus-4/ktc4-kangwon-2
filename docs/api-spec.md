@@ -490,10 +490,216 @@ POST   /api/centers/{center_id}/forms     양식 등록 (§8)
 
 **hwp 내보내기에 출처 마커가 섞이면 안 된다.** 제출 문서다 — 7주차 계약을 쓸 때 다시 확인한다.
 
-**관찰일지·문서 보관함·평가제 화면은 P1 이후다.** 6주차 화면은 선행 구현이며 계약 대상이 아니다.
+**관찰일지·보육일지는 §10 · §11 로 계약을 썼다(7주차).** 6주차 화면이 선행 구현이고,
+그 화면이 쓰는 모양을 그대로 옮겼다 — `frontend/lib/workspace/model.ts`.
+**평가제 대조 화면은 여전히 P2 다.**
 
 **LLM 으로 나가는 자유 입력 필드(계획안 생성 메모 등)도 `shared/childCode` 치환 대상이다.**
 치환 실패 시 호출하지 않고 에러를 낸다.
+
+---
+
+## 10. 관찰 기록 — `POST · GET · PUT · DELETE /api/observations`   ★ 7주차
+
+**교사가 본 것을 그대로 적는 칸이다.** 3층 규격(사실 → 해석 → 지원)의 **사실** 층이고,
+§11 의 모든 문서가 이것을 근거로 쓴다.
+
+**AI 가 쓰지 않는다.** 사실기록형 문서라 모델이 채우면 위조다. 생성 엔드포인트가 없는 이유다.
+
+**Request** `POST /api/observations`
+
+```json
+{ "class_id": 1, "child_id": 5, "date": "2026-09-22",
+  "domain": "자연탐구", "context": "바깥놀이",
+  "fact": "화단 앞에 앉아 개미가 줄지어 가는 것을 3분 동안 바라보았다." }
+```
+
+**Response** `201`
+
+```json
+{ "id": 12, "class_id": 1, "class_name": "햇살반",
+  "child_id": 5, "child_name": "박서준", "child_code": "민준",
+  "date": "2026-09-22", "domain": "자연탐구", "context": "바깥놀이",
+  "fact": "...", "created_at": "2026-09-22T10:31:00+09:00" }
+```
+
+**`class_name` · `child_name` 을 같이 준다.** 목록 화면이 반·아이 이름을 그리는데
+매번 §2 · §2-1 을 다시 부르면 N+1 이 된다.
+
+**`child_code` 도 같이 준다.** 화면에 배지로 보여준다 — 교사가 "LLM 에는 이 이름이 나간다"를 안다.
+
+**`domain` 은 5영역 중 하나다.**
+
+```
+신체운동·건강 · 의사소통 · 사회관계 · 예술경험 · 자연탐구
+```
+
+**`context` 는 선택이다.** 빈 문자열을 허용한다 — 상황을 안 적고 사실만 남기는 교사가 있다.
+
+**`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED`.
+
+**조회** `GET /api/observations?class_id=1&child_id=5&from=2026-09-01&to=2026-09-30`
+→ `{ "items": [...] }`. 네 값 모두 선택이고, 없으면 교사가 접근 가능한 전체다.
+**정렬은 `date` 내림차순 고정이다** — 화면이 최신순으로만 그린다.
+
+**수정** `PUT /api/observations/{id}` — `date` · `domain` · `context` · `fact` 만 받는다.
+`class_id` · `child_id` 는 바꾸지 못한다. 대상이 바뀌면 다른 기록이다. 삭제 후 재등록한다.
+
+**삭제** `DELETE /api/observations/{id}` → `204`.
+
+### 기록을 고치면 그걸 쓴 문서가 무효가 된다
+
+**`PUT` · `DELETE` 는 이 기록을 근거로 쓴 §11 문서를 전부 `stale` 로 바꾼다.**
+문서를 지우지 않는다 — 교사가 보고 판단한다.
+
+```
+관찰 기록 수정 → 그 기록을 sources 에 담은 문서들의 stale = true
+```
+
+**이 판정은 문자열 대조다. 모델이 개입하지 않는다.** 3단 게이트의 2단이 이것이다.
+
+| | |
+|---|---|
+| loading | 저장 중 — 버튼 비활성 |
+| empty | "아직 남긴 기록이 없어요" |
+| success | 목록 맨 위에 추가 |
+| error | `VALIDATION_FAILED` — 입력값 유지, 해당 칸에 표시 |
+
+### 개인정보
+
+- **아동 실명이 본문에 들어온다.** `fact` 에 "서준이가" 같은 표현이 그대로 온다.
+  §11 이 LLM 을 부를 때 `shared/childCode` 로 치환한다. 이 엔드포인트는 치환하지 않는다 —
+  교사 화면에는 실명이 보여야 한다.
+- **브라우저에 저장하지 않는다.** 입력 즉시 서버로 보낸다 (ADR-013).
+  지금 FE 목업이 `localStorage` 에 쌓고 있다. 연동 PR 에서 제거한다.
+
+---
+
+## 11. 문서 — `POST · GET · PUT · DELETE /api/documents`   ★ 7주차
+
+**§10 의 기록을 모아 초안을 만든다.** 일지 계열 4종이다.
+
+```
+dailyLog     일일 보육일지    반 단위    하루
+weeklyLog    주간 보육일지    반 단위    한 주
+observation  관찰일지        아동 단위   기간
+assessment   영유아 평가      아동 단위   기간
+```
+
+**계획안(`annual` · `monthly`)은 이 엔드포인트가 아니다.** §4 ~ §7 이 다룬다.
+같은 「문서」라는 말을 쓰지만 근거가 다르다 — 계획안은 참조자료에서, 일지는 교사 기록에서 나온다.
+
+**Request** `POST /api/documents`
+
+```json
+{ "kind": "observation", "class_id": 1, "child_id": 5,
+  "start": "2026-09-01", "end": "2026-09-30",
+  "source_ids": [12, 15, 19] }
+```
+
+**Response** `201`
+
+```json
+{
+  "id": 7, "kind": "observation", "title": "박서준 관찰일지 (9월)",
+  "class_id": 1, "class_name": "햇살반", "child_id": 5, "child_name": "박서준",
+  "start": "2026-09-01", "end": "2026-09-30",
+  "status": "DRAFT", "origin": "AI", "stale": false,
+  "sections": [
+    { "heading": "사실", "body": "...", "source_ids": [12, 15, 19] },
+    { "heading": "해석", "body": "...", "source_ids": [12, 19] },
+    { "heading": "지원", "body": "...", "source_ids": [15] }
+  ],
+  "sources": [
+    { "id": 12, "date": "2026-09-22", "text": "...", "class_id": 1, "child_id": 5 }
+  ],
+  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v1" },
+  "review_note": "",
+  "created_at": "...", "updated_at": "..."
+}
+```
+
+### 3층 규격 — `sections` 는 이 셋뿐이다
+
+```
+사실   교사 기록 원문.  서버가 붙인다.  LLM 이 만지지 않는다
+해석   관찰에서 가능한 의미.  LLM
+지원   앞으로의 제안.  LLM
+```
+
+**`사실` 은 `sources` 의 `text` 를 `\n\n` 으로 이은 것과 **정확히 같아야 한다**.**
+한 글자라도 다르면 `VALIDATION_FAILED`. **문자열 비교이고 모델이 판정하지 않는다.**
+
+**`해석` · `지원` 은 관찰되지 않은 것을 쓰지 않는다.** 행동 · 발언 · 성취 · 빈도 · 진단을
+추가하면 안 된다. 각 항목의 `source_ids` 는 **실제로 근거가 된 `sources[].id` 만** 담는다.
+
+### 거절 규칙
+
+```
+observation · assessment 인데 child_id 가 없다     아동별 문서다
+dailyLog 인데 start != end                        하루짜리다
+source_ids 가 비었다                              교사 기록 없이 만들지 않는다
+source_ids 에 중복이 있다
+source 의 class_id 가 문서와 다르다
+child_id 가 있는데 source 의 child_id 가 다르다
+source 의 date 가 start ~ end 밖이다
+sections 에 빈 body 가 있다
+```
+
+**전부 `VALIDATION_FAILED` 400 이다.**
+
+### `stale` — 원본이 바뀌었다는 표시
+
+```
+false   원본 기록과 일치한다
+true    §10 에서 원본이 수정·삭제됐다.  교사가 다시 봐야 한다
+```
+
+**`stale` 이 `true` 면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
+
+### 상태와 출처
+
+```
+status   DRAFT → CONFIRMED          확정하면 수정 불가
+origin   AI | TEACHER | IMPORT      누가 만들었나
+```
+
+**`IMPORT` 는 교사가 기존 문서를 올린 것이다.** `sources` 가 비고 `sections` 는
+`첨부 원문` 하나뿐이다. 위 거절 규칙을 적용하지 않는다.
+
+### 나머지 엔드포인트
+
+```
+GET    /api/documents?kind=&class_id=&child_id=&status=       → { "items": [...] }
+GET    /api/documents/{id}                                    단건
+PUT    /api/documents/{id}                                    sections · review_note 만
+POST   /api/documents/{id}/confirm                            DRAFT → CONFIRMED
+DELETE /api/documents/{id}                                    204
+```
+
+**`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
+교사가 사실을 고치려면 §10 에서 원본을 고친다.
+
+| | |
+|---|---|
+| loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
+| empty | "아직 만든 문서가 없어요" |
+| success | 편집 화면으로 이동 |
+| error | `VALIDATION_FAILED` 400 · `GATE_BLOCKED` 409 · `AI_UNAVAILABLE` 503 |
+
+### 개인정보
+
+- **LLM 호출 직전에 `shared/childCode` 로 치환한다.** 프롬프트 · 응답 · 로그에 실명이 남지 않는다.
+- **응답을 교사에게 주기 전에 복원한다.**
+- **치환 실패 시 호출하지 않고 에러를 낸다** (ADR-004).
+- 가명은 `backend/resources/pseudonyms.yaml` 에서 뽑는다.
+  **원본 이름의 받침과 같은 쪽에서 뽑는다** — 다른 쪽에서 뽑으면 복원 후 조사가 틀어진다.
+
+### `document_sources` 에 원문을 복사해 둔다
+
+`observations` 를 참조만 하면 원본이 수정될 때 문서의 `사실` 이 조용히 바뀐다.
+**무효 판정을 하려면 만들 당시의 원문이 남아 있어야 한다.**
+필요한 테이블은 맨 아래 「채워야 할 곳 — BE」 에 적었다.
 
 ---
 
@@ -536,6 +742,10 @@ UNIQUE(class_id, code)         children 제약              §2-1
 plans · plan_items             연간계획안 본체             §4 · §5 · §6 · §7
 greetings                      enabled + 12개월 items      §3  (7주차)
 forms                          원 귀속 양식                §8  (7주차)
+observations                   관찰 기록 본체              §10
+documents                      일지 본체                  §11
+document_sections              사실 · 해석 · 지원           §11
+document_sources               생성 시점의 원문 사본        §11  원본이 바뀌어도 남아야 한다
 ```
 
 `classes.school_year` 는 **컬럼이 이미 있다.** 서버가 채우는 로직만 만들면 된다.
