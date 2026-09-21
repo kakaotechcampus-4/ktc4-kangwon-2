@@ -38,6 +38,23 @@ export default function RecordsPage() {
         .sort((a, b) => b.date.localeCompare(a.date)),
     [data.observations, classId, childId, search],
   );
+  function startEdit(record: Observation) {
+    editBaseline.current = record;
+    setEditId(record.id);
+    setClassId(record.classId);
+    setChildId(record.childId);
+    setDate(record.date);
+    setDomain(record.domain);
+    setContext(record.context);
+    setFact(record.fact);
+    setMessage("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function cancelEdit() {
+    setEditId("");
+    setFact("");
+    setContext("");
+  }
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!classroom || !child || !validDate(date) || !fact.trim() || date > today()) {
@@ -214,15 +231,7 @@ export default function RecordsPage() {
                   {editId ? "수정 저장" : "관찰 기록 저장"}
                 </button>
                 {editId && (
-                  <button
-                    type="button"
-                    className={ws.secondary}
-                    onClick={() => {
-                      setEditId("");
-                      setFact("");
-                      setContext("");
-                    }}
-                  >
+                  <button type="button" className={ws.secondary} onClick={cancelEdit}>
                     수정 취소
                   </button>
                 )}
@@ -246,55 +255,65 @@ export default function RecordsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          {!records.length ? (
-            <Empty title="아직 남긴 기록이 없어요">
-              첫 관찰을 입력하고 아이의 이야기를 시작해보세요.
-            </Empty>
-          ) : (
-            <div className={ws.list}>
-              {records.map((r) => (
-                <article key={r.id} className={ws.item}>
-                  <div className={ws.between}>
-                    <h3>
-                      {r.childName} <span className={ws.muted}>· {r.className}</span>
-                    </h3>
-                    <span className={ws.badge}>{r.domain}</span>
-                  </div>
-                  <p className={ws.muted}>
-                    {r.date} {r.context && `· ${r.context}`}
-                  </p>
-                  <p>{r.fact}</p>
-                  <div className={ws.actions}>
-                    <button
-                      className={ws.secondary}
-                      onClick={() => {
-                        editBaseline.current = r;
-                        setEditId(r.id);
-                        setClassId(r.classId);
-                        setChildId(r.childId);
-                        setDate(r.date);
-                        setDomain(r.domain);
-                        setContext(r.context);
-                        setFact(r.fact);
-                        setMessage("");
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                    >
-                      기록 수정
-                    </button>
-                    <Link
-                      className={ws.secondary}
-                      href={`/documents?record=${encodeURIComponent(r.id)}`}
-                    >
-                      문서로 작성 →
-                    </Link>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
+          <RecordList records={records} onEdit={startEdit} />
         </section>
       </div>
     </WorkspacePage>
+  );
+}
+
+/** 기록 목록. 비었을 때를 먼저 끝내고 아래는 "있다"만 다룬다. */
+function RecordList({
+  records,
+  onEdit,
+}: {
+  records: Observation[];
+  onEdit: (record: Observation) => void;
+}) {
+  if (!records.length) {
+    return (
+      <Empty title="아직 남긴 기록이 없어요">
+        첫 관찰을 입력하고 아이의 이야기를 시작해보세요.
+      </Empty>
+    );
+  }
+  return (
+    <div className={ws.list}>
+      {records.map((r) => (
+        <RecordItem key={r.id} record={r} onEdit={onEdit} />
+      ))}
+    </div>
+  );
+}
+
+/** 기록 카드 하나. 부모의 상태를 모른다 — 수정은 onEdit 으로만 알린다. */
+function RecordItem({
+  record,
+  onEdit,
+}: {
+  record: Observation;
+  onEdit: (record: Observation) => void;
+}) {
+  return (
+    <article className={ws.item}>
+      <div className={ws.between}>
+        <h3>
+          {record.childName} <span className={ws.muted}>· {record.className}</span>
+        </h3>
+        <span className={ws.badge}>{record.domain}</span>
+      </div>
+      <p className={ws.muted}>
+        {record.date} {record.context && `· ${record.context}`}
+      </p>
+      <p>{record.fact}</p>
+      <div className={ws.actions}>
+        <button className={ws.secondary} onClick={() => onEdit(record)}>
+          기록 수정
+        </button>
+        <Link className={ws.secondary} href={`/documents?record=${encodeURIComponent(record.id)}`}>
+          문서로 작성 →
+        </Link>
+      </div>
+    </article>
   );
 }

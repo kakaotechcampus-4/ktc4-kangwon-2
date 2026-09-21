@@ -4,6 +4,7 @@ import {
   readLimitedBody,
   validAIInput,
   matchesSchema,
+  sameOriginGuard,
 } from "@/lib/workspace/api-validation";
 export const runtime = "nodejs";
 const string = { type: "string" };
@@ -52,7 +53,7 @@ const schemas: Record<string, unknown> = {
   }),
 };
 const prompts: Record<string, string> = {
-  plan: "입력 연령, 기간, 요청사항을 반영한 한국어 보육계획안을 작성한다. 활동은 미래의 제안이며 실제 관찰 사실로 쓰지 않는다. 연간은 3월부터 다음해 2월까지 12개 월별 항목, 월간은 4~5주, 주간은 월~금으로 구성한다. 일간은 하루 일과로 구성한다. 각 section.heading은 기간/활동 제목, body는 놀이 목표·활동·교사 지원·준비물. 제공된 기관 양식의 항목 순서와 문체를 각 body 안에 적용한다. 입력된 트렌드 주제는 활동 제안으로만 활용. sourceIds는 빈 배열.",
+  plan: "입력 연령, 기간, 요청사항을 반영한 한국어 보육계획안을 작성한다. ages 배열이 제공되면 그 배열이 정확한 대상 연령이며, 배열에 없는 연령은 임의로 포함하지 않는다. age가 mixed여도 ages가 제공되면 ages를 우선한다(예: age=mixed, ages=[3,5]이면 만 3세와 만 5세만 대상이고 만 4세는 제외한다). 활동은 미래의 제안이며 실제 관찰 사실로 쓰지 않는다. 연간은 3월부터 다음해 2월까지 12개 월별 항목, 월간은 4~5주, 주간은 월~금으로 구성한다. 일간은 하루 일과로 구성한다. 각 section.heading은 기간/활동 제목, body는 놀이 목표·활동·교사 지원·준비물. 제공된 기관 양식의 항목 순서와 문체를 각 body 안에 적용한다. 입력된 트렌드 주제는 활동 제안으로만 활용. sourceIds는 빈 배열.",
   document:
     "원본 교사 기록만 사용하여 문서 초안을 만든다. sections는 해석, 지원 두 항목만 작성. 사실 항목은 서버에서 원문으로 붙인다. 해석은 관찰에서 가능한 의미를 조심스럽게 서술하며 관찰되지 않은 행동·발언·성취·빈도·진단은 절대 추가하지 않는다. 각 항목 sourceIds는 근거가 된 입력 sources.id만 사용한다. 지원은 향후 제안이며 자료·환경·교사 행동·시점·후속 관찰을 구체적으로 적는다. 이미 제공한 것처럼 쓰지 않는다. 주간 보육일지는 입력된 확정 일일 보육일지만 근거로 쓴다. 영유아 평가는 누적기록 범위만 다루고 표준화 점수나 발달 진단을 하지 않는다.",
   verify:
@@ -76,9 +77,8 @@ export async function GET() {
   );
 }
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
-    return Response.json({ error: "허용되지 않은 요청입니다." }, { status: 403 });
+  const blocked = sameOriginGuard(request);
+  if (blocked) return blocked;
   let task: string;
   let payload: unknown;
   try {
