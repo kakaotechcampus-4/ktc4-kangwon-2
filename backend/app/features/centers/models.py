@@ -68,7 +68,7 @@ class Class(Base):
     )
     consent_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        comment="동의 확인 시각. 증빙이 아니라 게이트 복원용 — 아동 0명이면 아동 수로 복원할 수 없다 (docs/PRD.md S2)",
+        comment="동의 확인 시각. 아동 0명이면 아동 수로 복원할 수 없다 (docs/PRD.md S2)",
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
