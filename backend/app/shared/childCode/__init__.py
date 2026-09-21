@@ -13,7 +13,17 @@
 아이 이름을 적을 수 있다 (docs/api-spec.md).
 """
 
-from .pool import PseudonymPool, has_final
-from .substitute import SubstitutionError, mask, unmask
+from .names import name_variants
+from .pool import PseudonymPool, SubstitutionError, has_final, load_pool
+from .substitute import NameTable, mask, unmask
 
-__all__ = ["PseudonymPool", "SubstitutionError", "has_final", "mask", "unmask"]
+__all__ = [
+    "NameTable",
+    "PseudonymPool",
+    "SubstitutionError",
+    "has_final",
+    "load_pool",
+    "mask",
+    "name_variants",
+    "unmask",
+]
