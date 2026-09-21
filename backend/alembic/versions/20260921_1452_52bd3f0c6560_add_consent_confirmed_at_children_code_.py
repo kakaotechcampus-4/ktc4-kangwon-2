@@ -25,7 +25,7 @@ def upgrade() -> None:
     op.drop_column('centers', 'region')
     op.add_column('children', sa.Column('code', sa.String(length=20), nullable=False, comment='LLM 에 나가는 가명. 받침 있는 더미 한글 이름 (ADR-004). 반 안에서 유일하다'))
     op.create_unique_constraint('uq_children_class_id_code', 'children', ['class_id', 'code'])
-    op.add_column('classes', sa.Column('consent_confirmed_at', sa.DateTime(timezone=True), nullable=True, comment='동의 확인 시각. 증빙이 아니라 게이트 복원용 — 아동 0명이면 아동 수로 복원할 수 없다 (docs/PRD.md S2)'))
+    op.add_column('classes', sa.Column('consent_confirmed_at', sa.DateTime(timezone=True), nullable=True, comment='동의 확인 시각. 아동 0명이면 아동 수로 복원할 수 없다 (docs/PRD.md S2)'))
     # ### end Alembic commands ###
 
 
