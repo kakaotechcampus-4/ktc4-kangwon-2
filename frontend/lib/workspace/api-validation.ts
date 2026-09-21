@@ -49,6 +49,17 @@ function sources(value: unknown) {
     new Set(value.map((v) => v.id)).size === value.length
   );
 }
+/** 계획안 요청의 실제 선택 연령([3,5] 등). 없을 수도 있고, 있으면 3·4·5 중 중복 없는 값만 허용한다. */
+function validSelectedAges(value: unknown) {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.length > 0 &&
+      value.length <= 3 &&
+      value.every((age) => age === 3 || age === 4 || age === 5) &&
+      new Set(value).size === value.length)
+  );
+}
 export function validAIInput(task: string, payload: unknown): boolean {
   if (!isObject(payload)) return false;
   if (task === "template") return text(payload.text);
@@ -131,6 +142,7 @@ export function validAIInput(task: string, payload: unknown): boolean {
     if (
       !["annual", "monthly", "weekly", "daily"].includes(payload.type as string) ||
       !["3", "4", "5", "mixed"].includes(payload.age as string) ||
+      !validSelectedAges(payload.ages) ||
       typeof payload.memo !== "string" ||
       payload.memo.length > 6000 ||
       !isObject(payload.period)
@@ -202,4 +214,30 @@ export function matchesSchema(value: unknown, schema: unknown): boolean {
     );
   }
   return false;
+}
+
+/**
+ * 같은 사이트 화면에서 온 요청인지 본다. 아니면 403 응답을, 맞으면 null 을 준다.
+ *
+ * Origin 은 브라우저만 붙인다 — curl · 스크립트 · 다른 서버는 안 붙인다.
+ * 그래서 "없으면 통과"로 두면 검사가 사실상 없는 것과 같다.
+ * 두 경로 다 공개 배포돼 있고 각각 OpenAI 키와 파일 파싱을 쓰므로
+ * 없는 경우도 막는다(fail-closed). 서버 간 호출이 필요해지면 별도 인증을 붙인다.
+ *
+ * 비교 대상은 request.url 이 아니라 Host 헤더다. Next 는 --hostname 이 IP 여도
+ * request.url 을 localhost 로 채울 때가 있어서, 그걸 기준으로 삼으면
+ * 같은 사이트 요청까지 막힌다. 프로토콜은 보지 않는다 — TLS 를 앞단에서 끊으면
+ * 브라우저가 보낸 https 와 서버가 보는 http 가 어긋난다.
+ */
+export function sameOriginGuard(request: Request): Response | null {
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host");
+  if (origin && host) {
+    try {
+      if (new URL(origin).host === host) return null;
+    } catch {
+      // Origin 이 URL 형태가 아니면 통과시키지 않는다.
+    }
+  }
+  return Response.json({ error: "허용되지 않은 요청입니다." }, { status: 403 });
 }

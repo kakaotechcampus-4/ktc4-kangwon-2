@@ -24,6 +24,9 @@ async function body(request: Request): Promise<Record<string, unknown> | null> {
   }
 }
 export const handlers = [
+  // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
+  // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
+  http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
   http.post("*/api/centers", async ({ request }) => {
     console.info("[MSW] intercepted POST /api/centers");
     const s = await scenario(request, "center");

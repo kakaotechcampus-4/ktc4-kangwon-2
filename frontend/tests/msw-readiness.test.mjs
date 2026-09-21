@@ -209,9 +209,147 @@ test("서비스워커가 페이지를 제어하지 못하면 startMockWorker()�
   );
   assert.equal(reloads, 1, "무한 새로고침 루프가 없다");
 
-  // 3) 제어권이 있으면 정상 resolve하고 재시도 플래그를 정리한다.
+  // 3) 제어권 + 실제 interception(health {msw:true})이 모두 확인되면 정상 resolve한다.
   runtime.starting = undefined;
   serviceWorker.controller = { scriptURL: "/mockServiceWorker.js" };
-  await startMockWorker();
+  const originalFetch = globalThis.fetch;
+  let probe = null;
+  globalThis.fetch = async (input, init) => {
+    probe = { url: String(input), init };
+    return Response.json({ msw: true });
+  };
+  try {
+    await startMockWorker();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(probe.url, "/api/__msw_health");
+  assert.equal(probe.init.headers.Accept, "application/json");
+  assert.equal(probe.init.cache, "no-store");
   assert.equal(session.get("saessak.msw.controllerReload"), undefined);
+});
+
+test("핸들러가 없는 /api 요청만 진단 에러를 내고 나머지는 조용히 통과한다", async () => {
+  const { handleUnhandledRequest } = await import("../msw/browser.ts");
+  const count = (url) => {
+    let errors = 0,
+      warnings = 0;
+    handleUnhandledRequest(new Request(url), {
+      error() {
+        errors++;
+      },
+      warning() {
+        warnings++;
+      },
+    });
+    assert.equal(warnings, 0, url + " 는 경고가 아니라 에러로만 구분한다");
+    return errors;
+  };
+
+  // 실제 Next Route Handler — mock 누락이 아니므로 통과시킨다.
+  assert.equal(count("http://localhost/api/assistant"), 0);
+  assert.equal(count("http://localhost/api/assistant/"), 0);
+  assert.equal(count("http://localhost/api/assistant/stream"), 0);
+  assert.equal(count("http://localhost/api/assistant/stream?type=plan"), 0);
+  assert.equal(count("http://localhost/api/templates/extract"), 0);
+  assert.equal(count("http://localhost/api/templates/extract/"), 0);
+  assert.equal(count("http://localhost/api/templates/extract?id=1"), 0);
+
+  // prefix만 닮은 주소는 실제 Route Handler가 아니므로 누락으로 잡는다.
+  assert.equal(count("http://localhost/api/assistant-wrong"), 1);
+  assert.equal(count("http://localhost/api/assistant123"), 1);
+  assert.equal(count("http://localhost/api/assistantXYZ"), 1);
+  assert.equal(count("http://localhost/api/templates/extract-wrong"), 1);
+  assert.equal(count("http://localhost/api/templates/extractABC"), 1);
+
+  // mock handler 누락 — 개발자가 바로 알 수 있어야 한다.
+  assert.equal(count("http://localhost/api/unknown"), 1);
+  assert.equal(count("http://localhost/api/centers/not-handled"), 1);
+  assert.equal(count("http://localhost/api/classes/foo/not-implemented"), 1);
+  assert.equal(count("http://localhost/api/centers/1/classes?page=2"), 1);
+
+  // 페이지·정적 리소스는 MSW 대상이 아니다.
+  for (const url of [
+    "http://localhost/home",
+    "http://localhost/login",
+    "http://localhost/onboarding/classes",
+    "http://localhost/_next/static/chunk.js",
+    "http://localhost/favicon.ico",
+    "http://localhost/mockServiceWorker.js",
+    "http://localhost/apilike/not-an-api",
+  ])
+    assert.equal(count(url), 0, url);
+});
+
+test("controller가 있어도 health 요청이 MSW를 통과하지 못하면 ready가 아니다", async () => {
+  const { startMockWorker, ensureIntercepting, runtime, MSW_HEALTH_PATH } =
+    await import("../msw/browser.ts");
+  const session = new Map();
+  globalThis.sessionStorage = {
+    getItem: (k) => session.get(k) ?? null,
+    setItem: (k, v) => session.set(k, String(v)),
+    removeItem: (k) => session.delete(k),
+  };
+  globalThis.window = { location: { reload: () => assert.fail("새로고침하지 않는다") } };
+  Object.defineProperty(globalThis, "navigator", {
+    // 제어권은 정상적으로 확보된 상태로 고정한다.
+    value: { serviceWorker: { controller: { scriptURL: "/mockServiceWorker.js" } } },
+    configurable: true,
+    writable: true,
+  });
+  const intercepted = (e) => e instanceof Error && /가로채지 못했습니다/.test(e.message);
+  const original = globalThis.fetch;
+  try {
+    // A. handler가 응답한 경우에만 ready: 경로·헤더까지 확인한다.
+    const calls = [];
+    globalThis.fetch = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return Response.json({ msw: true });
+    };
+    runtime.starting = undefined;
+    await startMockWorker();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, MSW_HEALTH_PATH);
+    assert.equal(calls[0].url, "/api/__msw_health");
+    assert.equal(calls[0].init.headers.Accept, "application/json");
+
+    // B. controller는 있지만 Next의 HTML 404가 오는 경우 — 이번 수정의 핵심 회귀 테스트.
+    globalThis.fetch = async () =>
+      new Response(HTML_404, { status: 404, headers: { "Content-Type": "text/html" } });
+    runtime.starting = undefined;
+    await assert.rejects(startMockWorker(), intercepted);
+    assert.equal(runtime.starting, undefined, "실패하면 재시도할 수 있게 되돌린다");
+    await assert.rejects(ensureIntercepting(), intercepted);
+
+    // B-2. 200 HTML이어도 SyntaxError가 아니라 readiness 실패로 정리한다.
+    globalThis.fetch = async () =>
+      new Response("<!DOCTYPE html><html><body>hi</body></html>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      });
+    await assert.rejects(
+      ensureIntercepting(),
+      (e) => intercepted(e) && !(e instanceof SyntaxError),
+    );
+
+    // C. JSON이지만 probe 응답이 아닌 경우.
+    for (const body of [{ msw: false }, {}, { msw: "true" }, [], null]) {
+      globalThis.fetch = async () => Response.json(body);
+      await assert.rejects(ensureIntercepting(), intercepted, JSON.stringify(body));
+    }
+
+    // D. Content-Type이 JSON이 아니거나, 서버 오류이거나, fetch 자체가 실패한 경우.
+    globalThis.fetch = async () =>
+      new Response('{"msw":true}', { headers: { "Content-Type": "text/plain" } });
+    await assert.rejects(ensureIntercepting(), intercepted);
+    globalThis.fetch = async () => Response.json({ msw: true }, { status: 500 });
+    await assert.rejects(ensureIntercepting(), intercepted);
+    globalThis.fetch = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await assert.rejects(ensureIntercepting(), intercepted);
+  } finally {
+    globalThis.fetch = original;
+    runtime.starting = undefined;
+  }
 });
