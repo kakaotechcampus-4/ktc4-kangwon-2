@@ -46,7 +46,7 @@ test("common guard handles unauthenticated access, unfinished onboarding and ret
   assert.equal(auth.accessRedirect(), "/login");
   await auth.registerAccount("노덕철", "first@example.com", "test-password-123");
   await login("first@example.com");
-  // /home와 다른 서비스 화면은 동일한 공통 guard를 사용한다.
+  // "/" 와 다른 서비스 화면은 동일한 공통 guard를 사용한다.
   assert.equal(auth.accessRedirect(true), "/onboarding/center");
   assert.equal(auth.accessRedirect(false), null);
   assert.equal(auth.accessRedirect(true), "/onboarding/center"); // 새로고침에서도 동일
