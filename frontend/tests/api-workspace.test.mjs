@@ -5,7 +5,13 @@ const base = process.env.SAESSAK_TEST_URL;
 async function upload(name, bytes) {
   const body = new FormData();
   body.append("file", new Blob([bytes]), name);
-  return fetch(`${base}/api/templates/extract`, { method: "POST", body });
+  // 이 경로는 같은 사이트 화면에서 온 요청만 받는다(sameOriginGuard).
+  // Origin 은 브라우저가 붙이는 값이라 여기서는 직접 넣는다.
+  return fetch(`${base}/api/templates/extract`, {
+    method: "POST",
+    headers: { origin: base },
+    body,
+  });
 }
 test("template endpoint extracts real TXT and DOCX content", { skip: !base }, async () => {
   const txt = await upload("test.txt", "놀이 주제:\n블록 놀이\n교사 지원:\n넓은 블록을 제공한다.");
