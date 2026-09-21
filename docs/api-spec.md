@@ -290,10 +290,12 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
       "month": 3,
       "theme": "봄과 나",
       "sub_themes": ["새로운 친구", "봄이 왔어요"],
+      "safety_education": [],
       "evidence": [
         { "source_type": "THEME_REFERENCE",
           "source_id": "theme-ref-2026",
           "source_version": "v0.1.2",
+          "effective_date": "2026-03-01",
           "display_name": "연간계획안 주제 참고자료" }
       ],
       "generation": { "method": "RULE_LLM",
@@ -302,6 +304,46 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
   ]
 }
 ```
+
+**필드**
+
+```
+id · class_id · school_year   정수.  필수
+status                        DRAFT | CONFIRMED.  필수
+months                        정확히 12개.  필수
+
+months[].month                정수 3~12 · 1~2.  필수.  배열은 3월부터 익년 2월 순서
+months[].theme                문자열.  필수.  빈 문자열 거부
+months[].sub_themes           문자열 배열.  필수
+months[].safety_education     문자열 배열.  필수.  P0 에서는 항상 빈 배열.  값은 아래 6종
+months[].evidence             배열.  필수.  THEME_REFERENCE 가 정확히 하나
+months[].generation           객체.  필수
+
+evidence[].source_type        「출처는 세 축이다」 절의 Evidence 값 중 하나.  필수
+evidence[].source_id          문자열.  필수.  빈 문자열 거부
+evidence[].source_version     문자열.  선택 — null 허용, 빈 문자열 거부
+evidence[].effective_date     YYYY-MM-DD.  선택 — null 허용.  자료가 언제부터 유효한가
+evidence[].display_name       문자열.  선택 — null 허용, 빈 문자열 거부
+
+generation.method             「출처는 세 축이다」 절의 Generation 값 중 하나.  필수
+generation.rule_id            문자열.  RULE_ONLY·RULE_LLM 이면 필수, 그 외 null
+generation.rule_version       문자열.  위와 같다
+
+safety_education 값           traffic_safety · missing_and_abduction_prevention
+                              infectious_disease_and_drug_misuse_prevention
+                              disaster_preparedness_safety · sexual_violence_prevention
+                              child_abuse_prevention
+```
+
+**`선택` 은 null 허용이지 빈 문자열 허용이 아니다.** `p0-planning` 도메인이 `None` 은 받고
+`""`·`"   "` 는 거부한다. FE 는 값이 없으면 키를 빼거나 `null` 을 보낸다.
+
+**`safety_education` 은 P0 에서 항상 빈 배열이다.** 법이 정하는 건 주기와 연간 시수뿐이고
+월 배치는 0건이다(`p0-planning/data/rules/safety_education_legal_v1.json` 의
+`month_assignment_policy.has_month_assignment: false`). 배치의 출처는 기관·교사가 준
+안전교육 연간계획뿐인데 P0 에 그 입력이 없다. **규칙 엔진도 LLM 도 배치를 만들지 않는다** —
+같은 파일의 `rule_must_not`·`llm_must_not`. 칸은 항상 있고 값만 빈다.
+값은 그 파일 `categories[].category_id` 를 쓴다.
 
 **`months` 는 항상 12개다.** 3월 시작 ~ 익년 2월.
 
