@@ -9,9 +9,9 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 # max_length 는 DB 컬럼 길이에 맞춘 것만 건다 — models.py 에 근거가 없는 값을 지어내지 않는다.
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 PersonName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
-# region_sido · region_sigungu 는 마이그레이션 A 가 오기 전이라 컬럼 길이가 없다.
-# 기존 region String(50) 을 근거로 길이를 확정하지 않는다 — 컬럼이 생기면 그때 맞춘다.
-RegionPart = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+# 지역 두 칸은 마이그레이션 A 가 centers.region_sido · region_sigungu 를 각각 String(30) 으로
+# 확정했다. DB 가 자르기 전에 계약 형식 422 로 돌려준다.
+RegionPart = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=30)]
 
 
 class CenterCreate(BaseModel):

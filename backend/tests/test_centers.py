@@ -46,12 +46,35 @@ def test_center_create_requires_every_field(missing):
 
 
 def test_center_create_applies_column_lengths():
-    # 길이 제한은 DB 컬럼이 있는 두 필드에만 건다 — name 100 · director_name 50.
-    CenterCreate(**{**VALID, "name": "가" * 100, "director_name": "나" * 50})
+    # 길이는 DB 컬럼에 맞춘다 — name 100 · director_name 50 · region 두 칸 각각 30.
+    CenterCreate(
+        **{
+            **VALID,
+            "name": "가" * 100,
+            "director_name": "나" * 50,
+            "region_sido": "다" * 30,
+            "region_sigungu": "라" * 30,
+        }
+    )
     with pytest.raises(ValidationError):
         CenterCreate(**{**VALID, "name": "가" * 101})
     with pytest.raises(ValidationError):
         CenterCreate(**{**VALID, "director_name": "나" * 51})
+    with pytest.raises(ValidationError):
+        CenterCreate(**{**VALID, "region_sido": "다" * 31})
+    with pytest.raises(ValidationError):
+        CenterCreate(**{**VALID, "region_sigungu": "라" * 31})
+
+
+def test_too_long_regions_are_reported_together_in_the_envelope():
+    # 길이 초과도 첫 항목에서 멈추지 않고 전부 모은다.
+    response = client.post(
+        "/api/centers",
+        json={**VALID, "region_sido": "다" * 31, "region_sigungu": "라" * 31},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["region_sido", "region_sigungu"]
 
 
 def test_center_create_rejects_legacy_region_field():
