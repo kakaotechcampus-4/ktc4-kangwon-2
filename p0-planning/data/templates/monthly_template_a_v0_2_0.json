@@ -1,0 +1,668 @@
+{
+  "$schema_note": "Monthly Template A v0 초안. 이 파일은 Template instance data이며 Reference Data가 아니다. Section의 활성화·표시 방식·계층·빈 값 정책의 결정 주체는 코드 전역 기본값이 아니라 이 파일이다. docs/open-decisions.md OD-M01 참조.",
+  "template_id": "ssuksak.monthly-template-a",
+  "template_version": "monthly-template-a-v0.2.0",
+  "supersedes": "monthly-template-a-v0.1.0",
+  "normative_status": "SAMPLE_DERIVED_NON_NORMATIVE",
+  "normative_status_note": "전국 표준 양식이 아니라 실측 샘플에서 도출한 product adapter다. 국가 기준·법정 필수 양식·모든 기관 필수 항목을 뜻하지 않는다. 기관 실제 양식이 다르면 Override 또는 후속 Template adapter가 우선한다. / v0.2.0은 v0.1.0의 Section 정의를 그대로 두고 `focus` 하나만 활성화했다. 관측 근거와 display_mode 판정은 v0.1.0과 동일하며 새로 측정하지 않았다.",
+  "issued_on": "2026-09-13",
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-09-13T21:00:00+09:00",
+    "runtime_active": true,
+    "runtime_active_note": "2026-09-13 OD-N18 Human Decision으로 활성화됐다. v0.1.0은 RULE_ONLY 호환용으로 그대로 보존되며 이 version이 그것을 대체하지 않는다. 두 version이 공존한다.",
+    "reviewer_identity_rule": "docs/open-decisions.md OD-N10의 reviewer_<role>_<sequence> 규칙을 따른다. Plan Confirm의 actor_id 규칙과 섞지 않는다.",
+    "change_from_supersedes": "focus Section만 activated=false → true. 그 밖의 변경 없음."
+  },
+  "evidence_base": {
+    "source_kind": "실측 샘플",
+    "measurement_record": "docs/template-a-validation.md",
+    "sample_root": "references/samples/monthly/",
+    "file_count": 13,
+    "institution_count": 11,
+    "page_count": 22,
+    "quantitative_denominator": 10,
+    "denominator_note": "판독 가능 기관 수. 별빛자이어린이집은 텍스트 레이어가 없는 이미지 전용 PDF로 제외했다. 공립아이사랑어린이집은 연령별 3파일이지만 1기관으로 센다.",
+    "institution_types": {
+      "국공립": 4,
+      "민간": 5,
+      "직장": 1,
+      "협동": 1
+    },
+    "target_month_distribution": {
+      "2026-09": 9,
+      "2026-03": 1
+    },
+    "target_month_note": "9월 편중이다. 주차 산출 규칙을 검증할 수 있는 월이 2개뿐이다.",
+    "origins": [
+      {
+        "origin_id": "sample.monthly.aisarang.2026.09",
+        "institution_type": "국공립",
+        "pages": 3,
+        "note": "만3·4·5세 3파일. 주차 축이 없다."
+      },
+      {
+        "origin_id": "sample.monthly.goesanhana.2026.09",
+        "institution_type": "국공립",
+        "pages": 2,
+        "note": "p.1 만3세 / p.2 만4·5세. 같은 파일에서 연령별로 source_label이 다르다."
+      },
+      {
+        "origin_id": "sample.monthly.byeolbitjai.2026",
+        "institution_type": "국공립",
+        "pages": 2,
+        "note": "이미지 전용. 판독 불가. 정량 분모 제외."
+      },
+      {
+        "origin_id": "sample.monthly.seobom.2026.09",
+        "institution_type": "국공립",
+        "pages": 4,
+        "note": "1차 기본 표본. 셀 기하 판독 완료."
+      },
+      {
+        "origin_id": "sample.monthly.eomji.2026.09",
+        "institution_type": "민간",
+        "pages": 1,
+        "note": "4주. 월~토 6일. 9월 24~30일 미포함."
+      },
+      {
+        "origin_id": "sample.monthly.yedam.2026.09",
+        "institution_type": "민간",
+        "pages": 1,
+        "note": "1차 기본 표본. 셀 기하 판독 완료."
+      },
+      {
+        "origin_id": "sample.monthly.keunbit.2026.09",
+        "institution_type": "민간",
+        "pages": 2,
+        "note": "p.1 헤더 4주인데 안전교육 본문은 5주 참조. 문서 내부 불일치."
+      },
+      {
+        "origin_id": "sample.monthly.haechansol.2026.09",
+        "institution_type": "민간",
+        "pages": 1,
+        "note": "goals를 주차별로 쓴다. 본문에 연령 표기 없음."
+      },
+      {
+        "origin_id": "sample.monthly.hansolbit.2026.03",
+        "institution_type": "민간",
+        "pages": 3,
+        "note": "1차 보조 표본. 유일한 3월 표본. 4주. 안전교육 행이 있고 4개 주차 셀이 모두 빈 사례."
+      },
+      {
+        "origin_id": "sample.monthly.geumsan.2026.09",
+        "institution_type": "직장",
+        "pages": 1,
+        "note": "1차 기본 표본. 비상대응을 안전교육과 별도 행으로 둔다."
+      },
+      {
+        "origin_id": "sample.monthly.aideulsesang.2026.09",
+        "institution_type": "협동",
+        "pages": 2,
+        "note": "24절기 축. 4주·5주 표시 병합. 날짜가 8/31~10/2."
+      }
+    ]
+  },
+  "structure_rules": {
+    "fixed_row_schema_forbidden": true,
+    "fixed_row_schema_note": "고정 8행 스키마를 금지한다. Section 수와 순서는 의미 구조와 선택된 Template에 따라 달라질 수 있다.",
+    "hierarchy_max_depth": 2,
+    "hierarchy_max_depth_evidence": "2단 계층은 판독 10기관 중 4기관에서 관찰되고 3단은 0/10이다. docs/template-a-validation.md §4.6.",
+    "global_display_mode_default": null,
+    "global_display_mode_default_note": "전국 공통 기본값을 만들지 않는다. 구조는 Template → Section → display_mode이며 각 Section이 명시해야 한다.",
+    "supported_display_modes": [
+      "WEEKLY_CELLS",
+      "MONTHLY_MERGED_SUMMARY"
+    ],
+    "supported_display_modes_extensible": true,
+    "supported_display_modes_note": "이 두 값만이 영구적으로 전부라고 Contract에 못 박지 않는다. 공립아이사랑어린이집에서 관찰된 inline/tagged 유형(바깥놀이가 별도 Section이 아니라 놀이 항목 문자열의 접두 태그)은 두 값 중 어느 쪽도 아니며 아직 수용하지 않았다. 향후 값 추가를 허용한다.",
+    "default_empty_value_policy": "RENDER_EMPTY_CELL",
+    "default_empty_value_policy_note": "Section이 활성화되어 있고 값이 없다는 이유만으로 Section 자체를 삭제하지 않는다. 값이 없다는 사실만으로 생성·저장·확정을 차단하지 않는다. 실측 근거는 한솔빛 3페이지의 빈 안전교육 행이다.",
+    "source_label_scope": "PLAN_OR_TEMPLATE_INSTANCE",
+    "source_label_scope_note": "source_label을 기관 단위 metadata로 저장하지 않는다. 괴산하나어린이집 한 파일에서 연령 페이지별로 theme·goals·focus 라벨이 모두 달랐다. 기관 → 라벨 Mapping 테이블을 만들지 않는다.",
+    "source_label_is_not_evidence_field": true,
+    "safety_fixed_row_position_forbidden": true,
+    "week_axis_is_not_unconditionally_required": true,
+    "week_axis_note": "주차 축은 기본 활성 후보이지만 무조건 필수 축이 아니다. 공립아이사랑어린이집 3파일에 주차 축이 없고 놀이예상기간이 월 단위다."
+  },
+  "sections": [
+    {
+      "semantic_key": "theme",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "display_mode": "MONTHLY_MERGED_SUMMARY",
+      "display_mode_basis": "1차 셀 기하 판독에서 시립새봄·예담·금산군청 3/3의 theme 값이 주차 전체 폭으로 가로 병합됐다. docs/template-a-validation.md §6.1. / 2026-09-11 교차확인. 관측 9기관 중 MONTHLY_MERGED_SUMMARY 7, OTHER 2(해찬솔은 결재란, 아이들세상은 절기 열이 같은 행을 공유). 기존 결론을 유지한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "놀이 주제",
+        "놀이주제",
+        "생활주제",
+        "생활 주제",
+        "월 주제",
+        "주 제",
+        "예상놀이주제",
+        "경험할 수 있는 내용"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.aisarang.2026.09",
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.eomji.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.keunbit.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "cardinality_note": "한 월간계획안에 주제가 2개인 사례가 판독 10기관 중 4기관에서 관찰됐다. 상위 Yearly theme과 1:1이 아니며 월 안에서 분화·추가될 수 있다. docs/template-a-validation.md §3.4 및 docs/demo-source-of-truth.md §21.1.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11_CROSSCHECK"
+    },
+    {
+      "semantic_key": "week_axis",
+      "role": "AXIS",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_9_OF_10",
+      "display_mode": null,
+      "display_mode_not_applicable": true,
+      "display_mode_basis": "축이며 값을 담는 Section이 아니므로 display_mode가 적용되지 않는다. 주차 산출은 SSUKSAK_P0_CANONICAL_WEEK_POLICY(OD-M02)가 담당한다.",
+      "empty_value_policy": null,
+      "observed_source_labels": [
+        "주",
+        "기간",
+        "날짜"
+      ],
+      "evidence": {
+        "observed_institutions": 9,
+        "denominator": 10,
+        "not_observed_in": [
+          "sample.monthly.aisarang.2026.09"
+        ],
+        "not_observed_note": "공립아이사랑어린이집 3파일에 주차 토큰이 0건이다. 축을 가진 유일한 Section인 특별활동의 축은 주차가 아니라 요일이다."
+      }
+    },
+    {
+      "semantic_key": "outdoor_play",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "display_mode": "WEEKLY_CELLS",
+      "display_mode_basis": "2026-09-11 셀 기하 재측정. 주차 축이 있는 9기관 중 WEEKLY_CELLS 6(괴산하나·엄지·예담·해찬솔·한솔빛·금산군청) : MONTHLY_MERGED_SUMMARY 2(시립새봄·아이들세상) : 기관 내 상이 1(큰빛 p.1 병합 / p.2 주별). 1차 기하 검증(n=3)의 2:1 방향과도 일치한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "바깥놀이",
+        "바깥 놀이",
+        "실외놀이",
+        "실외 자유 놀이",
+        "바깥놀이 / 대체활동",
+        "실외놀이·실내대체활동",
+        "나들이"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.aisarang.2026.09",
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.eomji.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.keunbit.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "structural_variance_note": "큰빛어린이집에서는 바깥놀이가 놀이 Section의 하위다. 즉 기관에 따라 형제 Section이거나 자식 Section이다. 공립아이사랑어린이집에서는 Section이 아니라 놀이 항목 문자열의 접두 태그다.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "safety_education",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "display_mode": "WEEKLY_CELLS",
+      "display_mode_basis": "2026-09-11 셀 기하 재측정. 주차 축이 있는 9기관 중 WEEKLY_CELLS 6(괴산하나·엄지·예담·해찬솔·한솔빛·금산군청) : MONTHLY_MERGED_SUMMARY 2(시립새봄·아이들세상) : INLINE_OR_TAGGED 1(큰빛). 1차 기하 검증(n=3)의 2:1 방향과도 일치한다. 표시를 주별로 두어도 OD-M04의 '안전교육 Item은 실제 week/date를 보존한다'와 충돌하지 않는다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "안전교육"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.aisarang.2026.09",
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.eomji.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.keunbit.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "value_generation_note": "구조는 항상 표현 가능하되 값이 없을 수 있다. 배치 Source(기관 제공 안전교육 연간계획 또는 교사 직접 입력)가 없으면 임의 배치·LLM 배치·법적 충족 주장을 금지하고 법정 요건 미검증 / source required 상태를 표현한다. docs/open-decisions.md OD-M04.",
+      "legal_rule_ref": "data/rules/safety_education_legal_v1.json",
+      "non_legal_label_note": "생활안전(6/10)·비상대응(6/10)·심폐소생술(3/10)·장애인식 개선 교육(3/10)·소방안전(1/10)은 별표6 6구분이 아니다. 법정 구분으로 자동 매핑하지 않는다.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "focus",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "ACTIVATED_FOR_LLM_PLANNER_WEEK_EXPERIENCE",
+      "display_mode": "WEEKLY_CELLS",
+      "display_mode_basis": "관찰된 6기관 전부에서 주차 헤더 직하 주당 1값 구조다. 이 판정은 셀 병합이 아니라 값의 주차 배정에서 나오므로 텍스트 판독으로 확정할 수 있다. / 2026-09-11 교차확인. 관측 6기관 중 WEEKLY_CELLS 5, MONTHLY_MERGED_SUMMARY 1(큰빛). 기존 결론을 유지한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "neutral_slot": true,
+      "neutral_slot_note": "subtheme과 expected_play를 완전 동의어로 자동 병합하지 않기 위한 P0 Template mapping용 중립 슬롯이다. 장기 의미 표준이 아니다. semantic_key 형태는 monthly.week.<week>.focus다.",
+      "required_item_metadata": [
+        "source_label",
+        "label_variant",
+        "mapping_confidence"
+      ],
+      "label_variant_values": [
+        "SUBTHEME_LABELED",
+        "EXPECTED_PLAY_LABELED",
+        "UNLABELED"
+      ],
+      "observed_source_labels": [
+        "소주제",
+        "예상 놀이"
+      ],
+      "evidence": {
+        "observed_institutions": 6,
+        "denominator": 10,
+        "subtheme_labeled": {
+          "count": 4,
+          "observed_in": [
+            "sample.monthly.goesanhana.2026.09",
+            "sample.monthly.haechansol.2026.09",
+            "sample.monthly.hansolbit.2026.03",
+            "sample.monthly.aideulsesang.2026.09"
+          ]
+        },
+        "expected_play_labeled": {
+          "count": 3,
+          "observed_in": [
+            "sample.monthly.goesanhana.2026.09",
+            "sample.monthly.yedam.2026.09",
+            "sample.monthly.keunbit.2026.09"
+          ]
+        },
+        "unlabeled": {
+          "count": 1,
+          "observed_in": [
+            "sample.monthly.seobom.2026.09"
+          ],
+          "mapping_confidence": "LOW",
+          "note": "라벨 없는 슬래시 구분 주제열이며 주차와 항상 1:1이 아니다. 시립새봄의 놀이 주제 및 예상 놀이는 유아의 흥미에 따라 연장 또는 변경될 수 있습니다 문장은 각주이며 예상 놀이 행의 근거가 아니다."
+        }
+      },
+      "relationship_note": "두 Label은 같은 표의 두 독립 행으로 병존한 사례는 관찰되지 않았고, 동일 기관의 Template 계열에서 연령별로 동일 구조 슬롯을 서로 다른 source_label로 표현한 사례가 관찰되었다. 괴산하나어린이집 p.1 만3세는 예상 놀이, p.2 만4·5세는 소주제이며 둘 다 주차 헤더 직하·주당 1값의 같은 구조 위치다.",
+      "forbidden": [
+        "두 source label을 같은 문자열 의미로 정규화",
+        "하나의 필드로 손실 병합",
+        "기관 단위 label mapping 테이블 생성",
+        "문자열 부분일치 매핑 — 예상놀이주제는 theme 라벨이고 예상 놀이는 focus 행 라벨이다"
+      ],
+      "display_mode_measurement": "GEOMETRY_2026_09_11_CROSSCHECK",
+      "activation_note": "2026-09-13 OD-N18 Human Decision. LLM Planner가 구성한 주차별 중심 경험(week experience)을 담는다. `week_axis`는 주차 번호·날짜 축으로 그대로 두고 AXIS 의미를 바꾸지 않는다. 관측 근거(6/10)와 display_mode(WEEKLY_CELLS)는 v0.1.0 측정 그대로이며 재측정하지 않았다."
+    },
+    {
+      "semantic_key": "goals",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": false,
+      "activation_basis": "OPTIONAL_DEFAULT_INACTIVE",
+      "activation_note": "실측 8/10으로 높지만 OD-M01이 Optional로 확정했다. required로 승격하지 않는다.",
+      "display_mode": "MONTHLY_MERGED_SUMMARY",
+      "display_mode_basis": "2026-09-11 셀 기하 재측정. 관측 6기관 중 MONTHLY_MERGED_SUMMARY 5(괴산하나·예담·큰빛·한솔빛·금산군청), OTHER 1(해찬솔 — 값 셀이 1개지만 결재란 때문에 주차 영역을 70%만 덮는다. 내용상 주차별 목표다). Optional이므로 default inactive는 유지한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "목표",
+        "교사의 기대",
+        "유아의 주요 경험",
+        "계 획",
+        "주제선정 이유"
+      ],
+      "evidence": {
+        "observed_institutions": 8,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.aisarang.2026.09",
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.keunbit.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09"
+        ],
+        "not_observed_in": [
+          "sample.monthly.eomji.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "habits",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": false,
+      "activation_basis": "OPTIONAL_DEFAULT_INACTIVE",
+      "display_mode": "WEEKLY_CELLS",
+      "display_mode_basis": "2026-09-11 셀 기하 재측정. 관측 7기관 중 WEEKLY_CELLS 6(괴산하나·예담·큰빛·해찬솔·한솔빛·금산군청), MONTHLY_MERGED_SUMMARY 1(아이들세상). Optional이므로 default inactive는 유지한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "기본생활습관",
+        "생활습관",
+        "기본생활",
+        "기본 생활"
+      ],
+      "evidence": {
+        "observed_institutions": 6,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.keunbit.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09"
+        ]
+      },
+      "hierarchy_note": "아이들세상어린이집은 기본생활 아래 등원·식습관 및 낮잠·위생·화장실 다녀오기·텃밭 5개 하위 라벨을 둔다.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "emergency_response",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": false,
+      "activation_basis": "OPTIONAL_DEFAULT_INACTIVE",
+      "display_mode": null,
+      "display_mode_status": "PENDING_HUMAN_DECISION",
+      "display_mode_basis": "WEEKLY_CELLS 3 : INLINE_OR_TAGGED 3 : NOT_PRESENT 3으로 동률이다. 단일 값을 정할 근거가 없다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "비상대응",
+        "비상대응훈련"
+      ],
+      "evidence": {
+        "observed_institutions": 6,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "merge_forbidden": true,
+      "merge_forbidden_note": "safety_education에 자동 병합하지 않는다. 금산군청과 아이들세상은 비상대응을 안전교육과 별도 행으로 둔다. 또한 비상대응은 아동복지법 시행령 별표6 6구분이 아니다.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "drill",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": false,
+      "activation_basis": "OPTIONAL_DEFAULT_INACTIVE",
+      "display_mode": null,
+      "display_mode_status": "PENDING_HUMAN_DECISION",
+      "display_mode_basis": "INLINE_OR_TAGGED 7 : WEEKLY_CELLS 1. 다수가 독립 Section이 아니라 안전교육 셀 안의 태그다. display_mode를 정하기 전에 독립 Section으로 둘지부터 재검토해야 한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "소방대피훈련",
+        "대피훈련"
+      ],
+      "evidence": {
+        "observed_institutions": 9,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.aisarang.2026.09",
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.eomji.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "merge_forbidden": true,
+      "merge_forbidden_note": "safety_education에 자동 병합하지 않는다. 여러 기관이 안전교육 셀 안에 함께 기재하지만 별표6 6구분이 아니며 근거 등급이 다르다. 월 1회 소방훈련은 법령이 아니라 2026 보육사업안내 행정지침이다.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "indoor_alternative",
+      "role": "CONTENT",
+      "parent_section": "outdoor_play",
+      "depth": 2,
+      "activated": false,
+      "activation_basis": "OPTIONAL_DEFAULT_INACTIVE",
+      "display_mode": null,
+      "display_mode_status": "PENDING_HUMAN_DECISION",
+      "display_mode_basis": "WEEKLY_CELLS 4 : INLINE_OR_TAGGED 4 : MONTHLY_MERGED_SUMMARY 1로 동률이다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "실내대체",
+        "[실내대체]",
+        "대체활동",
+        "대체(신체)활동",
+        "실내대체활동"
+      ],
+      "evidence": {
+        "observed_institutions": 9,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.eomji.2026.09",
+          "sample.monthly.yedam.2026.09",
+          "sample.monthly.keunbit.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.hansolbit.2026.03",
+          "sample.monthly.geumsan.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "parent_relation_basis": "해찬솔어린이집 실외놀이·실내대체활동, 아이들세상어린이집 바깥놀이 하위 대체(신체)활동, 예담·괴산하나의 바깥놀이 셀 내 [실내대체] 태그.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "special_program",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": false,
+      "activation_basis": "OPTIONAL_DEFAULT_INACTIVE",
+      "display_mode": null,
+      "display_mode_status": "PENDING_HUMAN_DECISION",
+      "display_mode_basis": "관측이 3기관뿐이다(WEEKLY_CELLS 2 : MONTHLY_MERGED_SUMMARY 1). 표본이 얇다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "특별활동",
+        "특성화 프로그램"
+      ],
+      "evidence": {
+        "observed_institutions": 4,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.aisarang.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.haechansol.2026.09",
+          "sample.monthly.geumsan.2026.09"
+        ]
+      },
+      "hierarchy_note": "금산군청직장어린이집은 특별활동 아래 체육·코앤코·영어·오감 4개 하위유형을 둔다.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    },
+    {
+      "semantic_key": "event_schedule",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": false,
+      "activation_basis": "OPTIONAL_DEFAULT_INACTIVE",
+      "display_mode": null,
+      "display_mode_status": "PENDING_HUMAN_DECISION",
+      "display_mode_basis": "WEEKLY_CELLS 2 : MONTHLY_MERGED_SUMMARY 2 : INLINE_OR_TAGGED 1로 동률이다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "observed_source_labels": [
+        "행사",
+        "행사 일정",
+        "계획 및 행사일정",
+        "활동 행사"
+      ],
+      "evidence": {
+        "observed_institutions": 5,
+        "denominator": 10,
+        "observed_in": [
+          "sample.monthly.goesanhana.2026.09",
+          "sample.monthly.seobom.2026.09",
+          "sample.monthly.eomji.2026.09",
+          "sample.monthly.keunbit.2026.09",
+          "sample.monthly.aideulsesang.2026.09"
+        ]
+      },
+      "input_note": "입력으로 명시되지 않은 행사를 생성하지 않는다. Yearly Plan Aggregate는 행사를 저장하지 않으므로 Monthly 생성 시 다시 입력받는다.",
+      "display_mode_measurement": "GEOMETRY_2026_09_11"
+    }
+  ],
+  "excluded_sections": [
+    {
+      "semantic_key": "character_greeting",
+      "observed_source_labels": [
+        "성품인사"
+      ],
+      "observed_institutions": 0,
+      "denominator": 10,
+      "exclusion_reason": "1차 기본·보조 표본과 2차 확대 표본 전체에서 명시적 성품인사 행이 0건이다. 월간 기본 Section 또는 기본행으로 두는 실측 근거가 없다.",
+      "allowed_path": "기관 요구가 있고 Custom Section Mapping이 명시적으로 활성화된 경우에만 선택 렌더링한다. 온보딩 Profile에 값이 있어도 출력에 자동 생성하지 않는다.",
+      "auto_mapping_forbidden": "시립새봄어린이집의 원훈은 기관 표어 3문장이며 성품인사와 동일한 데이터라는 근거가 없다. 자동 매핑하지 않는다."
+    }
+  ],
+  "candidate_sections_not_yet_defined": [
+    {
+      "semantic_key": "play",
+      "observed_note": "놀이 계열 본문이 다수 기관에서 관찰되지만 이번 정량 측정 대상이 아니었다. 근거가 확정되기 전 Section으로 정의하지 않는다."
+    },
+    {
+      "semantic_key": "activity",
+      "observed_note": "활동 계열 본문. 놀이와 합쳐진 양식과 분리된 양식이 모두 있어 강제 병합을 금지한다. 정량 미측정."
+    },
+    {
+      "semantic_key": "interest_area",
+      "observed_institutions": 4,
+      "denominator": 10,
+      "observed_note": "쌓기·역할·언어·수조작·음률·미술·과학·이야기나누기. 놀이 계열 Section의 depth 2 하위로 관찰된다. 상위 Section이 정의되지 않아 함께 미정의로 둔다."
+    },
+    {
+      "semantic_key": "community_linkage",
+      "observed_institutions": 3,
+      "denominator": 10,
+      "observed_note": "지역사회연계 프로그램."
+    },
+    {
+      "semantic_key": "solar_term",
+      "observed_institutions": 2,
+      "denominator": 10,
+      "observed_note": "24절기 축. 아이들세상·해찬솔."
+    },
+    {
+      "semantic_key": "play_materials",
+      "observed_institutions": 1,
+      "denominator": 10,
+      "observed_note": "놀이자료. 큰빛."
+    }
+  ],
+  "pending_decisions": [
+    {
+      "field": "display_mode",
+      "sections": [
+        "drill",
+        "emergency_response",
+        "event_schedule",
+        "indoor_alternative",
+        "special_program"
+      ],
+      "count": 5,
+      "blocking_for_default_active_sections": [],
+      "reason": "2026-09-11 기하 재측정을 마쳤으나 아래 Section은 관측이 동률이거나 표본이 얇아 단일 값을 정할 근거가 없다. 모두 default inactive이므로 M1을 차단하지 않는다.",
+      "per_section": {
+        "emergency_response": "WEEKLY_CELLS 3 : INLINE_OR_TAGGED 3 : NOT_PRESENT 3으로 동률이다. 단일 값을 정할 근거가 없다.",
+        "drill": "INLINE_OR_TAGGED 7 : WEEKLY_CELLS 1. 다수가 독립 Section이 아니라 안전교육 셀 안의 태그다. display_mode를 정하기 전에 독립 Section으로 둘지부터 재검토해야 한다.",
+        "indoor_alternative": "WEEKLY_CELLS 4 : INLINE_OR_TAGGED 4 : MONTHLY_MERGED_SUMMARY 1로 동률이다.",
+        "special_program": "관측이 3기관뿐이다(WEEKLY_CELLS 2 : MONTHLY_MERGED_SUMMARY 1). 표본이 얇다.",
+        "event_schedule": "WEEKLY_CELLS 2 : MONTHLY_MERGED_SUMMARY 2 : INLINE_OR_TAGGED 1로 동률이다."
+      },
+      "resolution_options": [
+        "추가 표본 확보 후 재측정",
+        "사람이 Template A v0의 대표 표시 방식을 판단"
+      ]
+    },
+    {
+      "field": "supported_display_modes",
+      "reason": "공립아이사랑어린이집에서 관찰된 inline/tagged 유형을 값 집합에 추가할지 미정이다. 현재 두 값 중 어느 쪽으로도 이 기관을 표현할 수 없다.",
+      "note": "값 집합은 확장 가능으로 선언했으므로 후속에서 추가할 수 있다. 지금 임의로 값을 만들지 않았다."
+    },
+    {
+      "field": "byeolbitjai 구조",
+      "reason": "이미지 전용 PDF로 판독 불가. OCR이 필요하다.",
+      "note": "정량 분모에서 제외했으므로 이 Template의 현재 근거에는 영향이 없다."
+    }
+  ],
+  "related_decisions": {
+    "OD-M01": "Section 활성화·표시·계층·빈 값 정책의 결정 주체 — RESOLVED_FOR_P0 2026-09-11",
+    "OD-M02": "SSUKSAK_P0_CANONICAL_WEEK_POLICY — RESOLVED_FOR_P0 2026-09-11",
+    "OD-M03": "focus 중립 슬롯과 라벨 보존 — RESOLVED_FOR_P0 2026-09-11",
+    "OD-M04": "Safety Rule Data와 배치 정책 분리 — RESOLVED_FOR_P0 2026-09-11",
+    "OD-N07": "Template A 외 추가 Template 범위 — NON-BLOCKING, OPEN"
+  },
+  "display_mode_measurement": {
+    "date": "2026-09-11",
+    "method": "PDF 벡터 선에서 복원한 표 셀의 물리 병합 범위. pdfplumber lines strategy로 셀을 복원하고, 주차 헤더 행에서 주차 열 경계를 얻은 뒤 각 Section 라벨 셀의 세로 구간에서 주차 영역을 덮는 content 셀의 개수·점유율·열 경계 정렬도를 계산했다.",
+    "tooling": "pdfplumber 0.11.10 / pdfminer.six / PyMuPDF 1.28.2. 분석 전용 격리 설치이며 프로젝트 의존성이 아니다.",
+    "validation": "1차(2026-09-09) 기하 판독 결과와 예담·시립새봄·금산군청으로 대조해 12건 중 11건 재현했다. 불일치 1건은 해찬솔 theme이며 결재란 때문에 OTHER로 분류됐다.",
+    "files_attempted": 13,
+    "files_analysed": 12,
+    "pages_analysed": 17,
+    "institutions_with_week_axis": 9,
+    "unreadable": [
+      "별빛자이 — 벡터 drawing 0개 / 텍스트 0자 / 이미지 4개. 진성 스캔본이며 OCR 필요"
+    ],
+    "no_week_axis": [
+      "아이사랑 3파일 — 주차 헤더가 없어 주차 기준 display_mode를 정의할 수 없다"
+    ],
+    "observation_categories_note": "WEEKLY_CELLS / MONTHLY_MERGED_SUMMARY / INLINE_OR_TAGGED / OTHER / NOT_PRESENT / UNREADABLE은 Human Review용 관찰 분류이며 최종 Domain enum이 아니다."
+  }
+}
