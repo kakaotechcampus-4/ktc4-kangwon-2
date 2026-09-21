@@ -1,9 +1,18 @@
 """원·반 API 의 요청·응답 모델. 계약은 docs/api-spec.md §1 · §2 다."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ModelWrapValidatorHandler,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 # 빈 문자열과 공백만 있는 입력을 막는다. FE 가 trim 하지 않아도 서버에서 같은 값이 된다.
 # max_length 는 DB 컬럼 길이에 맞춘 것만 건다 — models.py 에 근거가 없는 값을 지어내지 않는다.
@@ -48,12 +57,41 @@ class ClassCreate(BaseModel):
     # false·미전송은 검증 실패가 아니다 — 아동 명단을 건너뛰는 경로가 정상이다(§2-1).
     consent_confirmed: bool = False
 
-    @model_validator(mode="after")
-    def check_age_range(self) -> "ClassCreate":
-        # DB 의 CHECK (age_min <= age_max) 와 같은 규칙을 입력 단계에서 계약 형식으로 돌려준다.
-        if self.age_min > self.age_max:
-            raise ValueError("age_min 은 age_max 보다 클 수 없습니다.")
-        return self
+    @model_validator(mode="wrap")
+    @classmethod
+    def check_age_range(
+        cls, data: Any, handler: ModelWrapValidatorHandler["ClassCreate"]
+    ) -> "ClassCreate":
+        errors = []
+        try:
+            result = handler(data)
+        except ValidationError as exc:
+            errors = exc.errors(include_url=False)
+            # 다른 필드가 실패해도 유효한 두 연령의 관계 오류는 함께 수집한다.
+            if not isinstance(data, dict):
+                raise
+            try:
+                age_min, age_max = TypeAdapter(tuple[SelectedAge, SelectedAge]).validate_python(
+                    (data.get("age_min"), data.get("age_max"))
+                )
+            except ValidationError:
+                raise exc from None
+        else:
+            age_min, age_max = result.age_min, result.age_max
+
+        if age_min > age_max:
+            errors.extend(
+                {
+                    "type": "value_error",
+                    "loc": (field,),
+                    "input": value,
+                    "ctx": {"error": ValueError("age_min 은 age_max 보다 클 수 없습니다.")},
+                }
+                for field, value in (("age_min", age_min), ("age_max", age_max))
+            )
+        if errors:
+            raise ValidationError.from_exception_data(cls.__name__, errors)
+        return result
 
 
 class CenterResponse(BaseModel):

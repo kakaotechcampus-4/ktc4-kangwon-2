@@ -191,6 +191,19 @@ def test_class_create_accepts_every_valid_range_including_mixed(ages):
     assert (body.age_min, body.age_max) == ages
 
 
+@pytest.mark.parametrize("extra", [{}, {"child_count": 0}])
+def test_inverted_age_range_reports_both_fields_alongside_other_errors(extra):
+    response = client.post(
+        "/api/centers/1/classes",
+        json={**VALID_CLASS, "age_min": 5, "age_max": 3, **extra},
+    )
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "VALIDATION_FAILED"
+    assert set(error["fields"]) == {"age_min", "age_max", *extra}
+
+
 def test_class_create_treats_child_count_as_optional_positive():
     assert ClassCreate(**{**VALID_CLASS, "child_count": None}).child_count is None
     assert (
