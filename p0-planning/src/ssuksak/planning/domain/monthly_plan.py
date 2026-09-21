@@ -16,6 +16,7 @@ from .monthly_template import (
     SectionRole,
     TemplateRef,
 )
+from .monthly_template_snapshot import TemplateSnapshot
 from .plan import PlanStatus
 from .provenance import (
     AuditEvent,
@@ -191,7 +192,7 @@ class MonthlyPlan:
     target_ages: frozenset[int]
     status: PlanStatus
     parent_lineage: ParentLineage
-    template_ref: TemplateRef
+    template_snapshot: TemplateSnapshot
     week_periods: tuple[WeekPeriod, ...]
     sections: tuple[MonthlySection, ...]
     constraint_assessments: tuple[ConstraintAssessment, ...] = ()
@@ -236,9 +237,20 @@ class MonthlyPlan:
             raise InvalidDomainValueError(
                 "MonthlyPlan requires item-level parent lineage"
             )
-        if not isinstance(self.template_ref, TemplateRef):
+        if not isinstance(self.template_snapshot, TemplateSnapshot):
             raise InvalidDomainValueError(
-                "MonthlyPlan.template_ref must be TemplateRef"
+                "MonthlyPlan.template_snapshot must be TemplateSnapshot"
+            )
+        if self.template_snapshot.institution_ref != self.daycare_ref:
+            raise InvalidDomainValueError(
+                "MonthlyPlan daycare_ref must match its TemplateSnapshot scope"
+            )
+        if (
+            self.template_snapshot.classroom_ref is not None
+            and self.template_snapshot.classroom_ref != self.classroom_ref
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyPlan classroom_ref must match its TemplateSnapshot scope"
             )
         if not isinstance(self.week_periods, tuple) or not self.week_periods:
             raise InvalidDomainValueError(
@@ -272,6 +284,13 @@ class MonthlyPlan:
         if len(set(section_keys)) != len(section_keys):
             raise InvalidDomainValueError(
                 "MonthlyPlan cannot contain duplicate section keys"
+            )
+        snapshot_section_keys = tuple(
+            section.section_key for section in self.template_snapshot.sections
+        )
+        if section_keys != snapshot_section_keys:
+            raise InvalidDomainValueError(
+                "MonthlyPlan sections must match its ordered TemplateSnapshot Sections"
             )
         item_ids = tuple(cell.item_id for cell in self.cells)
         if len(set(item_ids)) != len(item_ids):
@@ -314,6 +333,12 @@ class MonthlyPlan:
     @property
     def cells(self) -> tuple[MonthlyCell, ...]:
         return tuple(cell for section in self.sections for cell in section.cells)
+
+    @property
+    def template_ref(self) -> TemplateRef:
+        """Backward-compatible view derived from the single Snapshot source."""
+
+        return self.template_snapshot.base_template_ref
 
     @property
     def active_week_periods(self) -> tuple[WeekPeriod, ...]:

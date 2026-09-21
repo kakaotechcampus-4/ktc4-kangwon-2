@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ..domain.monthly_template import TemplateRef
+from ..domain.monthly_template_profile import TemplateProfileRef
 from ..domain.year_month import YearMonth
 from ..planner.contracts import MonthlyCellPlanningOutcome
 from ..rules.monthly_activity_selection import ActivitySelectionTrace
@@ -42,7 +42,7 @@ class GenerateMonthlyPlanCommand:
     parent_yearly_plan_id: PlanId
     target_month: YearMonth
     daycare_ref: str
-    template_ref: TemplateRef
+    profile_ref: TemplateProfileRef
     safety_rule: SafetyRuleSelector
     generation_mode: MonthlyGenerationMode
     activity_catalog: ActivityCatalogSelector | None = None
@@ -58,9 +58,9 @@ class GenerateMonthlyPlanCommand:
                 "GenerateMonthlyPlanCommand.target_month must be YearMonth"
             )
         _non_blank(self.daycare_ref, "GenerateMonthlyPlanCommand.daycare_ref")
-        if not isinstance(self.template_ref, TemplateRef):
+        if not isinstance(self.profile_ref, TemplateProfileRef):
             raise InvalidDomainValueError(
-                "GenerateMonthlyPlanCommand.template_ref must be TemplateRef"
+                "GenerateMonthlyPlanCommand.profile_ref must be TemplateProfileRef"
             )
         if not isinstance(self.safety_rule, SafetyRuleSelector):
             raise InvalidDomainValueError(

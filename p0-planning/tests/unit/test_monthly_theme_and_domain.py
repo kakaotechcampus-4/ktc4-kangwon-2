@@ -5,7 +5,19 @@ import pytest
 
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_plan import MonthlyPlan, MonthlySection
-from ssuksak.planning.domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole, TemplateRef
+from ssuksak.planning.domain.monthly_template import (
+    DisplayMode,
+    EmptyValuePolicy,
+    SectionCategory,
+    SectionRole,
+    TemplateRef,
+    TemplateSection,
+)
+from ssuksak.planning.domain.monthly_template_profile import (
+    TemplateProfile,
+    TemplateProfileRef,
+)
+from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
 from ssuksak.planning.domain.plan import PlanItem, PlanStatus
 from ssuksak.planning.domain.provenance import (
     AuditEvent,
@@ -24,6 +36,61 @@ from ssuksak.planning.rules.monthly_theme_derivation import derive_monthly_theme
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 
 NOW = datetime(2026, 9, 19, 1, tzinfo=UTC)
+
+
+def _template_snapshot() -> TemplateSnapshot:
+    section_specs = (
+        ("theme", SectionRole.CONTENT, DisplayMode.MONTHLY_MERGED_SUMMARY),
+        ("week_axis", SectionRole.AXIS, None),
+        ("outdoor_play", SectionRole.CONTENT, DisplayMode.WEEKLY_CELLS),
+        ("safety_education", SectionRole.CONTENT, DisplayMode.WEEKLY_CELLS),
+    )
+    sections = tuple(
+        TemplateSection(
+            section_key=key,
+            role=role,
+            activated=True,
+            display_mode=display_mode,
+            empty_value_policy=(
+                None
+                if role is SectionRole.AXIS
+                else EmptyValuePolicy.RENDER_EMPTY_CELL
+            ),
+            display_label=key.replace("_", " ").title(),
+            order=order,
+            category=SectionCategory.DEFAULT,
+            required_for_generation=True,
+            visible=True,
+        )
+        for order, (key, role, display_mode) in enumerate(section_specs)
+    )
+    return TemplateSnapshot.from_profile(
+        TemplateProfile(
+            profile_ref=TemplateProfileRef("profile-1", "v1"),
+            institution_ref="daycare-1",
+            classroom_ref="class-1",
+            base_template_ref=TemplateRef("template", "v1"),
+            selected_optional_keys=(),
+            sections=sections,
+        )
+    )
+
+
+def _monthly_sections(snapshot: TemplateSnapshot) -> tuple[MonthlySection, ...]:
+    return tuple(
+        MonthlySection(
+            section_key=section.section_key,
+            role=section.role,
+            display_mode=section.display_mode,
+            empty_value_policy=(
+                section.empty_value_policy
+                or EmptyValuePolicy.RENDER_EMPTY_CELL
+            ),
+            parent_section_key=section.parent_section_key,
+            source_label=section.source_label,
+        )
+        for section in snapshot.sections
+    )
 
 
 def _yearly(*, confirmed: bool = True) -> YearlyPlan:
@@ -81,6 +148,7 @@ def test_theme_derivation_rejects_month_outside_parent():
 
 def test_minimal_monthly_structure_uses_current_parent_lineage():
     derivation = derive_monthly_theme(_yearly(), YearMonth(2026, 9))
+    snapshot = _template_snapshot()
     plan = MonthlyPlan(
         plan_id=PlanId("monthly-1"),
         school_year=2026,
@@ -90,26 +158,24 @@ def test_minimal_monthly_structure_uses_current_parent_lineage():
         target_ages=frozenset({3, 4}),
         status=PlanStatus.DRAFT,
         parent_lineage=derivation.parent_lineage,
-        template_ref=TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"),
+        template_snapshot=snapshot,
         week_periods=canonical_week_periods(YearMonth(2026, 9)),
-        sections=(
-            MonthlySection(
-                section_key="theme",
-                role=SectionRole.CONTENT,
-                display_mode=DisplayMode.MONTHLY_MERGED_SUMMARY,
-                empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
-            ),
-        ),
+        sections=_monthly_sections(snapshot),
     )
 
     assert plan.parent_lineage.parent_item_id is not None
     assert len(plan.active_week_periods) == 5
+    assert plan.template_snapshot is snapshot
+    assert plan.template_ref is snapshot.base_template_ref
+    with pytest.raises(Exception, match="template_snapshot"):
+        replace(plan, template_snapshot=None)
     with pytest.raises(FrozenInstanceError):
         plan.status = PlanStatus.CONFIRMED
 
 
 def test_monthly_month_must_belong_to_school_year():
     derivation = derive_monthly_theme(_yearly(), YearMonth(2026, 9))
+    snapshot = _template_snapshot()
     with pytest.raises(Exception, match="school year"):
         MonthlyPlan(
             PlanId("monthly-1"),
@@ -120,7 +186,7 @@ def test_monthly_month_must_belong_to_school_year():
             frozenset({3}),
             PlanStatus.DRAFT,
             derivation.parent_lineage,
-            TemplateRef("template", "v1"),
+            snapshot,
             canonical_week_periods(YearMonth(2028, 1)),
-            (MonthlySection("theme", SectionRole.CONTENT, DisplayMode.MONTHLY_MERGED_SUMMARY, EmptyValuePolicy.RENDER_EMPTY_CELL),),
+            _monthly_sections(snapshot),
         )
