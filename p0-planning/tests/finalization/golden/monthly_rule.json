@@ -1,0 +1,137 @@
+{
+  "activity_catalog": {"id": "ssuksak.outdoor-activity-reference", "version": "activity-reference-v0.2.1"},
+  "activity_selections": [
+    {"reason_codes": ["AVOIDED_REPEAT_IN_MONTH", "MATCHED_PARENT_THEME", "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE", "AVOIDED_CURRICULUM_DOMAIN_REPEAT", "STRONGER_MONTH_EVIDENCE", "TIE_BREAK_STABLE_ACTIVITY_ID"], "selected_activity_id": "act_outdoor_mugunghwa_flower_game", "week_id": "2026-09-W1"},
+    {"reason_codes": ["AVOIDED_REPEAT_IN_MONTH", "MATCHED_PARENT_THEME", "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE", "AVOIDED_CURRICULUM_DOMAIN_REPEAT", "STRONGER_MONTH_EVIDENCE", "TIE_BREAK_STABLE_ACTIVITY_ID"], "selected_activity_id": "act_outdoor_autumn_outing", "week_id": "2026-09-W2"},
+    {"reason_codes": ["AVOIDED_REPEAT_IN_MONTH", "MATCHED_PARENT_THEME", "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE", "AVOIDED_CURRICULUM_DOMAIN_REPEAT", "STRONGER_MONTH_EVIDENCE", "TIE_BREAK_STABLE_ACTIVITY_ID"], "selected_activity_id": "act_outdoor_sabangchigi", "week_id": "2026-09-W3"},
+    {"reason_codes": ["AVOIDED_REPEAT_IN_MONTH", "MATCHED_PARENT_THEME", "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE", "AVOIDED_CURRICULUM_DOMAIN_REPEAT", "STRONGER_MONTH_EVIDENCE", "TIE_BREAK_STABLE_ACTIVITY_ID"], "selected_activity_id": "act_outdoor_sand_old_painting", "week_id": "2026-09-W4"},
+    {"reason_codes": ["AVOIDED_REPEAT_IN_MONTH", "MATCHED_PARENT_THEME", "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE", "AVOIDED_CURRICULUM_DOMAIN_REPEAT", "STRONGER_MONTH_EVIDENCE", "TIE_BREAK_STABLE_ACTIVITY_ID"], "selected_activity_id": "act_outdoor_dongdaemun_nori", "week_id": "2026-09-W5"}
+  ],
+  "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+  "constraints": [{"affected_sections": ["safety_education"], "code": "STATUTORY_SAFETY_EDUCATION", "rule_version": "v1", "verification": "NOT_VERIFIED_SOURCE_REQUIRED"}],
+  "context_packet_fingerprint": null,
+  "generation_mode": "RULE_ONLY",
+  "parent_lineage": {"confirmed_by": "teacher_001", "has_parent_item_id": true, "has_parent_plan_id": true, "snapshot_value": "우리나라와 세계 여러 나라"},
+  "schema": "monthly-golden-v1",
+  "sections": [
+    {
+      "cells": [
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "yr_theme_korea_and_world_cultures", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}
+          ],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.theme.parent_anchor_derivation", "rule_version": "v1"},
+          "state": "FILLED",
+          "value": "우리나라와 세계 여러 나라",
+          "week_id": null
+        }
+      ],
+      "display_mode": "MONTHLY_MERGED_SUMMARY",
+      "key": "theme",
+      "role": "CONTENT"
+    },
+    {"cells": [], "display_mode": null, "key": "week_axis", "role": "AXIS"},
+    {
+      "cells": [
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "act_outdoor_mugunghwa_flower_game", "source_version": "activity-reference-v0.2.1", "type": "ACTIVITY_REFERENCE"}
+          ],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.activity.reference_candidate_selection", "rule_version": "v2"},
+          "state": "FILLED", "value": "무궁화 꽃이 피었습니다", "week_id": "2026-09-W1"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "act_outdoor_autumn_outing", "source_version": "activity-reference-v0.2.1", "type": "ACTIVITY_REFERENCE"}
+          ],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.activity.reference_candidate_selection", "rule_version": "v2"},
+          "state": "FILLED", "value": "가을 나들이", "week_id": "2026-09-W2"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "act_outdoor_sabangchigi", "source_version": "activity-reference-v0.2.1", "type": "ACTIVITY_REFERENCE"}
+          ],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.activity.reference_candidate_selection", "rule_version": "v2"},
+          "state": "FILLED", "value": "사방치기", "week_id": "2026-09-W3"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "act_outdoor_sand_old_painting", "source_version": "activity-reference-v0.2.1", "type": "ACTIVITY_REFERENCE"}
+          ],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.activity.reference_candidate_selection", "rule_version": "v2"},
+          "state": "FILLED", "value": "모래 위에 옛 그림을 그려요", "week_id": "2026-09-W4"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "act_outdoor_dongdaemun_nori", "source_version": "activity-reference-v0.2.1", "type": "ACTIVITY_REFERENCE"}
+          ],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.activity.reference_candidate_selection", "rule_version": "v2"},
+          "state": "FILLED", "value": "동대문 놀이", "week_id": "2026-09-W5"
+        }
+      ],
+      "display_mode": "WEEKLY_CELLS",
+      "key": "outdoor_play",
+      "role": "CONTENT"
+    },
+    {
+      "cells": [
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [{"source_id": "child-welfare-act-decree-annex6-2022-06-21", "source_version": "v1", "type": "SAFETY_RULE"}],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.safety.source_and_placement_assessment", "rule_version": "v1"},
+          "state": "EMPTY_UNRESOLVED", "value": "", "week_id": "2026-09-W1"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [{"source_id": "child-welfare-act-decree-annex6-2022-06-21", "source_version": "v1", "type": "SAFETY_RULE"}],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.safety.source_and_placement_assessment", "rule_version": "v1"},
+          "state": "EMPTY_UNRESOLVED", "value": "", "week_id": "2026-09-W2"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [{"source_id": "child-welfare-act-decree-annex6-2022-06-21", "source_version": "v1", "type": "SAFETY_RULE"}],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.safety.source_and_placement_assessment", "rule_version": "v1"},
+          "state": "EMPTY_UNRESOLVED", "value": "", "week_id": "2026-09-W3"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [{"source_id": "child-welfare-act-decree-annex6-2022-06-21", "source_version": "v1", "type": "SAFETY_RULE"}],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.safety.source_and_placement_assessment", "rule_version": "v1"},
+          "state": "EMPTY_UNRESOLVED", "value": "", "week_id": "2026-09-W4"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [{"source_id": "child-welfare-act-decree-annex6-2022-06-21", "source_version": "v1", "type": "SAFETY_RULE"}],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.safety.source_and_placement_assessment", "rule_version": "v1"},
+          "state": "EMPTY_UNRESOLVED", "value": "", "week_id": "2026-09-W5"
+        }
+      ],
+      "display_mode": "WEEKLY_CELLS",
+      "key": "safety_education",
+      "role": "CONTENT"
+    }
+  ],
+  "status": "DRAFT",
+  "target_ages": [3, 4],
+  "target_month": "2026-09",
+  "template": "ssuksak.monthly-template-a/monthly-template-a-v0.1.0",
+  "weeks": [
+    {"active": true, "end": "2026-09-04", "start": "2026-08-31", "week_id": "2026-09-W1"},
+    {"active": true, "end": "2026-09-11", "start": "2026-09-07", "week_id": "2026-09-W2"},
+    {"active": true, "end": "2026-09-18", "start": "2026-09-14", "week_id": "2026-09-W3"},
+    {"active": true, "end": "2026-09-25", "start": "2026-09-21", "week_id": "2026-09-W4"},
+    {"active": true, "end": "2026-10-02", "start": "2026-09-28", "week_id": "2026-09-W5"}
+  ]
+}
