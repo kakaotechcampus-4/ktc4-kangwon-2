@@ -15,6 +15,7 @@ from ssuksak.planning.domain.monthly_template_profile import (
     TemplateProfile,
     TemplateProfileRef,
 )
+from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
 
 
 _LABELS = {
@@ -234,3 +235,76 @@ def test_legacy_template_versions_still_load_without_profile_fields():
     assert repository.get_template(
         "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
     ) is not None
+
+
+def test_snapshot_copies_exact_profile_scope_references_and_section_contracts():
+    profile = _profile()
+
+    snapshot = TemplateSnapshot.from_profile(profile)
+
+    assert snapshot.profile_ref == profile.profile_ref
+    assert snapshot.base_template_ref == profile.base_template_ref
+    assert snapshot.institution_ref == profile.institution_ref
+    assert snapshot.classroom_ref == profile.classroom_ref
+    assert snapshot.sections == profile.ordered_sections
+    assert snapshot.sections is not profile.sections
+    assert all(
+        snapshot_section is not profile_section
+        for snapshot_section, profile_section in zip(
+            snapshot.sections, profile.ordered_sections, strict=True
+        )
+    )
+    assert tuple(section.order for section in snapshot.sections) == tuple(
+        sorted(section.order for section in profile.sections)
+    )
+
+    focus = snapshot.section("focus")
+    assert focus.semantic_variant is SemanticVariant.SUBTHEME
+    assert focus.display_label == "Subtheme"
+    assert focus.visible is True
+    assert "habits" not in {section.section_key for section in snapshot.sections}
+    assert snapshot.section("basic_habit") is not None
+
+
+def test_snapshot_is_independent_from_later_profile_versions():
+    profile = _profile()
+    snapshot = TemplateSnapshot.from_profile(profile)
+    changed_sections = tuple(
+        replace(
+            section,
+            display_label="Expected play",
+            semantic_variant=SemanticVariant.EXPECTED_PLAY,
+        )
+        if section.section_key == "focus"
+        else section
+        for section in profile.sections
+    )
+
+    changed_profile = replace(
+        profile,
+        profile_ref=TemplateProfileRef("profile-1", "v2"),
+        sections=changed_sections,
+    )
+
+    assert changed_profile.section("focus").display_label == "Expected play"
+    assert snapshot.profile_ref == TemplateProfileRef("profile-1", "v1")
+    assert snapshot.section("focus").display_label == "Subtheme"
+    assert snapshot.section("focus").semantic_variant is SemanticVariant.SUBTHEME
+
+
+def test_snapshot_rejects_legacy_alias_and_unstable_section_order():
+    snapshot = TemplateSnapshot.from_profile(_profile())
+    basic_habit = snapshot.section("basic_habit")
+    legacy_sections = tuple(
+        replace(section, section_key="habits")
+        if section is basic_habit
+        else section
+        for section in snapshot.sections
+    )
+
+    with pytest.raises(InvalidDomainValueError, match="legacy habits alias"):
+        replace(snapshot, sections=legacy_sections)
+    with pytest.raises(InvalidDomainValueError, match="ordered by"):
+        replace(snapshot, sections=tuple(reversed(snapshot.sections)))
+    with pytest.raises(InvalidDomainValueError, match="institution_ref"):
+        replace(snapshot, institution_ref=" ")
