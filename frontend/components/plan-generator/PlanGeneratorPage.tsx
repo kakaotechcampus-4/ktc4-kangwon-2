@@ -143,12 +143,13 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    // [3,5]처럼 비연속 선택은 "mixed" 한 값으로 줄이면 4세가 섞인 것으로 읽힌다.
+    // 드롭다운 값(age)은 그대로 두고 실제 선택 연령을 함께 넘긴다.
+    const exactAges =
+      age === "mixed" && onboardingAges.current.length > 1 ? [...onboardingAges.current] : null;
     const request = {
       age,
-      ageLabel:
-        age === "mixed" && onboardingAges.current.length > 1
-          ? ageSelectionLabel(onboardingAges.current)
-          : undefined,
+      ageLabel: exactAges ? ageSelectionLabel(exactAges) : undefined,
       selectedTypes: [...selectedTypes],
       period: structuredClone(period),
       memo,
@@ -197,6 +198,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             {
               type,
               age,
+              ...(exactAges ? { ages: exactAges } : {}),
               period,
               memo,
               template: template ? { headings: template.headings, style: template.style } : null,
@@ -215,7 +217,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             })),
           };
         } else {
-          results[type] = templatePlan(type, age, period, memo, template);
+          results[type] = templatePlan(type, age, period, memo, template, request.ageLabel);
         }
         if (controller.signal.aborted) return;
         setStepIndex(2);

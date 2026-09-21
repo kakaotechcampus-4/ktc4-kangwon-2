@@ -117,13 +117,13 @@ def test_alias_table_rejects_normalized_collision(clean_alias_cache, monkeypatch
 
 @pytest.mark.parametrize("filename", ["form.pdf", "form"])
 def test_parse_rejects_unsupported_extension(filename):
-    response = client.post("/forms/parse", files={"file": (filename, b"data")})
+    response = client.post("/api/forms/parse", files={"file": (filename, b"data")})
 
     assert response.status_code == 400
 
 
 def test_parse_reports_422_for_invalid_hwpx():
-    response = client.post("/forms/parse", files={"file": ("form.hwpx", b"not a zip")})
+    response = client.post("/api/forms/parse", files={"file": ("form.hwpx", b"not a zip")})
 
     assert response.status_code == 422
 
@@ -134,7 +134,7 @@ def test_parse_reports_500_for_runtime_error(monkeypatch):
 
     monkeypatch.setattr(hwp_form, "extract", fail)
 
-    response = client.post("/forms/parse", files={"file": ("form.hwp", b"data")})
+    response = client.post("/api/forms/parse", files={"file": ("form.hwp", b"data")})
 
     assert response.status_code == 500
 
@@ -149,7 +149,7 @@ def test_parse_hwpx_returns_mapped_labels(tmp_path):
         )
 
     response = client.post(
-        "/forms/parse",
+        "/api/forms/parse",
         files={"file": (path.name, path.read_bytes(), "application/octet-stream")},
     )
 

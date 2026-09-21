@@ -46,5 +46,5 @@ activities   (독립. plans 가 생기면 연결된다)
 | `children.birth_date` | ADR-007:52 가 발달평가를 스펙아웃해 쓸 기능이 사라졌다. ADR-004:71 은 "이름만 받는다"고 정한다 |
 | `users` / `classes.teacher_id` 의 FK | 인증이 8주차다. `teacher_id` 는 nullable 컬럼으로만 있다 |
 | `plans` | 계획안 테이블이다. 다음 PR 에서 만든다 |
-| `centers.region` | 활동 쪽 지역 축이 미정이라 한쪽만 있으면 매칭이 안 된다 |
+| 활동 쪽 지역 축 | `centers.region_sido` · `region_sigungu` 는 PR #16 에서 들어왔다. 활동을 지역으로 거르는 규칙은 아직 없다 |
 | `ON DELETE` 지정 | 삭제 생명주기가 미정이다. 암묵적 연쇄 삭제를 막고 명시적으로 정리한다 |

@@ -1,0 +1,39 @@
+# 법정 안전교육 기준 — 규칙 엔진의 legal_hours 가 읽는다 (ADR-005 개정판).
+#
+# 근거: 아동복지법 시행령 [별표 6] 교육기준 (제28조제1항 관련, 개정 2022. 6. 21.)
+#   https://www.law.go.kr/LSW/flDownload.do?gubun=&flSeq=153219923&bylClsCd=110201
+#
+# 법은 "주기"와 "연간 총시간"만 정한다. 1회당 몇 시간인지는 정하지 않는다.
+# 그래서 규칙도 그 둘만 본다 — 회당 시간을 지어내면 없는 기준으로 교사를 막는다.
+#
+# 합계 44시간. 이건 산수고 모델이 할 일이 아니다.
+
+traffic:
+  label: 교통안전교육
+  cycle_months: 2
+  annual_hours: 10
+
+missing_abduction:
+  label: 실종·유괴의 예방·방지 교육
+  cycle_months: 3
+  annual_hours: 10
+
+health_hygiene:
+  label: 감염병 및 약물의 오용·남용 예방 등 보건위생관리 교육
+  cycle_months: 3
+  annual_hours: 10
+
+disaster:
+  label: 재난대비 안전교육
+  cycle_months: 6
+  annual_hours: 6
+
+sexual_violence:
+  label: 성폭력 예방교육
+  cycle_months: 6
+  annual_hours: 4
+
+child_abuse:
+  label: 아동학대 예방교육
+  cycle_months: 6
+  annual_hours: 4
