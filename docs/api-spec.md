@@ -51,7 +51,7 @@ Content     application/json
 | `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 되돌리기는 P1 |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
-| `LLM_BUDGET_EXCEEDED` | 503 | 팀 LLM 예산 한도 도달. 운영 문의. **아직 낼 수 있는 서버가 없다** ↓ |
+| `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§11) |
 
@@ -59,11 +59,12 @@ Content     application/json
 "연간부터 확정해주세요" / "이미 있습니다, 기존 것으로 이동" / "확정된 문서는 수정할 수 없어요".
 
 **`PUT /api/documents/{id}` 의 `updated_at` 불일치도 409 다.** 위 셋과 달라서
-`code` 는 `ALREADY_EXISTS` 가 아니라 **`STALE_WRITE`** 를 쓴다 — 아래 표에 추가한다.
+`code` 는 `ALREADY_EXISTS` 가 아니라 **`STALE_WRITE`** 를 쓴다 — 위 표에 추가했다.
 
-> **`LLM_BUDGET_EXCEEDED` 는 예약된 코드다.** 지금 LLM 을 부르는 유일한 곳이
-> `frontend/app/api/assistant/route.ts`(Next.js 라우트)라 **`shared/llm` 토큰 카운터를 거치지 않는다.**
-> 호출 위치가 정해져야 이 에러를 낼 주체가 생긴다(맨 아래 「채워야 할 곳」). 그 전까지 FE 는 이 코드를 받지 않는다.
+> **`LLM_BUDGET_EXCEEDED` 는 우리가 세서 내는 코드가 아니다.** 사용량은 카테캠 담당자가
+> 보고 알려주므로 토큰 카운터를 만들지 않는다(2026-09-21 결정). 예산을 넘겨 키가 삭제되면
+> 공급자 호출이 인증 오류로 실패하는데, 그때 `GENERATION_FAILED` 로 뭉뚱그리지 않고
+> 이 코드로 구분한다 — FE 가 "재시도" 대신 "운영 문의" 를 띄워야 해서다.
 
 ---
 
@@ -878,8 +879,9 @@ assessment    observation · dailyLog
 ■  가명 Pool 의 실제 목록                           완료 — PM
    → backend/resources/pseudonyms.yaml.  받침 있음 30 · 없음 30
    → 원본 이름의 받침과 같은 쪽에서 뽑는다. 다른 쪽에서 뽑으면 복원 후 조사가 틀어진다
-□  LLM 호출 위치와 예산 카운터                       하민 · 성진 (7주차 논의)
-   → shared/llm 을 거치지 않으면 70% 경고·90% 차단이 동작하지 않는다
+□  LLM 호출 위치                                   하민 (7주차)
+   → 지금은 frontend/app/api/assistant/route.ts 가 OpenAI 를 직접 부른다. 백엔드로 옮긴다
+   → 예산 카운터는 만들지 않는다. 사용량은 담당자가 알려준다 (2026-09-21)
 □  재생성 횟수 상한                                 하민 · 성진 (7주차 논의)
    → 검사(ADR-014)가 위반을 내면 몇 번까지 다시 만드나. 예산과 같이 정한다
 ```
