@@ -69,3 +69,17 @@ jobs:
           done
           echo "150초 안에 200 이 오지 않았다"
           exit 1
+
+      # 배포는 main 머지 때만 돌아서 실패해도 아무도 안 본다. 주말이면 월요일에 안다.
+      # notify-discord.yml 은 카테캠이 관리하는 멘토 리뷰 알림이라 건드리지 않는다.
+      - name: 실패 알림
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          test -n "$WEBHOOK" || exit 0
+          curl -fsS -X POST "$WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -d "$(printf '{"content":"🔴 배포 실패 — %s\\n%s"}' "${GITHUB_SHA:0:7}" "$RUN_URL")" \
+            || echo "알림 전송 실패. 배포 결과는 위 스텝들을 본다"

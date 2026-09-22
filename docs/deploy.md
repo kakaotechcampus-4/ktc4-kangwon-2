@@ -65,6 +65,11 @@ curl -m 5 http://<서버IP>/health/ready     # 200
 curl -m 5 http://<서버IP>:8000/health      # 시간 초과여야 정상
 ```
 
+## 실패하면
+
+Discord 팀 채널로 커밋 해시와 실행 링크가 간다(`DISCORD_WEBHOOK` 은 이미 있는 secret).
+배포는 `main` 머지 때만 돌아서 실패해도 아무도 안 본다 — 주말이면 월요일에 안다.
+
 ## 안 만든 것
 
 **롤백 자동화** — `git reset --hard <이전 커밋>` 후 다시 돌리면 된다.
@@ -77,6 +82,15 @@ curl -m 5 http://<서버IP>:8000/health      # 시간 초과여야 정상
 
 **무중단 배포** — `docker compose up -d` 가 컨테이너를 바꾸는 몇 초 동안 끊긴다.
 파일럿 규모에서 문제가 아니다.
+
+**마이그레이션만 성공하고 앱이 실패한 경우의 복구** — DB 는 새 구조인데 앱은 옛 버전이
+된다. `git reset --hard <이전 커밋>` 으로 코드는 되돌아가도 DB 는 안 돌아간다.
+`alembic downgrade` 를 자동으로 걸지 않은 이유는 잘못 돌면 데이터가 날아가서다.
+지금은 사람이 판단한다.
+
+**`nginx.conf` 만 바뀐 배포** — `nginx` 는 이미지를 안 바꾸고 설정 파일만 마운트해서,
+`docker compose up -d` 가 컨테이너를 교체하지 않을 수 있다. 그때는 서버에서
+`docker compose restart nginx` 를 한 번 친다.
 
 ## 백업
 
