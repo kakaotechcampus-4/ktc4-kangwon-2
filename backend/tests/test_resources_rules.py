@@ -2,11 +2,13 @@
 
 코드가 아니라 데이터를 검사한다. 사람이 손으로 고치는 파일이라
 오타 하나가 조용히 잘못된 계획안을 만든다.
+
+법정 안전교육 시수는 여기서 검사하지 않는다 —
+p0-planning/data/rules/safety_education_legal_v1.json 으로 통일했다(ADR-014).
 """
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 RESOURCES = Path(__file__).resolve().parents[1] / "resources"
@@ -14,19 +16,6 @@ RESOURCES = Path(__file__).resolve().parents[1] / "resources"
 
 def _load(name: str) -> dict:
     return yaml.safe_load((RESOURCES / name).read_text(encoding="utf-8"))
-
-
-def test_법정_안전교육_합계가_44시간이다():
-    # 아동복지법 시행령 별표 6. 숫자가 바뀌면 법이 바뀐 것이므로 근거를 다시 확인해야 한다.
-    rules = _load("rules/legal_safety_education.yaml")
-    assert len(rules) == 6
-    assert sum(r["annual_hours"] for r in rules.values()) == 44
-
-
-@pytest.mark.parametrize("key", ["label", "cycle_months", "annual_hours"])
-def test_법정_안전교육_항목에_빠진_필드가_없다(key):
-    for name, rule in _load("rules/legal_safety_education.yaml").items():
-        assert key in rule, f"{name} 에 {key} 가 없다"
 
 
 def test_안전_플래그가_3에서_5세_범위다():
