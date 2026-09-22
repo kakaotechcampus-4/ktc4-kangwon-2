@@ -152,7 +152,9 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
         )
     with pytest.raises(InvalidStateTransitionError):
         EditMonthlyPlanItem(
-            plan_repository=harness.monthly_plans, clock=harness.clock
+            plan_repository=harness.monthly_plans,
+            clock=harness.clock,
+            activity_repository=harness.activities,
         ).execute(
             EditMonthlyPlanItemCommand(
                 monthly_confirmed.plan_id,

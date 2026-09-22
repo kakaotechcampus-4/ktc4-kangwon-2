@@ -16,8 +16,14 @@ from ..domain.provenance import (
 from ..rules.monthly_cell_state import resolve_cell_state
 from .monthly_dto import EditMonthlyPlanItemCommand
 from .monthly_errors import MonthlyApplicationError
-from .monthly_support import require_actor, require_item_id, require_monthly_plan
-from .ports import Clock, PlanRepository
+from .monthly_support import (
+    load_plan_activity_catalog,
+    require_actor,
+    require_item_id,
+    require_monthly_plan,
+    with_fresh_monthly_verification,
+)
+from .ports import ActivityReferenceRepository, Clock, PlanRepository
 
 
 class EditMonthlyPlanItem:
@@ -26,9 +32,11 @@ class EditMonthlyPlanItem:
         *,
         plan_repository: PlanRepository[MonthlyPlan],
         clock: Clock,
+        activity_repository: ActivityReferenceRepository | None = None,
     ) -> None:
         self._plans = plan_repository
         self._clock = clock
+        self._activities = activity_repository
 
     def execute(self, command: EditMonthlyPlanItemCommand) -> MonthlyPlan:
         plan = require_monthly_plan(self._plans, command.plan_id)
@@ -77,5 +85,7 @@ class EditMonthlyPlanItem:
             audit=cell.audit.append(event),
         )
         updated = plan.replace_cell(item_id, updated_cell)
+        catalog = load_plan_activity_catalog(self._activities, updated)
+        updated = with_fresh_monthly_verification(updated, catalog)
         self._plans.save(updated.plan_id, updated)
         return updated
