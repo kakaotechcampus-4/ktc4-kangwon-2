@@ -1,30 +1,52 @@
 # 배포
 
-**지금은 손으로 한다.** 자동 배포는 카테캠 OIDC 가이드가 나오면 켠다.
+**`main` 에 머지되면 자동으로 올라간다.** 손으로도 같은 스크립트를 돌릴 수 있다.
 
-## 왜 자동이 아닌가
+## 어떻게 들어가나
 
-2026-09-22 카테캠 안내 — **22 포트 외부 개방을 지양할 것.** 다른 팀이 공격을 받았다.
-
-우리는 키 인증만 쓰고 비밀번호 로그인이 꺼져 있어(`passwordauthentication no`)
-뚫릴 가능성은 낮았다. 그래도 닫았다 — 로그가 지저분해지고, 관리자는 24개 팀을 같은
-기준으로 봐야 한다.
-
-**22 를 닫으면 GitHub Actions 가 서버에 들어갈 길이 없다.**
+**SSH 가 아니다.** 22 포트를 열지 않고, GitHub 에 서버 열쇠를 맡기지도 않는다.
 
 ```
-SSH      GitHub  ──(22 로 들어옴)──▶  EC2      ← 닫았다
+SSH      GitHub  ──(22 로 들어옴)──▶  EC2      ← 안 쓴다
 OIDC     GitHub  ──▶  AWS  ──(SSM)──▶  EC2     ← 인바운드 0개
 ```
 
-OIDC 는 열쇠를 맡기지 않는다. GitHub 이 「나는 이 저장소의 이 브랜치 워크플로다」를
-증명하면 AWS 가 **몇 분짜리 임시 권한**을 준다. 유출돼도 금방 만료된다.
+GitHub 이 「나는 이 저장소의 워크플로다」를 증명하면 AWS 가 **1시간짜리 임시 권한**을
+준다. 저장해 두는 비밀이 없다. 유출될 것 자체가 없다.
 
-**우리가 직접 못 만든다** — OIDC 공급자 등록과 IAM 역할 생성이 둘 다 IAM 이고,
-우리 계정은 IAM 을 못 만진다(ADR-006). 카테캠이 가이드와 역할을 준비 중이다.
+2026-09-22 에 22 를 닫았다 — 카테캠 안내(다른 팀이 공격을 받았다). 같은 날
+카테캠이 OIDC 가이드와 `ktc-github-deploy` 역할을 냈고, 그날 옮겼다.
 
-`deploy.yml` 은 지워두지 않았다. 트리거만 끄고 남겼다 — OIDC 로 옮길 때 `script` 안의
-명령을 그대로 SSM 으로 보내면 된다.
+**역할은 카테캠이 만든 것을 쓴다.** 우리 계정은 IAM 을 못 만진다(ADR-006).
+우리가 한 건 repo Variable `AWS_ACCOUNT_ID` 등록 하나다.
+
+```
+AWS_ACCOUNT_ID   Variable    12자리 계정 ID.  비밀이 아니라 Variables 에 넣는다
+HEALTHCHECK_URL  Secret      배포 후 확인할 주소
+DISCORD_WEBHOOK  Secret      실패 알림.  없으면 알림만 건너뛴다
+```
+
+`EC2_HOST` · `EC2_USER` · `EC2_SSH_KEY` 는 **더 이상 쓰지 않는다.** 지워도 된다.
+
+## 자동 배포가 하는 일
+
+```
+main 에 push
+  ↓
+OIDC 로 AWS 인증                  키 없음
+  ↓
+scripts/deploy.sh 를 통째로 보냄   aws ssm send-command
+  ↓
+서버가 그 스크립트를 실행           git reset → build → migrate → up -d
+  ↓
+끝날 때까지 기다림                  최대 20분.  안 기다리면 실패해도 초록불이 뜬다
+  ↓
+/health/ready 200 확인
+```
+
+**서버에서 도는 명령은 `scripts/deploy.sh` 한 곳에만 있다.** 워크플로가 그 파일을
+보낼 뿐이라, 자동과 수동이 같은 명령을 돈다. 두 곳에 나눠 적으면
+「손으로는 되는데 CI 는 안 된다」가 생긴다.
 
 ## 열려 있는 포트
 
@@ -45,25 +67,15 @@ OIDC 는 열쇠를 맡기지 않는다. GitHub 이 「나는 이 저장소의 �
 
 ## 손으로 배포
 
+자동 배포가 막혔을 때만 쓴다. **명령은 같다** — 같은 스크립트를 부른다.
+
 EC2 → 인스턴스 → **연결** → **Session Manager** 탭 → 연결
 
 ```bash
 sudo -iu ubuntu
+bash ~/ktc4-kangwon-2/scripts/deploy.sh
+
 cd ~/ktc4-kangwon-2
-
-git fetch origin
-git checkout main
-git reset --hard origin/main
-
-# 되감김 확인 — fetch 가 실패해도 reset 은 성공한다
-git log --oneline -1
-ls docker-compose.yml
-
-docker compose build backend frontend
-docker compose run --rm backend alembic upgrade head   # 앱보다 먼저
-docker compose up -d
-docker image prune -f
-
 docker compose ps
 curl -s -o /dev/null -w "ready %{http_code}\n" localhost/health/ready
 ```
@@ -123,22 +135,28 @@ sed -i "s|^IS_SERVER=.*|IS_SERVER=1|" .env
 
 ---
 
-## OIDC 로 옮길 때
+## 배포가 실패하면
 
-카테캠에서 역할 ARN 을 받으면 이렇게 바꾼다.
+**먼저 어느 단계에서 멈췄는지 본다.** 셋은 원인이 다르다.
 
 ```
-1  deploy.yml 의 `on:` 에 push: branches: [main] 을 되살린다
-2  job 의 `if: false` 를 지운다
-3  appleboy/ssh-action 자리를
-     aws-actions/configure-aws-credentials  (role-to-assume: ARN)
-     aws ssm send-command                   (script 내용을 그대로)
-   로 바꾼다
-4  permissions: id-token: write 를 job 에 추가한다
+AWS 자격증명 설정 에서 실패     인증 문제.  AWS_ACCOUNT_ID Variable 을 본다
+배포 명령 보내기 에서 실패      권한·서버 문제.  서버가 SSM 에 붙어 있나
+끝날 때까지 기다린다 에서 실패   서버에서 명령이 터졌다.  그 스텝의 「서버 출력」을 읽는다
+Health check 에서 실패         배포는 됐는데 앱이 안 뜬다.  서버에서 docker compose ps
 ```
 
-**Secret 이 필요 없어진다.** 역할 ARN 은 이름이라 공개돼도 상관없다.
-`HEALTHCHECK_URL` 만 남는다.
+**서버가 SSM 에 붙어 있나 확인:**
+
+```bash
+aws ssm describe-instance-information --region ap-northeast-2 \
+  --query 'InstanceInformationList[].{id:InstanceId,ping:PingStatus}' --output table
+```
+
+`Online` 이어야 한다.
+
+**서버 출력은 24000자에서 잘린다.** 전문이 필요해지면 SSM 결과를 S3 로 내보내는
+설정을 붙인다. 아직 필요한 적이 없어 안 붙였다.
 
 ---
 

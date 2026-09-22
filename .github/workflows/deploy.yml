@@ -1,76 +1,91 @@
 name: Deploy
 
-# ⚠️ 자동 실행이 꺼져 있다. 지금은 손으로 배포한다 — docs/deploy.md 「손으로 배포」.
+# main 에 머지되면 서버에 올린다.
 #
-# 2026-09-22 카테캠 안내: 22 포트 외부 개방을 지양할 것. 다른 팀이 공격을 받았다.
-# 우리는 키 인증만 쓰고 비밀번호 로그인이 꺼져 있어(passwordauthentication no)
-# 뚫릴 가능성은 낮았지만, 팀 전체 기준이라 22 를 닫았다.
+# 서버에 들어가는 방법은 SSH 가 아니라 SSM 이다 — 카테캠 OIDC 가이드 §7.
+# 인바운드 포트가 0개고, GitHub 에 저장하는 비밀키도 0개다.
+# 22 는 2026-09-22 에 닫았다(다른 팀이 공격을 받았다).
 #
-# 22 를 닫으면 GitHub Actions 가 서버에 들어갈 길이 없어진다.
-# 카테캠이 OIDC 가이드를 준비 중이다 — IAM 역할은 관리자만 만들 수 있고(ADR-006)
-# 그게 오면 SSM 으로 명령을 보내는 방식으로 바꾼다. 인바운드 포트가 0개가 된다.
-#
-# 그때까지 push 트리거를 끈다. 켜두면 main 머지마다 SSH 실패로 빨간불이 뜨고
-# Discord 알림이 울려서 진짜 실패와 구분이 안 된다.
-#
-# 아래 job 은 OIDC 로 옮길 때 재사용할 뼈대다. 지우지 않는다.
+# 서버에서 실제로 도는 명령은 scripts/deploy.sh 다. 이 워크플로는 그 파일을
+# 통째로 보내고 결과를 기다릴 뿐이다. 손으로 배포할 때도 같은 파일을 쓴다.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
+# 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+# 이 블록을 쓰는 순간 명시하지 않은 권한은 전부 none 이 된다.
+permissions:
+  id-token: write # 빠지면 OIDC 인증이 실패한다
+  contents: read # checkout 용
+
 env:
-  DEPLOY_PATH: /home/ubuntu/ktc4-kangwon-2
+  INSTANCE_ID: i-041ebb00937bd371f # ktc4-team-server
+  AWS_REGION: ap-northeast-2
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    # OIDC 로 옮기기 전까지는 수동 실행해도 SSH 가 막혀 실패한다.
-    if: false
     steps:
-      # OIDC 전환 시 이 자리에 aws-actions/configure-aws-credentials 와
-      # SSM send-command 가 들어간다. 아래 script 의 내용은 그대로 옮겨 쓴다.
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - uses: actions/checkout@v4
+
+      - name: AWS 자격증명 설정
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
-          command_timeout: 20m
-          envs: DEPLOY_PATH
-          script: |
-            set -euo pipefail
-            cd "$DEPLOY_PATH"
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          aws-region: ap-northeast-2
 
-            # 저장소가 공개라 HTTPS 는 인증이 필요 없다. SSH 원격이면 서버에 GitHub 키를
-            # 따로 관리해야 하고, 없으면 fetch 가 Permission denied 로 죽는다.
-            # 그 상태에서 reset --hard 를 하면 13일 전 origin/main 으로 되감긴다(실제로 당했다).
-            git remote set-url origin https://github.com/${{ github.repository }}.git
+      # 스크립트 파일을 서버에 미리 둘 필요가 없다. 이 커밋의 내용을 그대로 보낸다.
+      # executionTimeout 은 서버에서 도는 시간이다. docker build 가 오래 걸린다.
+      - name: 배포 명령 보내기
+        id: send
+        run: |
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${GITHUB_SHA:0:7}" \
+            --parameters "$(jq -n --rawfile script scripts/deploy.sh \
+              '{commands: [$script], executionTimeout: ["1800"]}')" \
+            --query Command.CommandId --output text)
+          echo "배포 명령 $command_id"
+          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
 
-            git fetch --prune origin
-            git checkout main
+      # send-command 는 보내고 바로 끝난다. 끝날 때까지 안 기다리면 실패해도 초록불이 뜬다.
+      # aws ssm wait 는 100초에서 포기해서 docker build 를 못 기다린다. 직접 돈다.
+      - name: 끝날 때까지 기다린다
+        env:
+          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+        run: |
+          status=Pending
+          for attempt in $(seq 1 120); do
+            status=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in
+              Pending | InProgress | Delayed) ;;
+              *) break ;;
+            esac
+            sleep 10
+          done
 
-            # fetch 가 실패하면 origin/main 이 옛 커밋을 가리킨 채 남는다.
-            # 그대로 reset 하면 조용히 과거로 되돌아간다. 파일이 있는지 본다.
-            git reset --hard origin/main
-            test -f docker-compose.yml || { echo "docker-compose.yml 이 없다. fetch 가 안 됐다"; exit 1; }
-            echo "배포 커밋 $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
+          echo "--- 서버 출력 ---"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+            --query StandardOutputContent --output text
+          echo "--- 서버 오류 ---"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+            --query StandardErrorContent --output text
 
-            # .env 는 커밋하지 않으므로 서버에만 있다.
-            test -f .env || { echo ".env 가 없다. 서버에서 한 번 만들어야 한다"; exit 1; }
-
-            docker compose build backend frontend
-
-            # 마이그레이션을 앱보다 먼저 돌린다. 반대로 하면 새 코드가 없는 컬럼을 읽는다.
-            docker compose run --rm backend alembic upgrade head
-
-            docker compose up -d
-            docker image prune -f
+          # 출력은 24000자에서 잘린다. 전문이 필요해지면 S3 로 내보내는 설정을 붙인다.
+          echo "상태 $status"
+          test "$status" = Success
 
       # /health 가 아니라 /health/ready 다 — /health 는 DB 를 안 보고 200 을 준다(ADR-011).
       - name: Health check
