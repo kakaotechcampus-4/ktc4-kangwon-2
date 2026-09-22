@@ -4,6 +4,8 @@
 값을 복사해 오면 원본이 바뀌어도 테스트가 통과한다.
 """
 
+import json
+
 import pytest
 
 from app.features.plans.rules.verify import (
@@ -108,3 +110,19 @@ def test_반_연령을_덮으면_통과한다():
 def test_반_연령_범위가_뒤집히면_거부한다():
     with pytest.raises(ValueError, match="뒤집"):
         age([], class_age_min=5, class_age_max=3)
+
+
+def test_승인되지_않은_법령_파일은_거부한다():
+    """사람 검토를 안 거친 기준으로 교사를 막지 않는다."""
+    rules = json.loads(json.dumps(load_legal_rules()))
+    rules["review"]["domain_owner_approval"] = "PENDING"
+    rules["review"]["runtime_active"] = True
+
+    with pytest.raises(ValueError, match="승인되지 않은"):
+        legal_hours(months(), rules)
+
+
+def test_법정_6구분_밖의_값은_거부한다():
+    """조용히 무시하면 배치된 달을 빈 달로 세어 없는 위반이 나온다."""
+    with pytest.raises(ValueError, match="생활안전"):
+        legal_hours(months({5: ["생활안전"]}, state="PLACED"))

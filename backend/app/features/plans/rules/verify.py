@@ -77,8 +77,12 @@ def legal_hours(
     연간계획안에는 교육 시간을 적는 칸 자체가 없어 시수는 어느 경우에도 셀 수 없다.
     """
     rules = rules if rules is not None else load_legal_rules()
+    _require_approved(rules)
     _require_school_year_order(months)
+    _require_legal_categories(months, rules)
 
+    # 한 달이라도 배치를 모르면 그 해의 주기를 셀 수 없다. 모르는 달에 교육이 있었을
+    # 수도 없었을 수도 있어서, 센 결과가 위반인지 아닌지 가릴 수 없다.
     placement_unknown = any(m["safety_education_state"] == "SOURCE_REQUIRED" for m in months)
     found: list[Violation] = []
     for category in rules["categories"]:
@@ -135,6 +139,39 @@ def age(
         for activity in activities
         if activity.age_min > class_age_min or activity.age_max < class_age_max
     ]
+
+
+def _require_approved(rules: Mapping[str, Any]) -> None:
+    """사람이 승인한 법령 파일만 쓴다.
+
+    파일 자체가 `runtime_active == (domain_owner_approval == "HUMAN_APPROVED")` 를 항상
+    만족해야 한다고 정한다. 승인 없이 검사를 돌리면 검토받지 않은 기준으로 교사를 막는다.
+    """
+    review = rules["review"]
+    approved = review["domain_owner_approval"] == "HUMAN_APPROVED"
+    if not approved or review["runtime_active"] != approved:
+        raise ValueError(
+            "승인되지 않은 법령 파일이다. "
+            f"domain_owner_approval={review['domain_owner_approval']!r} "
+            f"runtime_active={review['runtime_active']!r}"
+        )
+
+
+def _require_legal_categories(
+    months: Sequence[Mapping[str, Any]],
+    rules: Mapping[str, Any],
+) -> None:
+    """`safety_education` 에 법정 6구분 밖의 값이 들어오면 거부한다.
+
+    조용히 무시하면 그 달에 교육이 배치됐는데도 빈 달로 세어 **없는 위반**이 나온다.
+    「생활안전」 같은 기관 label 을 법정 구분으로 매핑하지도 않는다
+    (`safety_education_legal_v1.json` 의 `rule_must_not`). 어느 쪽에도 넣을 수 없으므로
+    받지 않는다 — 기관 label 은 `institution_category` 로 따로 관리한다.
+    """
+    legal = {c["category_id"] for c in rules["categories"]}
+    unknown = sorted({v for m in months for v in m["safety_education"]} - legal)
+    if unknown:
+        raise ValueError(f"법정 6구분에 없는 안전교육 값이다: {', '.join(unknown)}")
 
 
 def _require_school_year_order(months: Sequence[Mapping[str, Any]]) -> None:
