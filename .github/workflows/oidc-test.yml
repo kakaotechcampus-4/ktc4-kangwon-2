@@ -1,0 +1,33 @@
+# OIDC 연결 확인용 — 인증만 본다. 배포하지 않는다.
+#
+# 카테캠 「GitHub Actions ↔ AWS 인증 (OIDC)」 §2 의 확인 절차다.
+# 배포를 붙이기 전에 인증만 따로 검증한다. 문제가 생겼을 때 원인이 인증인지
+# 배포인지 가려진다.
+#
+# 트리거가 workflow_dispatch 가 아니라 이 브랜치 push 인 이유:
+#   workflow_dispatch 는 기본 브랜치(main)에 있어야 Actions 탭에 뜬다.
+#   지금 main 은 주간 리뷰 전이라 건드리지 않는다.
+#
+# 확인이 끝나면 이 파일은 지운다. 배포는 deploy.yml 이 한다.
+
+name: OIDC 연결 확인
+
+on:
+  push:
+    branches: [ci/oidc-auth]
+
+# 이 블록을 쓰는 순간 명시하지 않은 권한은 전부 none 이 된다.
+permissions:
+  id-token: write # 빠지면 인증 실패한다. 가장 흔한 원인
+  contents: read # checkout 용
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          aws-region: ap-northeast-2
+      # assumed-role/ktc-github-deploy 가 보이면 성공이다.
+      - run: aws sts get-caller-identity
