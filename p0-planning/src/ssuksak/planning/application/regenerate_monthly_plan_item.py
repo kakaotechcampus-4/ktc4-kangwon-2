@@ -221,25 +221,23 @@ class RegenerateMonthlyPlanItem:
             for source in theme.evidence
             if source.source_type is EvidenceSourceType.PARENT_PLAN
         )
+        reference_evidence: tuple[EvidenceSource, ...] = ()
         if proposal.reference_id is not None:
-            evidence = deduplicate_evidence(
-                (
-                    *parent_evidence,
-                    EvidenceSource(
-                        EvidenceSourceType.ACTIVITY_REFERENCE,
-                        proposal.reference_id,
-                        catalog.catalog_version if catalog is not None else None,
-                        display_name=proposal.value,
-                    ),
-                )
+            reference_evidence = (
+                EvidenceSource(
+                    EvidenceSourceType.ACTIVITY_REFERENCE,
+                    proposal.reference_id,
+                    catalog.catalog_version if catalog is not None else None,
+                    display_name=proposal.value,
+                ),
             )
-        else:
-            evidence = deduplicate_evidence(
-                (
-                    *parent_evidence,
-                    *packet_evidence(packet, proposal.grounding_refs),
-                )
+        evidence = deduplicate_evidence(
+            (
+                *parent_evidence,
+                *reference_evidence,
+                *packet_evidence(packet, proposal.grounding_refs),
             )
+        )
         generation = GenerationMethodDetail(
             GenerationMethod.RULE_LLM,
             LLM_INTEGRATION_RULE_ID,

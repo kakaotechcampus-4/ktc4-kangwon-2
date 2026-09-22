@@ -307,6 +307,31 @@ class ExplodingCellLlm(RequestAwareMonthlyLlm):
         raise RuntimeError("provider unavailable")
 
 
+class ReferenceAndGroundingCellLlm(RequestAwareMonthlyLlm):
+    def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
+        self.cell_requests.append(request)
+        reference_id, value = request.reference_labels[0]
+        grounding_ref = sorted(request.valid_grounding_refs)[0]
+        return RawLlmResponse(
+            json.dumps(
+                {
+                    "target_month": request.target_month.value,
+                    "target_week_id": request.target_week_id.value,
+                    "section": {
+                        "section_key": request.target_section_key,
+                        "value": value,
+                        "unresolved": False,
+                        "reference_id": reference_id,
+                        "grounding_refs": [grounding_ref],
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            MONTHLY_MODEL,
+            "reference-and-grounding-cell",
+        )
+
+
 class LegacyShapeMonthlyLlm(RequestAwareMonthlyLlm):
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
         self.monthly_requests.append(request)
@@ -596,6 +621,24 @@ def test_llm_mode_reuses_context_and_planner_then_persists_validated_draft():
     assert harness.plans.save_count == 1
 
 
+def test_llm_focus_semantics_remain_snapshot_owned():
+    harness = Harness()
+    result = harness.generate(
+        MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()
+    )
+    focus = result.plan.section("focus")
+    outdoor = result.plan.section("outdoor_play")
+    snapshot_focus = result.plan.template_snapshot.section("focus")
+
+    assert snapshot_focus is not None
+    assert snapshot_focus.semantic_variant is SemanticVariant.SUBTHEME
+    assert focus is not None and outdoor is not None
+    assert all(
+        cell.label_variant is None and cell.mapping_confidence is None
+        for cell in (*focus.cells, *outdoor.cells)
+    )
+
+
 def test_llm_failure_never_saves_an_incomplete_monthly_plan():
     harness = Harness()
     provider = ExplodingMonthlyLlm()
@@ -725,6 +768,42 @@ def test_llm_cell_regeneration_records_before_and_after_method_details():
     assert change.after.rule_version == MONTHLY_CELL_PROMPT_VERSION
     assert result.plan.find_cell(sibling.item_id)[3] is sibling
     assert len(provider.cell_requests) == 1
+
+
+def test_llm_cell_regeneration_preserves_reference_and_grounding_provenance():
+    harness = Harness()
+    original = harness.generate(
+        MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()
+    ).plan
+    target = _cell(original, "outdoor_play")
+    provider = ReferenceAndGroundingCellLlm()
+
+    result = harness.regenerate(provider).execute(
+        RegenerateMonthlyPlanItemCommand(original.plan_id, target.item_id, TEACHER)
+    )
+    outcome = result.planner_outcome
+    regenerated = result.plan.find_cell(target.item_id)[3]
+
+    assert outcome is not None
+    assert outcome.proposal.section.reference_id is not None
+    assert outcome.proposal.section.grounding_refs
+    assert {source.source_type for source in regenerated.evidence} == {
+        EvidenceSourceType.PARENT_PLAN,
+        EvidenceSourceType.ACTIVITY_REFERENCE,
+        EvidenceSourceType.INSTITUTION_SAMPLE,
+    }
+    assert {(source.source_type, source.source_id) for source in regenerated.evidence} >= {
+        (
+            EvidenceSourceType.ACTIVITY_REFERENCE,
+            outcome.proposal.section.reference_id,
+        ),
+        (
+            EvidenceSourceType.INSTITUTION_SAMPLE,
+            outcome.proposal.section.grounding_refs[0],
+        ),
+    }
+    assert result.plan.parent_lineage is original.parent_lineage
+    assert regenerated.generation.method is GenerationMethod.RULE_LLM
 
 
 def test_llm_cell_failure_does_not_persist_a_partial_regeneration():
