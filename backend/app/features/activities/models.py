@@ -29,7 +29,9 @@ class Activity(Base):
     age_min: Mapped[int] = mapped_column(comment="학년도 기준 연 나이(3·4·5). 만 나이 아님")
     age_max: Mapped[int] = mapped_column(comment="학년도 기준 연 나이(3·4·5). 만 나이 아님")
     safety_flags: Mapped[list[str]] = mapped_column(
-        JSONB, default=list, comment="resources/rules/safety_flags.yaml 의 값. safety 규칙이 대조한다"
+        JSONB,
+        default=list,
+        comment="resources/rules/safety_flags.yaml 의 값. safety 규칙이 대조한다",
     )
     tags: Mapped[list[str]] = mapped_column(
         JSONB, default=list, comment="5영역 태그·주제 태그. ADR-001:19"

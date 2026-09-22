@@ -75,7 +75,7 @@ app/
 |---|---|
 | `centers` | 원 · 반 · 아동 명단 · 성품인사 |
 | `activities` | 활동 풀 |
-| `plans` | 연간 · 월간 · 주간 계획안 |
+| `plans` | 연간 · 월간 · 주간 계획안. `rules/verify.py` 는 만들어진 계획안을 검사한다(ADR-014) |
 | `forms` | 없음 (hwp 양식 파싱, DB 미사용) |
 | `trends` | 트렌드 소재 · 승인 큐 |
 
