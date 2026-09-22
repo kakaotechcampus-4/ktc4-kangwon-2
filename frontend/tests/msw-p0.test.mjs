@@ -31,22 +31,26 @@ test("P0 clients use real URLs: center, mixed class, children, annual, patch, co
     const center = await createCenter({
       name: "검증 원",
       director_name: "원장",
-      region: "충청북도 충주시",
+      region_sido: "충청북도",
+      region_sigungu: "충주시",
     });
     assert.equal(center.id, 1);
     assert.ok(center.created_at);
     const klass = await createClass(center.id, {
       name: "반",
       teacher_name: "교사",
-      selected_ages: [3, 5],
+      age_min: 3,
+      age_max: 5,
       child_count: null,
     });
-    assert.deepEqual(klass.selected_ages, [3, 5]);
-    assert.deepEqual(await getChildren(klass.id), { items: [], count: 0 });
+    assert.equal(klass.age_min, 3);
+    assert.equal(klass.age_max, 5);
+    // 목록 봉투는 { items } 하나다 — count 를 따로 주지 않는다 (§2-1).
+    assert.deepEqual(await getChildren(klass.id), { items: [] });
     const child = await createChild(klass.id, { name: "검증아동" });
     assert.equal(child.class_id, klass.id);
     assert.notEqual(child.code, child.name);
-    assert.equal((await getChildren(klass.id)).count, 1);
+    assert.equal((await getChildren(klass.id)).items.length, 1);
     assert.equal(await deleteChild(child.id), undefined);
     const plan = await createAnnualPlan({
       class_id: klass.id,
@@ -91,31 +95,36 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     assert.equal(r.status, 422);
     assert.equal(read().centers.length, 0);
     const center = await (
-      await request("centers", { name: "원", director_name: "교사", region: "지역" })
+      await request("centers", {
+        name: "원",
+        director_name: "교사",
+        region_sido: "충청북도",
+        region_sigungu: "충주시",
+      })
     ).json();
+    // 연령은 범위 두 값이고 3~5 안이며 age_min <= age_max 다 (§2).
     r = await request("centers/" + center.id + "/classes", {
       name: "반",
       teacher_name: "교사",
-      selected_ages: [3, 3],
+      age_min: 5,
+      age_max: 3,
     });
+    assert.equal(r.status, 422);
+    r = await request("centers/" + center.id + "/classes", { name: "반", teacher_name: "교사" });
     assert.equal(r.status, 422);
     r = await request("centers/" + center.id + "/classes", {
       name: "반",
       teacher_name: "교사",
-      selected_ages: [],
-    });
-    assert.equal(r.status, 422);
-    r = await request("centers/" + center.id + "/classes", {
-      name: "반",
-      teacher_name: "교사",
-      selected_ages: [2, 3],
+      age_min: 2,
+      age_max: 3,
     });
     assert.equal(r.status, 422);
     const klass = await (
       await request("centers/" + center.id + "/classes", {
         name: "반",
         teacher_name: "교사",
-        selected_ages: [3, 4],
+        age_min: 3,
+        age_max: 4,
       })
     ).json();
     r = await request("classes/" + klass.id + "/children?mockError=VALIDATION_FAILED", {
@@ -228,25 +237,30 @@ test("onboarding bridge deduplicates mounts, retains local IDs and isolates acco
   }
 });
 
-test("selected_ages payload keeps the exact selection (no range conversion)", async () => {
-  const { selectedAgesPayload } = await import("../lib/api/age-adapter.ts");
-  for (const ages of [[3], [3, 4], [4, 5], [3, 5], [3, 4, 5]]) {
+test("age payload becomes age_min·age_max — the DB cannot store 「4세만 제외」", async () => {
+  // docs/api-spec.md §2: 떨어진 조합은 범위로 채운다. classes 는 범위 컬럼이고
+  // CHECK (age_min <= age_max) 가 걸려 있어 배열을 보내면 422 다.
+  const { ageRangePayload } = await import("../lib/api/age-adapter.ts");
+  for (const [ages, expected] of [
+    [[3], { age_min: 3, age_max: 3 }],
+    [[3, 4], { age_min: 3, age_max: 4 }],
+    [[4, 5], { age_min: 4, age_max: 5 }],
+    [[3, 5], { age_min: 3, age_max: 5 }],
+    [[3, 4, 5], { age_min: 3, age_max: 5 }],
+  ]) {
     const before = [...ages];
-    const payload = selectedAgesPayload({ selectedAges: ages });
-    assert.deepEqual(payload, { selected_ages: before });
-    assert.equal("age_min" in payload, false);
-    assert.equal("age_max" in payload, false);
-    assert.deepEqual(ages, before);
-    payload.selected_ages.push(9);
-    assert.deepEqual(ages, before); // 원본 배열을 공유하지 않는다
+    assert.deepEqual(ageRangePayload({ selectedAges: ages }), expected);
+    assert.deepEqual(ages, before); // 화면의 선택값 배열을 건드리지 않는다
   }
-  assert.throws(() => selectedAgesPayload({ selectedAges: [] }));
-  // 레거시 값도 배열로 읽는다
-  assert.deepEqual(selectedAgesPayload({ ageGroup: "mixed" }), { selected_ages: [3, 4, 5] });
-  assert.deepEqual(selectedAgesPayload({ ageGroup: "4" }), { selected_ages: [4] });
+  assert.throws(() => ageRangePayload({ selectedAges: [] }));
+  // 레거시 값도 같은 규칙으로 읽는다
+  assert.deepEqual(ageRangePayload({ ageGroup: "mixed" }), { age_min: 3, age_max: 5 });
+  assert.deepEqual(ageRangePayload({ ageGroup: "4" }), { age_min: 4, age_max: 4 });
 });
 
-test("[3,5] round-trips through MSW without becoming a range", async () => {
+test("the range goes to the server while the screen keeps the exact selection", async () => {
+  const { ageRangePayload } = await import("../lib/api/age-adapter.ts");
+  const { ageSelectionLabel } = await import("../lib/onboarding/types.ts");
   resetTestData();
   server.listen({ onUnhandledRequest: "error" });
   const patched = globalThis.fetch;
@@ -255,19 +269,24 @@ test("[3,5] round-trips through MSW without becoming a range", async () => {
     const center = await createCenter({
       name: "연령 검증 원",
       director_name: "원장",
-      region: "충청북도 충주시",
+      region_sido: "충청북도",
+      region_sigungu: "충주시",
     });
     for (const ages of [[3], [3, 4], [3, 5], [3, 4, 5]]) {
       const created = await createClass(center.id, {
         name: "반",
         teacher_name: "교사",
-        selected_ages: ages,
+        ...ageRangePayload({ selectedAges: ages }),
         child_count: null,
       });
-      assert.deepEqual(created.selected_ages, ages);
-      const { items } = await getClasses(center.id);
-      assert.deepEqual(items.find((i) => i.id === created.id).selected_ages, ages);
-      assert.equal("age_min" in items.find((i) => i.id === created.id), false);
+      assert.equal(created.age_min, Math.min(...ages));
+      assert.equal(created.age_max, Math.max(...ages));
+      const item = (await getClasses(center.id)).items.find((i) => i.id === created.id);
+      assert.equal(item.age_min, Math.min(...ages));
+      assert.equal(item.age_max, Math.max(...ages));
+      assert.equal("selected_ages" in item, false);
+      // 화면 라벨은 선택값 그대로다 — 서버가 준 범위로 체크박스를 덮어쓰지 않는다.
+      assert.equal(ageSelectionLabel(ages), "만 " + ages.join("·") + "세반");
     }
   } finally {
     globalThis.fetch = patched;
@@ -288,13 +307,19 @@ test("single-page annual retry keeps server data unchanged on first failure and 
     });
   try {
     const center = await (
-      await request("centers", { name: "테스트 원", director_name: "원장", region: "지역" })
+      await request("centers", {
+        name: "테스트 원",
+        director_name: "원장",
+        region_sido: "충청북도",
+        region_sigungu: "충주시",
+      })
     ).json();
     const klass = await (
       await request("centers/" + center.id + "/classes", {
         name: "반",
         teacher_name: "교사",
-        selected_ages: [3],
+        age_min: 3,
+        age_max: 3,
       })
     ).json();
     await request("classes/" + klass.id + "/children", { name: "테스트아동" });

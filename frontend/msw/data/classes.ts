@@ -1,34 +1,27 @@
 import { read, commit } from "./store";
 import type { ApiClass, ClassInput } from "../../lib/api/types";
 
-/** 예전에 저장된 age_min/age_max 레코드만 selected_ages 배열로 읽어준다(최소 fallback). */
-function normalize(c: ApiClass & { age_min?: number; age_max?: number }): ApiClass {
-  if (Array.isArray(c.selected_ages)) return c;
-  const min = Number(c.age_min),
-    max = Number(c.age_max);
-  const ages =
-    Number.isInteger(min) && Number.isInteger(max) && min <= max
-      ? [3, 4, 5].filter((age) => age >= min && age <= max)
-      : [];
-  return { ...c, selected_ages: ages };
+/** 학년도는 서버가 정한다 — 3월 시작이다 (docs/api-spec.md §2). */
+function schoolYearOf(now: Date) {
+  return now.getMonth() + 1 >= 3 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
-export const findClass = (id: number) => {
-  const c = read().classes.find((c) => c.id === id);
-  return c ? normalize(c) : undefined;
-};
-export const listClasses = (id: number) =>
-  read()
-    .classes.filter((c) => c.center_id === id)
-    .map(normalize);
-export const addClass = (id: number, data: ClassInput) =>
+export const findClass = (id: number) => read().classes.find((c) => c.id === id);
+export const listClasses = (id: number) => read().classes.filter((c) => c.center_id === id);
+export const addClass = (id: number, data: ClassInput): ApiClass =>
   commit((db) => {
-    const c = {
-      ...data,
-      selected_ages: [...data.selected_ages],
-      child_count: data.child_count ?? null,
+    const now = new Date();
+    const c: ApiClass = {
       id: db.next++,
       center_id: id,
+      name: data.name,
+      school_year: schoolYearOf(now),
+      age_min: data.age_min,
+      age_max: data.age_max,
+      child_count: data.child_count ?? null,
+      teacher_name: data.teacher_name,
+      consent_confirmed_at: data.consent_confirmed ? now.toISOString() : null,
+      created_at: now.toISOString(),
     };
     db.classes.push(c);
     return c;
