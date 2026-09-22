@@ -3,19 +3,69 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+# 배포가 겹치면 git reset 과 docker compose 가 서로를 밟는다. 앞 배포를 기다린다.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  # 서버의 저장소 경로. 다른 곳에 clone 돼 있으면 여기만 고친다.
+  DEPLOY_PATH: /home/ubuntu/ktc4-kangwon-2
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      # AWS 자격증명을 쓰지 않는다. 카테캠 계정은 IAM 액세스 키 생성이 막혀 있다(ADR-006).
+      # OIDC 도 IAM 역할을 새로 만들어야 해서 같은 이유로 못 쓴다. 남는 건 SSH 다.
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          command_timeout: 20m
+          envs: DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
 
-      - name: Deploy
-        # 배포 대상 인프라가 정해지면 이 스텝을 실제 배포 명령으로 교체한다.
-        run: echo "배포 스텝 미구성 — 인프라 결정 후 채운다."
+            # 서버에서 직접 고친 파일이 있으면 pull 이 멈춘다. 배포는 main 이 정답이다.
+            git fetch --prune origin
+            git checkout main
+            git reset --hard origin/main
 
+            # .env 는 커밋하지 않으므로 서버에만 있다. 없으면 여기서 멈춘다 —
+            # 빈 비밀번호로 db 가 뜨는 것보다 배포가 실패하는 편이 낫다.
+            test -f .env || { echo ".env 가 없다. 서버에서 한 번 만들어야 한다"; exit 1; }
+
+            docker compose build backend frontend
+
+            # 마이그레이션을 앱보다 먼저 돌린다. 반대로 하면 새 코드가 없는 컬럼을 읽는다.
+            # run 은 depends_on 의 service_healthy 를 기다린다.
+            docker compose run --rm backend alembic upgrade head
+
+            docker compose up -d
+            docker image prune -f
+
+      # 서버가 실제로 응답하는지 밖에서 본다. /health 가 아니라 /health/ready 다 —
+      # /health 는 DB 를 안 보고 200 을 준다(ADR-011).
       - name: Health check
         env:
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
-        run: curl -fsS "${HEALTHCHECK_URL}/health/ready"
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -fsS -o /dev/null -w '%{http_code}' "${HEALTHCHECK_URL}/health/ready" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "health/ready 200 (${attempt}회째)"
+              exit 0
+            fi
+            echo "대기 ${attempt}/30 — 마지막 응답 ${code}"
+            sleep 5
+          done
+          echo "150초 안에 200 이 오지 않았다"
+          exit 1
