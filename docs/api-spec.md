@@ -370,6 +370,8 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 
 ### `source_id` 작명 규칙 — 자료 묶음이 아니라 그 안의 항목이다
 
+**대안과 탈락 근거는 [ADR-015](adr/015-source-id-points-to-the-record.md) 에 있다.**
+
 **`source_id` 에 카탈로그 id 를 넣지 않는다.** 넣으면 12개월이 전부 같은 값이 된다.
 교사가 3월 근거를 눌렀을 때 「우리 원과 친구」 대신 참고자료 파일 전체가 뜬다 —
 근거 표시가 무의미해진다.
@@ -942,7 +944,7 @@ assessment    observation · dailyLog
    → Evidence · Generation · Audit 을 분리한다
 
 ■  evidence.source_id 의 작명 규칙                 완료 — 성진
-   → 카탈로그가 아니라 그 안의 항목 id. 「출처는 세 축이다」 아래 절
+   → 카탈로그가 아니라 그 안의 항목 id. 「출처는 세 축이다」 아래 절 · ADR-015
    → 불변 단위는 (source_type, source_id, source_version) 셋이다
 □  generation.rule_id · rule_version 의 발급 주체   하민
    → 규칙 엔진이 발급한다. RULE_ONLY · RULE_LLM 이면 둘 다 필수다
