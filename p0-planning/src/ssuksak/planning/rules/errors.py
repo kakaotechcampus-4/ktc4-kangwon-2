@@ -20,3 +20,19 @@ class YearlyRuleError(DomainError):
         self.rule_id = rule_id
         self.detail = detail
         self.period = period
+
+
+class MonthlyRuleError(DomainError):
+    """A Monthly deterministic rule rejected its input or prerequisite."""
+
+    def __init__(
+        self,
+        rule_id: str,
+        detail: str,
+        *,
+        period: YearMonth | None = None,
+    ) -> None:
+        super().__init__(detail)
+        self.rule_id = rule_id
+        self.detail = detail
+        self.period = period
