@@ -31,3 +31,12 @@ jobs:
           aws-region: ap-northeast-2
       # assumed-role/ktc-github-deploy 가 보이면 성공이다.
       - run: aws sts get-caller-identity
+
+      # 인증되는 것과 서버에 명령을 보낼 수 있는 것은 다른 권한이다.
+      # deploy.yml 을 ssm send-command 로 바꾸기 전에 여기서 막히는지 본다.
+      # 읽기만 한다 — 서버에서 아무것도 실행하지 않는다.
+      - name: SSM 으로 서버가 보이나
+        run: |
+          aws ssm describe-instance-information \
+            --query 'InstanceInformationList[].{id:InstanceId,ping:PingStatus,agent:AgentVersion}' \
+            --output table
