@@ -5,15 +5,28 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from ..domain.activity_reference import ActivityCandidate, ActivityCatalog
 from ..domain.errors import InvalidDomainValueError
-from ..domain.monthly_plan import MonthlyPlan
+from ..domain.monthly_plan import MonthlyCell, MonthlyPlan
 from ..domain.monthly_template import DisplayMode
 from ..domain.monthly_verification import (
+    FindingKind,
+    Severity,
     VerificationReport,
     VerificationRuleRef,
     VerificationSourceRef,
     Violation,
+    ViolationEvidence,
+    ViolationLocation,
 )
+from ..domain.provenance import EvidenceSource, EvidenceSourceType, GenerationMethod
+from .errors import MonthlyRuleError
+
+AGE_RULE_ID = "monthly.activity.supported_ages"
+AGE_RULE_VERSION = "v1"
+AGE_RULE_REF = VerificationRuleRef(AGE_RULE_ID, AGE_RULE_VERSION)
+AGE_UNSUPPORTED_CODE = "ACTIVITY_AGE_UNSUPPORTED"
+AGE_REFERENCE_NOT_VERIFIED_CODE = "ACTIVITY_REFERENCE_NOT_VERIFIED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +78,142 @@ class RuleVerificationResult:
 
 
 MonthlyVerifier = Callable[[MonthlyPlan], RuleVerificationResult]
+
+
+def verify_monthly_activity_ages(
+    plan: MonthlyPlan,
+    *,
+    catalog: ActivityCatalog,
+) -> RuleVerificationResult:
+    """Compare reference-linked Cells with approved catalog age conditions."""
+
+    source_ref = _require_age_catalog(plan, catalog)
+    findings: list[Violation] = []
+    for cell in plan.cells:
+        references = tuple(
+            source
+            for source in cell.evidence
+            if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
+        )
+        if not references:
+            continue
+        candidate = _trusted_activity_candidate(cell, references, catalog)
+        if candidate is None:
+            findings.append(
+                _age_finding(
+                    cell,
+                    plan,
+                    source_ref,
+                    code=AGE_REFERENCE_NOT_VERIFIED_CODE,
+                    finding_kind=FindingKind.NOT_VERIFIED,
+                    severity=Severity.WARNING,
+                    message=(
+                        "The current Cell value is not reliably linked to its "
+                        "Activity Reference"
+                    ),
+                    reference_ids=tuple(source.source_id for source in references),
+                )
+            )
+        elif not candidate.supports_age_set(plan.target_ages):
+            findings.append(
+                _age_finding(
+                    cell,
+                    plan,
+                    source_ref,
+                    code=AGE_UNSUPPORTED_CODE,
+                    finding_kind=FindingKind.VIOLATION,
+                    severity=Severity.ERROR,
+                    message=(
+                        f"Activity {candidate.activity_id} does not support "
+                        f"target ages {sorted(plan.target_ages)}"
+                    ),
+                    reference_ids=(candidate.activity_id,),
+                )
+            )
+    return RuleVerificationResult(AGE_RULE_REF, (source_ref,), tuple(findings))
+
+
+def _require_age_catalog(
+    plan: MonthlyPlan, catalog: ActivityCatalog
+) -> VerificationSourceRef:
+    if not isinstance(catalog, ActivityCatalog) or not catalog.is_active:
+        raise MonthlyRuleError(
+            AGE_RULE_ID, "Age verification requires a Human-approved Activity Catalog"
+        )
+    expected = plan.activity_catalog_ref
+    if expected is None or (
+        expected.catalog_id,
+        expected.catalog_version,
+    ) != (catalog.catalog_id, catalog.catalog_version):
+        raise MonthlyRuleError(
+            AGE_RULE_ID,
+            "Age verification requires the exact Activity Catalog pinned by the Plan",
+        )
+    return VerificationSourceRef(catalog.catalog_id, catalog.catalog_version)
+
+
+def _trusted_activity_candidate(
+    cell: MonthlyCell,
+    references: tuple[EvidenceSource, ...],
+    catalog: ActivityCatalog,
+) -> ActivityCandidate | None:
+    if len(references) != 1:
+        raise MonthlyRuleError(
+            AGE_RULE_ID,
+            "An Activity-linked Cell must have exactly one Activity Reference",
+        )
+    reference = references[0]
+    if reference.source_version != catalog.catalog_version:
+        raise MonthlyRuleError(
+            AGE_RULE_ID,
+            "Activity Reference version must match the Plan Activity Catalog",
+        )
+    candidate = catalog.get(reference.source_id)
+    if candidate is None:
+        raise MonthlyRuleError(
+            AGE_RULE_ID,
+            "Activity Reference must resolve in the Plan Activity Catalog",
+        )
+    if (
+        cell.generation is None
+        or cell.generation.method
+        not in {GenerationMethod.RULE_ONLY, GenerationMethod.RULE_LLM}
+    ):
+        return None
+    if reference.display_name != cell.value:
+        raise MonthlyRuleError(
+            AGE_RULE_ID,
+            "Canonical Activity Reference display value must match its Cell",
+        )
+    return candidate
+
+
+def _age_finding(
+    cell: MonthlyCell,
+    plan: MonthlyPlan,
+    source_ref: VerificationSourceRef,
+    *,
+    code: str,
+    finding_kind: FindingKind,
+    severity: Severity,
+    message: str,
+    reference_ids: tuple[str, ...],
+) -> Violation:
+    observed = (
+        f"target_ages={','.join(str(age) for age in sorted(plan.target_ages))};"
+        f"current_value={cell.value};"
+        f"activity_refs={','.join(reference_ids)}"
+    )
+    return Violation(
+        rule_id=AGE_RULE_ID,
+        rule_version=AGE_RULE_VERSION,
+        code=code,
+        finding_kind=finding_kind,
+        severity=severity,
+        location=ViolationLocation(cell.section_key, cell.week_id),
+        message=message,
+        evidence=(ViolationEvidence(observed, (source_ref,)),),
+    )
 
 
 def verify_monthly_plan(
