@@ -34,10 +34,20 @@ jobs:
             set -euo pipefail
             cd "$DEPLOY_PATH"
 
+            # 저장소가 공개라 HTTPS 는 인증이 필요 없다. SSH 원격이면 서버에 GitHub 키를
+            # 따로 관리해야 하고, 없으면 fetch 가 Permission denied 로 죽는다.
+            # 그 상태에서 reset --hard 를 하면 13일 전 origin/main 으로 되감긴다(실제로 당했다).
+            git remote set-url origin https://github.com/${{ github.repository }}.git
+
             # 서버에서 직접 고친 파일이 있으면 pull 이 멈춘다. 배포는 main 이 정답이다.
             git fetch --prune origin
             git checkout main
+
+            # fetch 가 실패하면 origin/main 이 옛 커밋을 가리킨 채 남는다.
+            # 그대로 reset 하면 조용히 과거로 되돌아간다. 커밋이 일치하는지 본다.
             git reset --hard origin/main
+            test -f docker-compose.yml || { echo "docker-compose.yml 이 없다. fetch 가 안 됐다"; exit 1; }
+            echo "배포 커밋 $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
 
             # .env 는 커밋하지 않으므로 서버에만 있다. 없으면 여기서 멈춘다 —
             # 빈 비밀번호로 db 가 뜨는 것보다 배포가 실패하는 편이 낫다.

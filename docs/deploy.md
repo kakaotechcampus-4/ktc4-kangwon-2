@@ -40,10 +40,23 @@ EC2 에는 `ktc-ec2-ssm-role`(PowerUserAccess)이 붙어 있어 **서버 안에�
 # Session Manager 로 들어간다 (EC2 → 인스턴스 → 연결 → Session Manager)
 sudo -iu ubuntu
 
-git clone git@github.com:kakaotechcampus-4/ktc4-kangwon-2.git
+git clone https://github.com/kakaotechcampus-4/ktc4-kangwon-2.git
 cd ktc4-kangwon-2
 cp .env.example .env
 nano .env            # POSTGRES_PASSWORD 와 DATABASE_URL 의 비밀번호를 같은 값으로
+```
+
+**원격은 HTTPS 다.** 저장소가 공개라 읽기에 인증이 필요 없다.
+SSH 원격이면 서버에 GitHub 키를 따로 관리해야 하고, 없으면 `git fetch` 가
+`Permission denied (publickey)` 로 죽는다. 그 상태에서 `reset --hard` 를 하면
+**옛 `origin/main` 으로 조용히 되감긴다** — 2026-09-22 에 실제로 당했다.
+`deploy.yml` 이 매번 `git remote set-url` 로 HTTPS 를 강제한다.
+
+**DB 볼륨이 이미 있으면 비밀번호를 새로 정하면 안 된다.** `postgres` 는 볼륨을 처음
+만들 때 비밀번호를 굳힌다. 돌고 있는 컨테이너에서 꺼내 쓴다.
+
+```bash
+PW=$(docker exec ktc4-kangwon-2-db-1 printenv POSTGRES_PASSWORD)
 ```
 
 **`.env` 는 커밋하지 않으므로 서버에만 있다.** 없으면 배포가 그 자리에서 멈춘다 —
