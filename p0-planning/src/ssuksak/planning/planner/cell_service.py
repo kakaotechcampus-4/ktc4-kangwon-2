@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from ..context.models import MonthlyContextPacket
+from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.week_period import WeekId
 from .cell_prompt import build_monthly_cell_request
 from .cell_validation import validate_monthly_cell_proposal
 from .contracts import (
@@ -22,13 +24,15 @@ class MonthlyCellPlanner:
     def plan(
         self,
         packet: MonthlyContextPacket,
+        snapshot: TemplateSnapshot,
         *,
-        target_week_id: str,
+        target_week_id: WeekId,
         target_section_key: str,
         month_snapshot: tuple[MonthlyCellSnapshot, ...],
     ) -> MonthlyCellPlanningOutcome:
         request = build_monthly_cell_request(
             packet,
+            snapshot,
             target_week_id=target_week_id,
             target_section_key=target_section_key,
             month_snapshot=month_snapshot,
@@ -37,7 +41,9 @@ class MonthlyCellPlanner:
         if response.model != MONTHLY_MODEL:
             raise ProposalRejectedError(("UNEXPECTED_MODEL",))
         proposal = parse_monthly_cell_proposal(response.content)
-        validation = validate_monthly_cell_proposal(proposal, packet, request)
+        validation = validate_monthly_cell_proposal(
+            proposal, packet, request
+        )
         if not validation.is_valid:
             raise ProposalRejectedError(validation.codes)
         return MonthlyCellPlanningOutcome(

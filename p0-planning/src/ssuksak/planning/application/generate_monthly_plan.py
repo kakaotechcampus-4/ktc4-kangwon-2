@@ -12,6 +12,7 @@ from ..domain.monthly_plan import (
     MonthlyPlan,
     MonthlySection,
 )
+from ..domain.monthly_constraint import CellState
 from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.plan import PlanStatus
@@ -25,7 +26,7 @@ from ..domain.provenance import (
     GenerationMethodDetail,
 )
 from ..domain.yearly_plan import YearlyPlan
-from ..planner.contracts import MONTHLY_PROMPT_VERSION, ProposedActivityOrigin
+from ..planner.contracts import MONTHLY_PROMPT_VERSION
 from ..planner.service import MonthlyPlanner
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
@@ -42,7 +43,7 @@ from ..rules.monthly_template_resolver import (
     RULE_ID as TEMPLATE_RULE_ID,
     RULE_VERSION as TEMPLATE_RULE_VERSION,
     ResolvedSection,
-    resolve_profile_sections,
+    resolve_snapshot_sections,
 )
 from ..rules.monthly_theme_derivation import derive_monthly_theme
 from ..rules.monthly_week_periods import canonical_week_periods
@@ -145,19 +146,7 @@ class GenerateMonthlyPlan:
         catalog = load_activity_catalog(
             self._activities, command.activity_catalog
         )
-        resolved_sections = resolve_profile_sections(profile)
-        if (
-            command.generation_mode is MonthlyGenerationMode.LLM_PLANNER
-            and not any(
-                section.section_key == FOCUS_SECTION_KEY
-                for section in resolved_sections
-            )
-        ):
-            raise MonthlyApplicationError(
-                "monthly_llm_template_focus_required",
-                "LLM_PLANNER mode requires an active focus section; "
-                "the Application does not switch Templates implicitly",
-            )
+        resolved_sections = resolve_snapshot_sections(template_snapshot)
         week_periods = canonical_week_periods(command.target_month)
         theme = derive_monthly_theme(parent, command.target_month)
         optional_context = optional_context_results(
@@ -193,7 +182,7 @@ class GenerateMonthlyPlan:
                 constraint_assessments=assessments,
             )
             try:
-                planner_outcome = self._planner.plan(packet)
+                planner_outcome = self._planner.plan(packet, template_snapshot)
             except Exception as exc:
                 raise MonthlyApplicationError(
                     "monthly_llm_planning_failed",
@@ -205,10 +194,8 @@ class GenerateMonthlyPlan:
         selection_results: list[MonthlyActivitySelectionResult] = []
         sections: list[MonthlySection] = []
         used_activity_ids: set[str] = set()
-        proposal_by_week = (
-            {week.week_id: week for week in planner_outcome.proposal.weeks}
-            if planner_outcome is not None
-            else {}
+        proposal = (
+            planner_outcome.proposal if planner_outcome is not None else None
         )
         for resolved in resolved_sections:
             cells = self._build_section_cells(
@@ -225,7 +212,7 @@ class GenerateMonthlyPlan:
                 safety_assessment=safety_assessment,
                 mode=command.generation_mode,
                 catalog=catalog,
-                proposal_by_week=proposal_by_week,
+                proposal=proposal,
                 packet=packet,
                 used_activity_ids=used_activity_ids,
                 selection_results=selection_results,
@@ -304,7 +291,7 @@ class GenerateMonthlyPlan:
         safety_assessment,
         mode: MonthlyGenerationMode,
         catalog: ActivityCatalog | None,
-        proposal_by_week,
+        proposal,
         packet,
         used_activity_ids: set[str],
         selection_results: list[MonthlyActivitySelectionResult],
@@ -328,7 +315,86 @@ class GenerateMonthlyPlan:
             )
             label_variant = None
             mapping_confidence = None
-            if section.section_key == THEME_SECTION_KEY:
+            proposed = (
+                proposal.value_for(section.section_key, week_id)
+                if proposal is not None
+                else None
+            )
+            unresolved = False
+            if mode is MonthlyGenerationMode.LLM_PLANNER and proposed is not None:
+                value = proposed.value
+                unresolved = proposed.unresolved
+                if section.section_key == THEME_SECTION_KEY:
+                    evidence = theme.evidence
+                    generation = theme.generation
+                elif section.section_key == SAFETY_SECTION_KEY:
+                    evidence = deduplicate_evidence(
+                        (
+                            EvidenceSource(
+                                EvidenceSourceType.SAFETY_RULE,
+                                source_id=safety_rule_version,
+                                source_version=SAFETY_RULE_VERSION,
+                            ),
+                            *(
+                                packet_evidence(packet, proposed.grounding_refs)
+                                if packet is not None
+                                else ()
+                            ),
+                        )
+                    )
+                    generation = (
+                        GenerationMethodDetail(
+                            GenerationMethod.RULE_ONLY,
+                            SAFETY_RULE_ID,
+                            SAFETY_RULE_VERSION,
+                        )
+                        if unresolved
+                        else GenerationMethodDetail(
+                            GenerationMethod.RULE_LLM,
+                            LLM_INTEGRATION_RULE_ID,
+                            MONTHLY_PROMPT_VERSION,
+                        )
+                    )
+                else:
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_LLM,
+                        LLM_INTEGRATION_RULE_ID,
+                        MONTHLY_PROMPT_VERSION,
+                    )
+                    parent_evidence = tuple(
+                        source
+                        for source in theme.evidence
+                        if source.source_type is EvidenceSourceType.PARENT_PLAN
+                    )
+                    reference_evidence: tuple[EvidenceSource, ...] = ()
+                    if proposed.reference_id is not None:
+                        reference_evidence = (
+                            EvidenceSource(
+                                EvidenceSourceType.ACTIVITY_REFERENCE,
+                                source_id=proposed.reference_id,
+                                source_version=(
+                                    catalog.catalog_version
+                                    if catalog is not None
+                                    else packet.lineage.activity_catalog_version
+                                ),
+                                display_name=proposed.value,
+                            ),
+                        )
+                    evidence = deduplicate_evidence(
+                        (
+                            *parent_evidence,
+                            *reference_evidence,
+                            *(
+                                packet_evidence(packet, proposed.grounding_refs)
+                                if packet is not None
+                                else ()
+                            ),
+                        )
+                    )
+                    if section.section_key == FOCUS_SECTION_KEY:
+                        label_variant = LabelVariant.UNLABELED
+                        mapping_confidence = MappingConfidence.HIGH
+            elif section.section_key == THEME_SECTION_KEY:
                 value = theme.value
                 evidence = theme.evidence
                 generation = theme.generation
@@ -345,62 +411,6 @@ class GenerateMonthlyPlan:
                     SAFETY_RULE_ID,
                     SAFETY_RULE_VERSION,
                 )
-            elif mode is MonthlyGenerationMode.LLM_PLANNER and section.section_key in {
-                FOCUS_SECTION_KEY,
-                OUTDOOR_SECTION_KEY,
-            }:
-                if week_id is None or packet is None:
-                    raise MonthlyApplicationError(
-                        "invalid_llm_section_shape",
-                        "LLM-planned sections must use weekly cells",
-                    )
-                proposal = proposal_by_week[week_id.value]
-                generation = GenerationMethodDetail(
-                    GenerationMethod.RULE_LLM,
-                    LLM_INTEGRATION_RULE_ID,
-                    MONTHLY_PROMPT_VERSION,
-                )
-                parent_evidence = tuple(
-                    source
-                    for source in theme.evidence
-                    if source.source_type is EvidenceSourceType.PARENT_PLAN
-                )
-                if section.section_key == FOCUS_SECTION_KEY:
-                    value = proposal.experience
-                    # The full-month proposal contract does not attribute an
-                    # experience to individual evidence records. Keep the
-                    # confirmed parent anchor without inventing record-level
-                    # grounding that the provider did not return.
-                    evidence = parent_evidence
-                    label_variant = LabelVariant.UNLABELED
-                    mapping_confidence = MappingConfidence.HIGH
-                else:
-                    value = proposal.activity.value
-                    if proposal.activity.origin is ProposedActivityOrigin.REFERENCE:
-                        evidence = deduplicate_evidence(
-                            (
-                                *parent_evidence,
-                                EvidenceSource(
-                                    EvidenceSourceType.ACTIVITY_REFERENCE,
-                                    source_id=proposal.activity.reference_activity_id or "",
-                                    source_version=(
-                                        catalog.catalog_version
-                                        if catalog is not None
-                                        else packet.lineage.activity_catalog_version
-                                    ),
-                                    display_name=proposal.activity.value,
-                                ),
-                            )
-                        )
-                    else:
-                        evidence = deduplicate_evidence(
-                            (
-                                *parent_evidence,
-                                *packet_evidence(
-                                    packet, proposal.activity.grounding_refs
-                                ),
-                            )
-                        )
             elif section.section_key == OUTDOOR_SECTION_KEY and catalog is not None:
                 selection = select_activity_for_cell(
                     catalog.eligible_candidates(
@@ -439,14 +449,18 @@ class GenerateMonthlyPlan:
                     MonthlyActivitySelectionResult(week_id.value, selection.trace)
                 )
 
-            state = resolve_cell_state(
-                section_key=section.section_key,
-                value=value,
-                assessment=(
-                    safety_assessment
-                    if section.section_key == SAFETY_SECTION_KEY
-                    else None
-                ),
+            state = (
+                CellState.EMPTY_UNRESOLVED
+                if unresolved
+                else resolve_cell_state(
+                    section_key=section.section_key,
+                    value=value,
+                    assessment=(
+                        safety_assessment
+                        if section.section_key == SAFETY_SECTION_KEY
+                        else None
+                    ),
+                )
             )
             item_id = self._ids.new_item_id()
             cells.append(
