@@ -1140,26 +1140,27 @@ def test_confirm_allows_a_fresh_not_verified_warning():
     assert finding.severity is Severity.WARNING
 
 
-def test_confirm_blocks_a_fresh_supported_age_error_and_stores_the_report():
+def test_confirm_allows_a_fresh_supported_age_error_and_stores_the_report():
     harness = Harness()
     draft = _with_age_mismatch(harness, harness.generate().plan)
     assert draft.verification_report is None
     harness.plans.save(draft.plan_id, draft)
     saves_before = harness.plans.save_count
 
-    with pytest.raises(MonthlyApplicationError) as exc:
-        ConfirmMonthlyPlan(
-            plan_repository=harness.plans,
-            clock=harness.clock,
-            activity_repository=harness.activities,
-        ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
+    ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
 
     persisted = harness.plans.get(draft.plan_id)
-    assert exc.value.code == "monthly_confirmation_blocked"
-    assert persisted is not None
-    assert persisted.status is PlanStatus.DRAFT
-    assert persisted.verification_report is not None
-    assert persisted.verification_report.findings[0].code == AGE_UNSUPPORTED_CODE
+    assert confirmed.status is PlanStatus.CONFIRMED
+    assert persisted is confirmed
+    assert confirmed.verification_report is not None
+    finding = confirmed.verification_report.findings[0]
+    assert finding.code == AGE_UNSUPPORTED_CODE
+    assert finding.finding_kind is FindingKind.VIOLATION
+    assert finding.severity is Severity.ERROR
     assert harness.plans.save_count == saves_before + 1
 
 
