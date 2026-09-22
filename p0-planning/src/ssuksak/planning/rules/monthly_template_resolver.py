@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from ..domain.monthly_template import DisplayMode, MonthlyTemplate, SectionRole, TemplateSection
 from ..domain.monthly_template_profile import TemplateProfile
+from ..domain.monthly_template_snapshot import TemplateSnapshot
 from .errors import MonthlyRuleError
 
 RULE_ID = "monthly.template.section_resolution"
@@ -70,6 +71,25 @@ def resolve_profile_sections(
     return tuple(
         ResolvedSection(section) for section in profile.ordered_sections
     )
+
+
+def resolve_snapshot_sections(
+    snapshot: TemplateSnapshot,
+) -> tuple[ResolvedSection, ...]:
+    """Resolve the immutable structure captured for one generated Plan."""
+
+    if not isinstance(snapshot, TemplateSnapshot):
+        raise MonthlyRuleError(RULE_ID, "snapshot must be TemplateSnapshot")
+    missing = tuple(
+        section.section_key
+        for section in snapshot.sections
+        if section.role is SectionRole.CONTENT and section.display_mode is None
+    )
+    if missing:
+        raise MonthlyRuleError(
+            RULE_ID, f"active content sections require display_mode: {missing}"
+        )
+    return tuple(ResolvedSection(section) for section in snapshot.sections)
 
 
 def expected_cell_count(
