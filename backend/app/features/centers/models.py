@@ -23,8 +23,11 @@ class Center(Base):
     director_name: Mapped[str] = mapped_column(
         String(50), comment="결재란 「원장」. 계획안에 인쇄된다 (docs/PRD.md S1)"
     )
-    region: Mapped[str] = mapped_column(
-        String(50), comment="시·도 + 시·군·구. 지역사회 연계 활동 선별에 쓴다 (docs/PRD.md S1)"
+    region_sido: Mapped[str] = mapped_column(
+        String(30), comment="시·도. 화면이 2단으로 받는다 (docs/PRD.md S1)"
+    )
+    region_sigungu: Mapped[str] = mapped_column(
+        String(30), comment="시·군·구. 지역사회 연계 활동 선별에 쓴다"
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -63,6 +66,10 @@ class Class(Base):
     teacher_id: Mapped[int | None] = mapped_column(
         comment="담임 계정. users.id 예정. FK 와 인덱스는 인증 PR(8주차)에서"
     )
+    consent_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        comment="동의 확인 시각. 아동 0명이면 아동 수로 복원할 수 없다 (docs/PRD.md S2)",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -76,10 +83,15 @@ class Child(Base):
     """
 
     __tablename__ = "children"
+    __table_args__ = (UniqueConstraint("class_id", "code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), index=True)
     name: Mapped[str] = mapped_column(String(50), comment="평문 실명. ADR-004")
+    code: Mapped[str] = mapped_column(
+        String(20),
+        comment="LLM 에 나가는 가명. 받침 있는 더미 한글 이름 (ADR-004). 반 안에서 유일하다",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
