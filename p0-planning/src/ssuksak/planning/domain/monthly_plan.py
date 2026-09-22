@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from enum import Enum
 
-from .errors import InvalidDomainValueError
-from .identifiers import ItemId, PlanId
+from .errors import InvalidDomainValueError, InvalidStateTransitionError
+from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
 from .monthly_constraint import CellState, ConstraintAssessment
 from .monthly_template import (
@@ -17,6 +18,8 @@ from .monthly_template import (
 )
 from .plan import PlanStatus
 from .provenance import (
+    AuditEvent,
+    AuditEventType,
     AuditHistory,
     EvidenceSource,
     GenerationMethodDetail,
@@ -35,6 +38,11 @@ class MappingConfidence(str, Enum):
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
+
+
+class MonthlyGenerationMode(str, Enum):
+    RULE_ONLY = "RULE_ONLY"
+    LLM_PLANNER = "LLM_PLANNER"
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +197,7 @@ class MonthlyPlan:
     constraint_assessments: tuple[ConstraintAssessment, ...] = ()
     audit: AuditHistory = field(default_factory=AuditHistory)
     activity_catalog_ref: ActivityCatalogRef | None = None
+    generation_mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
@@ -297,6 +306,10 @@ class MonthlyPlan:
             raise InvalidDomainValueError(
                 "MonthlyPlan.activity_catalog_ref must be ActivityCatalogRef"
             )
+        if not isinstance(self.generation_mode, MonthlyGenerationMode):
+            raise InvalidDomainValueError(
+                "MonthlyPlan.generation_mode must be MonthlyGenerationMode"
+            )
 
     @property
     def cells(self) -> tuple[MonthlyCell, ...]:
@@ -310,6 +323,65 @@ class MonthlyPlan:
         return next(
             (section for section in self.sections if section.section_key == section_key),
             None,
+        )
+
+    def find_cell(
+        self, item_id: ItemId
+    ) -> tuple[int, int, MonthlySection, MonthlyCell] | None:
+        if not isinstance(item_id, ItemId):
+            raise InvalidDomainValueError("MonthlyPlan.find_cell requires ItemId")
+        for section_index, section in enumerate(self.sections):
+            for cell_index, cell in enumerate(section.cells):
+                if cell.item_id == item_id:
+                    return section_index, cell_index, section, cell
+        return None
+
+    def ensure_mutable(self, operation: str) -> None:
+        if not isinstance(operation, str) or not operation.strip():
+            raise InvalidDomainValueError("operation must be non-blank")
+        if not self.status.is_mutable:
+            raise InvalidStateTransitionError(
+                f"{operation} is not allowed for a CONFIRMED Monthly Plan"
+            )
+
+    def replace_cell(self, item_id: ItemId, replacement: MonthlyCell) -> MonthlyPlan:
+        self.ensure_mutable("replace_cell")
+        found = self.find_cell(item_id)
+        if found is None:
+            raise InvalidDomainValueError(f"Monthly cell not found: {item_id}")
+        if not isinstance(replacement, MonthlyCell):
+            raise InvalidDomainValueError("replacement must be MonthlyCell")
+        section_index, cell_index, section, current = found
+        if replacement.item_id != current.item_id:
+            raise InvalidDomainValueError("Monthly replacement must preserve ItemId")
+        if (
+            replacement.section_key,
+            replacement.week_id,
+        ) != (
+            current.section_key,
+            current.week_id,
+        ):
+            raise InvalidDomainValueError(
+                "Monthly replacement must preserve its structural address"
+            )
+        cells = list(section.cells)
+        cells[cell_index] = replacement
+        sections = list(self.sections)
+        sections[section_index] = replace(section, cells=tuple(cells))
+        return replace(self, sections=tuple(sections))
+
+    def confirm(self, *, actor_id: ActorId, occurred_at: datetime) -> MonthlyPlan:
+        self.ensure_mutable("confirm")
+        event = AuditEvent(
+            event_type=AuditEventType.CONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(
+            self,
+            status=PlanStatus.CONFIRMED,
+            audit=self.audit.append(event),
         )
 
     def constraint(self, code: str) -> ConstraintAssessment | None:
