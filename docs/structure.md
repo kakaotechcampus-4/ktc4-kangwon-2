@@ -115,7 +115,7 @@ app/
 | `audit` | 변경 이력 |
 | `childCode` | 아동 실명 ↔ 코드 치환 |
 
-`childCode` 를 뺀 5개는 빈 `__init__.py` 만 있는 상태다. 구현은 각 담당자가 채운다.
+`childCode` 는 구현됐다(ADR-004). 나머지 5개는 빈 `__init__.py` 만 있고 각 담당자가 채운다.
 
 ### 규칙
 
@@ -125,8 +125,17 @@ app/
 **테이블을 두지 않는다.** `models.py` · `repository.py` 는 `shared` 에 만들지 않는다.
 DB 테이블이 필요한 것은 소유자를 정해 `features/` 에 둔다.
 
-`childCode` 는 아직 `.gitkeep` 만 있고 `__init__.py` 가 없다. 파이썬 패키지가 아니다.
-구현할 때 `__init__.py` 를 만들어 패키지로 바꾼다.
+### `childCode` — 구현됨
+
+```
+pool.py         가명 발급.  받침으로 두 묶음 (resources/pseudonyms.yaml)
+names.py        등록 이름에서 실제 표기를 뽑는다 (박서준 -> 박서준 · 서준)
+substitute.py   NameTable · mask · unmask
+```
+
+`mask` 와 `unmask` 가 같은 `NameTable` 을 쓴다. 따로 넘기면 한쪽만 고치는 날이 오고,
+그날 실명이 LLM 으로 나간다. 전부 fail-closed 다 — 치환할 수 없으면
+`SubstitutionError` 를 내고 호출하는 쪽은 LLM 을 부르지 않는다.
 
 ---
 
@@ -229,22 +238,21 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 
 ## frontend
 
-`create-next-app` 산출물을 그대로 유지하고 4개만 추가했다 —
-`Dockerfile` · `.dockerignore` · `.prettierrc.json` · `.prettierignore`.
-
 | 경로 | 무엇을 두는가 |
 |---|---|
-| `app/layout.tsx` | 전체 페이지를 감싸는 레이아웃 |
-| `app/page.tsx` | 루트 경로(`/`) 페이지 |
-| `package.json` | 의존성과 `dev` · `build` · `start` · `lint` 스크립트 |
+| `app/` | 화면. 라우팅 규칙은 `frontend/CLAUDE.md` 「라우팅」 |
+| `components/` | 화면 조각. `app/` 아래 폴더 이름과 짝을 맞춘다 |
+| `lib/` | 화면이 아닌 것 — API 호출 · 목업 데이터 모델 · 훅 |
+| `msw/` | 목업 서버 핸들러. 브라우저용 워커는 `public/mockServiceWorker.js` |
+| `tests/` | `node --test` 로 도는 테스트 |
+| `styles/` | 폰트 `@font-face` 와 디자인 토큰 |
+| `public/fonts/` | 서브셋 woff2 |
 | `package-lock.json` | 버전 고정. **반드시 커밋한다** |
-| `next.config.ts` | Next 설정 |
-| `tsconfig.json` | TypeScript 설정 |
-| `eslint.config.mjs` | ESLint 설정 |
 | `.prettierrc.json` | Prettier 설정. CI 가 `--check` 로 검사한다 |
 | `Dockerfile` | frontend 이미지 빌드 |
 
-`--empty` 로 만들어 `public/` 과 `globals.css` 가 없다. 필요해지면 그때 만든다.
+**루트 경로(`/`)는 `app/(app)/page.tsx` 하나다.** 괄호 폴더는 주소에 안 들어가므로
+`app/page.tsx` 를 만들면 같은 주소를 두 파일이 갖게 된다. 만들지 않는다.
 
 `next-env.d.ts` 는 커밋하지 않는다. Next 가 자동 생성한다.
 
