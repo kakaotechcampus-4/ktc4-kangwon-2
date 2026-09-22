@@ -5,8 +5,6 @@ from __future__ import annotations
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import (
     ActivityCatalogRef,
-    LabelVariant,
-    MappingConfidence,
     MonthlyCell,
     MonthlyGenerationMode,
     MonthlyPlan,
@@ -76,7 +74,6 @@ from .ports import (
 SYSTEM_ACTOR = "monthly_application"
 LLM_INTEGRATION_RULE_ID = "monthly.llm.validated_proposal"
 THEME_SECTION_KEY = "theme"
-FOCUS_SECTION_KEY = "focus"
 OUTDOOR_SECTION_KEY = "outdoor_play"
 SAFETY_SECTION_KEY = "safety_education"
 
@@ -313,8 +310,6 @@ class GenerateMonthlyPlan:
                 TEMPLATE_RULE_ID,
                 TEMPLATE_RULE_VERSION,
             )
-            label_variant = None
-            mapping_confidence = None
             proposed = (
                 proposal.value_for(section.section_key, week_id)
                 if proposal is not None
@@ -391,9 +386,6 @@ class GenerateMonthlyPlan:
                             ),
                         )
                     )
-                    if section.section_key == FOCUS_SECTION_KEY:
-                        label_variant = LabelVariant.UNLABELED
-                        mapping_confidence = MappingConfidence.HIGH
             elif section.section_key == THEME_SECTION_KEY:
                 value = theme.value
                 evidence = theme.evidence
@@ -484,8 +476,6 @@ class GenerateMonthlyPlan:
                         )
                     ),
                     source_label=section.source_label,
-                    label_variant=label_variant,
-                    mapping_confidence=mapping_confidence,
                 )
             )
         return tuple(cells)
