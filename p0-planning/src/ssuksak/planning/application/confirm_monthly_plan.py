@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 from ..domain.monthly_plan import MonthlyPlan
-from ..domain.monthly_verification import FindingKind, Severity
-from ..rules.monthly_verification import AGE_RULE_ID, AGE_UNSUPPORTED_CODE
 from .monthly_dto import ConfirmMonthlyPlanCommand
-from .monthly_errors import MonthlyApplicationError
 from .monthly_support import (
     load_plan_activity_catalog,
     require_actor,
@@ -33,19 +30,6 @@ class ConfirmMonthlyPlan:
         actor_id = require_actor(command.actor_id)
         catalog = load_plan_activity_catalog(self._activities, plan)
         verified = with_fresh_monthly_verification(plan, catalog)
-        report = verified.verification_report
-        if report is not None and any(
-            finding.rule_id == AGE_RULE_ID
-            and finding.code == AGE_UNSUPPORTED_CODE
-            and finding.finding_kind is FindingKind.VIOLATION
-            and finding.severity is Severity.ERROR
-            for finding in report.findings
-        ):
-            self._plans.save(verified.plan_id, verified)
-            raise MonthlyApplicationError(
-                "monthly_confirmation_blocked",
-                "Monthly Plan has a blocking supported-age violation",
-            )
         confirmed = verified.confirm(
             actor_id=actor_id, occurred_at=self._clock.now()
         )
