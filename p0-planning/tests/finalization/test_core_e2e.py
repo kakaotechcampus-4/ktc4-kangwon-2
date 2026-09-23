@@ -176,8 +176,9 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
                 TEACHER,
             )
         )
-    with pytest.raises(InvalidStateTransitionError):
-        harness.confirm_monthly(monthly_confirmed)
+    saves_before_retry = harness.monthly_plans.save_count
+    assert harness.confirm_monthly(monthly_confirmed) is monthly_confirmed
+    assert harness.monthly_plans.save_count == saves_before_retry
 
 
 def test_safety_cells_are_never_llm_regeneration_targets():

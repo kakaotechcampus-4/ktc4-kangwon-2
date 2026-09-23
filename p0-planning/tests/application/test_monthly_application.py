@@ -1217,9 +1217,112 @@ def test_confirm_requires_teacher_and_locks_all_later_mutations():
                 confirmed.plan_id, target.item_id, TEACHER
             )
         )
-    with pytest.raises(InvalidStateTransitionError):
-        confirm.execute(ConfirmMonthlyPlanCommand(confirmed.plan_id, TEACHER))
+    assert confirm.execute(ConfirmMonthlyPlanCommand(confirmed.plan_id, TEACHER)) is confirmed
     assert harness.plans.save_count == saves_before
+
+
+class _CountingActivities:
+    """Delegates to the JSON Activity repository and counts Catalog loads."""
+
+    def __init__(self, delegate) -> None:
+        self._delegate = delegate
+        self.loads = 0
+
+    def get_catalog(self, catalog_id, catalog_version):
+        self.loads += 1
+        return self._delegate.get_catalog(catalog_id, catalog_version)
+
+
+def _confirm_with_counters(harness, monkeypatch):
+    activities = _CountingActivities(harness.activities)
+    verifier_calls = []
+    real_verifier = monthly_support.verify_monthly_activity_ages
+
+    def counting_verifier(plan, *, catalog):
+        verifier_calls.append(plan.plan_id)
+        return real_verifier(plan, catalog=catalog)
+
+    monkeypatch.setattr(monthly_support, "verify_monthly_activity_ages", counting_verifier)
+    confirm = ConfirmMonthlyPlan(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=activities
+    )
+    return confirm, activities, verifier_calls
+
+
+def _confirmed_events(plan):
+    return [event for event in plan.audit.events if event.event_type is AuditEventType.CONFIRMED]
+
+
+def test_first_confirm_freshly_verifies_saves_once_and_records_one_confirmation(monkeypatch):
+    harness = Harness()
+    draft = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    confirm, activities, verifier_calls = _confirm_with_counters(harness, monkeypatch)
+    saves_before = harness.plans.save_count
+
+    confirmed = confirm.execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+
+    assert confirmed.status is PlanStatus.CONFIRMED
+    assert verifier_calls == [draft.plan_id]
+    assert activities.loads == 1
+    assert harness.plans.save_count == saves_before + 1
+    assert harness.plans.get(draft.plan_id) is confirmed
+    assert confirmed.verification_report is not draft.verification_report
+    assert [event.actor_id for event in _confirmed_events(confirmed)] == [TEACHER]
+
+
+@pytest.mark.parametrize("retry_actor", [TEACHER, ActorId("teacher_002")], ids=["same-actor", "other-actor"])
+def test_confirm_retry_returns_the_stored_plan_without_any_mutation(monkeypatch, retry_actor):
+    harness = Harness()
+    draft = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    confirm, activities, verifier_calls = _confirm_with_counters(harness, monkeypatch)
+    confirmed = confirm.execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+    first_event = _confirmed_events(confirmed)[0]
+    saves_before, loads_before, calls_before = harness.plans.save_count, activities.loads, len(verifier_calls)
+    later = ConfirmMonthlyPlan(
+        plan_repository=harness.plans,
+        clock=FixedClock(datetime(2026, 9, 21, 9, 0, tzinfo=UTC)),
+        activity_repository=activities,
+    )
+
+    retried = later.execute(ConfirmMonthlyPlanCommand(draft.plan_id, retry_actor))
+
+    assert retried is confirmed
+    assert harness.plans.get(draft.plan_id) is confirmed
+    assert len(verifier_calls) == calls_before
+    assert activities.loads == loads_before
+    assert harness.plans.save_count == saves_before
+    assert retried.audit == confirmed.audit
+    assert _confirmed_events(retried) == [first_event]
+    assert first_event.actor_id == TEACHER and first_event.occurred_at == NOW
+    assert retried.verification_report is confirmed.verification_report
+
+
+@pytest.mark.parametrize("confirmed_first", [False, True], ids=["draft", "confirmed"])
+def test_confirm_still_requires_an_opaque_actor(confirmed_first):
+    harness = Harness()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    confirm = ConfirmMonthlyPlan(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    )
+    if confirmed_first:
+        plan = confirm.execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER))
+    saves_before = harness.plans.save_count
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        confirm.execute(ConfirmMonthlyPlanCommand(plan.plan_id, "담임 선생님"))
+
+    assert exc.value.code == "opaque_actor_required"
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_domain_confirm_still_rejects_a_second_transition():
+    harness = Harness()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    confirmed = plan.confirm(actor_id=TEACHER, occurred_at=NOW)
+
+    with pytest.raises(InvalidStateTransitionError):
+        confirmed.confirm(actor_id=TEACHER, occurred_at=NOW)
 
 
 def test_confirm_allows_a_fresh_not_verified_warning():
