@@ -53,9 +53,11 @@ from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import (
     DisplayMode,
+    EmptyValuePolicy,
     SectionRole,
     SemanticVariant,
     TemplateRef,
+    TemplateSection,
 )
 from ssuksak.planning.domain.monthly_template_profile import (
     TemplateProfile,
@@ -1984,3 +1986,68 @@ def test_rule_only_goals_regeneration_keeps_the_rule_only_contract():
     assert exc.value.code == "rule_only_focus_regeneration_unsupported"
     assert provider.cell_requests == []
     assert harness.plans.save_count == saves_before
+
+
+# ---------------------------------------------------------------- V1-8 PR-D1 generation policy safety gate
+
+POLICY_PENDING_SECTION_KEYS = (
+    "special_program",
+    "emergency_response",
+    "daily_routine",
+    "community_link",
+    "family_link",
+    "indoor_alternative",
+)
+
+
+def _policy_pending_profile(template_repository, section_key: str) -> TemplateProfile:
+    """A valid Profile that activates one Template-specific Section as a weekly target."""
+    base = _profile(
+        template_repository,
+        TEMPLATE,
+        TemplateProfileRef(f"monthly-profile-{section_key}", "v1"),
+    )
+    section = TemplateSection(
+        section_key=section_key,
+        role=SectionRole.CONTENT,
+        activated=True,
+        display_mode=DisplayMode.WEEKLY_CELLS,
+        empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
+        display_label="Institution Section",
+        order=max(item.order for item in base.sections) + 1,
+        visible=True,
+    )
+    return replace(base, sections=(*base.sections, section))
+
+
+@pytest.mark.parametrize("mode", tuple(MonthlyGenerationMode))
+@pytest.mark.parametrize("section_key", POLICY_PENDING_SECTION_KEYS)
+def test_section_without_generation_policy_fails_closed_before_generation(section_key, mode):
+    harness = Harness()
+    profile = _policy_pending_profile(harness.templates, section_key)
+    harness.profiles = InMemoryTemplateProfileRepository((profile,))
+    provider = RequestAwareMonthlyLlm()
+    command = replace(harness.command(mode), profile_ref=profile.profile_ref)
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+
+    assert exc.value.code == "monthly_section_generation_policy_unsupported"
+    assert section_key in exc.value.detail
+    assert provider.monthly_requests == []
+    assert harness.plans.save_count == 0
+
+
+def test_unsupported_section_failure_leaves_stored_plans_unchanged():
+    harness = Harness()
+    stored = harness.generate().plan
+    profile = _policy_pending_profile(harness.templates, "indoor_alternative")
+    harness.profiles = InMemoryTemplateProfileRepository((profile,))
+    saves_before = harness.plans.save_count
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(command=replace(harness.command(), profile_ref=profile.profile_ref))
+
+    assert exc.value.code == "monthly_section_generation_policy_unsupported"
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(stored.plan_id) is stored
