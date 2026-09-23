@@ -91,3 +91,6 @@ docker-compose.override.yml
 # PM 개인 기획 메모 — 팀 공유 대상 아님
 .planning/
 CLAUDE.local.md
+
+# uv run 이 만든다. 설치는 pip 로 한다(Dockerfile · CI).
+uv.lock
