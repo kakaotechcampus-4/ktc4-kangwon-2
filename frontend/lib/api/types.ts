@@ -1,5 +1,18 @@
+/**
+ * docs/api-spec.md 「공통」의 에러 표 전체. 표에 코드를 더하면 여기도 더한다.
+ * 빠뜨리면 msw/scenarios.ts 의 `Record<ErrorCode, number>` 에서 타입 검사가 잡는다.
+ */
 export type ErrorCode =
-  "VALIDATION_FAILED" | "NOT_FOUND" | "GATE_BLOCKED" | "NO_ACTIVITIES" | "GENERATION_FAILED";
+  | "VALIDATION_FAILED"
+  | "NOT_FOUND"
+  | "GATE_BLOCKED"
+  | "ALREADY_EXISTS"
+  | "STALE_WRITE"
+  | "UNSUPPORTED_FILE_TYPE"
+  | "NO_ACTIVITIES"
+  | "LLM_BUDGET_EXCEEDED"
+  | "DEPENDENCY_UNAVAILABLE"
+  | "GENERATION_FAILED";
 /** fields 는 항상 배열이다 — 하나여도 ["name"] 이다 (docs/api-spec.md 「공통」). */
 export interface ErrorResponse {
   error: { code: ErrorCode; message: string; fields: string[] };

@@ -159,7 +159,7 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     await request("plans/annual/" + plan.id + "/months/4", { theme: "", sub_themes: [] }, "PATCH");
     r = await request("plans/annual/" + plan.id + "/confirm");
     assert.equal(r.status, 422);
-    assert.equal((await r.json()).error.field, "months.4");
+    assert.deepEqual((await r.json()).error.fields, ["months.4"]);
     assert.equal(read().plans[0].status, "DRAFT");
     r = await request(
       "centers/" + center.id + "/plan-config",
@@ -258,7 +258,7 @@ test("age payload becomes age_min·age_max — the DB cannot store 「4세만 �
   assert.deepEqual(ageRangePayload({ ageGroup: "4" }), { age_min: 4, age_max: 4 });
 });
 
-test("the range goes to the server while the screen keeps the exact selection", async () => {
+test("보낼 때는 범위로 바뀌고, 라벨도 그 범위로 적는다", async () => {
   const { ageRangePayload } = await import("../lib/api/age-adapter.ts");
   const { ageSelectionLabel } = await import("../lib/onboarding/types.ts");
   resetTestData();
@@ -285,8 +285,13 @@ test("the range goes to the server while the screen keeps the exact selection", 
       assert.equal(item.age_min, Math.min(...ages));
       assert.equal(item.age_max, Math.max(...ages));
       assert.equal("selected_ages" in item, false);
-      // 화면 라벨은 선택값 그대로다 — 서버가 준 범위로 체크박스를 덮어쓰지 않는다.
-      assert.equal(ageSelectionLabel(ages), "만 " + ages.join("·") + "세반");
+      // 화면의 체크박스 상태는 선택값 그대로 남지만, 라벨은 저장된 범위로 적는다 —
+      // 「만 3·5세반」으로 쓰면 교사가 본 것과 저장된 것이 달라진다 (docs/api-spec.md §2).
+      const [low, high] = [Math.min(...ages), Math.max(...ages)];
+      assert.equal(
+        ageSelectionLabel(ages),
+        low === high ? `만 ${low}세반` : `만 ${low}~${high}세반`,
+      );
     }
   } finally {
     globalThis.fetch = patched;
