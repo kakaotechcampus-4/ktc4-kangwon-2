@@ -21,9 +21,13 @@ from ssuksak.planning.planner.contracts import (
     ProposalParseError,
     ProposalRejectedError,
 )
+from ssuksak.planning.context.models import GroundingContextItem
+from ssuksak.planning.domain.monthly_template import SemanticVariant
 from ssuksak.planning.domain.week_period import WeekId
+from ssuksak.planning.evidence.classification import SemanticClass
 from ssuksak.planning.domain.year_month import YearMonth
-from ssuksak.planning.evidence.models import SourceSection
+from ssuksak.planning.evidence.models import ReusePolicy, SourceSection
+from ssuksak.planning.retrieval.models import AgeMatchKind
 from ssuksak.planning.planner.parser import (
     parse_monthly_cell_proposal,
     parse_monthly_proposal,
@@ -57,7 +61,7 @@ def monthly_payload() -> dict[str, object]:
                         "value": "바람과 빛의 변화를 몸으로 살펴본다.",
                         "unresolved": False,
                         "reference_id": None,
-                        "grounding_refs": ["ev-1"],
+                        "grounding_refs": ["ev-3"],
                     },
                     {
                         "section_key": "outdoor_play",
@@ -83,7 +87,7 @@ def monthly_payload() -> dict[str, object]:
                         "value": "주변의 색과 모양을 새롭게 발견한다.",
                         "unresolved": False,
                         "reference_id": None,
-                        "grounding_refs": ["ev-1"],
+                        "grounding_refs": ["ev-3"],
                     },
                     {
                         "section_key": "outdoor_play",
@@ -108,7 +112,7 @@ def monthly_payload() -> dict[str, object]:
 def cell_payload(section: str = FOCUS_SECTION_KEY) -> dict[str, object]:
     value = "바람과 빛의 변화를 탐색한다."
     reference_id = None
-    grounding_refs = ["ev-1"]
+    grounding_refs = ["ev-3"]
     if section == OUTDOOR_SECTION_KEY:
         value = "바람개비 놀이"
         reference_id = "act-1"
@@ -149,7 +153,7 @@ def test_prompt_uses_snapshot_and_context_without_recomputing_rules(packet, snap
         WeekId("2026-09-W1"),
         WeekId("2026-09-W2"),
     )
-    assert first.valid_grounding_refs == frozenset({"ev-1", "ev-2"})
+    assert first.valid_grounding_refs == frozenset({"ev-1", "ev-2", "ev-3"})
     assert "Do not make legal decisions" in first.system_prompt
     assert "STATUTORY_SAFETY_EDUCATION" in first.user_content
     assert '"semantic_variant": "SUBTHEME"' in first.user_content
@@ -527,3 +531,107 @@ def test_cell_planner_does_not_mutate_snapshot_or_persist(packet, snapshot):
     assert month_snapshot == snapshots()
     assert outcome.proposal.section.value == "바람과 빛의 변화를 탐색한다."
     assert len(fake.cell_requests) == 1
+
+
+def _section_item(ref: str, grounding_class: SemanticClass, label: str):
+    return GroundingContextItem(
+        evidence_ref=ref,
+        text=f"{label} 근거 {ref}",
+        source_section=SourceSection.WEEK_EXPERIENCE,
+        source_label=label,
+        age_scope=(3, 4),
+        age_match=AgeMatchKind.MIXED_AGE_COVERING,
+        institution_alias="S1",
+        reuse_policy=ReusePolicy.CONTEXT_ONLY,
+        grounding_class=grounding_class,
+    )
+
+
+def _with_focus_variant(snapshot, variant):
+    return replace(
+        snapshot,
+        sections=tuple(
+            replace(section, semantic_variant=variant) if section.section_key == "focus" else section
+            for section in snapshot.sections
+        ),
+    )
+
+
+def _validate(payload, packet, snapshot):
+    return validate_monthly_proposal(
+        parse_monthly_proposal(json.dumps(payload, ensure_ascii=False)),
+        packet,
+        build_monthly_planning_request(packet, snapshot),
+    )
+
+
+def test_prompt_exposes_grounding_class_for_sections_and_evidence(packet, snapshot):
+    body = json.loads(build_monthly_planning_request(packet, snapshot).user_content)
+    schema = {item["section_key"]: item.get("grounding_class") for item in body["generation_schema"]["sections"]}
+
+    assert schema["focus"] == "SUBTHEME"
+    assert schema["outdoor_play"] is None
+    assert {item["grounding_ref"]: item["grounding_class"] for item in body["evidence"]} == {
+        "ev-1": None,
+        "ev-2": None,
+        "ev-3": "SUBTHEME",
+    }
+
+
+@pytest.mark.parametrize(
+    ("week", "section", "ref"),
+    [(0, 0, "ev-1"), (1, 1, "ev-3")],
+    ids=["focus-cites-unclassified", "outdoor-cites-subtheme"],
+)
+def test_wrong_source_grounding_rejects_the_whole_proposal(packet, snapshot, week, section, ref):
+    payload = monthly_payload()
+    payload["weeks"][week]["sections"][section].update(reference_id=None, grounding_refs=[ref])
+
+    assert "WRONG_SOURCE_GROUNDING" in _validate(payload, packet, snapshot).codes
+
+
+def test_focus_cannot_cite_another_semantic_class(packet, snapshot):
+    goals_packet = replace(
+        packet, section_evidence=packet.section_evidence + (_section_item("ev-4", SemanticClass.GOALS, "교사의 기대"),)
+    )
+    payload = monthly_payload()
+    payload["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-4"]
+
+    assert "WRONG_SOURCE_GROUNDING" in _validate(payload, goals_packet, snapshot).codes
+
+
+def test_expected_play_focus_uses_only_expected_play_evidence(packet, snapshot):
+    expected_play = _with_focus_variant(snapshot, SemanticVariant.EXPECTED_PLAY)
+    play_packet = replace(
+        packet,
+        section_evidence=packet.section_evidence + (_section_item("ev-5", SemanticClass.EXPECTED_PLAY, "예상놀이"),),
+    )
+
+    assert "WRONG_SOURCE_GROUNDING" in _validate(monthly_payload(), play_packet, expected_play).codes
+    payload = monthly_payload()
+    for week in payload["weeks"]:
+        week["sections"][0]["grounding_refs"] = ["ev-5"]
+    assert _validate(payload, play_packet, expected_play).is_valid
+
+
+def test_weekly_theme_focus_cannot_cite_any_evidence(packet, snapshot):
+    weekly_theme = _with_focus_variant(snapshot, SemanticVariant.WEEKLY_THEME)
+    payload = monthly_payload()
+    payload["weeks"][1]["sections"][0]["grounding_refs"] = ["ev-1"]
+
+    assert "WRONG_SOURCE_GROUNDING" in _validate(payload, packet, weekly_theme).codes
+
+
+def test_cell_validator_rejects_wrong_source_grounding(packet, snapshot):
+    request = build_monthly_cell_request(
+        packet,
+        snapshot,
+        target_week_id=WeekId("2026-09-W1"),
+        target_section_key=FOCUS_SECTION_KEY,
+        month_snapshot=snapshots(),
+    )
+    payload = cell_payload()
+    payload["section"]["grounding_refs"] = ["ev-1"]
+    proposal = parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False))
+
+    assert "WRONG_SOURCE_GROUNDING" in validate_monthly_cell_proposal(proposal, packet, request).codes

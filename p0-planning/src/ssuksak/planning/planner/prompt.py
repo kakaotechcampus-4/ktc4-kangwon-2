@@ -10,6 +10,7 @@ from ..domain.monthly_template import DisplayMode, SectionRole
 from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
+from ..evidence.classification import grounding_class_for
 from .contracts import (
     MONTHLY_PROMPT_VERSION,
     MonthlyPlanningRequest,
@@ -29,21 +30,15 @@ For safety_education, use approved safety grounding from the supplied Context;
 when that grounding is unavailable, return value="", unresolved=true, no refs.
 Every other resolved generated value needs supplied grounding_refs or a supplied
 reference_id. Do not invent facts or citations and do not copy evidence verbatim.
+A section with a grounding_class may cite only evidence with that grounding_class;
+a section without one must not cite evidence that has a grounding_class.
+Omit an optional section when no evidence with its grounding_class is supplied.
 Return only one JSON object matching response_contract; add no fields.
 """
 
 
-def _grounding_items(packet: MonthlyContextPacket) -> tuple[object, ...]:
-    return (
-        packet.institution_evidence
-        + packet.age_contrast_evidence
-        + packet.week_experience_candidates
-        + packet.other_outdoor_evidence
-    )
-
-
 def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
-    return frozenset(item.evidence_ref for item in _grounding_items(packet))
+    return frozenset(item.evidence_ref for item in packet.grounding_items)
 
 
 def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
@@ -72,8 +67,11 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
                 "age_scope": list(item.age_scope),
                 "institution_alias": item.institution_alias,
                 "reuse_policy": item.reuse_policy.value,
+                "grounding_class": (
+                    None if item.grounding_class is None else item.grounding_class.value
+                ),
             }
-            for item in _grounding_items(packet)
+            for item in packet.grounding_items
         ],
         "reference_activities": [
             {"activity_id": item.activity_id, "label": item.label, "rank": item.rank}
@@ -124,6 +122,11 @@ def _generation_schema(snapshot: TemplateSnapshot) -> dict[str, object]:
                     None
                     if section.empty_value_policy is None
                     else section.empty_value_policy.value
+                ),
+                "grounding_class": (
+                    None
+                    if (grounding_class := grounding_class_for(section)) is None
+                    else grounding_class.value
                 ),
                 "required_for_generation": section.required_for_generation,
             }

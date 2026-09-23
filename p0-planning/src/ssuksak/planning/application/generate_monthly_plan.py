@@ -25,6 +25,7 @@ from ..domain.provenance import (
     GenerationMethodDetail,
 )
 from ..domain.yearly_plan import YearlyPlan
+from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..planner.contracts import MONTHLY_PROMPT_VERSION
 from ..planner.service import MonthlyPlanner
 from ..rules.monthly_activity_selection import (
@@ -60,6 +61,7 @@ from .monthly_support import (
     load_template_profile,
     optional_context_results,
     packet_evidence,
+    snapshot_grounding_classes,
     theme_reference_id,
     with_fresh_monthly_verification,
 )
@@ -180,6 +182,18 @@ class GenerateMonthlyPlan:
                     "monthly_llm_dependencies_required",
                     "LLM_PLANNER mode requires Context Pipeline and Monthly Planner",
                 )
+            unavailable = sorted(
+                section.section_key
+                for section in template_snapshot.sections
+                if section.section_key in CLASS_SCOPED_SECTION_KEYS
+                and grounding_class_for(section) is None
+            )
+            if unavailable:
+                raise MonthlyApplicationError(
+                    "monthly_section_evidence_class_unavailable",
+                    "No approved Evidence class exists for Sections: "
+                    + ", ".join(unavailable),
+                )
             parent_theme_id = theme_reference_id(theme.evidence)
             packet = self._context.build(
                 target_month=command.target_month,
@@ -189,7 +203,21 @@ class GenerateMonthlyPlan:
                 week_periods=week_periods,
                 activity_catalog=catalog,
                 constraint_assessments=assessments,
+                grounding_classes=snapshot_grounding_classes(template_snapshot),
             )
+            available = {item.grounding_class for item in packet.section_evidence}
+            missing = sorted(
+                section.section_key
+                for section in template_snapshot.sections
+                if section.required_for_generation
+                and (grounding_class := grounding_class_for(section)) is not None
+                and grounding_class not in available
+            )
+            if missing:
+                raise MonthlyApplicationError(
+                    "monthly_required_section_evidence_missing",
+                    "Required Sections have no approved Evidence: " + ", ".join(missing),
+                )
             try:
                 planner_outcome = self._planner.plan(packet, template_snapshot)
             except Exception as exc:

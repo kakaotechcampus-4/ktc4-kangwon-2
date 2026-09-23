@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 import json
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
+from ssuksak.adapters.evidence_classification_repository import (
+    JsonEvidenceClassificationRepository,
+)
 from ssuksak.adapters.deterministic_theme_text_generator import (
     DeterministicThemeTextGenerator,
 )
@@ -138,6 +141,25 @@ def _profile(
     )
 
 
+def grounding_ref_for(request, section_key: str) -> str | None:
+    """Pick the first supplied evidence ref allowed for this Section's grounding_class."""
+    body = json.loads(request.user_content)
+    expected = next(
+        (
+            section.get("grounding_class")
+            for section in body["generation_schema"]["sections"]
+            if section["section_key"] == section_key
+        ),
+        None,
+    )
+    refs = sorted(
+        item["grounding_ref"]
+        for item in body["evidence"]
+        if item["grounding_class"] == expected
+    )
+    return refs[0] if refs else None
+
+
 class RequestAwareMonthlyLlm:
     """Network-free provider whose output is derived only from each request."""
 
@@ -147,7 +169,6 @@ class RequestAwareMonthlyLlm:
 
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
         self.monthly_requests.append(request)
-        grounding_ref = sorted(request.valid_grounding_refs)[0]
         first_reference = request.reference_labels[0]
 
         def section_value(section_key: str, index: int) -> dict[str, object]:
@@ -179,7 +200,7 @@ class RequestAwareMonthlyLlm:
                 "value": label,
                 "unresolved": False,
                 "reference_id": None,
-                "grounding_refs": [grounding_ref],
+                "grounding_refs": [grounding_ref_for(request, section_key)],
             }
 
         month_sections = []
@@ -205,7 +226,9 @@ class RequestAwareMonthlyLlm:
                             "value": f"Context-based {section.section_key}",
                             "unresolved": False,
                             "reference_id": None,
-                            "grounding_refs": [grounding_ref],
+                            "grounding_refs": [
+                                grounding_ref_for(request, section.section_key)
+                            ],
                         }
                     )
             elif section.display_mode is DisplayMode.WEEKLY_CELLS:
@@ -218,6 +241,9 @@ class RequestAwareMonthlyLlm:
                     "sections": [
                         section_value(key, index)
                         for key in weekly_keys
+                        if key == "safety_education"
+                        or (key == "outdoor_play" and index == 1)
+                        or grounding_ref_for(request, key) is not None
                     ],
                 }
             )
@@ -234,7 +260,7 @@ class RequestAwareMonthlyLlm:
 
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
         self.cell_requests.append(request)
-        grounding_ref = sorted(request.valid_grounding_refs)[0]
+        grounding_ref = grounding_ref_for(request, request.target_section_key)
         payload = {
             "target_month": request.target_month.value,
             "target_week_id": request.target_week_id.value,
@@ -277,6 +303,7 @@ class PlanningHarness:
         self.activities = JsonActivityReferenceRepository()
         self.context = MonthlyContextPipeline(
             evidence_repository=_EVIDENCE_REPOSITORY,
+            classification_repository=JsonEvidenceClassificationRepository(),
             context_builder=ContextPacketBuilder(),
         )
         self.provider = RequestAwareMonthlyLlm()

@@ -24,6 +24,7 @@ from ssuksak.planning.domain.monthly_template_profile import (
     TemplateProfileRef,
 )
 from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
+from ssuksak.planning.evidence.classification import SemanticClass
 from ssuksak.planning.evidence.models import ReusePolicy, SourceSection
 from ssuksak.planning.retrieval.models import AgeMatchKind
 
@@ -50,6 +51,17 @@ def packet() -> MonthlyContextPacket:
         institution_alias="S2",
         reuse_policy=ReusePolicy.CONTEXT_ONLY,
     )
+    subtheme = GroundingContextItem(
+        evidence_ref="ev-3",
+        text="가을 열매와 나뭇잎",
+        source_section=SourceSection.WEEK_EXPERIENCE,
+        source_label="소주제",
+        age_scope=(3, 4),
+        age_match=AgeMatchKind.MIXED_AGE_COVERING,
+        institution_alias="S1",
+        reuse_policy=ReusePolicy.CONTEXT_ONLY,
+        grounding_class=SemanticClass.SUBTHEME,
+    )
     return MonthlyContextPacket(
         packet_version=CONTEXT_PACKET_VERSION,
         target_month=YearMonth(2026, 9),
@@ -62,7 +74,7 @@ def packet() -> MonthlyContextPacket:
         ),
         institution_evidence=(first,),
         age_contrast_evidence=(),
-        week_experience_candidates=(),
+        section_evidence=(subtheme,),
         reference_activities=(ReferenceActivityContext("act-1", "바람개비 놀이", 0),),
         other_outdoor_evidence=(second,),
         constraints=ContextConstraints(
@@ -71,9 +83,10 @@ def packet() -> MonthlyContextPacket:
         lineage=ContextLineage(
             "evidence-store-v1",
             "1" * 64,
-            "monthly-evidence-retrieval-v0.1.0",
+            "monthly-evidence-retrieval-v0.2.0",
             "activities",
             "v1",
+            "monthly-evidence-semantic-classification-v0.1.0",
         ),
     )
 

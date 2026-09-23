@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
+
+from ssuksak.adapters.evidence_classification_repository import (
+    JsonEvidenceClassificationRepository,
+)
 from ssuksak.adapters.institution_evidence_repository import (
     InMemoryInstitutionEvidenceRepository,
     JsonInstitutionEvidenceRepository,
 )
 from ssuksak.adapters.json_activity_reference_repository import JsonActivityReferenceRepository
+from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.domain.year_month import YearMonth
+from ssuksak.planning.evidence.classification import (
+    EvidenceSemanticClassification,
+    SemanticClass,
+)
 from ssuksak.planning.evidence.models import (
     AgeEvidenceType,
     EvidenceRecord,
@@ -23,7 +35,7 @@ from ssuksak.planning.retrieval.ranking import (
     ngrams,
     rank_records,
 )
-from ssuksak.planning.retrieval.retriever import MonthlyEvidenceRetriever
+from ssuksak.planning.retrieval.retriever import CLASS_BLOCKS, MonthlyEvidenceRetriever
 
 
 def _record(
@@ -119,11 +131,19 @@ def test_retriever_returns_typed_blocks_and_does_not_invent_week_positions():
         _record("ev_c", section=SourceSection.WEEK_EXPERIENCE, setting=Setting.UNKNOWN),
     )
     store = InMemoryInstitutionEvidenceRepository(records).get_store()
-    result = MonthlyEvidenceRetriever(store).retrieve(_request(frozenset({3, 4})))
+    classification = EvidenceSemanticClassification(
+        "classification-test",
+        store.content_sha256,
+        ((SourceSection.WEEK_EXPERIENCE, "바깥놀이", SemanticClass.SUBTHEME),),
+    )
+    request = replace(
+        _request(frozenset({3, 4})), grounding_classes=frozenset({SemanticClass.SUBTHEME})
+    )
+    result = MonthlyEvidenceRetriever(store, classification=classification).retrieve(request)
 
     assert tuple(block.name for block in result.blocks) == tuple(BlockName)
     assert result.block(BlockName.AGE_CONTRAST_EVIDENCE).size == 2
-    assert result.block(BlockName.WEEK_EXPERIENCE_CANDIDATES).items[0].record.week_position is None
+    assert result.block(BlockName.SUBTHEME_EVIDENCE).items[0].record.week_position is None
 
 
 def test_real_artifact_retrieval_is_deterministic_and_uses_approved_reference():
@@ -143,3 +163,89 @@ def test_real_artifact_retrieval_is_deterministic_and_uses_approved_reference():
         for block in first.blocks
         for item in block.items
     )
+
+
+def _classified_store():
+    records = (
+        replace(_record("ev_g", section=SourceSection.WEEK_EXPERIENCE, setting=Setting.UNKNOWN, source_sha="e" * 64), source_label="교사의 기대"),
+        replace(_record("ev_s", section=SourceSection.WEEK_EXPERIENCE, setting=Setting.UNKNOWN, source_sha="e" * 64), source_label="소주제"),
+        replace(_record("ev_p", section=SourceSection.WEEK_EXPERIENCE, setting=Setting.UNKNOWN, source_sha="e" * 64), source_label="예상놀이"),
+        replace(
+            _record("ev_x", section=SourceSection.WEEK_EXPERIENCE, setting=Setting.UNKNOWN, source_sha="e" * 64),
+            source_label="환경구성 및 예상놀이계획",
+        ),
+        replace(_record("ev_h", section=SourceSection.DAILY_ROUTINE, setting=Setting.UNKNOWN, source_sha="e" * 64), source_label="기본생활습관"),
+        replace(_record("ev_r", section=SourceSection.DAILY_ROUTINE, setting=Setting.UNKNOWN, source_sha="e" * 64), source_label="등원"),
+    )
+    store = InMemoryInstitutionEvidenceRepository(records).get_store()
+    classification = EvidenceSemanticClassification(
+        "classification-test",
+        store.content_sha256,
+        (
+            (SourceSection.WEEK_EXPERIENCE, "교사의 기대", SemanticClass.GOALS),
+            (SourceSection.WEEK_EXPERIENCE, "소주제", SemanticClass.SUBTHEME),
+            (SourceSection.WEEK_EXPERIENCE, "예상놀이", SemanticClass.EXPECTED_PLAY),
+            (SourceSection.DAILY_ROUTINE, "기본생활습관", SemanticClass.BASIC_HABIT),
+        ),
+    )
+    return store, classification
+
+
+_ALL_CLASSES = frozenset(set(SemanticClass) - {SemanticClass.EXCLUDED})
+
+
+def test_section_blocks_hold_only_their_approved_class_and_drop_excluded():
+    store, classification = _classified_store()
+    request = replace(_request(frozenset({3, 4})), grounding_classes=_ALL_CLASSES)
+    result = MonthlyEvidenceRetriever(store, classification=classification).retrieve(request)
+
+    def ids(name):
+        return {item.record_id for item in result.block(name).items}
+
+    assert ids(BlockName.GOALS_EVIDENCE) == {"ev_g"}
+    assert ids(BlockName.SUBTHEME_EVIDENCE) == {"ev_s"}
+    assert ids(BlockName.EXPECTED_PLAY_EVIDENCE) == {"ev_p"}
+    assert ids(BlockName.BASIC_HABIT_EVIDENCE) == {"ev_h"}
+    everywhere = {item.record_id for block in result.blocks for item in block.items}
+    assert not everywhere & {"ev_x", "ev_r"}
+    assert result.evidence_classification_version == "classification-test"
+
+
+def test_inactive_section_classes_are_not_retrieved():
+    store, classification = _classified_store()
+    request = replace(
+        _request(frozenset({3, 4})), grounding_classes=frozenset({SemanticClass.EXPECTED_PLAY})
+    )
+    result = MonthlyEvidenceRetriever(store, classification=classification).retrieve(request)
+
+    assert {item.record_id for item in result.block(BlockName.EXPECTED_PLAY_EVIDENCE).items} == {"ev_p"}
+    for name in (BlockName.GOALS_EVIDENCE, BlockName.SUBTHEME_EVIDENCE, BlockName.BASIC_HABIT_EVIDENCE):
+        assert result.block(name).size == 0
+
+
+def test_section_scoped_retrieval_fails_closed_without_a_bound_classification():
+    store, classification = _classified_store()
+    request = replace(_request(frozenset({3, 4})), grounding_classes=_ALL_CLASSES)
+
+    with pytest.raises(ValueError, match="approved Evidence classification"):
+        MonthlyEvidenceRetriever(store).retrieve(request)
+    with pytest.raises(InvalidDomainValueError, match="different Evidence Store"):
+        MonthlyEvidenceRetriever(
+            store, classification=replace(classification, evidence_content_sha256="1" * 64)
+        )
+
+
+def test_real_section_scoped_retrieval_is_deterministic_and_class_pure():
+    store = JsonInstitutionEvidenceRepository().get_store()
+    classification = JsonEvidenceClassificationRepository().get_classification()
+    request = replace(_request(frozenset({3, 4})), grounding_classes=_ALL_CLASSES)
+    retriever = MonthlyEvidenceRetriever(store, classification=classification)
+    first = retriever.retrieve(request)
+
+    assert first == retriever.retrieve(request)
+    assert first.retrieval_version == "monthly-evidence-retrieval-v0.2.0"
+    for semantic_class, name in CLASS_BLOCKS.items():
+        items = first.block(name).items
+        assert items
+        assert all(classification.class_of(item.record) is semantic_class for item in items)
+        assert all(item.record.week_position is None for item in items)
