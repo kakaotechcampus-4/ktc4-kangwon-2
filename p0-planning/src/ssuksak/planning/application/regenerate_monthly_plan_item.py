@@ -85,7 +85,7 @@ class RegenerateMonthlyPlanItem:
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"
             )
         _, _, _, cell = found
-        if cell.section_key not in SUPPORTED_SECTIONS or cell.week_id is None:
+        if cell.section_key not in SUPPORTED_SECTIONS:
             raise MonthlyApplicationError(
                 "monthly_cell_not_regeneratable",
                 f"Cell section is not regeneratable: {cell.section_key}",

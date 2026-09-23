@@ -263,7 +263,11 @@ class RequestAwareMonthlyLlm:
         grounding_ref = grounding_ref_for(request, request.target_section_key)
         payload = {
             "target_month": request.target_month.value,
-            "target_week_id": request.target_week_id.value,
+            "target_week_id": (
+                None
+                if request.target_week_id is None
+                else request.target_week_id.value
+            ),
             "section": {
                 "section_key": request.target_section_key,
                 "value": f"Regenerated {request.target_section_key} value",
