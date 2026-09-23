@@ -22,6 +22,13 @@ def name_variants(full_name: str) -> list[str]:
         남궁민수 -> ["남궁민수", "민수"]
         김하나   -> ["김하나", "하나"]      <- "하나" 는 흔한 단어다. 아래 주의 참조
         서준     -> ["서준"]                 두 글자면 성이 없다고 본다
+        남궁민   -> ["남궁민"]               성을 떼면 한 글자만 남아 떼지 않는다
+
+    **한 글자 성 + 두 글자 이름에만 정확하다.** 그 밖은 등록 이름만 찾는다.
+    성을 못 가리는 경우가 둘이다 -- 세 글자 두 글자 성(남궁민), 목록에 없는 성.
+    추측으로 떼면 "궁민" 같은 조각이 생겨 엉뚱한 곳이 치환된다. 못 가리면 안 뗀다.
+    근본 해결은 등록할 때 성과 이름을 따로 받는 것이다(PR #40 리뷰). children 컬럼과
+    온보딩 화면이 같이 바뀌므로 별도 PR 로 한다.
 
     주의: 성을 뗀 이름이 보통 단어와 겹치면 과잉 치환이 난다.
     "하나도 안 먹었다" 가 "서아도 안 먹었다" 가 된다. 한국어는 낱말 경계가 없어서
@@ -32,10 +39,22 @@ def name_variants(full_name: str) -> list[str]:
     if not name:
         raise ValueError("이름이 비어 있다")
     variants = [name]
-    for length in (2, 1):
-        if len(name) > length + 1 and (length == 1 or name[:2] in _TWO_SYLLABLE_SURNAMES):
-            given = name[length:]
-            if given not in variants:
-                variants.append(given)
-            break
+    surname = _surname_length(name)
+    # 성을 떼고 두 글자 이상 남을 때만 뗀다. 한 글자(민 · 진)를 치환 대상에 넣으면
+    # 본문의 아무 "민" 이나 바뀐다. 실명이 새는 것보다 낫다는 균형이 여기서는 깨진다 --
+    # 한 글자는 걸리는 양이 너무 많아 문장이 통째로 망가진다.
+    if surname and len(name) - surname >= 2:
+        variants.append(name[surname:])
     return variants
+
+
+def _surname_length(name: str) -> int:
+    """성이 몇 글자인가. 가릴 수 없으면 0 이다.
+
+    목록에 있는 두 글자 성이 먼저다 -- "남궁민수" 를 한 글자로 끊으면 "궁민수" 가 된다.
+    """
+    if name[:2] in _TWO_SYLLABLE_SURNAMES:
+        return 2
+    # 세 글자 이상이면 첫 글자를 성으로 본다. 한국 이름 대부분이 그렇다.
+    # 두 글자(서준)는 성이 없는 표기로 보고 그대로 둔다.
+    return 1 if len(name) >= 3 else 0
