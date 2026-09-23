@@ -9,15 +9,13 @@ tests/test_centers.py 의 `_MissingCenterSession` 과 같다.
 from datetime import UTC, datetime
 
 import pytest
-import yaml
 from fastapi.testclient import TestClient
 
 from app.db import get_session
 from app.features.centers.models import Class
 from app.main import app
-from app.shared.childCode import _POOL_PATH
+from app.shared.childCode import load_pool
 
-POOL = yaml.safe_load(_POOL_PATH.read_text(encoding="utf-8"))
 client = TestClient(app)
 
 
@@ -71,6 +69,7 @@ def session():
 
 
 def test_registering_a_child_issues_a_pseudonym_from_the_pool(session):
+    expected = load_pool().allocate("이승석", set())
     response = client.post("/api/classes/1/children", json={"name": "이승석"})
 
     assert response.status_code == 201
@@ -78,15 +77,15 @@ def test_registering_a_child_issues_a_pseudonym_from_the_pool(session):
     assert body["class_id"] == 1
     assert body["name"] == "이승석"
     assert body["created_at"]
-    # 실명에서 파생하지 않는다 — 받침이 같은 쪽 Pool 에서 나온다 (ADR-004).
-    assert body["code"] in POOL["with_final"]
+    assert body["code"] == expected
     assert session.commits == 1
 
 
 def test_a_name_without_a_final_consonant_gets_a_matching_pseudonym(session):
+    expected = load_pool().allocate("김하나", set())
     code = client.post("/api/classes/1/children", json={"name": "김하나"}).json()["code"]
 
-    assert code in POOL["without_final"]
+    assert code == expected
 
 
 def test_codes_do_not_repeat_inside_one_class(session):

@@ -17,7 +17,7 @@ from app.features.children.schemas import (
     ChildListResponse,
     ChildResponse,
 )
-from app.shared.childCode import issue_code
+from app.shared.childCode import load_pool
 
 router = APIRouter(tags=["children"])
 
@@ -70,8 +70,9 @@ def create_child(
     """
     _require_class(session, class_id)
 
-    used = [child.code for child in _children_of(session, class_id)]
-    child = Child(class_id=class_id, name=body.name, code=issue_code(body.name, used))
+    used = {child.code for child in _children_of(session, class_id)}
+    code = load_pool().allocate(body.name, used)
+    child = Child(class_id=class_id, name=body.name, code=code)
     session.add(child)
     session.commit()
     session.refresh(child)
