@@ -16,6 +16,7 @@ if not os.environ.get("DATABASE_URL"):
 
 # app.* 는 위 검사 뒤에서 import 한다. 위로 올리면 Settings 가 먼저 평가돼
 # 우리 메시지 대신 pydantic 의 ValidationError 가 나온다.
+from sqlalchemy import event  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from app.db import engine as app_engine  # noqa: E402
@@ -35,15 +36,23 @@ def clean_alias_cache():
 def db_session():
     """실제 DB 에 연결하되 테스트가 끝나면 통째로 롤백한다.
 
-    연결 하나를 열어 트랜잭션을 시작하고, 그 커넥션에 묶인 세션을 FastAPI 의
-    `get_session` 대신 쓰게 한다 — 라우터가 실행하는 쿼리와 테스트 코드가 만드는
-    픽스처 데이터가 같은(아직 커밋 안 된) 트랜잭션 안에 있어야 서로 보인다.
-    라우터가 `commit()`을 부르지 않는(읽기 전용) 범위에서만 안전하다 — 쓰기
-    엔드포인트를 테스트할 때는 SAVEPOINT 방식으로 바꿔야 한다.
+    바깥 트랜잭션 하나(`outer`)를 열고 그 안에 SAVEPOINT(`nested`)를 하나 판다.
+    라우터가 `session.commit()`을 불러도 SAVEPOINT 까지만 끝나고 바깥 트랜잭션은
+    안 끝난다 — `after_transaction_end` 훅이 SAVEPOINT 를 바로 다시 파서 다음
+    쿼리도 여전히 롤백 대상 안에 있게 한다. `PUT` 처럼 실제로 커밋하는
+    엔드포인트를 테스트하려면 이 방식이 필요하다(단순 트랜잭션 하나로는 커밋이
+    바깥 트랜잭션까지 끝내버려서 다음 줄의 `rollback()`이 아무것도 못 되돌린다).
     """
     connection = app_engine.connect()
-    transaction = connection.begin()
+    outer = connection.begin()
     session = sessionmaker(bind=connection)()
+    nested = connection.begin_nested()
+
+    @event.listens_for(session, "after_transaction_end")
+    def _restart_savepoint(sess: object, trans: object) -> None:
+        nonlocal nested
+        if not nested.is_active:
+            nested = connection.begin_nested()
 
     def _override():
         yield session
@@ -53,9 +62,8 @@ def db_session():
         yield session
     finally:
         app.dependency_overrides.pop(get_session, None)
+        event.remove(session, "after_transaction_end", _restart_savepoint)
         session.close()
-        # IntegrityError 를 일부러 일으키는 테스트는 session.close() 시점에 이미
-        # 트랜잭션이 끊겨 있다 — 그럴 때 또 rollback() 을 부르면 SAWarning 이 뜬다.
-        if transaction.is_active:
-            transaction.rollback()
+        if outer.is_active:
+            outer.rollback()
         connection.close()

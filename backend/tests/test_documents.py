@@ -38,6 +38,37 @@ def _make_center_class_child(session):
     return center, klass, child
 
 
+def _make_sources(session, doc, klass, child, count=2):
+    sources = []
+    for i in range(count):
+        source = DocumentSource(
+            document_id=doc.id,
+            source_kind="observation",
+            source_id=100 + i,
+            class_id=klass.id,
+            child_id=child.id if child else None,
+            date=date(2026, 9, 5 + i),
+            text=f"관찰 기록 {i}.",
+        )
+        session.add(source)
+        sources.append(source)
+    session.flush()
+    return sources
+
+
+_LONG_ENOUGH = "스무 글자가 넘도록 채운 문장입니다 정말로요"
+
+
+def _make_sections(session, doc, sources, interpretation=_LONG_ENOUGH, support=_LONG_ENOUGH):
+    fact = "\n\n".join(s.text for s in sources)
+    source_ids = [s.source_id for s in sources]
+    for heading, body in [("사실", fact), ("해석", interpretation), ("지원", support)]:
+        session.add(
+            DocumentSection(document_id=doc.id, heading=heading, body=body, source_ids=source_ids)
+        )
+    session.flush()
+
+
 def _make_document(session, klass, child=None, **overrides):
     kwargs = {
         "kind": "observation",
@@ -218,3 +249,189 @@ def test_list_documents_breaks_same_timestamp_ties_by_id_desc(db_session):
     ordered_ids = [item["id"] for item in response.json()["items"]]
 
     assert ordered_ids.index(second.id) < ordered_ids.index(first.id)
+
+
+# ── PUT /api/documents/{id} ─────────────────────────────────────────────────
+
+
+def _put_body(doc, **overrides):
+    body = {
+        "sections": [
+            {"heading": "사실", "body": "고정", "source_ids": []},
+            {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
+            {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+        ],
+        "review_note": "",
+        "updated_at": doc.updated_at.isoformat(),
+    }
+    body.update(overrides)
+    return body
+
+
+def test_put_updates_review_note_and_title_and_bumps_updated_at(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+    fact = "\n\n".join(s.text for s in sources)
+    original_updated_at = doc.updated_at
+
+    response = client.put(
+        f"/api/documents/{doc.id}",
+        json=_put_body(
+            doc,
+            title="바뀐 제목",
+            sections=[
+                {"heading": "사실", "body": fact, "source_ids": [s.source_id for s in sources]},
+                {"heading": "해석", "body": "새로 쓴 " + _LONG_ENOUGH, "source_ids": []},
+                {"heading": "지원", "body": "새로 쓴 " + _LONG_ENOUGH, "source_ids": []},
+            ],
+            review_note="확인 부탁드려요",
+        ),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["title"] == "바뀐 제목"
+    assert payload["review_note"] == "확인 부탁드려요"
+    assert payload["sections"][0]["body"] == fact
+    assert datetime.fromisoformat(payload["updated_at"]) > original_updated_at
+
+
+def test_put_missing_document_returns_not_found(db_session):
+    response = client.put(
+        "/api/documents/999999",
+        json={
+            "sections": [
+                {"heading": "사실", "body": "", "source_ids": []},
+                {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
+                {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+            ],
+            "updated_at": datetime.now(UTC).isoformat(),
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+
+
+def test_put_confirmed_document_is_rejected(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child, status="CONFIRMED")
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+
+    response = client.put(f"/api/documents/{doc.id}", json=_put_body(doc))
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ALREADY_CONFIRMED"
+
+
+def test_put_with_stale_updated_at_is_rejected(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+
+    response = client.put(
+        f"/api/documents/{doc.id}",
+        json=_put_body(doc, updated_at=datetime(2000, 1, 1, tzinfo=UTC).isoformat()),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "STALE_WRITE"
+
+
+def test_put_rejects_wrong_section_headings(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+
+    response = client.put(
+        f"/api/documents/{doc.id}",
+        json=_put_body(
+            doc,
+            sections=[
+                {"heading": "사실", "body": "x", "source_ids": []},
+                {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
+            ],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["sections"]
+
+
+def test_put_rejects_changed_fact_section(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+
+    response = client.put(
+        f"/api/documents/{doc.id}",
+        json=_put_body(
+            doc,
+            sections=[
+                {"heading": "사실", "body": "원본에 없는 내용", "source_ids": []},
+                {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
+                {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+            ],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert "sections.사실" in response.json()["error"]["fields"]
+
+
+@pytest.mark.parametrize(
+    "body_text,expected_field",
+    [("", "sections.해석"), ("너무짧음", "sections.해석")],
+)
+def test_put_rejects_short_or_empty_interpretation_and_support(
+    db_session, body_text, expected_field
+):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+    fact = "\n\n".join(s.text for s in sources)
+
+    response = client.put(
+        f"/api/documents/{doc.id}",
+        json=_put_body(
+            doc,
+            sections=[
+                {"heading": "사실", "body": fact, "source_ids": []},
+                {"heading": "해석", "body": body_text, "source_ids": []},
+                {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+            ],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert expected_field in response.json()["error"]["fields"]
+
+
+def test_put_rejects_source_ids_not_belonging_to_this_document(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+    fact = "\n\n".join(s.text for s in sources)
+
+    response = client.put(
+        f"/api/documents/{doc.id}",
+        json=_put_body(
+            doc,
+            sections=[
+                {"heading": "사실", "body": fact, "source_ids": []},
+                {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": [999999]},
+                {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+            ],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert "sections.해석.source_ids" in response.json()["error"]["fields"]
