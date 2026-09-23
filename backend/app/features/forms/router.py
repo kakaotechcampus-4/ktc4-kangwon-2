@@ -33,8 +33,17 @@ def parse_form(file: UploadFile) -> ParseResponse:
         try:
             tables = hwp_form.extract(tmp_path)
         except RuntimeError as e:
-            # 서버에 hwp5html 이 설치돼 있지 않은 경우 등 환경 문제
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            # 서버에 hwp5html 이 없는 등 환경 문제. 교사가 고칠 수 없으므로 503 이고
+            # FE 는 재시도 버튼을 띄우지 않는다 (docs/api-spec.md §8).
+            # str(e) 를 싣지 않는다 — "pip install pyhwp six" 가 교사 화면에 뜬다.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "DEPENDENCY_UNAVAILABLE",
+                    "message": "지금 양식을 읽을 수 없습니다. 운영 담당자에게 문의해주세요.",
+                    "fields": [],
+                },
+            ) from e
         except Exception as e:
             # 손상된 파일, 변환 실패 등 요청 자체의 문제
             raise HTTPException(status_code=422, detail=f"양식 파싱에 실패했습니다: {e}") from e

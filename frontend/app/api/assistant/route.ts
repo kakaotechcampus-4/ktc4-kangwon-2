@@ -4,6 +4,7 @@ import {
   readLimitedBody,
   validAIInput,
   matchesSchema,
+  sameOriginGuard,
 } from "@/lib/workspace/api-validation";
 export const runtime = "nodejs";
 const string = { type: "string" };
@@ -76,9 +77,8 @@ export async function GET() {
   );
 }
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
-    return Response.json({ error: "허용되지 않은 요청입니다." }, { status: 403 });
+  const blocked = sameOriginGuard(request);
+  if (blocked) return blocked;
   let task: string;
   let payload: unknown;
   try {
