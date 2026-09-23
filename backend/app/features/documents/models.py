@@ -112,6 +112,10 @@ class DocumentSource(Base):
     __tablename__ = "document_sources"
     __table_args__ = (
         CheckConstraint("source_kind IN ('observation', 'document')", name="source_kind"),
+        CheckConstraint(
+            "source_status IS NULL OR source_status IN ('DRAFT', 'CONFIRMED')",
+            name="source_status",
+        ),
         UniqueConstraint("document_id", "source_kind", "source_id"),
         Index("ix_document_sources_source_kind_source_id", "source_kind", "source_id"),
     )
@@ -129,8 +133,15 @@ class DocumentSource(Base):
     date: Mapped[date_ | None] = mapped_column(
         Date,
         comment=(
-            "observation 근거일 때 그 기록의 date. document 근거(주간->일일)일 때 "
-            "뭘 넣을지는 미확정 — 잠정 nullable (2026-09-22 기준, api-spec 미기재)"
+            "근거 시점 — observation 근거면 그 기록의 date, document 근거(주간->일일)면 "
+            "그 문서의 start_date (리뷰 반영: PR #50, LEEseungseok-01)"
+        ),
+    )
+    source_status: Mapped[str | None] = mapped_column(
+        String(20),
+        comment=(
+            "document 근거일 때 그 문서의 생성 시점 status 스냅샷(DRAFT/CONFIRMED). "
+            "observation 근거면 NULL — 관찰 기록엔 status 가 없다 (리뷰 반영: PR #50)"
         ),
     )
     text: Mapped[str] = mapped_column(
