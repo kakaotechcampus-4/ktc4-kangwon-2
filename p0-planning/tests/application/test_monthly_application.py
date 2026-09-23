@@ -83,6 +83,7 @@ from ssuksak.planning.planner.contracts import (
     MONTHLY_MODEL,
     MonthlyCellPlanningRequest,
     MonthlyPlanningRequest,
+    ProposalRejectedError,
     RawLlmResponse,
 )
 from ssuksak.planning.planner.service import MonthlyPlanner
@@ -364,6 +365,52 @@ class LegacyShapeMonthlyLlm(RequestAwareMonthlyLlm):
             MONTHLY_MODEL,
             "legacy-monthly-1",
         )
+
+
+class InstitutionInputMonthlyLlm(RequestAwareMonthlyLlm):
+    """Returns an otherwise valid proposal plus an invented event_schedule."""
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        for week in payload["weeks"]:
+            week["sections"].append(
+                {
+                    "section_key": "event_schedule",
+                    "value": "Invented autumn sports day",
+                    "unresolved": False,
+                    "reference_id": None,
+                    "grounding_refs": [sorted(request.valid_grounding_refs)[0]],
+                }
+            )
+        return RawLlmResponse(
+            json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1"
+        )
+
+
+def _institution_input_profile(
+    template_repository: JsonMonthlyTemplateRepository, section_key: str
+) -> TemplateProfile:
+    base = _profile(
+        template_repository,
+        TEMPLATE,
+        TemplateProfileRef(f"monthly-profile-{section_key}", "v1"),
+    )
+    template = template_repository.get_template(
+        TEMPLATE.template_id, TEMPLATE.template_version
+    )
+    assert template is not None
+    section = replace(
+        template.section(section_key),
+        activated=True,
+        display_label={"event_schedule": "Events", "drill": "Drill"}[section_key],
+        display_mode=DisplayMode.WEEKLY_CELLS,
+        visible=True,
+    )
+    return replace(
+        base,
+        selected_optional_keys=(*base.selected_optional_keys, section_key),
+        sections=(*base.sections, section),
+    )
 
 
 class Harness:
@@ -801,6 +848,40 @@ def test_legacy_proposal_shape_is_rejected_without_running_verification(monkeypa
     assert exc.value.code == "monthly_llm_planning_failed"
     assert len(provider.monthly_requests) == 1
     assert calls == []
+    assert harness.plans.save_count == 0
+
+
+@pytest.mark.parametrize("mode", tuple(MonthlyGenerationMode))
+@pytest.mark.parametrize("section_key", ("event_schedule", "drill"))
+def test_active_institution_input_section_fails_closed_before_generation(
+    section_key, mode
+):
+    harness = Harness()
+    profile = _institution_input_profile(harness.templates, section_key)
+    harness.profiles = InMemoryTemplateProfileRepository((profile,))
+    provider = RequestAwareMonthlyLlm()
+    command = replace(harness.command(mode), profile_ref=profile.profile_ref)
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+
+    assert exc.value.code == "monthly_institution_input_section_unsupported"
+    assert section_key in exc.value.detail
+    assert provider.monthly_requests == []
+    assert harness.plans.save_count == 0
+
+
+def test_provider_institution_input_section_is_rejected_without_saving():
+    harness = Harness()
+    provider = InstitutionInputMonthlyLlm()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    assert isinstance(exc.value.__cause__, ProposalRejectedError)
+    assert "UNKNOWN_SECTION" in exc.value.__cause__.validation_codes
+    assert len(provider.monthly_requests) == 1
     assert harness.plans.save_count == 0
 
 

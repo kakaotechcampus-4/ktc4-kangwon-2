@@ -8,6 +8,7 @@ from enum import Enum
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
 from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
+from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
 from ..evidence.models import SourceSection
 from .contracts import (
     MonthlyPlanProposal,
@@ -24,6 +25,7 @@ class ProposalValidationCode(str, Enum):
     DUPLICATE_SECTION = "DUPLICATE_SECTION"
     UNKNOWN_SECTION = "UNKNOWN_SECTION"
     AXIS_CONTENT = "AXIS_CONTENT"
+    INSTITUTION_INPUT_SECTION = "INSTITUTION_INPUT_SECTION"
     SECTION_PLACEMENT_MISMATCH = "SECTION_PLACEMENT_MISMATCH"
     REQUIRED_SECTION_MISSING = "REQUIRED_SECTION_MISSING"
     UNRESOLVED_NOT_ALLOWED = "UNRESOLVED_NOT_ALLOWED"
@@ -108,6 +110,8 @@ def validate_monthly_proposal_schema(
             )
         elif section.role is SectionRole.AXIS:
             fail(ProposalValidationCode.AXIS_CONTENT, value.section_key)
+        elif value.section_key in INSTITUTION_INPUT_SECTION_KEYS:
+            fail(ProposalValidationCode.INSTITUTION_INPUT_SECTION, value.section_key)
         elif section.display_mode is not DisplayMode.MONTHLY_MERGED_SUMMARY:
             fail(
                 ProposalValidationCode.SECTION_PLACEMENT_MISMATCH,
@@ -133,6 +137,12 @@ def validate_monthly_proposal_schema(
             elif section.role is SectionRole.AXIS:
                 fail(
                     ProposalValidationCode.AXIS_CONTENT,
+                    value.section_key,
+                    week_id=week.week_id.value,
+                )
+            elif value.section_key in INSTITUTION_INPUT_SECTION_KEYS:
+                fail(
+                    ProposalValidationCode.INSTITUTION_INPUT_SECTION,
                     value.section_key,
                     week_id=week.week_id.value,
                 )

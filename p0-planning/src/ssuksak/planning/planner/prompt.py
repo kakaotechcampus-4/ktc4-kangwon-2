@@ -7,6 +7,7 @@ import json
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
 from ..domain.monthly_template import DisplayMode, SectionRole
+from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from .contracts import (
@@ -94,6 +95,8 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
 def _generation_schema(snapshot: TemplateSnapshot) -> dict[str, object]:
     sections: list[dict[str, object]] = []
     for section in snapshot.sections:
+        if section.section_key in INSTITUTION_INPUT_SECTION_KEYS:
+            continue
         if section.role is SectionRole.AXIS:
             sections.append(
                 {
