@@ -52,6 +52,7 @@ Content     application/json
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§11) |
 
@@ -65,6 +66,12 @@ Content     application/json
 > 보고 알려주므로 토큰 카운터를 만들지 않는다(2026-09-21 결정). 예산을 넘겨 키가 삭제되면
 > 공급자 호출이 인증 오류로 실패하는데, 그때 `GENERATION_FAILED` 로 뭉뚱그리지 않고
 > 이 코드로 구분한다 — FE 가 "재시도" 대신 "운영 문의" 를 띄워야 해서다.
+
+> **`DEPENDENCY_UNAVAILABLE` 도 같은 이유로 `GENERATION_FAILED` 와 나눈다.** 서버에
+> `hwp5html` 이 깔려 있지 않은 것은 교사가 고칠 수 없다. `GENERATION_FAILED` 500 은
+> FE 가 재시도 버튼을 띄우는 코드인데, 여기서는 100번 눌러도 같은 결과다.
+> **`NO_ACTIVITIES` 와 같은 가족이다** — 503 · 운영 오류 · 자동 재시도 없음.
+> 앞으로 붙는 외부 도구(`pdftotext` · 외부 API)도 이 코드를 쓴다.
 
 ---
 
@@ -540,6 +547,21 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 
 **`POST /api/forms/parse`** — hwp/hwpx 를 받아 표 구조와 라벨 후보를 돌려준다. 수린 구현(PR #6).
 **저장하지 않는다.** 요청·응답만으로 끝나는 순수 변환이다.
+
+**에러**
+
+| code | status | 언제 |
+|---|---|---|
+| `UNSUPPORTED_FILE_TYPE` | 400 | 확장자가 `.hwp`·`.hwpx` 가 아니다. `fields: ["file"]` |
+| `VALIDATION_FAILED` | 422 | 형식은 맞는데 읽지 못했다 — 손상·암호·빈 파일. `fields: ["file"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 서버에 `hwp5html` 이 없다. **재시도 버튼을 띄우지 않는다** |
+
+**`hwp5html` 이 0 이 아닌 코드로 끝난 것은 422 다.** 바이너리는 이미지 빌드 때 검증된다
+(`backend/Dockerfile` 의 `hwp5html --help`). 실행까지 갔는데 실패했다면 원인은 업로드된
+파일 쪽이 훨씬 유력하다. 종료 코드만으로는 둘을 못 가르므로 교사가 조치할 수 있는 쪽으로 붙인다.
+
+**`message` 에 내부 예외 문구를 그대로 싣지 않는다.** `hwp5html 없음 — pip install pyhwp six`
+같은 설치 안내가 교사 화면에 뜬다.
 
 **양식 등록은 7주차다.** 원이 양식을 한 번 등록하면 계속 쓰는 구조이므로 **원에 귀속된다.**
 
