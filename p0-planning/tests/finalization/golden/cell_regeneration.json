@@ -5,8 +5,8 @@
       {
         "actor": "teacher_001",
         "generation_change": {
-          "after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v4"},
-          "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v3"}
+          "after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v5"},
+          "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v4"}
         },
         "system_actor": null,
         "type": "REGENERATED",
@@ -17,7 +17,7 @@
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
       {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v4"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v5"},
     "state": "FILLED",
     "value": "Regenerated focus value",
     "week_id": "2026-09-W1"
@@ -28,7 +28,7 @@
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
       {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v3"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v4"},
     "state": "FILLED",
     "value": "Context-based weekly focus 1",
     "week_id": "2026-09-W1"
@@ -38,7 +38,7 @@
     "model": "openai/gpt-4.1-mini",
     "packet_fingerprint": "88fafbf539d73973cafc508ab98612a0d7a4fa917b08d257aefb09ce7937b109",
     "plan_snapshot_fingerprint": "b8bd38ad2ee43588591a29b54356d308a5efb8ba787587c1abfc6929bcb696f1",
-    "prompt_version": "monthly-cell-planner-v4"
+    "prompt_version": "monthly-cell-planner-v5"
   },
   "report_refreshed": true,
   "schema": "monthly-cell-regeneration-golden-v2",

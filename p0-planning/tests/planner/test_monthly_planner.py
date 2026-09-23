@@ -10,7 +10,7 @@ from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
 )
 from ssuksak.planning.domain.monthly_template import DisplayMode
-from ssuksak.planning.planner.cell_prompt import build_monthly_cell_request
+from ssuksak.planning.planner.cell_prompt import CELL_SYSTEM_PROMPT, build_monthly_cell_request
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
 from ssuksak.planning.domain.errors import InvalidDomainValueError
@@ -20,6 +20,7 @@ from ssuksak.planning.planner.contracts import (
     GOALS_SECTION_KEY,
     MONTHLY_CELL_PROMPT_VERSION,
     MONTHLY_MODEL,
+    MONTHLY_PROMPT_VERSION,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
     ProposalParseError,
@@ -36,7 +37,10 @@ from ssuksak.planning.planner.parser import (
     parse_monthly_cell_proposal,
     parse_monthly_proposal,
 )
-from ssuksak.planning.planner.prompt import build_monthly_planning_request
+from ssuksak.planning.planner.prompt import (
+    SYSTEM_PROMPT as MONTHLY_SYSTEM_PROMPT,
+    build_monthly_planning_request,
+)
 from ssuksak.planning.planner.service import MonthlyPlanner
 from ssuksak.planning.planner.validation import (
     validate_monthly_proposal,
@@ -734,7 +738,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v4"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v5"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -807,3 +811,32 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
     del payload["target_week_id"]
     with pytest.raises(ProposalParseError, match="fields mismatch"):
         parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------- Korean output contract
+
+
+@pytest.mark.parametrize(
+    ("system_prompt", "version", "expected"),
+    [
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v4"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v5"),
+    ],
+    ids=["monthly", "cell"],
+)
+def test_prompts_require_korean_values_but_keep_machine_values(system_prompt, version, expected):
+    assert version == expected
+    assert "Write user-facing plan text in value fields in natural Korean." in system_prompt
+    assert "never translate them" in system_prompt
+    for machine_value in ("JSON keys", "section_key", "week ids", "enum values", "reference_id", "grounding_refs"):
+        assert machine_value in system_prompt
+
+
+def test_built_requests_carry_the_korean_contract(packet, snapshot):
+    monthly = build_monthly_planning_request(packet, snapshot)
+    cell = build_monthly_cell_request(
+        packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
+    )
+
+    assert (monthly.prompt_version, monthly.system_prompt) == (MONTHLY_PROMPT_VERSION, MONTHLY_SYSTEM_PROMPT)
+    assert (cell.prompt_version, cell.system_prompt) == (MONTHLY_CELL_PROMPT_VERSION, CELL_SYSTEM_PROMPT)

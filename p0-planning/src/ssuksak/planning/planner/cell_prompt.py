@@ -29,6 +29,9 @@ Do not make legal decisions or generate statutory safety education.
 Every resolved value needs supplied grounding_refs or a supplied reference_id.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
+Write user-facing plan text in value fields in natural Korean.
+Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
+grounding_refs exactly as supplied or specified; never translate them.
 Return only one JSON object matching response_contract; add no fields.
 """
 

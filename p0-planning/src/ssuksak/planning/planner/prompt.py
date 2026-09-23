@@ -33,6 +33,9 @@ reference_id. Do not invent facts or citations and do not copy evidence verbatim
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
 Omit an optional section when no evidence with its grounding_class is supplied.
+Write user-facing plan text in value fields in natural Korean.
+Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
+grounding_refs exactly as supplied or specified; never translate them.
 Return only one JSON object matching response_contract; add no fields.
 """
 
