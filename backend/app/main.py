@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.features.centers.router import router as centers_router
+from app.features.documents.router import router as documents_router
 from app.features.forms.router import router as forms_router
 
 app = FastAPI(title="쓱싹요정 API")
@@ -14,6 +15,7 @@ app = FastAPI(title="쓱싹요정 API")
 # /health · /health/ready 는 배포 판정용이라 루트에 둔다.
 app.include_router(forms_router, prefix="/api")
 app.include_router(centers_router, prefix="/api")
+app.include_router(documents_router, prefix="/api")
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:
