@@ -1,4 +1,4 @@
-"""수집한 것 한 건. 아직 놀이가 아니라 원자료다 (ADR-015).
+"""수집한 것 한 건. 아직 놀이가 아니라 원자료다 (ADR-016).
 
 여기 담기는 것은 **사실뿐이다** — 제목·링크·날짜·채널. API 가 준 값을 그대로 옮긴다.
 놀이 서술로 정리하는 것은 검열을 통과한 뒤의 일이고, 그때도 링크는 AI 에게 넘기지 않는다.
@@ -50,7 +50,7 @@ def save(items: list[RawItem], day: date, directory: Path | None = None) -> Path
         "items": [asdict(item) for item in items],
     }
     # ensure_ascii=False — 한글이 \uXXXX 로 박히면 PR diff 를 사람이 못 읽는다.
-    # 사람이 읽고 이상한 줄을 지우는 것이 승인 절차다 (ADR-015).
+    # 사람이 읽고 이상한 줄을 지우는 것이 승인 절차다 (ADR-016).
     path.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 

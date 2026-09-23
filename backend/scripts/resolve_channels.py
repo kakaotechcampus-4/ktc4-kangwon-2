@@ -2,7 +2,7 @@
 
 승인 목록(`backend/resources/trends/approved-sources.yaml`)에 붙일 줄을 찍어준다.
 **사람이 유튜브에서 채널을 고르고, 이 스크립트가 ID 만 확인한다** — 채널 선택을
-AI 나 자동화에 맡기지 않는다 (ADR-015).
+AI 나 자동화에 맡기지 않는다 (ADR-016).
 
     YOUTUBE_API_KEY=... python backend/scripts/resolve_channels.py @ebskids @pinkfong
 

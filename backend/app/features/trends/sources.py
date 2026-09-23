@@ -1,4 +1,4 @@
-"""소스 어댑터 (ADR-015).
+"""소스 어댑터 (ADR-016).
 
 **사실만 옮긴다.** API 가 준 값을 그대로 담고, 없는 값을 채우지 않는다.
 
@@ -41,7 +41,7 @@ def youtube_uploads(
 
     검색(search.list)을 쓰지 않는다. 호출당 100 units 라 하루 100회면 끝나는데,
     어차피 승인 채널 것만 쓰므로 검색해서 긁어와도 전부 걸러진다.
-    playlistItems.list 는 1 unit 이다 (ADR-015 근거).
+    playlistItems.list 는 1 unit 이다 (ADR-016 근거).
     """
     collected: list[RawItem] = []
     for channel in channels:
@@ -128,7 +128,7 @@ def naver_news(
     """승인 언론사 기사만 남긴다.
 
     네이버가 `originallink` 로 원문 주소를 주므로 도메인으로 대조할 수 있다.
-    블로그·카페는 쓰지 않는다 — 협찬 글을 구분할 방법이 없다 (ADR-015).
+    블로그·카페는 쓰지 않는다 — 협찬 글을 구분할 방법이 없다 (ADR-016).
     """
     allowed = {outlet.domain: outlet for outlet in outlets}
     headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
