@@ -121,6 +121,10 @@ Content     application/json
 
 `age_min` ≤ `age_max`, 둘 다 3~5. `child_count` 는 **선택**(null 허용, 양의 정수).
 
+**없는 `center_id` 면 `404 NOT_FOUND` 다.** 빈 목록(`{"items": []}`)과 구분한다 —
+같은 응답으로 돌려주면 FE 가 「반을 추가해 주세요」를 없는 원에도 띄운다.
+`GET /api/centers/{center_id}/classes` 도 같다.
+
 **`school_year` 는 받지 않는다. 서버가 요청 시각 기준으로 채운다.**
 화면에 학년도를 고르는 칸이 없으므로 교사는 어차피 값을 정하지 않는다. 남는 것은
 "누가 계산하느냐"뿐인데, FE 가 계산하면 브라우저 시계에 의존한다. 기기 시계가 하루 틀리면
@@ -298,6 +302,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
       "theme": "봄과 나",
       "sub_themes": ["새로운 친구", "봄이 왔어요"],
       "safety_education": [],
+      "safety_education_state": "SOURCE_REQUIRED",
       "evidence": [
         { "source_type": "THEME_REFERENCE",
           "source_id": "theme-ref-2026",
@@ -323,6 +328,7 @@ months[].month                정수 3~12 · 1~2.  필수.  배열은 3월부터
 months[].theme                문자열.  필수.  빈 문자열 거부
 months[].sub_themes           문자열 배열.  필수
 months[].safety_education     문자열 배열.  필수.  P0 에서는 항상 빈 배열.  값은 아래 6종
+months[].safety_education_state  SOURCE_REQUIRED | PLACED | NOT_PLACED.  필수
 months[].evidence             배열.  필수.  THEME_REFERENCE 가 정확히 하나
 months[].generation           객체.  필수
 
@@ -345,6 +351,26 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
 **`선택` 은 null 허용이지 빈 문자열 허용이 아니다.** `p0-planning` 도메인이 `None` 은 받고
 `""`·`"   "` 는 거부한다. FE 는 값이 없으면 키를 빼거나 `null` 을 보낸다.
 
+### 빈 배열이 두 가지 뜻이라 상태를 따로 둔다
+
+```
+SOURCE_REQUIRED   배치 계획이 없어 판단할 수 없다        P0 의 기본값
+PLACED            배치 계획이 있고 이 달에 들어 있다
+NOT_PLACED        배치 계획이 있고 이 달엔 없다
+```
+
+**`safety_education: []` 만으로는 「그 달엔 안 하기로 했다」와 「언제 할지 아직 모른다」를
+구분하지 못한다.** 화면이 둘을 같게 그리면 교사가 「비었네」 하고 넘어간다.
+
+**`SOURCE_REQUIRED` 면 교사에게 입력을 요청한다.** 배치의 출처는 둘뿐이다 —
+원의 안전교육 연간계획, 또는 교사 직접 입력
+(`p0-planning/data/rules/safety_education_legal_v1.json` 의 `placement_source_priority`).
+
+**규칙 엔진이 배치를 지어내지 않는다.** 같은 파일의 `rule_must_not` 이
+「특정 월·주 배치를 자동 창작」·「배치 Source 가 없을 때 법적 충족을 주장」을 금지한다.
+**「위반」도 마찬가지로 주장하지 않는다** — 근거 없이 판정하는 건 방향만 다르고 같은 문제다.
+그래서 검사기는 `VIOLATION` 과 `UNVERIFIED` 를 나눠 낸다(ADR-014).
+
 **`safety_education` 은 P0 에서 항상 빈 배열이다.** 법이 정하는 건 주기와 연간 시수뿐이고
 월 배치는 0건이다(`p0-planning/data/rules/safety_education_legal_v1.json` 의
 `month_assignment_policy.has_month_assignment: false`). 배치의 출처는 기관·교사가 준
@@ -353,6 +379,18 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
 값은 그 파일 `categories[].category_id` 를 쓴다.
 
 **`months` 는 항상 12개다.** 3월 시작 ~ 익년 2월.
+
+**`sub_themes` 는 LLM 이 만든다.** 참조자료(`theme_reference_v0.json`)에는 주제(`label`)만 있고
+소주제가 없다. 세 갈래 중 이걸 골랐다.
+
+```
+✅  LLM 이 주제에서 소주제를 만든다      ADR-014 의 "LLM 이 만들고 규칙이 검사한다" 범위
+    참조자료에 소주제를 추가한다          자료를 다시 훑어야 한다.  근거는 더 확실하다
+    계약에서 빼고 선택 필드로             FE 화면 세 곳을 고쳐야 한다
+```
+
+소주제도 `generation.method` 는 `RULE_LLM` 이고, `evidence` 는 **상위 주제의 것을 그대로
+물려받는다** — 소주제만의 별도 근거 자료가 없다.
 
 ### 출처는 세 축이다 — 한 값에 섞지 않는다
 
@@ -376,15 +414,16 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 
 ### 생성 방식
 
-**RAG 로 생성하고 규칙 엔진이 검사한다.** ADR-005 의 「배치·선별은 규칙 엔진, LLM 은
-문장화만」을 뒤집는다 — 생성과 검사의 순서가 반대다.
+**RAG 로 생성하고 규칙 엔진이 검사한다**(ADR-014). ADR-005 의 「배치·선별은 규칙 엔진,
+LLM 은 문장화만」을 뒤집는다 — 생성과 검사의 순서가 반대다.
 
 **ADR-003 도 같이 깨진다.** ADR-003 은 P0a(5~6주차)를 「결정론적 초안 생성」으로 정의하고
 *"P0a 가 결정론적이라 golden set 이 성립한다"*, *"golden set 을 6주차 말에 반드시 고정한다"* 로
 검증 전략을 세웠다. **RAG 를 쓰면 출력이 매번 달라져 golden set 이 성립하지 않는다.**
 대체 검증 전략(예: 규칙 검사 통과 여부만 고정 검증)을 정해야 한다.
 
-**ADR 작성 예정 — ADR-003 · ADR-005 두 개를 대체한다.**
+**ADR-014 가 ADR-005 를 대체한다.** ADR-003 은 P0a·P0b 분할은 그대로 두고 결정론 전제만
+무효로 표시했다.
 
 법정 안전교육 시수·날짜·고유명사처럼 **틀리면 안 되는 값은 규칙 엔진이 원문과 대조한다.**
 검사에 실패하면 `GENERATION_FAILED` 500 이고 **부분 결과를 저장하지 않는다.**

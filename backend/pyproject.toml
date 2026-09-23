@@ -15,7 +15,7 @@ dependencies = [
   "olefile",
   "lxml",
   "python-multipart",
-  # 규칙 엔진이 resources/rules/*.yaml 을 읽는다 (ADR-005).
+  # resources/rules/*.yaml 과 resources/pseudonyms.yaml 을 읽는다.
   "pyyaml",
 ]
 
