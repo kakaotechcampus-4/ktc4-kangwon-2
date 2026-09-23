@@ -94,7 +94,7 @@ class DocumentDetailResponse(BaseModel):
 
 
 class DocumentSectionUpdate(BaseModel):
-    """`PUT` 요청의 섹션 하나. 계약에 없는 필드가 오면 조용히 버리지 않고 422 로 드러낸다."""
+    """`PUT` 요청의 섹션 하나."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -106,9 +106,8 @@ class DocumentSectionUpdate(BaseModel):
 class DocumentUpdateRequest(BaseModel):
     """`PUT /api/documents/{id}`. 전체 교체다 — `PATCH` 가 아니다.
 
-    `title` 만 선택인 이유: 서버가 만든 제목을 교사가 안 바꿨으면 안 보내도 된다
-    (docs/api-spec.md §11 "title 은 서버가 만든다 ... 교사가 바꾸고 싶으면 PUT 으로").
-    `sections` · `updated_at` 은 필수다 — 전체 교체와 동시쓰기 감지에 둘 다 필요하다.
+    `title` 은 서버가 만들어서(docs/api-spec.md §11), 교사가 안 바꿨으면 굳이 안 보내도
+    된다 — 그래서 셋 중 이것만 선택이다. `sections` · `updated_at` 은 필수다.
     """
 
     model_config = ConfigDict(extra="forbid")
