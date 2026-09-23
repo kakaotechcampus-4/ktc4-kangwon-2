@@ -930,6 +930,8 @@ support          지원에 구체적인 교사 행동과 방법이 있고 이후
 
 ```
 GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": [...] }
+       정렬은 created_at 내림차순, 같은 시각은 id 내림차순이다 — 최신이 위다.
+       FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
 POST   /api/documents/{id}/verify                                3단 LLM Judge

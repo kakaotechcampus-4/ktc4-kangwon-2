@@ -93,16 +93,34 @@ def test_달_순서가_틀리면_거부한다():
 
 
 def test_혼합반은_세_연령을_다_지원해야_한다():
-    found = age([PlannedActivity(5, "가위로 오리기", 4, 5)], class_age_min=3, class_age_max=5)
+    activity = PlannedActivity(5, "가위로 오리기", frozenset({4, 5}))
+    found = age([activity], class_age_min=3, class_age_max=5)
 
     assert len(found) == 1
     assert found[0].severity == VIOLATION
     assert found[0].month == 5
-    assert "3~5세입니다" in found[0].detail
+    assert "3세가 빠집니다" in found[0].detail
+
+
+def test_가운데_연령이_빠진_활동을_잡는다():
+    """강강술래가 실제로 `supported_ages: [3, 5]` 다.
+
+    최소·최대만 보면 3~5 를 다 받는다고 읽혀 만 3~5세 혼합반에서 통과해 버린다.
+    혼합반이 실측 39% 라 제일 흔한 경우에서 틀린다.
+    """
+    activity = PlannedActivity(9, "강강술래", frozenset({3, 5}))
+
+    found = age([activity], class_age_min=3, class_age_max=5)
+
+    assert len(found) == 1
+    assert "4세가 빠집니다" in found[0].detail
+    # 만 4세가 없는 반에는 넣어도 된다.
+    assert age([activity], class_age_min=3, class_age_max=3) == []
+    assert age([activity], class_age_min=5, class_age_max=5) == []
 
 
 def test_반_연령을_덮으면_통과한다():
-    wide = PlannedActivity(5, "봄 산책", 3, 5)
+    wide = PlannedActivity(5, "봄 산책", frozenset({3, 4, 5}))
     assert age([wide], class_age_min=3, class_age_max=5) == []
     assert age([wide], class_age_min=4, class_age_max=4) == []
 
