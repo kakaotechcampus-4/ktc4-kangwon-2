@@ -1624,3 +1624,189 @@ def test_focus_regeneration_uses_only_subtheme_evidence():
 
     assert {item["grounding_class"] for item in body["evidence"]} <= {None, "SUBTHEME"}
     assert _cited_classes(regenerated) == {SemanticClass.SUBTHEME}
+
+
+# ---------------------------------------------------------------- V1-7 PR-C3a basic_habit cell regeneration
+
+
+class ClassCitingCellLlm(RequestAwareMonthlyLlm):
+    """Regenerates the target cell but cites evidence of a chosen grounding_class."""
+
+    def __init__(self, cited_class: str | None) -> None:
+        super().__init__()
+        self.cited_class = cited_class
+
+    def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
+        self.cell_requests.append(request)
+        body = json.loads(request.user_content)
+        ref = sorted(
+            item["grounding_ref"] for item in body["evidence"] if item["grounding_class"] == self.cited_class
+        )[0]
+        payload = {
+            "target_month": request.target_month.value,
+            "target_week_id": request.target_week_id.value,
+            "section": {
+                "section_key": request.target_section_key,
+                "value": "Regenerated basic_habit value",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [ref],
+            },
+        }
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "cell-1")
+
+
+def _basic_habit_plan(harness, *, target_month=TARGET_MONTH, classification=None, **profile):
+    command = replace(
+        _use(harness, _extended_profile(harness.templates, basic_habit=True, **profile), classification),
+        target_month=target_month,
+    )
+    return harness.generate(provider=RequestAwareMonthlyLlm(), command=command).plan
+
+
+@pytest.mark.parametrize(
+    ("target_month", "weeks", "week_index"),
+    [(YearMonth(2026, 10), 4, 0), (YearMonth(2026, 9), 5, 4)],
+    ids=["4-week-first-week", "5-week-fifth-week"],
+)
+def test_basic_habit_cell_regeneration_changes_only_the_requested_week(target_month, weeks, week_index):
+    harness = Harness()
+    plan = _basic_habit_plan(harness, target_month=target_month)
+    target = plan.section("basic_habit").cells[week_index]
+    untouched = {cell.item_id: cell for cell in plan.cells if cell.item_id != target.item_id}
+    provider = RequestAwareMonthlyLlm()
+    saves_before = harness.plans.save_count
+
+    result = harness.regenerate(provider).execute(
+        RegenerateMonthlyPlanItemCommand(plan.plan_id, target.item_id, TEACHER)
+    )
+    regenerated = result.plan.find_cell(target.item_id)[3]
+
+    assert len(plan.section("basic_habit").cells) == weeks
+    assert provider.cell_requests[-1].target_week_id == target.week_id
+    assert regenerated.week_id == target.week_id
+    assert regenerated.value == "Regenerated basic_habit value"
+    assert _cited_classes(regenerated) == {SemanticClass.BASIC_HABIT}
+    assert regenerated.generation.method is GenerationMethod.RULE_LLM
+    assert regenerated.generation.rule_version == MONTHLY_CELL_PROMPT_VERSION
+    assert regenerated.audit.events[-1].event_type is AuditEventType.REGENERATED
+    assert all(result.plan.find_cell(item_id)[3] is cell for item_id, cell in untouched.items())
+    assert result.plan.template_snapshot is plan.template_snapshot
+    assert result.plan.verification_report is not plan.verification_report
+    assert harness.plans.save_count == saves_before + 1
+    assert harness.plans.get(plan.plan_id) is result.plan
+
+
+@pytest.mark.parametrize(
+    ("cited_class", "profile"),
+    [
+        ("GOALS", {"goals_required": True}),
+        ("SUBTHEME", {}),
+        ("EXPECTED_PLAY", {"focus_variant": SemanticVariant.EXPECTED_PLAY}),
+        (None, {}),
+    ],
+    ids=["goals", "subtheme", "expected-play", "unclassified-outdoor"],
+)
+def test_basic_habit_cell_rejects_evidence_outside_basic_habit(cited_class, profile):
+    harness = Harness()
+    plan = _basic_habit_plan(harness, **profile)
+    target = plan.section("basic_habit").cells[0]
+    provider = ClassCitingCellLlm(cited_class)
+    saves_before = harness.plans.save_count
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.regenerate(provider).execute(
+            RegenerateMonthlyPlanItemCommand(plan.plan_id, target.item_id, TEACHER)
+        )
+
+    assert exc.value.code == "monthly_llm_cell_planning_failed"
+    assert "WRONG_SOURCE_GROUNDING" in exc.value.__cause__.validation_codes
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_basic_habit_cell_context_never_offers_excluded_evidence():
+    harness = Harness()
+    plan = _basic_habit_plan(harness)
+    provider = RequestAwareMonthlyLlm()
+    harness.regenerate(provider).execute(
+        RegenerateMonthlyPlanItemCommand(plan.plan_id, plan.section("basic_habit").cells[1].item_id, TEACHER)
+    )
+    records = {record.record_id: record for record in EVIDENCE_REPOSITORY.get_store().records}
+    classification = CLASSIFICATION_REPOSITORY.get_classification()
+    body = json.loads(provider.cell_requests[-1].user_content)
+
+    for item in body["evidence"]:
+        record_class = classification.class_of(records[item["grounding_ref"]])
+        if item["grounding_class"] is None:
+            assert record_class is SemanticClass.EXCLUDED
+            assert records[item["grounding_ref"]].source_section.value == "outdoor_play"
+        else:
+            assert record_class.value == item["grounding_class"]
+
+
+def test_basic_habit_cell_without_approved_evidence_fails_closed_before_llm():
+    harness = Harness()
+    plan = _basic_habit_plan(harness, classification=_classification_without(SemanticClass.BASIC_HABIT))
+    target = plan.section("basic_habit").cells[0]
+    provider = RequestAwareMonthlyLlm()
+    saves_before = harness.plans.save_count
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.regenerate(provider).execute(
+            RegenerateMonthlyPlanItemCommand(plan.plan_id, target.item_id, TEACHER)
+        )
+
+    assert target.cell_state is CellState.EMPTY_VALID
+    assert exc.value.code == "monthly_required_section_evidence_missing"
+    assert provider.cell_requests == []
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_month_level_and_unknown_cells_keep_the_existing_error_contract():
+    harness = Harness()
+    plan = _basic_habit_plan(harness, goals_required=True)
+    provider = RequestAwareMonthlyLlm()
+
+    with pytest.raises(MonthlyApplicationError) as month_level:
+        harness.regenerate(provider).execute(
+            RegenerateMonthlyPlanItemCommand(plan.plan_id, plan.section("goals").cells[0].item_id, TEACHER)
+        )
+    with pytest.raises(MonthlyApplicationError) as unknown:
+        harness.regenerate(provider).execute(
+            RegenerateMonthlyPlanItemCommand(plan.plan_id, ItemId("item_not_in_plan"), TEACHER)
+        )
+
+    assert month_level.value.code == "monthly_cell_not_regeneratable"
+    assert unknown.value.code == "monthly_cell_not_found"
+    assert provider.cell_requests == []
+
+
+def test_inactive_basic_habit_has_no_regeneration_target():
+    harness = Harness()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+
+    assert plan.template_snapshot.section("basic_habit") is None
+    assert plan.section("basic_habit") is None
+    assert all(cell.section_key != "basic_habit" for cell in plan.cells)
+
+
+def test_confirmed_plan_still_rejects_basic_habit_regeneration():
+    harness = Harness()
+    plan = _basic_habit_plan(harness)
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    ).execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER))
+    provider = RequestAwareMonthlyLlm()
+    saves_before = harness.plans.save_count
+
+    with pytest.raises(InvalidStateTransitionError):
+        harness.regenerate(provider).execute(
+            RegenerateMonthlyPlanItemCommand(
+                confirmed.plan_id, confirmed.section("basic_habit").cells[0].item_id, TEACHER
+            )
+        )
+
+    assert provider.cell_requests == []
+    assert harness.plans.save_count == saves_before

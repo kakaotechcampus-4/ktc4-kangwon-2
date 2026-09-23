@@ -20,7 +20,10 @@ MONTHLY_MODEL = "openai/gpt-4.1-mini"
 
 FOCUS_SECTION_KEY = "focus"
 OUTDOOR_SECTION_KEY = "outdoor_play"
-LLM_CELL_SECTION_KEYS = frozenset({FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY})
+BASIC_HABIT_SECTION_KEY = "basic_habit"
+LLM_CELL_SECTION_KEYS = frozenset(
+    {FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY, BASIC_HABIT_SECTION_KEY}
+)
 
 
 def _require_text(name: str, value: object) -> None:
