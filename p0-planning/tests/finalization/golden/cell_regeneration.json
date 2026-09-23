@@ -40,8 +40,10 @@
     "plan_snapshot_fingerprint": "b8bd38ad2ee43588591a29b54356d308a5efb8ba787587c1abfc6929bcb696f1",
     "prompt_version": "monthly-cell-planner-v4"
   },
-  "schema": "monthly-cell-regeneration-golden-v1",
+  "report_refreshed": true,
+  "schema": "monthly-cell-regeneration-golden-v2",
   "section": "focus",
   "siblings": {"count": 15, "identities_preserved": true},
+  "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v1"}], "findings": [], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
   "week_id": "2026-09-W1"
 }
