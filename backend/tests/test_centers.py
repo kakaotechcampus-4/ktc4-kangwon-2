@@ -1,8 +1,7 @@
-"""원 API 의 요청 검증과 공통 에러 봉투. DB 를 타지 않는 범위만 다룬다.
+"""원·반 API 의 요청 검증과 공통 에러 봉투. **DB 를 타지 않는 범위만** 다룬다.
 
-`POST /api/centers` 의 실제 저장과 `GET /api/centers/{id}/classes` 는
-centers.region_sido · region_sigungu · classes.consent_confirmed_at 컬럼이
-들어오는 마이그레이션 이후에 붙인다 — 아래 TODO 참고.
+실제 저장·조회·제약은 `tests/test_centers_db.py` 가 진짜 Postgres 로 본다.
+가짜 세션으로는 「저장했다」는 대답만 확인되고 정말 저장됐는지는 알 수 없다.
 """
 
 from datetime import datetime
@@ -283,13 +282,5 @@ def test_invalid_class_body_collects_every_field_in_the_contract_envelope():
     assert "detail" not in body
 
 
-# TODO(마이그레이션 A 이후): DB 를 타는 검증을 붙인다.
-#   - POST /api/centers → 201 + centers 행 저장, 응답에 region_sido · region_sigungu
-#   - GET /api/centers/{id}/classes → 200 {"items": []}
-#   - center A 조회에 center B 의 반이 섞이지 않는다
-#   - 없는 center → 404 {"error": {"code": "NOT_FOUND", "fields": ["center_id"]}}
-#   - ClassResponse.consent_confirmed_at 직렬화(null 과 값 모두)
-#   - POST /api/centers/{id}/classes → 201 + classes 행 저장, school_year 서버 계산값
-#   - consent_confirmed=true → consent_confirmed_at 이 timezone-aware, false → None
-#   - 같은 center·name·school_year 로 두 번 만들면? (계약에 중복 에러 코드가 없다 — 확인 필요)
-#   이때 tests/conftest.py 에 function 스코프 트랜잭션 롤백 fixture 를 도입한다.
+# DB 를 타는 검증은 tests/test_centers_db.py 로 옮겼다. conftest.py 의 db_session 이
+# 마이그레이션을 올리고 테스트마다 롤백한다.
