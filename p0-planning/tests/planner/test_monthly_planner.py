@@ -6,6 +6,10 @@ import json
 import pytest
 
 from ssuksak.adapters.deterministic_monthly_llm import DeterministicMonthlyLlm
+from ssuksak.adapters.monthly_reference_repositories import (
+    JsonMonthlyTemplateRepository,
+)
+from ssuksak.planning.domain.monthly_template import DisplayMode
 from ssuksak.planning.planner.cell_prompt import build_monthly_cell_request
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
@@ -388,6 +392,51 @@ def test_monthly_planner_calls_provider_once_and_returns_validated_outcome(
     outcome = MonthlyPlanner(fake).plan(packet, snapshot)
     assert outcome.model == MONTHLY_MODEL
     assert outcome.proposal.value_for("theme", None).reference_id == "theme-autumn"
+    assert len(fake.monthly_requests) == 1
+
+
+@pytest.mark.parametrize("section_key", ("event_schedule", "drill"))
+def test_institution_input_sections_stay_outside_the_llm_boundary(
+    packet, snapshot, section_key
+):
+    template = JsonMonthlyTemplateRepository().get_template(
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+    )
+    assert template is not None
+    snapshot = replace(
+        snapshot,
+        sections=(
+            *snapshot.sections,
+            replace(
+                template.section(section_key),
+                activated=True,
+                display_label="Institution input",
+                display_mode=DisplayMode.WEEKLY_CELLS,
+                visible=True,
+            ),
+        ),
+    )
+
+    request = build_monthly_planning_request(packet, snapshot)
+    assert section_key not in request.user_content
+
+    payload = monthly_payload()
+    payload["weeks"][0]["sections"].append(
+        {
+            "section_key": section_key,
+            "value": "Invented institution schedule",
+            "unresolved": False,
+            "reference_id": None,
+            "grounding_refs": ["ev-1"],
+        }
+    )
+    fake = DeterministicMonthlyLlm(
+        json.dumps(payload, ensure_ascii=False),
+        json.dumps(cell_payload(), ensure_ascii=False),
+    )
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert "INSTITUTION_INPUT_SECTION" in exc.value.validation_codes
     assert len(fake.monthly_requests) == 1
 
 

@@ -12,6 +12,7 @@ from ..domain.monthly_plan import (
 )
 from ..domain.monthly_constraint import CellState
 from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
+from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.plan import PlanStatus
 from ..domain.provenance import (
@@ -140,6 +141,16 @@ class GenerateMonthlyPlan:
                 "Monthly Template Profile classroom does not match the parent Plan",
             )
         template_snapshot = TemplateSnapshot.from_profile(profile)
+        input_sections = sorted(
+            INSTITUTION_INPUT_SECTION_KEYS
+            & {section.section_key for section in template_snapshot.sections}
+        )
+        if input_sections:
+            raise MonthlyApplicationError(
+                "monthly_institution_input_section_unsupported",
+                "Monthly generation cannot produce institution-input Sections: "
+                + ", ".join(input_sections),
+            )
         safety_rule = load_safety_rule(self._safety, command.safety_rule)
         catalog = load_activity_catalog(
             self._activities, command.activity_catalog
