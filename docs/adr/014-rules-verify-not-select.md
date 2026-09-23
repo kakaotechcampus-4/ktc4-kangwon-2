@@ -44,10 +44,46 @@ def verify(plan, *, age_min, age_max, flags) -> list[Violation]
 ```python
 @dataclass(frozen=True)
 class Violation:
-    month: int      # 3~2월 중 어느 달
-    rule: str       # "legal_hours" · "age" · "safety" · "domain_balance"
-    detail: str     # 교사에게 그대로 보여도 되는 한 줄
+    month: int       # 3~2월 중 어느 달
+    rule: str        # "legal_hours" · "age" · "safety" · "domain_balance"
+    severity: str    # "VIOLATION" | "UNVERIFIED"
+    detail: str      # 교사에게 그대로 보여도 되는 한 줄
 ```
+
+**「어긋났다」와 「판단할 근거가 없다」를 나눈다.**
+
+```
+VIOLATION    확실히 어긋났다
+             "교통안전 연 8시간. 법은 10시간 이상이다"
+
+UNVERIFIED   판단할 근거가 없다
+             "안전교육 배치 계획이 없어 주기를 확인할 수 없습니다"
+```
+
+**근거 없이 「위반」이라고 하면 없는 기준으로 교사를 막는다.**
+`safety_education_legal_v1.json` 의 `rule_must_not` 이 「배치 Source 가 없을 때 법적 충족을
+주장」을 금지하는데, **충족을 못 주장하면 위반도 못 주장한다.** 방향만 다르고 같은 문제다.
+
+화면에서도 달라야 한다 — `VIOLATION` 은 고쳐야 하고 `UNVERIFIED` 는 교사가 채워야 한다.
+
+### 규칙에 남아도 되는 「선택」과 금지하는 「선별」
+
+**뒤집은 것은 「무엇이 더 좋은가」를 규칙이 판정하는 것이다.** 조건이 명시된 거르기는 그대로 둔다.
+
+```
+✅  허용   승인된 목록 안에서 · 명시된 조건으로만 · 판단 없이 거른다
+           연령을 지원하는가 · 승인된 자료 버전인가 · 이 달에 쓸 수 있는가
+           혼합반이면 모든 연령을 지원하는가
+
+❌  금지   "무엇이 더 좋은가" 를 규칙이 판정한다
+           놀이성 · 원 특성 · 흥미도
+```
+
+**둘을 가르는 기준은 「기준이 적혀 있는가」다.** 「만 3세 반이 못 쓰는 활동을 뺀다」는
+데이터에 답이 있고, 「놀이성이 높은 것을 고른다」는 판정 기준이 정해진 적이 없다.
+
+앞쪽은 후보를 줄이는 일이라 RAG 에 넘길 후보 집합을 만들 때도 필요하다.
+활동 200개를 통째로 프롬프트에 넣을 수 없다.
 
 **검사 규칙 4개를 이 순서로 만든다.**
 
@@ -62,8 +98,11 @@ class Violation:
 
 **지금 시작할 수 있다** `[실측]`
 
-`legal_hours` 는 `resources/rules/legal_safety_education.yaml` 만 있으면 돈다.
-활동풀도, DB 행도 필요 없다. 순수 산수다.
+`legal_hours` 는 `p0-planning/data/rules/safety_education_legal_v1.json` 만 있으면 돈다.
+활동풀도, DB 행도 필요 없다. 주기와 시수를 세는 산수다.
+
+**다만 P0 에서는 `VIOLATION` 이 아니라 `UNVERIFIED` 만 나온다.** 배치 계획 입력이 없어서다.
+「3월에 교통안전이 없다」가 위반인지 아직 안 정한 것인지 가릴 근거가 없다.
 
 선별 방향은 `activities` 200행이 커밋돼야 첫 줄을 쓸 수 있다. 6주차에 0행이었다.
 
@@ -110,13 +149,21 @@ ADR-005 가 계산한 대로 칸 단위 호출은 시스템 프롬프트가 43�
 - **검사에 필요한 기준값은 `backend/resources/` 에 파일로 둔다.** 코드에 숫자를 박지 않는다.
   법이 바뀌면 파일 한 줄만 고친다.
   ```
-  resources/rules/legal_safety_education.yaml   아동복지법 시행령 별표 6
-  resources/rules/safety_flags.yaml             위험 도구.  법이 아니라 팀 판단
+  p0-planning/data/rules/safety_education_legal_v1.json   아동복지법 시행령 별표 6
+  backend/resources/rules/safety_flags.yaml               위험 도구.  법이 아니라 팀 판단
   ```
+  **법정 시수는 `p0-planning` 쪽 하나만 남긴다.** `backend/resources/rules/legal_safety_education.yaml`
+  을 따로 만들었다가 지웠다 — 같은 법령을 옮긴 파일이 둘이면 한쪽만 고치는 날이 온다.
+  남긴 쪽이 법령 판본·개정일·SHA-256·교차 대조를 담고 있고, 「6개월에 1회 **이상**」처럼
+  원문 문구를 그대로 보존한다.
 - **`verify()` 는 무엇을 할지 정하지 않는다.** 위반 목록만 준다.
   재생성할지 교사에게 보여줄지는 호출하는 쪽이 정한다. 규칙이 늘어도 이 경계는 안 바뀐다.
 - **`safety` 규칙은 당분간 막지 않고 표시만 한다.** `min_age` 에 법적 근거가 없다.
   현직 교사 확인 전까지 교사를 막으면 없는 기준으로 막는 것이다.
 - ADR-005 는 **대체됨**으로 바꾼다. 세 층 구조는 더 이상 유효하지 않다.
+- **여기서 말하는 RAG 는 어휘 검색이다. 임베딩이 아니다.** 한글 2-gram 겹침과
+  구조 점수(연령 100단위 · 주제 10 · 본문 최대 9)로 자료를 찾는다.
+  결정론적이고 설명 가능하며 비용과 의존성이 0이다. 대신 「산책」과 「나들이」가 안 이어진다.
+  임베딩을 붙이면 비용·비결정성·외부 의존이 한꺼번에 들어오므로 P0 에서는 쓰지 않는다.
 - `docs/api-spec.md` §4 의 `generation.method` 는 `RULE_LLM` 이 기본이 된다.
   검사만 통과한 것이라 `RULE_ONLY` 는 당분간 나오지 않는다.
