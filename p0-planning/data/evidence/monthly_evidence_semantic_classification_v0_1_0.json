@@ -1,0 +1,125 @@
+{
+  "$schema_note": "Institution Evidence record의 (source_section, exact source_label)을 Monthly Section grounding class로 분류한다. exact match만 쓴다. substring·기관별 mapping 금지. 목록에 없는 label은 default_class다. 원본 Evidence corpus의 상태를 바꾸지 않는다.",
+  "schema_version": "monthly-evidence-semantic-classification.schema.v0",
+  "classification_id": "ssuksak.monthly-evidence-semantic-classification",
+  "classification_version": "monthly-evidence-semantic-classification-v0.1.0",
+  "supersedes": null,
+  "evidence_store": {
+    "store_id": "ssuksak.institution-evidence",
+    "schema_version": "institution-evidence.schema.v0",
+    "ingestion_version": "institution-evidence-ingestion-v0.1.0",
+    "content_sha256": "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea",
+    "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE"
+  },
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_01",
+    "approved_at": "2026-09-23T23:34:12+09:00",
+    "review_scope_note": "이 분류 artifact만 승인한다. 원본 corpus는 계속 CORPUS_OBSERVATION_NON_NORMATIVE / CONTEXT_ONLY다.",
+    "reviewer_identity_rule": "docs/open-decisions.md OD-N10의 reviewer_<role>_<sequence> 규칙을 따른다."
+  },
+  "matching": "EXACT",
+  "key": [
+    "source_section",
+    "source_label"
+  ],
+  "default_class": "EXCLUDED",
+  "grounding_scope": {
+    "GOALS": {
+      "section_key": "goals"
+    },
+    "BASIC_HABIT": {
+      "section_key": "basic_habit"
+    },
+    "SUBTHEME": {
+      "section_key": "focus",
+      "semantic_variant": "SUBTHEME"
+    },
+    "EXPECTED_PLAY": {
+      "section_key": "focus",
+      "semantic_variant": "EXPECTED_PLAY"
+    }
+  },
+  "entries": [
+    {
+      "source_section": "week_experience",
+      "source_label": "교사의 기대",
+      "semantic_class": "GOALS"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "이번 달 교사의 기대",
+      "semantic_class": "GOALS"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "교사의기대",
+      "semantic_class": "GOALS"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "주제 선정 이유",
+      "semantic_class": "GOALS"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "주제선정 이유",
+      "semantic_class": "GOALS"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "주제선정이유",
+      "semantic_class": "GOALS"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "주제 선정 배경",
+      "semantic_class": "GOALS"
+    },
+    {
+      "source_section": "daily_routine",
+      "source_label": "기본생활습관",
+      "semantic_class": "BASIC_HABIT"
+    },
+    {
+      "source_section": "daily_routine",
+      "source_label": "기본생활",
+      "semantic_class": "BASIC_HABIT"
+    },
+    {
+      "source_section": "daily_routine",
+      "source_label": "기본생활 습관",
+      "semantic_class": "BASIC_HABIT"
+    },
+    {
+      "source_section": "daily_routine",
+      "source_label": "기본생활 (건강·영양)",
+      "semantic_class": "BASIC_HABIT"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "소주제",
+      "semantic_class": "SUBTHEME"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "소 주 제",
+      "semantic_class": "SUBTHEME"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "예상놀이",
+      "semantic_class": "EXPECTED_PLAY"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "놀이 (예상놀이)",
+      "semantic_class": "EXPECTED_PLAY"
+    },
+    {
+      "source_section": "week_experience",
+      "source_label": "흥미 예상 놀이",
+      "semantic_class": "EXPECTED_PLAY"
+    }
+  ]
+}
