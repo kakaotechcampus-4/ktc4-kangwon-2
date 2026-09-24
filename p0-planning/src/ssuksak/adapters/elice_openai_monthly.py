@@ -20,6 +20,10 @@ from ssuksak.planning.planner.contracts import (
     MonthlyPlanningRequest,
     RawLlmResponse,
 )
+from ssuksak.planning.planner.parser import (
+    CELL_RESPONSE_SCHEMA,
+    MONTHLY_RESPONSE_SCHEMA,
+)
 
 
 class MonthlyLlmConfigurationError(RuntimeError):
@@ -119,12 +123,29 @@ class EliceOpenAiMonthlyAdapter:
         self._transport = transport or UrllibJsonTransport()
 
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
-        return self._complete(request.system_prompt, request.user_content)
+        return self._complete(
+            request.system_prompt,
+            request.user_content,
+            schema_name="monthly_plan_proposal",
+            schema=MONTHLY_RESPONSE_SCHEMA,
+        )
 
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
-        return self._complete(request.system_prompt, request.user_content)
+        return self._complete(
+            request.system_prompt,
+            request.user_content,
+            schema_name="monthly_cell_proposal",
+            schema=CELL_RESPONSE_SCHEMA,
+        )
 
-    def _complete(self, system_prompt: str, user_content: str) -> RawLlmResponse:
+    def _complete(
+        self,
+        system_prompt: str,
+        user_content: str,
+        *,
+        schema_name: str,
+        schema: Mapping[str, object],
+    ) -> RawLlmResponse:
         payload: dict[str, object] = {
             "model": self._config.model,
             "messages": [
@@ -132,7 +153,11 @@ class EliceOpenAiMonthlyAdapter:
                 {"role": "user", "content": user_content},
             ],
             "temperature": 0,
-            "response_format": {"type": "json_object"},
+            # Provider-enforced strict Structured Output; the parser still validates.
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": schema_name, "strict": True, "schema": schema},
+            },
         }
         result = self._transport.post_json(
             self._config.endpoint,

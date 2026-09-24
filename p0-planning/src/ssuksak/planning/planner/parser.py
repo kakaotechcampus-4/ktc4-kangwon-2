@@ -17,6 +17,48 @@ from .contracts import (
 )
 
 
+def _object_schema(properties: dict[str, Any]) -> dict[str, Any]:
+    """A strict object: every property required, no additional properties."""
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+_STRING = {"type": "string"}
+_NULLABLE_STRING = {"type": ["string", "null"]}
+# One schema per response object. The parser reads its exact key sets from these,
+# so the provider-level Structured Output schema cannot drift from the parser.
+_SECTION_SCHEMA = _object_schema(
+    {
+        "section_key": _STRING,
+        "value": _STRING,
+        "unresolved": {"type": "boolean"},
+        "reference_id": _NULLABLE_STRING,
+        "grounding_refs": {"type": "array", "items": _STRING},
+    }
+)
+_WEEK_SCHEMA = _object_schema(
+    {"week_id": _STRING, "sections": {"type": "array", "items": _SECTION_SCHEMA}}
+)
+MONTHLY_RESPONSE_SCHEMA = _object_schema(
+    {
+        "target_month": _STRING,
+        "month_sections": {"type": "array", "items": _SECTION_SCHEMA},
+        "weeks": {"type": "array", "items": _WEEK_SCHEMA},
+    }
+)
+CELL_RESPONSE_SCHEMA = _object_schema(
+    {"target_month": _STRING, "target_week_id": _NULLABLE_STRING, "section": _SECTION_SCHEMA}
+)
+
+
+def _keys(schema: dict[str, Any]) -> frozenset[str]:
+    return frozenset(schema["properties"])
+
+
 def _object(value: object, *, path: str, keys: frozenset[str]) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ProposalParseError(f"{path} must be an object")
@@ -76,19 +118,7 @@ def _week_id(value: object, *, path: str) -> WeekId:
 
 
 def _section_value(value: object, *, path: str) -> ProposedSectionValue:
-    item = _object(
-        value,
-        path=path,
-        keys=frozenset(
-            {
-                "section_key",
-                "value",
-                "unresolved",
-                "reference_id",
-                "grounding_refs",
-            }
-        ),
-    )
+    item = _object(value, path=path, keys=_keys(_SECTION_SCHEMA))
     raw_value = item["value"]
     if not isinstance(raw_value, str):
         raise ProposalParseError(f"{path}.value must be a string")
@@ -122,7 +152,7 @@ def parse_monthly_proposal(content: str) -> MonthlyPlanProposal:
     root = _object(
         _json(content),
         path="proposal",
-        keys=frozenset({"target_month", "month_sections", "weeks"}),
+        keys=_keys(MONTHLY_RESPONSE_SCHEMA),
     )
     raw_month_sections = root["month_sections"]
     if not isinstance(raw_month_sections, list):
@@ -141,7 +171,7 @@ def parse_monthly_proposal(content: str) -> MonthlyPlanProposal:
         raw_week = _object(
             value,
             path=f"proposal.weeks[{index}]",
-            keys=frozenset({"week_id", "sections"}),
+            keys=_keys(_WEEK_SCHEMA),
         )
         raw_sections = raw_week["sections"]
         if not isinstance(raw_sections, list):
@@ -179,7 +209,7 @@ def parse_monthly_cell_proposal(content: str) -> MonthlyCellProposal:
     root = _object(
         _json(content),
         path="cell_proposal",
-        keys=frozenset({"target_month", "target_week_id", "section"}),
+        keys=_keys(CELL_RESPONSE_SCHEMA),
     )
     return MonthlyCellProposal(
         target_month=_year_month(root["target_month"], path="target_month"),

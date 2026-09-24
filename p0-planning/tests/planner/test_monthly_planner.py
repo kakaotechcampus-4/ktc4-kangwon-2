@@ -35,6 +35,8 @@ from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.evidence.models import ReusePolicy, SourceSection
 from ssuksak.planning.retrieval.models import AgeMatchKind
 from ssuksak.planning.planner.parser import (
+    CELL_RESPONSE_SCHEMA,
+    MONTHLY_RESPONSE_SCHEMA,
     parse_monthly_cell_proposal,
     parse_monthly_proposal,
 )
@@ -904,3 +906,47 @@ def test_planners_accept_a_dated_snapshot_and_keep_the_observed_model(packet, sn
 
     assert monthly.model == cell.model == snapshot_model
     assert fake.monthly_requests and fake.cell_requests
+
+
+# ---------------------------------------------------------------- Structured Output schemas
+
+
+def _objects(schema):
+    """Every object schema reachable from a response schema."""
+    if schema.get("type") == "object":
+        yield schema
+        for value in schema["properties"].values():
+            yield from _objects(value)
+    elif schema.get("type") == "array":
+        yield from _objects(schema["items"])
+
+
+@pytest.mark.parametrize("schema", [MONTHLY_RESPONSE_SCHEMA, CELL_RESPONSE_SCHEMA], ids=["monthly", "cell"])
+def test_response_schemas_are_strict_at_every_object_level(schema):
+    objects = list(_objects(schema))
+
+    assert len(objects) >= 2
+    for item in objects:
+        assert item["additionalProperties"] is False
+        assert item["required"] == list(item["properties"])
+
+
+def test_response_schemas_match_the_parser_contract():
+    section = MONTHLY_RESPONSE_SCHEMA["properties"]["weeks"]["items"]["properties"]["sections"]["items"]
+
+    assert set(MONTHLY_RESPONSE_SCHEMA["properties"]) == {"target_month", "month_sections", "weeks"}
+    assert "week_axis" not in MONTHLY_RESPONSE_SCHEMA["properties"]
+    assert set(CELL_RESPONSE_SCHEMA["properties"]) == {"target_month", "target_week_id", "section"}
+    assert CELL_RESPONSE_SCHEMA["properties"]["section"] == section
+    assert set(section["properties"]) == {"section_key", "value", "unresolved", "reference_id", "grounding_refs"}
+    assert "reference_id" in section["required"]
+    assert section["properties"]["reference_id"]["type"] == ["string", "null"]
+    assert CELL_RESPONSE_SCHEMA["properties"]["target_week_id"]["type"] == ["string", "null"]
+
+
+def test_parser_still_rejects_an_extra_top_level_week_axis():
+    body = monthly_payload()
+    body["week_axis"] = []
+
+    with pytest.raises(ProposalParseError, match=r"extra=\['week_axis'\]"):
+        parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
