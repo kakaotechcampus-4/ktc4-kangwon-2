@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..context.models import MonthlyContextPacket
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from .contracts import (
-    MONTHLY_MODEL,
+    is_compatible_monthly_model,
     MonthlyPlanningOutcome,
     ProposalRejectedError,
 )
@@ -24,7 +24,7 @@ class MonthlyPlanner:
     ) -> MonthlyPlanningOutcome:
         request = build_monthly_planning_request(packet, snapshot)
         response = self._provider.generate_monthly(request)
-        if response.model != MONTHLY_MODEL:
+        if not is_compatible_monthly_model(response.model):
             raise ProposalRejectedError(("UNEXPECTED_MODEL",))
         proposal = parse_monthly_proposal(response.content)
         validation = validate_monthly_proposal(proposal, packet, request)

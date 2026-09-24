@@ -7,6 +7,7 @@ Monthly planning and cell-regeneration application flows.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import re
 
 from ..domain.errors import DomainError, InvalidDomainValueError
@@ -18,6 +19,29 @@ from ..domain.year_month import YearMonth
 MONTHLY_PROMPT_VERSION = "monthly-planner-v4"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v5"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
+# Providers may report the requested family without the vendor prefix, or the
+# dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").
+_MONTHLY_MODEL_SNAPSHOT = re.compile(
+    re.escape(MONTHLY_MODEL.rsplit("/", 1)[-1]) + r"(?:-(\d{4}-\d{2}-\d{2}))?"
+)
+
+
+def is_compatible_monthly_model(observed: object) -> bool:
+    """True when a provider-reported model id is MONTHLY_MODEL or its dated snapshot."""
+    if not isinstance(observed, str):
+        return False
+    if observed == MONTHLY_MODEL:
+        return True
+    match = _MONTHLY_MODEL_SNAPSHOT.fullmatch(observed)
+    if match is None:
+        return False
+    if match.group(1) is None:
+        return True
+    try:
+        date.fromisoformat(match.group(1))
+    except ValueError:
+        return False
+    return True
 
 FOCUS_SECTION_KEY = "focus"
 OUTDOOR_SECTION_KEY = "outdoor_play"

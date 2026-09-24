@@ -8,7 +8,7 @@ from ..domain.week_period import WeekId
 from .cell_prompt import build_monthly_cell_request
 from .cell_validation import validate_monthly_cell_proposal
 from .contracts import (
-    MONTHLY_MODEL,
+    is_compatible_monthly_model,
     MonthlyCellPlanningOutcome,
     MonthlyCellSnapshot,
     ProposalRejectedError,
@@ -38,7 +38,7 @@ class MonthlyCellPlanner:
             month_snapshot=month_snapshot,
         )
         response = self._provider.generate_cell(request)
-        if response.model != MONTHLY_MODEL:
+        if not is_compatible_monthly_model(response.model):
             raise ProposalRejectedError(("UNEXPECTED_MODEL",))
         proposal = parse_monthly_cell_proposal(response.content)
         validation = validate_monthly_cell_proposal(

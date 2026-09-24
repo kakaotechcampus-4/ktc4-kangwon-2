@@ -21,6 +21,7 @@ from ssuksak.planning.planner.contracts import (
     MONTHLY_CELL_PROMPT_VERSION,
     MONTHLY_MODEL,
     MONTHLY_PROMPT_VERSION,
+    is_compatible_monthly_model,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
     ProposalParseError,
@@ -840,3 +841,48 @@ def test_built_requests_carry_the_korean_contract(packet, snapshot):
 
     assert (monthly.prompt_version, monthly.system_prompt) == (MONTHLY_PROMPT_VERSION, MONTHLY_SYSTEM_PROMPT)
     assert (cell.prompt_version, cell.system_prompt) == (MONTHLY_CELL_PROMPT_VERSION, CELL_SYSTEM_PROMPT)
+
+
+# ---------------------------------------------------------------- model identity compatibility
+
+
+@pytest.mark.parametrize(
+    "observed", ["openai/gpt-4.1-mini", "gpt-4.1-mini", "gpt-4.1-mini-2025-04-14"]
+)
+def test_requested_family_and_its_dated_snapshot_are_compatible(observed):
+    assert is_compatible_monthly_model(observed)
+
+
+@pytest.mark.parametrize(
+    "observed",
+    [
+        "gpt-4.1",
+        "gpt-4.1-nano",
+        "gpt-4.1-mini-preview",
+        "gpt-4.1-mini-custom",
+        "abc-gpt-4.1-mini",
+        "gpt-4.1-mini-2025-04-14-extra",
+        "gpt-4.1-mini-2025-13-40",
+        "openai/gpt-4.1-nano",
+        "",
+        None,
+    ],
+)
+def test_other_models_are_not_compatible(observed):
+    assert not is_compatible_monthly_model(observed)
+
+
+def test_planners_accept_a_dated_snapshot_and_keep_the_observed_model(packet, snapshot):
+    snapshot_model = "gpt-4.1-mini-2025-04-14"
+    fake = DeterministicMonthlyLlm(
+        json.dumps(monthly_payload(), ensure_ascii=False),
+        json.dumps(cell_payload(), ensure_ascii=False),
+        model=snapshot_model,
+    )
+    monthly = MonthlyPlanner(fake).plan(packet, snapshot)
+    cell = MonthlyCellPlanner(fake).plan(
+        packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
+    )
+
+    assert monthly.model == cell.model == snapshot_model
+    assert fake.monthly_requests and fake.cell_requests
