@@ -34,9 +34,12 @@ from ssuksak.planning.evidence.classification import SemanticClass
 from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.evidence.models import ReusePolicy, SourceSection
 from ssuksak.planning.retrieval.models import AgeMatchKind
+from ssuksak.planning.planner.contracts import generation_target_sections
 from ssuksak.planning.planner.parser import (
     CELL_RESPONSE_SCHEMA,
     MONTHLY_RESPONSE_SCHEMA,
+    cell_response_schema,
+    monthly_response_schema,
     parse_monthly_cell_proposal,
     parse_monthly_proposal,
 )
@@ -741,7 +744,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v6"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v7"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -822,8 +825,8 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v5"),
-        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v6"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v6"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v7"),
     ],
     ids=["monthly", "cell"],
 )
@@ -950,3 +953,53 @@ def test_parser_still_rejects_an_extra_top_level_week_axis():
 
     with pytest.raises(ProposalParseError, match=r"extra=\['week_axis'\]"):
         parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------- request-scoped generation targets
+
+
+def _same_keys(scoped, static):
+    """Request scoping only narrows values; every object keeps the static key set."""
+    if static.get("type") == "object":
+        assert set(scoped["properties"]) == set(static["properties"])
+        for key, value in static["properties"].items():
+            _same_keys(scoped["properties"][key], value)
+    elif static.get("type") == "array":
+        _same_keys(scoped["items"], static["items"])
+
+
+def test_week_axis_stays_in_the_snapshot_but_is_not_a_generation_target(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    body = json.loads(request.user_content)
+
+    assert snapshot.section("week_axis") is not None
+    assert "week_axis" not in {section.section_key for section in generation_target_sections(snapshot)}
+    assert "week_axis" not in {item["section_key"] for item in body["generation_schema"]["sections"]}
+    assert request.expected_week_ids == (WEEK_1, WeekId("2026-09-W2"))
+
+
+def test_monthly_response_schema_is_scoped_to_targets_and_supplied_refs(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    schema = monthly_response_schema(request)
+    month = schema["properties"]["month_sections"]["items"]["properties"]
+    week = schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"]["properties"]
+
+    assert month["section_key"]["enum"] == ["theme"]
+    assert week["section_key"]["enum"] == ["focus", "outdoor_play", "safety_education"]
+    assert month["grounding_refs"]["items"]["enum"] == week["grounding_refs"]["items"]["enum"] == sorted(
+        request.valid_grounding_refs
+    )
+    assert "ev-not-supplied" not in week["grounding_refs"]["items"]["enum"]
+    _same_keys(schema, MONTHLY_RESPONSE_SCHEMA)
+    assert all(item["additionalProperties"] is False for item in _objects(schema))
+
+
+def test_cell_response_schema_is_scoped_to_the_target_section(packet, snapshot):
+    request = build_monthly_cell_request(
+        packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
+    )
+    section = cell_response_schema(request)["properties"]["section"]["properties"]
+
+    assert section["section_key"]["enum"] == ["focus"]
+    assert section["grounding_refs"]["items"]["enum"] == sorted(request.valid_grounding_refs)
+    _same_keys(cell_response_schema(request), CELL_RESPONSE_SCHEMA)

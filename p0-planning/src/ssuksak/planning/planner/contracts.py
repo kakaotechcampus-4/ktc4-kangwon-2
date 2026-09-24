@@ -11,13 +11,17 @@ from datetime import date
 import re
 
 from ..domain.errors import DomainError, InvalidDomainValueError
-from ..domain.monthly_template import DisplayMode
+from ..domain.monthly_template import DisplayMode, SectionRole, TemplateSection
+from ..domain.monthly_template_profile import (
+    INSTITUTION_INPUT_SECTION_KEYS,
+    TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
+)
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v5"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v6"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v6"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v7"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").
@@ -42,6 +46,23 @@ def is_compatible_monthly_model(observed: object) -> bool:
     except ValueError:
         return False
     return True
+
+
+
+def generation_target_sections(snapshot: TemplateSnapshot) -> tuple[TemplateSection, ...]:
+    """Snapshot Sections the LLM writes values for.
+
+    AXIS Sections (week_axis) only shape the weeks, institution-input Sections are
+    never invented, and Template-specific Sections have no approved generation
+    policy. They all stay in the Snapshot; they are just not generation targets.
+    """
+    excluded = INSTITUTION_INPUT_SECTION_KEYS | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS
+    return tuple(
+        section
+        for section in snapshot.sections
+        if section.role is SectionRole.CONTENT and section.section_key not in excluded
+    )
+
 
 FOCUS_SECTION_KEY = "focus"
 OUTDOOR_SECTION_KEY = "outdoor_play"

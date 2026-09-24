@@ -18,8 +18,8 @@ from ssuksak.planning.planner.contracts import (
     MonthlyPlanningRequest,
 )
 from ssuksak.planning.planner.parser import (
-    CELL_RESPONSE_SCHEMA,
-    MONTHLY_RESPONSE_SCHEMA,
+    cell_response_schema,
+    monthly_response_schema,
 )
 from ssuksak.planning.domain.monthly_template import (
     DisplayMode,
@@ -111,7 +111,8 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
         MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"),
         transport=transport,
     )
-    response = adapter.generate_monthly(request())
+    monthly_request = request()
+    response = adapter.generate_monthly(monthly_request)
     url, headers, payload, timeout = transport.calls[0]
     assert response.content == response_content
     assert response.request_id == "req-1"
@@ -121,7 +122,11 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
     assert payload["temperature"] == 0
     assert payload["response_format"] == {
         "type": "json_schema",
-        "json_schema": {"name": "monthly_plan_proposal", "strict": True, "schema": MONTHLY_RESPONSE_SCHEMA},
+        "json_schema": {
+            "name": "monthly_plan_proposal",
+            "strict": True,
+            "schema": monthly_response_schema(monthly_request),
+        },
     }
     assert timeout == 30.0
 
@@ -151,11 +156,21 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
     adapter = EliceOpenAiMonthlyAdapter(
         MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"), transport=transport
     )
-    adapter.generate_cell(SimpleNamespace(system_prompt="system", user_content="user"))
+    cell_request = SimpleNamespace(
+        system_prompt="system",
+        user_content="user",
+        target_section_key="focus",
+        valid_grounding_refs=frozenset({"ev-1"}),
+    )
+    adapter.generate_cell(cell_request)
     response_format = transport.calls[0][2]["response_format"]
 
     assert response_format == {
         "type": "json_schema",
-        "json_schema": {"name": "monthly_cell_proposal", "strict": True, "schema": CELL_RESPONSE_SCHEMA},
+        "json_schema": {
+            "name": "monthly_cell_proposal",
+            "strict": True,
+            "schema": cell_response_schema(cell_request),
+        },
     }
     assert "json_object" not in json.dumps(transport.calls[0][2])

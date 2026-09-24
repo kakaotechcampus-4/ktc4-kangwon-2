@@ -6,14 +6,14 @@ import json
 
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
-from ..domain.monthly_template import DisplayMode, SectionRole
-from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
+from ..domain.monthly_template import DisplayMode
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from .contracts import (
     MONTHLY_PROMPT_VERSION,
     MonthlyPlanningRequest,
+    generation_target_sections,
 )
 
 MONTHLY_TASK = "monthly_plan_proposal"
@@ -97,18 +97,7 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
 
 def _generation_schema(snapshot: TemplateSnapshot) -> dict[str, object]:
     sections: list[dict[str, object]] = []
-    for section in snapshot.sections:
-        if section.section_key in INSTITUTION_INPUT_SECTION_KEYS:
-            continue
-        if section.role is SectionRole.AXIS:
-            sections.append(
-                {
-                    "section_key": section.section_key,
-                    "placement": "AXIS",
-                    "required_for_generation": section.required_for_generation,
-                }
-            )
-            continue
+    for section in generation_target_sections(snapshot):
         placement = (
             "MONTH"
             if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY

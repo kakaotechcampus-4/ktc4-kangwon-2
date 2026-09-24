@@ -21,8 +21,8 @@ from ssuksak.planning.planner.contracts import (
     RawLlmResponse,
 )
 from ssuksak.planning.planner.parser import (
-    CELL_RESPONSE_SCHEMA,
-    MONTHLY_RESPONSE_SCHEMA,
+    cell_response_schema,
+    monthly_response_schema,
 )
 
 
@@ -127,7 +127,7 @@ class EliceOpenAiMonthlyAdapter:
             request.system_prompt,
             request.user_content,
             schema_name="monthly_plan_proposal",
-            schema=MONTHLY_RESPONSE_SCHEMA,
+            schema=monthly_response_schema(request),
         )
 
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
@@ -135,7 +135,7 @@ class EliceOpenAiMonthlyAdapter:
             request.system_prompt,
             request.user_content,
             schema_name="monthly_cell_proposal",
-            schema=CELL_RESPONSE_SCHEMA,
+            schema=cell_response_schema(request),
         )
 
     def _complete(

@@ -8,8 +8,12 @@ from typing import Any
 from ..domain.errors import InvalidDomainValueError
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
+from ..domain.monthly_template import DisplayMode
 from .contracts import (
+    MonthlyCellPlanningRequest,
     MonthlyCellProposal,
+    MonthlyPlanningRequest,
+    generation_target_sections,
     MonthlyPlanProposal,
     ProposalParseError,
     ProposedSectionValue,
@@ -57,6 +61,57 @@ CELL_RESPONSE_SCHEMA = _object_schema(
 
 def _keys(schema: dict[str, Any]) -> frozenset[str]:
     return frozenset(schema["properties"])
+
+
+def _section_schema(section_keys: set[str], grounding_refs: frozenset[str]) -> dict[str, Any]:
+    """The static Section schema narrowed to one request's targets and supplied refs.
+
+    An empty set keeps the static type; the parser and validator stay the final check.
+    """
+    properties = dict(_SECTION_SCHEMA["properties"])
+    if section_keys:
+        properties["section_key"] = {"type": "string", "enum": sorted(section_keys)}
+    if grounding_refs:
+        properties["grounding_refs"] = {
+            "type": "array",
+            "items": {"type": "string", "enum": sorted(grounding_refs)},
+        }
+    return _object_schema(properties)
+
+
+def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
+    """MONTHLY_RESPONSE_SCHEMA with request-scoped section_key and grounding_refs enums."""
+    targets = generation_target_sections(request.template_snapshot)
+    refs = request.valid_grounding_refs
+    month = _section_schema(
+        {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY}, refs
+    )
+    week = _section_schema(
+        {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS}, refs
+    )
+    return _object_schema(
+        {
+            "target_month": _STRING,
+            "month_sections": {"type": "array", "items": month},
+            "weeks": {
+                "type": "array",
+                "items": _object_schema(
+                    {"week_id": _STRING, "sections": {"type": "array", "items": week}}
+                ),
+            },
+        }
+    )
+
+
+def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
+    """CELL_RESPONSE_SCHEMA with the target section and supplied refs as enums."""
+    return _object_schema(
+        {
+            "target_month": _STRING,
+            "target_week_id": _NULLABLE_STRING,
+            "section": _section_schema({request.target_section_key}, request.valid_grounding_refs),
+        }
+    )
 
 
 def _object(value: object, *, path: str, keys: frozenset[str]) -> dict[str, Any]:
