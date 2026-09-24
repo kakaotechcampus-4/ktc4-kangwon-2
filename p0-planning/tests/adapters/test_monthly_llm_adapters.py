@@ -161,6 +161,7 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
         user_content="user",
         target_section_key="focus",
         valid_grounding_refs=frozenset({"ev-1"}),
+        allowed_grounding_refs_by_section=(("focus", ("ev-1",)),),
     )
     adapter.generate_cell(cell_request)
     response_format = transport.calls[0][2]["response_format"]

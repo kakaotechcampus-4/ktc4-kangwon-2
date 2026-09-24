@@ -63,31 +63,34 @@ def _keys(schema: dict[str, Any]) -> frozenset[str]:
     return frozenset(schema["properties"])
 
 
-def _section_schema(section_keys: set[str], grounding_refs: frozenset[str]) -> dict[str, Any]:
-    """The static Section schema narrowed to one request's targets and supplied refs.
-
-    An empty set keeps the static type; the parser and validator stay the final check.
-    """
+def _section_branch(section_key: str, refs: tuple[str, ...]) -> dict[str, Any]:
+    """The static Section schema for one section_key and only the refs it may cite."""
     properties = dict(_SECTION_SCHEMA["properties"])
-    if section_keys:
-        properties["section_key"] = {"type": "string", "enum": sorted(section_keys)}
-    if grounding_refs:
-        properties["grounding_refs"] = {
-            "type": "array",
-            "items": {"type": "string", "enum": sorted(grounding_refs)},
-        }
+    properties["section_key"] = {"type": "string", "enum": [section_key]}
+    properties["grounding_refs"] = (
+        {"type": "array", "items": {"type": "string", "enum": list(refs)}}
+        if refs
+        # No allowed ref: only an empty list, never the Packet-wide refs.
+        else {"type": "array", "items": _STRING, "maxItems": 0}
+    )
     return _object_schema(properties)
 
 
+def _section_schema(section_keys: set[str], request) -> dict[str, Any]:
+    """One branch per target Section; the parser and validator stay the final check."""
+    allowed = dict(request.allowed_grounding_refs_by_section)
+    branches = [_section_branch(key, allowed.get(key, ())) for key in sorted(section_keys)]
+    return branches[0] if len(branches) == 1 else {"anyOf": branches}
+
+
 def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
-    """MONTHLY_RESPONSE_SCHEMA with request-scoped section_key and grounding_refs enums."""
+    """MONTHLY_RESPONSE_SCHEMA scoped to the request's target Sections and their allowed refs."""
     targets = generation_target_sections(request.template_snapshot)
-    refs = request.valid_grounding_refs
     month = _section_schema(
-        {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY}, refs
+        {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY}, request
     )
     week = _section_schema(
-        {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS}, refs
+        {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS}, request
     )
     return _object_schema(
         {
@@ -104,12 +107,12 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
 
 
 def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
-    """CELL_RESPONSE_SCHEMA with the target section and supplied refs as enums."""
+    """CELL_RESPONSE_SCHEMA with the target section and its allowed refs as enums."""
     return _object_schema(
         {
             "target_month": _STRING,
             "target_week_id": _NULLABLE_STRING,
-            "section": _section_schema({request.target_section_key}, request.valid_grounding_refs),
+            "section": _section_schema({request.target_section_key}, request),
         }
     )
 

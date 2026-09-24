@@ -747,7 +747,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v7"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v8"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -828,8 +828,8 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v6"),
-        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v7"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v7"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v8"),
     ],
     ids=["monthly", "cell"],
 )
@@ -919,6 +919,8 @@ def test_planners_accept_a_dated_snapshot_and_keep_the_observed_model(packet, sn
 
 def _objects(schema):
     """Every object schema reachable from a response schema."""
+    for branch in schema.get("anyOf", ()):
+        yield from _objects(branch)
     if schema.get("type") == "object":
         yield schema
         for value in schema["properties"].values():
@@ -963,11 +965,13 @@ def test_parser_still_rejects_an_extra_top_level_week_axis():
 
 def _same_keys(scoped, static):
     """Request scoping only narrows values; every object keeps the static key set."""
-    if static.get("type") == "object":
+    for branch in scoped.get("anyOf", ()):
+        _same_keys(branch, static)
+    if static.get("type") == "object" and "anyOf" not in scoped:
         assert set(scoped["properties"]) == set(static["properties"])
         for key, value in static["properties"].items():
             _same_keys(scoped["properties"][key], value)
-    elif static.get("type") == "array":
+    elif static.get("type") == "array" and "anyOf" not in scoped:
         _same_keys(scoped["items"], static["items"])
 
 
@@ -984,15 +988,12 @@ def test_week_axis_stays_in_the_snapshot_but_is_not_a_generation_target(packet, 
 def test_monthly_response_schema_is_scoped_to_targets_and_supplied_refs(packet, snapshot):
     request = build_monthly_planning_request(packet, snapshot)
     schema = monthly_response_schema(request)
-    month = schema["properties"]["month_sections"]["items"]["properties"]
-    week = schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"]["properties"]
+    month = _branches(schema["properties"]["month_sections"]["items"])
+    week = _branches(schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"])
 
-    assert month["section_key"]["enum"] == ["theme"]
-    assert week["section_key"]["enum"] == ["focus", "outdoor_play", "safety_education"]
-    assert month["grounding_refs"]["items"]["enum"] == week["grounding_refs"]["items"]["enum"] == sorted(
-        request.valid_grounding_refs
-    )
-    assert "ev-not-supplied" not in week["grounding_refs"]["items"]["enum"]
+    assert set(month) == {"theme"}
+    assert set(week) == {"focus", "outdoor_play", "safety_education"}
+    assert set().union(*month.values(), *week.values()) <= request.valid_grounding_refs
     _same_keys(schema, MONTHLY_RESPONSE_SCHEMA)
     assert all(item["additionalProperties"] is False for item in _objects(schema))
 
@@ -1001,10 +1002,9 @@ def test_cell_response_schema_is_scoped_to_the_target_section(packet, snapshot):
     request = build_monthly_cell_request(
         packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
     )
-    section = cell_response_schema(request)["properties"]["section"]["properties"]
+    section = cell_response_schema(request)["properties"]["section"]
 
-    assert section["section_key"]["enum"] == ["focus"]
-    assert section["grounding_refs"]["items"]["enum"] == sorted(request.valid_grounding_refs)
+    assert _branches(section) == {"focus": ("ev-3",)}
     _same_keys(cell_response_schema(request), CELL_RESPONSE_SCHEMA)
 
 
@@ -1085,7 +1085,7 @@ def test_repairable_finding_gets_one_repair_with_locators(packet, snapshot, muta
 
 
 def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v1"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v2"
     assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
     assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
     for rule in (
@@ -1168,3 +1168,124 @@ def test_invariant_findings_are_never_repaired(packet, snapshot, mutations, code
         MonthlyPlanner(fake).plan(packet, snapshot)
     assert code in exc.value.validation_codes
     assert len(fake.monthly_requests) == 1
+
+
+# ---------------------------------------------------------------- section-specific grounding schema
+
+
+def _branches(items):
+    """{section_key: allowed grounding refs} of one Section array's item schema."""
+    result = {}
+    for branch in items.get("anyOf", (items,)):
+        (key,) = branch["properties"]["section_key"]["enum"]
+        refs = branch["properties"]["grounding_refs"]
+        result[key] = tuple(refs["items"].get("enum", ())) if refs.get("maxItems") != 0 else ()
+    return result
+
+
+def _all_classes_packet(packet):
+    """Unclassified ev-1/ev-2 plus one ref per approved class (SUBTHEME ev-3 already present)."""
+    return replace(
+        packet,
+        section_evidence=packet.section_evidence
+        + (
+            _section_item("ev-goals", SemanticClass.GOALS, "교사의 기대"),
+            _section_item("ev-habit", SemanticClass.BASIC_HABIT, "기본생활습관"),
+            _section_item("ev-play", SemanticClass.EXPECTED_PLAY, "예상놀이"),
+        ),
+    )
+
+
+def _schema_branches(packet, snapshot):
+    schema = monthly_response_schema(build_monthly_planning_request(packet, snapshot))
+    month = _branches(schema["properties"]["month_sections"]["items"])
+    week = _branches(schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"])
+    assert not set(month) & set(week)
+    return {**month, **week}, set(month), set(week)
+
+
+def test_each_section_branch_lists_only_its_approved_class_refs(packet, snapshot):
+    branches, month, week = _schema_branches(_all_classes_packet(packet), _with_goals_and_basic_habit(snapshot))
+
+    assert branches == {
+        "theme": ("ev-1", "ev-2"),
+        "goals": ("ev-goals",),
+        "focus": ("ev-3",),
+        "basic_habit": ("ev-habit",),
+        "outdoor_play": ("ev-1", "ev-2"),
+        "safety_education": ("ev-1", "ev-2"),
+    }
+    assert month == {"theme", "goals"}
+    assert week == {"focus", "basic_habit", "outdoor_play", "safety_education"}
+
+
+def test_expected_play_focus_branch_lists_only_expected_play_refs(packet, snapshot):
+    branches, _, _ = _schema_branches(
+        _all_classes_packet(packet), _with_focus_variant(snapshot, SemanticVariant.EXPECTED_PLAY)
+    )
+
+    assert branches["focus"] == ("ev-play",)
+
+
+def test_cell_schema_uses_the_target_section_branch(packet, snapshot):
+    request = build_monthly_cell_request(
+        _all_classes_packet(packet),
+        _with_goals_and_basic_habit(snapshot),
+        target_week_id=None,
+        target_section_key=GOALS_SECTION_KEY,
+        month_snapshot=snapshots(),
+    )
+
+    assert _branches(cell_response_schema(request)["properties"]["section"]) == {"goals": ("ev-goals",)}
+
+
+def test_a_section_without_allowed_refs_gets_an_empty_list_not_the_packet_refs(packet, snapshot):
+    branches, _, _ = _schema_branches(packet, _with_goals_and_basic_habit(snapshot))
+    schema = monthly_response_schema(build_monthly_planning_request(packet, _with_goals_and_basic_habit(snapshot)))
+    goals = next(
+        branch for branch in schema["properties"]["month_sections"]["items"]["anyOf"]
+        if branch["properties"]["section_key"]["enum"] == ["goals"]
+    )
+
+    assert branches["goals"] == branches["basic_habit"] == ()
+    assert goals["properties"]["grounding_refs"] == {"type": "array", "items": {"type": "string"}, "maxItems": 0}
+
+
+def test_week_axis_and_unsupported_sections_have_no_schema_branch(packet, snapshot):
+    branches, _, _ = _schema_branches(packet, snapshot)
+
+    assert "week_axis" not in branches
+    assert not set(branches) & {"event_schedule", "drill", "special_program", "daily_routine"}
+
+
+def test_allowed_refs_must_be_supplied_refs(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+
+    with pytest.raises(InvalidDomainValueError, match="allowed_grounding_refs_by_section"):
+        replace(request, allowed_grounding_refs_by_section=(("focus", ("ev-not-supplied",)),))
+
+
+def test_validators_still_reject_unknown_and_wrong_source_refs_behind_the_schema(packet, snapshot):
+    unknown = monthly_payload()
+    unknown["weeks"][1]["sections"][1]["grounding_refs"] = ["invented-ref"]
+    wrong = monthly_payload()
+    wrong["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-1"]
+
+    assert "UNKNOWN_GROUNDING_REF" in _validate(unknown, packet, snapshot).codes
+    assert "WRONG_SOURCE_GROUNDING" in _validate(wrong, packet, snapshot).codes
+
+
+def test_parser_still_rejects_duplicate_refs_in_a_cell():
+    body = monthly_payload()
+    body["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-3", "ev-3"]
+
+    with pytest.raises(ProposalParseError, match="grounding_refs must be unique"):
+        parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
+
+
+@pytest.mark.parametrize(
+    "system_prompt", [MONTHLY_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT, CELL_SYSTEM_PROMPT], ids=["monthly", "repair", "cell"]
+)
+def test_prompts_forbid_duplicate_refs_in_a_cell(system_prompt):
+    assert "Within each grounding_refs array, include each reference id at most once;" in system_prompt
+    assert "never repeat the same reference id in a cell." in system_prompt

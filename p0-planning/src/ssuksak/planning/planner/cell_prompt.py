@@ -16,7 +16,12 @@ from .contracts import (
     MonthlyCellPlanningRequest,
     MonthlyCellSnapshot,
 )
-from .prompt import _generation_schema, _prompt_payload, valid_grounding_refs
+from .prompt import (
+    _generation_schema,
+    _prompt_payload,
+    allowed_grounding_refs_by_section,
+    valid_grounding_refs,
+)
 
 MONTHLY_CELL_TASK = "monthly_cell_proposal"
 
@@ -29,6 +34,8 @@ Do not make legal decisions or generate statutory safety education.
 Every resolved value needs supplied grounding_refs or a supplied reference_id.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
+Within each grounding_refs array, include each reference id at most once;
+never repeat the same reference id in a cell.
 Write user-facing plan text in value fields in natural Korean.
 Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
 grounding_refs exactly as supplied or specified; never translate them.
@@ -129,4 +136,5 @@ def build_monthly_cell_request(
         valid_grounding_refs=valid_grounding_refs(packet),
         packet_fingerprint=packet_fingerprint(packet),
         plan_snapshot_fingerprint=snapshot_fingerprint(month_snapshot),
+        allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
     )

@@ -17,7 +17,7 @@ from .contracts import (
     MonthlyPlanningRequest,
     generation_target_sections,
 )
-from .validation import ProposalValidationIssue
+from .validation import ProposalValidationIssue, wrong_source_refs
 
 MONTHLY_TASK = "monthly_plan_proposal"
 
@@ -35,6 +35,8 @@ Every other resolved generated value needs supplied grounding_refs or a supplied
 reference_id. Do not invent facts or citations and do not copy evidence verbatim.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
+Within each grounding_refs array, include each reference id at most once;
+never repeat the same reference id in a cell.
 Omit an optional section when no evidence with its grounding_class is supplied.
 Write user-facing plan text in value fields in natural Korean.
 Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
@@ -69,6 +71,19 @@ follow and still apply.
 
 def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
     return frozenset(item.evidence_ref for item in packet.grounding_items)
+
+
+def allowed_grounding_refs_by_section(
+    packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Per generation target, the supplied refs the WRONG_SOURCE_GROUNDING policy allows."""
+    evidence = {item.evidence_ref: item for item in packet.grounding_items}
+    refs = tuple(sorted(evidence))
+    allowed = []
+    for section in generation_target_sections(snapshot):
+        wrong = set(wrong_source_refs(section, refs, evidence))
+        allowed.append((section.section_key, tuple(ref for ref in refs if ref not in wrong)))
+    return tuple(allowed)
 
 
 def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
@@ -201,6 +216,7 @@ def build_monthly_planning_request(
         ),
         valid_grounding_refs=valid_grounding_refs(packet),
         packet_fingerprint=packet_fingerprint(packet),
+        allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
     )
 
 
