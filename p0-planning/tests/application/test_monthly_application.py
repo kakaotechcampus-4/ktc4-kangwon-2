@@ -1873,7 +1873,7 @@ def test_goals_cell_regeneration_changes_only_the_month_level_cell(target_month,
     assert regenerated.cell_state is CellState.FILLED
     assert _cited_classes(regenerated) == {SemanticClass.GOALS}
     assert regenerated.generation.method is GenerationMethod.RULE_LLM
-    assert regenerated.generation.rule_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v8"
+    assert regenerated.generation.rule_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v9"
     assert regenerated.audit.events[:-1] == target.audit.events
     assert regenerated.audit.events[-1].event_type is AuditEventType.REGENERATED
     assert all(result.plan.find_cell(item_id)[3] is cell for item_id, cell in untouched.items())

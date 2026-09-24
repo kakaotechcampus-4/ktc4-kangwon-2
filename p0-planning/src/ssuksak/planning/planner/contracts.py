@@ -20,10 +20,10 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v7"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v8"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v8"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
-MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v2"
+MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v3"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").
@@ -257,7 +257,8 @@ class MonthlyPlanningRequest:
     reference_labels: tuple[tuple[str, str], ...] = ()
     valid_grounding_refs: frozenset[str] = frozenset()
     packet_fingerprint: str = ""
-    # Per generation target: the supplied refs its approved grounding class allows.
+    # One entry per LLM generation target of this request, with the supplied refs
+    # it may cite (see prompt.generation_targets).
     allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def __post_init__(self) -> None:

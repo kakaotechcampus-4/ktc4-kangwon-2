@@ -7,7 +7,7 @@ import json
 
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
-from ..domain.monthly_template import DisplayMode
+from ..domain.monthly_template import DisplayMode, TemplateSection
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
@@ -17,7 +17,7 @@ from .contracts import (
     MonthlyPlanningRequest,
     generation_target_sections,
 )
-from .validation import ProposalValidationIssue, wrong_source_refs
+from .validation import ProposalValidationIssue, is_safety_grounding, wrong_source_refs
 
 MONTHLY_TASK = "monthly_plan_proposal"
 
@@ -73,17 +73,36 @@ def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
     return frozenset(item.evidence_ref for item in packet.grounding_items)
 
 
+def generation_targets(
+    packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+) -> tuple[tuple[TemplateSection, tuple[str, ...]], ...]:
+    """This request's LLM targets with the supplied refs each may cite.
+
+    Refs follow the validators: WRONG_SOURCE_GROUNDING for every Section and
+    SAFETY_GROUNDING_REQUIRED for safety_education. Without approved safety
+    grounding safety_education is no LLM target; the Core safety assessment
+    leaves its cells EMPTY_UNRESOLVED.
+    """
+    evidence = {item.evidence_ref: item for item in packet.grounding_items}
+    refs = tuple(sorted(evidence))
+    targets = []
+    for section in generation_target_sections(snapshot):
+        wrong = set(wrong_source_refs(section, refs, evidence))
+        allowed = tuple(ref for ref in refs if ref not in wrong)
+        if section.section_key == "safety_education":
+            allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
+            if not allowed:
+                continue
+        targets.append((section, allowed))
+    return tuple(targets)
+
+
 def allowed_grounding_refs_by_section(
     packet: MonthlyContextPacket, snapshot: TemplateSnapshot
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """Per generation target, the supplied refs the WRONG_SOURCE_GROUNDING policy allows."""
-    evidence = {item.evidence_ref: item for item in packet.grounding_items}
-    refs = tuple(sorted(evidence))
-    allowed = []
-    for section in generation_target_sections(snapshot):
-        wrong = set(wrong_source_refs(section, refs, evidence))
-        allowed.append((section.section_key, tuple(ref for ref in refs if ref not in wrong)))
-    return tuple(allowed)
+    return tuple(
+        (section.section_key, refs) for section, refs in generation_targets(packet, snapshot)
+    )
 
 
 def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
@@ -135,9 +154,11 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
     }
 
 
-def _generation_schema(snapshot: TemplateSnapshot) -> dict[str, object]:
+def _generation_schema(
+    packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+) -> dict[str, object]:
     sections: list[dict[str, object]] = []
-    for section in generation_target_sections(snapshot):
+    for section, _ in generation_targets(packet, snapshot):
         placement = (
             "MONTH"
             if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
@@ -197,7 +218,7 @@ def build_monthly_planning_request(
     body = _prompt_payload(packet)
     body.update(
         {
-            "generation_schema": _generation_schema(snapshot),
+            "generation_schema": _generation_schema(packet, snapshot),
             "response_contract": _response_contract(),
         }
     )

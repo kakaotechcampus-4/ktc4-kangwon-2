@@ -88,7 +88,10 @@ def _section_schema(section_keys: set[str], request) -> dict[str, Any]:
 
 def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
     """MONTHLY_RESPONSE_SCHEMA scoped to the request's target Sections and their allowed refs."""
-    targets = generation_target_sections(request.template_snapshot)
+    allowed = dict(request.allowed_grounding_refs_by_section)
+    targets = [
+        s for s in generation_target_sections(request.template_snapshot) if s.section_key in allowed
+    ]
     month = _section_schema(
         {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY}, request
     )

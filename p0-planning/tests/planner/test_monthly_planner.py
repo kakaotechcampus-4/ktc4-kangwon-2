@@ -748,7 +748,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v8"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v9"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -829,8 +829,8 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v7"),
-        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v8"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v8"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v9"),
     ],
     ids=["monthly", "cell"],
 )
@@ -993,7 +993,7 @@ def test_monthly_response_schema_is_scoped_to_targets_and_supplied_refs(packet, 
     week = _branches(schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"])
 
     assert set(month) == {"theme"}
-    assert set(week) == {"focus", "outdoor_play", "safety_education"}
+    assert set(week) == {"focus", "outdoor_play"}  # no safety grounding supplied
     assert set().union(*month.values(), *week.values()) <= request.valid_grounding_refs
     _same_keys(schema, MONTHLY_RESPONSE_SCHEMA)
     assert all(item["additionalProperties"] is False for item in _objects(schema))
@@ -1086,7 +1086,7 @@ def test_repairable_finding_gets_one_repair_with_locators(packet, snapshot, muta
 
 
 def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v2"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v3"
     assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
     assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
     for rule in (
@@ -1214,10 +1214,9 @@ def test_each_section_branch_lists_only_its_approved_class_refs(packet, snapshot
         "focus": ("ev-3",),
         "basic_habit": ("ev-habit",),
         "outdoor_play": ("ev-1", "ev-2"),
-        "safety_education": ("ev-1", "ev-2"),
     }
     assert month == {"theme", "goals"}
-    assert week == {"focus", "basic_habit", "outdoor_play", "safety_education"}
+    assert week == {"focus", "basic_habit", "outdoor_play"}
 
 
 def test_expected_play_focus_branch_lists_only_expected_play_refs(packet, snapshot):
@@ -1348,3 +1347,53 @@ def test_duplicate_refs_alone_never_start_a_repair(packet, snapshot, caplog):
     assert outcome.proposal.weeks[0].sections[0].grounding_refs == ("ev-3",)
     assert "duplicate_grounding_refs_normalized count=1" in caplog.text
     assert "repair" not in caplog.text
+
+
+# ---------------------------------------------------------------- safety generation follows SAFETY_GROUNDING_REQUIRED
+
+
+def _safety_item(ref="safety-1"):
+    return GroundingContextItem(
+        evidence_ref=ref,
+        text="교통 안전 규칙 자료",
+        source_section=SourceSection.SAFETY_EDUCATION,
+        source_label="안전교육",
+        age_scope=(3, 4),
+        age_match=AgeMatchKind.MIXED_AGE_COVERING,
+        institution_alias="S1",
+        reuse_policy=ReusePolicy.CONTEXT_ONLY,
+    )
+
+
+def _without_safety(body):
+    for week in body["weeks"]:
+        week["sections"] = [item for item in week["sections"] if item["section_key"] != "safety_education"]
+    return body
+
+
+def test_safety_without_safety_grounding_is_not_an_llm_target(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    body = json.loads(request.user_content)
+
+    assert snapshot.section("safety_education").required_for_generation
+    assert "safety_education" not in {item["section_key"] for item in body["generation_schema"]["sections"]}
+    assert "safety_education" not in dict(request.allowed_grounding_refs_by_section)
+    assert "safety_education" not in _schema_branches(packet, snapshot)[0]
+    assert _validate(_without_safety(monthly_payload()), packet, snapshot).is_valid
+
+
+def test_safety_with_safety_grounding_is_a_target_citing_only_safety_refs(packet, snapshot):
+    grounded = _all_classes_packet(replace(packet, institution_evidence=(*packet.institution_evidence, _safety_item())))
+    branches, _, week = _schema_branches(grounded, snapshot)
+
+    assert branches["safety_education"] == ("safety-1",)
+    assert "safety_education" in week
+    assert "REQUIRED_SECTION_MISSING" in _validate(_without_safety(monthly_payload()), grounded, snapshot).codes
+
+
+@pytest.mark.parametrize("refs", [[], ["ev-1"]], ids=["no-refs", "non-safety-ref"])
+def test_resolved_safety_without_safety_grounding_is_still_rejected(packet, snapshot, refs):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][2].update(value="안전하게 놀이한다.", unresolved=False, grounding_refs=refs)
+
+    assert "SAFETY_GROUNDING_REQUIRED" in _validate(body, packet, snapshot).codes

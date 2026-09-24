@@ -95,7 +95,7 @@ def build_monthly_cell_request(
     body = _prompt_payload(packet)
     body.update(
         {
-            "generation_schema": _generation_schema(snapshot),
+            "generation_schema": _generation_schema(packet, snapshot),
             "target_cell": target_cell,
             "month_snapshot": [
                 {

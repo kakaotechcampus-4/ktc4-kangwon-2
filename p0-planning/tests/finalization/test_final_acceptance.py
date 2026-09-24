@@ -31,7 +31,11 @@ from ssuksak.planning.rules.monthly_theme_derivation import (
 from ssuksak.planning.rules.monthly_verification import AGE_RULE_REF
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 
-from .harness import EXTENDED_PROFILE, TARGET_MONTH, TEACHER, PlanningHarness
+import json
+
+from ssuksak.planning.planner.contracts import RawLlmResponse
+
+from .harness import EXTENDED_PROFILE, TARGET_MONTH, TEACHER, PlanningHarness, RequestAwareMonthlyLlm
 
 _RECORDS = {
     record.record_id: record
@@ -229,3 +233,41 @@ def test_extended_profile_final_acceptance(ages, month):
         SemanticClass.BASIC_HABIT
     }
     assert harness.monthly_plans.get(plan.plan_id) is after_habit
+
+
+class SafetyFollowsTargetsLlm(RequestAwareMonthlyLlm):
+    """Writes safety_education only when the request makes it an LLM target."""
+
+    def generate_monthly(self, request):
+        response = super().generate_monthly(request)
+        if "safety_education" in dict(request.allowed_grounding_refs_by_section):
+            return response
+        payload = json.loads(response.content)
+        for week in payload["weeks"]:
+            week["sections"] = [item for item in week["sections"] if item["section_key"] != "safety_education"]
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), response.model, response.request_id)
+
+
+@pytest.mark.parametrize(
+    ("month", "weeks"), [(YearMonth(2026, 9), 5), (YearMonth(2026, 10), 4)], ids=["5-week", "4-week"]
+)
+def test_safety_without_grounding_is_core_built_empty_unresolved(month, weeks):
+    harness = PlanningHarness()
+    harness.provider = SafetyFollowsTargetsLlm()
+    parent = harness.confirm_yearly(harness.generate_yearly(frozenset({3})).plan)
+
+    plan = harness.generate_monthly(
+        parent, MonthlyGenerationMode.LLM_PLANNER, target_month=month, profile=EXTENDED_PROFILE
+    ).plan
+    request = harness.provider.monthly_requests[-1]
+    safety = plan.section("safety_education")
+
+    schema_keys = {item["section_key"] for item in json.loads(request.user_content)["generation_schema"]["sections"]}
+    assert "safety_education" not in schema_keys
+    assert len(safety.cells) == weeks
+    for cell in safety.cells:
+        assert cell.value == "" and cell.cell_state is CellState.EMPTY_UNRESOLVED
+        assert cell.generation.method is GenerationMethod.RULE_ONLY
+        assert {source.source_type for source in cell.evidence} == {EvidenceSourceType.SAFETY_RULE}
+    assert plan.verification_report is not None
+    assert plan.status is PlanStatus.DRAFT and harness.monthly_plans.get(plan.plan_id) is plan

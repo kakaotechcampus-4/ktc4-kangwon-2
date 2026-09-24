@@ -2,13 +2,13 @@
   "after": {
     "audit": [
       {"actor": null, "system_actor": "monthly_application", "type": "CREATED"},
-      {"actor": "teacher_001", "generation_change": {"after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v8"}, "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v7"}}, "system_actor": null, "type": "REGENERATED", "value_change": {"after": "Regenerated goals value", "before": "Context-based goals"}}
+      {"actor": "teacher_001", "generation_change": {"after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v9"}, "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v8"}}, "system_actor": null, "type": "REGENERATED", "value_change": {"after": "Regenerated goals value", "before": "Context-based goals"}}
     ],
     "evidence": [
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
       {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v8"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v9"},
     "state": "FILLED",
     "value": "Regenerated goals value",
     "week_id": null
@@ -21,13 +21,13 @@
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
       {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v7"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v8"},
     "state": "FILLED",
     "value": "Context-based goals",
     "week_id": null
   },
   "generation_mode": "LLM_PLANNER",
-  "planner": {"model": "openai/gpt-4.1-mini", "packet_fingerprint": "b42e0ebbaa45a29ca9e3968a28d6e4d99aeb92bfc27adb8071838a98fcba0411", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v8"},
+  "planner": {"model": "openai/gpt-4.1-mini", "packet_fingerprint": "b42e0ebbaa45a29ca9e3968a28d6e4d99aeb92bfc27adb8071838a98fcba0411", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v9"},
   "report_refreshed": true,
   "schema": "monthly-cell-regeneration-golden-v2",
   "section": "goals",
