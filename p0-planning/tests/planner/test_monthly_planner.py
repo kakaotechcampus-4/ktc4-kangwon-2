@@ -739,7 +739,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v5"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v6"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -820,8 +820,8 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v4"),
-        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v5"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v5"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v6"),
     ],
     ids=["monthly", "cell"],
 )
@@ -831,6 +831,24 @@ def test_prompts_require_korean_values_but_keep_machine_values(system_prompt, ve
     assert "never translate them" in system_prompt
     for machine_value in ("JSON keys", "section_key", "week ids", "enum values", "reference_id", "grounding_refs"):
         assert machine_value in system_prompt
+    assert "Include every key required by response_contract in every object and cell;" in system_prompt
+    assert "include the key with null, never omit it." in system_prompt
+
+
+@pytest.mark.parametrize(
+    ("parse", "payload", "section"),
+    [
+        (parse_monthly_proposal, monthly_payload, lambda body: body["weeks"][0]["sections"][0]),
+        (parse_monthly_cell_proposal, cell_payload, lambda body: body["section"]),
+    ],
+    ids=["monthly", "cell"],
+)
+def test_parser_still_rejects_an_omitted_nullable_key(parse, payload, section):
+    body = payload()
+    del section(body)["reference_id"]
+
+    with pytest.raises(ProposalParseError, match=r"missing=\['reference_id'\]"):
+        parse(json.dumps(body, ensure_ascii=False))
 
 
 def test_built_requests_carry_the_korean_contract(packet, snapshot):

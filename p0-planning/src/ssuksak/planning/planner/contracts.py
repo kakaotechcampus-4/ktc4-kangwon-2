@@ -16,8 +16,8 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v4"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v5"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v5"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v6"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").

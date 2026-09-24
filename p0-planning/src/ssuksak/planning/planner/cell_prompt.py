@@ -32,6 +32,8 @@ a section without one must not cite evidence that has a grounding_class.
 Write user-facing plan text in value fields in natural Korean.
 Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
 grounding_refs exactly as supplied or specified; never translate them.
+Include every key required by response_contract in every object and cell;
+for a nullable field with no value, include the key with null, never omit it.
 Return only one JSON object matching response_contract; add no fields.
 """
 
