@@ -27,6 +27,7 @@ from ssuksak.planning.planner.contracts import (
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
     ProposalParseError,
+    ProposedSectionValue,
     ProposalRejectedError,
 )
 from ssuksak.planning.context.models import GroundingContextItem
@@ -1275,12 +1276,23 @@ def test_validators_still_reject_unknown_and_wrong_source_refs_behind_the_schema
     assert "WRONG_SOURCE_GROUNDING" in _validate(wrong, packet, snapshot).codes
 
 
-def test_parser_still_rejects_duplicate_refs_in_a_cell():
+@pytest.mark.parametrize(
+    ("refs", "expected"),
+    [
+        (["ref-a", "ref-a"], ("ref-a",)),
+        (["ref-a", "ref-b", "ref-a"], ("ref-a", "ref-b")),
+        (["ref-b", "ref-a"], ("ref-b", "ref-a")),
+    ],
+    ids=["repeat", "first-seen-order", "already-unique"],
+)
+def test_parser_canonicalizes_exact_duplicate_refs_in_first_seen_order(refs, expected):
     body = monthly_payload()
-    body["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-3", "ev-3"]
+    body["weeks"][0]["sections"][0]["grounding_refs"] = refs
+    cell = cell_payload()
+    cell["section"]["grounding_refs"] = refs
 
-    with pytest.raises(ProposalParseError, match="grounding_refs must be unique"):
-        parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
+    assert parse_monthly_proposal(json.dumps(body, ensure_ascii=False)).weeks[0].sections[0].grounding_refs == expected
+    assert parse_monthly_cell_proposal(json.dumps(cell, ensure_ascii=False)).section.grounding_refs == expected
 
 
 @pytest.mark.parametrize(
@@ -1289,3 +1301,50 @@ def test_parser_still_rejects_duplicate_refs_in_a_cell():
 def test_prompts_forbid_duplicate_refs_in_a_cell(system_prompt):
     assert "Within each grounding_refs array, include each reference id at most once;" in system_prompt
     assert "never repeat the same reference id in a cell." in system_prompt
+
+
+# ---------------------------------------------------------------- duplicate grounding refs canonicalization
+
+
+def test_domain_value_still_rejects_duplicate_refs():
+    with pytest.raises(InvalidDomainValueError, match="grounding_refs must be unique"):
+        ProposedSectionValue("focus", "바람을 살펴본다.", False, ("ev-3", "ev-3"))
+
+
+@pytest.mark.parametrize(
+    ("week", "section", "refs", "code"),
+    [
+        (1, 1, ["invented-ref", "invented-ref"], "UNKNOWN_GROUNDING_REF"),
+        (0, 0, ["ev-1", "ev-1"], "WRONG_SOURCE_GROUNDING"),
+    ],
+    ids=["unknown", "wrong-source"],
+)
+def test_canonicalization_keeps_invalid_refs_for_the_validators(packet, snapshot, week, section, refs, code):
+    body = monthly_payload()
+    body["weeks"][week]["sections"][section]["grounding_refs"] = refs
+
+    assert code in _validate(body, packet, snapshot).codes
+
+
+@pytest.mark.parametrize("value", [["ev-3", ""], ["ev-3", 3], "ev-3"], ids=["blank", "non-string", "not-array"])
+def test_malformed_refs_are_still_rejected(value):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][0]["grounding_refs"] = value
+
+    with pytest.raises(ProposalParseError, match="array of non-blank strings"):
+        parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
+
+
+def test_duplicate_refs_alone_never_start_a_repair(packet, snapshot, caplog):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-3", "ev-3"]
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    with caplog.at_level("INFO", logger="ssuksak.planning.planner"):
+        outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert len(fake.monthly_requests) == 1
+    assert outcome.prompt_version == MONTHLY_PROMPT_VERSION
+    assert outcome.proposal.weeks[0].sections[0].grounding_refs == ("ev-3",)
+    assert "duplicate_grounding_refs_normalized count=1" in caplog.text
+    assert "repair" not in caplog.text

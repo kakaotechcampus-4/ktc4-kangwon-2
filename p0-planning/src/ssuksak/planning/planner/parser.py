@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from ..domain.errors import InvalidDomainValueError
@@ -19,6 +20,8 @@ from .contracts import (
     ProposedSectionValue,
     ProposedWeek,
 )
+
+_log = logging.getLogger(__name__)
 
 
 def _object_schema(properties: dict[str, Any]) -> dict[str, Any]:
@@ -175,6 +178,19 @@ def _week_id(value: object, *, path: str) -> WeekId:
         raise ProposalParseError(str(exc)) from exc
 
 
+def _canonical_refs(value: object, *, path: str) -> tuple[str, ...]:
+    """grounding_refs is a set of evidence ids: drop exact repeats, keep first-seen order.
+
+    Only this provider boundary canonicalizes; ProposedSectionValue still rejects
+    duplicates, and unknown or wrong-source refs are left for the validators.
+    """
+    refs = _strings(value, path=path)
+    canonical = tuple(dict.fromkeys(refs))
+    if len(canonical) != len(refs):
+        _log.info("duplicate_grounding_refs_normalized count=%d", len(refs) - len(canonical))
+    return canonical
+
+
 def _section_value(value: object, *, path: str) -> ProposedSectionValue:
     item = _object(value, path=path, keys=_keys(_SECTION_SCHEMA))
     raw_value = item["value"]
@@ -190,7 +206,7 @@ def _section_value(value: object, *, path: str) -> ProposedSectionValue:
                 path=f"{path}.reference_id",
                 nullable=True,
             ),
-            grounding_refs=_strings(
+            grounding_refs=_canonical_refs(
                 item["grounding_refs"], path=f"{path}.grounding_refs"
             ),
         )
