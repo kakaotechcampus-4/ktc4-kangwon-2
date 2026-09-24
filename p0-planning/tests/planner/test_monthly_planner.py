@@ -21,6 +21,8 @@ from ssuksak.planning.planner.contracts import (
     MONTHLY_CELL_PROMPT_VERSION,
     MONTHLY_MODEL,
     MONTHLY_PROMPT_VERSION,
+    MONTHLY_REPAIR_PROMPT_VERSION,
+    RawLlmResponse,
     is_compatible_monthly_model,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
@@ -44,6 +46,7 @@ from ssuksak.planning.planner.parser import (
     parse_monthly_proposal,
 )
 from ssuksak.planning.planner.prompt import (
+    REPAIR_SYSTEM_PROMPT,
     SYSTEM_PROMPT as MONTHLY_SYSTEM_PROMPT,
     build_monthly_planning_request,
 )
@@ -1003,3 +1006,165 @@ def test_cell_response_schema_is_scoped_to_the_target_section(packet, snapshot):
     assert section["section_key"]["enum"] == ["focus"]
     assert section["grounding_refs"]["items"]["enum"] == sorted(request.valid_grounding_refs)
     _same_keys(cell_response_schema(request), CELL_RESPONSE_SCHEMA)
+
+
+# ---------------------------------------------------------------- OD-N04 one repair attempt
+
+
+class ScriptedMonthlyLlm:
+    """Returns the scripted responses in order and records every request."""
+
+    def __init__(self, *responses, model=MONTHLY_MODEL):
+        self._responses = [
+            item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
+            for item in responses
+        ]
+        self._model = model
+        self.monthly_requests = []
+
+    def generate_monthly(self, request):
+        self.monthly_requests.append(request)
+        return RawLlmResponse(self._responses[len(self.monthly_requests) - 1], self._model)
+
+
+def _source_copy(body):
+    body["weeks"][1]["sections"][1]["value"] = "나뭇잎 색을 관찰한다."  # ev-1 text
+
+
+def _legal_claim(body):
+    body["weeks"][0]["sections"][0]["value"] = "법적 기준에 맞게 바람을 살펴본다."
+
+
+def _wrong_source(body):
+    body["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-1"]
+
+
+def _mutated(mutate):
+    body = monthly_payload()
+    mutate(body)
+    return body
+
+
+def test_valid_first_response_is_used_without_repair(packet, snapshot):
+    fake = ScriptedMonthlyLlm(monthly_payload(), monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert len(fake.monthly_requests) == 1
+    assert outcome.prompt_version == MONTHLY_PROMPT_VERSION
+
+
+@pytest.mark.parametrize(
+    ("mutate", "finding"),
+    [
+        (_source_copy, {"code": "SOURCE_TEXT_COPY", "section_key": "outdoor_play", "week_id": "2026-09-W2", "detail": ""}),
+        (_legal_claim, {"code": "TEXT_POLICY", "section_key": "focus", "week_id": "2026-09-W1", "detail": "OFFICIAL_OR_LEGAL_CLAIM"}),
+        (_wrong_source, {"code": "WRONG_SOURCE_GROUNDING", "section_key": "focus", "week_id": "2026-09-W1", "detail": "('ev-1',)"}),
+    ],
+    ids=["source-copy", "text-policy", "wrong-source"],
+)
+def test_repairable_finding_gets_one_repair_with_locators(packet, snapshot, mutate, finding):
+    rejected = _mutated(mutate)
+    fake = ScriptedMonthlyLlm(rejected, monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    initial, repair = fake.monthly_requests
+    body = json.loads(repair.user_content)
+
+    assert outcome.prompt_version == repair.prompt_version == MONTHLY_REPAIR_PROMPT_VERSION
+    assert outcome.proposal == parse_monthly_proposal(json.dumps(monthly_payload(), ensure_ascii=False))
+    assert repair.system_prompt == REPAIR_SYSTEM_PROMPT
+    assert body == {
+        "original_request": json.loads(initial.user_content),
+        "rejected_proposal": rejected,
+        "validation_findings": [finding],
+    }
+    assert replace(repair, prompt_version=initial.prompt_version, system_prompt=initial.system_prompt,
+                   user_content=initial.user_content) == initial
+    assert monthly_response_schema(repair) == monthly_response_schema(initial)
+
+
+def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v1"
+    assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
+    assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
+    for rule in (
+        "never copy evidence text verbatim",
+        "Cite only grounding_refs supplied in original_request.evidence",
+        "keep cells without a",
+        "Write user-facing plan text in value fields in natural Korean.",
+        "never translate them",
+        "must not claim legal or official status",
+    ):
+        assert rule in REPAIR_SYSTEM_PROMPT
+
+
+def test_failed_repair_fails_closed_after_exactly_two_calls(packet, snapshot):
+    fake = ScriptedMonthlyLlm(_mutated(_source_copy), _mutated(_legal_claim), monthly_payload())
+
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert exc.value.validation_codes == ("TEXT_POLICY",)
+    assert len(fake.monthly_requests) == 2
+
+
+@pytest.mark.parametrize(
+    ("responses", "model", "error"),
+    [
+        (("{not json", monthly_payload()), MONTHLY_MODEL, ProposalParseError),
+        (({**monthly_payload(), "week_axis": []}, monthly_payload()), MONTHLY_MODEL, ProposalParseError),
+        ((monthly_payload(), monthly_payload()), "other-model", ProposalRejectedError),
+    ],
+    ids=["malformed-json", "schema-mismatch", "unexpected-model"],
+)
+def test_parse_schema_and_model_failures_are_never_repaired(packet, snapshot, responses, model, error):
+    fake = ScriptedMonthlyLlm(*responses, model=model)
+
+    with pytest.raises(error):
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert len(fake.monthly_requests) == 1
+
+
+def test_a_malformed_repair_response_fails_closed_without_a_third_call(packet, snapshot):
+    fake = ScriptedMonthlyLlm(_mutated(_source_copy), "{not json", monthly_payload())
+
+    with pytest.raises(ProposalParseError):
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert len(fake.monthly_requests) == 2
+
+
+def _axis_content(body):
+    body["weeks"][0]["sections"].append(
+        {"section_key": "week_axis", "value": "1주", "unresolved": False, "reference_id": None, "grounding_refs": ["ev-1"]}
+    )
+
+
+def _unknown_ref(body):
+    body["weeks"][1]["sections"][1]["grounding_refs"] = ["invented-ref"]
+
+
+def _theme_changed(body):
+    body["month_sections"][0]["value"] = "겨울"
+
+
+@pytest.mark.parametrize(
+    ("mutations", "code"),
+    [
+        ((_axis_content,), "AXIS_CONTENT"),
+        ((_axis_content, _source_copy), "AXIS_CONTENT"),
+        ((_unknown_ref,), "UNKNOWN_GROUNDING_REF"),
+        ((_theme_changed,), "THEME_VALUE_MISMATCH"),
+    ],
+    ids=["axis", "axis-with-repairable", "unknown-ref", "theme"],
+)
+def test_invariant_findings_are_never_repaired(packet, snapshot, mutations, code):
+    body = monthly_payload()
+    for mutate in mutations:
+        mutate(body)
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert code in exc.value.validation_codes
+    assert len(fake.monthly_requests) == 1

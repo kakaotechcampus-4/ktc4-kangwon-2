@@ -22,6 +22,8 @@ from ..domain.year_month import YearMonth
 
 MONTHLY_PROMPT_VERSION = "monthly-planner-v6"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v7"
+# Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
+MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v1"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").

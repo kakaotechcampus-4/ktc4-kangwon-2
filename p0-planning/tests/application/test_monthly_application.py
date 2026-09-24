@@ -88,6 +88,8 @@ from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.contracts import (
     MONTHLY_CELL_PROMPT_VERSION,
     MONTHLY_MODEL,
+    MONTHLY_PROMPT_VERSION,
+    MONTHLY_REPAIR_PROMPT_VERSION,
     MonthlyCellPlanningRequest,
     MonthlyPlanningRequest,
     ProposalRejectedError,
@@ -137,6 +139,7 @@ def target_week_value(request: MonthlyCellPlanningRequest) -> str | None:
 def grounding_ref_for(request, section_key: str) -> str | None:
     """Pick the first supplied evidence ref allowed for this Section's grounding_class."""
     body = json.loads(request.user_content)
+    body = body.get("original_request", body)  # a repair request wraps the original
     expected = next(
         (
             section.get("grounding_class")
@@ -2051,3 +2054,88 @@ def test_unsupported_section_failure_leaves_stored_plans_unchanged():
     assert exc.value.code == "monthly_section_generation_policy_unsupported"
     assert harness.plans.save_count == saves_before
     assert harness.plans.get(stored.plan_id) is stored
+
+
+# ---------------------------------------------------------------- OD-N04 one repair attempt
+
+
+class SourceCopyMonthlyLlm(RequestAwareMonthlyLlm):
+    """Copies evidence text into the first focus cell; a repair call copies again unless `repairs`."""
+
+    def __init__(self, *, repairs: bool) -> None:
+        super().__init__()
+        self._repairs = repairs
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        response = super().generate_monthly(request)
+        if self._repairs and request.prompt_version == MONTHLY_REPAIR_PROMPT_VERSION:
+            return response
+        payload = json.loads(response.content)
+        body = json.loads(request.user_content)
+        evidence = body.get("original_request", body)["evidence"]
+        focus = next(item for item in payload["weeks"][0]["sections"] if item["section_key"] == "focus")
+        focus["value"] = next(item["text"] for item in evidence if item["grounding_ref"] == focus["grounding_refs"][0])
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), response.model, response.request_id)
+
+
+def _llm_rule_versions(plan: MonthlyPlan) -> set[str]:
+    return {
+        cell.generation.rule_version
+        for section in plan.sections
+        for cell in section.cells
+        if cell.generation.method is GenerationMethod.RULE_LLM
+    }
+
+
+def test_normal_llm_generation_calls_the_provider_once_and_records_the_planner_prompt():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan
+
+    assert len(provider.monthly_requests) == 1
+    assert _llm_rule_versions(plan) == {MONTHLY_PROMPT_VERSION}
+    assert harness.plans.save_count == 1
+
+
+def test_repaired_proposal_is_the_only_saved_draft():
+    harness = Harness()
+    provider = SourceCopyMonthlyLlm(repairs=True)
+
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan
+
+    assert [request.prompt_version for request in provider.monthly_requests] == [
+        MONTHLY_PROMPT_VERSION,
+        MONTHLY_REPAIR_PROMPT_VERSION,
+    ]
+    assert _cell(plan, "focus").value == "Context-based focus 1"
+    assert _llm_rule_versions(plan) == {MONTHLY_REPAIR_PROMPT_VERSION}
+    assert plan.status is PlanStatus.DRAFT and plan.verification_report is not None
+    assert harness.plans.save_count == 1
+    assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_failed_repair_saves_nothing_after_two_provider_calls():
+    harness = Harness()
+    provider = SourceCopyMonthlyLlm(repairs=False)
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    assert exc.value.__cause__.validation_codes == ("SOURCE_TEXT_COPY",)
+    assert len(provider.monthly_requests) == 2
+    assert harness.plans.save_count == 0
+
+
+def test_verification_execution_failure_is_not_repaired(monkeypatch):
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    monkeypatch.setattr(monthly_support, "verify_monthly_activity_ages", _fail_age_verification)
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
+
+    assert exc.value.code == "monthly_verification_failed"
+    assert len(provider.monthly_requests) == 1
+    assert harness.plans.save_count == 0

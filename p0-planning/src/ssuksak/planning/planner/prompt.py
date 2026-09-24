@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 
 from ..context.models import MonthlyContextPacket
@@ -12,9 +13,11 @@ from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from .contracts import (
     MONTHLY_PROMPT_VERSION,
+    MONTHLY_REPAIR_PROMPT_VERSION,
     MonthlyPlanningRequest,
     generation_target_sections,
 )
+from .validation import ProposalValidationIssue
 
 MONTHLY_TASK = "monthly_plan_proposal"
 
@@ -40,6 +43,28 @@ Include every key required by response_contract in every object and cell;
 for a nullable field with no value, include the key with null, never omit it.
 Return only one JSON object matching response_contract; add no fields.
 """
+
+REPAIR_SYSTEM_PROMPT = (
+    """You repair one monthly plan proposal.
+rejected_proposal matches response_contract but failed semantic validation.
+Each validation_findings entry names a failed code with its section_key and
+week_id; a null week_id is the month-level cell. For TEXT_POLICY, detail names
+the violated text rule.
+Return the complete corrected proposal as one JSON object matching
+original_request.response_contract. Fix every finding and keep cells without a
+finding unchanged.
+Write every value in your own words; never copy evidence text verbatim.
+Cite only grounding_refs supplied in original_request.evidence, following the
+grounding_class rules below.
+Value text must not claim legal or official status, must not mention safety
+education outside safety_education, and must not contain source markers,
+institution aliases, source ids or grounding_refs.
+The repaired proposal is validated again in full. The original planning rules
+follow and still apply.
+
+"""
+    + SYSTEM_PROMPT
+)
 
 
 def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
@@ -176,4 +201,31 @@ def build_monthly_planning_request(
         ),
         valid_grounding_refs=valid_grounding_refs(packet),
         packet_fingerprint=packet_fingerprint(packet),
+    )
+
+
+def build_monthly_repair_request(
+    request: MonthlyPlanningRequest,
+    rejected_content: str,
+    issues: tuple[ProposalValidationIssue, ...],
+) -> MonthlyPlanningRequest:
+    """Same targets, refs and strict schema as `request`; only the prompt contract differs."""
+    body = {
+        "original_request": json.loads(request.user_content),
+        "rejected_proposal": json.loads(rejected_content),
+        "validation_findings": [
+            {
+                "code": issue.code.value,
+                "section_key": issue.field,
+                "week_id": issue.week_id,
+                "detail": issue.detail,
+            }
+            for issue in issues
+        ],
+    }
+    return replace(
+        request,
+        prompt_version=MONTHLY_REPAIR_PROMPT_VERSION,
+        system_prompt=REPAIR_SYSTEM_PROMPT,
+        user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
     )

@@ -2,17 +2,28 @@
 
 from __future__ import annotations
 
+import logging
+
 from ..context.models import MonthlyContextPacket
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from .contracts import (
     is_compatible_monthly_model,
     MonthlyPlanningOutcome,
+    MonthlyPlanningRequest,
     ProposalRejectedError,
 )
 from .parser import parse_monthly_proposal
 from .ports import MonthlyPlanningProvider
-from .prompt import build_monthly_planning_request
+from .prompt import build_monthly_planning_request, build_monthly_repair_request
 from .validation import validate_monthly_proposal
+
+_log = logging.getLogger(__name__)
+
+# OD-N04: content findings a single repair generation may fix. Anything else
+# (model, parse, structure, placement, AXIS, theme, unknown refs) fails closed.
+REPAIRABLE_CODES = frozenset(
+    {"SOURCE_TEXT_COPY", "TEXT_POLICY", "WRONG_SOURCE_GROUNDING"}
+)
 
 
 class MonthlyPlanner:
@@ -23,11 +34,22 @@ class MonthlyPlanner:
         self, packet: MonthlyContextPacket, snapshot: TemplateSnapshot
     ) -> MonthlyPlanningOutcome:
         request = build_monthly_planning_request(packet, snapshot)
-        response = self._provider.generate_monthly(request)
-        if not is_compatible_monthly_model(response.model):
-            raise ProposalRejectedError(("UNEXPECTED_MODEL",))
-        proposal = parse_monthly_proposal(response.content)
-        validation = validate_monthly_proposal(proposal, packet, request)
+        response, proposal, validation = self._attempt(packet, request)
+        if not validation.is_valid and set(validation.codes) <= REPAIRABLE_CODES:
+            # At most one repair call: 2 provider calls in total, never 3.
+            _log.info("Monthly LLM repair attempted: %s", ",".join(validation.codes))
+            request = build_monthly_repair_request(
+                request, response.content, validation.issues
+            )
+            try:
+                response, proposal, validation = self._attempt(packet, request)
+            except Exception:
+                _log.warning("Monthly LLM repair failed before validation")
+                raise
+            if validation.is_valid:
+                _log.info("Monthly LLM repair succeeded")
+            else:
+                _log.warning("Monthly LLM repair failed: %s", ",".join(validation.codes))
         if not validation.is_valid:
             raise ProposalRejectedError(validation.codes)
         return MonthlyPlanningOutcome(
@@ -37,3 +59,10 @@ class MonthlyPlanner:
             packet_fingerprint=request.packet_fingerprint,
             request_id=response.request_id,
         )
+
+    def _attempt(self, packet: MonthlyContextPacket, request: MonthlyPlanningRequest):
+        response = self._provider.generate_monthly(request)
+        if not is_compatible_monthly_model(response.model):
+            raise ProposalRejectedError(("UNEXPECTED_MODEL",))
+        proposal = parse_monthly_proposal(response.content)
+        return response, proposal, validate_monthly_proposal(proposal, packet, request)
