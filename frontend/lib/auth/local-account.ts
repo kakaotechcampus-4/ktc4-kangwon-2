@@ -3,6 +3,7 @@ import { selectedAgesFor } from "../onboarding/types";
 import { currentAccountEmail, hasDemoSession } from "./demo-session";
 import { accountKey, readAccount, readLegacyAccount, type Account } from "./account-store";
 import { loadClassSettings } from "../onboarding/settings";
+import { login, signup } from "../api/auth";
 async function hash(password: string, salt: number[]) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -77,11 +78,19 @@ export function accessRedirect(requireOnboarding = true): string | null {
   const destination = loginDestination();
   return requireOnboarding && destination !== "/" ? destination : null;
 }
+/**
+ * 계정을 만든다.
+ *
+ * **서버가 진짜 계정을 갖는다.** 여기 남는 기록은 이름과 온보딩 진행 상태처럼 화면이
+ * 쓰는 값뿐이다 — 비밀번호 판정은 서버가 한다(docs/api-spec.md §0).
+ * 브라우저 기록만 남기던 시절의 해시는 로그인 판정에 더 이상 쓰지 않는다.
+ */
 export async function registerAccount(name: string, email: string, password: string) {
   if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 8)
     throw new Error("이름, 이메일과 8자 이상의 비밀번호를 입력해주세요.");
   if (read(email))
     throw new Error("이미 가입된 이메일이에요. 다른 이메일을 입력하거나 로그인해주세요.");
+  await signup(name.trim(), email.trim().toLowerCase(), password);
   const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)));
   const digest = await hash(password, salt);
   if (read(email)) throw new Error("이미 가입된 이메일이에요. 로그인해주세요.");
@@ -117,14 +126,21 @@ export async function verifyDevAccount(email: string, password: string) {
   window.sessionStorage.setItem("saessak.accountEmail", DEV_ACCOUNT_EMAIL);
 }
 
+/**
+ * 로그인한다. **판정은 서버가 한다.**
+ *
+ * 성공하면 토큰이 저장되고(`lib/api/auth.ts`), 이후 모든 요청에 실려 나간다.
+ * 브라우저 기록은 이름·온보딩 상태를 위해 없으면 만들어 둔다.
+ */
 export async function verifyAccount(email: string, password: string) {
-  const account = read(email);
-  if (
-    !account ||
-    account.email !== email.trim().toLowerCase() ||
-    account.hash !== (await hash(password, account.salt))
-  )
-    throw new Error("이메일 또는 비밀번호를 확인해주세요.");
+  const normalized = email.trim().toLowerCase();
+  const result = await login(normalized, password);
+  let account = read(normalized);
+  if (!account) {
+    const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)));
+    account = { name: result.user.name, email: normalized, salt, hash: await hash(password, salt) };
+    localStorage.setItem(accountKey(normalized), JSON.stringify(account));
+  }
   migrateLegacyData(account);
   window.sessionStorage.setItem("saessak.accountEmail", account.email);
 }

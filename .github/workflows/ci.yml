@@ -60,6 +60,8 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://ssuksak:ci-only-not-a-secret@localhost:5432/ssuksak
+      # alembic env.py 가 app.db 를 import 하고, 그때 Settings 가 평가된다.
+      SECRET_KEY: ci-only-not-a-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -142,6 +144,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://ssuksak:ci-only-not-a-secret@localhost:5432/ssuksak
+      SECRET_KEY: ci-only-not-a-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

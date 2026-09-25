@@ -23,10 +23,31 @@ async function body(request: Request): Promise<Record<string, unknown> | null> {
     return null;
   }
 }
+/** 목업 토큰. 서명이 없어도 된다 — 목업은 검증하지 않는다. */
+const mockAuth = (email: string, name: string) => ({
+  token: `mock.${encodeURIComponent(email)}`,
+  user: { id: 1, email, name, center_id: null },
+});
+
 export const handlers = [
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
   // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
   http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
+  // 인증 (docs/api-spec.md §0). **목업은 토큰을 검증하지 않는다** —
+  // 진짜 검증은 서버가 하고, 여기서는 화면이 토큰을 받고 저장하는 흐름만 흉내낸다.
+  http.post("*/api/auth/signup", async ({ request }) => {
+    const b = await body(request);
+    if (!b) return bad("body");
+    for (const k of ["email", "name", "password"]) if (!text(b[k])) return bad(k);
+    if (String(b.password).length < 8) return bad("password");
+    return HttpResponse.json(mockAuth(String(b.email), String(b.name)), { status: 201 });
+  }),
+  http.post("*/api/auth/login", async ({ request }) => {
+    const b = await body(request);
+    if (!b) return bad("body");
+    for (const k of ["email", "password"]) if (!text(b[k])) return bad(k);
+    return HttpResponse.json(mockAuth(String(b.email), "교사"));
+  }),
   http.post("*/api/centers", async ({ request }) => {
     console.info("[MSW] intercepted POST /api/centers");
     const s = await scenario(request, "center");

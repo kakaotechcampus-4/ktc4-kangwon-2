@@ -1,21 +1,34 @@
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.db import SessionLocal
+from app.features.auth.router import router as auth_router
 from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
 from app.features.forms.router import router as forms_router
+from app.shared.auth.dependency import current_user
 
 app = FastAPI(title="쓱싹요정 API")
 
 # docs/api-spec.md 가 계약이고 모든 엔드포인트가 /api 아래다.
 # /health · /health/ready 는 배포 판정용이라 루트에 둔다.
+#
+# **인증은 라우터 단위로 한 번에 건다.** 엔드포인트마다 붙이면 새 API 를 만들 때
+# 반드시 빠뜨리고, 빠뜨린 그 하나가 구멍이 된다.
+#
+#   auth    회원가입·로그인이라 열려 있어야 한다
+#   forms   업로드한 파일을 그대로 돌려줄 뿐 저장된 개인정보가 없다.
+#           서버 자원을 쓰므로 인증 뒤로 옮길지는 다음에 다시 본다
+#   나머지   원·반·아동. 아동 실명이 내려오므로 반드시 막는다
+_authenticated = [Depends(current_user)]
+
+app.include_router(auth_router, prefix="/api")
 app.include_router(forms_router, prefix="/api")
-app.include_router(centers_router, prefix="/api")
-app.include_router(children_router, prefix="/api")
+app.include_router(centers_router, prefix="/api", dependencies=_authenticated)
+app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:

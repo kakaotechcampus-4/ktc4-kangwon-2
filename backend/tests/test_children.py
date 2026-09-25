@@ -36,7 +36,9 @@ class _FakeSession:
 
     def get(self, model, pk):
         if model is Class:
-            return Class() if self.class_exists else None
+            # center_id 를 채운다. 라우터가 「내 원인가」를 보므로(shared/auth/ownership.py)
+            # 비워 두면 전부 404 가 된다.
+            return Class(center_id=1) if self.class_exists else None
         return next((c for c in self.children if c.id == pk), None)
 
     def scalars(self, statement):
@@ -57,15 +59,24 @@ class _FakeSession:
         pass
 
 
+@pytest.fixture(autouse=True)
+def _logged_in(teacher):
+    """이 파일은 인증을 다루지 않는다. 로그인한 교사로 고정한다 (인증은 test_auth.py)."""
+    teacher.center_id = 1
+
+
 @pytest.fixture
-def session():
-    """스텁 세션을 주입한 상태로 한 테스트를 돌린다. 오버라이드는 반드시 되돌린다."""
+def session(teacher):
+    """스텁 세션을 주입한 상태로 한 테스트를 돌린다. 오버라이드는 반드시 되돌린다.
+
+    `clear()` 를 쓰지 않는다 — teacher 가 끼워 둔 인증 오버라이드까지 지워진다.
+    """
     fake = _FakeSession()
     app.dependency_overrides[get_session] = lambda: fake
     try:
         yield fake
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_session, None)
 
 
 def test_registering_a_child_issues_a_pseudonym_from_the_pool(session):

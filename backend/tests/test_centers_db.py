@@ -8,6 +8,7 @@
 
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -16,6 +17,16 @@ from app.main import app
 from app.shared.school_year import school_year_of
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _logged_in(teacher):
+    """이 파일은 인증을 다루지 않는다. 로그인한 교사로 고정한다 (인증은 test_auth.py).
+
+    `center_id` 는 비워 둔다 — `POST /api/centers` 가 채우는 값이라 미리 넣으면
+    409(한 계정 한 원)가 난다.
+    """
+
 
 CENTER = {
     "name": "쓱싹 어린이집",
@@ -65,11 +76,29 @@ def test_없는_원의_반_목록은_404_다(db_session):
 
 
 def test_다른_원의_반이_섞이지_않는다(db_session):
-    first, second = create_center(), create_center(name="다른 어린이집")
-    client.post(f"/api/centers/{first}/classes", json=CLASSROOM)
-    client.post(f"/api/centers/{second}/classes", json={**CLASSROOM, "name": "달님반"})
+    """두 번째 원은 DB 에 직접 넣는다 — 한 계정은 원 하나라 API 로는 못 만든다."""
+    mine = create_center()
+    other = Center(
+        name="다른 어린이집",
+        director_name="박원장",
+        region_sido="충청북도",
+        region_sigungu="청주시",
+    )
+    db_session.add(other)
+    db_session.flush()
+    db_session.add(
+        Class(
+            center_id=other.id,
+            name="달님반",
+            school_year=school_year_of(datetime.now(UTC)),
+            age_min=3,
+            age_max=4,
+            teacher_name="박선생",
+        )
+    )
+    client.post(f"/api/centers/{mine}/classes", json=CLASSROOM)
 
-    items = client.get(f"/api/centers/{first}/classes").json()["items"]
+    items = client.get(f"/api/centers/{mine}/classes").json()["items"]
 
     assert [item["name"] for item in items] == ["햇님반"]
 
@@ -152,9 +181,31 @@ def test_중복으로_409_가_나도_세션이_살아_있다(db_session):
 
 
 def test_같은_이름이라도_원이_다르면_따로_만들어진다(db_session):
-    first, second = create_center(), create_center(name="다른 어린이집")
+    """`UNIQUE(center_id, name, school_year)` 가 원까지 묶는지 본다.
 
-    client.post(f"/api/centers/{first}/classes", json=CLASSROOM)
-    response = client.post(f"/api/centers/{second}/classes", json=CLASSROOM)
+    두 번째 원은 DB 에 직접 넣는다 — 한 계정은 원 하나다.
+    """
+    mine = create_center()
+    other = Center(
+        name="다른 어린이집",
+        director_name="박원장",
+        region_sido="충청북도",
+        region_sigungu="청주시",
+    )
+    db_session.add(other)
+    db_session.flush()
+    client.post(f"/api/centers/{mine}/classes", json=CLASSROOM)
 
-    assert response.status_code == 201
+    db_session.add(
+        Class(
+            center_id=other.id,
+            name="햇님반",
+            school_year=school_year_of(datetime.now(UTC)),
+            age_min=3,
+            age_max=4,
+            teacher_name="김선생",
+        )
+    )
+    db_session.flush()
+
+    assert db_session.scalars(select(Class).where(Class.name == "햇님반")).all() != []

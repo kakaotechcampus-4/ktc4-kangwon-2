@@ -20,6 +20,13 @@ from app.shared.school_year import school_year_of
 
 client = TestClient(app)
 
+
+@pytest.fixture(autouse=True)
+def _logged_in(teacher):
+    """이 파일은 인증을 다루지 않는다. 로그인한 교사로 고정한다 (인증은 test_auth.py)."""
+    teacher.center_id = 1
+
+
 VALID = {
     "name": "서충주어린이집",
     "director_name": "김원장",
@@ -136,7 +143,7 @@ def test_missing_center_returns_not_found_envelope():
     try:
         response = client.get("/api/centers/999/classes")
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_session, None)
 
     assert response.status_code == 404
     assert response.json() == {
@@ -331,7 +338,7 @@ def test_creating_a_class_under_a_missing_center_returns_not_found():
     try:
         response = client.post("/api/centers/999/classes", json=VALID_CLASS)
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_session, None)
 
     assert response.status_code == 404
     assert response.json() == {

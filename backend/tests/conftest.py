@@ -14,6 +14,10 @@ if not os.environ.get("DATABASE_URL"):
         "@localhost:5432/ssuksak' pytest"
     )
 
+# 토큰 서명 열쇠. 테스트는 값이 무엇이든 상관없다 — 서명하고 검증하는 쪽이 같으면 된다.
+# 운영은 .env 로 받는다(기본값을 두지 않는 이유는 config.py 주석 참조).
+os.environ.setdefault("SECRET_KEY", "test-only-not-a-secret")
+
 # app.* 는 위 검사 뒤에서 import 한다. 위로 올리면 Settings 가 먼저 평가돼
 # 우리 메시지 대신 pydantic 의 ValidationError 가 나온다.
 from pathlib import Path  # noqa: E402
@@ -23,8 +27,10 @@ from alembic.config import Config  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.db import engine, get_session  # noqa: E402
+from app.features.auth.models import User  # noqa: E402
 from app.features.forms import mapping  # noqa: E402
 from app.main import app  # noqa: E402
+from app.shared.auth.dependency import current_user  # noqa: E402
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -78,3 +84,27 @@ def db_session(_schema):
         session.close()
         transaction.rollback()
         connection.close()
+
+
+@pytest.fixture
+def teacher():
+    """로그인한 교사로 API 를 부른다.
+
+    **인증 자체는 `test_auth.py` 가 본다.** 다른 테스트는 원·반·아동 규칙을 보는 것이
+    목적이라 매번 가입·로그인을 거치면 무엇을 확인하는 중인지 흐려진다.
+
+    세션에 넣지 않는다 — 라우터가 `user.center_id` 에 값을 넣으면 이 객체에 남고,
+    같은 테스트 안의 다음 요청이 그 값을 본다. DB 에 쓸 필요가 없다.
+    """
+    user = User(
+        id=1,
+        email="teacher@example.com",
+        name="김선생",
+        password_hash=b"x" * 64,
+        password_salt=b"y" * 16,
+    )
+    app.dependency_overrides[current_user] = lambda: user
+    try:
+        yield user
+    finally:
+        app.dependency_overrides.pop(current_user, None)
