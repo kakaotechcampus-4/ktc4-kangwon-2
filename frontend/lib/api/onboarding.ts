@@ -88,6 +88,9 @@ export async function loadServerClasses(settings: ClassSettings) {
               className: item.name,
               teacherName: item.teacher_name,
               currentChildCount: item.child_count ?? ("" as const),
+              // 동의는 서버의 consent_confirmed_at 이 정한다. 「나중에 입력할래요」로
+              // 아동이 0명인 반도 다시 들어왔을 때 체크가 풀리지 않는다 (api-spec §2).
+              guardianConsent: item.consent_confirmed_at !== null,
             }
           : c;
       }),
@@ -119,7 +122,9 @@ export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEn
   }));
   for (let i = 0; i < items.length; i++) links.children[children[i].id] = items[i].id;
   saveLinks(links);
-  return { ...c, children, guardianConsent: items.length > 0 };
+  // 동의 여부를 아동 수로 추론하지 않는다 — 0명이어도 동의는 유지된다.
+  // 서버의 consent_confirmed_at 은 loadServerClasses 가 이미 반영했다.
+  return { ...c, children };
 }
 export async function addServerChild(c: ClassroomEntry, name: string): Promise<ChildEntry> {
   const links = readLinks(),

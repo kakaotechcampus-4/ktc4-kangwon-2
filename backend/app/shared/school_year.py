@@ -18,6 +18,10 @@ def school_year_of(moment: datetime) -> int:
     `UNIQUE(center_id, name, school_year)` 때문에 같은 반이 두 행으로 갈라진다.
 
     timezone-aware datetime 만 받는다 — naive 값의 해석은 계약에 정의돼 있지 않다.
+    `astimezone()` 은 naive 를 **실행 환경의 로컬 시각**으로 멋대로 읽는다. 서버가
+    UTC 로 도는지 KST 로 도는지에 따라 3월 1일 전후 값이 갈리므로 여기서 막는다.
     """
+    if moment.tzinfo is None:
+        raise ValueError("시각대 없는 datetime 은 학년도를 정할 수 없다")
     local = moment.astimezone(KST)
     return local.year if local.month >= 3 else local.year - 1

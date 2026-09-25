@@ -82,9 +82,13 @@ def test_반을_만들면_행이_남고_학년도를_서버가_채운다(db_sess
     assert response.status_code == 201, response.text
     row = db_session.get(Class, response.json()["id"])
     assert row.center_id == center_id
+    assert row.name == "햇님반"
     assert (row.age_min, row.age_max) == (3, 4)
+    assert row.child_count == 18
+    assert row.teacher_name == "김선생"
     # 화면에 고르는 칸이 없다. FE 가 보낸 값이 아니라 서버가 계산한 값이어야 한다.
     assert row.school_year == school_year_of(datetime.now(UTC))
+    assert response.json()["school_year"] == row.school_year
 
 
 def test_동의를_확인하면_시각이_남고_아니면_null_이다(db_session):
@@ -106,19 +110,45 @@ def test_동의를_확인하면_시각이_남고_아니면_null_이다(db_sessio
 
 
 def test_학년도가_같으면_같은_이름의_반을_두_번_못_만든다(db_session):
-    """`UNIQUE(center_id, name, school_year)` 가 실제로 막는지 본다.
+    """`UNIQUE(center_id, name, school_year)` 위반을 409 로 바꾼다 (docs/api-spec.md §2).
 
-    지금은 제약 위반이 그대로 올라와 500 이 난다. 계약은 `409 ALREADY_EXISTS` 다
-    (docs/api-spec.md §2). 라우터가 그걸 잡으면 이 테스트를 409 로 바꾼다.
+    먼저 조회해서 막지 않는다 — 조회와 INSERT 사이 틈으로 들어온 요청도 결국 여기로 온다.
     """
     center_id = create_center()
     client.post(f"/api/centers/{center_id}/classes", json=CLASSROOM)
 
+    response = client.post(f"/api/centers/{center_id}/classes", json=CLASSROOM)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "ALREADY_EXISTS",
+            "message": "같은 이름의 반이 이미 있습니다.",
+            # 학년도는 서버가 채우므로 교사가 고칠 수 있는 칸은 name 하나다.
+            "fields": ["name"],
+        }
+    }
     rows = db_session.scalars(
         select(Class).where(Class.center_id == center_id, Class.name == "햇님반")
     ).all()
-
     assert len(rows) == 1
+
+
+def test_중복으로_409_가_나도_세션이_살아_있다(db_session):
+    """제약 위반 뒤 rollback 을 빠뜨리면 그 세션의 다음 질의가 전부 죽는다.
+
+    Postgres 는 실패한 트랜잭션 안의 후속 질의를 InFailedSqlTransaction 으로 막는다.
+    한 요청이 실패한 뒤 다음 요청까지 같이 죽으면 원인을 찾기 어렵다.
+    """
+    center_id = create_center()
+    client.post(f"/api/centers/{center_id}/classes", json=CLASSROOM)
+    assert client.post(f"/api/centers/{center_id}/classes", json=CLASSROOM).status_code == 409
+
+    assert client.get(f"/api/centers/{center_id}/classes").status_code == 200
+    created = client.post(f"/api/centers/{center_id}/classes", json={**CLASSROOM, "name": "달님반"})
+
+    assert created.status_code == 201, created.text
+    assert db_session.get(Class, created.json()["id"]) is not None
 
 
 def test_같은_이름이라도_원이_다르면_따로_만들어진다(db_session):

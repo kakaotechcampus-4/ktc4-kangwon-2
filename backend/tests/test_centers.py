@@ -5,12 +5,15 @@
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.db import get_session
+from app.features.centers.router import CLASS_NAME_UNIQUE
 from app.features.centers.schemas import CenterCreate, ClassCreate
 from app.main import app
 from app.shared.school_year import school_year_of
@@ -253,6 +256,74 @@ def test_school_year_follows_the_march_boundary_in_kst(moment, expected):
 )
 def test_school_year_converts_to_kst_before_checking_march(moment, expected):
     assert school_year_of(datetime.fromisoformat(moment)) == expected
+
+
+def test_school_year_rejects_a_naive_datetime():
+    # astimezone() 은 naive 를 실행 환경의 로컬 시각으로 읽는다. 서버 시간대에 따라
+    # 3월 1일 전후 값이 갈리므로 조용히 계산하지 않고 거절한다.
+    with pytest.raises(ValueError):
+        school_year_of(datetime(2026, 3, 1, 0, 0))
+    with pytest.raises(ValueError):
+        school_year_of(datetime.fromisoformat("2026-02-28T23:59:59"))
+
+
+class _ViolatingSession:
+    """`commit()` 이 제약 위반을 내는 최소 스텁. 어떤 제약이 터졌는지만 바꿔 끼운다.
+
+    실제 위반은 `tests/test_centers_db.py` 가 진짜 Postgres 로 본다. 여기서는
+    라우터가 제약 이름을 보고 갈라놓는지만 DB 없이 확인한다.
+    """
+
+    def __init__(self, constraint: str):
+        self.constraint = constraint
+        self.rolled_back = False
+
+    def get(self, model, pk):
+        return object()
+
+    def add(self, obj):
+        pass
+
+    def commit(self):
+        error = IntegrityError("INSERT ...", None, Exception("duplicate key"))
+        error.orig.diag = SimpleNamespace(constraint_name=self.constraint)
+        raise error
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def refresh(self, obj):
+        pass
+
+
+def _post_class_with(constraint: str):
+    session = _ViolatingSession(constraint)
+    app.dependency_overrides[get_session] = lambda: session
+    try:
+        return session, client.post("/api/centers/1/classes", json=VALID_CLASS)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_duplicate_class_name_becomes_already_exists():
+    session, response = _post_class_with(CLASS_NAME_UNIQUE)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "ALREADY_EXISTS",
+            "message": "같은 이름의 반이 이미 있습니다.",
+            "fields": ["name"],
+        }
+    }
+    # 되돌리지 않으면 이 세션의 다음 질의가 전부 죽는다.
+    assert session.rolled_back is True
+
+
+def test_other_constraint_violations_are_not_disguised_as_a_duplicate_name():
+    # 연령 CHECK 같은 다른 위반까지 409 로 바꾸면 원인이 숨는다. 그대로 올려보낸다.
+    with pytest.raises(IntegrityError):
+        _post_class_with("ck_classes_age_range")
 
 
 def test_creating_a_class_under_a_missing_center_returns_not_found():

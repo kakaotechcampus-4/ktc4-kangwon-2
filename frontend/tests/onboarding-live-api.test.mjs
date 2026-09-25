@@ -295,3 +295,47 @@ test("S3: 삭제는 서버 id 로 부르고, 실패하면 목록에서 지우지
     stop();
   }
 });
+
+test("S2: 아동이 0명이어도 서버의 동의 시각으로 동의가 복원된다", async () => {
+  const stop = await start();
+  try {
+    const settings = { ...SETTINGS, classes: [classroom()] };
+    await onboarding.syncClasses(settings);
+    // 아동을 한 명도 넣지 않는다 — 「나중에 입력할래요」로 건너뛴 반이다.
+    assert.equal(read().children.length, 0);
+
+    // 새로고침해서 로컬 체크가 비어 있는 상태로 다시 불러온다.
+    const reloaded = { ...settings, classes: [classroom({ guardianConsent: false })] };
+    const next = await onboarding.loadServerClasses(reloaded);
+
+    assert.equal(next.classes[0].guardianConsent, true);
+    assert.ok(read().classes[0].consent_confirmed_at);
+  } finally {
+    stop();
+  }
+});
+
+test("S3: 동의 여부를 아동 수로 뒤집지 않는다", async () => {
+  const stop = await start();
+  try {
+    const consented = classroom();
+    const notConsented = classroom({
+      id: "local-class-2",
+      className: "달님반",
+      guardianConsent: false,
+    });
+    const settings = { ...SETTINGS, classes: [consented, notConsented] };
+    await onboarding.syncClasses(settings);
+
+    // 동의했지만 아동이 0명 — 예전에는 여기서 false 로 뒤집혔다.
+    assert.equal((await onboarding.loadServerChildren(consented)).guardianConsent, true);
+
+    // 동의가 없는 반은 아동이 있어도 true 가 되지 않는다.
+    await onboarding.addServerChild(notConsented, "가명아동");
+    const loaded = await onboarding.loadServerChildren(notConsented);
+    assert.equal(loaded.children.length, 1);
+    assert.equal(loaded.guardianConsent, false);
+  } finally {
+    stop();
+  }
+});

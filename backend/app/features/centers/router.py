@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
@@ -22,6 +23,19 @@ router = APIRouter(prefix="/centers", tags=["centers"])
 
 # Annotated 로 주입한다. 기본값 자리에서 Depends() 를 호출하면 ruff 의 B008 에 걸린다.
 DbSession = Annotated[Session, Depends(get_session)]
+
+# UNIQUE(center_id, name, school_year) 의 제약 이름. app/db.py 의 NAMING_CONVENTION 이
+# 정하고 첫 마이그레이션이 이 이름으로 만들었다.
+CLASS_NAME_UNIQUE = "uq_classes_center_id_name_school_year"
+
+
+def _violated_constraint(error: IntegrityError) -> str | None:
+    """psycopg 가 알려주는 위반 제약 이름. 알 수 없으면 None 이다.
+
+    이름을 보지 않고 IntegrityError 를 전부 「반 이름 중복」으로 바꾸면, 연령 CHECK 나
+    외래키 위반까지 409 ALREADY_EXISTS 로 나가 원인을 숨긴다.
+    """
+    return getattr(getattr(error.orig, "diag", None), "constraint_name", None)
 
 
 @router.post("", response_model=CenterResponse, status_code=status.HTTP_201_CREATED)
@@ -83,7 +97,21 @@ def create_class(
         consent_confirmed_at=now if body.consent_confirmed else None,
     )
     session.add(classroom)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as error:
+        # 되돌리지 않으면 이 세션의 다음 질의가 전부 InFailedSqlTransaction 으로 죽는다.
+        session.rollback()
+        if _violated_constraint(error) != CLASS_NAME_UNIQUE:
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ALREADY_EXISTS",
+                "message": "같은 이름의 반이 이미 있습니다.",
+                "fields": ["name"],
+            },
+        ) from error
     session.refresh(classroom)
     return classroom
 
