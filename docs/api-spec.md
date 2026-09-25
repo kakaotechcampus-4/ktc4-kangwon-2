@@ -335,8 +335,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
           "display_name": "우리 원과 친구" }
       ],
       "generation": { "method": "RULE_LLM",
-                      "rule_id": "yearly.theme.sample_derived_candidate_selection",
-                      "rule_version": "v2" }
+                      "rule_id": "annual-theme", "rule_version": "v1" }
     }
   ]
 }
