@@ -53,12 +53,22 @@ class Violation:
 
 @dataclass(frozen=True, slots=True)
 class PlannedActivity:
-    """계획안에 배치된 활동 하나. DB 행이 아니라 이미 읽어온 값이다."""
+    """계획안에 배치된 활동 하나. DB 행이 아니라 이미 읽어온 값이다.
+
+    **연령은 범위가 아니라 점의 집합이다.** 활동은 떨어진 연령을 지원할 수 있다 —
+    활동 참고자료에 강강술래와 투호놀이가 `supported_ages: [3, 5]` 로 들어 있다.
+    만 4세는 빼고 만 3세와 만 5세만 받는다는 뜻이다.
+
+    범위(`age_min`~`age_max`)로 읽으면 그 둘이 만 4세도 지원한다고 잘못 읽힌다.
+    혼합반이 실측 39% 라 만 3~5세 반이 제일 흔한데 거기서 검사가 통과해 버린다.
+
+    **반은 반대다 — 반 연령은 범위다.** 계획안 실측 369건에서 한 반이 떨어진 연령을
+    갖는 경우가 0건이다(docs/PRD.md 「연령 표기」).
+    """
 
     month: int
     title: str
-    age_min: int
-    age_max: int
+    supported_ages: frozenset[int]
 
 
 @lru_cache(maxsize=1)
@@ -122,23 +132,33 @@ def age(
 
     혼합반(3~5세 한 반)이면 활동이 세 연령을 모두 지원해야 한다. 하나라도 빠지면
     그 반의 누군가는 그 활동을 못 한다. 연령은 학년도 기준 연 나이다 — 만 나이가 아니다.
+
+    **지원 연령을 하나씩 확인한다.** 최소·최대만 보면 가운데가 비어도 통과한다 —
+    `supported_ages` 가 `{3, 5}` 인 활동이 만 3~5세 반을 다 받는다고 읽힌다.
     """
     if class_age_min > class_age_max:
         raise ValueError(f"반 연령 범위가 뒤집혔다: {class_age_min}~{class_age_max}")
 
-    return [
-        Violation(
-            rule="age",
-            severity=VIOLATION,
-            month=activity.month,
-            detail=(
-                f"「{activity.title}」은 {activity.age_min}~{activity.age_max}세 활동입니다. "
-                f"반은 {class_age_min}~{class_age_max}세입니다"
-            ),
+    needed = set(range(class_age_min, class_age_max + 1))
+    found: list[Violation] = []
+    for activity in activities:
+        missing = sorted(needed - activity.supported_ages)
+        if not missing:
+            continue
+        supported = "·".join(str(a) for a in sorted(activity.supported_ages))
+        found.append(
+            Violation(
+                rule="age",
+                severity=VIOLATION,
+                month=activity.month,
+                detail=(
+                    f"「{activity.title}」은 {supported}세 활동입니다. "
+                    f"반은 {class_age_min}~{class_age_max}세인데 "
+                    f"{'·'.join(str(a) for a in missing)}세가 빠집니다"
+                ),
+            )
         )
-        for activity in activities
-        if activity.age_min > class_age_min or activity.age_max < class_age_max
-    ]
+    return found
 
 
 def _require_approved(rules: Mapping[str, Any]) -> None:

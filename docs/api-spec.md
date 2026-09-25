@@ -163,6 +163,30 @@ Content     application/json
 
 **Response** `201` — 생성된 반. `school_year` 와 `consent_confirmed_at` 을 포함한다.
 
+**같은 이름을 다시 만들면 `409 ALREADY_EXISTS` 다.**
+
+```json
+409  { "error": { "code": "ALREADY_EXISTS",
+                  "message": "같은 이름의 반이 이미 있습니다.",
+                  "fields": ["name"] } }
+```
+
+같은 것은 `UNIQUE(center_id, name, school_year)` 가 정하고, 학년도는 서버가 채우므로
+교사가 고칠 수 있는 칸은 `name` 하나다. `fields` 에 `school_year` 를 담지 않는다.
+
+**먼저 조회해서 막지 않는다. DB 제약이 터진 것을 409 로 바꾼다.**
+조회와 INSERT 사이에 틈이 있어서, 두 요청이 겹치면 둘 다 「없다」를 보고 둘 다 넣는다.
+
+```
+요청 A  조회 → 없음
+요청 B  조회 → 없음
+요청 A  INSERT → 성공
+요청 B  INSERT → 제약 위반        조회를 해도 결국 여기로 온다
+```
+
+조회를 한 번 더 하는 것은 흔한 경우를 빨리 돌려주는 최적화일 뿐이고, **제약 위반을
+잡는 처리는 어차피 있어야 한다.** 없으면 그 틈으로 들어온 요청이 500 으로 나간다.
+
 **`GET /api/centers/{center_id}/classes`** → `{ "items": [...] }`
 
 **UI states**
@@ -935,6 +959,8 @@ support          지원에 구체적인 교사 행동과 방법이 있고 이후
 
 ```
 GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": [...] }
+       정렬은 created_at 내림차순, 같은 시각은 id 내림차순이다 — 최신이 위다.
+       FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
 POST   /api/documents/{id}/verify                                3단 LLM Judge

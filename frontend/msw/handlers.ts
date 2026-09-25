@@ -33,7 +33,8 @@ export const handlers = [
     if (s) return s;
     const b = await body(request);
     if (!b) return bad("body");
-    for (const k of ["name", "director_name", "region"]) if (!text(b[k])) return bad(k);
+    for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
+      if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
   }),
   http.post("*/api/centers/:centerId/classes", async ({ request, params }) => {
@@ -44,12 +45,11 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     for (const k of ["name", "teacher_name"]) if (!text(b[k])) return bad(k);
-    const ages = b.selected_ages;
-    if (!Array.isArray(ages) || ages.length === 0 || ages.length > 3) return bad("selected_ages");
-    if (!ages.every((a) => integer(a) && Number(a) >= 3 && Number(a) <= 5))
-      return bad("selected_ages");
-    if (new Set(ages).size !== ages.length) return bad("selected_ages");
-    if (b.child_count != null && (!integer(b.child_count) || Number(b.child_count) < 0))
+    // 연령은 범위 두 값이다 (docs/api-spec.md §2). 배열은 받지 않는다.
+    for (const k of ["age_min", "age_max"])
+      if (!integer(b[k]) || Number(b[k]) < 3 || Number(b[k]) > 5) return bad(k);
+    if (Number(b.age_min) > Number(b.age_max)) return bad("age_min");
+    if (b.child_count != null && (!integer(b.child_count) || Number(b.child_count) < 1))
       return bad("child_count");
     return HttpResponse.json(addClass(id, b as unknown as ClassInput), { status: 201 });
   }),
@@ -64,8 +64,8 @@ export const handlers = [
     if (s) return s;
     const id = Number(params.classId);
     if (!findClass(id)) return missing();
-    const items = listChildren(id);
-    return HttpResponse.json({ items, count: items.length });
+    // 목록 봉투는 { items } 하나다 — count 를 따로 주지 않는다 (§2-1).
+    return HttpResponse.json({ items: listChildren(id) });
   }),
   http.post("*/api/classes/:classId/children", async ({ request, params }) => {
     const s = await scenario(request, "child-create");

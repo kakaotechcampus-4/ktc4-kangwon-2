@@ -15,5 +15,11 @@ class Settings(BaseSettings):
     llm_mode: Literal["mock", "real"] = "mock"
     is_server: bool = False
 
+    # 트렌드 수집 (ADR-016). 없으면 그 소스만 건너뛰고 나머지는 모은다.
+    # 주 1회 작업에서만 쓴다 — 교사 요청 경로에서는 부르지 않는다.
+    youtube_api_key: str | None = None
+    naver_client_id: str | None = None
+    naver_client_secret: str | None = None
+
 
 settings = Settings()
