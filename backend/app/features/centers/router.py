@@ -17,6 +17,8 @@ from app.features.centers.schemas import (
     ClassListResponse,
     ClassResponse,
 )
+from app.shared.auth.dependency import CurrentUser
+from app.shared.auth.ownership import require_own_center
 from app.shared.school_year import school_year_of
 
 router = APIRouter(prefix="/centers", tags=["centers"])
@@ -42,12 +44,23 @@ def _violated_constraint(error: IntegrityError) -> str | None:
 def create_center(
     body: CenterCreate,
     session: DbSession,
+    user: CurrentUser,
 ) -> Center:
-    """원을 만든다.
+    """원을 만들고 이 교사의 원으로 등록한다.
 
     **중복을 막지 않는다** — 이름만으로 UNIQUE 를 걸면 다른 지역의 같은 이름 원이 막힌다
-    (docs/api-spec.md §1). 계정 단위 판단은 인증이 붙는 P1 이다.
+    (docs/api-spec.md §1). 대신 **한 계정은 원 하나다** — 두 번째 요청은 409 다.
+    바꾸려면 기존 원을 정리해야 하는데 그 규칙(반·아동·계획안 처리)이 아직 없다.
     """
+    if user.center_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ALREADY_EXISTS",
+                "message": "이미 등록한 원이 있습니다.",
+                "fields": [],
+            },
+        )
     center = Center(
         name=body.name,
         director_name=body.director_name,
@@ -55,6 +68,9 @@ def create_center(
         region_sigungu=body.region_sigungu,
     )
     session.add(center)
+    session.flush()
+    # 같은 트랜잭션에서 주인을 붙인다. 나눠 커밋하면 원은 생겼는데 주인이 없는 행이 남는다.
+    user.center_id = center.id
     session.commit()
     session.refresh(center)
     return center
@@ -69,21 +85,15 @@ def create_class(
     center_id: int,
     body: ClassCreate,
     session: DbSession,
+    user: CurrentUser,
 ) -> Class:
     """반을 만든다 (docs/api-spec.md §2).
 
     `school_year` 는 요청 시각으로 서버가 채우고, `consent_confirmed` 가 `true` 일 때만
     `consent_confirmed_at` 에 시각을 남긴다. `false` 는 검증 실패가 아니라 `null` 이다.
     """
-    if session.get(Center, center_id) is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": "원을 찾을 수 없습니다.",
-                "fields": ["center_id"],
-            },
-        )
+    # 없는 원과 남의 원을 같은 404 로 돌려준다 (shared/auth/ownership.py).
+    require_own_center(user, center_id)
 
     now = datetime.now(UTC)
     classroom = Class(
@@ -120,6 +130,7 @@ def create_class(
 def list_classes(
     center_id: int,
     session: DbSession,
+    user: CurrentUser,
 ) -> ClassListResponse:
     """원의 반 목록. 반이 없으면 `{"items": []}` 다 (docs/api-spec.md §2 의 empty state).
 
@@ -127,15 +138,8 @@ def list_classes(
     보고서에 계약 보강안으로 올린다. 빈 목록과 없는 원을 같은 응답으로 돌려주면
     FE 가 "반을 추가해 주세요" 를 잘못된 원에도 띄운다.
     """
-    if session.get(Center, center_id) is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": "원을 찾을 수 없습니다.",
-                "fields": ["center_id"],
-            },
-        )
+    # 없는 원과 남의 원을 같은 404 로 돌려준다 (shared/auth/ownership.py).
+    require_own_center(user, center_id)
 
     # 계약이 순서를 정하지 않았다. 정렬을 빼면 Postgres 가 행 순서를 보장하지 않아
     # 같은 요청이 다른 순서로 온다 — 화면 카드 순서가 흔들리지 않게 id 로 고정한다.

@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     llm_mode: Literal["mock", "real"] = "mock"
     is_server: bool = False
 
+    # 로그인 토큰 서명 열쇠. 바뀌면 발급된 토큰이 전부 무효가 된다.
+    # 기본값을 두지 않는다 — 기본값이 있으면 서버에 안 넣은 채로 배포되고,
+    # 그 열쇠는 저장소에 적혀 있으므로 누구나 토큰을 만들 수 있다.
+    secret_key: str
+
     # 트렌드 수집 (ADR-016). 없으면 그 소스만 건너뛰고 나머지는 모은다.
     # 주 1회 작업에서만 쓴다 — 교사 요청 경로에서는 부르지 않는다.
     youtube_api_key: str | None = None

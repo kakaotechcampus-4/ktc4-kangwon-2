@@ -24,12 +24,37 @@ FE   이 계약을 다시 정의하지 않는다.  MSW 목업을 이 형식으�
 ```
 Base        /api
 Content     application/json
-인증        P1(8주차)부터.  지금은 없음
+인증        Authorization: Bearer <token>.  §0 참조
 날짜        ISO 8601 (2026-03-01)
 연령        학년도 기준 연 나이 3·4·5.  만 나이 아님
 ```
 
-**인증이 붙기 전에는 실제 아동 실명을 입력하지 않는다.** 개발·데모는 가명으로 한다 (ADR-004).
+**개발·데모는 가명으로 한다** (ADR-004). 인증이 붙었어도 개발 DB 에 실제 아동 실명을
+넣지 않는다 — 로그가 남는 경로가 많다.
+
+### 0. 인증 — `POST /api/auth/signup` · `POST /api/auth/login`
+
+```json
+signup   { "email": "a@b.kr", "name": "김선생", "password": "여덟자이상" }   → 201
+login    { "email": "a@b.kr", "password": "여덟자이상" }                     → 200
+
+응답     { "token": "...", "user": { "id": 1, "email": "...", "name": "...", "center_id": null } }
+```
+
+**토큰을 `Authorization: Bearer <token>` 으로 실어 보낸다.** 12시간 뒤 만료된다.
+
+**`/api/auth/*` 와 `/api/forms/parse` 를 뺀 모든 엔드포인트가 토큰을 요구한다.**
+없거나 못 믿으면 `401 UNAUTHENTICATED` 다. **왜 401 인지는 알려주지 않는다** —
+「만료됐다」와 「서명이 틀렸다」를 구분해 주면 토큰을 맞춰 보는 쪽에 힌트가 된다.
+
+**`center_id` 가 null 이면 온보딩을 아직 안 끝냈다.** `POST /api/centers` 가 그 값을 채운다.
+**한 계정은 원 하나다** — 두 번째 요청은 `409 ALREADY_EXISTS` 다.
+
+**자기 원 것만 볼 수 있다.** 로그인만 확인하면 `class_id` 를 바꿔가며 남의 원 아동 명단을
+읽을 수 있다. **남의 것은 403 이 아니라 404 다** — 403 은 그 id 가 존재한다는 사실을 알려준다.
+
+> **「자기 반만」은 아직 아니다.** 원장도 봐야 하고 담임이 바뀌기도 해서 규칙을 먼저 정한다.
+> 지금은 원 단위까지다.
 
 **공통 에러 형식**
 
@@ -44,6 +69,7 @@ Content     application/json
 
 | code | status | 뜻 |
 |---|---|---|
+| `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다. 왜인지는 알려주지 않는다 |
 | `VALIDATION_FAILED` | 422 | 입력값이 규격 밖 |
 | `NOT_FOUND` | 404 | 대상 없음 |
 | `GATE_BLOCKED` | 409 | 층 게이트 — 아래 층이 확정 전인데 위 층을 요청 (§4 월간 · §11 주간 보육일지 · `stale` 문서 확정) |
