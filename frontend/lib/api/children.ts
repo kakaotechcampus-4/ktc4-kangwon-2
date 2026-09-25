@@ -1,7 +1,8 @@
 import { apiRequest } from "./client";
 import type { ApiChild, ChildInput } from "./types";
 export const getChildren = (classId: number) =>
-  apiRequest<{ items: ApiChild[]; count: number }>("/api/classes/" + classId + "/children");
+  // 목록 봉투는 { items } 하나다 — count 를 따로 주지 않는다 (docs/api-spec.md §2-1).
+  apiRequest<{ items: ApiChild[] }>("/api/classes/" + classId + "/children");
 export const createChild = (classId: number, data: ChildInput) =>
   apiRequest<ApiChild>("/api/classes/" + classId + "/children", {
     method: "POST",

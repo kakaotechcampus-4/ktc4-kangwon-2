@@ -1,4 +1,4 @@
-import { selectedAgesPayload } from "./age-adapter";
+import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey } from "../auth/demo-session";
 import { isApiNotFound } from "./client";
@@ -29,10 +29,12 @@ function saveLinks(v: Links) {
   );
 }
 async function syncCenterOnce(settings: ClassSettings) {
+  // 지역은 붙이지 않고 두 칸 그대로 보낸다 — 서버가 region_sido · region_sigungu 로 받는다(§1).
   const data = {
       name: settings.orgName,
       director_name: settings.directorName,
-      region: [settings.regionProvince, settings.regionDistrict].join(" ").trim(),
+      region_sido: settings.regionProvince.trim(),
+      region_sigungu: settings.regionDistrict.trim(),
     },
     signature = JSON.stringify(data),
     links = readLinks();
@@ -48,12 +50,13 @@ async function syncCenterOnce(settings: ClassSettings) {
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
     links = readLinks();
-  const ages = selectedAgesPayload(c);
   const data = {
       name: c.className,
       teacher_name: c.teacherName,
-      ...ages,
+      ...ageRangePayload(c),
       child_count: c.currentChildCount === "" ? null : c.currentChildCount,
+      // 동의 체크가 켜져 있을 때만 서버가 consent_confirmed_at 에 시각을 남긴다(§2).
+      consent_confirmed: c.guardianConsent,
     },
     signature = JSON.stringify(data);
   if (links.classes[c.id]?.signature === signature) return links.classes[c.id].id;
@@ -182,6 +185,7 @@ export function syncClass(s: ClassSettings, c: ClassroomEntry) {
       c.selectedAges,
       c.ageGroup,
       c.currentChildCount,
+      c.guardianConsent,
     ],
     () => syncClassOnce(s, c),
   );

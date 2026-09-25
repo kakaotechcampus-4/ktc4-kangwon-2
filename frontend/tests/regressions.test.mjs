@@ -179,7 +179,11 @@ test("selected ages round-trip independently, including non-contiguous ages and 
     );
     const c = loadClassSettings().classes[0];
     assert.deepEqual(c.selectedAges, ages);
-    assert.equal(ageSelectionLabel(selectedAgesFor(c)), "만 " + ages.join("·") + "세반");
+    const [low, high] = [Math.min(...ages), Math.max(...ages)];
+    assert.equal(
+      ageSelectionLabel(selectedAgesFor(c)),
+      low === high ? `만 ${low}세반` : `만 ${low}~${high}세반`,
+    );
   }
   assert.deepEqual(selectedAgesFor({ ageGroup: "mixed" }), [3, 4, 5]);
   assert.deepEqual(selectedAgesFor({ selectedAges: [], ageGroup: "mixed" }), []);

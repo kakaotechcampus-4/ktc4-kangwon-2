@@ -5,6 +5,16 @@ const nextConfig: NextConfig = {
   // 서버 번들에 함께 묶이면 .next/server/chunks/pdf.worker.mjs 경로가 깨져
   // production에서만 "Setting up fake worker failed"로 PDF 추출이 실패한다.
   serverExternalPackages: ["pdf-parse"],
+  // MSW 를 끄면 /api/... 는 갈 곳이 없다 — Next 에 centers·classes·children Route Handler 가
+  // 없어서 HTML 404 가 돌아온다. msw/README.md 가 적어 둔 대로 rewrite 로 FastAPI 에 넘긴다.
+  // 배열 반환은 afterFiles 라 파일시스템 라우트가 먼저다 — /api/assistant 와
+  // /api/templates/extract 는 지금처럼 Next Route Handler 가 처리한다.
+  // 상대경로 /api/... 를 그대로 두므로 같은 출처이고 CORS 가 생기지 않는다.
+  async rewrites() {
+    const backend = process.env.FASTAPI_BASE_URL?.replace(/\/$/, "");
+    if (!backend) return [];
+    return [{ source: "/api/:path*", destination: backend + "/api/:path*" }];
+  },
   // 레거시 계획안 주소 — 정식 주소는 /plans/annual/new(생성) · /plans/annual/{id}(결과)다.
   // /plans/create 와 /plan-generator 는 쿼리를 다뤄야 해서 각자 페이지에서 redirect() 한다.
   async redirects() {
