@@ -120,23 +120,55 @@ def test_parse_rejects_unsupported_extension(filename):
     response = client.post("/api/forms/parse", files={"file": (filename, b"data")})
 
     assert response.status_code == 400
+    assert response.json()["error"]["code"] == "UNSUPPORTED_FILE_TYPE"
+    assert response.json()["error"]["fields"] == ["file"]
 
 
 def test_parse_reports_422_for_invalid_hwpx():
     response = client.post("/api/forms/parse", files={"file": ("form.hwpx", b"not a zip")})
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert response.json()["error"]["fields"] == ["file"]
 
 
-def test_parse_reports_500_for_runtime_error(monkeypatch):
+def test_parse_errors_use_the_contract_envelope():
+    """봉투는 error 하나뿐이고 fields 는 하나여도 배열이다 (docs/api-spec.md 「공통」)."""
+    response = client.post("/api/forms/parse", files={"file": ("form.pdf", b"data")})
+
+    body = response.json()
+    assert set(body) == {"error"}
+    assert set(body["error"]) == {"code", "message", "fields"}
+    assert isinstance(body["error"]["fields"], list)
+    assert isinstance(body["error"]["message"], str) and body["error"]["message"]
+
+
+def test_parse_reports_503_when_converter_is_missing(monkeypatch):
+    """hwp5html 이 없는 것은 교사가 고칠 수 없다 — 503 이고 재시도 대상이 아니다."""
+
     def fail(_path):
-        raise RuntimeError("변환기 없음")
+        raise RuntimeError("hwp5html 없음 — pip install pyhwp six")
 
     monkeypatch.setattr(hwp_form, "extract", fail)
 
     response = client.post("/api/forms/parse", files={"file": ("form.hwp", b"data")})
 
-    assert response.status_code == 500
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+
+
+def test_parse_does_not_leak_internal_message(monkeypatch):
+    """설치 안내가 교사 화면에 뜨면 안 된다."""
+
+    def fail(_path):
+        raise RuntimeError("hwp5html 없음 — pip install pyhwp six")
+
+    monkeypatch.setattr(hwp_form, "extract", fail)
+
+    response = client.post("/api/forms/parse", files={"file": ("form.hwp", b"data")})
+
+    assert "pip install" not in response.text
+    assert "hwp5html" not in response.text
 
 
 def test_parse_hwpx_returns_mapped_labels(tmp_path):

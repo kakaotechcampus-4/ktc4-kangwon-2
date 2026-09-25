@@ -22,7 +22,11 @@ def parse_form(file: UploadFile) -> ParseResponse:
         shown = suffix or "(확장자 없음)"
         raise HTTPException(
             status_code=400,
-            detail=f"지원하지 않는 파일 형식입니다: {shown} (.hwp, .hwpx만 허용)",
+            detail={
+                "code": "UNSUPPORTED_FILE_TYPE",
+                "message": f"지원하지 않는 파일 형식입니다: {shown} (.hwp, .hwpx만 허용)",
+                "fields": ["file"],
+            },
         )
 
     # hwp_form.extract() 가 경로를 요구하므로 업로드 내용을 임시 파일에 쓴다.
@@ -33,11 +37,29 @@ def parse_form(file: UploadFile) -> ParseResponse:
         try:
             tables = hwp_form.extract(tmp_path)
         except RuntimeError as e:
-            # 서버에 hwp5html 이 설치돼 있지 않은 경우 등 환경 문제
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            # 서버에 hwp5html 이 없는 등 환경 문제. 교사가 고칠 수 없으므로 503 이고
+            # FE 는 재시도 버튼을 띄우지 않는다 (docs/api-spec.md §8).
+            # str(e) 를 싣지 않는다 — "pip install pyhwp six" 가 교사 화면에 뜬다.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "DEPENDENCY_UNAVAILABLE",
+                    "message": "지금 양식을 읽을 수 없습니다. 운영 담당자에게 문의해주세요.",
+                    "fields": [],
+                },
+            ) from e
         except Exception as e:
-            # 손상된 파일, 변환 실패 등 요청 자체의 문제
-            raise HTTPException(status_code=422, detail=f"양식 파싱에 실패했습니다: {e}") from e
+            # 손상된 파일, 변환 실패 등 요청 자체의 문제.
+            # hwp5html 이 0 이 아닌 코드로 끝난 것도 여기다 —
+            # CalledProcessError 는 RuntimeError 가 아니라서 이쪽으로 떨어진다.
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "VALIDATION_FAILED",
+                    "message": f"양식 파싱에 실패했습니다: {e}",
+                    "fields": ["file"],
+                },
+            ) from e
 
     labels = hwp_form.labels(tables)
     return ParseResponse(

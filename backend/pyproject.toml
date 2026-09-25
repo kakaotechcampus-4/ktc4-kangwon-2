@@ -10,17 +10,21 @@ dependencies = [
   "alembic",
   "psycopg[binary]",
   "pydantic-settings",
+  # EmailStr. 이메일 형식을 정규식으로 직접 짜면 반드시 틀린다.
+  "pydantic[email]",
   "pyhwp",
   "six",
   "olefile",
   "lxml",
   "python-multipart",
-  # 규칙 엔진이 resources/rules/*.yaml 을 읽는다 (ADR-005).
+  # 트렌드 수집이 외부 API 를 부른다 (ADR-016).
+  "httpx",
+  # resources/rules/*.yaml 과 resources/pseudonyms.yaml 을 읽는다.
   "pyyaml",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff==0.16.6", "pytest", "httpx"]
+dev = ["ruff==0.16.6", "pytest"]
 
 [build-system]
 requires = ["hatchling"]

@@ -1,4 +1,4 @@
-import { selectedAgesPayload } from "./age-adapter";
+import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey } from "../auth/demo-session";
 import { isApiNotFound } from "./client";
@@ -29,10 +29,12 @@ function saveLinks(v: Links) {
   );
 }
 async function syncCenterOnce(settings: ClassSettings) {
+  // 지역은 붙이지 않고 두 칸 그대로 보낸다 — 서버가 region_sido · region_sigungu 로 받는다(§1).
   const data = {
       name: settings.orgName,
       director_name: settings.directorName,
-      region: [settings.regionProvince, settings.regionDistrict].join(" ").trim(),
+      region_sido: settings.regionProvince.trim(),
+      region_sigungu: settings.regionDistrict.trim(),
     },
     signature = JSON.stringify(data),
     links = readLinks();
@@ -48,12 +50,13 @@ async function syncCenterOnce(settings: ClassSettings) {
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
     links = readLinks();
-  const ages = selectedAgesPayload(c);
   const data = {
       name: c.className,
       teacher_name: c.teacherName,
-      ...ages,
+      ...ageRangePayload(c),
       child_count: c.currentChildCount === "" ? null : c.currentChildCount,
+      // 동의 체크가 켜져 있을 때만 서버가 consent_confirmed_at 에 시각을 남긴다(§2).
+      consent_confirmed: c.guardianConsent,
     },
     signature = JSON.stringify(data);
   if (links.classes[c.id]?.signature === signature) return links.classes[c.id].id;
@@ -85,6 +88,9 @@ export async function loadServerClasses(settings: ClassSettings) {
               className: item.name,
               teacherName: item.teacher_name,
               currentChildCount: item.child_count ?? ("" as const),
+              // 동의는 서버의 consent_confirmed_at 이 정한다. 「나중에 입력할래요」로
+              // 아동이 0명인 반도 다시 들어왔을 때 체크가 풀리지 않는다 (api-spec §2).
+              guardianConsent: item.consent_confirmed_at !== null,
             }
           : c;
       }),
@@ -116,7 +122,9 @@ export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEn
   }));
   for (let i = 0; i < items.length; i++) links.children[children[i].id] = items[i].id;
   saveLinks(links);
-  return { ...c, children, guardianConsent: items.length > 0 };
+  // 동의 여부를 아동 수로 추론하지 않는다 — 0명이어도 동의는 유지된다.
+  // 서버의 consent_confirmed_at 은 loadServerClasses 가 이미 반영했다.
+  return { ...c, children };
 }
 export async function addServerChild(c: ClassroomEntry, name: string): Promise<ChildEntry> {
   const links = readLinks(),
@@ -182,6 +190,7 @@ export function syncClass(s: ClassSettings, c: ClassroomEntry) {
       c.selectedAges,
       c.ageGroup,
       c.currentChildCount,
+      c.guardianConsent,
     ],
     () => syncClassOnce(s, c),
   );

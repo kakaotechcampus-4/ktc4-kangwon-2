@@ -4,15 +4,19 @@ import { registerHooks } from "node:module";
 import { fixtureSession, fixtureKey, fixtureAccount } from "./auth-fixture.mjs";
 
 // Resolve the extensionless local import used by the Next.js TypeScript source.
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === "../auth/demo-session")
-      return nextResolve("../auth/demo-session.ts", context);
-    if (specifier === "./types" && context.parentURL?.endsWith("/onboarding/settings.ts")) {
-      return nextResolve("./types.ts", context);
-    }
-    if (specifier === "./account-store") return nextResolve("./account-store.ts", context);
-    return nextResolve(specifier, context);
+  // 상대 경로와 @/ 별칭에 .ts 를 붙여 본다. 목록을 손으로 관리하면 import 를 하나 더할
+  // 때마다 여기도 고쳐야 하고, 빠뜨리면 「모듈을 찾을 수 없다」로 끝난다.
+  resolve(spec, ctx, next) {
+    const base = spec.startsWith("@/")
+      ? new URL(`../${spec.slice(2)}.ts`, import.meta.url)
+      : spec.startsWith(".") && ctx.parentURL
+        ? new URL(spec + ".ts", ctx.parentURL)
+        : null;
+    if (base && existsSync(fileURLToPath(base))) return { url: base.href, shortCircuit: true };
+    return next(spec, ctx);
   },
 });
 const { loadClassSettings, saveClassSettings, totalChildrenFor, CLASS_SETTINGS_CHANGED } =
@@ -179,7 +183,11 @@ test("selected ages round-trip independently, including non-contiguous ages and 
     );
     const c = loadClassSettings().classes[0];
     assert.deepEqual(c.selectedAges, ages);
-    assert.equal(ageSelectionLabel(selectedAgesFor(c)), "만 " + ages.join("·") + "세반");
+    const [low, high] = [Math.min(...ages), Math.max(...ages)];
+    assert.equal(
+      ageSelectionLabel(selectedAgesFor(c)),
+      low === high ? `만 ${low}세반` : `만 ${low}~${high}세반`,
+    );
   }
   assert.deepEqual(selectedAgesFor({ ageGroup: "mixed" }), [3, 4, 5]);
   assert.deepEqual(selectedAgesFor({ selectedAges: [], ageGroup: "mixed" }), []);

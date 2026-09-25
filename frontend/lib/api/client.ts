@@ -1,3 +1,5 @@
+import { readToken } from "../auth/token";
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: unknown;
@@ -46,6 +48,10 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   if (!path.startsWith("/api/")) throw new Error("API path must start with /api/");
   const headers = new Headers(options.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  // 토큰은 여기 한 곳에서만 붙인다. 호출부마다 붙이면 새 API 를 만들 때 빠뜨린다.
+  // 서버가 아동 실명이 내려오는 API 를 전부 막고 있다(docs/api-spec.md 「인증」).
+  const token = typeof window === "undefined" ? null : readToken();
+  if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(path, { ...options, headers });
   const text = await response.text();
   const method = options.method ?? "GET";

@@ -115,6 +115,23 @@ export function selectedAgesFor(value: {
       ? [Number(value.ageGroup) as SelectedAge]
       : [];
 }
+/**
+ * 반 연령 표시. **범위로 적는다** (docs/api-spec.md §2).
+ *
+ *     [3]        만 3세반
+ *     [3, 4]     만 3~4세반
+ *     [3, 5]     만 3~5세반      만 4세를 빼고 골라도 범위로 적는다
+ *
+ * 서버에는 `age_min`·`age_max` 범위로 저장된다(`lib/api/age-adapter.ts`).
+ * 「만 3·5세반」으로 쓰면 교사가 본 것과 저장된 것이 달라진다.
+ *
+ * **떨어진 연령을 가진 반은 실무에 없다** — 계획안 실측 369건에서 한 반이 떨어진
+ * 연령을 갖는 경우가 0건이다(docs/PRD.md 「연령 표기」). 교사가 만4 를 빼고 골랐다면
+ * 오조작이므로 범위로 되돌려 보여주는 편이 낫다.
+ */
 export function ageSelectionLabel(ages: readonly SelectedAge[]): string {
-  return ages.length ? "만 " + ages.join("·") + "세반" : "연령 미선택";
+  if (!ages.length) return "연령 미선택";
+  const low = Math.min(...ages),
+    high = Math.max(...ages);
+  return low === high ? `만 ${low}세반` : `만 ${low}~${high}세반`;
 }
