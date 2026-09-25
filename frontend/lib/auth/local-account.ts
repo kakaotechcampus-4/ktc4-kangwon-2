@@ -1,24 +1,15 @@
 import { selectedAgesFor } from "../onboarding/types";
-// 브라우저에 저장하는 계정. 실제 서비스 인증은 서버 구현이 필요하다.
+// 브라우저에 남기는 계정 기록. **판정은 서버가 한다**(docs/api-spec.md §0).
+// 여기 남는 것은 이름과 온보딩 진행 상태처럼 화면이 쓰는 값뿐이다.
+//
+// 예전에는 `crypto.subtle` 로 비밀번호를 해싱해 이 안에 두고 로그인 판정에 썼다.
+// `crypto.subtle` 은 **https 나 localhost 에서만 존재한다** — http 로 배포된 서버에서
+// 회원가입이 `Cannot read properties of undefined (reading 'importKey')` 로 죽었다
+// (PR #52 멘토 리뷰). 서버가 비밀번호를 들게 되면서 그 해싱 자체가 필요 없어졌다.
 import { currentAccountEmail, hasDemoSession } from "./demo-session";
 import { accountKey, readAccount, readLegacyAccount, type Account } from "./account-store";
 import { loadClassSettings } from "../onboarding/settings";
 import { login, signup } from "../api/auth";
-async function hash(password: string, salt: number[]) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt: new Uint8Array(salt), iterations: 210000 },
-    key,
-    256,
-  );
-  return Array.from(new Uint8Array(bits), (b) => b.toString(16).padStart(2, "0")).join("");
-}
 function read(email = currentAccountEmail()): Account | null {
   return email ? readAccount(email) : null;
 }
@@ -91,12 +82,9 @@ export async function registerAccount(name: string, email: string, password: str
   if (read(email))
     throw new Error("이미 가입된 이메일이에요. 다른 이메일을 입력하거나 로그인해주세요.");
   await signup(name.trim(), email.trim().toLowerCase(), password);
-  const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)));
-  const digest = await hash(password, salt);
-  if (read(email)) throw new Error("이미 가입된 이메일이에요. 로그인해주세요.");
   localStorage.setItem(
     accountKey(email),
-    JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), salt, hash: digest }),
+    JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase() }),
   );
 }
 /**
@@ -116,11 +104,9 @@ export function isDevLogin(email: string, password: string): boolean {
 export async function verifyDevAccount(email: string, password: string) {
   if (!isDevLogin(email, password)) throw new Error("이메일 또는 비밀번호를 확인해주세요.");
   if (!read(DEV_ACCOUNT_EMAIL)) {
-    const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)));
-    const digest = await hash(DEV_PASSWORD, salt);
     localStorage.setItem(
       accountKey(DEV_ACCOUNT_EMAIL),
-      JSON.stringify({ name: "개발용 계정", email: DEV_ACCOUNT_EMAIL, salt, hash: digest }),
+      JSON.stringify({ name: "개발용 계정", email: DEV_ACCOUNT_EMAIL }),
     );
   }
   window.sessionStorage.setItem("saessak.accountEmail", DEV_ACCOUNT_EMAIL);
@@ -137,8 +123,7 @@ export async function verifyAccount(email: string, password: string) {
   const result = await login(normalized, password);
   let account = read(normalized);
   if (!account) {
-    const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)));
-    account = { name: result.user.name, email: normalized, salt, hash: await hash(password, salt) };
+    account = { name: result.user.name, email: normalized };
     localStorage.setItem(accountKey(normalized), JSON.stringify(account));
   }
   migrateLegacyData(account);
