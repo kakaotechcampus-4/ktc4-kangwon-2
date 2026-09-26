@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
+from ..domain.monthly_template import DisplayMode
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
@@ -18,11 +19,10 @@ from ..domain.provenance import (
 )
 from ..planner.cell_service import MonthlyCellPlanner
 from ..planner.contracts import (
-    FOCUS_SECTION_KEY,
     MONTHLY_CELL_PROMPT_VERSION,
+    FOCUS_SECTION_KEY,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
-    ProposedActivityOrigin,
 )
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
@@ -205,7 +205,8 @@ class RegenerateMonthlyPlanItem:
         try:
             outcome = self._cell_planner.plan(
                 packet,
-                target_week_id=cell.week_id.value,
+                plan.template_snapshot,
+                target_week_id=cell.week_id,
                 target_section_key=cell.section_key,
                 month_snapshot=snapshot,
             )
@@ -214,31 +215,29 @@ class RegenerateMonthlyPlanItem:
                 "monthly_llm_cell_planning_failed",
                 "Monthly Cell planning failed before the Plan was saved",
             ) from exc
-        proposal = outcome.proposal
+        proposal = outcome.proposal.section
         parent_evidence = tuple(
             source
             for source in theme.evidence
             if source.source_type is EvidenceSourceType.PARENT_PLAN
         )
-        if proposal.activity_origin is ProposedActivityOrigin.REFERENCE:
-            evidence = deduplicate_evidence(
-                (
-                    *parent_evidence,
-                    EvidenceSource(
-                        EvidenceSourceType.ACTIVITY_REFERENCE,
-                        proposal.reference_activity_id or "",
-                        catalog.catalog_version if catalog is not None else None,
-                        display_name=proposal.value,
-                    ),
-                )
+        reference_evidence: tuple[EvidenceSource, ...] = ()
+        if proposal.reference_id is not None:
+            reference_evidence = (
+                EvidenceSource(
+                    EvidenceSourceType.ACTIVITY_REFERENCE,
+                    proposal.reference_id,
+                    catalog.catalog_version if catalog is not None else None,
+                    display_name=proposal.value,
+                ),
             )
-        else:
-            evidence = deduplicate_evidence(
-                (
-                    *parent_evidence,
-                    *packet_evidence(packet, proposal.grounding_refs),
-                )
+        evidence = deduplicate_evidence(
+            (
+                *parent_evidence,
+                *reference_evidence,
+                *packet_evidence(packet, proposal.grounding_refs),
             )
+        )
         generation = GenerationMethodDetail(
             GenerationMethod.RULE_LLM,
             LLM_INTEGRATION_RULE_ID,
@@ -308,22 +307,27 @@ def _activity_reference_id(evidence) -> str | None:
     )
 
 
-def _month_snapshot(plan: MonthlyPlan) -> tuple[MonthlyCellSnapshot, ...]:
-    focus = plan.section(FOCUS_SECTION_KEY)
-    outdoor = plan.section(OUTDOOR_SECTION_KEY)
+def _month_snapshot(
+    plan: MonthlyPlan,
+) -> tuple[MonthlyCellSnapshot, ...]:
+    weekly_sections = tuple(
+        section
+        for section in plan.sections
+        if section.display_mode is DisplayMode.WEEKLY_CELLS
+    )
     return tuple(
         MonthlyCellSnapshot(
-            period.week_id.value,
-            (
-                focus.cell_for_week(period.week_id).value
-                if focus is not None and focus.cell_for_week(period.week_id) is not None
-                else ""
-            ),
-            (
-                outdoor.cell_for_week(period.week_id).value
-                if outdoor is not None
-                and outdoor.cell_for_week(period.week_id) is not None
-                else ""
+            period.week_id,
+            tuple(
+                (
+                    section.section_key,
+                    (
+                        section.cell_for_week(period.week_id).value
+                        if section.cell_for_week(period.week_id) is not None
+                        else ""
+                    ),
+                )
+                for section in weekly_sections
             ),
         )
         for period in plan.active_week_periods
