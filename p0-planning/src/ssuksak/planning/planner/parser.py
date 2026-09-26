@@ -82,7 +82,7 @@ def _section_branch(
         reference_sections is not None and section_key not in reference_sections
     ):
         # No supplied Reference catalog for this section: reference_id is null.
-        # Safety grounding goes in grounding_refs. The cell schema passes None (unchanged).
+        # Safety grounding goes in grounding_refs.
         properties["reference_id"] = {"type": "null"}
     return _object_schema(properties)
 
@@ -134,7 +134,9 @@ def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
         {
             "target_month": _STRING,
             "target_week_id": _NULLABLE_STRING,
-            "section": _section_schema({request.target_section_key}, request),
+            "section": _section_schema(
+                {request.target_section_key}, request, request.reference_section_keys
+            ),
         }
     )
 

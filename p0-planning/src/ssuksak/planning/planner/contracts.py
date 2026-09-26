@@ -78,6 +78,11 @@ GOALS_SECTION_KEY = "goals"
 # (Theme Reference). outdoor_play: reference_activities (Activity Catalog; every
 # catalog item's placement_slots is outdoor_play).
 REFERENCE_CAPABLE_SECTION_KEYS = frozenset({"theme", OUTDOOR_SECTION_KEY})
+
+
+def reference_section_keys_for(reference_labels: tuple[tuple[str, str], ...]) -> frozenset[str]:
+    """REFERENCE_CAPABLE_SECTION_KEYS whose catalog a request actually supplies."""
+    return REFERENCE_CAPABLE_SECTION_KEYS - (frozenset() if reference_labels else {OUTDOOR_SECTION_KEY})
 LLM_CELL_SECTION_KEYS = frozenset(
     {FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY, BASIC_HABIT_SECTION_KEY, GOALS_SECTION_KEY}
 )
@@ -324,8 +329,7 @@ class MonthlyPlanningRequest:
 
     @property
     def reference_section_keys(self) -> frozenset[str]:
-        """REFERENCE_CAPABLE_SECTION_KEYS whose catalog this request actually supplies."""
-        return REFERENCE_CAPABLE_SECTION_KEYS - (frozenset() if self.reference_labels else {OUTDOOR_SECTION_KEY})
+        return reference_section_keys_for(self.reference_labels)
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,6 +446,10 @@ class MonthlyCellPlanningRequest:
     @property
     def reference_label_map(self) -> dict[str, str]:
         return dict(self.reference_labels)
+
+    @property
+    def reference_section_keys(self) -> frozenset[str]:
+        return reference_section_keys_for(self.reference_labels)
 
 
 @dataclass(frozen=True, slots=True)

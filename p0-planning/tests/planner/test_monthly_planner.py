@@ -1628,13 +1628,17 @@ def test_outdoor_play_without_a_supplied_catalog_is_null_only(packet, snapshot):
     assert _week_branches(monthly_response_schema(request))["outdoor_play"]["properties"]["reference_id"] == {"type": "null"}
 
 
-def test_the_cell_schema_keeps_its_contract(packet, snapshot):
+@pytest.mark.parametrize(
+    ("section", "expected"),
+    [(FOCUS_SECTION_KEY, {"type": "null"}), (OUTDOOR_SECTION_KEY, {"type": ["string", "null"]})],
+)
+def test_the_cell_schema_follows_the_reference_capability(packet, snapshot, section, expected):
     request = build_monthly_cell_request(
-        packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=FOCUS_SECTION_KEY,
+        packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=section,
         month_snapshot=snapshots(),
     )
 
-    assert cell_response_schema(request)["properties"]["section"]["properties"]["reference_id"] == {"type": ["string", "null"]}
+    assert cell_response_schema(request)["properties"]["section"]["properties"]["reference_id"] == expected
 
 
 @pytest.mark.parametrize(
@@ -1806,3 +1810,73 @@ def test_reordered_or_duplicate_refs_are_no_mutation():
     patch["weeks"][1]["sections"][1]["grounding_refs"] = ["ev-1", "ev-1"]
 
     assert merge_authorized_repair(json.dumps(base), json.dumps(patch), ())[1] == ()
+
+
+
+# ---------------------------------------------------------------- M1: cell regeneration reference capability
+
+
+def _capability_case(packet, snapshot, section, week):
+    packet = replace(_with_goals_evidence(packet), section_evidence=_with_goals_evidence(packet).section_evidence + (
+        _section_item("ev-habit", SemanticClass.BASIC_HABIT, "기본생활습관"),))
+    snapshot = _with_goals_and_basic_habit(snapshot)
+    request = build_monthly_cell_request(
+        packet, snapshot, target_week_id=week, target_section_key=section, month_snapshot=snapshots(),
+    )
+    payload = {"target_month": "2026-09", "target_week_id": None if week is None else week.value,
+               "section": {"section_key": section, "value": "바람개비 놀이", "unresolved": False,
+                           "reference_id": "act-1", "grounding_refs": []}}
+    return packet, request, payload
+
+
+@pytest.mark.parametrize(
+    ("section", "week"),
+    [(FOCUS_SECTION_KEY, WEEK_1), (GOALS_SECTION_KEY, None), (BASIC_HABIT_SECTION_KEY, WEEK_1)],
+    ids=["C1-focus", "C2-goals", "C3-basic-habit"],
+)
+def test_cell_regeneration_rejects_an_activity_reference_outside_catalog_sections(packet, snapshot, section, week):
+    packet, request, payload = _capability_case(packet, snapshot, section, week)
+    result = validate_monthly_cell_proposal(parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)),
+                                            packet, request)
+
+    assert request.reference_section_keys == {"theme", "outdoor_play"}
+    assert cell_response_schema(request)["properties"]["section"]["properties"]["reference_id"] == {"type": "null"}
+    assert [(i.code.value, i.detail) for i in result.issues if i.field == "reference_id"] == [
+        ("UNKNOWN_REFERENCE_ID", "REFERENCE_FORBIDDEN_FOR_SECTION")]
+
+
+def test_a_forbidden_cell_reference_fails_closed_without_a_retry(packet, snapshot):
+    packet, request, payload = _capability_case(packet, snapshot, FOCUS_SECTION_KEY, WEEK_1)
+
+    class OneShot:
+        def __init__(self):
+            self.cell_requests = []
+
+        def generate_cell(self, request):
+            self.cell_requests.append(request)
+            return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL)
+
+    provider = OneShot()
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyCellPlanner(provider).plan(
+            packet, _with_goals_and_basic_habit(snapshot), target_week_id=WEEK_1,
+            target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots(),
+        )
+    assert "UNKNOWN_REFERENCE_ID" in exc.value.validation_codes and len(provider.cell_requests) == 1
+
+
+def test_an_outdoor_cell_keeps_its_catalog_reference_contract(packet, snapshot):  # C5
+    packet, request, payload = _capability_case(packet, snapshot, OUTDOOR_SECTION_KEY, WEEK_1)
+
+    assert validate_monthly_cell_proposal(parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)),
+                                          packet, request).is_valid
+
+
+def test_without_a_catalog_an_outdoor_cell_reference_is_forbidden_too(packet, snapshot):
+    packet, request, payload = _capability_case(replace(packet, reference_activities=()), snapshot,
+                                                OUTDOOR_SECTION_KEY, WEEK_1)
+    result = validate_monthly_cell_proposal(parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)),
+                                            packet, request)
+
+    assert request.reference_section_keys == {"theme"}
+    assert ("UNKNOWN_REFERENCE_ID", "REFERENCE_FORBIDDEN_FOR_SECTION") in [(i.code.value, i.detail) for i in result.issues]

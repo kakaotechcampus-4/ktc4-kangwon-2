@@ -109,7 +109,10 @@ def validate_monthly_cell_proposal(
     reference_labels = request.reference_label_map
     if value.reference_id is not None:
         expected = reference_labels.get(value.reference_id)
-        if expected is None:
+        if request.target_section_key not in request.reference_section_keys:
+            # Same capability contract as the full-month proposal.
+            fail(CellValidationCode.UNKNOWN_REFERENCE_ID, "reference_id", "REFERENCE_FORBIDDEN_FOR_SECTION")
+        elif expected is None:
             fail(CellValidationCode.UNKNOWN_REFERENCE_ID, "reference_id")
         elif normalize_visible_text(value.value) != normalize_visible_text(expected):
             fail(CellValidationCode.REFERENCE_VALUE_MISMATCH, "value")
