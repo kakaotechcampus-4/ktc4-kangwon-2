@@ -22,6 +22,19 @@ class SectionRole(str, Enum):
     AXIS = "AXIS"
 
 
+class SectionCategory(str, Enum):
+    DEFAULT = "DEFAULT"
+    OPTIONAL = "OPTIONAL"
+    TEMPLATE_SPECIFIC = "TEMPLATE_SPECIFIC"
+
+
+class SemanticVariant(str, Enum):
+    SUBTHEME = "SUBTHEME"
+    EXPECTED_PLAY = "EXPECTED_PLAY"
+    WEEKLY_THEME = "WEEKLY_THEME"
+    NEUTRAL = "NEUTRAL"
+
+
 MAX_HIERARCHY_DEPTH = 2
 
 
@@ -52,6 +65,12 @@ class TemplateSection:
     parent_section_key: str | None = None
     source_label: str | None = None
     depth: int = 1
+    display_label: str | None = None
+    order: int = 0
+    semantic_variant: SemanticVariant | None = None
+    category: SectionCategory = SectionCategory.TEMPLATE_SPECIFIC
+    required_for_generation: bool = False
+    visible: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.section_key, str) or not self.section_key.strip():
@@ -98,6 +117,48 @@ class TemplateSection:
         ):
             raise InvalidDomainValueError(
                 "TemplateSection.source_label must be non-blank when set"
+            )
+        if self.display_label is not None and (
+            not isinstance(self.display_label, str) or not self.display_label.strip()
+        ):
+            raise InvalidDomainValueError(
+                "TemplateSection.display_label must be non-blank when set"
+            )
+        if type(self.order) is not int or self.order < 0:
+            raise InvalidDomainValueError(
+                "TemplateSection.order must be a non-negative integer"
+            )
+        if self.semantic_variant is not None and not isinstance(
+            self.semantic_variant, SemanticVariant
+        ):
+            raise InvalidDomainValueError(
+                "TemplateSection.semantic_variant is invalid"
+            )
+        if self.section_key == "focus" and self.semantic_variant is None:
+            raise InvalidDomainValueError(
+                "The focus TemplateSection requires semantic_variant"
+            )
+        if self.section_key != "focus" and self.semantic_variant is not None:
+            raise InvalidDomainValueError(
+                "semantic_variant is supported only by the focus TemplateSection"
+            )
+        if not isinstance(self.category, SectionCategory):
+            raise InvalidDomainValueError("TemplateSection.category is invalid")
+        if type(self.required_for_generation) is not bool:
+            raise InvalidDomainValueError(
+                "TemplateSection.required_for_generation must be a boolean"
+            )
+        if type(self.visible) is not bool:
+            raise InvalidDomainValueError(
+                "TemplateSection.visible must be a boolean"
+            )
+        if self.visible and self.display_label is None:
+            raise InvalidDomainValueError(
+                "A visible TemplateSection requires display_label"
+            )
+        if self.required_for_generation and not self.activated:
+            raise InvalidDomainValueError(
+                "A required TemplateSection must be activated"
             )
 
 
@@ -152,6 +213,11 @@ class MonthlyTemplate:
                 "MonthlyTemplate contains duplicate section_key values"
             )
         key_set = set(keys)
+        orders = tuple(section.order for section in self.sections)
+        if len(set(orders)) != len(orders):
+            raise InvalidDomainValueError(
+                "MonthlyTemplate contains duplicate TemplateSection order values"
+            )
         for section in self.sections:
             if (
                 section.parent_section_key is not None
@@ -169,11 +235,21 @@ class MonthlyTemplate:
 
     @property
     def activated_sections(self) -> tuple[TemplateSection, ...]:
-        return tuple(section for section in self.sections if section.activated)
+        return tuple(
+            sorted(
+                (section for section in self.sections if section.activated),
+                key=lambda section: section.order,
+            )
+        )
 
     @property
     def inactive_sections(self) -> tuple[TemplateSection, ...]:
-        return tuple(section for section in self.sections if not section.activated)
+        return tuple(
+            sorted(
+                (section for section in self.sections if not section.activated),
+                key=lambda section: section.order,
+            )
+        )
 
     @property
     def is_active(self) -> bool:

@@ -10,7 +10,7 @@ from ..domain.activity_reference import ActivityCatalog
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_constraint import ConstraintAssessment
 from ..domain.monthly_plan import MonthlyPlan
-from ..domain.monthly_template import MonthlyTemplate, TemplateRef
+from ..domain.monthly_template_profile import TemplateProfile, TemplateProfileRef
 from ..domain.provenance import EvidenceSource, EvidenceSourceType
 from ..domain.safety_rule import SafetyLegalRule
 from ..domain.week_period import WeekPeriod
@@ -22,11 +22,11 @@ from .monthly_dto import ActivityCatalogSelector, SafetyRuleSelector
 from .monthly_errors import MonthlyApplicationError
 from .ports import (
     ActivityReferenceRepository,
-    MonthlyTemplateRepository,
     OptionalContextProvider,
     OptionalContextResult,
     PlanRepository,
     SafetyLegalRuleRepository,
+    TemplateProfileRepository,
 )
 from .yearly_support import fetch_optional_context
 
@@ -67,23 +67,18 @@ def require_item_id(item_id: object) -> ItemId:
     return item_id
 
 
-def load_template(
-    repository: MonthlyTemplateRepository, selector: TemplateRef
-) -> MonthlyTemplate:
-    template = repository.get_template(
-        selector.template_id, selector.template_version
+def load_template_profile(
+    repository: TemplateProfileRepository, selector: TemplateProfileRef
+) -> TemplateProfile:
+    profile = repository.get_profile(
+        selector.profile_id, selector.profile_version
     )
-    if template is None:
+    if profile is None:
         raise MonthlyApplicationError(
-            "monthly_template_not_found",
-            f"Monthly Template not found: {selector}",
+            "monthly_template_profile_not_found",
+            f"Monthly Template Profile not found: {selector}",
         )
-    if not template.is_active:
-        raise MonthlyApplicationError(
-            "monthly_template_not_approved",
-            f"Monthly Template is not HUMAN_APPROVED: {selector}",
-        )
-    return template
+    return profile
 
 
 def load_safety_rule(

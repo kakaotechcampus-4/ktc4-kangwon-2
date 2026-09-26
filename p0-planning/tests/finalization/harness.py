@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 import json
 
@@ -8,6 +9,9 @@ from ssuksak.adapters.deterministic_theme_text_generator import (
     DeterministicThemeTextGenerator,
 )
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.in_memory_template_profile_repository import (
+    InMemoryTemplateProfileRepository,
+)
 from ssuksak.adapters.institution_evidence_repository import (
     JsonInstitutionEvidenceRepository,
 )
@@ -52,7 +56,11 @@ from ssuksak.planning.application.yearly_dto import (
 from ssuksak.planning.context.builder import ContextPacketBuilder
 from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ssuksak.planning.domain.monthly_template import TemplateRef
+from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.monthly_template_profile import (
+    TemplateProfile,
+    TemplateProfileRef,
+)
 from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.domain.yearly_plan import YearlyPlan
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
@@ -79,11 +87,50 @@ RULE_TEMPLATE = TemplateRef(
 LLM_TEMPLATE = TemplateRef(
     "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
 )
+RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
+LLM_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
 SAFETY_RULE = SafetyRuleSelector(
     "child-welfare-act-decree-annex6-2022-06-21"
 )
 
 _EVIDENCE_REPOSITORY = JsonInstitutionEvidenceRepository()
+
+
+def _profile(
+    template_repository: JsonMonthlyTemplateRepository,
+    template_ref: TemplateRef,
+    profile_ref: TemplateProfileRef,
+) -> TemplateProfile:
+    template = template_repository.get_template(
+        template_ref.template_id, template_ref.template_version
+    )
+    assert template is not None
+    labels = {
+        "theme": "Theme",
+        "week_axis": "Week",
+        "outdoor_play": "Outdoor play",
+        "safety_education": "Safety education",
+        "focus": "Subtheme",
+    }
+    return TemplateProfile(
+        profile_ref=profile_ref,
+        institution_ref="daycare_001",
+        classroom_ref="classroom_001",
+        base_template_ref=template.template_ref,
+        selected_optional_keys=("focus",) if template.section("focus").activated else (),
+        sections=tuple(
+            replace(
+                section,
+                display_label=labels[section.section_key],
+                semantic_variant=(
+                    SemanticVariant.SUBTHEME
+                    if section.section_key == "focus"
+                    else None
+                ),
+            )
+            for section in template.activated_sections
+        ),
+    )
 
 
 class RequestAwareMonthlyLlm:
@@ -166,6 +213,12 @@ class PlanningHarness:
         self.yearly_ids = DeterministicIdGenerator("yearly-final")
         self.monthly_ids = DeterministicIdGenerator("monthly-final")
         self.templates = JsonMonthlyTemplateRepository()
+        self.profiles = InMemoryTemplateProfileRepository(
+            (
+                _profile(self.templates, RULE_TEMPLATE, RULE_PROFILE),
+                _profile(self.templates, LLM_TEMPLATE, LLM_PROFILE),
+            )
+        )
         self.safety = JsonSafetyLegalRuleRepository()
         self.activities = JsonActivityReferenceRepository()
         self.context = MonthlyContextPipeline(
@@ -227,10 +280,10 @@ class PlanningHarness:
         parent: YearlyPlan,
         mode: MonthlyGenerationMode,
     ):
-        template = (
-            RULE_TEMPLATE
+        profile = (
+            RULE_PROFILE
             if mode is MonthlyGenerationMode.RULE_ONLY
-            else LLM_TEMPLATE
+            else LLM_PROFILE
         )
         planner = (
             None
@@ -240,7 +293,7 @@ class PlanningHarness:
         return GenerateMonthlyPlan(
             parent_plan_repository=self.yearly_plans,
             plan_repository=self.monthly_plans,
-            template_repository=self.templates,
+            profile_repository=self.profiles,
             safety_repository=self.safety,
             activity_repository=self.activities,
             clock=self.clock,
@@ -252,7 +305,7 @@ class PlanningHarness:
                 parent_yearly_plan_id=parent.plan_id,
                 target_month=TARGET_MONTH,
                 daycare_ref="daycare_001",
-                template_ref=template,
+                profile_ref=profile,
                 safety_rule=SAFETY_RULE,
                 generation_mode=mode,
                 activity_catalog=ACTIVITY_CATALOG,

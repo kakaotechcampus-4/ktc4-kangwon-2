@@ -7,7 +7,9 @@ from ..planning.domain.monthly_template import (
     DisplayMode,
     EmptyValuePolicy,
     MonthlyTemplate,
+    SectionCategory,
     SectionRole,
+    SemanticVariant,
     TemplateRef,
     TemplateSection,
 )
@@ -15,6 +17,14 @@ from ..planning.domain.monthly_template import (
 
 class MonthlyTemplateSchemaError(ValueError):
     pass
+
+
+_DEFAULT_SECTION_KEYS = frozenset(
+    {"theme", "week_axis", "outdoor_play", "safety_education"}
+)
+_OPTIONAL_SECTION_KEYS = frozenset(
+    {"focus", "goals", "habits", "event_schedule", "drill"}
+)
 
 
 def _object(value: object, path: str) -> dict[str, object]:
@@ -41,6 +51,14 @@ def _boolean(value: object, path: str) -> bool:
     return value
 
 
+def _legacy_category(section_key: str) -> SectionCategory:
+    if section_key in _DEFAULT_SECTION_KEYS:
+        return SectionCategory.DEFAULT
+    if section_key in _OPTIONAL_SECTION_KEYS:
+        return SectionCategory.OPTIONAL
+    return SectionCategory.TEMPLATE_SPECIFIC
+
+
 def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
     root = _object(payload, "monthly_template")
     review = _object(_required(root, "review", "monthly_template"), "monthly_template.review")
@@ -61,10 +79,26 @@ def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
             path = f"monthly_template.sections[{index}]"
             item = _object(raw, path)
             role = SectionRole(_text(_required(item, "role", path), f"{path}.role"))
+            section_key = _text(
+                _required(item, "semantic_key", path), f"{path}.semantic_key"
+            )
             display = item.get("display_mode")
             policy = item.get("empty_value_policy")
+            category = SectionCategory(
+                item.get("category", _legacy_category(section_key).value)
+            )
+            visible = _boolean(item.get("visible", True), f"{path}.visible")
+            display_label_value = item.get("display_label", section_key)
+            display_label = (
+                None
+                if display_label_value is None
+                else _text(display_label_value, f"{path}.display_label")
+            )
+            semantic_value = item.get("semantic_variant")
+            if semantic_value is None and section_key == "focus":
+                semantic_value = SemanticVariant.NEUTRAL.value
             section = TemplateSection(
-                section_key=_text(_required(item, "semantic_key", path), f"{path}.semantic_key"),
+                section_key=section_key,
                 role=role,
                 activated=_boolean(_required(item, "activated", path), f"{path}.activated"),
                 display_mode=None if display is None else DisplayMode(display),
@@ -74,6 +108,22 @@ def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
                 # a concrete institution/template instance.
                 source_label=item.get("source_label"),
                 depth=_required(item, "depth", path),
+                display_label=display_label,
+                order=item.get("order", index),
+                semantic_variant=(
+                    None
+                    if semantic_value is None
+                    else SemanticVariant(semantic_value)
+                ),
+                category=category,
+                required_for_generation=_boolean(
+                    item.get(
+                        "required_for_generation",
+                        category is SectionCategory.DEFAULT,
+                    ),
+                    f"{path}.required_for_generation",
+                ),
+                visible=visible,
             )
             if section.activated and role is SectionRole.CONTENT and section.display_mode is None:
                 raise MonthlyTemplateSchemaError(f"{path} requires explicit display_mode")
