@@ -963,9 +963,9 @@ def test_teacher_edit_is_immutable_and_preserves_existing_evidence():
     assert original.find_cell(target.item_id)[3].value == target.value
     assert edited.value == "Teacher-authored outdoor play"
     assert edited.evidence == target.evidence
-    assert edited.generation.method is GenerationMethod.TEACHER_EDIT
+    assert edited.generation == target.generation  # the edit never overwrites the Method
     event = edited.audit.events[-1]
-    assert event.event_type is AuditEventType.TEACHER_EDITED
+    assert event.event_type is AuditEventType.TEACHER_EDITED and event.generation_change is None
     assert event.value_change.before == target.value
     assert event.value_change.after == "Teacher-authored outdoor play"
     assert updated.find_cell(other.item_id)[3] is other
@@ -2256,6 +2256,70 @@ def test_a_normalized_cell_that_the_llm_repair_then_changes_takes_the_repair_ver
         ("WRONG_SOURCE_GROUNDING", "outdoor_play", provider.monthly_requests[0].expected_week_ids[0].value)]
     assert outdoor.value == provider.monthly_requests[0].reference_labels[0][1]
     assert (generation.method, generation.rule_version) == (GenerationMethod.RULE_LLM, MONTHLY_REPAIR_PROMPT_VERSION)
+
+
+# ---------------------------------------------------------------- teacher edit provenance (Phase 2)
+
+
+def _teacher_edit(harness, plan, cell, value):
+    updated = EditMonthlyPlanItem(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities,
+    ).execute(EditMonthlyPlanItemCommand(plan.plan_id, cell.item_id, value, TEACHER))
+    return updated, updated.find_cell(cell.item_id)[3]
+
+
+def _outdoor_normalized_and_focus_copied(payload, request):
+    _paraphrase_outdoor_w1(payload, request)
+    _copy_focus_w1(payload, request)
+
+
+def _llm_plan_with_all_three_origins():
+    harness = Harness()
+    plan = harness.generate(
+        MonthlyGenerationMode.LLM_PLANNER, provider=ScriptedProvenanceLlm(_outdoor_normalized_and_focus_copied, _fix_focus_w1)
+    ).plan
+    return harness, plan
+
+
+@pytest.mark.parametrize(
+    ("section", "index", "version"),
+    [
+        ("focus", 1, MONTHLY_PROMPT_VERSION),  # M1 initial LLM value
+        ("focus", 0, MONTHLY_REPAIR_PROMPT_VERSION),  # M2 actually repaired
+        ("outdoor_play", 0, MONTHLY_PROMPT_VERSION),  # M3 deterministic normalization only
+    ],
+    ids=["initial", "repaired", "normalized"],
+)
+def test_a_teacher_edit_keeps_the_generation_provenance_and_adds_an_audit(section, index, version):
+    harness, plan = _llm_plan_with_all_three_origins()
+    before = plan.section(section).cells[index]
+    assert (before.generation.method, before.generation.rule_version) == (GenerationMethod.RULE_LLM, version)
+
+    updated, edited = _teacher_edit(harness, plan, before, "교사가 고친 문장")
+
+    assert edited.value == "교사가 고친 문장" and edited.generation == before.generation
+    assert edited.evidence == before.evidence
+    assert [e.event_type for e in edited.audit.events] == [AuditEventType.CREATED, AuditEventType.TEACHER_EDITED]
+    event = edited.audit.events[-1]
+    assert (event.actor_id, event.value_change.before, event.value_change.after) == (
+        TEACHER, before.value, "교사가 고친 문장")
+    assert updated.status is PlanStatus.DRAFT and harness.plans.get(updated.plan_id) is updated
+
+
+def test_a_teacher_edited_reference_cell_is_not_verified_and_still_saved():
+    harness, plan = _llm_plan_with_all_three_origins()
+    outdoor = plan.section("outdoor_play").cells[0]  # RULE_LLM, ACTIVITY_REFERENCE, canonical label
+
+    updated, edited = _teacher_edit(harness, plan, outdoor, "교사가 새로 쓴 바깥놀이")
+    findings = [
+        f for f in updated.verification_report.findings
+        if f.location.section_key == "outdoor_play" and f.location.week_id == outdoor.week_id
+    ]
+
+    assert edited.generation.method is GenerationMethod.RULE_LLM  # kept, yet not claimed as the label
+    assert [(f.code, f.finding_kind, f.severity) for f in findings] == [
+        (AGE_REFERENCE_NOT_VERIFIED_CODE, FindingKind.NOT_VERIFIED, Severity.WARNING)]
+    assert harness.plans.get(updated.plan_id) is updated  # saved, not blocked by a MonthlyRuleError
 
 
 

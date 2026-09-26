@@ -44,10 +44,13 @@ from ssuksak.planning.domain.monthly_verification import (
 )
 from ssuksak.planning.domain.plan import PlanStatus
 from ssuksak.planning.domain.provenance import (
+    AuditEvent,
+    AuditEventType,
     EvidenceSource,
     EvidenceSourceType,
     GenerationMethod,
     GenerationMethodDetail,
+    ValueChange,
 )
 from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.domain.week_period import WeekId
@@ -649,3 +652,48 @@ def test_broken_activity_grounding_is_not_converted_to_not_verified():
 
     with pytest.raises(MonthlyRuleError, match="must resolve"):
         verify_monthly_activity_ages(plan, catalog=catalog)
+
+
+
+def _edited_by_teacher(cell, value):
+    event = AuditEvent(
+        event_type=AuditEventType.TEACHER_EDITED, occurred_at=datetime(2026, 9, 16, tzinfo=UTC),
+        plan_id=PlanId("plan_001"), item_id=cell.item_id, actor_id=ActorId("teacher_001"),
+        value_change=ValueChange(cell.value, value),
+    )
+    return replace(cell, value=value, audit=cell.audit.append(event))
+
+
+def test_an_audit_marked_teacher_edit_keeps_its_method_and_is_not_verified():
+    catalog = _activity_catalog(_activity("age-three", supported_ages=(3,), allow_mixed_age=False))
+    edited = _edited_by_teacher(_activity_cell("age-three", 1), "교사가 수정한 자유 문장")
+
+    (finding,) = verify_monthly_activity_ages(_activity_plan(edited, target_ages=frozenset({3})), catalog=catalog).findings
+
+    assert edited.generation.method is GenerationMethod.RULE_ONLY  # method kept
+    assert (finding.code, finding.finding_kind, finding.severity) == (
+        AGE_REFERENCE_NOT_VERIFIED_CODE, FindingKind.NOT_VERIFIED, Severity.WARNING)
+
+
+def test_a_label_mismatch_without_a_teacher_edit_is_still_an_error():
+    catalog = _activity_catalog(_activity("age-three", supported_ages=(3,), allow_mixed_age=False))
+    tampered = replace(_activity_cell("age-three", 1), value="사람이 쓰지 않은 다른 문장")
+
+    with pytest.raises(MonthlyRuleError, match="Canonical Activity Reference display value"):
+        verify_monthly_activity_ages(_activity_plan(tampered, target_ages=frozenset({3})), catalog=catalog)
+
+
+def test_a_regeneration_after_a_teacher_edit_is_trusted_again():
+    catalog = _activity_catalog(_activity("age-three", supported_ages=(3,), allow_mixed_age=False))
+    edited = _edited_by_teacher(_activity_cell("age-three", 1), "교사가 수정한 자유 문장")
+    regenerated = replace(
+        _activity_cell("age-three", 1),
+        audit=edited.audit.append(AuditEvent(
+            event_type=AuditEventType.REGENERATED, occurred_at=datetime(2026, 9, 17, tzinfo=UTC),
+            plan_id=PlanId("plan_001"), item_id=edited.item_id, actor_id=ActorId("teacher_001"),
+            value_change=ValueChange(edited.value, "age-three"))),
+    )
+
+    result = verify_monthly_activity_ages(_activity_plan(regenerated, target_ages=frozenset({3})), catalog=catalog)
+
+    assert result.findings == ()  # canonical again: verified, not bypassed as an old edit

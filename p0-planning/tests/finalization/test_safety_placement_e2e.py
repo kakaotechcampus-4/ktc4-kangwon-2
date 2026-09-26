@@ -11,7 +11,7 @@ from ssuksak.planning.domain.monthly_constraint import CellState, ConstraintVeri
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.monthly_verification import FindingKind
 from ssuksak.planning.domain.plan import PlanStatus
-from ssuksak.planning.domain.provenance import EvidenceSourceType, GenerationMethod
+from ssuksak.planning.domain.provenance import AuditEventType, EvidenceSourceType, GenerationMethod
 from ssuksak.planning.domain.safety_placement import SafetyKind
 from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.planner.contracts import MONTHLY_PROMPT_VERSION, MONTHLY_SAFETY_PROMPT_VERSION
@@ -159,7 +159,8 @@ def test_teacher_edit_keeps_placement_and_grounding_then_confirms():
     confirmed = harness.confirm_monthly(edited)
 
     assert cell.safety == statutory.safety and cell.evidence == statutory.evidence
-    assert cell.generation.method is GenerationMethod.TEACHER_EDIT
+    assert cell.generation == statutory.generation
+    assert cell.audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
     assert PLACEMENT_RULE_REF in edited.verification_report.executed_rules
     assert confirmed.status is PlanStatus.CONFIRMED
 

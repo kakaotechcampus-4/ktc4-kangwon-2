@@ -13,8 +13,6 @@ from .provenance import (
     AuditEventType,
     AuditHistory,
     EvidenceSource,
-    GenerationMethod,
-    GenerationMethodChange,
     GenerationMethodDetail,
     ValueChange,
 )
@@ -65,11 +63,10 @@ class PlanItem:
         actor_id: ActorId,
         occurred_at: datetime,
     ) -> PlanItem:
-        """Return an edited item with preserved evidence and explicit edit method."""
+        """Return an edited item; evidence and Generation Method stay, the Audit records the edit."""
 
         if not isinstance(new_value, str) or not new_value.strip():
             raise InvalidDomainValueError("Teacher-edited value must be non-blank")
-        edited_generation = GenerationMethodDetail(method=GenerationMethod.TEACHER_EDIT)
         event = AuditEvent(
             event_type=AuditEventType.TEACHER_EDITED,
             occurred_at=occurred_at,
@@ -77,14 +74,5 @@ class PlanItem:
             item_id=self.item_id,
             actor_id=actor_id,
             value_change=ValueChange(before=self.value, after=new_value),
-            generation_change=GenerationMethodChange(
-                before=self.generation,
-                after=edited_generation,
-            ),
         )
-        return replace(
-            self,
-            value=new_value,
-            generation=edited_generation,
-            audit=self.audit.append(event),
-        )
+        return replace(self, value=new_value, audit=self.audit.append(event))

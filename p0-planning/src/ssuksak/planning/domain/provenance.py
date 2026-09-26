@@ -169,15 +169,15 @@ class AuditEvent:
             raise InvalidDomainValueError(
                 "AuditEvent.generation_change must be GenerationMethodChange when set"
             )
+        # A teacher edit changes the value, never the Generation Method, so it needs no
+        # generation_change (REGENERATED is where the method changes).
         if self.event_type is AuditEventType.TEACHER_EDITED and (
             self.actor_id is None
             or self.item_id is None
             or self.value_change is None
-            or self.generation_change is None
         ):
             raise InvalidDomainValueError(
-                "TEACHER_EDITED requires actor_id, item_id, value_change, "
-                "and generation_change"
+                "TEACHER_EDITED requires actor_id, item_id and value_change"
             )
 
 
@@ -204,6 +204,13 @@ class AuditHistory:
 
     def append(self, event: AuditEvent) -> AuditHistory:
         return AuditHistory(self.events + (event,))
+
+    def current_value_teacher_edited(self) -> bool:
+        """True when a teacher edit set the current value: no later regeneration."""
+        for event in reversed(self.events):
+            if event.event_type is not AuditEventType.CONFIRMED:
+                return event.event_type is AuditEventType.TEACHER_EDITED
+        return False
 
     def __iter__(self) -> Iterator[AuditEvent]:
         return iter(self.events)

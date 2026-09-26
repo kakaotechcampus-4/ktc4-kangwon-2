@@ -165,3 +165,39 @@ def test_audit_event_rejects_untyped_value_change():
 def test_audit_timestamp_must_be_timezone_aware():
     with pytest.raises(InvalidDomainValueError):
         _created(datetime(2026, 9, 16, 9, 0))  # noqa: DTZ001 - intentionally naive
+
+
+def test_a_teacher_edit_needs_no_generation_change_but_still_a_value_change():
+    common = dict(
+        event_type=AuditEventType.TEACHER_EDITED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+        item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"),
+    )
+
+    assert AuditEvent(**common, value_change=ValueChange("before", "after")).generation_change is None
+    with pytest.raises(InvalidDomainValueError, match="value_change"):
+        AuditEvent(**common)
+
+
+def _event(event_type, minute):
+    return AuditEvent(
+        event_type=event_type, occurred_at=NOW.replace(minute=minute), plan_id=PlanId("plan_001"),
+        item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"), value_change=ValueChange("a", "b"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("events", "edited"),
+    [
+        ((), False),
+        ((AuditEventType.CREATED,), False),
+        ((AuditEventType.CREATED, AuditEventType.TEACHER_EDITED), True),
+        ((AuditEventType.CREATED, AuditEventType.TEACHER_EDITED, AuditEventType.CONFIRMED), True),
+        ((AuditEventType.CREATED, AuditEventType.TEACHER_EDITED, AuditEventType.REGENERATED), False),
+        ((AuditEventType.CREATED, AuditEventType.REGENERATED, AuditEventType.TEACHER_EDITED), True),
+    ],
+    ids=["empty", "created", "edited", "edited-then-confirmed", "edited-then-regenerated", "regenerated-then-edited"],
+)
+def test_the_current_value_is_teacher_edited_only_until_a_later_regeneration(events, edited):
+    history = AuditHistory(tuple(_event(kind, minute) for minute, kind in enumerate(events)))
+
+    assert history.current_value_teacher_edited() is edited

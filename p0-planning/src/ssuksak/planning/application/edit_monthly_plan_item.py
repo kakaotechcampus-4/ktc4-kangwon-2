@@ -8,9 +8,6 @@ from ..domain.monthly_plan import MonthlyPlan
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
-    GenerationMethod,
-    GenerationMethodChange,
-    GenerationMethodDetail,
     ValueChange,
 )
 from ..rules.monthly_cell_state import resolve_cell_state
@@ -62,7 +59,6 @@ class EditMonthlyPlanItem:
                 "monthly_cell_generation_missing",
                 "Editable Monthly Cell must preserve its previous Generation Method",
             )
-        generation = GenerationMethodDetail(GenerationMethod.TEACHER_EDIT)
         event = AuditEvent(
             AuditEventType.TEACHER_EDITED,
             self._clock.now(),
@@ -70,7 +66,6 @@ class EditMonthlyPlanItem:
             item_id=cell.item_id,
             actor_id=actor_id,
             value_change=ValueChange(cell.value, command.new_value),
-            generation_change=GenerationMethodChange(cell.generation, generation),
         )
         assessment = plan.constraint("STATUTORY_SAFETY_EDUCATION")
         updated_cell = replace(
@@ -81,7 +76,6 @@ class EditMonthlyPlanItem:
                 value=command.new_value,
                 assessment=assessment,
             ),
-            generation=generation,
             audit=cell.audit.append(event),
         )
         updated = plan.replace_cell(item_id, updated_cell)

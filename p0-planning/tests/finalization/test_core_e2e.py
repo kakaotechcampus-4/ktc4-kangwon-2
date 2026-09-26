@@ -60,7 +60,7 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
         value="Teacher-authored March theme",
     )
     edited_item = yearly_edited.periods[0].theme
-    assert edited_item.generation.method is GenerationMethod.TEACHER_EDIT
+    assert edited_item.generation == yearly_generated.periods[0].theme.generation
     assert edited_item.evidence == first_evidence
     assert edited_item.audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
 
@@ -128,7 +128,7 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
         value="Teacher-authored outdoor play",
     )
     edited_outdoor = monthly_edited.find_cell(first_outdoor.item_id)[3]
-    assert edited_outdoor.generation.method is GenerationMethod.TEACHER_EDIT
+    assert edited_outdoor.generation == first_outdoor.generation
     assert edited_outdoor.evidence == outdoor_evidence
     assert edited_outdoor.audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
     _assert_fresh_age_report(monthly_edited, monthly_generated)
