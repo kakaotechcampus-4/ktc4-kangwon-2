@@ -24,12 +24,37 @@ FE   이 계약을 다시 정의하지 않는다.  MSW 목업을 이 형식으�
 ```
 Base        /api
 Content     application/json
-인증        P1(8주차)부터.  지금은 없음
+인증        Authorization: Bearer <token>.  §0 참조
 날짜        ISO 8601 (2026-03-01)
 연령        학년도 기준 연 나이 3·4·5.  만 나이 아님
 ```
 
-**인증이 붙기 전에는 실제 아동 실명을 입력하지 않는다.** 개발·데모는 가명으로 한다 (ADR-004).
+**개발·데모는 가명으로 한다** (ADR-004). 인증이 붙었어도 개발 DB 에 실제 아동 실명을
+넣지 않는다 — 로그가 남는 경로가 많다.
+
+### 0. 인증 — `POST /api/auth/signup` · `POST /api/auth/login`
+
+```json
+signup   { "email": "a@b.kr", "name": "김선생", "password": "여덟자이상" }   → 201
+login    { "email": "a@b.kr", "password": "여덟자이상" }                     → 200
+
+응답     { "token": "...", "user": { "id": 1, "email": "...", "name": "...", "center_id": null } }
+```
+
+**토큰을 `Authorization: Bearer <token>` 으로 실어 보낸다.** 12시간 뒤 만료된다.
+
+**`/api/auth/*` 와 `/api/forms/parse` 를 뺀 모든 엔드포인트가 토큰을 요구한다.**
+없거나 못 믿으면 `401 UNAUTHENTICATED` 다. **왜 401 인지는 알려주지 않는다** —
+「만료됐다」와 「서명이 틀렸다」를 구분해 주면 토큰을 맞춰 보는 쪽에 힌트가 된다.
+
+**`center_id` 가 null 이면 온보딩을 아직 안 끝냈다.** `POST /api/centers` 가 그 값을 채운다.
+**한 계정은 원 하나다** — 두 번째 요청은 `409 ALREADY_EXISTS` 다.
+
+**자기 원 것만 볼 수 있다.** 로그인만 확인하면 `class_id` 를 바꿔가며 남의 원 아동 명단을
+읽을 수 있다. **남의 것은 403 이 아니라 404 다** — 403 은 그 id 가 존재한다는 사실을 알려준다.
+
+> **「자기 반만」은 아직 아니다.** 원장도 봐야 하고 담임이 바뀌기도 해서 규칙을 먼저 정한다.
+> 지금은 원 단위까지다.
 
 **공통 에러 형식**
 
@@ -44,6 +69,7 @@ Content     application/json
 
 | code | status | 뜻 |
 |---|---|---|
+| `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다. 왜인지는 알려주지 않는다 |
 | `VALIDATION_FAILED` | 422 | 입력값이 규격 밖 |
 | `NOT_FOUND` | 404 | 대상 없음 |
 | `GATE_BLOCKED` | 409 | 층 게이트 — 아래 층이 확정 전인데 위 층을 요청 (§4 월간 · §11 주간 보육일지 · `stale` 문서 확정) |
@@ -323,16 +349,16 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
   "months": [
     {
       "month": 3,
-      "theme": "봄과 나",
-      "sub_themes": ["새로운 친구", "봄이 왔어요"],
+      "theme": "우리 원과 친구",
+      "sub_themes": ["새로운 친구", "우리 반 약속"],
       "safety_education": [],
       "safety_education_state": "SOURCE_REQUIRED",
       "evidence": [
         { "source_type": "THEME_REFERENCE",
-          "source_id": "theme-ref-2026",
-          "source_version": "v0.1.2",
-          "effective_date": "2026-03-01",
-          "display_name": "연간계획안 주제 참고자료" }
+          "source_id": "yr_theme_new_environment_friends",
+          "source_version": "theme-reference-v0.1.2",
+          "effective_date": null,
+          "display_name": "우리 원과 친구" }
       ],
       "generation": { "method": "RULE_LLM",
                       "rule_id": "annual-theme", "rule_version": "v1" }
@@ -359,7 +385,7 @@ months[].generation           객체.  필수
 evidence[].source_type        「출처는 세 축이다」 절의 Evidence 값 중 하나.  필수
 evidence[].source_id          문자열.  필수.  빈 문자열 거부
 evidence[].source_version     문자열.  선택 — null 허용, 빈 문자열 거부
-evidence[].effective_date     YYYY-MM-DD.  선택 — null 허용.  자료가 언제부터 유효한가
+evidence[].effective_date     YYYY-MM-DD.  선택 — null 허용.  P0 에서는 항상 null
 evidence[].display_name       문자열.  선택 — null 허용, 빈 문자열 거부
 
 generation.method             「출처는 세 축이다」 절의 Generation 값 중 하나.  필수
@@ -435,6 +461,34 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 
 **S6 의 좌상단 점은 `generation.method` 를 본다.** 교사가 고친 칸(`TEACHER_EDIT`)과
 시스템이 만든 칸을 구분한다. 근거를 눌렀을 때 펼치는 것은 `evidence` 다.
+
+### `source_id` 작명 규칙 — 자료 묶음이 아니라 그 안의 항목이다
+
+**대안과 탈락 근거는 [ADR-015](adr/015-source-id-points-to-the-record.md) 에 있다.**
+
+**`source_id` 에 카탈로그 id 를 넣지 않는다.** 넣으면 12개월이 전부 같은 값이 된다.
+교사가 3월 근거를 눌렀을 때 「우리 원과 친구」 대신 참고자료 파일 전체가 뜬다 —
+근거 표시가 무의미해진다.
+
+```
+THEME_REFERENCE      yr_theme_new_environment_friends   주제 참고자료 안의 주제 id
+ACTIVITY_REFERENCE   act_outdoor_autumn_outing          활동 id
+CURRICULUM           curriculum.mohw.notice-2019-152    고시 문서 id
+PARENT_PLAN          상위 계획안의 plan id
+```
+
+- **`source_id` 는 `source_type` 과 짝으로만 의미가 정해진다.** 타입마다 모양이 다르므로
+  한 필드를 공통 규칙으로 파싱하려 들지 않는다. §11 의 `document_sources.source_id` 는 아예 정수다.
+- **불변 단위는 `source_id` 혼자가 아니라 `(source_type, source_id, source_version)` 셋이다.**
+  `theme_id` 는 카탈로그 v0.1.1 → v0.1.2 에서 이미 한 번 개명됐다
+  (`theme_reference_v0.json` 의 `change_summary`). 판을 고정하는 것은 `source_version` 이다.
+- **새 자료를 붙일 때 `source_id` 는 자료 종류를 알아볼 수 있는 접두사로 시작한다.**
+  `yr_theme_` · `act_` · `curriculum.` 처럼. 로그 한 줄에 값만 찍혀도 무엇인지 알 수 있어야 한다.
+
+**값은 `p0-planning` 이 정한 것을 그대로 쓴다.** 서버가 다시 짓지 않는다 —
+`generate_yearly_plan.py` 가 `candidate.theme_id` 를 그대로 넣고,
+golden set(`p0-planning/tests/finalization/golden/yearly.json`)이 그 값으로 얼어 있다.
+표기를 바꾸면 golden 이 깨진다.
 
 ### 생성 방식
 
@@ -1001,8 +1055,9 @@ assessment    observation · dailyLog
    → 멘토 리뷰(PR #17) — "각각의 쓰기 생명주기가 다르니 하나의 테이블에 넣지 말 것"
    → Evidence · Generation · Audit 을 분리한다
 
-□  evidence.source_id 의 작명 규칙                 성진
-   → theme-ref-2026 처럼 자료마다 불변 슬러그
+■  evidence.source_id 의 작명 규칙                 완료 — 성진
+   → 카탈로그가 아니라 그 안의 항목 id. 「출처는 세 축이다」 아래 절 · ADR-015
+   → 불변 단위는 (source_type, source_id, source_version) 셋이다
 □  generation.rule_id · rule_version 의 발급 주체   하민
    → 규칙 엔진이 발급한다. RULE_ONLY · RULE_LLM 이면 둘 다 필수다
 ■  가명 Pool 의 실제 목록                           완료 — PM

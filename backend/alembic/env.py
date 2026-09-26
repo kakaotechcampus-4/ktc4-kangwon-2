@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.db import Base
 from app.features.activities import models as _activities  # noqa: F401
+from app.features.auth import models as _auth  # noqa: F401
 from app.features.centers import models as _centers  # noqa: F401
 from app.features.observations import models as _observations  # noqa: F401
 

@@ -1,22 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 registerHooks({
-  resolve(s, c, n) {
-    if (
-      [
-        "../onboarding/types",
-        "./demo-session",
-        "./account-store",
-        "../auth/demo-session",
-        "./types",
-        "../onboarding/settings",
-      ].includes(s)
-    )
-      return n(`${s}.ts`, c);
-    return n(s, c);
+  // 상대 경로와 @/ 별칭에 .ts 를 붙여 본다. 목록을 손으로 관리하면 import 를 하나 더할
+  // 때마다 여기도 고쳐야 하고, 빠뜨리면 「모듈을 찾을 수 없다」로 끝난다.
+  resolve(spec, ctx, next) {
+    const base = spec.startsWith("@/")
+      ? new URL(`../${spec.slice(2)}.ts`, import.meta.url)
+      : spec.startsWith(".") && ctx.parentURL
+        ? new URL(spec + ".ts", ctx.parentURL)
+        : null;
+    if (base && existsSync(fileURLToPath(base))) return { url: base.href, shortCircuit: true };
+    return next(spec, ctx);
   },
 });
+const { stubAuthFetch } = await import("./auth-fixture.mjs");
+// 로그인·회원가입 판정이 서버로 갔다. 이 파일은 브라우저 저장소 동작만 본다.
+const stub = stubAuthFetch();
 const auth = await import("../lib/auth/local-account.ts");
 const session = await import("../lib/auth/demo-session.ts");
 const settings = await import("../lib/onboarding/settings.ts");
@@ -29,6 +31,8 @@ function setup() {
     setItem: (key, value) => map.set(key, value),
     removeItem: (key) => map.delete(key),
   });
+  // 앞 테스트가 가입한 계정을 지운다. 브라우저 저장소를 비우는 것과 짝이다.
+  stub.reset();
   globalThis.localStorage = storage(values);
   globalThis.window = Object.assign(new EventTarget(), {
     localStorage,
@@ -37,6 +41,8 @@ function setup() {
   return { values, tab };
 }
 async function login(email) {
+  // 저장소에만 있던 계정이다. 판정이 서버로 갔으므로 서버도 안다고 쳐 준다.
+  stub.seed(email, "test-password-123");
   await auth.verifyAccount(email, "test-password-123");
   assert.equal(session.startDemoSession(), true);
 }

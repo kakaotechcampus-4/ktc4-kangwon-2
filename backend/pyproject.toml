@@ -10,6 +10,8 @@ dependencies = [
   "alembic",
   "psycopg[binary]",
   "pydantic-settings",
+  # EmailStr. 이메일 형식을 정규식으로 직접 짜면 반드시 틀린다.
+  "pydantic[email]",
   "pyhwp",
   "six",
   "olefile",

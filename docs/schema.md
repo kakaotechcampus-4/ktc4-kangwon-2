@@ -5,6 +5,23 @@
 **컬럼 주석도 스키마다.** `models.py` 의 `comment=` 는 Postgres 가 실제로 들고 있는 값이라
 문구만 바꿔도 마이그레이션이 필요하다. `alembic check` 가 이 어긋남을 잡는다.
 
+**`NOT NULL` 컬럼을 추가할 때는 `server_default` 를 같이 준다.** 행이 이미 있는 테이블에
+기본값 없이 붙이면 기존 행이 빈 채로 남아 마이그레이션이 멈춘다.
+
+```
+ERROR: column "code" of relation "children" contains null values
+```
+
+채운 뒤에 기본값은 뗀다. 남겨 두면 앞으로 들어오는 행이 값을 안 줘도 통과해서 빈
+문자열이 조용히 쌓인다.
+
+```python
+op.add_column("children", sa.Column("code", sa.String(20), nullable=False, server_default=""))
+op.alter_column("children", "code", server_default=None)
+```
+
+`nullable=True` 컬럼은 기본값이 필요 없다 — 비어 있는 것이 정상인 값이다.
+
 천천히 바뀌는 테이블의 역할, 관계, 불변 규칙만 적는다. 컬럼 타입과 길이는
 `models.py` 가 진실이다.
 
