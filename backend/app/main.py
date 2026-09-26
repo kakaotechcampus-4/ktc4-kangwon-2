@@ -9,6 +9,7 @@ from app.features.auth.router import router as auth_router
 from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
 from app.features.forms.router import router as forms_router
+from app.features.observations.router import router as observations_router
 from app.shared.auth.dependency import current_user
 
 app = FastAPI(title="쓱싹요정 API")
@@ -22,13 +23,14 @@ app = FastAPI(title="쓱싹요정 API")
 #   auth    회원가입·로그인이라 열려 있어야 한다
 #   forms   업로드한 파일을 그대로 돌려줄 뿐 저장된 개인정보가 없다.
 #           서버 자원을 쓰므로 인증 뒤로 옮길지는 다음에 다시 본다
-#   나머지   원·반·아동. 아동 실명이 내려오므로 반드시 막는다
+#   나머지   원·반·아동·관찰 기록. 아동 실명이 내려오므로 반드시 막는다
 _authenticated = [Depends(current_user)]
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(forms_router, prefix="/api")
 app.include_router(centers_router, prefix="/api", dependencies=_authenticated)
 app.include_router(children_router, prefix="/api", dependencies=_authenticated)
+app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:
