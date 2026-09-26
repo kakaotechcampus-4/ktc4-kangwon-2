@@ -2370,3 +2370,39 @@ def test_a_focus_regeneration_cannot_store_an_outdoor_activity_reference():  # M
     assert exc.value.code == "monthly_llm_cell_planning_failed"
     assert "UNKNOWN_REFERENCE_ID" in exc.value.__cause__.validation_codes
     assert len(provider.cell_requests) == 1 and harness.plans.save_count == saves_before
+
+
+def _no_catalog_command(harness):
+    return replace(harness.command(MonthlyGenerationMode.LLM_PLANNER), activity_catalog=None)
+
+
+def test_without_a_catalog_every_active_outdoor_cell_is_explicitly_not_verified():  # N3, N4
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider,
+                            command=_no_catalog_command(harness)).plan
+    outdoor = [c for c in plan.section("outdoor_play").cells if c.value.strip()]
+    report = plan.verification_report
+    age = [(f.code, f.finding_kind, f.severity, f.location.week_id)
+           for f in report.findings if f.location.section_key == "outdoor_play"]
+
+    assert plan.activity_catalog_ref is None and provider.monthly_requests[0].reference_labels == ()
+    assert len(outdoor) >= 2
+    assert not any(e.source_type is EvidenceSourceType.ACTIVITY_REFERENCE for c in outdoor for e in c.evidence)
+    assert age == [("ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", FindingKind.NOT_VERIFIED, Severity.WARNING, c.week_id)
+                   for c in outdoor]
+    assert report.executed_rules == (AGE_RULE_REF,) and report.source_refs == ()  # no Catalog source claimed
+    assert {f.location.section_key for f in report.findings} == {"outdoor_play"}  # N7: other sections untouched
+    assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_a_teacher_edit_without_a_catalog_keeps_the_free_text_status():
+    harness = Harness()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm(),
+                            command=_no_catalog_command(harness)).plan
+    target = next(c for c in plan.section("outdoor_play").cells if c.value.strip())
+
+    updated, edited = _teacher_edit(harness, plan, target, "교사가 새로 쓴 자유 바깥놀이")
+    codes = [f.code for f in updated.verification_report.findings if f.location.week_id == target.week_id]
+
+    assert edited.generation == target.generation and codes == ["ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED"]

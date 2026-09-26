@@ -2000,3 +2000,13 @@ def test_without_a_catalog_an_outdoor_cell_reference_is_forbidden_too(packet, sn
 
     assert request.reference_section_keys == {"theme"}
     assert ("UNKNOWN_REFERENCE_ID", "REFERENCE_FORBIDDEN_FOR_SECTION") in [(i.code.value, i.detail) for i in result.issues]
+
+
+@pytest.mark.parametrize(("ref", "kind"), [("ev-other-age", "OTHER_AGE"), ("ev-unknown", "AGE_UNKNOWN")],
+                         ids=["N5-wrong-age", "N6-age-unknown"])
+def test_without_a_catalog_unverifiable_outdoor_grounding_still_fails_closed(packet, snapshot, ref, kind):
+    packet = _with_outdoor_items(replace(packet, reference_activities=()))
+    issues = [i for i in _outdoor_issues(packet, snapshot, _outdoor_w2_citing(ref))
+              if i.code.value == "OUTDOOR_GROUNDING_AGE_MISMATCH"]
+
+    assert [(i.week_id, i.actual) for i in issues] == [("2026-09-W2", kind)]

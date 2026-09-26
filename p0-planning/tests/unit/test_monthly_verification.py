@@ -721,3 +721,34 @@ def test_an_empty_outdoor_cell_has_no_age_finding():
     empty = replace(_activity_cell("known", 1, with_reference=False), value="", cell_state=CellState.EMPTY_VALID)
 
     assert verify_monthly_activity_ages(_activity_plan(empty, target_ages=frozenset({3})), catalog=catalog).findings == ()
+
+
+
+def _no_catalog_plan(*cells):
+    return replace(_activity_plan(*cells, target_ages=frozenset({3})), activity_catalog_ref=None)
+
+
+def test_without_a_catalog_free_text_outdoor_is_still_not_verified():  # N3, N4, N7
+    first = _activity_cell("free", 1, value="자유 바깥놀이 1", with_reference=False)
+    second = _activity_cell("free", 2, value="자유 바깥놀이 2", with_reference=False)
+    empty = replace(_activity_cell("free", 3, with_reference=False), value="", cell_state=CellState.EMPTY_VALID)
+
+    result = verify_monthly_activity_ages(_no_catalog_plan(first, second, empty), catalog=None)
+
+    assert [(f.code, f.finding_kind, f.severity, f.location.week_id.value) for f in result.findings] == [
+        (AGE_FREE_TEXT_NOT_VERIFIED_CODE, FindingKind.NOT_VERIFIED, Severity.WARNING, "2026-09-W1"),
+        (AGE_FREE_TEXT_NOT_VERIFIED_CODE, FindingKind.NOT_VERIFIED, Severity.WARNING, "2026-09-W2"),
+    ]
+    assert result.source_refs == () and result.findings[0].evidence[0].source_refs == ()
+
+
+def test_without_a_catalog_an_activity_linked_cell_fails_as_an_execution_error():
+    with pytest.raises(MonthlyRuleError, match="require the Plan Activity Catalog"):
+        verify_monthly_activity_ages(_no_catalog_plan(_activity_cell("known", 1)), catalog=None)
+
+
+def test_a_plan_pinning_a_catalog_cannot_be_verified_without_it():
+    free_text = _activity_cell("free", 1, value="자유 바깥놀이", with_reference=False)
+
+    with pytest.raises(MonthlyRuleError, match="pinned by the Plan is missing"):
+        verify_monthly_activity_ages(_activity_plan(free_text, target_ages=frozenset({3})), catalog=None)
