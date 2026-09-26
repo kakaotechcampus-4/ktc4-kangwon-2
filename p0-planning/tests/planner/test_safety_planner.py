@@ -438,8 +438,8 @@ def test_initial_and_repair_prompts_carry_the_same_reference_id_contract(packet,
     initial, repair = fake.monthly_requests
     contract = "For safety_education, reference_id is always null"
 
-    assert initial.prompt_version == SAFETY_PROMPT_VERSION == "monthly-planner-safety-v6"
-    assert repair.prompt_version == "monthly-planner-safety-repair-v7"
+    assert initial.prompt_version == SAFETY_PROMPT_VERSION == "monthly-planner-safety-v7"
+    assert repair.prompt_version == "monthly-planner-safety-repair-v8"
     assert contract in initial.system_prompt and contract in repair.system_prompt
     assert "only in\ngrounding_refs" in SAFETY_SYSTEM_PROMPT
 
@@ -457,6 +457,6 @@ def test_an_outdoor_label_mismatch_is_repaired_deterministically_under_the_safet
     outcome = MonthlyPlanner(fake).plan(focused, snapshot)
     safety = [outcome.proposal.value_for("safety_education", WeekId(w)) for w in ("2026-09-W1", "2026-09-W2")]
 
-    assert outcome.prompt_version == "monthly-planner-safety-v6" and len(fake.monthly_requests) == 1
+    assert outcome.prompt_version == "monthly-planner-safety-v7" and len(fake.monthly_requests) == 1
     assert outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1")).value == "바람개비 놀이"
     assert [(v.reference_id, v.unresolved) for v in safety] == [(None, False), (None, False)]

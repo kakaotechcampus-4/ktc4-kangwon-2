@@ -49,6 +49,10 @@ a section without one must not cite evidence that has a grounding_class.
 Within each grounding_refs array, include each reference id at most once;
 never repeat the same reference id in a cell.
 Omit an optional section when no evidence with its grounding_class is supplied.
+For goals, write one concise Korean summary of the month's key goals, usually
+about 120 to 160 characters, and stay concise even in a complex month.
+Synthesize the core meaning of the cited goals evidence; do not list each
+institution's goals or try to include every evidence phrase.
 Write user-facing plan text in value fields in natural Korean.
 Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
 grounding_refs exactly as supplied or specified; never translate them.
@@ -88,8 +92,9 @@ Fix each named cell only as its finding requires:
 - SOURCE_TEXT_COPY: keep the meaning of its cited grounding_refs but rewrite
   the value in your own words; never copy evidence text verbatim.
 - TEXT_POLICY with detail TEXT_TOO_LONG: keep the same meaning and cited refs;
-  shorten the value to at most {MAX_VISIBLE_TEXT_CHARS} characters by removing
-  unnecessary modifiers and repetition.
+  remove repetition and unnecessary modifiers. For goals, keep only the month's
+  key goals and aim for about 120 to 160 characters. The validator rejects a
+  value over {MAX_VISIBLE_TEXT_CHARS} characters; that is a hard ceiling, not a target length.
 - Other TEXT_POLICY: remove only the violation that detail names.
 - WRONG_SOURCE_GROUNDING: cite only refs with that section's grounding_class.
 - SAFETY_*: fix the cell inside its safety_plan slot, citing only that week's

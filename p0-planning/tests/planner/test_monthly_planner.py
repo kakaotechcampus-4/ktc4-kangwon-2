@@ -54,7 +54,7 @@ from ssuksak.planning.planner.prompt import (
     build_monthly_planning_request,
 )
 from ssuksak.planning.planner.service import REPAIRABLE_CODES, MonthlyPlanner
-from ssuksak.planning.planner.text_policy import MAX_VISIBLE_TEXT_CHARS
+from ssuksak.planning.planner.text_policy import MAX_VISIBLE_TEXT_CHARS, visible_text_violations
 from ssuksak.planning.planner.validation import (
     canonicalize_reference_labels,
     validate_monthly_proposal,
@@ -833,7 +833,7 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v10"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v11"),
         (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v9"),
     ],
     ids=["monthly", "cell"],
@@ -1090,7 +1090,7 @@ def test_repairable_finding_gets_one_repair_with_locators(packet, snapshot, muta
 
 
 def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v6"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v7"
     assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
     assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
     for rule in (
@@ -1558,7 +1558,7 @@ def test_initial_and_repair_prompts_scope_reference_id_to_supplied_catalogs():
         assert "In every other section reference_id is null" in flat
         assert "value must exactly equal the canonical label of that referenced item" in flat
         assert "do not paraphrase, expand, summarize or rewrite it" in flat
-    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v10"
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v11"
 
 
 def test_the_repair_prompt_is_finding_directed():
@@ -1570,10 +1570,10 @@ def test_the_repair_prompt_is_finding_directed():
     assert "Change only the cells named in validation_findings and keep cells without a finding unchanged" in flat
     assert "copy their value, reference_id and grounding_refs exactly as in rejected_proposal" in flat
     assert "SOURCE_TEXT_COPY: keep the meaning of its cited grounding_refs but rewrite the value in your own words" in flat
-    assert (f"TEXT_TOO_LONG: keep the same meaning and cited refs; shorten the value to at most "
-            f"{MAX_VISIBLE_TEXT_CHARS} characters") in flat
+    assert "TEXT_TOO_LONG: keep the same meaning and cited refs; remove repetition and unnecessary modifiers" in flat
+    assert f"over {MAX_VISIBLE_TEXT_CHARS} characters; that is a hard ceiling, not a target length" in flat
     assert MAX_VISIBLE_TEXT_CHARS == 240  # the validator's limit, not a new number
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v6"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v7"
 
 
 # ---------------------------------------------------------------- reference_id capability
@@ -1651,3 +1651,38 @@ def test_an_unknown_outdoor_reference_id_is_located_and_never_repaired(packet, s
         "UNKNOWN_REFERENCE_ID", "2026-09-W1", "outdoor_play", "UNKNOWN_ACTIVITY_REFERENCE", "grounding_ref")
     assert "reason=UNKNOWN_ACTIVITY_REFERENCE expected=reference_activities actual=grounding_ref" in caplog.text
     assert "ev-1" not in caplog.text and len(fake.monthly_requests) == 1
+
+
+# ---------------------------------------------------------------- goals generation target
+
+
+GOALS_TARGET = "about 120 to 160 characters"
+
+
+def test_the_initial_prompt_gives_goals_a_target_below_the_ceiling():
+    flat = " ".join(MONTHLY_SYSTEM_PROMPT.split())
+
+    assert "For goals, write one concise Korean summary of the month's key goals, usually about 120 to 160 characters" in flat
+    assert "do not list each institution's goals or try to include every evidence phrase" in flat
+    assert str(MAX_VISIBLE_TEXT_CHARS) not in MONTHLY_SYSTEM_PROMPT  # the ceiling is never shown as a target
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v11"
+
+
+def test_the_goals_target_applies_to_goals_only():
+    for prompt in (MONTHLY_SYSTEM_PROMPT, SAFETY_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT):
+        sentences = " ".join(prompt.split()).split(". ")
+        targeted = [s for s in sentences if "120 to 160" in s]
+        assert targeted and all("goals" in s for s in targeted), prompt[:40]
+    assert "120 to 160" not in CELL_SYSTEM_PROMPT  # cell regeneration is outside this contract
+
+
+def test_the_goals_repair_aims_at_the_target_and_keeps_the_ceiling_as_the_check():
+    flat = " ".join(REPAIR_SYSTEM_PROMPT[: -len(MONTHLY_SYSTEM_PROMPT)].split())
+
+    assert "For goals, keep only the month's key goals and aim for about 120 to 160 characters" in flat
+    assert "that is a hard ceiling, not a target length" in flat
+
+
+@pytest.mark.parametrize(("length", "too_long"), [(160, False), (200, False), (240, False), (241, True)])
+def test_the_validator_ceiling_stays_240_and_the_target_is_not_enforced(length, too_long):
+    assert ("TEXT_TOO_LONG" in visible_text_violations("가" * length)) is too_long

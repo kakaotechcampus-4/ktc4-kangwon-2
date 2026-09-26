@@ -6,7 +6,7 @@
         "actor": "teacher_001",
         "generation_change": {
           "after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v9"},
-          "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v10"}
+          "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v11"}
         },
         "system_actor": null,
         "type": "REGENERATED",
@@ -28,7 +28,7 @@
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
       {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v10"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v11"},
     "state": "FILLED",
     "value": "Context-based weekly focus 1",
     "week_id": "2026-09-W1"

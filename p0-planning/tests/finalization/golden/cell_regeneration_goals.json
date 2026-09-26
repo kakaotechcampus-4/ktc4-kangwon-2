@@ -2,7 +2,7 @@
   "after": {
     "audit": [
       {"actor": null, "system_actor": "monthly_application", "type": "CREATED"},
-      {"actor": "teacher_001", "generation_change": {"after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v9"}, "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v10"}}, "system_actor": null, "type": "REGENERATED", "value_change": {"after": "Regenerated goals value", "before": "Context-based goals"}}
+      {"actor": "teacher_001", "generation_change": {"after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v9"}, "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v11"}}, "system_actor": null, "type": "REGENERATED", "value_change": {"after": "Regenerated goals value", "before": "Context-based goals"}}
     ],
     "evidence": [
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
@@ -21,7 +21,7 @@
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
       {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v10"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v11"},
     "state": "FILLED",
     "value": "Context-based goals",
     "week_id": null
