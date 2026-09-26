@@ -1,0 +1,390 @@
+{
+  "$schema_note": "승인된 SUPPLEMENTAL_REFERENCE 내용의 품질 검토다. 사람이 USABLE / EXCLUDED를 정한다. 목록에 없는 내용은 쓰지 않는다. 같은 topic_group은 같은 핵심 안전 주제이며 한 월 안에서 한 번만 primary로 쓴다.",
+  "schema_version": "safety-reference-quality.schema.v0",
+  "quality_id": "ssuksak.safety-reference-quality",
+  "quality_version": "safety-reference-quality-v0.1.0",
+  "classification_version": "safety-evidence-classification-v0.2.0",
+  "evidence_store": {
+    "store_id": "ssuksak.institution-evidence",
+    "schema_version": "institution-evidence.schema.v0",
+    "ingestion_version": "institution-evidence-ingestion-v0.1.0",
+    "content_sha256": "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea",
+    "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE"
+  },
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-09-26T02:51:05+09:00",
+    "runtime_active": true,
+    "review_scope_note": "Human AI Lead 승인. USABLE 19 / EXCLUDED 13 목록, topic grouping, month_scope(모두 MONTH_INDEPENDENT; 내용 자체의 계절·월·행사 의존 여부로 판단)를 승인한다. 인터넷 중독 예방 교육·미디어 중독은 위험해요는 label life_safety를 유지한 채 topic internet_media_use로 USABLE이다. 목록에 없는 evidence는 계속 runtime 사용 금지다."
+  },
+  "body_key_rule": "LEADING_TAG_STRIPPED_ALNUM",
+  "body_key_rule_note": "leading [ ] tag 하나를 뺀 본문에서 한글·영문·숫자만 남긴 문자열이다. 본문이 비면 자동으로 EXCLUDED(EMPTY_BODY)다.",
+  "default_quality": "EXCLUDED",
+  "reason_codes": [
+    "TITLE_ONLY",
+    "MEANING_UNCLEAR",
+    "OFF_TOPIC_NON_SAFETY",
+    "STATUTORY_TOPIC_OVERLAP",
+    "BROKEN_EXTRACTION"
+  ],
+  "month_scopes": [
+    "TARGET_MONTH_ONLY",
+    "MONTH_INDEPENDENT"
+  ],
+  "month_scope_note": "USABLE 내용만 month_scope를 가진다. TARGET_MONTH_ONLY는 evidence가 나온 달에만, MONTH_INDEPENDENT는 다른 달에도 쓸 수 있다(age fit은 그대로 적용). runtime에서 추론하지 않고 이 artifact의 값만 쓴다.",
+  "entries": [
+    {
+      "body_key": "계단에서는조심조심",
+      "example_text": "[생활안전교육] 계단에서는 조심조심",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "stairs",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "놀이터에서안전하게놀아요",
+      "example_text": "[생활안전] 놀이터에서 안전하게 놀아요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "playground",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "도구를안전하게사용해요",
+      "example_text": "[생활 안전교육] 도구를 안전하게 사용해요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "tools",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "도구의바른사용법을실천해요",
+      "example_text": "[생활안전] 도구의 바른 사용법을 실천해요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "tools",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "동물에게물렸어요",
+      "example_text": "[생활안전] 동물에게 물렸어요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "animal_bite",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "미디어중독은위험해요",
+      "example_text": "[생활안전] 미디어 중독은 위험해요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "internet_media_use",
+      "reason": null,
+      "note": "Human review: USABLE 승인. classification label은 life_safety 그대로 두고 재분류하지 않는다. 의미 topic은 internet_media_use이며 월 내 중복·다양성 판단은 label보다 topic을 우선한다.",
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "사람이많이모이는곳을조심해요",
+      "example_text": "[생활안전] 사람이 많이 모이는 곳을 조심해요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "crowd",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 추석·계절·행사·월 표현이 없다. 같은 쪽의 한가위 행사는 다른 section이며 이 항목과 결합돼 있지 않고, 10월 출처도 있다. 내용 자체가 월에 의존하지 않는다."
+    },
+    {
+      "body_key": "손이끼었어요",
+      "example_text": "[생활안전] 손이 끼었어요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "finger_pinch",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "스마트폰을조금만사용해요",
+      "example_text": "[사이버중독] 스마트폰을 조금만 사용해요.",
+      "supplemental_label": "digital_safety",
+      "quality": "USABLE",
+      "topic_group": "smartphone_use",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "승강기",
+      "example_text": "[생활안전] 승강기",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "TITLE_ONLY",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "승강기안전수칙",
+      "example_text": "[생활안전] 승강기 안전수칙",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "elevator",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "승강기와에스컬레이터소방안전",
+      "example_text": "[생활안전교육] 승강기와 에스컬레이터 [소방안전",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "BROKEN_EXTRACTION",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "신나는놀이터안전하게놀아요",
+      "example_text": "[생활안전] - 신나는 놀이터! 안전하게 놀아요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "playground",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "아빠엄마술은안돼요안돼소방안전",
+      "example_text": "[생활안전교육] 아빠, 엄마 술은 안 돼요 안돼 [소방안전",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "BROKEN_EXTRACTION",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "안전하게먹어요",
+      "example_text": "[생활안전교육] 안전하게 먹어요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "eating_safely",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 여름·계절·행사 표현이 없다. 같은 쪽의 여름 주제(건강한 여름나기)와 물놀이·우산 항목은 별개 항목이다. 일반적인 음식 안전 내용이다."
+    },
+    {
+      "body_key": "안전하게일해요",
+      "example_text": "[생활안전] 안전하게 일해요",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "MEANING_UNCLEAR",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "안전한원을함께만들어요",
+      "example_text": "[생활안전] 안전한 원을 함께 만들어요",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "MEANING_UNCLEAR",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "앗조심해요쿵",
+      "example_text": "[생활안전] 앗 조심해요 쿵!",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "MEANING_UNCLEAR",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "엄마아빠조심해요",
+      "example_text": "[생활안전교육] 엄마, 아빠 조심해요",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "MEANING_UNCLEAR",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "올바른스마트폰사용습관을가져요",
+      "example_text": "[ 인터넷 및 스마트폰 중독예방 및 해소교육]: 올바른 스마트폰 사용습관을 가져요",
+      "supplemental_label": "digital_safety",
+      "quality": "USABLE",
+      "topic_group": "smartphone_use",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "올바른심폐소생술",
+      "example_text": "[생활안전] 올바른 심폐소생술",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "cpr",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "올바른심폐소생술방법",
+      "example_text": "[생활안전] 올바른 심폐소생술 방법",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "cpr",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "원에서일하는분소방안전",
+      "example_text": "[생활안전] 원에서 일하는 분 [소방안전",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "BROKEN_EXTRACTION",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "위험한담배를피해요",
+      "example_text": "[생활안전교육] 위험한 담배를 피해요",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "STATUTORY_TOPIC_OVERLAP",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "음식물이목에걸렸어요",
+      "example_text": "[생활안전] 음식물이 목에 걸렸어요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "choking",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "인터넷중독예방교육",
+      "example_text": "[생활안전] 인터넷 중독 예방 교육",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "internet_media_use",
+      "reason": null,
+      "note": "Human review: USABLE 승인. classification label은 life_safety 그대로 두고 재분류하지 않는다. 의미 topic은 internet_media_use이며 월 내 중복·다양성 판단은 label보다 topic을 우선한다.",
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "장애인식개선교육",
+      "example_text": "[생활안전]장애 인식 개선 교육",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "OFF_TOPIC_NON_SAFETY",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "전기는위험할수있어요",
+      "example_text": "[소방안전] 전기는 위험할 수 있어요",
+      "supplemental_label": "fire_safety",
+      "quality": "USABLE",
+      "topic_group": "electricity",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "좋아요나빠요",
+      "example_text": "[생활안전교육] 좋아요 나빠요",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "MEANING_UNCLEAR",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "차안에갇히면조금만사용해요",
+      "example_text": "[사이버중독] 차 안에 갇히면 조금만 사용해요",
+      "supplemental_label": "digital_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "MEANING_UNCLEAR",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    },
+    {
+      "body_key": "코와귀에놀이감을넣지않아요",
+      "example_text": "[생활안전] 코와 귀에 놀이감을 넣지 않아요",
+      "supplemental_label": "life_safety",
+      "quality": "USABLE",
+      "topic_group": "foreign_object",
+      "reason": null,
+      "note": null,
+      "month_scope": "MONTH_INDEPENDENT",
+      "month_scope_reason": "Human review: 문장에 계절·행사·장소 한정 표현이 없고 어느 달에 다뤄도 뜻이 같다"
+    },
+    {
+      "body_key": "현장체험학습안전소방안전",
+      "example_text": "[생활안전교육] 현장 체험 학습 안전 [소방안전",
+      "supplemental_label": "life_safety",
+      "quality": "EXCLUDED",
+      "topic_group": null,
+      "reason": "BROKEN_EXTRACTION",
+      "note": null,
+      "month_scope": null,
+      "month_scope_reason": null
+    }
+  ]
+}
