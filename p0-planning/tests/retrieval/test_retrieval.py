@@ -28,6 +28,17 @@ from ssuksak.planning.evidence.models import (
     Setting,
     SourceSection,
 )
+from ssuksak.planning.evidence.safety_classification import (
+    SafetyClassificationEntry,
+    SafetyEvidenceClassification,
+    SafetyReferenceKind,
+)
+from ssuksak.planning.evidence.safety_quality import (
+    MonthScope,
+    ReferenceQuality,
+    ReferenceQualityEntry,
+    SafetyReferenceQuality,
+)
 from ssuksak.planning.retrieval.models import AgeMatchKind, BlockName, RetrievalRequest
 from ssuksak.planning.retrieval.ranking import (
     age_match_kind,
@@ -141,7 +152,16 @@ def test_retriever_returns_typed_blocks_and_does_not_invent_week_positions():
     )
     result = MonthlyEvidenceRetriever(store, classification=classification).retrieve(request)
 
-    assert tuple(block.name for block in result.blocks) == tuple(BlockName)
+    # The safety block is opt-in (safety_keywords); every other block is always present.
+    assert tuple(block.name for block in result.blocks) == tuple(
+        name
+        for name in BlockName
+        if name not in {
+            BlockName.SAFETY_EDUCATION_EVIDENCE,
+            BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE,
+            BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE,
+        }
+    )
     assert result.block(BlockName.AGE_CONTRAST_EVIDENCE).size == 2
     assert result.block(BlockName.SUBTHEME_EVIDENCE).items[0].record.week_position is None
 
@@ -249,3 +269,143 @@ def test_real_section_scoped_retrieval_is_deterministic_and_class_pure():
         assert items
         assert all(classification.class_of(item.record) is semantic_class for item in items)
         assert all(item.record.week_position is None for item in items)
+
+
+def _quality(store, classification, runtime_active=True):
+    return SafetyReferenceQuality(
+        "quality-test", classification.classification_version, store.content_sha256,
+        (
+            ReferenceQualityEntry("계단에서는난간을잡아요", ReferenceQuality.USABLE, "stairs", month_scope=MonthScope.TARGET_MONTH_ONLY),
+            ReferenceQualityEntry("물놀이수칙소방대피훈련누전화재", ReferenceQuality.USABLE, "water", month_scope=MonthScope.TARGET_MONTH_ONLY),
+        ),
+        runtime_active=runtime_active,
+    )
+
+
+def _safety_store_and_classification(runtime_active=True, multi_tag_needs_review=False):
+    safety = dict(section=SourceSection.SAFETY_EDUCATION, setting=Setting.UNKNOWN)
+    records = (
+        _record("ev_outdoor_f"),
+        _record("ev_safe_a", text="[교통안전] 자전거를 탈 때 안전모를 써요", **safety),
+        _record("ev_safe_b", text="[생활안전] 계단에서는 난간을 잡아요", institution="B", **safety),
+        _record("ev_safe_c", text="[비상대응훈련] 지진이 나면 몸을 낮춰요", **safety),
+        replace(_record("ev_safe_d", text="[교통안전] 길을 건널 때 손을 들어요", **safety),
+                extraction_quality=ExtractionQuality.INVALID),
+        _record("ev_safe_e", text="[성폭력 예방] 싫어요 말하기", **safety),
+        _record("ev_safe_1", text="교통안전 신호등 놀이", **safety),
+        _record("ev_safe_2", text="[생활안전] 물놀이 수칙 [소방대피훈련] 누전 화재", institution="C", **safety),
+        _record("ev_safe_3", text="[교통안전] 차에서 내리기 [생활안전] 승강기", institution="D", **safety),
+    )
+    store = InMemoryInstitutionEvidenceRepository(records).get_store()
+    classification = SafetyEvidenceClassification(
+        "safety-classification-test",
+        store.content_sha256,
+        "child-welfare-act-decree-annex6-2022-06-21",
+        (
+            SafetyClassificationEntry("교통안전", SafetyReferenceKind.STATUTORY_REFERENCE, "traffic_safety"),
+            SafetyClassificationEntry("성폭력 예방", SafetyReferenceKind.STATUTORY_REFERENCE, "sexual_violence_prevention"),
+            SafetyClassificationEntry("생활안전", SafetyReferenceKind.SUPPLEMENTAL_REFERENCE, supplemental_label="life_safety"),
+            SafetyClassificationEntry("비상대응훈련", SafetyReferenceKind.NEEDS_REVIEW, review_reason="separate key"),
+        ),
+        frozenset({"life_safety"}),
+        runtime_active=runtime_active,
+        multi_tag_needs_review=multi_tag_needs_review,
+    )
+    return store, classification
+
+
+def _safety_request():
+    return _request(safety_keywords=("바퀴 달린 탈것의 안전한 이용법",), safety_categories=("traffic_safety",))
+
+
+def test_safety_blocks_hold_only_approved_references_for_their_slot_kind():
+    store, classification = _safety_store_and_classification()
+    result = MonthlyEvidenceRetriever(
+        store, safety_classification=classification, safety_quality=_quality(store, classification)
+    ).retrieve(_safety_request())
+    statutory = {item.record_id for item in result.block(BlockName.SAFETY_EDUCATION_EVIDENCE).items}
+    supplemental = {item.record_id for item in result.block(BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE).items}
+
+    # Placed-category statutory References / supplemental References only; NEEDS_REVIEW,
+    # INVALID, unplaced categories and untagged records never enter. Without the
+    # multi-tag rule (v0.1.0) the leading tag alone decides multi-tag records.
+    assert statutory == {"ev_safe_a", "ev_safe_3"}
+    assert supplemental == {"ev_safe_b", "ev_safe_2"}
+    without = MonthlyEvidenceRetriever(
+        store, safety_classification=classification, safety_quality=_quality(store, classification)
+    ).retrieve(_request())
+    assert BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE not in {block.name for block in without.blocks}
+
+
+@pytest.mark.parametrize("approved", [False, None], ids=["pending", "no-classification"])
+def test_safety_blocks_fail_closed_without_an_approved_classification(approved):
+    store, classification = _safety_store_and_classification(runtime_active=False)
+    retriever = MonthlyEvidenceRetriever(store, safety_classification=classification if approved is False else None)
+    result = retriever.retrieve(_safety_request())
+
+    assert result.block(BlockName.SAFETY_EDUCATION_EVIDENCE).items == ()
+    assert result.block(BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE).items == ()
+
+
+def test_multi_tag_records_never_enter_safety_retrieval_under_the_multi_tag_rule():
+    store, classification = _safety_store_and_classification(multi_tag_needs_review=True)
+    result = MonthlyEvidenceRetriever(
+        store, safety_classification=classification, safety_quality=_quality(store, classification)
+    ).retrieve(_safety_request())
+    ids = {
+        item.record_id
+        for name in (BlockName.SAFETY_EDUCATION_EVIDENCE, BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE)
+        for item in result.block(name).items
+    }
+
+    assert ids == {"ev_safe_a", "ev_safe_b"}
+
+
+@pytest.mark.parametrize("quality", ["pending", "missing", "unlisted"])
+def test_supplemental_retrieval_needs_an_approved_usable_quality_entry(quality):
+    store, classification = _safety_store_and_classification()
+    review = {
+        "pending": _quality(store, classification, runtime_active=False),
+        "missing": None,
+        "unlisted": replace(_quality(store, classification), entries=()),
+    }[quality]
+    result = MonthlyEvidenceRetriever(store, safety_classification=classification, safety_quality=review).retrieve(
+        _safety_request()
+    )
+
+    assert result.block(BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE).items == ()
+    assert {item.record_id for item in result.block(BlockName.SAFETY_EDUCATION_EVIDENCE).items} == {"ev_safe_a", "ev_safe_3"}
+
+
+def test_cross_month_fallback_takes_only_month_independent_contents_with_age_fit():
+    safety = dict(section=SourceSection.SAFETY_EDUCATION, setting=Setting.UNKNOWN)
+    records = (
+        _record("ev_safe_a", text="[생활안전] 계단에서는 난간을 잡아요", **safety),  # target month (9)
+        replace(_record("ev_safe_b", text="[생활안전] 놀이터에서 안전하게 놀아요", institution="B", **safety), month=5),
+        replace(_record("ev_safe_c", text="[생활안전] 사람이 많이 모이는 곳을 조심해요", institution="C", **safety), month=5),
+        replace(_record("ev_safe_d", text="[생활안전] 손이 끼었어요", age_scope=(5,), institution="D", **safety), month=6),
+    )
+    store = InMemoryInstitutionEvidenceRepository(records).get_store()
+    classification = SafetyEvidenceClassification(
+        "safety-classification-test", store.content_sha256, "child-welfare-act-decree-annex6-2022-06-21",
+        (SafetyClassificationEntry("생활안전", SafetyReferenceKind.SUPPLEMENTAL_REFERENCE, supplemental_label="life_safety"),),
+        frozenset({"life_safety"}), runtime_active=True,
+    )
+    independent, target_only = MonthScope.MONTH_INDEPENDENT, MonthScope.TARGET_MONTH_ONLY
+    quality = SafetyReferenceQuality(
+        "quality-test", classification.classification_version, store.content_sha256,
+        (
+            ReferenceQualityEntry("계단에서는난간을잡아요", ReferenceQuality.USABLE, "stairs", month_scope=independent),
+            ReferenceQualityEntry("놀이터에서안전하게놀아요", ReferenceQuality.USABLE, "playground", month_scope=independent),
+            ReferenceQualityEntry("사람이많이모이는곳을조심해요", ReferenceQuality.USABLE, "crowd", month_scope=target_only),
+            ReferenceQualityEntry("손이끼었어요", ReferenceQuality.USABLE, "finger_pinch", month_scope=independent),
+        ),
+        runtime_active=True,
+    )
+    result = MonthlyEvidenceRetriever(store, safety_classification=classification, safety_quality=quality).retrieve(
+        _safety_request()
+    )
+
+    assert {i.record_id for i in result.block(BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE).items} == {"ev_safe_a"}
+    # crowd is TARGET_MONTH_ONLY; the finger-pinch record is age 5 only (request is age 3).
+    assert {i.record_id for i in result.block(BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE).items} == {"ev_safe_b"}

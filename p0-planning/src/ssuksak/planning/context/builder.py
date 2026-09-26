@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ..domain.week_period import WeekPeriod
 from ..evidence.classification import SemanticClass
 from ..retrieval.models import (
@@ -17,8 +19,12 @@ from .models import (
     GroundingContextItem,
     MonthlyContextPacket,
     ReferenceActivityContext,
+    SafetyContext,
+    SafetyReferenceContext,
     WeekContext,
 )
+from ..evidence.safety_classification import SafetyEvidenceClassification
+from ..evidence.safety_quality import SafetyReferenceQuality
 
 
 class ContextPacketBuilder:
@@ -28,6 +34,9 @@ class ContextPacketBuilder:
         *,
         week_periods: tuple[WeekPeriod, ...],
         deterministic_constraint_codes: tuple[str, ...] = (),
+        safety: SafetyContext | None = None,
+        safety_classification: SafetyEvidenceClassification | None = None,
+        safety_quality: SafetyReferenceQuality | None = None,
     ) -> MonthlyContextPacket:
         active_weeks = tuple(period for period in week_periods if period.active)
         if len(active_weeks) != retrieval.request.week_count:
@@ -40,6 +49,15 @@ class ContextPacketBuilder:
                 BlockName.INSTITUTION_MONTHLY_EVIDENCE,
                 *CLASS_BLOCKS.values(),
                 BlockName.OTHER_OUTDOOR_EVIDENCE,
+                *(
+                    (
+                        BlockName.SAFETY_EDUCATION_EVIDENCE,
+                        BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE,
+                        BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE,
+                    )
+                    if safety is not None
+                    else ()
+                ),
             )
             for item in retrieval.block(name).items
         ]
@@ -82,6 +100,35 @@ class ContextPacketBuilder:
             for item in convert(retrieval.block(block).items, grounding_class)
         )
         other = convert(retrieval.block(BlockName.OTHER_OUTDOOR_EVIDENCE).items)
+        if safety is not None:
+            retrieved = {
+                item.record_id: item.record
+                for name in (
+                    BlockName.SAFETY_EDUCATION_EVIDENCE,
+                    BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE,
+                    BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE,
+                )
+                for item in retrieval.block(name).items
+            }
+            cross_month = {item.record_id for item in retrieval.block(BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE).items}
+            # Order matters: target-month References rank before cross-month ones.
+            evidence = (
+                convert(retrieval.block(BlockName.SAFETY_EDUCATION_EVIDENCE).items)
+                + convert(retrieval.block(BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE).items)
+                + convert(retrieval.block(BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE).items)
+            )
+            references = []
+            for item in evidence:
+                record = retrieved[item.evidence_ref]
+                reference = safety_classification.runtime_reference(record)
+                references.append(
+                    SafetyReferenceContext(
+                        item.evidence_ref, reference.kind, reference.legal_category_id, reference.supplemental_label,
+                        safety_quality.usable_topic_group(record) if reference.supplemental_label else None,
+                        item.evidence_ref in cross_month,
+                    )
+                )
+            safety = replace(safety, evidence=evidence, references=tuple(references))
         references = tuple(
             ReferenceActivityContext(item.activity_id, item.label, item.rank)
             for item in retrieval.block(BlockName.REFERENCE_ACTIVITIES).reference_items
@@ -106,6 +153,7 @@ class ContextPacketBuilder:
             section_evidence=section,
             reference_activities=references,
             other_outdoor_evidence=other,
+            safety=safety,
             constraints=ContextConstraints(
                 deterministic_constraint_codes=deterministic_constraint_codes
             ),

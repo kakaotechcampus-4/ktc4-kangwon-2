@@ -19,7 +19,10 @@ def _json_value(value: object) -> object:
 
 
 def context_payload(packet: MonthlyContextPacket) -> dict[str, object]:
-    return asdict(packet)
+    payload = asdict(packet)
+    if payload["safety"] is None:
+        del payload["safety"]  # packets without safety placement keep their fingerprint
+    return payload
 
 
 def canonical_context_json(packet: MonthlyContextPacket) -> str:
