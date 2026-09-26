@@ -42,6 +42,12 @@ FROZEN_ARTIFACTS = {
     "rules/safety_education_legal_v1.json": (
         "bd5c04864eb4eca66e51c24d58224723dbb401ead1b72f5e3b09d3a32057b3e9"
     ),
+    "rules/safety_placement_policy_v2.json": (
+        "52b3dff8ef2015493010e31cac01dcd6955824e8c1d9ab8521c3b172298fe75a"
+    ),
+    "rules/safety_placement_policy_v1.json": (
+        "f65bcfee463fb8d7ed1da9bc390f7d211249f4d82464af2c258e019729bc616e"
+    ),
     "evidence/institution_evidence_v0_1_0.json": (
         "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a"
     ),

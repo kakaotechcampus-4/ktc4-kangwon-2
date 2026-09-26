@@ -43,6 +43,7 @@ def parse_safety_rule_payload(payload: object) -> SafetyLegalRule:
                     official_label=raw["official_label"],
                     interval_months=raw["interval_months"],
                     annual_hours_min=raw["annual_hours_min"],
+                    content_items=tuple(raw["content_items_verbatim"]),
                 )
             )
         return SafetyLegalRule(

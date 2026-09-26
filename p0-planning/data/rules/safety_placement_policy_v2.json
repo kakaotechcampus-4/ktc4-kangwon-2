@@ -1,0 +1,127 @@
+{
+  "$schema_note": "쓱싹요정 기본 안전교육 Placement Policy. 법령이 아니라 제품 정책이다. 법정 구분·주기·시간은 safety_education_legal_v1.json이 정하며 이 파일은 그 구분을 어느 월·주에 둘지만 담는다. 법령 파일을 수정하지 않고 legal_rule_version으로 참조만 한다. v2는 각 법정 placement 회차에 official content focus 1개를 배정하는 focus_rule을 더한다.",
+  "policy_id": "ssuksak.safety-placement-policy",
+  "policy_version": "ssuksak-safety-placement-v2",
+  "supersedes": "ssuksak-safety-placement-v1",
+  "normative_status": "PRODUCT_POLICY",
+  "legal_rule_version": "child-welfare-act-decree-annex6-2022-06-21",
+  "school_year_start_month": 3,
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-09-26T02:35:19+09:00",
+    "runtime_active": true,
+    "runtime_rule": "runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")을 항상 만족한다.",
+    "decision_record": "Human Decision: 한 Safety cell = 하나의 핵심 안전교육 주제. 법정 회차마다 official content focus 1개를 배정한다. focus는 공식 순서 + 학년도 순환으로 정한다. placements(월·주)는 v1과 같다.",
+    "approval_scope_note": "Human AI Lead 승인. 한 statutory placement는 official content focus 하나만 가진다. focus rotation은 결정적이며, 연간 배치 수보다 official 항목이 많은 구분은 여러 교육연도에 걸쳐 순환한다. official 항목을 중요도 판단으로 빼지 않는다. 2026 교육연도는 rotation anchor인 제품 정책이다. 이 focus mapping은 법령이 아니라 PRODUCT_POLICY이며 법정 연간 시간 충족을 뜻하지 않는다."
+  },
+  "week_ordinal_semantics": "해당 월의 활성 주 중 몇 번째 주인지(1부터). 활성 주가 모자라면 fail-closed한다. 2026-09-26 Human Decision: 법정 구분이 1개인 달은 2주, 2개인 달은 2주·4주에 둬 월 초 연속 배치를 피한다.",
+  "interval_semantics": "월 단위로 검증한다. 교육연도 3월→다음 해 2월 배치를 매년 반복한다고 보고, 같은 구분의 연속 배치 월 간격이 interval_months 이하인지 순환 검사한다.",
+  "focus_rule": {
+    "kind": "OFFICIAL_ORDER_ROTATING_BY_SCHOOL_YEAR",
+    "base_school_year": 2026,
+    "semantics": "구분의 교육연도(3월→다음 해 2월) 안 j번째(0부터) 배치에 official content_items_verbatim의 ((school_year - base_school_year) × 연간 배치 수 + j) mod 항목 수 번째(0부터) 항목을 focus로 둔다. 중요도 판단 없이 공식 순서를 따르고, 한 해에 다 못 다룬 항목은 다음 교육연도로 이어진다."
+  },
+  "placements": [
+    {
+      "month": 3,
+      "category_id": "traffic_safety",
+      "week_ordinal": 2
+    },
+    {
+      "month": 3,
+      "category_id": "sexual_violence_prevention",
+      "week_ordinal": 4
+    },
+    {
+      "month": 4,
+      "category_id": "missing_and_abduction_prevention",
+      "week_ordinal": 2
+    },
+    {
+      "month": 5,
+      "category_id": "traffic_safety",
+      "week_ordinal": 2
+    },
+    {
+      "month": 5,
+      "category_id": "infectious_disease_and_drug_misuse_prevention",
+      "week_ordinal": 4
+    },
+    {
+      "month": 6,
+      "category_id": "child_abuse_prevention",
+      "week_ordinal": 2
+    },
+    {
+      "month": 7,
+      "category_id": "traffic_safety",
+      "week_ordinal": 2
+    },
+    {
+      "month": 7,
+      "category_id": "missing_and_abduction_prevention",
+      "week_ordinal": 4
+    },
+    {
+      "month": 8,
+      "category_id": "infectious_disease_and_drug_misuse_prevention",
+      "week_ordinal": 2
+    },
+    {
+      "month": 8,
+      "category_id": "disaster_preparedness_safety",
+      "week_ordinal": 4
+    },
+    {
+      "month": 9,
+      "category_id": "traffic_safety",
+      "week_ordinal": 2
+    },
+    {
+      "month": 9,
+      "category_id": "sexual_violence_prevention",
+      "week_ordinal": 4
+    },
+    {
+      "month": 10,
+      "category_id": "missing_and_abduction_prevention",
+      "week_ordinal": 2
+    },
+    {
+      "month": 11,
+      "category_id": "traffic_safety",
+      "week_ordinal": 2
+    },
+    {
+      "month": 11,
+      "category_id": "infectious_disease_and_drug_misuse_prevention",
+      "week_ordinal": 4
+    },
+    {
+      "month": 12,
+      "category_id": "child_abuse_prevention",
+      "week_ordinal": 2
+    },
+    {
+      "month": 1,
+      "category_id": "traffic_safety",
+      "week_ordinal": 2
+    },
+    {
+      "month": 1,
+      "category_id": "missing_and_abduction_prevention",
+      "week_ordinal": 4
+    },
+    {
+      "month": 2,
+      "category_id": "infectious_disease_and_drug_misuse_prevention",
+      "week_ordinal": 2
+    },
+    {
+      "month": 2,
+      "category_id": "disaster_preparedness_safety",
+      "week_ordinal": 4
+    }
+  ]
+}

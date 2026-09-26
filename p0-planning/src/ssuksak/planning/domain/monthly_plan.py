@@ -19,6 +19,7 @@ from .monthly_template import (
 from .monthly_template_snapshot import TemplateSnapshot
 from .monthly_verification import VerificationReport
 from .plan import PlanStatus
+from .safety_placement import SafetyPlacement
 from .provenance import (
     AuditEvent,
     AuditEventType,
@@ -74,6 +75,7 @@ class MonthlyCell:
     source_label: str | None = None
     label_variant: LabelVariant | None = None
     mapping_confidence: MappingConfidence | None = None
+    safety: SafetyPlacement | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.item_id, ItemId):
@@ -125,6 +127,13 @@ class MonthlyCell:
         ):
             raise InvalidDomainValueError(
                 "MonthlyCell.mapping_confidence is invalid"
+            )
+        if self.safety is not None and (
+            not isinstance(self.safety, SafetyPlacement)
+            or self.section_key != "safety_education"
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyCell.safety belongs to safety_education Cells only"
             )
 
     @property
