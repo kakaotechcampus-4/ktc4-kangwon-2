@@ -7,6 +7,8 @@ import logging
 from ..context.models import MonthlyContextPacket
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from .contracts import (
+    MONTHLY_REPAIR_PROMPT_VERSION,
+    MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
     is_compatible_monthly_model,
     MonthlyPlanningOutcome,
     MonthlyPlanningRequest,
@@ -21,9 +23,26 @@ _log = logging.getLogger(__name__)
 
 # OD-N04: content findings a single repair generation may fix. Anything else
 # (model, parse, structure, placement, AXIS, theme, unknown refs) fails closed.
+# SAFETY_GROUNDING_MISMATCH is a ref choice inside a fixed slot, like
+# WRONG_SOURCE_GROUNDING; SAFETY_PLACEMENT_MISMATCH changes the slot and fails closed.
+# Safety focus/quality findings are re-selection or rewriting inside the same slot.
 REPAIRABLE_CODES = frozenset(
-    {"SOURCE_TEXT_COPY", "TEXT_POLICY", "WRONG_SOURCE_GROUNDING"}
+    {
+        "SOURCE_TEXT_COPY", "TEXT_POLICY", "WRONG_SOURCE_GROUNDING", "SAFETY_GROUNDING_MISMATCH",
+        "SAFETY_FOCUS_MISMATCH", "SAFETY_MULTIPLE_SENTENCES", "SAFETY_DUPLICATE_CONTENT", "SAFETY_DUPLICATE_REFERENCE",
+    }
 )
+
+
+def finding_summary(issues) -> str:
+    """Code, location and stable reason per finding; no generated or evidence text."""
+    return "; ".join(
+        f"{issue.code.value}@{issue.week_id or 'month'}/{issue.field}"
+        + (f" reason={issue.reason}" if issue.reason else "")
+        + (f" expected={issue.expected}" if issue.expected else "")
+        + (f" actual={issue.actual}" if issue.actual else "")
+        for issue in issues
+    )
 
 
 class MonthlyPlanner:
@@ -37,7 +56,7 @@ class MonthlyPlanner:
         response, proposal, validation = self._attempt(packet, request)
         if not validation.is_valid and set(validation.codes) <= REPAIRABLE_CODES:
             # At most one repair call: 2 provider calls in total, never 3.
-            _log.info("Monthly LLM repair attempted: %s", ",".join(validation.codes))
+            _log.info("Monthly LLM repair attempted: %s", finding_summary(validation.issues))
             request = build_monthly_repair_request(
                 request, response.content, validation.issues
             )
@@ -49,9 +68,11 @@ class MonthlyPlanner:
             if validation.is_valid:
                 _log.info("Monthly LLM repair succeeded")
             else:
-                _log.warning("Monthly LLM repair failed: %s", ",".join(validation.codes))
+                _log.warning("Monthly LLM repair failed: %s", finding_summary(validation.issues))
         if not validation.is_valid:
-            raise ProposalRejectedError(validation.codes)
+            if request.prompt_version not in (MONTHLY_REPAIR_PROMPT_VERSION, MONTHLY_SAFETY_REPAIR_PROMPT_VERSION):
+                _log.warning("Monthly LLM proposal rejected: %s", finding_summary(validation.issues))
+            raise ProposalRejectedError(validation.codes, validation.issues)
         return MonthlyPlanningOutcome(
             proposal=proposal,
             model=response.model,

@@ -14,6 +14,8 @@ from ..evidence.classification import grounding_class_for
 from .contracts import (
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
+    MONTHLY_SAFETY_PROMPT_VERSION,
+    MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
     MonthlyPlanningRequest,
     generation_target_sections,
 )
@@ -46,8 +48,25 @@ for a nullable field with no value, include the key with null, never omit it.
 Return only one JSON object matching response_contract; add no fields.
 """
 
-REPAIR_SYSTEM_PROMPT = (
-    """You repair one monthly plan proposal.
+# Appended to SYSTEM_PROMPT only when the Context Packet carries safety placement.
+SAFETY_SYSTEM_PROMPT = SYSTEM_PROMPT + """safety_plan fixes every week's safety_education slot: its week, kind, legal
+category, official content focus or primary reference. Never change any of them.
+Write every safety_education value as exactly one Korean sentence about one
+safety concept or action; never list several actions or topics.
+For a STATUTORY week, express its one official_content focus for young children.
+Cite that focus grounding_ref, optionally with at most two of that week's
+sample_refs that illustrate the same focus, and cite no other official_content.
+For a SUPPLEMENTAL week, express the one key action of its primary_ref. Cite
+primary_ref, optionally with its support_refs, and nothing else.
+Record the official_content focus ref, primary_ref and support_refs only in
+grounding_refs. For safety_education, reference_id is always null: reference_id
+is the activity reference catalog field, never safety grounding.
+Never write the same safety sentence in two weeks.
+State only safety practice found in the cited official_content or evidence; add
+no new safety rules, numbers, legal duties, education hours, or schedules.
+"""
+
+REPAIR_HEADER = """You repair one monthly plan proposal.
 rejected_proposal matches response_contract but failed semantic validation.
 Each validation_findings entry names a failed code with its section_key and
 week_id; a null week_id is the month-level cell. For TEXT_POLICY, detail names
@@ -65,12 +84,17 @@ The repaired proposal is validated again in full. The original planning rules
 follow and still apply.
 
 """
-    + SYSTEM_PROMPT
-)
+REPAIR_SYSTEM_PROMPT = REPAIR_HEADER + SYSTEM_PROMPT
+
+
+def official_safety_refs(packet: MonthlyContextPacket) -> tuple[str, ...]:
+    return () if packet.safety is None else tuple(packet.safety.official_by_ref)
 
 
 def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
-    return frozenset(item.evidence_ref for item in packet.grounding_items)
+    return frozenset(item.evidence_ref for item in packet.grounding_items) | frozenset(
+        official_safety_refs(packet)
+    )
 
 
 def generation_targets(
@@ -91,6 +115,7 @@ def generation_targets(
         allowed = tuple(ref for ref in refs if ref not in wrong)
         if section.section_key == "safety_education":
             allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
+            allowed += tuple(sorted(official_safety_refs(packet)))
             if not allowed:
                 continue
         targets.append((section, allowed))
@@ -105,7 +130,43 @@ def allowed_grounding_refs_by_section(
     )
 
 
+def _safety_plan(packet: MonthlyContextPacket) -> dict[str, object]:
+    official = packet.safety.official_content
+    return {
+        "weeks": [
+            {
+                "week_id": slot.week_id,
+                "kind": slot.kind.value,
+                "category_id": slot.category_id,
+                "official_label": next(
+                    (item.official_label for item in official if item.category_id == slot.category_id),
+                    None,
+                ),
+                "official_content": [
+                    {"grounding_ref": item.grounding_ref, "text": item.text}
+                    for item in official
+                    if item.category_id == slot.category_id
+                ],
+                "sample_refs": list(packet.safety.sample_refs_for(slot)),
+                "primary_ref": slot.primary_ref,
+                "support_refs": list(slot.support_refs),
+                "supplemental_label": (
+                    packet.safety.reference_by_ref[slot.primary_ref].supplemental_label if slot.primary_ref else None
+                ),
+            }
+            for slot in packet.safety.slots
+        ]
+    }
+
+
 def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
+    payload = _base_payload(packet)
+    if packet.safety is not None:
+        payload["safety_plan"] = _safety_plan(packet)
+    return payload
+
+
+def _base_payload(packet: MonthlyContextPacket) -> dict[str, object]:
     return {
         "target_month": packet.target_month.value,
         "ages": list(packet.ages),
@@ -222,10 +283,11 @@ def build_monthly_planning_request(
             "response_contract": _response_contract(),
         }
     )
+    safety = packet.safety is not None
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
-        prompt_version=MONTHLY_PROMPT_VERSION,
-        system_prompt=SYSTEM_PROMPT,
+        prompt_version=MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION,
+        system_prompt=SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -262,7 +324,11 @@ def build_monthly_repair_request(
     }
     return replace(
         request,
-        prompt_version=MONTHLY_REPAIR_PROMPT_VERSION,
-        system_prompt=REPAIR_SYSTEM_PROMPT,
+        prompt_version=(
+            MONTHLY_SAFETY_REPAIR_PROMPT_VERSION
+            if request.prompt_version == MONTHLY_SAFETY_PROMPT_VERSION
+            else MONTHLY_REPAIR_PROMPT_VERSION
+        ),
+        system_prompt=REPAIR_HEADER + request.system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
     )
