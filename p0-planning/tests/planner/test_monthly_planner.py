@@ -54,7 +54,9 @@ from ssuksak.planning.planner.prompt import (
     build_monthly_planning_request,
 )
 from ssuksak.planning.planner.service import REPAIRABLE_CODES, MonthlyPlanner
+from ssuksak.planning.planner.text_policy import MAX_VISIBLE_TEXT_CHARS
 from ssuksak.planning.planner.validation import (
+    canonicalize_reference_labels,
     validate_monthly_proposal,
     validate_monthly_proposal_schema,
 )
@@ -1088,7 +1090,7 @@ def test_repairable_finding_gets_one_repair_with_locators(packet, snapshot, muta
 
 
 def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v5"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v6"
     assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
     assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
     for rule in (
@@ -1439,20 +1441,73 @@ def test_a_paraphrase_with_a_reference_id_is_a_located_canonical_label_mismatch(
     assert issue.detail == "reference_id=act-1 canonical_label=바람개비 놀이"
 
 
-def test_a_canonical_label_mismatch_gets_one_repair_that_restores_the_label(packet, snapshot, caplog):
-    fake = ScriptedMonthlyLlm(_mutated(_paraphrased), monthly_payload(), monthly_payload())
+def _long_focus(body):
+    body["weeks"][0]["sections"][0]["value"] = "바람과 빛의 변화를 살펴본다. " * 20  # > MAX_VISIBLE_TEXT_CHARS
+
+
+def _paraphrase_and_copy(body):
+    _paraphrased(body)
+    _source_copy(body)
+
+
+def test_a_label_mismatch_is_repaired_deterministically_without_a_provider_call(packet, snapshot, caplog):
+    fake = ScriptedMonthlyLlm(_mutated(_paraphrased), monthly_payload())
 
     with caplog.at_level("INFO"):
         outcome = MonthlyPlanner(fake).plan(packet, snapshot)
-    repair = fake.monthly_requests[1]
-    (finding,) = json.loads(repair.user_content)["validation_findings"]
     value = outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1"))
 
-    assert "REFERENCE_VALUE_MISMATCH" in REPAIRABLE_CODES and len(fake.monthly_requests) == 2
-    assert finding["detail"] == "reference_id=act-1 canonical_label=바람개비 놀이"
-    assert (value.reference_id, value.value) == ("act-1", "바람개비 놀이")
-    assert "REFERENCE_VALUE_MISMATCH@2026-09-W1/outdoor_play reason=CANONICAL_LABEL_MISMATCH" in caplog.text
+    assert len(fake.monthly_requests) == 1 and outcome.prompt_version == MONTHLY_PROMPT_VERSION
+    assert (value.reference_id, value.value, value.grounding_refs) == ("act-1", "바람개비 놀이", ())
+    assert "Monthly deterministic repair applied: REFERENCE_VALUE_MISMATCH@2026-09-W1/outdoor_play" in caplog.text
+    assert "LLM repair attempted" not in caplog.text
     assert "바람개비" not in caplog.text  # neither generated nor catalog text is logged
+
+
+def test_every_label_mismatch_is_restored_in_one_deterministic_step(packet, snapshot):
+    packet = _with_second_activity(packet)
+    body = _mutated(_paraphrased)
+    body["weeks"][1]["sections"][1].update(reference_id="act-2", value="그림자를 따라 놀아요", grounding_refs=[])
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    values = [outcome.proposal.value_for("outdoor_play", WeekId(w)) for w in ("2026-09-W1", "2026-09-W2")]
+
+    assert len(fake.monthly_requests) == 1
+    assert [(v.reference_id, v.value) for v in values] == [("act-1", "바람개비 놀이"), ("act-2", "그림자 놀이")]
+
+
+def test_canonicalization_touches_only_known_label_mismatches(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    body = _mutated(_paraphrased)
+    content = json.dumps(body, ensure_ascii=False)
+    (issue,) = validate_monthly_proposal(parse_monthly_proposal(content), packet, request).issues
+
+    fixed_content, fixed = canonicalize_reference_labels(content, (issue,), request)
+    expected = _mutated(_paraphrased)
+    _outdoor_w1(expected)["value"] = "바람개비 놀이"
+    assert fixed == (issue,) and json.loads(fixed_content) == expected  # nothing else changed
+
+    unknown = _mutated(_paraphrased)
+    _outdoor_w1(unknown)["reference_id"] = "invented"
+    for issues, raw in (((replace(issue, reason="REFERENCE_ID_CHANGED_ON_REPAIR"),), body), ((issue,), unknown)):
+        raw_content = json.dumps(raw, ensure_ascii=False)
+        assert canonicalize_reference_labels(raw_content, issues, request) == (raw_content, ())
+
+
+@pytest.mark.parametrize("other", [_source_copy, _long_focus], ids=["source-copy", "text-too-long"])
+def test_label_mismatch_plus_a_text_finding_gets_one_llm_repair_after_the_deterministic_step(packet, snapshot, other):
+    body = _mutated(_paraphrased)
+    other(body)
+    fake = ScriptedMonthlyLlm(body, monthly_payload(), monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    repair = json.loads(fake.monthly_requests[1].user_content)
+
+    assert len(fake.monthly_requests) == 2 and outcome.prompt_version == MONTHLY_REPAIR_PROMPT_VERSION
+    assert {f["code"] for f in repair["validation_findings"]} <= {"SOURCE_TEXT_COPY", "TEXT_POLICY"}
+    assert _outdoor_w1(repair["rejected_proposal"])["value"] == "바람개비 놀이"  # already canonical
+    assert outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1")).reference_id == "act-1"
 
 
 @pytest.mark.parametrize(
@@ -1460,14 +1515,11 @@ def test_a_canonical_label_mismatch_gets_one_repair_that_restores_the_label(pack
     [("act-2", "그림자 놀이", [], "act-2"), (None, "바람개비를 돌리며 바람을 느낀다.", ["ev-1"], "null")],
     ids=["other-catalog-item", "dropped-reference"],
 )
-def test_a_repair_may_not_change_or_drop_the_mismatched_reference_id(packet, snapshot, reference_id, value, refs, actual):
+def test_an_llm_repair_may_not_change_or_drop_a_canonicalized_reference_id(packet, snapshot, reference_id, value, refs, actual):
     packet = _with_second_activity(packet)
     repaired = monthly_payload()
     _outdoor_w1(repaired).update(reference_id=reference_id, value=value, grounding_refs=refs)
-    request = build_monthly_planning_request(packet, snapshot)
-    # Valid on its own: only the repair pin rejects it.
-    assert validate_monthly_proposal(parse_monthly_proposal(json.dumps(repaired, ensure_ascii=False)), packet, request).is_valid
-    fake = ScriptedMonthlyLlm(_mutated(_paraphrased), repaired, monthly_payload())
+    fake = ScriptedMonthlyLlm(_mutated(_paraphrase_and_copy), repaired, monthly_payload())
 
     with pytest.raises(ProposalRejectedError) as exc:
         MonthlyPlanner(fake).plan(packet, snapshot)
@@ -1478,8 +1530,8 @@ def test_a_repair_may_not_change_or_drop_the_mismatched_reference_id(packet, sna
     assert len(fake.monthly_requests) == 2
 
 
-def test_a_second_label_mismatch_after_repair_fails_closed_without_a_third_call(packet, snapshot):
-    fake = ScriptedMonthlyLlm(_mutated(_paraphrased), _mutated(_paraphrased), monthly_payload())
+def test_a_mismatch_reintroduced_by_the_llm_repair_fails_closed_without_a_third_call(packet, snapshot):
+    fake = ScriptedMonthlyLlm(_mutated(_paraphrase_and_copy), _mutated(_paraphrased), monthly_payload())
 
     with pytest.raises(ProposalRejectedError) as exc:
         MonthlyPlanner(fake).plan(packet, snapshot)
@@ -1506,8 +1558,22 @@ def test_initial_and_repair_prompts_scope_reference_id_to_supplied_catalogs():
         assert "In every other section reference_id is null" in flat
         assert "value must exactly equal the canonical label of that referenced item" in flat
         assert "do not paraphrase, expand, summarize or rewrite it" in flat
-    assert "keep that same reference_id and set value to exactly that" in REPAIR_SYSTEM_PROMPT
     assert MONTHLY_PROMPT_VERSION == "monthly-planner-v10"
+
+
+def test_the_repair_prompt_is_finding_directed():
+    header = REPAIR_SYSTEM_PROMPT[: -len(MONTHLY_SYSTEM_PROMPT)]
+    flat = " ".join(header.split())
+
+    assert "Write every value in your own words" not in header  # conflicted with canonical labels
+    assert "REFERENCE_VALUE_MISMATCH" not in header  # repaired deterministically, never by the LLM
+    assert "Change only the cells named in validation_findings and keep cells without a finding unchanged" in flat
+    assert "copy their value, reference_id and grounding_refs exactly as in rejected_proposal" in flat
+    assert "SOURCE_TEXT_COPY: keep the meaning of its cited grounding_refs but rewrite the value in your own words" in flat
+    assert (f"TEXT_TOO_LONG: keep the same meaning and cited refs; shorten the value to at most "
+            f"{MAX_VISIBLE_TEXT_CHARS} characters") in flat
+    assert MAX_VISIBLE_TEXT_CHARS == 240  # the validator's limit, not a new number
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v6"
 
 
 # ---------------------------------------------------------------- reference_id capability

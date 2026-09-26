@@ -17,7 +17,12 @@ from .contracts import (
 from .parser import parse_monthly_proposal
 from .ports import MonthlyPlanningProvider
 from .prompt import build_monthly_planning_request, build_monthly_repair_request
-from .validation import MonthlyProposalValidationResult, changed_reference_ids, validate_monthly_proposal
+from .validation import (
+    MonthlyProposalValidationResult,
+    canonicalize_reference_labels,
+    changed_reference_ids,
+    validate_monthly_proposal,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -26,8 +31,9 @@ _log = logging.getLogger(__name__)
 # SAFETY_GROUNDING_MISMATCH is a ref choice inside a fixed slot, like
 # WRONG_SOURCE_GROUNDING; SAFETY_PLACEMENT_MISMATCH changes the slot and fails closed.
 # Safety focus/quality findings are re-selection or rewriting inside the same slot.
-# REFERENCE_VALUE_MISMATCH restores the canonical label of the same reference_id;
-# a repair that changes or drops that reference_id is rejected.
+# REFERENCE_VALUE_MISMATCH is repaired deterministically, never by the LLM: same
+# reference_id, value := its canonical label; if that label is unknown it fails closed.
+# An LLM repair that changes or drops that reference_id is rejected.
 REPAIRABLE_CODES = frozenset(
     {
         "SOURCE_TEXT_COPY", "TEXT_POLICY", "WRONG_SOURCE_GROUNDING", "SAFETY_GROUNDING_MISMATCH",
@@ -57,13 +63,23 @@ class MonthlyPlanner:
     ) -> MonthlyPlanningOutcome:
         request = build_monthly_planning_request(packet, snapshot)
         response, proposal, validation = self._attempt(packet, request)
+        content, found = response.content, validation.issues
         if not validation.is_valid and set(validation.codes) <= REPAIRABLE_CODES:
-            # At most one repair call: 2 provider calls in total, never 3.
+            # Deterministic step first; it is no provider call.
+            content, fixed = canonicalize_reference_labels(content, validation.issues, request)
+            if fixed:
+                _log.info("Monthly deterministic repair applied: %s", finding_summary(fixed))
+                proposal = parse_monthly_proposal(content)
+                validation = validate_monthly_proposal(proposal, packet, request)
+        if (
+            not validation.is_valid
+            and set(validation.codes) <= REPAIRABLE_CODES
+            and "REFERENCE_VALUE_MISMATCH" not in validation.codes  # label unknown: fail closed
+        ):
+            # At most one LLM repair call: 2 provider calls in total, never 3.
             _log.info("Monthly LLM repair attempted: %s", finding_summary(validation.issues))
-            request = build_monthly_repair_request(
-                request, response.content, validation.issues
-            )
-            rejected, found = proposal, validation.issues
+            request = build_monthly_repair_request(request, content, validation.issues)
+            rejected = proposal
             try:
                 response, proposal, validation = self._attempt(packet, request)
             except Exception:

@@ -23,10 +23,10 @@ from ..domain.year_month import YearMonth
 MONTHLY_PROMPT_VERSION = "monthly-planner-v10"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
-MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v5"
+MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v6"
 # Used instead of the two above when the Context Packet carries safety placement.
 MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v6"
-MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v6"
+MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v7"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").

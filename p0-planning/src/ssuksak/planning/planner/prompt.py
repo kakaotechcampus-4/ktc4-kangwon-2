@@ -19,6 +19,7 @@ from .contracts import (
     MonthlyPlanningRequest,
     generation_target_sections,
 )
+from .text_policy import MAX_VISIBLE_TEXT_CHARS
 from .validation import ProposalValidationIssue, is_safety_grounding, wrong_source_refs
 
 MONTHLY_TASK = "monthly_plan_proposal"
@@ -74,18 +75,26 @@ State only safety practice found in the cited official_content or evidence; add
 no new safety rules, numbers, legal duties, education hours, or schedules.
 """
 
-REPAIR_HEADER = """You repair one monthly plan proposal.
+REPAIR_HEADER = f"""You repair one monthly plan proposal.
 rejected_proposal matches response_contract but failed semantic validation.
 Each validation_findings entry names a failed code with its section_key and
 week_id; a null week_id is the month-level cell. For TEXT_POLICY, detail names
 the violated text rule.
-For REFERENCE_VALUE_MISMATCH, detail names the cell's reference_id and its
-canonical_label: keep that same reference_id and set value to exactly that
-canonical_label. Never choose another reference_id or set it to null there.
 Return the complete corrected proposal as one JSON object matching
-original_request.response_contract. Fix every finding and keep cells without a
-finding unchanged.
-Write every value in your own words; never copy evidence text verbatim.
+original_request.response_contract. Change only the cells named in
+validation_findings and keep cells without a finding unchanged: copy their
+value, reference_id and grounding_refs exactly as in rejected_proposal.
+Fix each named cell only as its finding requires:
+- SOURCE_TEXT_COPY: keep the meaning of its cited grounding_refs but rewrite
+  the value in your own words; never copy evidence text verbatim.
+- TEXT_POLICY with detail TEXT_TOO_LONG: keep the same meaning and cited refs;
+  shorten the value to at most {MAX_VISIBLE_TEXT_CHARS} characters by removing
+  unnecessary modifiers and repetition.
+- Other TEXT_POLICY: remove only the violation that detail names.
+- WRONG_SOURCE_GROUNDING: cite only refs with that section's grounding_class.
+- SAFETY_*: fix the cell inside its safety_plan slot, citing only that week's
+  focus or primary_ref and its allowed refs.
+In every value you rewrite, never copy evidence text verbatim.
 Cite only grounding_refs supplied in original_request.evidence, following the
 grounding_class rules below.
 Value text must not claim legal or official status, must not mention safety

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 import re
 
 from ..context.models import (
@@ -237,6 +238,37 @@ def _canonical_values(
         for week in proposal.weeks
         for value in week.sections
     )
+
+
+def canonicalize_reference_labels(
+    content: str,
+    issues: tuple[ProposalValidationIssue, ...],
+    request: MonthlyPlanningRequest,
+) -> tuple[str, tuple[ProposalValidationIssue, ...]]:
+    """Deterministic REFERENCE_VALUE_MISMATCH repair on the raw proposal JSON.
+
+    Only a CANONICAL_LABEL_MISMATCH cell whose reference_id resolves in the request's
+    catalog labels is touched: its reference_id, refs, section and week stay; value
+    becomes exactly that canonical label. Anything else is left for fail-closed.
+    """
+    payload = json.loads(content)
+    labels = request.reference_label_map
+    cells = {(None, cell["section_key"]): cell for cell in payload["month_sections"]}
+    cells.update(
+        ((week["week_id"], cell["section_key"]), cell) for week in payload["weeks"] for cell in week["sections"]
+    )
+    fixed = []
+    for issue in issues:
+        cell = cells.get((issue.week_id, issue.field))
+        if (
+            issue.code is ProposalValidationCode.REFERENCE_VALUE_MISMATCH
+            and issue.reason == "CANONICAL_LABEL_MISMATCH"
+            and cell is not None
+            and cell["reference_id"] in labels
+        ):
+            cell["value"] = labels[cell["reference_id"]]
+            fixed.append(issue)
+    return json.dumps(payload, ensure_ascii=False), tuple(fixed)
 
 
 def changed_reference_ids(
