@@ -1,0 +1,863 @@
+{
+  "$schema_note": "Institution Evidence 중 source_section=safety_education record를 item_tag(항목 문장 맨 앞의 [ ] 안 문자열) exact match로 분류하는 후보다. source_label은 대부분 행 제목(안전교육)이라 주제를 담지 않는다. substring·정규화·기관별 mapping 금지. 목록에 없거나 tag가 없는 record는 default_kind다. STATUTORY_REFERENCE는 법정 category를 정하는 근거가 아니라 legal Rule이 정한 category의 표현·활동 보조 Reference다. 원본 corpus 상태를 바꾸지 않는다.",
+  "schema_version": "safety-evidence-classification.schema.v1",
+  "classification_id": "ssuksak.safety-evidence-classification",
+  "classification_version": "safety-evidence-classification-v0.2.0",
+  "supersedes": "safety-evidence-classification-v0.1.0",
+  "evidence_store": {
+    "store_id": "ssuksak.institution-evidence",
+    "schema_version": "institution-evidence.schema.v0",
+    "ingestion_version": "institution-evidence-ingestion-v0.1.0",
+    "content_sha256": "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea",
+    "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE"
+  },
+  "legal_rule_version": "child-welfare-act-decree-annex6-2022-06-21",
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-09-26T01:56:56+09:00",
+    "runtime_active": true,
+    "review_scope_note": "Human AI Lead 결정. v0.2.0의 exact-tag classification 규칙, multi-tag evidence를 NEEDS_REVIEW로 fail-closed 처리하는 규칙, 현재 STATUTORY_REFERENCE와 SUPPLEMENTAL_REFERENCE mapping을 승인한다. NEEDS_REVIEW evidence는 계속 runtime 사용 금지다. 모든 evidence가 검토 완료됐다는 뜻이 아니다. v0.1.0 대비 변경은 multi_tag_rule 추가뿐이며 entries는 같다."
+  },
+  "matching": "EXACT",
+  "key": [
+    "source_section",
+    "item_tag"
+  ],
+  "item_tag_rule": "LEADING_SQUARE_BRACKET",
+  "item_tag_rule_note": "문장 앞 공백을 뺀 뒤 [로 시작하면 첫 ]까지의 안쪽 문자열을 그대로 쓴다(앞뒤 공백 포함). 둥근 괄호 tag는 쓰지 않는다.",
+  "multi_tag_rule": "MULTIPLE_SQUARE_BRACKET_TAGS_NEEDS_REVIEW",
+  "multi_tag_rule_note": "본문에 [ ] tag가 2개 이상인 record는 leading tag가 record 전체 의미를 대표하지 못하므로 entry와 관계없이 NEEDS_REVIEW다. record를 tag 단위로 나누지 않는다.",
+  "default_kind": "NEEDS_REVIEW",
+  "supplemental_labels": [
+    "digital_safety",
+    "fire_safety",
+    "life_safety"
+  ],
+  "entries": [
+    {
+      "source_section": "safety_education",
+      "item_tag": "아동학대",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "child_abuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "아동학대 예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "child_abuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "아동학대 예방교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "child_abuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "아동학대예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "child_abuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "아동학대예방안전",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "child_abuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 재난대비 ",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "disaster_preparedness_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "재난 대비 안전교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "disaster_preparedness_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "재난대비",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "disaster_preparedness_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "재난대비 안전",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "disaster_preparedness_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "재난대비 안전교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "disaster_preparedness_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "재난대비교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "disaster_preparedness_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "재난대비안전",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "disaster_preparedness_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 감염병 및 약물의 오용,남용 예방 등 보건위생관리 ",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 감염병예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 감염병예방 ",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 약물오남용",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물 보건위생관리교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물 오남용 예방 교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물 오남용.보건위생관리",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물오남용",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물오남용 예방 등 보건위생관리교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물의 오 남용",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물의 오용,남용 예방등 보건위생관리",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물의 오용.남용 예방등 보건위생관리",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 및 약물의 오용･남용 예방 등 보건위생관리",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병 예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병,약물오남용",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병및약물오남용",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염병예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "약물 오남용",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "약물오남용",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "약물오남용.감염병 예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "약물오남용예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "약물의 오남용 예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "infectious_disease_and_drug_misuse_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 실종,유괴의 예방방지 ",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 실종.유괴 ",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종 유괴",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종 유괴 예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종 유괴 예방 교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종, 유괴 예방 방지 교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종.유괴의 예방방지",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종∙유괴의 예방∙방지",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종ㆍ유괴ㆍ예방ㆍ방지",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종유괴",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종유괴예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종유괴의 예방과 방지",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "실종유괴의예방방지",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "missing_and_abduction_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력 안전교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "sexual_violence_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력 예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "sexual_violence_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력 예방교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "sexual_violence_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력예방",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "sexual_violence_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력예방안전",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "sexual_violence_prevention",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 교통안전 ",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "traffic_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "교통 안전",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "traffic_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "교통안전",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "traffic_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "교통안전 교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "traffic_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "교통안전교육",
+      "kind": "STATUTORY_REFERENCE",
+      "legal_category_id": "traffic_safety",
+      "supplemental_label": null,
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 인터넷 및 스마트폰 중독예방 및 해소교육",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "digital_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "사이버중독",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "digital_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "인터넷 및 스마트 폰 중독예방 및 해소교육",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "digital_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "소방안전",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "fire_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 생활안전 ",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "life_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "생활 안전교육",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "life_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "생활안전",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "life_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "생활안전교육",
+      "kind": "SUPPLEMENTAL_REFERENCE",
+      "legal_category_id": null,
+      "supplemental_label": "life_safety",
+      "review_reason": null
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 감염 및 미세먼지",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "환경보건 항목이다. 재난대비·보건위생·생활안전 중 어디인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 감영병 예방",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "오탈자 label이다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 미세먼지",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "환경보건 항목이다. 재난대비·보건위생·생활안전 중 어디인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 미세먼지 ",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "환경보건 항목이다. 재난대비·보건위생·생활안전 중 어디인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 성폭력 및 아동학대",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "두 법정 구분을 함께 표기해 한 category로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": " 유아 흡연예방 ",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "보건·건강 항목이다. 보조 안전교육인지 감염병·약물 구분의 사례인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "감염벙예방",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "오탈자 label이다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "건강영양",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "보건·건강 항목이다. 보조 안전교육인지 감염병·약물 구분의 사례인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "대테러 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "미세먼지",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "환경보건 항목이다. 재난대비·보건위생·생활안전 중 어디인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "미세먼지 및 오존 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "보건위생",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "보건·건강 항목이다. 보조 안전교육인지 감염병·약물 구분의 사례인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "비상 대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "비상대응훈련",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "비상대피훈련",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "대피훈련은 별도 semantic key(drill, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력 및 아동학대",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "두 법정 구분을 함께 표기해 한 category로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력 및 아동학대 예방",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "두 법정 구분을 함께 표기해 한 category로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력 및 아동학대 예방교육",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "두 법정 구분을 함께 표기해 한 category로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력,아동학대",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "두 법정 구분을 함께 표기해 한 category로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "성폭력아동학대",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "두 법정 구분을 함께 표기해 한 category로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "소방대피",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "대피훈련은 별도 semantic key(drill, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "소방대피 훈련",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "대피훈련은 별도 semantic key(drill, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "소방대피훈련",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "대피훈련은 별도 semantic key(drill, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "식중독 예방",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "보건·건강 항목이다. 보조 안전교육인지 감염병·약물 구분의 사례인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "식중독예방",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "보건·건강 항목이다. 보조 안전교육인지 감염병·약물 구분의 사례인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "영유아돌연사 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "유아안전",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "구분 없이 일반 안전만 표기했다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "유아흡연예방",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "보건·건강 항목이다. 보조 안전교육인지 감염병·약물 구분의 사례인지 label만으로 정할 수 없다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "장애인식개선교육",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "법령 Rule이 비법정 기관 label로 명시했고 안전교육인지 판단이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "장애인식교육",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "법령 Rule이 비법정 기관 label로 명시했고 안전교육인지 판단이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "재난안전",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "재난대비와 비슷하지만 공식 구분 명칭과 다르다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "정전 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "지진 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "태풍 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "폭설 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "폭염 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    },
+    {
+      "source_section": "safety_education",
+      "item_tag": "황사 비상대응",
+      "kind": "NEEDS_REVIEW",
+      "legal_category_id": null,
+      "supplemental_label": null,
+      "review_reason": "비상대응은 별도 semantic key(emergency_response, OD-M04)다. safety_education 보조 근거로 쓸지 결정이 필요하다"
+    }
+  ]
+}
