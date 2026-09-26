@@ -46,6 +46,7 @@ from .monthly_support import (
     require_actor,
     require_item_id,
     require_monthly_plan,
+    snapshot_grounding_classes,
     theme_reference_id,
     with_fresh_monthly_verification,
 )
@@ -206,6 +207,7 @@ class RegenerateMonthlyPlanItem:
             week_periods=plan.week_periods,
             activity_catalog=catalog,
             constraint_assessments=plan.constraint_assessments,
+            grounding_classes=snapshot_grounding_classes(plan.template_snapshot),
         )
         snapshot = _month_snapshot(plan)
         try:

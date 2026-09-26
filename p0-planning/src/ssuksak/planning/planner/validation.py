@@ -5,9 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from ..context.models import MonthlyContextPacket
+from ..context.models import GroundingContextItem, MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
-from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
+from ..domain.monthly_template import (
+    DisplayMode,
+    EmptyValuePolicy,
+    SectionRole,
+    TemplateSection,
+)
+from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
+from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..evidence.models import SourceSection
 from .contracts import (
     MonthlyPlanProposal,
@@ -24,10 +31,12 @@ class ProposalValidationCode(str, Enum):
     DUPLICATE_SECTION = "DUPLICATE_SECTION"
     UNKNOWN_SECTION = "UNKNOWN_SECTION"
     AXIS_CONTENT = "AXIS_CONTENT"
+    INSTITUTION_INPUT_SECTION = "INSTITUTION_INPUT_SECTION"
     SECTION_PLACEMENT_MISMATCH = "SECTION_PLACEMENT_MISMATCH"
     REQUIRED_SECTION_MISSING = "REQUIRED_SECTION_MISSING"
     UNRESOLVED_NOT_ALLOWED = "UNRESOLVED_NOT_ALLOWED"
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
+    WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
     UNKNOWN_REFERENCE_ID = "UNKNOWN_REFERENCE_ID"
     REFERENCE_VALUE_MISMATCH = "REFERENCE_VALUE_MISMATCH"
@@ -57,6 +66,27 @@ class MonthlyProposalValidationResult:
     @property
     def codes(self) -> tuple[str, ...]:
         return tuple(item.code.value for item in self.issues)
+
+
+def wrong_source_refs(
+    section: TemplateSection,
+    refs: tuple[str, ...],
+    evidence_by_ref: dict[str, GroundingContextItem],
+) -> tuple[str, ...]:
+    """Refs whose approved grounding_class does not belong to this Section."""
+    expected = grounding_class_for(section)
+    scoped = section.section_key in CLASS_SCOPED_SECTION_KEYS
+    wrong = []
+    for ref in refs:
+        item = evidence_by_ref.get(ref)
+        if item is None:
+            continue
+        if scoped:
+            if expected is None or item.grounding_class is not expected:
+                wrong.append(ref)
+        elif item.grounding_class is not None:
+            wrong.append(ref)
+    return tuple(wrong)
 
 
 def _canonical_values(
@@ -108,6 +138,8 @@ def validate_monthly_proposal_schema(
             )
         elif section.role is SectionRole.AXIS:
             fail(ProposalValidationCode.AXIS_CONTENT, value.section_key)
+        elif value.section_key in INSTITUTION_INPUT_SECTION_KEYS:
+            fail(ProposalValidationCode.INSTITUTION_INPUT_SECTION, value.section_key)
         elif section.display_mode is not DisplayMode.MONTHLY_MERGED_SUMMARY:
             fail(
                 ProposalValidationCode.SECTION_PLACEMENT_MISMATCH,
@@ -133,6 +165,12 @@ def validate_monthly_proposal_schema(
             elif section.role is SectionRole.AXIS:
                 fail(
                     ProposalValidationCode.AXIS_CONTENT,
+                    value.section_key,
+                    week_id=week.week_id.value,
+                )
+            elif value.section_key in INSTITUTION_INPUT_SECTION_KEYS:
+                fail(
+                    ProposalValidationCode.INSTITUTION_INPUT_SECTION,
                     value.section_key,
                     week_id=week.week_id.value,
                 )
@@ -194,12 +232,7 @@ def validate_monthly_proposal_grounding(
         )
         return MonthlyProposalValidationResult(tuple(issues))
 
-    evidence_items = (
-        packet.institution_evidence
-        + packet.age_contrast_evidence
-        + packet.week_experience_candidates
-        + packet.other_outdoor_evidence
-    )
+    evidence_items = packet.grounding_items
     evidence_by_ref = {item.evidence_ref: item for item in evidence_items}
     evidence_texts = {
         normalize_visible_text(item.text) for item in evidence_items
@@ -252,6 +285,14 @@ def validate_monthly_proposal_grounding(
                 ProposalValidationCode.UNKNOWN_GROUNDING_REF,
                 value.section_key,
                 repr(unknown),
+                week_id,
+            )
+        wrong = wrong_source_refs(section, value.grounding_refs, evidence_by_ref)
+        if wrong:
+            fail(
+                ProposalValidationCode.WRONG_SOURCE_GROUNDING,
+                value.section_key,
+                repr(wrong),
                 week_id,
             )
 

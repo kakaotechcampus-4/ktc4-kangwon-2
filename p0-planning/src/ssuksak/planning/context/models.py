@@ -8,10 +8,11 @@ import re
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.year_month import YearMonth
+from ..evidence.classification import SemanticClass
 from ..evidence.models import ReusePolicy, SourceSection
 from ..retrieval.models import AgeMatchKind
 
-CONTEXT_PACKET_VERSION = "monthly-context-packet-v0.1.0"
+CONTEXT_PACKET_VERSION = "monthly-context-packet-v0.2.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,7 @@ class GroundingContextItem:
     age_match: AgeMatchKind
     institution_alias: str
     reuse_policy: ReusePolicy
+    grounding_class: SemanticClass | None = None
 
     def __post_init__(self) -> None:
         for name in ("evidence_ref", "text", "source_label", "institution_alias"):
@@ -54,6 +56,11 @@ class GroundingContextItem:
             raise InvalidDomainValueError("GroundingContextItem.age_match is invalid")
         if not isinstance(self.reuse_policy, ReusePolicy):
             raise InvalidDomainValueError("GroundingContextItem.reuse_policy is invalid")
+        if self.grounding_class is not None and (
+            not isinstance(self.grounding_class, SemanticClass)
+            or self.grounding_class is SemanticClass.EXCLUDED
+        ):
+            raise InvalidDomainValueError("GroundingContextItem.grounding_class is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +104,7 @@ class ContextLineage:
     retrieval_version: str
     activity_catalog_id: str = ""
     activity_catalog_version: str = ""
+    evidence_classification_version: str = ""
 
     def __post_init__(self) -> None:
         for name in ("evidence_store_version", "retrieval_version"):
@@ -119,7 +127,7 @@ class MonthlyContextPacket:
     weeks: tuple[WeekContext, ...]
     institution_evidence: tuple[GroundingContextItem, ...]
     age_contrast_evidence: tuple[GroundingContextItem, ...]
-    week_experience_candidates: tuple[GroundingContextItem, ...]
+    section_evidence: tuple[GroundingContextItem, ...]
     reference_activities: tuple[ReferenceActivityContext, ...]
     other_outdoor_evidence: tuple[GroundingContextItem, ...]
     constraints: ContextConstraints
@@ -139,12 +147,7 @@ class MonthlyContextPacket:
             raise InvalidDomainValueError("Context Packet ages are invalid")
         if not self.weeks:
             raise InvalidDomainValueError("Context Packet requires week structure")
-        all_evidence = (
-            self.age_contrast_evidence
-            + self.institution_evidence
-            + self.week_experience_candidates
-            + self.other_outdoor_evidence
-        )
+        all_evidence = self.grounding_items
         ids = tuple(item.evidence_ref for item in all_evidence)
         if len(set(ids)) != len(ids):
             raise InvalidDomainValueError("Context evidence records cannot appear in multiple blocks")
@@ -152,3 +155,21 @@ class MonthlyContextPacket:
             raise InvalidDomainValueError(
                 "Institution Context currently permits CONTEXT_ONLY evidence only"
             )
+        if any(item.grounding_class is None for item in self.section_evidence):
+            raise InvalidDomainValueError("Section evidence requires an approved grounding_class")
+        if any(
+            item.grounding_class is not None
+            for item in self.institution_evidence + self.age_contrast_evidence + self.other_outdoor_evidence
+        ):
+            raise InvalidDomainValueError("Only section evidence may carry a grounding_class")
+        if self.section_evidence and not self.lineage.evidence_classification_version:
+            raise InvalidDomainValueError("Section evidence requires the Evidence classification version")
+
+    @property
+    def grounding_items(self) -> tuple[GroundingContextItem, ...]:
+        return (
+            self.institution_evidence
+            + self.age_contrast_evidence
+            + self.section_evidence
+            + self.other_outdoor_evidence
+        )

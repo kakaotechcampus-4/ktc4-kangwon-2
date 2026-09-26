@@ -5,9 +5,11 @@ from __future__ import annotations
 import collections
 
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
+from ..evidence.classification import EvidenceSemanticClassification, SemanticClass
 from ..evidence.models import EvidenceRecord, SourceSection
 from ..evidence.store import InstitutionEvidenceStore
 from .models import (
+    CLASS_BLOCKS,
     AgeMatchKind,
     BlockName,
     EvidenceBlock,
@@ -17,11 +19,11 @@ from .models import (
 )
 from .ranking import apply_source_diversity, balance_by_age, ngrams, rank_records
 
-RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.1.0"
+RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.2.0"
 DEFAULT_TOP_K = {
     BlockName.INSTITUTION_MONTHLY_EVIDENCE: 12,
     BlockName.AGE_CONTRAST_EVIDENCE: 6,
-    BlockName.WEEK_EXPERIENCE_CANDIDATES: 10,
+    **{name: 10 for name in CLASS_BLOCKS.values()},
     BlockName.REFERENCE_ACTIVITIES: 12,
     BlockName.OTHER_OUTDOOR_EVIDENCE: 10,
 }
@@ -39,13 +41,17 @@ class MonthlyEvidenceRetriever:
         store: InstitutionEvidenceStore,
         *,
         activity_catalog: ActivityCatalog | None = None,
+        classification: EvidenceSemanticClassification | None = None,
         institution_cap: int = 2,
         top_k: dict[BlockName, int] | None = None,
     ) -> None:
         if type(institution_cap) is not int or institution_cap < 1:
             raise ValueError("institution_cap must be positive")
+        if classification is not None:
+            classification.require_bound_to(store.content_sha256)
         self._store = store
         self._catalog = activity_catalog
+        self._classification = classification
         self._cap = institution_cap
         self._top_k = dict(DEFAULT_TOP_K)
         if top_k:
@@ -136,14 +142,21 @@ class MonthlyEvidenceRetriever:
             cap=self._cap + 1,
         )
 
-    def _week_experience(self, request: RetrievalRequest, grams: frozenset[str]) -> EvidenceBlock:
+    def _classified(
+        self, request: RetrievalRequest, grams: frozenset[str], semantic_class: SemanticClass
+    ) -> EvidenceBlock:
+        name = CLASS_BLOCKS[semantic_class]
+        if semantic_class not in request.grounding_classes:
+            return EvidenceBlock(name, self._top_k[name], "Section/variant not active in the Template Snapshot")
+        if self._classification is None:
+            raise ValueError("Section-scoped retrieval requires an approved Evidence classification")
         records = [
             record for record in self._store.by_month(request.target_month.calendar_month)
             if record.general_grounding_eligible
-            and record.source_section is SourceSection.WEEK_EXPERIENCE
+            and self._classification.class_of(record) is semantic_class
         ]
         return self._ranked_block(
-            name=BlockName.WEEK_EXPERIENCE_CANDIDATES,
+            name=name,
             records=records,
             request=request,
             query_grams=grams,
@@ -208,16 +221,21 @@ class MonthlyEvidenceRetriever:
         grams = self._query_grams(request)
         institution = self._institution(request, grams)
         contrast = self._contrast(request, grams)
-        week = self._week_experience(request, grams)
+        classified = tuple(
+            self._classified(request, grams, semantic_class) for semantic_class in CLASS_BLOCKS
+        )
         references = self._references(request)
         used = frozenset(item.record_id for item in institution.items)
         other = self._other(request, grams, used)
         return MonthlyEvidenceRetrievalResult(
             request=request,
-            blocks=(institution, contrast, week, references, other),
+            blocks=(institution, contrast, *classified, references, other),
             evidence_store_version=self._store.ingestion_version,
             evidence_store_sha256=self._store.content_sha256,
             retrieval_version=RETRIEVAL_VERSION,
             activity_catalog_id=self._catalog.catalog_id if self._catalog else "",
             activity_catalog_version=self._catalog.catalog_version if self._catalog else "",
+            evidence_classification_version=(
+                self._classification.classification_version if self._classification else ""
+            ),
         )

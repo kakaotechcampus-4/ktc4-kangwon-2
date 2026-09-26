@@ -14,8 +14,8 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v2"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v2"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v3"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v3"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 
 FOCUS_SECTION_KEY = "focus"

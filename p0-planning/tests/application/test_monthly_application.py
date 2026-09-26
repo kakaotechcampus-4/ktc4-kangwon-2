@@ -7,6 +7,10 @@ import json
 import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
+from ssuksak.adapters.evidence_classification_repository import (
+    InMemoryEvidenceClassificationRepository,
+    JsonEvidenceClassificationRepository,
+)
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.in_memory_template_profile_repository import (
     InMemoryTemplateProfileRepository,
@@ -76,6 +80,7 @@ from ssuksak.planning.domain.provenance import (
     GenerationMethodDetail,
 )
 from ssuksak.planning.domain.year_month import YearMonth
+from ssuksak.planning.evidence.classification import SemanticClass
 from ssuksak.planning.domain.yearly_plan import YearlyPeriod, YearlyPlan
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.contracts import (
@@ -83,6 +88,7 @@ from ssuksak.planning.planner.contracts import (
     MONTHLY_MODEL,
     MonthlyCellPlanningRequest,
     MonthlyPlanningRequest,
+    ProposalRejectedError,
     RawLlmResponse,
 )
 from ssuksak.planning.planner.service import MonthlyPlanner
@@ -118,6 +124,26 @@ SAFETY_RULE = SafetyRuleSelector(
 )
 
 EVIDENCE_REPOSITORY = JsonInstitutionEvidenceRepository()
+CLASSIFICATION_REPOSITORY = JsonEvidenceClassificationRepository()
+
+
+def grounding_ref_for(request, section_key: str) -> str | None:
+    """Pick the first supplied evidence ref allowed for this Section's grounding_class."""
+    body = json.loads(request.user_content)
+    expected = next(
+        (
+            section.get("grounding_class")
+            for section in body["generation_schema"]["sections"]
+            if section["section_key"] == section_key
+        ),
+        None,
+    )
+    refs = sorted(
+        item["grounding_ref"]
+        for item in body["evidence"]
+        if item["grounding_class"] == expected
+    )
+    return refs[0] if refs else None
 
 
 def _profile(
@@ -230,7 +256,6 @@ class RequestAwareMonthlyLlm:
 
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
         self.monthly_requests.append(request)
-        grounding_ref = sorted(request.valid_grounding_refs)[0]
         month_sections = []
         weekly_keys = []
         for section in request.template_snapshot.sections:
@@ -254,7 +279,9 @@ class RequestAwareMonthlyLlm:
                             "value": f"Context-based {section.section_key}",
                             "unresolved": False,
                             "reference_id": None,
-                            "grounding_refs": [grounding_ref],
+                            "grounding_refs": [
+                                grounding_ref_for(request, section.section_key)
+                            ],
                         }
                     )
             elif section.display_mode is DisplayMode.WEEKLY_CELLS:
@@ -278,10 +305,12 @@ class RequestAwareMonthlyLlm:
                             "grounding_refs": (
                                 []
                                 if key == "safety_education"
-                                else [grounding_ref]
+                                else [grounding_ref_for(request, key)]
                             ),
                         }
                         for key in weekly_keys
+                        if key == "safety_education"
+                        or grounding_ref_for(request, key) is not None
                     ],
                 }
                 for index, week_id in enumerate(
@@ -295,7 +324,7 @@ class RequestAwareMonthlyLlm:
 
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
         self.cell_requests.append(request)
-        grounding_ref = sorted(request.valid_grounding_refs)[0]
+        grounding_ref = grounding_ref_for(request, request.target_section_key)
         payload = {
             "target_month": request.target_month.value,
             "target_week_id": request.target_week_id.value,
@@ -328,7 +357,7 @@ class ReferenceAndGroundingCellLlm(RequestAwareMonthlyLlm):
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
         self.cell_requests.append(request)
         reference_id, value = request.reference_labels[0]
-        grounding_ref = sorted(request.valid_grounding_refs)[0]
+        grounding_ref = grounding_ref_for(request, request.target_section_key)
         return RawLlmResponse(
             json.dumps(
                 {
@@ -366,6 +395,52 @@ class LegacyShapeMonthlyLlm(RequestAwareMonthlyLlm):
         )
 
 
+class InstitutionInputMonthlyLlm(RequestAwareMonthlyLlm):
+    """Returns an otherwise valid proposal plus an invented event_schedule."""
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        for week in payload["weeks"]:
+            week["sections"].append(
+                {
+                    "section_key": "event_schedule",
+                    "value": "Invented autumn sports day",
+                    "unresolved": False,
+                    "reference_id": None,
+                    "grounding_refs": [sorted(request.valid_grounding_refs)[0]],
+                }
+            )
+        return RawLlmResponse(
+            json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1"
+        )
+
+
+def _institution_input_profile(
+    template_repository: JsonMonthlyTemplateRepository, section_key: str
+) -> TemplateProfile:
+    base = _profile(
+        template_repository,
+        TEMPLATE,
+        TemplateProfileRef(f"monthly-profile-{section_key}", "v1"),
+    )
+    template = template_repository.get_template(
+        TEMPLATE.template_id, TEMPLATE.template_version
+    )
+    assert template is not None
+    section = replace(
+        template.section(section_key),
+        activated=True,
+        display_label={"event_schedule": "Events", "drill": "Drill"}[section_key],
+        display_mode=DisplayMode.WEEKLY_CELLS,
+        visible=True,
+    )
+    return replace(
+        base,
+        selected_optional_keys=(*base.selected_optional_keys, section_key),
+        sections=(*base.sections, section),
+    )
+
+
 class Harness:
     def __init__(self, *, parent_confirmed: bool = True) -> None:
         self.parents: InMemoryPlanRepository[YearlyPlan] = InMemoryPlanRepository()
@@ -396,6 +471,7 @@ class Harness:
         self.ids = DeterministicIdGenerator("monthly")
         self.context = MonthlyContextPipeline(
             evidence_repository=EVIDENCE_REPOSITORY,
+            classification_repository=CLASSIFICATION_REPOSITORY,
             context_builder=ContextPacketBuilder(),
         )
 
@@ -804,6 +880,40 @@ def test_legacy_proposal_shape_is_rejected_without_running_verification(monkeypa
     assert harness.plans.save_count == 0
 
 
+@pytest.mark.parametrize("mode", tuple(MonthlyGenerationMode))
+@pytest.mark.parametrize("section_key", ("event_schedule", "drill"))
+def test_active_institution_input_section_fails_closed_before_generation(
+    section_key, mode
+):
+    harness = Harness()
+    profile = _institution_input_profile(harness.templates, section_key)
+    harness.profiles = InMemoryTemplateProfileRepository((profile,))
+    provider = RequestAwareMonthlyLlm()
+    command = replace(harness.command(mode), profile_ref=profile.profile_ref)
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+
+    assert exc.value.code == "monthly_institution_input_section_unsupported"
+    assert section_key in exc.value.detail
+    assert provider.monthly_requests == []
+    assert harness.plans.save_count == 0
+
+
+def test_provider_institution_input_section_is_rejected_without_saving():
+    harness = Harness()
+    provider = InstitutionInputMonthlyLlm()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    assert isinstance(exc.value.__cause__, ProposalRejectedError)
+    assert "UNKNOWN_SECTION" in exc.value.__cause__.validation_codes
+    assert len(provider.monthly_requests) == 1
+    assert harness.plans.save_count == 0
+
+
 def test_optional_context_failure_is_reported_without_failing_core_generation():
     harness = Harness()
 
@@ -1183,3 +1293,231 @@ def test_confirm_verifier_failure_preserves_the_saved_draft(monkeypatch):
     assert exc.value.code == "monthly_verification_failed"
     assert harness.plans.save_count == saves_before
     assert harness.plans.get(draft.plan_id) is draft
+
+
+# ---------------------------------------------------------------- V1-6 PR-B section-scoped evidence
+
+EXTENDED_PROFILE = TemplateProfileRef("monthly-profile-extended", "v1")
+
+
+def _extended_profile(
+    template_repository: JsonMonthlyTemplateRepository,
+    *,
+    goals_required: bool | None = None,
+    basic_habit: bool = False,
+    focus_variant: SemanticVariant = SemanticVariant.SUBTHEME,
+) -> TemplateProfile:
+    base = _profile(template_repository, TEMPLATE, EXTENDED_PROFILE)
+    template = template_repository.get_template(TEMPLATE.template_id, TEMPLATE.template_version)
+    assert template is not None
+    sections = [
+        replace(section, semantic_variant=focus_variant) if section.section_key == "focus" else section
+        for section in base.sections
+    ]
+    optional = list(base.selected_optional_keys)
+    if goals_required is not None:
+        sections.append(
+            replace(
+                template.section("goals"),
+                activated=True,
+                display_label="Goals",
+                visible=True,
+                required_for_generation=goals_required,
+            )
+        )
+        optional.append("goals")
+    if basic_habit:
+        sections.append(
+            replace(template.section("habits"), activated=True, display_label="Basic habit", visible=True)
+        )
+        optional.append("basic_habit")
+    return replace(base, selected_optional_keys=tuple(optional), sections=tuple(sections))
+
+
+def _classification_without(*excluded: SemanticClass) -> InMemoryEvidenceClassificationRepository:
+    approved = CLASSIFICATION_REPOSITORY.get_classification()
+    return InMemoryEvidenceClassificationRepository(
+        replace(
+            approved,
+            entries=tuple(entry for entry in approved.entries if entry[2] not in excluded),
+        )
+    )
+
+
+def _use(harness: Harness, profile: TemplateProfile, classification=None) -> GenerateMonthlyPlanCommand:
+    harness.profiles = InMemoryTemplateProfileRepository((profile,))
+    if classification is not None:
+        harness.context = MonthlyContextPipeline(
+            evidence_repository=EVIDENCE_REPOSITORY,
+            classification_repository=classification,
+            context_builder=ContextPacketBuilder(),
+        )
+    return replace(harness.command(MonthlyGenerationMode.LLM_PLANNER), profile_ref=profile.profile_ref)
+
+
+def _cited_classes(cell) -> set[SemanticClass]:
+    records = {record.record_id: record for record in EVIDENCE_REPOSITORY.get_store().records}
+    classification = CLASSIFICATION_REPOSITORY.get_classification()
+    return {
+        classification.class_of(records[source.source_id])
+        for source in cell.evidence
+        if source.source_type is EvidenceSourceType.INSTITUTION_SAMPLE
+    }
+
+
+def test_weekly_theme_focus_fails_closed_before_llm():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    command = _use(harness, _extended_profile(harness.templates, focus_variant=SemanticVariant.WEEKLY_THEME))
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+
+    assert exc.value.code == "monthly_section_evidence_class_unavailable"
+    assert "focus" in exc.value.detail
+    assert provider.monthly_requests == []
+    assert harness.plans.save_count == 0
+
+
+def test_required_section_without_approved_evidence_fails_closed_before_llm():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    command = _use(
+        harness,
+        _extended_profile(harness.templates, goals_required=True),
+        _classification_without(SemanticClass.GOALS),
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+
+    assert exc.value.code == "monthly_required_section_evidence_missing"
+    assert "goals" in exc.value.detail
+    assert provider.monthly_requests == []
+    assert harness.plans.save_count == 0
+
+
+def test_optional_section_without_approved_evidence_stays_empty_valid():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    command = _use(
+        harness,
+        _extended_profile(harness.templates, goals_required=False),
+        _classification_without(SemanticClass.GOALS),
+    )
+
+    plan = harness.generate(provider=provider, command=command).plan
+    goals = plan.section("goals")
+
+    assert len(provider.monthly_requests) == 1
+    assert goals is not None and len(goals.cells) == 1
+    assert goals.cells[0].value == ""
+    assert goals.cells[0].cell_state is CellState.EMPTY_VALID
+    assert harness.plans.save_count == 1
+
+
+def test_goals_basic_habit_and_focus_ground_only_on_their_approved_classes():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    command = _use(harness, _extended_profile(harness.templates, goals_required=True, basic_habit=True))
+
+    plan = harness.generate(provider=provider, command=command).plan
+
+    assert _cited_classes(plan.section("goals").cells[0]) == {SemanticClass.GOALS}
+    for cell in plan.section("basic_habit").cells:
+        assert cell.cell_state is CellState.FILLED
+        assert _cited_classes(cell) == {SemanticClass.BASIC_HABIT}
+    for cell in plan.section("focus").cells:
+        assert _cited_classes(cell) == {SemanticClass.SUBTHEME}
+    for cell in plan.section("outdoor_play").cells:
+        assert _cited_classes(cell) <= {SemanticClass.EXCLUDED}
+
+
+@pytest.mark.parametrize(("target_month", "weeks"), [(YearMonth(2026, 10), 4), (YearMonth(2026, 9), 5)])
+def test_basic_habit_uses_the_monthly_pool_for_every_computed_week(target_month, weeks):
+    harness = Harness()
+    command = replace(
+        _use(harness, _extended_profile(harness.templates, basic_habit=True)),
+        target_month=target_month,
+    )
+
+    plan = harness.generate(provider=RequestAwareMonthlyLlm(), command=command).plan
+    cells = plan.section("basic_habit").cells
+    records = {record.record_id: record for record in EVIDENCE_REPOSITORY.get_store().records}
+
+    assert len(cells) == weeks == len(plan.active_week_periods)
+    assert [cell.week_id for cell in cells] == [period.week_id for period in plan.active_week_periods]
+    for cell in cells:
+        assert _cited_classes(cell) == {SemanticClass.BASIC_HABIT}
+        cited = [s.source_id for s in cell.evidence if s.source_type is EvidenceSourceType.INSTITUTION_SAMPLE]
+        assert all(records[ref].week_position is None for ref in cited)
+
+
+def test_expected_play_focus_grounds_only_on_expected_play_evidence():
+    harness = Harness()
+    command = _use(harness, _extended_profile(harness.templates, focus_variant=SemanticVariant.EXPECTED_PLAY))
+
+    plan = harness.generate(provider=RequestAwareMonthlyLlm(), command=command).plan
+
+    assert plan.section("focus").cells
+    for cell in plan.section("focus").cells:
+        assert _cited_classes(cell) == {SemanticClass.EXPECTED_PLAY}
+
+
+def test_classification_bound_to_other_corpus_fails_closed():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    approved = CLASSIFICATION_REPOSITORY.get_classification()
+    command = _use(
+        harness,
+        _profile(harness.templates, TEMPLATE, EXTENDED_PROFILE),
+        InMemoryEvidenceClassificationRepository(replace(approved, evidence_content_sha256="0" * 64)),
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+
+    assert exc.value.code == "evidence_classification_store_mismatch"
+    assert provider.monthly_requests == []
+    assert harness.plans.save_count == 0
+
+
+class WrongSourceMonthlyLlm(RequestAwareMonthlyLlm):
+    """Grounds outdoor_play on SUBTHEME evidence, which only focus(SUBTHEME) may cite."""
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        subtheme_ref = grounding_ref_for(request, "focus")
+        for week in payload["weeks"]:
+            for section in week["sections"]:
+                if section["section_key"] == "outdoor_play":
+                    section.update(reference_id=None, grounding_refs=[subtheme_ref])
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+
+def test_wrong_source_provider_response_is_rejected_without_saving():
+    harness = Harness()
+    provider = WrongSourceMonthlyLlm()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    assert "WRONG_SOURCE_GROUNDING" in exc.value.__cause__.validation_codes
+    assert harness.plans.save_count == 0
+
+
+def test_focus_regeneration_uses_only_subtheme_evidence():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan
+    target = _cell(plan, "focus")
+
+    result = harness.regenerate(provider).execute(
+        RegenerateMonthlyPlanItemCommand(plan.plan_id, target.item_id, TEACHER)
+    )
+    regenerated = result.plan.find_cell(target.item_id)[3]
+    body = json.loads(provider.cell_requests[-1].user_content)
+
+    assert {item["grounding_class"] for item in body["evidence"]} <= {None, "SUBTHEME"}
+    assert _cited_classes(regenerated) == {SemanticClass.SUBTHEME}

@@ -9,15 +9,19 @@ from functools import partial
 from ..context.builder import ContextPacketBuilder
 from ..context.models import MonthlyContextPacket
 from ..domain.activity_reference import ActivityCatalog
+from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_constraint import ConstraintAssessment
 from ..domain.monthly_plan import MonthlyPlan
+from ..domain.monthly_template import SectionRole
 from ..domain.monthly_template_profile import TemplateProfile, TemplateProfileRef
+from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.provenance import EvidenceSource, EvidenceSourceType
 from ..domain.safety_rule import SafetyLegalRule
 from ..domain.week_period import WeekPeriod
 from ..domain.year_month import YearMonth
-from ..evidence.ports import InstitutionEvidenceRepository
+from ..evidence.classification import SemanticClass, grounding_class_for
+from ..evidence.ports import EvidenceClassificationRepository, InstitutionEvidenceRepository
 from ..retrieval.models import RetrievalRequest
 from ..retrieval.retriever import MonthlyEvidenceRetriever
 from ..rules.monthly_verification import (
@@ -174,9 +178,11 @@ class MonthlyContextPipeline:
         self,
         *,
         evidence_repository: InstitutionEvidenceRepository,
+        classification_repository: EvidenceClassificationRepository,
         context_builder: ContextPacketBuilder,
     ) -> None:
         self._evidence = evidence_repository
+        self._classification = classification_repository
         self._context = context_builder
 
     def build(
@@ -189,12 +195,22 @@ class MonthlyContextPipeline:
         week_periods: tuple[WeekPeriod, ...],
         activity_catalog: ActivityCatalog | None,
         constraint_assessments: tuple[ConstraintAssessment, ...],
+        grounding_classes: frozenset[SemanticClass] = frozenset(),
         keywords: tuple[str, ...] = (),
     ) -> MonthlyContextPacket:
         active_weeks = tuple(period for period in week_periods if period.active)
-        retrieval = MonthlyEvidenceRetriever(
-            self._evidence.get_store(), activity_catalog=activity_catalog
-        ).retrieve(
+        try:
+            retriever = MonthlyEvidenceRetriever(
+                self._evidence.get_store(),
+                activity_catalog=activity_catalog,
+                classification=self._classification.get_classification(),
+            )
+        except InvalidDomainValueError as exc:
+            raise MonthlyApplicationError(
+                "evidence_classification_store_mismatch",
+                "The approved Evidence classification does not match the Evidence Store content",
+            ) from exc
+        retrieval = retriever.retrieve(
             RetrievalRequest(
                 target_month=target_month,
                 ages=ages,
@@ -202,6 +218,7 @@ class MonthlyContextPipeline:
                 confirmed_theme_value=parent_theme_value,
                 week_count=len(active_weeks),
                 keywords=keywords,
+                grounding_classes=grounding_classes,
             )
         )
         return self._context.build(
@@ -211,6 +228,15 @@ class MonthlyContextPipeline:
                 assessment.constraint.code for assessment in constraint_assessments
             ),
         )
+
+
+def snapshot_grounding_classes(snapshot: TemplateSnapshot) -> frozenset[SemanticClass]:
+    return frozenset(
+        grounding_class
+        for section in snapshot.sections
+        if section.role is SectionRole.CONTENT
+        and (grounding_class := grounding_class_for(section)) is not None
+    )
 
 
 def theme_reference_id(evidence: tuple[EvidenceSource, ...]) -> str:
@@ -243,15 +269,7 @@ def deduplicate_evidence(
 def packet_evidence(
     packet: MonthlyContextPacket, refs: Iterable[str]
 ) -> tuple[EvidenceSource, ...]:
-    by_ref = {
-        item.evidence_ref: item
-        for item in (
-            packet.institution_evidence
-            + packet.age_contrast_evidence
-            + packet.week_experience_candidates
-            + packet.other_outdoor_evidence
-        )
-    }
+    by_ref = {item.evidence_ref: item for item in packet.grounding_items}
     evidence: list[EvidenceSource] = []
     for ref in refs:
         item = by_ref.get(ref)

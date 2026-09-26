@@ -26,6 +26,8 @@ Return only section_key, value, unresolved, reference_id, and grounding_refs.
 Do not return or redefine Template presentation metadata.
 Do not make legal decisions or generate statutory safety education.
 Every resolved value needs supplied grounding_refs or a supplied reference_id.
+A section with a grounding_class may cite only evidence with that grounding_class;
+a section without one must not cite evidence that has a grounding_class.
 Return only one JSON object matching response_contract; add no fields.
 """
 
