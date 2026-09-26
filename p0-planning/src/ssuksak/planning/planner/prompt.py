@@ -33,8 +33,16 @@ The locked theme must be returned exactly with its supplied reference_id.
 Do not make legal decisions or claim statutory compliance.
 For safety_education, use approved safety grounding from the supplied Context;
 when that grounding is unavailable, return value="", unresolved=true, no refs.
-Every other resolved generated value needs supplied grounding_refs or a supplied
-reference_id. Do not invent facts or citations and do not copy evidence verbatim.
+Every other resolved generated value needs supplied grounding_refs or, where
+allowed below, a supplied reference_id. Do not invent facts or citations and do
+not copy evidence verbatim.
+Use reference_id only in a section whose reference catalog is supplied: theme
+(parent_theme.theme_id) and outdoor_play (reference_activities activity_id).
+In every other section reference_id is null; never put a grounding_ref, theme_id
+or activity_id there. When reference_id is not null, value must exactly equal the
+canonical label of that referenced item; do not paraphrase, expand, summarize or
+rewrite it. To write your own sentence instead, set reference_id to null and cite
+grounding_refs.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
 Within each grounding_refs array, include each reference id at most once;
@@ -71,6 +79,9 @@ rejected_proposal matches response_contract but failed semantic validation.
 Each validation_findings entry names a failed code with its section_key and
 week_id; a null week_id is the month-level cell. For TEXT_POLICY, detail names
 the violated text rule.
+For REFERENCE_VALUE_MISMATCH, detail names the cell's reference_id and its
+canonical_label: keep that same reference_id and set value to exactly that
+canonical_label. Never choose another reference_id or set it to null there.
 Return the complete corrected proposal as one JSON object matching
 original_request.response_contract. Fix every finding and keep cells without a
 finding unchanged.

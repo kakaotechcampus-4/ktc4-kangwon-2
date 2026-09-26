@@ -239,6 +239,29 @@ def _canonical_values(
     )
 
 
+def changed_reference_ids(
+    rejected: MonthlyPlanProposal,
+    repaired: MonthlyPlanProposal,
+    issues: tuple[ProposalValidationIssue, ...],
+) -> tuple[ProposalValidationIssue, ...]:
+    """A repair of a REFERENCE_VALUE_MISMATCH cell keeps its catalog item: same reference_id."""
+    before = {(w, v.section_key): v.reference_id for v, w in _canonical_values(rejected)}
+    after = {(w, v.section_key): v.reference_id for v, w in _canonical_values(repaired)}
+    return tuple(
+        ProposalValidationIssue(
+            ProposalValidationCode.REFERENCE_VALUE_MISMATCH,
+            issue.field,
+            week_id=issue.week_id,
+            reason="REFERENCE_ID_CHANGED_ON_REPAIR",
+            expected=before[(issue.week_id, issue.field)],
+            actual=after.get((issue.week_id, issue.field)) or "null",
+        )
+        for issue in issues
+        if issue.code is ProposalValidationCode.REFERENCE_VALUE_MISMATCH
+        and after.get((issue.week_id, issue.field)) != before[(issue.week_id, issue.field)]
+    )
+
+
 def validate_monthly_proposal_schema(
     proposal: MonthlyPlanProposal,
     request: MonthlyPlanningRequest,
@@ -384,6 +407,17 @@ def validate_monthly_proposal_grounding(
         normalize_visible_text(item.text) for item in evidence_items
     }
     reference_labels = request.reference_label_map
+
+    def reference_kind(reference_id: str) -> str:
+        """What a misplaced reference_id names, as a category: never the id or its text."""
+        if reference_id in reference_labels:
+            return "activity_id"
+        if reference_id == request.expected_theme_id:
+            return "theme_id"
+        if reference_id in evidence_by_ref or reference_id in official:
+            return "grounding_ref"
+        return "unknown"
+
     snapshot_sections = {
         section.section_key: section for section in request.template_snapshot.sections
     }
@@ -481,17 +515,34 @@ def validate_monthly_proposal_grounding(
                     expected="null",
                     actual="annex6" if value.reference_id.startswith("annex6:") else "non_null",
                 )
+            elif value.section_key not in request.reference_section_keys:
+                fail(
+                    ProposalValidationCode.UNKNOWN_REFERENCE_ID,
+                    value.section_key,
+                    week_id=week_id,
+                    reason="REFERENCE_FORBIDDEN_FOR_SECTION",
+                    expected="null",
+                    actual=reference_kind(value.reference_id),
+                )
             elif expected is None:
                 fail(
                     ProposalValidationCode.UNKNOWN_REFERENCE_ID,
                     value.section_key,
                     week_id=week_id,
+                    reason="UNKNOWN_ACTIVITY_REFERENCE",
+                    expected="reference_activities",
+                    actual=reference_kind(value.reference_id),
                 )
             elif normalize_visible_text(value.value) != normalize_visible_text(expected):
+                # detail goes to the repair prompt only (catalog label, never logged).
                 fail(
                     ProposalValidationCode.REFERENCE_VALUE_MISMATCH,
                     value.section_key,
-                    week_id=week_id,
+                    f"reference_id={value.reference_id} canonical_label={expected}",
+                    week_id,
+                    reason="CANONICAL_LABEL_MISMATCH",
+                    expected=f"label_of:{value.reference_id}",
+                    actual="other_text",
                 )
         elif not value.grounding_refs:
             fail(

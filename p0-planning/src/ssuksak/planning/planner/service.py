@@ -17,7 +17,7 @@ from .contracts import (
 from .parser import parse_monthly_proposal
 from .ports import MonthlyPlanningProvider
 from .prompt import build_monthly_planning_request, build_monthly_repair_request
-from .validation import validate_monthly_proposal
+from .validation import MonthlyProposalValidationResult, changed_reference_ids, validate_monthly_proposal
 
 _log = logging.getLogger(__name__)
 
@@ -26,10 +26,13 @@ _log = logging.getLogger(__name__)
 # SAFETY_GROUNDING_MISMATCH is a ref choice inside a fixed slot, like
 # WRONG_SOURCE_GROUNDING; SAFETY_PLACEMENT_MISMATCH changes the slot and fails closed.
 # Safety focus/quality findings are re-selection or rewriting inside the same slot.
+# REFERENCE_VALUE_MISMATCH restores the canonical label of the same reference_id;
+# a repair that changes or drops that reference_id is rejected.
 REPAIRABLE_CODES = frozenset(
     {
         "SOURCE_TEXT_COPY", "TEXT_POLICY", "WRONG_SOURCE_GROUNDING", "SAFETY_GROUNDING_MISMATCH",
         "SAFETY_FOCUS_MISMATCH", "SAFETY_MULTIPLE_SENTENCES", "SAFETY_DUPLICATE_CONTENT", "SAFETY_DUPLICATE_REFERENCE",
+        "REFERENCE_VALUE_MISMATCH",
     }
 )
 
@@ -60,11 +63,15 @@ class MonthlyPlanner:
             request = build_monthly_repair_request(
                 request, response.content, validation.issues
             )
+            rejected, found = proposal, validation.issues
             try:
                 response, proposal, validation = self._attempt(packet, request)
             except Exception:
                 _log.warning("Monthly LLM repair failed before validation")
                 raise
+            validation = MonthlyProposalValidationResult(
+                validation.issues + changed_reference_ids(rejected, proposal, found)
+            )
             if validation.is_valid:
                 _log.info("Monthly LLM repair succeeded")
             else:

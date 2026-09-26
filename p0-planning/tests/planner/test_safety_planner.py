@@ -381,7 +381,7 @@ def test_the_prompt_names_one_focus_and_one_primary_per_week(packet, snapshot):
 
 # ---------------------------------------------------------------- safety reference_id is always null (prompt v4)
 
-from ssuksak.planning.planner.contracts import MONTHLY_SAFETY_PROMPT_VERSION as SAFETY_V4  # noqa: E402
+from ssuksak.planning.planner.contracts import MONTHLY_SAFETY_PROMPT_VERSION as SAFETY_PROMPT_VERSION  # noqa: E402
 
 
 def _safety_branch(schema, section_key="safety_education"):
@@ -428,7 +428,7 @@ def test_non_safety_reference_ids_keep_their_contract(packet, snapshot):
     assert not [i for i in _validate(_focused_packet(packet), snapshot, outdoor).issues if i.field == "outdoor_play"]
     week["reference_id"] = "invented"
     codes = [(i.code.value, i.reason) for i in _validate(_focused_packet(packet), snapshot, outdoor).issues if i.field == "outdoor_play"]
-    assert ("UNKNOWN_REFERENCE_ID", None) in codes
+    assert ("UNKNOWN_REFERENCE_ID", "UNKNOWN_ACTIVITY_REFERENCE") in codes
 
 
 def test_initial_and_repair_prompts_carry_the_same_reference_id_contract(packet, snapshot):
@@ -438,7 +438,27 @@ def test_initial_and_repair_prompts_carry_the_same_reference_id_contract(packet,
     initial, repair = fake.monthly_requests
     contract = "For safety_education, reference_id is always null"
 
-    assert initial.prompt_version == SAFETY_V4 == "monthly-planner-safety-v4"
-    assert repair.prompt_version == "monthly-planner-safety-repair-v4"
+    assert initial.prompt_version == SAFETY_PROMPT_VERSION == "monthly-planner-safety-v6"
+    assert repair.prompt_version == "monthly-planner-safety-repair-v6"
     assert contract in initial.system_prompt and contract in repair.system_prompt
     assert "only in\ngrounding_refs" in SAFETY_SYSTEM_PROMPT
+
+
+from ssuksak.planning.domain.week_period import WeekId  # noqa: E402
+
+
+def test_an_outdoor_label_mismatch_is_repaired_under_the_safety_repair_contract(packet, snapshot):
+    focused = _focused_packet(packet)
+    rejected = _payload()
+    rejected["weeks"][0]["sections"][1]["value"] = "바람개비를 들고 달려요"  # act-1 = 바람개비 놀이
+    assert _validate(focused, snapshot, _payload()).is_valid
+    fake = _Scripted(rejected, _payload(), _payload())
+
+    outcome = MonthlyPlanner(fake).plan(focused, snapshot)
+    (finding,) = json.loads(fake.monthly_requests[1].user_content)["validation_findings"]
+    safety = [outcome.proposal.value_for("safety_education", WeekId(w)) for w in ("2026-09-W1", "2026-09-W2")]
+
+    assert (finding["code"], finding["week_id"], finding["section_key"]) == ("REFERENCE_VALUE_MISMATCH", "2026-09-W1", "outdoor_play")
+    assert outcome.prompt_version == "monthly-planner-safety-repair-v6" and len(fake.monthly_requests) == 2
+    assert outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1")).reference_id == "act-1"
+    assert [(v.reference_id, v.unresolved) for v in safety] == [(None, False), (None, False)]

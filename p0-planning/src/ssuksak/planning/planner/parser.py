@@ -66,7 +66,9 @@ def _keys(schema: dict[str, Any]) -> frozenset[str]:
     return frozenset(schema["properties"])
 
 
-def _section_branch(section_key: str, refs: tuple[str, ...]) -> dict[str, Any]:
+def _section_branch(
+    section_key: str, refs: tuple[str, ...], reference_sections: frozenset[str] | None = None
+) -> dict[str, Any]:
     """The static Section schema for one section_key and only the refs it may cite."""
     properties = dict(_SECTION_SCHEMA["properties"])
     properties["section_key"] = {"type": "string", "enum": [section_key]}
@@ -76,16 +78,23 @@ def _section_branch(section_key: str, refs: tuple[str, ...]) -> dict[str, Any]:
         # No allowed ref: only an empty list, never the Packet-wide refs.
         else {"type": "array", "items": _STRING, "maxItems": 0}
     )
-    if section_key == "safety_education":
-        # reference_id belongs to the Activity catalog; safety grounding goes in grounding_refs.
+    if section_key == "safety_education" or (
+        reference_sections is not None and section_key not in reference_sections
+    ):
+        # No supplied Reference catalog for this section: reference_id is null.
+        # Safety grounding goes in grounding_refs. The cell schema passes None (unchanged).
         properties["reference_id"] = {"type": "null"}
     return _object_schema(properties)
 
 
-def _section_schema(section_keys: set[str], request) -> dict[str, Any]:
+def _section_schema(
+    section_keys: set[str], request, reference_sections: frozenset[str] | None = None
+) -> dict[str, Any]:
     """One branch per target Section; the parser and validator stay the final check."""
     allowed = dict(request.allowed_grounding_refs_by_section)
-    branches = [_section_branch(key, allowed.get(key, ())) for key in sorted(section_keys)]
+    branches = [
+        _section_branch(key, allowed.get(key, ()), reference_sections) for key in sorted(section_keys)
+    ]
     return branches[0] if len(branches) == 1 else {"anyOf": branches}
 
 
@@ -96,10 +105,14 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
         s for s in generation_target_sections(request.template_snapshot) if s.section_key in allowed
     ]
     month = _section_schema(
-        {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY}, request
+        {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY},
+        request,
+        request.reference_section_keys,
     )
     week = _section_schema(
-        {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS}, request
+        {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS},
+        request,
+        request.reference_section_keys,
     )
     return _object_schema(
         {
