@@ -26,6 +26,7 @@ from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
 from ..domain.safety_placement import SafetyKind
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..evidence.models import SourceSection
+from ..retrieval.models import AGE_VERIFIABLE_TIERS
 from .contracts import (
     MonthlyPlanProposal,
     MonthlyPlanningRequest,
@@ -54,6 +55,8 @@ class ProposalValidationCode(str, Enum):
     THEME_VALUE_MISMATCH = "THEME_VALUE_MISMATCH"
     SAFETY_GROUNDING_REQUIRED = "SAFETY_GROUNDING_REQUIRED"
     SOURCE_TEXT_COPY = "SOURCE_TEXT_COPY"
+    # Outdoor grounding that is not age-verifiable for the request: fails closed.
+    OUTDOOR_GROUNDING_AGE_MISMATCH = "OUTDOOR_GROUNDING_AGE_MISMATCH"
     TEXT_POLICY = "TEXT_POLICY"
     # Wrong ref choice inside the Rule-fixed slot: repairable.
     SAFETY_GROUNDING_MISMATCH = "SAFETY_GROUNDING_MISMATCH"
@@ -207,6 +210,32 @@ def safety_slot_problem(
         if extra:
             return SafetySlotProblem(focus, SafetySlotReason.NON_PRIMARY_REF, slot.primary_ref, ",".join(extra))
     return None
+
+
+def outdoor_age_unverifiable_refs(
+    section_key: str,
+    refs: tuple[str, ...],
+    evidence_by_ref: dict[str, GroundingContextItem],
+    ages: tuple[int, ...],
+    official_refs: frozenset[str] | set[str] = frozenset(),
+) -> tuple[tuple[str, str], ...]:
+    """Outdoor refs whose age is not verified to fit the request, as (ref, age kind).
+
+    Uses the retrieval age match; the scope check guards a mislabeled item. Official
+    safety content has no age metadata. Unknown refs are UNKNOWN_GROUNDING_REF's job.
+    """
+    if section_key != "outdoor_play":
+        return ()
+    found = []
+    for ref in refs:
+        item = evidence_by_ref.get(ref)
+        if ref in official_refs:
+            found.append((ref, "NO_AGE_METADATA"))
+        elif item is not None and item.age_match not in AGE_VERIFIABLE_TIERS:
+            found.append((ref, item.age_match.value))
+        elif item is not None and not set(item.age_scope) & set(ages):
+            found.append((ref, "OTHER_AGE"))
+    return tuple(found)
 
 
 def wrong_source_refs(
@@ -587,6 +616,18 @@ def validate_monthly_proposal_grounding(
                 value.section_key,
                 repr(wrong),
                 week_id,
+            )
+        if unverifiable := outdoor_age_unverifiable_refs(
+            value.section_key, value.grounding_refs, evidence_by_ref, packet.ages, set(official)
+        ):
+            fail(
+                ProposalValidationCode.OUTDOOR_GROUNDING_AGE_MISMATCH,
+                value.section_key,
+                repr(tuple(ref for ref, _ in unverifiable)),
+                week_id,
+                reason="AGE_NOT_VERIFIABLE",
+                expected="age_verifiable",
+                actual=",".join(sorted({kind for _, kind in unverifiable})),
             )
 
         if value.section_key == "theme":

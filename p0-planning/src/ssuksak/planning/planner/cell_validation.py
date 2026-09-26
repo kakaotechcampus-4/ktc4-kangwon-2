@@ -12,7 +12,7 @@ from .contracts import (
     MonthlyCellProposal,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
-from .validation import wrong_source_refs
+from .validation import outdoor_age_unverifiable_refs, wrong_source_refs
 
 
 class CellValidationCode(str, Enum):
@@ -23,6 +23,7 @@ class CellValidationCode(str, Enum):
     UNRESOLVED_NOT_SUPPORTED = "UNRESOLVED_NOT_SUPPORTED"
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
     WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
+    OUTDOOR_GROUNDING_AGE_MISMATCH = "OUTDOOR_GROUNDING_AGE_MISMATCH"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
     UNKNOWN_REFERENCE_ID = "UNKNOWN_REFERENCE_ID"
     REFERENCE_VALUE_MISMATCH = "REFERENCE_VALUE_MISMATCH"
@@ -105,6 +106,19 @@ def validate_monthly_cell_proposal(
                 "grounding_refs",
                 repr(wrong),
             )
+    unverifiable = outdoor_age_unverifiable_refs(
+        request.target_section_key,
+        value.grounding_refs,
+        {item.evidence_ref: item for item in packet.grounding_items},
+        packet.ages,
+        set(packet.safety.official_by_ref) if packet.safety is not None else set(),
+    )
+    if unverifiable:
+        fail(
+            CellValidationCode.OUTDOOR_GROUNDING_AGE_MISMATCH,
+            "grounding_refs",
+            repr(tuple(ref for ref, _ in unverifiable)),
+        )
 
     reference_labels = request.reference_label_map
     if value.reference_id is not None:

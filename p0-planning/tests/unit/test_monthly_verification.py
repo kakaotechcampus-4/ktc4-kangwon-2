@@ -56,6 +56,7 @@ from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.rules.monthly_verification import (
+    AGE_FREE_TEXT_NOT_VERIFIED_CODE,
     AGE_REFERENCE_NOT_VERIFIED_CODE,
     AGE_RULE_ID,
     AGE_RULE_REF,
@@ -567,7 +568,7 @@ def test_age_verifier_reports_only_mismatched_cells_in_stable_location_order():
     )
 
 
-def test_age_verifier_ignores_free_text_without_activity_reference():
+def test_free_text_outdoor_without_activity_reference_is_not_verified():  # Q3
     catalog = _activity_catalog(
         _activity("known", supported_ages=(3,), allow_mixed_age=False)
     )
@@ -582,7 +583,10 @@ def test_age_verifier_ignores_free_text_without_activity_reference():
         _activity_plan(free_text, target_ages=frozenset({4})), catalog=catalog
     )
 
-    assert result.findings == ()
+    # Age coverage is never silent: free text is explicitly NOT_VERIFIED, a WARNING.
+    assert [(f.code, f.finding_kind, f.severity, f.location.week_id) for f in result.findings] == [
+        (AGE_FREE_TEXT_NOT_VERIFIED_CODE, FindingKind.NOT_VERIFIED, Severity.WARNING, free_text.week_id)]
+    assert result.executed_rule.rule_version == "v2"
 
 
 def test_teacher_edit_with_stale_reference_is_not_verified_not_violated():
@@ -697,3 +701,23 @@ def test_a_regeneration_after_a_teacher_edit_is_trusted_again():
     result = verify_monthly_activity_ages(_activity_plan(regenerated, target_ages=frozenset({3})), catalog=catalog)
 
     assert result.findings == ()  # canonical again: verified, not bypassed as an old edit
+
+
+
+def test_reference_outdoor_keeps_the_catalog_age_check():  # Q1, Q2
+    catalog = _activity_catalog(
+        _activity("age-three", supported_ages=(3,), allow_mixed_age=False),
+        _activity("age-five", supported_ages=(5,), allow_mixed_age=False),
+    )
+    plan = _activity_plan(_activity_cell("age-three", 1), _activity_cell("age-five", 2), target_ages=frozenset({3}))
+
+    findings = verify_monthly_activity_ages(plan, catalog=catalog).findings
+
+    assert [(f.code, f.location.week_id.value) for f in findings] == [(AGE_UNSUPPORTED_CODE, "2026-09-W2")]
+
+
+def test_an_empty_outdoor_cell_has_no_age_finding():
+    catalog = _activity_catalog(_activity("known", supported_ages=(3,), allow_mixed_age=False))
+    empty = replace(_activity_cell("known", 1, with_reference=False), value="", cell_state=CellState.EMPTY_VALID)
+
+    assert verify_monthly_activity_ages(_activity_plan(empty, target_ages=frozenset({3})), catalog=catalog).findings == ()

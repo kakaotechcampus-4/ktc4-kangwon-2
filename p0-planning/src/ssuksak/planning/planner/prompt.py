@@ -20,6 +20,7 @@ from .contracts import (
     generation_target_sections,
 )
 from .text_policy import MAX_VISIBLE_TEXT_CHARS
+from ..retrieval.models import AGE_VERIFIABLE_TIERS
 from .validation import ProposalValidationIssue, is_safety_grounding, wrong_source_refs
 
 MONTHLY_TASK = "monthly_plan_proposal"
@@ -138,6 +139,9 @@ def generation_targets(
     for section in generation_target_sections(snapshot):
         wrong = set(wrong_source_refs(section, refs, evidence))
         allowed = tuple(ref for ref in refs if ref not in wrong)
+        if section.section_key == "outdoor_play":
+            # Outdoor may cite only age-verifiable evidence; the schema enum enforces it.
+            allowed = tuple(ref for ref in allowed if evidence[ref].age_match in AGE_VERIFIABLE_TIERS)
         if section.section_key == "safety_education":
             allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
             allowed += tuple(sorted(official_safety_refs(packet)))

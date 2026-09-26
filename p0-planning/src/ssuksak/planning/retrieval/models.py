@@ -24,6 +24,9 @@ AGE_TIER_ORDER = (
     AgeMatchKind.MIXED_AGE_COVERING,
     AgeMatchKind.AGE_UNKNOWN,
 )
+# Evidence whose age is known to fit the request: a requested single age, or a
+# mixed-age scope that contains a requested age. AGE_UNKNOWN is not age-verifiable.
+AGE_VERIFIABLE_TIERS = AGE_TIER_ORDER[:3]
 
 
 class BlockName(str, Enum):

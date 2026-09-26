@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from ..domain.activity_reference import ActivityCandidate, ActivityCatalog
 from ..domain.errors import InvalidDomainValueError
+from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import MonthlyCell, MonthlyPlan
 from ..domain.monthly_template import DisplayMode
 from ..domain.monthly_verification import (
@@ -23,10 +24,13 @@ from ..domain.provenance import EvidenceSource, EvidenceSourceType, GenerationMe
 from .errors import MonthlyRuleError
 
 AGE_RULE_ID = "monthly.activity.supported_ages"
-AGE_RULE_VERSION = "v1"
+AGE_RULE_VERSION = "v2"
 AGE_RULE_REF = VerificationRuleRef(AGE_RULE_ID, AGE_RULE_VERSION)
 AGE_UNSUPPORTED_CODE = "ACTIVITY_AGE_UNSUPPORTED"
 AGE_REFERENCE_NOT_VERIFIED_CODE = "ACTIVITY_REFERENCE_NOT_VERIFIED"
+# v2: a filled outdoor Cell without an Activity Reference is free text. Its grounding
+# is age-validated before save, but the sentence itself is not age-verified.
+AGE_FREE_TEXT_NOT_VERIFIED_CODE = "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +89,8 @@ def verify_monthly_activity_ages(
     *,
     catalog: ActivityCatalog,
 ) -> RuleVerificationResult:
-    """Compare reference-linked Cells with approved catalog age conditions."""
+    """Compare reference-linked Cells with approved catalog age conditions; mark free-text
+    outdoor Cells NOT_VERIFIED so no active outdoor Cell has silent age coverage."""
 
     source_ref = _require_age_catalog(plan, catalog)
     findings: list[Violation] = []
@@ -96,6 +101,22 @@ def verify_monthly_activity_ages(
             if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
         )
         if not references:
+            if cell.section_key == OUTDOOR_PLAY_SLOT and cell.value.strip():
+                findings.append(
+                    _age_finding(
+                        cell,
+                        plan,
+                        source_ref,
+                        code=AGE_FREE_TEXT_NOT_VERIFIED_CODE,
+                        finding_kind=FindingKind.NOT_VERIFIED,
+                        severity=Severity.WARNING,
+                        message=(
+                            "Free-text outdoor play has no Activity Reference; its own "
+                            "age suitability is not deterministically verified"
+                        ),
+                        reference_ids=(),
+                    )
+                )
             continue
         candidate = _trusted_activity_candidate(cell, references, catalog)
         if candidate is None:

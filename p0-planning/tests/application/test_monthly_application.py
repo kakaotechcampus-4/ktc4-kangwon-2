@@ -2323,6 +2323,21 @@ def test_a_teacher_edited_reference_cell_is_not_verified_and_still_saved():
 
 
 
+def test_a_teacher_edited_free_text_outdoor_cell_stays_not_verified_and_saved():
+    harness, plan = _llm_plan_with_all_three_origins()
+    free_text = plan.section("outdoor_play").cells[1]  # null reference, grounded
+    assert not any(e.source_type is EvidenceSourceType.ACTIVITY_REFERENCE for e in free_text.evidence)
+
+    updated, edited = _teacher_edit(harness, plan, free_text, "교사가 새로 쓴 자유 바깥놀이")
+    codes = [f.code for f in updated.verification_report.findings
+             if f.location.section_key == "outdoor_play" and f.location.week_id == free_text.week_id]
+
+    assert edited.generation == free_text.generation
+    assert codes == ["ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED"]
+    assert harness.plans.get(updated.plan_id) is updated
+
+
+
 # ---------------------------------------------------------------- freeze closure (M1, M2)
 
 
