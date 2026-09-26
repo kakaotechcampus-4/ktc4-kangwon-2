@@ -240,6 +240,69 @@ def _canonical_values(
     )
 
 
+# What each LLM-repairable finding needs to change in the cell it names (from the
+# validator branch that raises it). Every other field, and every cell no finding
+# names, keeps its pre-repair value; reference_id and unresolved are never repaired.
+# A code without an entry authorizes nothing, so its finding survives and fails closed.
+_VALUE = frozenset({"value"})
+_VALUE_AND_REFS = frozenset({"value", "grounding_refs"})
+REPAIR_MUTABLE_FIELDS: dict[ProposalValidationCode, frozenset[str]] = {
+    ProposalValidationCode.SOURCE_TEXT_COPY: _VALUE,
+    ProposalValidationCode.TEXT_POLICY: _VALUE,
+    ProposalValidationCode.SAFETY_MULTIPLE_SENTENCES: _VALUE,
+    ProposalValidationCode.SAFETY_DUPLICATE_CONTENT: _VALUE,
+    # Ref choice findings: the refs change and the value follows the new refs.
+    ProposalValidationCode.WRONG_SOURCE_GROUNDING: _VALUE_AND_REFS,
+    ProposalValidationCode.SAFETY_GROUNDING_MISMATCH: _VALUE_AND_REFS,
+    ProposalValidationCode.SAFETY_FOCUS_MISMATCH: _VALUE_AND_REFS,
+    ProposalValidationCode.SAFETY_DUPLICATE_REFERENCE: _VALUE_AND_REFS,
+}
+_CELL_FIELDS = ("value", "unresolved", "reference_id", "grounding_refs")
+
+
+def _cells(payload: dict) -> dict[tuple[str | None, str], dict]:
+    """Raw proposal cells by finding location: (week_id or None for month, section_key)."""
+    cells = {(None, cell["section_key"]): cell for cell in payload["month_sections"]}
+    cells.update(
+        ((week["week_id"], cell["section_key"]), cell) for week in payload["weeks"] for cell in week["sections"]
+    )
+    return cells
+
+
+def _field(cell: dict, name: str) -> object:
+    return list(dict.fromkeys(cell[name])) if name == "grounding_refs" else cell[name]
+
+
+def merge_authorized_repair(
+    base_content: str,
+    repair_content: str,
+    issues: tuple[ProposalValidationIssue, ...],
+) -> tuple[str, tuple[tuple[str | None, str, tuple[str, ...]], ...]]:
+    """The pre-repair proposal plus only the fields its findings authorize from the repair.
+
+    Structure, cells and fields no finding authorizes stay as in base_content.
+    Returns the merged JSON and each ignored change as (week_id, section_key, fields).
+    """
+    authorized: dict[tuple[str | None, str], set[str]] = {}
+    for issue in issues:
+        authorized.setdefault((issue.week_id, issue.field), set()).update(REPAIR_MUTABLE_FIELDS.get(issue.code, ()))
+    base = json.loads(base_content)
+    patch = _cells(json.loads(repair_content))
+    ignored = []
+    for key, cell in _cells(base).items():
+        new = patch.get(key)
+        if new is None:
+            continue
+        changed = [name for name in _CELL_FIELDS if _field(new, name) != _field(cell, name)]
+        allowed = authorized.get(key, set())
+        for name in changed:
+            if name in allowed:
+                cell[name] = new[name]
+        if blocked := tuple(name for name in changed if name not in allowed):
+            ignored.append((key[0], key[1], blocked))
+    return json.dumps(base, ensure_ascii=False), tuple(ignored)
+
+
 def canonicalize_reference_labels(
     content: str,
     issues: tuple[ProposalValidationIssue, ...],
@@ -253,10 +316,7 @@ def canonicalize_reference_labels(
     """
     payload = json.loads(content)
     labels = request.reference_label_map
-    cells = {(None, cell["section_key"]): cell for cell in payload["month_sections"]}
-    cells.update(
-        ((week["week_id"], cell["section_key"]), cell) for week in payload["weeks"] for cell in week["sections"]
-    )
+    cells = _cells(payload)
     fixed = []
     for issue in issues:
         cell = cells.get((issue.week_id, issue.field))

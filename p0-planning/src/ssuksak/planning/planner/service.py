@@ -21,6 +21,7 @@ from .validation import (
     MonthlyProposalValidationResult,
     canonicalize_reference_labels,
     changed_reference_ids,
+    merge_authorized_repair,
     validate_monthly_proposal,
 )
 
@@ -81,12 +82,25 @@ class MonthlyPlanner:
             request = build_monthly_repair_request(request, content, validation.issues)
             rejected = proposal
             try:
-                response, proposal, validation = self._attempt(packet, request)
+                response = self._generate(request)
+                parse_monthly_proposal(response.content)  # a malformed repair still fails closed
             except Exception:
                 _log.warning("Monthly LLM repair failed before validation")
                 raise
+            # The repair may change only what its findings name; the merge enforces it.
+            content, ignored = merge_authorized_repair(content, response.content, validation.issues)
+            if ignored:
+                _log.info(
+                    "Monthly LLM repair ignored unauthorized mutations: %s",
+                    "; ".join(
+                        f"REPAIR_UNAUTHORIZED_MUTATION_IGNORED@{week or 'month'}/{section} fields={','.join(fields)}"
+                        for week, section, fields in ignored
+                    ),
+                )
+            proposal = parse_monthly_proposal(content)
             validation = MonthlyProposalValidationResult(
-                validation.issues + changed_reference_ids(rejected, proposal, found)
+                validate_monthly_proposal(proposal, packet, request).issues
+                + changed_reference_ids(rejected, proposal, found)
             )
             if validation.is_valid:
                 _log.info("Monthly LLM repair succeeded")
@@ -104,9 +118,13 @@ class MonthlyPlanner:
             request_id=response.request_id,
         )
 
-    def _attempt(self, packet: MonthlyContextPacket, request: MonthlyPlanningRequest):
+    def _generate(self, request: MonthlyPlanningRequest):
         response = self._provider.generate_monthly(request)
         if not is_compatible_monthly_model(response.model):
             raise ProposalRejectedError(("UNEXPECTED_MODEL",))
+        return response
+
+    def _attempt(self, packet: MonthlyContextPacket, request: MonthlyPlanningRequest):
+        response = self._generate(request)
         proposal = parse_monthly_proposal(response.content)
         return response, proposal, validate_monthly_proposal(proposal, packet, request)
