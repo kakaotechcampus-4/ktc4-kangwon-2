@@ -10,17 +10,22 @@ from dataclasses import dataclass
 import re
 
 from ..domain.errors import DomainError, InvalidDomainValueError
+from ..domain.monthly_template import DisplayMode
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
 MONTHLY_PROMPT_VERSION = "monthly-planner-v3"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v3"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v4"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 
 FOCUS_SECTION_KEY = "focus"
 OUTDOOR_SECTION_KEY = "outdoor_play"
-LLM_CELL_SECTION_KEYS = frozenset({FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY})
+BASIC_HABIT_SECTION_KEY = "basic_habit"
+GOALS_SECTION_KEY = "goals"
+LLM_CELL_SECTION_KEYS = frozenset(
+    {FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY, BASIC_HABIT_SECTION_KEY, GOALS_SECTION_KEY}
+)
 
 
 def _require_text(name: str, value: object) -> None:
@@ -272,7 +277,7 @@ class MonthlyCellPlanningRequest:
     system_prompt: str
     user_content: str
     target_month: YearMonth
-    target_week_id: WeekId
+    target_week_id: WeekId | None
     target_section_key: str
     expected_theme_id: str
     template_snapshot: TemplateSnapshot
@@ -297,10 +302,6 @@ class MonthlyCellPlanningRequest:
             raise InvalidDomainValueError(
                 "MonthlyCellPlanningRequest.target_month must be YearMonth"
             )
-        if not isinstance(self.target_week_id, WeekId):
-            raise InvalidDomainValueError(
-                "MonthlyCellPlanningRequest.target_week_id must be WeekId"
-            )
         if self.target_section_key not in LLM_CELL_SECTION_KEYS:
             raise InvalidDomainValueError(
                 f"LLM cannot plan section {self.target_section_key!r}"
@@ -309,6 +310,24 @@ class MonthlyCellPlanningRequest:
             raise InvalidDomainValueError(
                 "MonthlyCellPlanningRequest.template_snapshot must be "
                 "TemplateSnapshot"
+            )
+        # The Snapshot placement decides the target address: one cell per week,
+        # or the single month-level cell whose week_id is None.
+        target_section = self.template_snapshot.section(self.target_section_key)
+        placement = None if target_section is None else target_section.display_mode
+        if not (
+            (
+                placement is DisplayMode.WEEKLY_CELLS
+                and isinstance(self.target_week_id, WeekId)
+            )
+            or (
+                placement is DisplayMode.MONTHLY_MERGED_SUMMARY
+                and self.target_week_id is None
+            )
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyCellPlanningRequest.target_week_id must be a WeekId for "
+                "a WEEKLY_CELLS target and None for a MONTHLY_MERGED_SUMMARY target"
             )
         _require_reference_labels(
             "MonthlyCellPlanningRequest.reference_labels",
@@ -348,7 +367,7 @@ class RawLlmResponse:
 @dataclass(frozen=True, slots=True)
 class MonthlyCellProposal:
     target_month: YearMonth
-    target_week_id: WeekId
+    target_week_id: WeekId | None
     section: ProposedSectionValue
 
     def __post_init__(self) -> None:
@@ -356,9 +375,11 @@ class MonthlyCellProposal:
             raise InvalidDomainValueError(
                 "MonthlyCellProposal.target_month must be YearMonth"
             )
-        if not isinstance(self.target_week_id, WeekId):
+        if self.target_week_id is not None and not isinstance(
+            self.target_week_id, WeekId
+        ):
             raise InvalidDomainValueError(
-                "MonthlyCellProposal.target_week_id must be WeekId"
+                "MonthlyCellProposal.target_week_id must be WeekId or None"
             )
         if not isinstance(self.section, ProposedSectionValue):
             raise InvalidDomainValueError(

@@ -17,10 +17,11 @@ from ..domain.provenance import (
     GenerationMethodDetail,
     ValueChange,
 )
+from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..planner.cell_service import MonthlyCellPlanner
 from ..planner.contracts import (
+    LLM_CELL_SECTION_KEYS,
     MONTHLY_CELL_PROMPT_VERSION,
-    FOCUS_SECTION_KEY,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
 )
@@ -52,7 +53,7 @@ from .monthly_support import (
 )
 from .ports import ActivityReferenceRepository, Clock, PlanRepository
 
-SUPPORTED_SECTIONS = frozenset({FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY})
+SUPPORTED_SECTIONS = LLM_CELL_SECTION_KEYS
 
 
 class RegenerateMonthlyPlanItem:
@@ -84,7 +85,7 @@ class RegenerateMonthlyPlanItem:
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"
             )
         _, _, _, cell = found
-        if cell.section_key not in SUPPORTED_SECTIONS or cell.week_id is None:
+        if cell.section_key not in SUPPORTED_SECTIONS:
             raise MonthlyApplicationError(
                 "monthly_cell_not_regeneratable",
                 f"Cell section is not regeneratable: {cell.section_key}",
@@ -209,6 +210,14 @@ class RegenerateMonthlyPlanItem:
             constraint_assessments=plan.constraint_assessments,
             grounding_classes=snapshot_grounding_classes(plan.template_snapshot),
         )
+        grounding_class = grounding_class_for(plan.template_snapshot.section(cell.section_key))
+        if cell.section_key in CLASS_SCOPED_SECTION_KEYS and grounding_class not in {
+            item.grounding_class for item in packet.section_evidence
+        }:
+            raise MonthlyApplicationError(
+                "monthly_required_section_evidence_missing",
+                f"Cell regeneration has no approved Evidence for Section: {cell.section_key}",
+            )
         snapshot = _month_snapshot(plan)
         try:
             outcome = self._cell_planner.plan(

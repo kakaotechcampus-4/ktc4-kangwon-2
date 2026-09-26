@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
+from ssuksak.adapters.deterministic import FixedClock
+from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan
 from ssuksak.planning.application.edit_monthly_plan_item import EditMonthlyPlanItem
 from ssuksak.planning.application.edit_yearly_plan_item import EditYearlyPlanItem
 from ssuksak.planning.application.monthly_dto import (
+    ConfirmMonthlyPlanCommand,
     EditMonthlyPlanItemCommand,
     RegenerateMonthlyPlanItemCommand,
 )
@@ -14,19 +19,34 @@ from ssuksak.planning.application.regenerate_monthly_plan_item import (
 )
 from ssuksak.planning.application.yearly_dto import EditYearlyPlanItemCommand
 from ssuksak.planning.domain.errors import InvalidStateTransitionError
+from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_constraint import (
     CellState,
     ConstraintVerification,
 )
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
+from ssuksak.planning.domain.monthly_verification import VerificationSourceRef
 from ssuksak.planning.domain.plan import PlanStatus
 from ssuksak.planning.domain.provenance import (
     AuditEventType,
     EvidenceSourceType,
     GenerationMethod,
 )
+from ssuksak.planning.rules.monthly_verification import AGE_RULE_REF
 
-from .harness import PlanningHarness, TEACHER
+from .harness import ACTIVITY_CATALOG, NOW, PlanningHarness, TEACHER
+
+
+def _assert_fresh_age_report(plan, previous=None):
+    """Only the implemented age rule runs; deferred rules never appear in coverage."""
+    report = plan.verification_report
+    assert report is not None
+    assert report is not getattr(previous, "verification_report", None)
+    assert report.target_plan_id == plan.plan_id
+    assert report.executed_rules == (AGE_RULE_REF,)
+    assert report.source_refs == (
+        VerificationSourceRef(ACTIVITY_CATALOG.catalog_id, ACTIVITY_CATALOG.catalog_version),
+    )
 
 
 def test_full_yearly_to_monthly_core_flow_and_final_locks():
@@ -78,6 +98,8 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
     assert monthly_generated.parent_lineage.snapshot_value == (
         monthly_generated.section("theme").cells[0].value
     )
+    _assert_fresh_age_report(monthly_generated)
+    assert monthly_generated.verification_report.findings == ()
 
     theme_cell = monthly_generated.section("theme").cells[0]
     assert {source.source_type for source in theme_cell.evidence} == {
@@ -109,6 +131,7 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
     assert edited_outdoor.generation.method is GenerationMethod.TEACHER_EDIT
     assert edited_outdoor.evidence == outdoor_evidence
     assert edited_outdoor.audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
+    _assert_fresh_age_report(monthly_edited, monthly_generated)
 
     first_focus = monthly_edited.section("focus").cells[0]
     monthly_regeneration = harness.regenerate_monthly(
@@ -127,10 +150,12 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
         cell.cell_state is CellState.EMPTY_UNRESOLVED
         for cell in monthly_regenerated.section("safety_education").cells
     )
+    _assert_fresh_age_report(monthly_regenerated, monthly_edited)
 
     monthly_confirmed = harness.confirm_monthly(monthly_regenerated)
     assert monthly_confirmed.status is PlanStatus.CONFIRMED
     assert monthly_confirmed.audit.events[-1].actor_id == TEACHER
+    _assert_fresh_age_report(monthly_confirmed, monthly_regenerated)
     assert monthly_confirmed.constraint(
         "STATUTORY_SAFETY_EDUCATION"
     ).verification is ConstraintVerification.NOT_VERIFIED_SOURCE_REQUIRED
@@ -176,8 +201,21 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
                 TEACHER,
             )
         )
-    with pytest.raises(InvalidStateTransitionError):
-        harness.confirm_monthly(monthly_confirmed)
+    saves_before_retry = harness.monthly_plans.save_count
+    retried = ConfirmMonthlyPlan(
+        plan_repository=harness.monthly_plans,
+        clock=FixedClock(NOW + timedelta(days=1)),
+        activity_repository=harness.activities,
+    ).execute(ConfirmMonthlyPlanCommand(monthly_confirmed.plan_id, ActorId("teacher_002")))
+    confirmations = [
+        event for event in retried.audit.events
+        if event.event_type is AuditEventType.CONFIRMED
+    ]
+    assert retried is monthly_confirmed
+    assert harness.monthly_plans.get(monthly_confirmed.plan_id) is monthly_confirmed
+    assert harness.monthly_plans.save_count == saves_before_retry
+    assert [(event.actor_id, event.occurred_at) for event in confirmations] == [(TEACHER, NOW)]
+    assert retried.verification_report is monthly_confirmed.verification_report
 
 
 def test_safety_cells_are_never_llm_regeneration_targets():

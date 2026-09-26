@@ -12,7 +12,7 @@
   "context_packet_fingerprint": null,
   "generation_mode": "RULE_ONLY",
   "parent_lineage": {"confirmed_by": "teacher_001", "has_parent_item_id": true, "has_parent_plan_id": true, "snapshot_value": "우리나라와 세계 여러 나라"},
-  "schema": "monthly-golden-v1",
+  "schema": "monthly-golden-v2",
   "sections": [
     {
       "cells": [
@@ -127,6 +127,7 @@
   "target_ages": [3, 4],
   "target_month": "2026-09",
   "template": "ssuksak.monthly-template-a/monthly-template-a-v0.1.0",
+  "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v1"}], "findings": [], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
   "weeks": [
     {"active": true, "end": "2026-09-04", "start": "2026-08-31", "week_id": "2026-09-W1"},
     {"active": true, "end": "2026-09-11", "start": "2026-09-07", "week_id": "2026-09-W2"},

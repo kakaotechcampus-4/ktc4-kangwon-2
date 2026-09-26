@@ -12,7 +12,10 @@ from ..domain.monthly_plan import (
 )
 from ..domain.monthly_constraint import CellState
 from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
-from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
+from ..domain.monthly_template_profile import (
+    INSTITUTION_INPUT_SECTION_KEYS,
+    TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
+)
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.plan import PlanStatus
 from ..domain.provenance import (
@@ -152,6 +155,19 @@ class GenerateMonthlyPlan:
                 "monthly_institution_input_section_unsupported",
                 "Monthly generation cannot produce institution-input Sections: "
                 + ", ".join(input_sections),
+            )
+        # Full Monthly v1 has no approved generation policy for any
+        # Template-specific Section (plan section 5), so every mode refuses them.
+        # This is not the institution-input-only contract of event_schedule/drill.
+        policy_pending = sorted(
+            TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS
+            & {section.section_key for section in template_snapshot.sections}
+        )
+        if policy_pending:
+            raise MonthlyApplicationError(
+                "monthly_section_generation_policy_unsupported",
+                "No approved Monthly generation policy exists for Sections: "
+                + ", ".join(policy_pending),
             )
         safety_rule = load_safety_rule(self._safety, command.safety_rule)
         catalog = load_activity_catalog(

@@ -79,6 +79,40 @@ def yearly_snapshot(plan: YearlyPlan) -> dict[str, Any]:
     }
 
 
+def _verification(plan: MonthlyPlan) -> dict[str, Any] | None:
+    """Deterministic VerificationReport contract; messages and observed values are excluded."""
+    report = plan.verification_report
+    if report is None:
+        return None
+    return {
+        "targets_plan": report.target_plan_id == plan.plan_id,
+        "executed_rules": [
+            {"rule_id": rule.rule_id, "rule_version": rule.rule_version}
+            for rule in report.executed_rules
+        ],
+        "source_refs": [
+            {"source_id": source.source_id, "source_version": source.source_version}
+            for source in report.source_refs
+        ],
+        "findings": [
+            {
+                "rule_id": finding.rule_id,
+                "rule_version": finding.rule_version,
+                "code": finding.code,
+                "finding_kind": finding.finding_kind.value,
+                "severity": finding.severity.value,
+                "section_key": finding.location.section_key,
+                "week_id": (
+                    finding.location.week_id.value
+                    if finding.location.week_id is not None
+                    else None
+                ),
+            }
+            for finding in report.findings
+        ],
+    }
+
+
 def _cell(value: MonthlyCell) -> dict[str, Any]:
     return {
         "week_id": value.week_id.value if value.week_id is not None else None,
@@ -93,7 +127,7 @@ def _cell(value: MonthlyCell) -> dict[str, Any]:
 def monthly_snapshot(result: GenerateMonthlyPlanResult) -> dict[str, Any]:
     plan = result.plan
     return {
-        "schema": "monthly-golden-v1",
+        "schema": "monthly-golden-v2",
         "target_month": plan.target_month.value,
         "status": plan.status.value,
         "target_ages": sorted(plan.target_ages),
@@ -154,6 +188,7 @@ def monthly_snapshot(result: GenerateMonthlyPlanResult) -> dict[str, Any]:
         ],
         "context_packet_fingerprint": result.context_packet_fingerprint,
         "audit": _audit(plan.audit),
+        "verification": _verification(plan),
     }
 
 
@@ -174,10 +209,14 @@ def cell_regeneration_snapshot(
     }
     outcome = result.planner_outcome
     return {
-        "schema": "monthly-cell-regeneration-golden-v1",
+        "schema": "monthly-cell-regeneration-golden-v2",
         "generation_mode": after.generation_mode.value,
         "section": after_target[3].section_key,
-        "week_id": after_target[3].week_id.value,
+        "week_id": (
+            after_target[3].week_id.value
+            if after_target[3].week_id is not None
+            else None
+        ),
         "before": _cell(before_target[3]),
         "after": _cell(after_target[3]),
         "siblings": {
@@ -198,4 +237,6 @@ def cell_regeneration_snapshot(
                 "plan_snapshot_fingerprint": outcome.plan_snapshot_fingerprint,
             }
         ),
+        "report_refreshed": after.verification_report is not before.verification_report,
+        "verification": _verification(after),
     }

@@ -10,6 +10,7 @@ from ..context.serialization import packet_fingerprint
 from ..domain.monthly_template import DisplayMode, SectionRole
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
+from ..evidence.classification import grounding_class_for
 from .contracts import (
     MONTHLY_CELL_PROMPT_VERSION,
     MonthlyCellPlanningRequest,
@@ -55,30 +56,35 @@ def build_monthly_cell_request(
     packet: MonthlyContextPacket,
     snapshot: TemplateSnapshot,
     *,
-    target_week_id: WeekId,
+    target_week_id: WeekId | None,
     target_section_key: str,
     month_snapshot: tuple[MonthlyCellSnapshot, ...],
 ) -> MonthlyCellPlanningRequest:
     expected_week_ids = tuple(WeekId(week.week_id) for week in packet.weeks)
-    if target_week_id not in expected_week_ids:
+    if target_week_id is not None and target_week_id not in expected_week_ids:
         raise ValueError("target_week_id is not in the Context Packet")
     if tuple(value.week_id for value in month_snapshot) != expected_week_ids:
         raise ValueError("month snapshot must cover Context weeks in order")
     target_section = snapshot.section(target_section_key)
-    if (
-        target_section is None
-        or target_section.role is not SectionRole.CONTENT
-        or target_section.display_mode is not DisplayMode.WEEKLY_CELLS
-    ):
-        raise ValueError("target section is not a weekly Snapshot content section")
+    if target_section is None or target_section.role is not SectionRole.CONTENT:
+        raise ValueError("target section is not a Snapshot content section")
+    # Placement vs target_week_id is enforced by MonthlyCellPlanningRequest.
+    merged = target_section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+    target_cell: dict[str, object] = {
+        "week_id": None if target_week_id is None else target_week_id.value,
+        "section_key": target_section_key,
+    }
+    if merged:
+        grounding_class = grounding_class_for(target_section)
+        target_cell.update(
+            placement="MONTH",
+            grounding_class=None if grounding_class is None else grounding_class.value,
+        )
     body = _prompt_payload(packet)
     body.update(
         {
             "generation_schema": _generation_schema(snapshot),
-            "target_cell": {
-                "week_id": target_week_id.value,
-                "section_key": target_section_key,
-            },
+            "target_cell": target_cell,
             "month_snapshot": [
                 {
                     "week_id": value.week_id.value,
@@ -91,7 +97,7 @@ def build_monthly_cell_request(
             ],
             "response_contract": {
                 "target_month": "YYYY-MM",
-                "target_week_id": "YYYY-MM-Wn",
+                "target_week_id": None if merged else "YYYY-MM-Wn",
                 "section": {
                     "section_key": "string",
                     "value": "string",

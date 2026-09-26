@@ -5,7 +5,7 @@
       {
         "actor": "teacher_001",
         "generation_change": {
-          "after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v3"},
+          "after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v4"},
           "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v3"}
         },
         "system_actor": null,
@@ -17,7 +17,7 @@
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
       {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v3"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v4"},
     "state": "FILLED",
     "value": "Regenerated focus value",
     "week_id": "2026-09-W1"
@@ -38,10 +38,12 @@
     "model": "openai/gpt-4.1-mini",
     "packet_fingerprint": "88fafbf539d73973cafc508ab98612a0d7a4fa917b08d257aefb09ce7937b109",
     "plan_snapshot_fingerprint": "b8bd38ad2ee43588591a29b54356d308a5efb8ba787587c1abfc6929bcb696f1",
-    "prompt_version": "monthly-cell-planner-v3"
+    "prompt_version": "monthly-cell-planner-v4"
   },
-  "schema": "monthly-cell-regeneration-golden-v1",
+  "report_refreshed": true,
+  "schema": "monthly-cell-regeneration-golden-v2",
   "section": "focus",
   "siblings": {"count": 15, "identities_preserved": true},
+  "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v1"}], "findings": [], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
   "week_id": "2026-09-W1"
 }

@@ -97,6 +97,7 @@ LLM_TEMPLATE = TemplateRef(
 )
 RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
 LLM_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
+EXTENDED_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v3")
 SAFETY_RULE = SafetyRuleSelector(
     "child-welfare-act-decree-annex6-2022-06-21"
 )
@@ -138,6 +139,34 @@ def _profile(
             )
             for section in template.activated_sections
         ),
+    )
+
+
+def _extended_profile(template_repository: JsonMonthlyTemplateRepository) -> TemplateProfile:
+    """LLM Profile that adds required goals, basic_habit and a hidden week_axis."""
+    base = _profile(template_repository, LLM_TEMPLATE, EXTENDED_PROFILE)
+    template = template_repository.get_template(
+        LLM_TEMPLATE.template_id, LLM_TEMPLATE.template_version
+    )
+    assert template is not None
+    sections = tuple(
+        replace(section, visible=False, display_label=None)
+        if section.section_key == "week_axis"
+        else section
+        for section in base.sections
+    ) + (
+        replace(
+            template.section("goals"),
+            activated=True,
+            display_label="Goals",
+            required_for_generation=True,
+        ),
+        replace(template.section("habits"), activated=True, display_label="Basic habit"),
+    )
+    return replace(
+        base,
+        selected_optional_keys=("focus", "goals", "basic_habit"),
+        sections=sections,
     )
 
 
@@ -263,7 +292,11 @@ class RequestAwareMonthlyLlm:
         grounding_ref = grounding_ref_for(request, request.target_section_key)
         payload = {
             "target_month": request.target_month.value,
-            "target_week_id": request.target_week_id.value,
+            "target_week_id": (
+                None
+                if request.target_week_id is None
+                else request.target_week_id.value
+            ),
             "section": {
                 "section_key": request.target_section_key,
                 "value": f"Regenerated {request.target_section_key} value",
@@ -297,6 +330,7 @@ class PlanningHarness:
             (
                 _profile(self.templates, RULE_TEMPLATE, RULE_PROFILE),
                 _profile(self.templates, LLM_TEMPLATE, LLM_PROFILE),
+                _extended_profile(self.templates),
             )
         )
         self.safety = JsonSafetyLegalRuleRepository()
@@ -308,7 +342,7 @@ class PlanningHarness:
         )
         self.provider = RequestAwareMonthlyLlm()
 
-    def generate_yearly(self):
+    def generate_yearly(self, target_ages: frozenset[int] = frozenset({3, 4})):
         return GenerateYearlyPlan(
             theme_repository=self.themes,
             plan_repository=self.yearly_plans,
@@ -319,7 +353,7 @@ class PlanningHarness:
             GenerateYearlyPlanCommand(
                 school_year=2026,
                 classroom_ref="classroom_001",
-                target_ages=frozenset({3, 4}),
+                target_ages=target_ages,
                 catalog=THEME_CATALOG,
             )
         )
@@ -360,8 +394,11 @@ class PlanningHarness:
         self,
         parent: YearlyPlan,
         mode: MonthlyGenerationMode,
+        *,
+        target_month: YearMonth = TARGET_MONTH,
+        profile: TemplateProfileRef | None = None,
     ):
-        profile = (
+        profile = profile or (
             RULE_PROFILE
             if mode is MonthlyGenerationMode.RULE_ONLY
             else LLM_PROFILE
@@ -384,7 +421,7 @@ class PlanningHarness:
         ).execute(
             GenerateMonthlyPlanCommand(
                 parent_yearly_plan_id=parent.plan_id,
-                target_month=TARGET_MONTH,
+                target_month=target_month,
                 daycare_ref="daycare_001",
                 profile_ref=profile,
                 safety_rule=SAFETY_RULE,
