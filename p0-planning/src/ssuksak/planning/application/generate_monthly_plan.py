@@ -29,6 +29,7 @@ from ..domain.provenance import (
 )
 from ..domain.yearly_plan import YearlyPlan
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
+from ..planner.contracts import MonthlyPlanningOutcome
 from ..planner.service import MonthlyPlanner
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
@@ -295,11 +296,7 @@ class GenerateMonthlyPlan:
                 mode=command.generation_mode,
                 catalog=catalog,
                 proposal=proposal,
-                prompt_version=(
-                    planner_outcome.prompt_version
-                    if planner_outcome is not None
-                    else None
-                ),
+                planner_outcome=planner_outcome,
                 packet=packet,
                 safety_placements={slot.week_id: slot.placement for slot in safety_slots},
                 used_activity_ids=used_activity_ids,
@@ -402,7 +399,7 @@ class GenerateMonthlyPlan:
         mode: MonthlyGenerationMode,
         catalog: ActivityCatalog | None,
         proposal,
-        prompt_version: str | None,
+        planner_outcome: MonthlyPlanningOutcome | None,
         packet,
         safety_placements,
         used_activity_ids: set[str],
@@ -432,6 +429,10 @@ class GenerateMonthlyPlan:
             )
             unresolved = False
             if mode is MonthlyGenerationMode.LLM_PLANNER and proposed is not None:
+                # The prompt that produced this cell's current value (initial or repair).
+                prompt_version = planner_outcome.prompt_version_for(
+                    None if week_id is None else week_id.value, section.section_key
+                )
                 value = proposed.value
                 unresolved = proposed.unresolved
                 if section.section_key == THEME_SECTION_KEY:

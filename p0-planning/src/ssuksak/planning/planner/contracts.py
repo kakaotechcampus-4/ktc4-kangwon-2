@@ -506,9 +506,20 @@ class ProposalRejectedError(DomainError):
 class MonthlyPlanningOutcome:
     proposal: MonthlyPlanProposal
     model: str
+    # The last provider call's prompt; after a repair, the repair prompt.
     prompt_version: str
     packet_fingerprint: str
     request_id: str | None = None
+    # Cell-level provenance: cells the LLM repair actually changed carry prompt_version;
+    # every other cell (initial value, or only deterministically normalized) the initial prompt.
+    initial_prompt_version: str | None = None
+    repaired_cells: frozenset[tuple[str | None, str]] = frozenset()
+
+    def prompt_version_for(self, week_id: str | None, section_key: str) -> str:
+        """The prompt version that produced this cell's current value."""
+        if (week_id, section_key) in self.repaired_cells:
+            return self.prompt_version
+        return self.initial_prompt_version or self.prompt_version
 
 
 @dataclass(frozen=True, slots=True)
