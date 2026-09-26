@@ -27,7 +27,12 @@ from ssuksak.adapters.json_theme_reference_repository import (
 from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
     JsonSafetyLegalRuleRepository,
+    JsonSafetyPlacementPolicyRepository,
 )
+from ssuksak.adapters.safety_evidence_classification_repository import (
+    JsonSafetyEvidenceClassificationRepository,
+)
+from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
 from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan
 from ssuksak.planning.application.confirm_yearly_plan import ConfirmYearlyPlan
 from ssuksak.planning.application.edit_monthly_plan_item import EditMonthlyPlanItem
@@ -40,6 +45,7 @@ from ssuksak.planning.application.monthly_dto import (
     EditMonthlyPlanItemCommand,
     GenerateMonthlyPlanCommand,
     RegenerateMonthlyPlanItemCommand,
+    SafetyPlacementSelector,
     SafetyRuleSelector,
 )
 from ssuksak.planning.application.monthly_support import MonthlyContextPipeline
@@ -101,6 +107,7 @@ EXTENDED_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v3")
 SAFETY_RULE = SafetyRuleSelector(
     "child-welfare-act-decree-annex6-2022-06-21"
 )
+SAFETY_PLACEMENT = SafetyPlacementSelector("ssuksak-safety-placement-v2")
 
 _EVIDENCE_REPOSITORY = JsonInstitutionEvidenceRepository()
 
@@ -200,9 +207,30 @@ class RequestAwareMonthlyLlm:
         self.monthly_requests.append(request)
         first_reference = request.reference_labels[0]
 
+        body = json.loads(request.user_content)
+        safety_plan = body.get("safety_plan")
+
+        def safety_value(index: int) -> dict[str, object] | None:
+            if safety_plan is None:
+                return None
+            slot = safety_plan["weeks"][index - 1]
+            if slot["kind"] == "STATUTORY":
+                refs = [slot["official_content"][0]["grounding_ref"]]
+            elif slot["primary_ref"]:
+                refs = [slot["primary_ref"]]
+            else:
+                return None
+            return {
+                "section_key": "safety_education",
+                "value": f"Context-based {slot['kind'].lower()} safety {index}",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": refs,
+            }
+
         def section_value(section_key: str, index: int) -> dict[str, object]:
             if section_key == "safety_education":
-                return {
+                return safety_value(index) or {
                     "section_key": section_key,
                     "value": "",
                     "unresolved": True,
@@ -334,11 +362,14 @@ class PlanningHarness:
             )
         )
         self.safety = JsonSafetyLegalRuleRepository()
+        self.placements = JsonSafetyPlacementPolicyRepository()
         self.activities = JsonActivityReferenceRepository()
         self.context = MonthlyContextPipeline(
             evidence_repository=_EVIDENCE_REPOSITORY,
             classification_repository=JsonEvidenceClassificationRepository(),
             context_builder=ContextPacketBuilder(),
+            safety_classification_repository=JsonSafetyEvidenceClassificationRepository(),
+            safety_quality_repository=JsonSafetyReferenceQualityRepository(),
         )
         self.provider = RequestAwareMonthlyLlm()
 
@@ -397,6 +428,7 @@ class PlanningHarness:
         *,
         target_month: YearMonth = TARGET_MONTH,
         profile: TemplateProfileRef | None = None,
+        safety_placement: SafetyPlacementSelector | None = None,
     ):
         profile = profile or (
             RULE_PROFILE
@@ -418,6 +450,7 @@ class PlanningHarness:
             id_generator=self.monthly_ids,
             context_pipeline=self.context,
             planner=planner,
+            safety_placement_repository=self.placements,
         ).execute(
             GenerateMonthlyPlanCommand(
                 parent_yearly_plan_id=parent.plan_id,
@@ -427,6 +460,7 @@ class PlanningHarness:
                 safety_rule=SAFETY_RULE,
                 generation_mode=mode,
                 activity_catalog=ACTIVITY_CATALOG,
+                safety_placement=safety_placement,
             )
         )
 
