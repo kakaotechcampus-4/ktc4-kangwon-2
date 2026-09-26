@@ -1,7 +1,7 @@
 """add observations table
 
 Revision ID: 3e5298ab9396
-Revises: 52bd3f0c6560
+Revises: 2a7c0673e027
 Create Date: 2026-09-22 15:46:00.000000
 
 docs/api-spec.md §10 의 관찰 기록. 3층 규격의 ① 사실 층이고 §11 문서가 이걸 근거로 쓴다.
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '3e5298ab9396'
-down_revision: Union[str, None] = '52bd3f0c6560'
+down_revision: Union[str, None] = '2a7c0673e027'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
