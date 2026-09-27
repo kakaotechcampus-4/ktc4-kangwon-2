@@ -125,6 +125,15 @@ def test_teacher_edit_audit_requires_item_change_and_human_actor():
     assert event.actor_id == ActorId("teacher_001")
 
 
+def test_value_change_can_record_a_monthly_empty_to_filled_transition():
+    change = ValueChange("", "Teacher-authored value")
+
+    assert change.before == ""
+    assert change.after == "Teacher-authored value"
+    with pytest.raises(InvalidDomainValueError):
+        ValueChange(" ", "")
+
+
 def test_audit_history_append_is_immutable_and_chronological():
     history = AuditHistory().append(_created())
     later = _created(NOW + timedelta(seconds=1))

@@ -8,7 +8,11 @@ from enum import Enum
 from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 from ..domain.errors import InvalidDomainValueError
+from ..domain.activity_reference import ActivityCatalog
 from ..domain.identifiers import ItemId, PlanId
+from ..domain.monthly_template import MonthlyTemplate
+from ..domain.safety_rule import SafetyLegalRule
+from ..domain.theme_reference import ThemeCatalog
 
 TPlan = TypeVar("TPlan")
 
@@ -20,6 +24,40 @@ class PlanRepository(Protocol, Generic[TPlan]):
     def save(self, plan_id: PlanId, plan: TPlan) -> None: ...
 
     def get(self, plan_id: PlanId) -> TPlan | None: ...
+
+
+@runtime_checkable
+class ThemeReferenceRepository(Protocol):
+    """Read an exact versioned Theme Catalog without choosing persistence."""
+
+    def get_catalog(
+        self, catalog_id: str, catalog_version: str
+    ) -> ThemeCatalog | None: ...
+
+
+@runtime_checkable
+class ActivityReferenceRepository(Protocol):
+    """Read an exact versioned Activity Catalog."""
+
+    def get_catalog(
+        self, catalog_id: str, catalog_version: str
+    ) -> ActivityCatalog | None: ...
+
+
+@runtime_checkable
+class MonthlyTemplateRepository(Protocol):
+    """Read an exact versioned Monthly Template."""
+
+    def get_template(
+        self, template_id: str, template_version: str
+    ) -> MonthlyTemplate | None: ...
+
+
+@runtime_checkable
+class SafetyLegalRuleRepository(Protocol):
+    """Read an exact versioned approved safety Reference."""
+
+    def get_legal_rule(self, legal_rule_version: str) -> SafetyLegalRule | None: ...
 
 
 @runtime_checkable

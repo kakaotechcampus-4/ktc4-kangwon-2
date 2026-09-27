@@ -1,11 +1,16 @@
 // 기존 키와 계정 형식을 유지하며 현재/이전 계정을 안전하게 읽는다.
 export const accountKey = (email: string) =>
   `saessak.demoAccount:${encodeURIComponent(email.trim().toLowerCase())}`;
+/**
+ * 브라우저에 남기는 계정 기록. **비밀번호는 여기 없다** — 서버가 들고 있다
+ * (docs/api-spec.md §0). `salt`·`hash` 는 서버 인증이 붙기 전에 쓰던 값이라
+ * 예전 기록에만 남아 있다. 읽을 때만 받아 주고 새로 만들지 않는다.
+ */
 export type Account = {
   name: string;
   email: string;
-  salt: number[];
-  hash: string;
+  salt?: number[];
+  hash?: string;
   onboardingCompletedAt?: string;
 };
 function parse(raw: string | null): Account | null {
@@ -16,21 +21,22 @@ function parse(raw: string | null): Account | null {
       typeof v !== "object" ||
       Array.isArray(v) ||
       typeof v.email !== "string" ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email) ||
-      typeof v.hash !== "string" ||
-      !/^[a-f0-9]{64}$/.test(v.hash) ||
-      !Array.isArray(v.salt) ||
-      v.salt.length !== 16 ||
-      !v.salt.every(
-        (b: unknown) => typeof b === "number" && Number.isInteger(b) && b >= 0 && b <= 255,
-      )
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)
     )
       return null;
+    // 예전 기록의 salt·hash 는 모양이 맞을 때만 옮긴다. 이제 로그인 판정에 쓰지 않는다.
+    const legacyHash = typeof v.hash === "string" && /^[a-f0-9]{64}$/.test(v.hash);
+    const legacySalt =
+      Array.isArray(v.salt) &&
+      v.salt.length === 16 &&
+      v.salt.every(
+        (b: unknown) => typeof b === "number" && Number.isInteger(b) && b >= 0 && b <= 255,
+      );
     return {
       email: v.email.trim().toLowerCase(),
       name: typeof v.name === "string" ? v.name : "",
-      salt: v.salt,
-      hash: v.hash,
+      salt: legacySalt ? v.salt : undefined,
+      hash: legacyHash ? v.hash : undefined,
       onboardingCompletedAt:
         typeof v.onboardingCompletedAt === "string" &&
         Number.isFinite(Date.parse(v.onboardingCompletedAt))

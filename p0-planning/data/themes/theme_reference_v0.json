@@ -1,0 +1,1252 @@
+{
+  "schema_version": "theme-reference.schema.v0",
+  "catalog_id": "ssuksak.yearly-theme-reference",
+  "catalog_version": "theme-reference-v0.1.2",
+  "supersedes": "theme-reference-v0.1.1",
+  "change_summary": "v0.1.1 Human Review 결과 반영. 봄·여름·겨울 label을 전체 evidence가 공통으로 지지하는 최보수 표현으로 축소하고 해당 theme_id를 label과 정렬했다. 소답 샘플의 3·4·5월 evidence를 추가했다. label_derivation을 유형별로 분류하고 지지율을 명시했다. applicable_months·age_conditions·curriculum_links는 근거와 일치하므로 변경하지 않았다.",
+  "created_on": "2026-09-10",
+  "locale": "ko-KR",
+  "purpose": "GenerateYearlyPlan P0 후보 필터링과 Golden Set 검증을 위한 최소 Theme Reference",
+  "normative_status": "SAMPLE_DERIVED_NON_NORMATIVE",
+  "disclaimer": "이 목록은 국가 누리과정이 지정한 월별 주제가 아니다. applicable_months는 저장소의 연간계획안 샘플에서 관찰된 후보 적용 월이며, curriculum_links는 교육적 연계일 뿐 월별 주제의 직접 출처가 아니다.",
+  "review": {
+    "source_files_checked": true,
+    "source_text_and_layout_cross_checked": true,
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "runtime_rule": "사람이 근거와 매핑을 승인한 catalog_version만 운영 후보 집합으로 활성화한다.",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-09-11T01:11:07+09:00",
+    "approved_by_semantics": "P0 opaque reviewer identifier이며 형식은 reviewer_<role>_<sequence>다. 인증 provider의 로그인 user_id가 아니고 테스트 fixture도 아니다. Plan Confirm의 담임교사 actor_id와는 다른 개념이므로 섞지 않는다. 규칙은 docs/open-decisions.md OD-N10에 있다.",
+    "sample_column_name_note": "서충주 샘플 1쪽 주제 열의 머리글은 '누리주제'이나 이는 해당 기관 문서의 자체 표현이며 국가가 정한 월별 표준 주제를 뜻하지 않는다. 같은 문서의 2·3쪽 머리글은 '주제'다. 보건복지부 고시 제2019-152호 전문에 '주제'·'생활주제'·'소주제'·'연간'·'월간'·'주간'·'일일'은 0회 등장한다. 따라서 이 카탈로그의 월별 배치는 sample 관행에서 파생된 것이며 국가 기준이 아니다."
+  },
+  "month_semantics": {
+    "type": "calendar_month_number",
+    "academic_order": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      1,
+      2
+    ]
+  },
+  "age_semantics": {
+    "unit": "korean_full_age_year",
+    "supported_ages": [
+      3,
+      4,
+      5
+    ],
+    "mixed_age_rule": "혼합연령은 2개 이상의 연령으로 구성하며, 후보의 supported_ages가 선택된 모든 연령을 포함해야 한다.",
+    "evidence_age_scope": "evidence.age_scope는 문서가 명시적으로 다루는 연령 범위이며 실제 classroom의 혼합 구성이라고 자동 해석하지 않는다."
+  },
+  "curriculum_link_semantics": {
+    "default_scope": "DOMAIN_LEVEL",
+    "allowed_relation": "EDUCATIONAL_ALIGNMENT",
+    "direct_monthly_theme_source": false,
+    "invented_official_item_ids": false,
+    "statement": "content_text 또는 공식 항목 ID를 만들지 않았으며, 각 link는 해당 공식 PDF 영역 페이지와의 교육적 연계만 뜻한다."
+  },
+  "label_derivation_semantics": {
+    "types": {
+      "DIRECT_TRANSCRIPTION": "대표 샘플의 관찰 라벨을 문자 그대로 사용했다.",
+      "SEMANTIC_NORMALIZATION": "구분 기호나 어절 형태만 정규화했고 의미 범위는 바뀌지 않았다.",
+      "MULTI_SAMPLE_CONSOLIDATION": "여러 샘플 표현에서 공통 개념만 추출했다. 일부 샘플에만 있는 개념은 label에 넣지 않는다."
+    },
+    "support_ratio_meaning": "label_support_ratio는 해당 개념이 문자로 등장한 evidence 수 / 전체 evidence 수다.",
+    "rule": "일부 evidence에만 존재하는 개념을 canonical label에 포함하지 않는다."
+  },
+  "evidence_semantics": {
+    "default_matched_via": "THEME_LABEL",
+    "matched_via_values": {
+      "THEME_LABEL": "해당 월의 주제 라벨이 이 theme을 직접 지지한다.",
+      "SUBTHEME": "해당 월의 주제는 다르고 이 theme은 그 하위 소주제로만 등장한다. 직접 theme label 근거가 아니다.",
+      "RELATED_EXPRESSION": "의미가 인접하나 동일 표현이 아니다. 직접 동일 label 근거로 취급하지 않는다."
+    },
+    "note": "matched_via가 없는 evidence는 default_matched_via로 해석한다."
+  },
+  "source_of_truth_refs": [
+    "CLAUDE.md#7-reference-사용-규칙",
+    "CLAUDE.md#18-테스트-원칙",
+    "docs/demo-source-of-truth.md#15-theme-reference-v0--od-y02-최종-결정",
+    "docs/demo-source-of-truth.md#26-validation",
+    "docs/open-decisions.md#od-y02--theme-reference의-출처와-rule-선택-contract",
+    "docs/screen-spec.md#11-연간-계획안-화면"
+  ],
+  "origins": [
+    {
+      "origin_id": "sample.yearly.seochungju.2026",
+      "kind": "YEARLY_PLAN_SAMPLE",
+      "path": "references/samples/yearly/2026_국공립_서충주어린이집_만3,4,5세_연간계획안.pdf",
+      "sha256": "2C6E236ACB2E39ADA2B7F8E72C9E585FD27F3C1BF6008A359D2A0D02196F6771",
+      "page_count": 3,
+      "observed_scope": "1쪽 만3세, 2쪽 만4세, 3쪽 만5세의 별도 연간계획안",
+      "use": "각 연령과 월의 대표 관찰 라벨"
+    },
+    {
+      "origin_id": "sample.yearly.yedam.2026.ages3-4",
+      "kind": "YEARLY_PLAN_SAMPLE",
+      "path": "references/samples/yearly/2026_민간_예담어린이집_만3-4세_연간교육계획안.pdf",
+      "sha256": "408B95E647F15E08EFA0835F81319F354231BC2E44D763E9490DEDBEBF0EEB59",
+      "page_count": 1,
+      "observed_scope": "문서 제목에 3~4세 연간교육계획안으로 표시된 통합 자료",
+      "use": "3~4세 통합 자료의 월별 예상 주제 교차검증"
+    },
+    {
+      "origin_id": "sample.yearly.ap.2026.age5",
+      "kind": "YEARLY_PLAN_SAMPLE",
+      "path": "references/samples/yearly/2026_민간_AP어린이집_만5세_연간계획안.pdf",
+      "sha256": "54397AB53AC49B29572DC89C0BA6CB7DE147C37DECB50F4DBD293CE62D3A4611",
+      "page_count": 1,
+      "observed_scope": "문서 제목에 5세 놀이 연간계획안으로 표시",
+      "use": "만5세 주제 및 선정 이유 교차검증"
+    },
+    {
+      "origin_id": "sample.yearly.sodap.2026.ages3-5",
+      "kind": "YEARLY_PLAN_SAMPLE",
+      "path": "references/samples/yearly/2026_민간_소답어린이집_만3-5세_연간교육계획안.pdf",
+      "sha256": "0B8C1BA1F0483A2DE2126280B1E0529FAD9CA5D39742D96E25980B5BC420F0CD",
+      "page_count": 1,
+      "observed_scope": "문서 제목에 만3~5세 연간 교육계획안으로 표시; 실제 반 구성 방식은 이 파일만으로 단정하지 않음",
+      "use": "9월/10월 순서와 1월/2월 주제 변형 교차검증"
+    },
+    {
+      "origin_id": "curriculum.mohw.notice-2019-152",
+      "kind": "OFFICIAL_CURRICULUM",
+      "path": "references/official/2019_개정_누리과정_고시문_보건복지부.pdf",
+      "sha256": "74B489344CC34AB3E9ED8731AEB34630294F13C4495F2D87CC3ADDC89954CDF0",
+      "page_count": 16,
+      "observed_scope": "보건복지부 고시 제2019-152호 3~5세 누리과정",
+      "use": "5개 영역에 대한 교육적 연계 확인; 월별 주제 근거로 사용하지 않음"
+    }
+  ],
+  "themes": [
+    {
+      "theme_id": "yr_theme_new_environment_friends",
+      "label": "우리 원과 친구",
+      "applicable_months": [
+        3
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "사회관계",
+          "source_page": 12,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "의사소통",
+          "source_page": 11,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "대표 샘플(서충주) 만3·4·5세 3개 페이지가 모두 '우리 원과 친구'로 동일해 그대로 사용했다.",
+      "label_support_ratio": "우리 원과 친구 3/6 · 우리 반 계열 2/6 · 기타 1/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 3,
+          "observed_label": "우리 원과 친구"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 3,
+          "observed_label": "우리 원과 친구"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "우리 원과 친구"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 3,
+          "observed_label": "우리 반 알아보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "만나서 반가워"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "우리 반",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "소답의 3월 주제는 '우리 반'(학급)이고 이 theme label은 '우리 원과 친구'(기관과 친구)다. 의미가 인접하나 동일 표현이 아니므로 직접 label 근거로 취급하지 않는다."
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_spring",
+      "label": "봄",
+      "applicable_months": [
+        4
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "자연탐구",
+          "source_page": 14,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "MULTI_SAMPLE_CONSOLIDATION",
+      "label_derivation": "전체 evidence가 공통으로 지지하는 개념만 남겼다. '동식물'은 4/6, '자연'은 2/6에만 등장하므로 canonical label에서 제외했다. v0.1.1의 '봄과 동식물·자연'은 일부 연령 근거에 없는 개념을 포함했다.",
+      "label_support_ratio": "봄 6/6 · 동식물 4/6 · 자연 2/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 4,
+          "observed_label": "봄/동식물과 자연"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 4,
+          "observed_label": "봄·동식물과 자연"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 4,
+          "observed_label": "봄/동·식물"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 4,
+          "observed_label": "봄 느껴보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 4,
+          "observed_label": "봄이 왔어요"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 4,
+          "observed_label": "봄과 동식물"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_self_and_family",
+      "label": "나와 가족",
+      "applicable_months": [
+        5
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "사회관계",
+          "source_page": 12,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "대표 샘플 만3·4·5세와 소답이 모두 '나와 가족'으로 동일해 그대로 사용했다.",
+      "label_support_ratio": "나와 가족 6/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 5,
+          "observed_label": "나와 가족"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 5,
+          "observed_label": "나와 가족"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 5,
+          "observed_label": "나와 가족"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 5,
+          "observed_label": "나와 가족 알아보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 5,
+          "observed_label": "소중한 나와 가족"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 5,
+          "observed_label": "나와 가족"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_our_neighborhood",
+      "label": "우리 동네",
+      "applicable_months": [
+        6
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "사회관계",
+          "source_page": 12,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "대표 샘플 만3·4·5세와 AP가 '우리 동네'로 동일해 그대로 사용했다. 소답은 주제가 '여러 가지 직업'이고 '우리 동네'는 그 하위 소주제이므로 matched_via=SUBTHEME으로 구분했다.",
+      "label_support_ratio": "우리 동네 4/6 직접 · 1/6 소주제 · 1/6 어미 변형",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 6,
+          "observed_label": "우리 동네"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 6,
+          "observed_label": "우리 동네"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 6,
+          "observed_label": "우리 동네"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 6,
+          "observed_label": "우리 동네 알아보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 6,
+          "observed_label": "우리 동네"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 6,
+          "observed_label": "여러 가지 직업",
+          "evidence_role": "SAME_MONTH_VARIATION",
+          "matched_via": "SUBTHEME",
+          "observed_subtheme": "우리 동네",
+          "match_note": "소답의 6월 주제는 '여러 가지 직업'이고 '우리 동네'는 그 하위 소주제다. observed_label은 원문 그대로 보존했으며 직접 theme label 근거가 아니다."
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_summer",
+      "label": "여름",
+      "applicable_months": [
+        7
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "신체운동·건강",
+          "source_page": 10,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "자연탐구",
+          "source_page": 14,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "MULTI_SAMPLE_CONSOLIDATION",
+      "label_derivation": "전체 evidence가 공통으로 지지하는 개념만 남겼다. '건강과 안전'은 2/6에만 등장하고, 안전은 별도 Safety Rule layer가 담당하므로 theme label에 포함하지 않는다.",
+      "label_support_ratio": "여름 6/6 · 건강·안전 2/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 7,
+          "observed_label": "여름/건강과 안전"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 7,
+          "observed_label": "여름·건강과 안전"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 7,
+          "observed_label": "여름"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 7,
+          "observed_label": "여름 느껴보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 7,
+          "observed_label": "신나는 여름"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 7,
+          "observed_label": "여름"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_transportation",
+      "label": "교통기관",
+      "applicable_months": [
+        8
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "신체운동·건강",
+          "source_page": 10,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "자연탐구",
+          "source_page": 14,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "대표 샘플 만3·4·5세와 소답이 '교통기관'으로 동일해 그대로 사용했다.",
+      "label_support_ratio": "교통기관 4/6 · 어미 변형 1/6 · 브랜드 표현 1/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 8,
+          "observed_label": "교통기관"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 8,
+          "observed_label": "교통기관"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 8,
+          "observed_label": "교통기관"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 8,
+          "observed_label": "교통기관 알아보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 8,
+          "observed_label": "씽씽 자동차"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 8,
+          "observed_label": "교통기관"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_korea_and_world_cultures",
+      "label": "우리나라와 세계 여러 나라",
+      "applicable_months": [
+        9,
+        10
+      ],
+      "applicable_months_note": "소답만 9월='가을', 10월='우리나라'로 순서가 반대다. 실제 sample variation에 근거한 flexibility이며 한 달로 고정하지 않는다.",
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "사회관계",
+          "source_page": 12,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "예술경험",
+          "source_page": 13,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "MULTI_SAMPLE_CONSOLIDATION",
+      "label_derivation": "여러 샘플 표현을 묶은 semantic normalization이며 단순 구분 기호 정규화가 아니다. 만3·5세는 '우리나라/세계 여러 나라' 결합 표기, 만4세는 '세계 여러 나라'만, 예담·AP·소답은 '우리나라'만 사용한다. 결합 표기는 대표 샘플 2건이 직접 지지한다.",
+      "label_support_ratio": "우리나라 5/6 · 세계 여러 나라 3/6 · 결합 표기 2/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "우리나라/세계 여러나라"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "세계 여러 나라"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "우리나라/세계 여러 나라"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "우리나라 알아보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "우리나라"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 10,
+          "observed_label": "우리나라",
+          "evidence_role": "CONTRASTING_MONTH_ORDER"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_autumn_and_nature",
+      "label": "가을과 자연",
+      "applicable_months": [
+        9,
+        10
+      ],
+      "applicable_months_note": "소답만 9월='가을', 10월='우리나라'로 순서가 반대다. 실제 sample variation에 근거한 flexibility이며 한 달로 고정하지 않는다.",
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "자연탐구",
+          "source_page": 14,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "예술경험",
+          "source_page": 13,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "SEMANTIC_NORMALIZATION",
+      "label_derivation": "대표 샘플 만3·5세의 '가을/자연'에서 구분 기호만 정규화했다. 만4세는 '가을과 열매'로 특정이 다르다.",
+      "label_support_ratio": "가을 5/6 · 자연 2/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 10,
+          "observed_label": "가을/자연"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 10,
+          "observed_label": "가을과 열매"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 10,
+          "observed_label": "가을/자연"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 10,
+          "observed_label": "가을 느껴보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 10,
+          "observed_label": "무르익는 가을"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "가을",
+          "evidence_role": "CONTRASTING_MONTH_ORDER"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_environment_and_life",
+      "label": "환경과 생활",
+      "applicable_months": [
+        11
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "자연탐구",
+          "source_page": 14,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "대표 샘플 만3·4·5세와 AP가 '환경과 생활'로 동일해 그대로 사용했다. 소답은 '환경보호'로 더 좁다.",
+      "label_support_ratio": "환경과 생활 4/6 · 어미 변형 1/6 · 환경보호 1/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 11,
+          "observed_label": "환경과 생활"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 11,
+          "observed_label": "환경과 생활"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 11,
+          "observed_label": "환경과 생활"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 11,
+          "observed_label": "환경과 생활 알아보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 11,
+          "observed_label": "환경과 생활"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 11,
+          "observed_label": "환경보호",
+          "evidence_role": "SAME_MONTH_VARIATION"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_winter",
+      "label": "겨울",
+      "applicable_months": [
+        12
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "신체운동·건강",
+          "source_page": 10,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "자연탐구",
+          "source_page": 14,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "MULTI_SAMPLE_CONSOLIDATION",
+      "label_derivation": "전체 evidence가 공통으로 지지하는 개념만 남겼다. '놀이'는 3/6, '건강과 안전'은 1/6에만 등장한다. v0.1.1의 '겨울과 겨울 놀이'는 만5세 근거인 '겨울/건강과 안전'을 과장했고, theme_id의 health는 1/6 근거뿐이어서 둘 다 제거했다.",
+      "label_support_ratio": "겨울 5/6 · 놀이 3/6 · 건강·안전 1/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 12,
+          "observed_label": "겨울/겨울 놀이"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 12,
+          "observed_label": "겨울과 놀이"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 12,
+          "observed_label": "겨울/건강과 안전"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 12,
+          "observed_label": "겨울 느껴보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 12,
+          "observed_label": "눈과 놀이"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 12,
+          "observed_label": "겨울"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_living_tools",
+      "label": "생활도구",
+      "applicable_months": [
+        1
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "자연탐구",
+          "source_page": 14,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "신체운동·건강",
+          "source_page": 10,
+          "relation": "EDUCATIONAL_ALIGNMENT",
+          "note": "공식 내용의 디지털 기기 바른 사용과 교육적으로 연계 가능"
+        }
+      ],
+      "origin_id": "sample.yearly.seochungju.2026",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "대표 샘플 만3·4·5세가 '생활도구'로 동일해 그대로 사용했다. 소답은 '미디어'로 다른 개념이다.",
+      "label_support_ratio": "생활도구 5/6 · 미디어 1/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 1,
+          "observed_label": "생활도구"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 1,
+          "observed_label": "생활도구"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 1,
+          "observed_label": "생활도구"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 1,
+          "observed_label": "생활도구 알아보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 1,
+          "observed_label": "편리한 생활도구"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 1,
+          "observed_label": "미디어",
+          "evidence_role": "SAME_MONTH_VARIATION"
+        }
+      ]
+    },
+    {
+      "theme_id": "yr_theme_growth_and_transition",
+      "label": "성장한 우리",
+      "applicable_months": [
+        2
+      ],
+      "age_conditions": {
+        "supported_ages": [
+          3,
+          4,
+          5
+        ],
+        "allow_mixed_age": true,
+        "mixed_age_requires_all_supported": true
+      },
+      "curriculum_links": [
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "사회관계",
+          "source_page": 12,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        },
+        {
+          "source_id": "curriculum.mohw.notice-2019-152",
+          "domain": "의사소통",
+          "source_page": 11,
+          "relation": "EDUCATIONAL_ALIGNMENT"
+        }
+      ],
+      "origin_id": "sample.yearly.yedam.2026.ages3-4",
+      "source_version": "theme-reference-v0.1.2",
+      "label_derivation_type": "SEMANTIC_NORMALIZATION",
+      "label_derivation": "통합 자료(예담)의 '성장한 우리 느껴보기'에서 동작 표현만 제거해 의미를 보존했다. 만5세는 '초등학교에 가요'로 초등 전이 성격이 질적으로 다르다.",
+      "label_support_ratio": "성장·전이 개념 6/6 · '성장한 우리' 직접 1/6",
+      "evidence": [
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 2,
+          "observed_label": "형님이 되어요"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 2,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 2,
+          "observed_label": "형님이 되어요"
+        },
+        {
+          "origin_id": "sample.yearly.seochungju.2026",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 2,
+          "observed_label": "초등학교에 가요"
+        },
+        {
+          "origin_id": "sample.yearly.yedam.2026.ages3-4",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 2,
+          "observed_label": "성장한 우리 느껴보기"
+        },
+        {
+          "origin_id": "sample.yearly.ap.2026.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 2,
+          "observed_label": "안녕! 우리 반"
+        },
+        {
+          "origin_id": "sample.yearly.sodap.2026.ages3-5",
+          "page": 1,
+          "age_scope": [
+            3,
+            4,
+            5
+          ],
+          "observed_month": 2,
+          "observed_label": "즐거웠던 우리 반",
+          "evidence_role": "SAME_MONTH_VARIATION"
+        }
+      ]
+    }
+  ],
+  "source_version_semantics": "themes[].source_version은 해당 Theme Reference record가 속한 catalog version을 뜻한다. 원본 샘플/공식 문서의 파일 버전은 themes[].origin_id가 가리키는 origins[].sha256으로 추적한다."
+}

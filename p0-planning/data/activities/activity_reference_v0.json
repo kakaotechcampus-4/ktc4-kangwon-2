@@ -1,0 +1,2927 @@
+{
+  "$schema_note": "P0 내부 Reference 데이터다. 공개 API Schema가 아니다.",
+  "schema_version": "activity-reference.schema.v0",
+  "catalog_id": "ssuksak.outdoor-activity-reference",
+  "catalog_version": "activity-reference-v0.1.0",
+  "supersedes": null,
+  "created_on": "2026-09-11",
+  "locale": "ko-KR",
+  "purpose": "Monthly outdoor_play Cell의 Rule 후보 집합과 Activity Reference Contract를 검증하기 위한 최소 seed다. 전체 서비스용 완성 Catalog가 아니다.",
+  "normative_status": "SAMPLE_DERIVED_NON_NORMATIVE",
+  "disclaimer": "이 목록은 국가가 지정한 활동 목록이 아니다. 2019 개정 누리과정 고시문은 활동·주제·계획 양식을 규정하지 않고 기관 자율에 위임한다. applicable_months는 실측 샘플에서 실제로 관찰된 월이며 국가가 정한 월별 필수 활동이 아니다. 공식 놀이이해자료·놀이실행자료의 사례는 예시이며 Activity Template의 고정 목록으로 사용하지 않는다.",
+  "review": {
+    "source_files_checked": true,
+    "source_text_and_layout_cross_checked": true,
+    "cell_geometry_cross_checked": true,
+    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
+    "runtime_rule": "사람이 근거와 매핑을 승인한 catalog_version만 운영 후보 집합으로 활성화한다. 현재 상태는 PENDING_HUMAN_REVIEW이므로 runtime에서 활성 Catalog로 취급하지 않는다.",
+    "approved_by": null,
+    "approved_at": null,
+    "pending_reason": "OD-N03 D1 결정(2026-09-11): 확보된 월간 Activity 표본이 2026-09 중심 + 2026-03 일부뿐이어서 12개월 전체 Activity Reference를 HUMAN_APPROVED 하기에 부족하다. 추가 월간 표본으로 월 커버리지를 확장한 뒤 별도 Human Review로 승인한다.",
+    "review_document": "docs/activity-reference-v0-human-review.md"
+  },
+  "coverage": {
+    "month_coverage": [
+      3,
+      9
+    ],
+    "month_coverage_note": "후보가 존재하는 월이다. 나머지 월은 후보가 없으며 추론으로 채우지 않았다. Theme Reference의 applicable_months를 Activity 근거로 전용하지 않았다.",
+    "age_coverage": [
+      3,
+      4,
+      5
+    ],
+    "source_count": 14,
+    "readable_source_count": 13,
+    "institution_count": 12,
+    "readable_institution_count": 11,
+    "item_count": 49,
+    "sample_root": "references/samples/monthly/"
+  },
+  "age_semantics": {
+    "unit": "korean_full_age_year",
+    "supported_ages": [
+      3,
+      4,
+      5
+    ],
+    "mixed_age_rule": "혼합연령은 2개 이상의 연령으로 구성하며, 후보의 supported_ages가 선택된 모든 연령을 포함해야 한다. 혼합연령을 위해 Activity를 복제하지 않는다.",
+    "evidence_age_scope": "evidence.age_scope는 문서가 명시적으로 다루는 연령 범위다. 본문에 연령 표기가 없는 문서는 빈 배열이며 파일명 표기로 추론하지 않는다.",
+    "supported_ages_derivation": "supported_ages는 evidence age_scope의 합집합이며 근거보다 넓게 주장하지 않는다. 따라서 연령 공백이 있는 항목이 존재한다."
+  },
+  "placement_slot_semantics": {
+    "controlled_vocabulary": [
+      "outdoor_play"
+    ],
+    "bound_to_template": "monthly-template-a-v0.1.0",
+    "statement": "placement_slots는 자유 문자열이 아니라 Monthly Template의 semantic_key에 종속되는 통제 어휘다. Template에 없는 slot을 Activity가 주장할 수 없다. focus와 indoor_alternative는 Template A에서 default inactive이고 indoor_alternative의 display_mode가 아직 PENDING_HUMAN_DECISION이므로 포함하지 않았다.",
+    "forbidden": [
+      "safety_education"
+    ]
+  },
+  "setting_semantics": {
+    "values": [
+      "OUTDOOR",
+      "INDOOR",
+      "EITHER"
+    ],
+    "statement": "setting은 활동이 이루어지는 물리 환경이다. indoor_alternative Section과 같은 개념이 아니다. 실내대체는 바깥놀이가 불가능할 때 대신하는 별도 Section이고 INDOOR Activity는 애초에 실내를 전제하는 활동이다. 이 seed는 전부 바깥놀이 행에서 관찰된 OUTDOOR다.",
+    "indoor_alternative_exclusion": "[실내대체] · [대체] · (대체활동: …) inline 태그가 붙은 항목은 indoor_alternative Section 소속이므로 outdoor 후보로 전사하지 않았다. 같은 놀이가 다른 기관에서 직접 바깥놀이 항목으로 관찰된 경우에만 그 근거로 후보가 됐다."
+  },
+  "theme_link_semantics": {
+    "allowed_relation": "OBSERVED_TOGETHER",
+    "theme_catalog_version": "theme-reference-v0.1.2",
+    "statement": "같은 Monthly source 페이지에서 해당 theme과 함께 관찰됐다는 사실만 뜻한다. BELONGS_TO 같은 규범적 관계를 주장하지 않는다. 문자열 유사도 매칭으로 만들지 않았다.",
+    "version_up_rule": "Theme Reference가 새 version으로 올라가 theme_id가 사라지면 링크를 삭제하지 않고 Rule이 매칭 실패로 취급한다. theme link는 hard filter가 아니므로 후보 집합이 비지 않는다."
+  },
+  "curriculum_link_semantics": {
+    "default_scope": "DOMAIN_LEVEL",
+    "allowed_relation": "EDUCATIONAL_ALIGNMENT",
+    "direct_activity_source": false,
+    "invented_official_item_ids": false,
+    "statement": "이 seed의 curriculum_links는 전부 빈 배열이다. 월간 실측 샘플 13파일 전수에서 누리과정 5개 영역 표기가 0건이고, 공식 놀이이해자료·놀이실행자료는 활동별 영역 태깅을 제공하지 않는 서술형 자료다. 근거 없는 링크를 만들지 않았고 LLM 초안 태깅도 사용하지 않았다."
+  },
+  "label_derivation_semantics": {
+    "types": {
+      "DIRECT_TRANSCRIPTION": "원문 표현을 그대로 사용했다.",
+      "NORMALIZED": "표현 변이를 canonical 하나로 정규화하고 원문을 evidence와 aliases에 보존했다."
+    },
+    "alias_meaning": "aliases는 사람이 같은 활동의 표현 변이로 판단해 승인한 표현 집합이다. evidence.observed_label은 특정 기관·페이지의 원문이며 감사용으로 삭제하지 않는다.",
+    "merge_rule": "자동 merge와 LLM merge를 하지 않았다. 판정이 애매하면 분리했다. 잘못 합치면 provenance가 사라지고 잘못 분리하면 후보만 중복되므로 보수적인 쪽을 택했다."
+  },
+  "evidence_semantics": {
+    "default_matched_via": "DIRECT_EXPRESSION",
+    "matched_via_values": [
+      "DIRECT_EXPRESSION",
+      "RELATED_EXPRESSION"
+    ],
+    "note": "matched_via가 없으면 원문과 canonical label이 사실상 동일한 표현이다. RELATED_EXPRESSION은 같은 활동이지만 표현이 다른 경우이며 match_note에 판단 근거를 남겼다.",
+    "extraction_method": "pdftotext -layout / -raw 교차 확인과 pdfplumber 셀 기하 재구성을 함께 사용해 바깥놀이 행 귀속을 확정했다. 분석 도구는 프로젝트 dependency가 아닌 로컬 격리 설치다."
+  },
+  "exclusion_policy": {
+    "institution_or_region_specific": "특정 기관·지역 시설에 종속되는 값은 공통 runtime Candidate로 만들지 않았다. 의미를 바꿔 일반화하지도 않았다. upstream 근거로만 기록한다.",
+    "no_age_evidence": "본문에 연령 표기가 없는 문서만을 근거로 하는 항목은 supported_ages를 만들 수 없어 후보에서 제외했다.",
+    "safety_content": "법정 안전교육 content는 이 Catalog에 넣지 않는다. 안전 경계가 모호한 항목도 보수적으로 제외했다.",
+    "external_sources": "외부 웹 사이트(키드키즈·꼬망세·블로그·검색 결과 등)를 사용하지 않았다. scraping 0건, 외부 네트워크 접근 0건이다.",
+    "excluded_items": [
+      {
+        "origin_id": "sample.monthly.goesanhana.2026.09",
+        "page": 1,
+        "observed_label": "-무궁화길산책",
+        "reason": "지역 도로명(무궁화길)"
+      },
+      {
+        "origin_id": "sample.monthly.goesanhana.2026.09",
+        "page": 2,
+        "observed_label": "성불산숲체험",
+        "reason": "지역 산 이름(성불산)"
+      },
+      {
+        "origin_id": "sample.monthly.goesanhana.2026.09",
+        "page": 2,
+        "observed_label": "텃밭활동(일상생활)",
+        "reason": "기관 텃밭"
+      },
+      {
+        "origin_id": "sample.monthly.goesanhana.2026.09",
+        "page": 1,
+        "observed_label": "3D러닝플레이",
+        "reason": "기관 특별프로그램"
+      },
+      {
+        "origin_id": "sample.monthly.yedam.2026.09",
+        "page": 1,
+        "observed_label": "- [지역]어린이 민속박 물관에 다녀와요",
+        "reason": "지역 시설([지역] 태그 명시)"
+      },
+      {
+        "origin_id": "sample.monthly.aideulsesang.2026.09",
+        "page": 1,
+        "observed_label": "*긴 나들이 : 29일(화) 만수계곡 자연관찰로",
+        "reason": "지역 시설(만수계곡)"
+      },
+      {
+        "origin_id": "sample.monthly.aideulsesang.2026.09",
+        "page": 1,
+        "observed_label": "*일상 나들이 : 대체놀이터(나무, 배, 환경, 거미), 탄금공원 물놀이장, 냇가 나들이",
+        "reason": "지역 시설(탄금공원 등)"
+      },
+      {
+        "origin_id": "sample.monthly.aideulsesang.2026.09",
+        "page": 1,
+        "observed_label": "*일곱살 다지기 나들이 : 롤러장 나들이, 줄넘기",
+        "reason": "지역 시설(롤러장)"
+      },
+      {
+        "origin_id": "sample.monthly.aideulsesang.2026.09",
+        "page": 1,
+        "observed_label": "텃밭 돌보기",
+        "reason": "기관 텃밭"
+      },
+      {
+        "origin_id": "sample.monthly.aideulsesang.2026.09",
+        "page": 2,
+        "observed_label": "*일상나들이 : 대체놀이터(나무, 배, 환경, 거미), 들판, 둑길, 시냇가, 탄금대숲, 능암늪생태공원",
+        "reason": "지역 시설(탄금대숲·능암늪생태공원 등)"
+      },
+      {
+        "origin_id": "sample.monthly.hansolbit.2026.03",
+        "page": 1,
+        "observed_label": "- [지역]우리 원 주변을 둘러 봐요",
+        "reason": "기관 주변(원 고유)"
+      },
+      {
+        "origin_id": "sample.monthly.hansolbit.2026.03",
+        "page": 2,
+        "observed_label": "- 우리 원 사진을 찍어요",
+        "reason": "기관 고유(우리 원)"
+      },
+      {
+        "origin_id": "sample.monthly.hansolbit.2026.03",
+        "page": 3,
+        "observed_label": "- 우리 원의 자랑거리 찾아보기",
+        "reason": "기관 고유(우리 원)"
+      },
+      {
+        "origin_id": "sample.monthly.geumsan.2026.09",
+        "page": 1,
+        "observed_label": "태극기 들고 달리기",
+        "reason": "연령 근거 없음(본문 연령 미표기)"
+      },
+      {
+        "origin_id": "sample.monthly.geumsan.2026.09",
+        "page": 1,
+        "observed_label": "미니 올림픽",
+        "reason": "연령 근거 없음(본문 연령 미표기)"
+      },
+      {
+        "origin_id": "sample.monthly.geumsan.2026.09",
+        "page": 1,
+        "observed_label": "우리나라 전통 놀이 즐기기",
+        "reason": "연령 근거 없음(본문 연령 미표기)"
+      },
+      {
+        "origin_id": "sample.monthly.geumsan.2026.09",
+        "page": 1,
+        "observed_label": "군인처럼 장애물 건너기",
+        "reason": "연령 근거 없음(본문 연령 미표기)"
+      },
+      {
+        "origin_id": "sample.monthly.haechansol.2026.09",
+        "page": 1,
+        "observed_label": "-젖은모래로떡을 만들어요",
+        "reason": "연령 근거 없음(본문 연령 미표기)"
+      },
+      {
+        "origin_id": "sample.monthly.haechansol.2026.09",
+        "page": 1,
+        "observed_label": "-바람개비돌리며 가을느끼기",
+        "reason": "연령 근거 없음(본문 연령 미표기)"
+      },
+      {
+        "origin_id": "sample.monthly.aisarang.2026.09.age5",
+        "page": 1,
+        "observed_label": "♥바깥놀이-맑고 푸른 가을 하늘",
+        "reason": "활동명이 아니라 관찰 주제로 읽힘"
+      },
+      {
+        "origin_id": "sample.monthly.hansolbit.2026.03",
+        "page": 3,
+        "observed_label": "- 바깥놀이를 안전하게 해요",
+        "reason": "안전 경계 우려. 일반 Activity와 법정 Safety content를 섞지 않기 위해 제외"
+      },
+      {
+        "origin_id": "sample.monthly.eomji.2026.09",
+        "page": 1,
+        "observed_label": "-교통기관의특징과이름말하며 산책하기",
+        "reason": "해당 주차 월 주제가 '체험 동화관'이며 theme 귀속이 확정되지 않음"
+      }
+    ]
+  },
+  "safety_exclusion_statement": "Activity Reference는 SafetyEducationPlan도 SafetyLegalRule도 아니다. safety_education Cell은 이 Catalog에서 채우지 않으며 placement_slots에 safety_education을 넣을 수 없다(schema가 거부한다). 법정 안전교육의 배치 source는 기관 안전교육 연간계획 또는 교사 입력이며(OD-M04) Activity Reference가 그 역할을 대신하지 않는다. safety_flags 필드를 두지 않는다.",
+  "taxonomy_scope": {
+    "confirmed_in_m2a": [
+      "placement_slots",
+      "setting"
+    ],
+    "still_open": [
+      "activity_area",
+      "tags",
+      "safety_flags"
+    ],
+    "statement": "OD-N03의 activity_area 제어 어휘는 확정하지 않았다. art / physical / language / sensory / nature / role_play 같은 enum을 추측으로 만들지 않았다. 관련 실측(흥미영역 4/10 기관)은 Template A에서 아직 정의되지 않은 play Section의 depth-2 하위에 걸려 있어 outdoor Slice에 필요하지 않다. safety_flags는 법정 Safety와의 혼선을 피하기 위해 의도적으로 두지 않는다."
+  },
+  "source_of_truth_refs": [
+    "CLAUDE.md §5 §6 §8 §13",
+    "docs/demo-source-of-truth.md §12 §13",
+    "docs/open-decisions.md OD-N03 (부분) / OD-M01 / OD-M04 / OD-N10",
+    "docs/template-a-validation.md",
+    "data/templates/monthly_template_a.json (outdoor_play Section)",
+    "data/themes/theme_reference_v0.json (theme_links 대상)"
+  ],
+  "origins": [
+    {
+      "origin_id": "sample.monthly.aisarang.2026.09.age3",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_국공립_공립아이사랑어린이집_만3세_월간계획안(9월).pdf",
+      "sha256": "422A055976C42CDBB80CF13F9E834FAD2FF7828CDBF64BC24958C36D827A3185",
+      "page_count": 1,
+      "institution_type": "국공립",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "주차 축이 없다. 바깥놀이가 Section이 아니라 놀이 항목 문자열의 접두 태그(♥바깥놀이-)다."
+    },
+    {
+      "origin_id": "sample.monthly.aisarang.2026.09.age4",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_국공립_공립아이사랑어린이집_만4세_월간계획안(9월).pdf",
+      "sha256": "9D9873199D1B609A5883F2539BCF86534B95B9A2EEEDD35C5BEE30EFDB05DB47",
+      "page_count": 1,
+      "institution_type": "국공립",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "예상놀이주제가 '우리나라 / 가을1' 두 계열이다. 바깥놀이는 접두 태그다."
+    },
+    {
+      "origin_id": "sample.monthly.aisarang.2026.09.age5",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_국공립_공립아이사랑어린이집_만5세_월간계획안(9월).pdf",
+      "sha256": "CE4F6B43968FABA52C1A834EFC65B2896E521CF53433A06A8A353233FD6DAFF0",
+      "page_count": 1,
+      "institution_type": "국공립",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "예상놀이주제가 '함께 가요, 세계 속으로! / 다채로운 가을'이다. 바깥놀이는 접두 태그다."
+    },
+    {
+      "origin_id": "sample.monthly.goesanhana.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_국공립_괴산하나어린이집_만3세,만4-5세_월간계획안(9월).pdf",
+      "sha256": "0D0A7A49A95AF577FCAAE81009F348A453D22A4A3418189C11433640EF4EDE78",
+      "page_count": 2,
+      "institution_type": "국공립",
+      "readable_pages": [
+        1,
+        2
+      ],
+      "observed_scope": "p.1 만3세 / p.2 만4·5세. 바깥놀이 행에 [실내대체] inline 태그와 기관 특별프로그램(3D러닝플레이)이 섞여 있다."
+    },
+    {
+      "origin_id": "sample.monthly.dolgorae.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_국공립_돌고래어린이집_만3-4세_월간계획안.pdf",
+      "sha256": "640A7415882704C8AC0C518AED91DF97F3D633BB681F07A6DFBEEA25DDFB6486",
+      "page_count": 1,
+      "institution_type": "국공립",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "Template A evidence_base에 포함되지 않은 샘플이다. 본문 머리글 '9월 가람반 (만3-4세)'로 월과 연령을 확인했다."
+    },
+    {
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_국공립_시립새봄어린이집_만3-5세_월간계획안.pdf",
+      "sha256": "8E6F3AE0654E76768CAB572E96B839C42F1ABBEBA8333E6A255DD795A7C9654B",
+      "page_count": 4,
+      "institution_type": "국공립",
+      "readable_pages": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "observed_scope": "4개 반이 같은 연간 행에서 서로 다른 월간 주제를 골랐다. p.1·p.2가 모두 만3세이고 주제가 다르다."
+    },
+    {
+      "origin_id": "sample.monthly.eomji.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_민간_엄지어린이집_만3세_월간계획안(9월).pdf",
+      "sha256": "EB67F185E4050525868906231650DA2BC1D3E08181B6B817C1E93B57DB035C1A",
+      "page_count": 1,
+      "institution_type": "민간",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "월 주제가 주차별로 다르다(체험 동화관 / 우리나라 / 어린이 건강 체험관). theme link는 '우리나라' 주차에서 관찰된 항목에만 부여했다."
+    },
+    {
+      "origin_id": "sample.monthly.yedam.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_민간_예담어린이집_만3-4세_월간놀이계획안.pdf",
+      "sha256": "E3AA569CF987C21CB7404CAF0104668592CB2B32DE3B8568F881523F0F934275",
+      "page_count": 1,
+      "institution_type": "민간",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "바깥놀이 행에 [실내대체]와 [지역] inline 태그가 함께 쓰인다."
+    },
+    {
+      "origin_id": "sample.monthly.keunbit.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_민간_큰빛어린이집_만3세,만4-5세_월간계획안(9월)pdf.pdf",
+      "sha256": "9FEB9F2E0AA7A7B83F11C9DF787B4378CC7CC40C4388B108B1101960E4DFFF65",
+      "page_count": 2,
+      "institution_type": "민간",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "p.1 만4·5세 혼합반에서만 바깥놀이 행을 판독했다. p.2(만3세)는 '오전자유놀이(바깥놀이포함)' 병합 라벨로 행 귀속이 확정되지 않아 근거로 사용하지 않았다."
+    },
+    {
+      "origin_id": "sample.monthly.haechansol.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_민간_해찬솔어린이집_만3세, 만4-5세_월간계획안(9월).pdf",
+      "sha256": "1DE7901EB4835FC3CF57DF703790C4EFD5B2C9DD789C4E58BFD78EDD4ED12622",
+      "page_count": 1,
+      "institution_type": "민간",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "본문에 연령 표기가 없다. 파일명 표기로 추론하지 않으므로 age_scope는 비어 있고 supported_ages를 넓히지 않는다."
+    },
+    {
+      "origin_id": "sample.monthly.geumsan.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_직장_금산군청직장어린이집_만3-5세_9월_월간계획안.pdf",
+      "sha256": "8DC95DF62465197BA63AED409F62CC6E2B7DD0C227301D452E531C36CCA66AEF",
+      "page_count": 1,
+      "institution_type": "직장",
+      "readable_pages": [
+        1
+      ],
+      "observed_scope": "본문에 연령 표기가 없다. age_scope는 비어 있고 supported_ages를 넓히지 않는다."
+    },
+    {
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_한솔빛어린이집_민간_만3,4,5세_월간.pdf",
+      "sha256": "7F507CBE0D9478385EE6D311AB337F6D39A4B214F2653534A5203FEF58698632",
+      "page_count": 3,
+      "institution_type": "민간",
+      "readable_pages": [
+        1,
+        2,
+        3
+      ],
+      "observed_scope": "유일한 3월 표본. p.2 머리글은 '2025년 3월 5세'로 다른 연도이며 문서 내부 불일치다. 파일명은 만3,4,5세지만 판독된 페이지는 3세·5세·5세이고 만4세 페이지가 없다."
+    },
+    {
+      "origin_id": "sample.monthly.aideulsesang.2026.09",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_협동_아이들세상어린이집_만3-4세,만5세_월간계획안(9월).pdf",
+      "sha256": "5E770B33DE20BE26473FFAD81DD9EBE0C1B9D63D0A4264ED9853E70B60CBA91E",
+      "page_count": 2,
+      "institution_type": "협동",
+      "readable_pages": [
+        1,
+        2
+      ],
+      "observed_scope": "바깥놀이가 나들이/실외놀이/텃밭/대체(신체)활동 depth-2 하위 행으로 나뉜다. 기관 고유 시설명이 다수 포함된다."
+    },
+    {
+      "origin_id": "sample.monthly.byeolbitjai.2026",
+      "kind": "MONTHLY_PLAN_SAMPLE",
+      "path": "references/samples/monthly/2026_국공립_별빛자이어린이집_만3세,4-5세_월간보육계획안.pdf",
+      "sha256": "2717DA97A95137FBF8FCA1AC61783303FD4D853864967B8F84300DA1643A4053",
+      "page_count": 2,
+      "institution_type": "국공립",
+      "readable_pages": [],
+      "observed_scope": "텍스트 레이어가 없는 이미지 전용 PDF다. 판독 불가이므로 Activity 근거로 사용하지 않았다."
+    }
+  ],
+  "activities": [
+    {
+      "activity_id": "act_outdoor_autumn_outing",
+      "label": "가을 나들이",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aisarang.2026.09.age4",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "NORMALIZED",
+      "label_derivation": "'가을 나들이를 가요'와 '공원으로 가을 나들이 가기'를 같은 활동으로 canonical화했다. 후자의 '공원'은 일반 명사이며 특정 시설명이 아니다.",
+      "aliases": [
+        "가을 나들이를 가요",
+        "공원으로 가을 나들이 가기"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age4",
+          "page": 1,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이-가을 나들이를 가요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)"
+        },
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "공원으로 가을 나들이 가기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "'공원으로'는 장소 수식이며 일반 명사다. 활동은 가을 나들이다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_autumn_sky_walk",
+      "label": "가을 하늘 보며 산책하기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 아이사랑 만5세의 '맑고 푸른 가을 하늘'은 활동명이 아니라 관찰 주제로 읽혀 별도 후보로 만들지 않았다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "가을 하늘 보며 산책하기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_biseokchigi",
+      "label": "비석치기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aisarang.2026.09.age3",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 전통놀이 고유명이므로 표현 변이가 없다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age3",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이-비석치기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_body_letter_making",
+      "label": "몸으로 글자를 만들어요",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.eomji.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.eomji.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "-몸으로글자를만들어요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이 (대체활동)"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_bolivia_stick_game",
+      "label": "볼리비아의 막대기치기",
+      "supported_ages": [
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.keunbit.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 세계 여러 나라 주제의 바깥놀이다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.keunbit.2026.09",
+          "page": 1,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "<세계여러나라사람들의생활>볼리비아의막대기치기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥",
+          "match_note": "주제 태그 <…>를 제외한 활동명이다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_bottom_wrestling",
+      "label": "엉덩이 씨름",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 3월 표본이다.",
+      "aliases": [
+        "엉덩이 씨름을 해요"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 3,
+          "observed_label": "- 엉덩이 씨름을 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_chalk_name_writing",
+      "label": "분필로 내 이름 끼적이기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.goesanhana.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.goesanhana.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "-분필로내이름끼적이기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_chogajip_game",
+      "label": "‘초가집에 왜 왔니?’ 놀이",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. '우리 집에 왜 왔니' 계열 놀이를 초가집 주제로 변형한 표현이며 원문을 그대로 보존했다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 4,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "⦁‘초가집에 왜 왔니?’놀이를 해요.",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_daemun_nori",
+      "label": "대문놀이",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.dolgorae.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 해찬솔의 '- 대문놀이'는 실외놀이 행이 아닌 다른 행에 속해 근거로 사용하지 않았다.",
+      "aliases": [
+        "대문놀이를 해요"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.dolgorae.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "대문놀이를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_ddakji_chigi",
+      "label": "딱지 치기",
+      "supported_ages": [
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 원문 '딱지 치기 놀이를 해요'에서 놀이명만 남겼다.",
+      "aliases": [
+        "딱지 치기 놀이를 해요"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 3,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "· 딱지 치기 놀이를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_dongdaemun_nori",
+      "label": "동대문 놀이",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "2기관에서 관찰됐다. 공백 차이만 있다.",
+      "aliases": [
+        "동대문놀이"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 2,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "동대문 놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        },
+        {
+          "origin_id": "sample.monthly.keunbit.2026.09",
+          "page": 1,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "<자랑스런우리나라>동대문놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥",
+          "match_note": "주제 태그 <…>를 제외한 활동명은 '동대문놀이'다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_find_autumn_fruits",
+      "label": "가을 열매 찾기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "가을 열매 찾기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_find_autumn_leaves",
+      "label": "가을 단풍 찾아보기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "가을 단풍 찾아보기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_founding_myth_treasure_hunt",
+      "label": "건국신화 속 보물을 찾아요",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.yedam.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.yedam.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "- 건국신화 속 보물을 찾아요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_ganggangsullae",
+      "label": "강강술래",
+      "supported_ages": [
+        3,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aisarang.2026.09.age3",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "NORMALIZED",
+      "label_derivation": "'강강술래'와 '강강수월래'가 함께 관찰됐다. 표준어 표기인 '강강술래'를 canonical로 두고 원문은 evidence와 aliases에 보존했다.",
+      "aliases": [
+        "강강수월래해요",
+        "대동놀이 : 강강술래"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age3",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이- 강강수월래해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "'강강수월래'는 '강강술래'의 비표준 표기다. 같은 놀이를 가리킨다."
+        },
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이-강강술래",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)"
+        },
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "강강술래",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        },
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "*대동놀이 : 강강술래 (느리게 걷기, 뛰기)",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "대동놀이 분류 아래 강강술래로 표기됐다. 활동 자체는 동일하다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_gomujul_nori",
+      "label": "고무줄 놀이",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.dolgorae.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [
+        "고무줄 놀이를 해요"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.dolgorae.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "고무줄 놀이를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_gomusin_throwing",
+      "label": "고무신 멀리 던지기",
+      "supported_ages": [
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 3,
+          "age_scope": [
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "· 고무신 멀리 던지기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_hanbok_outing",
+      "label": "한복 입고 나들이 가요",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.yedam.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.yedam.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "- 한복 입고 나들이 가 요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "셀 줄바꿈으로 '가 요'로 추출된다. 원문은 '가요'다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_insect_exploration",
+      "label": "곤충 탐색",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aideulsesang.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 2페이지 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "곤충 탐색",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이"
+        },
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 2,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "곤충 탐색",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이 대체(신체)활동"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_juldarigi",
+      "label": "줄다리기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 원문 '줄다리기를 해요'에서 놀이명만 남겼다.",
+      "aliases": [
+        "줄다리기를 해요"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 2,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "줄다리기를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_jump_rope",
+      "label": "줄넘기",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aideulsesang.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 2페이지 관찰. 나들이 행의 '일곱살 다지기 나들이 : 롤러장 나들이, 줄넘기'는 기관 고유 시설과 묶여 있어 근거로 쓰지 않고 실외놀이 행만 사용했다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "줄넘기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이"
+        },
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 2,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "줄넘기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이 대체(신체)활동"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_kkokkok_sumeora",
+      "label": "꼭꼭 숨어라",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.eomji.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.eomji.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "-꼭꼭숨어라",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이 (대체활동)"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_kkori_jatgi",
+      "label": "꼬리잡기 놀이",
+      "supported_ages": [
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.goesanhana.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.goesanhana.2026.09",
+          "page": 2,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "꼬리잡기놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_korea_symbol_treasure_hunt",
+      "label": "우리나라 상징 보물찾기",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.dolgorae.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.dolgorae.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "우리나라 상징 보물찾기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_lucky_stick",
+      "label": "행운의 막대기",
+      "supported_ages": [
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.keunbit.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.keunbit.2026.09",
+          "page": 1,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "<함께하는세계>행운의막대기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥",
+          "match_note": "주제 태그 <…>를 제외한 활동명이다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_mud_ball_making",
+      "label": "흙공 만들기",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aideulsesang.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 2페이지 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "흙공 만들기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이"
+        },
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 2,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "흙공 만들기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이 대체(신체)활동"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_mugunghwa_flower_game",
+      "label": "무궁화 꽃이 피었습니다",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.goesanhana.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "6기관에서 같은 표현으로 관찰됐다. 표기 차이는 마침표와 공백뿐이므로 원문을 그대로 사용했다.",
+      "aliases": [
+        "무궁화꽃이 피었습니다",
+        "무궁화 꽃이 피었습니다."
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.goesanhana.2026.09",
+          "page": 2,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "무궁화꽃이피었습니다",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        },
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 2,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "무궁화 꽃이 피었습니다",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        },
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 4,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "⦁무궁화 꽃이 피었습니다.",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        },
+        {
+          "origin_id": "sample.monthly.eomji.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "-무궁화꽃이피었습니다",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이 (대체활동)"
+        },
+        {
+          "origin_id": "sample.monthly.yedam.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "- 무궁화 꽃이 피었습 니다",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "셀 줄바꿈으로 '피었습 니다'로 추출된다. 원문은 '피었습니다'다."
+        },
+        {
+          "origin_id": "sample.monthly.haechansol.2026.09",
+          "page": 1,
+          "age_scope": [],
+          "observed_month": 9,
+          "observed_label": "-무궁화꽃이 피었습니다",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_natural_hanbok_colors",
+      "label": "자연 한복색 찾기",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.dolgorae.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.dolgorae.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "자연 한복색 찾기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_nature_mask_making",
+      "label": "자연물로 탈 꾸미기",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.dolgorae.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [
+        "자연물로 탈꾸미기"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.dolgorae.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "자연물로 탈꾸미기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_pinwheel_running",
+      "label": "바람개비 들고 시원하게 달리기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 해찬솔의 '바람개비 돌리며 가을 느끼기'는 연령 근거가 없고 동작이 달라 합치지 않았다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 2,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "바람개비 들고 시원하게 달리기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_playground_exploration",
+      "label": "놀이터를 탐색하며 놀이해요",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 3월 표본이다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 2,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "- 놀이터를 탐색하며 놀이해 요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "셀 줄바꿈으로 '놀이해 요'로 추출된다. 해당 페이지 머리글 연도는 2025년이며 문서 내부 불일치다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_playground_photo",
+      "label": "바깥 놀이터 사진을 찍어요",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. '바깥 놀이터'는 일반 명사이며 특정 시설명이 아니다. 3월 표본이다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 3,
+          "observed_label": "- 바깥 놀이터 사진을 찍어요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_playground_rules",
+      "label": "바깥 놀이터에서 지켜야 할 약속을 정해요",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 바깥놀이 행에서 관찰된 약속 정하기 활동이며 법정 안전교육 항목이 아니다. 3월 표본이다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 3,
+          "observed_label": "- 바깥 놀이터에서 지켜야 할 약속을 정해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_relay_race_with_friends",
+      "label": "친구와 함께 이어달리기",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 2페이지 관찰. 3월 표본이다.",
+      "aliases": [
+        "친구와 함께 이어달리기를 해요"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 2,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "- 친구와 함께 이어달리기를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "해당 페이지 머리글 연도는 2025년이며 문서 내부 불일치다."
+        },
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "- 친구와 함께 이어달리기를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_sabangchigi",
+      "label": "사방치기",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aisarang.2026.09.age3",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "3기관에서 동일 표현으로 관찰됐다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age3",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이-사방치기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)"
+        },
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이-사방치기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)"
+        },
+        {
+          "origin_id": "sample.monthly.keunbit.2026.09",
+          "page": 1,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "<우리나라사람들의생활과문화>사방치기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥",
+          "match_note": "셀 안에서 주제 태그 <…>가 활동명 앞에 붙는다. 활동명은 '사방치기'다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_sand_chuseok_letters",
+      "label": "모래 위에 발자국으로 ‘추석’ 글자 표현하기",
+      "supported_ages": [
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.goesanhana.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.goesanhana.2026.09",
+          "page": 2,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "모래위에발자국으로‘추 석’글자표현하기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "셀 줄바꿈으로 '추 석'으로 추출된다. 원문은 '추석'이다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_sand_desert",
+      "label": "모래사막을 구성해요",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 4,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "⦁모래사막을 구성해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_sand_old_painting",
+      "label": "모래 위에 옛 그림을 그려요",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.yedam.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "2기관에서 동일 표현으로 관찰됐다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.yedam.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "- 모래 위에 옛 그림을 그려요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        },
+        {
+          "origin_id": "sample.monthly.haechansol.2026.09",
+          "page": 1,
+          "age_scope": [],
+          "observed_month": 9,
+          "observed_label": "-모래위에옛 그림을그려요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이",
+          "match_note": "본문에 연령 표기가 없어 age_scope가 비어 있다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_sand_play",
+      "label": "모래놀이",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3,
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "NORMALIZED",
+      "label_derivation": "'조물조물 모래놀이를 해요'와 '모래놀이'를 같은 활동으로 canonical화했다. 3월과 9월 모두에서 관찰된 유일한 활동이다.",
+      "aliases": [
+        "조물조물 모래놀이를 해요"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 3,
+          "observed_label": "- 조물조물 모래놀이를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "'조물조물'은 수식어이며 활동은 모래놀이다."
+        },
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "모래놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이"
+        },
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 2,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "모래놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이 대체(신체)활동"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_sand_traditional_food",
+      "label": "모래로 전통음식 만들기",
+      "supported_ages": [
+        3
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.goesanhana.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 해찬솔의 '젖은 모래로 떡을 만들어요'는 연령 근거가 없어 별도 항목으로도 포함하지 않았다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.goesanhana.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "-모래로전통음식 만들기",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "1주와 2주 셀에 동일 표기로 두 번 나타난다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_saudi_mud_house",
+      "label": "사우디아라비아의 진흙집을 만들어요",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 세계 여러 나라 주제의 바깥놀이다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 4,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "⦁사우디아라비아의 진흙집을 만들어요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_shoe_throwing",
+      "label": "신발을 던져요",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 3월 표본이다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 2,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "- 신발을 던져요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "해당 페이지 머리글 연도는 2025년이며 문서 내부 불일치다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_spring_breeze_running",
+      "label": "봄바람을 가르며 달려요",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        3
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.hansolbit.2026.03",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰. 3월 표본이다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_new_environment_friends",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.hansolbit.2026.03",
+          "page": 3,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 3,
+          "observed_label": "- 봄바람을 가르며 달려요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_traditional_play",
+      "label": "전통놀이",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aisarang.2026.09.age3",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "NORMALIZED",
+      "label_derivation": "'전통놀이' / '전통놀이를 해요' / '전통놀이 체험' / '명절전통놀이'를 같은 포괄 활동으로 canonical화했다. 원문은 모두 evidence에 보존했다. 세부 놀이명을 지정하지 않는 기관 표기 방식 자체가 관찰 대상이다.",
+      "aliases": [
+        "전통놀이를 해요",
+        "전통놀이 체험",
+        "명절전통놀이"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age3",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이 -전통놀이를 해요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "'전통놀이를 해요'는 종결형 표현이며 동일 포괄 활동이다."
+        },
+        {
+          "origin_id": "sample.monthly.goesanhana.2026.09",
+          "page": 1,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "-전통놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        },
+        {
+          "origin_id": "sample.monthly.keunbit.2026.09",
+          "page": 1,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "<추석>명절전통놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "'명절전통놀이'는 추석 주제 아래의 전통놀이 표기다."
+        },
+        {
+          "origin_id": "sample.monthly.haechansol.2026.09",
+          "page": 1,
+          "age_scope": [],
+          "observed_month": 9,
+          "observed_label": "-전통놀이체험",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이",
+          "matched_via": "RELATED_EXPRESSION",
+          "match_note": "'체험' 접미는 동일 포괄 활동의 표현 변이다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_traditional_play_fair",
+      "label": "전통 놀이 한마당",
+      "supported_ages": [
+        3,
+        4
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.yedam.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "'한마당' 형식은 단일 놀이가 아니라 여러 전통놀이를 동시에 펼치는 행사형 구성이므로 act_outdoor_traditional_play와 합치지 않고 분리했다.",
+      "aliases": [
+        "전통 놀이 한마당을 열어요",
+        "전통놀이 한마당"
+      ],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.yedam.2026.09",
+          "page": 1,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "- 전통 놀이 한마당을 열어요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이"
+        },
+        {
+          "origin_id": "sample.monthly.geumsan.2026.09",
+          "page": 1,
+          "age_scope": [],
+          "observed_month": 9,
+          "observed_label": "전통놀이 한마당",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이 / 대체활동",
+          "match_note": "본문에 연령 표기가 없어 age_scope가 비어 있다."
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_tuho",
+      "label": "투호놀이",
+      "supported_ages": [
+        3,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aisarang.2026.09.age5",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "2기관에서 동일 표현으로 관찰됐다.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        },
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aisarang.2026.09.age5",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "♥바깥놀이-투호놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이(접두 태그)"
+        },
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 2,
+          "age_scope": [
+            3
+          ],
+          "observed_month": 9,
+          "observed_label": "투호놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_twig_building",
+      "label": "나뭇가지로 건축물을 만들어요",
+      "supported_ages": [
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.seobom.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.seobom.2026.09",
+          "page": 4,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "⦁나뭇가지로 건축물을 만들어요",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외 자유 놀이"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_water_channel_play",
+      "label": "물길 놀이",
+      "supported_ages": [
+        3,
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.aideulsesang.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 2페이지 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_autumn_and_nature",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 1,
+          "age_scope": [
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "물길 놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이"
+        },
+        {
+          "origin_id": "sample.monthly.aideulsesang.2026.09",
+          "page": 2,
+          "age_scope": [
+            3,
+            4
+          ],
+          "observed_month": 9,
+          "observed_label": "물길 놀이",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "실외놀이 대체(신체)활동"
+        }
+      ]
+    },
+    {
+      "activity_id": "act_outdoor_yeouya_yeouya",
+      "label": "여우야 여우야",
+      "supported_ages": [
+        4,
+        5
+      ],
+      "allow_mixed_age": true,
+      "mixed_age_requires_all_supported": true,
+      "applicable_months": [
+        9
+      ],
+      "placement_slots": [
+        "outdoor_play"
+      ],
+      "setting": "OUTDOOR",
+      "origin_id": "sample.monthly.goesanhana.2026.09",
+      "source_version": "activity-reference-v0.1.0",
+      "label_derivation_type": "DIRECT_TRANSCRIPTION",
+      "label_derivation": "1기관 관찰.",
+      "aliases": [],
+      "theme_links": [
+        {
+          "theme_id": "yr_theme_korea_and_world_cultures",
+          "relation": "OBSERVED_TOGETHER",
+          "theme_catalog_version": "theme-reference-v0.1.2"
+        }
+      ],
+      "curriculum_links": [],
+      "evidence": [
+        {
+          "origin_id": "sample.monthly.goesanhana.2026.09",
+          "page": 2,
+          "age_scope": [
+            4,
+            5
+          ],
+          "observed_month": 9,
+          "observed_label": "여우야여우야",
+          "observed_section": "outdoor_play",
+          "observed_source_label": "바깥놀이",
+          "match_note": "원문은 공백 없이 추출되지만 놀이명은 '여우야 여우야'다."
+        }
+      ]
+    }
+  ],
+  "source_version_semantics": "activities[].source_version은 해당 Activity Reference record를 담은 catalog version을 뜻한다. 원본 샘플 파일의 version은 activities[].origin_id가 가리키는 origins[].sha256에서 추적한다. Monthly Cell Evidence의 canonical source_id는 activity_id이며 origin_id나 PDF hash가 이를 대신하지 않는다."
+}

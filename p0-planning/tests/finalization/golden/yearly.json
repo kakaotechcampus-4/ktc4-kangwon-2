@@ -1,0 +1,116 @@
+{
+  "audit": [
+    {
+      "actor": null,
+      "system_actor": "yearly_application",
+      "type": "CREATED"
+    },
+    {
+      "actor": "teacher_001",
+      "system_actor": null,
+      "type": "CONFIRMED"
+    }
+  ],
+  "periods": [
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_new_environment_friends", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-03",
+      "theme_id": "yr_theme_new_environment_friends",
+      "value": "우리 원과 친구"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_spring", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-04",
+      "theme_id": "yr_theme_spring",
+      "value": "봄"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_self_and_family", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-05",
+      "theme_id": "yr_theme_self_and_family",
+      "value": "나와 가족"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_our_neighborhood", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-06",
+      "theme_id": "yr_theme_our_neighborhood",
+      "value": "우리 동네"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_summer", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-07",
+      "theme_id": "yr_theme_summer",
+      "value": "여름"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_transportation", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-08",
+      "theme_id": "yr_theme_transportation",
+      "value": "교통기관"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_korea_and_world_cultures", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-09",
+      "theme_id": "yr_theme_korea_and_world_cultures",
+      "value": "우리나라와 세계 여러 나라"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_autumn_and_nature", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-10",
+      "theme_id": "yr_theme_autumn_and_nature",
+      "value": "가을과 자연"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_environment_and_life", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-11",
+      "theme_id": "yr_theme_environment_and_life",
+      "value": "환경과 생활"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_winter", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2026-12",
+      "theme_id": "yr_theme_winter",
+      "value": "겨울"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_living_tools", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2027-01",
+      "theme_id": "yr_theme_living_tools",
+      "value": "생활도구"
+    },
+    {
+      "audit": [{"actor": null, "system_actor": "yearly_application", "type": "CREATED"}],
+      "evidence": [{"source_id": "yr_theme_growth_and_transition", "source_version": "theme-reference-v0.1.2", "type": "THEME_REFERENCE"}],
+      "generation": {"method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection", "rule_version": "v2"},
+      "period": "2027-02",
+      "theme_id": "yr_theme_growth_and_transition",
+      "value": "성장한 우리"
+    }
+  ],
+  "schema": "yearly-golden-v1",
+  "school_year": 2026,
+  "status": "CONFIRMED",
+  "target_ages": [3, 4]
+}

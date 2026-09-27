@@ -103,9 +103,13 @@ class ValueChange:
     after: str
 
     def __post_init__(self) -> None:
-        if not _is_non_blank(self.before) or not _is_non_blank(self.after):
+        if not isinstance(self.before, str) or not isinstance(self.after, str):
             raise InvalidDomainValueError(
-                "ValueChange values must be non-blank strings"
+                "ValueChange values must be strings"
+            )
+        if not self.before.strip() and not self.after.strip():
+            raise InvalidDomainValueError(
+                "ValueChange must contain at least one non-blank value"
             )
 
 

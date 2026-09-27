@@ -19,3 +19,4 @@ where = ["src"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["live: opt-in test that may call an external provider"]
