@@ -13,6 +13,12 @@ from app.main import app
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _logged_in(teacher):
+    """이 파일은 인증을 다루지 않는다. 로그인한 교사로 고정한다 (인증은 test_auth.py)."""
+    teacher.center_id = 1
+
+
 def _make_center_class_child(session):
     center = Center(
         name="테스트어린이집",
