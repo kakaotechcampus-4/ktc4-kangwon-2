@@ -83,6 +83,5 @@ documents ←── document_sources ──(source_kind·source_id, FK 없음)�
 | `plans` | 계획안 테이블이다. 다음 PR 에서 만든다 |
 | 활동 쪽 지역 축 | `centers.region_sido` · `region_sigungu` 는 지역 2단 분리 마이그레이션에서 들어왔다. 활동을 지역으로 거르는 규칙은 아직 없다 |
 | `ON DELETE` 지정 | 삭제 생명주기가 미정이다. 암묵적 연쇄 삭제를 막고 명시적으로 정리한다 |
-| `observations` | §10 관찰 기록 테이블이다. `documents`가 이걸 근거로 쓰지만 아직 어느 PR 에도 없다 — 담당·시점 확인 필요 |
 | `document_sources.date` 의 확정 규칙 | `source_kind='observation'` 이면 그 기록의 날짜지만, `source_kind='document'`(주간→일일)일 때 뭘 넣을지 api-spec 에 없어 잠정 nullable 로 뒀다 |
 | `document.generation_method` 의 CHECK 제약 | `kind`·`status`·`origin` 과 달리 enum 값을 못 박지 않았다. §4 plans 의 `RULE_LLM`·`RULE_ONLY` 개념과 겹치는데 plans 도 아직 없어 지금 확정하면 나중에 어긋날 수 있다 |
