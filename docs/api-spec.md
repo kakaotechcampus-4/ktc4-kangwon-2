@@ -724,6 +724,9 @@ POST   /api/centers/{center_id}/forms     양식 등록 (§8)
 
 **`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED` 422.
 
+**`child_id` 는 `class_id` 반의 아이여야 한다.** 같은 원의 다른 반 아이면 `VALIDATION_FAILED` 422,
+`fields: ["child_id"]`. 없는 반·아이와 남의 원 반·아이는 `NOT_FOUND` 404 다(「인증」).
+
 **조회** `GET /api/observations?class_id=1&child_id=5&from=2026-09-01&to=2026-09-30`
 → `{ "items": [...] }`. 네 값 모두 선택이고, 없으면 교사가 접근 가능한 전체다.
 **정렬은 `date` 내림차순 고정이다** — 화면이 최신순으로만 그린다.
