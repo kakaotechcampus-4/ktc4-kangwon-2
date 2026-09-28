@@ -3,10 +3,12 @@
  * 빠뜨리면 msw/scenarios.ts 의 `Record<ErrorCode, number>` 에서 타입 검사가 잡는다.
  */
 export type ErrorCode =
+  | "UNAUTHENTICATED"
   | "VALIDATION_FAILED"
   | "NOT_FOUND"
   | "GATE_BLOCKED"
   | "ALREADY_EXISTS"
+  | "ALREADY_CONFIRMED"
   | "STALE_WRITE"
   | "UNSUPPORTED_FILE_TYPE"
   | "NO_ACTIVITIES"
@@ -97,4 +99,28 @@ export interface ConfirmResult {
   id: number;
   status: "CONFIRMED";
   confirmed_at: string;
+}
+/** 관찰 기록 (docs/api-spec.md §10). 서버 모양 그대로 — snake_case 와 정수 id 를 유지한다. */
+export interface ObservationUpdate {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  /** 5영역 중 하나. */
+  domain: string;
+  /** 선택 — 빈 문자열을 허용한다. */
+  context: string;
+  fact: string;
+}
+/** `PUT` 은 위 네 칸만 받는다 (§10). */
+export interface ObservationInput extends ObservationUpdate {
+  class_id: number;
+  child_id: number;
+}
+export interface ApiObservation extends ObservationInput {
+  id: number;
+  class_name: string;
+  /** 아동 실명. */
+  child_name: string;
+  /** 실명 대신 LLM 에 나가는 대체 코드 (ADR-004). */
+  child_code: string;
+  created_at: string;
 }
