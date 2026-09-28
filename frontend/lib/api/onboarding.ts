@@ -1,6 +1,6 @@
 import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
-import { accountStorageKey } from "../auth/demo-session";
+import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isApiNotFound } from "./client";
 import { createCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
@@ -15,19 +15,56 @@ interface Links {
   classes: Record<string, Binding>;
   children: Record<string, number>;
 }
+const LINKS_KEY = "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT;
 function readLinks(): Links {
-  const raw = localStorage.getItem(accountStorageKey("saessak.apiLinks.v1:" + API_STORAGE_CONTEXT));
+  const raw = localStorage.getItem(accountStorageKey(LINKS_KEY));
   if (!raw) return { classes: {}, children: {} };
   const v = JSON.parse(raw);
   if (!v || !v.classes || !v.children) throw new Error("API 연결 정보를 읽지 못했습니다.");
   return v;
 }
 function saveLinks(v: Links) {
-  localStorage.setItem(
-    accountStorageKey("saessak.apiLinks.v1:" + API_STORAGE_CONTEXT),
-    JSON.stringify(v),
-  );
+  localStorage.setItem(accountStorageKey(LINKS_KEY), JSON.stringify(v));
 }
+/**
+ * 저장된 Links 를 읽기만 한다. 저장 내용은 못 믿으므로 모양을 확인하고 쓴다.
+ *
+ * `accountStorageKey` 를 쓰지 않는다 — 그쪽은 세션이 성치 않으면 로그아웃시킨다.
+ * id 를 못 찾은 것뿐인데 로그인이 풀리면 안 된다.
+ */
+function storedLinks(): { classes?: unknown; children?: unknown } | null {
+  try {
+    const key = readAccountStorageKey(LINKS_KEY);
+    const raw = key && localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+// 매핑은 plain object 여야 한다. 배열·문자열은 엉뚱한 own entry(0 · length)를 내놓는다.
+const entries = (table: unknown): [string, unknown][] =>
+  typeof table === "object" && table !== null && !Array.isArray(table) ? Object.entries(table) : [];
+const valueOf = (table: unknown, key: string) => entries(table).find(([name]) => name === key)?.[1];
+
+// 서버 id 는 1 부터 세는 양의 정수다. 그 밖의 값은 매핑이 깨진 것이라 쓰지 않는다.
+const serverId = (v: unknown) =>
+  typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : null;
+// 반은 `{ id, signature }` 로 묶여 있다.
+const bindingId = (v: unknown) =>
+  typeof v === "object" && v !== null ? serverId((v as { id?: unknown }).id) : null;
+
+export const classServerId = (localId: string) =>
+  bindingId(valueOf(storedLinks()?.classes, localId));
+export const childServerId = (localId: string) =>
+  serverId(valueOf(storedLinks()?.children, localId));
+
+export function classLocalId(id: number): string | null {
+  return entries(storedLinks()?.classes).find(([, v]) => bindingId(v) === id)?.[0] ?? null;
+}
+export function childLocalId(id: number): string | null {
+  return entries(storedLinks()?.children).find(([, v]) => serverId(v) === id)?.[0] ?? null;
+}
+
 async function syncCenterOnce(settings: ClassSettings) {
   // 지역은 붙이지 않고 두 칸 그대로 보낸다 — 서버가 region_sido · region_sigungu 로 받는다(§1).
   const data = {
