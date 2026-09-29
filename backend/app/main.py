@@ -11,6 +11,7 @@ from app.features.children.router import router as children_router
 from app.features.documents.router import router as documents_router
 from app.features.forms.router import router as forms_router
 from app.features.observations.router import router as observations_router
+from app.features.plans.export import router as plans_export_router
 from app.features.plans.router import router as plans_router
 from app.shared.auth.dependency import current_user
 
@@ -35,6 +36,7 @@ app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
 app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(plans_export_router, prefix="/api", dependencies=_authenticated)
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:
