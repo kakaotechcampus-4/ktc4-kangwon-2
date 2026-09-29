@@ -8,15 +8,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.features.centers.models import Center, Child, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
+from app.features.observations.models import Observation
 from app.main import app
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _logged_in(teacher):
-    """이 파일은 인증을 다루지 않는다. 로그인한 교사로 고정한다 (인증은 test_auth.py)."""
-    teacher.center_id = 1
 
 
 @pytest.fixture(autouse=True)
@@ -269,6 +264,29 @@ def test_list_documents_breaks_same_timestamp_ties_by_id_desc(db_session):
     ordered_ids = [item["id"] for item in response.json()["items"]]
 
     assert ordered_ids.index(second.id) < ordered_ids.index(first.id)
+
+
+# ── GET /api/documents/{id} ─────────────────────────────────────────────────
+def test_get_document_returns_sections_and_sources(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+
+    response = client.get(f"/api/documents/{doc.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == doc.id
+    assert len(payload["sections"]) == 3
+    assert len(payload["sources"]) == len(sources)
+
+
+def test_get_document_missing_returns_not_found(db_session):
+    response = client.get("/api/documents/999999")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"
 
 
 # ── PUT /api/documents/{id} ─────────────────────────────────────────────────
@@ -560,3 +578,303 @@ def test_남의_원_문서는_목록에도_related_에도_안_나온다(db_sessi
 
     assert client.get("/api/documents").json()["items"] == []
     assert client.get(f"/api/documents/{남의것.id}/related").status_code == 404
+
+
+# ── 원 격리 (단건 · 수정 · 삭제 · 확정) ────────────────────────────────────────
+def test_남의_원_문서는_단건_수정_삭제_확정_모두_404_다(db_session, teacher):
+    _, klass, child = _make_center_class_child(db_session)
+    남의것 = _make_document(db_session, klass, child)
+    other = Center(
+        name="남의어린이집",
+        director_name="박원장",
+        region_sido="강원특별자치도",
+        region_sigungu="원주시",
+    )
+    db_session.add(other)
+    db_session.flush()
+    teacher.center_id = other.id
+
+    url = f"/api/documents/{남의것.id}"
+    assert client.get(url).status_code == 404
+    assert client.put(url, json=_put_body(남의것)).status_code == 404
+    assert client.delete(url).status_code == 404
+    assert client.post(f"{url}/confirm", json={"checks": _ALL_CHECKED}).status_code == 404
+
+
+# ── POST /api/documents ─────────────────────────────────────────────────────
+def _observation(session, klass, child, day, fact):
+    observation = Observation(
+        class_id=klass.id,
+        child_id=child.id,
+        date=date(2026, 9, day),
+        domain="자연탐구",
+        context="바깥놀이",
+        fact=fact,
+    )
+    session.add(observation)
+    session.flush()
+    return observation
+
+
+def _create_body(klass, child, sources, **overrides):
+    body = {
+        "kind": "observation",
+        "class_id": klass.id,
+        "child_id": child.id if child else None,
+        "start": "2026-09-01",
+        "end": "2026-09-30",
+        "source_ids": [s.id for s in sources],
+    }
+    body.update(overrides)
+    return body
+
+
+def test_create_document_copies_sources_and_builds_fact(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    first = _observation(db_session, klass, child, 5, "개미를 3분 동안 바라보았다.")
+    second = _observation(db_session, klass, child, 6, "무당벌레를 손바닥에 올렸다.")
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [first, second]))
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "DRAFT"
+    assert payload["origin"] == "AI"
+    assert payload["title"] == "이가명 관찰일지 (9월)"
+    by_heading = {s["heading"]: s for s in payload["sections"]}
+    # 사실은 서버가 원문을 고른 순서대로 붙인다. LLM 이 만지지 않는다.
+    assert by_heading["사실"]["body"] == f"{first.fact}\n\n{second.fact}"
+    assert [s["id"] for s in payload["sources"]] == [first.id, second.id]
+
+    # 원본을 나중에 고쳐도 문서 쪽 사본은 안 바뀐다 — 무효 판정이 비교할 원문이다.
+    first.fact = "고친 사실"
+    db_session.flush()
+    detail = client.get(f"/api/documents/{payload['id']}").json()
+    assert detail["sources"][0]["text"] == "개미를 3분 동안 바라보았다."
+
+
+def test_create_document_masks_child_names_before_generation(db_session, monkeypatch):
+    # 실명이 LLM 쪽(생성기)으로 넘어가면 안 된다. 가명으로 바뀐 글만 받아야 한다.
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "이가명이 가명이와 블록을 쌓았다.")
+    seen = {}
+
+    def fake_generate(kind, masked_facts):
+        seen["facts"] = masked_facts
+        return (
+            "도담 해석입니다. 기록에 드러난 사실만 근거로 씁니다.",
+            "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다.",
+        )
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201
+    assert "이가명" not in seen["facts"][0] and "가명" not in seen["facts"][0]
+    assert "도담" in seen["facts"][0]
+    # 돌아온 글은 교사에게 주기 전에 실명으로 되돌린다.
+    by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert by_heading["해석"].startswith("이가명 해석")
+
+
+@pytest.mark.parametrize(
+    "overrides,field",
+    [
+        ({"child_id": None}, "child_id"),
+        ({"kind": "dailyLog", "child_id": None}, "end"),
+        ({"source_ids": []}, "source_ids"),
+    ],
+    ids=["child_required", "daily_log_single_day", "empty_sources"],
+)
+def test_create_document_rejects_invalid_requests(db_session, overrides, field):
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "개미를 바라보았다.")
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record], **overrides))
+
+    assert response.status_code == 422
+    assert field in response.json()["error"]["fields"]
+
+
+def test_create_document_rejects_duplicate_source_ids(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "개미를 바라보았다.")
+
+    response = client.post(
+        "/api/documents", json=_create_body(klass, child, [record], source_ids=[record.id] * 2)
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["source_ids"]
+
+
+def test_create_document_rejects_sources_outside_the_document(db_session):
+    # 기간 밖 · 다른 아이 기록은 근거로 못 쓴다. 틀린 근거를 전부 모아서 알려준다.
+    _, klass, child = _make_center_class_child(db_session)
+    other = Child(class_id=klass.id, name="박친구", code="하람")
+    db_session.add(other)
+    db_session.flush()
+    out_of_range = _observation(db_session, klass, child, 5, "개미를 바라보았다.")
+    other_child = _observation(db_session, klass, other, 6, "모래를 팠다.")
+
+    response = client.post(
+        "/api/documents",
+        json=_create_body(
+            klass, child, [out_of_range, other_child], start="2026-09-10", end="2026-09-30"
+        ),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == [
+        f"sources.{out_of_range.id}",
+        f"sources.{other_child.id}",
+    ]
+
+
+def test_create_weekly_log_requires_confirmed_daily_logs(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    daily = _make_document(
+        db_session,
+        klass,
+        child=None,
+        kind="dailyLog",
+        start_date=date(2026, 9, 22),
+        end_date=date(2026, 9, 22),
+    )
+    body = _create_body(
+        klass, None, [daily], kind="weeklyLog", start="2026-09-21", end="2026-09-27"
+    )
+
+    blocked = client.post("/api/documents", json=body)
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "GATE_BLOCKED"
+
+    # 확정된 일일 보육일지는 그 문서의 `사실` 항목이 근거 원문이 된다.
+    sources = _make_sources(db_session, daily, klass, None, count=1)
+    _make_sections(db_session, daily, sources)
+    daily.status = "CONFIRMED"
+    db_session.flush()
+
+    created = client.post("/api/documents", json=body)
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["sources"][0]["text"] == "관찰 기록 0."
+    source_row = db_session.query(DocumentSource).filter_by(document_id=payload["id"]).one()
+    assert source_row.source_kind == "document"
+    assert source_row.source_status == "CONFIRMED"
+
+
+def test_create_document_saves_nothing_when_generation_fails(db_session, monkeypatch):
+    # 백엔드 LLM 연결 전에는 real 모드에서 만들 수 없다. 부분 결과를 남기지 않는다.
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "개미를 바라보았다.")
+    monkeypatch.setattr("app.features.documents.draft.settings.llm_mode", "real")
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "GENERATION_FAILED"
+    assert db_session.query(Document).count() == 0
+
+
+# ── POST /api/documents/{id}/confirm ────────────────────────────────────────
+_ALL_CHECKED = {"fact": True, "interpretation": True, "support": True}
+
+
+def _ready_document(session):
+    _, klass, child = _make_center_class_child(session)
+    doc = _make_document(session, klass, child=child)
+    _make_sections(session, doc, _make_sources(session, doc, klass, child))
+    return doc
+
+
+def test_confirm_marks_the_document_confirmed_and_is_idempotent(db_session):
+    doc = _ready_document(db_session)
+
+    first = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": _ALL_CHECKED})
+    again = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": _ALL_CHECKED})
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "CONFIRMED"
+    # 더블클릭 · 재시도로 두 번 와도 실패가 아니다.
+    assert again.status_code == 200
+    assert client.put(f"/api/documents/{doc.id}", json=_put_body(doc)).status_code == 409
+
+
+def test_confirm_requires_all_three_checks(db_session):
+    doc = _ready_document(db_session)
+
+    response = client.post(
+        f"/api/documents/{doc.id}/confirm",
+        json={"checks": {**_ALL_CHECKED, "support": False}},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["checks.support"]
+
+
+def test_confirm_is_blocked_while_stale(db_session):
+    doc = _ready_document(db_session)
+    doc.stale = True
+    db_session.flush()
+
+    response = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": _ALL_CHECKED})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GATE_BLOCKED"
+
+
+def test_confirm_reruns_the_section_gate(db_session):
+    # 저장된 사실이 원문과 어긋나 있으면 교사가 체크해도 확정되지 않는다.
+    doc = _ready_document(db_session)
+    fact = db_session.query(DocumentSection).filter_by(document_id=doc.id, heading="사실").one()
+    fact.body = "원문에 없는 사실"
+    db_session.flush()
+
+    response = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": _ALL_CHECKED})
+
+    assert response.status_code == 422
+    assert "sections.사실" in response.json()["error"]["fields"]
+
+
+# ── DELETE /api/documents/{id} ──────────────────────────────────────────────
+def test_delete_removes_the_document_and_marks_dependents_stale(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    daily = _make_document(
+        db_session,
+        klass,
+        child=None,
+        kind="dailyLog",
+        start_date=date(2026, 9, 22),
+        end_date=date(2026, 9, 22),
+    )
+    _make_sections(db_session, daily, _make_sources(db_session, daily, klass, None, count=1))
+    weekly = _make_document(
+        db_session,
+        klass,
+        child=None,
+        kind="weeklyLog",
+        start_date=date(2026, 9, 21),
+        end_date=date(2026, 9, 27),
+    )
+    db_session.add(
+        DocumentSource(
+            document_id=weekly.id,
+            source_kind="document",
+            source_id=daily.id,
+            class_id=klass.id,
+            date=date(2026, 9, 22),
+            source_status="CONFIRMED",
+            text="관찰 기록 0.",
+        )
+    )
+    db_session.flush()
+
+    response = client.delete(f"/api/documents/{daily.id}")
+
+    assert response.status_code == 204
+    assert client.get(f"/api/documents/{daily.id}").status_code == 404
+    assert db_session.query(DocumentSection).filter_by(document_id=daily.id).count() == 0
+    # 근거가 사라진 주간 보육일지는 지우지 않고 다시 보라고 표시한다.
+    db_session.refresh(weekly)
+    assert weekly.stale is True
