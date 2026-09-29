@@ -42,8 +42,23 @@ FROZEN_ARTIFACTS = {
     "rules/safety_education_legal_v1.json": (
         "bd5c04864eb4eca66e51c24d58224723dbb401ead1b72f5e3b09d3a32057b3e9"
     ),
+    "rules/safety_placement_policy_v2.json": (
+        "52b3dff8ef2015493010e31cac01dcd6955824e8c1d9ab8521c3b172298fe75a"
+    ),
+    "evidence/safety_reference_quality_v0_1_0.json": (
+        "0b8a911267534516506a3d6e44dd76216ee560093ef9af3fd6bc75d8061ee8c8"
+    ),
+    "rules/safety_placement_policy_v1.json": (
+        "f65bcfee463fb8d7ed1da9bc390f7d211249f4d82464af2c258e019729bc616e"
+    ),
     "evidence/institution_evidence_v0_1_0.json": (
         "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a"
+    ),
+    "evidence/safety_evidence_classification_v0_2_0.json": (
+        "1daa6445b7ec3f9eae958cb2f09c5da77b00a97abea7a03a0036f3e1f023d650"
+    ),
+    "evidence/safety_evidence_classification_v0_1_0.json": (
+        "96726b66e79e7425d9a637c5ab961788c0f83179c202be54dad3bc5a407f9003"
     ),
     "evidence/monthly_evidence_semantic_classification_v0_1_0.json": (
         "8d9930211f3cc5b993f08b263bb08266391eab686606a369f5b8e6384cb1ceaf"

@@ -17,6 +17,7 @@ from ..domain.monthly_template import SectionRole
 from ..domain.monthly_template_profile import TemplateProfile, TemplateProfileRef
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.provenance import EvidenceSource, EvidenceSourceType
+from ..domain.safety_placement import SafetyPlacementPolicy
 from ..domain.safety_rule import SafetyLegalRule
 from ..domain.week_period import WeekPeriod
 from ..domain.year_month import YearMonth
@@ -28,7 +29,8 @@ from ..rules.monthly_verification import (
     verify_monthly_activity_ages,
     verify_monthly_plan,
 )
-from .monthly_dto import ActivityCatalogSelector, SafetyRuleSelector
+from ..rules.safety_placement import policy_violations
+from .monthly_dto import ActivityCatalogSelector, SafetyPlacementSelector, SafetyRuleSelector
 from .monthly_errors import MonthlyApplicationError
 from .ports import (
     ActivityReferenceRepository,
@@ -36,6 +38,7 @@ from .ports import (
     OptionalContextResult,
     PlanRepository,
     SafetyLegalRuleRepository,
+    SafetyPlacementPolicyRepository,
     TemplateProfileRepository,
 )
 from .yearly_support import fetch_optional_context
@@ -106,6 +109,39 @@ def load_safety_rule(
             f"Safety Rule is not active: {selector.legal_rule_version}",
         )
     return rule
+
+
+def load_safety_placement_policy(
+    repository: SafetyPlacementPolicyRepository | None,
+    selector: SafetyPlacementSelector | None,
+    rule: SafetyLegalRule,
+) -> SafetyPlacementPolicy | None:
+    """The selected HUMAN_APPROVED policy that fits the legal Rule, or fail closed."""
+    if selector is None:
+        return None
+    if repository is None:
+        raise MonthlyApplicationError(
+            "safety_placement_repository_required",
+            "A safety placement selector requires a repository",
+        )
+    policy = repository.get_policy(selector.policy_version)
+    if policy is None:
+        raise MonthlyApplicationError(
+            "safety_placement_policy_not_found",
+            f"Safety Placement Policy not found: {selector.policy_version}",
+        )
+    if not policy.runtime_active:
+        raise MonthlyApplicationError(
+            "safety_placement_policy_not_approved",
+            f"Safety Placement Policy is not HUMAN_APPROVED: {selector.policy_version}",
+        )
+    problems = policy_violations(policy, rule)
+    if problems:
+        raise MonthlyApplicationError(
+            "safety_placement_policy_invalid",
+            "Safety Placement Policy does not fit the legal Rule: " + "; ".join(problems),
+        )
+    return policy
 
 
 def load_activity_catalog(

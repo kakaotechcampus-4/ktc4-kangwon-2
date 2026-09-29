@@ -28,6 +28,14 @@ class SafetyRuleSelector:
 
 
 @dataclass(frozen=True, slots=True)
+class SafetyPlacementSelector:
+    policy_version: str
+
+    def __post_init__(self) -> None:
+        _non_blank(self.policy_version, "SafetyPlacementSelector.policy_version")
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityCatalogSelector:
     catalog_id: str
     catalog_version: str
