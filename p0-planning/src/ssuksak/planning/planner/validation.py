@@ -270,25 +270,32 @@ def _cells(payload: dict) -> dict[tuple[str | None, str], dict]:
 
 
 def _field(cell: dict, name: str) -> object:
-    return list(dict.fromkeys(cell[name])) if name == "grounding_refs" else cell[name]
+    """Comparable form: refs are a set, value is compared as visible text."""
+    if name == "grounding_refs":
+        return frozenset(cell[name])
+    if name == "value":
+        return normalize_visible_text(cell[name])
+    return cell[name]
 
 
 def merge_authorized_repair(
     base_content: str,
     repair_content: str,
     issues: tuple[ProposalValidationIssue, ...],
-) -> tuple[str, tuple[tuple[str | None, str, tuple[str, ...]], ...]]:
+) -> tuple[str, tuple[tuple[str | None, str], ...], tuple[tuple[str | None, str, tuple[str, ...]], ...]]:
     """The pre-repair proposal plus only the fields its findings authorize from the repair.
 
-    Structure, cells and fields no finding authorizes stay as in base_content.
-    Returns the merged JSON and each ignored change as (week_id, section_key, fields).
+    Structure, cells and fields no finding authorizes stay as in base_content. A field
+    counts as changed only when it differs in comparable form (see _field). Returns the
+    merged JSON, the cells whose value the repair actually changed (week_id, section_key)
+    and each ignored change as (week_id, section_key, fields).
     """
     authorized: dict[tuple[str | None, str], set[str]] = {}
     for issue in issues:
         authorized.setdefault((issue.week_id, issue.field), set()).update(REPAIR_MUTABLE_FIELDS.get(issue.code, ()))
     base = json.loads(base_content)
     patch = _cells(json.loads(repair_content))
-    ignored = []
+    applied, ignored = [], []
     for key, cell in _cells(base).items():
         new = patch.get(key)
         if new is None:
@@ -298,9 +305,11 @@ def merge_authorized_repair(
         for name in changed:
             if name in allowed:
                 cell[name] = new[name]
+        if any(name in allowed for name in changed):
+            applied.append(key)
         if blocked := tuple(name for name in changed if name not in allowed):
             ignored.append((key[0], key[1], blocked))
-    return json.dumps(base, ensure_ascii=False), tuple(ignored)
+    return json.dumps(base, ensure_ascii=False), tuple(applied), tuple(ignored)
 
 
 def canonicalize_reference_labels(

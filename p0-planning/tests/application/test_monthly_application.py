@@ -963,9 +963,9 @@ def test_teacher_edit_is_immutable_and_preserves_existing_evidence():
     assert original.find_cell(target.item_id)[3].value == target.value
     assert edited.value == "Teacher-authored outdoor play"
     assert edited.evidence == target.evidence
-    assert edited.generation.method is GenerationMethod.TEACHER_EDIT
+    assert edited.generation == target.generation  # the edit never overwrites the Method
     event = edited.audit.events[-1]
-    assert event.event_type is AuditEventType.TEACHER_EDITED
+    assert event.event_type is AuditEventType.TEACHER_EDITED and event.generation_change is None
     assert event.value_change.before == target.value
     assert event.value_change.after == "Teacher-authored outdoor play"
     assert updated.find_cell(other.item_id)[3] is other
@@ -2109,7 +2109,9 @@ def test_repaired_proposal_is_the_only_saved_draft():
         MONTHLY_REPAIR_PROMPT_VERSION,
     ]
     assert _cell(plan, "focus").value == "Context-based focus 1"
-    assert _llm_rule_versions(plan) == {MONTHLY_REPAIR_PROMPT_VERSION}
+    # Cell-level provenance: only the repaired cell carries the repair prompt.
+    assert _cell(plan, "focus").generation.rule_version == MONTHLY_REPAIR_PROMPT_VERSION
+    assert _llm_rule_versions(plan) == {MONTHLY_PROMPT_VERSION, MONTHLY_REPAIR_PROMPT_VERSION}
     assert plan.status is PlanStatus.DRAFT and plan.verification_report is not None
     assert harness.plans.save_count == 1
     assert harness.plans.get(plan.plan_id) is plan
@@ -2139,6 +2141,185 @@ def test_verification_execution_failure_is_not_repaired(monkeypatch):
     assert exc.value.code == "monthly_verification_failed"
     assert len(provider.monthly_requests) == 1
     assert harness.plans.save_count == 0
+
+
+# ---------------------------------------------------------------- cell-level generation provenance
+
+
+class ScriptedProvenanceLlm(RequestAwareMonthlyLlm):
+    """Call 1: the request-aware payload changed by `initial`; call 2 (repair): that payload changed by `repair`."""
+
+    def __init__(self, initial, repair) -> None:
+        super().__init__()
+        self._initial, self._repair, self._base = initial, repair, None
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        if self._base is not None:
+            self.monthly_requests.append(request)
+            payload = json.loads(json.dumps(self._base))
+            self._repair(payload, self._first)
+            return RawLlmResponse(json.dumps(payload, ensure_ascii=False), self._model)
+        response = super().generate_monthly(request)
+        payload = json.loads(response.content)
+        self._initial(payload, request)
+        self._base, self._first, self._model = payload, request, response.model
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), response.model)
+
+
+def _weekly(payload, week_index, key):
+    return next(s for s in payload["weeks"][week_index]["sections"] if s["section_key"] == key)
+
+
+def _copy_focus_w1(payload, request):
+    focus = _weekly(payload, 0, "focus")
+    evidence = {item["grounding_ref"]: item["text"] for item in json.loads(request.user_content)["evidence"]}
+    focus["value"] = evidence[focus["grounding_refs"][0]]
+
+
+def _paraphrase_outdoor_w1(payload, request):
+    activity_id, label = request.reference_labels[0]
+    _weekly(payload, 0, "outdoor_play").update(reference_id=activity_id, value=f"{label}를 하며 놀아요")
+
+
+def _fix_focus_w1(payload, request):
+    _weekly(payload, 0, "focus")["value"] = "다시 쓴 1주 초점"
+
+
+def _stored(plan, key, index):
+    cell = plan.section(key).cells[index]
+    return cell, cell.generation
+
+
+def test_initial_only_and_actually_repaired_cells_store_their_own_prompt_versions():
+    def repair(payload, request):
+        _fix_focus_w1(payload, request)
+        _weekly(payload, 1, "focus")["value"] = "무단으로 바꾼 2주 초점"  # no finding: ignored by the merge
+
+    harness = Harness()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=ScriptedProvenanceLlm(_copy_focus_w1, repair)).plan
+    repaired, repaired_generation = _stored(plan, "focus", 0)
+    initial, initial_generation = _stored(plan, "focus", 1)
+
+    assert (repaired.value, repaired_generation.method, repaired_generation.rule_version) == (
+        "다시 쓴 1주 초점", GenerationMethod.RULE_LLM, MONTHLY_REPAIR_PROMPT_VERSION)
+    assert (initial.value, initial_generation.method, initial_generation.rule_version) == (
+        "Context-based focus 2", GenerationMethod.RULE_LLM, MONTHLY_PROMPT_VERSION)
+    assert repaired_generation.rule_id == initial_generation.rule_id == "monthly.llm.validated_proposal"
+    others = [cell.generation.rule_version for section in plan.sections for cell in section.cells
+              if cell.generation.method is GenerationMethod.RULE_LLM and cell is not repaired]
+    assert others and set(others) == {MONTHLY_PROMPT_VERSION}
+    assert [e.event_type for e in repaired.audit.events] == [AuditEventType.CREATED]
+    assert [e.event_type for e in initial.audit.events] == [AuditEventType.CREATED]
+
+
+def test_a_deterministically_normalized_cell_keeps_the_initial_version():
+    def initial(payload, request):
+        _paraphrase_outdoor_w1(payload, request)
+        _copy_focus_w1(payload, request)
+
+    def repair(payload, request):
+        _fix_focus_w1(payload, request)
+        _weekly(payload, 0, "outdoor_play")["value"] = "바깥에서 자유롭게 놀아요"  # ignored by the merge
+
+    harness = Harness()
+    provider = ScriptedProvenanceLlm(initial, repair)
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan
+    outdoor, generation = _stored(plan, "outdoor_play", 0)
+    activity_id, label = provider.monthly_requests[0].reference_labels[0]
+
+    assert outdoor.value == label and (generation.method, generation.rule_version) == (
+        GenerationMethod.RULE_LLM, MONTHLY_PROMPT_VERSION)
+    assert any(s.source_type is EvidenceSourceType.ACTIVITY_REFERENCE and s.source_id == activity_id
+               for s in outdoor.evidence)
+    assert _stored(plan, "focus", 0)[1].rule_version == MONTHLY_REPAIR_PROMPT_VERSION
+    assert [e.event_type for e in outdoor.audit.events] == [AuditEventType.CREATED]
+
+
+def test_a_normalized_cell_that_the_llm_repair_then_changes_takes_the_repair_version():
+    def initial(payload, request):
+        _paraphrase_outdoor_w1(payload, request)
+        # A second, repairable finding on the same cell: a ref of another Section's class.
+        _weekly(payload, 0, "outdoor_play")["grounding_refs"].append(grounding_ref_for(request, "focus"))
+
+    def repair(payload, request):
+        # The model keeps rejected_proposal's (already canonical) value and fixes only the refs.
+        _weekly(payload, 0, "outdoor_play").update(
+            value=request.reference_labels[0][1], grounding_refs=[grounding_ref_for(request, "outdoor_play")])
+
+    harness = Harness()
+    provider = ScriptedProvenanceLlm(initial, repair)
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan
+    findings = json.loads(provider.monthly_requests[1].user_content)["validation_findings"]
+    outdoor, generation = _stored(plan, "outdoor_play", 0)
+
+    assert [(f["code"], f["section_key"], f["week_id"]) for f in findings] == [
+        ("WRONG_SOURCE_GROUNDING", "outdoor_play", provider.monthly_requests[0].expected_week_ids[0].value)]
+    assert outdoor.value == provider.monthly_requests[0].reference_labels[0][1]
+    assert (generation.method, generation.rule_version) == (GenerationMethod.RULE_LLM, MONTHLY_REPAIR_PROMPT_VERSION)
+
+
+# ---------------------------------------------------------------- teacher edit provenance (Phase 2)
+
+
+def _teacher_edit(harness, plan, cell, value):
+    updated = EditMonthlyPlanItem(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities,
+    ).execute(EditMonthlyPlanItemCommand(plan.plan_id, cell.item_id, value, TEACHER))
+    return updated, updated.find_cell(cell.item_id)[3]
+
+
+def _outdoor_normalized_and_focus_copied(payload, request):
+    _paraphrase_outdoor_w1(payload, request)
+    _copy_focus_w1(payload, request)
+
+
+def _llm_plan_with_all_three_origins():
+    harness = Harness()
+    plan = harness.generate(
+        MonthlyGenerationMode.LLM_PLANNER, provider=ScriptedProvenanceLlm(_outdoor_normalized_and_focus_copied, _fix_focus_w1)
+    ).plan
+    return harness, plan
+
+
+@pytest.mark.parametrize(
+    ("section", "index", "version"),
+    [
+        ("focus", 1, MONTHLY_PROMPT_VERSION),  # M1 initial LLM value
+        ("focus", 0, MONTHLY_REPAIR_PROMPT_VERSION),  # M2 actually repaired
+        ("outdoor_play", 0, MONTHLY_PROMPT_VERSION),  # M3 deterministic normalization only
+    ],
+    ids=["initial", "repaired", "normalized"],
+)
+def test_a_teacher_edit_keeps_the_generation_provenance_and_adds_an_audit(section, index, version):
+    harness, plan = _llm_plan_with_all_three_origins()
+    before = plan.section(section).cells[index]
+    assert (before.generation.method, before.generation.rule_version) == (GenerationMethod.RULE_LLM, version)
+
+    updated, edited = _teacher_edit(harness, plan, before, "교사가 고친 문장")
+
+    assert edited.value == "교사가 고친 문장" and edited.generation == before.generation
+    assert edited.evidence == before.evidence
+    assert [e.event_type for e in edited.audit.events] == [AuditEventType.CREATED, AuditEventType.TEACHER_EDITED]
+    event = edited.audit.events[-1]
+    assert (event.actor_id, event.value_change.before, event.value_change.after) == (
+        TEACHER, before.value, "교사가 고친 문장")
+    assert updated.status is PlanStatus.DRAFT and harness.plans.get(updated.plan_id) is updated
+
+
+def test_a_teacher_edited_reference_cell_is_not_verified_and_still_saved():
+    harness, plan = _llm_plan_with_all_three_origins()
+    outdoor = plan.section("outdoor_play").cells[0]  # RULE_LLM, ACTIVITY_REFERENCE, canonical label
+
+    updated, edited = _teacher_edit(harness, plan, outdoor, "교사가 새로 쓴 바깥놀이")
+    findings = [
+        f for f in updated.verification_report.findings
+        if f.location.section_key == "outdoor_play" and f.location.week_id == outdoor.week_id
+    ]
+
+    assert edited.generation.method is GenerationMethod.RULE_LLM  # kept, yet not claimed as the label
+    assert [(f.code, f.finding_kind, f.severity) for f in findings] == [
+        (AGE_REFERENCE_NOT_VERIFIED_CODE, FindingKind.NOT_VERIFIED, Severity.WARNING)]
+    assert harness.plans.get(updated.plan_id) is updated  # saved, not blocked by a MonthlyRuleError
 
 
 

@@ -1748,14 +1748,14 @@ def test_an_unnamed_goals_value_keeps_its_base_value():
     patch = _with_goals(_mutated(_focus_copy), "다시 쓴 목표")
     patch["weeks"][0]["sections"][0]["value"] = "새 초점"
 
-    merged, ignored = merge_authorized_repair(
+    merged, applied, ignored = merge_authorized_repair(
         json.dumps(base, ensure_ascii=False), json.dumps(patch, ensure_ascii=False),
         (_issue("SOURCE_TEXT_COPY", "focus", "2026-09-W1"),))
     merged = json.loads(merged)
 
     assert merged["month_sections"][1]["value"] == "이번 달의 목표"
     assert merged["weeks"][0]["sections"][0]["value"] == "새 초점"
-    assert ignored == ((None, "goals", ("value",)),)
+    assert ignored == ((None, "goals", ("value",)),) and applied == (("2026-09-W1", "focus"),)
 
 
 def test_several_findings_authorize_exactly_their_cells():
@@ -1766,13 +1766,14 @@ def test_several_findings_authorize_exactly_their_cells():
     patch["weeks"][1]["sections"][0]["value"] = "바뀐 W2 초점"  # no finding
     issues = (_issue("TEXT_POLICY", "goals"), _issue("SOURCE_TEXT_COPY", "outdoor_play", "2026-09-W2"))
 
-    merged, ignored = merge_authorized_repair(json.dumps(base), json.dumps(patch), issues)
+    merged, applied, ignored = merge_authorized_repair(json.dumps(base), json.dumps(patch), issues)
     merged = json.loads(merged)
 
     assert merged["month_sections"][1]["value"] == "짧게 줄인 목표"
     assert merged["weeks"][1]["sections"][1]["value"] == "새 바깥놀이"
     assert merged["weeks"][1]["sections"][0]["value"] == base["weeks"][1]["sections"][0]["value"]
     assert ignored == (("2026-09-W2", "focus", ("value",)),)
+    assert applied == ((None, "goals"), ("2026-09-W2", "outdoor_play"))
 
 
 @pytest.mark.parametrize(
@@ -1790,13 +1791,13 @@ def test_each_finding_authorizes_only_the_fields_its_fix_needs(code, applied, bl
     patch["weeks"][1]["sections"][1].update(
         value="새 값", unresolved=True, reference_id="act-1", grounding_refs=["ev-2"])
 
-    merged, ignored = merge_authorized_repair(json.dumps(base), json.dumps(patch), (_issue(code, "outdoor_play", "2026-09-W2"),))
+    merged, changed_cells, ignored = merge_authorized_repair(json.dumps(base), json.dumps(patch), (_issue(code, "outdoor_play", "2026-09-W2"),))
     cell = json.loads(merged)["weeks"][1]["sections"][1]
     before = base["weeks"][1]["sections"][1]
 
     for name in ("value", "unresolved", "reference_id", "grounding_refs"):
         assert cell[name] == (patch["weeks"][1]["sections"][1] if name in applied else before)[name], name
-    assert ignored == (("2026-09-W2", "outdoor_play", blocked),)
+    assert ignored == (("2026-09-W2", "outdoor_play", blocked),) and changed_cells == (("2026-09-W2", "outdoor_play"),)
 
 
 def test_every_llm_repairable_code_has_a_mutation_contract():
@@ -1809,7 +1810,44 @@ def test_reordered_or_duplicate_refs_are_no_mutation():
     patch = monthly_payload()
     patch["weeks"][1]["sections"][1]["grounding_refs"] = ["ev-1", "ev-1"]
 
-    assert merge_authorized_repair(json.dumps(base), json.dumps(patch), ())[1] == ()
+    assert merge_authorized_repair(json.dumps(base), json.dumps(patch), ())[2] == ()
+
+
+def test_an_authorized_target_without_an_effective_change_is_not_repaired():
+    base = monthly_payload()
+    base["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-3", "ev-2"]
+    patch = json.loads(json.dumps(base))
+    patch["weeks"][0]["sections"][0].update(
+        value="  바람과 빛의 변화를   몸으로 살펴본다. ",  # same visible text
+        grounding_refs=["ev-2", "ev-3", "ev-3"],  # same set of refs
+    )
+    issues = (_issue("WRONG_SOURCE_GROUNDING", "focus", "2026-09-W1"),)
+
+    merged, applied, ignored = merge_authorized_repair(json.dumps(base), json.dumps(patch), issues)
+
+    assert applied == () and ignored == () and json.loads(merged) == base
+
+
+def test_the_outcome_names_only_the_cells_the_repair_actually_changed(packet, snapshot):
+    repaired = monthly_payload()
+    repaired["weeks"][0]["sections"][0]["value"] = "가을에 볼 수 있는 열매와 잎을 살펴본다."
+    repaired["weeks"][1]["sections"][0]["value"] = "무단으로 바꾼 2주 초점"  # no finding: ignored
+    fake = ScriptedMonthlyLlm(_mutated(_focus_copy), repaired, monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert outcome.repaired_cells == frozenset({("2026-09-W1", "focus")})
+    assert outcome.initial_prompt_version == MONTHLY_PROMPT_VERSION
+    assert outcome.prompt_version_for("2026-09-W1", "focus") == MONTHLY_REPAIR_PROMPT_VERSION
+    assert outcome.prompt_version_for("2026-09-W2", "focus") == MONTHLY_PROMPT_VERSION
+    assert outcome.prompt_version_for(None, "theme") == MONTHLY_PROMPT_VERSION
+
+
+def test_without_a_repair_every_cell_has_the_initial_version(packet, snapshot):
+    outcome = MonthlyPlanner(ScriptedMonthlyLlm(_mutated(_paraphrased), monthly_payload())).plan(packet, snapshot)
+
+    assert outcome.repaired_cells == frozenset()  # deterministic normalization is no repair
+    assert outcome.prompt_version == outcome.initial_prompt_version == MONTHLY_PROMPT_VERSION
 
 
 

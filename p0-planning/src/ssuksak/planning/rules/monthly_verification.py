@@ -174,8 +174,10 @@ def _trusted_activity_candidate(
             AGE_RULE_ID,
             "Activity Reference must resolve in the Plan Activity Catalog",
         )
+    # A teacher-edited value no longer claims to be the Reference label: NOT_VERIFIED.
     if (
-        cell.generation is None
+        cell.audit.current_value_teacher_edited()
+        or cell.generation is None
         or cell.generation.method
         not in {GenerationMethod.RULE_ONLY, GenerationMethod.RULE_LLM}
     ):

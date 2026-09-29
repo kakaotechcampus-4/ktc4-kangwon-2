@@ -63,6 +63,7 @@ class MonthlyPlanner:
         self, packet: MonthlyContextPacket, snapshot: TemplateSnapshot
     ) -> MonthlyPlanningOutcome:
         request = build_monthly_planning_request(packet, snapshot)
+        initial_prompt_version, repaired_cells = request.prompt_version, frozenset()
         response, proposal, validation = self._attempt(packet, request)
         content, found = response.content, validation.issues
         if not validation.is_valid and set(validation.codes) <= REPAIRABLE_CODES:
@@ -88,7 +89,8 @@ class MonthlyPlanner:
                 _log.warning("Monthly LLM repair failed before validation")
                 raise
             # The repair may change only what its findings name; the merge enforces it.
-            content, ignored = merge_authorized_repair(content, response.content, validation.issues)
+            content, applied, ignored = merge_authorized_repair(content, response.content, validation.issues)
+            repaired_cells = frozenset(applied)
             if ignored:
                 _log.info(
                     "Monthly LLM repair ignored unauthorized mutations: %s",
@@ -116,6 +118,8 @@ class MonthlyPlanner:
             prompt_version=request.prompt_version,
             packet_fingerprint=request.packet_fingerprint,
             request_id=response.request_id,
+            initial_prompt_version=initial_prompt_version,
+            repaired_cells=repaired_cells,
         )
 
     def _generate(self, request: MonthlyPlanningRequest):
