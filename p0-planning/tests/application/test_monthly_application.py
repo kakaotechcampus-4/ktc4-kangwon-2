@@ -8,6 +8,9 @@ import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.in_memory_template_profile_repository import (
+    InMemoryTemplateProfileRepository,
+)
 from ssuksak.adapters.institution_evidence_repository import (
     JsonInstitutionEvidenceRepository,
 )
@@ -36,11 +39,18 @@ from ssuksak.planning.application.regenerate_monthly_plan_item import (
     RegenerateMonthlyPlanItem,
 )
 from ssuksak.planning.context.builder import ContextPacketBuilder
-from ssuksak.planning.domain.errors import InvalidStateTransitionError
+from ssuksak.planning.domain.errors import (
+    InvalidDomainValueError,
+    InvalidStateTransitionError,
+)
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ssuksak.planning.domain.monthly_template import TemplateRef
+from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.monthly_template_profile import (
+    TemplateProfile,
+    TemplateProfileRef,
+)
 from ssuksak.planning.domain.plan import PlanItem, PlanStatus
 from ssuksak.planning.domain.provenance import (
     AuditEvent,
@@ -71,6 +81,13 @@ TARGET_THEME_ID = "yr_theme_korea_and_world_cultures"
 TEMPLATE = TemplateRef(
     "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
 )
+RULE_TEMPLATE = TemplateRef(
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+)
+PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
+RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
+COMMON_PROFILE = TemplateProfileRef("monthly-profile-institution", "v1")
+WRONG_CLASS_PROFILE = TemplateProfileRef("monthly-profile-wrong-class", "v1")
 ACTIVITY_CATALOG = ActivityCatalogSelector(
     "ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1"
 )
@@ -79,6 +96,46 @@ SAFETY_RULE = SafetyRuleSelector(
 )
 
 EVIDENCE_REPOSITORY = JsonInstitutionEvidenceRepository()
+
+
+def _profile(
+    template_repository: JsonMonthlyTemplateRepository,
+    template_ref: TemplateRef,
+    profile_ref: TemplateProfileRef,
+    *,
+    classroom_ref: str | None = "classroom_001",
+) -> TemplateProfile:
+    template = template_repository.get_template(
+        template_ref.template_id, template_ref.template_version
+    )
+    assert template is not None
+    labels = {
+        "theme": "Theme",
+        "week_axis": "Week",
+        "outdoor_play": "Outdoor play",
+        "safety_education": "Safety education",
+        "focus": "Subtheme",
+    }
+    sections = tuple(
+        replace(
+            section,
+            display_label=labels[section.section_key],
+            semantic_variant=(
+                SemanticVariant.SUBTHEME
+                if section.section_key == "focus"
+                else None
+            ),
+        )
+        for section in template.activated_sections
+    )
+    return TemplateProfile(
+        profile_ref=profile_ref,
+        institution_ref="daycare_001",
+        classroom_ref=classroom_ref,
+        base_template_ref=template.template_ref,
+        selected_optional_keys=("focus",) if template.section("focus").activated else (),
+        sections=sections,
+    )
 
 
 def _yearly_plan(*, confirmed: bool = True) -> YearlyPlan:
@@ -212,6 +269,24 @@ class Harness:
         self.plans: InMemoryPlanRepository[MonthlyPlan] = InMemoryPlanRepository()
         self.parents.save(PARENT_PLAN_ID, _yearly_plan(confirmed=parent_confirmed))
         self.templates = JsonMonthlyTemplateRepository()
+        self.profiles = InMemoryTemplateProfileRepository(
+            (
+                _profile(self.templates, TEMPLATE, PROFILE),
+                _profile(self.templates, RULE_TEMPLATE, RULE_PROFILE),
+                _profile(
+                    self.templates,
+                    TEMPLATE,
+                    COMMON_PROFILE,
+                    classroom_ref=None,
+                ),
+                _profile(
+                    self.templates,
+                    TEMPLATE,
+                    WRONG_CLASS_PROFILE,
+                    classroom_ref="classroom_other",
+                ),
+            )
+        )
         self.safety = JsonSafetyLegalRuleRepository()
         self.activities = JsonActivityReferenceRepository()
         self.clock = FixedClock(NOW)
@@ -228,7 +303,7 @@ class Harness:
             parent_yearly_plan_id=PARENT_PLAN_ID,
             target_month=TARGET_MONTH,
             daycare_ref="daycare_001",
-            template_ref=TEMPLATE,
+            profile_ref=PROFILE,
             safety_rule=SAFETY_RULE,
             generation_mode=mode,
             activity_catalog=ACTIVITY_CATALOG,
@@ -246,7 +321,7 @@ class Harness:
         use_case = GenerateMonthlyPlan(
             parent_plan_repository=self.parents,
             plan_repository=self.plans,
-            template_repository=self.templates,
+            profile_repository=self.profiles,
             safety_repository=self.safety,
             activity_repository=self.activities,
             clock=self.clock,
@@ -285,6 +360,8 @@ def test_rule_only_generation_assembles_complete_draft_and_saves_once():
 
     assert plan.status is PlanStatus.DRAFT
     assert plan.generation_mode is MonthlyGenerationMode.RULE_ONLY
+    assert plan.template_snapshot.profile_ref == PROFILE
+    assert plan.template_ref == TEMPLATE
     assert plan.parent_lineage.parent_plan_id == PARENT_PLAN_ID
     assert plan.parent_lineage.parent_item_id == ItemId("yearly_theme_07")
     assert tuple(section.section_key for section in plan.sections) == (
@@ -309,6 +386,63 @@ def test_rule_only_generation_assembles_complete_draft_and_saves_once():
     assert len(result.activity_selections) == len(plan.active_week_periods)
     assert harness.plans.save_count == 1
     assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_generation_resolves_an_exact_profile_version():
+    harness = Harness()
+    command = replace(
+        harness.command(),
+        profile_ref=TemplateProfileRef(PROFILE.profile_id, "missing"),
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(command=command)
+
+    assert exc.value.code == "monthly_template_profile_not_found"
+    assert harness.plans.save_count == 0
+
+
+def test_generation_command_accepts_profile_ref_not_template_ref():
+    harness = Harness()
+
+    with pytest.raises(InvalidDomainValueError, match="profile_ref"):
+        replace(harness.command(), profile_ref=TEMPLATE)
+
+
+def test_generation_rejects_profile_scope_mismatches():
+    harness = Harness()
+
+    with pytest.raises(MonthlyApplicationError) as institution_error:
+        harness.generate(
+            command=replace(harness.command(), daycare_ref="daycare_other")
+        )
+    assert (
+        institution_error.value.code
+        == "monthly_template_profile_institution_mismatch"
+    )
+
+    with pytest.raises(MonthlyApplicationError) as classroom_error:
+        harness.generate(
+            command=replace(
+                harness.command(), profile_ref=WRONG_CLASS_PROFILE
+            )
+        )
+    assert (
+        classroom_error.value.code
+        == "monthly_template_profile_classroom_mismatch"
+    )
+    assert harness.plans.save_count == 0
+
+
+def test_generation_accepts_an_institution_wide_profile():
+    harness = Harness()
+
+    result = harness.generate(
+        command=replace(harness.command(), profile_ref=COMMON_PROFILE)
+    )
+
+    assert result.plan.template_snapshot.classroom_ref is None
+    assert result.plan.classroom_ref == "classroom_001"
 
 
 def test_generation_requires_an_explicitly_confirmed_yearly_parent():
@@ -336,9 +470,7 @@ def test_llm_mode_rejects_a_template_that_cannot_retain_focus_output():
     provider = RequestAwareMonthlyLlm()
     command = replace(
         harness.command(MonthlyGenerationMode.LLM_PLANNER),
-        template_ref=TemplateRef(
-            "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
-        ),
+        profile_ref=RULE_PROFILE,
     )
 
     with pytest.raises(MonthlyApplicationError) as exc:
