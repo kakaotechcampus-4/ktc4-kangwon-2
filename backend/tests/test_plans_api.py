@@ -109,7 +109,11 @@ def test_칸을_고치면_그_달만_돌아오고_근거는_그대로다(db_sess
     assert after["sub_themes"] == ["첫째 주", "둘째 주"]
     # 교사가 문구를 고쳐도 그 칸의 근거는 안 바뀐다(§6).
     assert after["evidence"] == before["evidence"]
-    assert after["generation"]["method"] == "TEACHER_EDIT"
+    # **「교사가 고쳤다」를 generation 으로 판단하지 않는다.** generation 은 「이 값을 처음
+    # 무엇이 만들었나」라서 교사가 다듬었다고 그 사실이 사라지지 않는다(§6). 고친 사실은
+    # Audit 에 남고 화면의 「교사 수정됨」 배지가 이걸 본다.
+    events = client.get(f"/api/plans/annual/{created['id']}/audit").json()["items"]
+    assert any(e["type"] == "TEACHER_EDITED" and e["month"] == 3 for e in events)
 
 
 def test_소주제를_빼고_보내면_422_이고_아무것도_저장되지_않는다(db_session, mine):
