@@ -7,17 +7,64 @@ Monthly planning and cell-regeneration application flows.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import re
 
 from ..domain.errors import DomainError, InvalidDomainValueError
-from ..domain.monthly_template import DisplayMode
+from ..domain.monthly_template import DisplayMode, SectionRole, TemplateSection
+from ..domain.monthly_template_profile import (
+    INSTITUTION_INPUT_SECTION_KEYS,
+    TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
+)
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v3"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v4"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v8"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
+# Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
+MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v3"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
+# Providers may report the requested family without the vendor prefix, or the
+# dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").
+_MONTHLY_MODEL_SNAPSHOT = re.compile(
+    re.escape(MONTHLY_MODEL.rsplit("/", 1)[-1]) + r"(?:-(\d{4}-\d{2}-\d{2}))?"
+)
+
+
+def is_compatible_monthly_model(observed: object) -> bool:
+    """True when a provider-reported model id is MONTHLY_MODEL or its dated snapshot."""
+    if not isinstance(observed, str):
+        return False
+    if observed == MONTHLY_MODEL:
+        return True
+    match = _MONTHLY_MODEL_SNAPSHOT.fullmatch(observed)
+    if match is None:
+        return False
+    if match.group(1) is None:
+        return True
+    try:
+        date.fromisoformat(match.group(1))
+    except ValueError:
+        return False
+    return True
+
+
+
+def generation_target_sections(snapshot: TemplateSnapshot) -> tuple[TemplateSection, ...]:
+    """Snapshot Sections the LLM writes values for.
+
+    AXIS Sections (week_axis) only shape the weeks, institution-input Sections are
+    never invented, and Template-specific Sections have no approved generation
+    policy. They all stay in the Snapshot; they are just not generation targets.
+    """
+    excluded = INSTITUTION_INPUT_SECTION_KEYS | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS
+    return tuple(
+        section
+        for section in snapshot.sections
+        if section.role is SectionRole.CONTENT and section.section_key not in excluded
+    )
+
 
 FOCUS_SECTION_KEY = "focus"
 OUTDOOR_SECTION_KEY = "outdoor_play"
@@ -52,6 +99,25 @@ def _require_reference_labels(
         )
     if len({key for key, _ in values}) != len(values):
         raise InvalidDomainValueError(f"{name} ids must be unique")
+
+
+def _require_allowed_refs(
+    name: str,
+    values: tuple[tuple[str, tuple[str, ...]], ...],
+    valid: frozenset[str],
+) -> None:
+    if not isinstance(values, tuple) or any(
+        not isinstance(item, tuple)
+        or len(item) != 2
+        or not isinstance(item[0], str)
+        or not item[0].strip()
+        or not isinstance(item[1], tuple)
+        or not set(item[1]) <= valid
+        for item in values
+    ):
+        raise InvalidDomainValueError(
+            f"{name} must pair section keys with supplied grounding refs"
+        )
 
 
 def _require_grounding_refs(name: str, values: frozenset[str]) -> None:
@@ -191,6 +257,9 @@ class MonthlyPlanningRequest:
     reference_labels: tuple[tuple[str, str], ...] = ()
     valid_grounding_refs: frozenset[str] = frozenset()
     packet_fingerprint: str = ""
+    # One entry per LLM generation target of this request, with the supplied refs
+    # it may cite (see prompt.generation_targets).
+    allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def __post_init__(self) -> None:
         for name in (
@@ -229,6 +298,11 @@ class MonthlyPlanningRequest:
         )
         _require_grounding_refs(
             "MonthlyPlanningRequest.valid_grounding_refs",
+            self.valid_grounding_refs,
+        )
+        _require_allowed_refs(
+            "MonthlyPlanningRequest.allowed_grounding_refs_by_section",
+            self.allowed_grounding_refs_by_section,
             self.valid_grounding_refs,
         )
         _require_sha256(
@@ -285,6 +359,7 @@ class MonthlyCellPlanningRequest:
     valid_grounding_refs: frozenset[str] = frozenset()
     packet_fingerprint: str = ""
     plan_snapshot_fingerprint: str = ""
+    allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def __post_init__(self) -> None:
         for name in (
@@ -335,6 +410,11 @@ class MonthlyCellPlanningRequest:
         )
         _require_grounding_refs(
             "MonthlyCellPlanningRequest.valid_grounding_refs",
+            self.valid_grounding_refs,
+        )
+        _require_allowed_refs(
+            "MonthlyCellPlanningRequest.allowed_grounding_refs_by_section",
+            self.allowed_grounding_refs_by_section,
             self.valid_grounding_refs,
         )
         _require_sha256(

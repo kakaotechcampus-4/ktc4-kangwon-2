@@ -10,7 +10,7 @@ from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
 )
 from ssuksak.planning.domain.monthly_template import DisplayMode
-from ssuksak.planning.planner.cell_prompt import build_monthly_cell_request
+from ssuksak.planning.planner.cell_prompt import CELL_SYSTEM_PROMPT, build_monthly_cell_request
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
 from ssuksak.planning.domain.errors import InvalidDomainValueError
@@ -20,9 +20,14 @@ from ssuksak.planning.planner.contracts import (
     GOALS_SECTION_KEY,
     MONTHLY_CELL_PROMPT_VERSION,
     MONTHLY_MODEL,
+    MONTHLY_PROMPT_VERSION,
+    MONTHLY_REPAIR_PROMPT_VERSION,
+    RawLlmResponse,
+    is_compatible_monthly_model,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
     ProposalParseError,
+    ProposedSectionValue,
     ProposalRejectedError,
 )
 from ssuksak.planning.context.models import GroundingContextItem
@@ -32,11 +37,20 @@ from ssuksak.planning.evidence.classification import SemanticClass
 from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.evidence.models import ReusePolicy, SourceSection
 from ssuksak.planning.retrieval.models import AgeMatchKind
+from ssuksak.planning.planner.contracts import generation_target_sections
 from ssuksak.planning.planner.parser import (
+    CELL_RESPONSE_SCHEMA,
+    MONTHLY_RESPONSE_SCHEMA,
+    cell_response_schema,
+    monthly_response_schema,
     parse_monthly_cell_proposal,
     parse_monthly_proposal,
 )
-from ssuksak.planning.planner.prompt import build_monthly_planning_request
+from ssuksak.planning.planner.prompt import (
+    REPAIR_SYSTEM_PROMPT,
+    SYSTEM_PROMPT as MONTHLY_SYSTEM_PROMPT,
+    build_monthly_planning_request,
+)
 from ssuksak.planning.planner.service import MonthlyPlanner
 from ssuksak.planning.planner.validation import (
     validate_monthly_proposal,
@@ -734,7 +748,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v4"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v9"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -807,3 +821,579 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
     del payload["target_week_id"]
     with pytest.raises(ProposalParseError, match="fields mismatch"):
         parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------- Korean output contract
+
+
+@pytest.mark.parametrize(
+    ("system_prompt", "version", "expected"),
+    [
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v8"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v9"),
+    ],
+    ids=["monthly", "cell"],
+)
+def test_prompts_require_korean_values_but_keep_machine_values(system_prompt, version, expected):
+    assert version == expected
+    assert "Write user-facing plan text in value fields in natural Korean." in system_prompt
+    assert "never translate them" in system_prompt
+    for machine_value in ("JSON keys", "section_key", "week ids", "enum values", "reference_id", "grounding_refs"):
+        assert machine_value in system_prompt
+    assert "Include every key required by response_contract in every object and cell;" in system_prompt
+    assert "include the key with null, never omit it." in system_prompt
+
+
+@pytest.mark.parametrize(
+    ("parse", "payload", "section"),
+    [
+        (parse_monthly_proposal, monthly_payload, lambda body: body["weeks"][0]["sections"][0]),
+        (parse_monthly_cell_proposal, cell_payload, lambda body: body["section"]),
+    ],
+    ids=["monthly", "cell"],
+)
+def test_parser_still_rejects_an_omitted_nullable_key(parse, payload, section):
+    body = payload()
+    del section(body)["reference_id"]
+
+    with pytest.raises(ProposalParseError, match=r"missing=\['reference_id'\]"):
+        parse(json.dumps(body, ensure_ascii=False))
+
+
+def test_built_requests_carry_the_korean_contract(packet, snapshot):
+    monthly = build_monthly_planning_request(packet, snapshot)
+    cell = build_monthly_cell_request(
+        packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
+    )
+
+    assert (monthly.prompt_version, monthly.system_prompt) == (MONTHLY_PROMPT_VERSION, MONTHLY_SYSTEM_PROMPT)
+    assert (cell.prompt_version, cell.system_prompt) == (MONTHLY_CELL_PROMPT_VERSION, CELL_SYSTEM_PROMPT)
+
+
+# ---------------------------------------------------------------- model identity compatibility
+
+
+@pytest.mark.parametrize(
+    "observed", ["openai/gpt-4.1-mini", "gpt-4.1-mini", "gpt-4.1-mini-2025-04-14"]
+)
+def test_requested_family_and_its_dated_snapshot_are_compatible(observed):
+    assert is_compatible_monthly_model(observed)
+
+
+@pytest.mark.parametrize(
+    "observed",
+    [
+        "gpt-4.1",
+        "gpt-4.1-nano",
+        "gpt-4.1-mini-preview",
+        "gpt-4.1-mini-custom",
+        "abc-gpt-4.1-mini",
+        "gpt-4.1-mini-2025-04-14-extra",
+        "gpt-4.1-mini-2025-13-40",
+        "openai/gpt-4.1-nano",
+        "",
+        None,
+    ],
+)
+def test_other_models_are_not_compatible(observed):
+    assert not is_compatible_monthly_model(observed)
+
+
+def test_planners_accept_a_dated_snapshot_and_keep_the_observed_model(packet, snapshot):
+    snapshot_model = "gpt-4.1-mini-2025-04-14"
+    fake = DeterministicMonthlyLlm(
+        json.dumps(monthly_payload(), ensure_ascii=False),
+        json.dumps(cell_payload(), ensure_ascii=False),
+        model=snapshot_model,
+    )
+    monthly = MonthlyPlanner(fake).plan(packet, snapshot)
+    cell = MonthlyCellPlanner(fake).plan(
+        packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
+    )
+
+    assert monthly.model == cell.model == snapshot_model
+    assert fake.monthly_requests and fake.cell_requests
+
+
+# ---------------------------------------------------------------- Structured Output schemas
+
+
+def _objects(schema):
+    """Every object schema reachable from a response schema."""
+    for branch in schema.get("anyOf", ()):
+        yield from _objects(branch)
+    if schema.get("type") == "object":
+        yield schema
+        for value in schema["properties"].values():
+            yield from _objects(value)
+    elif schema.get("type") == "array":
+        yield from _objects(schema["items"])
+
+
+@pytest.mark.parametrize("schema", [MONTHLY_RESPONSE_SCHEMA, CELL_RESPONSE_SCHEMA], ids=["monthly", "cell"])
+def test_response_schemas_are_strict_at_every_object_level(schema):
+    objects = list(_objects(schema))
+
+    assert len(objects) >= 2
+    for item in objects:
+        assert item["additionalProperties"] is False
+        assert item["required"] == list(item["properties"])
+
+
+def test_response_schemas_match_the_parser_contract():
+    section = MONTHLY_RESPONSE_SCHEMA["properties"]["weeks"]["items"]["properties"]["sections"]["items"]
+
+    assert set(MONTHLY_RESPONSE_SCHEMA["properties"]) == {"target_month", "month_sections", "weeks"}
+    assert "week_axis" not in MONTHLY_RESPONSE_SCHEMA["properties"]
+    assert set(CELL_RESPONSE_SCHEMA["properties"]) == {"target_month", "target_week_id", "section"}
+    assert CELL_RESPONSE_SCHEMA["properties"]["section"] == section
+    assert set(section["properties"]) == {"section_key", "value", "unresolved", "reference_id", "grounding_refs"}
+    assert "reference_id" in section["required"]
+    assert section["properties"]["reference_id"]["type"] == ["string", "null"]
+    assert CELL_RESPONSE_SCHEMA["properties"]["target_week_id"]["type"] == ["string", "null"]
+
+
+def test_parser_still_rejects_an_extra_top_level_week_axis():
+    body = monthly_payload()
+    body["week_axis"] = []
+
+    with pytest.raises(ProposalParseError, match=r"extra=\['week_axis'\]"):
+        parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------- request-scoped generation targets
+
+
+def _same_keys(scoped, static):
+    """Request scoping only narrows values; every object keeps the static key set."""
+    for branch in scoped.get("anyOf", ()):
+        _same_keys(branch, static)
+    if static.get("type") == "object" and "anyOf" not in scoped:
+        assert set(scoped["properties"]) == set(static["properties"])
+        for key, value in static["properties"].items():
+            _same_keys(scoped["properties"][key], value)
+    elif static.get("type") == "array" and "anyOf" not in scoped:
+        _same_keys(scoped["items"], static["items"])
+
+
+def test_week_axis_stays_in_the_snapshot_but_is_not_a_generation_target(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    body = json.loads(request.user_content)
+
+    assert snapshot.section("week_axis") is not None
+    assert "week_axis" not in {section.section_key for section in generation_target_sections(snapshot)}
+    assert "week_axis" not in {item["section_key"] for item in body["generation_schema"]["sections"]}
+    assert request.expected_week_ids == (WEEK_1, WeekId("2026-09-W2"))
+
+
+def test_monthly_response_schema_is_scoped_to_targets_and_supplied_refs(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    schema = monthly_response_schema(request)
+    month = _branches(schema["properties"]["month_sections"]["items"])
+    week = _branches(schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"])
+
+    assert set(month) == {"theme"}
+    assert set(week) == {"focus", "outdoor_play"}  # no safety grounding supplied
+    assert set().union(*month.values(), *week.values()) <= request.valid_grounding_refs
+    _same_keys(schema, MONTHLY_RESPONSE_SCHEMA)
+    assert all(item["additionalProperties"] is False for item in _objects(schema))
+
+
+def test_cell_response_schema_is_scoped_to_the_target_section(packet, snapshot):
+    request = build_monthly_cell_request(
+        packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
+    )
+    section = cell_response_schema(request)["properties"]["section"]
+
+    assert _branches(section) == {"focus": ("ev-3",)}
+    _same_keys(cell_response_schema(request), CELL_RESPONSE_SCHEMA)
+
+
+# ---------------------------------------------------------------- OD-N04 one repair attempt
+
+
+class ScriptedMonthlyLlm:
+    """Returns the scripted responses in order and records every request."""
+
+    def __init__(self, *responses, model=MONTHLY_MODEL):
+        self._responses = [
+            item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
+            for item in responses
+        ]
+        self._model = model
+        self.monthly_requests = []
+
+    def generate_monthly(self, request):
+        self.monthly_requests.append(request)
+        return RawLlmResponse(self._responses[len(self.monthly_requests) - 1], self._model)
+
+
+def _source_copy(body):
+    body["weeks"][1]["sections"][1]["value"] = "나뭇잎 색을 관찰한다."  # ev-1 text
+
+
+def _legal_claim(body):
+    body["weeks"][0]["sections"][0]["value"] = "법적 기준에 맞게 바람을 살펴본다."
+
+
+def _wrong_source(body):
+    body["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-1"]
+
+
+def _mutated(mutate):
+    body = monthly_payload()
+    mutate(body)
+    return body
+
+
+def test_valid_first_response_is_used_without_repair(packet, snapshot):
+    fake = ScriptedMonthlyLlm(monthly_payload(), monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert len(fake.monthly_requests) == 1
+    assert outcome.prompt_version == MONTHLY_PROMPT_VERSION
+
+
+@pytest.mark.parametrize(
+    ("mutate", "finding"),
+    [
+        (_source_copy, {"code": "SOURCE_TEXT_COPY", "section_key": "outdoor_play", "week_id": "2026-09-W2", "detail": ""}),
+        (_legal_claim, {"code": "TEXT_POLICY", "section_key": "focus", "week_id": "2026-09-W1", "detail": "OFFICIAL_OR_LEGAL_CLAIM"}),
+        (_wrong_source, {"code": "WRONG_SOURCE_GROUNDING", "section_key": "focus", "week_id": "2026-09-W1", "detail": "('ev-1',)"}),
+    ],
+    ids=["source-copy", "text-policy", "wrong-source"],
+)
+def test_repairable_finding_gets_one_repair_with_locators(packet, snapshot, mutate, finding):
+    rejected = _mutated(mutate)
+    fake = ScriptedMonthlyLlm(rejected, monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    initial, repair = fake.monthly_requests
+    body = json.loads(repair.user_content)
+
+    assert outcome.prompt_version == repair.prompt_version == MONTHLY_REPAIR_PROMPT_VERSION
+    assert outcome.proposal == parse_monthly_proposal(json.dumps(monthly_payload(), ensure_ascii=False))
+    assert repair.system_prompt == REPAIR_SYSTEM_PROMPT
+    assert body == {
+        "original_request": json.loads(initial.user_content),
+        "rejected_proposal": rejected,
+        "validation_findings": [finding],
+    }
+    assert replace(repair, prompt_version=initial.prompt_version, system_prompt=initial.system_prompt,
+                   user_content=initial.user_content) == initial
+    assert monthly_response_schema(repair) == monthly_response_schema(initial)
+
+
+def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v3"
+    assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
+    assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
+    for rule in (
+        "never copy evidence text verbatim",
+        "Cite only grounding_refs supplied in original_request.evidence",
+        "keep cells without a",
+        "Write user-facing plan text in value fields in natural Korean.",
+        "never translate them",
+        "must not claim legal or official status",
+    ):
+        assert rule in REPAIR_SYSTEM_PROMPT
+
+
+def test_failed_repair_fails_closed_after_exactly_two_calls(packet, snapshot):
+    fake = ScriptedMonthlyLlm(_mutated(_source_copy), _mutated(_legal_claim), monthly_payload())
+
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert exc.value.validation_codes == ("TEXT_POLICY",)
+    assert len(fake.monthly_requests) == 2
+
+
+@pytest.mark.parametrize(
+    ("responses", "model", "error"),
+    [
+        (("{not json", monthly_payload()), MONTHLY_MODEL, ProposalParseError),
+        (({**monthly_payload(), "week_axis": []}, monthly_payload()), MONTHLY_MODEL, ProposalParseError),
+        ((monthly_payload(), monthly_payload()), "other-model", ProposalRejectedError),
+    ],
+    ids=["malformed-json", "schema-mismatch", "unexpected-model"],
+)
+def test_parse_schema_and_model_failures_are_never_repaired(packet, snapshot, responses, model, error):
+    fake = ScriptedMonthlyLlm(*responses, model=model)
+
+    with pytest.raises(error):
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert len(fake.monthly_requests) == 1
+
+
+def test_a_malformed_repair_response_fails_closed_without_a_third_call(packet, snapshot):
+    fake = ScriptedMonthlyLlm(_mutated(_source_copy), "{not json", monthly_payload())
+
+    with pytest.raises(ProposalParseError):
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert len(fake.monthly_requests) == 2
+
+
+def _axis_content(body):
+    body["weeks"][0]["sections"].append(
+        {"section_key": "week_axis", "value": "1주", "unresolved": False, "reference_id": None, "grounding_refs": ["ev-1"]}
+    )
+
+
+def _unknown_ref(body):
+    body["weeks"][1]["sections"][1]["grounding_refs"] = ["invented-ref"]
+
+
+def _theme_changed(body):
+    body["month_sections"][0]["value"] = "겨울"
+
+
+@pytest.mark.parametrize(
+    ("mutations", "code"),
+    [
+        ((_axis_content,), "AXIS_CONTENT"),
+        ((_axis_content, _source_copy), "AXIS_CONTENT"),
+        ((_unknown_ref,), "UNKNOWN_GROUNDING_REF"),
+        ((_theme_changed,), "THEME_VALUE_MISMATCH"),
+    ],
+    ids=["axis", "axis-with-repairable", "unknown-ref", "theme"],
+)
+def test_invariant_findings_are_never_repaired(packet, snapshot, mutations, code):
+    body = monthly_payload()
+    for mutate in mutations:
+        mutate(body)
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert code in exc.value.validation_codes
+    assert len(fake.monthly_requests) == 1
+
+
+# ---------------------------------------------------------------- section-specific grounding schema
+
+
+def _branches(items):
+    """{section_key: allowed grounding refs} of one Section array's item schema."""
+    result = {}
+    for branch in items.get("anyOf", (items,)):
+        (key,) = branch["properties"]["section_key"]["enum"]
+        refs = branch["properties"]["grounding_refs"]
+        result[key] = tuple(refs["items"].get("enum", ())) if refs.get("maxItems") != 0 else ()
+    return result
+
+
+def _all_classes_packet(packet):
+    """Unclassified ev-1/ev-2 plus one ref per approved class (SUBTHEME ev-3 already present)."""
+    return replace(
+        packet,
+        section_evidence=packet.section_evidence
+        + (
+            _section_item("ev-goals", SemanticClass.GOALS, "교사의 기대"),
+            _section_item("ev-habit", SemanticClass.BASIC_HABIT, "기본생활습관"),
+            _section_item("ev-play", SemanticClass.EXPECTED_PLAY, "예상놀이"),
+        ),
+    )
+
+
+def _schema_branches(packet, snapshot):
+    schema = monthly_response_schema(build_monthly_planning_request(packet, snapshot))
+    month = _branches(schema["properties"]["month_sections"]["items"])
+    week = _branches(schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"])
+    assert not set(month) & set(week)
+    return {**month, **week}, set(month), set(week)
+
+
+def test_each_section_branch_lists_only_its_approved_class_refs(packet, snapshot):
+    branches, month, week = _schema_branches(_all_classes_packet(packet), _with_goals_and_basic_habit(snapshot))
+
+    assert branches == {
+        "theme": ("ev-1", "ev-2"),
+        "goals": ("ev-goals",),
+        "focus": ("ev-3",),
+        "basic_habit": ("ev-habit",),
+        "outdoor_play": ("ev-1", "ev-2"),
+    }
+    assert month == {"theme", "goals"}
+    assert week == {"focus", "basic_habit", "outdoor_play"}
+
+
+def test_expected_play_focus_branch_lists_only_expected_play_refs(packet, snapshot):
+    branches, _, _ = _schema_branches(
+        _all_classes_packet(packet), _with_focus_variant(snapshot, SemanticVariant.EXPECTED_PLAY)
+    )
+
+    assert branches["focus"] == ("ev-play",)
+
+
+def test_cell_schema_uses_the_target_section_branch(packet, snapshot):
+    request = build_monthly_cell_request(
+        _all_classes_packet(packet),
+        _with_goals_and_basic_habit(snapshot),
+        target_week_id=None,
+        target_section_key=GOALS_SECTION_KEY,
+        month_snapshot=snapshots(),
+    )
+
+    assert _branches(cell_response_schema(request)["properties"]["section"]) == {"goals": ("ev-goals",)}
+
+
+def test_a_section_without_allowed_refs_gets_an_empty_list_not_the_packet_refs(packet, snapshot):
+    branches, _, _ = _schema_branches(packet, _with_goals_and_basic_habit(snapshot))
+    schema = monthly_response_schema(build_monthly_planning_request(packet, _with_goals_and_basic_habit(snapshot)))
+    goals = next(
+        branch for branch in schema["properties"]["month_sections"]["items"]["anyOf"]
+        if branch["properties"]["section_key"]["enum"] == ["goals"]
+    )
+
+    assert branches["goals"] == branches["basic_habit"] == ()
+    assert goals["properties"]["grounding_refs"] == {"type": "array", "items": {"type": "string"}, "maxItems": 0}
+
+
+def test_week_axis_and_unsupported_sections_have_no_schema_branch(packet, snapshot):
+    branches, _, _ = _schema_branches(packet, snapshot)
+
+    assert "week_axis" not in branches
+    assert not set(branches) & {"event_schedule", "drill", "special_program", "daily_routine"}
+
+
+def test_allowed_refs_must_be_supplied_refs(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+
+    with pytest.raises(InvalidDomainValueError, match="allowed_grounding_refs_by_section"):
+        replace(request, allowed_grounding_refs_by_section=(("focus", ("ev-not-supplied",)),))
+
+
+def test_validators_still_reject_unknown_and_wrong_source_refs_behind_the_schema(packet, snapshot):
+    unknown = monthly_payload()
+    unknown["weeks"][1]["sections"][1]["grounding_refs"] = ["invented-ref"]
+    wrong = monthly_payload()
+    wrong["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-1"]
+
+    assert "UNKNOWN_GROUNDING_REF" in _validate(unknown, packet, snapshot).codes
+    assert "WRONG_SOURCE_GROUNDING" in _validate(wrong, packet, snapshot).codes
+
+
+@pytest.mark.parametrize(
+    ("refs", "expected"),
+    [
+        (["ref-a", "ref-a"], ("ref-a",)),
+        (["ref-a", "ref-b", "ref-a"], ("ref-a", "ref-b")),
+        (["ref-b", "ref-a"], ("ref-b", "ref-a")),
+    ],
+    ids=["repeat", "first-seen-order", "already-unique"],
+)
+def test_parser_canonicalizes_exact_duplicate_refs_in_first_seen_order(refs, expected):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][0]["grounding_refs"] = refs
+    cell = cell_payload()
+    cell["section"]["grounding_refs"] = refs
+
+    assert parse_monthly_proposal(json.dumps(body, ensure_ascii=False)).weeks[0].sections[0].grounding_refs == expected
+    assert parse_monthly_cell_proposal(json.dumps(cell, ensure_ascii=False)).section.grounding_refs == expected
+
+
+@pytest.mark.parametrize(
+    "system_prompt", [MONTHLY_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT, CELL_SYSTEM_PROMPT], ids=["monthly", "repair", "cell"]
+)
+def test_prompts_forbid_duplicate_refs_in_a_cell(system_prompt):
+    assert "Within each grounding_refs array, include each reference id at most once;" in system_prompt
+    assert "never repeat the same reference id in a cell." in system_prompt
+
+
+# ---------------------------------------------------------------- duplicate grounding refs canonicalization
+
+
+def test_domain_value_still_rejects_duplicate_refs():
+    with pytest.raises(InvalidDomainValueError, match="grounding_refs must be unique"):
+        ProposedSectionValue("focus", "바람을 살펴본다.", False, ("ev-3", "ev-3"))
+
+
+@pytest.mark.parametrize(
+    ("week", "section", "refs", "code"),
+    [
+        (1, 1, ["invented-ref", "invented-ref"], "UNKNOWN_GROUNDING_REF"),
+        (0, 0, ["ev-1", "ev-1"], "WRONG_SOURCE_GROUNDING"),
+    ],
+    ids=["unknown", "wrong-source"],
+)
+def test_canonicalization_keeps_invalid_refs_for_the_validators(packet, snapshot, week, section, refs, code):
+    body = monthly_payload()
+    body["weeks"][week]["sections"][section]["grounding_refs"] = refs
+
+    assert code in _validate(body, packet, snapshot).codes
+
+
+@pytest.mark.parametrize("value", [["ev-3", ""], ["ev-3", 3], "ev-3"], ids=["blank", "non-string", "not-array"])
+def test_malformed_refs_are_still_rejected(value):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][0]["grounding_refs"] = value
+
+    with pytest.raises(ProposalParseError, match="array of non-blank strings"):
+        parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
+
+
+def test_duplicate_refs_alone_never_start_a_repair(packet, snapshot, caplog):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][0]["grounding_refs"] = ["ev-3", "ev-3"]
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    with caplog.at_level("INFO", logger="ssuksak.planning.planner"):
+        outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert len(fake.monthly_requests) == 1
+    assert outcome.prompt_version == MONTHLY_PROMPT_VERSION
+    assert outcome.proposal.weeks[0].sections[0].grounding_refs == ("ev-3",)
+    assert "duplicate_grounding_refs_normalized count=1" in caplog.text
+    assert "repair" not in caplog.text
+
+
+# ---------------------------------------------------------------- safety generation follows SAFETY_GROUNDING_REQUIRED
+
+
+def _safety_item(ref="safety-1"):
+    return GroundingContextItem(
+        evidence_ref=ref,
+        text="교통 안전 규칙 자료",
+        source_section=SourceSection.SAFETY_EDUCATION,
+        source_label="안전교육",
+        age_scope=(3, 4),
+        age_match=AgeMatchKind.MIXED_AGE_COVERING,
+        institution_alias="S1",
+        reuse_policy=ReusePolicy.CONTEXT_ONLY,
+    )
+
+
+def _without_safety(body):
+    for week in body["weeks"]:
+        week["sections"] = [item for item in week["sections"] if item["section_key"] != "safety_education"]
+    return body
+
+
+def test_safety_without_safety_grounding_is_not_an_llm_target(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    body = json.loads(request.user_content)
+
+    assert snapshot.section("safety_education").required_for_generation
+    assert "safety_education" not in {item["section_key"] for item in body["generation_schema"]["sections"]}
+    assert "safety_education" not in dict(request.allowed_grounding_refs_by_section)
+    assert "safety_education" not in _schema_branches(packet, snapshot)[0]
+    assert _validate(_without_safety(monthly_payload()), packet, snapshot).is_valid
+
+
+def test_safety_with_safety_grounding_is_a_target_citing_only_safety_refs(packet, snapshot):
+    grounded = _all_classes_packet(replace(packet, institution_evidence=(*packet.institution_evidence, _safety_item())))
+    branches, _, week = _schema_branches(grounded, snapshot)
+
+    assert branches["safety_education"] == ("safety-1",)
+    assert "safety_education" in week
+    assert "REQUIRED_SECTION_MISSING" in _validate(_without_safety(monthly_payload()), grounded, snapshot).codes
+
+
+@pytest.mark.parametrize("refs", [[], ["ev-1"]], ids=["no-refs", "non-safety-ref"])
+def test_resolved_safety_without_safety_grounding_is_still_rejected(packet, snapshot, refs):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][2].update(value="안전하게 놀이한다.", unresolved=False, grounding_refs=refs)
+
+    assert "SAFETY_GROUNDING_REQUIRED" in _validate(body, packet, snapshot).codes

@@ -3,18 +3,124 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
+from ..domain.monthly_template import DisplayMode
 from .contracts import (
+    MonthlyCellPlanningRequest,
     MonthlyCellProposal,
+    MonthlyPlanningRequest,
+    generation_target_sections,
     MonthlyPlanProposal,
     ProposalParseError,
     ProposedSectionValue,
     ProposedWeek,
 )
+
+_log = logging.getLogger(__name__)
+
+
+def _object_schema(properties: dict[str, Any]) -> dict[str, Any]:
+    """A strict object: every property required, no additional properties."""
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+_STRING = {"type": "string"}
+_NULLABLE_STRING = {"type": ["string", "null"]}
+# One schema per response object. The parser reads its exact key sets from these,
+# so the provider-level Structured Output schema cannot drift from the parser.
+_SECTION_SCHEMA = _object_schema(
+    {
+        "section_key": _STRING,
+        "value": _STRING,
+        "unresolved": {"type": "boolean"},
+        "reference_id": _NULLABLE_STRING,
+        "grounding_refs": {"type": "array", "items": _STRING},
+    }
+)
+_WEEK_SCHEMA = _object_schema(
+    {"week_id": _STRING, "sections": {"type": "array", "items": _SECTION_SCHEMA}}
+)
+MONTHLY_RESPONSE_SCHEMA = _object_schema(
+    {
+        "target_month": _STRING,
+        "month_sections": {"type": "array", "items": _SECTION_SCHEMA},
+        "weeks": {"type": "array", "items": _WEEK_SCHEMA},
+    }
+)
+CELL_RESPONSE_SCHEMA = _object_schema(
+    {"target_month": _STRING, "target_week_id": _NULLABLE_STRING, "section": _SECTION_SCHEMA}
+)
+
+
+def _keys(schema: dict[str, Any]) -> frozenset[str]:
+    return frozenset(schema["properties"])
+
+
+def _section_branch(section_key: str, refs: tuple[str, ...]) -> dict[str, Any]:
+    """The static Section schema for one section_key and only the refs it may cite."""
+    properties = dict(_SECTION_SCHEMA["properties"])
+    properties["section_key"] = {"type": "string", "enum": [section_key]}
+    properties["grounding_refs"] = (
+        {"type": "array", "items": {"type": "string", "enum": list(refs)}}
+        if refs
+        # No allowed ref: only an empty list, never the Packet-wide refs.
+        else {"type": "array", "items": _STRING, "maxItems": 0}
+    )
+    return _object_schema(properties)
+
+
+def _section_schema(section_keys: set[str], request) -> dict[str, Any]:
+    """One branch per target Section; the parser and validator stay the final check."""
+    allowed = dict(request.allowed_grounding_refs_by_section)
+    branches = [_section_branch(key, allowed.get(key, ())) for key in sorted(section_keys)]
+    return branches[0] if len(branches) == 1 else {"anyOf": branches}
+
+
+def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
+    """MONTHLY_RESPONSE_SCHEMA scoped to the request's target Sections and their allowed refs."""
+    allowed = dict(request.allowed_grounding_refs_by_section)
+    targets = [
+        s for s in generation_target_sections(request.template_snapshot) if s.section_key in allowed
+    ]
+    month = _section_schema(
+        {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY}, request
+    )
+    week = _section_schema(
+        {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS}, request
+    )
+    return _object_schema(
+        {
+            "target_month": _STRING,
+            "month_sections": {"type": "array", "items": month},
+            "weeks": {
+                "type": "array",
+                "items": _object_schema(
+                    {"week_id": _STRING, "sections": {"type": "array", "items": week}}
+                ),
+            },
+        }
+    )
+
+
+def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
+    """CELL_RESPONSE_SCHEMA with the target section and its allowed refs as enums."""
+    return _object_schema(
+        {
+            "target_month": _STRING,
+            "target_week_id": _NULLABLE_STRING,
+            "section": _section_schema({request.target_section_key}, request),
+        }
+    )
 
 
 def _object(value: object, *, path: str, keys: frozenset[str]) -> dict[str, Any]:
@@ -75,20 +181,21 @@ def _week_id(value: object, *, path: str) -> WeekId:
         raise ProposalParseError(str(exc)) from exc
 
 
+def _canonical_refs(value: object, *, path: str) -> tuple[str, ...]:
+    """grounding_refs is a set of evidence ids: drop exact repeats, keep first-seen order.
+
+    Only this provider boundary canonicalizes; ProposedSectionValue still rejects
+    duplicates, and unknown or wrong-source refs are left for the validators.
+    """
+    refs = _strings(value, path=path)
+    canonical = tuple(dict.fromkeys(refs))
+    if len(canonical) != len(refs):
+        _log.info("duplicate_grounding_refs_normalized count=%d", len(refs) - len(canonical))
+    return canonical
+
+
 def _section_value(value: object, *, path: str) -> ProposedSectionValue:
-    item = _object(
-        value,
-        path=path,
-        keys=frozenset(
-            {
-                "section_key",
-                "value",
-                "unresolved",
-                "reference_id",
-                "grounding_refs",
-            }
-        ),
-    )
+    item = _object(value, path=path, keys=_keys(_SECTION_SCHEMA))
     raw_value = item["value"]
     if not isinstance(raw_value, str):
         raise ProposalParseError(f"{path}.value must be a string")
@@ -102,7 +209,7 @@ def _section_value(value: object, *, path: str) -> ProposedSectionValue:
                 path=f"{path}.reference_id",
                 nullable=True,
             ),
-            grounding_refs=_strings(
+            grounding_refs=_canonical_refs(
                 item["grounding_refs"], path=f"{path}.grounding_refs"
             ),
         )
@@ -122,7 +229,7 @@ def parse_monthly_proposal(content: str) -> MonthlyPlanProposal:
     root = _object(
         _json(content),
         path="proposal",
-        keys=frozenset({"target_month", "month_sections", "weeks"}),
+        keys=_keys(MONTHLY_RESPONSE_SCHEMA),
     )
     raw_month_sections = root["month_sections"]
     if not isinstance(raw_month_sections, list):
@@ -141,7 +248,7 @@ def parse_monthly_proposal(content: str) -> MonthlyPlanProposal:
         raw_week = _object(
             value,
             path=f"proposal.weeks[{index}]",
-            keys=frozenset({"week_id", "sections"}),
+            keys=_keys(_WEEK_SCHEMA),
         )
         raw_sections = raw_week["sections"]
         if not isinstance(raw_sections, list):
@@ -179,7 +286,7 @@ def parse_monthly_cell_proposal(content: str) -> MonthlyCellProposal:
     root = _object(
         _json(content),
         path="cell_proposal",
-        keys=frozenset({"target_month", "target_week_id", "section"}),
+        keys=_keys(CELL_RESPONSE_SCHEMA),
     )
     return MonthlyCellProposal(
         target_month=_year_month(root["target_month"], path="target_month"),

@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
-from ..domain.monthly_template import DisplayMode, SectionRole
-from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
+from ..domain.monthly_template import DisplayMode, TemplateSection
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from .contracts import (
     MONTHLY_PROMPT_VERSION,
+    MONTHLY_REPAIR_PROMPT_VERSION,
     MonthlyPlanningRequest,
+    generation_target_sections,
 )
+from .validation import ProposalValidationIssue, is_safety_grounding, wrong_source_refs
 
 MONTHLY_TASK = "monthly_plan_proposal"
 
@@ -32,13 +35,74 @@ Every other resolved generated value needs supplied grounding_refs or a supplied
 reference_id. Do not invent facts or citations and do not copy evidence verbatim.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
+Within each grounding_refs array, include each reference id at most once;
+never repeat the same reference id in a cell.
 Omit an optional section when no evidence with its grounding_class is supplied.
+Write user-facing plan text in value fields in natural Korean.
+Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
+grounding_refs exactly as supplied or specified; never translate them.
+Include every key required by response_contract in every object and cell;
+for a nullable field with no value, include the key with null, never omit it.
 Return only one JSON object matching response_contract; add no fields.
 """
+
+REPAIR_SYSTEM_PROMPT = (
+    """You repair one monthly plan proposal.
+rejected_proposal matches response_contract but failed semantic validation.
+Each validation_findings entry names a failed code with its section_key and
+week_id; a null week_id is the month-level cell. For TEXT_POLICY, detail names
+the violated text rule.
+Return the complete corrected proposal as one JSON object matching
+original_request.response_contract. Fix every finding and keep cells without a
+finding unchanged.
+Write every value in your own words; never copy evidence text verbatim.
+Cite only grounding_refs supplied in original_request.evidence, following the
+grounding_class rules below.
+Value text must not claim legal or official status, must not mention safety
+education outside safety_education, and must not contain source markers,
+institution aliases, source ids or grounding_refs.
+The repaired proposal is validated again in full. The original planning rules
+follow and still apply.
+
+"""
+    + SYSTEM_PROMPT
+)
 
 
 def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
     return frozenset(item.evidence_ref for item in packet.grounding_items)
+
+
+def generation_targets(
+    packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+) -> tuple[tuple[TemplateSection, tuple[str, ...]], ...]:
+    """This request's LLM targets with the supplied refs each may cite.
+
+    Refs follow the validators: WRONG_SOURCE_GROUNDING for every Section and
+    SAFETY_GROUNDING_REQUIRED for safety_education. Without approved safety
+    grounding safety_education is no LLM target; the Core safety assessment
+    leaves its cells EMPTY_UNRESOLVED.
+    """
+    evidence = {item.evidence_ref: item for item in packet.grounding_items}
+    refs = tuple(sorted(evidence))
+    targets = []
+    for section in generation_target_sections(snapshot):
+        wrong = set(wrong_source_refs(section, refs, evidence))
+        allowed = tuple(ref for ref in refs if ref not in wrong)
+        if section.section_key == "safety_education":
+            allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
+            if not allowed:
+                continue
+        targets.append((section, allowed))
+    return tuple(targets)
+
+
+def allowed_grounding_refs_by_section(
+    packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    return tuple(
+        (section.section_key, refs) for section, refs in generation_targets(packet, snapshot)
+    )
 
 
 def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
@@ -90,20 +154,11 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
     }
 
 
-def _generation_schema(snapshot: TemplateSnapshot) -> dict[str, object]:
+def _generation_schema(
+    packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+) -> dict[str, object]:
     sections: list[dict[str, object]] = []
-    for section in snapshot.sections:
-        if section.section_key in INSTITUTION_INPUT_SECTION_KEYS:
-            continue
-        if section.role is SectionRole.AXIS:
-            sections.append(
-                {
-                    "section_key": section.section_key,
-                    "placement": "AXIS",
-                    "required_for_generation": section.required_for_generation,
-                }
-            )
-            continue
+    for section, _ in generation_targets(packet, snapshot):
         placement = (
             "MONTH"
             if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
@@ -163,7 +218,7 @@ def build_monthly_planning_request(
     body = _prompt_payload(packet)
     body.update(
         {
-            "generation_schema": _generation_schema(snapshot),
+            "generation_schema": _generation_schema(packet, snapshot),
             "response_contract": _response_contract(),
         }
     )
@@ -182,4 +237,32 @@ def build_monthly_planning_request(
         ),
         valid_grounding_refs=valid_grounding_refs(packet),
         packet_fingerprint=packet_fingerprint(packet),
+        allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
+    )
+
+
+def build_monthly_repair_request(
+    request: MonthlyPlanningRequest,
+    rejected_content: str,
+    issues: tuple[ProposalValidationIssue, ...],
+) -> MonthlyPlanningRequest:
+    """Same targets, refs and strict schema as `request`; only the prompt contract differs."""
+    body = {
+        "original_request": json.loads(request.user_content),
+        "rejected_proposal": json.loads(rejected_content),
+        "validation_findings": [
+            {
+                "code": issue.code.value,
+                "section_key": issue.field,
+                "week_id": issue.week_id,
+                "detail": issue.detail,
+            }
+            for issue in issues
+        ],
+    }
+    return replace(
+        request,
+        prompt_version=MONTHLY_REPAIR_PROMPT_VERSION,
+        system_prompt=REPAIR_SYSTEM_PROMPT,
+        user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
     )

@@ -68,6 +68,11 @@ class MonthlyProposalValidationResult:
         return tuple(item.code.value for item in self.issues)
 
 
+def is_safety_grounding(item: GroundingContextItem) -> bool:
+    """Evidence that SAFETY_GROUNDING_REQUIRED accepts for a resolved safety_education value."""
+    return item.source_section is SourceSection.SAFETY_EDUCATION
+
+
 def wrong_source_refs(
     section: TemplateSection,
     refs: tuple[str, ...],
@@ -192,12 +197,16 @@ def validate_monthly_proposal_schema(
     for key in sorted(missing_month):
         fail(ProposalValidationCode.REQUIRED_SECTION_MISSING, key)
 
+    # Without approved safety grounding safety_education is not an LLM target;
+    # the Core safety assessment builds its EMPTY_UNRESOLVED cells instead.
+    targets = {key for key, _ in request.allowed_grounding_refs_by_section}
     required_weekly = {
         section.section_key
         for section in snapshot.sections
         if section.role is SectionRole.CONTENT
         and section.display_mode is DisplayMode.WEEKLY_CELLS
         and section.required_for_generation
+        and (section.section_key != "safety_education" or section.section_key in targets)
     }
     for week in proposal.weeks:
         missing = required_weekly - {value.section_key for value in week.sections}
@@ -263,7 +272,7 @@ def validate_monthly_proposal_grounding(
             value.grounding_refs
         ) and all(
             evidence_by_ref.get(ref) is not None
-            and evidence_by_ref[ref].source_section is SourceSection.SAFETY_EDUCATION
+            and is_safety_grounding(evidence_by_ref[ref])
             for ref in value.grounding_refs
         )
         for code in visible_text_violations(

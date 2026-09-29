@@ -29,7 +29,6 @@ from ..domain.provenance import (
 )
 from ..domain.yearly_plan import YearlyPlan
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
-from ..planner.contracts import MONTHLY_PROMPT_VERSION
 from ..planner.service import MonthlyPlanner
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
@@ -266,6 +265,11 @@ class GenerateMonthlyPlan:
                 mode=command.generation_mode,
                 catalog=catalog,
                 proposal=proposal,
+                prompt_version=(
+                    planner_outcome.prompt_version
+                    if planner_outcome is not None
+                    else None
+                ),
                 packet=packet,
                 used_activity_ids=used_activity_ids,
                 selection_results=selection_results,
@@ -346,6 +350,7 @@ class GenerateMonthlyPlan:
         mode: MonthlyGenerationMode,
         catalog: ActivityCatalog | None,
         proposal,
+        prompt_version: str | None,
         packet,
         used_activity_ids: set[str],
         selection_results: list[MonthlyActivitySelectionResult],
@@ -404,14 +409,14 @@ class GenerateMonthlyPlan:
                         else GenerationMethodDetail(
                             GenerationMethod.RULE_LLM,
                             LLM_INTEGRATION_RULE_ID,
-                            MONTHLY_PROMPT_VERSION,
+                            prompt_version,
                         )
                     )
                 else:
                     generation = GenerationMethodDetail(
                         GenerationMethod.RULE_LLM,
                         LLM_INTEGRATION_RULE_ID,
-                        MONTHLY_PROMPT_VERSION,
+                        prompt_version,
                     )
                     parent_evidence = tuple(
                         source
