@@ -33,6 +33,7 @@ from ssuksak.planning.application.monthly_dto import (
     SafetyRuleSelector,
 )
 from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
+from ssuksak.planning.application import monthly_support
 from ssuksak.planning.application.monthly_support import MonthlyContextPipeline
 from ssuksak.planning.application.ports import OptionalContextStatus
 from ssuksak.planning.application.regenerate_monthly_plan_item import (
@@ -56,6 +57,14 @@ from ssuksak.planning.domain.monthly_template_profile import (
     TemplateProfile,
     TemplateProfileRef,
 )
+from ssuksak.planning.domain.monthly_verification import (
+    FindingKind,
+    Severity,
+    VerificationSourceRef,
+    Violation,
+    ViolationEvidence,
+    ViolationLocation,
+)
 from ssuksak.planning.domain.plan import PlanItem, PlanStatus
 from ssuksak.planning.domain.provenance import (
     AuditEvent,
@@ -77,6 +86,14 @@ from ssuksak.planning.planner.contracts import (
     RawLlmResponse,
 )
 from ssuksak.planning.planner.service import MonthlyPlanner
+from ssuksak.planning.rules.monthly_verification import (
+    AGE_REFERENCE_NOT_VERIFIED_CODE,
+    AGE_RULE_ID,
+    AGE_RULE_REF,
+    AGE_RULE_VERSION,
+    AGE_UNSUPPORTED_CODE,
+    RuleVerificationResult,
+)
 
 NOW = datetime(2026, 9, 20, 10, 0, tzinfo=UTC)
 TEACHER = ActorId("teacher_001")
@@ -438,6 +455,60 @@ def _cell(plan: MonthlyPlan, section: str, index: int = 0):
     return monthly_section.cells[index]
 
 
+def _age_result(plan, catalog, kind, severity, code):
+    source = VerificationSourceRef(catalog.catalog_id, catalog.catalog_version)
+    cell = _cell(plan, "outdoor_play")
+    return RuleVerificationResult(
+        AGE_RULE_REF,
+        (source,),
+        (
+            Violation(
+                AGE_RULE_ID,
+                AGE_RULE_VERSION,
+                code,
+                kind,
+                severity,
+                ViolationLocation(cell.section_key, cell.week_id),
+                "forced application integration finding",
+                (ViolationEvidence("observed application state", (source,)),),
+            ),
+        ),
+    )
+
+
+def _fail_age_verification(plan, *, catalog):
+    raise RuntimeError("verifier unavailable")
+
+
+def _with_age_mismatch(harness: Harness, plan: MonthlyPlan) -> MonthlyPlan:
+    ref = plan.activity_catalog_ref
+    assert ref is not None
+    catalog = harness.activities.get_catalog(ref.catalog_id, ref.catalog_version)
+    assert catalog is not None
+    candidate = next(
+        item
+        for item in catalog.activities
+        if not item.supports_age_set(plan.target_ages)
+    )
+    cell = _cell(plan, "outdoor_play")
+    evidence = tuple(
+        source
+        for source in cell.evidence
+        if source.source_type is not EvidenceSourceType.ACTIVITY_REFERENCE
+    ) + (
+        EvidenceSource(
+            EvidenceSourceType.ACTIVITY_REFERENCE,
+            candidate.activity_id,
+            catalog.catalog_version,
+            display_name=candidate.label,
+        ),
+    )
+    return plan.replace_cell(
+        cell.item_id,
+        replace(cell, value=candidate.label, evidence=evidence),
+    )
+
+
 def test_rule_only_generation_assembles_complete_draft_and_saves_once():
     harness = Harness()
 
@@ -472,6 +543,68 @@ def test_rule_only_generation_assembles_complete_draft_and_saves_once():
     assert len(result.activity_selections) == len(plan.active_week_periods)
     assert harness.plans.save_count == 1
     assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_generation_stores_the_actual_age_rule_coverage():
+    harness = Harness()
+
+    plan = harness.generate().plan
+    report = plan.verification_report
+
+    assert report is not None
+    assert report.target_plan_id == plan.plan_id
+    assert report.executed_rules == (AGE_RULE_REF,)
+    assert report.source_refs == (
+        VerificationSourceRef(
+            ACTIVITY_CATALOG.catalog_id, ACTIVITY_CATALOG.catalog_version
+        ),
+    )
+    assert report.findings == ()
+
+
+@pytest.mark.parametrize(
+    ("kind", "severity", "code"),
+    (
+        (FindingKind.VIOLATION, Severity.ERROR, AGE_UNSUPPORTED_CODE),
+        (
+            FindingKind.NOT_VERIFIED,
+            Severity.WARNING,
+            AGE_REFERENCE_NOT_VERIFIED_CODE,
+        ),
+    ),
+)
+def test_generation_saves_a_draft_with_rule_findings(
+    monkeypatch, kind, severity, code
+):
+    harness = Harness()
+
+    monkeypatch.setattr(
+        monthly_support,
+        "verify_monthly_activity_ages",
+        lambda plan, *, catalog: _age_result(
+            plan, catalog, kind, severity, code
+        ),
+    )
+    plan = harness.generate().plan
+
+    assert plan.status is PlanStatus.DRAFT
+    assert plan.verification_report is not None
+    assert plan.verification_report.findings[0].finding_kind is kind
+    assert harness.plans.get(plan.plan_id) is plan
+
+
+def test_generation_verifier_failure_saves_nothing(monkeypatch):
+    harness = Harness()
+
+    monkeypatch.setattr(
+        monthly_support, "verify_monthly_activity_ages", _fail_age_verification
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate()
+
+    assert exc.value.code == "monthly_verification_failed"
+    assert harness.plans.save_count == 0
 
 
 def test_generation_resolves_an_exact_profile_version():
@@ -651,15 +784,23 @@ def test_llm_failure_never_saves_an_incomplete_monthly_plan():
     assert harness.plans.save_count == 0
 
 
-def test_legacy_proposal_shape_is_rejected_without_saving_a_plan():
+def test_legacy_proposal_shape_is_rejected_without_running_verification(monkeypatch):
     harness = Harness()
     provider = LegacyShapeMonthlyLlm()
+    calls = []
+
+    monkeypatch.setattr(
+        monthly_support,
+        "verify_monthly_activity_ages",
+        lambda plan, *, catalog: calls.append(plan),
+    )
 
     with pytest.raises(MonthlyApplicationError) as exc:
         harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
 
     assert exc.value.code == "monthly_llm_planning_failed"
     assert len(provider.monthly_requests) == 1
+    assert calls == []
     assert harness.plans.save_count == 0
 
 
@@ -689,7 +830,9 @@ def test_teacher_edit_is_immutable_and_preserves_existing_evidence():
     saves_before = harness.plans.save_count
 
     updated = EditMonthlyPlanItem(
-        plan_repository=harness.plans, clock=harness.clock
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
     ).execute(
         EditMonthlyPlanItemCommand(
             original.plan_id, target.item_id, "Teacher-authored outdoor play", TEACHER
@@ -715,7 +858,9 @@ def test_teacher_can_fill_an_empty_cell_and_audit_records_blank_before_value():
     target = _cell(original, "focus")
 
     updated = EditMonthlyPlanItem(
-        plan_repository=harness.plans, clock=harness.clock
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
     ).execute(
         EditMonthlyPlanItemCommand(
             original.plan_id, target.item_id, "Teacher-authored focus", TEACHER
@@ -725,6 +870,60 @@ def test_teacher_can_fill_an_empty_cell_and_audit_records_blank_before_value():
 
     assert event.value_change.before == ""
     assert event.value_change.after == "Teacher-authored focus"
+
+
+def test_teacher_edit_replaces_the_report_with_stale_reference_warning():
+    harness = Harness()
+    original = harness.generate().plan
+    target = _cell(original, "outdoor_play")
+
+    updated = EditMonthlyPlanItem(
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
+    ).execute(
+        EditMonthlyPlanItemCommand(
+            original.plan_id, target.item_id, "Teacher-authored outdoor play", TEACHER
+        )
+    )
+    report = updated.verification_report
+
+    assert report is not None
+    assert report is not original.verification_report
+    assert report.executed_rules == (AGE_RULE_REF,)
+    assert len(report.findings) == 1
+    finding = report.findings[0]
+    assert finding.code == AGE_REFERENCE_NOT_VERIFIED_CODE
+    assert finding.finding_kind is FindingKind.NOT_VERIFIED
+    assert finding.severity is Severity.WARNING
+    assert finding.location == ViolationLocation(target.section_key, target.week_id)
+    assert harness.plans.get(updated.plan_id) is updated
+
+
+def test_teacher_edit_verifier_failure_preserves_the_saved_plan(monkeypatch):
+    harness = Harness()
+    original = harness.generate().plan
+    target = _cell(original, "outdoor_play")
+    saves_before = harness.plans.save_count
+
+    monkeypatch.setattr(
+        monthly_support, "verify_monthly_activity_ages", _fail_age_verification
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        EditMonthlyPlanItem(
+            plan_repository=harness.plans,
+            clock=harness.clock,
+            activity_repository=harness.activities,
+        ).execute(
+            EditMonthlyPlanItemCommand(
+                original.plan_id, target.item_id, "Unsaved edit", TEACHER
+            )
+        )
+
+    assert exc.value.code == "monthly_verification_failed"
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(original.plan_id) is original
 
 
 def test_rule_only_regeneration_replaces_only_one_outdoor_cell():
@@ -744,6 +943,31 @@ def test_rule_only_regeneration_replaces_only_one_outdoor_cell():
     assert regenerated.audit.events[-1].event_type is AuditEventType.REGENERATED
     assert result.activity_selection is not None
     assert result.plan.find_cell(sibling.item_id)[3] is sibling
+    assert result.plan.verification_report is not original.verification_report
+    assert result.plan.verification_report is not None
+    assert result.plan.verification_report.executed_rules == (AGE_RULE_REF,)
+
+
+def test_regeneration_verifier_failure_preserves_the_saved_plan(monkeypatch):
+    harness = Harness()
+    original = harness.generate().plan
+    target = _cell(original, "outdoor_play")
+    saves_before = harness.plans.save_count
+
+    monkeypatch.setattr(
+        monthly_support, "verify_monthly_activity_ages", _fail_age_verification
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.regenerate().execute(
+            RegenerateMonthlyPlanItemCommand(
+                original.plan_id, target.item_id, TEACHER
+            )
+        )
+
+    assert exc.value.code == "monthly_verification_failed"
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(original.plan_id) is original
 
 
 def test_llm_cell_regeneration_records_before_and_after_method_details():
@@ -856,7 +1080,9 @@ def test_confirm_requires_teacher_and_locks_all_later_mutations():
     ).plan
     target = _cell(draft, "focus")
     confirm = ConfirmMonthlyPlan(
-        plan_repository=harness.plans, clock=harness.clock
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
     )
 
     confirmed = confirm.execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
@@ -864,9 +1090,12 @@ def test_confirm_requires_teacher_and_locks_all_later_mutations():
 
     assert confirmed.status is PlanStatus.CONFIRMED
     assert confirmed.audit.events[-1].actor_id == TEACHER
+    assert confirmed.verification_report is not draft.verification_report
     with pytest.raises(InvalidStateTransitionError):
         EditMonthlyPlanItem(
-            plan_repository=harness.plans, clock=harness.clock
+            plan_repository=harness.plans,
+            clock=harness.clock,
+            activity_repository=harness.activities,
         ).execute(
             EditMonthlyPlanItemCommand(
                 confirmed.plan_id, target.item_id, "No longer editable", TEACHER
@@ -881,3 +1110,76 @@ def test_confirm_requires_teacher_and_locks_all_later_mutations():
     with pytest.raises(InvalidStateTransitionError):
         confirm.execute(ConfirmMonthlyPlanCommand(confirmed.plan_id, TEACHER))
     assert harness.plans.save_count == saves_before
+
+
+def test_confirm_allows_a_fresh_not_verified_warning():
+    harness = Harness()
+    draft = harness.generate().plan
+    target = _cell(draft, "outdoor_play")
+    edited = EditMonthlyPlanItem(
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
+    ).execute(
+        EditMonthlyPlanItemCommand(
+            draft.plan_id, target.item_id, "Teacher-authored outdoor play", TEACHER
+        )
+    )
+
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
+    ).execute(ConfirmMonthlyPlanCommand(edited.plan_id, TEACHER))
+
+    assert confirmed.status is PlanStatus.CONFIRMED
+    assert confirmed.verification_report is not edited.verification_report
+    assert confirmed.verification_report is not None
+    finding = confirmed.verification_report.findings[0]
+    assert finding.finding_kind is FindingKind.NOT_VERIFIED
+    assert finding.severity is Severity.WARNING
+
+
+def test_confirm_allows_a_fresh_supported_age_error_and_stores_the_report():
+    harness = Harness()
+    draft = _with_age_mismatch(harness, harness.generate().plan)
+    assert draft.verification_report is None
+    harness.plans.save(draft.plan_id, draft)
+    saves_before = harness.plans.save_count
+
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans,
+        clock=harness.clock,
+        activity_repository=harness.activities,
+    ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+
+    persisted = harness.plans.get(draft.plan_id)
+    assert confirmed.status is PlanStatus.CONFIRMED
+    assert persisted is confirmed
+    assert confirmed.verification_report is not None
+    finding = confirmed.verification_report.findings[0]
+    assert finding.code == AGE_UNSUPPORTED_CODE
+    assert finding.finding_kind is FindingKind.VIOLATION
+    assert finding.severity is Severity.ERROR
+    assert harness.plans.save_count == saves_before + 1
+
+
+def test_confirm_verifier_failure_preserves_the_saved_draft(monkeypatch):
+    harness = Harness()
+    draft = harness.generate().plan
+    saves_before = harness.plans.save_count
+
+    monkeypatch.setattr(
+        monthly_support, "verify_monthly_activity_ages", _fail_age_verification
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        ConfirmMonthlyPlan(
+            plan_repository=harness.plans,
+            clock=harness.clock,
+            activity_repository=harness.activities,
+        ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+
+    assert exc.value.code == "monthly_verification_failed"
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(draft.plan_id) is draft

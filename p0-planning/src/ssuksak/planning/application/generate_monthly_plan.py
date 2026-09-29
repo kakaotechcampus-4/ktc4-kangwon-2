@@ -60,6 +60,7 @@ from .monthly_support import (
     optional_context_results,
     packet_evidence,
     theme_reference_id,
+    with_fresh_monthly_verification,
 )
 from .ports import (
     ActivityReferenceRepository,
@@ -262,6 +263,7 @@ class GenerateMonthlyPlan:
             generation_mode=command.generation_mode,
         )
         self._require_complete(plan, resolved_sections)
+        plan = with_fresh_monthly_verification(plan, catalog)
         self._plans.save(plan.plan_id, plan)
         return GenerateMonthlyPlanResult(
             plan=plan,

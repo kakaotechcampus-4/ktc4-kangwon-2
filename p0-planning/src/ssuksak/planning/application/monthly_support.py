@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
+from functools import partial
 
 from ..context.builder import ContextPacketBuilder
 from ..context.models import MonthlyContextPacket
@@ -18,6 +20,10 @@ from ..domain.year_month import YearMonth
 from ..evidence.ports import InstitutionEvidenceRepository
 from ..retrieval.models import RetrievalRequest
 from ..retrieval.retriever import MonthlyEvidenceRetriever
+from ..rules.monthly_verification import (
+    verify_monthly_activity_ages,
+    verify_monthly_plan,
+)
 from .monthly_dto import ActivityCatalogSelector, SafetyRuleSelector
 from .monthly_errors import MonthlyApplicationError
 from .ports import (
@@ -121,6 +127,38 @@ def load_activity_catalog(
             f"Activity Catalog is not HUMAN_APPROVED: {selector.catalog_version}",
         )
     return catalog
+
+
+def load_plan_activity_catalog(
+    repository: ActivityReferenceRepository | None,
+    plan: MonthlyPlan,
+) -> ActivityCatalog | None:
+    ref = plan.activity_catalog_ref
+    if ref is None:
+        return None
+    return load_activity_catalog(
+        repository,
+        ActivityCatalogSelector(ref.catalog_id, ref.catalog_version),
+    )
+
+
+def with_fresh_monthly_verification(
+    plan: MonthlyPlan,
+    catalog: ActivityCatalog | None,
+) -> MonthlyPlan:
+    verifiers = (
+        (partial(verify_monthly_activity_ages, catalog=catalog),)
+        if catalog is not None
+        else ()
+    )
+    try:
+        report = verify_monthly_plan(plan, verifiers)
+    except Exception as exc:
+        raise MonthlyApplicationError(
+            "monthly_verification_failed",
+            "Monthly rule verification failed before the Plan was saved",
+        ) from exc
+    return replace(plan, verification_report=report)
 
 
 def optional_context_results(

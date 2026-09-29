@@ -47,6 +47,7 @@ from .monthly_support import (
     require_item_id,
     require_monthly_plan,
     theme_reference_id,
+    with_fresh_monthly_verification,
 )
 from .ports import ActivityReferenceRepository, Clock, PlanRepository
 
@@ -97,6 +98,11 @@ class RegenerateMonthlyPlanItem:
             result = self._regenerate_rule_only(plan, cell, actor_id)
         else:
             result = self._regenerate_with_llm(plan, cell, actor_id)
+        catalog = self._catalog_for(result.plan)
+        result = replace(
+            result,
+            plan=with_fresh_monthly_verification(result.plan, catalog),
+        )
         self._plans.save(result.plan.plan_id, result.plan)
         return result
 

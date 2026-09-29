@@ -17,6 +17,7 @@ from .monthly_template import (
     TemplateRef,
 )
 from .monthly_template_snapshot import TemplateSnapshot
+from .monthly_verification import VerificationReport
 from .plan import PlanStatus
 from .provenance import (
     AuditEvent,
@@ -199,6 +200,7 @@ class MonthlyPlan:
     audit: AuditHistory = field(default_factory=AuditHistory)
     activity_catalog_ref: ActivityCatalogRef | None = None
     generation_mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
+    verification_report: VerificationReport | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
@@ -329,6 +331,15 @@ class MonthlyPlan:
             raise InvalidDomainValueError(
                 "MonthlyPlan.generation_mode must be MonthlyGenerationMode"
             )
+        if self.verification_report is not None:
+            if not isinstance(self.verification_report, VerificationReport):
+                raise InvalidDomainValueError(
+                    "MonthlyPlan.verification_report must be VerificationReport"
+                )
+            if self.verification_report.target_plan_id != self.plan_id:
+                raise InvalidDomainValueError(
+                    "MonthlyPlan.verification_report must target this Plan"
+                )
 
     @property
     def cells(self) -> tuple[MonthlyCell, ...]:
@@ -393,7 +404,11 @@ class MonthlyPlan:
         cells[cell_index] = replacement
         sections = list(self.sections)
         sections[section_index] = replace(section, cells=tuple(cells))
-        return replace(self, sections=tuple(sections))
+        return replace(
+            self,
+            sections=tuple(sections),
+            verification_report=None,
+        )
 
     def confirm(self, *, actor_id: ActorId, occurred_at: datetime) -> MonthlyPlan:
         self.ensure_mutable("confirm")

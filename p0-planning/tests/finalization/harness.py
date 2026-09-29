@@ -368,7 +368,9 @@ class PlanningHarness:
 
     def edit_monthly(self, plan: MonthlyPlan, *, item_id, value: str) -> MonthlyPlan:
         return EditMonthlyPlanItem(
-            plan_repository=self.monthly_plans, clock=self.clock
+            plan_repository=self.monthly_plans,
+            clock=self.clock,
+            activity_repository=self.activities,
         ).execute(EditMonthlyPlanItemCommand(plan.plan_id, item_id, value, TEACHER))
 
     def regenerate_monthly(self, plan: MonthlyPlan, *, item_id):
@@ -384,5 +386,7 @@ class PlanningHarness:
 
     def confirm_monthly(self, plan: MonthlyPlan) -> MonthlyPlan:
         return ConfirmMonthlyPlan(
-            plan_repository=self.monthly_plans, clock=self.clock
+            plan_repository=self.monthly_plans,
+            clock=self.clock,
+            activity_repository=self.activities,
         ).execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER))
