@@ -19,6 +19,17 @@ def _logged_in(teacher):
     teacher.center_id = 1
 
 
+@pytest.fixture(autouse=True)
+def _logged_in(db_session, teacher):
+    """로그인한 교사를 세션에 매달아 둔다.
+
+    문서 조회가 교사의 원으로 걸린다(§11). 원을 안 붙이면 아무것도 안 보인다.
+    원은 각 테스트가 아래 헬퍼로 만드는데, 그 안에서 교사에게 붙이려면 교사를
+    가져올 길이 필요하다. 호출부 열다섯 곳에 인자를 더하는 대신 여기 매단다.
+    """
+    db_session.info["teacher"] = teacher
+
+
 def _make_center_class_child(session):
     center = Center(
         name="테스트어린이집",
@@ -41,6 +52,9 @@ def _make_center_class_child(session):
     child = Child(class_id=klass.id, name="이가명", code="도담")
     session.add(child)
     session.flush()
+    teacher = session.info.get("teacher")
+    if teacher is not None:
+        teacher.center_id = center.id
     return center, klass, child
 
 
@@ -441,3 +455,108 @@ def test_put_rejects_source_ids_not_belonging_to_this_document(db_session):
 
     assert response.status_code == 422
     assert "sections.해석.source_ids" in response.json()["error"]["fields"]
+
+
+# ── 겹치는 문서 대조 · 원 격리 ────────────────────────────────────────────────
+
+
+def test_related_는_기간이_겹치는_확정_문서만_준다(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    target = _make_document(db_session, klass, child, kind="observation")
+    겹치고_확정 = _make_document(
+        db_session,
+        klass,
+        child,
+        kind="dailyLog",
+        status="CONFIRMED",
+        start_date=date(2026, 9, 10),
+        end_date=date(2026, 9, 10),
+    )
+    _make_document(  # 겹치지만 아직 쓰는 중이다
+        db_session,
+        klass,
+        child,
+        kind="dailyLog",
+        status="DRAFT",
+        start_date=date(2026, 9, 11),
+        end_date=date(2026, 9, 11),
+    )
+    _make_document(  # 확정이지만 기간이 안 겹친다
+        db_session,
+        klass,
+        child,
+        kind="dailyLog",
+        status="CONFIRMED",
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 1),
+    )
+
+    body = client.get(f"/api/documents/{target.id}/related").json()
+
+    assert [item["id"] for item in body["items"]] == [겹치고_확정.id]
+
+
+def test_related_는_종류마다_기대하는_짝을_알려준다(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    weekly = _make_document(db_session, klass, kind="weeklyLog")
+    assessment = _make_document(db_session, klass, child, kind="assessment")
+
+    assert client.get(f"/api/documents/{weekly.id}/related").json()["expected_kinds"] == [
+        "dailyLog"
+    ]
+    assert client.get(f"/api/documents/{assessment.id}/related").json()["expected_kinds"] == [
+        "observation",
+        "dailyLog",
+    ]
+
+
+def test_related_는_없어도_막지_않는다(db_session):
+    """ "아직 없음" 으로 표시만 한다 (docs/api-spec.md §11)."""
+    _, klass, child = _make_center_class_child(db_session)
+    lonely = _make_document(db_session, klass, child)
+
+    response = client.get(f"/api/documents/{lonely.id}/related")
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
+def test_related_는_다른_아이의_기록을_섞지_않는다(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    other_child = Child(class_id=klass.id, name="박가명", code="하늘")
+    db_session.add(other_child)
+    db_session.flush()
+    target = _make_document(db_session, klass, child)
+    남의_아이 = _make_document(db_session, klass, other_child, status="CONFIRMED")
+    # 일일 보육일지는 하루짜리다 (CHECK 제약).
+    반_전체 = _make_document(
+        db_session,
+        klass,
+        None,
+        kind="dailyLog",
+        status="CONFIRMED",
+        start_date=date(2026, 9, 10),
+        end_date=date(2026, 9, 10),
+    )
+
+    ids = [item["id"] for item in client.get(f"/api/documents/{target.id}/related").json()["items"]]
+
+    assert 반_전체.id in ids  # 반 단위 문서는 그 반 아이 모두의 짝이다
+    assert 남의_아이.id not in ids
+
+
+def test_남의_원_문서는_목록에도_related_에도_안_나온다(db_session, teacher):
+    _, klass, child = _make_center_class_child(db_session)
+    남의것 = _make_document(db_session, klass, child)
+    other = Center(
+        name="남의어린이집",
+        director_name="박원장",
+        region_sido="강원특별자치도",
+        region_sigungu="원주시",
+    )
+    db_session.add(other)
+    db_session.flush()
+    teacher.center_id = other.id
+
+    assert client.get("/api/documents").json()["items"] == []
+    assert client.get(f"/api/documents/{남의것.id}/related").status_code == 404
