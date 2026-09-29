@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from ..domain.week_period import WeekPeriod
-from ..retrieval.models import BlockName, MonthlyEvidenceRetrievalResult, RetrievedEvidence
+from ..evidence.classification import SemanticClass
+from ..retrieval.models import (
+    CLASS_BLOCKS,
+    BlockName,
+    MonthlyEvidenceRetrievalResult,
+    RetrievedEvidence,
+)
 from .models import (
     CONTEXT_PACKET_VERSION,
     ContextConstraints,
@@ -32,7 +38,7 @@ class ContextPacketBuilder:
             for name in (
                 BlockName.AGE_CONTRAST_EVIDENCE,
                 BlockName.INSTITUTION_MONTHLY_EVIDENCE,
-                BlockName.WEEK_EXPERIENCE_CANDIDATES,
+                *CLASS_BLOCKS.values(),
                 BlockName.OTHER_OUTDOOR_EVIDENCE,
             )
             for item in retrieval.block(name).items
@@ -43,7 +49,10 @@ class ContextPacketBuilder:
         aliases = {institution: f"S{index}" for index, institution in enumerate(institutions, start=1)}
         used: set[str] = set()
 
-        def convert(items: tuple[RetrievedEvidence, ...]) -> tuple[GroundingContextItem, ...]:
+        def convert(
+            items: tuple[RetrievedEvidence, ...],
+            grounding_class: SemanticClass | None = None,
+        ) -> tuple[GroundingContextItem, ...]:
             converted = []
             for item in items:
                 if item.record_id in used or item.record.text is None:
@@ -60,13 +69,18 @@ class ContextPacketBuilder:
                         age_match=item.trace.age_match,
                         institution_alias=aliases[institution],
                         reuse_policy=item.record.reuse_policy,
+                        grounding_class=grounding_class,
                     )
                 )
             return tuple(converted)
 
         contrast = convert(retrieval.block(BlockName.AGE_CONTRAST_EVIDENCE).items)
         institution = convert(retrieval.block(BlockName.INSTITUTION_MONTHLY_EVIDENCE).items)
-        week = convert(retrieval.block(BlockName.WEEK_EXPERIENCE_CANDIDATES).items)
+        section = tuple(
+            item
+            for grounding_class, block in CLASS_BLOCKS.items()
+            for item in convert(retrieval.block(block).items, grounding_class)
+        )
         other = convert(retrieval.block(BlockName.OTHER_OUTDOOR_EVIDENCE).items)
         references = tuple(
             ReferenceActivityContext(item.activity_id, item.label, item.rank)
@@ -89,7 +103,7 @@ class ContextPacketBuilder:
             ),
             institution_evidence=institution,
             age_contrast_evidence=contrast,
-            week_experience_candidates=week,
+            section_evidence=section,
             reference_activities=references,
             other_outdoor_evidence=other,
             constraints=ContextConstraints(
@@ -101,5 +115,6 @@ class ContextPacketBuilder:
                 retrieval.retrieval_version,
                 retrieval.activity_catalog_id,
                 retrieval.activity_catalog_version,
+                retrieval.evidence_classification_version,
             ),
         )

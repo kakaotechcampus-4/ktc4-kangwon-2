@@ -45,6 +45,9 @@ FROZEN_ARTIFACTS = {
     "evidence/institution_evidence_v0_1_0.json": (
         "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a"
     ),
+    "evidence/monthly_evidence_semantic_classification_v0_1_0.json": (
+        "8d9930211f3cc5b993f08b263bb08266391eab686606a369f5b8e6384cb1ceaf"
+    ),
 }
 
 

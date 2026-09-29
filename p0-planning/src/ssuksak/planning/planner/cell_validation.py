@@ -12,6 +12,7 @@ from .contracts import (
     MonthlyCellProposal,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from .validation import wrong_source_refs
 
 
 class CellValidationCode(str, Enum):
@@ -21,6 +22,7 @@ class CellValidationCode(str, Enum):
     TARGET_SECTION_MISMATCH = "TARGET_SECTION_MISMATCH"
     UNRESOLVED_NOT_SUPPORTED = "UNRESOLVED_NOT_SUPPORTED"
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
+    WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
     UNKNOWN_REFERENCE_ID = "UNKNOWN_REFERENCE_ID"
     REFERENCE_VALUE_MISMATCH = "REFERENCE_VALUE_MISMATCH"
@@ -90,6 +92,19 @@ def validate_monthly_cell_proposal(
             "grounding_refs",
             repr(unknown),
         )
+    target_section = request.template_snapshot.section(request.target_section_key)
+    if target_section is not None:
+        wrong = wrong_source_refs(
+            target_section,
+            value.grounding_refs,
+            {item.evidence_ref: item for item in packet.grounding_items},
+        )
+        if wrong:
+            fail(
+                CellValidationCode.WRONG_SOURCE_GROUNDING,
+                "grounding_refs",
+                repr(wrong),
+            )
 
     reference_labels = request.reference_label_map
     if value.reference_id is not None:
@@ -105,13 +120,7 @@ def validate_monthly_cell_proposal(
         )
 
     evidence_texts = {
-        normalize_visible_text(item.text)
-        for item in (
-            packet.institution_evidence
-            + packet.age_contrast_evidence
-            + packet.week_experience_candidates
-            + packet.other_outdoor_evidence
-        )
+        normalize_visible_text(item.text) for item in packet.grounding_items
     }
     if (
         value.reference_id is None

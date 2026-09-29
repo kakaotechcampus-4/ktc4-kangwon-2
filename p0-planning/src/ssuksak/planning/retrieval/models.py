@@ -7,6 +7,7 @@ from enum import Enum
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.year_month import YearMonth
+from ..evidence.classification import SemanticClass
 from ..evidence.models import EvidenceRecord
 
 
@@ -28,9 +29,20 @@ AGE_TIER_ORDER = (
 class BlockName(str, Enum):
     INSTITUTION_MONTHLY_EVIDENCE = "institution_monthly_evidence"
     AGE_CONTRAST_EVIDENCE = "age_contrast_evidence"
-    WEEK_EXPERIENCE_CANDIDATES = "week_experience_candidates"
+    GOALS_EVIDENCE = "goals_evidence"
+    BASIC_HABIT_EVIDENCE = "basic_habit_evidence"
+    SUBTHEME_EVIDENCE = "subtheme_evidence"
+    EXPECTED_PLAY_EVIDENCE = "expected_play_evidence"
     REFERENCE_ACTIVITIES = "reference_activities"
     OTHER_OUTDOOR_EVIDENCE = "other_outdoor_evidence"
+
+
+CLASS_BLOCKS = {
+    SemanticClass.GOALS: BlockName.GOALS_EVIDENCE,
+    SemanticClass.BASIC_HABIT: BlockName.BASIC_HABIT_EVIDENCE,
+    SemanticClass.SUBTHEME: BlockName.SUBTHEME_EVIDENCE,
+    SemanticClass.EXPECTED_PLAY: BlockName.EXPECTED_PLAY_EVIDENCE,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +53,7 @@ class RetrievalRequest:
     confirmed_theme_value: str
     week_count: int
     keywords: tuple[str, ...] = ()
+    grounding_classes: frozenset[SemanticClass] = frozenset()
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_month, YearMonth):
@@ -59,6 +72,13 @@ class RetrievalRequest:
             not isinstance(item, str) or not item.strip() for item in self.keywords
         ):
             raise InvalidDomainValueError("RetrievalRequest.keywords must contain non-blank strings")
+        if not isinstance(self.grounding_classes, frozenset) or any(
+            not isinstance(item, SemanticClass) or item is SemanticClass.EXCLUDED
+            for item in self.grounding_classes
+        ):
+            raise InvalidDomainValueError(
+                "RetrievalRequest.grounding_classes must contain approved non-EXCLUDED classes"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +133,7 @@ class MonthlyEvidenceRetrievalResult:
     retrieval_version: str
     activity_catalog_id: str = ""
     activity_catalog_version: str = ""
+    evidence_classification_version: str = ""
 
     def block(self, name: BlockName) -> EvidenceBlock:
         for block in self.blocks:
