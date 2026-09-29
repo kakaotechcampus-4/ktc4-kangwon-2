@@ -13,8 +13,12 @@ from ssuksak.planning.domain.monthly_template import DisplayMode
 from ssuksak.planning.planner.cell_prompt import build_monthly_cell_request
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
+from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.planner.contracts import (
+    BASIC_HABIT_SECTION_KEY,
     FOCUS_SECTION_KEY,
+    GOALS_SECTION_KEY,
+    MONTHLY_CELL_PROMPT_VERSION,
     MONTHLY_MODEL,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
@@ -635,3 +639,171 @@ def test_cell_validator_rejects_wrong_source_grounding(packet, snapshot):
     proposal = parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False))
 
     assert "WRONG_SOURCE_GROUNDING" in validate_monthly_cell_proposal(proposal, packet, request).codes
+
+
+# ---------------------------------------------------------------- V1-7 PR-C3b month-level (goals) cell target
+
+WEEK_1 = WeekId("2026-09-W1")
+
+
+def _with_goals_and_basic_habit(snapshot):
+    template = JsonMonthlyTemplateRepository().get_template(
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+    )
+    assert template is not None
+    return replace(
+        snapshot,
+        sections=(
+            *snapshot.sections,
+            replace(template.section("goals"), activated=True, display_label="Goals", visible=True),
+            replace(
+                template.section("habits"),
+                section_key="basic_habit",
+                activated=True,
+                display_label="Basic habit",
+                visible=True,
+            ),
+        ),
+    )
+
+
+def _with_goals_evidence(packet):
+    return replace(
+        packet, section_evidence=packet.section_evidence + (_section_item("ev-4", SemanticClass.GOALS, "교사의 기대"),)
+    )
+
+
+def goals_cell_payload(target_week_id: str | None = None) -> dict[str, object]:
+    return {
+        "target_month": "2026-09",
+        "target_week_id": target_week_id,
+        "section": {
+            "section_key": GOALS_SECTION_KEY,
+            "value": "가을의 변화를 즐겁게 탐색한다.",
+            "unresolved": False,
+            "reference_id": None,
+            "grounding_refs": ["ev-4"],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("section_key", "target_week_id", "valid"),
+    [
+        (FOCUS_SECTION_KEY, WEEK_1, True),
+        (OUTDOOR_SECTION_KEY, WEEK_1, True),
+        (BASIC_HABIT_SECTION_KEY, WEEK_1, True),
+        (GOALS_SECTION_KEY, None, True),
+        (FOCUS_SECTION_KEY, None, False),
+        (OUTDOOR_SECTION_KEY, None, False),
+        (BASIC_HABIT_SECTION_KEY, None, False),
+        (GOALS_SECTION_KEY, WEEK_1, False),
+    ],
+    ids=[
+        "focus-week", "outdoor-week", "basic-habit-week", "goals-null",
+        "focus-null", "outdoor-null", "basic-habit-null", "goals-week",
+    ],
+)
+def test_cell_request_target_week_follows_the_snapshot_placement(
+    packet, snapshot, section_key, target_week_id, valid
+):
+    def build():
+        return build_monthly_cell_request(
+            packet,
+            _with_goals_and_basic_habit(snapshot),
+            target_week_id=target_week_id,
+            target_section_key=section_key,
+            month_snapshot=snapshots(),
+        )
+
+    if valid:
+        assert build().target_week_id == target_week_id
+    else:
+        with pytest.raises(InvalidDomainValueError, match="MonthlyCellPlanningRequest.target_week_id"):
+            build()
+
+
+def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapshot):
+    request = build_monthly_cell_request(
+        _with_goals_evidence(packet),
+        _with_goals_and_basic_habit(snapshot),
+        target_week_id=None,
+        target_section_key=GOALS_SECTION_KEY,
+        month_snapshot=snapshots(),
+    )
+    body = json.loads(request.user_content)
+    schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
+
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v4"
+    assert body["target_cell"] == {
+        "week_id": None,
+        "section_key": "goals",
+        "placement": "MONTH",
+        "grounding_class": "GOALS",
+    }
+    assert (schema["goals"]["placement"], schema["goals"]["grounding_class"]) == ("MONTH", "GOALS")
+    assert body["response_contract"]["target_week_id"] is None
+
+
+def test_weekly_cell_prompt_keeps_the_weekly_target_shape(packet, snapshot):
+    request = build_monthly_cell_request(
+        packet, snapshot, target_week_id=WEEK_1, target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots()
+    )
+    body = json.loads(request.user_content)
+
+    assert body["target_cell"] == {"week_id": "2026-09-W1", "section_key": "focus"}
+    assert body["response_contract"]["target_week_id"] == "YYYY-MM-Wn"
+
+
+@pytest.mark.parametrize(
+    ("section_key", "target_week_id", "response_week_id", "valid"),
+    [
+        (FOCUS_SECTION_KEY, WEEK_1, "2026-09-W1", True),
+        (FOCUS_SECTION_KEY, WEEK_1, None, False),
+        (GOALS_SECTION_KEY, None, None, True),
+        (GOALS_SECTION_KEY, None, "2026-09-W1", False),
+    ],
+    ids=["weekly-week", "weekly-null", "goals-null", "goals-week"],
+)
+def test_cell_response_target_week_must_match_the_request_placement(
+    packet, snapshot, section_key, target_week_id, response_week_id, valid
+):
+    payload = goals_cell_payload() if section_key == GOALS_SECTION_KEY else cell_payload()
+    payload["target_week_id"] = response_week_id
+    planner = MonthlyCellPlanner(
+        DeterministicMonthlyLlm(
+            json.dumps(monthly_payload(), ensure_ascii=False),
+            json.dumps(payload, ensure_ascii=False),
+        )
+    )
+
+    def plan():
+        return planner.plan(
+            _with_goals_evidence(packet),
+            _with_goals_and_basic_habit(snapshot),
+            target_week_id=target_week_id,
+            target_section_key=section_key,
+            month_snapshot=snapshots(),
+        )
+
+    if valid:
+        assert plan().proposal.target_week_id == target_week_id
+    else:
+        with pytest.raises(ProposalRejectedError) as exc:
+            plan()
+        assert exc.value.validation_codes == ("TARGET_WEEK_MISMATCH",)
+
+
+def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_week_id():
+    payload = goals_cell_payload()
+    assert parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)).target_week_id is None
+    payload["target_week_id"] = "2026-09-W1"
+    assert parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)).target_week_id == WEEK_1
+
+    for invalid in ("", " ", 1, "not-a-week"):
+        payload["target_week_id"] = invalid
+        with pytest.raises(ProposalParseError):
+            parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False))
+    del payload["target_week_id"]
+    with pytest.raises(ProposalParseError, match="fields mismatch"):
+        parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False))

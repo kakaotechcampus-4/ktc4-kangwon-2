@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 
-from .harness import PlanningHarness
+from .harness import EXTENDED_PROFILE, PlanningHarness
 from .snapshots import (
     cell_regeneration_snapshot,
     monthly_snapshot,
@@ -58,3 +58,17 @@ def test_cell_regeneration_contract_matches_golden():
     assert cell_regeneration_snapshot(
         before, result, target.item_id
     ) == _expected("cell_regeneration.json")
+
+
+def test_goals_merged_cell_regeneration_contract_matches_golden():
+    harness = PlanningHarness()
+    parent = _confirmed_parent(harness)
+    before = harness.generate_monthly(
+        parent, MonthlyGenerationMode.LLM_PLANNER, profile=EXTENDED_PROFILE
+    ).plan
+    target = before.section("goals").cells[0]
+    result = harness.regenerate_monthly(before, item_id=target.item_id)
+
+    assert cell_regeneration_snapshot(
+        before, result, target.item_id
+    ) == _expected("cell_regeneration_goals.json")

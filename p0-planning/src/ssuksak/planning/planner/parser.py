@@ -183,6 +183,10 @@ def parse_monthly_cell_proposal(content: str) -> MonthlyCellProposal:
     )
     return MonthlyCellProposal(
         target_month=_year_month(root["target_month"], path="target_month"),
-        target_week_id=_week_id(root["target_week_id"], path="target_week_id"),
+        target_week_id=(
+            None
+            if root["target_week_id"] is None
+            else _week_id(root["target_week_id"], path="target_week_id")
+        ),
         section=_section_value(root["section"], path="section"),
     )

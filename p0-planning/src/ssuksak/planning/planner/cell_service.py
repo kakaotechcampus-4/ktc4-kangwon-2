@@ -26,7 +26,7 @@ class MonthlyCellPlanner:
         packet: MonthlyContextPacket,
         snapshot: TemplateSnapshot,
         *,
-        target_week_id: WeekId,
+        target_week_id: WeekId | None,
         target_section_key: str,
         month_snapshot: tuple[MonthlyCellSnapshot, ...],
     ) -> MonthlyCellPlanningOutcome:

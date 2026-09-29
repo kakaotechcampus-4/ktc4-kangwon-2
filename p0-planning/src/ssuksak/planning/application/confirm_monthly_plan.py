@@ -1,8 +1,15 @@
-"""Explicit teacher confirmation of a DRAFT Monthly Plan."""
+"""Explicit teacher confirmation of a DRAFT Monthly Plan.
+
+Confirm is idempotent at this use-case boundary: a retry on an already
+CONFIRMED Plan returns the stored Plan unchanged. A CONFIRMED Plan is
+immutable, so the retry re-runs no verification and adds no audit event.
+``MonthlyPlan.confirm`` itself still rejects a second transition.
+"""
 
 from __future__ import annotations
 
 from ..domain.monthly_plan import MonthlyPlan
+from ..domain.plan import PlanStatus
 from .monthly_dto import ConfirmMonthlyPlanCommand
 from .monthly_support import (
     load_plan_activity_catalog,
@@ -28,6 +35,8 @@ class ConfirmMonthlyPlan:
     def execute(self, command: ConfirmMonthlyPlanCommand) -> MonthlyPlan:
         plan = require_monthly_plan(self._plans, command.plan_id)
         actor_id = require_actor(command.actor_id)
+        if plan.status is PlanStatus.CONFIRMED:
+            return plan
         catalog = load_plan_activity_catalog(self._activities, plan)
         verified = with_fresh_monthly_verification(plan, catalog)
         confirmed = verified.confirm(
