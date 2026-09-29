@@ -703,7 +703,7 @@ plans 담당과 정해서 §4 에 쓴다.
 | code | status | 언제 | `fields` |
 |---|---|---|---|
 | `UNSUPPORTED_FILE_TYPE` | 400 | parse 와 같다 | `["file"]` |
-| `VALIDATION_FAILED` | 422 | parse 와 같다. `file` 이 없어도 이것이다 | `["file"]` |
+| `VALIDATION_FAILED` | 422 | parse 와 같다. `file` 이 없어도 이것이다. 등록은 **파일명이 255자를 넘어도** 이것이다 — 컬럼 길이다. 브라우저 업로드에서는 생기지 않는다(OS 한도가 255자) | `["file"]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | parse 와 같다 | `[]` |
 | `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
 | `NOT_FOUND` | 404 | 없는 원 · 없는 양식. **남의 원 것도 404 다**(ADR-017) | 등록 · 목록 `["center_id"]` / 삭제 `["form_id"]` |
