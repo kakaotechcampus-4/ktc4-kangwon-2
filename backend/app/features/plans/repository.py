@@ -34,7 +34,7 @@ class PostgresPlanRepository[TPlan]:
         if not isinstance(plan_id, PlanId):
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         body = to_jsonable(plan)
-        row = self._session.get(Plan, plan_id.value)
+        row = self._session.scalar(select(Plan).where(Plan.plan_ref == plan_id.value))
         values = {
             "center_id": self._center_id,
             "kind": self._kind,
@@ -46,7 +46,7 @@ class PostgresPlanRepository[TPlan]:
             "body": body,
         }
         if row is None:
-            self._session.add(Plan(id=plan_id.value, **values))
+            self._session.add(Plan(plan_ref=plan_id.value, sub_themes={}, **values))
         else:
             # 남의 원 계획안을 같은 id 로 덮어쓰지 못하게 한다.
             if row.center_id != self._center_id:
@@ -60,7 +60,7 @@ class PostgresPlanRepository[TPlan]:
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         row = self._session.scalar(
             select(Plan).where(
-                Plan.id == plan_id.value,
+                Plan.plan_ref == plan_id.value,
                 Plan.center_id == self._center_id,
                 Plan.kind == self._kind,
             )

@@ -8,6 +8,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import select
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.adapters.deterministic_theme_text_generator import (
     DeterministicThemeTextGenerator,
@@ -49,6 +50,11 @@ def _repo(session, center_id: int) -> PostgresPlanRepository[YearlyPlan]:
     return PostgresPlanRepository(session, center_id=center_id, kind="annual", plan_type=YearlyPlan)
 
 
+def _row(session, plan: YearlyPlan) -> Plan:
+    """도메인 id 로 행을 찾는다. 계약의 id 는 정수지만 도메인은 문자열을 쓴다."""
+    return session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
+
+
 def _generate(repo) -> YearlyPlan:
     """진짜 연간계획안 12개월치를 만든다. 저장은 repo 가 한다."""
     use_case = GenerateYearlyPlan(
@@ -85,7 +91,7 @@ def test_조회에_쓰는_칸은_본문에서_나온다(db_session):
     center = _center(db_session)
     plan = _generate(_repo(db_session, center.id))
 
-    row = db_session.get(Plan, plan.plan_id.value)
+    row = _row(db_session, plan)
     assert row.center_id == center.id
     assert row.kind == "annual"
     assert row.status == plan.status.value
@@ -98,13 +104,13 @@ def test_확정하면_본문과_칸이_같이_바뀐다(db_session):
     center = _center(db_session)
     repo = _repo(db_session, center.id)
     plan = _generate(repo)
-    assert db_session.get(Plan, plan.plan_id.value).status == "DRAFT"
+    assert _row(db_session, plan).status == "DRAFT"
 
     ConfirmYearlyPlan(plan_repository=repo, clock=FixedClock(NOW)).execute(
         ConfirmYearlyPlanCommand(plan_id=plan.plan_id, actor_id=ACTOR)
     )
 
-    row = db_session.get(Plan, plan.plan_id.value)
+    row = _row(db_session, plan)
     assert row.status == "CONFIRMED"
     assert row.body["status"] == "CONFIRMED"
     assert repo.get(plan.plan_id).status.value == "CONFIRMED"

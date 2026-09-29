@@ -13,7 +13,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,13 +28,18 @@ class Plan(Base):
 
     __tablename__ = "plans"
     __table_args__ = (
+        UniqueConstraint("plan_ref"),
         CheckConstraint("kind IN ('annual','monthly')", name="kind"),
         CheckConstraint("status IN ('DRAFT','CONFIRMED')", name="status"),
     )
 
-    # p0-planning 의 PlanId 가 그대로 들어온다. 자동 증가 정수를 쓰지 않는다 —
-    # 도메인이 id 를 먼저 만들고 저장은 나중이라, DB 가 번호를 매기면 둘이 달라진다.
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # 계약의 id 는 정수다(api-spec §4). 화면이 이미 정수로 만들어져 있다.
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # 도메인이 쓰는 id. 저장하기 전에 도메인이 먼저 만들어 자기 안에 박아두므로
+    # DB 가 매긴 번호로 대신할 수 없다. 둘을 같은 칸에 담으려 하면 하나가 거짓이 된다.
+    plan_ref: Mapped[str] = mapped_column(
+        String(64), index=True, comment="p0-planning 의 PlanId. body 안의 값과 같다"
+    )
     center_id: Mapped[int] = mapped_column(
         ForeignKey("centers.id"),
         index=True,
@@ -50,6 +55,13 @@ class Plan(Base):
     )
     body: Mapped[dict] = mapped_column(
         JSONB, comment="도메인 객체 전체. 이것이 원본이고 위 칸들은 여기서 유도한다"
+    )
+    # 계약에는 있는데 도메인에는 없다(api-spec §4 · §6). 도메인의 ThemeTextGenerator 는
+    # 주제 문장 하나만 돌려준다. 도메인을 건드리지 않고 서버가 따로 든다 —
+    # 소주제는 별도 근거가 없고 상위 주제의 evidence·generation 을 물려받으므로
+    # 도메인 객체 안에 들어갈 자리가 없다.
+    sub_themes: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default="{}", comment='월 -> 소주제 배열. {"3": ["..."]}'
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

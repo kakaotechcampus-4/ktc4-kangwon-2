@@ -41,6 +41,14 @@ class DocumentListItem(BaseModel):
     updated_at: datetime
 
 
+class RelatedDocumentsResponse(BaseModel):
+    """겹치는 확정 문서. 목록 항목 형식을 그대로 쓴다 — 화면이 같은 카드를 그린다."""
+
+    items: list["DocumentListItem"]
+    # 이 종류가 무엇을 짝으로 기대하는지. 비어 있어도 막지 않고 "아직 없음" 으로만 보인다.
+    expected_kinds: list[str]
+
+
 class DocumentListResponse(BaseModel):
     """목록 봉투는 `{ items }` 하나로 통일한다 (docs/api-spec.md 「공통」 관례)."""
 
