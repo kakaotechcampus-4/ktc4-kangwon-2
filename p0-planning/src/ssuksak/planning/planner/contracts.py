@@ -20,13 +20,13 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v8"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v11"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
-MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v3"
+MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v7"
 # Used instead of the two above when the Context Packet carries safety placement.
-MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v4"
-MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v4"
+MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v7"
+MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v8"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").
@@ -73,6 +73,16 @@ FOCUS_SECTION_KEY = "focus"
 OUTDOOR_SECTION_KEY = "outdoor_play"
 BASIC_HABIT_SECTION_KEY = "basic_habit"
 GOALS_SECTION_KEY = "goals"
+# Sections whose reference_id may name a supplied Reference item; every other
+# section's reference_id is structurally null. theme: the locked parent theme_id
+# (Theme Reference). outdoor_play: reference_activities (Activity Catalog; every
+# catalog item's placement_slots is outdoor_play).
+REFERENCE_CAPABLE_SECTION_KEYS = frozenset({"theme", OUTDOOR_SECTION_KEY})
+
+
+def reference_section_keys_for(reference_labels: tuple[tuple[str, str], ...]) -> frozenset[str]:
+    """REFERENCE_CAPABLE_SECTION_KEYS whose catalog a request actually supplies."""
+    return REFERENCE_CAPABLE_SECTION_KEYS - (frozenset() if reference_labels else {OUTDOOR_SECTION_KEY})
 LLM_CELL_SECTION_KEYS = frozenset(
     {FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY, BASIC_HABIT_SECTION_KEY, GOALS_SECTION_KEY}
 )
@@ -317,6 +327,10 @@ class MonthlyPlanningRequest:
     def reference_label_map(self) -> dict[str, str]:
         return dict(self.reference_labels)
 
+    @property
+    def reference_section_keys(self) -> frozenset[str]:
+        return reference_section_keys_for(self.reference_labels)
+
 
 @dataclass(frozen=True, slots=True)
 class MonthlyCellSnapshot:
@@ -432,6 +446,10 @@ class MonthlyCellPlanningRequest:
     @property
     def reference_label_map(self) -> dict[str, str]:
         return dict(self.reference_labels)
+
+    @property
+    def reference_section_keys(self) -> frozenset[str]:
+        return reference_section_keys_for(self.reference_labels)
 
 
 @dataclass(frozen=True, slots=True)

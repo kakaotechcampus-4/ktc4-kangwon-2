@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 import re
 
 from ..context.models import (
@@ -239,6 +240,120 @@ def _canonical_values(
     )
 
 
+# What each LLM-repairable finding needs to change in the cell it names (from the
+# validator branch that raises it). Every other field, and every cell no finding
+# names, keeps its pre-repair value; reference_id and unresolved are never repaired.
+# A code without an entry authorizes nothing, so its finding survives and fails closed.
+_VALUE = frozenset({"value"})
+_VALUE_AND_REFS = frozenset({"value", "grounding_refs"})
+REPAIR_MUTABLE_FIELDS: dict[ProposalValidationCode, frozenset[str]] = {
+    ProposalValidationCode.SOURCE_TEXT_COPY: _VALUE,
+    ProposalValidationCode.TEXT_POLICY: _VALUE,
+    ProposalValidationCode.SAFETY_MULTIPLE_SENTENCES: _VALUE,
+    ProposalValidationCode.SAFETY_DUPLICATE_CONTENT: _VALUE,
+    # Ref choice findings: the refs change and the value follows the new refs.
+    ProposalValidationCode.WRONG_SOURCE_GROUNDING: _VALUE_AND_REFS,
+    ProposalValidationCode.SAFETY_GROUNDING_MISMATCH: _VALUE_AND_REFS,
+    ProposalValidationCode.SAFETY_FOCUS_MISMATCH: _VALUE_AND_REFS,
+    ProposalValidationCode.SAFETY_DUPLICATE_REFERENCE: _VALUE_AND_REFS,
+}
+_CELL_FIELDS = ("value", "unresolved", "reference_id", "grounding_refs")
+
+
+def _cells(payload: dict) -> dict[tuple[str | None, str], dict]:
+    """Raw proposal cells by finding location: (week_id or None for month, section_key)."""
+    cells = {(None, cell["section_key"]): cell for cell in payload["month_sections"]}
+    cells.update(
+        ((week["week_id"], cell["section_key"]), cell) for week in payload["weeks"] for cell in week["sections"]
+    )
+    return cells
+
+
+def _field(cell: dict, name: str) -> object:
+    return list(dict.fromkeys(cell[name])) if name == "grounding_refs" else cell[name]
+
+
+def merge_authorized_repair(
+    base_content: str,
+    repair_content: str,
+    issues: tuple[ProposalValidationIssue, ...],
+) -> tuple[str, tuple[tuple[str | None, str, tuple[str, ...]], ...]]:
+    """The pre-repair proposal plus only the fields its findings authorize from the repair.
+
+    Structure, cells and fields no finding authorizes stay as in base_content.
+    Returns the merged JSON and each ignored change as (week_id, section_key, fields).
+    """
+    authorized: dict[tuple[str | None, str], set[str]] = {}
+    for issue in issues:
+        authorized.setdefault((issue.week_id, issue.field), set()).update(REPAIR_MUTABLE_FIELDS.get(issue.code, ()))
+    base = json.loads(base_content)
+    patch = _cells(json.loads(repair_content))
+    ignored = []
+    for key, cell in _cells(base).items():
+        new = patch.get(key)
+        if new is None:
+            continue
+        changed = [name for name in _CELL_FIELDS if _field(new, name) != _field(cell, name)]
+        allowed = authorized.get(key, set())
+        for name in changed:
+            if name in allowed:
+                cell[name] = new[name]
+        if blocked := tuple(name for name in changed if name not in allowed):
+            ignored.append((key[0], key[1], blocked))
+    return json.dumps(base, ensure_ascii=False), tuple(ignored)
+
+
+def canonicalize_reference_labels(
+    content: str,
+    issues: tuple[ProposalValidationIssue, ...],
+    request: MonthlyPlanningRequest,
+) -> tuple[str, tuple[ProposalValidationIssue, ...]]:
+    """Deterministic REFERENCE_VALUE_MISMATCH repair on the raw proposal JSON.
+
+    Only a CANONICAL_LABEL_MISMATCH cell whose reference_id resolves in the request's
+    catalog labels is touched: its reference_id, refs, section and week stay; value
+    becomes exactly that canonical label. Anything else is left for fail-closed.
+    """
+    payload = json.loads(content)
+    labels = request.reference_label_map
+    cells = _cells(payload)
+    fixed = []
+    for issue in issues:
+        cell = cells.get((issue.week_id, issue.field))
+        if (
+            issue.code is ProposalValidationCode.REFERENCE_VALUE_MISMATCH
+            and issue.reason == "CANONICAL_LABEL_MISMATCH"
+            and cell is not None
+            and cell["reference_id"] in labels
+        ):
+            cell["value"] = labels[cell["reference_id"]]
+            fixed.append(issue)
+    return json.dumps(payload, ensure_ascii=False), tuple(fixed)
+
+
+def changed_reference_ids(
+    rejected: MonthlyPlanProposal,
+    repaired: MonthlyPlanProposal,
+    issues: tuple[ProposalValidationIssue, ...],
+) -> tuple[ProposalValidationIssue, ...]:
+    """A repair of a REFERENCE_VALUE_MISMATCH cell keeps its catalog item: same reference_id."""
+    before = {(w, v.section_key): v.reference_id for v, w in _canonical_values(rejected)}
+    after = {(w, v.section_key): v.reference_id for v, w in _canonical_values(repaired)}
+    return tuple(
+        ProposalValidationIssue(
+            ProposalValidationCode.REFERENCE_VALUE_MISMATCH,
+            issue.field,
+            week_id=issue.week_id,
+            reason="REFERENCE_ID_CHANGED_ON_REPAIR",
+            expected=before[(issue.week_id, issue.field)],
+            actual=after.get((issue.week_id, issue.field)) or "null",
+        )
+        for issue in issues
+        if issue.code is ProposalValidationCode.REFERENCE_VALUE_MISMATCH
+        and after.get((issue.week_id, issue.field)) != before[(issue.week_id, issue.field)]
+    )
+
+
 def validate_monthly_proposal_schema(
     proposal: MonthlyPlanProposal,
     request: MonthlyPlanningRequest,
@@ -384,6 +499,17 @@ def validate_monthly_proposal_grounding(
         normalize_visible_text(item.text) for item in evidence_items
     }
     reference_labels = request.reference_label_map
+
+    def reference_kind(reference_id: str) -> str:
+        """What a misplaced reference_id names, as a category: never the id or its text."""
+        if reference_id in reference_labels:
+            return "activity_id"
+        if reference_id == request.expected_theme_id:
+            return "theme_id"
+        if reference_id in evidence_by_ref or reference_id in official:
+            return "grounding_ref"
+        return "unknown"
+
     snapshot_sections = {
         section.section_key: section for section in request.template_snapshot.sections
     }
@@ -481,17 +607,34 @@ def validate_monthly_proposal_grounding(
                     expected="null",
                     actual="annex6" if value.reference_id.startswith("annex6:") else "non_null",
                 )
+            elif value.section_key not in request.reference_section_keys:
+                fail(
+                    ProposalValidationCode.UNKNOWN_REFERENCE_ID,
+                    value.section_key,
+                    week_id=week_id,
+                    reason="REFERENCE_FORBIDDEN_FOR_SECTION",
+                    expected="null",
+                    actual=reference_kind(value.reference_id),
+                )
             elif expected is None:
                 fail(
                     ProposalValidationCode.UNKNOWN_REFERENCE_ID,
                     value.section_key,
                     week_id=week_id,
+                    reason="UNKNOWN_ACTIVITY_REFERENCE",
+                    expected="reference_activities",
+                    actual=reference_kind(value.reference_id),
                 )
             elif normalize_visible_text(value.value) != normalize_visible_text(expected):
+                # detail goes to the repair prompt only (catalog label, never logged).
                 fail(
                     ProposalValidationCode.REFERENCE_VALUE_MISMATCH,
                     value.section_key,
-                    week_id=week_id,
+                    f"reference_id={value.reference_id} canonical_label={expected}",
+                    week_id,
+                    reason="CANONICAL_LABEL_MISMATCH",
+                    expected=f"label_of:{value.reference_id}",
+                    actual="other_text",
                 )
         elif not value.grounding_refs:
             fail(

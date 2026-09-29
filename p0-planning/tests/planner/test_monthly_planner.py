@@ -15,6 +15,7 @@ from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.planner.contracts import (
+    REFERENCE_CAPABLE_SECTION_KEYS,
     BASIC_HABIT_SECTION_KEY,
     FOCUS_SECTION_KEY,
     GOALS_SECTION_KEY,
@@ -30,7 +31,7 @@ from ssuksak.planning.planner.contracts import (
     ProposedSectionValue,
     ProposalRejectedError,
 )
-from ssuksak.planning.context.models import GroundingContextItem
+from ssuksak.planning.context.models import GroundingContextItem, ReferenceActivityContext
 from ssuksak.planning.domain.monthly_template import SemanticVariant
 from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.evidence.classification import SemanticClass
@@ -48,11 +49,17 @@ from ssuksak.planning.planner.parser import (
 )
 from ssuksak.planning.planner.prompt import (
     REPAIR_SYSTEM_PROMPT,
+    SAFETY_SYSTEM_PROMPT,
     SYSTEM_PROMPT as MONTHLY_SYSTEM_PROMPT,
     build_monthly_planning_request,
 )
-from ssuksak.planning.planner.service import MonthlyPlanner
+from ssuksak.planning.planner.service import REPAIRABLE_CODES, MonthlyPlanner
+from ssuksak.planning.planner.text_policy import MAX_VISIBLE_TEXT_CHARS, visible_text_violations
 from ssuksak.planning.planner.validation import (
+    REPAIR_MUTABLE_FIELDS,
+    canonicalize_reference_labels,
+    changed_reference_ids,
+    merge_authorized_repair,
     validate_monthly_proposal,
     validate_monthly_proposal_schema,
 )
@@ -829,7 +836,7 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v8"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v11"),
         (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v9"),
     ],
     ids=["monthly", "cell"],
@@ -1086,7 +1093,7 @@ def test_repairable_finding_gets_one_repair_with_locators(packet, snapshot, muta
 
 
 def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v3"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v7"
     assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
     assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
     for rule in (
@@ -1100,8 +1107,13 @@ def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
         assert rule in REPAIR_SYSTEM_PROMPT
 
 
+def _legal_claim_in_outdoor_w2(body):
+    body["weeks"][1]["sections"][1]["value"] = "법적 기준에 맞게 색 그림자를 찾는다."
+
+
 def test_failed_repair_fails_closed_after_exactly_two_calls(packet, snapshot):
-    fake = ScriptedMonthlyLlm(_mutated(_source_copy), _mutated(_legal_claim), monthly_payload())
+    # The repair rewrites its authorized cell (outdoor W2) into a new violation.
+    fake = ScriptedMonthlyLlm(_mutated(_source_copy), _mutated(_legal_claim_in_outdoor_w2), monthly_payload())
 
     with pytest.raises(ProposalRejectedError) as exc:
         MonthlyPlanner(fake).plan(packet, snapshot)
@@ -1397,3 +1409,474 @@ def test_resolved_safety_without_safety_grounding_is_still_rejected(packet, snap
     body["weeks"][0]["sections"][2].update(value="안전하게 놀이한다.", unresolved=False, grounding_refs=refs)
 
     assert "SAFETY_GROUNDING_REQUIRED" in _validate(body, packet, snapshot).codes
+
+
+# ---------------------------------------------------------------- reference_id canonical label
+
+
+def _paraphrased(body):
+    body["weeks"][0]["sections"][1]["value"] = "바람개비를 들고 바람을 느껴 보아요"  # act-1 = 바람개비 놀이
+
+
+def _with_second_activity(packet):
+    return replace(
+        packet,
+        reference_activities=packet.reference_activities + (ReferenceActivityContext("act-2", "그림자 놀이", 1),),
+    )
+
+
+def _outdoor_w1(body_or_proposal):
+    return body_or_proposal["weeks"][0]["sections"][1]
+
+
+def test_canonical_label_and_null_reference_outdoor_values_are_valid(packet, snapshot):
+    body = monthly_payload()
+    _outdoor_w1(body)["value"] = " 바람개비  놀이 "  # visible-text normalization, same label
+    request = build_monthly_planning_request(packet, snapshot)
+    issues = validate_monthly_proposal(parse_monthly_proposal(json.dumps(body, ensure_ascii=False)), packet, request).issues
+
+    assert [i for i in issues if i.field == "outdoor_play"] == []
+    assert body["weeks"][1]["sections"][1]["reference_id"] is None  # grounded own sentence stays allowed
+
+
+def test_a_paraphrase_with_a_reference_id_is_a_located_canonical_label_mismatch(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    proposal = parse_monthly_proposal(json.dumps(_mutated(_paraphrased), ensure_ascii=False))
+    (issue,) = validate_monthly_proposal(proposal, packet, request).issues
+
+    assert (issue.code.value, issue.week_id, issue.field) == ("REFERENCE_VALUE_MISMATCH", "2026-09-W1", "outdoor_play")
+    assert (issue.reason, issue.expected, issue.actual) == ("CANONICAL_LABEL_MISMATCH", "label_of:act-1", "other_text")
+    assert issue.detail == "reference_id=act-1 canonical_label=바람개비 놀이"
+
+
+def _long_focus(body):
+    body["weeks"][0]["sections"][0]["value"] = "바람과 빛의 변화를 살펴본다. " * 20  # > MAX_VISIBLE_TEXT_CHARS
+
+
+def _paraphrase_and_copy(body):
+    _paraphrased(body)
+    _source_copy(body)
+
+
+def test_a_label_mismatch_is_repaired_deterministically_without_a_provider_call(packet, snapshot, caplog):
+    fake = ScriptedMonthlyLlm(_mutated(_paraphrased), monthly_payload())
+
+    with caplog.at_level("INFO"):
+        outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    value = outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1"))
+
+    assert len(fake.monthly_requests) == 1 and outcome.prompt_version == MONTHLY_PROMPT_VERSION
+    assert (value.reference_id, value.value, value.grounding_refs) == ("act-1", "바람개비 놀이", ())
+    assert "Monthly deterministic repair applied: REFERENCE_VALUE_MISMATCH@2026-09-W1/outdoor_play" in caplog.text
+    assert "LLM repair attempted" not in caplog.text
+    assert "바람개비" not in caplog.text  # neither generated nor catalog text is logged
+
+
+def test_every_label_mismatch_is_restored_in_one_deterministic_step(packet, snapshot):
+    packet = _with_second_activity(packet)
+    body = _mutated(_paraphrased)
+    body["weeks"][1]["sections"][1].update(reference_id="act-2", value="그림자를 따라 놀아요", grounding_refs=[])
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    values = [outcome.proposal.value_for("outdoor_play", WeekId(w)) for w in ("2026-09-W1", "2026-09-W2")]
+
+    assert len(fake.monthly_requests) == 1
+    assert [(v.reference_id, v.value) for v in values] == [("act-1", "바람개비 놀이"), ("act-2", "그림자 놀이")]
+
+
+def test_canonicalization_touches_only_known_label_mismatches(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    body = _mutated(_paraphrased)
+    content = json.dumps(body, ensure_ascii=False)
+    (issue,) = validate_monthly_proposal(parse_monthly_proposal(content), packet, request).issues
+
+    fixed_content, fixed = canonicalize_reference_labels(content, (issue,), request)
+    expected = _mutated(_paraphrased)
+    _outdoor_w1(expected)["value"] = "바람개비 놀이"
+    assert fixed == (issue,) and json.loads(fixed_content) == expected  # nothing else changed
+
+    unknown = _mutated(_paraphrased)
+    _outdoor_w1(unknown)["reference_id"] = "invented"
+    for issues, raw in (((replace(issue, reason="REFERENCE_ID_CHANGED_ON_REPAIR"),), body), ((issue,), unknown)):
+        raw_content = json.dumps(raw, ensure_ascii=False)
+        assert canonicalize_reference_labels(raw_content, issues, request) == (raw_content, ())
+
+
+@pytest.mark.parametrize("other", [_source_copy, _long_focus], ids=["source-copy", "text-too-long"])
+def test_label_mismatch_plus_a_text_finding_gets_one_llm_repair_after_the_deterministic_step(packet, snapshot, other):
+    body = _mutated(_paraphrased)
+    other(body)
+    fake = ScriptedMonthlyLlm(body, monthly_payload(), monthly_payload())
+
+    outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    repair = json.loads(fake.monthly_requests[1].user_content)
+
+    assert len(fake.monthly_requests) == 2 and outcome.prompt_version == MONTHLY_REPAIR_PROMPT_VERSION
+    assert {f["code"] for f in repair["validation_findings"]} <= {"SOURCE_TEXT_COPY", "TEXT_POLICY"}
+    assert _outdoor_w1(repair["rejected_proposal"])["value"] == "바람개비 놀이"  # already canonical
+    assert outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1")).reference_id == "act-1"
+
+
+@pytest.mark.parametrize(
+    ("reference_id", "value", "refs", "fields"),
+    [
+        ("act-2", "그림자 놀이", [], "value,reference_id"),
+        (None, "바람개비를 돌리며 바람을 느낀다.", ["ev-1"], "value,reference_id,grounding_refs"),
+        ("act-1", "바람개비를 들고 바람을 느껴 보아요", [], "value"),
+    ],
+    ids=["other-catalog-item", "dropped-reference", "re-paraphrased"],
+)
+def test_an_llm_repair_cannot_touch_a_canonicalized_reference_cell(packet, snapshot, caplog, reference_id, value, refs, fields):
+    packet = _with_second_activity(packet)
+    repaired = monthly_payload()
+    _outdoor_w1(repaired).update(reference_id=reference_id, value=value, grounding_refs=refs)
+    fake = ScriptedMonthlyLlm(_mutated(_paraphrase_and_copy), repaired, monthly_payload())
+
+    with caplog.at_level("INFO"):
+        outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+    cell = outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1"))
+
+    # Deterministic repair restored W1; the LLM repair was authorized for W2 only.
+    assert (cell.reference_id, cell.value) == ("act-1", "바람개비 놀이") and len(fake.monthly_requests) == 2
+    assert f"REPAIR_UNAUTHORIZED_MUTATION_IGNORED@2026-09-W1/outdoor_play fields={fields}" in caplog.text
+    assert "바람개비" not in caplog.text
+
+
+def test_the_reference_id_preservation_check_still_flags_a_changed_id(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    rejected = _mutated(_paraphrased)
+    content = json.dumps(rejected, ensure_ascii=False)
+    found = validate_monthly_proposal(parse_monthly_proposal(content), packet, request).issues
+    changed = monthly_payload()
+    _outdoor_w1(changed).update(reference_id=None, grounding_refs=["ev-1"], value="바람개비를 돌려요.")
+
+    (issue,) = changed_reference_ids(
+        parse_monthly_proposal(content), parse_monthly_proposal(json.dumps(changed, ensure_ascii=False)), found)
+    assert (issue.reason, issue.expected, issue.actual) == ("REFERENCE_ID_CHANGED_ON_REPAIR", "act-1", "null")
+
+
+def test_an_unknown_reference_id_is_still_never_repaired(packet, snapshot):
+    body = monthly_payload()
+    _outdoor_w1(body)["reference_id"] = "invented"
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert "UNKNOWN_REFERENCE_ID" in exc.value.validation_codes and "UNKNOWN_REFERENCE_ID" not in REPAIRABLE_CODES
+    assert len(fake.monthly_requests) == 1
+
+
+def test_initial_and_repair_prompts_scope_reference_id_to_supplied_catalogs():
+    for prompt in (MONTHLY_SYSTEM_PROMPT, SAFETY_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT):
+        flat = " ".join(prompt.split())
+        assert "Use reference_id only in a section whose reference catalog is supplied: theme" in flat
+        assert "(parent_theme.theme_id) and outdoor_play (reference_activities activity_id)" in flat
+        assert "In every other section reference_id is null" in flat
+        assert "value must exactly equal the canonical label of that referenced item" in flat
+        assert "do not paraphrase, expand, summarize or rewrite it" in flat
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v11"
+
+
+def test_the_repair_prompt_is_finding_directed():
+    header = REPAIR_SYSTEM_PROMPT[: -len(MONTHLY_SYSTEM_PROMPT)]
+    flat = " ".join(header.split())
+
+    assert "Write every value in your own words" not in header  # conflicted with canonical labels
+    assert "REFERENCE_VALUE_MISMATCH" not in header  # repaired deterministically, never by the LLM
+    assert "Change only the cells named in validation_findings and keep cells without a finding unchanged" in flat
+    assert "copy their value, reference_id and grounding_refs exactly as in rejected_proposal" in flat
+    assert "SOURCE_TEXT_COPY: keep the meaning of its cited grounding_refs but rewrite the value in your own words" in flat
+    assert "TEXT_TOO_LONG: keep the same meaning and cited refs; remove repetition and unnecessary modifiers" in flat
+    assert f"over {MAX_VISIBLE_TEXT_CHARS} characters; that is a hard ceiling, not a target length" in flat
+    assert MAX_VISIBLE_TEXT_CHARS == 240  # the validator's limit, not a new number
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v7"
+
+
+# ---------------------------------------------------------------- reference_id capability
+
+
+def _week_branches(schema):
+    items = schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"]
+    return {b["properties"]["section_key"]["enum"][0]: b for b in items.get("anyOf", [items])}
+
+
+def _month_branches(schema):
+    items = schema["properties"]["month_sections"]["items"]
+    return {b["properties"]["section_key"]["enum"][0]: b for b in items.get("anyOf", [items])}
+
+
+def test_reference_capability_is_an_explicit_allowlist():
+    assert REFERENCE_CAPABLE_SECTION_KEYS == {"theme", "outdoor_play"}
+
+
+def test_only_catalog_sections_accept_a_non_null_reference_id_in_the_schema(packet, snapshot):
+    request = build_monthly_planning_request(packet, snapshot)
+    branches = {**_month_branches(monthly_response_schema(request)), **_week_branches(monthly_response_schema(request))}
+
+    assert request.reference_section_keys == {"theme", "outdoor_play"}
+    for key, branch in branches.items():
+        expected = {"type": ["string", "null"]} if key in {"theme", "outdoor_play"} else {"type": "null"}
+        assert branch["properties"]["reference_id"] == expected, key
+    assert {"focus", "theme", "outdoor_play"} <= set(branches)
+
+
+def test_outdoor_play_without_a_supplied_catalog_is_null_only(packet, snapshot):
+    request = build_monthly_planning_request(replace(packet, reference_activities=()), snapshot)
+
+    assert request.reference_section_keys == {"theme"}
+    assert _week_branches(monthly_response_schema(request))["outdoor_play"]["properties"]["reference_id"] == {"type": "null"}
+
+
+@pytest.mark.parametrize(
+    ("section", "expected"),
+    [(FOCUS_SECTION_KEY, {"type": "null"}), (OUTDOOR_SECTION_KEY, {"type": ["string", "null"]})],
+)
+def test_the_cell_schema_follows_the_reference_capability(packet, snapshot, section, expected):
+    request = build_monthly_cell_request(
+        packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=section,
+        month_snapshot=snapshots(),
+    )
+
+    assert cell_response_schema(request)["properties"]["section"]["properties"]["reference_id"] == expected
+
+
+@pytest.mark.parametrize(
+    ("reference_id", "kind"),
+    [("act-1", "activity_id"), ("theme-autumn", "theme_id"), ("ev-3", "grounding_ref"), ("invented", "unknown")],
+)
+def test_a_reference_id_in_a_section_without_a_catalog_is_a_located_rejection(packet, snapshot, reference_id, kind):
+    body = monthly_payload()
+    body["weeks"][0]["sections"][0]["reference_id"] = reference_id  # focus W1
+    request = build_monthly_planning_request(packet, snapshot)
+    issues = validate_monthly_proposal(parse_monthly_proposal(json.dumps(body, ensure_ascii=False)), packet, request).issues
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    assert [(i.code.value, i.week_id, i.field, i.reason, i.expected, i.actual) for i in issues] == [
+        ("UNKNOWN_REFERENCE_ID", "2026-09-W1", "focus", "REFERENCE_FORBIDDEN_FOR_SECTION", "null", kind)]
+    with pytest.raises(ProposalRejectedError):
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert len(fake.monthly_requests) == 1  # never repaired
+
+
+def test_an_unknown_outdoor_reference_id_is_located_and_never_repaired(packet, snapshot, caplog):
+    body = monthly_payload()
+    _outdoor_w1(body)["reference_id"] = "ev-1"
+    fake = ScriptedMonthlyLlm(body, monthly_payload())
+
+    with caplog.at_level("INFO"), pytest.raises(ProposalRejectedError) as exc:
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    (issue,) = exc.value.issues
+
+    assert (issue.code.value, issue.week_id, issue.field, issue.reason, issue.actual) == (
+        "UNKNOWN_REFERENCE_ID", "2026-09-W1", "outdoor_play", "UNKNOWN_ACTIVITY_REFERENCE", "grounding_ref")
+    assert "reason=UNKNOWN_ACTIVITY_REFERENCE expected=reference_activities actual=grounding_ref" in caplog.text
+    assert "ev-1" not in caplog.text and len(fake.monthly_requests) == 1
+
+
+# ---------------------------------------------------------------- goals generation target
+
+
+GOALS_TARGET = "about 120 to 160 characters"
+
+
+def test_the_initial_prompt_gives_goals_a_target_below_the_ceiling():
+    flat = " ".join(MONTHLY_SYSTEM_PROMPT.split())
+
+    assert "For goals, write one concise Korean summary of the month's key goals, usually about 120 to 160 characters" in flat
+    assert "do not list each institution's goals or try to include every evidence phrase" in flat
+    assert str(MAX_VISIBLE_TEXT_CHARS) not in MONTHLY_SYSTEM_PROMPT  # the ceiling is never shown as a target
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v11"
+
+
+def test_the_goals_target_applies_to_goals_only():
+    for prompt in (MONTHLY_SYSTEM_PROMPT, SAFETY_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT):
+        sentences = " ".join(prompt.split()).split(". ")
+        targeted = [s for s in sentences if "120 to 160" in s]
+        assert targeted and all("goals" in s for s in targeted), prompt[:40]
+    assert "120 to 160" not in CELL_SYSTEM_PROMPT  # cell regeneration is outside this contract
+
+
+def test_the_goals_repair_aims_at_the_target_and_keeps_the_ceiling_as_the_check():
+    flat = " ".join(REPAIR_SYSTEM_PROMPT[: -len(MONTHLY_SYSTEM_PROMPT)].split())
+
+    assert "For goals, keep only the month's key goals and aim for about 120 to 160 characters" in flat
+    assert "that is a hard ceiling, not a target length" in flat
+
+
+@pytest.mark.parametrize(("length", "too_long"), [(160, False), (200, False), (240, False), (241, True)])
+def test_the_validator_ceiling_stays_240_and_the_target_is_not_enforced(length, too_long):
+    assert ("TEXT_TOO_LONG" in visible_text_violations("가" * length)) is too_long
+
+
+# ---------------------------------------------------------------- repair mutation boundary
+
+
+def _focus_copy(body):
+    body["weeks"][0]["sections"][0]["value"] = "가을 열매와 나뭇잎"  # ev-3 text, cited by focus W1
+
+
+def test_only_the_cell_a_finding_names_takes_the_repair(packet, snapshot, caplog):
+    repaired = monthly_payload()
+    repaired["weeks"][0]["sections"][0]["value"] = "가을에 볼 수 있는 열매와 잎을 살펴본다."
+    _outdoor_w1(repaired)["value"] = "바람개비를 돌리며 놀아요"  # unauthorized paraphrase of a canonical label
+    fake = ScriptedMonthlyLlm(_mutated(_focus_copy), repaired, monthly_payload())
+
+    with caplog.at_level("INFO"):
+        outcome = MonthlyPlanner(fake).plan(packet, snapshot)
+
+    assert outcome.proposal.value_for("focus", WeekId("2026-09-W1")).value == "가을에 볼 수 있는 열매와 잎을 살펴본다."
+    assert outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1")).value == "바람개비 놀이"
+    assert "REPAIR_UNAUTHORIZED_MUTATION_IGNORED@2026-09-W1/outdoor_play fields=value" in caplog.text
+    assert "Monthly LLM repair succeeded" in caplog.text  # the ignored change is no validation failure
+
+
+def _issue(code, field, week_id=None):
+    from ssuksak.planning.planner.validation import ProposalValidationCode, ProposalValidationIssue
+
+    return ProposalValidationIssue(ProposalValidationCode(code), field, week_id=week_id)
+
+
+def _with_goals(body, value="이번 달의 목표"):
+    body["month_sections"].append(
+        {"section_key": "goals", "value": value, "unresolved": False, "reference_id": None, "grounding_refs": ["g-1"]})
+    return body
+
+
+def test_an_unnamed_goals_value_keeps_its_base_value():
+    base = _with_goals(monthly_payload())
+    patch = _with_goals(_mutated(_focus_copy), "다시 쓴 목표")
+    patch["weeks"][0]["sections"][0]["value"] = "새 초점"
+
+    merged, ignored = merge_authorized_repair(
+        json.dumps(base, ensure_ascii=False), json.dumps(patch, ensure_ascii=False),
+        (_issue("SOURCE_TEXT_COPY", "focus", "2026-09-W1"),))
+    merged = json.loads(merged)
+
+    assert merged["month_sections"][1]["value"] == "이번 달의 목표"
+    assert merged["weeks"][0]["sections"][0]["value"] == "새 초점"
+    assert ignored == ((None, "goals", ("value",)),)
+
+
+def test_several_findings_authorize_exactly_their_cells():
+    base = _with_goals(monthly_payload())
+    patch = json.loads(json.dumps(base))
+    patch["month_sections"][1]["value"] = "짧게 줄인 목표"
+    patch["weeks"][1]["sections"][1]["value"] = "새 바깥놀이"
+    patch["weeks"][1]["sections"][0]["value"] = "바뀐 W2 초점"  # no finding
+    issues = (_issue("TEXT_POLICY", "goals"), _issue("SOURCE_TEXT_COPY", "outdoor_play", "2026-09-W2"))
+
+    merged, ignored = merge_authorized_repair(json.dumps(base), json.dumps(patch), issues)
+    merged = json.loads(merged)
+
+    assert merged["month_sections"][1]["value"] == "짧게 줄인 목표"
+    assert merged["weeks"][1]["sections"][1]["value"] == "새 바깥놀이"
+    assert merged["weeks"][1]["sections"][0]["value"] == base["weeks"][1]["sections"][0]["value"]
+    assert ignored == (("2026-09-W2", "focus", ("value",)),)
+
+
+@pytest.mark.parametrize(
+    ("code", "applied", "blocked"),
+    [
+        ("SOURCE_TEXT_COPY", {"value"}, ("unresolved", "reference_id", "grounding_refs")),
+        ("TEXT_POLICY", {"value"}, ("unresolved", "reference_id", "grounding_refs")),
+        ("WRONG_SOURCE_GROUNDING", {"value", "grounding_refs"}, ("unresolved", "reference_id")),
+        ("SAFETY_FOCUS_MISMATCH", {"value", "grounding_refs"}, ("unresolved", "reference_id")),
+    ],
+)
+def test_each_finding_authorizes_only_the_fields_its_fix_needs(code, applied, blocked):
+    base = monthly_payload()
+    patch = monthly_payload()
+    patch["weeks"][1]["sections"][1].update(
+        value="새 값", unresolved=True, reference_id="act-1", grounding_refs=["ev-2"])
+
+    merged, ignored = merge_authorized_repair(json.dumps(base), json.dumps(patch), (_issue(code, "outdoor_play", "2026-09-W2"),))
+    cell = json.loads(merged)["weeks"][1]["sections"][1]
+    before = base["weeks"][1]["sections"][1]
+
+    for name in ("value", "unresolved", "reference_id", "grounding_refs"):
+        assert cell[name] == (patch["weeks"][1]["sections"][1] if name in applied else before)[name], name
+    assert ignored == (("2026-09-W2", "outdoor_play", blocked),)
+
+
+def test_every_llm_repairable_code_has_a_mutation_contract():
+    assert set(REPAIRABLE_CODES) - {"REFERENCE_VALUE_MISMATCH"} == {code.value for code in REPAIR_MUTABLE_FIELDS}
+    assert all("reference_id" not in fields and "unresolved" not in fields for fields in REPAIR_MUTABLE_FIELDS.values())
+
+
+def test_reordered_or_duplicate_refs_are_no_mutation():
+    base = monthly_payload()
+    patch = monthly_payload()
+    patch["weeks"][1]["sections"][1]["grounding_refs"] = ["ev-1", "ev-1"]
+
+    assert merge_authorized_repair(json.dumps(base), json.dumps(patch), ())[1] == ()
+
+
+
+# ---------------------------------------------------------------- M1: cell regeneration reference capability
+
+
+def _capability_case(packet, snapshot, section, week):
+    packet = replace(_with_goals_evidence(packet), section_evidence=_with_goals_evidence(packet).section_evidence + (
+        _section_item("ev-habit", SemanticClass.BASIC_HABIT, "기본생활습관"),))
+    snapshot = _with_goals_and_basic_habit(snapshot)
+    request = build_monthly_cell_request(
+        packet, snapshot, target_week_id=week, target_section_key=section, month_snapshot=snapshots(),
+    )
+    payload = {"target_month": "2026-09", "target_week_id": None if week is None else week.value,
+               "section": {"section_key": section, "value": "바람개비 놀이", "unresolved": False,
+                           "reference_id": "act-1", "grounding_refs": []}}
+    return packet, request, payload
+
+
+@pytest.mark.parametrize(
+    ("section", "week"),
+    [(FOCUS_SECTION_KEY, WEEK_1), (GOALS_SECTION_KEY, None), (BASIC_HABIT_SECTION_KEY, WEEK_1)],
+    ids=["C1-focus", "C2-goals", "C3-basic-habit"],
+)
+def test_cell_regeneration_rejects_an_activity_reference_outside_catalog_sections(packet, snapshot, section, week):
+    packet, request, payload = _capability_case(packet, snapshot, section, week)
+    result = validate_monthly_cell_proposal(parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)),
+                                            packet, request)
+
+    assert request.reference_section_keys == {"theme", "outdoor_play"}
+    assert cell_response_schema(request)["properties"]["section"]["properties"]["reference_id"] == {"type": "null"}
+    assert [(i.code.value, i.detail) for i in result.issues if i.field == "reference_id"] == [
+        ("UNKNOWN_REFERENCE_ID", "REFERENCE_FORBIDDEN_FOR_SECTION")]
+
+
+def test_a_forbidden_cell_reference_fails_closed_without_a_retry(packet, snapshot):
+    packet, request, payload = _capability_case(packet, snapshot, FOCUS_SECTION_KEY, WEEK_1)
+
+    class OneShot:
+        def __init__(self):
+            self.cell_requests = []
+
+        def generate_cell(self, request):
+            self.cell_requests.append(request)
+            return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL)
+
+    provider = OneShot()
+    with pytest.raises(ProposalRejectedError) as exc:
+        MonthlyCellPlanner(provider).plan(
+            packet, _with_goals_and_basic_habit(snapshot), target_week_id=WEEK_1,
+            target_section_key=FOCUS_SECTION_KEY, month_snapshot=snapshots(),
+        )
+    assert "UNKNOWN_REFERENCE_ID" in exc.value.validation_codes and len(provider.cell_requests) == 1
+
+
+def test_an_outdoor_cell_keeps_its_catalog_reference_contract(packet, snapshot):  # C5
+    packet, request, payload = _capability_case(packet, snapshot, OUTDOOR_SECTION_KEY, WEEK_1)
+
+    assert validate_monthly_cell_proposal(parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)),
+                                          packet, request).is_valid
+
+
+def test_without_a_catalog_an_outdoor_cell_reference_is_forbidden_too(packet, snapshot):
+    packet, request, payload = _capability_case(replace(packet, reference_activities=()), snapshot,
+                                                OUTDOOR_SECTION_KEY, WEEK_1)
+    result = validate_monthly_cell_proposal(parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)),
+                                            packet, request)
+
+    assert request.reference_section_keys == {"theme"}
+    assert ("UNKNOWN_REFERENCE_ID", "REFERENCE_FORBIDDEN_FOR_SECTION") in [(i.code.value, i.detail) for i in result.issues]

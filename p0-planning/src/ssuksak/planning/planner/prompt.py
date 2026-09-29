@@ -19,6 +19,7 @@ from .contracts import (
     MonthlyPlanningRequest,
     generation_target_sections,
 )
+from .text_policy import MAX_VISIBLE_TEXT_CHARS
 from .validation import ProposalValidationIssue, is_safety_grounding, wrong_source_refs
 
 MONTHLY_TASK = "monthly_plan_proposal"
@@ -33,13 +34,25 @@ The locked theme must be returned exactly with its supplied reference_id.
 Do not make legal decisions or claim statutory compliance.
 For safety_education, use approved safety grounding from the supplied Context;
 when that grounding is unavailable, return value="", unresolved=true, no refs.
-Every other resolved generated value needs supplied grounding_refs or a supplied
-reference_id. Do not invent facts or citations and do not copy evidence verbatim.
+Every other resolved generated value needs supplied grounding_refs or, where
+allowed below, a supplied reference_id. Do not invent facts or citations and do
+not copy evidence verbatim.
+Use reference_id only in a section whose reference catalog is supplied: theme
+(parent_theme.theme_id) and outdoor_play (reference_activities activity_id).
+In every other section reference_id is null; never put a grounding_ref, theme_id
+or activity_id there. When reference_id is not null, value must exactly equal the
+canonical label of that referenced item; do not paraphrase, expand, summarize or
+rewrite it. To write your own sentence instead, set reference_id to null and cite
+grounding_refs.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
 Within each grounding_refs array, include each reference id at most once;
 never repeat the same reference id in a cell.
 Omit an optional section when no evidence with its grounding_class is supplied.
+For goals, write one concise Korean summary of the month's key goals, usually
+about 120 to 160 characters, and stay concise even in a complex month.
+Synthesize the core meaning of the cited goals evidence; do not list each
+institution's goals or try to include every evidence phrase.
 Write user-facing plan text in value fields in natural Korean.
 Keep JSON keys, section_key, week ids, enum values, IDs, reference_id and
 grounding_refs exactly as supplied or specified; never translate them.
@@ -66,15 +79,27 @@ State only safety practice found in the cited official_content or evidence; add
 no new safety rules, numbers, legal duties, education hours, or schedules.
 """
 
-REPAIR_HEADER = """You repair one monthly plan proposal.
+REPAIR_HEADER = f"""You repair one monthly plan proposal.
 rejected_proposal matches response_contract but failed semantic validation.
 Each validation_findings entry names a failed code with its section_key and
 week_id; a null week_id is the month-level cell. For TEXT_POLICY, detail names
 the violated text rule.
 Return the complete corrected proposal as one JSON object matching
-original_request.response_contract. Fix every finding and keep cells without a
-finding unchanged.
-Write every value in your own words; never copy evidence text verbatim.
+original_request.response_contract. Change only the cells named in
+validation_findings and keep cells without a finding unchanged: copy their
+value, reference_id and grounding_refs exactly as in rejected_proposal.
+Fix each named cell only as its finding requires:
+- SOURCE_TEXT_COPY: keep the meaning of its cited grounding_refs but rewrite
+  the value in your own words; never copy evidence text verbatim.
+- TEXT_POLICY with detail TEXT_TOO_LONG: keep the same meaning and cited refs;
+  remove repetition and unnecessary modifiers. For goals, keep only the month's
+  key goals and aim for about 120 to 160 characters. The validator rejects a
+  value over {MAX_VISIBLE_TEXT_CHARS} characters; that is a hard ceiling, not a target length.
+- Other TEXT_POLICY: remove only the violation that detail names.
+- WRONG_SOURCE_GROUNDING: cite only refs with that section's grounding_class.
+- SAFETY_*: fix the cell inside its safety_plan slot, citing only that week's
+  focus or primary_ref and its allowed refs.
+In every value you rewrite, never copy evidence text verbatim.
 Cite only grounding_refs supplied in original_request.evidence, following the
 grounding_class rules below.
 Value text must not claim legal or official status, must not mention safety

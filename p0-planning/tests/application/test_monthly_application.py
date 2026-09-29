@@ -2139,3 +2139,38 @@ def test_verification_execution_failure_is_not_repaired(monkeypatch):
     assert exc.value.code == "monthly_verification_failed"
     assert len(provider.monthly_requests) == 1
     assert harness.plans.save_count == 0
+
+
+
+# ---------------------------------------------------------------- freeze closure (M1, M2)
+
+
+class ActivityReferenceCellLlm(RequestAwareMonthlyLlm):
+    """A cell regeneration that answers with the first outdoor catalog item, whatever the target."""
+
+    def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
+        self.cell_requests.append(request)
+        activity_id, label = request.reference_labels[0]
+        body = json.loads(request.user_content)
+        payload = {
+            "target_month": request.target_month.value,
+            "target_week_id": body.get("target_week_id"),
+            "section": {"section_key": request.target_section_key, "value": label, "unresolved": False,
+                        "reference_id": activity_id, "grounding_refs": []},
+        }
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL)
+
+
+def test_a_focus_regeneration_cannot_store_an_outdoor_activity_reference():  # M1
+    harness = Harness()
+    plan = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    target = _cell(plan, "focus")
+    saves_before = harness.plans.save_count
+    provider = ActivityReferenceCellLlm()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.regenerate(provider).execute(RegenerateMonthlyPlanItemCommand(plan.plan_id, target.item_id, TEACHER))
+
+    assert exc.value.code == "monthly_llm_cell_planning_failed"
+    assert "UNKNOWN_REFERENCE_ID" in exc.value.__cause__.validation_codes
+    assert len(provider.cell_requests) == 1 and harness.plans.save_count == saves_before
