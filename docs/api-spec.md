@@ -1088,7 +1088,6 @@ children.code                  VARCHAR                   §2-1
 UNIQUE(class_id, code)         children 제약              §2-1
 plans · plan_items             연간계획안 본체             §4 · §5 · §6 · §7
 greetings                      enabled + 12개월 items      §3  (7주차)
-forms                          원 귀속 양식                §8  (7주차)
 observations                   관찰 기록 본체              §10
 INDEX(class_id, date)          observations 조회           §10  목록이 반·기간으로 거른다
 documents                      일지 본체 + stale 플래그      §11

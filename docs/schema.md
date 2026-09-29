@@ -36,11 +36,13 @@ op.alter_column("children", "code", server_default=None)
 | `documents` | 일지 계열 문서 4종(dailyLog·weeklyLog·observation·assessment). `classes`·`children` 을 참조한다(docs/api-spec.md §11) |
 | `document_sections` | 문서 본문. `사실`·`해석`·`지원` 셋뿐이다. `documents` 를 참조한다 |
 | `document_sources` | 생성 시점 원문 사본. `documents`·`classes`·`children` 을 참조한다. `source_kind`+`source_id` 로 `observations`(§10, 아직 없음) 또는 `documents` 자신을 다형 참조한다 — FK 는 없다 |
+| `forms` | 원이 등록한 양식의 파싱 결과(`tables` · `labels` · `label_map` JSONB). `centers` 를 참조한다. 수정이 없어 `updated_at` 이 없다 — 삭제 후 재등록이다(docs/api-spec.md §8 · ADR-020) |
 
 ## 관계
 
 ```text
 centers ←── classes ←── children
+centers ←── forms
 activities   (독립. plans 가 생기면 연결된다)
 documents ←── document_sections
 documents ←── document_sources ──(source_kind·source_id, FK 없음)──> observations · documents
@@ -81,6 +83,7 @@ documents ←── document_sources ──(source_kind·source_id, FK 없음)�
 | `children.birth_date` | ADR-007:52 가 발달평가를 스펙아웃해 쓸 기능이 사라졌다. ADR-004:71 은 "이름만 받는다"고 정한다 |
 | `users` / `classes.teacher_id` 의 FK | 인증이 8주차다. `teacher_id` 는 nullable 컬럼으로만 있다 |
 | `plans` | 계획안 테이블이다. 다음 PR 에서 만든다 |
+| `forms` 의 원본 파일 컬럼 | 파싱 결과만 저장한다(ADR-020). hwpx 그대로 채우기가 붙으면 저장 위치를 정한 뒤 더한다 |
 | 활동 쪽 지역 축 | `centers.region_sido` · `region_sigungu` 는 지역 2단 분리 마이그레이션에서 들어왔다. 활동을 지역으로 거르는 규칙은 아직 없다 |
 | `ON DELETE` 지정 | 삭제 생명주기가 미정이다. 암묵적 연쇄 삭제를 막고 명시적으로 정리한다 |
 | `document_sources.date` 의 확정 규칙 | `source_kind='observation'` 이면 그 기록의 날짜지만, `source_kind='document'`(주간→일일)일 때 뭘 넣을지 api-spec 에 없어 잠정 nullable 로 뒀다 |
