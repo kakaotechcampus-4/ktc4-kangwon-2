@@ -33,6 +33,7 @@ op.alter_column("children", "code", server_default=None)
 | `classes` | 반. `centers` 를 참조한다. **학년도마다 새 행이다** — 2026 씨앗반과 2027 씨앗반은 다른 반이다. `UNIQUE(center_id, name, school_year)`. `consent_confirmed_at` 은 아동 정보 동의를 확인한 시각이다. `age_min` · `age_max` 범위로 혼합반(3~5세 한 반)에 대응하며 단일 연령반은 두 값이 같다 |
 | `children` | 아동. `classes` 를 참조한다. `name` 은 평문 실명이고 `code` 는 LLM 에 나가는 가명이다. `UNIQUE(class_id, code)` |
 | `activities` | 활동 풀. 규칙 엔진의 검사 층이 읽는다(ADR-014) |
+| `plans` | 연간·월간 계획안. `centers` 를 참조한다. **본문을 행으로 펼치지 않고 `body` JSONB 하나에 도메인 객체를 통째로 넣는다** — `kind`·`school_year`·`classroom_ref`·`status` 는 조회용으로 꺼낸 값이고 언제나 `body` 에서 유도한다. `id` 는 자동 증가가 아니라 p0-planning 의 `PlanId` 다 |
 | `documents` | 일지 계열 문서 4종(dailyLog·weeklyLog·observation·assessment). `classes`·`children` 을 참조한다(docs/api-spec.md §11) |
 | `document_sections` | 문서 본문. `사실`·`해석`·`지원` 셋뿐이다. `documents` 를 참조한다 |
 | `document_sources` | 생성 시점 원문 사본. `documents`·`classes`·`children` 을 참조한다. `source_kind`+`source_id` 로 `observations`(§10, 아직 없음) 또는 `documents` 자신을 다형 참조한다 — FK 는 없다 |
@@ -80,8 +81,7 @@ documents ←── document_sources ──(source_kind·source_id, FK 없음)�
 |---|---|
 | `children.birth_date` | ADR-007:52 가 발달평가를 스펙아웃해 쓸 기능이 사라졌다. ADR-004:71 은 "이름만 받는다"고 정한다 |
 | `users` / `classes.teacher_id` 의 FK | 인증이 8주차다. `teacher_id` 는 nullable 컬럼으로만 있다 |
-| `plans` | 계획안 테이블이다. 다음 PR 에서 만든다 |
 | 활동 쪽 지역 축 | `centers.region_sido` · `region_sigungu` 는 지역 2단 분리 마이그레이션에서 들어왔다. 활동을 지역으로 거르는 규칙은 아직 없다 |
 | `ON DELETE` 지정 | 삭제 생명주기가 미정이다. 암묵적 연쇄 삭제를 막고 명시적으로 정리한다 |
 | `document_sources.date` 의 확정 규칙 | `source_kind='observation'` 이면 그 기록의 날짜지만, `source_kind='document'`(주간→일일)일 때 뭘 넣을지 api-spec 에 없어 잠정 nullable 로 뒀다 |
-| `document.generation_method` 의 CHECK 제약 | `kind`·`status`·`origin` 과 달리 enum 값을 못 박지 않았다. §4 plans 의 `RULE_LLM`·`RULE_ONLY` 개념과 겹치는데 plans 도 아직 없어 지금 확정하면 나중에 어긋날 수 있다 |
+| `document.generation_method` 의 CHECK 제약 | `kind`·`status`·`origin` 과 달리 enum 값을 못 박지 않았다. §4 plans 의 `RULE_LLM`·`RULE_ONLY` 개념과 겹치는데, plans 는 본문을 JSONB 로 들고 있어 enum 을 DB 가 못 박지 않는다. 한쪽만 CHECK 를 걸면 두 곳의 허용값이 갈린다 |
