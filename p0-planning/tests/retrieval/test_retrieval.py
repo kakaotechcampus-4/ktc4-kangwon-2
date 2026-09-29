@@ -263,7 +263,7 @@ def test_real_section_scoped_retrieval_is_deterministic_and_class_pure():
     first = retriever.retrieve(request)
 
     assert first == retriever.retrieve(request)
-    assert first.retrieval_version == "monthly-evidence-retrieval-v0.2.0"
+    assert first.retrieval_version == "monthly-evidence-retrieval-v0.3.0"
     for semantic_class, name in CLASS_BLOCKS.items():
         items = first.block(name).items
         assert items
@@ -409,3 +409,51 @@ def test_cross_month_fallback_takes_only_month_independent_contents_with_age_fit
     assert {i.record_id for i in result.block(BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE).items} == {"ev_safe_a"}
     # crowd is TARGET_MONTH_ONLY; the finger-pinch record is age 5 only (request is age 3).
     assert {i.record_id for i in result.block(BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE).items} == {"ev_safe_b"}
+
+
+OUTDOOR_BLOCKS = (
+    BlockName.INSTITUTION_MONTHLY_EVIDENCE, BlockName.AGE_CONTRAST_EVIDENCE, BlockName.OTHER_OUTDOOR_EVIDENCE,
+)
+
+
+@pytest.mark.parametrize(
+    ("record", "included"),
+    [
+        (lambda: _record("ev_age_exact_a", age_scope=(3,)), True),  # R1
+        (lambda: _record("ev_age_mixed_b", age_scope=(3, 4), age_kind=AgeEvidenceType.MIXED_AGE_PAGE), True),  # R2
+        (lambda: _record("ev_age_other_c", age_scope=(4,)), False),  # R3
+        (lambda: _record("ev_age_unknown_d", age_scope=(), age_kind=AgeEvidenceType.AGE_UNKNOWN), False),  # R4
+        (lambda: _record("ev_age_unknown_e", age_scope=(), age_kind=AgeEvidenceType.AGE_UNKNOWN,
+                         section=SourceSection.WEEK_EXPERIENCE), False),  # R4 via Other Outdoor
+    ],
+    ids=["exact", "mixed-covering", "other-age", "unknown-outdoor-row", "unknown-other-outdoor"],
+)
+def test_outdoor_grounding_holds_only_age_verifiable_evidence(record, included):
+    target = record()
+    store = InMemoryInstitutionEvidenceRepository((target, _record("ev_age_filler_f"))).get_store()
+    result = MonthlyEvidenceRetriever(store).retrieve(_request(ages=frozenset({3})))
+    outdoor = {item.record_id for name in OUTDOOR_BLOCKS for item in result.block(name).items}
+
+    assert (target.record_id in outdoor) is included
+
+
+def test_safety_retrieval_keeps_its_age_unknown_tier():  # R5
+    safety = dict(section=SourceSection.SAFETY_EDUCATION, setting=Setting.UNKNOWN)
+    record = _record("ev_safe_unknown_a", text="[생활안전] 계단에서는 난간을 잡아요", age_scope=(),
+                     age_kind=AgeEvidenceType.AGE_UNKNOWN, **safety)
+    store = InMemoryInstitutionEvidenceRepository((record,)).get_store()
+    classification = SafetyEvidenceClassification(
+        "safety-classification-test", store.content_sha256, "child-welfare-act-decree-annex6-2022-06-21",
+        (SafetyClassificationEntry("생활안전", SafetyReferenceKind.SUPPLEMENTAL_REFERENCE, supplemental_label="life_safety"),),
+        frozenset({"life_safety"}), runtime_active=True,
+    )
+    quality = SafetyReferenceQuality(
+        "quality-test", classification.classification_version, store.content_sha256,
+        (ReferenceQualityEntry("계단에서는난간을잡아요", ReferenceQuality.USABLE, "stairs",
+                               month_scope=MonthScope.MONTH_INDEPENDENT),),
+        runtime_active=True,
+    )
+    result = MonthlyEvidenceRetriever(store, safety_classification=classification, safety_quality=quality).retrieve(
+        _safety_request())
+
+    assert {i.record_id for i in result.block(BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE).items} == {"ev_safe_unknown_a"}

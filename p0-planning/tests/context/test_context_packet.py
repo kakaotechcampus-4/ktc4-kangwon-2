@@ -105,7 +105,7 @@ def test_packet_v020_carries_only_requested_section_classes(packet):
     outdoor_blocks = packet.institution_evidence + packet.age_contrast_evidence + packet.other_outdoor_evidence
 
     assert packet.packet_version == "monthly-context-packet-v0.2.0"
-    assert packet.lineage.retrieval_version == "monthly-evidence-retrieval-v0.2.0"
+    assert packet.lineage.retrieval_version == "monthly-evidence-retrieval-v0.3.0"
     assert packet.lineage.evidence_classification_version == (
         "monthly-evidence-semantic-classification-v0.1.0"
     )

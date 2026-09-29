@@ -32,7 +32,7 @@ from ssuksak.planning.domain.provenance import (
     EvidenceSourceType,
     GenerationMethod,
 )
-from ssuksak.planning.rules.monthly_verification import AGE_RULE_REF
+from ssuksak.planning.rules.monthly_verification import AGE_FREE_TEXT_NOT_VERIFIED_CODE, AGE_RULE_REF
 
 from .harness import ACTIVITY_CATALOG, NOW, PlanningHarness, TEACHER
 
@@ -99,7 +99,11 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
         monthly_generated.section("theme").cells[0].value
     )
     _assert_fresh_age_report(monthly_generated)
-    assert monthly_generated.verification_report.findings == ()
+    # Free-text outdoor weeks are explicitly NOT_VERIFIED; the reference week has no finding.
+    free_text = [c for c in monthly_generated.section("outdoor_play").cells
+                 if not any(e.source_type is EvidenceSourceType.ACTIVITY_REFERENCE for e in c.evidence)]
+    assert [(f.code, f.location.week_id) for f in monthly_generated.verification_report.findings] == [
+        (AGE_FREE_TEXT_NOT_VERIFIED_CODE, c.week_id) for c in free_text]
 
     theme_cell = monthly_generated.section("theme").cells[0]
     assert {source.source_type for source in theme_cell.evidence} == {

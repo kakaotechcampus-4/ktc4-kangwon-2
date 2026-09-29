@@ -251,11 +251,8 @@ def with_fresh_monthly_verification(
     plan: MonthlyPlan,
     catalog: ActivityCatalog | None,
 ) -> MonthlyPlan:
-    verifiers = (
-        (partial(verify_monthly_activity_ages, catalog=catalog),)
-        if catalog is not None
-        else ()
-    )
+    # Age runs with or without a Catalog: every active outdoor Cell gets an age status.
+    verifiers = (partial(verify_monthly_activity_ages, catalog=catalog),)
     if any(cell.safety is not None for cell in plan.cells):
         verifiers += (verify_monthly_safety_placement,)
     try:

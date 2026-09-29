@@ -115,7 +115,8 @@ def test_placement_fills_statutory_and_supplemental_safety_weeks(month, statutor
         assert all(cell.cell_state is CellState.FILLED for cell in plan.section(key).cells)
     report = plan.verification_report
     assert PLACEMENT_RULE_REF in report.executed_rules
-    assert [(f.code, f.finding_kind) for f in report.findings] == [(ANNUAL_HOURS_NOT_VERIFIED, FindingKind.NOT_VERIFIED)]
+    safety_findings = [(f.code, f.finding_kind) for f in report.findings if f.location.section_key != "outdoor_play"]
+    assert safety_findings == [(ANNUAL_HOURS_NOT_VERIFIED, FindingKind.NOT_VERIFIED)]
     # Placement never claims the legal hours: the statutory constraint stays unverified.
     assert plan.constraint("STATUTORY_SAFETY_EDUCATION").verification is ConstraintVerification.NOT_VERIFIED_SOURCE_REQUIRED
     assert plan.status is PlanStatus.DRAFT and harness.monthly_plans.get(plan.plan_id) is plan

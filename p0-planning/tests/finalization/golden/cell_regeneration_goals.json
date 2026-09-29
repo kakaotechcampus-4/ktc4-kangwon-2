@@ -27,11 +27,11 @@
     "week_id": null
   },
   "generation_mode": "LLM_PLANNER",
-  "planner": {"model": "openai/gpt-4.1-mini", "packet_fingerprint": "b42e0ebbaa45a29ca9e3968a28d6e4d99aeb92bfc27adb8071838a98fcba0411", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v9"},
+  "planner": {"model": "openai/gpt-4.1-mini", "packet_fingerprint": "9e5d89075692636e3460e5e6e5c7d34cf9c9d0c9d1bbc6564ad876da238c8502", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v9"},
   "report_refreshed": true,
   "schema": "monthly-cell-regeneration-golden-v2",
   "section": "goals",
   "siblings": {"count": 21, "identities_preserved": true},
-  "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v1"}], "findings": [], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
+  "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v2"}], "findings": [{"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W2"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W3"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W4"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W5"}], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
   "week_id": null
 }

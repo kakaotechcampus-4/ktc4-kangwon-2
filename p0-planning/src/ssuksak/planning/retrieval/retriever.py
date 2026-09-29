@@ -11,6 +11,7 @@ from ..evidence.safety_classification import SafetyEvidenceClassification, Safet
 from ..evidence.safety_quality import SafetyReferenceQuality
 from ..evidence.store import InstitutionEvidenceStore
 from .models import (
+    AGE_VERIFIABLE_TIERS,
     CLASS_BLOCKS,
     AgeMatchKind,
     BlockName,
@@ -21,7 +22,7 @@ from .models import (
 )
 from .ranking import apply_source_diversity, balance_by_age, ngrams, rank_records
 
-RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.2.0"
+RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.3.0"
 # Versioned apart so packets without safety placement keep their lineage.
 SAFETY_RETRIEVAL_VERSION = "monthly-safety-retrieval-v0.4.0"
 DEFAULT_TOP_K = {
@@ -34,11 +35,7 @@ DEFAULT_TOP_K = {
     BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE: 12,
     BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE: 12,
 }
-_GROUNDING_TIERS = (
-    AgeMatchKind.SINGLE_AGE_EXACT,
-    AgeMatchKind.SINGLE_AGE_IN_REQUEST,
-    AgeMatchKind.MIXED_AGE_COVERING,
-)
+_GROUNDING_TIERS = AGE_VERIFIABLE_TIERS
 _EXPANSION_TIERS = _GROUNDING_TIERS + (AgeMatchKind.AGE_UNKNOWN,)
 
 
@@ -227,7 +224,8 @@ class MonthlyEvidenceRetriever:
             records=records,
             request=request,
             query_grams=grams,
-            tiers=_EXPANSION_TIERS,
+            # Outdoor grounding must be age-verifiable (Rule-owned): no AGE_UNKNOWN.
+            tiers=_GROUNDING_TIERS,
         )
 
     def _safety(self, request: RetrievalRequest, grams: frozenset[str]) -> tuple[EvidenceBlock, ...]:

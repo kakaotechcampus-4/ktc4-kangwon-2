@@ -60,6 +60,7 @@ from ssuksak.planning.planner.validation import (
     canonicalize_reference_labels,
     changed_reference_ids,
     merge_authorized_repair,
+    outdoor_age_unverifiable_refs,
     validate_monthly_proposal,
     validate_monthly_proposal_schema,
 )
@@ -1850,6 +1851,87 @@ def test_without_a_repair_every_cell_has_the_initial_version(packet, snapshot):
     assert outcome.prompt_version == outcome.initial_prompt_version == MONTHLY_PROMPT_VERSION
 
 
+# ---------------------------------------------------------------- outdoor age contract
+
+
+def _outdoor_item(ref, age_scope, age_match):
+    return GroundingContextItem(
+        evidence_ref=ref, text=f"{ref} 바깥 활동", source_section=SourceSection.OUTDOOR_PLAY, source_label="바깥놀이",
+        age_scope=age_scope, age_match=age_match, institution_alias="S9", reuse_policy=ReusePolicy.CONTEXT_ONLY,
+    )
+
+
+def _with_outdoor_items(packet):
+    return replace(packet, other_outdoor_evidence=packet.other_outdoor_evidence + (
+        _outdoor_item("ev-unknown", (), AgeMatchKind.AGE_UNKNOWN),
+        _outdoor_item("ev-other-age", (5,), AgeMatchKind.SINGLE_AGE_EXACT),  # mislabeled: scope misses 3/4
+    ))
+
+
+def _outdoor_w2_citing(ref):
+    body = monthly_payload()
+    body["weeks"][1]["sections"][1].update(reference_id=None, value="바깥에서 몸을 움직여 놀아요.", grounding_refs=[ref])
+    return body
+
+
+def _outdoor_issues(packet, snapshot, body):
+    request = build_monthly_planning_request(packet, snapshot)
+    proposal = parse_monthly_proposal(json.dumps(body, ensure_ascii=False))
+    return [i for i in validate_monthly_proposal(proposal, packet, request).issues if i.field == "outdoor_play"]
+
+
+def test_age_compatible_outdoor_grounding_passes(packet, snapshot):  # V1
+    assert _outdoor_issues(_with_outdoor_items(packet), snapshot, _outdoor_w2_citing("ev-2")) == []
+
+
+@pytest.mark.parametrize(("ref", "kind"), [("ev-other-age", "OTHER_AGE"), ("ev-unknown", "AGE_UNKNOWN")],
+                         ids=["wrong-age", "age-unknown"])
+def test_unverifiable_outdoor_grounding_fails_closed_without_repair(packet, snapshot, ref, kind):  # V2, V3
+    packet = _with_outdoor_items(packet)
+    (issue,) = [i for i in _outdoor_issues(packet, snapshot, _outdoor_w2_citing(ref))
+                if i.code.value == "OUTDOOR_GROUNDING_AGE_MISMATCH"]
+    fake = ScriptedMonthlyLlm(_outdoor_w2_citing(ref), monthly_payload())
+
+    assert (issue.week_id, issue.reason, issue.expected, issue.actual) == (
+        "2026-09-W2", "AGE_NOT_VERIFIABLE", "age_verifiable", kind)
+    assert "OUTDOOR_GROUNDING_AGE_MISMATCH" not in REPAIRABLE_CODES
+    with pytest.raises(ProposalRejectedError):
+        MonthlyPlanner(fake).plan(packet, snapshot)
+    assert len(fake.monthly_requests) == 1  # invariant violation: never repaired
+
+
+def test_a_reference_outdoor_cell_keeps_the_catalog_contract(packet, snapshot):  # V4
+    assert _outdoor_issues(_with_outdoor_items(packet), snapshot, monthly_payload()) == []
+
+
+def test_the_outdoor_age_rule_is_outdoor_only(packet):  # V5
+    evidence = {i.evidence_ref: i for i in _with_outdoor_items(packet).grounding_items}
+
+    assert outdoor_age_unverifiable_refs("focus", ("ev-unknown",), evidence, (3, 4)) == ()
+    assert outdoor_age_unverifiable_refs("outdoor_play", ("ev-unknown", "ev-2"), evidence, (3, 4)) == (
+        ("ev-unknown", "AGE_UNKNOWN"),)
+
+
+def test_the_outdoor_schema_offers_only_age_verifiable_refs(packet, snapshot):
+    allowed = dict(build_monthly_planning_request(_with_outdoor_items(packet), snapshot).allowed_grounding_refs_by_section)
+
+    assert "ev-unknown" not in allowed["outdoor_play"] and "ev-2" in allowed["outdoor_play"]
+
+
+def test_cell_regeneration_applies_the_same_outdoor_age_rule(packet, snapshot):
+    packet = _with_outdoor_items(packet)
+    request = build_monthly_cell_request(
+        packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=OUTDOOR_SECTION_KEY,
+        month_snapshot=snapshots(),
+    )
+    payload = cell_payload(OUTDOOR_SECTION_KEY)
+    payload["section"].update(reference_id=None, value="바깥에서 몸을 움직여 놀아요.", grounding_refs=["ev-unknown"])
+    codes = validate_monthly_cell_proposal(parse_monthly_cell_proposal(json.dumps(payload, ensure_ascii=False)),
+                                           packet, request).codes
+
+    assert "OUTDOOR_GROUNDING_AGE_MISMATCH" in codes
+
+
 
 # ---------------------------------------------------------------- M1: cell regeneration reference capability
 
@@ -1918,3 +2000,13 @@ def test_without_a_catalog_an_outdoor_cell_reference_is_forbidden_too(packet, sn
 
     assert request.reference_section_keys == {"theme"}
     assert ("UNKNOWN_REFERENCE_ID", "REFERENCE_FORBIDDEN_FOR_SECTION") in [(i.code.value, i.detail) for i in result.issues]
+
+
+@pytest.mark.parametrize(("ref", "kind"), [("ev-other-age", "OTHER_AGE"), ("ev-unknown", "AGE_UNKNOWN")],
+                         ids=["N5-wrong-age", "N6-age-unknown"])
+def test_without_a_catalog_unverifiable_outdoor_grounding_still_fails_closed(packet, snapshot, ref, kind):
+    packet = _with_outdoor_items(replace(packet, reference_activities=()))
+    issues = [i for i in _outdoor_issues(packet, snapshot, _outdoor_w2_citing(ref))
+              if i.code.value == "OUTDOOR_GROUNDING_AGE_MISMATCH"]
+
+    assert [(i.week_id, i.actual) for i in issues] == [("2026-09-W2", kind)]

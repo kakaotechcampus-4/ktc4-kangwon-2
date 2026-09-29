@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from ..domain.activity_reference import ActivityCandidate, ActivityCatalog
 from ..domain.errors import InvalidDomainValueError
+from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import MonthlyCell, MonthlyPlan
 from ..domain.monthly_template import DisplayMode
 from ..domain.monthly_verification import (
@@ -23,10 +24,13 @@ from ..domain.provenance import EvidenceSource, EvidenceSourceType, GenerationMe
 from .errors import MonthlyRuleError
 
 AGE_RULE_ID = "monthly.activity.supported_ages"
-AGE_RULE_VERSION = "v1"
+AGE_RULE_VERSION = "v2"
 AGE_RULE_REF = VerificationRuleRef(AGE_RULE_ID, AGE_RULE_VERSION)
 AGE_UNSUPPORTED_CODE = "ACTIVITY_AGE_UNSUPPORTED"
 AGE_REFERENCE_NOT_VERIFIED_CODE = "ACTIVITY_REFERENCE_NOT_VERIFIED"
+# v2: a filled outdoor Cell without an Activity Reference is free text. Its grounding
+# is age-validated before save, but the sentence itself is not age-verified.
+AGE_FREE_TEXT_NOT_VERIFIED_CODE = "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,11 +87,15 @@ MonthlyVerifier = Callable[[MonthlyPlan], RuleVerificationResult]
 def verify_monthly_activity_ages(
     plan: MonthlyPlan,
     *,
-    catalog: ActivityCatalog,
+    catalog: ActivityCatalog | None,
 ) -> RuleVerificationResult:
-    """Compare reference-linked Cells with approved catalog age conditions."""
+    """Compare reference-linked Cells with approved catalog age conditions; mark free-text
+    outdoor Cells NOT_VERIFIED so no active outdoor Cell has silent age coverage."""
 
-    source_ref = _require_age_catalog(plan, catalog)
+    # Free-text Cells need no Catalog; Activity-linked Cells do.
+    sources = (_require_age_catalog(plan, catalog),) if catalog is not None else ()
+    if catalog is None and plan.activity_catalog_ref is not None:
+        raise MonthlyRuleError(AGE_RULE_ID, "The Activity Catalog pinned by the Plan is missing")
     findings: list[Violation] = []
     for cell in plan.cells:
         references = tuple(
@@ -96,14 +104,32 @@ def verify_monthly_activity_ages(
             if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
         )
         if not references:
+            if cell.section_key == OUTDOOR_PLAY_SLOT and cell.value.strip():
+                findings.append(
+                    _age_finding(
+                        cell,
+                        plan,
+                        sources,
+                        code=AGE_FREE_TEXT_NOT_VERIFIED_CODE,
+                        finding_kind=FindingKind.NOT_VERIFIED,
+                        severity=Severity.WARNING,
+                        message=(
+                            "Free-text outdoor play has no Activity Reference; its own "
+                            "age suitability is not deterministically verified"
+                        ),
+                        reference_ids=(),
+                    )
+                )
             continue
+        if catalog is None:
+            raise MonthlyRuleError(AGE_RULE_ID, "Activity-linked Cells require the Plan Activity Catalog")
         candidate = _trusted_activity_candidate(cell, references, catalog)
         if candidate is None:
             findings.append(
                 _age_finding(
                     cell,
                     plan,
-                    source_ref,
+                    sources,
                     code=AGE_REFERENCE_NOT_VERIFIED_CODE,
                     finding_kind=FindingKind.NOT_VERIFIED,
                     severity=Severity.WARNING,
@@ -119,7 +145,7 @@ def verify_monthly_activity_ages(
                 _age_finding(
                     cell,
                     plan,
-                    source_ref,
+                    sources,
                     code=AGE_UNSUPPORTED_CODE,
                     finding_kind=FindingKind.VIOLATION,
                     severity=Severity.ERROR,
@@ -130,7 +156,7 @@ def verify_monthly_activity_ages(
                     reference_ids=(candidate.activity_id,),
                 )
             )
-    return RuleVerificationResult(AGE_RULE_REF, (source_ref,), tuple(findings))
+    return RuleVerificationResult(AGE_RULE_REF, sources, tuple(findings))
 
 
 def _require_age_catalog(
@@ -193,7 +219,7 @@ def _trusted_activity_candidate(
 def _age_finding(
     cell: MonthlyCell,
     plan: MonthlyPlan,
-    source_ref: VerificationSourceRef,
+    sources: tuple[VerificationSourceRef, ...],
     *,
     code: str,
     finding_kind: FindingKind,
@@ -214,7 +240,7 @@ def _age_finding(
         severity=severity,
         location=ViolationLocation(cell.section_key, cell.week_id),
         message=message,
-        evidence=(ViolationEvidence(observed, (source_ref,)),),
+        evidence=(ViolationEvidence(observed, sources),),
     )
 
 
