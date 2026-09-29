@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     youtube_api_key: str | None = None
     naver_client_id: str | None = None
     naver_client_secret: str | None = None
+    # 도서관 정보나루. 전국 도서관의 실제 대출 기록이라 광고로 순위가 안 바뀐다(ADR-016).
+    library_auth_key: str | None = None
 
 
 settings = Settings()
