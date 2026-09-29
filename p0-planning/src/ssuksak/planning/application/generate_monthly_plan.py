@@ -48,6 +48,8 @@ from ..rules.monthly_template_resolver import (
     resolve_snapshot_sections,
 )
 from ..rules.monthly_theme_derivation import derive_monthly_theme
+from ..rules.safety_placement import PLACEMENT_RULE_ID, month_safety_slots
+from ..domain.monthly_verification import FindingKind
 from ..rules.monthly_week_periods import canonical_week_periods
 from .monthly_dto import (
     GenerateMonthlyPlanCommand,
@@ -59,6 +61,7 @@ from .monthly_support import (
     MonthlyContextPipeline,
     deduplicate_evidence,
     load_activity_catalog,
+    load_safety_placement_policy,
     load_safety_rule,
     load_template_profile,
     optional_context_results,
@@ -74,6 +77,7 @@ from .ports import (
     OptionalContextProvider,
     PlanRepository,
     SafetyLegalRuleRepository,
+    SafetyPlacementPolicyRepository,
     TemplateProfileRepository,
 )
 
@@ -98,6 +102,7 @@ class GenerateMonthlyPlan:
         context_pipeline: MonthlyContextPipeline | None = None,
         planner: MonthlyPlanner | None = None,
         optional_context: OptionalContextProvider | None = None,
+        safety_placement_repository: SafetyPlacementPolicyRepository | None = None,
     ) -> None:
         self._parents = parent_plan_repository
         self._plans = plan_repository
@@ -109,6 +114,7 @@ class GenerateMonthlyPlan:
         self._context = context_pipeline
         self._planner = planner
         self._optional_context = optional_context
+        self._placements = safety_placement_repository
 
     def execute(
         self, command: GenerateMonthlyPlanCommand
@@ -169,6 +175,17 @@ class GenerateMonthlyPlan:
                 + ", ".join(policy_pending),
             )
         safety_rule = load_safety_rule(self._safety, command.safety_rule)
+        placement_policy = load_safety_placement_policy(
+            self._placements, command.safety_placement, safety_rule
+        )
+        if (
+            placement_policy is not None
+            and command.generation_mode is not MonthlyGenerationMode.LLM_PLANNER
+        ):
+            raise MonthlyApplicationError(
+                "monthly_safety_placement_requires_llm_planner",
+                "Safety placement writes content through the LLM planner only",
+            )
         catalog = load_activity_catalog(
             self._activities, command.activity_catalog
         )
@@ -182,6 +199,17 @@ class GenerateMonthlyPlan:
             section.section_key == SAFETY_SECTION_KEY
             for section in resolved_sections
         )
+        safety_slots = ()
+        if placement_policy is not None and safety_active:
+            try:
+                safety_slots = month_safety_slots(
+                    placement_policy,
+                    command.target_month,
+                    tuple(period for period in week_periods if period.active),
+                    safety_rule,
+                )
+            except ValueError as exc:
+                raise MonthlyApplicationError("safety_placement_policy_invalid", str(exc)) from exc
         safety_assessment = assess_safety_education(
             safety_rule,
             safety_section_active=safety_active,
@@ -219,6 +247,8 @@ class GenerateMonthlyPlan:
                 activity_catalog=catalog,
                 constraint_assessments=assessments,
                 grounding_classes=snapshot_grounding_classes(template_snapshot),
+                safety_slots=safety_slots,
+                safety_rule=safety_rule,
             )
             available = {item.grounding_class for item in packet.section_evidence}
             missing = sorted(
@@ -271,6 +301,7 @@ class GenerateMonthlyPlan:
                     else None
                 ),
                 packet=packet,
+                safety_placements={slot.week_id: slot.placement for slot in safety_slots},
                 used_activity_ids=used_activity_ids,
                 selection_results=selection_results,
             )
@@ -323,6 +354,27 @@ class GenerateMonthlyPlan:
         )
         self._require_complete(plan, resolved_sections)
         plan = with_fresh_monthly_verification(plan, catalog)
+        blocked = [
+            finding.code
+            for finding in plan.verification_report.findings
+            if finding.rule_id == PLACEMENT_RULE_ID and finding.finding_kind is FindingKind.VIOLATION
+        ]
+        if blocked:
+            raise MonthlyApplicationError(
+                "monthly_safety_verification_failed",
+                "Safety placement verification failed before the Plan was saved: " + ", ".join(blocked),
+            )
+        # Human Decision: with safety placement no active safety week may stay empty.
+        empty = [
+            str(cell.week_id)
+            for cell in (plan.section(SAFETY_SECTION_KEY).cells if safety_slots else ())
+            if cell.cell_state is not CellState.FILLED
+        ]
+        if empty:
+            raise MonthlyApplicationError(
+                "monthly_safety_cell_unresolved",
+                "Active safety weeks must be filled before saving: " + ", ".join(empty),
+            )
         self._plans.save(plan.plan_id, plan)
         return GenerateMonthlyPlanResult(
             plan=plan,
@@ -352,6 +404,7 @@ class GenerateMonthlyPlan:
         proposal,
         prompt_version: str | None,
         packet,
+        safety_placements,
         used_activity_ids: set[str],
         selection_results: list[MonthlyActivitySelectionResult],
     ) -> tuple[MonthlyCell, ...]:
@@ -538,6 +591,11 @@ class GenerateMonthlyPlan:
                         )
                     ),
                     source_label=section.source_label,
+                    safety=(
+                        safety_placements.get(week_id)
+                        if section.section_key == SAFETY_SECTION_KEY
+                        else None
+                    ),
                 )
             )
         return tuple(cells)

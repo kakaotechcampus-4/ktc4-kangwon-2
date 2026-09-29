@@ -76,6 +76,9 @@ def _section_branch(section_key: str, refs: tuple[str, ...]) -> dict[str, Any]:
         # No allowed ref: only an empty list, never the Packet-wide refs.
         else {"type": "array", "items": _STRING, "maxItems": 0}
     )
+    if section_key == "safety_education":
+        # reference_id belongs to the Activity catalog; safety grounding goes in grounding_refs.
+        properties["reference_id"] = {"type": "null"}
     return _object_schema(properties)
 
 

@@ -24,6 +24,9 @@ MONTHLY_PROMPT_VERSION = "monthly-planner-v8"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
 MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v3"
+# Used instead of the two above when the Context Packet carries safety placement.
+MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v4"
+MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v4"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").
@@ -474,8 +477,10 @@ class ProposalParseError(DomainError, ValueError):
 class ProposalRejectedError(DomainError):
     """A parsed proposal failed structural or grounding validation."""
 
-    def __init__(self, validation_codes: tuple[str, ...]) -> None:
+    def __init__(self, validation_codes: tuple[str, ...], issues: tuple = ()) -> None:
         self.validation_codes = validation_codes
+        # ProposalValidationIssue values; content-free locators for diagnostics.
+        self.issues = issues
         super().__init__("Monthly proposal rejected: " + ", ".join(validation_codes))
 
 

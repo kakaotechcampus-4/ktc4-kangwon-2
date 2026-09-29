@@ -35,6 +35,10 @@ class BlockName(str, Enum):
     EXPECTED_PLAY_EVIDENCE = "expected_play_evidence"
     REFERENCE_ACTIVITIES = "reference_activities"
     OTHER_OUTDOOR_EVIDENCE = "other_outdoor_evidence"
+    SAFETY_EDUCATION_EVIDENCE = "safety_education_evidence"
+    SUPPLEMENTAL_SAFETY_EVIDENCE = "supplemental_safety_evidence"
+    # Other months, MONTH_INDEPENDENT contents only; used after the target month.
+    CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE = "cross_month_supplemental_safety_evidence"
 
 
 CLASS_BLOCKS = {
@@ -54,6 +58,11 @@ class RetrievalRequest:
     week_count: int
     keywords: tuple[str, ...] = ()
     grounding_classes: frozenset[SemanticClass] = frozenset()
+    # Official content of the placed legal categories; retrieval ranks Sample
+    # safety evidence against it. Empty means no safety block is retrieved.
+    safety_keywords: tuple[str, ...] = ()
+    # Placed legal categories whose approved STATUTORY_REFERENCE Samples may be retrieved.
+    safety_categories: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_month, YearMonth):
@@ -79,6 +88,10 @@ class RetrievalRequest:
             raise InvalidDomainValueError(
                 "RetrievalRequest.grounding_classes must contain approved non-EXCLUDED classes"
             )
+        if not isinstance(self.safety_keywords, tuple) or any(
+            not isinstance(item, str) or not item.strip() for item in self.safety_keywords
+        ):
+            raise InvalidDomainValueError("RetrievalRequest.safety_keywords must contain non-blank strings")
 
 
 @dataclass(frozen=True, slots=True)
