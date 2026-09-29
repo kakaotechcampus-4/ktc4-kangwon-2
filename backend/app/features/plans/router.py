@@ -129,14 +129,6 @@ def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
     )
 
 
-def _confirmed_at(plan: YearlyPlan):
-    """확정 시각은 감사 기록에만 있다. 따로 칸을 두면 둘이 갈라진다."""
-    for event in reversed(plan.audit.events):
-        if event.event_type.value == "CONFIRMED":
-            return event.occurred_at
-    return None
-
-
 def _domain_error(error: Exception) -> HTTPException:
     """도메인이 낸 오류를 계약 봉투로. **원인은 도메인이 안다 — 여기서 다시 판단하지 않는다.**"""
     if isinstance(error, InvalidStateTransitionError):
@@ -206,7 +198,7 @@ def list_annual_plans(session: DbSession, user: CurrentUser, class_id: int | Non
                 school_year=row.school_year,
                 status=row.status,
                 created_at=row.created_at,
-                confirmed_at=_confirmed_at(_repo(session, user).get(PlanId(row.plan_ref))),
+                confirmed_at=row.confirmed_at,
             )
             for row in rows
         ]
@@ -269,9 +261,8 @@ def confirm_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     except (YearlyApplicationError, InvalidStateTransitionError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
     session.commit()
-    return ConfirmOut(
-        id=row.id, status=confirmed.status.value, confirmed_at=_confirmed_at(confirmed)
-    )
+    # 저장소가 감사 기록에서 꺼내 칸에 넣어둔 값을 그대로 쓴다.
+    return ConfirmOut(id=row.id, status=confirmed.status.value, confirmed_at=row.confirmed_at)
 
 
 @router.get("/{plan_id}/audit", response_model=AuditOut)
@@ -302,10 +293,22 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
 
 
 def _text_generator():
-    """주제 문장을 만드는 것. 엘리스를 붙이기 전까지는 참조자료 라벨을 그대로 쓴다.
+    """주제 문장을 만드는 것.
 
-    **`mock` 인 채로 실제 호출이 나가지 않게** 설정으로 가른다 — 기본이 mock 이라
-    키가 없는 상태에서 조용히 401 을 받는 일이 없다(config.py).
+    **지금은 AI 가 쓰지 않는다.** 참조자료의 라벨을 그대로 돌려준다 — 연간 주제용
+    엘리스 어댑터가 아직 없다(월간용 `elice_openai_monthly.py` 만 있다).
+    `settings.llm_mode` 가 `real` 이어도 마찬가지다.
+
+    그래서 생성된 주제는 사람이 승인한 참조자료 문구 그대로다. 근거가 흐려지는
+    쪽이 아니라 오히려 또렷한 상태이므로 이대로 교사에게 내보내도 된다.
+    **다만 「AI 가 만들었다」고 화면에 쓰면 안 된다** — `generation.method` 가
+    사실을 말한다.
+
+    붙일 때 필요한 것:
+      1. ThemeTextGenerator 를 구현하는 엘리스 어댑터
+      2. settings.llm_mode 로 mock/real 을 가르는 분기
+      3. .env 의 ELICE_MLAPI_API_KEY · ELICE_MLAPI_BASE_URL
+         (지금 .env 의 ELICE_API_KEY 는 어댑터가 찾는 이름이 아니다)
     """
     from ssuksak.adapters.deterministic_theme_text_generator import (
         DeterministicThemeTextGenerator,

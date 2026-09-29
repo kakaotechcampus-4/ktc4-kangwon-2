@@ -63,6 +63,11 @@ class Plan(Base):
     sub_themes: Mapped[dict] = mapped_column(
         JSONB, default=dict, server_default="{}", comment='월 -> 소주제 배열. {"3": ["..."]}'
     )
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        comment="확정 시각. body 의 감사 기록에서 꺼낸 값이다 — 목록이 12개월치를 "
+        "매번 되돌리지 않게 한다",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

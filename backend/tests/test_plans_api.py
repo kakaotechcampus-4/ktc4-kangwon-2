@@ -180,3 +180,26 @@ def test_없는_달은_404(db_session, mine):
         f"/api/plans/annual/{created['id']}/months/13", json={"theme": "x", "sub_themes": []}
     )
     assert response.status_code == 404
+
+
+def test_로그인_없이는_전부_401(db_session, mine):
+    """라우터를 main.py 에 인증 없이 등록하는 실수를 막는다.
+
+    다른 테스트는 전부 로그인 상태라, 등록을 빠뜨려도 통과한다.
+    """
+    created = _create(mine)
+    app.dependency_overrides.clear()
+    try:
+        for method, path in [
+            ("POST", "/api/plans/annual"),
+            ("GET", "/api/plans/annual"),
+            ("GET", f"/api/plans/annual/{created['id']}"),
+            ("PUT", f"/api/plans/annual/{created['id']}/months/3"),
+            ("POST", f"/api/plans/annual/{created['id']}/confirm"),
+            ("GET", f"/api/plans/annual/{created['id']}/audit"),
+        ]:
+            response = client.request(method, path, json={})
+            assert response.status_code == 401, f"{method} {path} -> {response.status_code}"
+            assert response.json()["error"]["code"] == "UNAUTHENTICATED"
+    finally:
+        app.dependency_overrides.clear()

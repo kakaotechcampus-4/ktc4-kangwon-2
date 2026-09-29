@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ssuksak.planning.domain.errors import InvalidDomainValueError
@@ -16,6 +18,14 @@ from ssuksak.planning.domain.identifiers import PlanId
 
 from app.features.plans.codec import from_jsonable, to_jsonable
 from app.features.plans.models import Plan
+
+
+def _confirmed_at(body: dict) -> datetime | None:
+    """확정 시각은 감사 기록에만 있다. 따로 받으면 본문과 갈라진다."""
+    for event in reversed(body.get("audit", {}).get("events", [])):
+        if event.get("event_type") == "CONFIRMED":
+            return datetime.fromisoformat(event["occurred_at"])
+    return None
 
 
 class PostgresPlanRepository[TPlan]:
@@ -43,6 +53,7 @@ class PostgresPlanRepository[TPlan]:
             "classroom_ref": str(plan.classroom_ref),
             # body 에서 꺼낸다. 인자로 따로 받으면 본문과 칸이 어긋난다.
             "status": body["status"],
+            "confirmed_at": _confirmed_at(body),
             "body": body,
         }
         if row is None:

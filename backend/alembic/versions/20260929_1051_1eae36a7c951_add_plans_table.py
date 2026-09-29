@@ -1,8 +1,8 @@
 """add plans table
 
-Revision ID: 8a7d982db25f
+Revision ID: 1eae36a7c951
 Revises: f903a45ea894
-Create Date: 2026-09-29 10:32:03.485003
+Create Date: 2026-09-29 10:51:01.216788
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '8a7d982db25f'
+revision: str = '1eae36a7c951'
 down_revision: Union[str, None] = 'f903a45ea894'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,6 +30,7 @@ def upgrade() -> None:
     sa.Column('status', sa.String(length=20), nullable=False, comment='DRAFT | CONFIRMED. body 의 status 에서 꺼낸 값이다'),
     sa.Column('body', postgresql.JSONB(astext_type=sa.Text()), nullable=False, comment='도메인 객체 전체. 이것이 원본이고 위 칸들은 여기서 유도한다'),
     sa.Column('sub_themes', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=False, comment='월 -> 소주제 배열. {"3": ["..."]}'),
+    sa.Column('confirmed_at', sa.DateTime(timezone=True), nullable=True, comment='확정 시각. body 의 감사 기록에서 꺼낸 값이다 — 목록이 12개월치를 매번 되돌리지 않게 한다'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.CheckConstraint("kind IN ('annual','monthly')", name=op.f('ck_plans_kind')),
