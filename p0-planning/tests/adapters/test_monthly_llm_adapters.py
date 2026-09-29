@@ -15,6 +15,39 @@ from ssuksak.planning.planner.contracts import (
     MONTHLY_MODEL,
     MonthlyPlanningRequest,
 )
+from ssuksak.planning.domain.monthly_template import (
+    DisplayMode,
+    EmptyValuePolicy,
+    SectionCategory,
+    SectionRole,
+    TemplateRef,
+    TemplateSection,
+)
+from ssuksak.planning.domain.monthly_template_profile import TemplateProfileRef
+from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
+from ssuksak.planning.domain.week_period import WeekId
+from ssuksak.planning.domain.year_month import YearMonth
+
+
+def snapshot() -> TemplateSnapshot:
+    return TemplateSnapshot(
+        profile_ref=TemplateProfileRef("profile", "v1"),
+        base_template_ref=TemplateRef("template", "v1"),
+        institution_ref="institution",
+        sections=(
+            TemplateSection(
+                section_key="theme",
+                role=SectionRole.CONTENT,
+                activated=True,
+                display_mode=DisplayMode.MONTHLY_MERGED_SUMMARY,
+                empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
+                display_label="Theme",
+                category=SectionCategory.DEFAULT,
+                required_for_generation=True,
+                visible=True,
+            ),
+        ),
+    )
 
 
 def request() -> MonthlyPlanningRequest:
@@ -23,9 +56,11 @@ def request() -> MonthlyPlanningRequest:
         prompt_version="v1",
         system_prompt="system",
         user_content="{}",
-        target_month="2026-09",
+        target_month=YearMonth(2026, 9),
         expected_theme_id="theme",
-        expected_week_ids=("W1",),
+        expected_theme_value="Theme",
+        expected_week_ids=(WeekId("2026-09-W1"),),
+        template_snapshot=snapshot(),
         packet_fingerprint="1" * 64,
     )
 

@@ -56,7 +56,12 @@ from ssuksak.planning.application.yearly_dto import (
 from ssuksak.planning.context.builder import ContextPacketBuilder
 from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.monthly_template import (
+    DisplayMode,
+    SectionRole,
+    SemanticVariant,
+    TemplateRef,
+)
 from ssuksak.planning.domain.monthly_template_profile import (
     TemplateProfile,
     TemplateProfileRef,
@@ -144,33 +149,81 @@ class RequestAwareMonthlyLlm:
         self.monthly_requests.append(request)
         grounding_ref = sorted(request.valid_grounding_refs)[0]
         first_reference = request.reference_labels[0]
-        weeks = []
-        for index, week_id in enumerate(request.expected_week_ids, start=1):
-            if index == 1:
-                activity = {
-                    "value": first_reference[1],
-                    "origin": "REFERENCE",
-                    "reference_activity_id": first_reference[0],
+
+        def section_value(section_key: str, index: int) -> dict[str, object]:
+            if section_key == "safety_education":
+                return {
+                    "section_key": section_key,
+                    "value": "",
+                    "unresolved": True,
+                    "reference_id": None,
                     "grounding_refs": [],
                 }
-            else:
-                activity = {
-                    "value": f"Context-based outdoor activity {index}",
-                    "origin": "LLM_SYNTHESIZED",
-                    "reference_activity_id": None,
-                    "grounding_refs": [grounding_ref],
+            if section_key == "outdoor_play" and index == 1:
+                return {
+                    "section_key": section_key,
+                    "value": first_reference[1],
+                    "unresolved": False,
+                    "reference_id": first_reference[0],
+                    "grounding_refs": [],
                 }
+            label = (
+                f"Context-based weekly focus {index}"
+                if section_key == "focus"
+                else f"Context-based outdoor activity {index}"
+                if section_key == "outdoor_play"
+                else f"Context-based {section_key} {index}"
+            )
+            return {
+                "section_key": section_key,
+                "value": label,
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [grounding_ref],
+            }
+
+        month_sections = []
+        weekly_keys = []
+        for section in request.template_snapshot.sections:
+            if section.role is SectionRole.AXIS:
+                continue
+            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY:
+                if section.section_key == "theme":
+                    month_sections.append(
+                        {
+                            "section_key": "theme",
+                            "value": request.expected_theme_value,
+                            "unresolved": False,
+                            "reference_id": request.expected_theme_id,
+                            "grounding_refs": [],
+                        }
+                    )
+                elif section.required_for_generation:
+                    month_sections.append(
+                        {
+                            "section_key": section.section_key,
+                            "value": f"Context-based {section.section_key}",
+                            "unresolved": False,
+                            "reference_id": None,
+                            "grounding_refs": [grounding_ref],
+                        }
+                    )
+            elif section.display_mode is DisplayMode.WEEKLY_CELLS:
+                weekly_keys.append(section.section_key)
+        weeks = []
+        for index, week_id in enumerate(request.expected_week_ids, start=1):
             weeks.append(
                 {
-                    "week_id": week_id,
-                    "experience": f"Context-based weekly focus {index}",
-                    "activity": activity,
+                    "week_id": week_id.value,
+                    "sections": [
+                        section_value(key, index)
+                        for key in weekly_keys
+                    ],
                 }
             )
         payload = {
-            "target_month": request.target_month,
-            "theme_id": request.expected_theme_id,
-            "month_flow_rationale": "The monthly flow follows the supplied context.",
+            "target_month": request.target_month.value,
+            "month_sections": month_sections,
             "weeks": weeks,
         }
         return RawLlmResponse(
@@ -182,15 +235,16 @@ class RequestAwareMonthlyLlm:
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
         self.cell_requests.append(request)
         grounding_ref = sorted(request.valid_grounding_refs)[0]
-        is_focus = request.target_section_key == "focus"
         payload = {
-            "target_month": request.target_month,
-            "target_week_id": request.target_week_id,
-            "target_section_key": request.target_section_key,
-            "value": f"Regenerated {request.target_section_key} value",
-            "activity_origin": None if is_focus else "LLM_SYNTHESIZED",
-            "reference_activity_id": None,
-            "grounding_refs": [grounding_ref],
+            "target_month": request.target_month.value,
+            "target_week_id": request.target_week_id.value,
+            "section": {
+                "section_key": request.target_section_key,
+                "value": f"Regenerated {request.target_section_key} value",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [grounding_ref],
+            },
         }
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False),

@@ -1,20 +1,21 @@
 """Immutable requests and proposals for Monthly LLM planning.
 
-These values deliberately stop before ``MonthlyPlan`` persistence. PR5 owns a
-proposal boundary; a later application slice decides how a validated proposal
-becomes domain cells and audit history.
+These values form the single provider-neutral proposal boundary consumed by
+Monthly planning and cell-regeneration application flows.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 import re
 
 from ..domain.errors import DomainError, InvalidDomainValueError
+from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.week_period import WeekId
+from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v1"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v1"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v2"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v2"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 
 FOCUS_SECTION_KEY = "focus"
@@ -57,9 +58,118 @@ def _require_grounding_refs(name: str, values: frozenset[str]) -> None:
         )
 
 
-class ProposedActivityOrigin(str, Enum):
-    REFERENCE = "REFERENCE"
-    LLM_SYNTHESIZED = "LLM_SYNTHESIZED"
+@dataclass(frozen=True, slots=True)
+class ProposedSectionValue:
+    """Generated content for one canonical Template section address."""
+
+    section_key: str
+    value: str
+    unresolved: bool
+    grounding_refs: tuple[str, ...] = ()
+    reference_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_text("ProposedSectionValue.section_key", self.section_key)
+        if self.section_key == "habits":
+            raise InvalidDomainValueError(
+                "ProposedSectionValue requires canonical section keys"
+            )
+        if not isinstance(self.value, str):
+            raise InvalidDomainValueError(
+                "ProposedSectionValue.value must be a string"
+            )
+        if type(self.unresolved) is not bool:
+            raise InvalidDomainValueError(
+                "ProposedSectionValue.unresolved must be a boolean"
+            )
+        if not isinstance(self.grounding_refs, tuple) or any(
+            not isinstance(value, str) or not value.strip()
+            for value in self.grounding_refs
+        ):
+            raise InvalidDomainValueError(
+                "ProposedSectionValue.grounding_refs must contain non-blank strings"
+            )
+        if len(set(self.grounding_refs)) != len(self.grounding_refs):
+            raise InvalidDomainValueError(
+                "ProposedSectionValue.grounding_refs must be unique"
+            )
+        if self.reference_id is not None:
+            _require_text("ProposedSectionValue.reference_id", self.reference_id)
+        if self.unresolved:
+            if self.value or self.grounding_refs or self.reference_id is not None:
+                raise InvalidDomainValueError(
+                    "An unresolved ProposedSectionValue must be empty and ungrounded"
+                )
+        elif not self.value.strip():
+            raise InvalidDomainValueError(
+                "A resolved ProposedSectionValue requires a non-blank value"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ProposedWeek:
+    week_id: WeekId
+    sections: tuple[ProposedSectionValue, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.week_id, WeekId):
+            raise InvalidDomainValueError(
+                "ProposedWeek.week_id must be WeekId"
+            )
+        if not isinstance(self.sections, tuple) or not all(
+            isinstance(value, ProposedSectionValue) for value in self.sections
+        ):
+            raise InvalidDomainValueError(
+                "ProposedWeek.sections must contain ProposedSectionValue values"
+            )
+
+    def section(self, section_key: str) -> ProposedSectionValue | None:
+        return next(
+            (value for value in self.sections if value.section_key == section_key),
+            None,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MonthlyPlanProposal:
+    target_month: YearMonth
+    month_sections: tuple[ProposedSectionValue, ...]
+    weeks: tuple[ProposedWeek, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.target_month, YearMonth):
+            raise InvalidDomainValueError(
+                "MonthlyPlanProposal.target_month must be YearMonth"
+            )
+        if not isinstance(self.month_sections, tuple) or not all(
+            isinstance(value, ProposedSectionValue)
+            for value in self.month_sections
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyPlanProposal.month_sections must contain "
+                "ProposedSectionValue values"
+            )
+        if not isinstance(self.weeks, tuple) or not self.weeks or not all(
+            isinstance(value, ProposedWeek) for value in self.weeks
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyPlanProposal requires ProposedWeek values"
+            )
+
+    def value_for(
+        self, section_key: str, week_id: WeekId | None
+    ) -> ProposedSectionValue | None:
+        if week_id is None:
+            return next(
+                (
+                    value
+                    for value in self.month_sections
+                    if value.section_key == section_key
+                ),
+                None,
+            )
+        week = next((value for value in self.weeks if value.week_id == week_id), None)
+        return None if week is None else week.section(section_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,9 +178,11 @@ class MonthlyPlanningRequest:
     prompt_version: str
     system_prompt: str
     user_content: str
-    target_month: str
+    target_month: YearMonth
     expected_theme_id: str
-    expected_week_ids: tuple[str, ...]
+    expected_theme_value: str
+    expected_week_ids: tuple[WeekId, ...]
+    template_snapshot: TemplateSnapshot
     reference_labels: tuple[tuple[str, str], ...] = ()
     valid_grounding_refs: frozenset[str] = frozenset()
     packet_fingerprint: str = ""
@@ -81,17 +193,32 @@ class MonthlyPlanningRequest:
             "prompt_version",
             "system_prompt",
             "user_content",
-            "target_month",
             "expected_theme_id",
+            "expected_theme_value",
         ):
-            _require_text(f"MonthlyPlanningRequest.{name}", getattr(self, name))
-        if not isinstance(self.expected_week_ids, tuple) or not self.expected_week_ids or any(
-            not isinstance(value, str) or not value.strip()
-            for value in self.expected_week_ids
+            _require_text(
+                f"MonthlyPlanningRequest.{name}", getattr(self, name)
+            )
+        if not isinstance(self.target_month, YearMonth):
+            raise InvalidDomainValueError(
+                "MonthlyPlanningRequest.target_month must be YearMonth"
+            )
+        if (
+            not isinstance(self.expected_week_ids, tuple)
+            or not self.expected_week_ids
+            or not all(isinstance(value, WeekId) for value in self.expected_week_ids)
         ):
-            raise InvalidDomainValueError("MonthlyPlanningRequest requires week ids")
+            raise InvalidDomainValueError(
+                "MonthlyPlanningRequest requires WeekId values"
+            )
         if len(set(self.expected_week_ids)) != len(self.expected_week_ids):
-            raise InvalidDomainValueError("MonthlyPlanningRequest week ids must be unique")
+            raise InvalidDomainValueError(
+                "MonthlyPlanningRequest week ids must be unique"
+            )
+        if not isinstance(self.template_snapshot, TemplateSnapshot):
+            raise InvalidDomainValueError(
+                "MonthlyPlanningRequest.template_snapshot must be TemplateSnapshot"
+            )
         _require_reference_labels(
             "MonthlyPlanningRequest.reference_labels", self.reference_labels
         )
@@ -99,7 +226,10 @@ class MonthlyPlanningRequest:
             "MonthlyPlanningRequest.valid_grounding_refs",
             self.valid_grounding_refs,
         )
-        _require_sha256("MonthlyPlanningRequest.packet_fingerprint", self.packet_fingerprint)
+        _require_sha256(
+            "MonthlyPlanningRequest.packet_fingerprint",
+            self.packet_fingerprint,
+        )
 
     @property
     def reference_label_map(self) -> dict[str, str]:
@@ -108,14 +238,31 @@ class MonthlyPlanningRequest:
 
 @dataclass(frozen=True, slots=True)
 class MonthlyCellSnapshot:
-    week_id: str
-    focus: str
-    outdoor_play: str
+    week_id: WeekId
+    section_values: tuple[tuple[str, str], ...]
 
     def __post_init__(self) -> None:
-        _require_text("MonthlyCellSnapshot.week_id", self.week_id)
-        if not isinstance(self.focus, str) or not isinstance(self.outdoor_play, str):
-            raise InvalidDomainValueError("MonthlyCellSnapshot values must be strings")
+        if not isinstance(self.week_id, WeekId):
+            raise InvalidDomainValueError(
+                "MonthlyCellSnapshot.week_id must be WeekId"
+            )
+        if not isinstance(self.section_values, tuple) or any(
+            not isinstance(item, tuple)
+            or len(item) != 2
+            or not isinstance(item[0], str)
+            or not item[0].strip()
+            or not isinstance(item[1], str)
+            for item in self.section_values
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyCellSnapshot.section_values must contain "
+                "(key, value) pairs"
+            )
+        keys = tuple(key for key, _ in self.section_values)
+        if len(set(keys)) != len(keys):
+            raise InvalidDomainValueError(
+                "MonthlyCellSnapshot section keys must be unique"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,10 +271,11 @@ class MonthlyCellPlanningRequest:
     prompt_version: str
     system_prompt: str
     user_content: str
-    target_month: str
-    target_week_id: str
+    target_month: YearMonth
+    target_week_id: WeekId
     target_section_key: str
     expected_theme_id: str
+    template_snapshot: TemplateSnapshot
     reference_labels: tuple[tuple[str, str], ...] = ()
     valid_grounding_refs: frozenset[str] = frozenset()
     packet_fingerprint: str = ""
@@ -139,24 +287,41 @@ class MonthlyCellPlanningRequest:
             "prompt_version",
             "system_prompt",
             "user_content",
-            "target_month",
-            "target_week_id",
             "target_section_key",
             "expected_theme_id",
         ):
-            _require_text(f"MonthlyCellPlanningRequest.{name}", getattr(self, name))
+            _require_text(
+                f"MonthlyCellPlanningRequest.{name}", getattr(self, name)
+            )
+        if not isinstance(self.target_month, YearMonth):
+            raise InvalidDomainValueError(
+                "MonthlyCellPlanningRequest.target_month must be YearMonth"
+            )
+        if not isinstance(self.target_week_id, WeekId):
+            raise InvalidDomainValueError(
+                "MonthlyCellPlanningRequest.target_week_id must be WeekId"
+            )
         if self.target_section_key not in LLM_CELL_SECTION_KEYS:
             raise InvalidDomainValueError(
                 f"LLM cannot plan section {self.target_section_key!r}"
             )
+        if not isinstance(self.template_snapshot, TemplateSnapshot):
+            raise InvalidDomainValueError(
+                "MonthlyCellPlanningRequest.template_snapshot must be "
+                "TemplateSnapshot"
+            )
         _require_reference_labels(
-            "MonthlyCellPlanningRequest.reference_labels", self.reference_labels
+            "MonthlyCellPlanningRequest.reference_labels",
+            self.reference_labels,
         )
         _require_grounding_refs(
             "MonthlyCellPlanningRequest.valid_grounding_refs",
             self.valid_grounding_refs,
         )
-        _require_sha256("MonthlyCellPlanningRequest.packet_fingerprint", self.packet_fingerprint)
+        _require_sha256(
+            "MonthlyCellPlanningRequest.packet_fingerprint",
+            self.packet_fingerprint,
+        )
         _require_sha256(
             "MonthlyCellPlanningRequest.plan_snapshot_fingerprint",
             self.plan_snapshot_fingerprint,
@@ -181,95 +346,23 @@ class RawLlmResponse:
 
 
 @dataclass(frozen=True, slots=True)
-class ProposedActivity:
-    value: str
-    origin: ProposedActivityOrigin
-    reference_activity_id: str | None
-    grounding_refs: tuple[str, ...]
-
-    def __post_init__(self) -> None:
-        _require_text("ProposedActivity.value", self.value)
-        if not isinstance(self.origin, ProposedActivityOrigin):
-            raise InvalidDomainValueError("ProposedActivity.origin is invalid")
-        if self.reference_activity_id is not None:
-            _require_text(
-                "ProposedActivity.reference_activity_id",
-                self.reference_activity_id,
-            )
-        if not isinstance(self.grounding_refs, tuple) or any(
-            not isinstance(value, str) or not value.strip()
-            for value in self.grounding_refs
-        ):
-            raise InvalidDomainValueError(
-                "ProposedActivity.grounding_refs must contain non-blank strings"
-            )
-        if len(set(self.grounding_refs)) != len(self.grounding_refs):
-            raise InvalidDomainValueError(
-                "ProposedActivity.grounding_refs must be unique"
-            )
-
-
-@dataclass(frozen=True, slots=True)
-class ProposedWeek:
-    week_id: str
-    experience: str
-    activity: ProposedActivity
-
-    def __post_init__(self) -> None:
-        _require_text("ProposedWeek.week_id", self.week_id)
-        _require_text("ProposedWeek.experience", self.experience)
-        if not isinstance(self.activity, ProposedActivity):
-            raise InvalidDomainValueError("ProposedWeek.activity is invalid")
-
-
-@dataclass(frozen=True, slots=True)
-class MonthlyPlanProposal:
-    target_month: str
-    theme_id: str
-    month_flow_rationale: str
-    weeks: tuple[ProposedWeek, ...]
-
-    def __post_init__(self) -> None:
-        for name in ("target_month", "theme_id", "month_flow_rationale"):
-            _require_text(f"MonthlyPlanProposal.{name}", getattr(self, name))
-        if not self.weeks or not all(
-            isinstance(value, ProposedWeek) for value in self.weeks
-        ):
-            raise InvalidDomainValueError("MonthlyPlanProposal requires ProposedWeek values")
-
-
-@dataclass(frozen=True, slots=True)
 class MonthlyCellProposal:
-    target_month: str
-    target_week_id: str
-    target_section_key: str
-    value: str
-    activity_origin: ProposedActivityOrigin | None
-    reference_activity_id: str | None
-    grounding_refs: tuple[str, ...]
+    target_month: YearMonth
+    target_week_id: WeekId
+    section: ProposedSectionValue
 
     def __post_init__(self) -> None:
-        for name in ("target_month", "target_week_id", "target_section_key", "value"):
-            _require_text(f"MonthlyCellProposal.{name}", getattr(self, name))
-        if self.activity_origin is not None and not isinstance(
-            self.activity_origin, ProposedActivityOrigin
-        ):
-            raise InvalidDomainValueError("MonthlyCellProposal.activity_origin is invalid")
-        if self.reference_activity_id is not None:
-            _require_text(
-                "MonthlyCellProposal.reference_activity_id",
-                self.reference_activity_id,
-            )
-        if not isinstance(self.grounding_refs, tuple) or any(
-            not isinstance(value, str) or not value.strip()
-            for value in self.grounding_refs
-        ):
+        if not isinstance(self.target_month, YearMonth):
             raise InvalidDomainValueError(
-                "MonthlyCellProposal.grounding_refs must contain non-blank strings"
+                "MonthlyCellProposal.target_month must be YearMonth"
             )
-        if len(set(self.grounding_refs)) != len(self.grounding_refs):
+        if not isinstance(self.target_week_id, WeekId):
             raise InvalidDomainValueError(
-                "MonthlyCellProposal.grounding_refs must be unique"
+                "MonthlyCellProposal.target_week_id must be WeekId"
+            )
+        if not isinstance(self.section, ProposedSectionValue):
+            raise InvalidDomainValueError(
+                "MonthlyCellProposal.section must be ProposedSectionValue"
             )
 
 
@@ -278,11 +371,11 @@ class ProposalParseError(DomainError, ValueError):
 
 
 class ProposalRejectedError(DomainError):
-    """A parsed proposal failed deterministic validation."""
+    """A parsed proposal failed structural or grounding validation."""
 
-    def __init__(self, violation_codes: tuple[str, ...]) -> None:
-        self.violation_codes = violation_codes
-        super().__init__("Monthly proposal rejected: " + ", ".join(violation_codes))
+    def __init__(self, validation_codes: tuple[str, ...]) -> None:
+        self.validation_codes = validation_codes
+        super().__init__("Monthly proposal rejected: " + ", ".join(validation_codes))
 
 
 @dataclass(frozen=True, slots=True)

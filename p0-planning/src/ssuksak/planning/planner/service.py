@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from ..context.models import MonthlyContextPacket
-from .contracts import MONTHLY_MODEL, MonthlyPlanningOutcome, ProposalRejectedError
+from ..domain.monthly_template_snapshot import TemplateSnapshot
+from .contracts import (
+    MONTHLY_MODEL,
+    MonthlyPlanningOutcome,
+    ProposalRejectedError,
+)
 from .parser import parse_monthly_proposal
 from .ports import MonthlyPlanningProvider
 from .prompt import build_monthly_planning_request
@@ -14,8 +19,10 @@ class MonthlyPlanner:
     def __init__(self, provider: MonthlyPlanningProvider) -> None:
         self._provider = provider
 
-    def plan(self, packet: MonthlyContextPacket) -> MonthlyPlanningOutcome:
-        request = build_monthly_planning_request(packet)
+    def plan(
+        self, packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+    ) -> MonthlyPlanningOutcome:
+        request = build_monthly_planning_request(packet, snapshot)
         response = self._provider.generate_monthly(request)
         if response.model != MONTHLY_MODEL:
             raise ProposalRejectedError(("UNEXPECTED_MODEL",))

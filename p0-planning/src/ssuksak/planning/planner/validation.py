@@ -7,38 +7,40 @@ from enum import Enum
 
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
+from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
+from ..evidence.models import SourceSection
 from .contracts import (
     MonthlyPlanProposal,
     MonthlyPlanningRequest,
-    ProposedActivityOrigin,
+    ProposedSectionValue,
 )
-from .text_policy import (
-    MAX_RATIONALE_CHARS,
-    normalize_visible_text,
-    visible_text_violations,
-)
+from .text_policy import normalize_visible_text, visible_text_violations
 
 
-class ProposalViolationCode(str, Enum):
+class ProposalValidationCode(str, Enum):
     PACKET_FINGERPRINT_MISMATCH = "PACKET_FINGERPRINT_MISMATCH"
     TARGET_MONTH_MISMATCH = "TARGET_MONTH_MISMATCH"
-    THEME_ID_MISMATCH = "THEME_ID_MISMATCH"
     WEEK_STRUCTURE_MISMATCH = "WEEK_STRUCTURE_MISMATCH"
+    DUPLICATE_SECTION = "DUPLICATE_SECTION"
+    UNKNOWN_SECTION = "UNKNOWN_SECTION"
+    AXIS_CONTENT = "AXIS_CONTENT"
+    SECTION_PLACEMENT_MISMATCH = "SECTION_PLACEMENT_MISMATCH"
+    REQUIRED_SECTION_MISSING = "REQUIRED_SECTION_MISSING"
+    UNRESOLVED_NOT_ALLOWED = "UNRESOLVED_NOT_ALLOWED"
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
-    REFERENCE_REQUIRES_ID = "REFERENCE_REQUIRES_ID"
+    RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
     UNKNOWN_REFERENCE_ID = "UNKNOWN_REFERENCE_ID"
     REFERENCE_VALUE_MISMATCH = "REFERENCE_VALUE_MISMATCH"
-    SYNTHESIZED_MUST_NOT_CLAIM_REFERENCE = "SYNTHESIZED_MUST_NOT_CLAIM_REFERENCE"
-    SYNTHESIZED_REQUIRES_GROUNDING = "SYNTHESIZED_REQUIRES_GROUNDING"
+    THEME_REFERENCE_MISMATCH = "THEME_REFERENCE_MISMATCH"
+    THEME_VALUE_MISMATCH = "THEME_VALUE_MISMATCH"
+    SAFETY_GROUNDING_REQUIRED = "SAFETY_GROUNDING_REQUIRED"
     SOURCE_TEXT_COPY = "SOURCE_TEXT_COPY"
-    DUPLICATE_EXPERIENCE = "DUPLICATE_EXPERIENCE"
-    DUPLICATE_ACTIVITY = "DUPLICATE_ACTIVITY"
     TEXT_POLICY = "TEXT_POLICY"
 
 
 @dataclass(frozen=True, slots=True)
-class ProposalViolation:
-    code: ProposalViolationCode
+class ProposalValidationIssue:
+    code: ProposalValidationCode
     field: str
     detail: str = ""
     week_id: str | None = None
@@ -46,25 +48,265 @@ class ProposalViolation:
 
 @dataclass(frozen=True, slots=True)
 class MonthlyProposalValidationResult:
-    violations: tuple[ProposalViolation, ...]
+    issues: tuple[ProposalValidationIssue, ...]
 
     @property
     def is_valid(self) -> bool:
-        return not self.violations
+        return not self.issues
 
     @property
     def codes(self) -> tuple[str, ...]:
-        return tuple(item.code.value for item in self.violations)
+        return tuple(item.code.value for item in self.issues)
 
 
-def _evidence_texts(packet: MonthlyContextPacket) -> frozenset[str]:
-    items = (
+def _canonical_values(
+    proposal: MonthlyPlanProposal,
+) -> tuple[tuple[ProposedSectionValue, str | None], ...]:
+    return tuple((value, None) for value in proposal.month_sections) + tuple(
+        (value, week.week_id.value)
+        for week in proposal.weeks
+        for value in week.sections
+    )
+
+
+def validate_monthly_proposal_schema(
+    proposal: MonthlyPlanProposal,
+    request: MonthlyPlanningRequest,
+) -> MonthlyProposalValidationResult:
+    issues: list[ProposalValidationIssue] = []
+
+    def fail(
+        code: ProposalValidationCode,
+        field: str,
+        detail: str = "",
+        week_id: str | None = None,
+    ) -> None:
+        issues.append(ProposalValidationIssue(code, field, detail, week_id))
+
+    if proposal.target_month != request.target_month:
+        fail(ProposalValidationCode.TARGET_MONTH_MISMATCH, "target_month")
+    actual_weeks = tuple(week.week_id for week in proposal.weeks)
+    if actual_weeks != request.expected_week_ids:
+        fail(
+            ProposalValidationCode.WEEK_STRUCTURE_MISMATCH,
+            "weeks",
+            f"expected={request.expected_week_ids!r}, actual={actual_weeks!r}",
+        )
+
+    snapshot = request.template_snapshot
+    snapshot_sections = {section.section_key: section for section in snapshot.sections}
+    month_keys = tuple(value.section_key for value in proposal.month_sections)
+    if len(set(month_keys)) != len(month_keys):
+        fail(ProposalValidationCode.DUPLICATE_SECTION, "month_sections")
+
+    for value in proposal.month_sections:
+        section = snapshot_sections.get(value.section_key)
+        if section is None:
+            fail(
+                ProposalValidationCode.UNKNOWN_SECTION,
+                value.section_key,
+            )
+        elif section.role is SectionRole.AXIS:
+            fail(ProposalValidationCode.AXIS_CONTENT, value.section_key)
+        elif section.display_mode is not DisplayMode.MONTHLY_MERGED_SUMMARY:
+            fail(
+                ProposalValidationCode.SECTION_PLACEMENT_MISMATCH,
+                value.section_key,
+            )
+
+    for week in proposal.weeks:
+        keys = tuple(value.section_key for value in week.sections)
+        if len(set(keys)) != len(keys):
+            fail(
+                ProposalValidationCode.DUPLICATE_SECTION,
+                "weeks.sections",
+                week_id=week.week_id.value,
+            )
+        for value in week.sections:
+            section = snapshot_sections.get(value.section_key)
+            if section is None:
+                fail(
+                    ProposalValidationCode.UNKNOWN_SECTION,
+                    value.section_key,
+                    week_id=week.week_id.value,
+                )
+            elif section.role is SectionRole.AXIS:
+                fail(
+                    ProposalValidationCode.AXIS_CONTENT,
+                    value.section_key,
+                    week_id=week.week_id.value,
+                )
+            elif section.display_mode is not DisplayMode.WEEKLY_CELLS:
+                fail(
+                    ProposalValidationCode.SECTION_PLACEMENT_MISMATCH,
+                    value.section_key,
+                    week_id=week.week_id.value,
+                )
+
+    required_month = {
+        section.section_key
+        for section in snapshot.sections
+        if section.role is SectionRole.CONTENT
+        and section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+        and section.required_for_generation
+    }
+    missing_month = required_month - set(month_keys)
+    for key in sorted(missing_month):
+        fail(ProposalValidationCode.REQUIRED_SECTION_MISSING, key)
+
+    required_weekly = {
+        section.section_key
+        for section in snapshot.sections
+        if section.role is SectionRole.CONTENT
+        and section.display_mode is DisplayMode.WEEKLY_CELLS
+        and section.required_for_generation
+    }
+    for week in proposal.weeks:
+        missing = required_weekly - {value.section_key for value in week.sections}
+        for key in sorted(missing):
+            fail(
+                ProposalValidationCode.REQUIRED_SECTION_MISSING,
+                key,
+                week_id=week.week_id.value,
+            )
+    return MonthlyProposalValidationResult(tuple(issues))
+
+
+def validate_monthly_proposal_grounding(
+    proposal: MonthlyPlanProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyPlanningRequest,
+) -> MonthlyProposalValidationResult:
+    issues: list[ProposalValidationIssue] = []
+
+    def fail(
+        code: ProposalValidationCode,
+        field: str,
+        detail: str = "",
+        week_id: str | None = None,
+    ) -> None:
+        issues.append(ProposalValidationIssue(code, field, detail, week_id))
+
+    if request.packet_fingerprint != packet_fingerprint(packet):
+        fail(
+            ProposalValidationCode.PACKET_FINGERPRINT_MISMATCH,
+            "packet_fingerprint",
+        )
+        return MonthlyProposalValidationResult(tuple(issues))
+
+    evidence_items = (
         packet.institution_evidence
         + packet.age_contrast_evidence
         + packet.week_experience_candidates
         + packet.other_outdoor_evidence
     )
-    return frozenset(normalize_visible_text(item.text) for item in items)
+    evidence_by_ref = {item.evidence_ref: item for item in evidence_items}
+    evidence_texts = {
+        normalize_visible_text(item.text) for item in evidence_items
+    }
+    reference_labels = request.reference_label_map
+    snapshot_sections = {
+        section.section_key: section for section in request.template_snapshot.sections
+    }
+
+    for value, week_id in _canonical_values(proposal):
+        section = snapshot_sections.get(value.section_key)
+        if section is None or section.role is SectionRole.AXIS:
+            continue
+        if value.unresolved:
+            if (
+                value.section_key != "safety_education"
+                or section.empty_value_policy
+                is not EmptyValuePolicy.RENDER_EMPTY_CELL
+            ):
+                fail(
+                    ProposalValidationCode.UNRESOLVED_NOT_ALLOWED,
+                    value.section_key,
+                    week_id=week_id,
+                )
+            continue
+
+        safety_grounded = value.section_key == "safety_education" and bool(
+            value.grounding_refs
+        ) and all(
+            evidence_by_ref.get(ref) is not None
+            and evidence_by_ref[ref].source_section is SourceSection.SAFETY_EDUCATION
+            for ref in value.grounding_refs
+        )
+        for code in visible_text_violations(
+            value.value, evidence_refs=request.valid_grounding_refs
+        ):
+            if code == "SAFETY_CONTENT_LEAKAGE" and safety_grounded:
+                continue
+            fail(
+                ProposalValidationCode.TEXT_POLICY,
+                value.section_key,
+                code,
+                week_id,
+            )
+        unknown = tuple(
+            ref for ref in value.grounding_refs if ref not in evidence_by_ref
+        )
+        if unknown:
+            fail(
+                ProposalValidationCode.UNKNOWN_GROUNDING_REF,
+                value.section_key,
+                repr(unknown),
+                week_id,
+            )
+
+        if value.section_key == "theme":
+            if value.reference_id != request.expected_theme_id:
+                fail(
+                    ProposalValidationCode.THEME_REFERENCE_MISMATCH,
+                    value.section_key,
+                )
+            if normalize_visible_text(value.value) != normalize_visible_text(
+                request.expected_theme_value
+            ):
+                fail(
+                    ProposalValidationCode.THEME_VALUE_MISMATCH,
+                    value.section_key,
+                )
+            continue
+
+        if value.reference_id is not None:
+            expected = reference_labels.get(value.reference_id)
+            if expected is None:
+                fail(
+                    ProposalValidationCode.UNKNOWN_REFERENCE_ID,
+                    value.section_key,
+                    week_id=week_id,
+                )
+            elif normalize_visible_text(value.value) != normalize_visible_text(expected):
+                fail(
+                    ProposalValidationCode.REFERENCE_VALUE_MISMATCH,
+                    value.section_key,
+                    week_id=week_id,
+                )
+        elif not value.grounding_refs:
+            fail(
+                ProposalValidationCode.RESOLVED_REQUIRES_GROUNDING,
+                value.section_key,
+                week_id=week_id,
+            )
+
+        if value.section_key == "safety_education" and not safety_grounded:
+            fail(
+                ProposalValidationCode.SAFETY_GROUNDING_REQUIRED,
+                value.section_key,
+                week_id=week_id,
+            )
+        if (
+            value.reference_id is None
+            and normalize_visible_text(value.value) in evidence_texts
+        ):
+            fail(
+                ProposalValidationCode.SOURCE_TEXT_COPY,
+                value.section_key,
+                week_id=week_id,
+            )
+    return MonthlyProposalValidationResult(tuple(issues))
 
 
 def validate_monthly_proposal(
@@ -72,121 +314,6 @@ def validate_monthly_proposal(
     packet: MonthlyContextPacket,
     request: MonthlyPlanningRequest,
 ) -> MonthlyProposalValidationResult:
-    violations: list[ProposalViolation] = []
-
-    def fail(
-        code: ProposalViolationCode,
-        field: str,
-        detail: str = "",
-        week_id: str | None = None,
-    ) -> None:
-        violations.append(ProposalViolation(code, field, detail, week_id))
-
-    if request.packet_fingerprint != packet_fingerprint(packet):
-        fail(
-            ProposalViolationCode.PACKET_FINGERPRINT_MISMATCH,
-            "packet_fingerprint",
-        )
-        return MonthlyProposalValidationResult(tuple(violations))
-    if proposal.target_month != request.target_month:
-        fail(ProposalViolationCode.TARGET_MONTH_MISMATCH, "target_month")
-    if proposal.theme_id != request.expected_theme_id:
-        fail(ProposalViolationCode.THEME_ID_MISMATCH, "theme_id")
-
-    actual_weeks = tuple(item.week_id for item in proposal.weeks)
-    if actual_weeks != request.expected_week_ids:
-        fail(
-            ProposalViolationCode.WEEK_STRUCTURE_MISMATCH,
-            "weeks",
-            f"expected={request.expected_week_ids!r}, actual={actual_weeks!r}",
-        )
-
-    for code in visible_text_violations(
-        proposal.month_flow_rationale,
-        max_chars=MAX_RATIONALE_CHARS,
-        evidence_refs=request.valid_grounding_refs,
-    ):
-        fail(ProposalViolationCode.TEXT_POLICY, "month_flow_rationale", code)
-
-    evidence_texts = _evidence_texts(packet)
-    reference_labels = request.reference_label_map
-    normalized_experiences: list[str] = []
-    normalized_activities: list[str] = []
-    for week in proposal.weeks:
-        for field_name, text in (
-            ("experience", week.experience),
-            ("activity.value", week.activity.value),
-        ):
-            for code in visible_text_violations(
-                text, evidence_refs=request.valid_grounding_refs
-            ):
-                fail(ProposalViolationCode.TEXT_POLICY, field_name, code, week.week_id)
-        experience = normalize_visible_text(week.experience)
-        activity_value = normalize_visible_text(week.activity.value)
-        normalized_experiences.append(experience)
-        normalized_activities.append(activity_value)
-        if experience in evidence_texts:
-            fail(
-                ProposalViolationCode.SOURCE_TEXT_COPY,
-                "experience",
-                week_id=week.week_id,
-            )
-
-        unknown = tuple(
-            ref
-            for ref in week.activity.grounding_refs
-            if ref not in request.valid_grounding_refs
-        )
-        if unknown:
-            fail(
-                ProposalViolationCode.UNKNOWN_GROUNDING_REF,
-                "activity.grounding_refs",
-                repr(unknown),
-                week.week_id,
-            )
-
-        if week.activity.origin is ProposedActivityOrigin.REFERENCE:
-            reference_id = week.activity.reference_activity_id
-            if reference_id is None:
-                fail(
-                    ProposalViolationCode.REFERENCE_REQUIRES_ID,
-                    "activity.reference_activity_id",
-                    week_id=week.week_id,
-                )
-            elif reference_id not in reference_labels:
-                fail(
-                    ProposalViolationCode.UNKNOWN_REFERENCE_ID,
-                    "activity.reference_activity_id",
-                    week_id=week.week_id,
-                )
-            elif activity_value != normalize_visible_text(reference_labels[reference_id]):
-                fail(
-                    ProposalViolationCode.REFERENCE_VALUE_MISMATCH,
-                    "activity.value",
-                    week_id=week.week_id,
-                )
-        else:
-            if week.activity.reference_activity_id is not None:
-                fail(
-                    ProposalViolationCode.SYNTHESIZED_MUST_NOT_CLAIM_REFERENCE,
-                    "activity.reference_activity_id",
-                    week_id=week.week_id,
-                )
-            if not week.activity.grounding_refs:
-                fail(
-                    ProposalViolationCode.SYNTHESIZED_REQUIRES_GROUNDING,
-                    "activity.grounding_refs",
-                    week_id=week.week_id,
-                )
-            if activity_value in evidence_texts:
-                fail(
-                    ProposalViolationCode.SOURCE_TEXT_COPY,
-                    "activity.value",
-                    week_id=week.week_id,
-                )
-
-    if len(normalized_experiences) != len(set(normalized_experiences)):
-        fail(ProposalViolationCode.DUPLICATE_EXPERIENCE, "weeks.experience")
-    if len(normalized_activities) != len(set(normalized_activities)):
-        fail(ProposalViolationCode.DUPLICATE_ACTIVITY, "weeks.activity.value")
-    return MonthlyProposalValidationResult(tuple(violations))
+    schema = validate_monthly_proposal_schema(proposal, request)
+    grounding = validate_monthly_proposal_grounding(proposal, packet, request)
+    return MonthlyProposalValidationResult(schema.issues + grounding.issues)

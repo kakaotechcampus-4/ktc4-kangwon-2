@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 import pytest
 
+from ssuksak.adapters.monthly_reference_repositories import (
+    JsonMonthlyTemplateRepository,
+)
 from ssuksak.planning.context.models import (
     CONTEXT_PACKET_VERSION,
     ContextConstraints,
@@ -14,6 +18,12 @@ from ssuksak.planning.context.models import (
     WeekContext,
 )
 from ssuksak.planning.domain.year_month import YearMonth
+from ssuksak.planning.domain.monthly_template import SemanticVariant
+from ssuksak.planning.domain.monthly_template_profile import (
+    TemplateProfile,
+    TemplateProfileRef,
+)
+from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
 from ssuksak.planning.evidence.models import ReusePolicy, SourceSection
 from ssuksak.planning.retrieval.models import AgeMatchKind
 
@@ -66,3 +76,38 @@ def packet() -> MonthlyContextPacket:
             "v1",
         ),
     )
+
+
+@pytest.fixture
+def snapshot() -> TemplateSnapshot:
+    template = JsonMonthlyTemplateRepository().get_template(
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+    )
+    assert template is not None
+    labels = {
+        "theme": "Theme",
+        "week_axis": "Week",
+        "outdoor_play": "Outdoor play",
+        "safety_education": "Safety education",
+        "focus": "Subtheme",
+    }
+    profile = TemplateProfile(
+        profile_ref=TemplateProfileRef("planner-profile", "v1"),
+        institution_ref="institution-1",
+        classroom_ref="class-1",
+        base_template_ref=template.template_ref,
+        selected_optional_keys=("focus",),
+        sections=tuple(
+            replace(
+                section,
+                display_label=labels[section.section_key],
+                semantic_variant=(
+                    SemanticVariant.SUBTHEME
+                    if section.section_key == "focus"
+                    else None
+                ),
+            )
+            for section in template.activated_sections
+        ),
+    )
+    return TemplateSnapshot.from_profile(profile)

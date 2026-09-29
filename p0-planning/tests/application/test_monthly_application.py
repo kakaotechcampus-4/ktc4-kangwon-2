@@ -46,7 +46,12 @@ from ssuksak.planning.domain.errors import (
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.monthly_template import (
+    DisplayMode,
+    SectionRole,
+    SemanticVariant,
+    TemplateRef,
+)
 from ssuksak.planning.domain.monthly_template_profile import (
     TemplateProfile,
     TemplateProfileRef,
@@ -209,20 +214,58 @@ class RequestAwareMonthlyLlm:
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
         self.monthly_requests.append(request)
         grounding_ref = sorted(request.valid_grounding_refs)[0]
+        month_sections = []
+        weekly_keys = []
+        for section in request.template_snapshot.sections:
+            if section.role is SectionRole.AXIS:
+                continue
+            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY:
+                if section.section_key == "theme":
+                    month_sections.append(
+                        {
+                            "section_key": "theme",
+                            "value": request.expected_theme_value,
+                            "unresolved": False,
+                            "reference_id": request.expected_theme_id,
+                            "grounding_refs": [],
+                        }
+                    )
+                elif section.required_for_generation:
+                    month_sections.append(
+                        {
+                            "section_key": section.section_key,
+                            "value": f"Context-based {section.section_key}",
+                            "unresolved": False,
+                            "reference_id": None,
+                            "grounding_refs": [grounding_ref],
+                        }
+                    )
+            elif section.display_mode is DisplayMode.WEEKLY_CELLS:
+                weekly_keys.append(section.section_key)
         payload = {
-            "target_month": request.target_month,
-            "theme_id": request.expected_theme_id,
-            "month_flow_rationale": "The monthly flow follows the supplied context.",
+            "target_month": request.target_month.value,
+            "month_sections": month_sections,
             "weeks": [
                 {
-                    "week_id": week_id,
-                    "experience": f"Context-based weekly focus {index}",
-                    "activity": {
-                        "value": f"Context-based outdoor activity {index}",
-                        "origin": "LLM_SYNTHESIZED",
-                        "reference_activity_id": None,
-                        "grounding_refs": [grounding_ref],
-                    },
+                    "week_id": week_id.value,
+                    "sections": [
+                        {
+                            "section_key": key,
+                            "value": (
+                                ""
+                                if key == "safety_education"
+                                else f"Context-based {key} {index}"
+                            ),
+                            "unresolved": key == "safety_education",
+                            "reference_id": None,
+                            "grounding_refs": (
+                                []
+                                if key == "safety_education"
+                                else [grounding_ref]
+                            ),
+                        }
+                        for key in weekly_keys
+                    ],
                 }
                 for index, week_id in enumerate(
                     request.expected_week_ids, start=1
@@ -236,15 +279,16 @@ class RequestAwareMonthlyLlm:
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
         self.cell_requests.append(request)
         grounding_ref = sorted(request.valid_grounding_refs)[0]
-        is_focus = request.target_section_key == "focus"
         payload = {
-            "target_month": request.target_month,
-            "target_week_id": request.target_week_id,
-            "target_section_key": request.target_section_key,
-            "value": f"Regenerated {request.target_section_key} value",
-            "activity_origin": None if is_focus else "LLM_SYNTHESIZED",
-            "reference_activity_id": None,
-            "grounding_refs": [grounding_ref],
+            "target_month": request.target_month.value,
+            "target_week_id": request.target_week_id.value,
+            "section": {
+                "section_key": request.target_section_key,
+                "value": f"Regenerated {request.target_section_key} value",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [grounding_ref],
+            },
         }
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "cell-1"
@@ -261,6 +305,48 @@ class ExplodingCellLlm(RequestAwareMonthlyLlm):
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
         self.cell_requests.append(request)
         raise RuntimeError("provider unavailable")
+
+
+class ReferenceAndGroundingCellLlm(RequestAwareMonthlyLlm):
+    def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
+        self.cell_requests.append(request)
+        reference_id, value = request.reference_labels[0]
+        grounding_ref = sorted(request.valid_grounding_refs)[0]
+        return RawLlmResponse(
+            json.dumps(
+                {
+                    "target_month": request.target_month.value,
+                    "target_week_id": request.target_week_id.value,
+                    "section": {
+                        "section_key": request.target_section_key,
+                        "value": value,
+                        "unresolved": False,
+                        "reference_id": reference_id,
+                        "grounding_refs": [grounding_ref],
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            MONTHLY_MODEL,
+            "reference-and-grounding-cell",
+        )
+
+
+class LegacyShapeMonthlyLlm(RequestAwareMonthlyLlm):
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        self.monthly_requests.append(request)
+        return RawLlmResponse(
+            json.dumps(
+                {
+                    "target_month": request.target_month.value,
+                    "theme_id": request.expected_theme_id,
+                    "month_flow_rationale": "legacy",
+                    "weeks": [],
+                }
+            ),
+            MONTHLY_MODEL,
+            "legacy-monthly-1",
+        )
 
 
 class Harness:
@@ -465,7 +551,7 @@ def test_generation_mode_is_explicit_and_never_silently_falls_back():
     assert harness.plans.save_count == 0
 
 
-def test_llm_mode_rejects_a_template_that_cannot_retain_focus_output():
+def test_llm_mode_uses_the_profile_structure_without_requiring_focus():
     harness = Harness()
     provider = RequestAwareMonthlyLlm()
     command = replace(
@@ -473,12 +559,17 @@ def test_llm_mode_rejects_a_template_that_cannot_retain_focus_output():
         profile_ref=RULE_PROFILE,
     )
 
-    with pytest.raises(MonthlyApplicationError) as exc:
-        harness.generate(provider=provider, command=command)
+    result = harness.generate(provider=provider, command=command)
 
-    assert exc.value.code == "monthly_llm_template_focus_required"
-    assert provider.monthly_requests == []
-    assert harness.plans.save_count == 0
+    assert result.plan.section("focus") is None
+    assert tuple(section.section_key for section in result.plan.sections) == (
+        "theme",
+        "week_axis",
+        "outdoor_play",
+        "safety_education",
+    )
+    assert len(provider.monthly_requests) == 1
+    assert harness.plans.save_count == 1
 
 
 def test_rule_only_mode_does_not_call_a_configured_llm_planner():
@@ -509,8 +600,11 @@ def test_llm_mode_reuses_context_and_planner_then_persists_validated_draft():
         for cell in plan.section(section_key).cells
     )
     assert all(
-        tuple(source.source_type for source in cell.evidence)
-        == (EvidenceSourceType.PARENT_PLAN,)
+        {source.source_type for source in cell.evidence}
+        == {
+            EvidenceSourceType.PARENT_PLAN,
+            EvidenceSourceType.INSTITUTION_SAMPLE,
+        }
         for cell in plan.section("focus").cells
     )
     assert all(
@@ -527,9 +621,39 @@ def test_llm_mode_reuses_context_and_planner_then_persists_validated_draft():
     assert harness.plans.save_count == 1
 
 
+def test_llm_focus_semantics_remain_snapshot_owned():
+    harness = Harness()
+    result = harness.generate(
+        MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()
+    )
+    focus = result.plan.section("focus")
+    outdoor = result.plan.section("outdoor_play")
+    snapshot_focus = result.plan.template_snapshot.section("focus")
+
+    assert snapshot_focus is not None
+    assert snapshot_focus.semantic_variant is SemanticVariant.SUBTHEME
+    assert focus is not None and outdoor is not None
+    assert all(
+        cell.label_variant is None and cell.mapping_confidence is None
+        for cell in (*focus.cells, *outdoor.cells)
+    )
+
+
 def test_llm_failure_never_saves_an_incomplete_monthly_plan():
     harness = Harness()
     provider = ExplodingMonthlyLlm()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    assert len(provider.monthly_requests) == 1
+    assert harness.plans.save_count == 0
+
+
+def test_legacy_proposal_shape_is_rejected_without_saving_a_plan():
+    harness = Harness()
+    provider = LegacyShapeMonthlyLlm()
 
     with pytest.raises(MonthlyApplicationError) as exc:
         harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider)
@@ -644,6 +768,42 @@ def test_llm_cell_regeneration_records_before_and_after_method_details():
     assert change.after.rule_version == MONTHLY_CELL_PROMPT_VERSION
     assert result.plan.find_cell(sibling.item_id)[3] is sibling
     assert len(provider.cell_requests) == 1
+
+
+def test_llm_cell_regeneration_preserves_reference_and_grounding_provenance():
+    harness = Harness()
+    original = harness.generate(
+        MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()
+    ).plan
+    target = _cell(original, "outdoor_play")
+    provider = ReferenceAndGroundingCellLlm()
+
+    result = harness.regenerate(provider).execute(
+        RegenerateMonthlyPlanItemCommand(original.plan_id, target.item_id, TEACHER)
+    )
+    outcome = result.planner_outcome
+    regenerated = result.plan.find_cell(target.item_id)[3]
+
+    assert outcome is not None
+    assert outcome.proposal.section.reference_id is not None
+    assert outcome.proposal.section.grounding_refs
+    assert {source.source_type for source in regenerated.evidence} == {
+        EvidenceSourceType.PARENT_PLAN,
+        EvidenceSourceType.ACTIVITY_REFERENCE,
+        EvidenceSourceType.INSTITUTION_SAMPLE,
+    }
+    assert {(source.source_type, source.source_id) for source in regenerated.evidence} >= {
+        (
+            EvidenceSourceType.ACTIVITY_REFERENCE,
+            outcome.proposal.section.reference_id,
+        ),
+        (
+            EvidenceSourceType.INSTITUTION_SAMPLE,
+            outcome.proposal.section.grounding_refs[0],
+        ),
+    }
+    assert result.plan.parent_lineage is original.parent_lineage
+    assert regenerated.generation.method is GenerationMethod.RULE_LLM
 
 
 def test_llm_cell_failure_does_not_persist_a_partial_regeneration():
