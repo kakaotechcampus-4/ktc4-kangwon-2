@@ -6,14 +6,18 @@ export const statusFor: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 422,
   NOT_FOUND: 404,
   GATE_BLOCKED: 409,
+  ALREADY_EXISTS: 409,
+  STALE_WRITE: 409,
+  UNSUPPORTED_FILE_TYPE: 400,
   NO_ACTIVITIES: 503,
+  LLM_BUDGET_EXCEEDED: 503,
+  DEPENDENCY_UNAVAILABLE: 503,
   GENERATION_FAILED: 500,
 };
-export const failure = (code: ErrorCode, message: string, field?: string) =>
-  HttpResponse.json(
-    { error: { code, message, ...(field ? { field } : {}) } },
-    { status: statusFor[code] },
-  );
+// fields 는 틀린 칸이 하나여도, 없어도 배열이다. 목업이 단수 field 를 주면
+// FE 가 목업에만 맞는 처리를 하게 된다 — 객체 리터럴이라 tsc 가 안 잡는다.
+export const failure = (code: ErrorCode, message: string, ...fields: string[]) =>
+  HttpResponse.json({ error: { code, message, fields } }, { status: statusFor[code] });
 export async function scenario(request: Request, target: string, defaultDelay = 100) {
   const url = new URL(request.url),
     page =
@@ -41,7 +45,7 @@ export async function scenario(request: Request, target: string, defaultDelay = 
       code === "NO_ACTIVITIES"
         ? "활동 데이터가 없습니다. 운영 담당자에게 문의해주세요."
         : "개발용 실패 상황입니다.",
-      value("Field") || undefined,
+      ...(value("Field") ? [value("Field") as string] : []),
     );
   }
   if (value("Empty") === "true")
