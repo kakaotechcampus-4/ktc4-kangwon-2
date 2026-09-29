@@ -29,6 +29,11 @@ from ssuksak.planning.rules.errors import YearlyRuleError
 
 from app.db import get_session
 from app.features.auth.models import User
+from app.features.plans.llm import (
+    ThemeTextBudgetExceeded,
+    ThemeTextUnavailable,
+    theme_text_generator,
+)
 from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
@@ -129,6 +134,41 @@ def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
     )
 
 
+def _503(code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={"code": code, "message": message, "fields": []},
+    )
+
+
+def _generation_error(error: YearlyApplicationError) -> HTTPException:
+    """주제 생성이 실패한 이유를 계약 코드로 가른다.
+
+    **p0-planning 이 생성기 오류를 자기 것으로 감싼다**(`theme_text_generation_failed`).
+    그래서 원래 예외는 `__cause__` 에 들어 있다 — 재시도로 풀리는 것과 아닌 것을
+    가르려면 거기를 봐야 한다. 셋을 한 코드로 뭉치면 FE 가 「운영 문의」를 띄워야 할
+    자리에 「다시 시도」를 띄운다.
+    """
+    cause = error.__cause__
+    if isinstance(cause, ThemeTextBudgetExceeded):
+        return _503("LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요.")
+    if isinstance(cause, ThemeTextUnavailable):
+        return _503(
+            "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
+        )
+    if error.code == "theme_text_generation_failed":
+        # **부분 결과가 남지 않는다.** p0-planning 이 저장 전에 멈춘다.
+        return HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "GENERATION_FAILED",
+                "message": "계획안을 만들지 못했습니다. 다시 시도해주세요.",
+                "fields": [],
+            },
+        )
+    return _domain_error(error)
+
+
 def _domain_error(error: Exception) -> HTTPException:
     """도메인이 낸 오류를 계약 봉투로. **원인은 도메인이 안다 — 여기서 다시 판단하지 않는다.**"""
     if isinstance(error, InvalidStateTransitionError):
@@ -155,10 +195,17 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     """
     klass = require_own_class(session, user, body.class_id)
     repo = _repo(session, user)
+    try:
+        generator = theme_text_generator()
+    except ThemeTextUnavailable as error:
+        # 교사가 고칠 수 없다. 재시도 버튼을 띄우면 100번 눌러도 같다(api-spec 공통).
+        raise _503(
+            "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
+        ) from error
     use_case = GenerateYearlyPlan(
         theme_repository=JsonThemeReferenceRepository(),
         plan_repository=repo,
-        text_generator=_text_generator(),
+        text_generator=generator,
         clock=SystemClock(),
         id_generator=UuidGenerator(),
     )
@@ -171,7 +218,9 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
                 catalog=CATALOG,
             )
         )
-    except (YearlyApplicationError, YearlyRuleError, InvalidDomainValueError) as error:
+    except YearlyApplicationError as error:
+        raise _generation_error(error) from error
+    except (YearlyRuleError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
     session.commit()
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
@@ -290,28 +339,3 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     # 시간순. 어느 쪽에 담겼는지가 아니라 언제 일어났는지로 읽어야 한다.
     items.sort(key=lambda item: item.occurred_at)
     return AuditOut(items=items)
-
-
-def _text_generator():
-    """주제 문장을 만드는 것.
-
-    **지금은 AI 가 쓰지 않는다.** 참조자료의 라벨을 그대로 돌려준다 — 연간 주제용
-    엘리스 어댑터가 아직 없다(월간용 `elice_openai_monthly.py` 만 있다).
-    `settings.llm_mode` 가 `real` 이어도 마찬가지다.
-
-    그래서 생성된 주제는 사람이 승인한 참조자료 문구 그대로다. 근거가 흐려지는
-    쪽이 아니라 오히려 또렷한 상태이므로 이대로 교사에게 내보내도 된다.
-    **다만 「AI 가 만들었다」고 화면에 쓰면 안 된다** — `generation.method` 가
-    사실을 말한다.
-
-    붙일 때 필요한 것:
-      1. ThemeTextGenerator 를 구현하는 엘리스 어댑터
-      2. settings.llm_mode 로 mock/real 을 가르는 분기
-      3. .env 의 ELICE_MLAPI_API_KEY · ELICE_MLAPI_BASE_URL
-         (지금 .env 의 ELICE_API_KEY 는 어댑터가 찾는 이름이 아니다)
-    """
-    from ssuksak.adapters.deterministic_theme_text_generator import (
-        DeterministicThemeTextGenerator,
-    )
-
-    return DeterministicThemeTextGenerator()

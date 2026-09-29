@@ -203,3 +203,65 @@ def test_로그인_없이는_전부_401(db_session, mine):
             assert response.json()["error"]["code"] == "UNAUTHENTICATED"
     finally:
         app.dependency_overrides.clear()
+
+
+# ── 생성이 실패했을 때 ──────────────────────────────────────────────────────
+
+
+def _breaks(monkeypatch, error):
+    """생성기를 **만드는 단계**가 실패하게 한다 (설정이 없을 때)."""
+
+    def boom():
+        raise error
+
+    monkeypatch.setattr("app.features.plans.router.theme_text_generator", boom)
+
+
+def _generator_raises(monkeypatch, error):
+    """생성기를 만들기는 하는데 **부를 때** 실패하게 한다 (호출이 깨질 때).
+
+    p0-planning 이 이 오류를 YearlyApplicationError 로 감싸므로, 라우터가
+    `__cause__` 를 보고 코드를 갈라야 한다.
+    """
+
+    class _Broken:
+        def generate(self, requests):
+            raise error
+
+    monkeypatch.setattr("app.features.plans.router.theme_text_generator", lambda: _Broken())
+
+
+def test_설정이_없으면_503_이고_재시도_버튼을_띄우지_않는다(db_session, mine, monkeypatch):
+    """교사가 고칠 수 없다. 100번 눌러도 같다(api-spec 공통)."""
+    from app.features.plans.llm import ThemeTextUnavailable
+
+    _breaks(monkeypatch, ThemeTextUnavailable("키가 없다"))
+
+    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+
+
+def test_한도에_걸리면_운영_문의_코드로_나온다(db_session, mine, monkeypatch):
+    from app.features.plans.llm import ThemeTextBudgetExceeded
+
+    _generator_raises(monkeypatch, ThemeTextBudgetExceeded("429"))
+
+    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "LLM_BUDGET_EXCEEDED"
+
+
+def test_생성이_실패하면_부분_결과가_남지_않는다(db_session, mine, monkeypatch):
+    """§4 · 공통 GENERATION_FAILED — 반쯤 만들어진 계획안을 저장하지 않는다."""
+    from app.features.plans.llm import ThemeTextFailed
+
+    _generator_raises(monkeypatch, ThemeTextFailed("빠진 달이 있다"))
+
+    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "GENERATION_FAILED"
+    assert client.get("/api/plans/annual").json()["items"] == []
