@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 # centers·classes·children 은 여러 기능이 쓰는 공유 도메인이라 features/centers 에
 # 있어도 직접 import 한다 — ADR-002 가 「두 번째 규칙을 완화해서 해결했다」고 정한 지점이다.
 from app.db import get_session
+from app.features.auth.models import User
 from app.features.centers.models import Child, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.documents.schemas import (
@@ -20,7 +21,9 @@ from app.features.documents.schemas import (
     DocumentSectionItem,
     DocumentSourceItem,
     DocumentUpdateRequest,
+    RelatedDocumentsResponse,
 )
+from app.shared.auth.dependency import CurrentUser
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -33,6 +36,14 @@ DocumentStatus = Literal["DRAFT", "CONFIRMED"]
 # 상투어 감지는 여기서 구현하지 않는다 — "어떤 문구가 상투어인가"는 근거 없이
 # 하드코딩하면 안 되는 판단(팀 판단 필요)이라, 길이 기준만 서버가 막는다.
 MIN_INTERPRETATION_SUPPORT_LENGTH = 20
+
+# 문서 종류마다 있어야 할 짝이 다르다 (docs/api-spec.md §11).
+# 없다고 막지 않는다 — 화면에 "아직 없음" 으로 표시만 한다.
+EXPECTED_PAIRS = {
+    "weeklyLog": ("dailyLog",),
+    "assessment": ("observation", "dailyLog"),
+}
+DEFAULT_EXPECTED = ("dailyLog", "observation")
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> HTTPException:
@@ -92,6 +103,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
 @router.get("", response_model=DocumentListResponse)
 def list_documents(
     session: DbSession,
+    user: CurrentUser,
     kind: DocumentKind | None = None,
     class_id: int | None = None,
     child_id: int | None = None,
@@ -113,6 +125,10 @@ def list_documents(
     query = (
         select(Document, Class.name, Child.name, sources_count)
         .join(Class, Class.id == Document.class_id)
+        # **원 격리를 조회 자체에 건다.** 이게 없으면 로그인한 아무 교사나 남의 원
+        # 문서를 아동 실명까지 통째로 받아간다. 라우터마다 확인하는 방식이면
+        # 엔드포인트가 늘 때 반드시 하나를 빠뜨린다.
+        .where(Class.center_id == user.center_id)
         .outerjoin(Child, Child.id == Document.child_id)
         .order_by(Document.created_at.desc(), Document.id.desc())
     )
@@ -244,3 +260,80 @@ def update_document(
 
     session.commit()
     return _build_detail_response(session, doc)
+
+
+def _visible(user: User):
+    """이 교사의 원 문서 + 반·아이 이름. 목록과 related 가 같은 조회를 쓴다."""
+    sources_count = (
+        select(func.count(DocumentSource.id))
+        .where(DocumentSource.document_id == Document.id)
+        .correlate(Document)
+        .scalar_subquery()
+    )
+    return (
+        select(Document, Class.name, Child.name, sources_count)
+        .join(Class, Class.id == Document.class_id)
+        .where(Class.center_id == user.center_id)
+        .outerjoin(Child, Child.id == Document.child_id)
+    )
+
+
+def _list_item(row) -> DocumentListItem:
+    doc, class_name, child_name, sources_count_value = row
+    return DocumentListItem(
+        id=doc.id,
+        kind=doc.kind,
+        title=doc.title,
+        class_id=doc.class_id,
+        class_name=class_name,
+        child_id=doc.child_id,
+        child_name=child_name,
+        start=doc.start_date,
+        end=doc.end_date,
+        status=doc.status,
+        origin=doc.origin,
+        stale=doc.stale,
+        generation=DocumentGeneration(
+            method=doc.generation_method,
+            rule_id=doc.generation_rule_id,
+            rule_version=doc.generation_rule_version,
+        ),
+        sources_count=sources_count_value,
+        created_at=doc.created_at,
+        updated_at=doc.updated_at,
+    )
+
+
+@router.get("/{document_id}/related", response_model=RelatedDocumentsResponse)
+def related_documents(
+    document_id: int, session: DbSession, user: CurrentUser
+) -> RelatedDocumentsResponse:
+    """같은 반 · 같은 아이 · 기간이 겹치는 **확정** 문서를 준다 (docs/api-spec.md §11).
+
+    교사가 "이 관찰일지가 그 주 보육일지랑 안 맞는데" 를 눈으로 대조한다.
+
+    **DRAFT 는 빼고 준다.** 아직 쓰는 중인 글을 "안 맞는다" 고 들이밀면 방해다.
+    **모델을 부르지 않는다.** 겹치는 문서를 찾아 보여줄 뿐 무엇이 맞는지는 판정하지
+    않는다 — 3단 게이트의 2단이라 모델이 개입하면 판정이 흔들린다.
+    """
+    row = session.execute(_visible(user).where(Document.id == document_id)).first()
+    if row is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", "문서를 찾을 수 없습니다.", ["id"])
+    doc = row[0]
+
+    expected = EXPECTED_PAIRS.get(doc.kind, DEFAULT_EXPECTED)
+    query = _visible(user).where(
+        Document.id != doc.id,
+        Document.class_id == doc.class_id,
+        Document.status == "CONFIRMED",
+        # 기간이 겹친다 = 내 시작이 상대 끝보다 앞이고, 내 끝이 상대 시작보다 뒤다.
+        Document.start_date <= doc.end_date,
+        Document.end_date >= doc.start_date,
+    )
+    # 아이 기록은 그 아이 것만 본다. 반 단위 문서(child_id 가 없는 것)는 반 전체가 짝이다.
+    if doc.child_id is not None:
+        query = query.where((Document.child_id == doc.child_id) | (Document.child_id.is_(None)))
+    rows = session.execute(query.order_by(Document.start_date.desc(), Document.id.desc())).all()
+    return RelatedDocumentsResponse(
+        items=[_list_item(item) for item in rows], expected_kinds=list(expected)
+    )

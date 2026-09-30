@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..domain.monthly_template import DisplayMode, MonthlyTemplate, SectionRole, TemplateSection
+from ..domain.monthly_template_profile import TemplateProfile
 from .errors import MonthlyRuleError
 
 RULE_ID = "monthly.template.section_resolution"
@@ -48,6 +49,27 @@ def resolve_sections(template: MonthlyTemplate) -> tuple[ResolvedSection, ...]:
             RULE_ID, f"active content sections require display_mode: {missing}"
         )
     return tuple(ResolvedSection(section) for section in template.activated_sections)
+
+
+def resolve_profile_sections(
+    profile: TemplateProfile,
+) -> tuple[ResolvedSection, ...]:
+    """Resolve an exact Profile without re-reading its base Template artifact."""
+
+    if not isinstance(profile, TemplateProfile):
+        raise MonthlyRuleError(RULE_ID, "profile must be TemplateProfile")
+    missing = tuple(
+        section.section_key
+        for section in profile.ordered_sections
+        if section.role is SectionRole.CONTENT and section.display_mode is None
+    )
+    if missing:
+        raise MonthlyRuleError(
+            RULE_ID, f"active content sections require display_mode: {missing}"
+        )
+    return tuple(
+        ResolvedSection(section) for section in profile.ordered_sections
+    )
 
 
 def expected_cell_count(
