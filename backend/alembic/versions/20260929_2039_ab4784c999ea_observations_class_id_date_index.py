@@ -1,7 +1,7 @@
 """observations class_id date index
 
 Revision ID: ab4784c999ea
-Revises: 1eae36a7c951
+Revises: 5d6cce1120fa
 Create Date: 2026-09-29 20:39:44.119695
 
 관찰 기록 목록이 반 + 기간으로 거른다 (docs/api-spec.md 「DB 에 아직 없는 것」 INDEX(class_id, date)).
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'ab4784c999ea'
-down_revision: Union[str, None] = '1eae36a7c951'
+down_revision: Union[str, None] = '5d6cce1120fa'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
