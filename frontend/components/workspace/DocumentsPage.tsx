@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   DOCUMENT_KINDS,
@@ -10,20 +10,41 @@ import {
   assertDocumentUnchanged,
   type DocumentKind,
   type SavedDocument,
-  type Source,
-  type Section,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
-import { requestAI } from "@/lib/workspace/ai-client";
+import { isUnauthenticated } from "@/lib/api/client";
+import { listRecords } from "@/lib/api/records";
+import type { ServerObservation } from "@/lib/api/observations";
+import {
+  listDocuments,
+  getDocument,
+  createDocument,
+  updateDocument,
+  confirmDocument,
+  deleteDocument,
+  documentServerId,
+  isRecordKind,
+  RECORD_KINDS,
+  type DocumentSummary,
+  type RecordKind,
+} from "@/lib/api/documents";
 import DocumentEditor from "./DocumentEditor";
-import { WorkspacePage, Empty, Message, useClasses, useAIStatus, AIHint, ws } from "./WorkspaceUI";
+import { createSelection } from "./document-selection";
+import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
+
+type Status = "loading" | "ready" | "error";
+/** 근거 후보 하나. 주간 보육일지는 확정된 일일 보육일지, 나머지는 관찰 기록이다 (§11). */
+type Candidate = { id: string; date: string; label: string };
+
+function messageFor(error: unknown) {
+  if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
+  return error instanceof Error ? error.message : "요청을 처리하지 못했어요.";
+}
 
 export default function DocumentsPage() {
-  const { data, ready, error, blocked, save } = useWorkspace();
+  const { data, error, save } = useWorkspace();
   const classes = useClasses();
-  const available = useAIStatus();
   const [mode, setMode] = useState<"library" | "create">("library");
-  const [active, setActive] = useState("");
   const [kind, setKind] = useState<DocumentKind>("observation");
   const [classId, setClassId] = useState("");
   const [childId, setChildId] = useState("");
@@ -34,15 +55,72 @@ export default function DocumentsPage() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+
+  const [serverDocs, setServerDocs] = useState<DocumentSummary[]>([]);
+  const [listStatus, setListStatus] = useState<Status>("loading");
+  const [listError, setListError] = useState("");
+  const [records, setRecords] = useState<ServerObservation[]>([]);
+  // 늦게 온 옛 응답이 최신 화면을 덮지 않게 요청마다 번호를 매긴다.
+  const latestList = useRef(0);
+  const [selection] = useState(() =>
+    createSelection(
+      {
+        get: getDocument,
+        update: updateDocument,
+        confirm: confirmDocument,
+        remove: deleteDocument,
+      },
+      messageFor,
+    ),
+  );
+  const chosen = useSyncExternalStore(selection.subscribe, selection.get, selection.get);
+  const active = chosen.active;
+
+  useEffect(() => {
+    const mine = ++latestList.current;
+    Promise.all([listDocuments(), listRecords()])
+      .then(([documents, observations]) => {
+        if (mine !== latestList.current) return;
+        setServerDocs(documents);
+        setRecords(observations);
+        setListError("");
+        setListStatus("ready");
+      })
+      .catch((e) => {
+        if (mine !== latestList.current) return;
+        setListError(messageFor(e));
+        setListStatus("error");
+      });
+    return () => {
+      latestList.current += 1;
+      selection.leaveCreation();
+    };
+  }, [selection]);
+  async function reloadList() {
+    const mine = ++latestList.current;
+    try {
+      const [documents, observations] = await Promise.all([listDocuments(), listRecords()]);
+      if (mine !== latestList.current) return;
+      setServerDocs(documents);
+      setRecords(observations);
+      setListError("");
+      setListStatus("ready");
+    } catch (e) {
+      if (mine !== latestList.current) return;
+      setListError(messageFor(e));
+      setListStatus("error");
+    }
+  }
+
   const [recordId] = useState(() =>
     typeof window === "undefined"
       ? null
       : new URLSearchParams(window.location.search).get("record"),
   );
   const [prefilled, setPrefilled] = useState(false);
-  if (ready && !prefilled) {
+  if (listStatus === "ready" && !prefilled) {
     setPrefilled(true);
-    const record = data.observations.find((r) => r.id === recordId);
+    const record = records.find((r) => r.id === recordId);
     if (record) {
       setMode("create");
       setClassId(record.classId);
@@ -52,62 +130,89 @@ export default function DocumentsPage() {
       setSelected([record.id]);
     }
   }
+
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);
-  const candidates: Source[] =
-    kind === "weeklyLog"
-      ? data.documents
-          .filter(
-            (d) =>
-              d.kind === "dailyLog" &&
-              d.status === "confirmed" &&
-              d.sections.some((s) => s.heading === "사실") &&
-              d.classId === classId &&
-              (!childId || d.childId === childId) &&
-              d.start >= start &&
-              d.end <= end,
-          )
-          .map((d) => ({
-            id: d.id,
-            date: d.start,
-            text: d.sections
-              .filter((s) => s.heading === "사실")
-              .map((s) => s.body)
-              .join("\n\n"),
-            childId: d.childId,
-            classId: d.classId,
-          }))
-      : data.observations
-          .filter(
-            (r) =>
-              r.classId === classId &&
-              (!childId || r.childId === childId) &&
-              r.date >= start &&
-              r.date <= end,
-          )
-          .map((r) => ({
-            id: r.id,
-            date: r.date,
-            text: r.fact,
-            childId: r.childId,
-            classId: r.classId,
-          }));
+  const candidates: Candidate[] = useMemo(
+    () =>
+      kind === "weeklyLog"
+        ? serverDocs
+            .filter(
+              (d) =>
+                d.kind === "dailyLog" &&
+                d.status === "confirmed" &&
+                d.classId === classId &&
+                (!childId || d.childId === childId) &&
+                d.start >= start &&
+                d.end <= end,
+            )
+            .map((d) => ({ id: d.id, date: d.start, label: d.title }))
+        : records
+            .filter(
+              (r) =>
+                r.classId === classId &&
+                (!childId || r.childId === childId) &&
+                r.date >= start &&
+                r.date <= end,
+            )
+            .map((r) => ({ id: r.id, date: r.date, label: r.fact })),
+    [kind, serverDocs, records, classId, childId, start, end],
+  );
   const sources = candidates.filter((s) => selected.includes(s.id));
-  const documents = data.documents
+
+  // 계획안과 등록 증빙은 아직 서버에 없다 — 보관함에서는 계속 브라우저 저장소를 본다.
+  const localDocs = data.documents.filter((d) => d.origin === "import" || !isRecordKind(d.kind));
+  const library = [
+    ...serverDocs.map((d) => ({
+      id: d.id,
+      title: d.title,
+      className: d.className,
+      childName: d.childName,
+      kind: d.kind,
+      status: d.status,
+      start: d.start,
+      updatedAt: d.updatedAt,
+      sources: d.sourcesCount,
+      stale: d.stale,
+    })),
+    ...localDocs.map((d) => ({
+      id: d.id,
+      title: d.title,
+      className: d.className,
+      childName: d.childName,
+      kind: d.kind,
+      status: d.status,
+      start: d.start,
+      updatedAt: d.updatedAt,
+      sources: d.sources.length,
+      stale: false,
+    })),
+  ]
     .filter(
       (d) =>
         (filter === "all" || d.status === filter) &&
         `${d.title} ${d.childName} ${d.className}`.includes(search),
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const current = data.documents.find((d) => d.id === active);
-  async function generate(ai: boolean) {
+
+  const activeServerId = documentServerId(active);
+  const localCurrent = data.documents.find((d) => d.id === active);
+  // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
+  const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
+  const current = activeServerId === null ? localCurrent : serverCurrent;
+
+  function open(id: string) {
+    setMessage("");
+    selection.select(id, documentServerId(id));
+  }
+
+  async function generate() {
     if (
       busy ||
-      available === null ||
       !classroom ||
       !validPeriod(start, end) ||
       !sources.length ||
+      !isRecordKind(kind) ||
       ((kind === "observation" || kind === "assessment") && !child) ||
       (kind === "dailyLog" && start !== end)
     ) {
@@ -118,64 +223,55 @@ export default function DocumentsPage() {
     }
     setBusy(true);
     setMessage("");
+    const creation = selection.beginCreation();
     try {
-      const title = `${child?.name || classroom.className} ${DOCUMENT_KINDS[kind]} · ${start}`;
-      let sections: Section[] = [
-        { heading: "해석", body: "", sourceIds: sources.map((s) => s.id) },
-        { heading: "지원", body: "", sourceIds: sources.map((s) => s.id) },
-      ];
-      if (ai) {
-        const result = await requestAI<{ sections: Section[] }>("document", {
-          kind: DOCUMENT_KINDS[kind],
-          start,
-          end,
-          sources,
-        });
-        sections = result.sections.filter((s) => s.heading === "해석" || s.heading === "지원");
-        if (
-          sections.length !== 2 ||
-          !sections.some((s) => s.heading === "해석") ||
-          !sections.some((s) => s.heading === "지원")
-        )
-          throw new Error("AI가 필수 항목을 완성하지 못했어요. 다시 생성해주세요.");
-      }
-      const timestamp = new Date().toISOString();
-      const doc: SavedDocument = {
-        id: crypto.randomUUID(),
-        title,
-        kind,
+      // 사실·해석·지원은 서버가 만든다 — 화면이 초안을 짓지 않는다 (§11).
+      const created = await createDocument({
+        kind: kind as RecordKind,
         classId,
-        className: classroom.className,
         childId,
-        childName: child?.name || "",
         start,
         end,
-        sources,
-        sections: [
-          {
-            heading: "사실",
-            body: sources.map((s) => s.text).join("\n\n"),
-            sourceIds: sources.map((s) => s.id),
-          },
-          ...sections,
-        ],
-        status: "draft",
-        origin: ai ? "ai" : "teacher",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        reviewNote: "교사 검토 전",
-      };
-      if (save((prev) => ({ ...prev, documents: [doc, ...prev.documents] }))) {
-        setActive(doc.id);
+        sourceIds: sources.map((s) => s.id),
+      });
+      if (creation.adopt(created)) {
+        setSelected([]);
         setMode("library");
         setMessage("원본 사실을 담은 초안을 만들었어요. 해석과 지원을 검토해주세요.");
       }
+      // 다른 문서를 편집 중이어도 생성 자체는 성공했다. 선택은 두고 목록만 갱신한다.
+      await reloadList();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "초안 생성에 실패했어요.");
+      // 실패해도 반·아동·기간·근거 선택을 그대로 둔다.
+      if (creation.isCurrent()) setMessage(messageFor(e));
     } finally {
       setBusy(false);
     }
   }
+
+  const serverActions = serverCurrent
+    ? {
+        stale: serverCurrent.stale,
+        pending: chosen.pending !== "",
+        reload: selection.reload,
+        save: async (sections: SavedDocument["sections"], reviewNote: string) => {
+          const saved = await selection.save(sections, reviewNote);
+          void reloadList();
+          return saved;
+        },
+        saveAndConfirm: async (sections: SavedDocument["sections"], reviewNote: string) => {
+          const confirmed = await selection.saveAndConfirm(sections, reviewNote);
+          void reloadList();
+          return confirmed;
+        },
+        remove: async () => {
+          await selection.remove();
+          setMessage("문서를 삭제했어요.");
+          await reloadList();
+        },
+      }
+    : undefined;
+
   return (
     <WorkspacePage
       title="문서 보관함"
@@ -190,6 +286,7 @@ export default function DocumentsPage() {
         <button
           className={ws.primary}
           onClick={() => {
+            selection.leaveCreation();
             setMode(mode === "create" ? "library" : "create");
             setMessage("");
           }}
@@ -197,13 +294,12 @@ export default function DocumentsPage() {
           {mode === "create" ? "보관함 보기" : "＋ 기록으로 문서 만들기"}
         </button>
       </div>
-      <Message error>{error}</Message>
+      <Message error>{error || listError}</Message>
       <Message>{message}</Message>
       {mode === "create" ? (
         <div className={ws.grid}>
           <section className={ws.card}>
             <h2>문서 작성 조건</h2>
-            <AIHint available={available} />
             <div className={ws.form}>
               <label className={ws.field}>
                 문서 종류
@@ -215,13 +311,11 @@ export default function DocumentsPage() {
                     setSelected([]);
                   }}
                 >
-                  {(["dailyLog", "weeklyLog", "observation", "assessment"] as DocumentKind[]).map(
-                    (k) => (
-                      <option key={k} value={k}>
-                        {DOCUMENT_KINDS[k]}
-                      </option>
-                    ),
-                  )}
+                  {RECORD_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {DOCUMENT_KINDS[k]}
+                    </option>
+                  ))}
                 </select>
               </label>
               <div className={ws.row}>
@@ -298,10 +392,10 @@ export default function DocumentsPage() {
               </p>
               <button
                 className={ws.primary}
-                disabled={busy || available === null || !sources.length || blocked}
-                onClick={() => generate(available === true)}
+                disabled={busy || !sources.length || listStatus !== "ready"}
+                onClick={generate}
               >
-                {busy ? "초안 작성 중…" : available ? "AI 초안 생성" : "원본으로 초안 만들기"}
+                {busy ? "초안 작성 중…" : "초안 만들기"}
               </button>
               <Link className={ws.link} href="/records">
                 새 관찰 기록 입력 →
@@ -314,7 +408,12 @@ export default function DocumentsPage() {
               <span className={ws.badge}>{sources.length}건 선택</span>
             </div>
             <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
-            {!candidates.length ? (
+            {listStatus === "loading" ? (
+              <div className={ws.loading} aria-busy="true">
+                <span>🌱</span>
+                <p>근거 기록을 불러오고 있어요.</p>
+              </div>
+            ) : !candidates.length ? (
               <Empty title="조건에 맞는 근거가 없어요">
                 날짜를 변경하거나{" "}
                 {kind === "weeklyLog"
@@ -349,7 +448,7 @@ export default function DocumentsPage() {
                       />
                       <span>
                         <b>{s.date}</b>
-                        <small>{s.text}</small>
+                        <small>{s.label}</small>
                       </span>
                     </label>
                   ))}
@@ -373,7 +472,11 @@ export default function DocumentsPage() {
                   className={filter === id ? ws.selected : undefined}
                   onClick={() => setFilter(id)}
                 >
-                  {label} {data.documents.filter((d) => id === "all" || d.status === id).length}
+                  {label}{" "}
+                  {
+                    [...serverDocs, ...localDocs].filter((d) => id === "all" || d.status === id)
+                      .length
+                  }
                 </button>
               ))}
             </div>
@@ -389,37 +492,48 @@ export default function DocumentsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          {!documents.length ? (
+          {listStatus === "loading" ? (
+            <div className={ws.loading} aria-busy="true">
+              <span>🌱</span>
+              <p>문서를 불러오고 있어요.</p>
+            </div>
+          ) : !library.length ? (
             <Empty title="보관된 문서가 없어요">관찰 기록으로 첫 문서를 만들어보세요.</Empty>
           ) : (
             <div className={ws.grid}>
               <div className={ws.list}>
-                {documents.map((d) => (
+                {library.map((d) => (
                   <button
                     key={d.id}
                     className={`${ws.item} ${active === d.id ? ws.selected : ""}`}
-                    onClick={() => {
-                      setActive(d.id);
-                      setMessage("");
-                    }}
+                    onClick={() => open(d.id)}
                   >
                     <div className={ws.between}>
                       <span className={ws.badge}>
                         {d.status === "confirmed" ? "확정" : "검토 중"}
+                        {d.stale ? " · 재검토" : ""}
                       </span>
                       <span className={ws.muted}>{d.start}</span>
                     </div>
                     <h3 style={{ marginTop: 13 }}>{d.title}</h3>
                     <p className={ws.muted}>
-                      {d.className} · {DOCUMENT_KINDS[d.kind]} · 근거 {d.sources.length}건
+                      {d.className} · {DOCUMENT_KINDS[d.kind]} · 근거 {d.sources}건
                     </p>
                   </button>
                 ))}
               </div>
-              {current ? (
+              {chosen.status === "loading" ? (
+                <div className={ws.loading} aria-busy="true">
+                  <span>🌱</span>
+                  <p>문서를 불러오고 있어요.</p>
+                </div>
+              ) : chosen.status === "error" ? (
+                <Message error>{chosen.error}</Message>
+              ) : current ? (
                 <DocumentEditor
                   key={current.id}
                   initial={current}
+                  server={serverActions}
                   onSave={(doc, expected) =>
                     save((prev) => {
                       assertDocumentUnchanged(
