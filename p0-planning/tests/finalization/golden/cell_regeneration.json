@@ -5,8 +5,8 @@
       {
         "actor": "teacher_001",
         "generation_change": {
-          "after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v1"},
-          "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"}
+          "after": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v9"},
+          "before": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v11"}
         },
         "system_actor": null,
         "type": "REGENERATED",
@@ -15,17 +15,20 @@
     ],
     "evidence": [
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-      {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+      {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
     ],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v1"},
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v9"},
     "state": "FILLED",
     "value": "Regenerated focus value",
     "week_id": "2026-09-W1"
   },
   "before": {
     "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
-    "evidence": [{"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"}],
-    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+    "evidence": [
+      {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+      {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+    ],
+    "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v11"},
     "state": "FILLED",
     "value": "Context-based weekly focus 1",
     "week_id": "2026-09-W1"
@@ -33,12 +36,14 @@
   "generation_mode": "LLM_PLANNER",
   "planner": {
     "model": "openai/gpt-4.1-mini",
-    "packet_fingerprint": "0ea620806749a14ce0a6b00b764a5a820ca2e2e00579eb5562eff754f55584ac",
-    "plan_snapshot_fingerprint": "ddcc4d9cb50ba30d6b0b4a6a958dba5185c4232fdac285c5b7dcad7a18b3575e",
-    "prompt_version": "monthly-cell-planner-v1"
+    "packet_fingerprint": "e619036b837f2331fa0b839232b8e4f4ce09bdea9dd49092bc043083ee7016b3",
+    "plan_snapshot_fingerprint": "b8bd38ad2ee43588591a29b54356d308a5efb8ba787587c1abfc6929bcb696f1",
+    "prompt_version": "monthly-cell-planner-v9"
   },
-  "schema": "monthly-cell-regeneration-golden-v1",
+  "report_refreshed": true,
+  "schema": "monthly-cell-regeneration-golden-v2",
   "section": "focus",
   "siblings": {"count": 15, "identities_preserved": true},
+  "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v2"}], "findings": [{"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W2"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W3"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W4"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W5"}], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
   "week_id": "2026-09-W1"
 }

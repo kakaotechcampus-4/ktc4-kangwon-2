@@ -84,6 +84,18 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   return body as T;
 }
 
+/**
+ * 토큰이 없거나 못 믿어서 거절된 것인지 (`401 UNAUTHENTICATED`, docs/api-spec.md 「인증」).
+ *
+ * 404 와 갈라 봐야 한다 — 401 은 다시 로그인시킬 일이고, 404 는 대상이 없거나 남의 원 것이다.
+ * 서버가 「만료」와 「서명 불일치」를 구분해 주지 않으므로 여기서도 나누지 않는다.
+ */
+export function isUnauthenticated(error: unknown): error is ApiError {
+  if (!(error instanceof ApiError) || error.status !== 401) return false;
+  const body = error.body as { error?: { code?: unknown } } | null;
+  return typeof body === "object" && body !== null && body.error?.code === "UNAUTHENTICATED";
+}
+
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */
 export function isApiNotFound(error: unknown): error is ApiError {
   if (!(error instanceof ApiError) || error.status !== 404) return false;

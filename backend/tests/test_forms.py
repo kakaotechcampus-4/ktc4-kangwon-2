@@ -171,6 +171,21 @@ def test_parse_does_not_leak_internal_message(monkeypatch):
     assert "hwp5html" not in response.text
 
 
+def test_parse_422_does_not_leak_internal_message(monkeypatch):
+    """422 도 같다 — 변환기 내부 예외 문구를 message 에 싣지 않는다 (docs/api-spec.md §8)."""
+
+    def fail(_path):
+        raise ValueError("Command '['hwp5html', '/tmp/x.hwp']' returned non-zero exit status 1.")
+
+    monkeypatch.setattr(hwp_form, "extract", fail)
+
+    response = client.post("/api/forms/parse", files={"file": ("form.hwp", b"data")})
+
+    assert response.status_code == 422
+    assert "hwp5html" not in response.text
+    assert "exit status" not in response.text
+
+
 def test_parse_hwpx_returns_mapped_labels(tmp_path):
     path = tmp_path / "form.hwpx"
     with zipfile.ZipFile(path, "w") as archive:

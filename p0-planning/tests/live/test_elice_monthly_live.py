@@ -9,6 +9,18 @@ from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfig,
 )
 from ssuksak.planning.planner.contracts import MonthlyPlanningRequest
+from ssuksak.planning.domain.monthly_template import (
+    DisplayMode,
+    EmptyValuePolicy,
+    SectionCategory,
+    SectionRole,
+    TemplateRef,
+    TemplateSection,
+)
+from ssuksak.planning.domain.monthly_template_profile import TemplateProfileRef
+from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
+from ssuksak.planning.domain.week_period import WeekId
+from ssuksak.planning.domain.year_month import YearMonth
 
 
 @pytest.mark.live
@@ -22,9 +34,28 @@ def test_elice_openai_compatible_live_smoke_is_explicitly_opt_in():
             prompt_version="live-smoke-v1",
             system_prompt="Return only a JSON object.",
             user_content='Return {"status":"ok"}.',
-            target_month="2026-09",
+            target_month=YearMonth(2026, 9),
             expected_theme_id="live-smoke",
-            expected_week_ids=("W1",),
+            expected_theme_value="Live smoke",
+            expected_week_ids=(WeekId("2026-09-W1"),),
+            template_snapshot=TemplateSnapshot(
+                profile_ref=TemplateProfileRef("live-profile", "v1"),
+                base_template_ref=TemplateRef("live-template", "v1"),
+                institution_ref="live-institution",
+                sections=(
+                    TemplateSection(
+                        section_key="theme",
+                        role=SectionRole.CONTENT,
+                        activated=True,
+                        display_mode=DisplayMode.MONTHLY_MERGED_SUMMARY,
+                        empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
+                        display_label="Theme",
+                        category=SectionCategory.DEFAULT,
+                        required_for_generation=True,
+                        visible=True,
+                    ),
+                ),
+            ),
             packet_fingerprint="0" * 64,
         )
     )

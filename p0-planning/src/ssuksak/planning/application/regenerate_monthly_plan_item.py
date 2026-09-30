@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
+from ..domain.monthly_template import DisplayMode
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
@@ -16,13 +17,13 @@ from ..domain.provenance import (
     GenerationMethodDetail,
     ValueChange,
 )
+from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..planner.cell_service import MonthlyCellPlanner
 from ..planner.contracts import (
-    FOCUS_SECTION_KEY,
+    LLM_CELL_SECTION_KEYS,
     MONTHLY_CELL_PROMPT_VERSION,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
-    ProposedActivityOrigin,
 )
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
@@ -46,11 +47,13 @@ from .monthly_support import (
     require_actor,
     require_item_id,
     require_monthly_plan,
+    snapshot_grounding_classes,
     theme_reference_id,
+    with_fresh_monthly_verification,
 )
 from .ports import ActivityReferenceRepository, Clock, PlanRepository
 
-SUPPORTED_SECTIONS = frozenset({FOCUS_SECTION_KEY, OUTDOOR_SECTION_KEY})
+SUPPORTED_SECTIONS = LLM_CELL_SECTION_KEYS
 
 
 class RegenerateMonthlyPlanItem:
@@ -82,7 +85,7 @@ class RegenerateMonthlyPlanItem:
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"
             )
         _, _, _, cell = found
-        if cell.section_key not in SUPPORTED_SECTIONS or cell.week_id is None:
+        if cell.section_key not in SUPPORTED_SECTIONS:
             raise MonthlyApplicationError(
                 "monthly_cell_not_regeneratable",
                 f"Cell section is not regeneratable: {cell.section_key}",
@@ -97,6 +100,11 @@ class RegenerateMonthlyPlanItem:
             result = self._regenerate_rule_only(plan, cell, actor_id)
         else:
             result = self._regenerate_with_llm(plan, cell, actor_id)
+        catalog = self._catalog_for(result.plan)
+        result = replace(
+            result,
+            plan=with_fresh_monthly_verification(result.plan, catalog),
+        )
         self._plans.save(result.plan.plan_id, result.plan)
         return result
 
@@ -200,12 +208,22 @@ class RegenerateMonthlyPlanItem:
             week_periods=plan.week_periods,
             activity_catalog=catalog,
             constraint_assessments=plan.constraint_assessments,
+            grounding_classes=snapshot_grounding_classes(plan.template_snapshot),
         )
+        grounding_class = grounding_class_for(plan.template_snapshot.section(cell.section_key))
+        if cell.section_key in CLASS_SCOPED_SECTION_KEYS and grounding_class not in {
+            item.grounding_class for item in packet.section_evidence
+        }:
+            raise MonthlyApplicationError(
+                "monthly_required_section_evidence_missing",
+                f"Cell regeneration has no approved Evidence for Section: {cell.section_key}",
+            )
         snapshot = _month_snapshot(plan)
         try:
             outcome = self._cell_planner.plan(
                 packet,
-                target_week_id=cell.week_id.value,
+                plan.template_snapshot,
+                target_week_id=cell.week_id,
                 target_section_key=cell.section_key,
                 month_snapshot=snapshot,
             )
@@ -214,31 +232,29 @@ class RegenerateMonthlyPlanItem:
                 "monthly_llm_cell_planning_failed",
                 "Monthly Cell planning failed before the Plan was saved",
             ) from exc
-        proposal = outcome.proposal
+        proposal = outcome.proposal.section
         parent_evidence = tuple(
             source
             for source in theme.evidence
             if source.source_type is EvidenceSourceType.PARENT_PLAN
         )
-        if proposal.activity_origin is ProposedActivityOrigin.REFERENCE:
-            evidence = deduplicate_evidence(
-                (
-                    *parent_evidence,
-                    EvidenceSource(
-                        EvidenceSourceType.ACTIVITY_REFERENCE,
-                        proposal.reference_activity_id or "",
-                        catalog.catalog_version if catalog is not None else None,
-                        display_name=proposal.value,
-                    ),
-                )
+        reference_evidence: tuple[EvidenceSource, ...] = ()
+        if proposal.reference_id is not None:
+            reference_evidence = (
+                EvidenceSource(
+                    EvidenceSourceType.ACTIVITY_REFERENCE,
+                    proposal.reference_id,
+                    catalog.catalog_version if catalog is not None else None,
+                    display_name=proposal.value,
+                ),
             )
-        else:
-            evidence = deduplicate_evidence(
-                (
-                    *parent_evidence,
-                    *packet_evidence(packet, proposal.grounding_refs),
-                )
+        evidence = deduplicate_evidence(
+            (
+                *parent_evidence,
+                *reference_evidence,
+                *packet_evidence(packet, proposal.grounding_refs),
             )
+        )
         generation = GenerationMethodDetail(
             GenerationMethod.RULE_LLM,
             LLM_INTEGRATION_RULE_ID,
@@ -308,22 +324,27 @@ def _activity_reference_id(evidence) -> str | None:
     )
 
 
-def _month_snapshot(plan: MonthlyPlan) -> tuple[MonthlyCellSnapshot, ...]:
-    focus = plan.section(FOCUS_SECTION_KEY)
-    outdoor = plan.section(OUTDOOR_SECTION_KEY)
+def _month_snapshot(
+    plan: MonthlyPlan,
+) -> tuple[MonthlyCellSnapshot, ...]:
+    weekly_sections = tuple(
+        section
+        for section in plan.sections
+        if section.display_mode is DisplayMode.WEEKLY_CELLS
+    )
     return tuple(
         MonthlyCellSnapshot(
-            period.week_id.value,
-            (
-                focus.cell_for_week(period.week_id).value
-                if focus is not None and focus.cell_for_week(period.week_id) is not None
-                else ""
-            ),
-            (
-                outdoor.cell_for_week(period.week_id).value
-                if outdoor is not None
-                and outdoor.cell_for_week(period.week_id) is not None
-                else ""
+            period.week_id,
+            tuple(
+                (
+                    section.section_key,
+                    (
+                        section.cell_for_week(period.week_id).value
+                        if section.cell_for_week(period.week_id) is not None
+                        else ""
+                    ),
+                )
+                for section in weekly_sections
             ),
         )
         for period in plan.active_week_periods
