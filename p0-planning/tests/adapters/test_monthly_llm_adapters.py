@@ -11,10 +11,49 @@ from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfigurationError,
     MonthlyLlmProviderError,
 )
+from types import SimpleNamespace
+
 from ssuksak.planning.planner.contracts import (
     MONTHLY_MODEL,
     MonthlyPlanningRequest,
 )
+from ssuksak.planning.planner.parser import (
+    cell_response_schema,
+    monthly_response_schema,
+)
+from ssuksak.planning.domain.monthly_template import (
+    DisplayMode,
+    EmptyValuePolicy,
+    SectionCategory,
+    SectionRole,
+    TemplateRef,
+    TemplateSection,
+)
+from ssuksak.planning.domain.monthly_template_profile import TemplateProfileRef
+from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
+from ssuksak.planning.domain.week_period import WeekId
+from ssuksak.planning.domain.year_month import YearMonth
+
+
+def snapshot() -> TemplateSnapshot:
+    return TemplateSnapshot(
+        profile_ref=TemplateProfileRef("profile", "v1"),
+        base_template_ref=TemplateRef("template", "v1"),
+        institution_ref="institution",
+        sections=(
+            TemplateSection(
+                section_key="theme",
+                role=SectionRole.CONTENT,
+                activated=True,
+                display_mode=DisplayMode.MONTHLY_MERGED_SUMMARY,
+                empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
+                display_label="Theme",
+                category=SectionCategory.DEFAULT,
+                required_for_generation=True,
+                visible=True,
+            ),
+        ),
+    )
 
 
 def request() -> MonthlyPlanningRequest:
@@ -23,9 +62,11 @@ def request() -> MonthlyPlanningRequest:
         prompt_version="v1",
         system_prompt="system",
         user_content="{}",
-        target_month="2026-09",
+        target_month=YearMonth(2026, 9),
         expected_theme_id="theme",
-        expected_week_ids=("W1",),
+        expected_theme_value="Theme",
+        expected_week_ids=(WeekId("2026-09-W1"),),
+        template_snapshot=snapshot(),
         packet_fingerprint="1" * 64,
     )
 
@@ -70,7 +111,8 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
         MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"),
         transport=transport,
     )
-    response = adapter.generate_monthly(request())
+    monthly_request = request()
+    response = adapter.generate_monthly(monthly_request)
     url, headers, payload, timeout = transport.calls[0]
     assert response.content == response_content
     assert response.request_id == "req-1"
@@ -78,7 +120,14 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
     assert headers["Authorization"] == "Bearer secret"
     assert payload["model"] == MONTHLY_MODEL
     assert payload["temperature"] == 0
-    assert payload["response_format"] == {"type": "json_object"}
+    assert payload["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "monthly_plan_proposal",
+            "strict": True,
+            "schema": monthly_response_schema(monthly_request),
+        },
+    }
     assert timeout == 30.0
 
 
@@ -98,3 +147,32 @@ def test_fake_is_monthly_specific_and_deterministic():
     assert first.content == second.content == "{}"
     assert len(fake.monthly_requests) == 2
     assert not hasattr(fake, "polish_themes")
+
+
+def test_elice_cell_request_uses_the_strict_cell_schema():
+    transport = RecordingTransport(
+        {"model": MONTHLY_MODEL, "choices": [{"message": {"content": "{}"}}]}
+    )
+    adapter = EliceOpenAiMonthlyAdapter(
+        MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"), transport=transport
+    )
+    cell_request = SimpleNamespace(
+        system_prompt="system",
+        user_content="user",
+        target_section_key="focus",
+        valid_grounding_refs=frozenset({"ev-1"}),
+        allowed_grounding_refs_by_section=(("focus", ("ev-1",)),),
+        reference_section_keys=frozenset({"theme"}),
+    )
+    adapter.generate_cell(cell_request)
+    response_format = transport.calls[0][2]["response_format"]
+
+    assert response_format == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "monthly_cell_proposal",
+            "strict": True,
+            "schema": cell_response_schema(cell_request),
+        },
+    }
+    assert "json_object" not in json.dumps(transport.calls[0][2])

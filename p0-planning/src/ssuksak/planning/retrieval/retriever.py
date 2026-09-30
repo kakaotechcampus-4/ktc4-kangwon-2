@@ -5,9 +5,14 @@ from __future__ import annotations
 import collections
 
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
+from ..evidence.classification import EvidenceSemanticClassification, SemanticClass
 from ..evidence.models import EvidenceRecord, SourceSection
+from ..evidence.safety_classification import SafetyEvidenceClassification, SafetyReferenceKind
+from ..evidence.safety_quality import SafetyReferenceQuality
 from ..evidence.store import InstitutionEvidenceStore
 from .models import (
+    AGE_VERIFIABLE_TIERS,
+    CLASS_BLOCKS,
     AgeMatchKind,
     BlockName,
     EvidenceBlock,
@@ -17,19 +22,20 @@ from .models import (
 )
 from .ranking import apply_source_diversity, balance_by_age, ngrams, rank_records
 
-RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.1.0"
+RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.3.0"
+# Versioned apart so packets without safety placement keep their lineage.
+SAFETY_RETRIEVAL_VERSION = "monthly-safety-retrieval-v0.4.0"
 DEFAULT_TOP_K = {
     BlockName.INSTITUTION_MONTHLY_EVIDENCE: 12,
     BlockName.AGE_CONTRAST_EVIDENCE: 6,
-    BlockName.WEEK_EXPERIENCE_CANDIDATES: 10,
+    **{name: 10 for name in CLASS_BLOCKS.values()},
     BlockName.REFERENCE_ACTIVITIES: 12,
     BlockName.OTHER_OUTDOOR_EVIDENCE: 10,
+    BlockName.SAFETY_EDUCATION_EVIDENCE: 12,
+    BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE: 12,
+    BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE: 12,
 }
-_GROUNDING_TIERS = (
-    AgeMatchKind.SINGLE_AGE_EXACT,
-    AgeMatchKind.SINGLE_AGE_IN_REQUEST,
-    AgeMatchKind.MIXED_AGE_COVERING,
-)
+_GROUNDING_TIERS = AGE_VERIFIABLE_TIERS
 _EXPANSION_TIERS = _GROUNDING_TIERS + (AgeMatchKind.AGE_UNKNOWN,)
 
 
@@ -39,13 +45,23 @@ class MonthlyEvidenceRetriever:
         store: InstitutionEvidenceStore,
         *,
         activity_catalog: ActivityCatalog | None = None,
+        classification: EvidenceSemanticClassification | None = None,
+        safety_classification: SafetyEvidenceClassification | None = None,
+        safety_quality: SafetyReferenceQuality | None = None,
         institution_cap: int = 2,
         top_k: dict[BlockName, int] | None = None,
     ) -> None:
         if type(institution_cap) is not int or institution_cap < 1:
             raise ValueError("institution_cap must be positive")
+        if classification is not None:
+            classification.require_bound_to(store.content_sha256)
+        if safety_classification is not None:
+            safety_classification.require_bound_to(store.content_sha256)
+        self._safety_classification = safety_classification
+        self._safety_quality = safety_quality
         self._store = store
         self._catalog = activity_catalog
+        self._classification = classification
         self._cap = institution_cap
         self._top_k = dict(DEFAULT_TOP_K)
         if top_k:
@@ -136,14 +152,21 @@ class MonthlyEvidenceRetriever:
             cap=self._cap + 1,
         )
 
-    def _week_experience(self, request: RetrievalRequest, grams: frozenset[str]) -> EvidenceBlock:
+    def _classified(
+        self, request: RetrievalRequest, grams: frozenset[str], semantic_class: SemanticClass
+    ) -> EvidenceBlock:
+        name = CLASS_BLOCKS[semantic_class]
+        if semantic_class not in request.grounding_classes:
+            return EvidenceBlock(name, self._top_k[name], "Section/variant not active in the Template Snapshot")
+        if self._classification is None:
+            raise ValueError("Section-scoped retrieval requires an approved Evidence classification")
         records = [
             record for record in self._store.by_month(request.target_month.calendar_month)
             if record.general_grounding_eligible
-            and record.source_section is SourceSection.WEEK_EXPERIENCE
+            and self._classification.class_of(record) is semantic_class
         ]
         return self._ranked_block(
-            name=BlockName.WEEK_EXPERIENCE_CANDIDATES,
+            name=name,
             records=records,
             request=request,
             query_grams=grams,
@@ -201,23 +224,96 @@ class MonthlyEvidenceRetriever:
             records=records,
             request=request,
             query_grams=grams,
-            tiers=_EXPANSION_TIERS,
+            # Outdoor grounding must be age-verifiable (Rule-owned): no AGE_UNKNOWN.
+            tiers=_GROUNDING_TIERS,
         )
+
+    def _safety(self, request: RetrievalRequest, grams: frozenset[str]) -> tuple[EvidenceBlock, ...]:
+        """Approved References only; nothing without an approved safety classification."""
+        statutory, supplemental = [], []
+        for record in self._store.by_month(request.target_month.calendar_month):
+            if not (
+                record.general_grounding_eligible
+                and record.source_section is SourceSection.SAFETY_EDUCATION
+                and record.text is not None
+                and self._safety_classification is not None
+            ):
+                continue
+            reference = self._safety_classification.runtime_reference(record)
+            if reference is None:
+                continue
+            if reference.kind is SafetyReferenceKind.SUPPLEMENTAL_REFERENCE:
+                # Only human-reviewed USABLE contents; no quality review means none.
+                if self._safety_quality is not None and self._safety_quality.usable_topic_group(record):
+                    supplemental.append(record)
+            elif reference.legal_category_id in request.safety_categories:
+                statutory.append(record)
+        safety_grams = set(grams)
+        for keyword in request.safety_keywords:
+            safety_grams.update(ngrams(keyword))
+        return (
+            self._ranked_block(
+                name=BlockName.SAFETY_EDUCATION_EVIDENCE,
+                records=statutory,
+                request=request,
+                query_grams=frozenset(safety_grams),
+                tiers=_EXPANSION_TIERS,
+            ),
+            # ponytail: no label balancing; observe real results before adding one.
+            self._ranked_block(
+                name=BlockName.SUPPLEMENTAL_SAFETY_EVIDENCE,
+                records=supplemental,
+                request=request,
+                query_grams=grams,
+                tiers=_EXPANSION_TIERS,
+            ),
+            self._ranked_block(
+                name=BlockName.CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE,
+                records=self._cross_month_supplemental(request),
+                request=request,
+                query_grams=grams,
+                tiers=_EXPANSION_TIERS,
+            ),
+        )
+
+    def _cross_month_supplemental(self, request: RetrievalRequest) -> list[EvidenceRecord]:
+        """Other months: approved, USABLE, human-reviewed MONTH_INDEPENDENT contents only."""
+        if self._safety_classification is None or self._safety_quality is None:
+            return []
+        records = []
+        for record in self._store.records:
+            if (
+                record.month != request.target_month.calendar_month
+                and record.general_grounding_eligible
+                and record.source_section is SourceSection.SAFETY_EDUCATION
+                and record.text is not None
+                and (reference := self._safety_classification.runtime_reference(record)) is not None
+                and reference.kind is SafetyReferenceKind.SUPPLEMENTAL_REFERENCE
+                and self._safety_quality.month_independent_topic_group(record)
+            ):
+                records.append(record)
+        return records
 
     def retrieve(self, request: RetrievalRequest) -> MonthlyEvidenceRetrievalResult:
         grams = self._query_grams(request)
         institution = self._institution(request, grams)
         contrast = self._contrast(request, grams)
-        week = self._week_experience(request, grams)
+        classified = tuple(
+            self._classified(request, grams, semantic_class) for semantic_class in CLASS_BLOCKS
+        )
         references = self._references(request)
         used = frozenset(item.record_id for item in institution.items)
         other = self._other(request, grams, used)
+        safety = self._safety(request, grams) if request.safety_keywords else ()
         return MonthlyEvidenceRetrievalResult(
             request=request,
-            blocks=(institution, contrast, week, references, other),
+            blocks=(institution, contrast, *classified, references, other, *safety),
             evidence_store_version=self._store.ingestion_version,
             evidence_store_sha256=self._store.content_sha256,
             retrieval_version=RETRIEVAL_VERSION,
             activity_catalog_id=self._catalog.catalog_id if self._catalog else "",
             activity_catalog_version=self._catalog.catalog_version if self._catalog else "",
+            evidence_classification_version=(
+                self._classification.classification_version if self._classification else ""
+            ),
         )

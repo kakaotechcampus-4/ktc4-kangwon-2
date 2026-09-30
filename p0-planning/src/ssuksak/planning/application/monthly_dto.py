@@ -28,6 +28,14 @@ class SafetyRuleSelector:
 
 
 @dataclass(frozen=True, slots=True)
+class SafetyPlacementSelector:
+    policy_version: str
+
+    def __post_init__(self) -> None:
+        _non_blank(self.policy_version, "SafetyPlacementSelector.policy_version")
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityCatalogSelector:
     catalog_id: str
     catalog_version: str
@@ -47,6 +55,8 @@ class GenerateMonthlyPlanCommand:
     generation_mode: MonthlyGenerationMode
     activity_catalog: ActivityCatalogSelector | None = None
     optional_context_names: tuple[str, ...] = ()
+    # None keeps safety_education on the source-required path (OD-M04).
+    safety_placement: SafetyPlacementSelector | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.parent_yearly_plan_id, PlanId):
@@ -86,6 +96,12 @@ class GenerateMonthlyPlanCommand:
         if len(set(self.optional_context_names)) != len(self.optional_context_names):
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.optional_context_names must be unique"
+            )
+        if self.safety_placement is not None and not isinstance(
+            self.safety_placement, SafetyPlacementSelector
+        ):
+            raise InvalidDomainValueError(
+                "GenerateMonthlyPlanCommand.safety_placement is invalid"
             )
 
 

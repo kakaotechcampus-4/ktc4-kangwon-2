@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 import json
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
+from ssuksak.adapters.evidence_classification_repository import (
+    JsonEvidenceClassificationRepository,
+)
 from ssuksak.adapters.deterministic_theme_text_generator import (
     DeterministicThemeTextGenerator,
 )
@@ -24,7 +27,12 @@ from ssuksak.adapters.json_theme_reference_repository import (
 from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
     JsonSafetyLegalRuleRepository,
+    JsonSafetyPlacementPolicyRepository,
 )
+from ssuksak.adapters.safety_evidence_classification_repository import (
+    JsonSafetyEvidenceClassificationRepository,
+)
+from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
 from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan
 from ssuksak.planning.application.confirm_yearly_plan import ConfirmYearlyPlan
 from ssuksak.planning.application.edit_monthly_plan_item import EditMonthlyPlanItem
@@ -37,6 +45,7 @@ from ssuksak.planning.application.monthly_dto import (
     EditMonthlyPlanItemCommand,
     GenerateMonthlyPlanCommand,
     RegenerateMonthlyPlanItemCommand,
+    SafetyPlacementSelector,
     SafetyRuleSelector,
 )
 from ssuksak.planning.application.monthly_support import MonthlyContextPipeline
@@ -56,7 +65,12 @@ from ssuksak.planning.application.yearly_dto import (
 from ssuksak.planning.context.builder import ContextPacketBuilder
 from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.monthly_template import (
+    DisplayMode,
+    SectionRole,
+    SemanticVariant,
+    TemplateRef,
+)
 from ssuksak.planning.domain.monthly_template_profile import (
     TemplateProfile,
     TemplateProfileRef,
@@ -89,9 +103,11 @@ LLM_TEMPLATE = TemplateRef(
 )
 RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
 LLM_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
+EXTENDED_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v3")
 SAFETY_RULE = SafetyRuleSelector(
     "child-welfare-act-decree-annex6-2022-06-21"
 )
+SAFETY_PLACEMENT = SafetyPlacementSelector("ssuksak-safety-placement-v2")
 
 _EVIDENCE_REPOSITORY = JsonInstitutionEvidenceRepository()
 
@@ -133,6 +149,53 @@ def _profile(
     )
 
 
+def _extended_profile(template_repository: JsonMonthlyTemplateRepository) -> TemplateProfile:
+    """LLM Profile that adds required goals, basic_habit and a hidden week_axis."""
+    base = _profile(template_repository, LLM_TEMPLATE, EXTENDED_PROFILE)
+    template = template_repository.get_template(
+        LLM_TEMPLATE.template_id, LLM_TEMPLATE.template_version
+    )
+    assert template is not None
+    sections = tuple(
+        replace(section, visible=False, display_label=None)
+        if section.section_key == "week_axis"
+        else section
+        for section in base.sections
+    ) + (
+        replace(
+            template.section("goals"),
+            activated=True,
+            display_label="Goals",
+            required_for_generation=True,
+        ),
+        replace(template.section("habits"), activated=True, display_label="Basic habit"),
+    )
+    return replace(
+        base,
+        selected_optional_keys=("focus", "goals", "basic_habit"),
+        sections=sections,
+    )
+
+
+def grounding_ref_for(request, section_key: str) -> str | None:
+    """Pick the first supplied evidence ref allowed for this Section's grounding_class."""
+    body = json.loads(request.user_content)
+    expected = next(
+        (
+            section.get("grounding_class")
+            for section in body["generation_schema"]["sections"]
+            if section["section_key"] == section_key
+        ),
+        None,
+    )
+    refs = sorted(
+        item["grounding_ref"]
+        for item in body["evidence"]
+        if item["grounding_class"] == expected
+    )
+    return refs[0] if refs else None
+
+
 class RequestAwareMonthlyLlm:
     """Network-free provider whose output is derived only from each request."""
 
@@ -142,35 +205,108 @@ class RequestAwareMonthlyLlm:
 
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
         self.monthly_requests.append(request)
-        grounding_ref = sorted(request.valid_grounding_refs)[0]
         first_reference = request.reference_labels[0]
-        weeks = []
-        for index, week_id in enumerate(request.expected_week_ids, start=1):
-            if index == 1:
-                activity = {
-                    "value": first_reference[1],
-                    "origin": "REFERENCE",
-                    "reference_activity_id": first_reference[0],
+
+        body = json.loads(request.user_content)
+        safety_plan = body.get("safety_plan")
+
+        def safety_value(index: int) -> dict[str, object] | None:
+            if safety_plan is None:
+                return None
+            slot = safety_plan["weeks"][index - 1]
+            if slot["kind"] == "STATUTORY":
+                refs = [slot["official_content"][0]["grounding_ref"]]
+            elif slot["primary_ref"]:
+                refs = [slot["primary_ref"]]
+            else:
+                return None
+            return {
+                "section_key": "safety_education",
+                "value": f"Context-based {slot['kind'].lower()} safety {index}",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": refs,
+            }
+
+        def section_value(section_key: str, index: int) -> dict[str, object]:
+            if section_key == "safety_education":
+                return safety_value(index) or {
+                    "section_key": section_key,
+                    "value": "",
+                    "unresolved": True,
+                    "reference_id": None,
                     "grounding_refs": [],
                 }
-            else:
-                activity = {
-                    "value": f"Context-based outdoor activity {index}",
-                    "origin": "LLM_SYNTHESIZED",
-                    "reference_activity_id": None,
-                    "grounding_refs": [grounding_ref],
+            if section_key == "outdoor_play" and index == 1:
+                return {
+                    "section_key": section_key,
+                    "value": first_reference[1],
+                    "unresolved": False,
+                    "reference_id": first_reference[0],
+                    "grounding_refs": [],
                 }
+            label = (
+                f"Context-based weekly focus {index}"
+                if section_key == "focus"
+                else f"Context-based outdoor activity {index}"
+                if section_key == "outdoor_play"
+                else f"Context-based {section_key} {index}"
+            )
+            return {
+                "section_key": section_key,
+                "value": label,
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [grounding_ref_for(request, section_key)],
+            }
+
+        month_sections = []
+        weekly_keys = []
+        for section in request.template_snapshot.sections:
+            if section.role is SectionRole.AXIS:
+                continue
+            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY:
+                if section.section_key == "theme":
+                    month_sections.append(
+                        {
+                            "section_key": "theme",
+                            "value": request.expected_theme_value,
+                            "unresolved": False,
+                            "reference_id": request.expected_theme_id,
+                            "grounding_refs": [],
+                        }
+                    )
+                elif section.required_for_generation:
+                    month_sections.append(
+                        {
+                            "section_key": section.section_key,
+                            "value": f"Context-based {section.section_key}",
+                            "unresolved": False,
+                            "reference_id": None,
+                            "grounding_refs": [
+                                grounding_ref_for(request, section.section_key)
+                            ],
+                        }
+                    )
+            elif section.display_mode is DisplayMode.WEEKLY_CELLS:
+                weekly_keys.append(section.section_key)
+        weeks = []
+        for index, week_id in enumerate(request.expected_week_ids, start=1):
             weeks.append(
                 {
-                    "week_id": week_id,
-                    "experience": f"Context-based weekly focus {index}",
-                    "activity": activity,
+                    "week_id": week_id.value,
+                    "sections": [
+                        section_value(key, index)
+                        for key in weekly_keys
+                        if key == "safety_education"
+                        or (key == "outdoor_play" and index == 1)
+                        or grounding_ref_for(request, key) is not None
+                    ],
                 }
             )
         payload = {
-            "target_month": request.target_month,
-            "theme_id": request.expected_theme_id,
-            "month_flow_rationale": "The monthly flow follows the supplied context.",
+            "target_month": request.target_month.value,
+            "month_sections": month_sections,
             "weeks": weeks,
         }
         return RawLlmResponse(
@@ -181,16 +317,21 @@ class RequestAwareMonthlyLlm:
 
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
         self.cell_requests.append(request)
-        grounding_ref = sorted(request.valid_grounding_refs)[0]
-        is_focus = request.target_section_key == "focus"
+        grounding_ref = grounding_ref_for(request, request.target_section_key)
         payload = {
-            "target_month": request.target_month,
-            "target_week_id": request.target_week_id,
-            "target_section_key": request.target_section_key,
-            "value": f"Regenerated {request.target_section_key} value",
-            "activity_origin": None if is_focus else "LLM_SYNTHESIZED",
-            "reference_activity_id": None,
-            "grounding_refs": [grounding_ref],
+            "target_month": request.target_month.value,
+            "target_week_id": (
+                None
+                if request.target_week_id is None
+                else request.target_week_id.value
+            ),
+            "section": {
+                "section_key": request.target_section_key,
+                "value": f"Regenerated {request.target_section_key} value",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [grounding_ref],
+            },
         }
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False),
@@ -217,17 +358,22 @@ class PlanningHarness:
             (
                 _profile(self.templates, RULE_TEMPLATE, RULE_PROFILE),
                 _profile(self.templates, LLM_TEMPLATE, LLM_PROFILE),
+                _extended_profile(self.templates),
             )
         )
         self.safety = JsonSafetyLegalRuleRepository()
+        self.placements = JsonSafetyPlacementPolicyRepository()
         self.activities = JsonActivityReferenceRepository()
         self.context = MonthlyContextPipeline(
             evidence_repository=_EVIDENCE_REPOSITORY,
+            classification_repository=JsonEvidenceClassificationRepository(),
             context_builder=ContextPacketBuilder(),
+            safety_classification_repository=JsonSafetyEvidenceClassificationRepository(),
+            safety_quality_repository=JsonSafetyReferenceQualityRepository(),
         )
         self.provider = RequestAwareMonthlyLlm()
 
-    def generate_yearly(self):
+    def generate_yearly(self, target_ages: frozenset[int] = frozenset({3, 4})):
         return GenerateYearlyPlan(
             theme_repository=self.themes,
             plan_repository=self.yearly_plans,
@@ -238,7 +384,7 @@ class PlanningHarness:
             GenerateYearlyPlanCommand(
                 school_year=2026,
                 classroom_ref="classroom_001",
-                target_ages=frozenset({3, 4}),
+                target_ages=target_ages,
                 catalog=THEME_CATALOG,
             )
         )
@@ -279,8 +425,12 @@ class PlanningHarness:
         self,
         parent: YearlyPlan,
         mode: MonthlyGenerationMode,
+        *,
+        target_month: YearMonth = TARGET_MONTH,
+        profile: TemplateProfileRef | None = None,
+        safety_placement: SafetyPlacementSelector | None = None,
     ):
-        profile = (
+        profile = profile or (
             RULE_PROFILE
             if mode is MonthlyGenerationMode.RULE_ONLY
             else LLM_PROFILE
@@ -300,21 +450,25 @@ class PlanningHarness:
             id_generator=self.monthly_ids,
             context_pipeline=self.context,
             planner=planner,
+            safety_placement_repository=self.placements,
         ).execute(
             GenerateMonthlyPlanCommand(
                 parent_yearly_plan_id=parent.plan_id,
-                target_month=TARGET_MONTH,
+                target_month=target_month,
                 daycare_ref="daycare_001",
                 profile_ref=profile,
                 safety_rule=SAFETY_RULE,
                 generation_mode=mode,
                 activity_catalog=ACTIVITY_CATALOG,
+                safety_placement=safety_placement,
             )
         )
 
     def edit_monthly(self, plan: MonthlyPlan, *, item_id, value: str) -> MonthlyPlan:
         return EditMonthlyPlanItem(
-            plan_repository=self.monthly_plans, clock=self.clock
+            plan_repository=self.monthly_plans,
+            clock=self.clock,
+            activity_repository=self.activities,
         ).execute(EditMonthlyPlanItemCommand(plan.plan_id, item_id, value, TEACHER))
 
     def regenerate_monthly(self, plan: MonthlyPlan, *, item_id):
@@ -330,5 +484,7 @@ class PlanningHarness:
 
     def confirm_monthly(self, plan: MonthlyPlan) -> MonthlyPlan:
         return ConfirmMonthlyPlan(
-            plan_repository=self.monthly_plans, clock=self.clock
+            plan_repository=self.monthly_plans,
+            clock=self.clock,
+            activity_repository=self.activities,
         ).execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER))
