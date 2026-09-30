@@ -33,12 +33,24 @@ class MonthOut(BaseModel):
     generation: GenerationOut
 
 
+class CheckOut(BaseModel):
+    """검사기가 찾은 한 건. `detail` 은 교사에게 그대로 보여도 되는 문장이다."""
+
+    rule: str
+    severity: str
+    detail: str
+    month: int | None = None
+
+
 class AnnualPlanOut(BaseModel):
     id: int
     class_id: int
     school_year: int
     status: str
     months: list[MonthOut]
+    # **빈 배열을 「통과」로 읽으면 안 된다.** 무엇을 검사했는지가 checked_rules 다.
+    checked_rules: list[str]
+    checks: list[CheckOut]
 
 
 class AnnualPlanSummary(BaseModel):

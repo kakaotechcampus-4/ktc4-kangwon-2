@@ -12,7 +12,7 @@
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Response, status
-from ssuksak.planning.domain.identifiers import PlanId
+from ssuksak.planning import PlanId
 
 from app.features.plans.hwpx import TEMPLATE_DIR, fill_table
 from app.features.plans.router import DbSession, _detail, _repo, _row

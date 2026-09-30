@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from ssuksak.planning.domain.identifiers import ItemId, PlanId
+from ssuksak.planning import ItemId, PlanId
 
 
 class SystemClock:

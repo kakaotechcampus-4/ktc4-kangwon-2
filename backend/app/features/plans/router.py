@@ -12,25 +12,37 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
-from ssuksak.planning.application.confirm_yearly_plan import ConfirmYearlyPlan
-from ssuksak.planning.application.edit_yearly_plan_item import EditYearlyPlanItem
-from ssuksak.planning.application.generate_yearly_plan import GenerateYearlyPlan
-from ssuksak.planning.application.yearly_dto import (
+
+# **`ssuksak.planning` 이 공개 창구다.** 안쪽 파일 위치를 우리가 외우면 하민이 정리할 때마다
+# 이쪽이 깨진다. `__all__` 이 「backend 가 써도 되는 것」의 계약이다.
+# `YearlyRuleError` 만 아직 공개 목록에 없어 안쪽에서 가져온다 — code 가 없어 계약 코드로
+# 못 가르는 것이라, Core 가 감싸주면 그때 여기도 빠진다.
+from ssuksak.planning import (
+    ActorId,
     CatalogSelector,
+    ConfirmYearlyPlan,
     ConfirmYearlyPlanCommand,
+    EditYearlyPlanItem,
     EditYearlyPlanItemCommand,
+    GenerateYearlyPlan,
     GenerateYearlyPlanCommand,
+    InvalidDomainValueError,
+    InvalidStateTransitionError,
+    PlanId,
+    YearlyApplicationError,
+    YearlyPlan,
 )
-from ssuksak.planning.application.yearly_errors import YearlyApplicationError
-from ssuksak.planning.domain.errors import InvalidDomainValueError, InvalidStateTransitionError
-from ssuksak.planning.domain.identifiers import ActorId, PlanId
-from ssuksak.planning.domain.yearly_plan import YearlyPlan
 from ssuksak.planning.rules.errors import YearlyRuleError
 
 from app.db import get_session
 from app.features.auth.models import User
+
+# forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
+from app.features.forms.service import find_own_form
+from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
+from app.features.plans.rules import verify
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import (
     AnnualPlanListOut,
@@ -38,6 +50,7 @@ from app.features.plans.schemas import (
     AnnualPlanSummary,
     AuditEventOut,
     AuditOut,
+    CheckOut,
     ConfirmOut,
     CreateAnnualPlan,
     EvidenceOut,
@@ -47,6 +60,7 @@ from app.features.plans.schemas import (
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
+from app.shared.llm import LlmBudgetExceeded, LlmUnavailable
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
 
@@ -120,13 +134,78 @@ def _months(plan: YearlyPlan, sub_themes: dict) -> list[MonthOut]:
 
 
 def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
+    months = _months(plan, row.sub_themes)
     return AnnualPlanOut(
         id=row.id,
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
-        months=_months(plan, row.sub_themes),
+        months=months,
+        **_checks(months),
     )
+
+
+def _checks(months: list[MonthOut]) -> dict:
+    """법정 안전교육을 검사한다 (ADR-014).
+
+    **무엇을 검사했는지(`checked_rules`)를 결과와 따로 준다.** 빈 배열 하나로는
+    「문제없다」와 「아무것도 안 봤다」가 구분되지 않는다 — 화면이 둘을 같게 그리면
+    교사가 검사 0건짜리 계획안을 초록불로 보고 확정한다.
+
+    검사기가 터지면 통과로 넘기지 않는다. 「검사할 수 없다」와 「검사가 깨졌다」는
+    다르고, 깨진 것을 UNVERIFIED 로 바꾸면 아무도 모른다.
+    """
+    payload = [
+        {
+            "month": m.month,
+            "safety_education": m.safety_education,
+            "safety_education_state": m.safety_education_state,
+        }
+        for m in months
+    ]
+    found = verify.legal_hours(payload)
+    return {
+        "checked_rules": ["legal_hours"],
+        "checks": [
+            CheckOut(rule=v.rule, severity=v.severity, detail=v.detail, month=v.month)
+            for v in found
+        ],
+    }
+
+
+def _503(code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={"code": code, "message": message, "fields": []},
+    )
+
+
+def _generation_error(error: YearlyApplicationError) -> HTTPException:
+    """주제 생성이 실패한 이유를 계약 코드로 가른다.
+
+    **p0-planning 이 생성기 오류를 자기 것으로 감싼다**(`theme_text_generation_failed`).
+    그래서 원래 예외는 `__cause__` 에 들어 있다 — 재시도로 풀리는 것과 아닌 것을
+    가르려면 거기를 봐야 한다. 셋을 한 코드로 뭉치면 FE 가 「운영 문의」를 띄워야 할
+    자리에 「다시 시도」를 띄운다.
+    """
+    cause = error.__cause__
+    if isinstance(cause, LlmBudgetExceeded):
+        return _503("LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요.")
+    if isinstance(cause, LlmUnavailable):
+        return _503(
+            "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
+        )
+    if error.code == "theme_text_generation_failed":
+        # **부분 결과가 남지 않는다.** p0-planning 이 저장 전에 멈춘다.
+        return HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "GENERATION_FAILED",
+                "message": "계획안을 만들지 못했습니다. 다시 시도해주세요.",
+                "fields": [],
+            },
+        )
+    return _domain_error(error)
 
 
 def _domain_error(error: Exception) -> HTTPException:
@@ -154,11 +233,29 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
+    if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
+        # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
+        # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "NOT_FOUND",
+                "message": "양식을 찾을 수 없습니다.",
+                "fields": ["form_id"],
+            },
+        )
     repo = _repo(session, user)
+    try:
+        generator = theme_text_generator()
+    except LlmUnavailable as error:
+        # 교사가 고칠 수 없다. 재시도 버튼을 띄우면 100번 눌러도 같다(api-spec 공통).
+        raise _503(
+            "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
+        ) from error
     use_case = GenerateYearlyPlan(
         theme_repository=JsonThemeReferenceRepository(),
         plan_repository=repo,
-        text_generator=_text_generator(),
+        text_generator=generator,
         clock=SystemClock(),
         id_generator=UuidGenerator(),
     )
@@ -171,7 +268,9 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
                 catalog=CATALOG,
             )
         )
-    except (YearlyApplicationError, YearlyRuleError, InvalidDomainValueError) as error:
+    except YearlyApplicationError as error:
+        raise _generation_error(error) from error
+    except (YearlyRuleError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
     session.commit()
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
@@ -290,28 +389,3 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     # 시간순. 어느 쪽에 담겼는지가 아니라 언제 일어났는지로 읽어야 한다.
     items.sort(key=lambda item: item.occurred_at)
     return AuditOut(items=items)
-
-
-def _text_generator():
-    """주제 문장을 만드는 것.
-
-    **지금은 AI 가 쓰지 않는다.** 참조자료의 라벨을 그대로 돌려준다 — 연간 주제용
-    엘리스 어댑터가 아직 없다(월간용 `elice_openai_monthly.py` 만 있다).
-    `settings.llm_mode` 가 `real` 이어도 마찬가지다.
-
-    그래서 생성된 주제는 사람이 승인한 참조자료 문구 그대로다. 근거가 흐려지는
-    쪽이 아니라 오히려 또렷한 상태이므로 이대로 교사에게 내보내도 된다.
-    **다만 「AI 가 만들었다」고 화면에 쓰면 안 된다** — `generation.method` 가
-    사실을 말한다.
-
-    붙일 때 필요한 것:
-      1. ThemeTextGenerator 를 구현하는 엘리스 어댑터
-      2. settings.llm_mode 로 mock/real 을 가르는 분기
-      3. .env 의 ELICE_MLAPI_API_KEY · ELICE_MLAPI_BASE_URL
-         (지금 .env 의 ELICE_API_KEY 는 어댑터가 찾는 이름이 아니다)
-    """
-    from ssuksak.adapters.deterministic_theme_text_generator import (
-        DeterministicThemeTextGenerator,
-    )
-
-    return DeterministicThemeTextGenerator()

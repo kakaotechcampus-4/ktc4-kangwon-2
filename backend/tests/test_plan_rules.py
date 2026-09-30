@@ -8,12 +8,13 @@ import json
 
 import pytest
 
+# 연령 검사(활동이 반 연령에 맞나)는 여기 없다. p0-planning 의
+# `monthly.activity.supported_ages` 가 같은 규칙을 검사한다 — 두 군데 두면
+# 규칙이 바뀔 때 한쪽만 고쳐져 연간과 월간이 다르게 판정한다.
 from app.features.plans.rules.verify import (
     SCHOOL_YEAR_MONTHS,
     UNVERIFIED,
     VIOLATION,
-    PlannedActivity,
-    age,
     legal_hours,
     load_legal_rules,
 )
@@ -90,44 +91,6 @@ def test_달_순서가_틀리면_거부한다():
     """주기 계산이 배열 순서를 그대로 믿는다. 틀린 순서로 세면 없는 위반이 나온다."""
     with pytest.raises(ValueError, match="3월부터"):
         legal_hours(months()[::-1])
-
-
-def test_혼합반은_세_연령을_다_지원해야_한다():
-    activity = PlannedActivity(5, "가위로 오리기", frozenset({4, 5}))
-    found = age([activity], class_age_min=3, class_age_max=5)
-
-    assert len(found) == 1
-    assert found[0].severity == VIOLATION
-    assert found[0].month == 5
-    assert "3세가 빠집니다" in found[0].detail
-
-
-def test_가운데_연령이_빠진_활동을_잡는다():
-    """강강술래가 실제로 `supported_ages: [3, 5]` 다.
-
-    최소·최대만 보면 3~5 를 다 받는다고 읽혀 만 3~5세 혼합반에서 통과해 버린다.
-    혼합반이 실측 39% 라 제일 흔한 경우에서 틀린다.
-    """
-    activity = PlannedActivity(9, "강강술래", frozenset({3, 5}))
-
-    found = age([activity], class_age_min=3, class_age_max=5)
-
-    assert len(found) == 1
-    assert "4세가 빠집니다" in found[0].detail
-    # 만 4세가 없는 반에는 넣어도 된다.
-    assert age([activity], class_age_min=3, class_age_max=3) == []
-    assert age([activity], class_age_min=5, class_age_max=5) == []
-
-
-def test_반_연령을_덮으면_통과한다():
-    wide = PlannedActivity(5, "봄 산책", frozenset({3, 4, 5}))
-    assert age([wide], class_age_min=3, class_age_max=5) == []
-    assert age([wide], class_age_min=4, class_age_max=4) == []
-
-
-def test_반_연령_범위가_뒤집히면_거부한다():
-    with pytest.raises(ValueError, match="뒤집"):
-        age([], class_age_min=5, class_age_max=3)
 
 
 def test_승인되지_않은_법령_파일은_거부한다():
