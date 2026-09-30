@@ -237,9 +237,9 @@ def _generator_raises(monkeypatch, error):
 
 def test_설정이_없으면_503_이고_재시도_버튼을_띄우지_않는다(db_session, mine, monkeypatch):
     """교사가 고칠 수 없다. 100번 눌러도 같다(api-spec 공통)."""
-    from app.features.plans.llm import ThemeTextUnavailable
+    from app.shared.llm import LlmUnavailable
 
-    _breaks(monkeypatch, ThemeTextUnavailable("키가 없다"))
+    _breaks(monkeypatch, LlmUnavailable("키가 없다"))
 
     response = client.post("/api/plans/annual", json={"class_id": mine.id})
 
@@ -248,9 +248,9 @@ def test_설정이_없으면_503_이고_재시도_버튼을_띄우지_않는다(
 
 
 def test_한도에_걸리면_운영_문의_코드로_나온다(db_session, mine, monkeypatch):
-    from app.features.plans.llm import ThemeTextBudgetExceeded
+    from app.shared.llm import LlmBudgetExceeded
 
-    _generator_raises(monkeypatch, ThemeTextBudgetExceeded("429"))
+    _generator_raises(monkeypatch, LlmBudgetExceeded("429"))
 
     response = client.post("/api/plans/annual", json={"class_id": mine.id})
 
@@ -260,9 +260,9 @@ def test_한도에_걸리면_운영_문의_코드로_나온다(db_session, mine,
 
 def test_생성이_실패하면_부분_결과가_남지_않는다(db_session, mine, monkeypatch):
     """§4 · 공통 GENERATION_FAILED — 반쯤 만들어진 계획안을 저장하지 않는다."""
-    from app.features.plans.llm import ThemeTextFailed
+    from app.shared.llm import LlmFailed
 
-    _generator_raises(monkeypatch, ThemeTextFailed("빠진 달이 있다"))
+    _generator_raises(monkeypatch, LlmFailed("빠진 달이 있다"))
 
     response = client.post("/api/plans/annual", json={"class_id": mine.id})
 

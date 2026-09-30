@@ -12,30 +12,37 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
-from ssuksak.planning.application.confirm_yearly_plan import ConfirmYearlyPlan
-from ssuksak.planning.application.edit_yearly_plan_item import EditYearlyPlanItem
-from ssuksak.planning.application.generate_yearly_plan import GenerateYearlyPlan
-from ssuksak.planning.application.yearly_dto import (
+
+# **`ssuksak.planning` 이 공개 창구다.** 안쪽 파일 위치를 우리가 외우면 하민이 정리할 때마다
+# 이쪽이 깨진다. `__all__` 이 「backend 가 써도 되는 것」의 계약이다.
+# `YearlyRuleError` 만 아직 공개 목록에 없어 안쪽에서 가져온다 — code 가 없어 계약 코드로
+# 못 가르는 것이라, Core 가 감싸주면 그때 여기도 빠진다.
+from ssuksak.planning import (
+    ActorId,
     CatalogSelector,
+    ConfirmYearlyPlan,
     ConfirmYearlyPlanCommand,
+    EditYearlyPlanItem,
     EditYearlyPlanItemCommand,
+    GenerateYearlyPlan,
     GenerateYearlyPlanCommand,
+    InvalidDomainValueError,
+    InvalidStateTransitionError,
+    PlanId,
+    YearlyApplicationError,
+    YearlyPlan,
 )
-from ssuksak.planning.application.yearly_errors import YearlyApplicationError
-from ssuksak.planning.domain.errors import InvalidDomainValueError, InvalidStateTransitionError
-from ssuksak.planning.domain.identifiers import ActorId, PlanId
-from ssuksak.planning.domain.yearly_plan import YearlyPlan
 from ssuksak.planning.rules.errors import YearlyRuleError
 
 from app.db import get_session
 from app.features.auth.models import User
-from app.features.plans.llm import (
-    ThemeTextBudgetExceeded,
-    ThemeTextUnavailable,
-    theme_text_generator,
-)
+
+# forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
+from app.features.forms.service import find_own_form
+from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
+from app.features.plans.rules import verify
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import (
     AnnualPlanListOut,
@@ -43,6 +50,7 @@ from app.features.plans.schemas import (
     AnnualPlanSummary,
     AuditEventOut,
     AuditOut,
+    CheckOut,
     ConfirmOut,
     CreateAnnualPlan,
     EvidenceOut,
@@ -52,6 +60,7 @@ from app.features.plans.schemas import (
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
+from app.shared.llm import LlmBudgetExceeded, LlmUnavailable
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
 
@@ -125,13 +134,43 @@ def _months(plan: YearlyPlan, sub_themes: dict) -> list[MonthOut]:
 
 
 def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
+    months = _months(plan, row.sub_themes)
     return AnnualPlanOut(
         id=row.id,
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
-        months=_months(plan, row.sub_themes),
+        months=months,
+        **_checks(months),
     )
+
+
+def _checks(months: list[MonthOut]) -> dict:
+    """법정 안전교육을 검사한다 (ADR-014).
+
+    **무엇을 검사했는지(`checked_rules`)를 결과와 따로 준다.** 빈 배열 하나로는
+    「문제없다」와 「아무것도 안 봤다」가 구분되지 않는다 — 화면이 둘을 같게 그리면
+    교사가 검사 0건짜리 계획안을 초록불로 보고 확정한다.
+
+    검사기가 터지면 통과로 넘기지 않는다. 「검사할 수 없다」와 「검사가 깨졌다」는
+    다르고, 깨진 것을 UNVERIFIED 로 바꾸면 아무도 모른다.
+    """
+    payload = [
+        {
+            "month": m.month,
+            "safety_education": m.safety_education,
+            "safety_education_state": m.safety_education_state,
+        }
+        for m in months
+    ]
+    found = verify.legal_hours(payload)
+    return {
+        "checked_rules": ["legal_hours"],
+        "checks": [
+            CheckOut(rule=v.rule, severity=v.severity, detail=v.detail, month=v.month)
+            for v in found
+        ],
+    }
 
 
 def _503(code: str, message: str) -> HTTPException:
@@ -150,9 +189,9 @@ def _generation_error(error: YearlyApplicationError) -> HTTPException:
     자리에 「다시 시도」를 띄운다.
     """
     cause = error.__cause__
-    if isinstance(cause, ThemeTextBudgetExceeded):
+    if isinstance(cause, LlmBudgetExceeded):
         return _503("LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요.")
-    if isinstance(cause, ThemeTextUnavailable):
+    if isinstance(cause, LlmUnavailable):
         return _503(
             "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
         )
@@ -194,10 +233,21 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
+    if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
+        # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
+        # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "NOT_FOUND",
+                "message": "양식을 찾을 수 없습니다.",
+                "fields": ["form_id"],
+            },
+        )
     repo = _repo(session, user)
     try:
         generator = theme_text_generator()
-    except ThemeTextUnavailable as error:
+    except LlmUnavailable as error:
         # 교사가 고칠 수 없다. 재시도 버튼을 띄우면 100번 눌러도 같다(api-spec 공통).
         raise _503(
             "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."

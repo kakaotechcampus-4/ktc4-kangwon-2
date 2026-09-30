@@ -795,6 +795,42 @@ PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 **월간은 연간이 `CONFIRMED` 여야 생성된다.** 아니면 `GATE_BLOCKED` 409.
 **층 순서를 건너뛸 수 없다.** 연간·월간·주간을 한 번에 생성하지 않는다.
 
+### 내보내기 — `GET /api/plans/{id}/export/hwp` (구현됨)
+
+**이 API 만 JSON 이 아니다.** 파일이 내려온다. 다른 API 처럼 `apiRequest` 로 부르면
+JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
+
+```
+응답 200    Content-Type: application/hwp+zip
+            Content-Disposition: attachment; filename="plan-10.hwpx";
+                                 filename*=UTF-8''<한글 이름>.hwpx
+```
+
+**경로는 `hwp` 인데 내려가는 파일은 `hwpx` 다.** `.hwp` 는 공개된 구조가 없어 우리가
+만들 수 없다. hwpx 는 zip + XML(국가표준)이라 만들 수 있고 한글 2010 이상에서 열린다.
+**교사가 한글에서 「다른 이름으로 저장 → .hwp」 하면 hwp 가 된다** — 클릭 한 번이다.
+
+> **변환 기능을 서버에 두지 않는다.** 시중 변환은 파일을 남의 서버로 보낸다.
+> 계획안에는 반 이름·담임 이름이, 일지에는 아동 실명이 들어간다 — 그 파일을 밖으로
+> 보내면 ADR-004 가 LLM 한 줄을 막아둔 것이 통째로 무의미해진다.
+
+**확정본만 내보낸다.** DRAFT 면 `GATE_BLOCKED` 409 다. 내보낸 파일은 제출 문서라,
+교사가 확인하지 않은 초안이 그대로 제출되는 길을 만들지 않는다.
+
+**출처를 싣지 않는다.** `evidence` · `generation` 은 화면이 근거를 보여주는 값이지
+제출 문서에 들어갈 것이 아니다. 교사가 읽는 글자만 꺼낸다.
+
+**작성자 정보를 지운다.** 양식 파일에 남은 `creator` · `lastsaveby` 를 내보낼 때
+다시 비운다 — 양식을 새로 넣는 사람이 잊어도 막힌다.
+
+| code | status | 언제 |
+|---|---|---|
+| `GATE_BLOCKED` | 409 | 확정 전이다 |
+| `NOT_FOUND` | 404 | 없거나 남의 원 계획안이다 |
+
+**월간은 아직 없다.** 월간 API 와 양식이 같이 생길 때 붙인다.
+**원이 올린 양식으로 내보내는 것도 아직이다**(§8 양식 등록이 먼저다).
+
 **「일간」 계획안은 만들지 않는다.** 스펙에도 ADR 에도 없는 문서 종류다.
 
 `plan-config` 의 두 값은 7주차 기능의 입력이다 — `uses_monthly` 는 월간 생성이,

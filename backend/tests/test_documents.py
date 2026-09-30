@@ -765,10 +765,17 @@ def test_create_weekly_log_requires_confirmed_daily_logs(db_session):
 
 
 def test_create_document_saves_nothing_when_generation_fails(db_session, monkeypatch):
-    # 백엔드 LLM 연결 전에는 real 모드에서 만들 수 없다. 부분 결과를 남기지 않는다.
+    """AI 를 못 부르면 **부분 결과를 남기지 않는다.**
+
+    `real` 인데 엘리스 설정이 없는 상태를 만든다 — 운영에서 키를 안 넣고 배포한 경우다.
+    """
+    from app.config import settings
+
     _, klass, child = _make_center_class_child(db_session)
     record = _observation(db_session, klass, child, 5, "개미를 바라보았다.")
-    monkeypatch.setattr("app.features.documents.draft.settings.llm_mode", "real")
+    monkeypatch.setattr(settings, "llm_mode", "real")
+    monkeypatch.setattr(settings, "elice_mlapi_base_url", None)
+    monkeypatch.setattr(settings, "elice_mlapi_api_key", None)
 
     response = client.post("/api/documents", json=_create_body(klass, child, [record]))
 

@@ -13,8 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from ssuksak.planning.domain.errors import InvalidDomainValueError
-from ssuksak.planning.domain.identifiers import PlanId
+from ssuksak.planning import InvalidDomainValueError, PlanId
 
 from app.features.plans.codec import from_jsonable, to_jsonable
 from app.features.plans.models import Plan
