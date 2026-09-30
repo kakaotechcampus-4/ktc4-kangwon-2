@@ -323,14 +323,13 @@ def test_teacher_edit_returns_a_new_plan_and_preserves_evidence():
     assert original.find_item(item.item_id)[1].theme.value == item.value
     assert edited_item.value == "소중한 나와 가족"
     assert edited_item.evidence == evidence_before
-    assert edited_item.generation.method is GenerationMethod.TEACHER_EDIT
-    assert edited_item.audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
-    change = edited_item.audit.events[-1].generation_change
-    assert change is not None
-    assert change.before.method is GenerationMethod.RULE_LLM
-    assert change.before.rule_id
-    assert change.before.rule_version
-    assert change.after.method is GenerationMethod.TEACHER_EDIT
+    # The edit keeps the Generation Method and is recorded in the Audit only.
+    assert edited_item.generation == item.generation
+    assert edited_item.generation.method is GenerationMethod.RULE_LLM
+    assert edited_item.generation.rule_id and edited_item.generation.rule_version
+    event = edited_item.audit.events[-1]
+    assert event.event_type is AuditEventType.TEACHER_EDITED and event.generation_change is None
+    assert (event.value_change.before, event.value_change.after) == (item.value, "소중한 나와 가족")
 
 
 def test_teacher_edit_changes_only_the_target_period():

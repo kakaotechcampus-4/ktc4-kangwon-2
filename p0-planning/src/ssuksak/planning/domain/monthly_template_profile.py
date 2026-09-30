@@ -23,6 +23,9 @@ DEFAULT_PROFILE_SECTION_KEYS = frozenset(
 OPTIONAL_PROFILE_SECTION_KEYS = frozenset(
     {"focus", "goals", "basic_habit", "event_schedule", "drill"}
 )
+# Full Monthly v1 section 5: explicit institution input, never invented by the
+# LLM. No institution-input contract exists yet, so generation refuses them.
+INSTITUTION_INPUT_SECTION_KEYS = frozenset({"event_schedule", "drill"})
 TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS = frozenset(
     {
         "indoor_alternative",

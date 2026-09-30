@@ -3,8 +3,8 @@
 **생성 엔드포인트가 없다.** 사실기록형이라 AI 가 쓰면 위조다 (CLAUDE.md 문서 5분류).
 교사가 적은 그대로 저장하고 꺼낸다.
 
-`PUT` · `DELETE` 가 이 기록을 근거로 쓴 §11 문서를 `stale` 로 바꾸는 일은 아직 없다 —
-documents 테이블(PR #50)이 develop 에 들어오면 그쪽에서 붙인다.
+`PUT` · `DELETE` 는 이 기록을 근거로 쓴 §11 문서를 `stale` 로 바꾼다. 판정은 문서 쪽이
+갖고 있다 — `stale` 칸의 주인이 documents 다 (features/documents/stale.py).
 """
 
 from datetime import date
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Child, Class
+from app.features.documents.stale import observation_changed
 from app.features.observations.models import Observation
 from app.features.observations.schemas import (
     ObservationCreate,
@@ -133,6 +134,7 @@ def update_observation(
     observation = _own(session, user, observation_id)[0]
     for field, value in body.model_dump().items():
         setattr(observation, field, value)
+    observation_changed(session, observation_id, observation.fact, observation.date)
     session.commit()
     return _response(_own(session, user, observation_id))
 
@@ -140,5 +142,6 @@ def update_observation(
 @router.delete("/{observation_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_observation(observation_id: int, session: DbSession, user: CurrentUser) -> None:
     observation = _own(session, user, observation_id)[0]
+    observation_changed(session, observation_id, None, None)
     session.delete(observation)
     session.commit()
