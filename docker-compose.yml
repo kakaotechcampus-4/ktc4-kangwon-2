@@ -30,7 +30,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:?.env 가 없다 — cp .env.example .env 후 값을 채운다}
       # 없으면 backend 가 기동 시점에 죽는다. .env 에 반드시 있어야 한다.
       SECRET_KEY: ${SECRET_KEY:?.env 에 SECRET_KEY 가 없다 — python -c \"import secrets; print(secrets.token_urlsafe(48))\"}
-      ELICE_API_KEY: ${ELICE_API_KEY:-}
+      ELICE_MLAPI_BASE_URL: ${ELICE_MLAPI_BASE_URL:-}
+      ELICE_MLAPI_API_KEY: ${ELICE_MLAPI_API_KEY:-}
       # 트렌드 수집 (ADR-016). 주 1회 작업에서만 쓴다 — 없으면 그 소스만 건너뛰므로
       # SECRET_KEY 와 달리 기동을 막지 않는다.
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
