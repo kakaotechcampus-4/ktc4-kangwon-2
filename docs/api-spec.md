@@ -644,7 +644,7 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 
 ---
 
-## 8. 양식 — `POST /api/forms/parse` (구현됨) · 등록은 7주차
+## 8. 양식 — `POST /api/forms/parse` (구현됨) · 등록 `/api/centers/{center_id}/forms`   ★ 8주차
 
 **`POST /api/forms/parse`** — hwp/hwpx 를 받아 표 구조와 라벨 후보를 돌려준다. 수린 구현(PR #6).
 **저장하지 않는다.** 요청·응답만으로 끝나는 순수 변환이다.
@@ -664,7 +664,10 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 **`message` 에 내부 예외 문구를 그대로 싣지 않는다.** `hwp5html 없음 — pip install pyhwp six`
 같은 설치 안내가 교사 화면에 뜬다.
 
-**양식 등록은 7주차다.** 원이 양식을 한 번 등록하면 계속 쓰는 구조이므로 **원에 귀속된다.**
+### 양식 등록 — 원에 귀속된다
+
+원이 양식을 한 번 등록하면 계속 쓴다. **임시 업로드가 아니라 원의 자산이므로 만료 정책이 없다.**
+저장하는 것은 **파싱 결과뿐이다** — 원본 파일은 남기지 않는다(ADR-020).
 
 ```
 POST   /api/centers/{center_id}/forms     양식 등록 → form_id 발급
@@ -672,7 +675,63 @@ GET    /api/centers/{center_id}/forms     등록된 양식
 DELETE /api/forms/{id}                    삭제.  수정은 삭제 후 재등록이다
 ```
 
-`form_id` 는 §4 의 request 가 받는다. **임시 업로드가 아니라 원의 자산이므로 만료 정책이 없다.**
+**parse 만 토큰 없이 열려 있다.** 등록 · 목록 · 삭제는 원의 자산을 읽고 쓰므로 인증 뒤에 있고
+원 단위 인가를 거친다(§0 · ADR-017 · ADR-020).
+
+**`POST /api/centers/{center_id}/forms`** — `multipart/form-data`, 필드 `file` 하나. parse 와 같다.
+받는 확장자도 같다(`.hwp` · `.hwpx`). 파싱에 성공해야 저장한다 — 읽지 못한 양식은 행이 생기지 않는다.
+**표가 하나도 없으면 등록하지 않는다** — `422 VALIDATION_FAILED`. 계획안 양식은 표다.
+parse 는 빈 결과(`tables: []`)를 그대로 돌려준다 — 저장하지 않으니 막을 이유가 없다.
+
+FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우저에 둔다. 이 계약에 붙이면
+받는 형식이 hwp · hwpx 로 바뀐다.
+
+→ `201`
+
+```json
+{ "id": 3, "center_id": 1,
+  "name": "2026 유아반 월간계획안.hwp",
+  "filename": "2026 유아반 월간계획안.hwp",
+  "tables": [ [ [ { "text": "월", "rowspan": 1, "colspan": 1 }, ... ] ] ],
+  "labels": ["월", "주제", "예상놀이", "봄 동산"],
+  "label_map": { "월": "month", "주제": "topic", "예상놀이": "activity", "봄 동산": null },
+  "created_at": "2026-09-29T10:00:00+09:00" }
+```
+
+| 필드 | 타입 | |
+|---|---|---|
+| `tables` | `Cell[][][]` | 표 → 행 → 셀. `Cell { text: string, rowspan: int, colspan: int }`. 중첩 표는 따로 한 표로 나온다 |
+| `labels` | `string[]` | 빈 칸을 뺀 셀 문구. 중복을 지우지 않는다 |
+| `label_map` | `{ [label]: string \| null }` | 표준 키(ADR-009). **값이 `null` 일 수 있다** — 데이터 값이거나 매핑표에 없는 표현이다 |
+| `name` | `string` | 화면에 보일 이름. **지금은 `filename` 과 같다.** 이름 입력은 받지 않는다 |
+| `filename` | `string` | 업로드한 파일명 |
+
+**같은 파일을 다시 올리면 새 행이 생긴다.** 중복을 막지 않는다 — 잘못 올렸으면 지운다.
+
+**`GET /api/centers/{center_id}/forms`** → `{ "items": [...] }`. 항목은 위 등록 응답과 같다.
+정렬은 `created_at DESC, id DESC`. 상세 조회(`GET /api/forms/{id}`)는 두지 않는다 — 원당 양식이
+몇 개라 목록에 파싱 결과까지 싣는다. 양식이 늘어 목록이 무거워지면 목록을 요약으로 줄이고 상세를 붙인다.
+
+**`DELETE /api/forms/{id}`** → `204`.
+
+**삭제를 막지 않는다.** 이번 주 `plans.form_id` 에 FK 가 없다. 이미 만든 계획안이 지워진 `form_id` 를
+어떻게 다루는지(생성 때 양식을 복사해 두는지 등)는 **plans 쪽에서 정한다 — 미정.**
+
+**§4 가 받은 `form_id` 는 forms 의 조회 함수로 검사한다** — 없거나 남의 원 것인지.
+plans 가 forms 를 직접 import 하지 않는다(`structure.md`). **그때의 응답 코드는 §4 에 아직 없다** —
+plans 담당과 정해서 §4 에 쓴다.
+
+**에러** — parse 의 세 개에 둘이 더 붙는다
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `UNSUPPORTED_FILE_TYPE` | 400 | parse 와 같다 | `["file"]` |
+| `VALIDATION_FAILED` | 422 | parse 와 같다. `file` 이 없어도 이것이다. 등록은 **파일명이 255자를 넘어도** 이것이다 — 컬럼 길이다. 브라우저 업로드에서는 생기지 않는다(OS 한도가 255자) | `["file"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | parse 와 같다 | `[]` |
+| `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
+| `NOT_FOUND` | 404 | 없는 원 · 없는 양식. **남의 원 것도 404 다**(ADR-017) | 등록 · 목록 `["center_id"]` / 삭제 `["form_id"]` |
+
+**파일 크기 상한은 아직 없다** — parse 도 같다. 따로 정한다.
 
 ---
 
@@ -685,7 +744,6 @@ POST   /api/plans/monthly/{id}/cells/{n}/regenerate   이 칸만 다시
 GET    /api/plans/{id}/export/hwp         내보내기
 GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
-POST   /api/centers/{center_id}/forms     양식 등록 (§8)
 ```
 
 **월간은 연간이 `CONFIRMED` 여야 생성된다.** 아니면 `GATE_BLOCKED` 409.

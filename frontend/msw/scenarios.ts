@@ -3,10 +3,12 @@ import type { ErrorCode } from "../lib/api/types";
 const failures = new Map<string, number>();
 export const resetScenarioFailures = () => failures.clear();
 export const statusFor: Record<ErrorCode, number> = {
+  UNAUTHENTICATED: 401,
   VALIDATION_FAILED: 422,
   NOT_FOUND: 404,
   GATE_BLOCKED: 409,
   ALREADY_EXISTS: 409,
+  ALREADY_CONFIRMED: 409,
   STALE_WRITE: 409,
   UNSUPPORTED_FILE_TYPE: 400,
   NO_ACTIVITIES: 503,
