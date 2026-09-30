@@ -16,14 +16,27 @@ export function accountStorageKey(base: string): string {
   return `${base}:${encodeURIComponent(email.trim().toLowerCase())}`;
 }
 
-export function hasDemoSession(): boolean {
+/** 저장소를 읽기만 해서 로그인 상태를 본다. 정리는 하지 않는다. */
+function signedIn(): boolean {
   if (typeof window === "undefined") return false;
   try {
     const email = currentAccountEmail();
-    if (window.sessionStorage.getItem(KEY) === "active" && email && readAccount(email)) return true;
+    return window.sessionStorage.getItem(KEY) === "active" && !!email && !!readAccount(email);
   } catch {
     /* 저장소 오류도 로그인 상태로 인정하지 않는다. */
+    return false;
   }
+}
+
+/** 조회 전용 계정 키. 로그인 상태가 아니면 `null` 이고, 세션을 끝내지 않는다. */
+export function readAccountStorageKey(base: string): string | null {
+  const email = currentAccountEmail();
+  return signedIn() && email ? `${base}:${encodeURIComponent(email.trim().toLowerCase())}` : null;
+}
+
+export function hasDemoSession(): boolean {
+  if (typeof window === "undefined") return false;
+  if (signedIn()) return true;
   endDemoSession();
   return false;
 }
