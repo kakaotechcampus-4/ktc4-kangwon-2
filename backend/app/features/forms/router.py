@@ -52,11 +52,15 @@ def parse_form(file: UploadFile) -> ParseResponse:
             # 손상된 파일, 변환 실패 등 요청 자체의 문제.
             # hwp5html 이 0 이 아닌 코드로 끝난 것도 여기다 —
             # CalledProcessError 는 RuntimeError 가 아니라서 이쪽으로 떨어진다.
+            # str(e) 를 싣지 않는다 — 명령줄 · 임시 경로가 교사 화면에 뜬다 (§8).
             raise HTTPException(
                 status_code=422,
                 detail={
                     "code": "VALIDATION_FAILED",
-                    "message": f"양식 파싱에 실패했습니다: {e}",
+                    "message": (
+                        "양식을 읽지 못했습니다. "
+                        "파일이 비어 있거나 손상되었거나 암호가 걸려 있는지 확인해주세요."
+                    ),
                     "fields": ["file"],
                 },
             ) from e
