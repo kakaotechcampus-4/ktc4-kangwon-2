@@ -6,13 +6,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
-COPY app ./app
-COPY alembic.ini ./
-COPY alembic ./alembic
-COPY resources ./resources
+# 빌드 맥락이 backend/ 가 아니라 저장소 뿌리다. 계획안 생성 로직이 p0-planning 에
+# 있어서 backend 만으로는 이미지가 앱을 import 하지 못한다.
+#
+# p0-planning 을 **먼저** 깐다. 그래야 아래 backend 설치에서 ssuksak-planning 이
+# 이미 충족된 것으로 잡혀 PyPI 를 보러 가지 않는다 (거기엔 이 이름이 없다).
+COPY p0-planning ./p0-planning
+RUN pip install --upgrade pip && pip install ./p0-planning
 
-RUN pip install --upgrade pip && pip install .
+COPY backend/pyproject.toml ./
+COPY backend/app ./app
+COPY backend/alembic.ini ./
+COPY backend/alembic ./alembic
+COPY backend/resources ./resources
+
+RUN pip install .
 
 # hwp5html(pyhwp)이 실행되는지, XSLT 처리에 필요한 lxml이 로드되는지 확인
 RUN hwp5html --help >/dev/null && python -c "import lxml.etree"

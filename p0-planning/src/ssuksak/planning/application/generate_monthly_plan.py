@@ -12,7 +12,8 @@ from ..domain.monthly_plan import (
     MonthlyPlan,
     MonthlySection,
 )
-from ..domain.monthly_template import DisplayMode, SectionRole
+from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
+from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.plan import PlanStatus
 from ..domain.provenance import (
     AuditEvent,
@@ -41,7 +42,7 @@ from ..rules.monthly_template_resolver import (
     RULE_ID as TEMPLATE_RULE_ID,
     RULE_VERSION as TEMPLATE_RULE_VERSION,
     ResolvedSection,
-    resolve_sections,
+    resolve_profile_sections,
 )
 from ..rules.monthly_theme_derivation import derive_monthly_theme
 from ..rules.monthly_week_periods import canonical_week_periods
@@ -56,7 +57,7 @@ from .monthly_support import (
     deduplicate_evidence,
     load_activity_catalog,
     load_safety_rule,
-    load_template,
+    load_template_profile,
     optional_context_results,
     packet_evidence,
     theme_reference_id,
@@ -65,10 +66,10 @@ from .ports import (
     ActivityReferenceRepository,
     Clock,
     IdGenerator,
-    MonthlyTemplateRepository,
     OptionalContextProvider,
     PlanRepository,
     SafetyLegalRuleRepository,
+    TemplateProfileRepository,
 )
 
 SYSTEM_ACTOR = "monthly_application"
@@ -85,7 +86,7 @@ class GenerateMonthlyPlan:
         *,
         parent_plan_repository: PlanRepository[YearlyPlan],
         plan_repository: PlanRepository[MonthlyPlan],
-        template_repository: MonthlyTemplateRepository,
+        profile_repository: TemplateProfileRepository,
         safety_repository: SafetyLegalRuleRepository,
         clock: Clock,
         id_generator: IdGenerator,
@@ -96,7 +97,7 @@ class GenerateMonthlyPlan:
     ) -> None:
         self._parents = parent_plan_repository
         self._plans = plan_repository
-        self._templates = template_repository
+        self._profiles = profile_repository
         self._safety = safety_repository
         self._activities = activity_repository
         self._clock = clock
@@ -125,12 +126,26 @@ class GenerateMonthlyPlan:
                 "Monthly generation requires an explicitly CONFIRMED Yearly Plan",
             )
 
-        template = load_template(self._templates, command.template_ref)
+        profile = load_template_profile(self._profiles, command.profile_ref)
+        if profile.institution_ref != command.daycare_ref:
+            raise MonthlyApplicationError(
+                "monthly_template_profile_institution_mismatch",
+                "Monthly Template Profile institution does not match the command",
+            )
+        if (
+            profile.classroom_ref is not None
+            and profile.classroom_ref != parent.classroom_ref
+        ):
+            raise MonthlyApplicationError(
+                "monthly_template_profile_classroom_mismatch",
+                "Monthly Template Profile classroom does not match the parent Plan",
+            )
+        template_snapshot = TemplateSnapshot.from_profile(profile)
         safety_rule = load_safety_rule(self._safety, command.safety_rule)
         catalog = load_activity_catalog(
             self._activities, command.activity_catalog
         )
-        resolved_sections = resolve_sections(template)
+        resolved_sections = resolve_profile_sections(profile)
         if (
             command.generation_mode is MonthlyGenerationMode.LLM_PLANNER
             and not any(
@@ -223,7 +238,7 @@ class GenerateMonthlyPlan:
                     display_mode=section.display_mode,
                     empty_value_policy=(
                         section.empty_value_policy
-                        or template.default_empty_value_policy
+                        or EmptyValuePolicy.RENDER_EMPTY_CELL
                     ),
                     activated=section.activated,
                     parent_section_key=section.parent_section_key,
@@ -241,7 +256,7 @@ class GenerateMonthlyPlan:
             target_ages=parent.target_ages,
             status=PlanStatus.DRAFT,
             parent_lineage=theme.parent_lineage,
-            template_ref=template.template_ref,
+            template_snapshot=template_snapshot,
             week_periods=week_periods,
             sections=tuple(sections),
             constraint_assessments=assessments,

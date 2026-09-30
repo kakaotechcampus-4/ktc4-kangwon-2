@@ -21,7 +21,12 @@ dependencies = [
   "httpx",
   # resources/rules/*.yaml 과 resources/pseudonyms.yaml 을 읽는다.
   "pyyaml",
+  # 계획안 생성 로직. 같은 저장소의 별도 패키지다 — 서버는 이걸 부르기만 한다.
+  "ssuksak-planning",
 ]
+
+[tool.uv.sources]
+ssuksak-planning = { path = "../p0-planning", editable = true }
 
 [project.optional-dependencies]
 dev = ["ruff==0.16.6", "pytest"]
