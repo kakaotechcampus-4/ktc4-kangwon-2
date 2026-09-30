@@ -7,6 +7,7 @@ from enum import Enum
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.year_month import YearMonth
+from ..evidence.classification import SemanticClass
 from ..evidence.models import EvidenceRecord
 
 
@@ -23,14 +24,32 @@ AGE_TIER_ORDER = (
     AgeMatchKind.MIXED_AGE_COVERING,
     AgeMatchKind.AGE_UNKNOWN,
 )
+# Evidence whose age is known to fit the request: a requested single age, or a
+# mixed-age scope that contains a requested age. AGE_UNKNOWN is not age-verifiable.
+AGE_VERIFIABLE_TIERS = AGE_TIER_ORDER[:3]
 
 
 class BlockName(str, Enum):
     INSTITUTION_MONTHLY_EVIDENCE = "institution_monthly_evidence"
     AGE_CONTRAST_EVIDENCE = "age_contrast_evidence"
-    WEEK_EXPERIENCE_CANDIDATES = "week_experience_candidates"
+    GOALS_EVIDENCE = "goals_evidence"
+    BASIC_HABIT_EVIDENCE = "basic_habit_evidence"
+    SUBTHEME_EVIDENCE = "subtheme_evidence"
+    EXPECTED_PLAY_EVIDENCE = "expected_play_evidence"
     REFERENCE_ACTIVITIES = "reference_activities"
     OTHER_OUTDOOR_EVIDENCE = "other_outdoor_evidence"
+    SAFETY_EDUCATION_EVIDENCE = "safety_education_evidence"
+    SUPPLEMENTAL_SAFETY_EVIDENCE = "supplemental_safety_evidence"
+    # Other months, MONTH_INDEPENDENT contents only; used after the target month.
+    CROSS_MONTH_SUPPLEMENTAL_SAFETY_EVIDENCE = "cross_month_supplemental_safety_evidence"
+
+
+CLASS_BLOCKS = {
+    SemanticClass.GOALS: BlockName.GOALS_EVIDENCE,
+    SemanticClass.BASIC_HABIT: BlockName.BASIC_HABIT_EVIDENCE,
+    SemanticClass.SUBTHEME: BlockName.SUBTHEME_EVIDENCE,
+    SemanticClass.EXPECTED_PLAY: BlockName.EXPECTED_PLAY_EVIDENCE,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +60,12 @@ class RetrievalRequest:
     confirmed_theme_value: str
     week_count: int
     keywords: tuple[str, ...] = ()
+    grounding_classes: frozenset[SemanticClass] = frozenset()
+    # Official content of the placed legal categories; retrieval ranks Sample
+    # safety evidence against it. Empty means no safety block is retrieved.
+    safety_keywords: tuple[str, ...] = ()
+    # Placed legal categories whose approved STATUTORY_REFERENCE Samples may be retrieved.
+    safety_categories: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_month, YearMonth):
@@ -59,6 +84,17 @@ class RetrievalRequest:
             not isinstance(item, str) or not item.strip() for item in self.keywords
         ):
             raise InvalidDomainValueError("RetrievalRequest.keywords must contain non-blank strings")
+        if not isinstance(self.grounding_classes, frozenset) or any(
+            not isinstance(item, SemanticClass) or item is SemanticClass.EXCLUDED
+            for item in self.grounding_classes
+        ):
+            raise InvalidDomainValueError(
+                "RetrievalRequest.grounding_classes must contain approved non-EXCLUDED classes"
+            )
+        if not isinstance(self.safety_keywords, tuple) or any(
+            not isinstance(item, str) or not item.strip() for item in self.safety_keywords
+        ):
+            raise InvalidDomainValueError("RetrievalRequest.safety_keywords must contain non-blank strings")
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +149,7 @@ class MonthlyEvidenceRetrievalResult:
     retrieval_version: str
     activity_catalog_id: str = ""
     activity_catalog_version: str = ""
+    evidence_classification_version: str = ""
 
     def block(self, name: BlockName) -> EvidenceBlock:
         for block in self.blocks:
