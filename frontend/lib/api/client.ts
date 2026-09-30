@@ -1,3 +1,5 @@
+import { readToken } from "../auth/token";
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: unknown;
@@ -46,6 +48,10 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   if (!path.startsWith("/api/")) throw new Error("API path must start with /api/");
   const headers = new Headers(options.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  // 토큰은 여기 한 곳에서만 붙인다. 호출부마다 붙이면 새 API 를 만들 때 빠뜨린다.
+  // 서버가 아동 실명이 내려오는 API 를 전부 막고 있다(docs/api-spec.md 「인증」).
+  const token = typeof window === "undefined" ? null : readToken();
+  if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(path, { ...options, headers });
   const text = await response.text();
   const method = options.method ?? "GET";
@@ -76,6 +82,18 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     throw new ApiError(response.status, body);
   }
   return body as T;
+}
+
+/**
+ * 토큰이 없거나 못 믿어서 거절된 것인지 (`401 UNAUTHENTICATED`, docs/api-spec.md 「인증」).
+ *
+ * 404 와 갈라 봐야 한다 — 401 은 다시 로그인시킬 일이고, 404 는 대상이 없거나 남의 원 것이다.
+ * 서버가 「만료」와 「서명 불일치」를 구분해 주지 않으므로 여기서도 나누지 않는다.
+ */
+export function isUnauthenticated(error: unknown): error is ApiError {
+  if (!(error instanceof ApiError) || error.status !== 401) return false;
+  const body = error.body as { error?: { code?: unknown } } | null;
+  return typeof body === "object" && body !== null && body.error?.code === "UNAUTHENTICATED";
 }
 
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */

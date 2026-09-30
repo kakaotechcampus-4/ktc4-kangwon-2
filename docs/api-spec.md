@@ -24,12 +24,37 @@ FE   이 계약을 다시 정의하지 않는다.  MSW 목업을 이 형식으�
 ```
 Base        /api
 Content     application/json
-인증        P1(8주차)부터.  지금은 없음
+인증        Authorization: Bearer <token>.  §0 참조
 날짜        ISO 8601 (2026-03-01)
 연령        학년도 기준 연 나이 3·4·5.  만 나이 아님
 ```
 
-**인증이 붙기 전에는 실제 아동 실명을 입력하지 않는다.** 개발·데모는 가명으로 한다 (ADR-004).
+**개발·데모는 가명으로 한다** (ADR-004). 인증이 붙었어도 개발 DB 에 실제 아동 실명을
+넣지 않는다 — 로그가 남는 경로가 많다.
+
+### 0. 인증 — `POST /api/auth/signup` · `POST /api/auth/login`
+
+```json
+signup   { "email": "a@b.kr", "name": "김선생", "password": "여덟자이상" }   → 201
+login    { "email": "a@b.kr", "password": "여덟자이상" }                     → 200
+
+응답     { "token": "...", "user": { "id": 1, "email": "...", "name": "...", "center_id": null } }
+```
+
+**토큰을 `Authorization: Bearer <token>` 으로 실어 보낸다.** 12시간 뒤 만료된다.
+
+**`/api/auth/*` 와 `/api/forms/parse` 를 뺀 모든 엔드포인트가 토큰을 요구한다.**
+없거나 못 믿으면 `401 UNAUTHENTICATED` 다. **왜 401 인지는 알려주지 않는다** —
+「만료됐다」와 「서명이 틀렸다」를 구분해 주면 토큰을 맞춰 보는 쪽에 힌트가 된다.
+
+**`center_id` 가 null 이면 온보딩을 아직 안 끝냈다.** `POST /api/centers` 가 그 값을 채운다.
+**한 계정은 원 하나다** — 두 번째 요청은 `409 ALREADY_EXISTS` 다.
+
+**자기 원 것만 볼 수 있다.** 로그인만 확인하면 `class_id` 를 바꿔가며 남의 원 아동 명단을
+읽을 수 있다. **남의 것은 403 이 아니라 404 다** — 403 은 그 id 가 존재한다는 사실을 알려준다.
+
+> **「자기 반만」은 아직 아니다.** 원장도 봐야 하고 담임이 바뀌기도 해서 규칙을 먼저 정한다.
+> 지금은 원 단위까지다.
 
 **공통 에러 형식**
 
@@ -44,6 +69,7 @@ Content     application/json
 
 | code | status | 뜻 |
 |---|---|---|
+| `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다. 왜인지는 알려주지 않는다 |
 | `VALIDATION_FAILED` | 422 | 입력값이 규격 밖 |
 | `NOT_FOUND` | 404 | 대상 없음 |
 | `GATE_BLOCKED` | 409 | 층 게이트 — 아래 층이 확정 전인데 위 층을 요청 (§4 월간 · §11 주간 보육일지 · `stale` 문서 확정) |
@@ -52,6 +78,7 @@ Content     application/json
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§11) |
 
@@ -65,6 +92,12 @@ Content     application/json
 > 보고 알려주므로 토큰 카운터를 만들지 않는다(2026-09-21 결정). 예산을 넘겨 키가 삭제되면
 > 공급자 호출이 인증 오류로 실패하는데, 그때 `GENERATION_FAILED` 로 뭉뚱그리지 않고
 > 이 코드로 구분한다 — FE 가 "재시도" 대신 "운영 문의" 를 띄워야 해서다.
+
+> **`DEPENDENCY_UNAVAILABLE` 도 같은 이유로 `GENERATION_FAILED` 와 나눈다.** 서버에
+> `hwp5html` 이 깔려 있지 않은 것은 교사가 고칠 수 없다. `GENERATION_FAILED` 500 은
+> FE 가 재시도 버튼을 띄우는 코드인데, 여기서는 100번 눌러도 같은 결과다.
+> **`NO_ACTIVITIES` 와 같은 가족이다** — 503 · 운영 오류 · 자동 재시도 없음.
+> 앞으로 붙는 외부 도구(`pdftotext` · 외부 API)도 이 코드를 쓴다.
 
 ---
 
@@ -114,6 +147,10 @@ Content     application/json
 
 `age_min` ≤ `age_max`, 둘 다 3~5. `child_count` 는 **선택**(null 허용, 양의 정수).
 
+**없는 `center_id` 면 `404 NOT_FOUND` 다.** 빈 목록(`{"items": []}`)과 구분한다 —
+같은 응답으로 돌려주면 FE 가 「반을 추가해 주세요」를 없는 원에도 띄운다.
+`GET /api/centers/{center_id}/classes` 도 같다.
+
 **`school_year` 는 받지 않는다. 서버가 요청 시각 기준으로 채운다.**
 화면에 학년도를 고르는 칸이 없으므로 교사는 어차피 값을 정하지 않는다. 남는 것은
 "누가 계산하느냐"뿐인데, FE 가 계산하면 브라우저 시계에 의존한다. 기기 시계가 하루 틀리면
@@ -151,6 +188,30 @@ Content     application/json
 **검증 실패가 아니다** — 아동 명단을 건너뛰는 경로가 정상이다(§2-1).
 
 **Response** `201` — 생성된 반. `school_year` 와 `consent_confirmed_at` 을 포함한다.
+
+**같은 이름을 다시 만들면 `409 ALREADY_EXISTS` 다.**
+
+```json
+409  { "error": { "code": "ALREADY_EXISTS",
+                  "message": "같은 이름의 반이 이미 있습니다.",
+                  "fields": ["name"] } }
+```
+
+같은 것은 `UNIQUE(center_id, name, school_year)` 가 정하고, 학년도는 서버가 채우므로
+교사가 고칠 수 있는 칸은 `name` 하나다. `fields` 에 `school_year` 를 담지 않는다.
+
+**먼저 조회해서 막지 않는다. DB 제약이 터진 것을 409 로 바꾼다.**
+조회와 INSERT 사이에 틈이 있어서, 두 요청이 겹치면 둘 다 「없다」를 보고 둘 다 넣는다.
+
+```
+요청 A  조회 → 없음
+요청 B  조회 → 없음
+요청 A  INSERT → 성공
+요청 B  INSERT → 제약 위반        조회를 해도 결국 여기로 온다
+```
+
+조회를 한 번 더 하는 것은 흔한 경우를 빨리 돌려주는 최적화일 뿐이고, **제약 위반을
+잡는 처리는 어차피 있어야 한다.** 없으면 그 틈으로 들어온 요청이 500 으로 나간다.
 
 **`GET /api/centers/{center_id}/classes`** → `{ "items": [...] }`
 
@@ -288,13 +349,16 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
   "months": [
     {
       "month": 3,
-      "theme": "봄과 나",
-      "sub_themes": ["새로운 친구", "봄이 왔어요"],
+      "theme": "우리 원과 친구",
+      "sub_themes": ["새로운 친구", "우리 반 약속"],
+      "safety_education": [],
+      "safety_education_state": "SOURCE_REQUIRED",
       "evidence": [
         { "source_type": "THEME_REFERENCE",
-          "source_id": "theme-ref-2026",
-          "source_version": "v0.1.2",
-          "display_name": "연간계획안 주제 참고자료" }
+          "source_id": "yr_theme_new_environment_friends",
+          "source_version": "theme-reference-v0.1.2",
+          "effective_date": null,
+          "display_name": "우리 원과 친구" }
       ],
       "generation": { "method": "RULE_LLM",
                       "rule_id": "annual-theme", "rule_version": "v1" }
@@ -303,7 +367,87 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 }
 ```
 
+**필드**
+
+```
+id · class_id · school_year   정수.  필수
+status                        DRAFT | CONFIRMED.  필수
+months                        정확히 12개.  필수
+
+months[].month                정수 3~12 · 1~2.  필수.  배열은 3월부터 익년 2월 순서
+months[].theme                문자열.  필수.  빈 문자열 거부
+months[].sub_themes           문자열 배열.  필수
+months[].safety_education     문자열 배열.  필수.  P0 에서는 항상 빈 배열.  값은 아래 6종
+months[].safety_education_state  SOURCE_REQUIRED | PLACED | NOT_PLACED.  필수
+months[].evidence             배열.  필수.  THEME_REFERENCE 가 정확히 하나
+months[].generation           객체.  필수
+
+evidence[].source_type        「출처는 세 축이다」 절의 Evidence 값 중 하나.  필수
+evidence[].source_id          문자열.  필수.  빈 문자열 거부
+evidence[].source_version     문자열.  선택 — null 허용, 빈 문자열 거부
+evidence[].effective_date     YYYY-MM-DD.  선택 — null 허용.  P0 에서는 항상 null
+evidence[].display_name       문자열.  선택 — null 허용, 빈 문자열 거부
+
+generation.method             「출처는 세 축이다」 절의 Generation 값 중 하나.  필수
+generation.rule_id            문자열.  RULE_ONLY·RULE_LLM 이면 필수, 그 외 null
+generation.rule_version       문자열.  위와 같다
+
+safety_education 값           traffic_safety · missing_and_abduction_prevention
+                              infectious_disease_and_drug_misuse_prevention
+                              disaster_preparedness_safety · sexual_violence_prevention
+                              child_abuse_prevention
+```
+
+**`선택` 은 null 허용이지 빈 문자열 허용이 아니다.** `p0-planning` 도메인이 `None` 은 받고
+`""`·`"   "` 는 거부한다. FE 는 값이 없으면 키를 빼거나 `null` 을 보낸다.
+
+### 빈 배열이 두 가지 뜻이라 상태를 따로 둔다
+
+```
+SOURCE_REQUIRED   배치 계획이 없어 판단할 수 없다        P0 의 기본값
+PLACED            배치 계획이 있고 이 달에 들어 있다
+NOT_PLACED        배치 계획이 있고 이 달엔 없다
+```
+
+**`safety_education: []` 만으로는 「그 달엔 안 하기로 했다」와 「언제 할지 아직 모른다」를
+구분하지 못한다.** 화면이 둘을 같게 그리면 교사가 「비었네」 하고 넘어간다.
+
+**`SOURCE_REQUIRED` 면 교사에게 입력을 요청한다.** 배치의 출처는 둘뿐이다 —
+원의 안전교육 연간계획, 또는 교사 직접 입력
+(`p0-planning/data/rules/safety_education_legal_v1.json` 의 `placement_source_priority`).
+
+**규칙 엔진이 배치를 지어내지 않는다.** 같은 파일의 `rule_must_not` 이
+「특정 월·주 배치를 자동 창작」·「배치 Source 가 없을 때 법적 충족을 주장」을 금지한다.
+**「위반」도 마찬가지로 주장하지 않는다** — 근거 없이 판정하는 건 방향만 다르고 같은 문제다.
+그래서 검사기는 `VIOLATION` 과 `UNVERIFIED` 를 나눠 낸다(ADR-014).
+
+**`safety_education` 은 P0 에서 항상 빈 배열이다.** 법이 정하는 건 주기와 연간 시수뿐이고
+월 배치는 0건이다(`p0-planning/data/rules/safety_education_legal_v1.json` 의
+`month_assignment_policy.has_month_assignment: false`). 배치의 출처는 기관·교사가 준
+안전교육 연간계획뿐인데 P0 에 그 입력이 없다. **규칙 엔진도 LLM 도 배치를 만들지 않는다** —
+같은 파일의 `rule_must_not`·`llm_must_not`. 칸은 항상 있고 값만 빈다.
+값은 그 파일 `categories[].category_id` 를 쓴다.
+
 **`months` 는 항상 12개다.** 3월 시작 ~ 익년 2월.
+
+**`sub_themes` 는 P0 생성 시 항상 빈 배열이다.** `[실측]` p0-planning 의
+`ThemeTextGenerator` 는 주제 문장 하나만 돌려준다 — 소주제를 만드는 경로가 아직 없다.
+칸은 항상 있고 값만 빈다. **교사가 §6 으로 채운다.** `safety_education` 과 같은 처리다.
+
+서버가 이 값을 도메인 객체 밖(`plans.sub_themes`)에 따로 든다. 소주제는 별도 근거가 없고
+상위 주제의 `evidence`·`generation` 을 물려받아서 도메인 객체 안에 들어갈 자리가 없다.
+
+**`sub_themes` 는 LLM 이 만든다(계획).** 참조자료(`theme_reference_v0.json`)에는 주제(`label`)만 있고
+소주제가 없다. 세 갈래 중 이걸 골랐다.
+
+```
+✅  LLM 이 주제에서 소주제를 만든다      ADR-014 의 "LLM 이 만들고 규칙이 검사한다" 범위
+    참조자료에 소주제를 추가한다          자료를 다시 훑어야 한다.  근거는 더 확실하다
+    계약에서 빼고 선택 필드로             FE 화면 세 곳을 고쳐야 한다
+```
+
+소주제도 `generation.method` 는 `RULE_LLM` 이고, `evidence` 는 **상위 주제의 것을 그대로
+물려받는다** — 소주제만의 별도 근거 자료가 없다.
 
 ### 출처는 세 축이다 — 한 값에 섞지 않는다
 
@@ -325,17 +469,46 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 **S6 의 좌상단 점은 `generation.method` 를 본다.** 교사가 고친 칸(`TEACHER_EDIT`)과
 시스템이 만든 칸을 구분한다. 근거를 눌렀을 때 펼치는 것은 `evidence` 다.
 
+### `source_id` 작명 규칙 — 자료 묶음이 아니라 그 안의 항목이다
+
+**대안과 탈락 근거는 [ADR-015](adr/015-source-id-points-to-the-record.md) 에 있다.**
+
+**`source_id` 에 카탈로그 id 를 넣지 않는다.** 넣으면 12개월이 전부 같은 값이 된다.
+교사가 3월 근거를 눌렀을 때 「우리 원과 친구」 대신 참고자료 파일 전체가 뜬다 —
+근거 표시가 무의미해진다.
+
+```
+THEME_REFERENCE      yr_theme_new_environment_friends   주제 참고자료 안의 주제 id
+ACTIVITY_REFERENCE   act_outdoor_autumn_outing          활동 id
+CURRICULUM           curriculum.mohw.notice-2019-152    고시 문서 id
+PARENT_PLAN          상위 계획안의 plan id
+```
+
+- **`source_id` 는 `source_type` 과 짝으로만 의미가 정해진다.** 타입마다 모양이 다르므로
+  한 필드를 공통 규칙으로 파싱하려 들지 않는다. §11 의 `document_sources.source_id` 는 아예 정수다.
+- **불변 단위는 `source_id` 혼자가 아니라 `(source_type, source_id, source_version)` 셋이다.**
+  `theme_id` 는 카탈로그 v0.1.1 → v0.1.2 에서 이미 한 번 개명됐다
+  (`theme_reference_v0.json` 의 `change_summary`). 판을 고정하는 것은 `source_version` 이다.
+- **새 자료를 붙일 때 `source_id` 는 자료 종류를 알아볼 수 있는 접두사로 시작한다.**
+  `yr_theme_` · `act_` · `curriculum.` 처럼. 로그 한 줄에 값만 찍혀도 무엇인지 알 수 있어야 한다.
+
+**값은 `p0-planning` 이 정한 것을 그대로 쓴다.** 서버가 다시 짓지 않는다 —
+`generate_yearly_plan.py` 가 `candidate.theme_id` 를 그대로 넣고,
+golden set(`p0-planning/tests/finalization/golden/yearly.json`)이 그 값으로 얼어 있다.
+표기를 바꾸면 golden 이 깨진다.
+
 ### 생성 방식
 
-**RAG 로 생성하고 규칙 엔진이 검사한다.** ADR-005 의 「배치·선별은 규칙 엔진, LLM 은
-문장화만」을 뒤집는다 — 생성과 검사의 순서가 반대다.
+**RAG 로 생성하고 규칙 엔진이 검사한다**(ADR-014). ADR-005 의 「배치·선별은 규칙 엔진,
+LLM 은 문장화만」을 뒤집는다 — 생성과 검사의 순서가 반대다.
 
 **ADR-003 도 같이 깨진다.** ADR-003 은 P0a(5~6주차)를 「결정론적 초안 생성」으로 정의하고
 *"P0a 가 결정론적이라 golden set 이 성립한다"*, *"golden set 을 6주차 말에 반드시 고정한다"* 로
 검증 전략을 세웠다. **RAG 를 쓰면 출력이 매번 달라져 golden set 이 성립하지 않는다.**
 대체 검증 전략(예: 규칙 검사 통과 여부만 고정 검증)을 정해야 한다.
 
-**ADR 작성 예정 — ADR-003 · ADR-005 두 개를 대체한다.**
+**ADR-014 가 ADR-005 를 대체한다.** ADR-003 은 P0a·P0b 분할은 그대로 두고 결정론 전제만
+무효로 표시했다.
 
 법정 안전교육 시수·날짜·고유명사처럼 **틀리면 안 되는 값은 규칙 엔진이 원문과 대조한다.**
 검사에 실패하면 `GENERATION_FAILED` 500 이고 **부분 결과를 저장하지 않는다.**
@@ -414,9 +587,25 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 
 **Response** — 그 달 객체 하나. **전체를 다시 안 준다.**
 
-**수정된 칸은 `generation.method` 만 `TEACHER_EDIT` 으로 바뀐다.**
-**`evidence` 는 그대로 유지한다** — 교사가 문구를 고쳐도 그 칸의 근거(누리과정·주제·상위 계획안)는
-바뀌지 않는다. 이전 `generation` 은 Audit 에 `TEACHER_EDITED` 이벤트로 남는다.
+**교사가 고쳐도 `generation` 과 `evidence` 는 둘 다 그대로다.**
+
+`generation` 은 **그 값을 처음 무엇이 만들었나**를 말한다. 교사가 문구를 다듬었다고 해서
+「규칙과 LLM 이 만들었다」는 사실이 사라지지 않는다. 덮어쓰면 그 사실이 없어지고, 나중에
+「이 칸은 애초에 어떻게 나온 건가」를 물을 수 없다.
+
+`evidence` 도 같다 — 교사가 문구를 고쳐도 그 칸의 근거(누리과정·주제·상위 계획안)는 바뀌지 않는다.
+
+**교사가 고쳤다는 사실은 Audit 에 `TEACHER_EDITED` 이벤트로 남는다.**
+`GET /api/plans/annual/{id}/audit` 가 칸 단위 이벤트까지 같이 준다.
+
+```
+generation   이 값을 처음 무엇이 만들었나        안 바뀐다
+evidence     무엇을 근거로 만들었나              안 바뀐다
+audit        그 뒤에 누가 손댔나                 여기 쌓인다
+```
+
+**화면이 「교사 수정됨」 배지를 띄우려면 `generation` 이 아니라 Audit 을 본다.**
+`generation.method` 로 판단하면 교사가 고친 칸과 안 고친 칸이 구분되지 않는다.
 
 **확정된 계획안은 수정할 수 없다.**
 
@@ -455,12 +644,30 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 
 ---
 
-## 8. 양식 — `POST /api/forms/parse` (구현됨) · 등록은 7주차
+## 8. 양식 — `POST /api/forms/parse` (구현됨) · 등록 `/api/centers/{center_id}/forms`   ★ 8주차
 
 **`POST /api/forms/parse`** — hwp/hwpx 를 받아 표 구조와 라벨 후보를 돌려준다. 수린 구현(PR #6).
 **저장하지 않는다.** 요청·응답만으로 끝나는 순수 변환이다.
 
-**양식 등록은 7주차다.** 원이 양식을 한 번 등록하면 계속 쓰는 구조이므로 **원에 귀속된다.**
+**에러**
+
+| code | status | 언제 |
+|---|---|---|
+| `UNSUPPORTED_FILE_TYPE` | 400 | 확장자가 `.hwp`·`.hwpx` 가 아니다. `fields: ["file"]` |
+| `VALIDATION_FAILED` | 422 | 형식은 맞는데 읽지 못했다 — 손상·암호·빈 파일. `fields: ["file"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 서버에 `hwp5html` 이 없다. **재시도 버튼을 띄우지 않는다** |
+
+**`hwp5html` 이 0 이 아닌 코드로 끝난 것은 422 다.** 바이너리는 이미지 빌드 때 검증된다
+(`backend/Dockerfile` 의 `hwp5html --help`). 실행까지 갔는데 실패했다면 원인은 업로드된
+파일 쪽이 훨씬 유력하다. 종료 코드만으로는 둘을 못 가르므로 교사가 조치할 수 있는 쪽으로 붙인다.
+
+**`message` 에 내부 예외 문구를 그대로 싣지 않는다.** `hwp5html 없음 — pip install pyhwp six`
+같은 설치 안내가 교사 화면에 뜬다.
+
+### 양식 등록 — 원에 귀속된다
+
+원이 양식을 한 번 등록하면 계속 쓴다. **임시 업로드가 아니라 원의 자산이므로 만료 정책이 없다.**
+저장하는 것은 **파싱 결과뿐이다** — 원본 파일은 남기지 않는다(ADR-020).
 
 ```
 POST   /api/centers/{center_id}/forms     양식 등록 → form_id 발급
@@ -468,7 +675,63 @@ GET    /api/centers/{center_id}/forms     등록된 양식
 DELETE /api/forms/{id}                    삭제.  수정은 삭제 후 재등록이다
 ```
 
-`form_id` 는 §4 의 request 가 받는다. **임시 업로드가 아니라 원의 자산이므로 만료 정책이 없다.**
+**parse 만 토큰 없이 열려 있다.** 등록 · 목록 · 삭제는 원의 자산을 읽고 쓰므로 인증 뒤에 있고
+원 단위 인가를 거친다(§0 · ADR-017 · ADR-020).
+
+**`POST /api/centers/{center_id}/forms`** — `multipart/form-data`, 필드 `file` 하나. parse 와 같다.
+받는 확장자도 같다(`.hwp` · `.hwpx`). 파싱에 성공해야 저장한다 — 읽지 못한 양식은 행이 생기지 않는다.
+**표가 하나도 없으면 등록하지 않는다** — `422 VALIDATION_FAILED`. 계획안 양식은 표다.
+parse 는 빈 결과(`tables: []`)를 그대로 돌려준다 — 저장하지 않으니 막을 이유가 없다.
+
+FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우저에 둔다. 이 계약에 붙이면
+받는 형식이 hwp · hwpx 로 바뀐다.
+
+→ `201`
+
+```json
+{ "id": 3, "center_id": 1,
+  "name": "2026 유아반 월간계획안.hwp",
+  "filename": "2026 유아반 월간계획안.hwp",
+  "tables": [ [ [ { "text": "월", "rowspan": 1, "colspan": 1 }, ... ] ] ],
+  "labels": ["월", "주제", "예상놀이", "봄 동산"],
+  "label_map": { "월": "month", "주제": "topic", "예상놀이": "activity", "봄 동산": null },
+  "created_at": "2026-09-29T10:00:00+09:00" }
+```
+
+| 필드 | 타입 | |
+|---|---|---|
+| `tables` | `Cell[][][]` | 표 → 행 → 셀. `Cell { text: string, rowspan: int, colspan: int }`. 중첩 표는 따로 한 표로 나온다 |
+| `labels` | `string[]` | 빈 칸을 뺀 셀 문구. 중복을 지우지 않는다 |
+| `label_map` | `{ [label]: string \| null }` | 표준 키(ADR-009). **값이 `null` 일 수 있다** — 데이터 값이거나 매핑표에 없는 표현이다 |
+| `name` | `string` | 화면에 보일 이름. **지금은 `filename` 과 같다.** 이름 입력은 받지 않는다 |
+| `filename` | `string` | 업로드한 파일명 |
+
+**같은 파일을 다시 올리면 새 행이 생긴다.** 중복을 막지 않는다 — 잘못 올렸으면 지운다.
+
+**`GET /api/centers/{center_id}/forms`** → `{ "items": [...] }`. 항목은 위 등록 응답과 같다.
+정렬은 `created_at DESC, id DESC`. 상세 조회(`GET /api/forms/{id}`)는 두지 않는다 — 원당 양식이
+몇 개라 목록에 파싱 결과까지 싣는다. 양식이 늘어 목록이 무거워지면 목록을 요약으로 줄이고 상세를 붙인다.
+
+**`DELETE /api/forms/{id}`** → `204`.
+
+**삭제를 막지 않는다.** 이번 주 `plans.form_id` 에 FK 가 없다. 이미 만든 계획안이 지워진 `form_id` 를
+어떻게 다루는지(생성 때 양식을 복사해 두는지 등)는 **plans 쪽에서 정한다 — 미정.**
+
+**§4 가 받은 `form_id` 는 forms 의 조회 함수로 검사한다** — 없거나 남의 원 것인지.
+plans 가 forms 를 직접 import 하지 않는다(`structure.md`). **그때의 응답 코드는 §4 에 아직 없다** —
+plans 담당과 정해서 §4 에 쓴다.
+
+**에러** — parse 의 세 개에 둘이 더 붙는다
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `UNSUPPORTED_FILE_TYPE` | 400 | parse 와 같다 | `["file"]` |
+| `VALIDATION_FAILED` | 422 | parse 와 같다. `file` 이 없어도 이것이다. 등록은 **파일명이 255자를 넘어도** 이것이다 — 컬럼 길이다. 브라우저 업로드에서는 생기지 않는다(OS 한도가 255자) | `["file"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | parse 와 같다 | `[]` |
+| `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
+| `NOT_FOUND` | 404 | 없는 원 · 없는 양식. **남의 원 것도 404 다**(ADR-017) | 등록 · 목록 `["center_id"]` / 삭제 `["form_id"]` |
+
+**파일 크기 상한은 아직 없다** — parse 도 같다. 따로 정한다.
 
 ---
 
@@ -481,7 +744,6 @@ POST   /api/plans/monthly/{id}/cells/{n}/regenerate   이 칸만 다시
 GET    /api/plans/{id}/export/hwp         내보내기
 GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
-POST   /api/centers/{center_id}/forms     양식 등록 (§8)
 ```
 
 **월간은 연간이 `CONFIRMED` 여야 생성된다.** 아니면 `GATE_BLOCKED` 409.
@@ -542,6 +804,9 @@ POST   /api/centers/{center_id}/forms     양식 등록 (§8)
 **`context` 는 선택이다.** 빈 문자열을 허용한다 — 상황을 안 적고 사실만 남기는 교사가 있다.
 
 **`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED` 422.
+
+**`child_id` 는 `class_id` 반의 아이여야 한다.** 같은 원의 다른 반 아이면 `VALIDATION_FAILED` 422,
+`fields: ["child_id"]`. 없는 반·아이와 남의 원 반·아이는 `NOT_FOUND` 404 다(「인증」).
 
 **조회** `GET /api/observations?class_id=1&child_id=5&from=2026-09-01&to=2026-09-30`
 → `{ "items": [...] }`. 네 값 모두 선택이고, 없으면 교사가 접근 가능한 전체다.
@@ -803,6 +1068,8 @@ support          지원에 구체적인 교사 행동과 방법이 있고 이후
 
 ```
 GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": [...] }
+       정렬은 created_at 내림차순, 같은 시각은 id 내림차순이다 — 최신이 위다.
+       FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
 POST   /api/documents/{id}/verify                                3단 LLM Judge
@@ -846,6 +1113,12 @@ assessment    observation · dailyLog
 
 **없다고 막지 않는다. 화면에 "아직 없음" 으로 표시만 한다.**
 
+**DRAFT 는 빼고 준다.** 아직 쓰는 중인 글을 "안 맞는다"고 들이밀면 방해다.
+**모델을 부르지 않는다** — 겹치는 문서를 찾아 보여줄 뿐 무엇이 맞는지는 판정하지 않는다.
+
+**문서 조회는 교사의 원으로 걸린다.** 목록·단건·`related` 모두 같다. 이게 없으면
+로그인한 아무 교사나 남의 원 문서를 **아동 실명까지** 받아간다(ADR-004).
+
 ### 개인정보
 
 - **LLM 호출 직전에 `shared/childCode` 로 치환한다.** 프롬프트 · 응답 · 로그에 실명이 남지 않는다.
@@ -872,8 +1145,9 @@ assessment    observation · dailyLog
    → 멘토 리뷰(PR #17) — "각각의 쓰기 생명주기가 다르니 하나의 테이블에 넣지 말 것"
    → Evidence · Generation · Audit 을 분리한다
 
-□  evidence.source_id 의 작명 규칙                 성진
-   → theme-ref-2026 처럼 자료마다 불변 슬러그
+■  evidence.source_id 의 작명 규칙                 완료 — 성진
+   → 카탈로그가 아니라 그 안의 항목 id. 「출처는 세 축이다」 아래 절 · ADR-015
+   → 불변 단위는 (source_type, source_id, source_version) 셋이다
 □  generation.rule_id · rule_version 의 발급 주체   하민
    → 규칙 엔진이 발급한다. RULE_ONLY · RULE_LLM 이면 둘 다 필수다
 ■  가명 Pool 의 실제 목록                           완료 — PM
@@ -901,7 +1175,6 @@ children.code                  VARCHAR                   §2-1
 UNIQUE(class_id, code)         children 제약              §2-1
 plans · plan_items             연간계획안 본체             §4 · §5 · §6 · §7
 greetings                      enabled + 12개월 items      §3  (7주차)
-forms                          원 귀속 양식                §8  (7주차)
 observations                   관찰 기록 본체              §10
 INDEX(class_id, date)          observations 조회           §10  목록이 반·기간으로 거른다
 documents                      일지 본체 + stale 플래그      §11

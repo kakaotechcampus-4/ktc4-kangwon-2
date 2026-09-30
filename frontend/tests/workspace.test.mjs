@@ -2,19 +2,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
 import { fixtureSession, fixtureKey, fixtureAccount } from "./auth-fixture.mjs";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === "../auth/demo-session")
-      return nextResolve("../auth/demo-session.ts", context);
-    if (
-      specifier === "../plan-generator/types" &&
-      context.parentURL?.endsWith("/workspace/plans.ts")
-    )
-      return nextResolve("../plan-generator/types.ts", context);
-    if (specifier === "./model" && context.parentURL?.endsWith("/workspace/store.ts"))
-      return nextResolve("./model.ts", context);
-    if (specifier === "./account-store") return nextResolve("./account-store.ts", context);
-    return nextResolve(specifier, context);
+  // 상대 경로와 @/ 별칭에 .ts 를 붙여 본다. 목록을 손으로 관리하면 import 를 하나 더할
+  // 때마다 여기도 고쳐야 하고, 빠뜨리면 「모듈을 찾을 수 없다」로 끝난다.
+  resolve(spec, ctx, next) {
+    const base = spec.startsWith("@/")
+      ? new URL(`../${spec.slice(2)}.ts`, import.meta.url)
+      : spec.startsWith(".") && ctx.parentURL
+        ? new URL(spec + ".ts", ctx.parentURL)
+        : null;
+    if (base && existsSync(fileURLToPath(base))) return { url: base.href, shortCircuit: true };
+    return next(spec, ctx);
   },
 });
 const { templatePlan, planPeriod } = await import("../lib/workspace/plans.ts");
