@@ -46,9 +46,12 @@ EXTERNAL_CONTEXT
 
 `AI` and `TEACHER_EDIT` are not Evidence Source types. LLM-assisted generation
 is represented by `RULE_LLM`. A value written by a person from the beginning is
-`MANUAL`. A later teacher edit changes the current Generation Method to
-`TEACHER_EDIT` and adds a `TEACHER_EDITED` Audit Event. The event preserves the
-previous Method, and the edit never erases Evidence.
+`MANUAL`. A later teacher edit keeps the current Generation Method, `rule_id`
+and `rule_version` and adds a `TEACHER_EDITED` Audit Event (value change and
+actor); the edit never erases Evidence. Whether the current value is
+teacher-edited is read from Audit History, not from the legacy
+`GenerationMethod.TEACHER_EDIT` value, which production code no longer writes
+(2026-09-26 Human Decision; the enum's removal is undecided).
 
 Parent Lineage is an immutable aggregate snapshot, not a fourth provenance
 axis. When a child item uses its parent as evidence, record a separate

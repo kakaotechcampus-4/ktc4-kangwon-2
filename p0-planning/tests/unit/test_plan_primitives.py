@@ -75,18 +75,16 @@ def test_teacher_edit_preserves_evidence_and_records_generation_change():
     assert edited.value == "따뜻한 봄과 즐거운 우리 반"
     assert edited.evidence == item.evidence
     assert item.generation.method is GenerationMethod.RULE_LLM
-    assert edited.generation.method is GenerationMethod.TEACHER_EDIT
+    assert edited.generation == item.generation  # the Method is kept
     assert len(item.audit) == 0
     assert len(edited.audit) == 1
     event = next(iter(edited.audit))
     assert event.event_type is AuditEventType.TEACHER_EDITED
     assert event.value_change.before == "봄과 우리 반"
     assert event.value_change.after == "따뜻한 봄과 즐거운 우리 반"
-    assert event.generation_change.before.method is GenerationMethod.RULE_LLM
-    assert event.generation_change.before.rule_id == "theme-wording"
-    assert event.generation_change.before.rule_version == "v1"
-    assert event.generation_change.after.method is GenerationMethod.TEACHER_EDIT
-    assert event.generation_change.after == edited.generation
+    assert event.generation_change is None
+    assert (edited.generation.method, edited.generation.rule_id, edited.generation.rule_version) == (
+        GenerationMethod.RULE_LLM, "theme-wording", "v1")
 
 
 def test_plan_item_rejects_invalid_value_and_evidence_container():
