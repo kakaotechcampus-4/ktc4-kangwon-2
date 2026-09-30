@@ -58,7 +58,7 @@ class Document(Base):
     )
     end_date: Mapped[date_] = mapped_column(Date, comment="계약의 `end`")
     status: Mapped[str] = mapped_column(
-        String(20), default="DRAFT", comment="DRAFT -> CONFIRMED. 한 방향이다. 되돌리기는 P1"
+        String(20), default="DRAFT", comment="DRAFT <-> CONFIRMED. 되돌리기는 unconfirm (§11)"
     )
     origin: Mapped[str] = mapped_column(String(20), comment="AI · TEACHER · TEMPLATE · IMPORT")
     stale: Mapped[bool] = mapped_column(
