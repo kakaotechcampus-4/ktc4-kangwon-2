@@ -845,43 +845,27 @@ def test_confirm_reruns_the_section_gate(db_session):
 
 
 # ── DELETE /api/documents/{id} ──────────────────────────────────────────────
-def test_delete_removes_the_document_and_marks_dependents_stale(db_session):
+def test_delete_confirmed_document_is_rejected(db_session):
+    # PUT 과 같다 — 확정된 문서는 고칠 수 없으니 지울 수도 없다.
     _, klass, child = _make_center_class_child(db_session)
-    daily = _make_document(
-        db_session,
-        klass,
-        child=None,
-        kind="dailyLog",
-        start_date=date(2026, 9, 22),
-        end_date=date(2026, 9, 22),
-    )
-    _make_sections(db_session, daily, _make_sources(db_session, daily, klass, None, count=1))
-    weekly = _make_document(
-        db_session,
-        klass,
-        child=None,
-        kind="weeklyLog",
-        start_date=date(2026, 9, 21),
-        end_date=date(2026, 9, 27),
-    )
-    db_session.add(
-        DocumentSource(
-            document_id=weekly.id,
-            source_kind="document",
-            source_id=daily.id,
-            class_id=klass.id,
-            date=date(2026, 9, 22),
-            source_status="CONFIRMED",
-            text="관찰 기록 0.",
-        )
-    )
-    db_session.flush()
+    doc = _make_document(db_session, klass, child=child, status="CONFIRMED")
+    _make_sections(db_session, doc, _make_sources(db_session, doc, klass, child))
 
-    response = client.delete(f"/api/documents/{daily.id}")
+    response = client.delete(f"/api/documents/{doc.id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ALREADY_CONFIRMED"
+    assert client.get(f"/api/documents/{doc.id}").status_code == 200
+
+
+def test_delete_removes_the_draft_and_its_rows(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    _make_sections(db_session, doc, _make_sources(db_session, doc, klass, child))
+
+    response = client.delete(f"/api/documents/{doc.id}")
 
     assert response.status_code == 204
-    assert client.get(f"/api/documents/{daily.id}").status_code == 404
-    assert db_session.query(DocumentSection).filter_by(document_id=daily.id).count() == 0
-    # 근거가 사라진 주간 보육일지는 지우지 않고 다시 보라고 표시한다.
-    db_session.refresh(weekly)
-    assert weekly.stale is True
+    assert client.get(f"/api/documents/{doc.id}").status_code == 404
+    assert db_session.query(DocumentSection).filter_by(document_id=doc.id).count() == 0
+    assert db_session.query(DocumentSource).filter_by(document_id=doc.id).count() == 0
