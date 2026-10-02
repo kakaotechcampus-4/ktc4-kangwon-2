@@ -392,8 +392,18 @@ test("서버 문서를 브라우저 저장소에 남기지 않는다", async () 
 });
 
 // 화면은 JSX 라 이 환경에서 렌더할 수 없다. 아래 둘은 소스로 확인한다.
+const normalizeNewlines = (source) => source.replace(/\r\n/g, "\n");
 const read = (name) =>
-  readFileSync(new URL(`../components/workspace/${name}`, import.meta.url), "utf8");
+  normalizeNewlines(
+    readFileSync(new URL(`../components/workspace/${name}`, import.meta.url), "utf8"),
+  );
+
+test("source assertions receive identical text for LF and CRLF checkouts", () => {
+  for (const name of ["DocumentsPage.tsx", "DocumentEditor.tsx"]) {
+    const lf = read(name);
+    assert.equal(normalizeNewlines(lf.replace(/\n/g, "\r\n")), lf);
+  }
+});
 
 test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", () => {
   const page = read("DocumentsPage.tsx");
@@ -441,6 +451,7 @@ test("서버 문서는 확정을 되돌리지 못하고 AI 검증을 확정 조�
 const { createSelection, serverIssues, BUSY, MOVED } =
   await import("../components/workspace/document-selection.ts");
 const workspaceModel = await import("../lib/workspace/model.ts");
+const privacy = await import("../lib/privacy/browser-storage.ts");
 const { validateDocument } = workspaceModel;
 
 /** 응답 시점을 테스트가 직접 정한다. */
@@ -1231,6 +1242,7 @@ function editorHarness(selection) {
     "@/lib/api/storage-context": { API_STORAGE_CONTEXT },
     "@/lib/api/plans": {},
     "@/lib/api/documents": documents,
+    "@/lib/privacy/browser-storage": privacy,
   };
   const compiledModule = { exports: {} };
   new Function("require", "module", "exports", editorCode)(

@@ -18,7 +18,6 @@ function messageFor(error: unknown) {
 }
 
 export default function RecordsPage() {
-  const classes = useClasses();
   const [records, setRecords] = useState<ServerObservation[]>([]);
   const [status, setStatus] = useState<RecordsStatus>("loading");
   const [listError, setListError] = useState("");
@@ -31,6 +30,7 @@ export default function RecordsPage() {
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
   const [message, setMessage] = useState("");
+  const classes = useClasses(setMessage);
   const [search, setSearch] = useState("");
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);

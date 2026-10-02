@@ -134,6 +134,7 @@ export async function loadServerClasses(settings: ClassSettings) {
   };
 }
 export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEntry> {
+  const account = accountStorageKey(LINKS_KEY);
   const links = readLinks(),
     id = links.classes[c.id]?.id;
   if (!id) return c;
@@ -143,6 +144,7 @@ export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEn
   } catch (e) {
     // 실제 API가 준 JSON NOT_FOUND일 때만 오래된 연결 정보로 보고 정리한다.
     // MswTransportError(Next HTML 404 = MSW 미동작)는 데이터 없음이 아니므로 그대로 위로 던진다.
+    if (readAccountStorageKey(LINKS_KEY) !== account) throw e;
     if (isApiNotFound(e)) {
       delete links.classes[c.id];
       saveLinks(links);
@@ -150,6 +152,7 @@ export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEn
     }
     throw e;
   }
+  if (readAccountStorageKey(LINKS_KEY) !== account) throw new Error("계정이 변경되었습니다.");
   const children = items.map((child) => ({
     id:
       Object.keys(links.children).find((k) => links.children[k] === child.id) ||
@@ -161,7 +164,15 @@ export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEn
   saveLinks(links);
   // 동의 여부를 아동 수로 추론하지 않는다 — 0명이어도 동의는 유지된다.
   // 서버의 consent_confirmed_at 은 loadServerClasses 가 이미 반영했다.
-  return { ...c, children };
+  return { ...c, children, childIds: children.map((child) => child.id) };
+}
+
+/** 이름은 서버에서 다시 읽고 React state로만 전달한다. */
+export async function hydrateClassChildren(settings: ClassSettings): Promise<ClassroomEntry[]> {
+  // loadServerChildren이 ID links를 갱신하므로 병렬 write로 다른 반의 매핑을 잃지 않는다.
+  const classes: ClassroomEntry[] = [];
+  for (const classroom of settings.classes) classes.push(await loadServerChildren(classroom));
+  return classes;
 }
 export async function addServerChild(c: ClassroomEntry, name: string): Promise<ChildEntry> {
   const links = readLinks(),

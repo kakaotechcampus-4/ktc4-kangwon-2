@@ -11,6 +11,7 @@ import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
 import { isStaleWrite } from "@/lib/api/documents";
+import { withoutChildMetadata } from "@/lib/privacy/browser-storage";
 
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
 import { getAnnualPlan, patchAnnualMonth, confirmAnnualPlan } from "@/lib/api/plans";
@@ -194,7 +195,7 @@ export default function DocumentEditor({
       }
       setBusy(false);
     }
-    const next: SavedDocument = {
+    const next: SavedDocument = withoutChildMetadata({
       ...doc,
       status: confirm ? "confirmed" : "draft",
       updatedAt: new Date().toISOString(),
@@ -203,7 +204,7 @@ export default function DocumentEditor({
           ? "기존 증빙 원문·대상·기간 검토 완료 (공식 평가 판정 별도)"
           : `${available && verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
         : "교사 검토 전",
-    };
+    });
     if (onSave(next, baseline)) {
       setBaseline(next);
       setDoc(next);

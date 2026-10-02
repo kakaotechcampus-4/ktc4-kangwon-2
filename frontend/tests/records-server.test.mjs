@@ -317,19 +317,23 @@ test("화면이 관찰 기록을 localStorage 에서 읽거나 쓰지 않는다"
 
 // 화면은 JSX 라 이 테스트 환경에서 렌더할 수 없다. 아래 셋은 소스로 확인한다.
 const page = () =>
-  readFileSync(new URL("../components/workspace/RecordsPage.tsx", import.meta.url), "utf8");
+  normalizeNewlines(
+    readFileSync(new URL("../components/workspace/RecordsPage.tsx", import.meta.url), "utf8"),
+  );
+const normalizeNewlines = (source) => source.replace(/\r\n/g, "\n");
 
 test("요청 중에는 입력 칸과 버튼이 함께 잠긴다", () => {
-  const source = page();
-  const open = source.indexOf("<fieldset");
-  const close = source.indexOf("</fieldset>");
+  for (const source of [page(), normalizeNewlines(page().replace(/\n/g, "\r\n"))]) {
+    const open = source.indexOf("<fieldset");
+    const close = source.indexOf("</fieldset>");
 
-  assert.ok(open > -1 && close > open, "폼을 감싸는 fieldset 이 있어야 한다");
-  assert.match(source.slice(open, source.indexOf(">", open)), /disabled=\{pending\}/);
-  // 보낸 뒤에도 고칠 수 있으면 화면과 서버가 어긋난다 — 입력 칸이 잠금 안에 있어야 한다.
-  for (const control of ["<textarea", "<select", "<input\n", "수정 취소", "수정 저장"]) {
-    const at = source.indexOf(control.replace("\\n", "\n"));
-    assert.ok(at > open && at < close, control);
+    assert.ok(open > -1 && close > open, "폼을 감싸는 fieldset 이 있어야 한다");
+    assert.match(source.slice(open, source.indexOf(">", open)), /disabled=\{pending\}/);
+    // 보낸 뒤에도 고칠 수 있으면 화면과 서버가 어긋난다 — 입력 칸이 잠금 안에 있어야 한다.
+    for (const control of ["<textarea", "<select", "<input\n", "수정 취소", "수정 저장"]) {
+      const at = source.indexOf(control.replace("\\n", "\n"));
+      assert.ok(at > open && at < close, control);
+    }
   }
 });
 

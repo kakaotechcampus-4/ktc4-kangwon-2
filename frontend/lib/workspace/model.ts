@@ -322,3 +322,16 @@ export function downloadText(name: string, text: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/**
+ * 화면에 쓸 아동 이름. 저장소에는 이름을 두지 않으므로(ADR-013) 서버에서 읽어 온
+ * 명단에서 childId 로 찾는다. 못 찾으면 호출부의 기존 표시를 그대로 쓰게 빈 값을 준다.
+ */
+export function childDisplayName(
+  classes: { id: string; children: { id: string; name: string }[] }[],
+  doc: { classId: string; childId: string; childName?: string },
+): string {
+  if (!doc.childId) return "";
+  const roster = classes.find((c) => c.id === doc.classId)?.children;
+  return roster?.find((c) => c.id === doc.childId)?.name || doc.childName || "";
+}

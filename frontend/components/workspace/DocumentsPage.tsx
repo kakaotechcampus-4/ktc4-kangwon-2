@@ -43,7 +43,6 @@ function messageFor(error: unknown) {
 
 export default function DocumentsPage() {
   const { data, error, save } = useWorkspace();
-  const classes = useClasses();
   const [mode, setMode] = useState<"library" | "create">("library");
   const [kind, setKind] = useState<DocumentKind>("observation");
   const [classId, setClassId] = useState("");
@@ -53,6 +52,7 @@ export default function DocumentsPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const classes = useClasses(setMessage);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
 
