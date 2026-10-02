@@ -1,0 +1,18 @@
+# backend 이미지가 저장소 뿌리를 빌드 맥락으로 쓴다 — p0-planning 을 같이 넣어야 해서다.
+# 맥락이 넓어진 만큼 안 보낼 것을 여기서 끊는다. 안 끊으면 node_modules 와 .git 이
+# 통째로 Docker 데몬에 올라가 빌드가 몇 배 느려진다.
+.git/
+.gitignore
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.ruff_cache/
+**/node_modules/
+**/.next/
+.env
+.env.*
+frontend/
+기록/
+idea/

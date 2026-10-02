@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     String,
     Text,
     column,
@@ -48,10 +49,13 @@ class Observation(Base):
         # 5영역 밖의 값을 DB 가 막는다. pydantic Literal 이 이미 막지만 스크립트·수동 INSERT 는
         # 라우터를 지나지 않는다. 문자열로 SQL 을 적지 않고 DOMAINS 하나만 본다.
         CheckConstraint(column("domain").in_(DOMAINS), name="domain"),
+        # 목록이 반 + 기간으로 거른다 (docs/api-spec.md 「DB 에 아직 없는 것」).
+        # 앞 칸이 class_id 라 반만 거르는 조회도 이 인덱스를 쓴다 — class_id 단일 인덱스는 뺐다.
+        Index("ix_observations_class_id_date", "class_id", "date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), index=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"))
     child_id: Mapped[int] = mapped_column(ForeignKey("children.id"), index=True)
     date: Mapped[datetime.date] = mapped_column(
         Date, comment="관찰한 날. 목록 정렬은 이 값 내림차순 고정 (docs/api-spec.md §10)"

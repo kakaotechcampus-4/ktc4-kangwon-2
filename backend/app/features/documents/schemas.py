@@ -41,6 +41,14 @@ class DocumentListItem(BaseModel):
     updated_at: datetime
 
 
+class RelatedDocumentsResponse(BaseModel):
+    """겹치는 확정 문서. 목록 항목 형식을 그대로 쓴다 — 화면이 같은 카드를 그린다."""
+
+    items: list["DocumentListItem"]
+    # 이 종류가 무엇을 짝으로 기대하는지. 비어 있어도 막지 않고 "아직 없음" 으로만 보인다.
+    expected_kinds: list[str]
+
+
 class DocumentListResponse(BaseModel):
     """목록 봉투는 `{ items }` 하나로 통일한다 (docs/api-spec.md 「공통」 관례)."""
 
@@ -116,3 +124,36 @@ class DocumentUpdateRequest(BaseModel):
     sections: list[DocumentSectionUpdate]
     review_note: str = ""
     updated_at: datetime
+
+
+class DocumentCreateRequest(BaseModel):
+    """`POST /api/documents`. 교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
+
+    `source_ids` 는 `kind` 마다 가리키는 것이 다르다 — `weeklyLog` 만 확정된 일일 보육일지 id 고,
+    나머지는 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로 `사실` 에 이어 붙는다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["dailyLog", "weeklyLog", "observation", "assessment"]
+    class_id: int
+    child_id: int | None = None
+    start: date
+    end: date
+    source_ids: list[int]
+
+
+class DocumentChecks(BaseModel):
+    """확정 전 교사 확인 3개 (docs/api-spec.md §11 「4단」). 하나라도 false 면 422 다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fact: bool
+    interpretation: bool
+    support: bool
+
+
+class DocumentConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    checks: DocumentChecks

@@ -11,6 +11,8 @@ from ..domain.errors import InvalidDomainValueError
 from ..domain.activity_reference import ActivityCatalog
 from ..domain.identifiers import ItemId, PlanId
 from ..domain.monthly_template import MonthlyTemplate
+from ..domain.monthly_template_profile import TemplateProfile
+from ..domain.safety_placement import SafetyPlacementPolicy
 from ..domain.safety_rule import SafetyLegalRule
 from ..domain.theme_reference import ThemeCatalog
 
@@ -51,6 +53,20 @@ class MonthlyTemplateRepository(Protocol):
     def get_template(
         self, template_id: str, template_version: str
     ) -> MonthlyTemplate | None: ...
+
+
+@runtime_checkable
+class TemplateProfileRepository(Protocol):
+    """Read one exact institution/class Template Profile version."""
+
+    def get_profile(
+        self, profile_id: str, profile_version: str
+    ) -> TemplateProfile | None: ...
+
+
+@runtime_checkable
+class SafetyPlacementPolicyRepository(Protocol):
+    def get_policy(self, policy_version: str) -> SafetyPlacementPolicy | None: ...
 
 
 @runtime_checkable

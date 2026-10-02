@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
 from app.features.centers.models import Center, Child, Class
+from app.features.documents.models import Document, DocumentSource
 from app.features.observations.models import Observation
 from app.main import app
 
@@ -196,3 +197,106 @@ def test_DB_가_5영역_밖의_값을_직접_막는다(db_session, mine):
     )
     with pytest.raises(IntegrityError):
         db_session.flush()
+
+
+# ── stale 전파 (docs/api-spec.md §11 「stale — 원본이 바뀌었다는 표시」) ──────────────
+
+
+def _document(session, classroom, kind, sources, child=None):
+    """근거 사본을 가진 문서를 DB 에 직접 넣는다. 생성 API(§11 POST)와 무관하게 전파만 본다.
+
+    `sources` 는 (source_kind, source_id, text, date) 목록이다.
+    """
+    day = sources[0][3]
+    doc = Document(
+        kind=kind,
+        title="t",
+        class_id=classroom.id,
+        child_id=child.id if child else None,
+        start_date=day,
+        end_date=day,
+        origin="AI",
+    )
+    session.add(doc)
+    session.flush()
+    for source_kind, source_id, text, date in sources:
+        session.add(
+            DocumentSource(
+                document_id=doc.id,
+                source_kind=source_kind,
+                source_id=source_id,
+                class_id=classroom.id,
+                child_id=child.id if child else None,
+                date=date,
+                text=text,
+            )
+        )
+    session.flush()
+    return doc
+
+
+@pytest.fixture
+def chain(db_session, mine):
+    """기록 → 일일 보육일지 → 주간 보육일지. 그리고 이 기록을 안 쓴 일지 하나."""
+    record = _post(mine["sun"], mine["seojun"]).json()
+    other = _post(mine["sun"], mine["seojun"], fact="블록 세 개를 쌓았다.").json()
+    day = record["date"]
+    daily = _document(
+        db_session, mine["sun"], "dailyLog", [("observation", record["id"], record["fact"], day)]
+    )
+    weekly = _document(
+        db_session, mine["sun"], "weeklyLog", [("document", daily.id, record["fact"], day)]
+    )
+    unrelated = _document(
+        db_session, mine["sun"], "dailyLog", [("observation", other["id"], other["fact"], day)]
+    )
+    return {"record": record, "docs": (daily, weekly, unrelated)}
+
+
+def _stale(db_session, docs):
+    for doc in docs:
+        db_session.refresh(doc)
+    return [doc.stale for doc in docs]
+
+
+def test_사실을_고치면_그_기록을_쓴_일지와_그_일지를_쓴_주간_일지가_stale(db_session, chain):
+    record = chain["record"]
+    update = {
+        "date": record["date"],
+        "domain": record["domain"],
+        "context": "",
+        "fact": "5분 동안 바라보았다.",
+    }
+
+    assert client.put(f"/api/observations/{record['id']}", json=update).status_code == 200
+
+    assert _stale(db_session, chain["docs"]) == [True, True, False]
+
+
+def test_날짜만_고쳐도_stale(db_session, chain):
+    record = chain["record"]
+    update = {"date": "2026-09-23", "domain": record["domain"], "fact": record["fact"]}
+
+    client.put(f"/api/observations/{record['id']}", json=update)
+
+    assert _stale(db_session, chain["docs"]) == [True, True, False]
+
+
+def test_영역_상황만_고치면_사실이_그대로라_stale_이_아니다(db_session, chain):
+    record = chain["record"]
+    update = {
+        "date": record["date"],
+        "domain": "의사소통",
+        "context": "실내",
+        "fact": record["fact"],
+    }
+
+    client.put(f"/api/observations/{record['id']}", json=update)
+
+    assert _stale(db_session, chain["docs"]) == [False, False, False]
+
+
+def test_지우면_원본_없음이라_stale(db_session, chain):
+    assert client.delete(f"/api/observations/{chain['record']['id']}").status_code == 204
+
+    assert _stale(db_session, chain["docs"]) == [True, True, False]

@@ -8,16 +8,19 @@ from ..domain.monthly_plan import MonthlyPlan
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
-    GenerationMethod,
-    GenerationMethodChange,
-    GenerationMethodDetail,
     ValueChange,
 )
 from ..rules.monthly_cell_state import resolve_cell_state
 from .monthly_dto import EditMonthlyPlanItemCommand
 from .monthly_errors import MonthlyApplicationError
-from .monthly_support import require_actor, require_item_id, require_monthly_plan
-from .ports import Clock, PlanRepository
+from .monthly_support import (
+    load_plan_activity_catalog,
+    require_actor,
+    require_item_id,
+    require_monthly_plan,
+    with_fresh_monthly_verification,
+)
+from .ports import ActivityReferenceRepository, Clock, PlanRepository
 
 
 class EditMonthlyPlanItem:
@@ -26,9 +29,11 @@ class EditMonthlyPlanItem:
         *,
         plan_repository: PlanRepository[MonthlyPlan],
         clock: Clock,
+        activity_repository: ActivityReferenceRepository | None = None,
     ) -> None:
         self._plans = plan_repository
         self._clock = clock
+        self._activities = activity_repository
 
     def execute(self, command: EditMonthlyPlanItemCommand) -> MonthlyPlan:
         plan = require_monthly_plan(self._plans, command.plan_id)
@@ -54,7 +59,6 @@ class EditMonthlyPlanItem:
                 "monthly_cell_generation_missing",
                 "Editable Monthly Cell must preserve its previous Generation Method",
             )
-        generation = GenerationMethodDetail(GenerationMethod.TEACHER_EDIT)
         event = AuditEvent(
             AuditEventType.TEACHER_EDITED,
             self._clock.now(),
@@ -62,7 +66,6 @@ class EditMonthlyPlanItem:
             item_id=cell.item_id,
             actor_id=actor_id,
             value_change=ValueChange(cell.value, command.new_value),
-            generation_change=GenerationMethodChange(cell.generation, generation),
         )
         assessment = plan.constraint("STATUTORY_SAFETY_EDUCATION")
         updated_cell = replace(
@@ -73,9 +76,10 @@ class EditMonthlyPlanItem:
                 value=command.new_value,
                 assessment=assessment,
             ),
-            generation=generation,
             audit=cell.audit.append(event),
         )
         updated = plan.replace_cell(item_id, updated_cell)
+        catalog = load_plan_activity_catalog(self._activities, updated)
+        updated = with_fresh_monthly_verification(updated, catalog)
         self._plans.save(updated.plan_id, updated)
         return updated
