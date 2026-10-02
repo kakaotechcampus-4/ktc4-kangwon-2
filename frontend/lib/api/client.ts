@@ -1,4 +1,5 @@
 import { readToken } from "../auth/token";
+import { captureSession } from "../auth/request-session";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -46,6 +47,7 @@ const looksLikeHtml = (contentType: string | null, text: string) =>
 /** 서버 응답의 envelope/error code를 변환하지 않고 그대로 유지합니다. */
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!path.startsWith("/api/")) throw new Error("API path must start with /api/");
+  const session = path.startsWith("/api/auth/") ? null : captureSession();
   const headers = new Headers(options.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
   // 토큰은 여기 한 곳에서만 붙인다. 호출부마다 붙이면 새 API 를 만들 때 빠뜨린다.
@@ -54,6 +56,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(path, { ...options, headers });
   const text = await response.text();
+  session?.assertCurrent();
   const method = options.method ?? "GET";
 
   // HTML 응답은 JSON API 응답이 아니다 → ApiError가 아니라 전송 오류로 분리한다.

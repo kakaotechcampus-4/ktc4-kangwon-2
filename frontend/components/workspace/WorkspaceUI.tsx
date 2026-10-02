@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import AppHeader from "@/components/app/AppHeader";
 import { loadClassSettings } from "@/lib/onboarding/settings";
+import { hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import type { ClassroomEntry } from "@/lib/onboarding/types";
 import styles from "./Workspace.module.css";
@@ -44,11 +45,27 @@ export function Message({ children, error = false }: { children: ReactNode; erro
   ) : null;
 }
 const NO_CLASSES: ClassroomEntry[] = [];
-export function useClasses() {
-  const [classes] = useClientState<ClassroomEntry[]>(
+export function useClasses(onError?: (message: string) => void) {
+  const [classes, setClasses] = useClientState<ClassroomEntry[]>(
     () => loadClassSettings()?.classes || NO_CLASSES,
     NO_CLASSES,
   );
+  useEffect(() => {
+    let live = true;
+    const settings = loadClassSettings();
+    if (settings) {
+      hydrateClassChildren(settings)
+        .then((next) => {
+          if (live) setClasses(next);
+        })
+        .catch(() => {
+          if (live) onError?.("아동 명단을 불러오지 못했어요. 페이지를 새로고침해주세요.");
+        });
+    }
+    return () => {
+      live = false;
+    };
+  }, [setClasses, onError]);
   return classes;
 }
 export function useAIStatus() {
