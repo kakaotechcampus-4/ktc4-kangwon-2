@@ -105,7 +105,7 @@ login    { "email": "a@b.kr", "password": "여덟자이상" }                   
 | `NOT_FOUND` | 404 | 대상 없음 |
 | `GATE_BLOCKED` | 409 | 층 게이트 — 아래 층이 확정 전인데 위 층을 요청 (§4 월간 · §11 주간 보육일지 · `stale` 문서 확정) |
 | `ALREADY_EXISTS` | 409 | 같은 대상에 이미 있음. 조회로 찾는다 |
-| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 되돌리기는 P1 |
+| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). 계획안 되돌리기는 P1 |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
@@ -1066,17 +1066,36 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 **`stale` 이면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
 **문서를 지우지 않는다** — 교사가 보고 판단한다.
 
+**푸는 길은 `POST /api/documents/{id}/refresh` 하나다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」고 누른다.
+
+```
+1  근거 사본을 지금 원본으로 다시 뜬다        관찰 기록이면 fact · date,  문서면 사실 · start · status
+2  사실 항목을 새 사본으로 다시 잇는다
+3  stale = false
+```
+
+- **`해석` · `지원` 은 건드리지 않는다.** 새 사실에 맞는지는 교사가 보고 `PUT` 으로 고친 뒤 확정 체크 3개로 확인한다. 모델을 부르지 않는다
+- **초안에서만 된다.** 확정본은 `ALREADY_CONFIRMED` 409 — 먼저 `unconfirm` 한다. 확정본의 사실이 조용히 바뀌면 교사가 확인한 것과 저장된 것이 달라진다
+- **원본이 하나라도 사라졌으면 `GATE_BLOCKED` 409.** `fields` 에 `sources.{id}`. 빼고 이으면 교사가 고른 근거가 조용히 줄어든다 — 지우고 새로 만든다
+- **근거 일일 보육일지가 초안이면 `GATE_BLOCKED` 409.** 만들 때와 같은 규칙이다
+
 ### 상태와 출처
 
 ```
-status   DRAFT → CONFIRMED          한 방향이다.  되돌리기는 P1
+status   DRAFT ⇄ CONFIRMED          확정은 confirm,  되돌리기는 unconfirm
 origin   AI                         LLM 이 초안을 만들었다
          TEACHER                    교사가 직접 썼다
          TEMPLATE                   기관 양식에서 뼈대만 만들었다 (§8)
          IMPORT                     교사가 기존 문서를 올렸다
 ```
 
-**`CONFIRMED` 를 수정하면 `ALREADY_CONFIRMED` 409 다.**
+**`CONFIRMED` 를 수정하면 `ALREADY_CONFIRMED` 409 다.** 고치려면 먼저 되돌린다.
+
+**되돌리기 — `POST /api/documents/{id}/unconfirm`**  CONFIRMED → DRAFT.  body 없음
+
+- **이 문서를 근거로 쓴 문서는 전부 `stale` 이 된다** (연쇄). 주간 보육일지는 확정된 일일 보육일지만 받는다 — 근거가 초안으로 돌아가면 그 위에 쌓은 것도 다시 봐야 한다
+- **다시 불러도 200 이다.** 확정과 같은 이유 — 재시도를 진짜 실패와 구분할 수 없다
+- 되돌린 문서 자신의 `stale` 은 바꾸지 않는다. 바뀐 것은 상태지 근거가 아니다
 
 **`IMPORT` 는 거절 규칙을 적용하지 않는다.** `sources` 가 비고 `sections` 는
 `첨부 원문` 하나뿐이다. 우리가 만든 문서가 아니라 증빙이다.
@@ -1158,6 +1177,8 @@ GET    /api/documents/{id}/related                               겹치는 확�
 POST   /api/documents/{id}/verify                                3단 LLM Judge
 PUT    /api/documents/{id}                                       title · sections · review_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
+POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
+POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
 DELETE /api/documents/{id}                                       204
 ```
 

@@ -599,6 +599,8 @@ def test_남의_원_문서는_단건_수정_삭제_확정_모두_404_다(db_sess
     assert client.put(url, json=_put_body(남의것)).status_code == 404
     assert client.delete(url).status_code == 404
     assert client.post(f"{url}/confirm", json={"checks": _ALL_CHECKED}).status_code == 404
+    assert client.post(f"{url}/unconfirm").status_code == 404
+    assert client.post(f"{url}/refresh").status_code == 404
 
 
 # ── POST /api/documents ─────────────────────────────────────────────────────
@@ -869,3 +871,161 @@ def test_delete_removes_the_draft_and_its_rows(db_session):
     assert client.get(f"/api/documents/{doc.id}").status_code == 404
     assert db_session.query(DocumentSection).filter_by(document_id=doc.id).count() == 0
     assert db_session.query(DocumentSource).filter_by(document_id=doc.id).count() == 0
+
+
+def _depends_on(session, doc, source_doc, klass):
+    """`doc` 가 `source_doc` 를 근거로 쓴다 — 주간 보육일지가 일일 보육일지를 쓰는 모양."""
+    session.add(
+        DocumentSource(
+            document_id=doc.id,
+            source_kind="document",
+            source_id=source_doc.id,
+            class_id=klass.id,
+            date=source_doc.start_date,
+            source_status="CONFIRMED",
+            text="관찰 기록 0.",
+        )
+    )
+    session.flush()
+
+
+def _chain(session):
+    """일일 → 주간 → 그 주간을 쓴 문서. 세 단계라야 「한 단계만 멈춘다」 를 잡는다."""
+    _, klass, _ = _make_center_class_child(session)
+    daily = _make_document(
+        session,
+        klass,
+        kind="dailyLog",
+        start_date=date(2026, 9, 22),
+        end_date=date(2026, 9, 22),
+        status="CONFIRMED",
+    )
+    _make_sections(session, daily, _make_sources(session, daily, klass, None, count=1))
+    weekly = _make_document(
+        session,
+        klass,
+        kind="weeklyLog",
+        start_date=date(2026, 9, 21),
+        end_date=date(2026, 9, 27),
+        status="CONFIRMED",
+    )
+    _depends_on(session, weekly, daily, klass)
+    above = _make_document(
+        session, klass, kind="weeklyLog", start_date=date(2026, 9, 21), end_date=date(2026, 9, 27)
+    )
+    _depends_on(session, above, weekly, klass)
+    return klass, daily, weekly, above
+
+
+def _stale(session, *docs):
+    for doc in docs:
+        session.refresh(doc)
+    return [doc.stale for doc in docs]
+
+
+# ── POST /api/documents/{id}/unconfirm ──────────────────────────────────────
+def test_unconfirm_returns_to_draft_and_is_idempotent(db_session):
+    doc = _ready_document(db_session)
+    client.post(f"/api/documents/{doc.id}/confirm", json={"checks": _ALL_CHECKED})
+
+    first = client.post(f"/api/documents/{doc.id}/unconfirm")
+    again = client.post(f"/api/documents/{doc.id}/unconfirm")
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "DRAFT"
+    assert again.status_code == 200
+    # 되돌리면 다시 고칠 수 있다. 받은 본문을 그대로 돌려보내 사실 대조도 지난다.
+    detail = first.json()
+    edit = {**_put_body(doc), "sections": detail["sections"], "updated_at": detail["updated_at"]}
+    assert client.put(f"/api/documents/{doc.id}", json=edit).status_code == 200
+
+
+def test_unconfirm_marks_documents_built_on_it_stale_but_not_itself(db_session):
+    _, daily, weekly, above = _chain(db_session)
+
+    assert client.post(f"/api/documents/{daily.id}/unconfirm").status_code == 200
+
+    # 바뀐 것은 일일의 상태다. 그 위에 쌓은 것이 다시 봐야 한다.
+    assert _stale(db_session, daily, weekly, above) == [False, True, True]
+
+
+# ── POST /api/documents/{id}/refresh ────────────────────────────────────────
+def _stale_observation_document(session):
+    _, klass, child = _make_center_class_child(session)
+    record = _observation(session, klass, child, 5, "개미를 3분 동안 바라보았다.")
+    created = client.post("/api/documents", json=_create_body(klass, child, [record])).json()
+    fixed = {
+        "date": "2026-09-06",
+        "domain": "자연탐구",
+        "context": "",
+        "fact": "개미를 5분 동안 바라보았다.",
+    }
+    assert client.put(f"/api/observations/{record.id}", json=fixed).status_code == 200
+    return created["id"], record
+
+
+def test_refresh_recopies_sources_rebuilds_fact_and_clears_stale(db_session):
+    doc_id, record = _stale_observation_document(db_session)
+    before = client.get(f"/api/documents/{doc_id}").json()
+    assert before["stale"] is True
+
+    response = client.post(f"/api/documents/{doc_id}/refresh")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stale"] is False
+    assert payload["sources"][0]["text"] == "개미를 5분 동안 바라보았다."
+    assert payload["sources"][0]["date"] == "2026-09-06"
+    by_heading = {s["heading"]: s["body"] for s in payload["sections"]}
+    assert by_heading["사실"] == "개미를 5분 동안 바라보았다."
+    # 해석 · 지원은 교사가 볼 몫이다. 모델을 다시 부르지 않는다.
+    old = {s["heading"]: s["body"] for s in before["sections"]}
+    assert by_heading["해석"] == old["해석"] and by_heading["지원"] == old["지원"]
+    # 풀렸으니 확정할 수 있다 — 사실이 새 사본과 맞아 2단 게이트도 지난다.
+    confirmed = client.post(f"/api/documents/{doc_id}/confirm", json={"checks": _ALL_CHECKED})
+    assert confirmed.status_code == 200
+
+
+def test_refresh_refuses_when_a_source_is_gone(db_session):
+    doc_id, record = _stale_observation_document(db_session)
+    assert client.delete(f"/api/observations/{record.id}").status_code == 204
+
+    response = client.post(f"/api/documents/{doc_id}/refresh")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GATE_BLOCKED"
+    assert response.json()["error"]["fields"] == [f"sources.{record.id}"]
+    # 아무것도 바꾸지 않는다 — 여전히 stale, 사본도 그대로다.
+    detail = client.get(f"/api/documents/{doc_id}").json()
+    assert detail["stale"] is True
+    assert detail["sources"][0]["text"] == "개미를 3분 동안 바라보았다."
+
+
+def test_refresh_refuses_confirmed_documents(db_session):
+    doc = _ready_document(db_session)
+    doc.status = "CONFIRMED"
+    db_session.flush()
+
+    response = client.post(f"/api/documents/{doc.id}/refresh")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ALREADY_CONFIRMED"
+
+
+def test_refresh_weekly_needs_its_daily_log_confirmed_again(db_session):
+    _, daily, weekly, _ = _chain(db_session)
+    client.post(f"/api/documents/{daily.id}/unconfirm")
+    client.post(f"/api/documents/{weekly.id}/unconfirm")
+
+    blocked = client.post(f"/api/documents/{weekly.id}/refresh")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["fields"] == [f"sources.{daily.id}"]
+
+    client.post(f"/api/documents/{daily.id}/confirm", json={"checks": _ALL_CHECKED})
+    refreshed = client.post(f"/api/documents/{weekly.id}/refresh")
+
+    assert refreshed.status_code == 200
+    assert refreshed.json()["stale"] is False
+    row = db_session.query(DocumentSource).filter_by(document_id=weekly.id).one()
+    db_session.refresh(row)
+    assert row.source_status == "CONFIRMED"
