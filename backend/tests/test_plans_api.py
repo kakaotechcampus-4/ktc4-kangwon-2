@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.features.centers.models import Center, Class
+from app.features.plans.models import Plan
 from app.main import app
 
 client = TestClient(app)
@@ -269,3 +270,56 @@ def test_생성이_실패하면_부분_결과가_남지_않는다(db_session, mi
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
     assert client.get("/api/plans/annual").json()["items"] == []
+
+
+def test_같은_반에_연간을_두_번_만들지_못한다(db_session, mine):
+    """멘토 리뷰(PR #82) — 새로고침하고 다시 누르면 두 개가 생기던 것."""
+    _create(mine)
+
+    response = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ALREADY_EXISTS"
+    assert len(client.get("/api/plans/annual").json()["items"]) == 1
+
+
+def test_응답을_만들다_터지면_계획안이_남지_않는다(db_session, mine, monkeypatch):
+    """멘토 리뷰(PR #82) — commit 이 응답 생성보다 앞에 있으면 여기서 한 건이 남는다."""
+    from app.features.plans import router as plans_router
+
+    def 터진다(*_args, **_kwargs):
+        raise RuntimeError("응답을 만들다 터졌다")
+
+    monkeypatch.setattr(plans_router, "_detail", 터진다)
+
+    with pytest.raises(RuntimeError):
+        client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None})
+
+    # 운영에서는 `get_session` 의 `with` 가 세션을 닫으며 롤백한다(app/db.py).
+    # 테스트는 세션을 직접 끼워주므로 그 동작을 여기서 흉내낸다.
+    db_session.rollback()
+
+    assert client.get("/api/plans/annual").json()["items"] == []
+
+
+def test_양식_번호가_계획안에_남는다(db_session, mine, teacher):
+    """멘토 리뷰(PR #82) — 양식은 원본 하나만 두고 계획안은 번호만 든다."""
+    from app.features.forms.models import Form
+
+    form = Form(
+        center_id=teacher.center_id,
+        name="우리원 연간 양식",
+        filename="annual.hwpx",
+        tables=[],
+        labels=[],
+        label_map={},
+    )
+    db_session.add(form)
+    db_session.flush()
+
+    response = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": form.id})
+
+    assert response.status_code == 201, response.text
+    saved = db_session.get(Plan, response.json()["id"])
+    db_session.refresh(saved)
+    assert saved.form_id == form.id

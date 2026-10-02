@@ -233,6 +233,25 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
+    # 연간은 반 하나에 하나다. 막지 않으면 교사가 새로고침하고 다시 눌렀을 때 두 개가
+    # 생기고, 둘 중 어느 쪽이 진짜인지 아무도 모른다. **동시 요청은 이 조회로 못 막는다** —
+    # 둘 다 「없다」를 보고 지나간다. 최종 보장은 models.py 의 부분 유니크 인덱스다.
+    duplicate = session.scalar(
+        select(Plan).where(
+            Plan.center_id == user.center_id,
+            Plan.kind == "annual",
+            Plan.classroom_ref == str(klass.id),
+        )
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ALREADY_EXISTS",
+                "message": "이 반의 연간계획안이 이미 있습니다.",
+                "fields": ["class_id"],
+            },
+        )
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
         # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
@@ -272,9 +291,15 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
         raise _generation_error(error) from error
     except (YearlyRuleError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
-    session.commit()
+    # **응답을 다 만든 뒤에 확정한다.** 먼저 commit 하면 아래에서 터졌을 때 DB 에는
+    # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
+    # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
-    return _detail(row, result.plan)
+    # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
+    row.form_id = body.form_id
+    detail = _detail(row, result.plan)
+    session.commit()
+    return detail
 
 
 @router.get("", response_model=AnnualPlanListOut)
@@ -342,9 +367,10 @@ def update_month(
     # 소주제는 도메인 밖이라 따로 넣는다. dict 를 통째로 갈아끼워야 SQLAlchemy 가
     # 바뀐 걸 알아챈다 — 안쪽만 고치면 JSONB 가 그대로 남는다.
     row.sub_themes = {**row.sub_themes, str(month): body.sub_themes}
-    session.commit()
     months = _months(updated, row.sub_themes)
-    return next(item for item in months if item.month == month)
+    answer = next(item for item in months if item.month == month)
+    session.commit()
+    return answer
 
 
 @router.post("/{plan_id}/confirm", response_model=ConfirmOut)
@@ -359,9 +385,10 @@ def confirm_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
         )
     except (YearlyApplicationError, InvalidStateTransitionError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
-    session.commit()
     # 저장소가 감사 기록에서 꺼내 칸에 넣어둔 값을 그대로 쓴다.
-    return ConfirmOut(id=row.id, status=confirmed.status.value, confirmed_at=row.confirmed_at)
+    answer = ConfirmOut(id=row.id, status=confirmed.status.value, confirmed_at=row.confirmed_at)
+    session.commit()
+    return answer
 
 
 @router.get("/{plan_id}/audit", response_model=AuditOut)
