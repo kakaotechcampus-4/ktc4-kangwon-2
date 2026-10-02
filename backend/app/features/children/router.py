@@ -6,12 +6,12 @@ main.py 가 `/api` 만 붙인다.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.features.centers.models import Child
+from app.features.centers.models import Child, Class
 from app.features.children.schemas import (
     ChildCreate,
     ChildListResponse,
@@ -19,7 +19,8 @@ from app.features.children.schemas import (
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_child, require_own_class
-from app.shared.childCode import load_pool
+from app.shared.childCode import SubstitutionError, load_pool
+from app.shared.childCode.allocation import allocate_for_class
 
 router = APIRouter(tags=["children"])
 
@@ -51,14 +52,30 @@ def create_child(
     """아동을 등록하고 가명 `code` 를 발급한다 (docs/api-spec.md §2-1).
 
     **발급은 등록 시점이다.** 나중에 발급하면 이미 쌓인 기록을 다시 훑어야 한다.
-    같은 반에서 쓰는 code 를 피해 고르지만, 최종 보장은 `UNIQUE(class_id, code)` 다 —
-    경합 재시도는 만들지 않는다(§2-1).
+    반 행을 잠근 뒤 현재 명단으로 검증한다. 기존 code는 바꾸지 않는다.
     """
     # 없는 반과 남의 반을 같은 404 로 돌려준다 (shared/auth/ownership.py).
     require_own_class(session, user, class_id)
 
-    used = {child.code for child in _children_of(session, class_id)}
-    code = load_pool().allocate(body.name, used)
+    # 빈 반도 같은 행을 잠근다. READ COMMITTED에서 대기 후 다음 명단 조회는
+    # 선행 등록의 커밋을 보므로 code 중복과 양방향 이름 충돌을 함께 막는다.
+    session.get(Class, class_id, with_for_update=True, populate_existing=True)
+    try:
+        code = allocate_for_class(
+            load_pool(),
+            body.name,
+            ((child.name, child.code) for child in _children_of(session, class_id)),
+        )
+    except SubstitutionError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "VALIDATION_FAILED",
+                "message": "반 명단의 이름과 가명을 안전하게 구분할 수 없거나 가명이 부족합니다. "
+                "명단을 확인해주세요. 기존 가명은 변경하지 않습니다.",
+                "fields": ["name"],
+            },
+        ) from exc
     child = Child(class_id=class_id, name=body.name, code=code)
     session.add(child)
     session.commit()

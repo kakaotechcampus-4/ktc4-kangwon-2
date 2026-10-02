@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.db import get_session
 from app.features.centers.models import Class
 from app.main import app
-from app.shared.childCode import load_pool
+from app.shared.childCode import NameTable, PseudonymPool, load_pool, mask
 
 client = TestClient(app)
 
@@ -33,8 +33,11 @@ class _FakeSession:
         self.class_exists = class_exists
         self.children = list(children or [])
         self.commits = 0
+        self.locked = False
 
-    def get(self, model, pk):
+    def get(self, model, pk, **kwargs):
+        if kwargs.get("with_for_update"):
+            self.locked = True
         if model is Class:
             # center_id 를 채운다. 라우터가 「내 원인가」를 보므로(shared/auth/ownership.py)
             # 비워 두면 전부 404 가 된다.
@@ -45,6 +48,7 @@ class _FakeSession:
         return _Rows(self.children)
 
     def add(self, obj):
+        assert self.locked, "allocation must hold the class lock before writing"
         obj.id = len(self.children) + 1
         obj.created_at = datetime.now(UTC)
         self.children.append(obj)
@@ -101,8 +105,8 @@ def test_a_name_without_a_final_consonant_gets_a_matching_pseudonym(session):
 
 def test_codes_do_not_repeat_inside_one_class(session):
     codes = [
-        client.post("/api/classes/1/children", json={"name": "박서준"}).json()["code"]
-        for _ in range(5)
+        client.post("/api/classes/1/children", json={"name": name}).json()["code"]
+        for name in ["박태겸", "김하윤", "이승석", "최가람", "정누림"]
     ]
 
     assert len(set(codes)) == 5
@@ -176,6 +180,49 @@ def test_deleting_a_missing_child_returns_not_found(session):
             "fields": ["child_id"],
         }
     }
+
+
+@pytest.mark.parametrize("names", [("박서준", "김하윤"), ("김하윤", "박서준")])
+def test_collision_examples_register_a_safe_class_and_mask_every_child(session, names):
+    for name in (*names, "이태겸"):
+        assert client.post("/api/classes/1/children", json={"name": name}).status_code == 201
+    table = {child.name: child.code for child in session.children}
+    name_table = NameTable(table)
+    for child in session.children:
+        masked = mask(f"{child.name}이 블록을 쌓았다.", name_table)
+        assert child.name not in masked
+        assert child.code in masked
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ("김하윤", "박민준"),
+        ("박서준", "박서준"),
+        ("박민준", "김민준"),
+        ("서준", "박서준"),
+    ],
+)
+def test_unsafe_registration_is_422_without_persisting(session, first, second):
+    assert client.post("/api/classes/1/children", json={"name": first}).status_code == 201
+    before = [(c.name, c.code) for c in session.children]
+    response = client.post("/api/classes/1/children", json={"name": second})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert response.json()["error"]["fields"] == ["name"]
+    assert [(c.name, c.code) for c in session.children] == before
+    assert session.commits == 1
+
+
+def test_exhausted_pool_returns_validation_envelope(session, monkeypatch):
+    monkeypatch.setattr(
+        "app.features.children.router.load_pool", lambda: PseudonymPool(["민준"], [])
+    )
+    response = client.post("/api/classes/1/children", json={"name": "박민준"})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert session.children == []
+    assert session.commits == 0
 
 
 # TODO: 아래는 실제 PostgreSQL 통합 테스트로 확인한다. 스텁 세션은 SQL 을 해석하지 않아

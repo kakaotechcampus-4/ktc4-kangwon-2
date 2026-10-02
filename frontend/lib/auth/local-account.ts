@@ -8,8 +8,9 @@ import { selectedAgesFor } from "../onboarding/types";
 // (PR #52 멘토 리뷰). 서버가 비밀번호를 들게 되면서 그 해싱 자체가 필요 없어졌다.
 import { currentAccountEmail, hasDemoSession } from "./demo-session";
 import { accountKey, readAccount, readLegacyAccount, type Account } from "./account-store";
-import { loadClassSettings } from "../onboarding/settings";
+import { loadClassSettings, sanitizeClassSettingsStorage } from "../onboarding/settings";
 import { login, signup } from "../api/auth";
+import { sanitizeBrowserChildMetadata } from "../privacy/browser-storage";
 function read(email = currentAccountEmail()): Account | null {
   return email ? readAccount(email) : null;
 }
@@ -126,11 +127,13 @@ export async function verifyAccount(email: string, password: string) {
     account = { name: result.user.name, email: normalized };
     localStorage.setItem(accountKey(normalized), JSON.stringify(account));
   }
+  sanitizeClassSettingsStorage(account.email);
+  sanitizeBrowserChildMetadata();
   migrateLegacyData(account);
   window.sessionStorage.setItem("saessak.accountEmail", account.email);
 }
 function migrateLegacyData(account: Account) {
-  // 기존 단일 계정의 자료는 그 계정으로만 이전한다. 원본은 보존한다.
+  // 기존 단일 계정의 자료는 그 계정으로만 이전한다. 반 설정 원본도 이후 sanitize한다.
   const legacy = readLegacyAccount();
   if (legacy?.email.toLowerCase() === account.email) {
     for (const base of ["saessak.classSettings", "saessak.workspace.v1"]) {

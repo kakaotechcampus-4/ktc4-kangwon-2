@@ -7,7 +7,8 @@
 사본은 `document_sources` 에 생성 시점 그대로 남아 있다.
 
 `stale` 을 되돌려 `false` 로 만드는 일은 여기서 하지 않는다. 교사가 다시 보는 것이 목적이라
-원본이 우연히 원래 값으로 돌아와도 한 번 본 뒤에 풀어야 한다.
+원본이 우연히 원래 값으로 돌아와도 한 번 본 뒤에 풀어야 한다 — 푸는 길은 교사가 누르는
+`POST /api/documents/{id}/refresh` 하나다.
 """
 
 import datetime
@@ -35,6 +36,21 @@ def observation_changed(
             or_(DocumentSource.text != fact, DocumentSource.date.is_distinct_from(date))
         )
     _mark(session, set(session.scalars(query)))
+
+
+def document_changed(session: Session, document_id: int) -> None:
+    """문서가 사라졌거나 확정이 풀렸다. **그 문서를 근거로 쓴 문서들**을 끝까지 `stale` 로.
+
+    문서 자신은 건드리지 않는다 — 바뀐 것은 이 문서고, 다시 봐야 하는 것은 이걸 쓴 쪽이다.
+    §11 판정 기준의 「근거가 문서일 때 … status」 와 「원본 없음」이 여기로 온다.
+    """
+    dependents = session.scalars(
+        select(DocumentSource.document_id).where(
+            DocumentSource.source_kind == "document",
+            DocumentSource.source_id == document_id,
+        )
+    )
+    _mark(session, set(dependents))
 
 
 def _mark(session: Session, document_ids: set[int]) -> None:
