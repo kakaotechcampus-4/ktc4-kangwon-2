@@ -1116,6 +1116,7 @@ origin   AI                         LLM 이 초안을 만들었다
 ```
 1  스키마      위 거절 규칙                      서버.  모델 없음
 2  추출 대조   사실 == sources 원문              서버.  문자열 비교.  모델 없음
+               해석의 숫자 ⊂ 사실의 숫자
 3  LLM Judge   미관찰 내용 · 근거 없는 해석 검사    LLM
 4  교사 확인    체크 3개                          사람
 ```
@@ -1180,6 +1181,12 @@ POST   /api/documents/{id}/unconfirm                             CONFIRMED → D
 POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
 DELETE /api/documents/{id}                                       204
 ```
+
+**확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
+고칠 수 없는 문서를 지울 수 있으면 확정이 의미가 없다.
+
+**해석에 사실에 없는 숫자가 있으면 `sections.해석` 으로 거절한다.**
+지원은 앞으로의 계획이라 새 숫자가 나와도 된다.
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
 교사가 사실을 고치려면 §10 에서 원본을 고친다. 그러면 이 문서가 `stale` 이 되고 다시 검토한다.

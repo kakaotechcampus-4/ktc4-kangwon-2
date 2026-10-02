@@ -677,13 +677,19 @@ def refresh_document(
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(document_id: int, session: DbSession, user: CurrentUser) -> None:
-    """문서를 지운다. 자식 행을 먼저 지우고 문서를 지운다 - FK 에 CASCADE 가 없다 (ADR-010).
+    """DRAFT 문서를 지운다. 자식 행을 먼저 지우고 문서를 지운다 - FK 에 CASCADE 가 없다 (ADR-010).
 
-    이 문서를 근거로 쓴 문서(주간 보육일지)는 지우지 않고 `stale` 로 바꾼다 -
-    근거가 사라진 것도 「원본 없음」이라 교사가 다시 봐야 한다 (§11 판정 기준).
+    확정된 문서는 `PUT` 처럼 409 로 막는다. 고칠 수 없는 문서를 지울 수 있으면 확정이 의미가 없다.
+
+    **여기서 `document_changed` 를 부르지 않는다.** 다른 문서는 확정된 문서만 근거로 쓰고,
+    확정을 풀면(`unconfirm`) 그때 이미 `stale` 이 붙는다. 그래서 「의존 문서가 달린 DRAFT」가
+    여기 올 수 없다.
     """
     doc = _own_document(session, user, document_id)
-    document_changed(session, doc.id)
+    if doc.status == "CONFIRMED":
+        raise _error(
+            status.HTTP_409_CONFLICT, "ALREADY_CONFIRMED", "확정된 문서는 삭제할 수 없습니다.", []
+        )
     session.execute(delete(DocumentSection).where(DocumentSection.document_id == doc.id))
     session.execute(delete(DocumentSource).where(DocumentSource.document_id == doc.id))
     session.delete(doc)
