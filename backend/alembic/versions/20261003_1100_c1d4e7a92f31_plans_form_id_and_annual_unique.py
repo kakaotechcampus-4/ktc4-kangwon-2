@@ -10,7 +10,7 @@
 **이미 중복이 있으면 이 마이그레이션이 실패한다.** 그게 맞다 — 파일럿 전에 알아야 한다.
 
 Revision ID: c1d4e7a92f31
-Revises: ab4784c999ea
+Revises: 0340d141da97
 Create Date: 2026-10-03 11:00
 """
 
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c1d4e7a92f31"
-down_revision: Union[str, None] = "ab4784c999ea"
+down_revision: Union[str, None] = "0340d141da97"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 
