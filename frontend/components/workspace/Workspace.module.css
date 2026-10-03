@@ -534,3 +534,9 @@
     break-inside: avoid;
   }
 }
+
+.fieldError {
+  color: var(--pg-peach-ink);
+  font-weight: 600;
+  font-size: 11px;
+}
