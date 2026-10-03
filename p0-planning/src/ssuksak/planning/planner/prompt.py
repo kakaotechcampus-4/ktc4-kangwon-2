@@ -21,7 +21,7 @@ from .contracts import (
 )
 from .text_policy import MAX_VISIBLE_TEXT_CHARS
 from ..retrieval.models import AGE_VERIFIABLE_TIERS
-from .validation import ProposalValidationIssue, is_safety_grounding, wrong_source_refs
+from .validation import ProposalValidationIssue, is_safety_grounding, repair_targets, wrong_source_refs
 
 MONTHLY_TASK = "monthly_plan_proposal"
 
@@ -31,7 +31,8 @@ Do not add, remove, relabel, reorder, or reinterpret Template sections.
 Return content only for canonical section_key addresses in response_contract.
 Do not return display_label, order, semantic_variant, category, display_mode,
 required_for_generation, or visible.
-The locked theme must be returned exactly with its supplied reference_id.
+Return the locked theme exactly with its supplied reference_id and text, and
+grounding_refs as []; its parent plan already grounds it.
 Do not make legal decisions or claim statutory compliance.
 For safety_education, use approved safety grounding from the supplied Context;
 when that grounding is unavailable, return value="", unresolved=true, no refs.
@@ -41,9 +42,10 @@ not copy evidence verbatim.
 Use reference_id only in a section whose reference catalog is supplied: theme
 (parent_theme.theme_id) and outdoor_play (reference_activities activity_id).
 In every other section reference_id is null; never put a grounding_ref, theme_id
-or activity_id there. When reference_id is not null, value must exactly equal the
-canonical label of that referenced item; do not paraphrase, expand, summarize or
-rewrite it. To write your own sentence instead, set reference_id to null and cite
+or activity_id there. A reference cell returns one reference_id and value pair
+allowed by the response schema; that value is the canonical label of the
+referenced item, and its grounding_refs is [] because the reference grounds it.
+To write your own sentence instead, set reference_id to null and cite
 grounding_refs.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
@@ -81,15 +83,14 @@ no new safety rules, numbers, legal duties, education hours, or schedules.
 """
 
 REPAIR_HEADER = f"""You repair one monthly plan proposal.
-rejected_proposal matches response_contract but failed semantic validation.
-Each validation_findings entry names a failed code with its section_key and
-week_id; a null week_id is the month-level cell. For TEXT_POLICY, detail names
-the violated text rule.
-Return the complete corrected proposal as one JSON object matching
-original_request.response_contract. Change only the cells named in
-validation_findings and keep cells without a finding unchanged: copy their
-value, reference_id and grounding_refs exactly as in rejected_proposal.
-Fix each named cell only as its finding requires:
+rejected_proposal failed semantic validation. Each validation_findings entry
+names a failed code with its section_key and week_id; a null week_id is the
+month-level cell. For TEXT_POLICY, detail names the violated text rule.
+Return only one JSON object matching response_contract: a patches array with one
+patch per repair_targets entry, carrying that entry's week_id (null for the
+month-level cell) and section_key and exactly the fields it lists. Return no
+other cell and no other field; every cell you do not patch keeps its value.
+Fix each patched cell only as its finding requires:
 - SOURCE_TEXT_COPY: keep the meaning of its cited grounding_refs but rewrite
   the value in your own words; never copy evidence text verbatim.
 - TEXT_POLICY with detail TEXT_TOO_LONG: keep the same meaning and cited refs;
@@ -106,7 +107,7 @@ grounding_class rules below.
 Value text must not claim legal or official status, must not mention safety
 education outside safety_education, and must not contain source markers,
 institution aliases, source ids or grounding_refs.
-The repaired proposal is validated again in full. The original planning rules
+The patched proposal is validated again in full. The original planning rules
 follow and still apply.
 
 """
@@ -337,9 +338,16 @@ def build_monthly_repair_request(
     rejected_content: str,
     issues: tuple[ProposalValidationIssue, ...],
 ) -> MonthlyPlanningRequest:
-    """Same targets, refs and strict schema as `request`; only the prompt contract differs."""
+    """Same refs as `request`, but the provider returns patches for the repair targets only.
+
+    repair_targets selects parser.repair_patch_schema: one branch per finding-named
+    cell, with exactly the fields its findings authorize.
+    """
+    targets = repair_targets(issues)
+    original = json.loads(request.user_content)
+    original.pop("response_contract", None)  # the full-proposal contract is not this response
     body = {
-        "original_request": json.loads(request.user_content),
+        "original_request": original,
         "rejected_proposal": json.loads(rejected_content),
         "validation_findings": [
             {
@@ -350,6 +358,20 @@ def build_monthly_repair_request(
             }
             for issue in issues
         ],
+        "repair_targets": [
+            {"week_id": week_id, "section_key": section_key, "fields": list(fields)}
+            for week_id, section_key, fields in targets
+        ],
+        "response_contract": {
+            "patches": [
+                {
+                    "week_id": "YYYY-MM-Wn | null",
+                    "section_key": "string",
+                    "value": "string, when the target lists it",
+                    "grounding_refs": ["string, when the target lists it"],
+                }
+            ]
+        },
     }
     return replace(
         request,
@@ -360,4 +382,5 @@ def build_monthly_repair_request(
         ),
         system_prompt=REPAIR_HEADER + request.system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
+        repair_targets=targets,
     )
