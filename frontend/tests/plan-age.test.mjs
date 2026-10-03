@@ -42,13 +42,14 @@ test("plan AI 요청은 선택한 연령 조합을 그대로 싣고, 잘못된 �
     assert.equal(validAIInput("plan", planPayload({ ages })), false, JSON.stringify(ages));
 });
 
-test("[3,5] 혼합반은 계획안 본문에서도 3·5세로 남고 4세가 섞이지 않는다", () => {
+test("[3,5] 를 골라도 계획안 본문은 범위로 적는다", () => {
+  // 서버에 age_min=3 · age_max=5 로 저장되므로 본문도 같은 범위여야 한다.
+  // 떨어진 연령을 가진 반은 실측 369건 중 0건이다 (docs/PRD.md 「연령 표기」).
   const label = ageSelectionLabel([3, 5]);
-  assert.equal(label, "만 3·5세반");
+  assert.equal(label, "만 3~5세반");
   const plan = templatePlan("annual", "mixed", PERIOD, "", undefined, label);
-  assert.ok(plan.rows.every((row) => row.detail.includes("만 3·5세반")));
+  assert.ok(plan.rows.every((row) => row.detail.includes("만 3~5세반")));
   assert.ok(plan.rows.every((row) => !row.detail.includes("혼합반")));
-  assert.ok(plan.rows.every((row) => !row.detail.includes("만 4세")));
   const withTemplate = templatePlan(
     "annual",
     "mixed",
@@ -57,15 +58,15 @@ test("[3,5] 혼합반은 계획안 본문에서도 3·5세로 남고 4세가 섞
     { headings: ["대상 연령", "주제"], style: "" },
     label,
   );
-  assert.ok(withTemplate.rows.every((row) => row.detail.includes("대상 연령: 만 3·5세반")));
+  assert.ok(withTemplate.rows.every((row) => row.detail.includes("대상 연령: 만 3~5세반")));
   // 라벨이 없는 기존 호출은 종전 AgeGroup 표기를 유지한다.
   assert.ok(templatePlan("annual", "mixed", PERIOD, "").rows[0].detail.includes("혼합반"));
   assert.ok(templatePlan("annual", "4", PERIOD, "").rows[0].detail.includes("만 4세"));
 });
 
-test("연령 표기는 선택한 조합만 보여준다", () => {
+test("연령 표기는 범위다 — 저장되는 값과 같아야 한다", () => {
   assert.deepEqual(
     COMBOS.map((ages) => ageSelectionLabel(ages)),
-    ["만 3세반", "만 4세반", "만 5세반", "만 3·4세반", "만 4·5세반", "만 3·5세반", "만 3·4·5세반"],
+    ["만 3세반", "만 4세반", "만 5세반", "만 3~4세반", "만 4~5세반", "만 3~5세반", "만 3~5세반"],
   );
 });
