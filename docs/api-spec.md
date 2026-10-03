@@ -39,6 +39,8 @@ signup   { "email": "a@b.kr", "name": "김선생", "password": "여덟자이상"
 login    { "email": "a@b.kr", "password": "여덟자이상" }                     → 200
 
 응답     { "token": "...", "user": { "id": 1, "email": "...", "name": "...", "center_id": null } }
+
+me       GET /api/auth/me                                               → 200  위 user 모양
 ```
 
 **토큰을 `Authorization: Bearer <token>` 으로 실어 보낸다.** 12시간 뒤 만료된다.
