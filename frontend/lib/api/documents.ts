@@ -57,6 +57,10 @@ export interface ApiDocumentListItem {
   created_at: string;
   updated_at: string;
 }
+export interface ApiRelatedDocumentsResponse {
+  items: ApiDocumentListItem[];
+  expected_kinds: string[];
+}
 export interface ApiDocumentSection {
   heading: string;
   body: string;
@@ -93,6 +97,10 @@ export interface DocumentSummary {
   sourcesCount: number;
   createdAt: string;
   updatedAt: string;
+}
+export interface RelatedDocuments {
+  items: DocumentSummary[];
+  expectedKinds: RecordKind[];
 }
 /** 단건. 화면 model 에 서버에만 있는 값을 더한다. */
 export interface ServerDocument extends SavedDocument {
@@ -184,6 +192,17 @@ export async function getDocument(localId: string): Promise<ServerDocument> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
   return toDocument(await apiRequest<ApiDocumentDetail>("/api/documents/" + id));
+}
+
+/** 겹치는 확정 문서와 기대하는 종류. 관련 여부와 반환 순서는 서버가 결정한다 (§11). */
+export async function getRelatedDocuments(localId: string): Promise<RelatedDocuments> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiRelatedDocumentsResponse>("/api/documents/" + id + "/related");
+  return {
+    items: dto.items.map(summary),
+    expectedKinds: dto.expected_kinds as RecordKind[],
+  };
 }
 
 /** 반·아동·근거를 서버 id 로 옮기지 못하면 요청을 보내지 않는다. */
