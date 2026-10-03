@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { EMPTY_WORKSPACE, isSavedDocument, validDate, type Workspace } from "./model";
 import { accountStorageKey } from "../auth/demo-session";
+import { withoutChildMetadata } from "../privacy/browser-storage";
 const KEY = "saessak.workspace.v1";
 const EVENT = "saessak-workspace-change";
 
@@ -59,10 +60,15 @@ export function parseWorkspace(raw: string | null): Workspace {
   return data as unknown as Workspace;
 }
 export function readWorkspace() {
-  return parseWorkspace(window.localStorage.getItem(accountStorageKey(KEY)));
+  const key = accountStorageKey(KEY);
+  const raw = window.localStorage.getItem(key);
+  const data = withoutChildMetadata(parseWorkspace(raw));
+  if (raw !== null && raw !== JSON.stringify(data))
+    window.localStorage.setItem(key, JSON.stringify(data));
+  return data;
 }
 export function updateWorkspace(update: (data: Workspace) => Workspace) {
-  const next = update(readWorkspace());
+  const next = withoutChildMetadata(update(readWorkspace()));
   const serialized = JSON.stringify(next);
   parseWorkspace(serialized);
   window.localStorage.setItem(accountStorageKey(KEY), serialized);

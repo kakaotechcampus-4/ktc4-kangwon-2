@@ -29,6 +29,107 @@ const { fixtureAccount, fixtureKey, fixtureSession } = await import("./auth-fixt
 const onboarding = await import("../lib/api/onboarding.ts");
 
 const server = setupServer(...handlers);
+const storageSnapshot = () => localStorage.snapshot() + sessionStorage.snapshot();
+
+// 기존 MSW demo store 자체는 가명 fixture를 localStorage에 저장한다.
+// privacy 검증의 API 응답은 별도 메모리 서버에 두고 브라우저 저장소 전체를 검사한다.
+function memoryChildApi() {
+  const children = [];
+  server.use(
+    http.post("*/api/classes/:id/children", async ({ request, params }) => {
+      const body = await request.json();
+      const child = {
+        id: 100 + children.length,
+        class_id: Number(params.id),
+        name: body.name,
+        code: ["민준", "서준"][children.length],
+        created_at: new Date().toISOString(),
+      };
+      children.push(child);
+      return HttpResponse.json(child, { status: 201 });
+    }),
+    http.get("*/api/classes/:id/children", () => HttpResponse.json({ items: children })),
+  );
+}
+
+test("F1–F4: names stay out of storage; reload hydrates names and preserves server links", async () => {
+  const stop = await start();
+  memoryChildApi();
+  const { saveClassSettings, loadClassSettings } = await import("../lib/onboarding/settings.ts");
+  const { EMPTY_CLASS_SETTINGS } = await import("../lib/onboarding/types.ts");
+  try {
+    await onboarding.syncClass(SETTINGS, classroom());
+    const children = [];
+    for (const name of ["테스트아동A", "테스트아동B"]) {
+      children.push(await onboarding.addServerChild(classroom(), name));
+      assert.equal(
+        saveClassSettings({
+          ...EMPTY_CLASS_SETTINGS,
+          ...SETTINGS,
+          classes: [classroom({ children })],
+        }),
+        true,
+      );
+      for (const child of children) assert.equal(storageSnapshot().includes(child.name), false);
+    }
+    const links = children.map((c) => [c.id, onboarding.childServerId(c.id)]);
+    const reloaded = loadClassSettings();
+    assert.deepEqual(reloaded.classes[0].children, []);
+    assert.deepEqual(
+      reloaded.classes[0].childIds,
+      children.map((c) => c.id),
+    );
+    const hydrated = await onboarding.hydrateClassChildren(reloaded);
+    assert.deepEqual(
+      hydrated[0].children.map((c) => c.name),
+      children.map((c) => c.name),
+    );
+    assert.deepEqual(
+      hydrated[0].children.map((c) => [c.id, onboarding.childServerId(c.id)]),
+      links,
+    );
+    for (const c of children) assert.equal(storageSnapshot().includes(c.name), false);
+    assert.equal(saveClassSettings({ ...reloaded, classes: hydrated }), true);
+    for (const c of children) assert.equal(storageSnapshot().includes(c.name), false);
+  } finally {
+    stop();
+  }
+});
+
+test("F5: legacy sanitization removes only roster names and retains account and ID links", async () => {
+  const stop = await start();
+  memoryChildApi();
+  const { loadClassSettings } = await import("../lib/onboarding/settings.ts");
+  const { accountStorageKey } = await import("../lib/auth/demo-session.ts");
+  try {
+    await onboarding.syncClass(SETTINGS, classroom());
+    const child = await onboarding.addServerChild(classroom(), "테스트아동A");
+    const serverId = onboarding.childServerId(child.id);
+    const key = accountStorageKey("saessak.classSettings");
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...SETTINGS, classes: [classroom({ children: [child] })] }),
+    );
+    const first = loadClassSettings();
+    assert.equal(first.classes[0].children[0].name, child.name); // memory only
+    assert.equal(storageSnapshot().includes(child.name), false);
+    assert.equal(localStorage.getItem(fixtureKey), fixtureAccount);
+    assert.equal(onboarding.childServerId(child.id), serverId);
+    assert.equal(loadClassSettings().classes[0].children.length, 0);
+    assert.equal(
+      (await onboarding.hydrateClassChildren(loadClassSettings()))[0].children[0].name,
+      child.name,
+    );
+    // Deleting the final child must not revive its persisted ID/count.
+    const settings = loadClassSettings();
+    settings.classes[0] = { ...settings.classes[0], children: [], childIds: [] };
+    const { saveClassSettings } = await import("../lib/onboarding/settings.ts");
+    assert.equal(saveClassSettings(settings), true);
+    assert.deepEqual(loadClassSettings().classes[0].childIds, []);
+  } finally {
+    stop();
+  }
+});
 
 /** tests/auth-fixture.mjs 의 계정으로 로그인한 브라우저를 흉내낸다 (msw-p0 과 같은 방식). */
 function browser() {
@@ -37,10 +138,25 @@ function browser() {
     getItem: (k) => values.get(k) ?? null,
     setItem: (k, v) => values.set(k, v),
     removeItem: (k) => values.delete(k),
+    snapshot: () => JSON.stringify([...values]),
   };
   globalThis.localStorage = storage;
-  globalThis.sessionStorage = fixtureSession();
-  globalThis.window = { localStorage: storage, sessionStorage, location: { search: "" } };
+  const session = fixtureSession();
+  const sessionValues = new Map(
+    ["saessak.demoSession", "saessak.accountEmail"].map((key) => [key, session.getItem(key)]),
+  );
+  globalThis.sessionStorage = {
+    getItem: (key) => sessionValues.get(key) ?? null,
+    setItem: (key, value) => sessionValues.set(key, value),
+    removeItem: (key) => sessionValues.delete(key),
+    snapshot: () => JSON.stringify([...sessionValues]),
+  };
+  globalThis.window = Object.assign(new EventTarget(), {
+    localStorage: storage,
+    sessionStorage,
+    location: { search: "" },
+  });
+  return values;
 }
 
 /** 요청 URL·본문을 그대로 모아 둔다. 하드코딩한 id 가 섞이면 여기서 드러난다. */
@@ -339,3 +455,84 @@ test("S3: 동의 여부를 아동 수로 뒤집지 않는다", async () => {
     stop();
   }
 });
+
+/** 응답이 오기 전에 다른 계정으로 로그인한 상태를 만든다. localStorage 는 건드리지 않는다. */
+async function switchAccount(email = "other@example.com") {
+  const { saveToken } = await import("../lib/auth/token.ts");
+  sessionStorage.setItem("saessak.accountEmail", email);
+  saveToken("other-token");
+}
+function seedAccount(email = "other@example.com") {
+  localStorage.setItem(
+    `saessak.demoAccount:${encodeURIComponent(email)}`,
+    JSON.stringify({ name: "다른 선생님", email }),
+  );
+}
+
+/** A 계정에서 보낸 요청의 응답이 B 계정 저장소를 바꾸면 안 된다. */
+async function raceDuringSwitch(name, prepare, act) {
+  test(`계정 전환 race: ${name}`, async () => {
+    const stop = await start();
+    memoryChildApi();
+    const { SessionChangedError } = await import("../lib/auth/request-session.ts");
+    try {
+      await onboarding.syncClass(SETTINGS, classroom());
+      const ready = await prepare();
+      seedAccount();
+      prepare.intercept();
+      const before = localStorage.snapshot();
+      await assert.rejects(act(ready), SessionChangedError);
+      assert.equal(localStorage.snapshot(), before);
+    } finally {
+      stop();
+    }
+  });
+}
+
+// 전환 뒤에도 서버는 성공으로 답한다 — 방어가 없으면 그 응답이 그대로 저장된다.
+const switchOn = (method, path, respond) => () =>
+  server.use(
+    http[method](path, async (info) => {
+      await switchAccount();
+      return respond(info);
+    }),
+  );
+const CHILD = (name) => ({
+  id: 900,
+  class_id: 3,
+  name,
+  code: "민준",
+  created_at: new Date().toISOString(),
+});
+
+raceDuringSwitch(
+  "아동 추가 응답은 전환된 계정의 링크를 쓰지 않는다",
+  Object.assign(async () => classroom(), {
+    intercept: switchOn("post", "*/api/classes/:id/children", async ({ request }) =>
+      HttpResponse.json(CHILD((await request.json()).name), { status: 201 }),
+    ),
+  }),
+  (c) => onboarding.addServerChild(c, "테스트아동A"),
+);
+
+raceDuringSwitch(
+  "아동 삭제 응답은 전환된 계정의 링크를 지우지 않는다",
+  Object.assign(async () => (await onboarding.addServerChild(classroom(), "테스트아동A")).id, {
+    intercept: switchOn(
+      "delete",
+      "*/api/children/:id",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+  }),
+  (id) => onboarding.removeServerChild(id),
+);
+
+raceDuringSwitch(
+  "아동 목록 응답은 전환된 계정의 링크를 덮어쓰지 않는다",
+  Object.assign(async () => classroom(), {
+    intercept: switchOn("get", "*/api/classes/:id/children", () =>
+      HttpResponse.json({ items: [CHILD("테스트아동A")] }),
+    ),
+  }),
+  (c) => onboarding.hydrateClassChildren({ ...SETTINGS, classes: [c] }),
+);

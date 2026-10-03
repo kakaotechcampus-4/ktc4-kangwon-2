@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ..domain.monthly_template import TemplateRef
+from ..domain.monthly_template_profile import TemplateProfileRef
 from ..domain.year_month import YearMonth
 from ..planner.contracts import MonthlyCellPlanningOutcome
 from ..rules.monthly_activity_selection import ActivitySelectionTrace
@@ -28,6 +28,14 @@ class SafetyRuleSelector:
 
 
 @dataclass(frozen=True, slots=True)
+class SafetyPlacementSelector:
+    policy_version: str
+
+    def __post_init__(self) -> None:
+        _non_blank(self.policy_version, "SafetyPlacementSelector.policy_version")
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityCatalogSelector:
     catalog_id: str
     catalog_version: str
@@ -42,11 +50,13 @@ class GenerateMonthlyPlanCommand:
     parent_yearly_plan_id: PlanId
     target_month: YearMonth
     daycare_ref: str
-    template_ref: TemplateRef
+    profile_ref: TemplateProfileRef
     safety_rule: SafetyRuleSelector
     generation_mode: MonthlyGenerationMode
     activity_catalog: ActivityCatalogSelector | None = None
     optional_context_names: tuple[str, ...] = ()
+    # None keeps safety_education on the source-required path (OD-M04).
+    safety_placement: SafetyPlacementSelector | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.parent_yearly_plan_id, PlanId):
@@ -58,9 +68,9 @@ class GenerateMonthlyPlanCommand:
                 "GenerateMonthlyPlanCommand.target_month must be YearMonth"
             )
         _non_blank(self.daycare_ref, "GenerateMonthlyPlanCommand.daycare_ref")
-        if not isinstance(self.template_ref, TemplateRef):
+        if not isinstance(self.profile_ref, TemplateProfileRef):
             raise InvalidDomainValueError(
-                "GenerateMonthlyPlanCommand.template_ref must be TemplateRef"
+                "GenerateMonthlyPlanCommand.profile_ref must be TemplateProfileRef"
             )
         if not isinstance(self.safety_rule, SafetyRuleSelector):
             raise InvalidDomainValueError(
@@ -86,6 +96,12 @@ class GenerateMonthlyPlanCommand:
         if len(set(self.optional_context_names)) != len(self.optional_context_names):
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.optional_context_names must be unique"
+            )
+        if self.safety_placement is not None and not isinstance(
+            self.safety_placement, SafetyPlacementSelector
+        ):
+            raise InvalidDomainValueError(
+                "GenerateMonthlyPlanCommand.safety_placement is invalid"
             )
 
 

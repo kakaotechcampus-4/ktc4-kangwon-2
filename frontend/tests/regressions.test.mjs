@@ -116,7 +116,12 @@ test("legacy settings migrate and valid settings round-trip", () => {
   assert.equal(migrated.classes[0].className, "햇살반");
   assert.equal(migrated.classes[0].ageGroup, "4");
   assert.equal(saveClassSettings(migrated), true);
-  assert.deepEqual(loadClassSettings(), migrated);
+  const reloaded = loadClassSettings();
+  assert.deepEqual(reloaded, {
+    ...migrated,
+    classes: migrated.classes.map((c) => ({ ...c, children: [] })),
+  });
+  assert.deepEqual(reloaded.classes[0].childIds, ["a"]);
 });
 
 test("duplicate IDs are repaired so editing or deleting targets one entry", () => {

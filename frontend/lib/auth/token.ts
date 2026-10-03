@@ -8,8 +8,11 @@
  */
 
 const KEY = "saessak.authToken";
+let generation = 0;
+export const tokenGeneration = () => generation;
 
 export function saveToken(token: string): void {
+  generation += 1;
   try {
     window.sessionStorage.setItem(KEY, token);
   } catch {
@@ -26,6 +29,7 @@ export function readToken(): string | null {
 }
 
 export function clearToken(): void {
+  generation += 1;
   try {
     window.sessionStorage.removeItem(KEY);
   } catch {

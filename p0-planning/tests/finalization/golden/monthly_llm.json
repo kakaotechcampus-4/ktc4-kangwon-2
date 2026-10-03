@@ -3,10 +3,10 @@
   "activity_selections": [],
   "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
   "constraints": [{"affected_sections": ["safety_education"], "code": "STATUTORY_SAFETY_EDUCATION", "rule_version": "v1", "verification": "NOT_VERIFIED_SOURCE_REQUIRED"}],
-  "context_packet_fingerprint": "0ea620806749a14ce0a6b00b764a5a820ca2e2e00579eb5562eff754f55584ac",
+  "context_packet_fingerprint": "e619036b837f2331fa0b839232b8e4f4ce09bdea9dd49092bc043083ee7016b3",
   "generation_mode": "LLM_PLANNER",
   "parent_lineage": {"confirmed_by": "teacher_001", "has_parent_item_id": true, "has_parent_plan_id": true, "snapshot_value": "우리나라와 세계 여러 나라"},
-  "schema": "monthly-golden-v1",
+  "schema": "monthly-golden-v2",
   "sections": [
     {
       "cells": [
@@ -31,43 +31,43 @@
             {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
             {"source_id": "act_outdoor_mugunghwa_flower_game", "source_version": "activity-reference-v0.2.1", "type": "ACTIVITY_REFERENCE"}
           ],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "무궁화 꽃이 피었습니다", "week_id": "2026-09-W1"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
           "evidence": [
             {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-            {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+            {"source_id": "ev_0d0a7a49a95a_p01_r00509_c01_i02", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
           ],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based outdoor activity 2", "week_id": "2026-09-W2"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
           "evidence": [
             {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-            {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+            {"source_id": "ev_0d0a7a49a95a_p01_r00509_c01_i02", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
           ],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based outdoor activity 3", "week_id": "2026-09-W3"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
           "evidence": [
             {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-            {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+            {"source_id": "ev_0d0a7a49a95a_p01_r00509_c01_i02", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
           ],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based outdoor activity 4", "week_id": "2026-09-W4"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
           "evidence": [
             {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-            {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+            {"source_id": "ev_0d0a7a49a95a_p01_r00509_c01_i02", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
           ],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based outdoor activity 5", "week_id": "2026-09-W5"
         }
       ],
@@ -112,32 +112,47 @@
       "cells": [
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
-          "evidence": [{"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"}],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+          ],
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based weekly focus 1", "week_id": "2026-09-W1"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
-          "evidence": [{"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"}],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+          ],
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based weekly focus 2", "week_id": "2026-09-W2"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
-          "evidence": [{"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"}],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+          ],
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based weekly focus 3", "week_id": "2026-09-W3"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
-          "evidence": [{"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"}],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+          ],
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based weekly focus 4", "week_id": "2026-09-W4"
         },
         {
           "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
-          "evidence": [{"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"}],
-          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v1"},
+          "evidence": [
+            {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
+            {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+          ],
+          "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v17"},
           "state": "FILLED", "value": "Context-based weekly focus 5", "week_id": "2026-09-W5"
         }
       ],
@@ -148,6 +163,7 @@
   "target_ages": [3, 4],
   "target_month": "2026-09",
   "template": "ssuksak.monthly-template-a/monthly-template-a-v0.2.0",
+  "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v2"}], "findings": [{"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W2"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W3"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W4"}, {"code": "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", "finding_kind": "NOT_VERIFIED", "rule_id": "monthly.activity.supported_ages", "rule_version": "v2", "section_key": "outdoor_play", "severity": "WARNING", "week_id": "2026-09-W5"}], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
   "weeks": [
     {"active": true, "end": "2026-09-04", "start": "2026-08-31", "week_id": "2026-09-W1"},
     {"active": true, "end": "2026-09-11", "start": "2026-09-07", "week_id": "2026-09-W2"},

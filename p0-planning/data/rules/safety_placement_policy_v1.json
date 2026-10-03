@@ -1,0 +1,41 @@
+{
+  "$schema_note": "쓱싹요정 기본 안전교육 Placement Policy. 법령이 아니라 제품 정책이다. 법정 구분·주기·시간은 safety_education_legal_v1.json이 정하며 이 파일은 그 구분을 어느 월·주에 둘지만 담는다. 법령 파일을 수정하지 않고 legal_rule_version으로 참조만 한다.",
+  "policy_id": "ssuksak.safety-placement-policy",
+  "policy_version": "ssuksak-safety-placement-v1",
+  "normative_status": "PRODUCT_POLICY",
+  "legal_rule_version": "child-welfare-act-decree-annex6-2022-06-21",
+  "school_year_start_month": 3,
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-09-26T00:00:00+09:00",
+    "runtime_active": true,
+    "runtime_rule": "runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")을 항상 만족한다.",
+    "decision_record": "2026-09-26 Human Decision: 제품 기본 Placement Policy를 발행한다. OD-M04의 'P0에서 제품 기본 safety placement policy를 발행하지 않는다'를 대체하며, 배치 source 우선순위에서 기관 연간계획·교사 입력 다음의 기본값이다. canonical 문서 정합화는 후속 작업이다.",
+    "approval_scope_note": "월 배치와 주 순번(week_ordinal)을 승인한다. 법정 연간 시간 충족을 뜻하지 않는다."
+  },
+  "week_ordinal_semantics": "해당 월의 활성 주 중 몇 번째 주인지(1부터). 활성 주가 모자라면 fail-closed한다. 2026-09-26 Human Decision: 법정 구분이 1개인 달은 2주, 2개인 달은 2주·4주에 둬 월 초 연속 배치를 피한다.",
+  "interval_semantics": "월 단위로 검증한다. 교육연도 3월→다음 해 2월 배치를 매년 반복한다고 보고, 같은 구분의 연속 배치 월 간격이 interval_months 이하인지 순환 검사한다.",
+  "placements": [
+    {"month": 3, "category_id": "traffic_safety", "week_ordinal": 2},
+    {"month": 3, "category_id": "sexual_violence_prevention", "week_ordinal": 4},
+    {"month": 4, "category_id": "missing_and_abduction_prevention", "week_ordinal": 2},
+    {"month": 5, "category_id": "traffic_safety", "week_ordinal": 2},
+    {"month": 5, "category_id": "infectious_disease_and_drug_misuse_prevention", "week_ordinal": 4},
+    {"month": 6, "category_id": "child_abuse_prevention", "week_ordinal": 2},
+    {"month": 7, "category_id": "traffic_safety", "week_ordinal": 2},
+    {"month": 7, "category_id": "missing_and_abduction_prevention", "week_ordinal": 4},
+    {"month": 8, "category_id": "infectious_disease_and_drug_misuse_prevention", "week_ordinal": 2},
+    {"month": 8, "category_id": "disaster_preparedness_safety", "week_ordinal": 4},
+    {"month": 9, "category_id": "traffic_safety", "week_ordinal": 2},
+    {"month": 9, "category_id": "sexual_violence_prevention", "week_ordinal": 4},
+    {"month": 10, "category_id": "missing_and_abduction_prevention", "week_ordinal": 2},
+    {"month": 11, "category_id": "traffic_safety", "week_ordinal": 2},
+    {"month": 11, "category_id": "infectious_disease_and_drug_misuse_prevention", "week_ordinal": 4},
+    {"month": 12, "category_id": "child_abuse_prevention", "week_ordinal": 2},
+    {"month": 1, "category_id": "traffic_safety", "week_ordinal": 2},
+    {"month": 1, "category_id": "missing_and_abduction_prevention", "week_ordinal": 4},
+    {"month": 2, "category_id": "infectious_disease_and_drug_misuse_prevention", "week_ordinal": 2},
+    {"month": 2, "category_id": "disaster_preparedness_safety", "week_ordinal": 4}
+  ]
+}
