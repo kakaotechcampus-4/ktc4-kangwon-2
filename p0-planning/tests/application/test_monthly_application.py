@@ -894,6 +894,38 @@ def test_theme_evidence_never_depends_on_theme_grounding_refs():
     }
 
 
+class CitingReferenceOutdoorMonthlyLlm(RequestAwareMonthlyLlm):
+    """Week 1 outdoor becomes a catalog reference that still cites refs, ignoring the schema."""
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        response = super().generate_monthly(request)
+        body = json.loads(response.content)
+        outdoor = next(s for s in body["weeks"][0]["sections"] if s["section_key"] == "outdoor_play")
+        outdoor["reference_id"], outdoor["value"] = request.reference_labels[0]
+        assert outdoor["grounding_refs"]
+        return RawLlmResponse(json.dumps(body, ensure_ascii=False), response.model, response.request_id)
+
+
+def test_outdoor_evidence_is_activity_reference_xor_institution_sample():
+    """OD-N13 / L9: a reference outdoor cell is grounded by its reference, a free-text one by samples."""
+    plan = Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=CitingReferenceOutdoorMonthlyLlm()).plan
+    reference, *free_text = plan.section("outdoor_play").cells
+
+    assert {source.source_type for source in reference.evidence} == {
+        EvidenceSourceType.PARENT_PLAN,
+        EvidenceSourceType.ACTIVITY_REFERENCE,
+    }
+    assert free_text
+    for cell in free_text:
+        assert {source.source_type for source in cell.evidence} == {
+            EvidenceSourceType.PARENT_PLAN,
+            EvidenceSourceType.INSTITUTION_SAMPLE,
+        }
+    for cell in plan.section("outdoor_play").cells:
+        types = {source.source_type for source in cell.evidence}
+        assert (EvidenceSourceType.ACTIVITY_REFERENCE in types) != (EvidenceSourceType.INSTITUTION_SAMPLE in types)
+
+
 def test_llm_focus_semantics_remain_snapshot_owned():
     harness = Harness()
     result = harness.generate(
