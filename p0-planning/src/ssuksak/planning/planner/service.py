@@ -14,14 +14,16 @@ from .contracts import (
     MonthlyPlanningRequest,
     ProposalRejectedError,
 )
-from .parser import parse_monthly_proposal
+from .parser import parse_monthly_proposal, parse_repair_patches
 from .ports import MonthlyPlanningProvider
 from .prompt import build_monthly_planning_request, build_monthly_repair_request
 from .validation import (
     MonthlyProposalValidationResult,
     canonicalize_reference_labels,
     changed_reference_ids,
-    merge_authorized_repair,
+    hydrate_reference_values,
+    merge_repair_patches,
+    repair_targets,
     validate_monthly_proposal,
 )
 
@@ -64,8 +66,12 @@ class MonthlyPlanner:
     ) -> MonthlyPlanningOutcome:
         request = build_monthly_planning_request(packet, snapshot)
         initial_prompt_version, repaired_cells = request.prompt_version, frozenset()
-        response, proposal, validation = self._attempt(packet, request)
-        content, found = response.content, validation.issues
+        response = self._generate(request)
+        # The schema pairs each reference id with its label; hydration re-asserts that pair.
+        content, _ = hydrate_reference_values(response.content, request)
+        proposal = parse_monthly_proposal(content)
+        validation = validate_monthly_proposal(proposal, packet, request)
+        found = validation.issues
         if not validation.is_valid and set(validation.codes) <= REPAIRABLE_CODES:
             # Deterministic step first; it is no provider call.
             content, fixed = canonicalize_reference_labels(content, validation.issues, request)
@@ -77,6 +83,7 @@ class MonthlyPlanner:
             not validation.is_valid
             and set(validation.codes) <= REPAIRABLE_CODES
             and "REFERENCE_VALUE_MISMATCH" not in validation.codes  # label unknown: fail closed
+            and repair_targets(validation.issues)
         ):
             # At most one LLM repair call: 2 provider calls in total, never 3.
             _log.info("Monthly LLM repair attempted: %s", finding_summary(validation.issues))
@@ -84,21 +91,23 @@ class MonthlyPlanner:
             rejected = proposal
             try:
                 response = self._generate(request)
-                parse_monthly_proposal(response.content)  # a malformed repair still fails closed
+                patches = parse_repair_patches(response.content)  # a malformed repair still fails closed
             except Exception:
                 _log.warning("Monthly LLM repair failed before validation")
                 raise
-            # The repair may change only what its findings name; the merge enforces it.
-            content, applied, ignored = merge_authorized_repair(content, response.content, validation.issues)
+            # The repair returns patches for its targets only; each patch is applied whole
+            # or rejected whole by the merge.
+            content, applied, ignored = merge_repair_patches(content, patches, request.repair_targets)
             repaired_cells = frozenset(applied)
             if ignored:
                 _log.info(
-                    "Monthly LLM repair ignored unauthorized mutations: %s",
+                    "Monthly LLM repair rejected unauthorized patches: %s",
                     "; ".join(
-                        f"REPAIR_UNAUTHORIZED_MUTATION_IGNORED@{week or 'month'}/{section} fields={','.join(fields)}"
+                        f"REPAIR_PATCH_REJECTED@{week or 'month'}/{section} fields={','.join(fields)}"
                         for week, section, fields in ignored
                     ),
                 )
+            content, _ = hydrate_reference_values(content, request)
             proposal = parse_monthly_proposal(content)
             validation = MonthlyProposalValidationResult(
                 validate_monthly_proposal(proposal, packet, request).issues
@@ -127,8 +136,3 @@ class MonthlyPlanner:
         if not is_compatible_monthly_model(response.model):
             raise ProposalRejectedError(("UNEXPECTED_MODEL",))
         return response
-
-    def _attempt(self, packet: MonthlyContextPacket, request: MonthlyPlanningRequest):
-        response = self._generate(request)
-        proposal = parse_monthly_proposal(response.content)
-        return response, proposal, validate_monthly_proposal(proposal, packet, request)

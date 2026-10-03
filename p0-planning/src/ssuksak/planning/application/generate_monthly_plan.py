@@ -491,13 +491,15 @@ class GenerateMonthlyPlan:
                                 display_name=proposed.value,
                             ),
                         )
+                    # ACTIVITY_REFERENCE XOR INSTITUTION_SAMPLE (OD-N13): a reference cell
+                    # is grounded by its reference, never by cited samples.
                     evidence = deduplicate_evidence(
                         (
                             *parent_evidence,
                             *reference_evidence,
                             *(
                                 packet_evidence(packet, proposed.grounding_refs)
-                                if packet is not None
+                                if packet is not None and proposed.reference_id is None
                                 else ()
                             ),
                         )
