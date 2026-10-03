@@ -217,6 +217,9 @@ export default function DocumentsPage() {
   // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
   const current = activeServerId === null ? localCurrent : serverCurrent;
+  // 목록 재조회 실패가 이미 표시 중인 목록과 편집기를 숨기지 않게 한다.
+  const keepDocuments =
+    listStatus === "error" && (serverDocs.length > 0 || localDocs.length > 0 || !!current);
 
   /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
   const clearInvalid = (name: string) =>
@@ -534,12 +537,21 @@ export default function DocumentsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {listStatus === "error" && (
+            <div>
+              {keepDocuments && <Message error>{listError}</Message>}
+              <button className={ws.secondary} disabled={busy} onClick={reloadList}>
+                다시 시도
+              </button>
+            </div>
+          )}
           <WorkspaceViewState
-            status={listStatus}
+            status={keepDocuments ? "ready" : listStatus}
             error={listError}
             loading="문서를 불러오고 있어요."
             empty={
-              !library.length && (
+              !library.length &&
+              !(keepDocuments && current) && (
                 <Empty title="보관된 문서가 없어요">관찰 기록으로 첫 문서를 만들어보세요.</Empty>
               )
             }

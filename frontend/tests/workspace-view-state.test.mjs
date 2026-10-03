@@ -220,3 +220,212 @@ test("짚을 수 있는 칸은 모두 서버 계약의 칸 이름에서 온다",
     for (const field of marked) assert.ok(inputs.has(field), `${name}: ${field}`);
   }
 });
+
+// DocumentsPage의 실제 조회·재시도 이벤트와 공용 상태 분기를 함께 실행한다.
+const workspaceModel = await import("../lib/workspace/model.ts");
+const documentApi = await import("../lib/api/documents.ts");
+const { createSelection } = await import("../components/workspace/document-selection.ts");
+const pageCode = require("next/dist/compiled/babel/core").transformSync(documents(), {
+  filename: "DocumentsPage.tsx",
+  babelrc: false,
+  configFile: false,
+  presets: [
+    [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+    [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+    require("next/dist/compiled/babel/preset-typescript"),
+  ],
+}).code;
+
+const serverDocument = {
+  id: "document:17",
+  kind: "observation",
+  title: "기존 서버 문서",
+  status: "draft",
+  classId: "class-1",
+  className: "햇살반",
+  childId: "",
+  childName: "",
+  start: "2026-09-01",
+  end: "2026-09-30",
+  updatedAt: "t0",
+  sourcesCount: 0,
+  sources: [],
+  sections: [],
+  reviewNote: "기존 검토 메모",
+};
+const localDocuments = [
+  { ...serverDocument, id: "import-uuid", title: "로컬 증빙", origin: "import" },
+  { ...serverDocument, id: "plan-uuid", title: "로컬 계획안", kind: "annual", origin: "template" },
+];
+const LIST_FAILURE = "문서 목록을 다시 불러오지 못했어요.";
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+function documentsHarness({ items = [], local = [], fail = false } = {}) {
+  const slots = [],
+    effects = [];
+  let cursor = 0,
+    mounted = false,
+    selection,
+    tree;
+  const state = (initial) => {
+    const slot = cursor++;
+    if (!(slot in slots)) slots[slot] = typeof initial === "function" ? initial() : initial;
+    return [
+      slots[slot],
+      (next) => {
+        slots[slot] = typeof next === "function" ? next(slots[slot]) : next;
+      },
+    ];
+  };
+  const pageModules = {
+    react: {
+      useState: state,
+      useRef: (initial) => state(() => ({ current: initial }))[0],
+      useMemo: (fn) => fn(),
+      useEffect: (effect) => {
+        if (!mounted) effects.push(effect);
+      },
+      useSyncExternalStore: (_subscribe, get) => get(),
+    },
+    "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
+    "next/link": { default: "link", __esModule: true },
+    "@/lib/workspace/model": workspaceModel,
+    "@/lib/workspace/store": {
+      useWorkspace: () => ({
+        data: {
+          documents: local,
+          observations: [],
+          templates: [],
+          criteria: [],
+        },
+        error: "",
+      }),
+    },
+    "@/lib/api/client": { isUnauthenticated: () => false, invalidFields },
+    "@/lib/api/records": { listRecords: async () => [] },
+    "@/lib/api/documents": {
+      ...documentApi,
+      listDocuments: async () => {
+        if (fail) throw new Error(LIST_FAILURE);
+        return items;
+      },
+      getDocument: async () => serverDocument,
+      updateDocument: async () => serverDocument,
+    },
+    "./DocumentEditor": { default: "editor", __esModule: true },
+    "./document-selection": {
+      createSelection: (...args) => {
+        selection = createSelection(...args);
+        return selection;
+      },
+    },
+    "./WorkspaceUI": {
+      WorkspacePage: "page",
+      Empty: ({ title, children }) => jsx("empty", { children: [title, children] }),
+      Message: ({ children, error }) => (children ? jsx("message", { children, error }) : null),
+      useClasses: () => [],
+      ws: {},
+    },
+    "./WorkspaceViewState": { WorkspaceViewState, FieldError, fieldErrorProps },
+  };
+  const pageModule = { exports: {} };
+  new Function("require", "module", "exports", pageCode)(
+    (name) => {
+      assert.ok(name in pageModules, name);
+      return pageModules[name];
+    },
+    pageModule,
+    pageModule.exports,
+  );
+  const resolveViews = (node) => {
+    if (Array.isArray(node)) return node.map(resolveViews);
+    if (!node || typeof node !== "object") return node;
+    if (typeof node.type === "function") return resolveViews(node.type(node.props));
+    return { ...node, props: { ...node.props, children: resolveViews(node.props.children) } };
+  };
+  const render = () => {
+    cursor = 0;
+    tree = resolveViews(pageModule.exports.default());
+    mounted = true;
+  };
+  const content = (node) => texts(node).join("");
+  render();
+  return {
+    render,
+    mount: async () => {
+      effects.forEach((effect) => effect());
+      await settle();
+      render();
+    },
+    fail: (next) => {
+      fail = next;
+    },
+    selection: () => selection,
+    editor: () => nodes(tree).find((node) => node.type === "editor"),
+    text: () => content(tree),
+    button: (label) =>
+      nodes(tree).find((node) => node.type === "button" && content(node).includes(label)),
+    errors: () => nodes(tree).filter((node) => node.type === "message" && node.props.error),
+  };
+}
+
+test("문서 목록 재조회 실패는 기존 목록·선택 문서·로컬 문서를 유지하고 재시도할 수 있다", async () => {
+  const page = documentsHarness({ items: [serverDocument], local: localDocuments });
+  assert.match(page.text(), /문서를 불러오고 있어요/);
+  await page.mount();
+  page.button(serverDocument.title).props.onClick();
+  await settle();
+  page.render();
+  const before = page.editor();
+  assert.ok(before);
+  page.fail(true);
+  await before.props.server.save([], "기존 검토 메모");
+  await settle();
+  page.render();
+  for (const doc of [serverDocument, ...localDocuments]) assert.ok(page.text().includes(doc.title));
+  assert.equal(page.editor().key, before.key);
+  assert.strictEqual(page.editor().props.initial, before.props.initial);
+  assert.equal(page.selection().get().active, serverDocument.id);
+  assert.equal(page.errors().length, 1);
+  assert.match(page.text(), new RegExp(LIST_FAILURE));
+  page.fail(false);
+  await page.button("다시 시도").props.onClick();
+  page.render();
+  assert.equal(page.errors().length, 0);
+  assert.equal(page.editor().key, before.key);
+});
+
+test("서버 목록이 없어도 로컬 증빙·계획안은 오류와 함께 표시하고 선택할 수 있다", async () => {
+  const page = documentsHarness({ local: localDocuments, fail: true });
+  await page.mount();
+  for (const doc of localDocuments) assert.ok(page.text().includes(doc.title));
+  page.button(localDocuments[0].title).props.onClick();
+  page.render();
+  const before = page.editor();
+  assert.strictEqual(before.props.initial, localDocuments[0]);
+  await page.button("다시 시도").props.onClick();
+  page.render();
+  assert.equal(page.editor().key, before.key);
+});
+
+test("목록이 비어도 이미 받은 선택 문서 상세가 있으면 조회 오류가 상세를 숨기지 않는다", async () => {
+  const page = documentsHarness({ fail: true });
+  page.selection().adopt(serverDocument);
+  await page.mount();
+  assert.strictEqual(page.editor().props.initial, serverDocument);
+  assert.equal(page.errors().length, 1);
+});
+
+test("표시할 문서가 없는 조회 실패는 전체 오류를 쓰고 재시도 성공 후 기존 empty를 표시한다", async () => {
+  const page = documentsHarness({ fail: true });
+  assert.match(page.text(), /문서를 불러오고 있어요/);
+  await page.mount();
+  assert.equal(page.editor(), undefined);
+  assert.equal(page.errors().length, 1);
+  assert.equal(page.text().includes("보관된 문서가 없어요"), false);
+  page.fail(false);
+  await page.button("다시 시도").props.onClick();
+  page.render();
+  assert.equal(page.errors().length, 0);
+  assert.match(page.text(), /보관된 문서가 없어요/);
+});
