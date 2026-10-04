@@ -16,6 +16,8 @@ class SafetyCategory:
     official_label: str
     interval_months: int
     annual_hours_min: int
+    # Official "초등학교 취학 전" content items, verbatim from the legal Rule.
+    content_items: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("category_id", "official_label"):
@@ -30,6 +32,12 @@ class SafetyCategory:
                 raise InvalidDomainValueError(
                     f"SafetyCategory.{name} must be a positive integer"
                 )
+        if not isinstance(self.content_items, tuple) or any(
+            not isinstance(item, str) or not item.strip() for item in self.content_items
+        ):
+            raise InvalidDomainValueError(
+                "SafetyCategory.content_items must contain non-blank strings"
+            )
 
 
 @dataclass(frozen=True, slots=True)

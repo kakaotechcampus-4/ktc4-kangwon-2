@@ -1,4 +1,5 @@
 import { readToken } from "../auth/token";
+import { captureSession } from "../auth/request-session";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -46,6 +47,7 @@ const looksLikeHtml = (contentType: string | null, text: string) =>
 /** 서버 응답의 envelope/error code를 변환하지 않고 그대로 유지합니다. */
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!path.startsWith("/api/")) throw new Error("API path must start with /api/");
+  const session = path.startsWith("/api/auth/") ? null : captureSession();
   const headers = new Headers(options.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
   // 토큰은 여기 한 곳에서만 붙인다. 호출부마다 붙이면 새 API 를 만들 때 빠뜨린다.
@@ -54,6 +56,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(path, { ...options, headers });
   const text = await response.text();
+  session?.assertCurrent();
   const method = options.method ?? "GET";
 
   // HTML 응답은 JSON API 응답이 아니다 → ApiError가 아니라 전송 오류로 분리한다.
@@ -82,6 +85,18 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     throw new ApiError(response.status, body);
   }
   return body as T;
+}
+
+/**
+ * 토큰이 없거나 못 믿어서 거절된 것인지 (`401 UNAUTHENTICATED`, docs/api-spec.md 「인증」).
+ *
+ * 404 와 갈라 봐야 한다 — 401 은 다시 로그인시킬 일이고, 404 는 대상이 없거나 남의 원 것이다.
+ * 서버가 「만료」와 「서명 불일치」를 구분해 주지 않으므로 여기서도 나누지 않는다.
+ */
+export function isUnauthenticated(error: unknown): error is ApiError {
+  if (!(error instanceof ApiError) || error.status !== 401) return false;
+  const body = error.body as { error?: { code?: unknown } } | null;
+  return typeof body === "object" && body !== null && body.error?.code === "UNAUTHENTICATED";
 }
 
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */

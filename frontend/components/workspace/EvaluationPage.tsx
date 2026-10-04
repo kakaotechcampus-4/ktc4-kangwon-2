@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  childDisplayName,
   compareEvidence,
   DOCUMENT_KINDS,
   downloadText,
@@ -454,7 +455,7 @@ export default function EvaluationPage() {
                   </span>
                 </div>
                 <p className={ws.muted}>
-                  {doc.className} {doc.childName} · {doc.start} ~ {doc.end}
+                  {doc.className} {childDisplayName(classes, doc)} · {doc.start} ~ {doc.end}
                 </p>
                 <p className={ws.hint}>
                   문서 사전점검입니다. 단어 발견은 항목 충족을 의미하지 않으며, 공식 평가 판정은
@@ -560,7 +561,8 @@ export default function EvaluationPage() {
                             {d.start} ~ {d.end}
                             <br />
                             <small>
-                              대상: {d.childName || "반 전체 · 개별 아동 내용 확인 필요"}
+                              대상:{" "}
+                              {childDisplayName(classes, d) || "반 전체 · 개별 아동 내용 확인 필요"}
                             </small>
                           </div>
                         ))

@@ -600,11 +600,13 @@ function ClassroomChildrenCard({
         items={classroom.children}
         onAdd={async (name) => {
           const child = await addServerChild(classroom, name);
-          onChange({ children: [...classroom.children, child] });
+          const children = [...classroom.children, child];
+          onChange({ children, childIds: children.map((entry) => entry.id) });
         }}
         onRemove={async (id) => {
           await removeServerChild(id);
-          onChange({ children: classroom.children.filter((c) => c.id !== id) });
+          const children = classroom.children.filter((c) => c.id !== id);
+          onChange({ children, childIds: children.map((entry) => entry.id) });
         }}
       />
     </section>

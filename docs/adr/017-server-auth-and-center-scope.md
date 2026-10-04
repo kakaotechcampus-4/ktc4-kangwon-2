@@ -70,6 +70,7 @@ app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 ```
 auth     회원가입·로그인. 토큰을 받으러 오는 곳이라 열어 둔다
 forms    업로드한 파일을 그대로 돌려줄 뿐 저장된 개인정보가 없다
+         → 등록 양식을 저장하게 되어 /forms/parse 만 연다 (ADR-020)
 나머지    아동 실명이 내려온다. 막는다
 ```
 

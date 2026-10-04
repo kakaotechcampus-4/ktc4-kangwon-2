@@ -67,6 +67,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # p0-planning 을 먼저 깐다. backend 가 ssuksak-planning 을 의존하는데
+      # 그 이름은 PyPI 에 없다 — 같은 저장소의 옆 패키지다.
+      - name: Install planning core
+        working-directory: p0-planning
+        run: pip install .
       - name: Install
         run: pip install .
       # models.py 를 고치고 마이그레이션을 안 만들면 로컬은 되는데
@@ -153,6 +158,11 @@ jobs:
       # -e 로 깐다. 비편집 설치면 app 이 site-packages 에서 import 되고
       # mapping.py 의 parents[3] 가 site-packages 를 가리켜
       # resources/forms/label_mapping.json 을 못 찾는다.
+      # p0-planning 을 먼저 깐다. backend 가 ssuksak-planning 을 의존하는데
+      # 그 이름은 PyPI 에 없다 — 같은 저장소의 옆 패키지다.
+      - name: Install planning core
+        working-directory: p0-planning
+        run: pip install -e .
       - name: Install
         run: pip install -e ".[dev]"
       # postgres 를 띄운다. /health/ready 200 이 배포 성공 판정이 보는 응답이라
@@ -163,7 +173,7 @@ jobs:
       # job 을 새로 만들지 않고 스텝으로 붙인다 — job 개수는 멘토 리뷰 후 정한다.
       - name: planning core pytest
         working-directory: p0-planning
-        run: pip install -e . && pytest
+        run: pytest
 
   docker:
     name: backend (docker build)
@@ -174,8 +184,9 @@ jobs:
       # ${VAR:?} 라 .env 없이는 보간 단계에서 죽는다.
       # frontend 이미지도 빌드하지 않는다 — npm ci + next build 재실행이라
       # frontend job 과 신호가 같다. ADR-011.
+      # 맥락이 뿌리다 — 이미지가 p0-planning 도 담는다.
       - name: docker build
-        run: docker build -t ssuksak-backend:ci ./backend
+        run: docker build -t ssuksak-backend:ci -f backend/Dockerfile .
       # 빌드만으로는 COPY 한 줄이 빠진 걸 모른다. import 까지 해본다.
       # Settings 가 기동 시점에 평가되므로 필수 환경변수를 다 줘야 한다 — 하나라도
       # 빠지면 "COPY 가 빠졌다" 가 아니라 "환경변수가 없다" 로 죽어 신호가 흐려진다.
@@ -185,3 +196,20 @@ jobs:
           -e DATABASE_URL=postgresql+psycopg://x:x@127.0.0.1:1/x
           -e SECRET_KEY=ci-only-not-a-secret
           ssuksak-backend:ci python -c "import app.main"
+      # **import 만으로는 모자란다.** 참조자료가 p0-planning/data/ 에 있는데 그 폴더는
+      # 패키지 밖이라, 설치 방식에 따라 이미지 안에서 사라진다. import 는 멀쩡히 되고
+      # 계획안을 만들 때 FileNotFoundError 로 죽는다 — 실제로 한 번 냈다.
+      # 파일이 있는지가 아니라 **읽어지는지**를 본다.
+      # **import 만으로는 모자란다.** 참조자료가 p0-planning/data/ 에 있는데 그 폴더는
+      # 패키지 밖이라, 설치 방식에 따라 이미지 안에서 사라진다. import 는 멀쩡히 되고
+      # 계획안을 만들 때 FileNotFoundError 로 죽는다 — 실제로 한 번 냈다.
+      # 파일이 있는지가 아니라 **읽어지는지**를 본다.
+      #
+      # 검사 본문은 이미지 안의 파일로 둔다. 여기 python -c 로 여러 줄을 적으면
+      # YAML 접기가 줄머리 공백을 남겨 IndentationError 가 난다 — 실제로 한 번 냈다.
+      - name: 이미지가 참조자료를 읽나
+        run: >-
+          docker run --rm
+          -e DATABASE_URL=postgresql+psycopg://x:x@127.0.0.1:1/x
+          -e SECRET_KEY=ci-only-not-a-secret
+          ssuksak-backend:ci python -m app.checks.references
