@@ -20,7 +20,10 @@ from app.config import settings
 from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 # 층마다 다른 모델을 쓰면 같은 문서 안에서 문체가 갈린다. p0-planning 과 같은 값이다.
-MODEL = "openai/gpt-4.1-mini"
+#
+# **엘리스는 모델마다 주소가 다르다.** `ELICE_MLAPI_BASE_URL` 이 이 모델의 주소를
+# 가리키고 있어야 한다 — 주소와 이름이 어긋나면 `model_not_found` 가 난다.
+MODEL = "openai/gpt-5.6-luna"
 TIMEOUT_SECONDS = 30.0
 
 
@@ -44,8 +47,15 @@ def require_config() -> tuple[str, str]:
 def complete_json(system_prompt: str, user_content: str, *, transport=None) -> str:
     """JSON 으로만 답하게 하고 그 글자를 그대로 돌려준다. 파싱은 부르는 쪽이 한다.
 
-    **온도 0 이다.** 같은 입력에 같은 답이 와야 한다 — 계획안이 새로고침마다 달라지면
-    교사가 무엇을 보고 확정했는지 알 수 없다.
+    **온도를 보내지 않는다.** `gpt-5.6-luna` 는 기본값(1)만 받고 0 을 거부한다
+    (`Unsupported value: 'temperature' does not support 0 with this model`).
+    그래서 같은 입력에 같은 답이 온다고 가정하면 안 된다.
+
+    교사가 겪는 일은 거의 없다 — 연간은 반당 하나라 다시 만들 수 없고(§4),
+    만든 뒤에는 `body` JSONB 에 그대로 남는다. 달라지는 것은 **새로 만들 때뿐**이다.
+
+    **`system_prompt` 나 `user_content` 에 「JSON」이라는 낱말이 있어야 한다.**
+    `response_format: json_object` 는 그 낱말이 없으면 400 으로 거부한다.
     """
     base_url, api_key = require_config()
     post = transport or _post_json
@@ -58,7 +68,6 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
-            "temperature": 0,
             "response_format": {"type": "json_object"},
         },
         timeout=TIMEOUT_SECONDS,

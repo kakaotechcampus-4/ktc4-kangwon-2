@@ -119,7 +119,7 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
     assert url == "https://mlapi.elice.io/v1/chat/completions"
     assert headers["Authorization"] == "Bearer secret"
     assert payload["model"] == MONTHLY_MODEL
-    assert payload["temperature"] == 0
+    assert "temperature" not in payload
     assert payload["response_format"] == {
         "type": "json_schema",
         "json_schema": {

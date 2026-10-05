@@ -65,7 +65,10 @@ class MonthlyLlmConfig:
             raise MonthlyLlmConfigurationError("ELICE_MLAPI_BASE_URL is required")
         if not api_key:
             raise MonthlyLlmConfigurationError("ELICE_MLAPI_API_KEY is required")
-        model = source.get("MONTHLY_LLM_MODEL", MONTHLY_MODEL).strip()
+        # No MONTHLY_LLM_MODEL override: __post_init__ rejects anything but
+        # MONTHLY_MODEL, so reading it only looked like a knob. The prompts and
+        # golden files are pinned to that model, and the Elice base URL points at
+        # that one model — changing it is a code change, not a deploy-time setting.
         timeout_raw = source.get("MONTHLY_LLM_TIMEOUT_SECONDS", "30").strip()
         try:
             timeout = float(timeout_raw)
@@ -73,7 +76,7 @@ class MonthlyLlmConfig:
             raise MonthlyLlmConfigurationError(
                 "MONTHLY_LLM_TIMEOUT_SECONDS must be numeric"
             ) from exc
-        return cls(base_url, api_key, model, timeout)
+        return cls(base_url, api_key, MONTHLY_MODEL, timeout)
 
     @property
     def endpoint(self) -> str:
@@ -152,7 +155,8 @@ class EliceOpenAiMonthlyAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
-            "temperature": 0,
+            # No temperature: gpt-5.6-luna rejects 0 and only accepts its default, so the
+            # same packet can come back different. The schema below is what holds the shape.
             # Provider-enforced strict Structured Output; the parser still validates.
             "response_format": {
                 "type": "json_schema",
