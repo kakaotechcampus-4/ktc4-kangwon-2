@@ -4,10 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { getMe } from "@/lib/api/auth";
 import { getChildren } from "@/lib/api/children";
 import { getClasses } from "@/lib/api/classes";
-import { listDocuments, type DocumentSummary } from "@/lib/api/documents";
 import { getObservations } from "@/lib/api/observations";
 import type { ApiChild, ApiClass, ApiObservation } from "@/lib/api/types";
-import { DOCUMENT_KINDS, DOMAINS } from "@/lib/workspace/model";
+import { DOMAINS } from "@/lib/workspace/model";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
 /** 반 하나의 아동 명단과 관찰 기록. 기록은 한 번에 받아 화면에서 아이별로 나눈다. */
@@ -185,64 +184,10 @@ function ChildDetail({
         <p className={ws.muted}>관찰 기록 {records.length}건</p>
       </div>
       <DomainCounts records={records} />
-      {/* key — 아이가 바뀌면 이전 아이의 문서를 잠깐이라도 보여주지 않는다. */}
-      <ChildDocuments key={child.id} childId={child.id} />
       <Timeline records={records} />
     </section>
   );
 }
-
-/**
- * 이 아이의 관찰일지 · 영유아 평가. 기간 순서로 나열만 한다 — 비교 · 판정은 교사가 한다.
- * 문서 목록에는 본문이 없다 (§11). 내용은 문서 보관함에서 연다.
- */
-function ChildDocuments({ childId }: { childId: number }) {
-  const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let stale = false;
-    listDocuments({ child_id: childId })
-      .then((items) => !stale && setDocs(items.sort((a, b) => b.start.localeCompare(a.start))))
-      .catch(() => !stale && setFailed(true));
-    return () => {
-      stale = true;
-    };
-  }, [childId]);
-
-  if (failed) return <Message error>문서를 불러오지 못했어요.</Message>;
-  if (!docs) return <p className={ws.muted}>문서를 불러오는 중이에요…</p>;
-  return (
-    <div className={ws.card}>
-      <div className={ws.between}>
-        <h3>
-          이 아이의 문서 <span className={ws.muted}>{docs.length}건</span>
-        </h3>
-        <Link href="/documents" className={ws.link}>
-          문서 보관함 →
-        </Link>
-      </div>
-      {!docs.length && <p className={ws.muted}>아직 만든 관찰일지가 없어요.</p>}
-      <div className={ws.list}>
-        {docs.map((d) => (
-          <article className={ws.item} key={d.id}>
-            <div className={ws.between}>
-              <p>{d.title}</p>
-              <span className={ws.badge}>{documentState(d)}</span>
-            </div>
-            <p className={ws.muted}>
-              {DOCUMENT_KINDS[d.kind]} · {d.start} ~ {d.end} · 근거 기록 {d.sourcesCount}건
-            </p>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** 근거가 바뀐 문서는 확정이어도 다시 봐야 한다 (§11 stale). */
-const documentState = (d: DocumentSummary) =>
-  d.stale ? "다시 확인 필요" : d.status === "confirmed" ? "확정" : "초안";
 
 /** 5영역별 기록 수. 0 인 영역은 「아직 기록 없음」 — 덜 본 영역을 교사가 알게 한다. */
 function DomainCounts({ records }: { records: ApiObservation[] }) {
