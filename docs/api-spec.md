@@ -105,7 +105,7 @@ login    { "email": "a@b.kr", "password": "여덟자이상" }                   
 | `NOT_FOUND` | 404 | 대상 없음 |
 | `GATE_BLOCKED` | 409 | 층 게이트 — 아래 층이 확정 전인데 위 층을 요청 (§4 월간 · §11 주간 보육일지 · `stale` 문서 확정) |
 | `ALREADY_EXISTS` | 409 | 같은 대상에 이미 있음. 조회로 찾는다 |
-| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 되돌리기는 P1 |
+| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). 계획안 되돌리기는 P1 |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
@@ -290,6 +290,11 @@ login    { "email": "a@b.kr", "password": "여덟자이상" }                   
 - 동일한 `class_id` 안에서는 중복되지 않는다 — **`UNIQUE(class_id, code)` 로 DB 가 지킨다.**
   발급 로직에 버그가 있어도 잘못된 데이터가 들어가지 않는다. 경합 재시도는 만들지 않는다.
 - 한 번 발급된 `code` 는 해당 아동이 삭제되기 전까지 변경하지 않는다.
+- 등록은 반 행 잠금 안에서 직렬화하며, 저장 전에 반 전체 `NameTable`을 검증한다.
+  신규 가명은 신규·기존 실명의 variants를 피한다. 기존 가명과 신규 이름의 충돌,
+  동명이인·동일 variant, 가명 고갈 또는 기존 명단의 충돌을 해결할 수 없으면
+  저장 없이 `422 VALIDATION_FAILED`, `fields: ["name"]`을 반환한다.
+  기존 가명을 자동 재발급하거나 치환 안전 검사를 완화하지 않는다.
 - **삭제된 아동의 `code` 는 재사용해도 된다.** 행이 사라지면 제약이 풀린다. 발급 이력을
   따로 남기지 않는다.
 - **`code` 는 LLM 전송 시에만 쓴다. 기록·조회·참조는 `children.id` 로 한다.**
@@ -367,7 +372,12 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 학년도마다 새로 만든다(schema.md 불변규칙 5). 따로 받으면 불일치 경로만 생긴다.
 
 **`form_id` 는 원이 등록한 기관 양식이다**(§8). `null` 이면 기본 양식으로 만든다.
-6주차 화면은 기본 양식만 쓴다.
+
+**양식을 계획안에 복사하지 않는다. 번호만 든다.** `plans.form_id` 가 `forms.id` 를 가리키는
+FK 다 — 양식 원본은 하나만 두고 계획안 여러 개가 그걸 가리킨다. 계획안마다 복사하면 같은
+양식이 수십 벌이 되고, 양식을 고쳐도 옛 계획안에는 반영되지 않는다.
+
+**그래서 파생 계획안이 남아 있는 양식은 지워지지 않는다**(§8).
 
 **Response** `201`
 
@@ -760,12 +770,21 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 
 **`DELETE /api/forms/{id}`** → `204`.
 
-**삭제를 막지 않는다.** 이번 주 `plans.form_id` 에 FK 가 없다. 이미 만든 계획안이 지워진 `form_id` 를
-어떻게 다루는지(생성 때 양식을 복사해 두는지 등)는 **plans 쪽에서 정한다 — 미정.**
+**파생 계획안이 남아 있으면 지우지 않는다.** `plans.form_id` 가 `forms.id` 를 가리키는 FK 다(§4).
+그대로 `DELETE` 하면 DB 가 막아 500 이 난다. **화면에서 숨기는 쪽으로 간다 — 미구현.**
 
-**§4 가 받은 `form_id` 는 forms 의 조회 함수로 검사한다** — 없거나 남의 원 것인지.
-plans 가 forms 를 직접 import 하지 않는다(`structure.md`). **그때의 응답 코드는 §4 에 아직 없다** —
-plans 담당과 정해서 §4 에 쓴다.
+```
+파생 계획안이 없다   →  진짜 지운다.  204
+파생 계획안이 있다   →  지우지 않고 숨긴다.  목록에 안 나온다.  204
+                      계획안이 전부 사라지면 그때 진짜 지운다
+```
+
+**원본 파일을 저장한다 — 미구현.** 지금은 파싱 결과(`tables`·`labels`·`label_map`)만 남기고
+원본을 버린다. 그래서 ① 파서를 고쳐도 옛 양식에 다시 적용할 수 없고 ② 원이 쓰던 서식 그대로
+내보낼 수 없다. 양식 하나가 KB 단위고 원당 몇 개뿐이라 DB 에 넣는다.
+
+**§4 가 받은 `form_id` 는 forms 의 조회 함수로 검사한다** — 없거나 남의 원 것이면 `NOT_FOUND` 404
+(`fields: ["form_id"]`). plans 가 forms 를 직접 import 하지 않는다(`structure.md`).
 
 **에러** — parse 의 세 개에 둘이 더 붙는다
 
@@ -1066,17 +1085,36 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 **`stale` 이면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
 **문서를 지우지 않는다** — 교사가 보고 판단한다.
 
+**푸는 길은 `POST /api/documents/{id}/refresh` 하나다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」고 누른다.
+
+```
+1  근거 사본을 지금 원본으로 다시 뜬다        관찰 기록이면 fact · date,  문서면 사실 · start · status
+2  사실 항목을 새 사본으로 다시 잇는다
+3  stale = false
+```
+
+- **`해석` · `지원` 은 건드리지 않는다.** 새 사실에 맞는지는 교사가 보고 `PUT` 으로 고친 뒤 확정 체크 3개로 확인한다. 모델을 부르지 않는다
+- **초안에서만 된다.** 확정본은 `ALREADY_CONFIRMED` 409 — 먼저 `unconfirm` 한다. 확정본의 사실이 조용히 바뀌면 교사가 확인한 것과 저장된 것이 달라진다
+- **원본이 하나라도 사라졌으면 `GATE_BLOCKED` 409.** `fields` 에 `sources.{id}`. 빼고 이으면 교사가 고른 근거가 조용히 줄어든다 — 지우고 새로 만든다
+- **근거 일일 보육일지가 초안이면 `GATE_BLOCKED` 409.** 만들 때와 같은 규칙이다
+
 ### 상태와 출처
 
 ```
-status   DRAFT → CONFIRMED          한 방향이다.  되돌리기는 P1
+status   DRAFT ⇄ CONFIRMED          확정은 confirm,  되돌리기는 unconfirm
 origin   AI                         LLM 이 초안을 만들었다
          TEACHER                    교사가 직접 썼다
          TEMPLATE                   기관 양식에서 뼈대만 만들었다 (§8)
          IMPORT                     교사가 기존 문서를 올렸다
 ```
 
-**`CONFIRMED` 를 수정하면 `ALREADY_CONFIRMED` 409 다.**
+**`CONFIRMED` 를 수정하면 `ALREADY_CONFIRMED` 409 다.** 고치려면 먼저 되돌린다.
+
+**되돌리기 — `POST /api/documents/{id}/unconfirm`**  CONFIRMED → DRAFT.  body 없음
+
+- **이 문서를 근거로 쓴 문서는 전부 `stale` 이 된다** (연쇄). 주간 보육일지는 확정된 일일 보육일지만 받는다 — 근거가 초안으로 돌아가면 그 위에 쌓은 것도 다시 봐야 한다
+- **다시 불러도 200 이다.** 확정과 같은 이유 — 재시도를 진짜 실패와 구분할 수 없다
+- 되돌린 문서 자신의 `stale` 은 바꾸지 않는다. 바뀐 것은 상태지 근거가 아니다
 
 **`IMPORT` 는 거절 규칙을 적용하지 않는다.** `sources` 가 비고 `sections` 는
 `첨부 원문` 하나뿐이다. 우리가 만든 문서가 아니라 증빙이다.
@@ -1097,6 +1135,7 @@ origin   AI                         LLM 이 초안을 만들었다
 ```
 1  스키마      위 거절 규칙                      서버.  모델 없음
 2  추출 대조   사실 == sources 원문              서버.  문자열 비교.  모델 없음
+               해석의 숫자 ⊂ 사실의 숫자
 3  LLM Judge   미관찰 내용 · 근거 없는 해석 검사    LLM
 4  교사 확인    체크 3개                          사람
 ```
@@ -1157,8 +1196,16 @@ GET    /api/documents/{id}/related                               겹치는 확�
 POST   /api/documents/{id}/verify                                3단 LLM Judge
 PUT    /api/documents/{id}                                       title · sections · review_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
+POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
+POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
 DELETE /api/documents/{id}                                       204
 ```
+
+**확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
+고칠 수 없는 문서를 지울 수 있으면 확정이 의미가 없다.
+
+**해석에 사실에 없는 숫자가 있으면 `sections.해석` 으로 거절한다.**
+지원은 앞으로의 계획이라 새 숫자가 나와도 된다.
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
 교사가 사실을 고치려면 §10 에서 원본을 고친다. 그러면 이 문서가 `stale` 이 되고 다시 검토한다.

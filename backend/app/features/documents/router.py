@@ -32,6 +32,7 @@ from app.features.documents.schemas import (
     DocumentUpdateRequest,
     RelatedDocumentsResponse,
 )
+from app.features.documents.stale import document_changed
 from app.features.observations.models import Observation
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_child, require_own_class
@@ -571,18 +572,124 @@ def confirm_document(
     return _build_detail_response(session, doc)
 
 
-@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(document_id: int, session: DbSession, user: CurrentUser) -> None:
-    """문서를 지운다. 자식 행을 먼저 지우고 문서를 지운다 - FK 에 CASCADE 가 없다 (ADR-010).
+@router.post("/{document_id}/unconfirm", response_model=DocumentDetailResponse)
+def unconfirm_document(
+    document_id: int, session: DbSession, user: CurrentUser
+) -> DocumentDetailResponse:
+    """CONFIRMED → DRAFT. 확정한 문서를 교사가 다시 고칠 수 있게 한다 (docs/api-spec.md §11).
 
-    이 문서를 근거로 쓴 문서(주간 보육일지)는 지우지 않고 `stale` 로 바꾼다 -
-    근거가 사라진 것도 「원본 없음」이라 교사가 다시 봐야 한다 (§11 판정 기준).
+    **이 문서를 근거로 쓴 문서는 `stale` 이 된다.** 주간 보육일지는 **확정된** 일일 보육일지만
+    근거로 받는다 — 근거가 초안으로 돌아가면 그 위에 쌓은 주간도 다시 봐야 한다.
+
+    **다시 불러도 200 이다.** 확정과 같은 이유다 — 재시도를 진짜 실패와 구분할 수 없다.
     """
     doc = _own_document(session, user, document_id)
-    dependents = select(DocumentSource.document_id).where(
-        DocumentSource.source_kind == "document", DocumentSource.source_id == doc.id
-    )
-    session.execute(update(Document).where(Document.id.in_(dependents)).values(stale=True))
+    if doc.status == "DRAFT":
+        return _build_detail_response(session, doc)
+
+    doc.status = "DRAFT"
+    doc.updated_at = datetime.now(UTC)
+    document_changed(session, doc.id)
+    session.commit()
+    return _build_detail_response(session, doc)
+
+
+@router.post("/{document_id}/refresh", response_model=DocumentDetailResponse)
+def refresh_document(
+    document_id: int, session: DbSession, user: CurrentUser
+) -> DocumentDetailResponse:
+    """근거 사본을 지금 원본으로 다시 떠서 `사실` 을 새로 잇고 `stale` 을 푼다 (§11).
+
+    **`stale` 을 푸는 길은 이것 하나다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」 고
+    누른 것이다. `해석` · `지원` 은 건드리지 않는다 — 새 사실에 맞는지는 교사가 보고
+    `PUT` 으로 고친 뒤 확정 체크 3개로 확인한다. 모델을 부르지 않는다.
+
+    초안에서만 된다. 확정본은 먼저 `unconfirm` 한다 — 확정된 문서의 `사실` 이
+    조용히 바뀌면 교사가 확인한 것과 저장된 것이 달라진다.
+
+    **원본이 하나라도 사라졌으면 풀지 않는다.** 그 사실을 빼고 이으면 교사가 고른 근거가
+    조용히 줄어든다. 지우고 새로 만들게 한다.
+    """
+    doc = _own_document(session, user, document_id)
+    if doc.status == "CONFIRMED":
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "ALREADY_CONFIRMED",
+            "확정된 문서는 확정을 취소한 뒤 다시 불러올 수 있습니다.",
+            [],
+        )
+
+    # 전부 확인한 뒤에 한꺼번에 바꾼다. 도중에 거절하면 사본이 반쯤 바뀐 채 남지 않는다.
+    sources = _sources(session, document_id)
+    fresh: list[tuple[str, date, str | None]] = []
+    missing: list[str] = []
+    unconfirmed: list[str] = []
+    for copy in sources:
+        field = f"sources.{copy.source_id}"
+        if copy.source_kind == "observation":
+            observation = session.get(Observation, copy.source_id)
+            if observation is None:
+                missing.append(field)
+            else:
+                fresh.append((observation.fact, observation.date, None))
+            continue
+        source = session.get(Document, copy.source_id)
+        fact = session.scalar(
+            select(DocumentSection.body).where(
+                DocumentSection.document_id == copy.source_id, DocumentSection.heading == "사실"
+            )
+        )
+        if source is None or fact is None:
+            missing.append(field)
+        elif source.status != "CONFIRMED":
+            # 만들 때와 같은 규칙이다 — 초안인 일일 보육일지를 근거로 두지 않는다.
+            unconfirmed.append(field)
+        else:
+            fresh.append((fact, source.start_date, source.status))
+    if missing:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "근거 기록이 사라졌습니다. 이 문서를 지우고 새로 만들어주세요.",
+            missing,
+        )
+    if unconfirmed:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "근거 일일 보육일지를 먼저 확정해주세요.",
+            unconfirmed,
+        )
+
+    for copy, (text, day, source_status) in zip(sources, fresh, strict=True):
+        copy.text, copy.date, copy.source_status = text, day, source_status
+    if sources:
+        session.execute(
+            update(DocumentSection)
+            .where(DocumentSection.document_id == doc.id, DocumentSection.heading == "사실")
+            .values(body=join_facts([s.text for s in sources]))
+        )
+    doc.stale = False
+    doc.updated_at = datetime.now(UTC)
+    session.commit()
+    return _build_detail_response(session, doc)
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(document_id: int, session: DbSession, user: CurrentUser) -> None:
+    """DRAFT 문서를 지운다. 자식 행을 먼저 지우고 문서를 지운다 - FK 에 CASCADE 가 없다 (ADR-010).
+
+    확정된 문서는 `PUT` 처럼 409 로 막는다. 고칠 수 없는 문서를 지울 수 있으면 확정이 의미가 없다.
+
+    **여기서 `document_changed` 를 부르지 않는다.** 다른 문서는 확정된 문서만 근거로 쓰고,
+    확정을 풀면(`unconfirm`) 그때 이미 `stale` 이 붙는다. 그래서 「의존 문서가 달린 DRAFT」가
+    여기 올 수 없다.
+    """
+    doc = _own_document(session, user, document_id)
+    if doc.status == "CONFIRMED":
+        raise _error(
+            status.HTTP_409_CONFLICT, "ALREADY_CONFIRMED", "확정된 문서는 삭제할 수 없습니다.", []
+        )
     session.execute(delete(DocumentSection).where(DocumentSection.document_id == doc.id))
     session.execute(delete(DocumentSource).where(DocumentSource.document_id == doc.id))
     session.delete(doc)

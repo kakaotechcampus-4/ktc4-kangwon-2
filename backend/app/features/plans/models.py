@@ -13,7 +13,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,6 +40,17 @@ class Plan(Base):
         UniqueConstraint("plan_ref"),
         CheckConstraint("kind IN ('annual','monthly')", name="kind"),
         CheckConstraint("status IN ('DRAFT','CONFIRMED')", name="status"),
+        # 연간은 반 하나에 하나다. 라우터가 먼저 보고 409 를 내지만 **최종 보장은 여기다** —
+        # 두 요청이 동시에 오면 둘 다 「없다」를 보고 둘 다 만든다. 학년도는 걸지 않는다:
+        # `classes` 행이 학년도마다 새로 생기므로 `classroom_ref` 가 이미 학년도를 가른다.
+        # 월간은 한 반에 12개라 조건을 annual 로 좁힌다.
+        Index(
+            "uq_plans_annual_per_classroom",
+            "center_id",
+            "classroom_ref",
+            unique=True,
+            postgresql_where=text("kind = 'annual'"),
+        ),
     )
 
     # 계약의 id 는 정수다(api-spec §4). 화면이 이미 정수로 만들어져 있다.
@@ -62,6 +82,12 @@ class Plan(Base):
     # 도메인 객체 안에 들어갈 자리가 없다.
     sub_themes: Mapped[dict] = mapped_column(
         JSONB, default=dict, server_default="{}", comment='월 -> 소주제 배열. {"3": ["..."]}'
+    )
+    # 어느 양식에서 나온 계획안인지. **복사하지 않고 번호만 든다** — 양식은 원본 하나만
+    # 두고 계획안은 그걸 가리킨다. FK 라서 파생 계획안이 남아 있는 양식은 지워지지 않는다
+    # (지우려면 forms 쪽에서 숨김 처리를 해야 한다).
+    form_id: Mapped[int | None] = mapped_column(
+        ForeignKey("forms.id"), index=True, comment="원이 올린 양식. 없으면 우리 기본 서식"
     )
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

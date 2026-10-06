@@ -2,11 +2,13 @@
 
     1  스키마      사실·해석·지원 셋뿐인가, 비지 않았나, 짧지 않나
     2  추출 대조   사실이 근거 원문을 이어붙인 것과 글자 하나까지 같은가
+                   해석에 나온 숫자(횟수 · 날짜 · 인원)가 사실에도 있는가
 
 모델을 부르지 않는다. 문서를 만들 때·고칠 때·확정할 때 모두 이 함수 하나를 지난다.
 - 기능마다 따로 만들면 한쪽만 느슨해진다.
 """
 
+import re
 from collections.abc import Iterable, Sequence
 from typing import Protocol
 
@@ -16,6 +18,9 @@ HEADINGS = frozenset({"사실", "해석", "지원"})
 # 같은 절의 "상투어로만 돼 있다" 는 여기서 막지 않는다.
 # - 무엇이 상투어인지는 근거 없이 목록을 박으면 안 되는 판단이라 팀이 정할 때까지 길이만 본다.
 MIN_BODY_LENGTH = 20
+
+# 「3회」 · 「9월 22일」 · 「1.5」 에서 숫자만 뽑는다.
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
 class SectionLike(Protocol):
@@ -43,14 +48,27 @@ def check_sections(
         return ["sections"]
 
     by_heading = {s.heading: s for s in sections}
+    facts = join_facts(source_texts)
     fields: list[str] = []
 
-    if by_heading["사실"].body != join_facts(source_texts):
+    if by_heading["사실"].body != facts:
         fields.append("sections.사실")
     for heading in ("해석", "지원"):
         if len(by_heading[heading].body.strip()) < MIN_BODY_LENGTH:
             fields.append(f"sections.{heading}")
+    if "sections.해석" not in fields and _unsupported_numbers(by_heading["해석"].body, facts):
+        fields.append("sections.해석")
     for section in sections:
         if not set(section.source_ids) <= valid_source_ids:
             fields.append(f"sections.{section.heading}.source_ids")
     return fields
+
+
+def _unsupported_numbers(interpretation: str, facts: str) -> set[str]:
+    """해석에는 있는데 사실에는 없는 숫자. 비면 통과다.
+
+    지원은 보지 않는다. 「다음 주 2회」처럼 앞으로의 계획이라 새 숫자가 나오는 게 정상이다.
+    - 글자가 아니라 숫자 단위로 비교한다. 사실의 「10」 이 해석의 「1」 을 통과시키면 안 된다.
+    - 고유명사는 보지 않는다. 형태소 분석 없이 고르면 오탐이 많아 3단 Judge 에 맡긴다.
+    """
+    return set(_NUMBER.findall(interpretation)) - set(_NUMBER.findall(facts))

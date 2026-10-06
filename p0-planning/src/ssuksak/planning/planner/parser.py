@@ -66,41 +66,123 @@ def _keys(schema: dict[str, Any]) -> frozenset[str]:
     return frozenset(schema["properties"])
 
 
-def _section_branch(
-    section_key: str, refs: tuple[str, ...], reference_sections: frozenset[str] | None = None
-) -> dict[str, Any]:
-    """The static Section schema for one section_key and only the refs it may cite."""
-    properties = dict(_SECTION_SCHEMA["properties"])
-    properties["section_key"] = {"type": "string", "enum": [section_key]}
-    properties["grounding_refs"] = (
+def _refs_schema(refs: tuple[str, ...]) -> dict[str, Any]:
+    return (
         {"type": "array", "items": {"type": "string", "enum": list(refs)}}
         if refs
         # No allowed ref: only an empty list, never the Packet-wide refs.
         else {"type": "array", "items": _STRING, "maxItems": 0}
     )
+
+
+def _section_branches(
+    section_key: str,
+    refs: tuple[str, ...],
+    reference_sections: frozenset[str] | None = None,
+    reference_pairs: tuple[tuple[str, str], ...] | None = None,
+) -> list[dict[str, Any]]:
+    """The static Section schema for one section_key and only the refs it may cite.
+
+    With reference_pairs (Monthly proposals only, possibly empty) each supplied reference
+    is one branch that fixes its reference_id and its canonical value together, so an id
+    can only be returned with its own label. Theme has its one locked pair; outdoor_play
+    may instead be free text with a null reference_id. A non-safety free-text branch
+    mirrors the validator: it is never unresolved and cites at least one ref.
+    """
+    properties = dict(_SECTION_SCHEMA["properties"])
+    properties["section_key"] = {"type": "string", "enum": [section_key]}
+    properties["grounding_refs"] = _refs_schema(refs)
     if section_key == "safety_education" or (
         reference_sections is not None and section_key not in reference_sections
     ):
         # No supplied Reference catalog for this section: reference_id is null.
         # Safety grounding goes in grounding_refs.
         properties["reference_id"] = {"type": "null"}
-    return _object_schema(properties)
+    if reference_pairs is None:
+        return [_object_schema(properties)]
+    pairs = [
+        _object_schema(dict(
+            properties,
+            value={"type": "string", "enum": [label]},
+            unresolved={"type": "boolean", "enum": [False]},
+            reference_id={"type": "string", "enum": [reference_id]},
+            # A reference cell is grounded by its reference (OD-N13); it cites no refs.
+            grounding_refs=_refs_schema(()),
+        ))
+        for reference_id, label in reference_pairs
+    ]
+    if section_key == "theme":
+        return pairs
+    free = {"reference_id": {"type": "null"}} if reference_pairs else {}
+    if section_key != "safety_education":
+        # UNRESOLVED_NOT_ALLOWED and RESOLVED_REQUIRES_GROUNDING, enforced at decode (C019/C021).
+        free["unresolved"] = {"type": "boolean", "enum": [False]}
+        if refs:
+            free["grounding_refs"] = dict(properties["grounding_refs"], minItems=1)
+    return [*pairs, _object_schema(dict(properties, **free))]
 
 
 def _section_schema(
-    section_keys: set[str], request, reference_sections: frozenset[str] | None = None
+    section_keys: set[str],
+    request,
+    reference_sections: frozenset[str] | None = None,
+    reference_pairs: dict[str, tuple[tuple[str, str], ...]] | None = None,
 ) -> dict[str, Any]:
     """One branch per target Section; the parser and validator stay the final check."""
     allowed = dict(request.allowed_grounding_refs_by_section)
     branches = [
-        _section_branch(key, allowed.get(key, ()), reference_sections) for key in sorted(section_keys)
+        branch
+        for key in sorted(section_keys)
+        for branch in _section_branches(
+            key,
+            allowed.get(key, ()),
+            reference_sections,
+            None if reference_pairs is None else reference_pairs.get(key, ()),
+        )
     ]
     return branches[0] if len(branches) == 1 else {"anyOf": branches}
 
 
-def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
-    """MONTHLY_RESPONSE_SCHEMA scoped to the request's target Sections and their allowed refs."""
+def _reference_pairs(request: MonthlyPlanningRequest) -> dict[str, tuple[tuple[str, str], ...]]:
+    """(reference_id, canonical value) each reference Section may return: the locked theme
+    and the supplied catalog."""
+    pairs = {"theme": ((request.expected_theme_id, request.expected_theme_value),)}
+    if "outdoor_play" in request.reference_section_keys:
+        pairs["outdoor_play"] = request.reference_labels
+    return pairs
+
+
+def repair_patch_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
+    """A repair returns patches for its repair_targets only: one branch per target cell.
+
+    Each branch fixes the cell address and allows exactly the fields that target may
+    change, so no other cell, reference_id or unresolved can be expressed at all.
+    """
     allowed = dict(request.allowed_grounding_refs_by_section)
+    branches = []
+    for week_id, section_key, fields in request.repair_targets:
+        properties: dict[str, Any] = {
+            "week_id": {"type": "null"} if week_id is None else {"type": "string", "enum": [week_id]},
+            "section_key": {"type": "string", "enum": [section_key]},
+        }
+        if "value" in fields:
+            properties["value"] = _STRING
+        if "grounding_refs" in fields:
+            properties["grounding_refs"] = _refs_schema(allowed.get(section_key, ()))
+        branches.append(_object_schema(properties))
+    item = branches[0] if len(branches) == 1 else {"anyOf": branches}
+    return _object_schema({"patches": {"type": "array", "items": item}})
+
+
+def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
+    """MONTHLY_RESPONSE_SCHEMA scoped to the request's target Sections and their allowed refs.
+
+    A repair request instead gets repair_patch_schema.
+    """
+    if request.repair_targets:
+        return repair_patch_schema(request)
+    allowed = dict(request.allowed_grounding_refs_by_section)
+    pairs = _reference_pairs(request)
     targets = [
         s for s in generation_target_sections(request.template_snapshot) if s.section_key in allowed
     ]
@@ -108,11 +190,13 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
         {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY},
         request,
         request.reference_section_keys,
+        pairs,
     )
     week = _section_schema(
         {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS},
         request,
         request.reference_section_keys,
+        pairs,
     )
     return _object_schema(
         {
@@ -298,6 +382,30 @@ def parse_monthly_proposal(content: str) -> MonthlyPlanProposal:
         month_sections=month_sections,
         weeks=tuple(weeks),
     )
+
+
+def parse_repair_patches(content: str) -> tuple[dict[str, Any], ...]:
+    """The repair's {"patches": [...]} as raw cell patches.
+
+    Only the shape is checked here: an address (week_id or null, section_key) and
+    well-typed value / grounding_refs where present. Which patch may change what is
+    validation.merge_repair_patches' decision, so an extra field reaches it intact.
+    """
+    root = _object(_json(content), path="repair", keys=frozenset({"patches"}))
+    patches = root["patches"]
+    if not isinstance(patches, list):
+        raise ProposalParseError("repair.patches must be an array")
+    for index, patch in enumerate(patches):
+        path = f"repair.patches[{index}]"
+        if not isinstance(patch, dict) or not {"week_id", "section_key"} <= set(patch):
+            raise ProposalParseError(f"{path} must be an object with week_id and section_key")
+        _string(patch["week_id"], path=f"{path}.week_id", nullable=True)
+        _string(patch["section_key"], path=f"{path}.section_key")
+        if "value" in patch and not isinstance(patch["value"], str):
+            raise ProposalParseError(f"{path}.value must be a string")
+        if "grounding_refs" in patch:
+            patch["grounding_refs"] = list(_canonical_refs(patch["grounding_refs"], path=f"{path}.grounding_refs"))
+    return tuple(patches)
 
 
 def parse_monthly_cell_proposal(content: str) -> MonthlyCellProposal:

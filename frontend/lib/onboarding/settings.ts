@@ -1,6 +1,5 @@
 /**
- * 온보딩 설정 mock 저장소.
- * 지금은 localStorage에 저장하고, API가 준비되면 load/save 내부만 fetch로 교체한다.
+ * 비민감 온보딩 설정 저장소. 아동 실명은 runtime model에만 둔다 (ADR-013).
  */
 import {
   selectedAgesFor,
@@ -13,6 +12,7 @@ import {
 } from "./types";
 
 import { accountStorageKey } from "../auth/demo-session";
+import { withoutChildMetadata } from "../privacy/browser-storage";
 const KEY = "saessak.classSettings";
 export const CLASS_SETTINGS_CHANGED = "saessak:class-settings-changed";
 
@@ -55,6 +55,11 @@ function normalizeClassroom(value: unknown, index: number, usedIds: Set<string>)
         : "",
     guardianConsent: raw.guardianConsent === true,
     childrenSkipped: raw.childrenSkipped === true,
+    childIds: Array.isArray(raw.childIds)
+      ? [...new Set(raw.childIds.filter((id): id is string => typeof id === "string"))]
+      : Array.isArray(raw.children)
+        ? raw.children.filter(isRecord).map((child, i) => stringValue(child.id) || `child-${i + 1}`)
+        : [],
     children: Array.isArray(raw.children)
       ? raw.children
           .filter(isRecord)
@@ -132,24 +137,91 @@ function normalizeSettings(parsed: Record<string, unknown>): ClassSettings {
 export function loadClassSettings(): ClassSettings | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(accountStorageKey(KEY));
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return isRecord(parsed) ? normalizeSettings(parsed) : null;
+    return readStoredSettings(accountStorageKey(KEY));
   } catch {
     return null;
   }
 }
 
+/** 로그인 migration 직후 정리한다. 아직 UI 세션이 없어도 대상 계정은 확정돼 있다. */
+export function sanitizeClassSettingsStorage(email: string) {
+  const current = `${KEY}:${encodeURIComponent(email.trim().toLowerCase())}`;
+  const storage = window.localStorage;
+  const keys = new Set([KEY, current]);
+  // 삭제로 storage의 인덱스가 이동하기 전에 대상 키를 확정한다.
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key?.startsWith(`${KEY}:`)) keys.add(key);
+  }
+  for (const key of keys) readStoredSettings(key, key !== KEY && key !== current);
+}
+
+function readStoredSettings(key: string, preserveStoredFields = false): ClassSettings | null {
+  const raw = window.localStorage.getItem(key);
+  if (raw === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+  if (!isRecord(parsed)) {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+  const settings = normalizeSettings(parsed);
+  // 이전 children/name/code도 같은 persistence schema로 정리한다.
+  // 쓰기 실패는 호출자에게 전달해 정리가 끝난 로그인으로 처리하지 않는다.
+  const sanitized = JSON.stringify(
+    withoutChildMetadata(persistedSettings(settings, preserveStoredFields ? parsed : undefined)),
+  );
+  if (raw !== sanitized) window.localStorage.setItem(key, sanitized);
+  return settings;
+}
+
 export function saveClassSettings(settings: ClassSettings): boolean {
   if (typeof window === "undefined") return false;
   try {
-    window.localStorage.setItem(accountStorageKey(KEY), JSON.stringify(settings));
+    window.localStorage.setItem(
+      accountStorageKey(KEY),
+      JSON.stringify(withoutChildMetadata(persistedSettings(settings))),
+    );
     window.dispatchEvent(new Event(CLASS_SETTINGS_CHANGED));
     return true;
   } catch {
     return false;
   }
+}
+
+function persistedSettings(settings: ClassSettings, stored?: Record<string, unknown>) {
+  const normalized = normalizeSettings(settings as unknown as Record<string, unknown>);
+  // 다른 계정은 migration하지 않는다. 기존 비민감 필드와 명시된 ID를 그대로 둔다.
+  const withoutChildren = (
+    value: Record<string, unknown>,
+    ids: string[],
+  ): Record<string, unknown> => {
+    const { children, ...rest } = value;
+    return {
+      ...rest,
+      ...(Array.isArray(children) ? { childIds: value.childIds ?? ids } : {}),
+    };
+  };
+  if (stored) {
+    const safe = withoutChildren(stored, normalized.classes[0]?.childIds ?? []);
+    if (Array.isArray(stored.classes))
+      safe.classes = stored.classes.map((value, i) =>
+        isRecord(value) ? withoutChildren(value, normalized.classes[i]?.childIds ?? []) : value,
+      );
+    return safe;
+  }
+  return {
+    ...normalized,
+    classes: normalized.classes.map(({ children, ...classroom }) => ({
+      ...classroom,
+      childIds: children.length ? children.map((child) => child.id) : (classroom.childIds ?? []),
+    })),
+  };
 }
 
 export function clearClassSettings() {
@@ -170,9 +242,11 @@ export function totalChildrenFor(settings: ClassSettings | null): number {
         total +
         (classroom.children.length > 0
           ? classroom.children.length
-          : classroom.currentChildCount === ""
-            ? 0
-            : classroom.currentChildCount),
+          : classroom.childIds?.length
+            ? classroom.childIds.length
+            : classroom.currentChildCount === ""
+              ? 0
+              : classroom.currentChildCount),
       0,
     ) ?? 0
   );

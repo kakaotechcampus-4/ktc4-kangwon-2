@@ -32,6 +32,7 @@ from ssuksak.planning.planner.prompt import (
 from ssuksak.planning.planner.service import MonthlyPlanner
 from ssuksak.planning.planner.validation import validate_monthly_proposal
 from ssuksak.planning.retrieval.models import AgeMatchKind
+from test_monthly_planner import as_repair_patches  # same directory: a schema-obeying repair provider
 
 LEGAL = "child-welfare-act-decree-annex6-2022-06-21"
 TRAFFIC = (
@@ -196,7 +197,8 @@ class _Scripted:
 
     def generate_monthly(self, request):
         self.monthly_requests.append(request)
-        return RawLlmResponse(self._bodies[len(self.monthly_requests) - 1], MONTHLY_MODEL)
+        content = as_repair_patches(request, self._bodies[len(self.monthly_requests) - 1])
+        return RawLlmResponse(content, MONTHLY_MODEL)
 
 
 def test_safety_grounding_mismatch_is_repaired_once_under_the_safety_repair_contract(packet, snapshot):
@@ -390,11 +392,30 @@ def _safety_branch(schema, section_key="safety_education"):
 
 
 def test_safety_schema_branch_allows_only_a_null_reference_id(packet, snapshot):
-    schema = monthly_response_schema(build_monthly_planning_request(_focused_packet(packet), snapshot))
+    request = build_monthly_planning_request(_focused_packet(packet), snapshot)
+    schema = monthly_response_schema(request)
+    items = schema["properties"]["weeks"]["items"]["properties"]["sections"]["items"]["anyOf"]
+    outdoor = [(b["properties"]["reference_id"], b["properties"]["value"])
+               for b in items if b["properties"]["section_key"]["enum"] == ["outdoor_play"]]
 
     assert _safety_branch(schema)["properties"]["reference_id"] == {"type": "null"}
-    assert _safety_branch(schema, "outdoor_play")["properties"]["reference_id"] == {"type": ["string", "null"]}
-    assert schema["properties"]["month_sections"]["items"]["properties"]["reference_id"] == {"type": ["string", "null"]}
+    # outdoor_play: one branch per supplied (id, canonical label) pair, or free text with null.
+    assert outdoor == [
+        *(({"type": "string", "enum": [i]}, {"type": "string", "enum": [label]}) for i, label in request.reference_labels),
+        ({"type": "null"}, {"type": "string"}),
+    ]
+    assert schema["properties"]["month_sections"]["items"]["properties"]["reference_id"] == {
+        "type": "string", "enum": [request.expected_theme_id]}
+
+
+def test_safety_keeps_its_unresolved_slot_while_other_free_text_cannot_be_unresolved(packet, snapshot):
+    schema = monthly_response_schema(build_monthly_planning_request(_focused_packet(packet), snapshot))
+    safety = _safety_branch(schema)["properties"]
+
+    # An unresolved safety cell stays expressible (value="", unresolved=true, no refs).
+    assert safety["unresolved"] == {"type": "boolean"}
+    assert "minItems" not in safety["grounding_refs"]
+    assert _safety_branch(schema, "focus")["properties"]["unresolved"] == {"type": "boolean", "enum": [False]}
 
 
 @pytest.mark.parametrize(
@@ -438,8 +459,8 @@ def test_initial_and_repair_prompts_carry_the_same_reference_id_contract(packet,
     initial, repair = fake.monthly_requests
     contract = "For safety_education, reference_id is always null"
 
-    assert initial.prompt_version == SAFETY_PROMPT_VERSION == "monthly-planner-safety-v7"
-    assert repair.prompt_version == "monthly-planner-safety-repair-v8"
+    assert initial.prompt_version == SAFETY_PROMPT_VERSION == "monthly-planner-safety-v13"
+    assert repair.prompt_version == "monthly-planner-safety-repair-v13"
     assert contract in initial.system_prompt and contract in repair.system_prompt
     assert "only in\ngrounding_refs" in SAFETY_SYSTEM_PROMPT
 
@@ -447,7 +468,7 @@ def test_initial_and_repair_prompts_carry_the_same_reference_id_contract(packet,
 from ssuksak.planning.domain.week_period import WeekId  # noqa: E402
 
 
-def test_an_outdoor_label_mismatch_is_repaired_deterministically_under_the_safety_prompt(packet, snapshot):
+def test_an_outdoor_label_paraphrase_is_hydrated_under_the_safety_prompt(packet, snapshot):
     focused = _focused_packet(packet)
     rejected = _payload()
     rejected["weeks"][0]["sections"][1]["value"] = "바람개비를 들고 달려요"  # act-1 = 바람개비 놀이
@@ -457,6 +478,6 @@ def test_an_outdoor_label_mismatch_is_repaired_deterministically_under_the_safet
     outcome = MonthlyPlanner(fake).plan(focused, snapshot)
     safety = [outcome.proposal.value_for("safety_education", WeekId(w)) for w in ("2026-09-W1", "2026-09-W2")]
 
-    assert outcome.prompt_version == "monthly-planner-safety-v7" and len(fake.monthly_requests) == 1
+    assert outcome.prompt_version == "monthly-planner-safety-v13" and len(fake.monthly_requests) == 1
     assert outcome.proposal.value_for("outdoor_play", WeekId("2026-09-W1")).value == "바람개비 놀이"
     assert [(v.reference_id, v.unresolved) for v in safety] == [(None, False), (None, False)]

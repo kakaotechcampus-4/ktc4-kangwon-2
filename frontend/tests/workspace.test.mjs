@@ -28,6 +28,7 @@ import {
   validPeriod,
   assertDocumentUnchanged,
   isSavedDocument,
+  childDisplayName,
 } from "../lib/workspace/model.ts";
 
 const observation = {
@@ -259,4 +260,119 @@ test("February without a fifth week never duplicates the fourth week", () => {
   assert.throws(() => planPeriod("weekly", period), /없는 주차/);
   period.weekly.week = 4;
   assert.deepEqual(planPeriod("weekly", period), { start: "2026-02-22", end: "2026-02-28" });
+});
+
+test("아동 실명 칸은 저장소에서 비우고 본문은 그대로 둔다", () => {
+  const stored = {
+    version: 1,
+    templates: [],
+    criteria: [],
+    observations: [
+      {
+        id: "o1",
+        classId: "c1",
+        className: "햇살반",
+        childId: "child-1",
+        childName: "한별찬",
+        date: "2026-09-11",
+        domain: "사회관계",
+        context: "자유놀이",
+        fact: "한별찬이 블록을 쌓았다.",
+        createdAt: "2026-09-11T00:00:00.000Z",
+      },
+    ],
+    documents: [],
+  };
+  let value = JSON.stringify(stored);
+  globalThis.window = {
+    sessionStorage: fixtureSession(),
+    localStorage: {
+      getItem: (key) => (key === fixtureKey ? fixtureAccount : value),
+      setItem: (_key, next) => {
+        value = next;
+      },
+    },
+    dispatchEvent: () => {},
+  };
+  try {
+    assert.equal(readWorkspace().observations[0].childName, "");
+    assert.equal(JSON.parse(value).observations[0].childName, "");
+    // 본문은 교사가 쓴 자료다. 임의로 지우지 않는다.
+    assert.equal(JSON.parse(value).observations[0].fact, "한별찬이 블록을 쌓았다.");
+    assert.equal(JSON.parse(value).observations[0].childId, "child-1");
+    updateWorkspace((data) => ({
+      ...data,
+      observations: [{ ...data.observations[0], childName: "문솔비" }],
+    }));
+    assert.equal(JSON.parse(value).observations[0].childName, "");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+const ROSTER = [{ id: "c1", children: [{ id: "child1", name: "한별찬" }] }];
+
+test("저장된 childName이 비어 있어도 서버 명단에서 화면용 이름을 찾는다", () => {
+  const stored = { ...document(), childName: "" };
+  assert.equal(childDisplayName(ROSTER, stored), "한별찬");
+  // 반 전체 문서는 빈 값이라 호출부의 기존 fallback이 그대로 뜬다.
+  assert.equal(childDisplayName(ROSTER, { ...stored, childId: "" }), "");
+  // 명단에서 못 찾으면 저장된 값으로 떨어진다.
+  assert.equal(childDisplayName(ROSTER, { ...stored, classId: "c9" }), "");
+  assert.equal(childDisplayName([], { ...stored, childName: "문솔비" }), "문솔비");
+});
+
+test("화면용으로 찾은 이름은 저장소에 다시 쓰이지 않는다", () => {
+  let value = JSON.stringify({
+    version: 1,
+    observations: [],
+    templates: [],
+    criteria: [],
+    documents: [
+      {
+        ...document(),
+        title: "9월 관찰",
+        className: "햇살반",
+        childName: "",
+        origin: "teacher",
+        createdAt: "2026-09-11T00:00:00.000Z",
+        updatedAt: "2026-09-11T00:00:00.000Z",
+        reviewNote: "",
+      },
+    ],
+  });
+  globalThis.window = {
+    sessionStorage: fixtureSession(),
+    localStorage: {
+      getItem: (key) => (key === fixtureKey ? fixtureAccount : value),
+      setItem: (_key, next) => {
+        value = next;
+      },
+    },
+    dispatchEvent: () => {},
+  };
+  try {
+    const [saved] = readWorkspace().documents;
+    assert.equal(saved.childName, "");
+    assert.equal(childDisplayName(ROSTER, saved), "한별찬");
+    updateWorkspace((data) => ({
+      ...data,
+      documents: [{ ...data.documents[0], reviewNote: "검토함" }],
+    }));
+    assert.equal(JSON.parse(value).documents[0].reviewNote, "검토함");
+    assert.equal(JSON.parse(value).documents[0].childName, "");
+    assert.equal(value.includes("한별찬"), false);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("EvaluationPage는 대상 아동을 저장된 childName으로 그리지 않는다", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const page = await readFile(
+    new URL("../components/workspace/EvaluationPage.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(/\{(doc|d)\.childName/.test(page), false);
+  assert.equal(page.split("childDisplayName(classes,").length - 1, 2);
 });
