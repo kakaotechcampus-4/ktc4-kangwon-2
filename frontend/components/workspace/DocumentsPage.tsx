@@ -12,7 +12,7 @@ import {
   type SavedDocument,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
-import { isUnauthenticated } from "@/lib/api/client";
+import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import {
@@ -31,8 +31,24 @@ import {
 import DocumentEditor from "./DocumentEditor";
 import { createSelection } from "./document-selection";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
+import {
+  WorkspaceViewState,
+  FieldError,
+  fieldErrorProps,
+  type ViewStatus,
+} from "./WorkspaceViewState";
 
-type Status = "loading" | "ready" | "error";
+/** 서버가 짚는 칸 이름 → 화면 입력 (docs/api-spec.md §11 의 POST body). */
+const FIELD_INPUT: Record<string, string> = {
+  kind: "kind",
+  class_id: "classId",
+  child_id: "childId",
+  start: "start",
+  end: "end",
+  // 근거는 `source_ids` 로도, `sources.{id}` 로도 온다. 화면에는 선택 목록 하나뿐이다.
+  source_ids: "sources",
+  sources: "sources",
+};
 /** 근거 후보 하나. 주간 보육일지는 확정된 일일 보육일지, 나머지는 관찰 기록이다 (§11). */
 type Candidate = { id: string; date: string; label: string };
 
@@ -52,12 +68,13 @@ export default function DocumentsPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [invalid, setInvalid] = useState<string[]>([]);
   const classes = useClasses(setMessage);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
 
   const [serverDocs, setServerDocs] = useState<DocumentSummary[]>([]);
-  const [listStatus, setListStatus] = useState<Status>("loading");
+  const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
   // 늦게 온 옛 응답이 최신 화면을 덮지 않게 요청마다 번호를 매긴다.
@@ -200,6 +217,13 @@ export default function DocumentsPage() {
   // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
   const current = activeServerId === null ? localCurrent : serverCurrent;
+  // 목록 재조회 실패가 이미 표시 중인 목록과 편집기를 숨기지 않게 한다.
+  const keepDocuments =
+    listStatus === "error" && (serverDocs.length > 0 || localDocs.length > 0 || !!current);
+
+  /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
+  const clearInvalid = (name: string) =>
+    setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
 
   function open(id: string) {
     setMessage("");
@@ -236,6 +260,7 @@ export default function DocumentsPage() {
       });
       if (creation.adopt(created)) {
         setSelected([]);
+        setInvalid([]);
         setMode("library");
         setMessage("원본 사실을 담은 초안을 만들었어요. 해석과 지원을 검토해주세요.");
       }
@@ -243,7 +268,10 @@ export default function DocumentsPage() {
       await reloadList();
     } catch (e) {
       // 실패해도 반·아동·기간·근거 선택을 그대로 둔다.
-      if (creation.isCurrent()) setMessage(messageFor(e));
+      if (creation.isCurrent()) {
+        setMessage(messageFor(e));
+        setInvalid(invalidFields(e, FIELD_INPUT));
+      }
     } finally {
       setBusy(false);
     }
@@ -294,7 +322,7 @@ export default function DocumentsPage() {
           {mode === "create" ? "보관함 보기" : "＋ 기록으로 문서 만들기"}
         </button>
       </div>
-      <Message error>{error || listError}</Message>
+      <Message error>{error}</Message>
       <Message>{message}</Message>
       {mode === "create" ? (
         <div className={ws.grid}>
@@ -306,9 +334,11 @@ export default function DocumentsPage() {
                 <select
                   disabled={busy}
                   value={kind}
+                  {...fieldErrorProps("kind", invalid)}
                   onChange={(e) => {
                     setKind(e.target.value as DocumentKind);
                     setSelected([]);
+                    clearInvalid("kind");
                   }}
                 >
                   {RECORD_KINDS.map((k) => (
@@ -317,6 +347,7 @@ export default function DocumentsPage() {
                     </option>
                   ))}
                 </select>
+                <FieldError name="kind" invalid={invalid} />
               </label>
               <div className={ws.row}>
                 <label className={ws.field}>
@@ -324,10 +355,12 @@ export default function DocumentsPage() {
                   <select
                     disabled={busy}
                     value={classId}
+                    {...fieldErrorProps("classId", invalid)}
                     onChange={(e) => {
                       setClassId(e.target.value);
                       setChildId("");
                       setSelected([]);
+                      clearInvalid("classId");
                     }}
                   >
                     <option value="">반 선택</option>
@@ -337,15 +370,18 @@ export default function DocumentsPage() {
                       </option>
                     ))}
                   </select>
+                  <FieldError name="classId" invalid={invalid} />
                 </label>
                 <label className={ws.field}>
                   대상 아동
                   <select
                     disabled={busy}
                     value={childId}
+                    {...fieldErrorProps("childId", invalid)}
                     onChange={(e) => {
                       setChildId(e.target.value);
                       setSelected([]);
+                      clearInvalid("childId");
                     }}
                   >
                     <option value="">반 전체</option>
@@ -355,6 +391,7 @@ export default function DocumentsPage() {
                       </option>
                     ))}
                   </select>
+                  <FieldError name="childId" invalid={invalid} />
                 </label>
               </div>
               <div className={ws.row}>
@@ -364,11 +401,14 @@ export default function DocumentsPage() {
                     disabled={busy}
                     type="date"
                     value={start}
+                    {...fieldErrorProps("start", invalid)}
                     onChange={(e) => {
                       setStart(e.target.value);
                       setSelected([]);
+                      clearInvalid("start");
                     }}
                   />
+                  <FieldError name="start" invalid={invalid} />
                 </label>
                 <label className={ws.field}>
                   종료일
@@ -376,11 +416,14 @@ export default function DocumentsPage() {
                     disabled={busy}
                     type="date"
                     value={end}
+                    {...fieldErrorProps("end", invalid)}
                     onChange={(e) => {
                       setEnd(e.target.value);
                       setSelected([]);
+                      clearInvalid("end");
                     }}
                   />
+                  <FieldError name="end" invalid={invalid} />
                 </label>
               </div>
               <p className={ws.hint}>
@@ -408,53 +451,55 @@ export default function DocumentsPage() {
               <span className={ws.badge}>{sources.length}건 선택</span>
             </div>
             <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
-            {listStatus === "loading" ? (
-              <div className={ws.loading} aria-busy="true">
-                <span>🌱</span>
-                <p>근거 기록을 불러오고 있어요.</p>
+            <WorkspaceViewState
+              status={listStatus}
+              error={listError}
+              loading="근거 기록을 불러오고 있어요."
+              empty={
+                !candidates.length && (
+                  <Empty title="조건에 맞는 근거가 없어요">
+                    날짜를 변경하거나{" "}
+                    {kind === "weeklyLog"
+                      ? "일일 보육일지를 먼저 작성하고 확정해주세요."
+                      : "관찰 기록을 먼저 입력해주세요."}
+                  </Empty>
+                )
+              }
+            >
+              <button
+                disabled={busy}
+                className={ws.secondary}
+                onClick={() =>
+                  setSelected(
+                    sources.length === candidates.length ? [] : candidates.map((s) => s.id),
+                  )
+                }
+              >
+                {sources.length === candidates.length ? "선택 해제" : "모두 선택"}
+              </button>
+              <div role="group" className={ws.scroll} {...fieldErrorProps("sources", invalid)}>
+                {candidates.map((s) => (
+                  <label key={s.id} className={ws.check}>
+                    <input
+                      type="checkbox"
+                      disabled={busy}
+                      checked={selected.includes(s.id)}
+                      onChange={(e) => {
+                        setSelected((prev) =>
+                          e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
+                        );
+                        clearInvalid("sources");
+                      }}
+                    />
+                    <span>
+                      <b>{s.date}</b>
+                      <small>{s.label}</small>
+                    </span>
+                  </label>
+                ))}
               </div>
-            ) : !candidates.length ? (
-              <Empty title="조건에 맞는 근거가 없어요">
-                날짜를 변경하거나{" "}
-                {kind === "weeklyLog"
-                  ? "일일 보육일지를 먼저 작성하고 확정해주세요."
-                  : "관찰 기록을 먼저 입력해주세요."}
-              </Empty>
-            ) : (
-              <>
-                <button
-                  disabled={busy}
-                  className={ws.secondary}
-                  onClick={() =>
-                    setSelected(
-                      sources.length === candidates.length ? [] : candidates.map((s) => s.id),
-                    )
-                  }
-                >
-                  {sources.length === candidates.length ? "선택 해제" : "모두 선택"}
-                </button>
-                <div className={ws.scroll}>
-                  {candidates.map((s) => (
-                    <label key={s.id} className={ws.check}>
-                      <input
-                        type="checkbox"
-                        disabled={busy}
-                        checked={selected.includes(s.id)}
-                        onChange={(e) =>
-                          setSelected((prev) =>
-                            e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
-                          )
-                        }
-                      />
-                      <span>
-                        <b>{s.date}</b>
-                        <small>{s.label}</small>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
+              <FieldError name="sources" invalid={invalid} />
+            </WorkspaceViewState>
           </section>
         </div>
       ) : (
@@ -492,14 +537,25 @@ export default function DocumentsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          {listStatus === "loading" ? (
-            <div className={ws.loading} aria-busy="true">
-              <span>🌱</span>
-              <p>문서를 불러오고 있어요.</p>
+          {listStatus === "error" && (
+            <div>
+              {keepDocuments && <Message error>{listError}</Message>}
+              <button className={ws.secondary} disabled={busy} onClick={reloadList}>
+                다시 시도
+              </button>
             </div>
-          ) : !library.length ? (
-            <Empty title="보관된 문서가 없어요">관찰 기록으로 첫 문서를 만들어보세요.</Empty>
-          ) : (
+          )}
+          <WorkspaceViewState
+            status={keepDocuments ? "ready" : listStatus}
+            error={listError}
+            loading="문서를 불러오고 있어요."
+            empty={
+              !library.length &&
+              !(keepDocuments && current) && (
+                <Empty title="보관된 문서가 없어요">관찰 기록으로 첫 문서를 만들어보세요.</Empty>
+              )
+            }
+          >
             <div className={ws.grid}>
               <div className={ws.list}>
                 {library.map((d) => (
@@ -522,50 +578,52 @@ export default function DocumentsPage() {
                   </button>
                 ))}
               </div>
-              {chosen.status === "loading" ? (
-                <div className={ws.loading} aria-busy="true">
-                  <span>🌱</span>
-                  <p>문서를 불러오고 있어요.</p>
-                </div>
-              ) : chosen.status === "error" ? (
-                <Message error>{chosen.error}</Message>
-              ) : current ? (
-                <DocumentEditor
-                  key={current.id}
-                  initial={current}
-                  server={serverActions}
-                  onSave={(doc, expected) =>
-                    save((prev) => {
-                      assertDocumentUnchanged(
-                        prev.documents.find((d) => d.id === doc.id),
-                        expected,
-                      );
-                      if (
-                        doc.status === "confirmed" &&
-                        compareEvidence(doc, prev.documents, prev.observations).linked.some(
-                          (r) => r.state !== "일치",
-                        )
-                      )
-                        throw new Error(
-                          "원본이 변경되었거나 없어졌어요. 최신 기록으로 초안을 다시 생성해주세요.",
+              <WorkspaceViewState
+                status={chosen.status}
+                error={chosen.error}
+                loading="문서를 불러오고 있어요."
+                empty={
+                  !current && (
+                    <Empty title="확인할 문서를 선택해주세요">
+                      초안을 수정하고 원본과 대조한 후 확정할 수 있어요.
+                    </Empty>
+                  )
+                }
+              >
+                {current ? (
+                  <DocumentEditor
+                    key={current.id}
+                    initial={current}
+                    server={serverActions}
+                    onSave={(doc, expected) =>
+                      save((prev) => {
+                        assertDocumentUnchanged(
+                          prev.documents.find((d) => d.id === doc.id),
+                          expected,
                         );
-                      return {
-                        ...prev,
-                        documents: invalidateDependents(
-                          prev.documents.map((d) => (d.id === doc.id ? doc : d)),
-                          doc.id,
-                        ),
-                      };
-                    })
-                  }
-                />
-              ) : (
-                <Empty title="확인할 문서를 선택해주세요">
-                  초안을 수정하고 원본과 대조한 후 확정할 수 있어요.
-                </Empty>
-              )}
+                        if (
+                          doc.status === "confirmed" &&
+                          compareEvidence(doc, prev.documents, prev.observations).linked.some(
+                            (r) => r.state !== "일치",
+                          )
+                        )
+                          throw new Error(
+                            "원본이 변경되었거나 없어졌어요. 최신 기록으로 초안을 다시 생성해주세요.",
+                          );
+                        return {
+                          ...prev,
+                          documents: invalidateDependents(
+                            prev.documents.map((d) => (d.id === doc.id ? doc : d)),
+                            doc.id,
+                          ),
+                        };
+                      })
+                    }
+                  />
+                ) : null}
+              </WorkspaceViewState>
             </div>
-          )}
+          </WorkspaceViewState>
         </>
       )}
     </WorkspacePage>
