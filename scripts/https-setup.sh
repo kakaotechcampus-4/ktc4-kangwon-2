@@ -54,7 +54,9 @@ sleep 3
 # 3. 진짜 인증서. 임시를 지우고 받는다 — certbot 이 "이미 있다" 로 건너뛰지 않게.
 echo "== 인증서 발급 =="
 crun --entrypoint sh certbot -c "rm -rf /etc/letsencrypt/live/$DOMAIN /etc/letsencrypt/archive/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf"
-crun certbot certonly \
+# --entrypoint certbot 이 필요하다. compose 의 certbot 서비스는 entrypoint 가
+# 12시간 자는 갱신 루프라, 그냥 run 하면 certonly 가 무시되고 잠들어 버린다.
+crun --entrypoint certbot certbot certonly \
   --webroot -w /var/www/certbot \
   -d "$DOMAIN" \
   --email "$EMAIL" --agree-tos --no-eff-email \
