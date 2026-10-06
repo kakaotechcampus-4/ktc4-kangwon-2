@@ -43,47 +43,25 @@ def test_first_check_and_repeated_check_keep_the_first_time(db_session, center):
     assert db_session.query(EvaluationCheck).count() == 1
 
 
-def test_uncheck_hides_the_check_but_retains_the_row_and_time(db_session, center):
+def test_uncheck_removes_the_check_and_deletes_the_row(db_session, center):
     save_checks(db_session, center.id, T0, [("6-3-1", True)], ALLOWED)
-    unchecked_at = T0 + timedelta(minutes=1)
+    now = T0 + timedelta(minutes=1)
 
-    save_checks(db_session, center.id, unchecked_at, [("6-3-1", False)], ALLOWED)
+    save_checks(db_session, center.id, now, [("6-3-1", False)], ALLOWED)
 
     assert read_checks(db_session, center.id, 2026) == {}
-    row = db_session.query(EvaluationCheck).one()
-    assert row.checked_at == T0
-    assert row.unchecked_at == unchecked_at
+    assert db_session.query(EvaluationCheck).count() == 0
 
 
-@pytest.mark.parametrize("seconds", [5, 10, 11])
-def test_recheck_restores_only_within_ten_seconds(db_session, center, seconds):
+def test_recheck_immediately_creates_a_new_time(db_session, center):
     save_checks(db_session, center.id, T0, [("6-3-1", True)], ALLOWED)
-    unchecked_at = T0 + timedelta(minutes=1)
-    save_checks(db_session, center.id, unchecked_at, [("6-3-1", False)], ALLOWED)
-    now = unchecked_at + timedelta(seconds=seconds)
+    now = T0 + timedelta(minutes=1)
+    save_checks(db_session, center.id, now, [("6-3-1", False)], ALLOWED)
 
     save_checks(db_session, center.id, now, [("6-3-1", True)], ALLOWED)
 
-    assert read_checks(db_session, center.id, 2026) == {"6-3-1": T0 if seconds <= 10 else now}
-    row = db_session.query(EvaluationCheck).one()
-    assert row.unchecked_at is None
-
-
-def test_repeated_uncheck_does_not_restart_the_restore_window(db_session, center):
-    save_checks(db_session, center.id, T0, [("6-3-1", True)], ALLOWED)
-    unchecked_at = T0 + timedelta(minutes=1)
-    save_checks(db_session, center.id, unchecked_at, [("6-3-1", False)], ALLOWED)
-
-    save_checks(
-        db_session, center.id, unchecked_at + timedelta(seconds=8), [("6-3-1", False)], ALLOWED
-    )
-
-    row = db_session.query(EvaluationCheck).one()
-    assert row.checked_at == T0
-    assert row.unchecked_at == unchecked_at
-    now = unchecked_at + timedelta(seconds=12)
-    save_checks(db_session, center.id, now, [("6-3-1", True)], ALLOWED)
     assert read_checks(db_session, center.id, 2026) == {"6-3-1": now}
+    assert db_session.query(EvaluationCheck).one().checked_at == now
 
 
 def test_uncheck_without_an_existing_check_creates_no_row(db_session, center):
@@ -130,7 +108,7 @@ def test_invalid_checks_report_all_keys_in_request_order_and_save_nothing(db_ses
     assert error.value.elements == ["6-3-1", "6-3-9", "4-1-1"]
     assert read_checks(db_session, center.id, 2026) == {"6-3-1": T0}
     row = db_session.query(EvaluationCheck).one()
-    assert row.unchecked_at is None
+    assert row.checked_at == T0
 
 
 def test_school_year_uses_kst_boundary_and_retains_previous_year(db_session, center):
@@ -223,7 +201,7 @@ def test_concurrent_bulk_checks_match_serial_execution(_schema):
             first.result(timeout=10)
             second.result(timeout=10)
         with Session(engine) as session:
-            assert read_checks(session, center_id, 2026) == {"6-3-2": T0}
+            assert read_checks(session, center_id, 2026) == {"6-3-2": T0 + timedelta(seconds=65)}
     finally:
         with Session(engine) as session:
             session.execute(delete(EvaluationCheck).where(EvaluationCheck.center_id == center_id))

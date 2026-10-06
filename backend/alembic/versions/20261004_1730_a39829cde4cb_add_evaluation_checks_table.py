@@ -26,7 +26,6 @@ def upgrade() -> None:
     sa.Column('school_year', sa.Integer(), nullable=False),
     sa.Column('element', sa.String(length=20), nullable=False, comment='평가요소 키 — 예: 6-3-1'),
     sa.Column('checked_at', sa.DateTime(timezone=True), nullable=False, comment='☐ 에서 ☑ 로 바뀐 시각'),
-    sa.Column('unchecked_at', sa.DateTime(timezone=True), nullable=True, comment='NULL 이면 ☑. 값이 있으면 ☐ — 10초 안 재체크면 checked_at 을 되살린다'),
     sa.ForeignKeyConstraint(['center_id'], ['centers.id'], name=op.f('fk_evaluation_checks_center_id_centers')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_evaluation_checks')),
     sa.UniqueConstraint('center_id', 'school_year', 'element', name=op.f('uq_evaluation_checks_center_id_school_year_element'))

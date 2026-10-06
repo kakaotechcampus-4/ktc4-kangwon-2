@@ -11,7 +11,8 @@ from app.db import Base
 class EvaluationCheck(Base):
     """원·학년도·평가요소마다 남기는 체크 시각(§12 · ADR-022 결정 6·7).
 
-    줄을 지우지 않아 지난 학년도와 10초 복원 시각을 보존한다. 누가 체크했는지는 남기지 않는다.
+    줄이 있으면 체크된 상태이고, 풀면 그 줄을 지운다.
+    누가 체크했는지는 남기지 않는다. 지난 학년도 줄은 보존한다.
     """
 
     __tablename__ = "evaluation_checks"
@@ -23,8 +24,4 @@ class EvaluationCheck(Base):
     element: Mapped[str] = mapped_column(String(20), comment="평가요소 키 — 예: 6-3-1")
     checked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), comment="☐ 에서 ☑ 로 바뀐 시각"
-    )
-    unchecked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        comment="NULL 이면 ☑. 값이 있으면 ☐ — 10초 안 재체크면 checked_at 을 되살린다",
     )
