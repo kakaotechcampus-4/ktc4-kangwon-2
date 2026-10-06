@@ -155,7 +155,12 @@ export default function HomePage() {
           </section>
           <div className={ws.cards}>
             {[
-              ["/templates", "▤", "원 양식 분석", "기존 문서의 구조와 문체를 계획안에 활용해요."],
+              [
+                "/templates",
+                "▤",
+                "원 양식 등록",
+                "우리 원이 쓰는 계획안 양식의 표 구조를 읽어 둬요.",
+              ],
               [
                 "/plans/annual/new",
                 "▦",
