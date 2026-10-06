@@ -9,13 +9,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.features.centers.models import Center, Class
+from app.features.centers.greetings import default_greetings
+from app.features.centers.models import Center, Class, Greetings
 from app.features.centers.schemas import (
     CenterCreate,
     CenterResponse,
     ClassCreate,
     ClassListResponse,
     ClassResponse,
+    GreetingsSettings,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_center
@@ -147,3 +149,47 @@ def list_classes(
         select(Class).where(Class.center_id == center_id).order_by(Class.id)
     ).all()
     return ClassListResponse(items=list(classes))
+
+
+@router.get("/{center_id}/greetings", response_model=GreetingsSettings)
+def get_greetings(center_id: int, session: DbSession, user: CurrentUser) -> GreetingsSettings:
+    require_own_center(user, center_id)
+    _greetings_center(session, center_id)
+    row = session.get(Greetings, center_id)
+    return default_greetings() if row is None else GreetingsSettings.model_validate(row)
+
+
+@router.put("/{center_id}/greetings", response_model=GreetingsSettings)
+def put_greetings(
+    center_id: int, body: GreetingsSettings, session: DbSession, user: CurrentUser
+) -> GreetingsSettings:
+    require_own_center(user, center_id)
+    # 설정 행이 아직 없어도 같은 원의 동시 PUT을 직렬화한다.
+    _greetings_center(session, center_id, lock=True)
+    row = session.get(Greetings, center_id)
+    if row is None:
+        row = Greetings(center_id=center_id, **default_greetings().model_dump())
+        session.add(row)
+    row.enabled = body.enabled
+    # off 요청도 12개월 형식은 검증하되 기존 문구를 교체하지 않는다 (§3).
+    if body.enabled:
+        row.items = [item.model_dump() for item in body.items]
+    session.commit()
+    return GreetingsSettings.model_validate(row)
+
+
+def _greetings_center(session: Session, center_id: int, *, lock: bool = False) -> Center:
+    query = select(Center).where(Center.id == center_id)
+    if lock:
+        query = query.with_for_update()
+    center = session.scalar(query)
+    if center is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "NOT_FOUND",
+                "message": "원을 찾을 수 없습니다.",
+                "fields": ["center_id"],
+            },
+        )
+    return center

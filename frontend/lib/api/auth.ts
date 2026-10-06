@@ -1,11 +1,20 @@
 import { apiRequest } from "./client";
 import { saveToken, clearToken } from "../auth/token";
+import { captureSession } from "../auth/request-session";
 
 /** `POST /api/auth/signup` · `POST /api/auth/login` 의 응답 (docs/api-spec.md §0). */
 export type AuthResult = {
   token: string;
   user: { id: number; email: string; name: string; center_id: number | null };
 };
+
+/** 현재 계정의 원 번호를 서버에서 확인한다 (docs/api-spec.md §0). */
+export async function getCurrentUser(): Promise<AuthResult["user"]> {
+  const session = captureSession();
+  const user = await apiRequest<AuthResult["user"]>("/api/auth/me");
+  session.assertCurrent();
+  return user;
+}
 
 /**
  * 서버에 계정을 만들고 토큰을 받아 둔다.

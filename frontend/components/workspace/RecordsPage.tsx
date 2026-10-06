@@ -2,15 +2,31 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DOMAINS, today, validDate } from "@/lib/workspace/model";
-import { isUnauthenticated } from "@/lib/api/client";
+import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
+import {
+  WorkspaceViewState,
+  FieldError,
+  fieldErrorProps,
+  type ViewStatus,
+} from "./WorkspaceViewState";
 
 // 서버 observations.context 컬럼이 50자다. 더 받으면 저장할 때 422 다.
 const CONTEXT_MAX = 50;
 
-export type RecordsStatus = "loading" | "ready" | "error";
+export type RecordsStatus = ViewStatus;
+
+/** 서버가 짚는 칸 이름 → 화면 입력 (docs/api-spec.md §10 의 POST·PUT body). */
+const FIELD_INPUT: Record<string, string> = {
+  class_id: "classId",
+  child_id: "childId",
+  date: "date",
+  domain: "domain",
+  context: "context",
+  fact: "fact",
+};
 
 function messageFor(error: unknown) {
   if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
@@ -30,6 +46,7 @@ export default function RecordsPage() {
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
   const [message, setMessage] = useState("");
+  const [invalid, setInvalid] = useState<string[]>([]);
   const classes = useClasses(setMessage);
   const [search, setSearch] = useState("");
   const classroom = classes.find((c) => c.id === classId);
@@ -85,6 +102,10 @@ export default function RecordsPage() {
   const canEdit = (record: ServerObservation) =>
     classes.some((c) => c.id === record.classId && c.children.some((k) => k.id === record.childId));
 
+  /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
+  const clearInvalid = (name: string) =>
+    setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
+
   function startEdit(record: ServerObservation) {
     setEditId(record.id);
     setClassId(record.classId);
@@ -94,6 +115,7 @@ export default function RecordsPage() {
     setContext(record.context);
     setFact(record.fact);
     setMessage("");
+    setInvalid([]);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function cancelEdit() {
@@ -118,9 +140,11 @@ export default function RecordsPage() {
       setFact("");
       setContext("");
       setEditId("");
+      setInvalid([]);
       setMessage(editId ? "수정했어요." : "관찰 기록을 저장했어요.");
     } catch (e) {
       setMessage(messageFor(e));
+      setInvalid(invalidFields(e, FIELD_INPUT));
     } finally {
       setPending(false);
     }
@@ -203,9 +227,11 @@ export default function RecordsPage() {
                       required
                       disabled={!!editId}
                       value={classId}
+                      {...fieldErrorProps("classId", invalid)}
                       onChange={(e) => {
                         setClassId(e.target.value);
                         setChildId("");
+                        clearInvalid("classId");
                       }}
                     >
                       <option value="">반 선택</option>
@@ -215,6 +241,7 @@ export default function RecordsPage() {
                         </option>
                       ))}
                     </select>
+                    <FieldError name="classId" invalid={invalid} />
                   </label>
                   <label className={ws.field}>
                     아동
@@ -222,7 +249,11 @@ export default function RecordsPage() {
                       required
                       disabled={!!editId}
                       value={childId}
-                      onChange={(e) => setChildId(e.target.value)}
+                      {...fieldErrorProps("childId", invalid)}
+                      onChange={(e) => {
+                        setChildId(e.target.value);
+                        clearInvalid("childId");
+                      }}
                     >
                       <option value="">아동 선택</option>
                       {classroom?.children.map((c) => (
@@ -231,6 +262,7 @@ export default function RecordsPage() {
                         </option>
                       ))}
                     </select>
+                    <FieldError name="childId" invalid={invalid} />
                   </label>
                 </div>
                 {editId && <small>반과 아동은 수정할 수 없어요. 지우고 다시 등록해주세요.</small>}
@@ -242,16 +274,29 @@ export default function RecordsPage() {
                       type="date"
                       max={today()}
                       value={date}
-                      onChange={(e) => setDate(e.target.value)}
+                      {...fieldErrorProps("date", invalid)}
+                      onChange={(e) => {
+                        setDate(e.target.value);
+                        clearInvalid("date");
+                      }}
                     />
+                    <FieldError name="date" invalid={invalid} />
                   </label>
                   <label className={ws.field}>
                     관찰 영역
-                    <select value={domain} onChange={(e) => setDomain(e.target.value)}>
+                    <select
+                      value={domain}
+                      {...fieldErrorProps("domain", invalid)}
+                      onChange={(e) => {
+                        setDomain(e.target.value);
+                        clearInvalid("domain");
+                      }}
+                    >
                       {DOMAINS.map((d) => (
                         <option key={d}>{d}</option>
                       ))}
                     </select>
+                    <FieldError name="domain" invalid={invalid} />
                   </label>
                 </div>
                 <label className={ws.field}>
@@ -259,12 +304,17 @@ export default function RecordsPage() {
                   <input
                     maxLength={CONTEXT_MAX}
                     value={context}
-                    onChange={(e) => setContext(e.target.value)}
+                    {...fieldErrorProps("context", invalid)}
+                    onChange={(e) => {
+                      setContext(e.target.value);
+                      clearInvalid("context");
+                    }}
                     placeholder="예: 오전 자유놀이 · 쌓기 영역"
                   />
                   <small>
                     {context.length} / {CONTEXT_MAX}자
                   </small>
+                  <FieldError name="context" invalid={invalid} />
                 </label>
                 <label className={ws.field}>
                   실제로 관찰한 사실
@@ -272,12 +322,17 @@ export default function RecordsPage() {
                     required
                     maxLength={5000}
                     value={fact}
-                    onChange={(e) => setFact(e.target.value)}
+                    {...fieldErrorProps("fact", invalid)}
+                    onChange={(e) => {
+                      setFact(e.target.value);
+                      clearInvalid("fact");
+                    }}
                     placeholder={
                       "예: 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다. 블록이 쓰러지자 넓은 블록을 아래에 놓고 다시 쌓았다."
                     }
                   />
                   <small>{fact.length} / 5,000자 · 실제 행동과 발언을 적어주세요.</small>
+                  <FieldError name="fact" invalid={invalid} />
                 </label>
                 <div className={ws.actions}>
                   <button className={ws.primary}>{editId ? "수정 저장" : "관찰 기록 저장"}</button>
@@ -345,37 +400,32 @@ export function RecordList({
   onEdit: (record: ServerObservation) => void;
   onDelete: (record: ServerObservation) => void;
 }) {
-  if (status === "loading") {
-    return (
-      <div className={ws.loading} aria-busy="true">
-        <span>🌱</span>
-        <p>관찰 기록을 불러오고 있어요.</p>
-      </div>
-    );
-  }
-  if (status === "error") {
-    return <Message error>{error}</Message>;
-  }
-  if (!records.length) {
-    return (
-      <Empty title="아직 남긴 기록이 없어요">
-        첫 관찰을 입력하고 아이의 이야기를 시작해보세요.
-      </Empty>
-    );
-  }
   return (
-    <div className={ws.list}>
-      {records.map((r) => (
-        <RecordItem
-          key={r.id}
-          record={r}
-          pending={pending}
-          editable={canEdit(r)}
-          onEdit={onEdit}
-          onDelete={onDelete}
-        />
-      ))}
-    </div>
+    <WorkspaceViewState
+      status={status}
+      error={error}
+      loading="관찰 기록을 불러오고 있어요."
+      empty={
+        !records.length && (
+          <Empty title="아직 남긴 기록이 없어요">
+            첫 관찰을 입력하고 아이의 이야기를 시작해보세요.
+          </Empty>
+        )
+      }
+    >
+      <div className={ws.list}>
+        {records.map((r) => (
+          <RecordItem
+            key={r.id}
+            record={r}
+            pending={pending}
+            editable={canEdit(r)}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+    </WorkspaceViewState>
   );
 }
 
