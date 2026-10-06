@@ -809,13 +809,20 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 ## 9. 7주차 예정 — 계약 안 씀
 
 ```
-POST   /api/plans/monthly                 월간 43칸
-PUT    /api/plans/monthly/{id}/cells/{n}  칸 편집
-POST   /api/plans/monthly/{id}/cells/{n}/regenerate   이 칸만 다시
+POST   /api/plans/monthly                 월간
+PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집
+POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시
 GET    /api/plans/{id}/export/hwp         내보내기
 GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 ```
+
+**칸 수를 계약으로 정하지 않는다.** 「43칸」은 우리 기본 서식에서 센 수다. 칸 수는 양식 ·
+활성 주차 · 구역 구조가 정하므로 원이 올린 양식에 따라 달라진다. **화면은 서버가 준 만큼
+그린다** — 43으로 박으면 40칸짜리 양식에서 빈 칸이 생기거나 넘친다.
+
+**칸 식별자는 `item_id` 다.** 순번 `{n}` 을 쓰지 않는다 — 양식이 바뀌면 「n번째」의 뜻이
+바뀌고, 수정·재생성 뒤에도 같은 칸을 가리켜야 한다.
 
 **월간은 연간이 `CONFIRMED` 여야 생성된다.** 아니면 `GATE_BLOCKED` 409.
 **층 순서를 건너뛸 수 없다.** 연간·월간·주간을 한 번에 생성하지 않는다.
