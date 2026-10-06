@@ -34,6 +34,7 @@ from app.features.documents.schemas import (
 )
 from app.features.documents.stale import document_changed
 from app.features.observations.models import Observation
+from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_child, require_own_class
 from app.shared.gates.sections import check_sections, join_facts
@@ -234,6 +235,9 @@ def create_document(
         fields.append("child_id")
     if body.kind == "dailyLog" and body.start != body.end:
         fields.append("end")
+    if body.kind == "dailyLog" and body.child_id is not None:
+        # 반 단위 문서다 — 근거인 일과 기록에 아이가 없다 (§11 「종이 한 장」).
+        fields.append("child_id")
     if body.start > body.end:
         fields.append("start")
     if not body.source_ids or len(set(body.source_ids)) != len(body.source_ids):
@@ -293,6 +297,37 @@ def create_document(
                     date=source.start_date,
                     source_status=source.status,
                     text=fact,
+                )
+            )
+    elif body.kind == "dailyLog":
+        # 근거는 관찰 기록이 아니라 일과 기록이다 (§11 · ADR-024). 같은 반 · 같은 날의 행만.
+        by_id = {
+            r.id: r
+            for r in session.scalars(
+                select(RoutineRecord)
+                .join(Class, Class.id == RoutineRecord.class_id)
+                .where(RoutineRecord.id.in_(body.source_ids), Class.center_id == user.center_id)
+            )
+        }
+        for source_id in body.source_ids:
+            source = by_id.get(source_id)
+            if (
+                source is None
+                or source.class_id != body.class_id
+                or source.date != body.start
+                or not source.execution.strip()
+            ):
+                # 활동실행이 빈 행은 사실이 없다 — 근거로 쓰지 않는다.
+                fields.append(f"sources.{source_id}")
+                continue
+            copies.append(
+                DocumentSource(
+                    source_kind="routine",
+                    source_id=source.id,
+                    class_id=source.class_id,
+                    child_id=None,
+                    date=source.date,
+                    text=source.fact_text(),
                 )
             )
     else:
@@ -632,6 +667,14 @@ def refresh_document(
                 missing.append(field)
             else:
                 fresh.append((observation.fact, observation.date, None))
+            continue
+        if copy.source_kind == "routine":
+            routine = session.get(RoutineRecord, copy.source_id)
+            if routine is None or not routine.execution.strip():
+                # 활동실행을 비웠으면 사실이 사라진 것이다 — 원본 없음과 같다.
+                missing.append(field)
+            else:
+                fresh.append((routine.fact_text(), routine.date, None))
             continue
         source = session.get(Document, copy.source_id)
         fact = session.scalar(
