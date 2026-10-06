@@ -16,7 +16,9 @@ DEPLOY_PATH=${DEPLOY_PATH:-/home/ubuntu/ktc4-kangwon-2}
 LIVE=/etc/letsencrypt/live/$DOMAIN
 
 cd "$DEPLOY_PATH"
+# -T 로 TTY 를 안 잡는다. SSM 같은 비대화형 셸에서 `compose run` 이 TTY 를 잡으려다 멈춘다.
 compose() { sudo docker compose "$@"; }
+crun() { compose run --rm -T "$@"; }
 
 if [ -z "$EMAIL" ]; then
   echo "EMAIL 이 필요하다. 만료 7일 전 알림이 여기로 온다." >&2
@@ -38,7 +40,7 @@ fi
 # 1. 가짜 인증서 — nginx 를 띄우기 위한 자리끼다. 바로 덮어쓴다.
 if [ ! -f "$LIVE/fullchain.pem" ]; then
   echo "== 임시 인증서 =="
-  compose run --rm --entrypoint sh certbot -c "
+  crun --entrypoint sh certbot -c "
     mkdir -p $LIVE &&
     openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
       -keyout $LIVE/privkey.pem -out $LIVE/fullchain.pem -subj '/CN=$DOMAIN'"
@@ -51,8 +53,8 @@ sleep 3
 
 # 3. 진짜 인증서. 임시를 지우고 받는다 — certbot 이 "이미 있다" 로 건너뛰지 않게.
 echo "== 인증서 발급 =="
-compose run --rm --entrypoint sh certbot -c "rm -rf /etc/letsencrypt/live/$DOMAIN /etc/letsencrypt/archive/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf"
-compose run --rm certbot certonly \
+crun --entrypoint sh certbot -c "rm -rf /etc/letsencrypt/live/$DOMAIN /etc/letsencrypt/archive/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf"
+crun certbot certonly \
   --webroot -w /var/www/certbot \
   -d "$DOMAIN" \
   --email "$EMAIL" --agree-tos --no-eff-email \
