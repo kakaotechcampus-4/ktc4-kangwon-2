@@ -124,3 +124,23 @@ export interface ApiObservation extends ObservationInput {
   child_code: string;
   created_at: string;
 }
+/** 양식 표의 칸 하나 (docs/api-spec.md §8). 병합은 rowspan · colspan 으로 온다. */
+export interface FormCell {
+  text: string;
+  rowspan: number;
+  colspan: number;
+}
+/** 원에 등록된 양식. 저장하는 것은 파싱 결과뿐이다 — 원본 파일은 없다(ADR-020). */
+export interface ApiForm {
+  id: number;
+  center_id: number;
+  /** 지금은 `filename` 과 같다. */
+  name: string;
+  filename: string;
+  /** 표 → 행 → 칸. */
+  tables: FormCell[][][];
+  labels: string[];
+  /** 라벨 → 표준 키(ADR-009). 데이터 값이거나 매핑표에 없는 표현이면 `null`. */
+  label_map: Record<string, string | null>;
+  created_at: string;
+}

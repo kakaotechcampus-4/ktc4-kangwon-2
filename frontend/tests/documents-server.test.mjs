@@ -154,6 +154,122 @@ test("목록 조건은 서버 query 로 나간다", async () => {
   assert.equal(calls[0].url, "/api/documents?kind=dailyLog&status=CONFIRMED&class_id=3");
 });
 
+test("관련 문서는 apiRequest 인증으로 조회하고 기존 summary 매핑을 쓴다", async () => {
+  const writes = browser();
+  const item = { ...LIST_ITEM, id: 91, kind: "dailyLog", status: "CONFIRMED" };
+  const { calls, restore } = serve(() =>
+    json({ items: [item], expected_kinds: ["observation", "dailyLog"] }),
+  );
+  let related;
+  try {
+    related = await documents.getRelatedDocuments("document:123");
+  } finally {
+    restore();
+  }
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "/api/documents/123/related");
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].auth, "Bearer " + TOKEN);
+  assert.equal(calls[0].body, undefined);
+  assert.equal(related.items[0].id, "document:91");
+  assert.equal(related.items[0].serverId, 91);
+  assert.equal(related.items[0].kind, "dailyLog");
+  assert.equal(related.items[0].classId, "class-abc");
+  assert.equal(related.items[0].childId, "api-child-8");
+  assert.equal(related.items[0].status, "confirmed");
+  assert.equal(related.items[0].stale, true);
+  assert.equal(related.items[0].sourcesCount, 2);
+  assert.deepEqual(related.expectedKinds, ["observation", "dailyLog"]);
+  assert.deepEqual(writes, []);
+});
+
+test("관련 문서의 서버 순서와 expected_kinds 순서를 그대로 보존한다", async () => {
+  browser();
+  // 서버의 기간·id 정렬을 화면에서 다시 적용하지 않고 받은 배열을 그대로 옮긴다.
+  const items = [
+    { ...LIST_ITEM, id: 4, start: "2026-09-01", status: "CONFIRMED" },
+    { ...LIST_ITEM, id: 29, start: "2026-09-30", status: "CONFIRMED" },
+    { ...LIST_ITEM, id: 12, start: "2026-09-15", status: "CONFIRMED" },
+  ];
+  const { restore } = serve(() => json({ items, expected_kinds: ["dailyLog", "observation"] }));
+  let related;
+  try {
+    related = await documents.getRelatedDocuments("document:17");
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    related.items.map((item) => item.id),
+    ["document:4", "document:29", "document:12"],
+  );
+  assert.deepEqual(related.expectedKinds, ["dailyLog", "observation"]);
+});
+
+test("관련 문서가 없어도 성공 응답과 기대하는 종류를 전달한다", async () => {
+  browser();
+  const { restore } = serve((n) =>
+    json({ items: [], expected_kinds: n === 1 ? ["dailyLog"] : [] }),
+  );
+  try {
+    assert.deepEqual(await documents.getRelatedDocuments("document:17"), {
+      items: [],
+      expectedKinds: ["dailyLog"],
+    });
+    assert.deepEqual(await documents.getRelatedDocuments("document:17"), {
+      items: [],
+      expectedKinds: [],
+    });
+  } finally {
+    restore();
+  }
+});
+
+test("잘못된 related 기준 id는 서버 요청 전에 차단한다", async () => {
+  browser();
+  const { calls, restore } = serve(() => json({ items: [], expected_kinds: [] }));
+  try {
+    for (const id of [
+      "local-uuid",
+      "123",
+      "observation:123",
+      "document:",
+      "document:0",
+      "document:-1",
+      "document:01",
+      "document:1.5",
+      "document:9007199254740992",
+    ])
+      await assert.rejects(
+        documents.getRelatedDocuments(id),
+        (error) => error.message === documents.UNMAPPED,
+      );
+  } finally {
+    restore();
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("관련 문서 오류의 서버 message와 ApiError를 그대로 전달한다", async () => {
+  browser();
+  const body = {
+    error: { code: "NOT_FOUND", message: "문서를 찾을 수 없습니다.", fields: ["id"] },
+  };
+  const { calls, restore } = serve(() => json(body, 404));
+  try {
+    await assert.rejects(documents.getRelatedDocuments("document:123"), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 404);
+      assert.equal(error.message, body.error.message);
+      assert.deepEqual(error.body, body);
+      return true;
+    });
+  } finally {
+    restore();
+  }
+  assert.equal(calls[0].url, "/api/documents/123/related");
+});
+
 test("단건은 sections 와 sources 까지 화면 model 로 옮긴다", async () => {
   browser();
   const { calls, restore } = serve(() => json(DETAIL));
@@ -427,7 +543,12 @@ test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", 
   assert.ok(page.includes("const creation = selection.beginCreation()"));
   assert.ok(page.includes("if (creation.adopt(created))"));
   assert.equal(page.includes("selection.adopt(created)"), false);
-  assert.ok(page.includes("if (creation.isCurrent()) setMessage(messageFor(e))"));
+  // 생성 race 중에 온 실패는 메시지도 필드 오류도 덮어쓰지 않는다.
+  const guard = page.indexOf("if (creation.isCurrent()) {");
+  assert.ok(guard > -1, "생성 결과 적용 여부를 먼저 확인해야 한다");
+  const guarded = page.slice(guard, page.indexOf("}", guard));
+  assert.ok(guarded.includes("setMessage(messageFor(e))"));
+  assert.ok(guarded.includes("setInvalid(invalidFields(e, FIELD_INPUT))"));
 });
 
 test("서버 문서는 확정을 되돌리지 못하고 AI 검증을 확정 조건으로 걸지 않는다", () => {
