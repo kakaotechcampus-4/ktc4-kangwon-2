@@ -543,7 +543,12 @@ test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", 
   assert.ok(page.includes("const creation = selection.beginCreation()"));
   assert.ok(page.includes("if (creation.adopt(created))"));
   assert.equal(page.includes("selection.adopt(created)"), false);
-  assert.ok(page.includes("if (creation.isCurrent()) setMessage(messageFor(e))"));
+  // 생성 race 중에 온 실패는 메시지도 필드 오류도 덮어쓰지 않는다.
+  const guard = page.indexOf("if (creation.isCurrent()) {");
+  assert.ok(guard > -1, "생성 결과 적용 여부를 먼저 확인해야 한다");
+  const guarded = page.slice(guard, page.indexOf("}", guard));
+  assert.ok(guarded.includes("setMessage(messageFor(e))"));
+  assert.ok(guarded.includes("setInvalid(invalidFields(e, FIELD_INPUT))"));
 });
 
 test("서버 문서는 확정을 되돌리지 못하고 AI 검증을 확정 조건으로 걸지 않는다", () => {

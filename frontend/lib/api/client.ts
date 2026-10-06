@@ -99,6 +99,32 @@ export function isUnauthenticated(error: unknown): error is ApiError {
   return typeof body === "object" && body !== null && body.error?.code === "UNAUTHENTICATED";
 }
 
+/** 서버 에러 봉투. `ApiError` 가 아니거나 모양이 다르면 `null`. */
+function envelope(error: unknown): { code?: unknown; fields?: unknown } | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body as { error?: unknown } | null;
+  if (typeof body !== "object" || body === null) return null;
+  const inner = body.error;
+  return typeof inner === "object" && inner !== null ? inner : null;
+}
+
+/**
+ * `VALIDATION_FAILED` 가 짚은 칸을 화면 입력 이름으로 바꾼다 (docs/api-spec.md 「공통 에러 형식」).
+ *
+ * 계약상 `fields` 는 늘 배열이지만 받은 값을 믿지 않고 걸러 쓴다.
+ * 점 표기(`sources.3`)는 앞부분만 본다 — 화면에는 그 묶음이 하나뿐이다.
+ * 화면에 없는 칸은 버린다. 서버 이름을 그대로 보여주면 교사가 어디를 고칠지 모른다.
+ */
+export function invalidFields(error: unknown, map: Record<string, string>): string[] {
+  const fields = envelope(error)?.fields;
+  if (envelope(error)?.code !== "VALIDATION_FAILED" || !Array.isArray(fields)) return [];
+  const names = fields
+    .filter((field): field is string => typeof field === "string")
+    .map((field) => map[field] ?? map[field.split(".")[0]])
+    .filter((name): name is string => !!name);
+  return [...new Set(names)];
+}
+
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */
 export function isApiNotFound(error: unknown): error is ApiError {
   if (!(error instanceof ApiError) || error.status !== 404) return false;
