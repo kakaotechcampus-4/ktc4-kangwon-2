@@ -21,6 +21,8 @@ import {
   createDocument,
   updateDocument,
   confirmDocument,
+  unconfirmDocument,
+  refreshDocument,
   deleteDocument,
   documentServerId,
   isRecordKind,
@@ -85,6 +87,8 @@ export default function DocumentsPage() {
         get: getDocument,
         update: updateDocument,
         confirm: confirmDocument,
+        unconfirm: unconfirmDocument,
+        refresh: refreshDocument,
         remove: deleteDocument,
       },
       messageFor,
@@ -291,6 +295,16 @@ export default function DocumentsPage() {
           const confirmed = await selection.saveAndConfirm(sections, reviewNote);
           void reloadList();
           return confirmed;
+        },
+        unconfirm: async () => {
+          const next = await selection.unconfirm();
+          void reloadList();
+          return next;
+        },
+        refresh: async () => {
+          const next = await selection.refresh();
+          void reloadList();
+          return next;
         },
         remove: async () => {
           await selection.remove();
