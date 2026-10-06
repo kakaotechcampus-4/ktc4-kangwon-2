@@ -361,6 +361,28 @@ def test_refresh_는_고친_일과로_사실을_다시_잇고_stale_을_푼다(d
     assert _facts(refreshed.json()) == "[오전 실내놀이 09:20~10:40] 블록 5개로 길을 만들었다."
 
 
+def test_다른_날로_옮긴_일과는_refresh_가_거절한다(db_session, mine):
+    # 만들 때 다른 날 일과를 막는 것과 같은 규칙이다. 안 막으면 9/22 일지에 9/23 사실이 들어간다.
+    record = _routine(mine["sun"]).json()
+    doc = _daily(mine["sun"], [record]).json()
+    client.put(f"/api/routines/{record['id']}", json=_update_body(record, date="2026-09-23"))
+
+    response = client.post(f"/api/documents/{doc['id']}/refresh")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["fields"] == [f"sources.{record['id']}"]
+
+
+def test_끝_시간만_있어도_사실에_시간이_들어가고_고치면_stale(db_session, mine):
+    record = _routine(mine["sun"], start=None, end="10:40").json()
+    doc = _daily(mine["sun"], [record]).json()
+    assert _facts(doc) == "[오전 실내놀이 ~10:40] 블록 3개로 길을 만들었다."
+
+    client.put(f"/api/routines/{record['id']}", json=_update_body(record, end="11:00"))
+
+    assert _stale(db_session, doc["id"]) is True
+
+
 def test_활동실행을_비웠으면_refresh_가_거절한다(db_session, mine):
     record = _routine(mine["sun"]).json()
     doc = _daily(mine["sun"], [record]).json()

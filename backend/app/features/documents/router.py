@@ -670,8 +670,9 @@ def refresh_document(
             continue
         if copy.source_kind == "routine":
             routine = session.get(RoutineRecord, copy.source_id)
-            if routine is None or not routine.execution.strip():
-                # 활동실행을 비웠으면 사실이 사라진 것이다 — 원본 없음과 같다.
+            if routine is None or not routine.execution.strip() or routine.date != doc.start_date:
+                # 활동실행을 비웠거나 다른 날로 옮겼으면 이 날의 사실이 사라진 것이다.
+                # 원본 없음과 같다.
                 missing.append(field)
             else:
                 fresh.append((routine.fact_text(), routine.date, None))

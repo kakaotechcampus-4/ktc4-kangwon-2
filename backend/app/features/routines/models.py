@@ -64,4 +64,6 @@ class RoutineRecord(Base):
             when = f" {self.start_time:%H:%M}~{self.end_time:%H:%M}"
         elif self.start_time:
             when = f" {self.start_time:%H:%M}~"
+        elif self.end_time:
+            when = f" ~{self.end_time:%H:%M}"
         return f"[{self.name.strip()}{when}] {self.execution.strip()}"
