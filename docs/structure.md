@@ -78,6 +78,7 @@ app/
 | `plans` | 연간 · 월간 · 주간 계획안. `rules/verify.py` 는 만들어진 계획안을 검사한다(ADR-014) |
 | `forms` | 원이 등록한 양식의 파싱 결과(ADR-020). parse 는 저장하지 않는다 |
 | `trends` | 트렌드 소재. 승인은 저장소 파일이고 큐가 아니다(ADR-016) |
+| `evaluation` | 평가제 대조 — 판정 규칙 · 지표 카탈로그(resources/evaluation). 자기 점검 체크는 다음 PR(ADR-022) |
 
 ### 규칙
 
