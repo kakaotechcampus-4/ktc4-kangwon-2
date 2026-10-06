@@ -451,6 +451,35 @@ def _institution_input_profile(
     )
 
 
+class SchemaObeyingRepair:
+    """A scripted provider seen through the repair patch schema.
+
+    A full proposal answering a repair request becomes one patch per repair target with
+    that target's fields only, which is all the provider-enforced schema allows; every
+    other response passes unchanged.
+    """
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        response = self._inner.generate_monthly(request)
+        body = json.loads(response.content)
+        if not request.repair_targets or "weeks" not in body:
+            return response
+        cells = {(None, cell["section_key"]): cell for cell in body["month_sections"]}
+        cells.update(((w["week_id"], cell["section_key"]), cell) for w in body["weeks"] for cell in w["sections"])
+        patches = [
+            {"week_id": week_id, "section_key": key, **{name: cells[(week_id, key)][name] for name in fields}}
+            for week_id, key, fields in request.repair_targets
+            if (week_id, key) in cells
+        ]
+        return RawLlmResponse(json.dumps({"patches": patches}, ensure_ascii=False), response.model, response.request_id)
+
+    def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
+        return self._inner.generate_cell(request)
+
+
 class Harness:
     def __init__(self, *, parent_confirmed: bool = True) -> None:
         self.parents: InMemoryPlanRepository[YearlyPlan] = InMemoryPlanRepository()
@@ -506,7 +535,7 @@ class Harness:
         optional_context=None,
         command: GenerateMonthlyPlanCommand | None = None,
     ):
-        planner = MonthlyPlanner(provider) if provider is not None else None
+        planner = MonthlyPlanner(SchemaObeyingRepair(provider)) if provider is not None else None
         use_case = GenerateMonthlyPlan(
             parent_plan_repository=self.parents,
             plan_repository=self.plans,
@@ -838,6 +867,63 @@ def test_llm_mode_reuses_context_and_planner_then_persists_validated_draft():
         for cell in plan.section("safety_education").cells
     )
     assert harness.plans.save_count == 1
+
+
+class ThemeRefsMonthlyLlm(RequestAwareMonthlyLlm):
+    """A provider that ignores the schema and cites the theme's allowed refs on the theme cell."""
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        response = super().generate_monthly(request)
+        body = json.loads(response.content)
+        theme = next(s for s in body["month_sections"] if s["section_key"] == "theme")
+        theme["grounding_refs"] = list(dict(request.allowed_grounding_refs_by_section)["theme"])
+        assert theme["grounding_refs"]
+        return RawLlmResponse(json.dumps(body, ensure_ascii=False), response.model, response.request_id)
+
+
+def test_theme_evidence_never_depends_on_theme_grounding_refs():
+    """The schema drops the theme's grounding_refs; the persisted theme provenance is unchanged."""
+    without = Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    cited = Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=ThemeRefsMonthlyLlm()).plan
+    (theme,) = without.section("theme").cells
+
+    assert cited.section("theme").cells[0].evidence == theme.evidence
+    assert {source.source_type for source in theme.evidence} == {
+        EvidenceSourceType.THEME_REFERENCE,
+        EvidenceSourceType.PARENT_PLAN,
+    }
+
+
+class CitingReferenceOutdoorMonthlyLlm(RequestAwareMonthlyLlm):
+    """Week 1 outdoor becomes a catalog reference that still cites refs, ignoring the schema."""
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        response = super().generate_monthly(request)
+        body = json.loads(response.content)
+        outdoor = next(s for s in body["weeks"][0]["sections"] if s["section_key"] == "outdoor_play")
+        outdoor["reference_id"], outdoor["value"] = request.reference_labels[0]
+        assert outdoor["grounding_refs"]
+        return RawLlmResponse(json.dumps(body, ensure_ascii=False), response.model, response.request_id)
+
+
+def test_outdoor_evidence_is_activity_reference_xor_institution_sample():
+    """OD-N13 / L9: a reference outdoor cell is grounded by its reference, a free-text one by samples."""
+    plan = Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=CitingReferenceOutdoorMonthlyLlm()).plan
+    reference, *free_text = plan.section("outdoor_play").cells
+
+    assert {source.source_type for source in reference.evidence} == {
+        EvidenceSourceType.PARENT_PLAN,
+        EvidenceSourceType.ACTIVITY_REFERENCE,
+    }
+    assert free_text
+    for cell in free_text:
+        assert {source.source_type for source in cell.evidence} == {
+            EvidenceSourceType.PARENT_PLAN,
+            EvidenceSourceType.INSTITUTION_SAMPLE,
+        }
+    for cell in plan.section("outdoor_play").cells:
+        types = {source.source_type for source in cell.evidence}
+        assert (EvidenceSourceType.ACTIVITY_REFERENCE in types) != (EvidenceSourceType.INSTITUTION_SAMPLE in types)
 
 
 def test_llm_focus_semantics_remain_snapshot_owned():

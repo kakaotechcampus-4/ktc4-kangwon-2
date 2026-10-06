@@ -13,6 +13,8 @@ export interface ChildEntry {
 
 export type SelectedAge = 3 | 4 | 5;
 export interface ClassroomEntry {
+  /** 영구 저장 가능한 아동 ID. 이름은 서버에서 다시 읽는다. */
+  childIds?: string[];
   selectedAges?: SelectedAge[];
   id: string;
   className: string;

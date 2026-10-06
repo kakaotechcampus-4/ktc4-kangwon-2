@@ -286,7 +286,22 @@ REPAIR_MUTABLE_FIELDS: dict[ProposalValidationCode, frozenset[str]] = {
     ProposalValidationCode.SAFETY_FOCUS_MISMATCH: _VALUE_AND_REFS,
     ProposalValidationCode.SAFETY_DUPLICATE_REFERENCE: _VALUE_AND_REFS,
 }
-_CELL_FIELDS = ("value", "unresolved", "reference_id", "grounding_refs")
+def repair_targets(
+    issues: tuple[ProposalValidationIssue, ...],
+) -> tuple[tuple[str | None, str, tuple[str, ...]], ...]:
+    """The cells an LLM repair may patch, each with the fields its findings authorize.
+
+    A finding whose code has no REPAIR_MUTABLE_FIELDS entry authorizes nothing and
+    names no target; it survives the repair and fails closed.
+    """
+    authorized: dict[tuple[str | None, str], set[str]] = {}
+    for issue in issues:
+        authorized.setdefault((issue.week_id, issue.field), set()).update(REPAIR_MUTABLE_FIELDS.get(issue.code, ()))
+    return tuple(
+        (week_id, section_key, tuple(sorted(fields)))
+        for (week_id, section_key), fields in sorted(authorized.items(), key=lambda item: (item[0][0] or "", item[0][1]))
+        if fields
+    )
 
 
 def _cells(payload: dict) -> dict[tuple[str | None, str], dict]:
@@ -307,38 +322,79 @@ def _field(cell: dict, name: str) -> object:
     return cell[name]
 
 
-def merge_authorized_repair(
+def merge_repair_patches(
     base_content: str,
-    repair_content: str,
-    issues: tuple[ProposalValidationIssue, ...],
+    patches: tuple[dict, ...],
+    targets: tuple[tuple[str | None, str, tuple[str, ...]], ...],
 ) -> tuple[str, tuple[tuple[str | None, str], ...], tuple[tuple[str | None, str, tuple[str, ...]], ...]]:
-    """The pre-repair proposal plus only the fields its findings authorize from the repair.
+    """The pre-repair proposal plus each patch that is exactly an authorized cell patch.
 
-    Structure, cells and fields no finding authorizes stay as in base_content. A field
-    counts as changed only when it differs in comparable form (see _field). Returns the
-    merged JSON, the cells whose value the repair actually changed (week_id, section_key)
-    and each ignored change as (week_id, section_key, fields).
+    A patch is atomic: it is applied whole only when its cell is a repair target, it
+    is the only patch for that cell, and its fields are exactly the target's mutable
+    fields. Anything else rejects the whole patch, so no cell keeps a repaired value
+    beside fields the repair also tried to change. Returns the merged JSON, the cells
+    the repair actually changed in comparable form (see _field) and each rejected
+    patch as (week_id, section_key, fields).
     """
-    authorized: dict[tuple[str | None, str], set[str]] = {}
-    for issue in issues:
-        authorized.setdefault((issue.week_id, issue.field), set()).update(REPAIR_MUTABLE_FIELDS.get(issue.code, ()))
+    allowed = {(week_id, section_key): frozenset(fields) for week_id, section_key, fields in targets}
     base = json.loads(base_content)
-    patch = _cells(json.loads(repair_content))
+    cells = _cells(base)
+    counts: dict[tuple[str | None, str], int] = {}
+    for patch in patches:
+        key = (patch["week_id"], patch["section_key"])
+        counts[key] = counts.get(key, 0) + 1
     applied, ignored = [], []
-    for key, cell in _cells(base).items():
-        new = patch.get(key)
-        if new is None:
+    for patch in patches:
+        key = (patch["week_id"], patch["section_key"])
+        fields = tuple(sorted(set(patch) - {"week_id", "section_key"}))
+        if key not in allowed or key not in cells or counts[key] > 1 or frozenset(fields) != allowed[key]:
+            ignored.append((key[0], key[1], fields))
             continue
-        changed = [name for name in _CELL_FIELDS if _field(new, name) != _field(cell, name)]
-        allowed = authorized.get(key, set())
-        for name in changed:
-            if name in allowed:
-                cell[name] = new[name]
-        if any(name in allowed for name in changed):
+        cell = cells[key]
+        if any(_field(patch, name) != _field(cell, name) for name in fields):
             applied.append(key)
-        if blocked := tuple(name for name in changed if name not in allowed):
-            ignored.append((key[0], key[1], blocked))
+        cell.update({name: patch[name] for name in fields})
     return json.dumps(base, ensure_ascii=False), tuple(applied), tuple(ignored)
+
+
+def hydrate_reference_values(
+    content: str,
+    request: MonthlyPlanningRequest,
+) -> tuple[str, tuple[tuple[str | None, str, bool], ...]]:
+    """Write each reference cell's canonical label from its reference_id.
+
+    The response schema already pairs each id with its label, so for a schema-obeying
+    provider this is a no-op safety net: the theme value is the locked theme and an
+    outdoor_play value is its catalog label. Cells whose id does not resolve are left
+    for the validators. Returns the JSON and each hydrated cell as (week_id,
+    section_key, whether the provider wrote other non-empty text there).
+    """
+    try:
+        payload = json.loads(content)
+        cells = _cells(payload)
+    except (TypeError, KeyError, json.JSONDecodeError):
+        return content, ()  # malformed: the parser rejects it
+    labels = request.reference_label_map
+    hydrated = []
+    for (week_id, section_key), cell in cells.items():
+        if not isinstance(cell, dict):
+            continue
+        reference_id = cell.get("reference_id")
+        if not isinstance(reference_id, str):
+            continue
+        if section_key == "theme" and reference_id == request.expected_theme_id:
+            canonical = request.expected_theme_value
+        elif section_key in request.reference_section_keys and reference_id in labels:
+            canonical = labels[reference_id]
+        else:
+            continue
+        raw = cell.get("value")
+        cell["value"] = canonical
+        hydrated.append(
+            (week_id, section_key, isinstance(raw, str) and bool(raw.strip())
+             and normalize_visible_text(raw) != normalize_visible_text(canonical))
+        )
+    return json.dumps(payload, ensure_ascii=False), tuple(hydrated)
 
 
 def canonicalize_reference_labels(

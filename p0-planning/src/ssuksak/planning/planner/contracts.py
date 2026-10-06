@@ -20,13 +20,13 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v11"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v17"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
-MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v7"
+MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v12"
 # Used instead of the two above when the Context Packet carries safety placement.
-MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v7"
-MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v8"
+MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v13"
+MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v13"
 MONTHLY_MODEL = "openai/gpt-4.1-mini"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-4.1-mini-2025-04-14").
@@ -273,6 +273,9 @@ class MonthlyPlanningRequest:
     # One entry per LLM generation target of this request, with the supplied refs
     # it may cite (see prompt.generation_targets).
     allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # Repair only: the cells (week_id or None for month, section_key) the repair may
+    # patch and the fields it may change there. Empty for an initial request.
+    repair_targets: tuple[tuple[str | None, str, tuple[str, ...]], ...] = ()
 
     def __post_init__(self) -> None:
         for name in (
@@ -285,6 +288,18 @@ class MonthlyPlanningRequest:
         ):
             _require_text(
                 f"MonthlyPlanningRequest.{name}", getattr(self, name)
+            )
+        if not isinstance(self.repair_targets, tuple) or any(
+            not isinstance(item, tuple)
+            or len(item) != 3
+            or not (item[0] is None or isinstance(item[0], str))
+            or not isinstance(item[1], str)
+            or not isinstance(item[2], tuple)
+            or not item[2]
+            for item in self.repair_targets
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyPlanningRequest.repair_targets must name cells and their mutable fields"
             )
         if not isinstance(self.target_month, YearMonth):
             raise InvalidDomainValueError(
