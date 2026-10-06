@@ -11,6 +11,8 @@ from pydantic import (
     StringConstraints,
     TypeAdapter,
     ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
     model_validator,
 )
 
@@ -130,3 +132,42 @@ class ClassListResponse(BaseModel):
     """목록 봉투는 `{ items }` 하나로 통일한다 (docs/api-spec.md §2-1)."""
 
     items: list[ClassResponse]
+
+
+class GreetingItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: Annotated[int, Field(strict=True, ge=1, le=12)]
+    text: str
+
+
+class GreetingsSettings(BaseModel):
+    """GET 응답 · PUT 요청/응답은 같은 12개월 계약이다 (api-spec.md §3)."""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    enabled: Annotated[bool, Field(strict=True)]
+    items: Annotated[list[GreetingItem], Field(min_length=12, max_length=12)]
+
+    @field_validator("items", mode="wrap")
+    @classmethod
+    def all_months_once(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> list[GreetingItem]:
+        try:
+            items = handler(value)
+        except ValidationError as exc:
+            errors = exc.errors(include_url=False)
+            for error in errors:
+                loc = error["loc"]
+                if loc and isinstance(loc[0], int):
+                    item = value[loc[0]]
+                    month = item.get("month") if isinstance(item, dict) else None
+                    # 공통 계약: 배열 순서 대신 월로 가리킨다. 유효한 월이 없으면 items 전체다.
+                    error["loc"] = (
+                        (str(month), *loc[1:]) if type(month) is int and 1 <= month <= 12 else ()
+                    )
+            raise ValidationError.from_exception_data(cls.__name__, errors) from None
+        if {item.month for item in items} != set(range(1, 13)):
+            raise ValueError("1~12월이 각각 정확히 한 번씩 있어야 합니다.")
+        return items
