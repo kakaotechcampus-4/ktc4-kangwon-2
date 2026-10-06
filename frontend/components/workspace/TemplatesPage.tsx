@@ -1,212 +1,215 @@
 "use client";
-import Link from "next/link";
-import { useState } from "react";
-import { analyzeText, type Template } from "@/lib/workspace/model";
-import { useWorkspace } from "@/lib/workspace/store";
-import { requestAI } from "@/lib/workspace/ai-client";
-import { WorkspacePage, Empty, Message, useAIStatus, AIHint, ws } from "./WorkspaceUI";
-type Analysis = Pick<Template, "headings" | "style" | "summary">;
+import { useEffect, useState } from "react";
+import { ApiError } from "@/lib/api/client";
+import { deleteForm, FORM_EXTENSIONS, getForms, registerForm } from "@/lib/api/forms";
+import { syncCenter } from "@/lib/api/onboarding";
+import type { ApiForm, FormCell } from "@/lib/api/types";
+import { loadClassSettings } from "@/lib/onboarding/settings";
+import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
+
+/** 서버가 준 문구를 쓴다. 서버 설치 문제(503)만 교사가 할 수 있는 일이 없어 문구를 바꾼다. */
+function describe(e: unknown, fallback: string): string {
+  if (e instanceof ApiError) {
+    const code = (e.body as { error?: { code?: string } } | null)?.error?.code;
+    // 재시도로 풀리지 않는다 — 다시 시도하라고 하지 않는다 (docs/api-spec.md §8).
+    if (code === "DEPENDENCY_UNAVAILABLE")
+      return "지금은 양식을 읽을 수 없어요. 운영팀에 문의해주세요.";
+    return e.message;
+  }
+  return e instanceof Error ? e.message : fallback;
+}
+
+const isFormFile = (file: File) =>
+  FORM_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
+
+/** 표준 키로 읽힌 라벨만. 키가 없는 칸은 데이터 값이거나 아직 모르는 표현이다. */
+const recognized = (form: ApiForm) =>
+  Object.entries(form.label_map)
+    .filter(([, key]) => key !== null)
+    .map(([label]) => label);
+
+function TablePreview({ table }: { table: FormCell[][] }) {
+  return (
+    <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12, marginBottom: 12 }}>
+      <tbody>
+        {table.map((row, r) => (
+          <tr key={r}>
+            {row.map((cell, c) => (
+              <td
+                key={c}
+                rowSpan={cell.rowspan}
+                colSpan={cell.colspan}
+                style={{ border: "1px solid var(--pg-line)", padding: "4px 6px" }}
+              >
+                {cell.text}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function TemplatesPage() {
-  const { data, error, blocked, save } = useWorkspace();
-  const available = useAIStatus();
-  const [name, setName] = useState("");
-  const [text, setText] = useState("");
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [centerId, setCenterId] = useState<number | null>(null);
+  const [forms, setForms] = useState<ApiForm[] | null>(null);
+  const [busy, setBusy] = useState<"upload" | "delete" | null>(null);
   const [message, setMessage] = useState("");
   const [problem, setProblem] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const settings = loadClassSettings();
+        if (!settings) throw new Error("원 정보를 먼저 설정해주세요.");
+        const id = await syncCenter(settings);
+        const { items } = await getForms(id);
+        if (!alive) return;
+        setCenterId(id);
+        setForms(items);
+      } catch (e) {
+        if (alive) setProblem(describe(e, "등록한 양식을 불러오지 못했어요."));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   async function upload(file?: File) {
-    if (!file) return;
-    setBusy(true);
-    setProblem("");
+    if (!file || centerId === null) return;
     setMessage("");
-    setAnalysis(null);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch("/api/templates/extract", { method: "POST", body: form });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      setName(result.name);
-      setText(result.text);
-      setAnalysis(result);
-    } catch (e) {
-      setProblem(e instanceof Error ? e.message : "업로드에 실패했어요.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function analyze() {
-    if (text.trim().length < 10) {
-      setProblem("분석할 양식 내용을 10자 이상 입력해주세요.");
+    setProblem("");
+    if (!isFormFile(file)) {
+      setProblem("HWP · HWPX 파일만 등록할 수 있어요.");
       return;
     }
-    setBusy(true);
-    setProblem("");
+    setBusy("upload");
     try {
-      setAnalysis(available ? await requestAI<Analysis>("template", { text }) : analyzeText(text));
+      const form = await registerForm(centerId, file);
+      setForms((prev) => [form, ...(prev ?? [])]);
+      setMessage(`「${form.name}」 등록을 마쳤어요.`);
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : "분석에 실패했어요.");
+      setProblem(describe(e, "양식을 등록하지 못했어요."));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
-  function store() {
-    if (!analysis || !name.trim()) return;
-    const template: Template = {
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      text,
-      ...analysis,
-      createdAt: new Date().toISOString(),
-    };
-    if (save((prev) => ({ ...prev, templates: [template, ...prev.templates] }))) {
-      setMessage("우리 원 양식으로 저장했어요. 계획안 생성 화면에서 선택할 수 있어요.");
-      setName("");
-      setText("");
-      setAnalysis(null);
+
+  async function remove(form: ApiForm) {
+    // 수정이 없어 지운 양식은 다시 올려야 한다. 실수로 누르지 않게 한 번 묻는다.
+    if (!window.confirm(`「${form.name}」 양식을 삭제할까요?`)) return;
+    setMessage("");
+    setProblem("");
+    setBusy("delete");
+    try {
+      await deleteForm(form.id);
+      setForms((prev) => (prev ?? []).filter((f) => f.id !== form.id));
+      setMessage(`「${form.name}」 삭제를 마쳤어요.`);
+    } catch (e) {
+      setProblem(describe(e, "양식을 삭제하지 못했어요."));
+    } finally {
+      setBusy(null);
     }
   }
+
   return (
     <WorkspacePage
-      title="원 양식 분석"
-      description="익숙한 기관 양식을 읽고, 우리 원의 문서 작성 방식을 이어갑니다."
+      title="원 양식 등록"
+      description="우리 원이 쓰는 계획안 양식을 등록하면, 표 구조와 항목을 읽어 둡니다."
     >
       <section className={ws.hero}>
         <div>
-          <div className={ws.eyebrow}>TEMPLATE · 우리 원의 방식 그대로</div>
+          <div className={ws.eyebrow}>TEMPLATE · 우리 원 양식</div>
           <h2>
             쓰던 양식을 올리면,
             <br />
-            작성의 기준이 생겨요.
+            표의 항목을 읽어 둬요.
           </h2>
-          <p>항목 순서와 문체, 담아야 할 내용을 확인하고 계획안 생성에 활용하세요.</p>
+          <p>한 번 등록한 양식은 우리 원 선생님들이 계속 같이 써요.</p>
         </div>
         <span className={ws.heroIcon}>▤</span>
       </section>
-      <Message error>{error || problem}</Message>
+      <Message error>{problem}</Message>
       <Message>{message}</Message>
-      <div className={ws.equalGrid}>
-        <section className={ws.card}>
-          <h2>기존 양식 불러오기</h2>
-          <AIHint available={available} />
-          <div className={ws.upload}>
-            <span className={ws.count}>↑</span>
-            <h3>기관에서 사용하는 문서를 선택해주세요</h3>
-            <p className={ws.muted}>PDF · DOCX · TXT · MD · CSV / 최대 5MB</p>
-            <input
-              aria-label="기관 양식 파일"
-              disabled={busy}
-              type="file"
-              accept=".pdf,.docx,.txt,.md,.csv"
-              onChange={(e) => {
-                void upload(e.target.files?.[0]);
-                e.target.value = "";
-              }}
-            />
+      <section className={ws.card}>
+        <h2>양식 올리기</h2>
+        <div className={ws.upload}>
+          <span className={ws.count}>↑</span>
+          <h3>기관에서 쓰는 계획안 양식을 선택해주세요</h3>
+          <p className={ws.muted}>HWP · HWPX</p>
+          <input
+            aria-label="기관 양식 파일"
+            disabled={busy !== null || centerId === null}
+            type="file"
+            accept={FORM_EXTENSIONS.join(",")}
+            onChange={(e) => {
+              void upload(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        <p className={ws.hint}>
+          표가 들어 있는 양식만 등록돼요. 원본 파일은 저장하지 않고, 읽어 낸 표 구조와 항목만
+          남겨요.
+        </p>
+        {busy === "upload" && (
+          <div className={ws.loading}>
+            <span>🌱</span>
+            <p>양식의 표를 읽고 있어요.</p>
           </div>
-          <p className={ws.hint}>
-            HWP/HWPX는 PDF·DOCX로 변환해주세요. 스캔 이미지의 문자 인식과 원본 표 배치 복제는
-            지원하지 않습니다.
-          </p>
-          <div className={ws.form}>
-            <label className={ws.field}>
-              양식 이름
-              <input
-                disabled={busy}
-                maxLength={100}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="양식 이름을 입력해주세요"
-              />
-            </label>
-            <label className={ws.field}>
-              추출 내용 / 직접 붙여넣기
-              <textarea
-                disabled={busy}
-                maxLength={60000}
-                value={text}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  setAnalysis(null);
-                }}
-                placeholder="기존 양식의 내용을 붙여넣어도 분석할 수 있어요."
-              />
-            </label>
-            <button className={ws.primary} disabled={busy || !text.trim()} onClick={analyze}>
-              {busy ? "문서를 읽고 있어요…" : available ? "AI로 구조·성향 분석" : "문서 구조 분석"}
-            </button>
-          </div>
-        </section>
-        <section className={ws.card}>
-          <h2>양식 분석 결과</h2>
-          {busy ? (
-            <div className={ws.loading}>
-              <span>🌱</span>
-              <p>문서의 항목과 작성 방식을 살펴보고 있어요.</p>
-            </div>
-          ) : analysis ? (
-            <>
-              <span className={ws.badge}>{analysis.style}</span>
-              <p style={{ margin: "16px 0" }}>{analysis.summary}</p>
-              <label className={ws.field}>
-                사용할 항목 · 한 줄에 하나씩
-                <textarea
-                  value={analysis.headings.join("\n")}
-                  onChange={(e) =>
-                    setAnalysis({
-                      ...analysis,
-                      headings: e.target.value.split("\n").filter(Boolean).slice(0, 20),
-                    })
-                  }
-                />
-              </label>
-              <p className={ws.hint}>
-                텍스트에서 추출한 항목 후보입니다. 제목·순서를 검토한 뒤 저장해주세요.
-              </p>
-              <div className={ws.actions}>
-                <button
-                  className={ws.primary}
-                  disabled={!name.trim() || !analysis.headings.length || blocked}
-                  onClick={store}
-                >
-                  우리 원 양식으로 저장
-                </button>
-              </div>
-            </>
-          ) : (
-            <Empty title="우리 원 양식을 기다리고 있어요">
-              문서를 올리거나 양식 내용을 붙여넣어주세요.
-            </Empty>
-          )}
-        </section>
-      </div>
+        )}
+      </section>
       <div className={ws.between} style={{ margin: "28px 0 15px" }}>
-        <h2>저장한 기관 양식 {data.templates.length}</h2>
-        <Link href="/plans/annual/new" className={ws.link}>
-          계획안에 적용하기 →
-        </Link>
+        <h2>등록한 양식 {forms?.length}</h2>
       </div>
-      <div className={ws.cards}>
-        {data.templates.map((t) => (
-          <article key={t.id} className={ws.card}>
-            <span className={ws.badge}>{t.style}</span>
-            <h3 style={{ marginTop: 14 }}>{t.name}</h3>
-            <p className={ws.muted}>{t.headings.join(" · ")}</p>
-            <details style={{ marginTop: 14 }}>
-              <summary className={ws.link}>원문 확인</summary>
-              <div className={ws.preview}>{t.text}</div>
-            </details>
-            <Link
-              href={`/plans/annual/new?template=${encodeURIComponent(t.id)}`}
-              className={ws.primary}
-              style={{ marginTop: 18 }}
-            >
-              이 양식으로 계획안 작성
-            </Link>
-          </article>
-        ))}
-      </div>
+      {forms === null ? (
+        !problem && (
+          <div className={ws.loading}>
+            <span>🌱</span>
+            <p>등록한 양식을 불러오고 있어요.</p>
+          </div>
+        )
+      ) : forms.length === 0 ? (
+        <Empty title="아직 등록한 양식이 없어요">위에서 HWP · HWPX 양식을 올려주세요.</Empty>
+      ) : (
+        <div className={ws.cards}>
+          {forms.map((form) => {
+            const labels = recognized(form);
+            return (
+              <article key={form.id} className={ws.card}>
+                <span className={ws.badge}>표 {form.tables.length}개</span>
+                <h3 style={{ marginTop: 14 }}>{form.name}</h3>
+                <p className={ws.muted}>
+                  {labels.length ? labels.join(" · ") : "읽어 낸 항목이 없어요."}
+                </p>
+                <p className={ws.hint}>
+                  {new Date(form.created_at).toLocaleDateString("ko-KR")} 등록
+                </p>
+                <details style={{ marginTop: 14 }}>
+                  <summary className={ws.link}>표 구조 확인</summary>
+                  <div className={ws.preview}>
+                    {form.tables.map((table, i) => (
+                      <TablePreview key={i} table={table} />
+                    ))}
+                  </div>
+                </details>
+                <div className={ws.actions} style={{ marginTop: 18 }}>
+                  <button
+                    className={ws.secondary}
+                    disabled={busy !== null}
+                    onClick={() => remove(form)}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </WorkspacePage>
   );
 }
