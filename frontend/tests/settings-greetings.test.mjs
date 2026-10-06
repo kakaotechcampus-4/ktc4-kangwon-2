@@ -82,10 +82,16 @@ function browser(t) {
   globalThis.localStorage = storage;
   globalThis.sessionStorage = fixtureSession();
   sessionStorage.setItem("saessak.authToken", "mock.fixture%40example.com");
+  const confirms = [];
+  let allowed = true;
   globalThis.window = Object.assign(new EventTarget(), {
     localStorage,
     sessionStorage,
     location: { search: "" },
+    confirm: (text) => {
+      confirms.push(text);
+      return allowed;
+    },
   });
   const original = globalThis.fetch;
   t.after(() => {
@@ -94,11 +100,17 @@ function browser(t) {
     delete globalThis.localStorage;
     delete globalThis.sessionStorage;
   });
+  return {
+    confirms,
+    allowConfirm: (value) => {
+      allowed = value;
+    },
+  };
 }
 
 // 실제 SettingsPage의 effect와 이벤트를 실행하고 실제 API/로컬 저장 함수를 사용한다.
 function page(t, { centerId = 42, failGet = false, greetings = serverGreetings() } = {}) {
-  browser(t);
+  const stub = browser(t);
   const originalSettings = {
     ...EMPTY_CLASS_SETTINGS,
     orgName: "로컬 원 이름",
@@ -190,6 +202,7 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
   t.after(() => effects.forEach((effect) => effect?.cleanup?.()));
   render();
   return {
+    ...stub,
     calls,
     render,
     flush,
@@ -261,6 +274,7 @@ test("설정 PUT은 12개월을 보내고 서버 성공값만 로컬에 반영�
   assert.equal(stored.directorName, "다른 화면에서 수정한 원장");
   assert.match(p.text(), /설정을 저장했어요/);
   assert.equal(p.fieldset().props.disabled, false);
+  assert.deepEqual(p.confirms, []);
 });
 
 test("off PUT은 서버에서 보존한 문구를 화면과 로컬에 반영한다", async (t) => {
@@ -279,6 +293,64 @@ test("off PUT은 서버에서 보존한 문구를 화면과 로컬에 반영한�
   assert.equal(p.step().props.settings.characterMessages[3], "서버 3월 인사");
   assert.equal(local.loadClassSettings().characterMessages[3], "서버 3월 인사");
   assert.equal(local.loadClassSettings().characterEducationEnabled, false);
+  // 문구를 고친 채 껐으므로 저장 전에 한 번 물었고, 계속을 골라 그대로 저장됐다.
+  assert.equal(p.confirms.length, 1);
+});
+
+test("문구를 고친 채 성품교육을 끄면 저장 전에 묻고, 취소하면 서버를 부르지 않는다", async (t) => {
+  const p = page(t, { greetings: serverGreetings(true) });
+  await p.flush();
+  p.allowConfirm(false);
+  p.step().props.onChange({
+    characterEducationEnabled: false,
+    characterMessages: { ...p.step().props.settings.characterMessages, 3: "지키고 싶은 3월 인사" },
+  });
+  p.render();
+  await p.step().props.onFinish();
+  p.render();
+  assert.deepEqual(p.confirms, [
+    "성품교육을 사용하지 않으면 수정한 월별 문구는 저장되지 않아요. 계속 저장할까요?",
+  ]);
+  assert.equal(
+    p.calls.some(({ method }) => method === "PUT"),
+    false,
+  );
+  assert.equal(p.step().props.settings.characterMessages[3], "지키고 싶은 3월 인사");
+  assert.equal(p.step().props.settings.characterEducationEnabled, false);
+  assert.equal(local.loadClassSettings().characterMessages[3], "이전 로컬 인사");
+  assert.equal(p.fieldset().props.disabled, false);
+  assert.equal(p.text().includes("저장했어요"), false);
+});
+
+test("문구를 고치지 않고 성품교육만 끄면 묻지 않고 바로 저장한다", async (t) => {
+  const p = page(t, { greetings: serverGreetings(true) });
+  await p.flush();
+  p.step().props.onChange({ characterEducationEnabled: false });
+  p.render();
+  await p.step().props.onFinish();
+  p.render();
+  assert.deepEqual(p.confirms, []);
+  const put = p.calls.find(({ method }) => method === "PUT");
+  assert.equal(JSON.parse(put.options.body).enabled, false);
+  assert.equal(local.loadClassSettings().characterEducationEnabled, false);
+  assert.match(p.text(), /설정을 저장했어요/);
+});
+
+test("고친 문구를 되돌려 서버 값과 같아지면 끌 때 묻지 않는다", async (t) => {
+  const p = page(t, { greetings: serverGreetings(true) });
+  await p.flush();
+  const original = p.step().props.settings.characterMessages;
+  p.step().props.onChange({ characterMessages: { ...original, 3: "잠깐 고친 3월 인사" } });
+  p.render();
+  p.step().props.onChange({
+    characterEducationEnabled: false,
+    characterMessages: { ...original, 3: "서버 3월 인사" },
+  });
+  p.render();
+  await p.step().props.onFinish();
+  p.render();
+  assert.deepEqual(p.confirms, []);
+  assert.match(p.text(), /설정을 저장했어요/);
 });
 
 test("PUT 실패는 입력을 보존하고 오류를 표시하며 같은 값으로 재시도한다", async (t) => {
@@ -301,6 +373,7 @@ test("PUT 실패는 입력을 보존하고 오류를 표시하며 같은 값으�
   p.render();
   assert.equal(local.loadClassSettings().characterMessages[3], "보존할 입력값");
   assert.equal(p.text().includes("서버 오류"), false);
+  assert.deepEqual(p.confirms, []);
 });
 
 test("GET 실패는 로컬 값을 기준으로 저장하지 않고 재조회할 수 있다", async (t) => {

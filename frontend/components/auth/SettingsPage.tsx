@@ -29,6 +29,8 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState<ViewStatus>("loading");
   const [centerId, setCenterId] = useState<number | null>(null);
+  // 서버가 마지막으로 돌려준 월별 문구. 사용자가 고쳤는지 비교하는 기준이다.
+  const [serverMessages, setServerMessages] = useState<CharacterMessages | null>(null);
   const [saving, setSaving] = useState(false);
   const [requestVersion, setRequestVersion] = useState(0);
   const ready = useHydrated();
@@ -44,8 +46,10 @@ export default function SettingsPage() {
         const greetings = await getGreetings(user.center_id);
         session.assertCurrent();
         if (!active) return;
+        const fromServer = greetingSettings(greetings);
         setCenterId(user.center_id);
-        setSettings((s) => ({ ...s, ...greetingSettings(greetings) }));
+        setServerMessages(fromServer.characterMessages);
+        setSettings((s) => ({ ...s, ...fromServer }));
         setStatus("ready");
       } catch (e) {
         if (!active || !session.isCurrent()) return;
@@ -67,6 +71,19 @@ export default function SettingsPage() {
 
   async function save() {
     if (centerId === null || status !== "ready" || saving) return;
+    const before = serverMessages;
+    // enabled=false 저장은 서버가 items 를 바꾸지 않는다 (§3). 고친 문구가 말없이 사라지므로 먼저 묻는다.
+    const discardsEdits =
+      !settings.characterEducationEnabled &&
+      before !== null &&
+      MONTH_ORDER.some((month) => settings.characterMessages[month] !== before[month]);
+    if (
+      discardsEdits &&
+      !window.confirm(
+        "성품교육을 사용하지 않으면 수정한 월별 문구는 저장되지 않아요. 계속 저장할까요?",
+      )
+    )
+      return;
     const session = captureSession();
     setSaving(true);
     setError("");
@@ -77,8 +94,10 @@ export default function SettingsPage() {
         items: MONTH_ORDER.map((month) => ({ month, text: settings.characterMessages[month] })),
       });
       session.assertCurrent();
+      const fromServer = greetingSettings(greetings);
+      setServerMessages(fromServer.characterMessages);
       // 다른 화면에서 수정한 로컬 원·반 설정도 그대로 유지한다.
-      const next = { ...(loadClassSettings() || settings), ...greetingSettings(greetings) };
+      const next = { ...(loadClassSettings() || settings), ...fromServer };
       setSettings(next);
       setMessage(
         saveClassSettings(next)
