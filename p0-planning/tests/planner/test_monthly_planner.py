@@ -886,7 +886,7 @@ def test_built_requests_carry_the_korean_contract(packet, snapshot):
 
 
 @pytest.mark.parametrize(
-    "observed", ["openai/gpt-5.6-luna", "gpt-5.6-luna", "gpt-5.6-luna-2026-10-05"]
+    "observed", ["openai/gpt-6-luna", "gpt-6-luna", "gpt-6-luna-2026-10-07"]
 )
 def test_requested_family_and_its_dated_snapshot_are_compatible(observed):
     assert is_compatible_monthly_model(observed)
@@ -895,14 +895,14 @@ def test_requested_family_and_its_dated_snapshot_are_compatible(observed):
 @pytest.mark.parametrize(
     "observed",
     [
-        "gpt-5.6",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna-preview",
-        "gpt-5.6-luna-custom",
-        "abc-gpt-5.6-luna",
-        "gpt-5.6-luna-2026-10-05-extra",
-        "gpt-5.6-luna-2026-13-40",
-        "openai/gpt-5.6-terra",
+        "gpt-6",
+        "gpt-6-astra",
+        "gpt-6-luna-preview",
+        "gpt-6-luna-custom",
+        "abc-gpt-6-luna",
+        "gpt-6-luna-2026-10-07-extra",
+        "gpt-6-luna-2026-13-40",
+        "openai/gpt-6-astra",
         "",
         None,
     ],
@@ -912,7 +912,7 @@ def test_other_models_are_not_compatible(observed):
 
 
 def test_planners_accept_a_dated_snapshot_and_keep_the_observed_model(packet, snapshot):
-    snapshot_model = "gpt-5.6-luna-2026-10-05"
+    snapshot_model = "gpt-6-luna-2026-10-07"
     fake = DeterministicMonthlyLlm(
         json.dumps(monthly_payload(), ensure_ascii=False),
         json.dumps(cell_payload(), ensure_ascii=False),

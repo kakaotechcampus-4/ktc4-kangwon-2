@@ -23,7 +23,7 @@ from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 #
 # **엘리스는 모델마다 주소가 다르다.** `ELICE_MLAPI_BASE_URL` 이 이 모델의 주소를
 # 가리키고 있어야 한다 — 주소와 이름이 어긋나면 `model_not_found` 가 난다.
-MODEL = "openai/gpt-5.6-luna"
+MODEL = "openai/gpt-6-luna"
 TIMEOUT_SECONDS = 30.0
 
 
@@ -47,7 +47,7 @@ def require_config() -> tuple[str, str]:
 def complete_json(system_prompt: str, user_content: str, *, transport=None) -> str:
     """JSON 으로만 답하게 하고 그 글자를 그대로 돌려준다. 파싱은 부르는 쪽이 한다.
 
-    **온도를 보내지 않는다.** `gpt-5.6-luna` 는 기본값(1)만 받고 0 을 거부한다
+    **온도를 보내지 않는다.** `gpt-6-luna` 는 기본값(1)만 받고 0 을 거부한다
     (`Unsupported value: 'temperature' does not support 0 with this model`).
     그래서 같은 입력에 같은 답이 온다고 가정하면 안 된다.
 

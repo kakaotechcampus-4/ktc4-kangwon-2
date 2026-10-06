@@ -155,7 +155,7 @@ class EliceOpenAiMonthlyAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
-            # No temperature: gpt-5.6-luna rejects 0 and only accepts its default, so the
+            # No temperature: gpt-6-luna rejects 0 and only accepts its default, so the
             # same packet can come back different. The schema below is what holds the shape.
             # Provider-enforced strict Structured Output; the parser still validates.
             "response_format": {
