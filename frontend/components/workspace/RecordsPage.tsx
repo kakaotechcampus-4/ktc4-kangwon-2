@@ -351,9 +351,14 @@ export default function RecordsPage() {
             <h2>
               차곡차곡 쌓인 기록 <span className={ws.muted}>{shown.length}</span>
             </h2>
-            <Link href="/compare" className={ws.link}>
-              이전 기록과 비교 →
-            </Link>
+            <span className={ws.actions}>
+              <Link href="/records/children" className={ws.link}>
+                아이별 모아보기 →
+              </Link>
+              <Link href="/compare" className={ws.link}>
+                이전 기록과 비교 →
+              </Link>
+            </span>
           </div>
           <input
             aria-label="관찰 기록 검색"
