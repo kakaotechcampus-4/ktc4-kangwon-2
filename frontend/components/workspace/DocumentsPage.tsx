@@ -303,7 +303,7 @@ export default function DocumentsPage() {
   return (
     <WorkspacePage
       title="문서 보관함"
-      description="기록에서 시작해, 선생님의 검토로 완성되는 우리 반 문서."
+      description="계획안과 일지를 한곳에서 확인하고 관리하세요."
     >
       <div className={ws.hero}>
         <div>

@@ -175,7 +175,7 @@ function Tape() {
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute -top-3 left-1/2 h-6 w-20 -translate-x-1/2 -rotate-3 border-x border-white/50 bg-paper/70 shadow-[0_1px_2px_rgba(106,96,80,.07)]"
+      className="pointer-events-none absolute -top-3 left-1/2 h-6 w-20 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
     />
   );
 }

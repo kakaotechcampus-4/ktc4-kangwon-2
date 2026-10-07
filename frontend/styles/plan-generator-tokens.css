@@ -24,6 +24,13 @@
   /* 벽에 붙인 쪽지 */
   --pg-note: #f5e6aa;
   --pg-note-line: #d4c486;
+  --pg-note-soft: #f7edce; /* 본문 쪽지 — 사이드바 쪽지보다 연하다 */
+  --pg-note-soft-line: #d5c698;
+  --pg-tape: #fffaf0; /* 쪽지 위에 붙인 종이테이프 */
+
+  /* 공책 느낌의 표면 — 입력칸 머리·바닥 띠 */
+  --pg-paper-warm: #fbf3df;
+  --pg-paper-warm-line: #e7d9c5;
 
   /* 글자 */
   --pg-ink: #34312f; /* 본문 */

@@ -13,6 +13,13 @@ export type IconName =
   | "chevronLeft"
   | "chevronDown"
   | "plus"
+  | "edit"
+  | "check"
+  | "body"
+  | "talk"
+  | "social"
+  | "art"
+  | "nature"
   | "arrow"
   | "users"
   | "help"
@@ -66,6 +73,41 @@ const PATHS: Record<IconName, React.ReactNode> = {
   chevronLeft: <path d="m15 6-6 6 6 6" />,
   chevronDown: <path d="m6 9 6 6 6-6" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  edit: (
+    <>
+      <path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17z" />
+      <path d="M14.5 6.5 17.5 9.5" />
+    </>
+  ),
+  check: <path d="m4 12.5 5.5 5.5L20 7" />,
+  // 누리과정 5개 영역. 글자 없이도 구분되도록 서로 다른 모양을 쓴다.
+  body: (
+    <>
+      <circle cx="13" cy="4.6" r="1.9" />
+      <path d="m8 20 3-5 1-3.5 4 2.5.8 6" />
+      <path d="m12 11.5-3.4 1.2L6 10.6" />
+      <path d="m16 14 3.4-1.4" />
+    </>
+  ),
+  talk: (
+    <>
+      <path d="M20 12.5a6.5 6.5 0 0 1-6.5 6.5H8l-4 3 1.2-3.9A6.5 6.5 0 0 1 9 6h4.5a6.5 6.5 0 0 1 6.5 6.5z" />
+      <path d="M9 12h.01M12 12h.01M15 12h.01" />
+    </>
+  ),
+  social: <path d="M12 20s-7-4.4-7-9.2A4 4 0 0 1 12 8a4 4 0 0 1 7 2.8C19 15.6 12 20 12 20z" />,
+  art: (
+    <>
+      <path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.4 0 2-.9 2-1.8 0-1.4-1.2-1.7-1.2-2.8 0-.8.7-1.4 1.6-1.4h1.4A4.7 4.7 0 0 0 20.5 10c0-3.6-3.8-6.5-8.5-6.5z" />
+      <path d="M8 10.5h.01M11 7.5h.01M15 8.5h.01" />
+    </>
+  ),
+  nature: (
+    <>
+      <path d="M4.5 19.5c0-7 4.5-12 15-12 0 7.5-5 12-10 12z" />
+      <path d="M4.5 19.5c3-3.5 6.5-6 10.5-7.5" />
+    </>
+  ),
   arrow: <path d="M4 12h15m-6-6 6 6-6 6" />,
   users: (
     <>

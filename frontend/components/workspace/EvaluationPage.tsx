@@ -185,8 +185,8 @@ export default function EvaluationPage() {
   }
   return (
     <WorkspacePage
-      title="평가제 · 증빙자료 점검"
-      description="문서의 내용, 작성 기간과 연결된 근거를 함께 살펴보세요."
+      title="평가 준비"
+      description="문서와 기록을 살펴보고, 준비할 항목을 확인하세요."
     >
       <section className={ws.hero}>
         <div>
