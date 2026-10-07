@@ -481,8 +481,12 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 서버가 이 값을 도메인 객체 밖(`plans.sub_themes`)에 따로 든다. 소주제는 별도 근거가 없고
 상위 주제의 `evidence`·`generation` 을 물려받아서 도메인 객체 안에 들어갈 자리가 없다.
 
-**주제 문장은 `LLM_MODE=real` 일 때 AI 가 쓴다.** 기본은 `mock` 이고 그때는 참조자료
-라벨을 그대로 쓴다 — 근거가 흐려지는 게 아니라 오히려 또렷한 상태다. 어느 쪽이든
+**주제 문장은 `LLM_MODE=real` 일 때 AI 가 쓴다.** 모델은 `openai/gpt-6-luna` 다(ADR-023).
+**같은 입력에 같은 답이 온다고 가정하지 않는다** — 이 모델이 온도 0 을 거부해서 우리가
+온도를 안 보낸다. 다만 연간은 반당 하나라 다시 만들 수 없고(「반당 하나다」), 만든 뒤에는
+저장된 값이 그대로다. 달라지는 것은 **새로 만들 때뿐**이다.
+
+기본은 `mock` 이고 그때는 참조자료 라벨을 그대로 쓴다 — 근거가 흐려지는 게 아니라 오히려 또렷한 상태다. 어느 쪽이든
 `generation.method` 가 사실을 말하므로 **화면이 임의로 「AI 가 만들었다」고 쓰면 안 된다.**
 
 생성 실패는 셋으로 갈라 낸다. 셋을 한 코드로 뭉치면 FE 가 「운영 문의」를 띄워야 할
@@ -496,8 +500,10 @@ GENERATION_FAILED       500   호출이 깨졌거나 답이 계약을 어겼다.
 
 **부분 결과를 저장하지 않는다.** 열두 달 중 하나라도 어긋나면 계획안 자체를 만들지 않는다.
 
-**`sub_themes` 는 LLM 이 만든다(계획).** 참조자료(`theme_reference_v0.json`)에는 주제(`label`)만 있고
-소주제가 없다. 세 갈래 중 이걸 골랐다.
+**`sub_themes` 는 LLM 이 만든다 — 아직 안 만들었다.** 지금은 생성 시 항상 빈 배열이고
+교사가 §6 으로 채운다(위 「`sub_themes` 는 P0 생성 시 항상 빈 배열이다」). 아래는 **나중에
+만들 때 고른 방향**이지 지금 동작이 아니다. 참조자료(`theme_reference_v0.json`)에는
+주제(`label`)만 있고 소주제가 없다. 세 갈래 중 이걸 골랐다.
 
 ```
 ✅  LLM 이 주제에서 소주제를 만든다      ADR-014 의 "LLM 이 만들고 규칙이 검사한다" 범위
@@ -808,13 +814,20 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 ## 9. 7주차 예정 — 계약 안 씀
 
 ```
-POST   /api/plans/monthly                 월간 43칸
-PUT    /api/plans/monthly/{id}/cells/{n}  칸 편집
-POST   /api/plans/monthly/{id}/cells/{n}/regenerate   이 칸만 다시
+POST   /api/plans/monthly                 월간
+PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집
+POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시
 GET    /api/plans/{id}/export/hwp         내보내기
 GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 ```
+
+**칸 수를 계약으로 정하지 않는다.** 「43칸」은 우리 기본 서식에서 센 수다. 칸 수는 양식 ·
+활성 주차 · 구역 구조가 정하므로 원이 올린 양식에 따라 달라진다. **화면은 서버가 준 만큼
+그린다** — 43으로 박으면 40칸짜리 양식에서 빈 칸이 생기거나 넘친다.
+
+**칸 식별자는 `item_id` 다.** 순번 `{n}` 을 쓰지 않는다 — 양식이 바뀌면 「n번째」의 뜻이
+바뀌고, 수정·재생성 뒤에도 같은 칸을 가리켜야 한다.
 
 **월간은 연간이 `CONFIRMED` 여야 생성된다.** 아니면 `GATE_BLOCKED` 409.
 **층 순서를 건너뛸 수 없다.** 연간·월간·주간을 한 번에 생성하지 않는다.

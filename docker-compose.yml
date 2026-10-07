@@ -40,6 +40,12 @@ services:
       LIBRARY_AUTH_KEY: ${LIBRARY_AUTH_KEY:-}
       LLM_MODE: ${LLM_MODE:-mock}
       IS_SERVER: ${IS_SERVER:-0}
+    # 예상 못 한 오류 로그(#100)가 재배포 때 사라지지 않게 디스크에 남긴다.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5" 
     ports:
       - "8000:8000"
     depends_on:
@@ -59,11 +65,31 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # 인증서는 60일마다 바뀐다. 바뀐 것을 읽으려면 nginx 를 다시 읽혀야 한다.
+    # 6시간마다 reload — 접속을 끊지 않는다.
+    command: >-
+      sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g 'daemon off;'"
     depends_on:
       - backend
       - frontend
 
+  # 인증서 갱신. 12시간마다 보고 만료 30일 전부터 갱신한다.
+  # 발급(처음 한 번)은 scripts/https-setup.sh 가 한다.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: >-
+      sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+
 volumes:
   pgdata:
+  certbot-etc:
+  certbot-www:
