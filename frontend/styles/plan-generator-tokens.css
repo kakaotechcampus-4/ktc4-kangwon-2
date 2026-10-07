@@ -16,6 +16,15 @@
   --pg-paper: #fffcf5; /* 카드 · 입력창 표면 */
   --pg-line: #dcd5c9; /* 테두리 · 구분선 */
 
+  /* 사이드바 바닥 — 본문보다 한 톤 어둡게 해서 작업실 안쪽 느낌을 준다. */
+  --pg-shell: #ede8e0;
+  --pg-shell-line: #d7d0c7;
+  --pg-shell-hover: #e6dfd3;
+
+  /* 벽에 붙인 쪽지 */
+  --pg-note: #f5e6aa;
+  --pg-note-line: #d4c486;
+
   /* 글자 */
   --pg-ink: #34312f; /* 본문 */
   --pg-ink-soft: #705d47; /* 보조 — 따뜻한 갈색 */
@@ -26,6 +35,9 @@
   --pg-primary-line: #59416e; /* 버튼 테두리 — 면보다 한 단계 진하게 */
   --pg-primary-soft: #9b7bac; /* 보라 글자(본문 아닌 라벨) */
   --pg-primary-tint: #eee4f4; /* 보라 연한 배경 */
+  --pg-primary-tint-line: #c5b7dd; /* 연보라 배경 위의 테두리 */
+  --pg-primary-ink: #5e4b96; /* 연보라 배경 위의 글자 */
+  --pg-primary-deep: #53479a; /* 로고 */
 
   /* 세이지 — 강조 배경 · 확정 표시 */
   --pg-sage: #cee2d5;
@@ -59,6 +71,7 @@
      --pg-shadow-hard 는 버튼에 쓰는 도장 찍은 듯한 것(디자인 파일의 3px 4px 0). */
   --pg-shadow: 0 18px 40px -22px rgba(52, 49, 47, 0.28), 0 2px 8px -2px rgba(52, 49, 47, 0.08);
   --pg-shadow-hard: 3px 4px 0 #ded2e5;
+  --pg-shadow-card: 2px 3px 0 #dcd4c7;
 }
 
 @keyframes pg-spin {

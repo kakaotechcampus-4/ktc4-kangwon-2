@@ -8,6 +8,12 @@
 export const planGeneratorThemeExtend = {
   colors: {
     cream: "var(--pg-cream)",
+    shell: {
+      DEFAULT: "var(--pg-shell)",
+      line: "var(--pg-shell-line)",
+      hover: "var(--pg-shell-hover)",
+    },
+    note: { DEFAULT: "var(--pg-note)", line: "var(--pg-note-line)" },
     paper: "var(--pg-paper)",
     line: "var(--pg-line)",
     ink: "var(--pg-ink)",
@@ -18,6 +24,9 @@ export const planGeneratorThemeExtend = {
       line: "var(--pg-primary-line)",
       soft: "var(--pg-primary-soft)",
       tint: "var(--pg-primary-tint)",
+      "tint-line": "var(--pg-primary-tint-line)",
+      ink: "var(--pg-primary-ink)",
+      deep: "var(--pg-primary-deep)",
     },
     sage: { DEFAULT: "var(--pg-sage)", tint: "var(--pg-sage-tint)", ink: "var(--pg-sage-ink)" },
     mint: {
@@ -44,5 +53,7 @@ export const planGeneratorThemeExtend = {
     pg: "var(--pg-shadow)",
     // 버튼용. 도장 찍은 듯 각진 그림자 — 디자인 파일의 3px 4px 0.
     "pg-hard": "var(--pg-shadow-hard)",
+    // 카드·쪽지용. 버튼보다 얕다.
+    "pg-card": "var(--pg-shadow-card)",
   },
 };

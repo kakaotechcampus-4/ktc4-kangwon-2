@@ -11,6 +11,9 @@ export type IconName =
   | "bell"
   | "chevron"
   | "chevronLeft"
+  | "chevronDown"
+  | "users"
+  | "help"
   | "sparkle";
 
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -59,6 +62,22 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   chevron: <path d="m9 6 6 6-6 6" />,
   chevronLeft: <path d="m15 6-6 6 6 6" />,
+  chevronDown: <path d="m6 9 6 6 6-6" />,
+  users: (
+    <>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0" />
+      <path d="M16 6.2a3 3 0 0 1 0 5.6" />
+      <path d="M17.2 14.6a5.5 5.5 0 0 1 3.3 4.9" />
+    </>
+  ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.7 9.4a2.4 2.4 0 1 1 2.8 2.8v1.3" />
+      <path d="M12.4 16.6h.01" />
+    </>
+  ),
   sparkle: (
     <>
       <path d="M12 3.5l1.6 4.2 4.2 1.6-4.2 1.6L12 15.1l-1.6-4.2-4.2-1.6 4.2-1.6z" />
