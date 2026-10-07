@@ -277,6 +277,30 @@ export async function confirmDocument(localId: string): Promise<ServerDocument> 
   return toDocument(dto);
 }
 
+/** 확정을 되돌린다 (§11). 이미 초안이면 서버가 그대로 200 으로 돌려준다. */
+export async function unconfirmDocument(localId: string): Promise<ServerDocument> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiDocumentDetail>("/api/documents/" + id + "/unconfirm", {
+    method: "POST",
+  });
+  return toDocument(dto);
+}
+
+/**
+ * 바뀐 상위 근거를 다시 떠서 `사실` 을 잇고 stale 을 푼다 (§11).
+ *
+ * `해석`·`지원` 은 서버가 그대로 둔다. 확정본은 `ALREADY_CONFIRMED` 409 라 초안에서만 부른다.
+ */
+export async function refreshDocument(localId: string): Promise<ServerDocument> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiDocumentDetail>("/api/documents/" + id + "/refresh", {
+    method: "POST",
+  });
+  return toDocument(dto);
+}
+
 export async function deleteDocument(localId: string): Promise<void> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);

@@ -27,6 +27,10 @@ export interface ServerDocumentActions {
   save: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
   /** 저장과 확정은 한 작업이다 — 대상 문서가 중간에 바뀌지 않는다. */
   saveAndConfirm: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
+  /** 확정을 되돌린다. 근거를 다시 반영하지는 않는다 — 교사가 따로 누른다. */
+  unconfirm: () => Promise<SavedDocument>;
+  /** 바뀐 근거로 `사실` 을 다시 받는다. 초안이면서 stale 일 때만 부른다. */
+  refresh: () => Promise<SavedDocument>;
   remove: () => Promise<void>;
 }
 
@@ -212,26 +216,60 @@ export default function DocumentEditor({
     }
   }
 
-  async function reloadLatest() {
+  /** 서버가 준 문서로 편집기를 바꾼다. 사실이 달라졌을 수 있어 교사 확인은 다시 받는다. */
+  function adopt(next: SavedDocument, note: string) {
+    setBaseline(next);
+    setDoc(next);
+    setChecks([false, false, false]);
+    setVerified(false);
+    setIssues(null);
+    setStaleWrite(false);
+    setMessage(note);
+  }
+
+  /** 서버 요청 하나를 돌리고 성공하면 그 응답을 그대로 적용한다. 실패하면 입력을 둔다. */
+  async function run(
+    call: (s: ServerDocumentActions) => Promise<SavedDocument | null>,
+    note: string,
+    failed: string,
+  ) {
     if (!server || working) return;
     setBusy(true);
     setMessage("");
     try {
-      const next = await server.reload();
-      if (!next) return;
-      setBaseline(next);
-      setDoc(next);
-      setChecks([false, false, false]);
-      setVerified(false);
-      setIssues(null);
-      setStaleWrite(false);
-      setMessage("최신 문서를 불러왔어요. 내용을 확인한 뒤 다시 작성해주세요.");
+      const next = await call(server);
+      // reload 는 그 사이 다른 문서로 옮기면 null 이다 — 지금 편집기를 바꾸지 않는다.
+      if (next) adopt(next, note);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "최신 문서를 불러오지 못했어요.");
+      setMessage(e instanceof Error ? e.message : failed);
     } finally {
       setBusy(false);
     }
   }
+
+  /** 동시 수정 충돌 복구. 서버의 현재 문서를 다시 읽을 뿐 근거를 다시 뜨지 않는다. */
+  const reloadLatest = () =>
+    run(
+      (s) => s.reload(),
+      "최신 문서를 불러왔어요. 내용을 확인한 뒤 다시 작성해주세요.",
+      "최신 문서를 불러오지 못했어요.",
+    );
+
+  /** 확정 취소. 내용은 그대로고 상태만 초안으로 돌아온다. 근거 반영은 하지 않는다. */
+  const unconfirm = () =>
+    run(
+      (s) => s.unconfirm(),
+      "확정을 취소했어요. 다시 수정할 수 있어요.",
+      "확정을 취소하지 못했어요.",
+    );
+
+  /** 바뀐 근거를 반영한다. 해석·지원은 서버가 두고, 교사 확인만 다시 받는다. */
+  const refreshSources = () =>
+    run(
+      (s) => s.refresh(),
+      "최신 근거를 불러왔어요. 해석과 지원을 다시 확인해주세요.",
+      "최신 근거를 불러오지 못했어요.",
+    );
   return (
     <section className={`${ws.card} ${ws.document}`}>
       {stale && (
@@ -406,10 +444,18 @@ export default function DocumentEditor({
             >
               검토 완료 · 문서 확정
             </button>
+            {server?.stale && (
+              <button className={ws.secondary} disabled={working} onClick={refreshSources}>
+                변경된 근거 반영하기
+              </button>
+            )}
           </>
+        ) : server ? (
+          <button className={ws.secondary} disabled={working} onClick={unconfirm}>
+            확정 취소
+          </button>
         ) : (
-          !annualPlanId &&
-          !server && (
+          !annualPlanId && (
             <button
               className={ws.secondary}
               onClick={() => {

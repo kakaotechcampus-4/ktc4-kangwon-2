@@ -6,13 +6,16 @@
 import io
 import zipfile
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.features.centers.models import Center
 from app.features.forms.models import Form
+from app.features.plans.models import Plan
 from app.main import app
 
 client = TestClient(app)
@@ -103,6 +106,56 @@ def test_지우면_204_이고_목록에서_사라진다(db_session, mine):
 
     assert client.delete(f"/api/forms/{form_id}").status_code == 204
     assert client.get(f"/api/centers/{center.id}/forms").json() == {"items": []}
+
+
+def test_계획안이_걸린_양식은_409_IN_USE_로_막고_둘_다_남긴다(db_session, mine):
+    center = mine["center"]
+    form_id = _register(center.id).json()["id"]
+    plan = Plan(
+        plan_ref="form-in-use",
+        center_id=center.id,
+        kind="annual",
+        school_year=2026,
+        classroom_ref="1",
+        status="DRAFT",
+        body={},
+        form_id=form_id,
+    )
+    db_session.add(plan)
+    db_session.flush()
+    plan_id = plan.id
+    # 세이브포인트를 해제해 삭제 요청의 rollback 에 계획안까지 사라지지 않게 한다.
+    db_session.commit()
+
+    response = client.delete(f"/api/forms/{form_id}")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "IN_USE",
+            "message": "이 양식으로 만든 계획안이 있어 지울 수 없습니다.",
+            "fields": [],
+        }
+    }
+    listed = client.get(f"/api/centers/{center.id}/forms")
+    assert listed.status_code == 200
+    assert form_id in [item["id"] for item in listed.json()["items"]]
+    db_session.expire_all()
+    assert db_session.scalar(select(Plan.form_id).where(Plan.id == plan_id)) == form_id
+
+
+def test_다른_DB_거부는_409_로_숨기지_않는다(db_session, mine, monkeypatch):
+    form_id = _register(mine["center"].id).json()["id"]
+
+    def fail_commit():
+        orig = Exception("different constraint")
+        orig.diag = SimpleNamespace(constraint_name="some_other_constraint")
+        raise IntegrityError("DELETE FROM forms", {}, orig)
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    with TestClient(app, raise_server_exceptions=False) as error_client:
+        response = error_client.delete(f"/api/forms/{form_id}")
+    assert response.status_code == 500
 
 
 def test_남의_원은_등록도_목록도_삭제도_404_다(db_session, mine):

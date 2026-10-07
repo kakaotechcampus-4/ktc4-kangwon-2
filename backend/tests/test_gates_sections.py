@@ -24,6 +24,17 @@ def _check(interpretation: str, facts: list[str] = FACTS) -> list[str]:
     return check_sections(sections, facts, {1, 2})
 
 
+def test_empty_facts_reject_the_document_even_when_interpretation_and_support_are_long():
+    # 교사가 칸을 하나도 안 채운 일일 보육일지다. 해석 · 지원이 기댈 사실이 없다.
+    sections = [
+        Section("사실", "", []),
+        Section("해석", "x" * 30, []),
+        Section("지원", SUPPORT, []),
+    ]
+
+    assert check_sections(sections, [], set()) == ["sections.사실"]
+
+
 def test_numbers_in_interpretation_that_appear_in_facts_pass():
     assert _check("블록을 3번 쌓으며 9월 22일 친구 2명과 협력하는 모습을 보였다.") == []
 
