@@ -328,9 +328,13 @@ def test_duplicate_class_name_becomes_already_exists():
 
 
 def test_other_constraint_violations_are_not_disguised_as_a_duplicate_name():
-    # 연령 CHECK 같은 다른 위반까지 409 로 바꾸면 원인이 숨는다. 그대로 올려보낸다.
-    with pytest.raises(IntegrityError):
-        _post_class_with("ck_classes_age_range")
+    # 연령 CHECK 같은 다른 위반은 중복 이름 409 대신 공통 미들웨어의 500 으로 보낸다.
+    session, response = _post_class_with("ck_classes_age_range")
+
+    assert response.status_code == 500
+    assert response.text == "Internal Server Error"
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert session.rolled_back is True
 
 
 def test_creating_a_class_under_a_missing_center_returns_not_found():

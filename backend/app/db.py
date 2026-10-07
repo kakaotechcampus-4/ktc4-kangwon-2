@@ -21,7 +21,9 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+# ADR-004: hide_parameters 는 SQLAlchemy 가 덧붙이는 입력값만 숨긴다.
+# Postgres DETAIL 은 값을 담으므로 어디서도 str(exc) 를 로그에 쓰지 않는다.
+engine = create_engine(settings.database_url, pool_pre_ping=True, hide_parameters=True)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
