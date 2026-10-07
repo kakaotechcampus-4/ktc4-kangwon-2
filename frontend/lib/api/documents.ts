@@ -10,6 +10,15 @@ export type RecordKind = (typeof RECORD_KINDS)[number];
 export const isRecordKind = (kind: string): kind is RecordKind =>
   (RECORD_KINDS as readonly string[]).includes(kind);
 
+/**
+ * 아직 화면에서 만들 수 없는 종류.
+ *
+ * 일일 보육일지의 근거는 관찰 기록이 아니라 「일과 기록」이다 (ADR-025 · §10-1).
+ * 일과 기록을 적는 화면이 아직 없어서, 지금 만들기를 누르면 서버가 422 로 돌려보낸다.
+ * 고를 수 있는데 아무것도 안 되는 것보다 잠가 두는 쪽이 낫다 — 그 화면이 들어오면 푼다.
+ */
+export const BLOCKED_RECORD_KINDS: readonly RecordKind[] = ["dailyLog"];
+
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const DOCUMENT_PREFIX = "document:";
 const CLASS_PREFIX = "server-class:";

@@ -46,7 +46,7 @@ export default function ChildList({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <label htmlFor={`${idPrefix}-name`} className="font-display text-[15px] text-ink">
+        <label htmlFor={`${idPrefix}-name`} className="font-semibold text-[15px] text-ink">
           아동 추가
         </label>
         <div className="flex gap-2">
@@ -91,7 +91,7 @@ export default function ChildList({
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <span className="font-display text-[15px] text-ink">
+          <span className="font-semibold text-[15px] text-ink">
             아동 명단
             <span className="ml-1.5 align-middle font-mono text-[11px] px-2 py-0.5 rounded-full bg-mint-tint text-mint-ink">
               {items.length}명
@@ -103,11 +103,11 @@ export default function ChildList({
         </div>
 
         {items.length === 0 ? (
-          <div className="rounded-[18px] border border-dashed border-line bg-sage-tint px-3.5 py-5 text-center text-[13px] text-ink-soft">
+          <div className="rounded-md border border-dashed border-line bg-cream px-3.5 py-5 text-center text-[13px] text-ink-soft">
             아직 등록된 아동이 없어요. 위에서 이름을 입력해 추가해주세요.
           </div>
         ) : (
-          <ul className="rounded-[18px] border-[1.5px] border-line overflow-hidden divide-y divide-line">
+          <ul className="rounded-md border-[1.5px] border-line overflow-hidden divide-y divide-line">
             {items.map((c, i) => (
               <li key={c.id} className="flex items-center gap-3 px-3.5 py-2.5 bg-paper">
                 <span className="font-mono text-[11px] text-ink-soft w-[22px]">
@@ -135,7 +135,7 @@ export default function ChildList({
                     }
                   }}
                   aria-label={`${c.name} 삭제`}
-                  className="min-h-[36px] min-w-[44px] px-2.5 rounded-full text-[12.5px] text-ink-soft hover:text-peach-ink hover:bg-peach-tint transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sage-ink"
+                  className="min-h-[36px] min-w-[44px] px-2.5 rounded-full text-[12.5px] text-ink-soft hover:text-peach-ink hover:bg-peach-tint transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                 >
                   삭제
                 </button>

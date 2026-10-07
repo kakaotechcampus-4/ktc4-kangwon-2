@@ -280,10 +280,10 @@ test("계획안 생성 화면은 브라우저 저장소의 양식 목록을 보�
 
 test("등록된 서버 양식이 선택 목록에 이름으로 나온다", async (t) => {
   const p = page(t, { forms: [form(4, "햇살 월간계획안"), form(9, "햇살 주간계획안")] });
-  assert.deepEqual(p.options(), [{ value: "", label: "쓱싹요정 기본 양식" }]);
+  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
   await p.flush();
   assert.deepEqual(p.options(), [
-    { value: "", label: "쓱싹요정 기본 양식" },
+    { value: "", label: "쌤플 기본 양식" },
     { value: "4", label: "햇살 월간계획안" },
     { value: "9", label: "햇살 주간계획안" },
   ]);
@@ -296,14 +296,14 @@ test("등록된 서버 양식이 선택 목록에 이름으로 나온다", async
 test("등록된 양식이 없어도 기본 양식을 쓸 수 있다", async (t) => {
   const p = page(t, { forms: [] });
   await p.flush();
-  assert.deepEqual(p.options(), [{ value: "", label: "쓱싹요정 기본 양식" }]);
+  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
   assert.equal(p.alert(), undefined);
 });
 
 test("양식 목록 조회가 실패해도 화면은 기본 양식으로 계속 쓸 수 있다", async (t) => {
   const p = page(t, { failForms: true });
   await p.flush();
-  assert.deepEqual(p.options(), [{ value: "", label: "쓱싹요정 기본 양식" }]);
+  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
   assert.match(p.text(), /서버 오류/);
   // 입력 패널과 생성 버튼이 그대로 남는다 — 화면 전체가 막히지 않는다.
   assert.ok(p.node("select", (n) => n.props.id === "age"));
@@ -359,7 +359,7 @@ test("응답이 오기 전에 계정이 바뀌면 다른 원 양식을 그리지
   await started;
   for (let i = 0; i < 5; i++) await settle();
   p.render();
-  assert.deepEqual(p.options(), [{ value: "", label: "쓱싹요정 기본 양식" }]);
+  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
   // 계정 전환은 오류가 아니다 — 새 계정 화면에 옛 오류를 아예 남기지 않는다.
   assert.equal(p.alert(), undefined);
 });
@@ -378,7 +378,7 @@ test("화면을 떠난 뒤 도착한 응답은 state 를 건드리지 않는다"
   await started;
   for (let i = 0; i < 5; i++) await settle();
   p.render();
-  assert.deepEqual(p.options(), [{ value: "", label: "쓱싹요정 기본 양식" }]);
+  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
 });
 
 // ── 양식은 연간계획안에만 붙는다 · 목록을 받기 전에는 보내지 않는다 ─────────

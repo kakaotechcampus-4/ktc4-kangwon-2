@@ -167,8 +167,8 @@ export default function RecordsPage() {
 
   return (
     <WorkspacePage
-      title="교사 관찰 기록"
-      description="아이의 말과 행동, 선생님이 직접 본 순간을 남겨주세요."
+      title="관찰 기록"
+      description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
     >
       <section className={ws.hero}>
         <div>

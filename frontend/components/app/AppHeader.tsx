@@ -68,7 +68,7 @@ export function HeaderTools({ placeholder = "기록, 원아, 문서 검색" }: {
       <button
         type="button"
         aria-label="알림"
-        className="relative inline-flex items-center justify-center w-11 h-11 rounded-[14px] border-[1.5px] border-line bg-paper text-ink-soft hover:border-sage-ink hover:text-ink transition-colors"
+        className="relative inline-flex items-center justify-center w-11 h-11 rounded-[14px] border-[1.5px] border-line bg-paper text-ink-soft hover:border-primary hover:text-ink transition-colors"
       >
         <Icon name="bell" className="w-[19px] h-[19px]" />
         <span

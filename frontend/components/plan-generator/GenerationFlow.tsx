@@ -20,7 +20,7 @@ import {
 } from "@/lib/workspace/model";
 import Link from "next/link";
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
-import { patchAnnualMonth, confirmAnnualPlan } from "@/lib/api/plans";
+import { putAnnualMonth, confirmAnnualPlan } from "@/lib/api/plans";
 
 type Request = {
   age: AgeGroup;
@@ -103,7 +103,7 @@ export default function GenerationFlow({
         if (JSON.stringify(row) === JSON.stringify(annualBaseline.current[i])) continue;
         setSavingRows((prev) => [...prev, i]);
         try {
-          const result = await patchAnnualMonth(id, parseInt(row.label), {
+          const result = await putAnnualMonth(id, parseInt(row.label), {
             theme: row.title,
             sub_themes: row.detail.split("\n"),
           });
@@ -434,7 +434,7 @@ export default function GenerationFlow({
                 className={styles.document}
               >
                 <div className={styles.documentHeading}>
-                  <span className={styles.eyebrow}>쓱싹요정 · 우리 반 놀이 기록의 시작</span>
+                  <span className={styles.eyebrow}>쌤플 · 우리 반 놀이 기록의 시작</span>
                   <h3>{title}</h3>
                   <p>
                     {className || "우리 반"}
@@ -520,7 +520,7 @@ export default function GenerationFlow({
                   </p>
                 </div>
                 <footer className={styles.documentFooter}>
-                  <span>쓱싹요정</span>
+                  <span>쌤플</span>
                   <span>아이들의 매일이 조금 더 자라도록</span>
                 </footer>
               </article>

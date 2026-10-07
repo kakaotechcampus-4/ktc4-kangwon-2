@@ -30,11 +30,21 @@ import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { isValidDate } from "@/lib/plan-generator/date";
 
 const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly", "daily"];
+
+/**
+ * 서버가 실제로 만들 수 있는 종류. 나머지 카드는 「준비 중」으로 잠근다.
+ *
+ * **고를 수 있는데 아무 일도 안 일어나는 게 제일 나쁘다.** 지금 백엔드 라우터에는
+ * `/api/plans/annual` 하나뿐이다(월간 엔진은 p0-planning 에 있지만 API 가 없다).
+ * 여기에 종류를 더하는 건 그 API 가 생긴 뒤다.
+ */
+const READY: ReadonlySet<PlanType> = new Set<PlanType>(["annual"]);
+// 새 디자인은 계획안 종류를 색이 아니라 글로 가른다. 고른 카드만 주 색으로 선다.
 const ACCENT: Record<PlanType, { text: string; tint: string; ink: string }> = {
-  annual: { text: "text-sage-ink", tint: "bg-sage-tint", ink: "text-sage-ink" },
-  monthly: { text: "text-sage-ink", tint: "bg-sage-tint", ink: "text-sage-ink" },
-  weekly: { text: "text-mint-strong", tint: "bg-mint-tint", ink: "text-mint-ink" },
-  daily: { text: "text-peach-strong", tint: "bg-peach-tint", ink: "text-peach-ink" },
+  annual: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  monthly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  weekly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  daily: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
 };
 
 const SUGGESTIONS = [
@@ -300,7 +310,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
               <circle cx="12" cy="15" r="9" className="fill-sage" />
               <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
             </svg>
-            <span className="font-display text-xl">쓱싹요정</span>
+            <span className="font-display text-xl">쌤플</span>
             <span className="hidden lg:inline text-sm ml-1 text-ink-soft">· 계획안 생성</span>
           </div>
         </header>
@@ -321,7 +331,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
                 disabled={!annualSelected || formsLoading}
                 onChange={(e) => setFormId(e.target.value)}
               >
-                <option value="">쓱싹요정 기본 양식</option>
+                <option value="">쌤플 기본 양식</option>
                 {(forms ?? []).map((f) => (
                   <option value={String(f.id)} key={f.id}>
                     {f.name}
@@ -375,7 +385,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
 
           <section
             ref={stageRef}
-            className="relative overflow-hidden rounded-[24px] border px-5 py-7 lg:p-10 min-h-[380px] lg:min-h-[640px] flex items-center justify-center bg-paper shadow-pg"
+            className="relative overflow-hidden rounded-md border px-5 py-7 lg:p-10 min-h-[380px] lg:min-h-[640px] flex items-center justify-center bg-paper shadow-pg"
             style={{ borderColor: "var(--pg-line)" }}
           >
             <svg
@@ -438,19 +448,19 @@ function InputPanel(props: {
 
   return (
     <aside
-      className="rounded-[24px] border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
+      className="rounded-md border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
       style={{ borderColor: "var(--pg-line)" }}
     >
       {/* 1. 대상 연령 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="age" className="font-display text-[15px]">
+        <label htmlFor="age" className="font-semibold text-[15px]">
           대상 연령
         </label>
         <select
           id="age"
           value={age}
           onChange={(e) => onAgeChange(e.target.value as AgeGroup | "")}
-          className="w-full rounded-2xl px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
+          className="w-full rounded-md px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
           style={{
             borderColor: "var(--pg-line)",
             backgroundImage: CHEVRON_BG,
@@ -471,7 +481,7 @@ function InputPanel(props: {
       {/* 2. 생성할 계획안 */}
       <section className="flex flex-col gap-2.5">
         <div>
-          <label className="font-display text-[15px]">생성할 계획안</label>
+          <label className="font-semibold text-[15px]">생성할 계획안</label>
           <p className="text-[12.5px] mt-0.5 text-ink-soft">여러 개를 함께 선택할 수 있어요</p>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
@@ -480,6 +490,7 @@ function InputPanel(props: {
               key={t}
               type={t}
               selected={planTypes.has(t)}
+              ready={READY.has(t)}
               onToggle={() => onToggleType(t)}
             />
           ))}
@@ -488,7 +499,7 @@ function InputPanel(props: {
 
       {/* 3. 기간 선택 (선택한 계획안 종류에 따라 동적으로 표시) */}
       <section className="flex flex-col gap-2.5">
-        <label className="font-display text-[15px]">기간 선택</label>
+        <label className="font-semibold text-[15px]">기간 선택</label>
         <label className={ws.field}>
           기준 연도
           <input
@@ -510,7 +521,7 @@ function InputPanel(props: {
         )}
         {planTypes.size === 0 ? (
           <div
-            className="text-[12.5px] rounded-xl px-3.5 py-3 border border-dashed text-ink-soft"
+            className="text-[12.5px] rounded-md px-3.5 py-3 border border-dashed text-ink-soft"
             style={{ borderColor: "var(--pg-line)", background: "var(--pg-sage-tint)" }}
           >
             계획안 종류를 먼저 선택해주세요
@@ -546,7 +557,7 @@ function InputPanel(props: {
                   type="date"
                   value={period.daily.date}
                   onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
-                  className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
+                  className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
                   style={{ borderColor: "var(--pg-line)" }}
                 />
               </PeriodBlock>
@@ -557,7 +568,7 @@ function InputPanel(props: {
 
       {/* 4. 추가 요청사항 / 메모 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="memo" className="font-display text-[15px]">
+        <label htmlFor="memo" className="font-semibold text-[15px]">
           추가 요청사항 / 메모
         </label>
         <textarea
@@ -568,7 +579,7 @@ function InputPanel(props: {
           placeholder={
             "예) 가을 자연물을 활용한 놀이 활동을 중심으로 작성해주세요.\n예) 실외활동과 미술활동을 포함해주세요."
           }
-          className="w-full rounded-2xl px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
+          className="w-full rounded-md px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
           style={{ borderColor: "var(--pg-line)" }}
         />
         <div className="flex flex-wrap gap-1.5">
@@ -595,8 +606,10 @@ function InputPanel(props: {
           type="button"
           disabled={!canGenerate}
           onClick={onGenerate}
-          className={`rounded-2xl py-3.5 min-h-[54px] lg:min-h-0 font-display text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
-            canGenerate ? "bg-sage text-ink hover:bg-sage-ink" : "bg-line text-ink-soft"
+          className={`rounded-md py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
+            canGenerate
+              ? "border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover"
+              : "bg-line text-ink-soft"
           }`}
         >
           계획안 생성하기
@@ -619,7 +632,7 @@ function MonthSelect({ value, onChange }: { value: number; onChange: (v: number)
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -651,7 +664,7 @@ function WeekSelect({
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -682,7 +695,7 @@ function PeriodBlock({
   const a = ACCENT[type];
   return (
     <div
-      className={`rounded-xl p-3.5 flex items-center gap-2 flex-wrap border ${a.tint}`}
+      className={`rounded-md p-3.5 flex items-center gap-2 flex-wrap border ${a.tint}`}
       style={{ borderColor: "var(--pg-line)" }}
     >
       <span
@@ -699,10 +712,12 @@ function PeriodBlock({
 function PlanTypeCard({
   type,
   selected,
+  ready,
   onToggle,
 }: {
   type: PlanType;
   selected: boolean;
+  ready: boolean;
   onToggle: () => void;
 }) {
   const a = ACCENT[type];
@@ -711,24 +726,31 @@ function PlanTypeCard({
       type="button"
       role="button"
       aria-pressed={selected}
+      disabled={!ready}
+      title={ready ? undefined : "아직 만들 수 없어요"}
       onClick={onToggle}
-      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-[18px] border-[1.5px] transition-colors hover:-translate-y-px ${
-        selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"
-      }`}
+      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-md border-[1.5px] transition-colors ${
+        ready ? "hover:-translate-y-px" : "cursor-not-allowed opacity-55"
+      } ${selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"}`}
       style={{ borderColor: selected ? undefined : "var(--pg-line)" }}
     >
       <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
       <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
       <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+      {!ready && (
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
+          준비 중
+        </span>
+      )}
       {selected && (
         <span
-          className={`absolute top-1.5 right-1.5 flex items-center justify-center rounded-full ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
+          className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-full bg-primary"
           style={{ width: 14, height: 14 }}
         >
           <svg width="9" height="9" viewBox="0 0 24 24">
             <path
               d="M4 12.5L9.5 18L20 6"
-              stroke="var(--pg-ink)"
+              stroke="#fff"
               strokeWidth={3}
               fill="none"
               strokeLinecap="round"
@@ -803,7 +825,7 @@ function IdleState() {
           fill="none"
           strokeLinecap="round"
         />
-        <circle cx="98" cy="38" r="24" className="fill-mint" />
+        <circle cx="98" cy="38" r="24" className="fill-primary-tint" />
         <circle cx="90" cy="33" r="2.6" fill="#fff" />
         <circle cx="90" cy="33" r="1.3" fill="var(--pg-ink)" />
         <circle cx="103" cy="33" r="2.6" fill="#fff" />
@@ -826,7 +848,7 @@ function IdleState() {
       </div>
       <p
         className="font-mono text-[11px] px-3 py-1 rounded-full border text-ink-soft"
-        style={{ background: "var(--pg-sage-tint)", borderColor: "var(--pg-line)" }}
+        style={{ background: "var(--pg-primary-tint)", borderColor: "var(--pg-line)" }}
       >
         TIP · 추천 태그를 누르면 메모가 빠르게 채워져요
       </p>

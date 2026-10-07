@@ -68,6 +68,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/app-routes.conf:/etc/nginx/app-routes.conf:ro
       - certbot-etc:/etc/letsencrypt:ro
       - certbot-www:/var/www/certbot:ro
     # 인증서는 60일마다 바뀐다. 바뀐 것을 읽으려면 nginx 를 다시 읽혀야 한다.

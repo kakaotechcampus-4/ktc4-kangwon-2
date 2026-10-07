@@ -14,7 +14,7 @@ import { isStaleWrite } from "@/lib/api/documents";
 import { withoutChildMetadata } from "@/lib/privacy/browser-storage";
 
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
-import { getAnnualPlan, patchAnnualMonth, confirmAnnualPlan } from "@/lib/api/plans";
+import { getAnnualPlan, putAnnualMonth, confirmAnnualPlan } from "@/lib/api/plans";
 import type { AnnualPlan } from "@/lib/api/types";
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
@@ -184,7 +184,7 @@ export default function DocumentEditor({
           const m = annual.current.months[i],
             section = doc.sections[i];
           if (m.sub_themes.join("\n") !== section.body) {
-            const saved = await patchAnnualMonth(annualPlanId, m.month, {
+            const saved = await putAnnualMonth(annualPlanId, m.month, {
               theme: m.theme,
               sub_themes: section.body.split("\n"),
             });

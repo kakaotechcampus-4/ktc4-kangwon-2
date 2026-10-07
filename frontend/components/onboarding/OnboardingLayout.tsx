@@ -1,13 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { fontClassName } from "@/lib/fonts";
 import OnboardingStepIndicator from "./OnboardingStepIndicator";
 import type { OnboardingStep } from "@/lib/onboarding/types";
 
 /**
- * Header(계획안 페이지와 동일) + 진행 표시 + 중앙 온보딩 카드.
- * 페이지 배경은 Main을 아주 옅게 탄 --pg-cream(#F4F8F5), 카드는 흰색.
+ * 시작 설정(온보딩)의 틀. 브랜드 머리 + 진행 표시 + 종이 한 장.
+ * 카드를 둥글리지 않고 각진 그림자를 둔다 — 책상에 올려 둔 종이처럼 보이게.
  */
 export default function OnboardingLayout({
   step,
@@ -17,22 +18,27 @@ export default function OnboardingLayout({
   children: ReactNode;
 }) {
   return (
-    <div className={`${fontClassName} min-h-screen font-body bg-cream text-ink`}>
-      <header className="flex items-center px-4 py-3.5 lg:px-8 lg:py-5 border-b border-line">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true" className="shrink-0">
-            <circle cx="12" cy="15" r="9" className="fill-sage" />
-            <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
-          </svg>
-          <span className="font-display text-xl">쓱싹요정</span>
-          <span className="hidden lg:inline text-sm ml-1 text-ink-soft">· 시작 설정</span>
-        </div>
+    <div className={`${fontClassName} min-h-screen bg-cream px-5 py-6 font-body text-ink sm:px-8`}>
+      <header className="mx-auto flex max-w-[1000px] items-center justify-between gap-3">
+        <Link href="/welcome" aria-label="쌤플 소개로" className="flex items-baseline">
+          <span className="text-[27px] font-bold tracking-[-0.04em] text-primary-deep">
+            Ssample<span className="text-peach-strong">.</span>
+          </span>
+          <span className="ml-3 font-display text-xl text-ink">쌤플</span>
+        </Link>
+        <span className="text-xs text-ink-soft">시작 설정</span>
       </header>
 
-      <main className="max-w-[820px] xl:max-w-[1100px] mx-auto px-4 pt-5 pb-10 lg:px-8 lg:pt-9 xl:pt-12 lg:pb-16 flex flex-col gap-4 lg:gap-[22px]">
-        <OnboardingStepIndicator current={step} />
-        <section className="rounded-[20px] lg:rounded-[24px] border border-line bg-paper shadow-pg px-[18px] py-[22px] lg:px-10 lg:py-9 xl:px-14 xl:py-12 flex flex-col gap-6 lg:gap-7 xl:gap-9">
-          {children}
+      <main className="mx-auto max-w-[820px] py-9 sm:py-12">
+        <div className="mb-7">
+          <OnboardingStepIndicator current={step} />
+        </div>
+        <section className="relative border border-line bg-paper p-6 shadow-pg-hard sm:p-9">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-3 right-10 h-6 w-20 rotate-3 border border-white/60 bg-tape"
+          />
+          <div className="flex flex-col gap-6 lg:gap-7">{children}</div>
         </section>
       </main>
     </div>
@@ -53,12 +59,12 @@ export function StepHeading({
     <div>
       {eyebrow}
       <h1
-        className={`font-display text-[21px] lg:text-2xl xl:text-[32px] text-ink ${eyebrow ? "mt-3" : ""}`}
+        className={`font-display text-[26px] font-bold text-ink lg:text-[32px] ${eyebrow ? "mt-3" : ""}`}
         style={{ textWrap: "balance" }}
       >
         {title}
       </h1>
-      <p className="mt-2 text-[14.5px] xl:text-base leading-relaxed text-ink-soft">{description}</p>
+      <p className="mt-2 text-[14.5px] leading-relaxed text-ink-soft">{description}</p>
     </div>
   );
 }
@@ -74,10 +80,10 @@ export function StepFooter({
   note?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 pt-[22px] mt-1 border-t border-line flex-wrap">
+    <div className="mt-1 flex flex-wrap items-center gap-3 border-t border-line pt-[22px]">
       {left}
       <span className="flex-1" />
-      {note && <span className="hidden lg:inline text-[12.5px] text-ink-soft">{note}</span>}
+      {note && <span className="hidden text-[12.5px] text-ink-soft lg:inline">{note}</span>}
       {right}
     </div>
   );

@@ -95,6 +95,15 @@ export interface AnnualPlan {
   status: "DRAFT" | "CONFIRMED";
   months: AnnualMonth[];
 }
+/** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
+export interface AnnualPlanSummary {
+  id: number;
+  class_id: number;
+  school_year: number;
+  status: "DRAFT" | "CONFIRMED";
+  created_at: string;
+  confirmed_at: string | null;
+}
 export interface ConfirmResult {
   id: number;
   status: "CONFIRMED";
