@@ -38,12 +38,14 @@ op.alter_column("children", "code", server_default=None)
 | `document_sections` | 문서 본문. `사실`·`해석`·`지원` 셋뿐이다. `documents` 를 참조한다 |
 | `document_sources` | 생성 시점 원문 사본. `documents`·`classes`·`children` 을 참조한다. `source_kind`+`source_id` 로 `observations`(§10, 아직 없음) 또는 `documents` 자신을 다형 참조한다 — FK 는 없다 |
 | `forms` | 원이 등록한 양식의 파싱 결과(`tables` · `labels` · `label_map` JSONB). `centers` 를 참조한다. 수정이 없어 `updated_at` 이 없다 — 삭제 후 재등록이다(docs/api-spec.md §8 · ADR-020) |
+| `evaluation_checks` | 평가제 자기 점검 체크. `centers` 를 참조한다. 줄이 있으면 ☑, 풀면 그 줄을 지운다 — 다시 체크하면 새 줄 · 새 시각이다. 누가 체크했는지는 남기지 않는다. `UNIQUE(center_id, school_year, element)`. 지난 학년도 줄은 보존한다(docs/api-spec.md §12 · ADR-022) |
 
 ## 관계
 
 ```text
 centers ←── classes ←── children
 centers ←── forms
+centers ←── evaluation_checks
 activities   (독립. plans 가 생기면 연결된다)
 documents ←── document_sections
 documents ←── document_sources ──(source_kind·source_id, FK 없음)──> observations · documents
