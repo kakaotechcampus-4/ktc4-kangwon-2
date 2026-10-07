@@ -13,6 +13,7 @@ from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceR
 from ssuksak.adapters.monthly_reference_repositories import _DATA as DATA
 
 from app.features.evaluation.catalog import load_catalog
+from app.features.plans.rules.verify import load_legal_rules
 
 CATALOG_ID = "ssuksak.yearly-theme-reference"
 CATALOG_VERSION = "theme-reference-v0.1.2"
@@ -23,6 +24,10 @@ def main() -> None:
     assert catalog is not None, f"{CATALOG_ID}/{CATALOG_VERSION} 을 읽지 못했다"
     assert ACTIVITIES.exists(), f"활동 자료가 없다: {ACTIVITIES}"
     assert (DATA / "rules").exists(), f"규칙 자료가 없다: {DATA / 'rules'}"
+    # 폴더가 있는 것과 우리 코드가 그 파일을 찾는 것은 다르다. `verify.py` 가 저장소
+    # 기준으로 경로를 세다가 이미지에서 `/p0-planning/...` 을 찾은 적이 있는데, 위
+    # `exists()` 는 그걸 못 잡았다 — 폴더는 멀쩡했기 때문이다. 실제로 읽어 본다.
+    assert load_legal_rules(), "법정 안전교육 규칙을 읽지 못했다"
     print("참조자료 OK")
     evaluation = load_catalog()
     for kind, count in (("AUTO", 2), ("SELF_CHECK", 7), ("EXCLUDED", 6)):
