@@ -27,7 +27,7 @@ const NAV: NavItem[] = [
     label: "기록",
     href: "/records",
     icon: "record",
-    match: (p) => p === "/records" || p === "/compare",
+    match: (p) => p.startsWith("/records") || p === "/compare",
   },
   { key: "docs", label: "문서", href: "/documents", icon: "doc" },
   { key: "eval", label: "평가제", href: "/evaluation", icon: "eval" },

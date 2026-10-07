@@ -50,3 +50,6 @@ export async function login(email: string, password: string): Promise<AuthResult
 export function logout(): void {
   clearToken();
 }
+
+/** 로그인한 교사. `center_id` 가 null 이면 온보딩을 아직 안 끝냈다 (docs/api-spec.md §0). */
+export const getMe = () => apiRequest<AuthResult["user"]>("/api/auth/me");
