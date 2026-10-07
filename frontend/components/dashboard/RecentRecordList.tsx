@@ -11,7 +11,7 @@ const BADGE: Record<RecordStatus, string> = {
 export default function RecentRecordList({ records }: { records: RecentRecord[] }) {
   return (
     <section aria-labelledby="rec-title">
-      <div className="flex items-center justify-between font-display text-[16px] text-ink">
+      <div className="flex items-center justify-between font-semibold text-[16px] text-ink">
         <h2 id="rec-title">최근 기록</h2>
         <Link href="/records" className="text-[12.5px] font-body text-ink-soft hover:text-sage-ink">
           기록 관리 →

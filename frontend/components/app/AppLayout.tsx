@@ -22,7 +22,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <circle cx="12" cy="15" r="9" className="fill-sage" />
               <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
             </svg>
-            <span className="font-display text-lg text-ink">쓱싹요정</span>
+            <span className="font-display text-lg text-ink">쌤플</span>
           </Link>
           <TeacherMenu compact />
         </div>

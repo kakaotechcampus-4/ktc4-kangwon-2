@@ -270,7 +270,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
               <circle cx="12" cy="15" r="9" className="fill-sage" />
               <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
             </svg>
-            <span className="font-display text-xl">쓱싹요정</span>
+            <span className="font-display text-xl">쌤플</span>
             <span className="hidden lg:inline text-sm ml-1 text-ink-soft">· 계획안 생성</span>
           </div>
         </header>
@@ -287,7 +287,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             <label className={ws.field}>
               사용할 기관 양식
               <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-                <option value="">쓱싹요정 기본 양식</option>
+                <option value="">쌤플 기본 양식</option>
                 {workspace.templates.map((t) => (
                   <option value={t.id} key={t.id}>
                     {t.name}
@@ -402,7 +402,7 @@ function InputPanel(props: {
     >
       {/* 1. 대상 연령 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="age" className="font-display text-[15px]">
+        <label htmlFor="age" className="font-semibold text-[15px]">
           대상 연령
         </label>
         <select
@@ -430,7 +430,7 @@ function InputPanel(props: {
       {/* 2. 생성할 계획안 */}
       <section className="flex flex-col gap-2.5">
         <div>
-          <label className="font-display text-[15px]">생성할 계획안</label>
+          <label className="font-semibold text-[15px]">생성할 계획안</label>
           <p className="text-[12.5px] mt-0.5 text-ink-soft">여러 개를 함께 선택할 수 있어요</p>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
@@ -447,7 +447,7 @@ function InputPanel(props: {
 
       {/* 3. 기간 선택 (선택한 계획안 종류에 따라 동적으로 표시) */}
       <section className="flex flex-col gap-2.5">
-        <label className="font-display text-[15px]">기간 선택</label>
+        <label className="font-semibold text-[15px]">기간 선택</label>
         <label className={ws.field}>
           기준 연도
           <input
@@ -516,7 +516,7 @@ function InputPanel(props: {
 
       {/* 4. 추가 요청사항 / 메모 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="memo" className="font-display text-[15px]">
+        <label htmlFor="memo" className="font-semibold text-[15px]">
           추가 요청사항 / 메모
         </label>
         <textarea
@@ -554,8 +554,10 @@ function InputPanel(props: {
           type="button"
           disabled={!canGenerate}
           onClick={onGenerate}
-          className={`rounded-2xl py-3.5 min-h-[54px] lg:min-h-0 font-display text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
-            canGenerate ? "bg-sage text-ink hover:bg-sage-ink" : "bg-line text-ink-soft"
+          className={`rounded-2xl py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
+            canGenerate
+              ? "border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover"
+              : "bg-line text-ink-soft"
           }`}
         >
           계획안 생성하기

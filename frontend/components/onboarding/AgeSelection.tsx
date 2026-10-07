@@ -20,7 +20,7 @@ export default function AgeSelection({
 
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="font-display text-[15px] xl:text-lg text-ink mb-2">연령</legend>
+      <legend className="font-semibold text-[15px] xl:text-lg text-ink mb-2">연령</legend>
 
       {/* 한 줄에 3개 배치 */}
       <div className="grid grid-cols-3 gap-x-4 gap-y-1">
@@ -65,7 +65,7 @@ function AgeCheckbox({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-[18px] h-[18px] shrink-0 rounded-[5px] accent-[var(--pg-sage-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-ink"
+        className="w-[18px] h-[18px] shrink-0 rounded-[5px] accent-[var(--pg-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
       {label}
     </label>

@@ -29,7 +29,7 @@ class _SafeStreamHandler(logging.StreamHandler):
         raise
 
 
-app = FastAPI(title="쓱싹요정 API")
+app = FastAPI(title="쌤플 API")
 logger = logging.getLogger("app.server")
 logger.propagate = False
 if not logger.handlers:

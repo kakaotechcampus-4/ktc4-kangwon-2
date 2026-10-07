@@ -5,7 +5,7 @@ export default function AttendanceSummary({ data }: { data: Attendance }) {
   const rate = data.total ? (data.present / data.total) * 100 : 0;
   return (
     <section aria-labelledby="att-title">
-      <div className="flex items-center justify-between font-display text-[16px] text-ink">
+      <div className="flex items-center justify-between font-semibold text-[16px] text-ink">
         <h2 id="att-title">오늘의 등원 인원</h2>
       </div>
       <dl className="grid grid-cols-[1.3fr_1fr_1fr] gap-3 mt-3.5 items-end tabular-nums">

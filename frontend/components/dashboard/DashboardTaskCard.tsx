@@ -13,7 +13,7 @@ export default function DashboardTaskCard({ task }: { task: DashboardTask }) {
   return (
     <Link
       href={task.href}
-      className="group flex flex-col gap-2.5 min-h-0 lg:min-h-[196px] rounded-[20px] border border-line bg-paper p-5 shadow-[0_2px_8px_-4px_rgba(24,36,30,.08)] hover:border-sage-ink hover:-translate-y-px transition-[border-color,transform]"
+      className="group flex flex-col gap-2.5 min-h-0 lg:min-h-[196px] rounded-[20px] border border-line bg-paper p-5 shadow-[0_2px_8px_-4px_rgba(24,36,30,.08)] hover:border-primary hover:-translate-y-px transition-[border-color,transform]"
     >
       <div className="flex items-start justify-between">
         <span
@@ -25,7 +25,7 @@ export default function DashboardTaskCard({ task }: { task: DashboardTask }) {
           {String(task.count).padStart(2, "0")}
         </span>
       </div>
-      <h3 className="font-display text-[16px] text-ink mt-2">{task.title}</h3>
+      <h3 className="font-semibold text-[16px] text-ink mt-2">{task.title}</h3>
       <p className="text-[13px] leading-[1.55] text-ink-soft">{task.description}</p>
       <span className="mt-auto pt-2.5 inline-flex items-center gap-1.5 text-[13px] font-bold text-sage-ink">
         {task.cta}

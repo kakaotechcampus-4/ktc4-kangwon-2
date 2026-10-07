@@ -13,9 +13,9 @@ import { startDemoSession } from "@/lib/auth/demo-session";
 import AuthFrame from "./AuthFrame";
 
 const input =
-  "mt-2 block w-full min-h-12 xl:min-h-[52px] rounded-xl border border-line bg-paper px-4 text-sm xl:text-base focus:outline-none focus:ring-2 focus:ring-sage";
+  "mt-2 block w-full min-h-12 xl:min-h-[52px] rounded-xl border border-line bg-paper px-4 text-sm xl:text-base focus:outline-none focus:ring-2 focus:ring-primary";
 const button =
-  "mt-6 w-full min-h-12 xl:min-h-[52px] xl:text-lg rounded-2xl bg-sage text-ink font-bold hover:bg-sage-ink disabled:opacity-60";
+  "mt-6 w-full min-h-12 xl:min-h-[52px] xl:text-lg rounded-2xl border border-primary-line bg-primary text-white font-bold shadow-pg-hard hover:bg-primary-hover disabled:opacity-60";
 export default function AccountForm({ signup = false }: { signup?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -74,7 +74,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   return (
     <AuthFrame>
       <span className="inline-block rounded-full bg-sage-tint px-3 py-1 text-xs">
-        쓱싹요정에 오신 걸 환영해요
+        쌤플에 오신 걸 환영해요
       </span>
       <h2 className="font-display text-3xl xl:text-[34px] mt-5">
         {done ? "가입을 완료했어요" : signup ? "함께 시작해요" : "반가워요, 선생님"}

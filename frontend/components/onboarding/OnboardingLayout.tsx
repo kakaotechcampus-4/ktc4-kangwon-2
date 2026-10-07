@@ -24,7 +24,7 @@ export default function OnboardingLayout({
             <circle cx="12" cy="15" r="9" className="fill-sage" />
             <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
           </svg>
-          <span className="font-display text-xl">쓱싹요정</span>
+          <span className="font-display text-xl">쌤플</span>
           <span className="hidden lg:inline text-sm ml-1 text-ink-soft">· 시작 설정</span>
         </div>
       </header>

@@ -91,7 +91,7 @@ function MessageCard({
 
   return (
     <div
-      className={`rounded-[18px] border-[1.5px] border-line bg-paper p-3 flex flex-col gap-2 transition-colors ${disabled ? "bg-sage-tint" : "focus-within:border-sage-ink"}`}
+      className={`rounded-[18px] border-[1.5px] border-line bg-paper p-3 flex flex-col gap-2 transition-colors ${disabled ? "bg-sage-tint" : "focus-within:border-primary"}`}
     >
       <div className="flex items-center justify-between">
         <span

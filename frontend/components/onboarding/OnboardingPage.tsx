@@ -426,7 +426,7 @@ function ClassroomCard({
           <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-sage-tint text-sage-ink font-mono text-[11px]">
             {index + 1}
           </span>
-          <h2 className="font-display text-[16px] text-ink">반 정보</h2>
+          <h2 className="font-semibold text-[16px] text-ink">반 정보</h2>
         </div>
         {canRemove && (
           <button
@@ -510,7 +510,7 @@ function ClassroomCard({
                 childrenSkipped: e.target.checked ? false : classroom.childrenSkipped,
               })
             }
-            className="mt-0.5 w-4 h-4 accent-[var(--pg-sage-ink)]"
+            className="mt-0.5 w-4 h-4 accent-[var(--pg-primary)]"
           />
           <span>
             <span className="block text-[13.5px] font-medium text-ink">
@@ -640,7 +640,7 @@ export function StepCharacterMessages({
             type="checkbox"
             checked={!settings.characterEducationEnabled}
             onChange={(e) => onChange({ characterEducationEnabled: !e.target.checked })}
-            className="mt-0.5 w-4 h-4 accent-[var(--pg-sage-ink)]"
+            className="mt-0.5 w-4 h-4 accent-[var(--pg-primary)]"
           />
           <span>
             <span className="block text-[13.5px] font-medium text-ink">
@@ -732,7 +732,7 @@ function StepDone({
       <div>
         <h1 className="font-display text-2xl text-ink">초기 설정이 완료되었어요!</h1>
         <p className="mt-2.5 text-[14.5px] leading-relaxed text-ink-soft">
-          이제 메인 화면에서 쓱싹요정을 시작할 수 있어요.
+          이제 메인 화면에서 쌤플을 시작할 수 있어요.
         </p>
       </div>
 

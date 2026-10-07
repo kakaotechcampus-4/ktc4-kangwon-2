@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 쓱싹요정 · 홈(메인) — Sidebar + Main Content + Right Panel
+ * 쌤플 · 홈(메인) — Sidebar + Main Content + Right Panel
  *  중앙: 인사말 헤더 → TODAY'S FOCUS 3카드
  *  우측: 오늘의 등원 인원 → 달력 → 최근 기록
  *  모바일: 헤더 → 할 일 → 등원 현황 → 최근 기록 → 달력 순으로 세로 reflow
@@ -144,7 +144,7 @@ export default function HomePage() {
           )}
           <section className={ws.hero}>
             <div>
-              <div className={ws.eyebrow}>쓱싹요정 · 선생님의 하루를 잇다</div>
+              <div className={ws.eyebrow}>쌤플 · 선생님의 하루를 잇다</div>
               <h2>
                 관찰에서 계획으로,
                 <br />

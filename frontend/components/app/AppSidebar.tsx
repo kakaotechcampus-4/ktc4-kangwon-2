@@ -45,7 +45,7 @@ export default function AppSidebar() {
   const itemBase =
     "flex items-center gap-3 rounded-[14px] px-3.5 py-3 min-h-[46px] text-[15px] text-ink-soft transition-colors " +
     "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[15px] text-[10.5px] lg:px-3.5 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start";
-  const active = "bg-sage-tint text-ink lg:font-bold font-medium [&>svg]:text-sage-ink";
+  const active = "bg-primary-tint text-primary lg:font-bold font-medium [&>svg]:text-primary";
   const idle = "hover:bg-cream hover:text-ink";
 
   return (
@@ -69,7 +69,7 @@ export default function AppSidebar() {
             <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
           </svg>
         </span>
-        <span className="font-display text-xl text-ink">쓱싹요정</span>
+        <span className="font-display text-xl text-ink">쌤플</span>
       </Link>
 
       <nav className="contents lg:flex lg:flex-col lg:gap-1">

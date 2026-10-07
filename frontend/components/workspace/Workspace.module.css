@@ -223,7 +223,7 @@
   cursor: not-allowed;
 }
 .page :is(button, a, input, textarea, select):focus-visible {
-  outline: 2px solid var(--pg-success);
+  outline: 2px solid var(--pg-primary);
   outline-offset: 3px;
 }
 .message,

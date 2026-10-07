@@ -12,7 +12,7 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
           >
             🌱
           </span>
-          쓱싹요정
+          쌤플
         </Link>
       </header>
       <div className="flex-1 flex items-center justify-center px-5 py-6 lg:px-[4vw] lg:py-8">
@@ -29,7 +29,7 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
             <p className="text-ink-soft leading-8 xl:text-lg xl:leading-9 mt-5">
               아이들과 마주하는 순간에 더 집중할 수 있도록.
               <br />
-              계획부터 기록까지, 쓱싹요정이 함께할게요.
+              계획부터 기록까지, 쌤플이 함께할게요.
             </p>
             <div className="mt-10 rounded-[28px] border border-line bg-sage-tint p-8 xl:p-10">
               <div className="flex items-center gap-3">
@@ -53,7 +53,7 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
         </div>
       </div>
       <footer className="text-center text-xs text-ink-soft px-5 pb-4">
-        쓱싹요정 · 선생님의 하루를 잇다
+        쌤플 · 선생님의 하루를 잇다
       </footer>
     </main>
   );

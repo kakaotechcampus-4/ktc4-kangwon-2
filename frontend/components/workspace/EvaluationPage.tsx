@@ -165,7 +165,7 @@ export default function EvaluationPage() {
     downloadText(
       `${doc.title} 점검 결과`,
       [
-        "쓱싹요정 · 문서 사전점검 (공식 평가 결과 아님)",
+        "쌤플 · 문서 사전점검 (공식 평가 결과 아님)",
         doc.title,
         `${doc.start} ~ ${doc.end}`,
         `확인일: ${today()}`,

@@ -434,7 +434,7 @@ export default function GenerationFlow({
                 className={styles.document}
               >
                 <div className={styles.documentHeading}>
-                  <span className={styles.eyebrow}>쓱싹요정 · 우리 반 놀이 기록의 시작</span>
+                  <span className={styles.eyebrow}>쌤플 · 우리 반 놀이 기록의 시작</span>
                   <h3>{title}</h3>
                   <p>
                     {className || "우리 반"}
@@ -520,7 +520,7 @@ export default function GenerationFlow({
                   </p>
                 </div>
                 <footer className={styles.documentFooter}>
-                  <span>쓱싹요정</span>
+                  <span>쌤플</span>
                   <span>아이들의 매일이 조금 더 자라도록</span>
                 </footer>
               </article>
