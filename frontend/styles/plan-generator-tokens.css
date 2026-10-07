@@ -71,8 +71,11 @@
   --pg-sun-tint: #f8efdc;
   --pg-sun-ink: #705936;
 
+  /* 초록. 로그인·가입 화면과 확정 표시에 쓴다 — 디자인 파일이 그 두 자리에만 초록을 쓴다. */
   --pg-success: #49654f;
-  --pg-success-tint: #e3ece5;
+  --pg-success-tint: #e5eddd;
+  --pg-success-line: #3b5441;
+  --pg-success-hover: #37523d;
 
   /* 그림자 두 가지.
      --pg-shadow 는 카드가 떠 보이게 하는 부드러운 것,

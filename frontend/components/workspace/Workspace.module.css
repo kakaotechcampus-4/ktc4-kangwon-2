@@ -15,13 +15,13 @@
 .nav a {
   font-size: 12px;
   color: var(--pg-ink-soft);
-  border-radius: 20px;
+  border-radius: 6px;
   padding: 9px 12px;
   background: var(--pg-paper);
   border: 1px solid var(--pg-line);
 }
 .nav a:hover {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
   color: var(--pg-ink);
 }
 /* 화면 머리 — 손글씨 제목 + 한 줄 설명 + 주된 동작 하나. */
@@ -54,7 +54,7 @@
   align-items: center;
   gap: 7px;
   font-size: 12px;
-  border-radius: 30px;
+  border-radius: 6px;
   background: var(--pg-primary-tint);
   color: var(--pg-primary-ink);
   padding: 8px 12px;
@@ -108,7 +108,7 @@
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
   padding: 25px;
-  border-radius: 22px;
+  border-radius: 6px;
   min-width: 0;
 }
 .card h2 {
@@ -180,7 +180,7 @@
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
   color: var(--pg-ink);
-  border-radius: 12px;
+  border-radius: 6px;
   min-height: 44px;
   padding: 11px 12px;
   font-size: 14px;
@@ -224,14 +224,14 @@
   padding: 11px 17px;
   font-size: 13px;
   font-weight: 600;
-  border-radius: 12px;
+  border-radius: 6px;
   cursor: pointer;
   text-align: center;
 }
 .primary {
-  background: var(--pg-sage);
+  background: var(--pg-primary-tint-line);
   color: var(--pg-ink);
-  border: 1px solid var(--pg-sage);
+  border: 1px solid var(--pg-primary-tint-line);
 }
 .secondary {
   border: 1px solid var(--pg-line);
@@ -239,10 +239,10 @@
   color: var(--pg-ink);
 }
 .primary:hover {
-  background: var(--pg-sage-ink);
+  background: var(--pg-primary);
 }
 .secondary:hover {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
 }
 .page button:disabled {
   opacity: 0.5;
@@ -257,12 +257,12 @@
   font-size: 13px;
   line-height: 1.8;
   padding: 13px 16px;
-  border-radius: 12px;
+  border-radius: 6px;
   margin: 14px 0;
   white-space: pre-wrap;
 }
 .message {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
   color: var(--pg-success);
 }
 .error {
@@ -310,7 +310,7 @@
   padding: 18px;
   background: var(--pg-paper);
   border: 1px solid var(--pg-line);
-  border-radius: 16px;
+  border-radius: 6px;
   text-align: left;
   width: 100%;
 }
@@ -327,7 +327,7 @@
 }
 .selected {
   border-color: var(--pg-success);
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
 }
 .pills {
   display: flex;
@@ -340,14 +340,14 @@
   font-size: 12px;
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
-  border-radius: 22px;
+  border-radius: 6px;
 }
 .pills .selected {
-  background: var(--pg-sage-tint);
-  border-color: var(--pg-sage-ink);
+  background: var(--pg-primary-tint);
+  border-color: var(--pg-primary);
 }
 .quote {
-  border-left: 3px solid var(--pg-sage);
+  border-left: 3px solid var(--pg-primary-tint-line);
   padding: 12px 16px;
   background: var(--pg-cream);
   font-size: 13px;
@@ -382,8 +382,8 @@
   margin: 20px 0;
 }
 .upload {
-  border: 2px dashed var(--pg-sage);
-  border-radius: 18px;
+  border: 2px dashed var(--pg-primary-tint-line);
+  border-radius: 6px;
   background: var(--pg-cream);
   padding: 28px 20px;
   text-align: center;
@@ -398,7 +398,7 @@
   padding: 32px;
 }
 .document > header {
-  border-bottom: 2px solid var(--pg-sage);
+  border-bottom: 2px solid var(--pg-primary-tint-line);
   padding-bottom: 22px;
   margin-bottom: 24px;
 }
@@ -423,7 +423,7 @@
   text-decoration: underline;
 }
 .timeline {
-  border-left: 2px solid var(--pg-sage);
+  border-left: 2px solid var(--pg-primary-tint-line);
   margin-left: 8px;
   padding-left: 24px;
 }
@@ -439,7 +439,7 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--pg-sage-ink);
+  background: var(--pg-primary);
   border: 3px solid var(--pg-cream);
 }
 .scroll {
@@ -450,9 +450,9 @@
 .loading {
   border: 1px solid var(--pg-line);
   padding: 28px;
-  border-radius: 18px;
+  border-radius: 6px;
   text-align: center;
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
 }
 .loading span {
   display: inline-block;
@@ -466,7 +466,7 @@
   line-height: 1.9;
   padding: 16px;
   background: var(--pg-cream);
-  border-radius: 12px;
+  border-radius: 6px;
 }
 .link {
   color: var(--pg-success);

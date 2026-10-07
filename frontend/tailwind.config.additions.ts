@@ -49,7 +49,12 @@ export const planGeneratorThemeExtend = {
       strong: "var(--pg-peach-strong)",
       ink: "var(--pg-peach-ink)",
     },
-    success: { DEFAULT: "var(--pg-success)", tint: "var(--pg-success-tint)" },
+    success: {
+      DEFAULT: "var(--pg-success)",
+      tint: "var(--pg-success-tint)",
+      line: "var(--pg-success-line)",
+      hover: "var(--pg-success-hover)",
+    },
   },
   fontFamily: {
     display: ["var(--font-display)", "Apple SD Gothic Neo", "Malgun Gothic", "sans-serif"],

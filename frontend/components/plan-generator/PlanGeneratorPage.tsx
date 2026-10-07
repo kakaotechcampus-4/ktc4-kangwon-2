@@ -344,7 +344,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
 
           <section
             ref={stageRef}
-            className="relative overflow-hidden rounded-[24px] border px-5 py-7 lg:p-10 min-h-[380px] lg:min-h-[640px] flex items-center justify-center bg-paper shadow-pg"
+            className="relative overflow-hidden rounded-md border px-5 py-7 lg:p-10 min-h-[380px] lg:min-h-[640px] flex items-center justify-center bg-paper shadow-pg"
             style={{ borderColor: "var(--pg-line)" }}
           >
             <svg
@@ -407,7 +407,7 @@ function InputPanel(props: {
 
   return (
     <aside
-      className="rounded-[24px] border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
+      className="rounded-md border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
       style={{ borderColor: "var(--pg-line)" }}
     >
       {/* 1. 대상 연령 */}
@@ -419,7 +419,7 @@ function InputPanel(props: {
           id="age"
           value={age}
           onChange={(e) => onAgeChange(e.target.value as AgeGroup | "")}
-          className="w-full rounded-2xl px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
+          className="w-full rounded-md px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
           style={{
             borderColor: "var(--pg-line)",
             backgroundImage: CHEVRON_BG,
@@ -480,7 +480,7 @@ function InputPanel(props: {
         )}
         {planTypes.size === 0 ? (
           <div
-            className="text-[12.5px] rounded-xl px-3.5 py-3 border border-dashed text-ink-soft"
+            className="text-[12.5px] rounded-md px-3.5 py-3 border border-dashed text-ink-soft"
             style={{ borderColor: "var(--pg-line)", background: "var(--pg-sage-tint)" }}
           >
             계획안 종류를 먼저 선택해주세요
@@ -516,7 +516,7 @@ function InputPanel(props: {
                   type="date"
                   value={period.daily.date}
                   onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
-                  className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
+                  className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
                   style={{ borderColor: "var(--pg-line)" }}
                 />
               </PeriodBlock>
@@ -538,7 +538,7 @@ function InputPanel(props: {
           placeholder={
             "예) 가을 자연물을 활용한 놀이 활동을 중심으로 작성해주세요.\n예) 실외활동과 미술활동을 포함해주세요."
           }
-          className="w-full rounded-2xl px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
+          className="w-full rounded-md px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
           style={{ borderColor: "var(--pg-line)" }}
         />
         <div className="flex flex-wrap gap-1.5">
@@ -565,7 +565,7 @@ function InputPanel(props: {
           type="button"
           disabled={!canGenerate}
           onClick={onGenerate}
-          className={`rounded-2xl py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
+          className={`rounded-md py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
             canGenerate
               ? "border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover"
               : "bg-line text-ink-soft"
@@ -591,7 +591,7 @@ function MonthSelect({ value, onChange }: { value: number; onChange: (v: number)
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -623,7 +623,7 @@ function WeekSelect({
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -654,7 +654,7 @@ function PeriodBlock({
   const a = ACCENT[type];
   return (
     <div
-      className={`rounded-xl p-3.5 flex items-center gap-2 flex-wrap border ${a.tint}`}
+      className={`rounded-md p-3.5 flex items-center gap-2 flex-wrap border ${a.tint}`}
       style={{ borderColor: "var(--pg-line)" }}
     >
       <span
@@ -688,7 +688,7 @@ function PlanTypeCard({
       disabled={!ready}
       title={ready ? undefined : "아직 만들 수 없어요"}
       onClick={onToggle}
-      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-[18px] border-[1.5px] transition-colors ${
+      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-md border-[1.5px] transition-colors ${
         ready ? "hover:-translate-y-px" : "cursor-not-allowed opacity-55"
       } ${selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"}`}
       style={{ borderColor: selected ? undefined : "var(--pg-line)" }}
