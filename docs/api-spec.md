@@ -1021,11 +1021,13 @@ POST /api/documents
 **§10 의 기록을 모아 초안을 만든다.** 일지 계열 4종이다.
 
 ```
-dailyLog     일일 보육일지    반 단위    하루
+dailyLog     일일 보육일지    반 단위    하루     종이 한 장 = 반 1개 × 하루 × 일과 격자
 weeklyLog    주간 보육일지    반 단위    한 주
-observation  관찰일지        아동 단위   기간
+observation  관찰일지        아동 단위   기간     종이 한 장 = 아이 1명 × 기간 × 5영역
 assessment   영유아 평가      아동 단위   기간
 ```
+
+**문서 1개가 교사가 제출하는 종이 1장이다.** 종이 위 배치는 아래 「종이 한 장」에 적었다. `weeklyLog` · `assessment` 의 배치는 이번 개정 범위 밖이다.
 
 **계획안(`annual` · `monthly`)은 이 엔드포인트가 아니다.** §4 ~ §7 이 다룬다.
 같은 「문서」라는 말을 쓰지만 근거가 다르다 — 계획안은 참조자료에서, 일지는 교사 기록에서 나온다.
@@ -1055,7 +1057,7 @@ assessment   영유아 평가      아동 단위   기간
     { "heading": "지원", "body": "...", "source_ids": [15] }
   ],
   "sources": [
-    { "id": 12, "date": "2026-09-22", "text": "...", "class_id": 1, "child_id": 5 }
+    { "id": 12, "date": "2026-09-22", "domain": "자연탐구", "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v1" },
   "review_note": "",
@@ -1077,10 +1079,54 @@ assessment   영유아 평가      아동 단위   기간
 **`해석` · `지원` 은 관찰되지 않은 것을 쓰지 않는다.** 행동 · 발언 · 성취 · 빈도 · 진단을
 추가하면 안 된다. 각 항목의 `source_ids` 는 **실제로 근거가 된 `sources[].id` 만** 담는다.
 
+### 종이 한 장 — 3층은 화면에서 나누고 종이에서 합친다
+
+**[실측] 모은 실물 일지에는 해석 칸과 지원 칸이 따로 없다.** 둘이 한 칸에 같이 들어간다(ADR-024).
+
+```
+양식          ① 사실 칸                ②③ 해석 + 지원 칸
+일일 보육일지   일과 행마다 「활동실행」     놀이 평가 및 다음날 지원계획
+관찰기록       영역 행마다 「관찰내용」     평가
+```
+
+**`sections` 는 그대로 사실 · 해석 · 지원 셋이다.** 검사(3단 게이트)와 교사 확인 3개는 셋을 나눈 채로 한다.
+**합치는 것은 내보낼 때뿐이다** — 아래 「내보내기」.
+
+#### 관찰일지 — 아이 1명 × 기간 × 5영역
+
+```
+머리   관찰기간 · 이름 · 기록자 · 결재란
+본문   신체운동·건강 | (날짜) 관찰내용
+       의사소통      | (날짜) 관찰내용
+       사회관계      | (날짜) 관찰내용
+       예술경험      | (날짜) 관찰내용
+       자연탐구      | (날짜) 관찰내용
+꼬리   평가          | 해석 + 지원
+```
+
+- **영역 행은 `sources[].domain` 으로 서버가 나눈다.** 모델이 배치하지 않는다. 그래서 `observation` 의 `sources` 는 `domain` 을 같이 준다.
+- **순서는 위 5영역 고정이다.** 한 영역 안에서는 `date` 오름차순, 기록마다 `(9/22)` 를 앞에 붙인다.
+- **기록이 없는 영역은 빈 칸으로 둔다. 막지 않는다.** 화면이 「이 영역 관찰이 없어요」로 알린다. [판단]
+- **양식의 성별 · 생년월일 칸은 비운다.** 우리는 받지 않는다(CLAUDE.md 개인정보).
+- 실물 양식에는 「기본생활습관」 행이 하나 더 있다. §10 `domain` 에 없어서 비워 둔다 — 다음 개정.
+
+#### 일일 보육일지 — 반 1개 × 하루 × 일과 격자
+
+```
+머리   날짜 · 요일 · 반 · 결재란
+       주제 · 소주제
+본문   시간 | 일과 | 활동계획 | 활동실행      ← 행 수 고정 안 함
+꼬리   놀이 평가 및 다음날 지원계획          ← 해석 + 지원
+```
+
+- **근거는 관찰 기록이 아니라 「일과 기록」이다.** 교사가 일과 행마다 적은 활동실행이 사실 층이다. 테이블과 API 는 §10-1 이다.
+- **일과 행 수를 고정하지 않는다.** [실측] 같은 반도 특별활동이 있는 날은 행이 하나 더 있고, 같은 일과도 날에 따라 끝나는 시간이 다르다.
+- **시간 · 일과 · 활동계획은 교사 입력을 그대로 싣는다.** 모델이 채우지 않는다.
+
 ### `source_ids` 가 가리키는 것은 `kind` 마다 다르다
 
 ```
-dailyLog      관찰 기록 id           §10
+dailyLog      일과 기록 id           §10-1            ← 관찰 기록이 아니다
 observation   관찰 기록 id           §10
 assessment    관찰 기록 id           §10
 weeklyLog     확정된 일일 보육일지 id   §11   ← 관찰 기록이 아니다
@@ -1148,6 +1194,7 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 
 ```
 근거가 관찰 기록일 때    fact · date · class_id · child_id
+근거가 일과 기록일 때    활동실행 · 시간 · 일과 · date · class_id
 근거가 문서일 때         사실 항목 · class_id · child_id · start · status
 근거가 사라졌을 때       "원본 없음"
 ```
@@ -1269,6 +1316,7 @@ POST   /api/documents/{id}/confirm                               DRAFT → CONFI
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
 POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
 DELETE /api/documents/{id}                                       204
+GET    /api/documents/{id}/export/hwp                            hwpx 파일.  확정본만.  아래 「내보내기」
 ```
 
 **확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
@@ -1317,6 +1365,32 @@ assessment    observation · dailyLog
 
 **문서 조회는 교사의 원으로 걸린다.** 목록·단건·`related` 모두 같다. 이게 없으면
 로그인한 아무 교사나 남의 원 문서를 **아동 실명까지** 받아간다(ADR-004).
+
+### 내보내기 — `GET /api/documents/{id}/export/hwp`
+
+**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 경로는 `hwp` 인데 파일은 `hwpx` 다 ·
+확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다.
+
+```
+응답 200    Content-Type: application/hwp+zip
+            Content-Disposition: attachment; filename="document-7.hwpx";
+                                 filename*=UTF-8''<한글 이름>.hwpx
+```
+
+**배치는 위 「종이 한 장」이다.** 해석 + 지원 칸은 `해석` 본문, 빈 줄, `지원` 본문 순서로 잇는다.
+「해석:」「지원:」 같은 머리말을 붙이지 않는다 — 실물 양식에도 없다.
+
+**`source_ids` · `evidence` · `generation` 을 한 글자도 싣지 않는다.** 제출 문서다.
+
+**아동 실명이 들어간다.** 교사 본인의 제출 문서라 치환하지 않는다. 대신 hwpx 안의
+미리보기(`Preview/PrvText.txt`)를 **이 문서 내용으로 다시 만든다** — 양식 파일에 남은
+다른 아이 이름이 미리보기에 그대로 실려 나가지 않게 한다.
+
+| code | status | 언제 |
+|---|---|---|
+| `GATE_BLOCKED` | 409 | 확정 전이다 |
+| `VALIDATION_FAILED` | 422 | `dailyLog` · `observation` 이 아니다.  `fields: ["kind"]` |
+| `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 
 ### 개인정보
 
@@ -1637,6 +1711,7 @@ observations                   관찰 기록 본체              §10
 INDEX(class_id, date)          observations 조회           §10  목록이 반·기간으로 거른다
 documents                      일지 본체 + stale 플래그      §11
 document_sections              사실 · 해석 · 지원           §11
+routine_records                일일 보육일지의 사실 층       §10-1  dailyLog 근거
 document_sources               생성 시점의 원문 사본        §11  원본이 바뀌어도 남아야 한다
 INDEX(source_kind, source_id)  document_sources            §11  stale 전파가 역방향으로 찾는다
 evaluation_checks              원 · 학년도 · 평가요소 체크    §12  체크 시각만. 지표 완료는 저장하지 않는다(ADR-022)
