@@ -7,13 +7,41 @@ import { useEffect, useState, type ReactNode } from "react";
 // NEXT_PUBLIC_*는 빌드 시점에 값이 박히므로 값 변경 후에는 재빌드/재배포가 필요하다.
 const enabled = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
 
+/**
+ * 예전에 목업을 켜고 들어왔던 브라우저에 남아 있는 서비스워커를 지운다.
+ *
+ * **서비스워커는 배포를 갈아끼워도 안 사라진다.** 한 번 등록되면 그 브라우저에 남아
+ * `/api` 를 계속 가로채고, 교사 화면에는 「개발용 API 를 준비하지 못했습니다」만 뜬다.
+ * 실제로 멘토님·팀원 브라우저에서 났던 일이다. 사람이 DevTools 를 열어 지우게 하는 대신
+ * 목업이 꺼진 빌드가 스스로 치운다. 지우고 나면 그 다음 방문부터 정상이다.
+ */
+async function unregisterStaleWorker() {
+  if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    // 다른 서비스워커까지 지우지 않는다 — 목업 워커만 본다.
+    const stale = registrations.filter((r) =>
+      (r.active ?? r.waiting ?? r.installing)?.scriptURL.includes("mockServiceWorker"),
+    );
+    if (stale.length === 0) return;
+    await Promise.all(stale.map((r) => r.unregister()));
+    console.info("[MSW] 남아 있던 목업 워커를 지웠습니다. 새로고침하면 서버에 붙습니다.");
+    window.location.reload();
+  } catch {
+    // 지우지 못해도 화면을 막지 않는다. 시크릿 창으로 열면 된다.
+  }
+}
+
 export default function MockProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(!enabled);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     // 배포본에서 스위치 상태를 바로 확인할 수 있도록 남기는 최소 로그.
     console.info("[MSW] mocking:", process.env.NEXT_PUBLIC_API_MOCKING ?? "(unset)");
-    if (!enabled) return;
+    if (!enabled) {
+      void unregisterStaleWorker();
+      return;
+    }
     let mounted = true;
     // startMockWorker()는 서비스워커가 실제 MSW health 요청(/api/__msw_health)을 가로채는 것까지
     // 확인한 뒤 resolve한다. 실패하면 reject되고, 그 경우 children을 렌더하지 않아
