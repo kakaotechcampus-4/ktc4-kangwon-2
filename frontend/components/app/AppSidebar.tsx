@@ -22,7 +22,7 @@ const NAV: NavItem[] = [
   {
     key: "plans",
     label: "계획 노트",
-    href: "/plans/annual/new",
+    href: "/plans",
     icon: "plan",
     match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
   },

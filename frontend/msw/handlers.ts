@@ -11,7 +11,7 @@ import {
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
-import { findPlan, addPlan, patchMonth, confirmPlan } from "./data/annual-plans";
+import { findPlan, listPlans, addPlan, putMonth, confirmPlan } from "./data/annual-plans";
 import type {
   CenterInput,
   ClassInput,
@@ -192,13 +192,19 @@ export const handlers = [
     if (request.signal.aborted) return HttpResponse.error();
     return HttpResponse.json(addPlan(b as unknown as AnnualInput), { status: 201 });
   }),
+  http.get("*/api/plans/annual", async ({ request }) => {
+    const s = await scenario(request, "annual-list");
+    if (s) return s;
+    const classId = new URL(request.url).searchParams.get("class_id");
+    return HttpResponse.json({ items: listPlans(classId ? Number(classId) : undefined) });
+  }),
   http.get("*/api/plans/annual/:id", async ({ request, params }) => {
     const s = await scenario(request, "annual-get");
     if (s) return s;
     const plan = findPlan(Number(params.id));
     return plan ? HttpResponse.json(plan) : missing();
   }),
-  http.patch("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
+  http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
     const id = Number(params.id),
@@ -212,7 +218,7 @@ export const handlers = [
     if (typeof b.theme !== "string") return bad("theme");
     if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
       return bad("sub_themes");
-    return HttpResponse.json(patchMonth(id, month, b as unknown as MonthInput));
+    return HttpResponse.json(putMonth(id, month, b as unknown as MonthInput));
   }),
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");

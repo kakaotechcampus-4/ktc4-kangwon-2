@@ -28,11 +28,21 @@ import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { isValidDate } from "@/lib/plan-generator/date";
 
 const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly", "daily"];
+
+/**
+ * 서버가 실제로 만들 수 있는 종류. 나머지 카드는 「준비 중」으로 잠근다.
+ *
+ * **고를 수 있는데 아무 일도 안 일어나는 게 제일 나쁘다.** 지금 백엔드 라우터에는
+ * `/api/plans/annual` 하나뿐이다(월간 엔진은 p0-planning 에 있지만 API 가 없다).
+ * 여기에 종류를 더하는 건 그 API 가 생긴 뒤다.
+ */
+const READY: ReadonlySet<PlanType> = new Set<PlanType>(["annual"]);
+// 새 디자인은 계획안 종류를 색이 아니라 글로 가른다. 고른 카드만 주 색으로 선다.
 const ACCENT: Record<PlanType, { text: string; tint: string; ink: string }> = {
-  annual: { text: "text-sage-ink", tint: "bg-sage-tint", ink: "text-sage-ink" },
-  monthly: { text: "text-sage-ink", tint: "bg-sage-tint", ink: "text-sage-ink" },
-  weekly: { text: "text-mint-strong", tint: "bg-mint-tint", ink: "text-mint-ink" },
-  daily: { text: "text-peach-strong", tint: "bg-peach-tint", ink: "text-peach-ink" },
+  annual: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  monthly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  weekly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  daily: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
 };
 
 const SUGGESTIONS = [
@@ -439,6 +449,7 @@ function InputPanel(props: {
               key={t}
               type={t}
               selected={planTypes.has(t)}
+              ready={READY.has(t)}
               onToggle={() => onToggleType(t)}
             />
           ))}
@@ -660,10 +671,12 @@ function PeriodBlock({
 function PlanTypeCard({
   type,
   selected,
+  ready,
   onToggle,
 }: {
   type: PlanType;
   selected: boolean;
+  ready: boolean;
   onToggle: () => void;
 }) {
   const a = ACCENT[type];
@@ -672,24 +685,31 @@ function PlanTypeCard({
       type="button"
       role="button"
       aria-pressed={selected}
+      disabled={!ready}
+      title={ready ? undefined : "아직 만들 수 없어요"}
       onClick={onToggle}
-      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-[18px] border-[1.5px] transition-colors hover:-translate-y-px ${
-        selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"
-      }`}
+      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-[18px] border-[1.5px] transition-colors ${
+        ready ? "hover:-translate-y-px" : "cursor-not-allowed opacity-55"
+      } ${selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"}`}
       style={{ borderColor: selected ? undefined : "var(--pg-line)" }}
     >
+      {!ready && (
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
+          준비 중
+        </span>
+      )}
       <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
       <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
       <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
       {selected && (
         <span
-          className={`absolute top-1.5 right-1.5 flex items-center justify-center rounded-full ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
+          className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-full bg-primary"
           style={{ width: 14, height: 14 }}
         >
           <svg width="9" height="9" viewBox="0 0 24 24">
             <path
               d="M4 12.5L9.5 18L20 6"
-              stroke="var(--pg-ink)"
+              stroke="#fff"
               strokeWidth={3}
               fill="none"
               strokeLinecap="round"
@@ -764,7 +784,7 @@ function IdleState() {
           fill="none"
           strokeLinecap="round"
         />
-        <circle cx="98" cy="38" r="24" className="fill-mint" />
+        <circle cx="98" cy="38" r="24" className="fill-primary-tint" />
         <circle cx="90" cy="33" r="2.6" fill="#fff" />
         <circle cx="90" cy="33" r="1.3" fill="var(--pg-ink)" />
         <circle cx="103" cy="33" r="2.6" fill="#fff" />
@@ -787,7 +807,7 @@ function IdleState() {
       </div>
       <p
         className="font-mono text-[11px] px-3 py-1 rounded-full border text-ink-soft"
-        style={{ background: "var(--pg-sage-tint)", borderColor: "var(--pg-line)" }}
+        style={{ background: "var(--pg-primary-tint)", borderColor: "var(--pg-line)" }}
       >
         TIP · 추천 태그를 누르면 메모가 빠르게 채워져요
       </p>

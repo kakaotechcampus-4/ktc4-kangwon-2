@@ -1,5 +1,11 @@
 import { read, commit } from "./store";
-import type { AnnualInput, AnnualMonth, MonthInput, AnnualPlan } from "../../lib/api/types";
+import type {
+  AnnualInput,
+  AnnualMonth,
+  MonthInput,
+  AnnualPlan,
+  AnnualPlanSummary,
+} from "../../lib/api/types";
 const themes = [
   "새로운 우리 반",
   "봄을 찾아요",
@@ -23,6 +29,18 @@ export const months = (): AnnualMonth[] =>
     citation: { label: "개발용 고정 활동 자료", url: null },
   }));
 export const findPlan = (id: number) => read().plans.find((p) => p.id === id);
+/** 목록 요약. 서버는 created_at 을 주지만 목업 저장소에는 없어서 만든 날로 둔다. */
+export const listPlans = (classId?: number): AnnualPlanSummary[] =>
+  read()
+    .plans.filter((p) => classId === undefined || p.class_id === classId)
+    .map((p) => ({
+      id: p.id,
+      class_id: p.class_id,
+      school_year: p.school_year,
+      status: p.status,
+      created_at: new Date().toISOString(),
+      confirmed_at: p.status === "CONFIRMED" ? new Date().toISOString() : null,
+    }));
 export const addPlan = (input: AnnualInput) =>
   commit((db) => {
     const plan: AnnualPlan = {
@@ -35,7 +53,7 @@ export const addPlan = (input: AnnualInput) =>
     db.plans.push(plan);
     return plan;
   });
-export const patchMonth = (id: number, month: number, input: MonthInput) =>
+export const putMonth = (id: number, month: number, input: MonthInput) =>
   commit((db) => {
     const plan = db.plans.find((p) => p.id === id)!;
     const m = plan.months.find((m) => m.month === month)!;
