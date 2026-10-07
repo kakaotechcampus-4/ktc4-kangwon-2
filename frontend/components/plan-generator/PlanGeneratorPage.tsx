@@ -9,9 +9,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fontClassName } from "@/lib/fonts";
 import AppHeader from "@/components/app/AppHeader";
 import { createAnnualPlan } from "@/lib/api/plans";
-import { syncClass } from "@/lib/api/onboarding";
+import { getForms } from "@/lib/api/forms";
+import { syncCenter, syncClass } from "@/lib/api/onboarding";
+import type { ApiForm } from "@/lib/api/types";
+import { SessionChangedError } from "@/lib/auth/request-session";
 import GenerationFlow from "./GenerationFlow";
-import { useWorkspace } from "@/lib/workspace/store";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { templatePlan, type PlanContent } from "@/lib/workspace/plans";
 import { today, type Section } from "@/lib/workspace/model";
@@ -67,12 +69,13 @@ const SUGGESTIONS = [
 /** URL 쿼리와 온보딩에 저장된 반 설정 — 마운트 시 한 번만 읽는다(서버 렌더에서는 빈 값). */
 function readStartup() {
   if (typeof window === "undefined")
-    return { memo: "", templateId: "", ages: [] as SelectedAge[], className: "", classId: "" };
+    return { memo: "", formId: "", ages: [] as SelectedAge[], className: "", classId: "" };
   const params = new URLSearchParams(window.location.search);
   const primary = primaryClassFor(loadClassSettings());
   return {
     memo: params.get("topic")?.slice(0, 5000) ?? "",
-    templateId: params.get("template") ?? "",
+    // 서버 양식 번호다. 목록에 없는 값은 아래에서 기본 양식으로 본다.
+    formId: params.get("template") ?? "",
     ages: primary ? selectedAgesFor(primary) : [],
     className: primary?.className ?? "",
     classId: primary?.id ?? "",
@@ -103,10 +106,12 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
   const [stepIndex, setStepIndex] = useState(0);
   const className = startup.className;
   const classId = startup.classId;
-  const [templateId, setTemplateId] = useState(startup.templateId);
+  const [formId, setFormId] = useState(startup.formId);
   const [error, setError] = useState("");
   const [contents, setContents] = useState<Partial<Record<PlanType, PlanContent>>>({});
-  const { data: workspace, error: storageError } = useWorkspace();
+  // 기관 양식의 원본은 서버다 (§8) — 브라우저 저장소를 보지 않는다. null 이면 아직 못 받았다.
+  const [forms, setForms] = useState<ApiForm[] | null>(null);
+  const [formsError, setFormsError] = useState("");
   const available = useAIStatus();
   const controllerRef = useRef<AbortController | null>(null);
   const [generated, setGenerated] = useState<{
@@ -118,9 +123,36 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
+  // 원 양식 등록 화면과 같은 흐름이다. 실패해도 기본 양식으로는 계속 만들 수 있다.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const settings = loadClassSettings();
+        if (!settings) throw new Error("원 정보를 먼저 설정해주세요.");
+        const { items } = await getForms(await syncCenter(settings));
+        if (alive) setForms(items);
+      } catch (e) {
+        // 계정이 바뀌면 apiRequest 가 여기서 끊는다 — 새 계정 화면에 옛 오류를 남기지 않는다.
+        if (!alive || e instanceof SessionChangedError) return;
+        // 기관 양식만 못 받은 것이다 — 빈 목록으로 두고 기본 양식으로 계속 만들게 한다.
+        setForms([]);
+        setFormsError(e instanceof Error ? e.message : "등록한 기관 양식을 불러오지 못했어요.");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 양식 번호는 연간계획안 생성에만 실린다 (§4). 다른 종류에는 붙일 계약이 없다.
+  const annualSelected = planTypes.has("annual");
+  const formsLoading = forms === null;
   const canGenerate =
     available !== null &&
     phase !== "generating" &&
+    // 양식을 고른 채로 들어왔으면 목록을 받은 뒤에만 보낸다 — 조용히 기본 양식이 되지 않게.
+    !(annualSelected && formId !== "" && formsLoading) &&
     age !== "" &&
     planTypes.size > 0 &&
     Number.isInteger(period.annual.year) &&
@@ -172,7 +204,8 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
     window.scrollTo({ top: 0, behavior: "smooth" });
     try {
       const results: Partial<Record<PlanType, PlanContent>> = {};
-      const template = workspace.templates.find((t) => t.id === templateId);
+      // 목록에 없는 값(옛 브라우저 양식 번호 등)은 기본 양식으로 본다.
+      const form = (forms ?? []).find((f) => String(f.id) === formId) ?? null;
       setStepIndex(1);
       for (const type of selectedTypes) {
         if (type === "annual") {
@@ -181,13 +214,9 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
           if (!settings || !primary) throw new Error("반 정보를 먼저 저장해주세요.");
           // 계획안 조건으로 저장된 반/아동 연결을 변경하지 않는다.
           const serverClassId = await syncClass(settings, primary);
+          // 양식은 번호만 든다 — 서버가 FK 로 가리킨다 (§4). null 이면 기본 양식이다.
           const plan = await createAnnualPlan(
-            {
-              class_id: serverClassId,
-              school_year: period.annual.year,
-              source: "FROM_SCRATCH",
-              upload_id: null,
-            },
+            { class_id: serverClassId, form_id: form?.id ?? null },
             controller.signal,
           );
           results.annual = {
@@ -211,7 +240,8 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
               ...(exactAges ? { ages: exactAges } : {}),
               period,
               memo,
-              template: template ? { headings: template.headings, style: template.style } : null,
+              // ApiForm 을 이 요청에 잇는 계약이 아직 없다. 임의 변환을 만들지 않는다.
+              template: null,
             },
             controller.signal,
           );
@@ -227,7 +257,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             })),
           };
         } else {
-          results[type] = templatePlan(type, age, period, memo, template, request.ageLabel);
+          results[type] = templatePlan(type, age, period, memo, undefined, request.ageLabel);
         }
         if (controller.signal.aborted) return;
         setStepIndex(2);
@@ -287,24 +317,35 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
       )}
 
       <div className="px-4 lg:px-10">
-        {(error || storageError) && (
+        {(error || formsError) && (
           <p className={ws.error} role="alert">
-            {error || storageError}
+            {error || formsError}
           </p>
         )}
         {phase === "idle" && (
           <div className={ws.row} style={{ marginBottom: 20 }}>
             <label className={ws.field}>
               사용할 기관 양식
-              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+              <select
+                value={formId}
+                disabled={!annualSelected || formsLoading}
+                onChange={(e) => setFormId(e.target.value)}
+              >
                 <option value="">쌤플 기본 양식</option>
-                {workspace.templates.map((t) => (
-                  <option value={t.id} key={t.id}>
-                    {t.name}
+                {(forms ?? []).map((f) => (
+                  <option value={String(f.id)} key={f.id}>
+                    {f.name}
                   </option>
                 ))}
               </select>
             </label>
+            <p className={ws.hint}>
+              {formsLoading
+                ? "등록한 기관 양식을 불러오고 있어요."
+                : annualSelected
+                  ? "등록한 기관 양식은 연간계획안 생성에 적용돼요."
+                  : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
+            </p>
             <p className={ws.hint}>
               {available
                 ? "AI 연결됨 · 입력 조건과 기관 양식으로 생성해요."
@@ -693,14 +734,14 @@ function PlanTypeCard({
       } ${selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"}`}
       style={{ borderColor: selected ? undefined : "var(--pg-line)" }}
     >
+      <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
+      <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
+      <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
       {!ready && (
         <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
           준비 중
         </span>
       )}
-      <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
-      <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
-      <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
       {selected && (
         <span
           className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-full bg-primary"

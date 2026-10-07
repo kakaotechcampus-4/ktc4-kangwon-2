@@ -73,11 +73,11 @@ export interface PlanConfig {
 }
 // TODO(BE): PUT plan-config 응답 body/status 미확정. 호출자는 응답 필드에 의존하지 않는다.
 export type PlanConfigResponse = unknown;
+/** `school_year` 를 받지 않는다 — `class_id` 가 학년도를 정한다 (§4). */
 export interface AnnualInput {
   class_id: number;
-  school_year: number;
-  source: "FROM_SCRATCH" | "FROM_UPLOAD";
-  upload_id: number | null;
+  /** 원이 등록한 기관 양식 (§8). `null` 이면 기본 양식으로 만든다. */
+  form_id: number | null;
 }
 export interface MonthInput {
   theme: string;

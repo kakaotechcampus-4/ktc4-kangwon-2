@@ -41,12 +41,14 @@ export const listPlans = (classId?: number): AnnualPlanSummary[] =>
       created_at: new Date().toISOString(),
       confirmed_at: p.status === "CONFIRMED" ? new Date().toISOString() : null,
     }));
-export const addPlan = (input: AnnualInput) =>
+
+/** 학년도는 요청이 아니라 반이 정한다 (§4). */
+export const addPlan = (input: AnnualInput, schoolYear: number) =>
   commit((db) => {
     const plan: AnnualPlan = {
       id: db.next++,
       class_id: input.class_id,
-      school_year: input.school_year,
+      school_year: schoolYear,
       status: "DRAFT",
       months: months(),
     };

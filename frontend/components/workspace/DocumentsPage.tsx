@@ -21,9 +21,12 @@ import {
   createDocument,
   updateDocument,
   confirmDocument,
+  unconfirmDocument,
+  refreshDocument,
   deleteDocument,
   documentServerId,
   isRecordKind,
+  BLOCKED_RECORD_KINDS,
   RECORD_KINDS,
   type DocumentSummary,
   type RecordKind,
@@ -85,6 +88,8 @@ export default function DocumentsPage() {
         get: getDocument,
         update: updateDocument,
         confirm: confirmDocument,
+        unconfirm: unconfirmDocument,
+        refresh: refreshDocument,
         remove: deleteDocument,
       },
       messageFor,
@@ -292,6 +297,16 @@ export default function DocumentsPage() {
           void reloadList();
           return confirmed;
         },
+        unconfirm: async () => {
+          const next = await selection.unconfirm();
+          void reloadList();
+          return next;
+        },
+        refresh: async () => {
+          const next = await selection.refresh();
+          void reloadList();
+          return next;
+        },
         remove: async () => {
           await selection.remove();
           setMessage("문서를 삭제했어요.");
@@ -301,10 +316,7 @@ export default function DocumentsPage() {
     : undefined;
 
   return (
-    <WorkspacePage
-      title="문서 보관함"
-      description="계획안과 일지를 한곳에서 확인하고 관리하세요."
-    >
+    <WorkspacePage title="문서 보관함" description="계획안과 일지를 한곳에서 확인하고 관리하세요.">
       <div className={ws.hero}>
         <div>
           <div className={ws.eyebrow}>DOCUMENTS · 기록을 의미 있는 문서로</div>
@@ -342,8 +354,9 @@ export default function DocumentsPage() {
                   }}
                 >
                   {RECORD_KINDS.map((k) => (
-                    <option key={k} value={k}>
+                    <option key={k} value={k} disabled={BLOCKED_RECORD_KINDS.includes(k)}>
                       {DOCUMENT_KINDS[k]}
+                      {BLOCKED_RECORD_KINDS.includes(k) && " (준비 중)"}
                     </option>
                   ))}
                 </select>

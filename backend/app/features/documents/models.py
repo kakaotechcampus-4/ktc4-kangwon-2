@@ -111,7 +111,9 @@ class DocumentSource(Base):
 
     __tablename__ = "document_sources"
     __table_args__ = (
-        CheckConstraint("source_kind IN ('observation', 'document')", name="source_kind"),
+        CheckConstraint(
+            "source_kind IN ('observation', 'document', 'routine')", name="source_kind"
+        ),
         CheckConstraint(
             "source_status IS NULL OR source_status IN ('DRAFT', 'CONFIRMED')",
             name="source_status",
