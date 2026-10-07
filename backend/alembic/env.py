@@ -13,6 +13,7 @@ from app.features.evaluation import models as _evaluation  # noqa: F401
 from app.features.forms import models as _forms  # noqa: F401
 from app.features.observations import models as _observations  # noqa: F401
 from app.features.plans import models as _plans  # noqa: F401
+from app.features.routines import models as _routines  # noqa: F401
 
 # 새 models.py 를 추가하는 PR 은 여기에 해당 모듈을 명시적으로 import 해야
 # autogenerate 가 테이블을 인식한다. (자동 스캔 없음)
