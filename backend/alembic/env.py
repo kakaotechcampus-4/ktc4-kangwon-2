@@ -9,6 +9,7 @@ from app.features.activities import models as _activities  # noqa: F401
 from app.features.auth import models as _auth  # noqa: F401
 from app.features.centers import models as _centers  # noqa: F401
 from app.features.documents import models as _documents  # noqa: F401
+from app.features.evaluation import models as _evaluation  # noqa: F401
 from app.features.forms import models as _forms  # noqa: F401
 from app.features.observations import models as _observations  # noqa: F401
 from app.features.plans import models as _plans  # noqa: F401
