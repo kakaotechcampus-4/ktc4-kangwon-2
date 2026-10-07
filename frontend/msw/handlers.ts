@@ -183,14 +183,13 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
-    if (!findClass(Number(b.class_id))) return missing();
-    if (!integer(b.school_year)) return bad("school_year");
-    if (!["FROM_SCRATCH", "FROM_UPLOAD"].includes(String(b.source))) return bad("source");
-    if (b.source === "FROM_UPLOAD" && (!integer(b.upload_id) || Number(b.upload_id) <= 0))
-      return bad("upload_id");
-    if (b.source === "FROM_SCRATCH" && b.upload_id !== null) return bad("upload_id");
+    const klass = findClass(Number(b.class_id));
+    if (!klass) return missing();
+    if (b.form_id !== null && !integer(b.form_id)) return bad("form_id");
     if (request.signal.aborted) return HttpResponse.error();
-    return HttpResponse.json(addPlan(b as unknown as AnnualInput), { status: 201 });
+    return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
+      status: 201,
+    });
   }),
   http.get("*/api/plans/annual/:id", async ({ request, params }) => {
     const s = await scenario(request, "annual-get");
