@@ -27,6 +27,8 @@ export interface DocumentGateway {
     input: { kind: string; sections: Section[]; reviewNote: string; updatedAt: string },
   ): Promise<ServerDocument>;
   confirm(localId: string): Promise<ServerDocument>;
+  unconfirm(localId: string): Promise<ServerDocument>;
+  refresh(localId: string): Promise<ServerDocument>;
   remove(localId: string): Promise<void>;
 }
 
@@ -74,6 +76,15 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
     // 그 사이 다른 문서로 옮겼으면 서버 저장은 그대로 두고 화면만 건드리지 않는다.
     if (mine === generation) set({ detail: saved });
     return saved;
+  }
+
+  /** 문서 하나를 서버 응답으로 갈아끼운다. 그 사이 옮겼으면 화면은 건드리지 않는다. */
+  function replace(call: (localId: string) => Promise<ServerDocument>) {
+    return mutate(async (doc, mine) => {
+      const next = await call(doc.id);
+      if (mine === generation) set({ detail: next });
+      return next;
+    });
   }
 
   async function load(localId: string, mine: number) {
@@ -157,6 +168,10 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
         if (mine === generation) set({ detail: confirmed });
         return confirmed;
       }),
+
+    /** 확정 취소와 근거 다시 반영. 서버가 준 문서를 그대로 쓴다 — 상태를 지어내지 않는다. */
+    unconfirm: () => replace(api.unconfirm),
+    refresh: () => replace(api.refresh),
 
     remove: () =>
       mutate(async (doc) => {
