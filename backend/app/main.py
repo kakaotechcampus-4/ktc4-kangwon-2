@@ -1,10 +1,16 @@
+import logging
+import sys
+from typing import Annotated
+
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.db import SessionLocal
+from app.features.auth.models import User
 from app.features.auth.router import router as auth_router
 from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
@@ -16,7 +22,121 @@ from app.features.plans.export import router as plans_export_router
 from app.features.plans.router import router as plans_router
 from app.shared.auth.dependency import current_user
 
+
+class _SafeStreamHandler(logging.StreamHandler):
+    def handleError(self, record: logging.LogRecord) -> None:
+        # 기본 handleError 는 현재 예외 체인의 메시지까지 stderr 에 출력한다.
+        raise
+
+
 app = FastAPI(title="쓱싹요정 API")
+logger = logging.getLogger("app.server")
+logger.propagate = False
+if not logger.handlers:
+    handler = _SafeStreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
+def _one_line(value: str) -> str:
+    return value.translate(
+        str.maketrans({"\n": r"\n", "\r": r"\r", "\u2028": r"\u2028", "\u2029": r"\u2029"})
+    )
+
+
+def _request_context(scope: Scope) -> str:
+    state = scope.get("state", {})
+    return _one_line(
+        f"method={scope['method']} path={scope['path']} "
+        f"user_id={state.get('user_id', '-')} center_id={state.get('center_id', '-')}"
+    )
+
+
+def _exception_class(exc: Exception) -> str:
+    return _one_line(f"{type(exc).__module__}.{type(exc).__name__}")
+
+
+def _frames(exc: Exception) -> str:
+    at = raised = "-"
+    trace = exc.__traceback__
+    while trace is not None:
+        code = trace.tb_frame.f_code
+        filename = "/" + code.co_filename.replace("\\", "/").lstrip("/")
+        for marker in ("/site-packages/", "/app/", "/ssuksak/"):
+            if marker in filename:
+                filename = ("" if marker == "/site-packages/" else marker[1:]) + filename.rsplit(
+                    marker, 1
+                )[1]
+                break
+        else:
+            filename = filename.rsplit("/", 1)[-1]
+        raised = _one_line(f"{filename}:{trace.tb_lineno}:{code.co_name}")
+        if filename.startswith(("app/", "ssuksak/")):
+            at = raised
+        trace = trace.tb_next
+    return f"at={at}" + (f" raised={raised}" if raised != at else "")
+
+
+def _logging_failed() -> None:
+    try:
+        logger.error("unexpected_error logging_failed")
+    except Exception:
+        try:
+            sys.stderr.write("unexpected_error logging_failed\n")
+        except Exception:
+            pass
+
+
+class _UnexpectedErrorMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        response_started = failed = False
+
+        async def track_start(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, track_start)
+        except Exception as exc:
+            # ADR-004: 예외 메시지·본문·쿼리·헤더에는 아동 실명이나 토큰이 섞일 수 있다.
+            try:
+                cause = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+                caused_by = f" caused_by={_exception_class(cause)}" if cause is not None else ""
+                logger.error(
+                    "unexpected_error %s error=%s%s %s%s",
+                    _request_context(scope),
+                    _exception_class(exc),
+                    caused_by,
+                    _frames(exc),
+                    " response_started=true" if response_started else "",
+                )
+            except Exception:
+                _logging_failed()
+            failed = True  # except 밖에서 보내 원래 예외의 __context__ 연결을 막는다.
+        if failed and not response_started:
+            try:
+                await PlainTextResponse("Internal Server Error", 500)(scope, receive, send)
+            except Exception:
+                pass
+
+
+app.add_middleware(_UnexpectedErrorMiddleware)
+
+
+def _authenticated_user(request: Request, user: Annotated[User, Depends(current_user)]) -> User:
+    request.state.user_id = user.id
+    request.state.center_id = user.center_id if user.center_id is not None else "-"
+    return user
+
 
 # docs/api-spec.md 가 계약이고 모든 엔드포인트가 /api 아래다.
 # /health · /health/ready 는 배포 판정용이라 루트에 둔다.
@@ -28,7 +148,7 @@ app = FastAPI(title="쓱싹요정 API")
 #   forms   parse 만 연다. 업로드한 파일을 그대로 돌려줄 뿐 저장하지 않는다.
 #           등록·목록·삭제(center_forms)는 원의 자산이라 막는다 (ADR-020)
 #   나머지   원·반·아동·문서·관찰 기록·계획안. 아동 실명이 내려오므로 반드시 막는다
-_authenticated = [Depends(current_user)]
+_authenticated = [Depends(_authenticated_user)]
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(forms_router, prefix="/api")
@@ -81,9 +201,19 @@ async def http_error(request: Request, exc: HTTPException) -> Response:
     detail 이 `{"code", "message", "fields"}` 인 것만 변환한다. forms 처럼 문자열 detail 을
     쓰는 기존 라우터는 지금 형식(`{"detail": ...}`)을 그대로 유지한다 — 계약에 없는 code 를
     지어내지 않고, 이번 범위 밖 엔드포인트의 응답도 바꾸지 않기 위해서다.
-    내부 DB 예외처럼 우리가 내지 않은 오류는 여기서 다루지 않는다(정책 미정).
+    내부 DB 예외처럼 우리가 내지 않은 오류는 unexpected_error 미들웨어가 다룬다.
     """
     detail = exc.detail
+    if exc.status_code >= 500:
+        try:
+            logger.warning(
+                "server_error status=%s code=%s %s",
+                exc.status_code,
+                _one_line(str(detail.get("code", "-"))) if isinstance(detail, dict) else "-",
+                _request_context(request.scope),
+            )
+        except Exception:
+            _logging_failed()
     if not isinstance(detail, dict) or "code" not in detail:
         return await http_exception_handler(request, exc)
 
