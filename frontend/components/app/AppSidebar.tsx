@@ -26,6 +26,7 @@ const NAV: NavItem[] = [
     icon: "plan",
     match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
   },
+  { key: "quick", label: "기록 모아보기", href: "/quick-records", icon: "record" },
   {
     key: "records",
     label: "관찰 기록",

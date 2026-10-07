@@ -15,6 +15,7 @@ export type IconName =
   | "plus"
   | "edit"
   | "check"
+  | "mic"
   | "body"
   | "talk"
   | "social"
@@ -80,6 +81,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   check: <path d="m4 12.5 5.5 5.5L20 7" />,
+  mic: (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" />
+      <path d="M12 18v3" />
+    </>
+  ),
   // 누리과정 5개 영역. 글자 없이도 구분되도록 서로 다른 모양을 쓴다.
   body: (
     <>

@@ -22,6 +22,7 @@ import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
 import { formatKoreanDate } from "@/lib/greeting";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { useDictation } from "@/lib/hooks/use-dictation";
 
 const PRIMARY =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-primary-line " +
@@ -138,6 +139,8 @@ function Compose({
   const [fact, setFact] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 받아쓴 말은 적던 글 뒤에 붙인다. 덮어쓰면 쓰던 걸 잃는다.
+  const dictation = useDictation((said) => setFact((prev) => (prev ? `${prev} ${said}` : said)));
 
   // 반·아동은 늦게 도착한다. 그때 useState 를 맞추는 대신 그릴 때 첫 항목으로 떨어뜨린다 —
   // effect 안에서 setState 하면 렌더가 한 번 더 돈다.
@@ -209,17 +212,35 @@ function Compose({
               <span className="hidden text-[10px] text-ink-soft sm:block">
                 본 그대로 적어 주세요. 원문은 그대로 보관해요.
               </span>
-              {!confirming && (
-                <button
-                  type="button"
-                  disabled={!fact.trim()}
-                  onClick={() => setConfirming(true)}
-                  className={`${PRIMARY} ml-auto`}
-                >
-                  <Icon name="check" className="h-4 w-4" />
-                  기록 남기기
-                </button>
-              )}
+              <div className="ml-auto flex items-center gap-3">
+                {dictation.supported && (
+                  <button
+                    type="button"
+                    aria-label={dictation.listening ? "받아쓰기 중지" : "음성 받아쓰기"}
+                    aria-pressed={dictation.listening}
+                    disabled={confirming}
+                    onClick={dictation.toggle}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
+                      dictation.listening
+                        ? "animate-pulse border-peach-strong bg-peach-tint text-peach-ink"
+                        : "border-primary-tint-line bg-primary-tint text-primary"
+                    }`}
+                  >
+                    <Icon name="mic" className="h-5 w-5" />
+                  </button>
+                )}
+                {!confirming && (
+                  <button
+                    type="button"
+                    disabled={!fact.trim() || dictation.listening}
+                    onClick={() => setConfirming(true)}
+                    className={PRIMARY}
+                  >
+                    <Icon name="check" className="h-4 w-4" />
+                    기록 남기기
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

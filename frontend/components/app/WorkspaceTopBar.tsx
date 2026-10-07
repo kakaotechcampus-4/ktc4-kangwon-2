@@ -12,6 +12,7 @@ const PAGE_NAMES: [prefix: string, name: string][] = [
   ["/plans", "계획 노트"],
   ["/templates", "계획 노트"],
   ["/trends", "계획 노트"],
+  ["/quick-records", "기록 모아보기"],
   ["/records", "관찰 기록"],
   ["/compare", "관찰 기록"],
   ["/documents", "문서 보관함"],

@@ -26,7 +26,8 @@
   --pg-note-line: #d4c486;
   --pg-note-soft: #f7edce; /* 본문 쪽지 — 사이드바 쪽지보다 연하다 */
   --pg-note-soft-line: #d5c698;
-  --pg-tape: #fffaf0; /* 쪽지 위에 붙인 종이테이프 */
+  /* 쪽지 위에 붙인 종이테이프. 반투명이어야 한다 — 꽉 찬 흰색은 종이를 덧댄 것처럼 보인다. */
+  --pg-tape: rgba(255, 250, 240, 0.72);
 
   /* 공책 느낌의 표면 — 입력칸 머리·바닥 띠 */
   --pg-paper-warm: #fbf3df;
