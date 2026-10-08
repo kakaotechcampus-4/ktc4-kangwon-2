@@ -1368,6 +1368,9 @@ assessment    observation · dailyLog
 
 ### 내보내기 — `GET /api/documents/{id}/export/hwp`
 
+**관찰일지는 구현됐다. 일일 보육일지는 아직이다** — 일과 행 수가 날마다 달라 표에 줄을 늘리는 일이 따로 있다.
+그 전까지 `dailyLog` 도 422 다.
+
 **§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 경로는 `hwp` 인데 파일은 `hwpx` 다 ·
 확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다.
 
@@ -1385,11 +1388,15 @@ assessment    observation · dailyLog
 **아동 실명이 들어간다.** 교사 본인의 제출 문서라 치환하지 않는다. 대신 hwpx 안의
 미리보기(`Preview/PrvText.txt`)를 **이 문서 내용으로 다시 만든다** — 양식 파일에 남은
 다른 아이 이름이 미리보기에 그대로 실려 나가지 않게 한다.
+**미리보기 그림(`Preview/PrvImage.png`)은 다시 만들지 않는다.** 그래서 양식 파일은 빈 양식이어야 한다.
+
+**영역은 근거 사본이 아니라 지금의 관찰 기록에서 읽는다.** 영역만 고치면 `stale` 이 아니므로
+고친 영역 행에 들어간다. 근거 관찰 기록이 사라졌으면 그 사실을 빼고 내보내지 않는다.
 
 | code | status | 언제 |
 |---|---|---|
-| `GATE_BLOCKED` | 409 | 확정 전이다 |
-| `VALIDATION_FAILED` | 422 | `dailyLog` · `observation` 이 아니다.  `fields: ["kind"]` |
+| `GATE_BLOCKED` | 409 | 확정 전이다.  또는 근거 관찰 기록이 사라졌다 — `fields` 에 `sources.{id}` |
+| `VALIDATION_FAILED` | 422 | `observation` 이 아니다.  `fields: ["kind"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 
 ### 개인정보
