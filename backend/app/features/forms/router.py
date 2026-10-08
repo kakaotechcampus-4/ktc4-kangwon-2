@@ -1,10 +1,11 @@
-"""양식 API. 계약은 docs/api-spec.md §8, 저장 결정은 ADR-020 이다.
+"""양식 API. 계약은 docs/api-spec.md §8, 저장 결정은 ADR-020 · ADR-026 이다.
 
 **라우터가 둘이다.** `router` 의 parse 는 저장하지 않아 토큰 없이 열고,
 `center_router` 의 등록 · 목록 · 삭제는 원의 자산이라 `main.py` 가 인증을 건다(ADR-017).
 """
 
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -118,6 +119,8 @@ def register_form(
         # parse 는 빈 결과를 돌려주지만 저장은 막는다 — 계획안 양식은 표다 (§8 · ADR-020).
         raise _unreadable("양식에서 표를 찾지 못했습니다. 계획안 양식 파일인지 확인해주세요.")
 
+    # 추출이 스트림을 다 읽었으므로 되감아 원본을 그대로 남긴다(ADR-026).
+    file.file.seek(0)
     labels = hwp_form.labels(tables)
     form = Form(
         center_id=center_id,
@@ -126,6 +129,7 @@ def register_form(
         tables=tables,
         labels=labels,
         label_map=mapping.map_labels(labels),
+        content=file.file.read(),
     )
     session.add(form)
     session.commit()
@@ -139,7 +143,7 @@ def list_forms(center_id: int, session: DbSession, user: CurrentUser) -> FormLis
     require_own_center(user, center_id)
     query = (
         select(Form)
-        .where(Form.center_id == center_id)
+        .where(Form.center_id == center_id, Form.hidden_at.is_(None))
         .order_by(Form.created_at.desc(), Form.id.desc())
     )
     return FormListResponse(
@@ -149,7 +153,7 @@ def list_forms(center_id: int, session: DbSession, user: CurrentUser) -> FormLis
 
 @center_router.delete("/forms/{form_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_form(form_id: int, session: DbSession, user: CurrentUser) -> None:
-    """경로에 원이 없으니 행의 center_id 로 본다. 남의 것도 없는 것과 같은 404 다."""
+    """이 원의 양식을 지운다. 계획안이 걸렸으면 숨기고, 남의 것·감춘 것은 404 다."""
     form = find_own_form(session, user.center_id, form_id)
     if form is None:
         raise HTTPException(
@@ -164,17 +168,11 @@ def delete_form(form_id: int, session: DbSession, user: CurrentUser) -> None:
     try:
         session.commit()
     except IntegrityError as error:
-        # 되돌리지 않으면 이 세션의 다음 질의가 InFailedSqlTransaction 으로 죽는다.
+        # 실패한 트랜잭션을 되돌려야 같은 세션에서 숨김을 저장할 수 있다.
         session.rollback()
-        # 다른 제약 위반은 409 로 바꿔 원인을 숨기지 않는다.
+        # 다른 제약 위반은 숨기지 않고 그대로 올린다 — 원인을 가리지 않는다.
         if getattr(getattr(error.orig, "diag", None), "constraint_name", None) != PLANS_FORM_FK:
             raise
-        # 숨김 삭제가 들어오면 「숨기고 204」로 바뀌는 임시 분기다 (§8).
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "IN_USE",
-                "message": "이 양식으로 만든 계획안이 있어 지울 수 없습니다.",
-                "fields": [],
-            },
-        ) from error
+        # 계획안은 양식 번호만 들고 있어 DB FK 가 삭제를 막는다 — 대신 숨긴다(ADR-026).
+        form.hidden_at = datetime.now(UTC)
+        session.commit()
