@@ -6,12 +6,13 @@ Reference 기반 시작이 거절된다(결정 문서 12.8). 승인이 필요한
 파일과 운영 코드는 그대로다.
 """
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from threading import Barrier
 
 import pytest
-from sqlalchemy import delete, inspect, select, update
+from sqlalchemy import delete, func, inspect, select, text, update
 from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
 from app.db import engine
 from app.features.auth.models import User
 from app.features.centers.models import Center, Class
+from app.features.plans.codec import to_jsonable
 from app.features.template_profiles.models import (
     TemplateProfileDefault,
     TemplateProfileOverride,
@@ -129,8 +131,16 @@ def _start(repo, user, template=FOCUS, optional=("focus",)) -> TemplateProfileRe
 def _second_ready(repo, ref, user) -> TemplateProfileRef:
     """READY → DRAFT 파생 → 확정. 같은 계열의 다음 READY."""
     draft = repo.derive_draft(ref, actor_id=user.id)
-    repo.publish(draft)
+    repo.publish(draft, ApprovedTemplates(), expected_revision=1, actor_id=user.id)
     return draft
+
+
+def _relabel(document, key, label) -> list:
+    """편집 문서의 sections 에서 `key` Section 의 이름만 바꾼 목록."""
+    return [
+        {**section, "display_label": label} if section["section_key"] == key else section
+        for section in document["sections"]
+    ]
 
 
 def _code(excinfo) -> str:
@@ -150,6 +160,9 @@ def test_migration이_테이블과_무결성_제약을_올린다(db_session):
         "uq_template_profiles_owner_ref",
         "uq_template_profiles_profile_id_profile_version",
     } <= uniques
+    columns = {c["name"]: c for c in inspector.get_columns("template_profiles")}
+    assert columns["revision"]["nullable"] is False  # M2-B — DRAFT 저장 충돌 감지
+    assert columns["updated_by"]["nullable"] is True
     for table in ("template_profile_defaults", "template_profile_overrides"):
         targets = [fk for fk in inspector.get_foreign_keys(table) if fk["name"].endswith("_target")]
         assert len(targets) == 1
@@ -266,42 +279,41 @@ def test_READY_는_고칠_수_없고_고치려면_새_DRAFT_버전이_생긴다(
     session, repo, user = world["session"], world["repo_a"], world["user_a"]
     v1 = _start(repo, user)
     original = repo.get_profile(v1.profile_id, "v1")
-    relabeled = replace(
-        original,
-        sections=tuple(
-            replace(s, display_label="이번 달 주제") if s.section_key == "theme" else s
-            for s in original.sections
-        ),
-    )
 
-    with pytest.raises(TemplateProfileError) as excinfo:
-        repo.update_draft(relabeled)
-    assert _code(excinfo) == "NOT_DRAFT"
-    with pytest.raises(TemplateProfileError) as excinfo:
-        repo.publish(v1)
-    assert _code(excinfo) == "NOT_DRAFT"
+    for call in (
+        lambda: repo.get_draft(v1),
+        lambda: repo.save_draft(v1, {}, expected_revision=1, actor_id=user.id),
+        lambda: repo.publish(v1, ApprovedTemplates(), expected_revision=1, actor_id=user.id),
+    ):
+        with pytest.raises(TemplateProfileError) as excinfo:
+            call()
+        assert _code(excinfo) == "NOT_DRAFT"
 
     v2 = repo.derive_draft(v1, actor_id=user.id)
     assert v2 == TemplateProfileRef(v1.profile_id, "v2")
-    repo.update_draft(replace(relabeled, profile_ref=v2))
-    repo.update_draft(replace(relabeled, profile_ref=v2))  # DRAFT 는 여러 번 고쳐도 버전이 그대로다
-    repo.publish(v2)
+    sections = _relabel(repo.get_draft(v2).document, "theme", "이번 달 주제")
+    repo.save_draft(v2, {"sections": sections}, expected_revision=1, actor_id=user.id)
+    # DRAFT 는 여러 번 고쳐도 버전이 그대로다
+    repo.save_draft(v2, {"sections": sections}, expected_revision=2, actor_id=user.id)
+    repo.publish(v2, ApprovedTemplates(), expected_revision=3, actor_id=user.id)
 
     row = session.scalar(
         select(TemplateProfileVersion).where(TemplateProfileVersion.profile_version == "v2")
     )
-    assert (row.status, row.parent_version) == ("READY", "v1")
+    assert (row.status, row.parent_version, row.updated_by) == ("READY", "v1", user.id)
     assert repo.get_profile(v1.profile_id, "v1") == original
     assert repo.get_profile(v1.profile_id, "v2").section("theme").display_label == "이번 달 주제"
     with pytest.raises(TemplateProfileError) as excinfo:
-        repo.update_draft(replace(relabeled, profile_ref=v2))
+        repo.save_draft(v2, {"sections": sections}, expected_revision=3, actor_id=user.id)
     assert _code(excinfo) == "NOT_DRAFT"
 
-    # DRAFT 에서도 기반 Template 은 못 바꾼다 — 승인 검사를 건너뛰는 길이 된다.
+    # DRAFT 에서도 기반 Template · 소유 원은 못 바꾼다 — 승인 검사 · 소유 검사를 건너뛰는 길이 된다.
     v3 = repo.derive_draft(v2, actor_id=user.id)
-    with pytest.raises(TemplateProfileError) as excinfo:
-        repo.update_draft(replace(relabeled, profile_ref=v3, base_template_ref=PLAIN))
-    assert _code(excinfo) == "INVALID"
+    for identity in ("base_template_ref", "institution_ref", "profile_ref", "classroom_ref"):
+        with pytest.raises(TemplateProfileError) as excinfo:
+            repo.save_draft(v3, {identity: None}, expected_revision=1, actor_id=user.id)
+        assert _code(excinfo) == "INVALID"
+        assert excinfo.value.issues[0].path == identity
 
 
 def test_원_하나에_READY_가_여러_개_있을_수_있다(world):
@@ -437,11 +449,18 @@ def test_다른_원의_Profile_과_반은_없는_것과_같다(world):
         with pytest.raises(TemplateProfileError) as excinfo:
             call()
         assert _code(excinfo) == "NOT_FOUND"
-    # 남의 원 Profile 을 자기 원 것인 척 고치지도 못한다.
+    # 남의 원 DRAFT 는 읽지도 · 고치지도 · 확정하지도 못한다.
     draft = repo_a.derive_draft(a_ref, actor_id=world["user_a"].id)
-    with pytest.raises(TemplateProfileError) as excinfo:
-        repo_b.update_draft(replace(repo_a.get_profile(*_pair(a_ref)), profile_ref=draft))
-    assert _code(excinfo) == "NOT_FOUND"
+    user_b = world["user_b"].id
+    for call in (
+        lambda: repo_b.get_draft(draft),
+        lambda: repo_b.save_draft(draft, {}, expected_revision=1, actor_id=user_b),
+        lambda: repo_b.publish(draft, ApprovedTemplates(), expected_revision=1, actor_id=user_b),
+    ):
+        with pytest.raises(TemplateProfileError) as excinfo:
+            call()
+        assert _code(excinfo) == "NOT_FOUND"
+    assert repo_a.get_draft(draft).revision == 1
 
 
 def test_DB_가_다른_원_Profile_을_가리키는_포인터를_막는다(world):
@@ -585,6 +604,281 @@ def test_동시에_기본을_걸면_하나만_통과한다(_schema):
         with Session(engine) as session:
             for model in (TemplateProfileDefault, TemplateProfileVersion):
                 session.execute(delete(model).where(model.center_id == center_id))
+            session.execute(delete(User).where(User.id == user_id))
+            session.execute(delete(Center).where(Center.id == center_id))
+            session.commit()
+
+
+# ── M2-B: DRAFT 임시 저장 · READY 전환 검증 ─────────────────────────────────
+
+
+def _finished_content(repo, user) -> dict:
+    """완성된 편집 칸. Reference 기반 시작으로 만든 READY 에서 꺼낸다."""
+    body = to_jsonable(repo.get_profile(*_pair(_start(repo, user))))
+    return {key: body[key] for key in ("selected_optional_keys", "sections")}
+
+
+def _unfinished_content(repo, user) -> dict:
+    """주제 · 놀이(focus) 는 다 채웠고 바깥놀이 · 안전교육은 덜 채웠다."""
+    content = _finished_content(repo, user)
+    for section in content["sections"]:
+        if section["section_key"] == "outdoor_play":
+            section["display_label"] = ""  # 이름을 지우고 아직 안 적었다
+        if section["section_key"] == "safety_education":
+            section["repeat_by"] = None  # 반복 단위를 아직 안 골랐다
+            del section["required_for_generation"]  # 칸 자체를 아직 안 건드렸다
+    return content
+
+
+def _index(document, key) -> int:
+    return next(i for i, s in enumerate(document["sections"]) if s["section_key"] == key)
+
+
+def _versions(session, ref) -> list[str]:
+    return list(
+        session.scalars(
+            select(TemplateProfileVersion.profile_version).where(
+                TemplateProfileVersion.profile_id == ref.profile_id
+            )
+        )
+    )
+
+
+def test_덜_채운_DRAFT_도_임시_저장하고_그대로_다시_연다(world):
+    repo, user, center = world["repo_a"], world["user_a"], world["a"]
+    content = _unfinished_content(repo, user)
+    ref = repo.create_draft(ApprovedTemplates(), FOCUS, content, actor_id=user.id)
+
+    draft = repo.get_draft(ref)
+    assert (draft.profile_ref, draft.parent_version, draft.revision) == (
+        TemplateProfileRef(ref.profile_id, "v1"),
+        None,
+        1,
+    )
+    # 빈 이름 · null · 빠진 칸까지 사용자가 둔 그대로다. 소유 · 버전 · 기반 Template 도 같이 온다.
+    assert draft.document == {
+        "profile_ref": {"profile_id": ref.profile_id, "profile_version": "v1"},
+        "institution_ref": str(center.id),
+        "base_template_ref": {
+            "template_id": FOCUS.template_id,
+            "template_version": FOCUS.template_version,
+        },
+        "classroom_ref": None,
+        **content,
+    }
+    safety = draft.document["sections"][_index(draft.document, "safety_education")]
+    assert "required_for_generation" not in safety
+    # 돌려준 문서를 고쳐도 저장된 것은 그대로다.
+    draft.document["sections"].clear()
+    assert repo.get_draft(ref).document["sections"] == content["sections"]
+
+    # 미완성 DRAFT 는 생성 경로 · 후보 · 포인터 어디에도 들어가지 않는다.
+    assert repo.get_profile(*_pair(ref)) is None
+    assert ref not in repo.list_ready()
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.set_default(ref, expected=None, actor_id=user.id)
+    assert _code(excinfo) == "NOT_READY"
+
+
+def test_DRAFT_는_같은_버전을_고치고_주지_않은_칸은_남긴다(world):
+    session, repo, user = world["session"], world["repo_a"], world["user_a"]
+    sections = _finished_content(repo, user)["sections"]
+    theme_only = [s for s in sections if s["section_key"] == "theme"]
+    ref = repo.create_draft(ApprovedTemplates(), FOCUS, {"sections": theme_only}, actor_id=user.id)
+    assert "selected_optional_keys" not in repo.get_draft(ref).document  # 안 준 칸은 안 만든다
+
+    # 고른 Optional 만 저장 — sections 는 안 줬으니 그대로다.
+    assert (
+        repo.save_draft(
+            ref, {"selected_optional_keys": ["focus"]}, expected_revision=1, actor_id=user.id
+        )
+        == 2
+    )
+    document = repo.get_draft(ref).document
+    assert (document["selected_optional_keys"], document["sections"]) == (["focus"], theme_only)
+
+    # 명시적으로 비운 칸은 비운다 — 안 준 것과 다르다.
+    assert (
+        repo.save_draft(ref, {"selected_optional_keys": []}, expected_revision=2, actor_id=user.id)
+        == 3
+    )
+    document = repo.get_draft(ref).document
+    assert (document["selected_optional_keys"], document["sections"]) == ([], theme_only)
+
+    # 몇 번을 저장해도 버전은 v1 하나다. 마지막 저장자가 남는다.
+    assert _versions(session, ref) == ["v1"]
+    row = session.scalar(
+        select(TemplateProfileVersion).where(TemplateProfileVersion.profile_id == ref.profile_id)
+    )
+    assert (row.status, row.revision, row.updated_by) == ("DRAFT", 3, user.id)
+
+
+def test_모양이_틀린_DRAFT_는_저장하지_않고_어디가_틀렸는지_알려준다(world):
+    session, repo, user = world["session"], world["repo_a"], world["user_a"]
+    ref = repo.create_draft(ApprovedTemplates(), FOCUS, {"sections": []}, actor_id=user.id)
+    cases = (
+        ({"sections": "theme"}, "sections"),
+        ({"sections": ["theme"]}, "sections[0]"),
+        ({"sections": [{"activated": "yes"}]}, "sections[0].activated"),
+        ({"sections": [{"role": "HEADER"}]}, "sections[0].role"),
+        ({"sections": [{"repeat_by": ["WEEK"]}]}, "sections[0].repeat_by"),
+        ({"sections": [{"order": "1"}]}, "sections[0].order"),
+        ({"sections": [{"order": True}]}, "sections[0].order"),
+        ({"sections": [{"color": "red"}]}, "sections[0].color"),
+        ({"selected_optional_keys": "focus"}, "selected_optional_keys"),
+        ({"title": "우리 원 양식"}, "title"),
+    )
+    for changes, path in cases:
+        with pytest.raises(TemplateProfileError) as excinfo:
+            repo.save_draft(ref, changes, expected_revision=1, actor_id=user.id)
+        assert _code(excinfo) == "INVALID"
+        assert [issue.path for issue in excinfo.value.issues] == [path]
+        with pytest.raises(TemplateProfileError) as excinfo:
+            repo.create_draft(ApprovedTemplates(), FOCUS, changes, actor_id=user.id)
+        assert _code(excinfo) == "INVALID"
+
+    assert repo.get_draft(ref).revision == 1
+    assert repo.get_draft(ref).document["sections"] == []
+    count = select(func.count()).where(TemplateProfileVersion.center_id == world["a"].id)
+    assert session.scalar(count) == 1  # 만들다 실패한 DRAFT 는 남지 않는다
+
+
+def test_READY_전환은_Core_검증을_통과해야_하고_실패하면_DRAFT_가_그대로다(world):
+    repo, user = world["repo_a"], world["user_a"]
+    source = _start(repo, user)
+    content = _unfinished_content(repo, user)
+    ref = repo.create_draft(ApprovedTemplates(), FOCUS, content, actor_id=user.id)
+    before = repo.get_draft(ref)
+
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.publish(ref, ApprovedTemplates(), expected_revision=1, actor_id=user.id)
+    assert _code(excinfo) == "INVALID"
+    outdoor, safety = _index(content, "outdoor_play"), _index(content, "safety_education")
+    assert {(i.path, i.section_key) for i in excinfo.value.issues} == {
+        (f"sections[{outdoor}]", "outdoor_play"),  # Core: 빈 이름
+        (f"sections[{safety}].required_for_generation", "safety_education"),  # 빠진 칸
+    }
+    core_issue = next(i for i in excinfo.value.issues if i.path == f"sections[{outdoor}]")
+    assert "display_label" in core_issue.message
+    assert repo.get_draft(ref) == before
+    assert repo.get_profile(*_pair(ref)) is None
+
+    # Section 은 다 맞아도 Profile 규칙(기본 Section 누락)은 Profile 단위로 알려준다.
+    finished = _finished_content(repo, user)
+    without_safety = [s for s in finished["sections"] if s["section_key"] != "safety_education"]
+    repo.save_draft(ref, {"sections": without_safety}, expected_revision=1, actor_id=user.id)
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.publish(ref, ApprovedTemplates(), expected_revision=2, actor_id=user.id)
+    [issue] = excinfo.value.issues
+    assert issue.path == "profile" and "safety_education" in issue.message
+
+    # 다 채우면 READY 가 되고, Reference 기반 시작으로 만든 READY 와 같은 Profile 이다.
+    repo.save_draft(ref, finished, expected_revision=2, actor_id=user.id)
+    repo.publish(ref, ApprovedTemplates(), expected_revision=3, actor_id=user.id)
+    published = repo.get_profile(*_pair(ref))
+    assert replace(published, profile_ref=source) == repo.get_profile(*_pair(source))
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.get_draft(ref)
+    assert _code(excinfo) == "NOT_DRAFT"
+
+
+def test_승인_대기_Template_으로는_DRAFT_를_만들지도_확정하지도_못한다(world):
+    """12.8: v0.1.1 · v0.2.1 은 PENDING 그대로다. DRAFT 를 거쳐 돌아가는 길도 막는다."""
+    repo, user = world["repo_a"], world["user_a"]
+    content = _finished_content(repo, user)
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.create_draft(JsonMonthlyTemplateRepository(), FOCUS, content, actor_id=user.id)
+    assert _code(excinfo) == "TEMPLATE_NOT_APPROVED"
+
+    ref = repo.create_draft(ApprovedTemplates(), FOCUS, content, actor_id=user.id)
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.publish(ref, JsonMonthlyTemplateRepository(), expected_revision=1, actor_id=user.id)
+    assert _code(excinfo) == "TEMPLATE_NOT_APPROVED"
+    assert repo.get_draft(ref).revision == 1
+    assert repo.get_profile(*_pair(ref)) is None
+
+
+def test_남이_먼저_저장한_DRAFT_는_오래된_화면으로_덮어쓰지_않는다(world):
+    """A 가 열고 → B 가 고쳐 저장하고 → A 가 옛 화면 그대로 저장한다."""
+    repo, user = world["repo_a"], world["user_a"]
+    ref = repo.create_draft(
+        ApprovedTemplates(), FOCUS, _finished_content(repo, user), actor_id=user.id
+    )
+    seen_by_a = repo.get_draft(ref)
+    seen_by_b = repo.get_draft(ref)
+
+    b_sections = _relabel(seen_by_b.document, "theme", "B 가 고친 주제")
+    repo.save_draft(
+        ref, {"sections": b_sections}, expected_revision=seen_by_b.revision, actor_id=user.id
+    )
+    a_sections = _relabel(seen_by_a.document, "theme", "A 가 고친 주제")
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.save_draft(
+            ref, {"sections": a_sections}, expected_revision=seen_by_a.revision, actor_id=user.id
+        )
+    assert _code(excinfo) == "CONFLICT"
+    # A 는 B 가 고친 것을 보지 않고 확정하지도 못한다.
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.publish(
+            ref, ApprovedTemplates(), expected_revision=seen_by_a.revision, actor_id=user.id
+        )
+    assert _code(excinfo) == "CONFLICT"
+    assert repo.get_draft(ref).document["sections"] == b_sections
+
+
+def test_확정하는_동안_같은_DRAFT_를_저장하면_기다렸다가_거절된다(_schema):
+    """서로 다른 연결. 확정이 행을 잡고 있는 동안 저장이 들어오면 기다리고, 확정이 끝나면
+    READY 를 보고 NOT_DRAFT 다 — 확정된 본문을 DRAFT 내용으로 덮어쓰지 않는다."""
+    with Session(engine) as session:
+        center = _center(session, "DRAFT 동시성 테스트원")
+        user = _user(session, center, "draft-concurrency@example.com")
+        repo = PostgresTemplateProfileRepository(session, center_id=center.id)
+        content = _finished_content(repo, user)
+        ref = repo.create_draft(ApprovedTemplates(), FOCUS, content, actor_id=user.id)
+        session.commit()
+        center_id, user_id = center.id, user.id
+
+    def save():
+        with Session(engine) as session:
+            try:
+                PostgresTemplateProfileRepository(session, center_id=center_id).save_draft(
+                    ref, {"sections": []}, expected_revision=1, actor_id=user_id
+                )
+                session.commit()
+                return "SAVED"
+            except TemplateProfileError as error:
+                return error.code
+
+    publisher = Session(engine)
+    try:
+        PostgresTemplateProfileRepository(publisher, center_id=center_id).publish(
+            ref, ApprovedTemplates(), expected_revision=1, actor_id=user_id
+        )  # 행을 잡은 채 아직 커밋하지 않았다
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            saved = executor.submit(save)
+            with engine.connect() as watcher:
+                for _ in range(200):
+                    waiting = watcher.scalar(
+                        text("SELECT count(*) FROM pg_locks WHERE NOT granted")
+                    )
+                    watcher.rollback()
+                    if waiting:
+                        break
+                    time.sleep(0.05)
+                else:
+                    pytest.fail("저장 요청이 확정의 행 잠금을 기다리지 않았다")
+            publisher.commit()
+            assert saved.result(timeout=10) == "NOT_DRAFT"
+
+        with Session(engine) as session:
+            repo = PostgresTemplateProfileRepository(session, center_id=center_id)
+            assert repo.get_profile(*_pair(ref)).sections  # 확정된 본문 그대로
+    finally:
+        publisher.close()
+        with Session(engine) as session:
+            session.execute(
+                delete(TemplateProfileVersion).where(TemplateProfileVersion.center_id == center_id)
+            )
             session.execute(delete(User).where(User.id == user_id))
             session.execute(delete(Center).where(Center.id == center_id))
             session.commit()

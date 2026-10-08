@@ -13,14 +13,21 @@ Core 는 정확한 `(profile_id, profile_version)` 하나를 받기만 한다.
 그 사이 누가 바꿨으면 덮어쓰지 않고 CONFLICT 다 — 한 문장(INSERT … ON CONFLICT DO NOTHING /
 UPDATE … WHERE 현재값)이라 동시 요청도 둘 중 하나만 통과한다.
 
+**DRAFT 는 편집 문서다** (M2-B). 덜 채운 상태도 임시 저장한다 — 저장 때는 모양 · 타입 · 소유만
+본다. Core `TemplateProfile` 검증은 READY 로 바꿀 때(`publish`) 한다. 저장은 사용자가 요청할 때만
+한다(자동 저장 없음). DRAFT 저장 · 확정은 본 `revision` 이 현재와 다르면 CONFLICT 다.
+
 커밋은 호출자가 한다. 보관 검사와 상태 변경이 한 transaction 안에 있어야 하기 때문이다.
 """
 
 from __future__ import annotations
 
+import copy
+import typing
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from enum import Enum
 
 from psycopg.errors import UniqueViolation
 from sqlalchemy import delete, exists, func, literal_column, select, update
@@ -29,7 +36,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ssuksak.planning import InvalidDomainValueError, TemplateProfileRef
 from ssuksak.planning.application.ports import MonthlyTemplateRepository
-from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.monthly_template import (
+    SemanticVariant,
+    TemplateRef,
+    TemplateSection,
+)
 from ssuksak.planning.domain.monthly_template_profile import (
     DEFAULT_PROFILE_SECTION_KEYS,
     TemplateProfile,
@@ -54,17 +65,32 @@ SELECTION_REQUIRED = "SELECTION_REQUIRED"
 # Template A 는 옛 이름 `habits` 로 적혀 있다. Profile 은 `basic_habit` 으로 바꿔 담는다(Core 별칭).
 _TEMPLATE_KEY = {"basic_habit": "habits"}
 
+# DRAFT 편집 문서에서 사용자가 고치는 칸. 나머지(profile_ref · institution_ref · base_template_ref ·
+# classroom_ref)는 repository 가 정하고 바꾸지 못한다.
+_EDITABLE = ("selected_optional_keys", "sections")
+_SECTION_FIELDS = typing.get_type_hints(TemplateSection)
+
+
+@dataclass(frozen=True)
+class Issue:
+    """INVALID 의 위치. `path` 예: `sections[2].display_label` · `sections[2]` · `profile`."""
+
+    path: str
+    message: str
+    section_key: str | None = None
+
 
 class TemplateProfileError(Exception):
     """`code` 는 테스트가 보는 의미 식별자다. 공개 HTTP 오류 코드는 API PR 이 정한다.
 
     NOT_FOUND · NOT_DRAFT · NOT_READY · CLASSROOM_SCOPED · IN_USE · CONFLICT ·
-    TEMPLATE_NOT_APPROVED · INVALID
+    TEMPLATE_NOT_APPROVED · INVALID. INVALID 는 `issues` 에 어디가 문제인지 담는다.
     """
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, issues: tuple[Issue, ...] = ()):
         super().__init__(message)
         self.code = code
+        self.issues = issues
 
 
 @dataclass(frozen=True)
@@ -74,6 +100,16 @@ class Resolution:
     source: str
     profile_ref: TemplateProfileRef | None = None
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class Draft:
+    """다시 불러온 DRAFT. `document` 는 저장한 편집 문서 그대로다(빈 칸 · 빠진 칸 포함)."""
+
+    profile_ref: TemplateProfileRef
+    parent_version: str | None
+    revision: int
+    document: dict
 
 
 def _new_profile_id() -> str:
@@ -127,13 +163,7 @@ class PostgresTemplateProfileRepository:
         시작하지 않는다. 우회 경로를 두지 않는다.
         기본 포인터는 걸지 않는다 — 사용자가 동의할 때 `set_default` 를 따로 부른다.
         """
-        template = templates.get_template(template_ref.template_id, template_ref.template_version)
-        if template is None:
-            raise TemplateProfileError("NOT_FOUND", f"Template {template_ref} 가 없다")
-        if not template.is_active:
-            raise TemplateProfileError(
-                "TEMPLATE_NOT_APPROVED", f"Template {template_ref} 는 사람 승인 전이다"
-            )
+        template = _approved_template(templates, template_ref)
         wanted = DEFAULT_PROFILE_SECTION_KEYS | set(selected_optional_keys)
         sections = []
         for key in sorted(wanted):
@@ -162,8 +192,39 @@ class PostgresTemplateProfileRepository:
             )
         except InvalidDomainValueError as error:
             raise TemplateProfileError("INVALID", str(error)) from error
-        self._insert(profile, status="READY", parent_version=None, actor_id=actor_id)
+        self._insert(
+            profile.profile_ref,
+            to_jsonable(profile),
+            status="READY",
+            parent_version=None,
+            actor_id=actor_id,
+        )
         return profile.profile_ref
+
+    def create_draft(
+        self,
+        templates: MonthlyTemplateRepository,
+        template_ref: TemplateRef,
+        content: Mapping,
+        *,
+        actor_id: int,
+    ) -> TemplateProfileRef:
+        """처음부터 쓰는 DRAFT v1. 덜 채운 `content` 도 저장한다.
+
+        기반 Template 승인은 여기서도 본다 — 승인 대기 Template 으로 DRAFT 를 만들어 확정하는
+        우회 경로가 되지 않게.
+        """
+        template = _approved_template(templates, template_ref)
+        ref = TemplateProfileRef(self._new_profile_id(), "v1")
+        document = {
+            "profile_ref": to_jsonable(ref),
+            "institution_ref": str(self._center_id),
+            "base_template_ref": to_jsonable(template.template_ref),
+            "classroom_ref": None,
+            **_checked_content(content),
+        }
+        self._insert(ref, document, status="DRAFT", parent_version=None, actor_id=actor_id)
+        return ref
 
     def derive_draft(self, ready_ref: TemplateProfileRef, *, actor_id: int) -> TemplateProfileRef:
         """READY 를 고치려면 새 DRAFT 버전을 만든다. READY 는 그대로 남는다."""
@@ -178,30 +239,55 @@ class PostgresTemplateProfileRepository:
         )
         # 버전 행은 지우지 않으므로 개수가 곧 마지막 번호다. 동시 파생은 유일 제약이 막는다.
         new_ref = TemplateProfileRef(row.profile_id, f"v{family + 1}")
-        profile = replace(from_jsonable(TemplateProfile, row.body), profile_ref=new_ref)
-        self._insert(profile, status="DRAFT", parent_version=row.profile_version, actor_id=actor_id)
+        document = {**row.body, "profile_ref": to_jsonable(new_ref)}
+        self._insert(
+            new_ref, document, status="DRAFT", parent_version=row.profile_version, actor_id=actor_id
+        )
         return new_ref
 
-    def update_draft(self, profile: TemplateProfile) -> None:
-        """DRAFT 만 고칠 수 있다. READY · ARCHIVED 는 불변이다.
+    def get_draft(self, ref: TemplateProfileRef) -> Draft:
+        """편집 화면이 다시 여는 DRAFT. READY · ARCHIVED 는 `get_profile` 로 읽는다."""
+        row = self._draft(ref)
+        return Draft(ref, row.parent_version, row.revision, copy.deepcopy(row.body))
 
-        기반 Template 은 바꾸지 못한다 — 승인 검사는 Reference 기반 시작에서 한 번 했다.
+    def save_draft(
+        self,
+        ref: TemplateProfileRef,
+        changes: Mapping,
+        *,
+        expected_revision: int,
+        actor_id: int,
+    ) -> int:
+        """수동 임시 저장. 같은 버전을 고치고 새 revision 을 돌려준다.
+
+        `changes` 에 **없는** 편집 칸은 그대로 둔다. 있는 칸은 통째로 바꾼다 — `[]` 는 비운 것이다.
+        Section 안의 빈 칸 · 빠진 칸도 그대로 저장한다. 완성 여부는 `publish` 가 본다.
         """
-        self._check_owned_shape(profile)
-        row = self._version(profile.profile_ref, lock=True)
-        if row.status != "DRAFT":
-            raise TemplateProfileError("NOT_DRAFT", f"{profile.profile_ref} 는 고칠 수 없다")
-        if to_jsonable(profile.base_template_ref) != row.body["base_template_ref"]:
-            raise TemplateProfileError("INVALID", "DRAFT 의 기반 Template 은 바꿀 수 없다")
-        row.body = to_jsonable(profile)
+        row = self._draft(ref, lock=True, expected_revision=expected_revision)
+        row.body = {**row.body, **_checked_content(changes)}
+        row.revision += 1
+        row.updated_by = actor_id
         self._session.flush()
+        return row.revision
 
-    def publish(self, draft_ref: TemplateProfileRef) -> None:
-        """DRAFT → READY. 본문은 저장할 때 이미 Core 검증을 통과했다."""
-        row = self._version(draft_ref, lock=True)
-        if row.status != "DRAFT":
-            raise TemplateProfileError("NOT_DRAFT", f"{draft_ref} 는 DRAFT 가 아니다")
+    def publish(
+        self,
+        draft_ref: TemplateProfileRef,
+        templates: MonthlyTemplateRepository,
+        *,
+        expected_revision: int,
+        actor_id: int,
+    ) -> None:
+        """DRAFT → READY. 여기서 Core 전체 검증과 기반 Template 승인을 본다.
+
+        실패하면 아무것도 바꾸지 않는다 — DRAFT 는 그대로 남는다. 행을 FOR UPDATE 로 잡으므로
+        확정하는 동안 같은 DRAFT 를 다른 요청이 저장하거나 확정하지 못한다.
+        """
+        row = self._draft(draft_ref, lock=True, expected_revision=expected_revision)
+        _approved_template(templates, from_jsonable(TemplateRef, row.body["base_template_ref"]))
+        row.body = to_jsonable(_complete_profile(row.body))
         row.status = "READY"
+        row.updated_by = actor_id
         self._session.flush()
 
     def archive(self, ref: TemplateProfileRef) -> None:
@@ -336,6 +422,16 @@ class PostgresTemplateProfileRepository:
             raise TemplateProfileError("NOT_FOUND", f"{ref} 가 없다")
         return row
 
+    def _draft(
+        self, ref: TemplateProfileRef, *, lock: bool = False, expected_revision: int | None = None
+    ) -> TemplateProfileVersion:
+        row = self._version(ref, lock=lock)
+        if row.status != "DRAFT":
+            raise TemplateProfileError("NOT_DRAFT", f"{ref} 는 DRAFT 가 아니다")
+        if expected_revision is not None and row.revision != expected_revision:
+            raise TemplateProfileError("CONFLICT", f"{ref} 가 그 사이 저장됐다")
+        return row
+
     @staticmethod
     def _target_problem(row: TemplateProfileVersion | None) -> str | None:
         """포인터 대상 조건(C2.6): 존재 · READY · classroom_ref 없음. 원 · 종류는 쿼리가 본다."""
@@ -383,30 +479,24 @@ class PostgresTemplateProfileRepository:
         if classroom is None or classroom.center_id != self._center_id:
             raise TemplateProfileError("NOT_FOUND", "반이 없다")
 
-    def _check_owned_shape(self, profile: TemplateProfile) -> None:
-        if profile.institution_ref != str(self._center_id):
-            raise TemplateProfileError("NOT_FOUND", "다른 원의 Profile 이다")
-        # Contract 2 는 반 전용 Profile 을 쓰지 않는다(C2-G). 포인터 대상 조건 ④.
-        if profile.classroom_ref is not None:
-            raise TemplateProfileError("CLASSROOM_SCOPED", "P0 Profile 은 classroom_ref 가 없다")
-
     def _insert(
         self,
-        profile: TemplateProfile,
+        ref: TemplateProfileRef,
+        body: dict,
         *,
         status: str,
         parent_version: str | None,
         actor_id: int,
     ) -> None:
-        self._check_owned_shape(profile)
+        """`body` 의 원은 이 원, 반은 null 로 부르는 쪽이 만든다(C2-G — 반 전용 Profile 없음)."""
         row = TemplateProfileVersion(
             center_id=self._center_id,
             doc_kind=DOC_KIND,
-            profile_id=profile.profile_ref.profile_id,
-            profile_version=profile.profile_ref.profile_version,
+            profile_id=ref.profile_id,
+            profile_version=ref.profile_version,
             status=status,
             parent_version=parent_version,
-            body=to_jsonable(profile),
+            body=body,
             created_by=actor_id,
         )
         try:
@@ -415,9 +505,86 @@ class PostgresTemplateProfileRepository:
         except IntegrityError as error:
             if not isinstance(error.orig, UniqueViolation):
                 raise
-            raise TemplateProfileError(
-                "CONFLICT", f"{profile.profile_ref} 버전이 이미 있다"
-            ) from error
+            raise TemplateProfileError("CONFLICT", f"{ref} 버전이 이미 있다") from error
+
+
+def _approved_template(templates: MonthlyTemplateRepository, template_ref: TemplateRef):
+    """기반 Template 이 있고 사람 승인을 받았나 (결정 문서 12.8). 우회 경로를 두지 않는다."""
+    template = templates.get_template(template_ref.template_id, template_ref.template_version)
+    if template is None:
+        raise TemplateProfileError("NOT_FOUND", f"Template {template_ref} 가 없다")
+    if not template.is_active:
+        raise TemplateProfileError(
+            "TEMPLATE_NOT_APPROVED", f"Template {template_ref} 는 사람 승인 전이다"
+        )
+    return template
+
+
+def _checked_content(content: Mapping) -> dict:
+    """DRAFT 저장 검증 — 모양과 타입만 본다. 비었거나 덜 채운 것은 거절하지 않는다(M2-B D-1).
+
+    null 은 「비운 칸」이라 어느 Section 칸에나 둘 수 있다. 값이 있으면 그 칸의 타입이어야 한다.
+    """
+    issues = [Issue(key, "고칠 수 없는 칸이다") for key in content if key not in _EDITABLE]
+    keys = content.get("selected_optional_keys", [])
+    if not isinstance(keys, list) or not all(isinstance(key, str) for key in keys):
+        issues.append(Issue("selected_optional_keys", "문자열 목록이어야 한다"))
+    sections = content.get("sections", [])
+    if not isinstance(sections, list):
+        issues.append(Issue("sections", "목록이어야 한다"))
+        sections = []
+    for index, section in enumerate(sections):
+        if not isinstance(section, dict):
+            issues.append(Issue(f"sections[{index}]", "객체여야 한다"))
+            continue
+        issues.extend(
+            Issue(f"sections[{index}].{name}", "모르는 칸이거나 타입이 틀렸다", _key(section))
+            for name, value in section.items()
+            if name not in _SECTION_FIELDS or not _fits(_SECTION_FIELDS[name], value)
+        )
+    if issues:
+        raise TemplateProfileError("INVALID", "DRAFT 로 저장할 수 없는 모양이다", tuple(issues))
+    return copy.deepcopy(dict(content))
+
+
+def _fits(hint, value) -> bool:
+    if value is None:
+        return True
+    hint = next((arg for arg in typing.get_args(hint) if arg is not type(None)), hint)
+    if issubclass(hint, Enum):
+        return value in [member.value for member in hint]  # list 라 dict 값도 hash 없이 비교한다
+    if hint in (bool, int):
+        return type(value) is hint  # bool 은 int 이기도 하다
+    return isinstance(value, hint)
+
+
+def _complete_profile(document: dict) -> TemplateProfile:
+    """READY 검증 — 편집 문서 → Core `TemplateProfile`. Core 검증을 그대로 쓰고 완화하지 않는다.
+
+    Section 을 하나씩 만들어 어느 Section · 칸이 문제인지 모은다. 빠진 칸은 Core 기본값으로
+    채우지 않고 미완성으로 본다.
+    """
+    issues = [Issue(key, "빈 칸이다") for key in _EDITABLE if key not in document]
+    for index, section in enumerate(document.get("sections", [])):
+        path, key = f"sections[{index}]", _key(section)
+        missing = [name for name in _SECTION_FIELDS if name not in section]
+        issues.extend(Issue(f"{path}.{name}", "빈 칸이다", key) for name in missing)
+        if not missing:
+            try:
+                from_jsonable(TemplateSection, section)
+            except (ValueError, TypeError) as error:  # InvalidDomainValueError 는 ValueError 다
+                issues.append(Issue(path, str(error), key))
+    if not issues:
+        try:
+            return from_jsonable(TemplateProfile, document)
+        except (ValueError, TypeError) as error:
+            issues.append(Issue("profile", str(error)))
+    raise TemplateProfileError("INVALID", "READY 로 바꿀 수 없다", tuple(issues))
+
+
+def _key(section: dict) -> str | None:
+    key = section.get("section_key")
+    return key if isinstance(key, str) else None
 
 
 def _split(ref: TemplateProfileRef) -> tuple[str, str]:

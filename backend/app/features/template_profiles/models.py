@@ -11,8 +11,11 @@ Profile 행에 적으면 기본을 바꿀 때마다 READY 를 고치게 된다. 
 (`uq_template_profiles_owner_ref`). 「READY 인가」 「classroom_ref 가 비었나」는 상태라 FK 로
 못 건다 — repository 가 본다.
 
-본문은 plans 와 같은 방식이다 — Core `TemplateProfile` 전체를 `body` JSONB 에 담고 조회에
-쓰는 값만 칸으로 꺼낸다. 꺼낸 칸은 body 에서 유도한다.
+본문은 plans 와 같은 방식이다 — READY · ARCHIVED 는 Core `TemplateProfile` 전체를 `body` JSONB 에
+담고 조회에 쓰는 값만 칸으로 꺼낸다. 꺼낸 칸은 body 에서 유도한다.
+
+**DRAFT 의 body 는 편집 문서다** (M2-B, 결정 문서 C2.0 권장). 같은 모양이지만 칸이 비거나 덜
+채워져 있을 수 있다. Core 검증은 READY 로 바꿀 때 한다.
 """
 
 from datetime import datetime
@@ -71,6 +74,12 @@ class TemplateProfileVersion(Base):
         JSONB, comment="Core TemplateProfile 전체. 이것이 원본이고 위 칸들은 여기서 유도한다"
     )
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), comment="이 버전을 만든 계정")
+    revision: Mapped[int] = mapped_column(
+        default=1, server_default="1", comment="DRAFT 를 저장할 때마다 +1. 본 것과 다르면 충돌"
+    )
+    updated_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), comment="DRAFT 를 마지막으로 저장하거나 확정한 계정"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
