@@ -9,7 +9,7 @@ from typing import Any
 from ..domain.errors import InvalidDomainValueError
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
-from ..domain.monthly_template import DisplayMode
+from ..domain.monthly_template import RepeatBy
 from .contracts import (
     MonthlyCellPlanningRequest,
     MonthlyCellProposal,
@@ -187,13 +187,13 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
         s for s in generation_target_sections(request.template_snapshot) if s.section_key in allowed
     ]
     month = _section_schema(
-        {s.section_key for s in targets if s.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY},
+        {s.section_key for s in targets if s.repeat_by is RepeatBy.NONE},
         request,
         request.reference_section_keys,
         pairs,
     )
     week = _section_schema(
-        {s.section_key for s in targets if s.display_mode is DisplayMode.WEEKLY_CELLS},
+        {s.section_key for s in targets if s.repeat_by is RepeatBy.WEEK},
         request,
         request.reference_section_keys,
         pairs,

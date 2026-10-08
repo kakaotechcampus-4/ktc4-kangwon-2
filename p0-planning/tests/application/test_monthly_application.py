@@ -52,8 +52,8 @@ from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
     EmptyValuePolicy,
+    RepeatBy,
     SectionRole,
     SemanticVariant,
     TemplateRef,
@@ -111,10 +111,10 @@ PARENT_PLAN_ID = PlanId("yearly_plan_001")
 TARGET_MONTH = YearMonth(2026, 9)
 TARGET_THEME_ID = "yr_theme_korea_and_world_cultures"
 TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
 )
 RULE_TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
 )
 PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
 RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
@@ -271,7 +271,7 @@ class RequestAwareMonthlyLlm:
         for section in request.template_snapshot.sections:
             if section.role is SectionRole.AXIS:
                 continue
-            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY:
+            if section.repeat_by is RepeatBy.NONE:
                 if section.section_key == "theme":
                     month_sections.append(
                         {
@@ -294,7 +294,7 @@ class RequestAwareMonthlyLlm:
                             ],
                         }
                     )
-            elif section.display_mode is DisplayMode.WEEKLY_CELLS:
+            elif section.repeat_by is RepeatBy.WEEK:
                 weekly_keys.append(section.section_key)
         payload = {
             "target_month": request.target_month.value,
@@ -441,7 +441,7 @@ def _institution_input_profile(
         template.section(section_key),
         activated=True,
         display_label={"event_schedule": "Events", "drill": "Drill"}[section_key],
-        display_mode=DisplayMode.WEEKLY_CELLS,
+        repeat_by=RepeatBy.WEEK,
         visible=True,
     )
     return replace(
@@ -2100,7 +2100,7 @@ def _policy_pending_profile(template_repository, section_key: str) -> TemplatePr
         section_key=section_key,
         role=SectionRole.CONTENT,
         activated=True,
-        display_mode=DisplayMode.WEEKLY_CELLS,
+        repeat_by=RepeatBy.WEEK,
         empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
         display_label="Institution Section",
         order=max(item.order for item in base.sections) + 1,

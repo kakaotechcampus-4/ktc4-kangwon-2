@@ -28,11 +28,11 @@
           "week_id": null
         }
       ],
-      "display_mode": "MONTHLY_MERGED_SUMMARY",
+      "repeat_by": "NONE",
       "key": "theme",
       "role": "CONTENT"
     },
-    {"cells": [], "display_mode": null, "key": "week_axis", "role": "AXIS"},
+    {"cells": [], "repeat_by": null, "key": "week_axis", "role": "AXIS"},
     {
       "cells": [
         {
@@ -81,7 +81,7 @@
           "state": "FILLED", "value": "동대문 놀이", "week_id": "2026-09-W5"
         }
       ],
-      "display_mode": "WEEKLY_CELLS",
+      "repeat_by": "WEEK",
       "key": "outdoor_play",
       "role": "CONTENT"
     },
@@ -118,7 +118,7 @@
           "state": "EMPTY_UNRESOLVED", "value": "", "week_id": "2026-09-W5"
         }
       ],
-      "display_mode": "WEEKLY_CELLS",
+      "repeat_by": "WEEK",
       "key": "safety_education",
       "role": "CONTENT"
     }
@@ -126,7 +126,7 @@
   "status": "DRAFT",
   "target_ages": [3, 4],
   "target_month": "2026-09",
-  "template": "ssuksak.monthly-template-a/monthly-template-a-v0.1.0",
+  "template": "ssuksak.monthly-template-a/monthly-template-a-v0.1.1",
   "verification": {"executed_rules": [{"rule_id": "monthly.activity.supported_ages", "rule_version": "v2"}], "findings": [], "source_refs": [{"source_id": "ssuksak.outdoor-activity-reference", "source_version": "activity-reference-v0.2.1"}], "targets_plan": true},
   "weeks": [
     {"active": true, "end": "2026-09-04", "start": "2026-08-31", "week_id": "2026-09-W1"},

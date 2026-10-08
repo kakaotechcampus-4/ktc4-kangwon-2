@@ -18,7 +18,7 @@ from ssuksak.planning.application.ports import (
 )
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
+    RepeatBy,
     SectionCategory,
     SemanticVariant,
 )
@@ -47,8 +47,8 @@ def test_activity_repository_resolves_exact_versions_only():
 
 def test_template_versions_have_expected_active_sections():
     repository = JsonMonthlyTemplateRepository()
-    v1 = repository.get_template("ssuksak.monthly-template-a", "monthly-template-a-v0.1.0")
-    v2 = repository.get_template("ssuksak.monthly-template-a", "monthly-template-a-v0.2.0")
+    v1 = repository.get_template("ssuksak.monthly-template-a", "monthly-template-a-v0.1.1")
+    v2 = repository.get_template("ssuksak.monthly-template-a", "monthly-template-a-v0.2.1")
 
     assert v1 is not None and v2 is not None
     assert tuple(item.section_key for item in v1.activated_sections) == (
@@ -58,7 +58,7 @@ def test_template_versions_have_expected_active_sections():
         "theme", "week_axis", "outdoor_play", "safety_education", "focus"
     )
     assert v1.section("focus").activated is False
-    assert v2.section("focus").display_mode is DisplayMode.WEEKLY_CELLS
+    assert v2.section("focus").repeat_by is RepeatBy.WEEK
     assert tuple(item.order for item in v1.sections) == tuple(range(len(v1.sections)))
     assert tuple(item.order for item in v2.sections) == tuple(range(len(v2.sections)))
     assert all(item.display_label == item.section_key for item in v1.sections)
@@ -113,7 +113,7 @@ def test_week_axis_can_remain_required_while_hidden():
 
 def test_template_section_rejects_invalid_presentation_contracts():
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     )
     focus = template.section("focus")
     theme = template.section("theme")
@@ -138,7 +138,7 @@ def test_template_section_rejects_invalid_presentation_contracts():
 
 def test_monthly_template_rejects_duplicate_section_order():
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
     )
     sections = (
         replace(template.sections[0], order=0),
@@ -152,19 +152,21 @@ def test_monthly_template_rejects_duplicate_section_order():
 
 def test_template_resolver_counts_structure_without_application_dto():
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
     )
-    resolved = resolve_sections(template)
+    # OD-N11 (A): a test-only approved Domain object. The data file itself stays PENDING.
+    resolved = resolve_sections(replace(template, runtime_active=True))
 
     assert expected_cell_count(resolved, 5) == 11
 
 
 def test_template_resolver_rejects_unapproved_template():
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
     )
+    assert not template.is_active  # the real file awaits human review
     with pytest.raises(Exception, match="HUMAN_APPROVED"):
-        resolve_sections(replace(template, runtime_active=False))
+        resolve_sections(template)
 
 
 def test_template_schema_does_not_accept_manual_runtime_activation():

@@ -66,7 +66,7 @@ from ssuksak.planning.context.builder import ContextPacketBuilder
 from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
+    RepeatBy,
     SectionRole,
     SemanticVariant,
     TemplateRef,
@@ -96,10 +96,10 @@ ACTIVITY_CATALOG = ActivityCatalogSelector(
     "ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1"
 )
 RULE_TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
 )
 LLM_TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
 )
 RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
 LLM_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
@@ -265,7 +265,7 @@ class RequestAwareMonthlyLlm:
         for section in request.template_snapshot.sections:
             if section.role is SectionRole.AXIS:
                 continue
-            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY:
+            if section.repeat_by is RepeatBy.NONE:
                 if section.section_key == "theme":
                     month_sections.append(
                         {
@@ -288,7 +288,7 @@ class RequestAwareMonthlyLlm:
                             ],
                         }
                     )
-            elif section.display_mode is DisplayMode.WEEKLY_CELLS:
+            elif section.repeat_by is RepeatBy.WEEK:
                 weekly_keys.append(section.section_key)
         weeks = []
         for index, week_id in enumerate(request.expected_week_ids, start=1):

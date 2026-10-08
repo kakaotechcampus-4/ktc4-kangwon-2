@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
-from ..domain.monthly_template import DisplayMode
+from ..domain.monthly_template import RepeatBy
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
@@ -330,7 +330,7 @@ def _month_snapshot(
     weekly_sections = tuple(
         section
         for section in plan.sections
-        if section.display_mode is DisplayMode.WEEKLY_CELLS
+        if section.repeat_by is RepeatBy.WEEK
     )
     return tuple(
         MonthlyCellSnapshot(

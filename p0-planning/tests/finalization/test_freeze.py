@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,13 @@ from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
     JsonSafetyLegalRuleRepository,
 )
+from ssuksak.adapters.monthly_template_schema import (
+    MonthlyTemplateSchemaError,
+    parse_monthly_template_payload,
+)
 from ssuksak.planning.domain.theme_reference import ActivationStatus
+from ssuksak.planning.rules.errors import MonthlyRuleError
+from ssuksak.planning.rules.monthly_template_resolver import resolve_sections
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
@@ -38,6 +45,12 @@ FROZEN_ARTIFACTS = {
     ),
     "templates/monthly_template_a_v0_2_0.json": (
         "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
+    ),
+    "templates/monthly_template_a_v0_1_1.json": (
+        "26509d5fb4986ed66e90e9003cb88ad5a1c21f3f319b6d0c7e1b65c6ec152166"
+    ),
+    "templates/monthly_template_a_v0_2_1.json": (
+        "13e2f48db27f356db5acaaa6e2649c82abdc375402b37433f2e5b841eb77ace7"
     ),
     "rules/safety_education_legal_v1.json": (
         "bd5c04864eb4eca66e51c24d58224723dbb401ead1b72f5e3b09d3a32057b3e9"
@@ -100,10 +113,26 @@ def test_activity_reference_exact_versions_and_approval_are_frozen():
 def test_template_exact_versions_and_approval_are_frozen():
     repository = JsonMonthlyTemplateRepository()
 
-    for version in ("monthly-template-a-v0.1.0", "monthly-template-a-v0.2.0"):
+    # TP-21 republished files await a human review: registered, but never active (CLAUDE.md §8).
+    for version in ("monthly-template-a-v0.1.1", "monthly-template-a-v0.2.1"):
         template = repository.get_template("ssuksak.monthly-template-a", version)
         assert template is not None
-        assert template.is_active
+        assert not template.is_active
+        with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
+            resolve_sections(template)
+    # TP-21: the display_mode-era files stay frozen above as history but are not served.
+    for version in ("monthly-template-a-v0.1.0", "monthly-template-a-v0.2.0"):
+        assert repository.get_template("ssuksak.monthly-template-a", version) is None
+
+
+@pytest.mark.parametrize(
+    "legacy", ["templates/monthly_template_a.json", "templates/monthly_template_a_v0_2_0.json"]
+)
+def test_display_mode_template_files_are_rejected_not_translated(legacy):
+    payload = json.loads((DATA / legacy).read_text(encoding="utf-8"))
+
+    with pytest.raises(MonthlyTemplateSchemaError, match="repeat_by"):
+        parse_monthly_template_payload(payload)
 
 
 def test_safety_reference_exact_version_and_six_categories_are_frozen():

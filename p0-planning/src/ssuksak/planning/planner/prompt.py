@@ -7,7 +7,7 @@ import json
 
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
-from ..domain.monthly_template import DisplayMode, TemplateSection
+from ..domain.monthly_template import RepeatBy, TemplateSection
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
@@ -29,7 +29,7 @@ SYSTEM_PROMPT = """You propose values for one monthly plan Template snapshot.
 Use only the supplied Context Packet and generation_schema.
 Do not add, remove, relabel, reorder, or reinterpret Template sections.
 Return content only for canonical section_key addresses in response_contract.
-Do not return display_label, order, semantic_variant, category, display_mode,
+Do not return display_label, order, semantic_variant, category, repeat_by,
 required_for_generation, or visible.
 Return the locked theme exactly with its supplied reference_id and text, and
 grounding_refs as []; its parent plan already grounds it.
@@ -252,7 +252,7 @@ def _generation_schema(
     for section, _ in generation_targets(packet, snapshot):
         placement = (
             "MONTH"
-            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+            if section.repeat_by is RepeatBy.NONE
             else "WEEK"
         )
         sections.append(

@@ -11,7 +11,7 @@ from ..domain.monthly_plan import (
     MonthlySection,
 )
 from ..domain.monthly_constraint import CellState
-from ..domain.monthly_template import DisplayMode, EmptyValuePolicy, SectionRole
+from ..domain.monthly_template import EmptyValuePolicy, RepeatBy, SectionRole
 from ..domain.monthly_template_profile import (
     INSTITUTION_INPUT_SECTION_KEYS,
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
@@ -307,7 +307,7 @@ class GenerateMonthlyPlan:
                 MonthlySection(
                     section_key=section.section_key,
                     role=section.role,
-                    display_mode=section.display_mode,
+                    repeat_by=section.repeat_by,
                     empty_value_policy=(
                         section.empty_value_policy
                         or EmptyValuePolicy.RENDER_EMPTY_CELL
@@ -410,7 +410,7 @@ class GenerateMonthlyPlan:
             return ()
         week_ids = (
             (None,)
-            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+            if section.repeat_by is RepeatBy.NONE
             else tuple(period.week_id for period in active_weeks)
         )
         cells = []

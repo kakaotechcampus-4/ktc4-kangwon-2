@@ -89,7 +89,7 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
     monthly_generated = monthly_result.plan
     assert monthly_generated.status is PlanStatus.DRAFT
     assert monthly_generated.template_ref.template_version == (
-        "monthly-template-a-v0.2.0"
+        "monthly-template-a-v0.2.1"
     )
     assert len(monthly_generated.active_week_periods) == 5
     assert monthly_result.context_packet_fingerprint
