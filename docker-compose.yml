@@ -94,3 +94,13 @@ volumes:
   pgdata:
   certbot-etc:
   certbot-www:
+
+# 대역을 못 박는다. 안 박으면 도커가 빈 곳을 골라 써서 사람마다 172.18 · 172.19 … 로 다르고,
+# 그러면 nginx 의 `allow` 에 적을 주소를 하나로 정할 수 없다. 172.16/12 전체를 여는 것과
+# 게이트웨이 하나만 여는 것의 차이다.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
