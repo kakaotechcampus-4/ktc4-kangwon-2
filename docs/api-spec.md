@@ -814,7 +814,7 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 ## 9. 7주차 예정 — 계약 안 씀
 
 ```
-POST   /api/plans/monthly                 월간
+POST   /api/plans/monthly                 월간 — §9-1 (계약 확정 · 구현 전)
 PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시
 GET    /api/plans/{id}/export/hwp         내보내기
@@ -882,6 +882,265 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 
 **LLM 으로 나가는 자유 입력 필드(계획안 생성 메모 등)도 `shared/childCode` 치환 대상이다.**
 치환 실패 시 호출하지 않고 에러를 낸다.
+
+---
+
+## 9-1. 월간계획안 생성 · 조회 — `POST /api/plans/monthly` · `GET /api/plans/monthly/{id}` · `GET /api/plans/monthly?class_id=`
+
+> **상태: 계약 확정 / 구현 전 (M4).** 결정은 결정 문서 12.4 · 12.5 · 12.6 과 M4-0 결정
+> D-M4-01 ~ 04 다. 칸 편집 · 칸 재생성 · 확정과 `revision` 409 는 M5(§9 목록)다.
+
+### 생성 — `POST /api/plans/monthly`
+
+**Request**
+
+```json
+{ "class_id": 1, "month": 9,
+  "profile_ref": { "profile_id": "tprofile_3f2a…", "profile_version": "v1" } }
+```
+
+```
+class_id                 정수.  필수.  내 원의 반이어야 한다(남의 원이면 404)
+month                    정수 1~12.  필수.  달력의 달이다
+profile_ref.profile_id   문자열.  필수.  빈 문자열 거부
+profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 같은 별칭은 없다
+```
+
+**`school_year` 를 받지 않는다.** 연간(§4)과 같다 — `class_id` 의 학년도가 정한다.
+대상 달은 3~12월이면 그 학년도, 1~2월이면 다음 해다(2026 학년도의 `month: 2` 는 2027-02).
+
+**부모 연간계획안을 받지 않는다.** 서버가 반으로 찾는다 — 연간은 반당 하나다(§4).
+
+**`profile_ref` 는 화면에서 사용자가 확인한 정확한 버전을 그대로 보낸다**(결정 문서 Contract 2 R5).
+서버는 그 사이 원 기본 · 반 override 가 바뀌었다고 다시 고르지 않는다. 최신 버전을 대신 고르지도
+않는다. 무엇을 보여 줄지는 §9-2 가 준다.
+
+**받지 않는 것.** 생성 방식(서버 정책 — `LLM_PLANNER`), 참조자료 판(서버 상수), 안전교육 배치
+정책(아래), 자유 메모.
+
+**Response** `201` — 아래 「월간계획안 응답」.
+
+**동기다.** 요청 안에서 생성 · 검증 · 저장을 끝내고 201 을 준다. 수 초 ~ 수십 초 걸린다 —
+화면은 진행 표시를 하고 같은 요청을 다시 보내지 않는다(screen-spec §5.1). **이 결정은 Luna-6
+실측을 조건으로 한다**(결정 문서 12.9). 실측이 배포 타임아웃(nginx `proxy_read_timeout 120s`)과
+맞지 않으면 다시 정한다.
+
+**부분 결과를 저장하지 않는다.** 어디서 실패해도 계획안 행이 생기지 않는다.
+
+**같은 반 · 같은 달은 하나다**(결정 문서 12.5). `DRAFT` 든 `CONFIRMED` 든 `ALREADY_EXISTS` 409 —
+FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(screen-spec §5.3).
+
+### 안전교육 — 근거가 없으면 비워 두고 그렇다고 표시한다
+
+**M4 는 안전교육 배치 정책(`ssuksak-safety-placement-v2`)을 넘기지 않는다**(D-M4-03).
+그래서 안전교육 칸은 Core 의 「근거 필요」 경로를 탄다(OD-M04 의 source-required 경로).
+
+- 칸은 항상 있고 `state: "EMPTY_UNRESOLVED"`, `value: ""` 다. 규칙도 LLM 도 내용을 지어내지 않는다.
+- `constraints` 에 `STATUTORY_SAFETY_EDUCATION` · `NOT_VERIFIED_SOURCE_REQUIRED` 가 실린다.
+  **「법정 요건을 충족한다」도 「위반이다」도 말하지 않는다.**
+- 다른 Section 은 영향이 없다. 근거가 있는 칸은 `FILLED` 와 `evidence` 를 갖는다.
+- 비어 있어도 확정할 수 있다(Core 계약). 화면은 확정 전에 비어 있다는 것을 보여 준다.
+
+### 월간계획안 응답 — 생성 · 단건 조회가 같은 형식
+
+```json
+{
+  "id": 21,
+  "class_id": 1,
+  "school_year": 2026,
+  "month": 9,
+  "target_month": "2026-09",
+  "status": "DRAFT",
+  "revision": 1,
+  "generation_mode": "LLM_PLANNER",
+  "profile_ref": { "profile_id": "tprofile_3f2a…", "profile_version": "v1" },
+  "base_template_ref": { "template_id": "ssuksak.monthly-template-a",
+                         "template_version": "monthly-template-a-v0.2.1" },
+  "parent": { "annual_plan_id": 10, "theme": "우리 원과 친구",
+              "confirmed_at": "2026-09-01T10:00:00+09:00" },
+  "weeks": [
+    { "week_id": "2026-09-W1", "label": "1주", "start_date": "2026-09-01",
+      "end_date": "2026-09-04", "active": true }
+  ],
+  "sections": [
+    { "section_key": "theme", "label": "주제", "role": "CONTENT", "repeat_by": "NONE",
+      "visible": true, "order": 0, "semantic_variant": null,
+      "cells": [
+        { "item_id": "item_7c1e…", "week_id": null, "value": "우리 원과 친구",
+          "state": "FILLED",
+          "evidence": [
+            { "source_type": "PARENT_PLAN", "source_id": "plan_…", "source_version": null,
+              "effective_date": null, "display_name": null } ],
+          "generation": { "method": "RULE_ONLY", "rule_id": "…", "rule_version": "…" } }
+      ] },
+    { "section_key": "safety_education", "label": "안전교육", "role": "CONTENT",
+      "repeat_by": "WEEK", "visible": true, "order": 3, "semantic_variant": null,
+      "cells": [
+        { "item_id": "item_…", "week_id": "2026-09-W1", "value": "",
+          "state": "EMPTY_UNRESOLVED", "evidence": [],
+          "generation": { "method": "RULE_ONLY", "rule_id": "…", "rule_version": "…" } }
+      ] }
+  ],
+  "constraints": [
+    { "code": "STATUTORY_SAFETY_EDUCATION", "verification": "NOT_VERIFIED_SOURCE_REQUIRED",
+      "affected_section_keys": ["safety_education"], "required_source_kinds": ["…"],
+      "rule_version": "…", "detail": "…" }
+  ],
+  "verification": {
+    "executed_rules": [ { "rule_id": "…", "rule_version": "…" } ],
+    "findings": [
+      { "code": "…", "kind": "NOT_VERIFIED", "severity": "WARNING",
+        "section_key": "outdoor_play", "week_id": "2026-09-W2", "message": "…" } ]
+  },
+  "created_at": "2026-09-20T10:00:00+09:00",
+  "confirmed_at": null
+}
+```
+
+값의 모양(`week_id` · `item_id` · `rule_id` 등)은 예시다. **실제 값은 Core 가 정하고 서버가 다시 짓지 않는다.**
+
+**필드**
+
+```
+id · class_id · school_year · month   정수.  필수.  id 는 plans.id (연간 §4 와 같다)
+target_month          "YYYY-MM".  필수
+status                DRAFT | CONFIRMED.  필수
+revision              정수 ≥ 1.  필수.  저장할 때마다 +1. M5 의 칸 편집 · 재생성이 읽은 값을 보낸다
+generation_mode       RULE_ONLY | LLM_PLANNER.  필수.  M4 가 만드는 것은 LLM_PLANNER 뿐
+profile_ref           생성에 쓴 정확한 Profile 버전.  필수.  TemplateSnapshot 의 값이다
+base_template_ref     그 Profile 의 기반 Template.  필수
+parent.annual_plan_id 부모 연간계획안 plans.id.  필수
+parent.theme          생성 당시 부모 주제 (ParentLineage.snapshot_value).  null 허용
+parent.confirmed_at   부모 확정 시각.  필수
+
+weeks[]               이 달의 주.  순서대로.  필수.  개수를 정하지 않는다
+weeks[].week_id       문자열.  필수.  칸의 week_id 와 같은 값
+weeks[].label         문자열.  필수.  화면에 보이는 주 이름
+weeks[].start_date · end_date   YYYY-MM-DD.  필수
+weeks[].active        불리언.  필수.  false 인 주에는 칸이 없다
+
+sections[]            TemplateSnapshot 순서.  필수.  개수를 정하지 않는다
+sections[].section_key  문자열.  필수.  의미 키 (theme · outdoor_play · focus …)
+sections[].label      문자열 | null.  Profile 이 정한 표시 이름.  숨긴 Section 은 null 일 수 있다
+sections[].role       CONTENT | AXIS.  필수.  AXIS(주 머리)는 칸이 없다
+sections[].repeat_by  NONE | WEEK | null.  NONE 은 한 달에 칸 하나, WEEK 는 활성 주마다 하나, AXIS 는 null
+sections[].visible · order   필수
+sections[].semantic_variant  SUBTHEME | EXPECTED_PLAY | WEEKLY_THEME | NEUTRAL | null.  focus 만 값이 있다
+sections[].cells[]    필수.  개수를 정하지 않는다 — 화면은 받은 만큼 그린다
+
+cells[].item_id       문자열.  필수.  칸의 주소.  편집 · 재생성 뒤에도 바뀌지 않는다
+cells[].week_id       문자열 | null.  repeat_by = NONE 이면 null
+cells[].value         문자열.  필수.  비어 있으면 ""
+cells[].state         FILLED | EMPTY_VALID | EMPTY_UNRESOLVED.  필수
+cells[].evidence      배열.  필수.  §4 「출처는 세 축이다」와 같은 모양
+cells[].generation    객체.  필수.  §4 와 같은 모양 (method · rule_id · rule_version)
+
+constraints[]         Core 제약 평가.  필수(빈 배열 가능)
+verification          Core 검증 보고서.  필수.  findings[].kind 는 VIOLATION | NOT_VERIFIED
+created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
+```
+
+- **출처는 §4 의 세 축 그대로다.** `evidence` 는 근거, `generation` 은 만든 방법이다.
+  **`audit` 은 싣지 않는다**(§4 와 같은 이유). 변경 이력 조회는 M5 이후다.
+- **칸을 표로 펼쳐 주지 않는다.** 행 = Section, 열 = 주는 화면이 `section_key` · `week_id` 로 맞춘다.
+  양식마다 표 모양이 달라서 서버가 표를 정하면 계약이 양식에 묶인다.
+- **도메인 객체를 그대로 내보내지 않는다.** 위 필드만 옮긴다. Cell 의 `source_label` ·
+  `label_variant` · `mapping_confidence`(기존 계획안 가져오기용) · `safety`(배치 정책을 넘길 때만
+  값이 있다) 는 M4 응답에 없다.
+
+### 단건 — `GET /api/plans/monthly/{id}`
+
+`200`, 생성과 같은 형식. 없거나 남의 원 것이면 `NOT_FOUND` 404.
+
+### 목록 — `GET /api/plans/monthly?class_id=1`
+
+```json
+{ "items": [
+    { "id": 21, "class_id": 1, "school_year": 2026, "month": 9, "target_month": "2026-09",
+      "status": "DRAFT", "revision": 1,
+      "profile_ref": { "profile_id": "tprofile_3f2a…", "profile_version": "v1" },
+      "created_at": "...", "confirmed_at": null }
+] }
+```
+
+요약만 담는다 — 칸은 단건이 준다. `class_id` 를 빼면 내 원 전체, 넣으면 그 반(남의 원 반이면 404).
+정렬은 대상 달 오름차순.
+
+### 오류 — 생성
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `VALIDATION_FAILED` | 422 | `month` 가 1~12 밖 · `profile_ref` 모양이 틀림 | `["month"]` 등 |
+| `NOT_FOUND` | 404 | 반이 없거나 남의 원 반 | `["class_id"]` |
+| `GATE_BLOCKED` | 409 | 그 반의 연간계획안이 **없거나 확정 전** | `["class_id"]` |
+| `NOT_FOUND` | 404 | `profile_ref` 가 없다 · READY 가 아니다 · 남의 원 것이다 (셋을 가르지 않는다, ADR-017) | `["profile_ref"]` |
+| `ALREADY_EXISTS` | 409 | 같은 반 · 같은 달 월간이 있다 (동시 요청은 DB 유일 제약이 막고 409 로 바꾼다) | `["class_id","month"]` |
+| `VALIDATION_FAILED` | 422 | 고른 Profile 로는 만들 수 없다 — 기관 입력 Section(`event_schedule` · `drill`) · 근거 없는 필수 Section 등. **재시도해도 같다.** 다른 Profile 을 고른다 | `["profile_ref"]` |
+| `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제 (401 · 403 · 429) | `[]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | LLM 설정이 없다 · 서버의 승인 참조자료를 읽을 수 없다. 재시도 무의미 | `[]` |
+| `GENERATION_FAILED` | 500 | LLM 호출이 깨졌다(타임아웃 포함) · 응답이 계약을 어겼다(수리 1회 뒤에도) · Core 검증 실패. **재시도 가능.** 부분 저장 없음 | `[]` |
+
+**연간이 없는 것과 확정 전인 것을 같은 코드로 낸다.** FE 가 할 일(연간계획안으로 가기)이 같다.
+`message` 는 둘을 구분해 쓴다 — 「연간계획안을 먼저 만들어 확정해주세요」 · 「연간계획안을 먼저 확정해주세요」.
+
+**Core 오류 코드를 그대로 내보내지 않는다**(CLAUDE.md §20). 위 표의 `code` 가 공개 계약이다.
+
+---
+
+## 9-2. 월간 양식 설정(TemplateProfile) 조회 — 생성 전에 고르기
+
+> **상태: 계약 확정 / 구현 전 (M4).** 조회 둘뿐이다(D-M4-02). Profile 만들기 · DRAFT 편집 ·
+> READY 전환 · 보관 · 원 기본 / 반 override 바꾸기는 **별도 후속 작업**이고 M6 화면 연동 전에 필요한
+> 만큼 만든다.
+
+생성 화면은 ① 이 반에 무엇이 적용되는지 보여 주고 ② 바꾸고 싶으면 원의 READY 목록에서 고르게
+한 뒤 ③ **보여 준 그 정확한 버전**을 §9-1 `profile_ref` 로 보낸다.
+
+### 반에 적용되는 Profile — `GET /api/classes/{class_id}/template-profile`
+
+```json
+{ "source": "CLASSROOM_OVERRIDE",
+  "profile_ref": { "profile_id": "tprofile_3f2a…", "profile_version": "v1" },
+  "reason": null }
+```
+
+```
+source       CLASSROOM_OVERRIDE | INSTITUTION_DEFAULT | SELECTION_REQUIRED.  필수
+profile_ref  SELECTION_REQUIRED 면 null
+reason       SELECTION_REQUIRED 일 때만 값.  NO_POINTER(아무것도 안 걸림) ·
+             CLASSROOM_OVERRIDE_NOT_READY 처럼 「어느 포인터가 왜 못 쓰이나」
+```
+
+**순서는 반 override → 원 기본 → 「선택 필요」다**(결정 문서 C2.7 R1 ~ R4). 포인터가 가리키는
+버전을 쓸 수 없으면 **원 기본으로 내려가지 않고** 「선택 필요」다(R3) — 반 설정이 조용히 무시되지
+않게 한다. 최신 READY 를 대신 고르지 않는다.
+
+남의 원 반이면 `NOT_FOUND` 404.
+
+### 원의 READY 목록 — `GET /api/centers/{center_id}/template-profiles`
+
+```json
+{ "items": [
+    { "profile_ref": { "profile_id": "tprofile_3f2a…", "profile_version": "v1" },
+      "status": "READY",
+      "base_template_ref": { "template_id": "ssuksak.monthly-template-a",
+                             "template_version": "monthly-template-a-v0.2.1" },
+      "selected_optional_keys": ["focus"],
+      "sections": [ { "section_key": "theme", "label": "주제", "repeat_by": "NONE", "visible": true } ],
+      "created_at": "..." }
+] }
+```
+
+- **READY 만 준다.** DRAFT · ARCHIVED 는 생성에 쓸 수 없다. 만든 순서대로.
+- 남의 원 `center_id` 면 `NOT_FOUND` 404 (`require_own_center`).
+- **Profile 에는 이름 칸이 없다.** 사용자는 버전 · 기반 Template · 고른 Section 과 그 이름 ·
+  만든 시각으로 구분한다. 이름 칸은 Core 에 없어 만들지 않는다(결정 문서 12.9 OPEN).
+
+### 승인 조건
+
+READY Profile 은 사람이 승인한 Template 으로만 만들어진다(결정 문서 12.8 — 만들 때 검사한다).
+**지금 Template A v0.1.1 · v0.2.1 은 승인 대기라 운영 DB 에 READY Profile 이 생길 수 없다** —
+그동안 §9-2 목록은 빈 배열이고 §9-1 은 `NOT_FOUND` 404(`profile_ref`) 다.
 
 ---
 
@@ -1563,7 +1822,7 @@ NONE           없음        뒷받침 문서가 0건
 같은 일과로 도는 합반은 일지 1부다(#412). **관찰 기록에는 빈도 · 아동별 요건이 없다**(#356).
 그래서 **관찰일지 수로 세지 않는다. 연간 보육계획안은 4-1 서류가 아니다** — 영역 5 검토문서다(p.171).
 
-월간계획안의 대상 달은 `plans` 칸이 아니라 `plans.body.target_month` 에 있다.
+월간계획안의 대상 달은 `plans.target_month`(`YYYY-MM`) 칸에 있다 — `plans.body.target_month` 에서 꺼낸 값이다(결정 문서 12.6 PR-2 에서 추가).
 **plans 소유(승석)의 조회 함수로 읽는다. feature 간 직접 import 하지 않는다.** 함수는 아직 없다(아래 「아직 정하지 않은 것」).
 계획안 id 는 `plan_ids`, 일지 id 는 `document_ids` 로 낸다.
 **3월 초에는 검토 기간이 지난 학년도에 걸친다. 반은 학년도마다 새 행이라 지난 학년도 반의 서류는 안 잡힌다.**
