@@ -1,11 +1,23 @@
 from __future__ import annotations
 
-from ssuksak.adapters.monthly_composition import monthly_generation
+from ssuksak.adapters.monthly_composition import (
+    monthly_confirmation,
+    monthly_edit,
+    monthly_generation,
+    monthly_regeneration,
+)
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
-from ssuksak.planning.application.monthly_dto import GenerateMonthlyPlanCommand
+from ssuksak.planning.application.monthly_dto import (
+    ConfirmMonthlyPlanCommand,
+    EditMonthlyPlanItemCommand,
+    GenerateMonthlyPlanCommand,
+    RegenerateMonthlyPlanItemCommand,
+)
+from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.plan import PlanStatus
+from ssuksak.planning.domain.provenance import AuditEventType
 from ssuksak.planning.domain.year_month import YearMonth
 from tests.finalization.harness import (
     ACTIVITY_CATALOG,
@@ -59,3 +71,38 @@ def test_request_aware_provider_follows_month_weeks_and_sections():
         assert safety and all(c.cell_state is CellState.EMPTY_UNRESOLVED for c in safety)
         assert all(c.value == "" for c in safety)
     assert plans[2].section("goals").cells[0].cell_state is CellState.FILLED
+
+
+def test_lifecycle_builders_edit_regenerate_and_confirm():
+    harness = PlanningHarness()
+    parent = harness.confirm_yearly(harness.generate_yearly().plan)
+    plan = _generate(
+        harness, parent, RequestAwareMonthlyLlm(), month=YearMonth(2026, 9), profile=LLM_PROFILE
+    )
+    focus = plan.section("focus").cells[0]
+    outdoor = plan.section("outdoor_play").cells[1]
+    actor = ActorId("teacher_001")
+
+    edited = monthly_edit(plan_repository=harness.monthly_plans, clock=harness.clock).execute(
+        EditMonthlyPlanItemCommand(plan.plan_id, outdoor.item_id, "Teacher value", actor)
+    )
+    assert edited.find_cell(outdoor.item_id)[3].value == "Teacher value"
+
+    regenerated = monthly_regeneration(
+        plan_repository=harness.monthly_plans,
+        provider=RequestAwareMonthlyLlm(),
+        clock=harness.clock,
+    ).execute(RegenerateMonthlyPlanItemCommand(plan.plan_id, focus.item_id, actor)).plan
+    cell = regenerated.find_cell(focus.item_id)[3]
+    assert (cell.item_id, cell.week_id) == (focus.item_id, focus.week_id)
+    assert cell.audit.events[-1].event_type is AuditEventType.REGENERATED
+
+    confirmed = monthly_confirmation(
+        plan_repository=harness.monthly_plans, clock=harness.clock
+    ).execute(ConfirmMonthlyPlanCommand(plan.plan_id, actor))
+    assert confirmed.status is PlanStatus.CONFIRMED
+    # Re-confirming is idempotent: same plan, nothing new recorded.
+    again = monthly_confirmation(
+        plan_repository=harness.monthly_plans, clock=harness.clock
+    ).execute(ConfirmMonthlyPlanCommand(plan.plan_id, actor))
+    assert again == confirmed

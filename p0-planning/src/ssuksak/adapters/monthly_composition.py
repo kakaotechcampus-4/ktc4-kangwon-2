@@ -2,6 +2,7 @@
 
 Callers outside Planning Core (the backend) supply only what they own: the
 plan / profile repositories, the LLM provider, the clock and the id generator.
+Generation, cell edit, cell regeneration and confirmation are all wired here.
 The approved Reference repositories and the context / planner pipeline are
 wired here, so callers never import Core internals one by one.
 
@@ -30,10 +31,19 @@ from ssuksak.adapters.safety_evidence_classification_repository import (
 from ssuksak.adapters.safety_reference_quality_repository import (
     JsonSafetyReferenceQualityRepository,
 )
+from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan
+from ssuksak.planning.application.edit_monthly_plan_item import EditMonthlyPlanItem
 from ssuksak.planning.application.generate_monthly_plan import GenerateMonthlyPlan
 from ssuksak.planning.application.monthly_support import MonthlyContextPipeline
+from ssuksak.planning.application.regenerate_monthly_plan_item import (
+    RegenerateMonthlyPlanItem,
+)
 from ssuksak.planning.context.builder import ContextPacketBuilder
-from ssuksak.planning.planner.ports import MonthlyPlanningProvider
+from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
+from ssuksak.planning.planner.ports import (
+    MonthlyCellPlanningProvider,
+    MonthlyPlanningProvider,
+)
 from ssuksak.planning.planner.service import MonthlyPlanner
 
 
@@ -72,4 +82,35 @@ def monthly_generation(
         context_pipeline=monthly_context_pipeline(),
         planner=MonthlyPlanner(provider),
         safety_placement_repository=JsonSafetyPlacementPolicyRepository(),
+    )
+
+
+def monthly_edit(*, plan_repository, clock) -> EditMonthlyPlanItem:
+    """EditMonthlyPlanItem with the approved Activity Catalog for re-verification."""
+    return EditMonthlyPlanItem(
+        plan_repository=plan_repository,
+        clock=clock,
+        activity_repository=JsonActivityReferenceRepository(),
+    )
+
+
+def monthly_regeneration(
+    *, plan_repository, provider: MonthlyCellPlanningProvider, clock
+) -> RegenerateMonthlyPlanItem:
+    """RegenerateMonthlyPlanItem on the approved References and the cell planner."""
+    return RegenerateMonthlyPlanItem(
+        plan_repository=plan_repository,
+        clock=clock,
+        activity_repository=JsonActivityReferenceRepository(),
+        context_pipeline=monthly_context_pipeline(),
+        cell_planner=MonthlyCellPlanner(provider),
+    )
+
+
+def monthly_confirmation(*, plan_repository, clock) -> ConfirmMonthlyPlan:
+    """ConfirmMonthlyPlan with the approved Activity Catalog for re-verification."""
+    return ConfirmMonthlyPlan(
+        plan_repository=plan_repository,
+        clock=clock,
+        activity_repository=JsonActivityReferenceRepository(),
     )

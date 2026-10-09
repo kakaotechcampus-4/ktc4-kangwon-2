@@ -1,4 +1,6 @@
-"""월간계획안 생성 · 조회 API. 계약은 docs/api-spec.md §9-1 이다.
+"""월간계획안 생성 · 조회 · 칸 편집 · 칸 재생성 · 확정 API.
+
+계약은 docs/api-spec.md §9-1 · §9-3 이다.
 
 **여기에 생성 규칙이 없다.** 주제 · 주 · 칸 · 근거는 전부 p0-planning 이 정한다. 이 파일은
 HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약 형식으로 옮기고, 저장 시점을 정한다.
@@ -11,6 +13,10 @@ HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약
 
 부모 CONFIRMED 와 READY 는 바뀌지 않는 값이라 A 와 C 사이에 달라지지 않는다. 같은 반 · 같은
 달 동시 요청은 C 의 부분 유일 인덱스가 최종으로 막는다.
+
+**편집 · 재생성 · 확정도 같은 세 단계다**(결정 문서 12.10). 다른 점은 C 가 조건부 UPDATE 라는
+것 — 읽은 `expected_revision` 과 DRAFT 를 한 문장으로 보고 +1 한다. 그 사이 누가 바꿨으면
+저장하지 않고 409 다. 재생성 결과가 아무리 그럴듯해도 옛 계획안 위에 덮어쓰지 않는다.
 """
 
 import logging
@@ -24,15 +30,25 @@ from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.in_memory_template_profile_repository import (
     InMemoryTemplateProfileRepository,
 )
-from ssuksak.adapters.monthly_composition import monthly_generation
+from ssuksak.adapters.monthly_composition import (
+    monthly_confirmation,
+    monthly_edit,
+    monthly_generation,
+    monthly_regeneration,
+)
 from ssuksak.planning import (
     ActivityCatalogSelector,
+    ActorId,
+    ConfirmMonthlyPlanCommand,
+    EditMonthlyPlanItemCommand,
     GenerateMonthlyPlanCommand,
     InvalidDomainValueError,
+    ItemId,
     MonthlyApplicationError,
     MonthlyGenerationMode,
     MonthlyPlan,
     PlanId,
+    RegenerateMonthlyPlanItemCommand,
     SafetyRuleSelector,
     TemplateProfileRef,
     YearlyPlan,
@@ -46,12 +62,14 @@ from app.features.plans.monthly_schemas import (
     CellOut,
     ConstraintOut,
     CreateMonthlyPlan,
+    EditMonthlyCell,
     FindingOut,
     MonthlyPlanListOut,
     MonthlyPlanOut,
     MonthlyPlanSummary,
     ParentOut,
     ProfileRefOut,
+    RevisionIn,
     RuleRefOut,
     SectionOut,
     TemplateRefOut,
@@ -290,13 +308,24 @@ def list_monthly_plans(session: DbSession, user: CurrentUser, class_id: int | No
 @router.get("/{plan_id}", response_model=MonthlyPlanOut)
 def get_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
     """남의 원 것 · 월간이 아닌 것은 없는 것과 같다."""
+    return _current(session, user, plan_id)
+
+
+def _own_row(session: Session, user, plan_id: int) -> Plan:
+    """이 원의 월간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing)."""
     row = session.scalar(
-        select(Plan).where(
-            Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "monthly"
-        )
+        select(Plan)
+        .where(Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "monthly")
+        .execution_options(populate_existing=True)
     )
     if row is None:
         raise _NOT_FOUND
+    return row
+
+
+def _current(session: Session, user, plan_id: int) -> MonthlyPlanOut:
+    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다."""
+    row = _own_row(session, user, plan_id)
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent_id = session.scalar(
         select(Plan.id).where(
@@ -306,6 +335,172 @@ def get_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
         )
     )
     return _detail(row, plan, parent_id)
+
+
+# ── 편집 · 재생성 · 확정 (§9-3) ────────────────────────────────────────────
+
+_ALREADY_CONFIRMED = _error(409, "ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.", [])
+_STALE_WRITE = _error(
+    409,
+    "STALE_WRITE",
+    "그 사이 다른 화면에서 계획안이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
+    ["expected_revision"],
+)
+_CELL_NOT_FOUND = _error(404, "NOT_FOUND", "그 칸을 찾을 수 없습니다.", ["item_id"])
+_VALUE_INVALID = _error(
+    422, "VALIDATION_FAILED", "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.", ["value"]
+)
+_CELL_NOT_REGENERATABLE = _error(
+    422, "VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", ["item_id"]
+)
+# Core 가 「이 칸은 다시 만들 수 없다」고 하는 경우들. 규칙은 Core 것이다 — 여기서 늘리지 않는다.
+_NOT_REGENERATABLE_CODES = frozenset(
+    {
+        "monthly_cell_not_regeneratable",
+        "rule_only_focus_regeneration_unsupported",
+        "activity_catalog_required",
+        "monthly_required_section_evidence_missing",
+        "no_activity_candidate",
+        "monthly_cell_generation_missing",
+        "monthly_theme_cell_required",
+    }
+)
+
+
+def _lifecycle_error(error: MonthlyApplicationError) -> HTTPException:
+    if error.code == "monthly_cell_not_found":
+        return _CELL_NOT_FOUND
+    if error.code in {"monthly_cell_value_unchanged", "invalid_monthly_cell_value"}:
+        return _VALUE_INVALID
+    if error.code in _NOT_REGENERATABLE_CODES:
+        return _CELL_NOT_REGENERATABLE
+    if error.code == "monthly_verification_failed":
+        # 검증 「결과」는 막지 않는다. 검증기가 돌지 못한 것만 여기로 온다.
+        return _error(
+            500, "GENERATION_FAILED", "검증을 실행하지 못했습니다. 다시 시도해주세요.", []
+        )
+    return _generation_error(error)
+
+
+def _actor(user) -> ActorId:
+    return ActorId(f"user_{user.id}")
+
+
+def _item_id(value: str) -> ItemId:
+    try:
+        return ItemId(value)
+    except InvalidDomainValueError as error:
+        raise _CELL_NOT_FOUND from error
+
+
+def _read_draft(session: Session, user, plan_id: int, expected_revision: int) -> MonthlyPlan:
+    """A. 짧은 읽기 — 확정 여부 · revision 을 보고 도메인 객체를 들고 transaction 을 끝낸다."""
+    row = _own_row(session, user, plan_id)
+    if row.status == "CONFIRMED":
+        raise _ALREADY_CONFIRMED
+    if row.revision != expected_revision:
+        raise _STALE_WRITE
+    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    session.commit()
+    return plan
+
+
+def _drafts(plan: MonthlyPlan) -> InMemoryPlanRepository[MonthlyPlan]:
+    """B. Core 가 읽고 쓰는 메모리 저장소. Core 의 plans.save 는 여기로 가고 DB 는 C 가 쓴다."""
+    drafts: InMemoryPlanRepository[MonthlyPlan] = InMemoryPlanRepository()
+    drafts.save(plan.plan_id, plan)
+    return drafts
+
+
+def _write(
+    session: Session,
+    user,
+    plan_id: int,
+    changed: MonthlyPlan,
+    expected_revision: int,
+    *,
+    confirming: bool = False,
+) -> MonthlyPlanOut:
+    """C. 조건부 쓰기. 못 썼으면 다시 읽어 왜인지 가른다 — 한 가지 오류로 뭉치지 않는다."""
+    written = _monthly_repo(session, user.center_id).update_if_revision(
+        changed.plan_id, changed, expected_revision=expected_revision
+    )
+    if written is None:
+        session.rollback()
+        row = _own_row(session, user, plan_id)  # 없어졌거나 남의 것이면 404
+        if row.status == "CONFIRMED":
+            if confirming:  # 누가 먼저 확정했다 — 확정 재호출과 같다(D-M5-CONFIRM-01)
+                return _current(session, user, plan_id)
+            raise _ALREADY_CONFIRMED
+        raise _STALE_WRITE
+    detail = _current(session, user, plan_id)
+    session.commit()
+    return detail
+
+
+@router.put("/{plan_id}/cells/{item_id}", response_model=MonthlyPlanOut)
+def edit_monthly_cell(
+    plan_id: int, item_id: str, body: EditMonthlyCell, session: DbSession, user: CurrentUser
+):
+    """칸 하나를 교사가 고친다. 근거 · 생성 방식은 그대로, `TEACHER_EDITED` 가 남는다."""
+    plan = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = monthly_edit(plan_repository=_drafts(plan), clock=SystemClock()).execute(
+            EditMonthlyPlanItemCommand(plan.plan_id, _item_id(item_id), body.value, _actor(user))
+        )
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=MonthlyPlanOut)
+def regenerate_monthly_cell(
+    plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
+):
+    """그 칸만 다시 만든다. 교사가 고친 칸도 명시적으로 요청하면 다시 만든다.
+
+    LLM 을 기다리는 동안 transaction 이 없다. 그 사이 누가 고쳤으면 결과를 버리고 409 다.
+    """
+    plan = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        provider = monthly_llm_provider()
+    except LlmUnavailable as error:
+        raise _UNAVAILABLE from error
+    use_case = monthly_regeneration(
+        plan_repository=_drafts(plan), provider=provider, clock=SystemClock()
+    )
+    try:
+        changed = use_case.execute(
+            RegenerateMonthlyPlanItemCommand(plan.plan_id, _item_id(item_id), _actor(user))
+        ).plan
+    except MonthlyApplicationError as error:
+        _log.warning("monthly cell regeneration failed code=%s", error.code)
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.post("/{plan_id}/confirm", response_model=MonthlyPlanOut)
+def confirm_monthly_plan(plan_id: int, body: RevisionIn, session: DbSession, user: CurrentUser):
+    """DRAFT → CONFIRMED.
+
+    **이미 확정이면 revision 과 무관하게 200 이고 아무것도 쓰지 않는다**(D-M5-CONFIRM-01) —
+    더블클릭 · 재시도가 정상 경로다. 소유 검사는 그보다 먼저다.
+    findings 로 막지 않는다(Core 계약). 안전교육 「근거 필요」 상태로도 확정된다.
+    """
+    row = _own_row(session, user, plan_id)
+    if row.status == "CONFIRMED":
+        return _current(session, user, plan_id)
+    if row.revision != body.expected_revision:
+        raise _STALE_WRITE
+    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    session.commit()
+    try:
+        changed = monthly_confirmation(plan_repository=_drafts(plan), clock=SystemClock()).execute(
+            ConfirmMonthlyPlanCommand(plan.plan_id, _actor(user))
+        )
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision, confirming=True)
 
 
 def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
