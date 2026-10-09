@@ -14,7 +14,12 @@ import { isStaleWrite } from "@/lib/api/documents";
 import { withoutChildMetadata } from "@/lib/privacy/browser-storage";
 
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
-import { getAnnualPlan, putAnnualMonth, confirmAnnualPlan } from "@/lib/api/plans";
+import {
+  getAnnualPlan,
+  putAnnualMonth,
+  confirmAnnualPlan,
+  downloadAnnualHwpx,
+} from "@/lib/api/plans";
 import type { AnnualPlan } from "@/lib/api/types";
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
@@ -263,6 +268,21 @@ export default function DocumentEditor({
       "확정을 취소하지 못했어요.",
     );
 
+  /** 확정한 연간계획안을 서버가 만든 hwpx 로 받는다 (§9). 화면이 양식을 흉내 내지 않는다. */
+  async function exportHwpx() {
+    if (!annualPlanId || working) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await downloadAnnualHwpx(annualPlanId);
+      setMessage("한글 파일(hwpx)로 내려받았어요.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "내려받지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** 바뀐 근거를 반영한다. 해석·지원은 서버가 두고, 교사 확인만 다시 받는다. */
   const refreshSources = () =>
     run(
@@ -468,6 +488,12 @@ export default function DocumentEditor({
               문서 수정
             </button>
           )
+        )}
+        {/* 연간계획안을 확정했으면 서버가 만든 한글 파일을 받는다. 그 전에는 텍스트로 본다. */}
+        {annualPlanId && doc.status === "confirmed" && (
+          <button className={ws.secondary} disabled={working} onClick={exportHwpx}>
+            한글 파일로 내려받기
+          </button>
         )}
         <button
           className={ws.secondary}
