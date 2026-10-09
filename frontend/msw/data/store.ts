@@ -1,4 +1,12 @@
-import type { Center, ApiClass, ApiChild, AnnualPlan, PlanConfig } from "../../lib/api/types";
+import type {
+  Center,
+  ApiClass,
+  ApiChild,
+  AnnualPlan,
+  PlanConfig,
+  MonthlyPlan,
+  ProfileRef,
+} from "../../lib/api/types";
 import type { Greetings } from "../../lib/api/centers";
 export interface Database {
   next: number;
@@ -8,6 +16,9 @@ export interface Database {
   plans: AnnualPlan[];
   configs: Record<number, PlanConfig>;
   greetings: Record<number, Greetings>;
+  monthlyPlans: MonthlyPlan[];
+  /** 원 기본 양식 설정 포인터. 키는 center id. */
+  profileDefaults: Record<number, ProfileRef>;
 }
 const empty = (): Database => ({
   next: 1,
@@ -17,6 +28,8 @@ const empty = (): Database => ({
   plans: [],
   configs: {},
   greetings: {},
+  monthlyPlans: [],
+  profileDefaults: {},
 });
 let memory = empty();
 function key() {
@@ -40,7 +53,12 @@ export function read(): Database {
     !["centers", "classes", "children", "plans"].every((k) => Array.isArray(parsed[k]))
   )
     throw new Error("Mock 저장 데이터가 손상되었습니다");
-  return { ...parsed, greetings: parsed.greetings ?? {} };
+  return {
+    ...parsed,
+    greetings: parsed.greetings ?? {},
+    monthlyPlans: parsed.monthlyPlans ?? [],
+    profileDefaults: parsed.profileDefaults ?? {},
+  };
 }
 export function commit<T>(fn: (db: Database) => T): T {
   const db = read(),
