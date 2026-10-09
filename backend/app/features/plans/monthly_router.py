@@ -83,7 +83,7 @@ from app.features.template_profiles.repository import TemplateProfileError
 from app.features.template_profiles.service import ready_profile_for_generation
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
-from app.shared.llm import LlmBudgetExceeded, LlmUnavailable
+from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 _log = logging.getLogger(__name__)
 
@@ -382,6 +382,26 @@ def _lifecycle_error(error: MonthlyApplicationError) -> HTTPException:
     return _generation_error(error)
 
 
+def _cause_summary(error: MonthlyApplicationError) -> tuple[str, str, str]:
+    """(단계, 원인 예외 이름, 검증 코드) — 로그에 남겨도 되는 것만.
+
+    Core 는 칸 거절 사유를 `__cause__` 에 둔다(`ProposalRejectedError.validation_codes`). 코드는
+    고정 Enum 이름이다. **예외 메시지 · issue detail · 응답 본문 · 프롬프트는 남기지 않는다.**
+    """
+    cause = error.__cause__
+    if cause is None:
+        return "core", "-", "-"
+    codes = getattr(cause, "validation_codes", None)
+    if isinstance(codes, tuple) and all(isinstance(code, str) for code in codes):
+        return "validation", type(cause).__name__, ",".join(codes) or "-"
+    if isinstance(cause, (LlmBudgetExceeded, LlmFailed, LlmUnavailable)) or (
+        type(cause).__name__ == "MonthlyLlmProviderError"  # Core 어댑터의 응답 모양 오류
+    ):
+        return "provider", type(cause).__name__, "-"
+    stage = "parse" if type(cause).__name__ == "ProposalParseError" else "core"
+    return stage, type(cause).__name__, "-"
+
+
 def _actor(user) -> ActorId:
     return ActorId(f"user_{user.id}")
 
@@ -474,7 +494,11 @@ def regenerate_monthly_cell(
             RegenerateMonthlyPlanItemCommand(plan.plan_id, _item_id(item_id), _actor(user))
         ).plan
     except MonthlyApplicationError as error:
-        _log.warning("monthly cell regeneration failed code=%s", error.code)
+        _log.warning(
+            "monthly cell regeneration failed code=%s stage=%s cause=%s validation_codes=%s",
+            error.code,
+            *_cause_summary(error),
+        )
         raise _lifecycle_error(error) from error
     return _write(session, user, plan_id, changed, body.expected_revision)
 

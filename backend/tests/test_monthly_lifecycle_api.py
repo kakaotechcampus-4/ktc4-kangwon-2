@@ -8,6 +8,8 @@ Template v0.1.1 · v0.2.1 은 사람 승인 대기라 OD-N11 (A) 객체로만 Pr
 mock(요청 기반 결정적 provider)이다 — **실제 Luna-6 는 부르지 않는다.**
 """
 
+import json
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from threading import Barrier
@@ -553,3 +555,111 @@ def test_동시_확정은_둘_다_200_이고_확정은_한_번만_저장된다(l
     assert (row.status, row.revision) == ("CONFIRMED", 2)
     assert [e.event_type.value for e in stored.audit.events].count("CONFIRMED") == 1
     assert _get(plan["id"])["confirmed_at"] == a.json()["confirmed_at"]  # 최초 확정 시각 그대로
+
+
+# ── 재생성 실패 진단 로그 (실제 모델을 부르지 않는다) ─────────────────────────
+
+SECRET_KEY = "sk-test-SENSITIVE-KEY-123"
+RESPONSE_MARKER = "RESPONSE_BODY_MARKER"
+TEACHER_MARKER = "TEACHER_INPUT_MARKER"
+
+
+def _real_mode_returning(monkeypatch, content: str):
+    """real 경로(Core Elice 어댑터 · strict 요청)를 그대로 타고 전송만 바꿔 낀다."""
+    monkeypatch.setattr(settings, "llm_mode", "real")
+    monkeypatch.setattr(settings, "elice_mlapi_base_url", "https://llm.invalid/v1")
+    monkeypatch.setattr(settings, "elice_mlapi_api_key", SECRET_KEY)
+    sent = []
+
+    def post_json(url, *, headers, payload, timeout):
+        sent.append(payload)
+        return {"id": "r-1", "model": "gpt-6-luna", "choices": [{"message": {"content": content}}]}
+
+    monkeypatch.setattr(monthly_llm, "post_json", post_json)
+    return sent
+
+
+@pytest.fixture
+def router_log(monkeypatch, caplog):
+    """라우터 로그를 caplog 로 받는다.
+
+    `_schema` 가 돌린 alembic 의 fileConfig 가 이미 만들어진 로거를 꺼 둔다
+    (disable_existing_loggers). 서버 프로세스에서는 alembic 을 따로 돌리므로 꺼지지 않는다.
+    """
+    monkeypatch.setattr(logging.getLogger("app.features.plans.monthly_router"), "disabled", False)
+    caplog.set_level(logging.WARNING)
+    return caplog
+
+
+def _regeneration_logs(caplog) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "app.features.plans.monthly_router"
+    ]
+
+
+def _assert_no_secrets(caplog, sent):
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    prompt = sent[0]["messages"]
+    for forbidden in (
+        SECRET_KEY,
+        "Authorization",
+        "Bearer",
+        RESPONSE_MARKER,
+        TEACHER_MARKER,
+        prompt[0]["content"][:60],  # system prompt
+        prompt[1]["content"][:60],  # user content (packet)
+    ):
+        assert forbidden not in text
+
+
+def test_재생성_거절은_검증_코드만_로그에_남기고_응답_계약은_그대로다(
+    world, monkeypatch, router_log
+):
+    caplog = router_log
+    plan = world["plan"]
+    focus = _cell(plan, "focus")
+    # 교사 입력이 프롬프트(month snapshot)에 들어가도 로그에는 남지 않아야 한다.
+    outdoor = _cell(plan, "outdoor_play", 1)
+    assert _edit(plan["id"], outdoor["item_id"], f"{TEACHER_MARKER} 바깥놀이", 1).status_code == 200
+    content = json.dumps(
+        {
+            "target_month": plan["target_month"],
+            "target_week_id": outdoor["week_id"],  # 실제 주이지만 대상 주가 아니다
+            "section": {
+                "section_key": "focus",
+                "value": f"{RESPONSE_MARKER} 소주제",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [],
+            },
+        },
+        ensure_ascii=False,
+    )
+    sent = _real_mode_returning(monkeypatch, content)
+
+    response = _regenerate(plan["id"], focus["item_id"], 2)
+    # 외부 계약은 그대로다 — 코드 · 원인을 응답에 싣지 않는다.
+    assert _error(response) == (500, "GENERATION_FAILED", [])
+    assert "validation" not in response.text and "TARGET_WEEK" not in response.text
+    [line] = _regeneration_logs(caplog)
+    assert "code=monthly_llm_cell_planning_failed" in line
+    assert "stage=validation cause=ProposalRejectedError" in line
+    assert "TARGET_WEEK_MISMATCH" in line and "RESOLVED_REQUIRES_GROUNDING" in line
+    _assert_no_secrets(caplog, sent)
+    assert _get(plan["id"])["revision"] == 2  # 아무것도 저장되지 않았다
+
+
+def test_재생성_응답_파싱_실패는_예외_종류만_로그에_남긴다(world, monkeypatch, router_log):
+    caplog = router_log
+    plan = world["plan"]
+    focus = _cell(plan, "focus")
+    sent = _real_mode_returning(monkeypatch, json.dumps({"oops": RESPONSE_MARKER}))
+
+    assert _error(_regenerate(plan["id"], focus["item_id"], 1)) == (500, "GENERATION_FAILED", [])
+    [line] = _regeneration_logs(caplog)
+    assert "stage=parse cause=ProposalParseError validation_codes=-" in line
+    assert "oops" not in line  # 파서 메시지(필드 이름)도 남기지 않는다
+    _assert_no_secrets(caplog, sent)
+    assert _get(plan["id"]) == plan
