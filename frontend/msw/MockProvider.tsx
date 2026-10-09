@@ -15,6 +15,8 @@ const enabled = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
  * 실제로 멘토님·팀원 브라우저에서 났던 일이다. 사람이 DevTools 를 열어 지우게 하는 대신
  * 목업이 꺼진 빌드가 스스로 치운다. 지우고 나면 그 다음 방문부터 정상이다.
  */
+const CLEANUP_RELOAD_KEY = "saessak.msw.cleanupReload";
+
 async function unregisterStaleWorker() {
   if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
   try {
@@ -23,8 +25,20 @@ async function unregisterStaleWorker() {
     const stale = registrations.filter((r) =>
       (r.active ?? r.waiting ?? r.installing)?.scriptURL.includes("mockServiceWorker"),
     );
-    if (stale.length === 0) return;
+    if (stale.length === 0) {
+      // 정리가 끝났다. 다음에 또 남으면 다시 한 번 새로고침할 수 있게 표시를 치운다.
+      sessionStorage.removeItem(CLEANUP_RELOAD_KEY);
+      return;
+    }
     await Promise.all(stale.map((r) => r.unregister()));
+    // **두 번은 새로고침하지 않는다.** unregister 가 먹지 않는 드문 경우에 화면이 무한히 깜빡인다.
+    if (sessionStorage.getItem(CLEANUP_RELOAD_KEY) === "1") {
+      console.warn(
+        "[MSW] 목업 워커가 새로고침 뒤에도 남아 있습니다. DevTools > Application > Service Workers 에서 지워주세요.",
+      );
+      return;
+    }
+    sessionStorage.setItem(CLEANUP_RELOAD_KEY, "1");
     console.info("[MSW] 남아 있던 목업 워커를 지웠습니다. 새로고침하면 서버에 붙습니다.");
     window.location.reload();
   } catch {
