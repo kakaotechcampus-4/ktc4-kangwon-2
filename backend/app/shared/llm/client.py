@@ -58,7 +58,7 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
     `response_format: json_object` 는 그 낱말이 없으면 400 으로 거부한다.
     """
     base_url, api_key = require_config()
-    post = transport or _post_json
+    post = transport or post_json
     result = post(
         f"{base_url.rstrip('/')}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -81,9 +81,13 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
     return content
 
 
-def _post_json(
+def post_json(
     url: str, *, headers: Mapping[str, str], payload: Mapping[str, object], timeout: float
 ):
+    """엘리스에 JSON 을 보내고 JSON 을 받는다.
+
+    오류 3종 분류는 여기 하나다 — 월간 Core 어댑터도 이 함수를 전송으로 쓴다.
+    """
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
     try:

@@ -19,8 +19,10 @@ from app.features.forms.router import center_router as center_forms_router
 from app.features.forms.router import router as forms_router
 from app.features.observations.router import router as observations_router
 from app.features.plans.export import router as plans_export_router
+from app.features.plans.monthly_router import router as monthly_plans_router
 from app.features.plans.router import router as plans_router
 from app.features.routines.router import router as routines_router
+from app.features.template_profiles.router import router as template_profiles_router
 from app.shared.auth.dependency import current_user
 
 
@@ -159,6 +161,8 @@ app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
 app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 app.include_router(routines_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(monthly_plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(template_profiles_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_export_router, prefix="/api", dependencies=_authenticated)
 app.include_router(center_forms_router, prefix="/api", dependencies=_authenticated)
 
