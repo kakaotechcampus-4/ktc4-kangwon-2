@@ -168,6 +168,26 @@ hwpx       curl 로 받아보고 된다고 했다. 화면 버튼은 txt 를 만�
 - **「오늘」을 만들 때 `toISOString()` 을 쓰지 않는다.** 그건 UTC 날짜라 한국 아침 9시
   전에는 어제가 된다. `lib/workspace/model.ts` 의 `today()` 를 쓴다.
 
+## 입력 검사 — 스키마에서 막는다
+
+라우터에 `if` 를 쓰지 않는다. **타입에 적어두면 라우터에 들어오기 전에 걸린다.**
+
+- 문자열 칸을 맨몸 `str` 로 두지 않는다.
+  ```python
+  # ✗  text: str     빈 값 · 공백만 · 10만 자가 다 들어온다
+  # ✓  text: Annotated[str, StringConstraints(
+  #        strip_whitespace=True, min_length=1, max_length=80)]
+  ```
+- `strip_whitespace` 가 먼저 털고 `min_length=1` 이 본다. 그래야 **공백만 든 값**이 막힌다.
+- **빈 값을 허용하는 칸이면 `min_length` 를 걸지 않는다.** 대신 `strip_whitespace` 는 두어
+  「공백만」과 「빈 값」이 같은 것으로 저장되게 한다. 허용한다는 사실은 계약(`api-spec.md`)에
+  적혀 있어야 한다 — 코드만 보고 바꾸면 의도한 동작을 지운다.
+- `max_length` 는 **DB 컬럼 길이에 맞춘다.** `JSONB` 처럼 맞출 컬럼이 없으면
+  그 이유와 기준을 주석에 적는다 — 지어낸 숫자를 근거 없이 두지 않는다.
+- 이미 있는 것들: `centers` 의 `Name` · `PersonName` · `RegionPart` · `GreetingText`,
+  `children` 의 `ChildName`, `auth` 의 `TeacherName` · `Password`.
+  **새 칸을 만들 때 거기 있는 걸 먼저 본다.**
+
 ---
 
 ## 보안
