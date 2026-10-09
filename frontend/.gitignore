@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# msw 워커는 소스가 아니라 산출물이다 — predev/prebuild 가 환경변수에 맞춰 만들거나 지운다.
+/public/mockServiceWorker.js
