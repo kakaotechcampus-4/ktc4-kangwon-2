@@ -760,7 +760,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v9"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v10"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -842,7 +842,7 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
     ("system_prompt", "version", "expected"),
     [
         (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v18"),
-        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v9"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v10"),
     ],
     ids=["monthly", "cell"],
 )
@@ -1761,17 +1761,21 @@ def test_reference_cells_cite_no_grounding_refs_while_free_text_cells_keep_their
     assert all(b["grounding_refs"].get("maxItems") is None for b in branches["focus"])
 
 
-def test_cell_regeneration_schema_is_untouched_by_the_proposal_only_constraints(packet, snapshot):
-    """The pair, XOR and free-text constraints are Monthly proposal schema only; cell
-    regeneration keeps its schema (aligning it is a separate task)."""
+def test_cell_regeneration_schema_follows_the_proposal_constraints(packet, snapshot):
+    """Aligned with the Monthly proposal schema (the separate task this test used to defer):
+    a free-text cell is never unresolved and cites at least one allowed ref, and the
+    target month / week are fixed. tests/planner/test_cell_reference_contract.py covers
+    the reference pairs."""
     cell = cell_response_schema(build_monthly_cell_request(
         packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=FOCUS_SECTION_KEY,
         month_snapshot=snapshots()))
     section = cell["properties"]["section"]
 
     assert list(section["properties"]) == list(CELL_RESPONSE_SCHEMA["properties"]["section"]["properties"])
-    assert section["properties"]["unresolved"] == {"type": "boolean"}
-    assert "minItems" not in section["properties"]["grounding_refs"]
+    assert section["properties"]["unresolved"] == {"type": "boolean", "enum": [False]}
+    assert section["properties"]["grounding_refs"]["minItems"] == 1
+    assert cell["properties"]["target_month"] == {"type": "string", "enum": ["2026-09"]}
+    assert cell["properties"]["target_week_id"] == {"type": "string", "enum": ["2026-09-W1"]}
 
 
 def test_free_text_branches_are_never_unresolved_and_cite_a_ref(packet, snapshot):
@@ -1805,15 +1809,21 @@ def test_outdoor_play_without_a_supplied_catalog_is_null_only(packet, snapshot):
 
 @pytest.mark.parametrize(
     ("section", "expected"),
-    [(FOCUS_SECTION_KEY, {"type": "null"}), (OUTDOOR_SECTION_KEY, {"type": ["string", "null"]})],
+    [
+        (FOCUS_SECTION_KEY, [{"type": "null"}]),
+        # one branch per supplied activity (id fixed with its label) + the free-text branch
+        (OUTDOOR_SECTION_KEY, [{"type": "string", "enum": ["act-1"]}, {"type": "null"}]),
+    ],
 )
 def test_the_cell_schema_follows_the_reference_capability(packet, snapshot, section, expected):
     request = build_monthly_cell_request(
         packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=section,
         month_snapshot=snapshots(),
     )
+    schema = cell_response_schema(request)["properties"]["section"]
+    branches = schema.get("anyOf", [schema])
 
-    assert cell_response_schema(request)["properties"]["section"]["properties"]["reference_id"] == expected
+    assert [branch["properties"]["reference_id"] for branch in branches] == expected
 
 
 @pytest.mark.parametrize(

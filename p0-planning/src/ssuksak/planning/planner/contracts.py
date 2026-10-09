@@ -21,7 +21,7 @@ from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
 MONTHLY_PROMPT_VERSION = "monthly-planner-v18"
-MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
+MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v10"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
 MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 # Used instead of the two above when the Context Packet carries safety placement.
