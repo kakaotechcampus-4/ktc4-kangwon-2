@@ -9,9 +9,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fontClassName } from "@/lib/fonts";
 import AppHeader from "@/components/app/AppHeader";
 import { createAnnualPlan } from "@/lib/api/plans";
-import { syncClass } from "@/lib/api/onboarding";
+import { getForms } from "@/lib/api/forms";
+import { syncCenter, syncClass } from "@/lib/api/onboarding";
+import type { ApiForm } from "@/lib/api/types";
+import { SessionChangedError } from "@/lib/auth/request-session";
 import GenerationFlow from "./GenerationFlow";
-import { useWorkspace } from "@/lib/workspace/store";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { templatePlan, type PlanContent } from "@/lib/workspace/plans";
 import { today, type Section } from "@/lib/workspace/model";
@@ -28,11 +30,21 @@ import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { isValidDate } from "@/lib/plan-generator/date";
 
 const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly", "daily"];
+
+/**
+ * 서버가 실제로 만들 수 있는 종류. 나머지 카드는 「준비 중」으로 잠근다.
+ *
+ * **고를 수 있는데 아무 일도 안 일어나는 게 제일 나쁘다.** 지금 백엔드 라우터에는
+ * `/api/plans/annual` 하나뿐이다(월간 엔진은 p0-planning 에 있지만 API 가 없다).
+ * 여기에 종류를 더하는 건 그 API 가 생긴 뒤다.
+ */
+const READY: ReadonlySet<PlanType> = new Set<PlanType>(["annual"]);
+// 새 디자인은 계획안 종류를 색이 아니라 글로 가른다. 고른 카드만 주 색으로 선다.
 const ACCENT: Record<PlanType, { text: string; tint: string; ink: string }> = {
-  annual: { text: "text-sage-ink", tint: "bg-sage-tint", ink: "text-sage-ink" },
-  monthly: { text: "text-sage-ink", tint: "bg-sage-tint", ink: "text-sage-ink" },
-  weekly: { text: "text-mint-strong", tint: "bg-mint-tint", ink: "text-mint-ink" },
-  daily: { text: "text-peach-strong", tint: "bg-peach-tint", ink: "text-peach-ink" },
+  annual: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  monthly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  weekly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
+  daily: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
 };
 
 const SUGGESTIONS = [
@@ -57,12 +69,13 @@ const SUGGESTIONS = [
 /** URL 쿼리와 온보딩에 저장된 반 설정 — 마운트 시 한 번만 읽는다(서버 렌더에서는 빈 값). */
 function readStartup() {
   if (typeof window === "undefined")
-    return { memo: "", templateId: "", ages: [] as SelectedAge[], className: "", classId: "" };
+    return { memo: "", formId: "", ages: [] as SelectedAge[], className: "", classId: "" };
   const params = new URLSearchParams(window.location.search);
   const primary = primaryClassFor(loadClassSettings());
   return {
     memo: params.get("topic")?.slice(0, 5000) ?? "",
-    templateId: params.get("template") ?? "",
+    // 서버 양식 번호다. 목록에 없는 값은 아래에서 기본 양식으로 본다.
+    formId: params.get("template") ?? "",
     ages: primary ? selectedAgesFor(primary) : [],
     className: primary?.className ?? "",
     classId: primary?.id ?? "",
@@ -93,10 +106,12 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
   const [stepIndex, setStepIndex] = useState(0);
   const className = startup.className;
   const classId = startup.classId;
-  const [templateId, setTemplateId] = useState(startup.templateId);
+  const [formId, setFormId] = useState(startup.formId);
   const [error, setError] = useState("");
   const [contents, setContents] = useState<Partial<Record<PlanType, PlanContent>>>({});
-  const { data: workspace, error: storageError } = useWorkspace();
+  // 기관 양식의 원본은 서버다 (§8) — 브라우저 저장소를 보지 않는다. null 이면 아직 못 받았다.
+  const [forms, setForms] = useState<ApiForm[] | null>(null);
+  const [formsError, setFormsError] = useState("");
   const available = useAIStatus();
   const controllerRef = useRef<AbortController | null>(null);
   const [generated, setGenerated] = useState<{
@@ -108,9 +123,36 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
+  // 원 양식 등록 화면과 같은 흐름이다. 실패해도 기본 양식으로는 계속 만들 수 있다.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const settings = loadClassSettings();
+        if (!settings) throw new Error("원 정보를 먼저 설정해주세요.");
+        const { items } = await getForms(await syncCenter(settings));
+        if (alive) setForms(items);
+      } catch (e) {
+        // 계정이 바뀌면 apiRequest 가 여기서 끊는다 — 새 계정 화면에 옛 오류를 남기지 않는다.
+        if (!alive || e instanceof SessionChangedError) return;
+        // 기관 양식만 못 받은 것이다 — 빈 목록으로 두고 기본 양식으로 계속 만들게 한다.
+        setForms([]);
+        setFormsError(e instanceof Error ? e.message : "등록한 기관 양식을 불러오지 못했어요.");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 양식 번호는 연간계획안 생성에만 실린다 (§4). 다른 종류에는 붙일 계약이 없다.
+  const annualSelected = planTypes.has("annual");
+  const formsLoading = forms === null;
   const canGenerate =
     available !== null &&
     phase !== "generating" &&
+    // 양식을 고른 채로 들어왔으면 목록을 받은 뒤에만 보낸다 — 조용히 기본 양식이 되지 않게.
+    !(annualSelected && formId !== "" && formsLoading) &&
     age !== "" &&
     planTypes.size > 0 &&
     Number.isInteger(period.annual.year) &&
@@ -162,7 +204,8 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
     window.scrollTo({ top: 0, behavior: "smooth" });
     try {
       const results: Partial<Record<PlanType, PlanContent>> = {};
-      const template = workspace.templates.find((t) => t.id === templateId);
+      // 목록에 없는 값(옛 브라우저 양식 번호 등)은 기본 양식으로 본다.
+      const form = (forms ?? []).find((f) => String(f.id) === formId) ?? null;
       setStepIndex(1);
       for (const type of selectedTypes) {
         if (type === "annual") {
@@ -171,13 +214,9 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
           if (!settings || !primary) throw new Error("반 정보를 먼저 저장해주세요.");
           // 계획안 조건으로 저장된 반/아동 연결을 변경하지 않는다.
           const serverClassId = await syncClass(settings, primary);
+          // 양식은 번호만 든다 — 서버가 FK 로 가리킨다 (§4). null 이면 기본 양식이다.
           const plan = await createAnnualPlan(
-            {
-              class_id: serverClassId,
-              school_year: period.annual.year,
-              source: "FROM_SCRATCH",
-              upload_id: null,
-            },
+            { class_id: serverClassId, form_id: form?.id ?? null },
             controller.signal,
           );
           results.annual = {
@@ -201,7 +240,8 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
               ...(exactAges ? { ages: exactAges } : {}),
               period,
               memo,
-              template: template ? { headings: template.headings, style: template.style } : null,
+              // ApiForm 을 이 요청에 잇는 계약이 아직 없다. 임의 변환을 만들지 않는다.
+              template: null,
             },
             controller.signal,
           );
@@ -217,7 +257,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             })),
           };
         } else {
-          results[type] = templatePlan(type, age, period, memo, template, request.ageLabel);
+          results[type] = templatePlan(type, age, period, memo, undefined, request.ageLabel);
         }
         if (controller.signal.aborted) return;
         setStepIndex(2);
@@ -270,31 +310,42 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
               <circle cx="12" cy="15" r="9" className="fill-sage" />
               <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
             </svg>
-            <span className="font-display text-xl">쓱싹요정</span>
+            <span className="font-display text-xl">쌤플</span>
             <span className="hidden lg:inline text-sm ml-1 text-ink-soft">· 계획안 생성</span>
           </div>
         </header>
       )}
 
       <div className="px-4 lg:px-10">
-        {(error || storageError) && (
+        {(error || formsError) && (
           <p className={ws.error} role="alert">
-            {error || storageError}
+            {error || formsError}
           </p>
         )}
         {phase === "idle" && (
           <div className={ws.row} style={{ marginBottom: 20 }}>
             <label className={ws.field}>
               사용할 기관 양식
-              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-                <option value="">쓱싹요정 기본 양식</option>
-                {workspace.templates.map((t) => (
-                  <option value={t.id} key={t.id}>
-                    {t.name}
+              <select
+                value={formId}
+                disabled={!annualSelected || formsLoading}
+                onChange={(e) => setFormId(e.target.value)}
+              >
+                <option value="">쌤플 기본 양식</option>
+                {(forms ?? []).map((f) => (
+                  <option value={String(f.id)} key={f.id}>
+                    {f.name}
                   </option>
                 ))}
               </select>
             </label>
+            <p className={ws.hint}>
+              {formsLoading
+                ? "등록한 기관 양식을 불러오고 있어요."
+                : annualSelected
+                  ? "등록한 기관 양식은 연간계획안 생성에 적용돼요."
+                  : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
+            </p>
             <p className={ws.hint}>
               {available
                 ? "AI 연결됨 · 입력 조건과 기관 양식으로 생성해요."
@@ -334,7 +385,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
 
           <section
             ref={stageRef}
-            className="relative overflow-hidden rounded-[24px] border px-5 py-7 lg:p-10 min-h-[380px] lg:min-h-[640px] flex items-center justify-center bg-paper shadow-pg"
+            className="relative overflow-hidden rounded-md border px-5 py-7 lg:p-10 min-h-[380px] lg:min-h-[640px] flex items-center justify-center bg-paper shadow-pg"
             style={{ borderColor: "var(--pg-line)" }}
           >
             <svg
@@ -397,19 +448,19 @@ function InputPanel(props: {
 
   return (
     <aside
-      className="rounded-[24px] border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
+      className="rounded-md border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
       style={{ borderColor: "var(--pg-line)" }}
     >
       {/* 1. 대상 연령 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="age" className="font-display text-[15px]">
+        <label htmlFor="age" className="font-semibold text-[15px]">
           대상 연령
         </label>
         <select
           id="age"
           value={age}
           onChange={(e) => onAgeChange(e.target.value as AgeGroup | "")}
-          className="w-full rounded-2xl px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
+          className="w-full rounded-md px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
           style={{
             borderColor: "var(--pg-line)",
             backgroundImage: CHEVRON_BG,
@@ -430,7 +481,7 @@ function InputPanel(props: {
       {/* 2. 생성할 계획안 */}
       <section className="flex flex-col gap-2.5">
         <div>
-          <label className="font-display text-[15px]">생성할 계획안</label>
+          <label className="font-semibold text-[15px]">생성할 계획안</label>
           <p className="text-[12.5px] mt-0.5 text-ink-soft">여러 개를 함께 선택할 수 있어요</p>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
@@ -439,6 +490,7 @@ function InputPanel(props: {
               key={t}
               type={t}
               selected={planTypes.has(t)}
+              ready={READY.has(t)}
               onToggle={() => onToggleType(t)}
             />
           ))}
@@ -447,7 +499,7 @@ function InputPanel(props: {
 
       {/* 3. 기간 선택 (선택한 계획안 종류에 따라 동적으로 표시) */}
       <section className="flex flex-col gap-2.5">
-        <label className="font-display text-[15px]">기간 선택</label>
+        <label className="font-semibold text-[15px]">기간 선택</label>
         <label className={ws.field}>
           기준 연도
           <input
@@ -469,7 +521,7 @@ function InputPanel(props: {
         )}
         {planTypes.size === 0 ? (
           <div
-            className="text-[12.5px] rounded-xl px-3.5 py-3 border border-dashed text-ink-soft"
+            className="text-[12.5px] rounded-md px-3.5 py-3 border border-dashed text-ink-soft"
             style={{ borderColor: "var(--pg-line)", background: "var(--pg-sage-tint)" }}
           >
             계획안 종류를 먼저 선택해주세요
@@ -505,7 +557,7 @@ function InputPanel(props: {
                   type="date"
                   value={period.daily.date}
                   onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
-                  className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
+                  className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
                   style={{ borderColor: "var(--pg-line)" }}
                 />
               </PeriodBlock>
@@ -516,7 +568,7 @@ function InputPanel(props: {
 
       {/* 4. 추가 요청사항 / 메모 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="memo" className="font-display text-[15px]">
+        <label htmlFor="memo" className="font-semibold text-[15px]">
           추가 요청사항 / 메모
         </label>
         <textarea
@@ -527,7 +579,7 @@ function InputPanel(props: {
           placeholder={
             "예) 가을 자연물을 활용한 놀이 활동을 중심으로 작성해주세요.\n예) 실외활동과 미술활동을 포함해주세요."
           }
-          className="w-full rounded-2xl px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
+          className="w-full rounded-md px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
           style={{ borderColor: "var(--pg-line)" }}
         />
         <div className="flex flex-wrap gap-1.5">
@@ -554,8 +606,10 @@ function InputPanel(props: {
           type="button"
           disabled={!canGenerate}
           onClick={onGenerate}
-          className={`rounded-2xl py-3.5 min-h-[54px] lg:min-h-0 font-display text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
-            canGenerate ? "bg-sage text-ink hover:bg-sage-ink" : "bg-line text-ink-soft"
+          className={`rounded-md py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
+            canGenerate
+              ? "border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover"
+              : "bg-line text-ink-soft"
           }`}
         >
           계획안 생성하기
@@ -578,7 +632,7 @@ function MonthSelect({ value, onChange }: { value: number; onChange: (v: number)
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -610,7 +664,7 @@ function WeekSelect({
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-xl px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -641,7 +695,7 @@ function PeriodBlock({
   const a = ACCENT[type];
   return (
     <div
-      className={`rounded-xl p-3.5 flex items-center gap-2 flex-wrap border ${a.tint}`}
+      className={`rounded-md p-3.5 flex items-center gap-2 flex-wrap border ${a.tint}`}
       style={{ borderColor: "var(--pg-line)" }}
     >
       <span
@@ -658,10 +712,12 @@ function PeriodBlock({
 function PlanTypeCard({
   type,
   selected,
+  ready,
   onToggle,
 }: {
   type: PlanType;
   selected: boolean;
+  ready: boolean;
   onToggle: () => void;
 }) {
   const a = ACCENT[type];
@@ -670,24 +726,31 @@ function PlanTypeCard({
       type="button"
       role="button"
       aria-pressed={selected}
+      disabled={!ready}
+      title={ready ? undefined : "아직 만들 수 없어요"}
       onClick={onToggle}
-      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-[18px] border-[1.5px] transition-colors hover:-translate-y-px ${
-        selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"
-      }`}
+      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-md border-[1.5px] transition-colors ${
+        ready ? "hover:-translate-y-px" : "cursor-not-allowed opacity-55"
+      } ${selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"}`}
       style={{ borderColor: selected ? undefined : "var(--pg-line)" }}
     >
       <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
       <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
       <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+      {!ready && (
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
+          준비 중
+        </span>
+      )}
       {selected && (
         <span
-          className={`absolute top-1.5 right-1.5 flex items-center justify-center rounded-full ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
+          className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-full bg-primary"
           style={{ width: 14, height: 14 }}
         >
           <svg width="9" height="9" viewBox="0 0 24 24">
             <path
               d="M4 12.5L9.5 18L20 6"
-              stroke="var(--pg-ink)"
+              stroke="#fff"
               strokeWidth={3}
               fill="none"
               strokeLinecap="round"
@@ -762,7 +825,7 @@ function IdleState() {
           fill="none"
           strokeLinecap="round"
         />
-        <circle cx="98" cy="38" r="24" className="fill-mint" />
+        <circle cx="98" cy="38" r="24" className="fill-primary-tint" />
         <circle cx="90" cy="33" r="2.6" fill="#fff" />
         <circle cx="90" cy="33" r="1.3" fill="var(--pg-ink)" />
         <circle cx="103" cy="33" r="2.6" fill="#fff" />
@@ -785,7 +848,7 @@ function IdleState() {
       </div>
       <p
         className="font-mono text-[11px] px-3 py-1 rounded-full border text-ink-soft"
-        style={{ background: "var(--pg-sage-tint)", borderColor: "var(--pg-line)" }}
+        style={{ background: "var(--pg-primary-tint)", borderColor: "var(--pg-line)" }}
       >
         TIP · 추천 태그를 누르면 메모가 빠르게 채워져요
       </p>

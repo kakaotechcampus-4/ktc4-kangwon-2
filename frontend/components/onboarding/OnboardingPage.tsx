@@ -420,13 +420,13 @@ function ClassroomCard({
   onRemove: () => void;
 }) {
   return (
-    <section className="rounded-[20px] border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
+    <section className="rounded-md border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-sage-tint text-sage-ink font-mono text-[11px]">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream text-sage-ink font-mono text-[11px]">
             {index + 1}
           </span>
-          <h2 className="font-display text-[16px] text-ink">반 정보</h2>
+          <h2 className="font-semibold text-[16px] text-ink">반 정보</h2>
         </div>
         {canRemove && (
           <button
@@ -499,7 +499,7 @@ function ClassroomCard({
         />
       </FormField>
 
-      <div className="rounded-[18px] border border-line bg-peach-tint px-4 py-3.5">
+      <div className="rounded-md border border-line bg-peach-tint px-4 py-3.5">
         <label className="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -510,7 +510,7 @@ function ClassroomCard({
                 childrenSkipped: e.target.checked ? false : classroom.childrenSkipped,
               })
             }
-            className="mt-0.5 w-4 h-4 accent-[var(--pg-sage-ink)]"
+            className="mt-0.5 w-4 h-4 accent-[var(--pg-primary)]"
           />
           <span>
             <span className="block text-[13.5px] font-medium text-ink">
@@ -586,7 +586,7 @@ function ClassroomChildrenCard({
   onChange: (p: Partial<ClassroomEntry>) => void;
 }) {
   return (
-    <section className="rounded-[20px] border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
+    <section className="rounded-md border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
       <h2 className="font-display text-[17px] text-ink">{classroom.className} · 아동 명단</h2>
       {classroom.currentChildCount !== "" &&
         classroom.children.length !== classroom.currentChildCount && (
@@ -634,13 +634,13 @@ export function StepCharacterMessages({
         description="월별 성품인사를 확인하고 필요하면 수정해주세요. 설정한 문구는 해당 월의 계획안 작성에 활용돼요."
       />
 
-      <div className="rounded-[18px] border border-line bg-sage-tint px-4 py-3.5">
+      <div className="rounded-md border border-line bg-cream px-4 py-3.5">
         <label className="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
             checked={!settings.characterEducationEnabled}
             onChange={(e) => onChange({ characterEducationEnabled: !e.target.checked })}
-            className="mt-0.5 w-4 h-4 accent-[var(--pg-sage-ink)]"
+            className="mt-0.5 w-4 h-4 accent-[var(--pg-primary)]"
           />
           <span>
             <span className="block text-[13.5px] font-medium text-ink">
@@ -732,7 +732,7 @@ function StepDone({
       <div>
         <h1 className="font-display text-2xl text-ink">초기 설정이 완료되었어요!</h1>
         <p className="mt-2.5 text-[14.5px] leading-relaxed text-ink-soft">
-          이제 메인 화면에서 쓱싹요정을 시작할 수 있어요.
+          이제 메인 화면에서 쌤플을 시작할 수 있어요.
         </p>
       </div>
 
@@ -751,7 +751,7 @@ function StepDone({
               : "미사용",
           ],
         ].map(([k, v]) => (
-          <div key={k} className="rounded-2xl bg-sage-tint px-2.5 py-3">
+          <div key={k} className="rounded-md bg-cream px-2.5 py-3">
             <dt className="font-mono text-[10.5px] tracking-wider text-ink-soft">{k}</dt>
             <dd className="mt-0.5 text-[14px] lg:text-[15px] font-bold text-ink break-words">
               {v}

@@ -20,7 +20,7 @@ import {
 } from "@/lib/workspace/model";
 import Link from "next/link";
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
-import { patchAnnualMonth, confirmAnnualPlan } from "@/lib/api/plans";
+import { putAnnualMonth, confirmAnnualPlan, downloadAnnualHwpx } from "@/lib/api/plans";
 
 type Request = {
   age: AgeGroup;
@@ -103,7 +103,7 @@ export default function GenerationFlow({
         if (JSON.stringify(row) === JSON.stringify(annualBaseline.current[i])) continue;
         setSavingRows((prev) => [...prev, i]);
         try {
-          const result = await patchAnnualMonth(id, parseInt(row.label), {
+          const result = await putAnnualMonth(id, parseInt(row.label), {
             theme: row.title,
             sub_themes: row.detail.split("\n"),
           });
@@ -156,6 +156,24 @@ export default function GenerationFlow({
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, [phase]);
+
+  const [exporting, setExporting] = useState(false);
+
+  /** 확정한 연간계획안은 서버가 hwpx 를 만든다 (§9). 화면이 양식을 흉내 내지 않는다. */
+  async function downloadHwpx() {
+    const id = contents.annual?.annualPlanId;
+    if (!id || exporting) return;
+    setExporting(true);
+    setNotice("");
+    try {
+      await downloadAnnualHwpx(id);
+      setNotice("한글 파일(hwpx)로 내려받았어요.");
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "내려받지 못했어요.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function download() {
     const text = [
@@ -422,9 +440,19 @@ export default function GenerationFlow({
                       {confirmed ? "확정됨" : confirming ? "확정 중…" : "연간계획안 확정"}
                     </button>
                   )}
-                  <button className={styles.secondary} onClick={download}>
-                    ↓ 내려받기
-                  </button>
+                  {active === "annual" && confirmed && contents.annual?.annualPlanId ? (
+                    <button
+                      className={styles.secondary}
+                      disabled={exporting}
+                      onClick={downloadHwpx}
+                    >
+                      {exporting ? "만드는 중…" : "↓ 한글 파일로 내려받기"}
+                    </button>
+                  ) : (
+                    <button className={styles.secondary} onClick={download}>
+                      ↓ 텍스트로 내려받기
+                    </button>
+                  )}
                 </div>
               </div>
               <article
@@ -434,7 +462,7 @@ export default function GenerationFlow({
                 className={styles.document}
               >
                 <div className={styles.documentHeading}>
-                  <span className={styles.eyebrow}>쓱싹요정 · 우리 반 놀이 기록의 시작</span>
+                  <span className={styles.eyebrow}>쌤플 · 우리 반 놀이 기록의 시작</span>
                   <h3>{title}</h3>
                   <p>
                     {className || "우리 반"}
@@ -520,7 +548,7 @@ export default function GenerationFlow({
                   </p>
                 </div>
                 <footer className={styles.documentFooter}>
-                  <span>쓱싹요정</span>
+                  <span>쌤플</span>
                   <span>아이들의 매일이 조금 더 자라도록</span>
                 </footer>
               </article>

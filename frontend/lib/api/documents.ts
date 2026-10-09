@@ -10,6 +10,15 @@ export type RecordKind = (typeof RECORD_KINDS)[number];
 export const isRecordKind = (kind: string): kind is RecordKind =>
   (RECORD_KINDS as readonly string[]).includes(kind);
 
+/**
+ * 아직 화면에서 만들 수 없는 종류.
+ *
+ * 일일 보육일지의 근거는 관찰 기록이 아니라 「일과 기록」이다 (ADR-025 · §10-1).
+ * 일과 기록을 적는 화면이 아직 없어서, 지금 만들기를 누르면 서버가 422 로 돌려보낸다.
+ * 고를 수 있는데 아무것도 안 되는 것보다 잠가 두는 쪽이 낫다 — 그 화면이 들어오면 푼다.
+ */
+export const BLOCKED_RECORD_KINDS: readonly RecordKind[] = ["dailyLog"];
+
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const DOCUMENT_PREFIX = "document:";
 const CLASS_PREFIX = "server-class:";
@@ -57,6 +66,10 @@ export interface ApiDocumentListItem {
   created_at: string;
   updated_at: string;
 }
+export interface ApiRelatedDocumentsResponse {
+  items: ApiDocumentListItem[];
+  expected_kinds: string[];
+}
 export interface ApiDocumentSection {
   heading: string;
   body: string;
@@ -93,6 +106,10 @@ export interface DocumentSummary {
   sourcesCount: number;
   createdAt: string;
   updatedAt: string;
+}
+export interface RelatedDocuments {
+  items: DocumentSummary[];
+  expectedKinds: RecordKind[];
 }
 /** 단건. 화면 model 에 서버에만 있는 값을 더한다. */
 export interface ServerDocument extends SavedDocument {
@@ -186,6 +203,17 @@ export async function getDocument(localId: string): Promise<ServerDocument> {
   return toDocument(await apiRequest<ApiDocumentDetail>("/api/documents/" + id));
 }
 
+/** 겹치는 확정 문서와 기대하는 종류. 관련 여부와 반환 순서는 서버가 결정한다 (§11). */
+export async function getRelatedDocuments(localId: string): Promise<RelatedDocuments> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiRelatedDocumentsResponse>("/api/documents/" + id + "/related");
+  return {
+    items: dto.items.map(summary),
+    expectedKinds: dto.expected_kinds as RecordKind[],
+  };
+}
+
 /** 반·아동·근거를 서버 id 로 옮기지 못하면 요청을 보내지 않는다. */
 export interface DocumentCreateInput {
   kind: RecordKind;
@@ -254,6 +282,30 @@ export async function confirmDocument(localId: string): Promise<ServerDocument> 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ checks: { fact: true, interpretation: true, support: true } }),
+  });
+  return toDocument(dto);
+}
+
+/** 확정을 되돌린다 (§11). 이미 초안이면 서버가 그대로 200 으로 돌려준다. */
+export async function unconfirmDocument(localId: string): Promise<ServerDocument> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiDocumentDetail>("/api/documents/" + id + "/unconfirm", {
+    method: "POST",
+  });
+  return toDocument(dto);
+}
+
+/**
+ * 바뀐 상위 근거를 다시 떠서 `사실` 을 잇고 stale 을 푼다 (§11).
+ *
+ * `해석`·`지원` 은 서버가 그대로 둔다. 확정본은 `ALREADY_CONFIRMED` 409 라 초안에서만 부른다.
+ */
+export async function refreshDocument(localId: string): Promise<ServerDocument> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiDocumentDetail>("/api/documents/" + id + "/refresh", {
+    method: "POST",
   });
   return toDocument(dto);
 }

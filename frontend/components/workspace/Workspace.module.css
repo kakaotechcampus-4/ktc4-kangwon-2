@@ -1,5 +1,5 @@
 .page {
-  padding: 0 40px 48px;
+  padding: 26px 40px 48px;
   max-width: 1560px;
   margin: auto;
   color: var(--pg-ink);
@@ -15,23 +15,48 @@
 .nav a {
   font-size: 12px;
   color: var(--pg-ink-soft);
-  border-radius: 20px;
+  border-radius: 6px;
   padding: 9px 12px;
   background: var(--pg-paper);
   border: 1px solid var(--pg-line);
 }
 .nav a:hover {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
   color: var(--pg-ink);
+}
+/* 화면 머리 — 손글씨 제목 + 한 줄 설명 + 주된 동작 하나. */
+.pageHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.pageHead h1 {
+  font-family: var(--font-display), sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.pageHead p {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
+@media (min-width: 1024px) {
+  .pageHead h1 {
+    font-size: 44px;
+  }
 }
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   font-size: 12px;
-  border-radius: 30px;
-  background: var(--pg-sage-tint);
-  color: var(--pg-success);
+  border-radius: 6px;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
   padding: 8px 12px;
 }
 .hero {
@@ -39,10 +64,11 @@
   justify-content: space-between;
   align-items: center;
   gap: 22px;
-  padding: 28px;
-  background: var(--pg-sage-tint);
-  border: 1px solid var(--pg-line);
-  border-radius: 22px;
+  padding: 24px;
+  background: var(--pg-note-soft);
+  border: 1px solid var(--pg-note-soft-line);
+  border-radius: 6px;
+  box-shadow: var(--pg-shadow-hard);
   margin-bottom: 24px;
 }
 .hero h2 {
@@ -82,7 +108,7 @@
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
   padding: 25px;
-  border-radius: 22px;
+  border-radius: 6px;
   min-width: 0;
 }
 .card h2 {
@@ -154,7 +180,7 @@
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
   color: var(--pg-ink);
-  border-radius: 12px;
+  border-radius: 6px;
   min-height: 44px;
   padding: 11px 12px;
   font-size: 14px;
@@ -198,14 +224,14 @@
   padding: 11px 17px;
   font-size: 13px;
   font-weight: 600;
-  border-radius: 12px;
+  border-radius: 6px;
   cursor: pointer;
   text-align: center;
 }
 .primary {
-  background: var(--pg-sage);
+  background: var(--pg-primary-tint-line);
   color: var(--pg-ink);
-  border: 1px solid var(--pg-sage);
+  border: 1px solid var(--pg-primary-tint-line);
 }
 .secondary {
   border: 1px solid var(--pg-line);
@@ -213,17 +239,17 @@
   color: var(--pg-ink);
 }
 .primary:hover {
-  background: var(--pg-sage-ink);
+  background: var(--pg-primary);
 }
 .secondary:hover {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
 }
 .page button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .page :is(button, a, input, textarea, select):focus-visible {
-  outline: 2px solid var(--pg-success);
+  outline: 2px solid var(--pg-primary);
   outline-offset: 3px;
 }
 .message,
@@ -231,12 +257,12 @@
   font-size: 13px;
   line-height: 1.8;
   padding: 13px 16px;
-  border-radius: 12px;
+  border-radius: 6px;
   margin: 14px 0;
   white-space: pre-wrap;
 }
 .message {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
   color: var(--pg-success);
 }
 .error {
@@ -250,11 +276,12 @@
   margin: 12px 0;
 }
 .empty {
-  padding: 44px 20px;
+  padding: 48px 20px;
   text-align: center;
-  border: 1px dashed var(--pg-line);
-  border-radius: 20px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
   background: var(--pg-paper);
+  box-shadow: var(--pg-shadow-hard);
 }
 .empty > span {
   font-size: 34px;
@@ -262,7 +289,9 @@
   margin-bottom: 16px;
 }
 .empty h3 {
-  font-size: 17px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 26px;
+  font-weight: 700;
 }
 .empty p {
   color: var(--pg-ink-soft);
@@ -270,7 +299,7 @@
   margin-top: 10px;
 }
 .empty a {
-  color: var(--pg-success);
+  color: var(--pg-primary);
   text-decoration: underline;
 }
 .list {
@@ -281,7 +310,7 @@
   padding: 18px;
   background: var(--pg-paper);
   border: 1px solid var(--pg-line);
-  border-radius: 16px;
+  border-radius: 6px;
   text-align: left;
   width: 100%;
 }
@@ -298,7 +327,7 @@
 }
 .selected {
   border-color: var(--pg-success);
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
 }
 .pills {
   display: flex;
@@ -311,14 +340,14 @@
   font-size: 12px;
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
-  border-radius: 22px;
+  border-radius: 6px;
 }
 .pills .selected {
-  background: var(--pg-sage-tint);
-  border-color: var(--pg-sage-ink);
+  background: var(--pg-primary-tint);
+  border-color: var(--pg-primary);
 }
 .quote {
-  border-left: 3px solid var(--pg-sage);
+  border-left: 3px solid var(--pg-primary-tint-line);
   padding: 12px 16px;
   background: var(--pg-cream);
   font-size: 13px;
@@ -353,8 +382,8 @@
   margin: 20px 0;
 }
 .upload {
-  border: 2px dashed var(--pg-sage);
-  border-radius: 18px;
+  border: 2px dashed var(--pg-primary-tint-line);
+  border-radius: 6px;
   background: var(--pg-cream);
   padding: 28px 20px;
   text-align: center;
@@ -369,7 +398,7 @@
   padding: 32px;
 }
 .document > header {
-  border-bottom: 2px solid var(--pg-sage);
+  border-bottom: 2px solid var(--pg-primary-tint-line);
   padding-bottom: 22px;
   margin-bottom: 24px;
 }
@@ -394,7 +423,7 @@
   text-decoration: underline;
 }
 .timeline {
-  border-left: 2px solid var(--pg-sage);
+  border-left: 2px solid var(--pg-primary-tint-line);
   margin-left: 8px;
   padding-left: 24px;
 }
@@ -410,7 +439,7 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--pg-sage-ink);
+  background: var(--pg-primary);
   border: 3px solid var(--pg-cream);
 }
 .scroll {
@@ -421,9 +450,9 @@
 .loading {
   border: 1px solid var(--pg-line);
   padding: 28px;
-  border-radius: 18px;
+  border-radius: 6px;
   text-align: center;
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
 }
 .loading span {
   display: inline-block;
@@ -437,7 +466,7 @@
   line-height: 1.9;
   padding: 16px;
   background: var(--pg-cream);
-  border-radius: 12px;
+  border-radius: 6px;
 }
 .link {
   color: var(--pg-success);
@@ -510,6 +539,31 @@
   .row > .field {
     min-width: 115px;
   }
+  /* 화면 머리 — 손글씨 제목 + 한 줄 설명 + 주된 동작 하나. */
+  .pageHead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .pageHead h1 {
+    font-family: var(--font-display), sans-serif;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .pageHead p {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--pg-ink-soft);
+  }
+  @media (min-width: 1024px) {
+    .pageHead h1 {
+      font-size: 44px;
+    }
+  }
   .badge {
     font-size: 11px;
   }
@@ -533,4 +587,10 @@
     box-shadow: none;
     break-inside: avoid;
   }
+}
+
+.fieldError {
+  color: var(--pg-peach-ink);
+  font-weight: 600;
+  font-size: 11px;
 }

@@ -165,7 +165,7 @@ export default function EvaluationPage() {
     downloadText(
       `${doc.title} 점검 결과`,
       [
-        "쓱싹요정 · 문서 사전점검 (공식 평가 결과 아님)",
+        "쌤플 · 문서 사전점검 (공식 평가 결과 아님)",
         doc.title,
         `${doc.start} ~ ${doc.end}`,
         `확인일: ${today()}`,
@@ -185,8 +185,8 @@ export default function EvaluationPage() {
   }
   return (
     <WorkspacePage
-      title="평가제 · 증빙자료 점검"
-      description="문서의 내용, 작성 기간과 연결된 근거를 함께 살펴보세요."
+      title="평가 준비"
+      description="문서와 기록을 살펴보고, 준비할 항목을 확인하세요."
     >
       <section className={ws.hero}>
         <div>

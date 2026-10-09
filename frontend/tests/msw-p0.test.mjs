@@ -18,7 +18,7 @@ const { resetTestData, read } = await import("../msw/data/store.ts");
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass, getClasses } = await import("../lib/api/classes.ts");
 const { createChild, getChildren, deleteChild } = await import("../lib/api/children.ts");
-const { createAnnualPlan, getAnnualPlan, patchAnnualMonth, confirmAnnualPlan } =
+const { createAnnualPlan, getAnnualPlan, putAnnualMonth, confirmAnnualPlan } =
   await import("../lib/api/plans.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 const server = setupServer(...handlers);
@@ -54,22 +54,20 @@ test("P0 clients use real URLs: center, mixed class, children, annual, patch, co
     assert.equal(await deleteChild(child.id), undefined);
     const plan = await createAnnualPlan({
       class_id: klass.id,
-      school_year: 2026,
-      source: "FROM_SCRATCH",
-      upload_id: null,
+      form_id: null,
     });
     assert.deepEqual(
       plan.months.map((m) => m.month),
       [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2],
     );
     assert.deepEqual(await getAnnualPlan(plan.id), plan);
-    const month = await patchAnnualMonth(plan.id, 3, { theme: "수정", sub_themes: ["놀이"] });
+    const month = await putAnnualMonth(plan.id, 3, { theme: "수정", sub_themes: ["놀이"] });
     assert.equal(month.source_type, "TEACHER");
     assert.equal(month.month, 3);
     assert.equal(month.months, undefined);
     assert.equal((await confirmAnnualPlan(plan.id)).status, "CONFIRMED");
     await assert.rejects(
-      patchAnnualMonth(plan.id, 3, { theme: "금지", sub_themes: [] }),
+      putAnnualMonth(plan.id, 3, { theme: "금지", sub_themes: [] }),
       (e) => e instanceof ApiError && e.status === 409,
     );
     await assert.rejects(
@@ -136,9 +134,7 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     assert.deepEqual(await r.json(), { items: [] });
     const input = {
       class_id: klass.id,
-      school_year: 2026,
-      source: "FROM_SCRATCH",
-      upload_id: null,
+      form_id: null,
     };
     for (const [code, status] of [
       ["NO_ACTIVITIES", 503],
@@ -152,11 +148,11 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     r = await request(
       "plans/annual/" + plan.id + "/months/3?mockError=GENERATION_FAILED",
       { theme: "失敗", sub_themes: [] },
-      "PATCH",
+      "PUT",
     );
     assert.equal(r.status, 500);
     assert.deepEqual(read().plans[0].months, plan.months);
-    await request("plans/annual/" + plan.id + "/months/4", { theme: "", sub_themes: [] }, "PATCH");
+    await request("plans/annual/" + plan.id + "/months/4", { theme: "", sub_themes: [] }, "PUT");
     r = await request("plans/annual/" + plan.id + "/confirm");
     assert.equal(r.status, 422);
     assert.deepEqual((await r.json()).error.fields, ["months.4"]);
@@ -332,9 +328,7 @@ test("single-page annual retry keeps server data unchanged on first failure and 
     const plan = await (
       await request("plans/annual?mockDelay=0", {
         class_id: klass.id,
-        school_year: 2026,
-        source: "FROM_SCRATCH",
-        upload_id: null,
+        form_id: null,
       })
     ).json();
     assert.deepEqual({ classes: read().classes, children: read().children }, before);
@@ -343,9 +337,9 @@ test("single-page annual retry keeps server data unchanged on first failure and 
       plan.id +
       "/months/3?mockDelay=0&mockError=GENERATION_FAILED&mockFailures=1";
     const change = { theme: "재시도한 제목", sub_themes: ["재시도 활동"] };
-    assert.equal((await request(url, change, "PATCH")).status, 500);
+    assert.equal((await request(url, change, "PUT")).status, 500);
     assert.deepEqual(read().plans[0].months, plan.months);
-    const response = await request(url, change, "PATCH");
+    const response = await request(url, change, "PUT");
     assert.equal(response.status, 200);
     assert.equal((await response.json()).source_type, "TEACHER");
     const reloaded = await (await request("plans/annual/" + plan.id, undefined, "GET")).json();

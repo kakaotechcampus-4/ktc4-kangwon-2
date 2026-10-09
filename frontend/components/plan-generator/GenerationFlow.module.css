@@ -14,7 +14,7 @@
 .flow button:focus-visible,
 .flow input:focus-visible,
 .flow textarea:focus-visible {
-  outline: 2px solid var(--pg-success);
+  outline: 2px solid var(--pg-primary);
   outline-offset: 4px;
 }
 .flow h2:focus {
@@ -66,8 +66,8 @@
   color: var(--pg-ink);
 }
 .reached > span {
-  background: var(--pg-sage-tint);
-  border-color: var(--pg-sage) !important;
+  background: var(--pg-primary-tint);
+  border-color: var(--pg-primary-tint-line) !important;
 }
 .loadingLayout {
   display: grid;
@@ -80,7 +80,7 @@
 .documentWrap {
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
-  border-radius: 24px;
+  border-radius: 6px;
 }
 .loadingCard {
   padding: 42px 30px 30px;
@@ -102,7 +102,7 @@
   width: 112px;
   height: 112px;
   border-radius: 50%;
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
   margin: 27px 0;
   flex-shrink: 0;
 }
@@ -110,7 +110,7 @@
   content: "";
   position: absolute;
   inset: -9px;
-  border: 1px dashed var(--pg-sage);
+  border: 1px dashed var(--pg-primary-tint-line);
   border-radius: 50%;
   animation: spin 22s linear infinite;
 }
@@ -146,14 +146,14 @@
 }
 .progress {
   height: 7px;
-  border-radius: 12px;
-  background: var(--pg-sage-tint);
+  border-radius: 6px;
+  background: var(--pg-primary-tint);
   overflow: hidden;
 }
 .progress > span {
   display: block;
   height: 100%;
-  background: var(--pg-sage-ink);
+  background: var(--pg-primary);
   border-radius: inherit;
   transition: width 0.6s ease;
 }
@@ -170,10 +170,10 @@
   padding: 10px 12px;
   font-size: 13px;
   color: var(--pg-ink-soft);
-  border-radius: 12px;
+  border-radius: 6px;
 }
 .checklist .currentStep {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
   color: var(--pg-ink);
 }
 .checklist small {
@@ -191,9 +191,9 @@
   border: 1px solid var(--pg-line);
 }
 .checked {
-  background: var(--pg-sage);
+  background: var(--pg-primary-tint-line);
   color: var(--pg-ink);
-  border-color: var(--pg-sage);
+  border-color: var(--pg-primary-tint-line);
 }
 .footnote {
   margin-top: 25px;
@@ -228,10 +228,10 @@
 }
 .chips span,
 .draftBadge {
-  background: var(--pg-sage-tint);
+  background: var(--pg-primary-tint);
   color: var(--pg-success);
   padding: 4px 11px;
-  border-radius: 20px;
+  border-radius: 6px;
   font-size: 11px;
 }
 .memo {
@@ -253,8 +253,8 @@
   gap: 9px;
   padding: 17px;
   margin-top: 25px;
-  border-radius: 16px;
-  background: var(--pg-sage-tint);
+  border-radius: 6px;
+  background: var(--pg-primary-tint);
 }
 .tip p {
   color: var(--pg-ink-soft);
@@ -267,8 +267,8 @@
   align-items: center;
   padding: 23px 30px;
   border: 1px solid var(--pg-line);
-  background: var(--pg-sage-tint);
-  border-radius: 22px;
+  background: var(--pg-primary-tint);
+  border-radius: 6px;
   margin-bottom: 28px;
 }
 .successBanner .sprout {
@@ -312,17 +312,17 @@
 .secondary {
   min-height: 44px;
   padding: 10px 17px;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
 }
 .primary {
-  background: var(--pg-sage);
+  background: var(--pg-primary-tint-line);
   color: var(--pg-ink);
-  border: 1px solid var(--pg-sage);
+  border: 1px solid var(--pg-primary-tint-line);
 }
 .primary:hover {
-  background: var(--pg-sage-ink);
+  background: var(--pg-primary);
 }
 .secondary {
   background: var(--pg-paper);
@@ -330,8 +330,8 @@
   color: var(--pg-ink);
 }
 .secondary:hover {
-  background: var(--pg-sage-tint);
-  border-color: var(--pg-sage);
+  background: var(--pg-primary-tint);
+  border-color: var(--pg-primary-tint-line);
 }
 .resultLayout {
   display: grid;
@@ -362,11 +362,11 @@
   padding: 16px 13px;
   background: var(--pg-paper);
   border: 1px solid var(--pg-line);
-  border-radius: 16px;
+  border-radius: 6px;
 }
 .tabs .activeTab {
-  background: var(--pg-sage-tint);
-  border-color: var(--pg-sage-ink);
+  background: var(--pg-primary-tint);
+  border-color: var(--pg-primary);
 }
 .fileIcon {
   display: grid;
@@ -374,7 +374,7 @@
   width: 34px;
   height: 39px;
   background: var(--pg-cream);
-  border-radius: 8px;
+  border-radius: 6px;
   color: var(--pg-success);
   font-size: 24px;
   flex-shrink: 0;
@@ -418,7 +418,7 @@
 }
 .documentHeading {
   padding-bottom: 26px;
-  border-bottom: 2px solid var(--pg-sage);
+  border-bottom: 2px solid var(--pg-primary-tint-line);
 }
 .documentHeading h3 {
   font-size: 25px;
@@ -436,8 +436,8 @@
 .theme {
   margin: 23px 0 28px;
   padding: 20px;
-  border-radius: 14px;
-  background: var(--pg-sage-tint);
+  border-radius: 6px;
+  background: var(--pg-primary-tint);
 }
 .theme > span {
   display: block;
@@ -504,7 +504,7 @@
   border: 1px solid var(--pg-line);
   padding: 9px;
   font-size: 14px;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 .row textarea {
   margin-top: 6px;
@@ -514,7 +514,7 @@
 .teacherNote {
   margin-top: 23px;
   padding: 17px 20px;
-  border-radius: 12px;
+  border-radius: 6px;
   background: var(--pg-cream);
   font-size: 12px;
 }

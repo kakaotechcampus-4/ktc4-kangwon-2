@@ -1,31 +1,22 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import AppSidebar from "./AppSidebar";
-import TeacherMenu from "@/components/auth/TeacherMenu";
+import WorkspaceTopBar from "./WorkspaceTopBar";
 
 /**
  * 온보딩 이후 일반 서비스 화면의 공통 셸.
  *   AppLayout
- *   ├ AppSidebar (데스크톱: 좌측 고정 / 모바일: 하단 네비)
- *   └ Content    (각 페이지가 AppHeader + PageContainer 로 구성)
- * 페이지 배경은 --pg-cream(#F4F8F5), 사이드바/카드는 흰색.
+ *   ├ AppSidebar      (데스크톱: 좌측 고정 / 모바일: 하단 네비)
+ *   ├ WorkspaceTopBar (얇은 상단 띠 — 지금 어디인지와 오늘 날짜)
+ *   └ Content         (각 페이지가 AppHeader + PageContainer 로 구성)
+ *
+ * 사이드바가 lg 에서 fixed 라서 본문에 같은 폭만큼 왼쪽 여백을 준다.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[232px_minmax(0,1fr)] bg-cream">
+    <div className="min-h-screen bg-cream">
       <AppSidebar />
-      <div className="min-w-0 pb-[84px] lg:pb-0">
-        {/* 모바일 전용 상단 바 (사이드바 브랜드 영역 대체) */}
-        <div className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-paper border-b border-line">
-          <Link href="/onboarding/center" className="flex items-center gap-2">
-            <svg width="26" height="26" viewBox="0 0 30 30" aria-hidden="true">
-              <circle cx="12" cy="15" r="9" className="fill-sage" />
-              <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
-            </svg>
-            <span className="font-display text-lg text-ink">쓱싹요정</span>
-          </Link>
-          <TeacherMenu compact />
-        </div>
+      <div className="min-w-0 pb-[84px] lg:pb-0 lg:ml-[232px]">
+        <WorkspaceTopBar />
         {children}
       </div>
     </div>

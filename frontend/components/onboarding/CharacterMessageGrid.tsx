@@ -91,11 +91,11 @@ function MessageCard({
 
   return (
     <div
-      className={`rounded-[18px] border-[1.5px] border-line bg-paper p-3 flex flex-col gap-2 transition-colors ${disabled ? "bg-sage-tint" : "focus-within:border-sage-ink"}`}
+      className={`rounded-md border-[1.5px] border-line bg-paper p-3 flex flex-col gap-2 transition-colors ${disabled ? "bg-cream" : "focus-within:border-primary"}`}
     >
       <div className="flex items-center justify-between">
         <span
-          className={`font-mono text-[11px] tracking-wide px-2.5 py-[3px] rounded-full font-medium ${isCurrent ? "bg-sage text-ink" : "bg-sage-tint text-sage-ink"}`}
+          className={`font-mono text-[11px] tracking-wide px-2.5 py-[3px] rounded-full font-medium ${isCurrent ? "bg-sage text-ink" : "bg-cream text-sage-ink"}`}
         >
           {month}월{isCurrent ? " · 이번 달" : ""}
         </span>
