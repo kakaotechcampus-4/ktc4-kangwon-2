@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -249,39 +249,144 @@ test("지울 워커가 없거나 조회가 실패해도 화면을 막지 않는�
   for (let i = 0; i < 5; i++) await settle();
 });
 
-test("워커 파일 동기화 스크립트는 mocking 값에 따라 만들고 지운다", () => {
-  const script = fileURLToPath(new URL("scripts/msw-worker.mjs", root));
-  const dir = mkdtempSync(join(tmpdir(), "msw-worker-"));
-  const target = join(dir, "mockServiceWorker.js");
-  try {
-    execFileSync(process.execPath, [script, dir], {
-      env: { ...process.env, NEXT_PUBLIC_API_MOCKING: "enabled" },
-    });
-    assert.ok(existsSync(target), "enabled 면 워커 파일을 만든다");
-    assert.match(readFileSync(target, "utf8"), /Mock Service Worker/i);
+const SCRIPT = fileURLToPath(new URL("scripts/msw-worker.mjs", root));
 
-    for (const mocking of ["disabled", "false", ""]) {
-      writeFileSync(target, "stale");
-      execFileSync(process.execPath, [script, dir], {
-        env: { ...process.env, NEXT_PUBLIC_API_MOCKING: mocking },
-      });
-      assert.equal(existsSync(target), false, `mocking=${mocking || "(빈 값)"} 이면 남기지 않는다`);
-    }
+/**
+ * 임시 프로젝트를 만들고 그 안에서 워커 동기화 스크립트를 돌린다.
+ * .env 파일은 next 가 찾는 자리(프로젝트 루트)에 그대로 놓는다.
+ */
+function project(t, { envFiles = {}, worker = false } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "msw-project-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const [name, body] of Object.entries(envFiles)) writeFileSync(join(dir, name), body);
 
+  const target = join(dir, "public", "mockServiceWorker.js");
+  if (worker) {
+    mkdirSync(join(dir, "public"), { recursive: true });
     writeFileSync(target, "stale");
-    const env = { ...process.env };
-    delete env.NEXT_PUBLIC_API_MOCKING;
-    execFileSync(process.execPath, [script, dir], { env });
-    assert.equal(existsSync(target), false, "값이 없는 배포에서도 지운다");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
   }
+
+  return {
+    target,
+    /** mocking 을 주면 쉘에서 넘긴 값, 안 주면 쉘에는 없는 상태. dev 는 predev 쪽. */
+    run({ mocking, dev = false } = {}) {
+      const env = { ...process.env };
+      delete env.NEXT_PUBLIC_API_MOCKING;
+      if (mocking !== undefined) env.NEXT_PUBLIC_API_MOCKING = mocking;
+      const args = dev ? ["--dev", dir] : [dir];
+      return execFileSync(process.execPath, [SCRIPT, ...args], { env, encoding: "utf8" });
+    },
+  };
+}
+
+test("워커 파일 동기화 스크립트는 mocking 값에 따라 만들고 지운다", (t) => {
+  const app = project(t);
+  app.run({ mocking: "enabled" });
+  assert.ok(existsSync(app.target), "enabled 면 워커 파일을 만든다");
+  assert.match(readFileSync(app.target, "utf8"), /Mock Service Worker/i);
+
+  for (const mocking of ["disabled", "false", ""]) {
+    writeFileSync(app.target, "stale");
+    app.run({ mocking });
+    assert.equal(
+      existsSync(app.target),
+      false,
+      `mocking=${mocking || "(빈 값)"} 이면 남기지 않는다`,
+    );
+  }
+
+  writeFileSync(app.target, "stale");
+  app.run();
+  assert.equal(existsSync(app.target), false, "값이 없는 배포에서도 지운다");
+});
+
+// ── .env 파일 ──────────────────────────────────────────────────────────────
+// predev 는 next 보다 먼저 돈다. 스크립트가 .env 를 직접 읽지 않으면 값이 비어 보여서,
+// .env.local 에 enabled 를 적어둔 보통의 로컬 개발에서 워커 파일을 지워버린다.
+
+test(".env.local 의 enabled 를 읽어 워커 파일을 만든다", (t) => {
+  const app = project(t, { envFiles: { ".env.local": "NEXT_PUBLIC_API_MOCKING=enabled\n" } });
+  app.run({ dev: true });
+  assert.ok(existsSync(app.target), "쉘에 값이 없어도 .env.local 을 보고 만든다");
+  assert.match(readFileSync(app.target, "utf8"), /Mock Service Worker/i);
+});
+
+test(".env.local 의 disabled 를 읽어 남아 있던 워커 파일을 지운다", (t) => {
+  const app = project(t, {
+    envFiles: { ".env.local": "NEXT_PUBLIC_API_MOCKING=disabled\n" },
+    worker: true,
+  });
+  app.run({ dev: true });
+  assert.equal(existsSync(app.target), false);
+});
+
+test("쉘에서 넘긴 값이 .env.local 보다 세다 — next 와 같은 우선순위", (t) => {
+  const off = project(t, {
+    envFiles: { ".env.local": "NEXT_PUBLIC_API_MOCKING=enabled\n" },
+    worker: true,
+  });
+  off.run({ dev: true, mocking: "disabled" });
+  assert.equal(existsSync(off.target), false, "쉘의 disabled 가 파일의 enabled 를 이긴다");
+
+  const on = project(t, { envFiles: { ".env.local": "NEXT_PUBLIC_API_MOCKING=disabled\n" } });
+  on.run({ dev: true, mocking: "enabled" });
+  assert.ok(existsSync(on.target), "쉘의 enabled 가 파일의 disabled 를 이긴다");
+});
+
+test(".env.local 이 .env 보다 세다 — next 와 같은 우선순위", (t) => {
+  const off = project(t, {
+    envFiles: {
+      ".env": "NEXT_PUBLIC_API_MOCKING=enabled\n",
+      ".env.local": "NEXT_PUBLIC_API_MOCKING=disabled\n",
+    },
+    worker: true,
+  });
+  off.run({ dev: true });
+  assert.equal(
+    existsSync(off.target),
+    false,
+    ".env.local 의 disabled 가 .env 의 enabled 를 이긴다",
+  );
+
+  const on = project(t, {
+    envFiles: {
+      ".env": "NEXT_PUBLIC_API_MOCKING=disabled\n",
+      ".env.local": "NEXT_PUBLIC_API_MOCKING=enabled\n",
+    },
+  });
+  on.run({ dev: true });
+  assert.ok(existsSync(on.target), ".env.local 의 enabled 가 .env 의 disabled 를 이긴다");
+});
+
+test("predev 와 prebuild 가 보는 env 파일이 next 와 같다", (t) => {
+  const app = project(t, {
+    envFiles: {
+      ".env.development": "NEXT_PUBLIC_API_MOCKING=enabled\n",
+      ".env.production": "NEXT_PUBLIC_API_MOCKING=disabled\n",
+    },
+  });
+  app.run({ dev: true });
+  assert.ok(existsSync(app.target), "predev 는 .env.development 를 본다");
+
+  app.run();
+  assert.equal(
+    existsSync(app.target),
+    false,
+    "prebuild 는 .env.production 을 본다 — 배포본에 안 남는다",
+  );
+});
+
+test("env 파일이 하나도 없으면 지운다", (t) => {
+  const app = project(t, { worker: true });
+  app.run({ dev: true });
+  assert.equal(existsSync(app.target), false);
 });
 
 test("워커 파일은 git 산출물이 아니고 build 전에 정리된다", () => {
   const pkg = JSON.parse(read("package.json"));
+  assert.equal(pkg.scripts.predev, "node scripts/msw-worker.mjs --dev");
   assert.equal(pkg.scripts.prebuild, "node scripts/msw-worker.mjs");
-  assert.equal(pkg.scripts.predev, "node scripts/msw-worker.mjs");
+  assert.equal(pkg.scripts.dev, "next dev", "기존 dev 명령은 그대로 둔다");
   assert.equal(pkg.scripts.build, "next build", "기존 build 명령은 그대로 둔다");
   assert.match(read(".gitignore"), /^\/public\/mockServiceWorker\.js$/m);
 });
