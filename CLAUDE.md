@@ -143,6 +143,33 @@ if os.getenv("LLM_MODE") == "real" and not os.getenv("IS_SERVER"):
 
 ---
 
+## 서버 값은 타입 말고 실제 응답을 본다
+
+타입에 칸이 있다고 그 안에 든 값의 모양까지 아는 것이 아니다.
+**한 번 찍어보고 쓴다.** 2026-10 에 같은 실수를 세 번 했다.
+
+```
+칸 수정     목업이 PATCH 를 받아줘 테스트가 통과했다. 진짜 서버는 PUT 이라 405 였다
+hwpx       curl 로 받아보고 된다고 했다. 화면 버튼은 txt 를 만들고 있었다
+시각        타입에 created_at 이 있어 그대로 썼다. UTC 라 9시간 틀렸다
+```
+
+셋 다 **코드를 보고 짐작했고 값을 안 봤다.**
+
+## 날짜 · 시각
+
+- 서버의 `created_at` · `updated_at` 은 **UTC** 다 (끝에 `Z`).
+  **문자열을 자르지 않는다.** `new Date(...)` 로 읽어 현지로 바꾼다.
+  ```ts
+  // ✗  .slice(11, 16)        Z 를 무시한다. 한국에서 9시간 전으로 보인다
+  // ✓  new Date(v).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+  ```
+- `date`(`YYYY-MM-DD`)는 시간대가 없다. 그건 잘라 써도 된다.
+- **「오늘」을 만들 때 `toISOString()` 을 쓰지 않는다.** 그건 UTC 날짜라 한국 아침 9시
+  전에는 어제가 된다. `lib/workspace/model.ts` 의 `today()` 를 쓴다.
+
+---
+
 ## 보안
 
 - API 키를 클라이언트 코드에 두지 않는다. 서버에서만 호출한다.

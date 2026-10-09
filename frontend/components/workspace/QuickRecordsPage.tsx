@@ -13,7 +13,7 @@ import { WorkspacePage, Message } from "./WorkspaceUI";
 import { Icon, type IconName } from "@/components/app/icons";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
-import { today } from "@/lib/workspace/model";
+import { today, localTime } from "@/lib/workspace/model";
 import { useClientState } from "@/lib/hooks/use-client-state";
 
 const DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"];
@@ -174,7 +174,7 @@ export default function QuickRecordsPage() {
                     <span className="text-[11px] text-ink-soft">{record.domain}</span>
                   </div>
                   <span className="shrink-0 text-[11px] text-ink-soft">
-                    {record.createdAt.slice(11, 16)}
+                    {localTime(record.createdAt)}
                   </span>
                 </div>
                 <p className="mt-3 text-[13px] leading-relaxed text-ink">{record.fact}</p>
