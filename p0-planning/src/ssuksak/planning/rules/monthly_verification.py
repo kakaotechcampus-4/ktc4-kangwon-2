@@ -9,7 +9,7 @@ from ..domain.activity_reference import ActivityCandidate, ActivityCatalog
 from ..domain.errors import InvalidDomainValueError
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import MonthlyCell, MonthlyPlan
-from ..domain.monthly_template import DisplayMode
+from ..domain.monthly_template import RepeatBy
 from ..domain.monthly_verification import (
     FindingKind,
     Severity,
@@ -317,7 +317,7 @@ def _validate_location(plan: MonthlyPlan, finding: Violation) -> None:
         )
     if (
         section is not None
-        and section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+        and section.repeat_by is RepeatBy.NONE
         and location.week_id is not None
     ):
         raise InvalidDomainValueError(

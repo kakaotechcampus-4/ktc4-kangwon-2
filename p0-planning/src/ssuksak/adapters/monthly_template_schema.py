@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from ..planning.domain.errors import InvalidDomainValueError
 from ..planning.domain.monthly_template import (
-    DisplayMode,
     EmptyValuePolicy,
     MonthlyTemplate,
+    RepeatBy,
     SectionCategory,
     SectionRole,
     SemanticVariant,
@@ -68,8 +68,11 @@ def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
     if runtime_active != derived_active:
         raise MonthlyTemplateSchemaError("runtime_active must be derived from domain_owner_approval")
     structure = _object(_required(root, "structure_rules", "monthly_template"), "monthly_template.structure_rules")
-    if structure.get("global_display_mode_default") is not None:
-        raise MonthlyTemplateSchemaError("global_display_mode_default must remain null")
+    if "global_display_mode_default" in structure:
+        # Old vocabulary (ADR-027). Approved files are never rewritten; new versions use repeat_by.
+        raise MonthlyTemplateSchemaError("display_mode vocabulary is not supported; use repeat_by")
+    if structure.get("global_repeat_by_default") is not None:
+        raise MonthlyTemplateSchemaError("global_repeat_by_default must remain null")
     raw_sections = _required(root, "sections", "monthly_template")
     if not isinstance(raw_sections, list) or not raw_sections:
         raise MonthlyTemplateSchemaError("monthly_template.sections must be a non-empty array")
@@ -82,7 +85,11 @@ def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
             section_key = _text(
                 _required(item, "semantic_key", path), f"{path}.semantic_key"
             )
-            display = item.get("display_mode")
+            if "display_mode" in item:
+                raise MonthlyTemplateSchemaError(
+                    f"{path}.display_mode is not supported; use repeat_by"
+                )
+            repeat = item.get("repeat_by")
             policy = item.get("empty_value_policy")
             category = SectionCategory(
                 item.get("category", _legacy_category(section_key).value)
@@ -101,7 +108,7 @@ def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
                 section_key=section_key,
                 role=role,
                 activated=_boolean(_required(item, "activated", path), f"{path}.activated"),
-                display_mode=None if display is None else DisplayMode(display),
+                repeat_by=None if repeat is None else RepeatBy(repeat),
                 empty_value_policy=None if policy is None else EmptyValuePolicy(policy),
                 parent_section_key=item.get("parent_section"),
                 # Observed labels are evidence about the Template, not a label for
@@ -125,8 +132,8 @@ def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
                 ),
                 visible=visible,
             )
-            if section.activated and role is SectionRole.CONTENT and section.display_mode is None:
-                raise MonthlyTemplateSchemaError(f"{path} requires explicit display_mode")
+            if section.activated and role is SectionRole.CONTENT and section.repeat_by is None:
+                raise MonthlyTemplateSchemaError(f"{path} requires explicit repeat_by")
             sections.append(section)
         return MonthlyTemplate(
             template_ref=TemplateRef(

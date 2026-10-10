@@ -10,8 +10,8 @@ from ssuksak.adapters.elice_openai_monthly import (
 )
 from ssuksak.planning.planner.contracts import MonthlyPlanningRequest
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
     EmptyValuePolicy,
+    RepeatBy,
     SectionCategory,
     SectionRole,
     TemplateRef,
@@ -47,7 +47,7 @@ def test_elice_openai_compatible_live_smoke_is_explicitly_opt_in():
                         section_key="theme",
                         role=SectionRole.CONTENT,
                         activated=True,
-                        display_mode=DisplayMode.MONTHLY_MERGED_SUMMARY,
+                        repeat_by=RepeatBy.NONE,
                         empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
                         display_label="Theme",
                         category=SectionCategory.DEFAULT,

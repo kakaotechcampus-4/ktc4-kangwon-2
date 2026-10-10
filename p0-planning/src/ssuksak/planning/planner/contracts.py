@@ -11,7 +11,7 @@ from datetime import date
 import re
 
 from ..domain.errors import DomainError, InvalidDomainValueError
-from ..domain.monthly_template import DisplayMode, SectionRole, TemplateSection
+from ..domain.monthly_template import RepeatBy, SectionRole, TemplateSection
 from ..domain.monthly_template_profile import (
     INSTITUTION_INPUT_SECTION_KEYS,
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
@@ -20,13 +20,13 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
-MONTHLY_PROMPT_VERSION = "monthly-planner-v17"
+MONTHLY_PROMPT_VERSION = "monthly-planner-v18"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v9"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
-MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v12"
+MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 # Used instead of the two above when the Context Packet carries safety placement.
-MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v13"
-MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v13"
+MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v14"
+MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v14"
 MONTHLY_MODEL = "openai/gpt-6-luna"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-6-luna-2026-10-07"). Elice answers
@@ -422,20 +422,20 @@ class MonthlyCellPlanningRequest:
         # The Snapshot placement decides the target address: one cell per week,
         # or the single month-level cell whose week_id is None.
         target_section = self.template_snapshot.section(self.target_section_key)
-        placement = None if target_section is None else target_section.display_mode
+        placement = None if target_section is None else target_section.repeat_by
         if not (
             (
-                placement is DisplayMode.WEEKLY_CELLS
+                placement is RepeatBy.WEEK
                 and isinstance(self.target_week_id, WeekId)
             )
             or (
-                placement is DisplayMode.MONTHLY_MERGED_SUMMARY
+                placement is RepeatBy.NONE
                 and self.target_week_id is None
             )
         ):
             raise InvalidDomainValueError(
                 "MonthlyCellPlanningRequest.target_week_id must be a WeekId for "
-                "a WEEKLY_CELLS target and None for a MONTHLY_MERGED_SUMMARY target"
+                "a repeat_by=WEEK target and None for a repeat_by=NONE target"
             )
         _require_reference_labels(
             "MonthlyCellPlanningRequest.reference_labels",

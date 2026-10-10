@@ -89,7 +89,7 @@ def test_full_yearly_to_monthly_core_flow_and_final_locks():
     monthly_generated = monthly_result.plan
     assert monthly_generated.status is PlanStatus.DRAFT
     assert monthly_generated.template_ref.template_version == (
-        "monthly-template-a-v0.2.0"
+        "monthly-template-a-v0.2.1"
     )
     assert len(monthly_generated.active_week_periods) == 5
     assert monthly_result.context_packet_fingerprint
@@ -237,3 +237,17 @@ def test_safety_cells_are_never_llm_regeneration_targets():
     assert error.value.code == "monthly_cell_not_regeneratable"
     assert len(harness.provider.cell_requests) == calls_before
     assert harness.monthly_plans.get(plan.plan_id) is plan
+
+
+def test_harness_generation_rejects_the_real_pending_template():
+    harness = PlanningHarness()
+    yearly = harness.confirm_yearly(harness.generate_yearly().plan)
+    # The real files: PENDING_HUMAN_REVIEW (ADR-027).
+    harness.generation_templates = harness.templates
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate_monthly(yearly, MonthlyGenerationMode.LLM_PLANNER)
+
+    assert exc.value.code == "monthly_template_not_approved"
+    assert harness.monthly_plans.save_count == 0
+    assert harness.provider.monthly_requests == []
