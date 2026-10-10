@@ -340,6 +340,21 @@ class RequestAwareMonthlyLlm:
         )
 
 
+class ApprovedTemplates:
+    """OD-N11 (A), test-only: the exact real Template, approved in memory.
+
+    The data files stay PENDING_HUMAN_REVIEW (ADR-027); production code never
+    gets this object, so the Core approval gate still runs on the real status.
+    """
+
+    def __init__(self, real: JsonMonthlyTemplateRepository) -> None:
+        self._real = real
+
+    def get_template(self, template_id: str, template_version: str):
+        template = self._real.get_template(template_id, template_version)
+        return None if template is None else replace(template, runtime_active=True)
+
+
 class PlanningHarness:
     def __init__(self) -> None:
         self.themes = JsonThemeReferenceRepository()
@@ -354,6 +369,9 @@ class PlanningHarness:
         self.yearly_ids = DeterministicIdGenerator("yearly-final")
         self.monthly_ids = DeterministicIdGenerator("monthly-final")
         self.templates = JsonMonthlyTemplateRepository()
+        # Generation sees the approved fixture; tests swap in self.templates
+        # to prove the gate rejects the real PENDING files.
+        self.generation_templates = ApprovedTemplates(self.templates)
         self.profiles = InMemoryTemplateProfileRepository(
             (
                 _profile(self.templates, RULE_TEMPLATE, RULE_PROFILE),
@@ -444,6 +462,7 @@ class PlanningHarness:
             parent_plan_repository=self.yearly_plans,
             plan_repository=self.monthly_plans,
             profile_repository=self.profiles,
+            template_repository=self.generation_templates,
             safety_repository=self.safety,
             activity_repository=self.activities,
             clock=self.clock,
