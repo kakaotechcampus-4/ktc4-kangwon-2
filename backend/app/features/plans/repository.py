@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from ssuksak.planning import InvalidDomainValueError, PlanId
 
@@ -64,6 +64,38 @@ class PostgresPlanRepository[TPlan]:
             for key, value in values.items():
                 setattr(row, key, value)
         self._session.flush()
+
+    def update_if_unchanged(
+        self,
+        plan_id: PlanId,
+        plan: TPlan,
+        *,
+        expected_body: dict,
+        expected_sub_themes: dict,
+    ) -> bool:
+        """읽은 뒤로 아무도 바꾸지 않았을 때만 쓴다. 썼으면 True, 아니면 False(쓴 것 없음).
+
+        **조건과 쓰기가 한 문장이다** — 이 원 · 이 종류 · DRAFT 이고 본문 · 소주제가 읽은 그대로일
+        때만. 다른 요청이 행을 잡고 있으면 PostgreSQL 이 그 commit 을 기다렸다가 조건을 다시 본다.
+        LLM 을 기다리는 동안 행을 잠그지 않는 쓰기(연간 재생성)가 쓴다. 본문 비교는 jsonb `=`
+        (키 순서와 무관한 값 비교)다.
+        """
+        body = to_jsonable(plan)
+        statement = (
+            update(Plan)
+            .where(
+                Plan.plan_ref == plan_id.value,
+                Plan.center_id == self._center_id,
+                Plan.kind == self._kind,
+                Plan.status == "DRAFT",
+                Plan.body == expected_body,
+                Plan.sub_themes == expected_sub_themes,
+            )
+            .values(body=body, status=body["status"], confirmed_at=_confirmed_at(body))
+            .returning(Plan.id)
+            .execution_options(synchronize_session=False)
+        )
+        return self._session.execute(statement).first() is not None
 
     def get(self, plan_id: PlanId) -> TPlan | None:
         if not isinstance(plan_id, PlanId):

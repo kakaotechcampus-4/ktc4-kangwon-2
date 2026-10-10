@@ -6,11 +6,13 @@
 생기고 둘이 갈라진다.
 """
 
+import copy
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
 
 # **`ssuksak.planning` 이 공개 창구다.** 안쪽 파일 위치를 우리가 외우면 하민이 정리할 때마다
@@ -29,10 +31,17 @@ from ssuksak.planning import (
     InvalidDomainValueError,
     InvalidStateTransitionError,
     PlanId,
+    RegenerateYearlyPlanItem,
+    RegenerateYearlyPlanItemCommand,
     YearlyApplicationError,
     YearlyPlan,
 )
 from ssuksak.planning.rules.errors import YearlyRuleError
+from ssuksak.planning.rules.yearly_reference_rules import (
+    CATALOG_APPROVAL_RULE_ID,
+    CATALOG_RESOLUTION_RULE_ID,
+)
+from ssuksak.planning.rules.yearly_theme_selection import RULE_ID as THEME_SELECTION_RULE_ID
 
 from app.db import get_session
 from app.features.auth.models import User
@@ -396,6 +405,165 @@ def confirm_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
         raise _domain_error(error) from error
     # 저장소가 감사 기록에서 꺼내 칸에 넣어둔 값을 그대로 쓴다.
     answer = ConfirmOut(id=row.id, status=confirmed.status.value, confirmed_at=row.confirmed_at)
+    session.commit()
+    return answer
+
+
+# ── 선택 월 재생성 (잠정 — docs/provisional-policy-decisions.md PROV-Y-A · B · E · F) ─────────
+
+_ALREADY_CONFIRMED = HTTPException(
+    status.HTTP_409_CONFLICT,
+    detail={
+        "code": "ALREADY_CONFIRMED",
+        "message": "확정된 계획안은 수정할 수 없습니다.",
+        "fields": [],
+    },
+)
+_STALE_WRITE = HTTPException(
+    status.HTTP_409_CONFLICT,
+    detail={
+        "code": "STALE_WRITE",
+        "message": "그 사이 다른 화면에서 계획안이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
+        "fields": [],
+    },
+)
+_HAS_SUB_THEMES = HTTPException(
+    status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "VALIDATION_FAILED",
+        "message": "소주제가 있는 달은 주제를 다시 만들 수 없습니다. 소주제를 비운 뒤 해주세요.",
+        "fields": ["sub_themes"],
+    },
+)
+_NO_OTHER_THEME = HTTPException(
+    status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "VALIDATION_FAILED",
+        "message": "이 달에 쓸 수 있는 주제 후보가 없습니다.",
+        "fields": ["month"],
+    },
+)
+_REGENERATION_FAILED = HTTPException(
+    status.HTTP_500_INTERNAL_SERVER_ERROR,
+    detail={
+        "code": "GENERATION_FAILED",
+        "message": "주제를 다시 만들지 못했습니다. 다시 시도해주세요.",
+        "fields": [],
+    },
+)
+
+
+def _has_sub_themes(sub_themes: dict, month: int) -> bool:
+    """앞뒤 공백을 뺀 값이 하나라도 있으면 「있다」. `[]` · `["", "  "]` 은 없는 것과 같다."""
+    return any(isinstance(item, str) and item.strip() for item in sub_themes.get(str(month), []))
+
+
+def _regeneration_error(error: Exception) -> HTTPException:
+    """재생성이 실패한 이유를 계약 코드로 가른다. **Core 문구를 그대로 내보내지 않는다.**"""
+    if isinstance(error, InvalidStateTransitionError):
+        return _ALREADY_CONFIRMED
+    if isinstance(error, YearlyRuleError):
+        if error.rule_id in (CATALOG_RESOLUTION_RULE_ID, CATALOG_APPROVAL_RULE_ID):
+            # 서버의 승인 참조자료를 쓸 수 없다 — 재시도해도 같다(월간 _REFERENCE_UNAVAILABLE).
+            return _503(
+                "DEPENDENCY_UNAVAILABLE",
+                "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요.",
+            )
+        if error.rule_id == THEME_SELECTION_RULE_ID:
+            return _NO_OTHER_THEME
+        return _REGENERATION_FAILED
+    if isinstance(error, YearlyApplicationError):
+        cause = error.__cause__
+        if isinstance(cause, LlmBudgetExceeded):
+            return _503("LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요.")
+        if isinstance(cause, LlmUnavailable):
+            return _503(
+                "DEPENDENCY_UNAVAILABLE",
+                "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요.",
+            )
+    # LLM 호출이 깨졌다 · 결과가 계약을 어겼다
+    # (theme_text_generation_failed · invalid_theme_text_result)
+    # · 그 밖의 Core 거절. 아무것도 저장되지 않았다.
+    return _REGENERATION_FAILED
+
+
+@router.post("/{plan_id}/months/{month}/regenerate", response_model=MonthOut)
+def regenerate_month(plan_id: int, month: int, session: DbSession, user: CurrentUser):
+    """그 달 주제만 다시 만든다. 다른 11개월은 그대로다. **잠정 계약이다**(PM 확인 전).
+
+    LLM 을 기다리는 동안 행을 잠그지 않는다 — PUT · 확정이 30초씩 막히지 않게. 대신 저장을 「DRAFT
+    이고 본문 · 소주제가 읽은 그대로일 때만」 한 문장으로 한다. 그 사이 PUT · 확정 · 다른 재생성이
+    있었으면 아무것도 쓰지 않고 409 다. 교사가 고친 주제도 바뀐다 — 이전 값은 Audit 에 남는다.
+    """
+    # ── 1. 짧은 읽기 ───────────────────────────────────────────────────────
+    row = _row(session, user, plan_id)
+    repo = _repo(session, user)
+    plan = repo.get(PlanId(row.plan_ref))
+    period = next((p for p in plan.periods if p.period.calendar_month == month), None)
+    if period is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "그 달이 없습니다.", "fields": ["month"]},
+        )
+    if row.status == "CONFIRMED":
+        raise _ALREADY_CONFIRMED
+    if _has_sub_themes(row.sub_themes, month):
+        raise _HAS_SUB_THEMES
+    seen_body, seen_sub_themes = copy.deepcopy(row.body), copy.deepcopy(row.sub_themes)
+    try:
+        generator = theme_text_generator()
+    except LlmUnavailable as error:
+        raise _503(
+            "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
+        ) from error
+    # 읽기를 여기서 끝낸다. LLM 을 기다리는 동안 transaction · 행을 잡지 않는다.
+    session.commit()
+
+    # ── 2. Core — DB 없음 ──────────────────────────────────────────────────
+    drafts: InMemoryPlanRepository[YearlyPlan] = InMemoryPlanRepository()
+    drafts.save(plan.plan_id, plan)
+    try:
+        regenerated = (
+            RegenerateYearlyPlanItem(
+                theme_repository=JsonThemeReferenceRepository(),
+                plan_repository=drafts,
+                text_generator=generator,
+                clock=SystemClock(),
+            )
+            .execute(
+                RegenerateYearlyPlanItemCommand(
+                    plan_id=plan.plan_id,
+                    item_id=period.theme.item_id,
+                    actor_id=ActorId(f"user_{user.id}"),
+                    catalog=CATALOG,
+                )
+            )
+            .plan
+        )
+    except (
+        InvalidStateTransitionError,
+        YearlyRuleError,
+        YearlyApplicationError,
+        InvalidDomainValueError,
+    ) as error:
+        raise _regeneration_error(error) from error
+
+    # ── 3. 조건부 쓰기 ─────────────────────────────────────────────────────
+    written = repo.update_if_unchanged(
+        plan.plan_id,
+        regenerated,
+        expected_body=seen_body,
+        expected_sub_themes=seen_sub_themes,
+    )
+    if not written:
+        session.rollback()
+        # 왜 못 썼는지 가른다. 그 사이 또 바뀌어 코드가 어긋날 수는 있어도 쓴 것은 없다.
+        raise (
+            _ALREADY_CONFIRMED
+            if _row(session, user, plan_id).status == "CONFIRMED"
+            else _STALE_WRITE
+        )
+    answer = next(m for m in _months(regenerated, seen_sub_themes) if m.month == month)
     session.commit()
     return answer
 
