@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.features.auth.models import User
 from app.features.centers.models import Center, CenterInvite, Class
@@ -148,3 +148,25 @@ def test_cannot_invite_into_another_center(people, db_session):
 def test_join_rejects_empty_code(people):
     as_(people["newbie"])
     assert join("   ").status_code == 422
+
+
+def test_join_does_not_spend_the_code_when_center_was_set_meanwhile(people, db_session):
+    # 같은 교사가 코드 두 개를 동시에 낸 상황. 앞 요청이 먼저 원을 넣었는데 이 요청의
+    # 교사 객체는 아직 원이 없다고 본다 — 앞단 검사는 통과하고 UPDATE 가 막아야 한다.
+    as_(people["owner"])
+    code = invite(people["home"])["code"]
+    db_session.execute(
+        update(User)
+        .where(User.id == people["newbie"].id)
+        .values(center_id=people["other"].id)
+        .execution_options(synchronize_session=False)
+    )
+    as_(people["newbie"])
+    assert people["newbie"].center_id is None
+
+    response = join(code)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ALREADY_EXISTS"
+    spent = db_session.scalar(select(CenterInvite).where(CenterInvite.code == code))
+    assert spent.used_at is None

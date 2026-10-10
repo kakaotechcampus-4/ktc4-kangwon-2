@@ -5,11 +5,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.features.auth.models import User
 from app.features.centers.greetings import default_greetings
 from app.features.centers.models import Center, CenterInvite, Class, Greetings
 from app.features.centers.schemas import (
@@ -104,18 +105,17 @@ def create_invite(center_id: int, session: DbSession, user: CurrentUser) -> Cent
     return invite
 
 
+_ALREADY_JOINED = HTTPException(
+    status_code=status.HTTP_409_CONFLICT,
+    detail={"code": "ALREADY_EXISTS", "message": "이미 등록한 원이 있습니다.", "fields": []},
+)
+
+
 @router.post("/join", response_model=CenterResponse)
 def join_center(body: JoinRequest, session: DbSession, user: CurrentUser) -> Center:
     """초대 코드로 원에 들어간다 (§1-1). 이미 원이 있으면 `create_center` 와 같은 409 다."""
     if user.center_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "ALREADY_EXISTS",
-                "message": "이미 등록한 원이 있습니다.",
-                "fields": [],
-            },
-        )
+        raise _ALREADY_JOINED
     now = datetime.now(UTC)
     # 행을 잠근다. 두 교사가 같은 코드를 동시에 내면 한 명만 들어간다.
     invite = session.scalar(
@@ -131,9 +131,18 @@ def join_center(body: JoinRequest, session: DbSession, user: CurrentUser) -> Cen
                 "fields": ["code"],
             },
         )
+    # 원이 비어 있을 때만 넣는다. 같은 교사가 코드 두 개를 동시에 내면 위 검사는 둘 다
+    # 통과하지만, 이 UPDATE 는 먼저 커밋한 쪽만 행을 바꾼다 — 늦은 쪽 코드는 쓰이지 않는다.
+    joined = session.execute(
+        update(User)
+        .where(User.id == user.id, User.center_id.is_(None))
+        .values(center_id=invite.center_id)
+    ).rowcount
+    if not joined:
+        session.rollback()
+        raise _ALREADY_JOINED
     invite.used_by = user.id
     invite.used_at = now
-    user.center_id = invite.center_id
     session.commit()
     return session.get(Center, invite.center_id)
 

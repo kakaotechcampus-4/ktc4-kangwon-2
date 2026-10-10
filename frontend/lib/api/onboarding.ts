@@ -5,6 +5,7 @@ import { isApiNotFound } from "./client";
 import { createCenter, joinCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
+import { normalizeProvince } from "../onboarding/regions";
 import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
 interface Binding {
   id: number;
@@ -93,11 +94,12 @@ export async function joinCenterByCode(
   code: string,
 ): Promise<ClassSettings> {
   const center = await joinCenter(code);
+  // 화면이 지역을 정식 이름으로 바꿔 쓴다(「강원」 → 「강원특별자치도」). 서명도 같은 값으로 만든다.
   const data = {
     name: center.name,
     director_name: center.director_name,
-    region_sido: center.region_sido,
-    region_sigungu: center.region_sigungu,
+    region_sido: normalizeProvince(center.region_sido).trim(),
+    region_sigungu: center.region_sigungu.trim(),
   };
   saveLinks({
     center: { id: center.id, signature: JSON.stringify(data) },
@@ -108,8 +110,8 @@ export async function joinCenterByCode(
     ...settings,
     orgName: center.name,
     directorName: center.director_name,
-    regionProvince: center.region_sido,
-    regionDistrict: center.region_sigungu,
+    regionProvince: data.region_sido,
+    regionDistrict: data.region_sigungu,
   };
 }
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {

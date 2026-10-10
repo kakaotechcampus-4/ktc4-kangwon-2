@@ -83,10 +83,19 @@ export const handlers = [
   http.post("*/api/centers/join", async ({ request }) => {
     const b = await body(request);
     if (!b || !text(b.code)) return bad("code");
-    const center = findCenter(currentCenterId() ?? 0);
-    if (!center || b.code.trim().toUpperCase() !== MOCK_INVITE)
+    // 실제 서버와 같은 순서다 — 이미 원이 있으면 409, 코드가 틀리면 404.
+    if (currentCenterId() !== null) return failure("ALREADY_EXISTS", "이미 등록한 원이 있습니다.");
+    if (b.code.trim().toUpperCase() !== MOCK_INVITE)
       return failure("NOT_FOUND", "초대 코드가 없거나 만료됐습니다.", "code");
-    return HttpResponse.json(center);
+    // 목업은 계정이 하나라 초대한 원이 없다. 들어갈 원을 그 자리에서 만든다.
+    return HttpResponse.json(
+      addCenter({
+        name: "초대받은 어린이집",
+        director_name: "김원장",
+        region_sido: "강원특별자치도",
+        region_sigungu: "춘천시",
+      }),
+    );
   }),
   http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
     const s = await scenario(request, "greetings");
