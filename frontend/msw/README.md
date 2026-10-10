@@ -84,7 +84,7 @@ Vercel 프로젝트의 Settings → Environment Variables에서 NEXT_PUBLIC_API_
 - 생성 직후 sub_themes 는 []. 근거 id · rule 은 mock_theme_<달> · mock.yearly.theme 고정값이다 — 실제 Theme Reference 가 아니다. checks 는 법정 6구분 × (주기 · 시수) UNVERIFIED 12건이고 문구는 목업이다(법령 값은 서버 원본만).
 - 서버와 같은 규칙: 반 하나에 연간 하나(ALREADY_EXISTS), PUT 은 evidence · generation 을 바꾸지 않음, 확정 뒤 PUT 은 409 ALREADY_CONFIRMED, 확정 재호출은 200 · 같은 confirmed_at · 상태 변화 없음, 빈 소주제로 확정을 막지 않음.
 - 서버와 다른 점: 연간 목업은 「지금 원」 소유 검사를 하지 않는다. 이 변경 전에 저장된 연간 목업 데이터(localStorage)는 옛 모양 그대로다 — 새 모양이 필요하면 새 계정 · 새 반으로 만든다.
-- 선택 월 재생성(잠정 계약, provisional-policy-decisions 부록): 그 달 theme · evidence(새 mock id) · generation 만 바꾸고 REGENERATED 를 남긴다. 확정 409 ALREADY_CONFIRMED, 공백 아닌 소주제 422 ["sub_themes"]. STALE_WRITE · 503 · 500 은 mockError 로만 재현한다(목업에 LLM 대기 · 동시 저장이 없다). 실패는 저장 전에 돌려준다.
+- 선택 월 재생성(잠정 계약, provisional-policy-decisions 부록): 서버 Core 와 같은 규칙으로 후보를 고른다 — 지금 주제는 뒤로 미룰 뿐 빼지 않으므로 **후보가 하나뿐인 달(목업은 9월 말고 전부)은 같은 주제가 다시 나온다.** 그래도 200 이고 REGENERATED(값이 같아도)를 남긴다. 9월은 후보가 둘이라 번갈아 바뀐다. 그 달 theme · evidence · generation 만 다시 쓴다. 확정 409 ALREADY_CONFIRMED, 공백 아닌 소주제 422 ["sub_themes"]. STALE_WRITE · 503 · 500 은 mockError 로만 재현한다(목업에 LLM 대기 · 동시 저장이 없다). 실패는 저장 전에 돌려준다.
 - 변경 이력(§7-1): 생성 CREATED(계획안 + 12개월) · PUT TEACHER_EDITED(주제가 같아도) · 재생성 REGENERATED · 최초 확정 CONFIRMED. 재확정은 이벤트를 더하지 않는다. 소주제 · 이전 근거는 이력에 없다.
 - 옛 목업 계획안(FE-Y1 이전 저장본): 이력은 빈 목록, 재생성은 422 ["id"](목업 전용 — 생성 방식이 없어 이력을 만들 수 없다). 데이터는 지우거나 고쳐 쓰지 않는다.
 

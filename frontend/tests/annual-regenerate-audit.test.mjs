@@ -106,29 +106,56 @@ test("client: POST without a body to the regenerate path · GET audit", async ()
   assert.equal(month.month, 5);
 });
 
-test("regenerate changes only that month and GET shows the same result", async () => {
-  const plan = await newPlan();
-  const before = plan.months.find((m) => m.month === 5);
-  const month = await regenerateAnnualMonth(plan.id, 5);
-  assert.ok(month.theme.trim());
-  // 서버 Core 처럼 지금 주제와 다른 후보 — 근거 id 가 바뀐다. 생성 방식은 같은 rule 이다.
-  assert.equal(month.evidence.length, 1);
-  assert.equal(month.evidence[0].source_type, "THEME_REFERENCE");
-  assert.notEqual(month.evidence[0].source_id, before.evidence[0].source_id);
-  assert.deepEqual(month.generation, before.generation);
-  assert.deepEqual(month.sub_themes, []);
-  assert.equal(month.source_type, undefined);
+const lastEvent = async (planId) => (await getAnnualPlanAudit(planId)).items.at(-1);
+async function assertOnlyMonthChanged(plan, month, regenerated) {
   const reloaded = await getAnnualPlan(plan.id);
   assert.deepEqual(
-    reloaded.months.find((m) => m.month === 5),
-    month,
+    reloaded.months.find((m) => m.month === month),
+    regenerated,
   );
   assert.deepEqual(
-    reloaded.months.filter((m) => m.month !== 5),
-    plan.months.filter((m) => m.month !== 5),
+    reloaded.months.filter((m) => m.month !== month),
+    plan.months.filter((m) => m.month !== month),
   );
   assert.equal(reloaded.status, "DRAFT");
   assert.deepEqual(reloaded.checks, plan.checks);
+}
+
+test("one candidate: regenerate returns the same theme with 200 and still records REGENERATED", async () => {
+  // 서버 Core 는 지금 주제를 빼지 않고 뒤로 미룰 뿐이다 — 후보가 하나면 같은 주제다. 실패가 아니다.
+  const plan = await newPlan();
+  const before = plan.months.find((m) => m.month === 5);
+  const month = await regenerateAnnualMonth(plan.id, 5);
+  assert.deepEqual(month, before);
+  assert.equal(month.source_type, undefined);
+  await assertOnlyMonthChanged(plan, 5, month);
+  assert.deepEqual(await lastEvent(plan.id), {
+    ...(await lastEvent(plan.id)),
+    type: "REGENERATED",
+    month: 5,
+    value_change: { before: before.theme, after: before.theme },
+    generation_change: { before: before.generation, after: before.generation },
+  });
+});
+
+test("several candidates: regenerate moves to the next candidate, deterministically", async () => {
+  const plan = await newPlan();
+  const before = plan.months.find((m) => m.month === 9);
+  const first = await regenerateAnnualMonth(plan.id, 9);
+  assert.notEqual(first.evidence[0].source_id, before.evidence[0].source_id);
+  assert.equal(first.evidence.length, 1);
+  assert.equal(first.evidence[0].source_type, "THEME_REFERENCE");
+  assert.equal(first.evidence[0].source_version, before.evidence[0].source_version);
+  assert.equal(first.evidence[0].display_name, first.theme);
+  assert.deepEqual(first.generation, before.generation);
+  assert.deepEqual(first.sub_themes, []);
+  await assertOnlyMonthChanged(plan, 9, first);
+  assert.deepEqual((await lastEvent(plan.id)).value_change, {
+    before: before.theme,
+    after: first.theme,
+  });
+  // 지금 주제가 다시 뒤로 밀려 처음 후보로 돌아온다 — 무작위가 아니다.
+  assert.deepEqual(await regenerateAnnualMonth(plan.id, 9), before);
 });
 
 test("audit: CREATED · TEACHER_EDITED · REGENERATED · CONFIRMED with the server null contract", async () => {
