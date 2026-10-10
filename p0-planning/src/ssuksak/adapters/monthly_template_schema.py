@@ -69,7 +69,7 @@ def parse_monthly_template_payload(payload: object) -> MonthlyTemplate:
         raise MonthlyTemplateSchemaError("runtime_active must be derived from domain_owner_approval")
     structure = _object(_required(root, "structure_rules", "monthly_template"), "monthly_template.structure_rules")
     if "global_display_mode_default" in structure:
-        # Pre-TP-21 vocabulary. Approved files are never rewritten; new versions use repeat_by.
+        # Old vocabulary (ADR-027). Approved files are never rewritten; new versions use repeat_by.
         raise MonthlyTemplateSchemaError("display_mode vocabulary is not supported; use repeat_by")
     if structure.get("global_repeat_by_default") is not None:
         raise MonthlyTemplateSchemaError("global_repeat_by_default must remain null")
