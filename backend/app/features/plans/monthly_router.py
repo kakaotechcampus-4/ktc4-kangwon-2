@@ -64,6 +64,9 @@ from app.features.plans.monthly_schemas import (
     CreateMonthlyPlan,
     EditMonthlyCell,
     FindingOut,
+    GenerationChangeOut,
+    MonthlyAuditEventOut,
+    MonthlyAuditOut,
     MonthlyPlanListOut,
     MonthlyPlanOut,
     MonthlyPlanSummary,
@@ -73,6 +76,7 @@ from app.features.plans.monthly_schemas import (
     RuleRefOut,
     SectionOut,
     TemplateRefOut,
+    ValueChangeOut,
     VerificationOut,
     WeekOut,
 )
@@ -309,6 +313,71 @@ def list_monthly_plans(session: DbSession, user: CurrentUser, class_id: int | No
 def get_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
     """남의 원 것 · 월간이 아닌 것은 없는 것과 같다."""
     return _current(session, user, plan_id)
+
+
+@router.get("/{plan_id}/audit", response_model=MonthlyAuditOut)
+def get_monthly_audit(
+    plan_id: int, session: DbSession, user: CurrentUser, item_id: str | None = None
+):
+    """저장된 변경 이력(§9-5). 계획안 `audit` 과 칸마다의 `audit` 을 읽어 한 목록으로 준다.
+
+    **읽기만 한다** — commit 도 저장도 없다. `item_id` 를 주면 그 칸의 이벤트와 계획안 단위
+    `CONFIRMED` 만 준다(screen-spec §6.3). 순서는 발생 시각, 같으면 계획안 → 칸(계획안 안의
+    순서) → 저장된 순서다. 응답 목록만 정렬하고 Core 의 기록은 건드리지 않는다.
+    """
+    row = _own_row(session, user, plan_id)
+    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    cells = [(section, cell) for section in plan.sections for cell in section.cells]
+    if item_id is not None:
+        cells = [(s, c) for s, c in cells if c.item_id.value == item_id]
+        if not cells:
+            raise _CELL_NOT_FOUND
+    keyed = [
+        ((event.occurred_at, 0, 0, index), _audit_event(event, None))
+        for index, event in enumerate(plan.audit.events)
+        if item_id is None or event.event_type.value == "CONFIRMED"
+    ]
+    for position, (section, cell) in enumerate(cells):
+        keyed += [
+            ((event.occurred_at, 1, position, index), _audit_event(event, (section, cell)))
+            for index, event in enumerate(cell.audit.events)
+        ]
+    keyed.sort(key=lambda pair: pair[0])
+    return MonthlyAuditOut(items=[out for _, out in keyed])
+
+
+def _generation(detail) -> GenerationOut:
+    return GenerationOut(
+        method=detail.method.value, rule_id=detail.rule_id, rule_version=detail.rule_version
+    )
+
+
+def _audit_event(event, located) -> MonthlyAuditEventOut:
+    """Core 이벤트를 옮기기만 한다. 위치는 그 이벤트가 담긴 칸에서 읽는다."""
+    section, cell = located if located is not None else (None, None)
+    return MonthlyAuditEventOut(
+        type=event.event_type.value,
+        occurred_at=event.occurred_at,
+        scope="PLAN" if cell is None else "CELL",
+        item_id=None if cell is None else cell.item_id.value,
+        section_key=None if section is None else section.section_key,
+        week_id=None if cell is None or cell.week_id is None else cell.week_id.value,
+        actor=None if event.actor_id is None else event.actor_id.value,
+        system_actor=event.system_actor,
+        value_change=(
+            None
+            if event.value_change is None
+            else ValueChangeOut(before=event.value_change.before, after=event.value_change.after)
+        ),
+        generation_change=(
+            None
+            if event.generation_change is None
+            else GenerationChangeOut(
+                before=_generation(event.generation_change.before),
+                after=_generation(event.generation_change.after),
+            )
+        ),
+    )
 
 
 def _own_row(session: Session, user, plan_id: int) -> Plan:
