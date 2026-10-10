@@ -11,13 +11,48 @@ import {
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
-import { findPlan, listPlans, addPlan, putMonth, confirmPlan } from "./data/annual-plans";
+import {
+  findPlan,
+  listPlans,
+  addPlan,
+  putMonth,
+  confirmPlan,
+  regenerateMonth,
+  listAnnualAudit,
+} from "./data/annual-plans";
+import {
+  REGENERATABLE,
+  addMonthly,
+  annualFor,
+  confirmMonthly,
+  editCell,
+  findCell,
+  findMonthly,
+  findMonthlyFor,
+  listAudit,
+  listMonthly,
+  regenerateCell,
+  targetMonthOf,
+} from "./data/monthly-plans";
+import {
+  addReadyProfile,
+  defaultPointer,
+  findReady,
+  findTemplate,
+  listReady,
+  listTemplates,
+  movePointer,
+  overridePointer,
+  resolveProfile,
+  startProblem,
+} from "./data/template-profiles";
 import type {
   CenterInput,
   ClassInput,
   PlanConfig,
   AnnualInput,
   MonthInput,
+  ProfileRef,
 } from "../lib/api/types";
 const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
@@ -183,9 +218,13 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
+    if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
+    // 연간 목업은 「지금 원」 소유 검사를 하지 않는다(서버는 남의 원 반이면 404) — 화면 목업 흐름 유지.
     const klass = findClass(Number(b.class_id));
-    if (!klass) return missing();
-    if (b.form_id !== null && !integer(b.form_id)) return bad("form_id");
+    if (!klass) return classMissing();
+    // 서버처럼 반 하나에 연간 하나다.
+    if (annualFor(klass.id))
+      return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
     if (request.signal.aborted) return HttpResponse.error();
     return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
       status: 201,
@@ -194,42 +233,355 @@ export const handlers = [
   http.get("*/api/plans/annual", async ({ request }) => {
     const s = await scenario(request, "annual-list");
     if (s) return s;
-    const classId = new URL(request.url).searchParams.get("class_id");
-    return HttpResponse.json({ items: listPlans(classId ? Number(classId) : undefined) });
+    const raw = new URL(request.url).searchParams.get("class_id");
+    if (raw === null) return HttpResponse.json({ items: listPlans() });
+    if (!/^-?\d+$/.test(raw)) return bad("class_id");
+    if (!findClass(Number(raw))) return classMissing();
+    return HttpResponse.json({ items: listPlans(Number(raw)) });
   }),
   http.get("*/api/plans/annual/:id", async ({ request, params }) => {
     const s = await scenario(request, "annual-get");
     if (s) return s;
     const plan = findPlan(Number(params.id));
-    return plan ? HttpResponse.json(plan) : missing();
+    return plan ? HttpResponse.json(plan) : annualMissing();
   }),
   http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
+    // 서버 순서: 본문 형식 422 → 계획안 404 → 달 404 → 확정 409 → 공백 주제 422 (§6).
+    const b = await body(request);
+    if (!b) return bad("body");
+    const extra = Object.keys(b).find((k) => k !== "theme" && k !== "sub_themes");
+    if (extra) return bad(extra);
+    if (typeof b.theme !== "string" || !b.theme) return bad("theme");
+    if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
+      return bad("sub_themes");
     const id = Number(params.id),
       month = Number(params.month),
       plan = findPlan(id);
-    if (!plan || !plan.months.some((m) => m.month === month)) return missing();
+    if (!plan) return annualMissing();
+    if (!plan.months.some((m) => m.month === month))
+      return failure("NOT_FOUND", "그 달이 없습니다.", "month");
     if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 수정할 수 없습니다.");
-    const b = await body(request);
-    if (!b) return bad("body");
-    if (typeof b.theme !== "string") return bad("theme");
-    if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
-      return bad("sub_themes");
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    // 공백만 있는 주제는 Core 가 거절한다 — 서버도 fields 를 주지 않는다.
+    if (!b.theme.trim()) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.");
     return HttpResponse.json(putMonth(id, month, b as unknown as MonthInput));
   }),
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");
     if (s) return s;
-    const id = Number(params.id),
-      plan = findPlan(id);
-    if (!plan) return missing();
-    const invalid = plan.months.find(
-      (m) => !m.theme.trim() || !m.sub_themes.length || m.sub_themes.some((t) => !t.trim()),
-    );
-    if (invalid)
-      return failure("VALIDATION_FAILED", "빈 칸을 확인해주세요.", "months." + invalid.month);
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
   }),
+  // 연간 선택 월 재생성 — 잠정 계약(docs/provisional-policy-decisions.md 부록). 서버 순서:
+  // 계획안 404 → 달 404 → 확정 409 → 소주제 422. 저장 충돌 409 · 503 · 500 은 mockError 로만 재현한다
+  // (목업에는 LLM 대기 · 동시 저장이 없다). 실패는 저장 전에 돌려준다 — 계획안 · 이력이 그대로다.
+  http.post("*/api/plans/annual/:id/months/:month/regenerate", async ({ request, params }) => {
+    const s = await scenario(request, "annual-regenerate", 1200);
+    if (s) return s;
+    const id = Number(params.id),
+      month = Number(params.month),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    const target = plan.months.find((m) => m.month === month);
+    if (!target) return failure("NOT_FOUND", "그 달이 없습니다.", "month");
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    // 앞뒤 공백을 뺀 값이 하나라도 있으면 「있다」. [] · ["", "  "] 은 없는 것과 같다.
+    if (target.sub_themes.some((t) => typeof t === "string" && t.trim()))
+      return failure(
+        "VALIDATION_FAILED",
+        "소주제가 있는 달은 주제를 다시 만들 수 없습니다. 소주제를 비운 뒤 해주세요.",
+        "sub_themes",
+      );
+    // 목업 전용: FE-Y1 이전에 저장된 옛 모양 계획안에는 생성 방식이 없어 이력을 만들 수 없다.
+    // 지어내거나 지우지 않고 거절한다. 서버에는 이런 데이터가 없다.
+    if (!target.generation)
+      return failure("VALIDATION_FAILED", "옛 목업 계획안이라 다시 만들 수 없습니다.", "id");
+    if (request.signal.aborted) return HttpResponse.error();
+    return HttpResponse.json(regenerateMonth(id, month));
+  }),
+  http.get("*/api/plans/annual/:id/audit", async ({ request, params }) => {
+    const s = await scenario(request, "annual-audit");
+    if (s) return s;
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    return HttpResponse.json({ items: listAnnualAudit(id) });
+  }),
+  // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
+  http.post("*/api/plans/monthly", async ({ request }) => {
+    const s = await scenario(request, "monthly", 1200);
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (!integer(b.class_id)) return bad("class_id");
+    if (!integer(b.month) || b.month < 1 || b.month > 12) return bad("month");
+    const ref = b.profile_ref as Record<string, unknown> | null;
+    if (typeof ref !== "object" || ref === null) return bad("profile_ref");
+    for (const k of ["profile_id", "profile_version"])
+      if (typeof ref[k] !== "string" || !ref[k]) return bad("profile_ref." + k);
+    const klass = myClass(b.class_id);
+    if (!klass) return classMissing();
+    if (findMonthlyFor(klass.id, targetMonthOf(klass.school_year, b.month)))
+      return failure(
+        "ALREADY_EXISTS",
+        "이 반의 그 달 월간계획안이 이미 있습니다.",
+        "class_id",
+        "month",
+      );
+    const annual = annualFor(klass.id);
+    if (!annual)
+      return failure("GATE_BLOCKED", "연간계획안을 먼저 만들어 확정해주세요.", "class_id");
+    if (annual.status !== "CONFIRMED")
+      return failure("GATE_BLOCKED", "연간계획안을 먼저 확정해주세요.", "class_id");
+    const profileRef = {
+      profile_id: String(ref.profile_id),
+      profile_version: String(ref.profile_version),
+    };
+    const profile = findReady(klass.center_id, profileRef);
+    if (!profile) return failure("NOT_FOUND", "고른 양식 설정을 찾을 수 없습니다.", "profile_ref");
+    // 생성 직전에도 기반 Template 승인을 다시 본다(서버: 422 profile_ref).
+    if (!findTemplate(profile.base_template_ref)?.approved)
+      return failure(
+        "VALIDATION_FAILED",
+        "고른 양식 설정으로는 월간계획안을 만들 수 없습니다. 다른 설정을 골라주세요.",
+        "profile_ref",
+      );
+    if (request.signal.aborted) return HttpResponse.error();
+    return HttpResponse.json(addMonthly(klass, annual, b.month, profile), { status: 201 });
+  }),
+  http.get("*/api/plans/monthly", async ({ request }) => {
+    const s = await scenario(request, "monthly-list");
+    if (s) return s;
+    const raw = new URL(request.url).searchParams.get("class_id");
+    if (raw === null) {
+      const center = currentCenterId();
+      const ids = center === null ? [] : listClasses(center).map((c) => c.id);
+      return HttpResponse.json({ items: listMonthly(ids) });
+    }
+    if (!/^-?\d+$/.test(raw)) return bad("class_id");
+    const klass = myClass(Number(raw));
+    return klass ? HttpResponse.json({ items: listMonthly([klass.id]) }) : classMissing();
+  }),
+  http.get("*/api/plans/monthly/:id", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-get");
+    if (s) return s;
+    const plan = myMonthly(Number(params.id));
+    return plan ? HttpResponse.json(plan) : planMissing();
+  }),
+  // 변경 이력 (§9-5). 소유를 먼저 본다 — 남의 계획안이면 item_id 를 보기 전에 404 ["id"].
+  http.get("*/api/plans/monthly/:id/audit", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-audit");
+    if (s) return s;
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing();
+    const items = listAudit(plan, new URL(request.url).searchParams.get("item_id"));
+    return items
+      ? HttpResponse.json({ items })
+      : failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+  }),
+  http.put("*/api/plans/monthly/:id/cells/:itemId", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-cell");
+    if (s) return s;
+    const w = await cellWrite(request, String(params.id), String(params.itemId), true);
+    if (w instanceof Response) return w;
+    if (w.cell.value === w.b.value)
+      return failure(
+        "VALIDATION_FAILED",
+        "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.",
+        "value",
+      );
+    return HttpResponse.json(
+      editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key),
+    );
+  }),
+  // LLM 을 부르지 않는다 — 다음 revision 을 넣은 고정 문장으로 바꾼다.
+  http.post("*/api/plans/monthly/:id/cells/:itemId/regenerate", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-regenerate", 1200);
+    if (s) return s;
+    const w = await cellWrite(request, String(params.id), String(params.itemId), false);
+    if (w instanceof Response) return w;
+    if (!REGENERATABLE.includes(w.section.section_key))
+      return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");
+    if (request.signal.aborted) return HttpResponse.error();
+    const label = w.section.label ?? w.section.section_key;
+    return HttpResponse.json(regenerateCell(w.plan.id, w.cell.item_id, label, w.plan.revision + 1));
+  }),
+  http.post("*/api/plans/monthly/:id/confirm", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-confirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing();
+    // 이미 확정이면 revision 과 상관없이 200 · 저장된 그대로 (D-M5-CONFIRM-01).
+    if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.revision !== b.expected_revision) return stale();
+    return HttpResponse.json(confirmMonthly(plan.id));
+  }),
+  // 월간 양식 설정 조회 (§9-2).
+  http.get("*/api/classes/:classId/template-profile", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile");
+    if (s) return s;
+    const klass = myClass(Number(params.classId));
+    return klass ? HttpResponse.json(resolveProfile(klass.id, klass.center_id)) : classMissing();
+  }),
+  http.get("*/api/centers/:centerId/template-profiles", async ({ request, params }) => {
+    const s = await scenario(request, "template-profiles");
+    if (s) return s;
+    const id = Number(params.centerId);
+    return myCenter(id) ? HttpResponse.json({ items: listReady(id) }) : centerMissing();
+  }),
+  // 월간 양식 설정 관리 (§9-4). 서버처럼 입력 모양(422)을 먼저, 소유(404)를 다음에 본다.
+  http.get("*/api/monthly-templates", async ({ request }) => {
+    const s = await scenario(request, "monthly-templates");
+    return s ?? HttpResponse.json({ items: listTemplates() });
+  }),
+  http.post("*/api/centers/:centerId/template-profiles", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-create");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    const base = b.base_template_ref as Record<string, unknown> | null;
+    if (typeof base !== "object" || base === null) return bad("base_template_ref");
+    for (const k of ["template_id", "template_version"])
+      if (typeof base[k] !== "string" || !base[k]) return bad("base_template_ref." + k);
+    const keys = b.selected_optional_keys ?? [];
+    if (!Array.isArray(keys) || !keys.every((k) => typeof k === "string"))
+      return bad("selected_optional_keys");
+    const labels = b.display_labels ?? {};
+    if (
+      typeof labels !== "object" ||
+      labels === null ||
+      Array.isArray(labels) ||
+      !Object.values(labels).every((v) => typeof v === "string")
+    )
+      return bad("display_labels");
+    const variant = b.focus_variant ?? null;
+    if (variant !== null && typeof variant !== "string") return bad("focus_variant");
+    const id = Number(params.centerId);
+    if (!myCenter(id)) return centerMissing();
+    const input = {
+      base_template_ref: {
+        template_id: String(base.template_id),
+        template_version: String(base.template_version),
+      },
+      selected_optional_keys: keys as string[],
+      display_labels: labels as Record<string, string>,
+      focus_variant: variant,
+    };
+    const problem = startProblem(input);
+    if (problem) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...problem);
+    const template = findTemplate(input.base_template_ref);
+    if (!template)
+      return failure("NOT_FOUND", "기반 Template 을 찾을 수 없습니다.", "base_template_ref");
+    if (!template.approved)
+      return failure(
+        "GATE_BLOCKED",
+        "기반 Template 이 아직 사람 승인 전이라 쓸 수 없습니다.",
+        "base_template_ref",
+      );
+    return HttpResponse.json(addReadyProfile(id, input), { status: 201 });
+  }),
+  http.get("*/api/centers/:centerId/template-profile-default", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-default");
+    if (s) return s;
+    const id = Number(params.centerId);
+    return myCenter(id) ? HttpResponse.json(defaultPointer(id)) : centerMissing();
+  }),
+  http.put("*/api/centers/:centerId/template-profile-default", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-default");
+    if (s) return s;
+    const input = await pointerInput(request);
+    if (input instanceof Response) return input;
+    const id = Number(params.centerId);
+    if (!myCenter(id)) return centerMissing();
+    return pointerResult(movePointer("defaultPointers", id, id, input));
+  }),
+  http.get("*/api/classes/:classId/template-profile-override", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-override");
+    if (s) return s;
+    const klass = myClass(Number(params.classId));
+    return klass ? HttpResponse.json(overridePointer(klass.id)) : classMissing();
+  }),
+  http.put("*/api/classes/:classId/template-profile-override", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-override");
+    if (s) return s;
+    const input = await pointerInput(request);
+    if (input instanceof Response) return input;
+    const klass = myClass(Number(params.classId));
+    if (!klass) return classMissing();
+    return pointerResult(movePointer("overridePointers", klass.id, klass.center_id, input));
+  }),
 ];
+/** 두 키 모두 있어야 한다(null 이라도). 값은 null 또는 빈칸 없는 profile_ref. */
+async function pointerInput(request: Request) {
+  const b = await body(request);
+  if (!b) return bad("body");
+  const refs: Record<string, ProfileRef | null> = {};
+  for (const k of ["profile_ref", "expected_profile_ref"]) {
+    if (!(k in b)) return bad(k);
+    const v = b[k] as Record<string, unknown> | null;
+    if (v !== null && (typeof v !== "object" || Array.isArray(v))) return bad(k);
+    for (const sub of ["profile_id", "profile_version"])
+      if (v !== null && (typeof v[sub] !== "string" || !v[sub])) return bad(k + "." + sub);
+    refs[k] = v && { profile_id: String(v.profile_id), profile_version: String(v.profile_version) };
+  }
+  return { profile_ref: refs.profile_ref, expected_profile_ref: refs.expected_profile_ref };
+}
+function pointerResult(result: ReturnType<typeof movePointer>) {
+  if (result === "NOT_FOUND")
+    return failure("NOT_FOUND", "고른 양식 설정을 찾을 수 없습니다.", "profile_ref");
+  if (result === "INVALID") return bad("expected_profile_ref");
+  if (result === "STALE")
+    return failure(
+      "STALE_WRITE",
+      "그 사이 다른 화면에서 설정이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
+      "expected_profile_ref",
+    );
+  return HttpResponse.json(result);
+}
+/** 목업의 「내 원」은 그 계정 저장소의 첫 원이다(`/api/auth/me` 와 같은 규칙, 보안 규칙이 아니다). */
+const myCenter = (id: number) => !!findCenter(id) && id === currentCenterId();
+const centerMissing = () => failure("NOT_FOUND", "원을 찾을 수 없습니다.", "center_id");
+/** 목업에는 로그인 사용자가 없다 — 첫 원을 「내 원」으로 본다 (data/centers.ts). */
+const myClass = (id: number) => {
+  const klass = findClass(id);
+  return klass && klass.center_id === currentCenterId() ? klass : undefined;
+};
+const myMonthly = (id: number) => {
+  const plan = findMonthly(id);
+  return plan && myClass(plan.class_id) ? plan : undefined;
+};
+const annualMissing = () => failure("NOT_FOUND", "계획안을 찾을 수 없습니다.", "id");
+const classMissing = () => failure("NOT_FOUND", "반을 찾을 수 없습니다.", "class_id");
+const planMissing = () => failure("NOT_FOUND", "월간계획안을 찾을 수 없습니다.", "id");
+const stale = () =>
+  failure(
+    "STALE_WRITE",
+    "그 사이 다른 화면에서 계획안이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
+    "expected_revision",
+  );
+/** 문자열 "3" · true 는 거절한다 (§9-3). */
+const badRevision = (b: Record<string, unknown>) =>
+  !integer(b.expected_revision) || b.expected_revision < 1;
+/** 칸 편집 · 재생성 공통. 서버와 같은 순서로 본다: 입력 → 소유 → 확정 → revision → 칸. */
+async function cellWrite(request: Request, id: string, itemId: string, needsValue: boolean) {
+  const b = await body(request);
+  if (!b) return bad("body");
+  if (needsValue && typeof b.value !== "string") return bad("value");
+  if (badRevision(b)) return bad("expected_revision");
+  const plan = myMonthly(Number(id));
+  if (!plan) return planMissing();
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+  if (plan.revision !== b.expected_revision) return stale();
+  const found = findCell(plan, decodeURIComponent(itemId));
+  return found
+    ? { b, plan, ...found }
+    : failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+}

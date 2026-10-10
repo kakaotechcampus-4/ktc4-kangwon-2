@@ -1,7 +1,7 @@
 # P0 MSW / FastAPI 전환
 
 현재 원 생성, 반 생성/조회, 아동 생성/조회/삭제, 계획 설정, 연간 생성/조회/월 수정/확정 handler와 lib/api 함수를 제공합니다.
-원본 계약: ../docs/api-spec.md. 사용자 보충 계약에 따라 TEACHER와 오류 코드를 구현했습니다.
+원본 계약: ../docs/api-spec.md.
 
 ## ON / OFF
 
@@ -19,9 +19,9 @@ Next 서버 재시작/재빌드가 필요합니다. /api/... 상대 경로는 �
 
 API 직접 요청: ?mockError=GENERATION_FAILED&mockDelay=2000
 기존 화면 URL: ?mswTarget=annual&mswError=NO_ACTIVITIES
-mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm
+mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm, annual-regenerate, annual-audit, monthly, monthly-list, monthly-get, monthly-cell, monthly-regenerate, monthly-confirm, template-profile, template-profiles
 mswDelay=5000: loading. mswEmpty=true: 반/아동 GET만 empty.
-mswError: VALIDATION_FAILED, NOT_FOUND, GATE_BLOCKED, NO_ACTIVITIES, GENERATION_FAILED.
+mswError: VALIDATION_FAILED, NOT_FOUND, GATE_BLOCKED, NO_ACTIVITIES, GENERATION_FAILED. 월간은 LLM_BUDGET_EXCEEDED, DEPENDENCY_UNAVAILABLE, STALE_WRITE, ALREADY_CONFIRMED 도 쓴다.
 mswField=selected_ages: 오류 field 지정.
 기본 연간 지연 1200ms. 0~10000ms로 제한합니다. 실패는 mutation 전에 반환하여 부분 생성 결과를 남기지 않습니다.
 월 PATCH 특정 월 오류: API URL에 mockError를 직접 붙이거나 mswMonth=3 사용.
@@ -77,3 +77,26 @@ mock 생성 데이터는 localStorage의 saessak.mswSS.v1:<계정>에서 새로�
 Vercel 프로젝트의 Settings → Environment Variables에서 NEXT_PUBLIC_API_MOCKING=enabled를 Production/Preview에 설정한 뒤 재배포합니다. NEXT_PUBLIC 값은 빌드 시점에 고정됩니다.
 실제 FastAPI 사용 시 disabled로 바꾸고 FASTAPI_BASE_URL을 실제 서버 주소로 설정한 뒤 재배포합니다.
 검증: 2026-09-15 enabled로 production build 성공, next start에서 브라우저 [MSW] Mocking enabled / worker started 확인. 실제 Vercel 배포 설정은 이 로컬 검증에 포함하지 않음.
+
+## 연간계획안 목업 (docs/api-spec.md §4 ~ §7)
+
+- 응답 모양은 서버와 같다: months[] 에 evidence(THEME_REFERENCE 하나) · generation · safety_education([]) · safety_education_state(SOURCE_REQUIRED), 계획안에 checked_rules · checks. 단일 source_type · citation 은 없다.
+- 생성 직후 sub_themes 는 []. 근거 id · rule 은 mock_theme_<달> · mock.yearly.theme 고정값이다 — 실제 Theme Reference 가 아니다. checks 는 법정 6구분 × (주기 · 시수) UNVERIFIED 12건이고 문구는 목업이다(법령 값은 서버 원본만).
+- 서버와 같은 규칙: 반 하나에 연간 하나(ALREADY_EXISTS), PUT 은 evidence · generation 을 바꾸지 않음, 확정 뒤 PUT 은 409 ALREADY_CONFIRMED, 확정 재호출은 200 · 같은 confirmed_at · 상태 변화 없음, 빈 소주제로 확정을 막지 않음.
+- 서버와 다른 점: 연간 목업은 「지금 원」 소유 검사를 하지 않는다. 이 변경 전에 저장된 연간 목업 데이터(localStorage)는 옛 모양 그대로다 — 새 모양이 필요하면 새 계정 · 새 반으로 만든다.
+- 선택 월 재생성(잠정 계약, provisional-policy-decisions 부록): 그 달 theme · evidence(새 mock id) · generation 만 바꾸고 REGENERATED 를 남긴다. 확정 409 ALREADY_CONFIRMED, 공백 아닌 소주제 422 ["sub_themes"]. STALE_WRITE · 503 · 500 은 mockError 로만 재현한다(목업에 LLM 대기 · 동시 저장이 없다). 실패는 저장 전에 돌려준다.
+- 변경 이력(§7-1): 생성 CREATED(계획안 + 12개월) · PUT TEACHER_EDITED(주제가 같아도) · 재생성 REGENERATED · 최초 확정 CONFIRMED. 재확정은 이벤트를 더하지 않는다. 소주제 · 이전 근거는 이력에 없다.
+- 옛 목업 계획안(FE-Y1 이전 저장본): 이력은 빈 목록, 재생성은 422 ["id"](목업 전용 — 생성 방식이 없어 이력을 만들 수 없다). 데이터는 지우거나 고쳐 쓰지 않는다.
+
+## 월간계획안 목업 (docs/api-spec.md §9-1 ~ §9-3)
+
+- 생성 · 단건 · 목록 · 칸 편집 · 칸 재생성 · 확정, 양식 설정 조회 2개. 데이터는 data/monthly-plans.ts.
+- 서버와 같은 규칙: revision 일치 시 +1 · 다르면 STALE_WRITE, 확정 뒤 편집 · 재생성은 ALREADY_CONFIRMED, 확정 재호출은 revision 과 상관없이 200(D-M5-CONFIRM-01), 재생성은 focus · outdoor_play · basic_habit · goals 만.
+- LLM 을 부르지 않는다. 칸 값은 개발용 고정 문장이고 안전교육은 「근거 필요」(EMPTY_UNRESOLVED) 칸이다.
+- 소유 범위는 첫 원(currentCenterId)이다. 다른 원의 반 · 계획안 · 양식 설정은 404.
+- 양식 설정은 data/template-profiles.ts 다(§9-4). 관리 API(기반 Template 목록 · 시작 · 원 기본 · 반 override)와 §9-2 조회, 월간 생성이 **같은 저장소**를 쓴다. 고정 READY 는 없다 — 시작 API 로 만든다.
+- 기반 Template v0.1.1 · v0.2.1 은 서버처럼 **승인 대기**(approved: false)라 시작이 409 GATE_BLOCKED 다. 승인된 경로는 테스트 · 개발 전용 Fixture `approveTemplateForTest(template_ref)` 로만 연다(화면 코드는 부르지 않는다).
+- 포인터 지정 · 해제는 expected_profile_ref 비교(CAS)를 서버와 같은 순서로 본다. 목업은 한 흐름에서 돌아 DB 수준 동시성은 보여 주지 못한다(BE-1 PostgreSQL 테스트가 본다).
+- mswTarget 추가: monthly-templates, template-profile-create, template-profile-default, template-profile-override.
+- 변경 이력(§9-5, `GET /api/plans/monthly/:id/audit[?item_id=]`)은 생성 · 칸 편집 · 칸 재생성 · 첫 확정이 **성공할 때 같은 commit 에서** `monthlyAudit[planId]` 에 쌓는다(계획안 단위 / 칸 단위). 거절 · 실패 · 확정 재호출은 쌓지 않고, 조회는 아무것도 바꾸지 않는다. 행위자는 `user_1`(목업 계정), 생성은 `system_actor: monthly_application`. 재생성 전 근거 · 이벤트별 revision 은 서버처럼 없다.
+- 목업은 토큰을 검증하지 않는다. 이력 401 은 `?mockError=UNAUTHENTICATED`(mswTarget: monthly-audit)로 재현한다.

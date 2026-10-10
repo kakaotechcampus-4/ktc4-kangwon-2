@@ -83,10 +83,22 @@ export interface MonthInput {
   theme: string;
   sub_themes: string[];
 }
+/** 한 달 (docs/api-spec.md §4). 출처는 세 축이다 — 근거(`evidence`) · 만든 방법(`generation`) · Audit. */
 export interface AnnualMonth extends MonthInput {
   month: number;
-  source_type: "TEMPLATE" | "TREND" | "AI" | "TEACHER";
-  citation: { label: string; url: string | null };
+  /** P0 에서는 항상 빈 배열이다. */
+  safety_education: string[];
+  /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. P0 는 항상 SOURCE_REQUIRED. */
+  safety_education_state: "SOURCE_REQUIRED" | "PLACED" | "NOT_PLACED";
+  /** THEME_REFERENCE 가 정확히 하나. 교사가 고쳐도 바뀌지 않는다(§6). 모양은 월간 칸과 같다. */
+  evidence: MonthlyCell["evidence"];
+  /** 처음 무엇이 만들었나. 교사가 고쳐도 바뀌지 않는다 — 「교사 수정됨」은 Audit 이 말한다(§6). */
+  generation: MonthlyCell["generation"];
+  /**
+   * @deprecated 서버가 보내지 않는다 — 단일 출처 필드는 없앴다(§4 「출처는 세 축이다」). 항상 undefined.
+   * 화면 배지가 아직 읽고 있어 남겨둔다. 배지를 무엇으로 정할지는 화면 결정 뒤에 고친다.
+   */
+  source_type?: "TEMPLATE" | "TREND" | "AI" | "TEACHER";
 }
 export interface AnnualPlan {
   id: number;
@@ -94,6 +106,10 @@ export interface AnnualPlan {
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
   months: AnnualMonth[];
+  /** 무엇을 검사했는지. 빈 `checks` 를 「통과」로 읽지 않으려고 따로 온다(ADR-014). */
+  checked_rules: string[];
+  /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */
+  checks: { rule: string; severity: string; detail: string; month: number | null }[];
 }
 /** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
 export interface AnnualPlanSummary {
@@ -108,6 +124,231 @@ export interface ConfirmResult {
   id: number;
   status: "CONFIRMED";
   confirmed_at: string;
+}
+/**
+ * 연간계획안 변경 이력 하나 (`GET /api/plans/annual/{id}/audit`, docs/api-spec.md §7-1).
+ * **일곱 키가 항상 온다** — 해당이 없으면 null. 위치는 `month` 하나다(월간의 칸 주소는 없다).
+ * 소주제 변경 · 이전 근거(`evidence`) · 사람 이름은 이력에 없다.
+ */
+export interface AnnualAuditEvent {
+  type: "CREATED" | "TEACHER_EDITED" | "REGENERATED" | "CONFIRMED";
+  /** ISO 8601, 시간대 포함. */
+  occurred_at: string;
+  /** 그 달 theme 의 이벤트면 그 달(1~12). 계획안 단위(생성 · 확정)면 null. */
+  month: number | null;
+  /** 사람이 한 일이면 opaque id(`user_7`). 시스템이면 null. */
+  actor: string | null;
+  /** 시스템이 한 일(생성)이면 그 표시(`yearly_application`). 사람이면 null. */
+  system_actor: string | null;
+  /** TEACHER_EDITED · REGENERATED 만. 그때 바뀐 theme 문구. */
+  value_change: { before: string; after: string } | null;
+  /** REGENERATED 만. 모양은 그 달의 `generation` 과 같다. */
+  generation_change: {
+    before: AnnualMonth["generation"];
+    after: AnnualMonth["generation"];
+  } | null;
+}
+/** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
+export interface ProfileRef {
+  profile_id: string;
+  profile_version: string;
+}
+export interface TemplateRef {
+  template_id: string;
+  template_version: string;
+}
+/** `school_year` · 부모 연간계획안은 보내지 않는다 — 서버가 반으로 찾는다 (§9-1). */
+export interface MonthlyInput {
+  class_id: number;
+  /** 달력의 달 1~12. 1~2월은 학년도의 다음 해다. */
+  month: number;
+  profile_ref: ProfileRef;
+}
+/**
+ * 칸 하나 (§9-1). 출처는 세 축이다 — `evidence` 는 근거, `generation` 은 만든 방법.
+ * 변경 이력(audit)은 응답에 없다.
+ */
+export interface MonthlyCell {
+  /** 칸의 주소. 편집 · 재생성 뒤에도 바뀌지 않는다. */
+  item_id: string;
+  /** `repeat_by: "NONE"` 이면 null. */
+  week_id: string | null;
+  value: string;
+  state: "FILLED" | "EMPTY_VALID" | "EMPTY_UNRESOLVED";
+  evidence: {
+    source_type: string;
+    source_id: string;
+    source_version: string | null;
+    effective_date: string | null;
+    display_name: string | null;
+  }[];
+  generation: { method: string; rule_id: string | null; rule_version: string | null };
+}
+/** 주 · Section · 칸 개수를 정하지 않는다 — 화면은 받은 만큼 그린다. */
+export interface MonthlyPlan {
+  id: number;
+  class_id: number;
+  school_year: number;
+  month: number;
+  /** `YYYY-MM`. */
+  target_month: string;
+  status: "DRAFT" | "CONFIRMED";
+  /** 편집 · 재생성 · 확정에 `expected_revision` 으로 그대로 보낸다 (§9-3). */
+  revision: number;
+  generation_mode: "RULE_ONLY" | "LLM_PLANNER";
+  profile_ref: ProfileRef;
+  base_template_ref: TemplateRef;
+  parent: { annual_plan_id: number; theme: string | null; confirmed_at: string };
+  weeks: {
+    week_id: string;
+    label: string;
+    start_date: string;
+    end_date: string;
+    active: boolean;
+  }[];
+  sections: {
+    section_key: string;
+    label: string | null;
+    role: "CONTENT" | "AXIS";
+    repeat_by: "NONE" | "WEEK" | null;
+    visible: boolean;
+    order: number;
+    semantic_variant: "SUBTHEME" | "EXPECTED_PLAY" | "WEEKLY_THEME" | "NEUTRAL" | null;
+    cells: MonthlyCell[];
+  }[];
+  constraints: {
+    code: string;
+    verification: string;
+    affected_section_keys: string[];
+    required_source_kinds: string[];
+    rule_version: string;
+    detail: string;
+  }[];
+  verification: {
+    executed_rules: { rule_id: string; rule_version: string }[];
+    findings: {
+      code: string;
+      kind: "VIOLATION" | "NOT_VERIFIED";
+      severity: string;
+      section_key: string | null;
+      week_id: string | null;
+      message: string;
+    }[];
+  };
+  created_at: string;
+  confirmed_at: string | null;
+}
+/**
+ * 월간계획안 변경 이력 하나 (`GET /api/plans/monthly/{id}/audit`, docs/api-spec.md §9-5).
+ * **열 개 키가 항상 온다** — 해당이 없으면 null. 저장되지 않은 것(재생성 전 근거 · 이벤트별
+ * revision · 사람 이름)은 없다.
+ */
+export interface MonthlyAuditEvent {
+  type: "CREATED" | "TEACHER_EDITED" | "REGENERATED" | "CONFIRMED";
+  /** ISO 8601, 시간대 포함. */
+  occurred_at: string;
+  /** PLAN 이면 아래 칸 위치 셋이 null 이다. */
+  scope: "PLAN" | "CELL";
+  item_id: string | null;
+  section_key: string | null;
+  /** 주마다 있는 칸이면 그 주. 한 달 칸 · PLAN 이면 null. */
+  week_id: string | null;
+  /** 사람이 한 일이면 opaque id(`user_7`). 시스템이면 null. */
+  actor: string | null;
+  /** 시스템이 한 일(생성)이면 그 표시. 사람이면 null. */
+  system_actor: string | null;
+  /** TEACHER_EDITED · REGENERATED 만. */
+  value_change: { before: string; after: string } | null;
+  /** REGENERATED 만. 모양은 칸의 `generation` 과 같다. */
+  generation_change: {
+    before: MonthlyCell["generation"];
+    after: MonthlyCell["generation"];
+  } | null;
+}
+/** 목록용. 칸은 단건 조회가 준다. */
+export type MonthlyPlanSummary = Pick<
+  MonthlyPlan,
+  | "id"
+  | "class_id"
+  | "school_year"
+  | "month"
+  | "target_month"
+  | "status"
+  | "revision"
+  | "profile_ref"
+  | "created_at"
+  | "confirmed_at"
+>;
+/** 반에 적용되는 양식 설정 (§9-2). 반 override → 원 기본 → 「선택 필요」. */
+export interface ProfileResolution {
+  source: "CLASSROOM_OVERRIDE" | "INSTITUTION_DEFAULT" | "SELECTION_REQUIRED";
+  /** `SELECTION_REQUIRED` 면 null. */
+  profile_ref: ProfileRef | null;
+  /** `SELECTION_REQUIRED` 일 때만 값 (`NO_POINTER` · `CLASSROOM_OVERRIDE_NOT_READY` …). */
+  reason: string | null;
+}
+/** 원의 READY 양식 설정. 이름 칸은 없다 — 버전 · 기반 Template · Section 으로 구분한다. */
+export interface ReadyProfile {
+  profile_ref: ProfileRef;
+  status: "READY";
+  base_template_ref: TemplateRef;
+  selected_optional_keys: string[];
+  sections: {
+    section_key: string;
+    label: string | null;
+    repeat_by: "NONE" | "WEEK" | null;
+    visible: boolean;
+  }[];
+  created_at: string;
+}
+/** 기반 Template 의 칸을 Profile 에 넣는 규칙 (docs/api-spec.md §9-4 ①). */
+export type TemplateSelection = "REQUIRED" | "OPTIONAL" | "INSTITUTION_INPUT" | "NOT_SUPPORTED";
+/**
+ * 「Reference 기반 시작」에 고를 기반 Template (§9-4 ①).
+ * `approved` 는 Template 의 사람 승인 상태다 — Profile 의 READY 와 다른 개념이다.
+ * false 도 목록에 오지만 그 Template 으로는 시작할 수 없다(409 `GATE_BLOCKED`).
+ */
+export interface MonthlyTemplate {
+  template_ref: TemplateRef;
+  approved: boolean;
+  sections: {
+    /** Profile 이름이다 (Template 의 habits → basic_habit). */
+    section_key: string;
+    /** Template 데이터 값 그대로 — 지금은 칸 이름과 같다. 화면 이름은 시작 때 직접 보낸다. */
+    label: string | null;
+    role: "CONTENT" | "AXIS";
+    repeat_by: "NONE" | "WEEK" | null;
+    selection: TemplateSelection;
+  }[];
+  /** focus 를 고를 때 쓸 수 있는 값. NEUTRAL 은 없다. */
+  focus_variants: string[];
+}
+/**
+ * `POST /api/centers/{center_id}/template-profiles` (§9-4 ②). 멱등이 아니다 — 두 번 보내면 둘 생긴다.
+ * `display_labels` 는 REQUIRED 칸과 고른 칸 전부에 필요하다(빠지면 422).
+ */
+export interface TemplateProfileInput {
+  base_template_ref: TemplateRef;
+  selected_optional_keys?: string[];
+  display_labels?: Record<string, string>;
+  /** focus 를 고르면 필수, 안 고르면 null. */
+  focus_variant?: string | null;
+}
+/** 원 기본 · 반 override 포인터 그대로 (§9-4 ③ ④). 없으면 세 칸 모두 null. */
+export interface ProfilePointer {
+  profile_ref: ProfileRef | null;
+  /** 포인터를 마지막으로 바꾼 계정 users.id. */
+  changed_by: number | null;
+  changed_at: string | null;
+}
+/**
+ * 포인터 지정 · 해제 (§9-4 ③ ④). **두 키 모두 보낸다(null 이라도).**
+ * `expected_profile_ref` 는 GET 으로 본 지금 값(CAS 비교값) — 다르면 409 `STALE_WRITE`.
+ * `profile_ref: null` 은 해제이고, 그때 `expected_profile_ref` 가 null 이면 422.
+ */
+export interface ProfilePointerInput {
+  profile_ref: ProfileRef | null;
+  expected_profile_ref: ProfileRef | null;
 }
 /** 관찰 기록 (docs/api-spec.md §10). 서버 모양 그대로 — snake_case 와 정수 id 를 유지한다. */
 export interface ObservationUpdate {
