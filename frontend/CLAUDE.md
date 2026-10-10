@@ -147,6 +147,7 @@ npm run lint                 # eslint
 npm run format:check         # prettier
 npm test                     # node --test
 npm run build                # next build
+npm run e2e                  # playwright. 실제 스택을 먼저 띄운다 — docs/structure.md 「E2E」
 
 # PR 올리기 전에 넷을 다 돌린다
 npm run lint && npm run format:check && npm test && npm run build

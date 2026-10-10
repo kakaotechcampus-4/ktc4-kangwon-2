@@ -9,7 +9,8 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --test"
+    "test": "node --test",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "mammoth": "^1.12.3",
@@ -19,6 +20,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
