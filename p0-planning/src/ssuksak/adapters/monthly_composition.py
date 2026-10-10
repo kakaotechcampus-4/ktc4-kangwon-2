@@ -32,6 +32,7 @@ from ssuksak.adapters.safety_reference_quality_repository import (
 )
 from ssuksak.planning.application.generate_monthly_plan import GenerateMonthlyPlan
 from ssuksak.planning.application.monthly_support import MonthlyContextPipeline
+from ssuksak.planning.application.ports import MonthlyTemplateRepository
 from ssuksak.planning.context.builder import ContextPacketBuilder
 from ssuksak.planning.planner.ports import MonthlyPlanningProvider
 from ssuksak.planning.planner.service import MonthlyPlanner
@@ -53,6 +54,7 @@ def monthly_generation(
     parent_plan_repository,
     plan_repository,
     profile_repository,
+    template_repository: MonthlyTemplateRepository,
     provider: MonthlyPlanningProvider,
     clock,
     id_generator,
@@ -60,11 +62,15 @@ def monthly_generation(
     """GenerateMonthlyPlan on the LLM planner path with the approved References.
 
     Generation rules are unchanged: this only wires the existing use case.
+    ``template_repository`` is the caller's: Core re-checks the Profile's exact
+    base Template against it (ADR-027), so it must be the same registry the
+    caller trusts for its own early approval check.
     """
     return GenerateMonthlyPlan(
         parent_plan_repository=parent_plan_repository,
         plan_repository=plan_repository,
         profile_repository=profile_repository,
+        template_repository=template_repository,
         safety_repository=JsonSafetyLegalRuleRepository(),
         activity_repository=JsonActivityReferenceRepository(),
         clock=clock,

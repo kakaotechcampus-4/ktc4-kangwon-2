@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from ssuksak.adapters.monthly_composition import monthly_generation
+import pytest
+
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
+from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.application.monthly_dto import GenerateMonthlyPlanCommand
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
@@ -21,6 +24,7 @@ def _generate(harness, parent, provider, *, month, profile):
         parent_plan_repository=harness.yearly_plans,
         plan_repository=harness.monthly_plans,
         profile_repository=harness.profiles,
+        template_repository=harness.generation_templates,
         provider=provider,
         clock=harness.clock,
         id_generator=harness.monthly_ids,
@@ -59,3 +63,25 @@ def test_request_aware_provider_follows_month_weeks_and_sections():
         assert safety and all(c.cell_state is CellState.EMPTY_UNRESOLVED for c in safety)
         assert all(c.value == "" for c in safety)
     assert plans[2].section("goals").cells[0].cell_state is CellState.FILLED
+
+
+def test_composed_generation_rejects_the_real_pending_template():
+    harness = PlanningHarness()
+    parent = harness.confirm_yearly(harness.generate_yearly().plan)
+    requests = []
+
+    class CountingLlm(RequestAwareMonthlyLlm):
+        def generate_monthly(self, request):
+            requests.append(request)
+            return super().generate_monthly(request)
+
+    provider = CountingLlm()
+    # The real files: PENDING_HUMAN_REVIEW (ADR-027).
+    harness.generation_templates = harness.templates
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        _generate(harness, parent, provider, month=YearMonth(2026, 9), profile=LLM_PROFILE)
+
+    assert exc.value.code == "monthly_template_not_approved"
+    assert harness.monthly_plans.save_count == 0
+    assert requests == []

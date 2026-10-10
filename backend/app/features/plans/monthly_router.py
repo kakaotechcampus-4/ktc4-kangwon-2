@@ -61,6 +61,7 @@ from app.features.plans.monthly_schemas import (
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.template_profiles import service as profile_service
 from app.features.template_profiles.repository import TemplateProfileError
 from app.features.template_profiles.service import ready_profile_for_generation
 from app.shared.auth.dependency import CurrentUser
@@ -89,6 +90,9 @@ _PROFILE_UNUSABLE = frozenset(
         "monthly_required_section_evidence_missing",
         "monthly_section_evidence_class_unavailable",
         "monthly_section_generation_policy_unsupported",
+        # Core 최종 승인 검사(ADR-027). 보통은 생성 직전 검사가 먼저 막는다 — 같은 422 다.
+        "monthly_template_not_found",
+        "monthly_template_not_approved",
     }
 )
 # 서버의 승인 참조자료를 쓸 수 없다 — 운영 문의.
@@ -221,6 +225,8 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         # Core 의 plans.save 는 여기로 간다. 운영 저장은 C 에서 한다.
         plan_repository=InMemoryPlanRepository(),
         profile_repository=InMemoryTemplateProfileRepository((profile,)),
+        # 생성 직전 검사와 같은 Template 저장소. 부를 때 읽는다 — 테스트가 바꿔 끼운다.
+        template_repository=profile_service.TEMPLATES,
         provider=provider,
         clock=SystemClock(),
         id_generator=UuidGenerator(),
