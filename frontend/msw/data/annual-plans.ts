@@ -30,25 +30,39 @@ const themes = [
   "함께 자라요",
   "즐거웠던 우리 반",
 ];
+const SCHOOL_YEAR = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
+/**
+ * 그 달에 고를 수 있는 목업 주제 후보. 첫 번째가 생성 때 고른 것이다. 실제 Theme Reference 도 연령 · 달에
+ * 따라 후보가 하나뿐인 달이 많다 — 그런 달은 다시 만들어도 같은 주제다. 목업은 9월만 후보가 둘이다.
+ * 목업 후보는 달끼리 겹치지 않아 Core 의 「이웃 달과 같은 주제 피하기」는 일어날 수 없다.
+ */
+const candidates = (month: number) => [
+  { id: "mock_theme_" + month, label: themes[SCHOOL_YEAR.indexOf(month)] },
+  ...(month === 9 ? [{ id: "mock_theme_9_b", label: "가을 들판" }] : []),
+];
+const themeEvidence = (candidate: { id: string; label: string }) => [
+  {
+    source_type: "THEME_REFERENCE",
+    source_id: candidate.id,
+    source_version: "mock-theme-reference-v0",
+    effective_date: null,
+    display_name: candidate.label,
+  },
+];
 export const months = (): AnnualMonth[] =>
-  [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map((month, i) => ({
-    month,
-    theme: themes[i],
-    // 서버처럼 생성 때는 항상 비어 있다 — 교사가 §6 으로 채운다.
-    sub_themes: [],
-    safety_education: [],
-    safety_education_state: "SOURCE_REQUIRED",
-    evidence: [
-      {
-        source_type: "THEME_REFERENCE",
-        source_id: "mock_theme_" + month,
-        source_version: "mock-theme-reference-v0",
-        effective_date: null,
-        display_name: themes[i],
-      },
-    ],
-    generation: { ...GENERATION },
-  }));
+  SCHOOL_YEAR.map((month) => {
+    const chosen = candidates(month)[0];
+    return {
+      month,
+      theme: chosen.label,
+      // 서버처럼 생성 때는 항상 비어 있다 — 교사가 §6 으로 채운다.
+      sub_themes: [],
+      safety_education: [],
+      safety_education_state: "SOURCE_REQUIRED",
+      evidence: themeEvidence(chosen),
+      generation: { ...GENERATION },
+    };
+  });
 const GENERATION = { method: "RULE_LLM", rule_id: "mock.yearly.theme", rule_version: "mock-v1" };
 /** 서버 Core 의 생성 행위자(generate_yearly_plan). */
 const SYSTEM_ACTOR = "yearly_application";
@@ -175,37 +189,31 @@ export const confirmPlan = (id: number): ConfirmResult =>
     return { id, status: "CONFIRMED", confirmed_at: plan.confirmed_at! };
   });
 /**
- * 그 달 주제만 다시 만든다(LLM 을 부르지 않는다). 서버 Core 처럼 지금 주제와 다른 후보를 고르므로
- * 근거 id 가 바뀐다 — 문구는 목업 고정값이다. 생성 방식은 처음과 같은 목업 rule 이다. 다른 달은 그대로.
- * 확정 · 소주제 · 옛 목업 데이터 검사는 handler 가 먼저 한다.
+ * 그 달 주제만 다시 만든다(LLM 을 부르지 않는다). 서버 Core 와 같은 규칙으로 고른다 — 지금 주제는 뒤로
+ * 미룰 뿐 빼지 않는다(soft penalty), 그다음은 id 순이다. **후보가 하나뿐이면 같은 주제가 다시 나온다**
+ * — 그래도 200 이고 REGENERATED 가 남는다(값이 같아도). 문구는 후보 이름이다(서버의 결정적 생성기와
+ * 같다. 실제 LLM 은 같은 주제라도 문구를 바꿔 쓸 수 있다). 근거는 고른 후보로 다시 만들고, 생성
+ * 방식은 처음과 같은 목업 rule 이다. 다른 달은 그대로. 확정 · 소주제 · 옛 목업 데이터 검사는 handler 가 먼저 한다.
  */
 export const regenerateMonth = (id: number, month: number) =>
   commit((db) => {
     const plan = db.plans.find((p) => p.id === id)!;
     const m = plan.months.find((m) => m.month === month)!;
-    const n =
-      (db.annualAudit[id] ?? []).filter((e) => e.type === "REGENERATED" && e.month === month)
-        .length + 1;
-    const theme = `${themes[plan.months.indexOf(m)]} · 다시 만든 주제 ${n}`;
+    const current = m.evidence[0]?.source_id;
+    const [chosen] = candidates(month).sort(
+      (a, b) => Number(a.id === current) - Number(b.id === current) || a.id.localeCompare(b.id),
+    );
     record(
       db,
       id,
       event("REGENERATED", stamp(db, id), {
         month,
-        value_change: { before: m.theme, after: theme },
+        value_change: { before: m.theme, after: chosen.label },
         generation_change: { before: m.generation, after: { ...GENERATION } },
       }),
     );
-    m.theme = theme;
-    m.evidence = [
-      {
-        source_type: "THEME_REFERENCE",
-        source_id: `mock_theme_${month}_r${n}`,
-        source_version: "mock-theme-reference-v0",
-        effective_date: null,
-        display_name: theme,
-      },
-    ];
+    m.theme = chosen.label;
+    m.evidence = themeEvidence(chosen);
     m.generation = { ...GENERATION };
     return m;
   });
