@@ -129,3 +129,13 @@ class MonthlyPlanSummary(BaseModel):
 
 class MonthlyPlanListOut(BaseModel):
     items: list[MonthlyPlanSummary]
+
+
+class RevisionIn(BaseModel):
+    """읽을 때 받은 revision. 서버 값과 다르면 409 `STALE_WRITE` (결정 문서 12.4 D-3)."""
+
+    expected_revision: int = Field(ge=1, strict=True)
+
+
+class EditMonthlyCell(RevisionIn):
+    value: str = Field(strict=True)
