@@ -30,6 +30,10 @@ from ssuksak.planning.rules.monthly_template_resolver import resolve_sections
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 
+# Content that never changes again. Every entry with a `review` approval block is
+# HUMAN_APPROVED; institution_evidence_v0_1_0 is a corpus observation without an
+# approval gate and is frozen for integrity only. A changed SHA is a different
+# contract (ADR-027), so these values are never edited.
 FROZEN_ARTIFACTS = {
     "themes/theme_reference_v0.json": (
         "dae9f62db452c56b3b529aaa8e620411e9c11a2072163d6f9cc2a9d2ebc4d902"
@@ -45,12 +49,6 @@ FROZEN_ARTIFACTS = {
     ),
     "templates/monthly_template_a_v0_2_0.json": (
         "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
-    ),
-    "templates/monthly_template_a_v0_1_1.json": (
-        "26509d5fb4986ed66e90e9003cb88ad5a1c21f3f319b6d0c7e1b65c6ec152166"
-    ),
-    "templates/monthly_template_a_v0_2_1.json": (
-        "13e2f48db27f356db5acaaa6e2649c82abdc375402b37433f2e5b841eb77ace7"
     ),
     "rules/safety_education_legal_v1.json": (
         "bd5c04864eb4eca66e51c24d58224723dbb401ead1b72f5e3b09d3a32057b3e9"
@@ -79,13 +77,112 @@ FROZEN_ARTIFACTS = {
 }
 
 
-@pytest.mark.parametrize("relative,expected", sorted(FROZEN_ARTIFACTS.items()))
-def test_frozen_artifact_has_canonical_lf_bytes(relative, expected):
+# Awaiting human review (ADR-027). Pinned so an unreviewed edit fails here: the
+# Golden runs on these files. Only the approval commit may change them: it edits
+# APPROVAL_METADATA_KEYS, removes the entry here and adds the new SHA to
+# FROZEN_ARTIFACTS. PENDING_REVIEW_CONTENT proves nothing else changed.
+PENDING_REVIEW_PINS = {
+    "templates/monthly_template_a_v0_1_1.json": (
+        "26509d5fb4986ed66e90e9003cb88ad5a1c21f3f319b6d0c7e1b65c6ec152166"
+    ),
+    "templates/monthly_template_a_v0_2_1.json": (
+        "13e2f48db27f356db5acaaa6e2649c82abdc375402b37433f2e5b841eb77ace7"
+    ),
+}
+
+# What a human approval may change inside `review`. Everything else is content.
+APPROVAL_METADATA_KEYS = frozenset(
+    {
+        "domain_owner_approval",
+        "approved_by",
+        "approved_at",
+        "runtime_active",
+        "runtime_active_note",
+    }
+)
+
+# SHA of each reviewed file without APPROVAL_METADATA_KEYS. It stays valid across
+# the approval commit, so approving cannot hide a content edit. Keep the entry
+# after approval.
+PENDING_REVIEW_CONTENT = {
+    "templates/monthly_template_a_v0_1_1.json": (
+        "5fa724581a3c6dc24563de5c4bbe352f659fe5a751c1b795394bf6058388c62b"
+    ),
+    "templates/monthly_template_a_v0_2_1.json": (
+        "b01da9b746390f9833366de83d56e4fcd3f856a70326266cf83c962c8e39452e"
+    ),
+}
+
+
+def _content_sha(relative: str) -> str:
+    payload = json.loads((DATA / relative).read_text(encoding="utf-8"))
+    review = {
+        key: value
+        for key, value in payload["review"].items()
+        if key not in APPROVAL_METADATA_KEYS
+    }
+    canonical = json.dumps(
+        {**payload, "review": review},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "relative,expected",
+    sorted({**FROZEN_ARTIFACTS, **PENDING_REVIEW_PINS}.items()),
+)
+def test_pinned_artifact_has_canonical_lf_bytes(relative, expected):
     raw = (DATA / relative).read_bytes()
 
     assert b"\r" not in raw
     assert raw.endswith(b"\n")
     assert hashlib.sha256(raw).hexdigest() == expected
+
+
+def test_frozen_and_pending_lists_do_not_overlap():
+    assert not FROZEN_ARTIFACTS.keys() & PENDING_REVIEW_PINS.keys()
+
+
+def test_every_template_file_is_frozen_or_pending():
+    files = {f"templates/{path.name}" for path in (DATA / "templates").glob("*.json")}
+
+    assert files == {
+        relative
+        for relative in {**FROZEN_ARTIFACTS, **PENDING_REVIEW_PINS}
+        if relative.startswith("templates/")
+    }
+
+
+@pytest.mark.parametrize("relative", sorted(FROZEN_ARTIFACTS))
+def test_frozen_artifact_with_review_is_human_approved(relative):
+    review = json.loads((DATA / relative).read_text(encoding="utf-8")).get("review")
+
+    if review is not None:
+        assert review["domain_owner_approval"] == "HUMAN_APPROVED"
+        assert review["approved_by"]
+        assert review["approved_at"]
+
+
+@pytest.mark.parametrize("relative", sorted(PENDING_REVIEW_PINS))
+def test_pending_pin_is_pending_human_review(relative):
+    review = json.loads((DATA / relative).read_text(encoding="utf-8"))["review"]
+
+    assert review["domain_owner_approval"] == "PENDING_HUMAN_REVIEW"
+    assert review["approved_by"] is None
+    assert review["approved_at"] is None
+    assert review["runtime_active"] is False
+
+
+def test_every_pending_pin_has_a_content_pin():
+    assert PENDING_REVIEW_PINS.keys() <= PENDING_REVIEW_CONTENT.keys()
+
+
+@pytest.mark.parametrize("relative,expected", sorted(PENDING_REVIEW_CONTENT.items()))
+def test_reviewed_content_is_unchanged_apart_from_approval_metadata(relative, expected):
+    assert _content_sha(relative) == expected
 
 
 def test_theme_reference_exact_version_and_approval_are_frozen():
@@ -110,17 +207,22 @@ def test_activity_reference_exact_versions_and_approval_are_frozen():
         assert catalog.is_active
 
 
-def test_template_exact_versions_and_approval_are_frozen():
+def test_pending_templates_are_served_but_inactive():
     repository = JsonMonthlyTemplateRepository()
 
-    # TP-21 republished files await a human review: registered, but never active (CLAUDE.md §8).
+    # Republished with repeat_by, awaiting human review: served, never active (ADR-027).
     for version in ("monthly-template-a-v0.1.1", "monthly-template-a-v0.2.1"):
         template = repository.get_template("ssuksak.monthly-template-a", version)
         assert template is not None
         assert not template.is_active
         with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
             resolve_sections(template)
-    # TP-21: the display_mode-era files stay frozen above as history but are not served.
+
+
+def test_display_mode_era_templates_are_frozen_but_not_served():
+    repository = JsonMonthlyTemplateRepository()
+
+    # History only (ADR-027): still frozen above, never read on the runtime path.
     for version in ("monthly-template-a-v0.1.0", "monthly-template-a-v0.2.0"):
         assert repository.get_template("ssuksak.monthly-template-a", version) is None
 
