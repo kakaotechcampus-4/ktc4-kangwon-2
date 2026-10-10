@@ -1,7 +1,7 @@
 # P0 MSW / FastAPI 전환
 
 현재 원 생성, 반 생성/조회, 아동 생성/조회/삭제, 계획 설정, 연간 생성/조회/월 수정/확정 handler와 lib/api 함수를 제공합니다.
-원본 계약: ../docs/api-spec.md. 사용자 보충 계약에 따라 TEACHER와 오류 코드를 구현했습니다.
+원본 계약: ../docs/api-spec.md.
 
 ## ON / OFF
 
@@ -77,6 +77,13 @@ mock 생성 데이터는 localStorage의 saessak.mswSS.v1:<계정>에서 새로�
 Vercel 프로젝트의 Settings → Environment Variables에서 NEXT_PUBLIC_API_MOCKING=enabled를 Production/Preview에 설정한 뒤 재배포합니다. NEXT_PUBLIC 값은 빌드 시점에 고정됩니다.
 실제 FastAPI 사용 시 disabled로 바꾸고 FASTAPI_BASE_URL을 실제 서버 주소로 설정한 뒤 재배포합니다.
 검증: 2026-09-15 enabled로 production build 성공, next start에서 브라우저 [MSW] Mocking enabled / worker started 확인. 실제 Vercel 배포 설정은 이 로컬 검증에 포함하지 않음.
+
+## 연간계획안 목업 (docs/api-spec.md §4 ~ §7)
+
+- 응답 모양은 서버와 같다: months[] 에 evidence(THEME_REFERENCE 하나) · generation · safety_education([]) · safety_education_state(SOURCE_REQUIRED), 계획안에 checked_rules · checks. 단일 source_type · citation 은 없다.
+- 생성 직후 sub_themes 는 []. 근거 id · rule 은 mock_theme_<달> · mock.yearly.theme 고정값이다 — 실제 Theme Reference 가 아니다. checks 는 법정 6구분 × (주기 · 시수) UNVERIFIED 12건이고 문구는 목업이다(법령 값은 서버 원본만).
+- 서버와 같은 규칙: 반 하나에 연간 하나(ALREADY_EXISTS), PUT 은 evidence · generation 을 바꾸지 않음, 확정 뒤 PUT 은 409 ALREADY_CONFIRMED, 확정 재호출은 200 · 같은 confirmed_at · 상태 변화 없음, 빈 소주제로 확정을 막지 않음.
+- 서버와 다른 점: 연간 목업은 「지금 원」 소유 검사를 하지 않는다. 이 변경 전에 저장된 연간 목업 데이터(localStorage)는 옛 모양 그대로다 — 새 모양이 필요하면 새 계정 · 새 반으로 만든다.
 
 ## 월간계획안 목업 (docs/api-spec.md §9-1 ~ §9-3)
 

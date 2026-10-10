@@ -467,7 +467,8 @@ test("annual API still behaves the same next to the monthly mocks", async () => 
   await rejects(
     putAnnualMonth(annual.id, 3, { theme: "금지", sub_themes: [] }),
     409,
-    "GATE_BLOCKED",
+    "ALREADY_CONFIRMED",
+    [],
   );
   assert.equal(read().plans.length, 1);
 });

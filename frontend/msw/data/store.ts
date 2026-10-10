@@ -15,7 +15,7 @@ export interface Database {
   centers: Center[];
   classes: ApiClass[];
   children: ApiChild[];
-  plans: AnnualPlan[];
+  plans: MockAnnualPlan[];
   configs: Record<number, PlanConfig>;
   greetings: Record<number, Greetings>;
   monthlyPlans: MonthlyPlan[];
@@ -29,6 +29,8 @@ export interface Database {
   /** 테스트 · 개발 전용 승인 Fixture(`template_id@template_version`). 운영 Template 은 승인 대기다. */
   approvedTemplates: string[];
 }
+/** 연간계획안 + 서버가 목록 · 확정 응답에만 주는 시각. 단건 응답에서는 뺀다. */
+export type MockAnnualPlan = AnnualPlan & { created_at: string; confirmed_at: string | null };
 /** 저장된 이벤트. 칸 위치(scope · item_id · section_key · week_id)는 읽을 때 칸에서 붙인다. */
 export type MockAuditEvent = Omit<
   MonthlyAuditEvent,
