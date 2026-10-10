@@ -98,6 +98,21 @@ def _sources(session: Session, document_id: int) -> list[DocumentSource]:
     )
 
 
+def _observation_domains(session: Session, sources: list[DocumentSource]) -> dict[int, str]:
+    """관찰 기록 근거의 영역. 사본에 두지 않고 원본에서 읽는다.
+
+    영역만 고치면 사실은 그대로라 `stale` 이 아니다(stale.py). 그러니 사본에 남겨 둘 이유가
+    없고, 교사가 나중에 고친 영역이 종이에 그대로 나가는 게 맞다. 원본이 사라졌으면 빠진다.
+    """
+    ids = [s.source_id for s in sources if s.source_kind == "observation"]
+    if not ids:
+        return {}
+    rows = session.execute(
+        select(Observation.id, Observation.domain).where(Observation.id.in_(ids))
+    )
+    return {observation_id: domain for observation_id, domain in rows}
+
+
 def _period(start: date, end: date) -> str:
     if start == end:
         return f"{start.month}/{start.day}"
@@ -114,6 +129,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         select(DocumentSection).where(DocumentSection.document_id == doc.id)
     ).all()
     sources = _sources(session, doc.id)
+    domains = _observation_domains(session, sources)
 
     return DocumentDetailResponse(
         id=doc.id,
@@ -134,7 +150,12 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         ],
         sources=[
             DocumentSourceItem(
-                id=s.source_id, date=s.date, text=s.text, class_id=s.class_id, child_id=s.child_id
+                id=s.source_id,
+                date=s.date,
+                domain=domains.get(s.source_id) if s.source_kind == "observation" else None,
+                text=s.text,
+                class_id=s.class_id,
+                child_id=s.child_id,
             )
             for s in sources
         ],
