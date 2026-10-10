@@ -11,7 +11,15 @@ import {
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
-import { findPlan, listPlans, addPlan, putMonth, confirmPlan } from "./data/annual-plans";
+import {
+  findPlan,
+  listPlans,
+  addPlan,
+  putMonth,
+  confirmPlan,
+  regenerateMonth,
+  listAnnualAudit,
+} from "./data/annual-plans";
 import {
   REGENERATABLE,
   addMonthly,
@@ -267,6 +275,41 @@ export const handlers = [
     if (!findPlan(id)) return annualMissing();
     // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
+  }),
+  // 연간 선택 월 재생성 — 잠정 계약(docs/provisional-policy-decisions.md 부록). 서버 순서:
+  // 계획안 404 → 달 404 → 확정 409 → 소주제 422. 저장 충돌 409 · 503 · 500 은 mockError 로만 재현한다
+  // (목업에는 LLM 대기 · 동시 저장이 없다). 실패는 저장 전에 돌려준다 — 계획안 · 이력이 그대로다.
+  http.post("*/api/plans/annual/:id/months/:month/regenerate", async ({ request, params }) => {
+    const s = await scenario(request, "annual-regenerate", 1200);
+    if (s) return s;
+    const id = Number(params.id),
+      month = Number(params.month),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    const target = plan.months.find((m) => m.month === month);
+    if (!target) return failure("NOT_FOUND", "그 달이 없습니다.", "month");
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    // 앞뒤 공백을 뺀 값이 하나라도 있으면 「있다」. [] · ["", "  "] 은 없는 것과 같다.
+    if (target.sub_themes.some((t) => typeof t === "string" && t.trim()))
+      return failure(
+        "VALIDATION_FAILED",
+        "소주제가 있는 달은 주제를 다시 만들 수 없습니다. 소주제를 비운 뒤 해주세요.",
+        "sub_themes",
+      );
+    // 목업 전용: FE-Y1 이전에 저장된 옛 모양 계획안에는 생성 방식이 없어 이력을 만들 수 없다.
+    // 지어내거나 지우지 않고 거절한다. 서버에는 이런 데이터가 없다.
+    if (!target.generation)
+      return failure("VALIDATION_FAILED", "옛 목업 계획안이라 다시 만들 수 없습니다.", "id");
+    if (request.signal.aborted) return HttpResponse.error();
+    return HttpResponse.json(regenerateMonth(id, month));
+  }),
+  http.get("*/api/plans/annual/:id/audit", async ({ request, params }) => {
+    const s = await scenario(request, "annual-audit");
+    if (s) return s;
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    return HttpResponse.json({ items: listAnnualAudit(id) });
   }),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
   http.post("*/api/plans/monthly", async ({ request }) => {

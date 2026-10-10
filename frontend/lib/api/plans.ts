@@ -5,6 +5,7 @@ import type {
   AnnualPlan,
   AnnualPlanSummary,
   AnnualMonth,
+  AnnualAuditEvent,
   MonthInput,
   ConfirmResult,
 } from "./types";
@@ -30,6 +31,20 @@ export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/**
+ * 그 달 주제 하나만 다시 만든다. 요청 본문은 없다. 응답은 PUT 과 같은 그 달 객체다 — 다른 11개월은
+ * 그대로라 다시 받지 않는다. **잠정 계약이다**(docs/provisional-policy-decisions.md PROV-Y-A · B ·
+ * 부록, PM 확인 전). 교사가 고친 주제도 바뀌고 이전 값은 Audit 에 남는다. 자동 재시도 없음.
+ * 소주제가 있는 달은 422 `["sub_themes"]`, 그 사이 다른 저장이 있었으면 409 `STALE_WRITE`.
+ */
+export const regenerateAnnualMonth = (id: number, month: number, signal?: AbortSignal) =>
+  apiRequest<AnnualMonth>("/api/plans/annual/" + id + "/months/" + month + "/regenerate", {
+    method: "POST",
+    signal,
+  });
+/** 변경 이력 (§7-1). 시간순이고 필터 · 페이지가 없다 — 화면이 `month` 로 거른다. */
+export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
+  apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
 export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
 
