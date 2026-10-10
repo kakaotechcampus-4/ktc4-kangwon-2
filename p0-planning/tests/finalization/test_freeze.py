@@ -83,10 +83,10 @@ FROZEN_ARTIFACTS = {
 # FROZEN_ARTIFACTS. PENDING_REVIEW_CONTENT proves nothing else changed.
 PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
-        "26509d5fb4986ed66e90e9003cb88ad5a1c21f3f319b6d0c7e1b65c6ec152166"
+        "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
     ),
     "templates/monthly_template_a_v0_2_1.json": (
-        "13e2f48db27f356db5acaaa6e2649c82abdc375402b37433f2e5b841eb77ace7"
+        "f5c84f35ba00970f9efe584b3e09c57a5f363e3f649fff8b00c7bdd4490988f4"
     ),
 }
 
@@ -106,10 +106,10 @@ APPROVAL_METADATA_KEYS = frozenset(
 # after approval.
 PENDING_REVIEW_CONTENT = {
     "templates/monthly_template_a_v0_1_1.json": (
-        "5fa724581a3c6dc24563de5c4bbe352f659fe5a751c1b795394bf6058388c62b"
+        "a934a2d9eccd9796ac8793447913d428adc747afd25a99f3f7496f939907fae4"
     ),
     "templates/monthly_template_a_v0_2_1.json": (
-        "b01da9b746390f9833366de83d56e4fcd3f856a70326266cf83c962c8e39452e"
+        "5497aba0b41065c857b7d8ece58dc0297f2ff713bed65a8a339dd0ec3a6b9be4"
     ),
 }
 
