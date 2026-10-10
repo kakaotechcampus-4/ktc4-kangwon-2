@@ -319,6 +319,54 @@ def _ref(ref: dict) -> TemplateProfileRef:
     return TemplateProfileRef(ref["profile_id"], ref["profile_version"])
 
 
+class _NoTemplates:
+    def get_template(self, template_id, template_version):
+        return None
+
+
+class _OtherVersion:
+    """어느 요청에나 승인된 v0.1.1 을 준다 — 정확한 version 이 아니면 쓰지 않아야 한다."""
+
+    def get_template(self, template_id, template_version):
+        return ApprovedTemplates().get_template(PLAIN.template_id, PLAIN.template_version)
+
+
+@pytest.mark.parametrize(
+    "templates",
+    [JsonMonthlyTemplateRepository, _NoTemplates, _OtherVersion],
+    ids=["pending_real_file", "missing", "other_version"],
+)
+def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(world, monkeypatch, templates):
+    """생성 직전 검사를 일부러 건너뛰어 Core 최종 검사(ADR-027)의 HTTP 매핑만 본다."""
+    _annual(world["class_a"])
+
+    def without_early_gate(session, center_id, ref):
+        return PostgresTemplateProfileRepository(session, center_id=center_id).get_profile(
+            ref.profile_id, ref.profile_version
+        )
+
+    requests = []
+
+    class CountingLlm(RequestAwareMonthlyLlm):
+        def generate_monthly(self, request):
+            requests.append(request)
+            return super().generate_monthly(request)
+
+    monkeypatch.setattr(monthly_router, "ready_profile_for_generation", without_early_gate)
+    monkeypatch.setattr(monthly_router, "monthly_llm_provider", CountingLlm)
+    monkeypatch.setattr(profile_service, "TEMPLATES", templates())
+
+    response = _create(world)
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["profile_ref"])
+    # Core 문구(코드 · Template id)를 내보내지 않는다.
+    assert response.json()["error"]["message"] == (
+        "고른 양식 설정으로는 월간계획안을 만들 수 없습니다. 다른 설정을 골라주세요."
+    )
+    assert requests == []
+    assert _monthly_rows(world["session"]) == []
+
+
 @pytest.mark.parametrize(
     ("override", "fields"),
     [
