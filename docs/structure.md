@@ -79,7 +79,7 @@ app/
 | `forms` | 원이 등록한 양식의 파싱 결과(ADR-020). parse 는 저장하지 않는다 |
 | `documents` | 일지 · 평가 문서. 다른 기능은 `service.py` 창구로 읽는다 |
 | `trends` | 트렌드 소재. 승인은 저장소 파일이고 큐가 아니다(ADR-016) |
-| `evaluation` | 평가제 대조 — 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
+| `evaluation` | 평가제 대조 — 라우터 GET · PUT · 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
 
 ### 규칙
 

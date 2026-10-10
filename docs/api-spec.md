@@ -1408,7 +1408,7 @@ assessment    observation · dailyLog
 
 ---
 
-## 12. 평가제 대조 — `GET /api/centers/{center_id}/evaluation-checklist`   ★ 8주차
+## 12. 평가제 대조 — `GET /api/centers/{center_id}/evaluation-checklist` (구현됨)   ★ 8주차
 
 **응답에 지표 9개가 온다 — 자동 2 · 자기 점검 7. 평가자가 현장에서 보는 6개(1-1·1-2·2-1·2-2·3-1·3-2)는 넣지 않는다.**
 PM 결정(2026-10-01)이다([ADR-022](adr/022-evaluation-checklist-auto-and-self-check.md)).
@@ -1616,7 +1616,7 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 평가 준비가 됐는지만 확인하는 기능이라 점수는 필요 없다.
 **평가요소를 나눈 지표 파일 v2 는 승석(PM)에게 부탁한다.** 법정 고시 원문 · PM 승인 파일이라 우리가 고치지 않는다.
 
-### 체크 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/checks`
+### 체크 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/checks` (구현됨)
 
 **Request**
 
@@ -1630,6 +1630,7 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 **`checked_at` 은 ☐ 에서 ☑ 로 바뀐 시각이다.** 이미 체크된 평가요소를 다시 `true` 로 보내면 바뀌지 않는다(「전체 체크」).
 **`checked: false` 면 체크를 푼다.** 응답의 `checked_at` 은 `null` 이다.
 **풀었다가 다시 체크하면 새 시각이다.** 풀기 전 시각은 남기지 않는다 — 체크 시각은 평가에 쓰이지 않는다(ADR-022).
+**`{"checks": []}` 는 아무것도 바꾸지 않고 `200` 으로 GET 과 같은 전체 응답을 반환한다.**
 
 **Response** `200` — GET 과 같은 전체 응답이다. 지표 9개가 온다. **화면은 통째로 교체한다.**
 
