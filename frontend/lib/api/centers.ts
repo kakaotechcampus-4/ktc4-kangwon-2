@@ -21,6 +21,18 @@ export const createCenter = (data: CenterInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/** docs/api-spec.md §1-1. 같은 원 교사를 들이는 1회용 코드. 7일 뒤 만료된다. */
+export type Invite = { code: string; expires_at: string };
+
+export const createInvite = (centerId: number) =>
+  apiRequest<Invite>(`/api/centers/${centerId}/invites`, { method: "POST" });
+
+export const joinCenter = (code: string) =>
+  apiRequest<Center>("/api/centers/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
 export const savePlanConfig = (id: number, data: PlanConfig) =>
   apiRequest<PlanConfigResponse>("/api/centers/" + id + "/plan-config", {
     method: "PUT",

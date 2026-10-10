@@ -2,9 +2,10 @@ import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isApiNotFound } from "./client";
-import { createCenter } from "./centers";
+import { createCenter, joinCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
+import { normalizeProvince } from "../onboarding/regions";
 import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
 interface Binding {
   id: number;
@@ -83,6 +84,35 @@ async function syncCenterOnce(settings: ClassSettings) {
   links.children = {};
   saveLinks(links);
   return center.id;
+}
+/**
+ * 초대 코드로 기존 원에 들어간다 (§1-1). 원 정보는 서버 값으로 채우고, syncCenter 가 같은
+ * 서명을 보도록 연결해 둔다 — 서명이 다르면 다음 단계에서 원을 새로 만들려다 409 가 난다.
+ */
+export async function joinCenterByCode(
+  settings: ClassSettings,
+  code: string,
+): Promise<ClassSettings> {
+  const center = await joinCenter(code);
+  // 화면이 지역을 정식 이름으로 바꿔 쓴다(「강원」 → 「강원특별자치도」). 서명도 같은 값으로 만든다.
+  const data = {
+    name: center.name,
+    director_name: center.director_name,
+    region_sido: normalizeProvince(center.region_sido).trim(),
+    region_sigungu: center.region_sigungu.trim(),
+  };
+  saveLinks({
+    center: { id: center.id, signature: JSON.stringify(data) },
+    classes: {},
+    children: {},
+  });
+  return {
+    ...settings,
+    orgName: center.name,
+    directorName: center.director_name,
+    regionProvince: data.region_sido,
+    regionDistrict: data.region_sigungu,
+  };
 }
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
