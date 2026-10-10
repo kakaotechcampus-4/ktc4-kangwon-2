@@ -154,7 +154,7 @@ def test_template_resolver_counts_structure_without_application_dto():
     template = JsonMonthlyTemplateRepository().get_template(
         "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
     )
-    # OD-N11 (A): a test-only approved Domain object. The data file itself stays PENDING.
+    # OD-N11 (A), ADR-027: test-only approved Domain object. The data file stays PENDING.
     resolved = resolve_sections(replace(template, runtime_active=True))
 
     assert expected_cell_count(resolved, 5) == 11

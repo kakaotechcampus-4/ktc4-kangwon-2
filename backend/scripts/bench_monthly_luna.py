@@ -116,6 +116,14 @@ class TimedTransport:
         return result
 
 
+class _ApprovedTemplates:
+    """OD-N11 (A): Core 최종 승인 검사(ADR-027)도 이 프로세스 안에서만 승인 상태로 본다."""
+
+    def get_template(self, template_id, template_version):
+        template = JsonMonthlyTemplateRepository().get_template(template_id, template_version)
+        return None if template is None else replace(template, runtime_active=True)
+
+
 def _profile() -> TemplateProfile:
     """OD-N11 (A): 이 프로세스 안에서만 승인 상태로 본다."""
     template = JsonMonthlyTemplateRepository().get_template(
@@ -169,6 +177,7 @@ def run_once(transport, *, month: YearMonth, ages: frozenset[int]) -> dict:
         parent_plan_repository=yearly,
         plan_repository=InMemoryPlanRepository(),
         profile_repository=InMemoryTemplateProfileRepository((_profile(),)),
+        template_repository=_ApprovedTemplates(),
         safety_repository=JsonSafetyLegalRuleRepository(),
         activity_repository=JsonActivityReferenceRepository(),
         clock=clock,
