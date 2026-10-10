@@ -153,3 +153,37 @@ def test_원번호만_일치해도_실제_없는_원은_404다(db_session, teach
             **({"json": payload()} if method == "PUT" else {}),
         )
         assert response.status_code == 404
+
+
+def test_성품인사_문구는_80자를_넘기면_거부한다(own_center):
+    """저장소가 JSONB 라 DB 가 길이를 막아 주지 않는다. 여기서 안 막으면 아무 데서도 안 막힌다."""
+    body = payload()
+    body["items"][0]["text"] = "ㄱ" * 81
+
+    response = client.put(f"/api/centers/{own_center}/greetings", json=body)
+
+    assert response.status_code == 422
+    # 서버가 월 순서로 다시 세어 자리를 매긴다. 몇 번째인지가 아니라 그 칸이 지목됐는지를 본다.
+    assert any(field.endswith(".text") for field in response.json()["error"]["fields"])
+
+
+def test_성품인사_문구의_앞뒤_공백은_털어서_저장한다(own_center):
+    """공백만 든 값은 빈 값과 같은 것으로 저장된다.
+
+    §3 은 빈 문구를 금지하지 않는다 — 그 달에 성품인사를 안 쓰는 원이 칸을 비운다.
+    다만 「공백 세 칸」과 「빈 칸」이 화면에서 같아 보이는데 저장된 값이 다르면 안 된다.
+
+    `enabled: true` 로 보낸다 — `false` 면 서버가 items 를 무시한다(§3).
+    """
+    body = payload()
+    body["items"][0]["text"] = "  앞뒤 공백  "
+    body["items"][1]["text"] = "   "
+    first, second = body["items"][0]["month"], body["items"][1]["month"]
+
+    assert client.put(f"/api/centers/{own_center}/greetings", json=body).status_code == 200
+    saved = {
+        item["month"]: item["text"]
+        for item in client.get(f"/api/centers/{own_center}/greetings").json()["items"]
+    }
+    assert saved[first] == "앞뒤 공백"
+    assert saved[second] == ""

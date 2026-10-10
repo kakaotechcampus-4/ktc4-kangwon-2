@@ -709,6 +709,81 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 
 ---
 
+## 7-1. 변경 이력 — `GET /api/plans/annual/{id}/audit`
+
+> **상태: 구현됨.** BE-Y3 에서 `value_change` · `generation_change` 두 키를 더했다. 기존 다섯 키 ·
+> `{items}` 봉투 · 순서 · 오류는 그대로다. **조회 계약이다** — 재생성 정책(잠정, `docs/provisional-policy-decisions.md`
+> PROV-Y-A · B)을 승인한 것이 아니다.
+
+**Response** `200`
+
+```json
+{ "items": [
+    { "type": "CREATED", "occurred_at": "2026-09-01T01:00:00+00:00", "month": null,
+      "actor": null, "system_actor": "yearly_application",
+      "value_change": null, "generation_change": null },
+    { "type": "TEACHER_EDITED", "occurred_at": "2026-09-02T02:00:00+00:00", "month": 10,
+      "actor": "user_7", "system_actor": null,
+      "value_change": { "before": "가을 자연", "after": "교사가 쓴 10월 주제" },
+      "generation_change": null },
+    { "type": "REGENERATED", "occurred_at": "2026-09-03T03:00:00+00:00", "month": 10,
+      "actor": "user_7", "system_actor": null,
+      "value_change": { "before": "교사가 쓴 10월 주제", "after": "가을 열매와 곡식" },
+      "generation_change": {
+        "before": { "method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection",
+                    "rule_version": "v2" },
+        "after":  { "method": "RULE_LLM", "rule_id": "yearly.theme.sample_derived_candidate_selection",
+                    "rule_version": "v2" } } },
+    { "type": "CONFIRMED", "occurred_at": "2026-09-04T04:00:00+00:00", "month": null,
+      "actor": "user_7", "system_actor": null,
+      "value_change": null, "generation_change": null }
+] }
+```
+
+값의 모양(문구 · 시각 · id)은 예시다. **일곱 키가 항상 온다** — 해당이 없으면 `null`.
+
+```
+type               CREATED | TEACHER_EDITED | REGENERATED | CONFIRMED.  저장된 그대로
+occurred_at        ISO 8601.  저장된 시각 그대로
+month              그 달 theme 의 이벤트면 그 달(1~12).  계획안 단위(생성 · 확정)면 null
+actor              사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
+system_actor       시스템이 한 일(생성)이면 그 표시 (yearly_application).  사람이면 null
+value_change       TEACHER_EDITED · REGENERATED 만.  {before, after} — 그때 바뀐 theme 문구.  나머지는 null
+generation_change  REGENERATED 만.  {before, after} — 각각 §4 months[].generation 과 같은 모양
+                   (method · rule_id · rule_version).  나머지는 null
+```
+
+| type | 단위 | 누가 | value_change | generation_change |
+|---|---|---|---|---|
+| `CREATED` | 계획안 1건 + 달마다 1건 (같은 시각) | `system_actor` | null | null |
+| `TEACHER_EDITED` | 달 | `actor` | 있음 (Core 가 반드시 남긴다) | null — 교사 수정은 생성 방식을 바꾸지 않는다 |
+| `REGENERATED` | 달 | `actor` | 있음 | 있음 |
+| `CONFIRMED` | 계획안 | `actor` | null | null |
+
+- **값은 저장된 이벤트에서만 온다.** 현재 값에서 거꾸로 만들지 않는다. 키가 없는 옛 이벤트는 `null` 이다.
+- **`REGENERATED` 는 달 단위 재생성이 만든다.** 그 API 는 잠정 계약이다(PROV-Y-A · B, PM 확인 전).
+  교사가 고친 theme 를 다시 만들면 고친 문구가 `value_change.before` 에 남는다 — **볼 수 있다는 것이지
+  되돌리는 기능이 있다는 뜻은 아니다.** 복원 API 는 없다.
+- **소주제(`sub_themes`) 변경은 이력에 없다.** 소주제는 도메인 밖이라 이벤트가 남지 않는다(§4). §6 PUT 은
+  theme 가 그대로여도 `TEACHER_EDITED` 를 남기므로, **소주제만 고친 PUT 은 `before` 와 `after` 가 같은
+  이벤트로 보인다.** 이것으로 소주제가 어떻게 바뀌었는지는 알 수 없다.
+- **이전 근거(`evidence`)도 없다.** 재생성 뒤 근거는 §5 단건 조회의 현재 값뿐이다.
+- 확정 재호출(§7)은 이벤트를 더하지 않는다.
+
+**순서** — `occurred_at` 오름차순. 시각이 같으면 ① 계획안 단위 → ② 달 단위 3월 ~ 익년 2월, 한 달 안에서는
+저장된 순서다(생성 때는 모든 `CREATED` 가 같은 시각이라 이 규칙이 순서를 정한다).
+
+**필터 · Pagination 없음.** 열두 달이라 작다. 화면이 `month` 로 거른다. 이벤트별 `revision` 도 없다.
+
+**오류**
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `UNAUTHENTICATED` | 401 | 로그인 안 함 | `[]` |
+| `NOT_FOUND` | 404 | 없거나 남의 원 계획안 · 연간이 아님 | `["id"]` |
+
+---
+
 ## 8. 양식 — `POST /api/forms/parse` (구현됨) · 등록 `/api/centers/{center_id}/forms`   ★ 8주차
 
 **`POST /api/forms/parse`** — hwp/hwpx 를 받아 표 구조와 라벨 후보를 돌려준다. 수린 구현(PR #6).
@@ -818,7 +893,7 @@ POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
 PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨, M5)
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 GET    /api/plans/{id}/export/hwp         내보내기
-GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
+GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — §7-1 (구현됨) · 되돌리기(P1)·평가제(P2)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 ```

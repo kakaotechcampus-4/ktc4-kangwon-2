@@ -37,6 +37,14 @@ if [ -n "$resolved" ] && [ -n "$public" ] && [ "$resolved" != "$public" ]; then
   exit 1
 fi
 
+# certbot 이 관리하는 인증서인지 본다. 갱신 설정 파일이 있으면 certbot 이 발급한 것이고,
+# 없으면 아래 1번이 만든 임시이거나 찌꺼기다. 이 판정으로 3번에서 지울지 말지가 갈린다.
+managed=0
+if crun --entrypoint sh certbot -c "test -f /etc/letsencrypt/renewal/$DOMAIN.conf"; then
+  managed=1
+  echo "이미 certbot 이 관리하는 인증서가 있다. 지우지 않고 덮어쓴다."
+fi
+
 # 1. 가짜 인증서 — nginx 를 띄우기 위한 자리끼다. 바로 덮어쓴다.
 if [ ! -f "$LIVE/fullchain.pem" ]; then
   echo "== 임시 인증서 =="
@@ -51,16 +59,32 @@ echo "== nginx =="
 compose up -d nginx
 sleep 3
 
-# 3. 진짜 인증서. 임시를 지우고 받는다 — certbot 이 "이미 있다" 로 건너뛰지 않게.
+# 3. 진짜 인증서.
+#
+# **진짜 인증서가 있으면 지우지 않는다** (멘토 리뷰 #119). 지우고 받다가 발급이 실패하면
+# — 발급 횟수 제한, DNS 불일치 — 인증서가 하나도 안 남는다. nginx 는 메모리에 들고 있어
+# 당장은 살아 있지만, compose 가 6시간마다 reload 하므로 그 안에 사이트가 죽는다.
+#
+# 임시 인증서(또는 찌꺼기)는 certbot 이 모르는 파일이라 지워야 한다 — 안 지우면
+# certbot 이 "live 디렉터리가 이미 있다" 로 멈춘다. 그래서 둘을 갈라 처리한다.
 echo "== 인증서 발급 =="
-crun --entrypoint sh certbot -c "rm -rf /etc/letsencrypt/live/$DOMAIN /etc/letsencrypt/archive/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf"
 # --entrypoint certbot 이 필요하다. compose 의 certbot 서비스는 entrypoint 가
 # 12시간 자는 갱신 루프라, 그냥 run 하면 certonly 가 무시되고 잠들어 버린다.
-crun --entrypoint certbot certbot certonly \
-  --webroot -w /var/www/certbot \
-  -d "$DOMAIN" \
-  --email "$EMAIL" --agree-tos --no-eff-email \
-  --non-interactive
+if [ "$managed" = 1 ]; then
+  # 지우지 않고 덮어쓴다. --force-renewal 이 없으면 "아직 만료가 멀다" 로 건너뛴다.
+  crun --entrypoint certbot certbot certonly \
+    --webroot -w /var/www/certbot \
+    -d "$DOMAIN" \
+    --email "$EMAIL" --agree-tos --no-eff-email \
+    --non-interactive --force-renewal
+else
+  crun --entrypoint sh certbot -c "rm -rf /etc/letsencrypt/live/$DOMAIN /etc/letsencrypt/archive/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf"
+  crun --entrypoint certbot certbot certonly \
+    --webroot -w /var/www/certbot \
+    -d "$DOMAIN" \
+    --email "$EMAIL" --agree-tos --no-eff-email \
+    --non-interactive
+fi
 
 # 4. nginx 가 새 인증서를 읽게 한다.
 echo "== nginx 다시 읽기 =="
