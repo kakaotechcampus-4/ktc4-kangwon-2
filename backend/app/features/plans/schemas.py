@@ -92,6 +92,20 @@ class ConfirmOut(BaseModel):
     confirmed_at: datetime
 
 
+class ValueChangeOut(BaseModel):
+    """그 이벤트 때 바뀐 theme 값. Core `ValueChange` 그대로다."""
+
+    before: str
+    after: str
+
+
+class GenerationChangeOut(BaseModel):
+    """그 이벤트 때 바뀐 생성 방식. Core `GenerationMethodChange` 그대로다."""
+
+    before: GenerationOut
+    after: GenerationOut
+
+
 class AuditEventOut(BaseModel):
     type: str
     occurred_at: datetime
@@ -100,6 +114,13 @@ class AuditEventOut(BaseModel):
     )
     actor: str | None = None
     system_actor: str | None = None
+    # 아래 둘은 **저장된 이벤트에 있을 때만** 값이 있다 — 없는 값을 지어내지 않는다. 키는 늘 온다.
+    value_change: ValueChangeOut | None = Field(
+        default=None, description="TEACHER_EDITED · REGENERATED 만. 나머지는 null"
+    )
+    generation_change: GenerationChangeOut | None = Field(
+        default=None, description="REGENERATED 만. 나머지는 null"
+    )
 
 
 class AuditOut(BaseModel):

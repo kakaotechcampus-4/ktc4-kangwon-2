@@ -63,9 +63,11 @@ from app.features.plans.schemas import (
     ConfirmOut,
     CreateAnnualPlan,
     EvidenceOut,
+    GenerationChangeOut,
     GenerationOut,
     MonthOut,
     UpdateMonth,
+    ValueChangeOut,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
@@ -578,13 +580,30 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     row = _row(session, user, plan_id)
     plan = _repo(session, user).get(PlanId(row.plan_ref))
 
+    def generation(detail) -> GenerationOut:
+        return GenerationOut(
+            method=detail.method.value, rule_id=detail.rule_id, rule_version=detail.rule_version
+        )
+
     def out(event, month=None):
+        # 값 · 생성 방식 변화는 Core 이벤트에 저장된 것만 옮긴다. 현재 값에서 거꾸로 만들지 않는다.
+        values, methods = event.value_change, event.generation_change
         return AuditEventOut(
             type=event.event_type.value,
             occurred_at=event.occurred_at,
             month=month,
             actor=event.actor_id.value if event.actor_id is not None else None,
             system_actor=event.system_actor,
+            value_change=(
+                None if values is None else ValueChangeOut(before=values.before, after=values.after)
+            ),
+            generation_change=(
+                None
+                if methods is None
+                else GenerationChangeOut(
+                    before=generation(methods.before), after=generation(methods.after)
+                )
+            ),
         )
 
     items = [out(event) for event in plan.audit.events]
