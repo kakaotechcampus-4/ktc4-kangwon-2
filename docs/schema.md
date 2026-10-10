@@ -40,6 +40,7 @@ op.alter_column("children", "code", server_default=None)
 | `routine_records` | 일과 기록 — 반 하루의 일과 한 줄(시간 · 일과 이름 · 활동계획 · 활동실행). 일일 보육일지의 사실 층이다. 행 수는 정해지지 않았다. `classes` 를 참조한다 (docs/api-spec.md §10-1 · ADR-025) |
 | `forms` | 원이 등록한 양식의 파싱 결과(`tables` · `labels` · `label_map` JSONB). `centers` 를 참조한다. 수정이 없어 `updated_at` 이 없다 — 삭제 후 재등록이다(docs/api-spec.md §8 · ADR-020) |
 | `evaluation_checks` | 평가제 자기 점검 체크. `centers` 를 참조한다. 줄이 있으면 ☑, 풀면 그 줄을 지운다 — 다시 체크하면 새 줄 · 새 시각이다. 누가 체크했는지는 남기지 않는다. `UNIQUE(center_id, school_year, element)`. 지난 학년도 줄은 보존한다(docs/api-spec.md §12 · ADR-022) |
+| `center_invites` | 같은 원 교사 초대 코드. `centers` · `users`(만든 교사 `created_by`, 쓴 교사 `used_by`)를 참조한다. **1회용 · 7일 만료** — `used_at` 이 차면 끝이다. `UNIQUE(code)` (docs/api-spec.md §1-1 · ADR-029) |
 
 ## 관계
 
@@ -47,6 +48,7 @@ op.alter_column("children", "code", server_default=None)
 centers ←── classes ←── children
 centers ←── forms
 centers ←── evaluation_checks
+centers ←── center_invites ──> users (created_by · used_by)
 activities   (독립. plans 가 생기면 연결된다)
 documents ←── document_sections
 classes ←── routine_records

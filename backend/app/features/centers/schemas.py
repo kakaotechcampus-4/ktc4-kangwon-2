@@ -107,6 +107,23 @@ class CenterResponse(BaseModel):
     created_at: datetime
 
 
+class InviteResponse(BaseModel):
+    """`POST /api/centers/{center_id}/invites` 응답 (§1-1)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    expires_at: datetime
+
+
+class JoinRequest(BaseModel):
+    """`POST /api/centers/join` 요청 (§1-1). 대소문자·앞뒤 공백은 서버가 맞춘다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+
+
 class ClassResponse(BaseModel):
     """`GET /api/centers/{center_id}/classes` 의 항목.
 

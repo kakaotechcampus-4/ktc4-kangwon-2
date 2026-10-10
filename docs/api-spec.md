@@ -170,6 +170,50 @@ me       GET /api/auth/me                                               → 200 
 
 ---
 
+## 1-1. 같은 원 교사 초대 — `POST /api/centers/{center_id}/invites` · `POST /api/centers/join`
+
+원 하나에 담임이 여럿이다. 먼저 원을 등록한 교사가 코드를 만들어 주고, 같은 원 교사는
+온보딩 1단계에서 원을 새로 만드는 대신 그 코드를 넣는다 (ADR-029).
+
+**코드 만들기** `POST /api/centers/{center_id}/invites` — 본문 없음
+
+**Response** `201`
+
+```json
+{ "code": "K7PQ2MXH4R", "expires_at": "2026-10-17T09:00:00Z" }
+```
+
+- 자기 원에만 만든다. 원이 없거나 남의 원이면 `NOT_FOUND` 404 (`fields: ["center_id"]`).
+- **1회용 · 7일.** 코드는 10자, 헷갈리는 글자(0·O·1·I·L)를 뺀 대문자·숫자다.
+- 목록·취소 API 는 없다. 안 쓴 코드는 7일 뒤 저절로 못 쓴다.
+
+**참여하기** `POST /api/centers/join`
+
+```json
+{ "code": "k7pq2mxh4r" }
+```
+
+**Response** `200` — §1 과 같은 원 객체. 이 교사의 `center_id` 가 그 원이 된다.
+
+| 상황 | 응답 |
+|---|---|
+| 이미 원이 있다 | `ALREADY_EXISTS` 409 — §1 의 두 번째 원 만들기와 같다 |
+| 없는 코드 · 쓴 코드 · 만료된 코드 | `NOT_FOUND` 404, `fields: ["code"]`. **셋을 구분하지 않는다** — 구분해 주면 맞혀 보는 쪽에 힌트다 |
+| 빈 코드 | `VALIDATION_FAILED` 422 |
+
+대소문자와 앞뒤 공백은 서버가 맞춘다.
+
+**UI states**
+
+| | |
+|---|---|
+| loading | 버튼 비활성 |
+| empty | 해당 없음 |
+| success | 만들기 — 코드와 만료일 표시. 참여 — S2(반) 로 이동 |
+| error | 메시지를 그대로 표시, 입력값 유지 |
+
+---
+
 ## 2. 반 — `POST /api/centers/{center_id}/classes`
 
 **Request**
