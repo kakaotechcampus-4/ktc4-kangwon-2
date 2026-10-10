@@ -18,7 +18,7 @@ from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_constraint import ConstraintAssessment
 from ..domain.monthly_plan import MonthlyPlan
-from ..domain.monthly_template import SectionRole
+from ..domain.monthly_template import SectionRole, TemplateRef
 from ..domain.monthly_template_profile import TemplateProfile, TemplateProfileRef
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.provenance import EvidenceSource, EvidenceSourceType
@@ -46,6 +46,7 @@ from .monthly_dto import ActivityCatalogSelector, SafetyPlacementSelector, Safet
 from .monthly_errors import MonthlyApplicationError
 from .ports import (
     ActivityReferenceRepository,
+    MonthlyTemplateRepository,
     OptionalContextProvider,
     OptionalContextResult,
     PlanRepository,
@@ -90,6 +91,29 @@ def require_item_id(item_id: object) -> ItemId:
             "invalid_item_id", "Monthly item use cases require ItemId"
         )
     return item_id
+
+
+def require_approved_template(
+    repository: MonthlyTemplateRepository, template_ref: TemplateRef
+) -> None:
+    """Refuse a Profile whose exact base Template is missing or not HUMAN_APPROVED.
+
+    Reads the Template for its approval only (ADR-027). The generated Plan's
+    structure still comes from the Profile snapshot, never from this Template.
+    """
+    template = repository.get_template(
+        template_ref.template_id, template_ref.template_version
+    )
+    if template is None or template.template_ref != template_ref:
+        raise MonthlyApplicationError(
+            "monthly_template_not_found",
+            f"Monthly Template not found: {template_ref}",
+        )
+    if not template.is_active:
+        raise MonthlyApplicationError(
+            "monthly_template_not_approved",
+            f"Monthly Template is not HUMAN_APPROVED: {template_ref}",
+        )
 
 
 def load_template_profile(

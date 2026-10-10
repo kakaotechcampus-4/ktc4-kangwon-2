@@ -66,6 +66,7 @@ from .monthly_support import (
     load_safety_rule,
     load_template_profile,
     optional_context_results,
+    require_approved_template,
     packet_evidence,
     snapshot_grounding_classes,
     theme_reference_id,
@@ -75,6 +76,7 @@ from .ports import (
     ActivityReferenceRepository,
     Clock,
     IdGenerator,
+    MonthlyTemplateRepository,
     OptionalContextProvider,
     PlanRepository,
     SafetyLegalRuleRepository,
@@ -96,6 +98,7 @@ class GenerateMonthlyPlan:
         parent_plan_repository: PlanRepository[YearlyPlan],
         plan_repository: PlanRepository[MonthlyPlan],
         profile_repository: TemplateProfileRepository,
+        template_repository: MonthlyTemplateRepository,
         safety_repository: SafetyLegalRuleRepository,
         clock: Clock,
         id_generator: IdGenerator,
@@ -108,6 +111,7 @@ class GenerateMonthlyPlan:
         self._parents = parent_plan_repository
         self._plans = plan_repository
         self._profiles = profile_repository
+        self._templates = template_repository
         self._safety = safety_repository
         self._activities = activity_repository
         self._clock = clock
@@ -151,6 +155,10 @@ class GenerateMonthlyPlan:
                 "monthly_template_profile_classroom_mismatch",
                 "Monthly Template Profile classroom does not match the parent Plan",
             )
+        # Final approval gate (ADR-027): every caller of the Core passes here,
+        # before any LLM call, Plan, Audit or save. Callers that already checked
+        # (backend Profile creation) are early rejections, not a substitute.
+        require_approved_template(self._templates, profile.base_template_ref)
         template_snapshot = TemplateSnapshot.from_profile(profile)
         input_sections = sorted(
             INSTITUTION_INPUT_SECTION_KEYS
