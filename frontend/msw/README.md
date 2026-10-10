@@ -88,3 +88,5 @@ Vercel 프로젝트의 Settings → Environment Variables에서 NEXT_PUBLIC_API_
 - 기반 Template v0.1.1 · v0.2.1 은 서버처럼 **승인 대기**(approved: false)라 시작이 409 GATE_BLOCKED 다. 승인된 경로는 테스트 · 개발 전용 Fixture `approveTemplateForTest(template_ref)` 로만 연다(화면 코드는 부르지 않는다).
 - 포인터 지정 · 해제는 expected_profile_ref 비교(CAS)를 서버와 같은 순서로 본다. 목업은 한 흐름에서 돌아 DB 수준 동시성은 보여 주지 못한다(BE-1 PostgreSQL 테스트가 본다).
 - mswTarget 추가: monthly-templates, template-profile-create, template-profile-default, template-profile-override.
+- 변경 이력(§9-5, `GET /api/plans/monthly/:id/audit[?item_id=]`)은 생성 · 칸 편집 · 칸 재생성 · 첫 확정이 **성공할 때 같은 commit 에서** `monthlyAudit[planId]` 에 쌓는다(계획안 단위 / 칸 단위). 거절 · 실패 · 확정 재호출은 쌓지 않고, 조회는 아무것도 바꾸지 않는다. 행위자는 `user_1`(목업 계정), 생성은 `system_actor: monthly_application`. 재생성 전 근거 · 이벤트별 revision 은 서버처럼 없다.
+- 목업은 토큰을 검증하지 않는다. 이력 401 은 `?mockError=UNAUTHENTICATED`(mswTarget: monthly-audit)로 재현한다.

@@ -21,6 +21,7 @@ import {
   findCell,
   findMonthly,
   findMonthlyFor,
+  listAudit,
   listMonthly,
   regenerateCell,
   targetMonthOf,
@@ -318,6 +319,17 @@ export const handlers = [
     if (s) return s;
     const plan = myMonthly(Number(params.id));
     return plan ? HttpResponse.json(plan) : planMissing();
+  }),
+  // 변경 이력 (§9-5). 소유를 먼저 본다 — 남의 계획안이면 item_id 를 보기 전에 404 ["id"].
+  http.get("*/api/plans/monthly/:id/audit", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-audit");
+    if (s) return s;
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing();
+    const items = listAudit(plan, new URL(request.url).searchParams.get("item_id"));
+    return items
+      ? HttpResponse.json({ items })
+      : failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
   }),
   http.put("*/api/plans/monthly/:id/cells/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "monthly-cell");

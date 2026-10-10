@@ -199,6 +199,33 @@ export interface MonthlyPlan {
   created_at: string;
   confirmed_at: string | null;
 }
+/**
+ * 월간계획안 변경 이력 하나 (`GET /api/plans/monthly/{id}/audit`, docs/api-spec.md §9-5).
+ * **열 개 키가 항상 온다** — 해당이 없으면 null. 저장되지 않은 것(재생성 전 근거 · 이벤트별
+ * revision · 사람 이름)은 없다.
+ */
+export interface MonthlyAuditEvent {
+  type: "CREATED" | "TEACHER_EDITED" | "REGENERATED" | "CONFIRMED";
+  /** ISO 8601, 시간대 포함. */
+  occurred_at: string;
+  /** PLAN 이면 아래 칸 위치 셋이 null 이다. */
+  scope: "PLAN" | "CELL";
+  item_id: string | null;
+  section_key: string | null;
+  /** 주마다 있는 칸이면 그 주. 한 달 칸 · PLAN 이면 null. */
+  week_id: string | null;
+  /** 사람이 한 일이면 opaque id(`user_7`). 시스템이면 null. */
+  actor: string | null;
+  /** 시스템이 한 일(생성)이면 그 표시. 사람이면 null. */
+  system_actor: string | null;
+  /** TEACHER_EDITED · REGENERATED 만. */
+  value_change: { before: string; after: string } | null;
+  /** REGENERATED 만. 모양은 칸의 `generation` 과 같다. */
+  generation_change: {
+    before: MonthlyCell["generation"];
+    after: MonthlyCell["generation"];
+  } | null;
+}
 /** 목록용. 칸은 단건 조회가 준다. */
 export type MonthlyPlanSummary = Pick<
   MonthlyPlan,

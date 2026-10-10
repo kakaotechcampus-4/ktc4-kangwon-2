@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { MonthlyInput, MonthlyPlan, MonthlyPlanSummary } from "./types";
+import type { MonthlyAuditEvent, MonthlyInput, MonthlyPlan, MonthlyPlanSummary } from "./types";
 
 /** 월간계획안 (docs/api-spec.md §9-1 · §9-3). 응답 · 오류는 바꾸지 않고 그대로 넘긴다. */
 const json = (method: string, data: unknown, signal?: AbortSignal): RequestInit => ({
@@ -44,6 +44,18 @@ export const regenerateMonthlyCell = (
   apiRequest<MonthlyPlan>(
     cell(id, itemId) + "/regenerate",
     json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/**
+ * 변경 이력 (§9-5). `itemId` 를 주면 그 칸의 이력과 계획안 단위 CONFIRMED 만 온다.
+ * 읽기만 한다. 이 계획안에 없는 칸이면 404 `["item_id"]`.
+ */
+export const getMonthlyPlanAudit = (id: number, itemId?: string, signal?: AbortSignal) =>
+  apiRequest<{ items: MonthlyAuditEvent[] }>(
+    "/api/plans/monthly/" +
+      id +
+      "/audit" +
+      (itemId === undefined ? "" : "?item_id=" + encodeURIComponent(itemId)),
+    { signal },
   );
 /** 이미 확정이면 revision 과 상관없이 200 — 재시도 · 더블클릭은 실패가 아니다. */
 export const confirmMonthlyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>

@@ -19,7 +19,7 @@ import type {
 const TEMPLATE_ID = "ssuksak.monthly-template-a";
 const TEMPLATE_VERSIONS = ["monthly-template-a-v0.1.1", "monthly-template-a-v0.2.1"];
 /** 목업에는 로그인 계정 id 가 없다 — 목업 로그인 응답의 id(1)를 쓴다. */
-const MOCK_USER_ID = 1;
+export const MOCK_USER_ID = 1;
 type Section = MonthlyTemplate["sections"][number];
 const section = (
   section_key: string,
