@@ -27,6 +27,7 @@ import typing
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from datetime import datetime
 from enum import Enum
 
 from psycopg.errors import UniqueViolation
@@ -163,7 +164,7 @@ class PostgresTemplateProfileRepository:
         시작하지 않는다. 우회 경로를 두지 않는다.
         기본 포인터는 걸지 않는다 — 사용자가 동의할 때 `set_default` 를 따로 부른다.
         """
-        template = _approved_template(templates, template_ref)
+        template = approved_template(templates, template_ref)
         wanted = DEFAULT_PROFILE_SECTION_KEYS | set(selected_optional_keys)
         sections = []
         for key in sorted(wanted):
@@ -214,7 +215,7 @@ class PostgresTemplateProfileRepository:
         기반 Template 승인은 여기서도 본다 — 승인 대기 Template 으로 DRAFT 를 만들어 확정하는
         우회 경로가 되지 않게.
         """
-        template = _approved_template(templates, template_ref)
+        template = approved_template(templates, template_ref)
         ref = TemplateProfileRef(self._new_profile_id(), "v1")
         document = {
             "profile_ref": to_jsonable(ref),
@@ -284,7 +285,7 @@ class PostgresTemplateProfileRepository:
         확정하는 동안 같은 DRAFT 를 다른 요청이 저장하거나 확정하지 못한다.
         """
         row = self._draft(draft_ref, lock=True, expected_revision=expected_revision)
-        _approved_template(templates, from_jsonable(TemplateRef, row.body["base_template_ref"]))
+        approved_template(templates, from_jsonable(TemplateRef, row.body["base_template_ref"]))
         row.body = to_jsonable(_complete_profile(row.body))
         row.status = "READY"
         row.updated_by = actor_id
@@ -318,6 +319,13 @@ class PostgresTemplateProfileRepository:
 
     def list_ready(self) -> tuple[TemplateProfileRef, ...]:
         """「선택 필요」일 때 보여 줄 후보 (R4)."""
+        return tuple(profile.profile_ref for profile, _ in self.ready_versions())
+
+    def ready_versions(self) -> tuple[tuple[TemplateProfile, datetime], ...]:
+        """READY 버전과 만든 시각, 만든 순서.
+
+        이름 칸은 없다 — 버전 · 기반 Template · 칸 이름으로 구분한다.
+        """
         rows = self._session.scalars(
             select(TemplateProfileVersion)
             .where(
@@ -327,7 +335,7 @@ class PostgresTemplateProfileRepository:
             )
             .order_by(TemplateProfileVersion.created_at, TemplateProfileVersion.id)
         )
-        return tuple(_ref(row) for row in rows)
+        return tuple((from_jsonable(TemplateProfile, row.body), row.created_at) for row in rows)
 
     # ── 포인터 ────────────────────────────────────────────────────────────
 
@@ -508,7 +516,7 @@ class PostgresTemplateProfileRepository:
             raise TemplateProfileError("CONFLICT", f"{ref} 버전이 이미 있다") from error
 
 
-def _approved_template(templates: MonthlyTemplateRepository, template_ref: TemplateRef):
+def approved_template(templates: MonthlyTemplateRepository, template_ref: TemplateRef):
     """기반 Template 이 있고 사람 승인을 받았나 (결정 문서 12.8). 우회 경로를 두지 않는다."""
     template = templates.get_template(template_ref.template_id, template_ref.template_version)
     if template is None:
