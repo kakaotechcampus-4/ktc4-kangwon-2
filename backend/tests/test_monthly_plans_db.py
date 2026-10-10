@@ -287,6 +287,8 @@ class Planning:
                 parent_plan_repository=self.yearly,
                 plan_repository=self.monthly,
                 profile_repository=self.profiles,
+                # Core 최종 승인 검사(ADR-027)도 OD-N11 (A) 객체로 본다. 실제 파일은 승인 대기다.
+                template_repository=ApprovedTemplates(),
                 safety_repository=JsonSafetyLegalRuleRepository(),
                 activity_repository=self.activities,
                 clock=self.clock,
