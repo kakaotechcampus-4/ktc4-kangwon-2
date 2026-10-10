@@ -235,6 +235,55 @@ export interface ReadyProfile {
   }[];
   created_at: string;
 }
+/** 기반 Template 의 칸을 Profile 에 넣는 규칙 (docs/api-spec.md §9-4 ①). */
+export type TemplateSelection = "REQUIRED" | "OPTIONAL" | "INSTITUTION_INPUT" | "NOT_SUPPORTED";
+/**
+ * 「Reference 기반 시작」에 고를 기반 Template (§9-4 ①).
+ * `approved` 는 Template 의 사람 승인 상태다 — Profile 의 READY 와 다른 개념이다.
+ * false 도 목록에 오지만 그 Template 으로는 시작할 수 없다(409 `GATE_BLOCKED`).
+ */
+export interface MonthlyTemplate {
+  template_ref: TemplateRef;
+  approved: boolean;
+  sections: {
+    /** Profile 이름이다 (Template 의 habits → basic_habit). */
+    section_key: string;
+    /** Template 데이터 값 그대로 — 지금은 칸 이름과 같다. 화면 이름은 시작 때 직접 보낸다. */
+    label: string | null;
+    role: "CONTENT" | "AXIS";
+    repeat_by: "NONE" | "WEEK" | null;
+    selection: TemplateSelection;
+  }[];
+  /** focus 를 고를 때 쓸 수 있는 값. NEUTRAL 은 없다. */
+  focus_variants: string[];
+}
+/**
+ * `POST /api/centers/{center_id}/template-profiles` (§9-4 ②). 멱등이 아니다 — 두 번 보내면 둘 생긴다.
+ * `display_labels` 는 REQUIRED 칸과 고른 칸 전부에 필요하다(빠지면 422).
+ */
+export interface TemplateProfileInput {
+  base_template_ref: TemplateRef;
+  selected_optional_keys?: string[];
+  display_labels?: Record<string, string>;
+  /** focus 를 고르면 필수, 안 고르면 null. */
+  focus_variant?: string | null;
+}
+/** 원 기본 · 반 override 포인터 그대로 (§9-4 ③ ④). 없으면 세 칸 모두 null. */
+export interface ProfilePointer {
+  profile_ref: ProfileRef | null;
+  /** 포인터를 마지막으로 바꾼 계정 users.id. */
+  changed_by: number | null;
+  changed_at: string | null;
+}
+/**
+ * 포인터 지정 · 해제 (§9-4 ③ ④). **두 키 모두 보낸다(null 이라도).**
+ * `expected_profile_ref` 는 GET 으로 본 지금 값(CAS 비교값) — 다르면 409 `STALE_WRITE`.
+ * `profile_ref: null` 은 해제이고, 그때 `expected_profile_ref` 가 null 이면 422.
+ */
+export interface ProfilePointerInput {
+  profile_ref: ProfileRef | null;
+  expected_profile_ref: ProfileRef | null;
+}
 /** 관찰 기록 (docs/api-spec.md §10). 서버 모양 그대로 — snake_case 와 정수 id 를 유지한다. */
 export interface ObservationUpdate {
   /** `YYYY-MM-DD`. */
