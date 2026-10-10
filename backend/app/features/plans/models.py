@@ -1,14 +1,15 @@
 """계획안 테이블. 연간·월간이 한 테이블을 쓴다.
 
 **본문을 행으로 펼치지 않는다.** `YearlyPlan` 은 12개월 × (테마 · 근거 · 생성이력 ·
-감사기록)이고 `MonthlyPlan` 은 43칸이다. 이걸 테이블로 펼치면 p0-planning 이 칸을
-하나 더할 때마다 마이그레이션이 따라붙는다. 도메인이 아직 매주 바뀌는 중이다.
+감사기록)이고 `MonthlyPlan` 은 Template 과 활성 주차에 따라 칸 수가 달라진다. 이걸
+테이블로 펼치면 p0-planning 이 칸을 하나 더할 때마다 마이그레이션이 따라붙는다.
 
 그래서 `body` JSONB 하나에 통째로 넣고, **조회에 쓰는 값만 칸으로 꺼낸다.**
 꺼낸 칸은 항상 `body` 에서 유도한다 — 따로 받으면 둘이 어긋난다.
 
-펼칠 시점은 「칸 하나만 SQL 로 고쳐야 할 때」다. 지금은 교사 한 명이 자기 계획안을
-읽고-고치고-통째로 쓴다. 동시에 같은 계획안을 고치는 사람이 없다.
+펼칠 시점은 「칸 하나만 SQL 로 고쳐야 할 때」다. 지금은 읽고-고치고-통째로 쓴다.
+두 사람이 같은 계획안을 고칠 때 나중 저장이 먼저 저장을 덮지 않게 하는 것은
+`revision` 이다(결정 문서 12.4 D-3). 비교와 409 는 편집 API 가 한다.
 """
 
 from datetime import datetime
@@ -51,6 +52,18 @@ class Plan(Base):
             unique=True,
             postgresql_where=text("kind = 'annual'"),
         ),
+        # 월간은 반 · 월당 하나다(결정 문서 12.5). 연간과 같은 이유로 최종 보장은 여기다.
+        Index(
+            "uq_plans_monthly_per_classroom_month",
+            "center_id",
+            "classroom_ref",
+            "target_month",
+            unique=True,
+            postgresql_where=text("kind = 'monthly'"),
+        ),
+        CheckConstraint(
+            "(kind = 'monthly') = (target_month IS NOT NULL)", name="target_month_kind"
+        ),
     )
 
     # 계약의 id 는 정수다(api-spec §4). 화면이 이미 정수로 만들어져 있다.
@@ -70,8 +83,14 @@ class Plan(Base):
     classroom_ref: Mapped[str] = mapped_column(
         String(50), index=True, comment="도메인이 쓰는 반 참조. classes.id 를 문자열로 담는다"
     )
+    target_month: Mapped[str | None] = mapped_column(
+        String(7), comment="월간의 대상 월 YYYY-MM. body 의 target_month 에서 꺼낸 값이다"
+    )
     status: Mapped[str] = mapped_column(
         String(20), comment="DRAFT | CONFIRMED. body 의 status 에서 꺼낸 값이다"
+    )
+    revision: Mapped[int] = mapped_column(
+        default=1, server_default="1", comment="저장할 때마다 +1. 읽은 값과 다르면 그 사이 바뀐 것"
     )
     body: Mapped[dict] = mapped_column(
         JSONB, comment="도메인 객체 전체. 이것이 원본이고 위 칸들은 여기서 유도한다"

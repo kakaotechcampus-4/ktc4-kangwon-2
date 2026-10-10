@@ -44,12 +44,14 @@ class PostgresPlanRepository[TPlan]:
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         body = to_jsonable(plan)
         row = self._session.scalar(select(Plan).where(Plan.plan_ref == plan_id.value))
+        month = getattr(plan, "target_month", None)  # 월간만 가진다 (MonthlyPlan)
         values = {
             "center_id": self._center_id,
             "kind": self._kind,
             # 연간·월간 모두 이 두 칸을 가진다 (YearlyPlan · MonthlyPlan).
             "school_year": int(plan.school_year),
             "classroom_ref": str(plan.classroom_ref),
+            "target_month": None if month is None else month.value,
             # body 에서 꺼낸다. 인자로 따로 받으면 본문과 칸이 어긋난다.
             "status": body["status"],
             "confirmed_at": _confirmed_at(body),
@@ -61,8 +63,13 @@ class PostgresPlanRepository[TPlan]:
             # 남의 원 계획안을 같은 id 로 덮어쓰지 못하게 한다.
             if row.center_id != self._center_id:
                 raise InvalidDomainValueError("다른 원의 계획안이다")
+            # 월간 저장소로 같은 id 의 연간을 덮어써 종류를 바꾸지 못하게 한다.
+            if row.kind != self._kind:
+                raise InvalidDomainValueError("다른 종류의 계획안이다")
             for key, value in values.items():
                 setattr(row, key, value)
+            # Python 이 아니라 DB 가 더한다 — 동시 저장 둘이 같은 값을 읽고 둘 다 2 를 쓰지 않게.
+            row.revision = Plan.revision + 1
         self._session.flush()
 
     def get(self, plan_id: PlanId) -> TPlan | None:
