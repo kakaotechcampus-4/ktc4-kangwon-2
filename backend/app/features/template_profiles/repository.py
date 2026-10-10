@@ -384,6 +384,22 @@ class PostgresTemplateProfileRepository:
             TemplateProfileOverride, {"class_id": class_id, "doc_kind": DOC_KIND}, expected
         )
 
+    def get_default(self) -> TemplateProfileDefault | None:
+        """원 기본 포인터 그대로. 대상이 쓸 수 있는지는 보지 않는다 — 그건 `resolve` 의 일이다.
+
+        포인터를 바꾸는 화면은 CAS 의 `expected` 로 이 값을 보낸다.
+        """
+        return self._session.scalar(
+            select(TemplateProfileDefault).filter_by(center_id=self._center_id, doc_kind=DOC_KIND)
+        )
+
+    def get_override(self, class_id: int) -> TemplateProfileOverride | None:
+        """반 override 포인터 그대로. R3 로 `resolve` 가 숨기는 경우에도 보인다."""
+        self._own_class(class_id)
+        return self._session.scalar(
+            select(TemplateProfileOverride).filter_by(class_id=class_id, doc_kind=DOC_KIND)
+        )
+
     # ── 해석 ──────────────────────────────────────────────────────────────
 
     def resolve(self, class_id: int) -> Resolution:

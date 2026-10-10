@@ -6,6 +6,7 @@
 from sqlalchemy.orm import Session
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
 from ssuksak.planning import TemplateProfileRef
+from ssuksak.planning.domain.monthly_template import TemplateRef
 
 from app.features.template_profiles.repository import (
     PostgresTemplateProfileRepository,
@@ -15,6 +16,12 @@ from app.features.template_profiles.repository import (
 
 # 승인 상태는 데이터 파일이 말한다. 테스트만 OD-N11 (A) 객체로 바꿔 낀다.
 TEMPLATES = JsonMonthlyTemplateRepository()
+# 「Reference 기반 시작」에 고를 수 있는 기반 Template. 위 저장소가 읽는 파일과 같은 목록이다 —
+# 어긋나면 test_template_profile_management_api 가 잡는다. 승인 여부는 여기서 정하지 않는다.
+MONTHLY_TEMPLATE_REFS = (
+    TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"),
+    TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"),
+)
 
 
 def ready_profile_for_generation(session: Session, center_id: int, ref: TemplateProfileRef):
