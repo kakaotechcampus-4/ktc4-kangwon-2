@@ -32,6 +32,12 @@ Return only section_key, value, unresolved, reference_id, and grounding_refs.
 Do not return or redefine Template presentation metadata.
 Do not make legal decisions or generate statutory safety education.
 Every resolved value needs supplied grounding_refs or a supplied reference_id.
+Use reference_id only when the target section's reference catalog is supplied
+(outdoor_play: reference_activities activity_id); otherwise reference_id is null.
+A reference cell returns one reference_id and value pair allowed by the response
+schema; that value is the canonical label of the referenced item, and its
+grounding_refs is [] because the reference grounds it. To write your own
+sentence instead, set reference_id to null and cite grounding_refs.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
 Within each grounding_refs array, include each reference id at most once;

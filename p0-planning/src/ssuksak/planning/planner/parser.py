@@ -11,6 +11,7 @@ from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 from ..domain.monthly_template import RepeatBy
 from .contracts import (
+    OUTDOOR_SECTION_KEY,
     MonthlyCellPlanningRequest,
     MonthlyCellProposal,
     MonthlyPlanningRequest,
@@ -213,13 +214,27 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
 
 
 def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
-    """CELL_RESPONSE_SCHEMA with the target section and its allowed refs as enums."""
+    """CELL_RESPONSE_SCHEMA scoped to the one target cell, with the Monthly reference rules.
+
+    Like monthly_response_schema, a supplied reference is a branch that fixes its
+    reference_id and canonical label together, and a free-text value is never
+    unresolved and cites at least one allowed ref. The target month and week are
+    fixed too. The parser and validator stay the final check.
+    """
+    pairs = (
+        {OUTDOOR_SECTION_KEY: request.reference_labels}
+        if OUTDOOR_SECTION_KEY in request.reference_section_keys
+        else {}
+    )
+    week = request.target_week_id
     return _object_schema(
         {
-            "target_month": _STRING,
-            "target_week_id": _NULLABLE_STRING,
+            "target_month": {"type": "string", "enum": [request.target_month.value]},
+            "target_week_id": {"type": "null"}
+            if week is None
+            else {"type": "string", "enum": [week.value]},
             "section": _section_schema(
-                {request.target_section_key}, request, request.reference_section_keys
+                {request.target_section_key}, request, request.reference_section_keys, pairs
             ),
         }
     )
