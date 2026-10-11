@@ -886,3 +886,103 @@ def test_확정하는_동안_같은_DRAFT_를_저장하면_기다렸다가_거�
 
 def _pair(ref):
     return ref.profile_id, ref.profile_version
+
+
+# ── 리뷰(#123): 잠금 조회는 세션에 남은 옛 객체를 믿지 않는다 ─────────────────
+
+
+def _held(session, ref) -> TemplateProfileVersion:
+    """이 세션의 identity map 에 버전 객체를 붙잡아 둔다.
+
+    화면 · service 가 같은 세션에서 먼저 읽은 상황이다.
+    """
+    return session.scalar(
+        select(TemplateProfileVersion).where(
+            TemplateProfileVersion.profile_id == ref.profile_id,
+            TemplateProfileVersion.profile_version == ref.profile_version,
+        )
+    )
+
+
+def _drop(center_id: int, user_id: int) -> None:
+    with Session(engine) as session:
+        for model in (TemplateProfileDefault, TemplateProfileVersion):
+            session.execute(delete(model).where(model.center_id == center_id))
+        session.execute(delete(User).where(User.id == user_id))
+        session.execute(delete(Center).where(Center.id == center_id))
+        session.commit()
+
+
+def test_객체를_쥔_세션의_저장도_다른_세션이_확정한_최신_상태로_검사한다(_schema):
+    """A 가 DRAFT 객체를 쥔 채로 B 가 확정 · 커밋하면 A 의 저장은 NOT_DRAFT 다.
+
+    READY 본문을 DRAFT 내용으로 덮지 않는다.
+    """
+    with Session(engine) as session:
+        center = _center(session, "잠금 재조회 테스트원")
+        user = _user(session, center, "locked-refresh@example.com")
+        repo = PostgresTemplateProfileRepository(session, center_id=center.id)
+        content = _finished_content(repo, user)
+        ref = repo.create_draft(ApprovedTemplates(), FOCUS, content, actor_id=user.id)
+        session.commit()
+        center_id, user_id = center.id, user.id
+    try:
+        with Session(engine) as a:
+            # 강한 참조로 쥔다 — 놓으면 GC 로 identity map 에서 빠져 재현되지 않는다.
+            held = _held(a, ref)
+            assert held.status == "DRAFT"
+            with Session(engine) as b:
+                PostgresTemplateProfileRepository(b, center_id=center_id).publish(
+                    ref, ApprovedTemplates(), expected_revision=1, actor_id=user_id
+                )
+                b.commit()
+            with pytest.raises(TemplateProfileError) as excinfo:
+                PostgresTemplateProfileRepository(a, center_id=center_id).save_draft(
+                    ref, {"sections": []}, expected_revision=1, actor_id=user_id
+                )
+            assert _code(excinfo) == "NOT_DRAFT"
+            assert held.status == "READY"  # 잠금 뒤 읽은 값으로 덮였다
+            a.rollback()
+        with Session(engine) as session:
+            ready = PostgresTemplateProfileRepository(session, center_id=center_id).get_profile(
+                *_pair(ref)
+            )
+            assert ready is not None and len(ready.sections) == len(content["sections"])
+    finally:
+        _drop(center_id, user_id)
+
+
+def test_객체를_쥔_세션의_포인터도_다른_세션이_보관한_최신_상태로_검사한다(_schema):
+    """A 가 READY 객체를 쥔 채로 B 가 보관 · 커밋하면 A 의 기본 지정은 NOT_READY 다.
+
+    보관된 버전을 기본으로 가리키지 않는다.
+    """
+    with Session(engine) as session:
+        center = _center(session, "포인터 재조회 테스트원")
+        user = _user(session, center, "pointer-refresh@example.com")
+        ref = _start(PostgresTemplateProfileRepository(session, center_id=center.id), user)
+        session.commit()
+        center_id, user_id = center.id, user.id
+    try:
+        with Session(engine) as a:
+            held = _held(a, ref)  # 강한 참조로 쥔다
+            assert held.status == "READY"
+            with Session(engine) as b:
+                PostgresTemplateProfileRepository(b, center_id=center_id).archive(ref)
+                b.commit()
+            with pytest.raises(TemplateProfileError) as excinfo:
+                PostgresTemplateProfileRepository(a, center_id=center_id).set_default(
+                    ref, expected=None, actor_id=user_id
+                )
+            assert _code(excinfo) == "NOT_READY"
+            assert held.status == "ARCHIVED"
+            a.rollback()
+        with Session(engine) as session:
+            pointers = session.scalar(
+                select(func.count())
+                .select_from(TemplateProfileDefault)
+                .where(TemplateProfileDefault.center_id == center_id)
+            )
+            assert pointers == 0
+    finally:
+        _drop(center_id, user_id)
