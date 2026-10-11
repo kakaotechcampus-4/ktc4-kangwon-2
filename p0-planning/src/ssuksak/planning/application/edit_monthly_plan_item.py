@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from ..domain.errors import InvalidDomainValueError
 from ..domain.monthly_plan import MonthlyPlan
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
     ValueChange,
 )
+from ..rules.errors import MonthlyRuleError
 from ..rules.monthly_cell_state import resolve_cell_state
 from .monthly_dto import EditMonthlyPlanItemCommand
 from .monthly_errors import MonthlyApplicationError
@@ -59,23 +61,34 @@ class EditMonthlyPlanItem:
                 "monthly_cell_generation_missing",
                 "Editable Monthly Cell must preserve its previous Generation Method",
             )
+        assessment = plan.constraint("STATUTORY_SAFETY_EDUCATION")
+        # The two checks that depend only on the new value: a theme Cell cannot
+        # be empty, and a blank Cell cannot become another blank value. Both are
+        # the teacher's input, so they surface as an invalid Cell value.
+        try:
+            value_change = ValueChange(cell.value, command.new_value)
+            cell_state = resolve_cell_state(
+                section_key=cell.section_key,
+                value=command.new_value,
+                assessment=assessment,
+            )
+        except (InvalidDomainValueError, MonthlyRuleError) as error:
+            raise MonthlyApplicationError(
+                "invalid_monthly_cell_value",
+                "Teacher edit value is not allowed for this Cell",
+            ) from error
         event = AuditEvent(
             AuditEventType.TEACHER_EDITED,
             self._clock.now(),
             plan.plan_id,
             item_id=cell.item_id,
             actor_id=actor_id,
-            value_change=ValueChange(cell.value, command.new_value),
+            value_change=value_change,
         )
-        assessment = plan.constraint("STATUTORY_SAFETY_EDUCATION")
         updated_cell = replace(
             cell,
             value=command.new_value,
-            cell_state=resolve_cell_state(
-                section_key=cell.section_key,
-                value=command.new_value,
-                assessment=assessment,
-            ),
+            cell_state=cell_state,
             audit=cell.audit.append(event),
         )
         updated = plan.replace_cell(item_id, updated_cell)

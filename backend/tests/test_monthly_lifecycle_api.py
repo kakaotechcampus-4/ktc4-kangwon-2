@@ -255,6 +255,50 @@ def test_편집_입력_오류는_저장하지_않는다(world, teacher):
     assert _stored(session, world["mine"]["center"], plan["id"])[0].revision == 1
 
 
+@pytest.mark.parametrize("value", ["", "   ", "\t\n  "])
+def test_주제를_비우거나_빈_칸을_공백으로_고치면_422_이고_아무것도_바뀌지_않는다(
+    world, monkeypatch, value
+):
+    """리뷰(#128): Core 가 값 때문에 거절하는 두 경우는 평문 500 이 아니라 422 ["value"] 다.
+
+    - 주제 칸은 비울 수 없다(Core `resolve_cell_state`).
+    - 비어 있던 칸을 공백으로 바꾸면 전후가 둘 다 공백이다(Core `ValueChange`).
+    계획안 본문 · revision · 이력 · 다른 칸이 그대로고, LLM 은 부르지 않는다.
+    """
+
+    def no_llm():
+        raise AssertionError("칸 편집은 LLM 을 부르지 않는다")
+
+    monkeypatch.setattr(monthly_router, "monthly_llm_provider", no_llm)
+    session, plan, center = world["session"], world["plan"], world["mine"]["center"]
+    theme = _cell(plan, "theme")
+    empty = next(c for c in _cells(plan).values() if c["value"] == "")  # 근거 없는 안전교육 칸
+    row, _ = _stored(session, center, plan["id"])
+    before = (row.revision, row.status, json.dumps(row.body, sort_keys=True))
+
+    for target in (theme, empty):
+        response = _edit(plan["id"], target["item_id"], value, 1)
+        assert _error(response) == (422, "VALIDATION_FAILED", ["value"])
+        # Core 문구(규칙 id · 영문 사유)를 내보내지 않는다.
+        assert response.json()["error"]["message"] == (
+            "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다."
+        )
+
+    row, _ = _stored(session, center, plan["id"])
+    assert (row.revision, row.status, json.dumps(row.body, sort_keys=True)) == before
+    assert _get(plan["id"]) == plan
+
+
+def test_주제가_아닌_칸은_비울_수_있다(world):
+    """값 거절을 넓히지 않았다 — 주제가 아닌 칸을 비우는 것은 여전히 정상 편집이다."""
+    plan = world["plan"]
+    focus = _cell(plan, "focus")
+    response = _edit(plan["id"], focus["item_id"], "", 1)
+    assert response.status_code == 200, response.json()
+    edited = _cells(response.json())[focus["item_id"]]
+    assert (edited["value"], edited["state"], response.json()["revision"]) == ("", "EMPTY_VALID", 2)
+
+
 # ── 칸 재생성 ────────────────────────────────────────────────────────────
 
 

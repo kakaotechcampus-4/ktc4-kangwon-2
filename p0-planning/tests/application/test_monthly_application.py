@@ -1149,6 +1149,26 @@ def test_teacher_edit_verifier_failure_preserves_the_saved_plan(monkeypatch):
     assert harness.plans.get(original.plan_id) is original
 
 
+
+@pytest.mark.parametrize(("section", "value"), [("theme", ""), ("theme", "   "), ("safety_education", " ")])
+def test_teacher_edit_rejects_values_the_cell_cannot_hold_as_invalid_value(section, value):
+    """A theme cannot be emptied and a blank Cell cannot become another blank."""
+    harness = Harness()
+    original = harness.generate().plan
+    target = next(cell for cell in original.section(section).cells if section == "theme" or not cell.value)
+    saves_before = harness.plans.save_count
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        EditMonthlyPlanItem(
+            plan_repository=harness.plans,
+            clock=harness.clock,
+            activity_repository=harness.activities,
+        ).execute(EditMonthlyPlanItemCommand(original.plan_id, target.item_id, value, TEACHER))
+
+    assert exc.value.code == "invalid_monthly_cell_value"
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(original.plan_id) is original
+
 def test_rule_only_regeneration_replaces_only_one_outdoor_cell():
     harness = Harness()
     original = harness.generate().plan
