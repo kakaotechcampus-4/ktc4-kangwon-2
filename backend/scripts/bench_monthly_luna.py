@@ -8,8 +8,13 @@ DB 를 쓰지 않는다. 부모 연간 · Profile · 저장소는 메모리에�
 사람 승인 대기라 OD-N11 (A) — 이 프로세스 안에서만 `replace(template, runtime_active=True)` —
 로 Profile 을 만든다. 데이터 파일과 운영 경로는 그대로다.
 
-    ELICE_MLAPI_BASE_URL=<Luna-6 주소> ELICE_MLAPI_API_KEY=... \\
+    IS_SERVER=1 ELICE_MLAPI_BASE_URL=<Luna-6 주소> ELICE_MLAPI_API_KEY=... \\
         python scripts/bench_monthly_luna.py --live [--runs 1]
+
+**서버에서만 부른다**(CLAUDE.md 「로컬에서 real 모드를 코드로 막는다」).
+실제 전송(`urlopen`)을 만드는 `TimedTransport` 가 `IS_SERVER` 가 `1` · `true` 가 아니면
+거절한다 — `main` 을 거치지 않고 `run_once` 를 직접 불러도 같다.
+테스트처럼 가짜 전송을 넣으면 서버가 아니어도 된다.
 
 키는 출력하지 않는다. 결과는 JSON 한 덩이로 stdout 에 쓴다.
 """
@@ -18,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from dataclasses import replace
@@ -84,10 +90,24 @@ LABELS = {
 MAX_RUNS = 3
 
 
+def on_server(env=os.environ) -> bool:
+    """배포 서버인가. `1` · `true` 만 받는다.
+
+    값이 문자열이라 `IS_SERVER=0`(.env.example · compose 기본값)도 참으로 읽지 않게 한다.
+    없거나 다른 값이면 로컬로 본다(fail closed).
+    """
+    return env.get("IS_SERVER", "").strip().lower() in {"1", "true"}
+
+
 class TimedTransport:
     """호출마다 시간 · HTTP 상태 · 토큰을 남긴다. 응답 본문과 키는 남기지 않는다."""
 
-    def __init__(self, post=urllib_request.urlopen):
+    def __init__(self, post=None):
+        # 전송을 안 넣으면 실제 네트워크(urlopen)다 — 그때만, 서버인지 먼저 본다.
+        if post is None:
+            if not on_server():
+                raise RuntimeError("로컬에서 실제 호출 금지. 서버에서 IS_SERVER=1 로 돌린다.")
+            post = urllib_request.urlopen
         self._open = post
         self.calls: list[dict] = []
 
@@ -248,7 +268,11 @@ def main(argv=None) -> int:
     if not 1 <= args.runs <= MAX_RUNS:
         print(f"--runs 는 1~{MAX_RUNS} 이다.", file=sys.stderr)
         return 2
-    transport = TimedTransport()
+    try:
+        transport = TimedTransport()
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     cases = [(YearMonth(2026, 9), frozenset({4})), (YearMonth(2026, 10), frozenset({3, 4}))]
     results = [
         run_once(transport, month=month, ages=ages)
