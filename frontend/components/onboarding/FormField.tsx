@@ -19,7 +19,7 @@ export default function FormField({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={id} className="font-display text-[15px] xl:text-lg text-ink">
+      <label htmlFor={id} className="font-semibold text-[15px] xl:text-lg text-ink">
         {label}
         {optional && (
           <span className="ml-1.5 align-middle font-mono text-[10.5px] tracking-wider text-ink-soft border border-line rounded-full px-1.5 py-px">
@@ -35,8 +35,8 @@ export default function FormField({
 
 /* 공통 입력 스타일 — Select / TextInput / TextArea가 공유 */
 export const inputBase =
-  "w-full rounded-2xl border-[1.5px] border-line bg-paper text-ink px-4 py-3 text-base lg:text-[15px] xl:text-[17px] min-h-[48px] xl:min-h-[58px] xl:py-4 " +
-  "placeholder:text-ink-soft/80 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-ink";
+  "w-full rounded-md border border-line bg-cream text-ink px-3 py-3.5 text-sm min-h-[48px] " +
+  "placeholder:text-ink-soft transition-colors outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
 export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   const { className = "", ...rest } = props;

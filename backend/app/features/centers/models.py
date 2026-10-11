@@ -1,13 +1,16 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     String,
     UniqueConstraint,
+    false,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -33,6 +36,16 @@ class Center(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Greetings(Base):
+    """원별 성품인사. 12개월을 한 번에 교체한다 (docs/api-spec.md §3)."""
+
+    __tablename__ = "greetings"
+
+    center_id: Mapped[int] = mapped_column(ForeignKey("centers.id"), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    items: Mapped[list[dict[str, int | str]]] = mapped_column(JSONB)
 
 
 class Class(Base):

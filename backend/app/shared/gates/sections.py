@@ -51,7 +51,9 @@ def check_sections(
     facts = join_facts(source_texts)
     fields: list[str] = []
 
-    if by_heading["사실"].body != facts:
+    # 근거가 하나도 없으면 해석 · 지원이 기댈 사실이 없다. 근거 기록으로 만든 문서는 늘 사실이 있어
+    # 여기 걸리지 않는다 — 교사가 칸을 하나도 안 채운 일일 보육일지를 막는 길이다.
+    if by_heading["사실"].body != facts or not facts.strip():
         fields.append("sections.사실")
     for heading in ("해석", "지원"):
         if len(by_heading[heading].body.strip()) < MIN_BODY_LENGTH:

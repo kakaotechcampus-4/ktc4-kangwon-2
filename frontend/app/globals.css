@@ -1,12 +1,23 @@
-/* 폰트 @font-face 는 next/font/local 이 아니라 여기서 온다 — unicode-range 를 줘야 해서다. */
-@import "../styles/pretendard-dynamic-subset.css";
-@import "../styles/gowun-dodum-dynamic-subset.css";
+/* 글꼴은 구글 폰트에서 받아 쓴다.
+   직접 담아두던 Pretendard · 고운돋움 subset 179개는 지웠다 — 구글이 이미
+   unicode-range 로 쪼개 보내서, 화면에 뜬 글자가 든 조각만 내려온다.
+   @import 는 CSS 규칙상 맨 위여야 한다. 아래로 내리면 통째로 무시된다. */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Gaegu:wght@400;700&display=swap");
 @import "../styles/plan-generator-tokens.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --font-body: "Noto Sans KR";
+  --font-display: Gaegu; /* 손글씨체. 제목·숫자에만 쓴다 — 본문에 쓰면 읽기 힘들다. */
+}
+
 body {
+  font-family: var(--font-body), "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color: var(--pg-ink);
+  background: var(--pg-cream);
+  /* 한글은 단어 중간에서 줄이 끊기면 읽기 나쁘다. */
   word-break: keep-all;
 }

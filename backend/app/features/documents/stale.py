@@ -27,13 +27,24 @@ def observation_changed(
     **사본과 같은 문서는 건드리지 않는다** — 영역·상황만 고쳤으면 사실은 그대로다.
     `class_id` · `child_id` 는 §10 이 수정을 막으므로 비교하지 않는다.
     """
+    source_changed(session, "observation", observation_id, fact, date)
+
+
+def source_changed(
+    session: Session, kind: str, source_id: int, text: str | None, date: datetime.date | None
+) -> None:
+    """근거 원본(관찰 기록 · 일과 기록)이 바뀌었거나(`text`·`date`) 사라졌다(둘 다 None).
+
+    `text` 는 문서가 사본으로 남긴 문자열과 같은 모양이어야 한다 — 일과 기록은
+    `RoutineRecord.fact_text()` 다. 사본과 같으면 문서를 건드리지 않는다.
+    """
     query = select(DocumentSource.document_id).where(
-        DocumentSource.source_kind == "observation",
-        DocumentSource.source_id == observation_id,
+        DocumentSource.source_kind == kind,
+        DocumentSource.source_id == source_id,
     )
-    if fact is not None:
+    if text is not None:
         query = query.where(
-            or_(DocumentSource.text != fact, DocumentSource.date.is_distinct_from(date))
+            or_(DocumentSource.text != text, DocumentSource.date.is_distinct_from(date))
         )
     _mark(session, set(session.scalars(query)))
 

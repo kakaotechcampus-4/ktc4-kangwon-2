@@ -21,8 +21,9 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
+
+from ssuksak.adapters.monthly_reference_repositories import DEFAULT_SAFETY_RULE_PATH
 
 VIOLATION = "VIOLATION"
 UNVERIFIED = "UNVERIFIED"
@@ -32,16 +33,11 @@ UNVERIFIED = "UNVERIFIED"
 SCHOOL_YEAR_MONTHS = (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2)
 
 # 법정 시수 원본은 p0-planning 쪽 하나만 둔다 (ADR-014). backend 에 복사본을 만들지 않는다.
-# ponytail: backend 이미지의 빌드 컨텍스트가 ./backend 라 이 파일은 컨테이너 안에 없다.
-#           지금은 검사기를 부르는 엔드포인트가 없어서 문제가 되지 않는다. 엔드포인트를
-#           만드는 PR 이 컨텍스트를 저장소 루트로 올리고 Dockerfile 에 COPY 를 한 줄 더한다.
-LEGAL_RULES_PATH = (
-    Path(__file__).resolve().parents[5]
-    / "p0-planning"
-    / "data"
-    / "rules"
-    / "safety_education_legal_v1.json"
-)
+# **경로를 직접 세지 않는다.** 저장소에서는 parents[5] 가 맞지만 이미지에서는 이 파일이
+# `/app/app/...` 에 있어 `/p0-planning/...` 을 가리켜 FileNotFoundError 가 났다.
+# `p0-planning` 이 자기 data 위치를 이미 알고 있으므로 그것을 쓴다 — 설치 형태가 바뀌어도
+# 같이 따라간다.
+LEGAL_RULES_PATH = DEFAULT_SAFETY_RULE_PATH
 
 
 @dataclass(frozen=True, slots=True)

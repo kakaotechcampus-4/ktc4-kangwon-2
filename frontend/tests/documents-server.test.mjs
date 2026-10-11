@@ -154,6 +154,122 @@ test("목록 조건은 서버 query 로 나간다", async () => {
   assert.equal(calls[0].url, "/api/documents?kind=dailyLog&status=CONFIRMED&class_id=3");
 });
 
+test("관련 문서는 apiRequest 인증으로 조회하고 기존 summary 매핑을 쓴다", async () => {
+  const writes = browser();
+  const item = { ...LIST_ITEM, id: 91, kind: "dailyLog", status: "CONFIRMED" };
+  const { calls, restore } = serve(() =>
+    json({ items: [item], expected_kinds: ["observation", "dailyLog"] }),
+  );
+  let related;
+  try {
+    related = await documents.getRelatedDocuments("document:123");
+  } finally {
+    restore();
+  }
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "/api/documents/123/related");
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].auth, "Bearer " + TOKEN);
+  assert.equal(calls[0].body, undefined);
+  assert.equal(related.items[0].id, "document:91");
+  assert.equal(related.items[0].serverId, 91);
+  assert.equal(related.items[0].kind, "dailyLog");
+  assert.equal(related.items[0].classId, "class-abc");
+  assert.equal(related.items[0].childId, "api-child-8");
+  assert.equal(related.items[0].status, "confirmed");
+  assert.equal(related.items[0].stale, true);
+  assert.equal(related.items[0].sourcesCount, 2);
+  assert.deepEqual(related.expectedKinds, ["observation", "dailyLog"]);
+  assert.deepEqual(writes, []);
+});
+
+test("관련 문서의 서버 순서와 expected_kinds 순서를 그대로 보존한다", async () => {
+  browser();
+  // 서버의 기간·id 정렬을 화면에서 다시 적용하지 않고 받은 배열을 그대로 옮긴다.
+  const items = [
+    { ...LIST_ITEM, id: 4, start: "2026-09-01", status: "CONFIRMED" },
+    { ...LIST_ITEM, id: 29, start: "2026-09-30", status: "CONFIRMED" },
+    { ...LIST_ITEM, id: 12, start: "2026-09-15", status: "CONFIRMED" },
+  ];
+  const { restore } = serve(() => json({ items, expected_kinds: ["dailyLog", "observation"] }));
+  let related;
+  try {
+    related = await documents.getRelatedDocuments("document:17");
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    related.items.map((item) => item.id),
+    ["document:4", "document:29", "document:12"],
+  );
+  assert.deepEqual(related.expectedKinds, ["dailyLog", "observation"]);
+});
+
+test("관련 문서가 없어도 성공 응답과 기대하는 종류를 전달한다", async () => {
+  browser();
+  const { restore } = serve((n) =>
+    json({ items: [], expected_kinds: n === 1 ? ["dailyLog"] : [] }),
+  );
+  try {
+    assert.deepEqual(await documents.getRelatedDocuments("document:17"), {
+      items: [],
+      expectedKinds: ["dailyLog"],
+    });
+    assert.deepEqual(await documents.getRelatedDocuments("document:17"), {
+      items: [],
+      expectedKinds: [],
+    });
+  } finally {
+    restore();
+  }
+});
+
+test("잘못된 related 기준 id는 서버 요청 전에 차단한다", async () => {
+  browser();
+  const { calls, restore } = serve(() => json({ items: [], expected_kinds: [] }));
+  try {
+    for (const id of [
+      "local-uuid",
+      "123",
+      "observation:123",
+      "document:",
+      "document:0",
+      "document:-1",
+      "document:01",
+      "document:1.5",
+      "document:9007199254740992",
+    ])
+      await assert.rejects(
+        documents.getRelatedDocuments(id),
+        (error) => error.message === documents.UNMAPPED,
+      );
+  } finally {
+    restore();
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("관련 문서 오류의 서버 message와 ApiError를 그대로 전달한다", async () => {
+  browser();
+  const body = {
+    error: { code: "NOT_FOUND", message: "문서를 찾을 수 없습니다.", fields: ["id"] },
+  };
+  const { calls, restore } = serve(() => json(body, 404));
+  try {
+    await assert.rejects(documents.getRelatedDocuments("document:123"), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 404);
+      assert.equal(error.message, body.error.message);
+      assert.deepEqual(error.body, body);
+      return true;
+    });
+  } finally {
+    restore();
+  }
+  assert.equal(calls[0].url, "/api/documents/123/related");
+});
+
 test("단건은 sections 와 sources 까지 화면 model 로 옮긴다", async () => {
   browser();
   const { calls, restore } = serve(() => json(DETAIL));
@@ -416,6 +532,8 @@ test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", 
     "createDocument",
     "updateDocument",
     "confirmDocument",
+    "unconfirmDocument",
+    "refreshDocument",
     "deleteDocument",
   ])
     assert.equal(page.includes(used), true, used);
@@ -427,14 +545,22 @@ test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", 
   assert.ok(page.includes("const creation = selection.beginCreation()"));
   assert.ok(page.includes("if (creation.adopt(created))"));
   assert.equal(page.includes("selection.adopt(created)"), false);
-  assert.ok(page.includes("if (creation.isCurrent()) setMessage(messageFor(e))"));
+  // 생성 race 중에 온 실패는 메시지도 필드 오류도 덮어쓰지 않는다.
+  const guard = page.indexOf("if (creation.isCurrent()) {");
+  assert.ok(guard > -1, "생성 결과 적용 여부를 먼저 확인해야 한다");
+  const guarded = page.slice(guard, page.indexOf("}", guard));
+  assert.ok(guarded.includes("setMessage(messageFor(e))"));
+  assert.ok(guarded.includes("setInvalid(invalidFields(e, FIELD_INPUT))"));
 });
 
-test("서버 문서는 확정을 되돌리지 못하고 AI 검증을 확정 조건으로 걸지 않는다", () => {
+test("서버 문서는 서버로만 확정을 되돌리고 AI 검증을 확정 조건으로 걸지 않는다", () => {
   const editor = read("DocumentEditor.tsx");
 
-  // 확정 해제 API 가 없다 — 서버 문서에는 「문서 수정」 버튼을 두지 않는다.
-  assert.ok(editor.includes("!server && ("));
+  // 서버 문서의 확정 해제는 unconfirm API 다 — 화면에서 status 를 바꾸는 「문서 수정」이 아니다.
+  assert.ok(editor.includes(") : server ? ("));
+  assert.ok(editor.includes("onClick={unconfirm}"));
+  const local = editor.indexOf('setDoc({ ...doc, status: "draft" })');
+  assert.ok(local > -1 && editor.lastIndexOf("!annualPlanId && (", local) > -1);
   const open = editor.indexOf("if (server) {");
   const branch = editor.slice(open, editor.indexOf("\n      return;\n    }\n", open));
   assert.ok(branch.length > 0);
@@ -1268,6 +1394,8 @@ function editorHarness(selection) {
         pending: current.pending !== "",
         save: selection.save,
         saveAndConfirm: selection.saveAndConfirm,
+        unconfirm: selection.unconfirm,
+        refresh: selection.refresh,
         remove: selection.remove,
         reload: selection.reload,
       },
@@ -1360,5 +1488,245 @@ test("실제 편집기는 STALE_WRITE와 reload 실패 때 입력을 보존하�
   assert.equal(selection.get().detail.updatedAt, "t2");
   assert.equal(editor.textarea().props.value, "최신 문서에서 다시 작성한 해석");
   const page = read("DocumentsPage.tsx");
+  assert.match(page, /reload:\s*selection\.reload/);
+});
+
+// ── 확정 취소 · 변경된 근거 반영 ──────────────────────────────────────────
+const FACT = (body) =>
+  SECTIONS.map((section) => (section.heading === "사실" ? { ...section, body } : section));
+
+/** 편집기까지 띄운 서버 문서 하나. `over` 로 처음 상태와 게이트웨이 응답을 정한다. */
+async function editing(over = {}, api = {}) {
+  const calls = [];
+  const selection = createSelection(
+    {
+      get: async () => doc(1, over),
+      update: async (_id, input) => doc(1, { ...over, ...input }),
+      confirm: async () => doc(1, { ...over, status: "confirmed" }),
+      unconfirm: async () => {
+        calls.push("unconfirm");
+        return doc(1, { ...over, status: "draft" });
+      },
+      refresh: async () => {
+        calls.push("refresh");
+        return doc(1, { ...over, stale: false, sections: FACT("다시 뜬 최신 사실") });
+      },
+      remove: async () => {},
+      ...api,
+    },
+    describe,
+  );
+  selection.select("document:1", 1);
+  await tick();
+  return { selection, calls, editor: editorHarness(selection) };
+}
+
+test("확정된 서버 문서에만 확정 취소가 보이고 초안에는 보이지 않는다", async () => {
+  const { editor } = await editing({ status: "confirmed" });
+  assert.ok(editor.button("확정 취소"));
+  assert.equal(editor.button("문서 수정"), undefined, "서버 문서는 화면에서 상태를 바꾸지 않는다");
+
+  const draft = await editing();
+  assert.equal(draft.editor.button("확정 취소"), undefined);
+});
+
+test("확정 취소는 확인창 없이 바로 서버를 부르고 초안으로 되돌린다", async () => {
+  const { editor, selection, calls } = await editing({ status: "confirmed" });
+  const before = globalThis.window;
+  let asked = 0;
+  globalThis.window = {
+    ...before,
+    confirm: () => {
+      asked += 1;
+      return true;
+    },
+  };
+  try {
+    await editor.button("확정 취소").props.onClick();
+  } finally {
+    globalThis.window = before;
+  }
+  editor.render();
+  assert.equal(asked, 0, "확정 취소는 확인창을 띄우지 않는다");
+  assert.deepEqual(calls, ["unconfirm"]);
+  assert.equal(selection.get().detail.status, "draft");
+  assert.ok(editor.textarea(), "초안이므로 다시 고칠 수 있다");
+  assert.match(editor.text(), /확정을 취소했어요/);
+});
+
+test("확정 취소는 근거를 다시 반영하지 않는다 — stale 은 그대로 남는다", async () => {
+  const { editor, selection, calls } = await editing({ status: "confirmed", stale: true });
+  assert.ok(editor.button("확정 취소"));
+  assert.equal(editor.button("변경된 근거 반영하기"), undefined, "확정본에는 보이지 않는다");
+
+  await editor.button("확정 취소").props.onClick();
+  editor.render();
+  assert.deepEqual(calls, ["unconfirm"], "확정 취소가 refresh 를 자동으로 부르지 않는다");
+  assert.equal(selection.get().detail.stale, true);
+  assert.ok(editor.button("변경된 근거 반영하기"), "이제 교사가 직접 누를 수 있다");
+});
+
+test("변경된 근거 반영은 초안이면서 stale 일 때만 보인다", async () => {
+  assert.equal((await editing()).editor.button("변경된 근거 반영하기"), undefined);
+  assert.ok((await editing({ stale: true })).editor.button("변경된 근거 반영하기"));
+  assert.equal(
+    (await editing({ status: "confirmed", stale: true })).editor.button("변경된 근거 반영하기"),
+    undefined,
+  );
+});
+
+test("근거를 반영하면 사실만 새 값이 되고 해석·지원과 교사 체크는 서버 응답을 따른다", async () => {
+  const { editor, selection, calls } = await editing({ stale: true });
+  const 해석 = editor.textarea().props.value;
+  for (const checkbox of editor.checks()) checkbox.props.onChange({ target: { checked: true } });
+  editor.render();
+  assert.ok(editor.checks().every((c) => c.props.checked));
+
+  await editor.button("변경된 근거 반영하기").props.onClick();
+  editor.render();
+  assert.deepEqual(calls, ["refresh"]);
+  const detail = selection.get().detail;
+  assert.equal(detail.sections.find((s) => s.heading === "사실").body, "다시 뜬 최신 사실");
+  assert.equal(detail.sections.find((s) => s.heading === "해석").body, 해석);
+  assert.equal(editor.textarea().props.value, 해석, "해석을 지우지 않는다");
+  assert.match(editor.text(), /다시 뜬 최신 사실/);
+  const 지원 = SECTIONS.find((s) => s.heading === "지원").body;
+  assert.equal(detail.sections.find((s) => s.heading === "지원").body, 지원);
+  // 사실이 바뀌었으니 그 사실을 보고 누른 확인은 다시 받는다.
+  assert.ok(editor.checks().every((c) => c.props.checked === false));
+  assert.match(editor.text(), /최신 근거를 불러왔어요/);
+  // stale 이 풀려 안내와 버튼이 사라진다.
+  assert.equal(detail.stale, false);
+  assert.equal(editor.button("변경된 근거 반영하기"), undefined);
+  assert.equal(editor.text().includes("근거 기록이 변경되어"), false);
+});
+
+test("GATE_BLOCKED 는 서버 문장을 그대로 보여주고 작성 중인 입력을 지우지 않는다", async () => {
+  const { editor, selection } = await editing(
+    { stale: true },
+    {
+      refresh: async () => {
+        throw new ApiError(409, {
+          error: { code: "GATE_BLOCKED", message: "근거 일일 보육일지를 먼저 확정해주세요." },
+        });
+      },
+    },
+  );
+  editor.textarea().props.onChange({ target: { value: "버리면 안 되는 해석 입력" } });
+  editor.render();
+  await editor.button("변경된 근거 반영하기").props.onClick();
+  editor.render();
+  assert.equal(editor.textarea().props.value, "버리면 안 되는 해석 입력");
+  assert.match(editor.text(), /근거 일일 보육일지를 먼저 확정해주세요/);
+  assert.equal(selection.get().detail.stale, true, "실패했으니 stale 을 풀지 않는다");
+  assert.ok(editor.button("변경된 근거 반영하기"), "다시 시도할 수 있다");
+});
+
+test("확정 취소가 실패해도 보던 확정 문서를 그대로 둔다", async () => {
+  const { editor, selection } = await editing(
+    { status: "confirmed" },
+    {
+      unconfirm: async () => {
+        throw new Error("확정을 취소하지 못했어요.");
+      },
+    },
+  );
+  await editor.button("확정 취소").props.onClick();
+  editor.render();
+  assert.equal(selection.get().detail.status, "confirmed");
+  assert.ok(editor.button("확정 취소"));
+  assert.match(editor.text(), /확정을 취소하지 못했어요/);
+});
+
+test("앞선 요청이 끝나기 전에는 확정 취소·근거 반영을 한 번 더 보내지 않는다", async () => {
+  const slow = deferred();
+  let sent = 0;
+  const selection = createSelection(
+    {
+      get: async () => doc(1, { status: "confirmed" }),
+      unconfirm: () => {
+        sent += 1;
+        return slow.promise;
+      },
+    },
+    describe,
+  );
+  selection.select("document:1", 1);
+  await tick();
+  const running = selection.unconfirm();
+  await assert.rejects(selection.unconfirm(), (e) => e.message === BUSY);
+  await assert.rejects(selection.refresh(), (e) => e.message === BUSY);
+  slow.resolve(doc(1, { status: "draft" }));
+  await running;
+  assert.equal(sent, 1);
+  assert.equal(selection.get().pending, "");
+});
+
+test("늦게 온 확정 취소·근거 반영 응답은 그 사이 고른 다른 문서를 덮지 않는다", async () => {
+  const slow = deferred();
+  const selection = createSelection(
+    {
+      get: async (id) => doc(Number(id.slice("document:".length)), { status: "confirmed" }),
+      unconfirm: () => slow.promise,
+      refresh: async () => doc(1),
+    },
+    describe,
+  );
+  selection.select("document:1", 1);
+  await tick();
+  const running = selection.unconfirm();
+  selection.select("document:2", 2);
+  await tick();
+  assert.equal(selection.get().detail.serverId, 2);
+
+  slow.resolve(doc(1, { status: "draft" }));
+  await running;
+  await tick();
+  assert.equal(selection.get().active, "document:2");
+  assert.equal(selection.get().detail.serverId, 2, "A 의 응답이 B 를 덮지 않는다");
+  assert.equal(selection.get().detail.status, "confirmed");
+});
+
+test("확정 취소·근거 반영은 서버 id 로 POST 하고 본문을 보내지 않는다", async () => {
+  browser();
+  const { calls, restore } = serve(() => json({ ...DETAIL, status: "DRAFT", stale: false }));
+  try {
+    await documents.unconfirmDocument("document:17");
+    await documents.refreshDocument("document:17");
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    calls.map(({ url, method, body }) => [url, method, body]),
+    [
+      ["/api/documents/17/unconfirm", "POST", undefined],
+      ["/api/documents/17/refresh", "POST", undefined],
+    ],
+  );
+  assert.equal(calls[0].auth, `Bearer ${TOKEN}`);
+});
+
+test("서버에서 오지 않은 id 는 확정 취소·근거 반영 요청 자체를 보내지 않는다", async () => {
+  browser();
+  const { calls, restore } = serve(() => json(DETAIL));
+  try {
+    await assert.rejects(documents.unconfirmDocument("local-1"), /다시 불러와주세요/);
+    await assert.rejects(documents.refreshDocument("local-1"), /다시 불러와주세요/);
+  } finally {
+    restore();
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("확정 취소·근거 반영 성공 뒤에는 문서 목록도 다시 읽는다", () => {
+  const page = read("DocumentsPage.tsx");
+  for (const action of ["unconfirm", "refresh"]) {
+    const start = page.indexOf(`        ${action}: async () => {`);
+    assert.ok(start > -1, action);
+    const body = page.slice(start, page.indexOf("\n        },", start));
+    assert.ok(body.includes(`selection.${action}()`), action);
+    assert.ok(body.includes("reloadList()"), `${action} 뒤 목록 갱신`);
+  }
+  // 동시 수정 복구용 reload 를 근거 반영으로 대체하지 않는다.
   assert.match(page, /reload:\s*selection\.reload/);
 });

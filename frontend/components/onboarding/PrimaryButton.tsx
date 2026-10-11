@@ -3,17 +3,17 @@ import type { ButtonHTMLAttributes } from "react";
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
 const base =
-  "inline-flex items-center justify-center gap-1.5 rounded-2xl px-5 py-3 min-h-[48px] xl:min-h-[56px] xl:px-7 text-[15px] xl:text-[17px] " +
+  "inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 min-h-[48px] xl:px-7 text-sm " +
   "transition-colors active:translate-y-px disabled:cursor-not-allowed " +
-  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-ink";
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-/** Main #AFCDB5 배경 · hover Dark #7EAD8B — 계획안 생성 버튼과 동일 규격 */
+/** 보라 면 + 한 단계 진한 테두리 + 각진 그림자 — 디자인의 주 버튼. 색은 토큰에서 온다. */
 export default function PrimaryButton({ className = "", ...rest }: ButtonProps) {
   return (
     <button
       type="button"
       {...rest}
-      className={`${base} font-display text-[16px] bg-sage text-ink hover:bg-sage-ink disabled:bg-line disabled:text-ink-soft ${className}`}
+      className={`${base} font-semibold border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover disabled:bg-line disabled:text-ink-soft ${className}`}
     />
   );
 }
@@ -24,7 +24,7 @@ export function GhostButton({ className = "", ...rest }: ButtonProps) {
     <button
       type="button"
       {...rest}
-      className={`${base} bg-paper text-ink-soft border-[1.5px] border-line hover:border-sage-ink hover:text-ink ${className}`}
+      className={`${base} bg-paper text-ink-soft border-[1.5px] border-line hover:border-primary hover:text-ink ${className}`}
     />
   );
 }
@@ -35,7 +35,7 @@ export function TextButton({ className = "", ...rest }: ButtonProps) {
     <button
       type="button"
       {...rest}
-      className={`inline-flex items-center rounded-full px-2.5 py-1.5 min-h-[36px] text-[12.5px] text-ink-soft hover:text-sage-ink hover:bg-sage-tint transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-sage-ink ${className}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-1.5 min-h-[36px] text-[12.5px] text-ink-soft hover:text-primary hover:bg-primary-tint transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${className}`}
     />
   );
 }

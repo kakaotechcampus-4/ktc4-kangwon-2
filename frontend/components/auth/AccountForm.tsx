@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { Icon } from "@/components/app/icons";
 import { useRouter } from "next/navigation";
 import {
   registerAccount,
@@ -13,14 +14,18 @@ import { startDemoSession } from "@/lib/auth/demo-session";
 import AuthFrame from "./AuthFrame";
 
 const input =
-  "mt-2 block w-full min-h-12 xl:min-h-[52px] rounded-xl border border-line bg-paper px-4 text-sm xl:text-base focus:outline-none focus:ring-2 focus:ring-sage";
+  "mt-2 block w-full min-h-12 rounded-md border border-line bg-cream px-3 py-3.5 text-sm outline-none " +
+  "placeholder:text-ink-soft focus:border-success focus:ring-2 focus:ring-success-tint";
 const button =
-  "mt-6 w-full min-h-12 xl:min-h-[52px] xl:text-lg rounded-2xl bg-sage text-ink font-bold hover:bg-sage-ink disabled:opacity-60";
+  "mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-md border border-success-line " +
+  "bg-success px-4 text-sm font-semibold text-white shadow-pg-card hover:bg-success-hover disabled:opacity-60";
+const label = "block text-xs font-semibold text-ink";
 export default function AccountForm({ signup = false }: { signup?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [visible, setVisible] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -73,26 +78,27 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   }
   return (
     <AuthFrame>
-      <span className="inline-block rounded-full bg-sage-tint px-3 py-1 text-xs">
-        쓱싹요정에 오신 걸 환영해요
+      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[10px] font-semibold text-success">
+        {signup ? "쌤플과 함께 시작해요" : "다시 만나 반가워요"}
       </span>
-      <h2 className="font-display text-3xl xl:text-[34px] mt-5">
+      <h2 className="mt-4 font-display text-[30px] font-bold sm:text-[36px]">
         {done ? "가입을 완료했어요" : signup ? "함께 시작해요" : "반가워요, 선생님"}
       </h2>
-      <p className="mt-3 text-sm xl:text-base leading-7 text-ink-soft">
+      <p className="mt-1 text-xs text-ink-soft">
         {done
           ? "로그인하고 우리 반 초기 설정을 시작해보세요."
-          : "우리 반의 새로운 하루를 준비해보세요."}
+          : "우리 반의 새로운 하루를 준비해 보세요."}
       </p>
       {done ? (
-        <Link href="/login" className={`${button} flex items-center justify-center`}>
+        <Link href="/login" className={button}>
           로그인하러 가기
+          <Icon name="arrow" className="h-4 w-4" />
         </Link>
       ) : (
         <>
-          <form noValidate onSubmit={submit} className="mt-6 space-y-3 xl:space-y-4">
+          <form noValidate onSubmit={submit} className="mt-7 space-y-5">
             {signup && (
-              <label className="block text-sm xl:text-base">
+              <label className={label}>
                 선생님 이름
                 <input
                   className={input}
@@ -105,7 +111,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
                 />
               </label>
             )}
-            <label className="block text-sm xl:text-base">
+            <label className={label}>
               이메일
               <input
                 className={input}
@@ -118,27 +124,41 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
                 disabled={busy}
               />
             </label>
-            <label className="block text-sm xl:text-base">
-              비밀번호
-              <input
-                className={input}
-                name="password"
-                type="password"
-                autoComplete={signup ? "new-password" : "current-password"}
-                placeholder={signup ? "8자 이상 입력해주세요" : "비밀번호를 입력해주세요"}
-                required
-                minLength={signup ? 8 : undefined}
-                maxLength={128}
-                disabled={busy}
-              />
-            </label>
+            <div>
+              <label htmlFor="auth-password" className={label}>
+                비밀번호
+              </label>
+              <div className="relative">
+                <input
+                  id="auth-password"
+                  className={`${input} pr-14`}
+                  name="password"
+                  type={visible ? "text" : "password"}
+                  autoComplete={signup ? "new-password" : "current-password"}
+                  placeholder={signup ? "8자 이상 입력해주세요" : "비밀번호를 입력해주세요"}
+                  required
+                  minLength={signup ? 8 : undefined}
+                  maxLength={128}
+                  disabled={busy}
+                />
+                <button
+                  type="button"
+                  aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
+                  aria-pressed={visible}
+                  onClick={() => setVisible(!visible)}
+                  className="absolute bottom-1 right-1 min-h-11 px-2 text-[10px] font-medium text-success"
+                >
+                  {visible ? "숨김" : "보기"}
+                </button>
+              </div>
+            </div>
             {signup && (
-              <label className="block text-sm xl:text-base">
+              <label className={label}>
                 비밀번호 확인
                 <input
                   className={input}
                   name="confirm"
-                  type="password"
+                  type={visible ? "text" : "password"}
                   autoComplete="new-password"
                   placeholder="비밀번호를 한 번 더 입력해주세요"
                   required
@@ -149,19 +169,23 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
               </label>
             )}
             {error && (
-              <p role="alert" className="text-sm text-peach-ink">
+              <p
+                role="alert"
+                className="rounded-md border border-note-line bg-note-soft p-3 text-xs leading-relaxed text-sun-ink"
+              >
                 {error}
               </p>
             )}
             <button className={button} disabled={busy}>
               {busy ? "처리 중…" : signup ? "회원가입" : "로그인"}
+              {!busy && <Icon name="arrow" className="h-4 w-4" />}
             </button>
           </form>
-          <p className="mt-5 text-center text-sm xl:text-base text-ink-soft">
-            {signup ? "이미 계정이 있으신가요? " : "아직 계정이 없으신가요? "}
+          <p className="mt-5 text-center text-xs text-ink-soft">
+            {signup ? "이미 계정이 있으신가요?" : "아직 계정이 없으신가요?"}
             <Link
               href={signup ? "/login" : "/signup"}
-              className="font-bold text-ink underline underline-offset-4"
+              className="ml-2 font-semibold text-success underline underline-offset-4"
             >
               {signup ? "로그인" : "회원가입"}
             </Link>

@@ -1,31 +1,37 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
-import AppHeader from "@/components/app/AppHeader";
 import { loadClassSettings } from "@/lib/onboarding/settings";
 import { hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import type { ClassroomEntry } from "@/lib/onboarding/types";
 import styles from "./Workspace.module.css";
 export { styles as ws };
+/**
+ * 작업실 안쪽 화면들의 공통 머리. 제목은 손글씨로 크게, 설명은 한 줄.
+ * `action` 은 그 화면의 주된 동작 하나만 — 둘 이상 두면 뭘 눌러야 할지 모른다.
+ */
 export function WorkspacePage({
   title,
   description,
+  action,
   children,
 }: {
   title: string;
   description: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <>
-      <AppHeader
-        title={title}
-        description={description}
-        divider={false}
-        tools={<span className={styles.badge}>🌱 우리 반의 하루를 차곡차곡</span>}
-      />
-      <main className={styles.page}>{children}</main>
-    </>
+    <main className={styles.page}>
+      <div className={styles.pageHead}>
+        <div>
+          <h1>{title}</h1>
+          <p>{description}</p>
+        </div>
+        {action}
+      </div>
+      {children}
+    </main>
   );
 }
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {

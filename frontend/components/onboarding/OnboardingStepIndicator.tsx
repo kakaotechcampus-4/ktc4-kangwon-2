@@ -10,8 +10,8 @@ function stateOf(n: Exclude<OnboardingStep, "done">, current: OnboardingStep): S
 }
 
 /**
- * [● 원 정보] ─ [○ 반 정보] ─ [○ 아동 명단] ─ [○ 성품인사]
- * 현재: Main #AFCDB5 · 완료: Dark #7EAD8B · 미진행: 중립 회색
+ * [① 원 정보] ─ [② 반 정보] ─ [③ 아동 명단]
+ * 지금 단계만 보라 면으로 선다. 끝난 단계는 체크, 남은 단계는 테두리만.
  * 모바일에서는 라벨이 원 아래로 내려가 폭을 절약한다.
  */
 export default function OnboardingStepIndicator({ current }: { current: OnboardingStep }) {
@@ -22,15 +22,15 @@ export default function OnboardingStepIndicator({ current }: { current: Onboardi
         const st = stateOf(n, current);
         const dot =
           st === "done"
-            ? "bg-sage-ink border-sage-ink text-white"
+            ? "bg-primary border-primary-line text-white"
             : st === "current"
-              ? "bg-sage border-sage-ink text-ink"
+              ? "bg-primary-tint border-primary-tint-line text-primary-ink"
               : "bg-paper border-line text-ink-soft";
         const label =
           st === "done"
-            ? "text-sage-ink"
+            ? "text-primary"
             : st === "current"
-              ? "text-ink font-bold"
+              ? "text-primary-ink font-semibold"
               : "text-ink-soft";
         const connectorDone = current === "done" || n < current;
         return (
@@ -62,7 +62,7 @@ export default function OnboardingStepIndicator({ current }: { current: Onboardi
             {i < steps.length - 1 && (
               <span
                 aria-hidden="true"
-                className={`h-[1.5px] w-4 sm:w-7 lg:w-8 mx-1.5 lg:mx-3 self-start mt-[14px] lg:self-center lg:mt-0 rounded ${connectorDone ? "bg-sage-ink" : "bg-line"}`}
+                className={`h-[1.5px] w-4 sm:w-7 lg:w-8 mx-1.5 lg:mx-3 self-start mt-[14px] lg:self-center lg:mt-0 rounded ${connectorDone ? "bg-primary" : "bg-line"}`}
               />
             )}
           </li>

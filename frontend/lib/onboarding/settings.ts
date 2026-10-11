@@ -128,7 +128,7 @@ function normalizeSettings(parsed: Record<string, unknown>): ClassSettings {
     characterEducationEnabled:
       typeof parsed.characterEducationEnabled === "boolean"
         ? parsed.characterEducationEnabled
-        : true,
+        : EMPTY_CLASS_SETTINGS.characterEducationEnabled,
     characterMessages,
     completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,
   };

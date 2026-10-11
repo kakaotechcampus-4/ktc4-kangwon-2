@@ -15,7 +15,15 @@
     },
     "topic": {
       "label_ko": "주제",
-      "aliases": ["주제", "테마", "놀이주제", "월별주제", "생활주제", "소주제", "대주제"]
+      "aliases": ["주제", "테마", "놀이주제", "월별주제", "생활주제", "대주제"]
+    },
+    "sub_topic": {
+      "label_ko": "소주제",
+      "aliases": ["소주제"]
+    },
+    "safety_education": {
+      "label_ko": "안전교육",
+      "aliases": ["안전교육"]
     },
     "activity": {
       "label_ko": "예상 활동",

@@ -30,7 +30,7 @@ export default function LogoutPage() {
           <button
             type="button"
             onClick={() => startTransition(() => logout(true))}
-            className="mt-6 w-full min-h-12 rounded-2xl bg-sage font-bold hover:bg-sage-ink"
+            className="mt-6 w-full min-h-12 rounded-md border border-primary-line bg-primary text-white font-bold shadow-pg-hard hover:bg-primary-hover"
           >
             다시 시도
           </button>

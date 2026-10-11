@@ -2,6 +2,13 @@
 
 **`main` 에 머지되면 자동으로 올라간다.** 손으로도 같은 스크립트를 돌릴 수 있다.
 
+```
+주소      https://ssample.duckdns.org
+서버      i-041ebb00937bd371f (ktc4-team-server) · t3.medium · ap-northeast-2
+고정 IP    13.125.107.188     Elastic IP — 서버를 껐다 켜도 안 바뀐다
+인증서     Let's Encrypt · 60일마다 certbot 이 자동 갱신
+```
+
 ## 어떻게 들어가나
 
 **SSH 가 아니다.** 22 포트를 열지 않고, GitHub 에 서버 열쇠를 맡기지도 않는다.
@@ -51,7 +58,8 @@ scripts/deploy.sh 를 통째로 보냄   aws ssm send-command
 ## 열려 있는 포트
 
 ```
-80   HTTP   0.0.0.0/0     nginx.  유일한 입구
+443  HTTPS  0.0.0.0/0     nginx.  교사가 실제로 쓰는 입구
+80   HTTP   0.0.0.0/0     인증서 갱신 확인(ACME) 과 443 으로 보내기, 두 가지만 한다
 ```
 
 **나머지는 전부 닫았다.**
@@ -63,11 +71,16 @@ scripts/deploy.sh 를 통째로 보냄   aws ssm send-command
 5432   postgres   닫음
 ```
 
+**80 은 열어 두어야 한다.** 닫으면 Let's Encrypt 가 도메인 소유를 확인하지 못해
+인증서 갱신이 멈춘다. 대신 `/.well-known/acme-challenge/` 말고는 전부 443 으로 보낸다
+— 교사가 http 로 들어와도 아동 실명이 평문으로 나가지 않는다 (ADR-004 · ADR-013).
+
 ---
 
 ## 손으로 배포
 
-자동 배포가 막혔을 때만 쓴다. **명령은 같다** — 같은 스크립트를 부른다.
+자동 배포가 막혔을 때, 또는 `main` 이 아닌 브랜치를 올려야 할 때 쓴다.
+**명령은 같다** — 같은 스크립트를 부른다.
 
 EC2 → 인스턴스 → **연결** → **Session Manager** 탭 → 연결
 
@@ -80,15 +93,41 @@ docker compose ps
 curl -s -o /dev/null -w "ready %{http_code}\n" localhost/health/ready
 ```
 
-**컨테이너 4개가 떠야 한다** — `db` · `backend` · `frontend` · `nginx`.
+**컨테이너 5개가 떠야 한다** — `db` · `backend` · `frontend` · `nginx` · `certbot`.
 
 **밖에서도 확인한다.**
 
 ```bash
-curl -m 5 -o /dev/null -w "80    %{http_code}\n" http://15.165.19.41/health/ready   # 200
-curl -m 5 -o /dev/null -w "8000  %{http_code}\n" http://15.165.19.41:8000/health    # 시간 초과
-curl -m 5 -o /dev/null -w "5432  %{http_code}\n" http://15.165.19.41:5432           # 시간 초과
+curl -m 5 -o /dev/null -w "443   %{http_code}\n" https://ssample.duckdns.org/health/ready  # 200
+curl -m 5 -o /dev/null -w "80    %{http_code}\n" http://ssample.duckdns.org/               # 301
+curl -m 5 -o /dev/null -w "8000  %{http_code}\n" http://13.125.107.188:8000/health         # 시간 초과
+curl -m 5 -o /dev/null -w "5432  %{http_code}\n" http://13.125.107.188:5432                # 시간 초과
 ```
+
+### main 이 아닌 브랜치를 올릴 때
+
+멘토 리뷰처럼 `main` 머지 전에 보여줘야 할 때가 있다. `deploy.sh` 는 `main` 을 박아
+두었으므로 그때는 아래를 붙여 넣는다. **`git` 은 `ubuntu` 로 돌린다** — root 로 돌리면
+`.git` 안에 root 소유 파일이 생겨 다음에 ubuntu 가 손을 못 댄다.
+
+```bash
+sudo -u ubuntu bash -c '
+set -euo pipefail
+cd /home/ubuntu/ktc4-kangwon-2
+git fetch --prune origin
+git checkout -B develop origin/develop
+echo "커밋: $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
+test -f .env || { echo ".env 없음"; exit 1; }
+sudo docker compose build backend frontend
+sudo docker compose run --rm backend alembic upgrade head
+sudo docker compose up -d
+sudo docker image prune -f
+'
+```
+
+**치울 필요가 없다.** 다음 자동 배포가 `git checkout main && git reset --hard` 를 하므로
+`main` 에 머지되는 순간 알아서 되돌아온다. 그때 올라가는 코드가 지금 올린 것과 같다.
+마이그레이션으로 생긴 표는 남지만 옛 코드는 그 표를 읽지 않아 문제가 없다 — **지우지 않는다.**
 
 ### 순서에 이유가 있다
 
@@ -132,6 +171,32 @@ sed -i "s|^IS_SERVER=.*|IS_SERVER=1|" .env
 `IS_SERVER=1` 이어야 한다. `CLAUDE.md` 의 「로컬에서 `real` 모드 금지」가 이 값으로 판정한다.
 
 **`.env` 는 커밋하지 않으므로 서버에만 있다.**
+
+---
+
+## HTTPS · 도메인
+
+```
+도메인     ssample.duckdns.org    DuckDNS 무료. 토큰으로 IP 를 갱신한다
+인증서     Let's Encrypt          certbot 컨테이너가 12시간마다 보고 만료 30일 전부터 갱신
+reload    nginx 가 6시간마다      갱신된 인증서를 읽으려면 다시 읽혀야 한다. 접속은 안 끊긴다
+```
+
+**처음 한 번은 `scripts/https-setup.sh` 가 발급한다.** 자체 서명 인증서를 먼저 만들어
+nginx 를 띄우고(인증서가 없으면 nginx 가 아예 안 뜬다), 도메인이 이 서버를 가리키는지
+확인한 뒤 진짜 인증서를 받는다. **Let's Encrypt 는 한 시간에 5번만 발급해 준다** —
+확인 없이 돌리면 실패만 쌓이고 한 시간을 기다려야 한다.
+
+**만료일 확인:**
+
+```bash
+echo | openssl s_client -connect ssample.duckdns.org:443 \
+  -servername ssample.duckdns.org 2>/dev/null | openssl x509 -noout -dates
+```
+
+**내 컴퓨터에서는 인증서가 없다.** `nginx.conf` 가 가리키는 파일이 서버에만 있어서
+`docker compose up` 이 통째로 막힌다. `scripts/local-cert.sh` 를 한 번 돌린다.
+로컬은 80 에 `localhost` 전용 블록이 있어 평문으로 쓴다 — `http://localhost`.
 
 ---
 

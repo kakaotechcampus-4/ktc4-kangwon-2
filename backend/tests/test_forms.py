@@ -88,6 +88,18 @@ def test_to_standard_maps_aliases(label, expected):
     assert mapping.to_standard(label) == expected
 
 
+def test_주제와_소주제는_다른_키다():
+    """계획안이 주제(theme)와 소주제(sub_themes)를 따로 갖는다. 같은 키면 두 칸을 못 가른다."""
+    labels = ["월", "주제", "소주제", "안전교육"]
+
+    assert mapping.map_labels(labels) == {
+        "월": "month",
+        "주제": "topic",
+        "소주제": "sub_topic",
+        "안전교육": "safety_education",
+    }
+
+
 def test_to_standard_returns_none_for_unknown_label():
     assert mapping.to_standard("존재하지않는라벨") is None
 

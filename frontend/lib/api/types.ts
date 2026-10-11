@@ -73,11 +73,11 @@ export interface PlanConfig {
 }
 // TODO(BE): PUT plan-config 응답 body/status 미확정. 호출자는 응답 필드에 의존하지 않는다.
 export type PlanConfigResponse = unknown;
+/** `school_year` 를 받지 않는다 — `class_id` 가 학년도를 정한다 (§4). */
 export interface AnnualInput {
   class_id: number;
-  school_year: number;
-  source: "FROM_SCRATCH" | "FROM_UPLOAD";
-  upload_id: number | null;
+  /** 원이 등록한 기관 양식 (§8). `null` 이면 기본 양식으로 만든다. */
+  form_id: number | null;
 }
 export interface MonthInput {
   theme: string;
@@ -94,6 +94,15 @@ export interface AnnualPlan {
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
   months: AnnualMonth[];
+}
+/** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
+export interface AnnualPlanSummary {
+  id: number;
+  class_id: number;
+  school_year: number;
+  status: "DRAFT" | "CONFIRMED";
+  created_at: string;
+  confirmed_at: string | null;
 }
 export interface ConfirmResult {
   id: number;
@@ -122,5 +131,25 @@ export interface ApiObservation extends ObservationInput {
   child_name: string;
   /** 실명 대신 LLM 에 나가는 대체 코드 (ADR-004). */
   child_code: string;
+  created_at: string;
+}
+/** 양식 표의 칸 하나 (docs/api-spec.md §8). 병합은 rowspan · colspan 으로 온다. */
+export interface FormCell {
+  text: string;
+  rowspan: number;
+  colspan: number;
+}
+/** 원에 등록된 양식. 저장하는 것은 파싱 결과뿐이다 — 원본 파일은 없다(ADR-020). */
+export interface ApiForm {
+  id: number;
+  center_id: number;
+  /** 지금은 `filename` 과 같다. */
+  name: string;
+  filename: string;
+  /** 표 → 행 → 칸. */
+  tables: FormCell[][][];
+  labels: string[];
+  /** 라벨 → 표준 키(ADR-009). 데이터 값이거나 매핑표에 없는 표현이면 `null`. */
+  label_map: Record<string, string | null>;
   created_at: string;
 }

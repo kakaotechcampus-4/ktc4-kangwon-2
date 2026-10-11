@@ -1,4 +1,5 @@
 import type { Center, ApiClass, ApiChild, AnnualPlan, PlanConfig } from "../../lib/api/types";
+import type { Greetings } from "../../lib/api/centers";
 export interface Database {
   next: number;
   centers: Center[];
@@ -6,6 +7,7 @@ export interface Database {
   children: ApiChild[];
   plans: AnnualPlan[];
   configs: Record<number, PlanConfig>;
+  greetings: Record<number, Greetings>;
 }
 const empty = (): Database => ({
   next: 1,
@@ -14,6 +16,7 @@ const empty = (): Database => ({
   children: [],
   plans: [],
   configs: {},
+  greetings: {},
 });
 let memory = empty();
 function key() {
@@ -37,7 +40,7 @@ export function read(): Database {
     !["centers", "classes", "children", "plans"].every((k) => Array.isArray(parsed[k]))
   )
     throw new Error("Mock 저장 데이터가 손상되었습니다");
-  return parsed;
+  return { ...parsed, greetings: parsed.greetings ?? {} };
 }
 export function commit<T>(fn: (db: Database) => T): T {
   const db = read(),

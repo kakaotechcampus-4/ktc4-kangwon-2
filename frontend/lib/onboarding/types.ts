@@ -83,7 +83,7 @@ export const EMPTY_CLASS_SETTINGS: ClassSettings = {
   regionProvince: "",
   regionDistrict: "",
   classes: [createEmptyClassroom()],
-  characterEducationEnabled: true,
+  characterEducationEnabled: false,
   characterMessages: { ...DEFAULT_CHARACTER_MESSAGES },
 };
 

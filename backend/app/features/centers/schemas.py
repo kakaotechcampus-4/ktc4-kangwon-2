@@ -11,6 +11,8 @@ from pydantic import (
     StringConstraints,
     TypeAdapter,
     ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
     model_validator,
 )
 
@@ -130,3 +132,53 @@ class ClassListResponse(BaseModel):
     """목록 봉투는 `{ items }` 하나로 통일한다 (docs/api-spec.md §2-1)."""
 
     items: list[ClassResponse]
+
+
+# 저장소가 JSONB 라 DB 가 길이를 막아 주지 않는다 — 여기서 막지 않으면 아무 데서도 안 막힌다.
+# 80 은 컬럼 길이가 아니라 실측 기준이다: 기본 문구 12개의 최장이 23자(greetings.py)라
+# 그 세 배쯤을 둔다. 맞출 컬럼이 생기면 그 값으로 바꾼다.
+#
+# **`min_length` 를 걸지 않는다.** §3 은 빈 문구를 금지하지 않는다 — 그 달에 성품인사를
+# 안 쓰는 원이 그 칸을 비운다. 멘토 리뷰(#119)는 빈 값도 막자는 쪽이었지만, 그건 계약을
+# 바꾸는 일이라 여기서 하지 않는다. `strip_whitespace` 는 그대로 둬서 공백만 든 값이
+# 빈 값과 같은 것으로 저장되게 한다 — 보이는 건 같은데 저장된 값이 다른 상태를 없앤다.
+GreetingText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)]
+
+
+class GreetingItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: Annotated[int, Field(strict=True, ge=1, le=12)]
+    text: GreetingText
+
+
+class GreetingsSettings(BaseModel):
+    """GET 응답 · PUT 요청/응답은 같은 12개월 계약이다 (api-spec.md §3)."""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    enabled: Annotated[bool, Field(strict=True)]
+    items: Annotated[list[GreetingItem], Field(min_length=12, max_length=12)]
+
+    @field_validator("items", mode="wrap")
+    @classmethod
+    def all_months_once(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> list[GreetingItem]:
+        try:
+            items = handler(value)
+        except ValidationError as exc:
+            errors = exc.errors(include_url=False)
+            for error in errors:
+                loc = error["loc"]
+                if loc and isinstance(loc[0], int):
+                    item = value[loc[0]]
+                    month = item.get("month") if isinstance(item, dict) else None
+                    # 공통 계약: 배열 순서 대신 월로 가리킨다. 유효한 월이 없으면 items 전체다.
+                    error["loc"] = (
+                        (str(month), *loc[1:]) if type(month) is int and 1 <= month <= 12 else ()
+                    )
+            raise ValidationError.from_exception_data(cls.__name__, errors) from None
+        if {item.month for item in items} != set(range(1, 13)):
+            raise ValueError("1~12월이 각각 정확히 한 번씩 있어야 합니다.")
+        return items

@@ -1,9 +1,17 @@
 import { http, HttpResponse } from "msw";
 import { failure, scenario } from "./scenarios";
-import { findCenter, addCenter, putConfig } from "./data/centers";
+import {
+  findCenter,
+  addCenter,
+  putConfig,
+  currentCenterId,
+  findGreetings,
+  putGreetings,
+} from "./data/centers";
+import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
-import { findPlan, addPlan, patchMonth, confirmPlan } from "./data/annual-plans";
+import { findPlan, listPlans, addPlan, putMonth, confirmPlan } from "./data/annual-plans";
 import type {
   CenterInput,
   ClassInput,
@@ -48,6 +56,12 @@ export const handlers = [
     for (const k of ["email", "password"]) if (!text(b[k])) return bad(k);
     return HttpResponse.json(mockAuth(String(b.email), "교사"));
   }),
+  http.get("*/api/auth/me", ({ request }) => {
+    const token = request.headers.get("Authorization")?.replace(/^Bearer /, "");
+    if (!token?.startsWith("mock.")) return failure("UNAUTHENTICATED", "다시 로그인해주세요.");
+    const user = mockAuth(decodeURIComponent(token.slice(5)), "교사").user;
+    return HttpResponse.json({ ...user, center_id: currentCenterId() });
+  }),
   http.post("*/api/centers", async ({ request }) => {
     console.info("[MSW] intercepted POST /api/centers");
     const s = await scenario(request, "center");
@@ -57,6 +71,40 @@ export const handlers = [
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+  }),
+  http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
+    const s = await scenario(request, "greetings");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    return HttpResponse.json(findGreetings(id));
+  }),
+  http.put("*/api/centers/:centerId/greetings", async ({ request, params }) => {
+    const s = await scenario(request, "greetings-save");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (Object.keys(b).some((key) => key !== "enabled" && key !== "items")) return bad("body");
+    if (typeof b.enabled !== "boolean") return bad("enabled");
+    if (!Array.isArray(b.items) || b.items.length !== 12) return bad("items");
+    const months = new Set<number>();
+    for (const item of b.items) {
+      if (
+        !item ||
+        typeof item !== "object" ||
+        Object.keys(item).some((key) => key !== "month" && key !== "text") ||
+        !integer(item.month) ||
+        item.month < 1 ||
+        item.month > 12 ||
+        months.has(item.month) ||
+        typeof item.text !== "string"
+      )
+        return bad("items");
+      months.add(item.month);
+    }
+    return HttpResponse.json(putGreetings(id, b as unknown as Greetings));
   }),
   http.post("*/api/centers/:centerId/classes", async ({ request, params }) => {
     const s = await scenario(request, "class-create");
@@ -135,14 +183,19 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
-    if (!findClass(Number(b.class_id))) return missing();
-    if (!integer(b.school_year)) return bad("school_year");
-    if (!["FROM_SCRATCH", "FROM_UPLOAD"].includes(String(b.source))) return bad("source");
-    if (b.source === "FROM_UPLOAD" && (!integer(b.upload_id) || Number(b.upload_id) <= 0))
-      return bad("upload_id");
-    if (b.source === "FROM_SCRATCH" && b.upload_id !== null) return bad("upload_id");
+    const klass = findClass(Number(b.class_id));
+    if (!klass) return missing();
+    if (b.form_id !== null && !integer(b.form_id)) return bad("form_id");
     if (request.signal.aborted) return HttpResponse.error();
-    return HttpResponse.json(addPlan(b as unknown as AnnualInput), { status: 201 });
+    return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
+      status: 201,
+    });
+  }),
+  http.get("*/api/plans/annual", async ({ request }) => {
+    const s = await scenario(request, "annual-list");
+    if (s) return s;
+    const classId = new URL(request.url).searchParams.get("class_id");
+    return HttpResponse.json({ items: listPlans(classId ? Number(classId) : undefined) });
   }),
   http.get("*/api/plans/annual/:id", async ({ request, params }) => {
     const s = await scenario(request, "annual-get");
@@ -150,7 +203,7 @@ export const handlers = [
     const plan = findPlan(Number(params.id));
     return plan ? HttpResponse.json(plan) : missing();
   }),
-  http.patch("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
+  http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
     const id = Number(params.id),
@@ -164,7 +217,7 @@ export const handlers = [
     if (typeof b.theme !== "string") return bad("theme");
     if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
       return bad("sub_themes");
-    return HttpResponse.json(patchMonth(id, month, b as unknown as MonthInput));
+    return HttpResponse.json(putMonth(id, month, b as unknown as MonthInput));
   }),
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");

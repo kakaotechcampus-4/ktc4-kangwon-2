@@ -5,7 +5,7 @@ import MockProvider from "@/msw/MockProvider";
 import "./globals.css"; // styles/plan-generator-tokens.css 내용을 여기에 포함(또는 @import)
 
 export const metadata: Metadata = {
-  title: { default: "쓱싹요정", template: "%s · 쓱싹요정" },
+  title: { default: "쌤플", template: "%s · 쌤플" },
   description: "어린이집 교사를 위한 AI 계획안·보육 문서 작성 지원",
 };
 

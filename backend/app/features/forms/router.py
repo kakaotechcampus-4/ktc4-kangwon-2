@@ -10,6 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
@@ -26,6 +27,8 @@ center_router = APIRouter(tags=["forms"])
 DbSession = Annotated[Session, Depends(get_session)]
 
 _ALLOWED_SUFFIXES = {".hwp", ".hwpx"}
+# PR #89 의 마이그레이션 c1d4e7a92f31 에서 정한 제약 이름이다.
+PLANS_FORM_FK = "fk_plans_form_id_forms"
 
 
 def _unreadable(message: str) -> HTTPException:
@@ -158,4 +161,20 @@ def delete_form(form_id: int, session: DbSession, user: CurrentUser) -> None:
             },
         )
     session.delete(form)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as error:
+        # 되돌리지 않으면 이 세션의 다음 질의가 InFailedSqlTransaction 으로 죽는다.
+        session.rollback()
+        # 다른 제약 위반은 409 로 바꿔 원인을 숨기지 않는다.
+        if getattr(getattr(error.orig, "diag", None), "constraint_name", None) != PLANS_FORM_FK:
+            raise
+        # 숨김 삭제가 들어오면 「숨기고 204」로 바뀌는 임시 분기다 (§8).
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IN_USE",
+                "message": "이 양식으로 만든 계획안이 있어 지울 수 없습니다.",
+                "fields": [],
+            },
+        ) from error

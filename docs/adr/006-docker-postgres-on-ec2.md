@@ -9,7 +9,7 @@
 
 ```
 RDS 생성 불가 (요청 시 검토)
-Elastic IP 불가
+~~Elastic IP 불가~~ → **2026-10-07 가능해졌다.** `13.125.107.188` 할당·연결 완료
 IAM 사용자·액세스 키 생성 불가
 ALB · NAT Gateway · EKS · ElastiCache 차단
 사양 · 디스크 변경 불가 (t3.medium / 50GB 고정)
@@ -75,6 +75,8 @@ RDS 가 승인되면 `DATABASE_URL` 한 줄만 바꾸면 된다. 어댑터처럼
   이미지 안 `/app` 을 체크아웃한 코드로 덮어쓴다. **이미지 태그로 롤백해도
   실제로 도는 코드가 안 바뀐다** — 태그는 맞는데 동작만 다른, 찾기 어려운 사고다.
   서버에는 `docker-compose.override.yml` 을 두지 않는다.
-- **서버를 「중지」하지 않는다. 재부팅만.** Elastic IP 가 불가해서 중지 후 시작하면 IP 가 바뀐다.
+- ~~**서버를 「중지」하지 않는다. 재부팅만.** Elastic IP 가 불가해서 중지 후 시작하면 IP 가 바뀐다.~~
+  → **2026-10-07.** Elastic IP 를 붙였다(`13.125.107.188`). 중지 후 시작해도 IP 가 유지된다.
+  도메인(`ssample.duckdns.org`)과 HTTPS 인증서가 이 IP 에 묶여 있어 EIP 를 떼면 둘 다 죽는다.
 - 배포는 SSH agent forwarding + 수동(5주차) → GHCR pull(6주차).
   IAM 키와 Deploy key 가 둘 다 막혀서 나온 경로다.
