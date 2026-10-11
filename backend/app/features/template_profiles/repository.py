@@ -46,6 +46,8 @@ from ssuksak.planning.domain.monthly_template_profile import (
     DEFAULT_PROFILE_SECTION_KEYS,
     TemplateProfile,
 )
+from ssuksak.planning.rules.errors import MonthlyRuleError
+from ssuksak.planning.rules.monthly_template_resolver import resolve_profile_sections
 
 from app.features.centers.models import Class
 from app.features.plans.codec import from_jsonable, to_jsonable
@@ -441,7 +443,12 @@ class PostgresTemplateProfileRepository:
 
     def _version(self, ref: TemplateProfileRef, *, lock: bool = False) -> TemplateProfileVersion:
         query = self._version_query(*_split(ref))
-        row = self._session.scalar(query.with_for_update() if lock else query)
+        # 잠금은 DB 의 최신 행을 기다려 읽지만, 같은 세션이 이 객체를 이미 쥐고 있으면 SQLAlchemy 는
+        # 그 옛 값을 돌려준다. populate_existing 으로 잠근 뒤 읽은 값으로 덮는다 — 그래야 아래의
+        # status · revision 검사가 다른 요청이 확정 · 보관한 결과를 본다.
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        row = self._session.scalar(query)
         if row is None:
             raise TemplateProfileError("NOT_FOUND", f"{ref} 가 없다")
         return row
@@ -470,8 +477,13 @@ class PostgresTemplateProfileRepository:
     def _ready_target(self, ref: TemplateProfileRef, *, lock: bool) -> None:
         query = self._version_query(*_split(ref))
         # FOR SHARE — 포인터를 거는 동안 같은 버전이 보관되지 못하게 한다(archive 와 짝).
+        # FOR SHARE 도 위 `_version` 과 같은 이유로 잠근 뒤 읽은 값으로 객체를 덮는다.
         problem = self._target_problem(
-            self._session.scalar(query.with_for_update(read=True) if lock else query)
+            self._session.scalar(
+                query.with_for_update(read=True).execution_options(populate_existing=True)
+                if lock
+                else query
+            )
         )
         if problem is not None:
             raise TemplateProfileError(problem, f"{ref} 는 포인터 대상이 될 수 없다")
@@ -600,8 +612,12 @@ def _complete_profile(document: dict) -> TemplateProfile:
                 issues.append(Issue(path, str(error), key))
     if not issues:
         try:
-            return from_jsonable(TemplateProfile, document)
-        except (ValueError, TypeError) as error:
+            profile = from_jsonable(TemplateProfile, document)
+            # 생성 경로(resolve_snapshot_sections)와 같은 Core 규칙 — 활성 CONTENT 칸은 repeat_by
+            # (NONE · WEEK)가 있어야 한다(ADR-027). 없으면 READY 가 되어도 계획안을 만들 수 없다.
+            resolve_profile_sections(profile)
+            return profile
+        except (ValueError, TypeError, MonthlyRuleError) as error:
             issues.append(Issue("profile", str(error)))
     raise TemplateProfileError("INVALID", "READY 로 바꿀 수 없다", tuple(issues))
 
