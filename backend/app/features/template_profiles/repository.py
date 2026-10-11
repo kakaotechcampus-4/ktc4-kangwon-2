@@ -45,6 +45,8 @@ from ssuksak.planning.domain.monthly_template_profile import (
     DEFAULT_PROFILE_SECTION_KEYS,
     TemplateProfile,
 )
+from ssuksak.planning.rules.errors import MonthlyRuleError
+from ssuksak.planning.rules.monthly_template_resolver import resolve_profile_sections
 
 from app.features.centers.models import Class
 from app.features.plans.codec import from_jsonable, to_jsonable
@@ -586,8 +588,12 @@ def _complete_profile(document: dict) -> TemplateProfile:
                 issues.append(Issue(path, str(error), key))
     if not issues:
         try:
-            return from_jsonable(TemplateProfile, document)
-        except (ValueError, TypeError) as error:
+            profile = from_jsonable(TemplateProfile, document)
+            # 생성 경로(resolve_snapshot_sections)와 같은 Core 규칙 — 활성 CONTENT 칸은 repeat_by
+            # (NONE · WEEK)가 있어야 한다(ADR-027). 없으면 READY 가 되어도 계획안을 만들 수 없다.
+            resolve_profile_sections(profile)
+            return profile
+        except (ValueError, TypeError, MonthlyRuleError) as error:
             issues.append(Issue("profile", str(error)))
     raise TemplateProfileError("INVALID", "READY 로 바꿀 수 없다", tuple(issues))
 

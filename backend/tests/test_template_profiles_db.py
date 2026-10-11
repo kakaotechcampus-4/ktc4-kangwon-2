@@ -986,3 +986,50 @@ def test_객체를_쥔_세션의_포인터도_다른_세션이_보관한_최신_
             assert pointers == 0
     finally:
         _drop(center_id, user_id)
+
+
+# ── 리뷰(#123): READY 는 생성 경로와 같은 repeat_by 규칙을 지킨다 ──────────────
+
+
+def test_READY_는_활성_CONTENT_칸의_repeat_by_가_비면_거절하고_포인터로도_돌아가지_못한다(world):
+    """ADR-027: NONE · WEEK 는 정상 값이고 null 은 AXIS 에만 있다.
+
+    Profile 에는 활성 Section 만 들어오므로 비활성 CONTENT 의 null 은 Template 단계의 일이다.
+    """
+    repo, user = world["repo_a"], world["user_a"]
+    content = _finished_content(repo, user)
+    repeat = {s["section_key"]: s["repeat_by"] for s in content["sections"]}
+    assert (repeat["theme"], repeat["outdoor_play"], repeat["week_axis"]) == ("NONE", "WEEK", None)
+    broken = [
+        {**s, "repeat_by": None} if s["section_key"] == "safety_education" else s
+        for s in content["sections"]
+    ]
+    ref = repo.create_draft(
+        ApprovedTemplates(), FOCUS, {**content, "sections": broken}, actor_id=user.id
+    )
+    before = repo.get_draft(ref)
+
+    with pytest.raises(TemplateProfileError) as excinfo:
+        repo.publish(ref, ApprovedTemplates(), expected_revision=1, actor_id=user.id)
+    assert _code(excinfo) == "INVALID"
+    [issue] = excinfo.value.issues
+    assert issue.path == "profile"
+    assert "safety_education" in issue.message and "repeat_by" in issue.message
+    assert repo.get_draft(ref) == before
+    assert repo.get_profile(*_pair(ref)) is None
+    # READY 가 아니니 원 기본 · 반 override 로 걸어 생성 경로로 돌아갈 수도 없다.
+    for point in (
+        lambda: repo.set_default(ref, expected=None, actor_id=user.id),
+        lambda: repo.set_override(world["class_a"].id, ref, expected=None, actor_id=user.id),
+    ):
+        with pytest.raises(TemplateProfileError) as excinfo:
+            point()
+        assert _code(excinfo) == "NOT_READY"
+
+    # 반복 단위를 고르면 READY — NONE · WEEK 는 그대로, AXIS 의 null 도 그대로다.
+    repo.save_draft(ref, {"sections": content["sections"]}, expected_revision=1, actor_id=user.id)
+    repo.publish(ref, ApprovedTemplates(), expected_revision=2, actor_id=user.id)
+    published = repo.get_profile(*_pair(ref))
+    assert {s.section_key: s.repeat_by for s in published.sections} == {
+        key: None if value is None else RepeatBy(value) for key, value in repeat.items()
+    }
