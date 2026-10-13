@@ -13,7 +13,7 @@
 |---|---|
 | 무엇을 만드나 | [docs/요구사항명세서.md](docs/요구사항명세서.md) — FR · NFR · 진행도 |
 | 누가 쓰나 | [docs/페르소나.md](docs/페르소나.md) |
-| 이번 주 범위 | [docs/PRD.md](docs/PRD.md) §10 |
+| 이번 주 범위 | [docs/PRD.md](docs/PRD.md) §6 |
 | 화면이 어떻게 도나 | [docs/screen-spec.md](docs/screen-spec.md) |
 | 서버와 무슨 약속을 했나 | [docs/api-spec.md](docs/api-spec.md) |
 | 아직 안 정한 것 | [docs/미확정사항.md](docs/미확정사항.md) |
@@ -109,10 +109,16 @@
 - **출처를 칸 단위로 기록한다. 세 축을 한 값에 섞지 않는다** (PR #15 Planning Core).
 
 ```
-Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · SAFETY_RULE · TREND …
+Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · PARENT_PLAN
+                                   DAYCARE_PROFILE · CLASSROOM_PROFILE · EVENT
+                                   SAFETY_RULE · ACTIVITY_REFERENCE · INSTITUTION_SAMPLE
+                                   CALENDAR · TREND · EXTERNAL_CONTEXT          (12개가 전부)
 Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL · TEACHER_EDIT
 Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHER_EDITED · CONFIRMED
 ```
+
+  **상위 계획안을 근거로 썼으면 `PARENT_PLAN` Evidence 를 따로 적는다.** 상위 계획안 스냅샷
+  (Parent Lineage)은 **네 번째 축이 아니다** — 그건 바뀌지 않는 사본이고, 근거는 근거다.
 
   **「AI」는 출처가 아니라 제조 방법이다.** 교사가 근거를 눌렀을 때 "AI 가 만들었습니다"는
   판단에 도움이 안 된다. AI 가 만든 값도 근거는 누리과정·주제·상위 계획안이다.

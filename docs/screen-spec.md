@@ -409,7 +409,7 @@ S-J2 · S-J3 에서 만든 직후
 | 확정 | **`PUT` 으로 먼저 저장하고** `POST /api/documents/{id}/confirm` (체크 3개 필요) |
 | 확정 취소 | `POST /api/documents/{id}/unconfirm` |
 | 근거 반영 | `POST /api/documents/{id}/refresh` — **초안 + `stale` 일 때만.** 확정본은 409 라 버튼을 띄우지 않는다 |
-| 내려받기 | ~~`GET /api/documents/{id}/export/hwp`~~ **서버에 없다. 11주차 범위 밖**(PRD §10) — 버튼을 띄우지 않는다 |
+| 내려받기 | ~~`GET /api/documents/{id}/export/hwp`~~ **서버에 없다. 11주차 범위 밖**(PRD §6) — 버튼을 띄우지 않는다 |
 | 삭제 | `DELETE /api/documents/{id}` (초안만) |
 
 **[확정] 이 저장을 겸한다.** 교사가 해석·지원을 고치고 [초안 저장] 을 안 누른 채 [확정] 을
