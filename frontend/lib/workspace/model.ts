@@ -72,6 +72,26 @@ export function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+/**
+ * 서버가 준 UTC 시각(`created_at`)을 보는 사람의 시간대로 바꿔 `14:22` 로 돌려준다.
+ *
+ * **문자열을 자르면 안 된다.** `"2026-10-08T11:49:25Z".slice(11, 16)` 는 끝의 `Z` 를
+ * 무시해서 한국에서 9시간 전으로 보인다 — 밤에 적은 기록은 날짜까지 어제로 밀린다
+ * (멘토 리뷰 #119).
+ */
+export function localTime(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  return at.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+/** 같은 이유로 날짜도 잘라 쓰지 않는다. `2026.10.08` 로 돌려준다. */
+export function localDate(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  return `${at.getFullYear()}.${String(at.getMonth() + 1).padStart(2, "0")}.${String(at.getDate()).padStart(2, "0")}`;
+}
+
 export function validDate(value: string) {
   return (
     /^\d{4}-\d{2}-\d{2}$/.test(value) &&
