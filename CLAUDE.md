@@ -14,7 +14,7 @@
 | 무엇을 만드나 | [docs/요구사항명세서.md](docs/요구사항명세서.md) — FR · NFR · 진행도 |
 | 누가 쓰나 | [docs/페르소나.md](docs/페르소나.md) |
 | 이번 주 범위 | [docs/PRD.md](docs/PRD.md) §6 |
-| 화면이 어떻게 도나 | [docs/screen-spec.md](docs/screen-spec.md) |
+| 화면이 어떻게 도나 | [docs/screen-spec.md](docs/screen-spec.md) — 일지 S-J1~6 · 계획안 S1~10 |
 | 서버와 무슨 약속을 했나 | [docs/api-spec.md](docs/api-spec.md) |
 | 아직 안 정한 것 | [docs/미확정사항.md](docs/미확정사항.md) |
 | 왜 이렇게 했나 | [docs/adr/](docs/adr/) |
