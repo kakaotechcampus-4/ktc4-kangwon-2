@@ -1092,7 +1092,8 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 
 > **상태: 구현됨 (M4).** 조회 둘뿐이다(D-M4-02). Profile 만들기 · DRAFT 편집 ·
 > READY 전환 · 보관 · 원 기본 / 반 override 바꾸기는 **별도 후속 작업**이고 M6 화면 연동 전에 필요한
-> 만큼 만든다.
+> 만큼 만든다. → **BE-1 이 Reference 기반 시작 · 원 기본 · 반 override 를 §9-4 로 열었다.**
+> DRAFT 편집 · READY 전환 · 보관은 아직 없다.
 
 생성 화면은 ① 이 반에 무엇이 적용되는지 보여 주고 ② 바꾸고 싶으면 원의 READY 목록에서 고르게
 한 뒤 ③ **보여 준 그 정확한 버전**을 §9-1 `profile_ref` 로 보낸다.
@@ -1236,6 +1237,171 @@ FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사�
 | `VALIDATION_FAILED` | 422 | 다시 만들 수 없는 칸 | `["item_id"]` |
 | `LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` | 503 | 재생성 · 참조자료 (§9-1 과 같다) | `[]` |
 | `GENERATION_FAILED` | 500 | 재생성 실패 · 검증기 실행 실패. 아무것도 저장되지 않는다 | `[]` |
+
+---
+
+## 9-4. 월간 양식 설정(TemplateProfile) 관리 — 시작 · 원 기본 · 반 override
+
+> **상태: 구현됨 (BE-1).** 결정은 결정 문서 Contract 2(C2.6 · C2.7) · 12.8 · 12.12 다.
+> M2 저장소의 규칙을 HTTP 로 연 것이다 — 규칙을 늘리지 않았다.
+> **DRAFT 만들기 · 저장 · 편집 · READY 전환 · 보관 API 는 아직 없다.**
+
+### 공통
+
+- **로그인 필수**(`401 UNAUTHENTICATED`). 인가는 원 단위다 — 남의 원 · 남의 원 반 · 남의 원 Profile
+  은 없는 것과 같은 `404`(ADR-017).
+- **권한:** 원 소속 계정 누구나 바꿀 수 있다(결정 문서 C2.6 · C2-E, TP-05 `RESOLVED_FOR_P0`). 역할
+  구분은 없다. 포인터를 바꾸면 `changed_by`(users.id) · `changed_at` 이 남는다.
+- **화면 흐름:** §9-2 해석(`GET /api/classes/{class_id}/template-profile`)이 `SELECTION_REQUIRED`
+  이면 ① 기반 Template 목록 → ② 시작 → (사용자가 동의하면) ③ 원 기본 지정 또는 ④ 반 override →
+  §9-2 해석을 다시 읽고 → 보여 준 정확한 `profile_ref` 로 §9-1 생성.
+
+### ① 기반 Template 목록 — `GET /api/monthly-templates`
+
+```json
+{ "items": [
+    { "template_ref": { "template_id": "ssuksak.monthly-template-a",
+                        "template_version": "monthly-template-a-v0.2.1" },
+      "approved": false,
+      "sections": [
+        { "section_key": "theme", "label": "theme", "role": "CONTENT", "repeat_by": "NONE",
+          "selection": "REQUIRED" },
+        { "section_key": "week_axis", "label": "week_axis", "role": "AXIS", "repeat_by": null,
+          "selection": "REQUIRED" },
+        { "section_key": "basic_habit", "label": "habits", "role": "CONTENT", "repeat_by": "WEEK",
+          "selection": "OPTIONAL" },
+        { "section_key": "event_schedule", "label": "event_schedule", "role": "CONTENT",
+          "repeat_by": null, "selection": "INSTITUTION_INPUT" }
+      ],
+      "focus_variants": ["SUBTHEME", "EXPECTED_PLAY", "WEEKLY_THEME"] }
+] }
+```
+
+```
+template_ref      ② 의 base_template_ref 로 그대로 보낸다
+approved          데이터 파일의 사람 승인 상태.  **false 도 목록에 보인다** — 보인다고 쓸 수 있는 것이
+                  아니다.  false 면 ② 가 409 GATE_BLOCKED
+sections[]        Template 순서.  section_key 는 Profile 이름이다 (Template 의 habits → basic_habit)
+sections[].label  Template 데이터 값 그대로.  지금 Template A 는 칸 이름과 같다 — 화면 이름이 아니다.
+                  그래서 ② 에서 표시 이름을 직접 보낸다
+sections[].selection
+                  REQUIRED           항상 들어간다 (theme · week_axis · outdoor_play · safety_education)
+                  OPTIONAL           ② 에서 고를 수 있다 (focus · goals · basic_habit)
+                  INSTITUTION_INPUT  event_schedule · drill.  월간 생성 계약이 아직 없어 고를 수 없다
+                  NOT_SUPPORTED      Template 고유 칸.  Profile 에 넣을 수 없다
+focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (켠 focus 는 NEUTRAL 불가, Core)
+```
+
+- 원 범위가 없는 전역 Reference 다. 로그인만 본다.
+- **지금 값: v0.1.1 · v0.2.1 둘 다 `approved: false`**(결정 문서 12.8 — 사람 승인 대기). 승인을
+  바꾸는 API 는 없다.
+
+### ② Reference 기반 시작 — `POST /api/centers/{center_id}/template-profiles`
+
+```json
+{ "base_template_ref": { "template_id": "ssuksak.monthly-template-a",
+                         "template_version": "monthly-template-a-v0.2.1" },
+  "selected_optional_keys": ["focus", "goals"],
+  "display_labels": { "theme": "생활주제", "week_axis": "주", "outdoor_play": "바깥놀이",
+                      "safety_education": "안전교육", "focus": "소주제", "goals": "목표" },
+  "focus_variant": "SUBTHEME" }
+```
+
+```
+base_template_ref        필수.  ① 의 template_ref
+selected_optional_keys   문자열 배열.  기본 [].  ① 의 OPTIONAL 만 (focus · goals · basic_habit).  중복 불가.
+                         event_schedule · drill 은 422
+display_labels           {section_key: 표시 이름}.  **REQUIRED 칸 넷과 고른 칸 전부에 필요하다.**
+                         그 밖의 키 · 빈 이름은 422 (Core: 보이는 칸은 표시 이름을 직접 받는다)
+focus_variant            focus 를 고르면 필수 (focus_variants 중 하나).  안 고르면 null
+```
+
+**Response** `201` — §9-2 READY 목록 항목과 같은 모양(`profile_ref` · `status: "READY"` ·
+`base_template_ref` · `selected_optional_keys` · `sections` · `created_at`).
+
+- 결과는 **원 소유 READY v1** 이다. 반 전용이 아니다(`classroom_ref` 없음). 만든 계정이 남는다.
+- **원 기본을 걸지 않는다.** 「앞으로 기관 기본으로 사용」에 동의할 때만 ③ 을 따로 부른다(C2.6).
+- **멱등이 아니다.** 같은 요청을 두 번 보내면 Profile 이 두 개 생긴다(Idempotency-Key 없음).
+  화면은 응답이 올 때까지 버튼을 잠근다.
+- 실패하면 아무것도 저장하지 않는다.
+- **운영:** 기반 Template 사람 승인 전에는 항상 `409 GATE_BLOCKED` 다(결정 문서 12.8 · 12.12). 승인
+  우회 경로는 없다. 승인되면 코드 변경 없이 열린다.
+
+### ③ 원 기본 — `GET · PUT /api/centers/{center_id}/template-profile-default`
+
+**GET** `200`
+
+```json
+{ "profile_ref": { "profile_id": "tprofile_3f2a…", "profile_version": "v1" },
+  "changed_by": 7, "changed_at": "2026-10-10T10:00:00+09:00" }
+```
+
+기본이 없으면 세 칸 모두 `null`. **포인터 그대로다** — 이 반에 실제로 무엇이 쓰이는지는 §9-2 해석이
+준다(override 가 먼저다).
+
+**PUT** — 지정
+
+```json
+{ "profile_ref": { "profile_id": "tprofile_9b1c…", "profile_version": "v1" },
+  "expected_profile_ref": { "profile_id": "tprofile_3f2a…", "profile_version": "v1" } }
+```
+
+**PUT** — 해제
+
+```json
+{ "profile_ref": null,
+  "expected_profile_ref": { "profile_id": "tprofile_9b1c…", "profile_version": "v1" } }
+```
+
+```
+profile_ref            필수 키 (null 이라도 보낸다).  값이 있으면 지정, null 이면 해제.
+                       내 원의 READY 버전만 — DRAFT · ARCHIVED · 남의 원 것은 404
+expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본이 없었으면 null.
+                       해제할 때 null 이면 422 (무엇을 지우는지 모른다)
+```
+
+- **Response** `200` — GET 과 같은 모양(바뀐 뒤 값). 해제하면 세 칸 모두 `null`.
+- **비교와 저장이 한 번에 일어난다(CAS).** `expected_profile_ref` 가 지금 포인터와 다르면 아무것도
+  바꾸지 않고 `409 STALE_WRITE` 다. 같은 `expected` 로 두 요청이 동시에 와도 하나만 저장된다. 화면은
+  GET 으로 다시 읽어 보여 주고 다시 하게 한다.
+- 새 READY 가 생겨도 포인터는 움직이지 않는다(C2.6).
+
+### ④ 반 override — `GET · PUT /api/classes/{class_id}/template-profile-override`
+
+- 요청 · 응답 · CAS 는 ③ 과 같다. 남의 원 반이면 `404 ["class_id"]`.
+- §9-2 해석에서 **원 기본보다 먼저다**(R1). 해제하면 원 기본으로, 원 기본도 없으면
+  `SELECTION_REQUIRED` 로 돌아간다.
+- GET 은 대상을 못 쓰게 된 포인터(R3 — §9-2 가 `profile_ref: null` 로 숨기는 경우)도 그대로
+  보여 준다. 해제할 때 `expected_profile_ref` 로 이 값을 쓴다.
+
+### 오류 — §9-4 공통
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `UNAUTHENTICATED` | 401 | 로그인 안 함 | `[]` |
+| `VALIDATION_FAILED` | 422 | 입력 모양 · 고를 수 없는 칸(`event_schedule` · `drill` 포함) · 중복 | `["selected_optional_keys"]` 등 |
+| `VALIDATION_FAILED` | 422 | 표시 이름이 빠짐 · 빈 이름 · 고르지 않은 칸의 이름 | `["display_labels.goals", …]` (빠진 칸 전부) |
+| `VALIDATION_FAILED` | 422 | focus 를 골랐는데 `focus_variant` 가 없거나 목록 밖 · focus 없이 값이 있음 | `["focus_variant"]` |
+| `VALIDATION_FAILED` | 422 | 해제인데 `expected_profile_ref` 가 null · 키가 빠짐 | `["expected_profile_ref"]` |
+| `NOT_FOUND` | 404 | 남의 원 | `["center_id"]` |
+| `NOT_FOUND` | 404 | 없는 반 · 남의 원 반 | `["class_id"]` |
+| `NOT_FOUND` | 404 | 기반 Template 이 없다 | `["base_template_ref"]` |
+| `NOT_FOUND` | 404 | 가리킬 Profile 이 없다 · READY 가 아니다(DRAFT · ARCHIVED) · 남의 원 것이다 (셋을 가르지 않는다) | `["profile_ref"]` |
+| `GATE_BLOCKED` | 409 | 기반 Template 이 사람 승인 전이다 | `["base_template_ref"]` |
+| `STALE_WRITE` | 409 | `expected_profile_ref` 가 지금 포인터와 다르다 | `["expected_profile_ref"]` |
+
+### 연간 → 월간 Gate 와의 관계
+
+- **포인터를 걸어도 월간계획안이 생기지 않는다.** §9-1 생성은 여전히 그 반의 연간계획안이 확정돼 있어야
+  한다(`409 GATE_BLOCKED ["class_id"]`). 두 조건은 따로 본다.
+- §9-1 은 화면이 보여 준 **정확한 `profile_ref`** 를 받는다(R5). 포인터를 나중에 바꿔도 이미 만든
+  월간계획안의 `profile_ref` 는 그대로다.
+- 생성 직전에도 기반 Template 승인을 다시 본다(§9-1 — 승인 전이면 생성도 막힌다).
+
+### 아직 없는 것
+
+DRAFT 만들기 · 임시 저장 · 편집, READY 전환, READY 에서 새 버전 파생, 보관(ARCHIVED). M2 저장소에는
+있다(결정 문서 C2.0 · M2-B). 화면에 필요해지면 계약을 따로 정한다.
 
 ---
 
