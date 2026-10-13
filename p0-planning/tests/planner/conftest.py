@@ -94,7 +94,7 @@ def packet() -> MonthlyContextPacket:
 @pytest.fixture
 def snapshot() -> TemplateSnapshot:
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     )
     assert template is not None
     labels = {

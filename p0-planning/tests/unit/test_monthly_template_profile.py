@@ -36,7 +36,7 @@ _LABELS = {
 
 def _template():
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     )
     assert template is not None
     return template
@@ -230,10 +230,10 @@ def test_legacy_template_versions_still_load_without_profile_fields():
     repository = JsonMonthlyTemplateRepository()
 
     assert repository.get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
     ) is not None
     assert repository.get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     ) is not None
 
 
