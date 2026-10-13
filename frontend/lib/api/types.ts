@@ -109,6 +109,132 @@ export interface ConfirmResult {
   status: "CONFIRMED";
   confirmed_at: string;
 }
+/** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
+export interface ProfileRef {
+  profile_id: string;
+  profile_version: string;
+}
+export interface TemplateRef {
+  template_id: string;
+  template_version: string;
+}
+/** `school_year` · 부모 연간계획안은 보내지 않는다 — 서버가 반으로 찾는다 (§9-1). */
+export interface MonthlyInput {
+  class_id: number;
+  /** 달력의 달 1~12. 1~2월은 학년도의 다음 해다. */
+  month: number;
+  profile_ref: ProfileRef;
+}
+/**
+ * 칸 하나 (§9-1). 출처는 세 축이다 — `evidence` 는 근거, `generation` 은 만든 방법.
+ * 변경 이력(audit)은 응답에 없다.
+ */
+export interface MonthlyCell {
+  /** 칸의 주소. 편집 · 재생성 뒤에도 바뀌지 않는다. */
+  item_id: string;
+  /** `repeat_by: "NONE"` 이면 null. */
+  week_id: string | null;
+  value: string;
+  state: "FILLED" | "EMPTY_VALID" | "EMPTY_UNRESOLVED";
+  evidence: {
+    source_type: string;
+    source_id: string;
+    source_version: string | null;
+    effective_date: string | null;
+    display_name: string | null;
+  }[];
+  generation: { method: string; rule_id: string | null; rule_version: string | null };
+}
+/** 주 · Section · 칸 개수를 정하지 않는다 — 화면은 받은 만큼 그린다. */
+export interface MonthlyPlan {
+  id: number;
+  class_id: number;
+  school_year: number;
+  month: number;
+  /** `YYYY-MM`. */
+  target_month: string;
+  status: "DRAFT" | "CONFIRMED";
+  /** 편집 · 재생성 · 확정에 `expected_revision` 으로 그대로 보낸다 (§9-3). */
+  revision: number;
+  generation_mode: "RULE_ONLY" | "LLM_PLANNER";
+  profile_ref: ProfileRef;
+  base_template_ref: TemplateRef;
+  parent: { annual_plan_id: number; theme: string | null; confirmed_at: string };
+  weeks: {
+    week_id: string;
+    label: string;
+    start_date: string;
+    end_date: string;
+    active: boolean;
+  }[];
+  sections: {
+    section_key: string;
+    label: string | null;
+    role: "CONTENT" | "AXIS";
+    repeat_by: "NONE" | "WEEK" | null;
+    visible: boolean;
+    order: number;
+    semantic_variant: "SUBTHEME" | "EXPECTED_PLAY" | "WEEKLY_THEME" | "NEUTRAL" | null;
+    cells: MonthlyCell[];
+  }[];
+  constraints: {
+    code: string;
+    verification: string;
+    affected_section_keys: string[];
+    required_source_kinds: string[];
+    rule_version: string;
+    detail: string;
+  }[];
+  verification: {
+    executed_rules: { rule_id: string; rule_version: string }[];
+    findings: {
+      code: string;
+      kind: "VIOLATION" | "NOT_VERIFIED";
+      severity: string;
+      section_key: string | null;
+      week_id: string | null;
+      message: string;
+    }[];
+  };
+  created_at: string;
+  confirmed_at: string | null;
+}
+/** 목록용. 칸은 단건 조회가 준다. */
+export type MonthlyPlanSummary = Pick<
+  MonthlyPlan,
+  | "id"
+  | "class_id"
+  | "school_year"
+  | "month"
+  | "target_month"
+  | "status"
+  | "revision"
+  | "profile_ref"
+  | "created_at"
+  | "confirmed_at"
+>;
+/** 반에 적용되는 양식 설정 (§9-2). 반 override → 원 기본 → 「선택 필요」. */
+export interface ProfileResolution {
+  source: "CLASSROOM_OVERRIDE" | "INSTITUTION_DEFAULT" | "SELECTION_REQUIRED";
+  /** `SELECTION_REQUIRED` 면 null. */
+  profile_ref: ProfileRef | null;
+  /** `SELECTION_REQUIRED` 일 때만 값 (`NO_POINTER` · `CLASSROOM_OVERRIDE_NOT_READY` …). */
+  reason: string | null;
+}
+/** 원의 READY 양식 설정. 이름 칸은 없다 — 버전 · 기반 Template · Section 으로 구분한다. */
+export interface ReadyProfile {
+  profile_ref: ProfileRef;
+  status: "READY";
+  base_template_ref: TemplateRef;
+  selected_optional_keys: string[];
+  sections: {
+    section_key: string;
+    label: string | null;
+    repeat_by: "NONE" | "WEEK" | null;
+    visible: boolean;
+  }[];
+  created_at: string;
+}
 /** 관찰 기록 (docs/api-spec.md §10). 서버 모양 그대로 — snake_case 와 정수 id 를 유지한다. */
 export interface ObservationUpdate {
   /** `YYYY-MM-DD`. */

@@ -19,9 +19,9 @@ Next 서버 재시작/재빌드가 필요합니다. /api/... 상대 경로는 �
 
 API 직접 요청: ?mockError=GENERATION_FAILED&mockDelay=2000
 기존 화면 URL: ?mswTarget=annual&mswError=NO_ACTIVITIES
-mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm
+mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm, monthly, monthly-list, monthly-get, monthly-cell, monthly-regenerate, monthly-confirm, template-profile, template-profiles
 mswDelay=5000: loading. mswEmpty=true: 반/아동 GET만 empty.
-mswError: VALIDATION_FAILED, NOT_FOUND, GATE_BLOCKED, NO_ACTIVITIES, GENERATION_FAILED.
+mswError: VALIDATION_FAILED, NOT_FOUND, GATE_BLOCKED, NO_ACTIVITIES, GENERATION_FAILED. 월간은 LLM_BUDGET_EXCEEDED, DEPENDENCY_UNAVAILABLE, STALE_WRITE, ALREADY_CONFIRMED 도 쓴다.
 mswField=selected_ages: 오류 field 지정.
 기본 연간 지연 1200ms. 0~10000ms로 제한합니다. 실패는 mutation 전에 반환하여 부분 생성 결과를 남기지 않습니다.
 월 PATCH 특정 월 오류: API URL에 mockError를 직접 붙이거나 mswMonth=3 사용.
@@ -77,3 +77,11 @@ mock 생성 데이터는 localStorage의 saessak.mswSS.v1:<계정>에서 새로�
 Vercel 프로젝트의 Settings → Environment Variables에서 NEXT_PUBLIC_API_MOCKING=enabled를 Production/Preview에 설정한 뒤 재배포합니다. NEXT_PUBLIC 값은 빌드 시점에 고정됩니다.
 실제 FastAPI 사용 시 disabled로 바꾸고 FASTAPI_BASE_URL을 실제 서버 주소로 설정한 뒤 재배포합니다.
 검증: 2026-09-15 enabled로 production build 성공, next start에서 브라우저 [MSW] Mocking enabled / worker started 확인. 실제 Vercel 배포 설정은 이 로컬 검증에 포함하지 않음.
+
+## 월간계획안 목업 (docs/api-spec.md §9-1 ~ §9-3)
+
+- 생성 · 단건 · 목록 · 칸 편집 · 칸 재생성 · 확정, 양식 설정 조회 2개. 데이터는 data/monthly-plans.ts.
+- 서버와 같은 규칙: revision 일치 시 +1 · 다르면 STALE_WRITE, 확정 뒤 편집 · 재생성은 ALREADY_CONFIRMED, 확정 재호출은 revision 과 상관없이 200(D-M5-CONFIRM-01), 재생성은 focus · outdoor_play · basic_habit · goals 만.
+- LLM 을 부르지 않는다. 칸 값은 개발용 고정 문장이고 안전교육은 「근거 필요」(EMPTY_UNRESOLVED) 칸이다.
+- 소유 범위는 첫 원(currentCenterId)이다. 다른 원의 반 · 계획안 · 양식 설정은 404.
+- 원마다 READY 양식 설정 하나를 고정으로 준다. 원 기본 포인터는 기본값이 없어 「선택 필요」이고, 바꾸는 API(BE-1)가 없어 setCenterDefaultProfile 로만 건다.
