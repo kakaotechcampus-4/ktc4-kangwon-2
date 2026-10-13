@@ -210,9 +210,13 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
+    if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
+    // 연간 목업은 「지금 원」 소유 검사를 하지 않는다(서버는 남의 원 반이면 404) — 화면 목업 흐름 유지.
     const klass = findClass(Number(b.class_id));
-    if (!klass) return missing();
-    if (b.form_id !== null && !integer(b.form_id)) return bad("form_id");
+    if (!klass) return classMissing();
+    // 서버처럼 반 하나에 연간 하나다.
+    if (annualFor(klass.id))
+      return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
     if (request.signal.aborted) return HttpResponse.error();
     return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
       status: 201,
@@ -221,42 +225,47 @@ export const handlers = [
   http.get("*/api/plans/annual", async ({ request }) => {
     const s = await scenario(request, "annual-list");
     if (s) return s;
-    const classId = new URL(request.url).searchParams.get("class_id");
-    return HttpResponse.json({ items: listPlans(classId ? Number(classId) : undefined) });
+    const raw = new URL(request.url).searchParams.get("class_id");
+    if (raw === null) return HttpResponse.json({ items: listPlans() });
+    if (!/^-?\d+$/.test(raw)) return bad("class_id");
+    if (!findClass(Number(raw))) return classMissing();
+    return HttpResponse.json({ items: listPlans(Number(raw)) });
   }),
   http.get("*/api/plans/annual/:id", async ({ request, params }) => {
     const s = await scenario(request, "annual-get");
     if (s) return s;
     const plan = findPlan(Number(params.id));
-    return plan ? HttpResponse.json(plan) : missing();
+    return plan ? HttpResponse.json(plan) : annualMissing();
   }),
   http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
+    // 서버 순서: 본문 형식 422 → 계획안 404 → 달 404 → 확정 409 → 공백 주제 422 (§6).
+    const b = await body(request);
+    if (!b) return bad("body");
+    const extra = Object.keys(b).find((k) => k !== "theme" && k !== "sub_themes");
+    if (extra) return bad(extra);
+    if (typeof b.theme !== "string" || !b.theme) return bad("theme");
+    if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
+      return bad("sub_themes");
     const id = Number(params.id),
       month = Number(params.month),
       plan = findPlan(id);
-    if (!plan || !plan.months.some((m) => m.month === month)) return missing();
+    if (!plan) return annualMissing();
+    if (!plan.months.some((m) => m.month === month))
+      return failure("NOT_FOUND", "그 달이 없습니다.", "month");
     if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 수정할 수 없습니다.");
-    const b = await body(request);
-    if (!b) return bad("body");
-    if (typeof b.theme !== "string") return bad("theme");
-    if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
-      return bad("sub_themes");
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    // 공백만 있는 주제는 Core 가 거절한다 — 서버도 fields 를 주지 않는다.
+    if (!b.theme.trim()) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.");
     return HttpResponse.json(putMonth(id, month, b as unknown as MonthInput));
   }),
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");
     if (s) return s;
-    const id = Number(params.id),
-      plan = findPlan(id);
-    if (!plan) return missing();
-    const invalid = plan.months.find(
-      (m) => !m.theme.trim() || !m.sub_themes.length || m.sub_themes.some((t) => !t.trim()),
-    );
-    if (invalid)
-      return failure("VALIDATION_FAILED", "빈 칸을 확인해주세요.", "months." + invalid.month);
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
   }),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
@@ -505,6 +514,7 @@ const myMonthly = (id: number) => {
   const plan = findMonthly(id);
   return plan && myClass(plan.class_id) ? plan : undefined;
 };
+const annualMissing = () => failure("NOT_FOUND", "계획안을 찾을 수 없습니다.", "id");
 const classMissing = () => failure("NOT_FOUND", "반을 찾을 수 없습니다.", "class_id");
 const planMissing = () => failure("NOT_FOUND", "월간계획안을 찾을 수 없습니다.", "id");
 const stale = () =>

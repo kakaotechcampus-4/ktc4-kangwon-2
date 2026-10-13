@@ -83,10 +83,22 @@ export interface MonthInput {
   theme: string;
   sub_themes: string[];
 }
+/** 한 달 (docs/api-spec.md §4). 출처는 세 축이다 — 근거(`evidence`) · 만든 방법(`generation`) · Audit. */
 export interface AnnualMonth extends MonthInput {
   month: number;
-  source_type: "TEMPLATE" | "TREND" | "AI" | "TEACHER";
-  citation: { label: string; url: string | null };
+  /** P0 에서는 항상 빈 배열이다. */
+  safety_education: string[];
+  /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. P0 는 항상 SOURCE_REQUIRED. */
+  safety_education_state: "SOURCE_REQUIRED" | "PLACED" | "NOT_PLACED";
+  /** THEME_REFERENCE 가 정확히 하나. 교사가 고쳐도 바뀌지 않는다(§6). 모양은 월간 칸과 같다. */
+  evidence: MonthlyCell["evidence"];
+  /** 처음 무엇이 만들었나. 교사가 고쳐도 바뀌지 않는다 — 「교사 수정됨」은 Audit 이 말한다(§6). */
+  generation: MonthlyCell["generation"];
+  /**
+   * @deprecated 서버가 보내지 않는다 — 단일 출처 필드는 없앴다(§4 「출처는 세 축이다」). 항상 undefined.
+   * 화면 배지가 아직 읽고 있어 남겨둔다. 배지를 무엇으로 정할지는 화면 결정 뒤에 고친다.
+   */
+  source_type?: "TEMPLATE" | "TREND" | "AI" | "TEACHER";
 }
 export interface AnnualPlan {
   id: number;
@@ -94,6 +106,10 @@ export interface AnnualPlan {
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
   months: AnnualMonth[];
+  /** 무엇을 검사했는지. 빈 `checks` 를 「통과」로 읽지 않으려고 따로 온다(ADR-014). */
+  checked_rules: string[];
+  /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */
+  checks: { rule: string; severity: string; detail: string; month: number | null }[];
 }
 /** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
 export interface AnnualPlanSummary {
