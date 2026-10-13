@@ -17,8 +17,9 @@ registerHooks({
 const { setupServer } = await import("msw/node");
 const { handlers } = await import("../msw/handlers.ts");
 const { resetTestData, read } = await import("../msw/data/store.ts");
-const { addMonthly, setCenterDefaultProfile, readyProfile } =
-  await import("../msw/data/monthly-plans.ts");
+const { addMonthly } = await import("../msw/data/monthly-plans.ts");
+const { addReadyProfile, approveTemplateForTest } =
+  await import("../msw/data/template-profiles.ts");
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
 const { createAnnualPlan, getAnnualPlan, putAnnualMonth, confirmAnnualPlan } =
@@ -34,7 +35,34 @@ const {
   regenerateMonthlyCell,
   confirmMonthlyPlan,
 } = monthly;
-const { getClassTemplateProfile, listReadyTemplateProfiles } = profiles;
+const {
+  getClassTemplateProfile,
+  listReadyTemplateProfiles,
+  createTemplateProfile,
+  putCenterDefaultProfile,
+} = profiles;
+// 기반 Template 은 승인 대기다 — 테스트만 승인 Fixture 로 열고 관리 API 로 READY 를 만든다.
+const FOCUS = {
+  template_id: "ssuksak.monthly-template-a",
+  template_version: "monthly-template-a-v0.2.1",
+};
+const PROFILE_INPUT = {
+  base_template_ref: FOCUS,
+  selected_optional_keys: ["focus", "goals"],
+  display_labels: {
+    theme: "주제",
+    week_axis: "주",
+    outdoor_play: "바깥놀이",
+    safety_education: "안전교육",
+    focus: "소주제",
+    goals: "목표",
+  },
+  focus_variant: "SUBTHEME",
+};
+async function readyRef(centerId) {
+  approveTemplateForTest(FOCUS);
+  return (await createTemplateProfile(centerId, PROFILE_INPUT)).profile_ref;
+}
 
 const server = setupServer(...handlers);
 // listen() 이 바꿔 끼운 fetch. 클라이언트의 상대 경로를 절대 주소로 바꾸고,
@@ -87,11 +115,10 @@ async function confirmedClass() {
   });
   const annual = await createAnnualPlan({ class_id: klass.id, form_id: null });
   await confirmAnnualPlan(annual.id);
-  const { items } = await listReadyTemplateProfiles(center.id);
-  return { center, klass, annual, ref: items[0].profile_ref };
+  return { center, klass, annual, ref: await readyRef(center.id) };
 }
 
-test("client exports exactly 8 functions: 6 monthly + 2 template profile", () => {
+test("client exports 14 functions: 6 monthly + 2 profile read + 6 profile management", () => {
   assert.deepEqual(Object.keys(monthly).sort(), [
     "confirmMonthlyPlan",
     "createMonthlyPlan",
@@ -101,8 +128,14 @@ test("client exports exactly 8 functions: 6 monthly + 2 template profile", () =>
     "regenerateMonthlyCell",
   ]);
   assert.deepEqual(Object.keys(profiles).sort(), [
+    "createTemplateProfile",
+    "getCenterDefaultProfile",
+    "getClassProfileOverride",
     "getClassTemplateProfile",
+    "listMonthlyTemplates",
     "listReadyTemplateProfiles",
+    "putCenterDefaultProfile",
+    "putClassProfileOverride",
   ]);
 });
 
@@ -215,7 +248,7 @@ test("create gates: no annual, unconfirmed annual, duplicate month, unknown prof
     age_max: 4,
     child_count: null,
   });
-  const ref = readyProfile(center.id).profile_ref;
+  const ref = await readyRef(center.id);
   const input = { class_id: klass.id, month: 9, profile_ref: ref };
   await rejects(createMonthlyPlan(input), 409, "GATE_BLOCKED", ["class_id"]);
   const annual = await createAnnualPlan({ class_id: klass.id, form_id: null });
@@ -380,7 +413,7 @@ test("template profile: READY list, unassigned → SELECTION_REQUIRED, default p
     profile_ref: null,
     reason: "NO_POINTER",
   });
-  setCenterDefaultProfile(center.id, ref);
+  await putCenterDefaultProfile(center.id, { profile_ref: ref, expected_profile_ref: null });
   assert.deepEqual(await getClassTemplateProfile(klass.id), {
     source: "INSTITUTION_DEFAULT",
     profile_ref: ref,
@@ -406,7 +439,7 @@ test("another center's class, plan and profiles are not found", async () => {
   });
   const theirAnnual = await createAnnualPlan({ class_id: theirClass.id, form_id: null });
   await confirmAnnualPlan(theirAnnual.id);
-  const theirs = addMonthly(theirClass, theirAnnual, 9, readyProfile(other.id).profile_ref);
+  const theirs = addMonthly(theirClass, theirAnnual, 9, addReadyProfile(other.id, PROFILE_INPUT));
   const item = cellOf(theirs, "goals").item_id;
   await rejects(getMonthlyPlan(theirs.id), 404, "NOT_FOUND", ["id"]);
   await rejects(editMonthlyCell(theirs.id, item, "x", 1), 404, "NOT_FOUND", ["id"]);

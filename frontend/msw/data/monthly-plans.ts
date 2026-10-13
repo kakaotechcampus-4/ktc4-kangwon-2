@@ -5,13 +5,11 @@ import type {
   MonthlyCell,
   MonthlyPlan,
   MonthlyPlanSummary,
-  ProfileRef,
-  ProfileResolution,
   ReadyProfile,
 } from "../../lib/api/types";
 
 /**
- * 월간계획안 · 양식 설정 목업 (docs/api-spec.md §9-1 ~ §9-3).
+ * 월간계획안 목업 (docs/api-spec.md §9-1 · §9-3). 양식 설정은 template-profiles.ts 다.
  *
  * 칸 값은 개발용 고정 문장이다 — LLM 을 부르지 않는다. 서버처럼 주 개수는 달력이 정하고
  * (4 · 5 · 6주), 안전교육은 근거가 없어 비워 둔 「근거 필요」 칸이다.
@@ -19,48 +17,6 @@ import type {
 const RULE = { rule_id: "mock.monthly", rule_version: "mock-v1" };
 /** Core 가 다시 만들 수 있다고 하는 Section (§9-3). 나머지는 422 `["item_id"]`. */
 export const REGENERATABLE = ["focus", "outdoor_play", "basic_habit", "goals"];
-const SECTIONS: ReadyProfile["sections"] = [
-  { section_key: "theme", label: "주제", repeat_by: "NONE", visible: true },
-  { section_key: "week_axis", label: "주", repeat_by: null, visible: true },
-  { section_key: "focus", label: "소주제", repeat_by: "WEEK", visible: true },
-  { section_key: "outdoor_play", label: "바깥놀이", repeat_by: "WEEK", visible: true },
-  { section_key: "safety_education", label: "안전교육", repeat_by: "WEEK", visible: true },
-  { section_key: "goals", label: "목표", repeat_by: "NONE", visible: true },
-];
-
-/**
- * 원마다 READY 하나. 서버에는 아직 Profile 만들기 API(BE-1)가 없어 목업이 고정으로 둔다.
- * 운영 서버는 Template 승인 전까지 빈 목록이다(§9-2 「승인 조건」).
- */
-export const readyProfile = (centerId: number): ReadyProfile => ({
-  profile_ref: { profile_id: "tprofile_mock_" + centerId, profile_version: "v1" },
-  status: "READY",
-  base_template_ref: {
-    template_id: "ssuksak.monthly-template-a",
-    template_version: "monthly-template-a-v0.2.1",
-  },
-  selected_optional_keys: ["focus", "goals"],
-  sections: SECTIONS,
-  created_at: "2026-03-01T00:00:00+09:00",
-});
-const sameRef = (a: ProfileRef, b: ProfileRef) =>
-  a.profile_id === b.profile_id && a.profile_version === b.profile_version;
-export const isReadyProfile = (centerId: number, ref: ProfileRef) =>
-  sameRef(readyProfile(centerId).profile_ref, ref);
-
-/** 반 override 는 목업에 없다. 원 기본이 없으면 「선택 필요」 (§9-2 R1 ~ R4). */
-export const resolveProfile = (centerId: number): ProfileResolution => {
-  const ref = read().profileDefaults[centerId];
-  return ref
-    ? { source: "INSTITUTION_DEFAULT", profile_ref: ref, reason: null }
-    : { source: "SELECTION_REQUIRED", profile_ref: null, reason: "NO_POINTER" };
-};
-/** 원 기본 포인터. 바꾸는 API 가 아직 없어 테스트 · 개발 콘솔에서만 부른다. */
-export const setCenterDefaultProfile = (centerId: number, ref: ProfileRef) =>
-  commit((db) => {
-    db.profileDefaults[centerId] = ref;
-  });
-
 /** 평일만 센다. 월요일마다 새 주다 — 개수를 정하지 않는다. */
 function weeksOf(targetMonth: string): MonthlyPlan["weeks"] {
   const [year, month] = targetMonth.split("-").map(Number);
@@ -88,6 +44,7 @@ const cellValue = (key: string, theme: string, week: number) =>
     focus: theme + " — " + week + "주 놀이",
     outdoor_play: week + "주 바깥 놀이",
     goals: theme + "을(를) 즐겁게 탐색한다",
+    basic_habit: week + "주 기본생활 습관",
   })[key] ?? "";
 
 /** 연간은 반당 하나다 (§4). 부모를 요청으로 받지 않고 반으로 찾는다. */
@@ -116,7 +73,13 @@ export const listMonthly = (classIds: number[]): MonthlyPlanSummary[] =>
 export const targetMonthOf = (schoolYear: number, month: number) =>
   (month >= 3 ? schoolYear : schoolYear + 1) + "-" + String(month).padStart(2, "0");
 
-export const addMonthly = (klass: ApiClass, annual: AnnualPlan, month: number, ref: ProfileRef) =>
+/** 칸 모양은 고른 READY Profile 이 정한다(서버의 TemplateSnapshot 과 같은 뜻). */
+export const addMonthly = (
+  klass: ApiClass,
+  annual: AnnualPlan,
+  month: number,
+  profile: ReadyProfile,
+) =>
   commit((db) => {
     const id = db.next++,
       targetMonth = targetMonthOf(klass.school_year, month),
@@ -149,11 +112,11 @@ export const addMonthly = (klass: ApiClass, annual: AnnualPlan, month: number, r
       status: "DRAFT",
       revision: 1,
       generation_mode: "LLM_PLANNER",
-      profile_ref: ref,
-      base_template_ref: readyProfile(klass.center_id).base_template_ref,
+      profile_ref: profile.profile_ref,
+      base_template_ref: profile.base_template_ref,
       parent: { annual_plan_id: annual.id, theme, confirmed_at: new Date().toISOString() },
       weeks,
-      sections: SECTIONS.map((s, order) => ({
+      sections: profile.sections.map((s, order) => ({
         ...s,
         role: s.repeat_by === null ? "AXIS" : "CONTENT",
         order,

@@ -21,19 +21,29 @@ import {
   findCell,
   findMonthly,
   findMonthlyFor,
-  isReadyProfile,
   listMonthly,
-  readyProfile,
   regenerateCell,
-  resolveProfile,
   targetMonthOf,
 } from "./data/monthly-plans";
+import {
+  addReadyProfile,
+  defaultPointer,
+  findReady,
+  findTemplate,
+  listReady,
+  listTemplates,
+  movePointer,
+  overridePointer,
+  resolveProfile,
+  startProblem,
+} from "./data/template-profiles";
 import type {
   CenterInput,
   ClassInput,
   PlanConfig,
   AnnualInput,
   MonthInput,
+  ProfileRef,
 } from "../lib/api/types";
 const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
@@ -278,10 +288,17 @@ export const handlers = [
       profile_id: String(ref.profile_id),
       profile_version: String(ref.profile_version),
     };
-    if (!isReadyProfile(klass.center_id, profileRef))
-      return failure("NOT_FOUND", "고른 양식 설정을 찾을 수 없습니다.", "profile_ref");
+    const profile = findReady(klass.center_id, profileRef);
+    if (!profile) return failure("NOT_FOUND", "고른 양식 설정을 찾을 수 없습니다.", "profile_ref");
+    // 생성 직전에도 기반 Template 승인을 다시 본다(서버: 422 profile_ref).
+    if (!findTemplate(profile.base_template_ref)?.approved)
+      return failure(
+        "VALIDATION_FAILED",
+        "고른 양식 설정으로는 월간계획안을 만들 수 없습니다. 다른 설정을 골라주세요.",
+        "profile_ref",
+      );
     if (request.signal.aborted) return HttpResponse.error();
-    return HttpResponse.json(addMonthly(klass, annual, b.month, profileRef), { status: 201 });
+    return HttpResponse.json(addMonthly(klass, annual, b.month, profile), { status: 201 });
   }),
   http.get("*/api/plans/monthly", async ({ request }) => {
     const s = await scenario(request, "monthly-list");
@@ -347,17 +364,126 @@ export const handlers = [
     const s = await scenario(request, "template-profile");
     if (s) return s;
     const klass = myClass(Number(params.classId));
-    return klass ? HttpResponse.json(resolveProfile(klass.center_id)) : classMissing();
+    return klass ? HttpResponse.json(resolveProfile(klass.id, klass.center_id)) : classMissing();
   }),
   http.get("*/api/centers/:centerId/template-profiles", async ({ request, params }) => {
     const s = await scenario(request, "template-profiles");
     if (s) return s;
     const id = Number(params.centerId);
-    if (!findCenter(id) || id !== currentCenterId())
-      return failure("NOT_FOUND", "원을 찾을 수 없습니다.", "center_id");
-    return HttpResponse.json({ items: [readyProfile(id)] });
+    return myCenter(id) ? HttpResponse.json({ items: listReady(id) }) : centerMissing();
+  }),
+  // 월간 양식 설정 관리 (§9-4). 서버처럼 입력 모양(422)을 먼저, 소유(404)를 다음에 본다.
+  http.get("*/api/monthly-templates", async ({ request }) => {
+    const s = await scenario(request, "monthly-templates");
+    return s ?? HttpResponse.json({ items: listTemplates() });
+  }),
+  http.post("*/api/centers/:centerId/template-profiles", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-create");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    const base = b.base_template_ref as Record<string, unknown> | null;
+    if (typeof base !== "object" || base === null) return bad("base_template_ref");
+    for (const k of ["template_id", "template_version"])
+      if (typeof base[k] !== "string" || !base[k]) return bad("base_template_ref." + k);
+    const keys = b.selected_optional_keys ?? [];
+    if (!Array.isArray(keys) || !keys.every((k) => typeof k === "string"))
+      return bad("selected_optional_keys");
+    const labels = b.display_labels ?? {};
+    if (
+      typeof labels !== "object" ||
+      labels === null ||
+      Array.isArray(labels) ||
+      !Object.values(labels).every((v) => typeof v === "string")
+    )
+      return bad("display_labels");
+    const variant = b.focus_variant ?? null;
+    if (variant !== null && typeof variant !== "string") return bad("focus_variant");
+    const id = Number(params.centerId);
+    if (!myCenter(id)) return centerMissing();
+    const input = {
+      base_template_ref: {
+        template_id: String(base.template_id),
+        template_version: String(base.template_version),
+      },
+      selected_optional_keys: keys as string[],
+      display_labels: labels as Record<string, string>,
+      focus_variant: variant,
+    };
+    const problem = startProblem(input);
+    if (problem) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...problem);
+    const template = findTemplate(input.base_template_ref);
+    if (!template)
+      return failure("NOT_FOUND", "기반 Template 을 찾을 수 없습니다.", "base_template_ref");
+    if (!template.approved)
+      return failure(
+        "GATE_BLOCKED",
+        "기반 Template 이 아직 사람 승인 전이라 쓸 수 없습니다.",
+        "base_template_ref",
+      );
+    return HttpResponse.json(addReadyProfile(id, input), { status: 201 });
+  }),
+  http.get("*/api/centers/:centerId/template-profile-default", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-default");
+    if (s) return s;
+    const id = Number(params.centerId);
+    return myCenter(id) ? HttpResponse.json(defaultPointer(id)) : centerMissing();
+  }),
+  http.put("*/api/centers/:centerId/template-profile-default", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-default");
+    if (s) return s;
+    const input = await pointerInput(request);
+    if (input instanceof Response) return input;
+    const id = Number(params.centerId);
+    if (!myCenter(id)) return centerMissing();
+    return pointerResult(movePointer("defaultPointers", id, id, input));
+  }),
+  http.get("*/api/classes/:classId/template-profile-override", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-override");
+    if (s) return s;
+    const klass = myClass(Number(params.classId));
+    return klass ? HttpResponse.json(overridePointer(klass.id)) : classMissing();
+  }),
+  http.put("*/api/classes/:classId/template-profile-override", async ({ request, params }) => {
+    const s = await scenario(request, "template-profile-override");
+    if (s) return s;
+    const input = await pointerInput(request);
+    if (input instanceof Response) return input;
+    const klass = myClass(Number(params.classId));
+    if (!klass) return classMissing();
+    return pointerResult(movePointer("overridePointers", klass.id, klass.center_id, input));
   }),
 ];
+/** 두 키 모두 있어야 한다(null 이라도). 값은 null 또는 빈칸 없는 profile_ref. */
+async function pointerInput(request: Request) {
+  const b = await body(request);
+  if (!b) return bad("body");
+  const refs: Record<string, ProfileRef | null> = {};
+  for (const k of ["profile_ref", "expected_profile_ref"]) {
+    if (!(k in b)) return bad(k);
+    const v = b[k] as Record<string, unknown> | null;
+    if (v !== null && (typeof v !== "object" || Array.isArray(v))) return bad(k);
+    for (const sub of ["profile_id", "profile_version"])
+      if (v !== null && (typeof v[sub] !== "string" || !v[sub])) return bad(k + "." + sub);
+    refs[k] = v && { profile_id: String(v.profile_id), profile_version: String(v.profile_version) };
+  }
+  return { profile_ref: refs.profile_ref, expected_profile_ref: refs.expected_profile_ref };
+}
+function pointerResult(result: ReturnType<typeof movePointer>) {
+  if (result === "NOT_FOUND")
+    return failure("NOT_FOUND", "고른 양식 설정을 찾을 수 없습니다.", "profile_ref");
+  if (result === "INVALID") return bad("expected_profile_ref");
+  if (result === "STALE")
+    return failure(
+      "STALE_WRITE",
+      "그 사이 다른 화면에서 설정이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
+      "expected_profile_ref",
+    );
+  return HttpResponse.json(result);
+}
+/** 목업의 「내 원」은 그 계정 저장소의 첫 원이다(`/api/auth/me` 와 같은 규칙, 보안 규칙이 아니다). */
+const myCenter = (id: number) => !!findCenter(id) && id === currentCenterId();
+const centerMissing = () => failure("NOT_FOUND", "원을 찾을 수 없습니다.", "center_id");
 /** 목업에는 로그인 사용자가 없다 — 첫 원을 「내 원」으로 본다 (data/centers.ts). */
 const myClass = (id: number) => {
   const klass = findClass(id);

@@ -84,4 +84,7 @@ Vercel 프로젝트의 Settings → Environment Variables에서 NEXT_PUBLIC_API_
 - 서버와 같은 규칙: revision 일치 시 +1 · 다르면 STALE_WRITE, 확정 뒤 편집 · 재생성은 ALREADY_CONFIRMED, 확정 재호출은 revision 과 상관없이 200(D-M5-CONFIRM-01), 재생성은 focus · outdoor_play · basic_habit · goals 만.
 - LLM 을 부르지 않는다. 칸 값은 개발용 고정 문장이고 안전교육은 「근거 필요」(EMPTY_UNRESOLVED) 칸이다.
 - 소유 범위는 첫 원(currentCenterId)이다. 다른 원의 반 · 계획안 · 양식 설정은 404.
-- 원마다 READY 양식 설정 하나를 고정으로 준다. 원 기본 포인터는 기본값이 없어 「선택 필요」이고, 바꾸는 API(BE-1)가 없어 setCenterDefaultProfile 로만 건다.
+- 양식 설정은 data/template-profiles.ts 다(§9-4). 관리 API(기반 Template 목록 · 시작 · 원 기본 · 반 override)와 §9-2 조회, 월간 생성이 **같은 저장소**를 쓴다. 고정 READY 는 없다 — 시작 API 로 만든다.
+- 기반 Template v0.1.1 · v0.2.1 은 서버처럼 **승인 대기**(approved: false)라 시작이 409 GATE_BLOCKED 다. 승인된 경로는 테스트 · 개발 전용 Fixture `approveTemplateForTest(template_ref)` 로만 연다(화면 코드는 부르지 않는다).
+- 포인터 지정 · 해제는 expected_profile_ref 비교(CAS)를 서버와 같은 순서로 본다. 목업은 한 흐름에서 돌아 DB 수준 동시성은 보여 주지 못한다(BE-1 PostgreSQL 테스트가 본다).
+- mswTarget 추가: monthly-templates, template-profile-create, template-profile-default, template-profile-override.

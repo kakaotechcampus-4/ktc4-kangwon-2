@@ -6,6 +6,7 @@ import type {
   PlanConfig,
   MonthlyPlan,
   ProfileRef,
+  ReadyProfile,
 } from "../../lib/api/types";
 import type { Greetings } from "../../lib/api/centers";
 export interface Database {
@@ -17,8 +18,23 @@ export interface Database {
   configs: Record<number, PlanConfig>;
   greetings: Record<number, Greetings>;
   monthlyPlans: MonthlyPlan[];
-  /** 원 기본 양식 설정 포인터. 키는 center id. */
-  profileDefaults: Record<number, ProfileRef>;
+  /** 원 소유 양식 설정 버전. 지금 목업은 READY 만 만든다(DRAFT · ARCHIVED 는 테스트가 넣는다). */
+  profiles: MockProfile[];
+  /** 원 기본 포인터(키 = center id) · 반 override 포인터(키 = class id). */
+  defaultPointers: Record<number, MockPointer>;
+  overridePointers: Record<number, MockPointer>;
+  /** 테스트 · 개발 전용 승인 Fixture(`template_id@template_version`). 운영 Template 은 승인 대기다. */
+  approvedTemplates: string[];
+}
+export interface MockProfile {
+  center_id: number;
+  status: "DRAFT" | "READY" | "ARCHIVED";
+  profile: ReadyProfile;
+}
+export interface MockPointer {
+  profile_ref: ProfileRef;
+  changed_by: number;
+  changed_at: string;
 }
 const empty = (): Database => ({
   next: 1,
@@ -29,7 +45,10 @@ const empty = (): Database => ({
   configs: {},
   greetings: {},
   monthlyPlans: [],
-  profileDefaults: {},
+  profiles: [],
+  defaultPointers: {},
+  overridePointers: {},
+  approvedTemplates: [],
 });
 let memory = empty();
 function key() {
@@ -57,7 +76,10 @@ export function read(): Database {
     ...parsed,
     greetings: parsed.greetings ?? {},
     monthlyPlans: parsed.monthlyPlans ?? [],
-    profileDefaults: parsed.profileDefaults ?? {},
+    profiles: parsed.profiles ?? [],
+    defaultPointers: parsed.defaultPointers ?? {},
+    overridePointers: parsed.overridePointers ?? {},
+    approvedTemplates: parsed.approvedTemplates ?? [],
   };
 }
 export function commit<T>(fn: (db: Database) => T): T {
