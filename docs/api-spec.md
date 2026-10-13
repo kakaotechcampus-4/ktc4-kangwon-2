@@ -814,9 +814,9 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 ## 9. 7주차 예정 — 계약 안 씀
 
 ```
-POST   /api/plans/monthly                 월간 — §9-1 (계약 확정 · 구현 전)
-PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집
-POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시
+POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
+PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨, M5)
+POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 GET    /api/plans/{id}/export/hwp         내보내기
 GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
@@ -887,8 +887,8 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 
 ## 9-1. 월간계획안 생성 · 조회 — `POST /api/plans/monthly` · `GET /api/plans/monthly/{id}` · `GET /api/plans/monthly?class_id=`
 
-> **상태: 계약 확정 / 구현 전 (M4).** 결정은 결정 문서 12.4 · 12.5 · 12.6 과 M4-0 결정
-> D-M4-01 ~ 04 다. 칸 편집 · 칸 재생성 · 확정과 `revision` 409 는 M5(§9 목록)다.
+> **상태: 구현됨 (M4).** 결정은 결정 문서 12.4 · 12.5 · 12.6 과 M4-0 결정
+> D-M4-01 ~ 04 다. 칸 편집 · 칸 재생성 · 확정과 `revision` 409 는 §9-3(M5)이다.
 
 ### 생성 — `POST /api/plans/monthly`
 
@@ -1090,7 +1090,7 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 
 ## 9-2. 월간 양식 설정(TemplateProfile) 조회 — 생성 전에 고르기
 
-> **상태: 계약 확정 / 구현 전 (M4).** 조회 둘뿐이다(D-M4-02). Profile 만들기 · DRAFT 편집 ·
+> **상태: 구현됨 (M4).** 조회 둘뿐이다(D-M4-02). Profile 만들기 · DRAFT 편집 ·
 > READY 전환 · 보관 · 원 기본 / 반 override 바꾸기는 **별도 후속 작업**이고 M6 화면 연동 전에 필요한
 > 만큼 만든다.
 
@@ -1142,6 +1142,100 @@ reason       SELECTION_REQUIRED 일 때만 값.  NO_POINTER(아무것도 안 걸
 READY Profile 은 사람이 승인한 Template 으로만 만들어진다(결정 문서 12.8 — 만들 때 검사한다).
 **지금 Template A v0.1.1 · v0.2.1 은 승인 대기라 운영 DB 에 READY Profile 이 생길 수 없다** —
 그동안 §9-2 목록은 빈 배열이고 §9-1 은 `NOT_FOUND` 404(`profile_ref`) 다.
+
+---
+
+## 9-3. 월간계획안 칸 편집 · 칸 재생성 · 확정
+
+> **상태: 구현됨 (M5).** 결정은 결정 문서 12.4 D-3 · 12.10(D-M5-CONFIRM-01) 이다.
+> 세 API 모두 `200` 에 §9-1 「월간계획안 응답」 전체를 돌려준다 — 새 `revision` 과 다시 계산한
+> 검증 결과(`constraints` · `verification`)가 들어 있다.
+
+### 읽은 revision 을 같이 보낸다 — `expected_revision`
+
+```json
+{ "expected_revision": 3 }
+```
+
+```
+expected_revision   정수 ≥ 1.  필수.  §9-1 응답의 revision 을 그대로 보낸다
+                    문자열 "3" · true 처럼 타입이 다르면 VALIDATION_FAILED 422
+```
+
+**서버 값과 다르면 저장하지 않고 `STALE_WRITE` 409 다**(§11 문서 PUT 과 같은 코드 · 같은 뜻).
+두 화면에서 같은 계획안을 고치면 나중 저장이 먼저 저장을 조용히 덮는다 — 그걸 막는다.
+FE 는 단건을 다시 불러와 보여 주고 다시 하게 한다.
+
+**비교와 저장이 한 번에 일어난다.** 서버는 「DRAFT 이고 revision 이 그대로일 때만 쓰고 +1」 을
+한 문장으로 한다. 같은 revision 으로 두 요청이 동시에 와도 하나만 저장된다.
+
+### 칸 편집 — `PUT /api/plans/monthly/{id}/cells/{item_id}`
+
+```json
+{ "value": "가을 자연물을 활용한 놀이", "expected_revision": 3 }
+```
+
+```
+value   문자열.  필수.  빈 문자열도 받는다(칸을 비운다 — 상태는 서버가 다시 계산한다)
+```
+
+- 어느 Section 의 칸이든 고칠 수 있다. 칸 주소는 `item_id` 다 — 고친 뒤에도 바뀌지 않는다.
+- **근거(`evidence`) · 생성 방식(`generation`)은 바뀌지 않는다.** 교사가 고쳤다는 사실은 변경
+  이력(`TEACHER_EDITED`, 이전 값 · 새 값)에 남는다(§4 「출처는 세 축이다」).
+- 같은 값으로 고치면 `VALIDATION_FAILED` 422 다.
+
+### 칸 재생성 — `POST /api/plans/monthly/{id}/cells/{item_id}/regenerate`
+
+```json
+{ "expected_revision": 3 }
+```
+
+- **그 칸만** 다시 만든다. 전체 재생성은 P0 에 없다(screen-spec §5.3). 추가 지시문은 받지 않는다.
+- 다시 만들 수 있는 칸은 Core 가 정한다 — 지금은 `focus` · `outdoor_play` · `basic_habit` · `goals`.
+  주제 · 안전교육 · 주 머리줄은 `VALIDATION_FAILED` 422 (`["item_id"]`).
+- **교사가 고친 칸도 요청하면 다시 만든다** — 고친 값이 새 값으로 바뀐다. 덮어쓰기 확인은 화면이
+  한다(M6).
+- `item_id` · `week_id` 는 그대로다. 근거는 새 결과의 근거로 바뀌고, 이전 값과 생성 방식은 변경
+  이력(`REGENERATED`)에 남는다.
+- LLM 을 기다리는 동안 다른 화면이 고치거나 확정했으면 **새 결과를 버리고** `STALE_WRITE` /
+  `ALREADY_CONFIRMED` 409 다. 실패하면 칸 · revision 이 그대로다. 오류는 §9-1 생성과 같다
+  (`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 · `GENERATION_FAILED` 500).
+
+### 확정 — `POST /api/plans/monthly/{id}/confirm`
+
+```json
+{ "expected_revision": 3 }
+```
+
+```
+DRAFT · revision 일치      CONFIRMED 로 바꾼다.  revision +1.  200
+DRAFT · revision 다름      STALE_WRITE 409.  아무것도 바꾸지 않는다
+이미 CONFIRMED             expected_revision 과 상관없이 200 · 저장된 그대로
+                           revision · confirmed_at · 확정자 · 확정 이력이 바뀌지 않는다
+```
+
+**재호출은 멱등이다**(결정 문서 12.10 D-M5-CONFIRM-01, 연간 §7 과 같은 이유). 첫 확정이 revision
+을 올리므로 더블클릭 · 재시도로 두 번째 도착한 요청은 항상 옛 revision 을 든다 — 그걸 409 로 막으면
+FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사가 먼저다** — 남의 원 계획안은 404.
+
+**확정은 검증 결과로 막지 않는다.** 안전교육이 「근거 필요」(`EMPTY_UNRESOLVED` ·
+`NOT_VERIFIED_SOURCE_REQUIRED`)로 남아 있어도 확정된다 — 「법정 요건 충족」이라는 뜻이 아니다.
+검증기 자체가 돌지 못하면 `GENERATION_FAILED` 500 이다.
+
+**되돌리기는 P1 이다.** 확정 뒤 칸 편집 · 재생성은 `ALREADY_CONFIRMED` 409 다.
+
+### 오류 — 세 API 공통
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `NOT_FOUND` | 404 | 계획안이 없거나 남의 원 것 · 월간이 아님 | `["id"]` |
+| `NOT_FOUND` | 404 | 그 `item_id` 칸이 없다 (편집 · 재생성) | `["item_id"]` |
+| `ALREADY_CONFIRMED` | 409 | 확정된 계획안의 칸을 고치거나 다시 만들려 함 | `[]` |
+| `STALE_WRITE` | 409 | `expected_revision` 이 서버 값과 다르다 (확정 재호출은 예외 — 200) | `["expected_revision"]` |
+| `VALIDATION_FAILED` | 422 | 입력 모양이 틀림 · 같은 값으로 편집 | 해당 필드 · `["value"]` |
+| `VALIDATION_FAILED` | 422 | 다시 만들 수 없는 칸 | `["item_id"]` |
+| `LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` | 503 | 재생성 · 참조자료 (§9-1 과 같다) | `[]` |
+| `GENERATION_FAILED` | 500 | 재생성 실패 · 검증기 실행 실패. 아무것도 저장되지 않는다 | `[]` |
 
 ---
 
