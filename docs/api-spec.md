@@ -819,6 +819,7 @@ PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨,
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 GET    /api/plans/{id}/export/hwp         내보내기
 GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
+GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 ```
 
@@ -1042,7 +1043,7 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 ```
 
 - **출처는 §4 의 세 축 그대로다.** `evidence` 는 근거, `generation` 은 만든 방법이다.
-  **`audit` 은 싣지 않는다**(§4 와 같은 이유). 변경 이력 조회는 M5 이후다.
+  **`audit` 은 싣지 않는다**(§4 와 같은 이유). 변경 이력은 §9-5 `GET /api/plans/monthly/{id}/audit` 가 준다.
 - **칸을 표로 펼쳐 주지 않는다.** 행 = Section, 열 = 주는 화면이 `section_key` · `week_id` 로 맞춘다.
   양식마다 표 모양이 달라서 서버가 표를 정하면 계약이 양식에 묶인다.
 - **도메인 객체를 그대로 내보내지 않는다.** 위 필드만 옮긴다. Cell 의 `source_label` ·
@@ -1402,6 +1403,124 @@ expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본
 
 DRAFT 만들기 · 임시 저장 · 편집, READY 전환, READY 에서 새 버전 파생, 보관(ARCHIVED). M2 저장소에는
 있다(결정 문서 C2.0 · M2-B). 화면에 필요해지면 계약을 따로 정한다.
+
+---
+
+## 9-5. 월간계획안 변경 이력 — `GET /api/plans/monthly/{id}/audit`
+
+> **상태: 구현됨 (BE-2).** 저장돼 있던 이력(M3 `plans.body` 의 Core `AuditHistory`)을 읽어 주는
+> **조회 전용** API 다. 새 테이블 · Migration · Core 변경이 없다. 이력은 §9-1 생성과 §9-3 편집 ·
+> 재생성 · 확정이 쌓는다.
+
+### 요청
+
+```
+GET /api/plans/monthly/{id}/audit
+GET /api/plans/monthly/{id}/audit?item_id=item_7c1e…
+```
+
+```
+id        정수.  필수.  §9-1 의 id
+item_id   문자열.  선택.  주면 그 칸의 이력 + 계획안 단위 CONFIRMED 만 준다 (아래)
+```
+
+- **로그인 필수**(`401 UNAUTHENTICATED`). 인가는 원 단위다 — 없는 id · 남의 원 계획안 · 월간이
+  아닌(연간) id 는 모두 같은 `404 ["id"]` 다. 셋을 가르지 않는다.
+- **읽기만 한다.** 이력을 더하지 않고 계획안 본문 · `revision` · `updated_at` · 상태 · 칸 값을 바꾸지
+  않는다.
+
+### 응답 `200`
+
+```json
+{ "items": [
+    { "type": "CREATED", "occurred_at": "2026-09-20T01:00:00Z",
+      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
+      "actor": null, "system_actor": "monthly_application",
+      "value_change": null, "generation_change": null },
+    { "type": "TEACHER_EDITED", "occurred_at": "2026-09-21T02:10:00Z",
+      "scope": "CELL", "item_id": "item_7c1e…", "section_key": "focus", "week_id": "2026-09-W2",
+      "actor": "user_7", "system_actor": null,
+      "value_change": { "before": "가을 열매 관찰", "after": "가을 열매를 모아 세어 보기" },
+      "generation_change": null },
+    { "type": "REGENERATED", "occurred_at": "2026-09-21T02:20:00Z",
+      "scope": "CELL", "item_id": "item_9a2b…", "section_key": "outdoor_play", "week_id": "2026-09-W3",
+      "actor": "user_7", "system_actor": null,
+      "value_change": { "before": "…", "after": "…" },
+      "generation_change": {
+        "before": { "method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal",
+                    "rule_version": "monthly-planner-…" },
+        "after":  { "method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal",
+                    "rule_version": "monthly-cell-planner-v10" } } },
+    { "type": "CONFIRMED", "occurred_at": "2026-09-22T05:00:00Z",
+      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
+      "actor": "user_7", "system_actor": null,
+      "value_change": null, "generation_change": null }
+] }
+```
+
+값의 모양(`item_id` · `rule_version` · 시각)은 예시다. **모든 키가 항상 온다** — 해당이 없으면 `null`.
+
+```
+type               CREATED | TEACHER_EDITED | REGENERATED | CONFIRMED.  저장된 그대로
+occurred_at        ISO 8601.  저장된 시각 그대로 (시간대 포함)
+scope              PLAN (계획안 단위) | CELL (칸 단위)
+item_id            CELL 이면 그 칸 (§9-1 cells[].item_id).  PLAN 이면 null
+section_key        CELL 이면 그 칸의 Section.  PLAN 이면 null
+week_id            주마다 있는 칸(repeat_by WEEK)이면 그 주.  한 달 칸 · PLAN 이면 null
+actor              사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
+system_actor       시스템이 한 일(생성)이면 그 표시 (monthly_application).  사람이면 null
+value_change       TEACHER_EDITED · REGENERATED 만.  {before, after} — 그때 바뀐 칸 값.  나머지는 null
+generation_change  REGENERATED 만.  {before, after} — 각각 §9-1 cells[].generation 과 같은 모양
+                   (method · rule_id · rule_version).  나머지는 null
+```
+
+**어디에 무엇이 쌓이나**
+
+| type | scope | 누가 | value_change | generation_change |
+|---|---|---|---|---|
+| `CREATED` | PLAN 1건 + 칸마다 1건 | `system_actor` | null | null |
+| `TEACHER_EDITED` | CELL | `actor` | 있음 | null (교사 수정은 생성 방식을 바꾸지 않는다) |
+| `REGENERATED` | CELL | `actor` | 있음 | 있음 |
+| `CONFIRMED` | PLAN | `actor` | null | null |
+
+- **성공한 변경만 남는다.** 같은 값 편집(422) · 오래된 revision(409) · 확정 뒤 편집(409) · 실패한
+  재생성(500 · 503)은 이력을 더하지 않는다. 확정 재호출(§9-3 정책 B)도 이력을 더하지 않는다.
+
+### 순서
+
+`occurred_at` 오름차순. 시각이 같으면 ① 계획안 단위 → ② 칸 단위, 칸끼리는 §9-1 `sections[].cells[]`
+순서, 한 칸 안에서는 저장된 순서다. 같은 데이터는 언제 읽어도 같은 순서다(생성 때는 계획안과 모든 칸의
+`CREATED` 가 같은 시각이라 이 규칙이 순서를 정한다).
+
+### `item_id` 로 고르기
+
+- 그 칸의 이력 전부 + **계획안 단위 `CONFIRMED`**(확정됐을 때만) 를 같은 순서 규칙으로 준다
+  (screen-spec §6.3 「해당 Item 의 전체 Audit Event 와 현재 Plan 에 적용되는 Plan-level `CONFIRMED`」).
+- 계획안 단위 `CREATED` 와 다른 칸의 이력은 주지 않는다. 확정 전이면 `CONFIRMED` 가 없다.
+- 이 계획안에 없는 칸이면 `404 ["item_id"]` (남의 계획안 칸 id 도 같다).
+
+### 주지 않는 것
+
+- **재생성 전 근거(evidence).** 저장돼 있지 않다 — `REGENERATED` 는 값과 생성 방식의 변화만 갖는다.
+  지금 근거는 §9-1 `cells[].evidence` 이고, 그것을 과거 근거로 보이면 안 된다. 남기려면 Core 계약
+  확장이 필요하다(후속).
+- **이벤트별 `revision`.** 저장돼 있지 않아 계산해 만들지 않는다. 지금 revision 은 §9-1 응답에 있다.
+- **사람 이름.** `actor` 는 opaque id 뿐이다(screen-spec §9).
+- **Pagination.** 없다 — 계획안 하나의 이력은 칸 수와 변경 횟수만큼이다(연간 §9 Audit 과 같다).
+
+### 오류
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `UNAUTHENTICATED` | 401 | 로그인 안 함 | `[]` |
+| `NOT_FOUND` | 404 | 없거나 남의 원 계획안 · 월간이 아님 | `["id"]` |
+| `NOT_FOUND` | 404 | `item_id` 칸이 이 계획안에 없다 | `["item_id"]` |
+
+### 연간 `GET /api/plans/annual/{id}/audit` 과의 차이
+
+연간 계약은 그대로다. 월간은 같은 키(`type` · `occurred_at` · `actor` · `system_actor`)를 쓰고,
+연간의 `month` 대신 `scope` · `item_id` · `section_key` · `week_id` 로 칸을 가리키며, 연간에 없는
+`value_change` · `generation_change` 를 더 준다. 연간에는 `item_id` 고르기가 없다.
 
 ---
 
