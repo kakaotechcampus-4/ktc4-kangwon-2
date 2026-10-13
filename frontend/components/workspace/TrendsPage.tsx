@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { requestAI } from "@/lib/workspace/ai-client";
+import { today } from "@/lib/workspace/model";
 import { WorkspacePage, Message, useAIStatus, ws } from "./WorkspaceUI";
 type Trend = { title: string; summary: string; idea: string; url: string; publishedAt: string };
 const CURATED: Trend[] = [
@@ -41,7 +42,8 @@ export default function TrendsPage() {
     try {
       const result = await requestAI<{ items: Trend[] }>("trends", {
         topic,
-        today: new Date().toISOString().slice(0, 10),
+        // toISOString() 은 UTC 날짜라 한국 아침 9시 전에는 어제가 된다.
+        today: today(),
       });
       if (!result.items.length)
         throw new Error("확인할 수 있는 자료를 찾지 못했어요. 다른 주제로 검색해주세요.");

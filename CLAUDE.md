@@ -1,10 +1,43 @@
 # ktc4-kangwon-2
 
-**쓱싹요정** — 어린이집 교사의 보육 문서 초안을 만드는 AI. 만 3~5세 유아반 담임교사 대상.
+**쌤플 · Ssample** — 어린이집 교사의 보육 문서 초안을 만드는 AI. 만 3~5세 유아반 담임교사 대상.
 카카오테크 캠퍼스 4기 2단계 팀 프로젝트 — 강원대 2팀
+운영 <https://ssample.duckdns.org>
+
+> 코드 안의 `ssuksak` 패키지 이름은 옛 이름(쓱싹요정)이다. **바꾸지 않는다** — import 경로가
+> 전부 딸려 온다. 사람이 읽는 글에만 「쌤플」을 쓴다.
 
 아래는 **어기면 사고가 나는 것**만 적었다.
-디렉터리는 [docs/structure.md](docs/structure.md), 브랜치 상세는 [docs/branch-strategy.md](docs/branch-strategy.md), 결정 배경은 [docs/adr/](docs/adr/).
+
+| 찾는 것 | 어디 |
+|---|---|
+| 무엇을 만드나 | [docs/요구사항명세서.md](docs/요구사항명세서.md) — FR · NFR · 진행도 |
+| 누가 쓰나 | [docs/페르소나.md](docs/페르소나.md) |
+| 이번 주 범위 | [docs/PRD.md](docs/PRD.md) §6 |
+| 화면이 어떻게 도나 | [docs/screen-spec.md](docs/screen-spec.md) — 일지 S-J1~6 · 계획안 S1~10 |
+| 서버와 무슨 약속을 했나 | [docs/api-spec.md](docs/api-spec.md) |
+| 아직 안 정한 것 | [docs/미확정사항.md](docs/미확정사항.md) |
+| 왜 이렇게 했나 | [docs/adr/](docs/adr/) |
+| 디렉터리 · 브랜치 | [docs/structure.md](docs/structure.md) · [docs/branch-strategy.md](docs/branch-strategy.md) |
+
+**`p0-planning/` 안에는 더 좁은 규칙이 따로 있다** — [p0-planning/CLAUDE.md](p0-planning/CLAUDE.md).
+거기 적힌 것이 이 파일보다 우선한다.
+
+---
+
+## 일하는 방식
+
+**① 짐작하지 말고 묻는다.** 요청이 두 가지로 읽히면 둘 다 적어 되묻는다.
+말없이 하나를 고르고 진행하면, 틀렸을 때 어디서 갈렸는지 아무도 못 찾는다.
+
+**② 적게 만든다.** 시킨 문제만 푼다. 나중에 쓸 것 같은 추상화·설정값·인터페이스를 미리 두지 않는다.
+구현이 하나뿐인 인터페이스는 인터페이스가 아니다.
+
+**③ 건드린 것만 건드린다.** 주변 코드를 「고쳐 두지」 않는다. 기존 문체와 이름을 따른다.
+리뷰어가 diff 에서 본론을 찾을 수 있어야 한다.
+
+**④ 「됐다」를 눈으로 확인한다.** 끝내기 전에 **무엇이 참이면 끝인지**를 먼저 적고 그걸 확인한다.
+「구현했다」가 아니라 「돌아간다」다 — PRD 의 완료 조건을 그렇게 쓰는 이유와 같다.
 
 ---
 
@@ -76,15 +109,24 @@
 - **출처를 칸 단위로 기록한다. 세 축을 한 값에 섞지 않는다** (PR #15 Planning Core).
 
 ```
-Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · SAFETY_RULE · TREND …
+Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · PARENT_PLAN
+                                   DAYCARE_PROFILE · CLASSROOM_PROFILE · EVENT
+                                   SAFETY_RULE · ACTIVITY_REFERENCE · INSTITUTION_SAMPLE
+                                   CALENDAR · TREND · EXTERNAL_CONTEXT          (12개가 전부)
 Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL · TEACHER_EDIT
 Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHER_EDITED · CONFIRMED
 ```
 
+  **상위 계획안을 근거로 썼으면 `PARENT_PLAN` Evidence 를 따로 적는다.** 상위 계획안 스냅샷
+  (Parent Lineage)은 **네 번째 축이 아니다** — 그건 바뀌지 않는 사본이고, 근거는 근거다.
+
   **「AI」는 출처가 아니라 제조 방법이다.** 교사가 근거를 눌렀을 때 "AI 가 만들었습니다"는
   판단에 도움이 안 된다. AI 가 만든 값도 근거는 누리과정·주제·상위 계획안이다.
-  **교사가 고치면 Evidence 는 유지하고 Generation 만 `TEACHER_EDIT` 으로 바꾼다.**
-  이전 Generation 은 Audit 에 남긴다 — 되돌리기와 평가제 집계에 쓴다.
+  **교사가 고쳐도 Evidence 와 Generation 을 그대로 둔다.** `TEACHER_EDITED` **Audit 이벤트**를
+  하나 더한다(값 변화와 행위자를 담는다). 「이 값이 교사가 고친 것인가」는 Generation 이 아니라
+  **Audit 이력을 보고 판단한다** — 되돌리기와 평가제 집계가 거기서 나온다.
+  `GenerationMethod.TEACHER_EDIT` enum 값은 남아 있지만 **운영 코드가 쓰지 않는다**
+  (2026-09-26 Human Decision · 제거 여부는 미정). 새 코드에서 그 값을 쓰지 않는다.
 - **출처 표시는 화면에만.** hwp 내보내기에 마커가 섞이면 안 된다. 제출 문서다.
 - **연간계획안은 RAG 로 생성하고 규칙 엔진이 검사한다.** 법정 시수처럼 틀리면 안 되는 값은
   규칙 엔진이 원문과 대조한다. **ADR-014 가 ADR-005 를 대체한다.**
@@ -140,6 +182,53 @@ if os.getenv("LLM_MODE") == "real" and not os.getenv("IS_SERVER"):
 - **중첩 표가 실제로 나온다. 정규식으로 파싱하지 않는다.** HTMLParser 스택을 쓴다.
 - `pip install pyhwp six olefile` — **`six`가 빠지면 import 에러.**
 - 정보공개포털 계획안은 **PDF다.** `pdftotext -layout`으로 읽는다. `hwp5html`은 원이 업로드한 hwp에만.
+
+---
+
+## 서버 값은 타입 말고 실제 응답을 본다
+
+타입에 칸이 있다고 그 안에 든 값의 모양까지 아는 것이 아니다.
+**한 번 찍어보고 쓴다.** 2026-10 에 같은 실수를 세 번 했다.
+
+```
+칸 수정     목업이 PATCH 를 받아줘 테스트가 통과했다. 진짜 서버는 PUT 이라 405 였다
+hwpx       curl 로 받아보고 된다고 했다. 화면 버튼은 txt 를 만들고 있었다
+시각        타입에 created_at 이 있어 그대로 썼다. UTC 라 9시간 틀렸다
+```
+
+셋 다 **코드를 보고 짐작했고 값을 안 봤다.**
+
+## 날짜 · 시각
+
+- 서버의 `created_at` · `updated_at` 은 **UTC** 다 (끝에 `Z`).
+  **문자열을 자르지 않는다.** `new Date(...)` 로 읽어 현지로 바꾼다.
+  ```ts
+  // ✗  .slice(11, 16)        Z 를 무시한다. 한국에서 9시간 전으로 보인다
+  // ✓  new Date(v).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+  ```
+- `date`(`YYYY-MM-DD`)는 시간대가 없다. 그건 잘라 써도 된다.
+- **「오늘」을 만들 때 `toISOString()` 을 쓰지 않는다.** 그건 UTC 날짜라 한국 아침 9시
+  전에는 어제가 된다. `lib/workspace/model.ts` 의 `today()` 를 쓴다.
+
+## 입력 검사 — 스키마에서 막는다
+
+라우터에 `if` 를 쓰지 않는다. **타입에 적어두면 라우터에 들어오기 전에 걸린다.**
+
+- 문자열 칸을 맨몸 `str` 로 두지 않는다.
+  ```python
+  # ✗  text: str     빈 값 · 공백만 · 10만 자가 다 들어온다
+  # ✓  text: Annotated[str, StringConstraints(
+  #        strip_whitespace=True, min_length=1, max_length=80)]
+  ```
+- `strip_whitespace` 가 먼저 털고 `min_length=1` 이 본다. 그래야 **공백만 든 값**이 막힌다.
+- **빈 값을 허용하는 칸이면 `min_length` 를 걸지 않는다.** 대신 `strip_whitespace` 는 두어
+  「공백만」과 「빈 값」이 같은 것으로 저장되게 한다. 허용한다는 사실은 계약(`api-spec.md`)에
+  적혀 있어야 한다 — 코드만 보고 바꾸면 의도한 동작을 지운다.
+- `max_length` 는 **DB 컬럼 길이에 맞춘다.** `JSONB` 처럼 맞출 컬럼이 없으면
+  그 이유와 기준을 주석에 적는다 — 지어낸 숫자를 근거 없이 두지 않는다.
+- 이미 있는 것들: `centers` 의 `Name` · `PersonName` · `RegionPart` · `GreetingText`,
+  `children` 의 `ChildName`, `auth` 의 `TeacherName` · `Password`.
+  **새 칸을 만들 때 거기 있는 걸 먼저 본다.**
 
 ---
 
