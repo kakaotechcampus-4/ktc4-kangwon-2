@@ -23,15 +23,37 @@ verify_db() {
   local db=$1 label=$2
 
   # 표가 다 왔는지 먼저 본다. 잘린 백업도 앞부분은 멀쩡해서 복구가 0 으로 끝날 수 있다.
-  local missing
-  missing=$(psql -d "$db" -tAc "
-    SELECT string_agg(t, ' ') FROM unnest(ARRAY[
-      'alembic_version','centers','users','classes','children','plans','documents'
-    ]) AS t
-    WHERE to_regclass('public.'||t) IS NULL;" | tr -d '\n' | sed 's/^ *//;s/ *$//')
-  if [ -n "$missing" ]; then
-    echo "restore-check FAILED: $db 에 표가 없다 ($missing) — 백업이 잘렸을 수 있다" >&2
-    return 1
+  #
+  # **표 몇 개만 꼽아 보지 않는다.** 핵심 표는 다 왔는데 forms · observations ·
+  # routine_records 가 빠진 DB 를 「끼워도 된다」고 하면, 교사가 적은 기록이 조용히 사라진다.
+  # 운영 DB 를 읽을 수 있으면 **그쪽 표 목록 전부**와 맞춰 본다.
+  local tables_here tables_live missing
+  tables_here=$(psql -d "$db" -tAc \
+    "SELECT string_agg(tablename, ' ' ORDER BY tablename) FROM pg_tables WHERE schemaname='public';" \
+    | tr -d '\n' | sed 's/^ *//;s/ *$//')
+  tables_live=$(psql -d "$LIVE_DB" -tAc \
+    "SELECT string_agg(tablename, ' ' ORDER BY tablename) FROM pg_tables WHERE schemaname='public';" \
+    2>/dev/null | tr -d '\n' | sed 's/^ *//;s/ *$//' || true)
+
+  if [ -n "$tables_live" ]; then
+    missing=$(comm -23 <(tr ' ' '\n' <<<"$tables_live" | sort -u) \
+                       <(tr ' ' '\n' <<<"$tables_here" | sort -u) | tr '\n' ' ' | sed 's/ *$//')
+    if [ -n "$missing" ]; then
+      echo "restore-check FAILED: $db 에 표가 없다 ($missing) — 백업이 잘렸을 수 있다" >&2
+      return 1
+    fi
+  else
+    # 운영을 못 읽는다(= 날아갔다). 전체 대조는 못 하니 핵심만 보고 그 사실을 말한다.
+    missing=$(psql -d "$db" -tAc "
+      SELECT string_agg(t, ' ') FROM unnest(ARRAY[
+        'alembic_version','centers','users','classes','children','plans','documents',
+        'observations','routine_records','forms'
+      ]) AS t
+      WHERE to_regclass('public.'||t) IS NULL;" | tr -d '\n' | sed 's/^ *//;s/ *$//')
+    if [ -n "$missing" ]; then
+      echo "restore-check FAILED: $db 에 표가 없다 ($missing) — 백업이 잘렸을 수 있다" >&2
+      return 1
+    fi
   fi
 
   local head live_head counts
@@ -48,7 +70,7 @@ verify_db() {
 
   # **새 행이 들어가는지까지 본다.** 시퀀스가 안 따라오면 복구 뒤 첫 저장에서 키 충돌이 난다 —
   # 행 수만 세면 이걸 못 잡는다. 넣어 보고 바로 지운다.
-  if ! psql -d "$db" -q -c "
+  if ! psql -d "$db" -q -v ON_ERROR_STOP=1 -c "
     BEGIN;
     INSERT INTO centers (name, director_name, region_sido, region_sigungu)
     VALUES ('복구확인', '확인', '충청북도', '충주시');
@@ -57,15 +79,25 @@ verify_db() {
     return 1
   fi
 
+  # **alembic head 가 다르면 통과시키지 않는다.** 백업이 마이그레이션보다 오래된 것이라,
+  # 그대로 끼우고 지금 백엔드를 띄우면 새 컬럼을 쓰는 요청이 터진다. 끼우기 전에 올려야 한다.
+  if [ -n "$live_head" ] && [ "$head" != "$live_head" ]; then
+    echo "restore-check FAILED: alembic head 가 운영과 다르다 ($head ≠ $live_head)" >&2
+    echo "  백업 뒤에 마이그레이션이 돌았다. 이대로 끼우면 새 컬럼을 쓰는 요청이 터진다." >&2
+    echo "  끼우기 전에 복구본에 마이그레이션을 올린다:" >&2
+    echo "    docker compose run --rm -v \"\$(pwd)/backend:/app\" \\" >&2
+    echo "      -e DATABASE_URL=...$db backend alembic upgrade head" >&2
+    return 1
+  fi
+
   echo "restore-check ok  $label"
   echo "  행       $counts"
   if [ -z "$live_head" ]; then
     echo "  alembic  $head (운영은 못 읽었다 — 운영 DB 가 없거나 표가 없다)"
-  elif [ "$head" = "$live_head" ]; then
-    echo "  alembic  $head (운영과 같다)"
+    echo "  ⚠️ 운영과 표 목록을 맞춰보지 못했다. 핵심 표 10개만 확인했다"
   else
-    echo "  alembic  $head (운영 $live_head)"
-    echo "  ⚠️ alembic head 가 운영과 다르다 — 백업 뒤에 마이그레이션이 돌았다"
+    echo "  alembic  $head (운영과 같다)"
+    echo "  표       운영에 있는 표가 전부 있다"
   fi
 }
 
