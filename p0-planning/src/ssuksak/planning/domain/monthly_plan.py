@@ -11,8 +11,8 @@ from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
 from .monthly_constraint import CellState, ConstraintAssessment
 from .monthly_template import (
-    DisplayMode,
     EmptyValuePolicy,
+    RepeatBy,
     SectionRole,
     TemplateRef,
 )
@@ -145,7 +145,7 @@ class MonthlyCell:
 class MonthlySection:
     section_key: str
     role: SectionRole
-    display_mode: DisplayMode | None
+    repeat_by: RepeatBy | None
     empty_value_policy: EmptyValuePolicy
     activated: bool = True
     parent_section_key: str | None = None
@@ -159,10 +159,10 @@ class MonthlySection:
             )
         if not isinstance(self.role, SectionRole):
             raise InvalidDomainValueError("MonthlySection.role is invalid")
-        if self.display_mode is not None and not isinstance(
-            self.display_mode, DisplayMode
+        if self.repeat_by is not None and not isinstance(
+            self.repeat_by, RepeatBy
         ):
-            raise InvalidDomainValueError("MonthlySection.display_mode is invalid")
+            raise InvalidDomainValueError("MonthlySection.repeat_by is invalid")
         if not isinstance(self.empty_value_policy, EmptyValuePolicy):
             raise InvalidDomainValueError(
                 "MonthlySection.empty_value_policy is invalid"

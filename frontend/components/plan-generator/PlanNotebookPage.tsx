@@ -9,6 +9,7 @@ import type { AnnualPlanSummary } from "@/lib/api/types";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { localDate } from "@/lib/workspace/model";
 
 const PRIMARY =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-primary-line " +
@@ -127,9 +128,7 @@ function PlanCard({ plan }: { plan: AnnualPlanSummary }) {
           {confirmed ? "확정" : "초안"}
         </span>
       </div>
-      <p className="text-xs text-ink-soft">
-        {plan.created_at.slice(0, 10).replace(/-/g, ".")} 만듦
-      </p>
+      <p className="text-xs text-ink-soft">{localDate(plan.created_at)} 만듦</p>
       <span className="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-primary">
         펼쳐 보기
         <Icon name="arrow" className="h-3.5 w-3.5" />
