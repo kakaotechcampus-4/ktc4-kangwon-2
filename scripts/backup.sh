@@ -8,7 +8,11 @@
 # 교사가 쓴 일지도, 원장이 올린 양식 원본도 같이 사라진다. 파일럿 중에 터지면 복구가 없다.
 #
 # **복구를 한 번 해보고 끝낸다.** 안 되는 백업은 없는 것보다 나쁘다 — 있다고 믿는다.
-#   gunzip -c <파일> | docker compose exec -T db psql -U ssuksak -d ssuksak
+#   scripts/restore-check.sh <파일>      한 달에 한 번. 쓰던 DB 를 건드리지 않는다
+#
+# **쓰던 DB 에 그대로 붓지 않는다.** CREATE TABLE 이 「already exists」로 줄줄이 실패하는데
+# psql 은 그걸 넘기고 0 으로 끝난다 — 복구된 줄 알게 된다. 실제로 2026-10-14 에 해 봤고
+# 오류 105줄이 나면서 **아무것도 복구되지 않았다.** 진짜 복구 절차는 docs/deploy.md 에 있다.
 set -euo pipefail
 
 DEPLOY_PATH=${DEPLOY_PATH:-/home/ubuntu/ktc4-kangwon-2}

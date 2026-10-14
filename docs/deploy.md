@@ -247,11 +247,63 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 
 ## 백업
 
-파일럿(10/19) 전에 걸어야 한다(ADR-006). 아직 안 걸었다.
+파일럿(10/19) 전에 걸어야 한다(ADR-006).
 
 ```bash
-0 3 * * * docker exec ktc4-kangwon-2-db-1 pg_dump -U ssuksak ssuksak | gzip \
-  | aws s3 cp - s3://ktc4-kangwon-2-rag/backup/$(date +\%F).sql.gz
+sudo crontab -e
+15 3 * * * /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
 ```
 
-EC2 역할에 `PowerUserAccess` 가 있어 키 없이 S3 에 쓴다.
+**`scripts/backup.sh` 를 쓴다.** cron 에 `pg_dump` 한 줄을 직접 적지 않는다 — 그 한 줄은
+`pg_dump` 가 실패해도 `gzip` 이 성공해서 **빈 파일을 백업이라고 남긴다.** 스크립트는 그걸 본다.
+
+S3 로도 보내려면 `.env` 에 `BACKUP_S3_URI=s3://ktc4-kangwon-2-rag/backup` 을 넣는다.
+EC2 역할에 `PowerUserAccess` 가 있어 키 없이 쓴다.
+**같은 디스크에만 두면 디스크가 죽을 때 백업도 같이 죽는다.**
+
+### 백업이 살아 있는지 확인 — 한 달에 한 번
+
+```bash
+scripts/restore-check.sh /home/ubuntu/backup/ssuksak_20261014_031500.sql.gz
+```
+
+버리는 DB 에 복구해 보고 지운다. **쓰던 DB 를 건드리지 않는다.** 표가 다 왔는지, alembic
+head 가 운영과 같은지, 복구본에 **새 행이 들어가는지**(시퀀스)까지 본다.
+
+```
+restore-check ok  /home/ubuntu/backup/ssuksak_20261014_031500.sql.gz
+  alembic  2652c5dee127 (운영 2652c5dee127)
+  행       centers=3 users=3 plans=2 documents=1
+```
+
+### 진짜로 되돌려야 할 때
+
+**쓰던 DB 에 백업을 그대로 붓지 않는다.** `CREATE TABLE` 이 「already exists」로 줄줄이
+실패하는데 `psql` 은 그걸 넘기고 **0 으로 끝난다.** 2026-10-14 에 해 봤다 — 오류 105줄이
+나면서 **아무것도 복구되지 않았는데 명령은 성공한 것처럼 끝났다.**
+
+```bash
+# 1  지금 것부터 백업한다. 복구가 틀렸을 때 돌아올 자리가 없으면 두 번 잃는다
+scripts/backup.sh
+
+# 2  받을 빈 DB 를 따로 만든다
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'CREATE DATABASE ssuksak_restore OWNER ssuksak;'
+
+# 3  붓는다. ON_ERROR_STOP=1 을 반드시 붙인다 — 없으면 실패를 못 본다
+gunzip -c <파일> | docker compose exec -T db psql -U ssuksak -d ssuksak_restore \
+  -v ON_ERROR_STOP=1
+
+# 4  확인한다
+scripts/restore-check.sh <파일>
+
+# 5  바꿔 끼운다. **연결이 남아 있으면 RENAME 이 안 된다** — 백엔드를 먼저 멈춘다
+docker compose stop backend
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'ALTER DATABASE ssuksak RENAME TO ssuksak_broken_'"$(date +%Y%m%d)"';' \
+  -c 'ALTER DATABASE ssuksak_restore RENAME TO ssuksak;'
+docker compose start backend
+curl -f https://ssample.duckdns.org/health/ready
+
+# 6  **망가진 DB 를 바로 지우지 않는다.** 며칠 두고 본 뒤에 지운다
+```
