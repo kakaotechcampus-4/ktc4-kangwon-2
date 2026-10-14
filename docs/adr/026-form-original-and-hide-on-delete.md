@@ -36,6 +36,9 @@
 - **[실측]** `scripts/backup.sh:28` 은 `pg_dump` 로 DB 를 백업한다. 원본도 함께 백업되어
   ADR-020 의 「백업 방식을 먼저 정해야」 우려가 해소된다.
 - **[실측]** `nginx/nginx.conf:18` 에 `client_max_body_size 10m` 이 있다.
+- **[실측]** 운영 서버는 backend `8000` 포트를 보안 그룹에서 닫는다(`docs/deploy.md` 「나머지는 전부 닫았다」 —
+  「8000 backend 닫음. nginx 의 업로드 10MB 제한을 우회한다」). 2026-10-08 · 10-14 에 밖에서 `:8000/health` 가
+  시간 초과인 것을 확인했다. 그래서 바깥 요청은 nginx 를 거친다. `docker-compose.yml` 의 `8000:8000` 은 로컬 개발용이다.
 - **[실측]** `backend/app/features/plans/models.py:86-91` 은 `form_id` 만 들고,
   마이그레이션 `c1d4e7a92f31:39` 의 `fk_plans_form_id_forms` 가 참조된 양식 삭제를 막는다.
 - **[실측]** plans 라우터에는 생성 · 목록/조회 · 수정 · 확정 · 감사만 있고 삭제가 없다.

@@ -808,6 +808,8 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 
 **앱에서 파일 크기를 제한하지 않는다** — parse 도 같다. nginx `client_max_body_size 10m` 이
 큰 요청을 먼저 거부하므로 nginx 를 거치는 원본은 최대 10MB 다(ADR-026).
+**운영 서버는 backend `8000` 포트를 보안 그룹에서 닫는다**(`docs/deploy.md` 「나머지는 전부 닫았다」) — 바깥 요청은 nginx 를 거친다.
+`docker-compose.yml` 의 `8000:8000` 은 로컬 개발용이다. 서버에서 8000 을 열면 이 상한이 사라진다.
 
 ---
 
