@@ -16,7 +16,18 @@ LIVE_DB=${LIVE_DB:-ssuksak}
 CHECK_DB=${CHECK_DB:-ssuksak_restore_check}
 
 cd "$DEPLOY_PATH"
-psql() { docker compose exec -T db psql -U ssuksak "$@"; }
+
+# ubuntu 계정이 docker 그룹에 없을 수 있다(deploy.sh 가 sudo 를 쓰는 이유). 그냥 되면 그냥
+# 쓰고, 안 되면 sudo 로 간다 — 맥에서는 sudo -n 이 막혀 있고 docker 는 그냥 되는 일이 흔하다.
+if docker compose version >/dev/null 2>&1; then
+  dc() { docker compose "$@"; }
+elif sudo -n docker compose version >/dev/null 2>&1; then
+  dc() { sudo docker compose "$@"; }
+else
+  echo "docker compose 를 쓸 수 없다. docker 그룹에 넣거나 sudo 로 돌린다." >&2
+  exit 1
+fi
+psql() { dc exec -T db psql -U ssuksak "$@"; }
 
 # 복구본이 쓸 만한지 본다. **여기서 죽어도 쓰던 DB 는 건드리지 않는다.**
 verify_db() {
@@ -87,11 +98,18 @@ verify_db() {
   # `alembic heads` 는 마이그레이션 파일만 읽어서 DB 없이도 돈다.
   local want=$live_head want_from="운영"
   if [ -z "$want" ]; then
-    want=$(docker compose run --rm --no-deps -v "$DEPLOY_PATH/backend:/app" backend \
+    want=$(dc run --rm --no-deps -v "$DEPLOY_PATH/backend:/app" backend \
       alembic heads 2>/dev/null | awk '/\(head\)/{print $1}' | tail -1 || true)
     want_from="코드"
   fi
-  if [ -n "$want" ] && [ "$head" != "$want" ]; then
+  if [ -z "$want" ]; then
+    # **모르면 통과시키지 않는다.** 맞춰볼 대상이 없다는 것은 「맞다」가 아니라 「모른다」다.
+    echo "restore-check FAILED: 맞춰볼 alembic head 를 못 읽었다" >&2
+    echo "  운영 DB 도 못 읽고 \`alembic heads\` 도 실패했다. 복구본이 지금 코드와" >&2
+    echo "  맞는지 확인할 수 없다 — 끼우기 전에 이것부터 해결한다." >&2
+    return 1
+  fi
+  if [ "$head" != "$want" ]; then
     echo "restore-check FAILED: alembic head 가 ${want_from}과 다르다 ($head ≠ $want)" >&2
     echo "  백업 뒤에 마이그레이션이 돌았다. 이대로 끼우면 새 컬럼을 쓰는 요청이 터진다." >&2
     echo "  끼우기 전에 복구본에 마이그레이션을 올린다:" >&2
@@ -103,11 +121,7 @@ verify_db() {
   echo "restore-check ok  $label"
   echo "  행       $counts"
   if [ -z "$live_head" ]; then
-    if [ -n "$want" ]; then
-      echo "  alembic  $head (코드의 head 와 같다. 운영 DB 는 못 읽었다)"
-    else
-      echo "  alembic  $head (운영도 코드도 못 읽었다 — 맞춰보지 못했다)"
-    fi
+    echo "  alembic  $head (코드의 head 와 같다. 운영 DB 는 못 읽었다)"
     echo "  ⚠️ 운영과 표 목록을 맞춰보지 못했다. 핵심 표 10개만 확인했다"
   else
     echo "  alembic  $head (운영과 같다)"
@@ -161,7 +175,7 @@ fi
 # 실패하고, psql 은 그걸 넘기고 계속 간 뒤 0 으로 끝난다 — 복구된 줄 알게 된다.
 psql -d postgres -q -c "DROP DATABASE IF EXISTS $CHECK_DB;"
 psql -d postgres -q -c "CREATE DATABASE $CHECK_DB OWNER ssuksak;"
-trap 'docker compose exec -T db psql -U ssuksak -d postgres -q -c "DROP DATABASE IF EXISTS $CHECK_DB;" >/dev/null 2>&1 || true' EXIT
+trap 'psql -d postgres -q -c "DROP DATABASE IF EXISTS $CHECK_DB;" >/dev/null 2>&1 || true' EXIT
 
 # **`ON_ERROR_STOP=1` 을 반드시 붙인다.** 없으면 위와 같은 이유로 실패를 못 본다.
 if ! gunzip -c "$FILE" | docker compose exec -T db psql -U ssuksak -d "$CHECK_DB" \

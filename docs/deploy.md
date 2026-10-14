@@ -299,8 +299,13 @@ scripts/backup.sh
 docker compose exec -T db psql -U ssuksak -d postgres \
   -c 'CREATE DATABASE ssuksak_restore OWNER ssuksak;'
 
-# 3  붓는다. ON_ERROR_STOP=1 을 반드시 붙인다 — 없으면 실패를 못 본다
+# 3  파일부터 성한지 본다. **잘린 gzip 도 앞부분은 멀쩡히 풀린다**
+gzip -t <파일>
+
+#    붓는다. ON_ERROR_STOP=1 과 pipefail 을 둘 다 붙인다
+#    pipefail 이 없으면 gunzip 이 중간에 죽어도 psql 의 성공만 보고 넘어간다
 #    **여기서 실패하면 멈춘다.** 덜 들어간 DB 를 끼우면 교사 기록이 조용히 사라진다
+set -o pipefail
 gunzip -c <파일> | docker compose exec -T db psql -U ssuksak -d ssuksak_restore \
   -v ON_ERROR_STOP=1
 
