@@ -15,7 +15,10 @@ from types import MappingProxyType
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[3] / "resources" / "evaluation"
-_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v2.json"
+# v2(평가요소 19개)가 옆에 있지만 아직 사람이 원문과 대조하지 않았다. 승인 전에는 v1 을 쓴다 —
+# 대조받지 않은 평가요소를 교사에게 체크하라고 내밀지 않는다. 승인되면 이 줄을 v2 로 바꾼다.
+_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v1.json"
+_INDICATORS_V2_PATH = _ROOT / "daycare_evaluation_indicators_v2.json"
 _RULES_PATH = _ROOT / "checklist_rules_v1.json"
 
 
@@ -117,9 +120,27 @@ def _elements(source: Mapping[str, Any], version: str) -> tuple[Element, ...]:
     return tuple(elements)
 
 
+def _require_approved(indicators_doc: Mapping[str, Any]) -> None:
+    """사람이 원문과 대조한 판만 쓴다.
+
+    파일 자체가 `runtime_active == (domain_owner_approval == "HUMAN_APPROVED")` 를 항상
+    만족해야 한다고 정한다. 승인 없이 쓰면 **대조받지 않은 평가요소를 교사에게 체크하라고
+    내미는 것**이 된다. `plans/rules/verify.py` 의 같은 규칙과 짝이다.
+    """
+    review = indicators_doc["review"]
+    approved = review["domain_owner_approval"] == "HUMAN_APPROVED"
+    if not approved or review["runtime_active"] != approved:
+        raise CatalogError(
+            "승인되지 않은 평가 지표 파일이다. "
+            f"domain_owner_approval={review['domain_owner_approval']!r} "
+            f"runtime_active={review['runtime_active']!r}"
+        )
+
+
 def build_catalog(indicators_doc: Mapping, rules_doc: Mapping) -> Catalog:
     """파일을 읽지 않고 원문과 규칙을 검사해 불변 카탈로그를 만든다."""
     try:
+        _require_approved(indicators_doc)
         areas = indicators_doc["areas"]
         digest = sha256(
             json.dumps(areas, ensure_ascii=False, sort_keys=True, separators=(", ", ": ")).encode(

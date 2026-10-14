@@ -34,7 +34,7 @@ def _rehash(doc):
 def test_load_catalog_preserves_policy_and_order(documents):
     loaded = catalog.load_catalog()
     assert catalog.load_catalog() is loaded
-    assert loaded.checklist_version == "daycare-evaluation-indicators-v2"
+    assert loaded.checklist_version == "daycare-evaluation-indicators-v1"
     assert loaded.rules_version == "checklist-rules-v1"
     assert [item.indicator for item in loaded.indicators] == [
         item["indicator"] for area in documents[0]["areas"] for item in area["indicators"]
@@ -42,13 +42,9 @@ def test_load_catalog_preserves_policy_and_order(documents):
     assert {item.indicator for item in loaded.indicators if item.kind == "AUTO"} == {"4-1", "4-2"}
     assert sum(item.kind == "SELF_CHECK" for item in loaded.indicators) == 7
     assert sum(item.kind == "EXCLUDED" for item in loaded.indicators) == 6
-    # 2025 자체평가 서식의 영역5 · 영역6 표에서 그대로 옮긴 수다. 이 숫자가 바뀌면
-    # 원문이 바뀐 것이므로 사람이 다시 대조해야 한다(review.domain_owner_approval).
-    assert sum(len(item.elements) for item in loaded.indicators) == 19
-    assert [e.element for e in loaded.get("5-3").elements] == ["5-3-1", "5-3-2"]
     assert loaded.get("4-2").rule["min_per_child"] == 2
     assert loaded.get("4-1").rule["plan"]["min_per_class"] == 1
-    assert all(item.elements == () for item in loaded.indicators if item.kind != "SELF_CHECK")
+    assert all(item.elements == () for item in loaded.indicators)  # v1 은 평가요소가 없다
     assert all(item.rule is None for item in loaded.indicators if item.kind != "AUTO")
 
 
@@ -154,8 +150,9 @@ def test_v2_rejects_each_self_check_without_elements(documents, indicator, missi
         catalog.build_catalog(*documents)
 
 
-def test_v2_부터는_평가요소가_비면_거절한다(documents):
+def test_v1_이_아닌_판은_평가요소가_비면_거절한다(documents):
     """v1 만 빈 목록을 봐줬다. 빈 목록이 「점검할 것이 없다」로 보이면 교사가 다 한 줄 안다."""
+    documents[0]["checklist_version"] = "daycare-evaluation-indicators-v2"
     for area in documents[0]["areas"]:
         for item in area["indicators"]:
             item.pop("elements", None)
@@ -184,3 +181,41 @@ def test_rejects_invalid_elements_even_in_v1(documents, elements, reason):
     _rehash(documents[0])
     with pytest.raises(catalog.CatalogError, match=f"5-1: {reason}"):
         catalog.build_catalog(*documents)
+
+
+def test_승인되지_않은_판은_거절한다(documents):
+    """「승인 안 됨」이라고 적힌 파일을 그대로 쓰면 그 칸이 장식이 된다."""
+    documents[0]["review"]["domain_owner_approval"] = "PENDING_HUMAN"
+    documents[0]["review"]["runtime_active"] = False
+    with pytest.raises(catalog.CatalogError, match="승인되지 않은 평가 지표 파일"):
+        catalog.build_catalog(*documents)
+
+
+def test_승인과_runtime_active_가_어긋나면_거절한다(documents):
+    documents[0]["review"]["runtime_active"] = False
+    with pytest.raises(catalog.CatalogError, match="승인되지 않은 평가 지표 파일"):
+        catalog.build_catalog(*documents)
+
+
+def test_v2_는_승인만_받으면_바로_돌아간다():
+    """승인 전이라 아직 안 쓰지만, 내용이 계약에 맞는지는 지금 확인해 둔다.
+
+    평가요소 19개는 「2025 어린이집 평가 자체평가 보고서 서식(어린이집용)」 영역5 · 영역6
+    표에서 그대로 옮긴 것이다. 숫자가 바뀌면 원문이 바뀐 것이므로 사람이 다시 대조한다.
+    """
+    doc = json.loads(catalog._INDICATORS_V2_PATH.read_text(encoding="utf-8"))
+    assert doc["review"]["domain_owner_approval"] == "PENDING_HUMAN"
+    assert doc["review"]["runtime_active"] is False
+
+    approved = copy.deepcopy(doc)
+    approved["review"]["domain_owner_approval"] = "HUMAN_APPROVED"
+    approved["review"]["runtime_active"] = True
+    rules = json.loads(catalog._RULES_PATH.read_text(encoding="utf-8"))
+    loaded = catalog.build_catalog(approved, rules)
+
+    assert loaded.checklist_version == "daycare-evaluation-indicators-v2"
+    assert sum(len(item.elements) for item in loaded.indicators) == 19
+    assert {i.indicator: len(i.elements) for i in loaded.indicators if i.kind == "SELF_CHECK"} == {
+        "5-1": 3, "5-2": 3, "5-3": 2, "6-1": 2, "6-2": 3, "6-3": 3, "6-4": 3,
+    }
+    assert all(e.text.strip() for i in loaded.indicators for e in i.elements)
