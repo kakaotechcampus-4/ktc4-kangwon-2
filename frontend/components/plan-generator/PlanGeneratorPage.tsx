@@ -555,6 +555,7 @@ function InputPanel(props: {
               <PeriodBlock type="daily" label="날짜를 선택해주세요">
                 <input
                   type="date"
+                  aria-label="계획안 날짜"
                   value={period.daily.date}
                   onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
                   className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
@@ -630,6 +631,7 @@ const CHEVRON_BG =
 function MonthSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <select
+      aria-label="계획안 월"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
@@ -662,6 +664,7 @@ function WeekSelect({
 }) {
   return (
     <select
+      aria-label="계획안 주차"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"

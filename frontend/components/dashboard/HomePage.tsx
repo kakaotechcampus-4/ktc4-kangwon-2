@@ -206,7 +206,7 @@ function Compose({
               placeholder={
                 "아이 A가 도토리를 크기별로 줄 세웠다.\n또는 블록으로 길을 만들어 자동차를 굴렸다."
               }
-              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 font-display text-[22px] font-bold leading-[1.6] text-ink outline-none placeholder:font-normal placeholder:text-ink-soft"
+              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 font-display text-[22px] font-bold leading-[1.6] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary-tint focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
             />
             <div className="flex items-center justify-between gap-3 border-t border-paper-warm-line px-4 py-3">
               <span className="hidden text-[10px] text-ink-soft sm:block">
