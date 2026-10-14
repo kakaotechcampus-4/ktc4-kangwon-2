@@ -226,8 +226,7 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.chips span,
-.draftBadge {
+.chips span {
   background: var(--pg-primary-tint);
   color: var(--pg-success);
   padding: 4px 11px;

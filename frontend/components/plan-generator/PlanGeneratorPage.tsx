@@ -221,7 +221,9 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
           );
           results.annual = {
             annualPlanId: plan.id,
-            origin: plan.months.some((m) => m.source_type === "AI") ? "ai" : "template",
+            // 서버가 `source_type` 을 보내지 않아서 이 자리는 늘 "template" 이었다.
+            // 연간 주제는 `theme_text_generator`(LLM)가 문장을 쓴다 — "ai" 가 맞다.
+            origin: "ai",
             notes: [
               "연간계획안은 서버에 초안으로 저장됩니다. 추가 요청사항은 메모로 보존되며 활동에 반영하려면 내용을 수정해주세요.",
             ],

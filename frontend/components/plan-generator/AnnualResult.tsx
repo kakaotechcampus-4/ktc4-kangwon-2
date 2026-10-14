@@ -84,7 +84,9 @@ export default function AnnualResult({ id }: { id: number }) {
             ...context?.companions,
             annual: {
               annualPlanId: plan.id,
-              origin: plan.months.some((m) => m.source_type === "AI") ? "ai" : "template",
+              // 서버가 `source_type` 을 보내지 않아서 이 자리는 늘 "template" 이었다.
+              // 연간 주제는 `theme_text_generator`(LLM)가 문장을 쓴다 — "ai" 가 맞다.
+              origin: "ai",
               notes: [],
               rows: plan.months.map((m) => ({
                 label: m.month + "월",
