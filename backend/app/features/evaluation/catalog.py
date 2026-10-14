@@ -15,7 +15,7 @@ from types import MappingProxyType
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[3] / "resources" / "evaluation"
-_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v1.json"
+_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v2.json"
 _RULES_PATH = _ROOT / "checklist_rules_v1.json"
 
 
@@ -95,9 +95,8 @@ def _elements(source: Mapping[str, Any], version: str) -> tuple[Element, ...]:
     raw = source.get("elements", [])
     if not isinstance(raw, list):
         raise CatalogError(f"{number}: elements는 배열이어야 한다")
-    # ponytail: v1 은 평가요소가 나뉘어 있지 않아 0개를 허용한다(임시).
-    #           v2(승석 — 평가요소 19개)가 오면 이 허용은 판 번호로 저절로 꺼진다.
-    #           v2 의 `elements` 모양({element, text})은 승석과 합의 전 가정이다.
+    # v1 은 평가요소가 나뉘어 있지 않아 0개를 허용했다. v2 부터는 SELF_CHECK 에 평가요소가
+    # 없으면 거절한다 — 빈 목록이 「점검할 것이 없다」로 보이면 교사가 다 한 줄 안다.
     if version != "daycare-evaluation-indicators-v1" and not raw:
         raise CatalogError(f"{number}: SELF_CHECK 평가요소가 없다")
     elements, seen = [], set()

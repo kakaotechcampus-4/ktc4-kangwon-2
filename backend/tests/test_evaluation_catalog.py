@@ -34,7 +34,7 @@ def _rehash(doc):
 def test_load_catalog_preserves_policy_and_order(documents):
     loaded = catalog.load_catalog()
     assert catalog.load_catalog() is loaded
-    assert loaded.checklist_version == "daycare-evaluation-indicators-v1"
+    assert loaded.checklist_version == "daycare-evaluation-indicators-v2"
     assert loaded.rules_version == "checklist-rules-v1"
     assert [item.indicator for item in loaded.indicators] == [
         item["indicator"] for area in documents[0]["areas"] for item in area["indicators"]
@@ -42,9 +42,13 @@ def test_load_catalog_preserves_policy_and_order(documents):
     assert {item.indicator for item in loaded.indicators if item.kind == "AUTO"} == {"4-1", "4-2"}
     assert sum(item.kind == "SELF_CHECK" for item in loaded.indicators) == 7
     assert sum(item.kind == "EXCLUDED" for item in loaded.indicators) == 6
+    # 2025 자체평가 서식의 영역5 · 영역6 표에서 그대로 옮긴 수다. 이 숫자가 바뀌면
+    # 원문이 바뀐 것이므로 사람이 다시 대조해야 한다(review.domain_owner_approval).
+    assert sum(len(item.elements) for item in loaded.indicators) == 19
+    assert [e.element for e in loaded.get("5-3").elements] == ["5-3-1", "5-3-2"]
     assert loaded.get("4-2").rule["min_per_child"] == 2
     assert loaded.get("4-1").rule["plan"]["min_per_class"] == 1
-    assert all(item.elements == () for item in loaded.indicators if item.kind == "SELF_CHECK")
+    assert all(item.elements == () for item in loaded.indicators if item.kind != "SELF_CHECK")
     assert all(item.rule is None for item in loaded.indicators if item.kind != "AUTO")
 
 
@@ -150,8 +154,11 @@ def test_v2_rejects_each_self_check_without_elements(documents, indicator, missi
         catalog.build_catalog(*documents)
 
 
-def test_v3_requires_elements_for_self_check(documents):
-    documents[0]["checklist_version"] = "daycare-evaluation-indicators-v3"
+def test_v2_부터는_평가요소가_비면_거절한다(documents):
+    """v1 만 빈 목록을 봐줬다. 빈 목록이 「점검할 것이 없다」로 보이면 교사가 다 한 줄 안다."""
+    for area in documents[0]["areas"]:
+        for item in area["indicators"]:
+            item.pop("elements", None)
     _rehash(documents[0])
     with pytest.raises(catalog.CatalogError, match="SELF_CHECK 평가요소가 없다"):
         catalog.build_catalog(*documents)
