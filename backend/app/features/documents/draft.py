@@ -14,7 +14,10 @@ from app.shared.childCode import NameTable, SubstitutionError, mask, unmask
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, complete_json, is_mock
 
 # 문서의 generation.rule_version 으로 남는다. `_generate` 의 만드는 방식이 바뀌면 올린다.
-RULE_VERSION = "v1"
+# v2 (2026-10-15) — 거절 규칙 넷(교사가 안 한 개입 · 진단명/가정 판정 · 근거 없는 변화 ·
+#                  개인정보)과 분량(해석 2~4 · 지원 2~3문장)을 프롬프트에 넣었다.
+#                  올리지 않으면 v1 로 만든 문서와 구분이 안 된다.
+RULE_VERSION = "v2"
 
 KIND_LABELS = {
     "dailyLog": "일일 보육일지",
