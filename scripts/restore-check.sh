@@ -51,7 +51,10 @@ if [ -n "$missing" ]; then
 fi
 
 head=$(psql -d "$CHECK_DB" -tAc "SELECT version_num FROM alembic_version;" | tr -d '[:space:]')
-live_head=$(psql -d ssuksak -tAc "SELECT version_num FROM alembic_version;" | tr -d '[:space:]')
+# **운영 DB 를 못 읽어도 계속 간다.** 이 스크립트가 가장 필요한 때가 운영이 날아간 때인데,
+# 거기서 운영 쪽 조회가 실패해 `set -e` 로 죽으면 백업을 확인할 길이 없어진다.
+live_head=$(psql -d ssuksak -tAc "SELECT version_num FROM alembic_version;" 2>/dev/null \
+  | tr -d '[:space:]' || true)
 counts=$(psql -d "$CHECK_DB" -tAc "
   SELECT 'centers='||(SELECT count(*) FROM centers)
       || ' users='||(SELECT count(*) FROM users)
@@ -68,6 +71,12 @@ if ! psql -d "$CHECK_DB" -q -c "
 fi
 
 echo "restore-check ok  $FILE"
-echo "  alembic  $head (운영 $live_head)"
 echo "  행       $counts"
-[ "$head" = "$live_head" ] || echo "  ⚠️ alembic head 가 운영과 다르다 — 백업 뒤에 마이그레이션이 돌았다"
+if [ -z "$live_head" ]; then
+  echo "  alembic  $head (운영은 못 읽었다 — 운영 DB 가 없거나 표가 없다)"
+elif [ "$head" = "$live_head" ]; then
+  echo "  alembic  $head (운영과 같다)"
+else
+  echo "  alembic  $head (운영 $live_head)"
+  echo "  ⚠️ alembic head 가 운영과 다르다 — 백업 뒤에 마이그레이션이 돌았다"
+fi

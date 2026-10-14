@@ -25,6 +25,14 @@ BACKUP_S3_URI=${BACKUP_S3_URI:-}
 cd "$DEPLOY_PATH"
 mkdir -p "$BACKUP_DIR"
 
+# cron 은 `.env` 를 읽지 않는다. 안 읽어오면 BACKUP_S3_URI 가 늘 비어서 **백업이 EC2 디스크에만
+# 남는다** — 디스크가 죽으면 백업도 같이 죽는데, 설정은 해 뒀다고 믿게 된다.
+# 파일을 통째로 source 하지 않는다. `.env` 에는 DB 비밀번호가 있고, 여기서 필요한 건 이 한 줄뿐이다.
+if [ -z "$BACKUP_S3_URI" ] && [ -f "$DEPLOY_PATH/.env" ]; then
+  BACKUP_S3_URI=$(grep -E '^BACKUP_S3_URI=' "$DEPLOY_PATH/.env" | tail -1 | cut -d= -f2- \
+    | sed 's/^["'"'"']//;s/["'"'"']$//' || true)
+fi
+
 stamp=$(date +%Y%m%d_%H%M%S)
 target="$BACKUP_DIR/ssuksak_$stamp.sql.gz"
 
