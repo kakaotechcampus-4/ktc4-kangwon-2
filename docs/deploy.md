@@ -291,11 +291,13 @@ docker compose exec -T db psql -U ssuksak -d postgres \
   -c 'CREATE DATABASE ssuksak_restore OWNER ssuksak;'
 
 # 3  붓는다. ON_ERROR_STOP=1 을 반드시 붙인다 — 없으면 실패를 못 본다
+#    **여기서 실패하면 멈춘다.** 덜 들어간 DB 를 끼우면 교사 기록이 조용히 사라진다
 gunzip -c <파일> | docker compose exec -T db psql -U ssuksak -d ssuksak_restore \
   -v ON_ERROR_STOP=1
 
-# 4  확인한다
-scripts/restore-check.sh <파일>
+# 4  **끼울 그 DB 를 검사한다.** 파일만 검사하면 안 된다 —
+#    파일은 멀쩡한데 3번이 덜 들어간 경우를 못 본다
+scripts/restore-check.sh --db ssuksak_restore
 
 # 5  바꿔 끼운다. **연결이 남아 있으면 RENAME 이 안 된다** — 백엔드를 먼저 멈춘다
 docker compose stop backend
