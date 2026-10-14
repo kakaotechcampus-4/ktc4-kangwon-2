@@ -254,6 +254,8 @@ sudo crontab -e
 15 3 * * * /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
 ```
 
+백업 파일은 root 소유로 쌓인다(cron 이 root 다). **손으로 돌릴 때도 `sudo` 를 붙인다.**
+
 **`scripts/backup.sh` 를 쓴다.** cron 에 `pg_dump` 한 줄을 직접 적지 않는다 — 그 한 줄은
 `pg_dump` 가 실패해도 `gzip` 이 성공해서 **빈 파일을 백업이라고 남긴다.** 스크립트는 그걸 본다.
 
@@ -293,7 +295,9 @@ docker compose exec -T db psql -U ssuksak -d postgres -tAc \
 
 # 1  [DB 가 살아 있을 때만] 지금 것부터 백업한다
 #    복구가 틀렸을 때 돌아올 자리가 없으면 두 번 잃는다
-scripts/backup.sh
+#    **sudo 로 돈다.** cron 이 root 로 돌아서 /home/ubuntu/backup 이 root 소유다 —
+#    ubuntu 로 그냥 돌리면 파일을 못 만들고 여기서 멈춘다
+sudo scripts/backup.sh
 
 # 2  받을 빈 DB 를 따로 만든다
 docker compose exec -T db psql -U ssuksak -d postgres \

@@ -19,12 +19,15 @@ cd "$DEPLOY_PATH"
 
 # ubuntu 계정이 docker 그룹에 없을 수 있다(deploy.sh 가 sudo 를 쓰는 이유). 그냥 되면 그냥
 # 쓰고, 안 되면 sudo 로 간다 — 맥에서는 sudo -n 이 막혀 있고 docker 는 그냥 되는 일이 흔하다.
-if docker compose version >/dev/null 2>&1; then
+# **`docker compose version` 으로 판단하면 안 된다** — 데몬에 닿지 않고도 성공해서,
+# docker 그룹에 없는 ubuntu 가 sudo 없는 쪽을 고르고 첫 컨테이너 명령에서 죽는다.
+# `ps` 는 데몬에 닿는다.
+if docker compose ps >/dev/null 2>&1; then
   dc() { docker compose "$@"; }
-elif sudo -n docker compose version >/dev/null 2>&1; then
+elif sudo -n docker compose ps >/dev/null 2>&1; then
   dc() { sudo docker compose "$@"; }
 else
-  echo "docker compose 를 쓸 수 없다. docker 그룹에 넣거나 sudo 로 돌린다." >&2
+  echo "docker 데몬에 닿지 못한다. docker 그룹에 넣거나 sudo 로 돌린다." >&2
   exit 1
 fi
 psql() { dc exec -T db psql -U ssuksak "$@"; }
@@ -153,7 +156,11 @@ fi
 # **이름 모양부터 본다.** 접미사만 보면 `ssuksak --_restore_check` 가 통과하는데, 그 값은
 # SQL 로 가면 `DROP DATABASE IF EXISTS ssuksak --_restore_check;` 가 된다 — `--` 뒤가
 # 주석이 되어 **운영을 지운다.** 공백도 따옴표도 없는 식별자만 받는다.
-if ! printf '%s' "$CHECK_DB" | grep -Eq '^[a-z][a-z0-9_]*$'; then
+# grep 은 줄 단위라 `ssuksak\n--_restore_check` 가 통과한다. **값 전체**를 본다 —
+# 허용 글자만 지웠을 때 아무것도 안 남아야 한다(줄바꿈도 남는다).
+leftover=$(printf '%s' "$CHECK_DB" | tr -d 'a-z0-9_')
+first=$(printf '%s' "$CHECK_DB" | cut -c1)
+if [ -n "$leftover" ] || ! printf '%s' "$first" | grep -q '^[a-z]$'; then
   echo "CHECK_DB 가 DB 이름 모양이 아니다: $CHECK_DB" >&2
   echo "소문자 · 숫자 · 밑줄만 쓴다. 공백 · 따옴표 · '-' 는 안 된다." >&2
   exit 2

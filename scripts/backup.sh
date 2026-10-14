@@ -38,9 +38,10 @@ target="$BACKUP_DIR/ssuksak_$stamp.sql.gz"
 
 # -T 로 TTY 를 끈다. cron 에는 TTY 가 없어 안 끄면 "the input device is not a TTY" 로 죽는다.
 # cron 은 root 로 돌지만 손으로 돌릴 때는 ubuntu 다. docker 그룹에 없을 수 있어 맞춰 쓴다.
-if docker compose version >/dev/null 2>&1; then dc() { docker compose "$@"; }
-elif sudo -n docker compose version >/dev/null 2>&1; then dc() { sudo docker compose "$@"; }
-else echo "docker compose 를 쓸 수 없다" >&2; exit 1; fi
+# `version` 은 데몬에 안 닿아서 권한이 없어도 성공한다. `ps` 로 본다.
+if docker compose ps >/dev/null 2>&1; then dc() { docker compose "$@"; }
+elif sudo -n docker compose ps >/dev/null 2>&1; then dc() { sudo docker compose "$@"; }
+else echo "docker 데몬에 닿지 못한다" >&2; exit 1; fi
 
 dc exec -T db pg_dump -U ssuksak -d ssuksak | gzip > "$target"
 
