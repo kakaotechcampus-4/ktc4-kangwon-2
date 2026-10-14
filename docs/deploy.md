@@ -282,8 +282,17 @@ restore-check ok  /home/ubuntu/backup/ssuksak_20261014_031500.sql.gz
 실패하는데 `psql` 은 그걸 넘기고 **0 으로 끝난다.** 2026-10-14 에 해 봤다 — 오류 105줄이
 나면서 **아무것도 복구되지 않았는데 명령은 성공한 것처럼 끝났다.**
 
+**두 경우가 다르다.** `ssuksak` 이 **살아 있는데 내용이 틀어진** 경우와, **아예 없는**
+경우다. 1번과 5번이 갈린다.
+
 ```bash
-# 1  지금 것부터 백업한다. 복구가 틀렸을 때 돌아올 자리가 없으면 두 번 잃는다
+# 0  어느 경우인지 먼저 본다
+docker compose exec -T db psql -U ssuksak -d postgres -tAc \
+  "SELECT 1 FROM pg_database WHERE datname='ssuksak';"
+#    1 이 나오면 → 1번부터.  아무것도 안 나오면 → 2번부터 (1번과 5번 앞줄을 건너뛴다)
+
+# 1  [DB 가 살아 있을 때만] 지금 것부터 백업한다
+#    복구가 틀렸을 때 돌아올 자리가 없으면 두 번 잃는다
 scripts/backup.sh
 
 # 2  받을 빈 DB 를 따로 만든다
@@ -301,8 +310,12 @@ scripts/restore-check.sh --db ssuksak_restore
 
 # 5  바꿔 끼운다. **연결이 남아 있으면 RENAME 이 안 된다** — 백엔드를 먼저 멈춘다
 docker compose stop backend
+
+#    [DB 가 살아 있을 때만] 망가진 것을 옆으로 치운다. 없으면 이 줄을 건너뛴다
 docker compose exec -T db psql -U ssuksak -d postgres \
-  -c 'ALTER DATABASE ssuksak RENAME TO ssuksak_broken_'"$(date +%Y%m%d)"';' \
+  -c 'ALTER DATABASE ssuksak RENAME TO ssuksak_broken_'"$(date +%Y%m%d)"';'
+
+docker compose exec -T db psql -U ssuksak -d postgres \
   -c 'ALTER DATABASE ssuksak_restore RENAME TO ssuksak;'
 docker compose start backend
 curl -f https://ssample.duckdns.org/health/ready

@@ -81,8 +81,18 @@ verify_db() {
 
   # **alembic head 가 다르면 통과시키지 않는다.** 백업이 마이그레이션보다 오래된 것이라,
   # 그대로 끼우고 지금 백엔드를 띄우면 새 컬럼을 쓰는 요청이 터진다. 끼우기 전에 올려야 한다.
-  if [ -n "$live_head" ] && [ "$head" != "$live_head" ]; then
-    echo "restore-check FAILED: alembic head 가 운영과 다르다 ($head ≠ $live_head)" >&2
+  #
+  # 운영을 못 읽으면(= 날아갔으면) **코드의 head** 와 맞춘다. 복구가 필요한 바로 그때
+  # 이 비교를 건너뛰면, 지금 백엔드가 기대하는 컬럼이 없는 DB 를 끼우게 된다.
+  # `alembic heads` 는 마이그레이션 파일만 읽어서 DB 없이도 돈다.
+  local want=$live_head want_from="운영"
+  if [ -z "$want" ]; then
+    want=$(docker compose run --rm --no-deps -v "$DEPLOY_PATH/backend:/app" backend \
+      alembic heads 2>/dev/null | awk '/\(head\)/{print $1}' | tail -1 || true)
+    want_from="코드"
+  fi
+  if [ -n "$want" ] && [ "$head" != "$want" ]; then
+    echo "restore-check FAILED: alembic head 가 ${want_from}과 다르다 ($head ≠ $want)" >&2
     echo "  백업 뒤에 마이그레이션이 돌았다. 이대로 끼우면 새 컬럼을 쓰는 요청이 터진다." >&2
     echo "  끼우기 전에 복구본에 마이그레이션을 올린다:" >&2
     echo "    docker compose run --rm -v \"\$(pwd)/backend:/app\" \\" >&2
@@ -93,7 +103,11 @@ verify_db() {
   echo "restore-check ok  $label"
   echo "  행       $counts"
   if [ -z "$live_head" ]; then
-    echo "  alembic  $head (운영은 못 읽었다 — 운영 DB 가 없거나 표가 없다)"
+    if [ -n "$want" ]; then
+      echo "  alembic  $head (코드의 head 와 같다. 운영 DB 는 못 읽었다)"
+    else
+      echo "  alembic  $head (운영도 코드도 못 읽었다 — 맞춰보지 못했다)"
+    fi
     echo "  ⚠️ 운영과 표 목록을 맞춰보지 못했다. 핵심 표 10개만 확인했다"
   else
     echo "  alembic  $head (운영과 같다)"
