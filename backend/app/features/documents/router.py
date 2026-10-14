@@ -38,6 +38,7 @@ from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_child, require_own_class
 from app.shared.gates.sections import check_sections, join_facts
+from app.shared.llm import LlmBudgetExceeded
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -62,6 +63,27 @@ def _error(status_code: int, code: str, message: str, fields: list[str]) -> HTTP
         status_code=status_code,
         detail={"code": code, "message": message, "fields": fields},
     )
+
+
+def _reject_second_daily_log(session: Session, class_id: int, day: date) -> None:
+    """같은 반 · 같은 날 일일 보육일지는 하나다 (§11). 연간계획안의 409 와 같은 모양이다.
+
+    응답을 못 받은 교사가 다시 누르면 일지가 둘 생긴다. 있으면 그걸 열게 한다.
+    """
+    exists = session.scalar(
+        select(Document.id).where(
+            Document.kind == "dailyLog",
+            Document.class_id == class_id,
+            Document.start_date == day,
+        )
+    )
+    if exists is not None:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "ALREADY_EXISTS",
+            "그날 일일 보육일지가 이미 있습니다. 목록에서 열어주세요.",
+            ["start"],
+        )
 
 
 def _invalid(fields: list[str]) -> HTTPException:
@@ -246,6 +268,9 @@ def create_document(
         raise _invalid(fields)
 
     classroom = require_own_class(session, user, body.class_id)
+    if body.kind == "dailyLog":
+        # 모델을 부르기 전에 본다 — 이미 있으면 비용을 쓸 이유가 없다.
+        _reject_second_daily_log(session, body.class_id, body.start)
     child = None
     if body.child_id is not None:
         child = require_own_child(session, user, body.child_id)
@@ -369,6 +394,14 @@ def create_document(
     }
     try:
         drafted = draft_sections(body.kind, facts, body.source_ids, children)
+    except LlmBudgetExceeded as exc:
+        # 예산을 넘기면 키가 지워진다. 다시 눌러도 안 되니 「다시 시도」로 뭉치지 않는다 (§공통).
+        raise _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "LLM_BUDGET_EXCEEDED",
+            "AI 사용 한도를 넘었습니다. 담당자에게 알려주세요.",
+            [],
+        ) from exc
     except DraftFailed as exc:
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", str(exc), []
@@ -388,6 +421,12 @@ def create_document(
             "초안이 문서 규격을 통과하지 못했습니다. 다시 시도해주세요.",
             [],
         )
+
+    if body.kind == "dailyLog":
+        # 두 번 누른 요청이 둘 다 앞의 검사를 지나 모델을 부르는 동안 겹칠 수 있다.
+        # 반 행을 잠그고 다시 본다 — 저장 직전에만 잠가서 생성 시간 동안 반을 붙잡지 않는다.
+        session.get(Class, body.class_id, with_for_update=True, populate_existing=True)
+        _reject_second_daily_log(session, body.class_id, body.start)
 
     subject = child.name if child else classroom.name
     doc = Document(
