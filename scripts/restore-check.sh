@@ -135,6 +135,15 @@ fi
 
 # **지울 DB 이름을 먼저 막는다.** CHECK_DB 는 환경변수로 바꿀 수 있어서, 실수로 ssuksak 을
 # 넣으면 아래 DROP 이 운영을 지운다. 「버리려고 만든 이름」만 받는다.
+#
+# **이름 모양부터 본다.** 접미사만 보면 `ssuksak --_restore_check` 가 통과하는데, 그 값은
+# SQL 로 가면 `DROP DATABASE IF EXISTS ssuksak --_restore_check;` 가 된다 — `--` 뒤가
+# 주석이 되어 **운영을 지운다.** 공백도 따옴표도 없는 식별자만 받는다.
+if ! printf '%s' "$CHECK_DB" | grep -Eq '^[a-z][a-z0-9_]*$'; then
+  echo "CHECK_DB 가 DB 이름 모양이 아니다: $CHECK_DB" >&2
+  echo "소문자 · 숫자 · 밑줄만 쓴다. 공백 · 따옴표 · '-' 는 안 된다." >&2
+  exit 2
+fi
 case "$CHECK_DB" in
   *_restore_check) ;;
   *)
