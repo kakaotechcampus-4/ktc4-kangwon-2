@@ -62,7 +62,7 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
     `response_format: json_object` 는 그 낱말이 없으면 400 으로 거부한다.
     """
     base_url, api_key = require_config()
-    post = transport or _post_json
+    post = transport or post_json
     result = post(
         f"{base_url.rstrip('/')}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -76,7 +76,6 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
         },
         timeout=TIMEOUT_SECONDS,
     )
-    _log_usage(result)
     try:
         content = result["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
@@ -86,8 +85,8 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
     return content
 
 
-def _log_usage(result: object) -> None:
-    """이번 호출에 쓴 토큰을 한 줄 남긴다.
+def _log_usage(result: object, model: object) -> None:
+    """이번 호출에 쓴 토큰을 한 줄 남긴다. `post_json` 이 성공했을 때만 부른다.
 
     **숫자 네 개만 적는다.** 프롬프트에는 아동 이름이 들어갈 수 있어서 내용은 한 글자도
     찍지 않는다 (ADR-004). 로거와 「한 줄로 남긴다」 규칙은 #100 이 깔아 둔 것을 쓴다.
@@ -102,21 +101,27 @@ def _log_usage(result: object) -> None:
         return
     logger.info(
         "llm_usage model=%s prompt=%s completion=%s total=%s",
-        MODEL,
+        model,
         usage.get("prompt_tokens", "-"),
         usage.get("completion_tokens", "-"),
         usage.get("total_tokens", "-"),
     )
 
 
-def _post_json(
+def post_json(
     url: str, *, headers: Mapping[str, str], payload: Mapping[str, object], timeout: float
 ):
+    """엘리스에 JSON 을 보내고 JSON 을 받는다.
+
+    오류 3종 분류와 사용량 기록은 여기 하나다 — 월간 Core 어댑터도 이 함수를 전송으로
+    쓴다. 그래서 `llm_usage` 는 연간 · 문서 · 월간 모두 호출당 한 줄이고, 모델 이름은
+    실제로 보낸 `payload["model"]` 을 적는다.
+    """
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
     try:
         with urllib_request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+            result = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         # 401 은 키가 지워졌다는 뜻이고 429 는 한도다. 둘 다 재시도로 안 풀린다.
         if exc.code in (401, 403, 429):
@@ -124,3 +129,5 @@ def _post_json(
         raise LlmFailed(f"엘리스가 {exc.code} 를 냈다") from exc
     except (urllib_error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise LlmFailed("엘리스 호출이 실패했다") from exc
+    _log_usage(result, payload.get("model"))
+    return result
