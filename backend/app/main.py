@@ -14,7 +14,9 @@ from app.features.auth.models import User
 from app.features.auth.router import router as auth_router
 from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
+from app.features.documents.export import router as documents_export_router
 from app.features.documents.router import router as documents_router
+from app.features.evaluation.router import router as evaluation_router
 from app.features.forms.router import center_router as center_forms_router
 from app.features.forms.router import router as forms_router
 from app.features.observations.router import router as observations_router
@@ -156,6 +158,8 @@ app.include_router(forms_router, prefix="/api")
 app.include_router(centers_router, prefix="/api", dependencies=_authenticated)
 app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
+app.include_router(documents_export_router, prefix="/api", dependencies=_authenticated)
+app.include_router(evaluation_router, prefix="/api", dependencies=_authenticated)
 app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 app.include_router(routines_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_router, prefix="/api", dependencies=_authenticated)

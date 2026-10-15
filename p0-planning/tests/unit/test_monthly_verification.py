@@ -23,7 +23,7 @@ from ssuksak.planning.domain.monthly_plan import (
     MonthlySection,
 )
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
+    RepeatBy,
     EmptyValuePolicy,
     SemanticVariant,
     SectionRole,
@@ -73,7 +73,7 @@ from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 def _plan(
     *,
     section_key: str = "focus",
-    display_mode: DisplayMode = DisplayMode.WEEKLY_CELLS,
+    repeat_by: RepeatBy = RepeatBy.WEEK,
     target_ages: frozenset[int] = frozenset({3, 4}),
     cells: tuple[MonthlyCell, ...] = (),
     activity_catalog_ref: ActivityCatalogRef | None = None,
@@ -82,7 +82,7 @@ def _plan(
         section_key=section_key,
         role=SectionRole.CONTENT,
         activated=True,
-        display_mode=display_mode,
+        repeat_by=repeat_by,
         empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
         display_label=section_key.title(),
         semantic_variant=(
@@ -119,7 +119,7 @@ def _plan(
             MonthlySection(
                 section_key=section_key,
                 role=SectionRole.CONTENT,
-                display_mode=display_mode,
+                repeat_by=repeat_by,
                 empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
                 cells=cells,
             ),
@@ -360,7 +360,7 @@ def test_runner_records_only_rules_that_are_actually_composed():
         (
             _plan(
                 section_key="theme",
-                display_mode=DisplayMode.MONTHLY_MERGED_SUMMARY,
+                repeat_by=RepeatBy.NONE,
             ),
             ViolationLocation(
                 section_key="theme", week_id=WeekId("2026-09-W1")

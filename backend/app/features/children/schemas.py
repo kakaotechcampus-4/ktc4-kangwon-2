@@ -1,6 +1,6 @@
 """아동 명단 API 의 요청·응답 모델. 계약은 docs/api-spec.md §2-1 이다."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
@@ -45,3 +45,22 @@ class ChildListResponse(BaseModel):
     """
 
     items: list[ChildResponse]
+
+
+class ChildTracking(BaseModel):
+    """아이 한 명의 관찰 기록 집계 (§2-1 발달 추적).
+
+    **수만 센다.** 발달 수준을 판정하지 않는다 — 판정은 ADR-007 이 스펙아웃한 발달평가다.
+    `by_domain` 은 5영역을 늘 다 담는다. 0 인 영역이 「덜 본 영역」이다.
+    """
+
+    child_id: int
+    name: str
+    code: str
+    total: int
+    last_date: date | None
+    by_domain: dict[str, int]
+
+
+class ChildTrackingResponse(BaseModel):
+    items: list[ChildTracking]

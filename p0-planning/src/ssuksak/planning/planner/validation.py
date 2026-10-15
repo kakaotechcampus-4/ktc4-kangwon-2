@@ -17,8 +17,8 @@ from ..context.models import (
 from ..evidence.safety_classification import SafetyReferenceKind
 from ..context.serialization import packet_fingerprint
 from ..domain.monthly_template import (
-    DisplayMode,
     EmptyValuePolicy,
+    RepeatBy,
     SectionRole,
     TemplateSection,
 )
@@ -489,7 +489,7 @@ def validate_monthly_proposal_schema(
             fail(ProposalValidationCode.AXIS_CONTENT, value.section_key)
         elif value.section_key in INSTITUTION_INPUT_SECTION_KEYS:
             fail(ProposalValidationCode.INSTITUTION_INPUT_SECTION, value.section_key)
-        elif section.display_mode is not DisplayMode.MONTHLY_MERGED_SUMMARY:
+        elif section.repeat_by is not RepeatBy.NONE:
             fail(
                 ProposalValidationCode.SECTION_PLACEMENT_MISMATCH,
                 value.section_key,
@@ -523,7 +523,7 @@ def validate_monthly_proposal_schema(
                     value.section_key,
                     week_id=week.week_id.value,
                 )
-            elif section.display_mode is not DisplayMode.WEEKLY_CELLS:
+            elif section.repeat_by is not RepeatBy.WEEK:
                 fail(
                     ProposalValidationCode.SECTION_PLACEMENT_MISMATCH,
                     value.section_key,
@@ -534,7 +534,7 @@ def validate_monthly_proposal_schema(
         section.section_key
         for section in snapshot.sections
         if section.role is SectionRole.CONTENT
-        and section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+        and section.repeat_by is RepeatBy.NONE
         and section.required_for_generation
     }
     missing_month = required_month - set(month_keys)
@@ -548,7 +548,7 @@ def validate_monthly_proposal_schema(
         section.section_key
         for section in snapshot.sections
         if section.role is SectionRole.CONTENT
-        and section.display_mode is DisplayMode.WEEKLY_CELLS
+        and section.repeat_by is RepeatBy.WEEK
         and section.required_for_generation
         and (section.section_key != "safety_education" or section.section_key in targets)
     }

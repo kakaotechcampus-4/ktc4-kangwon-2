@@ -1,4 +1,7 @@
-"""계획안을 hwpx 로 내보낸다. 한글이 만든 양식 파일의 표 칸 글자만 갈아끼우고 다시 압축한다.
+"""hwpx 로 내보낸다. 한글이 만든 양식 파일의 표 칸 글자만 갈아끼우고 다시 압축한다.
+
+계획안(features/plans)과 일지(features/documents)가 같이 쓴다. 양식 파일은 각 feature 의
+`templates/` 에 둔다.
 
 **표를 새로 그리지 않는다.** `header.xml`(글꼴·문단 모양·테두리)을 손으로 쓰면 한글이
 파일을 안 여는 경로가 수십 개 생긴다. 한글이 저장한 양식을 그대로 두고 `hp:t` 만 바꾼다.
@@ -14,12 +17,13 @@ import copy
 import io
 import re
 import zipfile
-from collections.abc import Sequence
-from pathlib import Path
+from collections.abc import Callable, Sequence
+from urllib.parse import quote
 
+from fastapi import Response
 from lxml import etree
 
-TEMPLATE_DIR = Path(__file__).parent / "templates"
+MEDIA_TYPE = "application/hwp+zip"
 
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
 OPF = "http://www.idpf.org/2007/opf/"
@@ -51,6 +55,92 @@ def fill_table(
     `header_rows` 줄은 양식의 머리행이라 건드리지 않는다. 칸 안의 줄바꿈(`\\n`)은
     문단을 나눠 담는다 — 한글은 `hp:t` 안의 줄바꿈 문자를 줄로 보지 않는다.
     """
+
+    def fill(table: etree._Element) -> None:
+        cells = _cells(table)
+        height, width = int(table.get("rowCnt")), int(table.get("colCnt"))
+        if height != header_rows + len(rows):
+            raise TemplateMismatch(
+                f"양식 표는 {height}줄인데 머리행 뒤로 {len(rows)}줄을 채우려 한다."
+            )
+        for r, row in enumerate(rows, start=header_rows):
+            if len(row) != width:
+                raise TemplateMismatch(f"양식 표는 {width}칸인데 {len(row)}칸을 채우려 한다.")
+            for c, text in enumerate(row):
+                _set_text(cells[(r, c)], text)
+
+    return _rewrite(template, title, fill)
+
+
+def fill_grid(
+    template: bytes,
+    title: str,
+    header_rows: int,
+    rows: Sequence[Sequence[str]],
+    footer: Sequence[Sequence[str]],
+) -> bytes:
+    """양식 표의 본문 한 줄을 `rows` 만큼 복제해 채운다. 줄 수가 날마다 다른 일지용이다.
+
+    양식 표는 머리행 `header_rows` 줄 · 빈 본문 원형 1줄 · 꼬리 줄들로 되어 있어야 한다.
+    `footer` 는 꼬리 줄마다 **그 줄에 실제로 있는 칸** 순서대로의 글자다 — 병합된 칸은 하나로 센다.
+
+    한글은 칸마다 적힌 (행, 열) 주소와 표의 `rowCnt` 로 표를 그린다. 줄을 끼워 넣으면 그 아래
+    칸의 주소와 `rowCnt` 를 같이 밀어야 한다 — 하나라도 어긋나면 한글이 파일을 안 연다.
+    """
+
+    def fill(table: etree._Element) -> None:
+        trs = table.findall("hp:tr", NS)
+        if len(trs) != header_rows + 1 + len(footer):
+            raise TemplateMismatch(
+                f"양식 표는 {len(trs)}줄인데 "
+                f"머리행 {header_rows} · 원형 1 · 꼬리 {len(footer)}줄을 기대한다."
+            )
+        if not rows:
+            raise ValueError("본문 줄이 없다.")
+        prototype, tail = trs[header_rows], trs[header_rows + 1 :]
+        width = int(table.get("colCnt"))
+        if len(prototype.findall("hp:tc", NS)) != width:
+            raise TemplateMismatch("본문 원형 줄에 병합된 칸이 있다.")
+
+        extra = len(rows) - 1
+        for tr in tail:
+            for tc in tr.findall("hp:tc", NS):
+                addr = tc.find("hp:cellAddr", NS)
+                addr.set("rowAddr", str(int(addr.get("rowAddr")) + extra))
+
+        # 복제는 채우기 전의 빈 원형에서 뜬다 — 채운 줄을 복제하면 앞 줄 서식이 번진다.
+        blank = copy.deepcopy(prototype)
+        anchor = prototype
+        for i, row in enumerate(rows):
+            if len(row) != width:
+                raise TemplateMismatch(f"양식 표는 {width}칸인데 {len(row)}칸을 채우려 한다.")
+            if i == 0:
+                tr = prototype
+            else:
+                tr = copy.deepcopy(blank)
+                anchor.addnext(tr)
+                anchor = tr
+            for tc, text in zip(tr.findall("hp:tc", NS), row, strict=True):
+                tc.find("hp:cellAddr", NS).set("rowAddr", str(header_rows + i))
+                _set_text(tc, text)
+
+        table.set("rowCnt", str(int(table.get("rowCnt")) + extra))
+        size = table.find("hp:sz", NS)
+        row_height = max(int(sz.get("height")) for sz in blank.iterfind("hp:tc/hp:cellSz", NS))
+        size.set("height", str(int(size.get("height")) + extra * row_height))
+
+        for tr, texts in zip(tail, footer, strict=True):
+            tcs = tr.findall("hp:tc", NS)
+            if len(tcs) != len(texts):
+                raise TemplateMismatch(f"꼬리 줄은 {len(tcs)}칸인데 {len(texts)}칸을 채우려 한다.")
+            for tc, text in zip(tcs, texts, strict=True):
+                _set_text(tc, text)
+
+    return _rewrite(template, title, fill)
+
+
+def _rewrite(template: bytes, title: str, fill: Callable[[etree._Element], None]) -> bytes:
+    """양식을 풀어 첫 번째 표를 `fill` 로 채우고, 제목 · 문서 정보 · 미리보기를 맞춰 다시 묶는다."""
     with zipfile.ZipFile(io.BytesIO(template)) as src:
         infos = src.infolist()
         parts = {info.filename: src.read(info.filename) for info in infos}
@@ -59,17 +149,8 @@ def fill_table(
     table = section.find(".//hp:tbl", NS)
     if table is None:
         raise TemplateMismatch("양식에 표가 없습니다.")
-    cells = _cells(table)
-    height, width = int(table.get("rowCnt")), int(table.get("colCnt"))
-    if height != header_rows + len(rows):
-        raise TemplateMismatch(f"양식 표는 {height}줄인데 머리행 뒤로 {len(rows)}줄을 채우려 한다.")
-
+    fill(table)
     _set_title(section, title)
-    for r, row in enumerate(rows, start=header_rows):
-        if len(row) != width:
-            raise TemplateMismatch(f"양식 표는 {width}칸인데 {len(row)}칸을 채우려 한다.")
-        for c, text in enumerate(row):
-            _set_text(cells[(r, c)], text)
 
     parts[SECTION] = _dump(section)
     parts[PACKAGE] = _package(parts[PACKAGE], title)
@@ -81,6 +162,17 @@ def fill_table(
         for info in infos:
             dst.writestr(info, parts[info.filename], compress_type=info.compress_type)
     return out.getvalue()
+
+
+def download(content: bytes, fallback_name: str, title: str) -> Response:
+    """내려받기 응답. 한글 파일명은 filename* 로만 안전하게 간다.
+
+    filename 은 그걸 못 읽는 브라우저용이라 영문(`fallback_name`)으로 둔다.
+    """
+    disposition = (
+        f"attachment; filename=\"{fallback_name}.hwpx\"; filename*=UTF-8''{quote(title + '.hwpx')}"
+    )
+    return Response(content, media_type=MEDIA_TYPE, headers={"Content-Disposition": disposition})
 
 
 def _cells(table: etree._Element) -> dict[tuple[int, int], etree._Element]:
