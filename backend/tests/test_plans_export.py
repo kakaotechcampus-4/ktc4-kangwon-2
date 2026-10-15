@@ -11,8 +11,9 @@ from fastapi.testclient import TestClient
 from lxml import etree
 
 from app.features.centers.models import Center, Class
-from app.features.plans.hwpx import NS, TEMPLATE_DIR, TemplateMismatch, fill_table
+from app.features.plans.export import TEMPLATE_DIR
 from app.main import app
+from app.shared.hwpx import NS, TemplateMismatch, fill_table
 
 client = TestClient(app)
 

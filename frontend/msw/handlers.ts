@@ -23,6 +23,7 @@ const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
 const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
+const MOCK_INVITE = "MOCK234567";
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = await request.json();
@@ -71,6 +72,30 @@ export const handlers = [
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+  }),
+  // 초대 코드 (§1-1). 목업은 계정이 하나라 코드를 하나로 고정한다.
+  http.post("*/api/centers/:centerId/invites", ({ params }) => {
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const expires_at = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+    return HttpResponse.json({ code: MOCK_INVITE, expires_at }, { status: 201 });
+  }),
+  http.post("*/api/centers/join", async ({ request }) => {
+    const b = await body(request);
+    if (!b || !text(b.code)) return bad("code");
+    // 실제 서버와 같은 순서다 — 이미 원이 있으면 409, 코드가 틀리면 404.
+    if (currentCenterId() !== null) return failure("ALREADY_EXISTS", "이미 등록한 원이 있습니다.");
+    if (b.code.trim().toUpperCase() !== MOCK_INVITE)
+      return failure("NOT_FOUND", "초대 코드가 없거나 만료됐습니다.", "code");
+    // 목업은 계정이 하나라 초대한 원이 없다. 들어갈 원을 그 자리에서 만든다.
+    return HttpResponse.json(
+      addCenter({
+        name: "초대받은 어린이집",
+        director_name: "김원장",
+        region_sido: "강원특별자치도",
+        region_sigungu: "춘천시",
+      }),
+    );
   }),
   http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
     const s = await scenario(request, "greetings");

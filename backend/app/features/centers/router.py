@@ -1,16 +1,18 @@
 """원 API. 계약은 docs/api-spec.md §1 · §2 다."""
 
-from datetime import UTC, datetime
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.features.auth.models import User
 from app.features.centers.greetings import default_greetings
-from app.features.centers.models import Center, Class, Greetings
+from app.features.centers.models import Center, CenterInvite, Class, Greetings
 from app.features.centers.schemas import (
     CenterCreate,
     CenterResponse,
@@ -18,6 +20,8 @@ from app.features.centers.schemas import (
     ClassListResponse,
     ClassResponse,
     GreetingsSettings,
+    InviteResponse,
+    JoinRequest,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_center
@@ -76,6 +80,71 @@ def create_center(
     session.commit()
     session.refresh(center)
     return center
+
+
+# 헷갈리는 글자(0·O·1·I·L)를 뺐다. 교사가 단톡방에서 보고 옮겨 적는다.
+INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+INVITE_LENGTH = 10  # 31^10 ≈ 8×10^14. 7일 · 1회용이라 맞혀 볼 수 없다
+INVITE_TTL = timedelta(days=7)
+
+
+@router.post(
+    "/{center_id}/invites", response_model=InviteResponse, status_code=status.HTTP_201_CREATED
+)
+def create_invite(center_id: int, session: DbSession, user: CurrentUser) -> CenterInvite:
+    """같은 원 교사를 들이는 1회용 코드를 만든다 (§1-1). 자기 원에만 만들 수 있다."""
+    require_own_center(user, center_id)
+    invite = CenterInvite(
+        center_id=center_id,
+        code="".join(secrets.choice(INVITE_ALPHABET) for _ in range(INVITE_LENGTH)),
+        created_by=user.id,
+        expires_at=datetime.now(UTC) + INVITE_TTL,
+    )
+    session.add(invite)
+    session.commit()
+    return invite
+
+
+_ALREADY_JOINED = HTTPException(
+    status_code=status.HTTP_409_CONFLICT,
+    detail={"code": "ALREADY_EXISTS", "message": "이미 등록한 원이 있습니다.", "fields": []},
+)
+
+
+@router.post("/join", response_model=CenterResponse)
+def join_center(body: JoinRequest, session: DbSession, user: CurrentUser) -> Center:
+    """초대 코드로 원에 들어간다 (§1-1). 이미 원이 있으면 `create_center` 와 같은 409 다."""
+    if user.center_id is not None:
+        raise _ALREADY_JOINED
+    now = datetime.now(UTC)
+    # 행을 잠근다. 두 교사가 같은 코드를 동시에 내면 한 명만 들어간다.
+    invite = session.scalar(
+        select(CenterInvite).where(CenterInvite.code == body.code.upper()).with_for_update()
+    )
+    # 없는 코드 · 쓴 코드 · 만료된 코드를 구분하지 않는다. 구분해 주면 맞혀 보는 쪽에 힌트다.
+    if invite is None or invite.used_at is not None or invite.expires_at <= now:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "NOT_FOUND",
+                "message": "초대 코드가 없거나 만료됐습니다.",
+                "fields": ["code"],
+            },
+        )
+    # 원이 비어 있을 때만 넣는다. 같은 교사가 코드 두 개를 동시에 내면 위 검사는 둘 다
+    # 통과하지만, 이 UPDATE 는 먼저 커밋한 쪽만 행을 바꾼다 — 늦은 쪽 코드는 쓰이지 않는다.
+    joined = session.execute(
+        update(User)
+        .where(User.id == user.id, User.center_id.is_(None))
+        .values(center_id=invite.center_id)
+    ).rowcount
+    if not joined:
+        session.rollback()
+        raise _ALREADY_JOINED
+    invite.used_by = user.id
+    invite.used_at = now
+    session.commit()
+    return session.get(Center, invite.center_id)
 
 
 @router.post(
