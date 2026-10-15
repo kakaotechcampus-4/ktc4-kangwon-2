@@ -74,12 +74,12 @@ export function useClasses(onError?: (message: string) => void) {
       const adopted = await adoptServerClasses(local, (name) =>
         onError?.(`${name || "반"}의 아동 명단을 못 불러왔어요. 페이지를 새로고침해주세요.`),
       );
-      if (!live || !adopted.length) return;
+      if (!adopted.length) return;
       const next = [...local, ...adopted];
-      setClasses(next);
-      // **저장해 둬야 한다.** React state 에만 두면 다른 화면으로 넘어가는 순간 사라지고,
-      // 연결이 생긴 뒤라 다음 방문에는 들이지도 않는다. 사이드바·홈도 저장소를 본다.
+      // **저장이 먼저다.** 화면을 떠났어도 연결은 이미 저장됐다. 여기서 건너뛰면 다음
+      // 방문에 「교사가 지운 반」으로 보여 영영 안 들어온다. 사이드바·홈도 저장소를 본다.
       saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
+      if (live) setClasses(next);
     })().catch(() => {
       if (live) onError?.("반 정보를 불러오지 못했어요. 페이지를 새로고침해주세요.");
     });

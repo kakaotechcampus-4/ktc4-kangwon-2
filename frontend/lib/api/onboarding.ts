@@ -7,6 +7,9 @@ import { createCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
 import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
+/** 서버에서 받아온 연결이라는 표시. 화면이 그 내용을 들고 있지 않아 서명을 만들 수 없다. */
+const ADOPTED = "adopted";
+
 interface Binding {
   id: number;
   signature: string;
@@ -96,6 +99,11 @@ async function syncCenterOnce(settings: ClassSettings) {
     signature = JSON.stringify(data),
     links = readLinks();
   if (links.center?.signature === signature) return links.center.id;
+  // **서버에서 받아온 원은 그대로 쓴다.** 초대받았거나 기기를 바꾼 교사는 원 정보를
+  // 화면에 들고 있지 않아 서명이 영영 안 맞는다. 그때마다 원을 새로 만들면 원이 쌓이고
+  // (서버가 거절하기도 한다) links.classes 까지 비워서 방금 들인 반이 날아간다.
+  // 그 교사의 원 정보 수정은 서버에 반영되지 않는다 — 원 수정 API 가 생겨야 풀린다.
+  if (links.center?.signature === ADOPTED) return links.center.id;
   // P0 has no center update endpoint: retain old server objects, create a new snapshot.
   const center = await createCenter(data);
   links.center = { id: center.id, signature };
@@ -163,6 +171,9 @@ export async function adoptServerClasses(
   const { items } = await getClasses(me.center_id);
   const links = readLinks();
   const linked = new Set(known.map((c) => links.classes[c.id]?.id).filter(Boolean));
+  // 원 연결을 서버 값으로 만들어 둔다. 없으면 syncCenter 가 원을 새로 만들면서
+  // links.classes · links.children 을 통째로 비운다.
+  if (!links.center) links.center = { id: me.center_id, signature: ADOPTED };
   const retired = new Set(links.retired ?? []);
   const adopted: ClassroomEntry[] = [];
   for (const item of items) {
@@ -191,8 +202,8 @@ export async function adoptServerClasses(
     links.classes[entry.id] = { id: item.id, signature: classSignature(entry) };
     adopted.push(entry);
   }
+  saveLinks(links); // 들인 반이 없어도 원 연결은 남긴다
   if (!adopted.length) return [];
-  saveLinks(links);
   // 아동 명단은 links 를 저장한 뒤에 받는다 — loadServerChildren 이 그 연결을 본다.
   // 한 반의 명단을 못 받아도 나머지 반은 보여준다 — 하나가 막아서 전부 사라지면
   // 저장소가 빈 교사에게는 화면이 통째로 빈다 (frontend/CLAUDE.md 오류 표시 규칙).

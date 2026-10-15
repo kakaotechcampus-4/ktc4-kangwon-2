@@ -172,33 +172,25 @@ test("★ 들인 반의 서명이 syncClass 가 계산하는 것과 같다", asy
 });
 
 /**
- * **아직 안 막은 자리 — 알고 두는 것.**
+ * **원 연결을 만들어 두는 이유.**
  *
  * `syncCenter` 는 `links.center` 가 없으면 원을 새로 만들고 `links.classes` 를 통째로
- * 비운다("P0 has no center update endpoint"). 초대받은 교사는 `links.center` 가 없다.
- * 그 사람이 `syncClasses` 를 타면 원과 반과 아이가 전부 복제된다.
+ * 비운다 — 서버에 원 수정 API 가 없어서 그렇게 돼 있다("P0 has no center update endpoint").
+ * 초대받은 교사는 원 정보를 화면에 들고 있지 않으니 서명이 영영 안 맞는다. 그대로 두면
+ * 계획안 화면에 들어가는 것만으로 원이 하나 더 생기고 방금 들인 반이 날아간다.
  *
- * **지금은 닿지 않는다** — `syncClasses` 를 부르는 곳이 온보딩뿐이고, 초대받은 교사는
- * 온보딩을 건너뛴다. 설정 화면은 `saveClassSettings`(브라우저 저장)만 한다.
- *
- * 제대로 막으려면 서버에 원 단건 조회(`GET /api/centers/{id}`)가 있어야 한다 —
- * 그래야 원 정보를 되읽어 `links.center` 의 서명을 복원할 수 있다. 지금은 없다.
+ * 그래서 들일 때 서버의 원 id 로 연결을 만들고 「받아온 것」이라고 표시해 둔다.
+ * **그 교사가 원 정보를 고치면 서버에 반영되지 않는다** — 원 수정 API 가 생겨야 풀린다.
  */
-test("초대받은 교사에게는 원 연결이 없다 — syncClasses 를 타면 안 되는 상태다", async () => {
+test("★ 서버의 원 id 로 원 연결을 만든다 — syncCenter 가 원을 또 만들지 않게", async () => {
   browser();
   api();
   await onboarding.adoptServerClasses([]);
   const links = JSON.parse(localStorage.getItem(linksKey()) ?? "{}");
-  assert.equal(links.center, undefined, "원 연결은 만들지 않는다 — 서버에 되읽을 길이 없다");
+  assert.equal(links.center.id, 3, "me.center_id 를 그대로 쓴다");
+  assert.equal(links.center.signature, "adopted", "받아온 연결이라고 표시해 둔다");
 });
 
-/**
- * **id 를 두 벌 만들지 않는다.**
- *
- * 기록 쪽(`documents.ts` · `observations.ts`)은 연결이 없는 서버 id 를 만나면
- * `server-class:7` 로 푼다. 반을 들일 때 다른 이름을 붙이면, 기록이 먼저 도착한 화면에서는
- * 그 반을 골라도 기록이 하나도 안 보이고 고칠 수도 없다. 두 규칙이 같은지 여기서 지킨다.
- */
 test("★ 들인 반·아이의 id 가 기록 쪽 규칙과 같다", async () => {
   browser();
   api({ children: [{ id: 11, class_id: 7, name: "하린", code: "민준" }] });
