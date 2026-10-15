@@ -125,6 +125,22 @@ export interface ConfirmResult {
   status: "CONFIRMED";
   confirmed_at: string;
 }
+/**
+ * 연간계획안 변경 이력 하나 (`GET /api/plans/annual/{id}/audit`, 서버 `AuditEventOut`).
+ * **다섯 키가 항상 온다** — 해당이 없으면 null. 위치는 `month` 하나다(월간의 칸 주소는 없다).
+ * 바뀐 값 · 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
+ */
+export interface AnnualAuditEvent {
+  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED";
+  /** ISO 8601, 시간대 포함. */
+  occurred_at: string;
+  /** 그 달 theme 의 이벤트면 그 달(1~12). 계획안 단위(생성 · 확정)면 null. */
+  month: number | null;
+  /** 사람이 한 일이면 opaque id(`user_7`). 시스템이면 null. */
+  actor: string | null;
+  /** 시스템이 한 일(생성)이면 그 표시(`yearly_application`). 사람이면 null. */
+  system_actor: string | null;
+}
 /** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
 export interface ProfileRef {
   profile_id: string;
