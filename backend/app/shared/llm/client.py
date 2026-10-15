@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Mapping
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -18,6 +19,9 @@ from urllib.parse import urlparse
 
 from app.config import settings
 from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
+
+# #100 이 만든 로거를 그대로 쓴다. 한 줄로 남기고 아동 정보는 찍지 않는다.
+logger = logging.getLogger("app.server")
 
 # 층마다 다른 모델을 쓰면 같은 문서 안에서 문체가 갈린다. p0-planning 과 같은 값이다.
 #
@@ -72,6 +76,7 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
         },
         timeout=TIMEOUT_SECONDS,
     )
+    _log_usage(result)
     try:
         content = result["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
@@ -79,6 +84,29 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
     if not isinstance(content, str) or not content.strip():
         raise LlmFailed("응답이 비었다")
     return content
+
+
+def _log_usage(result: object) -> None:
+    """이번 호출에 쓴 토큰을 한 줄 남긴다.
+
+    **숫자 네 개만 적는다.** 프롬프트에는 아동 이름이 들어갈 수 있어서 내용은 한 글자도
+    찍지 않는다 (ADR-004). 로거와 「한 줄로 남긴다」 규칙은 #100 이 깔아 둔 것을 쓴다.
+
+    **키가 팀 공용이라 이것 말고는 누가 얼마나 썼는지 볼 방법이 없다.** 엘리스 대시보드는
+    팀 전체 합계만 준다 — 생성 한 번이 얼마인지, 파일럿 30건이 얼마인지 알 수 없다.
+    합계는 `scripts/llm-usage.sh` 가 이 줄들을 긁어서 낸다.
+    """
+    usage = result.get("usage") if isinstance(result, Mapping) else None
+    if not isinstance(usage, Mapping):
+        # 모델이 usage 를 안 줄 수도 있다. 그것 때문에 생성을 실패시키지 않는다.
+        return
+    logger.info(
+        "llm_usage model=%s prompt=%s completion=%s total=%s",
+        MODEL,
+        usage.get("prompt_tokens", "-"),
+        usage.get("completion_tokens", "-"),
+        usage.get("total_tokens", "-"),
+    )
 
 
 def _post_json(
