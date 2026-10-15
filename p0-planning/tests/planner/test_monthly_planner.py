@@ -9,7 +9,7 @@ from ssuksak.adapters.deterministic_monthly_llm import DeterministicMonthlyLlm
 from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
 )
-from ssuksak.planning.domain.monthly_template import DisplayMode
+from ssuksak.planning.domain.monthly_template import RepeatBy
 from ssuksak.planning.planner.cell_prompt import CELL_SYSTEM_PROMPT, build_monthly_cell_request
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
@@ -434,7 +434,7 @@ def test_institution_input_sections_stay_outside_the_llm_boundary(
     packet, snapshot, section_key
 ):
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     )
     assert template is not None
     snapshot = replace(
@@ -445,7 +445,7 @@ def test_institution_input_sections_stay_outside_the_llm_boundary(
                 template.section(section_key),
                 activated=True,
                 display_label="Institution input",
-                display_mode=DisplayMode.WEEKLY_CELLS,
+                repeat_by=RepeatBy.WEEK,
                 visible=True,
             ),
         ),
@@ -674,7 +674,7 @@ WEEK_1 = WeekId("2026-09-W1")
 
 def _with_goals_and_basic_habit(snapshot):
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     )
     assert template is not None
     return replace(
@@ -841,7 +841,7 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v17"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v18"),
         (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v9"),
     ],
     ids=["monthly", "cell"],
@@ -1130,7 +1130,7 @@ def test_repairable_finding_gets_one_targeted_repair_with_locators(packet, snaps
 
 
 def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v12"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v13"
     assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
     assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
     for rule in (
@@ -1630,7 +1630,7 @@ def test_initial_and_repair_prompts_scope_reference_id_to_supplied_catalogs():
         assert "A reference cell returns one reference_id and value pair allowed by the response schema" in flat
         assert ("Return the locked theme exactly with its supplied reference_id and text, and "
                 "grounding_refs as []; its parent plan already grounds it.") in flat
-    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v17"
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v18"
 
 
 def test_the_repair_prompt_is_finding_directed():
@@ -1646,7 +1646,7 @@ def test_the_repair_prompt_is_finding_directed():
     assert "TEXT_TOO_LONG: keep the same meaning and cited refs; remove repetition and unnecessary modifiers" in flat
     assert f"over {MAX_VISIBLE_TEXT_CHARS} characters; that is a hard ceiling, not a target length" in flat
     assert MAX_VISIBLE_TEXT_CHARS == 240  # the validator's limit, not a new number
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v12"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v13"
 
 
 # ---------------------------------------------------------------- reference_id capability
@@ -1861,7 +1861,7 @@ def test_the_initial_prompt_gives_goals_a_target_below_the_ceiling():
     assert "For goals, write one concise Korean summary of the month's key goals, usually about 120 to 160 characters" in flat
     assert "do not list each institution's goals or try to include every evidence phrase" in flat
     assert str(MAX_VISIBLE_TEXT_CHARS) not in MONTHLY_SYSTEM_PROMPT  # the ceiling is never shown as a target
-    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v17"
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v18"
 
 
 def test_the_goals_target_applies_to_goals_only():

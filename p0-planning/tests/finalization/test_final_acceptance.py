@@ -12,7 +12,7 @@ from ssuksak.adapters.institution_evidence_repository import (
 )
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
-from ssuksak.planning.domain.monthly_template import DisplayMode, SectionRole
+from ssuksak.planning.domain.monthly_template import RepeatBy, SectionRole
 from ssuksak.planning.domain.plan import PlanStatus
 from ssuksak.planning.domain.provenance import (
     AuditEventType,
@@ -125,7 +125,7 @@ def test_extended_profile_final_acceptance(ages, month):
             section.section_key,
             section.order,
             section.display_label,
-            section.display_mode,
+            section.repeat_by,
             section.semantic_variant,
             section.required_for_generation,
             section.visible,
@@ -148,19 +148,19 @@ def test_extended_profile_final_acceptance(ages, month):
     assert plan.target_ages == ages
 
     # Placement: weekly Sections have one cell per active week, merged ones a single week-less cell.
-    placements = {section.section_key: section.display_mode for section in plan.sections}
-    assert {key for key, mode in placements.items() if mode is DisplayMode.WEEKLY_CELLS} == {
+    placements = {section.section_key: section.repeat_by for section in plan.sections}
+    assert {key for key, mode in placements.items() if mode is RepeatBy.WEEK} == {
         "outdoor_play", "safety_education", "focus", "basic_habit"
     }
     assert {
-        key for key, mode in placements.items() if mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+        key for key, mode in placements.items() if mode is RepeatBy.NONE
     } == {"theme", "goals"}
     for section in plan.sections:
         expected = {
-            DisplayMode.WEEKLY_CELLS: week_ids,
-            DisplayMode.MONTHLY_MERGED_SUMMARY: (None,),
+            RepeatBy.WEEK: week_ids,
+            RepeatBy.NONE: (None,),
             None: (),
-        }[section.display_mode]
+        }[section.repeat_by]
         assert tuple(cell.week_id for cell in section.cells) == expected
 
     # Provenance: Evidence, Generation Method and Audit stay separate; LLM use is a Method.
