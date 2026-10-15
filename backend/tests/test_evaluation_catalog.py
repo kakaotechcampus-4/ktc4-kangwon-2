@@ -216,6 +216,12 @@ def test_v2_는_승인만_받으면_바로_돌아간다():
     assert loaded.checklist_version == "daycare-evaluation-indicators-v2"
     assert sum(len(item.elements) for item in loaded.indicators) == 19
     assert {i.indicator: len(i.elements) for i in loaded.indicators if i.kind == "SELF_CHECK"} == {
-        "5-1": 3, "5-2": 3, "5-3": 2, "6-1": 2, "6-2": 3, "6-3": 3, "6-4": 3,
+        "5-1": 3,
+        "5-2": 3,
+        "5-3": 2,
+        "6-1": 2,
+        "6-2": 3,
+        "6-3": 3,
+        "6-4": 3,
     }
     assert all(e.text.strip() for i in loaded.indicators for e in i.elements)
