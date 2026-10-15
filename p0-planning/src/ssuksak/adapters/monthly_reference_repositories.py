@@ -13,8 +13,8 @@ from .safety_placement_schema import parse_safety_placement_payload
 from .safety_rule_schema import parse_safety_rule_payload
 
 _DATA = Path(__file__).resolve().parents[3] / "data"
-DEFAULT_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a.json"
-FOCUS_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a_v0_2_0.json"
+DEFAULT_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a_v0_1_1.json"
+FOCUS_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a_v0_2_1.json"
 DEFAULT_SAFETY_RULE_PATH = _DATA / "rules" / "safety_education_legal_v1.json"
 DEFAULT_SAFETY_PLACEMENT_PATH = _DATA / "rules" / "safety_placement_policy_v1.json"
 SAFETY_PLACEMENT_PATHS = (DEFAULT_SAFETY_PLACEMENT_PATH, _DATA / "rules" / "safety_placement_policy_v2.json")

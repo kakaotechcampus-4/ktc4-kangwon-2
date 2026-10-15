@@ -6,8 +6,8 @@ import pytest
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_plan import MonthlyPlan, MonthlySection
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
     EmptyValuePolicy,
+    RepeatBy,
     SectionCategory,
     SectionRole,
     TemplateRef,
@@ -32,6 +32,7 @@ from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.domain.yearly_plan import YearlyPeriod, YearlyPlan
 from ssuksak.planning.rules.academic_periods import academic_year_periods
 from ssuksak.planning.rules.errors import MonthlyRuleError
+from ssuksak.planning.rules.monthly_template_resolver import ResolvedSection
 from ssuksak.planning.rules.monthly_theme_derivation import derive_monthly_theme
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 
@@ -40,17 +41,17 @@ NOW = datetime(2026, 9, 19, 1, tzinfo=UTC)
 
 def _template_snapshot() -> TemplateSnapshot:
     section_specs = (
-        ("theme", SectionRole.CONTENT, DisplayMode.MONTHLY_MERGED_SUMMARY),
+        ("theme", SectionRole.CONTENT, RepeatBy.NONE),
         ("week_axis", SectionRole.AXIS, None),
-        ("outdoor_play", SectionRole.CONTENT, DisplayMode.WEEKLY_CELLS),
-        ("safety_education", SectionRole.CONTENT, DisplayMode.WEEKLY_CELLS),
+        ("outdoor_play", SectionRole.CONTENT, RepeatBy.WEEK),
+        ("safety_education", SectionRole.CONTENT, RepeatBy.WEEK),
     )
     sections = tuple(
         TemplateSection(
             section_key=key,
             role=role,
             activated=True,
-            display_mode=display_mode,
+            repeat_by=repeat_by,
             empty_value_policy=(
                 None
                 if role is SectionRole.AXIS
@@ -62,7 +63,7 @@ def _template_snapshot() -> TemplateSnapshot:
             required_for_generation=True,
             visible=True,
         )
-        for order, (key, role, display_mode) in enumerate(section_specs)
+        for order, (key, role, repeat_by) in enumerate(section_specs)
     )
     return TemplateSnapshot.from_profile(
         TemplateProfile(
@@ -76,12 +77,26 @@ def _template_snapshot() -> TemplateSnapshot:
     )
 
 
+def test_repeat_by_sets_cell_count_and_week_addressing():
+    """repeat_by is the repetition/addressing unit: NONE -> one month cell, WEEK -> one per active week."""
+    counts = {
+        section.section_key: ResolvedSection(section).cell_count_for(5)
+        for section in _template_snapshot().sections
+    }
+
+    assert counts == {"theme": 1, "week_axis": 0, "outdoor_play": 5, "safety_education": 5}
+    with pytest.raises(MonthlyRuleError, match="repeat_by"):
+        ResolvedSection(
+            TemplateSection(section_key="x", role=SectionRole.CONTENT, activated=True)
+        ).cell_count_for(5)
+
+
 def _monthly_sections(snapshot: TemplateSnapshot) -> tuple[MonthlySection, ...]:
     return tuple(
         MonthlySection(
             section_key=section.section_key,
             role=section.role,
-            display_mode=section.display_mode,
+            repeat_by=section.repeat_by,
             empty_value_policy=(
                 section.empty_value_policy
                 or EmptyValuePolicy.RENDER_EMPTY_CELL
