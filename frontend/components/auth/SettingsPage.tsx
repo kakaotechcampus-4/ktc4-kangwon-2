@@ -5,7 +5,13 @@ import { useClientState, useHydrated } from "@/lib/hooks/use-client-state";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
 import { EMPTY_CLASS_SETTINGS, MONTH_ORDER, type CharacterMessages } from "@/lib/onboarding/types";
 import { getCurrentUser } from "@/lib/api/auth";
-import { getGreetings, saveGreetings, type Greetings } from "@/lib/api/centers";
+import {
+  createInvite,
+  getGreetings,
+  saveGreetings,
+  type Greetings,
+  type Invite,
+} from "@/lib/api/centers";
 import { captureSession } from "@/lib/auth/request-session";
 import { StepCharacterMessages } from "@/components/onboarding/OnboardingPage";
 import { Message, WorkspacePage, ws } from "@/components/workspace/WorkspaceUI";
@@ -145,6 +151,46 @@ export default function SettingsPage() {
           )}
         </section>
       )}
+      {centerId !== null && <InviteCard centerId={centerId} />}
     </WorkspacePage>
+  );
+}
+
+/** 같은 원 선생님을 부르는 1회용 코드 (§1-1). 코드는 화면에만 띄우고 브라우저에 저장하지 않는다. */
+function InviteCard({ centerId }: { centerId: number }) {
+  const [invite, setInvite] = useState<Invite | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function create() {
+    setBusy(true);
+    setError("");
+    try {
+      setInvite(await createInvite(centerId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "초대 코드를 만들지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={ws.card} style={{ marginTop: 24 }}>
+      <h2>같은 원 선생님 초대</h2>
+      <p>
+        코드를 받은 선생님이 첫 설정 화면에서 입력하면 우리 원에 함께 들어와요. 코드는 한 번만 쓸 수
+        있고 7일 뒤에 사라져요.
+      </p>
+      {invite && (
+        <p role="status">
+          초대 코드 <strong style={{ fontSize: 20, letterSpacing: 2 }}>{invite.code}</strong> ·{" "}
+          {new Date(invite.expires_at).toLocaleDateString("ko-KR")}까지
+        </p>
+      )}
+      {error && <Message error>{error}</Message>}
+      <button type="button" className={ws.secondary} onClick={create} disabled={busy}>
+        {busy ? "만들고 있어요." : invite ? "새 코드 만들기" : "초대 코드 만들기"}
+      </button>
+    </section>
   );
 }

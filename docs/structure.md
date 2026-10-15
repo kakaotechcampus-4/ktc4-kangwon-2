@@ -76,9 +76,10 @@ app/
 | `centers` | 원 · 반 · 아동 명단 · 성품인사 |
 | `activities` | 활동 풀 |
 | `plans` | 연간 · 월간 · 주간 계획안. `rules/verify.py` 는 만들어진 계획안을 검사한다(ADR-014) |
-| `forms` | 원이 등록한 양식의 파싱 결과(ADR-020). parse 는 저장하지 않는다 |
+| `forms` | 원이 등록한 양식의 파싱 결과 · 원본 저장 · 숨김(ADR-020 · ADR-026). parse 는 저장하지 않는다 |
+| `documents` | 일지 · 평가 문서. 다른 기능은 `service.py` 창구로 읽는다 |
 | `trends` | 트렌드 소재. 승인은 저장소 파일이고 큐가 아니다(ADR-016) |
-| `evaluation` | 평가제 대조 — 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
+| `evaluation` | 평가제 대조 — 라우터 GET · PUT · 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
 
 ### 규칙
 
@@ -115,6 +116,7 @@ app/
 | `auth` | 인증 |
 | `audit` | 변경 이력 |
 | `childCode` | 아동 실명 ↔ 코드 치환 |
+| `hwpx.py` | hwpx 내보내기 — 양식 표 칸 글자만 바꾼다(ADR-021). 양식 파일은 각 feature 의 `templates/` |
 
 `childCode` 는 구현됐다(ADR-004). 나머지 5개는 빈 `__init__.py` 만 있고 각 담당자가 채운다.
 
@@ -246,6 +248,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 | `lib/` | 화면이 아닌 것 — API 호출 · 목업 데이터 모델 · 훅 |
 | `msw/` | 목업 서버 핸들러. 브라우저용 워커는 `public/mockServiceWorker.js` |
 | `tests/` | `node --test` 로 도는 테스트 |
+| `e2e/` | Playwright 브라우저 테스트. `npm run e2e` 로만 돈다 — 아래 「E2E」 |
 | `styles/` | 폰트 `@font-face` 와 디자인 토큰 |
 | `public/fonts/` | 서브셋 woff2 |
 | `package-lock.json` | 버전 고정. **반드시 커밋한다** |
@@ -265,7 +268,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 
 | 파일 | 무엇을 하는가 |
 |---|---|
-| `.github/workflows/ci.yml` | PR 마다 Ruff · pytest · alembic check · backend 이미지 빌드 · ESLint · Prettier · `next build` |
+| `.github/workflows/ci.yml` | PR 마다 Ruff · pytest · alembic check · backend 이미지 빌드 · ESLint · Prettier · `next build` · E2E |
 | `.github/workflows/deploy.yml` | `main` push 시 배포. 아직 골격만 |
 | `.github/pull_request_template.md` | PR 템플릿 |
 
@@ -291,3 +294,22 @@ curl -f http://localhost:8000/health
 
 `.env.example` 의 `DATABASE_URL` 호스트는 `db` 다.
 Docker 밖에서 uvicorn 을 직접 띄우면 `localhost` 로 바꾼다.
+
+### E2E
+
+`frontend/e2e/` 는 띄워 둔 서버에 붙기만 한다. DB · 백엔드 · Next 를 먼저 세운다(ADR-028).
+CI 의 `e2e (playwright)` job 이 하는 일과 같다.
+
+```bash
+docker compose up -d db backend          # LLM_MODE 는 기본 mock 이다
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
+
+cd frontend
+# FASTAPI_BASE_URL 은 build 때 박힌다. NEXT_PUBLIC_API_MOCKING 은 비워 둔다(MSW 끔).
+FASTAPI_BASE_URL=http://127.0.0.1:8000 npm run build
+FASTAPI_BASE_URL=http://127.0.0.1:8000 npm run start -- --hostname 127.0.0.1 --port 3000 &
+npx playwright install chromium          # 최초 1회
+npm run e2e                              # 다른 포트면 E2E_BASE_URL=http://127.0.0.1:3100
+```
+
+실행마다 새 계정을 만든다. 아동 이름은 가명이다 — 개발 DB 에 실명을 넣지 않는다.
