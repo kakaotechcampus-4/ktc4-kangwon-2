@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
-import { loadClassSettings } from "@/lib/onboarding/settings";
+import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
 import { adoptServerClasses, hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import type { ClassroomEntry } from "@/lib/onboarding/types";
+import { EMPTY_CLASS_SETTINGS, type ClassroomEntry } from "@/lib/onboarding/types";
 import styles from "./Workspace.module.css";
 export { styles as ws };
 /**
@@ -71,8 +71,15 @@ export function useClasses(onError?: (message: string) => void) {
       if (!live) return;
       if (local.length) setClasses(local);
       // 서버에만 있는 반을 뒤에 붙인다. 이게 실패해도 로컬 반은 이미 그려져 있다.
-      const adopted = await adoptServerClasses(local);
-      if (live && adopted.length) setClasses([...local, ...adopted]);
+      const adopted = await adoptServerClasses(local, (name) =>
+        onError?.(`${name || "반"}의 아동 명단을 못 불러왔어요. 페이지를 새로고침해주세요.`),
+      );
+      if (!live || !adopted.length) return;
+      const next = [...local, ...adopted];
+      setClasses(next);
+      // **저장해 둬야 한다.** React state 에만 두면 다른 화면으로 넘어가는 순간 사라지고,
+      // 연결이 생긴 뒤라 다음 방문에는 들이지도 않는다. 사이드바·홈도 저장소를 본다.
+      saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
     })().catch(() => {
       if (live) onError?.("반 정보를 불러오지 못했어요. 페이지를 새로고침해주세요.");
     });

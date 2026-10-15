@@ -15,6 +15,14 @@ interface Links {
   center?: Binding;
   classes: Record<string, Binding>;
   children: Record<string, number>;
+  /**
+   * 버려진 서버 반 id.
+   *
+   * 반 정보를 고치면 `syncClassOnce` 가 **반을 새로 만든다** — 서버에 수정 API 가
+   * 없어서다(P0). 그래서 고친 횟수만큼 옛 행이 서버에 남는다. 이걸 적어두지 않으면
+   * `adoptServerClasses` 가 옛 행을 「서버에만 있는 반」으로 보고 다시 들인다.
+   */
+  retired?: number[];
 }
 const LINKS_KEY = "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT;
 function readLinks(): Links {
@@ -22,7 +30,7 @@ function readLinks(): Links {
   if (!raw) return { classes: {}, children: {} };
   const v = JSON.parse(raw);
   if (!v || !v.classes || !v.children) throw new Error("API 연결 정보를 읽지 못했습니다.");
-  return v;
+  return Array.isArray(v.retired) ? v : { ...v, retired: undefined };
 }
 function saveLinks(v: Links) {
   localStorage.setItem(accountStorageKey(LINKS_KEY), JSON.stringify(v));
@@ -102,6 +110,10 @@ async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const data = classPayload(c),
     signature = JSON.stringify(data);
   if (links.classes[c.id]?.signature === signature) return links.classes[c.id].id;
+  // 새 반을 만들어 갈아끼우므로 옛 행은 버려진다. 적어두지 않으면 다음 방문에
+  // adoptServerClasses 가 그걸 「서버에만 있는 반」으로 보고 다시 들인다.
+  const replaced = links.classes[c.id]?.id;
+  if (replaced) links.retired = [...(links.retired ?? []), replaced];
   for (const child of c.children) delete links.children[child.id];
   const created = await createClass(center, data);
   links.classes[c.id] = { id: created.id, signature };
@@ -142,15 +154,19 @@ export async function syncClasses(settings: ClassSettings) {
  * **서명을 같이 계산해 넣는다.** 안 넣으면 교사가 나중에 반 정보를 고칠 때
  * `syncClass` 의 서명 비교가 어긋나서 **서버에 같은 반이 하나 더 만들어진다.**
  */
-export async function adoptServerClasses(known: ClassroomEntry[]): Promise<ClassroomEntry[]> {
+export async function adoptServerClasses(
+  known: ClassroomEntry[],
+  onRosterError?: (className: string) => void,
+): Promise<ClassroomEntry[]> {
   const me = await getMe();
   if (!me.center_id) return [];
   const { items } = await getClasses(me.center_id);
   const links = readLinks();
   const linked = new Set(known.map((c) => links.classes[c.id]?.id).filter(Boolean));
+  const retired = new Set(links.retired ?? []);
   const adopted: ClassroomEntry[] = [];
   for (const item of items) {
-    if (linked.has(item.id)) continue;
+    if (linked.has(item.id) || retired.has(item.id)) continue;
     // **연결은 있는데 목록에 없는 반은 교사가 지운 것이다.** removeClass 는 로컬 목록만
     // 지우고 연결은 남긴다. 여기서 다시 들이면 지운 반이 되살아난다.
     if (classLocalId(item.id)) continue;
@@ -185,6 +201,8 @@ export async function adoptServerClasses(known: ClassroomEntry[]): Promise<Class
     try {
       filled.push(await loadServerChildren(entry));
     } catch {
+      // 명단만 비는 것과 진짜 아이가 없는 것을 교사가 구분할 수 있어야 한다.
+      onRosterError?.(entry.className);
       filled.push(entry);
     }
   }

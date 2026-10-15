@@ -230,10 +230,27 @@ test("★ 한 반의 명단을 못 받아도 나머지 반은 보여준다", asy
     http.get("*/api/classes/7/children", () => HttpResponse.error()),
     http.get("*/api/classes/8/children", () => HttpResponse.json({ items: [] })),
   );
-  const adopted = await onboarding.adoptServerClasses([]);
+  const failed = [];
+  const adopted = await onboarding.adoptServerClasses([], (name) => failed.push(name));
   assert.equal(adopted.length, 2, "하나가 막아서 전부 사라지면 안 된다");
   assert.deepEqual(
     adopted.map((c) => c.className),
     ["햇살반", "달빛반"],
   );
+  // 명단이 비는 것과 진짜 아이가 없는 것을 교사가 구분할 수 있어야 한다
+  assert.deepEqual(failed, ["햇살반"]);
+});
+
+/**
+ * 반 정보를 고치면 `syncClassOnce` 가 서버에 **반을 새로 만든다** — 수정 API 가 없어서다.
+ * 옛 행은 연결이 끊긴 채 서버에 남는다. 그걸 다시 들이면 고치기 전 이름의 반이
+ * 목록에 하나 더 생긴다.
+ */
+test("★ 고치기 전의 옛 반 행은 다시 들이지 않는다", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]); // 저장 키를 만든다
+  // 교사가 반 이름을 고쳐서 7번 행이 버려진 상태
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {}, retired: [7] }));
+  assert.deepEqual(await onboarding.adoptServerClasses([]), []);
 });
