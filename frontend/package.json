@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/msw-worker.mjs --dev",
     "dev": "next dev",
+    "prebuild": "node scripts/msw-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
