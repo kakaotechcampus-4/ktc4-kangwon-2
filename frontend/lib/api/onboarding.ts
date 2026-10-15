@@ -2,6 +2,7 @@ import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isApiNotFound } from "./client";
+import { getMe } from "./auth";
 import { createCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
@@ -87,14 +88,7 @@ async function syncCenterOnce(settings: ClassSettings) {
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
     links = readLinks();
-  const data = {
-      name: c.className,
-      teacher_name: c.teacherName,
-      ...ageRangePayload(c),
-      child_count: c.currentChildCount === "" ? null : c.currentChildCount,
-      // 동의 체크가 켜져 있을 때만 서버가 consent_confirmed_at 에 시각을 남긴다(§2).
-      consent_confirmed: c.guardianConsent,
-    },
+  const data = classPayload(c),
     signature = JSON.stringify(data);
   if (links.classes[c.id]?.signature === signature) return links.classes[c.id].id;
   for (const child of c.children) delete links.children[child.id];
@@ -103,9 +97,79 @@ async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   saveLinks(links);
   return created.id;
 }
+/** 반 하나를 서버에 보낼 모양. **서명도 이 값으로 만든다** — 두 군데서 다르게
+ *  계산하면 어긋나는 순간 같은 반이 하나 더 만들어진다. */
+function classPayload(c: ClassroomEntry) {
+  return {
+    name: c.className,
+    teacher_name: c.teacherName,
+    ...ageRangePayload(c),
+    child_count: c.currentChildCount === "" ? null : c.currentChildCount,
+    // 동의 체크가 켜져 있을 때만 서버가 consent_confirmed_at 에 시각을 남긴다(§2).
+    consent_confirmed: c.guardianConsent,
+  };
+}
+function classSignature(c: ClassroomEntry) {
+  return JSON.stringify(classPayload(c));
+}
+
 export async function syncClasses(settings: ClassSettings) {
   for (const c of settings.classes) await syncClass(settings, c);
 }
+/**
+ * 서버에만 있는 반을 목록에 들인다 — 저장소가 비어 있어도 반이 보이게 한다.
+ *
+ * **왜 필요한가.** 지금 반 목록은 브라우저 저장소에서 나온다(`loadClassSettings`).
+ * 그래서 아래 두 경우에 반이 하나도 안 보인다. 서버에는 멀쩡히 있는데도.
+ *
+ *   초대받은 교사   §1-1 로 같은 원에 들어왔지만 그 사람 저장소는 비어 있다
+ *   기기를 바꾼 교사  새 노트북 · 캐시 삭제 · 다른 브라우저
+ *
+ * `loadServerClasses` 는 **이미 로컬에 있는 반**의 내용만 서버 값으로 덮어쓴다.
+ * 서버에만 있는 반은 들이지 않는다 — 그 자리를 이 함수가 채운다.
+ *
+ * **서명을 같이 계산해 넣는다.** 안 넣으면 교사가 나중에 반 정보를 고칠 때
+ * `syncClass` 의 서명 비교가 어긋나서 **서버에 같은 반이 하나 더 만들어진다.**
+ */
+export async function adoptServerClasses(known: ClassroomEntry[]): Promise<ClassroomEntry[]> {
+  const me = await getMe();
+  if (!me.center_id) return [];
+  const { items } = await getClasses(me.center_id);
+  const links = readLinks();
+  const linked = new Set(known.map((c) => links.classes[c.id]?.id).filter(Boolean));
+  const adopted: ClassroomEntry[] = [];
+  for (const item of items) {
+    if (linked.has(item.id)) continue;
+    // 서버는 연령을 범위로만 들고 있다. 「만3·만5」처럼 떨어진 선택은 서버에 없다
+    // (age-adapter 참고). 로컬에 아무것도 없는 반이라 범위를 그대로 쓴다.
+    const selectedAges = ([3, 4, 5] as const).filter(
+      (age) => age >= item.age_min && age <= item.age_max,
+    );
+    const entry: ClassroomEntry = {
+      id: "api-class-" + item.id,
+      className: item.name,
+      ageGroup: "",
+      selectedAges: [...selectedAges],
+      currentChildCount: item.child_count ?? "",
+      teacherName: item.teacher_name,
+      guardianConsent: item.consent_confirmed_at !== null,
+      childrenSkipped: false,
+      children: [],
+    };
+    links.classes[entry.id] = {
+      id: item.id,
+      signature: classSignature(entry),
+    };
+    adopted.push(entry);
+  }
+  if (!adopted.length) return [];
+  saveLinks(links);
+  // 아동 명단은 links 를 저장한 뒤에 받는다 — loadServerChildren 이 그 연결을 본다.
+  const filled: ClassroomEntry[] = [];
+  for (const entry of adopted) filled.push(await loadServerChildren(entry));
+  return filled;
+}
+
 export async function loadServerClasses(settings: ClassSettings) {
   const links = readLinks();
   if (!links.center) return settings;
