@@ -1,4 +1,4 @@
-"""양식 등록 · 목록 · 삭제를 진짜 Postgres 로 확인한다 (docs/api-spec.md §8 · ADR-020).
+"""양식 등록 · 목록 · 삭제를 진짜 Postgres 로 확인한다 (§8 · ADR-020 · ADR-026).
 
 `db_session` 을 받는 테스트는 끝나면 전부 롤백된다(`conftest.py`).
 """
@@ -10,11 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.exc import IntegrityError
 
 from app.features.centers.models import Center
 from app.features.forms.models import Form
+from app.features.forms.service import find_own_form
 from app.features.plans.models import Plan
 from app.main import app
 
@@ -57,10 +58,11 @@ def mine(db_session, teacher):
     return {"center": center, "other": _center(db_session, "옆 동네 어린이집")}
 
 
-def test_등록하면_201_이고_파싱_결과가_원에_남는다(db_session, mine):
+def test_등록하면_원본이_바이트_그대로_저장되고_응답에는_없다(db_session, mine):
     center = mine["center"]
+    content = _hwpx("주제", "우리 반")
 
-    response = _register(center.id)
+    response = _register(center.id, content=content)
 
     assert response.status_code == 201
     body = response.json()
@@ -68,7 +70,24 @@ def test_등록하면_201_이고_파싱_결과가_원에_남는다(db_session, m
     assert body["name"] == body["filename"] == "월간계획안.hwpx"
     assert body["label_map"] == {"주제": "topic", "우리 반": None}
     assert body["tables"][0][0][0] == {"text": "주제", "rowspan": 1, "colspan": 1}
-    assert db_session.get(Form, body["id"]).center_id == center.id
+    assert "content" not in body
+    form = db_session.get(Form, body["id"])
+    assert form.center_id == center.id
+    assert form.content == content
+
+
+def test_목록은_원본을_읽지_않고_응답에도_싣지_않는다(db_session, mine):
+    center_id = mine["center"].id
+    form_id = _register(center_id).json()["id"]
+    db_session.expire_all()
+    form = db_session.scalar(select(Form).where(Form.id == form_id))
+
+    assert "content" in inspect(form).unloaded
+    assert find_own_form(db_session, center_id, form_id) is form
+    response = client.get(f"/api/centers/{center_id}/forms")
+    assert response.status_code == 200
+    assert "content" not in response.json()["items"][0]
+    assert "content" in inspect(form).unloaded
 
 
 def test_목록은_created_at_최신순이고_같은_시각이면_id_순이다(db_session, mine):
@@ -100,17 +119,20 @@ def test_목록은_created_at_최신순이고_같은_시각이면_id_순이다(d
     assert [item["id"] for item in response.json()["items"]] == [newest, tie_high, tie_low, oldest]
 
 
-def test_지우면_204_이고_목록에서_사라진다(db_session, mine):
+def test_걸린_계획안이_없으면_204_이고_줄이_진짜_사라진다(db_session, mine):
     center = mine["center"]
     form_id = _register(center.id).json()["id"]
 
     assert client.delete(f"/api/forms/{form_id}").status_code == 204
     assert client.get(f"/api/centers/{center.id}/forms").json() == {"items": []}
+    assert db_session.get(Form, form_id) is None
+    assert _count(db_session) == 0
 
 
-def test_계획안이_걸린_양식은_409_IN_USE_로_막고_둘_다_남긴다(db_session, mine):
+def test_계획안이_걸린_양식을_지우면_204_이고_숨긴다(db_session, mine):
     center = mine["center"]
-    form_id = _register(center.id).json()["id"]
+    content = _hwpx("주제", "우리 반")
+    form_id = _register(center.id, content=content).json()["id"]
     plan = Plan(
         plan_ref="form-in-use",
         center_id=center.id,
@@ -129,25 +151,38 @@ def test_계획안이_걸린_양식은_409_IN_USE_로_막고_둘_다_남긴다(d
 
     response = client.delete(f"/api/forms/{form_id}")
 
-    assert response.status_code == 409
-    assert response.json() == {
-        "error": {
-            "code": "IN_USE",
-            "message": "이 양식으로 만든 계획안이 있어 지울 수 없습니다.",
-            "fields": [],
-        }
-    }
+    assert response.status_code == 204
     listed = client.get(f"/api/centers/{center.id}/forms")
     assert listed.status_code == 200
-    assert form_id in [item["id"] for item in listed.json()["items"]]
+    assert form_id not in [item["id"] for item in listed.json()["items"]]
     db_session.expire_all()
+    form = db_session.get(Form, form_id)
+    assert form.hidden_at is not None and form.hidden_at.utcoffset() is not None
+    assert form.content == content
     assert db_session.scalar(select(Plan.form_id).where(Plan.id == plan_id)) == form_id
+    assert find_own_form(db_session, center.id, form_id) is None
+    again = client.delete(f"/api/forms/{form_id}")
+    assert again.status_code == 404
+    assert again.json()["error"] == {
+        "code": "NOT_FOUND",
+        "message": "양식을 찾을 수 없습니다.",
+        "fields": ["form_id"],
+    }
 
 
-def test_다른_DB_거부는_409_로_숨기지_않는다(db_session, mine, monkeypatch):
+def test_다른_DB_거부는_숨기지_않고_500_이다(db_session, mine, monkeypatch):
     form_id = _register(mine["center"].id).json()["id"]
+    db_session.commit()
+
+    real_commit = db_session.commit
+    calls = []
 
     def fail_commit():
+        # 삭제의 commit 만 실패시킨다. 숨김을 저장하려는 다음 commit 은 진짜로 하게 둬야
+        # 「다른 거부도 숨기는」 실수가 204 로 드러난다.
+        calls.append(1)
+        if len(calls) > 1:
+            return real_commit()
         orig = Exception("different constraint")
         orig.diag = SimpleNamespace(constraint_name="some_other_constraint")
         raise IntegrityError("DELETE FROM forms", {}, orig)
@@ -156,6 +191,8 @@ def test_다른_DB_거부는_409_로_숨기지_않는다(db_session, mine, monke
     with TestClient(app, raise_server_exceptions=False) as error_client:
         response = error_client.delete(f"/api/forms/{form_id}")
     assert response.status_code == 500
+    db_session.expire_all()
+    assert db_session.get(Form, form_id).hidden_at is None
 
 
 def test_남의_원은_등록도_목록도_삭제도_404_다(db_session, mine):
