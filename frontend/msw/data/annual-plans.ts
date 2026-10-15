@@ -30,40 +30,25 @@ const themes = [
   "함께 자라요",
   "즐거웠던 우리 반",
 ];
-const SCHOOL_YEAR = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
-/**
- * 그 달에 고를 수 있는 목업 주제 후보. 첫 번째가 생성 때 고른 것이다. 실제 Theme Reference 도 연령 · 달에
- * 따라 후보가 하나뿐인 달이 많다 — 그런 달은 다시 만들어도 같은 주제다. 목업은 9월만 후보가 둘이다.
- * 목업 후보는 달끼리 겹치지 않아 Core 의 「이웃 달과 같은 주제 피하기」는 일어날 수 없다.
- */
-const candidates = (month: number) => [
-  { id: "mock_theme_" + month, label: themes[SCHOOL_YEAR.indexOf(month)] },
-  ...(month === 9 ? [{ id: "mock_theme_9_b", label: "가을 들판" }] : []),
-];
-const themeEvidence = (candidate: { id: string; label: string }) => [
-  {
-    source_type: "THEME_REFERENCE",
-    source_id: candidate.id,
-    source_version: "mock-theme-reference-v0",
-    effective_date: null,
-    display_name: candidate.label,
-  },
-];
 export const months = (): AnnualMonth[] =>
-  SCHOOL_YEAR.map((month) => {
-    const chosen = candidates(month)[0];
-    return {
-      month,
-      theme: chosen.label,
-      // 서버처럼 생성 때는 항상 비어 있다 — 교사가 §6 으로 채운다.
-      sub_themes: [],
-      safety_education: [],
-      safety_education_state: "SOURCE_REQUIRED",
-      evidence: themeEvidence(chosen),
-      generation: { ...GENERATION },
-    };
-  });
-const GENERATION = { method: "RULE_LLM", rule_id: "mock.yearly.theme", rule_version: "mock-v1" };
+  [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map((month, i) => ({
+    month,
+    theme: themes[i],
+    // 서버처럼 생성 때는 항상 비어 있다 — 교사가 §6 으로 채운다.
+    sub_themes: [],
+    safety_education: [],
+    safety_education_state: "SOURCE_REQUIRED",
+    evidence: [
+      {
+        source_type: "THEME_REFERENCE",
+        source_id: "mock_theme_" + month,
+        source_version: "mock-theme-reference-v0",
+        effective_date: null,
+        display_name: themes[i],
+      },
+    ],
+    generation: { method: "RULE_LLM", rule_id: "mock.yearly.theme", rule_version: "mock-v1" },
+  }));
 /** 서버 Core 의 생성 행위자(generate_yearly_plan). */
 const SYSTEM_ACTOR = "yearly_application";
 /** 서버는 `user_{users.id}` 다. 목업 계정 id 는 하나다. */
@@ -78,8 +63,6 @@ const event = (
   month: null,
   actor: MOCK_ACTOR,
   system_actor: null,
-  value_change: null,
-  generation_change: null,
   ...more,
 });
 /** 이벤트 시각은 앞선 것보다 뒤다 — 같은 밀리초에 두 번 불러도 순서가 뒤집히지 않게. */
@@ -163,14 +146,7 @@ export const putMonth = (id: number, month: number, input: MonthInput) =>
     const plan = db.plans.find((p) => p.id === id)!;
     const m = plan.months.find((m) => m.month === month)!;
     // 주제가 그대로여도 남는다(서버와 같다). 소주제는 이력에 없다.
-    record(
-      db,
-      id,
-      event("TEACHER_EDITED", stamp(db, id), {
-        month,
-        value_change: { before: m.theme, after: input.theme },
-      }),
-    );
+    record(db, id, event("TEACHER_EDITED", stamp(db, id), { month }));
     m.theme = input.theme;
     m.sub_themes = input.sub_themes;
     return m;
@@ -187,35 +163,6 @@ export const confirmPlan = (id: number): ConfirmResult =>
       record(db, id, event("CONFIRMED", at));
     }
     return { id, status: "CONFIRMED", confirmed_at: plan.confirmed_at! };
-  });
-/**
- * 그 달 주제만 다시 만든다(LLM 을 부르지 않는다). 서버 Core 와 같은 규칙으로 고른다 — 지금 주제는 뒤로
- * 미룰 뿐 빼지 않는다(soft penalty), 그다음은 id 순이다. **후보가 하나뿐이면 같은 주제가 다시 나온다**
- * — 그래도 200 이고 REGENERATED 가 남는다(값이 같아도). 문구는 후보 이름이다(서버의 결정적 생성기와
- * 같다. 실제 LLM 은 같은 주제라도 문구를 바꿔 쓸 수 있다). 근거는 고른 후보로 다시 만들고, 생성
- * 방식은 처음과 같은 목업 rule 이다. 다른 달은 그대로. 확정 · 소주제 · 옛 목업 데이터 검사는 handler 가 먼저 한다.
- */
-export const regenerateMonth = (id: number, month: number) =>
-  commit((db) => {
-    const plan = db.plans.find((p) => p.id === id)!;
-    const m = plan.months.find((m) => m.month === month)!;
-    const current = m.evidence[0]?.source_id;
-    const [chosen] = candidates(month).sort(
-      (a, b) => Number(a.id === current) - Number(b.id === current) || a.id.localeCompare(b.id),
-    );
-    record(
-      db,
-      id,
-      event("REGENERATED", stamp(db, id), {
-        month,
-        value_change: { before: m.theme, after: chosen.label },
-        generation_change: { before: m.generation, after: { ...GENERATION } },
-      }),
-    );
-    m.theme = chosen.label;
-    m.evidence = themeEvidence(chosen);
-    m.generation = { ...GENERATION };
-    return m;
   });
 /**
  * 저장 순서가 곧 서버 정렬이다 — 시각은 계속 늘어나고(stamp), 같은 시각인 생성 이벤트는 계획안 →
