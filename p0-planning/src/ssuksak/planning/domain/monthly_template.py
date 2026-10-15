@@ -8,9 +8,14 @@ from enum import Enum
 from .errors import InvalidDomainValueError
 
 
-class DisplayMode(str, Enum):
-    WEEKLY_CELLS = "WEEKLY_CELLS"
-    MONTHLY_MERGED_SUMMARY = "MONTHLY_MERGED_SUMMARY"
+class RepeatBy(str, Enum):
+    """Time unit a Section's value repeats and is addressed by; not a rendering style.
+
+    NONE is one value for the whole document, WEEK one value per active week.
+    """
+
+    NONE = "NONE"
+    WEEK = "WEEK"
 
 
 class EmptyValuePolicy(str, Enum):
@@ -60,7 +65,7 @@ class TemplateSection:
     section_key: str
     role: SectionRole
     activated: bool
-    display_mode: DisplayMode | None = None
+    repeat_by: RepeatBy | None = None
     empty_value_policy: EmptyValuePolicy | None = None
     parent_section_key: str | None = None
     source_label: str | None = None
@@ -83,10 +88,10 @@ class TemplateSection:
             raise InvalidDomainValueError(
                 "TemplateSection.activated must be a boolean"
             )
-        if self.display_mode is not None and not isinstance(
-            self.display_mode, DisplayMode
+        if self.repeat_by is not None and not isinstance(
+            self.repeat_by, RepeatBy
         ):
-            raise InvalidDomainValueError("TemplateSection.display_mode is invalid")
+            raise InvalidDomainValueError("TemplateSection.repeat_by is invalid")
         if self.empty_value_policy is not None and not isinstance(
             self.empty_value_policy, EmptyValuePolicy
         ):
@@ -108,9 +113,9 @@ class TemplateSection:
             raise InvalidDomainValueError(
                 "A nested TemplateSection requires parent_section_key"
             )
-        if self.role is SectionRole.AXIS and self.display_mode is not None:
+        if self.role is SectionRole.AXIS and self.repeat_by is not None:
             raise InvalidDomainValueError(
-                "An AXIS TemplateSection cannot declare display_mode"
+                "An AXIS TemplateSection cannot declare repeat_by"
             )
         if self.source_label is not None and (
             not isinstance(self.source_label, str) or not self.source_label.strip()

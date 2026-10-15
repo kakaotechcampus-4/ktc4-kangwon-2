@@ -23,12 +23,10 @@ FastAPI 로 간다 — 3000 으로 바로 열면 로그인부터 안 된다.
 
 ## 문서
 
-| | 무엇 |
-|---|---|
-| [CLAUDE.md](CLAUDE.md) | **어기면 사고 나는 규칙.** 개발 전 필독 |
-| [docs/structure.md](docs/structure.md) | 디렉터리 구조 · 어느 파일을 언제 만드나 |
-| [docs/branch-strategy.md](docs/branch-strategy.md) | 브랜치 · PR · 머지 |
-| [docs/adr/](docs/adr/) | 「왜 이렇게 정했나」. 결정 하나당 한 파일 |
+**[CLAUDE.md](CLAUDE.md) 부터 읽는다** — 어기면 사고 나는 규칙이고, 맨 위에 **문서 전체 색인**이 있다.
+
+색인을 여기에도 두지 않는다. 두 군데 적으면 한쪽만 고쳐진다 —
+실제로 여기 있던 표가 `docs/` 의 문서 절반을 빠뜨린 채로 있었다.
 
 ## 스택
 

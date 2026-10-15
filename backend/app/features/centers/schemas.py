@@ -134,11 +134,22 @@ class ClassListResponse(BaseModel):
     items: list[ClassResponse]
 
 
+# 저장소가 JSONB 라 DB 가 길이를 막아 주지 않는다 — 여기서 막지 않으면 아무 데서도 안 막힌다.
+# 80 은 컬럼 길이가 아니라 실측 기준이다: 기본 문구 12개의 최장이 23자(greetings.py)라
+# 그 세 배쯤을 둔다. 맞출 컬럼이 생기면 그 값으로 바꾼다.
+#
+# **`min_length` 를 걸지 않는다.** §3 은 빈 문구를 금지하지 않는다 — 그 달에 성품인사를
+# 안 쓰는 원이 그 칸을 비운다. 멘토 리뷰(#119)는 빈 값도 막자는 쪽이었지만, 그건 계약을
+# 바꾸는 일이라 여기서 하지 않는다. `strip_whitespace` 는 그대로 둬서 공백만 든 값이
+# 빈 값과 같은 것으로 저장되게 한다 — 보이는 건 같은데 저장된 값이 다른 상태를 없앤다.
+GreetingText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)]
+
+
 class GreetingItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     month: Annotated[int, Field(strict=True, ge=1, le=12)]
-    text: str
+    text: GreetingText
 
 
 class GreetingsSettings(BaseModel):

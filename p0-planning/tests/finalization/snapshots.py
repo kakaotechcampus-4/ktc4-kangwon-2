@@ -160,9 +160,9 @@ def monthly_snapshot(result: GenerateMonthlyPlanResult) -> dict[str, Any]:
             {
                 "key": section.section_key,
                 "role": section.role.value,
-                "display_mode": (
-                    section.display_mode.value
-                    if section.display_mode is not None
+                "repeat_by": (
+                    section.repeat_by.value
+                    if section.repeat_by is not None
                     else None
                 ),
                 "cells": [_cell(cell) for cell in section.cells],
