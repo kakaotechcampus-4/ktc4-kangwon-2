@@ -71,6 +71,8 @@ class DocumentSourceItem(BaseModel):
 
     id: int
     date: date | None
+    # 관찰 기록 근거일 때만 있다. 관찰일지 종이의 영역 행을 가른다 (§11 「종이 한 장」).
+    domain: str | None = None
     text: str
     class_id: int
     child_id: int | None
