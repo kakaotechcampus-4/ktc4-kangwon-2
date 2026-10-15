@@ -1,4 +1,7 @@
-"""계획안을 hwpx 로 내보낸다. 한글이 만든 양식 파일의 표 칸 글자만 갈아끼우고 다시 압축한다.
+"""hwpx 로 내보낸다. 한글이 만든 양식 파일의 표 칸 글자만 갈아끼우고 다시 압축한다.
+
+계획안(features/plans)과 일지(features/documents)가 같이 쓴다. 양식 파일은 각 feature 의
+`templates/` 에 둔다.
 
 **표를 새로 그리지 않는다.** `header.xml`(글꼴·문단 모양·테두리)을 손으로 쓰면 한글이
 파일을 안 여는 경로가 수십 개 생긴다. 한글이 저장한 양식을 그대로 두고 `hp:t` 만 바꾼다.
@@ -15,11 +18,12 @@ import io
 import re
 import zipfile
 from collections.abc import Sequence
-from pathlib import Path
+from urllib.parse import quote
 
+from fastapi import Response
 from lxml import etree
 
-TEMPLATE_DIR = Path(__file__).parent / "templates"
+MEDIA_TYPE = "application/hwp+zip"
 
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
 OPF = "http://www.idpf.org/2007/opf/"
@@ -81,6 +85,17 @@ def fill_table(
         for info in infos:
             dst.writestr(info, parts[info.filename], compress_type=info.compress_type)
     return out.getvalue()
+
+
+def download(content: bytes, fallback_name: str, title: str) -> Response:
+    """내려받기 응답. 한글 파일명은 filename* 로만 안전하게 간다.
+
+    filename 은 그걸 못 읽는 브라우저용이라 영문(`fallback_name`)으로 둔다.
+    """
+    disposition = (
+        f"attachment; filename=\"{fallback_name}.hwpx\"; filename*=UTF-8''{quote(title + '.hwpx')}"
+    )
+    return Response(content, media_type=MEDIA_TYPE, headers={"Content-Disposition": disposition})
 
 
 def _cells(table: etree._Element) -> dict[tuple[int, int], etree._Element]:
