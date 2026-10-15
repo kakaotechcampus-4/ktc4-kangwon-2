@@ -151,16 +151,18 @@ export async function adoptServerClasses(known: ClassroomEntry[]): Promise<Class
   const adopted: ClassroomEntry[] = [];
   for (const item of items) {
     if (linked.has(item.id)) continue;
-    // **이미 연결이 있으면 그 id 를 그대로 쓴다.** 새 id 를 만들면 같은 반이 둘로 갈린다 —
-    // 기록은 옛 id 로 풀리고 화면은 새 id 를 들고 있어, 반을 골라도 기록이 안 보인다.
-    const existing = classLocalId(item.id);
+    // **연결은 있는데 목록에 없는 반은 교사가 지운 것이다.** removeClass 는 로컬 목록만
+    // 지우고 연결은 남긴다. 여기서 다시 들이면 지운 반이 되살아난다.
+    if (classLocalId(item.id)) continue;
     // 서버는 연령을 범위로만 들고 있다. 「만3·만5」처럼 떨어진 선택은 서버에 없다
     // (age-adapter 참고). 로컬에 아무것도 없는 반이라 범위를 그대로 쓴다.
     const selectedAges = ([3, 4, 5] as const).filter(
       (age) => age >= item.age_min && age <= item.age_max,
     );
     const entry: ClassroomEntry = {
-      id: existing ?? CLASS_PREFIX + item.id,
+      // 기록 쪽(documents.ts · observations.ts)이 연결 없는 서버 id 를 푸는 규칙과 같아야
+      // 한다. 다르면 기록이 먼저 도착한 화면에서 그 반을 골라도 기록이 안 보인다.
+      id: CLASS_PREFIX + item.id,
       className: item.name,
       ageGroup: "",
       selectedAges: [...selectedAges],
@@ -170,14 +172,22 @@ export async function adoptServerClasses(known: ClassroomEntry[]): Promise<Class
       childrenSkipped: false,
       children: [],
     };
-    if (!existing) links.classes[entry.id] = { id: item.id, signature: classSignature(entry) };
+    links.classes[entry.id] = { id: item.id, signature: classSignature(entry) };
     adopted.push(entry);
   }
   if (!adopted.length) return [];
   saveLinks(links);
   // 아동 명단은 links 를 저장한 뒤에 받는다 — loadServerChildren 이 그 연결을 본다.
+  // 한 반의 명단을 못 받아도 나머지 반은 보여준다 — 하나가 막아서 전부 사라지면
+  // 저장소가 빈 교사에게는 화면이 통째로 빈다 (frontend/CLAUDE.md 오류 표시 규칙).
   const filled: ClassroomEntry[] = [];
-  for (const entry of adopted) filled.push(await loadServerChildren(entry));
+  for (const entry of adopted) {
+    try {
+      filled.push(await loadServerChildren(entry));
+    } catch {
+      filled.push(entry);
+    }
+  }
   return filled;
 }
 

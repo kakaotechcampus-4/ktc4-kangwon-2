@@ -210,17 +210,30 @@ test("★ 들인 반·아이의 id 가 기록 쪽 규칙과 같다", async () =>
   assert.equal(onboarding.childLocalId(11), "server-child:11");
 });
 
-test("★ 연결이 이미 있으면 그 id 를 다시 쓴다 — 같은 반이 둘로 갈리지 않는다", async () => {
+test("★ 교사가 지운 반은 다시 들이지 않는다 — 연결이 남아 있어도", async () => {
   const values = browser();
-  // 온보딩을 마친 적 있는 브라우저. 반은 `class-abc` 로 저장돼 있다.
   api();
-  await onboarding.adoptServerClasses([]); // 키 이름을 알아내려고 한 번 돈다
-  values.set(
-    linksKey(),
-    JSON.stringify({ classes: { "class-abc": { id: 7, signature: "" } }, children: {} }),
-  );
-  const [adopted] = await onboarding.adoptServerClasses([]);
-  assert.equal(adopted.id, "class-abc", "새 id 를 만들면 안 된다");
+  await onboarding.adoptServerClasses([]); // 한 번 들여서 연결을 만든다
+  // 교사가 그 반을 지웠다. removeClass 는 로컬 목록만 지우고 연결은 남긴다.
+  const again = await onboarding.adoptServerClasses([]);
+  assert.deepEqual(again, [], "지운 반이 되살아나면 안 된다");
   const links = JSON.parse(values.get(linksKey()));
-  assert.deepEqual(Object.keys(links.classes), ["class-abc"], "연결이 하나여야 한다");
+  assert.deepEqual(Object.keys(links.classes), ["server-class:7"], "연결이 하나여야 한다");
+});
+
+test("★ 한 반의 명단을 못 받아도 나머지 반은 보여준다", async () => {
+  browser();
+  const second = { ...CLASS, id: 8, name: "달빛반" };
+  api({ classes: [CLASS, second] });
+  // 7번 반 명단만 터뜨린다
+  server.use(
+    http.get("*/api/classes/7/children", () => HttpResponse.error()),
+    http.get("*/api/classes/8/children", () => HttpResponse.json({ items: [] })),
+  );
+  const adopted = await onboarding.adoptServerClasses([]);
+  assert.equal(adopted.length, 2, "하나가 막아서 전부 사라지면 안 된다");
+  assert.deepEqual(
+    adopted.map((c) => c.className),
+    ["햇살반", "달빛반"],
+  );
 });
