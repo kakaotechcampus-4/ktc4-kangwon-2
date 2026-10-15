@@ -152,7 +152,6 @@ export default function GenerationFlow({
   const done = phase === "done";
   const progress = Math.round((stepIndex / GENERATION_STEPS.length) * 100);
   const title = `${periodLabel(active, request.period)} ${PLAN_TYPE_LABEL[active]} 보육계획안`;
-  const origin = contents[active]?.origin || "template";
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, [phase]);
@@ -226,7 +225,7 @@ export default function GenerationFlow({
           sourceIds: [],
         })),
         status: active === "annual" && confirmed ? "confirmed" : "draft",
-        origin,
+        origin: contents[active]?.origin || "ai",
         createdAt: previous?.createdAt || now,
         updatedAt: now,
         reviewNote: "교사 검토 전",
@@ -408,10 +407,14 @@ export default function GenerationFlow({
               </div>
             </aside>
             <section className={styles.documentWrap}>
+              {/* 「AI 초안 / 기본 양식 초안」 배지를 뺐다. 교사에게 쓸모가 없다 —
+                  둘 다 우리가 모은 주제 자료(theme_reference)에서 고른 것이고, 다른 건
+                  문장을 LLM 이 다듬었는지뿐이다. CLAUDE.md 도 「AI 는 출처가 아니라 제조
+                  방법이다. 교사가 근거를 눌렀을 때 'AI 가 만들었습니다'는 판단에 도움이
+                  안 된다」고 적어뒀다.
+                  이 자리에 무엇을 보일지는 월간 43칸 화면을 만들 때 같이 정한다 —
+                  근거(evidence)를 보여주는 쪽이 맞고, 월간도 같은 것이 필요하다. */}
               <div className={styles.toolbar}>
-                <span className={styles.draftBadge}>
-                  {origin === "ai" ? "AI 초안" : "기본 양식 초안"}
-                </span>
                 <div>
                   <button
                     className={styles.secondary}
