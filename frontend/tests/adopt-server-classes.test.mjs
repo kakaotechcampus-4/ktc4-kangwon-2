@@ -58,15 +58,15 @@ function browser() {
     sessionStorage,
     location: { search: "" },
   });
-  keys = values.keys();
+  store = values;
   return values;
 }
 
 /** onboarding.ts 가 쓰는 연결 저장 키. 계정 접두사가 붙는다. */
 function linksKey() {
-  return [...keys].find((k) => k.includes("apiLinks")) ?? "";
+  return [...store.keys()].find((k) => k.includes("apiLinks")) ?? "";
 }
-let keys = [];
+let store = new Map();
 
 const CLASS = {
   id: 7,
@@ -153,9 +153,7 @@ test("★ 들인 반의 서명이 syncClass 가 계산하는 것과 같다", asy
   const [adopted] = await onboarding.adoptServerClasses([]);
   // 저장된 연결의 서명이 syncClass 의 비교값과 같아야 한다.
   // 다르면 교사가 반 정보를 고칠 때 같은 반이 서버에 하나 더 만들어진다.
-  const links = JSON.parse(
-    localStorage.getItem([...Object.keys({})].length ? "" : linksKey()) ?? "{}",
-  );
+  const links = JSON.parse(localStorage.getItem(linksKey()) ?? "{}");
   const saved = links.classes?.[adopted.id];
   assert.ok(saved, "연결이 저장돼야 한다");
   assert.equal(saved.id, 7);
@@ -192,4 +190,37 @@ test("초대받은 교사에게는 원 연결이 없다 — syncClasses 를 타�
   await onboarding.adoptServerClasses([]);
   const links = JSON.parse(localStorage.getItem(linksKey()) ?? "{}");
   assert.equal(links.center, undefined, "원 연결은 만들지 않는다 — 서버에 되읽을 길이 없다");
+});
+
+/**
+ * **id 를 두 벌 만들지 않는다.**
+ *
+ * 기록 쪽(`documents.ts` · `observations.ts`)은 연결이 없는 서버 id 를 만나면
+ * `server-class:7` 로 푼다. 반을 들일 때 다른 이름을 붙이면, 기록이 먼저 도착한 화면에서는
+ * 그 반을 골라도 기록이 하나도 안 보이고 고칠 수도 없다. 두 규칙이 같은지 여기서 지킨다.
+ */
+test("★ 들인 반·아이의 id 가 기록 쪽 규칙과 같다", async () => {
+  browser();
+  api({ children: [{ id: 11, class_id: 7, name: "하린", code: "민준" }] });
+  const [adopted] = await onboarding.adoptServerClasses([]);
+  assert.equal(adopted.id, "server-class:7");
+  assert.equal(adopted.children[0].id, "server-child:11");
+  // 역조회도 같은 답을 줘야 한다 — 기록을 화면 id 로 바꿀 때 이 길을 탄다
+  assert.equal(onboarding.classLocalId(7), "server-class:7");
+  assert.equal(onboarding.childLocalId(11), "server-child:11");
+});
+
+test("★ 연결이 이미 있으면 그 id 를 다시 쓴다 — 같은 반이 둘로 갈리지 않는다", async () => {
+  const values = browser();
+  // 온보딩을 마친 적 있는 브라우저. 반은 `class-abc` 로 저장돼 있다.
+  api();
+  await onboarding.adoptServerClasses([]); // 키 이름을 알아내려고 한 번 돈다
+  values.set(
+    linksKey(),
+    JSON.stringify({ classes: { "class-abc": { id: 7, signature: "" } }, children: {} }),
+  );
+  const [adopted] = await onboarding.adoptServerClasses([]);
+  assert.equal(adopted.id, "class-abc", "새 id 를 만들면 안 된다");
+  const links = JSON.parse(values.get(linksKey()));
+  assert.deepEqual(Object.keys(links.classes), ["class-abc"], "연결이 하나여야 한다");
 });
