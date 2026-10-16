@@ -91,9 +91,22 @@ export default function TrendsPage() {
             <p className={ws.eyebrow}>
               {item.origin} · {item.published_at}
             </p>
-            <a href={item.url} target="_blank" rel="noreferrer" className={ws.secondary}>
-              원문 보기
-            </a>
+            <div className={ws.actions}>
+              {/* **계획안으로 넘기는 길을 남긴다.** 이 버튼이 이 화면의 쓸모다 —
+                  원문만 열어주면 교사가 제목을 손으로 옮겨 적어야 한다.
+                  PlanGeneratorPage 가 `topic` 을 메모 칸에 넣는다. */}
+              <Link
+                href={`/plans/annual/new?topic=${encodeURIComponent(
+                  `${item.title}\n${item.summary}\n참고 자료: ${item.url}`,
+                )}`}
+                className={ws.primary}
+              >
+                계획안에 활용하기 →
+              </Link>
+              <a href={item.url} target="_blank" rel="noreferrer" className={ws.secondary}>
+                원문 보기
+              </a>
+            </div>
           </section>
         ))
       )}
