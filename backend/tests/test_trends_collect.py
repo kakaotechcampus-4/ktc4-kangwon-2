@@ -322,13 +322,14 @@ def test_링크가_붙어_있어도_동작_설명은_남긴다():
     """
     from app.features.trends.sources import _body
 
-    assert _body("아이를 높은 곳에서 밀어 떨어뜨려요 https://example.com/demo") == (
-        "아이를 높은 곳에서 밀어 떨어뜨려요"
-    )
-    # 짧아도 남긴다 — 「목을 졸라요」는 다섯 자다
-    assert _body("목을 졸라요 https://example.com") == "목을 졸라요"
-    # 붙어 있어도 앞 낱말을 먹지 않는다
-    assert _body("밀어 떨어뜨려요https://example.com") == "밀어 떨어뜨려요"
+    # 줄 안에서는 글자를 지우지 않는다. 주소가 남아도 동작이 남는 쪽이 낫다
+    for line in (
+        "아이를 높은 곳에서 밀어 떨어뜨려요 https://example.com/demo",
+        "목을 졸라요 https://example.com",
+        "밀어 떨어뜨려요https://example.com",
+        "놀이를 해요 https://example.com)목을졸라요",
+    ):
+        assert _body(line) == line
     # 주소뿐인 줄만 버린다
     assert _body("https://www.aalzza.com") == ""
 
