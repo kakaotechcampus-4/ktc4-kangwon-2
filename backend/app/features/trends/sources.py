@@ -82,10 +82,26 @@ def youtube_uploads(
 # 유튜브 설명은 놀이 서술 몇 줄 뒤에 **구독 안내 · SNS 링크 · 해시태그 더미**가 붙는다.
 # 실측 315건에서 설명이 전체 글자의 92% 였고 그 안에 링크 1,069개 · 해시태그 1,892개였다.
 # 그대로 두면 ① 사람이 읽는 승인 PR 이 매주 4,400줄이 되고 ② 3단 Judge 토큰이 그만큼 나간다.
-# 링크가 **들어 있는** 줄은 통째로 버린다 — "알짜닷컴 : http://..." 처럼 안내 문구가
-# 앞에 붙어 있어서, 링크만 도려내면 뜻 없는 꼬리가 남는다.
-_NOISE_LINE = re.compile(r"^\s*(?:[-=*_~·]{3,}|(?:#\S+\s*)+)\s*$|https?://")
+_DIVIDER = re.compile(r"[-=*_~·]{3,}")
 _BODY_MAX = 600
+
+
+def _is_noise(line: str) -> bool:
+    r"""버릴 줄인가. **정규식으로 해시태그 줄을 찾지 않는다.**
+
+    `(?:#\S+\s*)+` 처럼 쓰면 `#a#a#a…` 한 줄에 역추적이 터져 수집이 통째로 멈춘다
+    (Codex 지적, 25번 반복에 2초). 낱말로 쪼개서 한 번만 훑는다.
+    """
+    text = line.strip()
+    if not text:
+        return False  # 빈 줄은 남긴다 — 문단이 붙어버리면 읽기 어렵다
+    if "http://" in text or "https://" in text:
+        # 링크가 **들어 있는** 줄은 통째로 버린다 — "알짜닷컴 : http://..." 처럼 안내 문구가
+        # 앞에 붙어 있어서, 링크만 도려내면 뜻 없는 꼬리가 남는다.
+        return True
+    if _DIVIDER.fullmatch(text):
+        return True
+    return all(word.startswith("#") for word in text.split())
 
 
 def _body(text: str | None) -> str:
@@ -94,11 +110,7 @@ def _body(text: str | None) -> str:
     **낱말을 지우지 않고 줄 단위로만 버린다.** 문장 중간의 링크까지 손대면
     원문이 바뀌어, 나중에 "왜 걸렀나" 를 설명할 수 없다 (ADR-016).
     """
-    kept: list[str] = []
-    for line in (text or "").splitlines():
-        if _NOISE_LINE.search(line):  # match 가 아니다 — 링크는 줄 가운데에도 온다
-            continue
-        kept.append(line.rstrip())
+    kept = [line.rstrip() for line in (text or "").splitlines() if not _is_noise(line)]
     body = "\n".join(kept).strip()
     # 줄을 버려도 긴 것이 남는다. 앞쪽에 놀이 서술이 오므로 뒤를 자른다.
     return body if len(body) <= _BODY_MAX else body[:_BODY_MAX].rstrip() + "…"

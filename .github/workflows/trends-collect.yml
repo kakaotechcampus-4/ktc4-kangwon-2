@@ -75,19 +75,21 @@ jobs:
         run: |
           week=$(cd backend && python -c "from app.features.trends.item import week_label; from datetime import date; print(week_label(date.today()))")
           branch="trends/collect-${week}"
-          # **이미 그 주 브랜치가 있으면 손대지 않는다.** 리뷰어가 이상한 줄을 지워 둔
-          # 상태일 수 있다. 덮어쓰면 그 지운 것이 되살아나고 승인 절차가 무의미해진다.
+          # **이미 그 주 브랜치가 있으면 내용은 손대지 않는다.** 리뷰어가 이상한 줄을
+          # 지워 둔 상태일 수 있다. 덮어쓰면 그 지운 것이 되살아나 승인 절차가
+          # 무의미해진다. 대신 PR 이 없으면 만든다 — 지난번에 push 는 됐는데
+          # PR 만들기가 실패했으면, 그 주 자료가 승인 절차 밖에 남아 있다.
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "$branch 가 이미 있다. 리뷰 중인 내용을 덮지 않는다."
-            exit 0
+            echo "$branch 가 이미 있다. 내용은 그대로 두고 PR 만 확인한다."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$branch"
+            git add backend/resources/trends/collected
+            git diff --cached --quiet && { echo "바뀐 것이 없다"; exit 0; }
+            git commit -m "chore: 트렌드 원자료 ${week}"
+            git push -u origin "$branch"
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add backend/resources/trends/collected
-          git diff --cached --quiet && { echo "바뀐 것이 없다"; exit 0; }
-          git commit -m "chore: 트렌드 원자료 ${week}"
-          git push -u origin "$branch"
           # **열려 있는** PR 만 센다. 지난주 것이 머지돼 있어도 gh pr view 는 찾아내서,
           # 새 자료가 승인 절차 없이 브랜치에만 남는다.
           test -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" \

@@ -339,3 +339,18 @@ def test_실패_기록에_키를_적지_않는다():
     assert "AIzaSyREAL_SECRET" not in hidden
     assert "key=***" in hidden
     assert "403" in hidden  # 무엇이 실패했는지는 남아야 한다
+
+
+def test_해시태그_줄_검사가_역추적으로_멈추지_않는다():
+    """`(?:#\\S+\\s*)+` 같은 정규식은 `#a#a#a…` 한 줄에 역추적이 터진다.
+
+    수집은 15분 timeout 안에서 돌고, 설명 한 줄 때문에 그 주 수집이 통째로
+    날아가면 안 된다. 낱말로 쪼개 한 번만 훑는 방식인지 시간으로 지킨다.
+    """
+    import time
+
+    from app.features.trends.sources import _body
+
+    started = time.monotonic()
+    _body("#a" * 200 + " 놀이")
+    assert time.monotonic() - started < 1.0
