@@ -66,6 +66,17 @@ export default function TrendsPage() {
     setBusy(true);
     setMessage("");
     try {
+      // **찾기 직전에 설정을 다시 본다.** 이 화면을 열어둔 채로 다른 기기나 다른
+      // 교사가 꺼도 열린 화면은 모른다. /api/assistant 는 켜졌는지 보지 않으므로,
+      // 여기서 안 막으면 꺼둔 원에서도 돈다.
+      const me = await getMe();
+      if (me.center_id) {
+        const settings = await getCenterSettings(me.center_id);
+        if (!settings.trends_enabled) {
+          setEnabled(false);
+          return;
+        }
+      }
       const result = await requestAI<{ items: Trend[] }>("trends", {
         topic,
         // toISOString() 은 UTC 날짜라 한국 아침 9시 전에는 어제가 된다.

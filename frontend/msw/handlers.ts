@@ -7,6 +7,8 @@ import {
   currentCenterId,
   findGreetings,
   putGreetings,
+  findCenterSettings,
+  putCenterSettings,
 } from "./data/centers";
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
@@ -37,9 +39,6 @@ const mockAuth = (email: string, name: string) => ({
   token: `mock.${encodeURIComponent(email)}`,
   user: { id: 1, email, name, center_id: null },
 });
-
-/** 원마다 트렌드봇을 켰는지. 기본은 꺼짐 (FR-808). */
-const trendsEnabled = new Map<number, boolean>();
 
 export const handlers = [
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
@@ -106,7 +105,7 @@ export const handlers = [
     if (s) return s;
     const id = Number(params.centerId);
     if (!findCenter(id) || id !== currentCenterId()) return missing();
-    return HttpResponse.json({ trends_enabled: trendsEnabled.get(id) ?? false });
+    return HttpResponse.json(findCenterSettings(id));
   }),
   http.put("*/api/centers/:centerId/settings", async ({ request, params }) => {
     const s = await scenario(request, "center-settings-save");
@@ -119,9 +118,9 @@ export const handlers = [
     // **보낸 칸만 바꾼다.** 빈 요청은 아무것도 바꾸지 않는다.
     if (b.trends_enabled !== undefined) {
       if (typeof b.trends_enabled !== "boolean") return bad("trends_enabled");
-      trendsEnabled.set(id, b.trends_enabled);
+      return HttpResponse.json(putCenterSettings(id, { trends_enabled: b.trends_enabled }));
     }
-    return HttpResponse.json({ trends_enabled: trendsEnabled.get(id) ?? false });
+    return HttpResponse.json(findCenterSettings(id));
   }),
   http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
     const s = await scenario(request, "greetings");
