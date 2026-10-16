@@ -83,7 +83,6 @@ def youtube_uploads(
 # 실측 315건에서 설명이 전체 글자의 92% 였고 그 안에 링크 1,069개 · 해시태그 1,892개였다.
 # 그대로 두면 ① 사람이 읽는 승인 PR 이 매주 4,400줄이 되고 ② 3단 Judge 토큰이 그만큼 나간다.
 _DIVIDER = re.compile(r"[-=*_~·]{3,}")
-_BODY_MAX = 600
 
 
 def _is_noise(line: str) -> bool:
@@ -109,11 +108,14 @@ def _body(text: str | None) -> str:
 
     **낱말을 지우지 않고 줄 단위로만 버린다.** 문장 중간의 링크까지 손대면
     원문이 바뀌어, 나중에 "왜 걸렀나" 를 설명할 수 없다 (ADR-016).
+
+    **길다고 자르지 않는다.** 3단이 보는 것은 제목이 아니라 놀이 서술 전체다
+    (ADR-016) — 위험한 동작은 설명 뒤쪽에 나온다. 길이를 줄이려고 뒤를 잘랐다가
+    되돌렸다: 315건 중 43건이 잘렸고, 그 뒤에 있던 글을 사람도 Judge 도 못 보게
+    된다. 읽기 편하자고 안전 근거를 버리는 거래는 하지 않는다.
     """
     kept = [line.rstrip() for line in (text or "").splitlines() if not _is_noise(line)]
-    body = "\n".join(kept).strip()
-    # 줄을 버려도 긴 것이 남는다. 앞쪽에 놀이 서술이 오므로 뒤를 자른다.
-    return body if len(body) <= _BODY_MAX else body[:_BODY_MAX].rstrip() + "…"
+    return "\n".join(kept).strip()
 
 
 def _with_video_status(fetch: Fetch, api_key: str, items: list[RawItem]) -> list[RawItem]:

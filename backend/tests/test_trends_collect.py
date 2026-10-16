@@ -314,11 +314,16 @@ def test_설명에서_링크와_해시태그_줄을_버린다():
     assert kept == "신문지로 공을 만들어요\n바구니에 던지면 됩니다"
 
 
-def test_설명이_길면_뒤를_자른다():
-    from app.features.trends.sources import _BODY_MAX, _body
+def test_설명을_길다고_자르지_않는다():
+    """3단이 보는 것은 놀이 서술 전체다 (ADR-016).
 
-    cut = _body("가" * (_BODY_MAX + 50))
-    assert len(cut) == _BODY_MAX + 1 and cut.endswith("…")
+    위험한 동작(밀기·목·숨 참기·높은 곳)은 설명 뒤쪽에 나온다. 읽기 편하자고
+    뒤를 자르면 사람도 Judge 도 그 뒤를 못 본다.
+    """
+    from app.features.trends.sources import _body
+
+    long_text = "앞쪽 설명\n" * 200 + "마지막에 높은 곳에서 뛰어내려요"
+    assert _body(long_text).endswith("마지막에 높은 곳에서 뛰어내려요")
 
 
 def test_실패_기록에_키를_적지_않는다():

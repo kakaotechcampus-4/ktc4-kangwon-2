@@ -60,12 +60,17 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
-      - name: 0건이면 멈춘다
+      # **이 PR 에는 CI 가 안 붙는다.** GITHUB_TOKEN 으로 만든 PR 은 pull_request 를
+      # 깨우지 않는다(GitHub 규칙 — 작업이 작업을 무한히 부르는 것을 막는다).
+      # 그래서 파일이 제대로 됐는지를 여기서 본다. 머지된 뒤 develop push 에서
+      # 평소 CI 가 다시 돈다.
+      - name: 받은 파일이 읽히나
         working-directory: backend
         run: |
           week=$(python -c "from app.features.trends.item import week_label; from datetime import date; print(week_label(date.today()))")
           file="resources/trends/collected/${week}.json"
-          count=$(python -c "import json;print(json.load(open('${file}'))['count'])")
+          # item.load 는 RawItem(**item) 으로 되살린다 — 열이 바뀌면 여기서 터진다.
+          count=$(python -c "from pathlib import Path; from app.features.trends.item import load; print(len(load(Path('${file}'))))")
           echo "${week} ${count}건"
           test "$count" -gt 0 || { echo "0건이다. 키가 빠졌거나 소스가 전부 죽었다."; exit 1; }
 
