@@ -82,7 +82,12 @@ def test_GET은_파일_순서의_9개_지표와_종류별_필드를_반환한다
             assert item["count"] == 0 and item["verdict"] == "NONE"
         else:
             assert set(item) == common | {"elements", "progress", "complete"}
-            assert item["elements"] == [] and item["progress"] == {"checked": 0, "total": 0}
+            # 평가요소는 지표 파일이 정한다 — v1 은 0개, v2 는 지표마다 2~3개다. 체크한 것은 없다.
+            assert item["elements"] == [
+                {"element": e.element, "text": e.text, "checked": False, "checked_at": None}
+                for e in indicator.elements
+            ]
+            assert item["progress"] == {"checked": 0, "total": len(indicator.elements)}
             assert item["complete"] is False
     four_one, four_two = body["items"][:2]
     assert four_one["required"] is None and four_one["children"] is None
@@ -142,8 +147,9 @@ def test_PUT은_응답을_다_만든_뒤_한_번_저장한다(own_center, db_ses
 
 def test_빈_PUT은_GET_전체_응답을_주고_저장된_행을_유지한다(own_center, db_session, clock):
     path = PATH.format(own_center)
-    before = client.get(path).json()
     save_checks(db_session, own_center, clock.value, [("6-3-1", True)], {"6-3-1"})
+    # 저장 뒤에 읽는다 — v2 에서는 6-3-1 이 실제 평가요소라 체크가 응답에 실린다.
+    before = client.get(path).json()
     saved = rows(db_session, own_center)
     response = client.put(path + "/checks", json={"checks": []})
     assert response.status_code == 200 and response.json() == before
