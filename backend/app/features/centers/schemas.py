@@ -169,6 +169,29 @@ class GreetingItem(BaseModel):
     text: GreetingText
 
 
+class CenterSettings(BaseModel):
+    """원 설정 — 켜고 끄는 값만 (api-spec.md §3-1).
+
+    성품인사(§3)는 여기 넣지 않는다. 12개월 문구를 들고 있어 요청 모양이 아예 다르다.
+    """
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    trends_enabled: Annotated[bool, Field(strict=True)]
+
+
+class CenterSettingsUpdate(BaseModel):
+    """**보낸 칸만 바꾼다.** 성품인사와 달리 전체 교체가 아니다.
+
+    토글은 한 번에 하나씩 누른다. 전체 교체로 받으면 설정이 늘어날 때마다
+    「다른 토글은 안 건드렸다」를 화면이 매번 증명해야 한다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    trends_enabled: Annotated[bool, Field(strict=True)] | None = None
+
+
 class GreetingsSettings(BaseModel):
     """GET 응답 · PUT 요청/응답은 같은 12개월 계약이다 (api-spec.md §3)."""
 
