@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { requestAI } from "@/lib/workspace/ai-client";
+import { getMe } from "@/lib/api/auth";
+import { getCenterSettings } from "@/lib/api/centers";
 import { today } from "@/lib/workspace/model";
 import { WorkspacePage, Message, useAIStatus, ws } from "./WorkspaceUI";
 type Trend = { title: string; summary: string; idea: string; url: string; publishedAt: string };
@@ -31,6 +33,21 @@ const CURATED: Trend[] = [
 ];
 export default function TrendsPage() {
   const available = useAIStatus();
+  // 원마다 끌 수 있다 (FR-808). **사이드바에 트렌드 메뉴가 없어서** 숨길 자리가 없다 —
+  // 주소로 들어오므로 화면에서 막는다.
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const me = await getMe();
+      if (!me.center_id) return alive && setEnabled(false);
+      const settings = await getCenterSettings(me.center_id);
+      if (alive) setEnabled(settings.trends_enabled);
+    })().catch(() => alive && setEnabled(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [items, setItems] = useState(CURATED);
   const [topic, setTopic] = useState("놀이 중심 보육, 자연 탐구, 그림책");
   const [busy, setBusy] = useState(false);
@@ -55,6 +72,27 @@ export default function TrendsPage() {
       setBusy(false);
     }
   }
+  // 끄고 켜는 것을 알기 전에는 아무것도 그리지 않는다. 켜진 화면을 먼저 보여주고
+  // 뒤늦게 "꺼져 있어요" 로 바뀌면, 교사가 껐는데 켜진 줄 안다.
+  if (enabled === null)
+    return (
+      <WorkspacePage title="트렌드봇" description="">
+        <p role="status">설정을 확인하고 있어요.</p>
+      </WorkspacePage>
+    );
+
+  if (!enabled)
+    return (
+      <WorkspacePage title="트렌드봇" description="지금은 꺼져 있어요.">
+        <section className={ws.card}>
+          <p>트렌드봇을 쓰지 않도록 해두셨어요. 설정에서 켜면 요즘 놀이 소재를 모아 보여드려요.</p>
+          <Link href="/settings" className={ws.secondary}>
+            설정으로 가기
+          </Link>
+        </section>
+      </WorkspacePage>
+    );
+
   return (
     <WorkspacePage
       title="트렌드봇"

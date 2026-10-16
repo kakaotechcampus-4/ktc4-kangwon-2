@@ -38,6 +38,9 @@ const mockAuth = (email: string, name: string) => ({
   user: { id: 1, email, name, center_id: null },
 });
 
+/** 원마다 트렌드봇을 켰는지. 기본은 꺼짐 (FR-808). */
+const trendsEnabled = new Map<number, boolean>();
+
 export const handlers = [
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
   // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
@@ -96,6 +99,29 @@ export const handlers = [
         region_sigungu: "춘천시",
       }),
     );
+  }),
+  // §3-1. 기본은 꺼짐. 설정한 적 없어도 기본값을 채워 준다 — 빈 객체를 주지 않는다.
+  http.get("*/api/centers/:centerId/settings", async ({ request, params }) => {
+    const s = await scenario(request, "center-settings");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    return HttpResponse.json({ trends_enabled: trendsEnabled.get(id) ?? false });
+  }),
+  http.put("*/api/centers/:centerId/settings", async ({ request, params }) => {
+    const s = await scenario(request, "center-settings-save");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (Object.keys(b).some((key) => key !== "trends_enabled")) return bad("body");
+    // **보낸 칸만 바꾼다.** 빈 요청은 아무것도 바꾸지 않는다.
+    if (b.trends_enabled !== undefined) {
+      if (typeof b.trends_enabled !== "boolean") return bad("trends_enabled");
+      trendsEnabled.set(id, b.trends_enabled);
+    }
+    return HttpResponse.json({ trends_enabled: trendsEnabled.get(id) ?? false });
   }),
   http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
     const s = await scenario(request, "greetings");
