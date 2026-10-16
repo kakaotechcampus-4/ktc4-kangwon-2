@@ -7,6 +7,8 @@ import {
   currentCenterId,
   findGreetings,
   putGreetings,
+  findCenterSettings,
+  putCenterSettings,
 } from "./data/centers";
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
@@ -96,6 +98,29 @@ export const handlers = [
         region_sigungu: "춘천시",
       }),
     );
+  }),
+  // §3-1. 기본은 꺼짐. 설정한 적 없어도 기본값을 채워 준다 — 빈 객체를 주지 않는다.
+  http.get("*/api/centers/:centerId/settings", async ({ request, params }) => {
+    const s = await scenario(request, "center-settings");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    return HttpResponse.json(findCenterSettings(id));
+  }),
+  http.put("*/api/centers/:centerId/settings", async ({ request, params }) => {
+    const s = await scenario(request, "center-settings-save");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (Object.keys(b).some((key) => key !== "trends_enabled")) return bad("body");
+    // **보낸 칸만 바꾼다.** 빈 요청은 아무것도 바꾸지 않는다.
+    if (b.trends_enabled !== undefined) {
+      if (typeof b.trends_enabled !== "boolean") return bad("trends_enabled");
+      return HttpResponse.json(putCenterSettings(id, { trends_enabled: b.trends_enabled }));
+    }
+    return HttpResponse.json(findCenterSettings(id));
   }),
   http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
     const s = await scenario(request, "greetings");
