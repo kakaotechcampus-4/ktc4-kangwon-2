@@ -165,6 +165,44 @@ jobs:
           PY
           cat /tmp/risk.md
 
+      # 3단. **떨어뜨리기만 한다. 통과를 보증하지 않는다** (ADR-016).
+      # 여기서 파일을 고치지 않는다 — 버릴 줄을 PR 에 적어 사람이 지운다.
+      # 모델이 말없이 지우면 「왜 없지」를 찾을 길이 없다.
+      - name: 3단 판정
+        id: judge
+        if: steps.branch.outputs.skip != '1'
+        working-directory: backend
+        shell: bash
+        env:
+          WEEK: ${{ steps.collect.outputs.week }}
+          LLM_MODE: ${{ secrets.ELICE_MLAPI_API_KEY != '' && 'real' || 'mock' }}
+          ELICE_MLAPI_BASE_URL: ${{ secrets.ELICE_MLAPI_BASE_URL }}
+          ELICE_MLAPI_API_KEY: ${{ secrets.ELICE_MLAPI_API_KEY }}
+        run: |
+          python - <<'PY' > /tmp/judge.md
+          import os
+          from pathlib import Path
+
+          from app.features.trends.item import load
+          from app.features.trends.judge import judge
+
+          items = tuple(load(Path(f"resources/trends/collected/{os.environ['WEEK']}.json")))
+          result = judge(items)
+          by_id = {item.source_id: item for item in items}
+          if not result.dropped:
+              print("버리자는 줄 없음")
+          for row in result.dropped:
+              title = " ".join(by_id[row.id].title.split())
+              print(f"- 🚫 {title}")
+              print(f'  > {" ".join(row.quote.split())}')
+              print(f"  {row.why} · {by_id[row.id].url}")
+          if result.unseen:
+              print(f"\n**{result.unseen}건은 3단을 못 거쳤다.** 사람이 그만큼 더 봐야 한다.")
+          for failure in result.failures:
+              print(f"- {failure}")
+          PY
+          cat /tmp/judge.md
+
       # **제목을 셸 소스에 끼워 넣지 않는다.** `${{ }}` 는 스크립트 글자에 그대로 박히므로,
       # 제목에 줄바꿈과 heredoc 끝말이 섞여 오면 그 뒤가 명령으로 돈다. 이 단계는
       # GH_TOKEN 과 API 키를 들고 있어서 남의 영상 제목에 저장소를 내주게 된다(Codex P1).
@@ -205,6 +243,9 @@ jobs:
 
           HEAD
             cat /tmp/risk.md
+            printf '\n### 3단 판정 — 버리자고 본 줄\n'
+            printf '모델은 **떨어뜨리기만 한다.** 괜찮다고 한 줄은 없다 — 통과를 보증하지 않는다.\n\n'
+            cat /tmp/judge.md
             printf '\n### 수집 기록\n```\n'
             cat /tmp/collect.log
             printf '```\n'
