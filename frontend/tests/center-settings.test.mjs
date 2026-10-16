@@ -10,8 +10,17 @@ import { registerHooks } from "node:module";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+// 라우트 핸들러는 "@/..." 별칭을 쓴다. tsconfig 의 paths 를 여기서 흉내 낸다.
+const ROOT = new URL("../", import.meta.url);
+
 registerHooks({
   resolve(spec, ctx, next) {
+    if (spec.startsWith("@/")) {
+      const base = new URL(spec.slice(2), ROOT);
+      for (const candidate of [base.href, base.href + ".ts", base.href + ".tsx"]) {
+        if (existsSync(fileURLToPath(candidate))) return { url: candidate, shortCircuit: true };
+      }
+    }
     if (spec.startsWith(".") && ctx.parentURL) {
       const u = new URL(spec + ".ts", ctx.parentURL);
       if (existsSync(fileURLToPath(u))) return { url: u.href, shortCircuit: true };
@@ -84,4 +93,53 @@ test("남의 원은 404 로 던진다", async () => {
     ),
   );
   await assert.rejects(() => centers.getCenterSettings(99));
+});
+
+/**
+ * **서버에서 막는 것이 진짜 막는 것이다.** 화면 검사는 열어둔 탭이나 주소를 직접
+ * 부르는 요청을 못 막고, 트렌드 호출은 유료다. 확인할 수 없으면 거절한다 —
+ * 부가 기능이라 꺼진 쪽이 안전하다.
+ */
+test("★ 트렌드봇이 꺼져 있으면 /api/assistant 가 403", async () => {
+  const route = await import("../app/api/assistant/route.ts");
+  const previous = process.env.FASTAPI_BASE_URL;
+  process.env.FASTAPI_BASE_URL = "http://backend.test";
+  server.use(
+    http.get("http://backend.test/api/auth/me", () =>
+      HttpResponse.json({ id: 1, email: "t@x.kr", center_id: 3 }),
+    ),
+    http.get("http://backend.test/api/centers/3/settings", () =>
+      HttpResponse.json({ trends_enabled: false }),
+    ),
+  );
+  const response = await route.POST(
+    new Request("http://localhost/api/assistant", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer t",
+        Origin: "http://localhost",
+        Host: "localhost",
+      },
+      body: JSON.stringify({ task: "trends", payload: { topic: "놀이", today: "2026-10-17" } }),
+    }),
+  );
+  process.env.FASTAPI_BASE_URL = previous;
+  assert.equal(response.status, 403);
+});
+
+test("★ 토큰이 없으면 거절한다 — 확인할 수 없으면 꺼진 쪽이다", async () => {
+  const route = await import("../app/api/assistant/route.ts");
+  const response = await route.POST(
+    new Request("http://localhost/api/assistant", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://localhost",
+        Host: "localhost",
+      },
+      body: JSON.stringify({ task: "trends", payload: { topic: "놀이", today: "2026-10-17" } }),
+    }),
+  );
+  assert.equal(response.status, 403);
 });

@@ -76,6 +76,29 @@ export async function GET() {
     { headers: { "Cache-Control": "no-store" } },
   );
 }
+/** 트렌드봇이 꺼져 있거나 확인할 수 없으면 거절 응답을, 켜져 있으면 null 을 준다. */
+async function refuseWhenTrendsOff(request: Request): Promise<Response | null> {
+  const off = Response.json(
+    { error: "트렌드봇이 꺼져 있어요. 설정에서 켜면 쓸 수 있어요." },
+    { status: 403 },
+  );
+  const backend = process.env.FASTAPI_BASE_URL?.replace(/\/$/, "");
+  const auth = request.headers.get("Authorization");
+  if (!backend || !auth) return off;
+  try {
+    const head = { Authorization: auth };
+    const me = await fetch(`${backend}/api/auth/me`, { headers: head });
+    if (!me.ok) return off;
+    const { center_id } = await me.json();
+    if (!center_id) return off;
+    const settings = await fetch(`${backend}/api/centers/${center_id}/settings`, { headers: head });
+    if (!settings.ok) return off;
+    return (await settings.json()).trends_enabled ? null : off;
+  } catch {
+    return off;
+  }
+}
+
 export async function POST(request: Request) {
   const blocked = sameOriginGuard(request);
   if (blocked) return blocked;
@@ -98,6 +121,13 @@ export async function POST(request: Request) {
       },
       { status: error instanceof BodyLimitError ? 413 : 400 },
     );
+  }
+  // 트렌드봇은 원마다 끌 수 있다 (FR-808 · api-spec §3-1). **여기서 막아야 진짜로 막힌다** —
+  // 화면 검사는 열어둔 탭이나 이 주소를 직접 부르는 요청을 못 막고, 호출은 유료다.
+  // **확인할 수 없으면 거절한다.** 부가 기능이라 꺼진 쪽이 안전하다.
+  if (task === "trends") {
+    const refused = await refuseWhenTrendsOff(request);
+    if (refused) return refused;
   }
   if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL)
     return Response.json(
