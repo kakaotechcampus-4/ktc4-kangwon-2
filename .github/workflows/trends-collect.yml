@@ -17,6 +17,13 @@ permissions:
   contents: write
   pull-requests: write
 
+# 한 번에 하나만 돈다. 두 번이 겹치면 둘 다 「열려 있는 PR 없음」을 보고, 뒤엣것이
+# 브랜치를 갈아치운 뒤 앞엣것이 PR 을 연다 — **PR 에 든 자료와 위험 표시·3단 결과가
+# 서로 다른 것**이 된다. 취소하지 않고 기다린다. 취소하면 그 주 자료가 승인 절차 밖에 남는다.
+concurrency:
+  group: trends-collect
+  cancel-in-progress: false
+
 jobs:
   collect:
     name: trends (weekly collect)
