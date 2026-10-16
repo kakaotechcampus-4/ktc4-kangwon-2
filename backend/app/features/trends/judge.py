@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 
 from app.features.trends.item import RawItem
@@ -99,8 +100,12 @@ def _rows(body: object) -> list[dict]:
     if not isinstance(body, dict) or not isinstance(body.get("drop"), list):
         raise ValueError("drop 배열이 없다")
     rows = body["drop"]
-    if not all(isinstance(row, dict) for row in rows):
-        raise ValueError("drop 의 줄이 객체가 아니다")
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("drop 의 줄이 객체가 아니다")
+        # `{"drop": [{}]}` 처럼 빈 줄이 오면 「버릴 것 없음」으로 읽힌다. 못 본 것으로 남긴다.
+        if not isinstance(row.get("id"), str) or not isinstance(row.get("quote"), str):
+            raise ValueError("drop 의 줄에 id · quote 가 없다")
     return rows
 
 
@@ -109,10 +114,15 @@ def judge(
     *,
     ask=None,
     batch_size: int = 10,
+    budget_seconds: float = 300.0,
 ) -> JudgeResult:
     """버릴 것만 돌려준다.
 
     `ask(system, user) -> str` 는 시험에서 갈아끼운다. 넣지 않으면 실제 모델을 부른다.
+
+    **시간을 정해 두고 멈춘다.** 모델이 계속 시간 초과로 죽으면 한 번에 30초씩 쓴다 —
+    315건이면 32번이라 16분이고, 주간 작업(15분)이 통째로 취소된다. 그러면 이미 올라간
+    그 주 자료가 **승인 PR 없이** 브랜치에만 남는다. 남은 것은 못 본 것으로 적는다.
     """
     if not items:
         return JudgeResult()
@@ -126,8 +136,14 @@ def judge(
     dropped: list[Dropped] = []
     failures: list[str] = []
     unseen = 0
+    started = time.monotonic()
     for start in range(0, len(items), batch_size):
         chunk = items[start : start + batch_size]
+        if time.monotonic() - started > budget_seconds:
+            left = len(items) - start
+            unseen += left
+            failures.append(f"judge: 시간이 다 돼 {left}건을 못 봤다")
+            break
         try:
             answer = ask(SYSTEM_PROMPT, _batch_prompt(chunk))
             rows = _rows(json.loads(answer))

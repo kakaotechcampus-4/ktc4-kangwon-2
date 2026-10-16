@@ -110,7 +110,7 @@ def test_줄바꿈이_공백으로_와도_같은_인용으로_본다():
 
 def test_모양이_틀린_답은_못_본_것으로_남긴다():
     """JSON 으로 읽혔다고 모양이 맞는 것은 아니다. 조용히 「버릴 것 없음」이 되면 안 된다."""
-    for broken in ({"drop": ["a"]}, {}, {"drop": "a"}, []):
+    for broken in ({"drop": ["a"]}, {}, {"drop": "a"}, [], {"drop": [{}]}):
         result = judge((item("a", "놀이", "본문"),), ask=answering(broken))
         assert result.dropped == ()
         assert result.unseen == 1, broken
@@ -126,3 +126,18 @@ def test_한도_초과도_못_본_것으로_남긴다():
 
     result = judge((item("a", "놀이"),), ask=over)
     assert result.unseen == 1 and result.failures
+
+
+def test_시간이_다_되면_남은_것을_못_본_것으로_남긴다():
+    """모델이 계속 죽으면 한 번에 30초씩 쓴다. 주간 작업이 통째로 취소되면
+    이미 올라간 그 주 자료가 승인 PR 없이 브랜치에만 남는다."""
+    import time
+
+    def slow(system_prompt: str, user_content: str) -> str:
+        time.sleep(0.05)
+        return json.dumps({"drop": []})
+
+    items = tuple(item(f"i{n}", "놀이", "본문") for n in range(30))
+    result = judge(items, ask=slow, batch_size=1, budget_seconds=0.1)
+    assert result.unseen > 0
+    assert any("시간이 다 돼" in f for f in result.failures)

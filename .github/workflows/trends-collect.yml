@@ -217,10 +217,7 @@ jobs:
         run: |
           # **열려 있는** PR 만 센다. 지난주 것이 머지돼 있어도 gh pr view 는 찾아내서,
           # 새 자료가 승인 절차 없이 브랜치에만 남는다.
-          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
-            echo "열려 있는 PR 이 이미 있다."
-            exit 0
-          fi
+          open_pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')"
           # 머지된 뒤 브랜치만 남아 있고 새로 담을 것도 없으면, 올릴 커밋이 없다.
           # 그대로 gh pr create 를 부르면 "no commits between" 으로 실패한다.
           git fetch origin develop
@@ -250,6 +247,17 @@ jobs:
             cat /tmp/collect.log
             printf '```\n'
           } > /tmp/body.md
+          # **PR 이 이미 있으면 다시 만들지 않고 댓글로 붙인다.** 모델이 죽은 채로 한 번
+          # 돌고 다시 돌면, 두 번째에 찾은 위험이 Actions 로그에만 남고 PR 에는
+          # 「모델을 못 썼다」만 남는다.
+          if [ -n "$open_pr" ]; then
+            {
+              printf '다시 돌렸어요. 아래가 최신입니다.\n\n'
+              cat /tmp/body.md
+            } > /tmp/comment.md
+            gh pr comment "$open_pr" --body-file /tmp/comment.md
+            exit 0
+          fi
           gh pr create --base develop --head "$BRANCH" \
             --title "chore: 트렌드 원자료 ${WEEK} — 읽고 이상한 줄을 지워주세요" \
             --body-file /tmp/body.md
