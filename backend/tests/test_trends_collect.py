@@ -292,3 +292,30 @@ def test_뉴스는_API_HUB_주소와_헤더로_부른다():
         "X-NCP-APIGW-API-KEY-ID": "id",
         "X-NCP-APIGW-API-KEY": "secret",
     }
+
+
+def test_설명에서_링크와_해시태그_줄을_버린다():
+    """유튜브 설명은 놀이 서술 뒤에 구독 안내·SNS 링크·해시태그 더미가 붙는다.
+
+    실측 315건에서 설명이 전체 글자의 92% 였고 링크가 1,069개였다. 그대로 두면
+    사람이 읽는 승인 PR 이 매주 수천 줄이 되고 3단 Judge 토큰도 그만큼 나간다.
+    **낱말이 아니라 줄 단위로만 버린다** — 원문을 고치면 「왜 걸렀나」를 설명 못 한다.
+    """
+    from app.features.trends.sources import _body
+
+    kept = _body(
+        "신문지로 공을 만들어요\n"
+        "바구니에 던지면 됩니다\n"
+        "\n"
+        "#어린이집 #유치원\n"
+        "------------------\n"
+        "알짜닷컴 : http://www.aalzza.com\n"
+    )
+    assert kept == "신문지로 공을 만들어요\n바구니에 던지면 됩니다"
+
+
+def test_설명이_길면_뒤를_자른다():
+    from app.features.trends.sources import _BODY_MAX, _body
+
+    cut = _body("가" * (_BODY_MAX + 50))
+    assert len(cut) == _BODY_MAX + 1 and cut.endswith("…")

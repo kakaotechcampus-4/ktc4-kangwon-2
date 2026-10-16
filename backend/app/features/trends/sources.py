@@ -68,7 +68,7 @@ def youtube_uploads(
                     source="youtube",
                     source_id=video_id,
                     title=(snippet.get("title") or "").strip(),
-                    description=(snippet.get("description") or "").strip(),
+                    description=_body(snippet.get("description")),
                     url=f"https://www.youtube.com/watch?v={video_id}",
                     published_at=_iso_day(snippet.get("publishedAt")),
                     origin=channel.name,
@@ -76,6 +76,32 @@ def youtube_uploads(
                 )
             )
     return _with_video_status(fetch, api_key, collected)
+
+
+# 설명 꼬리를 자르는 기준.
+# 유튜브 설명은 놀이 서술 몇 줄 뒤에 **구독 안내 · SNS 링크 · 해시태그 더미**가 붙는다.
+# 실측 315건에서 설명이 전체 글자의 92% 였고 그 안에 링크 1,069개 · 해시태그 1,892개였다.
+# 그대로 두면 ① 사람이 읽는 승인 PR 이 매주 4,400줄이 되고 ② 3단 Judge 토큰이 그만큼 나간다.
+# 링크가 **들어 있는** 줄은 통째로 버린다 — "알짜닷컴 : http://..." 처럼 안내 문구가
+# 앞에 붙어 있어서, 링크만 도려내면 뜻 없는 꼬리가 남는다.
+_NOISE_LINE = re.compile(r"^\s*(?:[-=*_~·]{3,}|(?:#\S+\s*)+)\s*$|https?://")
+_BODY_MAX = 600
+
+
+def _body(text: str | None) -> str:
+    """놀이 서술만 남긴다. 링크·해시태그·구분선 줄은 버린다.
+
+    **낱말을 지우지 않고 줄 단위로만 버린다.** 문장 중간의 링크까지 손대면
+    원문이 바뀌어, 나중에 "왜 걸렀나" 를 설명할 수 없다 (ADR-016).
+    """
+    kept: list[str] = []
+    for line in (text or "").splitlines():
+        if _NOISE_LINE.search(line):  # match 가 아니다 — 링크는 줄 가운데에도 온다
+            continue
+        kept.append(line.rstrip())
+    body = "\n".join(kept).strip()
+    # 줄을 버려도 긴 것이 남는다. 앞쪽에 놀이 서술이 오므로 뒤를 자른다.
+    return body if len(body) <= _BODY_MAX else body[:_BODY_MAX].rstrip() + "…"
 
 
 def _with_video_status(fetch: Fetch, api_key: str, items: list[RawItem]) -> list[RawItem]:

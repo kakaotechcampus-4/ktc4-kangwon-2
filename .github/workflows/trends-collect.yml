@@ -1,0 +1,98 @@
+# 트렌드 주간 수집 (ADR-016). 월요일 새벽에 돌고, 결과를 PR 로 올린다.
+#
+# **PR 이 승인 절차다.** 사람이 diff 를 읽고 이상한 줄을 지운다 — 관리자 화면을
+# 만들지 않기로 했다(ADR-016 결정 5). 그래서 바로 develop 에 넣지 않는다.
+#
+# 키가 없으면 그 소스만 건너뛴다. 둘 다 없으면 0건짜리 PR 이 올라오는데,
+# 그게 "이번 주는 유행이 없나 보다" 로 읽히면 안 되므로 0건이면 멈춘다.
+name: trends
+
+on:
+  schedule:
+    # UTC 일요일 19:00 = 한국 월요일 새벽 4시
+    - cron: "0 19 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  collect:
+    name: trends (weekly collect)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # 수집은 DB 를 쓰지 않는다. app.config 가 읽을 수 있게 모양만 채운다.
+      DATABASE_URL: postgresql+psycopg://x:x@127.0.0.1:1/x
+      SECRET_KEY: ci-only-not-a-secret
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+      NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # pytest job 과 같은 이유로 -e 로 깐다 (resources 를 저장소 경로에서 찾는다).
+      - name: Install planning core
+        working-directory: p0-planning
+        run: pip install -e .
+      - name: Install backend
+        working-directory: backend
+        run: pip install -e .
+
+      - name: collect
+        id: collect
+        working-directory: backend
+        run: |
+          python -m app.features.trends.collect | tee /tmp/collect.log
+          # 실패가 있어도 멈추지 않는다 — 유튜브가 죽어도 뉴스는 모은다.
+          # 대신 PR 본문에 그대로 적어 사람이 본다.
+          {
+            echo 'log<<EOF'
+            cat /tmp/collect.log
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 0건이면 멈춘다
+        working-directory: backend
+        run: |
+          week=$(python -c "from app.features.trends.item import week_label; from datetime import date; print(week_label(date.today()))")
+          file="resources/trends/collected/${week}.json"
+          count=$(python -c "import json;print(json.load(open('${file}'))['count'])")
+          echo "${week} ${count}건"
+          test "$count" -gt 0 || { echo "0건이다. 키가 빠졌거나 소스가 전부 죽었다."; exit 1; }
+
+      - name: PR 올리기
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          week=$(cd backend && python -c "from app.features.trends.item import week_label; from datetime import date; print(week_label(date.today()))")
+          branch="trends/collect-${week}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add backend/resources/trends/collected
+          git diff --cached --quiet && { echo "바뀐 것이 없다"; exit 0; }
+          git commit -m "chore: 트렌드 원자료 ${week}"
+          git push -u origin "$branch" --force
+          gh pr view "$branch" >/dev/null 2>&1 || gh pr create \
+            --base develop --head "$branch" \
+            --title "chore: 트렌드 원자료 ${week} — 읽고 이상한 줄을 지워주세요" \
+            --body "$(cat <<'BODY'
+          주 1회 자동 수집 결과다 (ADR-016). **이 PR 이 승인 절차다.**
+
+          ### 보는 법
+          - 만 3~5세에 안 맞는 줄을 지운다
+          - 장난감 개봉·상품 소개처럼 교사가 옮겨 적을 게 없는 줄을 지운다
+          - 위험한 놀이(밀기·목·숨 참기·높은 곳)는 지우고, 2단 금칙 목록에 낱말을 더한다
+
+          ### 수집 기록
+          ```
+          ${{ steps.collect.outputs.log }}
+          ```
+          BODY
+          )"
