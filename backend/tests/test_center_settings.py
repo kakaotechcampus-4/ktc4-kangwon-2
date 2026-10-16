@@ -68,3 +68,13 @@ def test_남의_원은_404(own_center, db_session):
         ).status_code
         == 404
     )
+
+
+def test_null_은_422(own_center):
+    """안 보낸 것과 null 을 보낸 것은 다르다.
+
+    안 보내면 그 칸을 안 바꾼다. null 은 참/거짓이 아니므로 거절한다 —
+    그냥 받으면 화면이 null 을 보내고도 저장됐다고 읽는다.
+    """
+    response = client.put(f"/api/centers/{own_center}/settings", json={"trends_enabled": None})
+    assert response.status_code == 422

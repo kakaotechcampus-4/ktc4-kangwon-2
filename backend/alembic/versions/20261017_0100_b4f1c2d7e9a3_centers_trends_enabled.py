@@ -29,7 +29,7 @@ def upgrade() -> None:
             sa.Boolean(),
             server_default=sa.false(),
             nullable=False,
-            comment="트렌드봇을 켤지 (FR-808). **기본은 꺼짐**",
+            comment="트렌드봇을 켤지 (FR-808). **기본은 꺼짐** — 부가 기능은 원하는 원이 켠다",
         ),
     )
 

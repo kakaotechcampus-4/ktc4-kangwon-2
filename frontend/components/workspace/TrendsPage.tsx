@@ -35,19 +35,28 @@ export default function TrendsPage() {
   const available = useAIStatus();
   // 원마다 끌 수 있다 (FR-808). **사이드바에 트렌드 메뉴가 없어서** 숨길 자리가 없다 —
   // 주소로 들어오므로 화면에서 막는다.
+  // **못 불러온 것과 꺼둔 것을 섞지 않는다.** 섞으면 서버가 잠깐 흔들렸을 뿐인데
+  // 교사가 "내가 껐었나" 하고 설정을 뒤진다.
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [settingsError, setSettingsError] = useState(false);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     let alive = true;
     (async () => {
+      // 다시 시도할 때 이전 오류를 지운다. 효과 본문에서 바로 부르면 렌더가 겹친다.
+      setSettingsError(false);
       const me = await getMe();
+      // 원이 없는 교사에게는 켤 원이 없다. 이건 오류가 아니다.
       if (!me.center_id) return alive && setEnabled(false);
       const settings = await getCenterSettings(me.center_id);
       if (alive) setEnabled(settings.trends_enabled);
-    })().catch(() => alive && setEnabled(false));
+    })().catch(() => {
+      if (alive) setSettingsError(true);
+    });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reload]);
   const [items, setItems] = useState(CURATED);
   const [topic, setTopic] = useState("놀이 중심 보육, 자연 탐구, 그림책");
   const [busy, setBusy] = useState(false);
@@ -74,6 +83,18 @@ export default function TrendsPage() {
   }
   // 끄고 켜는 것을 알기 전에는 아무것도 그리지 않는다. 켜진 화면을 먼저 보여주고
   // 뒤늦게 "꺼져 있어요" 로 바뀌면, 교사가 껐는데 켜진 줄 안다.
+  if (settingsError)
+    return (
+      <WorkspacePage title="트렌드봇" description="">
+        <section className={ws.card}>
+          <Message error>설정을 불러오지 못했어요. 꺼진 것인지 알 수 없어요.</Message>
+          <button type="button" className={ws.secondary} onClick={() => setReload((n) => n + 1)}>
+            다시 시도
+          </button>
+        </section>
+      </WorkspacePage>
+    );
+
   if (enabled === null)
     return (
       <WorkspacePage title="트렌드봇" description="">

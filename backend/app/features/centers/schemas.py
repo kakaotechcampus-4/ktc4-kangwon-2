@@ -191,6 +191,18 @@ class CenterSettingsUpdate(BaseModel):
 
     trends_enabled: Annotated[bool, Field(strict=True)] | None = None
 
+    @field_validator("trends_enabled")
+    @classmethod
+    def not_null(cls, value: bool | None) -> bool:
+        """**안 보낸 것과 null 을 보낸 것은 다르다.**
+
+        안 보내면 그 칸을 안 바꾼다. null 을 보내면 참/거짓이 아니므로 422 다 —
+        그냥 받으면 화면이 null 을 보내고도 저장됐다고 읽는다.
+        """
+        if value is None:
+            raise ValueError("참 또는 거짓이어야 합니다.")
+        return value
+
 
 class GreetingsSettings(BaseModel):
     """GET 응답 · PUT 요청/응답은 같은 12개월 계약이다 (api-spec.md §3)."""
