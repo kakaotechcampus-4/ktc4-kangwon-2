@@ -92,6 +92,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
             echo "$branch 가 이미 있다. 그 내용을 그대로 쓴다."
+            # 방금 모은 파일은 버린다. 그 경로를 브랜치가 이미 들고 있어서,
+            # 추적 안 되는 파일이 남아 있으면 checkout 이 덮어쓰기를 거부하고 멈춘다.
+            rm -f "backend/resources/trends/collected/${WEEK}.json"
             git fetch origin "$branch"
             git checkout -B "$branch" "origin/$branch"
             exit 0
