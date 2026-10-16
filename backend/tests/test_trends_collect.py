@@ -309,7 +309,7 @@ def test_설명에서_링크와_해시태그_줄을_버린다():
         "\n"
         "#어린이집 #유치원\n"
         "------------------\n"
-        "알짜닷컴 : http://www.aalzza.com\n"
+        "https://www.aalzza.com\n"
     )
     assert kept == "신문지로 공을 만들어요\n바구니에 던지면 됩니다"
 
@@ -325,8 +325,12 @@ def test_링크가_붙어_있어도_동작_설명은_남긴다():
     assert _body("아이를 높은 곳에서 밀어 떨어뜨려요 https://example.com/demo") == (
         "아이를 높은 곳에서 밀어 떨어뜨려요"
     )
-    # 안내 줄은 링크를 빼면 남는 글이 거의 없다 — 그건 버린다
-    assert _body("알짜닷컴 : http://www.aalzza.com") == ""
+    # 짧아도 남긴다 — 「목을 졸라요」는 다섯 자다
+    assert _body("목을 졸라요 https://example.com") == "목을 졸라요"
+    # 붙어 있어도 앞 낱말을 먹지 않는다
+    assert _body("밀어 떨어뜨려요https://example.com") == "밀어 떨어뜨려요"
+    # 주소뿐인 줄만 버린다
+    assert _body("https://www.aalzza.com") == ""
 
 
 def test_설명을_길다고_자르지_않는다():

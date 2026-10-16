@@ -85,9 +85,9 @@ def youtube_uploads(
 _DIVIDER = re.compile(r"[-=*_~·]{3,}")
 
 
-_URL = re.compile(r"\S*https?://\S+")
-# 링크를 걷어내고 남은 글이 이보다 짧으면 안내 줄로 본다("알짜닷컴 :" 같은 것).
-_LABEL_MAX = 10
+# 링크 그 자체만 집는다. 앞에 `\S*` 를 붙이면 `…떨어뜨려요https://…` 처럼 붙어 있을 때
+# 앞 낱말까지 먹어서 동작이 사라진다.
+_URL = re.compile(r"https?://\S+")
 
 
 def _clean(line: str) -> str | None:
@@ -96,10 +96,12 @@ def _clean(line: str) -> str | None:
     **정규식으로 해시태그 줄을 찾지 않는다.** `(?:#\S+\s*)+` 처럼 쓰면 `#a#a#a…`
     한 줄에 역추적이 터져 수집이 통째로 멈춘다(25번 반복에 2초). 낱말로 쪼갠다.
 
-    **링크가 있다고 줄을 통째로 버리지 않는다.** 「아이를 높은 곳에서 밀어요
-    https://…」처럼 **위험한 동작과 링크가 한 줄에 같이** 오면, 줄을 버리는 순간
-    그 동작이 승인 PR 에서 사라진다. 링크만 걷어내고 글은 남긴다 — 영상 주소는
-    RawItem.url 에 따로 있으므로 여기서 잃는 것이 없다.
+    **링크가 있다고 줄을 버리지 않는다.** 「아이를 높은 곳에서 밀어요 https://…」처럼
+    **위험한 동작과 링크가 한 줄에 같이** 오면, 줄을 버리는 순간 그 동작이 승인 PR 에서
+    사라진다. 링크만 걷어내고 **남은 글은 짧아도 전부 남긴다** — 「목을 졸라요」는 다섯
+    자다. 길이로 홍보 문구인지 가리려다 두 번 깎아 먹었다(Codex). 「알짜닷컴 :」 같은
+    찌꺼기가 남는 편이, 위험한 동작이 사라지는 것보다 낫다. 영상 주소는 RawItem.url 에
+    따로 있으므로 링크를 지워서 잃는 것은 없다.
     """
     text = line.strip()
     if not text:
@@ -109,8 +111,8 @@ def _clean(line: str) -> str | None:
     if all(word.startswith("#") for word in text.split()):
         return None
     if "http://" in text or "https://" in text:
-        rest = _URL.sub("", text).strip(" \t:·-—|")
-        return rest if len(rest) > _LABEL_MAX else None
+        rest = _URL.sub("", text).strip()
+        return rest or None  # 주소뿐인 줄만 버린다
     return text
 
 
