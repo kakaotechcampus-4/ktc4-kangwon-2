@@ -55,13 +55,10 @@ jobs:
         working-directory: backend
         run: |
           python -m app.features.trends.collect | tee /tmp/collect.log
-          # 실패가 있어도 멈추지 않는다 — 유튜브가 죽어도 뉴스는 모은다.
-          # 대신 PR 본문에 그대로 적어 사람이 본다.
-          {
-            echo 'log<<EOF'
-            cat /tmp/collect.log
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
+          # 주 라벨은 여기서 한 번만 구해 뒤 단계가 같이 쓴다. 단계마다 date.today() 를
+          # 부르면 자정을 넘기는 순간 파일과 브랜치가 다른 주를 가리킨다.
+          week=$(python -c "from datetime import date; from app.features.trends.item import week_label; print(week_label(date.today()))")
+          echo "week=$week" >> "$GITHUB_OUTPUT"
 
       # **이 PR 에는 CI 가 안 붙는다.** GITHUB_TOKEN 으로 만든 PR 은 pull_request 를
       # 깨우지 않는다(GitHub 규칙 — 작업이 작업을 무한히 부르는 것을 막는다).
@@ -69,86 +66,112 @@ jobs:
       # 평소 CI 가 다시 돈다.
       - name: 받은 파일이 읽히나
         working-directory: backend
+        env:
+          WEEK: ${{ steps.collect.outputs.week }}
         run: |
-          week=$(python -c "from app.features.trends.item import week_label; from datetime import date; print(week_label(date.today()))")
+          week="$WEEK"
           file="resources/trends/collected/${week}.json"
           # item.load 는 RawItem(**item) 으로 되살린다 — 열이 바뀌면 여기서 터진다.
           count=$(python -c "from pathlib import Path; from app.features.trends.item import load; print(len(load(Path('${file}'))))")
           echo "${week} ${count}건"
           test "$count" -gt 0 || { echo "0건이다. 키가 빠졌거나 소스가 전부 죽었다."; exit 1; }
 
+      # 브랜치를 먼저 정한다. **이미 그 주 브랜치가 있으면 그 내용을 쓴다** —
+      # 리뷰어가 이상한 줄을 지워 둔 상태일 수 있다. 덮어쓰면 그 지운 것이 되살아나
+      # 승인 절차가 무의미해진다. 위험 표시도 **그 파일**로 센다 — 새로 모은 것으로
+      # 세면 PR 에 든 줄과 경고가 어긋난다.
+      - name: 브랜치 준비
+        id: branch
+        shell: bash
+        env:
+          WEEK: ${{ steps.collect.outputs.week }}
+        run: |
+          branch="trends/collect-${WEEK}"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "$branch 가 이미 있다. 그 내용을 그대로 쓴다."
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+            exit 0
+          fi
+          git checkout -b "$branch"
+          git add backend/resources/trends/collected
+          if git diff --cached --quiet; then
+            echo "바뀐 것이 없다"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore: 트렌드 원자료 ${WEEK}"
+          git push -u origin "$branch"
+
       # 2단. **거르지 않고 표시만 한다** — 위험한 콘텐츠와 안전교육 콘텐츠는 같은 낱말을
       # 쓴다(ADR-016). 어느 줄을 먼저 볼지 사람에게 알려주는 것이 전부다.
       - name: 위험 표시
         id: risk
+        if: steps.branch.outputs.skip != '1'
         working-directory: backend
         shell: bash
+        env:
+          WEEK: ${{ steps.collect.outputs.week }}
         run: |
-          {
-            echo 'marked<<EOF'
-            python - <<'PY'
-          from datetime import date
+          python - <<'PY' > /tmp/risk.md
+          import os
           from pathlib import Path
 
           from app.features.trends.flags import flags
-          from app.features.trends.item import load, week_label
+          from app.features.trends.item import load
 
-          items = load(Path(f"resources/trends/collected/{week_label(date.today())}.json"))
-          marked = [(item, flags(item)) for item in items]
-          marked = [(item, found) for item, found in marked if found]
+          items = load(Path(f"resources/trends/collected/{os.environ['WEEK']}.json"))
+          marked = [(item, found) for item in items if (found := flags(item))]
           if not marked:
               print("표시된 줄 없음")
           for item, found in marked:
-              print(f'- ⚠️ {"·".join(found)} — {item.title}')
+              # 제목은 그대로 적지 않는다 — 줄바꿈이 섞여 들어오면 글이 깨진다.
+              title = " ".join(item.title.split())
+              print(f'- ⚠️ {"·".join(found)} — {title}')
               print(f"  {item.url}")
           PY
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
+          cat /tmp/risk.md
 
+      # **제목을 셸 소스에 끼워 넣지 않는다.** `${{ }}` 는 스크립트 글자에 그대로 박히므로,
+      # 제목에 줄바꿈과 heredoc 끝말이 섞여 오면 그 뒤가 명령으로 돈다. 이 단계는
+      # GH_TOKEN 과 API 키를 들고 있어서 남의 영상 제목에 저장소를 내주게 된다(Codex P1).
+      # 파일로 넘긴다.
       - name: PR 올리기
+        if: steps.branch.outputs.skip != '1'
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          WEEK: ${{ steps.collect.outputs.week }}
         run: |
-          week=$(cd backend && python -c "from app.features.trends.item import week_label; from datetime import date; print(week_label(date.today()))")
-          branch="trends/collect-${week}"
-          # **이미 그 주 브랜치가 있으면 내용은 손대지 않는다.** 리뷰어가 이상한 줄을
-          # 지워 둔 상태일 수 있다. 덮어쓰면 그 지운 것이 되살아나 승인 절차가
-          # 무의미해진다. 대신 PR 이 없으면 만든다 — 지난번에 push 는 됐는데
-          # PR 만들기가 실패했으면, 그 주 자료가 승인 절차 밖에 남아 있다.
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "$branch 가 이미 있다. 내용은 그대로 두고 PR 만 확인한다."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git checkout -b "$branch"
-            git add backend/resources/trends/collected
-            git diff --cached --quiet && { echo "바뀐 것이 없다"; exit 0; }
-            git commit -m "chore: 트렌드 원자료 ${week}"
-            git push -u origin "$branch"
-          fi
           # **열려 있는** PR 만 센다. 지난주 것이 머지돼 있어도 gh pr view 는 찾아내서,
           # 새 자료가 승인 절차 없이 브랜치에만 남는다.
-          test -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" \
-            || gh pr create \
-            --base develop --head "$branch" \
-            --title "chore: 트렌드 원자료 ${week} — 읽고 이상한 줄을 지워주세요" \
-            --body "$(cat <<'BODY'
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            echo "열려 있는 PR 이 이미 있다."
+            exit 0
+          fi
+          {
+            cat <<'HEAD'
           주 1회 자동 수집 결과다 (ADR-016). **이 PR 이 승인 절차다.**
 
           ### 보는 법
           - 만 3~5세에 안 맞는 줄을 지운다
           - 장난감 개봉·상품 소개처럼 교사가 옮겨 적을 게 없는 줄을 지운다
-          - 위험한 놀이(밀기·목·숨 참기·높은 곳)는 지우고, 2단 금칙 목록에 낱말을 더한다
+          - 위험한 놀이(밀기·목·숨 참기·높은 곳)는 지우고, risk-words.yaml 에 낱말을 더한다
 
           ### 위험 표시 (2단)
           **버린 것이 아니다.** 낱말이 걸린 줄이다 — 먼저 보라는 뜻이고, 안전교육
           영상도 같은 낱말에 걸린다(ADR-016).
 
-          ${{ steps.risk.outputs.marked }}
-
-          ### 수집 기록
-          ```
-          ${{ steps.collect.outputs.log }}
-          ```
-          BODY
-          )"
+          HEAD
+            cat /tmp/risk.md
+            printf '\n### 수집 기록\n```\n'
+            cat /tmp/collect.log
+            printf '```\n'
+          } > /tmp/body.md
+          gh pr create --base develop --head "$BRANCH" \
+            --title "chore: 트렌드 원자료 ${WEEK} — 읽고 이상한 줄을 지워주세요" \
+            --body-file /tmp/body.md
