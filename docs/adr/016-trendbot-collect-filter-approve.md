@@ -285,7 +285,7 @@ YouTube Data API v3 의 `search.list` 는 호출당 100 units, `playlistItems.li
 ## 결과
 
 - `backend/app/features/trends/` 를 채운다. 지금 빈 `__init__.py` 뿐이다.
-- 프론트의 OpenAI `web_search` 트렌드 경로를 지운다. `GET /api/trends` 로 바꾼다.
+- 프론트의 OpenAI `web_search` 트렌드 경로를 지운다. `GET /api/trends` 로 바꾼다. **완료(2026-10-17)**
 - `TrendsPage` 의 하드코딩 자료 3개를 지운다.
 - **승인 채널·언론사 목록을 사람이 먼저 짜야 한다.** 목록이 비면 수집해도 전부 1단에서
   떨어진다. 코드보다 이것이 먼저다. AI 에게 시키지 않는다 — 없는 채널을 지어낸다.

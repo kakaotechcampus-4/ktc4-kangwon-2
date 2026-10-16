@@ -256,7 +256,11 @@ def _center(session: Session, center_id: int, *, lock: bool = False) -> Center:
     if center is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            detail={"code": "NOT_FOUND", "message": "원을 찾을 수 없습니다.", "fields": ["center_id"]},
+            detail={
+                "code": "NOT_FOUND",
+                "message": "원을 찾을 수 없습니다.",
+                "fields": ["center_id"],
+            },
         )
     return center
 

@@ -143,3 +143,46 @@ test("★ 토큰이 없으면 거절한다 — 확인할 수 없으면 꺼진 �
   );
   assert.equal(response.status, 403);
 });
+
+/** §3-2. 교사 화면은 서버가 준 것만 보여준다 — 화면에서 다시 찾지 않는다 (ADR-016). */
+test("★ 트렌드는 서버에서 받는다", async () => {
+  browser();
+  const trends = await import("../lib/api/trends.ts");
+  server.use(
+    http.get("*/api/trends", () =>
+      HttpResponse.json({
+        week: "2026-W42",
+        items: [
+          {
+            source: "youtube",
+            title: "가을 놀이",
+            summary: "낙엽을 모아요",
+            url: "https://youtu.be/a",
+            published_at: "2026-10-02",
+            origin: "꼬미쌤TV",
+          },
+        ],
+      }),
+    ),
+  );
+  const body = await trends.getTrends();
+  assert.equal(body.week, "2026-W42");
+  assert.equal(body.items[0].origin, "꼬미쌤TV");
+});
+
+test("★ 꺼져 있으면 403 으로 온다 — 빈 목록이 아니다", async () => {
+  browser();
+  const trends = await import("../lib/api/trends.ts");
+  server.use(
+    http.get("*/api/trends", () =>
+      HttpResponse.json(
+        { error: { code: "TRENDS_DISABLED", message: "트렌드봇이 꺼져 있어요.", fields: [] } },
+        { status: 403 },
+      ),
+    ),
+  );
+  await assert.rejects(
+    () => trends.getTrends(),
+    (e) => e.status === 403,
+  );
+});
