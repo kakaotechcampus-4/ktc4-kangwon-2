@@ -82,6 +82,10 @@ async function refuseWhenTrendsOff(request: Request): Promise<Response | null> {
     { error: "트렌드봇이 꺼져 있어요. 설정에서 켜면 쓸 수 있어요." },
     { status: 403 },
   );
+  // **목업 모드에서는 검사하지 않는다.** MSW 는 브라우저에서만 돈다(frontend/CLAUDE.md) —
+  // 설정이 브라우저 안에 있고 토큰도 가짜라, 서버에서 확인할 길이 자체가 없다.
+  // 목업은 백엔드 없이 화면을 보는 모드다. 진짜 판정은 실제 모드에서 선다.
+  if (process.env.NEXT_PUBLIC_API_MOCKING === "enabled") return null;
   const backend = process.env.FASTAPI_BASE_URL?.replace(/\/$/, "");
   const auth = request.headers.get("Authorization");
   if (!backend || !auth) return off;
