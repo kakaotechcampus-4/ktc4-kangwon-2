@@ -84,30 +84,51 @@ jobs:
         id: branch
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WEEK: ${{ steps.collect.outputs.week }}
         run: |
           branch="trends/collect-${WEEK}"
+          file="backend/resources/trends/collected/${WEEK}.json"
           echo "name=$branch" >> "$GITHUB_OUTPUT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "$branch 가 이미 있다. 그 내용을 그대로 쓴다."
-            # 방금 모은 파일은 버린다. 그 경로를 브랜치가 이미 들고 있어서,
-            # 추적 안 되는 파일이 남아 있으면 checkout 이 덮어쓰기를 거부하고 멈춘다.
-            rm -f "backend/resources/trends/collected/${WEEK}.json"
-            git fetch origin "$branch"
-            git checkout -B "$branch" "origin/$branch"
+
+          if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            git checkout -b "$branch"
+            git add backend/resources/trends/collected
+            if git diff --cached --quiet; then
+              echo "바뀐 것이 없다"
+              echo "skip=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git commit -m "chore: 트렌드 원자료 ${WEEK}"
+            git push -u origin "$branch"
             exit 0
           fi
-          git checkout -b "$branch"
+
+          # 브랜치가 남아 있다. **열려 있는 PR 이 있을 때만 그 내용을 지킨다** —
+          # 리뷰어가 지운 줄이 되살아나면 안 된다. 머지되고 브랜치만 남은 경우라면
+          # 지킬 리뷰가 없으므로 방금 모은 것을 그 위에 얹는다.
+          open_pr="$(gh pr list --head "$branch" --state open --json number --jq '.[].number')"
+          cp "$file" /tmp/fresh.json
+          # 방금 모은 파일을 치워야 checkout 이 덮어쓰기를 거부하지 않는다.
+          rm -f "$file"
+          git fetch origin "$branch"
+          git checkout -B "$branch" "origin/$branch"
+          if [ -n "$open_pr" ]; then
+            echo "$branch 에 열려 있는 PR 이 있다. 그 내용을 그대로 쓴다."
+            exit 0
+          fi
+          echo "$branch 는 남아 있지만 열려 있는 PR 이 없다. 새로 모은 것을 얹는다."
+          cp /tmp/fresh.json "$file"
           git add backend/resources/trends/collected
           if git diff --cached --quiet; then
             echo "바뀐 것이 없다"
             echo "skip=1" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git commit -m "chore: 트렌드 원자료 ${WEEK}"
-          git push -u origin "$branch"
+          git commit -m "chore: 트렌드 원자료 ${WEEK} (다시 모음)"
+          git push origin "$branch"
 
       # 2단. **거르지 않고 표시만 한다** — 위험한 콘텐츠와 안전교육 콘텐츠는 같은 낱말을
       # 쓴다(ADR-016). 어느 줄을 먼저 볼지 사람에게 알려주는 것이 전부다.
