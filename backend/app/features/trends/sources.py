@@ -87,6 +87,9 @@ _DIVIDER = re.compile(r"[-=*_~·]{3,}")
 
 # 주소 **하나뿐인** 줄인지만 본다. 줄 안에서 주소를 도려내지 않는다 — 아래 설명 참고.
 _URL_ONLY = re.compile(r"https?://\S+")
+# 한글이 섞여 있으면 주소뿐인 줄이 아니다. `https://example.com)목을졸라요` 처럼
+# 주소 뒤에 띄어쓰기 없이 글이 붙으면 \S+ 가 그 글까지 주소로 먹는다.
+_HANGUL = re.compile(r"[가-힣]")
 
 
 def _clean(line: str) -> str | None:
@@ -112,7 +115,7 @@ def _clean(line: str) -> str | None:
         return None
     if all(word.startswith("#") for word in text.split()):
         return None
-    if _URL_ONLY.fullmatch(text):
+    if _URL_ONLY.fullmatch(text) and not _HANGUL.search(text):
         return None
     return text
 

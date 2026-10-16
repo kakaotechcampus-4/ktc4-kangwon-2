@@ -328,6 +328,7 @@ def test_링크가_붙어_있어도_동작_설명은_남긴다():
         "목을 졸라요 https://example.com",
         "밀어 떨어뜨려요https://example.com",
         "놀이를 해요 https://example.com)목을졸라요",
+        "https://example.com)목을졸라요",
     ):
         assert _body(line) == line
     # 주소뿐인 줄만 버린다
