@@ -23,7 +23,10 @@ from app.features.trends.item import RawItem
 Fetch = Callable[[str, Mapping[str, str], Mapping[str, str]], Any]
 
 YOUTUBE = "https://www.googleapis.com/youtube/v3"
-NAVER_NEWS = "https://openapi.naver.com/v1/search/news.json"
+# 네이버가 2026 에 검색 API 를 개발자센터에서 네이버 클라우드 플랫폼(API HUB)으로
+# 옮겼다. 옛 주소 openapi.naver.com/v1/search/news.json 와 X-Naver-Client-* 헤더는
+# 새 키로 부르면 401 errorCode 024 로 떨어진다. 주소와 헤더를 같이 바꿔야 한다.
+NAVER_NEWS = "https://naverapihub.apigw.ntruss.com/search/v1/news"
 
 # videos.list 는 한 번에 50개까지 받는다. 나눠 부르면 호출 수만 는다.
 _VIDEO_BATCH = 50
@@ -131,7 +134,7 @@ def naver_news(
     블로그·카페는 쓰지 않는다 — 협찬 글을 구분할 방법이 없다 (ADR-016).
     """
     allowed = {outlet.domain: outlet for outlet in outlets}
-    headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
+    headers = {"X-NCP-APIGW-API-KEY-ID": client_id, "X-NCP-APIGW-API-KEY": client_secret}
     collected: list[RawItem] = []
     seen: set[str] = set()
     for query in queries:

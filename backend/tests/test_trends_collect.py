@@ -100,7 +100,7 @@ def test_아동용_표시가_없으면_None_이다():
 def test_승인_안_된_언론사_기사는_버린다():
     fetch = fake(
         {
-            "news.json": {
+            "/search/v1/news": {
                 "items": [
                     {
                         "title": "유아 <b>공룡</b> 놀이 인기",
@@ -129,7 +129,7 @@ def test_기사_제목의_태그와_이스케이프를_푼다():
     """네이버는 검색어에 <b> 를 감고 따옴표를 HTML 로 바꿔서 준다."""
     fetch = fake(
         {
-            "news.json": {
+            "/search/v1/news": {
                 "items": [
                     {
                         "title": "유아 <b>공룡</b> 놀이",
@@ -158,7 +158,7 @@ def test_같은_기사가_여러_검색어에_걸려도_한_번만_담는다():
             }
         ]
     }
-    items = naver_news(fake({"news.json": body}), "id", "secret", ["가", "나"], [OUTLET])
+    items = naver_news(fake({"/search/v1/news": body}), "id", "secret", ["가", "나"], [OUTLET])
 
     assert len(items) == 1
 
@@ -270,3 +270,25 @@ def test_주_번호는_월요일에_바뀐다():
     """월요일 새벽에 돈다. 일요일과 월요일이 같은 파일이면 결과가 섞인다."""
     assert week_label(date(2026, 9, 20)) == "2026-W38"  # 일
     assert week_label(date(2026, 9, 21)) == "2026-W39"  # 월
+
+
+def test_뉴스는_API_HUB_주소와_헤더로_부른다():
+    """네이버가 2026 에 검색 API 를 네이버 클라우드 플랫폼으로 옮겼다.
+
+    옛 주소(openapi.naver.com)와 옛 헤더(X-Naver-Client-*)로 부르면 새 키로는
+    401 errorCode 024 가 온다. 되돌아가면 뉴스가 통째로 0건이 되는데, 수집은
+    「하나가 죽어도 나머지는 계속한다」라서 조용히 유튜브만 모은다.
+    """
+    seen: dict[str, object] = {}
+
+    def _fetch(url, params, headers):
+        seen["url"] = url
+        seen["headers"] = dict(headers)
+        return {"items": []}
+
+    naver_news(_fetch, "id", "secret", ["가"], [OUTLET])
+    assert seen["url"] == "https://naverapihub.apigw.ntruss.com/search/v1/news"
+    assert seen["headers"] == {
+        "X-NCP-APIGW-API-KEY-ID": "id",
+        "X-NCP-APIGW-API-KEY": "secret",
+    }
