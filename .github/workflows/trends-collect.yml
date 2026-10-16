@@ -55,9 +55,10 @@ jobs:
         working-directory: backend
         run: |
           python -m app.features.trends.collect | tee /tmp/collect.log
-          # 주 라벨은 여기서 한 번만 구해 뒤 단계가 같이 쓴다. 단계마다 date.today() 를
-          # 부르면 자정을 넘기는 순간 파일과 브랜치가 다른 주를 가리킨다.
-          week=$(python -c "from datetime import date; from app.features.trends.item import week_label; print(week_label(date.today()))")
+          # 주 라벨을 **저장된 파일 이름에서** 뽑는다. date.today() 를 다시 부르면
+          # 일요일 자정을 넘기는 순간 수집이 쓴 파일과 다른 주를 가리킨다.
+          week=$(sed -n 's#.*collected/\(.*\)\.json.*#\1#p' /tmp/collect.log | tail -1)
+          test -n "$week" || { echo "수집이 파일 경로를 찍지 않았다"; exit 1; }
           echo "week=$week" >> "$GITHUB_OUTPUT"
 
       # **이 PR 에는 CI 가 안 붙는다.** GITHUB_TOKEN 으로 만든 PR 은 pull_request 를
@@ -122,9 +123,11 @@ jobs:
           echo "$branch 는 남아 있지만 열려 있는 PR 이 없다. 새로 모은 것을 얹는다."
           cp /tmp/fresh.json "$file"
           git add backend/resources/trends/collected
+          # **여기서는 skip 을 세우지 않는다.** 브랜치에 이미 자료가 올라가 있으므로,
+          # 새 커밋이 없더라도 PR 은 있어야 한다 — 지난번에 push 는 됐는데 PR 만들기가
+          # 실패한 경우가 이 길로 온다. 건너뛰면 자료가 승인 절차 밖에 남는다.
           if git diff --cached --quiet; then
-            echo "바뀐 것이 없다"
-            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "새로 담을 것은 없다. PR 만 확인한다."
             exit 0
           fi
           git commit -m "chore: 트렌드 원자료 ${WEEK} (다시 모음)"
