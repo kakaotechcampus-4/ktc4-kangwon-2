@@ -97,44 +97,38 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            git checkout -b "$branch"
-            git add backend/resources/trends/collected
-            if git diff --cached --quiet; then
-              echo "바뀐 것이 없다"
-              echo "skip=1" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            git commit -m "chore: 트렌드 원자료 ${WEEK}"
-            git push -u origin "$branch"
+          exists=0
+          git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1 && exists=1
+          open_pr=""
+          [ "$exists" = 1 ] && open_pr="$(gh pr list --head "$branch" --state open --json number --jq '.[].number')"
+
+          # **열려 있는 PR 이 있으면 그 자료를 지킨다.** 리뷰어가 지운 줄이 되살아나면
+          # 승인 절차가 무의미해진다. 다만 **브랜치로 갈아타지 않는다** — 갈아타면 검열
+          # 규칙(risk-words.yaml · judge.py)까지 그 시점 것으로 돌아가서, develop 에서
+          # 고친 규칙이 다시 돌려도 적용되지 않는다. 자료 파일만 가져온다.
+          if [ -n "$open_pr" ]; then
+            echo "열려 있는 PR(#$open_pr) 이 있다. 그 자료로 다시 본다."
+            git fetch origin "$branch"
+            git checkout "origin/$branch" -- backend/resources/trends/collected
+            echo "open_pr=$open_pr" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # 브랜치가 남아 있다. **열려 있는 PR 이 있을 때만 그 내용을 지킨다** —
-          # 리뷰어가 지운 줄이 되살아나면 안 된다. 머지되고 브랜치만 남은 경우라면
-          # 지킬 리뷰가 없으므로 방금 모은 것을 그 위에 얹는다.
-          open_pr="$(gh pr list --head "$branch" --state open --json number --jq '.[].number')"
-          cp "$file" /tmp/fresh.json
-          # 방금 모은 파일을 치워야 checkout 이 덮어쓰기를 거부하지 않는다.
-          rm -f "$file"
-          git fetch origin "$branch"
-          git checkout -B "$branch" "origin/$branch"
-          if [ -n "$open_pr" ]; then
-            echo "$branch 에 열려 있는 PR 이 있다. 그 내용을 그대로 쓴다."
-            exit 0
-          fi
-          echo "$branch 는 남아 있지만 열려 있는 PR 이 없다. 새로 모은 것을 얹는다."
-          cp /tmp/fresh.json "$file"
+          # 열려 있는 PR 이 없다. 머지됐거나 PR 을 못 만든 것이므로 지금 모은 것을 올린다.
+          git checkout -b "$branch"
           git add backend/resources/trends/collected
-          # **여기서는 skip 을 세우지 않는다.** 브랜치에 이미 자료가 올라가 있으므로,
-          # 새 커밋이 없더라도 PR 은 있어야 한다 — 지난번에 push 는 됐는데 PR 만들기가
-          # 실패한 경우가 이 길로 온다. 건너뛰면 자료가 승인 절차 밖에 남는다.
-          if git diff --cached --quiet; then
+          if git diff --cached --quiet && [ "$exists" = 1 ]; then
             echo "새로 담을 것은 없다. PR 만 확인한다."
             exit 0
           fi
-          git commit -m "chore: 트렌드 원자료 ${WEEK} (다시 모음)"
-          git push origin "$branch"
+          if git diff --cached --quiet; then
+            echo "바뀐 것이 없다"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore: 트렌드 원자료 ${WEEK}"
+          # 머지된 옛 브랜치가 남아 있을 수 있다. 리뷰 중인 것은 위에서 이미 걸렀다.
+          git push --force-with-lease origin "$branch"
 
       # 2단. **거르지 않고 표시만 한다** — 위험한 콘텐츠와 안전교육 콘텐츠는 같은 낱말을
       # 쓴다(ADR-016). 어느 줄을 먼저 볼지 사람에게 알려주는 것이 전부다.
@@ -214,16 +208,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.branch.outputs.name }}
           WEEK: ${{ steps.collect.outputs.week }}
+          OPEN_PR: ${{ steps.branch.outputs.open_pr }}
         run: |
-          # **열려 있는** PR 만 센다. 지난주 것이 머지돼 있어도 gh pr view 는 찾아내서,
-          # 새 자료가 승인 절차 없이 브랜치에만 남는다.
-          open_pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')"
-          # 머지된 뒤 브랜치만 남아 있고 새로 담을 것도 없으면, 올릴 커밋이 없다.
-          # 그대로 gh pr create 를 부르면 "no commits between" 으로 실패한다.
-          git fetch origin develop
-          if [ "$(git rev-list --count origin/develop..HEAD)" -eq 0 ]; then
-            echo "develop 에 이미 다 들어가 있다. 올릴 것이 없다."
-            exit 0
+          # 열려 있는 PR 이 있으면 브랜치로 갈아타지 않았다(검열 규칙을 최신으로 두려고).
+          # 그때는 새 PR 을 만들 것이 없고 댓글만 붙인다.
+          if [ -z "$OPEN_PR" ]; then
+            # 머지된 뒤 브랜치만 남아 있고 새로 담을 것도 없으면, 올릴 커밋이 없다.
+            # 그대로 gh pr create 를 부르면 "no commits between" 으로 실패한다.
+            git fetch origin develop
+            if [ "$(git rev-list --count origin/develop..HEAD)" -eq 0 ]; then
+              echo "develop 에 이미 다 들어가 있다. 올릴 것이 없다."
+              exit 0
+            fi
           fi
           {
             cat <<'HEAD'
@@ -250,12 +246,12 @@ jobs:
           # **PR 이 이미 있으면 다시 만들지 않고 댓글로 붙인다.** 모델이 죽은 채로 한 번
           # 돌고 다시 돌면, 두 번째에 찾은 위험이 Actions 로그에만 남고 PR 에는
           # 「모델을 못 썼다」만 남는다.
-          if [ -n "$open_pr" ]; then
+          if [ -n "$OPEN_PR" ]; then
             {
               printf '다시 돌렸어요. 아래가 최신입니다.\n\n'
               cat /tmp/body.md
             } > /tmp/comment.md
-            gh pr comment "$open_pr" --body-file /tmp/comment.md
+            gh pr comment "$OPEN_PR" --body-file /tmp/comment.md
             exit 0
           fi
           gh pr create --base develop --head "$BRANCH" \

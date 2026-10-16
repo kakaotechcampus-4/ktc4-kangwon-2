@@ -141,3 +141,21 @@ def test_시간이_다_되면_남은_것을_못_본_것으로_남긴다():
     result = judge(items, ask=slow, batch_size=1, budget_seconds=0.1)
     assert result.unseen > 0
     assert any("시간이 다 돼" in f for f in result.failures)
+
+
+def test_다른_묶음의_id_는_받지_않는다():
+    """모델이 보지도 않은 줄에 대고 「버리자」가 나오면 안 된다."""
+    answers = [
+        json.dumps({"drop": [{"id": "b", "quote": "밀어 넘어뜨려요", "why": "다친다"}]}),
+        json.dumps({"drop": []}),
+    ]
+
+    def ask(system_prompt: str, user_content: str) -> str:
+        return answers.pop(0)
+
+    result = judge(
+        (item("a", "놀이", "색종이를 접어요"), item("b", "놀이", "친구를 밀어 넘어뜨려요")),
+        ask=ask,
+        batch_size=1,
+    )
+    assert result.dropped == ()

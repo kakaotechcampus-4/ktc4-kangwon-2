@@ -131,14 +131,15 @@ def judge(
         return JudgeResult(unseen=len(items), failures=["judge: LLM_MODE 가 mock 이다"])
     ask = ask or _ask_model
 
-    # 인용이 **그 줄에 실제로 있는지** 대조하려고 원문을 들고 있는다.
-    known = {item.source_id: f"{item.title}\n{item.description}" for item in items}
     dropped: list[Dropped] = []
     failures: list[str] = []
     unseen = 0
     started = time.monotonic()
     for start in range(0, len(items), batch_size):
         chunk = items[start : start + batch_size]
+        # **이번에 보낸 것만 센다.** 다른 묶음의 id 를 받아 주면, 모델이 보지도 않은 줄에
+        # 대고 「버리자」가 나온다. 인용이 우연히 맞아도 그건 판정이 아니다.
+        known = {item.source_id: f"{item.title}\n{item.description}" for item in chunk}
         if time.monotonic() - started > budget_seconds:
             left = len(items) - start
             unseen += left
