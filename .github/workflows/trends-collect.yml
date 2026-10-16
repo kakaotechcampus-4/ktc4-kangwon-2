@@ -180,6 +180,13 @@ jobs:
             echo "열려 있는 PR 이 이미 있다."
             exit 0
           fi
+          # 머지된 뒤 브랜치만 남아 있고 새로 담을 것도 없으면, 올릴 커밋이 없다.
+          # 그대로 gh pr create 를 부르면 "no commits between" 으로 실패한다.
+          git fetch origin develop
+          if [ "$(git rev-list --count origin/develop..HEAD)" -eq 0 ]; then
+            echo "develop 에 이미 다 들어가 있다. 올릴 것이 없다."
+            exit 0
+          fi
           {
             cat <<'HEAD'
           주 1회 자동 수집 결과다 (ADR-016). **이 PR 이 승인 절차다.**
