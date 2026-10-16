@@ -88,3 +88,41 @@ def test_주소와_채널은_보내지_않는다():
     judge((item("a", "놀이", "본문"),), ask=answering({"drop": []}, seen))
     sent = seen[0]
     assert "youtu.be" not in sent and "테스트채널" not in sent
+
+
+def test_원문에_없는_인용은_버리지_않는다():
+    """지어낸 문장이 PR 에 「근거」로 뜨면, 사람이 그걸 읽고 멀쩡한 줄을 지운다."""
+    result = judge(
+        (item("a", "종이접기", "색종이를 반으로 접어요"),),
+        ask=answering({"drop": [{"id": "a", "quote": "친구 목을 조르세요", "why": "위험"}]}),
+    )
+    assert result.dropped == ()
+    assert any("원문에 없는 인용" in f for f in result.failures)
+
+
+def test_줄바꿈이_공백으로_와도_같은_인용으로_본다():
+    result = judge(
+        (item("a", "놀이", "친구를 밀어\n넘어뜨려요"),),
+        ask=answering({"drop": [{"id": "a", "quote": "친구를 밀어 넘어뜨려요", "why": "다친다"}]}),
+    )
+    assert [d.id for d in result.dropped] == ["a"]
+
+
+def test_모양이_틀린_답은_못_본_것으로_남긴다():
+    """JSON 으로 읽혔다고 모양이 맞는 것은 아니다. 조용히 「버릴 것 없음」이 되면 안 된다."""
+    for broken in ({"drop": ["a"]}, {}, {"drop": "a"}, []):
+        result = judge((item("a", "놀이", "본문"),), ask=answering(broken))
+        assert result.dropped == ()
+        assert result.unseen == 1, broken
+        assert result.failures
+
+
+def test_한도_초과도_못_본_것으로_남긴다():
+    """여기서 터지면 이미 올라간 그 주 자료가 승인 PR 없이 브랜치에만 남는다."""
+    from app.shared.llm.errors import LlmBudgetExceeded
+
+    def over(system_prompt: str, user_content: str) -> str:
+        raise LlmBudgetExceeded("한도 초과")
+
+    result = judge((item("a", "놀이"),), ask=over)
+    assert result.unseen == 1 and result.failures

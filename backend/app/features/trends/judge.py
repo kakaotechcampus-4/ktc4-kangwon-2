@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 
 from app.features.trends.item import RawItem
 from app.shared.llm.client import complete_json, is_mock
-from app.shared.llm.errors import LlmFailed, LlmUnavailable
+from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 SYSTEM_PROMPT = """너는 어린이집 교사에게 갈 놀이 소재를 거르는 검열자다.
 
@@ -84,6 +84,26 @@ def _ask_model(system_prompt: str, user_content: str) -> str:
     return complete_json(system_prompt, user_content)
 
 
+def _squash(text: str) -> str:
+    """띄어쓰기·줄바꿈만 맞춘다. 모델이 줄바꿈을 공백으로 바꿔 돌려주기 때문이다."""
+    return " ".join(text.split())
+
+
+def _rows(body: object) -> list[dict]:
+    """답의 모양을 **실패 처리 안에서** 본다.
+
+    JSON 으로 읽혔다고 모양이 맞는 것은 아니다. `{"drop": ["a"]}` 는 파싱은 되지만
+    줄이 문자열이라 `.get` 이 터지고, `{}` 는 조용히 「버릴 것 없음」이 된다 —
+    둘 다 못 본 것으로 남겨야 사람이 안다.
+    """
+    if not isinstance(body, dict) or not isinstance(body.get("drop"), list):
+        raise ValueError("drop 배열이 없다")
+    rows = body["drop"]
+    if not all(isinstance(row, dict) for row in rows):
+        raise ValueError("drop 의 줄이 객체가 아니다")
+    return rows
+
+
 def judge(
     items: tuple[RawItem, ...],
     *,
@@ -101,7 +121,8 @@ def judge(
         return JudgeResult(unseen=len(items), failures=["judge: LLM_MODE 가 mock 이다"])
     ask = ask or _ask_model
 
-    known = {item.source_id for item in items}
+    # 인용이 **그 줄에 실제로 있는지** 대조하려고 원문을 들고 있는다.
+    known = {item.source_id: f"{item.title}\n{item.description}" for item in items}
     dropped: list[Dropped] = []
     failures: list[str] = []
     unseen = 0
@@ -109,18 +130,32 @@ def judge(
         chunk = items[start : start + batch_size]
         try:
             answer = ask(SYSTEM_PROMPT, _batch_prompt(chunk))
-            body = json.loads(answer)
-        except (LlmFailed, LlmUnavailable, json.JSONDecodeError, TypeError) as error:
-            # 한 묶음이 죽어도 나머지는 계속 본다. 트렌드는 부가 기능이다.
+            rows = _rows(json.loads(answer))
+        except (
+            LlmBudgetExceeded,
+            LlmFailed,
+            LlmUnavailable,
+            json.JSONDecodeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            # 한 묶음이 죽어도 나머지는 계속 본다. 트렌드는 부가 기능이고, 여기서 멈추면
+            # 이미 올라간 그 주 자료가 승인 PR 없이 브랜치에만 남는다.
             failures.append(f"judge: {type(error).__name__} {error}")
             unseen += len(chunk)
             continue
-        for row in body.get("drop") or []:
+        for row in rows:
             source_id = str(row.get("id", ""))
             quote = str(row.get("quote", "")).strip()
+            source = known.get(source_id)
             # **받은 적 없는 id 는 버린다.** 모델이 지어낸 id 로 엉뚱한 줄이 사라지면
             # 사람이 「왜 없지」를 찾을 길이 없다.
-            if source_id not in known or not quote:
+            if source is None or not quote:
+                continue
+            # **인용이 원문에 없으면 버리지 않는다.** 모델이 지어낸 문장을 PR 에 「근거」로
+            # 띄우면, 사람이 그걸 읽고 지운다 — 없는 위험을 보고 멀쩡한 줄을 버리게 된다.
+            if _squash(quote) not in _squash(source):
+                failures.append(f"judge: 원문에 없는 인용을 받았다 (id={source_id})")
                 continue
             dropped.append(Dropped(id=source_id, quote=quote, why=str(row.get("why", "")).strip()))
     return JudgeResult(dropped=tuple(dropped), unseen=unseen, failures=failures)
