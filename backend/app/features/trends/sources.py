@@ -85,22 +85,33 @@ def youtube_uploads(
 _DIVIDER = re.compile(r"[-=*_~·]{3,}")
 
 
-def _is_noise(line: str) -> bool:
-    r"""버릴 줄인가. **정규식으로 해시태그 줄을 찾지 않는다.**
+_URL = re.compile(r"\S*https?://\S+")
+# 링크를 걷어내고 남은 글이 이보다 짧으면 안내 줄로 본다("알짜닷컴 :" 같은 것).
+_LABEL_MAX = 10
 
-    `(?:#\S+\s*)+` 처럼 쓰면 `#a#a#a…` 한 줄에 역추적이 터져 수집이 통째로 멈춘다
-    (Codex 지적, 25번 반복에 2초). 낱말로 쪼개서 한 번만 훑는다.
+
+def _clean(line: str) -> str | None:
+    r"""한 줄을 다듬는다. 버릴 줄이면 None.
+
+    **정규식으로 해시태그 줄을 찾지 않는다.** `(?:#\S+\s*)+` 처럼 쓰면 `#a#a#a…`
+    한 줄에 역추적이 터져 수집이 통째로 멈춘다(25번 반복에 2초). 낱말로 쪼갠다.
+
+    **링크가 있다고 줄을 통째로 버리지 않는다.** 「아이를 높은 곳에서 밀어요
+    https://…」처럼 **위험한 동작과 링크가 한 줄에 같이** 오면, 줄을 버리는 순간
+    그 동작이 승인 PR 에서 사라진다. 링크만 걷어내고 글은 남긴다 — 영상 주소는
+    RawItem.url 에 따로 있으므로 여기서 잃는 것이 없다.
     """
     text = line.strip()
     if not text:
-        return False  # 빈 줄은 남긴다 — 문단이 붙어버리면 읽기 어렵다
-    if "http://" in text or "https://" in text:
-        # 링크가 **들어 있는** 줄은 통째로 버린다 — "알짜닷컴 : http://..." 처럼 안내 문구가
-        # 앞에 붙어 있어서, 링크만 도려내면 뜻 없는 꼬리가 남는다.
-        return True
+        return ""  # 빈 줄은 남긴다 — 문단이 붙어버리면 읽기 어렵다
     if _DIVIDER.fullmatch(text):
-        return True
-    return all(word.startswith("#") for word in text.split())
+        return None
+    if all(word.startswith("#") for word in text.split()):
+        return None
+    if "http://" in text or "https://" in text:
+        rest = _URL.sub("", text).strip(" \t:·-—|")
+        return rest if len(rest) > _LABEL_MAX else None
+    return text
 
 
 def _body(text: str | None) -> str:
@@ -114,7 +125,7 @@ def _body(text: str | None) -> str:
     되돌렸다: 315건 중 43건이 잘렸고, 그 뒤에 있던 글을 사람도 Judge 도 못 보게
     된다. 읽기 편하자고 안전 근거를 버리는 거래는 하지 않는다.
     """
-    kept = [line.rstrip() for line in (text or "").splitlines() if not _is_noise(line)]
+    kept = [cleaned for line in (text or "").splitlines() if (cleaned := _clean(line)) is not None]
     return "\n".join(kept).strip()
 
 

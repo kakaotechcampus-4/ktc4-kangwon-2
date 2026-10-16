@@ -314,6 +314,21 @@ def test_설명에서_링크와_해시태그_줄을_버린다():
     assert kept == "신문지로 공을 만들어요\n바구니에 던지면 됩니다"
 
 
+def test_링크가_붙어_있어도_동작_설명은_남긴다():
+    """위험한 동작과 링크가 한 줄에 같이 오는 경우가 있다.
+
+    줄을 통째로 버리면 그 동작이 승인 PR 에서 사라져, 사람도 3단 Judge 도 못 본다.
+    링크만 걷어낸다 — 영상 주소는 RawItem.url 에 따로 있다.
+    """
+    from app.features.trends.sources import _body
+
+    assert _body("아이를 높은 곳에서 밀어 떨어뜨려요 https://example.com/demo") == (
+        "아이를 높은 곳에서 밀어 떨어뜨려요"
+    )
+    # 안내 줄은 링크를 빼면 남는 글이 거의 없다 — 그건 버린다
+    assert _body("알짜닷컴 : http://www.aalzza.com") == ""
+
+
 def test_설명을_길다고_자르지_않는다():
     """3단이 보는 것은 놀이 서술 전체다 (ADR-016).
 

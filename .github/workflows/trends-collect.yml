@@ -48,6 +48,9 @@ jobs:
         run: pip install -e .
 
       - name: collect
+        # 기본 셸은 pipefail 이 없다. tee 로 넘기면 python 이 죽어도 성공으로 읽혀
+        # 지난주 파일이 남아 있는 채로 다음 단계가 통과한다.
+        shell: bash
         id: collect
         working-directory: backend
         run: |
