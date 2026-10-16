@@ -319,3 +319,23 @@ def test_설명이_길면_뒤를_자른다():
 
     cut = _body("가" * (_BODY_MAX + 50))
     assert len(cut) == _BODY_MAX + 1 and cut.endswith("…")
+
+
+def test_실패_기록에_키를_적지_않는다():
+    """유튜브는 키를 주소에 담는다(`?key=...`).
+
+    httpx 오류 메시지에 그 주소가 통째로 들어 있어서, 실패 기록을 그대로 옮기면
+    Actions 로그·PR 본문·서버 cron 로그에 키가 적힌다. 한 번 적히면 지워도
+    기록이 남으므로 만드는 자리에서 가린다.
+    """
+    from app.features.trends.collect import _safe
+
+    hidden = _safe(
+        RuntimeError(
+            "Client error '403' for url "
+            "'https://www.googleapis.com/youtube/v3/videos?id=a&key=AIzaSyREAL_SECRET'"
+        )
+    )
+    assert "AIzaSyREAL_SECRET" not in hidden
+    assert "key=***" in hidden
+    assert "403" in hidden  # 무엇이 실패했는지는 남아야 한다
