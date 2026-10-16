@@ -98,6 +98,10 @@ def _clean(line: str) -> str | None:
     **정규식으로 해시태그 줄을 찾지 않는다.** `(?:#\S+\s*)+` 처럼 쓰면 `#a#a#a…`
     한 줄에 역추적이 터져 수집이 통째로 멈춘다(25번 반복에 2초). 낱말로 쪼갠다.
 
+    **해시태그만 있는 줄도 남긴다.** 2026-10-17 에 빼려다 되돌렸다 — `#기절놀이 #숨참기`
+    처럼 **위험이 해시태그에만 적힌 경우**가 있고, 그걸 지우면 2단 표시도 3단 판정도
+    그 줄을 못 본다. 버리는 것은 구분선과 주소뿐이다.
+
     **줄 안에서 글자를 지우지 않는다.** 링크만 도려내려고 세 번 고쳐 봤고 세 번 다
     안전 글을 깎아 먹었다(Codex).
 
@@ -112,8 +116,6 @@ def _clean(line: str) -> str | None:
     if not text:
         return ""  # 빈 줄은 남긴다 — 문단이 붙어버리면 읽기 어렵다
     if _DIVIDER.fullmatch(text):
-        return None
-    if all(word.startswith("#") for word in text.split()):
         return None
     if _URL_ONLY.fullmatch(text) and not _HANGUL.search(text):
         return None

@@ -294,8 +294,8 @@ def test_뉴스는_API_HUB_주소와_헤더로_부른다():
     }
 
 
-def test_설명에서_링크와_해시태그_줄을_버린다():
-    """유튜브 설명은 놀이 서술 뒤에 구독 안내·SNS 링크·해시태그 더미가 붙는다.
+def test_설명에서_링크와_구분선_줄을_버린다():
+    """유튜브 설명은 놀이 서술 뒤에 구독 안내·SNS 링크가 붙는다.
 
     실측 315건에서 설명이 전체 글자의 92% 였고 링크가 1,069개였다. 그대로 두면
     사람이 읽는 승인 PR 이 매주 수천 줄이 되고 3단 Judge 토큰도 그만큼 나간다.
@@ -307,11 +307,36 @@ def test_설명에서_링크와_해시태그_줄을_버린다():
         "신문지로 공을 만들어요\n"
         "바구니에 던지면 됩니다\n"
         "\n"
-        "#어린이집 #유치원\n"
         "------------------\n"
         "https://www.aalzza.com\n"
     )
     assert kept == "신문지로 공을 만들어요\n바구니에 던지면 됩니다"
+
+
+def test_해시태그만_있는_줄도_남긴다():
+    """위험이 해시태그에만 적히는 경우가 있다.
+
+    `#기절놀이 #숨참기` 를 지우면 2단 표시도 3단 판정도 그 줄을 못 본다.
+    읽기 편하자고 안전 근거를 버리지 않는다.
+    """
+    from app.features.trends.flags import flags
+    from app.features.trends.item import RawItem
+    from app.features.trends.sources import _body
+
+    body = _body("재미있는 놀이예요\n#기절놀이 #숨참기")
+    assert "#기절놀이" in body
+    marked = flags(
+        RawItem(
+            source="youtube",
+            source_id="x",
+            title="재미있는 놀이",
+            description=body,
+            url="https://example.com",
+            published_at="2026-10-17",
+            origin="테스트",
+        )
+    )
+    assert "질식·기절" in marked
 
 
 def test_링크가_붙어_있어도_동작_설명은_남긴다():

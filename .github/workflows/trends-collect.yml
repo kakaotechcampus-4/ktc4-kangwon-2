@@ -170,6 +170,9 @@ jobs:
         env:
           WEEK: ${{ steps.collect.outputs.week }}
           LLM_MODE: ${{ secrets.ELICE_MLAPI_API_KEY != '' && 'real' || 'mock' }}
+          # real 은 로컬에서 막혀 있다(AGENTS.md — 키가 팀 공유라 어디로 새는지 모른다).
+          # 주간 작업은 저장소가 돌리는 자리이고 Secrets 로만 키가 들어오므로 허용한다.
+          IS_SERVER: "true"
           ELICE_MLAPI_BASE_URL: ${{ secrets.ELICE_MLAPI_BASE_URL }}
           ELICE_MLAPI_API_KEY: ${{ secrets.ELICE_MLAPI_API_KEY }}
         run: |

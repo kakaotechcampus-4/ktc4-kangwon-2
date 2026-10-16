@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 
 from app.features.trends.item import RawItem
 from app.shared.llm.client import complete_json, is_mock
-from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 SYSTEM_PROMPT = """너는 어린이집 교사에게 갈 놀이 소재를 거르는 검열자다.
 
@@ -148,14 +147,10 @@ def judge(
         try:
             answer = ask(SYSTEM_PROMPT, _batch_prompt(chunk))
             rows = _rows(json.loads(answer))
-        except (
-            LlmBudgetExceeded,
-            LlmFailed,
-            LlmUnavailable,
-            json.JSONDecodeError,
-            TypeError,
-            ValueError,
-        ) as error:
+        # **무엇이 터지든 묶음 하나만 포기한다.** 연결이 중간에 끊기는 것(IncompleteRead)
+        # 처럼 미처 적지 못한 것이 하나라도 여기서 새면, 이미 올라간 그 주 자료가
+        # 승인 PR 없이 브랜치에만 남는다. 버리지 않는 쪽이라 삼켜도 안전하다.
+        except Exception as error:  # noqa: BLE001
             # 한 묶음이 죽어도 나머지는 계속 본다. 트렌드는 부가 기능이고, 여기서 멈추면
             # 이미 올라간 그 주 자료가 승인 PR 없이 브랜치에만 남는다.
             failures.append(f"judge: {type(error).__name__} {error}")
