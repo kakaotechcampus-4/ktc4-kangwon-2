@@ -51,6 +51,21 @@ function browser() {
   });
 }
 
+/** 서버 스키마가 받는 칸. 그 밖이 오면 422 다 (extra="forbid"). */
+const PUT_FIELDS = new Set(["date", "position", "start", "end", "name", "plan", "execution"]);
+const POST_FIELDS = new Set([...PUT_FIELDS, "class_id"]);
+
+/** **목업을 서버만큼 깐깐하게 둔다.** 느슨하면 연동 때 한꺼번에 터진다 (frontend/CLAUDE.md). */
+const reject = (body, allowed) => {
+  const extra = Object.keys(body).filter((k) => !allowed.has(k));
+  return extra.length
+    ? HttpResponse.json(
+        { error: { code: "VALIDATION_FAILED", message: "모르는 칸", fields: extra } },
+        { status: 422 },
+      )
+    : null;
+};
+
 const row = (over = {}) => ({
   id: 1,
   class_id: 7,
@@ -90,12 +105,17 @@ test("★ 저장은 지우기를 먼저 한다 — 자리가 겹치지 않게", 
     }),
     http.post("*/api/routines", async ({ request }) => {
       const body = await request.json();
+      const bad = reject(body, POST_FIELDS);
+      if (bad) return bad;
       order.push("post");
       return HttpResponse.json(row({ ...body, id: 9 }), { status: 201 });
     }),
     http.put("*/api/routines/:id", async ({ request, params }) => {
+      const body = await request.json();
+      const bad = reject(body, PUT_FIELDS);
+      if (bad) return bad;
       order.push("put" + params.id);
-      return HttpResponse.json(row({ ...(await request.json()), id: Number(params.id) }));
+      return HttpResponse.json(row({ ...body, id: Number(params.id) }));
     }),
   );
   await routines.saveRoutines(
@@ -116,10 +136,14 @@ test("★ 새 줄에만 반을 보낸다 — PUT 에 반을 보내면 서버가 
   server.use(
     http.put("*/api/routines/:id", async ({ request }) => {
       put = await request.json();
+      const bad = reject(put, PUT_FIELDS);
+      if (bad) return bad;
       return HttpResponse.json(row());
     }),
     http.post("*/api/routines", async ({ request }) => {
       post = await request.json();
+      const bad = reject(post, POST_FIELDS);
+      if (bad) return bad;
       return HttpResponse.json(row({ id: 9 }), { status: 201 });
     }),
   );
@@ -128,6 +152,7 @@ test("★ 새 줄에만 반을 보낸다 — PUT 에 반을 보내면 서버가 
     { date: "2026-10-17", name: "놀이" },
   ]);
   assert.ok(!("class_id" in put), "PUT 에 class_id 가 들어갔다");
+  assert.ok(!("id" in put), "PUT 에 id 가 들어갔다 — 서버가 422 로 막는다");
   assert.equal(post.class_id, 7);
 });
 

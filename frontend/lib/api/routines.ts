@@ -105,7 +105,17 @@ export async function saveRoutines(
   for (const id of removedIds) await deleteRoutine(id);
   const saved: Routine[] = [];
   for (const [index, row] of rows.entries()) {
-    const body = { ...row, position: row.position ?? index };
+    // **화면이 들고 있는 id 를 그대로 보내지 않는다.** 서버 스키마가 extra="forbid" 라
+    // 모르는 칸이 하나라도 있으면 422 다. 보낼 칸만 골라 담는다.
+    const body: RoutineInput = {
+      date: row.date,
+      position: row.position ?? index,
+      start: row.start ?? null,
+      end: row.end ?? null,
+      name: row.name,
+      plan: row.plan ?? "",
+      execution: row.execution ?? "",
+    };
     saved.push(
       row.id === undefined
         ? await createRoutine({ ...body, class_id: classId })
