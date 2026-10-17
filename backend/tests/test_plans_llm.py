@@ -159,7 +159,7 @@ def _wrap(raw):
             llm.urllib_request.urlopen = lambda *a, **k: raw(
                 url, headers=headers, payload=payload, timeout=timeout
             )
-            return llm._post_json(url, headers=headers, payload=payload, timeout=timeout)
+            return llm.post_json(url, headers=headers, payload=payload, timeout=timeout)
         finally:
             llm.urllib_request.urlopen = original
 
