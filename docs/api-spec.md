@@ -167,6 +167,10 @@ me       GET /api/auth/me                                               → 200 
 **중복 생성을 막지 않는다.** 이름만으로 `UNIQUE` 를 걸면 다른 지역의 같은 이름 원이 막힌다.
 계정 단위 판단은 인증이 붙는 P1 이다.
 
+**조회** `GET /api/centers/{center_id}` → `200` 위 Response 와 같은 모양. 자기 원만 읽는다 —
+남의 원 · 없는 원 · 아직 원이 없는 교사는 `404 NOT_FOUND` (`fields: ["center_id"]`).
+초대 코드로 들어온 교사(§1-1)는 원을 만든 적이 없어 화면에 원 정보가 없다. 로그인 뒤 여기서 읽는다.
+
 ---
 
 ## 1-1. 같은 원 교사 초대 — `POST /api/centers/{center_id}/invites` · `POST /api/centers/join`
