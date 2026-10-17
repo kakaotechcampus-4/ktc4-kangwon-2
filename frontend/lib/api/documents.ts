@@ -2,6 +2,7 @@
 import { apiRequest, ApiError } from "./client";
 import { classLocalId, childLocalId, classServerId, childServerId } from "./onboarding";
 import { observationLocalId, observationServerId } from "./observations";
+import { routineLocalId, routineServerId } from "./routines";
 import type { DocumentKind, SavedDocument, Section, Source } from "../workspace/model";
 
 /** 서버가 다루는 네 종류. 계획안(annual·monthly·weekly·daily)은 이 API 가 아니다. */
@@ -9,15 +10,6 @@ export const RECORD_KINDS = ["dailyLog", "weeklyLog", "observation", "assessment
 export type RecordKind = (typeof RECORD_KINDS)[number];
 export const isRecordKind = (kind: string): kind is RecordKind =>
   (RECORD_KINDS as readonly string[]).includes(kind);
-
-/**
- * 아직 화면에서 만들 수 없는 종류.
- *
- * 일일 보육일지의 근거는 관찰 기록이 아니라 「일과 기록」이다 (ADR-025 · §10-1).
- * 일과 기록을 적는 화면이 아직 없어서, 지금 만들기를 누르면 서버가 422 로 돌려보낸다.
- * 고를 수 있는데 아무것도 안 되는 것보다 잠가 두는 쪽이 낫다 — 그 화면이 들어오면 푼다.
- */
-export const BLOCKED_RECORD_KINDS: readonly RecordKind[] = ["dailyLog"];
 
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const DOCUMENT_PREFIX = "document:";
@@ -37,11 +29,20 @@ export function documentServerId(localId: string): number | null {
   return Number.isSafeInteger(id) ? id : null;
 }
 
-/** 근거 id 가 가리키는 것은 종류마다 다르다 — 주간 보육일지만 문서, 나머지는 관찰 기록 (§11). */
-const sourceLocalId = (kind: string, id: number) =>
-  kind === "weeklyLog" ? documentLocalId(id) : observationLocalId(id);
-const sourceServerId = (kind: string, localId: string) =>
-  kind === "weeklyLog" ? documentServerId(localId) : observationServerId(localId);
+/**
+ * 근거 id 가 가리키는 것은 종류마다 다르다 (§11).
+ * 주간 보육일지는 문서, 일일 보육일지는 일과 기록(ADR-025), 나머지는 관찰 기록이다.
+ */
+function sourceLocalId(kind: string, id: number) {
+  if (kind === "weeklyLog") return documentLocalId(id);
+  if (kind === "dailyLog") return routineLocalId(id);
+  return observationLocalId(id);
+}
+function sourceServerId(kind: string, localId: string) {
+  if (kind === "weeklyLog") return documentServerId(localId);
+  if (kind === "dailyLog") return routineServerId(localId);
+  return observationServerId(localId);
+}
 
 export interface ApiDocumentGeneration {
   method: string | null;

@@ -26,11 +26,12 @@ import {
   deleteDocument,
   documentServerId,
   isRecordKind,
-  BLOCKED_RECORD_KINDS,
   RECORD_KINDS,
   type DocumentSummary,
   type RecordKind,
 } from "@/lib/api/documents";
+import { listRoutines, type Routine } from "@/lib/api/routines";
+import DailyLogSources from "./DailyLogSources";
 import DocumentEditor from "./DocumentEditor";
 import { createSelection } from "./document-selection";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
@@ -52,8 +53,13 @@ const FIELD_INPUT: Record<string, string> = {
   source_ids: "sources",
   sources: "sources",
 };
-/** 근거 후보 하나. 주간 보육일지는 확정된 일일 보육일지, 나머지는 관찰 기록이다 (§11). */
+/**
+ * 근거 후보 하나 (§11). 주간 보육일지는 확정된 일일 보육일지,
+ * 일일 보육일지는 일과 기록, 나머지는 관찰 기록이다.
+ */
 type Candidate = { id: string; date: string; label: string };
+/** 렌더마다 새 배열이 생기면 useMemo 가 매번 다시 돈다. */
+const NO_ROUTINES: Routine[] = [];
 
 function messageFor(error: unknown) {
   if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
@@ -80,6 +86,12 @@ export default function DocumentsPage() {
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
+  // 일일 보육일지의 근거(일과 기록). 반 · 날짜를 key 로 둬서 「불러오는 중」을 따로 저장하지 않는다.
+  const [routineData, setRoutineData] = useState<{
+    key: string;
+    items: Routine[];
+    error: string;
+  } | null>(null);
   // 늦게 온 옛 응답이 최신 화면을 덮지 않게 요청마다 번호를 매긴다.
   const latestList = useRef(0);
   const [selection] = useState(() =>
@@ -155,32 +167,57 @@ export default function DocumentsPage() {
 
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);
+
+  const routineKey =
+    mode === "create" && kind === "dailyLog" && classId ? `${classId}|${start}` : "";
+  useEffect(() => {
+    if (!routineKey) return;
+    let stale = false;
+    const [cls, date] = routineKey.split("|");
+    listRoutines(cls, date)
+      .then((items) => !stale && setRoutineData({ key: routineKey, items, error: "" }))
+      .catch((e) => !stale && setRoutineData({ key: routineKey, items: [], error: messageFor(e) }));
+    return () => {
+      stale = true;
+    };
+  }, [routineKey]);
+  const routines = routineData?.key === routineKey ? routineData.items : NO_ROUTINES;
+  const routineStatus: ViewStatus =
+    routineData?.key !== routineKey ? "loading" : routineData.error ? "error" : "ready";
   const candidates: Candidate[] = useMemo(
     () =>
-      kind === "weeklyLog"
-        ? serverDocs
-            .filter(
-              (d) =>
-                d.kind === "dailyLog" &&
-                d.status === "confirmed" &&
-                d.classId === classId &&
-                (!childId || d.childId === childId) &&
-                d.start >= start &&
-                d.end <= end,
-            )
-            .map((d) => ({ id: d.id, date: d.start, label: d.title }))
-        : records
-            .filter(
-              (r) =>
-                r.classId === classId &&
-                (!childId || r.childId === childId) &&
-                r.date >= start &&
-                r.date <= end,
-            )
-            .map((r) => ({ id: r.id, date: r.date, label: r.fact })),
-    [kind, serverDocs, records, classId, childId, start, end],
+      kind === "dailyLog"
+        ? routines
+            .filter((r) => r.execution)
+            .map((r) => ({ id: r.id, date: r.date, label: r.execution }))
+        : kind === "weeklyLog"
+          ? serverDocs
+              .filter(
+                (d) =>
+                  d.kind === "dailyLog" &&
+                  d.status === "confirmed" &&
+                  d.classId === classId &&
+                  (!childId || d.childId === childId) &&
+                  d.start >= start &&
+                  d.end <= end,
+              )
+              .map((d) => ({ id: d.id, date: d.start, label: d.title }))
+          : records
+              .filter(
+                (r) =>
+                  r.classId === classId &&
+                  (!childId || r.childId === childId) &&
+                  r.date >= start &&
+                  r.date <= end,
+              )
+              .map((r) => ({ id: r.id, date: r.date, label: r.fact })),
+    [kind, routines, serverDocs, records, classId, childId, start, end],
   );
-  const sources = candidates.filter((s) => selected.includes(s.id));
+  // 일일 보육일지는 고른 순서가 사실의 순서다 (S-J2). 나머지는 목록 순서 그대로 보낸다.
+  const sources =
+    kind === "dailyLog"
+      ? selected.flatMap((id) => candidates.filter((s) => s.id === id))
+      : candidates.filter((s) => selected.includes(s.id));
 
   // 계획안과 등록 증빙은 아직 서버에 없다 — 보관함에서는 계속 브라우저 저장소를 본다.
   const localDocs = data.documents.filter((d) => d.origin === "import" || !isRecordKind(d.kind));
@@ -229,6 +266,29 @@ export default function DocumentsPage() {
   /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
   const clearInvalid = (name: string) =>
     setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
+
+  /** 일일 보육일지는 반 단위 · 하루짜리다 — 아이를 비우고 종료일을 시작일에 맞춘다. */
+  function changeKind(next: DocumentKind) {
+    setKind(next);
+    setSelected([]);
+    clearInvalid("kind");
+    if (next === "dailyLog") {
+      setChildId("");
+      setEnd(start);
+    }
+  }
+
+  function changeStart(date: string) {
+    setStart(date);
+    if (kind === "dailyLog") setEnd(date);
+    setSelected([]);
+    clearInvalid("start");
+  }
+
+  function toggleSource(id: string, checked: boolean) {
+    setSelected((prev) => (checked ? [...prev, id] : prev.filter((x) => x !== id)));
+    clearInvalid("sources");
+  }
 
   function open(id: string) {
     setMessage("");
@@ -281,6 +341,9 @@ export default function DocumentsPage() {
       setBusy(false);
     }
   }
+
+  // 일과 기록 화면(S-J1)의 주소 — docs/screen-spec.md 「들어오는 길」. 날짜 · 반이 그대로 넘어간다.
+  const routineHref = `/routines?${new URLSearchParams({ date: start, class_id: classId })}`;
 
   const serverActions = serverCurrent
     ? {
@@ -347,16 +410,11 @@ export default function DocumentsPage() {
                   disabled={busy}
                   value={kind}
                   {...fieldErrorProps("kind", invalid)}
-                  onChange={(e) => {
-                    setKind(e.target.value as DocumentKind);
-                    setSelected([]);
-                    clearInvalid("kind");
-                  }}
+                  onChange={(e) => changeKind(e.target.value as DocumentKind)}
                 >
                   {RECORD_KINDS.map((k) => (
-                    <option key={k} value={k} disabled={BLOCKED_RECORD_KINDS.includes(k)}>
+                    <option key={k} value={k}>
                       {DOCUMENT_KINDS[k]}
-                      {BLOCKED_RECORD_KINDS.includes(k) && " (준비 중)"}
                     </option>
                   ))}
                 </select>
@@ -385,66 +443,68 @@ export default function DocumentsPage() {
                   </select>
                   <FieldError name="classId" invalid={invalid} />
                 </label>
-                <label className={ws.field}>
-                  대상 아동
-                  <select
-                    disabled={busy}
-                    value={childId}
-                    {...fieldErrorProps("childId", invalid)}
-                    onChange={(e) => {
-                      setChildId(e.target.value);
-                      setSelected([]);
-                      clearInvalid("childId");
-                    }}
-                  >
-                    <option value="">반 전체</option>
-                    {classroom?.children.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <FieldError name="childId" invalid={invalid} />
-                </label>
+                {kind !== "dailyLog" && (
+                  <label className={ws.field}>
+                    대상 아동
+                    <select
+                      disabled={busy}
+                      value={childId}
+                      {...fieldErrorProps("childId", invalid)}
+                      onChange={(e) => {
+                        setChildId(e.target.value);
+                        setSelected([]);
+                        clearInvalid("childId");
+                      }}
+                    >
+                      <option value="">반 전체</option>
+                      {classroom?.children.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <FieldError name="childId" invalid={invalid} />
+                  </label>
+                )}
               </div>
               <div className={ws.row}>
                 <label className={ws.field}>
-                  시작일
+                  {kind === "dailyLog" ? "날짜" : "시작일"}
                   <input
                     disabled={busy}
                     type="date"
                     value={start}
                     {...fieldErrorProps("start", invalid)}
-                    onChange={(e) => {
-                      setStart(e.target.value);
-                      setSelected([]);
-                      clearInvalid("start");
-                    }}
+                    onChange={(e) => changeStart(e.target.value)}
                   />
                   <FieldError name="start" invalid={invalid} />
                 </label>
-                <label className={ws.field}>
-                  종료일
-                  <input
-                    disabled={busy}
-                    type="date"
-                    value={end}
-                    {...fieldErrorProps("end", invalid)}
-                    onChange={(e) => {
-                      setEnd(e.target.value);
-                      setSelected([]);
-                      clearInvalid("end");
-                    }}
-                  />
-                  <FieldError name="end" invalid={invalid} />
-                </label>
+                {kind !== "dailyLog" && (
+                  <label className={ws.field}>
+                    종료일
+                    <input
+                      disabled={busy}
+                      type="date"
+                      value={end}
+                      {...fieldErrorProps("end", invalid)}
+                      onChange={(e) => {
+                        setEnd(e.target.value);
+                        setSelected([]);
+                        clearInvalid("end");
+                      }}
+                    />
+                    <FieldError name="end" invalid={invalid} />
+                  </label>
+                )}
               </div>
               <p className={ws.hint}>
-                {kind === "weeklyLog"
-                  ? "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
-                  : kind === "assessment"
-                    ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
-                    : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
+                {kind === "dailyLog"
+                  ? "일일 보육일지는 반 전체 문서라 아동은 선택하지 않아요. 하루에 한 장씩 만들어요."
+                  : kind === "weeklyLog"
+                    ? "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
+                    : kind === "assessment"
+                      ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
+                      : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
               </p>
               <button
                 className={ws.primary}
@@ -453,67 +513,89 @@ export default function DocumentsPage() {
               >
                 {busy ? "초안 작성 중…" : "초안 만들기"}
               </button>
-              <Link className={ws.link} href="/records">
-                새 관찰 기록 입력 →
-              </Link>
+              {kind === "dailyLog" ? (
+                <Link className={ws.link} href={routineHref}>
+                  새 일과 기록 입력 →
+                </Link>
+              ) : (
+                <Link className={ws.link} href="/records">
+                  새 관찰 기록 입력 →
+                </Link>
+              )}
             </div>
           </section>
-          <section className={ws.card}>
-            <div className={ws.between}>
-              <h2>문서에 사용할 근거</h2>
-              <span className={ws.badge}>{sources.length}건 선택</span>
-            </div>
-            <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
-            <WorkspaceViewState
-              status={listStatus}
-              error={listError}
-              loading="근거 기록을 불러오고 있어요."
-              empty={
-                !candidates.length && (
-                  <Empty title="조건에 맞는 근거가 없어요">
-                    날짜를 변경하거나{" "}
-                    {kind === "weeklyLog"
-                      ? "일일 보육일지를 먼저 작성하고 확정해주세요."
-                      : "관찰 기록을 먼저 입력해주세요."}
-                  </Empty>
-                )
+          {kind === "dailyLog" && (
+            <DailyLogSources
+              status={routineStatus}
+              error={routineData?.error ?? ""}
+              routines={routines}
+              selected={selected}
+              busy={busy}
+              writeHref={routineHref}
+              onToggle={toggleSource}
+              onSelectAll={() =>
+                setSelected(sources.length === candidates.length ? [] : candidates.map((s) => s.id))
               }
-            >
-              <button
-                disabled={busy}
-                className={ws.secondary}
-                onClick={() =>
-                  setSelected(
-                    sources.length === candidates.length ? [] : candidates.map((s) => s.id),
+            />
+          )}
+          {kind !== "dailyLog" && (
+            <section className={ws.card}>
+              <div className={ws.between}>
+                <h2>문서에 사용할 근거</h2>
+                <span className={ws.badge}>{sources.length}건 선택</span>
+              </div>
+              <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
+              <WorkspaceViewState
+                status={listStatus}
+                error={listError}
+                loading="근거 기록을 불러오고 있어요."
+                empty={
+                  !candidates.length && (
+                    <Empty title="조건에 맞는 근거가 없어요">
+                      날짜를 변경하거나{" "}
+                      {kind === "weeklyLog"
+                        ? "일일 보육일지를 먼저 작성하고 확정해주세요."
+                        : "관찰 기록을 먼저 입력해주세요."}
+                    </Empty>
                   )
                 }
               >
-                {sources.length === candidates.length ? "선택 해제" : "모두 선택"}
-              </button>
-              <div role="group" className={ws.scroll} {...fieldErrorProps("sources", invalid)}>
-                {candidates.map((s) => (
-                  <label key={s.id} className={ws.check}>
-                    <input
-                      type="checkbox"
-                      disabled={busy}
-                      checked={selected.includes(s.id)}
-                      onChange={(e) => {
-                        setSelected((prev) =>
-                          e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
-                        );
-                        clearInvalid("sources");
-                      }}
-                    />
-                    <span>
-                      <b>{s.date}</b>
-                      <small>{s.label}</small>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <FieldError name="sources" invalid={invalid} />
-            </WorkspaceViewState>
-          </section>
+                <button
+                  disabled={busy}
+                  className={ws.secondary}
+                  onClick={() =>
+                    setSelected(
+                      sources.length === candidates.length ? [] : candidates.map((s) => s.id),
+                    )
+                  }
+                >
+                  {sources.length === candidates.length ? "선택 해제" : "모두 선택"}
+                </button>
+                <div role="group" className={ws.scroll} {...fieldErrorProps("sources", invalid)}>
+                  {candidates.map((s) => (
+                    <label key={s.id} className={ws.check}>
+                      <input
+                        type="checkbox"
+                        disabled={busy}
+                        checked={selected.includes(s.id)}
+                        onChange={(e) => {
+                          setSelected((prev) =>
+                            e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
+                          );
+                          clearInvalid("sources");
+                        }}
+                      />
+                      <span>
+                        <b>{s.date}</b>
+                        <small>{s.label}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <FieldError name="sources" invalid={invalid} />
+              </WorkspaceViewState>
+            </section>
+          )}
         </div>
       ) : (
         <>
