@@ -1,6 +1,13 @@
 /** 일지 계열 문서 API (docs/api-spec.md §11). id 변환을 여기서 끝내고 화면에는 화면 id 만 준다. */
 import { apiRequest, ApiError } from "./client";
-import { classLocalId, childLocalId, classServerId, childServerId } from "./onboarding";
+import {
+  CLASS_PREFIX,
+  CHILD_PREFIX,
+  classLocalId,
+  childLocalId,
+  classServerId,
+  childServerId,
+} from "./onboarding";
 import { observationLocalId, observationServerId } from "./observations";
 import type { DocumentKind, SavedDocument, Section, Source } from "../workspace/model";
 
@@ -21,8 +28,7 @@ export const BLOCKED_RECORD_KINDS: readonly RecordKind[] = ["dailyLog"];
 
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const DOCUMENT_PREFIX = "document:";
-const CLASS_PREFIX = "server-class:";
-const CHILD_PREFIX = "server-child:";
+// 접두사는 onboarding.ts 가 정한다 — 세 군데서 따로 들면 어긋나는 순간 id 가 갈린다.
 // 안전한 양의 정수 id 만 받는다.
 const SERVER_ID = /^[1-9][0-9]*$/;
 

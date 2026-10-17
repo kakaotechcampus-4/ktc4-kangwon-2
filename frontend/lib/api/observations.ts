@@ -1,12 +1,12 @@
 /** 관찰 기록 API 와 화면 model 사이의 변환 (docs/api-spec.md §10). */
 import { apiRequest } from "./client";
+import { CLASS_PREFIX, CHILD_PREFIX } from "./onboarding";
 import type { ApiObservation, ObservationInput, ObservationUpdate } from "./types";
 import type { Observation } from "../workspace/model";
 
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const OBSERVATION_PREFIX = "observation:";
-const CLASS_PREFIX = "server-class:";
-const CHILD_PREFIX = "server-child:";
+// 접두사는 onboarding.ts 가 정한다 — 세 군데서 따로 들면 어긋나는 순간 id 가 갈린다.
 
 // 안전한 양의 정수 id 만 받는다.
 const SERVER_ID = /^[1-9][0-9]*$/;
