@@ -73,7 +73,6 @@ export default function ChildTrackingPage() {
           child={child}
           onPickClass={pickClass}
           onPickChild={setPickedChild}
-          onError={setError}
         />
       )}
     </WorkspacePage>
@@ -87,7 +86,6 @@ function Body({
   child,
   onPickClass,
   onPickChild,
-  onError,
 }: {
   classes: ApiClass[] | null;
   classId: number | null;
@@ -95,7 +93,6 @@ function Body({
   child: ApiChildTracking | null;
   onPickClass: (id: number) => void;
   onPickChild: (id: number) => void;
-  onError: (message: string) => void;
 }) {
   if (!classes) return <p className={ws.muted}>불러오는 중이에요…</p>;
   if (!classes.length) {
@@ -123,7 +120,7 @@ function Body({
         <ChildList classData={classData} selected={child?.child_id ?? null} onPick={onPickChild} />
       </section>
       {/* key 로 아이가 바뀌면 상세를 새로 그린다 — 앞 아이의 기록이 잠깐 남지 않는다. */}
-      {child && <ChildDetail key={child.child_id} child={child} onError={onError} />}
+      {child && <ChildDetail key={child.child_id} child={child} />}
     </div>
   );
 }
@@ -163,25 +160,20 @@ function ChildList({
   );
 }
 
-function ChildDetail({
-  child,
-  onError,
-}: {
-  child: ApiChildTracking;
-  onError: (message: string) => void;
-}) {
+function ChildDetail({ child }: { child: ApiChildTracking }) {
   const [records, setRecords] = useState<ApiObservation[] | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let stale = false;
     // 서버가 date 내림차순으로 준다 (§10). 순서를 다시 매기지 않는다.
     getObservations({ child_id: child.child_id })
       .then(({ items }) => !stale && setRecords(items))
-      .catch(() => !stale && onError(FAILED));
+      .catch(() => !stale && setFailed(true));
     return () => {
       stale = true;
     };
-  }, [child.child_id, onError]);
+  }, [child.child_id]);
 
   return (
     <section className={ws.stack}>
@@ -196,7 +188,14 @@ function ChildDetail({
         </p>
       </div>
       <DomainCounts counts={child.by_domain} />
-      {records ? <Timeline records={records} /> : <p className={ws.muted}>불러오는 중이에요…</p>}
+      {/* 한 아이 기록만 실패한 것이다 — 페이지 전체를 에러로 바꾸면 다른 아이도 못 고른다. */}
+      {failed ? (
+        <Message error>기록을 불러오지 못했어요. 다른 아이를 골랐다가 다시 열어주세요.</Message>
+      ) : records ? (
+        <Timeline records={records} />
+      ) : (
+        <p className={ws.muted}>불러오는 중이에요…</p>
+      )}
     </section>
   );
 }
