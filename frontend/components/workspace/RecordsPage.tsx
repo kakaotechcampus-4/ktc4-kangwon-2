@@ -328,10 +328,17 @@ export default function RecordsPage() {
                       clearInvalid("fact");
                     }}
                     placeholder={
-                      "예: 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다. 블록이 쓰러지자 넓은 블록을 아래에 놓고 다시 쌓았다."
+                      "예: 오전 자유놀이 시간 쌓기 영역에서 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다. " +
+                      "블록이 쓰러지자 넓은 블록을 아래에 놓고 다시 쌓았다. " +
+                      "옆에 있던 친구가 같은 방법으로 따라 했다. 교사는 기다리며 지켜보았다."
                     }
                   />
-                  <small>{fact.length} / 5,000자 · 실제 행동과 발언을 적어주세요.</small>
+                  {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
+                      그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다. */}
+                  <small>
+                    {fact.length} / 5,000자 · <b>상황 → 행동 → 반응 → 교사 지원</b> 순서로 적으면
+                    일지가 잘 나와요. 다 적지 않아도 저장됩니다.
+                  </small>
                   <FieldError name="fact" invalid={invalid} />
                 </label>
                 <div className={ws.actions}>
