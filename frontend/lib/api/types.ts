@@ -66,6 +66,15 @@ export interface ApiChild extends ChildInput {
   code: string;
   created_at: string;
 }
+/** 발달 추적 집계 (docs/api-spec.md §2-1). by_domain 은 5영역을 늘 다 담는다. */
+export interface ApiChildTracking {
+  child_id: number;
+  name: string;
+  code: string;
+  total: number;
+  last_date: string | null;
+  by_domain: Record<string, number>;
+}
 export interface PlanConfig {
   uses_monthly: boolean;
   weekly_location: "SEPARATE_WEEKLY" | "DAILY_LOG_PLAN_CELL" | "WEEKLY_LOG_PLAN_CELL";

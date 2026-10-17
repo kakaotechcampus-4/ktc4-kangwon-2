@@ -1,19 +1,18 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getMe } from "@/lib/api/auth";
-import { getChildren } from "@/lib/api/children";
+import { getChildTracking } from "@/lib/api/children";
 import { getClasses } from "@/lib/api/classes";
 import { getObservations } from "@/lib/api/observations";
-import type { ApiChild, ApiClass, ApiObservation } from "@/lib/api/types";
+import type { ApiChildTracking, ApiClass, ApiObservation } from "@/lib/api/types";
 import { DOMAINS } from "@/lib/workspace/model";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
-/** 반 하나의 아동 명단과 관찰 기록. 기록은 한 번에 받아 화면에서 아이별로 나눈다. */
+/** 반 하나의 아이별 집계. 기록 본문은 고른 아이 것만 따로 받는다. */
 interface ClassData {
   classId: number;
-  children: ApiChild[];
-  records: ApiObservation[];
+  children: ApiChildTracking[];
 }
 
 const FAILED = "기록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
@@ -22,7 +21,7 @@ const FAILED = "기록을 불러오지 못했어요. 잠시 뒤 다시 열어주
  * 발달 추적 — 아이 한 명의 관찰 기록을 모아 본다.
  *
  * **조회만 한다.** 발달 수준을 판정하지 않는다 — 판정은 ADR-007 이 스펙아웃한 발달평가다.
- * 영역별 개수는 「어느 영역을 덜 봤나」를 교사가 알게 하는 용도다.
+ * 영역별 개수는 「어느 영역을 덜 봤나」를 교사가 알게 하는 용도다. 서버가 센다 (§2-1).
  *
  * 서버에서 바로 읽고 브라우저에 저장하지 않는다 — 아동 실명이 담긴다 (ADR-013).
  */
@@ -45,10 +44,8 @@ export default function ChildTrackingPage() {
   useEffect(() => {
     if (classId === null) return;
     let stale = false;
-    Promise.all([getChildren(classId), getObservations({ class_id: classId })])
-      .then(([children, records]) => {
-        if (!stale) setClassData({ classId, children: children.items, records: records.items });
-      })
+    getChildTracking(classId)
+      .then(({ items }) => !stale && setClassData({ classId, children: items }))
       .catch(() => !stale && setError(FAILED));
     return () => {
       stale = true;
@@ -60,6 +57,10 @@ export default function ChildTrackingPage() {
     setPickedChild(null);
   }
 
+  const current = classData?.classId === classId ? classData : null;
+  const child =
+    current?.children.find((c) => c.child_id === pickedChild) ?? current?.children[0] ?? null;
+
   return (
     <WorkspacePage title="아이별 모아보기" description="한 아이의 관찰 기록을 모아서 봐요.">
       <Message error>{error}</Message>
@@ -68,10 +69,11 @@ export default function ChildTrackingPage() {
         <Body
           classes={classes}
           classId={classId}
-          classData={classData?.classId === classId ? classData : null}
-          pickedChild={pickedChild}
+          classData={current}
+          child={child}
           onPickClass={pickClass}
           onPickChild={setPickedChild}
+          onError={setError}
         />
       )}
     </WorkspacePage>
@@ -82,16 +84,18 @@ function Body({
   classes,
   classId,
   classData,
-  pickedChild,
+  child,
   onPickClass,
   onPickChild,
+  onError,
 }: {
   classes: ApiClass[] | null;
   classId: number | null;
   classData: ClassData | null;
-  pickedChild: number | null;
+  child: ApiChildTracking | null;
   onPickClass: (id: number) => void;
   onPickChild: (id: number) => void;
+  onError: (message: string) => void;
 }) {
   if (!classes) return <p className={ws.muted}>불러오는 중이에요…</p>;
   if (!classes.length) {
@@ -116,20 +120,21 @@ function Body({
             </select>
           </label>
         )}
-        <ChildList classData={classData} pickedChild={pickedChild} onPick={onPickChild} />
+        <ChildList classData={classData} selected={child?.child_id ?? null} onPick={onPickChild} />
       </section>
-      <ChildDetail classData={classData} pickedChild={pickedChild} />
+      {/* key 로 아이가 바뀌면 상세를 새로 그린다 — 앞 아이의 기록이 잠깐 남지 않는다. */}
+      {child && <ChildDetail key={child.child_id} child={child} onError={onError} />}
     </div>
   );
 }
 
 function ChildList({
   classData,
-  pickedChild,
+  selected,
   onPick,
 }: {
   classData: ClassData | null;
-  pickedChild: number | null;
+  selected: number | null;
   onPick: (id: number) => void;
 }) {
   if (!classData) return <p className={ws.muted}>불러오는 중이에요…</p>;
@@ -140,18 +145,17 @@ function ChildList({
       </Empty>
     );
   }
-  const selected = pickedChild ?? classData.children[0].id;
   return (
     <ul className={ws.list} aria-label="아동 목록">
       {classData.children.map((child) => (
-        <li key={child.id}>
+        <li key={child.child_id}>
           <button
             type="button"
-            className={child.id === selected ? ws.primary : ws.secondary}
-            aria-pressed={child.id === selected}
-            onClick={() => onPick(child.id)}
+            className={child.child_id === selected ? ws.primary : ws.secondary}
+            aria-pressed={child.child_id === selected}
+            onClick={() => onPick(child.child_id)}
           >
-            {child.name} · {classData.records.filter((r) => r.child_id === child.id).length}건
+            {child.name} · {child.total}건
           </button>
         </li>
       ))}
@@ -160,19 +164,25 @@ function ChildList({
 }
 
 function ChildDetail({
-  classData,
-  pickedChild,
+  child,
+  onError,
 }: {
-  classData: ClassData | null;
-  pickedChild: number | null;
+  child: ApiChildTracking;
+  onError: (message: string) => void;
 }) {
-  const child = classData?.children.find((c) => c.id === pickedChild) ?? classData?.children[0];
-  // 서버가 date 내림차순으로 준다 (§10). 순서를 다시 매기지 않는다.
-  const records = useMemo(
-    () => classData?.records.filter((r) => r.child_id === child?.id) ?? [],
-    [classData, child],
-  );
-  if (!child) return null;
+  const [records, setRecords] = useState<ApiObservation[] | null>(null);
+
+  useEffect(() => {
+    let stale = false;
+    // 서버가 date 내림차순으로 준다 (§10). 순서를 다시 매기지 않는다.
+    getObservations({ child_id: child.child_id })
+      .then(({ items }) => !stale && setRecords(items))
+      .catch(() => !stale && onError(FAILED));
+    return () => {
+      stale = true;
+    };
+  }, [child.child_id, onError]);
+
   return (
     <section className={ws.stack}>
       <div className={ws.card}>
@@ -181,20 +191,22 @@ function ChildDetail({
           {/* 코드는 늘 받침 있는 더미 이름이라(CLAUDE.md 개인정보) 조사를 「으로」로 고정한다. */}
           <span className={ws.badge}>AI 에는 「{child.code}」으로 나가요</span>
         </div>
-        <p className={ws.muted}>관찰 기록 {records.length}건</p>
+        <p className={ws.muted}>
+          관찰 기록 {child.total}건{child.last_date && ` · 마지막 관찰 ${child.last_date}`}
+        </p>
       </div>
-      <DomainCounts records={records} />
-      <Timeline records={records} />
+      <DomainCounts counts={child.by_domain} />
+      {records ? <Timeline records={records} /> : <p className={ws.muted}>불러오는 중이에요…</p>}
     </section>
   );
 }
 
 /** 5영역별 기록 수. 0 인 영역은 「아직 기록 없음」 — 덜 본 영역을 교사가 알게 한다. */
-function DomainCounts({ records }: { records: ApiObservation[] }) {
+function DomainCounts({ counts }: { counts: Record<string, number> }) {
   return (
     <div className={ws.cards} aria-label="영역별 기록 수">
       {DOMAINS.map((domain) => {
-        const count = records.filter((r) => r.domain === domain).length;
+        const count = counts[domain] ?? 0;
         return (
           <div className={ws.card} key={domain}>
             <p className={ws.muted}>{domain}</p>

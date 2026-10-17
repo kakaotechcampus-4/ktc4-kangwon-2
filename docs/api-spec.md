@@ -169,6 +169,50 @@ me       GET /api/auth/me                                               → 200 
 
 ---
 
+## 1-1. 같은 원 교사 초대 — `POST /api/centers/{center_id}/invites` · `POST /api/centers/join`
+
+원 하나에 담임이 여럿이다. 먼저 원을 등록한 교사가 코드를 만들어 주고, 같은 원 교사는
+온보딩 1단계에서 원을 새로 만드는 대신 그 코드를 넣는다 (ADR-029).
+
+**코드 만들기** `POST /api/centers/{center_id}/invites` — 본문 없음
+
+**Response** `201`
+
+```json
+{ "code": "K7PQ2MXH4R", "expires_at": "2026-10-17T09:00:00Z" }
+```
+
+- 자기 원에만 만든다. 원이 없거나 남의 원이면 `NOT_FOUND` 404 (`fields: ["center_id"]`).
+- **1회용 · 7일.** 코드는 10자, 헷갈리는 글자(0·O·1·I·L)를 뺀 대문자·숫자다.
+- 목록·취소 API 는 없다. 안 쓴 코드는 7일 뒤 저절로 못 쓴다.
+
+**참여하기** `POST /api/centers/join`
+
+```json
+{ "code": "k7pq2mxh4r" }
+```
+
+**Response** `200` — §1 과 같은 원 객체. 이 교사의 `center_id` 가 그 원이 된다.
+
+| 상황 | 응답 |
+|---|---|
+| 이미 원이 있다 | `ALREADY_EXISTS` 409 — §1 의 두 번째 원 만들기와 같다 |
+| 없는 코드 · 쓴 코드 · 만료된 코드 | `NOT_FOUND` 404, `fields: ["code"]`. **셋을 구분하지 않는다** — 구분해 주면 맞혀 보는 쪽에 힌트다 |
+| 빈 코드 | `VALIDATION_FAILED` 422 |
+
+대소문자와 앞뒤 공백은 서버가 맞춘다.
+
+**UI states**
+
+| | |
+|---|---|
+| loading | 버튼 비활성 |
+| empty | 해당 없음 |
+| success | 만들기 — 코드와 만료일 표시. 참여 — S2(반) 로 이동 |
+| error | 메시지를 그대로 표시, 입력값 유지 |
+
+---
+
 ## 2. 반 — `POST /api/centers/{center_id}/classes`
 
 **Request**
@@ -306,6 +350,18 @@ me       GET /api/auth/me                                               → 200 
 
 > 목록 응답 봉투는 **`{ items }` 하나로 통일한다.** `items.length` 로 알 수 있는 `count` 를
 > 따로 보내지 않는다 — `child_count`(반의 목표 원아 수)와 이름이 비슷해 혼동된다.
+
+**`GET /api/classes/{class_id}/children/tracking`** → `{ "items": [...] }` ★ 9주차 — 발달 추적
+
+```json
+{ "child_id": 1, "name": "가서준", "code": "민준", "total": 3, "last_date": "2026-09-09",
+  "by_domain": { "신체운동·건강": 0, "의사소통": 2, "사회관계": 0, "예술경험": 0, "자연탐구": 1 } }
+```
+
+- 반 아이마다 관찰 기록(§10) 수를 센다. 명단 순서이고, **기록이 없는 아이도 `total: 0` 으로 나온다.**
+- `by_domain` 은 5영역을 늘 다 담는다. 0 인 영역이 「덜 본 영역」이다.
+- **수만 센다. 발달 수준을 판정하지 않는다** (ADR-007). LLM 을 부르지 않는다.
+- 기록 본문은 내려주지 않는다. 한 아이 기록은 `GET /api/observations?child_id=` 로 받는다.
 
 **`DELETE /api/children/{id}`** → `204`. 오타 수정은 삭제 후 재등록이다.
 P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이름 수정(PATCH)은 P1 이다.
@@ -2009,6 +2065,8 @@ assessment    observation · dailyLog
 
 ### 내보내기 — `GET /api/documents/{id}/export/hwp`
 
+**관찰일지 · 일일 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼 복제한다.
+
 **§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 경로는 `hwp` 인데 파일은 `hwpx` 다 ·
 확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다.
 
@@ -2026,11 +2084,18 @@ assessment    observation · dailyLog
 **아동 실명이 들어간다.** 교사 본인의 제출 문서라 치환하지 않는다. 대신 hwpx 안의
 미리보기(`Preview/PrvText.txt`)를 **이 문서 내용으로 다시 만든다** — 양식 파일에 남은
 다른 아이 이름이 미리보기에 그대로 실려 나가지 않게 한다.
+**미리보기 그림(`Preview/PrvImage.png`)은 다시 만들지 않는다.** 그래서 양식 파일은 빈 양식이어야 한다.
+
+**관찰일지의 영역, 일일 보육일지의 시간 · 일과 · 활동계획은 지금의 원본 기록에서 읽는다.**
+영역 · 활동계획만 고치면 `stale` 이 아니므로 고친 값이 나간다. **`stale` 인 문서는 내보내지 않는다** —
+근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다. 근거 기록이 사라졌으면 그 사실을 빼고 내보내지 않는다.
+
+**일일 보육일지의 행 순서는 일과 기록 화면과 같다**(§10-1 — `position` · 시작 시간 · id). 교사가 고른 `source_ids` 순서가 아니다.
 
 | code | status | 언제 |
 |---|---|---|
-| `GATE_BLOCKED` | 409 | 확정 전이다 |
-| `VALIDATION_FAILED` | 422 | `dailyLog` · `observation` 이 아니다.  `fields: ["kind"]` |
+| `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` 가 아니다.  `fields: ["kind"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 
 ### 개인정보
@@ -2049,7 +2114,7 @@ assessment    observation · dailyLog
 
 ---
 
-## 12. 평가제 대조 — `GET /api/centers/{center_id}/evaluation-checklist`   ★ 8주차
+## 12. 평가제 대조 — `GET /api/centers/{center_id}/evaluation-checklist` (구현됨)   ★ 8주차
 
 **응답에 지표 9개가 온다 — 자동 2 · 자기 점검 7. 평가자가 현장에서 보는 6개(1-1·1-2·2-1·2-2·3-1·3-2)는 넣지 않는다.**
 PM 결정(2026-10-01)이다([ADR-022](adr/022-evaluation-checklist-auto-and-self-check.md)).
@@ -2257,7 +2322,7 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 평가 준비가 됐는지만 확인하는 기능이라 점수는 필요 없다.
 **평가요소를 나눈 지표 파일 v2 는 승석(PM)에게 부탁한다.** 법정 고시 원문 · PM 승인 파일이라 우리가 고치지 않는다.
 
-### 체크 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/checks`
+### 체크 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/checks` (구현됨)
 
 **Request**
 
@@ -2271,6 +2336,7 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 **`checked_at` 은 ☐ 에서 ☑ 로 바뀐 시각이다.** 이미 체크된 평가요소를 다시 `true` 로 보내면 바뀌지 않는다(「전체 체크」).
 **`checked: false` 면 체크를 푼다.** 응답의 `checked_at` 은 `null` 이다.
 **풀었다가 다시 체크하면 새 시각이다.** 풀기 전 시각은 남기지 않는다 — 체크 시각은 평가에 쓰이지 않는다(ADR-022).
+**`{"checks": []}` 는 아무것도 바꾸지 않고 `200` 으로 GET 과 같은 전체 응답을 반환한다.**
 
 **Response** `200` — GET 과 같은 전체 응답이다. 지표 9개가 온다. **화면은 통째로 교체한다.**
 
