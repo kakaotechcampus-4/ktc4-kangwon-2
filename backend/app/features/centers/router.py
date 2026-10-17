@@ -88,6 +88,16 @@ INVITE_LENGTH = 10  # 31^10 ≈ 8×10^14. 7일 · 1회용이라 맞혀 볼 수 �
 INVITE_TTL = timedelta(days=7)
 
 
+@router.get("/{center_id}", response_model=CenterResponse)
+def get_center(center_id: int, session: DbSession, user: CurrentUser) -> Center:
+    """내 원 정보 (§1). 초대로 들어온 교사는 브라우저에 원 정보가 없어 여기서 읽는다.
+
+    남의 원과 없는 원은 같은 404 다 (shared/auth/ownership.py).
+    """
+    require_own_center(user, center_id)
+    return session.get(Center, center_id)
+
+
 @router.post(
     "/{center_id}/invites", response_model=InviteResponse, status_code=status.HTTP_201_CREATED
 )
