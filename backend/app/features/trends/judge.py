@@ -79,9 +79,7 @@ def _batch_prompt(items: tuple[RawItem, ...]) -> str:
 
     주소를 넣으면 모델이 그 쪽을 보고 답한 것처럼 쓴다 — 우리는 본문만 보고 판단해야 한다.
     """
-    rows = [
-        {"id": item.source_id, "title": item.title, "body": item.description} for item in items
-    ]
+    rows = [{"id": item.source_id, "title": item.title, "body": item.description} for item in items]
     # **자료라고 한 번 더 못을 박는다.** 설명 안에 「앞의 규칙을 잊어라」가 들어 있을 수
     # 있다 — 지시문과 자료 사이에 경계가 보여야 모델이 덜 흔들린다 (FR-605).
     return json.dumps(

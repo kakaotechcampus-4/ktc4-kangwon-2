@@ -29,15 +29,13 @@ def test_설정한_적_없으면_꺼짐을_채워_준다(own_center):
 
 
 def test_켜고_끌_수_있다(own_center):
-    assert (
-        client.put(f"/api/centers/{own_center}/settings", json={"trends_enabled": True}).json()
-        == {"trends_enabled": True}
-    )
+    assert client.put(
+        f"/api/centers/{own_center}/settings", json={"trends_enabled": True}
+    ).json() == {"trends_enabled": True}
     assert client.get(f"/api/centers/{own_center}/settings").json() == {"trends_enabled": True}
-    assert (
-        client.put(f"/api/centers/{own_center}/settings", json={"trends_enabled": False}).json()
-        == {"trends_enabled": False}
-    )
+    assert client.put(
+        f"/api/centers/{own_center}/settings", json={"trends_enabled": False}
+    ).json() == {"trends_enabled": False}
 
 
 def test_빈_요청은_아무것도_바꾸지_않는다(own_center):
