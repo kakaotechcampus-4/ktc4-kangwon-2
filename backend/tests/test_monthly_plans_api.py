@@ -9,6 +9,8 @@ provider)이고, real 경로는 전송 함수를 바꿔 껴서 오류 분류만 
 **실제 Luna-6 는 부르지 않는다.**
 """
 
+import copy
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from threading import Barrier
@@ -250,6 +252,68 @@ def test_목록은_대상_달_순이고_1_2월은_다음_해다(world):
     assert client.get("/api/plans/monthly").json()["items"] == items
     weeks = {len(client.get(f"/api/plans/monthly/{i['id']}").json()["weeks"]) for i in items}
     assert len(weeks) > 1  # 달마다 주 수가 다르다
+
+
+def _break_row(session, plan_id: int, how: str) -> None:
+    """생성 경로가 만들지 않는 행을 손으로 만든다 — 손으로 넣은 행 · 옛 판 행 흉내."""
+    row = session.get(Plan, plan_id)
+    if how == "classroom_ref":
+        values = {"classroom_ref": "햇살반"}
+    else:
+        body = copy.deepcopy(row.body)
+        snapshot = body["template_snapshot"]
+        if how == "snapshot_missing":
+            del body["template_snapshot"]
+        elif how == "snapshot_not_object":
+            body["template_snapshot"] = "broken"
+        elif how == "profile_ref_missing":
+            del snapshot["profile_ref"]
+        elif how == "profile_ref_not_object":
+            snapshot["profile_ref"] = ["p", "1"]
+        elif how == "profile_ref_invalid":
+            snapshot["profile_ref"] = {"profile_id": "p"}
+        values = {"body": body}
+    session.execute(update(Plan).where(Plan.id == plan_id).values(**values))
+    session.expire_all()
+
+
+@pytest.mark.parametrize(
+    ("how", "reason"),
+    [
+        ("snapshot_missing", "template_snapshot_missing"),
+        ("snapshot_not_object", "template_snapshot_missing"),
+        ("profile_ref_missing", "profile_ref_missing"),
+        ("profile_ref_not_object", "profile_ref_missing"),
+        ("profile_ref_invalid", "profile_ref_invalid"),
+        ("classroom_ref", "classroom_ref_not_int"),
+    ],
+)
+def test_목록은_못_읽는_행만_빼고_경고를_남긴다(world, caplog, monkeypatch, how, reason):
+    """행 하나 때문에 목록 전체가 500 이 되지 않는다(#162 리뷰). 정상 행은 그대로 온다."""
+    # alembic fileConfig 가 이미 만들어진 logger 를 끈다(test_monthly_lifecycle_api 와 같은 이유).
+    monkeypatch.setattr(monthly_router._log, "disabled", False)
+    _annual(world["class_a"])
+    good, bad = (_create(world, month=m).json()["id"] for m in (3, 9))
+    before = client.get("/api/plans/monthly").json()["items"]
+    _break_row(world["session"], bad, how)
+
+    with caplog.at_level(logging.WARNING, logger=monthly_router.__name__):
+        response = client.get("/api/plans/monthly")
+
+    assert response.status_code == 200
+    assert response.json()["items"] == [i for i in before if i["id"] == good]
+    (record,) = [r for r in caplog.records if r.name == monthly_router.__name__]
+    assert record.getMessage() == f"monthly plan list skipped row plan_id={bad} reason={reason}"
+    # 본문 · 양식 설정 id 는 로그에 남기지 않는다.
+    assert world["profile_a"]["profile_id"] not in caplog.text
+
+
+def test_목록의_모든_행을_못_읽으면_빈_목록이다(world):
+    _annual(world["class_a"])
+    for month in (3, 9):
+        _break_row(world["session"], _create(world, month=month).json()["id"], "snapshot_missing")
+    assert client.get("/api/plans/monthly").json() == {"items": []}
+    assert client.get(f"/api/plans/monthly?class_id={world['class_a']}").json() == {"items": []}
 
 
 # ── 권한 · 게이트 · Profile ───────────────────────────────────────────────

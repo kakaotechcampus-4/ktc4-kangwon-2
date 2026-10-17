@@ -23,6 +23,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -295,24 +296,48 @@ def list_monthly_plans(session: DbSession, user: CurrentUser, class_id: int | No
         require_own_class(session, user, class_id)
         query = query.where(Plan.classroom_ref == str(class_id))
     rows = session.scalars(query.order_by(Plan.target_month, Plan.id)).all()
-    return MonthlyPlanListOut(
-        items=[
-            MonthlyPlanSummary(
-                id=row.id,
-                class_id=int(row.classroom_ref),
-                school_year=row.school_year,
-                month=int(row.target_month[5:]),
-                target_month=row.target_month,
-                status=row.status,
-                revision=row.revision,
-                # 목록은 본문 전체를 되돌리지 않는다 — Snapshot 의 ref 만 읽는다.
-                profile_ref=ProfileRefOut(**row.body["template_snapshot"]["profile_ref"]),
-                created_at=row.created_at,
-                confirmed_at=row.confirmed_at,
-            )
-            for row in rows
-        ]
+    summaries = (_summary(row) for row in rows)
+    return MonthlyPlanListOut(items=[item for item in summaries if item is not None])
+
+
+def _summary(row: Plan) -> MonthlyPlanSummary | None:
+    """목록 한 줄. **못 읽는 행은 그 행만 빼고 경고를 남긴다** — 행 하나 때문에 목록 전체가
+    500 이 되면 교사가 월간을 아예 못 연다(#162 리뷰). 생성 경로는 늘 두 칸을 채우므로 이 행은
+    손으로 넣었거나 옛 판인 행이다. 로그에는 id 와 이유만 남긴다 — 본문은 찍지 않는다.
+    """
+    # 목록은 본문 전체를 되돌리지 않는다 — Snapshot 의 ref 만 읽는다.
+    snapshot = row.body.get("template_snapshot") if isinstance(row.body, dict) else None
+    if not isinstance(snapshot, dict):
+        return _skip(row, "template_snapshot_missing")
+    ref = snapshot.get("profile_ref")
+    if not isinstance(ref, dict):
+        return _skip(row, "profile_ref_missing")
+    try:
+        profile_ref = ProfileRefOut.model_validate(ref)
+    except ValidationError:
+        return _skip(row, "profile_ref_invalid")
+    # 월간 저장소는 반 id 를 문자열로 적는다(`str(classroom_ref)`). 계약의 class_id 는 정수다.
+    try:
+        class_id = int(row.classroom_ref)
+    except (TypeError, ValueError):
+        return _skip(row, "classroom_ref_not_int")
+    return MonthlyPlanSummary(
+        id=row.id,
+        class_id=class_id,
+        school_year=row.school_year,
+        month=int(row.target_month[5:]),
+        target_month=row.target_month,
+        status=row.status,
+        revision=row.revision,
+        profile_ref=profile_ref,
+        created_at=row.created_at,
+        confirmed_at=row.confirmed_at,
     )
+
+
+def _skip(row: Plan, reason: str) -> None:
+    _log.warning("monthly plan list skipped row plan_id=%s reason=%s", row.id, reason)
+    return None
 
 
 @router.get("/{plan_id}", response_model=MonthlyPlanOut)
