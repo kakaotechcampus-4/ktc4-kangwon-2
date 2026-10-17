@@ -7,6 +7,8 @@ import {
   currentCenterId,
   findGreetings,
   putGreetings,
+  findCenterSettings,
+  putCenterSettings,
 } from "./data/centers";
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
@@ -96,6 +98,51 @@ export const handlers = [
         region_sigungu: "춘천시",
       }),
     );
+  }),
+  // §3-2. 주 1회 모은 자료. 목업에서는 한 건만 둔다 — 화면이 비어 보이면 안 된다.
+  http.get("*/api/trends", async ({ request }) => {
+    const s = await scenario(request, "trends");
+    if (s) return s;
+    const id = currentCenterId();
+    if (id === null) return missing();
+    if (!findCenterSettings(id).trends_enabled)
+      return failure("TRENDS_DISABLED", "트렌드봇이 꺼져 있어요. 설정에서 켜면 쓸 수 있어요.");
+    return HttpResponse.json({
+      week: "2026-W42",
+      items: [
+        {
+          source: "youtube",
+          title: "영유아놀이｜가을 놀이｜낙엽이 변신해요!",
+          summary: "낙엽을 모아 모양을 만들고 붙여 보는 가을 놀이 세 가지예요.",
+          url: "https://www.youtube.com/watch?v=example",
+          published_at: "2026-10-02",
+          origin: "꼬미쌤TV",
+        },
+      ],
+    });
+  }),
+  // §3-1. 기본은 꺼짐. 설정한 적 없어도 기본값을 채워 준다 — 빈 객체를 주지 않는다.
+  http.get("*/api/centers/:centerId/settings", async ({ request, params }) => {
+    const s = await scenario(request, "center-settings");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    return HttpResponse.json(findCenterSettings(id));
+  }),
+  http.put("*/api/centers/:centerId/settings", async ({ request, params }) => {
+    const s = await scenario(request, "center-settings-save");
+    if (s) return s;
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (Object.keys(b).some((key) => key !== "trends_enabled")) return bad("body");
+    // **보낸 칸만 바꾼다.** 빈 요청은 아무것도 바꾸지 않는다.
+    if (b.trends_enabled !== undefined) {
+      if (typeof b.trends_enabled !== "boolean") return bad("trends_enabled");
+      return HttpResponse.json(putCenterSettings(id, { trends_enabled: b.trends_enabled }));
+    }
+    return HttpResponse.json(findCenterSettings(id));
   }),
   http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
     const s = await scenario(request, "greetings");

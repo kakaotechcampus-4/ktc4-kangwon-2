@@ -150,10 +150,17 @@ def test_한도에_걸리면_재시도로_안_풀린다고_알린다():
 
 
 def _wrap(raw):
-    """진짜 전송 계층의 오류 변환을 그대로 태운다."""
+    """진짜 전송 계층의 오류 변환을 그대로 태운다.
+
+    **그 계층은 로컬에서 real 을 막는다**(AGENTS.md · client.py `_post_json`).
+    여기서는 서버에 선 것처럼 두고 본다 — 보려는 것은 401·429 변환이지 그 가드가 아니다.
+    """
+    from app.config import settings
     from app.shared.llm import client as llm
 
     def transport(url, *, headers, payload, timeout):
+        was_server = settings.is_server
+        settings.is_server = True
         original = llm.urllib_request.urlopen
         try:
             llm.urllib_request.urlopen = lambda *a, **k: raw(
@@ -162,6 +169,7 @@ def _wrap(raw):
             return llm._post_json(url, headers=headers, payload=payload, timeout=timeout)
         finally:
             llm.urllib_request.urlopen = original
+            settings.is_server = was_server
 
     return transport
 

@@ -14,7 +14,9 @@ export type ErrorCode =
   | "NO_ACTIVITIES"
   | "LLM_BUDGET_EXCEEDED"
   | "DEPENDENCY_UNAVAILABLE"
-  | "GENERATION_FAILED";
+  | "GENERATION_FAILED"
+  // 원이 트렌드봇을 껐다 (FR-808 · §3-2). 「없다」가 아니라 「껐다」다.
+  | "TRENDS_DISABLED";
 /** fields 는 항상 배열이다 — 하나여도 ["name"] 이다 (docs/api-spec.md 「공통」). */
 export interface ErrorResponse {
   error: { code: ErrorCode; message: string; fields: string[] };

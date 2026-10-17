@@ -76,6 +76,33 @@ export async function GET() {
     { headers: { "Cache-Control": "no-store" } },
   );
 }
+/** 트렌드봇이 꺼져 있거나 확인할 수 없으면 거절 응답을, 켜져 있으면 null 을 준다. */
+async function refuseWhenTrendsOff(request: Request): Promise<Response | null> {
+  const off = Response.json(
+    { error: "트렌드봇이 꺼져 있어요. 설정에서 켜면 쓸 수 있어요." },
+    { status: 403 },
+  );
+  // **목업 모드에서는 검사하지 않는다.** MSW 는 브라우저에서만 돈다(frontend/CLAUDE.md) —
+  // 설정이 브라우저 안에 있고 토큰도 가짜라, 서버에서 확인할 길이 자체가 없다.
+  // 목업은 백엔드 없이 화면을 보는 모드다. 진짜 판정은 실제 모드에서 선다.
+  if (process.env.NEXT_PUBLIC_API_MOCKING === "enabled") return null;
+  const backend = process.env.FASTAPI_BASE_URL?.replace(/\/$/, "");
+  const auth = request.headers.get("Authorization");
+  if (!backend || !auth) return off;
+  try {
+    const head = { Authorization: auth };
+    const me = await fetch(`${backend}/api/auth/me`, { headers: head });
+    if (!me.ok) return off;
+    const { center_id } = await me.json();
+    if (!center_id) return off;
+    const settings = await fetch(`${backend}/api/centers/${center_id}/settings`, { headers: head });
+    if (!settings.ok) return off;
+    return (await settings.json()).trends_enabled ? null : off;
+  } catch {
+    return off;
+  }
+}
+
 export async function POST(request: Request) {
   const blocked = sameOriginGuard(request);
   if (blocked) return blocked;
@@ -98,6 +125,13 @@ export async function POST(request: Request) {
       },
       { status: error instanceof BodyLimitError ? 413 : 400 },
     );
+  }
+  // 트렌드봇은 원마다 끌 수 있다 (FR-808 · api-spec §3-1). **여기서 막아야 진짜로 막힌다** —
+  // 화면 검사는 열어둔 탭이나 이 주소를 직접 부르는 요청을 못 막고, 호출은 유료다.
+  // **확인할 수 없으면 거절한다.** 부가 기능이라 꺼진 쪽이 안전하다.
+  if (task === "trends") {
+    const refused = await refuseWhenTrendsOff(request);
+    if (refused) return refused;
   }
   if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL)
     return Response.json(
