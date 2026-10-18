@@ -312,6 +312,9 @@ function documentsHarness({ items = [], local = [], fail = false } = {}) {
       getDocument: async () => serverDocument,
       updateDocument: async () => serverDocument,
     },
+    // 일일 보육일지 근거(일과 기록). 이 테스트는 보관함 목록만 보므로 부르지 않는다.
+    "@/lib/api/routine-sources": { listRoutineSources: async () => [] },
+    "./DailyLogSources": { default: "daily-log-sources", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
     "./document-selection": {
       createSelection: (...args) => {

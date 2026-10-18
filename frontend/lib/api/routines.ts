@@ -153,3 +153,19 @@ export async function copyFromPreviousDay(classId: number, date: string): Promis
     execution: "",
   }));
 }
+
+const ROUTINE_PREFIX = "routine:";
+const SERVER_ID = /^[1-9][0-9]*$/;
+
+export const routineLocalId = (serverId: number) => ROUTINE_PREFIX + serverId;
+
+export function routineServerId(localId: string): number | null {
+  if (!localId.startsWith(ROUTINE_PREFIX)) return null;
+  const raw = localId.slice(ROUTINE_PREFIX.length);
+  if (!SERVER_ID.test(raw)) return null;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+
+export const routineTime = (value: string | null) => value?.slice(0, 5) ?? "";
