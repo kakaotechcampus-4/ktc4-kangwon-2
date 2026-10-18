@@ -59,11 +59,17 @@ class RoutineRecord(Base):
         일지가 근거 사본으로 이 문자열을 남긴다. stale 판정이 이 문자열 하나를 비교하므로
         시간 · 일과 이름 · 활동실행 중 무엇이 바뀌어도 걸린다 (§11 판정 기준).
         """
-        when = ""
-        if self.start_time and self.end_time:
-            when = f" {self.start_time:%H:%M}~{self.end_time:%H:%M}"
-        elif self.start_time:
-            when = f" {self.start_time:%H:%M}~"
-        elif self.end_time:
-            when = f" ~{self.end_time:%H:%M}"
+        when = self.time_range()
+        if when:
+            when = f" {when}"
         return f"[{self.name.strip()}{when}] {self.execution.strip()}"
+
+    def time_range(self) -> str:
+        """`09:20~10:40`. 한쪽만 있으면 `09:20~` · `~10:40`, 둘 다 없으면 빈 문자열."""
+        if self.start_time and self.end_time:
+            return f"{self.start_time:%H:%M}~{self.end_time:%H:%M}"
+        if self.start_time:
+            return f"{self.start_time:%H:%M}~"
+        if self.end_time:
+            return f"~{self.end_time:%H:%M}"
+        return ""
