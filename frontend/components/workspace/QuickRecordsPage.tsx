@@ -9,12 +9,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { WorkspacePage, Message } from "./WorkspaceUI";
+import { WorkspacePage, Message, useClasses } from "./WorkspaceUI";
 import { Icon, type IconName } from "@/components/app/icons";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { today, localTime } from "@/lib/workspace/model";
+import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 
 const DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"];
 const DOMAIN_ICON: Record<string, IconName> = {
@@ -46,15 +48,31 @@ export default function QuickRecordsPage() {
   const [records, setRecords] = useState<ServerObservation[] | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useClientState(() => today(), "");
+  // 일과 기록은 반 하나의 하루다. 이 화면은 반을 안 가리므로 여기서 한 번 고르게 한다 (S-J1 들어오는 길).
+  const classes = useClasses(setError);
+  const [pickedClass, setClassId] = useState<string | null>(null);
+  const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
+  const classId = pickedClass ?? primaryClass;
+  const routines = routinesPath(classId, selected);
 
   useEffect(() => {
-    listRecords()
-      .then(setRecords)
+    let live = true;
+    listRecords(classId)
+      .then((items) => {
+        if (live) {
+          setRecords(items);
+          setError("");
+        }
+      })
       .catch(() => {
+        if (!live) return;
         setRecords([]);
         setError("기록을 불러오지 못했어요. 새로고침해주세요.");
       });
-  }, []);
+    return () => {
+      live = false;
+    };
+  }, [classId]);
 
   const weekStart = useMemo(() => (selected ? isoOf(mondayOf(selected)) : ""), [selected]);
   const days = useMemo(
@@ -62,10 +80,10 @@ export default function QuickRecordsPage() {
     [weekStart],
   );
   const countOf = useCallback(
-    (iso: string) => (records ?? []).filter((r) => r.date === iso).length,
-    [records],
+    (iso: string) => (records ?? []).filter((r) => r.classId === classId && r.date === iso).length,
+    [records, classId],
   );
-  const dayRecords = (records ?? []).filter((r) => r.date === selected);
+  const dayRecords = (records ?? []).filter((r) => r.classId === classId && r.date === selected);
 
   return (
     <WorkspacePage
@@ -87,6 +105,21 @@ export default function QuickRecordsPage() {
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-[26px] font-bold">우리 반 기록</h2>
           <div className="flex items-center gap-3 text-xs text-ink-soft">
+            <label className="flex items-center gap-2">
+              반
+              <select
+                value={classId}
+                onChange={(e) => setClassId(e.target.value)}
+                className="min-h-11 rounded-md border border-line bg-paper px-2 text-xs text-ink"
+              >
+                <option value="">반 선택</option>
+                {classes.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.className || "이름 없는 반"}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               aria-label="지난 주"
@@ -147,9 +180,22 @@ export default function QuickRecordsPage() {
             {selected && label(selected)}{" "}
             <span className="ml-1 text-xs font-normal text-ink-soft">{dayRecords.length}건</span>
           </span>
-          <Link href="/records" className="text-xs font-semibold text-primary">
-            전체 기록 →
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            {routines ? (
+              <Link
+                href={routines}
+                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-tint-line bg-primary-tint px-3 text-xs font-semibold text-primary-ink"
+              >
+                <Icon name="edit" className="h-4 w-4" />
+                일과 적기
+              </Link>
+            ) : (
+              <span className="text-xs text-ink-soft">{ROUTINES_UNMAPPED}</span>
+            )}
+            <Link href="/records" className="text-xs font-semibold text-primary">
+              전체 기록 →
+            </Link>
+          </div>
         </div>
 
         {records === null ? null : dayRecords.length === 0 ? (

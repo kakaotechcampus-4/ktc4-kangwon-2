@@ -10,19 +10,23 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Class
-from app.features.documents.stale import source_changed
+from app.features.documents.stale import SourceImpact, source_changed
 from app.features.routines.models import RoutineRecord
 from app.features.routines.schemas import (
     RoutineCreate,
+    RoutineDeleteResponse,
     RoutineListResponse,
+    RoutineMutationResponse,
     RoutineResponse,
+    RoutineReviewImpact,
     RoutineUpdate,
 )
 from app.shared.auth.dependency import CurrentUser
@@ -117,20 +121,64 @@ def list_routines(
     return RoutineListResponse(items=[_response(row) for row in session.execute(query)])
 
 
-@router.put("/{record_id}", response_model=RoutineResponse)
+def _impact_response(impact: SourceImpact) -> RoutineReviewImpact:
+    return RoutineReviewImpact(
+        affected_document_ids=list(impact.affected_document_ids),
+        newly_stale_document_ids=list(impact.newly_stale_document_ids),
+    )
+
+
+@router.put("/{record_id}", response_model=RoutineMutationResponse | RoutineResponse)
 def update_routine(
-    record_id: int, body: RoutineUpdate, session: DbSession, user: CurrentUser
-) -> RoutineResponse:
+    record_id: int,
+    body: RoutineUpdate,
+    session: DbSession,
+    user: CurrentUser,
+    include_impact: bool = False,
+) -> RoutineResponse | RoutineMutationResponse:
     record = _own(session, user, record_id)[0]
+    # 사본이 이미 과거 값이어도 계획/자리만 고친 요청은 새 근거 변경이 아니다.
+    before = (record.date, record.start_time, record.end_time, record.name, record.execution)
     _apply(record, body)
-    source_changed(session, "routine", record_id, record.fact_text(), record.date)
+    after = (record.date, record.start_time, record.end_time, record.name, record.execution)
+    impact = SourceImpact()
+    if before != after:
+        impact = source_changed(
+            session,
+            "routine",
+            record_id,
+            record.fact_text(),
+            record.date,
+            center_id=user.center_id,
+            # 사실 사본에는 분까지만 남는다. 초만 고쳐도 시간 변경은 놓치지 않는다.
+            force=before[1:3] != after[1:3],
+        )
     session.commit()
-    return _response(_own(session, user, record_id))
+    result = _response(_own(session, user, record_id))
+    if include_impact:
+        return RoutineMutationResponse(
+            **result.model_dump(), review_impact=_impact_response(impact)
+        )
+    return result
 
 
-@router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_routine(record_id: int, session: DbSession, user: CurrentUser) -> None:
+@router.delete(
+    "/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    responses={200: {"model": RoutineDeleteResponse}},
+)
+def delete_routine(
+    record_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    include_impact: bool = False,
+) -> Response:
     record = _own(session, user, record_id)[0]
-    source_changed(session, "routine", record_id, None, None)
+    impact = source_changed(session, "routine", record_id, None, None, center_id=user.center_id)
     session.delete(record)
     session.commit()
+    if include_impact:
+        result = RoutineDeleteResponse(review_impact=_impact_response(impact))
+        return JSONResponse(result.model_dump(), status_code=status.HTTP_200_OK)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

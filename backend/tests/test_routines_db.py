@@ -266,6 +266,157 @@ def _stale(db_session, doc_id):
     return db_session.get(Document, doc_id).stale
 
 
+def _confirmed_daily(klass, routines):
+    doc = _daily(klass, routines).json()
+    response = client.post(f"/api/documents/{doc['id']}/confirm", json={"checks": CHECKS})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        {"name": "바깥놀이"},
+        {"start": "09:21"},
+        {"end": "10:41"},
+        {"execution": "길 위에서 자동차를 굴렸다."},
+        {"date": "2026-09-23"},
+        {"start": "09:20:01"},
+    ],
+)
+def test_영향_응답은_확정_일지만_세고_신규와_기존_stale을_구분한다(db_session, mine, edit):
+    row = _routine(mine["sun"]).json()
+    confirmed = _confirmed_daily(mine["sun"], [row])
+    draft = _daily(mine["sun"], [row]).json()
+    url = f"/api/routines/{row['id']}?include_impact=true"
+    first = client.put(url, json=_update_body(row, **edit))
+    assert first.status_code == 200, first.text
+    assert first.json()["review_impact"] == {
+        "affected_document_ids": [confirmed["id"]],
+        "newly_stale_document_ids": [confirmed["id"]],
+    }
+    assert _stale(db_session, confirmed["id"]) is True
+    assert _stale(db_session, draft["id"]) is True  # 초안 stale 정책도 유지한다.
+    # 같은 값 저장/계획/순서만 변경은 근거 변경으로 다시 세지 않는다.
+    second = client.put(url, json=_update_body(first.json(), plan="새 계획", position=7))
+    assert second.json()["review_impact"] == {
+        "affected_document_ids": [],
+        "newly_stale_document_ids": [],
+    }
+    third = client.put(url, json=_update_body(first.json(), execution="다시 자동차를 움직였다."))
+    assert third.json()["review_impact"] == {
+        "affected_document_ids": [confirmed["id"]],
+        "newly_stale_document_ids": [],
+    }
+
+
+def test_여러_일과의_같은_문서_ID와_삭제_영향을_돌려준다(db_session, mine):
+    a = _routine(mine["sun"]).json()
+    b = _routine(mine["sun"], name="점심").json()
+    one = _confirmed_daily(mine["sun"], [b, a])
+    two = _confirmed_daily(mine["sun"], [a])
+    first = client.put(
+        f"/api/routines/{a['id']}?include_impact=true", json=_update_body(a, execution="바뀐 실행")
+    ).json()["review_impact"]
+    deleted = client.delete(f"/api/routines/{b['id']}?include_impact=true")
+    assert deleted.status_code == 200
+    second = deleted.json()["review_impact"]
+    assert set(first["affected_document_ids"]) == {one["id"], two["id"]}
+    assert second == {"affected_document_ids": [one["id"]], "newly_stale_document_ids": []}
+    assert len(set(first["newly_stale_document_ids"] + second["newly_stale_document_ids"])) == 2
+    assert _stale(db_session, one["id"]) is True
+    assert (
+        client.get(f"/api/routines?class_id={mine['sun'].id}").json()["items"][0]["id"] == a["id"]
+    )
+
+
+def test_삭제만으로도_새로_stale이_된_확정_문서를_반환한다(db_session, mine):
+    row = _routine(mine["sun"]).json()
+    doc = _confirmed_daily(mine["sun"], [row])
+    response = client.delete(f"/api/routines/{row['id']}?include_impact=true")
+    assert response.json()["review_impact"] == {
+        "affected_document_ids": [doc["id"]],
+        "newly_stale_document_ids": [doc["id"]],
+    }
+
+
+def test_계획과_position만_변경하면_영향이_없고_기존_응답도_호환된다(db_session, mine):
+    row = _routine(mine["sun"]).json()
+    doc = _confirmed_daily(mine["sun"], [row])
+    plain = client.put(f"/api/routines/{row['id']}", json=_update_body(row, plan="계획 변경"))
+    assert set(plain.json()) == set(row)
+    extended = client.put(
+        f"/api/routines/{row['id']}?include_impact=true",
+        json=_update_body(plain.json(), position=9),
+    )
+    assert extended.json()["review_impact"] == {
+        "affected_document_ids": [],
+        "newly_stale_document_ids": [],
+    }
+    assert _stale(db_session, doc["id"]) is False
+
+
+def test_오염된_다른_기관의_근거도_조회하거나_전파하지_않는다(db_session, mine, teacher):
+    from datetime import date
+
+    row = _routine(mine["sun"]).json()
+    own = _confirmed_daily(mine["sun"], [row])
+    other = Center(
+        name="다른 원", director_name="이원장", region_sido="강원", region_sigungu="춘천시"
+    )
+    db_session.add(other)
+    db_session.flush()
+    klass = Class(
+        center_id=other.id,
+        name="다른 반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="이교사",
+    )
+    db_session.add(klass)
+    db_session.flush()
+    foreign = Document(
+        kind="dailyLog",
+        title="다른 기관 문서",
+        class_id=klass.id,
+        start_date=date.fromisoformat(DAY),
+        end_date=date.fromisoformat(DAY),
+        status="CONFIRMED",
+        origin="AI",
+        stale=False,
+    )
+    db_session.add(foreign)
+    db_session.flush()
+    # 다형 참조라 DB FK만으로 막을 수 없는 잘못된 연결도 기관 경계를 넘지 않아야 한다.
+    db_session.add_all(
+        [
+            DocumentSource(
+                document_id=foreign.id,
+                source_kind="routine",
+                source_id=row["id"],
+                class_id=klass.id,
+                date=date.fromisoformat(DAY),
+                text="과거 사본",
+            ),
+            DocumentSource(
+                document_id=foreign.id,
+                source_kind="document",
+                source_id=own["id"],
+                class_id=klass.id,
+                date=date.fromisoformat(DAY),
+                text="과거 사본",
+            ),
+        ]
+    )
+    db_session.flush()
+    response = client.put(
+        f"/api/routines/{row['id']}?include_impact=true", json=_update_body(row, name="일과 수정")
+    )
+    assert response.json()["review_impact"]["affected_document_ids"] == [own["id"]]
+    assert _stale(db_session, foreign.id) is False
+
+
 @pytest.mark.parametrize(
     "edit",
     [

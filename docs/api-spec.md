@@ -1059,6 +1059,36 @@ execution   활동실행 — 사실 층.  선택(저장은 비어도 된다).  �
 활동실행 · 날짜** 중 무엇이 바뀌어도 `stale` 이고, `plan` · `position` 만 바꾸면 그대로다.
 지우면 「원본 없음」이라 `stale` 이다.
 
+### 저장 뒤 재검토 안내 — 선택 응답 (S-J1 AC6)
+
+기존 PUT의 일과 한 줄 응답과 DELETE의 `204`는 유지한다. 영향 정보가 필요한 화면은
+`PUT /api/routines/{id}?include_impact=true` 또는
+`DELETE /api/routines/{id}?include_impact=true`로 요청한다.
+
+- PUT은 기존 일과 필드에 `review_impact`를 추가한 `200`을 반환한다.
+- DELETE는 `review_impact`만 담은 `200`을 반환한다. 옵션을 생략하면 본문 없는 `204`다.
+
+```json
+{ "review_impact": {
+  "affected_document_ids": [7, 12],
+  "newly_stale_document_ids": [12]
+} }
+```
+
+`affected_document_ids`는 **이번에 실제 변경·삭제된 근거를 직접 인용한, 같은 기관의
+확정 일일 보육일지** ID다. 사본과 현재 사실·날짜가 다르거나 원본이 삭제된 경우를 센다.
+시간은 초만 달라져도 변경이다. 요청 전후 이름·시간·활동실행·날짜가 같으면(계획·순서만
+수정한 경우 포함) 두 배열 모두 빈다. `newly_stale_document_ids`는 그중 이번 요청으로
+`stale=false`에서 `true`가 된 문서다. 이미 stale인 문서는 affected에만 포함된다.
+
+초안과 전파된 주간 문서는 기존 정책대로 stale 처리하되 안내 건수에서 제외한다.
+다른 기관 문서는 영향 조회·전파 대상에서 제외한다. 기존 refresh·확정 정책은 유지한다.
+응답은 커밋 성공 후에만 반환한다.
+
+화면은 한 번 저장에 속한 PUT·DELETE의 ID **합집합**을 센다. 신규 ID 수를 「N건이 다시
+검토 대상」으로, affected에서 신규 ID를 뺀 수를 「이미 재검토 대상」으로 구분한다.
+부분 실패 시 전체 성공 안내를 하지 않으며, 성공한 요청의 ID를 재시도까지 보존한다.
+
 ### 일일 보육일지를 만들 때 (§11)
 
 ```json

@@ -5,6 +5,7 @@ import {
   DOCUMENT_KINDS,
   today,
   validPeriod,
+  validDate,
   compareEvidence,
   invalidateDependents,
   assertDocumentUnchanged,
@@ -30,8 +31,12 @@ import {
   type DocumentSummary,
   type RecordKind,
 } from "@/lib/api/documents";
-import { listRoutineSources as listRoutines, type RoutineSource as Routine } from "@/lib/api/routine-sources";
+import { listRoutineSources, type RoutineSource as Routine } from "@/lib/api/routine-sources";
 import DailyLogSources from "./DailyLogSources";
+import { classServerId } from "@/lib/api/onboarding";
+import { useClientState } from "@/lib/hooks/use-client-state";
+import { routinesPath, routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
+import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import DocumentEditor from "./DocumentEditor";
 import { createSelection } from "./document-selection";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
@@ -68,9 +73,20 @@ function messageFor(error: unknown) {
 
 export default function DocumentsPage() {
   const { data, error, save } = useWorkspace();
+  const [entry] = useClientState(
+    () =>
+      typeof window === "undefined"
+        ? { date: "", classId: null, daily: false }
+        : {
+            ...routinesScope(window.location.search),
+            daily: new URLSearchParams(window.location.search).get("kind") === "dailyLog",
+          },
+    { date: "", classId: null as number | null, daily: false },
+  );
   const [mode, setMode] = useState<"library" | "create">("library");
   const [kind, setKind] = useState<DocumentKind>("observation");
-  const [classId, setClassId] = useState("");
+  const [pickedClass, setClassId] = useState<string | null>(null);
+  const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const [childId, setChildId] = useState("");
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(today);
@@ -79,6 +95,12 @@ export default function DocumentsPage() {
   const [message, setMessage] = useState("");
   const [invalid, setInvalid] = useState<string[]>([]);
   const classes = useClasses(setMessage);
+  // 서버에만 있던 반은 useClasses가 늦게 들여온다. 먼저 주 반을 고르거나 미리 포기를 확정하지 않는다.
+  const requestedClass =
+    entry.daily && entry.classId !== null
+      ? (classes.find((c) => classServerId(c.id) === entry.classId)?.id ?? "")
+      : primaryClass;
+  const classId = pickedClass ?? requestedClass;
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
 
@@ -86,6 +108,16 @@ export default function DocumentsPage() {
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
+  const [dailyPrefilled, setDailyPrefilled] = useState(false);
+  if (entry.daily && !dailyPrefilled) {
+    setDailyPrefilled(true);
+    setMode("create");
+    setKind("dailyLog");
+    setChildId("");
+    setStart(entry.date || today());
+    setEnd(entry.date || today());
+    setSelected([]);
+  }
   // 일일 보육일지의 근거(일과 기록). 반 · 날짜를 key 로 둬서 「불러오는 중」을 따로 저장하지 않는다.
   const [routineData, setRoutineData] = useState<{
     key: string;
@@ -112,7 +144,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     const mine = ++latestList.current;
-    Promise.all([listDocuments(), listRecords()])
+    Promise.all([listDocuments(), listRecords(classId)])
       .then(([documents, observations]) => {
         if (mine !== latestList.current) return;
         setServerDocs(documents);
@@ -129,11 +161,11 @@ export default function DocumentsPage() {
       latestList.current += 1;
       selection.leaveCreation();
     };
-  }, [selection]);
+  }, [selection, classId]);
   async function reloadList() {
     const mine = ++latestList.current;
     try {
-      const [documents, observations] = await Promise.all([listDocuments(), listRecords()]);
+      const [documents, observations] = await Promise.all([listDocuments(), listRecords(classId)]);
       if (mine !== latestList.current) return;
       setServerDocs(documents);
       setRecords(observations);
@@ -169,12 +201,14 @@ export default function DocumentsPage() {
   const child = classroom?.children.find((c) => c.id === childId);
 
   const routineKey =
-    mode === "create" && kind === "dailyLog" && classId ? `${classId}|${start}` : "";
+    mode === "create" && kind === "dailyLog" && classId && validDate(start)
+      ? `${classId}|${start}`
+      : "";
   useEffect(() => {
     if (!routineKey) return;
     let stale = false;
     const [cls, date] = routineKey.split("|");
-    listRoutines(cls, date)
+    listRoutineSources(cls, date)
       .then((items) => !stale && setRoutineData({ key: routineKey, items, error: "" }))
       .catch((e) => !stale && setRoutineData({ key: routineKey, items: [], error: messageFor(e) }));
     return () => {
@@ -182,8 +216,13 @@ export default function DocumentsPage() {
     };
   }, [routineKey]);
   const routines = routineData?.key === routineKey ? routineData.items : NO_ROUTINES;
-  const routineStatus: ViewStatus =
-    routineData?.key !== routineKey ? "loading" : routineData.error ? "error" : "ready";
+  const routineStatus: ViewStatus = !routineKey
+    ? "ready"
+    : routineData?.key !== routineKey
+      ? "loading"
+      : routineData.error
+        ? "error"
+        : "ready";
   const candidates: Candidate[] = useMemo(
     () =>
       kind === "dailyLog"
@@ -343,7 +382,10 @@ export default function DocumentsPage() {
   }
 
   // 일과 기록 화면(S-J1)의 주소 — docs/screen-spec.md 「들어오는 길」. 날짜 · 반이 그대로 넘어간다.
-  const routineHref = `/routines?${new URLSearchParams({ date: start, class_id: classId })}`;
+  const routineHref =
+    pickedClass === null && entry.daily && entry.classId !== null
+      ? `/routines${routinesQuery(entry.classId, start)}`
+      : routinesPath(classId, start);
 
   const serverActions = serverCurrent
     ? {
@@ -513,11 +555,12 @@ export default function DocumentsPage() {
               >
                 {busy ? "초안 작성 중…" : "초안 만들기"}
               </button>
-              {kind === "dailyLog" ? (
+              {kind === "dailyLog" && routineHref && (
                 <Link className={ws.link} href={routineHref}>
                   새 일과 기록 입력 →
                 </Link>
-              ) : (
+              )}
+              {kind !== "dailyLog" && (
                 <Link className={ws.link} href="/records">
                   새 관찰 기록 입력 →
                 </Link>

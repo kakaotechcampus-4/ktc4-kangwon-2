@@ -2,9 +2,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DOMAINS, today, validDate } from "@/lib/workspace/model";
+import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
+import { useClientState } from "@/lib/hooks/use-client-state";
+import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -38,7 +41,9 @@ export default function RecordsPage() {
   const [status, setStatus] = useState<RecordsStatus>("loading");
   const [listError, setListError] = useState("");
   const [pending, setPending] = useState(false);
-  const [classId, setClassId] = useState("");
+  const [pickedClass, setClassId] = useState<string | null>(null);
+  const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
+  const classId = pickedClass ?? primaryClass;
   const [childId, setChildId] = useState("");
   const [date, setDate] = useState(today);
   const [domain, setDomain] = useState(DOMAINS[0]);
@@ -56,7 +61,7 @@ export default function RecordsPage() {
 
   useEffect(() => {
     const mine = ++latest.current;
-    listRecords()
+    listRecords(classId)
       .then((items) => {
         if (mine !== latest.current) return;
         setRecords(items);
@@ -71,12 +76,12 @@ export default function RecordsPage() {
     return () => {
       latest.current += 1;
     };
-  }, []);
+  }, [classId]);
   // 저장·삭제 뒤 서버를 다시 읽는다. 첫 렌더가 이미 loading 이라 상태를 새로 세우지 않는다.
   async function reload() {
     const mine = ++latest.current;
     try {
-      const items = await listRecords();
+      const items = await listRecords(classId);
       if (mine !== latest.current) return;
       setRecords(items);
       setListError("");
@@ -92,7 +97,7 @@ export default function RecordsPage() {
     () =>
       records.filter(
         (r) =>
-          (!classId || r.classId === classId) &&
+          r.classId === classId &&
           (!childId || r.childId === childId) &&
           `${r.fact} ${r.childName} ${r.context}`.includes(search),
       ),
@@ -355,6 +360,7 @@ export default function RecordsPage() {
               <Link href="/records/children" className={ws.link}>
                 아이별 모아보기 →
               </Link>
+              <RoutinesLink classId={classId} date={date} />
               <Link href="/compare" className={ws.link}>
                 이전 기록과 비교 →
               </Link>
@@ -379,6 +385,22 @@ export default function RecordsPage() {
         </section>
       </div>
     </WorkspacePage>
+  );
+}
+
+/**
+ * 일과 기록으로 가는 길. 보고 있던 반·날짜를 그대로 들고 간다.
+ *
+ * **고른 반의 서버 번호를 모르면 보내지 않는다.** 날짜만 들려 보내면 S-J1 이 「반을 안 골랐다」로
+ * 읽고 주 반을 연다 — 교사는 B 를 눌렀는데 A 가 열린다 (FR-405).
+ */
+function RoutinesLink({ classId, date }: { classId: string; date: string }) {
+  const href = routinesPath(classId, date);
+  if (!href) return <small className={ws.hint}>{ROUTINES_UNMAPPED}</small>;
+  return (
+    <Link href={href} className={ws.link}>
+      일과 기록 →
+    </Link>
   );
 }
 

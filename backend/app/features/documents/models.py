@@ -22,7 +22,7 @@ class Document(Base):
     """일지 계열 문서 — 일일 보육일지·주간 보육일지·관찰일지·영유아 평가 (docs/api-spec.md §11).
 
     계획안(plans, §4~§7)과 다른 테이블이다. 계획안은 참조자료에서, 이 문서들은
-    교사의 관찰 기록(observations, §10)에서 나온다.
+    교사의 관찰 기록(observations, §10)과 일과 기록(routines, §10-1)에서 나온다.
     """
 
     __tablename__ = "documents"
@@ -105,8 +105,9 @@ class DocumentSource(Base):
     observations 를 참조만 하면 원본이 바뀔 때 문서의 `사실` 이 조용히 같이 바뀐다.
     무효 판정(`stale`)은 여기 저장된 사본과 원본을 비교해서 정한다.
 
-    `source_kind` · `source_id` 는 다형 참조다 — observations 나 documents(주간 보육일지가
-    근거로 쓰는 확정된 일일 보육일지) 중 하나를 가리키므로 단일 FK 를 걸 수 없다.
+    `source_kind` · `source_id` 는 다형 참조다 — observations, routine_records,
+    documents(주간 보육일지가 근거로 쓰는 확정된 일일 보육일지) 중 하나를 가리키므로
+    단일 FK 를 걸 수 없다.
     """
 
     __tablename__ = "document_sources"

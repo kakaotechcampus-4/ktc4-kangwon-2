@@ -313,3 +313,11 @@ npm run e2e                              # 다른 포트면 E2E_BASE_URL=http://
 ```
 
 실행마다 새 계정을 만든다. 아동 이름은 가명이다 — 개발 DB 에 실명을 넣지 않는다.
+
+
+### TASK 2: routines and home regression verification
+
+Use the ADR-028 real PostgreSQL/FastAPI/Next stack with API mocking disabled.
+Run `npm run e2e` for routines A-J and home K/L. Set `E2E_DATABASE_URL` and
+`E2E_PYTHON` for the direct database assertion in the routines test.
+`SAESSAK_TEST_URL` enables all four HTTP integration tests during `npm test`.

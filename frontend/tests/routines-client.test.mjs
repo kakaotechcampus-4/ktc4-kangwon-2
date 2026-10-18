@@ -173,6 +173,28 @@ test("★ 자리를 안 주면 적은 순서가 자리가 된다", async () => {
   assert.deepEqual(positions, [0, 1, 2]);
 });
 
+test("★ 저장 배열을 드래그하면 과거 position 대신 바뀐 순서를 보낸다", async () => {
+  browser();
+  const sent = [];
+  server.use(
+    http.put("*/api/routines/:id", async ({ request, params }) => {
+      const body = await request.json();
+      sent.push([Number(params.id), body.position]);
+      return HttpResponse.json(row({ ...body, id: Number(params.id) }));
+    }),
+  );
+  await routines.saveRoutines(7, [
+    { id: 3, date: "2026-10-17", name: "다", position: 2 },
+    { id: 1, date: "2026-10-17", name: "가", position: 0 },
+    { id: 2, date: "2026-10-17", name: "나", position: 1 },
+  ]);
+  assert.deepEqual(sent, [
+    [3, 0],
+    [1, 1],
+    [2, 2],
+  ]);
+});
+
 test("★ 어제 불러오기는 시간·이름만 가져온다 — 활동실행을 베끼면 위조다", async () => {
   browser();
   let asked = "";

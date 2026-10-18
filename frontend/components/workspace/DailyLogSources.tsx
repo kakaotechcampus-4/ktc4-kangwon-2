@@ -27,7 +27,7 @@ export default function DailyLogSources({
   selected: string[];
   busy: boolean;
   /** 일과 기록(S-J1)으로 가는 주소. 날짜 · 반이 같이 넘어간다. */
-  writeHref: string;
+  writeHref: string | null;
   onToggle: (id: string, checked: boolean) => void;
   /** 다 골랐으면 모두 풀고, 아니면 활동실행이 있는 줄을 모두 고른다. */
   onSelectAll: () => void;
@@ -73,13 +73,13 @@ export default function DailyLogSources({
 }
 
 /** 고를 수 있는 일과가 0개. 줄이 아예 없을 때와 활동실행이 전부 비었을 때 둘 다다. */
-function NothingToPick({ total, writeHref }: { total: number; writeHref: string }) {
+function NothingToPick({ total, writeHref }: { total: number; writeHref: string | null }) {
   return (
     <Empty title="선택할 수 있는 일과가 없어요">
       {total
         ? `일과 ${total}줄이 있지만 활동실행이 모두 비어 있어요. `
         : "이 날 입력한 일과가 없어요. "}
-      <Link href={writeHref}>일과 기록 입력 →</Link>
+      {writeHref && <Link href={writeHref}>일과 기록 입력 →</Link>}
     </Empty>
   );
 }
@@ -95,7 +95,7 @@ function RoutineRow({
   /** 고른 순서. 안 골랐으면 0. */
   order: number;
   busy: boolean;
-  writeHref: string;
+  writeHref: string | null;
   onToggle: (id: string, checked: boolean) => void;
 }) {
   const heading = [routine.time, routine.name].filter(Boolean).join("  ");
@@ -110,7 +110,12 @@ function RoutineRow({
         <span>
           <b>{heading}</b>
           <small>
-            활동실행이 비어 있어요 · <Link href={writeHref}>입력하기</Link>
+            활동실행이 비어 있어요{" "}
+            {writeHref && (
+              <>
+                · <Link href={writeHref}>입력하기</Link>
+              </>
+            )}
           </small>
         </span>
       </div>
