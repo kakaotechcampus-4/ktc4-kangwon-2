@@ -1,6 +1,6 @@
 """계획안 내보내기 — `GET /api/plans/{id}/export/hwp` (docs/api-spec.md §9).
 
-경로는 `hwp` 지만 내려가는 파일은 hwpx 다. `.hwp` 는 만들지 않는다(`shared/hwpx.py`).
+기본은 hwpx 다. `?format=hwp` 면 그 hwpx 를 `.hwp` 로 바꿔 준다(`shared/hwpx.py`, ADR-030).
 
 **확정본만 내보낸다.** 내보낸 파일은 제출 문서다. DRAFT 를 내보낼 수 있으면 교사가
 확인하지 않은 초안이 그대로 제출되는 길이 생긴다. 확정 전 내용은 화면에서 본다.
@@ -17,7 +17,7 @@ from ssuksak.planning import PlanId
 from app.features.plans.router import DbSession, _detail, _repo, _row
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
-from app.shared.hwpx import download, fill_table
+from app.shared.hwpx import Format, download, fill_table
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -28,7 +28,9 @@ ANNUAL_HEADER_ROWS = 1
 
 
 @router.get("/{plan_id}/export/hwp")
-def export_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
+def export_plan(
+    plan_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
+) -> Response:
     """지금은 연간만 있다. 월간은 월간 API 가 생길 때 양식과 함께 붙인다."""
     row = _row(session, user, plan_id)
     if row.status != "CONFIRMED":
@@ -56,4 +58,4 @@ def export_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response
     content = fill_table(
         (TEMPLATE_DIR / "annual.hwpx").read_bytes(), title, ANNUAL_HEADER_ROWS, rows
     )
-    return download(content, f"plan-{row.id}", title)
+    return download(content, f"plan-{row.id}", title, format)
