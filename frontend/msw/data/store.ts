@@ -18,6 +18,8 @@ export interface Database {
   plans: MockAnnualPlan[];
   configs: Record<number, PlanConfig>;
   greetings: Record<number, Greetings>;
+  /** 원마다 트렌드봇을 켰는지 (FR-808). 기본은 꺼짐 — 칸이 없으면 꺼진 것이다. */
+  centerSettings: Record<number, { trends_enabled: boolean }>;
   monthlyPlans: MonthlyPlan[];
   /** 월간 변경 이력. 키는 plan id. 서버처럼 계획안 단위와 칸(item_id) 단위로 따로 쌓는다. */
   monthlyAudit: Record<number, MockPlanAudit>;
@@ -58,6 +60,7 @@ const empty = (): Database => ({
   plans: [],
   configs: {},
   greetings: {},
+  centerSettings: {},
   monthlyPlans: [],
   monthlyAudit: {},
   profiles: [],
@@ -87,9 +90,11 @@ export function read(): Database {
     !["centers", "classes", "children", "plans"].every((k) => Array.isArray(parsed[k]))
   )
     throw new Error("Mock 저장 데이터가 손상되었습니다");
+  // 옛 저장본에는 없던 칸이 있다. 없으면 빈 것으로 읽는다 — 저장본을 버리지 않는다.
   return {
     ...parsed,
     greetings: parsed.greetings ?? {},
+    centerSettings: parsed.centerSettings ?? {},
     monthlyPlans: parsed.monthlyPlans ?? [],
     monthlyAudit: parsed.monthlyAudit ?? {},
     profiles: parsed.profiles ?? [],

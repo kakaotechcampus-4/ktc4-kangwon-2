@@ -100,7 +100,7 @@ def test_아동용_표시가_없으면_None_이다():
 def test_승인_안_된_언론사_기사는_버린다():
     fetch = fake(
         {
-            "news.json": {
+            "/search/v1/news": {
                 "items": [
                     {
                         "title": "유아 <b>공룡</b> 놀이 인기",
@@ -129,7 +129,7 @@ def test_기사_제목의_태그와_이스케이프를_푼다():
     """네이버는 검색어에 <b> 를 감고 따옴표를 HTML 로 바꿔서 준다."""
     fetch = fake(
         {
-            "news.json": {
+            "/search/v1/news": {
                 "items": [
                     {
                         "title": "유아 <b>공룡</b> 놀이",
@@ -158,7 +158,7 @@ def test_같은_기사가_여러_검색어에_걸려도_한_번만_담는다():
             }
         ]
     }
-    items = naver_news(fake({"news.json": body}), "id", "secret", ["가", "나"], [OUTLET])
+    items = naver_news(fake({"/search/v1/news": body}), "id", "secret", ["가", "나"], [OUTLET])
 
     assert len(items) == 1
 
@@ -270,3 +270,138 @@ def test_주_번호는_월요일에_바뀐다():
     """월요일 새벽에 돈다. 일요일과 월요일이 같은 파일이면 결과가 섞인다."""
     assert week_label(date(2026, 9, 20)) == "2026-W38"  # 일
     assert week_label(date(2026, 9, 21)) == "2026-W39"  # 월
+
+
+def test_뉴스는_API_HUB_주소와_헤더로_부른다():
+    """네이버가 2026 에 검색 API 를 네이버 클라우드 플랫폼으로 옮겼다.
+
+    옛 주소(openapi.naver.com)와 옛 헤더(X-Naver-Client-*)로 부르면 새 키로는
+    401 errorCode 024 가 온다. 되돌아가면 뉴스가 통째로 0건이 되는데, 수집은
+    「하나가 죽어도 나머지는 계속한다」라서 조용히 유튜브만 모은다.
+    """
+    seen: dict[str, object] = {}
+
+    def _fetch(url, params, headers):
+        seen["url"] = url
+        seen["headers"] = dict(headers)
+        return {"items": []}
+
+    naver_news(_fetch, "id", "secret", ["가"], [OUTLET])
+    assert seen["url"] == "https://naverapihub.apigw.ntruss.com/search/v1/news"
+    assert seen["headers"] == {
+        "X-NCP-APIGW-API-KEY-ID": "id",
+        "X-NCP-APIGW-API-KEY": "secret",
+    }
+
+
+def test_설명에서_링크와_구분선_줄을_버린다():
+    """유튜브 설명은 놀이 서술 뒤에 구독 안내·SNS 링크가 붙는다.
+
+    실측 315건에서 설명이 전체 글자의 92% 였고 링크가 1,069개였다. 그대로 두면
+    사람이 읽는 승인 PR 이 매주 수천 줄이 되고 3단 Judge 토큰도 그만큼 나간다.
+    **낱말이 아니라 줄 단위로만 버린다** — 원문을 고치면 「왜 걸렀나」를 설명 못 한다.
+    """
+    from app.features.trends.sources import _body
+
+    kept = _body(
+        "신문지로 공을 만들어요\n"
+        "바구니에 던지면 됩니다\n"
+        "\n"
+        "------------------\n"
+        "https://www.aalzza.com\n"
+    )
+    assert kept == "신문지로 공을 만들어요\n바구니에 던지면 됩니다"
+
+
+def test_해시태그만_있는_줄도_남긴다():
+    """위험이 해시태그에만 적히는 경우가 있다.
+
+    `#기절놀이 #숨참기` 를 지우면 2단 표시도 3단 판정도 그 줄을 못 본다.
+    읽기 편하자고 안전 근거를 버리지 않는다.
+    """
+    from app.features.trends.flags import flags
+    from app.features.trends.item import RawItem
+    from app.features.trends.sources import _body
+
+    body = _body("재미있는 놀이예요\n#기절놀이 #숨참기")
+    assert "#기절놀이" in body
+    marked = flags(
+        RawItem(
+            source="youtube",
+            source_id="x",
+            title="재미있는 놀이",
+            description=body,
+            url="https://example.com",
+            published_at="2026-10-17",
+            origin="테스트",
+        )
+    )
+    assert "질식·기절" in marked
+
+
+def test_링크가_붙어_있어도_동작_설명은_남긴다():
+    """위험한 동작과 링크가 한 줄에 같이 오는 경우가 있다.
+
+    줄을 통째로 버리면 그 동작이 승인 PR 에서 사라져, 사람도 3단 Judge 도 못 본다.
+    링크만 걷어낸다 — 영상 주소는 RawItem.url 에 따로 있다.
+    """
+    from app.features.trends.sources import _body
+
+    # 줄 안에서는 글자를 지우지 않는다. 주소가 남아도 동작이 남는 쪽이 낫다
+    for line in (
+        "아이를 높은 곳에서 밀어 떨어뜨려요 https://example.com/demo",
+        "목을 졸라요 https://example.com",
+        "밀어 떨어뜨려요https://example.com",
+        "놀이를 해요 https://example.com)목을졸라요",
+        "https://example.com)목을졸라요",
+    ):
+        assert _body(line) == line
+    # 주소뿐인 줄만 버린다
+    assert _body("https://www.aalzza.com") == ""
+
+
+def test_설명을_길다고_자르지_않는다():
+    """3단이 보는 것은 놀이 서술 전체다 (ADR-016).
+
+    위험한 동작(밀기·목·숨 참기·높은 곳)은 설명 뒤쪽에 나온다. 읽기 편하자고
+    뒤를 자르면 사람도 Judge 도 그 뒤를 못 본다.
+    """
+    from app.features.trends.sources import _body
+
+    long_text = "앞쪽 설명\n" * 200 + "마지막에 높은 곳에서 뛰어내려요"
+    assert _body(long_text).endswith("마지막에 높은 곳에서 뛰어내려요")
+
+
+def test_실패_기록에_키를_적지_않는다():
+    """유튜브는 키를 주소에 담는다(`?key=...`).
+
+    httpx 오류 메시지에 그 주소가 통째로 들어 있어서, 실패 기록을 그대로 옮기면
+    Actions 로그·PR 본문·서버 cron 로그에 키가 적힌다. 한 번 적히면 지워도
+    기록이 남으므로 만드는 자리에서 가린다.
+    """
+    from app.features.trends.collect import _safe
+
+    hidden = _safe(
+        RuntimeError(
+            "Client error '403' for url "
+            "'https://www.googleapis.com/youtube/v3/videos?id=a&key=AIzaSyREAL_SECRET'"
+        )
+    )
+    assert "AIzaSyREAL_SECRET" not in hidden
+    assert "key=***" in hidden
+    assert "403" in hidden  # 무엇이 실패했는지는 남아야 한다
+
+
+def test_해시태그_줄_검사가_역추적으로_멈추지_않는다():
+    """`(?:#\\S+\\s*)+` 같은 정규식은 `#a#a#a…` 한 줄에 역추적이 터진다.
+
+    수집은 15분 timeout 안에서 돌고, 설명 한 줄 때문에 그 주 수집이 통째로
+    날아가면 안 된다. 낱말로 쪼개 한 번만 훑는 방식인지 시간으로 지킨다.
+    """
+    import time
+
+    from app.features.trends.sources import _body
+
+    started = time.monotonic()
+    _body("#a" * 200 + " 놀이")
+    assert time.monotonic() - started < 1.0

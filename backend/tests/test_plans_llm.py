@@ -150,10 +150,17 @@ def test_한도에_걸리면_재시도로_안_풀린다고_알린다():
 
 
 def _wrap(raw):
-    """진짜 전송 계층의 오류 변환을 그대로 태운다."""
+    """진짜 전송 계층의 오류 변환을 그대로 태운다.
+
+    **그 계층은 로컬에서 real 을 막는다**(AGENTS.md · client.py `post_json`).
+    여기서는 서버에 선 것처럼 두고 본다 — 보려는 것은 401·429 변환이지 그 가드가 아니다.
+    """
+    from app.config import settings
     from app.shared.llm import client as llm
 
     def transport(url, *, headers, payload, timeout):
+        was_server = settings.is_server
+        settings.is_server = True
         original = llm.urllib_request.urlopen
         try:
             llm.urllib_request.urlopen = lambda *a, **k: raw(
@@ -162,6 +169,7 @@ def _wrap(raw):
             return llm.post_json(url, headers=headers, payload=payload, timeout=timeout)
         finally:
             llm.urllib_request.urlopen = original
+            settings.is_server = was_server
 
     return transport
 
@@ -171,3 +179,29 @@ def test_빈_요청이면_부르지_않는다():
         raise AssertionError("부르면 안 된다")
 
     assert EliceThemeTextGenerator(transport=transport).generate(()) == ()
+
+
+def test_로컬에서는_real_전송이_막힌다(monkeypatch):
+    """AGENTS.md — 키가 팀 공유라 6명이 각자 로컬에서 부르면 어디로 새는지 모른다.
+
+    **가드가 망을 타는 자리에 있어야 한다.** 설정을 읽는 자리에 두면 가짜 transport 로
+    도는 테스트까지 막히고, 더 위로 올리면 다른 입구가 생길 때 빠진다.
+    #162 가 `post_json` 으로 공개하면서 월간 어댑터도 이 함수를 쓴다 — 가드가 빠지면 여기서 터진다.
+    """
+    from app.config import settings
+    from app.shared.llm import client as llm
+    from app.shared.llm.errors import LlmUnavailable
+
+    def must_not_call(*args, **kwargs):
+        raise AssertionError("망을 타면 안 된다")
+
+    monkeypatch.setattr(llm.urllib_request, "urlopen", must_not_call)
+    monkeypatch.setattr(settings, "is_server", False)
+
+    with pytest.raises(LlmUnavailable):
+        llm.post_json(
+            "https://mlapi.example.com/v1/chat/completions",
+            headers={},
+            payload={"model": "x"},
+            timeout=1,
+        )
