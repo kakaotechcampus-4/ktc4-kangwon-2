@@ -41,7 +41,6 @@
   --pg-primary: #7053a0;
   --pg-primary-hover: #60438e;
   --pg-primary-line: #59416e; /* 버튼 테두리 — 면보다 한 단계 진하게 */
-  --pg-primary-soft: #9b7bac; /* 보라 글자(본문 아닌 라벨) */
   --pg-primary-tint: #eee4f4; /* 보라 연한 배경 */
   --pg-primary-tint-line: #c5b7dd; /* 연보라 배경 위의 테두리 */
   --pg-primary-ink: #5e4b96; /* 연보라 배경 위의 글자 */

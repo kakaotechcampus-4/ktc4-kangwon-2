@@ -4,7 +4,7 @@
 켜짐이 기본이면 모든 원에서 「수집 실패」만 쌓인다 (docs/api-spec.md §3-1).
 
 Revision ID: b4f1c2d7e9a3
-Revises: d7c6da04c909
+Revises: 7ee370018614
 Create Date: 2026-10-17 01:00:00.000000
 """
 
@@ -14,7 +14,9 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b4f1c2d7e9a3"
-down_revision: str | None = "d7c6da04c909"
+# develop 이 #162(월간 통합)를 받으면서 head 가 7ee370018614 로 옮겨갔다.
+# 그 뒤에 붙인다 — 안 그러면 head 가 둘로 갈려 `alembic upgrade head` 가 멈춘다.
+down_revision: str | None = "7ee370018614"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

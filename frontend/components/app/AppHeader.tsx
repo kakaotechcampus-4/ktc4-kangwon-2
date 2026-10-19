@@ -56,7 +56,7 @@ export function StatusBadge({ children }: { children: ReactNode }) {
 export function HeaderTools({ placeholder = "기록, 원아, 문서 검색" }: { placeholder?: string }) {
   return (
     <>
-      <label className="flex items-center gap-2 flex-1 lg:flex-none lg:w-[250px] min-h-[44px] px-3.5 rounded-[14px] border-[1.5px] border-line bg-paper text-ink-soft">
+      <label className="flex items-center gap-2 flex-1 lg:flex-none lg:w-[250px] min-h-[44px] px-3.5 rounded-[14px] border-[1.5px] border-line bg-paper text-ink-soft focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-tint">
         <Icon name="search" className="w-[17px] h-[17px] shrink-0" strokeWidth={1.8} />
         <input
           type="search"
