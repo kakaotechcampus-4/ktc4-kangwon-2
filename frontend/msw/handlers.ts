@@ -11,7 +11,14 @@ import {
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
-import { findPlan, listPlans, addPlan, putMonth, confirmPlan } from "./data/annual-plans";
+import {
+  findPlan,
+  listPlans,
+  addPlan,
+  putMonth,
+  confirmPlan,
+  listAnnualAudit,
+} from "./data/annual-plans";
 import {
   REGENERATABLE,
   addMonthly,
@@ -292,6 +299,13 @@ export const handlers = [
     if (!findPlan(id)) return annualMissing();
     // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
+  }),
+  http.get("*/api/plans/annual/:id/audit", async ({ request, params }) => {
+    const s = await scenario(request, "annual-audit");
+    if (s) return s;
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    return HttpResponse.json({ items: listAnnualAudit(id) });
   }),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
   http.post("*/api/plans/monthly", async ({ request }) => {
