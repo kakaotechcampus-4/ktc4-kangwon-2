@@ -1322,10 +1322,9 @@ test("reload A 중 B를 거쳐 A로 돌아와도 이전 reload는 새 상세를 
 // 실제 TSX 이벤트와 state를 실행한다. 브라우저/React renderer E2E는 아니며,
 // 선택 이동·unmount는 위 production selection 테스트가 별도로 검증한다.
 const require = createRequire(import.meta.url);
-const editorCode = require("next/dist/compiled/babel/core").transformSync(
-  read("DocumentEditor.tsx"),
-  {
-    filename: "DocumentEditor.tsx",
+const compile = (source, filename) =>
+  require("next/dist/compiled/babel/core").transformSync(source, {
+    filename,
     babelrc: false,
     configFile: false,
     presets: [
@@ -1333,8 +1332,27 @@ const editorCode = require("next/dist/compiled/babel/core").transformSync(
       [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
       require("next/dist/compiled/babel/preset-typescript"),
     ],
-  },
-).code;
+  }).code;
+const editorCode = compile(read("DocumentEditor.tsx"), "DocumentEditor.tsx");
+// 편집기가 쓰는 hook 도 같은 React 스텁으로 실제 코드를 돌린다.
+const hwpxHookCode = compile(
+  normalizeNewlines(
+    readFileSync(new URL("../lib/hooks/use-hwpx-download.ts", import.meta.url), "utf8"),
+  ),
+  "use-hwpx-download.ts",
+);
+const evaluate = (code, modules) => {
+  const compiledModule = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (name) => {
+      assert.ok(name in modules, `unhandled editor import: ${name}`);
+      return modules[name];
+    },
+    compiledModule,
+    compiledModule.exports,
+  );
+  return compiledModule.exports;
+};
 
 function editorHarness(selection) {
   const slots = [];
@@ -1370,16 +1388,8 @@ function editorHarness(selection) {
     "@/lib/api/documents": documents,
     "@/lib/privacy/browser-storage": privacy,
   };
-  const compiledModule = { exports: {} };
-  new Function("require", "module", "exports", editorCode)(
-    (name) => {
-      assert.ok(name in modules, `unhandled editor import: ${name}`);
-      return modules[name];
-    },
-    compiledModule,
-    compiledModule.exports,
-  );
-  const Editor = compiledModule.exports.default;
+  modules["@/lib/hooks/use-hwpx-download"] = evaluate(hwpxHookCode, modules);
+  const Editor = evaluate(editorCode, modules).default;
   let tree;
   function render() {
     cursor = 0;

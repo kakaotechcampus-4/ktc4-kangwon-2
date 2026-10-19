@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
 import { putAnnualMonth, confirmAnnualPlan, downloadAnnualHwpx } from "@/lib/api/plans";
+import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 
 type Request = {
   age: AgeGroup;
@@ -156,22 +157,12 @@ export default function GenerationFlow({
     heading.current?.focus({ preventScroll: true });
   }, [phase]);
 
-  const [exporting, setExporting] = useState(false);
+  const hwpx = useHwpxDownload(setNotice);
 
   /** 확정한 연간계획안은 서버가 hwpx 를 만든다 (§9). 화면이 양식을 흉내 내지 않는다. */
-  async function downloadHwpx() {
+  function downloadHwpx() {
     const id = contents.annual?.annualPlanId;
-    if (!id || exporting) return;
-    setExporting(true);
-    setNotice("");
-    try {
-      await downloadAnnualHwpx(id);
-      setNotice("한글 파일(hwpx)로 내려받았어요.");
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "내려받지 못했어요.");
-    } finally {
-      setExporting(false);
-    }
+    if (id) void hwpx.download(() => downloadAnnualHwpx(id));
   }
 
   function download() {
@@ -446,10 +437,10 @@ export default function GenerationFlow({
                   {active === "annual" && confirmed && contents.annual?.annualPlanId ? (
                     <button
                       className={styles.secondary}
-                      disabled={exporting}
+                      disabled={hwpx.exporting}
                       onClick={downloadHwpx}
                     >
-                      {exporting ? "만드는 중…" : "↓ 한글 파일로 내려받기"}
+                      {hwpx.exporting ? "만드는 중…" : "↓ 한글 파일로 내려받기"}
                     </button>
                   ) : (
                     <button className={styles.secondary} onClick={download}>
