@@ -179,3 +179,29 @@ def test_빈_요청이면_부르지_않는다():
         raise AssertionError("부르면 안 된다")
 
     assert EliceThemeTextGenerator(transport=transport).generate(()) == ()
+
+
+def test_로컬에서는_real_전송이_막힌다(monkeypatch):
+    """AGENTS.md — 키가 팀 공유라 6명이 각자 로컬에서 부르면 어디로 새는지 모른다.
+
+    **가드가 망을 타는 자리에 있어야 한다.** 설정을 읽는 자리에 두면 가짜 transport 로
+    도는 테스트까지 막히고, 더 위로 올리면 다른 입구가 생길 때 빠진다.
+    `_post_json` 이 바뀌어도(#162 가 `post_json` 으로 공개한다) 이 테스트가 지킨다.
+    """
+    from app.config import settings
+    from app.shared.llm import client as llm
+    from app.shared.llm.errors import LlmUnavailable
+
+    def must_not_call(*args, **kwargs):
+        raise AssertionError("망을 타면 안 된다")
+
+    monkeypatch.setattr(llm.urllib_request, "urlopen", must_not_call)
+    monkeypatch.setattr(settings, "is_server", False)
+
+    with pytest.raises(LlmUnavailable):
+        llm._post_json(
+            "https://mlapi.example.com/v1/chat/completions",
+            headers={},
+            payload={"model": "x"},
+            timeout=1,
+        )
