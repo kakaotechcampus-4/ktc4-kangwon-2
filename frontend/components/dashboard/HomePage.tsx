@@ -204,13 +204,17 @@ function Compose({
               disabled={confirming}
               onChange={(e) => setFact(e.target.value)}
               placeholder={
-                "아이 A가 도토리를 크기별로 줄 세웠다.\n또는 블록으로 길을 만들어 자동차를 굴렸다."
+                "바깥놀이에서 아이 A가 도토리를 크기별로 줄 세웠다.\n" +
+                "친구가 와서 같이 세었고, 교사는 옆에서 지켜보았다."
               }
               className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 font-display text-[22px] font-bold leading-[1.6] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary-tint focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
             />
             <div className="flex items-center justify-between gap-3 border-t border-paper-warm-line px-4 py-3">
+              {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
+                  그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.
+                  한 줄짜리 빠른 기록 자리라 RecordsPage 보다 짧게 적는다. */}
               <span className="hidden text-[10px] text-ink-soft sm:block">
-                본 그대로 적어 주세요. 원문은 그대로 보관해요.
+                본 그대로 적어 주세요 · <b>상황 → 행동 → 반응 → 교사 지원</b> 순서면 더 좋아요
               </span>
               <div className="ml-auto flex items-center gap-3">
                 {dictation.supported && (
