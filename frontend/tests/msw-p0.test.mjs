@@ -62,13 +62,15 @@ test("P0 clients use real URLs: center, mixed class, children, annual, patch, co
     );
     assert.deepEqual(await getAnnualPlan(plan.id), plan);
     const month = await putAnnualMonth(plan.id, 3, { theme: "수정", sub_themes: ["놀이"] });
-    assert.equal(month.source_type, "TEACHER");
+    // 교사가 고쳐도 근거 · 생성 방식은 그대로다(§6). 단일 source_type 은 서버에 없다.
+    assert.deepEqual(month.generation, plan.months[0].generation);
+    assert.equal(month.source_type, undefined);
     assert.equal(month.month, 3);
     assert.equal(month.months, undefined);
     assert.equal((await confirmAnnualPlan(plan.id)).status, "CONFIRMED");
     await assert.rejects(
       putAnnualMonth(plan.id, 3, { theme: "금지", sub_themes: [] }),
-      (e) => e instanceof ApiError && e.status === 409,
+      (e) => e instanceof ApiError && e.status === 409 && e.body.error.code === "ALREADY_CONFIRMED",
     );
     await assert.rejects(
       getAnnualPlan(999),
@@ -152,10 +154,15 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     );
     assert.equal(r.status, 500);
     assert.deepEqual(read().plans[0].months, plan.months);
-    await request("plans/annual/" + plan.id + "/months/4", { theme: "", sub_themes: [] }, "PUT");
-    r = await request("plans/annual/" + plan.id + "/confirm");
+    // 빈 주제는 PUT 에서 막힌다(서버 UpdateMonth min_length). 저장되지 않는다.
+    r = await request(
+      "plans/annual/" + plan.id + "/months/4",
+      { theme: "", sub_themes: [] },
+      "PUT",
+    );
     assert.equal(r.status, 422);
-    assert.deepEqual((await r.json()).error.fields, ["months.4"]);
+    assert.deepEqual((await r.json()).error.fields, ["theme"]);
+    assert.deepEqual(read().plans[0].months, plan.months);
     assert.equal(read().plans[0].status, "DRAFT");
     r = await request(
       "centers/" + center.id + "/plan-config",
@@ -341,7 +348,10 @@ test("single-page annual retry keeps server data unchanged on first failure and 
     assert.deepEqual(read().plans[0].months, plan.months);
     const response = await request(url, change, "PUT");
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).source_type, "TEACHER");
+    assert.deepEqual(
+      (await response.json()).generation,
+      plan.months.find((m) => m.month === 3).generation,
+    );
     const reloaded = await (await request("plans/annual/" + plan.id, undefined, "GET")).json();
     assert.equal(reloaded.months.find((m) => m.month === 3).theme, change.theme);
     assert.equal((await request("plans/annual/" + plan.id + "/confirm")).status, 200);
