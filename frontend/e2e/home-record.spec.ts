@@ -13,6 +13,11 @@ import { expect, test, type Page } from "@playwright/test";
 const diagnostics = new WeakMap<Page, { requests: string[]; errors: string[] }>();
 test.beforeEach(async ({ page }) => {
   const evidence = { requests: [] as string[], errors: [] as string[] };
+  // 구글 폰트는 화면 기능과 무관하다. 망이 막힌 환경에서 콘솔 오류로 검증이 흔들리지 않게
+  // 여기서 빈 응답으로 끝낸다 — 서버·API 응답은 가로채지 않는다.
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) =>
+    route.fulfill({ status: 200, contentType: "text/css", body: "" }),
+  );
   diagnostics.set(page, evidence);
   page.on("response", (response) => {
     if (!new URL(response.url()).pathname.startsWith("/api/")) return;

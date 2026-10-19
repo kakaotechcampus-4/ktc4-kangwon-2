@@ -12,6 +12,7 @@ import {
   listRoutines,
   routineTime,
   routineTimeValue,
+  sortRoutinesByTime,
   trackRoutineMutation,
   updateRoutine,
   waitForRoutineScope,
@@ -26,6 +27,7 @@ import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
+import RoutineTimePicker from "./RoutineTimePicker";
 
 const CLASSES_FAILED = "반 목록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 // 서버 routine_records.name 이 50자다. 더 보내면 422 다 (§10-1).
@@ -34,7 +36,21 @@ const NAME_MAX = 50;
 const BLANK_ROWS = 5;
 const NAME_REQUIRED = "일과 이름을 적어 주세요.";
 const TIME_BACKWARDS = "끝나는 시간이 시작보다 빨라요.";
-const HAS_PROBLEM = "적다 만 줄이 있어요. 표시된 줄을 확인해주세요.";
+const HAS_PROBLEM = "입력하지 않은 필수 항목이 있어요. 표시된 일과를 확인해 주세요.";
+
+/** 교사가 고쳐야 할 줄을 **몇 번째인지까지** 말한다 — 카드 안 빨간 글씨만으로는 못 찾는다. */
+const problemSummary = (lines: string[]) => `${HAS_PROBLEM}\n${lines.join("\n")}`;
+
+/** 화면 맨 위로 끌어올리고 그 칸에 커서를 둔다. 테스트 harness 에는 DOM 이 없다. */
+function focusField(id: string) {
+  if (typeof document === "undefined") return;
+  const field = document.getElementById(id);
+  field?.scrollIntoView({ behavior: "smooth", block: "center" });
+  (field as HTMLElement | null)?.focus();
+}
+
+/** 줄마다 고유한 입력 칸 id. 요약에서 바로 그 칸으로 보낸다. */
+const nameFieldId = (rowKey: string) => `routine-name-${rowKey}`;
 const SAVED = "저장했어요.";
 const NO_YESTERDAY = "어제 적은 일과가 없어요.";
 const UNKNOWN_CLASS = "주소에 적힌 반을 찾을 수 없어요. 반을 골라주세요.";
@@ -197,7 +213,19 @@ function byServerOrder(a: ApiRoutine, b: ApiRoutine) {
 function positionsFor(rows: Row[], saved: Draft["saved"]): number[] {
   const known = rows.map((row) => (row.id === null ? null : (saved[row.id] ?? null)));
   const servers = known.filter((row): row is ApiRoutine => row !== null);
-  const inOrder = [...servers].sort(byServerOrder);
+  const inOrder = known
+    .flatMap((was, i) =>
+      was
+        ? [
+            {
+              ...was,
+              start: timeInput(rows[i].start, was.start),
+              end: timeInput(rows[i].end, was.end),
+            },
+          ]
+        : [],
+    )
+    .sort(byServerOrder);
   const kept =
     servers.every((row, i) => row.id === inOrder[i].id) &&
     known.every((row, i) => row !== null || i >= servers.length);
@@ -454,8 +482,54 @@ export default function RoutinesPage() {
     patch(key, (d) => ({ ...d, rows: moved(d.rows, from, to) }));
   };
 
+  const sortByTime = () =>
+    patch(key, (d) => ({
+      ...d,
+      rows: sortRoutinesByTime(
+        d.rows.map((row) => ({
+          row,
+          start: timeInput(row.start, row.id === null ? undefined : d.saved[row.id]?.start),
+          end: timeInput(row.end, row.id === null ? undefined : d.saved[row.id]?.end),
+        })),
+      ).map(({ row }) => row),
+    }));
+
+  /**
+   * 보낼 수 있는 줄인가. 쓰던 줄인데 이름이 없으면 **아무것도 보내지 않고** 그 줄에
+   * 안내를 띄운다 (FR-402 예외).
+   *
+   * **`run` 바깥에서 부른다.** 안에서 부르면 같은 렌더에 `busy` 가 켜지면서 입력칸이
+   * `disabled` 가 되고, 방금 커서를 둔 칸이 포커스를 잃는다.
+   */
+  function checkRows(): boolean {
+    const at = key;
+    if (classId === null || !now) return false;
+    const problems: Record<string, string> = {};
+    const lines: string[] = [];
+    let first = "";
+    now.rows.forEach((row, index) => {
+      // 손대지 않은 빈 줄은 검사하지 않는다 — 기본 다섯 줄이 전부 오류가 되면 안 된다.
+      if (!filled(row)) return;
+      const problem = problemWith(row);
+      if (!problem) return;
+      problems[row.key] = problem;
+      lines.push(`${index + 1}번째 일과 · ${problem}`);
+      if (!first) first = row.key;
+    });
+    setErrors(problems);
+    if (!lines.length) {
+      setMessage(null);
+      return true;
+    }
+    // 서버가 돌려준 문구가 아니라 **보내기 전에 화면이 잡은 것**이다 (§11 거절 처리와 구분).
+    setMessage({ at, text: problemSummary(lines), error: true });
+    focusField(nameFieldId(first));
+    return false;
+  }
+
   /**
    * 초안과 마지막 서버 모습을 비교해 한 번에 보낸다 (FR-402 처리 3).
+   * **`checkRows()` 가 통과한 뒤에만 부른다.**
    *
    * 돌려주는 값은 「보내야 할 요청이 전부 성공했나」다. 일부가 실패하면 **초안을 비우지
    * 않는다** — 성공한 것만 초안에 반영해 두어, 다시 눌러도 같은 줄을 두 번 만들지 않는다.
@@ -463,20 +537,6 @@ export default function RoutinesPage() {
   async function commit(): Promise<RoutineReviewImpact | null> {
     const at = key;
     if (classId === null || !now) return null;
-
-    // 쓰던 줄인데 이름이 없으면 **아무것도 보내지 않고** 그 줄에 안내를 띄운다 (FR-402 예외).
-    const problems: Record<string, string> = {};
-    for (const row of now.rows) {
-      if (!filled(row)) continue;
-      const problem = problemWith(row);
-      if (problem) problems[row.key] = problem;
-    }
-    setErrors(problems);
-    if (Object.keys(problems).length) {
-      setMessage({ at, text: HAS_PROBLEM, error: true });
-      return null;
-    }
-    setMessage(null);
 
     let ok = true;
     const affected = new Set(now.reviewImpact?.affected_document_ids);
@@ -566,6 +626,7 @@ export default function RoutinesPage() {
   const save = () => {
     const at = key;
     const next = `${scope}|${visit + 1}`;
+    if (!checkRows()) return;
     return run("save", async () => {
       const impact = await commit();
       if (!impact || !stillHere(at)) return;
@@ -590,6 +651,7 @@ export default function RoutinesPage() {
   const openDailyLog = () => {
     const at = key;
     const to = `/documents?kind=dailyLog&class_id=${classId}&date=${date}`;
+    if (!checkRows()) return;
     return run("open", async () => {
       if (classId === null || !(await commit()) || !stillHere(at)) return;
       router.push(to);
@@ -728,11 +790,20 @@ export default function RoutinesPage() {
           )}
           {ready && (
             <div className={ws.stack}>
-              <p className={ws.hint}>
-                {rows.length}줄 중 활동실행을 적은 줄 {doneCount}개
-                {!doneCount && " · 활동실행을 적으면 오늘 일지를 만들 수 있어요."}
-              </p>
+              {/* 줄 수·작성 수를 세어 주던 안내는 없앴다. 교사가 화면을 보면 아는 숫자다.
+                  `doneCount` 는 「오늘 일지 만들기」를 열고 닫는 조건으로 그대로 쓴다. */}
+              {!doneCount && (
+                <p className={ws.hint}>활동실행을 적으면 오늘 일지를 만들 수 있어요.</p>
+              )}
               <div className={ws.actions}>
+                <button
+                  type="button"
+                  className={ws.secondary}
+                  disabled={!!busy}
+                  onClick={sortByTime}
+                >
+                  시간순 정렬
+                </button>
                 <button type="button" className={ws.secondary} disabled={!!busy} onClick={addRow}>
                   + 줄 추가
                 </button>
@@ -816,88 +887,114 @@ function RowCard({
   dragFrom: number | null;
 }) {
   const set = (field: Field) => (value: string) => onEdit(row.key, field, value);
+  const [insertion, setInsertion] = useState<"before" | "after" | null>(null);
+  const side = (e: React.DragEvent<HTMLElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    return e.clientY < box.top + box.height / 2 ? "before" : "after";
+  };
   return (
     <article
-      className={ws.item}
+      className={`${ws.item} ${ws.routineCard} ${dragFrom === index ? ws.dragging : ""} ${
+        dragFrom !== null && dragFrom !== index && insertion
+          ? insertion === "before"
+            ? ws.insertBefore
+            : ws.insertAfter
+          : ""
+      }`}
+      data-dragging={dragFrom === index || undefined}
+      data-insertion={dragFrom !== null && dragFrom !== index ? insertion : undefined}
       onDragOver={(e) => {
+        if (busy || dragFrom === null) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
+        setInsertion(side(e));
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setInsertion(null);
       }}
       onDrop={(e) => {
         e.preventDefault();
+        if (busy || dragFrom === null) return;
         // 브라우저 네이티브 드래그 중 React 상태 갱신이 늦어도 전송한 원래 줄을 찾는다.
         const raw = e.dataTransfer.getData("text/plain");
         const from = /^\d+$/.test(raw) ? Number(raw) : dragFrom;
-        onMove(from, index);
+        const slot = index + (side(e) === "after" ? 1 : 0);
+        onMove(from, from !== null && slot > from ? slot - 1 : slot);
+        setInsertion(null);
         onGrab(null);
       }}
     >
-      <div className={ws.row}>
-        <span
-          className={ws.badge}
-          role="button"
-          draggable={!busy}
-          aria-label={`${index + 1}번째 줄 끌어서 옮기기`}
-          onDragStart={(e) => {
-            // Firefox 는 dragstart 에서 데이터를 담지 않으면 끌기를 아예 시작하지 않는다.
-            e.dataTransfer.setData("text/plain", String(index));
-            e.dataTransfer.effectAllowed = "move";
-            onGrab(index);
-          }}
-          onDragEnd={() => onGrab(null)}
-        >
-          ⠿
-        </span>
-        <button
-          type="button"
-          className={ws.secondary}
-          aria-label={`${index + 1}번째 줄 위로`}
-          disabled={busy || index === 0}
-          onClick={() => onMove(index, index - 1)}
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          className={ws.secondary}
-          aria-label={`${index + 1}번째 줄 아래로`}
-          disabled={busy || index === total - 1}
-          onClick={() => onMove(index, index + 1)}
-        >
-          ↓
-        </button>
-        <label className={ws.field}>
-          시작
-          <input
-            type="time"
+      <div className={ws.nameTab}>
+        <input
+          id={nameFieldId(row.key)}
+          aria-label="일과 이름"
+          maxLength={NAME_MAX}
+          placeholder="오전 실내놀이"
+          disabled={busy}
+          // 요약에서 이 칸으로 보낼 수 있어야 하고, 읽어 주는 도구도 오류를 알아야 한다.
+          aria-invalid={error ? true : undefined}
+          aria-errormessage={error ? `${nameFieldId(row.key)}-error` : undefined}
+          value={row.name}
+          onChange={(e) => set("name")(e.target.value)}
+        />
+      </div>
+      <div className={`${ws.routineGrid} ${ws.routineHead}`}>
+        <div className={ws.routineStart}>
+          <span
+            className={ws.badge}
+            role="button"
+            draggable={!busy}
+            aria-label={`${index + 1}번째 줄 끌어서 옮기기`}
+            onDragStart={(e) => {
+              // Firefox 는 dragstart 에서 데이터를 담지 않으면 끌기를 아예 시작하지 않는다.
+              e.dataTransfer.setData("text/plain", String(index));
+              e.dataTransfer.effectAllowed = "move";
+              // 핸들은 잡는 곳이고 프리뷰는 시간·이름·계획·실행이 담긴 카드 전체다.
+              const card = e.currentTarget.closest("article");
+              if (card) {
+                const box = card.getBoundingClientRect();
+                e.dataTransfer.setDragImage(card, e.clientX - box.left, e.clientY - box.top);
+              }
+              onGrab(index);
+            }}
+            onDragEnd={() => {
+              onGrab(null);
+              setInsertion(null);
+            }}
+          >
+            ⠿
+          </span>
+          <button
+            type="button"
+            className={ws.secondary}
+            aria-label={`${index + 1}번째 줄 위로`}
+            disabled={busy || index === 0}
+            onClick={() => onMove(index, index - 1)}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className={ws.secondary}
+            aria-label={`${index + 1}번째 줄 아래로`}
+            disabled={busy || index === total - 1}
+            onClick={() => onMove(index, index + 1)}
+          >
+            ↓
+          </button>
+          <RoutineTimePicker
+            label="시작"
             disabled={busy}
             value={row.start}
-            onChange={(e) => set("start")(e.target.value)}
+            onChange={set("start")}
           />
-        </label>
-        <label className={ws.field}>
-          종료
-          <input
-            type="time"
-            disabled={busy}
-            value={row.end}
-            onChange={(e) => set("end")(e.target.value)}
-          />
-        </label>
-        <label className={ws.field}>
-          일과 이름
-          <input
-            maxLength={NAME_MAX}
-            placeholder="오전 실내놀이"
-            disabled={busy}
-            value={row.name}
-            onChange={(e) => set("name")(e.target.value)}
-          />
-        </label>
+        </div>
+        <RoutineTimePicker label="종료" disabled={busy} value={row.end} onChange={set("end")} />
       </div>
-      <div className={ws.row}>
+      <div className={`${ws.routineGrid} ${ws.routineBody}`}>
         <label className={ws.field}>
           활동계획
+          <small>계획한 활동 내용을 간단히 적어주세요.</small>
           <textarea
             disabled={busy}
             value={row.plan}
@@ -914,7 +1011,9 @@ function RowCard({
           />
         </label>
       </div>
-      <Message error>{error}</Message>
+      <Message error id={`${nameFieldId(row.key)}-error`}>
+        {error}
+      </Message>
       <div className={ws.actions}>
         <button
           type="button"

@@ -148,6 +148,48 @@ test("하루치 조회는 class_id · from · to 를 붙인다", async () => {
   assert.equal(calls[0].method, "GET");
 });
 
+test("S-J2 화면용 조회는 반을 서버 id 로 옮기고 시간을 한 줄로 만든다", async () => {
+  browser();
+  const { calls, restore } = serve(() =>
+    json({
+      items: [
+        ROW,
+        { ...ROW, id: 32, start: "11:00:00", end: null, execution: "" },
+        { ...ROW, id: 33, start: null, end: null },
+      ],
+    }),
+  );
+  let items;
+  try {
+    items = await routines.listDayRoutines("class-abc", "2026-10-06");
+  } finally {
+    restore();
+  }
+  assert.equal(calls[0].url, "/api/routines?class_id=3&from=2026-10-06&to=2026-10-06");
+  assert.deepEqual(items[0], {
+    id: "routine:31",
+    date: "2026-10-06",
+    time: "09:20 ~ 10:40",
+    name: "오전 실내놀이",
+    execution: "블록 3개로 길을 만들었다.",
+  });
+  // 한쪽만 있거나 없는 시간도 서버 사실 줄과 같은 규칙으로 보인다.
+  assert.equal(items[1].time, "11:00 ~");
+  assert.equal(items[1].execution, "");
+  assert.equal(items[2].time, "");
+});
+
+test("S-J2 화면용 조회는 반을 서버 id 로 못 옮기면 묻지 않는다", async () => {
+  browser();
+  const { calls, restore } = serve(() => json({ items: [] }));
+  try {
+    await assert.rejects(routines.listDayRoutines("class-unknown", "2026-10-06"));
+  } finally {
+    restore();
+  }
+  assert.equal(calls.length, 0);
+});
+
 test("빈 질의는 물음표를 붙이지 않는다", async () => {
   browser();
   const { calls, restore } = serve(() => json({ items: [] }));
@@ -564,6 +606,7 @@ function page(
       waitForRoutineScope: mutations.wait,
       routineTime: routines.routineTime,
       routineTimeValue: routines.routineTimeValue,
+      sortRoutinesByTime: routines.sortRoutinesByTime,
     },
     "@/lib/workspace/model": {
       today: () => TODAY,
@@ -571,6 +614,12 @@ function page(
     },
     "./WorkspaceUI": { WorkspacePage: "page", Empty: "empty", Message: "message", ws: {} },
     "./WorkspaceViewState": { WorkspaceViewState },
+    "./RoutineTimePicker": compile("../components/workspace/RoutineTimePicker.tsx", {
+      "react/jsx-runtime": runtime,
+      react: app.react,
+      "@/lib/api/routines": routines,
+      "./WorkspaceUI": { ws: {} },
+    }),
   }).default;
 
   const view = app.mount(Page);
@@ -594,7 +643,48 @@ function page(
       find("input")
         .filter((n) => n.props.maxLength === 50)
         .map((n) => n.props.value),
-    times: () => find("input").filter((node) => node.props.type === "time"),
+    // 기존 사례는 24시간 값으로 지정하고 실제 피커의 세 컨트롤을 조작한다.
+    times: () =>
+      all(view.tree())
+        .filter((n) => n?.props?.role === "group")
+        .map((group, index) => ({
+          props: {
+            value: (() => {
+              const selects = all(group).filter((n) => n?.type === "select");
+              const toggle = all(group).find((n) => n?.props?.["aria-label"]?.endsWith("AM/PM"));
+              return routines.routineTimeFrom12(
+                selects[0].props.value,
+                selects[1].props.value,
+                toggle.props.children,
+              );
+            })(),
+            onChange: ({ target: { value } }) => {
+              const controls = () =>
+                all(all(view.tree()).filter((n) => n?.props?.role === "group")[index]);
+              if (!value) {
+                controls()
+                  .find((n) => n?.props?.["aria-label"]?.endsWith("시간 지우기"))
+                  .props.onClick();
+                view.render();
+                return;
+              }
+              const parts = routines.routineTimeParts12(value);
+              controls()
+                .filter((n) => n?.type === "select")[0]
+                .props.onChange({ target: { value: parts.hour } });
+              view.render();
+              controls()
+                .filter((n) => n?.type === "select")[1]
+                .props.onChange({ target: { value: parts.minute } });
+              view.render();
+              const toggle = controls().find((n) => n?.props?.["aria-label"]?.endsWith("AM/PM"));
+              if (toggle.props.children !== parts.period) {
+                toggle.props.onClick();
+                view.render();
+              }
+            },
+          },
+        })),
     textareas: () => find("textarea"),
     cards: () => find("article"),
     handles: () => all(view.tree()).filter((node) => node?.props?.draggable !== undefined),
@@ -623,6 +713,13 @@ const fill = (view, index, value) => view.type(view.names()[index], value);
 const dragEvent = () => {
   const data = {};
   return {
+    currentTarget: {
+      closest: () => null,
+      getBoundingClientRect: () => ({ top: 0, height: 100 }),
+      contains: () => false,
+    },
+    clientX: 0,
+    clientY: 0,
     dataTransfer: {
       setData: (type, value) => (data[type] = value),
       getData: (type) => data[type] ?? "",
@@ -1715,7 +1812,9 @@ const addNamed = async (view, name) => {
 const dragRow = async (view, from, to) => {
   view.handles()[from].props.onDragStart(dragEvent());
   view.render();
-  view.cards()[to].props.onDrop({ ...dragEvent(), preventDefault: () => {} });
+  view
+    .cards()
+    [to].props.onDrop({ ...dragEvent(), clientY: from < to ? 80 : 20, preventDefault: () => {} });
   await view.flush();
 };
 const reloadedNames = async (api) =>
@@ -2608,4 +2707,103 @@ test("L A 저장 중 B로 옮겨도 저장 완료 콜백이 B 목록을 비우�
   assert.ok(view.text().includes("오늘 기록 1건"));
   assert.ok(view.text().includes("B의 기존 사실"));
   assert.equal(records.only("list").at(-1).classId, ROOM_B.id);
+});
+
+test("후속 #2 기존 09:16:25는 다른 칸 수정·저장으로 반올림되지 않는다", async (t) => {
+  const api = recorder({ rows: [row({ id: 1, start: "09:16:25", end: "10:21:35" })] });
+  const view = page(t, api.api);
+  await view.flush();
+  assert.deepEqual(
+    view.times().map((n) => n.props.value),
+    ["09:16", "10:21"],
+  );
+  view.type(view.textareas()[0], "계획만 수정한다");
+  view.render();
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.equal(api.only("update")[0].input.start, "09:16:25");
+  assert.equal(api.only("update")[0].input.end, "10:21:35");
+});
+
+test("후속 #5 명시적 시간 정렬과 수동 이동은 저장 전 요청 없이 입력·ID를 보존한다", async (t) => {
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "늦음", start: "11:00:00", end: "12:00:00", position: 0 }),
+      row({ id: 2, name: "빠름", start: "09:00:00", end: "10:00:00", position: 1 }),
+      row({ id: 3, name: "동률", start: "09:00:00", end: "10:00:00", position: 2 }),
+      row({ id: 4, name: "미입력", start: null, end: null, position: 3 }),
+    ],
+  });
+  const view = page(t, api.api);
+  await view.flush();
+  assert.deepEqual(view.nameValues(), ["늦음", "빠름", "동률", "미입력"]);
+  view.type(view.textareas()[1], "저장 전 실행 수정");
+  view.render();
+  view.button("시간순 정렬").props.onClick();
+  await view.flush();
+  assert.deepEqual(view.nameValues(), ["빠름", "동률", "늦음", "미입력"]);
+  assert.equal(writes(api).length, 0);
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(await reloadedNames(api), ["빠름", "동률", "늦음", "미입력"]);
+  assert.equal(api.rows().find((r) => r.id === 1).execution, "저장 전 실행 수정");
+  await dragRow(view, 0, 2);
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(await reloadedNames(api), ["동률", "늦음", "빠름", "미입력"]);
+});
+
+test("후속 #5 같은 position에서 시각을 고쳐도 현재 카드 순서를 저장한다", async (t) => {
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "A", position: 0, start: "09:00:00", end: null }),
+      row({ id: 2, name: "B", position: 0, start: "10:00:00", end: null }),
+    ],
+  });
+  const view = page(t, api.api);
+  await view.flush();
+  view.type(view.times()[0], "11:00");
+  await view.flush();
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(await reloadedNames(api), ["A", "B"]);
+});
+
+test("후속 #1 drag image는 핸들이 아닌 카드 전체를 사용하고 삽입 위치를 표시한다", async (t) => {
+  const api = recorder({ rows: [row({ id: 1 }), row({ id: 2 })] });
+  const view = page(t, api.api);
+  await view.flush();
+  const card = { getBoundingClientRect: () => ({ left: 5, top: 10 }) };
+  let image;
+  const event = dragEvent();
+  event.currentTarget.closest = () => card;
+  event.dataTransfer.setDragImage = (element) => {
+    image = element;
+  };
+  view.handles()[0].props.onDragStart(event);
+  view.render();
+  assert.equal(image, card);
+  assert.equal(view.cards()[0].props["data-dragging"], true);
+  view.cards()[1].props.onDragOver({ ...dragEvent(), clientY: 80, preventDefault() {} });
+  view.render();
+  assert.equal(view.cards()[1].props["data-insertion"], "after");
+  assert.equal(writes(api).length, 0);
+});
+
+test("후속 #5 명시적 정렬도 보존 중인 원본의 초를 비교한다", async (t) => {
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "늦은 초", position: 0, start: "09:16:40", end: "10:00:00" }),
+      row({ id: 2, name: "이른 초", position: 1, start: "09:16:25", end: "10:30:00" }),
+    ],
+  });
+  const view = page(t, api.api);
+  await view.flush();
+  view.button("시간순 정렬").props.onClick();
+  await view.flush();
+  assert.deepEqual(view.nameValues(), ["이른 초", "늦은 초"]);
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(await reloadedNames(api), ["이른 초", "늦은 초"]);
+  assert.equal(api.rows().find((r) => r.id === 1).start, "09:16:40");
 });

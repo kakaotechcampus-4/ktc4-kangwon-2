@@ -19,6 +19,9 @@ import type { ServerObservation } from "@/lib/api/observations";
 import {
   listDocuments,
   getDocument,
+  reconfirmDocument,
+  type ReconfirmInput,
+  type SourceResolution,
   createDocument,
   updateDocument,
   confirmDocument,
@@ -31,7 +34,7 @@ import {
   type DocumentSummary,
   type RecordKind,
 } from "@/lib/api/documents";
-import { listRoutineSources, type RoutineSource as Routine } from "@/lib/api/routine-sources";
+import { listDayRoutines, type RoutineLine } from "@/lib/api/routines";
 import DailyLogSources from "./DailyLogSources";
 import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -64,7 +67,7 @@ const FIELD_INPUT: Record<string, string> = {
  */
 type Candidate = { id: string; date: string; label: string };
 /** 렌더마다 새 배열이 생기면 useMemo 가 매번 다시 돈다. */
-const NO_ROUTINES: Routine[] = [];
+const NO_ROUTINES: RoutineLine[] = [];
 
 function messageFor(error: unknown) {
   if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
@@ -121,7 +124,7 @@ export default function DocumentsPage() {
   // 일일 보육일지의 근거(일과 기록). 반 · 날짜를 key 로 둬서 「불러오는 중」을 따로 저장하지 않는다.
   const [routineData, setRoutineData] = useState<{
     key: string;
-    items: Routine[];
+    items: RoutineLine[];
     error: string;
   } | null>(null);
   // 늦게 온 옛 응답이 최신 화면을 덮지 않게 요청마다 번호를 매긴다.
@@ -134,6 +137,7 @@ export default function DocumentsPage() {
         confirm: confirmDocument,
         unconfirm: unconfirmDocument,
         refresh: refreshDocument,
+        reconfirm: reconfirmDocument,
         remove: deleteDocument,
       },
       messageFor,
@@ -208,7 +212,7 @@ export default function DocumentsPage() {
     if (!routineKey) return;
     let stale = false;
     const [cls, date] = routineKey.split("|");
-    listRoutineSources(cls, date)
+    listDayRoutines(cls, date)
       .then((items) => !stale && setRoutineData({ key: routineKey, items, error: "" }))
       .catch((e) => !stale && setRoutineData({ key: routineKey, items: [], error: messageFor(e) }));
     return () => {
@@ -392,6 +396,11 @@ export default function DocumentsPage() {
         stale: serverCurrent.stale,
         pending: chosen.pending !== "",
         reload: selection.reload,
+        reconfirm: async (input: ReconfirmInput) => {
+          const next = await selection.reconfirm(input);
+          void reloadList();
+          return next;
+        },
         save: async (sections: SavedDocument["sections"], reviewNote: string) => {
           const saved = await selection.save(sections, reviewNote);
           void reloadList();
@@ -407,8 +416,8 @@ export default function DocumentsPage() {
           void reloadList();
           return next;
         },
-        refresh: async () => {
-          const next = await selection.refresh();
+        refresh: async (resolutions?: SourceResolution[]) => {
+          const next = await selection.refresh(resolutions);
           void reloadList();
           return next;
         },

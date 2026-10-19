@@ -68,9 +68,12 @@ def _response(row) -> RoutineResponse:
     )
 
 
-def _own(session: Session, user: User, record_id: int):
+def _own(session: Session, user: User, record_id: int, *, lock: bool = False):
     """남의 원 기록도 없는 기록과 같은 404 다 (shared/auth/ownership.py 와 같은 이유)."""
-    row = session.execute(_visible(user).where(RoutineRecord.id == record_id)).first()
+    query = _visible(user).where(RoutineRecord.id == record_id)
+    if lock:
+        query = query.with_for_update(of=RoutineRecord).execution_options(populate_existing=True)
+    row = session.execute(query).first()
     if row is None:
         raise _NOT_FOUND
     return row
@@ -136,7 +139,7 @@ def update_routine(
     user: CurrentUser,
     include_impact: bool = False,
 ) -> RoutineResponse | RoutineMutationResponse:
-    record = _own(session, user, record_id)[0]
+    record = _own(session, user, record_id, lock=True)[0]
     # 사본이 이미 과거 값이어도 계획/자리만 고친 요청은 새 근거 변경이 아니다.
     before = (record.date, record.start_time, record.end_time, record.name, record.execution)
     _apply(record, body)
@@ -174,7 +177,7 @@ def delete_routine(
     user: CurrentUser,
     include_impact: bool = False,
 ) -> Response:
-    record = _own(session, user, record_id)[0]
+    record = _own(session, user, record_id, lock=True)[0]
     impact = source_changed(session, "routine", record_id, None, None, center_id=user.center_id)
     session.delete(record)
     session.commit()

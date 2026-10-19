@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 
 # centers·classes·children 은 여러 기능이 쓰는 공유 도메인이라 features/centers 에
@@ -14,12 +14,26 @@ from app.features.auth.models import User
 from app.features.centers.models import Child, Class
 from app.features.documents.draft import (
     KIND_LABELS,
-    RULE_VERSION,
     DraftFailed,
     draft_sections,
     rule_id,
+    rule_version,
 )
-from app.features.documents.models import Document, DocumentSection, DocumentSource
+from app.features.documents.models import (
+    Document,
+    DocumentReconfirmation,
+    DocumentSection,
+    DocumentSource,
+    DocumentSourceResolution,
+)
+from app.features.documents.review import (
+    lock_sources,
+    locked_review,
+    plan_resolutions,
+    reconfirm,
+    replacement_candidates,
+    resolution_trail,
+)
 from app.features.documents.schemas import (
     DocumentConfirmRequest,
     DocumentCreateRequest,
@@ -27,7 +41,10 @@ from app.features.documents.schemas import (
     DocumentGeneration,
     DocumentListItem,
     DocumentListResponse,
+    DocumentReconfirmRequest,
+    DocumentRefreshRequest,
     DocumentSectionItem,
+    DocumentSourceComparison,
     DocumentSourceItem,
     DocumentUpdateRequest,
     RelatedDocumentsResponse,
@@ -56,6 +73,14 @@ EXPECTED_PAIRS = {
 }
 DEFAULT_EXPECTED = ("dailyLog", "observation")
 
+# 사실 → 해석 → 지원. 3층 규격의 읽는 순서이고, 교사가 내는 종이의 순서이기도 하다.
+# 행 번호(id)로 정렬하면 PUT 이 보낸 순서를 그대로 따라가 뒤섞인 채 저장될 수 있다.
+SECTION_ORDER = case(
+    {"사실": 0, "해석": 1, "지원": 2},
+    value=DocumentSection.heading,
+    else_=3,
+)
+
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> HTTPException:
     return HTTPException(
@@ -73,13 +98,18 @@ def _invalid(fields: list[str]) -> HTTPException:
     return _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", message, fields)
 
 
-def _own_document(session: Session, user: User, document_id: int) -> Document:
+def _own_document(
+    session: Session, user: User, document_id: int, *, lock: bool = False
+) -> Document:
     """남의 원 문서도 없는 문서와 같은 404 다 (shared/auth/ownership.py 와 같은 이유)."""
-    doc = session.scalar(
+    query = (
         select(Document)
         .join(Class, Class.id == Document.class_id)
         .where(Document.id == document_id, Class.center_id == user.center_id)
     )
+    if lock:
+        query = query.with_for_update(of=Document).execution_options(populate_existing=True)
+    doc = session.scalar(query)
     if doc is None:
         raise _error(
             status.HTTP_404_NOT_FOUND, "NOT_FOUND", "문서를 찾을 수 없습니다.", ["document_id"]
@@ -126,7 +156,11 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
     klass = session.get(Class, doc.class_id)
     child = session.get(Child, doc.child_id) if doc.child_id else None
     sections = session.scalars(
-        select(DocumentSection).where(DocumentSection.document_id == doc.id)
+        select(DocumentSection)
+        .where(DocumentSection.document_id == doc.id)
+        # **순서를 DB 에 맡기지 않는다.** PUT 이 지우고 다시 넣으면 물리 순서가 바뀌어
+        # 「지원 → 사실 → 해석」으로 나온 적이 있다. 3층 규격 순서로 못 박는다 (§11).
+        .order_by(SECTION_ORDER)
     ).all()
     sources = _sources(session, doc.id)
     domains = _observation_domains(session, sources)
@@ -165,8 +199,8 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
             rule_version=doc.generation_rule_version,
         ),
         review_note=doc.review_note,
-        created_at=doc.created_at,
-        updated_at=doc.updated_at,
+        created_at=doc.created_at.astimezone(UTC),
+        updated_at=doc.updated_at.astimezone(UTC),
     )
 
 
@@ -423,7 +457,7 @@ def create_document(
         stale=False,
         generation_method="RULE_LLM",
         generation_rule_id=rule_id(body.kind),
-        generation_rule_version=RULE_VERSION,
+        generation_rule_version=rule_version(),
         review_note="",
     )
     session.add(doc)
@@ -463,7 +497,7 @@ def update_document(
     원문을 그대로 이어붙인 것과 정확히 같아야 하고, 다르면 거절한다. 교사가
     사실을 고치려면 §10 에서 원본을 고쳐야 하고, 그러면 이 문서가 `stale` 이 된다.
     """
-    doc = _own_document(session, user, document_id)
+    doc = _own_document(session, user, document_id, lock=True)
 
     if doc.status == "CONFIRMED":
         raise _error(
@@ -596,7 +630,7 @@ def confirm_document(
     3단(LLM Judge, `/verify`)은 여기서 요구하지 않는다 - AI 를 못 부르는 상태여도
     확정할 수 있어야 한다. 1·2단과 교사 확인이 본선이다.
     """
-    doc = _own_document(session, user, document_id)
+    doc = _own_document(session, user, document_id, lock=True)
     if doc.status == "CONFIRMED":
         return _build_detail_response(session, doc)
 
@@ -639,7 +673,7 @@ def unconfirm_document(
 
     **다시 불러도 200 이다.** 확정과 같은 이유다 — 재시도를 진짜 실패와 구분할 수 없다.
     """
-    doc = _own_document(session, user, document_id)
+    doc = _own_document(session, user, document_id, lock=True)
     if doc.status == "DRAFT":
         return _build_detail_response(session, doc)
 
@@ -652,7 +686,10 @@ def unconfirm_document(
 
 @router.post("/{document_id}/refresh", response_model=DocumentDetailResponse)
 def refresh_document(
-    document_id: int, session: DbSession, user: CurrentUser
+    document_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: DocumentRefreshRequest | None = None,
 ) -> DocumentDetailResponse:
     """근거 사본을 지금 원본으로 다시 떠서 `사실` 을 새로 잇고 `stale` 을 푼다 (§11).
 
@@ -664,9 +701,15 @@ def refresh_document(
     조용히 바뀌면 교사가 확인한 것과 저장된 것이 달라진다.
 
     **원본이 하나라도 사라졌으면 풀지 않는다.** 그 사실을 빼고 이으면 교사가 고른 근거가
-    조용히 줄어든다. 지우고 새로 만들게 한다.
+    조용히 줄어든다 — 교사가 `resolutions` 로 **빼기 · 바꾸기를 직접 고른 경우에만** 반영한다.
+    본문 없이 부르던 예전 호출은 그대로 거절된다.
     """
+    # **원본 → 문서 순으로 잠그고 읽는다.** 문서만 잠그고 원본을 그냥 읽으면, 읽은 값이
+    # 사본에 fresh 로 저장되는 사이 다른 트랜잭션이 원본을 되돌릴 수 있다 — 그러면 원본과
+    # 사본이 다른데 `stale` 이 아닌 문서가 남는다. 일과 `PUT`·`DELETE` 와 같은 순서다.
     doc = _own_document(session, user, document_id)
+    lock_sources(session, user, doc, _sources(session, document_id))
+    doc = _own_document(session, user, document_id, lock=True)
     if doc.status == "CONFIRMED":
         raise _error(
             status.HTTP_409_CONFLICT,
@@ -676,9 +719,12 @@ def refresh_document(
         )
 
     # 전부 확인한 뒤에 한꺼번에 바꾼다. 도중에 거절하면 사본이 반쯤 바뀐 채 남지 않는다.
+    # 사본 목록은 문서 잠금 아래에서 다시 읽는다 — 근거를 바꾸는 길은 전부 이 잠금을 지난다.
     sources = _sources(session, document_id)
-    fresh: list[tuple[str, date, str | None]] = []
+    # 사본 순서 그대로 (텍스트, 날짜, 상태) 이거나 사라졌으면 None 이다.
+    fresh: list[tuple[str, date, str | None] | None] = []
     missing: list[str] = []
+    missing_ids: set[int] = set()
     unconfirmed: list[str] = []
     for copy in sources:
         field = f"sources.{copy.source_id}"
@@ -686,6 +732,8 @@ def refresh_document(
             observation = session.get(Observation, copy.source_id)
             if observation is None:
                 missing.append(field)
+                missing_ids.add(copy.source_id)
+                fresh.append(None)
             else:
                 fresh.append((observation.fact, observation.date, None))
             continue
@@ -695,6 +743,8 @@ def refresh_document(
                 # 활동실행을 비웠거나 다른 날로 옮겼으면 이 날의 사실이 사라진 것이다.
                 # 원본 없음과 같다.
                 missing.append(field)
+                missing_ids.add(copy.source_id)
+                fresh.append(None)
             else:
                 fresh.append((routine.fact_text(), routine.date, None))
             continue
@@ -706,16 +756,37 @@ def refresh_document(
         )
         if source is None or fact is None:
             missing.append(field)
+            missing_ids.add(copy.source_id)
+            fresh.append(None)
         elif source.status != "CONFIRMED":
             # 만들 때와 같은 규칙이다 — 초안인 일일 보육일지를 근거로 두지 않는다.
             unconfirmed.append(field)
+            fresh.append(None)
         else:
             fresh.append((fact, source.start_date, source.status))
-    if missing:
+    plan = None
+    if missing and body and body.resolutions:
+        if doc.kind != "dailyLog" or any(c.source_kind != "routine" for c in sources):
+            raise _error(
+                status.HTTP_409_CONFLICT,
+                "GATE_BLOCKED",
+                "일과 근거의 일일 보육일지만 사라진 근거를 빼거나 바꿀 수 있습니다.",
+                ["kind"],
+            )
+        plan = plan_resolutions(
+            session,
+            user,
+            doc,
+            sources,
+            {c.source_id for c in sources if c.source_id in missing_ids},
+            replacement_candidates(session, user, doc, sources),
+            body.resolutions,
+        )
+    if missing and plan is None:
         raise _error(
             status.HTTP_409_CONFLICT,
             "GATE_BLOCKED",
-            "근거 기록이 사라졌습니다. 이 문서를 지우고 새로 만들어주세요.",
+            "근거 기록이 사라졌습니다. 남은 근거로 이어가려면 빼거나 바꿀 근거를 골라주세요.",
             missing,
         )
     if unconfirmed:
@@ -726,18 +797,63 @@ def refresh_document(
             unconfirmed,
         )
 
-    for copy, (text, day, source_status) in zip(sources, fresh, strict=True):
-        copy.text, copy.date, copy.source_status = text, day, source_status
-    if sources:
+    survivors: list[tuple[DocumentSource, int, str, date, str | None]] = []
+    dropped: list[DocumentSource] = []
+    for copy, current in zip(sources, fresh, strict=True):
+        pick = plan.get(copy.source_id) if plan else None
+        if plan and copy.source_id in plan:
+            if pick is None:
+                dropped.append(copy)
+            else:
+                survivors.append((copy, pick.id, pick.fact_text(), pick.date, None))
+            continue
+        assert current is not None
+        survivors.append((copy, copy.source_id, *current))
+
+    # 흔적은 사본을 고치기 전에 뜬다 — 아래에서 source_id 와 text 가 새 값으로 바뀐다.
+    # 같은 트랜잭션이라 아래가 실패하면 흔적도 남지 않는다. 문서는 DRAFT 그대로다.
+    for entry in resolution_trail(sources, plan) if plan else []:
+        session.add(DocumentSourceResolution(document_id=doc.id, actor_user_id=user.id, **entry))
+    for copy, new_id, text, day, source_status in survivors:
+        copy.source_id, copy.text, copy.date, copy.source_status = new_id, text, day, source_status
+    if plan:
+        for copy in dropped:
+            session.delete(copy)
+        session.flush()
+        # 빠진 근거 번호를 칸에서도 지우고 바뀐 번호는 새 번호로 돌린다.
+        # 교사에게 다시 묻지 않는다 — 대응이 하나뿐이라 지어낼 여지가 없다.
+        moved = {old: pick.id for old, pick in plan.items() if pick is not None}
+        gone = {old for old, pick in plan.items() if pick is None}
+        for section in session.scalars(
+            select(DocumentSection).where(DocumentSection.document_id == doc.id)
+        ):
+            section.source_ids = [moved.get(i, i) for i in section.source_ids if i not in gone]
+    if survivors:
         session.execute(
             update(DocumentSection)
             .where(DocumentSection.document_id == doc.id, DocumentSection.heading == "사실")
-            .values(body=join_facts([s.text for s in sources]))
+            .values(body=join_facts([copy.text for copy, *_ in survivors]))
         )
     doc.stale = False
     doc.updated_at = datetime.now(UTC)
     session.commit()
     return _build_detail_response(session, doc)
+
+
+@router.get("/{document_id}/source-comparison", response_model=DocumentSourceComparison)
+def compare_document_sources(document_id: int, session: DbSession, user: CurrentUser):
+    return locked_review(session, user, document_id)[4]
+
+
+@router.post("/{document_id}/reconfirm", response_model=DocumentDetailResponse)
+def reconfirm_document(
+    document_id: int, body: DocumentReconfirmRequest, session: DbSession, user: CurrentUser
+):
+    try:
+        return _build_detail_response(session, reconfirm(session, user, document_id, body))
+    except Exception:
+        session.rollback()
+        raise
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -750,12 +866,18 @@ def delete_document(document_id: int, session: DbSession, user: CurrentUser) -> 
     확정을 풀면(`unconfirm`) 그때 이미 `stale` 이 붙는다. 그래서 「의존 문서가 달린 DRAFT」가
     여기 올 수 없다.
     """
-    doc = _own_document(session, user, document_id)
+    doc = _own_document(session, user, document_id, lock=True)
     if doc.status == "CONFIRMED":
         raise _error(
             status.HTTP_409_CONFLICT, "ALREADY_CONFIRMED", "확정된 문서는 삭제할 수 없습니다.", []
         )
     session.execute(delete(DocumentSection).where(DocumentSection.document_id == doc.id))
     session.execute(delete(DocumentSource).where(DocumentSource.document_id == doc.id))
+    session.execute(
+        delete(DocumentReconfirmation).where(DocumentReconfirmation.document_id == doc.id)
+    )
+    session.execute(
+        delete(DocumentSourceResolution).where(DocumentSourceResolution.document_id == doc.id)
+    )
     session.delete(doc)
     session.commit()

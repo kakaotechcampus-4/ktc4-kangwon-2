@@ -43,9 +43,18 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
     </div>
   );
 }
-export function Message({ children, error = false }: { children: ReactNode; error?: boolean }) {
+export function Message({
+  children,
+  error = false,
+  id,
+}: {
+  children: ReactNode;
+  error?: boolean;
+  /** 입력 칸이 `aria-errormessage` 로 이 글을 가리킬 때 쓴다. */
+  id?: string;
+}) {
   return children ? (
-    <p className={error ? styles.error : styles.message} role={error ? "alert" : "status"}>
+    <p id={id} className={error ? styles.error : styles.message} role={error ? "alert" : "status"}>
       {children}
     </p>
   ) : null;

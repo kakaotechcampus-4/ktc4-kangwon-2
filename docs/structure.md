@@ -321,3 +321,18 @@ Use the ADR-028 real PostgreSQL/FastAPI/Next stack with API mocking disabled.
 Run `npm run e2e` for routines A-J and home K/L. Set `E2E_DATABASE_URL` and
 `E2E_PYTHON` for the direct database assertion in the routines test.
 `SAESSAK_TEST_URL` enables all four HTTP integration tests during `npm test`.
+# TASK 2 후속 구성 (2026-10-19)
+
+- `frontend/components/workspace/RoutineTimePicker.tsx`: 시작/종료 공용 12시간제 피커.
+- `frontend/lib/api/routines.ts`: 24시간제 변환과 명시적 안정 시간 정렬. 조회 순서는 서버 우선.
+- `frontend/components/workspace/SourceReview.tsx`: 확정본 앞의 근거 비교·교사 편집·단일 확인.
+- `document-selection.ts`: 선택한 문서에만 원자적 reconfirm 응답 적용, 중복 작업 방지.
+- `backend/app/features/documents/review.py`: 비교 토큰과 원본 → 문서 잠금,
+  공유 게이트, 원자적 재확정과 완료 재시도 처리. 기존 router의 개별 API는 유지.
+- `document_reconfirmations`: 확정본 재확정의 완료 토큰별 영수증. `f7a1c3d5e902` · `b6e2d4a71c38`, ADR-030.
+- `document_source_resolutions`: **초안** 에서 사라진 근거를 빼거나 바꾼 흔적
+  (`refresh`). 영수증과 섞지 않는다. 마이그레이션 `c41ab7d6e508`, ADR-030.
+
+UI 체크박스 하나를 API checks 세 필드로 보내며, stale이어도 기존 확정 상태를 유지한다.
+근거 사본/현재 원본의 차이를 먼저 보여주고 모든 검증을 통과한 트랜잭션만 확정본을 바꾼다.
+시간순 정렬은 버튼으로만 실행하고 수동 position과 S-J2 체크 선택 순서를 보존한다.

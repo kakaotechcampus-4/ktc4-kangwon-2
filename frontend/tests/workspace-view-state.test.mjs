@@ -313,7 +313,7 @@ function documentsHarness({ items = [], local = [], fail = false } = {}) {
       updateDocument: async () => serverDocument,
     },
     // 일일 보육일지 근거(일과 기록). 이 테스트는 보관함 목록만 보므로 부르지 않는다.
-    "@/lib/api/routine-sources": { listRoutineSources: async () => [] },
+    "@/lib/api/routines": { listDayRoutines: async () => [] },
     "@/lib/api/onboarding": { classServerId: () => null },
     "@/lib/hooks/use-client-state": { useClientState: (_read, fallback) => state(fallback) },
     "@/lib/workspace/routines-route": {

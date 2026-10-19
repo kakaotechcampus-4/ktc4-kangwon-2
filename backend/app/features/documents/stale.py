@@ -8,7 +8,7 @@
 
 `stale` 을 되돌려 `false` 로 만드는 일은 여기서 하지 않는다. 교사가 다시 보는 것이 목적이라
 원본이 우연히 원래 값으로 돌아와도 한 번 본 뒤에 풀어야 한다 — 푸는 길은 교사가 누르는
-`POST /api/documents/{id}/refresh` 하나다.
+`POST /api/documents/{id}/refresh` 또는 비교·검증을 통과한 원자적 `reconfirm`이다.
 """
 
 import datetime

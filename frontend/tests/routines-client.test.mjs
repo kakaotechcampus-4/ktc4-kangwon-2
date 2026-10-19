@@ -254,3 +254,33 @@ test("★ 하루 전 계산이 시간대에 흔들리지 않는다", async () =>
   assert.equal(previousDay("2026-01-01"), "2025-12-31"); // 해 넘김
   assert.equal(previousDay("2026-03-01"), "2026-02-28");
 });
+test("12 AM/PM과 5분 피커 값은 API의 24시간제로 정확하게 바뀐다", () => {
+  assert.equal(routines.routineTimeFrom12("12", "00", "AM"), "00:00");
+  assert.equal(routines.routineTimeFrom12("12", "00", "PM"), "12:00");
+  assert.equal(routines.routineTimeFrom12("01", "05", "PM"), "13:05");
+  assert.equal(routines.routineTimeFrom12("", "00", "AM"), "");
+  assert.deepEqual(routines.routineTimeParts12("09:16"), {
+    hour: "09",
+    minute: "16",
+    period: "AM",
+  });
+});
+
+test("시간순 정렬은 시작·종료를 비교하고 동률·미입력에서 상대 순서를 유지한다", () => {
+  const items = [
+    row({ id: 1, start: null, end: null }),
+    row({ id: 2, start: "09:00", end: "10:00" }),
+    row({ id: 3, start: "08:00", end: null }),
+    row({ id: 4, start: "09:00", end: "09:30" }),
+    row({ id: 5, start: "09:00:00", end: "10:00:00" }),
+    row({ id: 6, start: null, end: null }),
+  ];
+  assert.deepEqual(
+    routines.sortRoutinesByTime(items).map((r) => r.id),
+    [3, 4, 2, 5, 1, 6],
+  );
+  assert.deepEqual(
+    items.map((r) => r.id),
+    [1, 2, 3, 4, 5, 6],
+  );
+});
