@@ -16,7 +16,9 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+# "." 은 저장소의 p0-planning 루트다 — tests/adapters 가 tests.finalization.harness 를 import 한다.
+# CI 는 `pytest` 로 돌려 현재 폴더가 경로에 들어가지 않는다(`python -m pytest` 와 다르다).
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 addopts = "-q"
 markers = ["live: opt-in test that may call an external provider"]
