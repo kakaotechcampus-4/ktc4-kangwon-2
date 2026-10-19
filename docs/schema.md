@@ -39,7 +39,10 @@ op.alter_column("children", "code", server_default=None)
 | `classes` | 반. `centers` 를 참조한다. **학년도마다 새 행이다** — 2026 씨앗반과 2027 씨앗반은 다른 반이다. `UNIQUE(center_id, name, school_year)`. `consent_confirmed_at` 은 아동 정보 동의를 확인한 시각이다. `age_min` · `age_max` 범위로 혼합반(3~5세 한 반)에 대응하며 단일 연령반은 두 값이 같다 |
 | `children` | 아동. `classes` 를 참조한다. `name` 은 평문 실명이고 `code` 는 LLM 에 나가는 가명이다. `UNIQUE(class_id, code)` |
 | `activities` | 활동 풀. 규칙 엔진의 검사 층이 읽는다(ADR-014) |
-| `plans` | 연간·월간 계획안. `centers` 를 참조한다. **본문을 행으로 펼치지 않고 `body` JSONB 하나에 도메인 객체를 통째로 넣는다** — `kind`·`school_year`·`classroom_ref`·`status` 는 조회용으로 꺼낸 값이고 언제나 `body` 에서 유도한다. `id` 는 자동 증가가 아니라 p0-planning 의 `PlanId` 다 |
+| `plans` | 연간·월간 계획안. `centers` 를 참조한다. **본문을 행으로 펼치지 않고 `body` JSONB 하나에 도메인 객체를 통째로 넣는다** — `kind`·`school_year`·`classroom_ref`·`status`·`target_month`(월간의 대상 월 `YYYY-MM`)·`confirmed_at` 은 조회용으로 꺼낸 값이고 언제나 `body` 에서 유도한다. `id` 는 계약에 나가는 정수(자동 증가)이고, p0-planning 의 `PlanId` 는 `plan_ref` 에 따로 담는다. `revision` 은 저장할 때마다 +1 — 월간 편집 · 재생성 · 확정의 `expected_revision` 비교 대상이다(ADR-035). **반당 연간 하나 · 반 · 월당 월간 하나**를 부분 유일 인덱스(`uq_plans_annual_per_classroom` · `uq_plans_monthly_per_classroom_month`)가 최종 보장한다. `CHECK (kind = 'monthly') = (target_month IS NOT NULL)`. `kind` 는 지금 `annual` · `monthly` 둘뿐이다 — 주간은 계약이 생길 때 넓힌다 |
+| `template_profiles` | 월간 양식 설정(TemplateProfile)의 버전 하나. `centers` 를 참조한다. `(profile_id, profile_version)` 유일, 상태 `DRAFT` · `READY` · `ARCHIVED`, `doc_kind` 는 지금 `monthly` 뿐. **버전 행은 지우지 않는다** — 과거 계획안의 Snapshot 이 가리킨다. READY 는 바뀌지 않는다(ADR-034) |
+| `template_profile_defaults` | 원 기본 포인터. (원, `doc_kind`)당 하나. `template_profiles` 의 정확한 버전을 복합 FK 로 가리킨다. 바꾼 계정 `changed_by` · 시각 `changed_at` |
+| `template_profile_overrides` | 반 override 포인터. (`classes.id`, `doc_kind`)당 하나. 같은 원의 READY 버전만 가리킨다(이 조건은 Application 이 검사한다 — FK 로 표현되지 않는다) |
 | `documents` | 일지 계열 문서 4종(dailyLog·weeklyLog·observation·assessment). `classes`·`children` 을 참조한다(docs/api-spec.md §11) |
 | `document_sections` | 문서 본문. `사실`·`해석`·`지원` 셋뿐이다. `documents` 를 참조한다 |
 | `document_sources` | 생성 시점 원문 사본. `documents`·`classes`·`children` 을 참조한다. `source_kind`+`source_id` 로 `observations`(§10) · `routine_records`(§10-1) 또는 `documents` 자신을 다형 참조한다 — FK 는 없다 |
@@ -55,6 +58,9 @@ centers ←── classes ←── children
 centers ←── forms
 centers ←── evaluation_checks
 centers ←── center_invites ──> users (created_by · used_by)
+centers ←── plans ──> forms (form_id, 선택)
+centers ←── template_profiles ←── template_profile_defaults (원 기본)
+classes ←── template_profile_overrides ──> template_profiles (반 override)
 activities   (독립. plans 가 생기면 연결된다)
 documents ←── document_sections
 classes ←── routine_records
@@ -77,8 +83,9 @@ documents ←── document_sources ──(source_kind·source_id, FK 없음)�
    덮어써진다. `plans` 가 스냅샷을 뜨지만 계획안을 만들지 않은 반은 기록이 남지 않는다.
    아동의 반 이동 이력은 여전히 남지 않는다 — `children.class_id` 는 현재 소속 하나뿐이고,
    이력이 필요해지면 P1 에서 `class_memberships` 를 만든다.
-6. 연령은 **학년도 기준 연 나이**(3·4·5)다. 만 나이가 아니다. 반 편성이 3월 1일
-   기준이고 누리과정도 "3~5세"로 표기한다.
+6. 연령 값(3·4·5)은 **반 연령**이다 — 보육 현장의 「만 N세반」. 이름은 「만 N세」로 쓴다(ADR-038).
+   **생년월일로 매일 계산하는 나이가 아니다.** 반 편성이 3월 1일 기준이고 누리과정도 "3~5세"로 표기한다.
+   (2026-10-19 전에는 「학년도 기준 연 나이, 만 나이 아님」으로 적었다 — 값의 뜻은 그대로고 명칭만 바꿨다.)
 7. `document_sources` 는 **불변 스냅샷**이다. `observations`·`documents` 원본이 나중에
    바뀌어도 여기 복사된 `text`·`date`는 안 바뀐다 — 무효(`stale`) 판정이 "생성 당시에
    뭘 봤는지"와 "지금 원본이 뭔지"를 비교해야 하기 때문이다(docs/api-spec.md §11).
