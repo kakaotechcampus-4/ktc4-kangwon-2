@@ -21,6 +21,36 @@ export const createCenter = (data: CenterInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/**
+ * docs/api-spec.md §3-1. 켜고 끄는 값만 모은다.
+ *
+ * **성품인사(§3)와 달리 전체 교체가 아니다.** 보낸 칸만 바뀐다 — 토글이 늘어도
+ * 서로를 덮지 않는다.
+ */
+export type CenterSettings = { trends_enabled: boolean };
+
+export const getCenterSettings = (centerId: number) =>
+  apiRequest<CenterSettings>(`/api/centers/${centerId}/settings`);
+
+export const saveCenterSettings = (centerId: number, data: Partial<CenterSettings>) =>
+  apiRequest<CenterSettings>(`/api/centers/${centerId}/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+/** docs/api-spec.md §1-1. 같은 원 교사를 들이는 1회용 코드. 7일 뒤 만료된다. */
+export type Invite = { code: string; expires_at: string };
+
+export const createInvite = (centerId: number) =>
+  apiRequest<Invite>(`/api/centers/${centerId}/invites`, { method: "POST" });
+
+export const joinCenter = (code: string) =>
+  apiRequest<Center>("/api/centers/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
 export const savePlanConfig = (id: number, data: PlanConfig) =>
   apiRequest<PlanConfigResponse>("/api/centers/" + id + "/plan-config", {
     method: "PUT",

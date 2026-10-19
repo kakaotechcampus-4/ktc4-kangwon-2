@@ -159,7 +159,7 @@ export default function ComparePage() {
               </div>
             )}
             <Message error>{state.related.error}</Message>
-            {related && (
+            {state.related.status === "ready" && related && (
               <>
                 <h3 style={{ marginTop: 18 }}>필요한 관련 문서</h3>
                 <ul className={ws.hint}>
@@ -186,11 +186,11 @@ export default function ComparePage() {
                       ))}
                     </select>
                   </label>
-                ) : state.related.status === "ready" ? (
+                ) : (
                   <Empty title="아직 관련 문서가 없어요.">
                     같은 반·아동 범위에서 기간이 겹치는 확정 문서가 생기면 확인할 수 있어요.
                   </Empty>
-                ) : null}
+                )}
               </>
             )}
           </section>

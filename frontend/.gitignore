@@ -40,5 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# playwright (npm run e2e)
+/playwright-report/
+/test-results/
 # msw 워커는 소스가 아니라 산출물이다 — predev/prebuild 가 환경변수에 맞춰 만들거나 지운다.
 /public/mockServiceWorker.js

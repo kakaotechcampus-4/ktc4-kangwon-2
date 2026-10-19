@@ -247,11 +247,87 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 
 ## 백업
 
-파일럿(10/19) 전에 걸어야 한다(ADR-006). 아직 안 걸었다.
+파일럿(10/19) 전에 걸어야 한다(ADR-006).
 
 ```bash
-0 3 * * * docker exec ktc4-kangwon-2-db-1 pg_dump -U ssuksak ssuksak | gzip \
-  | aws s3 cp - s3://ktc4-kangwon-2-rag/backup/$(date +\%F).sql.gz
+sudo crontab -e
+15 3 * * * /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
 ```
 
-EC2 역할에 `PowerUserAccess` 가 있어 키 없이 S3 에 쓴다.
+백업 파일은 root 소유로 쌓인다(cron 이 root 다). **손으로 돌릴 때도 `sudo` 를 붙인다.**
+
+**`scripts/backup.sh` 를 쓴다.** cron 에 `pg_dump` 한 줄을 직접 적지 않는다 — 그 한 줄은
+`pg_dump` 가 실패해도 `gzip` 이 성공해서 **빈 파일을 백업이라고 남긴다.** 스크립트는 그걸 본다.
+
+S3 로도 보내려면 `.env` 에 `BACKUP_S3_URI=s3://ktc4-kangwon-2-rag/backup` 을 넣는다.
+EC2 역할에 `PowerUserAccess` 가 있어 키 없이 쓴다.
+**같은 디스크에만 두면 디스크가 죽을 때 백업도 같이 죽는다.**
+
+### 백업이 살아 있는지 확인 — 한 달에 한 번
+
+```bash
+scripts/restore-check.sh /home/ubuntu/backup/ssuksak_20261014_031500.sql.gz
+```
+
+버리는 DB 에 복구해 보고 지운다. **쓰던 DB 를 건드리지 않는다.** 표가 다 왔는지, alembic
+head 가 운영과 같은지, 복구본에 **새 행이 들어가는지**(시퀀스)까지 본다.
+
+```
+restore-check ok  /home/ubuntu/backup/ssuksak_20261014_031500.sql.gz
+  alembic  2652c5dee127 (운영 2652c5dee127)
+  행       centers=3 users=3 plans=2 documents=1
+```
+
+### 진짜로 되돌려야 할 때
+
+**쓰던 DB 에 백업을 그대로 붓지 않는다.** `CREATE TABLE` 이 「already exists」로 줄줄이
+실패하는데 `psql` 은 그걸 넘기고 **0 으로 끝난다.** 2026-10-14 에 해 봤다 — 오류 105줄이
+나면서 **아무것도 복구되지 않았는데 명령은 성공한 것처럼 끝났다.**
+
+**두 경우가 다르다.** `ssuksak` 이 **살아 있는데 내용이 틀어진** 경우와, **아예 없는**
+경우다. 1번과 5번이 갈린다.
+
+```bash
+# 0  어느 경우인지 먼저 본다
+docker compose exec -T db psql -U ssuksak -d postgres -tAc \
+  "SELECT 1 FROM pg_database WHERE datname='ssuksak';"
+#    1 이 나오면 → 1번부터.  아무것도 안 나오면 → 2번부터 (1번과 5번 앞줄을 건너뛴다)
+
+# 1  [DB 가 살아 있을 때만] 지금 것부터 백업한다
+#    복구가 틀렸을 때 돌아올 자리가 없으면 두 번 잃는다
+#    **sudo 로 돈다.** cron 이 root 로 돌아서 /home/ubuntu/backup 이 root 소유다 —
+#    ubuntu 로 그냥 돌리면 파일을 못 만들고 여기서 멈춘다
+sudo scripts/backup.sh
+
+# 2  받을 빈 DB 를 따로 만든다
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'CREATE DATABASE ssuksak_restore OWNER ssuksak;'
+
+# 3  파일부터 성한지 본다. **잘린 gzip 도 앞부분은 멀쩡히 풀린다**
+gzip -t <파일>
+
+#    붓는다. ON_ERROR_STOP=1 과 pipefail 을 둘 다 붙인다
+#    pipefail 이 없으면 gunzip 이 중간에 죽어도 psql 의 성공만 보고 넘어간다
+#    **여기서 실패하면 멈춘다.** 덜 들어간 DB 를 끼우면 교사 기록이 조용히 사라진다
+set -o pipefail
+gunzip -c <파일> | docker compose exec -T db psql -U ssuksak -d ssuksak_restore \
+  -v ON_ERROR_STOP=1
+
+# 4  **끼울 그 DB 를 검사한다.** 파일만 검사하면 안 된다 —
+#    파일은 멀쩡한데 3번이 덜 들어간 경우를 못 본다
+scripts/restore-check.sh --db ssuksak_restore
+
+# 5  바꿔 끼운다. **연결이 남아 있으면 RENAME 이 안 된다** — 백엔드를 먼저 멈춘다
+docker compose stop backend
+
+#    [DB 가 살아 있을 때만] 망가진 것을 옆으로 치운다. 없으면 이 줄을 건너뛴다
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'ALTER DATABASE ssuksak RENAME TO ssuksak_broken_'"$(date +%Y%m%d)"';'
+
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'ALTER DATABASE ssuksak_restore RENAME TO ssuksak;'
+docker compose start backend
+curl -f https://ssample.duckdns.org/health/ready
+
+# 6  **망가진 DB 를 바로 지우지 않는다.** 며칠 두고 본 뒤에 지운다
+```

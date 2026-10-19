@@ -22,6 +22,12 @@ op.alter_column("children", "code", server_default=None)
 
 `nullable=True` 컬럼은 기본값이 필요 없다 — 비어 있는 것이 정상인 값이다.
 
+**기본값을 떼지 않는 예외가 하나 있다 — `centers.trends_enabled`.** 위 규칙은 「값을
+채운 뒤에는 기본값이 사고를 숨긴다」는 뜻인데, 이 칸은 **꺼짐이 정상값**이다. 부가
+기능이라 원하는 원이 켜는 것이고, 기본값을 떼면 앞으로 만들어지는 원마다 값을 넣어
+줘야 해서 한 군데만 빠져도 NOT NULL 로 막힌다. 그래서 `server_default=false()` 를
+그대로 둔다.
+
 천천히 바뀌는 테이블의 역할, 관계, 불변 규칙만 적는다. 컬럼 타입과 길이는
 `models.py` 가 진실이다.
 
@@ -29,7 +35,7 @@ op.alter_column("children", "code", server_default=None)
 
 | 테이블 | 무엇을 담는가 |
 |---|---|
-| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다 |
+| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다. `trends_enabled` 는 트렌드봇을 켰는지다 — **기본 `false` 고 그 기본값을 떼지 않는다**(아래 참고, docs/api-spec.md §3-1 · FR-808) |
 | `classes` | 반. `centers` 를 참조한다. **학년도마다 새 행이다** — 2026 씨앗반과 2027 씨앗반은 다른 반이다. `UNIQUE(center_id, name, school_year)`. `consent_confirmed_at` 은 아동 정보 동의를 확인한 시각이다. `age_min` · `age_max` 범위로 혼합반(3~5세 한 반)에 대응하며 단일 연령반은 두 값이 같다 |
 | `children` | 아동. `classes` 를 참조한다. `name` 은 평문 실명이고 `code` 는 LLM 에 나가는 가명이다. `UNIQUE(class_id, code)` |
 | `activities` | 활동 풀. 규칙 엔진의 검사 층이 읽는다(ADR-014) |
@@ -40,6 +46,7 @@ op.alter_column("children", "code", server_default=None)
 | `routine_records` | 일과 기록 — 반 하루의 일과 한 줄(시간 · 일과 이름 · 활동계획 · 활동실행). 일일 보육일지의 사실 층이다. 행 수는 정해지지 않았다. `classes` 를 참조한다 (docs/api-spec.md §10-1 · ADR-025) |
 | `forms` | 원이 등록한 양식의 파싱 결과(`tables` · `labels` · `label_map` JSONB) · 원본(`content`) · 숨김 시각(`hidden_at`). `centers` 를 참조한다. 수정이 없어 `updated_at` 이 없다 — 삭제 후 재등록이다(docs/api-spec.md §8 · ADR-020 · ADR-026) |
 | `evaluation_checks` | 평가제 자기 점검 체크. `centers` 를 참조한다. 줄이 있으면 ☑, 풀면 그 줄을 지운다 — 다시 체크하면 새 줄 · 새 시각이다. 누가 체크했는지는 남기지 않는다. `UNIQUE(center_id, school_year, element)`. 지난 학년도 줄은 보존한다(docs/api-spec.md §12 · ADR-022) |
+| `center_invites` | 같은 원 교사 초대 코드. `centers` · `users`(만든 교사 `created_by`, 쓴 교사 `used_by`)를 참조한다. **1회용 · 7일 만료** — `used_at` 이 차면 끝이다. `UNIQUE(code)` (docs/api-spec.md §1-1 · ADR-029) |
 
 ## 관계
 
@@ -47,6 +54,7 @@ op.alter_column("children", "code", server_default=None)
 centers ←── classes ←── children
 centers ←── forms
 centers ←── evaluation_checks
+centers ←── center_invites ──> users (created_by · used_by)
 activities   (독립. plans 가 생기면 연결된다)
 documents ←── document_sections
 classes ←── routine_records
