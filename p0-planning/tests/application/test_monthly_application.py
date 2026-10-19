@@ -52,8 +52,8 @@ from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
     EmptyValuePolicy,
+    RepeatBy,
     SectionRole,
     SemanticVariant,
     TemplateRef,
@@ -111,10 +111,10 @@ PARENT_PLAN_ID = PlanId("yearly_plan_001")
 TARGET_MONTH = YearMonth(2026, 9)
 TARGET_THEME_ID = "yr_theme_korea_and_world_cultures"
 TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
 )
 RULE_TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
 )
 PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
 RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
@@ -271,7 +271,7 @@ class RequestAwareMonthlyLlm:
         for section in request.template_snapshot.sections:
             if section.role is SectionRole.AXIS:
                 continue
-            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY:
+            if section.repeat_by is RepeatBy.NONE:
                 if section.section_key == "theme":
                     month_sections.append(
                         {
@@ -294,7 +294,7 @@ class RequestAwareMonthlyLlm:
                             ],
                         }
                     )
-            elif section.display_mode is DisplayMode.WEEKLY_CELLS:
+            elif section.repeat_by is RepeatBy.WEEK:
                 weekly_keys.append(section.section_key)
         payload = {
             "target_month": request.target_month.value,
@@ -441,7 +441,7 @@ def _institution_input_profile(
         template.section(section_key),
         activated=True,
         display_label={"event_schedule": "Events", "drill": "Drill"}[section_key],
-        display_mode=DisplayMode.WEEKLY_CELLS,
+        repeat_by=RepeatBy.WEEK,
         visible=True,
     )
     return replace(
@@ -480,12 +480,28 @@ class SchemaObeyingRepair:
         return self._inner.generate_cell(request)
 
 
+class ApprovedTemplates:
+    """OD-N11 (A), test-only: the exact real Template, approved in memory.
+
+    The data files stay PENDING_HUMAN_REVIEW (ADR-027); production code never
+    gets this object, so the Core approval gate still runs on the real status.
+    """
+
+    def __init__(self, real: JsonMonthlyTemplateRepository) -> None:
+        self._real = real
+
+    def get_template(self, template_id: str, template_version: str):
+        template = self._real.get_template(template_id, template_version)
+        return None if template is None else replace(template, runtime_active=True)
+
+
 class Harness:
     def __init__(self, *, parent_confirmed: bool = True) -> None:
         self.parents: InMemoryPlanRepository[YearlyPlan] = InMemoryPlanRepository()
         self.plans: InMemoryPlanRepository[MonthlyPlan] = InMemoryPlanRepository()
         self.parents.save(PARENT_PLAN_ID, _yearly_plan(confirmed=parent_confirmed))
         self.templates = JsonMonthlyTemplateRepository()
+        self.generation_templates = ApprovedTemplates(self.templates)
         self.profiles = InMemoryTemplateProfileRepository(
             (
                 _profile(self.templates, TEMPLATE, PROFILE),
@@ -540,6 +556,7 @@ class Harness:
             parent_plan_repository=self.parents,
             plan_repository=self.plans,
             profile_repository=self.profiles,
+            template_repository=self.generation_templates,
             safety_repository=self.safety,
             activity_repository=self.activities,
             clock=self.clock,
@@ -1131,6 +1148,26 @@ def test_teacher_edit_verifier_failure_preserves_the_saved_plan(monkeypatch):
     assert harness.plans.save_count == saves_before
     assert harness.plans.get(original.plan_id) is original
 
+
+
+@pytest.mark.parametrize(("section", "value"), [("theme", ""), ("theme", "   "), ("safety_education", " ")])
+def test_teacher_edit_rejects_values_the_cell_cannot_hold_as_invalid_value(section, value):
+    """A theme cannot be emptied and a blank Cell cannot become another blank."""
+    harness = Harness()
+    original = harness.generate().plan
+    target = next(cell for cell in original.section(section).cells if section == "theme" or not cell.value)
+    saves_before = harness.plans.save_count
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        EditMonthlyPlanItem(
+            plan_repository=harness.plans,
+            clock=harness.clock,
+            activity_repository=harness.activities,
+        ).execute(EditMonthlyPlanItemCommand(original.plan_id, target.item_id, value, TEACHER))
+
+    assert exc.value.code == "invalid_monthly_cell_value"
+    assert harness.plans.save_count == saves_before
+    assert harness.plans.get(original.plan_id) is original
 
 def test_rule_only_regeneration_replaces_only_one_outdoor_cell():
     harness = Harness()
@@ -1959,7 +1996,7 @@ def test_goals_cell_regeneration_changes_only_the_month_level_cell(target_month,
     assert regenerated.cell_state is CellState.FILLED
     assert _cited_classes(regenerated) == {SemanticClass.GOALS}
     assert regenerated.generation.method is GenerationMethod.RULE_LLM
-    assert regenerated.generation.rule_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v9"
+    assert regenerated.generation.rule_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v10"
     assert regenerated.audit.events[:-1] == target.audit.events
     assert regenerated.audit.events[-1].event_type is AuditEventType.REGENERATED
     assert all(result.plan.find_cell(item_id)[3] is cell for item_id, cell in untouched.items())
@@ -2100,7 +2137,7 @@ def _policy_pending_profile(template_repository, section_key: str) -> TemplatePr
         section_key=section_key,
         role=SectionRole.CONTENT,
         activated=True,
-        display_mode=DisplayMode.WEEKLY_CELLS,
+        repeat_by=RepeatBy.WEEK,
         empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
         display_label="Institution Section",
         order=max(item.order for item in base.sections) + 1,
@@ -2492,3 +2529,86 @@ def test_a_teacher_edit_without_a_catalog_keeps_the_free_text_status():
     codes = [f.code for f in updated.verification_report.findings if f.location.week_id == target.week_id]
 
     assert edited.generation == target.generation and codes == ["ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED"]
+
+
+# ── Core approval gate (ADR-027) ────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "mode", [MonthlyGenerationMode.RULE_ONLY, MonthlyGenerationMode.LLM_PLANNER]
+)
+def test_generation_rejects_the_real_pending_template_before_any_work(mode):
+    harness = Harness()
+    harness.generation_templates = harness.templates  # the real files: PENDING
+    provider = RequestAwareMonthlyLlm()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(
+            mode,
+            provider=provider if mode is MonthlyGenerationMode.LLM_PLANNER else None,
+        )
+
+    assert exc.value.code == "monthly_template_not_approved"
+    assert harness.plans.save_count == 0
+    assert provider.monthly_requests == []
+
+
+def test_generation_rejects_a_profile_whose_exact_template_version_is_missing():
+    harness = Harness()
+    base = harness.profiles.get_profile(
+        RULE_PROFILE.profile_id, RULE_PROFILE.profile_version
+    )
+    harness.profiles = InMemoryTemplateProfileRepository(
+        (
+            replace(
+                base,
+                base_template_ref=TemplateRef(
+                    RULE_TEMPLATE.template_id, "monthly-template-a-v0.1.9"
+                ),
+            ),
+        )
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(command=replace(harness.command(), profile_ref=RULE_PROFILE))
+
+    assert exc.value.code == "monthly_template_not_found"
+    assert harness.plans.save_count == 0
+
+
+def test_generation_does_not_accept_another_version_in_place_of_the_exact_one():
+    harness = Harness()
+
+    class OtherVersion:
+        """A repository that answers every request with an approved v0.2.1."""
+
+        def get_template(self, template_id, template_version):
+            template = harness.templates.get_template(
+                TEMPLATE.template_id, TEMPLATE.template_version
+            )
+            return replace(template, runtime_active=True)
+
+    harness.generation_templates = OtherVersion()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(command=replace(harness.command(), profile_ref=RULE_PROFILE))
+
+    assert exc.value.code == "monthly_template_not_found"
+    assert harness.plans.save_count == 0
+
+
+def test_generation_snapshot_comes_from_the_profile_not_the_approved_template():
+    harness = Harness()
+    profile = harness.profiles.get_profile(
+        RULE_PROFILE.profile_id, RULE_PROFILE.profile_version
+    )
+
+    plan = harness.generate(
+        command=replace(harness.command(), profile_ref=RULE_PROFILE)
+    ).plan
+
+    assert plan.status is PlanStatus.DRAFT
+    assert plan.template_ref == profile.base_template_ref
+    assert [section.section_key for section in plan.template_snapshot.sections] == [
+        section.section_key for section in profile.ordered_sections
+    ]

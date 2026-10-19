@@ -221,7 +221,13 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
           );
           results.annual = {
             annualPlanId: plan.id,
-            origin: plan.months.some((m) => m.source_type === "AI") ? "ai" : "template",
+            // 서버가 `source_type` 을 보내지 않아 이 자리는 늘 "template" 이었다.
+            // **"ai" 로 바꾸지 않는다.** LLM_MODE 기본이 mock 이라, 그때는 참고자료
+            // 라벨을 그대로 베끼고 LLM 이 한 글자도 안 쓴다(`plans/llm.py:114`).
+            // 지금 응답에는 `generation` 이 없어서 프런트가 둘을 가를 방법이 없다 —
+            // 모르는 것을 단정하지 않고, 쌓여 있는 문서와 같은 값을 그대로 쓴다.
+            // #146 이 `generation` 을 실어 오면 그때 method 로 가른다(월간 화면과 같이).
+            origin: "template",
             notes: [
               "연간계획안은 서버에 초안으로 저장됩니다. 추가 요청사항은 메모로 보존되며 활동에 반영하려면 내용을 수정해주세요.",
             ],
@@ -555,6 +561,7 @@ function InputPanel(props: {
               <PeriodBlock type="daily" label="날짜를 선택해주세요">
                 <input
                   type="date"
+                  aria-label="계획안 날짜"
                   value={period.daily.date}
                   onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
                   className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
@@ -630,6 +637,7 @@ const CHEVRON_BG =
 function MonthSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <select
+      aria-label="계획안 월"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
@@ -662,6 +670,7 @@ function WeekSelect({
 }) {
   return (
     <select
+      aria-label="계획안 주차"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"

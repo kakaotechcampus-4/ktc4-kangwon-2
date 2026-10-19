@@ -9,7 +9,7 @@ from ssuksak.adapters.deterministic_monthly_llm import DeterministicMonthlyLlm
 from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
 )
-from ssuksak.planning.domain.monthly_template import DisplayMode
+from ssuksak.planning.domain.monthly_template import RepeatBy
 from ssuksak.planning.planner.cell_prompt import CELL_SYSTEM_PROMPT, build_monthly_cell_request
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
 from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
@@ -434,7 +434,7 @@ def test_institution_input_sections_stay_outside_the_llm_boundary(
     packet, snapshot, section_key
 ):
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     )
     assert template is not None
     snapshot = replace(
@@ -445,7 +445,7 @@ def test_institution_input_sections_stay_outside_the_llm_boundary(
                 template.section(section_key),
                 activated=True,
                 display_label="Institution input",
-                display_mode=DisplayMode.WEEKLY_CELLS,
+                repeat_by=RepeatBy.WEEK,
                 visible=True,
             ),
         ),
@@ -674,7 +674,7 @@ WEEK_1 = WeekId("2026-09-W1")
 
 def _with_goals_and_basic_habit(snapshot):
     template = JsonMonthlyTemplateRepository().get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
     )
     assert template is not None
     return replace(
@@ -760,7 +760,7 @@ def test_goals_cell_prompt_states_the_month_level_target_contract(packet, snapsh
     body = json.loads(request.user_content)
     schema = {item["section_key"]: item for item in body["generation_schema"]["sections"]}
 
-    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v9"
+    assert request.prompt_version == MONTHLY_CELL_PROMPT_VERSION == "monthly-cell-planner-v10"
     assert body["target_cell"] == {
         "week_id": None,
         "section_key": "goals",
@@ -841,8 +841,8 @@ def test_cell_parser_requires_the_target_week_key_and_accepts_only_null_or_a_wee
 @pytest.mark.parametrize(
     ("system_prompt", "version", "expected"),
     [
-        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v17"),
-        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v9"),
+        (MONTHLY_SYSTEM_PROMPT, MONTHLY_PROMPT_VERSION, "monthly-planner-v18"),
+        (CELL_SYSTEM_PROMPT, MONTHLY_CELL_PROMPT_VERSION, "monthly-cell-planner-v10"),
     ],
     ids=["monthly", "cell"],
 )
@@ -1130,7 +1130,7 @@ def test_repairable_finding_gets_one_targeted_repair_with_locators(packet, snaps
 
 
 def test_repair_prompt_is_a_separate_contract_that_keeps_the_planning_rules():
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v12"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v13"
     assert REPAIR_SYSTEM_PROMPT.endswith(MONTHLY_SYSTEM_PROMPT)
     assert "repair" not in MONTHLY_SYSTEM_PROMPT.casefold()
     for rule in (
@@ -1630,7 +1630,7 @@ def test_initial_and_repair_prompts_scope_reference_id_to_supplied_catalogs():
         assert "A reference cell returns one reference_id and value pair allowed by the response schema" in flat
         assert ("Return the locked theme exactly with its supplied reference_id and text, and "
                 "grounding_refs as []; its parent plan already grounds it.") in flat
-    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v17"
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v18"
 
 
 def test_the_repair_prompt_is_finding_directed():
@@ -1646,7 +1646,7 @@ def test_the_repair_prompt_is_finding_directed():
     assert "TEXT_TOO_LONG: keep the same meaning and cited refs; remove repetition and unnecessary modifiers" in flat
     assert f"over {MAX_VISIBLE_TEXT_CHARS} characters; that is a hard ceiling, not a target length" in flat
     assert MAX_VISIBLE_TEXT_CHARS == 240  # the validator's limit, not a new number
-    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v12"
+    assert MONTHLY_REPAIR_PROMPT_VERSION == "monthly-planner-repair-v13"
 
 
 # ---------------------------------------------------------------- reference_id capability
@@ -1761,17 +1761,21 @@ def test_reference_cells_cite_no_grounding_refs_while_free_text_cells_keep_their
     assert all(b["grounding_refs"].get("maxItems") is None for b in branches["focus"])
 
 
-def test_cell_regeneration_schema_is_untouched_by_the_proposal_only_constraints(packet, snapshot):
-    """The pair, XOR and free-text constraints are Monthly proposal schema only; cell
-    regeneration keeps its schema (aligning it is a separate task)."""
+def test_cell_regeneration_schema_follows_the_proposal_constraints(packet, snapshot):
+    """Aligned with the Monthly proposal schema (the separate task this test used to defer):
+    a free-text cell is never unresolved and cites at least one allowed ref, and the
+    target month / week are fixed. tests/planner/test_cell_reference_contract.py covers
+    the reference pairs."""
     cell = cell_response_schema(build_monthly_cell_request(
         packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=FOCUS_SECTION_KEY,
         month_snapshot=snapshots()))
     section = cell["properties"]["section"]
 
     assert list(section["properties"]) == list(CELL_RESPONSE_SCHEMA["properties"]["section"]["properties"])
-    assert section["properties"]["unresolved"] == {"type": "boolean"}
-    assert "minItems" not in section["properties"]["grounding_refs"]
+    assert section["properties"]["unresolved"] == {"type": "boolean", "enum": [False]}
+    assert section["properties"]["grounding_refs"]["minItems"] == 1
+    assert cell["properties"]["target_month"] == {"type": "string", "enum": ["2026-09"]}
+    assert cell["properties"]["target_week_id"] == {"type": "string", "enum": ["2026-09-W1"]}
 
 
 def test_free_text_branches_are_never_unresolved_and_cite_a_ref(packet, snapshot):
@@ -1805,15 +1809,21 @@ def test_outdoor_play_without_a_supplied_catalog_is_null_only(packet, snapshot):
 
 @pytest.mark.parametrize(
     ("section", "expected"),
-    [(FOCUS_SECTION_KEY, {"type": "null"}), (OUTDOOR_SECTION_KEY, {"type": ["string", "null"]})],
+    [
+        (FOCUS_SECTION_KEY, [{"type": "null"}]),
+        # one branch per supplied activity (id fixed with its label) + the free-text branch
+        (OUTDOOR_SECTION_KEY, [{"type": "string", "enum": ["act-1"]}, {"type": "null"}]),
+    ],
 )
 def test_the_cell_schema_follows_the_reference_capability(packet, snapshot, section, expected):
     request = build_monthly_cell_request(
         packet, snapshot, target_week_id=WeekId("2026-09-W1"), target_section_key=section,
         month_snapshot=snapshots(),
     )
+    schema = cell_response_schema(request)["properties"]["section"]
+    branches = schema.get("anyOf", [schema])
 
-    assert cell_response_schema(request)["properties"]["section"]["properties"]["reference_id"] == expected
+    assert [branch["properties"]["reference_id"] for branch in branches] == expected
 
 
 @pytest.mark.parametrize(
@@ -1861,7 +1871,7 @@ def test_the_initial_prompt_gives_goals_a_target_below_the_ceiling():
     assert "For goals, write one concise Korean summary of the month's key goals, usually about 120 to 160 characters" in flat
     assert "do not list each institution's goals or try to include every evidence phrase" in flat
     assert str(MAX_VISIBLE_TEXT_CHARS) not in MONTHLY_SYSTEM_PROMPT  # the ceiling is never shown as a target
-    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v17"
+    assert MONTHLY_PROMPT_VERSION == "monthly-planner-v18"
 
 
 def test_the_goals_target_applies_to_goals_only():

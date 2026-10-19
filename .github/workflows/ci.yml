@@ -213,3 +213,97 @@ jobs:
           -e DATABASE_URL=postgresql+psycopg://x:x@127.0.0.1:1/x
           -e SECRET_KEY=ci-only-not-a-secret
           ssuksak-backend:ci python -m app.checks.references
+
+  # 화면이 실제 API 를 타는지 본다 — 가입부터 관찰 기록까지(frontend/e2e). ADR-028.
+  # 다른 job 은 백엔드와 화면을 따로 본다. 둘이 어긋나도(칸 이름·주소) 각자 통과한다.
+  e2e:
+    name: e2e (playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ssuksak
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: ssuksak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ssuksak -d ssuksak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://ssuksak:ci-only-not-a-secret@localhost:5432/ssuksak
+      SECRET_KEY: ci-only-not-a-secret
+      LLM_MODE: mock
+      # Next 가 /api/... 를 여기로 넘긴다(next.config.ts rewrites). **빌드 때 박힌다** —
+      # 그래서 job 전체에 둔다. NEXT_PUBLIC_API_MOCKING 은 주지 않는다 = MSW 꺼짐.
+      # 운영은 nginx 가 /api 를 나누지만, 같은 출처 /api 라는 점은 같다.
+      FASTAPI_BASE_URL: http://127.0.0.1:8000
+      E2E_BASE_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # -e 로 깐다 — pytest job 과 같은 이유(mapping.py 가 저장소 경로로 양식 파일을 찾는다).
+      - name: Install planning core
+        working-directory: p0-planning
+        run: pip install -e .
+      - name: Install backend
+        working-directory: backend
+        run: pip install -e .
+      - name: alembic upgrade head
+        working-directory: backend
+        run: alembic upgrade head
+      # 뒤 step 에서도 살아 있게 nohup 으로 띄운다. 준비된 것을 본 뒤에만 넘어간다.
+      - name: Start backend
+        working-directory: backend
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/e2e-backend.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/health/ready && exit 0
+            sleep 1
+          done
+          cat /tmp/e2e-backend.log
+          exit 1
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: next build
+        working-directory: frontend
+        run: npm run build
+      - name: Start frontend
+        working-directory: frontend
+        run: |
+          nohup npm run start -- --hostname 127.0.0.1 --port 3000 > /tmp/e2e-next.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS -o /dev/null "$E2E_BASE_URL/login" && exit 0
+            sleep 1
+          done
+          cat /tmp/e2e-next.log
+          exit 1
+      - name: Install chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: playwright
+        working-directory: frontend
+        run: npm run e2e
+      - name: 실패 기록 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            /tmp/e2e-backend.log
+            /tmp/e2e-next.log
+          retention-days: 7

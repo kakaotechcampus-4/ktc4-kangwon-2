@@ -346,7 +346,7 @@ test("S3: 아동은 이름만 보내고 id·code 는 서버 값을 그대로 쓴
     assert.equal(child.name, stored.name);
     assert.equal(child.code, stored.code); // 서버가 발급한 가명을 그대로 보관한다
     assert.ok(child.code);
-    assert.equal(child.id, "api-child-" + stored.id); // Date.now() 임시 id 가 아니다
+    assert.equal(child.id, "server-child:" + stored.id); // Date.now() 임시 id 가 아니다
   } finally {
     rec.stop();
     stop();
