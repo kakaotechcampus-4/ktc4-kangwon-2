@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import type { Routine } from "@/lib/api/routines";
+import type { RoutineLine } from "@/lib/api/routines";
 import { Empty, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 
@@ -23,7 +23,7 @@ export default function DailyLogSources({
 }: {
   status: ViewStatus;
   error: string;
-  routines: Routine[];
+  routines: RoutineLine[];
   selected: string[];
   busy: boolean;
   /** 일과 기록(S-J1)으로 가는 주소. 날짜 · 반이 같이 넘어간다. */
@@ -91,7 +91,7 @@ function RoutineRow({
   writeHref,
   onToggle,
 }: {
-  routine: Routine;
+  routine: RoutineLine;
   /** 고른 순서. 안 골랐으면 0. */
   order: number;
   busy: boolean;

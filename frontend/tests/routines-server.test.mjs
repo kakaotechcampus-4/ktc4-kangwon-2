@@ -90,7 +90,7 @@ test("그 반 · 그 날 일과를 서버 id 로 묻고 화면 id 로 돌려준�
   });
   let items;
   try {
-    items = await routines.listRoutines("class-abc", "2026-10-13");
+    items = await routines.listDayRoutines("class-abc", "2026-10-13");
   } finally {
     restore();
   }
@@ -113,7 +113,7 @@ test("반을 서버 id 로 못 옮기면 묻지 않는다", async () => {
   browser();
   const { calls, restore } = serve({ items: [] });
   try {
-    await assert.rejects(routines.listRoutines("class-unknown", "2026-10-13"));
+    await assert.rejects(routines.listDayRoutines("class-unknown", "2026-10-13"));
   } finally {
     restore();
   }
