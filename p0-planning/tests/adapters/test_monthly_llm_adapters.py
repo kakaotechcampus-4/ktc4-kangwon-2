@@ -13,6 +13,8 @@ from ssuksak.adapters.elice_openai_monthly import (
 )
 from types import SimpleNamespace
 
+from ssuksak.planning.domain.year_month import YearMonth
+
 from ssuksak.planning.planner.contracts import (
     MONTHLY_MODEL,
     MonthlyPlanningRequest,
@@ -163,6 +165,9 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
         valid_grounding_refs=frozenset({"ev-1"}),
         allowed_grounding_refs_by_section=(("focus", ("ev-1",)),),
         reference_section_keys=frozenset({"theme"}),
+        reference_labels=(),
+        target_month=YearMonth(2026, 9),
+        target_week_id=None,
     )
     adapter.generate_cell(cell_request)
     response_format = transport.calls[0][2]["response_format"]
