@@ -55,6 +55,11 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    environment:
+      # Next 라우트 핸들러가 **서버에서** 백엔드를 부를 때 쓴다. 브라우저 요청은
+      # nginx 가 /api 로 넘기지만, 서버 쪽 fetch 는 그 경로를 모른다.
+      # 지금은 트렌드봇 끄기 판정(FR-808)이 이 값을 쓴다 — 없으면 늘 거절한다.
+      FASTAPI_BASE_URL: http://backend:8000
     ports:
       - "3000:3000"
 

@@ -29,6 +29,7 @@ import { PROVINCE_OPTIONS, districtsFor, normalizeProvince } from "@/lib/onboard
 
 import {
   syncCenter,
+  joinCenterByCode,
   syncClasses,
   rememberConsent,
   hasConsent,
@@ -161,6 +162,23 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
       setBusy(false);
     }
   }
+  async function join(code: string) {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setSaveError("");
+    try {
+      const next = await joinCenterByCode(settings, code);
+      if (!saveClassSettings(next)) throw new Error("설정을 저장하지 못했어요.");
+      setSettings(next);
+      router.push("/onboarding/classes");
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "초대 코드로 참여하지 못했어요.");
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  }
   async function finish() {
     if (saving.current) return;
     saving.current = true;
@@ -200,7 +218,9 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
       )}
       {busy && <p role="status">저장 중이에요.</p>}
       <fieldset disabled={busy} className="contents">
-        {step === 1 && <StepOrgInfo settings={settings} onChange={patch} onNext={() => go(2)} />}
+        {step === 1 && (
+          <StepOrgInfo settings={settings} onChange={patch} onNext={() => go(2)} onJoin={join} />
+        )}
         {step === 2 && (
           <StepClasses
             settings={settings}
@@ -239,10 +259,12 @@ function StepOrgInfo({
   settings,
   onChange,
   onNext,
+  onJoin,
 }: {
   settings: ClassSettings;
   onChange: (p: Partial<ClassSettings>) => void;
   onNext: () => void;
+  onJoin: (code: string) => void;
 }) {
   const districts = districtsFor(settings.regionProvince);
   const canNext =
@@ -313,7 +335,37 @@ function StepOrgInfo({
           </PrimaryButton>
         }
       />
+
+      <JoinByCode onJoin={onJoin} />
     </>
+  );
+}
+
+/** 같은 원 선생님이 이미 원을 등록했으면, 원 정보를 다시 쓰지 않고 초대 코드로 들어간다 (§1-1). */
+function JoinByCode({ onJoin }: { onJoin: (code: string) => void }) {
+  const [code, setCode] = useState("");
+  return (
+    <section className="rounded-md border border-line bg-cream px-4 py-3.5 flex flex-col gap-3">
+      <FormField
+        id="inviteCode"
+        label="초대 코드로 참여하기"
+        hint="우리 원이 이미 등록돼 있다면, 등록한 선생님께 설정 화면의 초대 코드를 받아 입력해주세요."
+      >
+        <TextInput
+          id="inviteCode"
+          value={code}
+          placeholder="예: ABCD2345EF"
+          onChange={(e) => setCode(e.target.value)}
+        />
+      </FormField>
+      <GhostButton
+        disabled={code.trim() === ""}
+        onClick={() => onJoin(code.trim())}
+        className="self-start"
+      >
+        코드로 참여
+      </GhostButton>
+    </section>
   );
 }
 
