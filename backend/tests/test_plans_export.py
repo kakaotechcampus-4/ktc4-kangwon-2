@@ -7,8 +7,10 @@
 import io
 import logging
 import re
+import sys
 import zipfile
 
+import hwpx.hwp5.writer as hwp5_writer
 import pytest
 from fastapi.testclient import TestClient
 from hwpx.errors import Hwp5Error
@@ -18,7 +20,6 @@ from app.features.centers.models import Center, Class
 from app.features.forms import hwp_form
 from app.features.plans.export import TEMPLATE_DIR
 from app.main import app
-from app.shared import hwpx as shared_hwpx
 from app.shared.hwpx import NS, TemplateMismatch, fill_table
 
 client = TestClient(app)
@@ -263,7 +264,7 @@ def test_hwp_로_못_바꾸면_hwpx_로_받으라고_한다(db_session, mine, mo
     def fail(files):
         raise error
 
-    monkeypatch.setattr(shared_hwpx, "write_hwp5", fail)
+    monkeypatch.setattr(hwp5_writer, "write_hwp5", fail)
 
     response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=hwp")
 
@@ -273,6 +274,20 @@ def test_hwp_로_못_바꾸면_hwpx_로_받으라고_한다(db_session, mine, mo
     assert "hwpx 로 받아주세요" in body["message"]
 
 
+def test_변환기를_못_불러와도_hwpx_는_내려준다(db_session, mine, monkeypatch):
+    """변환기는 부가 기능이다. import 가 깨지면 hwp 만 503 이고 hwpx 는 그대로다."""
+    plan = _confirmed_plan(mine)
+    monkeypatch.setitem(sys.modules, "hwpx.hwp5.writer", None)  # import 하면 ImportError
+
+    hwp = client.get(f"/api/plans/{plan['id']}/export/hwp?format=hwp")
+    default = client.get(f"/api/plans/{plan['id']}/export/hwp")
+
+    assert hwp.status_code == 503
+    assert hwp.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert default.status_code == 200
+    assert default.headers["content-type"] == "application/hwp+zip"
+
+
 def test_변환과_로그가_같이_실패해도_503_이다(db_session, mine, monkeypatch):
     """서버 로거는 출력 실패를 다시 던진다(main.py). 그대로 두면 503 이 500 이 된다."""
     plan = _confirmed_plan(mine)
@@ -280,7 +295,7 @@ def test_변환과_로그가_같이_실패해도_503_이다(db_session, mine, mo
     def fail(*args, **kwargs):
         raise OSError("stderr closed")
 
-    monkeypatch.setattr(shared_hwpx, "write_hwp5", fail)
+    monkeypatch.setattr(hwp5_writer, "write_hwp5", fail)
     monkeypatch.setattr(logging.getLogger("app.server"), "warning", fail)
 
     response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=hwp")

@@ -25,7 +25,6 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import HTTPException, Response, status
-from hwpx.hwp5.writer import write_hwp5
 from lxml import etree
 
 MEDIA_TYPE = "application/hwp+zip"
@@ -192,6 +191,9 @@ def download(content: bytes, fallback_name: str, title: str, fmt: Format = "hwpx
 
 def to_hwp(hwpx: bytes) -> bytes:
     """다 채운 hwpx 를 `.hwp`(HWP 5.0)로 바꾼다. 문서 정보 · 미리보기는 hwpx 의 것이 그대로 간다."""
+    # 변환기는 부가 기능이라 쓸 때 불러온다. import 가 깨져도 서버 기동과 hwpx 내보내기는 산다.
+    from hwpx.hwp5.writer import write_hwp5
+
     with zipfile.ZipFile(io.BytesIO(hwpx)) as package:
         return write_hwp5({name: package.read(name) for name in package.namelist()})
 

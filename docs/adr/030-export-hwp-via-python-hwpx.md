@@ -22,6 +22,8 @@ ADR-021 은 내보내기를 hwpx 로만 하고 `.hwp` 는 만들지 않기로 �
    `format` 이 없으면 hwpx 다. 다른 값은 422 `VALIDATION_FAILED` 다.
 3. **변환이 실패하면 503 `DEPENDENCY_UNAVAILABLE` 로 「hwpx 로 받아주세요」를 준다.**
    `Hwp5Error` 만이 아니라 변환에서 난 예외 전부다. 로그에는 예외 종류만 남긴다.
+   변환기를 불러오지 못한 것도 같다 — hwp 를 고를 때만 불러오므로, 깨져도 서버 기동과 hwpx 는 산다
+   (트렌드 수집이 `httpx` 를 쓸 때 불러오는 것과 같은 이유다, `trends/collect.py`).
 4. **`python-hwpx==6.8.0` 으로 고정한다.**
 5. **`.hwp` 의 `Content-Type` 은 `application/x-hwp` 다.**
 
