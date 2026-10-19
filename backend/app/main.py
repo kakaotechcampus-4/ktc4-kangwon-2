@@ -25,6 +25,7 @@ from app.features.plans.monthly_router import router as monthly_plans_router
 from app.features.plans.router import router as plans_router
 from app.features.routines.router import router as routines_router
 from app.features.template_profiles.router import router as template_profiles_router
+from app.features.trends.router import router as trends_router
 from app.shared.auth.dependency import current_user
 
 
@@ -169,6 +170,7 @@ app.include_router(monthly_plans_router, prefix="/api", dependencies=_authentica
 app.include_router(template_profiles_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_export_router, prefix="/api", dependencies=_authenticated)
 app.include_router(center_forms_router, prefix="/api", dependencies=_authenticated)
+app.include_router(trends_router, prefix="/api", dependencies=_authenticated)
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:

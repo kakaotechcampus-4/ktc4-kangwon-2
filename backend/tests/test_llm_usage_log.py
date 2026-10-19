@@ -29,6 +29,9 @@ def usage_lines(monkeypatch):
     monkeypatch.setattr(settings, "elice_mlapi_base_url", "https://mlapi.example.com/v1")
     monkeypatch.setattr(settings, "elice_mlapi_api_key", "test-only-not-a-secret")
     monkeypatch.setattr(settings, "llm_mode", "real")
+    # `post_json` 은 로컬에서 real 을 막는다(AGENTS.md). 여기서 보려는 것은 사용량 기록이지
+    # 그 가드가 아니라서 서버에 선 것처럼 둔다. 가드 자체는 test_plans_llm 이 본다.
+    monkeypatch.setattr(settings, "is_server", True)
     lines = []
     # `app.server` 로거는 propagate=False 라 caplog 가 못 본다.
     monkeypatch.setattr(llm.logger, "info", lambda fmt, *args: lines.append(fmt % args))
