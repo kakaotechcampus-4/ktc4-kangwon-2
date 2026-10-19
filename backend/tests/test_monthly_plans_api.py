@@ -447,6 +447,21 @@ def test_입력이_틀리면_422(world, override, fields):
     assert _error(_create(world, **override)) == (422, "VALIDATION_FAILED", fields)
 
 
+def test_공백뿐인_profile_ref_는_Core_문구를_내보내지_않는다(world):
+    """스키마(min_length)를 지나 Core 가 거절하는 경로. 상태 · 코드 · fields 는 그대로다."""
+    _annual(world["class_a"])
+    for ref in (
+        {"profile_id": "  ", "profile_version": "v1"},
+        {"profile_id": world["profile_a"]["profile_id"], "profile_version": "\t"},
+    ):
+        response = _create(world, profile_ref=ref)
+        assert _error(response) == (422, "VALIDATION_FAILED", ["profile_ref"])
+        assert response.json()["error"]["message"] == "입력값을 확인해주세요."
+        assert "TemplateProfileRef" not in response.text
+        assert "non-blank" not in response.text
+    assert _monthly_rows(world["session"]) == []
+
+
 def test_없는_반은_404(world):
     assert _error(_create(world, class_id=999_999)) == (404, "NOT_FOUND", ["class_id"])
 
