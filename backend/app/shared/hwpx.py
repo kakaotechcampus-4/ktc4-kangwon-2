@@ -82,35 +82,22 @@ def fill_table(
     return _rewrite(template, title, fill)
 
 
-def fill_cells(template: bytes, title: str, values: Mapping[tuple[int, int], str]) -> bytes:
-    """양식 표의 **지정한 칸만** 채운 hwpx 를 돌려준다. 칸이 병합된 양식용이다.
-
-    `values` 는 「(행, 열) → 글자」다. 주소는 한글이 칸마다 적어둔 `hp:cellAddr` 기준이라
-    병합된 칸은 왼쪽 위 주소 하나로 센다. 월간 놀이계획안처럼 줄마다 칸 수가 다른 양식은
-    `fill_table` 로 채울 수 없다 — 그쪽은 모든 줄이 같은 칸 수일 때만 쓴다.
-    """
-
-    def fill(table: etree._Element) -> None:
-        cells = _cells(table)
-        for address, text in values.items():
-            if address not in cells:
-                raise TemplateMismatch(f"양식 표에 {address} 칸이 없습니다.")
-            _set_text(cells[address], text)
-
-    return _rewrite(template, title, fill)
-
-
 def fill_grid(
     template: bytes,
     title: str,
     header_rows: int,
     rows: Sequence[Sequence[str]],
     footer: Sequence[Sequence[str]],
+    header: Mapping[tuple[int, int], str] | None = None,
 ) -> bytes:
     """양식 표의 본문 한 줄을 `rows` 만큼 복제해 채운다. 줄 수가 날마다 다른 일지용이다.
 
     양식 표는 머리행 `header_rows` 줄 · 빈 본문 원형 1줄 · 꼬리 줄들로 되어 있어야 한다.
     `footer` 는 꼬리 줄마다 **그 줄에 실제로 있는 칸** 순서대로의 글자다 — 병합된 칸은 하나로 센다.
+
+    `header` 는 머리행 안에서 채울 칸만 「(행, 열) → 글자」로 받는다. 월간 놀이계획안처럼
+    머리행에 놀이 주제 · 예상 기간 같은 빈 칸이 있는 양식용이다. 주소는 한글이 칸마다 적어둔
+    `hp:cellAddr` 기준이라 병합된 칸은 왼쪽 위 주소 하나로 센다.
 
     한글은 칸마다 적힌 (행, 열) 주소와 표의 `rowCnt` 로 표를 그린다. 줄을 끼워 넣으면 그 아래
     칸의 주소와 `rowCnt` 를 같이 밀어야 한다 — 하나라도 어긋나면 한글이 파일을 안 연다.
@@ -125,6 +112,15 @@ def fill_grid(
             )
         if not rows:
             raise ValueError("본문 줄이 없다.")
+        if header:
+            cells = _cells(table)
+            for address, text in header.items():
+                if address[0] >= header_rows:
+                    raise TemplateMismatch(f"{address} 는 머리행 {header_rows} 줄 밖이다.")
+                if address not in cells:
+                    raise TemplateMismatch(f"양식 표에 {address} 칸이 없습니다.")
+                _set_text(cells[address], text)
+
         prototype, tail = trs[header_rows], trs[header_rows + 1 :]
         width = int(table.get("colCnt"))
         if len(prototype.findall("hp:tc", NS)) != width:

@@ -694,3 +694,77 @@ def test_동시에_같은_달을_만들면_하나만_남고_LLM_대기_중_trans
             session.execute(delete(User).where(User.id == member_id))
             session.execute(delete(Center).where(Center.id == center_id))
             session.commit()
+
+
+# ── 내보내기 (§9) ─────────────────────────────────────────────────────────
+
+
+def _confirmed(world, month=9) -> dict:
+    """확정까지 간 월간 하나. 응답 그대로 돌려준다."""
+    _annual(world["class_a"])
+    created = _create(world, month=month)
+    assert created.status_code == 201, created.json()
+    plan = created.json()
+    confirmed = client.post(
+        f"/api/plans/monthly/{plan['id']}/confirm", json={"expected_revision": plan["revision"]}
+    )
+    assert confirmed.status_code == 200, confirmed.json()
+    return confirmed.json()
+
+
+def _exported_table(content: bytes):
+    import zipfile
+    from io import BytesIO
+
+    from lxml import etree
+
+    from app.shared.hwpx import NS
+
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        section = etree.fromstring(archive.read("Contents/section0.xml"))
+    table = section.find(".//hp:tbl", NS)
+    return table, [t.text for t in section.iter(f"{{{NS['hp']}}}t")]
+
+
+def test_확정된_월간을_hwpx_로_내려준다(world):
+    plan = _confirmed(world)
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/hwp+zip"
+
+    table, printed = _exported_table(response.content)
+    weeks = [week for week in plan["weeks"] if week["active"]]
+    weekly = [s for s in plan["sections"] if s["visible"] and s["repeat_by"] == "WEEK"]
+
+    # 주마다 값이 있는 Section 하나가 본문 한 줄이다. 머리 7 · 본문 n · 꼬리 2.
+    assert int(table.get("rowCnt")) == 7 + len(weekly) + 2
+    for section in weekly:
+        assert section["label"] in printed
+    assert weeks[0]["label"] in printed
+    assert f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}" in printed
+
+
+def test_월간은_확정_전에_내보낼_수_없다(world):
+    _annual(world["class_a"])
+    created = _create(world)
+    assert created.status_code == 201
+    response = client.get(f"/api/plans/monthly/{created.json()['id']}/export/hwp")
+    assert _error(response) == (409, "GATE_BLOCKED", [])
+
+
+def test_남의_원_월간은_404(world):
+    plan = _confirmed(world)
+    world["session"].execute(update(Plan).where(Plan.id == plan["id"]).values(center_id=world["b"]))
+    world["session"].commit()
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 404
+
+
+def test_제출_문서에_출처가_섞이지_않는다(world):
+    """evidence · generation 은 화면에서 근거를 보여주는 값이다. 제출 문서에 가면 안 된다."""
+    plan = _confirmed(world)
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    _, printed = _exported_table(response.content)
+    joined = "\n".join(text for text in printed if text)
+    for banned in ("evidence", "generation", "LLM", "mock"):
+        assert banned not in joined

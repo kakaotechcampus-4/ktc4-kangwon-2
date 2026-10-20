@@ -65,7 +65,11 @@ CHAR_STYLES = {
 CENTER, LEFT = "20", "12"
 
 WEEK_FILLS = ["w1", "w2", "w3", "w4", "w5"]
-BODY_ROWS = ["기본생활습관", "안전교육", "소방대피\n재난대비", "건강·영양교육"]
+
+#: 본문은 빈 줄 하나다. 내보낼 때 계획안의 Section 수만큼 복제해서 채운다
+#: (`hwpx.fill_grid`). 어느 Section 이 있는지는 원마다 고른 TemplateProfile 이 정한다 —
+#: 안전교육·바깥놀이는 어디나 있고, 기본생활습관·소방대피는 고르는 원만 있다.
+#: 그래서 행 이름을 양식에 박지 않는다.
 
 # 표 한 장. 줄마다 (글자, 가로로 합칠 칸 수, 색, 글자 모양, 문단 모양).
 # 값 칸은 비워 둔다 — 코드가 채우고, 교사가 한글에서 고친다.
@@ -75,7 +79,7 @@ BODY_ROWS = ["기본생활습관", "안전교육", "소방대피\n재난대비",
 # 맞게 다시 잡히니, 여기 빈 줄은 **아무것도 안 넣었을 때의 모습**이다.
 #
 # 빈 줄을 다 더해서 21줄을 넘기면 안 된다. A4 한 쪽에 22줄까지 들어간다 — 넘기면 표가
-# 두 쪽으로 쪼개져 출력된다.
+# 두 쪽으로 쪼개져 출력된다. 본문 줄이 늘어나는 몫도 생각해서 여유를 둔다.
 EMPTY = ""
 BLANK_2 = "\n"
 BLANK_3 = "\n\n"
@@ -94,10 +98,7 @@ LAYOUT: list[list[Cell]] = [
     [(BLANK_3, 2, None, "value", LEFT)] * 3,
     [("구분", 1, "head", "label", CENTER)]
     + [(f"{n}주차", 1, WEEK_FILLS[n - 1], "label", CENTER) for n in range(1, 6)],
-    *[
-        [(name, 1, "head", "label", CENTER)] + [(BLANK_2, 1, None, "value", LEFT)] * 5
-        for name in BODY_ROWS
-    ],
+    [(EMPTY, 1, "head", "label", CENTER)] + [(BLANK_2, 1, None, "value", LEFT)] * 5,
     [("우리반 안내 사항", 6, "band", "band", LEFT)],
     [(BLANK_2, 6, None, "value", LEFT)],
 ]

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
-from app.shared.hwpx import NS, TemplateMismatch, fill_cells
+from app.shared.hwpx import NS, TemplateMismatch, fill_grid
 
 # hwpx.NS 에는 본문(hp)만 있다. 양식 모양은 header.xml 쪽 이름(hh · hc)에 들어 있다.
 HEAD = {
@@ -22,7 +22,9 @@ HEAD = {
 
 TEMPLATE = Path(__file__).parents[1] / "app/features/plans/templates/monthly.hwpx"
 
-ROWS, COLUMNS = 13, 6
+ROWS, COLUMNS = 10, 6
+#: 머리행 7줄 · 본문 원형 1줄 · 꼬리 2줄.
+HEADER_ROWS = 7
 #: 양식에 미리 적혀 있어야 하는 이름. 하나라도 빠지면 교사가 받는 문서가 달라진다.
 LABELS = {
     "놀이 주제",
@@ -34,11 +36,6 @@ LABELS = {
     "구분",
     "1주차",
     "5주차",
-    "기본생활습관",
-    "안전교육",
-    "소방대피",  # 「소방대피 / 재난대비」는 칸 안에서 두 줄이라 문단이 둘이다
-    "재난대비",
-    "건강·영양교육",
     "우리반 안내 사항",
 }
 
@@ -103,20 +100,45 @@ def test_every_cell_has_a_background(template: bytes) -> None:
     assert used & colored, "색 칸을 쓰는 데가 없다."
 
 
-def test_fill_cells_writes_only_the_given_cells(template: bytes) -> None:
-    content = fill_cells(
-        template, "3세반 10월 놀이계획안", {(0, 1): "바람과 나뭇잎", (7, 1): "손 씻기"}
+def test_the_body_row_is_cloned_per_section(template: bytes) -> None:
+    """Section 수만큼 본문 줄이 늘어야 한다. 행 이름은 양식이 아니라 계획안이 들고 온다."""
+    content = fill_grid(
+        template,
+        "3세반 2026-10 놀이계획안",
+        HEADER_ROWS,
+        rows=[
+            ["안전교육", "교통안전", "", "", "", ""],
+            ["바깥놀이", "낙엽 모으기", "", "", "", ""],
+            ["기본생활습관", "손 씻기", "", "", "", ""],
+        ],
+        footer=[["우리반 안내 사항"], [""]],
+        header={(0, 1): "바람과 나뭇잎", (6, 1): "1주차"},
     )
-    printed = [t.text for t in table_of(content).iter(f"{{{NS['hp']}}}t")]
-    assert "바람과 나뭇잎" in printed
-    assert "손 씻기" in printed
-    assert "기본생활습관" in printed  # 머리 칸은 그대로다
+    table = table_of(content)
+    assert int(table.get("rowCnt")) == ROWS + 2
+    printed = [t.text for t in table.iter(f"{{{NS['hp']}}}t")]
+    for text in (
+        "바람과 나뭇잎",
+        "1주차",
+        "안전교육",
+        "낙엽 모으기",
+        "손 씻기",
+        "우리반 안내 사항",
+    ):
+        assert text in printed
 
 
-def test_fill_cells_rejects_a_merged_away_address(template: bytes) -> None:
-    """(0, 2) 는 (0, 1) 에 합쳐져 없는 칸이다. 조용히 지나가면 글자가 사라진다."""
+def test_a_header_address_outside_the_header_rows_is_refused(template: bytes) -> None:
+    """본문 원형 줄을 머리 칸으로 채우면 복제될 때 그 글자가 모든 줄에 번진다."""
     with pytest.raises(TemplateMismatch):
-        fill_cells(template, "제목", {(0, 2): "여기엔 칸이 없다"})
+        fill_grid(
+            template,
+            "제목",
+            HEADER_ROWS,
+            rows=[["", "", "", "", "", ""]],
+            footer=[["우리반 안내 사항"], [""]],
+            header={(HEADER_ROWS, 0): "여기는 본문이다"},
+        )
 
 
 def test_cells_use_the_added_char_styles(template: bytes) -> None:
@@ -146,7 +168,7 @@ def test_label_cells_are_centered(template: bytes) -> None:
         for tc in table_of(template).iter(f"{{{NS['hp']}}}tc")
     }
     assert cells[(0, 0)].find(".//hp:p", NS).get("paraPrIDRef") == "20"  # 놀이 주제
-    assert cells[(6, 1)].find(".//hp:p", NS).get("paraPrIDRef") == "20"  # 1주차
+    assert cells[(6, 1)].find(".//hp:p", NS).get("paraPrIDRef") == "20"  # 주차 머리
     assert cells[(0, 1)].find(".//hp:p", NS).get("paraPrIDRef") == "12"  # 값 칸
 
 
