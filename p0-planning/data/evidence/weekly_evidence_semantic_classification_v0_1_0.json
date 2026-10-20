@@ -59,32 +59,12 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "미술",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "과학",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "과학･요리",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
       "source_label": "실 내",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
       "source_label": "실내 자유놀이 / 활동",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "실 내 놀",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -99,17 +79,12 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "언 어 영 역",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "실 내 놀 이",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
       "source_label": "쌓 기 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "언 어 영 역",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -119,12 +94,12 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "실 미술",
+      "source_label": "내 놀 이 언어",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
-      "source_label": "내 놀 이 언어",
+      "source_label": "실 미술",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -159,17 +134,12 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "자 유 놀 이 수․과학 영 역",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
       "source_label": "놀이 실내",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
-      "source_label": "실내 놀이 (9:20~",
+      "source_label": "자 유 놀 이 수․과학 영 역",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -179,7 +149,12 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "과 학",
+      "source_label": "실내 놀이 (9:20~",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 놀이 / 활동",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -190,11 +165,6 @@
     {
       "source_section": "indoor_play",
       "source_label": "실내놀이",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "실내 놀이 / 활동",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -214,11 +184,6 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "언어/수교육",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
       "source_label": "자 유 놀 수․과학 영 역",
       "semantic_class": "INDOOR_PLAY"
     },
@@ -234,12 +199,17 @@
     },
     {
       "source_section": "indoor_play",
+      "source_label": "유 놀 이 언어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "이 역 할 영 역",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
-      "source_label": "유 놀 이 언어",
+      "source_label": "활 동 수.과학",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -264,12 +234,12 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "10:40, 15:20~ 16:30) 수‧과학 (조작)",
+      "source_label": "- 실내자유놀이 -",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
-      "source_label": "자 유 놀 이 언어",
+      "source_label": "10:40, 15:20~ 16:30) 수‧과학 (조작)",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -284,22 +254,7 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "언어/수",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "- 실내자유놀이 -",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "이 과학놀이",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "미술놀이",
+      "source_label": "자 유 놀 이 언어",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -314,7 +269,12 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "유 놀 수․과학 영 역",
+      "source_label": "내 자 미술",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술놀이",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -324,7 +284,17 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "내 자 미술",
+      "source_label": "유 놀 수․과학 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "이 과학놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "활 동 음률",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -334,47 +304,17 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "언어/ 수교육",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
       "source_label": "놀 이 수 조 작",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
+      "source_label": "새해 도미노 쌓기 블록으로 생활 도구 구성하기",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "실내 자유 놀이",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "수조작",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "이 음 률",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "실 내 자 유 놀",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "실내 놀이 (9:20~ 10:40,",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "언 어",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "음 률",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -389,7 +329,22 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "실내 자",
+      "source_label": "미술 영역 소개 우리 반 이름표 꾸미기",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "수조작",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 내 자 유 놀",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 놀이 (9:20~ 10:40,",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -399,12 +354,22 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "놀이 언어",
+      "source_label": "실내 자",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
-      "source_label": "과학･요리[요리]",
+      "source_label": "언 어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "음 률",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "이 음 률",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -419,12 +384,32 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "놀이 (9:20~ 10:50, 15:20~ 수‧과학 (조작)",
+      "source_label": "놀이 언어",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
-      "source_label": "과학･요리[과학]",
+      "source_label": "블록으로 내 몸속 뼈 만들기 내 키만큼 쌓기",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "블록으로고인돌쌓기",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "키와 몸무게가 달라졌어요 재미있었던 과학 실험 고무공 미로 놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "튼튼 음식점 놀이 남자처럼, 여자처럼 나의 꿈 역할 놀이 다양한 감정의 내 모습",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[쌓기] 소리 나는 블록을 쌓아요",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -434,7 +419,17 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "쌓기・역할",
+      "source_label": "놀이 (9:20~ 10:50, 15:20~ 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "동 [과학]공기대포 만들기",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "민화미술관",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -444,12 +439,22 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "미술-",
+      "source_label": "쌓기・역할",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
-      "source_label": "역할-숫자",
+      "source_label": "우리들의 봄 이야기를 꾸며요 봄의 날씨를 언어로 표현해요",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "나이만큼 쌓아요 형님과 함께 과학 놀이를 해요",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술-",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -459,17 +464,7 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "쌓기-사진관",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
       "source_label": "미술-재활용품",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "역할-얼음",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -479,22 +474,37 @@
     },
     {
       "source_section": "indoor_play",
+      "source_label": "신체검사 놀이를 해요 내가 할 수 있는 일을 역할극으로 표현해요",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기-사진관",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할-숫자",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할-얼음",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "음률-'가을길',‘’허수아비",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "즐거웠던 역할놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "쌓기-",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "역할-",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "쌓기-숫자",
-      "semantic_class": "INDOOR_PLAY"
-    },
-    {
-      "source_section": "indoor_play",
-      "source_label": "쌓기-겨울왕국",
       "semantic_class": "INDOOR_PLAY"
     },
     {
@@ -504,12 +514,47 @@
     },
     {
       "source_section": "indoor_play",
+      "source_label": "쌓기-겨울왕국",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기-숫자",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할-",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "역할-가을",
       "semantic_class": "INDOOR_PLAY"
     },
     {
       "source_section": "indoor_play",
+      "source_label": "음률-'우리들의",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "음률-스카프와",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "음률-좋아했던",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "대소집단 활동",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학･요리",
       "semantic_class": "GROUP_ACTIVITY"
     },
     {
@@ -544,6 +589,11 @@
     },
     {
       "source_section": "indoor_play",
+      "source_label": "･ 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "대·소집단 활동 【이야기나누기】 우리반에도 이름이 있어요 【게임】 놀잇감 위치를 알아요 【음악】 교실 안 소리 찾기, 【동요】 안녕 【미술】 내가 꾸민 놀이터",
       "semantic_class": "GROUP_ACTIVITY"
     },
@@ -564,7 +614,7 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "･ 소 집 미술",
+      "source_label": "동 과학/ 요리",
       "semantic_class": "GROUP_ACTIVITY"
     },
     {
@@ -574,7 +624,52 @@
     },
     {
       "source_section": "indoor_play",
-      "source_label": "소 집 미술",
+      "source_label": "･ 소 집 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술]무궁화모자이크",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학･요리먹물은",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[과학] 계절은 왜 자꾸 바뀔까?",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 내 가방에 놀러온 가을",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 쑥쑥 자라나는 나를 만들어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 휴지심으로 나비를 만들어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술]물감 불어 봄비 표현하기",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술]색깔 얼음으로 그림을 그려요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학･요리[요리]",
       "semantic_class": "GROUP_ACTIVITY"
     },
     {
@@ -589,7 +684,72 @@
     },
     {
       "source_section": "indoor_play",
+      "source_label": "소 집 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "신체･게임 [신체] 재활용품으로 탑 쌓기",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "- [미술]할머니가 주시 는 송편 바구니를 만들 어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[과학] 흙 속에는 무엇이 있을까요?",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 도로 위의 움직이는 육상 교통기관을 만들어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 손바닥 도장으로 우리 가족을 그려요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 실내화를 만들어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 인사 잘하는 나",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 지끈 붓으로 바다 속 모습을 표현해요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 할머니가 주시는 송편 바구니를 만들어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학･요리[과학]",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "기차를 타고 여행을 간다면 어디로 갈까요? 육상 교통기관의 이름과 특징은 무엇일까요? 비행기의 바퀴는 어떤 역할을 할까요? 옛날과 오늘날의 항공 교통기관이 달라요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "소 그 미 술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "활 동 [과학] 얼음이 얼었어요",
       "semantic_class": "GROUP_ACTIVITY"
     },
     {
@@ -599,8 +759,63 @@
     },
     {
       "source_section": "indoor_play",
+      "source_label": "[동요] 옛날부터 지금까지 [과학] 자석으로 그림을 그려요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[명화] 쿠르베-돌 깨는 사람들 [미술] 꼬마 분수를 만들어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[명화]배가 나오는 명화를 감상해요 [미술]종이 비행기 접기",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술]묵포도도",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "･ 소 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "- [과학]위로 올라가는 콩을 관찰해요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[과학] 같은 소리 다른 소리가 있어요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[과학] 먼지를 찾아보아요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[동요] 쑥쑥 자랐어요 [과학] 형님 반 물건을 관찰해요",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "[미술] 쫀득쫀득 떡한상",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "대소집단",
       "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
     },
     {
       "source_section": "indoor_alternative",
@@ -609,12 +824,37 @@
     },
     {
       "source_section": "indoor_alternative",
-      "source_label": "바깥놀이 대체활동",
+      "source_label": "실외놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "원 바깥 놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "실외자유놀이 일상생활",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥 놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "지 원 바깥 놀이",
       "semantic_class": "INDOOR_ALTERNATIVE"
     },
     {
       "source_section": "indoor_alternative",
       "source_label": "바깥놀이 (대체활동)",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥놀이 대체활동",
       "semantic_class": "INDOOR_ALTERNATIVE"
     },
     {
@@ -629,12 +869,62 @@
     },
     {
       "source_section": "indoor_alternative",
-      "source_label": "실내대체활동",
+      "source_label": "실외 (대체)",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "놀이 [실내대체] 여름풍경 사진 카드 탐색하기",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "놀이 [실내대체] 태극기 색깔을 찾아요",
       "semantic_class": "INDOOR_ALTERNATIVE"
     },
     {
       "source_section": "indoor_alternative",
       "source_label": "대체 놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥놀이및 실내대체놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "실내대체활동",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "실외활동",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "놀이 [실내대체] 사뿐사뿐 걸을까? 총 총 달릴까?",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "놀이 [실내대체] 시장에 가요",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "놀이 [실내대체] 하늘 자전거 놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥놀이 및 대체놀이",
       "semantic_class": "INDOOR_ALTERNATIVE"
     }
   ]
