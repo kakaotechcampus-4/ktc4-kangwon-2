@@ -804,7 +804,15 @@ def refresh_document(
         else:
             fresh.append((fact, source.start_date, source.status))
     plan = None
-    if missing and body and body.resolutions:
+    # **살아 있는 근거를 고르면 검사한다** (#180 수린님 리뷰). 전에는 `missing and ...` 이라
+    # 사라진 근거가 없으면 `resolutions` 를 통째로 무시하고 200 을 냈다. 교사가 고른
+    # 「빼기」가 반영되지 않았는데 성공으로 보인다 — `reconfirm` 은 같은 입력에 422 를 낸다.
+    #
+    # **다만 「이미 빠진 근거」는 거절하지 않는다.** 같은 요청을 다시 보낸 것(동시 호출에서
+    # 진 쪽, 응답을 못 받고 재시도한 쪽)이라 이미 반영돼 있다. 문서에 아직 붙어 있는
+    # 근거를 골랐을 때만 검사로 보낸다.
+    attached = {c.source_id for c in sources}
+    if body and any(r.source_id in attached for r in body.resolutions):
         if doc.kind != "dailyLog" or any(c.source_kind != "routine" for c in sources):
             raise _error(
                 status.HTTP_409_CONFLICT,

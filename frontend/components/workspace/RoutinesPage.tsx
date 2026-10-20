@@ -659,6 +659,16 @@ export default function RoutinesPage() {
   };
 
   /**
+   * 반 · 날짜를 옮기기 전에 묻는다 (#180 수린님 리뷰).
+   *
+   * 옮기면 `revisit()` 이 서버 값을 다시 불러와 **적어 둔 줄을 덮어쓴다.** 전에는 경고가
+   * 없어 저장 안 한 줄이 조용히 사라졌다. 「어제 불러오기」와 같은 방식으로 확인을 받는다.
+   */
+  function leaveRows() {
+    return !rows.some(filled) || window.confirm("저장하지 않은 줄이 사라져요. 옮길까요?");
+  }
+
+  /**
    * 어제 일과 불러오기 (FR-403). **시간과 이름만** 가져온다 — 활동계획 · 활동실행을
    * 옮기면 어제 한 일이 오늘 한 일로 적힌다. 조회일 뿐이라 아무것도 저장하지 않는다.
    */
@@ -728,7 +738,9 @@ export default function RoutinesPage() {
               반
               <select
                 value={classId ?? ""}
+                disabled={!!busy}
                 onChange={(e) => {
+                  if (!leaveRows()) return;
                   setPickedClass(e.target.value ? Number(e.target.value) : null);
                   revisit();
                 }}
@@ -746,7 +758,9 @@ export default function RoutinesPage() {
               <input
                 type="date"
                 value={date}
+                disabled={!!busy}
                 onChange={(e) => {
+                  if (!leaveRows()) return;
                   setPickedDate(e.target.value);
                   revisit();
                 }}

@@ -205,6 +205,14 @@ def locked_review(session: Session, user: User, document_id: int):
             .order_by(DocumentSource.id)
         )
     )
+    # **`kind` 만 보면 모자란다** (#180 수린님 리뷰). 옛 일일 보육일지는 관찰 기록을
+    # 근거로 만들어졌고, 아래 비교는 `routine` 이 아닌 사본을 **무조건 「사라짐」**으로
+    # 본다(`by_id.get(...) if source_kind == "routine" else None`). 그대로 두면 멀쩡한
+    # 관찰 근거를 빼거나 바꿔서 재확정할 수 있고, 근거가 조용히 바뀐 확정본이 남는다.
+    #
+    # `refresh`(router.py)가 같은 이유로 이미 막는다. 여기도 같게 막는다.
+    if any(copy.source_kind != "routine" for copy in before):
+        fail("GATE_BLOCKED", "일과 기록이 아닌 근거가 있어 재확정할 수 없습니다.", ["kind"])
     lock_sources(session, user, doc, before)
     doc = session.scalar(
         select(Document).where(Document.id == doc.id).execution_options(populate_existing=True)

@@ -822,3 +822,59 @@ def test_deleting_the_draft_also_removes_its_resolution_trail(db_session, review
     assert client.delete(f"/api/documents/{doc.id}").status_code == 204
     db_session.expire_all()
     assert trail(db_session, doc) == []
+
+
+def test_관찰_근거가_섞인_일일_보육일지는_비교도_재확정도_막는다(db_session, reviewable):
+    """#180 리뷰 — `kind` 만 보면 모자란다.
+
+    옛 일일 보육일지는 관찰 기록을 근거로 만들어졌다. 비교는 `routine` 이 아닌 사본을
+    **무조건 「사라짐」**으로 보기 때문에, 멀쩡한 관찰 근거를 빼거나 바꿔서 재확정할 수
+    있었다 — 근거가 조용히 바뀐 확정본이 남는다. `refresh` 는 이미 막고 있었다.
+    """
+    doc, _ = reviewable
+    db_session.add(
+        DocumentSource(
+            document_id=doc.id,
+            source_kind="observation",
+            source_id=99_999,
+            class_id=doc.class_id,
+            date=doc.start_date,
+            text="관찰 기록을 근거로 만든 옛 일지",
+        )
+    )
+    db_session.commit()
+
+    viewing = client.get(f"/api/documents/{doc.id}/source-comparison")
+    assert viewing.status_code == 409, viewing.text
+    assert viewing.json()["error"]["code"] == "GATE_BLOCKED"
+    assert viewing.json()["error"]["fields"] == ["kind"]
+
+    # 확정본은 그대로다 — 막혔으니 아무것도 바뀌면 안 된다.
+    db_session.expire_all()
+    assert db_session.get(Document, doc.id).status == "CONFIRMED"
+
+
+def test_refresh_는_살아_있는_근거를_고르면_422_이고_이미_빠진_것은_통과시킨다(
+    db_session, reviewable
+):
+    """#180 리뷰 — `missing` 이 비어 있으면 `resolutions` 를 통째로 무시하고 200 이었다.
+
+    교사가 고른 「빼기」가 반영되지 않았는데 성공으로 보인다. 같은 입력에 `reconfirm` 은
+    422 를 내서 둘이 어긋났다.
+
+    **이미 빠진 근거는 거절하지 않는다.** 같은 요청을 다시 보낸 것(동시 호출에서 진 쪽,
+    응답을 못 받고 재시도한 쪽)이라 이미 반영돼 있다 — 거절하면 재시도가 깨진다.
+    """
+    doc, routines = reviewable
+    doc.status = "DRAFT"
+    db_session.commit()
+
+    # ① 살아 있는 근거를 골랐다 — 사라진 것이 하나도 없어도 거절한다.
+    refused = refresh(doc, {"resolutions": [{"source_id": routines[1].id, "action": "drop"}]})
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["error"]["code"] == "VALIDATION_FAILED"
+
+    # ② 문서에 아예 없는 근거를 골랐다 — 이미 처리된 것이므로 통과한다.
+    assert (
+        refresh(doc, {"resolutions": [{"source_id": 10**7, "action": "drop"}]}).status_code == 200
+    )
