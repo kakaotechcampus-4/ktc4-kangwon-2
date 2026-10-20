@@ -1,0 +1,321 @@
+{
+  "status": "DRAFT",
+  "school_year": 2026,
+  "week_id": "2026-09-W2",
+  "week_period": [
+    "2026-09-07",
+    "2026-09-11"
+  ],
+  "operating_days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+  ],
+  "classroom_ref": "classroom_001",
+  "target_ages": [
+    3,
+    4
+  ],
+  "generation_mode": "RULE_ONLY",
+  "template": "ssuksak.weekly-template-a/weekly-template-a-v0.1.0",
+  "parent_lineage": {
+    "parent_plan_id": "monthly-final_plan_001",
+    "confirmed_by": "teacher_001"
+  },
+  "constraints": [
+    [
+      "STATUTORY_SAFETY_EDUCATION",
+      "NOT_VERIFIED_SOURCE_REQUIRED"
+    ]
+  ],
+  "activity_catalog": "ssuksak.outdoor-activity-reference/activity-reference-v0.2.1",
+  "plan_audit": [
+    {
+      "type": "CREATED",
+      "actor": null,
+      "system_actor": "weekly_application"
+    }
+  ],
+  "cells": [
+    {
+      "section_key": "theme",
+      "value": "우리나라와 세계 여러 나라",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.theme.parent_theme",
+        "rule_version": "v1"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        }
+      ],
+      "parent_snapshots": [
+        [
+          "monthly-final_item_001",
+          "우리나라와 세계 여러 나라"
+        ]
+      ],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "focus",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "goals",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "basic_habit",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "safety_education",
+      "value": "",
+      "state": "EMPTY_UNRESOLVED",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "monthly.safety.source_and_placement_assessment",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "indoor_play",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "group_activity",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "outdoor_play",
+      "value": "가을 나들이",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "monthly.activity.reference_candidate_selection",
+        "rule_version": "v2"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "ACTIVITY_REFERENCE",
+          "source_id": "act_outdoor_autumn_outing",
+          "source_version": "activity-reference-v0.2.1"
+        }
+      ],
+      "parent_snapshots": [
+        [
+          "monthly-final_item_001",
+          "우리나라와 세계 여러 나라"
+        ],
+        [
+          "monthly-final_item_002",
+          "무궁화 꽃이 피었습니다"
+        ],
+        [
+          "monthly-final_item_004",
+          "사방치기"
+        ],
+        [
+          "monthly-final_item_005",
+          "모래 위에 옛 그림을 그려요"
+        ],
+        [
+          "monthly-final_item_006",
+          "동대문 놀이"
+        ]
+      ],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "indoor_alternative",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "family_link",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": null,
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "event_schedule",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": null,
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "special_program",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": null,
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "executed_rules": [
+      "monthly.activity.supported_ages/v2",
+      "weekly.safety.grounding/v1"
+    ],
+    "findings": []
+  },
+  "activity_selection": {
+    "selected": "act_outdoor_autumn_outing",
+    "reasons": [
+      "AVOIDED_REPEAT_IN_MONTH",
+      "MATCHED_PARENT_THEME",
+      "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE",
+      "AVOIDED_CURRICULUM_DOMAIN_REPEAT",
+      "STRONGER_MONTH_EVIDENCE",
+      "TIE_BREAK_STABLE_ACTIVITY_ID"
+    ]
+  },
+  "optional_context": []
+}
