@@ -152,6 +152,16 @@ def world(db_session, teacher):
     }
 
 
+@pytest.fixture
+def profile_plain(world):
+    """아직 승인 대기인 v0.1.1 위에 세운 READY Profile.
+
+    승인 검사가 막는지 볼 때 쓴다 — v0.2.1 은 2026-10-20 에 승인돼서 더는 막히지 않는다.
+    `world` 에 넣지 않는다. 원의 READY Profile 수를 세는 테스트가 흔들린다.
+    """
+    return _profile(world["session"], world["a"], world["user_a"], PLAIN)
+
+
 def _create(world, month=9, **overrides):
     body = {"class_id": world["class_a"], "month": month, "profile_ref": world["profile_a"]}
     return client.post("/api/plans/monthly", json={**body, **overrides})
@@ -357,7 +367,7 @@ def test_연간이_없거나_확정_전이면_GATE_BLOCKED(world):
     assert _monthly_rows(session) == []
 
 
-def test_READY_가_아니거나_승인_전_Template_이면_만들지_않는다(world, monkeypatch):
+def test_READY_가_아니거나_승인_전_Template_이면_만들지_않는다(world, monkeypatch, profile_plain):
     session = world["session"]
     _annual(world["class_a"])
     repo = PostgresTemplateProfileRepository(session, center_id=world["a"])
@@ -373,9 +383,13 @@ def test_READY_가_아니거나_승인_전_Template_이면_만들지_않는다(w
             "NOT_FOUND",
             ["profile_ref"],
         )
-    # 실제 데이터 파일 그대로면 v0.2.1 은 승인 대기다 — READY 여도 생성 직전에 막는다.
+    # 실제 데이터 파일 그대로면 v0.1.1 은 승인 대기다 — READY 여도 생성 직전에 막는다.
     monkeypatch.setattr(profile_service, "TEMPLATES", JsonMonthlyTemplateRepository())
-    assert _error(_create(world)) == (422, "VALIDATION_FAILED", ["profile_ref"])
+    assert _error(_create(world, profile_ref=profile_plain)) == (
+        422,
+        "VALIDATION_FAILED",
+        ["profile_ref"],
+    )
     assert _monthly_rows(session) == []
 
 
@@ -396,11 +410,18 @@ class _OtherVersion:
 
 
 @pytest.mark.parametrize(
-    "templates",
-    [JsonMonthlyTemplateRepository, _NoTemplates, _OtherVersion],
+    ("templates", "profile_key"),
+    [
+        # 실제 파일에서 아직 승인 대기인 것은 v0.1.1 뿐이다 (v0.2.1 은 2026-10-20 승인).
+        (JsonMonthlyTemplateRepository, "profile_plain"),
+        (_NoTemplates, "profile_a"),
+        (_OtherVersion, "profile_a"),
+    ],
     ids=["pending_real_file", "missing", "other_version"],
 )
-def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(world, monkeypatch, templates):
+def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(
+    world, monkeypatch, templates, profile_key, profile_plain
+):
     """생성 직전 검사를 일부러 건너뛰어 Core 최종 검사(ADR-027)의 HTTP 매핑만 본다."""
     _annual(world["class_a"])
 
@@ -420,7 +441,8 @@ def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(world, mon
     monkeypatch.setattr(monthly_router, "monthly_llm_provider", CountingLlm)
     monkeypatch.setattr(profile_service, "TEMPLATES", templates())
 
-    response = _create(world)
+    profiles = {"profile_a": world["profile_a"], "profile_plain": profile_plain}
+    response = _create(world, profile_ref=profiles[profile_key])
 
     assert _error(response) == (422, "VALIDATION_FAILED", ["profile_ref"])
     # Core 문구(코드 · Template id)를 내보내지 않는다.
@@ -445,6 +467,21 @@ def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(world, mon
 def test_입력이_틀리면_422(world, override, fields):
     _annual(world["class_a"])
     assert _error(_create(world, **override)) == (422, "VALIDATION_FAILED", fields)
+
+
+def test_공백뿐인_profile_ref_는_Core_문구를_내보내지_않는다(world):
+    """스키마(min_length)를 지나 Core 가 거절하는 경로. 상태 · 코드 · fields 는 그대로다."""
+    _annual(world["class_a"])
+    for ref in (
+        {"profile_id": "  ", "profile_version": "v1"},
+        {"profile_id": world["profile_a"]["profile_id"], "profile_version": "\t"},
+    ):
+        response = _create(world, profile_ref=ref)
+        assert _error(response) == (422, "VALIDATION_FAILED", ["profile_ref"])
+        assert response.json()["error"]["message"] == "입력값을 확인해주세요."
+        assert "TemplateProfileRef" not in response.text
+        assert "non-blank" not in response.text
+    assert _monthly_rows(world["session"]) == []
 
 
 def test_없는_반은_404(world):
@@ -694,3 +731,106 @@ def test_동시에_같은_달을_만들면_하나만_남고_LLM_대기_중_trans
             session.execute(delete(User).where(User.id == member_id))
             session.execute(delete(Center).where(Center.id == center_id))
             session.commit()
+
+
+# ── 내보내기 (§9) ─────────────────────────────────────────────────────────
+
+
+def _confirmed(world, month=9) -> dict:
+    """확정까지 간 월간 하나. 응답 그대로 돌려준다."""
+    _annual(world["class_a"])
+    created = _create(world, month=month)
+    assert created.status_code == 201, created.json()
+    plan = created.json()
+    confirmed = client.post(
+        f"/api/plans/monthly/{plan['id']}/confirm", json={"expected_revision": plan["revision"]}
+    )
+    assert confirmed.status_code == 200, confirmed.json()
+    return confirmed.json()
+
+
+def _exported_table(content: bytes):
+    import zipfile
+    from io import BytesIO
+
+    from lxml import etree
+
+    from app.shared.hwpx import NS
+
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        section = etree.fromstring(archive.read("Contents/section0.xml"))
+    table = section.find(".//hp:tbl", NS)
+    return table, [t.text for t in section.iter(f"{{{NS['hp']}}}t")]
+
+
+def test_확정된_월간을_hwpx_로_내려준다(world):
+    plan = _confirmed(world)
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/hwp+zip"
+
+    table, printed = _exported_table(response.content)
+    weeks = [week for week in plan["weeks"] if week["active"]]
+    weekly = [s for s in plan["sections"] if s["visible"] and s["repeat_by"] == "WEEK"]
+
+    # 주마다 값이 있는 Section 하나가 본문 한 줄이다. 머리 7 · 본문 n · 꼬리 2.
+    assert int(table.get("rowCnt")) == 7 + len(weekly) + 2
+    for section in weekly:
+        assert section["label"] in printed
+    assert weeks[0]["label"] in printed
+    assert f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}" in printed
+
+
+def test_월간은_확정_전에_내보낼_수_없다(world):
+    _annual(world["class_a"])
+    created = _create(world)
+    assert created.status_code == 201
+    response = client.get(f"/api/plans/monthly/{created.json()['id']}/export/hwp")
+    assert _error(response) == (409, "GATE_BLOCKED", [])
+
+
+def test_남의_원_월간은_404(world):
+    plan = _confirmed(world)
+    world["session"].execute(update(Plan).where(Plan.id == plan["id"]).values(center_id=world["b"]))
+    world["session"].commit()
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 404
+
+
+def test_제출_문서에_출처가_섞이지_않는다(world):
+    """evidence · generation 은 화면에서 근거를 보여주는 값이다. 제출 문서에 가면 안 된다."""
+    plan = _confirmed(world)
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    _, printed = _exported_table(response.content)
+    joined = "\n".join(text for text in printed if text)
+    for banned in ("evidence", "generation", "LLM", "mock"):
+        assert banned not in joined
+
+
+# ── 지우기 (§9-1) ─────────────────────────────────────────────────────────
+
+
+def test_확정_전_월간계획안을_지우면_그_달을_다시_만들_수_있다(world):
+    _annual(world["class_a"])
+    plan_id = _create(world, month=9).json()["id"]
+    assert _error(_create(world, month=9))[:2] == (409, "ALREADY_EXISTS")
+
+    assert client.delete(f"/api/plans/monthly/{plan_id}").status_code == 204
+    assert client.get(f"/api/plans/monthly/{plan_id}").status_code == 404
+    assert _create(world, month=9).status_code == 201
+
+
+def test_확정된_월간계획안은_지우지_못한다(world):
+    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+    plan = _confirmed(world)
+
+    assert _error(client.delete(f"/api/plans/monthly/{plan['id']}"))[:2] == (409, "GATE_BLOCKED")
+    assert client.get(f"/api/plans/monthly/{plan['id']}").status_code == 200
+
+
+def test_남의_원_월간계획안은_지울_수_없고_404(world):
+    _annual(world["class_a"])
+    plan_id = _create(world, month=9).json()["id"]
+    world["session"].execute(update(Plan).where(Plan.id == plan_id).values(center_id=world["b"]))
+    world["session"].commit()
+    assert client.delete(f"/api/plans/monthly/{plan_id}").status_code == 404

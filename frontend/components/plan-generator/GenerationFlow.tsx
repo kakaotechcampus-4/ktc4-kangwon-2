@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
 import { putAnnualMonth, confirmAnnualPlan, downloadAnnualHwpx } from "@/lib/api/plans";
+import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 
 type Request = {
   age: AgeGroup;
@@ -156,22 +157,12 @@ export default function GenerationFlow({
     heading.current?.focus({ preventScroll: true });
   }, [phase]);
 
-  const [exporting, setExporting] = useState(false);
+  const hwpx = useHwpxDownload(setNotice);
 
   /** 확정한 연간계획안은 서버가 hwpx 를 만든다 (§9). 화면이 양식을 흉내 내지 않는다. */
-  async function downloadHwpx() {
+  function downloadHwpx() {
     const id = contents.annual?.annualPlanId;
-    if (!id || exporting) return;
-    setExporting(true);
-    setNotice("");
-    try {
-      await downloadAnnualHwpx(id);
-      setNotice("한글 파일(hwpx)로 내려받았어요.");
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "내려받지 못했어요.");
-    } finally {
-      setExporting(false);
-    }
+    if (id) void hwpx.download(() => downloadAnnualHwpx(id));
   }
 
   function download() {
@@ -419,6 +410,13 @@ export default function GenerationFlow({
                   <button
                     className={styles.secondary}
                     disabled={(active === "annual" && confirmed) || saving || confirming}
+                    // 확정하면 꺼진다. 왜 꺼졌는지 쓰여 있지 않으면 교사는 「눌러도 아무
+                    // 일도 안 일어난다」고 본다 — 고장과 구분이 안 된다.
+                    title={
+                      active === "annual" && confirmed
+                        ? "확정한 계획안은 고칠 수 없어요"
+                        : undefined
+                    }
                     onClick={async () => {
                       if (editing && active === "annual" && !(await saveAnnualRows())) return;
                       setEditing(!editing);
@@ -446,10 +444,10 @@ export default function GenerationFlow({
                   {active === "annual" && confirmed && contents.annual?.annualPlanId ? (
                     <button
                       className={styles.secondary}
-                      disabled={exporting}
+                      disabled={hwpx.exporting}
                       onClick={downloadHwpx}
                     >
-                      {exporting ? "만드는 중…" : "↓ 한글 파일로 내려받기"}
+                      {hwpx.exporting ? "만드는 중…" : "↓ 한글 파일로 내려받기"}
                     </button>
                   ) : (
                     <button className={styles.secondary} onClick={download}>
@@ -458,6 +456,14 @@ export default function GenerationFlow({
                   )}
                 </div>
               </div>
+              {/* 확정하면 「내용 수정」이 꺼진다. 그 상태에서 무엇을 할 수 있는지 안 적어
+                  두면 교사가 막힌 줄 안다 — 실제로 「눌러도 아무것도 안 된다」는 말을 들었다. */}
+              {active === "annual" && confirmed && (
+                <p className={styles.footnote}>
+                  확정한 계획안은 고칠 수 없어요. 내용을 바꾸려면 계획 노트에서 새로 만들어주세요 —
+                  지금 것을 지우고 다시 만들지 물어볼게요.
+                </p>
+              )}
               <article
                 id="plan-document"
                 role="tabpanel"

@@ -6,9 +6,10 @@
 생기고 둘이 갈라진다.
 """
 
+import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
@@ -34,6 +35,7 @@ from ssuksak.planning import (
 )
 from ssuksak.planning.rules.errors import YearlyRuleError
 
+from app.config import settings
 from app.db import get_session
 from app.features.auth.models import User
 
@@ -82,6 +84,8 @@ _NOT_FOUND = HTTPException(
     status.HTTP_404_NOT_FOUND,
     detail={"code": "NOT_FOUND", "message": "계획안을 찾을 수 없습니다.", "fields": ["id"]},
 )
+
+_log = logging.getLogger("app.server")
 
 
 def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
@@ -335,6 +339,99 @@ def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     return _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
 
 
+@router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
+    """확정 전 연간계획안을 지운다.
+
+    **지울 길이 있어야 다시 만들 수 있다.** 반 하나에 연간은 하나고(models.py 부분 유니크
+    인덱스), 만들기는 409 로 막는다. 지우기가 없으면 교사가 첫 초안이 마음에 안 들어도
+    영영 다시 못 만든다.
+
+    **확정본은 안 지운다.** 제출 문서다. 다시 만들어야 하면 사람이 판단할 일이지
+    버튼 한 번으로 사라지면 안 된다.
+
+    **월간이 딸려 있으면 안 지운다.** 월간은 이 계획안을 부모로 들고 있어서(§9-1
+    `parent`), 부모가 사라지면 조회가 깨진다. 월간을 먼저 지워야 한다.
+
+    부모는 `body` 안에만 있어서 열로는 못 찾는다. 같은 반 · 같은 학년도의 월간을 본다 —
+    연간이 반마다 하나뿐이라 그 월간의 부모는 이것뿐이다.
+    """
+    row = _row(session, user, plan_id)
+    if row.status == "CONFIRMED":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "GATE_BLOCKED",
+                "message": "확정된 계획안은 지울 수 없습니다.",
+                "fields": [],
+            },
+        )
+    child = session.scalar(
+        select(Plan.id).where(
+            Plan.center_id == user.center_id,
+            Plan.kind == "monthly",
+            Plan.classroom_ref == row.classroom_ref,
+            Plan.school_year == row.school_year,
+        )
+    )
+    if child is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IN_USE",
+                "message": "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.",
+                "fields": [],
+            },
+        )
+    session.delete(row)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/{plan_id}/test-reset", status_code=status.HTTP_204_NO_CONTENT)
+def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
+    """**시험용.** 연간계획안과 딸린 월간을 한 번에 지운다. 확정 여부를 보지 않는다.
+
+    **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
+    있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
+
+    **왜 필요한가** — 연간을 확정하면 고칠 수도(`내용 수정` 이 꺼진다) 지울 수도
+    (`DELETE` 가 확정본을 막는다) 없다. 계획안에는 일지와 달리 `unconfirm` 이 없어서
+    빠져나올 구멍이 없다. 시험하는 동안 그 막다른 길을 열어 둔다.
+
+    **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 확정본과 딸린 월간을
+    막는다. 그쪽이 교사가 쓰는 길이고, 이건 우리가 시험할 때만 쓰는 길이다. 한 경로에
+    「가끔 다르게 도는 조건」을 넣으면 어느 쪽이 도는지 아무도 모르게 된다.
+    """
+    if not settings.allow_test_reset:
+        raise _NOT_FOUND
+
+    row = _row(session, user, plan_id)
+    children = list(
+        session.scalars(
+            select(Plan).where(
+                Plan.center_id == user.center_id,
+                Plan.kind == "monthly",
+                Plan.classroom_ref == row.classroom_ref,
+                Plan.school_year == row.school_year,
+            )
+        )
+    )
+    # 시험용이라도 무엇을 지웠는지는 남긴다. 「왜 사라졌지」를 뒤에서 풀 수 있어야 한다.
+    _log.warning(
+        "test-reset: 연간 %s(%s) · 월간 %s 개를 지웠다. 누른 사람 user_%s",
+        row.id,
+        row.status,
+        len(children),
+        user.id,
+    )
+    for child in children:
+        session.delete(child)
+    session.delete(row)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.put("/{plan_id}/months/{month}", response_model=MonthOut)
 def update_month(
     plan_id: int, month: int, body: UpdateMonth, session: DbSession, user: CurrentUser
@@ -376,6 +473,10 @@ def update_month(
 @router.post("/{plan_id}/confirm", response_model=ConfirmOut)
 def confirm_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     row = _row(session, user, plan_id)
+    # **재호출은 멱등이다(§7).** 이미 확정이면 저장된 그대로 200 — Core 확정을 다시 부르지 않고
+    # (부르면 409) 저장 · commit 도 하지 않는다. 소유 검사(_row) 뒤라 남의 원 것은 여전히 404 다.
+    if row.status == "CONFIRMED":
+        return ConfirmOut(id=row.id, status=row.status, confirmed_at=row.confirmed_at)
     repo = _repo(session, user)
     try:
         confirmed = ConfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(

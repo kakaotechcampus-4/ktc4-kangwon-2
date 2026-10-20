@@ -23,6 +23,7 @@ registerHooks({
 
 const require = createRequire(import.meta.url);
 const plansApi = await import("../lib/api/plans.ts");
+const apiClient = await import("../lib/api/client.ts");
 const formsApi = await import("../lib/api/forms.ts");
 const onboarding = await import("../lib/api/onboarding.ts");
 const session = await import("../lib/auth/request-session.ts");
@@ -162,6 +163,10 @@ function page(
     },
     "react/jsx-runtime": runtime,
     "next/navigation": { useRouter: () => ({ replace: (to) => replaced.push(to) }) },
+    // 월간 · 양식 설정 화면으로 보내는 카드가 Link 를 쓴다. 눌리는지는 이 파일이 보지 않는다.
+    "next/link": { default: ({ children }) => children },
+    // 409 ALREADY_EXISTS 를 가르려면 ApiError 로 instanceof 를 해야 한다.
+    "@/lib/api/client": apiClient,
     "@/lib/fonts": { fontClassName: "font" },
     "@/components/app/AppHeader": { default: "app-header" },
     "@/lib/api/plans": plansApi,
@@ -387,9 +392,8 @@ test("연간계획안을 고르지 않으면 기관 양식을 고를 수 없고 
   await p.flush();
   assert.equal(p.select().props.disabled, true);
   assert.match(p.text(), /기관 양식은 연간계획안에만 적용돼요/);
-  // 월간만 골라도 열리지 않는다 — 붙일 계약이 있는 건 연간뿐이다.
-  p.chooseType("월간");
-  p.render();
+  // 이 화면에서 끝까지 만들 수 있는 건 연간뿐이다. 월간은 흐름이 달라 따로 열고
+  // (/plans/monthly), 주간은 아직 서버가 없다. 그래서 다른 종류를 눌러 여는 길이 없다.
   assert.equal(p.select().props.disabled, true);
 });
 
@@ -467,11 +471,12 @@ test("목록을 받는 중이어도 기본 양식이면 생성을 막지 않는�
   await started;
 });
 
-test("월간·주간·일간만 고르면 기관 양식이 생성 요청에 실리지 않는다", async (t) => {
+test("연간을 고르지 않으면 기관 양식이 생성 요청에 실리지 않는다", async (t) => {
   const p = page(t, { forms: [form(4, "햇살 월간계획안")], search: "?template=4" });
   await p.flush();
   p.chooseAge("5");
-  p.chooseType("월간");
+  // 아무 종류도 고르지 않은 채 누른다. 월간은 이 화면에서 못 고르고(따로 열기),
+  // 주간은 「준비 중」이라 눌리지 않는다.
   p.render();
   await p.generate().props.onClick();
   p.render();

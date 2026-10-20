@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/app/AppLayout";
 import { Icon } from "@/components/app/icons";
-import { listAnnualPlans } from "@/lib/api/plans";
+import { listAnnualPlans, testResetAnnualPlan, TEST_RESET_ENABLED } from "@/lib/api/plans";
 import type { AnnualPlanSummary } from "@/lib/api/types";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
@@ -47,6 +47,18 @@ export default function PlanNotebookPage() {
     return () => abort.abort();
   }, []);
 
+  /** **시험용.** 확정해서 막힌 계획안을 딸린 월간까지 지운다. 파일럿 전에 끈다. */
+  async function reset(plan: AnnualPlanSummary) {
+    if (!window.confirm(`${plan.school_year}학년도 계획안과 딸린 월간을 전부 지울까요?`)) return;
+    try {
+      await testResetAnnualPlan(plan.id);
+      setPlans((list) => (list ?? []).filter((p) => p.id !== plan.id));
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "지우지 못했어요.");
+    }
+  }
+
   const subtitle = [room.className, room.age, "연간부터 주간까지"].filter(Boolean).join(" · ");
 
   return (
@@ -56,11 +68,21 @@ export default function PlanNotebookPage() {
           <h1 className="font-display text-[34px] font-bold text-ink lg:text-[44px]">계획 노트</h1>
           <p className="mt-1 text-xs text-ink-soft">{subtitle}</p>
         </div>
-        {plans && plans.length > 0 && (
-          <Link href="/plans/annual/new" className={PRIMARY}>
-            <Icon name="plus" className="h-4 w-4" />새 계획안 만들기
+        <div className="flex flex-wrap items-center gap-3">
+          {/* 월간은 연간과 흐름이 다르다 — 확정된 연간과 원 양식(TemplateProfile)이 있어야
+              만들 수 있어서 생성기 안에 두지 않고 따로 연다 (FR-303). */}
+          <Link href="/plans/monthly" className="text-xs underline text-ink-soft">
+            월간계획안
           </Link>
-        )}
+          <Link href="/plans/template" className="text-xs underline text-ink-soft">
+            월간 양식 설정
+          </Link>
+          {plans && plans.length > 0 && (
+            <Link href="/plans/annual/new" className={PRIMARY}>
+              <Icon name="plus" className="h-4 w-4" />새 계획안 만들기
+            </Link>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -78,7 +100,7 @@ export default function PlanNotebookPage() {
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {plans.map((plan) => (
             <li key={plan.id}>
-              <PlanCard plan={plan} />
+              <PlanCard plan={plan} onReset={() => void reset(plan)} />
             </li>
           ))}
         </ul>
@@ -109,30 +131,41 @@ function EmptyNotebook() {
   );
 }
 
-function PlanCard({ plan }: { plan: AnnualPlanSummary }) {
+function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => void }) {
   const confirmed = plan.status === "CONFIRMED";
   return (
-    <Link
-      href={`/plans/annual/${plan.id}`}
-      className="flex h-full flex-col gap-3 rounded-md border border-line bg-paper p-5 shadow-pg-card transition-transform hover:-translate-y-0.5"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <span className="font-display text-[22px] font-bold text-ink">
-          {plan.school_year}학년도 연간계획안
+    <div className="flex h-full flex-col gap-3 rounded-md border border-line bg-paper p-5 shadow-pg-card">
+      <Link href={`/plans/annual/${plan.id}`} className="flex flex-1 flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <span className="font-display text-[22px] font-bold text-ink">
+            {plan.school_year}학년도 연간계획안
+          </span>
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
+              confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
+            }`}
+          >
+            {confirmed ? "확정" : "초안"}
+          </span>
+        </div>
+        <p className="text-xs text-ink-soft">{localDate(plan.created_at)} 만듦</p>
+        <span className="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-primary">
+          펼쳐 보기
+          <Icon name="arrow" className="h-3.5 w-3.5" />
         </span>
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
-            confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
-          }`}
+      </Link>
+      {/* **파일럿 전에 끈다.** 확정하면 고칠 수도 지울 수도 없어서 시험할 때 막힌다
+          (계획안에는 일지와 달리 `unconfirm` 이 없다). 서버도 같은 이름의 스위치가
+          꺼져 있으면 404 다 — 이 단추만 켜져도 아무것도 지워지지 않는다. */}
+      {TEST_RESET_ENABLED && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="self-start text-[11px] font-mono text-ink-soft underline"
         >
-          {confirmed ? "확정" : "초안"}
-        </span>
-      </div>
-      <p className="text-xs text-ink-soft">{localDate(plan.created_at)} 만듦</p>
-      <span className="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-primary">
-        펼쳐 보기
-        <Icon name="arrow" className="h-3.5 w-3.5" />
-      </span>
-    </Link>
+          [테스트] 이 계획안과 딸린 월간 전부 지우기
+        </button>
+      )}
+    </div>
   );
 }
