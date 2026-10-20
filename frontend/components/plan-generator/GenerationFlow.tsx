@@ -410,6 +410,13 @@ export default function GenerationFlow({
                   <button
                     className={styles.secondary}
                     disabled={(active === "annual" && confirmed) || saving || confirming}
+                    // 확정하면 꺼진다. 왜 꺼졌는지 쓰여 있지 않으면 교사는 「눌러도 아무
+                    // 일도 안 일어난다」고 본다 — 고장과 구분이 안 된다.
+                    title={
+                      active === "annual" && confirmed
+                        ? "확정한 계획안은 고칠 수 없어요"
+                        : undefined
+                    }
                     onClick={async () => {
                       if (editing && active === "annual" && !(await saveAnnualRows())) return;
                       setEditing(!editing);
@@ -449,6 +456,14 @@ export default function GenerationFlow({
                   )}
                 </div>
               </div>
+              {/* 확정하면 「내용 수정」이 꺼진다. 그 상태에서 무엇을 할 수 있는지 안 적어
+                  두면 교사가 막힌 줄 안다 — 실제로 「눌러도 아무것도 안 된다」는 말을 들었다. */}
+              {active === "annual" && confirmed && (
+                <p className={styles.footnote}>
+                  확정한 계획안은 고칠 수 없어요. 내용을 바꾸려면 계획 노트에서 새로 만들어주세요 —
+                  지금 것을 지우고 다시 만들지 물어볼게요.
+                </p>
+              )}
               <article
                 id="plan-document"
                 role="tabpanel"
