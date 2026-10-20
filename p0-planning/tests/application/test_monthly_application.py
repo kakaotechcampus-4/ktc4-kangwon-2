@@ -2534,23 +2534,24 @@ def test_a_teacher_edit_without_a_catalog_keeps_the_free_text_status():
 # ── Core approval gate (ADR-027) ────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "mode", [MonthlyGenerationMode.RULE_ONLY, MonthlyGenerationMode.LLM_PLANNER]
-)
-def test_generation_rejects_the_real_pending_template_before_any_work(mode):
+def test_generation_rejects_the_real_pending_template_before_any_work():
+    """RULE_PROFILE sits on v0.1.1, still PENDING_HUMAN_REVIEW.
+
+    The default PROFILE sits on v0.2.1, approved on 2026-10-20 (reviewer_pm_001,
+    ADR-027 §5), so it no longer hits this gate. The "no LLM call before the gate"
+    guarantee is covered by the missing-template and wrong-version cases below.
+    """
     harness = Harness()
-    harness.generation_templates = harness.templates  # the real files: PENDING
-    provider = RequestAwareMonthlyLlm()
+    harness.generation_templates = harness.templates  # the real files
+    command = replace(
+        harness.command(MonthlyGenerationMode.RULE_ONLY), profile_ref=RULE_PROFILE
+    )
 
     with pytest.raises(MonthlyApplicationError) as exc:
-        harness.generate(
-            mode,
-            provider=provider if mode is MonthlyGenerationMode.LLM_PLANNER else None,
-        )
+        harness.generate(MonthlyGenerationMode.RULE_ONLY, command=command)
 
     assert exc.value.code == "monthly_template_not_approved"
     assert harness.plans.save_count == 0
-    assert provider.monthly_requests == []
 
 
 def test_generation_rejects_a_profile_whose_exact_template_version_is_missing():
