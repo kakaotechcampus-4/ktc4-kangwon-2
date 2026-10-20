@@ -14,14 +14,17 @@
 | 무엇을 만드나 | [docs/요구사항명세서.md](docs/요구사항명세서.md) — FR · NFR · 진행도 |
 | 누가 쓰나 | [docs/페르소나.md](docs/페르소나.md) |
 | 이번 주 범위 | [docs/PRD.md](docs/PRD.md) §6 |
-| 화면이 어떻게 도나 | [docs/screen-spec.md](docs/screen-spec.md) — 일지 S-J1~6 · 계획안 S1~10 |
+| 화면이 어떻게 도나 | [docs/screen-spec.md](docs/screen-spec.md) — 일지 S-J1~7 · 계획안 S1~11 |
 | 서버와 무슨 약속을 했나 | [docs/api-spec.md](docs/api-spec.md) |
 | 아직 안 정한 것 | [docs/미확정사항.md](docs/미확정사항.md) |
 | 왜 이렇게 했나 | [docs/adr/](docs/adr/) |
 | 디렉터리 · 브랜치 | [docs/structure.md](docs/structure.md) · [docs/branch-strategy.md](docs/branch-strategy.md) |
 
 **`p0-planning/` 안에는 더 좁은 규칙이 따로 있다** — [p0-planning/CLAUDE.md](p0-planning/CLAUDE.md).
-거기 적힌 것이 이 파일보다 우선한다.
+`p0-planning/` 안에서는 거기 적힌 것이 이 파일보다 우선한다. 그 밖에서는 이 파일이 팀 공통 규칙이다.
+
+**문서끼리 다르면 이 순서로 따른다** — `ADR > api-spec > 요구사항명세서 > screen-spec`. 같은 단계면 늦은 결정이 이긴다.
+저장소 밖 문서(개인 문서 · 브랜치에만 있는 문서)는 근거로 인용하지 않는다. [ADR-031](docs/adr/031-document-roles-and-conflict-order.md)
 
 ---
 
@@ -104,7 +107,9 @@
 ## 생성
 
 - 결과는 `DRAFT`로 저장. 교사가 확정 버튼을 눌러야 `CONFIRMED`.
-- **확정은 층마다 순차 게이트.** 연간이 `CONFIRMED`가 아니면 월간을 생성하지 않는다.
+- **확정은 층마다 순차 게이트.** 연간이 `CONFIRMED`가 아니면 월간을, 월간이 `CONFIRMED`가 아니면 주간을 생성하지 않는다.
+  **주간은 월간을 거쳐서만 만든다** — 연간에서 주간으로 바로 가는 길이 없다(ADR-030 PM-04).
+- **계획안에는 확정 취소가 없다**(ADR-030 PM-03). 확정 취소는 일지(`/api/documents`)에만 있다.
 - 자동 제출·자동 발송을 만들지 않는다.
 - **출처를 칸 단위로 기록한다. 세 축을 한 값에 섞지 않는다** (PR #15 Planning Core).
 
@@ -113,7 +118,7 @@ Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · PA
                                    DAYCARE_PROFILE · CLASSROOM_PROFILE · EVENT
                                    SAFETY_RULE · ACTIVITY_REFERENCE · INSTITUTION_SAMPLE
                                    CALENDAR · TREND · EXTERNAL_CONTEXT          (12개가 전부)
-Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL · TEACHER_EDIT
+Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL     (쓰는 값은 4개)
 Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHER_EDITED · CONFIRMED
 ```
 
@@ -122,17 +127,32 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 
   **「AI」는 출처가 아니라 제조 방법이다.** 교사가 근거를 눌렀을 때 "AI 가 만들었습니다"는
   판단에 도움이 안 된다. AI 가 만든 값도 근거는 누리과정·주제·상위 계획안이다.
-  **교사가 고쳐도 Evidence 와 Generation 을 그대로 둔다.** `TEACHER_EDITED` **Audit 이벤트**를
-  하나 더한다(값 변화와 행위자를 담는다). 「이 값이 교사가 고친 것인가」는 Generation 이 아니라
-  **Audit 이력을 보고 판단한다** — 되돌리기와 평가제 집계가 거기서 나온다.
+  **`AI` · `TEACHER_EDIT` 은 Evidence 가 아니다.** LLM 을 썼는지는 Generation 으로 적는다.
+
+  **교사가 고쳐도 Evidence 와 Generation(`rule_id` · `rule_version` 포함)을 그대로 둔다.** `TEACHER_EDITED`
+  **Audit 이벤트**를 하나 더한다(값 변화와 행위자를 담는다). 「이 값이 교사가 고친 것인가」는 Generation 이 아니라
+  **Audit 이력을 보고 판단한다** — 되돌리기와 평가제 집계가 거기서 나온다. 교사가 고쳤다고 `MANUAL` 로 바꾸지 않는다 —
+  **`MANUAL` 은 사람이 처음부터 쓴 칸**이다.
   `GenerationMethod.TEACHER_EDIT` enum 값은 남아 있지만 **운영 코드가 쓰지 않는다**
   (2026-09-26 Human Decision · 제거 여부는 미정). 새 코드에서 그 값을 쓰지 않는다.
+
+  **`RULE_LLM` 은 LLM 경로로 설계된 칸이다.** mock 생성기를 썼는지는 Generation 이 아니라 실행 기록(설정 · 호출 로그)으로
+  안다. 재생성하면 Generation 을 새 방식으로 바꾸고, 이전 값 · 방식은 `REGENERATED` 이벤트에 남는다(ADR-032).
+- **부가 의존을 빼고 만들었으면 그 사실이 남아야 한다.** 트렌드 · 날씨 같은 선택 입력이 실패해 기본 자료로 만들었으면
+  생성 기록(Generation Run)에서 확인할 수 있어야 한다.
 - **출처 표시는 화면에만.** hwp 내보내기에 마커가 섞이면 안 된다. 제출 문서다.
-- **연간계획안은 RAG 로 생성하고 규칙 엔진이 검사한다.** 법정 시수처럼 틀리면 안 되는 값은
-  규칙 엔진이 원문과 대조한다. **ADR-014 가 ADR-005 를 대체한다.**
-  ADR-005 의 「배치·선별은 규칙 엔진, LLM 은 문장화만」을 뒤집었다 — 순서가 반대다.
-  **ADR-003 의 「P0a 는 결정론적이라 golden set 이 성립한다」도 같이 깨졌다** — 분할 자체는
-  유효하고 결정론 전제만 무효다. 대체 검증 전략은 아직 없다.
+- **Rule 이 범위를 정하고, LLM 이 그 안에서 정하고, Rule 이 검사한다** — 연간 · 월간 · 주간 공통(ADR-032).
+  ```
+  Rule   허용 범위   승인된 후보 · 근거 · 제약 · 칸 구조 · 법정 기준
+  LLM    범위 안에서  값의 의미 내용을 고르고 구성하고 쓴다
+  Rule   검사        계약 · 근거 · 연령 · 법정 기준을 어겼는지
+  ```
+  LLM 은 문장만 다듬는 역할이 아니고, 범위 밖(승인 목록에 없는 id · 근거 없는 사실 · 법정 기준 · 통과 여부)은 정하지 않는다.
+  법정 시수처럼 틀리면 안 되는 값은 규칙 엔진이 원문과 대조한다. **ADR-014 가 ADR-005 를 대체하고, ADR-032 가 ADR-014 를 보충한다.**
+  ADR-005 의 「배치·선별은 규칙 엔진, LLM 은 문장화만」은 더 이상 유효하지 않다.
+  **ADR-003 의 「P0a 는 결정론적이라 golden set 이 성립한다」도 같이 깨졌다** — 분할 자체는 유효하고 결정론 전제만 무효다.
+  **대체 검증은 가짜 LLM 위의 Golden 이다**(ADR-023 「CI 는 가짜 LLM 으로 돈다」). 고정한 응답에 대해 Application 이 무엇을 하는지를
+  고정하고(`p0-planning/tests/finalization/golden/`), 모델이 쓰는 문장은 기대값으로 굳히지 않는다. 문장 품질은 사람이 보는 실측 점검이 다룬다.
 - **부가 기능이 죽어도 본 기능은 돌아간다.** 트렌드봇·외부 API를 필수 의존으로 넣지 않는다.
 
 ---
@@ -159,10 +179,13 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 
 엘리스 MLAPI. 팀 예산 ₩120,000/월, **초과 시 API Key 자동 삭제.**
 
-- **사용량은 카테캠 담당자가 보고 알려준다.** 우리가 세지 않는다.
+- **사용량은 카테캠 담당자가 보고 알려준다.** 우리가 세서 막지 않는다.
   ~~`shared/llm`에 토큰 카운터를 둔다. 70% 경고 · 90% 차단.~~ **무효(2026-09-21)**
   담당자 노티가 있으니 카운터가 중복이고, 90%에서 자동 차단하면 파일럿 중에
   교사 앞에서 서비스가 멈춘다. 사람이 판단할 기회를 남긴다.
+- **차단용 카운터와 호출 기록은 다르다.** 호출 기록은 남긴다 — `shared/llm` 의 `post_json` 이 성공한 호출마다
+  `llm_usage` 한 줄(모델 · 토큰 숫자 넷)을 남긴다. 연간 · 월간 · 문서가 모두 이 한 곳을 지난다. 프롬프트 · 응답 내용은 찍지 않는다
+  (ADR-036).
 - `LLM_MODE=mock`이 기본값이다.
 - **로컬에서 `real` 모드를 코드로 막는다.** 키가 팀 공유라, 6명이 각자 로컬에서 부르면 어디로 새는지 아무도 모른다.
 
@@ -171,7 +194,8 @@ if os.getenv("LLM_MODE") == "real" and not os.getenv("IS_SERVER"):
     raise RuntimeError("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다.")
 ```
 
-- 프롬프트는 **월 단위 배치**로 설계한다. 칸 단위로 호출하면 시스템 프롬프트가 43번 반복돼 15배 이상 나간다.
+- 프롬프트는 **문서 단위 배치**로 설계한다 — 연간은 12개월, 월간은 한 달, 주간은 한 주를 한 번에. 칸 단위로 호출하면
+  시스템 프롬프트가 칸 수만큼 반복돼 15배 이상 나간다.
 
 ---
 
