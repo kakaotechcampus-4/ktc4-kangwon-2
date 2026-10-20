@@ -5,6 +5,7 @@ import type {
   AnnualPlan,
   AnnualPlanSummary,
   AnnualMonth,
+  AnnualAuditEvent,
   MonthInput,
   ConfirmResult,
 } from "./types";
@@ -30,6 +31,9 @@ export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/** 변경 이력. 시간순이고 필터 · 페이지가 없다 — 화면이 `month` 로 거른다. */
+export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
+  apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
 export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
 
