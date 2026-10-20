@@ -77,7 +77,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "소주제",
       "order": 1,
       "observed_source_labels": [
@@ -103,7 +103,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "목표",
       "order": 2,
       "observed_source_labels": [
@@ -130,7 +130,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "기본생활",
       "order": 3,
       "observed_source_labels": [
@@ -157,7 +157,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "안전교육",
       "order": 4,
       "observed_source_labels": [
@@ -184,7 +184,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "실내놀이",
       "order": 5,
       "observed_source_labels": [
@@ -212,7 +212,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "대·소집단 활동",
       "order": 6,
       "observed_source_labels": [
@@ -241,7 +241,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "바깥놀이",
       "order": 7,
       "observed_source_labels": [
@@ -267,7 +267,7 @@
       "empty_value_policy": "RENDER_EMPTY_CELL",
       "category": "DEFAULT",
       "selection": "REQUIRED",
-      "required_for_generation": true,
+      "required_for_generation": false,
       "display_label": "대체놀이",
       "order": 8,
       "observed_source_labels": [

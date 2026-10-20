@@ -90,7 +90,7 @@ PENDING_REVIEW_PINS = {
         "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
     ),
     "templates/weekly_template_a_v0_1_0.json": (
-        "18385b6720d00b2f7df15df322e792d95922d4f23a3aeaff9308f88ea54fefd7"
+        "e79698e33b4818a885c6092c01360077f1d36ba9ff70d5ab4fd755195481b5f6"
     ),
 }
 
@@ -116,7 +116,7 @@ PENDING_REVIEW_CONTENT = {
         "5497aba0b41065c857b7d8ece58dc0297f2ff713bed65a8a339dd0ec3a6b9be4"
     ),
     "templates/weekly_template_a_v0_1_0.json": (
-        "558d693a795b9aee344066463ea266cf5e3ee2431dad7996bd5e7f483d2261ca"
+        "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
     ),
 }
 

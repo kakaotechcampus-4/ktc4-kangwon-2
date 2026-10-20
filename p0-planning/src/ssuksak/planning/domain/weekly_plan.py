@@ -185,6 +185,11 @@ class WeeklyCell:
             raise InvalidDomainValueError(
                 "A teacher-input WeeklyCell is never generated; it can only be MANUAL"
             )
+        elif not teacher_input and self.generation.method is GenerationMethod.MANUAL:
+            # A teacher's edit keeps the generated method (TEACHER_EDITED is audit only).
+            raise InvalidDomainValueError(
+                "A generated WeeklyCell keeps its generation method; MANUAL is for teacher-input cells only"
+            )
         if not isinstance(self.evidence, tuple) or not all(
             isinstance(source, EvidenceSource) for source in self.evidence
         ):

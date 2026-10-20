@@ -105,6 +105,8 @@ def test_template_is_pending_inactive_and_has_the_contract_sections():
     raw = json.loads(TEMPLATE.read_text(encoding="utf-8"))
     teacher_input = {s["semantic_key"] for s in raw["sections"] if s["selection"] == "INSTITUTION_INPUT"}
     assert teacher_input == WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
+    # W1 §7-4: missing evidence empties that cell only; only theme (always in the parent) is required.
+    assert [s.section_key for s in template.activated_sections if s.required_for_generation] == ["theme"]
 
 
 def test_a_valid_plan_has_one_cell_per_section_and_saturday_is_optional():
@@ -172,6 +174,13 @@ def test_teacher_input_cell_is_manual_never_generated():
     assert WeeklyCell(ItemId("i"), "event_schedule", "운동회", CellState.FILLED, manual).generation is manual
     with pytest.raises(InvalidDomainValueError, match="MANUAL"):
         WeeklyCell(ItemId("i"), "event_schedule", "운동회", CellState.FILLED, LLM)
+
+
+@pytest.mark.parametrize(("value", "state"), [("교사가 쓴 놀이", CellState.FILLED), ("", CellState.EMPTY_VALID)])
+def test_generated_cell_is_never_manual(value, state):
+    # W1 §10-2: a teacher filling or editing a generated cell keeps its method.
+    with pytest.raises(InvalidDomainValueError, match="MANUAL is for teacher-input"):
+        WeeklyCell(ItemId("i"), "indoor_play", value, state, GenerationMethodDetail(GenerationMethod.MANUAL))
 
 
 def test_snapshot_rejects_legacy_habits_and_non_weekly_sections():
