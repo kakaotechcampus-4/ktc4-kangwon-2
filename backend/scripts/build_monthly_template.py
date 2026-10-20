@@ -68,29 +68,38 @@ WEEK_FILLS = ["w1", "w2", "w3", "w4", "w5"]
 BODY_ROWS = ["기본생활습관", "안전교육", "소방대피\n재난대비", "건강·영양교육"]
 
 # 표 한 장. 줄마다 (글자, 가로로 합칠 칸 수, 색, 글자 모양, 문단 모양).
-# 값 칸은 비워 둔다 — 코드가 채우고, 교사가 한글에서 고친다. 글자 안의 줄바꿈은 빈 줄이라
-# 칸 높이를 벌어 준다. 한글은 cellSz 높이를 글자 양으로 다시 계산해서 덮어쓴다.
+# 값 칸은 비워 둔다 — 코드가 채우고, 교사가 한글에서 고친다.
+#
+# 글자 안의 줄바꿈은 빈 줄이고, 그만큼 칸이 벌어진다. 한글은 cellSz 높이를 무시하고 글자
+# 양으로 다시 계산하므로 높이를 벌리는 길은 이것뿐이다. 글자가 들어가면 그 칸은 글자 수에
+# 맞게 다시 잡히니, 여기 빈 줄은 **아무것도 안 넣었을 때의 모습**이다.
+#
+# 빈 줄을 다 더해서 21줄을 넘기면 안 된다. A4 한 쪽에 22줄까지 들어간다 — 넘기면 표가
+# 두 쪽으로 쪼개져 출력된다.
+EMPTY = ""
+BLANK_2 = "\n"
 BLANK_3 = "\n\n"
 Cell = tuple[str, int, str | None, str, str]
 LAYOUT: list[list[Cell]] = [
-    [("놀이 주제", 1, "head", "label", CENTER), ("", 5, None, "value", LEFT)],
-    [("예상 기간", 1, "head", "label", CENTER), ("", 5, None, "value", LEFT)],
-    [("주제 선정 이유", 1, "head", "label", CENTER), (BLANK_3, 5, None, "value", LEFT)],
+    [("놀이 주제", 1, "head", "label", CENTER), (EMPTY, 5, None, "value", LEFT)],
+    [("예상 기간", 1, "head", "label", CENTER), (EMPTY, 5, None, "value", LEFT)],
+    [("주제 선정 이유", 1, "head", "label", CENTER), (BLANK_2, 5, None, "value", LEFT)],
     [("예상되는 놀이 방향", 6, "band", "band", LEFT)],
     [
         ("함께하는 활동", 2, "head", "label", CENTER),
         ("그림", 2, "head", "label", CENTER),
         ("유아 예상 자유놀이", 2, "head", "label", CENTER),
     ],
-    [("\n" * 7, 2, None, "value", LEFT)] * 3,
+    # 가운데가 그림 자리다. 사진을 넣으면 한글이 그 칸을 더 벌린다.
+    [(BLANK_3, 2, None, "value", LEFT)] * 3,
     [("구분", 1, "head", "label", CENTER)]
     + [(f"{n}주차", 1, WEEK_FILLS[n - 1], "label", CENTER) for n in range(1, 6)],
     *[
-        [(name, 1, "head", "label", CENTER)] + [(BLANK_3, 1, None, "value", LEFT)] * 5
+        [(name, 1, "head", "label", CENTER)] + [(BLANK_2, 1, None, "value", LEFT)] * 5
         for name in BODY_ROWS
     ],
     [("우리반 안내 사항", 6, "band", "band", LEFT)],
-    [(BLANK_3, 6, None, "value", LEFT)],
+    [(BLANK_2, 6, None, "value", LEFT)],
 ]
 
 

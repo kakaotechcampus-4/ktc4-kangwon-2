@@ -157,3 +157,15 @@ def test_column_widths_add_up(template: bytes) -> None:
     for tr in table.findall("hp:tr", NS):
         total = sum(int(tc.find("hp:cellSz", NS).get("width")) for tc in tr.findall("hp:tc", NS))
         assert total == width
+
+
+def test_the_empty_form_fits_one_page(template: bytes) -> None:
+    """빈 양식이 A4 한 쪽을 넘으면 표가 두 쪽으로 쪼개져 출력된다.
+
+    줄 수로 센다 — 한글이 cellSz 높이를 무시하고 글자 양으로 다시 계산하기 때문이다.
+    한 쪽에 22줄까지 들어간다(2026-10-20 에 한글에서 확인).
+    """
+    lines = 0
+    for tr in table_of(template).findall("hp:tr", NS):
+        lines += max(len(tc.findall(".//hp:p", NS)) for tc in tr.findall("hp:tc", NS))
+    assert lines <= 21, f"빈 양식이 {lines}줄이다."
