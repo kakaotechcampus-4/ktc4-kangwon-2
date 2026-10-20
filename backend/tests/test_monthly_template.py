@@ -36,8 +36,9 @@ LABELS = {
     "5주차",
     "기본생활습관",
     "안전교육",
-    "소방대피 / 재난대비",
-    "건강 · 영양교육",
+    "소방대피",  # 「소방대피 / 재난대비」는 칸 안에서 두 줄이라 문단이 둘이다
+    "재난대비",
+    "건강·영양교육",
     "우리반 안내 사항",
 }
 
@@ -116,3 +117,43 @@ def test_fill_cells_rejects_a_merged_away_address(template: bytes) -> None:
     """(0, 2) 는 (0, 1) 에 합쳐져 없는 칸이다. 조용히 지나가면 글자가 사라진다."""
     with pytest.raises(TemplateMismatch):
         fill_cells(template, "제목", {(0, 2): "여기엔 칸이 없다"})
+
+
+def test_cells_use_the_added_char_styles(template: bytes) -> None:
+    """표 안 글자는 전부 양식에 더한 돋움체를 가리켜야 한다.
+
+    가리키는 id 가 header.xml 에 없으면 한글이 파일을 안 연다.
+    """
+    with zipfile.ZipFile(BytesIO(template)) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+    defined = {c.get("id"): c for c in header.findall(".//hh:charPr", HEAD)}
+    assert len(defined) == int(header.find(".//hh:charProperties", HEAD).get("itemCnt"))
+
+    table = table_of(template)
+    used = {run.get("charPrIDRef") for run in table.iter(f"{{{NS['hp']}}}run")}
+    assert used <= defined.keys()
+    bold = {i for i, c in defined.items() if c.find("hh:bold", HEAD) is not None}
+    assert used & bold, "굵은 글씨를 쓰는 칸이 없다."
+
+
+def test_label_cells_are_centered(template: bytes) -> None:
+    """분류 이름은 가운데, 교사가 채우는 칸은 왼쪽이어야 한다."""
+    cells = {
+        (
+            int(tc.find("hp:cellAddr", NS).get("rowAddr")),
+            int(tc.find("hp:cellAddr", NS).get("colAddr")),
+        ): tc
+        for tc in table_of(template).iter(f"{{{NS['hp']}}}tc")
+    }
+    assert cells[(0, 0)].find(".//hp:p", NS).get("paraPrIDRef") == "20"  # 놀이 주제
+    assert cells[(6, 1)].find(".//hp:p", NS).get("paraPrIDRef") == "20"  # 1주차
+    assert cells[(0, 1)].find(".//hp:p", NS).get("paraPrIDRef") == "12"  # 값 칸
+
+
+def test_column_widths_add_up(template: bytes) -> None:
+    """칸 너비 합이 표 너비와 다르면 한글이 표를 제멋대로 늘린다."""
+    table = table_of(template)
+    width = int(table.find("hp:sz", NS).get("width"))
+    for tr in table.findall("hp:tr", NS):
+        total = sum(int(tc.find("hp:cellSz", NS).get("width")) for tc in tr.findall("hp:tc", NS))
+        assert total == width

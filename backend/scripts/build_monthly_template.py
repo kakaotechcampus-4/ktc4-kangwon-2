@@ -1,13 +1,10 @@
 """월간 놀이계획안 hwpx 양식을 만든다.
 
-**표를 손으로 그리지 않는다.** 한글이 저장한 `annual.hwpx` 의 표를 복제해서 행·열 수와
-글자만 바꾼다. `header.xml` 의 모양(글꼴·문단·테두리)은 건드리지 않는다 — 손으로 쓰면
-한글이 파일을 안 여는 경로가 수십 개 생긴다(`app/shared/hwpx.py` 머리말).
+**표를 손으로 그리지 않는다.** 한글이 저장한 `annual.hwpx` 의 칸을 복제해서 행·열 수와
+글자만 바꾼다. 글꼴·문단·테두리 묶음(`header.xml`)도 있는 것을 복제해서 쓴다 — 손으로
+쓰면 한글이 파일을 안 여는 경로가 수십 개 생긴다(`app/shared/hwpx.py` 머리말).
 
-색만 더한다. 칸 배경은 `borderFill` 이 들고 있으므로, 색을 넣은 `borderFill` 을 몇 개
-붙이고 칸이 그걸 가리키게 한다.
-
-    python backend/scripts/build_monthly_template.py
+    docker compose exec backend python scripts/build_monthly_template.py
 
 근거 — 멘토가 준 월간 놀이계획안 2장(0세 · 3세)과 하민의 11기관 조사.
   본문 행   기본생활습관(10/11) · 안전교육(9/11) · 소방대피 · 건강·영양교육
@@ -23,6 +20,8 @@ import zipfile
 
 from lxml import etree
 
+from app.shared.hwpx import _set_text
+
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
 HH = "http://www.hancom.co.kr/hwpml/2011/head"
 HC = "http://www.hancom.co.kr/hwpml/2011/core"
@@ -35,8 +34,12 @@ TARGET = ROOT / "app/features/plans/templates/monthly.hwpx"
 SECTION = "Contents/section0.xml"
 HEADER = "Contents/header.xml"
 
-#: 칸 너비. 합이 원본 표 너비(41952)와 같아야 한다. 첫 칸은 분류 이름이라 넓다.
-COLUMNS = [7952, 6800, 6800, 6800, 6800, 6800]
+#: 칸 너비. 합이 글이 들어가는 폭(41952)과 같아야 한다. 첫 칸은 분류 이름이라 넓다.
+#: 10pt 한글 한 글자가 1000 이고 칸 좌우 여백이 1020 이다 — 첫 칸은 일곱 글자까지 한 줄.
+COLUMNS = [8992, 6592, 6592, 6592, 6592, 6592]
+
+#: 한 줄 높이. 한글이 글자 양을 보고 다시 계산하므로 어림값이다.
+LINE = 1280
 
 #: 더할 배경색. 멘토 자료의 연한 파랑 머리글 + 주차별 파스텔을 따른다.
 FILLS = {
@@ -49,43 +52,56 @@ FILLS = {
     "w5": "#E3EAF7",
 }
 
-#: 표 한 장. (글자, 가로로 합칠 칸 수, 색 이름) 세 개씩. 색 이름 None 이면 흰 칸.
-#: 값 칸은 비워 둔다 — 코드가 채우고, 교사가 한글에서 고친다.
-BODY_ROWS = ["기본생활습관", "안전교육", "소방대피 / 재난대비", "건강 · 영양교육"]
-WEEK_FILLS = ["w1", "w2", "w3", "w4", "w5"]
+#: 더할 글자 모양. 양식에 굵은 돋움이 없어서 만든다. (본보기 id, 크기, 굵게)
+#: id 1 은 함초롬돋움 10pt — 표 안은 이 글꼴로 통일한다. 바탕체(id 0)는 획이 얇아
+#: 칸이 촘촘한 계획표에서 읽기 나쁘다.
+CHAR_STYLES = {
+    "label": (1, 1000, True),  # 분류 이름 · 머리 칸
+    "band": (1, 1100, True),  # 묶음 머리말 한 줄짜리 띠
+    "value": (1, 1000, False),  # 교사가 채우는 칸
+}
 
-LAYOUT: list[tuple[int, list[tuple[str, int, str | None]]]] = [
-    (520, [("놀이 주제", 1, "head"), ("", 5, None)]),
-    (520, [("예상 기간", 1, "head"), ("", 5, None)]),
-    (1100, [("주제 선정 이유", 1, "head"), ("", 5, None)]),
-    (460, [("예상되는 놀이 방향", 6, "band")]),
-    (
-        460,
-        [
-            ("함께하는 활동", 2, "head"),
-            ("그림", 2, "head"),
-            ("유아 예상 자유놀이", 2, "head"),
-        ],
-    ),
-    (2600, [("", 2, None), ("", 2, None), ("", 2, None)]),
-    (
-        520,
-        [("구분", 1, "head")] + [(f"{n}주차", 1, WEEK_FILLS[n - 1]) for n in range(1, 6)],
-    ),
-    *[(1400, [(name, 1, "head")] + [("", 1, None)] * 5) for name in BODY_ROWS],
-    (460, [("우리반 안내 사항", 6, "band")]),
-    (1100, [("", 6, None)]),
+#: 양식에 있는 문단 모양. 20 = 가운데, 12 = 왼쪽.
+CENTER, LEFT = "20", "12"
+
+WEEK_FILLS = ["w1", "w2", "w3", "w4", "w5"]
+BODY_ROWS = ["기본생활습관", "안전교육", "소방대피\n재난대비", "건강·영양교육"]
+
+# 표 한 장. 줄마다 (글자, 가로로 합칠 칸 수, 색, 글자 모양, 문단 모양).
+# 값 칸은 비워 둔다 — 코드가 채우고, 교사가 한글에서 고친다. 글자 안의 줄바꿈은 빈 줄이라
+# 칸 높이를 벌어 준다. 한글은 cellSz 높이를 글자 양으로 다시 계산해서 덮어쓴다.
+BLANK_3 = "\n\n"
+Cell = tuple[str, int, str | None, str, str]
+LAYOUT: list[list[Cell]] = [
+    [("놀이 주제", 1, "head", "label", CENTER), ("", 5, None, "value", LEFT)],
+    [("예상 기간", 1, "head", "label", CENTER), ("", 5, None, "value", LEFT)],
+    [("주제 선정 이유", 1, "head", "label", CENTER), (BLANK_3, 5, None, "value", LEFT)],
+    [("예상되는 놀이 방향", 6, "band", "band", LEFT)],
+    [
+        ("함께하는 활동", 2, "head", "label", CENTER),
+        ("그림", 2, "head", "label", CENTER),
+        ("유아 예상 자유놀이", 2, "head", "label", CENTER),
+    ],
+    [("\n" * 7, 2, None, "value", LEFT)] * 3,
+    [("구분", 1, "head", "label", CENTER)]
+    + [(f"{n}주차", 1, WEEK_FILLS[n - 1], "label", CENTER) for n in range(1, 6)],
+    *[
+        [(name, 1, "head", "label", CENTER)] + [(BLANK_3, 1, None, "value", LEFT)] * 5
+        for name in BODY_ROWS
+    ],
+    [("우리반 안내 사항", 6, "band", "band", LEFT)],
+    [(BLANK_3, 6, None, "value", LEFT)],
 ]
 
 
-def add_fills(header: etree._Element) -> dict[str, int]:
+def add_fills(header: etree._Element) -> dict[str, str]:
     """색 칸을 header.xml 에 더하고 「이름 → id」를 돌려준다."""
     fills = header.find(".//hh:borderFills", NS)
     entries = fills.findall("hh:borderFill", NS)
     sample = entries[-1]  # 테두리가 그려진 칸. 이걸 복제해야 선이 남는다.
     next_id = max(int(entry.get("id")) for entry in entries) + 1
 
-    ids: dict[str, int] = {}
+    ids: dict[str, str] = {}
     for name, color in FILLS.items():
         entry = copy.deepcopy(sample)
         entry.set("id", str(next_id))
@@ -96,29 +112,61 @@ def add_fills(header: etree._Element) -> dict[str, int]:
         brush.set("hatchColor", "#999999")
         brush.set("alpha", "0")
         fills.append(entry)
-        ids[name] = next_id
+        ids[name] = str(next_id)
         next_id += 1
 
     fills.set("itemCnt", str(len(fills.findall("hh:borderFill", NS))))
     return ids
 
 
-def build_table(table: etree._Element, fill_ids: dict[str, int]) -> None:
+def add_char_styles(header: etree._Element) -> dict[str, str]:
+    """글자 모양을 더하고 「이름 → id」를 돌려준다.
+
+    굵게는 `<hh:bold/>` 하나다. 한글은 자식 차례를 따지므로 밑줄(`hh:underline`) 앞에 넣는다.
+    """
+    chars = header.find(".//hh:charProperties", NS)
+    entries = {int(entry.get("id")): entry for entry in chars.findall("hh:charPr", NS)}
+    next_id = max(entries) + 1
+
+    ids: dict[str, str] = {}
+    for name, (base, height, bold) in CHAR_STYLES.items():
+        entry = copy.deepcopy(entries[base])
+        entry.set("id", str(next_id))
+        entry.set("height", str(height))
+        if bold:
+            entry.insert(
+                list(entry).index(entry.find("hh:underline", NS)), etree.Element(f"{{{HH}}}bold")
+            )
+        chars.append(entry)
+        ids[name] = str(next_id)
+        next_id += 1
+
+    chars.set("itemCnt", str(len(chars.findall("hh:charPr", NS))))
+    return ids
+
+
+def build_table(table: etree._Element, fills: dict[str, str], chars: dict[str, str]) -> None:
     """표를 LAYOUT 모양으로 갈아끼운다. 원본 칸을 복제해서 쓴다."""
     rows = table.findall("hp:tr", NS)
     blank = copy.deepcopy(rows[0].find("hp:tc", NS))
-    plain_id = blank.get("borderFillIDRef")
+    plain = blank.get("borderFillIDRef")
     for row in rows:
         table.remove(row)
 
-    for row_index, (height, cells) in enumerate(LAYOUT):
+    height = 0
+    for row_index, cells in enumerate(LAYOUT):
         tr = etree.SubElement(table, f"{{{HP}}}tr")
+        lines = max(text.count("\n") + 1 for text, *_ in cells)
         column = 0
-        for text, span, fill in cells:
+        for text, span, fill, char, para in cells:
             tc = copy.deepcopy(blank)
-            tc.find(".//hp:t", NS).text = text
-            tc.set("header", "1" if fill == "head" else "0")
-            tc.set("borderFillIDRef", str(fill_ids[fill]) if fill else plain_id)
+            tc.set("header", "1" if fill else "0")
+            tc.set("borderFillIDRef", fills[fill] if fill else plain)
+            _set_text(tc, text)
+            for p in tc.iter(f"{{{HP}}}p"):
+                p.set("paraPrIDRef", para)
+            for run in tc.iter(f"{{{HP}}}run"):
+                run.set("charPrIDRef", chars[char])
 
             addr = tc.find("hp:cellAddr", NS)
             addr.set("colAddr", str(column))
@@ -128,36 +176,37 @@ def build_table(table: etree._Element, fill_ids: dict[str, int]) -> None:
 
             size = tc.find("hp:cellSz", NS)
             size.set("width", str(sum(COLUMNS[column : column + span])))
-            size.set("height", str(height))
+            size.set("height", str(lines * LINE))
             tr.append(tc)
             column += span
+        height += lines * LINE
 
     table.set("rowCnt", str(len(LAYOUT)))
     table.set("colCnt", str(len(COLUMNS)))
     size = table.find("hp:sz", NS)
     size.set("width", str(sum(COLUMNS)))
-    size.set("height", str(sum(height for height, _ in LAYOUT)))
+    size.set("height", str(height))
 
 
 def main() -> None:
     with zipfile.ZipFile(SOURCE) as archive:
-        parts = {name: archive.read(name) for name in archive.namelist()}
         order = archive.namelist()
+        parts = {name: archive.read(name) for name in order}
 
     header = etree.fromstring(parts[HEADER])
-    fill_ids = add_fills(header)
+    fills, chars = add_fills(header), add_char_styles(header)
     parts[HEADER] = etree.tostring(header, xml_declaration=True, encoding="UTF-8", standalone=True)
 
     section = etree.fromstring(parts[SECTION])
     tables = section.findall(".//hp:tbl", NS)
     if len(tables) != 1:
         raise SystemExit(f"양식에 표가 {len(tables)}개다. 1개일 때만 쓸 수 있다.")
-    build_table(tables[0], fill_ids)
+    build_table(tables[0], fills, chars)
     parts[SECTION] = etree.tostring(
         section, xml_declaration=True, encoding="UTF-8", standalone=True
     )
 
-    # mimetype 이 맨 앞에 압축 없이 들어가야 한글이 연다. 나머지 순서도 양식 그대로 둔다.
+    # mimetype 이 맨 앞에 압축 없이 들어가야 한글이 연다. 나머지 차례도 양식 그대로 둔다.
     with zipfile.ZipFile(TARGET, "w", zipfile.ZIP_DEFLATED) as out:
         for name in order:
             if name == "mimetype":
@@ -165,7 +214,9 @@ def main() -> None:
             else:
                 out.writestr(name, parts[name])
 
-    print(f"{TARGET} — {len(LAYOUT)}행 × {len(COLUMNS)}열, 색 {len(FILLS)}가지")
+    print(
+        f"{TARGET} — {len(LAYOUT)}행 × {len(COLUMNS)}열, 색 {len(FILLS)} · 글자 모양 {len(chars)}"
+    )
 
 
 if __name__ == "__main__":
