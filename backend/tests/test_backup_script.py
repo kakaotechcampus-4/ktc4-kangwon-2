@@ -82,7 +82,15 @@ def test_정상_덤프는_백업으로_남는다(run_backup):
     assert gzip.decompress(files[0].read_bytes()).decode().endswith(FOOTER)
 
 
-def test_강제_종료로_남은_임시_파일은_정리된다(run_backup, tmp_path):
+@pytest.mark.parametrize(
+    ("dump", "expected"),
+    [
+        ("ok", 0),
+        # 그 임시 파일이 디스크를 채워 덤프가 실패하는 날에도 치워져야 다음 백업이 된다
+        ("fail", 1),
+    ],
+)
+def test_강제_종료로_남은_임시_파일은_정리된다(run_backup, tmp_path, dump, expected):
     # trap 이 못 도는 강제 종료 · 재부팅이면 임시 파일이 남는다
     backup_dir = tmp_path / "backup"
     backup_dir.mkdir()
@@ -93,9 +101,9 @@ def test_강제_종료로_남은_임시_파일은_정리된다(run_backup, tmp_p
     running = backup_dir / ".ssuksak_20261021_031500.sql.gz.part"  # 지금 도는 다른 백업
     running.write_bytes(b"x")
 
-    code, stderr, _ = run_backup("ok")
+    code, stderr, _ = run_backup(dump)
 
-    assert code == 0, stderr
+    assert code == expected, stderr
     assert not stale.exists()
     assert running.exists()
 

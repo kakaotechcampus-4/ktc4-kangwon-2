@@ -50,6 +50,13 @@ fail() {
   exit 1
 }
 
+# 강제 종료 · 재부팅이면 위 trap 이 못 돌아 임시 파일이 남는다. 맨 끝의 14일 정리는 그 이름을
+# 안 고른다. **덤프보다 먼저 치운다** — 그 파일이 디스크를 채우면 아래 덤프가 실패해 끝까지 못 간다.
+# 1시간 넘은 것만 지운다 — 지금 같이 돌고 있는 다른 백업의 임시 파일은 건드리지 않는다.
+# 같이 도는 백업이 같은 파일을 먼저 지웠으면 find 가 실패로 끝나 `set -e` 가 여기서 멈춘다.
+# 이미 사라진 파일은 넘어가게 한다.
+find "$BACKUP_DIR" -maxdepth 1 -ignore_readdir_race -name '.ssuksak_*.sql.gz.part' -mmin +60 -delete
+
 # -T 로 TTY 를 끈다. cron 에는 TTY 가 없어 안 끄면 "the input device is not a TTY" 로 죽는다.
 # cron 은 root 로 돌지만 손으로 돌릴 때는 ubuntu 다. docker 그룹에 없을 수 있어 맞춰 쓴다.
 # `version` 은 데몬에 안 닿아서 권한이 없어도 성공한다. `ps` 로 본다.
@@ -94,6 +101,3 @@ fi
 
 # 오래된 것만 지운다. 지우기 전에 새 백업이 성공한 것을 위에서 확인했다.
 find "$BACKUP_DIR" -name 'ssuksak_*.sql.gz' -mtime "+$KEEP_DAYS" -delete
-# 강제 종료 · 재부팅이면 위 trap 이 못 돌아 임시 파일이 남는다. 위 정리는 그 이름을 안 고른다.
-# 1시간 넘은 것만 지운다 — 지금 같이 돌고 있는 다른 백업의 임시 파일은 건드리지 않는다.
-find "$BACKUP_DIR" -maxdepth 1 -name '.ssuksak_*.sql.gz.part' -mmin +60 -delete
