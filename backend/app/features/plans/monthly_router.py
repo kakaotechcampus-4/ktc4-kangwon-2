@@ -22,7 +22,7 @@ HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -347,6 +347,23 @@ def _skip(row: Plan, reason: str) -> None:
 def get_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
     """남의 원 것 · 월간이 아닌 것은 없는 것과 같다."""
     return _current(session, user, plan_id)
+
+
+@router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
+    """확정 전 월간계획안을 지운다. 연간과 같은 이유다 — 지울 길이 있어야 다시 만든다.
+
+    반 하나에 그 달 월간은 하나다(models.py 부분 유니크 인덱스). 만들기가 409 로 막히므로,
+    지우기가 없으면 첫 초안이 마음에 안 들어도 그 달은 영영 다시 못 만든다.
+
+    **확정본은 안 지운다.** 제출 문서다.
+    """
+    row = _own_row(session, user, plan_id)
+    if row.status == "CONFIRMED":
+        raise _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
+    session.delete(row)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{plan_id}/audit", response_model=MonthlyAuditOut)

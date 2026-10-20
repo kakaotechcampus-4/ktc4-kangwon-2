@@ -26,6 +26,7 @@ from tests.finalization.harness import (
     ACTIVITY_CATALOG,
     EXTENDED_PROFILE,
     LLM_PROFILE,
+    RULE_PROFILE,
     SAFETY_RULE,
     PlanningHarness,
 )
@@ -123,11 +124,12 @@ def test_composed_generation_rejects_the_real_pending_template():
             return super().generate_monthly(request)
 
     provider = CountingLlm()
-    # The real files: PENDING_HUMAN_REVIEW (ADR-027).
+    # The real files. RULE_PROFILE sits on v0.1.1, still PENDING_HUMAN_REVIEW; LLM_PROFILE
+    # sits on v0.2.1, approved 2026-10-20 (reviewer_pm_001, ADR-027 §5).
     harness.generation_templates = harness.templates
 
     with pytest.raises(MonthlyApplicationError) as exc:
-        _generate(harness, parent, provider, month=YearMonth(2026, 9), profile=LLM_PROFILE)
+        _generate(harness, parent, provider, month=YearMonth(2026, 9), profile=RULE_PROFILE)
 
     assert exc.value.code == "monthly_template_not_approved"
     assert harness.monthly_plans.save_count == 0

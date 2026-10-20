@@ -2,6 +2,7 @@ import type {
   Center,
   ApiClass,
   ApiChild,
+  AnnualAuditEvent,
   AnnualPlan,
   PlanConfig,
   MonthlyAuditEvent,
@@ -23,6 +24,8 @@ export interface Database {
   monthlyPlans: MonthlyPlan[];
   /** 월간 변경 이력. 키는 plan id. 서버처럼 계획안 단위와 칸(item_id) 단위로 따로 쌓는다. */
   monthlyAudit: Record<number, MockPlanAudit>;
+  /** 연간 변경 이력. 키는 plan id. 저장 순서 그대로 쌓고 읽을 때 서버처럼 정렬한다. */
+  annualAudit: Record<number, AnnualAuditEvent[]>;
   /** 원 소유 양식 설정 버전. 지금 목업은 READY 만 만든다(DRAFT · ARCHIVED 는 테스트가 넣는다). */
   profiles: MockProfile[];
   /** 원 기본 포인터(키 = center id) · 반 override 포인터(키 = class id). */
@@ -63,6 +66,7 @@ const empty = (): Database => ({
   centerSettings: {},
   monthlyPlans: [],
   monthlyAudit: {},
+  annualAudit: {},
   profiles: [],
   defaultPointers: {},
   overridePointers: {},
@@ -97,6 +101,7 @@ export function read(): Database {
     centerSettings: parsed.centerSettings ?? {},
     monthlyPlans: parsed.monthlyPlans ?? [],
     monthlyAudit: parsed.monthlyAudit ?? {},
+    annualAudit: parsed.annualAudit ?? {},
     profiles: parsed.profiles ?? [],
     defaultPointers: parsed.defaultPointers ?? {},
     overridePointers: parsed.overridePointers ?? {},
