@@ -35,6 +35,11 @@ export async function downloadHwpx(path: string, fallbackName: string): Promise<
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = name;
+  // **문서에 붙여야 한다.** 떼어 둔 `<a>` 의 click() 은 크롬에서만 먹고 파이어폭스 ·
+  // 사파리에서는 아무 일도 안 일어난다 — 교사는 버튼을 눌렀는데 파일이 안 받아진다.
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

@@ -24,13 +24,33 @@ const original = {
   revokeObjectURL: URL.revokeObjectURL,
 };
 let saved;
+/** 누를 때 문서에 붙어 있었는가. 떼어 둔 <a> 는 파이어폭스 · 사파리에서 안 받아진다. */
+let attachedWhenClicked;
+/** 누른 뒤 치웠는가. 안 치우면 받을 때마다 빈 <a> 가 쌓인다. */
+let removedAfter;
 beforeEach(() => {
   saved = [];
+  attachedWhenClicked = [];
+  removedAfter = [];
   globalThis.window = { sessionStorage: { getItem: () => null } };
+  const children = new Set();
   globalThis.document = {
+    body: {
+      appendChild(node) {
+        children.add(node);
+        node.remove = () => {
+          children.delete(node);
+          removedAfter.push(node.download);
+        };
+        return node;
+      },
+    },
     createElement: () => ({
+      style: {},
+      remove() {},
       click() {
         saved.push(this.download);
+        attachedWhenClicked.push(children.has(this));
       },
     }),
   };
@@ -69,4 +89,15 @@ test("헤더에 이름이 없으면 기본 이름을 쓴다 — 빈 이름이면
   respond({});
   await downloadHwpx("/api/plans/3/export/hwp", "연간계획안.hwpx");
   assert.deepEqual(saved, ["연간계획안.hwpx"]);
+});
+
+test("누를 때 문서에 붙어 있고, 누른 뒤 치운다", async () => {
+  respond({ "Content-Disposition": 'attachment; filename="plan-3.hwpx"' });
+
+  await downloadHwpx("/api/plans/3/export/hwp", "연간계획안.hwpx");
+
+  // 떼어 둔 <a> 의 click() 은 크롬에서만 먹는다. 교사가 버튼을 눌렀는데 아무 일도
+  // 안 일어나는 길이라, 붙어 있었는지를 직접 본다.
+  assert.deepEqual(attachedWhenClicked, [true]);
+  assert.deepEqual(removedAfter, ["plan-3.hwpx"]);
 });
