@@ -4,11 +4,12 @@
 끝나고, 위험한 놀이가 검열을 못 거치고 교사에게 간다.
 
 **여기서는 거르지 않는다.** 승인 목록에 없는 곳에서 안 긁어올 뿐이다.
-금칙 대조와 LLM 판정은 다음 단계다.
+위험 표시(2단)와 LLM 판정(3단)은 다음 단계다 — 2단은 거르지 않고 표시만 한다.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -31,6 +32,16 @@ def http_fetch(url, params, headers):  # pragma: no cover - 망을 타는 유일
     response = httpx.get(url, params=dict(params), headers=dict(headers), timeout=20.0)
     response.raise_for_status()
     return response.json()
+
+
+# 유튜브는 키를 **주소에** 담는다(`?key=...`). httpx 가 내는 오류 메시지에는 그 주소가
+# 통째로 들어 있어서, 실패 기록을 그대로 어딘가에 적으면 키가 같이 적힌다 —
+# Actions 로그, PR 본문, 서버 cron 로그 전부. 메시지를 만드는 자리에서 가린다.
+_SECRET_IN_URL = re.compile(r"(?i)([?&](?:key|api_key|client_secret)=)[^&\s\"\']+")
+
+
+def _safe(error: Exception) -> str:
+    return _SECRET_IN_URL.sub(r"\1***", f"{type(error).__name__} {error}")
 
 
 def collect(
@@ -58,7 +69,7 @@ def collect(
             try:
                 items += sources.youtube_uploads(fetch, youtube_key, approved.channels, per_channel)
             except Exception as error:
-                failures.append(f"youtube: {type(error).__name__} {error}")
+                failures.append(f"youtube: {_safe(error)}")
 
     if approved.outlets and approved.news_queries:
         if not (naver_id and naver_secret):
@@ -69,7 +80,7 @@ def collect(
                     fetch, naver_id, naver_secret, approved.news_queries, approved.outlets
                 )
             except Exception as error:
-                failures.append(f"naver_news: {type(error).__name__} {error}")
+                failures.append(f"naver_news: {_safe(error)}")
 
     return CollectResult(items=items, failures=failures)
 

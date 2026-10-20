@@ -7,7 +7,9 @@ import { EMPTY_CLASS_SETTINGS, MONTH_ORDER, type CharacterMessages } from "@/lib
 import { getCurrentUser } from "@/lib/api/auth";
 import {
   createInvite,
+  getCenterSettings,
   getGreetings,
+  saveCenterSettings,
   saveGreetings,
   type Greetings,
   type Invite,
@@ -151,8 +153,67 @@ export default function SettingsPage() {
           )}
         </section>
       )}
+      {centerId !== null && <TrendsCard centerId={centerId} />}
       {centerId !== null && <InviteCard centerId={centerId} />}
     </WorkspacePage>
+  );
+}
+
+/**
+ * 트렌드봇 끄고 켜기 (FR-808 · §3-1).
+ *
+ * **기본은 꺼짐이다.** 부가 기능은 원하는 원이 켠다. 끄면 트렌드 화면이 막히고
+ * 계획안 생성이 트렌드를 참고로 넣지 않는다. **이미 만든 계획안은 그대로 둔다** —
+ * 출처는 그때 그랬다는 기록이다.
+ */
+function TrendsCard({ centerId }: { centerId: number }) {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    getCenterSettings(centerId)
+      .then((s) => live && setEnabled(s.trends_enabled))
+      .catch(() => live && setError("트렌드봇 설정을 불러오지 못했어요."));
+    return () => {
+      live = false;
+    };
+  }, [centerId]);
+
+  async function toggle(next: boolean) {
+    setBusy(true);
+    setError("");
+    // 화면을 먼저 바꾸지 않는다. 저장이 실패하면 켠 줄 알고 넘어간다.
+    try {
+      const saved = await saveCenterSettings(centerId, { trends_enabled: next });
+      setEnabled(saved.trends_enabled);
+    } catch {
+      setError("바꾸지 못했어요. 잠시 뒤 다시 해주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={ws.card} style={{ marginTop: 24 }}>
+      <h2>트렌드봇</h2>
+      <p>
+        요즘 유행하는 놀이 소재를 모아 계획안에 참고로 붙여요. 쓰지 않으시면 꺼두세요. 꺼도 이미
+        만든 계획안은 그대로예요.
+      </p>
+      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          type="checkbox"
+          checked={enabled ?? false}
+          disabled={enabled === null || busy}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        트렌드봇 사용
+      </label>
+      {error && <Message error>{error}</Message>}
+      <p role="status">{busy ? "바꾸고 있어요." : ""}</p>
+    </section>
   );
 }
 

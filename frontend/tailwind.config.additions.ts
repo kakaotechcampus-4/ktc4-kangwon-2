@@ -29,7 +29,6 @@ export const planGeneratorThemeExtend = {
       DEFAULT: "var(--pg-primary)",
       hover: "var(--pg-primary-hover)",
       line: "var(--pg-primary-line)",
-      soft: "var(--pg-primary-soft)",
       tint: "var(--pg-primary-tint)",
       "tint-line": "var(--pg-primary-tint-line)",
       ink: "var(--pg-primary-ink)",

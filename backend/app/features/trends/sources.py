@@ -23,7 +23,10 @@ from app.features.trends.item import RawItem
 Fetch = Callable[[str, Mapping[str, str], Mapping[str, str]], Any]
 
 YOUTUBE = "https://www.googleapis.com/youtube/v3"
-NAVER_NEWS = "https://openapi.naver.com/v1/search/news.json"
+# 네이버가 2026 에 검색 API 를 개발자센터에서 네이버 클라우드 플랫폼(API HUB)으로
+# 옮겼다. 옛 주소 openapi.naver.com/v1/search/news.json 와 X-Naver-Client-* 헤더는
+# 새 키로 부르면 401 errorCode 024 로 떨어진다. 주소와 헤더를 같이 바꿔야 한다.
+NAVER_NEWS = "https://naverapihub.apigw.ntruss.com/search/v1/news"
 
 # videos.list 는 한 번에 50개까지 받는다. 나눠 부르면 호출 수만 는다.
 _VIDEO_BATCH = 50
@@ -65,7 +68,7 @@ def youtube_uploads(
                     source="youtube",
                     source_id=video_id,
                     title=(snippet.get("title") or "").strip(),
-                    description=(snippet.get("description") or "").strip(),
+                    description=_body(snippet.get("description")),
                     url=f"https://www.youtube.com/watch?v={video_id}",
                     published_at=_iso_day(snippet.get("publishedAt")),
                     origin=channel.name,
@@ -73,6 +76,65 @@ def youtube_uploads(
                 )
             )
     return _with_video_status(fetch, api_key, collected)
+
+
+# 설명 꼬리를 자르는 기준.
+# 유튜브 설명은 놀이 서술 몇 줄 뒤에 **구독 안내 · SNS 링크 · 해시태그 더미**가 붙는다.
+# 실측 315건에서 설명이 전체 글자의 92% 였고 그 안에 링크 1,069개 · 해시태그 1,892개였다.
+# 그대로 두면 ① 사람이 읽는 승인 PR 이 매주 4,400줄이 되고 ② 3단 Judge 토큰이 그만큼 나간다.
+_DIVIDER = re.compile(r"[-=*_~·]{3,}")
+
+
+# 주소 **하나뿐인** 줄인지만 본다. 줄 안에서 주소를 도려내지 않는다 — 아래 설명 참고.
+_URL_ONLY = re.compile(r"https?://\S+")
+# 한글이 섞여 있으면 주소뿐인 줄이 아니다. `https://example.com)목을졸라요` 처럼
+# 주소 뒤에 띄어쓰기 없이 글이 붙으면 \S+ 가 그 글까지 주소로 먹는다.
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _clean(line: str) -> str | None:
+    r"""한 줄을 다듬는다. 버릴 줄이면 None.
+
+    **정규식으로 해시태그 줄을 찾지 않는다.** `(?:#\S+\s*)+` 처럼 쓰면 `#a#a#a…`
+    한 줄에 역추적이 터져 수집이 통째로 멈춘다(25번 반복에 2초). 낱말로 쪼갠다.
+
+    **해시태그만 있는 줄도 남긴다.** 2026-10-17 에 빼려다 되돌렸다 — `#기절놀이 #숨참기`
+    처럼 **위험이 해시태그에만 적힌 경우**가 있고, 그걸 지우면 2단 표시도 3단 판정도
+    그 줄을 못 본다. 버리는 것은 구분선과 주소뿐이다.
+
+    **줄 안에서 글자를 지우지 않는다.** 링크만 도려내려고 세 번 고쳐 봤고 세 번 다
+    안전 글을 깎아 먹었다(Codex).
+
+        목을 졸라요 https://…              길이로 홍보 줄을 가리려다 통째로 사라짐
+        밀어 떨어뜨려요https://…           앞 낱말까지 정규식이 먹음
+        놀이를 해요 https://…)목을졸라요    닫는 괄호 뒤 글을 주소로 보고 먹음
+
+    주소를 지워서 얻는 것은 파일 크기뿐이고, 잃는 것은 **위험한 동작이 승인 PR 에서
+    사라지는 것**이다. 그 거래는 하지 않는다. 주소 하나뿐인 줄만 버린다.
+    """
+    text = line.strip()
+    if not text:
+        return ""  # 빈 줄은 남긴다 — 문단이 붙어버리면 읽기 어렵다
+    if _DIVIDER.fullmatch(text):
+        return None
+    if _URL_ONLY.fullmatch(text) and not _HANGUL.search(text):
+        return None
+    return text
+
+
+def _body(text: str | None) -> str:
+    """놀이 서술만 남긴다. 링크·해시태그·구분선 줄은 버린다.
+
+    **낱말을 지우지 않고 줄 단위로만 버린다.** 문장 중간의 링크까지 손대면
+    원문이 바뀌어, 나중에 "왜 걸렀나" 를 설명할 수 없다 (ADR-016).
+
+    **길다고 자르지 않는다.** 3단이 보는 것은 제목이 아니라 놀이 서술 전체다
+    (ADR-016) — 위험한 동작은 설명 뒤쪽에 나온다. 길이를 줄이려고 뒤를 잘랐다가
+    되돌렸다: 315건 중 43건이 잘렸고, 그 뒤에 있던 글을 사람도 Judge 도 못 보게
+    된다. 읽기 편하자고 안전 근거를 버리는 거래는 하지 않는다.
+    """
+    kept = [cleaned for line in (text or "").splitlines() if (cleaned := _clean(line)) is not None]
+    return "\n".join(kept).strip()
 
 
 def _with_video_status(fetch: Fetch, api_key: str, items: list[RawItem]) -> list[RawItem]:
@@ -131,7 +193,7 @@ def naver_news(
     블로그·카페는 쓰지 않는다 — 협찬 글을 구분할 방법이 없다 (ADR-016).
     """
     allowed = {outlet.domain: outlet for outlet in outlets}
-    headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
+    headers = {"X-NCP-APIGW-API-KEY-ID": client_id, "X-NCP-APIGW-API-KEY": client_secret}
     collected: list[RawItem] = []
     seen: set[str] = set()
     for query in queries:

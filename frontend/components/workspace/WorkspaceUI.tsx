@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
-import { loadClassSettings } from "@/lib/onboarding/settings";
-import { hydrateClassChildren } from "@/lib/api/onboarding";
+import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
+import { adoptServerClasses, hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import type { ClassroomEntry } from "@/lib/onboarding/types";
+import { EMPTY_CLASS_SETTINGS, type ClassroomEntry } from "@/lib/onboarding/types";
 import styles from "./Workspace.module.css";
 export { styles as ws };
 /**
@@ -51,6 +51,13 @@ export function Message({ children, error = false }: { children: ReactNode; erro
   ) : null;
 }
 const NO_CLASSES: ClassroomEntry[] = [];
+/**
+ * 이 교사가 쓸 반 목록. 작업실 화면들이 전부 이걸 쓴다.
+ *
+ * **브라우저 저장소에 있는 반 + 서버에만 있는 반**을 합친다. 저장소만 보면
+ * 초대받은 교사(§1-1)와 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는
+ * 멀쩡히 있는데도. 실제로 초대 기능을 붙이면서 드러났다.
+ */
 export function useClasses(onError?: (message: string) => void) {
   const [classes, setClasses] = useClientState<ClassroomEntry[]>(
     () => loadClassSettings()?.classes || NO_CLASSES,
@@ -59,15 +66,29 @@ export function useClasses(onError?: (message: string) => void) {
   useEffect(() => {
     let live = true;
     const settings = loadClassSettings();
-    if (settings) {
-      hydrateClassChildren(settings)
-        .then((next) => {
-          if (live) setClasses(next);
-        })
-        .catch(() => {
-          if (live) onError?.("아동 명단을 불러오지 못했어요. 페이지를 새로고침해주세요.");
-        });
-    }
+    (async () => {
+      const local = settings ? await hydrateClassChildren(settings) : NO_CLASSES;
+      if (!live) return;
+      if (local.length) setClasses(local);
+      // 서버에만 있는 반을 뒤에 붙인다. 이게 실패해도 로컬 반은 이미 그려져 있다.
+      // **저장을 adopt 안에서 먼저 한다.** 연결보다 반 목록이 먼저 남아야 한다 —
+      // 반대로 끊기면 「연결은 있는데 목록에 없는 반」이 되어 영영 안 들어온다.
+      // 화면을 떠났어도 저장은 한다. 사이드바·홈도 저장소를 본다.
+      let next = local;
+      const adopted = await adoptServerClasses(
+        local,
+        (name) =>
+          onError?.(`${name || "반"}의 아동 명단을 못 불러왔어요. 페이지를 새로고침해주세요.`),
+        (rows) => {
+          next = [...local, ...rows];
+          saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
+        },
+      );
+      if (!adopted.length) return;
+      if (live) setClasses(next);
+    })().catch(() => {
+      if (live) onError?.("반 정보를 불러오지 못했어요. 페이지를 새로고침해주세요.");
+    });
     return () => {
       live = false;
     };

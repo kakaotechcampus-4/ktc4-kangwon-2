@@ -16,6 +16,16 @@ export const putGreetings = (id: number, data: Greetings) =>
     db.greetings[id] = next;
     return next;
   });
+/** 트렌드봇 설정. **계정마다 따로 두고 새로고침해도 남는다** — 모듈 전역에 들면
+ *  다른 계정이 만든 1번 원이 남의 설정을 물려받는다. */
+export const findCenterSettings = (id: number) =>
+  read().centerSettings[id] ?? { trends_enabled: false };
+export const putCenterSettings = (id: number, patch: { trends_enabled?: boolean }) =>
+  commit((db) => {
+    const next = { ...(db.centerSettings[id] ?? { trends_enabled: false }), ...patch };
+    db.centerSettings[id] = next;
+    return next;
+  });
 export const addCenter = (data: CenterInput) =>
   commit((db) => {
     const c = { ...data, id: db.next++, created_at: new Date().toISOString() };
