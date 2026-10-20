@@ -5,7 +5,7 @@
 - .hwpx : OWPML = zip + XML. 표준 라이브러리로 연다
 
 의존성:  pip install pyhwp six olefile    (hwp5html CLI가 PATH에 있어야 한다)
-읽기 전용이다. 내보내기는 shared/hwpx.py 가 hwpx 를 만들고, .hwp 는 그 hwpx 를 변환한다(ADR-030).
+읽기 전용이다. 내보내기는 shared/hwpx.py 가 hwpx 를 만들고, .hwp 는 그 hwpx 를 변환한다(ADR-039).
 """
 
 import html

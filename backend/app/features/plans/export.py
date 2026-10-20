@@ -1,6 +1,6 @@
 """계획안 내보내기 — `GET /api/plans/{id}/export/hwp` (docs/api-spec.md §9).
 
-기본은 hwpx 다. `?format=hwp` 면 그 hwpx 를 `.hwp` 로 바꿔 준다(`shared/hwpx.py`, ADR-030).
+기본은 hwpx 다. `?format=hwp` 면 그 hwpx 를 `.hwp` 로 바꿔 준다(`shared/hwpx.py`, ADR-039).
 
 **확정본만 내보낸다.** 내보낸 파일은 제출 문서다. DRAFT 를 내보낼 수 있으면 교사가
 확인하지 않은 초안이 그대로 제출되는 길이 생긴다. 확정 전 내용은 화면에서 본다.

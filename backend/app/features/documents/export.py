@@ -1,7 +1,7 @@
 """문서 내보내기 — `GET /api/documents/{id}/export/hwp` (docs/api-spec.md §11 「내보내기」).
 
 §9 계획안 내보내기와 같은 규칙이다. 확정본만 · 출처를 싣지 않는다 · 기본은 hwpx 이고
-`?format=hwp` 면 `.hwp` 로 바꿔 준다(`shared/hwpx.py`, ADR-030).
+`?format=hwp` 면 `.hwp` 로 바꿔 준다(`shared/hwpx.py`, ADR-039).
 
 **3층을 종이에서 합친다(ADR-024).** 화면과 검사에서는 사실 · 해석 · 지원이 나뉘어 있지만
 실물 양식에는 해석 칸과 지원 칸이 따로 없다. 꼬리 칸 하나에 해석, 빈 줄, 지원 순서로 잇는다.

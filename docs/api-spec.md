@@ -1006,7 +1006,7 @@ PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 **이 API 만 JSON 이 아니다.** 파일이 내려온다. 다른 API 처럼 `apiRequest` 로 부르면
 JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 
-**형식은 쿼리 `format` 으로 고른다. 기본은 hwpx 다**(ADR-030).
+**형식은 쿼리 `format` 으로 고른다. 기본은 hwpx 다**(ADR-039).
 
 ```
 GET /api/plans/10/export/hwp              → plan-10.hwpx   Content-Type: application/hwp+zip
@@ -1025,7 +1025,7 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 
 > **변환은 backend 프로세스 안에서만 한다. 파일을 밖으로 보내지 않는다.**
 > 계획안에는 반 이름·담임 이름이, 일지에는 아동 실명이 들어간다 — 시중 변환 서비스로
-> 보내면 ADR-004 가 LLM 한 줄을 막아둔 것이 통째로 무의미해진다(ADR-021 · ADR-030).
+> 보내면 ADR-004 가 LLM 한 줄을 막아둔 것이 통째로 무의미해진다(ADR-021 · ADR-039).
 
 **hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE` 이다 — 「hwpx 로 받아주세요」.**
 변환은 hwpx 를 다 만든 뒤에만 돌므로, 같은 문서를 `format` 없이 다시 받으면 hwpx 는 나온다.
