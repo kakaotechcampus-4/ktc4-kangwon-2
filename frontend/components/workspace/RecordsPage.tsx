@@ -6,6 +6,7 @@ import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route"
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
+import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
@@ -485,8 +486,15 @@ function RecordItem({
       </p>
       <p>{record.fact}</p>
       {!editable && <small>반·아동 정보를 확인할 수 없어 수정할 수 없어요.</small>}
-      {/* 문서 진입점은 문서 화면이 서버 기록을 읽게 된 뒤에 다시 연다. */}
       <div className={ws.actions}>
+        {editable && (
+          <Link
+            className={ws.secondary}
+            href={`/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}`}
+          >
+            관찰일지 만들기
+          </Link>
+        )}
         <button
           className={ws.secondary}
           disabled={pending || !editable}

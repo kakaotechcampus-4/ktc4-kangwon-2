@@ -34,7 +34,7 @@ def _rehash(doc):
 def test_load_catalog_preserves_policy_and_order(documents):
     loaded = catalog.load_catalog()
     assert catalog.load_catalog() is loaded
-    assert loaded.checklist_version == "daycare-evaluation-indicators-v1"
+    assert loaded.checklist_version == "daycare-evaluation-indicators-v2"
     assert loaded.rules_version == "checklist-rules-v1"
     assert [item.indicator for item in loaded.indicators] == [
         item["indicator"] for area in documents[0]["areas"] for item in area["indicators"]
@@ -44,7 +44,7 @@ def test_load_catalog_preserves_policy_and_order(documents):
     assert sum(item.kind == "EXCLUDED" for item in loaded.indicators) == 6
     assert loaded.get("4-2").rule["min_per_child"] == 2
     assert loaded.get("4-1").rule["plan"]["min_per_class"] == 1
-    assert all(item.elements == () for item in loaded.indicators)  # v1 은 평가요소가 없다
+    assert sum(len(item.elements) for item in loaded.indicators) == 19
     assert all(item.rule is None for item in loaded.indicators if item.kind != "AUTO")
 
 

@@ -7,6 +7,10 @@ import { fileURLToPath } from "node:url";
 
 registerHooks({
   resolve(spec, ctx, next) {
+    if (spec.startsWith("@/")) {
+      const u = new URL("../" + spec.slice(2) + ".ts", import.meta.url);
+      if (existsSync(fileURLToPath(u))) return { url: u.href, shortCircuit: true };
+    }
     if (spec.startsWith(".") && ctx.parentURL) {
       const u = new URL(spec + ".ts", ctx.parentURL);
       if (existsSync(fileURLToPath(u))) return { url: u.href, shortCircuit: true };
@@ -18,6 +22,7 @@ registerHooks({
 const documents = await import("../lib/api/documents.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
+const routinesRoute = await import("../lib/workspace/routines-route.ts");
 
 const EMAIL = "fixture@example.com";
 const TOKEN = "test-token";
@@ -1388,6 +1393,7 @@ function editorHarness(selection) {
     "@/lib/api/storage-context": { API_STORAGE_CONTEXT },
     "@/lib/api/plans": {},
     "@/lib/api/documents": documents,
+    "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/privacy/browser-storage": privacy,
   };
   modules["@/lib/hooks/use-hwpx-download"] = evaluate(hwpxHookCode, modules);
@@ -1549,8 +1555,11 @@ test("사실 칸 아래에 원본을 고치는 곳을 알려준다", async () =>
     editor.links().map((l) => l.props.href),
     ["/records"],
   );
-  // 일과 기록 화면(S-J1)이 아직 없다 — 갈 곳이 없는 링크를 띄우지 않는다.
-  assert.deepEqual((await editing({ kind: "dailyLog" })).editor.links(), []);
+  // S-J1이 연결됐으므로 같은 반·날짜로 돌아간다.
+  assert.deepEqual(
+    (await editing({ kind: "dailyLog" })).editor.links().map((link) => link.props.href),
+    ["/routines?date=2026-09-01&class_id=3"],
+  );
 });
 
 test("확정 취소는 확인창 없이 바로 서버를 부르고 초안으로 되돌린다", async () => {
