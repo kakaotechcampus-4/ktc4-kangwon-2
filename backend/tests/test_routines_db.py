@@ -276,6 +276,45 @@ def _confirmed_daily(klass, routines):
     return response.json()
 
 
+def _second_confirmed_daily(session, klass, routines, status="CONFIRMED"):
+    """같은 반 · 같은 날의 **두 번째** 일일 보육일지를 DB 에 직접 만든다.
+
+    API 로는 못 만든다 — 하루에 하나라는 규칙이 409 로 막는다(`_reject_second_daily_log`,
+    수민님 #160). 그 규칙은 맞다. 여기서 보려는 것은 「한 일과가 여러 문서에 걸렸을 때
+    영향 계산이 맞나」라서, 만드는 길과 싸우지 않고 상태만 만들어 둔다.
+
+    규칙이 생기기 전에 만들어진 일지도 실제로 이 상태다.
+    """
+    # 필수 칸은 `test_documents.py` 의 `_make_document` 기본값과 같게 둔다.
+    doc = Document(
+        kind="dailyLog",
+        title=f"{klass.name} {DAY} 일일 보육일지",
+        class_id=klass.id,
+        child_id=None,
+        start_date=datetime.date.fromisoformat(DAY),
+        end_date=datetime.date.fromisoformat(DAY),
+        status=status,
+        origin="AI",
+        stale=False,
+        review_note="",
+    )
+    session.add(doc)
+    session.flush()
+    for r in routines:
+        session.add(
+            DocumentSource(
+                document_id=doc.id,
+                source_kind="routine",
+                source_id=r["id"],
+                class_id=klass.id,
+                date=datetime.date.fromisoformat(DAY),
+                text=r.get("execution", ""),
+            )
+        )
+    session.commit()
+    return {"id": doc.id}
+
+
 @pytest.mark.parametrize(
     "edit",
     [
@@ -290,7 +329,9 @@ def _confirmed_daily(klass, routines):
 def test_영향_응답은_확정_일지만_세고_신규와_기존_stale을_구분한다(db_session, mine, edit):
     row = _routine(mine["sun"]).json()
     confirmed = _confirmed_daily(mine["sun"], [row])
-    draft = _daily(mine["sun"], [row]).json()
+    # 하루에 한 장이라 두 번째는 API 로 못 만든다(수민님 #160). 초안 stale 정책을 보려면
+    # 같은 날 초안이 있어야 해서 DB 에 직접 만든다 — 규칙이 생기기 전 일지도 이 상태다.
+    draft = _second_confirmed_daily(db_session, mine["sun"], [row], status="DRAFT")
     url = f"/api/routines/{row['id']}?include_impact=true"
     first = client.put(url, json=_update_body(row, **edit))
     assert first.status_code == 200, first.text
@@ -317,7 +358,9 @@ def test_여러_일과의_같은_문서_ID와_삭제_영향을_돌려준다(db_s
     a = _routine(mine["sun"]).json()
     b = _routine(mine["sun"], name="점심").json()
     one = _confirmed_daily(mine["sun"], [b, a])
-    two = _confirmed_daily(mine["sun"], [a])
+    # 하루에 한 장이라 두 번째는 API 로 못 만든다. 규칙은 맞고, 여기서 보려는 것은
+    # 「한 일과가 여러 문서에 걸렸을 때 영향 계산이 맞나」다.
+    two = _second_confirmed_daily(db_session, mine["sun"], [a])
     first = client.put(
         f"/api/routines/{a['id']}?include_impact=true", json=_update_body(a, execution="바뀐 실행")
     ).json()["review_impact"]
@@ -360,7 +403,6 @@ def test_계획과_position만_변경하면_영향이_없고_기존_응답도_�
 
 
 def test_오염된_다른_기관의_근거도_조회하거나_전파하지_않는다(db_session, mine, teacher):
-    from datetime import date
 
     row = _routine(mine["sun"]).json()
     own = _confirmed_daily(mine["sun"], [row])
@@ -383,8 +425,8 @@ def test_오염된_다른_기관의_근거도_조회하거나_전파하지_않�
         kind="dailyLog",
         title="다른 기관 문서",
         class_id=klass.id,
-        start_date=date.fromisoformat(DAY),
-        end_date=date.fromisoformat(DAY),
+        start_date=datetime.date.fromisoformat(DAY),
+        end_date=datetime.date.fromisoformat(DAY),
         status="CONFIRMED",
         origin="AI",
         stale=False,
@@ -399,7 +441,7 @@ def test_오염된_다른_기관의_근거도_조회하거나_전파하지_않�
                 source_kind="routine",
                 source_id=row["id"],
                 class_id=klass.id,
-                date=date.fromisoformat(DAY),
+                date=datetime.date.fromisoformat(DAY),
                 text="과거 사본",
             ),
             DocumentSource(
@@ -407,7 +449,7 @@ def test_오염된_다른_기관의_근거도_조회하거나_전파하지_않�
                 source_kind="document",
                 source_id=own["id"],
                 class_id=klass.id,
-                date=date.fromisoformat(DAY),
+                date=datetime.date.fromisoformat(DAY),
                 text="과거 사본",
             ),
         ]
