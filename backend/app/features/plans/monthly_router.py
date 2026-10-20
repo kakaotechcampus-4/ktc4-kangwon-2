@@ -139,6 +139,8 @@ _ALREADY_EXISTS = _error(
     409, "ALREADY_EXISTS", "이 반의 그 달 월간계획안이 이미 있습니다.", ["class_id", "month"]
 )
 _PROFILE_NOT_FOUND = _error(404, "NOT_FOUND", "고른 양식 설정을 찾을 수 없습니다.", ["profile_ref"])
+# 문구는 요청 모양 오류(main.py validation_error)와 같다.
+_PROFILE_REF_INVALID = _error(422, "VALIDATION_FAILED", "입력값을 확인해주세요.", ["profile_ref"])
 _PROFILE_UNUSABLE_ERROR = _error(
     422,
     "VALIDATION_FAILED",
@@ -228,7 +230,8 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         )
         profile = ready_profile_for_generation(session, center_id, profile_ref)
     except InvalidDomainValueError as error:
-        raise _error(422, "VALIDATION_FAILED", str(error), ["profile_ref"]) from error
+        # 공백뿐인 id 는 스키마(min_length)를 지나 Core 가 거절한다. Core 문구는 내보내지 않는다.
+        raise _PROFILE_REF_INVALID from error
     except TemplateProfileError as error:
         if error.code == "NOT_FOUND":
             raise _PROFILE_NOT_FOUND from error
@@ -470,6 +473,8 @@ _VALUE_INVALID = _error(
 _CELL_NOT_REGENERATABLE = _error(
     422, "VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", ["item_id"]
 )
+# 편집에서 같은 거절이 오면 상태 · 코드 · fields 는 그대로, 문구만 편집에 맞춘다.
+_CELL_NOT_EDITABLE = _error(422, "VALIDATION_FAILED", "이 칸은 고칠 수 없습니다.", ["item_id"])
 # Core 가 「이 칸은 다시 만들 수 없다」고 하는 경우들. 규칙은 Core 것이다 — 여기서 늘리지 않는다.
 _NOT_REGENERATABLE_CODES = frozenset(
     {
@@ -484,13 +489,14 @@ _NOT_REGENERATABLE_CODES = frozenset(
 )
 
 
-def _lifecycle_error(error: MonthlyApplicationError) -> HTTPException:
+def _lifecycle_error(error: MonthlyApplicationError, *, editing: bool = False) -> HTTPException:
     if error.code == "monthly_cell_not_found":
         return _CELL_NOT_FOUND
     if error.code in {"monthly_cell_value_unchanged", "invalid_monthly_cell_value"}:
         return _VALUE_INVALID
     if error.code in _NOT_REGENERATABLE_CODES:
-        return _CELL_NOT_REGENERATABLE
+        # 편집에서 오는 것은 `monthly_cell_generation_missing` 하나다(저장된 칸에 생성 방식이 없다).
+        return _CELL_NOT_EDITABLE if editing else _CELL_NOT_REGENERATABLE
     if error.code == "monthly_verification_failed":
         # 검증 「결과」는 막지 않는다. 검증기가 돌지 못한 것만 여기로 온다.
         return _error(
@@ -586,7 +592,10 @@ def edit_monthly_cell(
             EditMonthlyPlanItemCommand(plan.plan_id, _item_id(item_id), body.value, _actor(user))
         )
     except MonthlyApplicationError as error:
-        raise _lifecycle_error(error) from error
+        if error.code == "monthly_cell_generation_missing":
+            # 교사 입력이 아니라 저장된 행의 문제다(옛 판 · 손으로 넣은 행). id 와 코드만 남긴다.
+            _log.warning("monthly cell edit rejected code=%s plan_id=%s", error.code, plan_id)
+        raise _lifecycle_error(error, editing=True) from error
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
