@@ -376,6 +376,10 @@ def update_month(
 @router.post("/{plan_id}/confirm", response_model=ConfirmOut)
 def confirm_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     row = _row(session, user, plan_id)
+    # **재호출은 멱등이다(§7).** 이미 확정이면 저장된 그대로 200 — Core 확정을 다시 부르지 않고
+    # (부르면 409) 저장 · commit 도 하지 않는다. 소유 검사(_row) 뒤라 남의 원 것은 여전히 404 다.
+    if row.status == "CONFIRMED":
+        return ConfirmOut(id=row.id, status=row.status, confirmed_at=row.confirmed_at)
     repo = _repo(session, user)
     try:
         confirmed = ConfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
