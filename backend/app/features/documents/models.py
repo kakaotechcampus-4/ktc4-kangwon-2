@@ -22,7 +22,7 @@ class Document(Base):
     """일지 계열 문서 — 일일 보육일지·주간 보육일지·관찰일지·영유아 평가 (docs/api-spec.md §11).
 
     계획안(plans, §4~§7)과 다른 테이블이다. 계획안은 참조자료에서, 이 문서들은
-    교사의 관찰 기록(observations, §10)에서 나온다.
+    교사의 관찰 기록(observations, §10)과 일과 기록(routines, §10-1)에서 나온다.
     """
 
     __tablename__ = "documents"
@@ -99,14 +99,53 @@ class DocumentSection(Base):
     )
 
 
+class DocumentReconfirmation(Base):
+    """비교 토큰별 완료 영수증. 응답을 잃은 같은 요청의 재시도를 구분한다."""
+
+    __tablename__ = "document_reconfirmations"
+    __table_args__ = (UniqueConstraint("document_id", "review_token"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    review_token: Mapped[str] = mapped_column(String(64))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    source_hash: Mapped[str] = mapped_column(String(64))
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # 뺀·바꾼 근거를 사람이 읽을 수 있게 남긴다. 사본 행은 사라지므로 여기가 유일한 흔적이다.
+    resolutions: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+
+
+class DocumentSourceResolution(Base):
+    """초안에서 사라진 근거를 **빼거나 바꾼 흔적** (`POST /documents/{id}/refresh`).
+
+    `document_reconfirmations` 와 섞지 않는다 — 저쪽은 **확정본 재확정**의 완료 영수증이고
+    토큰마다 한 줄이다. 이쪽은 확정 전 초안에서 일어난 일이라 영수증이 없고, 문서가 나중에
+    확정돼도 그대로 남는다. 사본 행(`document_sources`)은 빼면 사라지므로 **여기가 유일한
+    흔적이다.** 아동 실명이 담길 수 있어 `before` 는 로그나 화면에 뿌리지 않는다 (ADR-013).
+    """
+
+    __tablename__ = "document_source_resolutions"
+    __table_args__ = (CheckConstraint("action IN ('drop', 'replace')", name="action"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    source_id: Mapped[int] = mapped_column(comment="사라진 근거. FK 없음 — 이미 지워진 행이다")
+    action: Mapped[str] = mapped_column(String(10), comment="drop(화면의 '제외') · replace")
+    replacement_id: Mapped[int | None] = mapped_column(comment="replace 일 때 고른 일과. FK 없음")
+    before: Mapped[str] = mapped_column(Text, comment="사라지기 전 사본 원문")
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class DocumentSource(Base):
     """생성 시점 원문 사본 (docs/api-spec.md §11 'document_sources 에 원문을 복사해 둔다').
 
     observations 를 참조만 하면 원본이 바뀔 때 문서의 `사실` 이 조용히 같이 바뀐다.
     무효 판정(`stale`)은 여기 저장된 사본과 원본을 비교해서 정한다.
 
-    `source_kind` · `source_id` 는 다형 참조다 — observations 나 documents(주간 보육일지가
-    근거로 쓰는 확정된 일일 보육일지) 중 하나를 가리키므로 단일 FK 를 걸 수 없다.
+    `source_kind` · `source_id` 는 다형 참조다 — observations, routine_records,
+    documents(주간 보육일지가 근거로 쓰는 확정된 일일 보육일지) 중 하나를 가리키므로
+    단일 FK 를 걸 수 없다.
     """
 
     __tablename__ = "document_sources"

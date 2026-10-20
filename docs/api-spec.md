@@ -1872,6 +1872,36 @@ execution   활동실행 — 사실 층.  선택(저장은 비어도 된다).  �
 활동실행 · 날짜** 중 무엇이 바뀌어도 `stale` 이고, `plan` · `position` 만 바꾸면 그대로다.
 지우면 「원본 없음」이라 `stale` 이다.
 
+### 저장 뒤 재검토 안내 — 선택 응답 (S-J1 AC6)
+
+기존 PUT의 일과 한 줄 응답과 DELETE의 `204`는 유지한다. 영향 정보가 필요한 화면은
+`PUT /api/routines/{id}?include_impact=true` 또는
+`DELETE /api/routines/{id}?include_impact=true`로 요청한다.
+
+- PUT은 기존 일과 필드에 `review_impact`를 추가한 `200`을 반환한다.
+- DELETE는 `review_impact`만 담은 `200`을 반환한다. 옵션을 생략하면 본문 없는 `204`다.
+
+```json
+{ "review_impact": {
+  "affected_document_ids": [7, 12],
+  "newly_stale_document_ids": [12]
+} }
+```
+
+`affected_document_ids`는 **이번에 실제 변경·삭제된 근거를 직접 인용한, 같은 기관의
+확정 일일 보육일지** ID다. 사본과 현재 사실·날짜가 다르거나 원본이 삭제된 경우를 센다.
+시간은 초만 달라져도 변경이다. 요청 전후 이름·시간·활동실행·날짜가 같으면(계획·순서만
+수정한 경우 포함) 두 배열 모두 빈다. `newly_stale_document_ids`는 그중 이번 요청으로
+`stale=false`에서 `true`가 된 문서다. 이미 stale인 문서는 affected에만 포함된다.
+
+초안과 전파된 주간 문서는 기존 정책대로 stale 처리하되 안내 건수에서 제외한다.
+다른 기관 문서는 영향 조회·전파 대상에서 제외한다. 기존 refresh·확정 정책은 유지한다.
+응답은 커밋 성공 후에만 반환한다.
+
+화면은 한 번 저장에 속한 PUT·DELETE의 ID **합집합**을 센다. 신규 ID 수를 「N건이 다시
+검토 대상」으로, affected에서 신규 ID를 뺀 수를 「이미 재검토 대상」으로 구분한다.
+부분 실패 시 전체 성공 안내를 하지 않으며, 성공한 요청의 ID를 재시도까지 보존한다.
+
 ### 일일 보육일지를 만들 때 (§11)
 
 ```json
@@ -2080,7 +2110,9 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 **`stale` 이면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
 **문서를 지우지 않는다** — 교사가 보고 판단한다.
 
-**푸는 길은 `POST /api/documents/{id}/refresh` 하나다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」고 누른다.
+**초안의 근거 갱신은 `POST /api/documents/{id}/refresh`다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」고 누른다.
+확정된 stale 일일 보육일지는 비교 토큰을 사용하는 `reconfirm`으로 반영·검증·재확정을
+한 트랜잭션에서 처리할 수 있다 (아래 TASK 2 후속 계약). 단순 stale 표시로 확정을 취소하지 않는다.
 
 ```
 1  근거 사본을 지금 원본으로 다시 뜬다        관찰 기록이면 fact · date,  문서면 사실 · start · status
@@ -2132,12 +2164,14 @@ origin   AI                         LLM 이 초안을 만들었다
 2  추출 대조   사실 == sources 원문              서버.  문자열 비교.  모델 없음
                해석의 숫자 ⊂ 사실의 숫자
 3  LLM Judge   미관찰 내용 · 근거 없는 해석 검사    LLM
-4  교사 확인    체크 3개                          사람
+4  교사 확인    UI 체크 하나 → API checks 세 필드    사람
 ```
 
 **앞 둘을 모델 없이 끝낸다.** 모델이 틀려도 사실은 안 틀어진다.
 
-**3단 — `POST /api/documents/{id}/verify`**
+**3단 — `POST /api/documents/{id}/verify`** — **아직 없다 (2026-10-20 확인).**
+라우터에 이 경로가 없어 지금 부르면 404 다. 아래는 만들 때 지킬 계약이고,
+서버 확정(`confirm` · `reconfirm`)은 **이 단계를 거치지 않는다** — 1·2단과 교사 체크 3개만 본다.
 
 ```json
 { "issues": [] }
@@ -2204,11 +2238,13 @@ GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": 
        FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
-POST   /api/documents/{id}/verify                                3단 LLM Judge
+POST   /api/documents/{id}/verify                                3단 LLM Judge.  **미구현 — 지금은 404**
 PUT    /api/documents/{id}                                       title · sections · review_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
 POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
+GET    /api/documents/{id}/source-comparison                     일과 근거 전후 비교와 검토 토큰
+POST   /api/documents/{id}/reconfirm                              확정된 stale 일일 일지의 원자적 재확정
 DELETE /api/documents/{id}                                       204
 GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp).  확정본만.  아래 「내보내기」
 ```
@@ -2624,3 +2660,67 @@ evaluation_checks              원 · 학년도 · 평가요소 체크    §12  
 ```
 
 `classes.school_year` 는 **컬럼이 이미 있다.** 서버가 채우는 로직만 만들면 된다.
+# TASK 2 후속 계약 (2026-10-19)
+
+일일 보육일지의 교사 검토 UI는 체크박스 하나다. 선택한 경우만 기존 API 필드
+`checks.fact`, `checks.interpretation`, `checks.support`를 모두 true로 보낸다.
+어느 하나라도 false이면 재확정은 422 `VALIDATION_FAILED`다.
+
+## 일과 근거 비교 및 원자적 재확정 (§11 보충)
+
+- `GET /api/documents/{id}/source-comparison`: 인증된 자기 센터의 일과 근거 일일 보육일지.
+  응답은 `{document_id, updated_at, review_token, can_reconfirm, sources}`.
+  sources는 문서가 선택했던 순서대로 `{id, before, after, state}`이며 ID로 원본을 연결한다.
+  state는 `changed`, `unchanged`, `missing`. after는 원본이 삭제/누락되거나 해당 반·날짜에서
+  사용할 수 없으면 null이다. 다른 센터·반 원문은 반환하지 않는다. 없는 문서는 404 `NOT_FOUND`.
+  `candidates`는 사라진 근거를 대신할 수 있는 같은 반·같은 날짜의 일과다 — `{id, text}` 목록이며
+  이 문서가 이미 쓰는 일과와 활동실행이 빈 일과는 빼고 준다. 사라진 근거가 없으면 비어 있다.
+- `POST /api/documents/{id}/reconfirm`: 요청은 `{review_token, updated_at, checks,
+  sections, review_note?, resolutions?}`. sections는 기존 사실·해석·지원과 source_ids 계약이며 사실은 비교 API의
+  after를 선택 순서대로 빈 줄로 이어붙인 값과 정확히 같아야 한다. 해석·지원은 교사가 검토한
+  값을 보내며 서버가 생성/덮어쓰지 않는다. review_note 미지정 시 기존 메모를 그대로 보존한다.
+  성공 응답 200은 기존 DocumentDetailResponse이며 `CONFIRMED`, `stale=false`다.
+  상세·비교 응답의 버전 시각은 UTC로 통일하며 DB 세션의 시간대에 따라 표현이 달라지지 않는다.
+- 서버는 원본 → 문서 순으로 행을 잠그고 비교 토큰·문서 버전·원본 존재·3개 checks·공유
+  sections 게이트를 검증한다. 근거·사실 갱신과 교사 편집 반영, 확정, 상위 문서 stale 전파,
+  완료 영수증 저장을 한 트랜잭션으로 처리한다. 실패는 전체 롤백한다.
+- 비교 이후 문서나 원본 변경, 같은 토큰의 다른 요청, 완료 뒤 다시 변경된 데이터는
+  409 `STALE_WRITE`. 삭제·빈 실행·날짜/반 불일치 또는 재확정 불가 상태는 409 `GATE_BLOCKED`.
+  섹션/체크 오류는 422 `VALIDATION_FAILED`. 같은 완료 토큰·동일 본문의 재시도는 문서와
+  원본이 완료 시점 그대로일 때만 동일 완료 문서를 200으로 반환한다.
+- 같은 `resolutions` 를 **`POST /api/documents/{id}/refresh`** 의 선택 본문으로도 보낼 수 있다.
+  확정을 취소한 초안이 사라진 근거 때문에 막히는 길을 여는 것이다 — 본문 없이 보내던 호출은
+  그대로여서 사라진 근거가 있으면 여전히 409 `GATE_BLOCKED` 다. 규칙은 `reconfirm` 과 같고
+  (고르지 않은 사라진 근거, 후보 밖·중복 `replacement_id`, 전부 빼기, 살아 있는 근거 선택),
+  일과 근거의 일일 보육일지가 아니면 409 `GATE_BLOCKED` `["kind"]` 다. `사실` 과 근거 사본,
+  각 칸의 `source_ids` 는 서버가 다시 맞추고 **`해석`·`지원` 과 `DRAFT` 상태는 그대로 둔다** —
+  교사는 평소처럼 읽고 `confirm` 한다. 영수증(`document_reconfirmations`)은 남기지 않는다 —
+  확정이 아니다. 대신 뺀·바꾼 근거를 `document_source_resolutions` 에 한 줄씩 남긴다
+  (`document_id, source_id, action, replacement_id, before, actor_user_id, created_at`).
+  문서 변경과 같은 트랜잭션이라 거절되면 흔적도 남지 않고, 나중에 확정해도 지워지지 않는다.
+  **두 이력을 섞지 않는다** — 영수증은 확정본 재확정 전용, 이쪽은 초안 처리 전용이다.
+  `before` 에는 아동 관련 문구가 들어갈 수 있어 응답·로그·화면에 내보내지 않는다 (ADR-013).
+- `resolutions`는 사라진 근거를 어떻게 할지다 — `{source_id, action, replacement_id?}` 목록이고
+  action은 `drop`(보육일지에서도 뺀다) 또는 `replace`(다른 일과로 바꾼다)다. **선택이다** —
+  보내지 않으면 예전과 같아서 사라진 근거가 하나라도 있으면 409 `GATE_BLOCKED`다. 그래서 이
+  필드를 모르는 클라이언트의 동작이 달라지지 않는다.
+  state가 `missing`이 아닌 근거를 고르거나 한 근거를 두 번 고르면 422 `VALIDATION_FAILED`.
+  사라진 근거를 하나라도 빠뜨리면, `replacement_id`가 `candidates` 밖이거나 두 번 쓰이면,
+  근거가 하나도 남지 않으면, (reconfirm 에서) 문서가 `CONFIRMED`·`stale`이 아니면 409 `GATE_BLOCKED`다.
+  `resolutions`를 쓴 요청은 `sections[].source_ids`도 남는 근거(대체본은 새 id)만 담아야 한다.
+  처리 내역은 `document_reconfirmations.resolutions`에 `{source_id, action, replacement_id,
+  before}`로 남는다 — 사본 행이 사라지므로 여기가 유일한 흔적이다.
+  **근거를 빼거나 바꾼 요청도 같은 본문을 다시 보내면 200 이다** — 영수증에 완료 **후** 원본
+  해시를 적어 두므로 재시도가 다시 잰 값과 맞는다. 영수증은 한 줄이고 이중 적용은 없다.
+  같은 토큰이라도 본문이나 `resolutions` 가 다르거나, 완료 뒤 문서·원본이 바뀌었으면
+  409 `STALE_WRITE` 다. 새로 비교해 받은 토큰으로는 이미 확정이라 409 `GATE_BLOCKED` 다.
+- stale 표시만으로 확정 상태를 내리지 않는다. 기존 unconfirm, refresh, confirm은 유지한다.
+  새 원자적 경로는 확정된 stale 일일 보육일지에 제공한다. 다른 문서 종류는 기존 경로를 쓴다.
+
+## 일과 시간과 순서 (§10-1 보충)
+
+UI는 01~12시·5분 선택과 AM/PM 토글을 쓰지만 API는 기존 24시간제/null이다.
+기존 09:16 및 초 값은 관련 없는 수정 때 보존한다. 저장된 position 순서가 우선이며
+명시적 시간순 정렬만 시작 → 종료 → 기존 상대 순서로 정렬한다. 시작 없는 행은 뒤다.
+정렬/드래그/위아래 이동은 저장 전 요청을 보내지 않는다. 저장 후 S-J2 후보에도 같은 순서가
+보이고 문서 사실의 순서는 후보 정렬과 별개로 체크한 순서다. 기존 확정본은 자동 재정렬하지 않는다.
