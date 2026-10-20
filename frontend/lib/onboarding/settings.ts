@@ -122,9 +122,11 @@ function normalizeSettings(parsed: Record<string, unknown>): ClassSettings {
     regionProvince: typeof parsed.regionProvince === "string" ? parsed.regionProvince : "",
     regionDistrict: typeof parsed.regionDistrict === "string" ? parsed.regionDistrict : "",
     classes,
+    // **고른 적이 없으면 비워 둔다.** 첫 반을 여기서 채우면 「아직 안 골랐다」를 아무도 못 본다
+    // (FR-402 · FR-405). 첫 반이 필요한 화면은 아래 `primaryClassFor` 가 그대로 내준다.
     primaryClassId: classes.some((c) => c.id === parsed.primaryClassId)
       ? String(parsed.primaryClassId)
-      : classes[0]?.id,
+      : "",
     characterEducationEnabled:
       typeof parsed.characterEducationEnabled === "boolean"
         ? parsed.characterEducationEnabled
@@ -251,6 +253,26 @@ export function totalChildrenFor(settings: ClassSettings | null): number {
     ) ?? 0
   );
 }
+
+/**
+ * 「내 담당 반」 칸이 **보여주는** 반. 고른 적이 없으면 첫 반을 고른 것처럼 보여준다.
+ *
+ * **저장할 때도 이 값을 쓴다.** 화면은 국화반을 고른 것처럼 보여줬는데 저장은 「없음」이면,
+ * 교사가 보기엔 정한 반이 나중에 「반을 골라주세요」로 돌아온다. 보인 값과 저장 값은 같아야 한다.
+ */
+export const shownPrimaryId = (settings: ClassSettings): string =>
+  settings.classes.some((c) => c.id === settings.primaryClassId)
+    ? (settings.primaryClassId ?? "")
+    : (settings.classes[0]?.id ?? "");
+
+/**
+ * 교사가 **실제로 고른** 주 반. 고른 적이 없으면 `null` 이다.
+ *
+ * 기록 조회는 반이 조건이라 짐작한 반으로 물으면 다른 반 기록이 교사 화면에 뜬다
+ * (FR-402 · FR-405). 「아무 반이나 하나」로 충분한 곳은 아래 `primaryClassFor` 를 쓴다.
+ */
+export const chosenClassFor = (settings: ClassSettings | null): ClassroomEntry | null =>
+  settings?.classes.find((c) => c.id === settings.primaryClassId) ?? null;
 
 /** 계획안 생성 화면의 기본 반으로 첫 번째 반을 사용한다. */
 export function primaryClassFor(settings: ClassSettings | null): ClassroomEntry | null {

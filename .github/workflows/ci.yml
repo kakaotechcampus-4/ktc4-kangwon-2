@@ -243,6 +243,10 @@ jobs:
       # 운영은 nginx 가 /api 를 나누지만, 같은 출처 /api 라는 점은 같다.
       FASTAPI_BASE_URL: http://127.0.0.1:8000
       E2E_BASE_URL: http://127.0.0.1:3000
+      # 일부 E2E 는 화면 응답만 믿지 않고 문서 상태를 DB 에서 직접 읽는다
+      # (frontend/e2e/routines.spec.ts 의 dbDocument). 위 DATABASE_URL 과 **같은 DB** 이지만
+      # psycopg.connect 가 그대로 받는 문자열이라 `+psycopg` 를 붙이지 않는다.
+      E2E_DATABASE_URL: postgresql://ssuksak:ci-only-not-a-secret@localhost:5432/ssuksak
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -263,6 +267,10 @@ jobs:
       - name: alembic upgrade head
         working-directory: backend
         run: alembic upgrade head
+      # 여기서 막아야 Playwright 가 다섯 군데에서 한꺼번에 빨개지는 대신 원인이 한 줄로 나온다.
+      # dbDocument 가 쓰는 것과 같은 python·같은 변수다. 주소와 비밀번호는 찍지 않는다.
+      - name: E2E_DATABASE_URL 로 DB 를 읽을 수 있나
+        run: python -c "import os,psycopg; print('documents rows:', psycopg.connect(os.environ['E2E_DATABASE_URL']).execute('select count(*) from documents').fetchone()[0])"
       # 뒤 step 에서도 살아 있게 nohup 으로 띄운다. 준비된 것을 본 뒤에만 넘어간다.
       - name: Start backend
         working-directory: backend
