@@ -22,6 +22,12 @@ op.alter_column("children", "code", server_default=None)
 
 `nullable=True` 컬럼은 기본값이 필요 없다 — 비어 있는 것이 정상인 값이다.
 
+**기본값을 떼지 않는 예외가 하나 있다 — `centers.trends_enabled`.** 위 규칙은 「값을
+채운 뒤에는 기본값이 사고를 숨긴다」는 뜻인데, 이 칸은 **꺼짐이 정상값**이다. 부가
+기능이라 원하는 원이 켜는 것이고, 기본값을 떼면 앞으로 만들어지는 원마다 값을 넣어
+줘야 해서 한 군데만 빠져도 NOT NULL 로 막힌다. 그래서 `server_default=false()` 를
+그대로 둔다.
+
 천천히 바뀌는 테이블의 역할, 관계, 불변 규칙만 적는다. 컬럼 타입과 길이는
 `models.py` 가 진실이다.
 
@@ -29,7 +35,7 @@ op.alter_column("children", "code", server_default=None)
 
 | 테이블 | 무엇을 담는가 |
 |---|---|
-| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다 |
+| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다. `trends_enabled` 는 트렌드봇을 켰는지다 — **기본 `false` 고 그 기본값을 떼지 않는다**(아래 참고, docs/api-spec.md §3-1 · FR-808) |
 | `classes` | 반. `centers` 를 참조한다. **학년도마다 새 행이다** — 2026 씨앗반과 2027 씨앗반은 다른 반이다. `UNIQUE(center_id, name, school_year)`. `consent_confirmed_at` 은 아동 정보 동의를 확인한 시각이다. `age_min` · `age_max` 범위로 혼합반(3~5세 한 반)에 대응하며 단일 연령반은 두 값이 같다 |
 | `children` | 아동. `classes` 를 참조한다. `name` 은 평문 실명이고 `code` 는 LLM 에 나가는 가명이다. `UNIQUE(class_id, code)` |
 | `activities` | 활동 풀. 규칙 엔진의 검사 층이 읽는다(ADR-014) |

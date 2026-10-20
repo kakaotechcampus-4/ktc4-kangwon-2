@@ -1,0 +1,330 @@
+/**
+ * 서버에만 있는 반을 목록에 들이는지 본다 (§1-1 초대 · 기기 변경).
+ *
+ * **왜 이 테스트가 있나.** 반 목록이 브라우저 저장소에서만 나오면, 초대받은 교사와
+ * 기기를 바꾼 교사에게 반이 하나도 안 보인다. 서버에는 멀쩡히 있는데도.
+ *
+ * 그리고 들일 때 **서명을 같이 계산해 넣어야 한다.** 안 넣으면 교사가 나중에 반 정보를
+ * 고칠 때 `syncClass` 의 서명 비교가 어긋나서 **같은 반이 서버에 하나 더 만들어진다.**
+ * 마지막 테스트가 그 자리를 지킨다.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+registerHooks({
+  resolve(spec, ctx, next) {
+    if (spec.startsWith(".") && ctx.parentURL) {
+      const u = new URL(spec + ".ts", ctx.parentURL);
+      if (existsSync(fileURLToPath(u))) return { url: u.href, shortCircuit: true };
+    }
+    return next(spec, ctx);
+  },
+});
+
+const { setupServer } = await import("msw/node");
+const { http, HttpResponse } = await import("msw");
+const { fixtureAccount, fixtureKey, fixtureSession } = await import("./auth-fixture.mjs");
+const onboarding = await import("../lib/api/onboarding.ts");
+
+const server = setupServer();
+server.listen({ onUnhandledRequest: "error" });
+
+// lib/api 는 상대 경로로 부른다. 테스트에는 주소 기준이 없어 붙여 준다.
+const realFetch = globalThis.fetch;
+globalThis.fetch = (url, options) => realFetch(new URL(url, "http://localhost").href, options);
+
+function browser() {
+  const values = new Map([[fixtureKey, fixtureAccount]]);
+  const storage = {
+    getItem: (k) => values.get(k) ?? null,
+    setItem: (k, v) => values.set(k, v),
+    removeItem: (k) => values.delete(k),
+  };
+  globalThis.localStorage = storage;
+  const session = fixtureSession();
+  const sessionValues = new Map(
+    ["saessak.demoSession", "saessak.accountEmail"].map((k) => [k, session.getItem(k)]),
+  );
+  globalThis.sessionStorage = {
+    getItem: (k) => sessionValues.get(k) ?? null,
+    setItem: (k, v) => sessionValues.set(k, v),
+    removeItem: (k) => sessionValues.delete(k),
+  };
+  globalThis.window = Object.assign(new EventTarget(), {
+    localStorage: storage,
+    sessionStorage,
+    location: { search: "" },
+  });
+  store = values;
+  return values;
+}
+
+/** onboarding.ts 가 쓰는 연결 저장 키. 계정 접두사가 붙는다. */
+function linksKey() {
+  return [...store.keys()].find((k) => k.includes("apiLinks")) ?? "";
+}
+let store = new Map();
+
+const CLASS = {
+  id: 7,
+  center_id: 3,
+  name: "햇살반",
+  school_year: 2026,
+  age_min: 3,
+  age_max: 5,
+  child_count: 18,
+  teacher_name: "김선생",
+  consent_confirmed_at: "2026-10-01T00:00:00Z",
+  created_at: "2026-10-01T00:00:00Z",
+};
+
+/** 서버 한 대. 요청을 모아 둬서 반이 또 만들어지는지 볼 수 있다. */
+function api({ center_id = 3, classes = [CLASS], children = [] } = {}) {
+  const seen = [];
+  server.use(
+    http.get("*/api/auth/me", () => HttpResponse.json({ id: 1, email: "t@x.kr", center_id })),
+    http.get("*/api/centers/:id/classes", () => HttpResponse.json({ items: classes })),
+    http.get("*/api/classes/:id/children", () => HttpResponse.json({ items: children })),
+    http.post("*/api/centers", () =>
+      HttpResponse.json({ id: 3, name: "테스트원" }, { status: 201 }),
+    ),
+    http.post("*/api/centers/:id/classes", async ({ request }) => {
+      seen.push(await request.json());
+      return HttpResponse.json({ ...CLASS, id: 99 }, { status: 201 });
+    }),
+  );
+  server.events.removeAllListeners("request:start");
+  return seen;
+}
+
+test("서버에만 있는 반을 들인다 — 저장소가 비어 있어도 보인다", async () => {
+  browser();
+  api();
+  const adopted = await onboarding.adoptServerClasses([]);
+  assert.equal(adopted.length, 1);
+  assert.equal(adopted[0].className, "햇살반");
+  assert.equal(adopted[0].teacherName, "김선생");
+  assert.equal(adopted[0].currentChildCount, 18);
+  // 동의는 서버의 consent_confirmed_at 이 정한다 (§2)
+  assert.equal(adopted[0].guardianConsent, true);
+});
+
+test("연령을 범위 그대로 담는다", async () => {
+  browser();
+  api({ classes: [{ ...CLASS, age_min: 4, age_max: 5 }] });
+  const [adopted] = await onboarding.adoptServerClasses([]);
+  assert.deepEqual(adopted.selectedAges, [4, 5]);
+});
+
+test("아동 명단도 같이 받아온다", async () => {
+  browser();
+  api({ children: [{ id: 11, class_id: 7, name: "하린", code: "민준" }] });
+  const [adopted] = await onboarding.adoptServerClasses([]);
+  assert.equal(adopted.children.length, 1);
+  assert.equal(adopted.children[0].name, "하린");
+});
+
+test("원이 없는 교사에게는 빈 목록", async () => {
+  browser();
+  api({ center_id: null });
+  assert.deepEqual(await onboarding.adoptServerClasses([]), []);
+});
+
+test("이미 로컬에 있는 반은 두 번 들이지 않는다", async () => {
+  const values = browser();
+  api();
+  const first = await onboarding.adoptServerClasses([]);
+  assert.equal(first.length, 1);
+  // 두 번째 호출은 같은 반을 다시 들이지 않는다 — 화면에 반이 두 개로 보이면 안 된다
+  const again = await onboarding.adoptServerClasses(first);
+  assert.deepEqual(again, []);
+  assert.ok(
+    [...values.keys()].some((k) => k.includes("apiLinks")),
+    "연결이 저장돼야 한다",
+  );
+});
+
+test("★ 들인 반의 서명이 syncClass 가 계산하는 것과 같다", async () => {
+  browser();
+  api();
+  const [adopted] = await onboarding.adoptServerClasses([]);
+  // 저장된 연결의 서명이 syncClass 의 비교값과 같아야 한다.
+  // 다르면 교사가 반 정보를 고칠 때 같은 반이 서버에 하나 더 만들어진다.
+  const links = JSON.parse(localStorage.getItem(linksKey()) ?? "{}");
+  const saved = links.classes?.[adopted.id];
+  assert.ok(saved, "연결이 저장돼야 한다");
+  assert.equal(saved.id, 7);
+  assert.equal(
+    saved.signature,
+    JSON.stringify({
+      name: "햇살반",
+      teacher_name: "김선생",
+      age_min: 3,
+      age_max: 5,
+      child_count: 18,
+      consent_confirmed: true,
+    }),
+    "syncClass 가 만드는 payload 와 글자까지 같아야 한다",
+  );
+});
+
+/**
+ * **원 연결을 만들어 두는 이유.**
+ *
+ * `syncCenter` 는 `links.center` 가 없으면 원을 새로 만들고 `links.classes` 를 통째로
+ * 비운다 — 서버에 원 수정 API 가 없어서 그렇게 돼 있다("P0 has no center update endpoint").
+ * 초대받은 교사는 원 정보를 화면에 들고 있지 않으니 서명이 영영 안 맞는다. 그대로 두면
+ * 계획안 화면에 들어가는 것만으로 원이 하나 더 생기고 방금 들인 반이 날아간다.
+ *
+ * 그래서 들일 때 서버의 원 id 로 연결을 만들고 「받아온 것」이라고 표시해 둔다.
+ * **그 교사가 원 정보를 고치면 서버에 반영되지 않는다** — 원 수정 API 가 생겨야 풀린다.
+ */
+test("★ 서버의 원 id 로 원 연결을 만든다 — syncCenter 가 원을 또 만들지 않게", async () => {
+  browser();
+  api();
+  await onboarding.adoptServerClasses([]);
+  const links = JSON.parse(localStorage.getItem(linksKey()) ?? "{}");
+  assert.equal(links.center.id, 3, "me.center_id 를 그대로 쓴다");
+  assert.equal(links.center.signature, "adopted", "받아온 연결이라고 표시해 둔다");
+});
+
+test("★ 들인 반·아이의 id 가 기록 쪽 규칙과 같다", async () => {
+  browser();
+  api({ children: [{ id: 11, class_id: 7, name: "하린", code: "민준" }] });
+  const [adopted] = await onboarding.adoptServerClasses([]);
+  assert.equal(adopted.id, "server-class:7");
+  assert.equal(adopted.children[0].id, "server-child:11");
+  // 역조회도 같은 답을 줘야 한다 — 기록을 화면 id 로 바꿀 때 이 길을 탄다
+  assert.equal(onboarding.classLocalId(7), "server-class:7");
+  assert.equal(onboarding.childLocalId(11), "server-child:11");
+});
+
+test("★ 교사가 지운 반은 다시 들이지 않는다 — 연결이 남아 있어도", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]); // 한 번 들여서 연결을 만든다
+  // 교사가 그 반을 지웠다. removeClass 는 로컬 목록만 지우고 연결은 남긴다.
+  const again = await onboarding.adoptServerClasses([]);
+  assert.deepEqual(again, [], "지운 반이 되살아나면 안 된다");
+  const links = JSON.parse(values.get(linksKey()));
+  assert.deepEqual(Object.keys(links.classes), ["server-class:7"], "연결이 하나여야 한다");
+});
+
+test("★ 한 반의 명단을 못 받아도 나머지 반은 보여준다", async () => {
+  browser();
+  const second = { ...CLASS, id: 8, name: "달빛반" };
+  api({ classes: [CLASS, second] });
+  // 7번 반 명단만 터뜨린다
+  server.use(
+    http.get("*/api/classes/7/children", () => HttpResponse.error()),
+    http.get("*/api/classes/8/children", () => HttpResponse.json({ items: [] })),
+  );
+  const failed = [];
+  const adopted = await onboarding.adoptServerClasses([], (name) => failed.push(name));
+  assert.equal(adopted.length, 2, "하나가 막아서 전부 사라지면 안 된다");
+  assert.deepEqual(
+    adopted.map((c) => c.className),
+    ["햇살반", "달빛반"],
+  );
+  // 명단이 비는 것과 진짜 아이가 없는 것을 교사가 구분할 수 있어야 한다
+  assert.deepEqual(failed, ["햇살반"]);
+});
+
+/**
+ * 반 정보를 고치면 `syncClassOnce` 가 서버에 **반을 새로 만든다** — 수정 API 가 없어서다.
+ * 옛 행은 연결이 끊긴 채 서버에 남는다. 그걸 다시 들이면 고치기 전 이름의 반이
+ * 목록에 하나 더 생긴다.
+ */
+test("★ 고치기 전의 옛 반 행은 다시 들이지 않는다", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]); // 저장 키를 만든다
+  // 교사가 반 이름을 고쳐서 7번 행이 버려진 상태
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {}, retired: [7] }));
+  assert.deepEqual(await onboarding.adoptServerClasses([]), []);
+});
+
+/**
+ * **이 기능이 생기기 전부터 쓰던 계정.** `syncClassOnce` 는 반 정보를 고칠 때마다
+ * 서버에 반을 새로 만들고 옛 반을 남겨 둔다(수정 API 가 없다). 그 옛 반 id 는
+ * `links` 어디에도 없다 — `retired` 는 이번 판부터 쌓인다.
+ *
+ * 그대로 두면 고친 적 있는 교사의 옛 반이 전부 되살아난다. (하민 리뷰 #164-1)
+ */
+test("★ 쓰던 계정의 옛 서버 반은 들이지 않고 버린 것으로 적는다", async () => {
+  const values = browser();
+  const second = { ...CLASS, id: 8, name: "햇살반(고치기 전)" };
+  api({ classes: [CLASS, second] });
+  await onboarding.adoptServerClasses([]); // 저장 키를 만든다
+  // 온보딩을 마친 계정: 7번 반만 연결돼 있고 retired 는 적은 적이 없다
+  values.set(
+    linksKey(),
+    JSON.stringify({ classes: { "class-abc": { id: 7, signature: "" } }, children: {} }),
+  );
+  const known = [{ id: "class-abc", className: "햇살반", children: [] }];
+
+  const adopted = await onboarding.adoptServerClasses(known);
+
+  assert.deepEqual(adopted, [], "옛 반이 되살아나면 안 된다");
+  const links = JSON.parse(values.get(linksKey()));
+  assert.deepEqual(links.retired, [8], "연결 안 된 서버 반을 버린 것으로 적는다");
+});
+
+test("★ 쓴 적 없는 계정은 그대로 들인다 — 초대받은 교사가 막히면 안 된다", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]);
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {} }));
+
+  const adopted = await onboarding.adoptServerClasses([]);
+
+  assert.equal(adopted.length, 1);
+  assert.deepEqual(JSON.parse(values.get(linksKey())).retired, []);
+});
+
+/**
+ * 반 목록을 저장하기 전에 끊기면 「연결은 있는데 목록에 없는 반」이 된다 — 그건
+ * 교사가 지운 반과 모양이 같아서 다음부터 영영 안 들어온다. **목록 먼저 저장한다.**
+ * (하민 리뷰 #164-2)
+ */
+test("★ 반 목록을 연결보다 먼저 저장한다", async () => {
+  const values = browser();
+  api();
+  const order = [];
+  await onboarding.adoptServerClasses([], undefined, (rows) => {
+    order.push("목록" + rows.length);
+    // 이 시점에 연결은 아직 저장 전이어야 한다
+    order.push(
+      "연결" + Object.keys(JSON.parse(values.get(linksKey()) ?? "{}").classes ?? {}).length,
+    );
+  });
+  assert.deepEqual(order, ["목록1", "연결0"]);
+});
+
+test("★ 저장이 끊겨 연결만 없어도 다음에 다시 들인다", async () => {
+  const values = browser();
+  api();
+  // 목록은 저장됐고 연결은 못 쓴 상태를 흉내 낸다
+  await onboarding
+    .adoptServerClasses([], undefined, () => {
+      throw new Error("저장 실패");
+    })
+    .catch(() => {});
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {}, retired: [] }));
+
+  const again = await onboarding.adoptServerClasses([]);
+  assert.equal(again.length, 1, "연결이 없으면 다시 들여야 한다");
+});
+
+test("★ 목록에 이미 있는 반은 두 번 담지 않는다", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]);
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {}, retired: [] }));
+  const known = [{ id: "server-class:7", className: "햇살반", children: [] }];
+
+  assert.deepEqual(await onboarding.adoptServerClasses(known), []);
+});

@@ -1,19 +1,26 @@
 """문서 hwpx 내보내기. 종이 칸에 제대로 들어가는지 · 확정본만 나가는지 · 출처가 안 섞이는지 본다.
 
 「한글이 실제로 연다」는 여기서 확인할 수 없다. 양식을 바꾸면 한글에서 한 번 열어본다.
+`?format=hwp` 로 바꾼 `.hwp` 도 마찬가지다 — 여기서는 pyhwp 로 다시 읽히는지까지만 본다.
+변환 실패 · 형식 검사는 두 내보내기가 같은 `download()` 를 써서 test_plans_export 에서 본다.
 """
 
 import io
+import re
 import zipfile
 from datetime import date, time
 
+import olefile
 import pytest
 from fastapi.testclient import TestClient
+from hwpx.hwp5.summary import AUTHOR, LAST_AUTHOR, read_summary
 from lxml import etree
 
 from app.features.centers.models import Center, Child, Class
+from app.features.documents import export as document_export
 from app.features.documents.export import TEMPLATE_DIR
 from app.features.documents.models import Document, DocumentSection, DocumentSource
+from app.features.forms import hwp_form
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.main import app
@@ -145,6 +152,44 @@ def test_확정된_관찰일지를_영역_행과_평가_칸에_나눠_담는다(
     assert table["평가"] == [INTERPRETATION, "", SUPPORT]
 
 
+def _hwp_rows(content: bytes, tmp_path) -> list[list[str]]:
+    """`.hwp` 를 양식 등록이 쓰는 pyhwp(hwp5html)로 다시 읽은 표의 칸 글자."""
+    path = tmp_path / "export.hwp"
+    path.write_bytes(content)
+    [table] = hwp_form.from_hwp(path)
+    return [[cell["text"] for cell in row] for row in table]
+
+
+def _as_read(text: str) -> str:
+    # pyhwp 로 읽으면 칸 안 줄바꿈 · 연속 공백이 한 칸이 된다(hwp_form._clean).
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def test_관찰일지를_hwp_로_바꿔_내려준다(db_session, mine, tmp_path):
+    klass, child = mine
+    late = _observation(db_session, klass, child, 22, "자연탐구", "개미를 3분 동안 바라보았다.")
+    early = _observation(db_session, klass, child, 5, "자연탐구", "화단에서 지렁이를 찾았다.")
+    doc = _document(db_session, klass, child, [late, early])
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp?format=hwp")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/x-hwp"
+    assert f'filename="document-{doc.id}.hwp"' in response.headers["content-disposition"]
+    expected = [
+        ["영역", "관찰내용"],
+        ["신체운동·건강", ""],
+        ["의사소통", ""],
+        ["사회관계", ""],
+        ["예술경험", ""],
+        ["자연탐구", "(9/5) 화단에서 지렁이를 찾았다.\n(9/22) 개미를 3분 동안 바라보았다."],
+        ["평가", f"{INTERPRETATION}\n\n{SUPPORT}"],
+    ]
+    assert _hwp_rows(response.content, tmp_path) == [
+        [_as_read(text) for text in row] for row in expected
+    ]
+
+
 def test_영역_행은_누리과정_순서로_고정이다(db_session, mine):
     klass, child = mine
     record = _observation(db_session, klass, child, 5, "예술경험", "물감을 섞었다.")
@@ -206,6 +251,43 @@ def test_미리보기와_문서_정보가_이_문서로_바뀐다(db_session, mi
     metas = {m.get("name"): m.text for m in package.iterfind(".//opf:meta", NS)}
     assert metas["creator"] is None
     assert metas["lastsaveby"] is None
+
+
+def _named_copy(name: str, directory) -> None:
+    """양식을 저장한 사람의 이름이 남은 양식 사본. 지금 양식은 비어 있어 지우는지 볼 수 없다."""
+    with (
+        zipfile.ZipFile(TEMPLATE_DIR / name) as src,
+        zipfile.ZipFile(directory / name, "w") as dst,
+    ):
+        for info in src.infolist():
+            data = src.read(info.filename)
+            if info.filename == "Contents/content.hpf":
+                package = etree.fromstring(data)
+                for meta in package.iterfind(".//opf:meta", NS):
+                    if meta.get("name") in ("creator", "lastsaveby"):
+                        meta.text = "박가명"
+                data = etree.tostring(package, xml_declaration=True, encoding="UTF-8")
+            dst.writestr(info, data, compress_type=info.compress_type)
+
+
+def test_hwp_도_미리보기가_이_문서로_바뀌고_작성자가_지워진다(
+    db_session, mine, monkeypatch, tmp_path
+):
+    """변환기가 hwpx 의 미리보기 · 문서 정보를 옮긴다. 변환기를 올려도 그래야 한다(ADR-004)."""
+    klass, child = mine
+    record = _observation(db_session, klass, child, 5, "자연탐구", "개미를 바라보았다.")
+    doc = _document(db_session, klass, child, [record])
+    _named_copy("observation.hwpx", tmp_path)
+    monkeypatch.setattr(document_export, "TEMPLATE_DIR", tmp_path)
+
+    ole = olefile.OleFileIO(client.get(f"/api/documents/{doc.id}/export/hwp?format=hwp").content)
+
+    preview = ole.openstream("PrvText").read().decode("utf-16-le")
+    assert preview.splitlines()[0] == "이가명 관찰일지 (9월)"
+    assert "개미를 바라보았다." in preview
+    summary = read_summary(ole.openstream("\x05HwpSummaryInformation").read())
+    assert summary.get(AUTHOR, "") == ""
+    assert summary.get(LAST_AUTHOR, "") == ""
 
 
 def test_DRAFT_는_내보내지_않는다(db_session, mine):
@@ -421,6 +503,55 @@ def test_일과가_하나면_원형_줄만_채운다(db_session, mine):
 
     assert table.get("rowCnt") == "3"
     assert rows[1] == ["09:00~10:00", "실내놀이", "", "블록으로 다리를 만들었다."]
+
+
+def test_줄을_늘린_일일_보육일지도_hwp_로_바꿔_내려준다(db_session, mine, tmp_path):
+    """일과 줄은 양식의 원형 한 줄을 복제한다(fill_grid). 늘린 표가 hwp 에서도 그대로여야 한다."""
+    klass, _ = mine
+    arrival = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=time(7, 30),
+        end=time(9, 0),
+        name="등원",
+        plan="웃으며 맞이하기",
+        execution="교사와 인사하고 가방을 정리했다.",
+    )
+    outdoor = _routine(
+        db_session,
+        klass,
+        position=1,
+        start=time(11, 0),
+        end=time(11, 40),
+        name="바깥놀이",
+        plan="낙엽 모으기\n낙엽 세기",
+        execution="산책길에서 낙엽을 모았다.",
+    )
+    lunch = _routine(
+        db_session,
+        klass,
+        position=2,
+        start=time(11, 40),
+        end=time(12, 30),
+        name="점심",
+        execution="스스로 수저를 챙겼다.",
+    )
+    doc = _daily_log(db_session, klass, [arrival, outdoor, lunch])
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp?format=hwp")
+
+    assert response.status_code == 200, response.text
+    expected = [
+        ["시간", "일과", "활동계획", "활동실행"],
+        ["07:30~09:00", "등원", "웃으며 맞이하기", "교사와 인사하고 가방을 정리했다."],
+        ["11:00~11:40", "바깥놀이", "낙엽 모으기\n낙엽 세기", "산책길에서 낙엽을 모았다."],
+        ["11:40~12:30", "점심", "", "스스로 수저를 챙겼다."],
+        ["놀이 평가 및 다음날 지원계획", f"{INTERPRETATION}\n\n{SUPPORT}"],
+    ]
+    assert _hwp_rows(response.content, tmp_path) == [
+        [_as_read(text) for text in row] for row in expected
+    ]
 
 
 def test_일일_보육일지도_근거_기록이_사라졌으면_내보내지_않는다(db_session, mine):

@@ -116,7 +116,17 @@ def post_json(
     오류 3종 분류와 사용량 기록은 여기 하나다 — 월간 Core 어댑터도 이 함수를 전송으로
     쓴다. 그래서 `llm_usage` 는 연간 · 문서 · 월간 모두 호출당 한 줄이고, 모델 이름은
     실제로 보낸 `payload["model"]` 을 적는다.
+
+    **로컬에서 real 은 여기서 막는다** (AGENTS.md). 키가 팀 공유라 6명이 각자 로컬에서
+    부르면 예산이 어디로 새는지 아무도 모르고, 초과하면 키가 지워진다. 서버와 주간
+    작업만 `IS_SERVER` 를 들고 있다.
+
+    **설정을 읽는 자리가 아니라 망을 타는 자리에 건다.** `require_config` 에 걸었더니
+    가짜 transport 를 끼워 쓰는 테스트 47개가 같이 막혔다 — 그쪽은 망을 타지 않는다.
+    월간 어댑터도 이 함수를 쓰므로 같은 가드에 걸린다.
     """
+    if not settings.is_server:
+        raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
     try:
