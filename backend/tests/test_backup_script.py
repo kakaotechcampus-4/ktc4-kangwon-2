@@ -11,6 +11,7 @@ import gzip
 import os
 import stat
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -81,10 +82,28 @@ def test_정상_덤프는_백업으로_남는다(run_backup):
     assert gzip.decompress(files[0].read_bytes()).decode().endswith(FOOTER)
 
 
+def test_강제_종료로_남은_임시_파일은_정리된다(run_backup, tmp_path):
+    # trap 이 못 도는 강제 종료 · 재부팅이면 임시 파일이 남는다
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    stale = backup_dir / ".ssuksak_20261001_031500.sql.gz.part"
+    stale.write_bytes(b"x")
+    two_hours_ago = time.time() - 2 * 3600
+    os.utime(stale, (two_hours_ago, two_hours_ago))
+    running = backup_dir / ".ssuksak_20261021_031500.sql.gz.part"  # 지금 도는 다른 백업
+    running.write_bytes(b"x")
+
+    code, stderr, _ = run_backup("ok")
+
+    assert code == 0, stderr
+    assert not stale.exists()
+    assert running.exists()
+
+
 @pytest.mark.parametrize(
     ("dump", "why"),
     [
-        ("fail", "덤프 명령이 실패했다"),  # db 컨테이너가 멈춘 날
+        ("fail", "덤프나 압축 저장이 실패했다"),  # db 컨테이너가 멈춘 날
         ("empty", "덤프가 비었거나 깨졌다"),  # 명령은 0 으로 끝났는데 아무것도 안 나왔다
         ("cut", "덤프가 끝까지 안 쓰였다"),  # 명령은 0 으로 끝났는데 도중에 끊겼다
     ],

@@ -59,7 +59,9 @@ else echo "docker 데몬에 닿지 못한다" >&2; exit 1; fi
 
 # 덤프 명령이 실패해도 `set -e` 로 그냥 끝나지 않게 받는다. 그냥 끝나면 쓰다 만 파일이
 # 백업 이름으로 남고 아래 검사에 닿지도 못한다 — db 컨테이너가 멈춘 날이 그 경우다.
-dc exec -T db pg_dump -U ssuksak -d ssuksak | gzip > "$part" || fail "덤프 명령이 실패했다"
+# 덤프와 압축 저장을 한 줄에서 판정한다. 디스크가 차서 gzip 이 실패해도 여기로 온다.
+dc exec -T db pg_dump -U ssuksak -d ssuksak | gzip > "$part" ||
+  fail "덤프나 압축 저장이 실패했다 — db 컨테이너와 디스크 여유를 본다"
 
 # **크기로는 못 가른다.** gzip 은 입력이 하나도 없어도 20바이트짜리 올바른 파일을 만든다.
 # `-s`(0바이트 아님)는 그걸 통과시키고, 백업이 있는 것처럼 보인다 — 복구하려는 순간에야 안다.
@@ -92,3 +94,6 @@ fi
 
 # 오래된 것만 지운다. 지우기 전에 새 백업이 성공한 것을 위에서 확인했다.
 find "$BACKUP_DIR" -name 'ssuksak_*.sql.gz' -mtime "+$KEEP_DAYS" -delete
+# 강제 종료 · 재부팅이면 위 trap 이 못 돌아 임시 파일이 남는다. 위 정리는 그 이름을 안 고른다.
+# 1시간 넘은 것만 지운다 — 지금 같이 돌고 있는 다른 백업의 임시 파일은 건드리지 않는다.
+find "$BACKUP_DIR" -maxdepth 1 -name '.ssuksak_*.sql.gz.part' -mmin +60 -delete
