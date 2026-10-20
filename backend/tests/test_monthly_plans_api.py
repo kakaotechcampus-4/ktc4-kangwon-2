@@ -152,6 +152,16 @@ def world(db_session, teacher):
     }
 
 
+@pytest.fixture
+def profile_plain(world):
+    """아직 승인 대기인 v0.1.1 위에 세운 READY Profile.
+
+    승인 검사가 막는지 볼 때 쓴다 — v0.2.1 은 2026-10-20 에 승인돼서 더는 막히지 않는다.
+    `world` 에 넣지 않는다. 원의 READY Profile 수를 세는 테스트가 흔들린다.
+    """
+    return _profile(world["session"], world["a"], world["user_a"], PLAIN)
+
+
 def _create(world, month=9, **overrides):
     body = {"class_id": world["class_a"], "month": month, "profile_ref": world["profile_a"]}
     return client.post("/api/plans/monthly", json={**body, **overrides})
@@ -357,7 +367,7 @@ def test_연간이_없거나_확정_전이면_GATE_BLOCKED(world):
     assert _monthly_rows(session) == []
 
 
-def test_READY_가_아니거나_승인_전_Template_이면_만들지_않는다(world, monkeypatch):
+def test_READY_가_아니거나_승인_전_Template_이면_만들지_않는다(world, monkeypatch, profile_plain):
     session = world["session"]
     _annual(world["class_a"])
     repo = PostgresTemplateProfileRepository(session, center_id=world["a"])
@@ -373,9 +383,13 @@ def test_READY_가_아니거나_승인_전_Template_이면_만들지_않는다(w
             "NOT_FOUND",
             ["profile_ref"],
         )
-    # 실제 데이터 파일 그대로면 v0.2.1 은 승인 대기다 — READY 여도 생성 직전에 막는다.
+    # 실제 데이터 파일 그대로면 v0.1.1 은 승인 대기다 — READY 여도 생성 직전에 막는다.
     monkeypatch.setattr(profile_service, "TEMPLATES", JsonMonthlyTemplateRepository())
-    assert _error(_create(world)) == (422, "VALIDATION_FAILED", ["profile_ref"])
+    assert _error(_create(world, profile_ref=profile_plain)) == (
+        422,
+        "VALIDATION_FAILED",
+        ["profile_ref"],
+    )
     assert _monthly_rows(session) == []
 
 
@@ -396,11 +410,18 @@ class _OtherVersion:
 
 
 @pytest.mark.parametrize(
-    "templates",
-    [JsonMonthlyTemplateRepository, _NoTemplates, _OtherVersion],
+    ("templates", "profile_key"),
+    [
+        # 실제 파일에서 아직 승인 대기인 것은 v0.1.1 뿐이다 (v0.2.1 은 2026-10-20 승인).
+        (JsonMonthlyTemplateRepository, "profile_plain"),
+        (_NoTemplates, "profile_a"),
+        (_OtherVersion, "profile_a"),
+    ],
     ids=["pending_real_file", "missing", "other_version"],
 )
-def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(world, monkeypatch, templates):
+def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(
+    world, monkeypatch, templates, profile_key, profile_plain
+):
     """생성 직전 검사를 일부러 건너뛰어 Core 최종 검사(ADR-027)의 HTTP 매핑만 본다."""
     _annual(world["class_a"])
 
@@ -420,7 +441,8 @@ def test_Core_승인_검사가_막으면_422_이고_LLM_저장_없다(world, mon
     monkeypatch.setattr(monthly_router, "monthly_llm_provider", CountingLlm)
     monkeypatch.setattr(profile_service, "TEMPLATES", templates())
 
-    response = _create(world)
+    profiles = {"profile_a": world["profile_a"], "profile_plain": profile_plain}
+    response = _create(world, profile_ref=profiles[profile_key])
 
     assert _error(response) == (422, "VALIDATION_FAILED", ["profile_ref"])
     # Core 문구(코드 · Template id)를 내보내지 않는다.
@@ -768,3 +790,32 @@ def test_제출_문서에_출처가_섞이지_않는다(world):
     joined = "\n".join(text for text in printed if text)
     for banned in ("evidence", "generation", "LLM", "mock"):
         assert banned not in joined
+
+
+# ── 지우기 (§9-1) ─────────────────────────────────────────────────────────
+
+
+def test_확정_전_월간계획안을_지우면_그_달을_다시_만들_수_있다(world):
+    _annual(world["class_a"])
+    plan_id = _create(world, month=9).json()["id"]
+    assert _error(_create(world, month=9))[:2] == (409, "ALREADY_EXISTS")
+
+    assert client.delete(f"/api/plans/monthly/{plan_id}").status_code == 204
+    assert client.get(f"/api/plans/monthly/{plan_id}").status_code == 404
+    assert _create(world, month=9).status_code == 201
+
+
+def test_확정된_월간계획안은_지우지_못한다(world):
+    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+    plan = _confirmed(world)
+
+    assert _error(client.delete(f"/api/plans/monthly/{plan['id']}"))[:2] == (409, "GATE_BLOCKED")
+    assert client.get(f"/api/plans/monthly/{plan['id']}").status_code == 200
+
+
+def test_남의_원_월간계획안은_지울_수_없고_404(world):
+    _annual(world["class_a"])
+    plan_id = _create(world, month=9).json()["id"]
+    world["session"].execute(update(Plan).where(Plan.id == plan_id).values(center_id=world["b"]))
+    world["session"].commit()
+    assert client.delete(f"/api/plans/monthly/{plan_id}").status_code == 404

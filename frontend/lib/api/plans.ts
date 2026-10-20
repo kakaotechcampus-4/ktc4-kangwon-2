@@ -34,6 +34,13 @@ export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
 /** 변경 이력. 시간순이고 필터 · 페이지가 없다 — 화면이 `month` 로 거른다. */
 export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
+/**
+ * 확정 전 연간계획안을 지운다. 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
+ *
+ * 확정본은 409 `GATE_BLOCKED`, 월간이 딸려 있으면 409 `IN_USE` 다. 둘 다 서버 문구를 띄운다.
+ */
+export const deleteAnnualPlan = (id: number) =>
+  apiRequest<void>("/api/plans/annual/" + id, { method: "DELETE" });
 export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
 
