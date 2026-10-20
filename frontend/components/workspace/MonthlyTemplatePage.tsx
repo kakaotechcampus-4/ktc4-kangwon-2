@@ -23,6 +23,7 @@ import {
   putCenterDefaultProfile,
 } from "@/lib/api/templateProfiles";
 import type { MonthlyTemplate, ProfilePointer, ProfileRef, ReadyProfile } from "@/lib/api/types";
+import { sectionName as name } from "@/lib/monthly/section-labels";
 import { loadClassSettings } from "@/lib/onboarding/settings";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
@@ -92,9 +93,18 @@ export default function MonthlyTemplatePage() {
     setMessage("");
     setProblem("");
     try {
+      // **화면 이름을 같이 보낸다.** 안 보내면 월간계획안 표의 행 이름이 `safety_education`
+      // 처럼 기계 이름으로 뜬다. 교사가 읽을 글이라 여기서 한글로 정해 넘긴다 (§9-4).
+      const shown = [
+        ...required(chosen),
+        ...optional(chosen).filter((s) => extras.has(s.section_key)),
+      ];
       const made = await createTemplateProfile(centerId, {
         base_template_ref: chosen.template_ref,
         selected_optional_keys: [...extras],
+        display_labels: Object.fromEntries(
+          shown.map((s) => [s.section_key, name(s.section_key, s.label)]),
+        ),
       });
       // 만들기만 하면 아무 데도 안 쓰인다. 바로 원 기본으로 건다 (§9-4 ③).
       await putCenterDefaultProfile(centerId, {
@@ -131,6 +141,7 @@ export default function MonthlyTemplatePage() {
   }
 
   const approved = (templates ?? []).filter((t) => t.approved);
+  const current = profiles.find((p) => same(p.profile_ref, pointer?.profile_ref ?? null)) ?? null;
 
   return (
     <WorkspacePage
@@ -140,17 +151,22 @@ export default function MonthlyTemplatePage() {
       <Message error>{problem}</Message>
       <Message>{message}</Message>
 
-      <section style={{ marginBottom: 28 }}>
+      <section style={{ marginBottom: 32 }}>
         <h3 className={ws.eyebrow}>지금 쓰는 양식</h3>
-        {pointer?.profile_ref ? (
+        {current ? (
           <p className={ws.message} role="status">
-            {profiles.find((p) => same(p.profile_ref, pointer.profile_ref))?.sections.length ?? 0}칸
-            · {pointer.profile_ref.profile_version}
+            <b>{current.sections.filter((s) => s.visible).length}칸</b> ·{" "}
+            {current.sections
+              .filter((s) => s.visible)
+              .map((s) => name(s.section_key, s.label))
+              .join(" · ")}
           </p>
         ) : (
-          <Empty title="아직 정하지 않았어요">
-            아래에서 양식을 만들면 월간계획안을 만들 수 있어요.
-          </Empty>
+          // Empty 는 큰 빈 상자를 그린다. 아직 아무것도 안 한 화면에서는 그 상자가 화면의
+          // 절반을 먹어서, 정작 할 일인 「새 양식 만들기」가 아래로 밀려난다. 한 줄로 둔다.
+          <p className={ws.hint}>
+            아직 정하지 않았어요. 아래에서 양식을 만들면 월간계획안을 만들 수 있어요.
+          </p>
         )}
       </section>
 
@@ -167,7 +183,7 @@ export default function MonthlyTemplatePage() {
                     <span className={ws.muted}>
                       {profile.sections
                         .filter((s) => s.visible)
-                        .map((s) => s.label || s.section_key)
+                        .map((s) => name(s.section_key, s.label))
                         .join(" · ")}
                     </span>
                   </div>
@@ -218,14 +234,20 @@ export default function MonthlyTemplatePage() {
             )}
             {chosen && (
               <>
-                <p className={ws.muted}>
-                  꼭 들어가는 칸 —{" "}
+                <p className={ws.hint}>
+                  <b>꼭 들어가는 칸</b> —{" "}
                   {required(chosen)
-                    .map((s) => s.label || s.section_key)
+                    .map((s) => name(s.section_key, s.label))
                     .join(" · ")}
+                  <br />이 칸들은 끌 수 없어요. 아래에서 더 넣을 칸만 고르면 돼요.
                 </p>
-                <fieldset className={ws.stack}>
-                  <legend>더 넣을 칸</legend>
+                <fieldset
+                  className={ws.stack}
+                  style={{ border: 0, padding: 0, margin: "12px 0 16px", gap: 2 }}
+                >
+                  <legend className={ws.eyebrow} style={{ padding: 0 }}>
+                    더 넣을 칸
+                  </legend>
                   {optional(chosen).map((s) => (
                     <label key={s.section_key} className={ws.check}>
                       <input
@@ -238,8 +260,10 @@ export default function MonthlyTemplatePage() {
                           setExtras(next);
                         }}
                       />
-                      {s.label || s.section_key}
-                      {s.repeat_by === "WEEK" && <span className={ws.muted}> (주마다)</span>}
+                      {name(s.section_key, s.label)}
+                      <span className={ws.muted}>
+                        {s.repeat_by === "WEEK" ? " 주마다 적어요" : " 한 달에 한 번 적어요"}
+                      </span>
                     </label>
                   ))}
                 </fieldset>
@@ -249,7 +273,9 @@ export default function MonthlyTemplatePage() {
                   disabled={busy || centerId === null}
                   onClick={handleCreate}
                 >
-                  {busy ? "만드는 중…" : "이 양식으로 쓰기"}
+                  {busy
+                    ? "만드는 중…"
+                    : `${required(chosen).length + extras.size}칸으로 양식 만들기`}
                 </button>
               </>
             )}
