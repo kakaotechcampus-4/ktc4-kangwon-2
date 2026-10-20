@@ -6,17 +6,75 @@
 # 채널 ID 와 업로드 재생목록 ID 는 손으로 적지 않는다. 이렇게 뽑는다:
 #     python backend/scripts/resolve_channels.py @ebskids @pinkfong ...
 #
-# 지금은 비어 있다. 사람이 유튜브에서 직접 보고 채널을 골라야 한다 —
-# AI 에게 시키면 없는 채널을 지어낸다.
+# 59개를 보고 15개를 골랐다 (2026-10-16). 고른 기준과 뺀 이유는
+# docs/references/트렌드봇-채널-후보.md 에 있다.
+#
+# **대부분의 교사용 놀이 채널은 1~4년 전에 멈춰 있다.** 숫자를 채우려고
+# 죽은 채널이나 장난감 개봉 채널을 넣지 않았다 — 검열 3단에서 떨어질 것만
+# 늘리면 API 호출만 쓴다.
+#
+# 첫 수집 뒤 **건진 게 0건인 채널을 뺀다.** madeForKids 는 영상마다 붙어서
+# 눈으로 못 가린다 (sources.py:_with_video_status).
 
-youtube_channels: []
-# - name: EBS키즈
-#   channel_id: UC...
-#   uploads_playlist_id: UU...
+youtube_channels:
+  # 활동이 나오는 것 — 교사가 계획안 활동 칸에 옮겨 적을 수 있다
+  - name: 꼬미쌤TV
+    channel_id: UC_P-_dMUP0S6Yh2h6v-mxKw
+    uploads_playlist_id: UU_P-_dMUP0S6Yh2h6v-mxKw
+  - name: 프뢰벨키즈
+    channel_id: UCv20vsnAtfa09m4OJJsjWFA
+    uploads_playlist_id: UUv20vsnAtfa09m4OJJsjWFA
+  - name: EBS 키즈
+    channel_id: UCx_dzPI6efSohgtOkAG43-A
+    uploads_playlist_id: UUx_dzPI6efSohgtOkAG43-A
+  - name: KBSKids
+    channel_id: UCdXB-xqrg37isIQwF0Z5-Dw
+    uploads_playlist_id: UUdXB-xqrg37isIQwF0Z5-Dw
+  - name: 아이코리아TV
+    channel_id: UClASHb00EQZH7ZM8gvhqJyA
+    uploads_playlist_id: UUlASHb00EQZH7ZM8gvhqJyA
+  - name: 꿈꾸는미술 DreamingArts
+    channel_id: UCGCezcEp4e4e0U5EpuKD94A
+    uploads_playlist_id: UUGCezcEp4e4e0U5EpuKD94A
 
-news_outlets: []
-# - name: 베이비뉴스
-#   domain: ibabynews.com
+  # 동요 · 음률 · 이야기
+  - name: 핑크퐁
+    channel_id: UCqXwKu6dKobXEQFhdKtiJLQ
+    uploads_playlist_id: UUqXwKu6dKobXEQFhdKtiJLQ
+  - name: 뽀로로랑 타요랑 뽀요TV
+    channel_id: UCrlqF_4ePI1h02gKjIG0n2w
+    uploads_playlist_id: UUrlqF_4ePI1h02gKjIG0n2w
+  - name: 로보카폴리 인기 동요
+    channel_id: UCmC5SDZ4YkrQJb7IS-32U2A
+    uploads_playlist_id: UUmC5SDZ4YkrQJb7IS-32U2A
+  - name: 코코키즈 놀이음악
+    channel_id: UCiZutDuXF87cNN0lXn7Uaug
+    uploads_playlist_id: UUiZutDuXF87cNN0lXn7Uaug
+  - name: 타이머 놀이터
+    channel_id: UCVbvXa-rs9czZxNLg40XExA
+    uploads_playlist_id: UUVbvXa-rs9czZxNLg40XExA
+  - name: 하나언니가 읽어주는 신나는 동화나라
+    channel_id: UCMSZGNgdr8SMqtZXbOWWwkQ
+    uploads_playlist_id: UUMSZGNgdr8SMqtZXbOWWwkQ
+  - name: 코코몽 COCOMONG TV
+    channel_id: UCmKH1rkv9OJ1FjM64qbeLVw
+    uploads_playlist_id: UUmKH1rkv9OJ1FjM64qbeLVw
+  - name: 뽀롱뽀롱 뽀로로 이야기·동화
+    channel_id: UCyyCXaPt37-4rTpDvL6niMA
+    uploads_playlist_id: UUyyCXaPt37-4rTpDvL6niMA
+  - name: 깨비키즈
+    channel_id: UCD_-N4vf-tsqbUxrQ4CrJIA
+    uploads_playlist_id: UUD_-N4vf-tsqbUxrQ4CrJIA
+
+news_outlets:
+  - name: 베이비뉴스
+    domain: ibabynews.com
+  - name: 베이비타임즈
+    domain: babytimes.co.kr
+  - name: 키즈맘
+    domain: kizmom.com
+  - name: 소년한국일보
+    domain: kidshankook.kr
 
 # 뉴스에서 무엇을 찾을지. 뉴스는 놀이 서술을 주지 않는다 —
 # 소재 발굴과 "진짜 유행 맞나" 확인용이다 (ADR-016).

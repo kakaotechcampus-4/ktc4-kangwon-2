@@ -16,6 +16,8 @@ from app.features.centers.models import Center, CenterInvite, Class, Greetings
 from app.features.centers.schemas import (
     CenterCreate,
     CenterResponse,
+    CenterSettings,
+    CenterSettingsUpdate,
     ClassCreate,
     ClassListResponse,
     ClassResponse,
@@ -218,6 +220,49 @@ def list_classes(
         select(Class).where(Class.center_id == center_id).order_by(Class.id)
     ).all()
     return ClassListResponse(items=list(classes))
+
+
+@router.get("/{center_id}/settings", response_model=CenterSettings)
+def get_center_settings(center_id: int, session: DbSession, user: CurrentUser) -> Center:
+    """설정한 적 없어도 기본값이 담긴 행을 준다 — 빈 객체를 주지 않는다 (§3-1)."""
+    require_own_center(user, center_id)
+    return _center(session, center_id)
+
+
+@router.put("/{center_id}/settings", response_model=CenterSettings)
+def put_center_settings(
+    center_id: int, body: CenterSettingsUpdate, session: DbSession, user: CurrentUser
+) -> Center:
+    require_own_center(user, center_id)
+    center = _center(session, center_id, lock=True)
+    # **보낸 칸만 바꾼다.** 안 보낸 칸은 건드리지 않는다 (§3-1).
+    if body.trends_enabled is not None:
+        center.trends_enabled = body.trends_enabled
+    session.commit()
+    session.refresh(center)
+    return center
+
+
+def _center(session: Session, center_id: int, *, lock: bool = False) -> Center:
+    """원 한 줄. 잠글 때는 세션 캐시를 비우고 다시 읽는다.
+
+    require_own_center 는 DB 를 안 읽지만, 같은 요청에서 먼저 읽은 적이 있으면
+    잠금 뒤 읽기가 옛 값을 돌려준다 (children/router.py 와 같은 이유).
+    """
+    query = select(Center).where(Center.id == center_id)
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    center = session.scalar(query)
+    if center is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "NOT_FOUND",
+                "message": "원을 찾을 수 없습니다.",
+                "fields": ["center_id"],
+            },
+        )
+    return center
 
 
 @router.get("/{center_id}/greetings", response_model=GreetingsSettings)

@@ -37,7 +37,22 @@ def _month(year, month):
     return {"target_month": {"calendar_year": year, "calendar_month": month}}
 
 
-def _plan(center_id, plan_ref, *, kind="monthly", status="CONFIRMED", classroom="1", body=None):
+def _plan(
+    center_id,
+    plan_ref,
+    *,
+    kind="monthly",
+    status="CONFIRMED",
+    classroom="1",
+    body=None,
+    target_month=None,
+):
+    body = _month(2026, 10) if body is None else body
+    # 월간은 `plans.target_month` 가 있어야 저장된다(ck_plans_target_month_kind, #126).
+    # 컬럼은 body 에서 유도한 값이라 그대로 꺼낸다. body 로 못 만드는 행은 부르는 쪽이 준다.
+    if kind == "monthly" and target_month is None:
+        month = body["target_month"]
+        target_month = f"{month['calendar_year']:04d}-{month['calendar_month']:02d}"
     return Plan(
         plan_ref=plan_ref,
         center_id=center_id,
@@ -45,7 +60,8 @@ def _plan(center_id, plan_ref, *, kind="monthly", status="CONFIRMED", classroom=
         school_year=2026,
         classroom_ref=classroom,
         status=status,
-        body=_month(2026, 10) if body is None else body,
+        body=body,
+        target_month=target_month,
     )
 
 
@@ -73,8 +89,9 @@ def test_대상_월을_못_읽는_행은_건너뛴다(db_session, center):
     """조용히 틀린 숫자를 내는 것보다 안 세는 쪽이 낫다 — 「부족」은 교사가 보고 고친다."""
     db_session.add_all(
         [
-            _plan(center.id, "m-1", body={}),
-            _plan(center.id, "m-2", body={"target_month": {}}),
+            # 컬럼은 있지만 body 로는 대상 월을 못 읽는 행 — 조회는 body 를 원본으로 본다.
+            _plan(center.id, "m-1", body={}, target_month="2026-08"),
+            _plan(center.id, "m-2", body={"target_month": {}}, target_month="2026-09"),
             _plan(center.id, "m-3", classroom="반이름"),
             _plan(center.id, "m-4", classroom="2"),
         ]
