@@ -1,0 +1,641 @@
+{
+  "$schema_note": "Institution Evidence record의 (source_section, exact source_label)을 Weekly Section grounding class로 분류한다. exact match만 쓴다. substring·기관별 mapping 금지. 목록에 없는 label은 default_class다. 원본 Evidence corpus의 상태를 바꾸지 않는다. 월간 분류(monthly-evidence-semantic-classification)를 대체하지 않는 별도 Artifact다.",
+  "schema_version": "weekly-evidence-semantic-classification.schema.v0",
+  "classification_id": "ssuksak.weekly-evidence-semantic-classification",
+  "classification_version": "weekly-evidence-semantic-classification-v0.1.0",
+  "supersedes": null,
+  "evidence_store": {
+    "store_id": "ssuksak.institution-evidence",
+    "schema_version": "institution-evidence.schema.v0",
+    "ingestion_version": "institution-evidence-ingestion-v0.1.0",
+    "content_sha256": "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea",
+    "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE"
+  },
+  "review": {
+    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
+    "approved_by": null,
+    "approved_at": null,
+    "review_scope_note": "이 분류 artifact만 승인한다. 원본 corpus는 계속 CORPUS_OBSERVATION_NON_NORMATIVE / CONTEXT_ONLY다. 승인 전에는 주간 생성이 이 분류를 쓰지 않는다 — indoor_play · indoor_alternative · group_activity 칸은 근거 없음으로 비운다(docs/weekly-plan-contract.md §7-3 · §7-4).",
+    "reviewer_identity_rule": "reviewer_<role>_<sequence> 규칙을 따른다(월간 분류와 같음).",
+    "review_record": "docs/weekly-evidence-classification-review.md"
+  },
+  "matching": "EXACT",
+  "key": [
+    "source_section",
+    "source_label"
+  ],
+  "default_class": "EXCLUDED",
+  "grounding_scope": {
+    "INDOOR_PLAY": {
+      "section_key": "indoor_play"
+    },
+    "GROUP_ACTIVITY": {
+      "section_key": "group_activity"
+    },
+    "INDOOR_ALTERNATIVE": {
+      "section_key": "indoor_alternative"
+    }
+  },
+  "entries": [
+    {
+      "source_section": "indoor_play",
+      "source_label": "음률",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀 이 지 실내 놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학･요리",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 내",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 자유놀이 / 활동",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 내 놀",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "언어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "언 어 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 내 놀 이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓 기 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "수·과학",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 미술",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "내 놀 이 언어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역 할 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미 술 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "수･과학",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀 이 언어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀 이 실내 놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "(9:20~ 10:50, 15:20~ 16:30) 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "자 유 놀 이 수․과학 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀이 실내",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 놀이 (9:20~",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과 학",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 자 유",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 놀이 / 활동",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "오 전 음 률 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "16:30) 미술",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미 술",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "언어/수교육",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "자 유 놀 수․과학 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 미 술 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "오 전 실 음 률 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "이 역 할 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "유 놀 이 언어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "음률놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "(9:20~ 10:50, 15:20~ 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓 기",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역 할",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "10:40, 15:20~ 16:30) 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "자 유 놀 이 언어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "언어/수",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "- 실내자유놀이 -",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "이 과학놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "내 놀 이 수·과학 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "내 음 률 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "유 놀 수․과학 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 역할",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "내 자 미술",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "10:50, 15:20~ 16:30) 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "언어/ 수교육",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀 이 수 조 작",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 자유 놀이",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "수조작",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "이 음 률",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실 내 자 유 놀",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 놀이 (9:20~ 10:40,",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "언 어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "음 률",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "내 놀 이 수․과학 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "내 자 음 률 영 역",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 자",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "실내 놀이 (9:20~ 10:50,",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀이 언어",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학･요리[요리]",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "15:20~ 16:30) 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀 이 수조작",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀이 (9:20~ 10:50, 15:20~ 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "과학･요리[과학]",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "놀이 (9:20~ 10:50, 15:20~ 16:30) 수‧과학 (조작)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기・역할",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "수조작・과학",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술-",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할-숫자",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술-(협동화)",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기-사진관",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술-재활용품",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할-얼음",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "미술-퍼레이드",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기-",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할-",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기-숫자",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기-겨울왕국",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "쌓기-가을",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "역할-가을",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대소집단 활동",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대소집단 (11:00~11:30)",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대 ･ 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대 소 집 단 활 동",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대 ･ 소 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "활동 (이야기나누기) - 우리나라를 나타내는 것이 있어요 - 태극기에는 어떤 뜻이 담겨 있을까요? (동요) 우리나라 꽃 (미술) 태극기 꾸미기 (신체·게임) 무궁화 꽃이 피었습니다",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대소집단 (10:55~11:10)",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대·소집단 활동 【이야기나누기】 우리반에도 이름이 있어요 【게임】 놀잇감 위치를 알아요 【음악】 교실 안 소리 찾기, 【동요】 안녕 【미술】 내가 꾸민 놀이터",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대 ･ 소집 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "활동 (이야기나누기) - 여름이 되면 달라지는 것 - 내가 본 여름 풍경 (동화) 여름 숲 이야기 (동시) 여름 나기 (미술) 바닷속 꾸미기",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "활동 (이야기나누기) - 우리 반을 둘러 보아요 - 우리 반의 좋은 점 (동화) 내가 잘할 수 있을까? (미술) 행복한 우리 반",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "･ 소 집 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "소 집 단 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "소 집 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "그 룹 활 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대 ･ 소 집 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "소 그 미 술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "･ 소집 미술",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_play",
+      "source_label": "대소집단",
+      "semantic_class": "GROUP_ACTIVITY"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "대체활동",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥놀이 대체활동",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥놀이 (대체활동)",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "바깥놀이 [대체활동]",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "놀 이 실내 대체활동",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "실내대체활동",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    },
+    {
+      "source_section": "indoor_alternative",
+      "source_label": "대체 놀이",
+      "semantic_class": "INDOOR_ALTERNATIVE"
+    }
+  ]
+}
