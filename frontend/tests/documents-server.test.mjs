@@ -1357,6 +1357,7 @@ function editorHarness(selection) {
       useEffect: () => {},
     },
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
+    "next/link": { __esModule: true, default: "link" },
     "@/lib/workspace/model": workspaceModel,
     "@/lib/workspace/ai-client": {
       requestAI: () => {
@@ -1419,6 +1420,7 @@ function editorHarness(selection) {
         (node) => node.type === "textarea" && node.props["aria-label"] === "해석 내용",
       ),
     button: (label) => all(tree).find((node) => node.type === "button" && content(node) === label),
+    links: () => all(tree).filter((node) => node.type === "link"),
     checks: () =>
       all(tree).filter((node) => node.type === "input" && node.props.type === "checkbox"),
     text: () => content(tree),
@@ -1528,6 +1530,16 @@ test("확정된 서버 문서에만 확정 취소가 보이고 초안에는 보�
 
   const draft = await editing();
   assert.equal(draft.editor.button("확정 취소"), undefined);
+});
+
+test("사실 칸 아래에 원본을 고치는 곳을 알려준다", async () => {
+  const { editor } = await editing({ kind: "observation" });
+  assert.deepEqual(
+    editor.links().map((l) => l.props.href),
+    ["/records"],
+  );
+  // 일과 기록 화면(S-J1)이 아직 없다 — 갈 곳이 없는 링크를 띄우지 않는다.
+  assert.deepEqual((await editing({ kind: "dailyLog" })).editor.links(), []);
 });
 
 test("확정 취소는 확인창 없이 바로 서버를 부르고 초안으로 되돌린다", async () => {

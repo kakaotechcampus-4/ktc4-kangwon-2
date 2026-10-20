@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   DOCUMENT_KINDS,
   downloadText,
   validateDocument,
+  type DocumentKind,
   type SavedDocument,
   type Section,
 } from "@/lib/workspace/model";
@@ -21,6 +23,15 @@ import {
   downloadAnnualHwpx,
 } from "@/lib/api/plans";
 import type { AnnualPlan } from "@/lib/api/types";
+
+/**
+ * 사실 칸의 원본을 고치는 곳. 사실은 여기서 못 고친다 — 서버가 `PUT` 으로 바뀐 사실을 거절한다 (§11).
+ * 일일 보육일지는 일과 기록 화면(S-J1)이 생기면 더한다.
+ */
+const FACT_SOURCE: Partial<Record<DocumentKind, string>> = {
+  observation: "/records",
+  assessment: "/records",
+};
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
 export interface ServerDocumentActions {
@@ -98,6 +109,7 @@ export default function DocumentEditor({
   const recordDocument =
     !imported && ["dailyLog", "weeklyLog", "observation", "assessment"].includes(doc.kind);
   const editable = doc.status !== "confirmed";
+  const factSource = recordDocument ? FACT_SOURCE[doc.kind] : undefined;
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || !!server?.pending;
   function change(index: number, body: string) {
@@ -366,6 +378,14 @@ export default function DocumentEditor({
           ) : (
             <p className={section.heading === "사실" ? ws.quote : undefined}>
               {section.body || "아직 작성하지 않았어요."}
+            </p>
+          )}
+          {factSource && section.heading === "사실" && (
+            <p className={ws.hint}>
+              교사가 적은 원문입니다. 고치려면{" "}
+              <Link className={ws.link} href={factSource}>
+                관찰 기록에서 고쳐 주세요 →
+              </Link>
             </p>
           )}
           {section.sourceIds.length > 0 && (
