@@ -246,3 +246,85 @@ test("★ 고치기 전의 옛 반 행은 다시 들이지 않는다", async () 
   values.set(linksKey(), JSON.stringify({ classes: {}, children: {}, retired: [7] }));
   assert.deepEqual(await onboarding.adoptServerClasses([]), []);
 });
+
+/**
+ * **이 기능이 생기기 전부터 쓰던 계정.** `syncClassOnce` 는 반 정보를 고칠 때마다
+ * 서버에 반을 새로 만들고 옛 반을 남겨 둔다(수정 API 가 없다). 그 옛 반 id 는
+ * `links` 어디에도 없다 — `retired` 는 이번 판부터 쌓인다.
+ *
+ * 그대로 두면 고친 적 있는 교사의 옛 반이 전부 되살아난다. (하민 리뷰 #164-1)
+ */
+test("★ 쓰던 계정의 옛 서버 반은 들이지 않고 버린 것으로 적는다", async () => {
+  const values = browser();
+  const second = { ...CLASS, id: 8, name: "햇살반(고치기 전)" };
+  api({ classes: [CLASS, second] });
+  await onboarding.adoptServerClasses([]); // 저장 키를 만든다
+  // 온보딩을 마친 계정: 7번 반만 연결돼 있고 retired 는 적은 적이 없다
+  values.set(
+    linksKey(),
+    JSON.stringify({ classes: { "class-abc": { id: 7, signature: "" } }, children: {} }),
+  );
+  const known = [{ id: "class-abc", className: "햇살반", children: [] }];
+
+  const adopted = await onboarding.adoptServerClasses(known);
+
+  assert.deepEqual(adopted, [], "옛 반이 되살아나면 안 된다");
+  const links = JSON.parse(values.get(linksKey()));
+  assert.deepEqual(links.retired, [8], "연결 안 된 서버 반을 버린 것으로 적는다");
+});
+
+test("★ 쓴 적 없는 계정은 그대로 들인다 — 초대받은 교사가 막히면 안 된다", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]);
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {} }));
+
+  const adopted = await onboarding.adoptServerClasses([]);
+
+  assert.equal(adopted.length, 1);
+  assert.deepEqual(JSON.parse(values.get(linksKey())).retired, []);
+});
+
+/**
+ * 반 목록을 저장하기 전에 끊기면 「연결은 있는데 목록에 없는 반」이 된다 — 그건
+ * 교사가 지운 반과 모양이 같아서 다음부터 영영 안 들어온다. **목록 먼저 저장한다.**
+ * (하민 리뷰 #164-2)
+ */
+test("★ 반 목록을 연결보다 먼저 저장한다", async () => {
+  const values = browser();
+  api();
+  const order = [];
+  await onboarding.adoptServerClasses([], undefined, (rows) => {
+    order.push("목록" + rows.length);
+    // 이 시점에 연결은 아직 저장 전이어야 한다
+    order.push(
+      "연결" + Object.keys(JSON.parse(values.get(linksKey()) ?? "{}").classes ?? {}).length,
+    );
+  });
+  assert.deepEqual(order, ["목록1", "연결0"]);
+});
+
+test("★ 저장이 끊겨 연결만 없어도 다음에 다시 들인다", async () => {
+  const values = browser();
+  api();
+  // 목록은 저장됐고 연결은 못 쓴 상태를 흉내 낸다
+  await onboarding
+    .adoptServerClasses([], undefined, () => {
+      throw new Error("저장 실패");
+    })
+    .catch(() => {});
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {}, retired: [] }));
+
+  const again = await onboarding.adoptServerClasses([]);
+  assert.equal(again.length, 1, "연결이 없으면 다시 들여야 한다");
+});
+
+test("★ 목록에 이미 있는 반은 두 번 담지 않는다", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]);
+  values.set(linksKey(), JSON.stringify({ classes: {}, children: {}, retired: [] }));
+  const known = [{ id: "server-class:7", className: "햇살반", children: [] }];
+
+  assert.deepEqual(await onboarding.adoptServerClasses(known), []);
+});

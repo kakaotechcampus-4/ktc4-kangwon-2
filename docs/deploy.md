@@ -106,28 +106,41 @@ curl -m 5 -o /dev/null -w "5432  %{http_code}\n" http://13.125.107.188:5432     
 
 ### main 이 아닌 브랜치를 올릴 때
 
-멘토 리뷰처럼 `main` 머지 전에 보여줘야 할 때가 있다. `deploy.sh` 는 `main` 을 박아
-두었으므로 그때는 아래를 붙여 넣는다. **`git` 은 `ubuntu` 로 돌린다** — root 로 돌리면
-`.git` 안에 root 소유 파일이 생겨 다음에 ubuntu 가 손을 못 댄다.
+**Actions 에서 한다.** 손으로 서버에 들어갈 필요가 없다.
 
-```bash
-sudo -u ubuntu bash -c '
-set -euo pipefail
-cd /home/ubuntu/ktc4-kangwon-2
-git fetch --prune origin
-git checkout -B develop origin/develop
-echo "커밋: $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
-test -f .env || { echo ".env 없음"; exit 1; }
-sudo docker compose build backend frontend
-sudo docker compose run --rm backend alembic upgrade head
-sudo docker compose up -d
-sudo docker image prune -f
-'
+```
+Actions → Deploy → Run workflow → ref 에 브랜치 이름 (예: develop) → Run
 ```
 
-**치울 필요가 없다.** 다음 자동 배포가 `git checkout main && git reset --hard` 를 하므로
-`main` 에 머지되는 순간 알아서 되돌아온다. 그때 올라가는 코드가 지금 올린 것과 같다.
+`push` 로 들어온 배포는 늘 `main` 이다. 고를 수 있는 건 손으로 돌릴 때뿐이다.
+
+**전에는 `deploy.sh` 가 `main` 을 박아 두었다.** 그래서 손으로 develop 을 올려 둔 서버에
+자동 배포를 한 번 돌리면 조용히 main 으로 되돌아갔고, 무엇이 돌고 있는지 아무도 몰랐다.
+2026-10-20 에 `DEPLOY_REF` 로 받게 고쳤다.
+
+**치울 필요가 없다.** `main` 에 머지되는 순간 자동 배포가 돌아 `main` 으로 되돌아온다.
 마이그레이션으로 생긴 표는 남지만 옛 코드는 그 표를 읽지 않아 문제가 없다 — **지우지 않는다.**
+
+### 되감을 때 (롤백)
+
+나쁜 배포가 나가면 **직전 커밋 SHA 로 다시 배포한다.** 같은 길이다 — 롤백 전용 길을
+따로 두지 않는다. 평소에 안 쓰는 길은 정작 급할 때 안 돈다.
+
+```
+Actions → Deploy → Run workflow → ref 에 직전 커밋 SHA → Run
+```
+
+직전에 무엇이 돌았는지는 두 군데서 본다.
+
+```bash
+# 1. Actions 의 배포 기록 — 「배포 <ref> <sha> — <제목>」이 찍혀 있다
+# 2. 서버에서
+sudo -u ubuntu git -C /home/ubuntu/ktc4-kangwon-2 log --oneline -5
+```
+
+**DB 는 안 되감긴다.** 마이그레이션은 앞으로만 간다. 옛 코드가 새 표를 읽지 않으니
+대개 문제가 없지만, **열을 지우거나 이름을 바꾼 마이그레이션이 섞여 있으면 되감아도
+안 돈다.** 그런 변경은 두 단계로 나눠 올린다(먼저 안 쓰게 하고, 다음 판에서 지운다).
 
 ### 순서에 이유가 있다
 

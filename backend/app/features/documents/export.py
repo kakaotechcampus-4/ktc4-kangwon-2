@@ -1,7 +1,7 @@
 """문서 내보내기 — `GET /api/documents/{id}/export/hwp` (docs/api-spec.md §11 「내보내기」).
 
-§9 계획안 내보내기와 같은 규칙이다. 확정본만 · 출처를 싣지 않는다 · 경로는 `hwp` 지만
-파일은 hwpx 다(`shared/hwpx.py`).
+§9 계획안 내보내기와 같은 규칙이다. 확정본만 · 출처를 싣지 않는다 · 기본은 hwpx 이고
+`?format=hwp` 면 `.hwp` 로 바꿔 준다(`shared/hwpx.py`, ADR-039).
 
 **3층을 종이에서 합친다(ADR-024).** 화면과 검사에서는 사실 · 해석 · 지원이 나뉘어 있지만
 실물 양식에는 해석 칸과 지원 칸이 따로 없다. 꼬리 칸 하나에 해석, 빈 줄, 지원 순서로 잇는다.
@@ -27,7 +27,7 @@ from app.features.documents.router import (
 from app.features.observations.models import DOMAINS
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
-from app.shared.hwpx import download, fill_grid, fill_table
+from app.shared.hwpx import Format, download, fill_grid, fill_table
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -41,7 +41,9 @@ DAILY_LOG_HEADER_ROWS = 1
 
 
 @router.get("/{document_id}/export/hwp")
-def export_document(document_id: int, session: DbSession, user: CurrentUser) -> Response:
+def export_document(
+    document_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
+) -> Response:
     doc = _own_document(session, user, document_id)
     if doc.kind not in ("observation", "dailyLog"):
         raise _error(
@@ -68,7 +70,7 @@ def export_document(document_id: int, session: DbSession, user: CurrentUser) -> 
         content = _observation(session, doc, sources, evaluation)
     else:
         content = _daily_log(session, doc, sources, evaluation)
-    return download(content, f"document-{doc.id}", doc.title)
+    return download(content, f"document-{doc.id}", doc.title, format)
 
 
 def _evaluation(session: Session, doc: Document) -> str:

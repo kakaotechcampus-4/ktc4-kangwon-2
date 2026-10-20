@@ -8,6 +8,7 @@ from app.features.centers.models import Center, Child, Class
 from app.features.documents.models import Document
 from app.features.evaluation import auto
 from app.features.evaluation.judge import INSUFFICIENT, NONE, Ratio, Window
+from app.features.plans.models import Plan
 from app.shared.school_year import KST
 
 NOW = datetime(2026, 10, 8, 10, tzinfo=KST)
@@ -118,3 +119,35 @@ def test_문서가_없으면_둘_다_NONE이다(db_session, roster):
     assert result["4-1"].verdict == result["4-2"].verdict == NONE
     assert result["4-1"].classes == Ratio(0, 2)
     assert result["4-2"].children == Ratio(0, 3)
+
+
+def _monthly(session, classroom, month, status="CONFIRMED"):
+    plan = Plan(
+        plan_ref=f"test-monthly-{classroom.id}-{month}-{status}",
+        center_id=classroom.center_id,
+        kind="monthly",
+        school_year=classroom.school_year,
+        classroom_ref=str(classroom.id),
+        target_month=f"2026-{month:02d}",
+        status=status,
+        body={"target_month": {"calendar_year": 2026, "calendar_month": month}},
+    )
+    session.add(plan)
+    session.flush()
+    return plan.id
+
+
+def test_4_1은_올해_반의_기간_안_확정_월간계획안을_센다(db_session, roster):
+    center, classes, _ = roster
+    sun, _, previous, other = classes
+    counted = _monthly(db_session, sun, 9)
+    _monthly(db_session, sun, 10, status="DRAFT")
+    _monthly(db_session, sun, 8)  # 4-1 기간 2026-09-01 ~ 10-07 밖
+    _monthly(db_session, previous, 10)  # 작년 반
+    _monthly(db_session, other, 10)  # 다른 원
+
+    four_one = auto.judge_auto(db_session, center.id, NOW)["4-1"]
+
+    assert four_one.plan_ids == (counted,)
+    assert four_one.count == 1 and four_one.document_ids == ()
+    assert four_one.verdict == INSUFFICIENT and four_one.classes == Ratio(0, 2)

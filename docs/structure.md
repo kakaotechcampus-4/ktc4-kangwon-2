@@ -116,7 +116,7 @@ app/
 | `auth` | 인증 |
 | `audit` | 변경 이력 |
 | `childCode` | 아동 실명 ↔ 코드 치환 |
-| `hwpx.py` | hwpx 내보내기 — 양식 표 칸 글자만 바꾼다(ADR-021). 양식 파일은 각 feature 의 `templates/` |
+| `hwpx.py` | hwpx 내보내기 — 양식 표 칸 글자만 바꾼다(ADR-021). `?format=hwp` 면 그 hwpx 를 `.hwp` 로 바꾼다(ADR-039). 양식 파일은 각 feature 의 `templates/` |
 
 `childCode` 는 구현됐다(ADR-004). 나머지 5개는 빈 `__init__.py` 만 있고 각 담당자가 채운다.
 
@@ -329,9 +329,9 @@ Run `npm run e2e` for routines A-J and home K/L. Set `E2E_DATABASE_URL` and
 - `document-selection.ts`: 선택한 문서에만 원자적 reconfirm 응답 적용, 중복 작업 방지.
 - `backend/app/features/documents/review.py`: 비교 토큰과 원본 → 문서 잠금,
   공유 게이트, 원자적 재확정과 완료 재시도 처리. 기존 router의 개별 API는 유지.
-- `document_reconfirmations`: 확정본 재확정의 완료 토큰별 영수증. `f7a1c3d5e902` · `b6e2d4a71c38`, ADR-030.
+- `document_reconfirmations`: 확정본 재확정의 완료 토큰별 영수증. `f7a1c3d5e902` · `b6e2d4a71c38`, ADR-040.
 - `document_source_resolutions`: **초안** 에서 사라진 근거를 빼거나 바꾼 흔적
-  (`refresh`). 영수증과 섞지 않는다. 마이그레이션 `c41ab7d6e508`, ADR-030.
+  (`refresh`). 영수증과 섞지 않는다. 마이그레이션 `c41ab7d6e508`, ADR-040.
 
 UI 체크박스 하나를 API checks 세 필드로 보내며, stale이어도 기존 확정 상태를 유지한다.
 근거 사본/현재 원본의 차이를 먼저 보여주고 모든 검증을 통과한 트랜잭션만 확정본을 바꾼다.

@@ -197,21 +197,19 @@ def test_승인과_runtime_active_가_어긋나면_거절한다(documents):
         catalog.build_catalog(*documents)
 
 
-def test_v2_는_승인만_받으면_바로_돌아간다():
-    """승인 전이라 아직 안 쓰지만, 내용이 계약에 맞는지는 지금 확인해 둔다.
+def test_v2_는_승인받았고_그대로_돌아간다():
+    """2026-10-20 에 PM 이 승인했다(reviewer_pm_001). 파일 그대로 돌아야 한다.
 
     평가요소 19개는 「2025 어린이집 평가 자체평가 보고서 서식(어린이집용)」 영역5 · 영역6
     표에서 그대로 옮긴 것이다. 숫자가 바뀌면 원문이 바뀐 것이므로 사람이 다시 대조한다.
     """
     doc = json.loads(catalog._INDICATORS_V2_PATH.read_text(encoding="utf-8"))
-    assert doc["review"]["domain_owner_approval"] == "PENDING_HUMAN"
-    assert doc["review"]["runtime_active"] is False
+    assert doc["review"]["domain_owner_approval"] == "HUMAN_APPROVED"
+    assert doc["review"]["runtime_active"] is True
+    assert doc["review"]["approved_by"] == "reviewer_pm_001"
 
-    approved = copy.deepcopy(doc)
-    approved["review"]["domain_owner_approval"] = "HUMAN_APPROVED"
-    approved["review"]["runtime_active"] = True
     rules = json.loads(catalog._RULES_PATH.read_text(encoding="utf-8"))
-    loaded = catalog.build_catalog(approved, rules)
+    loaded = catalog.build_catalog(doc, rules)
 
     assert loaded.checklist_version == "daycare-evaluation-indicators-v2"
     assert sum(len(item.elements) for item in loaded.indicators) == 19

@@ -11,13 +11,13 @@
     "edition_note": "2026-10-17 에 2026. 2. 판 PDF 의 「자체평가 보고서 서식(어린이집)」 영역 1~6 과 대조했다. 평가요소 19개(영역 5·6)는 문장과 묶음이 그 판과 같다. 전에 적혀 있던 「2025 … 서식」은 같은 내용의 옛 판 이름이라 바로잡았다."
   },
   "review": {
-    "domain_owner_approval": "PENDING_HUMAN",
-    "approved_by": null,
-    "approved_at": null,
-    "runtime_active": false,
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_pm_001",
+    "approved_at": "2026-10-20T00:00:00+09:00",
+    "runtime_active": true,
     "runtime_rule": "runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\") 을 항상 만족한다.",
     "review_scope_note": "지표 문구와 평가요소 문구가 원문과 같은지만 승인한다. 어느 문서가 어느 지표를 뒷받침하는지는 이 파일이 정하지 않는다.",
-    "pending_note": "v1 은 지표 문구만 승인받았다(reviewer_pm_001 · 2026-09-30). v2 가 평가요소 19개를 더했으므로 그 승인이 이 판을 덮지 않는다. 원문 대조 뒤 domain_owner_approval 과 runtime_active 를 함께 바꾼다. 2026-10-17 에 hwp 줄바꿈이 낱말 가운데 끼워 넣은 공백 18자리를 지웠다(「신 체」→「신체」 꼴). 낱말을 바꾸지 않고 공백만 지웠다."
+    "approval_note": "2026-10-20 에 PM 이 승인했다. 2026.2 판 매뉴얼 원문과 대조해 지표 문구와 평가요소 문구가 같음을 확인했다. 2026-10-17 에 hwp 줄바꿈이 낱말 가운데 끼워 넣은 공백 18자리를 지웠고(「신 체」→「신체」 꼴) 낱말은 바꾸지 않았다. 체크박스 번호도 뺐다. 이 승인은 문구가 원문과 같다는 것까지다 — 어느 문서가 어느 지표를 뒷받침하는지는 이 파일이 정하지 않는다(review_scope_note)."
   },
   "areas": [
     {

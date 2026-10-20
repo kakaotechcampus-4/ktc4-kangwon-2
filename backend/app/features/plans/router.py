@@ -8,7 +8,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
@@ -335,6 +335,55 @@ def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     return _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
 
 
+@router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
+    """확정 전 연간계획안을 지운다.
+
+    **지울 길이 있어야 다시 만들 수 있다.** 반 하나에 연간은 하나고(models.py 부분 유니크
+    인덱스), 만들기는 409 로 막는다. 지우기가 없으면 교사가 첫 초안이 마음에 안 들어도
+    영영 다시 못 만든다.
+
+    **확정본은 안 지운다.** 제출 문서다. 다시 만들어야 하면 사람이 판단할 일이지
+    버튼 한 번으로 사라지면 안 된다.
+
+    **월간이 딸려 있으면 안 지운다.** 월간은 이 계획안을 부모로 들고 있어서(§9-1
+    `parent`), 부모가 사라지면 조회가 깨진다. 월간을 먼저 지워야 한다.
+
+    부모는 `body` 안에만 있어서 열로는 못 찾는다. 같은 반 · 같은 학년도의 월간을 본다 —
+    연간이 반마다 하나뿐이라 그 월간의 부모는 이것뿐이다.
+    """
+    row = _row(session, user, plan_id)
+    if row.status == "CONFIRMED":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "GATE_BLOCKED",
+                "message": "확정된 계획안은 지울 수 없습니다.",
+                "fields": [],
+            },
+        )
+    child = session.scalar(
+        select(Plan.id).where(
+            Plan.center_id == user.center_id,
+            Plan.kind == "monthly",
+            Plan.classroom_ref == row.classroom_ref,
+            Plan.school_year == row.school_year,
+        )
+    )
+    if child is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IN_USE",
+                "message": "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.",
+                "fields": [],
+            },
+        )
+    session.delete(row)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.put("/{plan_id}/months/{month}", response_model=MonthOut)
 def update_month(
     plan_id: int, month: int, body: UpdateMonth, session: DbSession, user: CurrentUser
@@ -376,6 +425,10 @@ def update_month(
 @router.post("/{plan_id}/confirm", response_model=ConfirmOut)
 def confirm_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     row = _row(session, user, plan_id)
+    # **재호출은 멱등이다(§7).** 이미 확정이면 저장된 그대로 200 — Core 확정을 다시 부르지 않고
+    # (부르면 409) 저장 · commit 도 하지 않는다. 소유 검사(_row) 뒤라 남의 원 것은 여전히 404 다.
+    if row.status == "CONFIRMED":
+        return ConfirmOut(id=row.id, status=row.status, confirmed_at=row.confirmed_at)
     repo = _repo(session, user)
     try:
         confirmed = ConfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(

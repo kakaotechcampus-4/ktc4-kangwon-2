@@ -56,11 +56,21 @@ export default function PlanNotebookPage() {
           <h1 className="font-display text-[34px] font-bold text-ink lg:text-[44px]">계획 노트</h1>
           <p className="mt-1 text-xs text-ink-soft">{subtitle}</p>
         </div>
-        {plans && plans.length > 0 && (
-          <Link href="/plans/annual/new" className={PRIMARY}>
-            <Icon name="plus" className="h-4 w-4" />새 계획안 만들기
+        <div className="flex flex-wrap items-center gap-3">
+          {/* 월간은 연간과 흐름이 다르다 — 확정된 연간과 원 양식(TemplateProfile)이 있어야
+              만들 수 있어서 생성기 안에 두지 않고 따로 연다 (FR-303). */}
+          <Link href="/plans/monthly" className="text-xs underline text-ink-soft">
+            월간계획안
           </Link>
-        )}
+          <Link href="/plans/template" className="text-xs underline text-ink-soft">
+            월간 양식 설정
+          </Link>
+          {plans && plans.length > 0 && (
+            <Link href="/plans/annual/new" className={PRIMARY}>
+              <Icon name="plus" className="h-4 w-4" />새 계획안 만들기
+            </Link>
+          )}
+        </div>
       </div>
 
       {error && (

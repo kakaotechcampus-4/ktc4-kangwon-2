@@ -1,10 +1,11 @@
-import { apiRequest, ApiError } from "./client";
-import { readToken } from "../auth/token";
+import { apiRequest } from "./client";
+import { downloadHwpx } from "./export";
 import type {
   AnnualInput,
   AnnualPlan,
   AnnualPlanSummary,
   AnnualMonth,
+  AnnualAuditEvent,
   MonthInput,
   ConfirmResult,
 } from "./types";
@@ -30,41 +31,19 @@ export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/** 변경 이력. 시간순이고 필터 · 페이지가 없다 — 화면이 `month` 로 거른다. */
+export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
+  apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
+/**
+ * 확정 전 연간계획안을 지운다. 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
+ *
+ * 확정본은 409 `GATE_BLOCKED`, 월간이 딸려 있으면 409 `IN_USE` 다. 둘 다 서버 문구를 띄운다.
+ */
+export const deleteAnnualPlan = (id: number) =>
+  apiRequest<void>("/api/plans/annual/" + id, { method: "DELETE" });
 export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
 
-/**
- * 확정한 연간계획안을 hwpx 로 내려받는다 (§9).
- *
- * `apiRequest` 를 못 쓴다 — 그건 JSON 을 되돌려 주는데 여기는 파일이다.
- * 실패 응답만 JSON 이라, 그때는 같은 모양(`ApiError`)으로 던져 화면이 서버 문구를 띄운다.
- *
- * 파일 이름은 서버가 `Content-Disposition` 에 담아 준다. 한글이라 `filename*` 쪽을 읽는다 —
- * 우리가 지어내면 서버가 양식을 바꿀 때 이름만 옛 것으로 남는다.
- */
-export async function downloadAnnualHwpx(id: number): Promise<void> {
-  const token = readToken();
-  const response = await fetch(`/api/plans/${id}/export/hwp`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
-    throw new ApiError(response.status, body);
-  }
-
-  const disposition = response.headers.get("Content-Disposition") ?? "";
-  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
-  const name = encoded ? decodeURIComponent(encoded) : "연간계획안.hwpx";
-
-  const url = URL.createObjectURL(await response.blob());
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+/** 확정한 연간계획안을 hwpx 로 내려받는다 (§9). */
+export const downloadAnnualHwpx = (id: number) =>
+  downloadHwpx(`/api/plans/${id}/export/hwp`, "연간계획안.hwpx");

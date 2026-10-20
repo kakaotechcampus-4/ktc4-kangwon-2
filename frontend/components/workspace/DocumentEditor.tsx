@@ -11,6 +11,7 @@ import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
 import { isStaleWrite, type ReconfirmInput, type SourceResolution } from "@/lib/api/documents";
+import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import SourceReview from "./SourceReview";
 import { withoutChildMetadata } from "@/lib/privacy/browser-storage";
 
@@ -106,8 +107,9 @@ export default function DocumentEditor({
   const recordDocument =
     !imported && ["dailyLog", "weeklyLog", "observation", "assessment"].includes(doc.kind);
   const editable = doc.status !== "confirmed";
+  const hwpx = useHwpxDownload(setMessage);
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
-  const working = busy || !!server?.pending;
+  const working = busy || hwpx.exporting || !!server?.pending;
   function change(index: number, body: string) {
     setDoc((prev) => ({
       ...prev,
@@ -284,19 +286,9 @@ export default function DocumentEditor({
     );
 
   /** 확정한 연간계획안을 서버가 만든 hwpx 로 받는다 (§9). 화면이 양식을 흉내 내지 않는다. */
-  async function exportHwpx() {
-    if (!annualPlanId || working) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      await downloadAnnualHwpx(annualPlanId);
-      setMessage("한글 파일(hwpx)로 내려받았어요.");
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "내려받지 못했어요.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const exportHwpx = () => {
+    if (annualPlanId) void hwpx.download(() => downloadAnnualHwpx(annualPlanId));
+  };
 
   /**
    * 바뀐 근거를 반영한다. 해석·지원은 서버가 두고, 교사 확인만 다시 받는다.

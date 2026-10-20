@@ -72,8 +72,8 @@ const row = (over = {}) => ({
   class_name: "햇살반",
   date: "2026-10-17",
   position: 0,
-  start: "09:00",
-  end: "09:20",
+  start: "09:00:00",
+  end: "09:20:00",
   name: "등원 및 맞이하기",
   plan: "",
   execution: "현관에서 맞았다.",
@@ -212,8 +212,8 @@ test("★ 어제 불러오기는 시간·이름만 가져온다 — 활동실행
     {
       date: "2026-10-17",
       position: 0,
-      start: "09:00",
-      end: "09:20",
+      start: "09:00:00",
+      end: "09:20:00",
       name: "등원 및 맞이하기",
       plan: "",
       execution: "",
@@ -283,4 +283,9 @@ test("시간순 정렬은 시작·종료를 비교하고 동률·미입력에서
     items.map((r) => r.id),
     [1, 2, 3, 4, 5, 6],
   );
+});
+
+test("★ 서버는 초까지 준다 — 입력칸에 넣을 때만 자른다", () => {
+  assert.equal(routines.toTimeInput("09:20:00"), "09:20");
+  assert.equal(routines.toTimeInput(null), "");
 });

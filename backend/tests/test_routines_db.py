@@ -1,7 +1,10 @@
 """일과 기록(§10-1)과, 그것을 근거로 쓰는 일일 보육일지(§11) 통합 테스트. 실제 DB 를 쓴다."""
 
+import datetime
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.features.centers.models import Center, Child, Class
@@ -579,3 +582,80 @@ def test_DB_가_모르는_근거_종류를_막는다(db_session, mine):
     )
     with pytest.raises(IntegrityError):
         db_session.flush()
+
+
+# ── 같은 날 두 번 · 예산 초과 ───────────────────────────────────────────────
+def test_같은_반_같은_날_일일_보육일지는_두_번_못_만든다(db_session, mine, monkeypatch):
+    record = _routine(mine["sun"]).json()
+    assert _daily(mine["sun"], [record]).status_code == 201
+
+    def must_not_call(*args, **kwargs):
+        raise AssertionError("이미 있으면 모델을 부르지 않는다")
+
+    monkeypatch.setattr("app.features.documents.router.draft_sections", must_not_call)
+    response = _daily(mine["sun"], [record])
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ALREADY_EXISTS"
+    assert response.json()["error"]["fields"] == ["start"]
+    kinds = db_session.scalars(select(Document.kind).where(Document.kind == "dailyLog")).all()
+    assert kinds == ["dailyLog"]
+
+
+def test_생성_중에_같은_날_일지가_먼저_저장되면_뒤엣것은_409(db_session, mine, monkeypatch):
+    # 두 번 누른 요청이 앞단 검사를 둘 다 지나 모델을 부르는 동안 하나가 먼저 저장된 상황.
+    import app.features.documents.router as documents_router
+
+    record = _routine(mine["sun"]).json()
+    real = documents_router.draft_sections
+
+    def first_one_lands_meanwhile(*args, **kwargs):
+        day = datetime.date.fromisoformat(DAY)
+        db_session.add(
+            Document(
+                kind="dailyLog",
+                title="t",
+                class_id=mine["sun"].id,
+                start_date=day,
+                end_date=day,
+                status="DRAFT",
+                origin="AI",
+                stale=False,
+                review_note="",
+            )
+        )
+        db_session.flush()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(documents_router, "draft_sections", first_one_lands_meanwhile)
+    response = _daily(mine["sun"], [record])
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ALREADY_EXISTS"
+
+
+def test_다른_날이나_다른_반이면_만들_수_있다(mine):
+    sun = _routine(mine["sun"]).json()
+    next_day = _routine(mine["sun"], date="2026-09-23").json()
+    moon = _routine(mine["moon"]).json()
+
+    assert _daily(mine["sun"], [sun]).status_code == 201
+    assert _daily(mine["sun"], [next_day], start="2026-09-23", end="2026-09-23").status_code == 201
+    assert _daily(mine["moon"], [moon]).status_code == 201
+
+
+def test_예산_초과는_다시_시도가_아니라_503_LLM_BUDGET_EXCEEDED(db_session, mine, monkeypatch):
+    from app.shared.llm import LlmBudgetExceeded
+
+    def over_budget(*args, **kwargs):
+        raise LlmBudgetExceeded("키가 삭제됐습니다")
+
+    monkeypatch.setattr("app.features.documents.draft.is_mock", lambda: False)
+    monkeypatch.setattr("app.features.documents.draft.complete_json", over_budget)
+    record = _routine(mine["sun"]).json()
+
+    response = _daily(mine["sun"], [record])
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "LLM_BUDGET_EXCEEDED"
+    assert db_session.scalars(select(Document)).all() == []
