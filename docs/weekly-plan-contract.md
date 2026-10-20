@@ -328,6 +328,8 @@ WeeklyPlan.operating_days   (MON, TUE, WED, THU, FRI) 또는 (… , SAT)
   | 법정 배치 · 교사 수정 없음 | 월간과 같은 공식 근거 검사 — 그 법정 영역의 공식 근거(`SAFETY_RULE`)만 | `SAFETY_OFFICIAL_GROUNDING_MISSING` · 저장 안 함 |
   | 법정 배치 + 교사 수정 · 보충 배치 · 배치 정보 없음 · 교사 문장 | **부모 월간의 그 칸을 정확히 인용** — 같은 `week_id` 의 `safety_education` 칸 `parent_item_id` 와 현재 값 `snapshot_value`, `PARENT_PLAN` Evidence. **`SAFETY_RULE` 을 붙이지 않는다**(법정 영역 추측 금지) | 저장 안 함. 주간 검사 코드 이름은 W3 에서 정한다 — 공개 오류 코드는 `GENERATION_FAILED` 그대로 |
 
+  **부모 칸 인용(`parent_snapshots` · `PARENT_PLAN` Evidence)은 LLM 이 적어 내지 않고 Application 이 결정적으로 붙인다** — 어느 부모 칸을
+  썼는지는 Rule 이 이미 안다. 그래서 LLM 이 인용을 빠뜨려 생성 전체가 실패하는 일이 없다. 위 검사는 붙인 결과를 확인하는 안전장치로 남긴다.
   보충 배치 줄은 월간처럼 기관 자료(`INSTITUTION_SAMPLE`)를 직접 요구하지 않는다 — 그 기관 자료는 부모 월간이 이미 검사를 통과해 확정한 근거이고,
   주간은 그 부모 칸을 인용한다. **교사가 쓴 안전교육 문장 자체는 이 검사로 막지 않는다**(§11-2). 위 두 줄은 교사 문장을 참고해 **AI 가 만든** 주간 문장에 적용한다.
 - `[실측]` 지금 실서버 월간은 배치 정책을 넘기지 않아(api-spec §9-1, D-M4-03) 새 월간의 안전교육 칸이 비어 있다.
