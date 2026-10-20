@@ -20,7 +20,7 @@ import io
 import logging
 import re
 import zipfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Literal
 from urllib.parse import quote
 
@@ -78,6 +78,24 @@ def fill_table(
                 raise TemplateMismatch(f"양식 표는 {width}칸인데 {len(row)}칸을 채우려 한다.")
             for c, text in enumerate(row):
                 _set_text(cells[(r, c)], text)
+
+    return _rewrite(template, title, fill)
+
+
+def fill_cells(template: bytes, title: str, values: Mapping[tuple[int, int], str]) -> bytes:
+    """양식 표의 **지정한 칸만** 채운 hwpx 를 돌려준다. 칸이 병합된 양식용이다.
+
+    `values` 는 「(행, 열) → 글자」다. 주소는 한글이 칸마다 적어둔 `hp:cellAddr` 기준이라
+    병합된 칸은 왼쪽 위 주소 하나로 센다. 월간 놀이계획안처럼 줄마다 칸 수가 다른 양식은
+    `fill_table` 로 채울 수 없다 — 그쪽은 모든 줄이 같은 칸 수일 때만 쓴다.
+    """
+
+    def fill(table: etree._Element) -> None:
+        cells = _cells(table)
+        for address, text in values.items():
+            if address not in cells:
+                raise TemplateMismatch(f"양식 표에 {address} 칸이 없습니다.")
+            _set_text(cells[address], text)
 
     return _rewrite(template, title, fill)
 
