@@ -58,7 +58,8 @@ jobs:
             --document-name AWS-RunShellScript \
             --comment "deploy $DEPLOY_REF ${GITHUB_SHA:0:7}" \
             --parameters "$(jq -n --rawfile script scripts/deploy.sh --arg ref "$DEPLOY_REF" \
-              '{commands: ["export DEPLOY_REF=\($ref)", $script], executionTimeout: ["1800"]}')" \
+              '{commands: ["#!/usr/bin/env bash", "export DEPLOY_REF=\($ref)", $script],
+                executionTimeout: ["1800"]}')" \
             --query Command.CommandId --output text)
           echo "배포 명령 $command_id"
           echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
