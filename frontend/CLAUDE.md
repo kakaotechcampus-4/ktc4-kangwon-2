@@ -3,8 +3,9 @@
 Next.js 16 (App Router) · TypeScript · Tailwind
 
 아래는 **어기면 사고가 나거나 리뷰에서 반드시 걸리는 것**만 적었다.
-디렉터리 규칙은 [../docs/structure.md](../docs/structure.md), 화면 명세는 [../docs/PRD.md](../docs/PRD.md),
-API 계약은 [../docs/api-spec.md](../docs/api-spec.md).
+디렉터리 규칙은 [../docs/structure.md](../docs/structure.md), 화면 명세는 [../docs/screen-spec.md](../docs/screen-spec.md)
+(범위는 [../docs/PRD.md](../docs/PRD.md)), API 계약은 [../docs/api-spec.md](../docs/api-spec.md).
+문서끼리 다르면 [ADR-031](../docs/adr/031-document-roles-and-conflict-order.md) 순서를 따른다.
 
 ---
 

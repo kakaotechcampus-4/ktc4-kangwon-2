@@ -72,8 +72,8 @@ const row = (over = {}) => ({
   class_name: "햇살반",
   date: "2026-10-17",
   position: 0,
-  start: "09:00",
-  end: "09:20",
+  start: "09:00:00",
+  end: "09:20:00",
   name: "등원 및 맞이하기",
   plan: "",
   execution: "현관에서 맞았다.",
@@ -173,6 +173,28 @@ test("★ 자리를 안 주면 적은 순서가 자리가 된다", async () => {
   assert.deepEqual(positions, [0, 1, 2]);
 });
 
+test("★ 저장 배열을 드래그하면 과거 position 대신 바뀐 순서를 보낸다", async () => {
+  browser();
+  const sent = [];
+  server.use(
+    http.put("*/api/routines/:id", async ({ request, params }) => {
+      const body = await request.json();
+      sent.push([Number(params.id), body.position]);
+      return HttpResponse.json(row({ ...body, id: Number(params.id) }));
+    }),
+  );
+  await routines.saveRoutines(7, [
+    { id: 3, date: "2026-10-17", name: "다", position: 2 },
+    { id: 1, date: "2026-10-17", name: "가", position: 0 },
+    { id: 2, date: "2026-10-17", name: "나", position: 1 },
+  ]);
+  assert.deepEqual(sent, [
+    [3, 0],
+    [1, 1],
+    [2, 2],
+  ]);
+});
+
 test("★ 어제 불러오기는 시간·이름만 가져온다 — 활동실행을 베끼면 위조다", async () => {
   browser();
   let asked = "";
@@ -190,8 +212,8 @@ test("★ 어제 불러오기는 시간·이름만 가져온다 — 활동실행
     {
       date: "2026-10-17",
       position: 0,
-      start: "09:00",
-      end: "09:20",
+      start: "09:00:00",
+      end: "09:20:00",
       name: "등원 및 맞이하기",
       plan: "",
       execution: "",
@@ -231,4 +253,39 @@ test("★ 하루 전 계산이 시간대에 흔들리지 않는다", async () =>
   assert.equal(previousDay("2026-10-17"), "2026-10-16");
   assert.equal(previousDay("2026-01-01"), "2025-12-31"); // 해 넘김
   assert.equal(previousDay("2026-03-01"), "2026-02-28");
+});
+test("12 AM/PM과 5분 피커 값은 API의 24시간제로 정확하게 바뀐다", () => {
+  assert.equal(routines.routineTimeFrom12("12", "00", "AM"), "00:00");
+  assert.equal(routines.routineTimeFrom12("12", "00", "PM"), "12:00");
+  assert.equal(routines.routineTimeFrom12("01", "05", "PM"), "13:05");
+  assert.equal(routines.routineTimeFrom12("", "00", "AM"), "");
+  assert.deepEqual(routines.routineTimeParts12("09:16"), {
+    hour: "09",
+    minute: "16",
+    period: "AM",
+  });
+});
+
+test("시간순 정렬은 시작·종료를 비교하고 동률·미입력에서 상대 순서를 유지한다", () => {
+  const items = [
+    row({ id: 1, start: null, end: null }),
+    row({ id: 2, start: "09:00", end: "10:00" }),
+    row({ id: 3, start: "08:00", end: null }),
+    row({ id: 4, start: "09:00", end: "09:30" }),
+    row({ id: 5, start: "09:00:00", end: "10:00:00" }),
+    row({ id: 6, start: null, end: null }),
+  ];
+  assert.deepEqual(
+    routines.sortRoutinesByTime(items).map((r) => r.id),
+    [3, 4, 2, 5, 1, 6],
+  );
+  assert.deepEqual(
+    items.map((r) => r.id),
+    [1, 2, 3, 4, 5, 6],
+  );
+});
+
+test("★ 서버는 초까지 준다 — 입력칸에 넣을 때만 자른다", () => {
+  assert.equal(routines.toTimeInput("09:20:00"), "09:20");
+  assert.equal(routines.toTimeInput(null), "");
 });

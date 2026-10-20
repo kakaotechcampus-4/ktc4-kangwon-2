@@ -43,9 +43,18 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
     </div>
   );
 }
-export function Message({ children, error = false }: { children: ReactNode; error?: boolean }) {
+export function Message({
+  children,
+  error = false,
+  id,
+}: {
+  children: ReactNode;
+  error?: boolean;
+  /** 입력 칸이 `aria-errormessage` 로 이 글을 가리킬 때 쓴다. */
+  id?: string;
+}) {
   return children ? (
-    <p className={error ? styles.error : styles.message} role={error ? "alert" : "status"}>
+    <p id={id} className={error ? styles.error : styles.message} role={error ? "alert" : "status"}>
       {children}
     </p>
   ) : null;
@@ -71,14 +80,20 @@ export function useClasses(onError?: (message: string) => void) {
       if (!live) return;
       if (local.length) setClasses(local);
       // 서버에만 있는 반을 뒤에 붙인다. 이게 실패해도 로컬 반은 이미 그려져 있다.
-      const adopted = await adoptServerClasses(local, (name) =>
-        onError?.(`${name || "반"}의 아동 명단을 못 불러왔어요. 페이지를 새로고침해주세요.`),
+      // **저장을 adopt 안에서 먼저 한다.** 연결보다 반 목록이 먼저 남아야 한다 —
+      // 반대로 끊기면 「연결은 있는데 목록에 없는 반」이 되어 영영 안 들어온다.
+      // 화면을 떠났어도 저장은 한다. 사이드바·홈도 저장소를 본다.
+      let next = local;
+      const adopted = await adoptServerClasses(
+        local,
+        (name) =>
+          onError?.(`${name || "반"}의 아동 명단을 못 불러왔어요. 페이지를 새로고침해주세요.`),
+        (rows) => {
+          next = [...local, ...rows];
+          saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
+        },
       );
       if (!adopted.length) return;
-      const next = [...local, ...adopted];
-      // **저장이 먼저다.** 화면을 떠났어도 연결은 이미 저장됐다. 여기서 건너뛰면 다음
-      // 방문에 「교사가 지운 반」으로 보여 영영 안 들어온다. 사이드바·홈도 저장소를 본다.
-      saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
       if (live) setClasses(next);
     })().catch(() => {
       if (live) onError?.("반 정보를 불러오지 못했어요. 페이지를 새로고침해주세요.");

@@ -10,7 +10,7 @@ import Select from "./Select";
 import ChildList from "./ChildList";
 import CharacterMessageGrid from "./CharacterMessageGrid";
 import PrimaryButton, { GhostButton, TextButton } from "./PrimaryButton";
-import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
+import { loadClassSettings, saveClassSettings, shownPrimaryId } from "@/lib/onboarding/settings";
 import { completeAccountOnboarding, onboardingDestination } from "@/lib/auth/local-account";
 import {
   selectedAgesFor,
@@ -128,9 +128,6 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
 
   function patch(p: Partial<ClassSettings>) {
     const next = { ...settings, ...p };
-    next.primaryClassId = next.classes.some((c) => c.id === next.primaryClassId)
-      ? next.primaryClassId
-      : next.classes[0]?.id;
     setSettings(next);
     if (step === 3 && !saveClassSettings(next)) setSaveError("로컬 화면 캐시 저장 실패");
   }
@@ -145,7 +142,12 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
         await syncClasses(settings);
         rememberConsent(settings.classes);
       }
-      if (!saveClassSettings(settings)) throw new Error("설정을 저장하지 못했어요.");
+      // 담당 반 Select가 있는 반 정보 단계의 「다음」에서만 표시 기본값을 확정한다.
+      const submitted =
+        step === 2 && next === 3 && settings.classes.length > 1
+          ? { ...settings, primaryClassId: shownPrimaryId(settings) }
+          : settings;
+      if (!saveClassSettings(submitted)) throw new Error("설정을 저장하지 못했어요.");
       router.push(
         next === 1
           ? "/onboarding/center"
@@ -186,7 +188,10 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
     setSaveError("");
     try {
       await syncClasses(settings);
-      const done = { ...settings, completedAt: new Date().toISOString() };
+      const done = {
+        ...settings,
+        completedAt: new Date().toISOString(),
+      };
       if (!saveClassSettings(done) || !completeAccountOnboarding())
         throw new Error("설정을 저장하지 못했어요.");
       setSettings(done);
@@ -429,7 +434,7 @@ function StepClasses({
         <FormField id="primaryClassId" label="내 담당 반">
           <Select
             id="primaryClassId"
-            value={settings.primaryClassId || settings.classes[0]?.id || ""}
+            value={shownPrimaryId(settings)}
             options={settings.classes.map((c, i) => ({
               value: c.id,
               label: c.className || "반 " + (i + 1),

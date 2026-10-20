@@ -47,6 +47,10 @@ FROZEN_ARTIFACTS = {
     "templates/monthly_template_a.json": (
         "a65b5f7355a4ac86f33d0973f1c94f8237434dc03fe593cad28aa0388cab2aaf"
     ),
+    # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
+    "templates/monthly_template_a_v0_2_1.json": (
+        "e7b29c36ede3438204041b5d2b454e5594338c7f12c8c423bc985e308de27aed"
+    ),
     "templates/monthly_template_a_v0_2_0.json": (
         "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
     ),
@@ -85,8 +89,8 @@ PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
         "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
     ),
-    "templates/monthly_template_a_v0_2_1.json": (
-        "f5c84f35ba00970f9efe584b3e09c57a5f363e3f649fff8b00c7bdd4490988f4"
+    "templates/weekly_template_a_v0_1_0.json": (
+        "e79698e33b4818a885c6092c01360077f1d36ba9ff70d5ab4fd755195481b5f6"
     ),
 }
 
@@ -110,6 +114,9 @@ PENDING_REVIEW_CONTENT = {
     ),
     "templates/monthly_template_a_v0_2_1.json": (
         "5497aba0b41065c857b7d8ece58dc0297f2ff713bed65a8a339dd0ec3a6b9be4"
+    ),
+    "templates/weekly_template_a_v0_1_0.json": (
+        "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
     ),
 }
 
@@ -210,13 +217,26 @@ def test_activity_reference_exact_versions_and_approval_are_frozen():
 def test_pending_templates_are_served_but_inactive():
     repository = JsonMonthlyTemplateRepository()
 
-    # Republished with repeat_by, awaiting human review: served, never active (ADR-027).
-    for version in ("monthly-template-a-v0.1.1", "monthly-template-a-v0.2.1"):
-        template = repository.get_template("ssuksak.monthly-template-a", version)
-        assert template is not None
-        assert not template.is_active
-        with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
-            resolve_sections(template)
+    # v0.2.1 was approved on 2026-10-20 (reviewer_pm_001); v0.1.1 was not. An approval
+    # never carries over to another version, so v0.1.1 stays served but inactive.
+    template = repository.get_template(
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
+    )
+    assert template is not None
+    assert not template.is_active
+    with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
+        resolve_sections(template)
+
+
+def test_the_approved_template_is_active_and_resolves():
+    repository = JsonMonthlyTemplateRepository()
+
+    template = repository.get_template(
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
+    )
+    assert template is not None
+    assert template.is_active
+    assert resolve_sections(template)
 
 
 def test_display_mode_era_templates_are_frozen_but_not_served():

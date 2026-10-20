@@ -1322,10 +1322,9 @@ test("reload A 중 B를 거쳐 A로 돌아와도 이전 reload는 새 상세를 
 // 실제 TSX 이벤트와 state를 실행한다. 브라우저/React renderer E2E는 아니며,
 // 선택 이동·unmount는 위 production selection 테스트가 별도로 검증한다.
 const require = createRequire(import.meta.url);
-const editorCode = require("next/dist/compiled/babel/core").transformSync(
-  read("DocumentEditor.tsx"),
-  {
-    filename: "DocumentEditor.tsx",
+const compile = (source, filename) =>
+  require("next/dist/compiled/babel/core").transformSync(source, {
+    filename,
     babelrc: false,
     configFile: false,
     presets: [
@@ -1333,8 +1332,27 @@ const editorCode = require("next/dist/compiled/babel/core").transformSync(
       [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
       require("next/dist/compiled/babel/preset-typescript"),
     ],
-  },
-).code;
+  }).code;
+const editorCode = compile(read("DocumentEditor.tsx"), "DocumentEditor.tsx");
+// 편집기가 쓰는 hook 도 같은 React 스텁으로 실제 코드를 돌린다.
+const hwpxHookCode = compile(
+  normalizeNewlines(
+    readFileSync(new URL("../lib/hooks/use-hwpx-download.ts", import.meta.url), "utf8"),
+  ),
+  "use-hwpx-download.ts",
+);
+const evaluate = (code, modules) => {
+  const compiledModule = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (name) => {
+      assert.ok(name in modules, `unhandled editor import: ${name}`);
+      return modules[name];
+    },
+    compiledModule,
+    compiledModule.exports,
+  );
+  return compiledModule.exports;
+};
 
 function editorHarness(selection) {
   const slots = [];
@@ -1357,6 +1375,7 @@ function editorHarness(selection) {
       useEffect: () => {},
     },
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
+    "next/link": { __esModule: true, default: "link" },
     "@/lib/workspace/model": workspaceModel,
     "@/lib/workspace/ai-client": {
       requestAI: () => {
@@ -1365,21 +1384,14 @@ function editorHarness(selection) {
     },
     "./WorkspaceUI": { ws: {}, Message: "message", AIHint: "ai-hint", useAIStatus: () => false },
     "./document-selection": { serverIssues },
+    "./SourceReview": { default: "source-review" },
     "@/lib/api/storage-context": { API_STORAGE_CONTEXT },
     "@/lib/api/plans": {},
     "@/lib/api/documents": documents,
     "@/lib/privacy/browser-storage": privacy,
   };
-  const compiledModule = { exports: {} };
-  new Function("require", "module", "exports", editorCode)(
-    (name) => {
-      assert.ok(name in modules, `unhandled editor import: ${name}`);
-      return modules[name];
-    },
-    compiledModule,
-    compiledModule.exports,
-  );
-  const Editor = compiledModule.exports.default;
+  modules["@/lib/hooks/use-hwpx-download"] = evaluate(hwpxHookCode, modules);
+  const Editor = evaluate(editorCode, modules).default;
   let tree;
   function render() {
     cursor = 0;
@@ -1419,6 +1431,7 @@ function editorHarness(selection) {
         (node) => node.type === "textarea" && node.props["aria-label"] === "해석 내용",
       ),
     button: (label) => all(tree).find((node) => node.type === "button" && content(node) === label),
+    links: () => all(tree).filter((node) => node.type === "link"),
     checks: () =>
       all(tree).filter((node) => node.type === "input" && node.props.type === "checkbox"),
     text: () => content(tree),
@@ -1528,6 +1541,16 @@ test("확정된 서버 문서에만 확정 취소가 보이고 초안에는 보�
 
   const draft = await editing();
   assert.equal(draft.editor.button("확정 취소"), undefined);
+});
+
+test("사실 칸 아래에 원본을 고치는 곳을 알려준다", async () => {
+  const { editor } = await editing({ kind: "observation" });
+  assert.deepEqual(
+    editor.links().map((l) => l.props.href),
+    ["/records"],
+  );
+  // 일과 기록 화면(S-J1)이 아직 없다 — 갈 곳이 없는 링크를 띄우지 않는다.
+  assert.deepEqual((await editing({ kind: "dailyLog" })).editor.links(), []);
 });
 
 test("확정 취소는 확인창 없이 바로 서버를 부르고 초안으로 되돌린다", async () => {
@@ -1718,15 +1741,186 @@ test("서버에서 오지 않은 id 는 확정 취소·근거 반영 요청 자�
   assert.deepEqual(calls, []);
 });
 
+test("초안 근거 반영은 고른 처리가 있을 때만 본문을 싣는다 — 없으면 예전처럼 본문 없이 보낸다", async () => {
+  browser();
+  let { calls, restore } = serve(() => json({ ...DETAIL, stale: false }));
+  try {
+    await documents.refreshDocument("document:17");
+    assert.equal(calls[0].method, "POST");
+    assert.equal(calls[0].url, "/api/documents/17/refresh");
+    assert.equal(calls[0].body, undefined);
+  } finally {
+    restore();
+  }
+  ({ calls, restore } = serve(() => json({ ...DETAIL, stale: false })));
+  try {
+    await documents.refreshDocument("document:17", [{ source_id: 12, action: "drop" }]);
+    assert.deepEqual(calls[0].body, { resolutions: [{ source_id: 12, action: "drop" }] });
+    assert.equal(calls[0].auth, "Bearer " + TOKEN);
+  } finally {
+    restore();
+  }
+});
+
 test("확정 취소·근거 반영 성공 뒤에는 문서 목록도 다시 읽는다", () => {
   const page = read("DocumentsPage.tsx");
-  for (const action of ["unconfirm", "refresh"]) {
-    const start = page.indexOf(`        ${action}: async () => {`);
+  // 근거 반영은 사라진 근거 처리를 함께 보낼 수 있어 인자를 받는다.
+  for (const [action, call] of [
+    ["unconfirm", "selection.unconfirm()"],
+    ["refresh", "selection.refresh(resolutions)"],
+  ]) {
+    const start = page.indexOf(`        ${action}: async (`);
     assert.ok(start > -1, action);
     const body = page.slice(start, page.indexOf("\n        },", start));
-    assert.ok(body.includes(`selection.${action}()`), action);
+    assert.ok(body.includes(call), action);
     assert.ok(body.includes("reloadList()"), `${action} 뒤 목록 갱신`);
   }
   // 동시 수정 복구용 reload 를 근거 반영으로 대체하지 않는다.
   assert.match(page, /reload:\s*selection\.reload/);
+});
+test("후속 #6 v1-mock은 본문 밖 표식으로 매핑하고 일반 버전은 그대로 읽는다", () => {
+  const mock = documents.toDocument({
+    ...DETAIL,
+    generation: { ...DETAIL.generation, rule_version: "v1-mock" },
+  });
+  assert.equal(mock.mockDraft, true);
+  assert.equal(mock.sections[1].body, DETAIL.sections[1].body);
+  assert.equal(documents.toDocument(DETAIL).mockDraft, false);
+});
+
+test("후속 #10 비교·재확정은 인증된 단일 POST이며 세 checks와 기존 문서 버전을 보낸다", async () => {
+  browser();
+  const comparison = {
+    document_id: 17,
+    updated_at: DETAIL.updated_at,
+    review_token: "a".repeat(64),
+    can_reconfirm: true,
+    sources: [{ id: 12, before: "이전", after: "현재", state: "changed" }],
+  };
+  const { calls, restore } = serve((n) =>
+    n === 1
+      ? json(comparison)
+      : json({ ...DETAIL, kind: "dailyLog", status: "CONFIRMED", stale: false }),
+  );
+  try {
+    const viewed = await documents.getSourceComparison("document:17");
+    assert.deepEqual(viewed, comparison);
+    await documents.reconfirmDocument("document:17", {
+      comparison: viewed,
+      updatedAt: DETAIL.updated_at,
+      sections: [{ heading: "사실", body: "현재", sourceIds: ["routine:12"] }],
+    });
+    assert.deepEqual(
+      calls.map((c) => [c.method, c.url]),
+      [
+        ["GET", "/api/documents/17/source-comparison"],
+        ["POST", "/api/documents/17/reconfirm"],
+      ],
+    );
+    assert.equal(calls[1].auth, "Bearer " + TOKEN);
+    assert.deepEqual(calls[1].body.checks, { fact: true, interpretation: true, support: true });
+    assert.equal(calls[1].body.updated_at, DETAIL.updated_at);
+    assert.equal("review_note" in calls[1].body, false);
+    assert.deepEqual(calls[1].body.sections[0].source_ids, [12]);
+  } finally {
+    restore();
+  }
+});
+
+test("삭제된 근거 처리는 비교 응답의 후보를 그대로 받고 고른 처리만 reconfirm 에 싣는다", async () => {
+  browser();
+  const comparison = {
+    document_id: 17,
+    updated_at: DETAIL.updated_at,
+    review_token: "b".repeat(64),
+    can_reconfirm: false,
+    sources: [
+      { id: 12, before: "지워진 근거", after: null, state: "missing" },
+      { id: 13, before: "남는 근거", after: "남는 근거", state: "unchanged" },
+    ],
+    candidates: [{ id: 21, text: "[오후 바깥놀이 13:00~13:40] 모래밭에서 물길을 만들었다." }],
+  };
+  const { calls, restore } = serve((n) =>
+    n === 1
+      ? json(comparison)
+      : json({ ...DETAIL, kind: "dailyLog", status: "CONFIRMED", stale: false }),
+  );
+  try {
+    const viewed = await documents.getSourceComparison("document:17");
+    assert.deepEqual(viewed.candidates, comparison.candidates);
+    await documents.reconfirmDocument("document:17", {
+      comparison: viewed,
+      updatedAt: DETAIL.updated_at,
+      sections: [{ heading: "사실", body: "남는 근거", sourceIds: ["routine:21", "routine:13"] }],
+      resolutions: [{ source_id: 12, action: "replace", replacement_id: 21 }],
+    });
+    assert.deepEqual(calls[1].body.resolutions, [
+      { source_id: 12, action: "replace", replacement_id: 21 },
+    ]);
+    assert.deepEqual(calls[1].body.sections[0].source_ids, [21, 13]);
+  } finally {
+    restore();
+  }
+});
+
+test("처리할 삭제 근거가 없으면 resolutions 를 아예 보내지 않는다 — 모르는 서버가 422 로 막는다", async () => {
+  browser();
+  const comparison = {
+    document_id: 17,
+    updated_at: DETAIL.updated_at,
+    review_token: "c".repeat(64),
+    can_reconfirm: true,
+    sources: [{ id: 12, before: "이전", after: "현재", state: "changed" }],
+  };
+  const { calls, restore } = serve(() => json({ ...DETAIL, kind: "dailyLog", stale: false }));
+  try {
+    await documents.reconfirmDocument("document:17", {
+      comparison,
+      updatedAt: DETAIL.updated_at,
+      sections: [{ heading: "사실", body: "현재", sourceIds: ["routine:12"] }],
+      resolutions: [],
+    });
+    assert.equal("resolutions" in calls[0].body, false);
+  } finally {
+    restore();
+  }
+});
+
+test("후속 #10 동시 재확정은 선택 계층에서 한 요청만 허용하고 늦은 A 응답은 B를 덮지 않는다", async () => {
+  const wait = deferred();
+  let calls = 0;
+  const selection = createSelection(
+    {
+      get: async (id) => doc(Number(id.split(":")[1])),
+      reconfirm: async () => {
+        calls++;
+        return wait.promise;
+      },
+    },
+    describe,
+  );
+  selection.adopt(doc(1, { status: "confirmed", stale: true }));
+  const pending = selection.reconfirm({});
+  await assert.rejects(selection.reconfirm({}), new RegExp(BUSY));
+  selection.select("document:2", 2);
+  await tick();
+  wait.resolve(doc(1, { status: "confirmed", stale: false }));
+  await pending;
+  assert.equal(calls, 1);
+  assert.equal(selection.get().detail.id, "document:2");
+});
+test("후속 #6 mock 접두어 정리는 교사가 쓴 사실과 일반 문서 본문을 바꾸지 않는다", () => {
+  const dto = {
+    ...DETAIL,
+    sections: DETAIL.sections.map((s) => ({ ...s, body: `[mock] ${s.body}` })),
+  };
+  const converted = documents.toDocument(dto);
+  assert.equal(converted.sections[0].body, dto.sections[0].body);
+  assert.equal(converted.sections[1].body, DETAIL.sections[1].body);
+  const teacher = documents.toDocument({ ...dto, origin: "TEACHER" });
+  assert.deepEqual(
+    teacher.sections.map((s) => s.body),
+    dto.sections.map((s) => s.body),
+  );
+  assert.equal(teacher.mockDraft, false);
 });

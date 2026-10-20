@@ -1,6 +1,6 @@
 """월간 TemplateProfile 저장과 선택 정책. 진짜 Postgres 로 본다(Contract 2, 결정 문서 C2.6 · C2.7).
 
-기반 Template 은 실제 데이터 파일을 읽는다. v0.1.1 · v0.2.1 은 **사람 승인 대기**라 그대로는
+기반 Template 은 실제 데이터 파일을 읽는다. v0.1.1 은 **사람 승인 대기**라 그대로는
 Reference 기반 시작이 거절된다(결정 문서 12.8). 승인이 필요한 테스트는 OD-N11 (A) 방식 —
 테스트 안에서만 `replace(template, runtime_active=True)` 로 만든 승인 객체 — 를 쓴다. 데이터
 파일과 운영 코드는 그대로다.
@@ -186,9 +186,9 @@ def test_migration이_테이블과_무결성_제약을_올린다(db_session):
 
 
 def test_승인_대기_Template_으로는_시작하지_않는다(world):
-    """12.8: 실제 v0.1.1 · v0.2.1 은 PENDING 이다. 우회 없이 거절하고 아무것도 남기지 않는다."""
+    """12.8: v0.1.1 은 PENDING 그대로다(v0.2.1 은 2026-10-20 승인). 우회 없이 거절한다."""
     repo = world["repo_a"]
-    for template in (PLAIN, FOCUS):
+    for template in (PLAIN,):
         with pytest.raises(TemplateProfileError) as excinfo:
             repo.start_from_reference(
                 JsonMonthlyTemplateRepository(),
@@ -783,14 +783,14 @@ def test_READY_전환은_Core_검증을_통과해야_하고_실패하면_DRAFT_�
 
 
 def test_승인_대기_Template_으로는_DRAFT_를_만들지도_확정하지도_못한다(world):
-    """12.8: v0.1.1 · v0.2.1 은 PENDING 그대로다. DRAFT 를 거쳐 돌아가는 길도 막는다."""
+    """12.8: v0.1.1 은 PENDING 그대로다. DRAFT 를 거쳐 돌아가는 길도 막는다."""
     repo, user = world["repo_a"], world["user_a"]
     content = _finished_content(repo, user)
     with pytest.raises(TemplateProfileError) as excinfo:
-        repo.create_draft(JsonMonthlyTemplateRepository(), FOCUS, content, actor_id=user.id)
+        repo.create_draft(JsonMonthlyTemplateRepository(), PLAIN, content, actor_id=user.id)
     assert _code(excinfo) == "TEMPLATE_NOT_APPROVED"
 
-    ref = repo.create_draft(ApprovedTemplates(), FOCUS, content, actor_id=user.id)
+    ref = repo.create_draft(ApprovedTemplates(), PLAIN, content, actor_id=user.id)
     with pytest.raises(TemplateProfileError) as excinfo:
         repo.publish(ref, JsonMonthlyTemplateRepository(), expected_revision=1, actor_id=user.id)
     assert _code(excinfo) == "TEMPLATE_NOT_APPROVED"

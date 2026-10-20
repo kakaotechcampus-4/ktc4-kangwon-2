@@ -6,24 +6,34 @@
 **표를 새로 그리지 않는다.** `header.xml`(글꼴·문단 모양·테두리)을 손으로 쓰면 한글이
 파일을 안 여는 경로가 수십 개 생긴다. 한글이 저장한 양식을 그대로 두고 `hp:t` 만 바꾼다.
 
-**`.hwp` 를 만들지 않는다.** 바이너리 포맷이라 쓸 수 없다. 교사가 한글에서
-「다른 이름으로 저장 → .hwp」 한 번이면 된다.
+**`.hwp` 는 다 만든 hwpx 를 변환해서 만든다(ADR-039).** `.hwp` 를 직접 쓰지 않는다 —
+바이너리라 틀려도 어디가 틀렸는지 볼 수 없다. 채우는 코드는 hwpx 한 벌이다.
+기본은 hwpx 다. 변환기(python-hwpx)의 hwp 쓰기가 새 기능이라, 실패하면 hwpx 로 받게 한다.
 
 zip 안의 파일 순서와 압축 방식을 양식 그대로 따른다.
 - `mimetype` 이 맨 앞에 압축 없이 들어가야 한다. 이게 틀리면 한글이 안 연다.
 """
 
+import contextlib
 import copy
 import io
+import logging
 import re
 import zipfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import Literal
 from urllib.parse import quote
 
-from fastapi import Response
+from fastapi import HTTPException, Response, status
 from lxml import etree
 
 MEDIA_TYPE = "application/hwp+zip"
+
+Format = Literal["hwpx", "hwp"]
+# `.hwp` 는 공식 등록된 MIME 이 없다. 가장 널리 쓰는 이름이다.
+_MEDIA_TYPES = {"hwpx": MEDIA_TYPE, "hwp": "application/x-hwp"}
+
+_log = logging.getLogger("app.server")
 
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
 OPF = "http://www.idpf.org/2007/opf/"
@@ -78,11 +88,16 @@ def fill_grid(
     header_rows: int,
     rows: Sequence[Sequence[str]],
     footer: Sequence[Sequence[str]],
+    header: Mapping[tuple[int, int], str] | None = None,
 ) -> bytes:
     """양식 표의 본문 한 줄을 `rows` 만큼 복제해 채운다. 줄 수가 날마다 다른 일지용이다.
 
     양식 표는 머리행 `header_rows` 줄 · 빈 본문 원형 1줄 · 꼬리 줄들로 되어 있어야 한다.
     `footer` 는 꼬리 줄마다 **그 줄에 실제로 있는 칸** 순서대로의 글자다 — 병합된 칸은 하나로 센다.
+
+    `header` 는 머리행 안에서 채울 칸만 「(행, 열) → 글자」로 받는다. 월간 놀이계획안처럼
+    머리행에 놀이 주제 · 예상 기간 같은 빈 칸이 있는 양식용이다. 주소는 한글이 칸마다 적어둔
+    `hp:cellAddr` 기준이라 병합된 칸은 왼쪽 위 주소 하나로 센다.
 
     한글은 칸마다 적힌 (행, 열) 주소와 표의 `rowCnt` 로 표를 그린다. 줄을 끼워 넣으면 그 아래
     칸의 주소와 `rowCnt` 를 같이 밀어야 한다 — 하나라도 어긋나면 한글이 파일을 안 연다.
@@ -97,6 +112,15 @@ def fill_grid(
             )
         if not rows:
             raise ValueError("본문 줄이 없다.")
+        if header:
+            cells = _cells(table)
+            for address, text in header.items():
+                if address[0] >= header_rows:
+                    raise TemplateMismatch(f"{address} 는 머리행 {header_rows} 줄 밖이다.")
+                if address not in cells:
+                    raise TemplateMismatch(f"양식 표에 {address} 칸이 없습니다.")
+                _set_text(cells[address], text)
+
         prototype, tail = trs[header_rows], trs[header_rows + 1 :]
         width = int(table.get("colCnt"))
         if len(prototype.findall("hp:tc", NS)) != width:
@@ -164,15 +188,50 @@ def _rewrite(template: bytes, title: str, fill: Callable[[etree._Element], None]
     return out.getvalue()
 
 
-def download(content: bytes, fallback_name: str, title: str) -> Response:
+def download(content: bytes, fallback_name: str, title: str, fmt: Format = "hwpx") -> Response:
     """내려받기 응답. 한글 파일명은 filename* 로만 안전하게 간다.
 
     filename 은 그걸 못 읽는 브라우저용이라 영문(`fallback_name`)으로 둔다.
+    `content` 는 hwpx 다. `fmt` 가 `hwp` 면 바꿔서 내려준다.
     """
-    disposition = (
-        f"attachment; filename=\"{fallback_name}.hwpx\"; filename*=UTF-8''{quote(title + '.hwpx')}"
+    if fmt == "hwp":
+        content = _to_hwp_or_503(content)
+    name = quote(f"{title}.{fmt}")
+    disposition = f"attachment; filename=\"{fallback_name}.{fmt}\"; filename*=UTF-8''{name}"
+    return Response(
+        content, media_type=_MEDIA_TYPES[fmt], headers={"Content-Disposition": disposition}
     )
-    return Response(content, media_type=MEDIA_TYPE, headers={"Content-Disposition": disposition})
+
+
+def to_hwp(hwpx: bytes) -> bytes:
+    """다 채운 hwpx 를 `.hwp`(HWP 5.0)로 바꾼다. 문서 정보 · 미리보기는 hwpx 의 것이 그대로 간다."""
+    # 변환기는 부가 기능이라 쓸 때 불러온다. import 가 깨져도 서버 기동과 hwpx 내보내기는 산다.
+    from hwpx.hwp5.writer import write_hwp5
+
+    with zipfile.ZipFile(io.BytesIO(hwpx)) as package:
+        return write_hwp5({name: package.read(name) for name in package.namelist()})
+
+
+def _to_hwp_or_503(hwpx: bytes) -> bytes:
+    """변환이 실패하면 무엇이 실패했든 503 이다 — hwpx 는 이미 만들어졌으니 그걸로 받으면 된다.
+
+    변환기는 hwp 쓰기를 v6.6.0(2026-09-27)에 넣었다. `Hwp5Error` 말고 다른 예외도 날 수 있다.
+    """
+    try:
+        return to_hwp(hwpx)
+    except Exception as error:
+        # 예외 메시지는 남기지 않는다 — 문서 글자(아동 실명)가 섞일 수 있다(ADR-004).
+        # 로그가 실패해도 503 은 지킨다. 서버 로거는 출력 실패를 다시 던진다(main.py).
+        with contextlib.suppress(Exception):
+            _log.warning("hwp_convert_failed error=%s", type(error).__name__)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "DEPENDENCY_UNAVAILABLE",
+                "message": "이 문서는 지금 hwp 로 바꿀 수 없습니다. hwpx 로 받아주세요.",
+                "fields": [],
+            },
+        ) from error
 
 
 def _cells(table: etree._Element) -> dict[tuple[int, int], etree._Element]:

@@ -26,7 +26,7 @@ Base        /api
 Content     application/json
 인증        Authorization: Bearer <token>.  §0 참조
 날짜        ISO 8601 (2026-03-01)
-연령        학년도 기준 연 나이 3·4·5.  만 나이 아님
+연령        만 3·4·5세(반 연령 — 보육 현장의 「만 N세반」).  생년월일로 계산하는 값이 아니다.  화면·문서는 「만 N세」로 쓴다(ADR-038)
 ```
 
 **개발·데모는 가명으로 한다** (ADR-004). 인증이 붙었어도 개발 DB 에 실제 아동 실명을
@@ -105,16 +105,16 @@ me       GET /api/auth/me                                               → 200 
 | `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다. 왜인지는 알려주지 않는다 |
 | `VALIDATION_FAILED` | 422 | 입력값이 규격 밖 |
 | `NOT_FOUND` | 404 | 대상 없음 |
-| `GATE_BLOCKED` | 409 | 층 게이트 — 아래 층이 확정 전인데 위 층을 요청 (§4 월간 · §11 주간 보육일지 · `stale` 문서 확정) |
+| `GATE_BLOCKED` | 409 | 앞 단계가 안 끝났다 — 층 게이트(연간 확정 전 월간 §9-1 · 월간 확정 전 주간 · §11 주간 보육일지) · 사람 승인 전 Template 으로 Profile 시작(§9-4) · 확정 전 내보내기(§9) · `stale` 문서 확정 |
 | `ALREADY_EXISTS` | 409 | 같은 대상에 이미 있음. 조회로 찾는다 |
-| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). 계획안 되돌리기는 P1 |
+| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). **계획안에는 확정 취소가 없다**(ADR-030 PM-03) |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
-| `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§11) |
+| `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at`) |
 
 **409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
 "연간부터 확정해주세요" / "이미 있습니다, 기존 것으로 이동" / "확정된 문서는 수정할 수 없어요".
@@ -167,6 +167,10 @@ me       GET /api/auth/me                                               → 200 
 
 **중복 생성을 막지 않는다.** 이름만으로 `UNIQUE` 를 걸면 다른 지역의 같은 이름 원이 막힌다.
 계정 단위 판단은 인증이 붙는 P1 이다.
+
+**조회** `GET /api/centers/{center_id}` → `200` 위 Response 와 같은 모양. 자기 원만 읽는다 —
+남의 원 · 없는 원 · 아직 원이 없는 교사는 `404 NOT_FOUND` (`fields: ["center_id"]`).
+초대 코드로 들어온 교사(§1-1)는 원을 만든 적이 없어 화면에 원 정보가 없다. 로그인 뒤 여기서 읽는다.
 
 ---
 
@@ -659,7 +663,7 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 
 ```
 DEPENDENCY_UNAVAILABLE  503   키·주소 설정이 없다.        재시도 무의미
-LLM_BUDGET_EXCEEDED     503   한도·키 삭제(401·429).      재시도 무의미
+LLM_BUDGET_EXCEEDED     503   한도·키 삭제(401·403·429).  재시도 무의미
 GENERATION_FAILED       500   호출이 깨졌거나 답이 계약을 어겼다.  재시도 가능
 ```
 
@@ -686,7 +690,7 @@ GENERATION_FAILED       500   호출이 깨졌거나 답이 계약을 어겼다.
 ```
 Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · PARENT_PLAN · SAFETY_RULE
                                     ACTIVITY_REFERENCE · CALENDAR · EVENT · TREND …
-Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL · TEACHER_EDIT
+Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL
 Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHER_EDITED · CONFIRMED
 ```
 
@@ -696,8 +700,9 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 - **`audit` 은 이 응답에 싣지 않는다.** 쓰기 생명주기가 달라 별도로 관리한다(§9).
   S6 화면이 필요로 하는 것은 `evidence` 와 `generation` 뿐이다.
 
-**S6 의 좌상단 점은 `generation.method` 를 본다.** 교사가 고친 칸(`TEACHER_EDIT`)과
-시스템이 만든 칸을 구분한다. 근거를 눌렀을 때 펼치는 것은 `evidence` 다.
+**교사가 고친 칸인지는 `generation` 이 아니라 Audit 의 `TEACHER_EDITED` 로 본다**(§6 · §7-1).
+`generation.method` 는 그 값이 처음 어떻게 만들어졌나다 — 교사가 고쳐도 바뀌지 않는다. `TEACHER_EDIT` 값은 쓰지 않는다.
+근거를 눌렀을 때 펼치는 것은 `evidence` 다. `RULE_LLM` 은 LLM 경로로 설계된 칸이고, mock 생성기를 썼는지는 여기서 가르지 않는다(ADR-032).
 
 ### `source_id` 작명 규칙 — 자료 묶음이 아니라 그 안의 항목이다
 
@@ -729,13 +734,15 @@ golden set(`p0-planning/tests/finalization/golden/yearly.json`)이 그 값으로
 
 ### 생성 방식
 
-**RAG 로 생성하고 규칙 엔진이 검사한다**(ADR-014). ADR-005 의 「배치·선별은 규칙 엔진,
-LLM 은 문장화만」을 뒤집는다 — 생성과 검사의 순서가 반대다.
+**Rule 이 범위를 정하고, LLM 이 그 안에서 정하고, Rule 이 검사한다**(ADR-032 — ADR-014 보충). 연간은 Rule 이 승인된
+주제 참고자료에서 그 달 · 반 연령에 맞는 주제를 거르고, LLM 이 그 주제의 문장을 쓴다. LLM 은 주제를 바꾸지 못한다.
+ADR-005 의 「배치·선별은 규칙 엔진, LLM 은 문장화만」은 더 이상 유효하지 않다.
 
 **ADR-003 도 같이 깨진다.** ADR-003 은 P0a(5~6주차)를 「결정론적 초안 생성」으로 정의하고
 *"P0a 가 결정론적이라 golden set 이 성립한다"*, *"golden set 을 6주차 말에 반드시 고정한다"* 로
-검증 전략을 세웠다. **RAG 를 쓰면 출력이 매번 달라져 golden set 이 성립하지 않는다.**
-대체 검증 전략(예: 규칙 검사 통과 여부만 고정 검증)을 정해야 한다.
+검증 전략을 세웠다. **LLM 을 쓰면 출력이 매번 달라져 문장 golden 은 성립하지 않는다.**
+대체 검증은 가짜 LLM 위의 golden 이다 — 고정한 응답에 대해 서버가 무엇을 하는지를 고정하고, 모델 문장은 기대값으로 굳히지 않는다
+(`p0-planning/CLAUDE.md` 「Golden contract」).
 
 **ADR-014 가 ADR-005 를 대체한다.** ADR-003 은 P0a·P0b 분할은 그대로 두고 결정론 전제만
 무효로 표시했다.
@@ -763,7 +770,8 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 `DRAFT` 든 `CONFIRMED` 든 같은 코드다 — FE 가 할 행동이 "기존 것으로 이동" 으로 같다.
 기존 것은 §5 목록 조회로 찾는다.
 
-**재생성·삭제는 P0 에 없다.** 마음에 안 드는 칸은 §6 으로 고친다.
+**재생성·삭제는 P0 에 없다.** 마음에 안 드는 칸은 §6 으로 고친다. 계획안 전체도, 선택한 한 달도 다시 만들지 않는다 —
+12개월 주제가 서로 이어져 한 달만 다시 뽑으면 앞뒤가 깨진다(PROV-Y-A 도입 안 함, ADR-035 §4). 월간 칸 재생성(§9-3)과는 다르다.
 
 **UI states**
 
@@ -860,17 +868,56 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 
 **Response** `200` → `{ "id": 10, "status": "CONFIRMED", "confirmed_at": "..." }`
 
-**되돌리기는 P1.** 확정 후 수정 요청은 `ALREADY_CONFIRMED` 409 다(§6).
+**확정 취소가 없다**(ADR-030 PM-03). 확정 후 수정 요청은 `ALREADY_CONFIRMED` 409 다(§6).
+
+**확정한 사람은 Audit 에 남는다.** `CONFIRMED` 이벤트의 `actor` 가 로그인 계정의 opaque id(`user_7`)다(§7-1).
+담임 표시 이름으로 대신하지 않는다. 확정은 제출 · 발송을 하지 않는다.
 
 **재호출은 멱등이다.** 이미 `CONFIRMED` 인 계획안에 다시 오면 **`200` 에 현재 상태를 돌려준다.**
 409 로 막지 않는다 — 네트워크 재시도나 더블클릭으로 두 번 도착하는 것이 정상 경로인데,
 여기에 409 를 주면 FE 가 진짜 실패와 구분하지 못한다. **`confirmed_at` 은 최초 확정 시각을 유지한다.**
+확정자 · 확정 이벤트도 바뀌지 않는다(ADR-035 §2). 서버 구현은 PR #171 이다(2026-10-20 머지 — 그 전에는 409 였다).
+
+**빈 `theme` 이 있는 달만 확정을 막는다**(ADR-030 PM-08). 소주제(`sub_themes`)가 비어도 막지 않는다. 생성은 12개월을 늘 채우고
+§6 PUT 이 빈 `theme` 을 422 로 거절하므로, 이 422 는 정상 경로에서는 나오지 않는다.
 
 | | |
 |---|---|
 | loading | 버튼 비활성 + 스피너 |
 | success | 상태 배지 `확정됨` |
-| error | `VALIDATION_FAILED` 422 — 빈 칸이 남았을 때. **빈 달을 전부 내려준다**<br>`fields: ["months.3", "months.7", "months.9"]` |
+| error | `VALIDATION_FAILED` 422 — `theme` 이 빈 달이 있을 때. **빈 달을 전부 내려준다**<br>`fields: ["months.3", "months.7", "months.9"]` |
+
+### 7-1. 연간 변경 이력 — `GET /api/plans/annual/{id}/audit`
+
+**Response** `200`
+
+```json
+{ "items": [
+    { "type": "CREATED",        "occurred_at": "2026-03-02T01:00:00Z", "month": null,
+      "actor": null,    "system_actor": "yearly_application" },
+    { "type": "TEACHER_EDITED", "occurred_at": "2026-03-03T02:10:00Z", "month": 3,
+      "actor": "user_7", "system_actor": null },
+    { "type": "CONFIRMED",      "occurred_at": "2026-03-04T05:00:00Z", "month": null,
+      "actor": "user_7", "system_actor": null }
+] }
+```
+
+```
+type           CREATED | TEACHER_EDITED | CONFIRMED.  연간은 재생성이 없어 REGENERATED 가 오지 않는다
+occurred_at    ISO 8601, 시간대 포함
+month          그 달 theme 칸의 이벤트면 그 달(1~12).  계획안 단위(생성 · 확정)면 null
+actor          사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
+system_actor   시스템이 한 일(생성)이면 그 표시 (yearly_application).  사람이면 null
+```
+
+- **다섯 키가 항상 온다.** 해당이 없으면 키를 빼지 않고 `null` 이다.
+- **순서는 발생 시각.** 계획안 단위 이벤트와 달마다의 이벤트를 한 목록으로 합쳐 시각순으로 준다.
+- `CREATED` 는 계획안 단위 하나와 달마다 하나씩 온다.
+- 오류: 없거나 남의 원 계획안 · 연간이 아닌 id 는 404 `["id"]`, 로그인 안 함은 401.
+
+**결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `TEACHER_EDITED` 에 `{before, after}`(그때 바뀐 theme 값)를 싣는다.
+그 밖의 이벤트는 `null` 이다. `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
+**아직 구현 전이다**(연간 Backend Y3′). 지금 서버는 위 다섯 키만 준다. Core 는 이미 그 값을 저장하고 있다.
 
 ---
 
@@ -979,16 +1026,16 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 
 ---
 
-## 9. 7주차 예정 — 계약 안 씀
+## 9. 그 밖의 계획안 API — 월간은 §9-1 ~ §9-5 에 계약이 있다
 
 ```
 POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
 PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨, M5)
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
-GET    /api/plans/{id}/export/hwp         내보내기
-GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
+GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039)
+GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
-PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
+PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
 ```
 
 **칸 수를 계약으로 정하지 않는다.** 「43칸」은 우리 기본 서식에서 센 수다. 칸 수는 양식 ·
@@ -999,26 +1046,38 @@ PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 바뀌고, 수정·재생성 뒤에도 같은 칸을 가리켜야 한다.
 
 **월간은 연간이 `CONFIRMED` 여야 생성된다.** 아니면 `GATE_BLOCKED` 409.
-**층 순서를 건너뛸 수 없다.** 연간·월간·주간을 한 번에 생성하지 않는다.
+**주간은 월간이 `CONFIRMED` 여야 생성된다**(ADR-030 PM-04). 주간 API 계약은 아직 없다 — 주간 계약(W1)이 쓴다.
+**층 순서를 건너뛸 수 없다.** 연간·월간·주간을 한 번에 생성하지 않고, 월간을 건너뛰어 연간에서 주간으로 가지 않는다.
 
 ### 내보내기 — `GET /api/plans/{id}/export/hwp` (구현됨)
 
 **이 API 만 JSON 이 아니다.** 파일이 내려온다. 다른 API 처럼 `apiRequest` 로 부르면
 JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 
+**형식은 쿼리 `format` 으로 고른다. 기본은 hwpx 다**(ADR-039).
+
 ```
-응답 200    Content-Type: application/hwp+zip
-            Content-Disposition: attachment; filename="plan-10.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx
+GET /api/plans/10/export/hwp              → plan-10.hwpx   Content-Type: application/hwp+zip
+GET /api/plans/10/export/hwp?format=hwpx  → plan-10.hwpx   (위와 같다)
+GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: application/x-hwp
+
+응답 200    Content-Disposition: attachment; filename="plan-10.hwpx";
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
 ```
 
-**경로는 `hwp` 인데 내려가는 파일은 `hwpx` 다.** `.hwp` 는 공개된 구조가 없어 우리가
-만들 수 없다. hwpx 는 zip + XML(국가표준)이라 만들 수 있고 한글 2010 이상에서 열린다.
-**교사가 한글에서 「다른 이름으로 저장 → .hwp」 하면 hwp 가 된다** — 클릭 한 번이다.
+**경로 이름은 `hwp` 인데 기본은 `hwpx` 다.** 원래 hwpx 만 주던 경로라, 지금 화면을 깨지 않으려고
+경로를 그대로 두고 쿼리를 더했다. hwpx 는 zip + XML(국가표준)이고 한글 2010 이상에서 열린다.
 
-> **변환 기능을 서버에 두지 않는다.** 시중 변환은 파일을 남의 서버로 보낸다.
-> 계획안에는 반 이름·담임 이름이, 일지에는 아동 실명이 들어간다 — 그 파일을 밖으로
-> 보내면 ADR-004 가 LLM 한 줄을 막아둔 것이 통째로 무의미해진다.
+**`.hwp` 는 같은 hwpx 를 서버 안에서 바꿔 만든다.** 채우는 코드는 hwpx 한 벌이고,
+`?format=hwp` 면 그 hwpx 를 python-hwpx 로 HWP 5.0 으로 바꿔 내려준다.
+
+> **변환은 backend 프로세스 안에서만 한다. 파일을 밖으로 보내지 않는다.**
+> 계획안에는 반 이름·담임 이름이, 일지에는 아동 실명이 들어간다 — 시중 변환 서비스로
+> 보내면 ADR-004 가 LLM 한 줄을 막아둔 것이 통째로 무의미해진다(ADR-021 · ADR-039).
+
+**hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE` 이다 — 「hwpx 로 받아주세요」.**
+변환은 hwpx 를 다 만든 뒤에만 돌므로, 같은 문서를 `format` 없이 다시 받으면 hwpx 는 나온다.
+변환기(python-hwpx)의 hwp 쓰기가 새 기능이라 무엇이 실패하든 이 코드로 준다. 재시도해도 같다.
 
 **확정본만 내보낸다.** DRAFT 면 `GATE_BLOCKED` 409 다. 내보낸 파일은 제출 문서라,
 교사가 확인하지 않은 초안이 그대로 제출되는 길을 만들지 않는다.
@@ -1027,12 +1086,14 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 제출 문서에 들어갈 것이 아니다. 교사가 읽는 글자만 꺼낸다.
 
 **작성자 정보를 지운다.** 양식 파일에 남은 `creator` · `lastsaveby` 를 내보낼 때
-다시 비운다 — 양식을 새로 넣는 사람이 잊어도 막힌다.
+다시 비운다 — 양식을 새로 넣는 사람이 잊어도 막힌다. `.hwp` 의 문서 정보도 이 값을 그대로 옮긴다.
 
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 |
 | `NOT_FOUND` | 404 | 없거나 남의 원 계획안이다 |
+| `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
 **월간은 아직 없다.** 월간 API 와 양식이 같이 생길 때 붙인다.
 **원이 올린 양식으로 내보내는 것도 아직이다**(§8 양식 등록이 먼저다).
@@ -1042,6 +1103,8 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 `plan-config` 의 두 값은 7주차 기능의 입력이다 — `uses_monthly` 는 월간 생성이,
 `weekly_location` 은 보육일지·관찰일지(P1, ADR-003)가 붙을 때 의미가 생긴다.
 **P0 에서는 받지 않는다.** `safety_edu_hours` 는 서버 상수로 옮겼다(§4).
+**`uses_monthly = false`(월간을 안 쓰는 원)는 P0 에서 지원하지 않는다** — 주간은 월간을 거쳐서만 만든다(ADR-030 PM-04, 원 ID OD-W01).
+`weekly_location`(주간 계획을 어디에 쓰나)은 P0 에서 「별도 주간계획안」 하나뿐이라 받지 않는다(ADR-030 「후속 결정」, 2026-10-20).
 
 **hwp 내보내기에 출처 마커가 섞이면 안 된다.** 제출 문서다 — 7주차 계약을 쓸 때 다시 확인한다.
 
@@ -1056,8 +1119,8 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 
 ## 9-1. 월간계획안 생성 · 조회 — `POST /api/plans/monthly` · `GET /api/plans/monthly/{id}` · `GET /api/plans/monthly?class_id=`
 
-> **상태: 구현됨 (M4).** 결정은 결정 문서 12.4 · 12.5 · 12.6 과 M4-0 결정
-> D-M4-01 ~ 04 다. 칸 편집 · 칸 재생성 · 확정과 `revision` 409 는 §9-3(M5)이다.
+> **상태: 구현됨 (M4).** 결정은 ADR-034 §5 · ADR-035 §1 · ADR-036 §2 다(원 ID 12.4 · 12.5 · 12.6 ·
+> D-M4-01 ~ 04). 칸 편집 · 칸 재생성 · 확정과 `revision` 409 는 §9-3(M5)이다.
 
 ### 생성 — `POST /api/plans/monthly`
 
@@ -1080,7 +1143,7 @@ profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 
 
 **부모 연간계획안을 받지 않는다.** 서버가 반으로 찾는다 — 연간은 반당 하나다(§4).
 
-**`profile_ref` 는 화면에서 사용자가 확인한 정확한 버전을 그대로 보낸다**(결정 문서 Contract 2 R5).
+**`profile_ref` 는 화면에서 사용자가 확인한 정확한 버전을 그대로 보낸다**(ADR-034 §3 R5).
 서버는 그 사이 원 기본 · 반 override 가 바뀌었다고 다시 고르지 않는다. 최신 버전을 대신 고르지도
 않는다. 무엇을 보여 줄지는 §9-2 가 준다.
 
@@ -1091,13 +1154,13 @@ profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 
 
 **동기다.** 요청 안에서 생성 · 검증 · 저장을 끝내고 201 을 준다. 실측으로 10 ~ 15초쯤 걸린다 —
 화면은 진행 표시를 하고 같은 요청을 다시 보내지 않는다(screen-spec §5.1).
-**조건부 채택이다**(결정 문서 12.9-1). Luna-6 실측 3건(2026-10-09)이 LLM 10.3 ~ 13.0초 · 수리 0회 ·
+**조건부 채택이다**(ADR-036 §2). Luna-6 실측 3건(2026-10-09)이 LLM 10.3 ~ 13.0초 · 수리 0회 ·
 400 없음이었다 — 호출 타임아웃 30초 · nginx `proxy_read_timeout 120s` 안이다. 표본이 3건이라 운영
 호출 기록에서 호출 시간이 자주 20초를 넘거나 타임아웃 · 수리가 반복되면 다시 정한다.
 
 **부분 결과를 저장하지 않는다.** 어디서 실패해도 계획안 행이 생기지 않는다.
 
-**같은 반 · 같은 달은 하나다**(결정 문서 12.5). `DRAFT` 든 `CONFIRMED` 든 `ALREADY_EXISTS` 409 —
+**같은 반 · 같은 달은 하나다**(ADR-034 §5). `DRAFT` 든 `CONFIRMED` 든 `ALREADY_EXISTS` 409 —
 FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(screen-spec §5.3).
 
 ### 안전교육 — 근거가 없으면 비워 두고 그렇다고 표시한다
@@ -1246,6 +1309,7 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 | `NOT_FOUND` | 404 | `profile_ref` 가 없다 · READY 가 아니다 · 남의 원 것이다 (셋을 가르지 않는다, ADR-017) | `["profile_ref"]` |
 | `ALREADY_EXISTS` | 409 | 같은 반 · 같은 달 월간이 있다 (동시 요청은 DB 유일 제약이 막고 409 로 바꾼다) | `["class_id","month"]` |
 | `VALIDATION_FAILED` | 422 | 고른 Profile 로는 만들 수 없다 — 기관 입력 Section(`event_schedule` · `drill`) · 근거 없는 필수 Section 등. **재시도해도 같다.** 다른 Profile 을 고른다 | `["profile_ref"]` |
+| `VALIDATION_FAILED` | 422 | 고른 Profile 의 기반 Template 이 사람 승인 전이다 · 승인이 사라졌다(생성 직전에 다시 본다, ADR-027 §6). Profile 시작(§9-4)의 409 `GATE_BLOCKED` 와 다르다 — 여기서는 이미 고른 Profile 을 못 쓰는 것이라 Profile 오류와 같이 다룬다 | `["profile_ref"]` |
 | `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제 (401 · 403 · 429) | `[]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | LLM 설정이 없다 · 서버의 승인 참조자료를 읽을 수 없다. 재시도 무의미 | `[]` |
 | `GENERATION_FAILED` | 500 | LLM 호출이 깨졌다(타임아웃 포함) · 응답이 계약을 어겼다(수리 1회 뒤에도) · Core 검증 실패. **재시도 가능.** 부분 저장 없음 | `[]` |
@@ -1282,7 +1346,7 @@ reason       SELECTION_REQUIRED 일 때만 값.  NO_POINTER(아무것도 안 걸
              CLASSROOM_OVERRIDE_NOT_READY 처럼 「어느 포인터가 왜 못 쓰이나」
 ```
 
-**순서는 반 override → 원 기본 → 「선택 필요」다**(결정 문서 C2.7 R1 ~ R4). 포인터가 가리키는
+**순서는 반 override → 원 기본 → 「선택 필요」다**(ADR-034 §3 R1 ~ R4). 포인터가 가리키는
 버전을 쓸 수 없으면 **원 기본으로 내려가지 않고** 「선택 필요」다(R3) — 반 설정이 조용히 무시되지
 않게 한다. 최신 READY 를 대신 고르지 않는다.
 
@@ -1305,11 +1369,11 @@ reason       SELECTION_REQUIRED 일 때만 값.  NO_POINTER(아무것도 안 걸
 - **READY 만 준다.** DRAFT · ARCHIVED 는 생성에 쓸 수 없다. 만든 순서대로.
 - 남의 원 `center_id` 면 `NOT_FOUND` 404 (`require_own_center`).
 - **Profile 에는 이름 칸이 없다.** 사용자는 버전 · 기반 Template · 고른 Section 과 그 이름 ·
-  만든 시각으로 구분한다. 이름 칸은 Core 에 없어 만들지 않는다(결정 문서 12.9 OPEN).
+  만든 시각으로 구분한다. 이름 칸은 Core 에 없어 만들지 않는다(ADR-034 「결과」 — 남은 것).
 
 ### 승인 조건
 
-READY Profile 은 사람이 승인한 Template 으로만 만들어진다(결정 문서 12.8 — 만들 때 검사한다).
+READY Profile 은 사람이 승인한 Template 으로만 만들어진다(ADR-027 §3 · §8 — 만들 때 검사한다).
 **지금 Template A v0.1.1 · v0.2.1 은 승인 대기라 운영 DB 에 READY Profile 이 생길 수 없다** —
 그동안 §9-2 목록은 빈 배열이고 §9-1 은 `NOT_FOUND` 404(`profile_ref`) 다.
 
@@ -1317,7 +1381,7 @@ READY Profile 은 사람이 승인한 Template 으로만 만들어진다(결정 
 
 ## 9-3. 월간계획안 칸 편집 · 칸 재생성 · 확정
 
-> **상태: 구현됨 (M5).** 결정은 결정 문서 12.4 D-3 · 12.10(D-M5-CONFIRM-01) 이다.
+> **상태: 구현됨 (M5).** 결정은 ADR-035 §1 · §2 다(원 ID 12.4 D-3 · 12.10 D-M5-CONFIRM-01).
 > 세 API 모두 `200` 에 §9-1 「월간계획안 응답」 전체를 돌려준다 — 새 `revision` 과 다시 계산한
 > 검증 결과(`constraints` · `verification`)가 들어 있다.
 
@@ -1384,7 +1448,7 @@ DRAFT · revision 다름      STALE_WRITE 409.  아무것도 바꾸지 않는다
                            revision · confirmed_at · 확정자 · 확정 이력이 바뀌지 않는다
 ```
 
-**재호출은 멱등이다**(결정 문서 12.10 D-M5-CONFIRM-01, 연간 §7 과 같은 이유). 첫 확정이 revision
+**재호출은 멱등이다**(ADR-035 §2, 연간 §7 과 같은 이유). 첫 확정이 revision
 을 올리므로 더블클릭 · 재시도로 두 번째 도착한 요청은 항상 옛 revision 을 든다 — 그걸 409 로 막으면
 FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사가 먼저다** — 남의 원 계획안은 404.
 
@@ -1411,7 +1475,7 @@ FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사�
 
 ## 9-4. 월간 양식 설정(TemplateProfile) 관리 — 시작 · 원 기본 · 반 override
 
-> **상태: 구현됨 (BE-1).** 결정은 결정 문서 Contract 2(C2.6 · C2.7) · 12.8 · 12.12 다.
+> **상태: 구현됨 (BE-1).** 결정은 ADR-034(원 ID Contract 2 C2.6 · C2.7 · 12.12) · ADR-027(원 ID 12.8) 이다.
 > M2 저장소의 규칙을 HTTP 로 연 것이다 — 규칙을 늘리지 않았다.
 > **DRAFT 만들기 · 저장 · 편집 · READY 전환 · 보관 API 는 아직 없다.**
 
@@ -1419,7 +1483,7 @@ FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사�
 
 - **로그인 필수**(`401 UNAUTHENTICATED`). 인가는 원 단위다 — 남의 원 · 남의 원 반 · 남의 원 Profile
   은 없는 것과 같은 `404`(ADR-017).
-- **권한:** 원 소속 계정 누구나 바꿀 수 있다(결정 문서 C2.6 · C2-E, TP-05 `RESOLVED_FOR_P0`). 역할
+- **권한:** 원 소속 계정 누구나 바꿀 수 있다(ADR-034 §4, 원 ID C2.6 · C2-E · TP-05 `RESOLVED_FOR_P0`). 역할
   구분은 없다. 포인터를 바꾸면 `changed_by`(users.id) · `changed_at` 이 남는다.
 - **화면 흐름:** §9-2 해석(`GET /api/classes/{class_id}/template-profile`)이 `SELECTION_REQUIRED`
   이면 ① 기반 Template 목록 → ② 시작 → (사용자가 동의하면) ③ 원 기본 지정 또는 ④ 반 override →
@@ -1462,8 +1526,8 @@ focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (
 ```
 
 - 원 범위가 없는 전역 Reference 다. 로그인만 본다.
-- **지금 값: v0.1.1 · v0.2.1 둘 다 `approved: false`**(결정 문서 12.8 — 사람 승인 대기). 승인을
-  바꾸는 API 는 없다.
+- **지금 값: v0.2.1 은 `approved: true`**(2026-10-20 PM 승인, `reviewer_pm_001` — ADR-030 「후속 결정」),
+  **v0.1.1 은 `approved: false`**(사람 승인 대기, ADR-027 §3). 승인을 바꾸는 API 는 없다.
 
 ### ② Reference 기반 시작 — `POST /api/centers/{center_id}/template-profiles`
 
@@ -1493,7 +1557,7 @@ focus_variant            focus 를 고르면 필수 (focus_variants 중 하나).
 - **멱등이 아니다.** 같은 요청을 두 번 보내면 Profile 이 두 개 생긴다(Idempotency-Key 없음).
   화면은 응답이 올 때까지 버튼을 잠근다.
 - 실패하면 아무것도 저장하지 않는다.
-- **운영:** 기반 Template 사람 승인 전에는 항상 `409 GATE_BLOCKED` 다(결정 문서 12.8 · 12.12). 승인
+- **운영:** 기반 Template 사람 승인 전에는 항상 `409 GATE_BLOCKED` 다(ADR-027 §8). 승인
   우회 경로는 없다. 승인되면 코드 변경 없이 열린다.
 
 ### ③ 원 기본 — `GET · PUT /api/centers/{center_id}/template-profile-default`
@@ -1570,7 +1634,7 @@ expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본
 ### 아직 없는 것
 
 DRAFT 만들기 · 임시 저장 · 편집, READY 전환, READY 에서 새 버전 파생, 보관(ARCHIVED). M2 저장소에는
-있다(결정 문서 C2.0 · M2-B). 화면에 필요해지면 계약을 따로 정한다.
+있다(원 ID C2.0 · M2-B — 저장소 밖 개인 문서. 아직 ADR 로 옮기지 않았다). 화면에 필요해지면 계약을 따로 정한다.
 
 ---
 
@@ -1686,9 +1750,9 @@ generation_change  REGENERATED 만.  {before, after} — 각각 §9-1 cells[].ge
 
 ### 연간 `GET /api/plans/annual/{id}/audit` 과의 차이
 
-연간 계약은 그대로다. 월간은 같은 키(`type` · `occurred_at` · `actor` · `system_actor`)를 쓰고,
-연간의 `month` 대신 `scope` · `item_id` · `section_key` · `week_id` 로 칸을 가리키며, 연간에 없는
-`value_change` · `generation_change` 를 더 준다. 연간에는 `item_id` 고르기가 없다.
+연간 계약은 §7-1 이다. 월간은 같은 키(`type` · `occurred_at` · `actor` · `system_actor`)를 쓰고,
+연간의 `month` 대신 `scope` · `item_id` · `section_key` · `week_id` 로 칸을 가리키며, `value_change` · `generation_change` 를
+준다. 연간은 `value_change` 만 더하기로 정했고 아직 구현 전이다(§7-1, ADR-030 PM-07). 연간에는 `item_id` 고르기가 없다.
 
 ---
 
@@ -1807,6 +1871,36 @@ execution   활동실행 — 사실 층.  선택(저장은 비어도 된다).  �
 `[오전 실내놀이 09:20~10:40] 활동실행` 한 줄을 남기고 그 줄과 비교한다. 그래서 **일과 이름 · 시간 ·
 활동실행 · 날짜** 중 무엇이 바뀌어도 `stale` 이고, `plan` · `position` 만 바꾸면 그대로다.
 지우면 「원본 없음」이라 `stale` 이다.
+
+### 저장 뒤 재검토 안내 — 선택 응답 (S-J1 AC6)
+
+기존 PUT의 일과 한 줄 응답과 DELETE의 `204`는 유지한다. 영향 정보가 필요한 화면은
+`PUT /api/routines/{id}?include_impact=true` 또는
+`DELETE /api/routines/{id}?include_impact=true`로 요청한다.
+
+- PUT은 기존 일과 필드에 `review_impact`를 추가한 `200`을 반환한다.
+- DELETE는 `review_impact`만 담은 `200`을 반환한다. 옵션을 생략하면 본문 없는 `204`다.
+
+```json
+{ "review_impact": {
+  "affected_document_ids": [7, 12],
+  "newly_stale_document_ids": [12]
+} }
+```
+
+`affected_document_ids`는 **이번에 실제 변경·삭제된 근거를 직접 인용한, 같은 기관의
+확정 일일 보육일지** ID다. 사본과 현재 사실·날짜가 다르거나 원본이 삭제된 경우를 센다.
+시간은 초만 달라져도 변경이다. 요청 전후 이름·시간·활동실행·날짜가 같으면(계획·순서만
+수정한 경우 포함) 두 배열 모두 빈다. `newly_stale_document_ids`는 그중 이번 요청으로
+`stale=false`에서 `true`가 된 문서다. 이미 stale인 문서는 affected에만 포함된다.
+
+초안과 전파된 주간 문서는 기존 정책대로 stale 처리하되 안내 건수에서 제외한다.
+다른 기관 문서는 영향 조회·전파 대상에서 제외한다. 기존 refresh·확정 정책은 유지한다.
+응답은 커밋 성공 후에만 반환한다.
+
+화면은 한 번 저장에 속한 PUT·DELETE의 ID **합집합**을 센다. 신규 ID 수를 「N건이 다시
+검토 대상」으로, affected에서 신규 ID를 뺀 수를 「이미 재검토 대상」으로 구분한다.
+부분 실패 시 전체 성공 안내를 하지 않으며, 성공한 요청의 ID를 재시도까지 보존한다.
 
 ### 일일 보육일지를 만들 때 (§11)
 
@@ -1973,6 +2067,13 @@ sections 에 빈 body 가 있다
 
 **전부 `VALIDATION_FAILED` 422 다.** `fields` 에 어디가 틀렸는지 담는다 — `sections.해석` · `sources.3`.
 
+**같은 반 · 같은 날 일일 보육일지가 이미 있으면 `409 ALREADY_EXISTS` 다** (`fields: ["start"]`).
+응답을 못 받은 교사가 다시 누르면 둘이 생긴다 — 연간계획안과 같은 모양으로 막는다.
+모델을 부르기 전에 보고, 저장 직전에 반을 잠그고 한 번 더 본다. 화면은 목록에서 그 일지를 열게 한다.
+
+**예산 초과는 `503 LLM_BUDGET_EXCEEDED` 다.** `GENERATION_FAILED` 500 으로 뭉치지 않는다 —
+키가 지워져서 다시 눌러도 안 된다. 화면은 「다시 시도」가 아니라 「담당자에게 알려주세요」를 띄운다.
+
 ### `stale` — 원본이 바뀌었다는 표시
 
 ```
@@ -2009,7 +2110,9 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 **`stale` 이면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
 **문서를 지우지 않는다** — 교사가 보고 판단한다.
 
-**푸는 길은 `POST /api/documents/{id}/refresh` 하나다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」고 누른다.
+**초안의 근거 갱신은 `POST /api/documents/{id}/refresh`다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」고 누른다.
+확정된 stale 일일 보육일지는 비교 토큰을 사용하는 `reconfirm`으로 반영·검증·재확정을
+한 트랜잭션에서 처리할 수 있다 (아래 TASK 2 후속 계약). 단순 stale 표시로 확정을 취소하지 않는다.
 
 ```
 1  근거 사본을 지금 원본으로 다시 뜬다        관찰 기록이면 fact · date,  문서면 사실 · start · status
@@ -2061,12 +2164,14 @@ origin   AI                         LLM 이 초안을 만들었다
 2  추출 대조   사실 == sources 원문              서버.  문자열 비교.  모델 없음
                해석의 숫자 ⊂ 사실의 숫자
 3  LLM Judge   미관찰 내용 · 근거 없는 해석 검사    LLM
-4  교사 확인    체크 3개                          사람
+4  교사 확인    UI 체크 하나 → API checks 세 필드    사람
 ```
 
 **앞 둘을 모델 없이 끝낸다.** 모델이 틀려도 사실은 안 틀어진다.
 
-**3단 — `POST /api/documents/{id}/verify`**
+**3단 — `POST /api/documents/{id}/verify`** — **아직 없다 (2026-10-20 확인).**
+라우터에 이 경로가 없어 지금 부르면 404 다. 아래는 만들 때 지킬 계약이고,
+서버 확정(`confirm` · `reconfirm`)은 **이 단계를 거치지 않는다** — 1·2단과 교사 체크 3개만 본다.
 
 ```json
 { "issues": [] }
@@ -2133,13 +2238,15 @@ GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": 
        FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
-POST   /api/documents/{id}/verify                                3단 LLM Judge
+POST   /api/documents/{id}/verify                                3단 LLM Judge.  **미구현 — 지금은 404**
 PUT    /api/documents/{id}                                       title · sections · review_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
 POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
+GET    /api/documents/{id}/source-comparison                     일과 근거 전후 비교와 검토 토큰
+POST   /api/documents/{id}/reconfirm                              확정된 stale 일일 일지의 원자적 재확정
 DELETE /api/documents/{id}                                       204
-GET    /api/documents/{id}/export/hwp                            hwpx 파일.  확정본만.  아래 「내보내기」
+GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp).  확정본만.  아래 「내보내기」
 ```
 
 **확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
@@ -2162,7 +2269,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일.  �
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
 
 ### 겹치는 문서를 찾아준다 — `/compare` 화면
 
@@ -2193,13 +2300,13 @@ assessment    observation · dailyLog
 
 **관찰일지 · 일일 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼 복제한다.
 
-**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 경로는 `hwp` 인데 파일은 `hwpx` 다 ·
-확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다.
+**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` 다 ·
+확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
 
 ```
-응답 200    Content-Type: application/hwp+zip
+응답 200    Content-Type: application/hwp+zip                     (?format=hwp 면 application/x-hwp)
             Content-Disposition: attachment; filename="document-7.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
 ```
 
 **배치는 위 「종이 한 장」이다.** 해석 + 지원 칸은 `해석` 본문, 빈 줄, `지원` 본문 순서로 잇는다.
@@ -2209,8 +2316,9 @@ assessment    observation · dailyLog
 
 **아동 실명이 들어간다.** 교사 본인의 제출 문서라 치환하지 않는다. 대신 hwpx 안의
 미리보기(`Preview/PrvText.txt`)를 **이 문서 내용으로 다시 만든다** — 양식 파일에 남은
-다른 아이 이름이 미리보기에 그대로 실려 나가지 않게 한다.
+다른 아이 이름이 미리보기에 그대로 실려 나가지 않게 한다. `.hwp` 의 미리보기도 이 글자를 옮긴다.
 **미리보기 그림(`Preview/PrvImage.png`)은 다시 만들지 않는다.** 그래서 양식 파일은 빈 양식이어야 한다.
+`.hwp` 에도 이 그림이 그대로 들어간다.
 
 **관찰일지의 영역, 일일 보육일지의 시간 · 일과 · 활동계획은 지금의 원본 기록에서 읽는다.**
 영역 · 활동계획만 고치면 `stale` 이 아니므로 고친 값이 나간다. **`stale` 인 문서는 내보내지 않는다** —
@@ -2221,8 +2329,9 @@ assessment    observation · dailyLog
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
-| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` 가 아니다.  `fields: ["kind"]` |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
 ### 개인정보
 
@@ -2395,8 +2504,8 @@ NONE           없음        뒷받침 문서가 0건
 같은 일과로 도는 합반은 일지 1부다(#412). **관찰 기록에는 빈도 · 아동별 요건이 없다**(#356).
 그래서 **관찰일지 수로 세지 않는다. 연간 보육계획안은 4-1 서류가 아니다** — 영역 5 검토문서다(p.171).
 
-월간계획안의 대상 달은 `plans.target_month`(`YYYY-MM`) 칸에 있다 — `plans.body.target_month` 에서 꺼낸 값이다(결정 문서 12.6 PR-2 에서 추가).
-**plans 소유(승석)의 조회 함수로 읽는다. feature 간 직접 import 하지 않는다.** 함수는 아직 없다(아래 「아직 정하지 않은 것」).
+월간계획안의 대상 달은 `plans.target_month`(`YYYY-MM`) 칸에 있다 — `plans.body.target_month` 에서 꺼낸 값이다(원 ID 12.6 PR-2 에서 추가, ADR-035 §1).
+**plans 소유(승석)의 조회 함수로 읽는다. feature 간 직접 import 하지 않는다.** 함수는 `plans/queries.py` 의 `confirmed_monthly_plans` 다(#156).
 계획안 id 는 `plan_ids`, 일지 id 는 `document_ids` 로 낸다.
 **3월 초에는 검토 기간이 지난 학년도에 걸친다. 반은 학년도마다 새 행이라 지난 학년도 반의 서류는 안 잡힌다.**
 
@@ -2492,7 +2601,7 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 
 ```
 □  지표 파일 v2 — 평가요소 19개 나누기 · 1 2 3 4 5 정리   승석
-□  plans 조회 함수 — 반 · 대상 달 · 확정 여부로 월간계획안을 찾는다   승석
+■  plans 조회 함수 — 반 · 대상 달 · 확정 여부로 월간계획안을 찾는다   완료 — 승석 #156
 □  4-2 와 ADR-007 「발달평가 스펙아웃」             승석 · PM    PM 확인 대기. assessment 와 같은 것인지
 □  새 학년도에 아동 행을 옮기나 새로 만드나 — 4-2 가 지난 학년도 평가를 찾는지가 갈린다   반 · 아동 담당 · PM
 □  달력 테이블(특일정보 API) — 생기면 4-1 의 평일에서 공휴일을 뺀다   승석
@@ -2551,3 +2660,67 @@ evaluation_checks              원 · 학년도 · 평가요소 체크    §12  
 ```
 
 `classes.school_year` 는 **컬럼이 이미 있다.** 서버가 채우는 로직만 만들면 된다.
+# TASK 2 후속 계약 (2026-10-19)
+
+일일 보육일지의 교사 검토 UI는 체크박스 하나다. 선택한 경우만 기존 API 필드
+`checks.fact`, `checks.interpretation`, `checks.support`를 모두 true로 보낸다.
+어느 하나라도 false이면 재확정은 422 `VALIDATION_FAILED`다.
+
+## 일과 근거 비교 및 원자적 재확정 (§11 보충)
+
+- `GET /api/documents/{id}/source-comparison`: 인증된 자기 센터의 일과 근거 일일 보육일지.
+  응답은 `{document_id, updated_at, review_token, can_reconfirm, sources}`.
+  sources는 문서가 선택했던 순서대로 `{id, before, after, state}`이며 ID로 원본을 연결한다.
+  state는 `changed`, `unchanged`, `missing`. after는 원본이 삭제/누락되거나 해당 반·날짜에서
+  사용할 수 없으면 null이다. 다른 센터·반 원문은 반환하지 않는다. 없는 문서는 404 `NOT_FOUND`.
+  `candidates`는 사라진 근거를 대신할 수 있는 같은 반·같은 날짜의 일과다 — `{id, text}` 목록이며
+  이 문서가 이미 쓰는 일과와 활동실행이 빈 일과는 빼고 준다. 사라진 근거가 없으면 비어 있다.
+- `POST /api/documents/{id}/reconfirm`: 요청은 `{review_token, updated_at, checks,
+  sections, review_note?, resolutions?}`. sections는 기존 사실·해석·지원과 source_ids 계약이며 사실은 비교 API의
+  after를 선택 순서대로 빈 줄로 이어붙인 값과 정확히 같아야 한다. 해석·지원은 교사가 검토한
+  값을 보내며 서버가 생성/덮어쓰지 않는다. review_note 미지정 시 기존 메모를 그대로 보존한다.
+  성공 응답 200은 기존 DocumentDetailResponse이며 `CONFIRMED`, `stale=false`다.
+  상세·비교 응답의 버전 시각은 UTC로 통일하며 DB 세션의 시간대에 따라 표현이 달라지지 않는다.
+- 서버는 원본 → 문서 순으로 행을 잠그고 비교 토큰·문서 버전·원본 존재·3개 checks·공유
+  sections 게이트를 검증한다. 근거·사실 갱신과 교사 편집 반영, 확정, 상위 문서 stale 전파,
+  완료 영수증 저장을 한 트랜잭션으로 처리한다. 실패는 전체 롤백한다.
+- 비교 이후 문서나 원본 변경, 같은 토큰의 다른 요청, 완료 뒤 다시 변경된 데이터는
+  409 `STALE_WRITE`. 삭제·빈 실행·날짜/반 불일치 또는 재확정 불가 상태는 409 `GATE_BLOCKED`.
+  섹션/체크 오류는 422 `VALIDATION_FAILED`. 같은 완료 토큰·동일 본문의 재시도는 문서와
+  원본이 완료 시점 그대로일 때만 동일 완료 문서를 200으로 반환한다.
+- 같은 `resolutions` 를 **`POST /api/documents/{id}/refresh`** 의 선택 본문으로도 보낼 수 있다.
+  확정을 취소한 초안이 사라진 근거 때문에 막히는 길을 여는 것이다 — 본문 없이 보내던 호출은
+  그대로여서 사라진 근거가 있으면 여전히 409 `GATE_BLOCKED` 다. 규칙은 `reconfirm` 과 같고
+  (고르지 않은 사라진 근거, 후보 밖·중복 `replacement_id`, 전부 빼기, 살아 있는 근거 선택),
+  일과 근거의 일일 보육일지가 아니면 409 `GATE_BLOCKED` `["kind"]` 다. `사실` 과 근거 사본,
+  각 칸의 `source_ids` 는 서버가 다시 맞추고 **`해석`·`지원` 과 `DRAFT` 상태는 그대로 둔다** —
+  교사는 평소처럼 읽고 `confirm` 한다. 영수증(`document_reconfirmations`)은 남기지 않는다 —
+  확정이 아니다. 대신 뺀·바꾼 근거를 `document_source_resolutions` 에 한 줄씩 남긴다
+  (`document_id, source_id, action, replacement_id, before, actor_user_id, created_at`).
+  문서 변경과 같은 트랜잭션이라 거절되면 흔적도 남지 않고, 나중에 확정해도 지워지지 않는다.
+  **두 이력을 섞지 않는다** — 영수증은 확정본 재확정 전용, 이쪽은 초안 처리 전용이다.
+  `before` 에는 아동 관련 문구가 들어갈 수 있어 응답·로그·화면에 내보내지 않는다 (ADR-013).
+- `resolutions`는 사라진 근거를 어떻게 할지다 — `{source_id, action, replacement_id?}` 목록이고
+  action은 `drop`(보육일지에서도 뺀다) 또는 `replace`(다른 일과로 바꾼다)다. **선택이다** —
+  보내지 않으면 예전과 같아서 사라진 근거가 하나라도 있으면 409 `GATE_BLOCKED`다. 그래서 이
+  필드를 모르는 클라이언트의 동작이 달라지지 않는다.
+  state가 `missing`이 아닌 근거를 고르거나 한 근거를 두 번 고르면 422 `VALIDATION_FAILED`.
+  사라진 근거를 하나라도 빠뜨리면, `replacement_id`가 `candidates` 밖이거나 두 번 쓰이면,
+  근거가 하나도 남지 않으면, (reconfirm 에서) 문서가 `CONFIRMED`·`stale`이 아니면 409 `GATE_BLOCKED`다.
+  `resolutions`를 쓴 요청은 `sections[].source_ids`도 남는 근거(대체본은 새 id)만 담아야 한다.
+  처리 내역은 `document_reconfirmations.resolutions`에 `{source_id, action, replacement_id,
+  before}`로 남는다 — 사본 행이 사라지므로 여기가 유일한 흔적이다.
+  **근거를 빼거나 바꾼 요청도 같은 본문을 다시 보내면 200 이다** — 영수증에 완료 **후** 원본
+  해시를 적어 두므로 재시도가 다시 잰 값과 맞는다. 영수증은 한 줄이고 이중 적용은 없다.
+  같은 토큰이라도 본문이나 `resolutions` 가 다르거나, 완료 뒤 문서·원본이 바뀌었으면
+  409 `STALE_WRITE` 다. 새로 비교해 받은 토큰으로는 이미 확정이라 409 `GATE_BLOCKED` 다.
+- stale 표시만으로 확정 상태를 내리지 않는다. 기존 unconfirm, refresh, confirm은 유지한다.
+  새 원자적 경로는 확정된 stale 일일 보육일지에 제공한다. 다른 문서 종류는 기존 경로를 쓴다.
+
+## 일과 시간과 순서 (§10-1 보충)
+
+UI는 01~12시·5분 선택과 AM/PM 토글을 쓰지만 API는 기존 24시간제/null이다.
+기존 09:16 및 초 값은 관련 없는 수정 때 보존한다. 저장된 position 순서가 우선이며
+명시적 시간순 정렬만 시작 → 종료 → 기존 상대 순서로 정렬한다. 시작 없는 행은 뒤다.
+정렬/드래그/위아래 이동은 저장 전 요청을 보내지 않는다. 저장 후 S-J2 후보에도 같은 순서가
+보이고 문서 사실의 순서는 후보 정렬과 별개로 체크한 순서다. 기존 확정본은 자동 재정렬하지 않는다.

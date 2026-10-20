@@ -7,7 +7,9 @@ p0-planning 의 테스트가 본다. 이 파일은 「계약대로 내려주나 
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.config import settings
 from app.features.centers.models import Center, Class
 from app.features.plans.models import Plan
 from app.main import app
@@ -325,3 +327,91 @@ def test_양식_번호가_계획안에_남는다(db_session, mine, teacher):
     saved = db_session.get(Plan, response.json()["id"])
     db_session.refresh(saved)
     assert saved.form_id == form.id
+
+
+# ── 지우기 (§4) ───────────────────────────────────────────────────────────
+
+
+def _error(response):
+    body = response.json()["error"]
+    return response.status_code, body["code"]
+
+
+def test_확정_전_연간계획안을_지우면_다시_만들_수_있다(db_session, mine):
+    """반 하나에 연간은 하나다. 지울 길이 없으면 첫 초안이 마음에 안 들어도 영영 못 바꾼다."""
+    plan_id = _create(mine)["id"]
+    assert (
+        client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None}).status_code
+        == 409
+    )
+
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 204
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
+    assert _create(mine)["id"] != plan_id
+
+
+def test_확정된_연간계획안은_지우지_못한다(db_session, mine):
+    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+    plan_id = _create(mine)["id"]
+    assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
+
+    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 200
+
+
+def test_남의_원_연간계획안은_지울_수_없고_404(db_session, mine, teacher):
+    plan_id = _create(mine)["id"]
+    teacher.center_id = mine.center_id + 1
+
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 404
+
+
+# ── 시험용 전부 지우기 (파일럿 전에 끈다) ──────────────────────────────────
+
+
+def test_스위치가_꺼져_있으면_시험용_지우기는_없는_경로다(db_session, mine):
+    """기본은 꺼짐이다. 있는지조차 알리지 않는다 — 404 다."""
+    plan_id = _create(mine)["id"]
+
+    assert settings.allow_test_reset is False
+    assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 404
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 200
+
+
+def test_켜면_확정본도_딸린_월간까지_한_번에_지운다(db_session, mine, monkeypatch):
+    """연간을 확정하면 고칠 수도 지울 수도 없다. 시험하는 동안 그 막다른 길을 연다."""
+    monkeypatch.setattr(settings, "allow_test_reset", True)
+    plan_id = _create(mine)["id"]
+    assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
+    # 같은 반 · 같은 학년도의 월간이 딸려 있다고 둔다. 진짜 지우기는 이걸 막는다.
+    annual = db_session.get(Plan, plan_id)
+    db_session.add(
+        Plan(
+            plan_ref="monthly_test_1",
+            center_id=annual.center_id,
+            kind="monthly",
+            school_year=annual.school_year,
+            classroom_ref=annual.classroom_ref,
+            target_month="2026-09",
+            status="DRAFT",
+            revision=1,
+            body={},
+            sub_themes={},
+        )
+    )
+    db_session.commit()
+
+    # 진짜 지우기는 막는다. 확정이라 걸리고, 확정이 아니었어도 딸린 월간에서 걸린다.
+    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
+    assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 204
+
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
+    assert db_session.scalars(select(Plan).where(Plan.kind == "monthly")).all() == []
+
+
+def test_켜도_남의_원_것은_404(db_session, mine, teacher, monkeypatch):
+    monkeypatch.setattr(settings, "allow_test_reset", True)
+    plan_id = _create(mine)["id"]
+    teacher.center_id = mine.center_id + 1
+
+    assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 404

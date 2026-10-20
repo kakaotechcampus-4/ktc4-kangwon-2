@@ -9,6 +9,7 @@ import {
   childServerId,
 } from "./onboarding";
 import { observationLocalId, observationServerId } from "./observations";
+import { routineLocalId, routineServerId } from "./routines";
 import type { DocumentKind, SavedDocument, Section, Source } from "../workspace/model";
 
 /** 서버가 다루는 네 종류. 계획안(annual·monthly·weekly·daily)은 이 API 가 아니다. */
@@ -16,15 +17,6 @@ export const RECORD_KINDS = ["dailyLog", "weeklyLog", "observation", "assessment
 export type RecordKind = (typeof RECORD_KINDS)[number];
 export const isRecordKind = (kind: string): kind is RecordKind =>
   (RECORD_KINDS as readonly string[]).includes(kind);
-
-/**
- * 아직 화면에서 만들 수 없는 종류.
- *
- * 일일 보육일지의 근거는 관찰 기록이 아니라 「일과 기록」이다 (ADR-025 · §10-1).
- * 일과 기록을 적는 화면이 아직 없어서, 지금 만들기를 누르면 서버가 422 로 돌려보낸다.
- * 고를 수 있는데 아무것도 안 되는 것보다 잠가 두는 쪽이 낫다 — 그 화면이 들어오면 푼다.
- */
-export const BLOCKED_RECORD_KINDS: readonly RecordKind[] = ["dailyLog"];
 
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const DOCUMENT_PREFIX = "document:";
@@ -43,11 +35,20 @@ export function documentServerId(localId: string): number | null {
   return Number.isSafeInteger(id) ? id : null;
 }
 
-/** 근거 id 가 가리키는 것은 종류마다 다르다 — 주간 보육일지만 문서, 나머지는 관찰 기록 (§11). */
-const sourceLocalId = (kind: string, id: number) =>
-  kind === "weeklyLog" ? documentLocalId(id) : observationLocalId(id);
-const sourceServerId = (kind: string, localId: string) =>
-  kind === "weeklyLog" ? documentServerId(localId) : observationServerId(localId);
+/**
+ * 근거 id 가 가리키는 것은 종류마다 다르다 (§11).
+ * 주간 보육일지는 문서, 일일 보육일지는 일과 기록(ADR-025), 나머지는 관찰 기록이다.
+ */
+function sourceLocalId(kind: string, id: number) {
+  if (kind === "weeklyLog") return documentLocalId(id);
+  if (kind === "dailyLog") return routineLocalId(id);
+  return observationLocalId(id);
+}
+function sourceServerId(kind: string, localId: string) {
+  if (kind === "weeklyLog") return documentServerId(localId);
+  if (kind === "dailyLog") return routineServerId(localId);
+  return observationServerId(localId);
+}
 
 export interface ApiDocumentGeneration {
   method: string | null;
@@ -93,6 +94,14 @@ export interface ApiDocumentDetail extends Omit<ApiDocumentListItem, "sources_co
   sources: ApiDocumentSource[];
   review_note: string;
 }
+
+/**
+ * 예전 mock 초안은 본문 앞에 `[mock] ` 을 달고 저장됐다. 제출 문서에 시스템 글자가 남는다.
+ *
+ * **맨 앞에 한 번만** 떼어낸다. 교사가 쓴 문장 안의 `[mock]` 은 건드리지 않는다 — 전역
+ * 치환으로 지우면 교사 글을 말없이 고치는 셈이다.
+ */
+const MOCK_PREFIX = /^\[mock\]\s*/;
 
 /** 목록 항목. `sections` · `sources` 가 없으므로 문서 전체인 척하지 않는다. */
 export interface DocumentSummary {
@@ -165,9 +174,12 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     classId: localClass(s.class_id),
     childId: localChild(s.child_id),
   }));
+  const generatedSection = (s: ApiDocumentSection) =>
+    dto.origin === "AI" && ["해석", "지원"].includes(s.heading);
+  const legacyMock = dto.sections.some((s) => generatedSection(s) && MOCK_PREFIX.test(s.body));
   const sections: Section[] = dto.sections.map((s) => ({
     heading: s.heading,
-    body: s.body,
+    body: generatedSection(s) ? s.body.replace(MOCK_PREFIX, "") : s.body,
     sourceIds: s.source_ids.map((id) => sourceLocalId(dto.kind, id)),
   }));
   return {
@@ -175,6 +187,8 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     sections,
     sources,
     reviewNote: dto.review_note,
+    // 새 문서는 서버가 `<규칙버전>-mock` 으로 알리고, 예전 문서는 떼어낸 접두어로 안다.
+    mockDraft: legacyMock || /-mock$/.test(dto.generation.rule_version ?? ""),
   };
 }
 
@@ -307,11 +321,18 @@ export async function unconfirmDocument(localId: string): Promise<ServerDocument
  *
  * `해석`·`지원` 은 서버가 그대로 둔다. 확정본은 `ALREADY_CONFIRMED` 409 라 초안에서만 부른다.
  */
-export async function refreshDocument(localId: string): Promise<ServerDocument> {
+export async function refreshDocument(
+  localId: string,
+  resolutions?: SourceResolution[],
+): Promise<ServerDocument> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
+  // 고른 처리가 없으면 본문 없이 보낸다 — 이 필드를 모르는 서버도 그대로 받는다.
   const dto = await apiRequest<ApiDocumentDetail>("/api/documents/" + id + "/refresh", {
     method: "POST",
+    ...(resolutions?.length
+      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resolutions }) }
+      : {}),
   });
   return toDocument(dto);
 }
@@ -320,6 +341,69 @@ export async function deleteDocument(localId: string): Promise<void> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
   await apiRequest<void>("/api/documents/" + id, { method: "DELETE" });
+}
+
+export interface SourceComparison {
+  document_id: number;
+  updated_at: string;
+  review_token: string;
+  sources: {
+    id: number;
+    before: string;
+    after: string | null;
+    state: "changed" | "unchanged" | "missing";
+  }[];
+  can_reconfirm: boolean;
+  /** 사라진 근거를 대신할 같은 반·같은 날의 일과. 이 필드가 없는 서버도 받아 준다. */
+  candidates?: { id: number; text: string }[];
+}
+
+/** 사라진 근거 하나를 어떻게 할지. 서버 id 를 쓴다 — 비교 응답이 주는 그 번호다. */
+export interface SourceResolution {
+  source_id: number;
+  action: "drop" | "replace";
+  replacement_id?: number | null;
+}
+
+export async function getSourceComparison(localId: string): Promise<SourceComparison> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  return apiRequest<SourceComparison>(`/api/documents/${id}/source-comparison`);
+}
+
+export interface ReconfirmInput {
+  comparison: SourceComparison;
+  sections: Section[];
+  updatedAt: string;
+  /** 비어 있으면 보내지 않는다 — 이 필드를 모르는 서버가 422 로 거절한다. */
+  resolutions?: SourceResolution[];
+}
+
+export async function reconfirmDocument(
+  localId: string,
+  input: ReconfirmInput,
+): Promise<ServerDocument> {
+  const id = documentServerId(localId);
+  if (id === null || id !== input.comparison.document_id) throw new Error(UNMAPPED);
+  const sections = input.sections.map((s) => ({
+    heading: s.heading,
+    body: s.body,
+    source_ids: s.sourceIds.map((sid) => routineServerId(sid)),
+  }));
+  if (sections.some((s) => s.source_ids.some((sid) => sid === null))) throw new Error(UNMAPPED);
+  return toDocument(
+    await apiRequest<ApiDocumentDetail>(`/api/documents/${id}/reconfirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        review_token: input.comparison.review_token,
+        updated_at: input.updatedAt,
+        sections,
+        checks: { fact: true, interpretation: true, support: true },
+        ...(input.resolutions?.length ? { resolutions: input.resolutions } : {}),
+      }),
+    }),
+  );
 }
 
 /** 409 셋을 갈라 본다 — 같은 status 라도 교사가 할 일이 다르다. */
