@@ -15,9 +15,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "올릴 브랜치 (멘토 리뷰 전 develop 을 미리 올릴 때 쓴다)"
-        type: choice
-        options: [main, develop]
+        description: "올릴 브랜치 또는 커밋 SHA (되감으려면 직전 SHA 를 넣는다)"
+        type: string
         default: main
 
 # 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다.

@@ -10,11 +10,16 @@ set -euo pipefail
 DEPLOY_PATH=/home/ubuntu/ktc4-kangwon-2
 REPO_URL=https://github.com/kakaotechcampus-4/ktc4-kangwon-2.git
 
-# 어느 브랜치를 올릴지. 기본은 main 이다.
+# 무엇을 올릴지. 브랜치 이름이거나 커밋 SHA 다. 기본은 main 이다.
 #
 # **develop 을 올리는 일이 실제로 있다.** 멘토 리뷰 전에 서버에 미리 올려 두기 때문이다.
 # 전에는 이 값이 main 으로 박혀 있어서, 손으로 develop 을 올려 둔 서버에 자동 배포를
 # 한 번 돌리면 조용히 main 으로 되돌아갔다. 무엇이 돌고 있는지 아무도 모르게 된다.
+#
+# **SHA 를 받는 이유는 롤백이다.** 나쁜 배포가 나면 직전 커밋 SHA 를 넣어 다시 돌린다.
+# 롤백 전용 길을 따로 만들지 않는다 — 평소에 안 쓰는 길은 정작 급할 때 안 돈다.
+#   직전에 무엇이 돌았는지 보기:  Actions 의 배포 기록, 또는 서버에서
+#   cd /home/ubuntu/ktc4-kangwon-2 && git log --oneline -5
 DEPLOY_REF="${DEPLOY_REF:-main}"
 case "$DEPLOY_REF" in
   *[!A-Za-z0-9._/-]*) echo "브랜치 이름에 쓸 수 없는 글자가 있다: $DEPLOY_REF"; exit 1 ;;
@@ -49,8 +54,20 @@ cd "$DEPLOY_PATH"
 git remote set-url origin "$REPO_URL"
 
 git fetch --prune origin
-git checkout "$DEPLOY_REF"
-git reset --hard "origin/$DEPLOY_REF"
+
+# 브랜치면 origin 쪽을 따라가고, SHA 면 그 커밋으로 바로 간다.
+# `git reset --hard origin/<SHA>` 는 그런 ref 가 없어서 죽는다 — 갈라야 한다.
+if git rev-parse --verify --quiet "origin/$DEPLOY_REF" >/dev/null; then
+  git checkout -f "$DEPLOY_REF"
+  git reset --hard "origin/$DEPLOY_REF"
+else
+  # 되감기(롤백)다. 브랜치에서 떨어져 나온 상태가 되는데 배포에는 문제가 없다 —
+  # 다음 배포가 브랜치 이름으로 오면 다시 붙는다.
+  git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" >/dev/null \
+    || { echo "그런 브랜치도 커밋도 없다: $DEPLOY_REF"; exit 1; }
+  echo "브랜치가 아니라 커밋이다 — 되감는다"
+  git checkout -f --detach "$DEPLOY_REF"
+fi
 
 # fetch 가 실패하면 origin/<브랜치> 가 옛 커밋을 가리킨 채 남는다.
 # 그대로 reset 하면 조용히 과거로 돌아간다. 파일이 있는지 본다.
