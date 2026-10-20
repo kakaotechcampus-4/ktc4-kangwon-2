@@ -207,7 +207,7 @@ function Compose({
                 "바깥놀이에서 아이 A가 도토리를 크기별로 줄 세웠다.\n" +
                 "친구가 와서 같이 세었고, 교사는 옆에서 지켜보았다."
               }
-              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 font-display text-[22px] font-bold leading-[1.6] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary-tint focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
+              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 font-display text-[22px] font-bold leading-[1.6] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
             />
             <div className="flex items-center justify-between gap-3 border-t border-paper-warm-line px-4 py-3">
               {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
