@@ -28,6 +28,7 @@ import {
 import { syncClass } from "@/lib/api/onboarding";
 import { getClassTemplateProfile } from "@/lib/api/templateProfiles";
 import type { MonthlyCell, MonthlyPlan, ProfileRef } from "@/lib/api/types";
+import { sectionName } from "@/lib/monthly/section-labels";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
@@ -285,7 +286,7 @@ export default function MonthlyPlanPage() {
                   const whole = section.repeat_by !== "WEEK";
                   return (
                     <tr key={section.section_key}>
-                      <th scope="row">{section.label || section.section_key}</th>
+                      <th scope="row">{sectionName(section.section_key, section.label)}</th>
                       {whole ? (
                         <td colSpan={Math.max(weeks.length, 1)}>
                           {section.cells[0] && <Cell cell={section.cells[0]} />}
