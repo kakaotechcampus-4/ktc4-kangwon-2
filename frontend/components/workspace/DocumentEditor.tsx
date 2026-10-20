@@ -101,7 +101,7 @@ export default function DocumentEditor({
       })
       .catch((e) => {
         if (live) {
-        https://github.com/kakaotechcampus-4/ktc4-kangwon-2/pull/183  setAnnualError(true);
+          setAnnualError(true);
           setMessage(e instanceof Error ? e.message : "연간계획안을 불러오지 못했어요.");
         }
       })
