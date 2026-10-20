@@ -34,4 +34,5 @@ export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
 
 /** 확정한 연간계획안을 hwpx 로 내려받는다 (§9). */
-export const downloadAnnualHwpx = (id: number) => downloadHwpx(`/api/plans/${id}/export/hwp`);
+export const downloadAnnualHwpx = (id: number) =>
+  downloadHwpx(`/api/plans/${id}/export/hwp`, "연간계획안.hwpx");
