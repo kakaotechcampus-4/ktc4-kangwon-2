@@ -8,6 +8,8 @@ export default defineConfig({
   // 가입부터 기록까지 한 줄로 이어지는 흐름이다. 병렬로 돌릴 것이 없다.
   workers: 1,
   forbidOnly: !!process.env.CI,
+  // CI 러너가 느려 한 번 미끄러질 수 있다. 두 번 연속 실패해야 빨간불이다.
+  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
