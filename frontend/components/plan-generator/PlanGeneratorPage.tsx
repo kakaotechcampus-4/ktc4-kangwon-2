@@ -17,6 +17,7 @@ import GenerationFlow from "./GenerationFlow";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { templatePlan, type PlanContent } from "@/lib/workspace/plans";
 import { today, type Section } from "@/lib/workspace/model";
+import Link from "next/link";
 import { ApiError } from "@/lib/api/client";
 import { useAIStatus, ws } from "@/components/workspace/WorkspaceUI";
 import {
@@ -43,7 +44,10 @@ const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly"];
  * `/api/plans/annual` 하나뿐이다(월간 엔진은 p0-planning 에 있지만 API 가 없다).
  * 여기에 종류를 더하는 건 그 API 가 생긴 뒤다.
  */
+// 여기서 끝까지 만들 수 있는 종류. 월간은 만들 수 있지만 **흐름이 다르다** —
+// 확정된 연간과 원 양식(TemplateProfile)이 있어야 해서 /plans/monthly 로 보낸다.
 const READY: ReadonlySet<PlanType> = new Set<PlanType>(["annual"]);
+const ELSEWHERE: Partial<Record<PlanType, string>> = { monthly: "/plans/monthly" };
 // 새 디자인은 계획안 종류를 색이 아니라 글로 가른다. 고른 카드만 주 색으로 선다.
 const ACCENT: Record<PlanType, { text: string; tint: string; ink: string }> = {
   annual: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
@@ -771,6 +775,24 @@ function PlanTypeCard({
   onToggle: () => void;
 }) {
   const a = ACCENT[type];
+  // 다른 화면에서 만드는 종류는 카드를 링크로 바꾼다. 「준비 중」으로 잠가 두면 만들 수
+  // 있는데 못 만드는 것처럼 보인다.
+  const elsewhere = ELSEWHERE[type];
+  if (elsewhere)
+    return (
+      <Link
+        href={elsewhere}
+        className="relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-md border-[1.5px] bg-paper transition-colors hover:-translate-y-px"
+        style={{ borderColor: "var(--pg-line)" }}
+      >
+        <PlanTypeIcon type={type} className="text-ink-soft" />
+        <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
+        <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
+          따로 열기
+        </span>
+      </Link>
+    );
   return (
     <button
       type="button"
