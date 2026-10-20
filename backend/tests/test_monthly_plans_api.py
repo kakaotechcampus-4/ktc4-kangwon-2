@@ -791,6 +791,7 @@ def test_제출_문서에_출처가_섞이지_않는다(world):
     for banned in ("evidence", "generation", "LLM", "mock"):
         assert banned not in joined
 
+
 # ── 지우기 (§9-1) ─────────────────────────────────────────────────────────
 
 
