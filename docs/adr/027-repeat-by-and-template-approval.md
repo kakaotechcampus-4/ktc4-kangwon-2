@@ -101,6 +101,16 @@ PR #122 리뷰에서 세 가지가 나왔다.
   실제 Template 을 정확히 읽어 메모리에서만 `runtime_active=True`)를 쓴다. 운영 코드는 이 객체를 받지 않는다.
 - Golden 기대값은 바뀌지 않는다. Golden 은 Template version 을 기록하고 승인 상태는 기록하지 않는다.
 
+### 8. READY 는 승인이 아니다 · 승인 전에도 API 를 만들 수 있다 (2026-10-19 보강, §5-2 승인)
+
+- **READY Profile 이 있다고 그 기반 Template 이 사람 승인을 받은 것이 아니다.** READY 는 Profile 의 상태이고, 승인은 Template 파일의
+  `review` 다. 생성 직전에 Template 승인을 다시 보는 이유가 이것이다(위 6, ADR-034).
+- **개발 순서만 바꿨다 (원 ID `Part 12.12 ①`, PM 승인 2026-10-10).** 승인 전에도 「Reference 기반 시작」 API 를 구현 · 테스트할 수 있다.
+  운영에서 미승인 Template 사용 차단 · 사람 승인 생략 금지 · 운영 Template 의 승인 상태를 임의로 바꾸지 않는 규칙은 그대로다.
+  승인 전까지 운영에서 시작은 항상 409 `GATE_BLOCKED` 이고, 사람 승인이 끝나면 코드 변경 없이 열린다.
+- **주간 Template 도 같은 절차다 (WQ-03 A, 2026-10-19, ADR-030).** `PENDING_HUMAN_REVIEW` 로 발행하고 실제 승인 담당자가 승인한 뒤에만
+  활성화한다. 절차 승인이지 개별 Template 승인이 아니다.
+
 ## 근거
 
 - **[실측]** `display_mode` 는 칸 수를 정했다 — `cell_count_for` 가 `MONTHLY_MERGED_SUMMARY` → 1, `WEEKLY_CELLS` →
@@ -143,11 +153,15 @@ PR #122 리뷰에서 세 가지가 나왔다.
 - 사람 승인 전까지 실제 파일로 Core 월간 생성은 항상 거절되고, Backend 「Reference 기반 시작」은 409 다.
 - 동결된 옛 승인 파일(v0.1.0 · v0.2.0 등)은 저장소 밖 문서(`docs/open-decisions.md` · `docs/m0-human-review.md`)를
   인용한다. 동결 파일이라 인용만 고치려고 바꾸지 않는다.
+  - 2026-10-19: `docs/m0-human-review.md` 등 승인 기록 원문 4개를 같은 경로로 저장소에 넣었다(PM-13 C, ADR-030).
+    `docs/open-decisions.md` 는 원문을 옮기지 않고 결정을 ADR 로 옮긴다 — 그 인용은 아직 저장소 밖을 가리킨다.
 
 ## 아직 정하지 않은 것 (채택 아님)
 
 - v0.1.1 · v0.2.1 의 실제 사람 승인, 승인자 id, 승인 시각.
 - Template 승인 철회 정책 — 철회된 version 으로 만든 기존 계획안 · READY Profile 을 어떻게 할지.
 - `MONTH` · `DAY` 지원(연간 · 주간 TemplateSection 계약이 생길 때).
+  - 2026-10-19 WQ-02 A: **주간 P0 는 `DAY` 를 쓰지 않는다** — 주 단위 값만, 요일별 활동은 칸 하나 안에 목록으로. `DAY` 는 후속이다.
 - `OD-N11` 의 남은 항목(테스트 전용 승인 진입점을 어디에 둘지, 미승인 Golden case 의 Fixture 형태).
-- Core 의 새 오류 코드를 Backend 공개 오류 코드로 어떻게 옮길지.
+- ~~Core 의 새 오류 코드를 Backend 공개 오류 코드로 어떻게 옮길지.~~ → #162 에서 정해졌다: 생성 시 `monthly_template_not_found` ·
+  `monthly_template_not_approved` 는 422 `VALIDATION_FAILED` `["profile_ref"]` 다(api-spec §9-1 오류 표).
