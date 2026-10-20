@@ -453,7 +453,7 @@ export default function DocumentEditor({
       ))}
       {server?.stale && (
         <Message error>
-          {"이 문서의 근거로 사용된 일과 기록이 변경되었습니다.\n" +
+          {`이 문서의 근거로 사용된 ${doc.kind === "dailyLog" ? "일과 기록" : doc.kind === "weeklyLog" ? "일일 보육일지" : "관찰 기록"}이 변경되었습니다.\n` +
             "변경 내용을 확인한 뒤 문서에 반영해 주세요."}
         </Message>
       )}

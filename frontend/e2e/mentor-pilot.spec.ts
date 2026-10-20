@@ -198,6 +198,30 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
     .click();
   await expect(page.getByText("교사 확정", { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: info.outputPath("observation-confirmed.png"), fullPage: true });
+
+  // Read-only facts must lead back to a usable correction/review path.
+  await page.getByRole("link", { name: "관찰 기록에서 고쳐 주세요 →", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "담당 반", exact: true })
+    .selectOption({ label: "햇살반" });
+  await page.getByRole("button", { name: "기록 수정", exact: true }).click();
+  const updatedFact = fact + " 놀이를 마친 뒤 블록을 바구니에 담았다.";
+  await page.getByLabel("실제로 관찰한 사실").fill(updatedFact);
+  await page.getByRole("button", { name: "수정 저장", exact: true }).click();
+  await expect(page.getByText("수정했어요.", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
+  await page
+    .getByRole("button", { name: new RegExp(saved.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await expect(
+    page.getByText("이 문서의 근거로 사용된 관찰 기록이 변경되었습니다.", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "확정 취소", exact: true }).click();
+  await page.getByRole("button", { name: "변경된 근거 반영하기", exact: true }).click();
+  await expect(page.getByText(updatedFact, { exact: true }).first()).toBeVisible();
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+  await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
 });
 
 test("멘토: 평가 준비는 서버의 9개 지표·19개 요소를 보여주고 체크를 보존한다", async ({
