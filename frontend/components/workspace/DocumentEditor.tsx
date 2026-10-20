@@ -10,8 +10,9 @@ import {
 import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
-import { isStaleWrite } from "@/lib/api/documents";
+import { isStaleWrite, type ReconfirmInput, type SourceResolution } from "@/lib/api/documents";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
+import SourceReview from "./SourceReview";
 import { withoutChildMetadata } from "@/lib/privacy/browser-storage";
 
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
@@ -35,9 +36,11 @@ export interface ServerDocumentActions {
   saveAndConfirm: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
   /** 확정을 되돌린다. 근거를 다시 반영하지는 않는다 — 교사가 따로 누른다. */
   unconfirm: () => Promise<SavedDocument>;
-  /** 바뀐 근거로 `사실` 을 다시 받는다. 초안이면서 stale 일 때만 부른다. */
-  refresh: () => Promise<SavedDocument>;
+  /** 바뀐 근거로 `사실` 을 다시 받는다. 초안이면서 stale 일 때만 부른다.
+   *  사라진 근거가 있으면 교사가 고른 `resolutions` 를 함께 보낸다 — 없으면 서버가 거절한다. */
+  refresh: (resolutions?: SourceResolution[]) => Promise<SavedDocument>;
   remove: () => Promise<void>;
+  reconfirm?: (input: ReconfirmInput) => Promise<SavedDocument>;
 }
 
 export default function DocumentEditor({
@@ -54,12 +57,17 @@ export default function DocumentEditor({
   const [checks, setChecks] = useState([false, false, false]);
   const [issues, setIssues] = useState<string[] | null>(null);
   const [verified, setVerified] = useState(false);
+  /** 검사 결과를 펼쳐 두었나. **결과는 지우지 않고 보이기만 접는다** — 접었다고 다시 돌릴
+   *  필요가 없다. 본문이 바뀌면 그때는 옛 결과를 현재 문서의 결과로 읽히지 않게 버린다. */
+  const [issuesOpen, setIssuesOpen] = useState(false);
   const annualPlanId =
     initial.annualApiSource === API_STORAGE_CONTEXT ? initial.annualPlanId : undefined;
   // 연간계획안을 불러와야 하는 문서라면 처음부터 로딩 상태로 시작한다(effect에서 setBusy(true) 하지 않기 위함).
   const [busy, setBusy] = useState(!!annualPlanId);
   const [message, setMessage] = useState("");
   const [staleWrite, setStaleWrite] = useState(false);
+  /** 사라진 근거 복구 화면이 떠 있나. 떠 있으면 초안용 「변경된 근거 반영하기」를 숨긴다. */
+  const [recovering, setRecovering] = useState(false);
   const available = useAIStatus();
   const annual = useRef<AnnualPlan | null>(null);
   const [annualError, setAnnualError] = useState(false);
@@ -111,11 +119,18 @@ export default function DocumentEditor({
     setChecks([false, false, false]);
     setVerified(false);
     setIssues(null);
+    setIssuesOpen(false);
   }
   async function verify() {
     if (working || stale || available === null) return;
+    // 같은 버튼을 다시 누르면 펼친 결과를 접는다. **결과 자체는 들고 있는다.**
+    if (issuesOpen) {
+      setIssuesOpen(false);
+      return;
+    }
     const local = server ? serverIssues(doc) : validateDocument(doc);
     setIssues(local);
+    setIssuesOpen(true);
     setMessage("");
     setVerified(false);
     if (local.length || !available || !recordDocument) return;
@@ -275,15 +290,41 @@ export default function DocumentEditor({
     if (annualPlanId) void hwpx.download(() => downloadAnnualHwpx(annualPlanId));
   };
 
-  /** 바뀐 근거를 반영한다. 해석·지원은 서버가 두고, 교사 확인만 다시 받는다. */
-  const refreshSources = () =>
-    run(
+  /**
+   * 바뀐 근거를 반영한다. 해석·지원은 서버가 두고, 교사 확인만 다시 받는다.
+   *
+   * **초안 전용 API 다.** 확정본에 부르면 서버가 409 `ALREADY_CONFIRMED` 로 거절한다 —
+   * 확정본은 위쪽 「변경된 근거 검토」(비교 · 원자적 재확정)를 쓴다. 버튼도 초안에만
+   * 보이지만, 목록과 상세가 어긋난 순간에도 잘못 나가지 않게 여기서 한 번 더 막는다.
+   */
+  const refreshSources = () => {
+    if (doc.status === "confirmed") {
+      setMessage(
+        "확정된 문서는 이 버튼으로 반영하지 않아요. 위쪽 「변경된 근거 검토」에서 확인한 뒤 재확정해주세요.",
+      );
+      return;
+    }
+    // 호출부가 기다릴 수 있게 그대로 돌려준다.
+    return run(
       (s) => s.refresh(),
       "최신 근거를 불러왔어요. 해석과 지원을 다시 확인해주세요.",
       "최신 근거를 불러오지 못했어요.",
     );
+  };
   return (
     <section className={`${ws.card} ${ws.document}`}>
+      {server?.stale && doc.kind === "dailyLog" && server.reconfirm && (
+        <SourceReview
+          key={`${doc.id}:${doc.updatedAt}`}
+          doc={doc}
+          pending={working}
+          reconfirm={server.reconfirm}
+          refresh={server.refresh}
+          onRecovery={setRecovering}
+          onReload={reloadLatest}
+          onComplete={adopt}
+        />
+      )}
       {stale && (
         <>
           <Message error>
@@ -318,7 +359,6 @@ export default function DocumentEditor({
           </button>
         </>
       )}
-      {server?.stale && <Message error>근거 기록이 변경되어 다시 검토가 필요합니다.</Message>}
       <header>
         <div className={ws.between}>
           <span className={ws.badge}>
@@ -340,6 +380,14 @@ export default function DocumentEditor({
           {doc.childName && ` · ${doc.childName}`} · {doc.start} ~ {doc.end}
         </p>
         <p className={ws.muted}>{DOCUMENT_KINDS[doc.kind]}</p>
+        {/* mock LLM 초안이다. **본문에 섞지 않고** 여기서만 알린다 — 제출 문서는 깨끗하게
+            두면서도 테스트 초안을 실제 AI 결과로 보이게 하지 않는다. */}
+        {doc.mockDraft && (
+          <p className={ws.muted}>
+            테스트 모드(mock)로 만든 초안이에요. 실제 AI 생성 결과가 아니니 내용을 그대로 쓰지 말고
+            교사가 다시 작성해주세요.
+          </p>
+        )}
       </header>
       {doc.sections.map((section, index) => (
         <section key={`${section.heading}-${index}`}>
@@ -370,6 +418,12 @@ export default function DocumentEditor({
           )}
         </section>
       ))}
+      {server?.stale && (
+        <Message error>
+          {"이 문서의 근거로 사용된 일과 기록이 변경되었습니다.\n" +
+            "변경 내용을 확인한 뒤 문서에 반영해 주세요."}
+        </Message>
+      )}
       {doc.sources.length > 0 && (
         <details>
           <summary className={ws.link}>원본 근거 {doc.sources.length}건 펼쳐보기</summary>
@@ -392,11 +446,13 @@ export default function DocumentEditor({
           <button className={ws.secondary} disabled={working || stale} onClick={verify}>
             {busy
               ? "근거를 대조하고 있어요…"
-              : available && recordDocument
-                ? "AI 검증하기"
-                : "기본 항목 검사"}
+              : issuesOpen
+                ? "검사 결과 접기"
+                : available && recordDocument
+                  ? "AI 검증하기"
+                  : "기본 항목 검사"}
           </button>
-          {issues && (
+          {issues && issuesOpen && (
             <Message error={issues.length > 0}>
               {issues.length
                 ? `반려 · 수정이 필요해요\n${issues.map((s) => `• ${s}`).join("\n")}`
@@ -405,23 +461,35 @@ export default function DocumentEditor({
                   : "형식·원문 대조를 통과했어요. 의미의 정확성은 교사가 확인해주세요."}
             </Message>
           )}
-          {[
-            "사실이 원본 기록과 일치하며, 관찰하지 않은 내용이 없는지 확인했어요.",
-            "해석이 기록의 근거를 벗어나지 않으며, 성향·발달을 단정하지 않는지 확인했어요.",
-            "지원에 구체적인 교사 행동과 방법이 있으며, 이후 제안임을 확인했어요.",
-          ].map((label, index) => (
-            <label className={ws.check} key={label}>
+          {/* 일지는 한 번만 묻는다. 세 칸을 따로 받던 때는 교사가 같은 문서를 세 번 훑어야 했다.
+              서버 계약의 `checks.fact · interpretation · support` 는 그대로 두고, 교사가 이
+              하나를 체크했을 때만 셋을 함께 true 로 보낸다 (§11). */}
+          {recordDocument ? (
+            <label className={ws.check}>
               <input
                 type="checkbox"
-                checked={checks[index]}
+                checked={checks.every(Boolean)}
                 disabled={working || stale}
-                onChange={(e) =>
-                  setChecks((prev) => prev.map((v, i) => (i === index ? e.target.checked : v)))
-                }
+                onChange={(e) => setChecks([e.target.checked, e.target.checked, e.target.checked])}
               />
-              {recordDocument
-                ? label
-                : imported
+              원본 기록과 사실이 일치하고, 해석과 지원 내용이 적절한지 확인하셨나요?
+            </label>
+          ) : (
+            [
+              "사실이 원본 기록과 일치하며, 관찰하지 않은 내용이 없는지 확인했어요.",
+              "해석이 기록의 근거를 벗어나지 않으며, 성향·발달을 단정하지 않는지 확인했어요.",
+              "지원에 구체적인 교사 행동과 방법이 있으며, 이후 제안임을 확인했어요.",
+            ].map((label, index) => (
+              <label className={ws.check} key={label}>
+                <input
+                  type="checkbox"
+                  checked={checks[index]}
+                  disabled={working || stale}
+                  onChange={(e) =>
+                    setChecks((prev) => prev.map((v, i) => (i === index ? e.target.checked : v)))
+                  }
+                />
+                {imported
                   ? [
                       "등록한 증빙의 원문 내용이 실제 문서와 일치하는지 확인했어요.",
                       "문서 종류·반·아동·작성 기간이 일치하는지 확인했어요.",
@@ -432,8 +500,9 @@ export default function DocumentEditor({
                       "계획한 활동이 실제 관찰 사실로 표현되지 않았는지 확인했어요.",
                       "안전, 놀이 자료와 교사 지원 내용을 확인했어요.",
                     ][index]}
-            </label>
-          ))}
+              </label>
+            ))
+          )}
         </>
       )}
       <Message>{message}</Message>
@@ -456,7 +525,7 @@ export default function DocumentEditor({
             >
               검토 완료 · 문서 확정
             </button>
-            {server?.stale && (
+            {server?.stale && !recovering && (
               <button className={ws.secondary} disabled={working} onClick={refreshSources}>
                 변경된 근거 반영하기
               </button>
@@ -499,7 +568,9 @@ export default function DocumentEditor({
         >
           텍스트 내려받기
         </button>
-        {server && (
+        {/* 확정 문서는 지울 수 없다 — 서버가 409 ALREADY_CONFIRMED 로 거절한다.
+            눌러도 실패할 버튼을 보여 주면 교사는 고장으로 읽는다. 확정 취소가 먼저다. */}
+        {server && editable && (
           <button
             className={ws.secondary}
             disabled={working}

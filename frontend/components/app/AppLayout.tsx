@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import AppSidebar from "./AppSidebar";
 import WorkspaceTopBar from "./WorkspaceTopBar";
 
@@ -16,7 +16,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-cream">
       <AppSidebar />
       <div className="min-w-0 pb-[84px] lg:pb-0 lg:ml-[232px]">
-        <WorkspaceTopBar />
+        <Suspense fallback={<div className="h-[60px] border-b border-line" />}>
+          <WorkspaceTopBar />
+        </Suspense>
         {children}
       </div>
     </div>

@@ -6,11 +6,10 @@
  * 교사가 하루에 제일 많이 하는 일이 「방금 본 걸 한 줄 적기」라서 그 칸이 맨 위에 온다.
  * 아래는 적은 것이 어떻게 쌓였는지 — 아이별 · 영역별 · 오늘 목록.
  *
- * 관찰 기록은 서버에 저장된다(`addRecord`). 일과 기록(반 전체 이야기)은 아직
- * 테이블이 없어서 이 화면에 칸을 두지 않았다 — 적을 수 있는데 사라지는 게 더 나쁘다.
+ * 관찰 기록은 서버에 저장된다(`addRecord`). 반 전체 일과는 오늘 일과 적기에서 입력한다.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/app/AppLayout";
 import { Icon, type IconName } from "@/components/app/icons";
@@ -19,6 +18,8 @@ import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { DOMAINS, today } from "@/lib/workspace/model";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
+import { routinesPath, routinesScope } from "@/lib/workspace/routines-route";
+import { classServerId } from "@/lib/api/onboarding";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
 import { formatKoreanDate } from "@/lib/greeting";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -41,33 +42,73 @@ export default function HomePage() {
   const [records, setRecords] = useState<ServerObservation[] | null>(null);
   const [todayDate] = useClientState(() => today(), "");
 
+  /**
+   * 홈이 **지금 보여 주는 반**. 빠른 기록이 저장하는 반과 **같은 값**이어야 한다.
+   *
+   * 예전에는 `listRecords()` 를 인자 없이 불렀다. 반을 한 번도 고른 적 없는 한 반짜리 계정은
+   * 주 반이 비어 있어 조회가 `[]` 로 끝났고, 저장은 성공했는데 홈이 0건으로 보였다.
+   * 그렇다고 반 없이 기관 전체를 조회하면 FR-405 를 어긴다 — **보고 있는 반을 짚어서 묻는다.**
+   */
+  const [entry] = useClientState(
+    () => ({
+      classId: typeof window === "undefined" ? null : routinesScope(window.location.search).classId,
+      primaryId: primaryClassFor(loadClassSettings())?.id ?? "",
+    }),
+    { classId: null as number | null, primaryId: "" },
+  );
+  const [pickedClass, setPickedClass] = useState<string | null>(null);
+  // URL의 반이 아직 도착하지 않았으면 다른 반으로 대체하지 않는다.
+  const activeClass =
+    pickedClass !== null
+      ? classes.find((c) => c.id === pickedClass)
+      : entry.classId !== null
+        ? classes.find((c) => classServerId(c.id) === entry.classId)
+        : (classes.find((c) => c.id === entry.primaryId) ?? classes[0]);
+  const activeClassId = activeClass?.id ?? "";
+  const pickClass = (id: string) => {
+    setPickedClass(id);
+    const serverId = classServerId(id);
+    if (serverId === null) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("class_id", String(serverId));
+    // 홈으로 뒤로 왔을 때도 같은 반. 반 선택만으로 history를 늘리지 않는다.
+    window.history.replaceState(null, "", `?${params}`);
+  };
+
+  /** 반을 바꾸는 사이 돌아온 옛 응답이 지금 반의 목록을 덮지 않게 한다. */
+  const visit = useRef(0);
+  const [recordsRevision, setRecordsRevision] = useState(0);
+  // 저장 시작 당시의 반을 닫아 두지 않는다. 완료 시점에 보고 있는 반을 다시 읽는다.
+  const recordSaved = useCallback(() => setRecordsRevision((revision) => revision + 1), []);
   const reload = useCallback(() => {
-    listRecords()
-      .then(setRecords)
+    const at = (visit.current += 1);
+    // 반이 아직 안 붙었으면 묻지 않는다. 서버 반이 늦게 도착하면 deps 가 바뀌어 다시 돈다.
+    const asked = activeClassId ? listRecords(activeClassId) : Promise.resolve([]);
+    asked
+      .then((rows) => {
+        if (at === visit.current) setRecords(rows);
+      })
       .catch(() => {
+        if (at !== visit.current) return;
         setRecords([]);
         setMessage("기록을 불러오지 못했어요. 새로고침해주세요.");
       });
-  }, []);
-  useEffect(reload, [reload]);
+  }, [activeClassId]);
+  useEffect(() => {
+    reload();
+  }, [reload, recordsRevision]);
 
-  const [room] = useClientState(
-    () => {
-      const klass = primaryClassFor(loadClassSettings());
-      return {
-        className: klass?.className ?? "",
-        age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
-        year: schoolYear(new Date()),
-      };
-    },
-    { className: "", age: "", year: schoolYear(new Date()) },
-  );
-
+  const [year] = useClientState(() => schoolYear(new Date()), schoolYear(new Date()));
+  const className = activeClass?.className ?? "";
+  const age = activeClass?.ageGroup ? AGE_LABEL[activeClass.ageGroup as AgeGroup] : "";
+  const routines = activeClassId && todayDate ? routinesPath(activeClassId, todayDate) : null;
+  // 반이 바뀐 직후, 새 응답 전에도 이전 반 기록을 그리지 않는다.
+  const classRecords = (records ?? []).filter((r) => r.classId === activeClassId);
   const todayRecords = useMemo(
-    () => (records ?? []).filter((r) => r.date === todayDate),
-    [records, todayDate],
+    () => (records ?? []).filter((r) => r.classId === activeClassId && r.date === todayDate),
+    [records, activeClassId, todayDate],
   );
-  const subtitle = [room.className, room.age, `${room.year}학년도`].filter(Boolean).join(" · ");
+  const subtitle = [className, age, `${year}학년도`].filter(Boolean).join(" · ");
 
   return (
     <PageContainer>
@@ -76,12 +117,25 @@ export default function HomePage() {
           <h1 className="font-display text-[34px] font-bold leading-tight text-ink lg:text-[44px]">
             우리 반
           </h1>
-          <p className="mt-1 text-xs text-ink-soft">{subtitle}</p>
+          <p aria-label="현재 반" className="mt-1 text-xs text-ink-soft">
+            {subtitle}
+          </p>
         </div>
-        <span className="flex items-center gap-2 text-xs text-ink-soft">
-          <Icon name="plan" className="h-4 w-4" />
-          {todayDate && formatKoreanDate(new Date(todayDate))}
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex items-center gap-2 text-xs text-ink-soft">
+            <Icon name="plan" className="h-4 w-4" />
+            {todayDate && formatKoreanDate(new Date(todayDate))}
+          </span>
+          {routines && (
+            <Link
+              href={routines}
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-tint-line bg-primary-tint px-3 text-xs font-semibold text-primary-ink"
+            >
+              오늘 일과 적기
+              <Icon name="arrow" className="h-4 w-4" />
+            </Link>
+          )}
+        </div>
       </div>
 
       {message && (
@@ -93,14 +147,16 @@ export default function HomePage() {
       <Compose
         classes={classes}
         date={todayDate}
-        className={room.className}
-        onSaved={reload}
+        className={className}
+        activeClassId={activeClassId}
+        onPickClass={pickClass}
+        onSaved={recordSaved}
         onError={setMessage}
         todayCount={todayRecords.length}
       />
 
       <div className="mt-8 grid items-start gap-6 md:grid-cols-2">
-        <ChildSpotlight classes={classes} records={records ?? []} />
+        <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
         <DomainBoard records={todayRecords} />
       </div>
 
@@ -122,6 +178,8 @@ function Compose({
   date,
   className,
   todayCount,
+  activeClassId,
+  onPickClass,
   onSaved,
   onError,
 }: {
@@ -129,11 +187,13 @@ function Compose({
   date: string;
   className: string;
   todayCount: number;
+  /** 홈이 정한 지금 반. 홈의 조회와 같은 값이라 통계와 저장 대상이 어긋나지 않는다. */
+  activeClassId: string;
+  onPickClass: (id: string) => void;
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
   const withChildren = classes.filter((c) => c.children.length > 0);
-  const [classId, setClassId] = useState("");
   const [childId, setChildId] = useState("");
   const [domain, setDomain] = useState(DOMAINS[0]);
   const [fact, setFact] = useState("");
@@ -143,9 +203,8 @@ function Compose({
   const dictation = useDictation((said) => setFact((prev) => (prev ? `${prev} ${said}` : said)));
 
   // 반·아동은 늦게 도착한다. 그때 useState 를 맞추는 대신 그릴 때 첫 항목으로 떨어뜨린다 —
-  // effect 안에서 setState 하면 렌더가 한 번 더 돈다.
-  const classroom = withChildren.find((c) => c.id === classId) ?? withChildren[0];
-  const activeClassId = classroom?.id ?? "";
+  // effect 안에서 setState 하면 렌더가 한 번 더 돈다. 반을 고르는 규칙은 홈에 하나만 둔다.
+  const classroom = classes.find((c) => c.id === activeClassId);
   const child = classroom?.children.find((c) => c.id === childId) ?? classroom?.children[0];
 
   async function save() {
@@ -181,7 +240,7 @@ function Compose({
         </span>
       </div>
 
-      {withChildren.length === 0 ? (
+      {!classroom?.children.length ? (
         <div className={`${CARD} text-center text-xs text-ink-soft`}>
           아이를 먼저 등록해 주세요.{" "}
           <Link href="/onboarding/children" className="font-semibold text-primary underline">
@@ -259,7 +318,7 @@ function Compose({
                   <select
                     value={activeClassId}
                     onChange={(e) => {
-                      setClassId(e.target.value);
+                      onPickClass(e.target.value);
                       setChildId("");
                     }}
                     className="mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
