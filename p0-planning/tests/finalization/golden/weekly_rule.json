@@ -189,8 +189,8 @@
       "state": "FILLED",
       "generation": {
         "method": "RULE_ONLY",
-        "rule_id": "monthly.activity.reference_candidate_selection",
-        "rule_version": "v2"
+        "rule_id": "weekly.activity.parent_same_week",
+        "rule_version": "v1"
       },
       "evidence": [
         {
@@ -210,20 +210,8 @@
           "우리나라와 세계 여러 나라"
         ],
         [
-          "monthly-final_item_002",
-          "무궁화 꽃이 피었습니다"
-        ],
-        [
-          "monthly-final_item_004",
-          "사방치기"
-        ],
-        [
-          "monthly-final_item_005",
-          "모래 위에 옛 그림을 그려요"
-        ],
-        [
-          "monthly-final_item_006",
-          "동대문 놀이"
+          "monthly-final_item_003",
+          "가을 나들이"
         ]
       ],
       "audit": [
@@ -309,12 +297,7 @@
   "activity_selection": {
     "selected": "act_outdoor_autumn_outing",
     "reasons": [
-      "AVOIDED_REPEAT_IN_MONTH",
-      "MATCHED_PARENT_THEME",
-      "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE",
-      "AVOIDED_CURRICULUM_DOMAIN_REPEAT",
-      "STRONGER_MONTH_EVIDENCE",
-      "TIE_BREAK_STABLE_ACTIVITY_ID"
+      "PARENT_SAME_WEEK_ACTIVITY"
     ]
   },
   "optional_context": []

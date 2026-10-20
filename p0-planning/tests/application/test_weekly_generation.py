@@ -18,6 +18,7 @@ from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS_WITH_SATURDAY, OperatingDay
 from ssuksak.planning.rules.monthly_week_periods import deactivate
 from ssuksak.planning.rules.safety_placement import OFFICIAL_GROUNDING_MISSING
+from ssuksak.planning.rules.monthly_activity_selection import RULE_ID as MONTHLY_ACTIVITY_RULE_ID
 from ssuksak.planning.rules.weekly_verification import PARENT_CITATION_INVALID, verify_weekly_plan
 
 from tests.finalization.weekly_harness import WEEK, WeeklyHarness, weekly_snapshot
@@ -65,9 +66,72 @@ def test_theme_and_its_citation_use_the_parents_current_teacher_edited_value():
     assert [s.source_type for s in theme.evidence] == [EvidenceSourceType.PARENT_PLAN]
 
 
+def _parent_with_same_week_activity(harness, candidate):
+    """A confirmed parent whose WEEK outdoor cell holds `candidate` as its current value."""
+    draft = harness.monthly_parent(confirm=False)
+    cell = draft.section("outdoor_play").cell_for_week(WEEK)
+    reference = EvidenceSource(
+        EvidenceSourceType.ACTIVITY_REFERENCE,
+        candidate.activity_id,
+        draft.activity_catalog_ref.catalog_version,
+        display_name=candidate.label,
+    )
+    kept = tuple(s for s in cell.evidence if s.source_type is not EvidenceSourceType.ACTIVITY_REFERENCE)
+    changed = replace(cell, value=candidate.label, cell_state=CellState.FILLED, evidence=(*kept, reference))
+    draft = replace(draft, sections=tuple(
+        replace(s, cells=tuple(changed if c.item_id == cell.item_id else c for c in s.cells))
+        if s.section_key == "outdoor_play" else s
+        for s in draft.sections
+    ))
+    harness.monthly_plans.save(draft.plan_id, draft)
+    return harness.confirm_monthly(draft), changed
+
+
+def _eligible(harness, parent):
+    ref = parent.activity_catalog_ref
+    catalog = harness.activities.get_catalog(ref.catalog_id, ref.catalog_version)
+    return catalog.eligible_candidates(
+        section_key="outdoor_play", calendar_month=WEEK.target_month.calendar_month, ages=parent.target_ages
+    )
+
+
+def test_outdoor_play_prefers_the_parents_same_week_activity():
+    probe = WeeklyHarness().monthly_parent()
+    used = {c.value for c in probe.section("outdoor_play").cells}
+    other = next(c for c in _eligible(WeeklyHarness(), probe) if c.label not in used)
+    harness = WeeklyHarness()
+    parent, same_week = _parent_with_same_week_activity(harness, other)
+
+    result = harness.generate_weekly(parent)
+    outdoor = result.plan.cell("outdoor_play")
+
+    assert outdoor.value == other.label  # §4-2 가점: the parent's same-week choice
+    assert result.activity_selection.rule_id == weekly.PARENT_ACTIVITY_RULE_ID
+    assert result.activity_selection.reason_codes == (weekly.PARENT_ACTIVITY_REASON,)
+    assert outdoor.generation.rule_id == weekly.PARENT_ACTIVITY_RULE_ID
+    assert [(s.parent_item_id, s.snapshot_value) for s in outdoor.parent_snapshots][1:] == [
+        (same_week.item_id, other.label)
+    ]
+
+
+def test_outdoor_play_gives_no_preference_once_the_teacher_rewrote_the_parent_cell():
+    harness = WeeklyHarness()
+    draft = harness.monthly_parent(confirm=False)
+    cell = draft.section("outdoor_play").cell_for_week(WEEK)
+    parent = harness.confirm_monthly(harness.edit_monthly(draft, item_id=cell.item_id, value="교사가 쓴 바깥놀이"))
+
+    result = harness.generate_weekly(parent)
+
+    # The old ACTIVITY_REFERENCE stays as history but is no longer the parent's current choice.
+    assert result.activity_selection.rule_id == MONTHLY_ACTIVITY_RULE_ID
+    assert weekly.PARENT_ACTIVITY_REASON not in result.activity_selection.reason_codes
+
+
 def test_outdoor_play_avoids_the_parents_other_weeks_and_cites_them():
     harness = WeeklyHarness()
-    parent = harness.monthly_parent()
+    draft = harness.monthly_parent(confirm=False)
+    same = draft.section("outdoor_play").cell_for_week(WEEK)
+    parent = harness.confirm_monthly(harness.edit_monthly(draft, item_id=same.item_id, value="교사가 쓴 바깥놀이"))
     others = [c for c in parent.section("outdoor_play").cells if c.week_id != WEEK]
 
     outdoor = harness.generate_weekly(parent).plan.cell("outdoor_play")
@@ -166,7 +230,7 @@ def test_optional_context_failure_is_recorded_and_generation_succeeds():
 
 
 def test_verifier_failure_saves_nothing(monkeypatch):
-    def broken(plan, catalog):
+    def broken(plan, catalog, parent):
         raise RuntimeError("verifier down")
 
     monkeypatch.setattr(weekly, "verify_weekly_plan", broken)
@@ -178,12 +242,12 @@ def test_verifier_failure_saves_nothing(monkeypatch):
 
 
 def test_safety_grounding_violation_blocks_saving(monkeypatch):
-    def uncited(plan, catalog):
+    def uncited(plan, catalog, parent):
         cells = tuple(
             replace(c, value="교통안전", cell_state=CellState.FILLED) if c.section_key == "safety_education" else c
             for c in plan.cells
         )
-        return verify_weekly_plan(replace(plan, cells=cells), catalog)
+        return verify_weekly_plan(replace(plan, cells=cells), catalog, parent)
 
     monkeypatch.setattr(weekly, "verify_weekly_plan", uncited)
     harness = WeeklyHarness()
@@ -195,9 +259,21 @@ def test_safety_grounding_violation_blocks_saving(monkeypatch):
 
 def test_safety_grounding_rule_per_row():
     harness = WeeklyHarness()
-    plan = harness.generate_weekly(harness.monthly_parent()).plan
-    citation = plan.cell("theme").parent_snapshots[0]
-    parent_source = plan.cell("theme").evidence[0]
+    draft = harness.monthly_parent(confirm=False)
+    safety_cells = draft.section("safety_education").cells
+    this_week = next(c for c in safety_cells if c.week_id == WEEK)
+    other_week = next(c for c in safety_cells if c.week_id != WEEK)
+    draft = harness.edit_monthly(draft, item_id=this_week.item_id, value="교사가 쓴 교통안전 약속")
+    draft = harness.edit_monthly(draft, item_id=other_week.item_id, value="다른 주 안전 문장")
+    parent = harness.confirm_monthly(draft)
+    plan = harness.generate_weekly(parent).plan
+    parent_source = plan.cell("theme").evidence[0]  # PARENT_PLAN of this parent
+
+    def cite(cell, value=None):
+        return replace(plan.parent_lineage, parent_item_id=cell.item_id, snapshot_value=value or cell.value)
+
+    current = parent.section("safety_education").cell_for_week(WEEK)
+    citation = cite(current)
     catalog = harness.activities.get_catalog(plan.activity_catalog_ref.catalog_id, plan.activity_catalog_ref.catalog_version)
 
     def findings(**changes):
@@ -205,12 +281,20 @@ def test_safety_grounding_rule_per_row():
             replace(c, value="교통안전", cell_state=CellState.FILLED, **changes) if c.section_key == "safety_education" else c
             for c in plan.cells
         )
-        report = verify_weekly_plan(replace(plan, cells=cells), catalog)
+        report = verify_weekly_plan(replace(plan, cells=cells), catalog, parent)
         return [(f.code, f.finding_kind) for f in report.findings if f.location.section_key == "safety_education"]
+
+    invalid = [(PARENT_CITATION_INVALID, FindingKind.VIOLATION)]
 
     # Teacher-text / supplemental rows: the exact parent citation, no legal category.
     assert findings(evidence=(parent_source,), parent_snapshots=(citation,)) == []
-    assert findings() == [(PARENT_CITATION_INVALID, FindingKind.VIOLATION)]
+    assert findings() == invalid
+    # Citing another parent Cell, or a stale value of the right one, is not grounding.
+    theme_cited = plan.cell("theme").parent_snapshots[0]
+    assert findings(evidence=(parent_source,), parent_snapshots=(theme_cited,)) == invalid
+    other = parent.section("safety_education").cell_for_week(other_week.week_id)
+    assert findings(evidence=(parent_source,), parent_snapshots=(cite(other),)) == invalid
+    assert findings(evidence=(parent_source,), parent_snapshots=(cite(current, "옛 문장"),)) == invalid
     legal = EvidenceSource(EvidenceSourceType.SAFETY_RULE, "annex6:traffic:1", "v")
     assert findings(evidence=(parent_source, legal), parent_snapshots=(citation,)) == [
         (PARENT_CITATION_INVALID, FindingKind.VIOLATION)

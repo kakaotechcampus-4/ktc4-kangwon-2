@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
+from ..domain.activity_reference import OUTDOOR_PLAY_SLOT, ActivityCandidate
 from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
@@ -37,6 +37,7 @@ from ..domain.weekly_plan import (
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
     RULE_VERSION as ACTIVITY_RULE_VERSION,
+    ActivitySelection,
     ActivitySelectionTrace,
     select_activity_for_cell,
 )
@@ -71,6 +72,10 @@ from .ports import (
 SYSTEM_ACTOR = "weekly_application"
 THEME_RULE_ID = "weekly.theme.parent_theme"
 EMPTY_RULE_ID = "weekly.cell.rule_only_empty"
+# §4-2 「가점」: the parent's same-week activity, while still the parent's current value
+# and still eligible, outranks every other candidate (the rule path has no scores).
+PARENT_ACTIVITY_RULE_ID = "weekly.activity.parent_same_week"
+PARENT_ACTIVITY_REASON = "PARENT_SAME_WEEK_ACTIVITY"
 WEEKLY_RULE_VERSION = "v1"
 THEME_KEY = "theme"
 SAFETY_KEY = "safety_education"
@@ -209,31 +214,50 @@ class GenerateWeeklyPlan:
                 # teacher sentence is the LLM path (§8). No placement is claimed.
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, SAFETY_RULE_ID, SAFETY_RULE_VERSION)
             elif key == OUTDOOR_PLAY_SLOT and catalog is not None:
-                # Parent context (§4-2): rank against the parent theme and avoid the
-                # activities the parent placed in its other weeks.
-                others = tuple(
-                    cell for cell in _section_cells(parent, OUTDOOR_PLAY_SLOT)
-                    if cell.week_id != command.week_id and cell.value.strip()
-                )
-                picked = select_activity_for_cell(
-                    catalog.eligible_candidates(
-                        section_key=OUTDOOR_PLAY_SLOT,
-                        calendar_month=command.week_id.target_month.calendar_month,
-                        ages=parent.target_ages,
-                    ),
+                eligible = catalog.eligible_candidates(
+                    section_key=OUTDOOR_PLAY_SLOT,
                     calendar_month=command.week_id.target_month.calendar_month,
-                    used_activity_ids=frozenset(
-                        source.source_id
-                        for cell in others
-                        for source in cell.evidence
-                        if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
-                    ),
-                    parent_theme_id=theme_reference_id(theme_cell.evidence),
+                    ages=parent.target_ages,
                 )
+                parent_cells = _section_cells(parent, OUTDOOR_PLAY_SLOT)
+                same_week = next((c for c in parent_cells if c.week_id == command.week_id), None)
+                preferred = _parent_activity(same_week, eligible)
+                if preferred is not None:
+                    # §4-2 가점: the parent's same-week activity (its current value).
+                    picked = ActivitySelection(preferred, ActivitySelectionTrace(
+                        PARENT_ACTIVITY_RULE_ID,
+                        WEEKLY_RULE_VERSION,
+                        tuple(sorted(c.activity_id for c in eligible)),
+                        preferred.activity_id,
+                        None,
+                        (PARENT_ACTIVITY_REASON,),
+                    ))
+                    cited_cells: tuple[MonthlyCell, ...] = (same_week,)
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_ONLY, PARENT_ACTIVITY_RULE_ID, WEEKLY_RULE_VERSION
+                    )
+                else:
+                    # No usable same-week parent activity: monthly ranking against the parent
+                    # theme, avoiding the parent's other weeks (the monthly no-repeat rule).
+                    cited_cells = tuple(
+                        cell for cell in parent_cells
+                        if cell.week_id != command.week_id and cell.value.strip()
+                    )
+                    picked = select_activity_for_cell(
+                        eligible,
+                        calendar_month=command.week_id.target_month.calendar_month,
+                        used_activity_ids=frozenset(
+                            source.source_id
+                            for cell in cited_cells
+                            for source in cell.evidence
+                            if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
+                        ),
+                        parent_theme_id=theme_reference_id(theme_cell.evidence),
+                    )
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_ONLY, ACTIVITY_RULE_ID, ACTIVITY_RULE_VERSION
+                    )
                 selection = picked.trace
-                generation = GenerationMethodDetail(
-                    GenerationMethod.RULE_ONLY, ACTIVITY_RULE_ID, ACTIVITY_RULE_VERSION
-                )
                 if picked.candidate is not None:
                     value = picked.candidate.label
                     evidence = deduplicate_evidence((
@@ -245,7 +269,7 @@ class GenerateWeeklyPlan:
                             display_name=picked.candidate.label,
                         ),
                     ))
-                    snapshots = (theme_snapshot, *(_cited(lineage, cell) for cell in others))
+                    snapshots = (theme_snapshot, *(_cited(lineage, cell) for cell in cited_cells))
             item_id = self._ids.new_item_id()
             cells.append(WeeklyCell(
                 item_id=item_id,
@@ -286,7 +310,7 @@ class GenerateWeeklyPlan:
             generation_mode=command.generation_mode,
         )
         try:
-            plan = replace(plan, verification_report=verify_weekly_plan(plan, catalog))
+            plan = replace(plan, verification_report=verify_weekly_plan(plan, catalog, parent))
         except Exception as exc:  # a verifier that cannot run is not a finding (§11-2)
             raise WeeklyApplicationError(
                 "weekly_verification_failed", "Weekly rule verification failed before the Plan was saved"
@@ -335,6 +359,25 @@ def _plan_lineage(parent: MonthlyPlan) -> ParentLineage:
 def _cited(lineage: ParentLineage, cell: MonthlyCell) -> ParentLineage:
     # F2: the Application records which parent Cell (and its value then) a value used.
     return replace(lineage, parent_item_id=cell.item_id, snapshot_value=cell.value)
+
+
+def _parent_activity(
+    cell: MonthlyCell | None, eligible: tuple[ActivityCandidate, ...]
+) -> ActivityCandidate | None:
+    """The parent's same-week Catalog activity, if it is still the parent's current value.
+
+    A teacher who rewrote the monthly cell left the old ACTIVITY_REFERENCE as history;
+    then the reference is no longer the parent's choice and earns no preference.
+    """
+    if cell is None or not cell.value.strip():
+        return None
+    referenced = {
+        source.source_id for source in cell.evidence
+        if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
+    }
+    return next(
+        (c for c in eligible if c.activity_id in referenced and c.label == cell.value), None
+    )
 
 
 def _section_cells(parent: MonthlyPlan, key: str) -> tuple[MonthlyCell, ...]:

@@ -7,6 +7,7 @@ they are execution failures, never NOT_VERIFIED findings.
 from __future__ import annotations
 
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT, ActivityCatalog
+from ..domain.monthly_plan import MonthlyPlan
 from ..domain.monthly_verification import (
     FindingKind,
     Severity,
@@ -46,9 +47,9 @@ PARENT_CITATION_INVALID = "WEEKLY_SAFETY_PARENT_CITATION_INVALID"
 
 
 def verify_weekly_plan(
-    plan: WeeklyPlan, catalog: ActivityCatalog | None
+    plan: WeeklyPlan, catalog: ActivityCatalog | None, parent: MonthlyPlan
 ) -> VerificationReport:
-    results = (_verify_ages(plan, catalog), _verify_safety_grounding(plan))
+    results = (_verify_ages(plan, catalog), _verify_safety_grounding(plan, parent))
     return VerificationReport(
         target_plan_id=plan.plan_id,
         executed_rules=tuple(result.executed_rule for result in results),
@@ -103,7 +104,7 @@ def _verify_ages(plan: WeeklyPlan, catalog: ActivityCatalog | None) -> RuleVerif
     return RuleVerificationResult(AGE_RULE_REF, sources, tuple(findings))
 
 
-def _verify_safety_grounding(plan: WeeklyPlan) -> RuleVerificationResult:
+def _verify_safety_grounding(plan: WeeklyPlan, parent: MonthlyPlan) -> RuleVerificationResult:
     cell = next((c for c in plan.cells if c.section_key == SAFETY_SECTION_KEY), None)
     if cell is None or not cell.value.strip():
         return RuleVerificationResult(SAFETY_GROUNDING_RULE_REF)
@@ -121,10 +122,7 @@ def _verify_safety_grounding(plan: WeeklyPlan) -> RuleVerificationResult:
         code = OFFICIAL_GROUNDING_MISSING
         message = f"STATUTORY {placement.category_id} requires its own official content grounding only"
     else:
-        cites_parent = any(
-            s.source_type is EvidenceSourceType.PARENT_PLAN for s in cell.evidence
-        )
-        grounded = cites_parent and bool(cell.parent_snapshots) and not any(
+        grounded = _cites_parent_safety_cell(plan, cell, parent) and not any(
             s.source_type is EvidenceSourceType.SAFETY_RULE for s in cell.evidence
         )
         code = PARENT_CITATION_INVALID
@@ -143,6 +141,27 @@ def _verify_safety_grounding(plan: WeeklyPlan) -> RuleVerificationResult:
             FindingKind.VIOLATION, Severity.ERROR, cell, message, observed, (),
         ),),
     )
+
+
+def _cites_parent_safety_cell(plan: WeeklyPlan, cell: WeeklyCell, parent: MonthlyPlan) -> bool:
+    """§8: the exact parent Cell — same plan, the same week's safety Cell, its current value."""
+    if plan.parent_lineage.parent_plan_id != parent.plan_id:
+        return False
+    section = parent.section(SAFETY_SECTION_KEY)
+    parent_cell = section.cell_for_week(plan.week_id) if section is not None else None
+    if parent_cell is None or not parent_cell.value.strip():
+        return False
+    cites_plan = any(
+        s.source_type is EvidenceSourceType.PARENT_PLAN and s.source_id == parent.plan_id.value
+        for s in cell.evidence
+    )
+    cites_cell = any(
+        snapshot.parent_plan_id == parent.plan_id
+        and snapshot.parent_item_id == parent_cell.item_id
+        and snapshot.snapshot_value == parent_cell.value
+        for snapshot in cell.parent_snapshots
+    )
+    return cites_plan and cites_cell
 
 
 def _age_observed(plan: WeeklyPlan, cell: WeeklyCell, reference_ids: tuple[str, ...]) -> str:
