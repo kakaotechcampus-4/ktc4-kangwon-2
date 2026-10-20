@@ -8,7 +8,7 @@ import { saveAnnualContext } from "@/lib/plan-generator/context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fontClassName } from "@/lib/fonts";
 import AppHeader from "@/components/app/AppHeader";
-import { createAnnualPlan } from "@/lib/api/plans";
+import { createAnnualPlan, deleteAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
 import { getForms } from "@/lib/api/forms";
 import { syncCenter, syncClass } from "@/lib/api/onboarding";
 import type { ApiForm } from "@/lib/api/types";
@@ -17,6 +17,7 @@ import GenerationFlow from "./GenerationFlow";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { templatePlan, type PlanContent } from "@/lib/workspace/plans";
 import { today, type Section } from "@/lib/workspace/model";
+import { ApiError } from "@/lib/api/client";
 import { useAIStatus, ws } from "@/components/workspace/WorkspaceUI";
 import {
   PLAN_TYPE_HELP,
@@ -29,7 +30,11 @@ import {
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { isValidDate } from "@/lib/plan-generator/date";
 
-const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly", "daily"];
+// 요구사항명세서에 있는 종류만 띄운다. **일간 계획안은 FR 번호가 없다** — 만들기로 한 적이
+// 없는데 카드만 있었다. 「준비 중」이라고 써 두면 곧 생길 것처럼 보여서 뺀다.
+// 헷갈리기 쉬운 것 — 「일일 보육일지」는 있다(§11). 그건 계획안이 아니라 일지고,
+// 문서 보관함(/documents)에서 만든다.
+const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly"];
 
 /**
  * 서버가 실제로 만들 수 있는 종류. 나머지 카드는 「준비 중」으로 잠근다.
@@ -108,6 +113,10 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
   const classId = startup.classId;
   const [formId, setFormId] = useState(startup.formId);
   const [error, setError] = useState("");
+  // 그 반에 연간계획안이 이미 있을 때(409 ALREADY_EXISTS) 어느 반인지. 교사에게 묻고
+  // 「새로 만들기」를 고르면 그때 지운다. **조용히 지우지 않는다** — 확정 전이라도 교사가
+  // 쓴 글이 사라지는 일이라 뜻을 받아야 한다.
+  const [occupied, setOccupied] = useState<number | null>(null);
   const [contents, setContents] = useState<Partial<Record<PlanType, PlanContent>>>({});
   // 기관 양식의 원본은 서버다 (§8) — 브라우저 저장소를 보지 않는다. null 이면 아직 못 받았다.
   const [forms, setForms] = useState<ApiForm[] | null>(null);
@@ -285,9 +294,29 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
       setPhase("done");
     } catch (e) {
       if (controller.signal.aborted) return;
+      // 만들기 경로의 409 는 「이 반의 연간계획안이 이미 있습니다」 하나뿐이다.
+      const taken = e instanceof ApiError && e.status === 409 ? loadClassSettings() : null;
+      const primary = taken ? primaryClassFor(taken) : null;
+      if (primary) setOccupied(await syncClass(taken!, primary));
       setError(e instanceof Error ? e.message : "계획안을 생성하지 못했어요.");
       setPhase("idle");
     }
+  }
+
+  /** 그 반의 연간계획안을 지우고 다시 만든다. 교사가 「새로 만들기」를 눌렀을 때만 온다. */
+  async function handleReplace(classId: number) {
+    setOccupied(null);
+    setError("");
+    try {
+      const { items } = await listAnnualPlans(classId);
+      const existing = items[0];
+      if (!existing) throw new Error("지울 계획안을 찾지 못했어요. 새로고침 후 다시 해주세요.");
+      await deleteAnnualPlan(existing.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "지우지 못했어요.");
+      return;
+    }
+    await handleGenerate();
   }
 
   function handleRegenerate() {
@@ -326,6 +355,18 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
         {(error || formsError) && (
           <p className={ws.error} role="alert">
             {error || formsError}
+          </p>
+        )}
+        {occupied !== null && (
+          <p className={ws.error} role="alert">
+            새로 만들면 지금 있는 초안이 사라져요.{" "}
+            <button type="button" className={ws.link} onClick={() => handleReplace(occupied)}>
+              새로 만들기
+            </button>{" "}
+            ·{" "}
+            <button type="button" className={ws.link} onClick={() => setOccupied(null)}>
+              그대로 두기
+            </button>
           </p>
         )}
         {phase === "idle" && (
