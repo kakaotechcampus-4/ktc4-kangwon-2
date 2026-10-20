@@ -15,7 +15,13 @@ export type Routine = {
   date: string;
   /** 하루 안의 표시 순서. 종이의 행 순서다. */
   position: number;
-  /** HH:MM. 둘 다 있으면 start < end. 없을 수 있다. */
+  /**
+   * `HH:MM:SS`. 서버가 `datetime.time` 을 그대로 내보내 **초까지 온다**(`"09:20:00"`).
+   * 둘 다 있으면 start < end. 없을 수 있다.
+   *
+   * 화면 입력칸(`<input type="time">`)은 `HH:MM` 을 주고받는다 — 보낼 때는 그대로 보내도
+   * 서버가 받는다. 받은 값을 입력칸에 넣을 때만 앞 다섯 글자를 쓴다(`toTimeInput`).
+   */
   start: string | null;
   end: string | null;
   name: string;
