@@ -242,11 +242,12 @@ def test_safety_cells_are_never_llm_regeneration_targets():
 def test_harness_generation_rejects_the_real_pending_template():
     harness = PlanningHarness()
     yearly = harness.confirm_yearly(harness.generate_yearly().plan)
-    # The real files: PENDING_HUMAN_REVIEW (ADR-027).
+    # The real files. v0.2.1 was approved on 2026-10-20, v0.1.1 was not — RULE_ONLY
+    # still reaches a PENDING_HUMAN_REVIEW template (ADR-027 §5).
     harness.generation_templates = harness.templates
 
     with pytest.raises(MonthlyApplicationError) as exc:
-        harness.generate_monthly(yearly, MonthlyGenerationMode.LLM_PLANNER)
+        harness.generate_monthly(yearly, MonthlyGenerationMode.RULE_ONLY)
 
     assert exc.value.code == "monthly_template_not_approved"
     assert harness.monthly_plans.save_count == 0

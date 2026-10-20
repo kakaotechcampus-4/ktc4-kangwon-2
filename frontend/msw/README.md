@@ -19,7 +19,7 @@ Next 서버 재시작/재빌드가 필요합니다. /api/... 상대 경로는 �
 
 API 직접 요청: ?mockError=GENERATION_FAILED&mockDelay=2000
 기존 화면 URL: ?mswTarget=annual&mswError=NO_ACTIVITIES
-mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm, monthly, monthly-list, monthly-get, monthly-cell, monthly-regenerate, monthly-confirm, template-profile, template-profiles
+mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm, annual-audit, monthly, monthly-list, monthly-get, monthly-cell, monthly-regenerate, monthly-confirm, template-profile, template-profiles
 mswDelay=5000: loading. mswEmpty=true: 반/아동 GET만 empty.
 mswError: VALIDATION_FAILED, NOT_FOUND, GATE_BLOCKED, NO_ACTIVITIES, GENERATION_FAILED. 월간은 LLM_BUDGET_EXCEEDED, DEPENDENCY_UNAVAILABLE, STALE_WRITE, ALREADY_CONFIRMED 도 쓴다.
 mswField=selected_ages: 오류 field 지정.
@@ -84,6 +84,8 @@ Vercel 프로젝트의 Settings → Environment Variables에서 NEXT_PUBLIC_API_
 - 생성 직후 sub_themes 는 []. 근거 id · rule 은 mock_theme_<달> · mock.yearly.theme 고정값이다 — 실제 Theme Reference 가 아니다. checks 는 법정 6구분 × (주기 · 시수) UNVERIFIED 12건이고 문구는 목업이다(법령 값은 서버 원본만).
 - 서버와 같은 규칙: 반 하나에 연간 하나(ALREADY_EXISTS), PUT 은 evidence · generation 을 바꾸지 않음, 확정 뒤 PUT 은 409 ALREADY_CONFIRMED, 확정 재호출은 200 · 같은 confirmed_at · 상태 변화 없음, 빈 소주제로 확정을 막지 않음.
 - 서버와 다른 점: 연간 목업은 「지금 원」 소유 검사를 하지 않는다. 이 변경 전에 저장된 연간 목업 데이터(localStorage)는 옛 모양 그대로다 — 새 모양이 필요하면 새 계정 · 새 반으로 만든다.
+- 변경 이력(서버 `AuditEventOut`, 다섯 키 · 해당 없으면 null): 생성 CREATED(계획안 + 12개월, system_actor `yearly_application`) · PUT TEACHER_EDITED(주제가 같아도) · 최초 확정 CONFIRMED. 재확정은 이벤트를 더하지 않는다. 바뀐 값 · 소주제 · 근거는 이력에 없다.
+- 옛 목업 계획안(FE-Y1 이전 저장본): 이력은 빈 목록이다. 데이터는 지우거나 고쳐 쓰지 않는다.
 
 ## 월간계획안 목업 (docs/api-spec.md §9-1 ~ §9-3)
 

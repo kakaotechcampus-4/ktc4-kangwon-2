@@ -168,6 +168,10 @@ me       GET /api/auth/me                                               → 200 
 **중복 생성을 막지 않는다.** 이름만으로 `UNIQUE` 를 걸면 다른 지역의 같은 이름 원이 막힌다.
 계정 단위 판단은 인증이 붙는 P1 이다.
 
+**조회** `GET /api/centers/{center_id}` → `200` 위 Response 와 같은 모양. 자기 원만 읽는다 —
+남의 원 · 없는 원 · 아직 원이 없는 교사는 `404 NOT_FOUND` (`fields: ["center_id"]`).
+초대 코드로 들어온 교사(§1-1)는 원을 만든 적이 없어 화면에 원 정보가 없다. 로그인 뒤 여기서 읽는다.
+
 ---
 
 ## 1-1. 같은 원 교사 초대 — `POST /api/centers/{center_id}/invites` · `POST /api/centers/join`
@@ -985,7 +989,7 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
 PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨, M5)
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
-GET    /api/plans/{id}/export/hwp         내보내기
+GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp
 GET    /api/plans/annual/{id}/audit       Audit 이벤트 조회 — 되돌리기(P1)·평가제(P2)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
@@ -1006,19 +1010,30 @@ PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location
 **이 API 만 JSON 이 아니다.** 파일이 내려온다. 다른 API 처럼 `apiRequest` 로 부르면
 JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 
+**형식은 쿼리 `format` 으로 고른다. 기본은 hwpx 다**(ADR-039).
+
 ```
-응답 200    Content-Type: application/hwp+zip
-            Content-Disposition: attachment; filename="plan-10.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx
+GET /api/plans/10/export/hwp              → plan-10.hwpx   Content-Type: application/hwp+zip
+GET /api/plans/10/export/hwp?format=hwpx  → plan-10.hwpx   (위와 같다)
+GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: application/x-hwp
+
+응답 200    Content-Disposition: attachment; filename="plan-10.hwpx";
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
 ```
 
-**경로는 `hwp` 인데 내려가는 파일은 `hwpx` 다.** `.hwp` 는 공개된 구조가 없어 우리가
-만들 수 없다. hwpx 는 zip + XML(국가표준)이라 만들 수 있고 한글 2010 이상에서 열린다.
-**교사가 한글에서 「다른 이름으로 저장 → .hwp」 하면 hwp 가 된다** — 클릭 한 번이다.
+**경로 이름은 `hwp` 인데 기본은 `hwpx` 다.** 원래 hwpx 만 주던 경로라, 지금 화면을 깨지 않으려고
+경로를 그대로 두고 쿼리를 더했다. hwpx 는 zip + XML(국가표준)이고 한글 2010 이상에서 열린다.
 
-> **변환 기능을 서버에 두지 않는다.** 시중 변환은 파일을 남의 서버로 보낸다.
-> 계획안에는 반 이름·담임 이름이, 일지에는 아동 실명이 들어간다 — 그 파일을 밖으로
-> 보내면 ADR-004 가 LLM 한 줄을 막아둔 것이 통째로 무의미해진다.
+**`.hwp` 는 같은 hwpx 를 서버 안에서 바꿔 만든다.** 채우는 코드는 hwpx 한 벌이고,
+`?format=hwp` 면 그 hwpx 를 python-hwpx 로 HWP 5.0 으로 바꿔 내려준다.
+
+> **변환은 backend 프로세스 안에서만 한다. 파일을 밖으로 보내지 않는다.**
+> 계획안에는 반 이름·담임 이름이, 일지에는 아동 실명이 들어간다 — 시중 변환 서비스로
+> 보내면 ADR-004 가 LLM 한 줄을 막아둔 것이 통째로 무의미해진다(ADR-021 · ADR-039).
+
+**hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE` 이다 — 「hwpx 로 받아주세요」.**
+변환은 hwpx 를 다 만든 뒤에만 돌므로, 같은 문서를 `format` 없이 다시 받으면 hwpx 는 나온다.
+변환기(python-hwpx)의 hwp 쓰기가 새 기능이라 무엇이 실패하든 이 코드로 준다. 재시도해도 같다.
 
 **확정본만 내보낸다.** DRAFT 면 `GATE_BLOCKED` 409 다. 내보낸 파일은 제출 문서라,
 교사가 확인하지 않은 초안이 그대로 제출되는 길을 만들지 않는다.
@@ -1027,12 +1042,14 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 제출 문서에 들어갈 것이 아니다. 교사가 읽는 글자만 꺼낸다.
 
 **작성자 정보를 지운다.** 양식 파일에 남은 `creator` · `lastsaveby` 를 내보낼 때
-다시 비운다 — 양식을 새로 넣는 사람이 잊어도 막힌다.
+다시 비운다 — 양식을 새로 넣는 사람이 잊어도 막힌다. `.hwp` 의 문서 정보도 이 값을 그대로 옮긴다.
 
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 |
 | `NOT_FOUND` | 404 | 없거나 남의 원 계획안이다 |
+| `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
 **월간은 아직 없다.** 월간 API 와 양식이 같이 생길 때 붙인다.
 **원이 올린 양식으로 내보내는 것도 아직이다**(§8 양식 등록이 먼저다).
@@ -1973,6 +1990,13 @@ sections 에 빈 body 가 있다
 
 **전부 `VALIDATION_FAILED` 422 다.** `fields` 에 어디가 틀렸는지 담는다 — `sections.해석` · `sources.3`.
 
+**같은 반 · 같은 날 일일 보육일지가 이미 있으면 `409 ALREADY_EXISTS` 다** (`fields: ["start"]`).
+응답을 못 받은 교사가 다시 누르면 둘이 생긴다 — 연간계획안과 같은 모양으로 막는다.
+모델을 부르기 전에 보고, 저장 직전에 반을 잠그고 한 번 더 본다. 화면은 목록에서 그 일지를 열게 한다.
+
+**예산 초과는 `503 LLM_BUDGET_EXCEEDED` 다.** `GENERATION_FAILED` 500 으로 뭉치지 않는다 —
+키가 지워져서 다시 눌러도 안 된다. 화면은 「다시 시도」가 아니라 「담당자에게 알려주세요」를 띄운다.
+
 ### `stale` — 원본이 바뀌었다는 표시
 
 ```
@@ -2139,7 +2163,7 @@ POST   /api/documents/{id}/confirm                               DRAFT → CONFI
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
 POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
 DELETE /api/documents/{id}                                       204
-GET    /api/documents/{id}/export/hwp                            hwpx 파일.  확정본만.  아래 「내보내기」
+GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp).  확정본만.  아래 「내보내기」
 ```
 
 **확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
@@ -2162,7 +2186,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일.  �
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
 
 ### 겹치는 문서를 찾아준다 — `/compare` 화면
 
@@ -2193,13 +2217,13 @@ assessment    observation · dailyLog
 
 **관찰일지 · 일일 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼 복제한다.
 
-**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 경로는 `hwp` 인데 파일은 `hwpx` 다 ·
-확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다.
+**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` 다 ·
+확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
 
 ```
-응답 200    Content-Type: application/hwp+zip
+응답 200    Content-Type: application/hwp+zip                     (?format=hwp 면 application/x-hwp)
             Content-Disposition: attachment; filename="document-7.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
 ```
 
 **배치는 위 「종이 한 장」이다.** 해석 + 지원 칸은 `해석` 본문, 빈 줄, `지원` 본문 순서로 잇는다.
@@ -2209,8 +2233,9 @@ assessment    observation · dailyLog
 
 **아동 실명이 들어간다.** 교사 본인의 제출 문서라 치환하지 않는다. 대신 hwpx 안의
 미리보기(`Preview/PrvText.txt`)를 **이 문서 내용으로 다시 만든다** — 양식 파일에 남은
-다른 아이 이름이 미리보기에 그대로 실려 나가지 않게 한다.
+다른 아이 이름이 미리보기에 그대로 실려 나가지 않게 한다. `.hwp` 의 미리보기도 이 글자를 옮긴다.
 **미리보기 그림(`Preview/PrvImage.png`)은 다시 만들지 않는다.** 그래서 양식 파일은 빈 양식이어야 한다.
+`.hwp` 에도 이 그림이 그대로 들어간다.
 
 **관찰일지의 영역, 일일 보육일지의 시간 · 일과 · 활동계획은 지금의 원본 기록에서 읽는다.**
 영역 · 활동계획만 고치면 `stale` 이 아니므로 고친 값이 나간다. **`stale` 인 문서는 내보내지 않는다** —
@@ -2221,8 +2246,9 @@ assessment    observation · dailyLog
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
-| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` 가 아니다.  `fields: ["kind"]` |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
 ### 개인정보
 
@@ -2396,7 +2422,7 @@ NONE           없음        뒷받침 문서가 0건
 그래서 **관찰일지 수로 세지 않는다. 연간 보육계획안은 4-1 서류가 아니다** — 영역 5 검토문서다(p.171).
 
 월간계획안의 대상 달은 `plans.target_month`(`YYYY-MM`) 칸에 있다 — `plans.body.target_month` 에서 꺼낸 값이다(결정 문서 12.6 PR-2 에서 추가).
-**plans 소유(승석)의 조회 함수로 읽는다. feature 간 직접 import 하지 않는다.** 함수는 아직 없다(아래 「아직 정하지 않은 것」).
+**plans 소유(승석)의 조회 함수로 읽는다. feature 간 직접 import 하지 않는다.** 함수는 `plans/queries.py` 의 `confirmed_monthly_plans` 다(#156).
 계획안 id 는 `plan_ids`, 일지 id 는 `document_ids` 로 낸다.
 **3월 초에는 검토 기간이 지난 학년도에 걸친다. 반은 학년도마다 새 행이라 지난 학년도 반의 서류는 안 잡힌다.**
 
@@ -2492,7 +2518,7 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 
 ```
 □  지표 파일 v2 — 평가요소 19개 나누기 · 1 2 3 4 5 정리   승석
-□  plans 조회 함수 — 반 · 대상 달 · 확정 여부로 월간계획안을 찾는다   승석
+■  plans 조회 함수 — 반 · 대상 달 · 확정 여부로 월간계획안을 찾는다   완료 — 승석 #156
 □  4-2 와 ADR-007 「발달평가 스펙아웃」             승석 · PM    PM 확인 대기. assessment 와 같은 것인지
 □  새 학년도에 아동 행을 옮기나 새로 만드나 — 4-2 가 지난 학년도 평가를 찾는지가 갈린다   반 · 아동 담당 · PM
 □  달력 테이블(특일정보 API) — 생기면 4-1 의 평일에서 공휴일을 뺀다   승석

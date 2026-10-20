@@ -170,3 +170,28 @@ def test_join_does_not_spend_the_code_when_center_was_set_meanwhile(people, db_s
     assert response.json()["error"]["code"] == "ALREADY_EXISTS"
     spent = db_session.scalar(select(CenterInvite).where(CenterInvite.code == code))
     assert spent.used_at is None
+
+
+def test_joined_teacher_reads_the_center_info(people):
+    # 초대로 들어온 교사는 원을 만든 적이 없다. 화면이 원 정보를 서버에서 읽어야 작업실에 들어간다.
+    as_(people["owner"])
+    code = invite(people["home"])["code"]
+    as_(people["newbie"])
+    assert join(code).status_code == 200
+
+    response = client.get(f"/api/centers/{people['home'].id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == people["home"].id
+    assert body["name"] == "햇살어린이집"
+    assert body["region_sido"] == "강원"
+
+
+def test_cannot_read_another_or_no_center(people):
+    as_(people["stranger"])
+    assert client.get(f"/api/centers/{people['home'].id}").status_code == 404
+    as_(people["newbie"])
+    response = client.get(f"/api/centers/{people['home'].id}")
+    assert response.status_code == 404
+    assert response.json()["error"]["fields"] == ["center_id"]

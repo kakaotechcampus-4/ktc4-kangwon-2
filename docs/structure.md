@@ -116,7 +116,7 @@ app/
 | `auth` | 인증 |
 | `audit` | 변경 이력 |
 | `childCode` | 아동 실명 ↔ 코드 치환 |
-| `hwpx.py` | hwpx 내보내기 — 양식 표 칸 글자만 바꾼다(ADR-021). 양식 파일은 각 feature 의 `templates/` |
+| `hwpx.py` | hwpx 내보내기 — 양식 표 칸 글자만 바꾼다(ADR-021). `?format=hwp` 면 그 hwpx 를 `.hwp` 로 바꾼다(ADR-039). 양식 파일은 각 feature 의 `templates/` |
 
 `childCode` 는 구현됐다(ADR-004). 나머지 5개는 빈 `__init__.py` 만 있고 각 담당자가 채운다.
 

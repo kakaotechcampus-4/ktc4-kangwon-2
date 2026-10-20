@@ -2,7 +2,7 @@
 
 계약은 docs/api-spec.md §9-4.
 
-기반 Template v0.1.1 · v0.2.1 은 **사람 승인 대기**다. 승인된 경로는 OD-N11 (A) — 테스트 안에서만
+기반 Template v0.1.1 은 **사람 승인 대기**다(v0.2.1 은 2026-10-20 승인). 승인 경로는 OD-N11 (A) —
 `replace(template, runtime_active=True)` — 로 본다(`service.TEMPLATES` 를 바꿔 낀다). 데이터 파일과
 운영 코드는 그대로이고, 승인 대기 상태로 부르면 막혀야 한다. **실제 Luna-6 는 부르지 않는다**
 (월간 생성은 기본 mock provider).
@@ -215,7 +215,8 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
     ] == [(ref.template_id, ref.template_version) for ref in profile_service.MONTHLY_TEMPLATE_REFS]
     for item in items:
         template = real.get_template(**item["template_ref"])
-        assert item["approved"] is False is template.is_active  # 승인 대기 — 바꾸지 않는다
+        # 파일이 말하는 대로 보인다. v0.2.1 은 2026-10-20 승인, v0.1.1 은 아직 대기다.
+        assert item["approved"] is template.is_active
         assert len(item["sections"]) == len(template.sections)
         selection = {s["section_key"]: s["selection"] for s in item["sections"]}
         assert {k for k, v in selection.items() if v == "REQUIRED"} == {
@@ -261,7 +262,20 @@ def test_로그인하지_않으면_기반_Template_목록도_401(db_session):
 
 def test_승인_대기_Template_으로_시작하면_409_GATE_BLOCKED_이고_아무것도_남지_않는다(world):
     before = _versions(world["session"], world["a"])
-    assert _error(_start(world)) == (409, "GATE_BLOCKED", ["base_template_ref"])
+    # v0.2.1 은 승인됐다. 아직 대기인 v0.1.1 로 막히는지 본다.
+    # v0.1.1 에는 focus 가 꺼져 있어 focus 를 고르면 승인 검사 전에 422 로 걸린다. 빼고 보낸다.
+    assert _error(
+        _start(
+            world,
+            base_template_ref={
+                "template_id": PLAIN.template_id,
+                "template_version": PLAIN.template_version,
+            },
+            selected_optional_keys=["goals"],
+            display_labels=_labels("goals"),
+            focus_variant=None,
+        )
+    ) == (409, "GATE_BLOCKED", ["base_template_ref"])
     assert _versions(world["session"], world["a"]) == before
 
 

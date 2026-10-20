@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass
 
 from app.shared.childCode import NameTable, SubstitutionError, mask, unmask
-from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, complete_json, is_mock
+from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 
 # 문서의 generation.rule_version 으로 남는다. `_generate` 의 만드는 방식이 바뀌면 올린다.
 # v2 (2026-10-15) — 거절 규칙 넷(교사가 안 한 개입 · 진단명/가정 판정 · 근거 없는 변화 ·
@@ -117,8 +117,9 @@ def _generate(kind: str, masked_facts: list[str]) -> tuple[str, str]:
             SYSTEM_PROMPT,
             json.dumps({"kind": label, "facts": masked_facts}, ensure_ascii=False),
         )
-    except (LlmUnavailable, LlmBudgetExceeded) as exc:
-        # 설정·한도 문제는 교사가 고칠 수 없다. 원인을 감추지 않고 그대로 올린다.
+    except LlmUnavailable as exc:
+        # 설정 문제는 교사가 고칠 수 없다. 원인을 감추지 않고 그대로 올린다.
+        # LlmBudgetExceeded 는 감싸지 않는다 — 라우터가 503 LLM_BUDGET_EXCEEDED 로 따로 낸다.
         raise DraftFailed(str(exc)) from exc
     except LlmFailed as exc:
         raise DraftFailed("AI 초안을 만들지 못했습니다. 다시 시도해주세요.") from exc

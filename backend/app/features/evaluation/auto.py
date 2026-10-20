@@ -9,6 +9,7 @@ from app.features.centers.models import Child, Class
 from app.features.documents.service import list_confirmed_by_child, list_confirmed_by_class
 from app.features.evaluation import judge
 from app.features.evaluation.catalog import load_catalog
+from app.features.plans.queries import confirmed_monthly_plans
 from app.shared.school_year import school_year_of
 
 
@@ -34,8 +35,10 @@ def judge_auto(session: Session, center_id: int, now: datetime) -> dict[str, jud
             end=class_window.end,
         )
     ]
-    # ponytail: 월간계획안 저장 · plans 조회 함수(승석)가 생기면 교체 — §12 아직 정하지 않은 것.
-    plans = []
+    plans = [
+        judge.PlanFact(plan.plan_id, plan.class_id, plan.year, plan.month)
+        for plan in confirmed_monthly_plans(session, center_id)
+    ]
     assessments = [
         judge.AssessmentFact(doc.id, doc.child_id, doc.end_date)
         for doc in list_confirmed_by_child(

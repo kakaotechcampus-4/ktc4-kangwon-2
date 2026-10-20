@@ -13,6 +13,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "올릴 브랜치 또는 커밋 SHA (되감으려면 직전 SHA 를 넣는다)"
+        type: string
+        default: main
 
 # 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다.
 concurrency:
@@ -27,6 +32,8 @@ permissions:
 env:
   INSTANCE_ID: i-041ebb00937bd371f # ktc4-team-server
   AWS_REGION: ap-northeast-2
+  # push 로 왔으면 main 이다. 손으로 돌릴 때만 고를 수 있다.
+  DEPLOY_REF: ${{ inputs.ref || 'main' }}
 
 jobs:
   deploy:
@@ -49,9 +56,10 @@ jobs:
           command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --comment "deploy ${GITHUB_SHA:0:7}" \
-            --parameters "$(jq -n --rawfile script scripts/deploy.sh \
-              '{commands: [$script], executionTimeout: ["1800"]}')" \
+            --comment "deploy $DEPLOY_REF ${GITHUB_SHA:0:7}" \
+            --parameters "$(jq -n --rawfile script scripts/deploy.sh --arg ref "$DEPLOY_REF" \
+              '{commands: ["#!/usr/bin/env bash", "export DEPLOY_REF=\($ref)", $script],
+                executionTimeout: ["1800"]}')" \
             --query Command.CommandId --output text)
           echo "배포 명령 $command_id"
           echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
@@ -90,8 +98,11 @@ jobs:
       # /health 가 아니라 /health/ready 다 — /health 는 DB 를 안 보고 200 을 준다(ADR-011).
       - name: Health check
         env:
-          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+          # 시크릿에 IP 를 박아 두면 터진다 — DuckDNS 라 IP 가 바뀐다. 2026-10-11 배포가
+          # 옛 IP 의 80 포트로 136초 기다리다 실패했다(서버는 멀쩡했다). 도메인을 기본으로 둔다.
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL || 'https://ssample.duckdns.org' }}
         run: |
+          echo "확인할 주소 ${HEALTHCHECK_URL}/health/ready"
           for attempt in $(seq 1 30); do
             code=$(curl -fsS -o /dev/null -w '%{http_code}' "${HEALTHCHECK_URL}/health/ready" || echo 000)
             if [ "$code" = "200" ]; then
