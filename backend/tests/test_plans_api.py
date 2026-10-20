@@ -325,3 +325,40 @@ def test_양식_번호가_계획안에_남는다(db_session, mine, teacher):
     saved = db_session.get(Plan, response.json()["id"])
     db_session.refresh(saved)
     assert saved.form_id == form.id
+
+
+# ── 지우기 (§4) ───────────────────────────────────────────────────────────
+
+
+def _error(response):
+    body = response.json()["error"]
+    return response.status_code, body["code"]
+
+
+def test_확정_전_연간계획안을_지우면_다시_만들_수_있다(db_session, mine):
+    """반 하나에 연간은 하나다. 지울 길이 없으면 첫 초안이 마음에 안 들어도 영영 못 바꾼다."""
+    plan_id = _create(mine)["id"]
+    assert (
+        client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None}).status_code
+        == 409
+    )
+
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 204
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
+    assert _create(mine)["id"] != plan_id
+
+
+def test_확정된_연간계획안은_지우지_못한다(db_session, mine):
+    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+    plan_id = _create(mine)["id"]
+    assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
+
+    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 200
+
+
+def test_남의_원_연간계획안은_지울_수_없고_404(db_session, mine, teacher):
+    plan_id = _create(mine)["id"]
+    teacher.center_id = mine.center_id + 1
+
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 404

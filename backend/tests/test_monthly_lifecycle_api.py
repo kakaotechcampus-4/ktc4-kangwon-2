@@ -357,6 +357,50 @@ def test_다시_만들_수_없는_칸과_남의_원은_거절한다(world, teach
     assert _get(plan["id"]) == plan
 
 
+def _strip_generation(session, center: int, plan_id: int, item_id: str) -> int:
+    """저장된 칸 하나의 생성 방식을 지운다 — 옛 판이나 손으로 넣은 행. 생성 경로로는 안 생긴다."""
+    row, stored = _stored(session, center, plan_id)
+    cell = stored.find_cell(ItemId(item_id))[3]
+    changed = stored.replace_cell(cell.item_id, replace(cell, generation=None))
+    repo = PostgresPlanRepository(session, center_id=center, kind="monthly", plan_type=MonthlyPlan)
+    revision = repo.update_if_revision(changed.plan_id, changed, expected_revision=row.revision)
+    assert revision is not None
+    return revision
+
+
+def test_생성_방식이_없는_칸은_편집도_재생성도_422_이고_문구는_동작에_맞다(world, router_log):
+    """Core `monthly_cell_generation_missing`. 상태 · 코드 · fields 는 재생성 거절과 같다.
+
+    편집에 「다시 만들 수 없습니다」를 띄우지 않는다. 저장 데이터 문제라 id 와 코드만 로그에 남긴다.
+    """
+    session, plan = world["session"], world["plan"]
+    center = world["mine"]["center"]
+    # 생성 방식이 없는 칸이 생기면 계획안 응답을 그리지 못한다. 정상 편집을 먼저 끝낸다.
+    focus = _cell(plan, "focus")  # 다시 만들 수 있는 칸. 비워야 생성 방식을 지울 수 있다
+    assert _edit(plan["id"], focus["item_id"], "", 1).status_code == 200
+
+    revision = _strip_generation(session, center, plan["id"], focus["item_id"])
+    response = _regenerate(plan["id"], focus["item_id"], revision)
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+
+    # 비어 있는 칸이라 생성 방식을 지워도 Core 불변식을 지킨다.
+    safety = _cell(plan, "safety_education")
+    revision = _strip_generation(session, center, plan["id"], safety["item_id"])
+    response = _edit(plan["id"], safety["item_id"], "교사 값", revision)
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 고칠 수 없습니다."
+    assert "Generation" not in response.text
+    [line] = [r.getMessage() for r in router_log.records if "edit rejected" in r.getMessage()]
+    assert line == (
+        f"monthly cell edit rejected code=monthly_cell_generation_missing plan_id={plan['id']}"
+    )
+    assert "교사 값" not in router_log.text
+
+    row, _ = _stored(session, center, plan["id"])
+    assert row.revision == revision  # 거절은 아무것도 쓰지 않는다
+
+
 def test_재생성_LLM_이_실패하면_칸도_revision_도_그대로다(world, monkeypatch):
     session, plan = world["session"], world["plan"]
     focus = _cell(plan, "focus")["item_id"]

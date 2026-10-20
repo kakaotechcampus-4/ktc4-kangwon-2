@@ -72,8 +72,8 @@ const row = (over = {}) => ({
   class_name: "햇살반",
   date: "2026-10-17",
   position: 0,
-  start: "09:00",
-  end: "09:20",
+  start: "09:00:00",
+  end: "09:20:00",
   name: "등원 및 맞이하기",
   plan: "",
   execution: "현관에서 맞았다.",
@@ -190,8 +190,8 @@ test("★ 어제 불러오기는 시간·이름만 가져온다 — 활동실행
     {
       date: "2026-10-17",
       position: 0,
-      start: "09:00",
-      end: "09:20",
+      start: "09:00:00",
+      end: "09:20:00",
       name: "등원 및 맞이하기",
       plan: "",
       execution: "",
@@ -231,4 +231,9 @@ test("★ 하루 전 계산이 시간대에 흔들리지 않는다", async () =>
   assert.equal(previousDay("2026-10-17"), "2026-10-16");
   assert.equal(previousDay("2026-01-01"), "2025-12-31"); // 해 넘김
   assert.equal(previousDay("2026-03-01"), "2026-02-28");
+});
+
+test("★ 서버는 초까지 준다 — 입력칸에 넣을 때만 자른다", () => {
+  assert.equal(routines.toTimeInput("09:20:00"), "09:20");
+  assert.equal(routines.toTimeInput(null), "");
 });
