@@ -409,7 +409,9 @@
 .document section {
   margin: 25px 0;
 }
-.document section h3 {
+/* 사실 · 해석 · 지원 칸만 초록. 클래스 없는 직계 section 이 그 셋이다 —
+   안쪽에 들어오는 다른 화면(근거 검토)의 제목까지 물들이지 않는다. */
+.document > section:not([class]) h3 {
   color: var(--pg-success);
 }
 .source {
@@ -593,4 +595,113 @@
   color: var(--pg-peach-ink);
   font-weight: 600;
   font-size: 11px;
+}
+.timePicker {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.timePicker select {
+  width: auto;
+  min-width: 60px;
+}
+.timePicker button {
+  white-space: nowrap;
+}
+.dragging {
+  opacity: 0.45;
+  outline: 2px dashed var(--pg-accent, #8064b4);
+}
+.insertBefore {
+  box-shadow: 0 -5px 0 #8064b4;
+}
+.insertAfter {
+  box-shadow: 0 5px 0 #8064b4;
+}
+.sourceText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 삭제된 근거 처리 — 위쪽 알림만 색을 쓰고, 고르는 자리와 확인하는 자리는
+   얇은 선 하나로 가른다. 색 판을 겹쳐 쓰면 어디를 봐야 할지가 흐려진다. */
+.notice {
+  border: 1px solid var(--pg-note-soft-line);
+  border-left: 4px solid var(--pg-note-line);
+  background: var(--pg-note-soft);
+  border-radius: 6px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+.confirmStep {
+  border-top: 1px solid var(--pg-line);
+  padding-top: 16px;
+}
+
+/* 일과 카드 — 일과 이름은 카드 위로 살짝 올라온 탭이고, 머리줄과 본문은 같은 격자를 쓴다.
+   같은 격자라서 「종료 시간」과 「활동실행」의 왼쪽 선이 자동으로 맞는다. */
+.routineCard {
+  position: relative;
+  /* 탭이 위 카드와 겹치지 않을 만큼만 띄우고, 카드 안에 탭 높이를 비워 둔다. */
+  margin-top: 16px;
+  padding-top: 30px;
+}
+.nameTab {
+  position: absolute;
+  top: -15px;
+  left: 18px;
+  right: 18px;
+  display: flex;
+}
+.nameTab input {
+  min-width: 0;
+  max-width: 420px;
+  min-height: 34px;
+  padding: 6px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pg-ink);
+  border: 1px solid var(--pg-primary-tint-line);
+  border-bottom-color: var(--pg-paper);
+  background: var(--pg-primary-tint);
+  border-radius: 6px 6px 0 0;
+}
+.nameTab input:focus-visible {
+  background: var(--pg-paper);
+}
+.routineGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  column-gap: 14px;
+  row-gap: 8px;
+}
+.routineHead {
+  align-items: end;
+}
+/* 끌기 핸들과 ↑ ↓ 에는 제목이 없다. 가운데로 맞추면 제목 높이의 절반만큼 입력칸보다
+   위로 뜨므로, 아래선을 맞추고 핸들에도 입력칸과 같은 높이를 준다. */
+.routineStart {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.routineStart .badge {
+  min-height: 44px;
+  justify-content: center;
+}
+/* `시 : 분 AM ×` 묶음은 약 235px 다. 그보다 좁게 줄이면 좁은 화면에서 가로 스크롤이 생긴다. */
+.routineStart > .field {
+  flex: 1;
+  min-width: fit-content;
+}
+/* 활동계획 · 활동실행 — 제목 · 안내 · 입력칸 세 줄을 양쪽이 같은 선에서 시작하게 한다.
+   subgrid 라서 안내 문구가 한쪽만 줄바꿈해도 입력칸 윗선이 어긋나지 않는다. */
+.routineBody {
+  margin-top: 14px;
+}
+.routineBody > .field {
+  grid-template-rows: subgrid;
+  grid-row: span 3;
 }

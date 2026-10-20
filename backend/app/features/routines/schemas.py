@@ -57,3 +57,18 @@ class RoutineResponse(BaseModel):
 
 class RoutineListResponse(BaseModel):
     items: list[RoutineResponse]
+
+
+class RoutineReviewImpact(BaseModel):
+    """직접 영향을 받은 확정 일일 보육일지 ID. 기존 stale과 새 stale을 구분한다."""
+
+    affected_document_ids: list[int]
+    newly_stale_document_ids: list[int]
+
+
+class RoutineMutationResponse(RoutineResponse):
+    review_impact: RoutineReviewImpact
+
+
+class RoutineDeleteResponse(BaseModel):
+    review_impact: RoutineReviewImpact

@@ -4,7 +4,7 @@
  * 선택이 바뀔 때마다 번호를 올리고, 응답은 그 번호일 때만 화면에 반영한다 —
  * 늦게 온 응답이 지금 보고 있는 문서를 바꾸면 사용자가 다른 문서에 저장·삭제하게 된다.
  */
-import type { ServerDocument } from "@/lib/api/documents";
+import type { ReconfirmInput, ServerDocument, SourceResolution } from "@/lib/api/documents";
 import type { SavedDocument, Section } from "@/lib/workspace/model";
 
 export type DetailStatus = "loading" | "ready" | "error";
@@ -28,8 +28,9 @@ export interface DocumentGateway {
   ): Promise<ServerDocument>;
   confirm(localId: string): Promise<ServerDocument>;
   unconfirm(localId: string): Promise<ServerDocument>;
-  refresh(localId: string): Promise<ServerDocument>;
+  refresh(localId: string, resolutions?: SourceResolution[]): Promise<ServerDocument>;
   remove(localId: string): Promise<void>;
+  reconfirm?(localId: string, input: ReconfirmInput): Promise<ServerDocument>;
 }
 
 export const BUSY = "앞선 요청이 끝난 뒤에 다시 시도해주세요.";
@@ -171,7 +172,15 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
 
     /** 확정 취소와 근거 다시 반영. 서버가 준 문서를 그대로 쓴다 — 상태를 지어내지 않는다. */
     unconfirm: () => replace(api.unconfirm),
-    refresh: () => replace(api.refresh),
+    refresh: (resolutions?: SourceResolution[]) =>
+      replace((localId) => api.refresh(localId, resolutions)),
+    reconfirm: (input: ReconfirmInput) =>
+      mutate(async (doc, mine) => {
+        if (!api.reconfirm) throw new Error("재확정 API가 연결되지 않았어요.");
+        const next = await api.reconfirm(doc.id, input);
+        if (mine === generation) set({ detail: next });
+        return next;
+      }),
 
     remove: () =>
       mutate(async (doc) => {

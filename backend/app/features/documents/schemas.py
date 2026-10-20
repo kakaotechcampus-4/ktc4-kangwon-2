@@ -1,9 +1,9 @@
 """문서(일지 계열) API 의 요청·응답 모델. 계약은 docs/api-spec.md §11 이다."""
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 
 class DocumentGeneration(BaseModel):
@@ -159,3 +159,59 @@ class DocumentConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     checks: DocumentChecks
+
+
+class SourceComparisonItem(BaseModel):
+    id: int
+    before: str
+    after: str | None
+    state: Literal["changed", "unchanged", "missing"]
+
+
+class SourceReplacementCandidate(BaseModel):
+    """사라진 근거를 대신할 수 있는 같은 반·같은 날의 일과 기록."""
+
+    id: int
+    text: str
+
+
+class DocumentSourceComparison(BaseModel):
+    document_id: int
+    updated_at: datetime
+    review_token: str
+    sources: list[SourceComparisonItem]
+    can_reconfirm: bool
+    # 사라진 근거가 있을 때만 쓴다. 이미 이 문서가 쓰는 일과와 활동실행이 빈 일과는 빼고 준다.
+    candidates: list[SourceReplacementCandidate] = []
+
+
+class SourceResolution(BaseModel):
+    """사라진 근거 하나를 어떻게 할지. `replace` 만 `replacement_id` 를 쓴다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: int
+    action: Literal["drop", "replace"]
+    replacement_id: int | None = None
+
+
+class DocumentRefreshRequest(BaseModel):
+    """`POST /api/documents/{id}/refresh` 의 **선택** 본문. 본문 없이 보내던 호출은 그대로다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resolutions: list[SourceResolution] = []
+
+
+class DocumentReconfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_token: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
+    updated_at: datetime
+    checks: DocumentChecks
+    # 본문은 기존 sections의 Text 계약이다. 사실은 서버가 원본에서 다시 구성한다.
+    sections: list[DocumentSectionUpdate]
+    # 미지정이면 기존 메모를 보존한다. 검토 완료 문구를 서버가 만들지 않는다.
+    review_note: str | None = None
+    # 사라진 근거를 뺄지 바꿀지. 비어 있으면 예전과 똑같이 동작한다 — 하나라도 사라졌으면 거절이다.
+    resolutions: list[SourceResolution] = []

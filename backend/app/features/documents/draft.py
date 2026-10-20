@@ -18,6 +18,16 @@ from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 #                  개인정보)과 분량(해석 2~4 · 지원 2~3문장)을 프롬프트에 넣었다.
 #                  올리지 않으면 v1 로 만든 문서와 구분이 안 된다.
 RULE_VERSION = "v2"
+# mock 초안임을 **본문 밖에서** 알린다. 예전에는 본문 앞에 `[mock]` 을 붙였는데, 교사가 읽는
+# 제출 문서에 시스템 글자가 섞였다. 그렇다고 아무 표시도 없으면 mock 을 실제 AI 로 보이게 한다.
+# **규칙 버전에서 파생한다** — 규칙이 바뀌었는데 mock 표식만 옛 버전이면 둘이 어긋난다.
+MOCK_RULE_VERSION = f"{RULE_VERSION}-mock"
+
+
+def rule_version() -> str:
+    """이 초안이 어떻게 만들어졌나. 화면은 이 값으로 「테스트 초안」을 가른다."""
+    return MOCK_RULE_VERSION if is_mock() else RULE_VERSION
+
 
 KIND_LABELS = {
     "dailyLog": "일일 보육일지",
@@ -104,12 +114,12 @@ def _generate(kind: str, masked_facts: list[str]) -> tuple[str, str]:
     """가명으로 바뀐 사실만 받는다. 여기서 실명을 볼 일이 없다."""
     label = KIND_LABELS[kind]
     if is_mock():
-        # **`[mock]` 을 앞에 붙인다.** 교사가 눈으로 알아보고, 그대로 확정하지 않게 한다.
+        # **본문에 `[mock]` 을 붙이지 않는다** — 제출 문서에 시스템 글자가 남는다.
+        # mock 이라는 사실은 `rule_version()` 이 `-mock` 꼬리로 알리고 화면이 본문 밖에 띄운다.
         return (
             # 해석에 숫자를 넣지 않는다. 사실에 없는 숫자는 shared/gates 가 막는다.
-            f"[mock] {label} 해석 초안입니다. 기록에 드러난 사실만 근거로 "
-            "교사가 의미를 다듬어주세요.",
-            f"[mock] {label} 지원 초안입니다. 다음 활동에서 교사가 할 구체적인 방법과 "
+            f"{label} 해석 초안입니다. 기록에 드러난 사실만 근거로 교사가 의미를 다듬어주세요.",
+            f"{label} 지원 초안입니다. 다음 활동에서 교사가 할 구체적인 방법과 "
             "후속 관찰 계획을 적어주세요.",
         )
     try:
