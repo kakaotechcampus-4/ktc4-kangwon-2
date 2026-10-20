@@ -195,6 +195,14 @@ export async function syncClasses(settings: ClassSettings) {
 export async function adoptServerClasses(
   known: ClassroomEntry[],
   onRosterError?: (className: string) => void,
+  /**
+   * 들인 반을 **저장소에 먼저 적는 함수**. 화면이 넘긴다.
+   *
+   * 연결(`links`)을 먼저 저장하면, 반 목록을 저장하기 전에 새로고침되는 순간
+   * 「연결은 있는데 목록에 없는 반」이 된다 — 그건 교사가 지운 반과 모양이 같아서
+   * 다음부터 영영 안 들어온다. 그래서 **목록 먼저, 연결 나중**이다.
+   */
+  persist?: (adopted: ClassroomEntry[]) => void,
 ): Promise<ClassroomEntry[]> {
   const me = await getMe();
   if (!me.center_id) return [];
@@ -204,10 +212,33 @@ export async function adoptServerClasses(
   // 원 연결을 서버 값으로 만들어 둔다. 없으면 syncCenter 가 원을 새로 만들면서
   // links.classes · links.children 을 통째로 비운다.
   if (!links.center) links.center = { id: me.center_id, signature: ADOPTED };
+
+  // **이 기능이 생기기 전부터 쓰던 계정을 먼저 정리한다.**
+  // `syncClassOnce` 는 반 정보를 고칠 때마다 서버에 반을 새로 만들고 옛 반은 서버에
+  // 남겨 둔다(수정 API 가 없다). 그 옛 반 id 는 `links` 어디에도 없다 — `retired` 는
+  // 이번 판부터 쌓이기 때문이다. 그대로 두면 **고친 적 있는 교사의 옛 반이 전부
+  // 「서버에만 있는 새 반」으로 되살아난다.**
+  //
+  // 그래서 **한 번 쓴 적 있는 계정**(links.classes 에 뭔가 있고 retired 를 적은 적 없는)
+  // 에서는, 지금 연결 안 된 서버 반을 전부 버려진 것으로 적고 이번에는 아무것도 들이지
+  // 않는다. 온보딩을 안 한 계정(초대받은 교사 · 기기 바꾼 교사)은 links.classes 가
+  // 비어 있으므로 이 길을 타지 않는다.
+  if (links.retired === undefined) {
+    const used = Object.keys(links.classes).length > 0;
+    links.retired = used ? items.map((item) => item.id).filter((id) => !linked.has(id)) : [];
+    saveLinks(links);
+    if (used) return [];
+  }
+
   const retired = new Set(links.retired ?? []);
+  // 같은 반을 두 번 담지 않는다. 앞선 시도가 반 목록을 저장하기 전에 끊겼으면
+  // 연결만 남아 있을 수 있는데, 로컬 id 는 서버 id 로 정해지므로 여기서 걸린다.
+  const already = new Set(known.map((c) => c.id));
+  const serverIds = new Map<string, number>();
   const adopted: ClassroomEntry[] = [];
   for (const item of items) {
     if (linked.has(item.id) || retired.has(item.id)) continue;
+    if (already.has(CLASS_PREFIX + item.id)) continue;
     // **연결은 있는데 목록에 없는 반은 교사가 지운 것이다.** removeClass 는 로컬 목록만
     // 지우고 연결은 남긴다. 여기서 다시 들이면 지운 반이 되살아난다.
     if (classLocalId(item.id)) continue;
@@ -230,23 +261,39 @@ export async function adoptServerClasses(
       children: [],
     };
     links.classes[entry.id] = { id: item.id, signature: classSignature(entry) };
+    serverIds.set(entry.id, item.id);
     adopted.push(entry);
   }
-  saveLinks(links); // 들인 반이 없어도 원 연결은 남긴다
-  if (!adopted.length) return [];
-  // 아동 명단은 links 를 저장한 뒤에 받는다 — loadServerChildren 이 그 연결을 본다.
+  if (!adopted.length) {
+    saveLinks(links); // 들인 반이 없어도 원 연결은 남긴다
+    return [];
+  }
+
+  // 아동 명단을 먼저 받는다. **연결에 기대지 않고 서버 id 를 그대로 쓴다** —
+  // 연결은 아직 저장 전이다.
   // 한 반의 명단을 못 받아도 나머지 반은 보여준다 — 하나가 막아서 전부 사라지면
   // 저장소가 빈 교사에게는 화면이 통째로 빈다 (frontend/CLAUDE.md 오류 표시 규칙).
   const filled: ClassroomEntry[] = [];
   for (const entry of adopted) {
     try {
-      filled.push(await loadServerChildren(entry));
+      const { items: kids } = await getChildren(serverIds.get(entry.id) as number);
+      const children: ChildEntry[] = kids.map((kid) => {
+        const id = childLocalId(kid.id) ?? CHILD_PREFIX + kid.id;
+        links.children[id] = kid.id;
+        return { id, name: kid.name, code: kid.code };
+      });
+      filled.push({ ...entry, children, childIds: children.map((child) => child.id) });
     } catch {
       // 명단만 비는 것과 진짜 아이가 없는 것을 교사가 구분할 수 있어야 한다.
       onRosterError?.(entry.className);
       filled.push(entry);
     }
   }
+
+  // **목록 먼저, 연결 나중.** 중간에 끊기면 연결만 없는 상태인데, 로컬 id 가 서버 id 로
+  // 정해져 있어서 기록 쪽은 같은 id 로 풀린다. 반대 순서로 끊기면 반이 영영 사라진다.
+  persist?.(filled);
+  saveLinks(links);
   return filled;
 }
 

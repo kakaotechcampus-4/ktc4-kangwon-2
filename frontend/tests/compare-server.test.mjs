@@ -347,7 +347,8 @@ function pageHarness(api) {
   let cursor = 0,
     dirty = false,
     live = true,
-    tree;
+    tree,
+    readSelection;
   const changed = (before, next) =>
     !before ||
     !next ||
@@ -379,6 +380,7 @@ function pageHarness(api) {
     }
   };
   const useSyncExternalStore = (subscribe, snapshot) => {
+    readSelection = snapshot;
     useEffect(
       () =>
         subscribe(() => {
@@ -453,6 +455,7 @@ function pageHarness(api) {
   return {
     render,
     text: () => content(tree),
+    selectionState: () => readSelection(),
     select(label) {
       const direct = all(tree).find(
         (node) => node.type === "select" && node.props["aria-label"] === label,
@@ -661,3 +664,205 @@ test("실제 ComparePage는 기준을 이동한 뒤 늦은 상세 성공·relate
   assert.deepEqual(page.options("관련 확정 문서"), ["", "document:7"]);
   page.unmount();
 });
+
+test("실제 ComparePage는 기준 ID가 없거나 해제되면 상세와 related 요청을 보내지 않는다", async (t) => {
+  const oldBase = deferred(),
+    oldRelated = deferred();
+  const calls = [];
+  const page = pageHarness(
+    gateway({
+      list: async (query) => {
+        calls.push(["list", query]);
+        return [summary(1)];
+      },
+      get: (id) => {
+        calls.push(["get", id]);
+        return oldBase.promise;
+      },
+      related: (id) => {
+        calls.push(["related", id]);
+        return oldRelated.promise;
+      },
+    }),
+  );
+  t.after(() => page.unmount());
+  await page.settle();
+  assert.deepEqual(calls, [["list", { status: "CONFIRMED" }]]);
+  assert.match(page.text(), /기준 문서를 선택해주세요/);
+  page.select("기준 확정 문서").props.onChange({ target: { value: "" } });
+  await page.settle();
+  assert.equal(calls.length, 1);
+
+  page.select("기준 확정 문서").props.onChange({ target: { value: "document:1" } });
+  page.render();
+  assert.deepEqual(calls.slice(1), [
+    ["get", "document:1"],
+    ["related", "document:1"],
+  ]);
+  page.select("기준 확정 문서").props.onChange({ target: { value: "" } });
+  page.render();
+  assert.equal(calls.length, 3);
+  assert.equal(page.select("기준 확정 문서").props.value, "");
+  assert.match(page.text(), /기준 문서를 선택해주세요/);
+  oldBase.resolve(detail(1, { title: "해제된 기준 원문" }));
+  oldRelated.resolve(relation([summary(9)]));
+  await page.settle();
+  assert.equal(calls.length, 3);
+  assert.equal(page.text().includes("해제된 기준 원문"), false);
+  assert.equal(page.text().includes("문서 1 사실 원문"), false);
+});
+
+test("실제 ComparePage는 related loading·500/network/auth 실패를 빈 성공으로 표시하지 않는다", async (t) => {
+  for (const failure of [
+    Object.assign(new Error("관련 목록 서버 오류"), { status: 500 }),
+    new TypeError("관련 목록 네트워크 오류"),
+    Object.assign(new Error("관련 목록을 보려면 다시 로그인해주세요."), { status: 401 }),
+  ]) {
+    const initial = deferred(),
+      retry = deferred();
+    let requests = 0;
+    const page = pageHarness(
+      gateway({ related: () => (++requests === 1 ? initial.promise : retry.promise) }),
+    );
+    t.after(() => page.unmount());
+    await page.settle();
+    page.select("기준 확정 문서").props.onChange({ target: { value: "document:1" } });
+    await page.settle();
+    assert.match(page.text(), /관련 문서를 찾는 중/);
+    assert.equal(page.text().includes("아직 관련 문서가 없어요."), false);
+    assert.equal(page.text().includes("아직 없음"), false);
+
+    initial.resolve(relation());
+    await page.settle();
+    assert.match(page.text(), /아직 관련 문서가 없어요\./);
+    assert.match(page.text(), /아직 없음/);
+    page.button("관련 목록 다시 불러오기").props.onClick();
+    page.render();
+    assert.match(page.text(), /관련 문서를 찾는 중/);
+    assert.equal(page.text().includes("아직 관련 문서가 없어요."), false);
+    assert.equal(page.text().includes("아직 없음"), false);
+    assert.equal(page.text().includes("필요한 관련 문서"), false);
+    retry.reject(failure);
+    await page.settle();
+    assert.ok(page.text().includes(failure.message));
+    assert.equal(page.text().includes("관련 문서를 찾는 중"), false);
+    assert.equal(page.text().includes("아직 관련 문서가 없어요."), false);
+    assert.equal(page.text().includes("아직 없음"), false);
+    assert.equal(page.text().includes("필요한 관련 문서"), false);
+    assert.equal(page.select("기준 확정 문서").props.value, "document:1");
+    assert.ok(page.text().includes("문서 1 사실 원문"));
+    assert.equal(requests, 2);
+    page.unmount();
+  }
+});
+
+for (const failOld of [false, true]) {
+  test(`실제 ComparePage A→B→A에서 첫 A의 ${failOld ? "실패" : "성공"} 응답은 pending인 새 A를 완료하지 않는다`, async (t) => {
+    const oldBase = deferred(),
+      oldRelated = deferred(),
+      currentBase = deferred(),
+      currentRelated = deferred();
+    let baseReads = 0,
+      relatedReads = 0;
+    const page = pageHarness(
+      gateway({
+        get: (id) => {
+          if (id !== "document:1") return Promise.resolve(detail(2));
+          return ++baseReads === 1 ? oldBase.promise : currentBase.promise;
+        },
+        related: (id) => {
+          if (id !== "document:1") return Promise.resolve(relation([summary(7)]));
+          return ++relatedReads === 1 ? oldRelated.promise : currentRelated.promise;
+        },
+      }),
+    );
+    t.after(() => page.unmount());
+    await page.settle();
+    page.select("기준 확정 문서").props.onChange({ target: { value: "document:1" } });
+    page.render();
+    page.select("기준 확정 문서").props.onChange({ target: { value: "document:2" } });
+    await page.settle();
+    assert.ok(page.text().includes("문서 2 사실 원문"));
+    page.select("기준 확정 문서").props.onChange({ target: { value: "document:1" } });
+    page.render();
+    assert.match(page.text(), /문서 상세를 불러오는 중/);
+    assert.match(page.text(), /관련 문서를 찾는 중/);
+    assert.equal(page.text().includes("문서 2 사실 원문"), false);
+    if (failOld) {
+      oldBase.reject(new Error("첫 A 상세 실패"));
+      oldRelated.reject(new Error("첫 A related 실패"));
+    } else {
+      oldBase.resolve(detail(1, { title: "첫 A 상세 응답" }));
+      oldRelated.resolve(relation([summary(99, { title: "첫 A 관련 응답" })]));
+    }
+    await page.settle();
+    assert.equal(page.select("기준 확정 문서").props.value, "document:1");
+    assert.match(page.text(), /문서 상세를 불러오는 중/);
+    assert.match(page.text(), /관련 문서를 찾는 중/);
+    for (const old of ["첫 A 상세", "첫 A related", "첫 A 관련 응답"])
+      assert.equal(page.text().includes(old), false);
+    assert.equal(page.text().includes("아직 관련 문서가 없어요."), false);
+    currentBase.resolve(detail(1, { title: "두 번째 A 상세 응답" }));
+    currentRelated.resolve(relation([summary(8)]));
+    await page.settle();
+    assert.ok(page.text().includes("두 번째 A 상세 응답"));
+    assert.deepEqual(page.options("관련 확정 문서"), ["", "document:8"]);
+    assert.equal(page.text().includes("관련 문서를 찾는 중"), false);
+    assert.equal(baseReads, 2);
+    assert.equal(relatedReads, 2);
+  });
+}
+
+for (const failOld of [false, true]) {
+  test(`실제 ComparePage cleanup 뒤 이전 instance의 ${failOld ? "실패" : "성공"} 응답은 재입장한 화면과 이전 store를 변경하지 않는다`, async (t) => {
+    const oldBase = deferred(),
+      oldRelated = deferred();
+    let lists = 0,
+      baseReads = 0,
+      relatedReads = 0;
+    const api = gateway({
+      list: async () => {
+        lists += 1;
+        return [summary(1)];
+      },
+      get: () =>
+        ++baseReads === 1
+          ? oldBase.promise
+          : Promise.resolve(detail(1, { title: "새 instance의 원문" })),
+      related: () =>
+        ++relatedReads === 1 ? oldRelated.promise : Promise.resolve(relation([summary(8)])),
+    });
+    const previous = pageHarness(api);
+    t.after(() => previous.unmount());
+    await previous.settle();
+    previous.select("기준 확정 문서").props.onChange({ target: { value: "document:1" } });
+    previous.render();
+    const oldState = previous.selectionState();
+    previous.unmount();
+    const current = pageHarness(api);
+    t.after(() => current.unmount());
+    await current.settle();
+    assert.equal(current.select("기준 확정 문서").props.value, "");
+    current.select("기준 확정 문서").props.onChange({ target: { value: "document:1" } });
+    await current.settle();
+    assert.ok(current.text().includes("새 instance의 원문"));
+    assert.deepEqual(current.options("관련 확정 문서"), ["", "document:8"]);
+    if (failOld) {
+      oldBase.reject(new Error("이전 instance 상세 실패"));
+      oldRelated.reject(new Error("이전 instance related 실패"));
+    } else {
+      oldBase.resolve(detail(1, { title: "이전 instance의 원문" }));
+      oldRelated.resolve(relation([summary(99)]));
+    }
+    await previous.settle();
+    await current.settle();
+    assert.deepEqual(previous.selectionState(), oldState);
+    assert.equal(current.select("기준 확정 문서").props.value, "document:1");
+    assert.ok(current.text().includes("새 instance의 원문"));
+    assert.equal(current.text().includes("이전 instance"), false);
+    assert.deepEqual(current.options("관련 확정 문서"), ["", "document:8"]);
+    assert.equal(lists, 2);
+    assert.equal(baseReads, 2);
+    assert.equal(relatedReads, 2);
+  });
+}

@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { classServerId } from "./onboarding";
 
 /**
  * 일과 기록 (docs/api-spec.md §10-1). **일일 보육일지의 「사실」이 여기서 나온다.**
@@ -14,7 +15,13 @@ export type Routine = {
   date: string;
   /** 하루 안의 표시 순서. 종이의 행 순서다. */
   position: number;
-  /** HH:MM. 둘 다 있으면 start < end. 없을 수 있다. */
+  /**
+   * `HH:MM:SS`. 서버가 `datetime.time` 을 그대로 내보내 **초까지 온다**(`"09:20:00"`).
+   * 둘 다 있으면 start < end. 없을 수 있다.
+   *
+   * 화면 입력칸(`<input type="time">`)은 `HH:MM` 을 주고받는다 — 보낼 때는 그대로 보내도
+   * 서버가 받는다. 받은 값을 입력칸에 넣을 때만 앞 다섯 글자를 쓴다(`toTimeInput`).
+   */
   start: string | null;
   end: string | null;
   name: string;
@@ -151,5 +158,62 @@ export async function copyFromPreviousDay(classId: number, date: string): Promis
     name: row.name,
     plan: "",
     execution: "",
+  }));
+}
+
+// 서버 id 는 테이블마다 1 부터 센다. 관찰 기록 · 문서 id 와 섞이지 않게 접두사를 붙인다.
+const ROUTINE_PREFIX = "routine:";
+const SERVER_ID = /^[1-9][0-9]*$/;
+
+export const routineLocalId = (serverId: number) => ROUTINE_PREFIX + serverId;
+
+export function routineServerId(localId: string): number | null {
+  if (!localId.startsWith(ROUTINE_PREFIX)) return null;
+  const raw = localId.slice(ROUTINE_PREFIX.length);
+  if (!SERVER_ID.test(raw)) return null;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+export const UNMAPPED_CLASS = "반 정보를 확인할 수 없어요. 다시 불러와주세요.";
+
+/** 일지 만들기 화면이 보는 한 줄 (S-J2). 서버 모양(`Routine`)을 화면 말로 줄인 것이다. */
+export interface RoutineLine {
+  /** `routine:12`. 문서의 `source_ids` 로 나갈 때 숫자로 되돌린다. */
+  id: string;
+  date: string;
+  /** 「09:20 ~ 10:40」. 비어 있을 수 있다. */
+  time: string;
+  name: string;
+  execution: string;
+}
+
+/** 서버가 준 `"09:20:00"` 을 `<input type="time">` 이 받는 `"09:20"` 으로. */
+export const toTimeInput = (value: string | null) => (value ? value.slice(0, 5) : "");
+
+/** 「09:20 ~ 10:40」. 한쪽만 있으면 그쪽만, 둘 다 없으면 빈 문자열 — 서버 사실 줄과 같은 규칙이다. */
+function timeRange(start: string | null, end: string | null) {
+  if (start && end) return `${toTimeInput(start)} ~ ${toTimeInput(end)}`;
+  if (start) return `${toTimeInput(start)} ~`;
+  if (end) return `~ ${toTimeInput(end)}`;
+  return "";
+}
+
+/**
+ * 그 반 · 그 날의 일과를 **화면 말로** 받는다 (S-J2).
+ *
+ * 반은 화면 id 로 받아 서버 id 로 바꾼다. 연결이 없으면 부르지 않는다 — 남의 반을
+ * 부르느니 「다시 불러와주세요」가 낫다.
+ */
+export async function listDayRoutines(classLocalId: string, date: string): Promise<RoutineLine[]> {
+  const id = classServerId(classLocalId);
+  if (id === null) throw new Error(UNMAPPED_CLASS);
+  const rows = await listRoutinesOfDay(id, date);
+  return rows.map((row) => ({
+    id: routineLocalId(row.id),
+    date: row.date,
+    time: timeRange(row.start, row.end),
+    name: row.name,
+    execution: row.execution.trim(),
   }));
 }

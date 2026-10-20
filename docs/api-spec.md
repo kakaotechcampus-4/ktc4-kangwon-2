@@ -1973,6 +1973,13 @@ sections 에 빈 body 가 있다
 
 **전부 `VALIDATION_FAILED` 422 다.** `fields` 에 어디가 틀렸는지 담는다 — `sections.해석` · `sources.3`.
 
+**같은 반 · 같은 날 일일 보육일지가 이미 있으면 `409 ALREADY_EXISTS` 다** (`fields: ["start"]`).
+응답을 못 받은 교사가 다시 누르면 둘이 생긴다 — 연간계획안과 같은 모양으로 막는다.
+모델을 부르기 전에 보고, 저장 직전에 반을 잠그고 한 번 더 본다. 화면은 목록에서 그 일지를 열게 한다.
+
+**예산 초과는 `503 LLM_BUDGET_EXCEEDED` 다.** `GENERATION_FAILED` 500 으로 뭉치지 않는다 —
+키가 지워져서 다시 눌러도 안 된다. 화면은 「다시 시도」가 아니라 「담당자에게 알려주세요」를 띄운다.
+
 ### `stale` — 원본이 바뀌었다는 표시
 
 ```
@@ -2162,7 +2169,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일.  �
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
 
 ### 겹치는 문서를 찾아준다 — `/compare` 화면
 
@@ -2396,7 +2403,7 @@ NONE           없음        뒷받침 문서가 0건
 그래서 **관찰일지 수로 세지 않는다. 연간 보육계획안은 4-1 서류가 아니다** — 영역 5 검토문서다(p.171).
 
 월간계획안의 대상 달은 `plans.target_month`(`YYYY-MM`) 칸에 있다 — `plans.body.target_month` 에서 꺼낸 값이다(결정 문서 12.6 PR-2 에서 추가).
-**plans 소유(승석)의 조회 함수로 읽는다. feature 간 직접 import 하지 않는다.** 함수는 아직 없다(아래 「아직 정하지 않은 것」).
+**plans 소유(승석)의 조회 함수로 읽는다. feature 간 직접 import 하지 않는다.** 함수는 `plans/queries.py` 의 `confirmed_monthly_plans` 다(#156).
 계획안 id 는 `plan_ids`, 일지 id 는 `document_ids` 로 낸다.
 **3월 초에는 검토 기간이 지난 학년도에 걸친다. 반은 학년도마다 새 행이라 지난 학년도 반의 서류는 안 잡힌다.**
 
@@ -2492,7 +2499,7 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 
 ```
 □  지표 파일 v2 — 평가요소 19개 나누기 · 1 2 3 4 5 정리   승석
-□  plans 조회 함수 — 반 · 대상 달 · 확정 여부로 월간계획안을 찾는다   승석
+■  plans 조회 함수 — 반 · 대상 달 · 확정 여부로 월간계획안을 찾는다   완료 — 승석 #156
 □  4-2 와 ADR-007 「발달평가 스펙아웃」             승석 · PM    PM 확인 대기. assessment 와 같은 것인지
 □  새 학년도에 아동 행을 옮기나 새로 만드나 — 4-2 가 지난 학년도 평가를 찾는지가 갈린다   반 · 아동 담당 · PM
 □  달력 테이블(특일정보 API) — 생기면 4-1 의 평일에서 공휴일을 뺀다   승석
