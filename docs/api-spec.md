@@ -1973,6 +1973,13 @@ sections 에 빈 body 가 있다
 
 **전부 `VALIDATION_FAILED` 422 다.** `fields` 에 어디가 틀렸는지 담는다 — `sections.해석` · `sources.3`.
 
+**같은 반 · 같은 날 일일 보육일지가 이미 있으면 `409 ALREADY_EXISTS` 다** (`fields: ["start"]`).
+응답을 못 받은 교사가 다시 누르면 둘이 생긴다 — 연간계획안과 같은 모양으로 막는다.
+모델을 부르기 전에 보고, 저장 직전에 반을 잠그고 한 번 더 본다. 화면은 목록에서 그 일지를 열게 한다.
+
+**예산 초과는 `503 LLM_BUDGET_EXCEEDED` 다.** `GENERATION_FAILED` 500 으로 뭉치지 않는다 —
+키가 지워져서 다시 눌러도 안 된다. 화면은 「다시 시도」가 아니라 「담당자에게 알려주세요」를 띄운다.
+
 ### `stale` — 원본이 바뀌었다는 표시
 
 ```
@@ -2162,7 +2169,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일.  �
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
 
 ### 겹치는 문서를 찾아준다 — `/compare` 화면
 
