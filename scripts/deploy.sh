@@ -2,6 +2,12 @@
 # 서버에서 도는 배포 스크립트. GitHub Actions 가 SSM send-command 로 이 파일의
 # 내용을 통째로 보낸다(.github/workflows/deploy.yml). 서버에 미리 있을 필요가 없다.
 #
+# **이 쉬뱅이 보내는 글의 첫 줄이어야 한다.** SSM 은 `commands` 배열을 줄로 이어 붙여
+# 한 파일로 만들고, 첫 줄이 `#!` 가 아니면 bash 가 아니라 `sh`(우분투는 dash)로 돈다.
+# dash 에는 `pipefail` 이 없어서 아래 `set -euo pipefail` 에서 바로 죽는다
+# (2026-10-20 에 실제로 당했다 — `_script.sh: 9: set: Illegal option -o pipefail`).
+# 워크플로가 앞에 다른 줄을 끼울 일이 생기면 쉬뱅을 맨 앞에 따로 넣어 준다.
+#
 # 손으로 배포할 때도 같은 것을 쓴다 — Session Manager 로 들어가서
 #   bash /home/ubuntu/ktc4-kangwon-2/scripts/deploy.sh
 # 자동과 수동이 다른 명령을 돌면 「손으로는 되는데 CI 는 안 된다」가 생긴다.
