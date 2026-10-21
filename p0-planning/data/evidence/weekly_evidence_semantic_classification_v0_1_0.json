@@ -12,9 +12,9 @@
     "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE"
   },
   "review": {
-    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
-    "approved_by": null,
-    "approved_at": null,
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_01",
+    "approved_at": "2026-10-21T09:51:48+09:00",
     "review_scope_note": "이 분류 artifact만 승인한다. 원본 corpus는 계속 CORPUS_OBSERVATION_NON_NORMATIVE / CONTEXT_ONLY다. 승인 전에는 주간 생성이 이 분류를 쓰지 않는다 — indoor_play · indoor_alternative · group_activity 칸은 근거 없음으로 비운다(docs/weekly-plan-contract.md §7-3 · §7-4).",
     "reviewer_identity_rule": "reviewer_<role>_<sequence> 규칙을 따른다(월간 분류와 같음).",
     "review_record": "docs/weekly-evidence-classification-review.md"

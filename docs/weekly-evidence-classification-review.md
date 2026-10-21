@@ -1,12 +1,13 @@
 # 주간 근거 분류 v0.1.0 — 사람 검토 요청 (W2-E)
 
 - 2026-10-21 보완 · 하민 · 기준 develop `e39a477` · Evidence Store `institution_evidence_v0_1_0.json`(변경 없음)
-- 대상 파일: `p0-planning/data/evidence/weekly_evidence_semantic_classification_v0_1_0.json` — **`PENDING_HUMAN_REVIEW`**
+- 대상 파일: `p0-planning/data/evidence/weekly_evidence_semantic_classification_v0_1_0.json` — **`HUMAN_APPROVED`**
+  (2026-10-21, `reviewer_ai_lead_01` = 하민 · AI 리드. 허용 179개 · §6 결정 반영. 승인은 이 분류 Artifact 만이고 원본 corpus 상태는 그대로다)
 - 계약: `docs/weekly-plan-contract.md` §7 (W1, #184)
 - **기관 번호(I01 · I02 …)는 이 문서에서만 쓰는 번호다.** W0 조사(`docs/weekly-reference-survey.md`)의 I01 ~ I11 과 **다른 기관**을 가리킨다 — 두 문서의 번호를 섞어 읽지 않는다.
 
 **이 문서가 승인을 요청하는 것.** 기관 자료의 원문 행 이름(`source_label`) 241개 중 어느 것을 주간 실내놀이 · 대·소집단 · 대체놀이의 근거로 쓸지다.
-승인 전에는 주간 생성이 이 분류를 쓰지 않는다 — 세 칸은 근거 없음으로 비운다(W1 §7-3 · §7-4). **코드 변경은 없다.**
+승인 전에는 주간 생성이 이 분류를 쓰지 않았다(W1 §7-3 · §7-4). 이 분류를 읽어 세 칸을 생성하는 코드는 W3c 에서 붙인다. **이 PR 의 코드 변경은 없다.**
 
 **이번 보완(첫 판 `8249a1a` 대비).** 첫 판은 행 이름만 보고 분류했다. 이번에는 Evidence Store 의 출처 · 페이지와 **원본 표를 대조**해
 행 이름이 원본에서 어느 블록 · 어느 행인지 확인했다. 그 결과 바뀐 분류는 §5, 같은 행 이름이 기관마다 다른 뜻인 쟁점은 §6 에 있다.
