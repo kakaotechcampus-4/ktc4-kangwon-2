@@ -1,0 +1,392 @@
+{
+  "status": "DRAFT",
+  "school_year": 2026,
+  "week_id": "2026-09-W2",
+  "week_period": [
+    "2026-09-07",
+    "2026-09-11"
+  ],
+  "operating_days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+  ],
+  "classroom_ref": "classroom_001",
+  "target_ages": [
+    3,
+    4
+  ],
+  "generation_mode": "LLM_PLANNER",
+  "template": "ssuksak.weekly-template-a/weekly-template-a-v0.1.0",
+  "parent_lineage": {
+    "parent_plan_id": "monthly-final_plan_001",
+    "confirmed_by": "teacher_001"
+  },
+  "constraints": [
+    [
+      "STATUTORY_SAFETY_EDUCATION",
+      "NOT_VERIFIED_SOURCE_REQUIRED"
+    ]
+  ],
+  "activity_catalog": "ssuksak.outdoor-activity-reference/activity-reference-v0.2.1",
+  "plan_audit": [
+    {
+      "type": "CREATED",
+      "actor": null,
+      "system_actor": "weekly_application"
+    }
+  ],
+  "cells": [
+    {
+      "section_key": "theme",
+      "value": "우리나라와 세계 여러 나라 속 이번 주 놀이",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v1"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        }
+      ],
+      "parent_snapshots": [
+        [
+          "monthly-final_item_001",
+          "우리나라와 세계 여러 나라"
+        ]
+      ],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "focus",
+      "value": "우리나라와 세계 여러 나라 — 이번 주 focus 계획",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v1"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "INSTITUTION_SAMPLE",
+          "source_id": "ev_94f47aa3838e_p01_r00099_c01_i01",
+          "source_version": "institution-evidence-ingestion-v0.1.0"
+        }
+      ],
+      "parent_snapshots": [
+        [
+          "monthly-final_item_013",
+          "Context-based weekly focus 2"
+        ]
+      ],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "goals",
+      "value": "우리나라와 세계 여러 나라 — 이번 주 goals 계획",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v1"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "INSTITUTION_SAMPLE",
+          "source_id": "ev_001a699286ca_p01_r00089_c01_i01",
+          "source_version": "institution-evidence-ingestion-v0.1.0"
+        }
+      ],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "basic_habit",
+      "value": "우리나라와 세계 여러 나라 — 이번 주 basic_habit 계획",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v1"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "INSTITUTION_SAMPLE",
+          "source_id": "ev_675801d6d3e2_p02_r00448_c514_i01",
+          "source_version": "institution-evidence-ingestion-v0.1.0"
+        }
+      ],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "safety_education",
+      "value": "이번 주에도 10월 2일 소방서 견학 전에 불이 나면 대피하는 길을 익혀요",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v1"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        }
+      ],
+      "parent_snapshots": [
+        [
+          "monthly-final_item_008",
+          "10월 2일 소방서 견학 전에 불이 나면 대피하는 길을 익혀요"
+        ]
+      ],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "indoor_play",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "group_activity",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "outdoor_play",
+      "value": "가을 나들이",
+      "state": "FILLED",
+      "generation": {
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v1"
+      },
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "ACTIVITY_REFERENCE",
+          "source_id": "act_outdoor_autumn_outing",
+          "source_version": "activity-reference-v0.2.1"
+        }
+      ],
+      "parent_snapshots": [
+        [
+          "monthly-final_item_001",
+          "우리나라와 세계 여러 나라"
+        ],
+        [
+          "monthly-final_item_002",
+          "무궁화 꽃이 피었습니다"
+        ],
+        [
+          "monthly-final_item_004",
+          "Context-based outdoor activity 3"
+        ],
+        [
+          "monthly-final_item_005",
+          "Context-based outdoor activity 4"
+        ],
+        [
+          "monthly-final_item_006",
+          "Context-based outdoor activity 5"
+        ]
+      ],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "indoor_alternative",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": {
+        "method": "RULE_ONLY",
+        "rule_id": "weekly.cell.rule_only_empty",
+        "rule_version": "v1"
+      },
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "family_link",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": null,
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "event_schedule",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": null,
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    },
+    {
+      "section_key": "special_program",
+      "value": "",
+      "state": "EMPTY_VALID",
+      "generation": null,
+      "evidence": [],
+      "parent_snapshots": [],
+      "audit": [
+        {
+          "type": "CREATED",
+          "actor": null,
+          "system_actor": "weekly_application"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "executed_rules": [
+      "monthly.activity.supported_ages/v2",
+      "weekly.safety.grounding/v1",
+      "weekly.fact.scope/v1"
+    ],
+    "findings": [
+      [
+        "theme",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
+        "focus",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
+        "goals",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
+        "basic_habit",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
+        "safety_education",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
+        "outdoor_play",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ]
+    ]
+  },
+  "activity_selection": null,
+  "optional_context": []
+}

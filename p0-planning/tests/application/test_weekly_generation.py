@@ -10,7 +10,6 @@ from ssuksak.planning.application import generate_weekly_plan as weekly
 from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.application.ports import OptionalContextStatus
 from ssuksak.planning.domain.monthly_constraint import CellState
-from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.monthly_verification import FindingKind
 from ssuksak.planning.domain.provenance import EvidenceSource, EvidenceSourceType
 from ssuksak.planning.domain.safety_placement import SafetyKind, SafetyPlacement
@@ -235,13 +234,6 @@ def test_pending_weekly_template_blocks_generation():
         harness.generate_weekly(harness.monthly_parent(), templates=pending)
     assert _code(excinfo) == "monthly_template_not_approved"
     assert len(harness.weekly_plans) == 0
-
-
-def test_llm_planner_is_refused_not_answered_by_rules():
-    harness = WeeklyHarness()
-    with pytest.raises(MonthlyApplicationError) as excinfo:
-        harness.generate_weekly(harness.monthly_parent(), mode=MonthlyGenerationMode.LLM_PLANNER)
-    assert _code(excinfo) == "weekly_generation_mode_unsupported"
 
 
 def test_optional_context_failure_is_recorded_and_generation_succeeds():

@@ -1,4 +1,4 @@
-"""Weekly test harness: the monthly PlanningHarness plus a confirmed parent and W3a generation."""
+"""Weekly test harness: the monthly PlanningHarness plus a confirmed parent and weekly generation."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Any
 from ssuksak.adapters.deterministic import DeterministicIdGenerator
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
+from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.planning.application.generate_weekly_plan import (
     GenerateWeeklyPlan,
     GenerateWeeklyPlanCommand,
@@ -17,6 +18,7 @@ from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyP
 from ssuksak.planning.domain.monthly_template import TemplateRef
 from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS, OperatingDay, WeeklyPlan
+from ssuksak.planning.planner.weekly import WeeklyPlanner
 
 from .harness import ACTIVITY_CATALOG, SAFETY_RULE, ApprovedTemplates, PlanningHarness
 from .snapshots import _audit, _evidence, _generation
@@ -34,10 +36,13 @@ class WeeklyHarness(PlanningHarness):
         self.weekly_templates = JsonMonthlyTemplateRepository(paths=(WEEKLY_TEMPLATE_PATH,))
         # Generation sees the approved fixture; the real file stays PENDING (ADR-027).
         self.weekly_generation_templates = ApprovedTemplates(self.weekly_templates)
+        self.weekly_provider = RequestAwareWeeklyLlm()
 
-    def monthly_parent(self, *, confirm: bool = True) -> MonthlyPlan:
+    def monthly_parent(
+        self, *, confirm: bool = True, mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
+    ) -> MonthlyPlan:
         yearly = self.confirm_yearly(self.generate_yearly().plan)
-        monthly = self.generate_monthly(yearly, MonthlyGenerationMode.RULE_ONLY).plan
+        monthly = self.generate_monthly(yearly, mode).plan
         return self.confirm_monthly(monthly) if confirm else monthly
 
     def generate_weekly(
@@ -50,6 +55,7 @@ class WeeklyHarness(PlanningHarness):
         templates=None,
         optional_context=None,
         optional_context_names: tuple[str, ...] = (),
+        provider=None,
     ) -> GenerateWeeklyPlanResult:
         return GenerateWeeklyPlan(
             parent_plan_repository=self.monthly_plans,
@@ -60,6 +66,8 @@ class WeeklyHarness(PlanningHarness):
             id_generator=self.weekly_ids,
             activity_repository=self.activities,
             optional_context=optional_context,
+            context_pipeline=self.context,
+            planner=WeeklyPlanner(provider or self.weekly_provider),
         ).execute(
             GenerateWeeklyPlanCommand(
                 parent_monthly_plan_id=parent.plan_id,
