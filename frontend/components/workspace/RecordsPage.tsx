@@ -9,6 +9,7 @@ import type { ServerObservation } from "@/lib/api/observations";
 import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
+import { classServerId } from "@/lib/api/onboarding";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -16,6 +17,8 @@ import {
   fieldErrorProps,
   type ViewStatus,
 } from "./WorkspaceViewState";
+
+const ENTRY_NONE = { classId: "", childId: "" };
 
 // 서버 observations.context 컬럼이 50자다. 더 받으면 저장할 때 422 다.
 const CONTEXT_MAX = 50;
@@ -42,10 +45,23 @@ export default function RecordsPage() {
   const [status, setStatus] = useState<RecordsStatus>("loading");
   const [listError, setListError] = useState("");
   const [pending, setPending] = useState(false);
+  // 우리 반 홈의 「이 아이 기록 보기」가 반·아이를 주소로 넘긴다. 없으면 주 반을 연다.
+  const [entry] = useClientState(() => {
+    if (typeof window === "undefined") return { classId: "", childId: "" };
+    const q = new URLSearchParams(window.location.search);
+    return { classId: q.get("class") ?? "", childId: q.get("child") ?? "" };
+  }, ENTRY_NONE);
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const classId = pickedClass ?? primaryClass;
   const [childId, setChildId] = useState("");
+  // entry 는 hydration 뒤에야 값이 온다. 그래서 초기값이 아니라 한 번만 도는 채움으로 넣는다.
+  const [entryUsed, setEntryUsed] = useState(false);
+  if ((entry.classId || entry.childId) && !entryUsed) {
+    setEntryUsed(true);
+    if (entry.classId) setClassId(entry.classId);
+    if (entry.childId) setChildId(entry.childId);
+  }
   const [date, setDate] = useState(today);
   const [domain, setDomain] = useState(DOMAINS[0]);
   const [context, setContext] = useState("");
@@ -57,6 +73,17 @@ export default function RecordsPage() {
   const [search, setSearch] = useState("");
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);
+  // 문서 보관함의 「만들기」로 바로 가는 주소. 반은 서버 번호, 아이는 화면 id 다
+  // (S-J1 로 가는 routinesPath 와 같은 규칙 — 반을 못 바꾸면 날짜만 들고 간다).
+  const observationHref = (() => {
+    const query = new URLSearchParams({ kind: "observation" });
+    if (childId) query.set("child", childId);
+    if (validDate(date)) query.set("date", date);
+    const serverId = classId ? classServerId(classId) : null;
+    if (serverId !== null) query.set("class_id", String(serverId));
+    return `/documents?${query}`;
+  })();
+
   // 늦게 온 옛 조회가 최신 목록을 덮지 않게 조회마다 번호를 매긴다.
   const latest = useRef(0);
 
@@ -186,8 +213,10 @@ export default function RecordsPage() {
           </h2>
           <p>사실은 교사의 기록에서, 해석과 지원은 그 근거 위에서 시작합니다.</p>
         </div>
-        <Link href="/documents" className={ws.primary}>
-          기록으로 문서 만들기 →
+        {/* 보고 있던 반 · 아이 · 날짜를 그대로 들고 간다. 전에는 빈 보관함이 열려
+            교사가 조건을 처음부터 다시 골라야 했다. */}
+        <Link href={observationHref} className={ws.primary}>
+          {childId ? "이 아이 관찰일지 만들기 →" : "기록으로 문서 만들기 →"}
         </Link>
       </section>
       <div className={ws.stats}>

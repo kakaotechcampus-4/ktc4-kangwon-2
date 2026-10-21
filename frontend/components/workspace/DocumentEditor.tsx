@@ -63,6 +63,8 @@ export interface ServerDocumentActions {
   refresh: (resolutions?: SourceResolution[]) => Promise<SavedDocument>;
   remove: () => Promise<void>;
   reconfirm?: (input: ReconfirmInput) => Promise<SavedDocument>;
+  /** 확정한 관찰일지 · 일일 보육일지를 hwpx 로 받는다 (§11). 그 밖의 종류에는 없다. */
+  exportHwpx?: () => Promise<void>;
 }
 
 export default function DocumentEditor({
@@ -610,6 +612,17 @@ export default function DocumentEditor({
             onClick={exportHwpx}
           >
             {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
+          </button>
+        )}
+        {/* 일지도 같다 — 확정했고 근거가 그대로일 때만. 근거가 바뀐 채로 내보내면
+            교사가 확정한 것과 다른 종이가 나간다 (서버도 409 로 거절한다). */}
+        {server?.exportHwpx && doc.status === "confirmed" && !server.stale && (
+          <button
+            className={ws.secondary}
+            disabled={working}
+            onClick={() => void hwpx.download(server.exportHwpx!)}
+          >
+            한글 파일로 내려받기
           </button>
         )}
         <button

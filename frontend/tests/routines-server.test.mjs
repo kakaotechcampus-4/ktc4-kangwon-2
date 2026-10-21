@@ -1561,6 +1561,8 @@ function recordsPage(t, { rooms = [ROOM_A] } = {}) {
     },
     // 주소를 만드는 쪽도 진짜다 — 반 번호 변환까지 같이 본다.
     "@/lib/workspace/routines-route": routinesRoute,
+    // 문서 보관함으로 가는 길도 반 번호를 쓴다 (「이 아이 관찰일지 만들기」).
+    "@/lib/api/onboarding": onboardingApi,
     "@/lib/api/client": { isUnauthenticated: () => false, invalidFields: () => [] },
     "@/lib/api/onboarding": onboardingApi,
     "@/lib/api/records": {

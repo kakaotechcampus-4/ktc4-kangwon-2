@@ -957,9 +957,10 @@ function RowCard({
       <div className={ws.nameTab}>
         <input
           id={nameFieldId(row.key)}
-          aria-label="일과 이름"
+          aria-label="일과 이름 (필수)"
+          required
           maxLength={NAME_MAX}
-          placeholder="오전 실내놀이"
+          placeholder="일과 이름 (필수) · 예: 오전 실내놀이"
           disabled={busy}
           // 요약에서 이 칸으로 보낼 수 있어야 하고, 읽어 주는 도구도 오류를 알아야 한다.
           aria-invalid={error ? true : undefined}

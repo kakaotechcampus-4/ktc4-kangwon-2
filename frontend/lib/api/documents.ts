@@ -414,6 +414,13 @@ export async function reconfirmDocument(
   );
 }
 
+/**
+ * 확정한 관찰일지 · 일일 보육일지를 hwpx 로 내려받는다 (§11).
+ * 서버가 거절하는 경우는 셋이다 — 확정 전, 근거가 바뀐(`stale`) 문서, 그 밖의 종류.
+ */
+export const downloadDocumentHwpx = (id: number, title: string) =>
+  downloadHwpx(`/api/documents/${id}/export/hwp`, `${title}.hwpx`);
+
 /** 409 셋을 갈라 본다 — 같은 status 라도 교사가 할 일이 다르다. */
 function code(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null;

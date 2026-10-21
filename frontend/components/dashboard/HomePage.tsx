@@ -155,12 +155,12 @@ export default function HomePage() {
         todayCount={todayRecords.length}
       />
 
+      <TodayList records={todayRecords} loading={records === null} />
+
       <div className="mt-8 grid items-start gap-6 md:grid-cols-2">
         <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
         <DomainBoard records={todayRecords} />
       </div>
-
-      <TodayList records={todayRecords} loading={records === null} />
     </PageContainer>
   );
 }
@@ -404,6 +404,12 @@ function ChildSpotlight({
   const [index, setIndex] = useState(0);
   const child = children[index % Math.max(children.length, 1)];
   const latest = records.find((r) => r.childId === child?.id);
+  // 관찰 기록 화면은 기본으로 「주 반」을 연다. 지금 보고 있는 반·아이를 같이 넘겨야 그 아이가 걸린다.
+  const childHref = child
+    ? `/records?class=${encodeURIComponent(
+        classes.find((c) => c.children.some((k) => k.id === child.id))?.id ?? "",
+      )}&child=${encodeURIComponent(child.id)}`
+    : "/records";
 
   return (
     <section className="relative border border-note-soft-line bg-note-soft p-5 shadow-pg-hard">
@@ -438,7 +444,7 @@ function ChildSpotlight({
 
           <div className="mt-4 flex items-center justify-between gap-2">
             <Link
-              href="/records"
+              href={childHref}
               className="flex min-h-11 items-center gap-1 text-[11px] font-semibold text-sun-ink"
             >
               이 아이 기록 보기
