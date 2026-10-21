@@ -1,4 +1,4 @@
-"""계획안 테이블. 연간·월간이 한 테이블을 쓴다.
+"""계획안 테이블. 연간·월간·주간이 한 테이블을 쓴다.
 
 **본문을 행으로 펼치지 않는다.** `YearlyPlan` 은 12개월 × (테마 · 근거 · 생성이력 ·
 감사기록)이고 `MonthlyPlan` 은 Template 과 활성 주차에 따라 칸 수가 달라진다. 이걸
@@ -29,17 +29,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
-KINDS = ("annual", "monthly")
+KINDS = ("annual", "monthly", "weekly")
 STATUSES = ("DRAFT", "CONFIRMED")
 
 
 class Plan(Base):
-    """연간 또는 월간 계획안 하나."""
+    """연간 · 월간 · 주간 계획안 하나."""
 
     __tablename__ = "plans"
     __table_args__ = (
         UniqueConstraint("plan_ref"),
-        CheckConstraint("kind IN ('annual','monthly')", name="kind"),
+        CheckConstraint("kind IN ('annual','monthly','weekly')", name="kind"),
         CheckConstraint("status IN ('DRAFT','CONFIRMED')", name="status"),
         # 연간은 반 하나에 하나다. 라우터가 먼저 보고 409 를 내지만 **최종 보장은 여기다** —
         # 두 요청이 동시에 오면 둘 다 「없다」를 보고 둘 다 만든다. 학년도는 걸지 않는다:
@@ -61,9 +61,18 @@ class Plan(Base):
             unique=True,
             postgresql_where=text("kind = 'monthly'"),
         ),
-        CheckConstraint(
-            "(kind = 'monthly') = (target_month IS NOT NULL)", name="target_month_kind"
+        # 주간은 반 · 주당 하나다(주간 계약 §4-1 G5). 같은 이유로 최종 보장은 여기다.
+        Index(
+            "uq_plans_weekly_per_classroom_week",
+            "center_id",
+            "classroom_ref",
+            "week_id",
+            unique=True,
+            postgresql_where=text("kind = 'weekly'"),
         ),
+        # 월간 · 주간은 대상 달을 가진다 — 주간은 그 주가 속한 달이다(목록을 달로 거른다).
+        CheckConstraint("(kind = 'annual') = (target_month IS NULL)", name="target_month_kind"),
+        CheckConstraint("(kind = 'weekly') = (week_id IS NOT NULL)", name="week_id_kind"),
     )
 
     # 계약의 id 는 정수다(api-spec §4). 화면이 이미 정수로 만들어져 있다.
@@ -78,13 +87,18 @@ class Plan(Base):
         index=True,
         comment="원 격리용. 조회가 항상 이 값으로 먼저 걸린다",
     )
-    kind: Mapped[str] = mapped_column(String(10), comment="annual | monthly")
+    kind: Mapped[str] = mapped_column(String(10), comment="annual | monthly | weekly")
     school_year: Mapped[int] = mapped_column(comment="학년도. 3월~익년 2월")
     classroom_ref: Mapped[str] = mapped_column(
         String(50), index=True, comment="도메인이 쓰는 반 참조. classes.id 를 문자열로 담는다"
     )
     target_month: Mapped[str | None] = mapped_column(
-        String(7), comment="월간의 대상 월 YYYY-MM. body 의 target_month 에서 꺼낸 값이다"
+        String(7),
+        comment="월간 · 주간의 대상 월 YYYY-MM. body 의 target_month(주간은 week_id 의 달)에서 "
+        "꺼낸 값이다",
+    )
+    week_id: Mapped[str | None] = mapped_column(
+        String(10), comment="주간의 주 YYYY-MM-Wn. body 의 week_id 에서 꺼낸 값이다"
     )
     status: Mapped[str] = mapped_column(
         String(20), comment="DRAFT | CONFIRMED. body 의 status 에서 꺼낸 값이다"

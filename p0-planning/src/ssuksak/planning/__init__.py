@@ -11,6 +11,7 @@ from .application.confirm_yearly_plan import ConfirmYearlyPlan
 from .application.edit_monthly_plan_item import EditMonthlyPlanItem
 from .application.edit_yearly_plan_item import EditYearlyPlanItem
 from .application.generate_monthly_plan import GenerateMonthlyPlan
+from .application.generate_weekly_plan import GenerateWeeklyPlan, GenerateWeeklyPlanCommand
 from .application.generate_yearly_plan import GenerateYearlyPlan
 from .application.monthly_dto import (
     ActivityCatalogSelector,
@@ -40,6 +41,8 @@ from .domain.errors import InvalidDomainValueError, InvalidStateTransitionError
 from .domain.identifiers import ActorId, ItemId, PlanId
 from .domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from .domain.monthly_template_profile import TemplateProfileRef
+from .domain.week_period import WeekId
+from .domain.weekly_plan import WeeklyPlan
 from .domain.year_month import YearMonth
 from .domain.yearly_plan import YearlyPlan
 
@@ -73,6 +76,10 @@ __all__ = (
     "TemplateProfileRef",
     "MonthlyGenerationMode",
     "YearMonth",
+    # Weekly generation (edit · confirm follow with W4)
+    "GenerateWeeklyPlan",
+    "GenerateWeeklyPlanCommand",
+    "WeekId",
     # Identifiers every mutation command takes
     "PlanId",
     "ItemId",
@@ -80,6 +87,7 @@ __all__ = (
     # Aggregates a PlanRepository implementation stores and returns
     "YearlyPlan",
     "MonthlyPlan",
+    "WeeklyPlan",
     # Errors a caller maps to its own responses
     "YearlyApplicationError",
     "MonthlyApplicationError",
