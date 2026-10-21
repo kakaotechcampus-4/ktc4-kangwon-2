@@ -178,6 +178,7 @@ class CenterSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     trends_enabled: Annotated[bool, Field(strict=True)]
+    weekly_saturday_enabled: Annotated[bool, Field(strict=True)]
 
 
 class CenterSettingsUpdate(BaseModel):
@@ -190,8 +191,9 @@ class CenterSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     trends_enabled: Annotated[bool, Field(strict=True)] | None = None
+    weekly_saturday_enabled: Annotated[bool, Field(strict=True)] | None = None
 
-    @field_validator("trends_enabled")
+    @field_validator("trends_enabled", "weekly_saturday_enabled")
     @classmethod
     def not_null(cls, value: bool | None) -> bool:
         """**안 보낸 것과 null 을 보낸 것은 다르다.**

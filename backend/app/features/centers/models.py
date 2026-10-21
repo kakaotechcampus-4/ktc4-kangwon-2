@@ -36,6 +36,13 @@ class Center(Base):
         nullable=False,
         comment="트렌드봇을 켤지 (FR-808). **기본은 꺼짐** — 부가 기능은 원하는 원이 켠다",
     )
+    weekly_saturday_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+        comment="주간계획안에 토요일을 넣을지 (ADR-030 WQ-01). **기본은 꺼짐** — 월~금",
+    )
     region_sigungu: Mapped[str] = mapped_column(
         String(30), comment="시·군·구. 지역사회 연계 활동 선별에 쓴다"
     )

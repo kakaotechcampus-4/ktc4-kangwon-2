@@ -432,7 +432,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 **GET Response**
 
 ```json
-{ "trends_enabled": false }
+{ "trends_enabled": false, "weekly_saturday_enabled": false }
 ```
 
 설정한 적 없으면 기본값을 채워 내려준다. 빈 객체를 주지 않는다.
@@ -451,6 +451,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 ```json
 { "trends_enabled": true }
+{ "weekly_saturday_enabled": true }
 ```
 
 성품인사와 달리 전체 교체가 아니다. 토글은 **한 번에 하나씩** 누르고, 설정이 늘어날수록
@@ -473,6 +474,18 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 **이미 만든 계획안을 고치지 않는다.** 끈다고 과거 문서가 바뀌면, 교사가 확정해서 제출한
 문서의 내용이 뒤에서 달라진다. 출처는 **그때 그랬다는 기록**이다.
+
+**`weekly_saturday_enabled` — 주간계획안에 토요일을 넣을지.** 기본값은 `false`(월~금)다.
+PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운영하는 원만 켠다.
+반 · 양식이 아니라 원 단위다(`docs/weekly-plan-contract.md` §3).
+
+```
+바뀐다    새로 만드는 주간계획안부터.  만들 때 이 값을 계획안 안에 복사한다(operating_days)
+          토요일이 바꾸는 것은 표시 기간과 칸 안 요일 목록뿐이다
+안 바뀐다  이미 만든 주간계획안.  만들 때 복사한 값 그대로다
+          주차 번호 · 칸 수 · 월간과의 연결.  토요일은 월 경계 계산에 넣지 않는다
+          월간 · 연간계획안
+```
 
 | code | status | 언제 |
 |---|---|---|
