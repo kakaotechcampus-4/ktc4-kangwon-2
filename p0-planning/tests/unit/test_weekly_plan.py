@@ -91,11 +91,11 @@ def _plan(**changes) -> WeeklyPlan:
     return WeeklyPlan(**values)
 
 
-def test_template_is_pending_inactive_and_has_the_contract_sections():
+def test_template_is_approved_active_and_has_the_contract_sections():
     template = _template()
 
     assert str(template.template_ref) == "ssuksak.weekly-template-a/weekly-template-a-v0.1.0"
-    assert not template.is_active
+    assert template.is_active  # PM approved (reviewer_pm_001) — ADR-027 §5
     assert [section.section_key for section in template.activated_sections] == [
         "theme", "focus", "goals", "basic_habit", "safety_education", "indoor_play",
         "group_activity", "outdoor_play", "indoor_alternative",

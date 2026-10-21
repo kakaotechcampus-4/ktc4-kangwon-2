@@ -7,11 +7,11 @@
   "normative_status_note": "공식 주간계획안 작성 지침은 references/official/ 에서 찾지 못했다. 모든 Section 은 판독 가능 10기관 샘플에서 관찰한 것이지 규정된 것이 아니다.",
   "issued_on": "2026-10-20",
   "review": {
-    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
-    "approved_by": null,
-    "approved_at": null,
-    "runtime_active": false,
-    "runtime_active_note": "PENDING_HUMAN_REVIEW. 사람 승인 전에는 runtime 활성 Template 이 아니며 주간계획안 생성의 기반으로 쓰지 않는다(ADR-030 WQ-03 · ADR-027 §5).",
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_pm_001",
+    "approved_at": "2026-10-21T11:01:37+09:00",
+    "runtime_active": true,
+    "runtime_active_note": "HUMAN_APPROVED. 2026-10-21 에 PM 이 12칸 구성(생성 9칸 · 교사 입력 3칸: family_link · event_schedule · special_program)을 보고 승인했다. 주간 Template A 는 Profile 이 없어 12칸이 모두 켜져 있다(W1 §6). 승인 전에는 runtime 활성 Template 이 아니었고 주간계획안 생성의 기반으로 쓰지 않았다. 결정 기록: ADR-030 WQ-03 · docs/adr/027-repeat-by-and-template-approval.md §5.",
     "reviewer_identity_rule": "reviewer_<role>_<sequence> 규칙을 따른다. Plan Confirm 의 actor_id 규칙과 섞지 않는다."
   },
   "evidence_base": {

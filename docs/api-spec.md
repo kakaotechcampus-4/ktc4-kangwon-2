@@ -113,6 +113,7 @@ me       GET /api/auth/me                                               → 200 
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
+| `INTERNAL_ERROR` | 500 | 예상하지 못한 서버 오류. 문구는 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」 고정이고 원인은 서버 기록에만 남긴다 (ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-19) |
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at`) |
 
@@ -431,7 +432,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 **GET Response**
 
 ```json
-{ "trends_enabled": false }
+{ "trends_enabled": false, "weekly_saturday_enabled": false }
 ```
 
 설정한 적 없으면 기본값을 채워 내려준다. 빈 객체를 주지 않는다.
@@ -450,6 +451,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 ```json
 { "trends_enabled": true }
+{ "weekly_saturday_enabled": true }
 ```
 
 성품인사와 달리 전체 교체가 아니다. 토글은 **한 번에 하나씩** 누르고, 설정이 늘어날수록
@@ -472,6 +474,18 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 **이미 만든 계획안을 고치지 않는다.** 끈다고 과거 문서가 바뀌면, 교사가 확정해서 제출한
 문서의 내용이 뒤에서 달라진다. 출처는 **그때 그랬다는 기록**이다.
+
+**`weekly_saturday_enabled` — 주간계획안에 토요일을 넣을지.** 기본값은 `false`(월~금)다.
+PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운영하는 원만 켠다.
+반 · 양식이 아니라 원 단위다(`docs/weekly-plan-contract.md` §3).
+
+```
+바뀐다    새로 만드는 주간계획안부터.  만들 때 이 값을 계획안 안에 복사한다(operating_days)
+          토요일이 바꾸는 것은 표시 기간과 칸 안 요일 목록뿐이다
+안 바뀐다  이미 만든 주간계획안.  만들 때 복사한 값 그대로다
+          주차 번호 · 칸 수 · 월간과의 연결.  토요일은 월 경계 계산에 넣지 않는다
+          월간 · 연간계획안
+```
 
 | code | status | 언제 |
 |---|---|---|
@@ -663,9 +677,17 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 
 ```
 DEPENDENCY_UNAVAILABLE  503   키·주소 설정이 없다.        재시도 무의미
+DEPENDENCY_UNAVAILABLE  503   그 달 · 반 연령에 맞는 승인 주제가 없다.  재시도 무의미
 LLM_BUDGET_EXCEEDED     503   한도·키 삭제(401·403·429).  재시도 무의미
 GENERATION_FAILED       500   호출이 깨졌거나 답이 계약을 어겼다.  재시도 가능
 ```
+
+**주제 후보가 없을 때는 참고자료 문제다**(ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-20). 지금 승인된 주제 참고자료는
+12개월 모두 만 3 · 4 · 5세와 혼합반을 지원하는 주제가 있어 실제로는 생기지 않는다 — 참고자료를 바꾸다 어느 달이 비면 생긴다.
+교사가 고칠 수 없으므로 422 가 아니라 503 이고 문구는 「지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.」다.
+
+**그 밖의 도메인 거절은 422 `VALIDATION_FAILED` · 「입력값을 확인해주세요.」 고정 문구다.** Core 의 영어 문장을 그대로 보내지 않는다 —
+원문은 서버 기록에만 남긴다(월간 §9-1 과 같다).
 
 **부분 결과를 저장하지 않는다.** 열두 달 중 하나라도 어긋나면 계획안 자체를 만들지 않는다.
 
@@ -768,6 +790,7 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 ```
 
 `DRAFT` 든 `CONFIRMED` 든 같은 코드다 — FE 가 할 행동이 "기존 것으로 이동" 으로 같다.
+**같은 반으로 동시에 두 번 눌러도 같다** — 둘 다 「아직 없다」를 보고 지나가도 늦은 쪽은 저장에서 반당 하나 제약에 걸려 이 409 를 받는다.
 기존 것은 §5 목록 조회로 찾는다.
 
 **재생성·삭제는 P0 에 없다.** 마음에 안 드는 칸은 §6 으로 고친다. 계획안 전체도, 선택한 한 달도 다시 만들지 않는다 —
@@ -780,7 +803,7 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 | **loading** | ★ 수 초 걸린다. 진행 표시가 없으면 교사가 다시 누른다 |
 | empty | 발생하지 않는다 — 12개월이 항상 찬다 |
 | success | S6 으로 이동 |
-| error | `NO_ACTIVITIES` 503 → "활동 데이터가 없습니다" (운영 문의). **자동 재시도하지 않는다**<br>`LLM_BUDGET_EXCEEDED` 503 → 운영 문의<br>`ALREADY_EXISTS` 409 → 기존 계획안으로 이동<br>`GENERATION_FAILED` 500 → 재시도 버튼. **부분 저장 없음** |
+| error | `DEPENDENCY_UNAVAILABLE` 503 → 운영 문의(설정 없음 · 그 달 주제 후보 없음). **자동 재시도하지 않는다**<br>`LLM_BUDGET_EXCEEDED` 503 → 운영 문의<br>`ALREADY_EXISTS` 409 → 기존 계획안으로 이동<br>`GENERATION_FAILED` 500 → 재시도 버튼. **부분 저장 없음** |
 
 ---
 
@@ -822,6 +845,7 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 **`PATCH` 가 아니라 `PUT` 인 이유** — 전체 교체다. `PATCH` 로 두면 "일부만 보내도 되겠지"로
 구현할 여지가 남고, `theme` 만 보냈을 때 `sub_themes` 가 **조용히 사라진다.** 교사는 저장됐다고
 믿고 §7 확정에서야 발견한다. 필드 누락은 `VALIDATION_FAILED` 422 이고 부분 저장이 되지 않는다.
+도메인이 값을 거절해도(예: 공백만 있는 `theme`) 422 `VALIDATION_FAILED` 이고 문구는 「입력값을 확인해주세요.」 고정이다(§4).
 
 **Response** — 그 달 객체 하나. **전체를 다시 안 준다.**
 
@@ -894,11 +918,12 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 ```json
 { "items": [
     { "type": "CREATED",        "occurred_at": "2026-03-02T01:00:00Z", "month": null,
-      "actor": null,    "system_actor": "yearly_application" },
+      "actor": null,    "system_actor": "yearly_application", "value_change": null },
     { "type": "TEACHER_EDITED", "occurred_at": "2026-03-03T02:10:00Z", "month": 3,
-      "actor": "user_7", "system_actor": null },
+      "actor": "user_7", "system_actor": null,
+      "value_change": { "before": "새로운 친구와 만나요", "after": "우리 반 친구들과 만나요" } },
     { "type": "CONFIRMED",      "occurred_at": "2026-03-04T05:00:00Z", "month": null,
-      "actor": "user_7", "system_actor": null }
+      "actor": "user_7", "system_actor": null, "value_change": null }
 ] }
 ```
 
@@ -908,16 +933,18 @@ occurred_at    ISO 8601, 시간대 포함
 month          그 달 theme 칸의 이벤트면 그 달(1~12).  계획안 단위(생성 · 확정)면 null
 actor          사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
 system_actor   시스템이 한 일(생성)이면 그 표시 (yearly_application).  사람이면 null
+value_change   TEACHER_EDITED 면 {before, after} — 그때 바뀐 theme 값.  그 밖의 이벤트는 null
 ```
 
-- **다섯 키가 항상 온다.** 해당이 없으면 키를 빼지 않고 `null` 이다.
+- **여섯 키가 항상 온다.** 해당이 없으면 키를 빼지 않고 `null` 이다.
+- **`value_change` 는 저장된 이벤트 값 그대로다.** 현재 값에서 거꾸로 만들지 않는다. 소주제만 고친 PUT 도 `TEACHER_EDITED` 이고
+  그때 `before` · `after` 는 같은 theme 다 — 소주제 변화는 이력에 없다. 키가 없는 옛 이벤트는 `null` 로 온다.
 - **순서는 발생 시각.** 계획안 단위 이벤트와 달마다의 이벤트를 한 목록으로 합쳐 시각순으로 준다.
 - `CREATED` 는 계획안 단위 하나와 달마다 하나씩 온다.
 - 오류: 없거나 남의 원 계획안 · 연간이 아닌 id 는 404 `["id"]`, 로그인 안 함은 401.
 
-**결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `TEACHER_EDITED` 에 `{before, after}`(그때 바뀐 theme 값)를 싣는다.
-그 밖의 이벤트는 `null` 이다. `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
-**아직 구현 전이다**(연간 Backend Y3′). 지금 서버는 위 다섯 키만 준다. Core 는 이미 그 값을 저장하고 있다.
+**결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
+구현은 연간 Backend Y3′ 다.
 
 ---
 

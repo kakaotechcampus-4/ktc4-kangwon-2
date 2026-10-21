@@ -92,6 +92,13 @@ class ConfirmOut(BaseModel):
     confirmed_at: datetime
 
 
+class ValueChangeOut(BaseModel):
+    """그 이벤트 때 바뀐 theme 값. Core `ValueChange` 그대로다."""
+
+    before: str
+    after: str
+
+
 class AuditEventOut(BaseModel):
     type: str
     occurred_at: datetime
@@ -100,6 +107,11 @@ class AuditEventOut(BaseModel):
     )
     actor: str | None = None
     system_actor: str | None = None
+    # 저장된 이벤트에 있을 때만 값이 있다 — 현재 값에서 거꾸로 만들지 않는다. 키는 늘 온다.
+    # generation_change 는 두지 않는다 — 연간은 재생성이 없어 늘 null 이다(ADR-030 PM-07).
+    value_change: ValueChangeOut | None = Field(
+        default=None, description="TEACHER_EDITED 만. 나머지는 null"
+    )
 
 
 class AuditOut(BaseModel):
