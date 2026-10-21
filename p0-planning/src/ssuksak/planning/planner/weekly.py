@@ -9,6 +9,7 @@ Monthly planner types are reused read-only; weekly codes live here (ADR-033).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -25,6 +26,7 @@ from .contracts import (
     RawLlmResponse,
     is_compatible_monthly_model,
 )
+from .parser import _STRING, _object_schema, _refs_schema
 from .text_policy import normalize_visible_text, visible_text_violations
 
 _log = logging.getLogger(__name__)
@@ -132,6 +134,12 @@ class WeeklyPlanningRequest:
     def target(self, section_key: str) -> WeeklyTarget | None:
         return next((t for t in self.targets if t.section_key == section_key), None)
 
+    @property
+    def request_fingerprint(self) -> str:
+        """What was actually sent (W7): prompt version + body, so the W3c weekly evidence and a
+        cell request's current_plan count too. packet_fingerprint stays the monthly Packet's."""
+        return hashlib.sha256(f"{self.prompt_version}\n{self.user_content}".encode()).hexdigest()
+
 
 @dataclass(frozen=True, slots=True)
 class WeeklyPlanningOutcome:
@@ -237,6 +245,44 @@ def cell_request(
         allowed_fact_text=" ".join((request.allowed_fact_text, *teacher_facts)),
         cell_key=section_key,
     )
+
+
+def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
+    """Strict Structured Output for a document, one-cell or repair request (W7, plan §3-1).
+
+    One branch per Section the answer may carry (the repair's flagged ones, else the
+    targets), each with only that Section's allowed refs. outdoor_play is one branch per
+    ranked candidate fixing reference_id and its label together — the monthly cell schema
+    once lacked that pair lock and real Luna-6 regeneration failed (plan §7). theme is
+    never unresolved. validate_weekly stays the final check (copies, Q2 facts, duplicates).
+    """
+    branches = []
+    for key in request.repair_targets or tuple(t.section_key for t in request.targets):
+        fixed = {"section_key": {"type": "string", "enum": [key]}}
+        refs = _refs_schema(request.target(key).allowed_grounding_refs)
+        if key == OUTDOOR_KEY:
+            branches += [
+                _object_schema({
+                    **fixed,
+                    "value": {"type": "string", "enum": [label]},
+                    "unresolved": {"type": "boolean", "enum": [False]},
+                    "grounding_refs": refs,
+                    "reference_id": {"type": "string", "enum": [reference_id]},
+                })
+                for reference_id, label in request.reference_candidates
+            ]
+            continue
+        branches.append(_object_schema({
+            **fixed,
+            "value": _STRING,
+            "unresolved": {"type": "boolean", "enum": [False]} if key == THEME_KEY else {"type": "boolean"},
+            "grounding_refs": refs,
+            "reference_id": {"type": "null"},
+        }))
+    return _object_schema({
+        "week_id": {"type": "string", "enum": [request.week_id.value]},
+        "sections": {"type": "array", "items": branches[0] if len(branches) == 1 else {"anyOf": branches}},
+    })
 
 
 def parse_weekly_proposal(content: str, request: WeeklyPlanningRequest) -> tuple[ProposedSectionValue, ...]:
@@ -415,6 +461,30 @@ class WeeklyPlanner:
         self._provider = provider
 
     def plan(self, request: WeeklyPlanningRequest) -> WeeklyPlanningOutcome:
+        """One content-free line per request (CLAUDE.md §21): kind, outcome stage, repair, codes,
+        fingerprint. Model, tokens and latency are logged by the transport per call."""
+        kind = "cell" if request.cell_key else "document"
+        try:
+            outcome = self._plan(request)
+        except Exception as exc:
+            stage = (
+                "validation" if isinstance(exc, ProposalRejectedError)
+                else "parse" if isinstance(exc, ProposalParseError)
+                else "provider"
+            )
+            codes = ",".join(getattr(exc, "validation_codes", ())) or type(exc).__name__
+            _log.warning(
+                "Weekly LLM planning failed: kind=%s stage=%s codes=%s fingerprint=%s",
+                kind, stage, codes, request.request_fingerprint[:12],
+            )
+            raise
+        _log.info(
+            "Weekly LLM planned: kind=%s repaired=%d fingerprint=%s",
+            kind, len(outcome.repaired), request.request_fingerprint[:12],
+        )
+        return outcome
+
+    def _plan(self, request: WeeklyPlanningRequest) -> WeeklyPlanningOutcome:
         response = self._generate(request)
         values = with_reference_labels(parse_weekly_proposal(response.content, request), request)
         issues = validate_weekly(values, request)
