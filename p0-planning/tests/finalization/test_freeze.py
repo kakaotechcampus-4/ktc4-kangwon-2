@@ -47,6 +47,10 @@ FROZEN_ARTIFACTS = {
     "templates/monthly_template_a.json": (
         "a65b5f7355a4ac86f33d0973f1c94f8237434dc03fe593cad28aa0388cab2aaf"
     ),
+    # Human-approved 2026-10-21 (reviewer_pm_001). ADR-027 §5: approval metadata only.
+    "templates/weekly_template_a_v0_1_0.json": (
+        "60330124223859623a0f35b2e56d6058994e2b86b62146b8b40474a3b72747f9"
+    ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
         "e7b29c36ede3438204041b5d2b454e5594338c7f12c8c423bc985e308de27aed"
@@ -88,9 +92,6 @@ FROZEN_ARTIFACTS = {
 PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
         "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
-    ),
-    "templates/weekly_template_a_v0_1_0.json": (
-        "e79698e33b4818a885c6092c01360077f1d36ba9ff70d5ab4fd755195481b5f6"
     ),
 }
 
