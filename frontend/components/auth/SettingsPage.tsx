@@ -14,6 +14,12 @@ import {
   type Greetings,
   type Invite,
 } from "@/lib/api/centers";
+import {
+  AXES,
+  AXIS_LABELS,
+  DEFAULT_AXIS,
+  type ObservationAxis,
+} from "@/lib/workspace/observation-axis";
 import { captureSession } from "@/lib/auth/request-session";
 import { StepCharacterMessages } from "@/components/onboarding/OnboardingPage";
 import { Message, WorkspacePage, ws } from "@/components/workspace/WorkspaceUI";
@@ -153,6 +159,7 @@ export default function SettingsPage() {
           )}
         </section>
       )}
+      {centerId !== null && <ObservationAxisCard centerId={centerId} />}
       {centerId !== null && <TrendsCard centerId={centerId} />}
       {centerId !== null && <InviteCard centerId={centerId} />}
     </WorkspacePage>
@@ -166,6 +173,67 @@ export default function SettingsPage() {
  * 계획안 생성이 트렌드를 참고로 넣지 않는다. **이미 만든 계획안은 그대로 둔다** —
  * 출처는 그때 그랬다는 기록이다.
  */
+/**
+ * 관찰 영역 축. 교사가 쓴 관찰일지 3건 중 2건이 누리과정 5영역이 아니었다
+ * (`docs/references/관찰일지-서술-기준.md`). 원이 쓰는 양식에 맞춘다.
+ */
+function ObservationAxisCard({ centerId }: { centerId: number }) {
+  const [axis, setAxis] = useState<ObservationAxis | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    getCenterSettings(centerId)
+      .then((s) => live && setAxis(s.observation_axis))
+      .catch(() => live && setError("관찰 영역 설정을 불러오지 못했어요."));
+    return () => {
+      live = false;
+    };
+  }, [centerId]);
+
+  async function choose(next: ObservationAxis) {
+    setBusy(true);
+    setError("");
+    // 화면을 먼저 바꾸지 않는다. 저장이 실패하면 바뀐 줄 알고 넘어간다.
+    try {
+      const saved = await saveCenterSettings(centerId, { observation_axis: next });
+      setAxis(saved.observation_axis);
+    } catch {
+      setError("바꾸지 못했어요. 잠시 뒤 다시 해주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={ws.card} style={{ marginTop: 24 }}>
+      <h2>관찰 영역</h2>
+      <p>
+        관찰 기록을 어떤 영역으로 나눌지 정해요. 원에서 쓰는 관찰일지 양식에 맞추면 돼요.
+        <strong> 이미 쓴 기록은 그대로 남아요</strong> — 새로 쓰는 기록부터 바뀐 영역을 써요.
+      </p>
+      <label className={ws.field}>
+        영역 구분
+        <select
+          value={axis ?? DEFAULT_AXIS}
+          disabled={axis === null || busy}
+          onChange={(e) => choose(e.target.value as ObservationAxis)}
+        >
+          {(Object.keys(AXES) as ObservationAxis[]).map((key) => (
+            <option key={key} value={key}>
+              {AXIS_LABELS[key]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className={ws.muted}>{AXES[axis ?? DEFAULT_AXIS].join(" · ")}</p>
+      {error && <Message error>{error}</Message>}
+      <p role="status">{busy ? "바꾸고 있어요." : ""}</p>
+    </section>
+  );
+}
+
 function TrendsCard({ centerId }: { centerId: number }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);

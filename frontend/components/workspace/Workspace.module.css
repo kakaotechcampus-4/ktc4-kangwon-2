@@ -700,6 +700,17 @@
   background: var(--pg-primary-tint);
   border-radius: 6px 6px 0 0;
 }
+.nameRequired {
+  align-self: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pg-primary-ink);
+  background: var(--pg-primary-tint);
+  border: 1px solid var(--pg-primary-tint-line);
+  border-radius: 999px;
+}
 .nameTab input:focus-visible {
   background: var(--pg-paper);
 }

@@ -27,7 +27,12 @@ export const createCenter = (data: CenterInput) =>
  * **성품인사(§3)와 달리 전체 교체가 아니다.** 보낸 칸만 바뀐다 — 토글이 늘어도
  * 서로를 덮지 않는다.
  */
-export type CenterSettings = { trends_enabled: boolean };
+export type CenterSettings = {
+  trends_enabled: boolean;
+  weekly_saturday_enabled?: boolean;
+  /** 관찰 기록의 영역 축 (lib/workspace/observation-axis.ts). */
+  observation_axis: "NURI_5" | "DAILY_PLAY_2";
+};
 
 export const getCenterSettings = (centerId: number) =>
   apiRequest<CenterSettings>(`/api/centers/${centerId}/settings`);

@@ -24,16 +24,17 @@ class RequestAwareWeeklyLlm:
             body = body["original_request"]
         parent = body["parent"]
         theme = parent["theme"]
+        again = "다시 쓴 " if body.get("task") == "weekly_cell" else ""  # W4b: a regenerated value differs
         sections = []
         for target in body["targets"]:
             key, refs = target["section_key"], target["allowed_grounding_refs"]
-            value, reference_id, grounding = f"{theme} — 이번 주 {key} 계획", None, refs[:1]
+            value, reference_id, grounding = f"{again}{theme} — 이번 주 {key} 계획", None, refs[:1]
             if key == "theme":
-                value, grounding = f"{theme} 속 이번 주 놀이", []
+                value, grounding = f"{again}{theme} 속 이번 주 놀이", []
             elif key == "outdoor_play":
                 reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
             elif key == "safety_education":
-                value, grounding = f"이번 주에도 {parent['safety_education']}", []
+                value, grounding = f"{again}이번 주에도 {parent['safety_education']}", []
             sections.append({
                 "section_key": key, "value": value, "unresolved": False,
                 "grounding_refs": grounding, "reference_id": reference_id,

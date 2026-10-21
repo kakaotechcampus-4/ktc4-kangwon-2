@@ -9,6 +9,7 @@ Monthly planner types are reused read-only; weekly codes live here (ADR-033).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -25,12 +26,16 @@ from .contracts import (
     RawLlmResponse,
     is_compatible_monthly_model,
 )
+from .parser import _STRING, _object_schema, _refs_schema
 from .text_policy import normalize_visible_text, visible_text_violations
 
 _log = logging.getLogger(__name__)
 
 WEEKLY_PROMPT_VERSION = "weekly-planner-v2"  # v2: classified indoor · group · alternative targets (W3c)
 WEEKLY_REPAIR_PROMPT_VERSION = "weekly-planner-repair-v1"
+# W4b one-cell regeneration: its own prompt, like MONTHLY_CELL_PROMPT_VERSION.
+WEEKLY_CELL_PROMPT_VERSION = "weekly-cell-planner-v1"
+WEEKLY_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v1"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
@@ -47,6 +52,10 @@ SYSTEM_PROMPT = (
     "입력에 없는 날짜 · 요일 · 시각 · 사람 이름이나 호칭, 행사 운영 세부(시각 · 장소 · 준비물)를 지어내지 않는다. "
     "입력에 있는 행사는 이름 그대로 쓸 수 있다. 법정 기준 충족 같은 주장을 하지 않는다. "
     "쓸 내용이 없으면 unresolved: true, value 는 빈 문자열이다."
+)
+CELL_SYSTEM_PROMPT = SYSTEM_PROMPT + (
+    " 이번 요청은 계획안의 한 칸만 다시 쓴다: targets 의 Section 하나만 쓰고, "
+    "current_plan 에 있는 다른 칸 내용은 맥락으로만 읽는다."
 )
 
 
@@ -105,18 +114,31 @@ class WeeklyPlanningRequest:
     allowed_fact_text: str  # every input a value may take a date / name from (Q2)
     packet_fingerprint: str = ""
     repair_targets: tuple[str, ...] = ()
+    repair_prompt_version: str = WEEKLY_REPAIR_PROMPT_VERSION
+    cell_key: str | None = None  # W4b: a one-cell request targets exactly this Section
 
     def __post_init__(self) -> None:
         if not isinstance(self.week_id, WeekId):
             raise InvalidDomainValueError("WeeklyPlanningRequest.week_id must be WeekId")
         keys = [target.section_key for target in self.targets]
-        if len(set(keys)) != len(keys) or THEME_KEY not in keys:
-            raise InvalidDomainValueError("WeeklyPlanningRequest targets must be unique and include theme")
+        if len(set(keys)) != len(keys):
+            raise InvalidDomainValueError("WeeklyPlanningRequest targets must be unique")
+        shaped = keys == [self.cell_key] if self.cell_key is not None else THEME_KEY in keys
+        if not shaped:
+            raise InvalidDomainValueError(
+                "A document request targets theme; a cell request targets its one Section"
+            )
         if set(keys) & self.teacher_input_keys:
             raise InvalidDomainValueError("Teacher-input Sections are never LLM targets")
 
     def target(self, section_key: str) -> WeeklyTarget | None:
         return next((t for t in self.targets if t.section_key == section_key), None)
+
+    @property
+    def request_fingerprint(self) -> str:
+        """What was actually sent (W7): prompt version + body, so the W3c weekly evidence and a
+        cell request's current_plan count too. packet_fingerprint stays the monthly Packet's."""
+        return hashlib.sha256(f"{self.prompt_version}\n{self.user_content}".encode()).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +211,78 @@ def build_weekly_request(
         allowed_fact_text=allowed,
         packet_fingerprint=packet_fingerprint,
     )
+
+
+def cell_request(
+    request: WeeklyPlanningRequest,
+    section_key: str,
+    *,
+    current_values: tuple[tuple[str, str], ...],
+    teacher_facts: tuple[str, ...],
+) -> WeeklyPlanningRequest:
+    """The document request narrowed to one Section (W4b, plan §4).
+
+    Same Rule-fixed range — that Section's allowed refs, outdoor candidates, parent
+    context — plus the plan's other current values as context. Values a teacher wrote —
+    the teacher-input Cells and any Cell whose current value a teacher edited — may
+    also supply dates and names (Q2: a teacher's own input; decision B, 2026-10-21).
+    """
+    target = request.target(section_key)
+    if target is None:
+        raise InvalidDomainValueError(f"Section is not a target of the weekly request: {section_key}")
+    body = json.loads(request.user_content)
+    body["task"] = "weekly_cell"
+    body["targets"] = [t for t in body["targets"] if t["section_key"] == section_key]
+    body["evidence"] = [e for e in body["evidence"] if e["grounding_ref"] in target.allowed_grounding_refs]
+    body["current_plan"] = dict(current_values)
+    return replace(
+        request,
+        prompt_version=WEEKLY_CELL_PROMPT_VERSION,
+        repair_prompt_version=WEEKLY_CELL_REPAIR_PROMPT_VERSION,
+        system_prompt=CELL_SYSTEM_PROMPT,
+        user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
+        targets=(target,),
+        allowed_fact_text=" ".join((request.allowed_fact_text, *teacher_facts)),
+        cell_key=section_key,
+    )
+
+
+def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
+    """Strict Structured Output for a document, one-cell or repair request (W7, plan §3-1).
+
+    One branch per Section the answer may carry (the repair's flagged ones, else the
+    targets), each with only that Section's allowed refs. outdoor_play is one branch per
+    ranked candidate fixing reference_id and its label together — the monthly cell schema
+    once lacked that pair lock and real Luna-6 regeneration failed (plan §7). theme is
+    never unresolved. validate_weekly stays the final check (copies, Q2 facts, duplicates).
+    """
+    branches = []
+    for key in request.repair_targets or tuple(t.section_key for t in request.targets):
+        fixed = {"section_key": {"type": "string", "enum": [key]}}
+        refs = _refs_schema(request.target(key).allowed_grounding_refs)
+        if key == OUTDOOR_KEY:
+            branches += [
+                _object_schema({
+                    **fixed,
+                    "value": {"type": "string", "enum": [label]},
+                    "unresolved": {"type": "boolean", "enum": [False]},
+                    "grounding_refs": refs,
+                    "reference_id": {"type": "string", "enum": [reference_id]},
+                })
+                for reference_id, label in request.reference_candidates
+            ]
+            continue
+        branches.append(_object_schema({
+            **fixed,
+            "value": _STRING,
+            "unresolved": {"type": "boolean", "enum": [False]} if key == THEME_KEY else {"type": "boolean"},
+            "grounding_refs": refs,
+            "reference_id": {"type": "null"},
+        }))
+    return _object_schema({
+        "week_id": {"type": "string", "enum": [request.week_id.value]},
+        "sections": {"type": "array", "items": branches[0] if len(branches) == 1 else {"anyOf": branches}},
+    })
 
 
 def parse_weekly_proposal(content: str, request: WeeklyPlanningRequest) -> tuple[ProposedSectionValue, ...]:
@@ -367,6 +461,30 @@ class WeeklyPlanner:
         self._provider = provider
 
     def plan(self, request: WeeklyPlanningRequest) -> WeeklyPlanningOutcome:
+        """One content-free line per request (CLAUDE.md §21): kind, outcome stage, repair, codes,
+        fingerprint. Model, tokens and latency are logged by the transport per call."""
+        kind = "cell" if request.cell_key else "document"
+        try:
+            outcome = self._plan(request)
+        except Exception as exc:
+            stage = (
+                "validation" if isinstance(exc, ProposalRejectedError)
+                else "parse" if isinstance(exc, ProposalParseError)
+                else "provider"
+            )
+            codes = ",".join(getattr(exc, "validation_codes", ())) or type(exc).__name__
+            _log.warning(
+                "Weekly LLM planning failed: kind=%s stage=%s codes=%s fingerprint=%s",
+                kind, stage, codes, request.request_fingerprint[:12],
+            )
+            raise
+        _log.info(
+            "Weekly LLM planned: kind=%s repaired=%d fingerprint=%s",
+            kind, len(outcome.repaired), request.request_fingerprint[:12],
+        )
+        return outcome
+
+    def _plan(self, request: WeeklyPlanningRequest) -> WeeklyPlanningOutcome:
         response = self._generate(request)
         values = with_reference_labels(parse_weekly_proposal(response.content, request), request)
         issues = validate_weekly(values, request)
@@ -377,7 +495,7 @@ class WeeklyPlanner:
             _log.info("Weekly LLM repair attempted: %s", ",".join(f"{i.code.value}@{i.section_key}" for i in issues))
             repair = replace(
                 request,
-                prompt_version=WEEKLY_REPAIR_PROMPT_VERSION,
+                prompt_version=request.repair_prompt_version,
                 user_content=json.dumps({
                     "original_request": json.loads(request.user_content),
                     "previous_answer": json.loads(response.content),
@@ -394,11 +512,27 @@ class WeeklyPlanner:
                 # Unvalidated model strings never reach the log: only the code and how many (R-01).
                 _log.warning("Weekly LLM repair rejected: DUPLICATE_SECTION x%d", len(duplicated))
                 raise ProposalRejectedError(_codes(dup_issues), dup_issues)
+            # The repair may only answer requested Sections, as the first answer may (W4b-01):
+            # a stray Section would otherwise be dropped silently at the merge below.
+            requested = {t.section_key for t in request.targets}
+            stray = tuple(dict.fromkeys(k for k in keys if k not in requested))
+            if stray:
+                stray_issues = tuple(
+                    WeeklyIssue(
+                        WeeklyIssueCode.TEACHER_INPUT_VALUE
+                        if k in request.teacher_input_keys
+                        else WeeklyIssueCode.SECTION_NOT_REQUESTED,
+                        k,
+                    )
+                    for k in stray
+                )
+                _log.warning("Weekly LLM repair rejected: %s", ",".join(_codes(stray_issues)))
+                raise ProposalRejectedError(_codes(stray_issues), stray_issues)
             patched = {v.section_key: v for v in repaired_values}
             # Only the flagged Sections may change; every other value stays as first written.
             values = tuple(patched.get(v.section_key, v) if v.section_key in flagged else v for v in values)
             issues = validate_weekly(values, request)
-            repaired, prompt_version = frozenset(flagged), WEEKLY_REPAIR_PROMPT_VERSION
+            repaired, prompt_version = frozenset(flagged), request.repair_prompt_version
         if issues:
             _log.warning("Weekly LLM proposal rejected: %s", ",".join(_codes(issues)))
             raise ProposalRejectedError(_codes(issues), issues)

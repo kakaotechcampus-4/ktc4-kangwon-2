@@ -461,7 +461,7 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 
 @router.delete("/{plan_id}/test-reset", status_code=status.HTTP_204_NO_CONTENT)
 def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """**시험용.** 연간계획안과 딸린 월간을 한 번에 지운다. 확정 여부를 보지 않는다.
+    """**시험용.** 연간계획안과 딸린 월간 · 주간을 한 번에 지운다. 확정 여부를 보지 않는다.
 
     **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
     있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
@@ -482,7 +482,8 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
         session.scalars(
             select(Plan).where(
                 Plan.center_id == user.center_id,
-                Plan.kind == "monthly",
+                # 주간은 월간 밑에 생긴다. 월간만 지우면 주간이 주인 없이 남는다.
+                Plan.kind.in_(("monthly", "weekly")),
                 Plan.classroom_ref == row.classroom_ref,
                 Plan.school_year == row.school_year,
             )
@@ -490,7 +491,7 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     )
     # 시험용이라도 무엇을 지웠는지는 남긴다. 「왜 사라졌지」를 뒤에서 풀 수 있어야 한다.
     _log.warning(
-        "test-reset: 연간 %s(%s) · 월간 %s 개를 지웠다. 누른 사람 user_%s",
+        "test-reset: 연간 %s(%s) · 월간 · 주간 %s 개를 지웠다. 누른 사람 user_%s",
         row.id,
         row.status,
         len(children),

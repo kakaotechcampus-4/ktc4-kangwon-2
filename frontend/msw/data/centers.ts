@@ -18,11 +18,29 @@ export const putGreetings = (id: number, data: Greetings) =>
   });
 /** 트렌드봇 설정. **계정마다 따로 두고 새로고침해도 남는다** — 모듈 전역에 들면
  *  다른 계정이 만든 1번 원이 남의 설정을 물려받는다. */
-export const findCenterSettings = (id: number) =>
-  read().centerSettings[id] ?? { trends_enabled: false };
-export const putCenterSettings = (id: number, patch: { trends_enabled?: boolean }) =>
+/**
+ * 토요일(`weekly_saturday_enabled`)은 칸이 없으면 꺼진 것이다 — 주간 기본은 월~금 (§3-2).
+ * 관찰 축(`observation_axis`)의 기본은 누리과정 5영역이다 (observations/models.py AXES).
+ */
+const SETTINGS_DEFAULT = {
+  trends_enabled: false,
+  weekly_saturday_enabled: false,
+  observation_axis: "NURI_5" as const,
+};
+export const findCenterSettings = (id: number) => ({
+  ...SETTINGS_DEFAULT,
+  ...read().centerSettings[id],
+});
+export const putCenterSettings = (
+  id: number,
+  patch: {
+    trends_enabled?: boolean;
+    weekly_saturday_enabled?: boolean;
+    observation_axis?: "NURI_5" | "DAILY_PLAY_2";
+  },
+) =>
   commit((db) => {
-    const next = { ...(db.centerSettings[id] ?? { trends_enabled: false }), ...patch };
+    const next = { ...SETTINGS_DEFAULT, ...db.centerSettings[id], ...patch };
     db.centerSettings[id] = next;
     return next;
   });

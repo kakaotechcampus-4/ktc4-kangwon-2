@@ -1,6 +1,6 @@
 """p0-planning 의 `PlanRepository` 포트를 Postgres 로 구현한다.
 
-**연간·월간이 같은 클래스를 쓴다.** 포트가 `PlanRepository[TPlan]` 제네릭이라
+**연간·월간·주간이 같은 클래스를 쓴다.** 포트가 `PlanRepository[TPlan]` 제네릭이라
 저장할 타입만 바꿔 끼우면 된다. 월간용을 따로 만들지 않는다.
 
 **원 하나에 묶인다.** `center_id` 를 생성자에서 받고 모든 조회에 건다. 라우터가
@@ -44,14 +44,17 @@ class PostgresPlanRepository[TPlan]:
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         body = to_jsonable(plan)
         row = self._session.scalar(select(Plan).where(Plan.plan_ref == plan_id.value))
-        month = getattr(plan, "target_month", None)  # 월간만 가진다 (MonthlyPlan)
+        week = getattr(plan, "week_id", None)  # 주간만 가진다 (WeeklyPlan)
+        # 월간은 target_month 를 갖고, 주간은 그 주가 속한 달을 쓴다.
+        month = getattr(plan, "target_month", None) or (week and week.target_month)
         values = {
             "center_id": self._center_id,
             "kind": self._kind,
-            # 연간·월간 모두 이 두 칸을 가진다 (YearlyPlan · MonthlyPlan).
+            # 세 종류 모두 이 두 칸을 가진다 (YearlyPlan · MonthlyPlan · WeeklyPlan).
             "school_year": int(plan.school_year),
             "classroom_ref": str(plan.classroom_ref),
             "target_month": None if month is None else month.value,
+            "week_id": None if week is None else week.value,
             # body 에서 꺼낸다. 인자로 따로 받으면 본문과 칸이 어긋난다.
             "status": body["status"],
             "confirmed_at": _confirmed_at(body),
