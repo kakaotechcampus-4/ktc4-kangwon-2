@@ -186,6 +186,41 @@ sed -i "s|^IS_SERVER=.*|IS_SERVER=1|" .env
 
 **`.env` 는 커밋하지 않으므로 서버에만 있다.**
 
+### AWS CLI — 백업을 S3 로 보내려면
+
+**`/usr/bin/aws` 에 둔다.** 백업은 root cron 이 돌리고, cron 의 PATH 는 `/usr/bin:/bin` 뿐이다.
+`backup.sh` 는 PATH 를 따로 정하지 않는다 — 다른 자리에 깔면 손으로 돌릴 때는 되고 **새벽 cron 에서만**
+`aws: command not found` 가 난다(2026-10-21 까지 실제로 그랬다).
+
+- 공식 번들을 쓴다. **apt · snap 을 쓰지 않는다** — snap 은 `/snap/bin` 이라 cron 이 못 찾고,
+  apt 는 운영 중에 다른 패키지 · 서비스 재시작을 건드릴 수 있다.
+- 서버에 `unzip` 이 없다. `python3` 의 `zipfile` 로 풀되 **실행 권한을 지킨다**(기본 `extract` 는 권한을 버린다).
+- 키를 넣지 않는다. EC2 역할(`ktc-ec2-ssm-role`)로 인증한다.
+
+```bash
+# root 로 (sudo -i). 2026-10-21 에 설치한 판은 2.38.3
+d=$(mktemp -d) && cd "$d"
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o awscliv2.zip
+python3 - <<'PY'
+import os, stat, zipfile
+with zipfile.ZipFile("awscliv2.zip") as z:
+    for i in z.infolist():
+        mode = i.external_attr >> 16
+        if stat.S_ISLNK(mode):
+            os.makedirs(os.path.dirname(i.filename) or ".", exist_ok=True)
+            os.symlink(z.read(i).decode(), i.filename)
+        else:
+            p = z.extract(i, ".")
+            if not i.is_dir() and mode & 0o777:
+                os.chmod(p, mode & 0o7777)
+PY
+./aws/install --install-dir /usr/local/aws-cli --bin-dir /usr/bin
+cd / && rm -rf "$d"
+
+# cron 과 같은 조건으로 확인 — ktc-ec2-ssm-role 이 나와야 한다
+env -i PATH=/usr/bin:/bin HOME=/root aws sts get-caller-identity --query Arn --output text
+```
+
 ---
 
 ## HTTPS · 도메인
@@ -241,6 +276,42 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 
 ---
 
+## 서버 점검
+
+`scripts/server-check.sh` — 배포 · 백업 · 인증서가 의도대로 걸려 있고 **실제로 돌았는지** 본다.
+**읽기만 한다.** 서비스 · 설정 · DB · 인증서 · 백업을 바꾸지 않는다.
+
+```bash
+# Session Manager 로 들어가서
+sudo -iu ubuntu
+cd ~/ktc4-kangwon-2 && bash scripts/server-check.sh
+```
+
+```
+OK     기계가 가를 수 있는 것 — 통과
+FAIL   위와 같은데 실패. 하나라도 있으면 종료 코드 1
+--     사람이 보고 판단할 것 (cron · certbot · nginx reload · 백업 로그)
+```
+
+**결과는 돌린 터미널에만 나온다.** 알림으로 가지 않는다. 이슈에 붙이기 쉽게 crontab 원문은 찍지 않고
+꼴을 확인한 조각(시각 · 사용자 · 변수 이름 · `BACKUP_S3_URI` 의 `s3://` 주소)만 찍는다.
+**백업 로그 끝 6줄은 원문이다** — 붙이기 전에 한 번 본다.
+
+**서버 소스는 main 이나 develop 끝과 같으면 통과다.** 배포는 브랜치 · 커밋을 고를 수 있어서(「main 이 아닌
+브랜치를 올릴 때」) 둘 다 아니면 실패가 아니라 `--` 로 알린다 — 그 뒤 머지가 있었거나 커밋으로 되감은 것이다.
+**보는 것은 git HEAD 지 도는 컨테이너가 아니다.** 빌드가 실패하면 옛 컨테이너가 돌아도 HEAD 는 새 커밋이다 —
+그건 Actions 배포 기록이 알려 준다.
+
+**언제 · 누가 돌리나 (제안)**
+
+```
+배포한 뒤                        배포한 사람
+인증서 첫 실제 갱신 뒤 (약 12/05)   한 번 — 만료일이 늘었고 nginx 가 새 인증서를 내주는지
+한 달에 한 번                    「백업이 살아 있는지 확인」과 같이
+```
+
+---
+
 ## 안 만든 것
 
 **GHCR 이미지 푸시** — 서버에서 직접 빌드한다. 빌드 머신이 따로 없어 단계가 줄어든다.
@@ -265,7 +336,7 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 
 ```bash
 sudo crontab -e
-15 18 * * * /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
+15 18 * * * BACKUP_S3_URI=s3://ktc4-kangwon-2-backup/backup /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
 ```
 
 **시각은 UTC 다.** 서버 cron 이 UTC 로 돌아서 `15 18` 이 한국 새벽 3시 15분이다(`scripts/backup.sh` 머리 주석).
@@ -275,9 +346,15 @@ sudo crontab -e
 **`scripts/backup.sh` 를 쓴다.** cron 에 `pg_dump` 한 줄을 직접 적지 않는다 — 그 한 줄은
 `pg_dump` 가 실패해도 `gzip` 이 성공해서 **빈 파일을 백업이라고 남긴다.** 스크립트는 그걸 본다.
 
-S3 로도 보내려면 `.env` 에 `BACKUP_S3_URI=s3://ktc4-kangwon-2-rag/backup` 을 넣는다.
-EC2 역할에 `PowerUserAccess` 가 있어 키 없이 쓴다.
+**S3 로도 보낸다** — 버킷 `ktc4-kangwon-2-backup`(서울, 2026-10-21 만듦). 공개 차단 · SSE-S3 암호화 ·
+HTTPS 전용 정책 · `backup/` 은 90일 뒤 지운다(수명 주기). EC2 역할에 `PowerUserAccess` 가 있어 키 없이 쓴다.
 **같은 디스크에만 두면 디스크가 죽을 때 백업도 같이 죽는다.**
+
+- 서버에 `aws` 가 `/usr/bin` 에 있어야 한다 — 「서버에 한 번만 해둘 것」의 AWS CLI.
+- `BACKUP_S3_URI` 는 **한 곳에만** 둔다. 위처럼 cron 줄에 두면 `.env` 보다 먼저 읽힌다. `.env` 에 둬도 읽는다.
+- **S3 가 실패하는 날은 로컬 백업은 남지만 14일 정리가 그날 안 돈다**(`aws` 에서 스크립트가 끝난다).
+  로그에서 `backup ok` 다음 줄이 `s3 ok` 인지 본다 — `server-check.sh` 가 끝 6줄을 보여 준다.
+- 옛 문서의 `ktc4-kangwon-2-rag` 는 계정에 없는 버킷이었다.
 
 ### 백업이 살아 있는지 확인 — 한 달에 한 번
 
