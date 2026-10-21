@@ -15,6 +15,8 @@ export type ErrorCode =
   | "LLM_BUDGET_EXCEEDED"
   | "DEPENDENCY_UNAVAILABLE"
   | "GENERATION_FAILED"
+  // 예상하지 못한 서버 오류 (U-19). 문구는 서버가 고정해서 준다.
+  | "INTERNAL_ERROR"
   // 원이 트렌드봇을 껐다 (FR-808 · §3-2). 「없다」가 아니라 「껐다」다.
   | "TRENDS_DISABLED";
 /** fields 는 항상 배열이다 — 하나여도 ["name"] 이다 (docs/api-spec.md 「공통」). */
@@ -138,8 +140,8 @@ export interface ConfirmResult {
 }
 /**
  * 연간계획안 변경 이력 하나 (`GET /api/plans/annual/{id}/audit`, 서버 `AuditEventOut`).
- * **다섯 키가 항상 온다** — 해당이 없으면 null. 위치는 `month` 하나다(월간의 칸 주소는 없다).
- * 바뀐 값 · 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
+ * **여섯 키가 항상 온다** — 해당이 없으면 null. 위치는 `month` 하나다(월간의 칸 주소는 없다).
+ * 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
  */
 export interface AnnualAuditEvent {
   type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED";
@@ -151,6 +153,8 @@ export interface AnnualAuditEvent {
   actor: string | null;
   /** 시스템이 한 일(생성)이면 그 표시(`yearly_application`). 사람이면 null. */
   system_actor: string | null;
+  /** `TEACHER_EDITED` 면 그때 바뀐 theme(소주제만 고쳤으면 둘이 같다). 그 밖에는 null. */
+  value_change: { before: string; after: string } | null;
 }
 /** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
 export interface ProfileRef {

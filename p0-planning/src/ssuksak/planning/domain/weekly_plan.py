@@ -16,7 +16,7 @@ from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
 from .monthly_constraint import CellState, ConstraintAssessment
-from .monthly_plan import ActivityCatalogRef
+from .monthly_plan import ActivityCatalogRef, MonthlyGenerationMode
 from .monthly_template import (
     MonthlyTemplate,
     RepeatBy,
@@ -234,6 +234,8 @@ class WeeklyPlan:
     audit: AuditHistory = field(default_factory=AuditHistory)
     activity_catalog_ref: ActivityCatalogRef | None = None
     verification_report: VerificationReport | None = None
+    # Same reason as MonthlyPlan: the run record and the response say which path ran.
+    generation_mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
@@ -310,6 +312,8 @@ class WeeklyPlan:
             raise InvalidDomainValueError(
                 "WeeklyPlan.verification_report must be a VerificationReport for this Plan"
             )
+        if not isinstance(self.generation_mode, MonthlyGenerationMode):
+            raise InvalidDomainValueError("WeeklyPlan.generation_mode is invalid")
 
     def cell(self, section_key: str) -> WeeklyCell:
         found = next((cell for cell in self.cells if cell.section_key == section_key), None)

@@ -63,6 +63,7 @@ const event = (
   month: null,
   actor: MOCK_ACTOR,
   system_actor: null,
+  value_change: null,
   ...more,
 });
 /** 이벤트 시각은 앞선 것보다 뒤다 — 같은 밀리초에 두 번 불러도 순서가 뒤집히지 않게. */
@@ -145,8 +146,9 @@ export const putMonth = (id: number, month: number, input: MonthInput) =>
   commit((db) => {
     const plan = db.plans.find((p) => p.id === id)!;
     const m = plan.months.find((m) => m.month === month)!;
-    // 주제가 그대로여도 남는다(서버와 같다). 소주제는 이력에 없다.
-    record(db, id, event("TEACHER_EDITED", stamp(db, id), { month }));
+    // 주제가 그대로여도 남는다(서버와 같다) — 그때 before · after 가 같다. 소주제는 이력에 없다.
+    const value_change = { before: m.theme, after: input.theme };
+    record(db, id, event("TEACHER_EDITED", stamp(db, id), { month, value_change }));
     m.theme = input.theme;
     m.sub_themes = input.sub_themes;
     return m;
@@ -168,4 +170,6 @@ export const confirmPlan = (id: number): ConfirmResult =>
  * 저장 순서가 곧 서버 정렬이다 — 시각은 계속 늘어나고(stamp), 같은 시각인 생성 이벤트는 계획안 →
  * 3월 ~ 익년 2월 순서로 넣는다. 이 변경 전에 만든 옛 목업 계획안은 이력이 없어 빈 목록이다(지어내지 않는다).
  */
-export const listAnnualAudit = (id: number): AnnualAuditEvent[] => read().annualAudit[id] ?? [];
+/** 이 키가 생기기 전에 저장된 목업 이력에는 `value_change` 가 없다 — 서버처럼 null 로 준다. */
+export const listAnnualAudit = (id: number): AnnualAuditEvent[] =>
+  (read().annualAudit[id] ?? []).map((e) => ({ ...e, value_change: e.value_change ?? null }));
