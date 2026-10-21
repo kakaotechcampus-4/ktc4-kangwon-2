@@ -19,6 +19,8 @@ from app.features.plans.monthly_router import _own_row as _monthly_row
 from app.features.plans.monthly_schemas import SectionOut
 from app.features.plans.router import DbSession, _detail, _repo, _row
 from app.features.plans.rules.verify import safety_categories
+from app.features.plans.weekly_router import _current as _weekly_detail
+from app.features.plans.weekly_router import _own_row as _weekly_row
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
 from app.shared.hwpx import Format, download, fill_grid, fill_table
@@ -164,3 +166,52 @@ def export_monthly_plan(
         header=header,
     )
     return download(content, f"monthly-plan-{row.id}", title, format)
+
+
+# ── 주간 (§9-6) ───────────────────────────────────────────────────────────
+
+# 양식(`templates/weekly.hwpx`, scripts/build_weekly_template.py)의 머리 3줄:
+# 반 · 기간 · 「구분 | 내용」.
+WEEKLY_HEADER_ROWS = 3
+WEEKLY_CLASS_CELL = (0, 1)
+WEEKLY_PERIOD_CELL = (1, 1)
+
+
+@router.get("/weekly/{plan_id}/export/hwp")
+def export_weekly_plan(
+    plan_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
+) -> Response:
+    """주간계획안을 hwpx 로 내려준다. 월간과 같이 확정본만, 출처는 빼고 내보낸다.
+
+    화면은 카드형이지만 제출 문서는 기관 표 양식이다(2026-10-21 하민 결정). **행 이름을 양식에
+    박아두지 않는다** — Section 하나가 본문 한 줄이고, 이름은 계획안이 들고 온 `label` 이다.
+    기간은 응답의 `display_end_date` 를 쓴다 — 토요일을 켠 원이면 토요일까지다.
+    """
+    row = _weekly_row(session, user, plan_id)
+    if row.status != "CONFIRMED":
+        raise _NOT_CONFIRMED
+    plan = _weekly_detail(session, user, plan_id)
+    klass = require_own_class(session, user, plan.class_id)
+
+    sections = sorted(
+        (s for s in plan.sections if s.visible and s.role == "CONTENT"), key=lambda s: s.order
+    )
+    rows = [
+        [section.label or section.section_key, "\n".join(c.value for c in section.cells if c.value)]
+        for section in sections
+    ]
+    period = plan.week_period
+    header = {
+        WEEKLY_CLASS_CELL: klass.name,
+        WEEKLY_PERIOD_CELL: f"{period.label} · {period.start_date} ~ {plan.display_end_date}",
+    }
+    title = f"{klass.name} {period.label} 주간계획안"
+    content = fill_grid(
+        (TEMPLATE_DIR / "weekly.hwpx").read_bytes(),
+        title,
+        WEEKLY_HEADER_ROWS,
+        rows,
+        footer=[],
+        header=header,
+    )
+    return download(content, f"weekly-plan-{row.id}", title, format)
