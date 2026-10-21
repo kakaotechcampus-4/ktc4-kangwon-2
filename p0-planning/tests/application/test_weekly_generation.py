@@ -217,10 +217,22 @@ def test_week_must_be_an_active_week_of_the_parent():
     assert _code(excinfo) == "weekly_week_inactive"
 
 
+class _PendingTemplates:
+    """The real Template with its approval taken back: the gate must still refuse it."""
+
+    def __init__(self, real) -> None:
+        self._real = real
+
+    def get_template(self, template_id: str, template_version: str):
+        template = self._real.get_template(template_id, template_version)
+        return None if template is None else replace(template, runtime_active=False)
+
+
 def test_pending_weekly_template_blocks_generation():
     harness = WeeklyHarness()
+    pending = _PendingTemplates(harness.weekly_templates)
     with pytest.raises(MonthlyApplicationError) as excinfo:
-        harness.generate_weekly(harness.monthly_parent(), templates=harness.weekly_templates)
+        harness.generate_weekly(harness.monthly_parent(), templates=pending)
     assert _code(excinfo) == "monthly_template_not_approved"
     assert len(harness.weekly_plans) == 0
 
@@ -320,3 +332,9 @@ def test_safety_grounding_rule_per_row():
     statutory = SafetyPlacement(SafetyKind.STATUTORY, "traffic", "p", "l")
     assert findings(safety=statutory, evidence=(parent_source,)) == [(OFFICIAL_GROUNDING_MISSING, FindingKind.VIOLATION)]
     assert findings(safety=statutory, evidence=(legal,)) == []
+
+
+def test_the_approved_weekly_template_generates_without_test_approval():
+    harness = WeeklyHarness()
+    plan = harness.generate_weekly(harness.monthly_parent(), templates=harness.weekly_templates).plan
+    assert plan.status.value == "DRAFT"
