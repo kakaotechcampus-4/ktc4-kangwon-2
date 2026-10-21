@@ -1,4 +1,4 @@
-"""주간계획안 Luna-6 실측 (W7b — docs: 하민 개인 계획 「실측 절차」).
+"""주간계획안 Luna-6 실측 (W7b — 결과 보고: docs/weekly-llm-live-smoke-20261021.md).
 
 실제 주간 스키마로 엘리스를 불러 400 여부 · 호출별 시간 · 수리 · 저장 성공 / 실패 코드 · 토큰 ·
 비용을 잰다. **돈이 드는 호출이라 `--live` 없이는 부르지 않는다.**
@@ -13,12 +13,17 @@
 가 아니면 실제 전송을 만들지 않는다). 필요한 env 는 `IS_SERVER` · `ELICE_MLAPI_BASE_URL` ·
 `ELICE_MLAPI_API_KEY` 뿐이다 — `WEEKLY_LLM_ENABLED` 는 API 경로의 스위치라 여기선 안 쓴다.
 
-**예산을 넘기 전에 멈춘다.** 호출마다 토큰으로 비용을 계산하고(단가 ₩141 입력 · ₩14 캐시 입력 ·
-₩708 출력 / 100만 토큰), 다음 요청이 수리까지 해도 `--budget-won`(기본 1,000원)을 넘을 것 같으면
-남은 요청을 하지 않고 결과를 낸다. 호출 수도 `--max-calls`(기본 24)를 넘지 않는다.
+**예산은 전송마다 먼저 예약한다**(`BudgetedTransport`). 수리를 포함해 실제로 보내기 직전에 그
+전송의 최대 비용 — 입력은 보낼 본문의 바이트 수(토큰 수는 바이트 수를 넘지 않는다), 출력은
+`OUTPUT_RESERVE_TOKENS` — 을 단가(₩141 입력 · ₩14 캐시 입력 · ₩708 출력 / 100만 토큰)로 계산해,
+쓴 돈 + 예약이 `--budget-won`(기본 · 최대 1,000원)을 넘거나 `--max-calls`(최대 24)에 닿으면 보내지
+않는다. 받은 뒤에는 검증된 숫자 토큰으로 실제 비용을 센다. usage 를 확인하지 못하면 예약액을 그대로
+쓴 것으로 치고, 실제 출력이 예약을 넘으면 — 공급자가 출력 상한을 강제하지 않아 생길 수 있다 —
+그 뒤 전송을 모두 멈춘다.
 
-키는 출력하지 않는다. 생성 문장은 `--show-values` 일 때만 낸다 — 사람이 품질을 보는 용도이고,
-팀 문서 · 로그로 옮기지 않는다.
+결과에는 호출마다 허용 목록(schema · HTTP 상태 · 시간 · 숫자 토큰 · 예약 / 실제 비용)만 남긴다 —
+공급자 오류 본문 · usage 원문은 싣지 않는다. 키는 출력하지 않는다. 생성 문장은 `--show-values`
+일 때만 낸다 — 사람이 품질을 보는 용도이고, 팀 문서 · 로그로 옮기지 않는다.
 """
 
 from __future__ import annotations
@@ -101,32 +106,79 @@ DECISION_B_CASE = "만4 · 9월 2주"
 DECISION_B_GOALS = "10월 9일 한글날을 알아본다."
 
 
-def call_cost(call: dict) -> float:
-    usage = call.get("usage") or {}
-    prompt = int(usage.get("prompt_tokens") or 0)
-    cached = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
-    completion = int(usage.get("completion_tokens") or 0)
+# 출력 예약. 관측 최대는 1,023 토큰(문서 생성). 공급자가 강제하는 상한은 아니다 — 넘으면 멈춘다.
+OUTPUT_RESERVE_TOKENS = 4096
+
+
+class BudgetExhausted(RuntimeError):
+    """이 전송을 하면 예산 · 호출 수를 넘거나, 앞선 전송 뒤로 멈춘 상태다. 보내지 않았다."""
+
+
+def token_cost(prompt: int, cached: int, completion: int) -> float:
     return (
         (prompt - cached) * PRICE_INPUT + cached * PRICE_CACHED + completion * PRICE_OUTPUT
     ) / 1e6
 
 
-class Budget:
-    """다음 요청이 수리까지 해도(호출 2회) 예산 · 호출 수 안인지 본다. 처음엔 1회분을 모른다."""
+def _tokens(usage) -> tuple[int, int, int] | None:
+    """usage 에서 검증된 숫자 토큰만 꺼낸다. 모양이 다르면 None — 모르는 것으로 본다."""
+    if not isinstance(usage, dict):
+        return None
+    prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    if type(prompt) is not int or type(completion) is not int or prompt < 0 or completion < 0:
+        return None
+    details = usage.get("prompt_tokens_details")
+    cached = details.get("cached_tokens", 0) if isinstance(details, dict) else 0
+    if type(cached) is not int or not 0 <= cached <= prompt:
+        cached = 0  # 모르면 전부 정가로 친다
+    return prompt, cached, completion
 
-    def __init__(self, transport, *, won: float, max_calls: int):
-        self.transport, self.won, self.max_calls = transport, won, max_calls
+
+class BudgetedTransport:
+    """전송마다 최대 비용을 먼저 예약하고, 결과에는 허용 목록만 남긴다(TimedTransport 를 감싼다)."""
+
+    def __init__(self, inner, *, won: float, max_calls: int):
+        self.inner, self.won, self.max_calls = inner, won, max_calls
+        self.calls: list[dict] = []
+        self.stopped: str | None = None
 
     @property
     def spent(self) -> float:
-        return sum(call_cost(call) for call in self.transport.calls)
+        return sum(call["won"] for call in self.calls)
 
-    def allows_next(self) -> bool:
-        calls = self.transport.calls
-        if len(calls) + 2 > self.max_calls:
-            return False
-        worst = max((call_cost(call) for call in calls), default=0.0)
-        return self.spent + 2 * worst <= self.won
+    def reserve(self, payload) -> float:
+        input_bound = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        return token_cost(input_bound, 0, OUTPUT_RESERVE_TOKENS)
+
+    def post_json(self, url, *, headers, payload, timeout):
+        reserved = self.reserve(payload)
+        if self.stopped or len(self.calls) >= self.max_calls or self.spent + reserved > self.won:
+            self.stopped = self.stopped or "budget"
+            raise BudgetExhausted(self.stopped)
+        schema = payload["response_format"]["json_schema"]["name"]
+        record: dict = {"schema": schema, "reserved_won": round(reserved, 4)}
+        before = len(self.inner.calls)
+        try:
+            return self.inner.post_json(url, headers=headers, payload=payload, timeout=timeout)
+        finally:
+            raw = self.inner.calls[before] if len(self.inner.calls) > before else {}
+            status, seconds = raw.get("status"), raw.get("seconds")
+            record["status"] = status if type(status) is int else None
+            record["seconds"] = seconds if isinstance(seconds, (int, float)) else None
+            tokens = _tokens(raw.get("usage"))
+            if tokens is None:
+                record["won"] = reserved  # 모르면 예약액을 쓴 것으로 치고 멈춘다
+                self.stopped = "usage_unknown"
+            else:
+                record.update(
+                    zip(
+                        ("prompt_tokens", "cached_tokens", "completion_tokens"), tokens, strict=True
+                    )
+                )
+                record["won"] = token_cost(*tokens)
+                if record["won"] > reserved:
+                    self.stopped = "over_reservation"
+            self.calls.append(record)
 
 
 def _parents(ages: frozenset[int], month: YearMonth):
@@ -216,7 +268,7 @@ def _attempt(transport, kind: str, call) -> tuple[dict, object]:
     except MonthlyApplicationError as error:
         cause = error.__cause__
         outcome.update(
-            result="FAILED",
+            result="STOPPED_BUDGET" if isinstance(cause, BudgetExhausted) else "FAILED",
             code=error.code,
             validation_codes=list(getattr(cause, "validation_codes", ()) or ()),
             cause=None if cause is None else type(cause).__name__,
@@ -224,16 +276,16 @@ def _attempt(transport, kind: str, call) -> tuple[dict, object]:
     outcome["seconds"] = round(time.perf_counter() - started, 2)
     outcome["calls"] = transport.calls[first:]
     outcome["repaired"] = len(outcome["calls"]) > 1
-    outcome["won"] = round(sum(call_cost(c) for c in outcome["calls"]), 2)
+    outcome["won"] = round(sum(c["won"] for c in outcome["calls"]), 4)
     return outcome, result
 
 
-def run(transport, budget: Budget, *, show_values: bool = False) -> list[dict]:
+def run(transport: BudgetedTransport, *, show_values: bool = False) -> list[dict]:
     adapter = EliceOpenAiMonthlyAdapter(MonthlyLlmConfig.from_env(), transport=transport)
     clock = FixedClock(NOW)
     results: list[dict] = []
     for name, ages, month, week_index, saturday, regenerate in CASES:
-        if not budget.allows_next():
+        if transport.stopped:
             results.append({"case": name, "result": "SKIPPED_BUDGET"})
             continue
         monthly, parent = _parents(frozenset(ages), month)
@@ -274,7 +326,7 @@ def run(transport, budget: Budget, *, show_values: bool = False) -> list[dict]:
             label = f"{name} · {key} 다시" + (
                 " (교사 goals 날짜 뒤 — 결정 B)" if teacher_goals else ""
             )
-            if not budget.allows_next():
+            if transport.stopped:
                 results.append({"case": label, "result": "SKIPPED_BUDGET"})
                 continue
             if teacher_goals is not None:
@@ -297,13 +349,9 @@ def run(transport, budget: Budget, *, show_values: bool = False) -> list[dict]:
     return results
 
 
-def report(transport, results: list[dict]) -> dict:
+def report(transport: BudgetedTransport, results: list[dict]) -> dict:
     requests = [r for r in results if "calls" in r]
     calls = transport.calls
-    tokens = {
-        k: sum(int((c.get("usage") or {}).get(k) or 0) for c in calls)
-        for k in ("prompt_tokens", "completion_tokens", "total_tokens")
-    }
     return {
         "at": datetime.now(UTC).isoformat(timespec="seconds"),
         "model_expected": MonthlyLlmConfig.from_env().model,
@@ -311,12 +359,17 @@ def report(transport, results: list[dict]) -> dict:
         "saved": sum(r["result"] == "SAVED" for r in requests),
         "failed_codes": _count(r.get("code") for r in requests if r["result"] == "FAILED"),
         "repaired": sum(r["repaired"] for r in requests),
-        "skipped_budget": sum(r.get("result") == "SKIPPED_BUDGET" for r in results),
+        "skipped_budget": sum(r["result"] in ("SKIPPED_BUDGET", "STOPPED_BUDGET") for r in results),
+        "stopped": transport.stopped,
         "calls": len(calls),
-        "http_status": _count(c.get("status") for c in calls),
-        "seconds_max": max((c.get("seconds", 0) for c in calls), default=0),
-        "tokens": tokens,
-        "won": round(sum(call_cost(c) for c in calls), 2),
+        "http_status": _count(c["status"] for c in calls),
+        "seconds_max": max((c["seconds"] or 0 for c in calls), default=0),
+        "tokens": {
+            k: sum(c.get(k, 0) for c in calls)
+            for k in ("prompt_tokens", "cached_tokens", "completion_tokens")
+        },
+        "won": round(transport.spent, 2),
+        "budget_won": transport.won,
         "results": results,
     }
 
@@ -339,9 +392,9 @@ def main(argv=None) -> int:
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 2
-    budget = Budget(transport, won=args.budget_won, max_calls=args.max_calls)
-    results = run(transport, budget, show_values=args.show_values)
-    print(json.dumps(report(transport, results), ensure_ascii=False, indent=2))
+    budgeted = BudgetedTransport(transport, won=args.budget_won, max_calls=args.max_calls)
+    results = run(budgeted, show_values=args.show_values)
+    print(json.dumps(report(budgeted, results), ensure_ascii=False, indent=2))
     return 0
 
 

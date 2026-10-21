@@ -1,4 +1,4 @@
-"""주간 bench — 실제 엘리스를 부르지 않고 흐름 · 예산 멈춤 · 서버 가드를 본다.
+"""주간 bench — 실제 엘리스를 부르지 않고 흐름 · 예산 · 출력 허용 목록 · 서버 가드를 본다.
 
 가짜 전송이 요청 본문을 읽어 mock 과 같은 답을 만든다(그래서 실제 strict 스키마를 통과한다).
 진짜 urlopen 은 불리면 실패하도록 바꿔 끼운다.
@@ -10,6 +10,7 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 import pytest
@@ -24,6 +25,7 @@ bench = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bench)
 
 USAGE = {"prompt_tokens": 12000, "completion_tokens": 2000, "total_tokens": 14000}
+MARKER = "SYNTHETIC-PROVIDER-MARKER"
 
 
 @pytest.fixture(autouse=True)
@@ -46,17 +48,35 @@ class _Response(io.BytesIO):
         return False
 
 
-def _fake(usage=USAGE):
+def _fake(usage=USAGE, edit=None):
+    """mock 과 같은 답. `edit(answer, n)` 으로 n 번째 답을 바꿀 수 있다."""
     model = bench.MonthlyLlmConfig.from_env().model
+    sent = []
 
     def post(request, timeout):
         payload = json.loads(request.data.decode("utf-8"))
         user = payload["messages"][-1]["content"]
-        answer = RequestAwareWeeklyLlm().generate_weekly(SimpleNamespace(user_content=user)).content
-        body = {"choices": [{"message": {"content": answer}}], "model": model, "usage": usage}
+        answer = json.loads(
+            RequestAwareWeeklyLlm().generate_weekly(SimpleNamespace(user_content=user)).content
+        )
+        if edit is not None:
+            edit(answer, len(sent))
+        sent.append(payload)
+        body = {"choices": [{"message": {"content": json.dumps(answer, ensure_ascii=False)}}]}
+        body["model"] = model
+        if usage is not None:
+            body["usage"] = usage(len(sent)) if callable(usage) else usage
         return _Response(json.dumps(body, ensure_ascii=False).encode("utf-8"))
 
     return post
+
+
+def _run(post, won=1000.0, max_calls=24):
+    transport = bench.BudgetedTransport(
+        bench.TimedTransport(post=post), won=won, max_calls=max_calls
+    )
+    out = bench.report(transport, bench.run(transport))
+    return transport, out
 
 
 def test_서버가_아니면_실제_전송을_만들지_않고_live_없이는_부르지_않는다(monkeypatch):
@@ -69,13 +89,10 @@ def test_서버가_아니면_실제_전송을_만들지_않고_live_없이는_�
 
 
 def test_요청_아홉개를_돌리고_주간_호출만_센다():
-    transport = bench.TimedTransport(post=_fake())
-    budget = bench.Budget(transport, won=1000, max_calls=24)
-    out = bench.report(transport, bench.run(transport, budget))
+    transport, out = _run(_fake())
 
     assert (out["requests"], out["saved"], out["skipped_budget"]) == (9, 9, 0)
-    # 부모 연간 · 월간은 mock 이라 호출이 없다 — 전송은 주간 9번뿐(수리 없음).
-    assert out["calls"] == 9 and out["repaired"] == 0
+    assert out["calls"] == 9 and out["repaired"] == 0 and out["stopped"] is None
     schemas = [c["schema"] for c in transport.calls]
     assert schemas.count("weekly_plan_proposal") == 5
     assert schemas.count("weekly_cell_proposal") == 4
@@ -89,12 +106,74 @@ def test_요청_아홉개를_돌리고_주간_호출만_센다():
     assert all("value" not in c for c in saturday["plan"]["cells"].values())
 
 
-def test_예산을_넘을_것_같으면_남은_요청을_하지_않는다():
-    huge = {"prompt_tokens": 1_000_000, "completion_tokens": 600_000, "total_tokens": 1_600_000}
-    transport = bench.TimedTransport(post=_fake(huge))  # 한 호출 ≈ ₩565
-    budget = bench.Budget(transport, won=1000, max_calls=24)
-    out = bench.report(transport, bench.run(transport, budget))
+# ── 예산: 전송마다 예약 (Codex W7b-01 재현 사례) ─────────────────────────────
 
-    assert out["calls"] == 1  # 첫 호출 뒤 「수리까지 하면 넘는다」로 멈춘다
+
+def test_첫_전송도_예약이_예산을_넘으면_보내지_않는다():
+    transport, out = _run(_fake(), won=0.5)
+    assert out["calls"] == 0 and out["won"] == 0
+    assert out["stopped"] == "budget"
+    assert out["saved"] == 0
+
+
+def test_응답이_예약보다_크면_그_뒤로_멈춘다():
+    huge = {"prompt_tokens": 1_000_000, "completion_tokens": 600_000, "total_tokens": 1_600_000}
+    transport, out = _run(_fake(huge))  # 한 호출 ≈ ₩565 — 예약(수 원)을 넘는다
+    assert out["calls"] == 1
+    assert out["stopped"] == "over_reservation"
     assert out["skipped_budget"] >= 1
-    assert out["won"] < 1000
+
+
+def test_수리_전송_직전에도_예산을_본다():
+    def date_once(answer, n):
+        if n == 0:  # 첫 답에 입력에 없는 날짜 → 수리 요청
+            answer["sections"][0]["value"] = "10월 3일 개천절 행사 준비"
+
+    probe, _ = _run(_fake(edit=date_once), max_calls=1)
+    first_reserve = probe.calls[0]["reserved_won"]
+    # 첫 전송의 예약만큼만 — 첫 전송(실제 ₩3.1)은 되지만, 쓴 돈 + 수리 예약은 넘는다.
+    transport, out = _run(_fake(edit=date_once), won=first_reserve)
+    assert out["calls"] == 1
+    assert out["results"][0]["result"] == "STOPPED_BUDGET"
+    assert out["won"] <= out["budget_won"]
+
+
+def test_usage_를_모르면_예약액을_쓴_것으로_치고_멈춘다():
+    transport, out = _run(_fake(usage=None))
+    assert out["calls"] == 1
+    assert out["stopped"] == "usage_unknown"
+    assert out["won"] == pytest.approx(transport.calls[0]["reserved_won"], abs=0.001)
+
+
+def test_어떤_이력이든_예산을_넘지_않는다():
+    def growing(n):  # 뒤로 갈수록 커지는 응답
+        return {"prompt_tokens": 12000 * n, "completion_tokens": 2000 * n, "total_tokens": 0}
+
+    for won in (3.0, 5.0, 20.0, 1000.0):
+        transport, out = _run(_fake(usage=growing), won=won)
+        assert transport.spent <= won + max((c["won"] for c in transport.calls), default=0)
+        # 예약을 넘은 호출 뒤로는 더 보내지 않는다.
+        over = [i for i, c in enumerate(transport.calls) if c["won"] > c["reserved_won"]]
+        assert not over or over[0] == len(transport.calls) - 1
+
+
+# ── 출력 허용 목록 (Codex W7b-02) ────────────────────────────────────────────
+
+
+def test_usage_의_추가_문자열은_결과에_남지_않는다():
+    usage = {**USAGE, "note": MARKER, "prompt_tokens_details": {"cached_tokens": 0, "x": MARKER}}
+    transport, out = _run(_fake(usage=usage), max_calls=1)
+    assert out["calls"] == 1
+    assert MARKER not in json.dumps(out, ensure_ascii=False)
+
+
+def test_공급자_오류_본문은_결과에_남지_않는다():
+    def fail(request, timeout):
+        raise urllib_error.HTTPError(
+            "https://llm.invalid/v1", 400, "Bad Request", {}, io.BytesIO(MARKER.encode())
+        )
+
+    transport, out = _run(fail)
+    assert out["calls"] == 1 and out["http_status"] == {400: 1}
+    assert out["stopped"] == "usage_unknown"
+    assert MARKER not in json.dumps(out, ensure_ascii=False)
