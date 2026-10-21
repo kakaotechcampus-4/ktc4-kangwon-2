@@ -71,6 +71,29 @@ def test_월간_호출은_보낸_모델_이름으로_한_줄을_남긴다(monkey
     assert usage_lines == ["llm_usage model=monthly-model prompt=120 completion=30 total=150"]
 
 
+def test_전송_성공_줄은_응답_usage_원문을_남기지_않는다(monkeypatch, usage_lines):
+    """usage 에 섞여 온 문자열이 일반 로그로 새지 않는다(Codex W7a2-02)."""
+    marker = "SYNTHETIC-USAGE-MARKER"
+    _answer(
+        monkeypatch,
+        {"choices": [{"message": {"content": "{}"}}], "usage": {**USAGE, "note": marker}},
+    )
+    transport_lines = []
+    monkeypatch.setattr(
+        monthly_llm._log, "info", lambda fmt, *args: transport_lines.append(fmt % args)
+    )
+
+    monthly_llm.SharedLlmTransport().post_json(
+        "https://mlapi.example.com/v1/chat/completions",
+        headers={},
+        payload={"model": "weekly-model", "response_format": {}},
+        timeout=1,
+    )
+
+    assert transport_lines and transport_lines[0].startswith("monthly llm call ok")
+    assert all(marker not in line for line in transport_lines + usage_lines)
+
+
 def test_실패한_호출은_남기지_않는다(monkeypatch, usage_lines):
     def fail(*a, **k):
         raise urllib_error.HTTPError("u", 500, "boom", {}, None)
