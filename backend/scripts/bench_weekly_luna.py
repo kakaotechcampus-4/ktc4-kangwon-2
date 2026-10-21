@@ -17,9 +17,11 @@
 전송의 최대 비용 — 입력은 보낼 본문의 바이트 수(토큰 수는 바이트 수를 넘지 않는다), 출력은
 `OUTPUT_RESERVE_TOKENS` — 을 단가(₩141 입력 · ₩14 캐시 입력 · ₩708 출력 / 100만 토큰)로 계산해,
 쓴 돈 + 예약이 `--budget-won`(기본 · 최대 1,000원)을 넘거나 `--max-calls`(최대 24)에 닿으면 보내지
-않는다. 받은 뒤에는 검증된 숫자 토큰으로 실제 비용을 센다. usage 를 확인하지 못하면 예약액을 그대로
-쓴 것으로 치고, 실제 출력이 예약을 넘으면 — 공급자가 출력 상한을 강제하지 않아 생길 수 있다 —
-그 뒤 전송을 모두 멈춘다.
+않는다. **출력 예약은 요청에 상한으로 붙인다**(`max_completion_tokens` = 예약 토큰 — 하민 결정 C,
+2026-10-22). 그래서 예약이 공급자가 지키는 실제 상한이 된다. 공급자가 이 칸을 받지 않으면 첫 호출이
+400 으로 끝나고 멈춘다. 이 칸은 bench 의 전송에만 붙인다 — 운영 어댑터 요청은 바꾸지 않는다.
+받은 뒤에는 검증된 숫자 토큰으로 실제 비용을 센다. usage 를 확인하지 못하면 예약액을 그대로 쓴
+것으로 치고, 그래도 실제 출력이 예약을 넘으면(공급자가 상한을 무시한 경우) 그 뒤 전송을 모두 멈춘다.
 
 결과에는 호출마다 허용 목록(schema · HTTP 상태 · 시간 · 숫자 토큰 · 예약 / 실제 비용)만 남긴다 —
 공급자 오류 본문 · usage 원문은 싣지 않는다. 키는 출력하지 않는다. 생성 문장은 `--show-values`
@@ -106,7 +108,7 @@ DECISION_B_CASE = "만4 · 9월 2주"
 DECISION_B_GOALS = "10월 9일 한글날을 알아본다."
 
 
-# 출력 예약. 관측 최대는 1,023 토큰(문서 생성). 공급자가 강제하는 상한은 아니다 — 넘으면 멈춘다.
+# 출력 예약이자 요청의 출력 상한(`max_completion_tokens`). 관측 최대는 1,023 토큰(문서 생성).
 OUTPUT_RESERVE_TOKENS = 4096
 
 
@@ -151,6 +153,8 @@ class BudgetedTransport:
         return token_cost(input_bound, 0, OUTPUT_RESERVE_TOKENS)
 
     def post_json(self, url, *, headers, payload, timeout):
+        # 예약한 출력만큼만 쓰게 공급자에게 상한을 건다(결정 C). 이 bench 의 전송에만.
+        payload = {**payload, "max_completion_tokens": OUTPUT_RESERVE_TOKENS}
         reserved = self.reserve(payload)
         if self.stopped or len(self.calls) >= self.max_calls or self.spent + reserved > self.won:
             self.stopped = self.stopped or "budget"

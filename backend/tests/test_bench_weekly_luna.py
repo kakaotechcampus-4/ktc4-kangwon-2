@@ -5,6 +5,7 @@
 """
 
 import importlib.util
+import inspect
 import io
 import json
 import sys
@@ -61,6 +62,7 @@ def _fake(usage=USAGE, edit=None):
         )
         if edit is not None:
             edit(answer, len(sent))
+        assert payload["max_completion_tokens"] == bench.OUTPUT_RESERVE_TOKENS  # 결정 C
         sent.append(payload)
         body = {"choices": [{"message": {"content": json.dumps(answer, ensure_ascii=False)}}]}
         body["model"] = model
@@ -116,6 +118,22 @@ def test_첫_전송도_예약이_예산을_넘으면_보내지_않는다():
     assert out["saved"] == 0
 
 
+def test_전송마다_출력_상한을_붙이고_운영_어댑터_요청은_바꾸지_않는다():
+    payloads = []
+    fake = _fake()
+
+    def post(request, timeout):
+        payloads.append(json.loads(request.data.decode("utf-8")))
+        return fake(request, timeout)
+
+    _run(post, max_calls=2)
+    assert payloads and all(
+        p["max_completion_tokens"] == bench.OUTPUT_RESERVE_TOKENS for p in payloads
+    )
+    # 운영 어댑터 쪽 요청에는 이 칸이 없다 — bench 의 전송에서만 붙인다.
+    assert "max_completion_tokens" not in inspect.getsource(bench.EliceOpenAiMonthlyAdapter)
+
+
 def test_응답이_예약보다_크면_그_뒤로_멈춘다():
     huge = {"prompt_tokens": 1_000_000, "completion_tokens": 600_000, "total_tokens": 1_600_000}
     transport, out = _run(_fake(huge))  # 한 호출 ≈ ₩565 — 예약(수 원)을 넘는다
@@ -142,7 +160,7 @@ def test_usage_를_모르면_예약액을_쓴_것으로_치고_멈춘다():
     transport, out = _run(_fake(usage=None))
     assert out["calls"] == 1
     assert out["stopped"] == "usage_unknown"
-    assert out["won"] == pytest.approx(transport.calls[0]["reserved_won"], abs=0.001)
+    assert transport.spent == pytest.approx(transport.calls[0]["reserved_won"], abs=0.001)
 
 
 def test_어떤_이력이든_예산을_넘지_않는다():
