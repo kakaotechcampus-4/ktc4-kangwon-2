@@ -128,6 +128,7 @@ export const addWeekly = (
         // 교사 입력 칸은 처음 쓰기 전까지 만든 것이 없다 (§10-2).
         generation: teacher ? null : { method: value ? "RULE_LLM" : "RULE_ONLY", ...RULE },
         parent_snapshots: teacher ? [] : parentSnapshot(key),
+        teacher_input: teacher,
       };
     };
     // 토요일은 WeekPeriod 가 아니라 주간계획안이 가진다 (§3-2). 표시 기간만 하루 늘어난다.

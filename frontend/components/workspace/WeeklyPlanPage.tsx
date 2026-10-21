@@ -34,21 +34,7 @@ import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
-/**
- * 주간 서버 경로가 아직 없다 (계약 §14 W5, 하민님).
- *
- * 우리가 낸 404 는 공통 봉투(`{error: {...}}`)를 달고 오고, 아예 없는 경로는 FastAPI 기본
- * `{"detail": "Not Found"}` 다. 그 차이로 가른다. 안 가르면 화면이 「잠시 후 다시
- * 시도해주세요」를 띄우는데, 다시 시도해도 영원히 안 된다 — 교사는 고장으로 읽는다.
- */
-const NOT_BUILT_YET = "주간계획안은 아직 서버 준비 중이에요. 월간계획안까지는 지금 쓰실 수 있어요.";
-const notBuiltYet = (e: unknown) =>
-  e instanceof ApiError &&
-  e.status === 404 &&
-  !(typeof e.body === "object" && e.body !== null && "error" in e.body);
-
 function describe(e: unknown, fallback: string): string {
-  if (notBuiltYet(e)) return NOT_BUILT_YET;
   if (e instanceof ApiError) return e.message;
   return e instanceof Error ? e.message : fallback;
 }
@@ -64,18 +50,8 @@ function periodText(plan: WeeklyPlan): string {
   return `${plan.week_period.start_date} ~ ${plan.display_end_date} (${days})`;
 }
 
-/**
- * 교사가 적는 칸인가 (가정 연계 · 행사 · 특별활동, §6-2).
- *
- * **응답에 `selection` 이 없어서 칸의 `generation` 으로 가른다.** 만든 적이 없으면 null 이고
- * (§10-2), 교사가 처음 쓰면 `MANUAL` 이 된다. 생성한 칸은 교사가 고쳐도 처음 만든 방식을
- * 그대로 들고 있으므로(`TEACHER_EDITED` 는 이력에만 남는다, §5-3) 둘이 섞이지 않는다.
- *
- * Template 에는 `selection: "INSTITUTION_INPUT"` 로 적혀 있다 — 응답에 그 값이 실리면
- * 이 추론을 지우고 그걸 쓰는 쪽이 낫다 (하민님께 요청해 둔다).
- */
-const isTeacherInput = (cell: WeeklyCell) =>
-  cell.generation === null || cell.generation.method === "MANUAL";
+/** 교사가 적는 칸인가 (가정 연계 · 행사 · 특별활동, §6-2). 서버가 칸마다 알려 준다 (W5b). */
+const isTeacherInput = (cell: WeeklyCell) => cell.teacher_input;
 
 export default function WeeklyPlanPage() {
   const [classId, setClassId] = useState<number | null>(null);

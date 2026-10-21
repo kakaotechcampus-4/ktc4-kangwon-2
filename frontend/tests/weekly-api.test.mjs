@@ -117,9 +117,10 @@ test("서버에 있는 경로만 쓰고, 아직 없는 경로는 알고 쓴다",
   assert.ok(router.includes('@router.get("", response_model=WeeklyPlanListOut'));
   assert.ok(router.includes('@router.get("/{plan_id}"'));
   assert.ok(router.includes('@router.delete("/{plan_id}"'));
-  // **아직 없는 것.** 생기면 이 줄이 깨지고, 그때 화면의 「준비 중」 안내를 걷으면 된다.
-  assert.ok(!router.includes("/cells/"), "칸 편집·재생성이 생겼다 — 화면 안내를 걷어라");
-  assert.ok(!router.includes('"/{plan_id}/confirm"'), "확정이 생겼다 — 화면 안내를 걷어라");
+  // W5b 로 생긴 것. 화면의 「준비 중」 안내는 걷었다.
+  assert.ok(router.includes('"/{plan_id}/cells/{item_id}"'), "칸 편집");
+  assert.ok(router.includes('"/{plan_id}/cells/{item_id}/regenerate"'), "칸 재생성");
+  assert.ok(router.includes('"/{plan_id}/confirm"'), "확정");
 });
 
 test("month 는 달력 달 1~12 다 — YYYY-MM 을 보내면 422 다", () => {
@@ -140,8 +141,8 @@ test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
     "generation",
   ])
     assert.ok(schemas.includes(field + ":"), field);
-  // 교사 입력 칸 표시는 **응답에 없다.** 화면이 generation 으로 가른다 (§10-2).
-  assert.ok(!schemas.includes("teacher_input"), "teacher_input 이 생겼다 — 추론을 지워라");
+  // 교사 입력 칸 표시는 서버가 준다 (W5b). 화면은 generation 으로 추론하지 않는다.
+  assert.ok(schemas.includes("teacher_input:"), "teacher_input");
 });
 
 test("클라이언트는 일곱 가지를 낸다 — 월간의 audit 은 아직 없다", () => {
