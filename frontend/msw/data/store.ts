@@ -21,7 +21,14 @@ export interface Database {
   configs: Record<number, PlanConfig>;
   greetings: Record<number, Greetings>;
   /** 원마다 트렌드봇을 켰는지 (FR-808). 기본은 꺼짐 — 칸이 없으면 꺼진 것이다. */
-  centerSettings: Record<number, { trends_enabled: boolean; weekly_saturday_enabled?: boolean }>;
+  centerSettings: Record<
+    number,
+    {
+      trends_enabled: boolean;
+      weekly_saturday_enabled?: boolean;
+      observation_axis?: "NURI_5" | "DAILY_PLAY_2";
+    }
+  >;
   monthlyPlans: MonthlyPlan[];
   /** 주간계획안 (weekly-plan-contract §13). 변경 이력은 아직 화면이 쓰지 않아 두지 않는다. */
   weeklyPlans: WeeklyPlan[];

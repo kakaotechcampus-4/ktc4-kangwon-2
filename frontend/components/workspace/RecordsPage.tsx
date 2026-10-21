@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DOMAINS, today, validDate } from "@/lib/workspace/model";
+import { today, validDate } from "@/lib/workspace/model";
+import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
@@ -9,7 +10,6 @@ import type { ServerObservation } from "@/lib/api/observations";
 import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
-import { classServerId } from "@/lib/api/onboarding";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -63,7 +63,10 @@ export default function RecordsPage() {
     if (entry.childId) setChildId(entry.childId);
   }
   const [date, setDate] = useState(today);
-  const [domain, setDomain] = useState(DOMAINS[0]);
+  // 원마다 축이 다르다 (observation-axis.ts). 고칠 때는 그 기록의 영역을 그대로 띄운다 —
+  // 원이 축을 바꾸기 전에 쓴 기록이면 지금 목록에 없는 이름일 수 있다.
+  const domains = useObservationDomains();
+  const [domain, setDomain] = useState("");
   const [context, setContext] = useState("");
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
@@ -320,16 +323,18 @@ export default function RecordsPage() {
                   <label className={ws.field}>
                     관찰 영역
                     <select
-                      value={domain}
+                      value={domain || domains[0]}
                       {...fieldErrorProps("domain", invalid)}
                       onChange={(e) => {
                         setDomain(e.target.value);
                         clearInvalid("domain");
                       }}
                     >
-                      {DOMAINS.map((d) => (
-                        <option key={d}>{d}</option>
-                      ))}
+                      {(domains.includes(domain) || !domain ? domains : [domain, ...domains]).map(
+                        (d) => (
+                          <option key={d}>{d}</option>
+                        ),
+                      )}
                     </select>
                     <FieldError name="domain" invalid={invalid} />
                   </label>

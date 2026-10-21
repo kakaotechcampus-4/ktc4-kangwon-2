@@ -29,7 +29,6 @@ import {
   refreshDocument,
   deleteDocument,
   documentServerId,
-  downloadDocumentHwpx,
   isRecordKind,
   RECORD_KINDS,
   type DocumentSummary,
@@ -449,12 +448,6 @@ export default function DocumentsPage() {
           setMessage("문서를 삭제했어요.");
           await reloadList();
         },
-        // 서버가 내보낼 수 있는 종류만 버튼을 단다 — 나머지는 눌러도 422 다.
-        exportHwpx:
-          activeServerId !== null &&
-          (serverCurrent.kind === "observation" || serverCurrent.kind === "dailyLog")
-            ? () => downloadDocumentHwpx(activeServerId, serverCurrent.title)
-            : undefined,
       }
     : undefined;
 

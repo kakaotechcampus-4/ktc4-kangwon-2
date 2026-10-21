@@ -43,6 +43,17 @@ class Center(Base):
         nullable=False,
         comment="주간계획안에 토요일을 넣을지 (ADR-030 WQ-01). **기본은 꺼짐** — 월~금",
     )
+    observation_axis: Mapped[str] = mapped_column(
+        String(16),
+        default="NURI_5",
+        server_default="NURI_5",
+        nullable=False,
+        comment=(
+            "관찰 기록의 영역 축 (observations/models.py AXES). "
+            "NURI_5 는 누리과정 5영역, DAILY_PLAY_2 는 일상생활·놀이활동. "
+            "**기본은 NURI_5** — 교사 문서 3건 중 2건이 2축이라 둘 다 받는다"
+        ),
+    )
     region_sigungu: Mapped[str] = mapped_column(
         String(30), comment="시·군·구. 지역사회 연계 활동 선별에 쓴다"
     )

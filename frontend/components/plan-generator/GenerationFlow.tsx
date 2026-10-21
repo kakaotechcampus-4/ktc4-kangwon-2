@@ -473,13 +473,20 @@ export default function GenerationFlow({
                     </button>
                   )}
                   {active === "annual" && confirmed && contents.annual?.annualPlanId ? (
-                    <button
-                      className={styles.secondary}
-                      disabled={hwpx.exporting}
-                      onClick={downloadHwpx}
-                    >
-                      {hwpx.exporting ? "만드는 중…" : "↓ 한글 파일로 내려받기"}
-                    </button>
+                    <>
+                      <button
+                        className={styles.secondary}
+                        disabled={hwpx.exporting}
+                        onClick={downloadHwpx}
+                      >
+                        {hwpx.exporting ? "만드는 중…" : "↓ 한글 파일로 내려받기"}
+                      </button>
+                      {/* 연간을 확정해야 월간을 만들 수 있다 (§9-1 Gate). 확정한 그 자리에서
+                          다음 걸음을 준다 — 사이드바로 돌아가 찾게 하지 않는다. */}
+                      <Link className={styles.secondary} href="/plans/monthly">
+                        월간계획안 만들기 →
+                      </Link>
+                    </>
                   ) : (
                     <button className={styles.secondary} onClick={download}>
                       ↓ 텍스트로 내려받기
@@ -491,7 +498,8 @@ export default function GenerationFlow({
                   두면 교사가 막힌 줄 안다 — 실제로 「눌러도 아무것도 안 된다」는 말을 들었다. */}
               {active === "annual" && confirmed && (
                 <p className={styles.footnote}>
-                  확정한 연간계획안은 수정하거나 지울 수 없어요. 소주제와 안전교육은 확정 전에
+                  확정했어요. 이제 이 계획안을 바탕으로 월간계획안을 만들 수 있어요. 확정한
+                  연간계획안은 수정하거나 지울 수 없어요 — 소주제와 안전교육은 확정 전에
                   입력해주세요. 한글 파일로 내려받은 뒤에는 파일에서 직접 수정할 수 있어요.
                 </p>
               )}

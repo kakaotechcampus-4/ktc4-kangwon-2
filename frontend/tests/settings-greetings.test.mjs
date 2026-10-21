@@ -18,6 +18,8 @@ registerHooks({
 
 const require = createRequire(import.meta.url);
 const api = await import("../lib/api/centers.ts");
+// 축 목록은 상수 모듈을 그대로 쓴다 — 화면과 어긋나면 안 된다.
+const observationAxis = await import("../lib/workspace/observation-axis.ts");
 const auth = await import("../lib/api/auth.ts");
 const session = await import("../lib/auth/request-session.ts");
 const local = await import("../lib/onboarding/settings.ts");
@@ -178,6 +180,8 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
     "@/lib/onboarding/types": { EMPTY_CLASS_SETTINGS, MONTH_ORDER },
     "@/lib/api/auth": auth,
     "@/lib/api/centers": api,
+    // 관찰 영역 축은 상수만 든 모듈이다 (React · API 를 import 하지 않는다).
+    "@/lib/workspace/observation-axis": observationAxis,
     "@/lib/auth/request-session": session,
     "@/components/onboarding/OnboardingPage": { StepCharacterMessages: "character-step" },
     "@/components/workspace/WorkspaceUI": { Message: "message", WorkspacePage: "page", ws: {} },

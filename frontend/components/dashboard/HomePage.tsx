@@ -16,7 +16,8 @@ import { Icon, type IconName } from "@/components/app/icons";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
-import { DOMAINS, today } from "@/lib/workspace/model";
+import { today } from "@/lib/workspace/model";
+import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { routinesPath, routinesScope } from "@/lib/workspace/routines-route";
 import { classServerId } from "@/lib/api/onboarding";
@@ -195,7 +196,9 @@ function Compose({
 }) {
   const withChildren = classes.filter((c) => c.children.length > 0);
   const [childId, setChildId] = useState("");
-  const [domain, setDomain] = useState(DOMAINS[0]);
+  // 원마다 축이 다르다 (observation-axis.ts). 5영역 원이면 다섯, 2축 원이면 둘이다.
+  const domains = useObservationDomains();
+  const [domain, setDomain] = useState("");
   const [fact, setFact] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -347,11 +350,11 @@ function Compose({
                 <label className="text-[10px] text-primary-ink">
                   영역
                   <select
-                    value={domain}
+                    value={domain || domains[0]}
                     onChange={(e) => setDomain(e.target.value)}
                     className="mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
                   >
-                    {DOMAINS.map((d) => (
+                    {domains.map((d) => (
                       <option key={d} value={d}>
                         {d}
                       </option>
@@ -479,21 +482,29 @@ function ChildSpotlight({
 }
 
 /** 우리 반 한눈에 — 오늘 어느 영역이 비었는지. 평가에서 영역 하나가 비면 바로 걸린다. */
+// 2축(일상생활 · 놀이활동)에는 아이콘을 따로 두지 않았다 — 없으면 `record` 를 쓴다.
 const DOMAIN_ICON: Record<string, IconName> = {
   "신체운동·건강": "body",
   의사소통: "talk",
   사회관계: "social",
   예술경험: "art",
   자연탐구: "nature",
+  일상생활: "record",
+  놀이활동: "art",
 };
 
 function DomainBoard({ records }: { records: ServerObservation[] }) {
+  const domains = useObservationDomains();
   return (
     <section className={CARD}>
       <h3 className="font-display text-[22px] font-bold text-ink">우리 반 한눈에</h3>
       <p className="mt-1 text-[11px] text-ink-soft">오늘의 놀이와 관찰 영역</p>
-      <ul className="mt-5 grid grid-cols-5 gap-2 text-center">
-        {DOMAINS.map((domain) => {
+      {/* 칸 수를 고정하지 않는다 — 5영역 원은 다섯, 2축 원은 둘이다. */}
+      <ul
+        className="mt-5 grid gap-2 text-center"
+        style={{ gridTemplateColumns: `repeat(${domains.length}, minmax(0, 1fr))` }}
+      >
+        {domains.map((domain) => {
           const filled = records.some((r) => r.domain === domain);
           return (
             <li key={domain} className="flex flex-col items-center gap-1.5">
@@ -502,7 +513,7 @@ function DomainBoard({ records }: { records: ServerObservation[] }) {
                   filled ? "bg-primary-tint text-primary-ink" : "bg-cream text-ink-soft"
                 }`}
               >
-                <Icon name={DOMAIN_ICON[domain]} className="h-6 w-6" />
+                <Icon name={DOMAIN_ICON[domain] ?? "record"} className="h-6 w-6" />
               </span>
               <span className="text-[10px] leading-tight text-ink-soft">{domain}</span>
               <span className={`text-[9px] ${filled ? "text-primary" : "text-ink-soft"}`}>

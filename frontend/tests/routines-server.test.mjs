@@ -275,6 +275,7 @@ test("근거 사본 한 줄은 서버의 fact_text 와 같은 모양이다", () 
 
 // ── 3. 화면 ────────────────────────────────────────────────────────────────
 
+const OBSERVATION_DOMAINS = ["신체운동·건강", "의사소통", "사회관계", "예술경험", "자연탐구"];
 const jsx = (type, props, key) => ({ type, props, key });
 const runtime = { jsx, jsxs: jsx, Fragment: "fragment" };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -597,6 +598,8 @@ function page(
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
+    // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
+    "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
     "@/lib/api/routines": {
       listRoutines: async (...args) => (await api.list(...args)).items,
       createRoutine: api.create,
@@ -1553,9 +1556,10 @@ function recordsPage(t, { rooms = [ROOM_A] } = {}) {
     react: app.react,
     "next/link": { default: "link" },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
+    // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
+    "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/model": {
-      DOMAINS: ["신체운동·건강", "의사소통", "사회관계", "예술경험", "자연탐구"],
       today: () => TODAY,
       validDate: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value),
     },
@@ -2300,6 +2304,8 @@ function quickRecordsPage(t, { rooms = [ROOM_A, ROOM_B] } = {}) {
     // 주소를 만드는 쪽도 진짜다 — 반 번호 변환까지 같이 본다.
     "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
+    // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
+    "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
   }).default;
   const view = app.mount(Page);
   t.after(app.cleanup);
@@ -2419,13 +2425,15 @@ function homePage(
     "@/components/workspace/WorkspaceUI": { useClasses: () => box.classes },
     "@/lib/api/records": records.api,
     "@/lib/api/onboarding": onboardingApi,
-    "@/lib/workspace/model": { DOMAINS: ["의사소통"], today: () => TODAY },
+    "@/lib/workspace/model": { today: () => TODAY },
     // 대표 반 정책도 주소를 만드는 쪽도 진짜다.
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/plan-generator/types": { AGE_LABEL: { age3: "만 3세" } },
     "@/lib/greeting": { formatKoreanDate: () => "10월 6일" },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
+    // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
+    "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
     "@/lib/hooks/use-dictation": {
       useDictation: () => ({ supported: false, listening: false, toggle: () => {} }),
     },

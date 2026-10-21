@@ -184,13 +184,22 @@ export const handlers = [
     if (!findCenter(id) || id !== currentCenterId()) return missing();
     const b = await body(request);
     if (!b) return bad("body");
-    if (Object.keys(b).some((key) => key !== "trends_enabled")) return bad("body");
+    const SETTING_KEYS = ["trends_enabled", "weekly_saturday_enabled", "observation_axis"];
+    if (Object.keys(b).some((key) => !SETTING_KEYS.includes(key))) return bad("body");
     // **보낸 칸만 바꾼다.** 빈 요청은 아무것도 바꾸지 않는다.
-    if (b.trends_enabled !== undefined) {
-      if (typeof b.trends_enabled !== "boolean") return bad("trends_enabled");
-      return HttpResponse.json(putCenterSettings(id, { trends_enabled: b.trends_enabled }));
+    const patch: Parameters<typeof putCenterSettings>[1] = {};
+    for (const key of ["trends_enabled", "weekly_saturday_enabled"] as const) {
+      if (b[key] === undefined) continue;
+      if (typeof b[key] !== "boolean") return bad(key);
+      patch[key] = b[key];
     }
-    return HttpResponse.json(findCenterSettings(id));
+    if (b.observation_axis !== undefined) {
+      if (b.observation_axis !== "NURI_5" && b.observation_axis !== "DAILY_PLAY_2")
+        return bad("observation_axis");
+      patch.observation_axis = b.observation_axis;
+    }
+    if (!Object.keys(patch).length) return HttpResponse.json(findCenterSettings(id));
+    return HttpResponse.json(putCenterSettings(id, patch));
   }),
   http.get("*/api/centers/:centerId/greetings", async ({ request, params }) => {
     const s = await scenario(request, "greetings");
