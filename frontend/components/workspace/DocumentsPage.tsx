@@ -385,6 +385,23 @@ export default function DocumentsPage() {
     }
   }
 
+  // 못 만드는 이유. 버튼을 끄고 그 자리에서 말한다 — 경고가 페이지 맨 위에만 뜨면
+  // 스크롤을 내린 교사에게는 「눌러도 아무 일이 없다」로 보인다.
+  const blocked =
+    listStatus !== "ready"
+      ? ""
+      : !classroom
+        ? "반을 먼저 골라주세요."
+        : (kind === "observation" || kind === "assessment") && !child
+          ? "이 문서는 아동을 한 명 골라야 만들 수 있어요."
+          : kind === "dailyLog" && start !== end
+            ? "일일 보육일지는 시작일과 종료일이 같아야 해요."
+            : !validPeriod(start, end)
+              ? "기간을 확인해주세요."
+              : !sources.length
+                ? "근거로 쓸 기록을 하나 이상 골라주세요."
+                : "";
+
   // 일과 기록 화면(S-J1)의 주소 — docs/screen-spec.md 「들어오는 길」. 날짜 · 반이 그대로 넘어간다.
   const routineHref =
     pickedClass === null && entry.daily && entry.classId !== null
@@ -559,11 +576,12 @@ export default function DocumentsPage() {
               </p>
               <button
                 className={ws.primary}
-                disabled={busy || !sources.length || listStatus !== "ready"}
+                disabled={busy || !!blocked || listStatus !== "ready"}
                 onClick={generate}
               >
                 {busy ? "초안 작성 중…" : "초안 만들기"}
               </button>
+              {blocked && <p className={ws.hint}>{blocked}</p>}
               {kind === "dailyLog" && routineHref && (
                 <Link className={ws.link} href={routineHref}>
                   새 일과 기록 입력 →

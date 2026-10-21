@@ -17,16 +17,34 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
-# 누리과정 5영역. 계약이 값을 고정한다 (docs/api-spec.md §10).
-# schemas.py 가 이 튜플을 그대로 Literal 로 쓰고 아래 CheckConstraint 도 같은 값을 본다 —
-# 목록을 두 군데 적으면 한쪽만 고쳐진 채로 통과한다.
-DOMAINS = (
+# 관찰 축은 원마다 다르다. 교사가 쓴 관찰일지 3건을 재 보니 **2건이 2축**이었다
+# (docs/references/관찰일지-서술-기준.md). 5영역으로 박아 두면 2축을 쓰는 원은
+# 관찰 기록을 아예 넣을 수 없다.
+#
+# 어느 축을 쓸지는 원이 고른다 (`centers.observation_axis`). DB 는 **두 축의 값을 모두**
+# 받고, 「이 원이 쓸 수 있는 값인가」는 라우터가 본다 — 원이 축을 바꿔도 전에 쌓은
+# 기록이 CHECK 에 걸려 못 읽히면 안 된다.
+NURI_DOMAINS = (
     "신체운동·건강",
     "의사소통",
     "사회관계",
     "예술경험",
     "자연탐구",
 )
+DAILY_PLAY_DOMAINS = (
+    "일상생활",
+    "놀이활동",
+)
+AXES: dict[str, tuple[str, ...]] = {
+    "NURI_5": NURI_DOMAINS,
+    "DAILY_PLAY_2": DAILY_PLAY_DOMAINS,
+}
+DEFAULT_AXIS = "NURI_5"
+
+# 두 축을 합친 **허용 값 전체**다. schemas.py 가 이 튜플을 그대로 Literal 로 쓰고 아래
+# CheckConstraint 도 같은 값을 본다 — 목록을 두 군데 적으면 한쪽만 고쳐진 채로 통과한다.
+# 「이 원의 축에 맞는 값인가」는 여기가 아니라 라우터가 본다.
+DOMAINS = NURI_DOMAINS + DAILY_PLAY_DOMAINS
 
 
 class Observation(Base):
@@ -46,7 +64,7 @@ class Observation(Base):
 
     __tablename__ = "observations"
     __table_args__ = (
-        # 5영역 밖의 값을 DB 가 막는다. pydantic Literal 이 이미 막지만 스크립트·수동 INSERT 는
+        # 두 축 밖의 값을 DB 가 막는다. pydantic Literal 이 이미 막지만 스크립트·수동 INSERT 는
         # 라우터를 지나지 않는다. 문자열로 SQL 을 적지 않고 DOMAINS 하나만 본다.
         CheckConstraint(column("domain").in_(DOMAINS), name="domain"),
         # 목록이 반 + 기간으로 거른다 (docs/api-spec.md 「DB 에 아직 없는 것」).

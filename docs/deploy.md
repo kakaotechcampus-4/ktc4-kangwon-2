@@ -79,14 +79,15 @@ scripts/deploy.sh 를 통째로 보냄   aws ssm send-command
 
 ## 손으로 배포
 
-자동 배포가 막혔을 때, 또는 `main` 이 아닌 브랜치를 올려야 할 때 쓴다.
-**명령은 같다** — 같은 스크립트를 부른다.
+자동 배포가 막혔을 때 쓴다. **명령은 같다** — 같은 스크립트를 부른다.
+`main` 이 아닌 브랜치는 Actions 에서 올린다(아래 「main 이 아닌 브랜치를 올릴 때」).
+여기서 올릴 때는 `DEPLOY_REF` 를 붙인다 — **안 붙이면 `main` 이 올라간다.**
 
 EC2 → 인스턴스 → **연결** → **Session Manager** 탭 → 연결
 
 ```bash
 sudo -iu ubuntu
-bash ~/ktc4-kangwon-2/scripts/deploy.sh
+DEPLOY_REF=develop bash ~/ktc4-kangwon-2/scripts/deploy.sh   # 올릴 브랜치 · 커밋. 안 붙이면 main
 
 cd ~/ktc4-kangwon-2
 docker compose ps
@@ -145,7 +146,7 @@ sudo -u ubuntu git -C /home/ubuntu/ktc4-kangwon-2 log --oneline -5
 ### 순서에 이유가 있다
 
 ```
-git reset --hard    서버에서 직접 고친 파일이 있어도 main 이 정답이다
+git reset --hard    서버에서 직접 고친 파일이 있어도 배포하는 ref 가 정답이다
 파일 확인            fetch 가 실패해도 reset 은 성공한다.  옛 origin/main 이 남아 있어서
                     2026-09-22 에 13일 전 커밋으로 되감겼고, 그 커밋엔 docker-compose.yml 이 없었다
 build               이미지를 먼저 만든다
@@ -215,13 +216,15 @@ echo | openssl s_client -connect ssample.duckdns.org:443 \
 
 ## 배포가 실패하면
 
-**먼저 어느 단계에서 멈췄는지 본다.** 셋은 원인이 다르다.
+**먼저 어느 단계에서 멈췄는지 본다.** 넷은 원인이 다르다.
 
 ```
 AWS 자격증명 설정 에서 실패     인증 문제.  AWS_ACCOUNT_ID Variable 을 본다
 배포 명령 보내기 에서 실패      권한·서버 문제.  서버가 SSM 에 붙어 있나
-끝날 때까지 기다린다 에서 실패   서버에서 명령이 터졌다.  그 스텝의 「서버 출력」을 읽는다
-Health check 에서 실패         배포는 됐는데 앱이 안 뜬다.  서버에서 docker compose ps
+끝날 때까지 기다린다 에서 실패   서버에서 명령이 터졌거나, 20분 안에 안 끝났다.  그 스텝의 「서버 출력」을 읽는다
+                              「상태 InProgress」면 서버는 아직 돈다 — 끝나기 전에 다시 배포하지 않는다
+Health check 에서 실패         앱이 안 뜨거나, 확인할 주소가 틀렸다.  서버에서 docker compose ps,
+                              로그의 「확인할 주소」 줄과 HEALTHCHECK_URL secret 을 본다
 ```
 
 **서버가 SSM 에 붙어 있나 확인:**
@@ -239,8 +242,6 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 ---
 
 ## 안 만든 것
-
-**롤백 자동화** — `git reset --hard <이전 커밋>` 후 다시 돌리면 된다.
 
 **GHCR 이미지 푸시** — 서버에서 직접 빌드한다. 빌드 머신이 따로 없어 단계가 줄어든다.
 `t3.medium`(4GB)에서 Next.js 빌드가 메모리로 실패하면 그때 옮긴다.
@@ -264,8 +265,10 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 
 ```bash
 sudo crontab -e
-15 3 * * * /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
+15 18 * * * /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
 ```
+
+**시각은 UTC 다.** 서버 cron 이 UTC 로 돌아서 `15 18` 이 한국 새벽 3시 15분이다(`scripts/backup.sh` 머리 주석).
 
 백업 파일은 root 소유로 쌓인다(cron 이 root 다). **손으로 돌릴 때도 `sudo` 를 붙인다.**
 
