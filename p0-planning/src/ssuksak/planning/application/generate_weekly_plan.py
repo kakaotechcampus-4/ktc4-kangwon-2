@@ -35,11 +35,9 @@ from ..domain.weekly_plan import (
     WeeklyTemplateSnapshot,
 )
 from ..rules.monthly_activity_selection import (
-    RULE_ID as ACTIVITY_RULE_ID,
-    RULE_VERSION as ACTIVITY_RULE_VERSION,
     ActivitySelection,
     ActivitySelectionTrace,
-    select_activity_for_cell,
+    _sort_key as monthly_sort_key,
 )
 from ..rules.monthly_cell_state import resolve_cell_state
 from ..rules.monthly_safety import (
@@ -72,10 +70,19 @@ from .ports import (
 SYSTEM_ACTOR = "weekly_application"
 THEME_RULE_ID = "weekly.theme.parent_theme"
 EMPTY_RULE_ID = "weekly.cell.rule_only_empty"
-# §4-2 「가점」: the parent's same-week activity, while still the parent's current value
-# and still eligible, outranks every other candidate (the rule path has no scores).
-PARENT_ACTIVITY_RULE_ID = "weekly.activity.parent_same_week"
+# Outdoor ranking = the monthly ranking with one weekly key: §4-2 「가점」 for the parent's
+# same-week activity, placed after repeat-avoidance and the parent-theme link — a bonus,
+# not a copy: a theme-linked candidate still beats an unlinked parent activity.
+OUTDOOR_RULE_ID = "weekly.activity.reference_candidate_selection"
 PARENT_ACTIVITY_REASON = "PARENT_SAME_WEEK_ACTIVITY"
+_OUTDOOR_REASONS = (
+    "AVOIDED_REPEAT_IN_MONTH",
+    "MATCHED_PARENT_THEME",
+    PARENT_ACTIVITY_REASON,
+    "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE",
+    "AVOIDED_CURRICULUM_DOMAIN_REPEAT",
+    "STRONGER_MONTH_EVIDENCE",
+)
 WEEKLY_RULE_VERSION = "v1"
 THEME_KEY = "theme"
 SAFETY_KEY = "safety_education"
@@ -222,41 +229,29 @@ class GenerateWeeklyPlan:
                 parent_cells = _section_cells(parent, OUTDOOR_PLAY_SLOT)
                 same_week = next((c for c in parent_cells if c.week_id == command.week_id), None)
                 preferred = _parent_activity(same_week, eligible)
-                if preferred is not None:
-                    # §4-2 가점: the parent's same-week activity (its current value).
-                    picked = ActivitySelection(preferred, ActivitySelectionTrace(
-                        PARENT_ACTIVITY_RULE_ID,
-                        WEEKLY_RULE_VERSION,
-                        tuple(sorted(c.activity_id for c in eligible)),
-                        preferred.activity_id,
-                        None,
-                        (PARENT_ACTIVITY_REASON,),
-                    ))
-                    cited_cells: tuple[MonthlyCell, ...] = (same_week,)
-                    generation = GenerationMethodDetail(
-                        GenerationMethod.RULE_ONLY, PARENT_ACTIVITY_RULE_ID, WEEKLY_RULE_VERSION
-                    )
-                else:
-                    # No usable same-week parent activity: monthly ranking against the parent
-                    # theme, avoiding the parent's other weeks (the monthly no-repeat rule).
-                    cited_cells = tuple(
-                        cell for cell in parent_cells
-                        if cell.week_id != command.week_id and cell.value.strip()
-                    )
-                    picked = select_activity_for_cell(
-                        eligible,
-                        calendar_month=command.week_id.target_month.calendar_month,
-                        used_activity_ids=frozenset(
-                            source.source_id
-                            for cell in cited_cells
-                            for source in cell.evidence
-                            if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
-                        ),
-                        parent_theme_id=theme_reference_id(theme_cell.evidence),
-                    )
-                    generation = GenerationMethodDetail(
-                        GenerationMethod.RULE_ONLY, ACTIVITY_RULE_ID, ACTIVITY_RULE_VERSION
-                    )
+                other_weeks = tuple(
+                    cell for cell in parent_cells
+                    if cell.week_id != command.week_id and cell.value.strip()
+                )
+                picked = _rank_outdoor(
+                    eligible,
+                    calendar_month=command.week_id.target_month.calendar_month,
+                    used_activity_ids=frozenset(
+                        source.source_id
+                        for cell in other_weeks
+                        for source in cell.evidence
+                        if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
+                    ),
+                    parent_theme_id=theme_reference_id(theme_cell.evidence),
+                    preferred_id=preferred.activity_id if preferred is not None else None,
+                )
+                # Cite every parent Cell the ranking read: the same week (가점) and the others (repeat).
+                cited_cells: tuple[MonthlyCell, ...] = (
+                    (same_week,) if preferred is not None else ()
+                ) + other_weeks
+                generation = GenerationMethodDetail(
+                    GenerationMethod.RULE_ONLY, OUTDOOR_RULE_ID, WEEKLY_RULE_VERSION
+                )
                 selection = picked.trace
                 if picked.candidate is not None:
                     value = picked.candidate.label
@@ -359,6 +354,44 @@ def _plan_lineage(parent: MonthlyPlan) -> ParentLineage:
 def _cited(lineage: ParentLineage, cell: MonthlyCell) -> ParentLineage:
     # F2: the Application records which parent Cell (and its value then) a value used.
     return replace(lineage, parent_item_id=cell.item_id, snapshot_value=cell.value)
+
+
+def _rank_outdoor(
+    eligible: tuple[ActivityCandidate, ...],
+    *,
+    calendar_month: int,
+    used_activity_ids: frozenset[str],
+    parent_theme_id: str | None,
+    preferred_id: str | None,
+) -> ActivitySelection:
+    def key(candidate: ActivityCandidate) -> tuple[object, ...]:
+        base = monthly_sort_key(
+            candidate,
+            calendar_month=calendar_month,
+            used_activity_ids=used_activity_ids,
+            current_activity_id=None,
+            parent_theme_id=parent_theme_id,
+            used_curriculum_domains={},
+        )
+        bonus = int(preferred_id is not None and candidate.activity_id != preferred_id)
+        return (*base[:2], bonus, *base[2:])
+
+    ids = tuple(sorted(candidate.activity_id for candidate in eligible))
+    if not eligible:
+        trace = ActivitySelectionTrace(OUTDOOR_RULE_ID, WEEKLY_RULE_VERSION, (), None, None, ("NO_ELIGIBLE_CANDIDATE",))
+        return ActivitySelection(None, trace)
+    selected = min(eligible, key=key)
+    selected_key = key(selected)
+    if len(eligible) == 1:
+        reasons: tuple[str, ...] = ("ONLY_ELIGIBLE_CANDIDATE",)
+    else:
+        reasons = tuple(
+            label for index, label in enumerate(_OUTDOOR_REASONS)
+            if (index == 2 and preferred_id is not None and selected_key[2] == 0)
+            or (index != 2 and (selected_key[index] == 0 or (index == 5 and int(selected_key[index]) < 0)))
+        ) + ("TIE_BREAK_STABLE_ACTIVITY_ID",)
+    trace = ActivitySelectionTrace(OUTDOOR_RULE_ID, WEEKLY_RULE_VERSION, ids, selected.activity_id, selected_key, reasons)
+    return ActivitySelection(selected, trace)
 
 
 def _parent_activity(

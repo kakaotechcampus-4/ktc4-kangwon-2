@@ -189,7 +189,7 @@
       "state": "FILLED",
       "generation": {
         "method": "RULE_ONLY",
-        "rule_id": "weekly.activity.parent_same_week",
+        "rule_id": "weekly.activity.reference_candidate_selection",
         "rule_version": "v1"
       },
       "evidence": [
@@ -212,6 +212,22 @@
         [
           "monthly-final_item_003",
           "가을 나들이"
+        ],
+        [
+          "monthly-final_item_002",
+          "무궁화 꽃이 피었습니다"
+        ],
+        [
+          "monthly-final_item_004",
+          "사방치기"
+        ],
+        [
+          "monthly-final_item_005",
+          "모래 위에 옛 그림을 그려요"
+        ],
+        [
+          "monthly-final_item_006",
+          "동대문 놀이"
         ]
       ],
       "audit": [
@@ -297,7 +313,13 @@
   "activity_selection": {
     "selected": "act_outdoor_autumn_outing",
     "reasons": [
-      "PARENT_SAME_WEEK_ACTIVITY"
+      "AVOIDED_REPEAT_IN_MONTH",
+      "MATCHED_PARENT_THEME",
+      "PARENT_SAME_WEEK_ACTIVITY",
+      "AVOIDED_CONFIRMED_DISPLAY_QUALITY_ISSUE",
+      "AVOIDED_CURRICULUM_DOMAIN_REPEAT",
+      "STRONGER_MONTH_EVIDENCE",
+      "TIE_BREAK_STABLE_ACTIVITY_ID"
     ]
   },
   "optional_context": []

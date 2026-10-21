@@ -18,7 +18,7 @@ from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS_WITH_SATURDAY, OperatingDay
 from ssuksak.planning.rules.monthly_week_periods import deactivate
 from ssuksak.planning.rules.safety_placement import OFFICIAL_GROUNDING_MISSING
-from ssuksak.planning.rules.monthly_activity_selection import RULE_ID as MONTHLY_ACTIVITY_RULE_ID
+from ssuksak.planning.application.monthly_support import theme_reference_id
 from ssuksak.planning.rules.weekly_verification import PARENT_CITATION_INVALID, verify_weekly_plan
 
 from tests.finalization.weekly_harness import WEEK, WeeklyHarness, weekly_snapshot
@@ -106,12 +106,28 @@ def test_outdoor_play_prefers_the_parents_same_week_activity():
     outdoor = result.plan.cell("outdoor_play")
 
     assert outdoor.value == other.label  # §4-2 가점: the parent's same-week choice
-    assert result.activity_selection.rule_id == weekly.PARENT_ACTIVITY_RULE_ID
-    assert result.activity_selection.reason_codes == (weekly.PARENT_ACTIVITY_REASON,)
-    assert outdoor.generation.rule_id == weekly.PARENT_ACTIVITY_RULE_ID
-    assert [(s.parent_item_id, s.snapshot_value) for s in outdoor.parent_snapshots][1:] == [
-        (same_week.item_id, other.label)
-    ]
+    assert result.activity_selection.rule_id == weekly.OUTDOOR_RULE_ID
+    assert weekly.PARENT_ACTIVITY_REASON in result.activity_selection.reason_codes
+    assert outdoor.generation.rule_id == weekly.OUTDOOR_RULE_ID
+    cited = [(s.parent_item_id, s.snapshot_value) for s in outdoor.parent_snapshots]
+    assert cited[1] == (same_week.item_id, other.label)  # theme, then the same week
+
+
+def test_outdoor_bonus_is_not_a_copy_a_theme_linked_candidate_still_wins():
+    probe = WeeklyHarness().monthly_parent()
+    theme_id = theme_reference_id(probe.section("theme").cells[0].evidence)
+    used = {c.value for c in probe.section("outdoor_play").cells}
+    eligible = [c for c in _eligible(WeeklyHarness(), probe) if c.label not in used]
+    unlinked = next(c for c in eligible if not c.links_theme(theme_id))
+    assert any(c.links_theme(theme_id) for c in eligible)  # a theme-linked rival exists
+    harness = WeeklyHarness()
+    parent, _ = _parent_with_same_week_activity(harness, unlinked)
+
+    result = harness.generate_weekly(parent)
+
+    # The bonus sits after the parent-theme link: the parent's unlinked activity loses.
+    assert result.plan.cell("outdoor_play").value != unlinked.label
+    assert weekly.PARENT_ACTIVITY_REASON not in result.activity_selection.reason_codes
 
 
 def test_outdoor_play_gives_no_preference_once_the_teacher_rewrote_the_parent_cell():
@@ -123,8 +139,9 @@ def test_outdoor_play_gives_no_preference_once_the_teacher_rewrote_the_parent_ce
     result = harness.generate_weekly(parent)
 
     # The old ACTIVITY_REFERENCE stays as history but is no longer the parent's current choice.
-    assert result.activity_selection.rule_id == MONTHLY_ACTIVITY_RULE_ID
+    assert result.activity_selection.rule_id == weekly.OUTDOOR_RULE_ID
     assert weekly.PARENT_ACTIVITY_REASON not in result.activity_selection.reason_codes
+    assert cell.item_id not in {s.parent_item_id for s in result.plan.cell("outdoor_play").parent_snapshots}
 
 
 def test_outdoor_play_avoids_the_parents_other_weeks_and_cites_them():
