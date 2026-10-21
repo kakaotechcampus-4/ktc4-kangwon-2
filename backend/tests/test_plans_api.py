@@ -420,3 +420,82 @@ def test_켜도_남의_원_것은_404(db_session, mine, teacher, monkeypatch):
     teacher.center_id = mine.center_id + 1
 
     assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 404
+
+
+def test_생성한_모든_달에_소주제_초안이_저장된다(mine):
+    created = _create(mine)
+    reloaded = client.get(f"/api/plans/annual/{created['id']}").json()
+    assert reloaded == created
+    assert len(created["safety_categories"]) == 6
+    assert all(2 <= len(month["sub_themes"]) <= 5 for month in created["months"])
+
+
+def test_안전교육은_미입력과_배치없음을_구분하고_생략하면_보존한다(db_session, mine):
+    plan = _create(mine)
+    path = f"/api/plans/annual/{plan['id']}/months/3"
+    base = {"theme": "우리 반", "sub_themes": ["친구 만나기"]}
+    saved = client.put(path, json={**base, "safety_education": ["traffic_safety"]})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["safety_education_state"] == "PLACED"
+    assert saved.json()["safety_education_source"] == "TEACHER_INPUT"
+    assert saved.json()["safety_education_generation"]["method"] == "MANUAL"
+    preserved = client.put(path, json=base).json()
+    assert preserved["safety_education"] == ["traffic_safety"]
+    absent = client.put(path, json={**base, "safety_education": []}).json()
+    assert absent["safety_education_state"] == "NOT_PLACED"
+    unknown = client.put(path, json={**base, "safety_education": None}).json()
+    assert unknown["safety_education_state"] == "SOURCE_REQUIRED"
+    assert unknown["safety_education_source"] is None
+    assert unknown["safety_education_generation"] is None
+    row = db_session.get(Plan, plan["id"])
+    assert len(row.annual_safety["audit"]) == 3
+    assert row.annual_safety["audit"][0]["before"] is None
+    assert row.annual_safety["audit"][0]["after"] == ["traffic_safety"]
+    assert row.annual_safety["audit"][-1]["actor"] == "user_1"
+    assert row.annual_safety["audit"][-1]["occurred_at"]
+    assert row.annual_safety["months"] == {}
+    assert client.post(f"/api/plans/annual/{plan['id']}/confirm").status_code == 200
+    assert (
+        client.put(path, json={**base, "safety_education": ["traffic_safety"]}).status_code == 409
+    )
+
+
+@pytest.mark.parametrize(
+    "value", [["unknown"], ["traffic_safety", "traffic_safety"], "traffic_safety", [None]]
+)
+def test_잘못된_안전교육_입력은_422(mine, value):
+    plan = _create(mine)
+    response = client.put(
+        f"/api/plans/annual/{plan['id']}/months/3",
+        json={"theme": "주제", "sub_themes": [], "safety_education": value},
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/plans/annual/{plan['id']}").json() == plan
+
+
+@pytest.mark.parametrize(
+    "failure, code, status",
+    [
+        ("LlmFailed", "GENERATION_FAILED", 500),
+        ("LlmUnavailable", "DEPENDENCY_UNAVAILABLE", 503),
+        ("LlmBudgetExceeded", "LLM_BUDGET_EXCEEDED", 503),
+    ],
+)
+def test_소주제_생성이_실패하면_부분_계획안도_남지_않는다(
+    db_session, mine, monkeypatch, failure, code, status
+):
+    from app.features.plans.annual_content import generate_subthemes
+    from app.shared import llm
+
+    db_session.commit()
+
+    def fail(plan):
+        raise getattr(llm, failure)("test")
+
+    monkeypatch.setattr("app.features.plans.router.generate_subthemes", fail)
+    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+    assert response.status_code == status, response.text
+    assert response.json()["error"]["code"] == code
+    assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
+    monkeypatch.setattr("app.features.plans.router.generate_subthemes", generate_subthemes)
+    assert _create(mine)["months"][0]["sub_themes"]

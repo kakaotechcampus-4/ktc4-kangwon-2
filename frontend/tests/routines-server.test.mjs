@@ -1562,6 +1562,7 @@ function recordsPage(t, { rooms = [ROOM_A] } = {}) {
     // 주소를 만드는 쪽도 진짜다 — 반 번호 변환까지 같이 본다.
     "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/api/client": { isUnauthenticated: () => false, invalidFields: () => [] },
+    "@/lib/api/onboarding": onboardingApi,
     "@/lib/api/records": {
       listRecords: async () => [],
       addRecord: async () => ({}),

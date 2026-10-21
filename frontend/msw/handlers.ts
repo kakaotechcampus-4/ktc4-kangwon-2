@@ -20,6 +20,7 @@ import {
   putMonth,
   confirmPlan,
   listAnnualAudit,
+  safetyCategories,
 } from "./data/annual-plans";
 import {
   REGENERATABLE,
@@ -322,11 +323,22 @@ export const handlers = [
     // 서버 순서: 본문 형식 422 → 계획안 404 → 달 404 → 확정 409 → 공백 주제 422 (§6).
     const b = await body(request);
     if (!b) return bad("body");
-    const extra = Object.keys(b).find((k) => k !== "theme" && k !== "sub_themes");
+    const extra = Object.keys(b).find(
+      (k) => k !== "theme" && k !== "sub_themes" && k !== "safety_education",
+    );
     if (extra) return bad(extra);
     if (typeof b.theme !== "string" || !b.theme) return bad("theme");
     if (!Array.isArray(b.sub_themes) || !b.sub_themes.every((v) => typeof v === "string"))
       return bad("sub_themes");
+    if (b.safety_education !== undefined && b.safety_education !== null) {
+      const allowed = new Set(safetyCategories.map((category) => category.category_id));
+      if (
+        !Array.isArray(b.safety_education) ||
+        b.safety_education.some((v) => typeof v !== "string" || !allowed.has(v)) ||
+        new Set(b.safety_education).size !== b.safety_education.length
+      )
+        return bad("safety_education");
+    }
     const id = Number(params.id),
       month = Number(params.month),
       plan = findPlan(id);

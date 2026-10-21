@@ -43,6 +43,7 @@ from app.features.auth.models import User
 
 # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
 from app.features.forms.service import find_own_form
+from app.features.plans.annual_content import generate_subthemes
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
@@ -65,7 +66,7 @@ from app.features.plans.schemas import (
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
-from app.shared.llm import LlmBudgetExceeded, LlmUnavailable
+from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
 
@@ -78,10 +79,6 @@ CATALOG = CatalogSelector(
     catalog_id="ssuksak.yearly-theme-reference",
     catalog_version="theme-reference-v0.1.2",
 )
-
-# P0 에서는 안전교육 배치 입력이 없다. 「그 달엔 안 한다」가 아니라
-# 「언제 할지 아직 모른다」다 — 둘을 같게 그리면 교사가 비었다고 넘어간다(§4).
-SAFETY_STATE_P0 = "SOURCE_REQUIRED"
 
 _NOT_FOUND = HTTPException(
     status.HTTP_404_NOT_FOUND,
@@ -125,17 +122,33 @@ def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> P
     return row
 
 
-def _months(plan: YearlyPlan, sub_themes: dict) -> list[MonthOut]:
+def _months(
+    plan: YearlyPlan, sub_themes: dict, annual_safety: dict | None = None
+) -> list[MonthOut]:
     """도메인 객체를 계약 형식으로. 배열은 3월부터 익년 2월 순서다(§4)."""
+    placements = (annual_safety or {}).get("months", {})
     return [
         MonthOut(
             month=period.period.calendar_month,
             theme=period.theme.value,
-            # 계약에는 있는데 도메인이 만들지 않는다. 교사가 §6 으로 채운다.
+            # 생성·교사 수정 내용은 서버가 저장한다. Core 의 주제 포트는 유지한다.
             sub_themes=sub_themes.get(str(period.period.calendar_month), []),
-            # P0 에는 배치 입력이 없어 항상 빈 배열이다. 칸은 있고 값만 빈다.
-            safety_education=[],
-            safety_education_state=SAFETY_STATE_P0,
+            safety_education=placements.get(str(period.period.calendar_month), []),
+            safety_education_source=(
+                "TEACHER_INPUT" if str(period.period.calendar_month) in placements else None
+            ),
+            safety_education_generation=(
+                GenerationOut(method="MANUAL")
+                if str(period.period.calendar_month) in placements
+                else None
+            ),
+            safety_education_state=(
+                "SOURCE_REQUIRED"
+                if str(period.period.calendar_month) not in placements
+                else "PLACED"
+                if placements[str(period.period.calendar_month)]
+                else "NOT_PLACED"
+            ),
             evidence=[
                 EvidenceOut(
                     source_type=source.source_type.value,
@@ -157,13 +170,14 @@ def _months(plan: YearlyPlan, sub_themes: dict) -> list[MonthOut]:
 
 
 def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
-    months = _months(plan, row.sub_themes)
+    months = _months(plan, row.sub_themes, row.annual_safety)
     return AnnualPlanOut(
         id=row.id,
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
         months=months,
+        safety_categories=verify.safety_categories(),
         **_checks(months),
     )
 
@@ -331,6 +345,28 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
     # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
+    try:
+        row.sub_themes = generate_subthemes(result.plan)
+    except (LlmUnavailable, LlmBudgetExceeded, LlmFailed) as error:
+        # Core 가 이미 flush 했다. 실패한 생성에서 부분 계획안을 남기지 않는다.
+        session.rollback()
+        if isinstance(error, LlmUnavailable):
+            raise _503(
+                "DEPENDENCY_UNAVAILABLE",
+                "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요.",
+            ) from error
+        if isinstance(error, LlmBudgetExceeded):
+            raise _503(
+                "LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요."
+            ) from error
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "GENERATION_FAILED",
+                "message": "소주제를 완성하지 못해 계획안을 저장하지 않았어요. 다시 시도해주세요.",
+                "fields": [],
+            },
+        ) from error
     # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
     row.form_id = body.form_id
     detail = _detail(row, result.plan)
@@ -425,7 +461,7 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 
 @router.delete("/{plan_id}/test-reset", status_code=status.HTTP_204_NO_CONTENT)
 def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """**시험용.** 연간계획안과 딸린 월간을 한 번에 지운다. 확정 여부를 보지 않는다.
+    """**시험용.** 연간계획안과 딸린 월간 · 주간을 한 번에 지운다. 확정 여부를 보지 않는다.
 
     **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
     있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
@@ -446,7 +482,8 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
         session.scalars(
             select(Plan).where(
                 Plan.center_id == user.center_id,
-                Plan.kind == "monthly",
+                # 주간은 월간 밑에 생긴다. 월간만 지우면 주간이 주인 없이 남는다.
+                Plan.kind.in_(("monthly", "weekly")),
                 Plan.classroom_ref == row.classroom_ref,
                 Plan.school_year == row.school_year,
             )
@@ -454,7 +491,7 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     )
     # 시험용이라도 무엇을 지웠는지는 남긴다. 「왜 사라졌지」를 뒤에서 풀 수 있어야 한다.
     _log.warning(
-        "test-reset: 연간 %s(%s) · 월간 %s 개를 지웠다. 누른 사람 user_%s",
+        "test-reset: 연간 %s(%s) · 월간 · 주간 %s 개를 지웠다. 누른 사람 user_%s",
         row.id,
         row.status,
         len(children),
@@ -499,7 +536,28 @@ def update_month(
     # 소주제는 도메인 밖이라 따로 넣는다. dict 를 통째로 갈아끼워야 SQLAlchemy 가
     # 바뀐 걸 알아챈다 — 안쪽만 고치면 JSONB 가 그대로 남는다.
     row.sub_themes = {**row.sub_themes, str(month): body.sub_themes}
-    months = _months(updated, row.sub_themes)
+    if "safety_education" in body.model_fields_set:
+        safety = row.annual_safety or {}
+        placements = dict(safety.get("months", {}))
+        before = placements.get(str(month))
+        after = body.safety_education
+        if after is None:
+            placements.pop(str(month), None)
+        else:
+            placements[str(month)] = after
+        audit = list(safety.get("audit", []))
+        if before != after:
+            audit.append(
+                {
+                    "month": month,
+                    "before": before,
+                    "after": after,
+                    "actor": f"user_{user.id}",
+                    "occurred_at": SystemClock().now().isoformat(),
+                }
+            )
+        row.annual_safety = {"months": placements, "audit": audit}
+    months = _months(updated, row.sub_themes, row.annual_safety)
     answer = next(item for item in months if item.month == month)
     session.commit()
     return answer

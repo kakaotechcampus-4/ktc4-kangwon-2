@@ -70,6 +70,8 @@ const MONTH_KEYS = [
   "generation",
   "month",
   "safety_education",
+  "safety_education_generation",
+  "safety_education_source",
   "safety_education_state",
   "sub_themes",
   "theme",
@@ -84,6 +86,7 @@ test("create · get return the server shape (§4)", async () => {
     "class_id",
     "id",
     "months",
+    "safety_categories",
     "school_year",
     "status",
   ]);
@@ -96,9 +99,11 @@ test("create · get return the server shape (§4)", async () => {
   for (const m of plan.months) {
     assert.deepEqual(Object.keys(m).sort(), MONTH_KEYS);
     assert.ok(m.theme.trim());
-    assert.deepEqual(m.sub_themes, []);
+    assert.ok(m.sub_themes.length >= 2 && m.sub_themes.length <= 5);
     assert.deepEqual(m.safety_education, []);
     assert.equal(m.safety_education_state, "SOURCE_REQUIRED");
+    assert.equal(m.safety_education_source, null);
+    assert.equal(m.safety_education_generation, null);
     assert.equal(m.evidence.length, 1);
     assert.equal(m.evidence[0].source_type, "THEME_REFERENCE");
     assert.equal(m.evidence[0].effective_date, null);
@@ -108,6 +113,7 @@ test("create · get return the server shape (§4)", async () => {
   // 빈 checks 를 「통과」로 읽지 않도록 무엇을 봤는지가 따로 온다. P0 는 6구분 × (주기 · 시수).
   assert.deepEqual(plan.checked_rules, ["legal_hours"]);
   assert.equal(plan.checks.length, 12);
+  assert.equal(plan.safety_categories.length, 6);
   for (const c of plan.checks)
     assert.deepEqual(
       { ...c, detail: typeof c.detail },
@@ -224,4 +230,30 @@ test("confirm: 200 · idempotent re-call · confirmed PUT is 409 ALREADY_CONFIRM
   );
   assert.deepEqual(read(), snapshot);
   await rejects(confirmAnnualPlan(999), 404, "NOT_FOUND", ["id"]);
+});
+
+test("안전교육 입력: 선택 · 생략 보존 · 배치 없음 · 미입력과 잘못된 구분", async () => {
+  const klass = await newClass();
+  const plan = await createAnnualPlan({ class_id: klass.id, form_id: null });
+  const input = { theme: "우리 반", sub_themes: ["친구 만나기"] };
+  const selected = await putAnnualMonth(plan.id, 3, {
+    ...input,
+    safety_education: ["traffic_safety"],
+  });
+  assert.equal(selected.safety_education_state, "PLACED");
+  assert.equal(selected.safety_education_source, "TEACHER_INPUT");
+  assert.equal(selected.safety_education_generation.method, "MANUAL");
+  assert.deepEqual((await putAnnualMonth(plan.id, 3, input)).safety_education, ["traffic_safety"]);
+  assert.equal(
+    (await putAnnualMonth(plan.id, 3, { ...input, safety_education: [] })).safety_education_state,
+    "NOT_PLACED",
+  );
+  assert.equal(
+    (await putAnnualMonth(plan.id, 3, { ...input, safety_education: null })).safety_education_state,
+    "SOURCE_REQUIRED",
+  );
+  await assert.rejects(
+    putAnnualMonth(plan.id, 3, { ...input, safety_education: ["unknown"] }),
+    (error) => error instanceof ApiError && error.status === 422,
+  );
 });

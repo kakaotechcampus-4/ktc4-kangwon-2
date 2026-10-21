@@ -95,14 +95,18 @@ export interface AnnualInput {
 export interface MonthInput {
   theme: string;
   sub_themes: string[];
+  /** 생략은 보존, null은 미입력, []는 교사가 정한 이번 달 배치 없음. */
+  safety_education?: string[] | null;
 }
 /** 한 달 (docs/api-spec.md §4). 출처는 세 축이다 — 근거(`evidence`) · 만든 방법(`generation`) · Audit. */
 export interface AnnualMonth extends MonthInput {
   month: number;
-  /** P0 에서는 항상 빈 배열이다. */
+  /** 교사가 입력한 월별 배치. 미입력도 빈 배열이므로 state를 함께 본다. */
   safety_education: string[];
-  /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. P0 는 항상 SOURCE_REQUIRED. */
+  /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. */
   safety_education_state: "SOURCE_REQUIRED" | "PLACED" | "NOT_PLACED";
+  safety_education_source?: "TEACHER_INPUT" | null;
+  safety_education_generation?: MonthlyCell["generation"] | null;
   /** THEME_REFERENCE 가 정확히 하나. 교사가 고쳐도 바뀌지 않는다(§6). 모양은 월간 칸과 같다. */
   evidence: MonthlyCell["evidence"];
   /** 처음 무엇이 만들었나. 교사가 고쳐도 바뀌지 않는다 — 「교사 수정됨」은 Audit 이 말한다(§6). */
@@ -119,6 +123,8 @@ export interface AnnualPlan {
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
   months: AnnualMonth[];
+  /** 서버의 승인된 규칙 파일에서 읽은 공식 구분 이름. 구버전 응답에서는 없을 수 있다. */
+  safety_categories?: { category_id: string; label: string }[];
   /** 무엇을 검사했는지. 빈 `checks` 를 「통과」로 읽지 않으려고 따로 온다(ADR-014). */
   checked_rules: string[];
   /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */

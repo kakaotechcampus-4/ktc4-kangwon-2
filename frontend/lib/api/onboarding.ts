@@ -22,8 +22,8 @@ interface Links {
   /**
    * 버려진 서버 반 id.
    *
-   * 반 정보를 고치면 `syncClassOnce` 가 **반을 새로 만든다** — 서버에 수정 API 가
-   * 없어서다(P0). 그래서 고친 횟수만큼 옛 행이 서버에 남는다. 이걸 적어두지 않으면
+   * 이전 `syncClassOnce`는 반 정보를 고칠 때마다 새 반을 만들었다. 그래서
+   * 과거 수정 횟수만큼 옛 행이 서버에 남는다. 이걸 적어두지 않으면
    * `adoptServerClasses` 가 옛 행을 「서버에만 있는 반」으로 보고 다시 들인다.
    */
   retired?: number[];
@@ -148,10 +148,11 @@ async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const data = classPayload(c),
     signature = JSON.stringify(data);
   if (links.classes[c.id]?.signature === signature) return links.classes[c.id].id;
-  // 새 반을 만들어 갈아끼우므로 옛 행은 버려진다. 적어두지 않으면 다음 방문에
-  // adoptServerClasses 가 그걸 「서버에만 있는 반」으로 보고 다시 들인다.
-  const replaced = links.classes[c.id]?.id;
-  if (replaced) links.retired = [...(links.retired ?? []), replaced];
+  if (links.classes[c.id]) {
+    throw new Error(
+      "등록한 반 정보 수정은 아직 지원하지 않아요. 기존 아동과 기록을 보호하기 위해 저장하지 않았어요.",
+    );
+  }
   for (const child of c.children) delete links.children[child.id];
   const created = await createClass(center, data);
   links.classes[c.id] = { id: created.id, signature };
