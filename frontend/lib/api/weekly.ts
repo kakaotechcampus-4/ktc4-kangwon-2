@@ -26,13 +26,20 @@ export const createWeeklyPlan = (
 ) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
 export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
   apiRequest<WeeklyPlan>("/api/plans/weekly/" + id, { signal });
-/** 그 달의 주간계획안들. `month` 는 `YYYY-MM`. */
-export const listWeeklyPlans = (classId: number, month: string, signal?: AbortSignal) =>
+/**
+ * 그 달의 주간계획안들. `month` 는 **달력 달 1~12** 다 — `YYYY-MM` 이 아니다.
+ * 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). `month` 는 `classId` 와 함께만 간다.
+ */
+export const listWeeklyPlans = (classId: number, month: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyPlanSummary[] }>(
-    "/api/plans/weekly?class_id=" + classId + "&month=" + encodeURIComponent(month),
+    "/api/plans/weekly?class_id=" + classId + "&month=" + month,
     { signal },
   );
-/** `expectedRevision` 은 마지막으로 받은 `revision`. 다르면 409 `STALE_WRITE`. */
+/**
+ * `expectedRevision` 은 마지막으로 받은 `revision`. 다르면 409 `STALE_WRITE`.
+ *
+ * **서버 경로가 아직 없다 (W5b).** 지금 부르면 404 다 — 화면이 「준비 중」으로 안내한다.
+ */
 export const editWeeklyCell = (
   id: number,
   itemId: string,

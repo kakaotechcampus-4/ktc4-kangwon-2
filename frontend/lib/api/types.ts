@@ -146,23 +146,30 @@ export interface WeeklyPlan {
   school_year: number;
   /** `YYYY-MM-Wn`. 부모 월간이 만든 주소를 그대로 쓴다 — 주간이 다시 계산하지 않는다 (§3-1). */
   week_id: string;
-  /** 월~금. 토요일은 여기가 아니라 `operating_days` 에 있다 (§3-2). */
-  week_period: { start_date: string; end_date: string };
-  /** 만들 때 읽은 원 설정의 스냅샷. 나중에 설정을 바꿔도 이 계획안은 안 바뀐다 (§3-5). */
-  operating_days: ("MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT")[];
+  /** `YYYY-MM`. 그 주가 속한 달이다. */
+  target_month: string;
   status: "DRAFT" | "CONFIRMED";
   revision: number;
+  generation_mode: string;
+  /** 월~금. **토요일이 여기 들어오지 않는다** — 표시 기간은 `display_end_date` 다 (§3-2). */
+  week_period: { label: string; start_date: string; end_date: string };
+  /** 만들 때 읽은 원 설정의 스냅샷. 나중에 설정을 바꿔도 이 계획안은 안 바뀐다 (§3-5). */
+  operating_days: string[];
+  /** 교사에게 보여줄 마지막 날. **서버가 계산해 준다 — 화면이 더하지 않는다** (§3-2). */
+  display_end_date: string;
   base_template_ref: TemplateRef;
   /** 부모 월간. 확정본이라 바뀌지 않는다 — 주간에 「부모가 바뀌어 stale」 은 없다 (§4-2). */
   parent: { monthly_plan_id: number; theme: string | null; confirmed_at: string };
   sections: {
     section_key: string;
     label: string | null;
-    /** 교사 입력 칸은 생성하지 않는다 — 다시 만들기 단추를 띄우지 않는다 (§6-2). */
-    teacher_input: boolean;
+    role: string;
+    visible: boolean;
     order: number;
+    semantic_variant: string | null;
     cells: WeeklyCell[];
   }[];
+  constraints: MonthlyPlan["constraints"];
   verification: MonthlyPlan["verification"];
   created_at: string;
   confirmed_at: string | null;
@@ -174,6 +181,7 @@ export type WeeklyPlanSummary = Pick<
   | "class_id"
   | "school_year"
   | "week_id"
+  | "target_month"
   | "status"
   | "revision"
   | "created_at"

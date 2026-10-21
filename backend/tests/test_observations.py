@@ -25,7 +25,7 @@ from app.features.observations.models import (
 # CHECK 를 **마지막으로 바꾼** 리비전이다. 처음 만든 리비전을 보면 그 뒤에 넓힌 것을 놓친다.
 MIGRATION = (
     Path(__file__).resolve().parents[1]
-    / "alembic/versions/20261021_1600_b8d4f1a92c37_observation_axis.py"
+    / "alembic/versions/20261021_1900_b8d4f1a92c37_observation_axis.py"
 )
 
 

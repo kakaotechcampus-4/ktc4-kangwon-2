@@ -532,11 +532,15 @@ export const handlers = [
     if (s) return s;
     const query = new URL(request.url).searchParams;
     const raw = query.get("class_id");
-    const month = query.get("month") ?? "";
+    const month = Number(query.get("month"));
+    // `month` 는 **달력 달 1~12** 다. 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙).
     if (raw === null || !/^-?\d+$/.test(raw)) return bad("class_id");
-    if (!/^\d{4}-\d{2}$/.test(month)) return bad("month");
+    if (!Number.isInteger(month) || month < 1 || month > 12) return bad("month");
     const klass = myClass(Number(raw));
-    return klass ? HttpResponse.json({ items: listWeekly([klass.id], month) }) : classMissing();
+    if (!klass) return classMissing();
+    return HttpResponse.json({
+      items: listWeekly([klass.id], targetMonthOf(klass.school_year, month)),
+    });
   }),
   http.get("*/api/plans/weekly/:id", async ({ request, params }) => {
     const s = await scenario(request, "weekly-get");

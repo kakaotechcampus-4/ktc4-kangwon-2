@@ -55,11 +55,27 @@ function describe(e: unknown, fallback: string): string {
 
 const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 
-/** 표시 기간 — 월요일부터 `operating_days` 의 마지막 요일까지 (§3-2). */
+/**
+ * 표시 기간. **서버가 준 `display_end_date` 를 쓴다** — 화면이 토요일을 더하지 않는다 (§3-2).
+ * `week_period.end_date` 는 늘 금요일이다. 그걸 그리면 토요일을 켠 원이 하루 모자라게 본다.
+ */
 function periodText(plan: WeeklyPlan): string {
   const days = plan.operating_days.map((d) => DAY_NAMES[d] ?? d).join(" · ");
-  return `${plan.week_period.start_date} ~ ${plan.week_period.end_date} (${days})`;
+  return `${plan.week_period.start_date} ~ ${plan.display_end_date} (${days})`;
 }
+
+/**
+ * 교사가 적는 칸인가 (가정 연계 · 행사 · 특별활동, §6-2).
+ *
+ * **응답에 `selection` 이 없어서 칸의 `generation` 으로 가른다.** 만든 적이 없으면 null 이고
+ * (§10-2), 교사가 처음 쓰면 `MANUAL` 이 된다. 생성한 칸은 교사가 고쳐도 처음 만든 방식을
+ * 그대로 들고 있으므로(`TEACHER_EDITED` 는 이력에만 남는다, §5-3) 둘이 섞이지 않는다.
+ *
+ * Template 에는 `selection: "INSTITUTION_INPUT"` 로 적혀 있다 — 응답에 그 값이 실리면
+ * 이 추론을 지우고 그걸 쓰는 쪽이 낫다 (하민님께 요청해 둔다).
+ */
+const isTeacherInput = (cell: WeeklyCell) =>
+  cell.generation === null || cell.generation.method === "MANUAL";
 
 export default function WeeklyPlanPage() {
   const [classId, setClassId] = useState<number | null>(null);
@@ -114,7 +130,7 @@ export default function WeeklyPlanPage() {
     let alive = true;
     (async () => {
       try {
-        const { items } = await listWeeklyPlans(classId, monthly.target_month);
+        const { items } = await listWeeklyPlans(classId, month);
         const found = items.find((p) => p.week_id === weekId);
         const next = found ? await getWeeklyPlan(found.id) : null;
         if (!alive) return;
@@ -127,11 +143,11 @@ export default function WeeklyPlanPage() {
     return () => {
       alive = false;
     };
-  }, [classId, weekId, monthly]);
+  }, [classId, weekId, monthly, month]);
 
   const confirmed = plan?.status === "CONFIRMED";
   const sections = useMemo(
-    () => (plan?.sections ?? []).slice().sort((a, b) => a.order - b.order),
+    () => (plan?.sections ?? []).filter((s) => s.visible).sort((a, b) => a.order - b.order),
     [plan],
   );
 
@@ -363,7 +379,10 @@ export default function WeeklyPlanPage() {
                     <th scope="row">{sectionName(section.section_key, section.label)}</th>
                     <td>
                       {section.cells[0] && (
-                        <Cell cell={section.cells[0]} teacherInput={section.teacher_input} />
+                        <Cell
+                          cell={section.cells[0]}
+                          teacherInput={isTeacherInput(section.cells[0])}
+                        />
                       )}
                     </td>
                   </tr>

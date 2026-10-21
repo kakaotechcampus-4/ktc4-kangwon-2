@@ -68,16 +68,19 @@ export const findWeekly = (id: number) => read().weeklyPlans.find((p) => p.id ==
 export const findWeeklyFor = (classId: number, weekId: string) =>
   read().weeklyPlans.find((p) => p.class_id === classId && p.week_id === weekId);
 
-/** 그 달 주간계획안들. `month` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). */
-export const listWeekly = (classIds: number[], month: string): WeeklyPlanSummary[] =>
+/** 그 달 주간계획안들. `targetMonth` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). */
+export const listWeekly = (classIds: number[], targetMonth: string): WeeklyPlanSummary[] =>
   read()
-    .weeklyPlans.filter((p) => classIds.includes(p.class_id) && p.week_id.startsWith(month + "-W"))
+    .weeklyPlans.filter(
+      (p) => classIds.includes(p.class_id) && p.week_id.startsWith(targetMonth + "-W"),
+    )
     .sort((a, b) => a.week_id.localeCompare(b.week_id) || a.id - b.id)
     .map((p) => ({
       id: p.id,
       class_id: p.class_id,
       school_year: p.school_year,
       week_id: p.week_id,
+      target_month: p.target_month,
       status: p.status,
       revision: p.revision,
       created_at: p.created_at,
@@ -135,13 +138,18 @@ export const addWeekly = (
       class_id: klass.id,
       school_year: klass.school_year,
       week_id: weekId,
+      target_month: monthly.target_month,
+      generation_mode: "LLM_PLANNER",
+      // WeekPeriod 는 늘 월~금이다. 토요일은 표시 기간(display_end_date)에만 나타난다 (§3-2).
       week_period: {
+        label: week.label,
         start_date: week.start_date,
-        end_date: saturday ? end.toISOString().slice(0, 10) : week.end_date,
+        end_date: week.end_date,
       },
       operating_days: saturday
         ? ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
         : ["MON", "TUE", "WED", "THU", "FRI"],
+      display_end_date: saturday ? end.toISOString().slice(0, 10) : week.end_date,
       status: "DRAFT",
       revision: 1,
       base_template_ref: TEMPLATE_REF,
@@ -150,13 +158,17 @@ export const addWeekly = (
         theme: monthly.parent.theme,
         confirmed_at: monthly.confirmed_at ?? at,
       },
+      // 서버는 교사 입력 칸을 따로 표시하지 않는다 — 칸의 `generation` 이 가른다 (§10-2).
       sections: SECTIONS.map((key, order) => ({
         section_key: key,
         label: null,
-        teacher_input: TEACHER_INPUT.includes(key),
+        role: "CONTENT",
+        visible: true,
         order,
+        semantic_variant: null,
         cells: [cell(key)],
       })),
+      constraints: [],
       verification: { executed_rules: [RULE], findings: [] },
       created_at: at,
       confirmed_at: null,

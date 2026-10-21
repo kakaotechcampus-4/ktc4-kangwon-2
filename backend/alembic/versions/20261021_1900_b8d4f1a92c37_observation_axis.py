@@ -14,7 +14,7 @@
 되돌리기는 **2축 기록이 없을 때만** 된다. 있으면 CHECK 를 좁히는 순간 DB 가 거절한다.
 
 Revision ID: b8d4f1a92c37
-Revises: 0211f5ffef6b
+Revises: d0d30e826c87
 Create Date: 2026-10-21 16:00:00.000000
 """
 
@@ -24,7 +24,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b8d4f1a92c37"
-down_revision: str | None = "0211f5ffef6b"
+down_revision: str | None = "d0d30e826c87"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

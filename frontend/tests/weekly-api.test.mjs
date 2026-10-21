@@ -28,6 +28,15 @@ const { createMonthlyPlan, confirmMonthlyPlan, getMonthlyPlan } =
 const weekly = await import("../lib/api/weekly.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 const { SECTION_LABELS, sectionName } = await import("../lib/weekly/section-labels.ts");
+const { readFileSync } = await import("node:fs");
+const { fileURLToPath: toPath } = await import("node:url");
+
+const ROUTER = toPath(
+  new URL("../../backend/app/features/plans/weekly_router.py", import.meta.url),
+);
+const SCHEMAS = toPath(
+  new URL("../../backend/app/features/plans/weekly_schemas.py", import.meta.url),
+);
 
 const BASE = {
   template_id: "ssuksak.monthly-template-a",
@@ -75,7 +84,6 @@ const rejects = (promise, status, code) =>
     return true;
   });
 const cellOf = (plan, key) => plan.sections.find((s) => s.section_key === key).cells[0];
-const sectionOf = (plan, key) => plan.sections.find((s) => s.section_key === key);
 
 /** 반 · 연간 확정까지. 월간은 테스트마다 확정할지 말지를 고른다 (G3 를 보기 위해). */
 async function classWithMonthly({ confirm = true, saturday = false } = {}) {
@@ -101,6 +109,40 @@ async function classWithMonthly({ confirm = true, saturday = false } = {}) {
   if (confirm) monthly = await confirmMonthlyPlan(monthly.id, monthly.revision);
   return { center, klass, monthly: await getMonthlyPlan(monthly.id) };
 }
+
+test("서버에 있는 경로만 쓰고, 아직 없는 경로는 알고 쓴다", () => {
+  const router = readFileSync(ROUTER, "utf8");
+  // 서버가 지금 내는 경로. 이게 바뀌면 여기가 먼저 깨진다.
+  assert.ok(router.includes('@router.post("", response_model=WeeklyPlanOut'));
+  assert.ok(router.includes('@router.get("", response_model=WeeklyPlanListOut'));
+  assert.ok(router.includes('@router.get("/{plan_id}"'));
+  assert.ok(router.includes('@router.delete("/{plan_id}"'));
+  // **아직 없는 것.** 생기면 이 줄이 깨지고, 그때 화면의 「준비 중」 안내를 걷으면 된다.
+  assert.ok(!router.includes("/cells/"), "칸 편집·재생성이 생겼다 — 화면 안내를 걷어라");
+  assert.ok(!router.includes('"/{plan_id}/confirm"'), "확정이 생겼다 — 화면 안내를 걷어라");
+});
+
+test("month 는 달력 달 1~12 다 — YYYY-MM 을 보내면 422 다", () => {
+  const router = readFileSync(ROUTER, "utf8");
+  assert.ok(router.includes("month: int | None = None"));
+  assert.ok(router.includes("not 1 <= month <= 12"));
+});
+
+test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
+  const schemas = readFileSync(SCHEMAS, "utf8");
+  for (const field of [
+    "week_id",
+    "target_month",
+    "week_period",
+    "operating_days",
+    "display_end_date",
+    "parent_snapshots",
+    "generation",
+  ])
+    assert.ok(schemas.includes(field + ":"), field);
+  // 교사 입력 칸 표시는 **응답에 없다.** 화면이 generation 으로 가른다 (§10-2).
+  assert.ok(!schemas.includes("teacher_input"), "teacher_input 이 생겼다 — 추론을 지워라");
+});
 
 test("클라이언트는 일곱 가지를 낸다 — 월간의 audit 은 아직 없다", () => {
   assert.deepEqual(Object.keys(weekly).sort(), [
@@ -161,10 +203,14 @@ test("교사 입력 칸 셋은 만들지 않는다 — generation 이 null 이�
     class_id: klass.id,
     week_id: monthly.weeks[0].week_id,
   });
+  // 응답에 teacher_input 같은 칸이 없다. 만든 적이 없으면 generation 이 null 이다 (§10-2).
   for (const key of ["family_link", "event_schedule", "special_program"]) {
-    assert.equal(sectionOf(plan, key).teacher_input, true, key);
     assert.equal(cellOf(plan, key).value, "", key);
     assert.equal(cellOf(plan, key).generation, null, key);
+  }
+  // 생성한 칸은 반드시 generation 을 들고 온다 — 둘이 섞이면 화면이 못 가른다.
+  for (const key of ["theme", "goals", "outdoor_play"]) {
+    assert.ok(cellOf(plan, key).generation, key);
   }
   await rejects(
     weekly.regenerateWeeklyCell(plan.id, cellOf(plan, "family_link").item_id, plan.revision),
@@ -204,9 +250,9 @@ test("토요일을 켜면 표시 기간이 하루 늘고 요일이 여섯이다"
   });
   assert.equal(plan.operating_days.length, 6);
   assert.equal(plan.operating_days.at(-1), "SAT");
-  // WeekPeriod 는 월간 것 그대로고, 늘어나는 것은 표시 기간뿐이다 (§3-2).
-  const monthEnd = monthly.weeks[0].end_date;
-  assert.notEqual(plan.week_period.end_date, monthEnd);
+  // **WeekPeriod 는 늘 금요일이다.** 늘어나는 것은 표시 기간(display_end_date)뿐이다 (§3-2).
+  assert.equal(plan.week_period.end_date, monthly.weeks[0].end_date);
+  assert.notEqual(plan.display_end_date, plan.week_period.end_date);
 });
 
 test("확정하면 고칠 수 없고 지울 수도 없다 — 확정 취소가 없다", async () => {
