@@ -95,12 +95,16 @@ class Plan(Base):
     body: Mapped[dict] = mapped_column(
         JSONB, comment="도메인 객체 전체. 이것이 원본이고 위 칸들은 여기서 유도한다"
     )
-    # 계약에는 있는데 도메인에는 없다(api-spec §4 · §6). 도메인의 ThemeTextGenerator 는
-    # 주제 문장 하나만 돌려준다. 도메인을 건드리지 않고 서버가 따로 든다 —
-    # 소주제는 별도 근거가 없고 상위 주제의 evidence·generation 을 물려받으므로
-    # 도메인 객체 안에 들어갈 자리가 없다.
+    # Core 의 주제 포트를 유지하고 서버가 문서 단위로 생성·저장한다(ADR-041).
+    # 교사 수정도 이 칸에 저장한다. 소주제는 상위 주제의 근거·생성 방식을 물려받는다.
     sub_themes: Mapped[dict] = mapped_column(
         JSONB, default=dict, server_default="{}", comment='월 -> 소주제 배열. {"3": ["..."]}'
+    )
+    annual_safety: Mapped[dict] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default="{}",
+        comment="교사 안전교육 배치. months(월→구분 배열)와 audit(변경 전후·행위자·UTC 시각)",
     )
     # 어느 양식에서 나온 계획안인지. **복사하지 않고 번호만 든다** — 양식은 원본 하나만
     # 두고 계획안은 그걸 가리킨다. FK 라서 파생 계획안이 남아 있는 양식은 지워지지 않는다

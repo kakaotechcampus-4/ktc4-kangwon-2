@@ -18,6 +18,7 @@ from app.features.plans.monthly_router import _current as _monthly_detail
 from app.features.plans.monthly_router import _own_row as _monthly_row
 from app.features.plans.monthly_schemas import SectionOut
 from app.features.plans.router import DbSession, _detail, _repo, _row
+from app.features.plans.rules.verify import safety_categories
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
 from app.shared.hwpx import Format, download, fill_grid, fill_table
@@ -51,12 +52,13 @@ def export_plan(
     klass = require_own_class(session, user, plan.class_id)
 
     title = f"{klass.name} {plan.school_year}학년도 연간 보육계획안"
+    safety_labels = {item["category_id"]: item["label"] for item in safety_categories()}
     rows = [
         [
             f"{month.month}월",
             month.theme,
             "\n".join(month.sub_themes),
-            "\n".join(month.safety_education),
+            "\n".join(safety_labels[category] for category in month.safety_education),
         ]
         for month in plan.months
     ]
