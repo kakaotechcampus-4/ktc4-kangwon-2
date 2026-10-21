@@ -222,7 +222,10 @@ def test_common_words_are_not_taken_for_people():
      "유치원 선생님과 인사해요", "고마운 선생님께 마음을 전해요", "함께한 선생님", "좋아하는 선생님",
      "햇살반 선생님", "숲 선생님과 산책해요",
      # decision C: listed 한 · 운 modifiers and quantifiers
-     "소중한 선생님", "조용한 선생님", "정다운 선생님", "모든 선생님께 감사해요", "여러 선생님"],
+     "소중한 선생님", "조용한 선생님", "정다운 선생님", "모든 선생님께 감사해요", "여러 선생님",
+     # Codex re-review 2: longer words and honorific forms
+     "새로 오신 선생님", "우리의 선생님", "고마우신 선생님", "다정하신 선생님", "유능한 선생님",
+     "공평한 선생님"],
 )
 def test_nim_ssi_and_slash_numbers_are_not_blocked(text):
     # Q2 scope narrowed 2026-10-21: only dates, weekdays, clock times and a name before 선생님

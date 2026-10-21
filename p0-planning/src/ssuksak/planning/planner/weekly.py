@@ -257,14 +257,16 @@ _ROLE_WORDS = frozenset({
     # one by one instead of excluding the ending (2026-10-21 decision C).
     "고운", "정다운", "정겨운", "강한", "소중한", "조용한", "성실한", "유쾌한", "차분한", "명랑한",
     "용감한", "편안한", "인자한", "엄격한", "공손한", "현명한", "진지한", "모든", "여러", "어느",
+    "유능한", "공평한", "오신", "계신", "고우신",
 })
-# Endings that are not given names (좋아하는 · 즐거웠던 · 예쁜 · 다른 …): words, not names.
-_MODIFIER_TAILS = frozenset("는던된쁜른")
+# Endings that are not given names (좋아하는 · 즐거웠던 · 예쁜 · 다른 · 우리의 …): words, not names.
+_MODIFIER_TAILS = frozenset("는던된쁜른의")
 # A lone syllable before 「 선생님」 is a name only if it is a surname and not a common word
 # (「이 선생님」 = this teacher, 「반 · 원 선생님」 = class / center teacher).
 _SINGLE_STOP = frozenset("이그저반원전새옆각우")
 _NOUN_TAILS = frozenset("날글솜말불꽃볍홀손해달별반")  # 날씨 · 손님 · 해님 · 햇살반 … are not people
-_TEACHER_NAME = re.compile(r"([가-힣]{1,3})(\s?)선생님")
+# The token starts a word: the last three syllables of a longer word (고마우신 → 마우신) are no name.
+_TEACHER_NAME = re.compile(r"(?<![가-힣])([가-힣]{1,3})(\s?)선생님")
 
 
 def _is_person(token: str) -> bool:
