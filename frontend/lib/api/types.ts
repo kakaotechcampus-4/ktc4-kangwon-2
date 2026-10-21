@@ -133,6 +133,8 @@ export interface WeeklyCell {
   generation: MonthlyCell["generation"] | null;
   /** 근거로 쓴 부모 월간 칸마다 하나. 「그때 월간은 이랬다」를 남긴다 (§5-3). */
   parent_snapshots: { parent_item_id: string; snapshot_value: string }[];
+  /** 교사가 적는 칸(가정 연계 · 행사 · 특별활동)이면 true. 첫 입력 뒤(`MANUAL`)에도 true 다 (W5b). */
+  teacher_input: boolean;
 }
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §5-1 · §13).

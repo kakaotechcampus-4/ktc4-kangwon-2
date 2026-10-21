@@ -29,6 +29,11 @@ from ssuksak.adapters.weekly_evidence_classification_repository import (
     JsonWeeklyEvidenceClassificationRepository,
 )
 from ssuksak.planning.application.generate_weekly_plan import GenerateWeeklyPlan
+from ssuksak.planning.application.weekly_lifecycle import (
+    ConfirmWeeklyPlan,
+    EditWeeklyPlanCell,
+    RegenerateWeeklyPlanCell,
+)
 from ssuksak.planning.application.ports import MonthlyTemplateRepository
 from ssuksak.planning.domain.monthly_template import TemplateRef
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS, WEEKDAYS_WITH_SATURDAY, OperatingDay
@@ -76,4 +81,40 @@ def weekly_generation(
         planner=WeeklyPlanner(provider),
         evidence_repository=JsonInstitutionEvidenceRepository(),
         weekly_classification_repository=JsonWeeklyEvidenceClassificationRepository(),
+    )
+
+
+def weekly_edit(*, plan_repository, parent_plan_repository, clock) -> EditWeeklyPlanCell:
+    """EditWeeklyPlanCell with the approved Activity Catalog for re-verification."""
+    return EditWeeklyPlanCell(
+        plan_repository=plan_repository,
+        parent_plan_repository=parent_plan_repository,
+        clock=clock,
+        activity_repository=JsonActivityReferenceRepository(),
+    )
+
+
+def weekly_regeneration(
+    *, plan_repository, parent_plan_repository, provider: WeeklyPlanningProvider, clock
+) -> RegenerateWeeklyPlanCell:
+    """RegenerateWeeklyPlanCell on the same References and range as weekly_generation."""
+    return RegenerateWeeklyPlanCell(
+        plan_repository=plan_repository,
+        parent_plan_repository=parent_plan_repository,
+        clock=clock,
+        activity_repository=JsonActivityReferenceRepository(),
+        context_pipeline=monthly_context_pipeline(),
+        planner=WeeklyPlanner(provider),
+        evidence_repository=JsonInstitutionEvidenceRepository(),
+        weekly_classification_repository=JsonWeeklyEvidenceClassificationRepository(),
+    )
+
+
+def weekly_confirmation(*, plan_repository, parent_plan_repository, clock) -> ConfirmWeeklyPlan:
+    """ConfirmWeeklyPlan with the approved Activity Catalog for re-verification."""
+    return ConfirmWeeklyPlan(
+        plan_repository=plan_repository,
+        parent_plan_repository=parent_plan_repository,
+        clock=clock,
+        activity_repository=JsonActivityReferenceRepository(),
     )

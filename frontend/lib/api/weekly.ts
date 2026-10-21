@@ -37,8 +37,6 @@ export const listWeeklyPlans = (classId: number, month: number, signal?: AbortSi
   );
 /**
  * `expectedRevision` 은 마지막으로 받은 `revision`. 다르면 409 `STALE_WRITE`.
- *
- * **서버 경로가 아직 없다 (W5b).** 지금 부르면 404 다 — 화면이 「준비 중」으로 안내한다.
  */
 export const editWeeklyCell = (
   id: number,
