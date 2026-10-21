@@ -11,6 +11,9 @@ import json
 import pytest
 
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
+from ssuksak.adapters.weekly_evidence_classification_repository import (
+    InMemoryWeeklyEvidenceClassificationRepository,
+)
 from ssuksak.planning.application.generate_weekly_plan import (
     GenerateWeeklyPlan,
     GenerateWeeklyPlanCommand,
@@ -19,6 +22,11 @@ from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.provenance import EvidenceSourceType, GenerationMethod
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS
+from ssuksak.planning.evidence.models import SourceSection
+from ssuksak.planning.evidence.weekly_classification import (
+    WeeklyEvidenceClassification,
+    WeeklySemanticClass,
+)
 from ssuksak.planning.planner.contracts import MONTHLY_MODEL, RawLlmResponse
 from ssuksak.planning.planner.weekly import (
     WEEKLY_PROMPT_VERSION,
@@ -27,10 +35,15 @@ from ssuksak.planning.planner.weekly import (
 )
 from ssuksak.planning.rules.weekly_verification import FACT_SCOPE_NOT_VERIFIED
 
-from tests.finalization.harness import ACTIVITY_CATALOG, SAFETY_RULE
+from tests.finalization.harness import _EVIDENCE_REPOSITORY, ACTIVITY_CATALOG, SAFETY_RULE
 from tests.finalization.weekly_harness import WEEK, WEEKLY_TEMPLATE, WeeklyHarness
 
 LLM = MonthlyGenerationMode.LLM_PLANNER
+CLASSIFIED = {
+    "indoor_play": WeeklySemanticClass.INDOOR_PLAY,
+    "group_activity": WeeklySemanticClass.GROUP_ACTIVITY,
+    "indoor_alternative": WeeklySemanticClass.INDOOR_ALTERNATIVE,
+}
 SAFETY_TEXT = "10월 2일 소방서 견학 전에 불이 나면 대피하는 길을 익혀요"
 
 
@@ -91,7 +104,7 @@ def test_request_carries_what_the_rule_fixed():
     keys = [t.section_key for t in request.targets]
     assert keys[0] == "theme" and {"outdoor_play", "safety_education", "focus"} <= set(keys)
     assert not set(keys) & request.teacher_input_keys  # teacher input is never a target
-    assert not {"indoor_play", "group_activity", "indoor_alternative"} & set(keys)  # W3c
+    assert set(CLASSIFIED) <= set(keys)  # W3c: the approved weekly classification has evidence
     focus = request.target("focus")
     parent_focus = next(s for s in parent.template_snapshot.sections if s.section_key == "focus")
     assert focus.semantic_variant == parent_focus.semantic_variant.value  # F1
@@ -238,7 +251,8 @@ def test_nim_ssi_and_slash_numbers_are_not_blocked(text):
     [
         (_add({"section_key": "event_schedule", "value": "운동회", "unresolved": False,
                "grounding_refs": [], "reference_id": None}), "TEACHER_INPUT_VALUE"),
-        (_add({"section_key": "indoor_play", "value": "블록 놀이", "unresolved": False,
+        # No teacher sentence in the parent's safety cell: not a target (§8).
+        (_add({"section_key": "safety_education", "value": "불이 나면 대피해요", "unresolved": False,
                "grounding_refs": [], "reference_id": None}), "SECTION_NOT_REQUESTED"),
         (_set("goals", grounding_refs=["ev_not_supplied"]), "UNKNOWN_GROUNDING_REF"),
         (_set("outdoor_play", reference_id="act_not_a_candidate"), "UNKNOWN_REFERENCE_ID"),
@@ -296,3 +310,73 @@ def test_llm_mode_requires_the_planner_dependencies():
             parent.plan_id, WEEK, WEEKDAYS, WEEKLY_TEMPLATE, SAFETY_RULE, LLM, ACTIVITY_CATALOG
         ))
     assert excinfo.value.code == "weekly_llm_dependencies_required"
+
+
+# --- W3c: indoor_play · group_activity · indoor_alternative from the approved weekly classification
+
+
+def test_classified_sections_are_grounded_only_by_their_own_class():
+    harness = WeeklyHarness()
+    plan = harness.generate_weekly(_parent(harness), mode=LLM).plan
+    request = harness.weekly_provider.requests[0]
+    classification = harness.weekly_classification.get_classification()
+    records = {r.record_id: r for r in _EVIDENCE_REPOSITORY.get_store().records}
+
+    for key, weekly_class in CLASSIFIED.items():
+        target = request.target(key)
+        assert target.parent_value == ""  # the parent monthly has no counterpart (§7)
+        assert 0 < len(target.allowed_grounding_refs) <= 10
+        assert all(classification.class_of(records[ref]) is weekly_class for ref in target.allowed_grounding_refs)
+        cell = plan.cell(key)
+        assert cell.generation.method is GenerationMethod.RULE_LLM
+        samples = [s for s in cell.evidence if s.source_type is EvidenceSourceType.INSTITUTION_SAMPLE]
+        assert samples and {s.source_id for s in samples} <= set(target.allowed_grounding_refs)
+        assert cell.parent_snapshots == ()
+
+
+def test_a_classified_section_citing_another_class_is_repaired_once_then_fails():
+    harness = WeeklyHarness()
+    parent = _parent(harness)
+    probe = WeeklyHarness()
+    probe.generate_weekly(_parent(probe), mode=LLM)
+    group_ref = probe.weekly_provider.requests[0].target("group_activity").allowed_grounding_refs[0]
+    edit = _set("indoor_play", grounding_refs=[group_ref])
+    cause = _failed(harness, parent, Scripted(edit, edit))
+    assert cause.validation_codes == ("WRONG_SOURCE_GROUNDING",)
+
+
+def test_a_classified_section_needs_its_own_evidence_not_the_parent():
+    harness = WeeklyHarness()
+    provider = Scripted(_set("indoor_play", grounding_refs=[]), _set("indoor_play", grounding_refs=[]))
+    cause = _failed(harness, _parent(harness), provider)
+    assert cause.validation_codes == ("RESOLVED_REQUIRES_GROUNDING",)
+
+
+def test_without_the_weekly_classification_the_three_sections_stay_empty():
+    harness = WeeklyHarness()
+    plan = harness.generate_weekly(_parent(harness), mode=LLM, weekly_classification=False).plan
+    assert not set(CLASSIFIED) & {t.section_key for t in harness.weekly_provider.requests[0].targets}
+    for key in CLASSIFIED:
+        assert plan.cell(key).value == "" and plan.cell(key).generation.method is GenerationMethod.RULE_ONLY
+
+
+def test_a_section_whose_class_has_no_evidence_is_not_a_target():
+    harness = WeeklyHarness()
+    store = _EVIDENCE_REPOSITORY.get_store()
+    harness.weekly_classification = InMemoryWeeklyEvidenceClassificationRepository(
+        WeeklyEvidenceClassification(
+            "weekly-classification-test",
+            store.content_sha256,
+            ((SourceSection.INDOOR_PLAY, "이 헤더는 자료에 없다", WeeklySemanticClass.INDOOR_PLAY),),
+        )
+    )
+    plan = harness.generate_weekly(_parent(harness), mode=LLM).plan
+    assert not set(CLASSIFIED) & {t.section_key for t in harness.weekly_provider.requests[0].targets}
+    assert all(plan.cell(key).value == "" for key in CLASSIFIED)
+
+
+def test_the_rule_only_path_leaves_the_three_sections_empty():
+    harness = WeeklyHarness()
+    plan = harness.generate_weekly(harness.monthly_parent()).plan
+    for key in CLASSIFIED:
+        assert plan.cell(key).value == "" and plan.cell(key).generation.method is GenerationMethod.RULE_ONLY

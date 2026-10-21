@@ -9,6 +9,9 @@ from ssuksak.adapters.deterministic import DeterministicIdGenerator
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
+from ssuksak.adapters.weekly_evidence_classification_repository import (
+    JsonWeeklyEvidenceClassificationRepository,
+)
 from ssuksak.planning.application.generate_weekly_plan import (
     GenerateWeeklyPlan,
     GenerateWeeklyPlanCommand,
@@ -20,7 +23,7 @@ from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS, OperatingDay, WeeklyPlan
 from ssuksak.planning.planner.weekly import WeeklyPlanner
 
-from .harness import ACTIVITY_CATALOG, SAFETY_RULE, ApprovedTemplates, PlanningHarness
+from .harness import _EVIDENCE_REPOSITORY, ACTIVITY_CATALOG, SAFETY_RULE, ApprovedTemplates, PlanningHarness
 from .snapshots import _audit, _evidence, _generation
 
 WEEKLY_TEMPLATE = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.1.0")
@@ -37,6 +40,7 @@ class WeeklyHarness(PlanningHarness):
         # Generation sees the approved fixture; the real file stays PENDING (ADR-027).
         self.weekly_generation_templates = ApprovedTemplates(self.weekly_templates)
         self.weekly_provider = RequestAwareWeeklyLlm()
+        self.weekly_classification = JsonWeeklyEvidenceClassificationRepository()
 
     def monthly_parent(
         self, *, confirm: bool = True, mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
@@ -56,6 +60,7 @@ class WeeklyHarness(PlanningHarness):
         optional_context=None,
         optional_context_names: tuple[str, ...] = (),
         provider=None,
+        weekly_classification: bool = True,
     ) -> GenerateWeeklyPlanResult:
         return GenerateWeeklyPlan(
             parent_plan_repository=self.monthly_plans,
@@ -68,6 +73,8 @@ class WeeklyHarness(PlanningHarness):
             optional_context=optional_context,
             context_pipeline=self.context,
             planner=WeeklyPlanner(provider or self.weekly_provider),
+            evidence_repository=_EVIDENCE_REPOSITORY,
+            weekly_classification_repository=self.weekly_classification if weekly_classification else None,
         ).execute(
             GenerateWeeklyPlanCommand(
                 parent_monthly_plan_id=parent.plan_id,

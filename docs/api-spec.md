@@ -902,7 +902,7 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 |---|---|
 | loading | 버튼 비활성 + 스피너 |
 | success | 상태 배지 `확정됨` |
-| error | `VALIDATION_FAILED` 422 — `theme` 이 빈 달이 있을 때. **빈 달을 전부 내려준다**<br>`fields: ["months.3", "months.7", "months.9"]` |
+| error | `VALIDATION_FAILED` 422 — `theme` 이 빈 달이 있을 때. 문구는 고정 「입력값을 확인해주세요.」, `fields: []`<br>어느 달인지는 응답에 담지 않는다(Core 거절 원문은 서버 로그에만 — §4 · §6 과 같은 처리). 정상 경로에서는 나오지 않는다(위) |
 
 ### 7-1. 연간 변경 이력 — `GET /api/plans/annual/{id}/audit`
 
