@@ -15,9 +15,8 @@ from types import MappingProxyType
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[3] / "resources" / "evaluation"
-# v2(평가요소 19개)가 옆에 있지만 아직 사람이 원문과 대조하지 않았다. 승인 전에는 v1 을 쓴다 —
-# 대조받지 않은 평가요소를 교사에게 체크하라고 내밀지 않는다. 승인되면 이 줄을 v2 로 바꾼다.
-_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v1.json"
+# v2의 평가요소 19개는 2026-10-20 PM 승인이 기록됐다. 승인·해시는 아래에서 계속 검사한다.
+_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v2.json"
 _INDICATORS_V2_PATH = _ROOT / "daycare_evaluation_indicators_v2.json"
 _RULES_PATH = _ROOT / "checklist_rules_v1.json"
 

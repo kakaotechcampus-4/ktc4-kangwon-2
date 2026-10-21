@@ -69,6 +69,12 @@ export default function PlanNotebookPage() {
           <p className="mt-1 text-xs text-ink-soft">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <Link href="/templates" className="text-xs underline text-ink-soft">
+            기관 양식
+          </Link>
+          <Link href="/trends" className="text-xs underline text-ink-soft">
+            트렌드봇
+          </Link>
           {/* 월간은 연간과 흐름이 다르다 — 확정된 연간과 원 양식(TemplateProfile)이 있어야
               만들 수 있어서 생성기 안에 두지 않고 따로 연다 (FR-303). */}
           <Link href="/plans/monthly" className="text-xs underline text-ink-soft">

@@ -123,6 +123,7 @@ test("client exports 16 functions: 8 monthly + 2 profile read + 6 profile manage
     "confirmMonthlyPlan",
     "createMonthlyPlan",
     "deleteMonthlyPlan",
+    "downloadMonthlyHwpx",
     "editMonthlyCell",
     "getMonthlyPlan",
     "getMonthlyPlanAudit",

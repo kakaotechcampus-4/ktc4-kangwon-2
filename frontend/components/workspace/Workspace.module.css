@@ -449,6 +449,39 @@
   overflow: auto;
   padding-right: 4px;
 }
+.monthlyTable {
+  width: 100%;
+  min-width: 640px;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.monthlyTable th,
+.monthlyTable td {
+  border: 1px solid var(--pg-line);
+  padding: 12px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.monthlyTable th {
+  background: var(--pg-paper);
+  text-align: left;
+}
+.monthlyTable th:first-child {
+  width: 100px;
+}
+.monthlyTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.monthlyTable textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+.documentLayer {
+  border-top: 1px solid var(--pg-line);
+  padding-top: 20px;
+}
 .loading {
   border: 1px solid var(--pg-line);
   padding: 28px;

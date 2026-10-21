@@ -100,7 +100,7 @@ export default function DocumentsPage() {
   const classes = useClasses(setMessage);
   // 서버에만 있던 반은 useClasses가 늦게 들여온다. 먼저 주 반을 고르거나 미리 포기를 확정하지 않는다.
   const requestedClass =
-    entry.daily && entry.classId !== null
+    entry.classId !== null
       ? (classes.find((c) => classServerId(c.id) === entry.classId)?.id ?? "")
       : primaryClass;
   const classId = pickedClass ?? requestedClass;

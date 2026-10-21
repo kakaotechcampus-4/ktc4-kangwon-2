@@ -12,10 +12,16 @@ import {
 import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
-import { isStaleWrite, type ReconfirmInput, type SourceResolution } from "@/lib/api/documents";
+import {
+  downloadDocumentHwpx,
+  isStaleWrite,
+  type ReconfirmInput,
+  type SourceResolution,
+} from "@/lib/api/documents";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import SourceReview from "./SourceReview";
 import { withoutChildMetadata } from "@/lib/privacy/browser-storage";
+import { routinesPath } from "@/lib/workspace/routines-route";
 
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
 import {
@@ -28,11 +34,16 @@ import type { AnnualPlan } from "@/lib/api/types";
 
 /**
  * 사실 칸의 원본을 고치는 곳. 사실은 여기서 못 고친다 — 서버가 `PUT` 으로 바뀐 사실을 거절한다 (§11).
- * 일일 보육일지는 일과 기록 화면(S-J1)이 생기면 더한다.
+ * 일일 보육일지는 같은 반·날짜의 일과 기록 화면(S-J1)으로 보낸다.
  */
 const FACT_SOURCE: Partial<Record<DocumentKind, string>> = {
   observation: "/records",
   assessment: "/records",
+};
+const LAYER_HINTS: Record<string, string> = {
+  사실: "교사가 입력한 원문 · 읽기 전용",
+  해석: "위 사실에서 읽을 수 있는 의미만 적어주세요.",
+  지원: "다음 놀이에서 교사가 할 구체적인 지원을 적어주세요.",
 };
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
@@ -118,8 +129,14 @@ export default function DocumentEditor({
   const recordDocument =
     !imported && ["dailyLog", "weeklyLog", "observation", "assessment"].includes(doc.kind);
   const editable = doc.status !== "confirmed";
-  const factSource = recordDocument ? FACT_SOURCE[doc.kind] : undefined;
+  const factSource = recordDocument
+    ? doc.kind === "dailyLog"
+      ? routinesPath(doc.classId, doc.start)
+      : FACT_SOURCE[doc.kind]
+    : undefined;
   const hwpx = useHwpxDownload(setMessage);
+  const supportsHwpx =
+    !!annualPlanId || (!!server && ["observation", "dailyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
   function change(index: number, body: string) {
@@ -300,6 +317,7 @@ export default function DocumentEditor({
   /** 확정한 연간계획안을 서버가 만든 hwpx 로 받는다 (§9). 화면이 양식을 흉내 내지 않는다. */
   const exportHwpx = () => {
     if (annualPlanId) void hwpx.download(() => downloadAnnualHwpx(annualPlanId));
+    else if (server) void hwpx.download(() => downloadDocumentHwpx(doc.id));
   };
 
   /**
@@ -392,6 +410,13 @@ export default function DocumentEditor({
           {doc.childName && ` · ${doc.childName}`} · {doc.start} ~ {doc.end}
         </p>
         <p className={ws.muted}>{DOCUMENT_KINDS[doc.kind]}</p>
+        {supportsHwpx && recordDocument && (
+          <p className={ws.hint}>
+            {editable
+              ? "사실을 확인하고 해석·지원을 다듬은 뒤 문서를 확정하면 한글 파일(hwpx)로 내려받을 수 있어요."
+              : "아래에서 확정한 문서를 한글 파일(hwpx)로 내려받을 수 있어요."}
+          </p>
+        )}
         {/* mock LLM 초안이다. **본문에 섞지 않고** 여기서만 알린다 — 제출 문서는 깨끗하게
             두면서도 테스트 초안을 실제 AI 결과로 보이게 하지 않는다. */}
         {doc.mockDraft && (
@@ -402,8 +427,14 @@ export default function DocumentEditor({
         )}
       </header>
       {doc.sections.map((section, index) => (
-        <section key={`${section.heading}-${index}`}>
+        <section
+          className={recordDocument ? ws.documentLayer : undefined}
+          key={`${section.heading}-${index}`}
+        >
           <h3>{section.heading}</h3>
+          {recordDocument && LAYER_HINTS[section.heading] && (
+            <p className={ws.hint}>{LAYER_HINTS[section.heading]}</p>
+          )}
           {editable && !(recordDocument && section.heading === "사실") ? (
             <label className={ws.field}>
               <span className={ws.muted}>우리 반의 기록에 맞게 다듬어주세요</span>
@@ -424,7 +455,9 @@ export default function DocumentEditor({
             <p className={ws.hint}>
               교사가 적은 원문입니다. 고치려면{" "}
               <Link className={ws.link} href={factSource}>
-                관찰 기록에서 고쳐 주세요 →
+                {doc.kind === "dailyLog"
+                  ? "일과 기록에서 고쳐 주세요 →"
+                  : "관찰 기록에서 고쳐 주세요 →"}
               </Link>
             </p>
           )}
@@ -440,7 +473,7 @@ export default function DocumentEditor({
       ))}
       {server?.stale && (
         <Message error>
-          {"이 문서의 근거로 사용된 일과 기록이 변경되었습니다.\n" +
+          {`이 문서의 근거로 사용된 ${doc.kind === "dailyLog" ? "일과 기록" : doc.kind === "weeklyLog" ? "일일 보육일지" : "관찰 기록"}이 변경되었습니다.\n` +
             "변경 내용을 확인한 뒤 문서에 반영해 주세요."}
         </Message>
       )}
@@ -570,10 +603,13 @@ export default function DocumentEditor({
             </button>
           )
         )}
-        {/* 연간계획안을 확정했으면 서버가 만든 한글 파일을 받는다. 그 전에는 텍스트로 본다. */}
-        {annualPlanId && doc.status === "confirmed" && (
-          <button className={ws.secondary} disabled={working} onClick={exportHwpx}>
-            한글 파일로 내려받기
+        {supportsHwpx && doc.status === "confirmed" && (
+          <button
+            className={ws.primary}
+            disabled={working || hwpx.exporting || !!server?.stale}
+            onClick={exportHwpx}
+          >
+            {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
           </button>
         )}
         <button

@@ -123,10 +123,10 @@ export default function SettingsPage() {
     <WorkspacePage title="설정" description="기관·담당 반과 성품인사를 관리해요.">
       <div className={ws.actions}>
         <Link href="/onboarding/center" className={ws.secondary}>
-          원 정보 수정
+          원 정보 확인
         </Link>
         <Link href="/onboarding/classes" className={ws.secondary}>
-          반·담당 반 수정
+          반·담당 반 관리
         </Link>
         <Link href="/onboarding/children" className={ws.secondary}>
           아동 명단 수정
