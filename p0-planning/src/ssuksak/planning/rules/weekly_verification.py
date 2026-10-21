@@ -1,7 +1,9 @@
-"""Pre-save checks of a generated Weekly Plan (docs/weekly-plan-contract.md §8 · §11-1).
+"""Checks of a Weekly Plan before generation saves it and again after edits (§8 · §11).
 
-Two rules, same report type as monthly (ADR-037). Verifier exceptions propagate:
-they are execution failures, never NOT_VERIFIED findings.
+Same report type as monthly (ADR-037). Verifier exceptions propagate: they are
+execution failures, never NOT_VERIFIED findings. The AI-output rules (safety
+grounding, fact scope) skip a Cell whose current value a teacher wrote (§11-2,
+decision 2026-10-21): a teacher value is not checked against AI grounding.
 """
 
 from __future__ import annotations
@@ -115,7 +117,7 @@ def _verify_ages(plan: WeeklyPlan, catalog: ActivityCatalog | None) -> RuleVerif
 
 def _verify_safety_grounding(plan: WeeklyPlan, parent: MonthlyPlan) -> RuleVerificationResult:
     cell = next((c for c in plan.cells if c.section_key == SAFETY_SECTION_KEY), None)
-    if cell is None or not cell.value.strip():
+    if cell is None or not cell.value.strip() or cell.audit.current_value_teacher_edited():
         return RuleVerificationResult(SAFETY_GROUNDING_RULE_REF)
     official = [
         s for s in cell.evidence
@@ -163,6 +165,7 @@ def _verify_fact_scope(plan: WeeklyPlan) -> RuleVerificationResult:
         )
         for cell in plan.cells
         if cell.generation is not None and cell.generation.method is GenerationMethod.RULE_LLM and cell.value.strip()
+        and not cell.audit.current_value_teacher_edited()
     )
     return RuleVerificationResult(FACT_SCOPE_RULE_REF, findings=findings)
 
