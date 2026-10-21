@@ -771,12 +771,19 @@ def test_확정된_월간을_hwpx_로_내려준다(world):
 
     table, printed = _exported_table(response.content)
     weeks = [week for week in plan["weeks"] if week["active"]]
-    weekly = [s for s in plan["sections"] if s["visible"] and s["repeat_by"] == "WEEK"]
+    weekly = [
+        s
+        for s in plan["sections"]
+        if s["visible"] and s["role"] == "CONTENT" and s["repeat_by"] == "WEEK"
+    ]
 
     # 주마다 값이 있는 Section 하나가 본문 한 줄이다. 머리 7 · 본문 n · 꼬리 2.
     assert int(table.get("rowCnt")) == 7 + len(weekly) + 2
     for section in weekly:
         assert section["label"] in printed
+        for cell in section["cells"]:
+            if cell["value"]:
+                assert cell["value"] in printed
     assert weeks[0]["label"] in printed
     assert f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}" in printed
 

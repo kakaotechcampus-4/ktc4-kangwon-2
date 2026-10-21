@@ -21,6 +21,7 @@ import {
   confirmMonthlyPlan,
   createMonthlyPlan,
   deleteMonthlyPlan,
+  downloadMonthlyHwpx,
   editMonthlyCell,
   getMonthlyPlan,
   listMonthlyPlans,
@@ -32,6 +33,7 @@ import type { MonthlyCell, MonthlyPlan, ProfileRef } from "@/lib/api/types";
 import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 
 function describe(e: unknown, fallback: string): string {
@@ -63,6 +65,7 @@ export default function MonthlyPlanPage() {
   const [busy, setBusy] = useState<string>("");
   const [message, setMessage] = useState("");
   const [problem, setProblem] = useState("");
+  const hwpx = useHwpxDownload(setMessage);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const classes = useClasses(setProblem);
   const [initialClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -231,9 +234,18 @@ export default function MonthlyPlanPage() {
           <span className={ws.hint}>근거가 없어 비워 두었어요. 직접 적어주세요.</span>
         )}
         {cell.evidence.length > 0 && (
-          <span className={ws.muted}>
-            근거 · {cell.evidence.map((e) => e.display_name || e.source_type).join(" · ")}
-          </span>
+          <details className={ws.muted}>
+            <summary className={ws.link}>근거 보기</summary>
+            {[
+              ...new Set(
+                cell.evidence.map((e) =>
+                  e.source_type === "SAFETY_RULE"
+                    ? "안전교육 기준"
+                    : e.display_name || e.source_type,
+                ),
+              ),
+            ].join(" · ")}
+          </details>
         )}
         {!confirmed &&
           REGENERATABLE.has(sectionKey) &&
@@ -358,7 +370,17 @@ export default function MonthlyPlanPage() {
             </div>
             <div className={ws.actions}>
               {confirmed ? (
-                <span className={ws.badge}>확정됨</span>
+                <>
+                  <span className={ws.badge}>확정됨</span>
+                  <button
+                    type="button"
+                    className={ws.primary}
+                    disabled={hwpx.exporting}
+                    onClick={() => hwpx.download(() => downloadMonthlyHwpx(plan.id))}
+                  >
+                    {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
+                  </button>
+                </>
               ) : (
                 <>
                   <button
@@ -392,6 +414,16 @@ export default function MonthlyPlanPage() {
           {!confirmed && changed.length > 0 && (
             <p className={ws.hint}>
               저장하지 않은 수정 {changed.length}칸 · 확정할 때도 먼저 저장해요.
+            </p>
+          )}
+          {!confirmed && (
+            <p className={ws.hint}>
+              내용을 확인하고 확정하면 한글 파일(hwpx)로 내려받을 수 있어요.
+            </p>
+          )}
+          {sections.some((section) => section.cells.some((cell) => !cell.value.trim())) && (
+            <p className={ws.hint}>
+              비어 있는 칸이 있어요. 확정하거나 내려받아도 자동으로 채워지지 않아요.
             </p>
           )}
 

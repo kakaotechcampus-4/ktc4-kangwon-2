@@ -1,4 +1,18 @@
-import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import JSZip from "jszip";
+import { expect, test, type Download, type Page } from "@playwright/test";
+
+async function verifyHwpx(file: Download, path: string, expected: string[]) {
+  expect(file.suggestedFilename()).toMatch(/\.hwpx$/);
+  await file.saveAs(path);
+  const archive = await JSZip.loadAsync(await readFile(path));
+  const section = await archive.file("Contents/section0.xml")!.async("string");
+  const preview = await archive.file("Preview/PrvText.txt")!.async("string");
+  for (const text of expected) {
+    expect(section).toContain(text);
+    expect(preview).toContain(text);
+  }
+}
 
 /** The mentor follows these controls; API reads below verify persisted results. */
 async function enterPilot(page: Page) {
@@ -49,6 +63,9 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(page).toHaveURL(/\/plans\/annual\/\d+$/);
   await page.getByRole("button", { name: "내용 수정", exact: true }).click();
   await page.getByLabel("3월 활동명", { exact: true }).fill("우리 반과 새로운 친구");
+  await page
+    .getByLabel("3월 활동 내용", { exact: true })
+    .fill("우리 반 이름 알아보기\n친구와 인사 나누기");
   await page.getByRole("button", { name: "수정 완료" }).click();
   await page.reload();
   await expect(page.getByText("우리 반과 새로운 친구", { exact: true })).toBeVisible();
@@ -56,7 +73,11 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(page.getByRole("button", { name: "확정됨", exact: true })).toBeDisabled();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: /한글 파일로 내려받기/ }).click();
-  expect((await download).suggestedFilename()).toMatch(/\.hwpx$/);
+  await verifyHwpx(await download, info.outputPath("pilot-annual.hwpx"), [
+    "우리 반과 새로운 친구",
+    "우리 반 이름 알아보기",
+    "친구와 인사 나누기",
+  ]);
 
   await page.getByRole("link", { name: "계획 노트", exact: true }).click();
   await page.getByRole("link", { name: "월간 양식 설정", exact: true }).click();
@@ -97,6 +118,12 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.reload();
   await expect(field).toHaveValue("친구와 함께 만드는 새로운 우리 반 놀이");
   await expect(field).toHaveAttribute("readonly", "");
+  const monthlyDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
+  await verifyHwpx(await monthlyDownload, info.outputPath("pilot-monthly.hwpx"), [
+    "친구와 함께 만드는 새로운 우리 반 놀이",
+    "교사가 준비한 자연물을 함께 살펴본다.",
+  ]);
   await page.screenshot({ path: info.outputPath("monthly-confirmed.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect
@@ -143,8 +170,9 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
   const file = await download;
-  expect(file.suggestedFilename()).toMatch(/\.hwpx$/);
-  await file.saveAs(info.outputPath("pilot-daily-log.hwpx"));
+  await verifyHwpx(file, info.outputPath("pilot-daily-log.hwpx"), [
+    "유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.",
+  ]);
   await page.getByRole("link", { name: "평가 준비", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),
@@ -186,7 +214,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
-  expect((await download).suggestedFilename()).toMatch(/\.hwpx$/);
+  await verifyHwpx(await download, info.outputPath("pilot-observation.hwpx"), [
+    fact,
+    "블록을 쌓고 친구에게 함께 놀이할 것을 제안했다.",
+    "다음 놀이에는 함께 쌓을 수 있는 블록과 넓은 공간을 제공한다.",
+  ]);
   await page.reload();
   const documents = await api(page, "/api/documents");
   const saved = documents.items.find(

@@ -498,6 +498,15 @@ export default function GenerationFlow({
                   </h4>
                   <span>{editing ? "내용을 직접 수정해보세요" : "놀이 중심 · 유아 중심"}</span>
                 </div>
+                {active === "annual" && contents.annual?.annualPlanId && (
+                  <p className={styles.footnote}>
+                    현재 자동 생성 범위는 월별 주제예요. 소주제는 「내용 수정」에서 한 줄에 하나씩
+                    입력해주세요. 안전교육 배치 입력은 아직 지원하지 않아 한글 파일의 안전교육 칸은
+                    비어 있어요.
+                    {drafts.annual.some((row) => !row.detail.trim()) &&
+                      ` 소주제 미입력 ${drafts.annual.filter((row) => !row.detail.trim()).length}개월 · 입력하지 않은 칸은 파일에도 비어 있어요.`}
+                  </p>
+                )}
                 <div className={styles.rows}>
                   {drafts[active].map((row, index) => (
                     <div
@@ -525,6 +534,11 @@ export default function GenerationFlow({
                             <textarea
                               disabled={saving || confirming}
                               aria-label={`${row.label} 활동 내용`}
+                              placeholder={
+                                active === "annual"
+                                  ? "소주제를 한 줄에 하나씩 입력해주세요"
+                                  : undefined
+                              }
                               value={row.detail}
                               onChange={(event) =>
                                 setDrafts((prev) => ({
@@ -539,7 +553,7 @@ export default function GenerationFlow({
                         ) : (
                           <>
                             <h5>{row.title}</h5>
-                            <p>{row.detail}</p>
+                            <p>{row.detail || (active === "annual" ? "소주제 미입력" : "")}</p>
                           </>
                         )}
                         {active === "annual" && rowErrors[index] && (

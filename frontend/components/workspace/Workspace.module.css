@@ -469,6 +469,19 @@
 .monthlyTable th:first-child {
   width: 100px;
 }
+.monthlyTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.monthlyTable textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+.documentLayer {
+  border-top: 1px solid var(--pg-line);
+  padding-top: 20px;
+}
 .loading {
   border: 1px solid var(--pg-line);
   padding: 28px;

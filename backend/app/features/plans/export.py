@@ -43,7 +43,7 @@ _NOT_CONFIRMED = HTTPException(
 def export_plan(
     plan_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
 ) -> Response:
-    """지금은 연간만 있다. 월간은 월간 API 가 생길 때 양식과 함께 붙인다."""
+    """확정된 연간계획안을 내보낸다. 월간은 아래 별도 경로를 쓴다."""
     row = _row(session, user, plan_id)
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
@@ -114,7 +114,10 @@ def export_monthly_plan(
     weeks = [week for week in plan.weeks if week.active]
     if len(weeks) > MONTHLY_WEEKS:
         raise _TOO_MANY_WEEKS
-    sections = sorted((s for s in plan.sections if s.visible), key=lambda s: s.order)
+    sections = sorted(
+        (s for s in plan.sections if s.visible and s.role == "CONTENT"),
+        key=lambda s: s.order,
+    )
     monthly = [s for s in sections if s.repeat_by != "WEEK"]
     weekly = [s for s in sections if s.repeat_by == "WEEK"]
 

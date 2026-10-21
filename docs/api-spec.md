@@ -1033,6 +1033,7 @@ POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
 PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨, M5)
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039)
+GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
@@ -1095,7 +1096,10 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 | `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
-**월간은 아직 없다.** 월간 API 와 양식이 같이 생길 때 붙인다.
+**월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다.
+기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
+활성 주차는 최대 5주이며 넘으면 `VALIDATION_FAILED` 422다. 비어 있는 내용은 자동으로 채우지 않는다.
+화면의 「확정하기」 후 「한글 파일로 내려받기」로 받는다. 출처와 생성 이력은 파일에 넣지 않는다.
 **원이 올린 양식으로 내보내는 것도 아직이다**(§8 양식 등록이 먼저다).
 
 **「일간」 계획안은 만들지 않는다.** 스펙에도 ADR 에도 없는 문서 종류다.

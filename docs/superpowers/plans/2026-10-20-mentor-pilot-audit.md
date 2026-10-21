@@ -24,3 +24,10 @@
 - [x] For each reproducible defect, add a focused regression and repair the existing implementation at its cause.
 - [x] Run affected checks, the complete frontend required checks, and applicable backend tests.
 - [x] Save the mentor click guide, results, remaining limitations, and deployment status in `docs/`.
+
+## Screenshot follow-up (2026-10-21)
+
+- [x] Trace blank annual subthemes/safety to the existing input contract; make the current generation limit and missing subthemes visible rather than invent content in the exporter.
+- [x] Connect the existing monthly HWPX endpoint to a confirmed-plan download button; export only CONTENT sections.
+- [x] Compact monthly evidence, keep week headers visible, and distinguish fact/interpretation/support in the journal editor.
+- [x] Validate saved annual/monthly/journal content inside both HWPX XML and its preview through browser downloads; rerun required checks (frontend 525, browser 20 plus final focused 6, affected backend 75, lint/format/build).

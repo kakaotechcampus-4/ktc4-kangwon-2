@@ -40,6 +40,11 @@ const FACT_SOURCE: Partial<Record<DocumentKind, string>> = {
   observation: "/records",
   assessment: "/records",
 };
+const LAYER_HINTS: Record<string, string> = {
+  사실: "교사가 입력한 원문 · 읽기 전용",
+  해석: "위 사실에서 읽을 수 있는 의미만 적어주세요.",
+  지원: "다음 놀이에서 교사가 할 구체적인 지원을 적어주세요.",
+};
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
 export interface ServerDocumentActions {
@@ -130,6 +135,8 @@ export default function DocumentEditor({
       : FACT_SOURCE[doc.kind]
     : undefined;
   const hwpx = useHwpxDownload(setMessage);
+  const supportsHwpx =
+    !!annualPlanId || (!!server && ["observation", "dailyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
   function change(index: number, body: string) {
@@ -403,6 +410,13 @@ export default function DocumentEditor({
           {doc.childName && ` · ${doc.childName}`} · {doc.start} ~ {doc.end}
         </p>
         <p className={ws.muted}>{DOCUMENT_KINDS[doc.kind]}</p>
+        {supportsHwpx && recordDocument && (
+          <p className={ws.hint}>
+            {editable
+              ? "사실을 확인하고 해석·지원을 다듬은 뒤 문서를 확정하면 한글 파일(hwpx)로 내려받을 수 있어요."
+              : "아래에서 확정한 문서를 한글 파일(hwpx)로 내려받을 수 있어요."}
+          </p>
+        )}
         {/* mock LLM 초안이다. **본문에 섞지 않고** 여기서만 알린다 — 제출 문서는 깨끗하게
             두면서도 테스트 초안을 실제 AI 결과로 보이게 하지 않는다. */}
         {doc.mockDraft && (
@@ -413,8 +427,14 @@ export default function DocumentEditor({
         )}
       </header>
       {doc.sections.map((section, index) => (
-        <section key={`${section.heading}-${index}`}>
+        <section
+          className={recordDocument ? ws.documentLayer : undefined}
+          key={`${section.heading}-${index}`}
+        >
           <h3>{section.heading}</h3>
+          {recordDocument && LAYER_HINTS[section.heading] && (
+            <p className={ws.hint}>{LAYER_HINTS[section.heading]}</p>
+          )}
           {editable && !(recordDocument && section.heading === "사실") ? (
             <label className={ws.field}>
               <span className={ws.muted}>우리 반의 기록에 맞게 다듬어주세요</span>
@@ -583,17 +603,15 @@ export default function DocumentEditor({
             </button>
           )
         )}
-        {/* 연간계획안을 확정했으면 서버가 만든 한글 파일을 받는다. 그 전에는 텍스트로 본다. */}
-        {(annualPlanId || (server && ["observation", "dailyLog"].includes(doc.kind))) &&
-          doc.status === "confirmed" && (
-            <button
-              className={ws.secondary}
-              disabled={working || hwpx.exporting || !!server?.stale}
-              onClick={exportHwpx}
-            >
-              {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
-            </button>
-          )}
+        {supportsHwpx && doc.status === "confirmed" && (
+          <button
+            className={ws.primary}
+            disabled={working || hwpx.exporting || !!server?.stale}
+            onClick={exportHwpx}
+          >
+            {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
+          </button>
+        )}
         <button
           className={ws.secondary}
           disabled={stale}
