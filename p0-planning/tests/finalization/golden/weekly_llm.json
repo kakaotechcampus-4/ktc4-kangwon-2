@@ -46,7 +46,7 @@
       "generation": {
         "method": "RULE_LLM",
         "rule_id": "weekly.llm.planner",
-        "rule_version": "weekly-planner-v1"
+        "rule_version": "weekly-planner-v2"
       },
       "evidence": [
         {
@@ -76,7 +76,7 @@
       "generation": {
         "method": "RULE_LLM",
         "rule_id": "weekly.llm.planner",
-        "rule_version": "weekly-planner-v1"
+        "rule_version": "weekly-planner-v2"
       },
       "evidence": [
         {
@@ -111,7 +111,7 @@
       "generation": {
         "method": "RULE_LLM",
         "rule_id": "weekly.llm.planner",
-        "rule_version": "weekly-planner-v1"
+        "rule_version": "weekly-planner-v2"
       },
       "evidence": [
         {
@@ -141,7 +141,7 @@
       "generation": {
         "method": "RULE_LLM",
         "rule_id": "weekly.llm.planner",
-        "rule_version": "weekly-planner-v1"
+        "rule_version": "weekly-planner-v2"
       },
       "evidence": [
         {
@@ -171,7 +171,7 @@
       "generation": {
         "method": "RULE_LLM",
         "rule_id": "weekly.llm.planner",
-        "rule_version": "weekly-planner-v1"
+        "rule_version": "weekly-planner-v2"
       },
       "evidence": [
         {
@@ -196,14 +196,25 @@
     },
     {
       "section_key": "indoor_play",
-      "value": "",
-      "state": "EMPTY_VALID",
+      "value": "우리나라와 세계 여러 나라 — 이번 주 indoor_play 계획",
+      "state": "FILLED",
       "generation": {
-        "method": "RULE_ONLY",
-        "rule_id": "weekly.cell.rule_only_empty",
-        "rule_version": "v1"
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v2"
       },
-      "evidence": [],
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "INSTITUTION_SAMPLE",
+          "source_id": "ev_3e7deb843ef3_p01_r00271_c02_i04",
+          "source_version": "institution-evidence-ingestion-v0.1.0"
+        }
+      ],
       "parent_snapshots": [],
       "audit": [
         {
@@ -215,14 +226,25 @@
     },
     {
       "section_key": "group_activity",
-      "value": "",
-      "state": "EMPTY_VALID",
+      "value": "우리나라와 세계 여러 나라 — 이번 주 group_activity 계획",
+      "state": "FILLED",
       "generation": {
-        "method": "RULE_ONLY",
-        "rule_id": "weekly.cell.rule_only_empty",
-        "rule_version": "v1"
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v2"
       },
-      "evidence": [],
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "INSTITUTION_SAMPLE",
+          "source_id": "ev_0d0a7a49a95a_p01_r00407_c04_i01",
+          "source_version": "institution-evidence-ingestion-v0.1.0"
+        }
+      ],
       "parent_snapshots": [],
       "audit": [
         {
@@ -239,7 +261,7 @@
       "generation": {
         "method": "RULE_LLM",
         "rule_id": "weekly.llm.planner",
-        "rule_version": "weekly-planner-v1"
+        "rule_version": "weekly-planner-v2"
       },
       "evidence": [
         {
@@ -285,14 +307,25 @@
     },
     {
       "section_key": "indoor_alternative",
-      "value": "",
-      "state": "EMPTY_VALID",
+      "value": "우리나라와 세계 여러 나라 — 이번 주 indoor_alternative 계획",
+      "state": "FILLED",
       "generation": {
-        "method": "RULE_ONLY",
-        "rule_id": "weekly.cell.rule_only_empty",
-        "rule_version": "v1"
+        "method": "RULE_LLM",
+        "rule_id": "weekly.llm.planner",
+        "rule_version": "weekly-planner-v2"
       },
-      "evidence": [],
+      "evidence": [
+        {
+          "type": "PARENT_PLAN",
+          "source_id": "monthly-final_plan_001",
+          "source_version": "2026-09"
+        },
+        {
+          "type": "INSTITUTION_SAMPLE",
+          "source_id": "ev_675801d6d3e2_p02_r00343_c517_i02",
+          "source_version": "institution-evidence-ingestion-v0.1.0"
+        }
+      ],
       "parent_snapshots": [],
       "audit": [
         {
@@ -381,7 +414,22 @@
         "NOT_VERIFIED"
       ],
       [
+        "indoor_play",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
+        "group_activity",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
         "outdoor_play",
+        "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+        "NOT_VERIFIED"
+      ],
+      [
+        "indoor_alternative",
         "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
         "NOT_VERIFIED"
       ]
