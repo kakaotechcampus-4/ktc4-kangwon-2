@@ -1046,7 +1046,7 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 
 ---
 
-## 9. 그 밖의 계획안 API — 월간은 §9-1 ~ §9-5 에 계약이 있다
+## 9. 그 밖의 계획안 API — 월간은 §9-1 ~ §9-5, 주간은 §9-6 에 계약이 있다
 
 ```
 POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
@@ -1056,6 +1056,7 @@ GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?forma
 GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
+POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 구현됨, W5a)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
 ```
 
@@ -1067,7 +1068,7 @@ PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location �
 바뀌고, 수정·재생성 뒤에도 같은 칸을 가리켜야 한다.
 
 **월간은 연간이 `CONFIRMED` 여야 생성된다.** 아니면 `GATE_BLOCKED` 409.
-**주간은 월간이 `CONFIRMED` 여야 생성된다**(ADR-030 PM-04). 주간 API 계약은 아직 없다 — 주간 계약(W1)이 쓴다.
+**주간은 월간이 `CONFIRMED` 여야 생성된다**(ADR-030 PM-04). 계약은 §9-6 · 주간 계약(`docs/weekly-plan-contract.md`)이다.
 **층 순서를 건너뛸 수 없다.** 연간·월간·주간을 한 번에 생성하지 않고, 월간을 건너뛰어 연간에서 주간으로 가지 않는다.
 
 ### 내보내기 — `GET /api/plans/{id}/export/hwp` (구현됨)
@@ -1777,6 +1778,121 @@ generation_change  REGENERATED 만.  {before, after} — 각각 §9-1 cells[].ge
 연간 계약은 §7-1 이다. 월간은 같은 키(`type` · `occurred_at` · `actor` · `system_actor`)를 쓰고,
 연간의 `month` 대신 `scope` · `item_id` · `section_key` · `week_id` 로 칸을 가리키며, `value_change` · `generation_change` 를
 준다. 연간은 `value_change` 만 더하기로 정했고 아직 구현 전이다(§7-1, ADR-030 PM-07). 연간에는 `item_id` 고르기가 없다.
+
+---
+
+## 9-6. 주간계획안 생성 · 조회 · 목록 · 삭제 — `POST /api/plans/weekly` · `GET /api/plans/weekly/{id}` · `GET /api/plans/weekly?class_id=&month=` · `DELETE /api/plans/weekly/{id}`
+
+> **상태: 구현됨 (W5a).** 계약 원문은 `docs/weekly-plan-contract.md` §4-1 · §13 이다. 칸 편집 · 칸 재생성 ·
+> 확정 · 변경 이력은 W5b 에서 월간 §9-3 · §9-5 와 같은 모양으로 붙인다(아직 없음).
+
+**월간과 같은 `plans` 테이블에 든다**(`kind = 'weekly'` · `week_id` 칸). 공개 오류 코드도 월간과 같다 —
+주간만의 새 코드는 없다.
+
+### 생성 — `POST /api/plans/weekly`
+
+**Request**
+
+```json
+{ "class_id": 1, "week_id": "2026-09-W2" }
+```
+
+```
+class_id   정수.  필수.  내 원의 반이어야 한다(남의 원이면 404)
+week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다음 해 2월) 안이어야 한다
+           부모 월간의 주(§9-1 응답 weeks[])여야 하고, 그 주가 active 여야 한다
+```
+
+**받지 않는 것.** `school_year`(반이 정한다) · 부모 월간(서버가 반과 `week_id` 의 달로 찾는다) ·
+양식 설정(주간은 Profile 이 없다 — 기반 Template 은 서버 상수) · 생성 방식(서버 정책 `LLM_PLANNER`) ·
+참조자료 판 · 토요일 여부(아래).
+
+**토요일은 원 설정을 읽어 복사한다.** 만들 때 `weekly_saturday_enabled`(§3-1)를 읽어 `operating_days` 에
+담는다. 뒤에 설정을 바꿔도 이미 만든 주간은 그대로다.
+
+**Response** `201` — 아래 「주간계획안 응답」. 동기 · 부분 저장 없음 · 같은 반 · 같은 주는 하나(`DRAFT` ·
+`CONFIRMED` 무관 `ALREADY_EXISTS` 409, 동시 요청은 DB 유일 제약이 막는다)는 월간과 같다.
+
+**실제 LLM 은 아직 연결하지 않았다.** 운영 설정(`LLM_MODE=real`)에서는 503 `DEPENDENCY_UNAVAILABLE` 이다 —
+실제 문장 품질을 확인한 뒤(W7) 연다. 개발 · 테스트(mock)는 요청 기반 결정적 provider 로 돈다.
+
+### 주간계획안 응답
+
+```json
+{ "id": 12, "class_id": 1, "school_year": 2026,
+  "week_id": "2026-09-W2", "target_month": "2026-09",
+  "status": "DRAFT", "revision": 1, "generation_mode": "LLM_PLANNER",
+  "week_period": { "label": "9월 2주", "start_date": "2026-09-07", "end_date": "2026-09-11" },
+  "operating_days": ["MON","TUE","WED","THU","FRI"],
+  "display_end_date": "2026-09-11",
+  "base_template_ref": { "template_id": "ssuksak.weekly-template-a", "template_version": "weekly-template-a-v0.1.0" },
+  "parent": { "monthly_plan_id": 7, "theme": null, "confirmed_at": "2026-09-01T09:00:00+09:00" },
+  "sections": [
+    { "section_key": "theme", "label": "주제", "role": "CONTENT", "visible": true, "order": 1, "semantic_variant": null,
+      "cells": [ { "item_id": "item_…", "value": "…", "state": "FILLED",
+                   "evidence": [ … ], "generation": { "method": "RULE_LLM", "rule_id": "…", "rule_version": "…" },
+                   "parent_snapshots": [ { "parent_item_id": "item_…", "snapshot_value": "…" } ] } ] },
+    { "section_key": "family_link", "…": "…",
+      "cells": [ { "item_id": "item_…", "value": "", "state": "EMPTY_VALID", "evidence": [],
+                   "generation": null, "parent_snapshots": [] } ] }
+  ],
+  "constraints": [ … ], "verification": { "executed_rules": [ … ], "findings": [ … ] },
+  "created_at": "…", "confirmed_at": null }
+```
+
+- **Section 당 칸 하나다.** `cells` 는 늘 길이 1 이다(주간 Template 은 모든 Section 이 한 주 한 칸).
+  칸 수 · 순서는 서버가 준 만큼이다.
+- **`generation` 은 `null` 일 수 있다.** 교사 입력 칸(`family_link` · `event_schedule` · `special_program`)은
+  첫 입력 전에 만든 방식이 없다(주간 계약 §10-2). FE 타입은 nullable 로 둔다.
+- **`parent_snapshots`** — 이 칸이 이어받은 부모 월간 칸과 그때의 값(주간 계약 §5-3). 근거 `evidence` 와 다른 축이다.
+- **`operating_days`** — 만들 때의 원 설정. 토요일 열 유무는 이것을 본다.
+- **`display_end_date`** — 표시 기간의 끝. 토요일이면 그 주 토요일, 아니면 `week_period.end_date`.
+  `week_period` 는 부모 월간의 주 그대로(월 ~ 금)다. FE 가 따로 계산하지 않는다.
+- 안전교육 배치 정보(`safety`)는 내지 않는다 — 월간과 같다. 저장 본문에는 남는다.
+
+### 조회 — `GET /api/plans/weekly/{id}`
+
+`200` — 위 응답. 없거나 남의 원 것 · 주간이 아닌 것은 404 `NOT_FOUND` `["id"]`.
+
+### 목록 — `GET /api/plans/weekly?class_id=1&month=9`
+
+```json
+{ "items": [ { "id": 12, "class_id": 1, "school_year": 2026, "week_id": "2026-09-W2",
+               "target_month": "2026-09", "status": "DRAFT", "revision": 1,
+               "created_at": "…", "confirmed_at": null } ] }
+```
+
+- `week_id` 오름차순. 칸은 단건이 준다.
+- `month` 는 달력의 달 1 ~ 12 이고 **`class_id` 와 함께만** 받는다 — 반의 학년도가 연도를 정한다
+  (2026 학년도의 `month: 2` 는 2027-02, 월간 생성과 같은 규칙). 없으면 그 반 · 원 전체다.
+
+### 삭제 — `DELETE /api/plans/weekly/{id}`
+
+`204`. **확정 전(`DRAFT`)만 지운다** — 반 · 주당 하나라, 지우기가 없으면 마음에 안 드는 첫 초안을 다시 만들
+길이 없다(월간 DELETE 와 같은 이유). 확정본은 409 `GATE_BLOCKED`. 전체 재생성은 없다.
+
+### 오류
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `VALIDATION_FAILED` | 422 | `week_id` 모양이 틀림 · 반 학년도 밖 · 부모 월간에 없는 주 · 비활성 주 | `["week_id"]` |
+| `VALIDATION_FAILED` | 422 | 목록 `month` 가 1 ~ 12 밖이거나 `class_id` 없이 왔다 | `["month"]` |
+| `NOT_FOUND` | 404 | 반이 없거나 남의 원 반 | `["class_id"]` |
+| `NOT_FOUND` | 404 | 계획안이 없거나 남의 원 것 · 주간이 아님 | `["id"]` |
+| `GATE_BLOCKED` | 409 | 그 반 · 그 달 월간계획안이 **없거나 확정 전** | `["class_id"]` |
+| `ALREADY_EXISTS` | 409 | 같은 반 · 같은 주 주간이 있다 (동시 요청은 DB 유일 제약이 막고 409 로 바꾼다) | `["class_id","week_id"]` |
+| `GATE_BLOCKED` | 409 | 확정된 주간을 지우려 했다 | `[]` |
+| `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제 | `[]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 실제 LLM 미연결(`LLM_MODE=real`, W7 전) · 서버의 주간 Template · 승인 참조자료를 쓸 수 없다. 재시도 무의미 | `[]` |
+| `GENERATION_FAILED` | 500 | LLM 호출이 깨졌다 · 응답이 계약을 어겼다(수리 1회 뒤에도) · Core 검증 실패. **재시도 가능.** 부분 저장 없음. **Rule 결과로 대신 채우지 않는다** | `[]` |
+
+**월간이 없는 것과 확정 전인 것을 같은 코드로 낸다**(월간 → 연간과 같다). `message` 는 「월간계획안을 먼저
+만들어 확정해주세요.」 · 「월간계획안을 먼저 확정해주세요.」로 가른다.
+
+**주간 Template 이 없거나 승인 전이면 503 이다** — 월간(422 `["profile_ref"]`)과 다르다. 주간은 Profile 이
+없어 교사가 다른 것을 고를 수 없다. 서버 참조자료 문제다.
+
+**Core 오류 코드를 그대로 내보내지 않는다**(CLAUDE.md §20). 위 표의 `code` 가 공개 계약이다.
 
 ---
 
