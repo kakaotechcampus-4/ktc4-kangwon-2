@@ -2,8 +2,9 @@
 LLM_PLANNER path (W3b).
 
 docs/weekly-plan-contract.md (W1). The LLM path never falls back to rule output (§10-1).
-The weekly evidence classification (W3c) is not wired yet: indoor_play · indoor_alternative ·
-group_activity stay empty on both paths.
+On the LLM path, indoor_play · group_activity · indoor_alternative are written from the
+approved weekly evidence classification (W3c, §7) when it has evidence for the month and
+ages; otherwise, and always on the RULE_ONLY path, they stay empty (§7-4).
 """
 
 from __future__ import annotations
@@ -38,6 +39,10 @@ from ..domain.weekly_plan import (
     WeeklyTemplateSnapshot,
 )
 from ..evidence.classification import grounding_class_for
+from ..evidence.ports import InstitutionEvidenceRepository, WeeklyEvidenceClassificationRepository
+from ..evidence.weekly_classification import WEEKLY_GROUNDING_SCOPE
+from ..retrieval.models import RetrievedEvidence
+from ..retrieval.weekly import weekly_section_evidence
 from ..planner.weekly import (
     OUTDOOR_KEY,
     PARENT_GROUNDABLE_KEYS,
@@ -158,6 +163,8 @@ class GenerateWeeklyPlan:
         optional_context: OptionalContextProvider | None = None,
         context_pipeline: MonthlyContextPipeline | None = None,
         planner: WeeklyPlanner | None = None,
+        evidence_repository: InstitutionEvidenceRepository | None = None,
+        weekly_classification_repository: WeeklyEvidenceClassificationRepository | None = None,
     ) -> None:
         self._parents = parent_plan_repository
         self._plans = plan_repository
@@ -169,6 +176,9 @@ class GenerateWeeklyPlan:
         self._optional_context = optional_context
         self._context = context_pipeline
         self._planner = planner
+        # Both or neither: without them the three classified Sections stay empty (§7-4).
+        self._evidence = evidence_repository
+        self._weekly_classification = weekly_classification_repository
 
     def execute(self, command: GenerateWeeklyPlanCommand) -> GenerateWeeklyPlanResult:
         llm = command.generation_mode is MonthlyGenerationMode.LLM_PLANNER
@@ -227,6 +237,8 @@ class GenerateWeeklyPlan:
         theme_snapshot = _cited(lineage, theme_cell)
         outdoor = _outdoor_ranking(parent, command.week_id, catalog, theme_cell)
         outcome, fingerprint = None, None
+        classified: dict[str, tuple[RetrievedEvidence, ...]] = {}
+        store_version = None
         if llm:
             packet = self._context.build(
                 target_month=command.week_id.target_month,
@@ -239,7 +251,15 @@ class GenerateWeeklyPlan:
                 grounding_classes=snapshot_grounding_classes(snapshot),
             )
             fingerprint = packet_fingerprint(packet)
-            request = _weekly_request(parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint)
+            if self._evidence is not None and self._weekly_classification is not None:
+                store = self._evidence.get_store()
+                store_version = store.ingestion_version
+                classified = _classified_evidence(
+                    store, self._weekly_classification.get_classification(), parent, command.week_id, keys
+                )
+            request = _weekly_request(
+                parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint, classified
+            )
             try:
                 outcome = self._planner.plan(request)
             except Exception as exc:  # never answered by the rule path instead (§10-1)
@@ -273,6 +293,16 @@ class GenerateWeeklyPlan:
                             EvidenceSourceType.ACTIVITY_REFERENCE, proposed.reference_id,
                             catalog.catalog_version, display_name=proposed.value,
                         ),)
+                    elif key in classified:
+                        # No parent counterpart (§7): only the chosen institution records.
+                        labels = {item.record_id: item.record.source_label for item in classified[key]}
+                        cited = ()
+                        extra = tuple(
+                            EvidenceSource(
+                                EvidenceSourceType.INSTITUTION_SAMPLE, ref, store_version, display_name=labels[ref]
+                            )
+                            for ref in proposed.grounding_refs
+                        )
                     else:
                         parent_cell = _parent_cell(parent, key, command.week_id)
                         cited = (parent_cell,) if parent_cell is not None and parent_cell.value.strip() else ()
@@ -442,7 +472,28 @@ def _parent_cell(parent: MonthlyPlan, key: str, week_id: WeekId) -> MonthlyCell 
     return section.cell_for_week(week_id) or section.cell_for_week(None)
 
 
-def _weekly_request(parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint) -> WeeklyPlanningRequest:
+def _classified_evidence(store, classification, parent, week_id, keys) -> dict[str, tuple[RetrievedEvidence, ...]]:
+    """W3c: evidence per classified Section; a Section with none is left out (not a target)."""
+    focus = _parent_cell(parent, "focus", week_id)
+    query = " ".join((_only_cell(parent, THEME_KEY).value, focus.value if focus is not None else ""))
+    blocks = {}
+    for weekly_class, key in WEEKLY_GROUNDING_SCOPE.items():
+        if key not in keys:
+            continue
+        items = tuple(
+            item for item in weekly_section_evidence(
+                store, classification, weekly_class=weekly_class,
+                calendar_month=week_id.target_month.calendar_month, ages=parent.target_ages, query_text=query,
+            ) if item.record.text
+        )
+        if items:
+            blocks[key] = items
+    return blocks
+
+
+def _weekly_request(
+    parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint, classified
+) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     targets = [WeeklyTarget(THEME_KEY, parent_value=theme_cell.value)]
     parent_context = [(THEME_KEY, theme_cell.value)]
@@ -460,6 +511,11 @@ def _weekly_request(parent, period, command, snapshot, packet, theme_cell, outdo
                     None if section.semantic_variant is None else section.semantic_variant.value,
                 ))
                 evidence += [(i.evidence_ref, i.text, i.grounding_class.value) for i in items]
+        elif key in classified:  # W3c: grounded only by its own class (§7); no parent counterpart
+            items = classified[key]
+            targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value))
+            klass = next(c for c, k in WEEKLY_GROUNDING_SCOPE.items() if k == key)
+            evidence += [(i.record_id, i.record.text, klass.value) for i in items]
         elif key == OUTDOOR_KEY and outdoor.ranked:
             targets.append(WeeklyTarget(key, (), parent_value))
         elif key == SAFETY_KEY and parent_value.strip() and parent_cell.safety is None:
