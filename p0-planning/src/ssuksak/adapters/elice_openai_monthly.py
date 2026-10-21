@@ -20,6 +20,7 @@ from ssuksak.planning.planner.contracts import (
     MonthlyPlanningRequest,
     RawLlmResponse,
 )
+from ssuksak.planning.planner.weekly import WeeklyPlanningRequest, weekly_response_schema
 from ssuksak.planning.planner.parser import (
     cell_response_schema,
     monthly_response_schema,
@@ -139,6 +140,18 @@ class EliceOpenAiMonthlyAdapter:
             request.user_content,
             schema_name="monthly_cell_proposal",
             schema=cell_response_schema(request),
+        )
+
+    def generate_weekly(self, request: WeeklyPlanningRequest) -> RawLlmResponse:
+        """W7: document, one-cell and repair requests (the request tells which).
+
+        Same model, endpoint and transport as monthly; only the strict schema differs.
+        """
+        return self._complete(
+            request.system_prompt,
+            request.user_content,
+            schema_name="weekly_cell_proposal" if request.cell_key else "weekly_plan_proposal",
+            schema=weekly_response_schema(request),
         )
 
     def _complete(
