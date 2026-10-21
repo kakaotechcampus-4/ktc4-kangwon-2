@@ -4,12 +4,17 @@
 부모 연간 · 월간도 API 로 만들어 확정한다. LLM 은 기본 mock 이다 — **실제 LLM 은 부르지 않는다.**
 """
 
+import importlib.util
 from dataclasses import replace
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
+from alembic.operations import Operations
+from alembic.runtime.migration import MigrationContext
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select, update
+from ssuksak.adapters import weekly_composition
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
 from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
 from ssuksak.planning import WeeklyPlan
@@ -316,6 +321,28 @@ def test_주간_Template_이_승인_전이면_503(world, monkeypatch):
         lambda **kwargs: real(**kwargs, template_repository=Pending()),
     )
     assert _error(_create(world)) == (503, "DEPENDENCY_UNAVAILABLE", [])
+
+
+def test_주간_Template_파일이_없어도_500_이_아니라_503(world, monkeypatch, tmp_path):
+    """파일이 없는 것도 승인 전과 같은 참조자료 문제다(Codex W5-02)."""
+    monkeypatch.setattr(weekly_composition, "WEEKLY_TEMPLATE_PATH", tmp_path / "missing.json")
+    assert _error(_create(world)) == (503, "DEPENDENCY_UNAVAILABLE", [])
+    assert _weekly_rows(world["session"]) == []
+
+
+def test_주간_행이_있으면_downgrade_가_지우지_않고_멈춘다(world):
+    """rollback 이 확정본까지 지우면 다시 upgrade 해도 돌아오지 않는다(Codex W5-01)."""
+    assert _create(world).status_code == 201
+    versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    path = next(versions.glob("*_d0d30e826c87_plans_weekly.py"))
+    spec = importlib.util.spec_from_file_location("plans_weekly_migration", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    with Operations.context(MigrationContext.configure(world["session"].connection())):
+        with pytest.raises(RuntimeError, match="주간계획안 1건"):
+            migration.downgrade()
+    assert len(_weekly_rows(world["session"])) == 1
 
 
 def test_목록은_반과_달로_거르고_주_순서다(world):

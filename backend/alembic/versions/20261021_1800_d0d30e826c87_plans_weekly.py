@@ -75,8 +75,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # 주간 행이 있으면 아래 CHECK 가 실패한다 — 먼저 지운다.
-    op.execute("DELETE FROM plans WHERE kind = 'weekly'")
+    # **주간 행이 있으면 멈춘다. 지우지 않는다.** 지우면 확정본과 감사 기록까지 사라지고,
+    # 다시 upgrade 해도 돌아오지 않는다. 정리가 필요하면 별도로 승인된 절차로 먼저 한다.
+    weekly = op.get_bind().scalar(sa.text("SELECT count(*) FROM plans WHERE kind = 'weekly'"))
+    if weekly:
+        raise RuntimeError(
+            f"plans 에 주간계획안 {weekly}건이 있어 downgrade 를 멈춥니다. "
+            "주간 데이터를 승인된 절차로 정리한 뒤 다시 실행하세요."
+        )
     op.drop_index("uq_plans_weekly_per_classroom_week", table_name="plans")
     op.drop_constraint(op.f("ck_plans_week_id_kind"), "plans", type_="check")
     op.drop_column("plans", "week_id")

@@ -62,8 +62,12 @@ def weekly_generation(
     return GenerateWeeklyPlan(
         parent_plan_repository=parent_plan_repository,
         plan_repository=plan_repository,
+        # A missing file is the same reference-data problem as an unapproved Template:
+        # Core finds no Template (503), instead of FileNotFoundError leaking as a 500.
         template_repository=template_repository
-        or JsonMonthlyTemplateRepository(paths=(WEEKLY_TEMPLATE_PATH,)),
+        or JsonMonthlyTemplateRepository(
+            paths=(WEEKLY_TEMPLATE_PATH,) if WEEKLY_TEMPLATE_PATH.is_file() else ()
+        ),
         safety_repository=JsonSafetyLegalRuleRepository(),
         clock=clock,
         id_generator=id_generator,
