@@ -113,6 +113,7 @@ me       GET /api/auth/me                                               → 200 
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
+| `INTERNAL_ERROR` | 500 | 예상하지 못한 서버 오류. 문구는 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」 고정이고 원인은 서버 기록에만 남긴다 (ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-19) |
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at`) |
 
