@@ -235,12 +235,12 @@ def with_reference_labels(
 # warning tells the teacher to check them. ponytail: pattern heuristic — a name is
 # "surname + 0-2 syllables" before 선생님 minus a stop-list; widen with a staff list if one exists.
 _DATE_TIME = (
-    re.compile(r"\d{1,2}\s*월\s*\d{1,2}\s*일"),
+    re.compile(r"(?<!\d)\d{1,2}\s*월\s*\d{1,2}\s*일"),
     re.compile(r"[월화수목금토일]요일"),
     re.compile(r"\([월화수목금토일]\)"),
-    re.compile(r"\d{1,2}\s*:\s*\d{2}"),
+    re.compile(r"(?<!\d)\d{1,2}\s*:\s*\d{2}(?!\d)"),
     re.compile(r"(?:오전|오후)\s*\d{1,2}\s*시"),
-    re.compile(r"\d{1,2}\s*시(?!간)(?:\s*\d{1,2}\s*분)?"),
+    re.compile(r"(?<!\d)\d{1,2}\s*시(?!간)(?:\s*\d{1,2}\s*분)?"),
 )
 _SURNAMES = set(
     "김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허유남심노하곽성차주우구민진지엄채원천방공현함변염여추도소석선설마길연위표명기반라왕금옥육인맹제모탁국어은편용"
@@ -250,25 +250,43 @@ _ROLE_WORDS = frozenset({
     "경찰", "경찰관", "소방관", "소방", "의사", "간호", "기사", "교장", "교감", "반장", "보조", "영양",
     "보건", "마음", "아저", "아가", "손님", "고객", "집배원", "환경", "미화원", "선생님",
     "우리", "우리반", "우리원", "공주", "왕자", "임금", "요리", "미술", "음악", "체육", "과학",
+    "유치원", "보육", "놀이", "숲", "생태", "영어", "원어민", "외부", "특별", "체험", "담당", "주임",
+    "옆반", "형님반", "동생반", "멋진", "예쁜", "착한", "좋은", "새로운", "고마운", "반가운",
+    "함께한", "다정한", "친절한", "따뜻한", "사랑하는", "좋아하는",
 })
+# Modifier endings (고마운 · 함께한 · 좋아하는 · 즐거웠던 …): words, not names. ponytail: a rare
+# given name ending in 한 is missed rather than blocking ordinary sentences.
+_MODIFIER_TAILS = frozenset("운는던된쁜른한")
 # A lone syllable before 「 선생님」 is a name only if it is a surname and not a common word
 # (「이 선생님」 = this teacher, 「반 · 원 선생님」 = class / center teacher).
 _SINGLE_STOP = frozenset("이그저반원전새옆각우")
-_NOUN_TAILS = frozenset("날글솜말불꽃볍홀손해달별")  # 날씨 · 글씨 · 손님 · 해님 … are not people
+_NOUN_TAILS = frozenset("날글솜말불꽃볍홀손해달별반")  # 날씨 · 손님 · 해님 · 햇살반 … are not people
 _TEACHER_NAME = re.compile(r"([가-힣]{1,3})(\s?)선생님")
 
 
-def _is_person(token: str, spaced: bool) -> bool:
-    if len(token) == 1:  # 「김 선생님」
-        return spaced and token in _SURNAMES and token not in _SINGLE_STOP
-    return token[0] in _SURNAMES and token not in _ROLE_WORDS and token[-1] not in _NOUN_TAILS
+def _is_person(token: str) -> bool:
+    if len(token) == 1:  # 「김 선생님」 · 「김선생님」
+        return token in _SURNAMES and token not in _SINGLE_STOP
+    return (
+        token[0] in _SURNAMES
+        and token not in _ROLE_WORDS
+        and token[-1] not in _NOUN_TAILS
+        and token[-1] not in _MODIFIER_TAILS
+    )
+
+
+def _fact_tokens(text: str, *, people_only: bool) -> list[str]:
+    tokens = [m.group(0) for pattern in _DATE_TIME for m in pattern.finditer(text)]
+    tokens += [
+        m.group(0) for m in _TEACHER_NAME.finditer(text) if not people_only or _is_person(m.group(1))
+    ]
+    return [re.sub(r"\s+", "", token) for token in tokens]
 
 
 def unsupported_facts(value: str, allowed_text: str) -> tuple[str, ...]:
-    allowed = re.sub(r"\s+", "", allowed_text)
-    found = [m.group(0) for pattern in _DATE_TIME for m in pattern.finditer(value)]
-    found += [m.group(0) for m in _TEACHER_NAME.finditer(value) if _is_person(m.group(1), bool(m.group(2)))]
-    return tuple(dict.fromkeys(f for f in found if re.sub(r"\s+", "", f) not in allowed))
+    """W-02: whole tokens are compared, never substrings — 「1월 2일」 is not in 「11월 2일」."""
+    allowed = set(_fact_tokens(allowed_text, people_only=False))
+    return tuple(dict.fromkeys(f for f in _fact_tokens(value, people_only=True) if f not in allowed))
 
 
 def validate_weekly(values: tuple[ProposedSectionValue, ...], request: WeeklyPlanningRequest) -> tuple[WeeklyIssue, ...]:
@@ -319,8 +337,11 @@ def validate_weekly(values: tuple[ProposedSectionValue, ...], request: WeeklyPla
         ]
         if policy:
             issues.append(WeeklyIssue(WeeklyIssueCode.TEXT_POLICY, key, ",".join(policy)))
-        # Q1: inheriting the parent wording is not a copy; only institution evidence counts.
-        if normalize_visible_text(v.value) in evidence_texts:
+        # Q1: inheriting this cell's parent wording is not a copy, even when an institution
+        # record reads the same; copying any other institution text still is.
+        visible = normalize_visible_text(v.value)
+        inherited = bool(target.parent_value.strip()) and visible == normalize_visible_text(target.parent_value)
+        if visible in evidence_texts and not inherited:
             issues.append(WeeklyIssue(WeeklyIssueCode.SOURCE_TEXT_COPY, key))
         if unsupported_facts(v.value, request.allowed_fact_text):
             issues.append(WeeklyIssue(WeeklyIssueCode.UNSUPPORTED_FACT, key, "date_time_or_teacher_name"))
@@ -360,7 +381,14 @@ class WeeklyPlanner:
                 repair_targets=flagged,
             )
             response = self._generate(repair)
-            patched = {v.section_key: v for v in with_reference_labels(parse_weekly_proposal(response.content, repair), repair)}
+            repaired_values = with_reference_labels(parse_weekly_proposal(response.content, repair), repair)
+            keys = [v.section_key for v in repaired_values]
+            duplicated = tuple(dict.fromkeys(k for k in keys if keys.count(k) > 1))
+            if duplicated:  # the first answer refuses duplicates; the repair must not bypass that
+                dup_issues = tuple(WeeklyIssue(WeeklyIssueCode.DUPLICATE_SECTION, k) for k in duplicated)
+                _log.warning("Weekly LLM repair rejected: duplicate %s", ",".join(duplicated))
+                raise ProposalRejectedError(_codes(dup_issues), dup_issues)
+            patched = {v.section_key: v for v in repaired_values}
             # Only the flagged Sections may change; every other value stays as first written.
             values = tuple(patched.get(v.section_key, v) if v.section_key in flagged else v for v in values)
             issues = validate_weekly(values, request)
