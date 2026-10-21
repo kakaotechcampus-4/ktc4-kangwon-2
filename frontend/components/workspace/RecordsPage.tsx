@@ -66,7 +66,9 @@ export default function RecordsPage() {
   // 원마다 축이 다르다 (observation-axis.ts). 고칠 때는 그 기록의 영역을 그대로 띄운다 —
   // 원이 축을 바꾸기 전에 쓴 기록이면 지금 목록에 없는 이름일 수 있다.
   const domains = useObservationDomains();
-  const [domain, setDomain] = useState("");
+  // **고른 영역 하나만 둔다.** 칸에 띄운 값과 보내는 값이 달라지면 안 된다.
+  const [picked, setDomain] = useState("");
+  const domain = picked || domains[0];
   const [context, setContext] = useState("");
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
@@ -76,17 +78,6 @@ export default function RecordsPage() {
   const [search, setSearch] = useState("");
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);
-  // 문서 보관함의 「만들기」로 바로 가는 주소. 반은 서버 번호, 아이는 화면 id 다
-  // (S-J1 로 가는 routinesPath 와 같은 규칙 — 반을 못 바꾸면 날짜만 들고 간다).
-  const observationHref = (() => {
-    const query = new URLSearchParams({ kind: "observation" });
-    if (childId) query.set("child", childId);
-    if (validDate(date)) query.set("date", date);
-    const serverId = classId ? classServerId(classId) : null;
-    if (serverId !== null) query.set("class_id", String(serverId));
-    return `/documents?${query}`;
-  })();
-
   // 늦게 온 옛 조회가 최신 목록을 덮지 않게 조회마다 번호를 매긴다.
   const latest = useRef(0);
 
@@ -216,10 +207,8 @@ export default function RecordsPage() {
           </h2>
           <p>사실은 교사의 기록에서, 해석과 지원은 그 근거 위에서 시작합니다.</p>
         </div>
-        {/* 보고 있던 반 · 아이 · 날짜를 그대로 들고 간다. 전에는 빈 보관함이 열려
-            교사가 조건을 처음부터 다시 골라야 했다. */}
-        <Link href={observationHref} className={ws.primary}>
-          {childId ? "이 아이 관찰일지 만들기 →" : "기록으로 문서 만들기 →"}
+        <Link href="/documents" className={ws.primary}>
+          기록으로 문서 만들기 →
         </Link>
       </section>
       <div className={ws.stats}>
@@ -323,18 +312,16 @@ export default function RecordsPage() {
                   <label className={ws.field}>
                     관찰 영역
                     <select
-                      value={domain || domains[0]}
+                      value={domain}
                       {...fieldErrorProps("domain", invalid)}
                       onChange={(e) => {
                         setDomain(e.target.value);
                         clearInvalid("domain");
                       }}
                     >
-                      {(domains.includes(domain) || !domain ? domains : [domain, ...domains]).map(
-                        (d) => (
-                          <option key={d}>{d}</option>
-                        ),
-                      )}
+                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
+                        <option key={d}>{d}</option>
+                      ))}
                     </select>
                     <FieldError name="domain" invalid={invalid} />
                   </label>

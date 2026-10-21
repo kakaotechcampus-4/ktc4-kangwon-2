@@ -197,8 +197,12 @@ function Compose({
   const withChildren = classes.filter((c) => c.children.length > 0);
   const [childId, setChildId] = useState("");
   // 원마다 축이 다르다 (observation-axis.ts). 5영역 원이면 다섯, 2축 원이면 둘이다.
+  //
+  // **고른 영역 하나만 둔다.** 칸에는 첫 영역을 띄우고 상태는 빈 채로 두면, 교사가 고르지
+  // 않고 저장했을 때 화면이 보여준 것과 다른 값(빈 값)이 서버로 간다 — 422 다.
   const domains = useObservationDomains();
-  const [domain, setDomain] = useState("");
+  const [picked, setDomain] = useState("");
+  const domain = picked || domains[0];
   const [fact, setFact] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -350,7 +354,7 @@ function Compose({
                 <label className="text-[10px] text-primary-ink">
                   영역
                   <select
-                    value={domain || domains[0]}
+                    value={domain}
                     onChange={(e) => setDomain(e.target.value)}
                     className="mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
                   >

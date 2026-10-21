@@ -79,17 +79,12 @@ export default function DocumentsPage() {
   const [entry] = useClientState(
     () =>
       typeof window === "undefined"
-        ? { date: "", classId: null, daily: false, observationChild: "" }
+        ? { date: "", classId: null, daily: false }
         : {
             ...routinesScope(window.location.search),
             daily: new URLSearchParams(window.location.search).get("kind") === "dailyLog",
-            // 관찰 기록 화면(S-J3)에서 바로 오는 길. 아이는 화면 id 그대로다.
-            observationChild:
-              new URLSearchParams(window.location.search).get("kind") === "observation"
-                ? (new URLSearchParams(window.location.search).get("child") ?? "")
-                : "",
           },
-    { date: "", classId: null as number | null, daily: false, observationChild: "" },
+    { date: "", classId: null as number | null, daily: false },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
   const [kind, setKind] = useState<DocumentKind>("observation");
@@ -117,11 +112,11 @@ export default function DocumentsPage() {
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
   const [dailyPrefilled, setDailyPrefilled] = useState(false);
-  if ((entry.daily || entry.observationChild) && !dailyPrefilled) {
+  if (entry.daily && !dailyPrefilled) {
     setDailyPrefilled(true);
     setMode("create");
-    setKind(entry.daily ? "dailyLog" : "observation");
-    setChildId(entry.daily ? "" : entry.observationChild);
+    setKind("dailyLog");
+    setChildId("");
     setStart(entry.date || today());
     setEnd(entry.date || today());
     setSelected([]);
