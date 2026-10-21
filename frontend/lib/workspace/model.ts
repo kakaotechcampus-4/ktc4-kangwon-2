@@ -70,7 +70,8 @@ export const EMPTY_WORKSPACE: Workspace = {
   templates: [],
   criteria: [],
 };
-export const DOMAINS = ["신체운동·건강", "의사소통", "사회관계", "예술경험", "자연탐구"];
+// 관찰 영역 목록은 여기 두지 않는다 — **원마다 축이 다르다** (`observation-axis.ts`).
+// 화면은 `useObservationDomains()` 로 그 원의 목록을 받는다.
 export function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.features.centers.models import Center, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.documents.router import (
     DbSession,
@@ -24,7 +25,7 @@ from app.features.documents.router import (
     _own_document,
     _sources,
 )
-from app.features.observations.models import DOMAINS
+from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
 from app.shared.hwpx import Format, download, fill_grid, fill_table
@@ -97,23 +98,48 @@ def _missing(fields: list[str]) -> None:
         )
 
 
+# 축마다 양식이 다르다. 줄 수가 달라서 한 양식으로는 `fill_table` 이 거절한다
+# (`shared/hwpx.py` — 양식 표 줄 수와 채울 줄 수가 같아야 한다).
+AXIS_TEMPLATE = {"NURI_5": "observation.hwpx", "DAILY_PLAY_2": "observation_daily_play.hwpx"}
+
+
 def _observation(
     session: Session, doc: Document, sources: list[DocumentSource], evaluation: str
 ) -> bytes:
-    """5영역 행에 근거 관찰 기록을, 「평가」 칸에 해석 + 지원을 넣는다."""
+    """영역 행에 근거 관찰 기록을, 「평가」 칸에 해석 + 지원을 넣는다.
+
+    행은 **그 원이 쓰는 축**이다 (observations/models.py AXES). 5영역 원은 5줄,
+    일상생활 · 놀이활동을 쓰는 원은 2줄짜리 양식으로 나간다.
+    """
     domains = _observation_domains(session, sources)
     _missing([f"sources.{s.source_id}" for s in sources if s.source_id not in domains])
 
+    classroom = session.get(Class, doc.class_id)
+    center = session.get(Center, classroom.center_id) if classroom else None
+    axis = center.observation_axis if center else DEFAULT_AXIS
+    names = AXES.get(axis, NURI_DOMAINS)
+
     # 영역 안에서는 날짜순이다. 같은 날이면 교사가 고른 순서를 지킨다(sorted 는 안정 정렬).
-    by_domain: dict[str, list[str]] = {domain: [] for domain in DOMAINS}
+    by_domain: dict[str, list[str]] = {domain: [] for domain in names}
     for source in sorted(sources, key=lambda s: s.date):
-        by_domain[domains[source.source_id]].append(
-            f"({source.date.month}/{source.date.day}) {source.text}"
-        )
+        domain = domains[source.source_id]
+        # 원이 축을 바꾸기 전에 쓴 기록이다. 지금 양식에 그 줄이 없으니 내보낼 수 없다 —
+        # 조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
+        if domain not in by_domain:
+            raise _error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "VALIDATION_FAILED",
+                f"「{domain}」은 지금 원이 쓰는 관찰 영역이 아니라 양식에 넣을 줄이 없습니다.",
+                [f"sources.{source.source_id}"],
+            )
+        by_domain[domain].append(f"({source.date.month}/{source.date.day}) {source.text}")
     rows = [[domain, "\n".join(lines)] for domain, lines in by_domain.items()]
     rows.append(["평가", evaluation])
     return fill_table(
-        (TEMPLATE_DIR / "observation.hwpx").read_bytes(), doc.title, OBSERVATION_HEADER_ROWS, rows
+        (TEMPLATE_DIR / AXIS_TEMPLATE[axis]).read_bytes(),
+        doc.title,
+        OBSERVATION_HEADER_ROWS,
+        rows,
     )
 
 

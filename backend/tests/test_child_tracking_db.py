@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.features.centers.models import Center, Child, Class
-from app.features.observations.models import DOMAINS, Observation
+from app.features.observations.models import NURI_DOMAINS, Observation
 from app.main import app
 
 client = TestClient(app)
@@ -97,7 +97,7 @@ def test_아이_영역별로_세고_마지막_관찰일을_준다(db_session, mi
     # 기록이 없는 아이도 빠지지 않는다 — 「아직 한 번도 안 본 아이」가 이 화면의 목적이다.
     assert doyun["total"] == 0
     assert doyun["last_date"] is None
-    assert list(doyun["by_domain"]) == list(DOMAINS)
+    assert list(doyun["by_domain"]) == list(NURI_DOMAINS)
     assert set(doyun["by_domain"].values()) == {0}
 
 

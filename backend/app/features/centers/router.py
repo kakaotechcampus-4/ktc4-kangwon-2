@@ -250,6 +250,8 @@ def put_center_settings(
         center.trends_enabled = body.trends_enabled
     if body.weekly_saturday_enabled is not None:
         center.weekly_saturday_enabled = body.weekly_saturday_enabled
+    if body.observation_axis is not None:
+        center.observation_axis = body.observation_axis
     session.commit()
     session.refresh(center)
     return center

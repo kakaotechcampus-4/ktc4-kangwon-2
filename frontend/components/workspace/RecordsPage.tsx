@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DOMAINS, today, validDate } from "@/lib/workspace/model";
+import { today, validDate } from "@/lib/workspace/model";
+import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
@@ -16,6 +17,8 @@ import {
   fieldErrorProps,
   type ViewStatus,
 } from "./WorkspaceViewState";
+
+const ENTRY_NONE = { classId: "", childId: "" };
 
 // 서버 observations.context 컬럼이 50자다. 더 받으면 저장할 때 422 다.
 const CONTEXT_MAX = 50;
@@ -42,12 +45,30 @@ export default function RecordsPage() {
   const [status, setStatus] = useState<RecordsStatus>("loading");
   const [listError, setListError] = useState("");
   const [pending, setPending] = useState(false);
+  // 우리 반 홈의 「이 아이 기록 보기」가 반·아이를 주소로 넘긴다. 없으면 주 반을 연다.
+  const [entry] = useClientState(() => {
+    if (typeof window === "undefined") return { classId: "", childId: "" };
+    const q = new URLSearchParams(window.location.search);
+    return { classId: q.get("class") ?? "", childId: q.get("child") ?? "" };
+  }, ENTRY_NONE);
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const classId = pickedClass ?? primaryClass;
   const [childId, setChildId] = useState("");
+  // entry 는 hydration 뒤에야 값이 온다. 그래서 초기값이 아니라 한 번만 도는 채움으로 넣는다.
+  const [entryUsed, setEntryUsed] = useState(false);
+  if ((entry.classId || entry.childId) && !entryUsed) {
+    setEntryUsed(true);
+    if (entry.classId) setClassId(entry.classId);
+    if (entry.childId) setChildId(entry.childId);
+  }
   const [date, setDate] = useState(today);
-  const [domain, setDomain] = useState(DOMAINS[0]);
+  // 원마다 축이 다르다 (observation-axis.ts). 고칠 때는 그 기록의 영역을 그대로 띄운다 —
+  // 원이 축을 바꾸기 전에 쓴 기록이면 지금 목록에 없는 이름일 수 있다.
+  const domains = useObservationDomains();
+  // **고른 영역 하나만 둔다.** 칸에 띄운 값과 보내는 값이 달라지면 안 된다.
+  const [picked, setDomain] = useState("");
+  const domain = picked || domains[0];
   const [context, setContext] = useState("");
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
@@ -298,7 +319,7 @@ export default function RecordsPage() {
                         clearInvalid("domain");
                       }}
                     >
-                      {DOMAINS.map((d) => (
+                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
                         <option key={d}>{d}</option>
                       ))}
                     </select>
