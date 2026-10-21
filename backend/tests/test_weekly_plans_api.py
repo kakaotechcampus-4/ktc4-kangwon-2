@@ -18,7 +18,7 @@ from ssuksak.adapters import weekly_composition
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
-from ssuksak.planning import WeeklyPlan
+from ssuksak.planning import MonthlyApplicationError, WeeklyPlan
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
 
 from app.config import settings
@@ -387,6 +387,44 @@ def test_DRAFT_는_지우고_다시_만들_수_있다_확정본은_못_지운다
         "GATE_BLOCKED",
         [],
     )
+
+
+def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우지_않는다(world, db_session, monkeypatch):
+    """읽기와 지우기 사이에 확정이 끼면 409 · 행이 남는다(Codex W5b-01 실제 경합 재현)."""
+    created = _create(world).json()
+    real = weekly_router._own_row
+
+    def read_then_confirmed_elsewhere(session, user, plan_id):
+        row = real(session, user, plan_id)
+        session.expunge(row)  # 삭제는 DRAFT 로 읽은 값을 그대로 들고 간다
+        # 다른 요청의 확정은 이미 commit 됐다 — 이 요청이 409 로 되돌려도 남아야 한다.
+        session.execute(update(Plan).where(Plan.id == plan_id).values(status="CONFIRMED"))
+        session.commit()
+        return row
+
+    monkeypatch.setattr(weekly_router, "_own_row", read_then_confirmed_elsewhere)
+    assert _error(client.delete(f"/api/plans/weekly/{created['id']}")) == (409, "GATE_BLOCKED", [])
+    # 확정본 행이 그대로 남는다(상태 칸만 바꿔 흉내 냈으므로 칸을 본다).
+    assert db_session.scalar(select(Plan.status).where(Plan.id == created["id"])) == "CONFIRMED"
+
+
+@pytest.mark.parametrize("code", ["opaque_actor_required", "repository_contract_violation"])
+def test_서버_버그_코드는_생성_실패가_아니라_공통_500(world, monkeypatch, code):
+    """정상 경로에 없는 계약 위반은 C2 공통 응답이다 — 원문 비노출 · 저장 없음(Codex W5b-02)."""
+    plan = _create(world).json()
+
+    class Broken:
+        def execute(self, command):
+            raise MonthlyApplicationError(code, "secret detail must not leak")
+
+    monkeypatch.setattr(weekly_router, "weekly_edit", lambda **kwargs: Broken())
+    response = TestClient(app, raise_server_exceptions=False).put(
+        f"/api/plans/weekly/{plan['id']}/cells/{_cell(plan, 'goals')['item_id']}",
+        json={"value": "다른 값", "expected_revision": plan["revision"]},
+    )
+    assert (response.status_code, response.json()["error"]["code"]) == (500, "INTERNAL_ERROR")
+    assert "secret" not in response.text
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json()["revision"] == plan["revision"]
 
 
 def test_연간_test_reset_은_주간까지_지운다(world, monkeypatch):

@@ -17,7 +17,7 @@ from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
@@ -319,10 +319,25 @@ def delete_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
     """
     row = _own_row(session, user, plan_id)
     if row.status == "CONFIRMED":
-        raise _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
-    session.delete(row)
+        raise _CONFIRMED_NOT_DELETABLE
+    # **상태 확인과 삭제를 한 SQL 로 한다**(Codex W5b-01). 읽은 뒤 다른 요청이 확정했으면
+    # 읽은 값으로 지우는 순간 확정본이 사라진다 — DRAFT 일 때만 지워지게 조건을 건다.
+    deleted = session.execute(
+        delete(Plan).where(
+            Plan.id == row.id,
+            Plan.center_id == user.center_id,
+            Plan.kind == "weekly",
+            Plan.status == "DRAFT",
+        )
+    ).rowcount
+    if not deleted:  # 0건이면 이 transaction 에서 바뀐 것이 없다 — 되돌릴 것도 없다
+        _own_row(session, user, plan_id)  # 그 사이 사라졌으면 404
+        raise _CONFIRMED_NOT_DELETABLE
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+_CONFIRMED_NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
 
 
 def _own_row(session: Session, user, plan_id: int) -> Plan:
@@ -467,7 +482,14 @@ _NOT_REGENERATABLE_CODES = frozenset(
 )
 
 
+#: 정상 경로에 없는 서버 버그(계약 위반). 생성 실패가 아니다 — 처리하지 않고 다시 던져
+#: C2 공통 처리(500 `INTERNAL_ERROR`, 원문 비노출)로 보낸다(계획 §13-2 · Codex W5b-02).
+_SERVER_BUG_CODES = frozenset({"opaque_actor_required", "repository_contract_violation"})
+
+
 def _lifecycle_error(error: MonthlyApplicationError) -> HTTPException:
+    if error.code in _SERVER_BUG_CODES:
+        raise error
     if error.code in {"weekly_cell_not_found", "invalid_item_id"}:
         return _CELL_NOT_FOUND
     if error.code in {"weekly_cell_value_unchanged", "invalid_weekly_cell_value"}:
