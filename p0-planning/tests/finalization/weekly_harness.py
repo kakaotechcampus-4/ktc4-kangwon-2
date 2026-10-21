@@ -17,13 +17,17 @@ from ssuksak.planning.application.generate_weekly_plan import (
     GenerateWeeklyPlanCommand,
     GenerateWeeklyPlanResult,
 )
+from ssuksak.planning.application.weekly_lifecycle import (
+    RegenerateWeeklyPlanCell,
+    RegenerateWeeklyPlanCellCommand,
+)
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import TemplateRef
 from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS, OperatingDay, WeeklyPlan
 from ssuksak.planning.planner.weekly import WeeklyPlanner
 
-from .harness import _EVIDENCE_REPOSITORY, ACTIVITY_CATALOG, SAFETY_RULE, ApprovedTemplates, PlanningHarness
+from .harness import _EVIDENCE_REPOSITORY, ACTIVITY_CATALOG, SAFETY_RULE, TEACHER, ApprovedTemplates, PlanningHarness
 from .snapshots import _audit, _evidence, _generation
 
 WEEKLY_TEMPLATE = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.1.0")
@@ -89,6 +93,60 @@ class WeeklyHarness(PlanningHarness):
         )
 
 
+    def regenerate_weekly(
+        self, plan: WeeklyPlan, *, section_key: str, provider=None, actor=TEACHER, weekly_classification: bool = True
+    ) -> WeeklyPlan:
+        return RegenerateWeeklyPlanCell(
+            plan_repository=self.weekly_plans,
+            parent_plan_repository=self.monthly_plans,
+            clock=self.clock,
+            activity_repository=self.activities,
+            context_pipeline=self.context,
+            planner=WeeklyPlanner(provider or self.weekly_provider),
+            evidence_repository=_EVIDENCE_REPOSITORY,
+            weekly_classification_repository=self.weekly_classification if weekly_classification else None,
+        ).execute(RegenerateWeeklyPlanCellCommand(plan.plan_id, plan.cell(section_key).item_id, actor))
+
+
+def _cell(cell) -> dict[str, Any]:
+    return {
+        "section_key": cell.section_key,
+        "value": cell.value,
+        "state": cell.cell_state.value,
+        "generation": _generation(cell.generation),
+        "evidence": [_evidence(source) for source in cell.evidence],
+        "parent_snapshots": [
+            [item.parent_item_id.value, item.snapshot_value] for item in cell.parent_snapshots
+        ],
+        "audit": _audit(cell.audit),
+    }
+
+
+def weekly_cell_regeneration_snapshot(before: WeeklyPlan, after: WeeklyPlan, section_key: str, request) -> dict[str, Any]:
+    """W4b Application contract for one regenerated Cell (not the model's wording)."""
+    target = before.cell(section_key).item_id
+    siblings = [(b, a) for b, a in zip(before.cells, after.cells) if b.item_id != target]
+    return {
+        "schema": "weekly-cell-regeneration-golden-v1",
+        "generation_mode": after.generation_mode.value,
+        "section": section_key,
+        "item_id_preserved": after.cell(section_key).item_id == target,
+        "request": {
+            "prompt_version": request.prompt_version,
+            "targets": [t.section_key for t in request.targets],
+            "allowed_grounding_refs": len(request.targets[0].allowed_grounding_refs),
+        },
+        "before": _cell(before.cell(section_key)),
+        "after": _cell(after.cell(section_key)),
+        "siblings": {"count": len(siblings), "unchanged": all(b == a for b, a in siblings)},
+        "findings": [
+            [f.code, f.finding_kind.value]
+            for f in after.verification_report.findings
+            if f.location.section_key == section_key
+        ],
+    }
+
+
 def weekly_snapshot(result: GenerateWeeklyPlanResult) -> dict[str, Any]:
     plan = result.plan
     report = plan.verification_report
@@ -114,20 +172,7 @@ def weekly_snapshot(result: GenerateWeeklyPlanResult) -> dict[str, Any]:
             else f"{plan.activity_catalog_ref.catalog_id}/{plan.activity_catalog_ref.catalog_version}"
         ),
         "plan_audit": _audit(plan.audit),
-        "cells": [
-            {
-                "section_key": cell.section_key,
-                "value": cell.value,
-                "state": cell.cell_state.value,
-                "generation": _generation(cell.generation),
-                "evidence": [_evidence(source) for source in cell.evidence],
-                "parent_snapshots": [
-                    [item.parent_item_id.value, item.snapshot_value] for item in cell.parent_snapshots
-                ],
-                "audit": _audit(cell.audit),
-            }
-            for cell in plan.cells
-        ],
+        "cells": [_cell(cell) for cell in plan.cells],
         "verification": {
             "executed_rules": [f"{rule.rule_id}/{rule.rule_version}" for rule in report.executed_rules],
             "findings": [[f.location.section_key, f.code, f.finding_kind.value] for f in report.findings],
