@@ -30,6 +30,7 @@ from ..domain.provenance import (
     GenerationMethodDetail,
 )
 from ..domain.week_period import WeekId
+from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
 from ..domain.weekly_plan import (
     WEEKLY_INSTITUTION_INPUT_SECTION_KEYS,
@@ -230,38 +231,20 @@ class GenerateWeeklyPlan:
 
         plan_id = self._ids.new_plan_id()
         now = self._clock.now()
-        parent_evidence = EvidenceSource(
-            EvidenceSourceType.PARENT_PLAN, parent.plan_id.value, parent.target_month.value
-        )
+        parent_evidence = _parent_evidence(parent)
         theme_cell = _only_cell(parent, THEME_KEY)
         theme_snapshot = _cited(lineage, theme_cell)
         outdoor = _outdoor_ranking(parent, command.week_id, catalog, theme_cell)
-        outcome, fingerprint = None, None
-        classified: dict[str, tuple[RetrievedEvidence, ...]] = {}
-        store_version = None
+        outcome, fingerprint, context = None, None, None
         if llm:
-            packet = self._context.build(
-                target_month=command.week_id.target_month,
-                ages=parent.target_ages,
-                parent_theme_id=theme_reference_id(theme_cell.evidence),
-                parent_theme_value=theme_cell.value,
-                week_periods=(period,),
-                activity_catalog=catalog,
-                constraint_assessments=(safety_assessment,),
-                grounding_classes=snapshot_grounding_classes(snapshot),
+            context = llm_context(
+                self._context, self._evidence, self._weekly_classification,
+                parent=parent, period=period, operating_days=command.operating_days, snapshot=snapshot,
+                catalog=catalog, constraint_assessments=(safety_assessment,), outdoor=outdoor,
             )
-            fingerprint = packet_fingerprint(packet)
-            if self._evidence is not None and self._weekly_classification is not None:
-                store = self._evidence.get_store()
-                store_version = store.ingestion_version
-                classified = _classified_evidence(
-                    store, self._weekly_classification.get_classification(), parent, command.week_id, keys
-                )
-            request = _weekly_request(
-                parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint, classified
-            )
+            fingerprint = context.fingerprint
             try:
-                outcome = self._planner.plan(request)
+                outcome = self._planner.plan(context.request)
             except Exception as exc:  # never answered by the rule path instead (§10-1)
                 raise WeeklyApplicationError(
                     "weekly_llm_planning_failed", "Weekly LLM planning failed before any Plan was saved"
@@ -283,36 +266,8 @@ class GenerateWeeklyPlan:
                     generation = GenerationMethodDetail(
                         GenerationMethod.RULE_LLM, LLM_RULE_ID, outcome.prompt_version_for(key)
                     )
-                    # F2: parent citations and the Activity Reference come from the Rule, not the LLM.
-                    if key == THEME_KEY:
-                        cited: tuple[MonthlyCell, ...] = (theme_cell,)
-                        extra: tuple[EvidenceSource, ...] = ()
-                    elif key == OUTDOOR_KEY:
-                        cited = outdoor.cited_cells
-                        extra = (EvidenceSource(
-                            EvidenceSourceType.ACTIVITY_REFERENCE, proposed.reference_id,
-                            catalog.catalog_version, display_name=proposed.value,
-                        ),)
-                    elif key in classified:
-                        # No parent counterpart (§7): only the chosen institution records.
-                        labels = {item.record_id: item.record.source_label for item in classified[key]}
-                        cited = ()
-                        extra = tuple(
-                            EvidenceSource(
-                                EvidenceSourceType.INSTITUTION_SAMPLE, ref, store_version, display_name=labels[ref]
-                            )
-                            for ref in proposed.grounding_refs
-                        )
-                    else:
-                        parent_cell = _parent_cell(parent, key, command.week_id)
-                        cited = (parent_cell,) if parent_cell is not None and parent_cell.value.strip() else ()
-                        extra = packet_evidence(packet, proposed.grounding_refs)
-                    evidence = deduplicate_evidence((parent_evidence, *extra))
-                    snapshots = tuple(
-                        dict.fromkeys(
-                            ((theme_snapshot,) if key == OUTDOOR_KEY else ())
-                            + tuple(_cited(lineage, cell) for cell in cited)
-                        )
+                    evidence, snapshots = llm_cell_sources(
+                        proposed, context, parent=parent, lineage=lineage, outdoor=outdoor, catalog=catalog
                     )
             elif key == THEME_KEY:
                 value = theme_cell.value
@@ -330,16 +285,9 @@ class GenerateWeeklyPlan:
                 selection = picked.trace
                 if picked.candidate is not None:
                     value = picked.candidate.label
-                    evidence = deduplicate_evidence((
-                        parent_evidence,
-                        EvidenceSource(
-                            EvidenceSourceType.ACTIVITY_REFERENCE,
-                            picked.candidate.activity_id,
-                            catalog.catalog_version,
-                            display_name=picked.candidate.label,
-                        ),
-                    ))
-                    snapshots = (theme_snapshot, *(_cited(lineage, cell) for cell in outdoor.cited_cells))
+                    evidence, snapshots = rule_outdoor_sources(
+                        picked.candidate, parent=parent, lineage=lineage, outdoor=outdoor, catalog=catalog
+                    )
             item_id = self._ids.new_item_id()
             cells.append(WeeklyCell(
                 item_id=item_id,
@@ -385,16 +333,7 @@ class GenerateWeeklyPlan:
             raise WeeklyApplicationError(
                 "weekly_verification_failed", "Weekly rule verification failed before the Plan was saved"
             ) from exc
-        blocked = sorted(
-            finding.code
-            for finding in plan.verification_report.findings
-            if finding.rule_id == SAFETY_GROUNDING_RULE_ID and finding.finding_kind is FindingKind.VIOLATION
-        )
-        if blocked:  # safety grounding errors block saving (§8, ADR-037)
-            raise WeeklyApplicationError(
-                "weekly_safety_verification_failed",
-                "Safety grounding verification failed before the Plan was saved: " + ", ".join(blocked),
-            )
+        require_safe_grounding(plan)
         self._plans.save(plan.plan_id, plan)
         return GenerateWeeklyPlanResult(plan, optional_context, selection, fingerprint)
 
@@ -431,6 +370,131 @@ def _cited(lineage: ParentLineage, cell: MonthlyCell) -> ParentLineage:
     return replace(lineage, parent_item_id=cell.item_id, snapshot_value=cell.value)
 
 
+def require_safe_grounding(plan: WeeklyPlan) -> None:
+    """AI output with a safety grounding error is never saved (§8, ADR-037) — generation and
+    regeneration alike; confirmation does not filter AI errors."""
+    blocked = sorted(
+        finding.code
+        for finding in plan.verification_report.findings
+        if finding.rule_id == SAFETY_GROUNDING_RULE_ID and finding.finding_kind is FindingKind.VIOLATION
+    )
+    if blocked:
+        raise WeeklyApplicationError(
+            "weekly_safety_verification_failed",
+            "Safety grounding verification failed before the Plan was saved: " + ", ".join(blocked),
+        )
+
+
+def _parent_evidence(parent: MonthlyPlan) -> EvidenceSource:
+    return EvidenceSource(EvidenceSourceType.PARENT_PLAN, parent.plan_id.value, parent.target_month.value)
+
+
+@dataclass(frozen=True, slots=True)
+class WeeklyLlmContext:
+    """What the Rule fixed for one week's LLM request (shared by generation and W4b)."""
+
+    packet: MonthlyContextPacket
+    fingerprint: str
+    classified: dict[str, tuple[RetrievedEvidence, ...]]
+    store_version: str | None
+    request: WeeklyPlanningRequest
+
+
+def llm_context(
+    context_pipeline: MonthlyContextPipeline,
+    evidence_repository: InstitutionEvidenceRepository | None,
+    classification_repository: WeeklyEvidenceClassificationRepository | None,
+    *,
+    parent: MonthlyPlan,
+    period,
+    operating_days: tuple[OperatingDay, ...],
+    snapshot: WeeklyTemplateSnapshot,
+    catalog,
+    constraint_assessments,
+    outdoor,
+) -> WeeklyLlmContext:
+    theme_cell = _only_cell(parent, THEME_KEY)
+    packet = context_pipeline.build(
+        target_month=period.week_id.target_month,
+        ages=parent.target_ages,
+        parent_theme_id=theme_reference_id(theme_cell.evidence),
+        parent_theme_value=theme_cell.value,
+        week_periods=(period,),
+        activity_catalog=catalog,
+        constraint_assessments=constraint_assessments,
+        grounding_classes=snapshot_grounding_classes(snapshot),
+    )
+    fingerprint = packet_fingerprint(packet)
+    classified: dict[str, tuple[RetrievedEvidence, ...]] = {}
+    store_version = None
+    if evidence_repository is not None and classification_repository is not None:
+        store = evidence_repository.get_store()
+        store_version = store.ingestion_version
+        keys = {section.section_key for section in snapshot.sections}
+        classified = _classified_evidence(
+            store, classification_repository.get_classification(), parent, period.week_id, keys
+        )
+    request = _weekly_request(
+        parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified
+    )
+    return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
+
+
+def llm_cell_sources(
+    proposed, context: WeeklyLlmContext, *, parent: MonthlyPlan, lineage: ParentLineage, outdoor, catalog
+) -> tuple[tuple[EvidenceSource, ...], tuple[ParentLineage, ...]]:
+    """F2: parent citations and the Activity Reference come from the Rule, not the LLM."""
+    key = proposed.section_key
+    theme_cell = _only_cell(parent, THEME_KEY)
+    if key == THEME_KEY:
+        cited: tuple[MonthlyCell, ...] = (theme_cell,)
+        extra: tuple[EvidenceSource, ...] = ()
+    elif key == OUTDOOR_KEY:
+        cited = outdoor.cited_cells
+        extra = (EvidenceSource(
+            EvidenceSourceType.ACTIVITY_REFERENCE, proposed.reference_id,
+            catalog.catalog_version, display_name=proposed.value,
+        ),)
+    elif key in context.classified:
+        # No parent counterpart (§7): only the chosen institution records.
+        labels = {item.record_id: item.record.source_label for item in context.classified[key]}
+        cited = ()
+        extra = tuple(
+            EvidenceSource(
+                EvidenceSourceType.INSTITUTION_SAMPLE, ref, context.store_version, display_name=labels[ref]
+            )
+            for ref in proposed.grounding_refs
+        )
+    else:
+        parent_cell = _parent_cell(parent, key, context.request.week_id)
+        cited = (parent_cell,) if parent_cell is not None and parent_cell.value.strip() else ()
+        extra = packet_evidence(context.packet, proposed.grounding_refs)
+    evidence = deduplicate_evidence((_parent_evidence(parent), *extra))
+    snapshots = tuple(
+        dict.fromkeys(
+            ((_cited(lineage, theme_cell),) if key == OUTDOOR_KEY else ())
+            + tuple(_cited(lineage, cell) for cell in cited)
+        )
+    )
+    return evidence, snapshots
+
+
+def rule_outdoor_sources(
+    candidate: ActivityCandidate, *, parent: MonthlyPlan, lineage: ParentLineage, outdoor, catalog
+) -> tuple[tuple[EvidenceSource, ...], tuple[ParentLineage, ...]]:
+    evidence = deduplicate_evidence((
+        _parent_evidence(parent),
+        EvidenceSource(
+            EvidenceSourceType.ACTIVITY_REFERENCE,
+            candidate.activity_id,
+            catalog.catalog_version,
+            display_name=candidate.label,
+        ),
+    ))
+    theme_snapshot = _cited(lineage, _only_cell(parent, THEME_KEY))
+    return evidence, (theme_snapshot, *(_cited(lineage, cell) for cell in outdoor.cited_cells))
+
+
 @dataclass(frozen=True, slots=True)
 class _OutdoorRanking:
     selection: ActivitySelection
@@ -438,10 +502,13 @@ class _OutdoorRanking:
     cited_cells: tuple[MonthlyCell, ...]  # every parent Cell the ranking read
 
 
-def _outdoor_ranking(parent: MonthlyPlan, week_id: WeekId, catalog, theme_cell: MonthlyCell) -> _OutdoorRanking:
+def _outdoor_ranking(
+    parent: MonthlyPlan, week_id: WeekId, catalog, theme_cell: MonthlyCell, current_activity_id: str | None = None
+) -> _OutdoorRanking:
     if catalog is None:
         return _OutdoorRanking(_rank_outdoor((), calendar_month=0, used_activity_ids=frozenset(),
-                                             parent_theme_id=None, preferred_id=None)[0], (), ())
+                                             parent_theme_id=None, preferred_id=None,
+                                             current_activity_id=None)[0], (), ())
     eligible = catalog.eligible_candidates(
         section_key=OUTDOOR_PLAY_SLOT, calendar_month=week_id.target_month.calendar_month, ages=parent.target_ages
     )
@@ -460,6 +527,7 @@ def _outdoor_ranking(parent: MonthlyPlan, week_id: WeekId, catalog, theme_cell: 
         ),
         parent_theme_id=theme_reference_id(theme_cell.evidence),
         preferred_id=preferred.activity_id if preferred is not None else None,
+        current_activity_id=current_activity_id,
     )
     # The same week is read only when it earned the bonus; the others feed repeat-avoidance.
     return _OutdoorRanking(selection, ranked, ((same_week,) if preferred is not None else ()) + other_weeks)
@@ -492,7 +560,7 @@ def _classified_evidence(store, classification, parent, week_id, keys) -> dict[s
 
 
 def _weekly_request(
-    parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint, classified
+    parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     targets = [WeeklyTarget(THEME_KEY, parent_value=theme_cell.value)]
@@ -500,7 +568,7 @@ def _weekly_request(
     evidence = []
     for section in snapshot.sections:
         key = section.section_key
-        parent_cell = _parent_cell(parent, key, command.week_id) if key != THEME_KEY else None
+        parent_cell = _parent_cell(parent, key, period.week_id) if key != THEME_KEY else None
         parent_value = parent_cell.value if parent_cell is not None else ""
         if key in PARENT_GROUNDABLE_KEYS:
             klass = grounding_class_for(section)  # F1 variant decides the class; WEEKLY_THEME has none
@@ -525,9 +593,9 @@ def _weekly_request(
             continue
         if parent_value.strip():
             parent_context.append((key, parent_value))
-    days = command.operating_days
+    days = operating_days
     return build_weekly_request(
-        week_id=command.week_id,
+        week_id=period.week_id,
         week={
             "display_label": period.display_label,
             "start": period.start_date.isoformat(),
@@ -551,13 +619,14 @@ def _rank_outdoor(
     used_activity_ids: frozenset[str],
     parent_theme_id: str | None,
     preferred_id: str | None,
+    current_activity_id: str | None,  # W4b regeneration: avoid the Cell's current activity
 ) -> tuple[ActivitySelection, tuple[ActivityCandidate, ...]]:
     def key(candidate: ActivityCandidate) -> tuple[object, ...]:
         base = monthly_sort_key(
             candidate,
             calendar_month=calendar_month,
             used_activity_ids=used_activity_ids,
-            current_activity_id=None,
+            current_activity_id=current_activity_id,
             parent_theme_id=parent_theme_id,
             used_curriculum_domains={},
         )
