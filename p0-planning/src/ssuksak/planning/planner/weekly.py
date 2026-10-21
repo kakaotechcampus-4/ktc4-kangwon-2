@@ -29,7 +29,7 @@ from .text_policy import normalize_visible_text, visible_text_violations
 
 _log = logging.getLogger(__name__)
 
-WEEKLY_PROMPT_VERSION = "weekly-planner-v1"
+WEEKLY_PROMPT_VERSION = "weekly-planner-v2"  # v2: classified indoor · group · alternative targets (W3c)
 WEEKLY_REPAIR_PROMPT_VERSION = "weekly-planner-repair-v1"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
