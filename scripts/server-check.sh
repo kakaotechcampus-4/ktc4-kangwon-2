@@ -11,9 +11,9 @@
 #   --    사람이 보고 판단할 것
 #
 # **출력은 돌린 터미널에만 나온다.** 채팅 · 이슈에 붙이기 쉽게 crontab · 훅 · 로그 원문은 찍지 않는다 —
-# 비밀번호 · 키가 섞일 수 있다. 시각 · 대상 · 변수 이름 · 정해진 사건 이름만 다시 써서 보여 준다.
+# 비밀번호 · 키가 섞일 수 있다. 정해진 판정 · 변수 이름 · 사건 이름만 다시 써서 보여 준다.
 # 예외 둘 — 가리면 고장을 놓친다(2026-10-21: S3 백업이 한 번도 안 갔는데 이 점검이 못 보여 줬다).
-#   BACKUP_S3_URI 주소    비밀이 아니다. cron 줄 앞 · cron 변수 줄 · .env 어디에 있어도 s3:// 꼴이면 보여 준다
+#   BACKUP_S3_URI 주소    비밀이 아니다. 백업 cron 줄이 문서 줄과 같을 때 · cron 변수 줄 · .env 에서 s3:// 꼴이면 보여 준다
 #   백업 로그 끝 6줄       원문이다. 사건 이름만 고르면 처음 보는 오류 줄(aws 등)이 빠진다 — 붙이기 전에 한 번 본다
 #
 # 저장소에 없을 때는 붙여 넣어 돌린다. 점검은 전부 main() 안에 있고 마지막 줄에서만 돌므로,
@@ -30,9 +30,13 @@ MAX_BACKUP_AGE_H=${MAX_BACKUP_AGE_H:-26} # 하루 한 번 + 여유
 MIN_CERT_DAYS=${MIN_CERT_DAYS:-25}       # certbot 은 30일 전부터 갱신한다. 그보다 적으면 갱신이 안 된 것
 # crontab 의 작업 줄은 분(숫자 · *) 이나 @ 로 시작한다. 주석 · 빈 줄이 아닌 나머지는 변수 줄로 본다.
 # 이 나눔은 틀릴 수 있다(cron 은 `1PASSWORD=…` 같은 이름도 받는다). 그래서 **안전은 나눔이 아니라 출력이 지킨다** —
-# show_cron 은 꼴을 확인한 조각(시각 칸 · 사용자 · 변수 이름 · s3:// 주소)만 찍는다.
+# 작업 줄은 아래 문서 줄과 같은지만 말하고, 변수 줄은 이름만 찍는다.
 CRON_JOB_RE='^[[:space:]]*[0-9*@]'
 S3_URI_RE='s3://[A-Za-z0-9._/-]+'
+# docs/deploy.md 「백업」의 cron 줄. 백업 줄은 이것과 통째로 같은지만 본다 — 줄을 뜯어 읽으면 셸 문법(; · & · 따옴표 …)
+# 반례마다 S3 를 틀리게 보이거나 다른 값이 새어 나온다(PR #216 리뷰). 같으면 그 S3 주소가 backup.sh 에 그대로 넘어간다.
+# 문서 줄을 바꾸면 여기도 같이 바꾼다.
+BACKUP_CRON_RE='^15 18 \* \* \* (BACKUP_S3_URI=(s3://[A-Za-z0-9._/-]+) )?/home/ubuntu/ktc4-kangwon-2/scripts/backup\.sh >> /var/log/ssuksak-backup\.log 2>&1$'
 
 fails=0
 ok() { printf 'OK    %s\n' "$*"; }
@@ -221,41 +225,24 @@ check_cert() {
 }
 
 show_cron() {
-  local jobs vars bl env_s3
+  local jobs vars bl env_s3 row src s3
   jobs=$(cron_jobs <<<"$1")
   vars=$(cron_vars <<<"$1")
-  info "백업 cron — 시각 · 대상 · S3 주소 (원문은 서버에서. 꼴을 확인한 조각만 찍고 나머지는 ?)"
+  info "백업 cron — docs/deploy.md 「백업」의 줄과 같은지 (원문은 서버에서. 변수 줄은 이름만)"
   bl=$(grep -E 'backup\.sh|pg_dump' <<<"$jobs")
   if [ -z "$bl" ]; then
     echo "(백업 줄 없음 — systemd timer 는 안 봤다. 「없음」이 아니라 「미발견」)" | sub
   else
     # 크론 줄 자체에도 탭이 들어간다 — 출처 뒤 첫 탭부터가 크론 줄이다.
-    # 시각 칸은 꼴이 맞을 때만 다시 쓴다. @daily 처럼 한 단어 시각이면 그 하나만.
-    # /etc/crontab · /etc/cron.d 는 시각 뒤에 실행할 사용자 칸이 하나 더 있다.
-    # 명령 앞 변수는 공백으로 나누지 않는다 — 따옴표 안 공백에서 다른 값이 딸려 나온다. s3:// 주소 꼴만 줄에서 찾는다.
-    # **시각 · 사용자 칸 중 하나라도 꼴이 틀리면 줄 전체를 가린다.** 칸마다 따로 가리면, 작업 줄로 잘못 나뉜
-    # 변수 줄에서 우연히 꼴이 맞는 조각(따옴표 안 낱말 등)이 사용자 · 시각 자리로 새어 나온다.
-    awk -v s3re="BACKUP_S3_URI=$S3_URI_RE" '
-      function ok_(s, re) { if (s !~ re) bad = 1; return s }
-      {
-        i = index($0, "\t"); src = substr($0, 1, i - 1); l = substr($0, i + 1)
-        sub(/^[[:space:]]+/, "", l)
-        split(l, w, /[[:space:]]+/)
-        bad = 0
-        if (w[1] ~ /^@/) {
-          when = ok_(w[1], "^@(reboot|yearly|annually|monthly|weekly|daily|midnight|hourly)$"); k = 2
-        } else {
-          when = ""
-          for (j = 1; j <= 5; j++)
-            when = when ((j > 1) ? " " : "") ok_(w[j], "^([0-9*/,-]+|[A-Za-z][A-Za-z][A-Za-z])$")
-          k = 6
-        }
-        user = (src ~ /^(root|ubuntu)$/) ? "" : "  (" ok_(w[k], "^[a-z_][a-z0-9_-]*$") ")"
-        if (bad) { print src "  ? (cron 작업 줄 꼴이 아니다 — 서버에서 원문을 볼 것)"; next }
-        s3 = match(l, s3re) ? "  · " substr(l, RSTART, RLENGTH) : ""
-        t = (l ~ /backup\.sh/) ? "scripts/backup.sh" : (l ~ /aws s3/) ? "pg_dump → S3 로 바로" : "pg_dump"
-        print src "  " when user "  → " t s3
-      }' <<<"$bl" | sub
+    while IFS= read -r row; do
+      src=${row%%$'\t'*}
+      if [[ ${row#*$'\t'} =~ $BACKUP_CRON_RE ]]; then
+        s3=${BASH_REMATCH[2]:+ · BACKUP_S3_URI=${BASH_REMATCH[2]}}
+        echo "$src  문서 줄과 같다 — 15 18 * * *(UTC · 한국 03:15) → scripts/backup.sh${s3:- · S3 는 cron 줄에 없다(.env 를 본다)}"
+      else
+        echo "$src  문서 줄과 다르다 — 서버에서 원문을 볼 것"
+      fi
+    done <<<"$bl" | sub
   fi
   # 변수 줄은 그 crontab 의 아래 작업 전부에 넘어간다. backup.sh 는 이 값을 .env 보다 먼저 본다.
   # 이름은 꼴이 맞을 때만, 값은 BACKUP_S3_URI 의 s3:// 주소만 찍는다.
@@ -342,5 +329,7 @@ main() {
   [ "$fails" -eq 0 ]
 }
 
-# 테스트는 SERVER_CHECK_LIB=1 로 source 해서 함수만 부른다(backend/tests/test_server_check_script.py).
-[ -n "${SERVER_CHECK_LIB:-}" ] || main "$@" </dev/null
+# source 됐을 때만 main 을 건너뛴다 — 테스트가 함수만 부른다(backend/tests/test_server_check_script.py).
+# 환경변수로 가르지 않는다. 그 변수가 서버에 남으면 점검을 건너뛰고도 종료 코드 0 이 난다.
+# return 은 source 된 파일 안에서만 성공한다 — `bash 파일` · `bash -s` 붙여 넣기는 늘 main 을 돈다.
+if ! (return 0 2>/dev/null); then main "$@" </dev/null; fi
