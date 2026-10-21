@@ -117,6 +117,68 @@ export interface AnnualMonth extends MonthInput {
    */
   source_type?: "TEMPLATE" | "TREND" | "AI" | "TEACHER";
 }
+/**
+ * 주간계획안 칸 (docs/weekly-plan-contract.md §5-3).
+ *
+ * 월간 칸과 뜻이 같되 둘이 다르다 — `generation` 이 **null 일 수 있고**(교사 입력 칸은
+ * 처음 쓰기 전까지 만든 것이 없다), 근거로 쓴 부모 월간 칸의 그때 값(`parent_snapshots`)을
+ * 같이 들고 온다.
+ */
+export interface WeeklyCell {
+  item_id: string;
+  value: string;
+  state: "FILLED" | "EMPTY_VALID" | "EMPTY_UNRESOLVED";
+  evidence: MonthlyCell["evidence"];
+  /** 교사 입력 칸은 아직 아무것도 만들지 않았으면 null 이다 (§10-2). */
+  generation: MonthlyCell["generation"] | null;
+  /** 근거로 쓴 부모 월간 칸마다 하나. 「그때 월간은 이랬다」를 남긴다 (§5-3). */
+  parent_snapshots: { parent_item_id: string; snapshot_value: string }[];
+}
+/**
+ * 주간계획안 (docs/weekly-plan-contract.md §5-1 · §13).
+ *
+ * **주차 열이 없다.** 월간과 달리 모든 Section 이 `repeat_by = NONE` 이라 Section 마다
+ * 칸이 하나다 (WQ-02 — 요일별 값은 칸 하나 안 목록으로 쓴다).
+ */
+export interface WeeklyPlan {
+  id: number;
+  class_id: number;
+  school_year: number;
+  /** `YYYY-MM-Wn`. 부모 월간이 만든 주소를 그대로 쓴다 — 주간이 다시 계산하지 않는다 (§3-1). */
+  week_id: string;
+  /** 월~금. 토요일은 여기가 아니라 `operating_days` 에 있다 (§3-2). */
+  week_period: { start_date: string; end_date: string };
+  /** 만들 때 읽은 원 설정의 스냅샷. 나중에 설정을 바꿔도 이 계획안은 안 바뀐다 (§3-5). */
+  operating_days: ("MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT")[];
+  status: "DRAFT" | "CONFIRMED";
+  revision: number;
+  base_template_ref: TemplateRef;
+  /** 부모 월간. 확정본이라 바뀌지 않는다 — 주간에 「부모가 바뀌어 stale」 은 없다 (§4-2). */
+  parent: { monthly_plan_id: number; theme: string | null; confirmed_at: string };
+  sections: {
+    section_key: string;
+    label: string | null;
+    /** 교사 입력 칸은 생성하지 않는다 — 다시 만들기 단추를 띄우지 않는다 (§6-2). */
+    teacher_input: boolean;
+    order: number;
+    cells: WeeklyCell[];
+  }[];
+  verification: MonthlyPlan["verification"];
+  created_at: string;
+  confirmed_at: string | null;
+}
+/** 목록용. 칸은 단건 조회가 준다. */
+export type WeeklyPlanSummary = Pick<
+  WeeklyPlan,
+  | "id"
+  | "class_id"
+  | "school_year"
+  | "week_id"
+  | "status"
+  | "revision"
+  | "created_at"
+  | "confirmed_at"
+>;
 export interface AnnualPlan {
   id: number;
   class_id: number;

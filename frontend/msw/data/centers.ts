@@ -18,9 +18,13 @@ export const putGreetings = (id: number, data: Greetings) =>
   });
 /** 트렌드봇 설정. **계정마다 따로 두고 새로고침해도 남는다** — 모듈 전역에 들면
  *  다른 계정이 만든 1번 원이 남의 설정을 물려받는다. */
+/** 토요일(`weekly_saturday_enabled`)은 칸이 없으면 꺼진 것이다 — 주간 기본은 월~금 (§3-2). */
 export const findCenterSettings = (id: number) =>
-  read().centerSettings[id] ?? { trends_enabled: false };
-export const putCenterSettings = (id: number, patch: { trends_enabled?: boolean }) =>
+  read().centerSettings[id] ?? { trends_enabled: false, weekly_saturday_enabled: false };
+export const putCenterSettings = (
+  id: number,
+  patch: { trends_enabled?: boolean; weekly_saturday_enabled?: boolean },
+) =>
   commit((db) => {
     const next = { ...(db.centerSettings[id] ?? { trends_enabled: false }), ...patch };
     db.centerSettings[id] = next;

@@ -37,6 +37,19 @@ import {
   targetMonthOf,
 } from "./data/monthly-plans";
 import {
+  REGENERATABLE as WEEKLY_REGENERATABLE,
+  TEACHER_INPUT,
+  addWeekly,
+  confirmWeekly,
+  editWeeklyCellValue,
+  findWeekly,
+  findWeeklyCell,
+  findWeeklyFor,
+  listWeekly,
+  regenerateWeeklyCellValue,
+  removeWeekly,
+} from "./data/weekly-plans";
+import {
   addReadyProfile,
   defaultPointer,
   findReady,
@@ -478,6 +491,106 @@ export const handlers = [
     if (plan.revision !== b.expected_revision) return stale();
     return HttpResponse.json(confirmMonthly(plan.id));
   }),
+  // 주간계획안 (docs/weekly-plan-contract.md §13). 월간과 같은 모양 · 같은 공개 오류 코드다.
+  http.post("*/api/plans/weekly", async ({ request }) => {
+    const s = await scenario(request, "weekly", 1200);
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (!integer(b.class_id)) return bad("class_id");
+    if (typeof b.week_id !== "string" || !/^\d{4}-\d{2}-W\d+$/.test(b.week_id))
+      return bad("week_id");
+    const klass = myClass(b.class_id);
+    if (!klass) return classMissing();
+    // G5 — 같은 반 · 같은 주가 이미 있으면 DRAFT 든 CONFIRMED 든 거절한다.
+    if (findWeeklyFor(klass.id, b.week_id))
+      return failure("ALREADY_EXISTS", "이 반의 그 주 주간계획안이 이미 있습니다.", "week_id");
+    // G3 — 그 달 월간이 확정돼야 한다. 연간은 직접 보지 않는다 (§4-1).
+    const monthly = findMonthlyFor(klass.id, b.week_id.slice(0, 7));
+    if (!monthly)
+      return failure("GATE_BLOCKED", "그 달 월간계획안을 먼저 만들어 확정해주세요.", "week_id");
+    if (monthly.status !== "CONFIRMED")
+      return failure("GATE_BLOCKED", "그 달 월간계획안을 먼저 확정해주세요.", "week_id");
+    // G4 — 주 주소는 월간이 정한다. 월간에 없거나 쉬는 주면 거절한다 (§3-1).
+    const week = monthly.weeks.find((w) => w.week_id === b.week_id);
+    if (!week || !week.active) return bad("week_id");
+    if (request.signal.aborted) return HttpResponse.error();
+    const saturday = !!findCenterSettings(klass.center_id).weekly_saturday_enabled;
+    return HttpResponse.json(addWeekly(klass, monthly, b.week_id, saturday), { status: 201 });
+  }),
+  http.get("*/api/plans/weekly", async ({ request }) => {
+    const s = await scenario(request, "weekly-list");
+    if (s) return s;
+    const query = new URL(request.url).searchParams;
+    const raw = query.get("class_id");
+    const month = query.get("month") ?? "";
+    if (raw === null || !/^-?\d+$/.test(raw)) return bad("class_id");
+    if (!/^\d{4}-\d{2}$/.test(month)) return bad("month");
+    const klass = myClass(Number(raw));
+    return klass ? HttpResponse.json({ items: listWeekly([klass.id], month) }) : classMissing();
+  }),
+  http.get("*/api/plans/weekly/:id", async ({ request, params }) => {
+    const s = await scenario(request, "weekly-get");
+    if (s) return s;
+    const plan = myWeekly(Number(params.id));
+    return plan ? HttpResponse.json(plan) : weeklyMissing();
+  }),
+  http.put("*/api/plans/weekly/:id/cells/:itemId", async ({ request, params }) => {
+    const s = await scenario(request, "weekly-cell");
+    if (s) return s;
+    const w = await weeklyCellWrite(request, String(params.id), String(params.itemId), true);
+    if (w instanceof Response) return w;
+    if (w.cell.value === w.b.value)
+      return failure(
+        "VALIDATION_FAILED",
+        "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.",
+        "value",
+      );
+    return HttpResponse.json(editWeeklyCellValue(w.plan.id, w.cell.item_id, String(w.b.value)));
+  }),
+  http.post("*/api/plans/weekly/:id/cells/:itemId/regenerate", async ({ request, params }) => {
+    const s = await scenario(request, "weekly-regenerate", 1200);
+    if (s) return s;
+    const w = await weeklyCellWrite(request, String(params.id), String(params.itemId), false);
+    if (w instanceof Response) return w;
+    // 교사 입력 칸은 만든 적이 없어 다시 만들 것도 없다 (§6-2).
+    if (TEACHER_INPUT.includes(w.section.section_key))
+      return failure("VALIDATION_FAILED", "교사가 적는 칸이라 다시 만들 수 없습니다.", "item_id");
+    if (!WEEKLY_REGENERATABLE.includes(w.section.section_key))
+      return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");
+    if (request.signal.aborted) return HttpResponse.error();
+    const label = w.section.label ?? w.section.section_key;
+    return HttpResponse.json(
+      regenerateWeeklyCellValue(w.plan.id, w.cell.item_id, label, w.plan.revision + 1),
+    );
+  }),
+  http.post("*/api/plans/weekly/:id/confirm", async ({ request, params }) => {
+    const s = await scenario(request, "weekly-confirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = myWeekly(Number(params.id));
+    if (!plan) return weeklyMissing();
+    // 이미 확정이면 revision 과 상관없이 200 — 재시도 · 더블클릭은 실패가 아니다 (월간과 같다).
+    if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.revision !== b.expected_revision) return stale();
+    // 놀이 주제가 비면 확정할 수 없다 (§6-2 「확정 필수」).
+    const theme = plan.sections.find((s2) => s2.section_key === "theme")?.cells[0];
+    if (theme && !theme.value.trim())
+      return failure("VALIDATION_FAILED", "놀이 주제를 적어야 확정할 수 있습니다.", "theme");
+    return HttpResponse.json(confirmWeekly(plan.id));
+  }),
+  http.delete("*/api/plans/weekly/:id", async ({ request, params }) => {
+    const s = await scenario(request, "weekly-delete");
+    if (s) return s;
+    const plan = myWeekly(Number(params.id));
+    if (!plan) return weeklyMissing();
+    if (plan.status === "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
+    removeWeekly(plan.id);
+    return new HttpResponse(null, { status: 204 });
+  }),
   // 월간 양식 설정 조회 (§9-2).
   http.get("*/api/classes/:classId/template-profile", async ({ request, params }) => {
     const s = await scenario(request, "template-profile");
@@ -612,6 +725,27 @@ const myMonthly = (id: number) => {
   const plan = findMonthly(id);
   return plan && myClass(plan.class_id) ? plan : undefined;
 };
+const myWeekly = (id: number) => {
+  const plan = findWeekly(id);
+  return plan && myClass(plan.class_id) ? plan : undefined;
+};
+const weeklyMissing = () => failure("NOT_FOUND", "주간계획안을 찾을 수 없습니다.", "id");
+/** 주간 칸 편집 · 재생성 공통. 월간 `cellWrite` 와 같은 순서로 본다. */
+async function weeklyCellWrite(request: Request, id: string, itemId: string, needsValue: boolean) {
+  const b = await body(request);
+  if (!b) return bad("body");
+  if (needsValue && typeof b.value !== "string") return bad("value");
+  if (badRevision(b)) return bad("expected_revision");
+  const plan = myWeekly(Number(id));
+  if (!plan) return weeklyMissing();
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+  if (plan.revision !== b.expected_revision) return stale();
+  const found = findWeeklyCell(plan, decodeURIComponent(itemId));
+  return found
+    ? { b, plan, ...found }
+    : failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+}
 const annualMissing = () => failure("NOT_FOUND", "계획안을 찾을 수 없습니다.", "id");
 const classMissing = () => failure("NOT_FOUND", "반을 찾을 수 없습니다.", "class_id");
 const planMissing = () => failure("NOT_FOUND", "월간계획안을 찾을 수 없습니다.", "id");

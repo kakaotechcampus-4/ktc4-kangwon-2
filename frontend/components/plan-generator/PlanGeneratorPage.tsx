@@ -47,7 +47,11 @@ const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly"];
 // 여기서 끝까지 만들 수 있는 종류. 월간은 만들 수 있지만 **흐름이 다르다** —
 // 확정된 연간과 원 양식(TemplateProfile)이 있어야 해서 /plans/monthly 로 보낸다.
 const READY: ReadonlySet<PlanType> = new Set<PlanType>(["annual"]);
-const ELSEWHERE: Partial<Record<PlanType, string>> = { monthly: "/plans/monthly" };
+const ELSEWHERE: Partial<Record<PlanType, string>> = {
+  monthly: "/plans/monthly",
+  // 주간도 같다 — 확정한 월간이 있어야 만들 수 있다 (weekly-plan-contract §4-1 G3).
+  weekly: "/plans/weekly",
+};
 // 새 디자인은 계획안 종류를 색이 아니라 글로 가른다. 고른 카드만 주 색으로 선다.
 const ACCENT: Record<PlanType, { text: string; tint: string; ink: string }> = {
   annual: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
