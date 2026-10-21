@@ -215,8 +215,9 @@ def cell_request(
     """The document request narrowed to one Section (W4b, plan §4).
 
     Same Rule-fixed range — that Section's allowed refs, outdoor candidates, parent
-    context — plus the plan's other current values as context. The teacher-input
-    values may also supply dates and names (Q2: a teacher's own input).
+    context — plus the plan's other current values as context. Values a teacher wrote —
+    the teacher-input Cells and any Cell whose current value a teacher edited — may
+    also supply dates and names (Q2: a teacher's own input; decision B, 2026-10-21).
     """
     target = request.target(section_key)
     if target is None:
@@ -441,6 +442,22 @@ class WeeklyPlanner:
                 # Unvalidated model strings never reach the log: only the code and how many (R-01).
                 _log.warning("Weekly LLM repair rejected: DUPLICATE_SECTION x%d", len(duplicated))
                 raise ProposalRejectedError(_codes(dup_issues), dup_issues)
+            # The repair may only answer requested Sections, as the first answer may (W4b-01):
+            # a stray Section would otherwise be dropped silently at the merge below.
+            requested = {t.section_key for t in request.targets}
+            stray = tuple(dict.fromkeys(k for k in keys if k not in requested))
+            if stray:
+                stray_issues = tuple(
+                    WeeklyIssue(
+                        WeeklyIssueCode.TEACHER_INPUT_VALUE
+                        if k in request.teacher_input_keys
+                        else WeeklyIssueCode.SECTION_NOT_REQUESTED,
+                        k,
+                    )
+                    for k in stray
+                )
+                _log.warning("Weekly LLM repair rejected: %s", ",".join(_codes(stray_issues)))
+                raise ProposalRejectedError(_codes(stray_issues), stray_issues)
             patched = {v.section_key: v for v in repaired_values}
             # Only the flagged Sections may change; every other value stays as first written.
             values = tuple(patched.get(v.section_key, v) if v.section_key in flagged else v for v in values)

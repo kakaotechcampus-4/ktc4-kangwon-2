@@ -183,6 +183,46 @@ def test_a_date_the_teacher_wrote_in_a_teacher_input_cell_may_be_used():
     assert "10월 9일" in cell.value and len(provider.requests) == 1
 
 
+def test_a_repair_answer_with_an_extra_section_is_refused_with_no_third_call():
+    # W4b-01: the repair may not slip in a Section the first answer could not.
+    harness = WeeklyHarness()
+    before = _llm_weekly(harness)
+    provider = Scripted(
+        _set("goals", value="10월 3일 개천절 행사 준비"),
+        lambda a: a["sections"].append({**a["sections"][0], "section_key": "theme", "value": "새 주제"}),
+    )
+    with pytest.raises(MonthlyApplicationError) as excinfo:
+        harness.regenerate_weekly(before, section_key="goals", provider=provider)
+    assert excinfo.value.__cause__.validation_codes == ("SECTION_NOT_REQUESTED",)
+    assert len(provider.requests) == 2
+    _unchanged(harness, before)
+
+
+def _teacher_edit(harness, plan, key, value):
+    return EditWeeklyPlanCell(
+        plan_repository=harness.weekly_plans, parent_plan_repository=harness.monthly_plans,
+        clock=harness.clock, activity_repository=harness.activities,
+    ).execute(EditWeeklyPlanCellCommand(plan.plan_id, plan.cell(key).item_id, value, TEACHER))
+
+
+def test_a_date_the_teacher_wrote_in_an_edited_ordinary_cell_may_be_used():
+    # Decision B: a teacher-edited current value is a teacher's fact, like a teacher-input Cell.
+    harness = WeeklyHarness()
+    plan = _teacher_edit(harness, _llm_weekly(harness), "goals", "10월 9일 한글날을 알아본다.")
+    provider = Scripted(_set("focus", value="10월 9일 한글날을 맞아 우리 글자를 살펴보아요"))
+    cell = harness.regenerate_weekly(plan, section_key="focus", provider=provider).cell("focus")
+    assert "10월 9일" in cell.value and len(provider.requests) == 1
+
+
+def test_a_date_only_in_the_cell_being_regenerated_is_not_a_fact_for_its_new_value():
+    # The Cell's own old value is replaced, so it does not vouch for the new one.
+    harness = WeeklyHarness()
+    plan = _teacher_edit(harness, _llm_weekly(harness), "goals", "10월 9일 한글날을 알아본다.")
+    edit = _set("goals", value="10월 9일 한글날을 맞아 우리 글자를 살펴보아요")
+    code = _failure(lambda: harness.regenerate_weekly(plan, section_key="goals", provider=Scripted(edit, edit)))
+    assert code == "weekly_llm_cell_planning_failed"
+
+
 @pytest.mark.parametrize("key", ["family_link", "event_schedule", "special_program"])
 def test_teacher_input_cells_are_not_regenerated(key):
     harness = WeeklyHarness()

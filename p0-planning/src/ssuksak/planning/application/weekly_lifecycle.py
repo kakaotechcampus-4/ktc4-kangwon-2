@@ -297,9 +297,11 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
             current_values=tuple(
                 (c.section_key, c.value) for c in plan.cells if c.item_id != cell.item_id and c.value.strip()
             ),
+            # Decision B (2026-10-21): a teacher-edited current value is the teacher's fact too.
             teacher_facts=tuple(
                 c.value for c in plan.cells
-                if c.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS and c.value.strip()
+                if c.item_id != cell.item_id and c.value.strip()
+                and (c.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS or c.audit.current_value_teacher_edited())
             ),
         )
         try:
