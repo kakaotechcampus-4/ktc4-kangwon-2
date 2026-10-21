@@ -5,8 +5,10 @@
 """
 
 import importlib.util
+import zipfile
 from dataclasses import replace
 from datetime import date, timedelta
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -733,3 +735,73 @@ def test_이력은_칸으로_거르고_없는_칸은_404(world):
     assert _error(
         client.get(f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": "item_없는_칸"})
     ) == (404, "NOT_FOUND", ["item_id"])
+
+
+# ── 내보내기 (W5c) ────────────────────────────────────────────────────────
+
+
+def _exported(content: bytes) -> tuple[int, list[str]]:
+    from lxml import etree
+
+    from app.shared.hwpx import NS
+
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        section = etree.fromstring(archive.read("Contents/section0.xml"))
+    table = section.find(".//hp:tbl", NS)
+    return int(table.get("rowCnt")), [t.text for t in section.iter(f"{{{NS['hp']}}}t")]
+
+
+def test_확정된_주간을_표_양식_hwpx_로_내려준다(world):
+    plan = _create(world).json()
+    edited = _put(plan, "event_schedule", "운동회 준비").json()
+    confirmed = _confirm(edited)
+    assert confirmed.status_code == 200, confirmed.text
+
+    response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/hwp+zip"
+    assert f'filename="weekly-plan-{plan["id"]}.hwpx"' in response.headers["content-disposition"]
+
+    rows, printed = _exported(response.content)
+    sections = [s for s in edited["sections"] if s["visible"] and s["role"] == "CONTENT"]
+    assert rows == 3 + len(sections)  # 머리 3 · Section 마다 한 줄
+    for section in sections:
+        assert (section["label"] or section["section_key"]) in printed
+    assert "운동회 준비" in printed  # 교사 입력 칸도 실린다
+    assert _cell(edited, "theme")["value"] in printed
+    assert any((t or "").endswith("(만 3·4세)") for t in printed)  # 혼합반 연령 (Codex W5c-01)
+    assert any(edited["week_period"]["label"] in (t or "") for t in printed)
+    assert any(str(edited["display_end_date"]) in (t or "") for t in printed)
+
+
+def test_내보내기_연령은_단일과_혼합을_만_N세로_쓴다():
+    from app.features.plans.export import _ages_label
+
+    assert _ages_label(frozenset({4})) == "만 4세"
+    assert _ages_label(frozenset({5, 3, 4})) == "만 3·4·5세"
+
+
+def test_주간은_확정_전에_내보낼_수_없다(world):
+    plan = _create(world).json()
+    response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert _error(response) == (409, "GATE_BLOCKED", [])
+
+
+def test_남의_원_주간은_내보낼_수_없고_404(world):
+    plan = _create(world).json()
+    assert _confirm(plan).status_code == 200
+    world["session"].execute(
+        update(Plan).where(Plan.id == plan["id"]).values(center_id=world["other"]["center"])
+    )
+    world["session"].commit()
+    assert client.get(f"/api/plans/weekly/{plan['id']}/export/hwp").status_code == 404
+
+
+def test_주간_제출_문서에_출처가_섞이지_않는다(world):
+    plan = _create(world).json()
+    assert _confirm(plan).status_code == 200
+    response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    _, printed = _exported(response.content)
+    joined = "\n".join(text for text in printed if text)
+    for banned in ("evidence", "generation", "INSTITUTION_SAMPLE", "RULE_LLM", "mock"):
+        assert banned not in joined

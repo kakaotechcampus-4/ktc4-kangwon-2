@@ -155,8 +155,17 @@ def add_char_styles(header: etree._Element) -> dict[str, str]:
     return ids
 
 
-def build_table(table: etree._Element, fills: dict[str, str], chars: dict[str, str]) -> None:
-    """표를 LAYOUT 모양으로 갈아끼운다. 원본 칸을 복제해서 쓴다."""
+def build_table(
+    table: etree._Element,
+    fills: dict[str, str],
+    chars: dict[str, str],
+    layout: list[list[Cell]] = LAYOUT,
+    columns: list[int] = COLUMNS,
+) -> None:
+    """표를 `layout` 모양으로 갈아끼운다. 원본 칸을 복제해서 쓴다.
+
+    `layout` · `columns` 는 주간 양식(`build_weekly_template.py`)도 같은 길로 만들려고 받는다.
+    """
     rows = table.findall("hp:tr", NS)
     blank = copy.deepcopy(rows[0].find("hp:tc", NS))
     plain = blank.get("borderFillIDRef")
@@ -164,7 +173,7 @@ def build_table(table: etree._Element, fills: dict[str, str], chars: dict[str, s
         table.remove(row)
 
     height = 0
-    for row_index, cells in enumerate(LAYOUT):
+    for row_index, cells in enumerate(layout):
         tr = etree.SubElement(table, f"{{{HP}}}tr")
         lines = max(text.count("\n") + 1 for text, *_ in cells)
         column = 0
@@ -185,20 +194,26 @@ def build_table(table: etree._Element, fills: dict[str, str], chars: dict[str, s
             tc.find("hp:cellSpan", NS).set("rowSpan", "1")
 
             size = tc.find("hp:cellSz", NS)
-            size.set("width", str(sum(COLUMNS[column : column + span])))
+            size.set("width", str(sum(columns[column : column + span])))
             size.set("height", str(lines * LINE))
             tr.append(tc)
             column += span
         height += lines * LINE
 
-    table.set("rowCnt", str(len(LAYOUT)))
-    table.set("colCnt", str(len(COLUMNS)))
+    table.set("rowCnt", str(len(layout)))
+    table.set("colCnt", str(len(columns)))
     size = table.find("hp:sz", NS)
-    size.set("width", str(sum(COLUMNS)))
+    size.set("width", str(sum(columns)))
     size.set("height", str(height))
 
 
-def main() -> None:
+def build(
+    target: pathlib.Path = TARGET, layout: list[list[Cell]] = LAYOUT, columns: list[int] = COLUMNS
+) -> dict[str, str]:
+    """`annual.hwpx` 를 복제해 `layout` 표 하나짜리 양식을 `target` 에 쓴다.
+
+    더한 글자 모양(「이름 → id」)을 돌려준다.
+    """
     with zipfile.ZipFile(SOURCE) as archive:
         order = archive.namelist()
         parts = {name: archive.read(name) for name in order}
@@ -211,19 +226,23 @@ def main() -> None:
     tables = section.findall(".//hp:tbl", NS)
     if len(tables) != 1:
         raise SystemExit(f"양식에 표가 {len(tables)}개다. 1개일 때만 쓸 수 있다.")
-    build_table(tables[0], fills, chars)
+    build_table(tables[0], fills, chars, layout, columns)
     parts[SECTION] = etree.tostring(
         section, xml_declaration=True, encoding="UTF-8", standalone=True
     )
 
     # mimetype 이 맨 앞에 압축 없이 들어가야 한글이 연다. 나머지 차례도 양식 그대로 둔다.
-    with zipfile.ZipFile(TARGET, "w", zipfile.ZIP_DEFLATED) as out:
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
         for name in order:
             if name == "mimetype":
                 out.writestr(zipfile.ZipInfo("mimetype"), parts[name], zipfile.ZIP_STORED)
             else:
                 out.writestr(name, parts[name])
+    return chars
 
+
+def main() -> None:
+    chars = build()
     print(
         f"{TARGET} — {len(LAYOUT)}행 × {len(COLUMNS)}열, 색 {len(FILLS)} · 글자 모양 {len(chars)}"
     )
