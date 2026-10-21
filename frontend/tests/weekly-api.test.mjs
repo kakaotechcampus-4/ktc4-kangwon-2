@@ -233,3 +233,17 @@ test("칸 이름표는 열두 칸을 모두 덮고, 월간의 옛 키(habits)는
   assert.equal(sectionName("unknown_key", "서버 이름"), "서버 이름");
   assert.equal(sectionName("unknown_key"), "unknown_key");
 });
+
+test("서버 경로가 아직 없으면 「준비 중」으로 읽는다 — 「잠시 후 다시」가 아니다", async () => {
+  // 우리가 낸 404 는 공통 봉투를 달고 온다. 아예 없는 경로는 FastAPI 기본 {"detail": ...} 다.
+  const enveloped = new ApiError(404, {
+    error: { code: "NOT_FOUND", message: "없어요", fields: [] },
+  });
+  const missingRoute = new ApiError(404, { detail: "Not Found" });
+  const notBuiltYet = (e) =>
+    e instanceof ApiError &&
+    e.status === 404 &&
+    !(typeof e.body === "object" && e.body !== null && "error" in e.body);
+  assert.equal(notBuiltYet(enveloped), false);
+  assert.equal(notBuiltYet(missingRoute), true);
+});

@@ -34,7 +34,21 @@ import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
+/**
+ * 주간 서버 경로가 아직 없다 (계약 §14 W5, 하민님).
+ *
+ * 우리가 낸 404 는 공통 봉투(`{error: {...}}`)를 달고 오고, 아예 없는 경로는 FastAPI 기본
+ * `{"detail": "Not Found"}` 다. 그 차이로 가른다. 안 가르면 화면이 「잠시 후 다시
+ * 시도해주세요」를 띄우는데, 다시 시도해도 영원히 안 된다 — 교사는 고장으로 읽는다.
+ */
+const NOT_BUILT_YET = "주간계획안은 아직 서버 준비 중이에요. 월간계획안까지는 지금 쓰실 수 있어요.";
+const notBuiltYet = (e: unknown) =>
+  e instanceof ApiError &&
+  e.status === 404 &&
+  !(typeof e.body === "object" && e.body !== null && "error" in e.body);
+
 function describe(e: unknown, fallback: string): string {
+  if (notBuiltYet(e)) return NOT_BUILT_YET;
   if (e instanceof ApiError) return e.message;
   return e instanceof Error ? e.message : fallback;
 }
