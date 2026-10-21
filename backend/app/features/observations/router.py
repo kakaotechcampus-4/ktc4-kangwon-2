@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
-from app.features.centers.models import Child, Class
+from app.features.centers.models import Center, Child, Class
 from app.features.documents.stale import observation_changed
-from app.features.observations.models import Observation
+from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS, Observation
 from app.features.observations.schemas import (
     ObservationCreate,
     ObservationListResponse,
@@ -77,11 +77,32 @@ def _own(session: Session, user: User, observation_id: int):
     return row
 
 
+def _check_axis(session: Session, user: User, class_id: int, domain: str) -> None:
+    """그 원이 쓰는 축의 값인가.
+
+    **DB 는 두 축을 다 받는다** (models.py AXES) — 원이 축을 바꿔도 전에 쌓은 기록이
+    CHECK 에 걸려 못 읽히면 안 되기 때문이다. 그래서 「지금 이 원이 쓸 수 있는 값인가」는
+    여기서 본다. 5영역 원에 「놀이활동」이 들어오면 422 다.
+    """
+    classroom = require_own_class(session, user, class_id)
+    center = session.get(Center, classroom.center_id)
+    allowed = AXES.get(center.observation_axis if center else DEFAULT_AXIS, NURI_DOMAINS)
+    if domain not in allowed:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "VALIDATION_FAILED",
+                "message": "우리 원이 쓰는 관찰 영역이 아닙니다. " + " · ".join(allowed),
+                "fields": ["domain"],
+            },
+        )
+
+
 @router.post("", response_model=ObservationResponse, status_code=status.HTTP_201_CREATED)
 def create_observation(
     body: ObservationCreate, session: DbSession, user: CurrentUser
 ) -> ObservationResponse:
-    require_own_class(session, user, body.class_id)
+    _check_axis(session, user, body.class_id, body.domain)
     child = require_own_child(session, user, body.child_id)
     if child.class_id != body.class_id:
         # 같은 원의 다른 반 아이다. 404 가 아니다 — 둘 다 있고, 짝이 틀렸다.
@@ -132,6 +153,7 @@ def update_observation(
     observation_id: int, body: ObservationUpdate, session: DbSession, user: CurrentUser
 ) -> ObservationResponse:
     observation = _own(session, user, observation_id)[0]
+    _check_axis(session, user, observation.class_id, body.domain)
     for field, value in body.model_dump().items():
         setattr(observation, field, value)
     observation_changed(session, observation_id, observation.fact, observation.date)
