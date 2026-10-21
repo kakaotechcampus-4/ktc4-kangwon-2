@@ -42,13 +42,13 @@ class SharedLlmTransport:
                 type(error).__name__,
             )
             raise
-        usage = result.get("usage") if isinstance(result, dict) else None
+        # 응답의 usage 객체는 남기지 않는다(Codex W7a2-02) — 모델이 어떤 문자열 필드를 붙여 올지
+        # 모른다. 토큰 수는 `post_json` 의 `llm_usage` 줄이 숫자로 남긴다.
         _log.info(
-            "monthly llm call ok schema=%s model=%s seconds=%.2f usage=%s",
+            "monthly llm call ok schema=%s model=%s seconds=%.2f",
             schema,
             payload.get("model"),
             time.perf_counter() - started,
-            usage,
         )
         return result
 

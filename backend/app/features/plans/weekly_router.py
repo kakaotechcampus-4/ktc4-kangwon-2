@@ -45,9 +45,11 @@ from ssuksak.planning import (
 )
 from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
 
+from app.config import settings
 from app.db import get_session
 from app.features.centers.models import Center
 from app.features.plans.models import Plan
+from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_router import (
     _ALREADY_CONFIRMED,
     _CELL_NOT_FOUND,
@@ -123,13 +125,18 @@ def _weekly_repo(session: Session, center_id: int) -> PostgresPlanRepository[Wee
 
 
 def _weekly_provider():
-    """mock 이면 요청 기반 결정적 provider. **real 은 W7 전까지 막는다**(결정 ②) — 503.
+    """mock 이면 요청 기반 결정적 provider. real 은 `weekly_llm_enabled` 가 켜졌을 때만 Luna-6.
 
-    실제 문장 품질을 본 적 없는 경로를 운영에 열지 않는다. 실패했다고 mock 으로 갈아타지 않는다.
+    꺼져 있으면 503(결정 ②) — 실제 문장 품질을 본 적 없는 경로를 운영에 열지 않는다.
+    켜지면 월간과 **같은 어댑터 · 같은 전송**이다(`generate_weekly`, W7a-1) — 키 · 주소 확인,
+    오류 3종 분류, 호출마다 모델 · 시간 · 토큰 로그가 그대로 따라온다. 실패했다고 mock 으로
+    갈아타지 않는다.
     """
     if is_mock():
         return RequestAwareWeeklyLlm()
-    raise LlmUnavailable("주간 실제 LLM 연결은 아직 없다 (W7)")
+    if not settings.weekly_llm_enabled:
+        raise LlmUnavailable("주간 실제 LLM 은 WEEKLY_LLM_ENABLED 로 켠다 (W7)")
+    return monthly_llm_provider()
 
 
 def _week(value: str, school_year: int) -> WeekId:

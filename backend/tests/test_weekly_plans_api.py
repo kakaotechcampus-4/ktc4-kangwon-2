@@ -10,6 +10,7 @@ from dataclasses import replace
 from datetime import date, timedelta
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from alembic.operations import Operations
@@ -26,7 +27,7 @@ from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRe
 from app.config import settings
 from app.features.auth.models import User
 from app.features.centers.models import Center, Class
-from app.features.plans import weekly_router
+from app.features.plans import monthly_llm, weekly_router
 from app.features.plans.codec import from_jsonable, to_jsonable
 from app.features.plans.models import Plan
 from app.features.template_profiles import service as profile_service
@@ -582,6 +583,83 @@ def test_재생성이_실패하면_칸도_revision_도_그대로다(world, monke
     monkeypatch.setattr(weekly_router, "_weekly_provider", lambda: _Failing(error))
     assert _error(_regenerate(plan, "goals")) == expected
     assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
+
+
+@pytest.fixture
+def real_weekly_llm(monkeypatch):
+    """real + `weekly_llm_enabled` + 가짜 주소. 전송 함수만 바꿔 낀다 — 오류 분류 · 어댑터는 진짜다.
+
+    네트워크를 부르지 않는다. 답은 요청을 보고 mock 과 같은 방식으로 만든다 —
+    strict schema 에 맞는다.
+    """
+    calls = []
+
+    def install(behaviour, *, enabled=True):
+        monkeypatch.setattr(settings, "llm_mode", "real")
+        monkeypatch.setattr(settings, "weekly_llm_enabled", enabled)
+        monkeypatch.setattr(settings, "elice_mlapi_base_url", "https://llm.invalid/v1")
+        monkeypatch.setattr(settings, "elice_mlapi_api_key", "test-only-not-a-key")
+
+        def post_json(url, *, headers, payload, timeout):
+            calls.append(payload)
+            return behaviour(payload)
+
+        monkeypatch.setattr(monthly_llm, "post_json", post_json)
+
+    return install, calls
+
+
+def _answer(payload):
+    user = payload["messages"][1]["content"]
+    content = RequestAwareWeeklyLlm().generate_weekly(SimpleNamespace(user_content=user)).content
+    return {"choices": [{"message": {"content": content}}]}
+
+
+def _schema(payload) -> str:
+    return payload["response_format"]["json_schema"]["name"]
+
+
+def test_WEEKLY_LLM_ENABLED_가_꺼져_있으면_real_이어도_부르지_않고_503(world, real_weekly_llm):
+    install, calls = real_weekly_llm
+    plan = _create(world).json()  # mock 으로 하나 만들어 둔다
+    install(_answer, enabled=False)
+    assert _error(_regenerate(plan, "goals")) == (503, "DEPENDENCY_UNAVAILABLE", [])
+    assert client.delete(f"/api/plans/weekly/{plan['id']}").status_code == 204
+    assert _error(_create(world)) == (503, "DEPENDENCY_UNAVAILABLE", [])
+    assert calls == []
+
+
+def test_켜면_생성과_재생성이_실제_어댑터로_간다(world, real_weekly_llm):
+    install, calls = real_weekly_llm
+    install(_answer)
+    created = _create(world)
+    assert created.status_code == 201, created.json()
+    assert [_schema(c) for c in calls] == ["weekly_plan_proposal"]
+    assert all(c["response_format"]["json_schema"]["strict"] for c in calls)
+
+    regenerated = _regenerate(created.json(), "goals")
+    assert regenerated.status_code == 200, regenerated.json()
+    assert [_schema(c) for c in calls] == ["weekly_plan_proposal", "weekly_cell_proposal"]
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (LlmBudgetExceeded("429"), (503, "LLM_BUDGET_EXCEEDED", [])),
+        (LlmFailed("timeout"), (500, "GENERATION_FAILED", [])),
+    ],
+)
+def test_켠_실제_LLM_오류는_계약_코드로_가르고_저장하지_않는다(
+    world, real_weekly_llm, error, expected
+):
+    install, _ = real_weekly_llm
+
+    def fail(payload):
+        raise error
+
+    install(fail)
+    assert _error(_create(world)) == expected
+    assert _weekly_rows(world["session"]) == []
 
 
 def test_real_모드_재생성도_W7_전까지_503(world, monkeypatch):
