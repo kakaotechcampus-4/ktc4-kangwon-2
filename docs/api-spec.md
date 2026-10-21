@@ -894,11 +894,12 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 ```json
 { "items": [
     { "type": "CREATED",        "occurred_at": "2026-03-02T01:00:00Z", "month": null,
-      "actor": null,    "system_actor": "yearly_application" },
+      "actor": null,    "system_actor": "yearly_application", "value_change": null },
     { "type": "TEACHER_EDITED", "occurred_at": "2026-03-03T02:10:00Z", "month": 3,
-      "actor": "user_7", "system_actor": null },
+      "actor": "user_7", "system_actor": null,
+      "value_change": { "before": "새로운 친구와 만나요", "after": "우리 반 친구들과 만나요" } },
     { "type": "CONFIRMED",      "occurred_at": "2026-03-04T05:00:00Z", "month": null,
-      "actor": "user_7", "system_actor": null }
+      "actor": "user_7", "system_actor": null, "value_change": null }
 ] }
 ```
 
@@ -908,16 +909,18 @@ occurred_at    ISO 8601, 시간대 포함
 month          그 달 theme 칸의 이벤트면 그 달(1~12).  계획안 단위(생성 · 확정)면 null
 actor          사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
 system_actor   시스템이 한 일(생성)이면 그 표시 (yearly_application).  사람이면 null
+value_change   TEACHER_EDITED 면 {before, after} — 그때 바뀐 theme 값.  그 밖의 이벤트는 null
 ```
 
-- **다섯 키가 항상 온다.** 해당이 없으면 키를 빼지 않고 `null` 이다.
+- **여섯 키가 항상 온다.** 해당이 없으면 키를 빼지 않고 `null` 이다.
+- **`value_change` 는 저장된 이벤트 값 그대로다.** 현재 값에서 거꾸로 만들지 않는다. 소주제만 고친 PUT 도 `TEACHER_EDITED` 이고
+  그때 `before` · `after` 는 같은 theme 다 — 소주제 변화는 이력에 없다. 키가 없는 옛 이벤트는 `null` 로 온다.
 - **순서는 발생 시각.** 계획안 단위 이벤트와 달마다의 이벤트를 한 목록으로 합쳐 시각순으로 준다.
 - `CREATED` 는 계획안 단위 하나와 달마다 하나씩 온다.
 - 오류: 없거나 남의 원 계획안 · 연간이 아닌 id 는 404 `["id"]`, 로그인 안 함은 401.
 
-**결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `TEACHER_EDITED` 에 `{before, after}`(그때 바뀐 theme 값)를 싣는다.
-그 밖의 이벤트는 `null` 이다. `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
-**아직 구현 전이다**(연간 Backend Y3′). 지금 서버는 위 다섯 키만 준다. Core 는 이미 그 값을 저장하고 있다.
+**결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
+구현은 연간 Backend Y3′ 다.
 
 ---
 

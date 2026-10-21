@@ -59,6 +59,7 @@ from app.features.plans.schemas import (
     GenerationOut,
     MonthOut,
     UpdateMonth,
+    ValueChangeOut,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
@@ -94,13 +95,18 @@ def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
     )
 
 
-def _row(session: Session, user: User, plan_id: int) -> Plan:
-    """남의 원 계획안은 없는 것과 같다 (shared/auth/ownership.py 와 같은 이유)."""
-    row = session.scalar(
-        select(Plan).where(
-            Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "annual"
-        )
+def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> Plan:
+    """남의 원 계획안은 없는 것과 같다 (shared/auth/ownership.py 와 같은 이유).
+
+    **쓰는 요청은 `lock=True` 로 읽는다**(`SELECT … FOR UPDATE`). 본문 전체를 읽고 고쳐서 통째로
+    저장하므로, 잠그지 않으면 겹친 두 요청 중 나중 것이 먼저 것을 지운다 — 확정과 겹친 PUT 이
+    옛 DRAFT 본문을 저장해 확정이 되돌아가는 일도 생긴다. 잠금은 이 요청의 transaction 이 끝날
+    때(commit · 오류) 풀린다. 행 하나만 잡으므로 서로 기다리다 막히는 일은 없다.
+    """
+    query = select(Plan).where(
+        Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "annual"
     )
+    row = session.scalar(query.with_for_update() if lock else query)
     if row is None:
         raise _NOT_FOUND
     return row
@@ -355,8 +361,11 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 
     부모는 `body` 안에만 있어서 열로는 못 찾는다. 같은 반 · 같은 학년도의 월간을 본다 —
     연간이 반마다 하나뿐이라 그 월간의 부모는 이것뿐이다.
+
+    **잠그고 읽는다.** 안 잠그면 확정과 겹쳤을 때 DRAFT 를 보고 지나간 DELETE 가 확정의
+    commit 뒤에 실행돼 확정본을 지운다.
     """
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, lock=True)
     if row.status == "CONFIRMED":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -441,7 +450,7 @@ def update_month(
     **부분 저장이 없다.** `theme` 만 보내면 `sub_themes` 가 조용히 사라지고, 교사는
     저장됐다고 믿은 채 확정에서야 발견한다(§6).
     """
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, lock=True)
     repo = _repo(session, user)
     plan = repo.get(PlanId(row.plan_ref))
     period = next((p for p in plan.periods if p.period.calendar_month == month), None)
@@ -472,7 +481,7 @@ def update_month(
 
 @router.post("/{plan_id}/confirm", response_model=ConfirmOut)
 def confirm_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, lock=True)
     # **재호출은 멱등이다(§7).** 이미 확정이면 저장된 그대로 200 — Core 확정을 다시 부르지 않고
     # (부르면 409) 저장 · commit 도 하지 않는다. 소유 검사(_row) 뒤라 남의 원 것은 여전히 404 다.
     if row.status == "CONFIRMED":
@@ -503,12 +512,16 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     plan = _repo(session, user).get(PlanId(row.plan_ref))
 
     def out(event, month=None):
+        values = event.value_change
         return AuditEventOut(
             type=event.event_type.value,
             occurred_at=event.occurred_at,
             month=month,
             actor=event.actor_id.value if event.actor_id is not None else None,
             system_actor=event.system_actor,
+            value_change=(
+                None if values is None else ValueChangeOut(before=values.before, after=values.after)
+            ),
         )
 
     items = [out(event) for event in plan.audit.events]
