@@ -1,13 +1,15 @@
-"""GenerateWeeklyPlan — W3a: gates, parent monthly context and the RULE_ONLY path.
+"""GenerateWeeklyPlan — gates, parent monthly context, the RULE_ONLY path (W3a) and the
+LLM_PLANNER path (W3b).
 
-docs/weekly-plan-contract.md (W1). The LLM path (W3b) and the weekly evidence
-classification (W3c, after W2-E approval) come later; until then LLM_PLANNER is
-refused rather than silently answered by rules (§10-1).
+docs/weekly-plan-contract.md (W1). The LLM path never falls back to rule output (§10-1).
+The weekly evidence classification (W3c) is not wired yet: indoor_play · indoor_alternative ·
+group_activity stay empty on both paths.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import timedelta
 
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT, ActivityCandidate
 from ..domain.errors import InvalidDomainValueError
@@ -27,12 +29,22 @@ from ..domain.provenance import (
     GenerationMethodDetail,
 )
 from ..domain.week_period import WeekId
+from ..context.serialization import packet_fingerprint
 from ..domain.weekly_plan import (
     WEEKLY_INSTITUTION_INPUT_SECTION_KEYS,
     OperatingDay,
     WeeklyCell,
     WeeklyPlan,
     WeeklyTemplateSnapshot,
+)
+from ..evidence.classification import grounding_class_for
+from ..planner.weekly import (
+    OUTDOOR_KEY,
+    PARENT_GROUNDABLE_KEYS,
+    WeeklyPlanner,
+    WeeklyPlanningRequest,
+    WeeklyTarget,
+    build_weekly_request,
 )
 from ..rules.monthly_activity_selection import (
     ActivitySelection,
@@ -49,11 +61,14 @@ from ..rules.weekly_verification import SAFETY_GROUNDING_RULE_ID, verify_weekly_
 from .monthly_dto import ActivityCatalogSelector, SafetyRuleSelector
 from .monthly_errors import MonthlyApplicationError
 from .monthly_support import (
+    MonthlyContextPipeline,
     deduplicate_evidence,
     load_activity_catalog,
     load_safety_rule,
     optional_context_results,
+    packet_evidence,
     require_approved_template,
+    snapshot_grounding_classes,
     theme_reference_id,
 )
 from .ports import (
@@ -84,6 +99,8 @@ _OUTDOOR_REASONS = (
     "STRONGER_MONTH_EVIDENCE",
 )
 WEEKLY_RULE_VERSION = "v1"
+LLM_RULE_ID = "weekly.llm.planner"  # rule_version = the prompt that wrote the value
+OUTDOOR_CANDIDATE_LIMIT = 12  # same size as the monthly reference block
 THEME_KEY = "theme"
 SAFETY_KEY = "safety_education"
 
@@ -123,7 +140,8 @@ class GenerateWeeklyPlanCommand:
 class GenerateWeeklyPlanResult:
     plan: WeeklyPlan
     optional_context: tuple[OptionalContextResult, ...]
-    activity_selection: ActivitySelectionTrace | None
+    activity_selection: ActivitySelectionTrace | None  # the rule ranking; None on the LLM path
+    context_packet_fingerprint: str | None = None
 
 
 class GenerateWeeklyPlan:
@@ -138,6 +156,8 @@ class GenerateWeeklyPlan:
         id_generator: IdGenerator,
         activity_repository: ActivityReferenceRepository | None = None,
         optional_context: OptionalContextProvider | None = None,
+        context_pipeline: MonthlyContextPipeline | None = None,
+        planner: WeeklyPlanner | None = None,
     ) -> None:
         self._parents = parent_plan_repository
         self._plans = plan_repository
@@ -147,12 +167,15 @@ class GenerateWeeklyPlan:
         self._ids = id_generator
         self._activities = activity_repository
         self._optional_context = optional_context
+        self._context = context_pipeline
+        self._planner = planner
 
     def execute(self, command: GenerateWeeklyPlanCommand) -> GenerateWeeklyPlanResult:
-        if command.generation_mode is not MonthlyGenerationMode.RULE_ONLY:
+        llm = command.generation_mode is MonthlyGenerationMode.LLM_PLANNER
+        if llm and (self._context is None or self._planner is None):
             raise WeeklyApplicationError(
-                "weekly_generation_mode_unsupported",
-                "Only RULE_ONLY is wired; the weekly LLM path is not available yet",
+                "weekly_llm_dependencies_required",
+                "LLM_PLANNER mode requires a Context Pipeline and a Weekly Planner",
             )
         parent = self._parents.get(command.parent_monthly_plan_id)
         if parent is None:
@@ -202,6 +225,27 @@ class GenerateWeeklyPlan:
         )
         theme_cell = _only_cell(parent, THEME_KEY)
         theme_snapshot = _cited(lineage, theme_cell)
+        outdoor = _outdoor_ranking(parent, command.week_id, catalog, theme_cell)
+        outcome, fingerprint = None, None
+        if llm:
+            packet = self._context.build(
+                target_month=command.week_id.target_month,
+                ages=parent.target_ages,
+                parent_theme_id=theme_reference_id(theme_cell.evidence),
+                parent_theme_value=theme_cell.value,
+                week_periods=(period,),
+                activity_catalog=catalog,
+                constraint_assessments=(safety_assessment,),
+                grounding_classes=snapshot_grounding_classes(snapshot),
+            )
+            fingerprint = packet_fingerprint(packet)
+            request = _weekly_request(parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint)
+            try:
+                outcome = self._planner.plan(request)
+            except Exception as exc:  # never answered by the rule path instead (§10-1)
+                raise WeeklyApplicationError(
+                    "weekly_llm_planning_failed", "Weekly LLM planning failed before any Plan was saved"
+                ) from exc
         selection: ActivitySelectionTrace | None = None
         cells = []
         for section in snapshot.sections:
@@ -210,8 +254,36 @@ class GenerateWeeklyPlan:
             generation: GenerationMethodDetail | None = GenerationMethodDetail(
                 GenerationMethod.RULE_ONLY, EMPTY_RULE_ID, WEEKLY_RULE_VERSION
             )
+            proposed = outcome.value(key) if outcome is not None else None
             if key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
                 generation = None  # teacher input only (§6-2, §10-2)
+            elif proposed is not None:
+                if not proposed.unresolved:
+                    value = proposed.value
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_LLM, LLM_RULE_ID, outcome.prompt_version_for(key)
+                    )
+                    # F2: parent citations and the Activity Reference come from the Rule, not the LLM.
+                    if key == THEME_KEY:
+                        cited: tuple[MonthlyCell, ...] = (theme_cell,)
+                        extra: tuple[EvidenceSource, ...] = ()
+                    elif key == OUTDOOR_KEY:
+                        cited = outdoor.cited_cells
+                        extra = (EvidenceSource(
+                            EvidenceSourceType.ACTIVITY_REFERENCE, proposed.reference_id,
+                            catalog.catalog_version, display_name=proposed.value,
+                        ),)
+                    else:
+                        parent_cell = _parent_cell(parent, key, command.week_id)
+                        cited = (parent_cell,) if parent_cell is not None and parent_cell.value.strip() else ()
+                        extra = packet_evidence(packet, proposed.grounding_refs)
+                    evidence = deduplicate_evidence((parent_evidence, *extra))
+                    snapshots = tuple(
+                        dict.fromkeys(
+                            ((theme_snapshot,) if key == OUTDOOR_KEY else ())
+                            + tuple(_cited(lineage, cell) for cell in cited)
+                        )
+                    )
             elif key == THEME_KEY:
                 value = theme_cell.value
                 evidence, snapshots = (parent_evidence,), (theme_snapshot,)
@@ -220,35 +292,8 @@ class GenerateWeeklyPlan:
                 # RULE_ONLY writes no safety text: empty-first, and writing the parent's
                 # teacher sentence is the LLM path (§8). No placement is claimed.
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, SAFETY_RULE_ID, SAFETY_RULE_VERSION)
-            elif key == OUTDOOR_PLAY_SLOT and catalog is not None:
-                eligible = catalog.eligible_candidates(
-                    section_key=OUTDOOR_PLAY_SLOT,
-                    calendar_month=command.week_id.target_month.calendar_month,
-                    ages=parent.target_ages,
-                )
-                parent_cells = _section_cells(parent, OUTDOOR_PLAY_SLOT)
-                same_week = next((c for c in parent_cells if c.week_id == command.week_id), None)
-                preferred = _parent_activity(same_week, eligible)
-                other_weeks = tuple(
-                    cell for cell in parent_cells
-                    if cell.week_id != command.week_id and cell.value.strip()
-                )
-                picked = _rank_outdoor(
-                    eligible,
-                    calendar_month=command.week_id.target_month.calendar_month,
-                    used_activity_ids=frozenset(
-                        source.source_id
-                        for cell in other_weeks
-                        for source in cell.evidence
-                        if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
-                    ),
-                    parent_theme_id=theme_reference_id(theme_cell.evidence),
-                    preferred_id=preferred.activity_id if preferred is not None else None,
-                )
-                # Cite every parent Cell the ranking read: the same week (가점) and the others (repeat).
-                cited_cells: tuple[MonthlyCell, ...] = (
-                    (same_week,) if preferred is not None else ()
-                ) + other_weeks
+            elif key == OUTDOOR_PLAY_SLOT and catalog is not None and not llm:
+                picked = outdoor.selection
                 generation = GenerationMethodDetail(
                     GenerationMethod.RULE_ONLY, OUTDOOR_RULE_ID, WEEKLY_RULE_VERSION
                 )
@@ -264,7 +309,7 @@ class GenerateWeeklyPlan:
                             display_name=picked.candidate.label,
                         ),
                     ))
-                    snapshots = (theme_snapshot, *(_cited(lineage, cell) for cell in cited_cells))
+                    snapshots = (theme_snapshot, *(_cited(lineage, cell) for cell in outdoor.cited_cells))
             item_id = self._ids.new_item_id()
             cells.append(WeeklyCell(
                 item_id=item_id,
@@ -321,7 +366,7 @@ class GenerateWeeklyPlan:
                 "Safety grounding verification failed before the Plan was saved: " + ", ".join(blocked),
             )
         self._plans.save(plan.plan_id, plan)
-        return GenerateWeeklyPlanResult(plan, optional_context, selection)
+        return GenerateWeeklyPlanResult(plan, optional_context, selection, fingerprint)
 
 
 def _snapshot(template: MonthlyTemplate, parent: MonthlyPlan) -> WeeklyTemplateSnapshot:
@@ -356,6 +401,93 @@ def _cited(lineage: ParentLineage, cell: MonthlyCell) -> ParentLineage:
     return replace(lineage, parent_item_id=cell.item_id, snapshot_value=cell.value)
 
 
+@dataclass(frozen=True, slots=True)
+class _OutdoorRanking:
+    selection: ActivitySelection
+    ranked: tuple[ActivityCandidate, ...]
+    cited_cells: tuple[MonthlyCell, ...]  # every parent Cell the ranking read
+
+
+def _outdoor_ranking(parent: MonthlyPlan, week_id: WeekId, catalog, theme_cell: MonthlyCell) -> _OutdoorRanking:
+    if catalog is None:
+        return _OutdoorRanking(_rank_outdoor((), calendar_month=0, used_activity_ids=frozenset(),
+                                             parent_theme_id=None, preferred_id=None)[0], (), ())
+    eligible = catalog.eligible_candidates(
+        section_key=OUTDOOR_PLAY_SLOT, calendar_month=week_id.target_month.calendar_month, ages=parent.target_ages
+    )
+    parent_cells = _section_cells(parent, OUTDOOR_PLAY_SLOT)
+    same_week = next((c for c in parent_cells if c.week_id == week_id), None)
+    preferred = _parent_activity(same_week, eligible)
+    other_weeks = tuple(c for c in parent_cells if c.week_id != week_id and c.value.strip())
+    selection, ranked = _rank_outdoor(
+        eligible,
+        calendar_month=week_id.target_month.calendar_month,
+        used_activity_ids=frozenset(
+            source.source_id
+            for cell in other_weeks
+            for source in cell.evidence
+            if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
+        ),
+        parent_theme_id=theme_reference_id(theme_cell.evidence),
+        preferred_id=preferred.activity_id if preferred is not None else None,
+    )
+    # The same week is read only when it earned the bonus; the others feed repeat-avoidance.
+    return _OutdoorRanking(selection, ranked, ((same_week,) if preferred is not None else ()) + other_weeks)
+
+
+def _parent_cell(parent: MonthlyPlan, key: str, week_id: WeekId) -> MonthlyCell | None:
+    section = parent.section(key)
+    if section is None:
+        return None
+    return section.cell_for_week(week_id) or section.cell_for_week(None)
+
+
+def _weekly_request(parent, period, command, snapshot, packet, theme_cell, outdoor, fingerprint) -> WeeklyPlanningRequest:
+    """The Rule decides what the LLM may write; anything without a basis is not a target."""
+    targets = [WeeklyTarget(THEME_KEY, parent_value=theme_cell.value)]
+    parent_context = [(THEME_KEY, theme_cell.value)]
+    evidence = []
+    for section in snapshot.sections:
+        key = section.section_key
+        parent_cell = _parent_cell(parent, key, command.week_id) if key != THEME_KEY else None
+        parent_value = parent_cell.value if parent_cell is not None else ""
+        if key in PARENT_GROUNDABLE_KEYS:
+            klass = grounding_class_for(section)  # F1 variant decides the class; WEEKLY_THEME has none
+            items = tuple(i for i in packet.section_evidence if klass is not None and i.grounding_class is klass)
+            if items or parent_value.strip():  # Q1 / Q3: the parent value alone is a basis
+                targets.append(WeeklyTarget(
+                    key, tuple(i.evidence_ref for i in items), parent_value,
+                    None if section.semantic_variant is None else section.semantic_variant.value,
+                ))
+                evidence += [(i.evidence_ref, i.text, i.grounding_class.value) for i in items]
+        elif key == OUTDOOR_KEY and outdoor.ranked:
+            targets.append(WeeklyTarget(key, (), parent_value))
+        elif key == SAFETY_KEY and parent_value.strip() and parent_cell.safety is None:
+            # §8 teacher-text row (the only non-empty row live today). Placement rows stay empty here.
+            targets.append(WeeklyTarget(key, (), parent_value))
+        else:
+            continue
+        if parent_value.strip():
+            parent_context.append((key, parent_value))
+    days = command.operating_days
+    return build_weekly_request(
+        week_id=command.week_id,
+        week={
+            "display_label": period.display_label,
+            "start": period.start_date.isoformat(),
+            "end": (period.start_date + timedelta(days=len(days) - 1)).isoformat(),
+            "operating_days": [day.value for day in days],
+        },
+        ages=tuple(sorted(parent.target_ages)),
+        targets=tuple(targets),
+        teacher_input_keys=WEEKLY_INSTITUTION_INPUT_SECTION_KEYS,
+        parent_context=tuple(parent_context),
+        evidence=tuple(dict.fromkeys(evidence)),
+        reference_candidates=tuple((c.activity_id, c.label) for c in outdoor.ranked[:OUTDOOR_CANDIDATE_LIMIT]),
+        packet_fingerprint=fingerprint,
+    )
+
+
 def _rank_outdoor(
     eligible: tuple[ActivityCandidate, ...],
     *,
@@ -363,7 +495,7 @@ def _rank_outdoor(
     used_activity_ids: frozenset[str],
     parent_theme_id: str | None,
     preferred_id: str | None,
-) -> ActivitySelection:
+) -> tuple[ActivitySelection, tuple[ActivityCandidate, ...]]:
     def key(candidate: ActivityCandidate) -> tuple[object, ...]:
         base = monthly_sort_key(
             candidate,
@@ -379,8 +511,9 @@ def _rank_outdoor(
     ids = tuple(sorted(candidate.activity_id for candidate in eligible))
     if not eligible:
         trace = ActivitySelectionTrace(OUTDOOR_RULE_ID, WEEKLY_RULE_VERSION, (), None, None, ("NO_ELIGIBLE_CANDIDATE",))
-        return ActivitySelection(None, trace)
-    selected = min(eligible, key=key)
+        return ActivitySelection(None, trace), ()
+    ranked = tuple(sorted(eligible, key=key))
+    selected = ranked[0]
     selected_key = key(selected)
     if len(eligible) == 1:
         reasons: tuple[str, ...] = ("ONLY_ELIGIBLE_CANDIDATE",)
@@ -391,7 +524,7 @@ def _rank_outdoor(
             or (index != 2 and (selected_key[index] == 0 or (index == 5 and int(selected_key[index]) < 0)))
         ) + ("TIE_BREAK_STABLE_ACTIVITY_ID",)
     trace = ActivitySelectionTrace(OUTDOOR_RULE_ID, WEEKLY_RULE_VERSION, ids, selected.activity_id, selected_key, reasons)
-    return ActivitySelection(selected, trace)
+    return ActivitySelection(selected, trace), ranked
 
 
 def _parent_activity(

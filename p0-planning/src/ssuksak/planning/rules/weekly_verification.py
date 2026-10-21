@@ -18,7 +18,8 @@ from ..domain.monthly_verification import (
     ViolationEvidence,
     ViolationLocation,
 )
-from ..domain.provenance import EvidenceSourceType
+from ..domain.monthly_plan import MonthlyGenerationMode
+from ..domain.provenance import EvidenceSourceType, GenerationMethod
 from ..domain.safety_placement import SafetyKind
 from ..domain.weekly_plan import WeeklyCell, WeeklyPlan
 from .errors import MonthlyRuleError
@@ -44,12 +45,20 @@ SAFETY_GROUNDING_RULE_REF = VerificationRuleRef(
 # §8: a safety sentence without an untouched statutory placement is grounded only by
 # the parent monthly safety Cell it cites — never by a legal category it might imply.
 PARENT_CITATION_INVALID = "WEEKLY_SAFETY_PARENT_CITATION_INVALID"
+# Q2 (2026-10-21): only dates · times · personal honorifics are checked against the inputs
+# (planner); every other fact in AI-written text is outside detection — never "passed".
+FACT_SCOPE_RULE_ID = "weekly.fact.scope"
+FACT_SCOPE_RULE_VERSION = "v1"
+FACT_SCOPE_RULE_REF = VerificationRuleRef(FACT_SCOPE_RULE_ID, FACT_SCOPE_RULE_VERSION)
+FACT_SCOPE_NOT_VERIFIED = "WEEKLY_FACT_SCOPE_NOT_VERIFIED"
 
 
 def verify_weekly_plan(
     plan: WeeklyPlan, catalog: ActivityCatalog | None, parent: MonthlyPlan
 ) -> VerificationReport:
     results = (_verify_ages(plan, catalog), _verify_safety_grounding(plan, parent))
+    if plan.generation_mode is MonthlyGenerationMode.LLM_PLANNER:  # RULE_ONLY writes no AI text
+        results += (_verify_fact_scope(plan),)
     return VerificationReport(
         target_plan_id=plan.plan_id,
         executed_rules=tuple(result.executed_rule for result in results),
@@ -141,6 +150,21 @@ def _verify_safety_grounding(plan: WeeklyPlan, parent: MonthlyPlan) -> RuleVerif
             FindingKind.VIOLATION, Severity.ERROR, cell, message, observed, (),
         ),),
     )
+
+
+def _verify_fact_scope(plan: WeeklyPlan) -> RuleVerificationResult:
+    findings = tuple(
+        _finding(
+            FACT_SCOPE_RULE_ID, FACT_SCOPE_RULE_VERSION, FACT_SCOPE_NOT_VERIFIED,
+            FindingKind.NOT_VERIFIED, Severity.WARNING, cell,
+            "Dates, times and personal honorifics were checked against the inputs; "
+            "other facts such as event names are outside detection",
+            "checked=date,weekday,time,honorific", (),
+        )
+        for cell in plan.cells
+        if cell.generation is not None and cell.generation.method is GenerationMethod.RULE_LLM and cell.value.strip()
+    )
+    return RuleVerificationResult(FACT_SCOPE_RULE_REF, findings=findings)
 
 
 def _cites_parent_safety_cell(plan: WeeklyPlan, cell: WeeklyCell, parent: MonthlyPlan) -> bool:
