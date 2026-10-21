@@ -7,14 +7,16 @@
     C. 짧은 쓰기 — 중복을 다시 보고 저장 · commit. 동시 요청은 부분 유일 인덱스가 막는다
 
 **여기에 생성 규칙이 없다.** 칸 · 근거 · 바깥놀이 후보는 p0-planning 이 정한다.
-칸 편집 · 재생성 · 확정 · 이력은 W5b 다(Core W4 머지 뒤).
+
+칸 편집 · 재생성 · 확정 · 이력(W5b)도 월간 §9-3 · §9-5 와 같은 세 단계다 — 다만 주간 Core 는
+부모 월간으로 다시 검사하고 재생성 범위를 만들므로, A 에서 부모 월간도 읽어 메모리로 넘긴다.
 """
 
 import logging
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -22,37 +24,59 @@ from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import (
     WEEKLY_TEMPLATE_REF,
+    weekly_confirmation,
+    weekly_edit,
     weekly_generation,
     weekly_operating_days,
+    weekly_regeneration,
 )
 from ssuksak.planning import (
+    ConfirmWeeklyPlanCommand,
+    EditWeeklyPlanCellCommand,
     GenerateWeeklyPlanCommand,
     InvalidDomainValueError,
     MonthlyApplicationError,
     MonthlyGenerationMode,
     MonthlyPlan,
     PlanId,
+    RegenerateWeeklyPlanCellCommand,
     WeekId,
     WeeklyPlan,
 )
+from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
 
 from app.db import get_session
 from app.features.centers.models import Center
 from app.features.plans.models import Plan
 from app.features.plans.monthly_router import (
+    _ALREADY_CONFIRMED,
+    _CELL_NOT_FOUND,
+    _CELL_NOT_REGENERATABLE,
     _REFERENCE_UNAVAILABLE,
+    _STALE_WRITE,
     _UNAVAILABLE,
+    _VALUE_INVALID,
     ACTIVITY_CATALOG,
     SAFETY_RULE,
+    _actor,
+    _cause_summary,
     _error,
     _gate,
+    _generation,
+    _item_id,
     _target_month,
 )
 from app.features.plans.monthly_schemas import (
     ConstraintOut,
+    EditMonthlyCell,
     FindingOut,
+    GenerationChangeOut,
+    MonthlyAuditEventOut,
+    MonthlyAuditOut,
+    RevisionIn,
     RuleRefOut,
     TemplateRefOut,
+    ValueChangeOut,
     VerificationOut,
 )
 from app.features.plans.repository import PostgresPlanRepository
@@ -269,6 +293,11 @@ def list_weekly_plans(
 @router.get("/{plan_id}", response_model=WeeklyPlanOut)
 def get_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser):
     """남의 원 것 · 주간이 아닌 것은 없는 것과 같다."""
+    return _current(session, user, plan_id)
+
+
+def _current(session: Session, user, plan_id: int) -> WeeklyPlanOut:
+    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다."""
     row = _own_row(session, user, plan_id)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent_id = session.scalar(
@@ -297,10 +326,11 @@ def delete_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 
 
 def _own_row(session: Session, user, plan_id: int) -> Plan:
+    """이 원의 주간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing)."""
     row = session.scalar(
-        select(Plan).where(
-            Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "weekly"
-        )
+        select(Plan)
+        .where(Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "weekly")
+        .execution_options(populate_existing=True)
     )
     if row is None:
         raise _NOT_FOUND
@@ -419,4 +449,213 @@ def _cell(cell) -> WeeklyCellOut:
             )
             for snapshot in cell.parent_snapshots
         ],
+        teacher_input=cell.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS,
+    )
+
+
+# ── 편집 · 재생성 · 확정 · 이력 (§9-6, W5b) ─────────────────────────────────
+
+# Core 가 「이 칸은 다시 만들 수 없다」고 하는 경우들(월간 `_NOT_REGENERATABLE_CODES` 와 같은 묶음).
+_NOT_REGENERATABLE_CODES = frozenset(
+    {
+        "weekly_cell_not_regeneratable",
+        "rule_only_regeneration_unsupported",
+        "weekly_cell_evidence_missing",
+        "activity_catalog_required",
+        "no_activity_candidate",
+    }
+)
+
+
+def _lifecycle_error(error: MonthlyApplicationError) -> HTTPException:
+    if error.code in {"weekly_cell_not_found", "invalid_item_id"}:
+        return _CELL_NOT_FOUND
+    if error.code in {"weekly_cell_value_unchanged", "invalid_weekly_cell_value"}:
+        return _VALUE_INVALID
+    if error.code in _NOT_REGENERATABLE_CODES:
+        return _CELL_NOT_REGENERATABLE
+    if error.code == "weekly_verification_failed":
+        # 검사 「결과」는 막지 않는다. 검사기가 돌지 못한 것만 여기로 온다.
+        return _error(
+            500, "GENERATION_FAILED", "검증을 실행하지 못했습니다. 다시 시도해주세요.", []
+        )
+    # LLM · 수리 실패 · 안전 근거 오류 · 저장된 부모가 사라짐 → 500. 예산 · real → 503.
+    return _generation_error(error)
+
+
+def _with_parent(session: Session, user, row: Plan) -> tuple[WeeklyPlan, MonthlyPlan | None]:
+    """부모 월간이 사라졌으면 None — Core 가 `parent_monthly_plan_not_found` 로 거절한다."""
+    plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    parent = PostgresPlanRepository(
+        session, center_id=user.center_id, kind="monthly", plan_type=MonthlyPlan
+    ).get(plan.parent_lineage.parent_plan_id)
+    return plan, parent
+
+
+def _read_draft(
+    session: Session, user, plan_id: int, expected_revision: int
+) -> tuple[WeeklyPlan, MonthlyPlan | None]:
+    """A. 짧은 읽기 — 확정 여부 · revision 을 보고 주간과 부모 월간을 들고 transaction 을 끝낸다."""
+    row = _own_row(session, user, plan_id)
+    if row.status == "CONFIRMED":
+        raise _ALREADY_CONFIRMED
+    if row.revision != expected_revision:
+        raise _STALE_WRITE
+    plan, parent = _with_parent(session, user, row)
+    session.commit()
+    return plan, parent
+
+
+def _repos(plan: WeeklyPlan, parent: MonthlyPlan | None) -> dict:
+    """B. Core 가 읽고 쓰는 메모리 저장소. DB 는 C 가 쓴다."""
+    drafts: InMemoryPlanRepository[WeeklyPlan] = InMemoryPlanRepository()
+    drafts.save(plan.plan_id, plan)
+    parents: InMemoryPlanRepository[MonthlyPlan] = InMemoryPlanRepository()
+    if parent is not None:
+        parents.save(parent.plan_id, parent)
+    return {"plan_repository": drafts, "parent_plan_repository": parents, "clock": SystemClock()}
+
+
+def _write(
+    session: Session,
+    user,
+    plan_id: int,
+    changed: WeeklyPlan,
+    expected_revision: int,
+    *,
+    confirming: bool = False,
+) -> WeeklyPlanOut:
+    """C. 조건부 쓰기. 못 썼으면 다시 읽어 왜인지 가른다(월간 `_write` 와 같다)."""
+    written = _weekly_repo(session, user.center_id).update_if_revision(
+        changed.plan_id, changed, expected_revision=expected_revision
+    )
+    if written is None:
+        session.rollback()
+        row = _own_row(session, user, plan_id)
+        if row.status == "CONFIRMED":
+            if confirming:  # 누가 먼저 확정했다 — 확정 재호출과 같다
+                return _current(session, user, plan_id)
+            raise _ALREADY_CONFIRMED
+        raise _STALE_WRITE
+    detail = _current(session, user, plan_id)
+    session.commit()
+    return detail
+
+
+@router.put("/{plan_id}/cells/{item_id}", response_model=WeeklyPlanOut)
+def edit_weekly_cell(
+    plan_id: int, item_id: str, body: EditMonthlyCell, session: DbSession, user: CurrentUser
+):
+    """칸 하나를 교사가 고친다. 교사 입력 칸은 첫 입력에 MANUAL, 그 밖은 `TEACHER_EDITED`."""
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = weekly_edit(**_repos(plan, parent)).execute(
+            EditWeeklyPlanCellCommand(plan.plan_id, _item_id(item_id), body.value, _actor(user))
+        )
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=WeeklyPlanOut)
+def regenerate_weekly_cell(
+    plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
+):
+    """그 칸만 다시 만든다. LLM 을 기다리는 동안 transaction 이 없다 — 그 사이 누가
+    고쳤으면 결과를 버리고 409 다."""
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        provider = _weekly_provider()
+    except LlmUnavailable as error:
+        raise _UNAVAILABLE from error
+    try:
+        changed = weekly_regeneration(provider=provider, **_repos(plan, parent)).execute(
+            RegenerateWeeklyPlanCellCommand(plan.plan_id, _item_id(item_id), _actor(user))
+        )
+    except MonthlyApplicationError as error:
+        _log.warning(
+            "weekly cell regeneration failed code=%s stage=%s cause=%s validation_codes=%s",
+            error.code,
+            *_cause_summary(error),
+        )
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.post("/{plan_id}/confirm", response_model=WeeklyPlanOut)
+def confirm_weekly_plan(plan_id: int, body: RevisionIn, session: DbSession, user: CurrentUser):
+    """DRAFT → CONFIRMED. **제출 · 발송은 하지 않는다.**
+
+    이미 확정이면 revision 과 무관하게 200 이고 아무것도 쓰지 않는다(월간과 같다).
+    검사 결과로 막지 않는다(주간 계약 §11-2).
+    """
+    row = _own_row(session, user, plan_id)
+    if row.status == "CONFIRMED":
+        return _current(session, user, plan_id)
+    if row.revision != body.expected_revision:
+        raise _STALE_WRITE
+    plan, parent = _with_parent(session, user, row)
+    session.commit()
+    try:
+        changed = weekly_confirmation(**_repos(plan, parent)).execute(
+            ConfirmWeeklyPlanCommand(plan.plan_id, _actor(user))
+        )
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision, confirming=True)
+
+
+@router.get("/{plan_id}/audit", response_model=MonthlyAuditOut)
+def get_weekly_audit(
+    plan_id: int, session: DbSession, user: CurrentUser, item_id: str | None = None
+):
+    """저장된 변경 이력. 월간 §9-5 와 같은 모양 · 순서 · `item_id` 거르기.
+
+    주간 칸에는 주가 따로 없다 — 칸 이벤트의 `week_id` 는 계획안의 주다. 교사 입력 칸의 첫
+    `MANUAL` 은 이벤트가 아니라 칸 `generation` 으로 보인다(W4 결정 ②).
+    """
+    row = _own_row(session, user, plan_id)
+    plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    cells = list(plan.cells)
+    if item_id is not None:
+        cells = [c for c in cells if c.item_id.value == item_id]
+        if not cells:
+            raise _CELL_NOT_FOUND
+    keyed = [
+        ((event.occurred_at, 0, 0, index), _audit_event(event, None, None))
+        for index, event in enumerate(plan.audit.events)
+        if item_id is None or event.event_type.value == "CONFIRMED"
+    ]
+    for position, cell in enumerate(cells):
+        keyed += [
+            ((event.occurred_at, 1, position, index), _audit_event(event, cell, plan.week_id))
+            for index, event in enumerate(cell.audit.events)
+        ]
+    keyed.sort(key=lambda pair: pair[0])
+    return MonthlyAuditOut(items=[out for _, out in keyed])
+
+
+def _audit_event(event, cell, week: WeekId | None) -> MonthlyAuditEventOut:
+    return MonthlyAuditEventOut(
+        type=event.event_type.value,
+        occurred_at=event.occurred_at,
+        scope="PLAN" if cell is None else "CELL",
+        item_id=None if cell is None else cell.item_id.value,
+        section_key=None if cell is None else cell.section_key,
+        week_id=None if week is None else week.value,
+        actor=None if event.actor_id is None else event.actor_id.value,
+        system_actor=event.system_actor,
+        value_change=(
+            None
+            if event.value_change is None
+            else ValueChangeOut(before=event.value_change.before, after=event.value_change.after)
+        ),
+        generation_change=(
+            None
+            if event.generation_change is None
+            else GenerationChangeOut(
+                before=_generation(event.generation_change.before),
+                after=_generation(event.generation_change.after),
+            )
+        ),
     )

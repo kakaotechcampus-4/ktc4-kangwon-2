@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, select, update
 from ssuksak.adapters import weekly_composition
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
+from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
 from ssuksak.planning import WeeklyPlan
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
@@ -396,3 +397,223 @@ def test_연간_test_reset_은_주간까지_지운다(world, monkeypatch):
     )
     assert client.delete(f"/api/plans/annual/{annual_id}/test-reset").status_code == 204
     assert _weekly_rows(world["session"]) == []
+
+
+# ── W5b 편집 · 재생성 · 확정 · 이력 ──────────────────────────────────────────
+
+
+def _cell(plan: dict, key: str) -> dict:
+    return next(s for s in plan["sections"] if s["section_key"] == key)["cells"][0]
+
+
+def _put(plan: dict, key: str, value: str, revision: int | None = None):
+    return client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{_cell(plan, key)['item_id']}",
+        json={"value": value, "expected_revision": revision or plan["revision"]},
+    )
+
+
+def _regenerate(plan: dict, key: str, revision: int | None = None):
+    return client.post(
+        f"/api/plans/weekly/{plan['id']}/cells/{_cell(plan, key)['item_id']}/regenerate",
+        json={"expected_revision": revision or plan["revision"]},
+    )
+
+
+def _confirm(plan: dict, revision: int | None = None):
+    return client.post(
+        f"/api/plans/weekly/{plan['id']}/confirm",
+        json={"expected_revision": revision or plan["revision"]},
+    )
+
+
+def test_교사_입력_칸만_teacher_input_이다(world):
+    plan = _create(world).json()
+    flags = {s["section_key"]: s["cells"][0]["teacher_input"] for s in plan["sections"]}
+    assert {key for key, flag in flags.items() if flag} == {
+        "family_link",
+        "event_schedule",
+        "special_program",
+    }
+
+
+def test_칸을_고치면_revision_이_오르고_교사_수정이_남는다(world):
+    plan = _create(world).json()
+    before = _cell(plan, "goals")
+
+    response = _put(plan, "goals", "친구와 규칙을 정해 함께 놀이한다.")
+
+    assert response.status_code == 200, response.json()
+    after = response.json()
+    assert after["revision"] == plan["revision"] + 1
+    edited = _cell(after, "goals")
+    assert (edited["item_id"], edited["value"]) == (
+        before["item_id"],
+        "친구와 규칙을 정해 함께 놀이한다.",
+    )
+    assert edited["generation"] == before["generation"]  # 고쳐도 만든 방식은 그대로
+    assert _cell(after, "theme") == _cell(plan, "theme")
+    audit = client.get(
+        f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": edited["item_id"]}
+    )
+    assert [e["type"] for e in audit.json()["items"]] == ["CREATED", "TEACHER_EDITED"]
+    assert audit.json()["items"][-1]["value_change"]["after"] == "친구와 규칙을 정해 함께 놀이한다."
+
+
+def test_교사_입력_칸은_첫_입력에_MANUAL_이_되고_teacher_input_은_그대로다(world):
+    plan = _create(world).json()
+    assert _cell(plan, "event_schedule")["generation"] is None
+
+    cell = _cell(_put(plan, "event_schedule", "10월 9일 한글날 행사").json(), "event_schedule")
+
+    assert cell["generation"]["method"] == "MANUAL"
+    assert cell["teacher_input"] is True
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (
+            lambda plan: _put(plan, "goals", _cell(plan, "goals")["value"]),
+            (422, "VALIDATION_FAILED", ["value"]),
+        ),
+        (lambda plan: _put(plan, "theme", ""), (422, "VALIDATION_FAILED", ["value"])),
+        (
+            lambda plan: _put(plan, "goals", "새 목표", revision=plan["revision"] + 1),
+            (409, "STALE_WRITE", ["expected_revision"]),
+        ),
+        (
+            lambda plan: client.put(
+                f"/api/plans/weekly/{plan['id']}/cells/item_없는_칸",
+                json={"value": "x", "expected_revision": plan["revision"]},
+            ),
+            (404, "NOT_FOUND", ["item_id"]),
+        ),
+        (
+            lambda plan: client.put(
+                f"/api/plans/weekly/{plan['id'] + 999}/cells/{_cell(plan, 'goals')['item_id']}",
+                json={"value": "x", "expected_revision": plan["revision"]},
+            ),
+            (404, "NOT_FOUND", ["id"]),
+        ),
+    ],
+    ids=["같은 값", "빈 주제", "옛 revision", "없는 칸", "없는 계획안"],
+)
+def test_편집_거절은_아무것도_바꾸지_않는다(world, change, expected):
+    plan = _create(world).json()
+    assert _error(change(plan)) == expected
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json()["revision"] == plan["revision"]
+
+
+def test_칸을_다시_만들면_그_칸만_바뀐다(world):
+    plan = _create(world).json()
+
+    response = _regenerate(plan, "goals")
+
+    assert response.status_code == 200, response.json()
+    after = response.json()
+    assert after["revision"] == plan["revision"] + 1
+    assert _cell(after, "goals")["item_id"] == _cell(plan, "goals")["item_id"]
+    assert _cell(after, "goals")["value"] != _cell(plan, "goals")["value"]
+    for key in ("theme", "focus", "outdoor_play", "indoor_play"):
+        assert _cell(after, key) == _cell(plan, key)
+    audit = client.get(
+        f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": _cell(plan, "goals")["item_id"]}
+    ).json()["items"]
+    assert audit[-1]["type"] == "REGENERATED"
+    assert audit[-1]["generation_change"]["after"]["rule_version"] == "weekly-cell-planner-v1"
+
+
+@pytest.mark.parametrize("key", ["family_link", "event_schedule", "special_program"])
+def test_교사_입력_칸은_다시_만들지_않는다(world, key):
+    plan = _create(world).json()
+    assert _error(_regenerate(plan, key)) == (422, "VALIDATION_FAILED", ["item_id"])
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (LlmFailed("timeout"), (500, "GENERATION_FAILED", [])),
+        (LlmBudgetExceeded("429"), (503, "LLM_BUDGET_EXCEEDED", [])),
+    ],
+)
+def test_재생성이_실패하면_칸도_revision_도_그대로다(world, monkeypatch, error, expected):
+    plan = _create(world).json()
+    monkeypatch.setattr(weekly_router, "_weekly_provider", lambda: _Failing(error))
+    assert _error(_regenerate(plan, "goals")) == expected
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
+
+
+def test_real_모드_재생성도_W7_전까지_503(world, monkeypatch):
+    plan = _create(world).json()
+    monkeypatch.setattr(settings, "llm_mode", "real")
+    assert _error(_regenerate(plan, "goals")) == (503, "DEPENDENCY_UNAVAILABLE", [])
+
+
+def test_LLM_을_기다리는_사이_누가_고쳤으면_재생성_결과를_버린다(world, monkeypatch):
+    plan = _create(world).json()
+    session = world["session"]
+
+    class Meanwhile(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            # 다른 화면의 편집이 먼저 저장됐다 — revision 이 올라간다.
+            session.execute(
+                update(Plan).where(Plan.id == plan["id"]).values(revision=Plan.revision + 1)
+            )
+            return super().generate_weekly(request)
+
+    monkeypatch.setattr(weekly_router, "_weekly_provider", Meanwhile)
+    assert _error(_regenerate(plan, "goals")) == (409, "STALE_WRITE", ["expected_revision"])
+    assert _cell(client.get(f"/api/plans/weekly/{plan['id']}").json(), "goals") == _cell(
+        plan, "goals"
+    )
+
+
+def test_확정은_한_번만_저장되고_재호출은_revision_과_무관하게_200(world):
+    plan = _create(world).json()
+
+    first = _confirm(plan)
+
+    assert first.status_code == 200, first.json()
+    confirmed = first.json()
+    assert confirmed["status"] == "CONFIRMED" and confirmed["confirmed_at"] is not None
+    again = _confirm(plan, revision=99)
+    assert again.status_code == 200 and again.json() == confirmed
+    plan_events = [
+        e["type"]
+        for e in client.get(f"/api/plans/weekly/{plan['id']}/audit").json()["items"]
+        if e["scope"] == "PLAN"
+    ]
+    assert plan_events.count("CONFIRMED") == 1
+
+
+def test_확정된_주간은_고치지도_다시_만들지도_않는다(world):
+    plan = _create(world).json()
+    assert _confirm(plan).status_code == 200
+    assert _error(_put(plan, "goals", "새 목표"))[:2] == (409, "ALREADY_CONFIRMED")
+    assert _error(_regenerate(plan, "goals"))[:2] == (409, "ALREADY_CONFIRMED")
+
+
+def test_DRAFT_를_옛_revision_으로_확정하면_409(world):
+    plan = _create(world).json()
+    assert _error(_confirm(plan, revision=plan["revision"] + 1)) == (
+        409,
+        "STALE_WRITE",
+        ["expected_revision"],
+    )
+
+
+def test_이력은_칸으로_거르고_없는_칸은_404(world):
+    plan = _create(world).json()
+    _confirm(plan)
+    goals = _cell(plan, "goals")["item_id"]
+
+    items = client.get(f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": goals}).json()[
+        "items"
+    ]
+
+    assert [(e["scope"], e["type"]) for e in items] == [("CELL", "CREATED"), ("PLAN", "CONFIRMED")]
+    assert items[0]["week_id"] == WEEK and items[0]["section_key"] == "goals"
+    assert _error(
+        client.get(f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": "item_없는_칸"})
+    ) == (404, "NOT_FOUND", ["item_id"])

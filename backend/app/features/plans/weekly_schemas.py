@@ -43,6 +43,9 @@ class WeeklyCellOut(BaseModel):
     # 교사 입력 칸은 첫 입력 전에 만든 방식이 없다(주간 계약 §10-2) — null 이다.
     generation: GenerationOut | None
     parent_snapshots: list[ParentSnapshotOut]
+    # 교사가 쓰는 칸(가정연계 · 행사 · 특별활동). 첫 입력 뒤 generation 이 MANUAL 이 되므로
+    # generation == null 로는 가를 수 없다. 화면은 이 값으로 재생성 버튼을 숨긴다.
+    teacher_input: bool
 
 
 class WeeklySectionOut(BaseModel):

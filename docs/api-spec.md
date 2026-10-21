@@ -1056,7 +1056,7 @@ GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?forma
 GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
-POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 구현됨, W5a)
+POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 W5a · 편집 · 재생성 · 확정 · 이력 W5b 구현됨)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
 ```
 
@@ -1781,10 +1781,10 @@ generation_change  REGENERATED 만.  {before, after} — 각각 §9-1 cells[].ge
 
 ---
 
-## 9-6. 주간계획안 생성 · 조회 · 목록 · 삭제 — `POST /api/plans/weekly` · `GET /api/plans/weekly/{id}` · `GET /api/plans/weekly?class_id=&month=` · `DELETE /api/plans/weekly/{id}`
+## 9-6. 주간계획안 — 생성 · 조회 · 목록 · 삭제 · 칸 편집 · 칸 재생성 · 확정 · 변경 이력 — `/api/plans/weekly`
 
-> **상태: 구현됨 (W5a).** 계약 원문은 `docs/weekly-plan-contract.md` §4-1 · §13 이다. 칸 편집 · 칸 재생성 ·
-> 확정 · 변경 이력은 W5b 에서 월간 §9-3 · §9-5 와 같은 모양으로 붙인다(아직 없음).
+> **상태: 구현됨 (W5a 생성 · 조회 · 목록 · 삭제 / W5b 칸 편집 · 칸 재생성 · 확정 · 변경 이력).** 계약 원문은
+> `docs/weekly-plan-contract.md` §4-1 · §10 · §13 이다. W5b 는 월간 §9-3 · §9-5 와 같은 모양이다.
 
 **월간과 같은 `plans` 테이블에 든다**(`kind = 'weekly'` · `week_id` 칸). 공개 오류 코드도 월간과 같다 —
 주간만의 새 코드는 없다.
@@ -1831,10 +1831,11 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
     { "section_key": "theme", "label": "주제", "role": "CONTENT", "visible": true, "order": 1, "semantic_variant": null,
       "cells": [ { "item_id": "item_…", "value": "…", "state": "FILLED",
                    "evidence": [ … ], "generation": { "method": "RULE_LLM", "rule_id": "…", "rule_version": "…" },
-                   "parent_snapshots": [ { "parent_item_id": "item_…", "snapshot_value": "…" } ] } ] },
+                   "parent_snapshots": [ { "parent_item_id": "item_…", "snapshot_value": "…" } ],
+                   "teacher_input": false } ] },
     { "section_key": "family_link", "…": "…",
       "cells": [ { "item_id": "item_…", "value": "", "state": "EMPTY_VALID", "evidence": [],
-                   "generation": null, "parent_snapshots": [] } ] }
+                   "generation": null, "parent_snapshots": [], "teacher_input": true } ] }
   ],
   "constraints": [ … ], "verification": { "executed_rules": [ … ], "findings": [ … ] },
   "created_at": "…", "confirmed_at": null }
@@ -1844,6 +1845,9 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
   칸 수 · 순서는 서버가 준 만큼이다.
 - **`generation` 은 `null` 일 수 있다.** 교사 입력 칸(`family_link` · `event_schedule` · `special_program`)은
   첫 입력 전에 만든 방식이 없다(주간 계약 §10-2). FE 타입은 nullable 로 둔다.
+- **`teacher_input`** — 교사가 쓰는 칸(`family_link` · `event_schedule` · `special_program`)이면 `true`.
+  **교사 입력 칸은 이것으로 가른다** — 첫 입력 뒤에는 `generation` 이 `MANUAL` 이 되어 `null` 로는 못 가른다.
+  화면은 이 칸에 재생성 버튼을 두지 않는다. AI 가 쓰지 않는 칸이다.
 - **`parent_snapshots`** — 이 칸이 이어받은 부모 월간 칸과 그때의 값(주간 계약 §5-3). 근거 `evidence` 와 다른 축이다.
 - **`operating_days`** — 만들 때의 원 설정. 토요일 열 유무는 이것을 본다.
 - **`display_end_date`** — 표시 기간의 끝. 토요일이면 그 주 토요일, 아니면 `week_period.end_date`.
@@ -1871,6 +1875,39 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
 `204`. **확정 전(`DRAFT`)만 지운다** — 반 · 주당 하나라, 지우기가 없으면 마음에 안 드는 첫 초안을 다시 만들
 길이 없다(월간 DELETE 와 같은 이유). 확정본은 409 `GATE_BLOCKED`. 전체 재생성은 없다.
 
+### 칸 편집 · 칸 재생성 · 확정 — 월간 §9-3 과 같다
+
+```
+PUT  /api/plans/weekly/{id}/cells/{item_id}              { "value": "…", "expected_revision": 3 }
+POST /api/plans/weekly/{id}/cells/{item_id}/regenerate   { "expected_revision": 3 }
+POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 3 }
+```
+
+셋 다 **성공하면 `200` 에 바뀐 주간계획안 전체**(위 「주간계획안 응답」)를 주고 `revision` 이 하나 오른다.
+`expected_revision` 이 서버 값과 다르면 아무것도 바꾸지 않고 `STALE_WRITE` 409 다(월간과 같다).
+
+- **편집** — 교사 값으로 바꾼다. 근거 · 만든 방식은 그대로이고 이력에 `TEACHER_EDITED` 가 남는다.
+  **교사 입력 칸은 첫 입력에 `generation.method` 가 `MANUAL` 이 된다**(이벤트가 아니라 칸 값으로 보인다).
+  `theme` 은 비울 수 없다. 다른 칸은 비울 수 있다.
+- **재생성** — 그 칸 하나만 다시 만든다. `item_id` 는 그대로, 다른 칸은 값 · 근거 · 이력까지 그대로다.
+  이력에 `REGENERATED`(이전 / 새 값과 만든 방식)가 남는다. LLM 을 기다리는 동안 다른 화면이 고치거나 확정했으면
+  **새 결과를 버리고** `STALE_WRITE` / `ALREADY_CONFIRMED` 409 다. 실패하면 칸 · revision 이 그대로다.
+  **다시 만들 수 없는 칸**: 교사 입력 칸 · 부모 월간에 교사 문장이 없는 안전교육 · 근거가 없는 칸 ·
+  Rule 경로 계획안의 바깥놀이 외 칸 → 422 「이 칸은 다시 만들 수 없습니다.」 `["item_id"]`.
+  실제 LLM 미연결(`LLM_MODE=real`, W7 전)은 생성과 같이 503.
+- **확정** — `DRAFT` → `CONFIRMED`. **이미 확정이면 `expected_revision` 과 무관하게 200 이고 아무것도 쓰지 않는다**
+  (재시도 · 더블클릭이 정상 경로). 검사 결과(findings)로 막지 않는다. **제출 · 발송은 하지 않는다.**
+  확정 뒤 편집 · 재생성은 `ALREADY_CONFIRMED` 409 다.
+
+### 변경 이력 — `GET /api/plans/weekly/{id}/audit?item_id=`
+
+월간 §9-5 와 **같은 응답 모양 · 같은 순서**다(`{ "items": [ { "type", "occurred_at", "scope", "item_id",
+"section_key", "week_id", "actor", "system_actor", "value_change", "generation_change" } ] }`).
+`item_id` 를 주면 그 칸의 이벤트와 계획안 단위 `CONFIRMED` 만 준다. 없는 칸은 404 `["item_id"]`.
+
+- 주간 칸에는 주가 따로 없다 — **칸 이벤트의 `week_id` 는 그 계획안의 주**다. 계획안 단위(`PLAN`)는 `null`.
+- 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. 읽기만 한다.
+
 ### 오류
 
 | code | status | 언제 | `fields` |
@@ -1882,9 +1919,14 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
 | `GATE_BLOCKED` | 409 | 그 반 · 그 달 월간계획안이 **없거나 확정 전** | `["class_id"]` |
 | `ALREADY_EXISTS` | 409 | 같은 반 · 같은 주 주간이 있다 (동시 요청은 DB 유일 제약이 막고 409 로 바꾼다) | `["class_id","week_id"]` |
 | `GATE_BLOCKED` | 409 | 확정된 주간을 지우려 했다 | `[]` |
+| `NOT_FOUND` | 404 | 그 `item_id` 칸이 없다 (편집 · 재생성 · 이력) | `["item_id"]` |
+| `ALREADY_CONFIRMED` | 409 | 확정된 주간의 칸을 고치거나 다시 만들려 함 | `[]` |
+| `STALE_WRITE` | 409 | `expected_revision` 이 서버 값과 다르다 (확정 재호출은 예외 — 200) | `["expected_revision"]` |
+| `VALIDATION_FAILED` | 422 | 편집 — 같은 값 · 빈 `theme` · 문자열이 아님 | `["value"]` |
+| `VALIDATION_FAILED` | 422 | 재생성 — 다시 만들 수 없는 칸 | `["item_id"]` |
 | `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제 | `[]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 실제 LLM 미연결(`LLM_MODE=real`, W7 전) · 서버의 주간 Template · 승인 참조자료를 쓸 수 없다. 재시도 무의미 | `[]` |
-| `GENERATION_FAILED` | 500 | LLM 호출이 깨졌다 · 응답이 계약을 어겼다(수리 1회 뒤에도) · Core 검증 실패. **재시도 가능.** 부분 저장 없음. **Rule 결과로 대신 채우지 않는다** | `[]` |
+| `GENERATION_FAILED` | 500 | 생성 · 재생성 — LLM 호출이 깨졌다 · 응답이 계약을 어겼다(수리 1회 뒤에도) · 안전 근거 오류 · 검사기가 돌지 못했다. **재시도 가능.** 부분 저장 없음. **Rule 결과로 대신 채우지 않는다** | `[]` |
 
 **월간이 없는 것과 확정 전인 것을 같은 코드로 낸다**(월간 → 연간과 같다). `message` 는 「월간계획안을 먼저
 만들어 확정해주세요.」 · 「월간계획안을 먼저 확정해주세요.」로 가른다.
