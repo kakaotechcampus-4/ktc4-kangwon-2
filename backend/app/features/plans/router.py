@@ -59,6 +59,7 @@ from app.features.plans.schemas import (
     GenerationOut,
     MonthOut,
     UpdateMonth,
+    ValueChangeOut,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
@@ -511,12 +512,16 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     plan = _repo(session, user).get(PlanId(row.plan_ref))
 
     def out(event, month=None):
+        values = event.value_change
         return AuditEventOut(
             type=event.event_type.value,
             occurred_at=event.occurred_at,
             month=month,
             actor=event.actor_id.value if event.actor_id is not None else None,
             system_actor=event.system_actor,
+            value_change=(
+                None if values is None else ValueChangeOut(before=values.before, after=values.after)
+            ),
         )
 
     items = [out(event) for event in plan.audit.events]
