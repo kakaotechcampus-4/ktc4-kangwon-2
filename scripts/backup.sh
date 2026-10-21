@@ -40,6 +40,22 @@ fi
 
 stamp=$(date +%Y%m%d_%H%M%S)
 target="$BACKUP_DIR/ssuksak_$stamp.sql.gz"
+# 검사를 다 통과하기 전에는 백업 이름을 주지 않는다. 점(.)으로 시작해서 아래 정리와
+# restore-check 가 고르는 `ssuksak_*.sql.gz` 에 걸리지 않는다. 어떻게 끝나든 지운다.
+part="$BACKUP_DIR/.ssuksak_$stamp.sql.gz.part"
+trap 'rm -f "$part"' EXIT
+
+fail() {
+  echo "$(date -Is) backup failed: $*" >&2
+  exit 1
+}
+
+# 강제 종료 · 재부팅이면 위 trap 이 못 돌아 임시 파일이 남는다. 맨 끝의 14일 정리는 그 이름을
+# 안 고른다. **덤프보다 먼저 치운다** — 그 파일이 디스크를 채우면 아래 덤프가 실패해 끝까지 못 간다.
+# 1시간 넘은 것만 지운다 — 지금 같이 돌고 있는 다른 백업의 임시 파일은 건드리지 않는다.
+# 같이 도는 백업이 같은 파일을 먼저 지웠으면 find 가 실패로 끝나 `set -e` 가 여기서 멈춘다.
+# 이미 사라진 파일은 넘어가게 한다.
+find "$BACKUP_DIR" -maxdepth 1 -ignore_readdir_race -name '.ssuksak_*.sql.gz.part' -mmin +60 -delete
 
 # -T 로 TTY 를 끈다. cron 에는 TTY 가 없어 안 끄면 "the input device is not a TTY" 로 죽는다.
 # cron 은 root 로 돌지만 손으로 돌릴 때는 ubuntu 다. docker 그룹에 없을 수 있어 맞춰 쓴다.
@@ -48,7 +64,11 @@ if docker compose ps >/dev/null 2>&1; then dc() { docker compose "$@"; }
 elif sudo -n docker compose ps >/dev/null 2>&1; then dc() { sudo docker compose "$@"; }
 else echo "docker 데몬에 닿지 못한다" >&2; exit 1; fi
 
-dc exec -T db pg_dump -U ssuksak -d ssuksak | gzip > "$target"
+# 덤프 명령이 실패해도 `set -e` 로 그냥 끝나지 않게 받는다. 그냥 끝나면 쓰다 만 파일이
+# 백업 이름으로 남고 아래 검사에 닿지도 못한다 — db 컨테이너가 멈춘 날이 그 경우다.
+# 덤프와 압축 저장을 한 줄에서 판정한다. 디스크가 차서 gzip 이 실패해도 여기로 온다.
+dc exec -T db pg_dump -U ssuksak -d ssuksak | gzip > "$part" ||
+  fail "덤프나 압축 저장이 실패했다 — db 컨테이너와 디스크 여유를 본다"
 
 # **크기로는 못 가른다.** gzip 은 입력이 하나도 없어도 20바이트짜리 올바른 파일을 만든다.
 # `-s`(0바이트 아님)는 그걸 통과시키고, 백업이 있는 것처럼 보인다 — 복구하려는 순간에야 안다.
@@ -56,15 +76,18 @@ dc exec -T db pg_dump -U ssuksak -d ssuksak | gzip > "$target"
 #
 # `set -o pipefail` 이 있어도 부족하다. `docker compose exec` 가 안쪽 종료 코드를 늘
 # 그대로 돌려준다는 보장이 없다. 결과물을 직접 확인하는 쪽이 확실하다.
-header=$(gzip -dc "$target" 2>/dev/null | head -c 400 || true)
+gzip -t "$part" 2>/dev/null || fail "압축이 깨졌다"
+header=$(gzip -dc "$part" 2>/dev/null | head -c 400 || true)
 case "$header" in
   *"PostgreSQL database dump"*) ;;
-  *)
-    rm -f "$target"
-    echo "$(date -Is) backup failed: 덤프가 비었거나 깨졌다" >&2
-    exit 1
-    ;;
+  *) fail "덤프가 비었거나 깨졌다" ;;
 esac
+# 머리글은 맨 앞에만 있다. 도중에 끊긴 덤프도 머리글은 있어서 위를 통과한다 — 끝 표시까지 본다.
+# 끝 표시 뒤에도 줄이 붙을 수 있어(`\unrestrict` 등) 마지막 한 줄이 아니라 끝부분에서 찾는다.
+gzip -dc "$part" | tail -n 20 | grep -q '^-- PostgreSQL database dump complete$' ||
+  fail "덤프가 끝까지 안 쓰였다"
+
+mv "$part" "$target"
 
 echo "$(date -Is) backup ok $target ($(du -h "$target" | cut -f1))"
 
