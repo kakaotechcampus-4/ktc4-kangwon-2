@@ -13,7 +13,7 @@
 주간 행이 아직 없어 기존 행을 고치지 않는다.
 
 Revision ID: d0d30e826c87
-Revises: 0211f5ffef6b
+Revises: a71c4f9d3e62
 Create Date: 2026-10-21 18:00:00.000000
 """
 
@@ -23,7 +23,9 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d0d30e826c87"
-down_revision: str | None = "0211f5ffef6b"
+# develop 이 a71c4f9d3e62(연간 안전교육 배치, 0211f5ffef6b 위)를 먼저 받았다. 그 뒤에 붙인다 —
+# 둘 다 0211f5ffef6b 위면 head 가 둘로 갈려 `alembic upgrade head` 가 멈춘다(W5 계획 §3-3).
+down_revision: str | None = "a71c4f9d3e62"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
