@@ -61,6 +61,10 @@ def _add(section):
     return lambda answer: answer["sections"].append(section)
 
 
+def _compose(*edits):
+    return lambda answer: [edit(answer) for edit in edits]
+
+
 def _parent(harness, *, safety_text: str | None = None):
     """LLM monthly parent (it has a focus); optionally the teacher wrote this week's safety cell."""
     draft = harness.monthly_parent(confirm=False, mode=LLM)
@@ -148,15 +152,18 @@ def test_copying_institution_evidence_that_is_not_the_parent_is_still_a_copy():
     assert _failed(harness, _parent(harness), provider).validation_codes == ("SOURCE_TEXT_COPY",)
 
 
-def test_a_repair_answer_that_repeats_a_section_saves_nothing():
+@pytest.mark.parametrize("key", ["theme", "SYNTHETIC_PRIVATE_SECTION_TOKEN"])
+def test_a_repair_answer_that_repeats_a_section_saves_nothing(key, caplog):
     # Codex W-04: the repair must not slip a duplicate past the check the first answer gets.
+    # R-01: the repeated key is unvalidated model text, so it never reaches the log.
     harness = WeeklyHarness()
-    duplicate = {"section_key": "theme", "value": "가을 열매", "unresolved": False,
+    duplicate = {"section_key": key, "value": "가을 열매", "unresolved": False,
                  "grounding_refs": [], "reference_id": None}
-    provider = Scripted(_set("theme", value="10월 3일 개천절 행사 준비"), _add(duplicate))
+    provider = Scripted(_set("theme", value="10월 3일 개천절 행사 준비"), _compose(_add(duplicate), _add(duplicate)))
     cause = _failed(harness, _parent(harness), provider)
     assert cause.validation_codes == ("DUPLICATE_SECTION",)
     assert len(provider.requests) == 2
+    assert "SYNTHETIC_PRIVATE_SECTION_TOKEN" not in caplog.text
 
 
 def test_unsupported_date_is_repaired_once_and_only_that_cell_carries_the_repair_prompt():
@@ -196,6 +203,12 @@ def test_a_fact_inside_a_longer_allowed_fact_is_not_allowed(value, allowed):
     assert unsupported_facts(value, allowed) != ()
 
 
+@pytest.mark.parametrize("text", ["김지한 선생님과 놀아요", "박태운 선생님"])
+def test_names_ending_like_a_modifier_are_still_names(text):
+    # Codex re-review ①, decision C: 한 · 운 endings are not excluded wholesale.
+    assert unsupported_facts(text, "") != ()
+
+
 def test_common_words_are_not_taken_for_people():
     text = "오늘 날씨가 맑아요. 부모님, 원장님, 담임 선생님과 손님 놀이를 하고 씨앗을 심어요. 2시간 동안 놀아요"
     assert unsupported_facts(text, "") == ()
@@ -207,7 +220,9 @@ def test_common_words_are_not_taken_for_people():
      "이 선생님께 물어봐요", "반 선생님과 인사해요", "요리 선생님",
      # Codex W-01
      "유치원 선생님과 인사해요", "고마운 선생님께 마음을 전해요", "함께한 선생님", "좋아하는 선생님",
-     "햇살반 선생님", "숲 선생님과 산책해요"],
+     "햇살반 선생님", "숲 선생님과 산책해요",
+     # decision C: listed 한 · 운 modifiers and quantifiers
+     "소중한 선생님", "조용한 선생님", "정다운 선생님", "모든 선생님께 감사해요", "여러 선생님"],
 )
 def test_nim_ssi_and_slash_numbers_are_not_blocked(text):
     # Q2 scope narrowed 2026-10-21: only dates, weekdays, clock times and a name before 선생님

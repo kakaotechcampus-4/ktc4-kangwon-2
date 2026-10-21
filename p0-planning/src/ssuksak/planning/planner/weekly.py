@@ -253,10 +253,13 @@ _ROLE_WORDS = frozenset({
     "유치원", "보육", "놀이", "숲", "생태", "영어", "원어민", "외부", "특별", "체험", "담당", "주임",
     "옆반", "형님반", "동생반", "멋진", "예쁜", "착한", "좋은", "새로운", "고마운", "반가운",
     "함께한", "다정한", "친절한", "따뜻한", "사랑하는", "좋아하는",
+    # 한 · 운 endings are common in given names (지한 · 태운), so these modifiers are listed
+    # one by one instead of excluding the ending (2026-10-21 decision C).
+    "고운", "정다운", "정겨운", "강한", "소중한", "조용한", "성실한", "유쾌한", "차분한", "명랑한",
+    "용감한", "편안한", "인자한", "엄격한", "공손한", "현명한", "진지한", "모든", "여러", "어느",
 })
-# Modifier endings (고마운 · 함께한 · 좋아하는 · 즐거웠던 …): words, not names. ponytail: a rare
-# given name ending in 한 is missed rather than blocking ordinary sentences.
-_MODIFIER_TAILS = frozenset("운는던된쁜른한")
+# Endings that are not given names (좋아하는 · 즐거웠던 · 예쁜 · 다른 …): words, not names.
+_MODIFIER_TAILS = frozenset("는던된쁜른")
 # A lone syllable before 「 선생님」 is a name only if it is a surname and not a common word
 # (「이 선생님」 = this teacher, 「반 · 원 선생님」 = class / center teacher).
 _SINGLE_STOP = frozenset("이그저반원전새옆각우")
@@ -386,7 +389,8 @@ class WeeklyPlanner:
             duplicated = tuple(dict.fromkeys(k for k in keys if keys.count(k) > 1))
             if duplicated:  # the first answer refuses duplicates; the repair must not bypass that
                 dup_issues = tuple(WeeklyIssue(WeeklyIssueCode.DUPLICATE_SECTION, k) for k in duplicated)
-                _log.warning("Weekly LLM repair rejected: duplicate %s", ",".join(duplicated))
+                # Unvalidated model strings never reach the log: only the code and how many (R-01).
+                _log.warning("Weekly LLM repair rejected: DUPLICATE_SECTION x%d", len(duplicated))
                 raise ProposalRejectedError(_codes(dup_issues), dup_issues)
             patched = {v.section_key: v for v in repaired_values}
             # Only the flagged Sections may change; every other value stays as first written.
