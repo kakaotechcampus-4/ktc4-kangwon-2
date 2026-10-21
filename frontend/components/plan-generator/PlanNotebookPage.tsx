@@ -80,6 +80,9 @@ export default function PlanNotebookPage() {
           <Link href="/plans/monthly" className="text-xs underline text-ink-soft">
             월간계획안
           </Link>
+          <Link href="/plans/weekly" className="text-xs underline text-ink-soft">
+            주간계획안
+          </Link>
           <Link href="/plans/template" className="text-xs underline text-ink-soft">
             월간 양식 설정
           </Link>

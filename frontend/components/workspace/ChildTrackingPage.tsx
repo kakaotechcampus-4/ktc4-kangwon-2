@@ -6,7 +6,6 @@ import { getChildTracking } from "@/lib/api/children";
 import { getClasses } from "@/lib/api/classes";
 import { getObservations } from "@/lib/api/observations";
 import type { ApiChildTracking, ApiClass, ApiObservation } from "@/lib/api/types";
-import { DOMAINS } from "@/lib/workspace/model";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
 /** 반 하나의 아이별 집계. 기록 본문은 고른 아이 것만 따로 받는다. */
@@ -200,12 +199,14 @@ function ChildDetail({ child }: { child: ApiChildTracking }) {
   );
 }
 
-/** 5영역별 기록 수. 0 인 영역은 「아직 기록 없음」 — 덜 본 영역을 교사가 알게 한다. */
+/** 영역별 기록 수. 0 인 영역은 「아직 기록 없음」 — 덜 본 영역을 교사가 알게 한다.
+ *
+ *  **목록을 화면이 정하지 않는다.** 서버가 그 원의 축으로 보내준다 (§2-1) —
+ *  5영역 원은 다섯 칸, 2축 원은 두 칸이다. 화면이 다시 정하면 어긋난다. */
 function DomainCounts({ counts }: { counts: Record<string, number> }) {
   return (
     <div className={ws.cards} aria-label="영역별 기록 수">
-      {DOMAINS.map((domain) => {
-        const count = counts[domain] ?? 0;
+      {Object.entries(counts).map(([domain, count]) => {
         return (
           <div className={ws.card} key={domain}>
             <p className={ws.muted}>{domain}</p>

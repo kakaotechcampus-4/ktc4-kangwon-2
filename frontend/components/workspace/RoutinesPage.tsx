@@ -957,7 +957,8 @@ function RowCard({
       <div className={ws.nameTab}>
         <input
           id={nameFieldId(row.key)}
-          aria-label="일과 이름"
+          aria-label="일과 이름 (필수)"
+          required
           maxLength={NAME_MAX}
           placeholder="오전 실내놀이"
           disabled={busy}
@@ -967,6 +968,11 @@ function RowCard({
           value={row.name}
           onChange={(e) => set("name")(e.target.value)}
         />
+        {/* placeholder 는 글자를 넣는 순간 사라져서 필수 표시로 못 쓴다. 읽어 주는 도구에는
+            input 의 aria-label 이 이미 「필수」를 담고 있어 여기는 숨긴다. */}
+        <span aria-hidden="true" className={ws.nameRequired}>
+          필수
+        </span>
       </div>
       <div className={`${ws.routineGrid} ${ws.routineHead}`}>
         <div className={ws.routineStart}>
