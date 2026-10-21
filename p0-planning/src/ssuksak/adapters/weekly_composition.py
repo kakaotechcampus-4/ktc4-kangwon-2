@@ -5,12 +5,18 @@ provider, the clock and the id generator. The approved weekly Template, the
 Activity Catalog, the Safety Rule and the context / planner pipeline are wired
 here. Weekly has no TemplateProfile, so the exact weekly Template version is a
 server constant (docs/weekly-plan-contract.md §13).
+
+The weekly evidence classification (W3c) is always passed: the shipped file is
+HUMAN_APPROVED and SHA-frozen (test_freeze). If it were broken or unapproved, loading
+it fails generation instead of silently leaving indoor_play · group_activity ·
+indoor_alternative empty.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
 from ssuksak.adapters.json_activity_reference_repository import (
     JsonActivityReferenceRepository,
 )
@@ -18,6 +24,9 @@ from ssuksak.adapters.monthly_composition import monthly_context_pipeline
 from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
     JsonSafetyLegalRuleRepository,
+)
+from ssuksak.adapters.weekly_evidence_classification_repository import (
+    JsonWeeklyEvidenceClassificationRepository,
 )
 from ssuksak.planning.application.generate_weekly_plan import GenerateWeeklyPlan
 from ssuksak.planning.application.ports import MonthlyTemplateRepository
@@ -61,4 +70,6 @@ def weekly_generation(
         activity_repository=JsonActivityReferenceRepository(),
         context_pipeline=monthly_context_pipeline(),
         planner=WeeklyPlanner(provider),
+        evidence_repository=JsonInstitutionEvidenceRepository(),
+        weekly_classification_repository=JsonWeeklyEvidenceClassificationRepository(),
     )
