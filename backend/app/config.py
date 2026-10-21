@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # str 이면 'Real' · 'production' 이 들어와도 통과하고 mock 분기에 안 걸려
     # 실제 호출이 나간다. 이제 기동 시점에 터진다.
     llm_mode: Literal["mock", "real"] = "mock"
+    # 주간계획안 생성 · 재생성을 실제 LLM 으로 보낼지(W7). **기본 꺼짐.** `llm_mode=real` 이어도
+    # 이것이 꺼져 있으면 주간은 503 이다 — 실제 문장 품질을 확인한 뒤(W7b 실측) 켠다.
+    weekly_llm_enabled: bool = False
     is_server: bool = False
 
     # 파일럿 전 시험용 「전부 지우기」를 켠다. **기본은 꺼짐이고, 파일럿 시작 전에 끈다.**

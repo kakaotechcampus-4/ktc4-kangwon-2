@@ -1813,8 +1813,9 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
 **Response** `201` — 아래 「주간계획안 응답」. 동기 · 부분 저장 없음 · 같은 반 · 같은 주는 하나(`DRAFT` ·
 `CONFIRMED` 무관 `ALREADY_EXISTS` 409, 동시 요청은 DB 유일 제약이 막는다)는 월간과 같다.
 
-**실제 LLM 은 아직 연결하지 않았다.** 운영 설정(`LLM_MODE=real`)에서는 503 `DEPENDENCY_UNAVAILABLE` 이다 —
-실제 문장 품질을 확인한 뒤(W7) 연다. 개발 · 테스트(mock)는 요청 기반 결정적 provider 로 돈다.
+**실제 LLM 은 설정으로 켠다(W7).** `LLM_MODE=real` 이고 `WEEKLY_LLM_ENABLED=1` 일 때만 월간과 같은 모델 · 전송
+(Luna-6)으로 만든다. `WEEKLY_LLM_ENABLED` 의 기본은 꺼짐이고, 꺼져 있으면 real 에서도 503 `DEPENDENCY_UNAVAILABLE` 이다 —
+실제 문장 품질을 실측(W7b)으로 확인한 뒤 켠다. 개발 · 테스트(mock)는 요청 기반 결정적 provider 로 돈다.
 
 ### 주간계획안 응답
 
@@ -1894,7 +1895,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
   **새 결과를 버리고** `STALE_WRITE` / `ALREADY_CONFIRMED` 409 다. 실패하면 칸 · revision 이 그대로다.
   **다시 만들 수 없는 칸**: 교사 입력 칸 · 부모 월간에 교사 문장이 없는 안전교육 · 근거가 없는 칸 ·
   Rule 경로 계획안의 바깥놀이 외 칸 → 422 「이 칸은 다시 만들 수 없습니다.」 `["item_id"]`.
-  실제 LLM 미연결(`LLM_MODE=real`, W7 전)은 생성과 같이 503.
+  실제 LLM 이 꺼져 있으면(`LLM_MODE=real` · `WEEKLY_LLM_ENABLED=0`) 생성과 같이 503.
 - **확정** — `DRAFT` → `CONFIRMED`. **이미 확정이면 `expected_revision` 과 무관하게 200 이고 아무것도 쓰지 않는다**
   (재시도 · 더블클릭이 정상 경로). 검사 결과(findings)로 막지 않는다. **제출 · 발송은 하지 않는다.**
   확정 뒤 편집 · 재생성은 `ALREADY_CONFIRMED` 409 다.
@@ -1925,7 +1926,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 | `VALIDATION_FAILED` | 422 | 편집 — 같은 값 · 빈 `theme` · 문자열이 아님 | `["value"]` |
 | `VALIDATION_FAILED` | 422 | 재생성 — 다시 만들 수 없는 칸 | `["item_id"]` |
 | `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제 | `[]` |
-| `DEPENDENCY_UNAVAILABLE` | 503 | 실제 LLM 미연결(`LLM_MODE=real`, W7 전) · 서버의 주간 Template · 승인 참조자료를 쓸 수 없다. 재시도 무의미 | `[]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 실제 LLM 꺼짐(`LLM_MODE=real` · `WEEKLY_LLM_ENABLED=0`) · LLM 설정 없음 · 서버의 주간 Template · 승인 참조자료를 쓸 수 없다. 재시도 무의미 | `[]` |
 | `GENERATION_FAILED` | 500 | 생성 · 재생성 — LLM 호출이 깨졌다 · 응답이 계약을 어겼다(수리 1회 뒤에도) · 안전 근거 오류 · 검사기가 돌지 못했다. **재시도 가능.** 부분 저장 없음. **Rule 결과로 대신 채우지 않는다** | `[]` |
 
 **월간이 없는 것과 확정 전인 것을 같은 코드로 낸다**(월간 → 연간과 같다). `message` 는 「월간계획안을 먼저
