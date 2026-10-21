@@ -8,9 +8,13 @@
 - 기능마다 따로 만들면 한쪽만 느슨해진다.
 """
 
+import logging
 import re
 from collections.abc import Iterable, Sequence
-from typing import Protocol
+from typing import Literal, Protocol
+
+# 2단이 실제로 몇 건을 잡는지 세려고 남긴다. 걸린 초안은 저장되지 않아서 로그 말고는 흔적이 없다.
+logger = logging.getLogger("app.server")
 
 HEADINGS = frozenset({"사실", "해석", "지원"})
 
@@ -38,14 +42,38 @@ def check_sections(
     sections: Sequence[SectionLike],
     source_texts: Sequence[str],
     valid_source_ids: set[int],
+    *,
+    stage: Literal["generate", "edit", "confirm", "reconfirm"],
 ) -> list[str]:
     """틀린 칸을 전부 모아 `fields` 로 돌려준다. 비어 있으면 통과다.
 
     `sections` 모양 자체가 틀리면(칸 이름·개수) `["sections"]` 하나만 준다.
     - 칸이 어긋난 채로 칸별 검사를 하면 엉뚱한 칸 이름이 섞여 나온다.
+
+    `stage` 는 로그에만 쓴다. 모델 출력이 걸린 것(generate)과 교사가 고친 글이 걸린 것(edit)은
+    따로 세야 2단이 모델 오류를 몇 건 잡았는지 나온다.
+    reconfirm 은 「다시 검토」 뒤 교사가 보낸 글이다 (documents/review.py).
     """
+    fields, numbers = _check(sections, source_texts, valid_source_ids)
+    # 글은 찍지 않는다 (ADR-004). 숫자만으로는 아이를 알아볼 수 없고,
+    # 걸린 것이 진짜 오류인지 오탐(「만 4세」 등)인지 가려내는 데 필요하다.
+    logger.info(
+        "gate_sections stage=%s result=%s fields=%s numbers=%s",
+        stage,
+        "fail" if fields else "pass",
+        ",".join(fields) or "-",
+        ",".join(sorted(numbers)) or "-",
+    )
+    return fields
+
+
+def _check(
+    sections: Sequence[SectionLike],
+    source_texts: Sequence[str],
+    valid_source_ids: set[int],
+) -> tuple[list[str], set[str]]:
     if len(sections) != len(HEADINGS) or {s.heading for s in sections} != HEADINGS:
-        return ["sections"]
+        return ["sections"], set()
 
     by_heading = {s.heading: s for s in sections}
     facts = join_facts(source_texts)
@@ -58,12 +86,15 @@ def check_sections(
     for heading in ("해석", "지원"):
         if len(by_heading[heading].body.strip()) < MIN_BODY_LENGTH:
             fields.append(f"sections.{heading}")
-    if "sections.해석" not in fields and _unsupported_numbers(by_heading["해석"].body, facts):
-        fields.append("sections.해석")
+    numbers: set[str] = set()
+    if "sections.해석" not in fields:
+        numbers = _unsupported_numbers(by_heading["해석"].body, facts)
+        if numbers:
+            fields.append("sections.해석")
     for section in sections:
         if not set(section.source_ids) <= valid_source_ids:
             fields.append(f"sections.{section.heading}.source_ids")
-    return fields
+    return fields, numbers
 
 
 def _unsupported_numbers(interpretation: str, facts: str) -> set[str]:
