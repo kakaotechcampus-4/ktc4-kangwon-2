@@ -662,6 +662,9 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 
 **`safety_categories`**는 연간 상세 응답에 포함하는 `[{category_id, label}]`다. 승인된 안전교육 규칙 파일에서
 읽은 공식 6종의 id·표시 이름이며, FE의 입력과 한글 파일에 같은 이름을 사용한다.
+달별 `safety_education_source`는 미입력이면 null, 입력했으면 `TEACHER_INPUT`이다.
+`safety_education_generation`도 미입력이면 null, 입력했으면 `{method: "MANUAL", rule_id: null, rule_version: null}`이다.
+주제의 `generation`을 안전교육의 생성 방식으로 읽지 않는다.
 
 **주제 문장은 `LLM_MODE=real` 일 때 AI 가 쓴다.** 모델은 `openai/gpt-6-luna` 다(ADR-023).
 **같은 입력에 같은 답이 온다고 가정하지 않는다** — 이 모델이 온도 0 을 거부해서 우리가
