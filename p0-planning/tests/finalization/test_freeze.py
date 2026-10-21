@@ -79,6 +79,11 @@ FROZEN_ARTIFACTS = {
     "evidence/safety_evidence_classification_v0_1_0.json": (
         "96726b66e79e7425d9a637c5ab961788c0f83179c202be54dad3bc5a407f9003"
     ),
+    # Human-approved 2026-10-21 (reviewer_ai_lead_01). W3c reads it for the weekly
+    # indoor_play · group_activity · indoor_alternative Sections.
+    "evidence/weekly_evidence_semantic_classification_v0_1_0.json": (
+        "9e4d3c7ebae2dc5fc751a5721ab3654e411a1ca8438aab6a97c96ba45f641fa8"
+    ),
     "evidence/monthly_evidence_semantic_classification_v0_1_0.json": (
         "8d9930211f3cc5b993f08b263bb08266391eab686606a369f5b8e6384cb1ceaf"
     ),
