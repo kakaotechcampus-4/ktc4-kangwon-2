@@ -21,6 +21,7 @@ from app.features.plans.router import DbSession, _detail, _repo, _row
 from app.features.plans.rules.verify import safety_categories
 from app.features.plans.weekly_router import _current as _weekly_detail
 from app.features.plans.weekly_router import _own_row as _weekly_row
+from app.features.plans.weekly_router import _weekly_repo
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
 from app.shared.hwpx import Format, download, fill_grid, fill_table
@@ -177,6 +178,11 @@ WEEKLY_CLASS_CELL = (0, 1)
 WEEKLY_PERIOD_CELL = (1, 1)
 
 
+def _ages_label(ages) -> str:
+    """「만 4세」 · 혼합 「만 3·4세」 — 반 연령 표기(ADR-038)."""
+    return "만 " + "·".join(str(age) for age in sorted(ages)) + "세"
+
+
 @router.get("/weekly/{plan_id}/export/hwp")
 def export_weekly_plan(
     plan_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
@@ -201,8 +207,10 @@ def export_weekly_plan(
         for section in sections
     ]
     period = plan.week_period
+    # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
+    ages = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref)).target_ages
     header = {
-        WEEKLY_CLASS_CELL: klass.name,
+        WEEKLY_CLASS_CELL: f"{klass.name} ({_ages_label(ages)})",
         WEEKLY_PERIOD_CELL: f"{period.label} · {period.start_date} ~ {plan.display_end_date}",
     }
     title = f"{klass.name} {period.label} 주간계획안"

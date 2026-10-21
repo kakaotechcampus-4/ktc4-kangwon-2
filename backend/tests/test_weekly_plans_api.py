@@ -691,8 +691,16 @@ def test_확정된_주간을_표_양식_hwpx_로_내려준다(world):
         assert (section["label"] or section["section_key"]) in printed
     assert "운동회 준비" in printed  # 교사 입력 칸도 실린다
     assert _cell(edited, "theme")["value"] in printed
+    assert any((t or "").endswith("(만 3·4세)") for t in printed)  # 혼합반 연령 (Codex W5c-01)
     assert any(edited["week_period"]["label"] in (t or "") for t in printed)
     assert any(str(edited["display_end_date"]) in (t or "") for t in printed)
+
+
+def test_내보내기_연령은_단일과_혼합을_만_N세로_쓴다():
+    from app.features.plans.export import _ages_label
+
+    assert _ages_label(frozenset({4})) == "만 4세"
+    assert _ages_label(frozenset({5, 3, 4})) == "만 3·4·5세"
 
 
 def test_주간은_확정_전에_내보낼_수_없다(world):
