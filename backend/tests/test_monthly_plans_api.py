@@ -524,8 +524,8 @@ def test_다른_무결성_오류는_409_로_바꾸지_않는다(world, monkeypat
 
     monkeypatch.setattr(PostgresPlanRepository, "save", broken_save)
     response = _create(world)
-    # 처리하지 않은 오류는 middleware 가 평문 500 으로 바꾼다 — 409 로 숨기지 않는다.
-    assert (response.status_code, response.text) == (500, "Internal Server Error")
+    # 처리하지 않은 오류는 middleware 가 공통 500 으로 바꾼다 — 409 로 숨기지 않는다.
+    assert (response.status_code, response.json()["error"]["code"]) == (500, "INTERNAL_ERROR")
 
 
 # ── LLM real 경로 (실제 엘리스를 부르지 않는다) ──────────────────────────────

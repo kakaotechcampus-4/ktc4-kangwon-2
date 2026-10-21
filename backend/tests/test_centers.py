@@ -332,8 +332,7 @@ def test_other_constraint_violations_are_not_disguised_as_a_duplicate_name():
     session, response = _post_class_with("ck_classes_age_range")
 
     assert response.status_code == 500
-    assert response.text == "Internal Server Error"
-    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.json()["error"]["code"] == "INTERNAL_ERROR"
     assert session.rolled_back is True
 
 
