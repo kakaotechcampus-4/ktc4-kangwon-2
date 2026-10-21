@@ -179,6 +179,11 @@
     },
     {
       "source_section": "indoor_play",
+      "source_label": "미술",
+      "semantic_class": "INDOOR_PLAY"
+    },
+    {
+      "source_section": "indoor_play",
       "source_label": "미 술",
       "semantic_class": "INDOOR_PLAY"
     },
