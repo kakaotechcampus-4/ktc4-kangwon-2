@@ -1,4 +1,4 @@
-// 연간 변경 이력 클라이언트와 MSW 목업. 모양은 develop 서버의 `AuditEventOut`(다섯 키)과 같다.
+// 연간 변경 이력 클라이언트와 MSW 목업. 모양은 develop 서버의 `AuditEventOut`(여섯 키)과 같다.
 // 연간 선택 월 재생성은 넣지 않는다(PROV-Y-A). 실제 서버 · LLM · DB 를 부르지 않는다.
 import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -72,7 +72,7 @@ async function newPlan() {
   });
   return createAnnualPlan({ class_id: klass.id, form_id: null });
 }
-const KEYS = ["actor", "month", "occurred_at", "system_actor", "type"];
+const KEYS = ["actor", "month", "occurred_at", "system_actor", "type", "value_change"];
 const SCHOOL_YEAR = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 const snapshot = () => structuredClone({ plans: read().plans, audit: read().annualAudit });
 
@@ -86,7 +86,7 @@ test("client: GET audit without a body", async () => {
   assert.equal(typeof plans.regenerateAnnualMonth, "undefined");
 });
 
-test("audit: CREATED · TEACHER_EDITED · CONFIRMED with the server's five keys", async () => {
+test("audit: CREATED · TEACHER_EDITED · CONFIRMED with the server's six keys", async () => {
   const plan = await newPlan();
   let { items } = await getAnnualPlanAudit(plan.id);
   // 생성: 계획안 1건 + 달마다 1건, 같은 시각 — 계획안 다음 3월 ~ 익년 2월.
@@ -105,9 +105,11 @@ test("audit: CREATED · TEACHER_EDITED · CONFIRMED with the server's five keys"
         month: null,
         actor: null,
         system_actor: "yearly_application",
+        value_change: null,
       },
     );
   }
+  const original = plan.months.find((m) => m.month === 10).theme;
   await putAnnualMonth(plan.id, 10, { theme: "교사가 쓴 10월 주제", sub_themes: [] });
   const confirmed = await confirmAnnualPlan(plan.id);
   items = (await getAnnualPlanAudit(plan.id)).items;
@@ -119,6 +121,7 @@ test("audit: CREATED · TEACHER_EDITED · CONFIRMED with the server's five keys"
     month: 10,
     actor: "user_1",
     system_actor: null,
+    value_change: { before: original, after: "교사가 쓴 10월 주제" },
   });
   assert.deepEqual(done, {
     type: "CONFIRMED",
@@ -126,6 +129,7 @@ test("audit: CREATED · TEACHER_EDITED · CONFIRMED with the server's five keys"
     month: null,
     actor: "user_1",
     system_actor: null,
+    value_change: null,
   });
   for (const e of items) assert.deepEqual(Object.keys(e).sort(), KEYS);
   // 시간순.
@@ -144,8 +148,9 @@ test("teacher edit keeps generation · records even when unchanged · no sub_the
   const last = (await getAnnualPlanAudit(plan.id)).items.at(-1);
   assert.equal(last.type, "TEACHER_EDITED");
   assert.equal(last.month, 3);
+  // 주제가 같으면 before · after 도 같다. 소주제는 이력에 없다.
+  assert.deepEqual(last.value_change, { before: march.theme, after: march.theme });
   assert.ok(!JSON.stringify(last).includes("놀이"));
-  assert.ok(!JSON.stringify(last).includes(march.theme));
 });
 
 test("refused PUT after confirm adds no audit event", async () => {
