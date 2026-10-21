@@ -416,6 +416,12 @@ function StepClasses({
         title="우리 반 정보를 설정해주세요"
         description="반 정보와 법정대리인 동의 여부를 확인해주세요. 아동 명단은 다음 단계에서 입력해요."
       />
+      {settings.completedAt && (
+        <p role="status" className="text-sm text-ink-soft">
+          등록한 반의 이름·연령·담임·원아 수·동의 여부는 아직 수정할 수 없어요. 반 추가와 담당 반
+          선택은 가능하고, 아동 명단은 다음 단계에서 관리해요.
+        </p>
+      )}
 
       <div className="flex flex-col gap-5">
         {settings.classes.map((classroom, index) => (

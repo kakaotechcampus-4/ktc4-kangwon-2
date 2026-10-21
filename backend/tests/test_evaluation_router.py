@@ -66,6 +66,7 @@ def test_GET은_파일_순서의_9개_지표와_종류별_필드를_반환한다
     assert type(body["school_year"]) is int and body["school_year"] == 2026
     assert [i["indicator"] for i in body["items"]] == [i.indicator for i in expected]
     assert len(body["items"]) == 9
+    assert sum(len(item.get("elements", [])) for item in body["items"]) == 19
     common = {"indicator", "area", "title", "content", "kind"}
     auto = {"verdict", "required", "count", "children", "classes"}
     auto |= {"plan_ids", "document_ids", "period"}

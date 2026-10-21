@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { downloadHwpx } from "./export";
 import type { MonthlyAuditEvent, MonthlyInput, MonthlyPlan, MonthlyPlanSummary } from "./types";
 
 /** 월간계획안 (docs/api-spec.md §9-1 · §9-3). 응답 · 오류는 바꾸지 않고 그대로 넘긴다. */
@@ -16,6 +17,9 @@ export const createMonthlyPlan = (data: MonthlyInput, signal?: AbortSignal) =>
   apiRequest<MonthlyPlan>("/api/plans/monthly", json("POST", data, signal));
 export const getMonthlyPlan = (id: number, signal?: AbortSignal) =>
   apiRequest<MonthlyPlan>("/api/plans/monthly/" + id, { signal });
+/** 확정본만 서버 서식으로 내려받는다. 초안은 서버가 409 로 막는다. */
+export const downloadMonthlyHwpx = (id: number) =>
+  downloadHwpx(`/api/plans/monthly/${id}/export/hwp`, "월간계획안.hwpx");
 /** `classId` 를 빼면 내 원 전체. 대상 달 오름차순. */
 export const listMonthlyPlans = (classId?: number, signal?: AbortSignal) =>
   apiRequest<{ items: MonthlyPlanSummary[] }>(

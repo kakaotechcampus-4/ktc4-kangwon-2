@@ -342,3 +342,28 @@ def test_남의_원_계획안은_404(db_session, mine, teacher):
     teacher.center_id = other.id
 
     assert client.get(f"/api/plans/{plan['id']}/export/hwp").status_code == 404
+
+
+def test_연간_안전교육은_저장한_공식이름으로_본문과_미리보기에_나온다(mine):
+    plan = client.post("/api/plans/annual", json={"class_id": mine.id}).json()
+    response = client.put(
+        f"/api/plans/annual/{plan['id']}/months/3",
+        json={
+            "theme": "새 친구",
+            "sub_themes": ["친구와 인사하기"],
+            "safety_education": ["traffic_safety"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert client.post(f"/api/plans/annual/{plan['id']}/confirm").status_code == 200
+    exported = client.get(f"/api/plans/{plan['id']}/export/hwp")
+    assert exported.status_code == 200
+    label = next(
+        c["label"] for c in plan["safety_categories"] if c["category_id"] == "traffic_safety"
+    )
+    section = _section(exported.content)
+    assert _lines(_cell(section, 1, 3)) == [label]
+    archive = zipfile.ZipFile(io.BytesIO(exported.content))
+    preview = archive.read("Preview/PrvText.txt").decode()
+    assert label in preview and "친구와 인사하기" in preview
+    assert "traffic_safety" not in preview

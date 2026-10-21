@@ -386,10 +386,12 @@ test("늦게 온 옛 조회가 최신 목록을 덮지 않는다", () => {
   );
 });
 
-test("연결되지 않은 문서 진입점을 내보내지 않는다", () => {
+test("서버 기록의 id와 반을 관찰일지 생성 화면으로 넘긴다", () => {
   const source = page();
-  // 문서 화면은 아직 서버 기록을 읽지 못한다.
-  assert.equal(source.includes("/documents?record="), false);
-  assert.equal(source.includes("문서로 작성"), false);
-  assert.equal(source.includes("초안으로 이어갈 수 있어요"), false);
+  assert.ok(
+    source.includes(
+      "/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}",
+    ),
+  );
+  assert.ok(source.includes("관찰일지 만들기"));
 });

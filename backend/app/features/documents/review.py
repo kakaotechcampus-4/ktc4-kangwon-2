@@ -384,7 +384,7 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
             survivors.append((copy, copy.source_id, row.after))
     texts = [text for _, _, text in survivors]
     ids = [new_id for _, new_id, _ in survivors]
-    fields = check_sections(body.sections, texts, set(ids))
+    fields = check_sections(body.sections, texts, set(ids), stage="reconfirm")
     if fields:
         fail("VALIDATION_FAILED", "입력값을 확인해주세요.", fields, 422)
 

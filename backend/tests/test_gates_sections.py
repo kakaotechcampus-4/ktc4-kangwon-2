@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from app.shared.gates.sections import check_sections, join_facts
+from app.shared.gates.sections import check_sections, join_facts, logger
 
 FACTS = ["블록을 3번 쌓았다가 무너뜨렸다.", "9월 22일에 친구 2명과 함께 놀았다."]
 SUPPORT = "다음 주에 블록 영역을 넓혀 4회 더 함께 쌓아 보도록 지원한다."
@@ -21,7 +21,7 @@ def _check(interpretation: str, facts: list[str] = FACTS) -> list[str]:
         Section("해석", interpretation),
         Section("지원", SUPPORT),
     ]
-    return check_sections(sections, facts, {1, 2})
+    return check_sections(sections, facts, {1, 2}, stage="generate")
 
 
 def test_empty_facts_reject_the_document_even_when_interpretation_and_support_are_long():
@@ -32,7 +32,7 @@ def test_empty_facts_reject_the_document_even_when_interpretation_and_support_ar
         Section("지원", SUPPORT, []),
     ]
 
-    assert check_sections(sections, [], set()) == ["sections.사실"]
+    assert check_sections(sections, [], set(), stage="generate") == ["sections.사실"]
 
 
 def test_numbers_in_interpretation_that_appear_in_facts_pass():
@@ -60,3 +60,14 @@ def test_new_numbers_in_support_are_allowed():
 
 def test_short_interpretation_is_reported_once():
     assert _check("7번 쌓음") == ["sections.해석"]
+
+
+def test_rejection_is_logged_with_stage_and_numbers_but_not_text(monkeypatch):
+    # 걸린 초안은 저장되지 않는다. 2단이 몇 건을 잡았는지는 이 줄로만 센다.
+    lines = []
+    # `app.server` 로거는 propagate=False 라 caplog 가 못 본다 (test_llm_usage_log 와 같다).
+    monkeypatch.setattr(logger, "info", lambda fmt, *args: lines.append(fmt % args))
+
+    _check("블록을 5번 쌓으며 끈기 있게 반복하는 모습을 보여 주었다.")
+
+    assert lines == ["gate_sections stage=generate result=fail fields=sections.해석 numbers=5"]
