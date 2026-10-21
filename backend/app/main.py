@@ -45,6 +45,16 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
+# LLM 실측이 읽는 INFO 줄 — 전송 성공 · schema · 걸린 시간(monthly_llm), 주간 성공 · 수리 · 지문
+# (planner). 이름별 logger 라 손대지 않으면 기본 WARNING 에 걸려 버려진다. 둘 다 내용 없는 줄만
+# 남긴다(프롬프트 · 생성 문장 · 키 없음). 전체 수준은 올리지 않고 이 둘만 같은 handler 로 보낸다.
+for _name in ("app.features.plans.monthly_llm", "ssuksak.planning.planner.weekly"):
+    _llm_logger = logging.getLogger(_name)
+    if not _llm_logger.handlers:
+        _llm_logger.addHandler(logger.handlers[0])
+        _llm_logger.setLevel(logging.INFO)
+        _llm_logger.propagate = False
+
 
 def _one_line(value: str) -> str:
     return value.translate(
