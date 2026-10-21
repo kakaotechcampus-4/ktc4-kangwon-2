@@ -296,8 +296,13 @@ def test_응답을_만들다_터지면_계획안이_남지_않는다(db_session,
 
     response = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None})
     assert response.status_code == 500
-    assert response.text == "Internal Server Error"
-    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.json() == {
+        "error": {
+            "code": "INTERNAL_ERROR",
+            "message": "일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.",
+            "fields": [],
+        }
+    }
 
     # 운영에서는 `get_session` 의 `with` 가 세션을 닫으며 롤백한다(app/db.py).
     # 테스트는 세션을 직접 끼워주므로 그 동작을 여기서 흉내낸다.

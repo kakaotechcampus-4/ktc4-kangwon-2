@@ -141,6 +141,7 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     for (const [code, status] of [
       ["NO_ACTIVITIES", 503],
       ["GENERATION_FAILED", 500],
+      ["INTERNAL_ERROR", 500],
     ]) {
       r = await request("plans/annual?mockDelay=0&mockError=" + code, input);
       assert.equal(r.status, status);

@@ -15,6 +15,7 @@ export const statusFor: Record<ErrorCode, number> = {
   LLM_BUDGET_EXCEEDED: 503,
   DEPENDENCY_UNAVAILABLE: 503,
   GENERATION_FAILED: 500,
+  INTERNAL_ERROR: 500,
   TRENDS_DISABLED: 403,
 };
 // fields 는 틀린 칸이 하나여도, 없어도 배열이다. 목업이 단수 field 를 주면

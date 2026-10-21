@@ -15,6 +15,8 @@ export type ErrorCode =
   | "LLM_BUDGET_EXCEEDED"
   | "DEPENDENCY_UNAVAILABLE"
   | "GENERATION_FAILED"
+  // 예상하지 못한 서버 오류 (U-19). 문구는 서버가 고정해서 준다.
+  | "INTERNAL_ERROR"
   // 원이 트렌드봇을 껐다 (FR-808 · §3-2). 「없다」가 아니라 「껐다」다.
   | "TRENDS_DISABLED";
 /** fields 는 항상 배열이다 — 하나여도 ["name"] 이다 (docs/api-spec.md 「공통」). */
