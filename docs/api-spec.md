@@ -1054,6 +1054,7 @@ PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨,
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039)
 GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
+GET    /api/plans/weekly/{id}/export/hwp  주간 내보내기 — 확정본만, 기본 hwpx (§9-6)
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 W5a · 편집 · 재생성 · 확정 · 이력 W5b 구현됨)
@@ -1907,6 +1908,17 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 
 - 주간 칸에는 주가 따로 없다 — **칸 이벤트의 `week_id` 는 그 계획안의 주**다. 계획안 단위(`PLAN`)는 `null`.
 - 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. 읽기만 한다.
+
+### 내보내기 — `GET /api/plans/weekly/{id}/export/hwp`
+
+월간 내보내기(§9 「내보내기」)와 같은 규칙이다 — **확정본만**(DRAFT 는 409 `GATE_BLOCKED`), 기본 hwpx ·
+`?format=hwp` 면 `.hwp`(바꾸지 못하면 503), **근거 · 만든 방식은 싣지 않는다**, 양식 작성자 정보를 지운다.
+파일 이름 `weekly-plan-{id}.hwpx`.
+
+**화면은 카드형이지만 제출 문서는 표 양식이다.** 양식 `templates/weekly.hwpx`(scripts/build_weekly_template.py):
+머리 3줄(반 · 기간 · 「구분 | 내용」) 아래 Section 하나가 「칸 이름 | 내용」 한 줄이다. 칸 이름은 계획안의 `label`
+— 양식에 박아두지 않는다. 기간은 `week_period.label · start_date ~ display_end_date`(토요일을 켠 원이면 토요일까지).
+교사 입력 칸(가정연계 · 행사 · 특별활동)도 그대로 실린다.
 
 ### 오류
 
