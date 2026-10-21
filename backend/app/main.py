@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -84,6 +84,10 @@ def _frames(exc: Exception) -> str:
     return f"at={at}" + (f" raised={raised}" if raised != at else "")
 
 
+# U-19 A (PM 2026-10-21): 예상하지 못한 오류도 공통 봉투로 답한다. 원인은 서버 기록에만 남긴다.
+INTERNAL_ERROR_MESSAGE = "일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요."
+
+
 def _logging_failed() -> None:
     try:
         logger.error("unexpected_error logging_failed")
@@ -130,7 +134,9 @@ class _UnexpectedErrorMiddleware:
             failed = True  # except 밖에서 보내 원래 예외의 __context__ 연결을 막는다.
         if failed and not response_started:
             try:
-                await PlainTextResponse("Internal Server Error", 500)(scope, receive, send)
+                await _error(500, "INTERNAL_ERROR", INTERNAL_ERROR_MESSAGE, [])(
+                    scope, receive, send
+                )
             except Exception:
                 pass
 

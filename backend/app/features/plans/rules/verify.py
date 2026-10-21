@@ -55,6 +55,16 @@ def load_legal_rules() -> Mapping[str, Any]:
     return json.loads(LEGAL_RULES_PATH.read_text(encoding="utf-8"))
 
 
+def safety_categories() -> list[dict[str, str]]:
+    """화면·내보내기에 같은 승인 원본의 구분 이름을 쓴다."""
+    rules = load_legal_rules()
+    _require_approved(rules)
+    return [
+        {"category_id": category["category_id"], "label": category["official_label"]}
+        for category in rules["categories"]
+    ]
+
+
 def legal_hours(
     months: Sequence[Mapping[str, Any]],
     rules: Mapping[str, Any] | None = None,

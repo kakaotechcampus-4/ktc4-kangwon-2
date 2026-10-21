@@ -16,7 +16,7 @@ from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
 from .monthly_constraint import CellState, ConstraintAssessment
-from .monthly_plan import ActivityCatalogRef
+from .monthly_plan import ActivityCatalogRef, MonthlyGenerationMode
 from .monthly_template import (
     MonthlyTemplate,
     RepeatBy,
@@ -234,6 +234,8 @@ class WeeklyPlan:
     audit: AuditHistory = field(default_factory=AuditHistory)
     activity_catalog_ref: ActivityCatalogRef | None = None
     verification_report: VerificationReport | None = None
+    # Same reason as MonthlyPlan: the run record and the response say which path ran.
+    generation_mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
@@ -310,12 +312,30 @@ class WeeklyPlan:
             raise InvalidDomainValueError(
                 "WeeklyPlan.verification_report must be a VerificationReport for this Plan"
             )
+        if not isinstance(self.generation_mode, MonthlyGenerationMode):
+            raise InvalidDomainValueError("WeeklyPlan.generation_mode is invalid")
 
     def cell(self, section_key: str) -> WeeklyCell:
         found = next((cell for cell in self.cells if cell.section_key == section_key), None)
         if found is None:
             raise InvalidDomainValueError(f"Weekly Section not found: {section_key}")
         return found
+
+    def find_cell(self, item_id: ItemId) -> WeeklyCell | None:
+        if not isinstance(item_id, ItemId):
+            raise InvalidDomainValueError("WeeklyPlan.find_cell requires ItemId")
+        return next((cell for cell in self.cells if cell.item_id == item_id), None)
+
+    def replace_cell(self, item_id: ItemId, replacement: WeeklyCell) -> WeeklyPlan:
+        self.ensure_mutable("replace_cell")
+        current = self.find_cell(item_id)
+        if current is None:
+            raise InvalidDomainValueError(f"Weekly cell not found: {item_id}")
+        if not isinstance(replacement, WeeklyCell):
+            raise InvalidDomainValueError("replacement must be WeeklyCell")
+        if (replacement.item_id, replacement.section_key) != (current.item_id, current.section_key):
+            raise InvalidDomainValueError("Weekly replacement must preserve ItemId and section_key")
+        return replace(self, cells=tuple(replacement if cell is current else cell for cell in self.cells))
 
     def ensure_mutable(self, operation: str) -> None:
         _non_blank(operation, "operation")

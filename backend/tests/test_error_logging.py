@@ -69,8 +69,12 @@ def test_unexpected_error_contains_only_safe_metadata(client, caplog):
         headers={b"Authorization": "Bearer 비밀토큰xyz".encode()},
     )
     assert response.status_code == 500
-    assert response.text == "Internal Server Error"
-    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    # U-19 A: 공통 봉투 · 고정 문구. 예외 문구(아동 이름 등)는 응답에 싣지 않는다.
+    assert response.json() == {
+        "error": {"code": "INTERNAL_ERROR", "message": main.INTERNAL_ERROR_MESSAGE, "fields": []}
+    }
+    assert response.headers["content-type"] == "application/json"
+    assert "김가명" not in response.text
     records = server_records(caplog)
     assert main.logger.propagate is False
     assert len(records) == 1 and records[0].levelno == logging.ERROR
@@ -214,7 +218,8 @@ def test_logging_failure_still_returns_500(client, caplog, capsys, monkeypatch):
 
     monkeypatch.setattr(main.handler.formatter, "format", logging_failure)
     app.add_api_route(PATH, lambda: logging_failure())
-    assert (res := client.get(PATH)).status_code == 500 and res.text == "Internal Server Error"
+    res = client.get(PATH)
+    assert res.status_code == 500 and res.json()["error"]["code"] == "INTERNAL_ERROR"
     captured = caplog.text + capsys.readouterr().err
     assert "unexpected_error logging_failed" in captured
     assert "김가명" not in captured and "비밀토큰xyz" not in captured

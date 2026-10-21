@@ -141,6 +141,7 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     for (const [code, status] of [
       ["NO_ACTIVITIES", 503],
       ["GENERATION_FAILED", 500],
+      ["INTERNAL_ERROR", 500],
     ]) {
       r = await request("plans/annual?mockDelay=0&mockError=" + code, input);
       assert.equal(r.status, status);
@@ -217,7 +218,11 @@ test("onboarding bridge deduplicates mounts, retains local IDs and isolates acco
     assert.equal(read().children.length, 1);
     const loaded = await loadServerChildren(c);
     assert.equal(loaded.children[0].id, "local-child");
-    await syncClass(settings, { ...c, className: "변경 반" });
+    await assert.rejects(
+      syncClass(settings, { ...c, className: "변경 반" }),
+      /기존 아동과 기록을 보호/,
+    );
+    assert.equal(read().classes.length, 1);
     await migrateChildren(c);
     assert.equal((await loadServerChildren(c)).children.length, 1);
     const other = "other@example.com";
@@ -230,7 +235,7 @@ test("onboarding bridge deduplicates mounts, retains local IDs and isolates acco
     assert.equal(read().centers.length, 1);
     assert.equal(read().children.length, 0);
     sessionStorage.setItem("saessak.accountEmail", fixtureEmail);
-    assert.equal(read().children.length, 2);
+    assert.equal(read().children.length, 1);
   } finally {
     globalThis.fetch = patched;
     server.close();

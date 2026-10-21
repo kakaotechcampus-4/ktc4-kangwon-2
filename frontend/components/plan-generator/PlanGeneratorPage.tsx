@@ -398,9 +398,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
                   : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
             </p>
             <p className={ws.hint}>
-              {available
-                ? "AI 연결됨 · 입력 조건과 기관 양식으로 생성해요."
-                : "기본 양식 모드 · AI 연결 전에는 수정 가능한 기본 초안을 만들어요."}
+              계획안은 초안으로 생성·저장돼요. 생성 후 우리 반에 맞게 검토해주세요.
             </p>
           </div>
         )}

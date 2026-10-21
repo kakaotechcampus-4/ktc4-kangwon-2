@@ -113,6 +113,7 @@ me       GET /api/auth/me                                               → 200 
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
+| `INTERNAL_ERROR` | 500 | 예상하지 못한 서버 오류. 문구는 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」 고정이고 원인은 서버 기록에만 남긴다 (ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-19) |
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at`) |
 
@@ -431,7 +432,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 **GET Response**
 
 ```json
-{ "trends_enabled": false }
+{ "trends_enabled": false, "weekly_saturday_enabled": false }
 ```
 
 설정한 적 없으면 기본값을 채워 내려준다. 빈 객체를 주지 않는다.
@@ -450,6 +451,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 ```json
 { "trends_enabled": true }
+{ "weekly_saturday_enabled": true }
 ```
 
 성품인사와 달리 전체 교체가 아니다. 토글은 **한 번에 하나씩** 누르고, 설정이 늘어날수록
@@ -472,6 +474,18 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 **이미 만든 계획안을 고치지 않는다.** 끈다고 과거 문서가 바뀌면, 교사가 확정해서 제출한
 문서의 내용이 뒤에서 달라진다. 출처는 **그때 그랬다는 기록**이다.
+
+**`weekly_saturday_enabled` — 주간계획안에 토요일을 넣을지.** 기본값은 `false`(월~금)다.
+PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운영하는 원만 켠다.
+반 · 양식이 아니라 원 단위다(`docs/weekly-plan-contract.md` §3).
+
+```
+바뀐다    새로 만드는 주간계획안부터.  만들 때 이 값을 계획안 안에 복사한다(operating_days)
+          토요일이 바꾸는 것은 표시 기간과 칸 안 요일 목록뿐이다
+안 바뀐다  이미 만든 주간계획안.  만들 때 복사한 값 그대로다
+          주차 번호 · 칸 수 · 월간과의 연결.  토요일은 월 경계 계산에 넣지 않는다
+          월간 · 연간계획안
+```
 
 | code | status | 언제 |
 |---|---|---|
@@ -590,7 +604,7 @@ months                        정확히 12개.  필수
 months[].month                정수 3~12 · 1~2.  필수.  배열은 3월부터 익년 2월 순서
 months[].theme                문자열.  필수.  빈 문자열 거부
 months[].sub_themes           문자열 배열.  필수
-months[].safety_education     문자열 배열.  필수.  P0 에서는 항상 빈 배열.  값은 아래 6종
+months[].safety_education     문자열 배열. 필수. 교사가 입력한 월별 배치. 미입력은 빈 배열. 값은 아래 6종
 months[].safety_education_state  SOURCE_REQUIRED | PLACED | NOT_PLACED.  필수
 months[].evidence             배열.  필수.  THEME_REFERENCE 가 정확히 하나
 months[].generation           객체.  필수
@@ -634,21 +648,23 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 **「위반」도 마찬가지로 주장하지 않는다** — 근거 없이 판정하는 건 방향만 다르고 같은 문제다.
 그래서 검사기는 `VIOLATION` 과 `UNVERIFIED` 를 나눠 낸다(ADR-014).
 
-**`safety_education` 은 P0 에서 항상 빈 배열이다.** 법이 정하는 건 주기와 연간 시수뿐이고
-월 배치는 0건이다(`p0-planning/data/rules/safety_education_legal_v1.json` 의
-`month_assignment_policy.has_month_assignment: false`). 배치의 출처는 기관·교사가 준
-안전교육 연간계획뿐인데 P0 에 그 입력이 없다. **규칙 엔진도 LLM 도 배치를 만들지 않는다** —
-같은 파일의 `rule_must_not`·`llm_must_not`. 칸은 항상 있고 값만 빈다.
-값은 그 파일 `categories[].category_id` 를 쓴다.
+**안전교육 배치는 교사가 직접 입력한다(ADR-041).** 생성 시 모든 달은 `SOURCE_REQUIRED`다.
+§6 PUT에서 `safety_education`을 생략하면 기존 배치를 보존하고, `null`이면 미입력으로 되돌린다.
+빈 배열 `[]`은 「이 달 배치 없음」(`NOT_PLACED`), 6종 중 하나 이상은 `PLACED`다.
+월별 입력과 변경 전·후 값, 행위자·시각은 `plans.annual_safety`에 저장한다. AI는 배치를 만들지 않는다.
+12개월 모두 입력돼야 주기를 검사할 수 있고 교육시간 입력은 없으므로 연간 시수는 계속 `UNVERIFIED`다.
 
-**`months` 는 항상 12개다.** 3월 시작 ~ 익년 2월.
+**`sub_themes`는 생성 시 12개월을 묶어 만든다(ADR-041).** 확정한 규칙의 주제와 반 연령을 입력으로,
+달마다 2~5개의 짧은 소주제 초안을 받는다. 주제 12개월 생성 후 소주제 12개월 생성, 최대 두 번의 문서 단위 호출이다.
+기존 Planning Core의 주제 포트와 도메인은 바꾸지 않고 서버의 기존 `plans.sub_themes`에 저장한다.
+달 누락·중복·추가, 빈 소주제, 응답 형식 오류는 `GENERATION_FAILED`로 전체 생성이 실패하며 부분 계획안을 남기지 않는다.
+교사는 §6으로 수정한다. 기존 계획안은 읽을 때 자동으로 생성하거나 변경하지 않는다.
 
-**`sub_themes` 는 P0 생성 시 항상 빈 배열이다.** `[실측]` p0-planning 의
-`ThemeTextGenerator` 는 주제 문장 하나만 돌려준다 — 소주제를 만드는 경로가 아직 없다.
-칸은 항상 있고 값만 빈다. **교사가 §6 으로 채운다.** `safety_education` 과 같은 처리다.
-
-서버가 이 값을 도메인 객체 밖(`plans.sub_themes`)에 따로 든다. 소주제는 별도 근거가 없고
-상위 주제의 `evidence`·`generation` 을 물려받아서 도메인 객체 안에 들어갈 자리가 없다.
+**`safety_categories`**는 연간 상세 응답에 포함하는 `[{category_id, label}]`다. 승인된 안전교육 규칙 파일에서
+읽은 공식 6종의 id·표시 이름이며, FE의 입력과 한글 파일에 같은 이름을 사용한다.
+달별 `safety_education_source`는 미입력이면 null, 입력했으면 `TEACHER_INPUT`이다.
+`safety_education_generation`도 미입력이면 null, 입력했으면 `{method: "MANUAL", rule_id: null, rule_version: null}`이다.
+주제의 `generation`을 안전교육의 생성 방식으로 읽지 않는다.
 
 **주제 문장은 `LLM_MODE=real` 일 때 AI 가 쓴다.** 모델은 `openai/gpt-6-luna` 다(ADR-023).
 **같은 입력에 같은 답이 온다고 가정하지 않는다** — 이 모델이 온도 0 을 거부해서 우리가
@@ -663,25 +679,22 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 
 ```
 DEPENDENCY_UNAVAILABLE  503   키·주소 설정이 없다.        재시도 무의미
+DEPENDENCY_UNAVAILABLE  503   그 달 · 반 연령에 맞는 승인 주제가 없다.  재시도 무의미
 LLM_BUDGET_EXCEEDED     503   한도·키 삭제(401·403·429).  재시도 무의미
 GENERATION_FAILED       500   호출이 깨졌거나 답이 계약을 어겼다.  재시도 가능
 ```
 
+**주제 후보가 없을 때는 참고자료 문제다**(ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-20). 지금 승인된 주제 참고자료는
+12개월 모두 만 3 · 4 · 5세와 혼합반을 지원하는 주제가 있어 실제로는 생기지 않는다 — 참고자료를 바꾸다 어느 달이 비면 생긴다.
+교사가 고칠 수 없으므로 422 가 아니라 503 이고 문구는 「지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.」다.
+
+**그 밖의 도메인 거절은 422 `VALIDATION_FAILED` · 「입력값을 확인해주세요.」 고정 문구다.** Core 의 영어 문장을 그대로 보내지 않는다 —
+원문은 서버 기록에만 남긴다(월간 §9-1 과 같다).
+
 **부분 결과를 저장하지 않는다.** 열두 달 중 하나라도 어긋나면 계획안 자체를 만들지 않는다.
 
-**`sub_themes` 는 LLM 이 만든다 — 아직 안 만들었다.** 지금은 생성 시 항상 빈 배열이고
-교사가 §6 으로 채운다(위 「`sub_themes` 는 P0 생성 시 항상 빈 배열이다」). 아래는 **나중에
-만들 때 고른 방향**이지 지금 동작이 아니다. 참조자료(`theme_reference_v0.json`)에는
-주제(`label`)만 있고 소주제가 없다. 세 갈래 중 이걸 골랐다.
-
-```
-✅  LLM 이 주제에서 소주제를 만든다      ADR-014 의 "LLM 이 만들고 규칙이 검사한다" 범위
-    참조자료에 소주제를 추가한다          자료를 다시 훑어야 한다.  근거는 더 확실하다
-    계약에서 빼고 선택 필드로             FE 화면 세 곳을 고쳐야 한다
-```
-
-소주제도 `generation.method` 는 `RULE_LLM` 이고, `evidence` 는 **상위 주제의 것을 그대로
-물려받는다** — 소주제만의 별도 근거 자료가 없다.
+**소주제의 근거와 생성 방식은 상위 주제에서 물려받는다.** 별도 참고자료를 근거로 꾸미지 않는다.
+`generation.method`는 `RULE_LLM`이다. mock 모드는 테스트용 결정론적 문장을 만들며 실제 AI 결과라고 표시하지 않는다.
 
 ### 출처는 세 축이다 — 한 값에 섞지 않는다
 
@@ -768,6 +781,7 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 ```
 
 `DRAFT` 든 `CONFIRMED` 든 같은 코드다 — FE 가 할 행동이 "기존 것으로 이동" 으로 같다.
+**같은 반으로 동시에 두 번 눌러도 같다** — 둘 다 「아직 없다」를 보고 지나가도 늦은 쪽은 저장에서 반당 하나 제약에 걸려 이 409 를 받는다.
 기존 것은 §5 목록 조회로 찾는다.
 
 **재생성·삭제는 P0 에 없다.** 마음에 안 드는 칸은 §6 으로 고친다. 계획안 전체도, 선택한 한 달도 다시 만들지 않는다 —
@@ -780,7 +794,7 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 | **loading** | ★ 수 초 걸린다. 진행 표시가 없으면 교사가 다시 누른다 |
 | empty | 발생하지 않는다 — 12개월이 항상 찬다 |
 | success | S6 으로 이동 |
-| error | `NO_ACTIVITIES` 503 → "활동 데이터가 없습니다" (운영 문의). **자동 재시도하지 않는다**<br>`LLM_BUDGET_EXCEEDED` 503 → 운영 문의<br>`ALREADY_EXISTS` 409 → 기존 계획안으로 이동<br>`GENERATION_FAILED` 500 → 재시도 버튼. **부분 저장 없음** |
+| error | `DEPENDENCY_UNAVAILABLE` 503 → 운영 문의(설정 없음 · 그 달 주제 후보 없음). **자동 재시도하지 않는다**<br>`LLM_BUDGET_EXCEEDED` 503 → 운영 문의<br>`ALREADY_EXISTS` 409 → 기존 계획안으로 이동<br>`GENERATION_FAILED` 500 → 재시도 버튼. **부분 저장 없음** |
 
 ---
 
@@ -813,7 +827,9 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 
 ## 6. 칸 수정 — `PUT /api/plans/annual/{id}/months/{month}`
 
-**Request** — **`theme` · `sub_themes` 둘 다 필수다.**
+**Request** — **`theme` · `sub_themes` 둘 다 필수다.** 선택 필드 `safety_education`은 `null` 또는
+중복 없는 6종 id 배열이다(최대 6개). 생략하면 기존 배치를 보존한다. 잘못된 id·중복은 422다.
+확정본 수정은 기존과 같이 409다. 안전교육 입력도 원 격리·행 잠금·교사 수정 이력을 적용한다.
 
 ```json
 { "theme": "고친 주제", "sub_themes": ["...", "..."] }
@@ -822,6 +838,7 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 **`PATCH` 가 아니라 `PUT` 인 이유** — 전체 교체다. `PATCH` 로 두면 "일부만 보내도 되겠지"로
 구현할 여지가 남고, `theme` 만 보냈을 때 `sub_themes` 가 **조용히 사라진다.** 교사는 저장됐다고
 믿고 §7 확정에서야 발견한다. 필드 누락은 `VALIDATION_FAILED` 422 이고 부분 저장이 되지 않는다.
+도메인이 값을 거절해도(예: 공백만 있는 `theme`) 422 `VALIDATION_FAILED` 이고 문구는 「입력값을 확인해주세요.」 고정이다(§4).
 
 **Response** — 그 달 객체 하나. **전체를 다시 안 준다.**
 
@@ -885,7 +902,7 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 |---|---|
 | loading | 버튼 비활성 + 스피너 |
 | success | 상태 배지 `확정됨` |
-| error | `VALIDATION_FAILED` 422 — `theme` 이 빈 달이 있을 때. **빈 달을 전부 내려준다**<br>`fields: ["months.3", "months.7", "months.9"]` |
+| error | `VALIDATION_FAILED` 422 — `theme` 이 빈 달이 있을 때. 문구는 고정 「입력값을 확인해주세요.」, `fields: []`<br>어느 달인지는 응답에 담지 않는다(Core 거절 원문은 서버 로그에만 — §4 · §6 과 같은 처리). 정상 경로에서는 나오지 않는다(위) |
 
 ### 7-1. 연간 변경 이력 — `GET /api/plans/annual/{id}/audit`
 
@@ -894,11 +911,12 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 ```json
 { "items": [
     { "type": "CREATED",        "occurred_at": "2026-03-02T01:00:00Z", "month": null,
-      "actor": null,    "system_actor": "yearly_application" },
+      "actor": null,    "system_actor": "yearly_application", "value_change": null },
     { "type": "TEACHER_EDITED", "occurred_at": "2026-03-03T02:10:00Z", "month": 3,
-      "actor": "user_7", "system_actor": null },
+      "actor": "user_7", "system_actor": null,
+      "value_change": { "before": "새로운 친구와 만나요", "after": "우리 반 친구들과 만나요" } },
     { "type": "CONFIRMED",      "occurred_at": "2026-03-04T05:00:00Z", "month": null,
-      "actor": "user_7", "system_actor": null }
+      "actor": "user_7", "system_actor": null, "value_change": null }
 ] }
 ```
 
@@ -908,16 +926,18 @@ occurred_at    ISO 8601, 시간대 포함
 month          그 달 theme 칸의 이벤트면 그 달(1~12).  계획안 단위(생성 · 확정)면 null
 actor          사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
 system_actor   시스템이 한 일(생성)이면 그 표시 (yearly_application).  사람이면 null
+value_change   TEACHER_EDITED 면 {before, after} — 그때 바뀐 theme 값.  그 밖의 이벤트는 null
 ```
 
-- **다섯 키가 항상 온다.** 해당이 없으면 키를 빼지 않고 `null` 이다.
+- **여섯 키가 항상 온다.** 해당이 없으면 키를 빼지 않고 `null` 이다.
+- **`value_change` 는 저장된 이벤트 값 그대로다.** 현재 값에서 거꾸로 만들지 않는다. 소주제만 고친 PUT 도 `TEACHER_EDITED` 이고
+  그때 `before` · `after` 는 같은 theme 다 — 소주제 변화는 이력에 없다. 키가 없는 옛 이벤트는 `null` 로 온다.
 - **순서는 발생 시각.** 계획안 단위 이벤트와 달마다의 이벤트를 한 목록으로 합쳐 시각순으로 준다.
 - `CREATED` 는 계획안 단위 하나와 달마다 하나씩 온다.
 - 오류: 없거나 남의 원 계획안 · 연간이 아닌 id 는 404 `["id"]`, 로그인 안 함은 401.
 
-**결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `TEACHER_EDITED` 에 `{before, after}`(그때 바뀐 theme 값)를 싣는다.
-그 밖의 이벤트는 `null` 이다. `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
-**아직 구현 전이다**(연간 Backend Y3′). 지금 서버는 위 다섯 키만 준다. Core 는 이미 그 값을 저장하고 있다.
+**결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
+구현은 연간 Backend Y3′ 다.
 
 ---
 
@@ -1033,6 +1053,7 @@ POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
 PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨, M5)
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039)
+GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
@@ -1095,7 +1116,10 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 | `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
-**월간은 아직 없다.** 월간 API 와 양식이 같이 생길 때 붙인다.
+**월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다.
+기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
+활성 주차는 최대 5주이며 넘으면 `VALIDATION_FAILED` 422다. 비어 있는 내용은 자동으로 채우지 않는다.
+화면의 「확정하기」 후 「한글 파일로 내려받기」로 받는다. 출처와 생성 이력은 파일에 넣지 않는다.
 **원이 올린 양식으로 내보내는 것도 아직이다**(§8 양식 등록이 먼저다).
 
 **「일간」 계획안은 만들지 않는다.** 스펙에도 ADR 에도 없는 문서 종류다.
@@ -2381,8 +2405,8 @@ SELF_CHECK   5-1 · 5-2 · 5-3 · 6-1 · 6-2 · 6-3 · 6-4   교사가 평가요
 제외         1-1 · 1-2 · 2-1 · 2-2 · 3-1 · 3-2   응답에 넣지 않는다
 ```
 
-**이 절은 응답 모양의 계약이다.** 자기 점검 평가요소 원문은 지표 파일 v2 가 정한다(아래 「아직 정하지 않은 것」).
-FE 는 이 모양으로 목업을 먼저 붙인다.
+**이 절은 응답 모양의 계약이다.** 자기 점검 평가요소 원문은 2026-10-20 승인된 지표 파일 v2가 정한다.
+운영 로더가 v2를 읽고, 화면이 실제 조회·체크 저장 응답을 사용한다.
 
 **Request** — 파라미터가 없다. 최상위 `school_year` 는 SELF_CHECK 의 학년도다.
 서버가 요청 시각으로 정한다(`school_year_of`, §2 와 같다). AUTO 는 아래 공식 검토 기간을 쓴다.
@@ -2550,12 +2574,12 @@ NONE           없음        뒷받침 문서가 0건
 원 · 학년도 · 평가요소마다 체크를 저장하고 언제 체크했는지 남긴다. **누가 체크했는지는 남기지 않는다.**
 **3월에 새 학년도면 빈 체크리스트다. 지난 학년도 기록은 남는다.** 최상위 `school_year` 는 이 학년도다.
 
-**평가요소 원문을 나눈 목록은 아직 없다.** v1 의 `content` 는 한 덩어리 문장이다.
+**평가요소 원문은 승인된 v2에 실려 있다.** v1의 `content`만 사용하던 로더를 v2로 전환했다.
 hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 · 6-2:3 · 6-3:3 · 6-4:3**다.
 `1 2 3 4 5` 는 자기 점검 7개에만 있다 — 5-1 · 5-2 · 6-2 · 6-3 · 6-4 는 두 번, 5-3 · 6-1 은 한 번이다.
 공식 자체평가 서식은 평가요소별 5점 척도다. **우리는 체크(예/아니오, `checked: bool`)로 정했다(2026-10-03).**
 평가 준비가 됐는지만 확인하는 기능이라 점수는 필요 없다.
-**평가요소를 나눈 지표 파일 v2 는 승석(PM)에게 부탁한다.** 법정 고시 원문 · PM 승인 파일이라 우리가 고치지 않는다.
+**v2의 원문·승인 기록은 변경하지 않는다.** 이 파일의 승인·내용 해시 검사를 통과한 자료만 사용한다.
 
 ### 체크 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/checks` (구현됨)
 

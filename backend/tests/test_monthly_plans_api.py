@@ -524,8 +524,8 @@ def test_다른_무결성_오류는_409_로_바꾸지_않는다(world, monkeypat
 
     monkeypatch.setattr(PostgresPlanRepository, "save", broken_save)
     response = _create(world)
-    # 처리하지 않은 오류는 middleware 가 평문 500 으로 바꾼다 — 409 로 숨기지 않는다.
-    assert (response.status_code, response.text) == (500, "Internal Server Error")
+    # 처리하지 않은 오류는 middleware 가 공통 500 으로 바꾼다 — 409 로 숨기지 않는다.
+    assert (response.status_code, response.json()["error"]["code"]) == (500, "INTERNAL_ERROR")
 
 
 # ── LLM real 경로 (실제 엘리스를 부르지 않는다) ──────────────────────────────
@@ -771,12 +771,19 @@ def test_확정된_월간을_hwpx_로_내려준다(world):
 
     table, printed = _exported_table(response.content)
     weeks = [week for week in plan["weeks"] if week["active"]]
-    weekly = [s for s in plan["sections"] if s["visible"] and s["repeat_by"] == "WEEK"]
+    weekly = [
+        s
+        for s in plan["sections"]
+        if s["visible"] and s["role"] == "CONTENT" and s["repeat_by"] == "WEEK"
+    ]
 
     # 주마다 값이 있는 Section 하나가 본문 한 줄이다. 머리 7 · 본문 n · 꼬리 2.
     assert int(table.get("rowCnt")) == 7 + len(weekly) + 2
     for section in weekly:
         assert section["label"] in printed
+        for cell in section["cells"]:
+            if cell["value"]:
+                assert cell["value"] in printed
     assert weeks[0]["label"] in printed
     assert f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}" in printed
 

@@ -469,7 +469,7 @@ def create_document(
             for d in drafted
         ),
     ]
-    if check_sections(sections, facts, set(body.source_ids)):
+    if check_sections(sections, facts, set(body.source_ids), stage="generate"):
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "GENERATION_FAILED",
@@ -553,7 +553,7 @@ def update_document(
 
     sources = _sources(session, document_id)
     fields = check_sections(
-        body.sections, [s.text for s in sources], {s.source_id for s in sources}
+        body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
     )
     if fields:
         raise _invalid(fields)
@@ -691,7 +691,9 @@ def confirm_document(
         stored = list(
             session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
         )
-        fields = check_sections(stored, [s.text for s in sources], {s.source_id for s in sources})
+        fields = check_sections(
+            stored, [s.text for s in sources], {s.source_id for s in sources}, stage="confirm"
+        )
         if fields:
             raise _invalid(fields)
 

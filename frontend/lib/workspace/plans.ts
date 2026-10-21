@@ -1,6 +1,11 @@
 import { AGE_LABEL, type AgeGroup, type PeriodState, type PlanType } from "../plan-generator/types";
 import type { Template } from "./model";
-export type PlanRow = { label: string; title: string; detail: string };
+export type PlanRow = {
+  label: string;
+  title: string;
+  detail: string;
+  safetyEducation?: string[] | null;
+};
 export type PlanContent = {
   annualPlanId?: number;
   rows: PlanRow[];

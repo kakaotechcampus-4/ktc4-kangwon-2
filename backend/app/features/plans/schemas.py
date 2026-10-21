@@ -1,8 +1,23 @@
 """연간계획안 API 의 요청·응답. 계약은 docs/api-spec.md §4~§7 이다."""
 
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+SafetyCategory = Literal[
+    "traffic_safety",
+    "missing_and_abduction_prevention",
+    "infectious_disease_and_drug_misuse_prevention",
+    "disaster_preparedness_safety",
+    "sexual_violence_prevention",
+    "child_abuse_prevention",
+]
+
+
+class SafetyCategoryOut(BaseModel):
+    category_id: str
+    label: str
 
 
 class EvidenceOut(BaseModel):
@@ -29,6 +44,8 @@ class MonthOut(BaseModel):
     sub_themes: list[str]
     safety_education: list[str]
     safety_education_state: str
+    safety_education_source: Literal["TEACHER_INPUT"] | None = None
+    safety_education_generation: GenerationOut | None = None
     evidence: list[EvidenceOut]
     generation: GenerationOut
 
@@ -48,6 +65,7 @@ class AnnualPlanOut(BaseModel):
     school_year: int
     status: str
     months: list[MonthOut]
+    safety_categories: list[SafetyCategoryOut]
     # **빈 배열을 「통과」로 읽으면 안 된다.** 무엇을 검사했는지가 checked_rules 다.
     checked_rules: list[str]
     checks: list[CheckOut]
@@ -84,12 +102,28 @@ class UpdateMonth(BaseModel):
 
     theme: str = Field(min_length=1)
     sub_themes: list[str]
+    # 생략은 보존, null 은 미입력, [] 는 교사가 정한 「이 달 배치 없음」이다.
+    safety_education: list[SafetyCategory] | None = Field(default=None, max_length=6)
+
+    @field_validator("safety_education")
+    @classmethod
+    def unique_safety(cls, value):
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("안전교육 구분은 중복해서 입력할 수 없습니다")
+        return value
 
 
 class ConfirmOut(BaseModel):
     id: int
     status: str
     confirmed_at: datetime
+
+
+class ValueChangeOut(BaseModel):
+    """그 이벤트 때 바뀐 theme 값. Core `ValueChange` 그대로다."""
+
+    before: str
+    after: str
 
 
 class AuditEventOut(BaseModel):
@@ -100,6 +134,11 @@ class AuditEventOut(BaseModel):
     )
     actor: str | None = None
     system_actor: str | None = None
+    # 저장된 이벤트에 있을 때만 값이 있다 — 현재 값에서 거꾸로 만들지 않는다. 키는 늘 온다.
+    # generation_change 는 두지 않는다 — 연간은 재생성이 없어 늘 null 이다(ADR-030 PM-07).
+    value_change: ValueChangeOut | None = Field(
+        default=None, description="TEACHER_EDITED 만. 나머지는 null"
+    )
 
 
 class AuditOut(BaseModel):

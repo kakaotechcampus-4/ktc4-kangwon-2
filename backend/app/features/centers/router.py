@@ -248,6 +248,8 @@ def put_center_settings(
     # **보낸 칸만 바꾼다.** 안 보낸 칸은 건드리지 않는다 (§3-1).
     if body.trends_enabled is not None:
         center.trends_enabled = body.trends_enabled
+    if body.weekly_saturday_enabled is not None:
+        center.weekly_saturday_enabled = body.weekly_saturday_enabled
     session.commit()
     session.refresh(center)
     return center

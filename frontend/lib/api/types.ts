@@ -15,6 +15,8 @@ export type ErrorCode =
   | "LLM_BUDGET_EXCEEDED"
   | "DEPENDENCY_UNAVAILABLE"
   | "GENERATION_FAILED"
+  // 예상하지 못한 서버 오류 (U-19). 문구는 서버가 고정해서 준다.
+  | "INTERNAL_ERROR"
   // 원이 트렌드봇을 껐다 (FR-808 · §3-2). 「없다」가 아니라 「껐다」다.
   | "TRENDS_DISABLED";
 /** fields 는 항상 배열이다 — 하나여도 ["name"] 이다 (docs/api-spec.md 「공통」). */
@@ -93,14 +95,18 @@ export interface AnnualInput {
 export interface MonthInput {
   theme: string;
   sub_themes: string[];
+  /** 생략은 보존, null은 미입력, []는 교사가 정한 이번 달 배치 없음. */
+  safety_education?: string[] | null;
 }
 /** 한 달 (docs/api-spec.md §4). 출처는 세 축이다 — 근거(`evidence`) · 만든 방법(`generation`) · Audit. */
 export interface AnnualMonth extends MonthInput {
   month: number;
-  /** P0 에서는 항상 빈 배열이다. */
+  /** 교사가 입력한 월별 배치. 미입력도 빈 배열이므로 state를 함께 본다. */
   safety_education: string[];
-  /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. P0 는 항상 SOURCE_REQUIRED. */
+  /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. */
   safety_education_state: "SOURCE_REQUIRED" | "PLACED" | "NOT_PLACED";
+  safety_education_source?: "TEACHER_INPUT" | null;
+  safety_education_generation?: MonthlyCell["generation"] | null;
   /** THEME_REFERENCE 가 정확히 하나. 교사가 고쳐도 바뀌지 않는다(§6). 모양은 월간 칸과 같다. */
   evidence: MonthlyCell["evidence"];
   /** 처음 무엇이 만들었나. 교사가 고쳐도 바뀌지 않는다 — 「교사 수정됨」은 Audit 이 말한다(§6). */
@@ -117,6 +123,8 @@ export interface AnnualPlan {
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
   months: AnnualMonth[];
+  /** 서버의 승인된 규칙 파일에서 읽은 공식 구분 이름. 구버전 응답에서는 없을 수 있다. */
+  safety_categories?: { category_id: string; label: string }[];
   /** 무엇을 검사했는지. 빈 `checks` 를 「통과」로 읽지 않으려고 따로 온다(ADR-014). */
   checked_rules: string[];
   /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */
@@ -138,8 +146,8 @@ export interface ConfirmResult {
 }
 /**
  * 연간계획안 변경 이력 하나 (`GET /api/plans/annual/{id}/audit`, 서버 `AuditEventOut`).
- * **다섯 키가 항상 온다** — 해당이 없으면 null. 위치는 `month` 하나다(월간의 칸 주소는 없다).
- * 바뀐 값 · 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
+ * **여섯 키가 항상 온다** — 해당이 없으면 null. 위치는 `month` 하나다(월간의 칸 주소는 없다).
+ * 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
  */
 export interface AnnualAuditEvent {
   type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED";
@@ -151,6 +159,8 @@ export interface AnnualAuditEvent {
   actor: string | null;
   /** 시스템이 한 일(생성)이면 그 표시(`yearly_application`). 사람이면 null. */
   system_actor: string | null;
+  /** `TEACHER_EDITED` 면 그때 바뀐 theme(소주제만 고쳤으면 둘이 같다). 그 밖에는 null. */
+  value_change: { before: string; after: string } | null;
 }
 /** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
 export interface ProfileRef {

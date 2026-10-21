@@ -30,14 +30,27 @@ const themes = [
   "함께 자라요",
   "즐거웠던 우리 반",
 ];
+/** 표시 이름·id만 모사한다. 법령 수치나 통과 판정을 FE에 복제하지 않는다. */
+export const safetyCategories = [
+  { category_id: "sexual_violence_prevention", label: "성폭력 예방 교육" },
+  { category_id: "child_abuse_prevention", label: "아동학대 예방 교육" },
+  { category_id: "missing_and_abduction_prevention", label: "실종·유괴의 예방·방지 교육" },
+  {
+    category_id: "infectious_disease_and_drug_misuse_prevention",
+    label: "감염병 및 약물의 오용·남용 예방 등 보건위생관리 교육",
+  },
+  { category_id: "disaster_preparedness_safety", label: "재난대비 안전 교육" },
+  { category_id: "traffic_safety", label: "교통안전 교육" },
+];
 export const months = (): AnnualMonth[] =>
   [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map((month, i) => ({
     month,
     theme: themes[i],
-    // 서버처럼 생성 때는 항상 비어 있다 — 교사가 §6 으로 채운다.
-    sub_themes: [],
+    sub_themes: [`${themes[i]} 알아보기`, `${themes[i]} 함께 놀이하기`],
     safety_education: [],
     safety_education_state: "SOURCE_REQUIRED",
+    safety_education_source: null,
+    safety_education_generation: null,
     evidence: [
       {
         source_type: "THEME_REFERENCE",
@@ -63,6 +76,7 @@ const event = (
   month: null,
   actor: MOCK_ACTOR,
   system_actor: null,
+  value_change: null,
   ...more,
 });
 /** 이벤트 시각은 앞선 것보다 뒤다 — 같은 밀리초에 두 번 불러도 순서가 뒤집히지 않게. */
@@ -92,6 +106,7 @@ const detail = (p: MockAnnualPlan): AnnualPlan => ({
   school_year: p.school_year,
   status: p.status,
   months: p.months,
+  safety_categories: safetyCategories,
   checked_rules: p.checked_rules,
   checks: p.checks,
 });
@@ -145,10 +160,25 @@ export const putMonth = (id: number, month: number, input: MonthInput) =>
   commit((db) => {
     const plan = db.plans.find((p) => p.id === id)!;
     const m = plan.months.find((m) => m.month === month)!;
-    // 주제가 그대로여도 남는다(서버와 같다). 소주제는 이력에 없다.
-    record(db, id, event("TEACHER_EDITED", stamp(db, id), { month }));
+    // 주제가 그대로여도 남는다(서버와 같다) — 그때 before · after 가 같다. 소주제는 이력에 없다.
+    const value_change = { before: m.theme, after: input.theme };
+    record(db, id, event("TEACHER_EDITED", stamp(db, id), { month, value_change }));
     m.theme = input.theme;
     m.sub_themes = input.sub_themes;
+    if (input.safety_education !== undefined) {
+      m.safety_education = input.safety_education ?? [];
+      m.safety_education_source = input.safety_education === null ? null : "TEACHER_INPUT";
+      m.safety_education_generation =
+        input.safety_education === null
+          ? null
+          : { method: "MANUAL", rule_id: null, rule_version: null };
+      m.safety_education_state =
+        input.safety_education === null
+          ? "SOURCE_REQUIRED"
+          : input.safety_education.length
+            ? "PLACED"
+            : "NOT_PLACED";
+    }
     return m;
   });
 /** 재호출은 멱등이다 — 이미 확정이면 아무것도 바꾸지 않고 최초 확정 시각을 돌려준다 (§7). */
@@ -168,4 +198,6 @@ export const confirmPlan = (id: number): ConfirmResult =>
  * 저장 순서가 곧 서버 정렬이다 — 시각은 계속 늘어나고(stamp), 같은 시각인 생성 이벤트는 계획안 →
  * 3월 ~ 익년 2월 순서로 넣는다. 이 변경 전에 만든 옛 목업 계획안은 이력이 없어 빈 목록이다(지어내지 않는다).
  */
-export const listAnnualAudit = (id: number): AnnualAuditEvent[] => read().annualAudit[id] ?? [];
+/** 이 키가 생기기 전에 저장된 목업 이력에는 `value_change` 가 없다 — 서버처럼 null 로 준다. */
+export const listAnnualAudit = (id: number): AnnualAuditEvent[] =>
+  (read().annualAudit[id] ?? []).map((e) => ({ ...e, value_change: e.value_change ?? null }));

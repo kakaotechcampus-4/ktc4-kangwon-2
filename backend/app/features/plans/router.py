@@ -11,6 +11,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
 
@@ -34,6 +35,7 @@ from ssuksak.planning import (
     YearlyPlan,
 )
 from ssuksak.planning.rules.errors import YearlyRuleError
+from ssuksak.planning.rules.yearly_theme_selection import RULE_ID as THEME_SELECTION_RULE_ID
 
 from app.config import settings
 from app.db import get_session
@@ -41,6 +43,7 @@ from app.features.auth.models import User
 
 # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
 from app.features.forms.service import find_own_form
+from app.features.plans.annual_content import generate_subthemes
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
@@ -59,10 +62,11 @@ from app.features.plans.schemas import (
     GenerationOut,
     MonthOut,
     UpdateMonth,
+    ValueChangeOut,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
-from app.shared.llm import LlmBudgetExceeded, LlmUnavailable
+from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
 
@@ -76,16 +80,23 @@ CATALOG = CatalogSelector(
     catalog_version="theme-reference-v0.1.2",
 )
 
-# P0 에서는 안전교육 배치 입력이 없다. 「그 달엔 안 한다」가 아니라
-# 「언제 할지 아직 모른다」다 — 둘을 같게 그리면 교사가 비었다고 넘어간다(§4).
-SAFETY_STATE_P0 = "SOURCE_REQUIRED"
-
 _NOT_FOUND = HTTPException(
     status.HTTP_404_NOT_FOUND,
     detail={"code": "NOT_FOUND", "message": "계획안을 찾을 수 없습니다.", "fields": ["id"]},
 )
 
 _log = logging.getLogger("app.server")
+
+# 반 하나에 연간 하나 — models.py 의 부분 유니크 인덱스. 동시 생성이 여기에 걸린다.
+ANNUAL_UNIQUE = "uq_plans_annual_per_classroom"
+_ALREADY_EXISTS = HTTPException(
+    status.HTTP_409_CONFLICT,
+    detail={
+        "code": "ALREADY_EXISTS",
+        "message": "이 반의 연간계획안이 이미 있습니다.",
+        "fields": ["class_id"],
+    },
+)
 
 
 def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
@@ -111,17 +122,33 @@ def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> P
     return row
 
 
-def _months(plan: YearlyPlan, sub_themes: dict) -> list[MonthOut]:
+def _months(
+    plan: YearlyPlan, sub_themes: dict, annual_safety: dict | None = None
+) -> list[MonthOut]:
     """도메인 객체를 계약 형식으로. 배열은 3월부터 익년 2월 순서다(§4)."""
+    placements = (annual_safety or {}).get("months", {})
     return [
         MonthOut(
             month=period.period.calendar_month,
             theme=period.theme.value,
-            # 계약에는 있는데 도메인이 만들지 않는다. 교사가 §6 으로 채운다.
+            # 생성·교사 수정 내용은 서버가 저장한다. Core 의 주제 포트는 유지한다.
             sub_themes=sub_themes.get(str(period.period.calendar_month), []),
-            # P0 에는 배치 입력이 없어 항상 빈 배열이다. 칸은 있고 값만 빈다.
-            safety_education=[],
-            safety_education_state=SAFETY_STATE_P0,
+            safety_education=placements.get(str(period.period.calendar_month), []),
+            safety_education_source=(
+                "TEACHER_INPUT" if str(period.period.calendar_month) in placements else None
+            ),
+            safety_education_generation=(
+                GenerationOut(method="MANUAL")
+                if str(period.period.calendar_month) in placements
+                else None
+            ),
+            safety_education_state=(
+                "SOURCE_REQUIRED"
+                if str(period.period.calendar_month) not in placements
+                else "PLACED"
+                if placements[str(period.period.calendar_month)]
+                else "NOT_PLACED"
+            ),
             evidence=[
                 EvidenceOut(
                     source_type=source.source_type.value,
@@ -143,13 +170,14 @@ def _months(plan: YearlyPlan, sub_themes: dict) -> list[MonthOut]:
 
 
 def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
-    months = _months(plan, row.sub_themes)
+    months = _months(plan, row.sub_themes, row.annual_safety)
     return AnnualPlanOut(
         id=row.id,
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
         months=months,
+        safety_categories=verify.safety_categories(),
         **_checks(months),
     )
 
@@ -204,8 +232,10 @@ def _generation_error(error: YearlyApplicationError) -> HTTPException:
         return _503(
             "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
         )
-    if error.code == "theme_text_generation_failed":
+    if error.code in ("theme_text_generation_failed", "invalid_theme_text_result"):
+        # 호출이 깨졌거나 결과가 계약을 어겼다 — 둘 다 생성 실패다. 입력 오류(422)가 아니다.
         # **부분 결과가 남지 않는다.** p0-planning 이 저장 전에 멈춘다.
+        _log.warning("annual generation failed code=%s", error.code)
         return HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -218,7 +248,11 @@ def _generation_error(error: YearlyApplicationError) -> HTTPException:
 
 
 def _domain_error(error: Exception) -> HTTPException:
-    """도메인이 낸 오류를 계약 봉투로. **원인은 도메인이 안다 — 여기서 다시 판단하지 않는다.**"""
+    """도메인이 낸 오류를 계약 봉투로. **원인은 도메인이 안다 — 여기서 다시 판단하지 않는다.**
+
+    **Core 문장을 교사에게 보내지 않는다.** 개발자용 영어라 고정 문구로 답하고,
+    원문은 서버 기록에만 남긴다.
+    """
     if isinstance(error, InvalidStateTransitionError):
         return HTTPException(
             status.HTTP_409_CONFLICT,
@@ -228,9 +262,17 @@ def _domain_error(error: Exception) -> HTTPException:
                 "fields": [],
             },
         )
+    code = getattr(error, "code", None) or getattr(error, "rule_id", None)
+    _log.warning("annual domain error type=%s code=%s detail=%s", type(error).__name__, code, error)
+    if isinstance(error, YearlyRuleError) and error.rule_id == THEME_SELECTION_RULE_ID:
+        # 그 달 · 반 연령에 맞는 승인 주제가 없다. 교사가 고칠 수 없는 참고자료 문제다(U-20 B).
+        return _503(
+            "DEPENDENCY_UNAVAILABLE",
+            "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
+        )
     return HTTPException(
         status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail={"code": "VALIDATION_FAILED", "message": str(error), "fields": []},
+        detail={"code": "VALIDATION_FAILED", "message": "입력값을 확인해주세요.", "fields": []},
     )
 
 
@@ -253,14 +295,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
         )
     )
     if duplicate is not None:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail={
-                "code": "ALREADY_EXISTS",
-                "message": "이 반의 연간계획안이 이미 있습니다.",
-                "fields": ["class_id"],
-            },
-        )
+        raise _ALREADY_EXISTS
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
         # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
@@ -300,10 +335,38 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
         raise _generation_error(error) from error
     except (YearlyRuleError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
+    except IntegrityError as error:
+        # 위 조회를 둘 다 통과한 동시 요청 — 늦은 쪽이 저장(flush)에서 인덱스에 걸린다.
+        session.rollback()
+        if getattr(getattr(error.orig, "diag", None), "constraint_name", None) == ANNUAL_UNIQUE:
+            raise _ALREADY_EXISTS from error
+        raise
     # **응답을 다 만든 뒤에 확정한다.** 먼저 commit 하면 아래에서 터졌을 때 DB 에는
     # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
     # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
+    try:
+        row.sub_themes = generate_subthemes(result.plan)
+    except (LlmUnavailable, LlmBudgetExceeded, LlmFailed) as error:
+        # Core 가 이미 flush 했다. 실패한 생성에서 부분 계획안을 남기지 않는다.
+        session.rollback()
+        if isinstance(error, LlmUnavailable):
+            raise _503(
+                "DEPENDENCY_UNAVAILABLE",
+                "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요.",
+            ) from error
+        if isinstance(error, LlmBudgetExceeded):
+            raise _503(
+                "LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요."
+            ) from error
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "GENERATION_FAILED",
+                "message": "소주제를 완성하지 못해 계획안을 저장하지 않았어요. 다시 시도해주세요.",
+                "fields": [],
+            },
+        ) from error
     # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
     row.form_id = body.form_id
     detail = _detail(row, result.plan)
@@ -472,7 +535,28 @@ def update_month(
     # 소주제는 도메인 밖이라 따로 넣는다. dict 를 통째로 갈아끼워야 SQLAlchemy 가
     # 바뀐 걸 알아챈다 — 안쪽만 고치면 JSONB 가 그대로 남는다.
     row.sub_themes = {**row.sub_themes, str(month): body.sub_themes}
-    months = _months(updated, row.sub_themes)
+    if "safety_education" in body.model_fields_set:
+        safety = row.annual_safety or {}
+        placements = dict(safety.get("months", {}))
+        before = placements.get(str(month))
+        after = body.safety_education
+        if after is None:
+            placements.pop(str(month), None)
+        else:
+            placements[str(month)] = after
+        audit = list(safety.get("audit", []))
+        if before != after:
+            audit.append(
+                {
+                    "month": month,
+                    "before": before,
+                    "after": after,
+                    "actor": f"user_{user.id}",
+                    "occurred_at": SystemClock().now().isoformat(),
+                }
+            )
+        row.annual_safety = {"months": placements, "audit": audit}
+    months = _months(updated, row.sub_themes, row.annual_safety)
     answer = next(item for item in months if item.month == month)
     session.commit()
     return answer
@@ -511,12 +595,16 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     plan = _repo(session, user).get(PlanId(row.plan_ref))
 
     def out(event, month=None):
+        values = event.value_change
         return AuditEventOut(
             type=event.event_type.value,
             occurred_at=event.occurred_at,
             month=month,
             actor=event.actor_id.value if event.actor_id is not None else None,
             system_actor=event.system_actor,
+            value_change=(
+                None if values is None else ValueChangeOut(before=values.before, after=values.after)
+            ),
         )
 
     items = [out(event) for event in plan.audit.events]
