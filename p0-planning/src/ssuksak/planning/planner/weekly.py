@@ -229,12 +229,13 @@ def with_reference_labels(
     )
 
 
-# Q2 (2026-10-21): dates, weekdays, clock times and personal honorifics must come from the
-# inputs. ponytail: pattern heuristic — names are "surname + 1-2 syllables" before 선생님/님/씨
-# minus a stop-list of role words; widen with an institution events/people list if one exists.
+# Q2 (2026-10-21, scope narrowed the same day): dates, weekdays, clock times and a person's
+# name before 선생님 must come from the inputs. 「○○님 · ○○씨」 and 「n/n」 are common in
+# children's activities (공주님 · 해님 · 1/2), so they are not blocked — the fact-scope
+# warning tells the teacher to check them. ponytail: pattern heuristic — a name is
+# "surname + 0-2 syllables" before 선생님 minus a stop-list; widen with a staff list if one exists.
 _DATE_TIME = (
     re.compile(r"\d{1,2}\s*월\s*\d{1,2}\s*일"),
-    re.compile(r"\d{1,2}\s*/\s*\d{1,2}"),
     re.compile(r"[월화수목금토일]요일"),
     re.compile(r"\([월화수목금토일]\)"),
     re.compile(r"\d{1,2}\s*:\s*\d{2}"),
@@ -248,19 +249,25 @@ _ROLE_WORDS = frozenset({
     "원장", "원감", "담임", "부모", "선생", "할머", "할아", "어머", "아버", "부모님", "주인", "사장",
     "경찰", "경찰관", "소방관", "소방", "의사", "간호", "기사", "교장", "교감", "반장", "보조", "영양",
     "보건", "마음", "아저", "아가", "손님", "고객", "집배원", "환경", "미화원", "선생님",
+    "우리", "우리반", "우리원", "공주", "왕자", "임금", "요리", "미술", "음악", "체육", "과학",
 })
+# A lone syllable before 「 선생님」 is a name only if it is a surname and not a common word
+# (「이 선생님」 = this teacher, 「반 · 원 선생님」 = class / center teacher).
+_SINGLE_STOP = frozenset("이그저반원전새옆각우")
 _NOUN_TAILS = frozenset("날글솜말불꽃볍홀손해달별")  # 날씨 · 글씨 · 손님 · 해님 … are not people
-_HONORIFIC = re.compile(r"([가-힣]{2,3})\s?(선생님|님|씨(?!앗))")
+_TEACHER_NAME = re.compile(r"([가-힣]{1,3})(\s?)선생님")
 
 
-def _is_person(token: str) -> bool:
+def _is_person(token: str, spaced: bool) -> bool:
+    if len(token) == 1:  # 「김 선생님」
+        return spaced and token in _SURNAMES and token not in _SINGLE_STOP
     return token[0] in _SURNAMES and token not in _ROLE_WORDS and token[-1] not in _NOUN_TAILS
 
 
 def unsupported_facts(value: str, allowed_text: str) -> tuple[str, ...]:
     allowed = re.sub(r"\s+", "", allowed_text)
     found = [m.group(0) for pattern in _DATE_TIME for m in pattern.finditer(value)]
-    found += [m.group(0) for m in _HONORIFIC.finditer(value) if _is_person(m.group(1))]
+    found += [m.group(0) for m in _TEACHER_NAME.finditer(value) if _is_person(m.group(1), bool(m.group(2)))]
     return tuple(dict.fromkeys(f for f in found if re.sub(r"\s+", "", f) not in allowed))
 
 
@@ -316,7 +323,7 @@ def validate_weekly(values: tuple[ProposedSectionValue, ...], request: WeeklyPla
         if normalize_visible_text(v.value) in evidence_texts:
             issues.append(WeeklyIssue(WeeklyIssueCode.SOURCE_TEXT_COPY, key))
         if unsupported_facts(v.value, request.allowed_fact_text):
-            issues.append(WeeklyIssue(WeeklyIssueCode.UNSUPPORTED_FACT, key, "date_time_or_honorific"))
+            issues.append(WeeklyIssue(WeeklyIssueCode.UNSUPPORTED_FACT, key, "date_time_or_teacher_name"))
     for target in request.targets:
         if target.section_key not in seen:
             issues.append(WeeklyIssue(WeeklyIssueCode.MISSING_SECTION, target.section_key))

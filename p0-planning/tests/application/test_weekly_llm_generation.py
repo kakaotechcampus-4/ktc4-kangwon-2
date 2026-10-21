@@ -132,7 +132,7 @@ def test_unsupported_date_is_repaired_once_and_only_that_cell_carries_the_repair
     assert plan.cell("goals").generation.rule_version == WEEKLY_PROMPT_VERSION
 
 
-@pytest.mark.parametrize("value", ["10월 3일 개천절 행사 준비", "김민지 선생님과 함께 놀아요"])
+@pytest.mark.parametrize("value", ["10월 3일 개천절 행사 준비", "김민지 선생님과 함께 놀아요", "김 선생님과 요리해요"])
 def test_unsupported_date_or_name_that_survives_the_repair_saves_nothing(value):
     harness = WeeklyHarness()
     provider = Scripted(_set("theme", value=value), _set("theme", value=value))
@@ -149,6 +149,17 @@ def test_a_date_that_is_in_the_inputs_may_be_named():
 
 def test_common_words_are_not_taken_for_people():
     text = "오늘 날씨가 맑아요. 부모님, 원장님, 담임 선생님과 손님 놀이를 하고 씨앗을 심어요. 2시간 동안 놀아요"
+    assert unsupported_facts(text, "") == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["우리 선생님과 함께 산책해요", "공주님 놀이", "왕자님과 공주님", "1/2 크기로 잘라요", "박지민님 발표",
+     "이 선생님께 물어봐요", "반 선생님과 인사해요", "요리 선생님"],
+)
+def test_nim_ssi_and_slash_numbers_are_not_blocked(text):
+    # Q2 scope narrowed 2026-10-21: only dates, weekdays, clock times and a name before 선생님
+    # block; the rest is left to the NOT_VERIFIED fact-scope warning.
     assert unsupported_facts(text, "") == ()
 
 

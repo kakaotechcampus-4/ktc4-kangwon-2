@@ -157,9 +157,9 @@ def _verify_fact_scope(plan: WeeklyPlan) -> RuleVerificationResult:
         _finding(
             FACT_SCOPE_RULE_ID, FACT_SCOPE_RULE_VERSION, FACT_SCOPE_NOT_VERIFIED,
             FindingKind.NOT_VERIFIED, Severity.WARNING, cell,
-            "Dates, times and personal honorifics were checked against the inputs; "
-            "other facts such as event names are outside detection",
-            "checked=date,weekday,time,honorific", (),
+            "Dates, weekdays, clock times and names before 선생님 were checked against the inputs; "
+            "○○님 · ○○씨 · n/n and other facts such as event names are not blocked — check them",
+            "checked=date,weekday,time,teacher_name;unchecked=honorific_nim_ssi,slash_number,event", (),
         )
         for cell in plan.cells
         if cell.generation is not None and cell.generation.method is GenerationMethod.RULE_LLM and cell.value.strip()
