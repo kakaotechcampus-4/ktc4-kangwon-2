@@ -25,8 +25,8 @@ MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v10"
 # Embeds prompt.SYSTEM_PROMPT; bump it whenever that prompt changes.
 MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 # Used instead of the two above when the Context Packet carries safety placement.
-MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v14"
-MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v14"
+MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v15"
+MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v15"
 MONTHLY_MODEL = "openai/gpt-6-luna"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-6-luna-2026-10-07"). Elice answers

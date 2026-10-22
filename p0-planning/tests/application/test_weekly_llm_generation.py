@@ -21,6 +21,7 @@ from ssuksak.planning.application.generate_weekly_plan import (
 from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.provenance import EvidenceSourceType, GenerationMethod
+from ssuksak.planning.domain.safety_placement import SafetyKind
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS
 from ssuksak.planning.evidence.models import SourceSection
 from ssuksak.planning.evidence.weekly_classification import (
@@ -35,7 +36,7 @@ from ssuksak.planning.planner.weekly import (
 )
 from ssuksak.planning.rules.weekly_verification import FACT_SCOPE_NOT_VERIFIED
 
-from tests.finalization.harness import _EVIDENCE_REPOSITORY, ACTIVITY_CATALOG, SAFETY_RULE
+from tests.finalization.harness import _EVIDENCE_REPOSITORY, ACTIVITY_CATALOG, SAFETY_PLACEMENT, SAFETY_RULE
 from tests.finalization.weekly_harness import WEEK, WEEKLY_TEMPLATE, WeeklyHarness
 
 LLM = MonthlyGenerationMode.LLM_PLANNER
@@ -124,6 +125,29 @@ def test_safety_teacher_text_row_cites_exactly_that_parent_cell():
     ]
     assert [s.source_type for s in safety.evidence] == [EvidenceSourceType.PARENT_PLAN]
     assert safety.safety is None  # no placement or legal category is claimed
+
+
+@pytest.mark.parametrize("mode", [LLM, MonthlyGenerationMode.RULE_ONLY])
+def test_a_placed_parent_safety_cell_is_copied_as_the_weeks_line(mode):
+    # 2026-10-22: a placed monthly cell already reads 「[교통안전] - 내용」, so the week takes it.
+    harness = WeeklyHarness()
+    yearly = harness.confirm_yearly(harness.generate_yearly(frozenset({3, 4})).plan)
+    parent = harness.confirm_monthly(
+        harness.generate_monthly(yearly, LLM, safety_placement=SAFETY_PLACEMENT).plan
+    )
+    parent_cell = parent.section("safety_education").cell_for_week(WEEK)
+    assert parent_cell.safety.kind is SafetyKind.STATUTORY  # September week 2: traffic safety
+
+    safety = harness.generate_weekly(parent, mode=mode).plan.cell("safety_education")
+    assert safety.value == parent_cell.value and safety.value.startswith("[교통안전] - ")
+    assert safety.generation.method is GenerationMethod.RULE_ONLY
+    assert [(s.parent_item_id, s.snapshot_value) for s in safety.parent_snapshots] == [
+        (parent_cell.item_id, parent_cell.value)
+    ]
+    assert [s.source_type for s in safety.evidence] == [EvidenceSourceType.PARENT_PLAN]
+    assert safety.safety is None
+    if mode is LLM:
+        assert harness.weekly_provider.requests[-1].target("safety_education") is None
 
 
 def test_parent_value_alone_grounds_focus_and_inheriting_its_wording_is_no_copy():

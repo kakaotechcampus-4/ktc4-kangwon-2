@@ -1189,16 +1189,17 @@ profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 
 **같은 반 · 같은 달은 하나다**(ADR-034 §5). `DRAFT` 든 `CONFIRMED` 든 `ALREADY_EXISTS` 409 —
 FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(screen-spec §5.3).
 
-### 안전교육 — 근거가 없으면 비워 두고 그렇다고 표시한다
+### 안전교육 — 배치 정책 v2 로 채운다
 
-**M4 는 안전교육 배치 정책(`ssuksak-safety-placement-v2`)을 넘기지 않는다**(D-M4-03).
-그래서 안전교육 칸은 Core 의 「근거 필요」 경로를 탄다(OD-M04 의 source-required 경로).
+**월간 생성은 안전교육 배치 정책 `ssuksak-safety-placement-v2` 를 넘긴다**(2026-10-22 결정 — 넘기지 않던 D-M4-03 을 대체).
 
-- 칸은 항상 있고 `state: "EMPTY_UNRESOLVED"`, `value: ""` 다. 규칙도 LLM 도 내용을 지어내지 않는다.
-- `constraints` 에 `STATUTORY_SAFETY_EDUCATION` · `NOT_VERIFIED_SOURCE_REQUIRED` 가 실린다.
-  **「법정 요건을 충족한다」도 「위반이다」도 말하지 않는다.**
-- 다른 Section 은 영향이 없다. 근거가 있는 칸은 `FILLED` 와 `evidence` 를 갖는다.
-- 비어 있어도 확정할 수 있다(Core 계약). 화면은 확정 전에 비어 있다는 것을 보여 준다.
+- 법정 주: 법정 6구분을 정책이 정한 월 · 주(한 달 1개면 2주, 2개면 2 · 4주)에 둔다. 값은 `[교통안전] - 내용` —
+  대괄호 안 짧은 이름은 규칙이 붙이고 LLM 은 `- ` 뒤 내용만 쓴다.
+- 보충 주(그 밖의 활성 주): 승인된 기관 자료의 보충 주제 하나를 규칙이 고르고, 값은 주제만 쓴다(대괄호 없음).
+- 활성 주의 안전교육 칸은 빈 채로 저장되지 않는다. 근거 오류는 저장을 막는다(ADR-037).
+- `constraints` 의 `STATUTORY_SAFETY_EDUCATION` 은 그대로 `NOT_VERIFIED_SOURCE_REQUIRED` 다 — 계획안에 시간 정보가 없어
+  연간 시수는 검사하지 않는다(`SAFETY_ANNUAL_HOURS_NOT_VERIFIED`). **「법정 요건을 충족한다」도 「위반이다」도 말하지 않는다.**
+- 안전교육 칸은 다시 만들기 대상이 아니다. 교사는 고칠 수 있다.
 
 ### 월간계획안 응답 — 생성 · 단건 조회가 같은 형식
 

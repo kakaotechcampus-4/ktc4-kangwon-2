@@ -50,6 +50,7 @@ from ssuksak.planning import (
     MonthlyPlan,
     PlanId,
     RegenerateMonthlyPlanItemCommand,
+    SafetyPlacementSelector,
     SafetyRuleSelector,
     TemplateProfileRef,
     YearlyPlan,
@@ -102,6 +103,8 @@ ACTIVITY_CATALOG = ActivityCatalogSelector(
     "ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1"
 )
 SAFETY_RULE = SafetyRuleSelector("child-welfare-act-decree-annex6-2022-06-21")
+# 안전교육 배치 정책(2026-10-22 결정으로 D-M4-03 을 뒤집음). 법정 주 + 나머지 보충 주.
+SAFETY_PLACEMENT = SafetyPlacementSelector("ssuksak-safety-placement-v2")
 # 월간은 반 · 월당 하나다(결정 문서 12.5). 이 이름의 충돌만 409 로 바꾼다.
 MONTHLY_UNIQUE = "uq_plans_monthly_per_classroom_month"
 
@@ -267,7 +270,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
                 safety_rule=SAFETY_RULE,
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
-                # D-M4-03: 배치 정책을 넘기지 않는다 — 안전교육은 「근거 필요」 경로다.
+                safety_placement=SAFETY_PLACEMENT,
             )
         ).plan
     except MonthlyApplicationError as error:

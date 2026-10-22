@@ -236,9 +236,12 @@ def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world)
     focus_sources = {e["source_type"] for c in sections["focus"]["cells"] for e in c["evidence"]}
     assert "INSTITUTION_SAMPLE" in focus_sources  # LLM 이 쓴 칸의 Grounding
 
-    # 안전교육은 근거가 없으니 비워 두고 그렇다고 표시한다 — 충족도 위반도 말하지 않는다.
+    # 안전교육은 배치 정책 v2 로 채운다(2026-10-22) — 법정 주는 「[짧은 이름] - 내용」, 보충 주는
+    # 주제만. 법정 시수는 따지지 않으므로 제약은 그대로 「근거 필요 · 미검증」이다.
     safety = sections["safety_education"]["cells"]
-    assert {(c["state"], c["value"]) for c in safety} == {("EMPTY_UNRESOLVED", "")}
+    assert {c["state"] for c in safety} == {"FILLED"}
+    assert any(c["value"].startswith("[") for c in safety)
+    assert any(not c["value"].startswith("[") for c in safety)
     constraints = {c["code"]: c for c in body["constraints"]}
     assert constraints["STATUTORY_SAFETY_EDUCATION"]["verification"] == (
         "NOT_VERIFIED_SOURCE_REQUIRED"

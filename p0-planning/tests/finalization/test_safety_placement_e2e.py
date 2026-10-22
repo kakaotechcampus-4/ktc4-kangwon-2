@@ -20,6 +20,7 @@ from ssuksak.planning.rules.safety_placement import (
     ANNUAL_HOURS_NOT_VERIFIED,
     OFFICIAL_GROUNDING_MISSING,
     PLACEMENT_RULE_REF,
+    STATUTORY_SHORT_LABELS,
     is_official_ref,
     verify_monthly_safety_placement,
 )
@@ -107,9 +108,12 @@ def test_placement_fills_statutory_and_supplemental_safety_weeks(month, statutor
         if category:
             assert cell.safety.kind is SafetyKind.STATUTORY
             assert official and all(is_official_ref(s.source_id, category) and s.source_version == LEGAL for s in official)
+            # The Rule writes the label; the LLM wrote only what follows it.
+            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] - ")
         else:
             assert cell.safety.kind is SafetyKind.SUPPLEMENTAL
             assert samples and not official
+            assert not cell.value.startswith("[")
     # Other Sections are unchanged by safety placement.
     for key in ("goals", "basic_habit", "focus", "outdoor_play"):
         assert all(cell.cell_state is CellState.FILLED for cell in plan.section(key).cells)

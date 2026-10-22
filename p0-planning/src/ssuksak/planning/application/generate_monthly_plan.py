@@ -49,7 +49,7 @@ from ..rules.monthly_template_resolver import (
     resolve_snapshot_sections,
 )
 from ..rules.monthly_theme_derivation import derive_monthly_theme
-from ..rules.safety_placement import PLACEMENT_RULE_ID, month_safety_slots
+from ..rules.safety_placement import PLACEMENT_RULE_ID, month_safety_slots, safety_display_value
 from ..domain.monthly_verification import FindingKind
 from ..rules.monthly_week_periods import canonical_week_periods
 from .monthly_dto import (
@@ -447,6 +447,7 @@ class GenerateMonthlyPlan:
                     evidence = theme.evidence
                     generation = theme.generation
                 elif section.section_key == SAFETY_SECTION_KEY:
+                    value = safety_display_value(safety_placements.get(week_id), value)
                     evidence = deduplicate_evidence(
                         (
                             EvidenceSource(
