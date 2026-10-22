@@ -62,6 +62,7 @@ services:
       args:
         # 빌드 때 박힌다 — 바꾸려면 `docker compose build frontend` 를 다시 해야 한다.
         NEXT_PUBLIC_ALLOW_TEST_RESET: ${NEXT_PUBLIC_ALLOW_TEST_RESET:-0}
+        GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
     restart: unless-stopped
     environment:
       # Next 라우트 핸들러가 **서버에서** 백엔드를 부를 때 쓴다. 브라우저 요청은

@@ -17,6 +17,10 @@ export const SECTION_LABELS: Record<string, string> = {
   focus: "소주제",
   goals: "목표",
   habits: "기본생활습관",
+  // 서버가 Template 의 `habits` 를 Profile 쪽 이름인 `basic_habit` 으로 바꿔 내려준다
+  // (`template_profiles/repository.py` `_TEMPLATE_KEY`). 둘 다 적어 둬야 어느 쪽이 와도
+  // 한글로 뜬다 — 없으면 교사 화면에 기계 이름이 그대로 나온다.
+  basic_habit: "기본생활습관",
   emergency_response: "비상대응",
   drill: "소방대피 훈련",
   indoor_alternative: "실내 대체활동",

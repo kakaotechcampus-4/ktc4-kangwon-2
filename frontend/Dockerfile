@@ -12,6 +12,9 @@ COPY . .
 # 서버에도 같은 이름의 스위치가 있고 그쪽이 최종이다(꺼져 있으면 경로가 404).
 ARG NEXT_PUBLIC_ALLOW_TEST_RESET=0
 ENV NEXT_PUBLIC_ALLOW_TEST_RESET=$NEXT_PUBLIC_ALLOW_TEST_RESET
+# 구글 Search Console 소유권 확인 토큰. 비워 두면 태그를 넣지 않는다.
+ARG GOOGLE_SITE_VERIFICATION=""
+ENV GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION
 
 RUN npm run build
 
