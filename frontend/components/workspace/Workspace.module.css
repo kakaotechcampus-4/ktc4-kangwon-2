@@ -314,6 +314,12 @@
   text-align: left;
   width: 100%;
 }
+/* 보관함의 계획안은 다른 화면으로 가는 링크다. 버튼 줄과 똑같이 보이게 한다. */
+a.item {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
 .item h3 {
   font-size: 14px;
   font-weight: 600;
