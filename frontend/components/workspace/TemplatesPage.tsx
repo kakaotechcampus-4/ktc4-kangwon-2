@@ -141,6 +141,7 @@ export default function TemplatesPage() {
           <h3>기관에서 쓰는 계획안 양식을 선택해주세요</h3>
           <p className={ws.muted}>HWP · HWPX</p>
           <input
+            name="form_file"
             aria-label="기관 양식 파일"
             disabled={busy !== null || centerId === null}
             type="file"
