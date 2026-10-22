@@ -151,17 +151,31 @@ sudo -u ubuntu git -C /home/ubuntu/ktc4-kangwon-2 log --oneline -5
 alembic.util.exc.CommandError: Can't locate revision identified by 'b8d4f1a92c37'
 ```
 
-그래서 **배포가 거기서 멈춘다.** 컨테이너는 아직 옛 이미지로 돌고 있어 서비스는 살아
-있지만, 되감기는 안 된 상태다. 이때는 둘 중 하나다.
+그래서 **배포가 거기서 멈춘다.** `up -d` 전이므로 기존 컨테이너는 교체되지 않았지만,
+작업 폴더와 빌드된 이미지는 이미 되감을 커밋의 것이다. 이때는 둘 중 하나다.
 
 ```
 ① 되감을 커밋을 마이그레이션 앞이 아니라 뒤로 잡는다 (그 마이그레이션을 포함한 커밋)
-② 그래도 꼭 더 뒤로 가야 하면, 먼저 DB 를 한 단계 내린 뒤 배포한다
-   sudo docker compose run --rm backend alembic downgrade -1
+② 더 이전 커밋이 꼭 필요하면, 아래 조건을 확인한 뒤 DB 를 목표 리비전까지 내리고 배포한다
 ```
 
-②는 **데이터가 지워질 수 있다.** 내리는 마이그레이션의 `downgrade()` 를 먼저 읽는다.
-이 길은 develop 확인용에서나 쓰는 일이라 자주 올 상황은 아니다.
+②는 **데이터가 지워질 수 있다.** 먼저 DB 를 백업하고, 목표 커밋의 마이그레이션 head 와
+현재 DB 리비전을 확인한다. **현재 리비전 파일을 포함한 코드로 돌아가 backend 이미지를
+다시 빌드한 뒤** 실행해야 한다. 실패한 롤백 직후의 이미지로 `downgrade` 를 실행하면
+똑같이 현재 리비전을 찾지 못한다.
+
+```bash
+# 현재 DB 리비전 파일을 포함한 코드에서 실행한다. 기존 컨테이너는 교체하지 않는다.
+sudo docker compose build backend
+sudo docker compose run --rm backend alembic current
+sudo docker compose run --rm backend alembic history
+```
+
+그 코드의 `downgrade()` 를 모두 검토한 뒤 `alembic downgrade` 에 **목표 리비전 ID 를
+명시**한다. 커밋 사이에 여러 마이그레이션이 있으면 `-1` 한 번으로는 부족하다.
+주간계획안 마이그레이션은 주간 데이터가 남아 있으면 내려가지 않도록 막혀 있다.
+검토 없이 데이터를 지워 우회하지 않는다. DB 를 내린 뒤에는 목표 커밋으로 다시 배포하고
+`/health/ready` 와 핵심 문서 생성 경로를 확인한다.
 
 ### 순서에 이유가 있다
 
