@@ -13,13 +13,14 @@ export const metadata: Metadata = {
    * **DNS 로는 못 한다** — duckdns 무료 계정에는 TXT 레코드를 넣을 칸이 없다.
    * 그래서 「URL 접두어 속성」의 HTML 태그 방식을 쓴다.
    *
-   * **빌드 때 박힌다.** 값을 바꾸면 프런트 이미지를 다시 빌드해야 한다
-   * (`docker-compose.yml` 의 build args · `frontend/Dockerfile`).
-   * 값이 없으면 태그를 아예 넣지 않는다.
+   * **이 값은 비밀이 아니다.** `<meta>` 로 페이지에 그대로 실려 누구나 본다 —
+   * 그게 소유권 확인의 원리다(그 자리에 글을 올릴 수 있어야 증명이 된다).
+   * 그래서 `.env` 가 아니라 여기 둔다. 환경 변수로 두면 서버에서 값을 안 넣었을 때
+   * 태그가 조용히 빠지고, 확인이 왜 안 되는지 알기 어렵다.
+   *
+   * 도메인을 옮기면 구글이 새 값을 준다. 그때 이 줄을 바꾼다.
    */
-  verification: process.env.GOOGLE_SITE_VERIFICATION
-    ? { google: process.env.GOOGLE_SITE_VERIFICATION }
-    : undefined,
+  verification: { google: "mLlrR5jcO4fPHP_DRMfXCW7UVNcCImmBR9XtwUes2f4" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

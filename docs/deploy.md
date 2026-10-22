@@ -143,6 +143,26 @@ sudo -u ubuntu git -C /home/ubuntu/ktc4-kangwon-2 log --oneline -5
 대개 문제가 없지만, **열을 지우거나 이름을 바꾼 마이그레이션이 섞여 있으면 되감아도
 안 돈다.** 그런 변경은 두 단계로 나눠 올린다(먼저 안 쓰게 하고, 다음 판에서 지운다).
 
+**새 마이그레이션이 올라간 뒤로는 되감기가 배포 단계에서 먼저 죽는다** (멘토 지적 #210).
+`deploy.sh` 가 `alembic upgrade head` 를 돌리는데, 옛 코드에는 지금 DB 가 서 있는 리비전
+파일이 **아예 없다.**
+
+```
+alembic.util.exc.CommandError: Can't locate revision identified by 'b8d4f1a92c37'
+```
+
+그래서 **배포가 거기서 멈춘다.** 컨테이너는 아직 옛 이미지로 돌고 있어 서비스는 살아
+있지만, 되감기는 안 된 상태다. 이때는 둘 중 하나다.
+
+```
+① 되감을 커밋을 마이그레이션 앞이 아니라 뒤로 잡는다 (그 마이그레이션을 포함한 커밋)
+② 그래도 꼭 더 뒤로 가야 하면, 먼저 DB 를 한 단계 내린 뒤 배포한다
+   sudo docker compose run --rm backend alembic downgrade -1
+```
+
+②는 **데이터가 지워질 수 있다.** 내리는 마이그레이션의 `downgrade()` 를 먼저 읽는다.
+이 길은 develop 확인용에서나 쓰는 일이라 자주 올 상황은 아니다.
+
 ### 순서에 이유가 있다
 
 ```
