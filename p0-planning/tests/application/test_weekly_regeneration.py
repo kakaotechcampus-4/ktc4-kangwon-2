@@ -11,7 +11,7 @@ import json
 import pytest
 
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
-from ssuksak.planning.application import weekly_lifecycle
+from ssuksak.planning.application import generate_weekly_plan, weekly_lifecycle
 from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.application.weekly_lifecycle import (
     ConfirmWeeklyPlan,
@@ -275,6 +275,21 @@ def test_rule_only_outdoor_moves_to_another_candidate():
     assert activity(cell) != activity(target) and cell.value != target.value
     assert cell.generation == target.generation  # RULE_ONLY, the same ranking rule
     assert cell.audit.events[-1].event_type is AuditEventType.REGENERATED
+
+
+def test_llm_outdoor_regeneration_does_not_offer_the_current_activity(monkeypatch):
+    # F-1 (live smoke 2026-10-21): ranking it last still let the model pick it again.
+    # Offer every eligible candidate, as the live run's small month did.
+    monkeypatch.setattr(generate_weekly_plan, "OUTDOOR_CANDIDATE_LIMIT", 10_000)
+    harness = WeeklyHarness()
+    before = _llm_weekly(harness)
+    current = next(
+        s.source_id for s in before.cell("outdoor_play").evidence
+        if s.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
+    )
+    harness.regenerate_weekly(before, section_key="outdoor_play")
+    offered = {rid for rid, _ in harness.weekly_provider.requests[-1].reference_candidates}
+    assert offered and current not in offered
 
 
 def test_rule_only_writes_no_text_so_other_sections_are_refused():
