@@ -512,6 +512,10 @@ def _outdoor_ranking(
     eligible = catalog.eligible_candidates(
         section_key=OUTDOOR_PLAY_SLOT, calendar_month=week_id.target_month.calendar_month, ages=parent.target_ages
     )
+    # Regeneration offers no way back to the current activity while another exists — a
+    # last rank alone still left it among the LLM's candidates (live smoke F-1).
+    if any(c.activity_id != current_activity_id for c in eligible):
+        eligible = tuple(c for c in eligible if c.activity_id != current_activity_id)
     parent_cells = _section_cells(parent, OUTDOOR_PLAY_SLOT)
     same_week = next((c for c in parent_cells if c.week_id == week_id), None)
     preferred = _parent_activity(same_week, eligible)
