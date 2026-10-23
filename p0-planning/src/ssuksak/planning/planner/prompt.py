@@ -67,6 +67,8 @@ Return only one JSON object matching response_contract; add no fields.
 # Appended to SYSTEM_PROMPT only when the Context Packet carries safety placement.
 SAFETY_SYSTEM_PROMPT = SYSTEM_PROMPT + """safety_plan fixes every week's safety_education slot: its week, kind, legal
 category, official content focus or primary reference. Never change any of them.
+A week missing from safety_plan has no safety education: return its
+safety_education with unresolved true, an empty value and no grounding_refs.
 Write every safety_education value about one safety concept or action; never
 list several actions or topics. Never write a category name, brackets or a
 leading dash: the application adds the category label to STATUTORY weeks.

@@ -333,3 +333,44 @@ def test_an_unresolved_active_safety_week_is_never_saved(monkeypatch):
         )
     assert exc.value.code == "monthly_safety_cell_unresolved"
     assert harness.monthly_plans.save_count == 0
+
+
+STATUTORY_ONLY = replace(SAFETY_PLACEMENT, supplemental=False)
+
+
+@pytest.mark.parametrize(
+    ("month", "statutory"),
+    [
+        (YearMonth(2026, 9), [None, "traffic_safety", None, "sexual_violence_prevention", None]),
+        (YearMonth(2026, 6), [None, "child_abuse_prevention", None, None]),
+    ],
+    ids=["two-statutory", "one-statutory"],
+)
+def test_statutory_only_placement_leaves_the_other_weeks_validly_empty(month, statutory, approved_classification):
+    # Human Decision 2026-10-23: no supplemental safety education — only the policy's STATUTORY weeks.
+    harness, plan = _generate(month, placement=STATUTORY_ONLY)
+    body = json.loads(harness.provider.monthly_requests[-1].user_content)
+
+    assert [w["kind"] for w in body["safety_plan"]["weeks"]] == ["STATUTORY"] * sum(map(bool, statutory))
+    for cell, category in zip(plan.section("safety_education").cells, statutory):
+        if category:
+            assert cell.safety.kind is SafetyKind.STATUTORY and cell.cell_state is CellState.FILLED
+            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] - ")
+        else:
+            assert cell.safety is None and cell.cell_state is CellState.EMPTY_VALID and cell.value == ""
+            assert cell.generation.method is GenerationMethod.RULE_ONLY
+            assert all(s.source_type is not EvidenceSourceType.INSTITUTION_SAMPLE for s in cell.evidence)
+    safety_findings = [(f.code, f.finding_kind) for f in plan.verification_report.findings if f.location.section_key != "outdoor_play"]
+    assert safety_findings == [(ANNUAL_HOURS_NOT_VERIFIED, FindingKind.NOT_VERIFIED)]
+    assert harness.confirm_monthly(plan).status is PlanStatus.CONFIRMED
+
+
+def test_a_value_proposed_for_an_unplaced_week_is_rejected():
+    from ssuksak.planning.planner.contracts import ProposedSectionValue
+    from ssuksak.planning.planner.validation import SafetySlotReason, safety_slot_problem
+
+    empty = ProposedSectionValue("safety_education", "", True)
+    filled = ProposedSectionValue("safety_education", "길 건너기", False, ("ev_1",))
+
+    assert safety_slot_problem(None, empty, {}) is None
+    assert safety_slot_problem(None, filled, {}).reason is SafetySlotReason.UNPLACED_WEEK_FILLED

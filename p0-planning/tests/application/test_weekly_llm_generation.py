@@ -6,6 +6,7 @@ tests pin what the Application does with a proposal, never what a model writes.
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 
 import pytest
@@ -22,6 +23,7 @@ from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.provenance import EvidenceSourceType, GenerationMethod
 from ssuksak.planning.domain.safety_placement import SafetyKind
+from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.domain.weekly_plan import WEEKDAYS
 from ssuksak.planning.evidence.models import SourceSection
 from ssuksak.planning.evidence.weekly_classification import (
@@ -148,6 +150,21 @@ def test_a_placed_parent_safety_cell_is_copied_as_the_weeks_line(mode):
     assert safety.safety is None
     if mode is LLM:
         assert harness.weekly_provider.requests[-1].target("safety_education") is None
+
+
+def test_an_unplaced_parent_safety_week_stays_empty_in_the_week():
+    # 2026-10-23: without supplemental placement week 1 has no safety education, so neither does the week.
+    harness = WeeklyHarness()
+    yearly = harness.confirm_yearly(harness.generate_yearly(frozenset({3, 4})).plan)
+    parent = harness.confirm_monthly(
+        harness.generate_monthly(yearly, LLM, safety_placement=replace(SAFETY_PLACEMENT, supplemental=False)).plan
+    )
+    week = WeekId("2026-09-W1")
+    assert parent.section("safety_education").cell_for_week(week).safety is None
+
+    safety = harness.generate_weekly(parent, week_id=week, mode=LLM).plan.cell("safety_education")
+    assert safety.value == "" and safety.safety is None
+    assert harness.weekly_provider.requests[-1].target("safety_education") is None
 
 
 def test_parent_value_alone_grounds_focus_and_inheriting_its_wording_is_no_copy():

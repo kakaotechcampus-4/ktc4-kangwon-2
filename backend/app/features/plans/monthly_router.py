@@ -103,8 +103,9 @@ ACTIVITY_CATALOG = ActivityCatalogSelector(
     "ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1"
 )
 SAFETY_RULE = SafetyRuleSelector("child-welfare-act-decree-annex6-2022-06-21")
-# 안전교육 배치 정책(2026-10-22 결정으로 D-M4-03 을 뒤집음). 법정 주 + 나머지 보충 주.
-SAFETY_PLACEMENT = SafetyPlacementSelector("ssuksak-safety-placement-v2")
+# 안전교육 배치 정책(2026-10-22 결정으로 D-M4-03 을 뒤집음). 법정 주만 채운다 —
+# 보충 주는 넣지 않는다(2026-10-23 결정). 나머지 주의 안전교육 칸은 비어 있다.
+SAFETY_PLACEMENT = SafetyPlacementSelector("ssuksak-safety-placement-v2", supplemental=False)
 # 월간은 반 · 월당 하나다(결정 문서 12.5). 이 이름의 충돌만 409 로 바꾼다.
 MONTHLY_UNIQUE = "uq_plans_monthly_per_classroom_month"
 

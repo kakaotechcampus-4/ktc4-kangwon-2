@@ -115,8 +115,12 @@ def month_safety_slots(
     target_month: YearMonth,
     active_weeks: tuple[WeekPeriod, ...],
     rule: SafetyLegalRule | None = None,
+    supplemental: bool = True,
 ) -> tuple[SafetySlot, ...]:
-    """One slot per active week: the policy's STATUTORY weeks, SUPPLEMENTAL elsewhere."""
+    """One slot per active week: the policy's STATUTORY weeks, SUPPLEMENTAL elsewhere.
+
+    Without supplemental only the STATUTORY weeks get a slot.
+    """
     if policy.focus_rule is not None and rule is None:
         raise ValueError("A focus policy needs the legal Rule's official content items")
     statutory = {entry.week_ordinal: entry.category_id for entry in policy.for_month(target_month.calendar_month)}
@@ -140,6 +144,7 @@ def month_safety_slots(
             ),
         )
         for ordinal, period in enumerate(active_weeks, start=1)
+        if supplemental or ordinal in statutory
     )
 
 
