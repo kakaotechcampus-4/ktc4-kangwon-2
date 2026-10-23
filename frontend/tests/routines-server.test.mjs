@@ -2282,8 +2282,15 @@ const hrefsOf = (view) =>
     .filter((node) => node?.props?.href)
     .map((node) => node.props.href);
 
-/** 기록 모아보기 화면 하나. 여기서 보는 것은 **고른 반 · 날짜를 들고 가는가**뿐이다. */
-function quickRecordsPage(t, { rooms = [ROOM_A, ROOM_B] } = {}) {
+/**
+ * 기록 모아보기 화면 하나. 관찰 기록과 일과 기록 조회는 받은 조건을 `calls` 에 남긴다 —
+ * 두 조회가 모두 반 · 주를 짚는지 본다 (FR-405 · FR-705).
+ */
+function quickRecordsPage(
+  t,
+  { rooms = [ROOM_A, ROOM_B], observations = [], routineRows = [], routineFail = false } = {},
+) {
+  const calls = [];
   browser({ rooms: [CLASS_A, CLASS_B], primaryClassId: CLASS_A.id });
   t.after(() => delete globalThis.window);
   const app = host();
@@ -2298,7 +2305,21 @@ function quickRecordsPage(t, { rooms = [ROOM_A, ROOM_B] } = {}) {
       ws: {},
     },
     "@/components/app/icons": { Icon: "icon" },
-    "@/lib/api/records": { listRecords: async () => [] },
+    "@/lib/api/records": {
+      listRecords: async (classId, period) => {
+        calls.push({ op: "observations", classId, ...period });
+        return observations.filter((r) => r.classId === classId);
+      },
+    },
+    "@/lib/api/routines": {
+      ...routines,
+      listRoutines: async (query) => {
+        calls.push({ op: "routines", ...query });
+        if (routineFail) throw new Error("일과 서버 오류");
+        return routineRows.filter((r) => r.class_id === query.class_id);
+      },
+    },
+    "@/lib/api/onboarding": onboardingApi,
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/model": { today: () => TODAY, localTime: () => "09:00" },
     // 주소를 만드는 쪽도 진짜다 — 반 번호 변환까지 같이 본다.
@@ -2311,6 +2332,7 @@ function quickRecordsPage(t, { rooms = [ROOM_A, ROOM_B] } = {}) {
   t.after(app.cleanup);
   const find = (type) => all(view.tree()).filter((node) => node?.type === type);
   return {
+    calls,
     flush: view.flush,
     render: view.render,
     links: () => hrefsOf(view),
@@ -2366,6 +2388,60 @@ test("기록 모아보기 — 고른 반의 서버 번호를 모르면 주소를
     "서버 번호를 모르는 반인데 주소를 만들었다",
   );
   assert.ok(view.text().includes("일과 기록으로 갈 수 없어요"), view.text());
+});
+
+// ── S-J6 · FR-705 — 관찰 기록과 일과 기록을 같이 본다 ─────────────────────────
+
+/** 관찰 기록 한 줄 (화면 모양). 반은 화면 id 다. */
+const observation = (over = {}) => ({
+  id: "observation:1",
+  classId: CLASS_A.id,
+  childName: "박서준",
+  date: TODAY,
+  domain: "자연탐구",
+  fact: "도토리를 바구니에 담았다.",
+  createdAt: "2026-10-06T01:00:00Z",
+  ...over,
+});
+
+test("기록 모아보기는 관찰 기록과 일과 기록을 둘 다 고른 반 · 그 주로 부른다", async (t) => {
+  const view = quickRecordsPage(t);
+  await view.flush();
+  // TODAY(2026-10-06 화)의 주는 10/05(월) ~ 10/11(일)이다. 반 A 는 서버 반 3 이다.
+  assert.deepEqual(view.calls, [
+    { op: "observations", classId: CLASS_A.id, from: "2026-10-05", to: "2026-10-11" },
+    { op: "routines", class_id: 3, from: "2026-10-05", to: "2026-10-11" },
+  ]);
+
+  view.type(view.classSelect(), CLASS_B.id);
+  await view.flush();
+  assert.deepEqual(view.calls.slice(-2), [
+    { op: "observations", classId: CLASS_B.id, from: "2026-10-05", to: "2026-10-11" },
+    { op: "routines", class_id: 7, from: "2026-10-05", to: "2026-10-11" },
+  ]);
+});
+
+test("기록 모아보기는 그 날의 일과 기록과 관찰 기록을 섞어 보여주고 건수에 둘 다 센다", async (t) => {
+  const view = quickRecordsPage(t, {
+    observations: [observation()],
+    routineRows: [row({ id: 41, class_id: 3, date: TODAY, name: "오전 실내놀이" })],
+  });
+  await view.flush();
+  const text = view.text();
+  assert.ok(text.includes("오전 실내놀이"), text);
+  assert.ok(text.includes("일과 기록"), text);
+  assert.ok(text.includes("도토리를 바구니에 담았다."), text);
+  assert.ok(text.includes("관찰 기록"), text);
+  // 오늘 칸과 「10월 6일 N건」 둘 다 두 종류를 합쳐 센다.
+  assert.ok(text.includes("2건"), text);
+});
+
+test("기록 모아보기 — 일과 기록만 실패하면 관찰 기록은 그대로 보이고 무엇이 실패했는지 말한다", async (t) => {
+  const view = quickRecordsPage(t, { observations: [observation()], routineFail: true });
+  await view.flush();
+  const text = view.text();
+  assert.ok(text.includes("도토리를 바구니에 담았다."), text);
+  assert.ok(text.includes("일과 기록을 불러오지 못했어요"), text);
 });
 
 /**
@@ -2817,4 +2893,14 @@ test("후속 #5 명시적 정렬도 보존 중인 원본의 초를 비교한다"
   await view.flush();
   assert.deepEqual(await reloadedNames(api), ["이른 초", "늦은 초"]);
   assert.equal(api.rows().find((r) => r.id === 1).start, "09:16:40");
+});
+
+test("기록 모아보기 — 활동실행이 빈 일과는 계획을 실행처럼 띄우지 않는다", async (t) => {
+  const view = quickRecordsPage(t, {
+    routineRows: [row({ id: 42, class_id: 3, date: TODAY, plan: "자동차 굴리기", execution: "" })],
+  });
+  await view.flush();
+  const text = view.text();
+  assert.equal(text.includes("자동차 굴리기"), false, text);
+  assert.ok(text.includes("활동실행을 아직 적지 않았어요."), text);
 });
