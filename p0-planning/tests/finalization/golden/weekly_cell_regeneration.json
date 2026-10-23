@@ -1,0 +1,104 @@
+{
+  "schema": "weekly-cell-regeneration-golden-v1",
+  "generation_mode": "LLM_PLANNER",
+  "section": "goals",
+  "item_id_preserved": true,
+  "request": {
+    "prompt_version": "weekly-cell-planner-v1",
+    "targets": [
+      "goals"
+    ],
+    "allowed_grounding_refs": 10
+  },
+  "before": {
+    "section_key": "goals",
+    "value": "우리나라와 세계 여러 나라 — 이번 주 goals 계획",
+    "state": "FILLED",
+    "generation": {
+      "method": "RULE_LLM",
+      "rule_id": "weekly.llm.planner",
+      "rule_version": "weekly-planner-v2"
+    },
+    "evidence": [
+      {
+        "type": "PARENT_PLAN",
+        "source_id": "monthly-final_plan_001",
+        "source_version": "2026-09"
+      },
+      {
+        "type": "INSTITUTION_SAMPLE",
+        "source_id": "ev_001a699286ca_p01_r00089_c01_i01",
+        "source_version": "institution-evidence-ingestion-v0.1.0"
+      }
+    ],
+    "parent_snapshots": [],
+    "audit": [
+      {
+        "type": "CREATED",
+        "actor": null,
+        "system_actor": "weekly_application"
+      }
+    ]
+  },
+  "after": {
+    "section_key": "goals",
+    "value": "다시 쓴 우리나라와 세계 여러 나라 — 이번 주 goals 계획",
+    "state": "FILLED",
+    "generation": {
+      "method": "RULE_LLM",
+      "rule_id": "weekly.llm.planner",
+      "rule_version": "weekly-cell-planner-v1"
+    },
+    "evidence": [
+      {
+        "type": "PARENT_PLAN",
+        "source_id": "monthly-final_plan_001",
+        "source_version": "2026-09"
+      },
+      {
+        "type": "INSTITUTION_SAMPLE",
+        "source_id": "ev_001a699286ca_p01_r00089_c01_i01",
+        "source_version": "institution-evidence-ingestion-v0.1.0"
+      }
+    ],
+    "parent_snapshots": [],
+    "audit": [
+      {
+        "type": "CREATED",
+        "actor": null,
+        "system_actor": "weekly_application"
+      },
+      {
+        "type": "REGENERATED",
+        "actor": "teacher_001",
+        "system_actor": null,
+        "value_change": {
+          "before": "우리나라와 세계 여러 나라 — 이번 주 goals 계획",
+          "after": "다시 쓴 우리나라와 세계 여러 나라 — 이번 주 goals 계획"
+        },
+        "generation_change": {
+          "before": {
+            "method": "RULE_LLM",
+            "rule_id": "weekly.llm.planner",
+            "rule_version": "weekly-planner-v2"
+          },
+          "after": {
+            "method": "RULE_LLM",
+            "rule_id": "weekly.llm.planner",
+            "rule_version": "weekly-cell-planner-v1"
+          }
+        }
+      }
+    ]
+  },
+  "siblings": {
+    "count": 11,
+    "unchanged": true
+  },
+  "findings": [
+    [
+      "WEEKLY_FACT_SCOPE_NOT_VERIFIED",
+      "NOT_VERIFIED"
+    ]
+  ]
+}

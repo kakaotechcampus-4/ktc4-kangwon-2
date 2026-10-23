@@ -10,7 +10,7 @@ import Select from "./Select";
 import ChildList from "./ChildList";
 import CharacterMessageGrid from "./CharacterMessageGrid";
 import PrimaryButton, { GhostButton, TextButton } from "./PrimaryButton";
-import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
+import { loadClassSettings, saveClassSettings, shownPrimaryId } from "@/lib/onboarding/settings";
 import { completeAccountOnboarding, onboardingDestination } from "@/lib/auth/local-account";
 import {
   selectedAgesFor,
@@ -29,6 +29,7 @@ import { PROVINCE_OPTIONS, districtsFor, normalizeProvince } from "@/lib/onboard
 
 import {
   syncCenter,
+  joinCenterByCode,
   syncClasses,
   rememberConsent,
   hasConsent,
@@ -127,9 +128,6 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
 
   function patch(p: Partial<ClassSettings>) {
     const next = { ...settings, ...p };
-    next.primaryClassId = next.classes.some((c) => c.id === next.primaryClassId)
-      ? next.primaryClassId
-      : next.classes[0]?.id;
     setSettings(next);
     if (step === 3 && !saveClassSettings(next)) setSaveError("로컬 화면 캐시 저장 실패");
   }
@@ -144,7 +142,12 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
         await syncClasses(settings);
         rememberConsent(settings.classes);
       }
-      if (!saveClassSettings(settings)) throw new Error("설정을 저장하지 못했어요.");
+      // 담당 반 Select가 있는 반 정보 단계의 「다음」에서만 표시 기본값을 확정한다.
+      const submitted =
+        step === 2 && next === 3 && settings.classes.length > 1
+          ? { ...settings, primaryClassId: shownPrimaryId(settings) }
+          : settings;
+      if (!saveClassSettings(submitted)) throw new Error("설정을 저장하지 못했어요.");
       router.push(
         next === 1
           ? "/onboarding/center"
@@ -161,6 +164,23 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
       setBusy(false);
     }
   }
+  async function join(code: string) {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setSaveError("");
+    try {
+      const next = await joinCenterByCode(settings, code);
+      if (!saveClassSettings(next)) throw new Error("설정을 저장하지 못했어요.");
+      setSettings(next);
+      router.push("/onboarding/classes");
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "초대 코드로 참여하지 못했어요.");
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  }
   async function finish() {
     if (saving.current) return;
     saving.current = true;
@@ -168,7 +188,10 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
     setSaveError("");
     try {
       await syncClasses(settings);
-      const done = { ...settings, completedAt: new Date().toISOString() };
+      const done = {
+        ...settings,
+        completedAt: new Date().toISOString(),
+      };
       if (!saveClassSettings(done) || !completeAccountOnboarding())
         throw new Error("설정을 저장하지 못했어요.");
       setSettings(done);
@@ -200,7 +223,9 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
       )}
       {busy && <p role="status">저장 중이에요.</p>}
       <fieldset disabled={busy} className="contents">
-        {step === 1 && <StepOrgInfo settings={settings} onChange={patch} onNext={() => go(2)} />}
+        {step === 1 && (
+          <StepOrgInfo settings={settings} onChange={patch} onNext={() => go(2)} onJoin={join} />
+        )}
         {step === 2 && (
           <StepClasses
             settings={settings}
@@ -239,10 +264,12 @@ function StepOrgInfo({
   settings,
   onChange,
   onNext,
+  onJoin,
 }: {
   settings: ClassSettings;
   onChange: (p: Partial<ClassSettings>) => void;
   onNext: () => void;
+  onJoin: (code: string) => void;
 }) {
   const districts = districtsFor(settings.regionProvince);
   const canNext =
@@ -313,7 +340,37 @@ function StepOrgInfo({
           </PrimaryButton>
         }
       />
+
+      <JoinByCode onJoin={onJoin} />
     </>
+  );
+}
+
+/** 같은 원 선생님이 이미 원을 등록했으면, 원 정보를 다시 쓰지 않고 초대 코드로 들어간다 (§1-1). */
+function JoinByCode({ onJoin }: { onJoin: (code: string) => void }) {
+  const [code, setCode] = useState("");
+  return (
+    <section className="rounded-md border border-line bg-cream px-4 py-3.5 flex flex-col gap-3">
+      <FormField
+        id="inviteCode"
+        label="초대 코드로 참여하기"
+        hint="우리 원이 이미 등록돼 있다면, 등록한 선생님께 설정 화면의 초대 코드를 받아 입력해주세요."
+      >
+        <TextInput
+          id="inviteCode"
+          value={code}
+          placeholder="예: ABCD2345EF"
+          onChange={(e) => setCode(e.target.value)}
+        />
+      </FormField>
+      <GhostButton
+        disabled={code.trim() === ""}
+        onClick={() => onJoin(code.trim())}
+        className="self-start"
+      >
+        코드로 참여
+      </GhostButton>
+    </section>
   );
 }
 
@@ -359,6 +416,12 @@ function StepClasses({
         title="우리 반 정보를 설정해주세요"
         description="반 정보와 법정대리인 동의 여부를 확인해주세요. 아동 명단은 다음 단계에서 입력해요."
       />
+      {settings.completedAt && (
+        <p role="status" className="text-sm text-ink-soft">
+          등록한 반의 이름·연령·담임·원아 수·동의 여부는 아직 수정할 수 없어요. 반 추가와 담당 반
+          선택은 가능하고, 아동 명단은 다음 단계에서 관리해요.
+        </p>
+      )}
 
       <div className="flex flex-col gap-5">
         {settings.classes.map((classroom, index) => (
@@ -377,7 +440,7 @@ function StepClasses({
         <FormField id="primaryClassId" label="내 담당 반">
           <Select
             id="primaryClassId"
-            value={settings.primaryClassId || settings.classes[0]?.id || ""}
+            value={shownPrimaryId(settings)}
             options={settings.classes.map((c, i) => ({
               value: c.id,
               label: c.className || "반 " + (i + 1),

@@ -7,7 +7,9 @@ p0-planning 의 테스트가 본다. 이 파일은 「계약대로 내려주나 
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.config import settings
 from app.features.centers.models import Center, Class
 from app.features.plans.models import Plan
 from app.main import app
@@ -294,8 +296,13 @@ def test_응답을_만들다_터지면_계획안이_남지_않는다(db_session,
 
     response = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None})
     assert response.status_code == 500
-    assert response.text == "Internal Server Error"
-    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.json() == {
+        "error": {
+            "code": "INTERNAL_ERROR",
+            "message": "일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.",
+            "fields": [],
+        }
+    }
 
     # 운영에서는 `get_session` 의 `with` 가 세션을 닫으며 롤백한다(app/db.py).
     # 테스트는 세션을 직접 끼워주므로 그 동작을 여기서 흉내낸다.
@@ -325,3 +332,170 @@ def test_양식_번호가_계획안에_남는다(db_session, mine, teacher):
     saved = db_session.get(Plan, response.json()["id"])
     db_session.refresh(saved)
     assert saved.form_id == form.id
+
+
+# ── 지우기 (§4) ───────────────────────────────────────────────────────────
+
+
+def _error(response):
+    body = response.json()["error"]
+    return response.status_code, body["code"]
+
+
+def test_확정_전_연간계획안을_지우면_다시_만들_수_있다(db_session, mine):
+    """반 하나에 연간은 하나다. 지울 길이 없으면 첫 초안이 마음에 안 들어도 영영 못 바꾼다."""
+    plan_id = _create(mine)["id"]
+    assert (
+        client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None}).status_code
+        == 409
+    )
+
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 204
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
+    assert _create(mine)["id"] != plan_id
+
+
+def test_확정된_연간계획안은_지우지_못한다(db_session, mine):
+    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+    plan_id = _create(mine)["id"]
+    assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
+
+    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 200
+
+
+def test_남의_원_연간계획안은_지울_수_없고_404(db_session, mine, teacher):
+    plan_id = _create(mine)["id"]
+    teacher.center_id = mine.center_id + 1
+
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 404
+
+
+# ── 시험용 전부 지우기 (파일럿 전에 끈다) ──────────────────────────────────
+
+
+def test_스위치가_꺼져_있으면_시험용_지우기는_없는_경로다(db_session, mine):
+    """기본은 꺼짐이다. 있는지조차 알리지 않는다 — 404 다."""
+    plan_id = _create(mine)["id"]
+
+    assert settings.allow_test_reset is False
+    assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 404
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 200
+
+
+def test_켜면_확정본도_딸린_월간까지_한_번에_지운다(db_session, mine, monkeypatch):
+    """연간을 확정하면 고칠 수도 지울 수도 없다. 시험하는 동안 그 막다른 길을 연다."""
+    monkeypatch.setattr(settings, "allow_test_reset", True)
+    plan_id = _create(mine)["id"]
+    assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
+    # 같은 반 · 같은 학년도의 월간이 딸려 있다고 둔다. 진짜 지우기는 이걸 막는다.
+    annual = db_session.get(Plan, plan_id)
+    db_session.add(
+        Plan(
+            plan_ref="monthly_test_1",
+            center_id=annual.center_id,
+            kind="monthly",
+            school_year=annual.school_year,
+            classroom_ref=annual.classroom_ref,
+            target_month="2026-09",
+            status="DRAFT",
+            revision=1,
+            body={},
+            sub_themes={},
+        )
+    )
+    db_session.commit()
+
+    # 진짜 지우기는 막는다. 확정이라 걸리고, 확정이 아니었어도 딸린 월간에서 걸린다.
+    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
+    assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 204
+
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
+    assert db_session.scalars(select(Plan).where(Plan.kind == "monthly")).all() == []
+
+
+def test_켜도_남의_원_것은_404(db_session, mine, teacher, monkeypatch):
+    monkeypatch.setattr(settings, "allow_test_reset", True)
+    plan_id = _create(mine)["id"]
+    teacher.center_id = mine.center_id + 1
+
+    assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 404
+
+
+def test_생성한_모든_달에_소주제_초안이_저장된다(mine):
+    created = _create(mine)
+    reloaded = client.get(f"/api/plans/annual/{created['id']}").json()
+    assert reloaded == created
+    assert len(created["safety_categories"]) == 6
+    assert all(2 <= len(month["sub_themes"]) <= 5 for month in created["months"])
+
+
+def test_안전교육은_미입력과_배치없음을_구분하고_생략하면_보존한다(db_session, mine):
+    plan = _create(mine)
+    path = f"/api/plans/annual/{plan['id']}/months/3"
+    base = {"theme": "우리 반", "sub_themes": ["친구 만나기"]}
+    saved = client.put(path, json={**base, "safety_education": ["traffic_safety"]})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["safety_education_state"] == "PLACED"
+    assert saved.json()["safety_education_source"] == "TEACHER_INPUT"
+    assert saved.json()["safety_education_generation"]["method"] == "MANUAL"
+    preserved = client.put(path, json=base).json()
+    assert preserved["safety_education"] == ["traffic_safety"]
+    absent = client.put(path, json={**base, "safety_education": []}).json()
+    assert absent["safety_education_state"] == "NOT_PLACED"
+    unknown = client.put(path, json={**base, "safety_education": None}).json()
+    assert unknown["safety_education_state"] == "SOURCE_REQUIRED"
+    assert unknown["safety_education_source"] is None
+    assert unknown["safety_education_generation"] is None
+    row = db_session.get(Plan, plan["id"])
+    assert len(row.annual_safety["audit"]) == 3
+    assert row.annual_safety["audit"][0]["before"] is None
+    assert row.annual_safety["audit"][0]["after"] == ["traffic_safety"]
+    assert row.annual_safety["audit"][-1]["actor"] == "user_1"
+    assert row.annual_safety["audit"][-1]["occurred_at"]
+    assert row.annual_safety["months"] == {}
+    assert client.post(f"/api/plans/annual/{plan['id']}/confirm").status_code == 200
+    assert (
+        client.put(path, json={**base, "safety_education": ["traffic_safety"]}).status_code == 409
+    )
+
+
+@pytest.mark.parametrize(
+    "value", [["unknown"], ["traffic_safety", "traffic_safety"], "traffic_safety", [None]]
+)
+def test_잘못된_안전교육_입력은_422(mine, value):
+    plan = _create(mine)
+    response = client.put(
+        f"/api/plans/annual/{plan['id']}/months/3",
+        json={"theme": "주제", "sub_themes": [], "safety_education": value},
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/plans/annual/{plan['id']}").json() == plan
+
+
+@pytest.mark.parametrize(
+    "failure, code, status",
+    [
+        ("LlmFailed", "GENERATION_FAILED", 500),
+        ("LlmUnavailable", "DEPENDENCY_UNAVAILABLE", 503),
+        ("LlmBudgetExceeded", "LLM_BUDGET_EXCEEDED", 503),
+    ],
+)
+def test_소주제_생성이_실패하면_부분_계획안도_남지_않는다(
+    db_session, mine, monkeypatch, failure, code, status
+):
+    from app.features.plans.annual_content import generate_subthemes
+    from app.shared import llm
+
+    db_session.commit()
+
+    def fail(plan):
+        raise getattr(llm, failure)("test")
+
+    monkeypatch.setattr("app.features.plans.router.generate_subthemes", fail)
+    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+    assert response.status_code == status, response.text
+    assert response.json()["error"]["code"] == code
+    assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
+    monkeypatch.setattr("app.features.plans.router.generate_subthemes", generate_subthemes)
+    assert _create(mine)["months"][0]["sub_themes"]

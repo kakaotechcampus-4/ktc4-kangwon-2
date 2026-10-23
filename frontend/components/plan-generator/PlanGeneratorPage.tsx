@@ -8,7 +8,7 @@ import { saveAnnualContext } from "@/lib/plan-generator/context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fontClassName } from "@/lib/fonts";
 import AppHeader from "@/components/app/AppHeader";
-import { createAnnualPlan } from "@/lib/api/plans";
+import { createAnnualPlan, deleteAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
 import { getForms } from "@/lib/api/forms";
 import { syncCenter, syncClass } from "@/lib/api/onboarding";
 import type { ApiForm } from "@/lib/api/types";
@@ -17,6 +17,8 @@ import GenerationFlow from "./GenerationFlow";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { templatePlan, type PlanContent } from "@/lib/workspace/plans";
 import { today, type Section } from "@/lib/workspace/model";
+import Link from "next/link";
+import { ApiError } from "@/lib/api/client";
 import { useAIStatus, ws } from "@/components/workspace/WorkspaceUI";
 import {
   PLAN_TYPE_HELP,
@@ -29,7 +31,11 @@ import {
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { isValidDate } from "@/lib/plan-generator/date";
 
-const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly", "daily"];
+// 요구사항명세서에 있는 종류만 띄운다. **일간 계획안은 FR 번호가 없다** — 만들기로 한 적이
+// 없는데 카드만 있었다. 「준비 중」이라고 써 두면 곧 생길 것처럼 보여서 뺀다.
+// 헷갈리기 쉬운 것 — 「일일 보육일지」는 있다(§11). 그건 계획안이 아니라 일지고,
+// 문서 보관함(/documents)에서 만든다.
+const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly"];
 
 /**
  * 서버가 실제로 만들 수 있는 종류. 나머지 카드는 「준비 중」으로 잠근다.
@@ -38,7 +44,14 @@ const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly", "daily"];
  * `/api/plans/annual` 하나뿐이다(월간 엔진은 p0-planning 에 있지만 API 가 없다).
  * 여기에 종류를 더하는 건 그 API 가 생긴 뒤다.
  */
+// 여기서 끝까지 만들 수 있는 종류. 월간은 만들 수 있지만 **흐름이 다르다** —
+// 확정된 연간과 원 양식(TemplateProfile)이 있어야 해서 /plans/monthly 로 보낸다.
 const READY: ReadonlySet<PlanType> = new Set<PlanType>(["annual"]);
+const ELSEWHERE: Partial<Record<PlanType, string>> = {
+  monthly: "/plans/monthly",
+  // 주간도 같다 — 확정한 월간이 있어야 만들 수 있다 (weekly-plan-contract §4-1 G3).
+  weekly: "/plans/weekly",
+};
 // 새 디자인은 계획안 종류를 색이 아니라 글로 가른다. 고른 카드만 주 색으로 선다.
 const ACCENT: Record<PlanType, { text: string; tint: string; ink: string }> = {
   annual: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
@@ -108,6 +121,10 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
   const classId = startup.classId;
   const [formId, setFormId] = useState(startup.formId);
   const [error, setError] = useState("");
+  // 그 반에 연간계획안이 이미 있을 때(409 ALREADY_EXISTS) 어느 반인지. 교사에게 묻고
+  // 「새로 만들기」를 고르면 그때 지운다. **조용히 지우지 않는다** — 확정 전이라도 교사가
+  // 쓴 글이 사라지는 일이라 뜻을 받아야 한다.
+  const [occupied, setOccupied] = useState<number | null>(null);
   const [contents, setContents] = useState<Partial<Record<PlanType, PlanContent>>>({});
   // 기관 양식의 원본은 서버다 (§8) — 브라우저 저장소를 보지 않는다. null 이면 아직 못 받았다.
   const [forms, setForms] = useState<ApiForm[] | null>(null);
@@ -221,7 +238,13 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
           );
           results.annual = {
             annualPlanId: plan.id,
-            origin: plan.months.some((m) => m.source_type === "AI") ? "ai" : "template",
+            // 서버가 `source_type` 을 보내지 않아 이 자리는 늘 "template" 이었다.
+            // **"ai" 로 바꾸지 않는다.** LLM_MODE 기본이 mock 이라, 그때는 참고자료
+            // 라벨을 그대로 베끼고 LLM 이 한 글자도 안 쓴다(`plans/llm.py:114`).
+            // 지금 응답에는 `generation` 이 없어서 프런트가 둘을 가를 방법이 없다 —
+            // 모르는 것을 단정하지 않고, 쌓여 있는 문서와 같은 값을 그대로 쓴다.
+            // #146 이 `generation` 을 실어 오면 그때 method 로 가른다(월간 화면과 같이).
+            origin: "template",
             notes: [
               "연간계획안은 서버에 초안으로 저장됩니다. 추가 요청사항은 메모로 보존되며 활동에 반영하려면 내용을 수정해주세요.",
             ],
@@ -279,9 +302,29 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
       setPhase("done");
     } catch (e) {
       if (controller.signal.aborted) return;
+      // 만들기 경로의 409 는 「이 반의 연간계획안이 이미 있습니다」 하나뿐이다.
+      const taken = e instanceof ApiError && e.status === 409 ? loadClassSettings() : null;
+      const primary = taken ? primaryClassFor(taken) : null;
+      if (primary) setOccupied(await syncClass(taken!, primary));
       setError(e instanceof Error ? e.message : "계획안을 생성하지 못했어요.");
       setPhase("idle");
     }
+  }
+
+  /** 그 반의 연간계획안을 지우고 다시 만든다. 교사가 「새로 만들기」를 눌렀을 때만 온다. */
+  async function handleReplace(classId: number) {
+    setOccupied(null);
+    setError("");
+    try {
+      const { items } = await listAnnualPlans(classId);
+      const existing = items[0];
+      if (!existing) throw new Error("지울 계획안을 찾지 못했어요. 새로고침 후 다시 해주세요.");
+      await deleteAnnualPlan(existing.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "지우지 못했어요.");
+      return;
+    }
+    await handleGenerate();
   }
 
   function handleRegenerate() {
@@ -322,6 +365,18 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             {error || formsError}
           </p>
         )}
+        {occupied !== null && (
+          <p className={ws.error} role="alert">
+            새로 만들면 지금 있는 초안이 사라져요.{" "}
+            <button type="button" className={ws.link} onClick={() => handleReplace(occupied)}>
+              새로 만들기
+            </button>{" "}
+            ·{" "}
+            <button type="button" className={ws.link} onClick={() => setOccupied(null)}>
+              그대로 두기
+            </button>
+          </p>
+        )}
         {phase === "idle" && (
           <div className={ws.row} style={{ marginBottom: 20 }}>
             <label className={ws.field}>
@@ -347,9 +402,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
                   : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
             </p>
             <p className={ws.hint}>
-              {available
-                ? "AI 연결됨 · 입력 조건과 기관 양식으로 생성해요."
-                : "기본 양식 모드 · AI 연결 전에는 수정 가능한 기본 초안을 만들어요."}
+              계획안은 초안으로 생성·저장돼요. 생성 후 우리 반에 맞게 검토해주세요.
             </p>
           </div>
         )}
@@ -503,6 +556,7 @@ function InputPanel(props: {
         <label className={ws.field}>
           기준 연도
           <input
+            name="year"
             aria-label="기준 연도"
             type="number"
             min={2000}
@@ -554,7 +608,9 @@ function InputPanel(props: {
             {planTypes.has("daily") && (
               <PeriodBlock type="daily" label="날짜를 선택해주세요">
                 <input
+                  name="plan_date"
                   type="date"
+                  aria-label="계획안 날짜"
                   value={period.daily.date}
                   onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
                   className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
@@ -630,6 +686,7 @@ const CHEVRON_BG =
 function MonthSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <select
+      aria-label="계획안 월"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
@@ -662,6 +719,7 @@ function WeekSelect({
 }) {
   return (
     <select
+      aria-label="계획안 주차"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
@@ -721,6 +779,24 @@ function PlanTypeCard({
   onToggle: () => void;
 }) {
   const a = ACCENT[type];
+  // 다른 화면에서 만드는 종류는 카드를 링크로 바꾼다. 「준비 중」으로 잠가 두면 만들 수
+  // 있는데 못 만드는 것처럼 보인다.
+  const elsewhere = ELSEWHERE[type];
+  if (elsewhere)
+    return (
+      <Link
+        href={elsewhere}
+        className="relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-md border-[1.5px] bg-paper transition-colors hover:-translate-y-px"
+        style={{ borderColor: "var(--pg-line)" }}
+      >
+        <PlanTypeIcon type={type} className="text-ink-soft" />
+        <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
+        <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
+          따로 열기
+        </span>
+      </Link>
+    );
   return (
     <button
       type="button"

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 쌤플 아이콘. 브랜드의 「S」 와 마침표 한 점.
+       Next.js 가 app/icon.svg 를 보면 <link rel="icon"> 을 스스로 넣는다 —
+       없으면 브라우저가 /favicon.ico 를 찾다가 404 를 콘솔에 남긴다. -->
+  <rect width="32" height="32" rx="8" fill="#f6f1e7"/>
+  <text x="15" y="23" font-family="Georgia, 'Times New Roman', serif" font-size="21"
+        font-weight="700" fill="#5b4bb5" text-anchor="middle">S</text>
+  <circle cx="25" cy="22" r="2.4" fill="#e08a6a"/>
+</svg>

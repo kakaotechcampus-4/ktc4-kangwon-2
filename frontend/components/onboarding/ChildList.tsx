@@ -117,7 +117,7 @@ export default function ChildList({
                   aria-hidden="true"
                   className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-full bg-mint-tint text-mint-ink text-[13px] font-bold shrink-0"
                 >
-                  {c.code || c.name.slice(-2)}
+                  {c.name.slice(-2)}
                 </span>
                 <span className="flex-1 text-[14.5px] text-ink">{c.name}</span>
                 <button

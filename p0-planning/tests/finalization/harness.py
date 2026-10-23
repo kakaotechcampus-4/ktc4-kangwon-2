@@ -66,7 +66,7 @@ from ssuksak.planning.context.builder import ContextPacketBuilder
 from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import (
-    DisplayMode,
+    RepeatBy,
     SectionRole,
     SemanticVariant,
     TemplateRef,
@@ -96,10 +96,10 @@ ACTIVITY_CATALOG = ActivityCatalogSelector(
     "ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1"
 )
 RULE_TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
 )
 LLM_TEMPLATE = TemplateRef(
-    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.0"
+    "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
 )
 RULE_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v1")
 LLM_PROFILE = TemplateProfileRef("monthly-profile-classroom-001", "v2")
@@ -265,7 +265,7 @@ class RequestAwareMonthlyLlm:
         for section in request.template_snapshot.sections:
             if section.role is SectionRole.AXIS:
                 continue
-            if section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY:
+            if section.repeat_by is RepeatBy.NONE:
                 if section.section_key == "theme":
                     month_sections.append(
                         {
@@ -288,7 +288,7 @@ class RequestAwareMonthlyLlm:
                             ],
                         }
                     )
-            elif section.display_mode is DisplayMode.WEEKLY_CELLS:
+            elif section.repeat_by is RepeatBy.WEEK:
                 weekly_keys.append(section.section_key)
         weeks = []
         for index, week_id in enumerate(request.expected_week_ids, start=1):
@@ -340,6 +340,21 @@ class RequestAwareMonthlyLlm:
         )
 
 
+class ApprovedTemplates:
+    """OD-N11 (A), test-only: the exact real Template, approved in memory.
+
+    The data files stay PENDING_HUMAN_REVIEW (ADR-027); production code never
+    gets this object, so the Core approval gate still runs on the real status.
+    """
+
+    def __init__(self, real: JsonMonthlyTemplateRepository) -> None:
+        self._real = real
+
+    def get_template(self, template_id: str, template_version: str):
+        template = self._real.get_template(template_id, template_version)
+        return None if template is None else replace(template, runtime_active=True)
+
+
 class PlanningHarness:
     def __init__(self) -> None:
         self.themes = JsonThemeReferenceRepository()
@@ -354,6 +369,9 @@ class PlanningHarness:
         self.yearly_ids = DeterministicIdGenerator("yearly-final")
         self.monthly_ids = DeterministicIdGenerator("monthly-final")
         self.templates = JsonMonthlyTemplateRepository()
+        # Generation sees the approved fixture; tests swap in self.templates
+        # to prove the gate rejects the real PENDING files.
+        self.generation_templates = ApprovedTemplates(self.templates)
         self.profiles = InMemoryTemplateProfileRepository(
             (
                 _profile(self.templates, RULE_TEMPLATE, RULE_PROFILE),
@@ -444,6 +462,7 @@ class PlanningHarness:
             parent_plan_repository=self.yearly_plans,
             plan_repository=self.monthly_plans,
             profile_repository=self.profiles,
+            template_repository=self.generation_templates,
             safety_repository=self.safety,
             activity_repository=self.activities,
             clock=self.clock,

@@ -79,14 +79,15 @@ scripts/deploy.sh 를 통째로 보냄   aws ssm send-command
 
 ## 손으로 배포
 
-자동 배포가 막혔을 때, 또는 `main` 이 아닌 브랜치를 올려야 할 때 쓴다.
-**명령은 같다** — 같은 스크립트를 부른다.
+자동 배포가 막혔을 때 쓴다. **명령은 같다** — 같은 스크립트를 부른다.
+`main` 이 아닌 브랜치는 Actions 에서 올린다(아래 「main 이 아닌 브랜치를 올릴 때」).
+여기서 올릴 때는 `DEPLOY_REF` 를 붙인다 — **안 붙이면 `main` 이 올라간다.**
 
 EC2 → 인스턴스 → **연결** → **Session Manager** 탭 → 연결
 
 ```bash
 sudo -iu ubuntu
-bash ~/ktc4-kangwon-2/scripts/deploy.sh
+DEPLOY_REF=develop bash ~/ktc4-kangwon-2/scripts/deploy.sh   # 올릴 브랜치 · 커밋. 안 붙이면 main
 
 cd ~/ktc4-kangwon-2
 docker compose ps
@@ -106,33 +107,80 @@ curl -m 5 -o /dev/null -w "5432  %{http_code}\n" http://13.125.107.188:5432     
 
 ### main 이 아닌 브랜치를 올릴 때
 
-멘토 리뷰처럼 `main` 머지 전에 보여줘야 할 때가 있다. `deploy.sh` 는 `main` 을 박아
-두었으므로 그때는 아래를 붙여 넣는다. **`git` 은 `ubuntu` 로 돌린다** — root 로 돌리면
-`.git` 안에 root 소유 파일이 생겨 다음에 ubuntu 가 손을 못 댄다.
+**Actions 에서 한다.** 손으로 서버에 들어갈 필요가 없다.
 
-```bash
-sudo -u ubuntu bash -c '
-set -euo pipefail
-cd /home/ubuntu/ktc4-kangwon-2
-git fetch --prune origin
-git checkout -B develop origin/develop
-echo "커밋: $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
-test -f .env || { echo ".env 없음"; exit 1; }
-sudo docker compose build backend frontend
-sudo docker compose run --rm backend alembic upgrade head
-sudo docker compose up -d
-sudo docker image prune -f
-'
+```
+Actions → Deploy → Run workflow → ref 에 브랜치 이름 (예: develop) → Run
 ```
 
-**치울 필요가 없다.** 다음 자동 배포가 `git checkout main && git reset --hard` 를 하므로
-`main` 에 머지되는 순간 알아서 되돌아온다. 그때 올라가는 코드가 지금 올린 것과 같다.
+`push` 로 들어온 배포는 늘 `main` 이다. 고를 수 있는 건 손으로 돌릴 때뿐이다.
+
+**전에는 `deploy.sh` 가 `main` 을 박아 두었다.** 그래서 손으로 develop 을 올려 둔 서버에
+자동 배포를 한 번 돌리면 조용히 main 으로 되돌아갔고, 무엇이 돌고 있는지 아무도 몰랐다.
+2026-10-20 에 `DEPLOY_REF` 로 받게 고쳤다.
+
+**치울 필요가 없다.** `main` 에 머지되는 순간 자동 배포가 돌아 `main` 으로 되돌아온다.
 마이그레이션으로 생긴 표는 남지만 옛 코드는 그 표를 읽지 않아 문제가 없다 — **지우지 않는다.**
+
+### 되감을 때 (롤백)
+
+나쁜 배포가 나가면 **직전 커밋 SHA 로 다시 배포한다.** 같은 길이다 — 롤백 전용 길을
+따로 두지 않는다. 평소에 안 쓰는 길은 정작 급할 때 안 돈다.
+
+```
+Actions → Deploy → Run workflow → ref 에 직전 커밋 SHA → Run
+```
+
+직전에 무엇이 돌았는지는 두 군데서 본다.
+
+```bash
+# 1. Actions 의 배포 기록 — 「배포 <ref> <sha> — <제목>」이 찍혀 있다
+# 2. 서버에서
+sudo -u ubuntu git -C /home/ubuntu/ktc4-kangwon-2 log --oneline -5
+```
+
+**DB 는 안 되감긴다.** 마이그레이션은 앞으로만 간다. 옛 코드가 새 표를 읽지 않으니
+대개 문제가 없지만, **열을 지우거나 이름을 바꾼 마이그레이션이 섞여 있으면 되감아도
+안 돈다.** 그런 변경은 두 단계로 나눠 올린다(먼저 안 쓰게 하고, 다음 판에서 지운다).
+
+**새 마이그레이션이 올라간 뒤로는 되감기가 배포 단계에서 먼저 죽는다** (멘토 지적 #210).
+`deploy.sh` 가 `alembic upgrade head` 를 돌리는데, 옛 코드에는 지금 DB 가 서 있는 리비전
+파일이 **아예 없다.**
+
+```
+alembic.util.exc.CommandError: Can't locate revision identified by 'b8d4f1a92c37'
+```
+
+그래서 **배포가 거기서 멈춘다.** `up -d` 전이므로 기존 컨테이너는 교체되지 않았지만,
+작업 폴더와 빌드된 이미지는 이미 되감을 커밋의 것이다. 이때는 둘 중 하나다.
+
+```
+① 되감을 커밋을 마이그레이션 앞이 아니라 뒤로 잡는다 (그 마이그레이션을 포함한 커밋)
+② 더 이전 커밋이 꼭 필요하면, 아래 조건을 확인한 뒤 DB 를 목표 리비전까지 내리고 배포한다
+```
+
+②는 **데이터가 지워질 수 있다.** 먼저 DB 를 백업하고, 목표 커밋의 마이그레이션 head 와
+현재 DB 리비전을 확인한다. **현재 리비전 파일을 포함한 코드로 돌아가 backend 이미지를
+다시 빌드한 뒤** 실행해야 한다. 실패한 롤백 직후의 이미지로 `downgrade` 를 실행하면
+똑같이 현재 리비전을 찾지 못한다.
+
+```bash
+# 현재 DB 리비전 파일을 포함한 코드에서 실행한다. 기존 컨테이너는 교체하지 않는다.
+sudo docker compose build backend
+sudo docker compose run --rm backend alembic current
+sudo docker compose run --rm backend alembic history
+```
+
+그 코드의 `downgrade()` 를 모두 검토한 뒤 `alembic downgrade` 에 **목표 리비전 ID 를
+명시**한다. 커밋 사이에 여러 마이그레이션이 있으면 `-1` 한 번으로는 부족하다.
+주간계획안 마이그레이션은 주간 데이터가 남아 있으면 내려가지 않도록 막혀 있다.
+검토 없이 데이터를 지워 우회하지 않는다. DB 를 내린 뒤에는 목표 커밋으로 다시 배포하고
+`/health/ready` 와 핵심 문서 생성 경로를 확인한다.
 
 ### 순서에 이유가 있다
 
 ```
-git reset --hard    서버에서 직접 고친 파일이 있어도 main 이 정답이다
+git reset --hard    서버에서 직접 고친 파일이 있어도 배포하는 ref 가 정답이다
 파일 확인            fetch 가 실패해도 reset 은 성공한다.  옛 origin/main 이 남아 있어서
                     2026-09-22 에 13일 전 커밋으로 되감겼고, 그 커밋엔 docker-compose.yml 이 없었다
 build               이미지를 먼저 만든다
@@ -202,13 +250,15 @@ echo | openssl s_client -connect ssample.duckdns.org:443 \
 
 ## 배포가 실패하면
 
-**먼저 어느 단계에서 멈췄는지 본다.** 셋은 원인이 다르다.
+**먼저 어느 단계에서 멈췄는지 본다.** 넷은 원인이 다르다.
 
 ```
 AWS 자격증명 설정 에서 실패     인증 문제.  AWS_ACCOUNT_ID Variable 을 본다
 배포 명령 보내기 에서 실패      권한·서버 문제.  서버가 SSM 에 붙어 있나
-끝날 때까지 기다린다 에서 실패   서버에서 명령이 터졌다.  그 스텝의 「서버 출력」을 읽는다
-Health check 에서 실패         배포는 됐는데 앱이 안 뜬다.  서버에서 docker compose ps
+끝날 때까지 기다린다 에서 실패   서버에서 명령이 터졌거나, 20분 안에 안 끝났다.  그 스텝의 「서버 출력」을 읽는다
+                              「상태 InProgress」면 서버는 아직 돈다 — 끝나기 전에 다시 배포하지 않는다
+Health check 에서 실패         앱이 안 뜨거나, 확인할 주소가 틀렸다.  서버에서 docker compose ps,
+                              로그의 「확인할 주소」 줄과 HEALTHCHECK_URL secret 을 본다
 ```
 
 **서버가 SSM 에 붙어 있나 확인:**
@@ -226,8 +276,6 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 ---
 
 ## 안 만든 것
-
-**롤백 자동화** — `git reset --hard <이전 커밋>` 후 다시 돌리면 된다.
 
 **GHCR 이미지 푸시** — 서버에서 직접 빌드한다. 빌드 머신이 따로 없어 단계가 줄어든다.
 `t3.medium`(4GB)에서 Next.js 빌드가 메모리로 실패하면 그때 옮긴다.
@@ -247,11 +295,89 @@ aws ssm describe-instance-information --region ap-northeast-2 \
 
 ## 백업
 
-파일럿(10/19) 전에 걸어야 한다(ADR-006). 아직 안 걸었다.
+파일럿(10/19) 전에 걸어야 한다(ADR-006).
 
 ```bash
-0 3 * * * docker exec ktc4-kangwon-2-db-1 pg_dump -U ssuksak ssuksak | gzip \
-  | aws s3 cp - s3://ktc4-kangwon-2-rag/backup/$(date +\%F).sql.gz
+sudo crontab -e
+15 18 * * * /home/ubuntu/ktc4-kangwon-2/scripts/backup.sh >> /var/log/ssuksak-backup.log 2>&1
 ```
 
-EC2 역할에 `PowerUserAccess` 가 있어 키 없이 S3 에 쓴다.
+**시각은 UTC 다.** 서버 cron 이 UTC 로 돌아서 `15 18` 이 한국 새벽 3시 15분이다(`scripts/backup.sh` 머리 주석).
+
+백업 파일은 root 소유로 쌓인다(cron 이 root 다). **손으로 돌릴 때도 `sudo` 를 붙인다.**
+
+**`scripts/backup.sh` 를 쓴다.** cron 에 `pg_dump` 한 줄을 직접 적지 않는다 — 그 한 줄은
+`pg_dump` 가 실패해도 `gzip` 이 성공해서 **빈 파일을 백업이라고 남긴다.** 스크립트는 그걸 본다.
+
+S3 로도 보내려면 `.env` 에 `BACKUP_S3_URI=s3://ktc4-kangwon-2-rag/backup` 을 넣는다.
+EC2 역할에 `PowerUserAccess` 가 있어 키 없이 쓴다.
+**같은 디스크에만 두면 디스크가 죽을 때 백업도 같이 죽는다.**
+
+### 백업이 살아 있는지 확인 — 한 달에 한 번
+
+```bash
+scripts/restore-check.sh /home/ubuntu/backup/ssuksak_20261014_031500.sql.gz
+```
+
+버리는 DB 에 복구해 보고 지운다. **쓰던 DB 를 건드리지 않는다.** 표가 다 왔는지, alembic
+head 가 운영과 같은지, 복구본에 **새 행이 들어가는지**(시퀀스)까지 본다.
+
+```
+restore-check ok  /home/ubuntu/backup/ssuksak_20261014_031500.sql.gz
+  alembic  2652c5dee127 (운영 2652c5dee127)
+  행       centers=3 users=3 plans=2 documents=1
+```
+
+### 진짜로 되돌려야 할 때
+
+**쓰던 DB 에 백업을 그대로 붓지 않는다.** `CREATE TABLE` 이 「already exists」로 줄줄이
+실패하는데 `psql` 은 그걸 넘기고 **0 으로 끝난다.** 2026-10-14 에 해 봤다 — 오류 105줄이
+나면서 **아무것도 복구되지 않았는데 명령은 성공한 것처럼 끝났다.**
+
+**두 경우가 다르다.** `ssuksak` 이 **살아 있는데 내용이 틀어진** 경우와, **아예 없는**
+경우다. 1번과 5번이 갈린다.
+
+```bash
+# 0  어느 경우인지 먼저 본다
+docker compose exec -T db psql -U ssuksak -d postgres -tAc \
+  "SELECT 1 FROM pg_database WHERE datname='ssuksak';"
+#    1 이 나오면 → 1번부터.  아무것도 안 나오면 → 2번부터 (1번과 5번 앞줄을 건너뛴다)
+
+# 1  [DB 가 살아 있을 때만] 지금 것부터 백업한다
+#    복구가 틀렸을 때 돌아올 자리가 없으면 두 번 잃는다
+#    **sudo 로 돈다.** cron 이 root 로 돌아서 /home/ubuntu/backup 이 root 소유다 —
+#    ubuntu 로 그냥 돌리면 파일을 못 만들고 여기서 멈춘다
+sudo scripts/backup.sh
+
+# 2  받을 빈 DB 를 따로 만든다
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'CREATE DATABASE ssuksak_restore OWNER ssuksak;'
+
+# 3  파일부터 성한지 본다. **잘린 gzip 도 앞부분은 멀쩡히 풀린다**
+gzip -t <파일>
+
+#    붓는다. ON_ERROR_STOP=1 과 pipefail 을 둘 다 붙인다
+#    pipefail 이 없으면 gunzip 이 중간에 죽어도 psql 의 성공만 보고 넘어간다
+#    **여기서 실패하면 멈춘다.** 덜 들어간 DB 를 끼우면 교사 기록이 조용히 사라진다
+set -o pipefail
+gunzip -c <파일> | docker compose exec -T db psql -U ssuksak -d ssuksak_restore \
+  -v ON_ERROR_STOP=1
+
+# 4  **끼울 그 DB 를 검사한다.** 파일만 검사하면 안 된다 —
+#    파일은 멀쩡한데 3번이 덜 들어간 경우를 못 본다
+scripts/restore-check.sh --db ssuksak_restore
+
+# 5  바꿔 끼운다. **연결이 남아 있으면 RENAME 이 안 된다** — 백엔드를 먼저 멈춘다
+docker compose stop backend
+
+#    [DB 가 살아 있을 때만] 망가진 것을 옆으로 치운다. 없으면 이 줄을 건너뛴다
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'ALTER DATABASE ssuksak RENAME TO ssuksak_broken_'"$(date +%Y%m%d)"';'
+
+docker compose exec -T db psql -U ssuksak -d postgres \
+  -c 'ALTER DATABASE ssuksak_restore RENAME TO ssuksak;'
+docker compose start backend
+curl -f https://ssample.duckdns.org/health/ready
+
+# 6  **망가진 DB 를 바로 지우지 않는다.** 며칠 두고 본 뒤에 지운다
+```

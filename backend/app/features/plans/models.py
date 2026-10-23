@@ -1,14 +1,15 @@
-"""계획안 테이블. 연간·월간이 한 테이블을 쓴다.
+"""계획안 테이블. 연간·월간·주간이 한 테이블을 쓴다.
 
 **본문을 행으로 펼치지 않는다.** `YearlyPlan` 은 12개월 × (테마 · 근거 · 생성이력 ·
-감사기록)이고 `MonthlyPlan` 은 43칸이다. 이걸 테이블로 펼치면 p0-planning 이 칸을
-하나 더할 때마다 마이그레이션이 따라붙는다. 도메인이 아직 매주 바뀌는 중이다.
+감사기록)이고 `MonthlyPlan` 은 Template 과 활성 주차에 따라 칸 수가 달라진다. 이걸
+테이블로 펼치면 p0-planning 이 칸을 하나 더할 때마다 마이그레이션이 따라붙는다.
 
 그래서 `body` JSONB 하나에 통째로 넣고, **조회에 쓰는 값만 칸으로 꺼낸다.**
 꺼낸 칸은 항상 `body` 에서 유도한다 — 따로 받으면 둘이 어긋난다.
 
-펼칠 시점은 「칸 하나만 SQL 로 고쳐야 할 때」다. 지금은 교사 한 명이 자기 계획안을
-읽고-고치고-통째로 쓴다. 동시에 같은 계획안을 고치는 사람이 없다.
+펼칠 시점은 「칸 하나만 SQL 로 고쳐야 할 때」다. 지금은 읽고-고치고-통째로 쓴다.
+두 사람이 같은 계획안을 고칠 때 나중 저장이 먼저 저장을 덮지 않게 하는 것은
+`revision` 이다(결정 문서 12.4 D-3). 비교와 409 는 편집 API 가 한다.
 """
 
 from datetime import datetime
@@ -28,17 +29,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
-KINDS = ("annual", "monthly")
+KINDS = ("annual", "monthly", "weekly")
 STATUSES = ("DRAFT", "CONFIRMED")
 
 
 class Plan(Base):
-    """연간 또는 월간 계획안 하나."""
+    """연간 · 월간 · 주간 계획안 하나."""
 
     __tablename__ = "plans"
     __table_args__ = (
         UniqueConstraint("plan_ref"),
-        CheckConstraint("kind IN ('annual','monthly')", name="kind"),
+        CheckConstraint("kind IN ('annual','monthly','weekly')", name="kind"),
         CheckConstraint("status IN ('DRAFT','CONFIRMED')", name="status"),
         # 연간은 반 하나에 하나다. 라우터가 먼저 보고 409 를 내지만 **최종 보장은 여기다** —
         # 두 요청이 동시에 오면 둘 다 「없다」를 보고 둘 다 만든다. 학년도는 걸지 않는다:
@@ -51,6 +52,27 @@ class Plan(Base):
             unique=True,
             postgresql_where=text("kind = 'annual'"),
         ),
+        # 월간은 반 · 월당 하나다(결정 문서 12.5). 연간과 같은 이유로 최종 보장은 여기다.
+        Index(
+            "uq_plans_monthly_per_classroom_month",
+            "center_id",
+            "classroom_ref",
+            "target_month",
+            unique=True,
+            postgresql_where=text("kind = 'monthly'"),
+        ),
+        # 주간은 반 · 주당 하나다(주간 계약 §4-1 G5). 같은 이유로 최종 보장은 여기다.
+        Index(
+            "uq_plans_weekly_per_classroom_week",
+            "center_id",
+            "classroom_ref",
+            "week_id",
+            unique=True,
+            postgresql_where=text("kind = 'weekly'"),
+        ),
+        # 월간 · 주간은 대상 달을 가진다 — 주간은 그 주가 속한 달이다(목록을 달로 거른다).
+        CheckConstraint("(kind = 'annual') = (target_month IS NULL)", name="target_month_kind"),
+        CheckConstraint("(kind = 'weekly') = (week_id IS NOT NULL)", name="week_id_kind"),
     )
 
     # 계약의 id 는 정수다(api-spec §4). 화면이 이미 정수로 만들어져 있다.
@@ -65,23 +87,38 @@ class Plan(Base):
         index=True,
         comment="원 격리용. 조회가 항상 이 값으로 먼저 걸린다",
     )
-    kind: Mapped[str] = mapped_column(String(10), comment="annual | monthly")
+    kind: Mapped[str] = mapped_column(String(10), comment="annual | monthly | weekly")
     school_year: Mapped[int] = mapped_column(comment="학년도. 3월~익년 2월")
     classroom_ref: Mapped[str] = mapped_column(
         String(50), index=True, comment="도메인이 쓰는 반 참조. classes.id 를 문자열로 담는다"
     )
+    target_month: Mapped[str | None] = mapped_column(
+        String(7),
+        comment="월간 · 주간의 대상 월 YYYY-MM. body 의 target_month(주간은 week_id 의 달)에서 "
+        "꺼낸 값이다",
+    )
+    week_id: Mapped[str | None] = mapped_column(
+        String(10), comment="주간의 주 YYYY-MM-Wn. body 의 week_id 에서 꺼낸 값이다"
+    )
     status: Mapped[str] = mapped_column(
         String(20), comment="DRAFT | CONFIRMED. body 의 status 에서 꺼낸 값이다"
+    )
+    revision: Mapped[int] = mapped_column(
+        default=1, server_default="1", comment="저장할 때마다 +1. 읽은 값과 다르면 그 사이 바뀐 것"
     )
     body: Mapped[dict] = mapped_column(
         JSONB, comment="도메인 객체 전체. 이것이 원본이고 위 칸들은 여기서 유도한다"
     )
-    # 계약에는 있는데 도메인에는 없다(api-spec §4 · §6). 도메인의 ThemeTextGenerator 는
-    # 주제 문장 하나만 돌려준다. 도메인을 건드리지 않고 서버가 따로 든다 —
-    # 소주제는 별도 근거가 없고 상위 주제의 evidence·generation 을 물려받으므로
-    # 도메인 객체 안에 들어갈 자리가 없다.
+    # Core 의 주제 포트를 유지하고 서버가 문서 단위로 생성·저장한다(ADR-041).
+    # 교사 수정도 이 칸에 저장한다. 소주제는 상위 주제의 근거·생성 방식을 물려받는다.
     sub_themes: Mapped[dict] = mapped_column(
         JSONB, default=dict, server_default="{}", comment='월 -> 소주제 배열. {"3": ["..."]}'
+    )
+    annual_safety: Mapped[dict] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default="{}",
+        comment="교사 안전교육 배치. months(월→구분 배열)와 audit(변경 전후·행위자·UTC 시각)",
     )
     # 어느 양식에서 나온 계획안인지. **복사하지 않고 번호만 든다** — 양식은 원본 하나만
     # 두고 계획안은 그걸 가리킨다. FK 라서 파생 계획안이 남아 있는 양식은 지워지지 않는다

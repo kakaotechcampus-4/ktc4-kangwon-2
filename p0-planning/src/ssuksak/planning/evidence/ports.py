@@ -6,6 +6,7 @@ from typing import Protocol, runtime_checkable
 
 from .classification import EvidenceSemanticClassification
 from .store import InstitutionEvidenceStore
+from .weekly_classification import WeeklyEvidenceClassification
 
 
 @runtime_checkable
@@ -16,3 +17,8 @@ class InstitutionEvidenceRepository(Protocol):
 @runtime_checkable
 class EvidenceClassificationRepository(Protocol):
     def get_classification(self) -> EvidenceSemanticClassification: ...
+
+
+@runtime_checkable
+class WeeklyEvidenceClassificationRepository(Protocol):
+    def get_classification(self) -> WeeklyEvidenceClassification: ...

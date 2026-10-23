@@ -1,7 +1,7 @@
 """원·반 API 의 요청·응답 모델. 계약은 docs/api-spec.md §1 · §2 다."""
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -15,6 +15,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from app.features.observations.models import AXES
 
 # 빈 문자열과 공백만 있는 입력을 막는다. FE 가 trim 하지 않아도 서버에서 같은 값이 된다.
 # max_length 는 DB 컬럼 길이에 맞춘 것만 건다 — models.py 에 근거가 없는 값을 지어내지 않는다.
@@ -107,6 +109,23 @@ class CenterResponse(BaseModel):
     created_at: datetime
 
 
+class InviteResponse(BaseModel):
+    """`POST /api/centers/{center_id}/invites` 응답 (§1-1)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    expires_at: datetime
+
+
+class JoinRequest(BaseModel):
+    """`POST /api/centers/join` 요청 (§1-1). 대소문자·앞뒤 공백은 서버가 맞춘다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+
+
 class ClassResponse(BaseModel):
     """`GET /api/centers/{center_id}/classes` 의 항목.
 
@@ -150,6 +169,52 @@ class GreetingItem(BaseModel):
 
     month: Annotated[int, Field(strict=True, ge=1, le=12)]
     text: GreetingText
+
+
+# 고를 수 있는 축. 목록을 다시 적지 않는다 — observations/models.py 의 AXES 가 출처다.
+ObservationAxis = Literal[tuple(AXES)]  # type: ignore[valid-type]
+
+
+class CenterSettings(BaseModel):
+    """원 설정 — 켜고 끄는 값만 (api-spec.md §3-1).
+
+    성품인사(§3)는 여기 넣지 않는다. 12개월 문구를 들고 있어 요청 모양이 아예 다르다.
+    """
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    trends_enabled: Annotated[bool, Field(strict=True)]
+    weekly_saturday_enabled: Annotated[bool, Field(strict=True)]
+    # 관찰 기록의 영역 축. 화면이 영역 고르는 칸을 이 값으로 그린다 (observations AXES).
+    observation_axis: ObservationAxis
+
+
+class CenterSettingsUpdate(BaseModel):
+    """**보낸 칸만 바꾼다.** 성품인사와 달리 전체 교체가 아니다.
+
+    토글은 한 번에 하나씩 누른다. 전체 교체로 받으면 설정이 늘어날 때마다
+    「다른 토글은 안 건드렸다」를 화면이 매번 증명해야 한다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    trends_enabled: Annotated[bool, Field(strict=True)] | None = None
+    weekly_saturday_enabled: Annotated[bool, Field(strict=True)] | None = None
+    # **이미 쌓인 기록은 그대로 둔다.** 축을 바꿔도 전에 쓴 영역 이름은 살아 있다 —
+    # 지우면 교사가 쓴 사실이 사라진다. 새 기록부터 새 축을 쓴다.
+    observation_axis: ObservationAxis | None = None
+
+    @field_validator("trends_enabled", "weekly_saturday_enabled")
+    @classmethod
+    def not_null(cls, value: bool | None) -> bool:
+        """**안 보낸 것과 null 을 보낸 것은 다르다.**
+
+        안 보내면 그 칸을 안 바꾼다. null 을 보내면 참/거짓이 아니므로 422 다 —
+        그냥 받으면 화면이 null 을 보내고도 저장됐다고 읽는다.
+        """
+        if value is None:
+            raise ValueError("참 또는 거짓이어야 합니다.")
+        return value
 
 
 class GreetingsSettings(BaseModel):

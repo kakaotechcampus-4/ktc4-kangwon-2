@@ -15,7 +15,9 @@ from types import MappingProxyType
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[3] / "resources" / "evaluation"
-_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v1.json"
+# v2의 평가요소 19개는 2026-10-20 PM 승인이 기록됐다. 승인·해시는 아래에서 계속 검사한다.
+_INDICATORS_PATH = _ROOT / "daycare_evaluation_indicators_v2.json"
+_INDICATORS_V2_PATH = _ROOT / "daycare_evaluation_indicators_v2.json"
 _RULES_PATH = _ROOT / "checklist_rules_v1.json"
 
 
@@ -95,9 +97,8 @@ def _elements(source: Mapping[str, Any], version: str) -> tuple[Element, ...]:
     raw = source.get("elements", [])
     if not isinstance(raw, list):
         raise CatalogError(f"{number}: elements는 배열이어야 한다")
-    # ponytail: v1 은 평가요소가 나뉘어 있지 않아 0개를 허용한다(임시).
-    #           v2(승석 — 평가요소 19개)가 오면 이 허용은 판 번호로 저절로 꺼진다.
-    #           v2 의 `elements` 모양({element, text})은 승석과 합의 전 가정이다.
+    # v1 은 평가요소가 나뉘어 있지 않아 0개를 허용했다. v2 부터는 SELF_CHECK 에 평가요소가
+    # 없으면 거절한다 — 빈 목록이 「점검할 것이 없다」로 보이면 교사가 다 한 줄 안다.
     if version != "daycare-evaluation-indicators-v1" and not raw:
         raise CatalogError(f"{number}: SELF_CHECK 평가요소가 없다")
     elements, seen = [], set()
@@ -118,9 +119,27 @@ def _elements(source: Mapping[str, Any], version: str) -> tuple[Element, ...]:
     return tuple(elements)
 
 
+def _require_approved(indicators_doc: Mapping[str, Any]) -> None:
+    """사람이 원문과 대조한 판만 쓴다.
+
+    파일 자체가 `runtime_active == (domain_owner_approval == "HUMAN_APPROVED")` 를 항상
+    만족해야 한다고 정한다. 승인 없이 쓰면 **대조받지 않은 평가요소를 교사에게 체크하라고
+    내미는 것**이 된다. `plans/rules/verify.py` 의 같은 규칙과 짝이다.
+    """
+    review = indicators_doc["review"]
+    approved = review["domain_owner_approval"] == "HUMAN_APPROVED"
+    if not approved or review["runtime_active"] != approved:
+        raise CatalogError(
+            "승인되지 않은 평가 지표 파일이다. "
+            f"domain_owner_approval={review['domain_owner_approval']!r} "
+            f"runtime_active={review['runtime_active']!r}"
+        )
+
+
 def build_catalog(indicators_doc: Mapping, rules_doc: Mapping) -> Catalog:
     """파일을 읽지 않고 원문과 규칙을 검사해 불변 카탈로그를 만든다."""
     try:
+        _require_approved(indicators_doc)
         areas = indicators_doc["areas"]
         digest = sha256(
             json.dumps(areas, ensure_ascii=False, sort_keys=True, separators=(", ", ": ")).encode(

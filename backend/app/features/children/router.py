@@ -7,16 +7,19 @@ main.py 가 `/api` 만 붙인다.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.features.centers.models import Child, Class
+from app.features.centers.models import Center, Child, Class
 from app.features.children.schemas import (
     ChildCreate,
     ChildListResponse,
     ChildResponse,
+    ChildTracking,
+    ChildTrackingResponse,
 )
+from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS, Observation
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_child, require_own_class
 from app.shared.childCode import SubstitutionError, load_pool
@@ -95,6 +98,55 @@ def list_children(
     """
     require_own_class(session, user, class_id)
     return ChildListResponse(items=_children_of(session, class_id))
+
+
+@router.get("/classes/{class_id}/children/tracking", response_model=ChildTrackingResponse)
+def track_children(class_id: int, session: DbSession, user: CurrentUser) -> ChildTrackingResponse:
+    """반 아이들의 관찰 기록 수를 아이 · 영역별로 센다 (§2-1 발달 추적).
+
+    GROUP BY 한 번이다. 기록 본문은 내려주지 않는다 — 한 아이의 기록은
+    `GET /api/observations?child_id=` 로 따로 받는다. 반 전체 기록을 받아 화면에서 나누면
+    아이 수 × 기록 수만큼 실명 · 본문이 한꺼번에 내려온다.
+    """
+    classroom = require_own_class(session, user, class_id)
+    # 영역 칸은 **그 원이 쓰는 축**만 센다 (observations/models.py AXES). 축을 바꾼 원이면
+    # 옛 축으로 쌓은 기록도 그대로 남아 있다 — 지금 축에 없는 이름은 뒤에 따로 붙인다.
+    center = session.get(Center, classroom.center_id)
+    axis = AXES.get(center.observation_axis if center else DEFAULT_AXIS, NURI_DOMAINS)
+    rows = session.execute(
+        select(
+            Observation.child_id,
+            Observation.domain,
+            func.count(),
+            func.max(Observation.date),
+        )
+        .where(Observation.class_id == class_id)
+        .group_by(Observation.child_id, Observation.domain)
+    ).all()
+    counts: dict[int, dict[str, int]] = {}
+    last: dict[int, object] = {}
+    for child_id, domain, count, latest in rows:
+        counts.setdefault(child_id, {})[domain] = count
+        last[child_id] = max(latest, last.get(child_id, latest))
+    items = []
+    for child in _children_of(session, class_id):
+        mine = counts.get(child.id, {})
+        by_domain = {domain: mine.get(domain, 0) for domain in axis}
+        # 축을 바꾸기 전에 쓴 기록. 0 이면 안 붙인다 — 빈 칸을 늘리지 않는다.
+        for domain, count in mine.items():
+            if domain not in by_domain and count:
+                by_domain[domain] = count
+        items.append(
+            ChildTracking(
+                child_id=child.id,
+                name=child.name,
+                code=child.code,
+                total=sum(by_domain.values()),
+                last_date=last.get(child.id),
+                by_domain=by_domain,
+            )
+        )
+    return ChildTrackingResponse(items=items)
 
 
 @router.delete("/children/{child_id}", status_code=status.HTTP_204_NO_CONTENT)

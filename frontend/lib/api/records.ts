@@ -10,14 +10,22 @@ import {
 import { classServerId, childServerId } from "./onboarding";
 import { toLocalObservation } from "./observation-ids";
 import type { ObservationUpdate } from "./types";
+import { chosenClassFor, loadClassSettings } from "../onboarding/settings";
 
 /** 반·아동이 서버의 무엇인지 모르는 상태. 서버 id 를 지어내지 않고 여기서 멈춘다. */
 export const UNMAPPED =
   "연결된 반·아동 정보를 확인할 수 없어요. 반·아동 관리에서 다시 저장해주세요.";
 
-/** 정렬은 서버가 정한다. 반·아동 필터는 화면이 화면 id 로 건다. */
-export async function listRecords(): Promise<ServerObservation[]> {
-  const { items } = await getObservations();
+/** 반을 고르지 않았으면 주 반. 그것도 없으면 조회하지 않고 반 선택을 기다린다 (FR-405). */
+export async function listRecords(
+  classId?: string,
+  period: { from?: string; to?: string } = {},
+): Promise<ServerObservation[]> {
+  const localId = classId ?? chosenClassFor(loadClassSettings())?.id;
+  if (!localId) return [];
+  const class_id = classServerId(localId);
+  if (class_id === null) throw new Error(UNMAPPED);
+  const { items } = await getObservations({ class_id, ...period });
   return items.map(toLocalObservation);
 }
 

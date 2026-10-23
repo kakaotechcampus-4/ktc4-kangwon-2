@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -14,13 +14,19 @@ from app.features.auth.models import User
 from app.features.auth.router import router as auth_router
 from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
+from app.features.documents.export import router as documents_export_router
 from app.features.documents.router import router as documents_router
+from app.features.evaluation.router import router as evaluation_router
 from app.features.forms.router import center_router as center_forms_router
 from app.features.forms.router import router as forms_router
 from app.features.observations.router import router as observations_router
 from app.features.plans.export import router as plans_export_router
+from app.features.plans.monthly_router import router as monthly_plans_router
 from app.features.plans.router import router as plans_router
+from app.features.plans.weekly_router import router as weekly_plans_router
 from app.features.routines.router import router as routines_router
+from app.features.template_profiles.router import router as template_profiles_router
+from app.features.trends.router import router as trends_router
 from app.shared.auth.dependency import current_user
 
 
@@ -38,6 +44,16 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+
+# LLM 실측이 읽는 INFO 줄 — 전송 성공 · schema · 걸린 시간(monthly_llm), 주간 성공 · 수리 · 지문
+# (planner). 이름별 logger 라 손대지 않으면 기본 WARNING 에 걸려 버려진다. 둘 다 내용 없는 줄만
+# 남긴다(프롬프트 · 생성 문장 · 키 없음). 전체 수준은 올리지 않고 이 둘만 같은 handler 로 보낸다.
+for _name in ("app.features.plans.monthly_llm", "ssuksak.planning.planner.weekly"):
+    _llm_logger = logging.getLogger(_name)
+    if not _llm_logger.handlers:
+        _llm_logger.addHandler(logger.handlers[0])
+        _llm_logger.setLevel(logging.INFO)
+        _llm_logger.propagate = False
 
 
 def _one_line(value: str) -> str:
@@ -77,6 +93,10 @@ def _frames(exc: Exception) -> str:
             at = raised
         trace = trace.tb_next
     return f"at={at}" + (f" raised={raised}" if raised != at else "")
+
+
+# U-19 A (PM 2026-10-21): 예상하지 못한 오류도 공통 봉투로 답한다. 원인은 서버 기록에만 남긴다.
+INTERNAL_ERROR_MESSAGE = "일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요."
 
 
 def _logging_failed() -> None:
@@ -125,7 +145,9 @@ class _UnexpectedErrorMiddleware:
             failed = True  # except 밖에서 보내 원래 예외의 __context__ 연결을 막는다.
         if failed and not response_started:
             try:
-                await PlainTextResponse("Internal Server Error", 500)(scope, receive, send)
+                await _error(500, "INTERNAL_ERROR", INTERNAL_ERROR_MESSAGE, [])(
+                    scope, receive, send
+                )
             except Exception:
                 pass
 
@@ -156,11 +178,17 @@ app.include_router(forms_router, prefix="/api")
 app.include_router(centers_router, prefix="/api", dependencies=_authenticated)
 app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
+app.include_router(documents_export_router, prefix="/api", dependencies=_authenticated)
+app.include_router(evaluation_router, prefix="/api", dependencies=_authenticated)
 app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 app.include_router(routines_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(monthly_plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(weekly_plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(template_profiles_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_export_router, prefix="/api", dependencies=_authenticated)
 app.include_router(center_forms_router, prefix="/api", dependencies=_authenticated)
+app.include_router(trends_router, prefix="/api", dependencies=_authenticated)
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:

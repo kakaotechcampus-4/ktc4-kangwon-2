@@ -3,8 +3,9 @@
 Next.js 16 (App Router) · TypeScript · Tailwind
 
 아래는 **어기면 사고가 나거나 리뷰에서 반드시 걸리는 것**만 적었다.
-디렉터리 규칙은 [../docs/structure.md](../docs/structure.md), 화면 명세는 [../docs/PRD.md](../docs/PRD.md),
-API 계약은 [../docs/api-spec.md](../docs/api-spec.md).
+디렉터리 규칙은 [../docs/structure.md](../docs/structure.md), 화면 명세는 [../docs/screen-spec.md](../docs/screen-spec.md)
+(범위는 [../docs/PRD.md](../docs/PRD.md)), API 계약은 [../docs/api-spec.md](../docs/api-spec.md).
+문서끼리 다르면 [ADR-031](../docs/adr/031-document-roles-and-conflict-order.md) 순서를 따른다.
 
 ---
 
@@ -147,6 +148,7 @@ npm run lint                 # eslint
 npm run format:check         # prettier
 npm test                     # node --test
 npm run build                # next build
+npm run e2e                  # playwright. 실제 스택을 먼저 띄운다 — docs/structure.md 「E2E」
 
 # PR 올리기 전에 넷을 다 돌린다
 npm run lint && npm run format:check && npm test && npm run build

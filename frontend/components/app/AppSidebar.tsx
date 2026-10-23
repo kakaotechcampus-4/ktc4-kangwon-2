@@ -150,8 +150,8 @@ export default function AppSidebar() {
             <Icon name="settings" className="h-4 w-4" />
             설정
           </Link>
-          <Link href="/logout" aria-label="로그아웃" title="로그아웃">
-            <Icon name="help" className="h-4 w-4 text-ink-soft" />
+          <Link href="/logout" className="flex min-h-11 items-center text-[11px] text-ink-soft">
+            로그아웃
           </Link>
         </div>
 

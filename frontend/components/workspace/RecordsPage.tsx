@@ -1,10 +1,15 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DOMAINS, today, validDate } from "@/lib/workspace/model";
+import { today, validDate } from "@/lib/workspace/model";
+import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
+import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
+import { classServerId } from "@/lib/api/onboarding";
+import { useClientState } from "@/lib/hooks/use-client-state";
+import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -12,6 +17,8 @@ import {
   fieldErrorProps,
   type ViewStatus,
 } from "./WorkspaceViewState";
+
+const ENTRY_NONE = { classId: "", childId: "" };
 
 // 서버 observations.context 컬럼이 50자다. 더 받으면 저장할 때 422 다.
 const CONTEXT_MAX = 50;
@@ -38,10 +45,30 @@ export default function RecordsPage() {
   const [status, setStatus] = useState<RecordsStatus>("loading");
   const [listError, setListError] = useState("");
   const [pending, setPending] = useState(false);
-  const [classId, setClassId] = useState("");
+  // 우리 반 홈의 「이 아이 기록 보기」가 반·아이를 주소로 넘긴다. 없으면 주 반을 연다.
+  const [entry] = useClientState(() => {
+    if (typeof window === "undefined") return { classId: "", childId: "" };
+    const q = new URLSearchParams(window.location.search);
+    return { classId: q.get("class") ?? "", childId: q.get("child") ?? "" };
+  }, ENTRY_NONE);
+  const [pickedClass, setClassId] = useState<string | null>(null);
+  const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
+  const classId = pickedClass ?? primaryClass;
   const [childId, setChildId] = useState("");
+  // entry 는 hydration 뒤에야 값이 온다. 그래서 초기값이 아니라 한 번만 도는 채움으로 넣는다.
+  const [entryUsed, setEntryUsed] = useState(false);
+  if ((entry.classId || entry.childId) && !entryUsed) {
+    setEntryUsed(true);
+    if (entry.classId) setClassId(entry.classId);
+    if (entry.childId) setChildId(entry.childId);
+  }
   const [date, setDate] = useState(today);
-  const [domain, setDomain] = useState(DOMAINS[0]);
+  // 원마다 축이 다르다 (observation-axis.ts). 고칠 때는 그 기록의 영역을 그대로 띄운다 —
+  // 원이 축을 바꾸기 전에 쓴 기록이면 지금 목록에 없는 이름일 수 있다.
+  const domains = useObservationDomains();
+  // **고른 영역 하나만 둔다.** 칸에 띄운 값과 보내는 값이 달라지면 안 된다.
+  const [picked, setDomain] = useState("");
+  const domain = picked || domains[0];
   const [context, setContext] = useState("");
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
@@ -56,7 +83,7 @@ export default function RecordsPage() {
 
   useEffect(() => {
     const mine = ++latest.current;
-    listRecords()
+    listRecords(classId)
       .then((items) => {
         if (mine !== latest.current) return;
         setRecords(items);
@@ -71,12 +98,12 @@ export default function RecordsPage() {
     return () => {
       latest.current += 1;
     };
-  }, []);
+  }, [classId]);
   // 저장·삭제 뒤 서버를 다시 읽는다. 첫 렌더가 이미 loading 이라 상태를 새로 세우지 않는다.
   async function reload() {
     const mine = ++latest.current;
     try {
-      const items = await listRecords();
+      const items = await listRecords(classId);
       if (mine !== latest.current) return;
       setRecords(items);
       setListError("");
@@ -92,7 +119,7 @@ export default function RecordsPage() {
     () =>
       records.filter(
         (r) =>
-          (!classId || r.classId === classId) &&
+          r.classId === classId &&
           (!childId || r.childId === childId) &&
           `${r.fact} ${r.childName} ${r.context}`.includes(search),
       ),
@@ -270,6 +297,7 @@ export default function RecordsPage() {
                   <label className={ws.field}>
                     관찰 날짜
                     <input
+                      name="date"
                       required
                       type="date"
                       max={today()}
@@ -292,7 +320,7 @@ export default function RecordsPage() {
                         clearInvalid("domain");
                       }}
                     >
-                      {DOMAINS.map((d) => (
+                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
                         <option key={d}>{d}</option>
                       ))}
                     </select>
@@ -302,6 +330,7 @@ export default function RecordsPage() {
                 <label className={ws.field}>
                   놀이 상황 / 장소
                   <input
+                    name="context"
                     maxLength={CONTEXT_MAX}
                     value={context}
                     {...fieldErrorProps("context", invalid)}
@@ -328,10 +357,17 @@ export default function RecordsPage() {
                       clearInvalid("fact");
                     }}
                     placeholder={
-                      "예: 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다. 블록이 쓰러지자 넓은 블록을 아래에 놓고 다시 쌓았다."
+                      "예: 오전 자유놀이 시간 쌓기 영역에서 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다. " +
+                      "블록이 쓰러지자 넓은 블록을 아래에 놓고 다시 쌓았다. " +
+                      "옆에 있던 친구가 같은 방법으로 따라 했다. 교사는 기다리며 지켜보았다."
                     }
                   />
-                  <small>{fact.length} / 5,000자 · 실제 행동과 발언을 적어주세요.</small>
+                  {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
+                      그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다. */}
+                  <small>
+                    {fact.length} / 5,000자 · <b>상황 → 행동 → 반응 → 교사 지원</b> 순서로 적으면
+                    일지가 잘 나와요. 다 적지 않아도 저장됩니다.
+                  </small>
                   <FieldError name="fact" invalid={invalid} />
                 </label>
                 <div className={ws.actions}>
@@ -355,12 +391,14 @@ export default function RecordsPage() {
               <Link href="/records/children" className={ws.link}>
                 아이별 모아보기 →
               </Link>
+              <RoutinesLink classId={classId} date={date} />
               <Link href="/compare" className={ws.link}>
                 이전 기록과 비교 →
               </Link>
             </span>
           </div>
           <input
+            name="record_search"
             aria-label="관찰 기록 검색"
             className={ws.input}
             placeholder="아동 이름, 놀이 내용 검색"
@@ -379,6 +417,22 @@ export default function RecordsPage() {
         </section>
       </div>
     </WorkspacePage>
+  );
+}
+
+/**
+ * 일과 기록으로 가는 길. 보고 있던 반·날짜를 그대로 들고 간다.
+ *
+ * **고른 반의 서버 번호를 모르면 보내지 않는다.** 날짜만 들려 보내면 S-J1 이 「반을 안 골랐다」로
+ * 읽고 주 반을 연다 — 교사는 B 를 눌렀는데 A 가 열린다 (FR-405).
+ */
+function RoutinesLink({ classId, date }: { classId: string; date: string }) {
+  const href = routinesPath(classId, date);
+  if (!href) return <small className={ws.hint}>{ROUTINES_UNMAPPED}</small>;
+  return (
+    <Link href={href} className={ws.link}>
+      일과 기록 →
+    </Link>
   );
 }
 
@@ -456,8 +510,15 @@ function RecordItem({
       </p>
       <p>{record.fact}</p>
       {!editable && <small>반·아동 정보를 확인할 수 없어 수정할 수 없어요.</small>}
-      {/* 문서 진입점은 문서 화면이 서버 기록을 읽게 된 뒤에 다시 연다. */}
       <div className={ws.actions}>
+        {editable && (
+          <Link
+            className={ws.secondary}
+            href={`/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}`}
+          >
+            관찰일지 만들기
+          </Link>
+        )}
         <button
           className={ws.secondary}
           disabled={pending || !editable}

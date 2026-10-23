@@ -99,18 +99,54 @@ const json = (body, status = 200) =>
 const fail = (code, status) =>
   json({ error: { code, message: "요청을 확인해주세요.", fields: [] } }, status);
 
+test("FR-405: 주 반도 선택한 반도 없으면 전체 기관을 조회하지 않는다", async () => {
+  browser();
+  const { calls, restore } = serve(() => json({ items: [DTO] }));
+  try {
+    assert.deepEqual(await records.listRecords(), []);
+    assert.deepEqual(await records.listRecords(""), []);
+    assert.equal(calls.length, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("FR-405: 선택한 반과 기간을 서버에 보내고 매핑 없는 반은 조회하지 않는다", async () => {
+  browser(
+    JSON.stringify({
+      classes: { "class-abc": { id: 3, signature: "" }, "class-b": { id: 7, signature: "" } },
+      children: {},
+    }),
+  );
+  const { calls, restore } = serve(() => json({ items: [] }));
+  try {
+    await records.listRecords("class-abc", { from: "2026-10-16", to: "2026-10-17" });
+    await records.listRecords("class-b");
+    await assert.rejects(() => records.listRecords("unknown"));
+    assert.deepEqual(
+      calls.map((c) => c.url),
+      [
+        "/api/observations?class_id=3&from=2026-10-16&to=2026-10-17",
+        "/api/observations?class_id=7",
+      ],
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("목록은 서버에서 읽고 화면 id 로 옮긴다", async () => {
   const writes = browser();
   const { calls, restore } = serve(() => json({ items: [DTO] }));
   let list;
   try {
-    list = await records.listRecords();
+    list = await records.listRecords("class-abc");
   } finally {
     restore();
   }
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "/api/observations");
+  assert.equal(calls[0].url, "/api/observations?class_id=3");
   assert.equal(calls[0].method, "GET");
   assert.equal(calls[0].auth, "Bearer " + TOKEN);
   assert.equal(list.length, 1);
@@ -125,7 +161,7 @@ test("기록이 없으면 빈 목록이다", async () => {
   browser();
   const { restore } = serve(() => json({ items: [] }));
   try {
-    assert.deepEqual(await records.listRecords(), []);
+    assert.deepEqual(await records.listRecords("class-abc"), []);
   } finally {
     restore();
   }
@@ -135,7 +171,10 @@ test("목록 조회 실패는 그대로 올라온다", async () => {
   browser();
   const { restore } = serve(() => fail("NOT_FOUND", 500));
   try {
-    await assert.rejects(records.listRecords(), (e) => e instanceof ApiError && e.status === 500);
+    await assert.rejects(
+      records.listRecords("class-abc"),
+      (e) => e instanceof ApiError && e.status === 500,
+    );
   } finally {
     restore();
   }
@@ -145,23 +184,23 @@ test("401 은 로그인 문제로 갈라 볼 수 있다", async () => {
   browser();
   const { restore } = serve(() => fail("UNAUTHENTICATED", 401));
   try {
-    await assert.rejects(records.listRecords(), (e) => isUnauthenticated(e));
+    await assert.rejects(records.listRecords("class-abc"), (e) => isUnauthenticated(e));
   } finally {
     restore();
   }
 });
 
 test("매핑이 없는 서버 기록은 화면 id 를 지어내지 않는다", async () => {
-  browser(JSON.stringify({ classes: {}, children: {} }));
+  browser(JSON.stringify({ classes: { "class-abc": { id: 3, signature: "" } }, children: {} }));
   const { restore } = serve(() => json({ items: [DTO] }));
   let list;
   try {
-    list = await records.listRecords();
+    list = await records.listRecords("class-abc");
   } finally {
     restore();
   }
 
-  assert.equal(list[0].classId, "server-class:3");
+  assert.equal(list[0].classId, "class-abc");
   assert.equal(list[0].childId, "server-child:8");
   assert.notEqual(list[0].classId, "class-3");
 });
@@ -295,7 +334,7 @@ test("서버 기록을 브라우저 저장소에 남기지 않는다", async () 
   const writes = browser();
   const { restore } = serve((n) => (n === 1 ? json({ items: [DTO] }) : json(DTO, 201)));
   try {
-    await records.listRecords();
+    await records.listRecords("class-abc");
     await records.addRecord({ ...INPUT, classId: "class-abc", childId: "api-child-8" });
   } finally {
     restore();
@@ -347,10 +386,12 @@ test("늦게 온 옛 조회가 최신 목록을 덮지 않는다", () => {
   );
 });
 
-test("연결되지 않은 문서 진입점을 내보내지 않는다", () => {
+test("서버 기록의 id와 반을 관찰일지 생성 화면으로 넘긴다", () => {
   const source = page();
-  // 문서 화면은 아직 서버 기록을 읽지 못한다.
-  assert.equal(source.includes("/documents?record="), false);
-  assert.equal(source.includes("문서로 작성"), false);
-  assert.equal(source.includes("초안으로 이어갈 수 있어요"), false);
+  assert.ok(
+    source.includes(
+      "/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}",
+    ),
+  );
+  assert.ok(source.includes("관찰일지 만들기"));
 });

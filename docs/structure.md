@@ -76,9 +76,10 @@ app/
 | `centers` | 원 · 반 · 아동 명단 · 성품인사 |
 | `activities` | 활동 풀 |
 | `plans` | 연간 · 월간 · 주간 계획안. `rules/verify.py` 는 만들어진 계획안을 검사한다(ADR-014) |
-| `forms` | 원이 등록한 양식의 파싱 결과(ADR-020). parse 는 저장하지 않는다 |
+| `forms` | 원이 등록한 양식의 파싱 결과 · 원본 저장 · 숨김(ADR-020 · ADR-026). parse 는 저장하지 않는다 |
+| `documents` | 일지 · 평가 문서. 다른 기능은 `service.py` 창구로 읽는다 |
 | `trends` | 트렌드 소재. 승인은 저장소 파일이고 큐가 아니다(ADR-016) |
-| `evaluation` | 평가제 대조 — 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
+| `evaluation` | 평가제 대조 — 라우터 GET · PUT · 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
 
 ### 규칙
 
@@ -115,6 +116,7 @@ app/
 | `auth` | 인증 |
 | `audit` | 변경 이력 |
 | `childCode` | 아동 실명 ↔ 코드 치환 |
+| `hwpx.py` | hwpx 내보내기 — 양식 표 칸 글자만 바꾼다(ADR-021). `?format=hwp` 면 그 hwpx 를 `.hwp` 로 바꾼다(ADR-039). 양식 파일은 각 feature 의 `templates/` |
 
 `childCode` 는 구현됐다(ADR-004). 나머지 5개는 빈 `__init__.py` 만 있고 각 담당자가 채운다.
 
@@ -246,6 +248,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 | `lib/` | 화면이 아닌 것 — API 호출 · 목업 데이터 모델 · 훅 |
 | `msw/` | 목업 서버 핸들러. 브라우저용 워커는 `public/mockServiceWorker.js` |
 | `tests/` | `node --test` 로 도는 테스트 |
+| `e2e/` | Playwright 브라우저 테스트. `npm run e2e` 로만 돈다 — 아래 「E2E」 |
 | `styles/` | 폰트 `@font-face` 와 디자인 토큰 |
 | `public/fonts/` | 서브셋 woff2 |
 | `package-lock.json` | 버전 고정. **반드시 커밋한다** |
@@ -265,7 +268,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 
 | 파일 | 무엇을 하는가 |
 |---|---|
-| `.github/workflows/ci.yml` | PR 마다 Ruff · pytest · alembic check · backend 이미지 빌드 · ESLint · Prettier · `next build` |
+| `.github/workflows/ci.yml` | PR 마다 Ruff · pytest · alembic check · backend 이미지 빌드 · ESLint · Prettier · `next build` · E2E |
 | `.github/workflows/deploy.yml` | `main` push 시 배포. 아직 골격만 |
 | `.github/pull_request_template.md` | PR 템플릿 |
 
@@ -291,3 +294,45 @@ curl -f http://localhost:8000/health
 
 `.env.example` 의 `DATABASE_URL` 호스트는 `db` 다.
 Docker 밖에서 uvicorn 을 직접 띄우면 `localhost` 로 바꾼다.
+
+### E2E
+
+`frontend/e2e/` 는 띄워 둔 서버에 붙기만 한다. DB · 백엔드 · Next 를 먼저 세운다(ADR-028).
+CI 의 `e2e (playwright)` job 이 하는 일과 같다.
+
+```bash
+docker compose up -d db backend          # LLM_MODE 는 기본 mock 이다
+docker compose run --rm -v "$(pwd)/backend:/app" backend alembic upgrade head
+
+cd frontend
+# FASTAPI_BASE_URL 은 build 때 박힌다. NEXT_PUBLIC_API_MOCKING 은 비워 둔다(MSW 끔).
+FASTAPI_BASE_URL=http://127.0.0.1:8000 npm run build
+FASTAPI_BASE_URL=http://127.0.0.1:8000 npm run start -- --hostname 127.0.0.1 --port 3000 &
+npx playwright install chromium          # 최초 1회
+npm run e2e                              # 다른 포트면 E2E_BASE_URL=http://127.0.0.1:3100
+```
+
+실행마다 새 계정을 만든다. 아동 이름은 가명이다 — 개발 DB 에 실명을 넣지 않는다.
+
+
+### TASK 2: routines and home regression verification
+
+Use the ADR-028 real PostgreSQL/FastAPI/Next stack with API mocking disabled.
+Run `npm run e2e` for routines A-J and home K/L. Set `E2E_DATABASE_URL` and
+`E2E_PYTHON` for the direct database assertion in the routines test.
+`SAESSAK_TEST_URL` enables all four HTTP integration tests during `npm test`.
+# TASK 2 후속 구성 (2026-10-19)
+
+- `frontend/components/workspace/RoutineTimePicker.tsx`: 시작/종료 공용 12시간제 피커.
+- `frontend/lib/api/routines.ts`: 24시간제 변환과 명시적 안정 시간 정렬. 조회 순서는 서버 우선.
+- `frontend/components/workspace/SourceReview.tsx`: 확정본 앞의 근거 비교·교사 편집·단일 확인.
+- `document-selection.ts`: 선택한 문서에만 원자적 reconfirm 응답 적용, 중복 작업 방지.
+- `backend/app/features/documents/review.py`: 비교 토큰과 원본 → 문서 잠금,
+  공유 게이트, 원자적 재확정과 완료 재시도 처리. 기존 router의 개별 API는 유지.
+- `document_reconfirmations`: 확정본 재확정의 완료 토큰별 영수증. `f7a1c3d5e902` · `b6e2d4a71c38`, ADR-040.
+- `document_source_resolutions`: **초안** 에서 사라진 근거를 빼거나 바꾼 흔적
+  (`refresh`). 영수증과 섞지 않는다. 마이그레이션 `c41ab7d6e508`, ADR-040.
+
+UI 체크박스 하나를 API checks 세 필드로 보내며, stale이어도 기존 확정 상태를 유지한다.
+근거 사본/현재 원본의 차이를 먼저 보여주고 모든 검증을 통과한 트랜잭션만 확정본을 바꾼다.
+시간순 정렬은 버튼으로만 실행하고 수동 position과 S-J2 체크 선택 순서를 보존한다.

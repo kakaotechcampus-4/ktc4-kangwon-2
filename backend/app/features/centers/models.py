@@ -29,6 +29,31 @@ class Center(Base):
     region_sido: Mapped[str] = mapped_column(
         String(30), comment="시·도. 화면이 2단으로 받는다 (docs/PRD.md S1)"
     )
+    trends_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+        comment="트렌드봇을 켤지 (FR-808). **기본은 꺼짐** — 부가 기능은 원하는 원이 켠다",
+    )
+    weekly_saturday_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+        comment="주간계획안에 토요일을 넣을지 (ADR-030 WQ-01). **기본은 꺼짐** — 월~금",
+    )
+    observation_axis: Mapped[str] = mapped_column(
+        String(16),
+        default="NURI_5",
+        server_default="NURI_5",
+        nullable=False,
+        comment=(
+            "관찰 기록의 영역 축 (observations/models.py AXES). "
+            "NURI_5 는 누리과정 5영역, DAILY_PLAY_2 는 일상생활·놀이활동. "
+            "**기본은 NURI_5** — 교사 문서 3건 중 2건이 2축이라 둘 다 받는다"
+        ),
+    )
     region_sigungu: Mapped[str] = mapped_column(
         String(30), comment="시·군·구. 지역사회 연계 활동 선별에 쓴다"
     )
@@ -109,3 +134,25 @@ class Child(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class CenterInvite(Base):
+    """같은 원의 다른 교사를 들이는 초대 코드 (docs/api-spec.md §1-1, ADR-029).
+
+    **한 번 쓰면 끝이고 7일이면 만료된다.** 코드로 들어온 교사는 그 원의 아동 명단을
+    볼 수 있다. 단톡방에 남은 코드가 몇 달 뒤에도 통하면 안 된다.
+    """
+
+    __tablename__ = "center_invites"
+    __table_args__ = (UniqueConstraint("code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    center_id: Mapped[int] = mapped_column(ForeignKey("centers.id"), index=True)
+    code: Mapped[str] = mapped_column(String(20), comment="secrets 로 만든 10자. 추측할 수 없다")
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), comment="코드를 만든 교사")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), comment="코드로 들어온 교사. 쓰기 전에는 NULL"
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

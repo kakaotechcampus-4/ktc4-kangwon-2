@@ -26,7 +26,6 @@ export default function OnboardingLayout({
           </span>
           <span className="ml-3 font-display text-xl text-ink">쌤플</span>
         </Link>
-        <span className="text-xs text-ink-soft">시작 설정</span>
       </header>
 
       <main className="mx-auto max-w-[820px] py-9 sm:py-12">

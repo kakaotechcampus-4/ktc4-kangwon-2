@@ -7,7 +7,7 @@ import json
 
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
-from ..domain.monthly_template import DisplayMode, SectionRole
+from ..domain.monthly_template import RepeatBy, SectionRole
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
@@ -32,6 +32,12 @@ Return only section_key, value, unresolved, reference_id, and grounding_refs.
 Do not return or redefine Template presentation metadata.
 Do not make legal decisions or generate statutory safety education.
 Every resolved value needs supplied grounding_refs or a supplied reference_id.
+Use reference_id only when the target section's reference catalog is supplied
+(outdoor_play: reference_activities activity_id); otherwise reference_id is null.
+A reference cell returns one reference_id and value pair allowed by the response
+schema; that value is the canonical label of the referenced item, and its
+grounding_refs is [] because the reference grounds it. To write your own
+sentence instead, set reference_id to null and cite grounding_refs.
 A section with a grounding_class may cite only evidence with that grounding_class;
 a section without one must not cite evidence that has a grounding_class.
 Within each grounding_refs array, include each reference id at most once;
@@ -81,7 +87,7 @@ def build_monthly_cell_request(
     if target_section is None or target_section.role is not SectionRole.CONTENT:
         raise ValueError("target section is not a Snapshot content section")
     # Placement vs target_week_id is enforced by MonthlyCellPlanningRequest.
-    merged = target_section.display_mode is DisplayMode.MONTHLY_MERGED_SUMMARY
+    merged = target_section.repeat_by is RepeatBy.NONE
     target_cell: dict[str, object] = {
         "week_id": None if target_week_id is None else target_week_id.value,
         "section_key": target_section_key,

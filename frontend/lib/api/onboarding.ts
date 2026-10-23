@@ -2,10 +2,15 @@ import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isApiNotFound } from "./client";
-import { createCenter } from "./centers";
+import { getMe } from "./auth";
+import { createCenter, joinCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
+import { normalizeProvince } from "../onboarding/regions";
 import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
+/** 서버에서 받아온 연결이라는 표시. 화면이 그 내용을 들고 있지 않아 서명을 만들 수 없다. */
+const ADOPTED = "adopted";
+
 interface Binding {
   id: number;
   signature: string;
@@ -14,6 +19,14 @@ interface Links {
   center?: Binding;
   classes: Record<string, Binding>;
   children: Record<string, number>;
+  /**
+   * 버려진 서버 반 id.
+   *
+   * 이전 `syncClassOnce`는 반 정보를 고칠 때마다 새 반을 만들었다. 그래서
+   * 과거 수정 횟수만큼 옛 행이 서버에 남는다. 이걸 적어두지 않으면
+   * `adoptServerClasses` 가 옛 행을 「서버에만 있는 반」으로 보고 다시 들인다.
+   */
+  retired?: number[];
 }
 const LINKS_KEY = "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT;
 function readLinks(): Links {
@@ -21,7 +34,7 @@ function readLinks(): Links {
   if (!raw) return { classes: {}, children: {} };
   const v = JSON.parse(raw);
   if (!v || !v.classes || !v.children) throw new Error("API 연결 정보를 읽지 못했습니다.");
-  return v;
+  return Array.isArray(v.retired) ? v : { ...v, retired: undefined };
 }
 function saveLinks(v: Links) {
   localStorage.setItem(accountStorageKey(LINKS_KEY), JSON.stringify(v));
@@ -58,6 +71,17 @@ export const classServerId = (localId: string) =>
 export const childServerId = (localId: string) =>
   serverId(valueOf(storedLinks()?.children, localId));
 
+/**
+ * 연결이 없는 서버 id 를 화면용 id 로 쓸 때의 접두사.
+ *
+ * `documents.ts` · `observations.ts` 가 기록을 화면 모양으로 바꿀 때 쓰고,
+ * `adoptServerClasses` 가 반을 들일 때도 **같은 규칙**을 쓴다. 한쪽만 다르면
+ * 같은 반이 `server-class:7` 과 `api-class-7` 두 개로 갈려서, 기록이 먼저 도착한
+ * 화면에서는 그 반을 골라도 기록이 하나도 안 보인다.
+ */
+export const CLASS_PREFIX = "server-class:";
+export const CHILD_PREFIX = "server-child:";
+
 export function classLocalId(id: number): string | null {
   return entries(storedLinks()?.classes).find(([, v]) => bindingId(v) === id)?.[0] ?? null;
 }
@@ -76,6 +100,11 @@ async function syncCenterOnce(settings: ClassSettings) {
     signature = JSON.stringify(data),
     links = readLinks();
   if (links.center?.signature === signature) return links.center.id;
+  // **서버에서 받아온 원은 그대로 쓴다.** 초대받았거나 기기를 바꾼 교사는 원 정보를
+  // 화면에 들고 있지 않아 서명이 영영 안 맞는다. 그때마다 원을 새로 만들면 원이 쌓이고
+  // (서버가 거절하기도 한다) links.classes 까지 비워서 방금 들인 반이 날아간다.
+  // 그 교사의 원 정보 수정은 서버에 반영되지 않는다 — 원 수정 API 가 생겨야 풀린다.
+  if (links.center?.signature === ADOPTED) return links.center.id;
   // P0 has no center update endpoint: retain old server objects, create a new snapshot.
   const center = await createCenter(data);
   links.center = { id: center.id, signature };
@@ -84,28 +113,191 @@ async function syncCenterOnce(settings: ClassSettings) {
   saveLinks(links);
   return center.id;
 }
+/**
+ * 초대 코드로 기존 원에 들어간다 (§1-1). 원 정보는 서버 값으로 채우고, syncCenter 가 같은
+ * 서명을 보도록 연결해 둔다 — 서명이 다르면 다음 단계에서 원을 새로 만들려다 409 가 난다.
+ */
+export async function joinCenterByCode(
+  settings: ClassSettings,
+  code: string,
+): Promise<ClassSettings> {
+  const center = await joinCenter(code);
+  // 화면이 지역을 정식 이름으로 바꿔 쓴다(「강원」 → 「강원특별자치도」). 서명도 같은 값으로 만든다.
+  const data = {
+    name: center.name,
+    director_name: center.director_name,
+    region_sido: normalizeProvince(center.region_sido).trim(),
+    region_sigungu: center.region_sigungu.trim(),
+  };
+  saveLinks({
+    center: { id: center.id, signature: JSON.stringify(data) },
+    classes: {},
+    children: {},
+  });
+  return {
+    ...settings,
+    orgName: center.name,
+    directorName: center.director_name,
+    regionProvince: data.region_sido,
+    regionDistrict: data.region_sigungu,
+  };
+}
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
     links = readLinks();
-  const data = {
-      name: c.className,
-      teacher_name: c.teacherName,
-      ...ageRangePayload(c),
-      child_count: c.currentChildCount === "" ? null : c.currentChildCount,
-      // 동의 체크가 켜져 있을 때만 서버가 consent_confirmed_at 에 시각을 남긴다(§2).
-      consent_confirmed: c.guardianConsent,
-    },
+  const data = classPayload(c),
     signature = JSON.stringify(data);
   if (links.classes[c.id]?.signature === signature) return links.classes[c.id].id;
+  if (links.classes[c.id]) {
+    throw new Error(
+      "등록한 반 정보 수정은 아직 지원하지 않아요. 기존 아동과 기록을 보호하기 위해 저장하지 않았어요.",
+    );
+  }
   for (const child of c.children) delete links.children[child.id];
   const created = await createClass(center, data);
   links.classes[c.id] = { id: created.id, signature };
   saveLinks(links);
   return created.id;
 }
+/** 반 하나를 서버에 보낼 모양. **서명도 이 값으로 만든다** — 두 군데서 다르게
+ *  계산하면 어긋나는 순간 같은 반이 하나 더 만들어진다. */
+function classPayload(c: ClassroomEntry) {
+  return {
+    name: c.className,
+    teacher_name: c.teacherName,
+    ...ageRangePayload(c),
+    child_count: c.currentChildCount === "" ? null : c.currentChildCount,
+    // 동의 체크가 켜져 있을 때만 서버가 consent_confirmed_at 에 시각을 남긴다(§2).
+    consent_confirmed: c.guardianConsent,
+  };
+}
+function classSignature(c: ClassroomEntry) {
+  return JSON.stringify(classPayload(c));
+}
+
 export async function syncClasses(settings: ClassSettings) {
   for (const c of settings.classes) await syncClass(settings, c);
 }
+/**
+ * 서버에만 있는 반을 목록에 들인다 — 저장소가 비어 있어도 반이 보이게 한다.
+ *
+ * **왜 필요한가.** 지금 반 목록은 브라우저 저장소에서 나온다(`loadClassSettings`).
+ * 그래서 아래 두 경우에 반이 하나도 안 보인다. 서버에는 멀쩡히 있는데도.
+ *
+ *   초대받은 교사   §1-1 로 같은 원에 들어왔지만 그 사람 저장소는 비어 있다
+ *   기기를 바꾼 교사  새 노트북 · 캐시 삭제 · 다른 브라우저
+ *
+ * `loadServerClasses` 는 **이미 로컬에 있는 반**의 내용만 서버 값으로 덮어쓴다.
+ * 서버에만 있는 반은 들이지 않는다 — 그 자리를 이 함수가 채운다.
+ *
+ * **서명을 같이 계산해 넣는다.** 안 넣으면 교사가 나중에 반 정보를 고칠 때
+ * `syncClass` 의 서명 비교가 어긋나서 **서버에 같은 반이 하나 더 만들어진다.**
+ */
+export async function adoptServerClasses(
+  known: ClassroomEntry[],
+  onRosterError?: (className: string) => void,
+  /**
+   * 들인 반을 **저장소에 먼저 적는 함수**. 화면이 넘긴다.
+   *
+   * 연결(`links`)을 먼저 저장하면, 반 목록을 저장하기 전에 새로고침되는 순간
+   * 「연결은 있는데 목록에 없는 반」이 된다 — 그건 교사가 지운 반과 모양이 같아서
+   * 다음부터 영영 안 들어온다. 그래서 **목록 먼저, 연결 나중**이다.
+   */
+  persist?: (adopted: ClassroomEntry[]) => void,
+): Promise<ClassroomEntry[]> {
+  const me = await getMe();
+  if (!me.center_id) return [];
+  const { items } = await getClasses(me.center_id);
+  const links = readLinks();
+  const linked = new Set(known.map((c) => links.classes[c.id]?.id).filter(Boolean));
+  // 원 연결을 서버 값으로 만들어 둔다. 없으면 syncCenter 가 원을 새로 만들면서
+  // links.classes · links.children 을 통째로 비운다.
+  if (!links.center) links.center = { id: me.center_id, signature: ADOPTED };
+
+  // **이 기능이 생기기 전부터 쓰던 계정을 먼저 정리한다.**
+  // `syncClassOnce` 는 반 정보를 고칠 때마다 서버에 반을 새로 만들고 옛 반은 서버에
+  // 남겨 둔다(수정 API 가 없다). 그 옛 반 id 는 `links` 어디에도 없다 — `retired` 는
+  // 이번 판부터 쌓이기 때문이다. 그대로 두면 **고친 적 있는 교사의 옛 반이 전부
+  // 「서버에만 있는 새 반」으로 되살아난다.**
+  //
+  // 그래서 **한 번 쓴 적 있는 계정**(links.classes 에 뭔가 있고 retired 를 적은 적 없는)
+  // 에서는, 지금 연결 안 된 서버 반을 전부 버려진 것으로 적고 이번에는 아무것도 들이지
+  // 않는다. 온보딩을 안 한 계정(초대받은 교사 · 기기 바꾼 교사)은 links.classes 가
+  // 비어 있으므로 이 길을 타지 않는다.
+  if (links.retired === undefined) {
+    const used = Object.keys(links.classes).length > 0;
+    links.retired = used ? items.map((item) => item.id).filter((id) => !linked.has(id)) : [];
+    saveLinks(links);
+    if (used) return [];
+  }
+
+  const retired = new Set(links.retired ?? []);
+  // 같은 반을 두 번 담지 않는다. 앞선 시도가 반 목록을 저장하기 전에 끊겼으면
+  // 연결만 남아 있을 수 있는데, 로컬 id 는 서버 id 로 정해지므로 여기서 걸린다.
+  const already = new Set(known.map((c) => c.id));
+  const serverIds = new Map<string, number>();
+  const adopted: ClassroomEntry[] = [];
+  for (const item of items) {
+    if (linked.has(item.id) || retired.has(item.id)) continue;
+    if (already.has(CLASS_PREFIX + item.id)) continue;
+    // **연결은 있는데 목록에 없는 반은 교사가 지운 것이다.** removeClass 는 로컬 목록만
+    // 지우고 연결은 남긴다. 여기서 다시 들이면 지운 반이 되살아난다.
+    if (classLocalId(item.id)) continue;
+    // 서버는 연령을 범위로만 들고 있다. 「만3·만5」처럼 떨어진 선택은 서버에 없다
+    // (age-adapter 참고). 로컬에 아무것도 없는 반이라 범위를 그대로 쓴다.
+    const selectedAges = ([3, 4, 5] as const).filter(
+      (age) => age >= item.age_min && age <= item.age_max,
+    );
+    const entry: ClassroomEntry = {
+      // 기록 쪽(documents.ts · observations.ts)이 연결 없는 서버 id 를 푸는 규칙과 같아야
+      // 한다. 다르면 기록이 먼저 도착한 화면에서 그 반을 골라도 기록이 안 보인다.
+      id: CLASS_PREFIX + item.id,
+      className: item.name,
+      ageGroup: "",
+      selectedAges: [...selectedAges],
+      currentChildCount: item.child_count ?? "",
+      teacherName: item.teacher_name,
+      guardianConsent: item.consent_confirmed_at !== null,
+      childrenSkipped: false,
+      children: [],
+    };
+    links.classes[entry.id] = { id: item.id, signature: classSignature(entry) };
+    serverIds.set(entry.id, item.id);
+    adopted.push(entry);
+  }
+  if (!adopted.length) {
+    saveLinks(links); // 들인 반이 없어도 원 연결은 남긴다
+    return [];
+  }
+
+  // 아동 명단을 먼저 받는다. **연결에 기대지 않고 서버 id 를 그대로 쓴다** —
+  // 연결은 아직 저장 전이다.
+  // 한 반의 명단을 못 받아도 나머지 반은 보여준다 — 하나가 막아서 전부 사라지면
+  // 저장소가 빈 교사에게는 화면이 통째로 빈다 (frontend/CLAUDE.md 오류 표시 규칙).
+  const filled: ClassroomEntry[] = [];
+  for (const entry of adopted) {
+    try {
+      const { items: kids } = await getChildren(serverIds.get(entry.id) as number);
+      const children: ChildEntry[] = kids.map((kid) => {
+        const id = childLocalId(kid.id) ?? CHILD_PREFIX + kid.id;
+        links.children[id] = kid.id;
+        return { id, name: kid.name, code: kid.code };
+      });
+      filled.push({ ...entry, children, childIds: children.map((child) => child.id) });
+    } catch {
+      // 명단만 비는 것과 진짜 아이가 없는 것을 교사가 구분할 수 있어야 한다.
+      onRosterError?.(entry.className);
+      filled.push(entry);
+    }
+  }
+
+  // **목록 먼저, 연결 나중.** 중간에 끊기면 연결만 없는 상태인데, 로컬 id 가 서버 id 로
+  // 정해져 있어서 기록 쪽은 같은 id 로 풀린다. 반대 순서로 끊기면 반이 영영 사라진다.
+  persist?.(filled);
+  saveLinks(links);
+  return filled;
+}
+
 export async function loadServerClasses(settings: ClassSettings) {
   const links = readLinks();
   if (!links.center) return settings;
@@ -156,7 +348,7 @@ export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEn
   const children = items.map((child) => ({
     id:
       Object.keys(links.children).find((k) => links.children[k] === child.id) ||
-      "api-child-" + child.id,
+      CHILD_PREFIX + child.id,
     name: child.name,
     code: child.code,
   }));
@@ -179,7 +371,7 @@ export async function addServerChild(c: ClassroomEntry, name: string): Promise<C
     id = links.classes[c.id]?.id;
   if (!id) throw new Error("반 정보를 먼저 저장해주세요.");
   const child = await createChild(id, { name }),
-    localId = "api-child-" + child.id;
+    localId = CHILD_PREFIX + child.id;
   links.children[localId] = child.id;
   saveLinks(links);
   return { id: localId, name: child.name, code: child.code };

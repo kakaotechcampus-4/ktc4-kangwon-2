@@ -1,18 +1,26 @@
 """계획안 hwpx 내보내기. 한글이 열 수 있는 모양인지 · 확정본만 나가는지 · 출처가 안 섞이는지 본다.
 
 「한글이 실제로 연다」는 여기서 확인할 수 없다. 양식을 바꾸면 한글에서 한 번 열어본다.
+`?format=hwp` 로 바꾼 `.hwp` 도 마찬가지다 — 여기서는 pyhwp 로 다시 읽히는지까지만 본다.
 """
 
 import io
+import logging
+import re
+import sys
 import zipfile
 
+import hwpx.hwp5.writer as hwp5_writer
 import pytest
 from fastapi.testclient import TestClient
+from hwpx.errors import Hwp5Error
 from lxml import etree
 
 from app.features.centers.models import Center, Class
-from app.features.plans.hwpx import NS, TEMPLATE_DIR, TemplateMismatch, fill_table
+from app.features.forms import hwp_form
+from app.features.plans.export import TEMPLATE_DIR
 from app.main import app
+from app.shared.hwpx import NS, TemplateMismatch, fill_table
 
 client = TestClient(app)
 
@@ -189,6 +197,113 @@ def test_확정된_계획안을_hwpx_로_내려준다(db_session, mine):
     assert _lines(_cell(section, 12, 0)) == ["2월"]
 
 
+def _hwp_rows(content: bytes, tmp_path) -> list[list[str]]:
+    """`.hwp` 를 양식 등록이 쓰는 pyhwp(hwp5html)로 다시 읽은 표의 칸 글자."""
+    path = tmp_path / "export.hwp"
+    path.write_bytes(content)
+    [table] = hwp_form.from_hwp(path)
+    return [[cell["text"] for cell in row] for row in table]
+
+
+def _as_read(text: str) -> str:
+    # pyhwp 로 읽으면 칸 안 줄바꿈 · 연속 공백이 한 칸이 된다(hwp_form._clean).
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def test_hwp_를_고르면_hwp_로_바꿔_내려준다(db_session, mine, tmp_path):
+    plan = _confirmed_plan(mine)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=hwp")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/x-hwp"
+    disposition = response.headers["content-disposition"]
+    assert f'filename="plan-{plan["id"]}.hwp"' in disposition
+    assert disposition.endswith(".hwp")  # filename* 도 .hwp 다
+    expected = [["월", "주제", "소주제", "안전교육"]] + [
+        [
+            f"{month['month']}월",
+            month["theme"],
+            "\n".join(month["sub_themes"]),
+            "\n".join(month["safety_education"]),
+        ]
+        for month in plan["months"]
+    ]
+    assert _hwp_rows(response.content, tmp_path) == [
+        [_as_read(text) for text in row] for row in expected
+    ]
+
+
+def test_형식을_안_고르면_hwpx_다(db_session, mine):
+    plan = _confirmed_plan(mine)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp")
+
+    assert response.headers["content-type"] == "application/hwp+zip"
+    assert f'filename="plan-{plan["id"]}.hwpx"' in response.headers["content-disposition"]
+
+
+def test_모르는_형식은_422(db_session, mine):
+    plan = _confirmed_plan(mine)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=pdf")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["format"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [Hwp5Error("unsupported", code="hwp5-write-unsupported"), KeyError("Contents/header.xml")],
+    ids=["Hwp5Error", "다른 예외"],
+)
+def test_hwp_로_못_바꾸면_hwpx_로_받으라고_한다(db_session, mine, monkeypatch, error):
+    """변환기가 새 기능이라 무엇이 실패할지 모른다. 무엇이든 hwpx 는 이미 만들어졌다."""
+    plan = _confirmed_plan(mine)
+
+    def fail(files):
+        raise error
+
+    monkeypatch.setattr(hwp5_writer, "write_hwp5", fail)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=hwp")
+
+    assert response.status_code == 503
+    body = response.json()["error"]
+    assert body["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert "hwpx 로 받아주세요" in body["message"]
+
+
+def test_변환기를_못_불러와도_hwpx_는_내려준다(db_session, mine, monkeypatch):
+    """변환기는 부가 기능이다. import 가 깨지면 hwp 만 503 이고 hwpx 는 그대로다."""
+    plan = _confirmed_plan(mine)
+    monkeypatch.setitem(sys.modules, "hwpx.hwp5.writer", None)  # import 하면 ImportError
+
+    hwp = client.get(f"/api/plans/{plan['id']}/export/hwp?format=hwp")
+    default = client.get(f"/api/plans/{plan['id']}/export/hwp")
+
+    assert hwp.status_code == 503
+    assert hwp.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert default.status_code == 200
+    assert default.headers["content-type"] == "application/hwp+zip"
+
+
+def test_변환과_로그가_같이_실패해도_503_이다(db_session, mine, monkeypatch):
+    """서버 로거는 출력 실패를 다시 던진다(main.py). 그대로 두면 503 이 500 이 된다."""
+    plan = _confirmed_plan(mine)
+
+    def fail(*args, **kwargs):
+        raise OSError("stderr closed")
+
+    monkeypatch.setattr(hwp5_writer, "write_hwp5", fail)
+    monkeypatch.setattr(logging.getLogger("app.server"), "warning", fail)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=hwp")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+
+
 def test_제출_문서에_출처가_섞이지_않는다(db_session, mine):
     plan = _confirmed_plan(mine)
 
@@ -227,3 +342,28 @@ def test_남의_원_계획안은_404(db_session, mine, teacher):
     teacher.center_id = other.id
 
     assert client.get(f"/api/plans/{plan['id']}/export/hwp").status_code == 404
+
+
+def test_연간_안전교육은_저장한_공식이름으로_본문과_미리보기에_나온다(mine):
+    plan = client.post("/api/plans/annual", json={"class_id": mine.id}).json()
+    response = client.put(
+        f"/api/plans/annual/{plan['id']}/months/3",
+        json={
+            "theme": "새 친구",
+            "sub_themes": ["친구와 인사하기"],
+            "safety_education": ["traffic_safety"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert client.post(f"/api/plans/annual/{plan['id']}/confirm").status_code == 200
+    exported = client.get(f"/api/plans/{plan['id']}/export/hwp")
+    assert exported.status_code == 200
+    label = next(
+        c["label"] for c in plan["safety_categories"] if c["category_id"] == "traffic_safety"
+    )
+    section = _section(exported.content)
+    assert _lines(_cell(section, 1, 3)) == [label]
+    archive = zipfile.ZipFile(io.BytesIO(exported.content))
+    preview = archive.read("Preview/PrvText.txt").decode()
+    assert label in preview and "친구와 인사하기" in preview
+    assert "traffic_safety" not in preview

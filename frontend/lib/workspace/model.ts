@@ -42,6 +42,9 @@ export type SavedDocument = {
   createdAt: string;
   updatedAt: string;
   reviewNote: string;
+  /** mock LLM 이 만든 초안. **본문이 아니라 여기로** 알린다 — 제출 문서에 시스템 글자를
+   *  남기지 않으면서도 mock 을 실제 AI 로 보이게 하지 않는다. */
+  mockDraft?: boolean;
 };
 export type Template = {
   id: string;
@@ -67,7 +70,8 @@ export const EMPTY_WORKSPACE: Workspace = {
   templates: [],
   criteria: [],
 };
-export const DOMAINS = ["신체운동·건강", "의사소통", "사회관계", "예술경험", "자연탐구"];
+// 관찰 영역 목록은 여기 두지 않는다 — **원마다 축이 다르다** (`observation-axis.ts`).
+// 화면은 `useObservationDomains()` 로 그 원의 목록을 받는다.
 export function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

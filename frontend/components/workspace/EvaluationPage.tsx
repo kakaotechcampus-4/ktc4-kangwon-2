@@ -15,9 +15,26 @@ import {
 import { useWorkspace } from "@/lib/workspace/store";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { WorkspacePage, Empty, Message, useClasses, useAIStatus, ws } from "./WorkspaceUI";
+import EvaluationChecklist from "./EvaluationChecklist";
 const MANUAL =
   "https://www.kicece.or.kr/kce/front/keyword?keyword=%EB%A7%A4%EB%89%B4%EC%96%BC&x=0&y=0";
 export default function EvaluationPage() {
+  return (
+    <WorkspacePage
+      title="평가 준비"
+      description="확정 문서 현황과 평가요소별 자기 점검을 확인하세요."
+    >
+      <EvaluationChecklist />
+      <details style={{ marginTop: 32 }}>
+        <summary>이 브라우저의 기존 증빙 사전점검</summary>
+        <p className={ws.hint}>아래에 등록한 자료는 위 평가 준비 현황에 반영되지 않아요.</p>
+        <LocalDocumentReview />
+      </details>
+    </WorkspacePage>
+  );
+}
+
+function LocalDocumentReview() {
   const available = useAIStatus();
   const [checking, setChecking] = useState(false);
   const reviewController = useRef<AbortController | null>(null);
@@ -269,6 +286,7 @@ export default function EvaluationPage() {
             <label className={ws.field}>
               시작일
               <input
+                name="start"
                 type="date"
                 value={start}
                 onChange={(e) => {
@@ -280,6 +298,7 @@ export default function EvaluationPage() {
             <label className={ws.field}>
               종료일
               <input
+                name="end"
                 type="date"
                 value={end}
                 onChange={(e) => {
@@ -292,6 +311,7 @@ export default function EvaluationPage() {
           <label className={ws.field} style={{ marginTop: 16 }}>
             증빙 파일 · PDF / DOCX / TXT / MD / CSV · 5MB
             <input
+              name="evidence_file"
               type="file"
               disabled={busy}
               accept=".pdf,.docx,.txt,.md,.csv"
@@ -393,6 +413,7 @@ export default function EvaluationPage() {
               <label className={ws.field}>
                 확인할 요구사항
                 <input
+                  name="label"
                   required
                   maxLength={300}
                   value={label}
@@ -403,6 +424,7 @@ export default function EvaluationPage() {
               <label className={ws.field}>
                 관련 단어 · 쉼표로 구분
                 <input
+                  name="terms"
                   required
                   maxLength={200}
                   value={terms}
@@ -413,6 +435,7 @@ export default function EvaluationPage() {
               <label className={ws.field}>
                 기준 출처 / 페이지
                 <input
+                  name="source"
                   required
                   maxLength={300}
                   value={source}
