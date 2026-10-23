@@ -556,6 +556,7 @@ function InputPanel(props: {
         <label className={ws.field}>
           기준 연도
           <input
+            name="year"
             aria-label="기준 연도"
             type="number"
             min={2000}
@@ -607,6 +608,7 @@ function InputPanel(props: {
             {planTypes.has("daily") && (
               <PeriodBlock type="daily" label="날짜를 선택해주세요">
                 <input
+                  name="plan_date"
                   type="date"
                   aria-label="계획안 날짜"
                   value={period.daily.date}

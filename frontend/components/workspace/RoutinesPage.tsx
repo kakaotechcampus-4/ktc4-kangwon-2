@@ -772,6 +772,7 @@ export default function RoutinesPage() {
             <label className={ws.field}>
               날짜
               <input
+                name="date"
                 type="date"
                 value={date}
                 disabled={!!busy}

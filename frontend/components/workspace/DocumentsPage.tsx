@@ -539,6 +539,7 @@ export default function DocumentsPage() {
                 <label className={ws.field}>
                   {kind === "dailyLog" ? "날짜" : "시작일"}
                   <input
+                    name="start"
                     disabled={busy}
                     type="date"
                     value={start}
@@ -551,6 +552,7 @@ export default function DocumentsPage() {
                   <label className={ws.field}>
                     종료일
                     <input
+                      name="end"
                       disabled={busy}
                       type="date"
                       value={end}
@@ -695,6 +697,7 @@ export default function DocumentsPage() {
             </Link>
           </div>
           <input
+            name="document_search"
             className={ws.input}
             style={{ margin: "17px 0" }}
             aria-label="문서 검색"

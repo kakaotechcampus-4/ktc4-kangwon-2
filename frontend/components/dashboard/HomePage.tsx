@@ -328,7 +328,7 @@ function Compose({
                       onPickClass(e.target.value);
                       setChildId("");
                     }}
-                    className="mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
+                    className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
                   >
                     {withChildren.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -342,7 +342,7 @@ function Compose({
                   <select
                     value={child?.id ?? ""}
                     onChange={(e) => setChildId(e.target.value)}
-                    className="mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
+                    className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
                   >
                     {classroom?.children.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -356,7 +356,7 @@ function Compose({
                   <select
                     value={domain}
                     onChange={(e) => setDomain(e.target.value)}
-                    className="mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
+                    className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
                   >
                     {domains.map((d) => (
                       <option key={d} value={d}>
