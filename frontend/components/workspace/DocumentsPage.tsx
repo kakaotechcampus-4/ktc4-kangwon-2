@@ -303,7 +303,7 @@ export default function DocumentsPage() {
     ...serverDocs.map((d) => ({
       id: d.id,
       source: "document" as const,
-      serverId: d.serverId as number | null,
+      serverId: d.serverId,
       title: d.title,
       className: d.className,
       childName: d.childName,
@@ -328,7 +328,7 @@ export default function DocumentsPage() {
       id: `annual:${p.id}`,
       source: "plan" as const,
       serverId: p.id,
-      title: `${p.school_year}학년도 연간 보육계획안`,
+      title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
       // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
       className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
       childName: "",
@@ -356,12 +356,15 @@ export default function DocumentsPage() {
   const keepDocuments =
     listStatus === "error" &&
     (serverDocs.length > 0 || localDocs.length > 0 || !!plans?.items.length || !!current);
+  // 일지가 아직 오는 중이어도 받은 계획안 · 로컬 증빙은 먼저 그린다.
+  const journalsPending = listStatus === "loading" && entries.length > 0;
   // 일지는 비었는데 계획안이 아직 오는 중이면 빈 칸 대신 「불러오는 중」을 띄운다.
-  const libraryStatus: ViewStatus = keepDocuments
-    ? "ready"
-    : listStatus === "ready" && plans === null && !entries.length
-      ? "loading"
-      : listStatus;
+  const libraryStatus: ViewStatus =
+    keepDocuments || journalsPending
+      ? "ready"
+      : listStatus === "ready" && plans === null && !entries.length
+        ? "loading"
+        : listStatus;
 
   /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
   const clearInvalid = (name: string) =>
@@ -771,13 +774,16 @@ export default function DocumentsPage() {
               </button>
             </div>
           )}
+          {journalsPending && <Message>일지를 불러오고 있어요.</Message>}
           <WorkspaceViewState
             status={libraryStatus}
             error={listError}
             loading="문서를 불러오고 있어요."
             empty={
               // 계획안을 못 불러왔으면 「문서가 없다」고 하지 않는다. 있는데 못 본 것이다.
+              // 일지가 아직 오는 중이어도 마찬가지다.
               !library.length &&
+              !journalsPending &&
               plans !== null &&
               !plans.error &&
               !(keepDocuments && current) && (

@@ -278,7 +278,15 @@ function documentsHarness({
   plans = [],
   planFail = false,
   planPending = false,
+  listPending = false,
 } = {}) {
+  // listPending 이면 일지 목록 응답을 releaseList() 를 부를 때까지 붙잡아 둔다.
+  let releaseList;
+  const listGate = listPending
+    ? new Promise((resolve) => {
+        releaseList = resolve;
+      })
+    : null;
   const slots = [],
     effects = [];
   let cursor = 0,
@@ -324,6 +332,7 @@ function documentsHarness({
     "@/lib/api/documents": {
       ...documentApi,
       listDocuments: async () => {
+        if (listGate) await listGate;
         if (fail) throw new Error(LIST_FAILURE);
         return items;
       },
@@ -399,6 +408,11 @@ function documentsHarness({
     planFail: (next) => {
       planFail = next;
     },
+    releaseList: async () => {
+      releaseList();
+      await settle();
+      render();
+    },
     links: () => nodes(tree).filter((node) => node.type === "link"),
     selection: () => selection,
     editor: () => nodes(tree).find((node) => node.type === "editor"),
@@ -411,7 +425,9 @@ function documentsHarness({
 
 test("문서 목록 재조회 실패는 기존 목록·선택 문서·로컬 문서를 유지하고 재시도할 수 있다", async () => {
   const page = documentsHarness({ items: [serverDocument], local: localDocuments });
-  assert.match(page.text(), /문서를 불러오고 있어요/);
+  // 로컬 증빙은 바로 있으니 일지를 기다리지 않고 먼저 그린다.
+  assert.match(page.text(), /일지를 불러오고 있어요/);
+  assert.ok(page.text().includes(localDocuments[0].title));
   await page.mount();
   page.button(serverDocument.title).props.onClick();
   await settle();
@@ -524,4 +540,29 @@ test("일지가 비고 계획안이 아직 오는 중이면 빈 화면 대신 �
   await page.mount();
   assert.match(page.text(), /문서를 불러오고 있어요/);
   assert.equal(page.text().includes("보관된 문서가 없어요"), false);
+});
+
+test("계획안을 먼저 받으면 일지가 오는 중이어도 계획안부터 그린다", async () => {
+  const page = documentsHarness({
+    items: [serverDocument],
+    plans: [annualPlan],
+    listPending: true,
+  });
+  await page.mount();
+  // 받은 계획안을 「불러오는 중」 화면이 가리지 않는다.
+  assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
+  assert.equal(page.text().includes("문서를 불러오고 있어요"), false);
+  assert.match(page.text(), /일지를 불러오고 있어요/);
+  assert.equal(page.text().includes(serverDocument.title), false);
+  // 일지가 아직 안 왔으니 「검토 중」으로 걸러 확정된 계획안이 빠져도 「문서가 없다」고 하지 않는다.
+  page.button("검토 중").props.onClick();
+  page.render();
+  assert.equal(page.text().includes("보관된 문서가 없어요"), false);
+  page.button("전체").props.onClick();
+  page.render();
+
+  await page.releaseList();
+  assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
+  assert.ok(page.text().includes(serverDocument.title));
+  assert.equal(page.text().includes("일지를 불러오고 있어요"), false);
 });
