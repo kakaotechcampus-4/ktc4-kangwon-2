@@ -95,19 +95,39 @@ def source_changed(
     return impact
 
 
-def document_changed(session: Session, document_id: int) -> None:
+def document_changed(session: Session, document_id: int) -> SourceImpact:
     """문서가 사라졌거나 확정이 풀렸다. **그 문서를 근거로 쓴 문서들**을 끝까지 `stale` 로.
 
     문서 자신은 건드리지 않는다 — 바뀐 것은 이 문서고, 다시 봐야 하는 것은 이걸 쓴 쪽이다.
     §11 판정 기준의 「근거가 문서일 때 … status」 와 「원본 없음」이 여기로 온다.
+
+    돌려주는 영향은 **이 문서를 직접 근거로 쓴 문서**만 센다. 연쇄로 따라간 문서는
+    stale 로 바꾸되 안내 건수에 넣지 않는다 — 일과 기록의 영향 응답과 같은 규칙이다.
     """
-    dependents = session.scalars(
-        select(DocumentSource.document_id).where(
-            DocumentSource.source_kind == "document",
-            DocumentSource.source_id == document_id,
+    dependents = set(
+        session.scalars(
+            select(DocumentSource.document_id).where(
+                DocumentSource.source_kind == "document",
+                DocumentSource.source_id == document_id,
+            )
         )
     )
-    _mark(session, set(dependents))
+    # 행 잠금 뒤 stale 을 읽는다. 동시에 두 근거가 풀려도 새로 stale 이 된 문서를 둘 다 세지 않는다.
+    direct = list(
+        session.scalars(
+            select(Document)
+            .where(Document.id.in_(dependents))
+            .order_by(Document.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
+    )
+    impact = SourceImpact(
+        affected_document_ids=tuple(doc.id for doc in direct),
+        newly_stale_document_ids=tuple(doc.id for doc in direct if not doc.stale),
+    )
+    _mark(session, dependents)
+    return impact
 
 
 def _mark(session: Session, document_ids: set[int], *, center_id: int | None = None) -> None:
