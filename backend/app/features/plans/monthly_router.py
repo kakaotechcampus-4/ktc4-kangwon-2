@@ -24,7 +24,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
@@ -147,6 +147,7 @@ _PROFILE_UNUSABLE_ERROR = _error(
     "고른 양식 설정으로는 월간계획안을 만들 수 없습니다. 다른 설정을 골라주세요.",
     ["profile_ref"],
 )
+_NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
 _UNAVAILABLE = _error(
     503,
     "DEPENDENCY_UNAVAILABLE",
@@ -360,8 +361,21 @@ def delete_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> 
     """
     row = _own_row(session, user, plan_id)
     if row.status == "CONFIRMED":
-        raise _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
-    session.delete(row)
+        raise _NOT_DELETABLE
+    # **상태 확인과 삭제를 한 SQL 로 한다** (멘토 리뷰 #210, 주간과 같은 방식).
+    # 읽은 뒤 다른 요청이 확정하면, 읽은 값으로 지우는 순간 확정본이 사라진다 —
+    # DRAFT 일 때만 지워지게 조건을 건다.
+    deleted = session.execute(
+        delete(Plan).where(
+            Plan.id == row.id,
+            Plan.center_id == user.center_id,
+            Plan.kind == "monthly",
+            Plan.status == "DRAFT",
+        )
+    ).rowcount
+    if not deleted:  # 0건이면 이 transaction 에서 바뀐 것이 없다 — 되돌릴 것도 없다
+        _own_row(session, user, plan_id)  # 그 사이 사라졌으면 404
+        raise _NOT_DELETABLE
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

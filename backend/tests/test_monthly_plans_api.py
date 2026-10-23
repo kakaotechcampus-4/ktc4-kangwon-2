@@ -835,6 +835,28 @@ def test_확정된_월간계획안은_지우지_못한다(world):
     assert client.get(f"/api/plans/monthly/{plan['id']}").status_code == 200
 
 
+def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우지_않는다(world, db_session, monkeypatch):
+    """DRAFT 로 읽어도 삭제 직전에 확정되면 409 이고 확정본은 남는다(멘토 리뷰 #210)."""
+    _annual(world["class_a"])
+    plan_id = _create(world).json()["id"]
+    real = monthly_router._own_row
+    confirmed = False
+
+    def read_then_confirmed_elsewhere(session, user, current_id):
+        nonlocal confirmed
+        row = real(session, user, current_id)
+        if not confirmed:
+            confirmed = True
+            session.expunge(row)  # 삭제 요청은 DRAFT 로 읽은 값을 그대로 들고 간다
+            session.execute(update(Plan).where(Plan.id == current_id).values(status="CONFIRMED"))
+            session.commit()
+        return row
+
+    monkeypatch.setattr(monthly_router, "_own_row", read_then_confirmed_elsewhere)
+    assert _error(client.delete(f"/api/plans/monthly/{plan_id}")) == (409, "GATE_BLOCKED", [])
+    assert db_session.scalar(select(Plan.status).where(Plan.id == plan_id)) == "CONFIRMED"
+
+
 def test_남의_원_월간계획안은_지울_수_없고_404(world):
     _annual(world["class_a"])
     plan_id = _create(world, month=9).json()["id"]

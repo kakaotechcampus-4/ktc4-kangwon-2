@@ -191,6 +191,24 @@
   resize: vertical;
   line-height: 1.8;
 }
+/* 브라우저가 그리는 화살표는 자리를 정할 수 없다. 끄고 우리가 같은 자리에 그린다 —
+   칸 너비가 달라도 화살표가 늘 오른쪽에서 12px 떨어진 곳에 선다.
+   색은 `--pg-ink-soft`(#705d47) 와 같은 값이다. 배경 그림에는 CSS 변수를 못 쓴다. */
+.field select,
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23705d47' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
+}
+/* 화면이 좁아도 글자가 화살표를 침범하지 않게 둔다. */
+.timePicker select {
+  background-position: right 8px center;
+  padding-right: 26px;
+}
 .row {
   display: flex;
   align-items: center;
