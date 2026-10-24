@@ -61,6 +61,7 @@ class CheckOut(BaseModel):
 
 class AnnualPlanOut(BaseModel):
     id: int
+    format: Literal["MONTHLY_THEME"] = "MONTHLY_THEME"
     class_id: int
     school_year: int
     status: str
@@ -71,10 +72,46 @@ class AnnualPlanOut(BaseModel):
     checks: list[CheckOut]
 
 
+class PlayCellOut(BaseModel):
+    """놀이 프로젝트형 칸 하나. 값과 근거 · 생성 방식은 월간과 같은 객체를 쓴다."""
+
+    value: str
+    evidence: list[EvidenceOut]
+    generation: GenerationOut
+
+
+class PlayCandidateOut(BaseModel):
+    row_key: str
+    play_name: PlayCellOut
+    materials: PlayCellOut
+    support_direction: PlayCellOut
+    learning: PlayCellOut
+
+
+class PlayPeriodOut(BaseModel):
+    period_key: str
+    label: str
+    months: list[int]
+    candidates: list[PlayCandidateOut]
+
+
+class PlayProjectPlanOut(BaseModel):
+    """놀이 프로젝트형 연간 (api-spec §4). audit · item_id 는 싣지 않는다."""
+
+    id: int
+    class_id: int
+    school_year: int
+    status: str
+    format: Literal["PLAY_PROJECT"]
+    format_version: str
+    periods: list[PlayPeriodOut]
+
+
 class AnnualPlanSummary(BaseModel):
     """목록용. months 12개를 넣지 않는다 — 상세는 단건 조회가 준다(§5)."""
 
     id: int
+    format: Literal["MONTHLY_THEME", "PLAY_PROJECT"]
     class_id: int
     school_year: int
     status: str

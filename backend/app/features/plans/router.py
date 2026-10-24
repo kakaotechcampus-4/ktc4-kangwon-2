@@ -10,6 +10,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -34,6 +35,7 @@ from ssuksak.planning import (
     YearlyApplicationError,
     YearlyPlan,
 )
+from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
 from ssuksak.planning.rules.errors import YearlyRuleError
 from ssuksak.planning.rules.yearly_theme_selection import RULE_ID as THEME_SELECTION_RULE_ID
 
@@ -43,9 +45,11 @@ from app.features.auth.models import User
 
 # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
 from app.features.forms.service import find_own_form
+from app.features.plans import play_project
 from app.features.plans.annual_content import generate_subthemes
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
+from app.features.plans.play_project import format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.rules import verify
 from app.features.plans.runtime import SystemClock, UuidGenerator
@@ -61,6 +65,7 @@ from app.features.plans.schemas import (
     EvidenceOut,
     GenerationOut,
     MonthOut,
+    PlayProjectPlanOut,
     UpdateMonth,
     ValueChangeOut,
 )
@@ -105,13 +110,28 @@ def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
     )
 
 
-def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> Plan:
+_PLAY_PROJECT_UNSUPPORTED = HTTPException(
+    status.HTTP_409_CONFLICT,
+    detail={
+        "code": "GATE_BLOCKED",
+        "message": "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.",
+        "fields": [],
+    },
+)
+
+
+def _row(
+    session: Session, user: User, plan_id: int, *, lock: bool = False, any_format: bool = False
+) -> Plan:
     """남의 원 계획안은 없는 것과 같다 (shared/auth/ownership.py 와 같은 이유).
 
     **쓰는 요청은 `lock=True` 로 읽는다**(`SELECT … FOR UPDATE`). 본문 전체를 읽고 고쳐서 통째로
     저장하므로, 잠그지 않으면 겹친 두 요청 중 나중 것이 먼저 것을 지운다 — 확정과 겹친 PUT 이
     옛 DRAFT 본문을 저장해 확정이 되돌아가는 일도 생긴다. 잠금은 이 요청의 transaction 이 끝날
     때(commit · 오류) 풀린다. 행 하나만 잡으므로 서로 기다리다 막히는 일은 없다.
+
+    **놀이 프로젝트형은 `any_format=True` 인 조회 · 지우기만 지나간다.** 나머지(수정 · 확정 ·
+    감사 · 내보내기)는 본문을 `YearlyPlan` 으로 읽기 전에 409 로 막는다.
     """
     query = select(Plan).where(
         Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "annual"
@@ -119,6 +139,8 @@ def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> P
     row = session.scalar(query.with_for_update() if lock else query)
     if row is None:
         raise _NOT_FOUND
+    if not any_format and format_of(row) == PLAY_PROJECT_FORMAT:
+        raise _PLAY_PROJECT_UNSUPPORTED
     return row
 
 
@@ -390,6 +412,7 @@ def list_annual_plans(session: DbSession, user: CurrentUser, class_id: int | Non
         items=[
             AnnualPlanSummary(
                 id=row.id,
+                format=format_of(row),
                 class_id=int(row.classroom_ref),
                 school_year=row.school_year,
                 status=row.status,
@@ -401,9 +424,17 @@ def list_annual_plans(session: DbSession, user: CurrentUser, class_id: int | Non
     )
 
 
-@router.get("/{plan_id}", response_model=AnnualPlanOut)
+@router.get(
+    "/{plan_id}",
+    response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
+)
 def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, any_format=True)
+    if format_of(row) == PLAY_PROJECT_FORMAT:
+        repo = PostgresPlanRepository(
+            session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        )
+        return play_project.to_out(row, repo.get(PlanId(row.plan_ref)))
     return _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
 
 
@@ -427,7 +458,7 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
     **잠그고 읽는다.** 안 잠그면 확정과 겹쳤을 때 DRAFT 를 보고 지나간 DELETE 가 확정의
     commit 뒤에 실행돼 확정본을 지운다.
     """
-    row = _row(session, user, plan_id, lock=True)
+    row = _row(session, user, plan_id, lock=True, any_format=True)
     if row.status == "CONFIRMED":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -477,7 +508,7 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     if not settings.allow_test_reset:
         raise _NOT_FOUND
 
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, any_format=True)
     children = list(
         session.scalars(
             select(Plan).where(
