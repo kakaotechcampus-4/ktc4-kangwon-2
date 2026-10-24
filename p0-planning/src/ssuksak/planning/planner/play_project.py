@@ -18,19 +18,21 @@ from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v1"
-LEARNING_MIN, LEARNING_MAX = 1, 3  # ponytail: product guess from the reference HWP (1–2 per row); revisit after P1 sample review
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v2"
+LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
 SYSTEM_PROMPT = (
     "너는 어린이집 놀이 프로젝트형 연간계획안 초안을 쓰는 도우미다. 응답은 JSON 객체 하나다: "
     '{"period_key": <요청의 period_key>, "rows": [{"play_name", "materials", "support_direction", '
     '"learning_content_ids"}]}. rows 는 요청의 row_count 개를 정확히 쓴다. '
+    "rows 는 교사가 골라 쓸 놀이 후보다 — 모두 서로 다른 놀이로 쓰고, "
+    "특별한 자료 없이 흔한 재료만으로도 할 수 있는 놀이를 함께 넣는다. "
     "play_name 은 그 시기 · 연령 아이들의 호기심이 떠오르는 놀이 이름이다. "
     "materials 는 준비해 볼 수 있는 자료 후보다 — 원에 이미 있다고 쓰지 않는다. "
     "support_direction 은 예상되는 놀이의 흐름과 교사의 지원 · 확장 방향이다 — 아이들이 실제로 한 일 · 관찰 · 결과처럼 쓰지 않고, "
     "특정 결과물이나 사용 방법을 꼭 해야 하는 것으로 정하지 않는다. "
-    "learning_content_ids 는 curriculum_contents 의 content_id 중 그 놀이와 관련된 것을 1~3개 고른다. "
+    "learning_content_ids 는 curriculum_contents 의 content_id 중 그 놀이와 관련된 것을 2~3개 고른다. "
     "영역 · 내용범주 · 내용 문장은 쓰지 않는다. "
     "어린이날 · 추석처럼 누구나 아는 공휴일 · 기념일은 쓸 수 있다. "
     "그 원만의 행사, 입력에 없는 날짜 · 사람 이름 · 기관 정보는 지어내지 않는다."

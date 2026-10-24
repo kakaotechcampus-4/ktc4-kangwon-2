@@ -1,4 +1,7 @@
-"""Play-project yearly plan (ADR-042 PLAY_PROJECT): periods of several months, fixed play rows.
+"""Play-project yearly plan (ADR-042 PLAY_PROJECT): periods of several months, play candidates.
+
+Each period holds the AI candidates; the teacher picks ``selected_per_period`` of them
+(2026-10-24 decision — the selection step comes with edit / confirm).
 
 A separate aggregate from ``YearlyPlan`` — it has no monthly theme and no monthly child yet.
 """
@@ -35,14 +38,18 @@ class PlayPeriod:
 class PlayProjectLayout:
     layout_version: str
     periods: tuple[PlayPeriod, ...]
-    rows_per_period: int
+    candidates_per_period: int
+    selected_per_period: int
 
     def __post_init__(self) -> None:
         keys = [period.key for period in self.periods]
         if not keys or len(keys) != len(set(keys)):
             raise InvalidDomainValueError("PlayProjectLayout needs unique periods")
-        if type(self.rows_per_period) is not int or self.rows_per_period < 1:
-            raise InvalidDomainValueError("PlayProjectLayout.rows_per_period must be positive")
+        counts = (self.selected_per_period, self.candidates_per_period)
+        if any(type(n) is not int for n in counts) or not 1 <= counts[0] <= counts[1]:
+            raise InvalidDomainValueError(
+                "PlayProjectLayout needs 1 <= selected_per_period <= candidates_per_period"
+            )
 
     def period(self, key: str) -> PlayPeriod | None:
         return next((p for p in self.periods if p.key == key), None)
@@ -50,7 +57,7 @@ class PlayProjectLayout:
 
 @dataclass(frozen=True, slots=True)
 class PlayRow:
-    row_key: str  # stable address part: "row1".."rowN"; display order may change, this does not
+    row_key: str  # stable address part: "cand1".."candN"; selection order may change, this does not
     play_name: PlanItem
     materials: PlanItem
     support_direction: PlanItem
@@ -70,12 +77,12 @@ class PlayRow:
 @dataclass(frozen=True, slots=True)
 class PlayPeriodRows:
     period: PlayPeriod
-    rows: tuple[PlayRow, ...]
+    candidates: tuple[PlayRow, ...]
 
     def __post_init__(self) -> None:
-        keys = [row.row_key for row in self.rows]
+        keys = [row.row_key for row in self.candidates]
         if not keys or len(keys) != len(set(keys)):
-            raise InvalidDomainValueError("PlayPeriodRows needs unique rows")
+            raise InvalidDomainValueError("PlayPeriodRows needs unique candidates")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +110,7 @@ class PlayProjectYearlyPlan:
         item_ids = [
             getattr(row, name).item_id
             for p in self.periods
-            for row in p.rows
+            for row in p.candidates
             for name in ROW_FIELDS
         ]
         if len(item_ids) != len(set(item_ids)):

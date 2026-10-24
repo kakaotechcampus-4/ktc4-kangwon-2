@@ -53,7 +53,7 @@ class _FakeProvider:
         return RawLlmResponse(content=content, model="fake")
 
 
-def _row(n: int, ids=("nuri2019.3.1.1",)) -> dict:
+def _row(n: int, ids=("nuri2019.3.1.1", "nuri2019.3.1.2")) -> dict:
     return {
         "play_name": f"놀이 {n}",
         "materials": "종이 상자, 크레파스 등 준비해 볼 자료",
@@ -63,7 +63,11 @@ def _row(n: int, ids=("nuri2019.3.1.1",)) -> dict:
 
 
 def _proposal(rows=None, period_key="m03_m05") -> dict:
-    return {"period_key": period_key, "rows": rows if rows is not None else [_row(n) for n in range(1, 6)]}
+    return {"period_key": period_key, "rows": rows if rows is not None else [_row(n) for n in range(1, 11)]}
+
+
+def _rest() -> list[dict]:
+    return [_row(n) for n in range(2, 11)]
 
 
 def _run(provider, curriculum=None):
@@ -87,7 +91,7 @@ def _run(provider, curriculum=None):
 
 
 def test_generates_a_draft_period_with_server_rendered_learning():
-    provider = _FakeProvider(_proposal([_row(1, ("nuri2019.1.1.2", "nuri2019.5.3.3"))] + [_row(n) for n in range(2, 6)]))
+    provider = _FakeProvider(_proposal([_row(1, ("nuri2019.1.1.2", "nuri2019.5.3.3"))] + _rest()))
     use_case, command, plans = _run(provider)
 
     plan = use_case.execute(command)
@@ -95,8 +99,8 @@ def test_generates_a_draft_period_with_server_rendered_learning():
     assert plan.status is PlanStatus.DRAFT
     assert plans.get(plan.plan_id) == plan
     (period,) = plan.periods
-    assert period.period.label == "3월~5월" and len(period.rows) == 5
-    first = period.rows[0]
+    assert period.period.label == "3월~5월" and len(period.candidates) == 10
+    first = period.candidates[0]
     assert first.learning.value == (
         "신체운동·건강 - 신체활동 즐기기 - 신체 움직임을 조절한다.\n"
         "자연탐구 - 자연과 더불어 살기 - 날씨와 계절의 변화를 생활과 관련짓는다."
@@ -107,9 +111,10 @@ def test_generates_a_draft_period_with_server_rendered_learning():
     ]
     assert first.play_name.evidence == ()  # no institution evidence in P1
     assert first.play_name.generation.method is GenerationMethod.RULE_LLM
-    assert first.semantic_key("m03_m05", "learning") == "play_project.m03_m05.row1.learning"
+    assert first.semantic_key("m03_m05", "learning") == "play_project.m03_m05.cand1.learning"
     # The request lets the LLM pick ids only from the active Reference.
     assert len(provider.requests[0].allowed_content_ids) == 59
+    assert provider.requests[0].row_count == 10
 
 
 def test_pending_reference_blocks_before_the_llm_call():
@@ -126,12 +131,13 @@ def test_pending_reference_blocks_before_the_llm_call():
 @pytest.mark.parametrize(
     ("proposal", "code"),
     [
-        (_proposal([_row(n) for n in range(1, 5)]), "ROW_COUNT"),
+        (_proposal([_row(n) for n in range(1, 6)]), "ROW_COUNT"),  # 5 rows: the old shape
         (_proposal(period_key="m06_m08"), "PERIOD_MISMATCH"),
-        (_proposal([_row(1, ("nuri2019.9.9.9",))] + [_row(n) for n in range(2, 6)]), "UNKNOWN_CONTENT_ID"),
-        (_proposal([_row(1, ())] + [_row(n) for n in range(2, 6)]), "LEARNING_COUNT"),
-        (_proposal([_row(1)] * 5), "DUPLICATE_PLAY_NAME"),
-        (_proposal([{**_row(1), "materials": " "}] + [_row(n) for n in range(2, 6)]), "MATERIALS:BLANK_TEXT"),
+        (_proposal([_row(1, ("nuri2019.9.9.9", "nuri2019.3.1.1"))] + _rest()), "UNKNOWN_CONTENT_ID"),
+        (_proposal([_row(1, ("nuri2019.3.1.1",))] + _rest()), "LEARNING_COUNT"),  # 2~3 since 10-24
+        (_proposal([_row(1, ("nuri2019.1.1.1", "nuri2019.1.1.2", "nuri2019.1.1.3", "nuri2019.1.2.1"))] + _rest()), "LEARNING_COUNT"),
+        (_proposal([_row(1)] * 10), "DUPLICATE_PLAY_NAME"),
+        (_proposal([{**_row(1), "materials": " "}] + _rest()), "MATERIALS:BLANK_TEXT"),
     ],
 )
 def test_rejected_proposal_stores_nothing(proposal, code):
@@ -146,15 +152,15 @@ def test_rejected_proposal_stores_nothing(proposal, code):
 
 def test_safety_words_are_allowed_in_play_text():
     rows = [{**_row(1), "support_direction": "교통안전 규칙을 지키며 산책길을 걸어 본다."}]
-    use_case, command, plans = _run(_FakeProvider(_proposal(rows + [_row(n) for n in range(2, 6)])))
+    use_case, command, plans = _run(_FakeProvider(_proposal(rows + _rest())))
 
     plan = use_case.execute(command)
 
-    assert plan.periods[0].rows[0].support_direction.value.startswith("교통안전")
+    assert plan.periods[0].candidates[0].support_direction.value.startswith("교통안전")
 
 
 def test_extra_key_fails_strict_parse():
-    rows = [{**_row(1), "domain": "신체운동·건강"}] + [_row(n) for n in range(2, 6)]
+    rows = [{**_row(1), "domain": "신체운동·건강"}] + _rest()
     use_case, command, plans = _run(_FakeProvider(_proposal(rows)))
 
     with pytest.raises(ProposalParseError):

@@ -1,7 +1,7 @@
 """Generate a DRAFT play-project yearly plan for one period (ADR-042 PLAY_PROJECT, P1 prototype).
 
 P1 scope: one layout period per call, no institution evidence (the play-role artifact is not
-approved yet), no repair, no edit / regenerate / confirm. A rejected proposal stores nothing.
+approved yet), no repair, no select / edit / regenerate / confirm. A rejected proposal stores nothing.
 """
 
 from __future__ import annotations
@@ -43,15 +43,18 @@ SYSTEM_ACTOR = "play_project_application"
 RULE_ID = "play_project.generate"
 
 # The reference HWP's measured shape (4 periods x 5 rows), not a national standard (ADR-042 §3).
-PLAY_PROJECT_LAYOUT_V0_1 = PlayProjectLayout(
-    layout_version="play-project-layout-v0.1.0",
+# 2026-10-24 decision: the AI offers 10 candidates per period and the teacher keeps 5, since an
+# institution may lack the materials a play needs.
+PLAY_PROJECT_LAYOUT_V0_2 = PlayProjectLayout(
+    layout_version="play-project-layout-v0.2.0",
     periods=(
         PlayPeriod("m03_m05", (3, 4, 5), "3월~5월"),
         PlayPeriod("m06_m08", (6, 7, 8), "6월~8월"),
         PlayPeriod("m09_m11", (9, 10, 11), "9월~11월"),
         PlayPeriod("m12_m02", (12, 1, 2), "12월~2월"),
     ),
-    rows_per_period=5,
+    candidates_per_period=10,
+    selected_per_period=5,
 )
 
 
@@ -73,7 +76,7 @@ class GeneratePlayProjectPlanCommand:
     period_key: str
     curriculum_catalog_id: str
     curriculum_catalog_version: str
-    layout: PlayProjectLayout = PLAY_PROJECT_LAYOUT_V0_1
+    layout: PlayProjectLayout = PLAY_PROJECT_LAYOUT_V0_2
 
 
 class GeneratePlayProjectPlan:
@@ -106,7 +109,7 @@ class GeneratePlayProjectPlan:
             raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_ACTIVE")
 
         request = build_play_project_request(
-            period=period, ages=ages, row_count=command.layout.rows_per_period, catalog=catalog
+            period=period, ages=ages, row_count=command.layout.candidates_per_period, catalog=catalog
         )
         proposal = parse_play_project_proposal(
             self._provider.generate_play_project(request).content
@@ -139,7 +142,7 @@ class GeneratePlayProjectPlan:
             contents = [catalog.get(content_id) for content_id in row.learning_content_ids]
             rows.append(
                 PlayRow(
-                    row_key=f"row{index}",
+                    row_key=f"cand{index}",
                     play_name=item(row.play_name),
                     materials=item(row.materials),
                     support_direction=item(row.support_direction),
