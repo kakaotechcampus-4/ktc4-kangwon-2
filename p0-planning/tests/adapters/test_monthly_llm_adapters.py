@@ -11,6 +11,7 @@ from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfigurationError,
     MonthlyLlmProviderError,
     PLAY_PROJECT_MAX_COMPLETION_TOKENS,
+    assemble_chat_stream,
 )
 from types import SimpleNamespace
 
@@ -82,6 +83,8 @@ class RecordingTransport:
     def post_json(self, url, *, headers, payload, timeout):
         self.calls.append((url, headers, payload, timeout))
         return self.response
+
+    post_stream = post_json
 
 
 def test_config_is_explicit_safe_and_pins_monthly_model():
@@ -185,8 +188,9 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
     assert "json_object" not in json.dumps(transport.calls[0][2])
 
 
-def test_play_project_request_alone_sets_an_output_cap():
-    # 10 candidates hit the provider's default 2,000-token cap and came back empty (10-24).
+def test_play_project_request_alone_streams_with_an_output_cap():
+    # 10 candidates hit the gateway's 2,000-token non-streaming cap and came back empty (10-24);
+    # the gateway accepts a larger cap only on a streamed reply.
     transport = RecordingTransport(
         {"model": MONTHLY_MODEL, "choices": [{"message": {"content": "{}"}}]}
     )
@@ -197,4 +201,23 @@ def test_play_project_request_alone_sets_an_output_cap():
     payload = transport.calls[0][2]
 
     assert payload["max_completion_tokens"] == PLAY_PROJECT_MAX_COMPLETION_TOKENS == 6000
+    assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
     assert payload["response_format"]["json_schema"]["name"] == "play_project_period_proposal"
+
+
+def test_stream_chunks_fold_into_the_plain_response_shape():
+    lines = [
+        ": keep-alive",
+        'data: {"id": "req-1", "model": "gpt-6-luna", "choices": [{"delta": {"role": "assistant"}}]}',
+        'data: {"choices": [{"delta": {"content": "{\\"a\\""}}]}',
+        'data: {"choices": [{"delta": {"content": ": 1}"}, "finish_reason": "stop"}]}',
+        'data: {"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}',
+        "data: [DONE]",
+    ]
+    result = assemble_chat_stream(lines)
+
+    assert result["choices"] == [{"message": {"content": '{"a": 1}'}, "finish_reason": "stop"}]
+    assert (result["id"], result["model"]) == ("req-1", "gpt-6-luna")
+    assert result["usage"] == {"prompt_tokens": 3, "completion_tokens": 2}
+    with pytest.raises(MonthlyLlmProviderError, match="not JSON"):
+        assemble_chat_stream(["data: {broken"])

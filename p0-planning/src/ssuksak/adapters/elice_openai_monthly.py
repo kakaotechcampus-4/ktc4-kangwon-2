@@ -6,7 +6,7 @@ standard library, so Planning Core remains importable without an OpenAI SDK.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 import json
 import os
@@ -32,7 +32,8 @@ from ssuksak.planning.planner.parser import (
 
 
 # 2026-10-24 decision: 10 play candidates (~1,700–2,000 tokens incl. reasoning) hit the
-# provider's default output cap of 2,000 and came back empty, so this request alone sets one.
+# 2,000-token cap the gateway holds for a non-streaming reply and came back empty. The gateway
+# rejects a larger cap unless the reply streams, so this request alone streams with its own cap.
 # Monthly / weekly requests stay unchanged (decision C: their cap lives in the bench only).
 PLAY_PROJECT_MAX_COMPLETION_TOKENS = 6000
 
@@ -105,6 +106,33 @@ class JsonTransport(Protocol):
     ) -> Mapping[str, object]: ...
 
 
+def assemble_chat_stream(lines: Iterable[str]) -> dict[str, object]:
+    """Fold OpenAI-style SSE chunks into the non-streaming response shape ``_complete`` reads."""
+    parts: list[str] = []
+    result: dict[str, object] = {}
+    finish_reason = None
+    for line in lines:
+        if not line.startswith("data:"):
+            continue
+        data = line[len("data:"):].strip()
+        if data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise MonthlyLlmProviderError("Elice MLAPI stream chunk is not JSON") from exc
+        for key in ("id", "model", "usage"):
+            if chunk.get(key) is not None:
+                result[key] = chunk[key]
+        for choice in chunk.get("choices") or ():
+            parts.append((choice.get("delta") or {}).get("content") or "")
+            finish_reason = choice.get("finish_reason") or finish_reason
+    result["choices"] = [
+        {"message": {"content": "".join(parts)}, "finish_reason": finish_reason}
+    ]
+    return result
+
+
 class UrllibJsonTransport:
     def post_json(
         self,
@@ -124,6 +152,23 @@ class UrllibJsonTransport:
         if not isinstance(result, dict):
             raise MonthlyLlmProviderError("Elice MLAPI response must be a JSON object")
         return result
+
+    def post_stream(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        payload: Mapping[str, object],
+        timeout: float,
+    ) -> Mapping[str, object]:
+        """Same as ``post_json`` for a ``stream: true`` request; ``timeout`` is per read."""
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        req = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
+        try:
+            with urllib_request.urlopen(req, timeout=timeout) as response:
+                return assemble_chat_stream(line.decode("utf-8") for line in response)
+        except (error.URLError, TimeoutError) as exc:
+            raise MonthlyLlmProviderError("Elice MLAPI request failed") from exc
 
 
 class EliceOpenAiMonthlyAdapter:
@@ -171,7 +216,7 @@ class EliceOpenAiMonthlyAdapter:
             request.user_content,
             schema_name="play_project_period_proposal",
             schema=PLAY_PROJECT_RESPONSE_SCHEMA,
-            max_completion_tokens=PLAY_PROJECT_MAX_COMPLETION_TOKENS,
+            stream=True,
         )
 
     def _complete(
@@ -181,7 +226,7 @@ class EliceOpenAiMonthlyAdapter:
         *,
         schema_name: str,
         schema: Mapping[str, object],
-        max_completion_tokens: int | None = None,
+        stream: bool = False,
     ) -> RawLlmResponse:
         payload: dict[str, object] = {
             "model": self._config.model,
@@ -197,9 +242,15 @@ class EliceOpenAiMonthlyAdapter:
                 "json_schema": {"name": schema_name, "strict": True, "schema": schema},
             },
         }
-        if max_completion_tokens is not None:
-            payload["max_completion_tokens"] = max_completion_tokens
-        result = self._transport.post_json(
+        post = self._transport.post_json
+        if stream:
+            # Only UrllibJsonTransport streams; the backend transport does not yet (play-project
+            # is not wired to the backend).
+            payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
+            payload["max_completion_tokens"] = PLAY_PROJECT_MAX_COMPLETION_TOKENS
+            post = self._transport.post_stream  # type: ignore[attr-defined]
+        result = post(
             self._config.endpoint,
             headers={
                 "Authorization": f"Bearer {self._config.api_key}",
