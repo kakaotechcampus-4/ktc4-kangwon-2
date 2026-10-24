@@ -150,6 +150,18 @@ def test_rejected_proposal_stores_nothing(proposal, code):
     assert len(plans) == 0
 
 
+def test_other_periods_plays_reach_the_request_and_an_exact_repeat_is_rejected():
+    provider = _FakeProvider(_proposal())
+    use_case, command, plans = _run(provider)
+
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(replace(command, avoid_play_names=("놀이  3", "봄 산책")))
+
+    assert json.loads(provider.requests[0].user_content)["avoid_play_names"] == ["놀이  3", "봄 산책"]
+    assert "DUPLICATE_PLAY_NAME" in error.value.validation_codes
+    assert len(plans) == 0
+
+
 def test_safety_words_are_allowed_in_play_text():
     rows = [{**_row(1), "support_direction": "교통안전 규칙을 지키며 산책길을 걸어 본다."}]
     use_case, command, plans = _run(_FakeProvider(_proposal(rows + _rest())))

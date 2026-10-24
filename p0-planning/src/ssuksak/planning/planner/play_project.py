@@ -18,7 +18,7 @@ from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v3"
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v4"
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -27,7 +27,8 @@ SYSTEM_PROMPT = (
     '{"period_key": <요청의 period_key>, "rows": [{"play_name", "materials", "support_direction", '
     '"learning_content_ids"}]}. rows 는 요청의 row_count 개를 정확히 쓴다. '
     "rows 는 교사가 골라 쓸 놀이 후보다 — 모두 서로 다른 놀이로 쓴다. "
-    "원마다 갖춘 자료가 다르므로 후보마다 필요한 자료의 종류와 양이 서로 다양하게 한다. "
+    "원마다 갖춘 자료가 다르므로 후보마다 필요한 자료의 종류가 서로 다양하게 한다. "
+    "avoid_play_names 는 같은 연간의 다른 시기에 이미 있는 놀이다 — 그 놀이와 같거나 소재 · 놀이 방식이 비슷한 놀이는 쓰지 않는다. "
     # 2026-10-24 decision: tone rules measured from the reference yearly plan; no reference
     # sentence is sent as an example.
     "play_name 은 그 시기 · 연령 유아의 호기심이 떠오르는 놀이 이름이다 — 유아에게 말을 거는 해요체 · 감탄 · 질문으로 "
@@ -35,11 +36,11 @@ SYSTEM_PROMPT = (
     "필요하면 「~ 놀이」 「~ 구성하기」처럼 놀이 종류를 끝에 붙인다. "
     "materials 는 준비해 볼 수 있는 자료 후보다 — 원에 이미 있다고 쓰지 않는다. "
     "쉼표로 나열하고, 같은 종류가 여럿이면 「재활용품(상자, 휴지심 등)」처럼 묶음 이름 뒤 괄호에 예시를 넣는다. 구체적인 교구 · 매체 이름을 써도 되고, "
-    "「또는」 「(선택)」 「몇 종류」 같은 흐린 표현은 줄인다. "
+    "「또는」 「(선택)」 「몇 종류」 같은 흐린 표현은 줄이고, 개수는 쓰지 않는다. "
     "support_direction 은 예상되는 놀이의 흐름과 교사의 지원 · 확장 방향이다. 합니다체로 쓰고 아이는 「유아」 또는 「유아들」이라고 부른다. "
     "1~3문장 100~180자로, 계절 · 주변 변화나 유아가 보일 수 있는 관심으로 시작해 「○○을 지원하면 ~ 경험합니다」처럼 "
-    "지원과 예상 놀이를 잇고(「제공하면」보다 「지원하면」), 이어질 수 있는 놀이 2~3개를 「(○○하기, ○○ 놀이 등)」처럼 이름으로 들고, 「~ 기대해봅니다」 「~ 예상합니다」 「~ 계획해봅니다」 「~ 예정입니다」처럼 맺는다 — 후보마다 맺는말을 섞는다. "
-    "materials 의 자료를 본문에서 언급한다. "
+    "지원과 예상 놀이를 잇고(「제공하면」보다 「지원하면」), 이어질 수 있는 놀이 2~3개를 「소리 놀이(소리 흉내 내기, 악기 만들기 등)」처럼 앞말 뒤 괄호에 이름으로 들고, 「~ 기대해봅니다」 「~ 예상합니다」 「~ 계획해봅니다」 「~ 예정입니다」처럼 맺는다 — 후보마다 맺는말을 섞는다. "
+    "materials 의 자료를 본문에서 언급한다. 한 문장에 「~하면」 같은 조건은 하나만 쓴다. "
     "유아가 실제로 한 일 · 관찰 · 결과나 지금 가진 관심을 사실처럼 쓰지 않고(「관심을 보이면」처럼 쓴다), "
     "발달 효과를 단정하지 않으며, 특정 결과물이나 사용 방법을 꼭 해야 하는 것으로 정하지 않는다. "
     "반 이름 · 원 이름은 쓰지 않는다. "
@@ -75,6 +76,7 @@ class PlayProjectRequest:
     period_key: str
     row_count: int
     allowed_content_ids: frozenset[str]
+    avoid_play_names: frozenset[str]
     packet_fingerprint: str
 
 
@@ -102,6 +104,7 @@ def build_play_project_request(
     ages: frozenset[int],
     row_count: int,
     catalog: CurriculumCatalog,
+    avoid_play_names: tuple[str, ...] = (),
 ) -> PlayProjectRequest:
     payload = {
         "period_key": period.key,
@@ -109,6 +112,7 @@ def build_play_project_request(
         "months": list(period.months),
         "ages": sorted(ages),
         "row_count": row_count,
+        "avoid_play_names": list(avoid_play_names),
         "curriculum_contents": [
             {"content_id": c.content_id, "text": c.display} for c in catalog.contents
         ],
@@ -121,6 +125,7 @@ def build_play_project_request(
         period_key=period.key,
         row_count=row_count,
         allowed_content_ids=frozenset(c.content_id for c in catalog.contents),
+        avoid_play_names=frozenset(" ".join(n.split()) for n in avoid_play_names),
         packet_fingerprint=hashlib.sha256(
             (PLAY_PROJECT_PROMPT_VERSION + catalog.catalog_version + user_content).encode()
         ).hexdigest(),
@@ -162,7 +167,7 @@ def validate_play_project(
     if len(proposal.rows) != request.row_count:
         codes.append("ROW_COUNT")
     names = [" ".join(row.play_name.split()) for row in proposal.rows]
-    if len(set(names)) != len(names):
+    if len(set(names)) != len(names) or not request.avoid_play_names.isdisjoint(names):
         codes.append("DUPLICATE_PLAY_NAME")
     for row in proposal.rows:
         for name in TEXT_FIELDS:

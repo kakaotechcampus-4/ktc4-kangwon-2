@@ -77,6 +77,7 @@ class GeneratePlayProjectPlanCommand:
     curriculum_catalog_id: str
     curriculum_catalog_version: str
     layout: PlayProjectLayout = PLAY_PROJECT_LAYOUT_V0_2
+    avoid_play_names: tuple[str, ...] = ()  # other periods' plays in the same year
 
 
 class GeneratePlayProjectPlan:
@@ -109,7 +110,11 @@ class GeneratePlayProjectPlan:
             raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_ACTIVE")
 
         request = build_play_project_request(
-            period=period, ages=ages, row_count=command.layout.candidates_per_period, catalog=catalog
+            period=period,
+            ages=ages,
+            row_count=command.layout.candidates_per_period,
+            catalog=catalog,
+            avoid_play_names=command.avoid_play_names,
         )
         proposal = parse_play_project_proposal(
             self._provider.generate_play_project(request).content
