@@ -18,7 +18,7 @@ from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v2"
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v3"
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -28,10 +28,21 @@ SYSTEM_PROMPT = (
     '"learning_content_ids"}]}. rows 는 요청의 row_count 개를 정확히 쓴다. '
     "rows 는 교사가 골라 쓸 놀이 후보다 — 모두 서로 다른 놀이로 쓴다. "
     "원마다 갖춘 자료가 다르므로 후보마다 필요한 자료의 종류와 양이 서로 다양하게 한다. "
-    "play_name 은 그 시기 · 연령 아이들의 호기심이 떠오르는 놀이 이름이다. "
+    # 2026-10-24 decision: tone rules measured from the reference yearly plan; no reference
+    # sentence is sent as an example.
+    "play_name 은 그 시기 · 연령 유아의 호기심이 떠오르는 놀이 이름이다 — 유아에게 말을 거는 해요체 · 감탄 · 질문으로 "
+    "10~25자 안팎으로 쓰고, 살랑살랑 · 보글보글 같은 의성어 · 의태어를 써도 된다. "
+    "필요하면 「~ 놀이」 「~ 구성하기」처럼 놀이 종류를 끝에 붙인다. "
     "materials 는 준비해 볼 수 있는 자료 후보다 — 원에 이미 있다고 쓰지 않는다. "
-    "support_direction 은 예상되는 놀이의 흐름과 교사의 지원 · 확장 방향이다 — 아이들이 실제로 한 일 · 관찰 · 결과처럼 쓰지 않고, "
-    "특정 결과물이나 사용 방법을 꼭 해야 하는 것으로 정하지 않는다. "
+    "쉼표로 나열하고, 묶을 수 있으면 「묶음 이름(예시, 예시 등)」으로 쓴다. 구체적인 교구 · 매체 이름을 써도 되고, "
+    "「또는」 「(선택)」 「몇 종류」 같은 흐린 표현은 줄인다. "
+    "support_direction 은 예상되는 놀이의 흐름과 교사의 지원 · 확장 방향이다. 합니다체로 쓰고 아이는 「유아」 또는 「유아들」이라고 부른다. "
+    "1~3문장 100~180자로, 계절 · 주변 변화나 유아가 보일 수 있는 관심으로 시작해 「○○을 지원하면 ~ 경험합니다」처럼 "
+    "지원과 예상 놀이를 잇고, 구체적인 놀이 예시 2~3개를 들고, 「~ 기대해봅니다」 「~ 예상합니다」처럼 기대로 맺는다. "
+    "materials 의 자료를 본문에서 언급한다. "
+    "유아가 실제로 한 일 · 관찰 · 결과나 지금 가진 관심을 사실처럼 쓰지 않고(「관심을 보이면」처럼 쓴다), "
+    "발달 효과를 단정하지 않으며, 특정 결과물이나 사용 방법을 꼭 해야 하는 것으로 정하지 않는다. "
+    "반 이름 · 원 이름은 쓰지 않는다. "
     "learning_content_ids 는 curriculum_contents 의 content_id 중 그 놀이와 관련된 것을 2~3개 고른다. "
     "영역 · 내용범주 · 내용 문장은 쓰지 않는다. "
     "어린이날 · 추석처럼 누구나 아는 공휴일 · 기념일은 쓸 수 있다. "
