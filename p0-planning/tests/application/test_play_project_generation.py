@@ -144,6 +144,15 @@ def test_rejected_proposal_stores_nothing(proposal, code):
     assert len(plans) == 0
 
 
+def test_safety_words_are_allowed_in_play_text():
+    rows = [{**_row(1), "support_direction": "교통안전 규칙을 지키며 산책길을 걸어 본다."}]
+    use_case, command, plans = _run(_FakeProvider(_proposal(rows + [_row(n) for n in range(2, 6)])))
+
+    plan = use_case.execute(command)
+
+    assert plan.periods[0].rows[0].support_direction.value.startswith("교통안전")
+
+
 def test_extra_key_fails_strict_parse():
     rows = [{**_row(1), "domain": "신체운동·건강"}] + [_row(n) for n in range(2, 6)]
     use_case, command, plans = _run(_FakeProvider(_proposal(rows)))

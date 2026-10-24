@@ -20,6 +20,10 @@ from ssuksak.planning.planner.contracts import (
     MonthlyPlanningRequest,
     RawLlmResponse,
 )
+from ssuksak.planning.planner.play_project import (
+    RESPONSE_SCHEMA as PLAY_PROJECT_RESPONSE_SCHEMA,
+    PlayProjectRequest,
+)
 from ssuksak.planning.planner.weekly import WeeklyPlanningRequest, weekly_response_schema
 from ssuksak.planning.planner.parser import (
     cell_response_schema,
@@ -152,6 +156,15 @@ class EliceOpenAiMonthlyAdapter:
             request.user_content,
             schema_name="weekly_cell_proposal" if request.cell_key else "weekly_plan_proposal",
             schema=weekly_response_schema(request),
+        )
+
+    def generate_play_project(self, request: PlayProjectRequest) -> RawLlmResponse:
+        """Play-project yearly (ADR-042 draft): same model and transport, its own strict schema."""
+        return self._complete(
+            request.system_prompt,
+            request.user_content,
+            schema_name="play_project_period_proposal",
+            schema=PLAY_PROJECT_RESPONSE_SCHEMA,
         )
 
     def _complete(

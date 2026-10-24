@@ -31,7 +31,9 @@ SYSTEM_PROMPT = (
     "support_direction 은 예상되는 놀이의 흐름과 교사의 지원 · 확장 방향이다 — 아이들이 실제로 한 일 · 관찰 · 결과처럼 쓰지 않고, "
     "특정 결과물이나 사용 방법을 꼭 해야 하는 것으로 정하지 않는다. "
     "learning_content_ids 는 curriculum_contents 의 content_id 중 그 놀이와 관련된 것을 1~3개 고른다. "
-    "영역 · 내용범주 · 내용 문장은 쓰지 않는다. 입력에 없는 날짜 · 사람 이름 · 기관 정보를 지어내지 않는다."
+    "영역 · 내용범주 · 내용 문장은 쓰지 않는다. "
+    "어린이날 · 추석처럼 누구나 아는 공휴일 · 기념일은 쓸 수 있다. "
+    "그 원만의 행사, 입력에 없는 날짜 · 사람 이름 · 기관 정보는 지어내지 않는다."
 )
 
 RESPONSE_SCHEMA = _object_schema(
@@ -155,7 +157,11 @@ def validate_play_project(
             found = visible_text_violations(
                 getattr(row, name), **({"max_chars": limit} if limit else {})
             )
-            codes.extend(f"{name.upper()}:{code}" for code in found)
+            # 2026-10-24 decision: safety words (e.g. 교통안전) are ordinary play content here;
+            # SAFETY_CONTENT_LEAKAGE guards monthly cells, not play-project text.
+            codes.extend(
+                f"{name.upper()}:{code}" for code in found if code != "SAFETY_CONTENT_LEAKAGE"
+            )
         ids = row.learning_content_ids
         if not LEARNING_MIN <= len(ids) <= LEARNING_MAX:
             codes.append("LEARNING_COUNT")
