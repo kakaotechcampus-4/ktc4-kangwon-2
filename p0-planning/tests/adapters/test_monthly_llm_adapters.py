@@ -248,6 +248,11 @@ _JSON = {"choices": [{"delta": {"content": '{"a": 1}'}, "finish_reason": "stop"}
         _stream({"choices": "x"}),
         _stream({"choices": [{"delta": "x"}]}),
         _stream({"choices": [{"delta": {"content": 1}, "finish_reason": "stop"}]}),
+        # Codex P1-R01: wrong-type falsy values after a clean finish are not "empty".
+        _stream(_JSON, {"choices": {}}),
+        _stream(_JSON, {"choices": ""}),
+        _stream(_JSON, {"choices": False}),
+        _stream(_JSON, {"choices": [{"delta": []}]}),
     ],
 )
 def test_a_stream_that_did_not_finish_cleanly_is_a_provider_error(lines):

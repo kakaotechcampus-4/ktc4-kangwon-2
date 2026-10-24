@@ -137,13 +137,14 @@ def assemble_chat_stream(lines: Iterable[str]) -> dict[str, object]:
         for key in ("id", "model", "usage"):
             if chunk.get(key) is not None:
                 result[key] = chunk[key]
-        choices = chunk.get("choices") or []
-        if not isinstance(choices, list):
+        # Check the type before treating a value as empty: {} · "" · false are not an empty list.
+        choices = chunk.get("choices")
+        if not isinstance(choices, list | None):
             raise MonthlyLlmProviderError("Elice MLAPI stream choices is not a list")
-        for choice in choices:
-            delta = (choice.get("delta") or {}) if isinstance(choice, dict) else None
+        for choice in choices or ():
+            delta = choice.get("delta") if isinstance(choice, dict) else []
             content = delta.get("content") if isinstance(delta, dict) else None
-            if not isinstance(delta, dict) or not isinstance(content, str | None):
+            if not isinstance(delta, dict | None) or not isinstance(content, str | None):
                 raise MonthlyLlmProviderError("Elice MLAPI stream choice has the wrong shape")
             parts.append(content or "")
             finish_reason = choice.get("finish_reason") or finish_reason
