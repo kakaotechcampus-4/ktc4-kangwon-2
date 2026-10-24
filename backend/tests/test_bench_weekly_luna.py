@@ -130,8 +130,11 @@ def test_전송마다_출력_상한을_붙이고_운영_어댑터_요청은_바�
     assert payloads and all(
         p["max_completion_tokens"] == bench.OUTPUT_RESERVE_TOKENS for p in payloads
     )
-    # 운영 어댑터 쪽 요청에는 이 칸이 없다 — bench 의 전송에서만 붙인다.
-    assert "max_completion_tokens" not in inspect.getsource(bench.EliceOpenAiMonthlyAdapter)
+    # 운영 월간 · 주간 요청에는 이 칸이 없다 — bench 의 전송에서만 붙인다.
+    # (놀이 프로젝트 요청만 자기 상한을 붙인다 — 2026-10-24 결정.)
+    adapter = bench.EliceOpenAiMonthlyAdapter
+    for method in (adapter.generate_monthly, adapter.generate_cell, adapter.generate_weekly):
+        assert "max_completion_tokens" not in inspect.getsource(method)
 
 
 def test_응답이_예약보다_크면_그_뒤로_멈춘다():

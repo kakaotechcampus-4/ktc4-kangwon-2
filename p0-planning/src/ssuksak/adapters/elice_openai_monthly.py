@@ -31,6 +31,12 @@ from ssuksak.planning.planner.parser import (
 )
 
 
+# 2026-10-24 decision: 10 play candidates (~1,700–2,000 tokens incl. reasoning) hit the
+# provider's default output cap of 2,000 and came back empty, so this request alone sets one.
+# Monthly / weekly requests stay unchanged (decision C: their cap lives in the bench only).
+PLAY_PROJECT_MAX_COMPLETION_TOKENS = 6000
+
+
 class MonthlyLlmConfigurationError(RuntimeError):
     pass
 
@@ -165,6 +171,7 @@ class EliceOpenAiMonthlyAdapter:
             request.user_content,
             schema_name="play_project_period_proposal",
             schema=PLAY_PROJECT_RESPONSE_SCHEMA,
+            max_completion_tokens=PLAY_PROJECT_MAX_COMPLETION_TOKENS,
         )
 
     def _complete(
@@ -174,6 +181,7 @@ class EliceOpenAiMonthlyAdapter:
         *,
         schema_name: str,
         schema: Mapping[str, object],
+        max_completion_tokens: int | None = None,
     ) -> RawLlmResponse:
         payload: dict[str, object] = {
             "model": self._config.model,
@@ -189,6 +197,8 @@ class EliceOpenAiMonthlyAdapter:
                 "json_schema": {"name": schema_name, "strict": True, "schema": schema},
             },
         }
+        if max_completion_tokens is not None:
+            payload["max_completion_tokens"] = max_completion_tokens
         result = self._transport.post_json(
             self._config.endpoint,
             headers={

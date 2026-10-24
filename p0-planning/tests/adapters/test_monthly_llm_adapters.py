@@ -10,6 +10,7 @@ from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfig,
     MonthlyLlmConfigurationError,
     MonthlyLlmProviderError,
+    PLAY_PROJECT_MAX_COMPLETION_TOKENS,
 )
 from types import SimpleNamespace
 
@@ -122,6 +123,7 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
     assert headers["Authorization"] == "Bearer secret"
     assert payload["model"] == MONTHLY_MODEL
     assert "temperature" not in payload
+    assert "max_completion_tokens" not in payload  # decision C: bench only
     assert payload["response_format"] == {
         "type": "json_schema",
         "json_schema": {
@@ -181,3 +183,18 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
         },
     }
     assert "json_object" not in json.dumps(transport.calls[0][2])
+
+
+def test_play_project_request_alone_sets_an_output_cap():
+    # 10 candidates hit the provider's default 2,000-token cap and came back empty (10-24).
+    transport = RecordingTransport(
+        {"model": MONTHLY_MODEL, "choices": [{"message": {"content": "{}"}}]}
+    )
+    adapter = EliceOpenAiMonthlyAdapter(
+        MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"), transport=transport
+    )
+    adapter.generate_play_project(SimpleNamespace(system_prompt="system", user_content="user"))
+    payload = transport.calls[0][2]
+
+    assert payload["max_completion_tokens"] == PLAY_PROJECT_MAX_COMPLETION_TOKENS == 6000
+    assert payload["response_format"]["json_schema"]["name"] == "play_project_period_proposal"
