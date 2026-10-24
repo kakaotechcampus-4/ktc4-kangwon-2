@@ -200,7 +200,7 @@ def test_play_project_request_alone_streams_with_an_output_cap():
     adapter.generate_play_project(SimpleNamespace(system_prompt="system", user_content="user"))
     payload = transport.calls[0][2]
 
-    assert payload["max_completion_tokens"] == PLAY_PROJECT_MAX_COMPLETION_TOKENS == 6000
+    assert payload["max_completion_tokens"] == PLAY_PROJECT_MAX_COMPLETION_TOKENS == 10000
     assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
     assert payload["response_format"]["json_schema"]["name"] == "play_project_period_proposal"
 

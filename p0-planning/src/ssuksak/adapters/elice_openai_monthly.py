@@ -35,7 +35,8 @@ from ssuksak.planning.planner.parser import (
 # 2,000-token cap the gateway holds for a non-streaming reply and came back empty. The gateway
 # rejects a larger cap unless the reply streams, so this request alone streams with its own cap.
 # Monthly / weekly requests stay unchanged (decision C: their cap lives in the bench only).
-PLAY_PROJECT_MAX_COMPLETION_TOKENS = 6000
+# 10,000 (10-24 decision): with other periods' plays to avoid, a full-year run used up to 5,514.
+PLAY_PROJECT_MAX_COMPLETION_TOKENS = 10000
 
 
 class MonthlyLlmConfigurationError(RuntimeError):
