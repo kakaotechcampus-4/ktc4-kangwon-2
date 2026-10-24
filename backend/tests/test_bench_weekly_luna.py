@@ -5,7 +5,6 @@
 """
 
 import importlib.util
-import inspect
 import io
 import json
 import sys
@@ -73,6 +72,11 @@ def _fake(usage=USAGE, edit=None):
     return post
 
 
+def _date_once(answer, n):
+    if n == 0:  # 첫 답에 입력에 없는 날짜 → 수리 요청
+        answer["sections"][0]["value"] = "10월 3일 개천절 행사 준비"
+
+
 def _run(post, won=1000.0, max_calls=24):
     transport = bench.BudgetedTransport(
         bench.TimedTransport(post=post), won=won, max_calls=max_calls
@@ -118,23 +122,34 @@ def test_첫_전송도_예약이_예산을_넘으면_보내지_않는다():
     assert out["saved"] == 0
 
 
-def test_전송마다_출력_상한을_붙이고_운영_어댑터_요청은_바꾸지_않는다():
+def test_전송마다_출력_상한을_붙이고_운영_어댑터_요청은_바꾸지_않는다(monkeypatch):
     payloads = []
-    fake = _fake()
+    fake = _fake(edit=_date_once)
 
     def post(request, timeout):
         payloads.append(json.loads(request.data.decode("utf-8")))
         return fake(request, timeout)
 
-    _run(post, max_calls=2)
+    # 어댑터가 실제로 만든 요청 — bench 가 상한을 붙이기 전.
+    from_adapter = []
+    budgeted = bench.BudgetedTransport.post_json
+
+    def record(self, url, *, headers, payload, timeout):
+        from_adapter.append(dict(payload))
+        return budgeted(self, url, headers=headers, payload=payload, timeout=timeout)
+
+    monkeypatch.setattr(bench.BudgetedTransport, "post_json", record)
+    _run(post, max_calls=3)
     assert payloads and all(
         p["max_completion_tokens"] == bench.OUTPUT_RESERVE_TOKENS for p in payloads
     )
-    # 운영 월간 · 주간 요청에는 이 칸이 없다 — bench 의 전송에서만 붙인다.
-    # (놀이 프로젝트 요청만 자기 상한을 붙인다 — 2026-10-24 결정.)
-    adapter = bench.EliceOpenAiMonthlyAdapter
-    for method in (adapter.generate_monthly, adapter.generate_cell, adapter.generate_weekly):
-        assert "max_completion_tokens" not in inspect.getsource(method)
+    # 운영 주간 요청(문서 · 수리)에는 이 칸들이 없다 — bench 의 전송에서만 붙인다.
+    # (놀이 프로젝트 요청만 스트리밍 · 자기 상한을 붙인다 — 2026-10-24 결정.)
+    schemas = [p["response_format"]["json_schema"]["name"] for p in from_adapter]
+    assert schemas[:2] == ["weekly_plan_proposal"] * 2  # 첫 문서 + 그 수리
+    assert all(
+        not {"stream", "stream_options", "max_completion_tokens"} & set(p) for p in from_adapter
+    )
 
 
 def test_응답이_예약보다_크면_그_뒤로_멈춘다():
@@ -146,14 +161,10 @@ def test_응답이_예약보다_크면_그_뒤로_멈춘다():
 
 
 def test_수리_전송_직전에도_예산을_본다():
-    def date_once(answer, n):
-        if n == 0:  # 첫 답에 입력에 없는 날짜 → 수리 요청
-            answer["sections"][0]["value"] = "10월 3일 개천절 행사 준비"
-
-    probe, _ = _run(_fake(edit=date_once), max_calls=1)
+    probe, _ = _run(_fake(edit=_date_once), max_calls=1)
     first_reserve = probe.calls[0]["reserved_won"]
     # 첫 전송의 예약만큼만 — 첫 전송(실제 ₩3.1)은 되지만, 쓴 돈 + 수리 예약은 넘는다.
-    transport, out = _run(_fake(edit=date_once), won=first_reserve)
+    transport, out = _run(_fake(edit=_date_once), won=first_reserve)
     assert out["calls"] == 1
     assert out["results"][0]["result"] == "STOPPED_BUDGET"
     assert out["won"] <= out["budget_won"]

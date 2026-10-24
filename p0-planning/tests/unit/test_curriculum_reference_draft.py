@@ -3,6 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from ssuksak.adapters.json_curriculum_reference_repository import (
+    CurriculumReferenceError,
+    parse_curriculum_payload,
+)
+
 PROJECT_ROOT = Path(__file__).parents[2]
 DRAFT = PROJECT_ROOT / "data" / "curriculum" / "nuri_curriculum_content_v0_1_0_draft.json"
 
@@ -55,3 +62,29 @@ def test_draft_is_not_runtime_active_before_human_review():
     assert review["runtime_active"] is (
         review["domain_owner_approval"] == "HUMAN_APPROVED"
     )
+
+
+def _with_review(approval, runtime_active) -> dict:
+    doc = _load()  # in memory only; the file stays PENDING_HUMAN_REVIEW
+    doc["review"].update(domain_owner_approval=approval, runtime_active=runtime_active)
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("approval", "runtime_active"),
+    [
+        ("HUMAN_APPROVED", False),
+        ("PENDING_HUMAN_REVIEW", True),
+        ("HUMAN_APPROVED", "true"),
+        ("human_approved", True),
+        (None, False),
+    ],
+)
+def test_runtime_active_must_be_derived_from_the_approval(approval, runtime_active):
+    with pytest.raises(CurriculumReferenceError):
+        parse_curriculum_payload(_with_review(approval, runtime_active))
+
+
+def test_consistent_review_metadata_parses():
+    assert parse_curriculum_payload(_with_review("HUMAN_APPROVED", True)).is_active
+    assert not parse_curriculum_payload(_load()).is_active

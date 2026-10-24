@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from http.client import HTTPException
 import json
 import os
 from typing import Protocol
@@ -108,26 +109,48 @@ class JsonTransport(Protocol):
 
 
 def assemble_chat_stream(lines: Iterable[str]) -> dict[str, object]:
-    """Fold OpenAI-style SSE chunks into the non-streaming response shape ``_complete`` reads."""
+    """Fold OpenAI-style SSE chunks into the non-streaming response shape ``_complete`` reads.
+
+    Content that parses as JSON is not proof the reply finished: an error chunk, a stream
+    that ends before ``[DONE]`` or a finish other than ``stop`` (e.g. ``length``) fails here.
+    Messages never carry chunk text, generated text or the provider's error body.
+    """
     parts: list[str] = []
     result: dict[str, object] = {}
     finish_reason = None
+    done = False
     for line in lines:
         if not line.startswith("data:"):
             continue
         data = line[len("data:"):].strip()
         if data == "[DONE]":
+            done = True
             break
         try:
             chunk = json.loads(data)
-        except json.JSONDecodeError as exc:
-            raise MonthlyLlmProviderError("Elice MLAPI stream chunk is not JSON") from exc
+        except json.JSONDecodeError:
+            raise MonthlyLlmProviderError("Elice MLAPI stream chunk is not JSON") from None
+        if not isinstance(chunk, dict):
+            raise MonthlyLlmProviderError("Elice MLAPI stream chunk is not an object")
+        if chunk.get("error") is not None:
+            raise MonthlyLlmProviderError("Elice MLAPI stream reported an error")
         for key in ("id", "model", "usage"):
             if chunk.get(key) is not None:
                 result[key] = chunk[key]
-        for choice in chunk.get("choices") or ():
-            parts.append((choice.get("delta") or {}).get("content") or "")
+        choices = chunk.get("choices") or []
+        if not isinstance(choices, list):
+            raise MonthlyLlmProviderError("Elice MLAPI stream choices is not a list")
+        for choice in choices:
+            delta = (choice.get("delta") or {}) if isinstance(choice, dict) else None
+            content = delta.get("content") if isinstance(delta, dict) else None
+            if not isinstance(delta, dict) or not isinstance(content, str | None):
+                raise MonthlyLlmProviderError("Elice MLAPI stream choice has the wrong shape")
+            parts.append(content or "")
             finish_reason = choice.get("finish_reason") or finish_reason
+    if not done:
+        raise MonthlyLlmProviderError("Elice MLAPI stream ended before [DONE]")
+    if finish_reason != "stop":
+        raise MonthlyLlmProviderError("Elice MLAPI stream did not finish normally")
     result["choices"] = [
         {"message": {"content": "".join(parts)}, "finish_reason": finish_reason}
     ]
@@ -162,13 +185,17 @@ class UrllibJsonTransport:
         payload: Mapping[str, object],
         timeout: float,
     ) -> Mapping[str, object]:
-        """Same as ``post_json`` for a ``stream: true`` request; ``timeout`` is per read."""
+        """Same as ``post_json`` for a ``stream: true`` request.
+
+        ``timeout`` bounds each socket read, not the whole reply: a stream that keeps sending
+        slowly can run longer. A total deadline is follow-up work before the backend wiring.
+        """
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
         try:
             with urllib_request.urlopen(req, timeout=timeout) as response:
                 return assemble_chat_stream(line.decode("utf-8") for line in response)
-        except (error.URLError, TimeoutError) as exc:
+        except (OSError, HTTPException, UnicodeDecodeError) as exc:  # URLError · timeout · cut-off
             raise MonthlyLlmProviderError("Elice MLAPI request failed") from exc
 
 
@@ -246,11 +273,14 @@ class EliceOpenAiMonthlyAdapter:
         post = self._transport.post_json
         if stream:
             # Only UrllibJsonTransport streams; the backend transport does not yet (play-project
-            # is not wired to the backend).
+            # is not wired to the backend). No fallback to another transport: that would skip
+            # the injected transport's guards and usage records.
+            post = getattr(self._transport, "post_stream", None)
+            if post is None:
+                raise MonthlyLlmConfigurationError("this LLM transport cannot stream")
             payload["stream"] = True
             payload["stream_options"] = {"include_usage": True}
             payload["max_completion_tokens"] = PLAY_PROJECT_MAX_COMPLETION_TOKENS
-            post = self._transport.post_stream  # type: ignore[attr-defined]
         result = post(
             self._config.endpoint,
             headers={

@@ -17,6 +17,7 @@ from ..domain.play_project_plan import PlayPeriod
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
+from .weekly import unsupported_facts
 
 PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v4"
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
@@ -180,6 +181,10 @@ def validate_play_project(
             codes.extend(
                 f"{name.upper()}:{code}" for code in found if code != "SAFETY_CONTENT_LEAKAGE"
             )
+            # A date, time or teacher name not in the input is an invented fact (weekly W-02 check).
+            # Holiday names (어린이날 · 추석) carry no such token and stay allowed.
+            if unsupported_facts(getattr(row, name), request.user_content):
+                codes.append(f"{name.upper()}:UNSUPPORTED_FACT")
         ids = row.learning_content_ids
         if not LEARNING_MIN <= len(ids) <= LEARNING_MAX:
             codes.append("LEARNING_COUNT")

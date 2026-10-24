@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import io
 import json
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
+from ssuksak.adapters import elice_openai_monthly
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
+from ssuksak.adapters.elice_openai_monthly import (
+    EliceOpenAiMonthlyAdapter,
+    MonthlyLlmConfig,
+    MonthlyLlmProviderError,
+)
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.json_curriculum_reference_repository import (
     JsonCurriculumReferenceRepository,
@@ -76,7 +83,7 @@ def _run(provider, curriculum=None):
         curriculum_repository=curriculum or _Approved(),
         plan_repository=plans,
         provider=provider,
-        clock=FixedClock(datetime(2027, 2, 1, tzinfo=timezone.utc)),
+        clock=FixedClock(datetime(2027, 2, 1, tzinfo=UTC)),
         id_generator=DeterministicIdGenerator(),
     )
     command = GeneratePlayProjectPlanCommand(
@@ -162,9 +169,80 @@ def test_other_periods_plays_reach_the_request_and_an_exact_repeat_is_rejected()
     assert len(plans) == 0
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "4월 17일 오전 10시에 모여 산책 놀이를 지원하면 봄꽃을 살펴볼 것으로 기대해봅니다.",
+        "김가상 선생님과 함께 산책 놀이를 지원하면 봄꽃을 살펴볼 것으로 기대해봅니다.",
+        "매주 월요일에 산책 놀이를 지원하면 봄꽃을 살펴볼 것으로 기대해봅니다.",
+    ],
+)
+def test_a_date_time_or_teacher_name_not_in_the_input_is_rejected(text):
+    rows = [{**_row(1), "support_direction": text}]
+    use_case, command, plans = _run(_FakeProvider(_proposal(rows + _rest())))
+
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+
+    assert "SUPPORT_DIRECTION:UNSUPPORTED_FACT" in error.value.validation_codes
+    assert len(plans) == 0
+
+
+def test_holiday_names_stay_allowed():
+    rows = [{**_row(1), "support_direction": "어린이날을 앞두고 선생님과 함께 놀이를 지원합니다."}]
+    use_case, command, plans = _run(_FakeProvider(_proposal(rows + _rest())))
+
+    use_case.execute(command)
+
+    assert len(plans) == 1
+
+
+class _Response(io.BytesIO):
+    status = 200
+
+
+def _streaming_adapter(monkeypatch, *chunks, done=True):
+    lines = ["data: " + json.dumps(chunk, ensure_ascii=False) + "\n" for chunk in chunks]
+    body = "".join(lines + (["data: [DONE]\n"] if done else [])).encode()
+    monkeypatch.setattr(
+        elice_openai_monthly.urllib_request, "urlopen", lambda *a, **kw: _Response(body)
+    )
+    return EliceOpenAiMonthlyAdapter(MonthlyLlmConfig("https://offline.invalid/v1", "test-only"))
+
+
+def _content(finish_reason="stop") -> dict:
+    content = json.dumps(_proposal(), ensure_ascii=False)
+    return {"choices": [{"delta": {"content": content}, "finish_reason": finish_reason}]}
+
+
+def test_a_cleanly_finished_stream_is_stored(monkeypatch):
+    use_case, command, plans = _run(_streaming_adapter(monkeypatch, _content()))
+
+    use_case.execute(command)
+
+    assert len(plans) == 1
+
+
+@pytest.mark.parametrize(
+    ("chunks", "done"),
+    [
+        ((_content(),), False),  # valid JSON, connection closed before [DONE]
+        ((_content(None), {"error": {"message": "PRIVATE"}}), True),
+        ((_content("length"),), True),  # valid JSON, but the reply was cut at the cap
+    ],
+)
+def test_a_stream_that_did_not_finish_cleanly_stores_nothing(monkeypatch, chunks, done):
+    use_case, command, plans = _run(_streaming_adapter(monkeypatch, *chunks, done=done))
+
+    with pytest.raises(MonthlyLlmProviderError):
+        use_case.execute(command)
+
+    assert len(plans) == 0
+
+
 def test_safety_words_are_allowed_in_play_text():
     rows = [{**_row(1), "support_direction": "교통안전 규칙을 지키며 산책길을 걸어 본다."}]
-    use_case, command, plans = _run(_FakeProvider(_proposal(rows + _rest())))
+    use_case, command, _ = _run(_FakeProvider(_proposal(rows + _rest())))
 
     plan = use_case.execute(command)
 
