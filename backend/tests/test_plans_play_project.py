@@ -323,7 +323,7 @@ def test_생성은_승인된_누리과정으로_네_구간을_저장하고_읽�
             assert cell["generation"] == {
                 "method": "RULE_LLM",
                 "rule_id": "play_project.generate",
-                "rule_version": "play-project-planner-v4",
+                "rule_version": PLAY_PROJECT_PROMPT_VERSION,
             }
             if key == "learning":
                 assert 2 <= len(cell["evidence"]) <= 3
