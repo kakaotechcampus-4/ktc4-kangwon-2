@@ -103,6 +103,19 @@ class DocumentDetailResponse(BaseModel):
     updated_at: datetime
 
 
+class DocumentReviewImpact(BaseModel):
+    """확정 취소로 영향을 받은 문서 ID — 이 문서를 직접 근거로 쓴 것만. 새 stale 을 따로 센다."""
+
+    affected_document_ids: list[int]
+    newly_stale_document_ids: list[int]
+
+
+class DocumentUnconfirmResponse(DocumentDetailResponse):
+    """`POST /api/documents/{id}/unconfirm?include_impact=true` 응답 (docs/api-spec.md §11)."""
+
+    review_impact: DocumentReviewImpact
+
+
 class DocumentSectionUpdate(BaseModel):
     """`PUT` 요청의 섹션 하나."""
 
