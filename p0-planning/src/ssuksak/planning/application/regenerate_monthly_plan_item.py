@@ -295,7 +295,7 @@ class RegenerateMonthlyPlanItem:
             cell_state=resolve_cell_state(
                 section_key=cell.section_key,
                 value=new_value,
-                assessment=plan.constraint("STATUTORY_SAFETY_EDUCATION"),
+                assessment=plan.cell_state_assessment(cell),
             ),
             generation=generation,
             evidence=evidence,

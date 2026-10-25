@@ -92,10 +92,13 @@ class SafetySlotReason(str, Enum):
     SAME_REFERENCE_AS_OTHER_WEEK = "SAME_REFERENCE_AS_OTHER_WEEK"
     SAME_TOPIC_AS_OTHER_WEEK = "SAME_TOPIC_AS_OTHER_WEEK"
     SAFETY_REFERENCE_ID_FORBIDDEN = "SAFETY_REFERENCE_ID_FORBIDDEN"
+    DISPLAY_LABEL_IN_CONTENT = "DISPLAY_LABEL_IN_CONTENT"
 
 
 MAX_STATUTORY_SAMPLE_REFS = 2
 _SENTENCE_END = re.compile(r"[.!?。]+")
+# A leading "[label]" — the Rule adds the STATUTORY label, so the LLM text must not carry one.
+_DISPLAY_LABEL = re.compile(r"^\s*\[[^\]\n]*\]")
 
 
 def sentence_count(text: str) -> int:
@@ -192,6 +195,11 @@ def safety_slot_problem(
         if slot.focus_ref is not None and len(samples) > MAX_STATUTORY_SAMPLE_REFS:
             return SafetySlotProblem(
                 grounding, SafetySlotReason.TOO_MANY_SAMPLE_REFS, f"<={MAX_STATUTORY_SAMPLE_REFS}", str(len(samples))
+            )
+        if _DISPLAY_LABEL.match(value.value):
+            # Same or other category, the label would be doubled; a value-only rewrite fixes it.
+            return SafetySlotProblem(
+                ProposalValidationCode.TEXT_POLICY, SafetySlotReason.DISPLAY_LABEL_IN_CONTENT, "NO_LABEL", "LABEL"
             )
         return None
     if categories:

@@ -61,7 +61,7 @@ class EditMonthlyPlanItem:
                 "monthly_cell_generation_missing",
                 "Editable Monthly Cell must preserve its previous Generation Method",
             )
-        assessment = plan.constraint("STATUTORY_SAFETY_EDUCATION")
+        assessment = plan.cell_state_assessment(cell)
         # The two checks that depend only on the new value: a theme Cell cannot
         # be empty, and a blank Cell cannot become another blank value. Both are
         # the teacher's input, so they surface as an invalid Cell value.

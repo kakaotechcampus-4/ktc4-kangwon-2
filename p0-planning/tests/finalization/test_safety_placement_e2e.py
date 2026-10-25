@@ -374,3 +374,80 @@ def test_a_value_proposed_for_an_unplaced_week_is_rejected():
 
     assert safety_slot_problem(None, empty, {}) is None
     assert safety_slot_problem(None, filled, {}).reason is SafetySlotReason.UNPLACED_WEEK_FILLED
+
+
+@pytest.mark.parametrize("label", ["[교통안전] - ", "[성폭력 예방] - "], ids=["same-category", "other-category"])
+def test_a_statutory_value_carrying_a_label_is_repaired_and_labelled_once(label, approved_classification):
+    # Codex A-01: the Rule owns the label; a model-written label is a repairable finding, never stored.
+    harness = PlanningHarness()
+    original = harness.provider.generate_monthly
+    clean, repairs = {}, []
+
+    def label_then_repair(request):
+        if request.repair_targets:
+            repairs.append(request)
+            patches = [{"week_id": week, "section_key": key, "value": clean[week]} for week, key, _ in request.repair_targets]
+            return clean["response"].__class__(json.dumps({"patches": patches}, ensure_ascii=False), clean["response"].model, None)
+        response = original(request)
+        payload = json.loads(response.content)
+        week = payload["weeks"][1]
+        cell = next(s for s in week["sections"] if s["section_key"] == "safety_education")
+        clean.update({week["week_id"]: cell["value"], "response": response})
+        cell["value"] = label + cell["value"]
+        return response.__class__(json.dumps(payload, ensure_ascii=False), response.model, response.request_id)
+
+    harness.provider.generate_monthly = label_then_repair
+    parent = harness.confirm_yearly(harness.generate_yearly(AGES).plan)
+    plan = harness.generate_monthly(
+        parent, MonthlyGenerationMode.LLM_PLANNER, target_month=YearMonth(2026, 9), profile=EXTENDED_PROFILE,
+        safety_placement=STATUTORY_ONLY,
+    ).plan
+    week_id = next(key for key in clean if key != "response")
+    traffic = plan.section("safety_education").cells[1]
+
+    assert traffic.value == f"[교통안전] - {clean[week_id]}" and traffic.value.count("[") == 1
+    assert [r.repair_targets for r in repairs] == [((week_id, "safety_education", ("value",)),)]
+
+
+def test_a_statutory_value_with_a_label_is_a_text_policy_finding():
+    from ssuksak.planning.context.models import SafetySlotContext
+    from ssuksak.planning.planner.contracts import ProposedSectionValue
+    from ssuksak.planning.planner.service import REPAIRABLE_CODES
+    from ssuksak.planning.planner.validation import (
+        SafetySlotReason,
+        safety_slot_problem,
+    )
+
+    slot = SafetySlotContext("2026-09-w2", SafetyKind.STATUTORY, "traffic_safety")
+    official = {"annex6:traffic_safety:4": type("Official", (), {"category_id": "traffic_safety"})()}
+    labelled = ProposedSectionValue("safety_education", "[교통안전] - 길을 건널 때 손을 들어요.", False, ("annex6:traffic_safety:4",))
+    plain = replace(labelled, value="길을 건널 때 손을 들어요.")
+
+    problem = safety_slot_problem(slot, labelled, official)
+    assert problem.reason is SafetySlotReason.DISPLAY_LABEL_IN_CONTENT
+    assert problem.code.value in REPAIRABLE_CODES
+    assert safety_slot_problem(slot, plain, official) is None
+
+
+def test_an_unplaced_week_a_teacher_empties_again_stays_validly_empty(approved_classification):
+    # Codex A-02: edit judges an emptied Cell by the same placement as generation.
+    harness, plan = _generate(YearMonth(2026, 9), placement=STATUTORY_ONLY)
+    week_one = plan.section("safety_education").cells[0]
+    assert week_one.cell_state is CellState.EMPTY_VALID
+
+    filled = harness.edit_monthly(plan, item_id=week_one.item_id, value="교사가 쓴 안전 이야기")
+    emptied = harness.edit_monthly(filled, item_id=week_one.item_id, value="")
+
+    assert filled.find_cell(week_one.item_id)[3].cell_state is CellState.FILLED
+    assert emptied.find_cell(week_one.item_id)[3].cell_state is CellState.EMPTY_VALID
+    assert harness.confirm_monthly(emptied).status is PlanStatus.CONFIRMED
+
+
+def test_without_placement_an_emptied_safety_week_stays_unresolved():
+    harness, plan = _generate(YearMonth(2026, 9), placement=None)
+    week_one = plan.section("safety_education").cells[0]
+
+    filled = harness.edit_monthly(plan, item_id=week_one.item_id, value="교사가 쓴 안전 이야기")
+    emptied = harness.edit_monthly(filled, item_id=week_one.item_id, value="")
+
+    assert emptied.find_cell(week_one.item_id)[3].cell_state is CellState.EMPTY_UNRESOLVED
