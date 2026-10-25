@@ -513,7 +513,10 @@ def test_관리_API_로_건_Profile_로_확정된_연간_뒤에만_월간을_만
     resolved = _resolution(world)
     assert resolved == {"source": "INSTITUTION_DEFAULT", "profile_ref": ref, "reason": None}
 
-    annual = client.post("/api/plans/annual", json={"class_id": world["class_a"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": world["class_a"], "form_id": None},
+    )
     assert annual.status_code == 201
     body = {"class_id": world["class_a"], "month": 9, "profile_ref": resolved["profile_ref"]}
     assert _error(client.post("/api/plans/monthly", json=body)) == (

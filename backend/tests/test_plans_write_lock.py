@@ -50,7 +50,10 @@ def live(_schema, teacher):
         ids = {"center": center.id, "class": klass.id}
     teacher.center_id = ids["center"]
     try:
-        created = client.post("/api/plans/annual", json={"class_id": ids["class"], "form_id": None})
+        created = client.post(
+            "/api/plans/annual",
+            json={"format": "MONTHLY_THEME", "class_id": ids["class"], "form_id": None},
+        )
         assert created.status_code == 201, created.text
         yield {**ids, "plan": created.json()["id"]}
     finally:

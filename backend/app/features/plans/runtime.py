@@ -27,3 +27,15 @@ class UuidGenerator:
 
     def new_item_id(self) -> ItemId:
         return ItemId(f"item_{uuid.uuid4().hex}")
+
+
+class FixedPlanIdGenerator:
+    def __init__(self, plan_id: PlanId):
+        self._plan_id = plan_id
+        self._ids = UuidGenerator()
+
+    def new_plan_id(self) -> PlanId:
+        return self._plan_id
+
+    def new_item_id(self) -> ItemId:
+        return self._ids.new_item_id()

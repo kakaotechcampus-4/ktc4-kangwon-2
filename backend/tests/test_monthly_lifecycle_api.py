@@ -111,7 +111,10 @@ def _seed(session, name: str, email: str) -> dict:
 
 def _monthly(seed: dict) -> dict:
     """부모 연간을 만들어 확정하고 9월 월간을 만든다 — 전부 API 로."""
-    annual = client.post("/api/plans/annual", json={"class_id": seed["class"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": seed["class"], "form_id": None},
+    )
     assert annual.status_code == 201, annual.json()
     assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
     created = client.post(
