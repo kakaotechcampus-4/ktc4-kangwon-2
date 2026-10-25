@@ -312,13 +312,22 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
+    // 서버 순서: 형식 422(format → form_id) → 반 404 → 중복 409 → PLAY_PROJECT 503.
+    if (b.format !== "MONTHLY_THEME" && b.format !== "PLAY_PROJECT") return bad("format");
     if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
+    if (b.format === "PLAY_PROJECT" && b.form_id != null) return bad("form_id");
     // 연간 목업은 「지금 원」 소유 검사를 하지 않는다(서버는 남의 원 반이면 404) — 화면 목업 흐름 유지.
     const klass = findClass(Number(b.class_id));
     if (!klass) return classMissing();
     // 서버처럼 반 하나에 연간 하나다.
     if (annualFor(klass.id))
       return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
+    // 서버가 교육과정 참고자료가 없거나 승인 전일 때 주는 응답이다(지금 상태).
+    if (b.format === "PLAY_PROJECT")
+      return failure(
+        "DEPENDENCY_UNAVAILABLE",
+        "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
+      );
     if (request.signal.aborted) return HttpResponse.error();
     return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
       status: 201,

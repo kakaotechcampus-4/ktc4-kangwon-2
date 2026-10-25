@@ -504,7 +504,11 @@ test("profile set through the API drives monthly creation after the annual gate"
   const resolved = await getClassTemplateProfile(w.klass);
   assert.equal(resolved.source, "INSTITUTION_DEFAULT");
 
-  const annual = await createAnnualPlan({ class_id: w.klass, form_id: null });
+  const annual = await createAnnualPlan({
+    class_id: w.klass,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   const body = { class_id: w.klass, month: 9, profile_ref: resolved.profile_ref };
   await rejects(createMonthlyPlan(body), 409, "GATE_BLOCKED", ["class_id"]);
   await confirmAnnualPlan(annual.id);

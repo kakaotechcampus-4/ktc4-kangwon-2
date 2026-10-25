@@ -103,6 +103,8 @@ const checks = (): AnnualPlan["checks"] =>
 const detail = (p: MockAnnualPlan): AnnualPlan => ({
   id: p.id,
   class_id: p.class_id,
+  // 이 필드가 생기기 전에 브라우저에 쌓인 목업 계획안은 월간 주제형이다(ADR-043).
+  format: p.format ?? "MONTHLY_THEME",
   school_year: p.school_year,
   status: p.status,
   months: p.months,
@@ -122,6 +124,7 @@ export const listPlans = (classId?: number): AnnualPlanSummary[] =>
     .map((p) => ({
       id: p.id,
       class_id: p.class_id,
+      format: p.format ?? "MONTHLY_THEME",
       school_year: p.school_year,
       status: p.status,
       created_at: p.created_at,
@@ -136,6 +139,7 @@ export const addPlan = (input: AnnualInput, schoolYear: number) =>
     const plan: MockAnnualPlan = {
       id,
       class_id: input.class_id,
+      format: "MONTHLY_THEME",
       school_year: schoolYear,
       status: "DRAFT",
       months: months(),

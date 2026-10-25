@@ -79,11 +79,16 @@ const MONTH_KEYS = [
 
 test("create · get return the server shape (§4)", async () => {
   const klass = await newClass();
-  const plan = await createAnnualPlan({ class_id: klass.id, form_id: null });
+  const plan = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   assert.deepEqual(Object.keys(plan).sort(), [
     "checked_rules",
     "checks",
     "class_id",
+    "format",
     "id",
     "months",
     "safety_categories",
@@ -131,17 +136,79 @@ test("create · get return the server shape (§4)", async () => {
 
 test("one annual plan per class: 409 ALREADY_EXISTS · nothing added", async () => {
   const klass = await newClass();
-  await createAnnualPlan({ class_id: klass.id, form_id: null });
-  await rejects(createAnnualPlan({ class_id: klass.id, form_id: null }), 409, "ALREADY_EXISTS", [
-    "class_id",
-  ]);
-  await rejects(createAnnualPlan({ class_id: 999, form_id: null }), 404, "NOT_FOUND", ["class_id"]);
+  await createAnnualPlan({ class_id: klass.id, form_id: null, format: "MONTHLY_THEME" });
+  await rejects(
+    createAnnualPlan({ class_id: klass.id, form_id: null, format: "MONTHLY_THEME" }),
+    409,
+    "ALREADY_EXISTS",
+    ["class_id"],
+  );
+  await rejects(
+    createAnnualPlan({ class_id: 999, form_id: null, format: "MONTHLY_THEME" }),
+    404,
+    "NOT_FOUND",
+    ["class_id"],
+  );
   assert.equal(read().plans.length, 1);
 });
 
+test("format: 빠지거나 모르는 값 · PLAY_PROJECT+form_id 는 422, PLAY_PROJECT 는 503 · 아무것도 안 만든다", async () => {
+  const klass = await newClass();
+  await rejects(createAnnualPlan({ class_id: klass.id, form_id: null }), 422, "VALIDATION_FAILED", [
+    "format",
+  ]);
+  await rejects(
+    createAnnualPlan({ class_id: klass.id, form_id: null, format: "WEEKLY" }),
+    422,
+    "VALIDATION_FAILED",
+    ["format"],
+  );
+  await rejects(
+    createAnnualPlan({ class_id: klass.id, form_id: 1, format: "PLAY_PROJECT" }),
+    422,
+    "VALIDATION_FAILED",
+    ["form_id"],
+  );
+  await assert.rejects(
+    createAnnualPlan({ class_id: klass.id, form_id: null, format: "PLAY_PROJECT" }),
+    (e) => {
+      assert.ok(e instanceof ApiError);
+      assert.equal(e.status, 503);
+      assert.equal(e.body.error.code, "DEPENDENCY_UNAVAILABLE");
+      assert.equal(
+        e.body.error.message,
+        "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
+      );
+      assert.deepEqual(e.body.error.fields, []);
+      return true;
+    },
+  );
+  assert.equal(read().plans.length, 0);
+});
+
+test("list items carry format", async () => {
+  await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
+  assert.deepEqual(
+    (await listAnnualPlans()).items.map((i) => i.format),
+    ["MONTHLY_THEME"],
+  );
+});
+
 test("list gives stored created_at · confirmed_at, newest first", async () => {
-  const a = await createAnnualPlan({ class_id: (await newClass()).id, form_id: null });
-  const b = await createAnnualPlan({ class_id: (await newClass()).id, form_id: null });
+  const a = await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
+  const b = await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   const confirmed = await confirmAnnualPlan(a.id);
   const { items } = await listAnnualPlans();
   assert.deepEqual(
@@ -163,7 +230,11 @@ test("list gives stored created_at · confirmed_at, newest first", async () => {
 });
 
 test("PUT replaces theme · sub_themes and keeps evidence · generation (§6)", async () => {
-  const plan = await createAnnualPlan({ class_id: (await newClass()).id, form_id: null });
+  const plan = await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   const before = plan.months.find((m) => m.month === 4);
   const saved = await putAnnualMonth(plan.id, 4, { theme: "고친 주제", sub_themes: ["놀이"] });
   assert.deepEqual(saved, { ...before, theme: "고친 주제", sub_themes: ["놀이"] });
@@ -181,7 +252,11 @@ test("PUT replaces theme · sub_themes and keeps evidence · generation (§6)", 
 });
 
 test("PUT errors follow the server order and fields", async () => {
-  const plan = await createAnnualPlan({ class_id: (await newClass()).id, form_id: null });
+  const plan = await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   const snapshot = structuredClone(read().plans);
   await rejects(putAnnualMonth(plan.id, 3, { theme: "x" }), 422, "VALIDATION_FAILED", [
     "sub_themes",
@@ -213,7 +288,11 @@ test("PUT errors follow the server order and fields", async () => {
 });
 
 test("confirm: 200 · idempotent re-call · confirmed PUT is 409 ALREADY_CONFIRMED (§6 · §7)", async () => {
-  const plan = await createAnnualPlan({ class_id: (await newClass()).id, form_id: null });
+  const plan = await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   // 서버는 빈 소주제로 확정을 막지 않는다 — 생성 직후(소주제 []) 바로 확정된다.
   const first = await confirmAnnualPlan(plan.id);
   assert.deepEqual(Object.keys(first).sort(), ["confirmed_at", "id", "status"]);
@@ -234,7 +313,11 @@ test("confirm: 200 · idempotent re-call · confirmed PUT is 409 ALREADY_CONFIRM
 
 test("안전교육 입력: 선택 · 생략 보존 · 배치 없음 · 미입력과 잘못된 구분", async () => {
   const klass = await newClass();
-  const plan = await createAnnualPlan({ class_id: klass.id, form_id: null });
+  const plan = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   const input = { theme: "우리 반", sub_themes: ["친구 만나기"] };
   const selected = await putAnnualMonth(plan.id, 3, {
     ...input,
