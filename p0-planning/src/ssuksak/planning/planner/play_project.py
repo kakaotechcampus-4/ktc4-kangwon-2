@@ -19,7 +19,7 @@ from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v4"
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v5"  # v5: materials naming
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -35,8 +35,14 @@ SYSTEM_PROMPT = (
     "play_name 은 그 시기 · 연령 유아의 호기심이 떠오르는 놀이 이름이다 — 유아에게 말을 거는 해요체 · 감탄 · 질문으로 "
     "10~25자 안팎으로 쓰고, 후보 중 여러 개에는 살랑살랑 · 보글보글 같은 의성어 · 의태어를 넣는다. "
     "필요하면 「~ 놀이」 「~ 구성하기」처럼 놀이 종류를 끝에 붙인다. "
-    "materials 는 준비해 볼 수 있는 자료 후보다 — 원에 이미 있다고 쓰지 않는다. "
-    "쉼표로 나열하고, 같은 종류가 여럿이면 「재활용품(상자, 휴지심 등)」처럼 묶음 이름 뒤 괄호에 예시를 넣는다. 구체적인 교구 · 매체 이름을 써도 되고, "
+    # v5 (2026-10-25 decision): materials name what to prepare. Not a banned-word list — an exact
+    # tool the play needs keeps its exact name.
+    "materials 는 준비할 물품이 바로 떠오르도록 익숙하고 구체적인 물품 이름을 쉼표로 짧게 나열한다. "
+    "같은 놀이 기능을 충족한다면 흔히 쓰는 재료를 먼저 고르되, 특정 도구 · 교구가 꼭 필요하면 그 정확한 이름을 쓴다. "
+    "단어를 이어 붙여 그럴듯한 물품 이름을 만들거나, 기능이 다른 익숙한 물건으로 억지로 바꾸지 않는다. "
+    "같은 종류가 여럿이면 「재활용품(상자, 휴지심 등)」처럼 묶음 이름 뒤 괄호에 예시를 넣고, 그 밖에는 물품마다 풀이를 붙이지 않는다 — "
+    "만드는 법 · 놓는 곳 · 쓰는 방법은 support_direction 에 쓴다. "
+    "준비해 볼 후보로 쓰고 원에 이미 있거나 주변 시설을 쓸 수 있다고 단정하지 않는다. "
     "「또는」 「(선택)」 「몇 종류」 같은 흐린 표현은 줄이고, 개수는 쓰지 않는다. "
     "support_direction 은 예상되는 놀이의 흐름과 교사의 지원 · 확장 방향이다. 합니다체로 쓰고 아이는 「유아」 또는 「유아들」이라고 부른다. "
     "1~3문장 100~180자로, 계절 · 주변 변화나 유아가 보일 수 있는 관심으로 시작해 「○○을 지원하면 ~ 경험합니다」처럼 "
