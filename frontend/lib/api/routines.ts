@@ -199,7 +199,7 @@ export interface RoutineLine {
 export const toTimeInput = (value: string | null) => (value ? value.slice(0, 5) : "");
 
 /** 「09:20 ~ 10:40」. 한쪽만 있으면 그쪽만, 둘 다 없으면 빈 문자열 — 서버 사실 줄과 같은 규칙이다. */
-function timeRange(start: string | null, end: string | null) {
+export function timeRange(start: string | null, end: string | null) {
   if (start && end) return `${toTimeInput(start)} ~ ${toTimeInput(end)}`;
   if (start) return `${toTimeInput(start)} ~`;
   if (end) return `~ ${toTimeInput(end)}`;
