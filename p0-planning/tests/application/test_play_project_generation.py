@@ -33,6 +33,7 @@ from ssuksak.planning.planner.contracts import (
     ProposalRejectedError,
     RawLlmResponse,
 )
+from ssuksak.planning.planner.play_project import PLAY_PROJECT_PROMPT_VERSION
 
 CATALOG_ID = "ssuksak.nuri-curriculum-content"
 VERSION = "nuri-curriculum-content-v0.1.0"
@@ -247,6 +248,21 @@ def test_safety_words_are_allowed_in_play_text():
     plan = use_case.execute(command)
 
     assert plan.periods[0].candidates[0].support_direction.value.startswith("교통안전")
+
+
+def test_exact_tool_names_are_stored_as_written_under_the_current_prompt_version():
+    # v5 materials naming is a prompt rule, not a word list: an exact tool stays as written.
+    rows = [{**_row(1), "materials": "경사판, 홈통, 공, 자동차"}] + _rest()
+    provider = _FakeProvider(_proposal(rows))
+    use_case, command, _ = _run(provider)
+
+    plan = use_case.execute(command)
+
+    materials = plan.periods[0].candidates[0].materials
+    assert materials.value == "경사판, 홈통, 공, 자동차"
+    assert materials.generation.rule_version == PLAY_PROJECT_PROMPT_VERSION
+    assert PLAY_PROJECT_PROMPT_VERSION == "play-project-planner-v6"
+    assert provider.requests[0].prompt_version == PLAY_PROJECT_PROMPT_VERSION
 
 
 def test_extra_key_fails_strict_parse():

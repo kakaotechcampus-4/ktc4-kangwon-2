@@ -651,7 +651,7 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
           "play_name": { "value": "살랑살랑 봄바람을 느껴요",
                          "evidence": [],
                          "generation": { "method": "RULE_LLM", "rule_id": "play_project.generate",
-                                         "rule_version": "play-project-planner-v4" } },
+                                         "rule_version": "play-project-planner-v6" } },
           "materials": { "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "support_direction": { "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "learning": { "value": "자연탐구 - 자연과 더불어 살기 - 자연을 탐구하며 …\n신체운동·건강 - … - …",
@@ -689,7 +689,7 @@ generation                     §4 의 generation 과 같은 객체
 - **`learning.value` 는 서버가 그린 공식 문구**다 — 「영역 - 내용범주 - 내용」 줄을 줄바꿈으로 잇는다. LLM 이 영역 · 범주 이름을 쓰지 않는다.
 - **`learning.evidence` 는 2~3개**, `source_type` 은 `CURRICULUM`, `source_id` 는 누리과정 내용 ID(`nuri2019.1.1.1`), `source_version` 은 카탈로그 판(`nuri-curriculum-content-v0.1.0`)이다.
 - **`play_name` · `materials` · `support_direction` 의 `evidence` 는 `[]` 다.** 쓴 기관 자료가 없고, 쓰지 않은 출처를 달지 않는다(ADR-042 §3).
-- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v4" }` 다.
+- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v6" }` 다.
 - `audit` · `item_id` 는 싣지 않는다(월간 `months` 와 같다).
 
 **호출 단위** (ADR-043) — 한 요청이다. 서버가 Core 를 구간마다 한 번 `m03_m05` → `m06_m08` → `m09_m11` → `m12_m02` 순으로 부르고,
@@ -2427,6 +2427,23 @@ origin   AI                         LLM 이 초안을 만들었다
 - **이 문서를 근거로 쓴 문서는 전부 `stale` 이 된다** (연쇄). 주간 보육일지는 확정된 일일 보육일지만 받는다 — 근거가 초안으로 돌아가면 그 위에 쌓은 것도 다시 봐야 한다
 - **다시 불러도 200 이다.** 확정과 같은 이유 — 재시도를 진짜 실패와 구분할 수 없다
 - 되돌린 문서 자신의 `stale` 은 바꾸지 않는다. 바뀐 것은 상태지 근거가 아니다
+
+**영향 안내 — 선택 응답.** `POST /api/documents/{id}/unconfirm?include_impact=true` 로 부르면
+문서 상세에 `review_impact` 를 더해 돌려준다. 옵션을 빼면 응답은 지금과 같다.
+일과 기록의 영향 응답(§10-1)과 같은 모양이다.
+
+```json
+{ "review_impact": {
+  "affected_document_ids": [21],
+  "newly_stale_document_ids": [21]
+} }
+```
+
+- `affected_document_ids` 는 **이 문서를 직접 근거로 쓴 문서**다. 연쇄로 `stale` 이 된 문서는
+  넣지 않는다 — 교사가 확정을 푼 문서와 바로 이어진 것만 센다
+- `newly_stale_document_ids` 는 그중 이번 요청으로 `stale=false` 에서 `true` 가 된 문서다
+- 이미 초안인 문서를 다시 부르면 바꾼 것이 없으니 두 배열 모두 빈다
+- 화면은 신규 수로 「이 문서를 근거로 쓴 문서 N건이 다시 검토 대상이 되었어요」를 띄운다. 0이면 띄우지 않는다
 
 **`IMPORT` 는 거절 규칙을 적용하지 않는다.** `sources` 가 비고 `sections` 는
 `첨부 원문` 하나뿐이다. 우리가 만든 문서가 아니라 증빙이다.
