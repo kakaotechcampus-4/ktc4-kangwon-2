@@ -10,6 +10,8 @@ from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfig,
     MonthlyLlmConfigurationError,
     MonthlyLlmProviderError,
+    PLAY_PROJECT_MAX_COMPLETION_TOKENS,
+    assemble_chat_stream,
 )
 from types import SimpleNamespace
 
@@ -73,6 +75,9 @@ def request() -> MonthlyPlanningRequest:
     )
 
 
+STREAM_KEYS = {"stream", "stream_options", "max_completion_tokens"}
+
+
 class RecordingTransport:
     def __init__(self, response):
         self.response = response
@@ -81,6 +86,8 @@ class RecordingTransport:
     def post_json(self, url, *, headers, payload, timeout):
         self.calls.append((url, headers, payload, timeout))
         return self.response
+
+    post_stream = post_json
 
 
 def test_config_is_explicit_safe_and_pins_monthly_model():
@@ -122,6 +129,7 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
     assert headers["Authorization"] == "Bearer secret"
     assert payload["model"] == MONTHLY_MODEL
     assert "temperature" not in payload
+    assert not STREAM_KEYS & set(payload)  # decision C: the cap lives in the bench only
     assert payload["response_format"] == {
         "type": "json_schema",
         "json_schema": {
@@ -181,3 +189,89 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
         },
     }
     assert "json_object" not in json.dumps(transport.calls[0][2])
+    assert not STREAM_KEYS & set(transport.calls[0][2])
+
+
+def test_play_project_request_alone_streams_with_an_output_cap():
+    # 10 candidates hit the gateway's 2,000-token non-streaming cap and came back empty (10-24);
+    # the gateway accepts a larger cap only on a streamed reply.
+    transport = RecordingTransport(
+        {"model": MONTHLY_MODEL, "choices": [{"message": {"content": "{}"}}]}
+    )
+    adapter = EliceOpenAiMonthlyAdapter(
+        MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"), transport=transport
+    )
+    adapter.generate_play_project(SimpleNamespace(system_prompt="system", user_content="user"))
+    payload = transport.calls[0][2]
+
+    assert payload["max_completion_tokens"] == PLAY_PROJECT_MAX_COMPLETION_TOKENS == 10000
+    assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
+    assert payload["response_format"]["json_schema"]["name"] == "play_project_period_proposal"
+
+
+def test_stream_chunks_fold_into_the_plain_response_shape():
+    lines = [
+        ": keep-alive",
+        'data: {"id": "req-1", "model": "gpt-6-luna", "choices": [{"delta": {"role": "assistant"}}]}',
+        'data: {"choices": [{"delta": {"content": "{\\"a\\""}}]}',
+        'data: {"choices": [{"delta": {"content": ": 1}"}, "finish_reason": "stop"}]}',
+        'data: {"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}',
+        "data: [DONE]",
+    ]
+    result = assemble_chat_stream(lines)
+
+    assert result["choices"] == [{"message": {"content": '{"a": 1}'}, "finish_reason": "stop"}]
+    assert (result["id"], result["model"]) == ("req-1", "gpt-6-luna")
+    assert result["usage"] == {"prompt_tokens": 3, "completion_tokens": 2}
+    with pytest.raises(MonthlyLlmProviderError, match="not JSON"):
+        assemble_chat_stream(["data: {broken"])
+
+
+def _stream(*chunks, done=True):
+    lines = ["data: " + json.dumps(chunk) for chunk in chunks]
+    return lines + (["data: [DONE]"] if done else [])
+
+
+_JSON = {"choices": [{"delta": {"content": '{"a": 1}'}, "finish_reason": "stop"}]}
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        _stream(_JSON, done=False),  # connection closed before [DONE]
+        _stream(_JSON, {"error": {"message": "PRIVATE-PROVIDER-BODY"}}),
+        _stream({"choices": [{"delta": {"content": '{"a": 1}'}, "finish_reason": "length"}]}),
+        _stream({"choices": [{"delta": {"content": '{"a": 1}'}}]}),  # no finish reason
+        ["data: []", "data: [DONE]"],
+        ["data: null", "data: [DONE]"],
+        _stream({"choices": [None]}),
+        _stream({"choices": "x"}),
+        _stream({"choices": [{"delta": "x"}]}),
+        _stream({"choices": [{"delta": {"content": 1}, "finish_reason": "stop"}]}),
+        # Codex P1-R01: wrong-type falsy values after a clean finish are not "empty".
+        _stream(_JSON, {"choices": {}}),
+        _stream(_JSON, {"choices": ""}),
+        _stream(_JSON, {"choices": False}),
+        _stream(_JSON, {"choices": [{"delta": []}]}),
+    ],
+)
+def test_a_stream_that_did_not_finish_cleanly_is_a_provider_error(lines):
+    with pytest.raises(MonthlyLlmProviderError) as error:
+        assemble_chat_stream(lines)
+    assert "PRIVATE" not in str(error.value) and "{" not in str(error.value)
+
+
+def test_a_transport_that_cannot_stream_is_refused_before_sending():
+    class JsonOnly:
+        calls = 0
+
+        def post_json(self, url, *, headers, payload, timeout):
+            self.calls += 1
+
+    transport = JsonOnly()
+    adapter = EliceOpenAiMonthlyAdapter(
+        MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"), transport=transport
+    )
+    with pytest.raises(MonthlyLlmConfigurationError, match="cannot stream"):
+        adapter.generate_play_project(SimpleNamespace(system_prompt="s", user_content="u"))
+    assert transport.calls == 0
