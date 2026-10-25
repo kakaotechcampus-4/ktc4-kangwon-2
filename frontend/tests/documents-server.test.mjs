@@ -542,8 +542,9 @@ test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", 
     "deleteDocument",
   ])
     assert.equal(page.includes(used), true, used);
-  // 계획안과 등록 증빙만 브라우저 저장소에서 읽는다.
-  assert.ok(page.includes('d.origin === "import" || !isRecordKind(d.kind)'));
+  // 등록 증빙만 브라우저 저장소에서 읽는다. 계획안은 서버 목록에서 온다 (FR-701).
+  assert.ok(page.includes('data.documents.filter((d) => d.origin === "import")'));
+  assert.ok(page.includes("listAnnualPlans"));
   // 편집기에 올리는 서버 문서는 언제나 지금 고른 문서다.
   assert.ok(page.includes("chosen.detail?.id === active ? chosen.detail : null"));
   assert.ok(page.includes("serverActions = serverCurrent"));
