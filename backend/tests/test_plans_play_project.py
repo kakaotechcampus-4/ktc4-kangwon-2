@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from ssuksak.planning import PlanId
+from ssuksak.planning.planner.play_project import PLAY_PROJECT_PROMPT_VERSION
 
 from app.features.centers.models import Center, Class
 from app.features.plans import monthly_router
@@ -41,7 +42,7 @@ client = TestClient(app)
 NOW = datetime(2026, 10, 25, 9, 0, tzinfo=UTC)
 BLOCKED = "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다."
 GENERATION = GenerationMethodDetail(
-    GenerationMethod.RULE_LLM, "play_project.generate", "play-project-planner-v4"
+    GenerationMethod.RULE_LLM, "play_project.generate", PLAY_PROJECT_PROMPT_VERSION
 )
 
 
@@ -199,7 +200,7 @@ def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다
         "generation": {
             "method": "RULE_LLM",
             "rule_id": "play_project.generate",
-            "rule_version": "play-project-planner-v4",
+            "rule_version": PLAY_PROJECT_PROMPT_VERSION,
         },
     }
     assert [
