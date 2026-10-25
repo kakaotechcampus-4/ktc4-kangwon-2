@@ -261,7 +261,7 @@ def test_exact_tool_names_are_stored_as_written_under_the_current_prompt_version
     materials = plan.periods[0].candidates[0].materials
     assert materials.value == "경사판, 홈통, 공, 자동차"
     assert materials.generation.rule_version == PLAY_PROJECT_PROMPT_VERSION
-    assert PLAY_PROJECT_PROMPT_VERSION == "play-project-planner-v5"
+    assert PLAY_PROJECT_PROMPT_VERSION == "play-project-planner-v6"
     assert provider.requests[0].prompt_version == PLAY_PROJECT_PROMPT_VERSION
 
 

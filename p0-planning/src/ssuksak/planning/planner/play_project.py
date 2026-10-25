@@ -19,7 +19,7 @@ from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v5"  # v5: materials naming
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v6"  # v5: materials naming · v6: support text, learning ids
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -44,14 +44,20 @@ SYSTEM_PROMPT = (
     "만드는 법 · 놓는 곳 · 쓰는 방법은 support_direction 에 쓴다. "
     "준비해 볼 후보로 쓰고 원에 이미 있거나 주변 시설을 쓸 수 있다고 단정하지 않는다. "
     "「또는」 「(선택)」 「몇 종류」 같은 흐린 표현은 줄이고, 개수는 쓰지 않는다. "
-    "support_direction 은 예상되는 놀이의 흐름과 교사의 지원 · 확장 방향이다. 합니다체로 쓰고 아이는 「유아」 또는 「유아들」이라고 부른다. "
-    "1~3문장 100~180자로, 계절 · 주변 변화나 유아가 보일 수 있는 관심으로 시작해 「○○을 지원하면 ~ 경험합니다」처럼 "
-    "지원과 예상 놀이를 잇고(「제공하면」보다 「지원하면」), 이어질 수 있는 놀이 2~3개를 「소리 놀이(소리 흉내 내기, 악기 만들기 등)」처럼 앞말 뒤 괄호에 이름으로 들고, 「~ 기대해봅니다」 「~ 예상합니다」 「~ 계획해봅니다」 「~ 예정입니다」처럼 맺는다 — 후보마다 맺는말을 섞는다. "
-    "materials 의 자료를 본문에서 언급한다. 한 문장에 「~하면」 같은 조건은 하나만 쓴다. "
-    "유아가 실제로 한 일 · 관찰 · 결과나 지금 가진 관심을 사실처럼 쓰지 않고(「관심을 보이면」처럼 쓴다), "
+    # v6 (2026-10-25 decision): lead with the teacher's concrete support; no fixed connective,
+    # step order or ending list (v5 runs used one frame in nearly every candidate).
+    "support_direction 은 이 놀이에서 교사가 무엇을 어떻게 지원하는지다. 합니다체로 쓰고 아이는 「유아」 또는 「유아들」이라고 부른다. 1~3문장 100~180자로 쓴다. "
+    "교사의 구체적인 지원을 우선 드러낸다 — 재료를 마련하거나 더하기, 공간을 꾸미거나 넓히기, 유아의 말 · 질문을 듣고 함께 이야기 나누기, "
+    "놀이를 이어 갈 시간을 두기처럼 그 놀이에 맞는 지원을 자연스러운 말로 쓴다. "
+    "정해진 문형 · 맺는말을 되풀이하지 않는다 — 후보마다 놀이에 맞게 쓰고, 모든 후보를 같은 단계 순서나 같은 조건 문장으로 쓰지 않는다. "
+    "매번 재료 준비로 시작할 필요는 없으며, 그 놀이에서 중요한 지원을 중심으로 자연스럽게 쓴다. "
+    "유아가 앞으로 할 행동이나 놀이 순서를 정해 두지 않고, 놀이가 어떻게 이어질지는 유아의 선택에 열어 둔다. "
+    "유아가 실제로 한 일 · 관찰 · 결과나 지금 가진 관심을 사실처럼 쓰지 않고, "
     "발달 효과를 단정하지 않으며, 특정 결과물이나 사용 방법을 꼭 해야 하는 것으로 정하지 않는다. "
     "반 이름 · 원 이름은 쓰지 않는다. "
-    "learning_content_ids 는 curriculum_contents 의 content_id 중 그 놀이와 관련된 것을 2~3개 고른다. "
+    "learning_content_ids 는 curriculum_contents 의 content_id 중 이 놀이 · 지원 방향에 실제로 드러나는 경험과 명확하게 연결되는 2개를 기본으로 고른다. "
+    "세 번째는 놀이 · 지원 방향에 별도의 경험이 분명히 드러날 때만 추가하며, 전체 개수는 2~3개다. "
+    "개수를 채우려고 연결이 약한 내용을 고르거나, 고른 내용에 맞추려고 놀이 · 지원 방향에 없는 경험을 덧붙이지 않는다. "
     "영역 · 내용범주 · 내용 문장은 쓰지 않는다. "
     "어린이날 · 추석처럼 누구나 아는 공휴일 · 기념일은 쓸 수 있다. "
     "그 원만의 행사, 입력에 없는 날짜 · 사람 이름 · 기관 정보는 지어내지 않는다."
