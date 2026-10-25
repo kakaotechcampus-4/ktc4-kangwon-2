@@ -183,6 +183,23 @@ def test_wrong_shape_is_refused(bad: list[PlayPeriodRows]) -> None:
         fill_play_project(TEMPLATE.read_bytes(), TITLE, bad)
 
 
+def test_one_table_template_is_refused_even_with_matching_periods() -> None:
+    files = parts(TEMPLATE.read_bytes())
+    section = etree.fromstring(files["Contents/section0.xml"])
+    # 둘째 쪽의 표와 제목을 함께 지운다 — 제목 수 검사가 아니라 표 수 검사로 막혀야 한다.
+    second = section.findall(".//hp:tbl", NS)[1]
+    second.getparent().remove(second)
+    title = [t for t in section.iterfind(".//hp:t", NS) if t.text == "제목"][1]
+    title.text = ""
+    files["Contents/section0.xml"] = etree.tostring(section)
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as archive:
+        for name, data in files.items():
+            archive.writestr(name, data)
+    with pytest.raises(TemplateMismatch):
+        fill_play_project(out.getvalue(), TITLE, periods()[:2])
+
+
 def test_empty_learning_is_refused() -> None:
     bad = periods()
     bad[0].rows[0] = bad[0].rows[0]._replace(learning=[])

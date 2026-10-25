@@ -39,6 +39,7 @@ from app.shared.hwpx import (
 
 TEMPLATE = Path(__file__).parent / "templates" / "play_project_annual.hwpx"
 
+TABLES = 2
 PERIODS_PER_TABLE = 2
 ROWS_PER_PERIOD = 5
 LEARNING_COLUMN = 4
@@ -64,7 +65,7 @@ def fill_play_project(template: bytes, title: str, periods: Sequence[PlayPeriodR
 
     section = etree.fromstring(parts[SECTION])
     tables = section.findall(".//hp:tbl", NS)
-    if len(periods) != len(tables) * PERIODS_PER_TABLE:
+    if len(tables) != TABLES or len(periods) != TABLES * PERIODS_PER_TABLE:
         raise TemplateMismatch(f"양식 표 {len(tables)}개에 구간 {len(periods)}개를 채우려 한다.")
     for i, table in enumerate(tables):
         _fill_table(table, periods[i * PERIODS_PER_TABLE : (i + 1) * PERIODS_PER_TABLE])
