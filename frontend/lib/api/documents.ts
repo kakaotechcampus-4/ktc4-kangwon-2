@@ -131,6 +131,8 @@ export interface RelatedDocuments {
 export interface ServerDocument extends SavedDocument {
   serverId: number;
   stale: boolean;
+  /** 확정 취소 응답에서만 온다. 이 문서를 직접 근거로 쓴 문서 중 이번에 새로 stale 이 된 수. */
+  newlyStaleCount?: number;
 }
 
 const STATUS: Record<string, SavedDocument["status"]> = { DRAFT: "draft", CONFIRMED: "confirmed" };
@@ -314,14 +316,22 @@ export async function confirmDocument(localId: string): Promise<ServerDocument> 
   return toDocument(dto);
 }
 
-/** 확정을 되돌린다 (§11). 이미 초안이면 서버가 그대로 200 으로 돌려준다. */
+/**
+ * 확정을 되돌린다 (§11). 이미 초안이면 서버가 그대로 200 으로 돌려준다.
+ *
+ * 영향도 같이 받는다 — 화면이 「이 문서를 근거로 쓴 문서 N건이 다시 검토 대상」을 띄운다.
+ */
 export async function unconfirmDocument(localId: string): Promise<ServerDocument> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
-  const dto = await apiRequest<ApiDocumentDetail>("/api/documents/" + id + "/unconfirm", {
-    method: "POST",
-  });
-  return toDocument(dto);
+  // 영향이 없는 응답(이 옵션을 모르는 서버)이어도 확정 취소는 그대로 반영한다. 안내만 빠진다.
+  const dto = await apiRequest<
+    ApiDocumentDetail & { review_impact?: { newly_stale_document_ids: number[] } }
+  >("/api/documents/" + id + "/unconfirm?include_impact=true", { method: "POST" });
+  return {
+    ...toDocument(dto),
+    newlyStaleCount: dto.review_impact?.newly_stale_document_ids.length,
+  };
 }
 
 /**

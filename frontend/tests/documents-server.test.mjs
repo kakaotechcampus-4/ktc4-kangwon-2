@@ -542,8 +542,9 @@ test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", 
     "deleteDocument",
   ])
     assert.equal(page.includes(used), true, used);
-  // 계획안과 등록 증빙만 브라우저 저장소에서 읽는다.
-  assert.ok(page.includes('d.origin === "import" || !isRecordKind(d.kind)'));
+  // 등록 증빙만 브라우저 저장소에서 읽는다. 계획안은 서버 목록에서 온다 (FR-701).
+  assert.ok(page.includes('data.documents.filter((d) => d.origin === "import")'));
+  assert.ok(page.includes("listAnnualPlans"));
   // 편집기에 올리는 서버 문서는 언제나 지금 고른 문서다.
   assert.ok(page.includes("chosen.detail?.id === active ? chosen.detail : null"));
   assert.ok(page.includes("serverActions = serverCurrent"));
@@ -1586,6 +1587,25 @@ test("확정 취소는 확인창 없이 바로 서버를 부르고 초안으로 
   assert.match(editor.text(), /확정을 취소했어요/);
 });
 
+test("확정 취소로 다시 검토 대상이 된 문서가 있으면 그 수를 말하고, 없으면 말하지 않는다", async () => {
+  const { editor } = await editing(
+    { status: "confirmed" },
+    { unconfirm: async () => ({ ...doc(1, { status: "draft" }), newlyStaleCount: 2 }) },
+  );
+  await editor.button("확정 취소").props.onClick();
+  editor.render();
+  assert.match(editor.text(), /이 문서를 근거로 쓴 문서 2건이 다시 검토 대상이 되었어요/);
+
+  const none = await editing(
+    { status: "confirmed" },
+    { unconfirm: async () => ({ ...doc(1, { status: "draft" }), newlyStaleCount: 0 }) },
+  );
+  await none.editor.button("확정 취소").props.onClick();
+  none.editor.render();
+  assert.match(none.editor.text(), /확정을 취소했어요/);
+  assert.equal(/다시 검토 대상이 되었어요/.test(none.editor.text()), false);
+});
+
 test("확정 취소는 근거를 다시 반영하지 않는다 — stale 은 그대로 남는다", async () => {
   const { editor, selection, calls } = await editing({ status: "confirmed", stale: true });
   assert.ok(editor.button("확정 취소"));
@@ -1721,7 +1741,10 @@ test("늦게 온 확정 취소·근거 반영 응답은 그 사이 고른 다른
 
 test("확정 취소·근거 반영은 서버 id 로 POST 하고 본문을 보내지 않는다", async () => {
   browser();
-  const { calls, restore } = serve(() => json({ ...DETAIL, status: "DRAFT", stale: false }));
+  const impact = { affected_document_ids: [], newly_stale_document_ids: [] };
+  const { calls, restore } = serve(() =>
+    json({ ...DETAIL, status: "DRAFT", stale: false, review_impact: impact }),
+  );
   try {
     await documents.unconfirmDocument("document:17");
     await documents.refreshDocument("document:17");
@@ -1731,11 +1754,37 @@ test("확정 취소·근거 반영은 서버 id 로 POST 하고 본문을 보내
   assert.deepEqual(
     calls.map(({ url, method, body }) => [url, method, body]),
     [
-      ["/api/documents/17/unconfirm", "POST", undefined],
+      // 확정 취소는 영향(「N건이 다시 검토 대상」)을 같이 받는다.
+      ["/api/documents/17/unconfirm?include_impact=true", "POST", undefined],
       ["/api/documents/17/refresh", "POST", undefined],
     ],
   );
   assert.equal(calls[0].auth, `Bearer ${TOKEN}`);
+});
+
+test("영향이 없는 확정 취소 응답도 초안으로 받는다 — 안내만 빠진다", async () => {
+  browser();
+  const { restore } = serve(() => json({ ...DETAIL, status: "DRAFT" }));
+  try {
+    const doc = await documents.unconfirmDocument("document:17");
+    assert.equal(doc.status, "draft");
+    assert.equal(doc.newlyStaleCount, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("확정 취소 응답의 새 stale 수를 화면 문서에 싣는다", async () => {
+  browser();
+  const impact = { affected_document_ids: [21, 22], newly_stale_document_ids: [21] };
+  const { restore } = serve(() => json({ ...DETAIL, status: "DRAFT", review_impact: impact }));
+  try {
+    const doc = await documents.unconfirmDocument("document:17");
+    assert.equal(doc.status, "draft");
+    assert.equal(doc.newlyStaleCount, 1);
+  } finally {
+    restore();
+  }
 });
 
 test("서버에서 오지 않은 id 는 확정 취소·근거 반영 요청 자체를 보내지 않는다", async () => {
