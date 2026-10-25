@@ -651,7 +651,7 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
           "play_name": { "value": "살랑살랑 봄바람을 느껴요",
                          "evidence": [],
                          "generation": { "method": "RULE_LLM", "rule_id": "play_project.generate",
-                                         "rule_version": "play-project-planner-v4" } },
+                                         "rule_version": "play-project-planner-v6" } },
           "materials": { "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "support_direction": { "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "learning": { "value": "자연탐구 - 자연과 더불어 살기 - 자연을 탐구하며 …\n신체운동·건강 - … - …",
@@ -689,7 +689,7 @@ generation                     §4 의 generation 과 같은 객체
 - **`learning.value` 는 서버가 그린 공식 문구**다 — 「영역 - 내용범주 - 내용」 줄을 줄바꿈으로 잇는다. LLM 이 영역 · 범주 이름을 쓰지 않는다.
 - **`learning.evidence` 는 2~3개**, `source_type` 은 `CURRICULUM`, `source_id` 는 누리과정 내용 ID(`nuri2019.1.1.1`), `source_version` 은 카탈로그 판(`nuri-curriculum-content-v0.1.0`)이다.
 - **`play_name` · `materials` · `support_direction` 의 `evidence` 는 `[]` 다.** 쓴 기관 자료가 없고, 쓰지 않은 출처를 달지 않는다(ADR-042 §3).
-- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v4" }` 다.
+- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v6" }` 다.
 - `audit` · `item_id` 는 싣지 않는다(월간 `months` 와 같다).
 
 **호출 단위** (ADR-043) — 한 요청이다. 서버가 Core 를 구간마다 한 번 `m03_m05` → `m06_m08` → `m09_m11` → `m12_m02` 순으로 부르고,
