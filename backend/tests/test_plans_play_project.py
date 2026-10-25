@@ -17,6 +17,7 @@ from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculum
 from ssuksak.planning import PlanId
 from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.planner.contracts import RawLlmResponse
+from ssuksak.planning.planner.play_project import PLAY_PROJECT_PROMPT_VERSION
 
 from app.features.centers.models import Center, Class
 from app.features.plans import monthly_router, play_project
@@ -52,7 +53,7 @@ client = TestClient(app)
 NOW = datetime(2026, 10, 25, 9, 0, tzinfo=UTC)
 BLOCKED = "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다."
 GENERATION = GenerationMethodDetail(
-    GenerationMethod.RULE_LLM, "play_project.generate", "play-project-planner-v4"
+    GenerationMethod.RULE_LLM, "play_project.generate", PLAY_PROJECT_PROMPT_VERSION
 )
 
 
@@ -259,7 +260,7 @@ def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다
         "generation": {
             "method": "RULE_LLM",
             "rule_id": "play_project.generate",
-            "rule_version": "play-project-planner-v4",
+            "rule_version": PLAY_PROJECT_PROMPT_VERSION,
         },
     }
     assert [
@@ -322,7 +323,7 @@ def test_생성은_승인된_누리과정으로_네_구간을_저장하고_읽�
             assert cell["generation"] == {
                 "method": "RULE_LLM",
                 "rule_id": "play_project.generate",
-                "rule_version": "play-project-planner-v4",
+                "rule_version": PLAY_PROJECT_PROMPT_VERSION,
             }
             if key == "learning":
                 assert 2 <= len(cell["evidence"]) <= 3

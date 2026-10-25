@@ -43,13 +43,15 @@ from app.features.documents.schemas import (
     DocumentListResponse,
     DocumentReconfirmRequest,
     DocumentRefreshRequest,
+    DocumentReviewImpact,
     DocumentSectionItem,
     DocumentSourceComparison,
     DocumentSourceItem,
+    DocumentUnconfirmResponse,
     DocumentUpdateRequest,
     RelatedDocumentsResponse,
 )
-from app.features.documents.stale import document_changed
+from app.features.documents.stale import SourceImpact, document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
@@ -703,26 +705,41 @@ def confirm_document(
     return _build_detail_response(session, doc)
 
 
-@router.post("/{document_id}/unconfirm", response_model=DocumentDetailResponse)
+@router.post(
+    "/{document_id}/unconfirm",
+    response_model=DocumentUnconfirmResponse | DocumentDetailResponse,
+)
 def unconfirm_document(
-    document_id: int, session: DbSession, user: CurrentUser
-) -> DocumentDetailResponse:
+    document_id: int, session: DbSession, user: CurrentUser, include_impact: bool = False
+) -> DocumentUnconfirmResponse | DocumentDetailResponse:
     """CONFIRMED → DRAFT. 확정한 문서를 교사가 다시 고칠 수 있게 한다 (docs/api-spec.md §11).
 
     **이 문서를 근거로 쓴 문서는 `stale` 이 된다.** 주간 보육일지는 **확정된** 일일 보육일지만
     근거로 받는다 — 근거가 초안으로 돌아가면 그 위에 쌓은 주간도 다시 봐야 한다.
 
     **다시 불러도 200 이다.** 확정과 같은 이유다 — 재시도를 진짜 실패와 구분할 수 없다.
+    이미 초안이면 이번 요청이 바꾼 것이 없으니 영향도 비어 있다.
+
+    `include_impact=true` 면 `review_impact` 를 더해 돌려준다 — 화면이 「N건이 다시 검토
+    대상」을 띄우는 데 쓴다. 옵션이 없으면 응답 모양은 그대로다.
     """
     doc = _own_document(session, user, document_id, lock=True)
-    if doc.status == "DRAFT":
-        return _build_detail_response(session, doc)
-
-    doc.status = "DRAFT"
-    doc.updated_at = datetime.now(UTC)
-    document_changed(session, doc.id)
-    session.commit()
-    return _build_detail_response(session, doc)
+    impact = SourceImpact()
+    if doc.status != "DRAFT":
+        doc.status = "DRAFT"
+        doc.updated_at = datetime.now(UTC)
+        impact = document_changed(session, doc.id)
+        session.commit()
+    detail = _build_detail_response(session, doc)
+    if include_impact:
+        return DocumentUnconfirmResponse(
+            **detail.model_dump(),
+            review_impact=DocumentReviewImpact(
+                affected_document_ids=list(impact.affected_document_ids),
+                newly_stale_document_ids=list(impact.newly_stale_document_ids),
+            ),
+        )
+    return detail
 
 
 @router.post("/{document_id}/refresh", response_model=DocumentDetailResponse)
