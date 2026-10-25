@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   DOCUMENT_KINDS,
   today,
+  localDate,
   validPeriod,
   validDate,
   compareEvidence,
@@ -35,6 +36,9 @@ import {
   type RecordKind,
 } from "@/lib/api/documents";
 import { listDayRoutines, type RoutineLine } from "@/lib/api/routines";
+import { listAnnualPlans } from "@/lib/api/plans";
+import type { AnnualPlanSummary } from "@/lib/api/types";
+import { byArchiveOrder } from "@/lib/workspace/archive";
 import DailyLogSources from "./DailyLogSources";
 import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -111,6 +115,10 @@ export default function DocumentsPage() {
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
+  // 연간계획안은 일지와 다른 API 다 (FR-701). 따로 부르고 따로 실패한다 — 한쪽이 죽어도
+  // 다른 쪽은 그린다. null 이면 아직 불러오는 중.
+  const [plans, setPlans] = useState<{ items: AnnualPlanSummary[]; error: string } | null>(null);
+  const latestPlans = useRef(0);
   const [dailyPrefilled, setDailyPrefilled] = useState(false);
   if (entry.daily && !dailyPrefilled) {
     setDailyPrefilled(true);
@@ -179,6 +187,31 @@ export default function DocumentsPage() {
       if (mine !== latestList.current) return;
       setListError(messageFor(e));
       setListStatus("error");
+    }
+  }
+
+  // 마운트할 때 한 번. 일지를 고치거나 만들어도 계획안 목록은 바뀌지 않는다.
+  useEffect(() => {
+    const mine = ++latestPlans.current;
+    listAnnualPlans()
+      .then(({ items }) => {
+        if (mine === latestPlans.current) setPlans({ items, error: "" });
+      })
+      .catch((e) => {
+        if (mine === latestPlans.current) setPlans({ items: [], error: messageFor(e) });
+      });
+    return () => {
+      latestPlans.current += 1;
+    };
+  }, []);
+  async function reloadPlans() {
+    const mine = ++latestPlans.current;
+    setPlans(null);
+    try {
+      const { items } = await listAnnualPlans();
+      if (mine === latestPlans.current) setPlans({ items, error: "" });
+    } catch (e) {
+      if (mine === latestPlans.current) setPlans({ items: [], error: messageFor(e) });
     }
   }
 
@@ -262,40 +295,56 @@ export default function DocumentsPage() {
       ? selected.flatMap((id) => candidates.filter((s) => s.id === id))
       : candidates.filter((s) => selected.includes(s.id));
 
-  // 계획안과 등록 증빙은 아직 서버에 없다 — 보관함에서는 계속 브라우저 저장소를 본다.
-  const localDocs = data.documents.filter((d) => d.origin === "import" || !isRecordKind(d.kind));
-  const library = [
+  // 등록 증빙은 아직 서버에 없다 — 보관함에서는 계속 브라우저 저장소를 본다.
+  // 브라우저에 남은 옛 계획안은 읽지 않는다. 계획안은 이제 서버 목록에서 온다.
+  const localDocs = data.documents.filter((d) => d.origin === "import");
+  // 목록에는 sections · sources 가 없다 — 제목 · 종류 · 날짜 · 상태만 그린다 (§11).
+  const entries = [
     ...serverDocs.map((d) => ({
       id: d.id,
+      source: "document" as const,
+      serverId: d.serverId,
       title: d.title,
       className: d.className,
       childName: d.childName,
       kind: d.kind,
       status: d.status,
-      start: d.start,
-      updatedAt: d.updatedAt,
-      sources: d.sourcesCount,
+      createdAt: d.createdAt,
       stale: d.stale,
     })),
     ...localDocs.map((d) => ({
       id: d.id,
+      source: "document" as const,
+      serverId: null,
       title: d.title,
       className: d.className,
       childName: d.childName,
       kind: d.kind,
       status: d.status,
-      start: d.start,
-      updatedAt: d.updatedAt,
-      sources: d.sources.length,
+      createdAt: d.createdAt,
       stale: false,
     })),
-  ]
+    ...(plans?.items ?? []).map((p) => ({
+      id: `annual:${p.id}`,
+      source: "plan" as const,
+      serverId: p.id,
+      title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
+      // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
+      className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
+      childName: "",
+      kind: "annual" as const,
+      status: (p.status === "CONFIRMED" ? "confirmed" : "draft") as SavedDocument["status"],
+      createdAt: p.created_at,
+      stale: false,
+    })),
+  ];
+  const library = entries
     .filter(
       (d) =>
         (filter === "all" || d.status === filter) &&
         `${d.title} ${d.childName} ${d.className}`.includes(search),
     )
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    .sort(byArchiveOrder);
 
   const activeServerId = documentServerId(active);
   const localCurrent = data.documents.find((d) => d.id === active);
@@ -303,8 +352,19 @@ export default function DocumentsPage() {
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
   const current = activeServerId === null ? localCurrent : serverCurrent;
   // 목록 재조회 실패가 이미 표시 중인 목록과 편집기를 숨기지 않게 한다.
+  // 계획안 목록이 왔으면 일지 쪽이 실패해도 그것을 그린다 (FR-701 「한쪽 API 만 실패」).
   const keepDocuments =
-    listStatus === "error" && (serverDocs.length > 0 || localDocs.length > 0 || !!current);
+    listStatus === "error" &&
+    (serverDocs.length > 0 || localDocs.length > 0 || !!plans?.items.length || !!current);
+  // 일지가 아직 오는 중이어도 받은 계획안 · 로컬 증빙은 먼저 그린다.
+  const journalsPending = listStatus === "loading" && entries.length > 0;
+  // 일지는 비었는데 계획안이 아직 오는 중이면 빈 칸 대신 「불러오는 중」을 띄운다.
+  const libraryStatus: ViewStatus =
+    keepDocuments || journalsPending
+      ? "ready"
+      : listStatus === "ready" && plans === null && !entries.length
+        ? "loading"
+        : listStatus;
 
   /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
   const clearInvalid = (name: string) =>
@@ -684,11 +744,7 @@ export default function DocumentsPage() {
                   className={filter === id ? ws.selected : undefined}
                   onClick={() => setFilter(id)}
                 >
-                  {label}{" "}
-                  {
-                    [...serverDocs, ...localDocs].filter((d) => id === "all" || d.status === id)
-                      .length
-                  }
+                  {label} {entries.filter((d) => id === "all" || d.status === id).length}
                 </button>
               ))}
             </div>
@@ -713,12 +769,26 @@ export default function DocumentsPage() {
               </button>
             </div>
           )}
+          {plans?.error && (
+            <div>
+              <Message error>계획안 목록을 불러오지 못했어요. {plans.error}</Message>
+              <button className={ws.secondary} onClick={reloadPlans}>
+                계획안 다시 시도
+              </button>
+            </div>
+          )}
+          {journalsPending && <Message>일지를 불러오고 있어요.</Message>}
           <WorkspaceViewState
-            status={keepDocuments ? "ready" : listStatus}
+            status={libraryStatus}
             error={listError}
             loading="문서를 불러오고 있어요."
             empty={
+              // 계획안을 못 불러왔으면 「문서가 없다」고 하지 않는다. 있는데 못 본 것이다.
+              // 일지가 아직 오는 중이어도 마찬가지다.
               !library.length &&
+              !journalsPending &&
+              plans !== null &&
+              !plans.error &&
               !(keepDocuments && current) && (
                 <Empty title="보관된 문서가 없어요">관찰 기록으로 첫 문서를 만들어보세요.</Empty>
               )
@@ -726,25 +796,38 @@ export default function DocumentsPage() {
           >
             <div className={ws.grid}>
               <div className={ws.list}>
-                {library.map((d) => (
-                  <button
-                    key={d.id}
-                    className={`${ws.item} ${active === d.id ? ws.selected : ""}`}
-                    onClick={() => open(d.id)}
-                  >
-                    <div className={ws.between}>
-                      <span className={ws.badge}>
-                        {d.status === "confirmed" ? "확정" : "검토 중"}
-                        {d.stale ? " · 재검토" : ""}
-                      </span>
-                      <span className={ws.muted}>{d.start}</span>
-                    </div>
-                    <h3 style={{ marginTop: 13 }}>{d.title}</h3>
-                    <p className={ws.muted}>
-                      {d.className} · {DOCUMENT_KINDS[d.kind]} · 근거 {d.sources}건
-                    </p>
-                  </button>
-                ))}
+                {library.map((d) => {
+                  const body = (
+                    <>
+                      <div className={ws.between}>
+                        <span className={ws.badge}>
+                          {d.status === "confirmed" ? "확정" : "검토 중"}
+                          {d.stale ? " · 재검토" : ""}
+                        </span>
+                        <span className={ws.muted}>{localDate(d.createdAt)}</span>
+                      </div>
+                      <h3 style={{ marginTop: 13 }}>{d.title}</h3>
+                      <p className={ws.muted}>
+                        {d.className ? `${d.className} · ` : ""}
+                        {DOCUMENT_KINDS[d.kind]}
+                      </p>
+                    </>
+                  );
+                  // 계획안은 S-J4 가 아니라 계획안 화면으로 연다. S-J4 는 일지 전용이다.
+                  return d.source === "plan" ? (
+                    <Link key={d.id} className={ws.item} href={`/plans/annual/${d.serverId}`}>
+                      {body}
+                    </Link>
+                  ) : (
+                    <button
+                      key={d.id}
+                      className={`${ws.item} ${active === d.id ? ws.selected : ""}`}
+                      onClick={() => open(d.id)}
+                    >
+                      {body}
+                    </button>
+                  );
+                })}
               </div>
               <WorkspaceViewState
                 status={chosen.status}
