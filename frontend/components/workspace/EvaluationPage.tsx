@@ -286,6 +286,7 @@ function LocalDocumentReview() {
             <label className={ws.field}>
               시작일
               <input
+                name="start"
                 type="date"
                 value={start}
                 onChange={(e) => {
@@ -297,6 +298,7 @@ function LocalDocumentReview() {
             <label className={ws.field}>
               종료일
               <input
+                name="end"
                 type="date"
                 value={end}
                 onChange={(e) => {
@@ -309,6 +311,7 @@ function LocalDocumentReview() {
           <label className={ws.field} style={{ marginTop: 16 }}>
             증빙 파일 · PDF / DOCX / TXT / MD / CSV · 5MB
             <input
+              name="evidence_file"
               type="file"
               disabled={busy}
               accept=".pdf,.docx,.txt,.md,.csv"
@@ -410,6 +413,7 @@ function LocalDocumentReview() {
               <label className={ws.field}>
                 확인할 요구사항
                 <input
+                  name="label"
                   required
                   maxLength={300}
                   value={label}
@@ -420,6 +424,7 @@ function LocalDocumentReview() {
               <label className={ws.field}>
                 관련 단어 · 쉼표로 구분
                 <input
+                  name="terms"
                   required
                   maxLength={200}
                   value={terms}
@@ -430,6 +435,7 @@ function LocalDocumentReview() {
               <label className={ws.field}>
                 기준 출처 / 페이지
                 <input
+                  name="source"
                   required
                   maxLength={300}
                   value={source}

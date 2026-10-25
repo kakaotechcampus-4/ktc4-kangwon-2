@@ -41,6 +41,12 @@ const optional = (template: MonthlyTemplate) =>
 const required = (template: MonthlyTemplate) =>
   template.sections.filter((s) => s.selection === "REQUIRED");
 
+/** 「소주제」 칸의 뜻. 서버가 받는 목록 안에서 고른다. */
+function focusVariant(template: MonthlyTemplate): string {
+  const allowed = template.focus_variants;
+  return allowed.includes("SUBTHEME") ? "SUBTHEME" : (allowed[0] ?? "SUBTHEME");
+}
+
 export default function MonthlyTemplatePage() {
   const [centerId, setCenterId] = useState<number | null>(null);
   const [templates, setTemplates] = useState<MonthlyTemplate[] | null>(null);
@@ -105,6 +111,12 @@ export default function MonthlyTemplatePage() {
         display_labels: Object.fromEntries(
           shown.map((s) => [s.section_key, name(s.section_key, s.label)]),
         ),
+        // **소주제를 켜면 그 뜻을 같이 보내야 한다** — 안 보내면 서버가 422
+        // `["focus_variant"]` 로 거절한다 (template_profiles/router.py §9-4).
+        // 화면이 그 칸을 「소주제」로 부르니 `SUBTHEME` 를 보낸다. 서버가 그 값을
+        // 안 받는 Template 이면 서버가 준 목록의 첫 번째를 쓴다.
+        // 세 가지(소주제 · 예상놀이 · 주별 주제) 중에 교사가 고르게 하는 것은 그다음이다.
+        focus_variant: extras.has("focus") ? focusVariant(chosen) : null,
       });
       // 만들기만 하면 아무 데도 안 쓰인다. 바로 원 기본으로 건다 (§9-4 ③).
       await putCenterDefaultProfile(centerId, {
