@@ -56,8 +56,9 @@ export interface ServerDocumentActions {
   save: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
   /** 저장과 확정은 한 작업이다 — 대상 문서가 중간에 바뀌지 않는다. */
   saveAndConfirm: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
-  /** 확정을 되돌린다. 근거를 다시 반영하지는 않는다 — 교사가 따로 누른다. */
-  unconfirm: () => Promise<SavedDocument>;
+  /** 확정을 되돌린다. 근거를 다시 반영하지는 않는다 — 교사가 따로 누른다.
+   *  `newlyStaleCount` 는 이 문서를 근거로 써서 이번에 다시 검토 대상이 된 문서 수다. */
+  unconfirm: () => Promise<SavedDocument & { newlyStaleCount?: number }>;
   /** 바뀐 근거로 `사실` 을 다시 받는다. 초안이면서 stale 일 때만 부른다.
    *  사라진 근거가 있으면 교사가 고른 `resolutions` 를 함께 보낸다 — 없으면 서버가 거절한다. */
   refresh: (resolutions?: SourceResolution[]) => Promise<SavedDocument>;
@@ -279,9 +280,9 @@ export default function DocumentEditor({
   }
 
   /** 서버 요청 하나를 돌리고 성공하면 그 응답을 그대로 적용한다. 실패하면 입력을 둔다. */
-  async function run(
-    call: (s: ServerDocumentActions) => Promise<SavedDocument | null>,
-    note: string,
+  async function run<T extends SavedDocument>(
+    call: (s: ServerDocumentActions) => Promise<T | null>,
+    note: string | ((next: T) => string),
     failed: string,
   ) {
     if (!server || working) return;
@@ -290,7 +291,7 @@ export default function DocumentEditor({
     try {
       const next = await call(server);
       // reload 는 그 사이 다른 문서로 옮기면 null 이다 — 지금 편집기를 바꾸지 않는다.
-      if (next) adopt(next, note);
+      if (next) adopt(next, typeof note === "function" ? note(next) : note);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : failed);
     } finally {
@@ -310,7 +311,11 @@ export default function DocumentEditor({
   const unconfirm = () =>
     run(
       (s) => s.unconfirm(),
-      "확정을 취소했어요. 다시 수정할 수 있어요.",
+      ({ newlyStaleCount }) =>
+        "확정을 취소했어요. 다시 수정할 수 있어요." +
+        (newlyStaleCount
+          ? ` 이 문서를 근거로 쓴 문서 ${newlyStaleCount}건이 다시 검토 대상이 되었어요.`
+          : ""),
       "확정을 취소하지 못했어요.",
     );
 
