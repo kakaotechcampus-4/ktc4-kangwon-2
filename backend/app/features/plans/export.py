@@ -18,7 +18,6 @@ from app.features.plans.monthly_router import _current as _monthly_detail
 from app.features.plans.monthly_router import _own_row as _monthly_row
 from app.features.plans.monthly_schemas import SectionOut
 from app.features.plans.router import DbSession, _detail, _repo, _row
-from app.features.plans.rules.verify import safety_categories
 from app.features.plans.weekly_router import _current as _weekly_detail
 from app.features.plans.weekly_router import _own_row as _weekly_row
 from app.features.plans.weekly_router import _weekly_repo
@@ -30,7 +29,10 @@ router = APIRouter(prefix="/plans", tags=["plans"])
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
-# 양식의 머리행(월 · 주제 · 소주제 · 안전교육) 줄 수.
+# 양식의 머리행(월 · 주제 · 소주제) 줄 수.
+# 안전교육 열은 2026-10-22 결정으로 양식에서 뺐다 — 안전교육은 월간이 채운다. 교사 입력값
+# (ADR-041)은 API · DB 에 그대로 있고 제출 문서에만 싣지 않는다. 다시 켜려면 git 이력의
+# 4열 양식과 이 줄 만들기를 되살린다.
 ANNUAL_HEADER_ROWS = 1
 
 _NOT_CONFIRMED = HTTPException(
@@ -55,16 +57,7 @@ def export_plan(
     klass = require_own_class(session, user, plan.class_id)
 
     title = f"{klass.name} {plan.school_year}학년도 연간 보육계획안"
-    safety_labels = {item["category_id"]: item["label"] for item in safety_categories()}
-    rows = [
-        [
-            f"{month.month}월",
-            month.theme,
-            "\n".join(month.sub_themes),
-            "\n".join(safety_labels[category] for category in month.safety_education),
-        ]
-        for month in plan.months
-    ]
+    rows = [[f"{month.month}월", month.theme, "\n".join(month.sub_themes)] for month in plan.months]
     content = fill_table(
         (TEMPLATE_DIR / "annual.hwpx").read_bytes(), title, ANNUAL_HEADER_ROWS, rows
     )
