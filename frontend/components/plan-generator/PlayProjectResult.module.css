@@ -5,6 +5,53 @@
   flex-wrap: wrap;
   margin: 18px 0;
 }
+.stepButton {
+  min-height: 44px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.stepButton:focus-visible,
+.pick input:focus-visible,
+.playButton:focus-visible,
+.cellButton:focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+.panel {
+  margin-top: 18px;
+}
+.panel:focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 4px;
+}
+.arrangementGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 22px;
+  align-items: start;
+}
+.arrangementGrid > * {
+  min-width: 0;
+}
+.cardHeading {
+  align-items: flex-start;
+}
+.cardHeading h2 {
+  overflow-wrap: anywhere;
+}
+.pick {
+  flex-shrink: 0;
+}
+.pick input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--pg-success);
+}
 .fields {
   display: grid;
   gap: 16px;
@@ -25,7 +72,111 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
-.panel:focus-visible {
-  outline: 2px solid var(--pg-primary);
-  outline-offset: 4px;
+.hint {
+  color: var(--pg-ink-soft);
+  margin-top: 20px;
+}
+.playButton {
+  min-height: 44px;
+  font: inherit;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.playButton[aria-pressed="true"] {
+  border-color: var(--pg-success-line);
+  background: var(--pg-success-tint);
+}
+.viewer {
+  margin-top: 24px;
+}
+.viewer textarea {
+  min-height: 120px;
+  background: var(--pg-note-soft);
+  color: var(--pg-ink-soft);
+  line-height: 1.8;
+}
+.viewer p {
+  color: var(--pg-ink-soft);
+  font-size: 12px;
+}
+.sheet {
+  box-shadow: var(--pg-shadow);
+}
+.previewWrap {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+.preview {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.preview th,
+.preview td {
+  border: 1px solid var(--pg-line);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.preview thead th:nth-child(1) {
+  width: 9%;
+}
+.preview thead th:nth-child(2),
+.preview thead th:nth-child(3) {
+  width: 17%;
+}
+.preview thead th:nth-child(4) {
+  width: 33%;
+}
+.preview thead th:nth-child(5) {
+  width: 24%;
+}
+.preview thead th,
+.preview tbody th {
+  padding: 9px;
+  background: var(--pg-cream);
+  text-align: left;
+  line-height: 1.6;
+}
+.preview td {
+  padding: 0;
+}
+.cellButton {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  padding: 9px;
+  border: 0;
+  background: transparent;
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.cellButton:focus-visible,
+.selectedCell {
+  outline: 2px solid var(--pg-success-line);
+  outline-offset: -2px;
+  background: var(--pg-success-tint);
+}
+.empty {
+  padding: 18px;
+  color: var(--pg-ink-soft);
+  text-align: center;
+}
+@media (max-width: 1100px) {
+  .arrangementGrid {
+    grid-template-columns: 1fr;
+  }
+  .previewWrap {
+    overflow-x: auto;
+  }
+  .preview {
+    min-width: 640px;
+  }
 }
