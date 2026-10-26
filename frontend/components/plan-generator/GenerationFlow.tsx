@@ -20,12 +20,7 @@ import {
 } from "@/lib/workspace/model";
 import Link from "next/link";
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
-import {
-  putAnnualMonth,
-  confirmAnnualPlan,
-  downloadAnnualHwpx,
-  getAnnualPlan,
-} from "@/lib/api/plans";
+import { putAnnualMonth, confirmAnnualPlan, downloadAnnualHwpx } from "@/lib/api/plans";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 
 type Request = {
@@ -130,18 +125,6 @@ export default function GenerationFlow({
           // 실패한 입력은 그대로 남겨 재시도할 수 있게 한다.
         } finally {
           setSavingRows((prev) => prev.filter((j) => j !== i));
-        }
-      }
-      if (success) {
-        try {
-          const plan = await getAnnualPlan(id);
-          if (plan.format === "PLAY_PROJECT") {
-            setNotice("이 계획안은 결과 화면에서 볼 수 있어요.");
-            return false;
-          }
-        } catch {
-          setNotice("내용은 저장했지만 계획안을 다시 읽지 못했어요. 새로고침해주세요.");
-          return false;
         }
       }
       return success;
