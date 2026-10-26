@@ -21,3 +21,20 @@ body {
   /* 한글은 단어 중간에서 줄이 끊기면 읽기 나쁘다. */
   word-break: keep-all;
 }
+
+/* 고르는 칸의 화살표.
+ *
+ * 브라우저가 그리는 기본 화살표는 **자리를 정할 수 없다** — 칸이 넓으면 글자에서 멀리
+ * 떨어져 혼자 가장자리에 붙는다. 끄고 우리가 같은 자리에 그린다.
+ *
+ * 색은 `--pg-ink-soft`(#705d47) 와 같은 값이다. 배경 그림에는 CSS 변수를 못 쓴다.
+ * 작업실 화면은 `Workspace.module.css` 가 같은 모양으로 따로 가지고 있다. */
+.selectField {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23705d47' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
+}

@@ -125,6 +125,8 @@ def test_a_repair_request_allows_only_the_flagged_sections():
     assert len(transport.calls) == 2
     repair = transport.calls[1]["response_format"]["json_schema"]["schema"]
     assert repair["properties"]["sections"]["items"]["properties"]["section_key"]["enum"] == ["theme"]
+    # Document and repair requests alike: no streaming, no output cap (decision C: bench only).
+    assert not any({"stream", "stream_options", "max_completion_tokens"} & set(p) for p in transport.calls)
 
 
 def test_outdoor_reference_id_and_label_are_locked_as_pairs():

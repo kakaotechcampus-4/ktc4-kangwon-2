@@ -297,6 +297,7 @@ export default function RecordsPage() {
                   <label className={ws.field}>
                     관찰 날짜
                     <input
+                      name="date"
                       required
                       type="date"
                       max={today()}
@@ -329,6 +330,7 @@ export default function RecordsPage() {
                 <label className={ws.field}>
                   놀이 상황 / 장소
                   <input
+                    name="context"
                     maxLength={CONTEXT_MAX}
                     value={context}
                     {...fieldErrorProps("context", invalid)}
@@ -396,6 +398,7 @@ export default function RecordsPage() {
             </span>
           </div>
           <input
+            name="record_search"
             aria-label="관찰 기록 검색"
             className={ws.input}
             placeholder="아동 이름, 놀이 내용 검색"
