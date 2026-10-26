@@ -313,8 +313,9 @@ class MonthlyContextPacket:
         if self.safety is not None:
             if not isinstance(self.safety, SafetyContext):
                 raise InvalidDomainValueError("Context Packet safety is invalid")
-            if {slot.week_id for slot in self.safety.slots} != {week.week_id for week in self.weeks}:
-                raise InvalidDomainValueError("Safety slots must cover exactly the Context weeks")
+            slot_weeks = [slot.week_id for slot in self.safety.slots]
+            if len(set(slot_weeks)) != len(slot_weeks) or not set(slot_weeks) <= {w.week_id for w in self.weeks}:
+                raise InvalidDomainValueError("Safety slots must be distinct Context weeks")
             if set(self.safety.official_by_ref) & set(ids):
                 raise InvalidDomainValueError("Official safety refs cannot reuse evidence refs")
 

@@ -72,25 +72,15 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page
     .getByLabel("3월 활동 내용", { exact: true })
     .fill("우리 반 이름 알아보기\n친구와 인사 나누기");
-  await page.getByLabel("3월 안전교육 입력", { exact: true }).click();
-  const safety = page.getByRole("group", { name: "3월 안전교육", exact: true });
-  await safety.getByLabel("이 달의 배치 계획을 입력했어요", { exact: true }).check();
-  await safety.getByLabel("교통안전 교육", { exact: true }).check();
-  await page.getByLabel("4월 안전교육 입력", { exact: true }).click();
-  await page
-    .getByRole("group", { name: "4월 안전교육", exact: true })
-    .getByLabel("이 달의 배치 계획을 입력했어요", { exact: true })
-    .check();
+  // 연간 안전교육 칸은 꺼 뒀다(2026-10-22) — 화면에 입력이 없고, 저장해도 서버 값을 건드리지 않는다.
+  await expect(page.getByLabel("3월 안전교육 입력", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("annual-edit.png"), fullPage: true });
   await page.getByRole("button", { name: "수정 완료" }).click();
   await page.reload();
   await expect(page.getByText("우리 반과 새로운 친구", { exact: true })).toBeVisible();
-  await expect(page.getByText("안전교육 · 교통안전 교육", { exact: true })).toBeVisible();
-  await expect(page.getByText("안전교육 · 이 달 배치 없음", { exact: true })).toBeVisible();
+  await expect(page.locator("#plan-document").getByText(/안전교육/)).toHaveCount(0);
   const savedAnnual = await api(page, `/api/plans/annual/${annualId}`);
-  expect(savedAnnual.months[0].safety_education).toEqual(["traffic_safety"]);
-  expect(savedAnnual.months[1].safety_education_state).toBe("NOT_PLACED");
-  expect(savedAnnual.months[2].safety_education_state).toBe("SOURCE_REQUIRED");
+  expect(savedAnnual.months[0].safety_education_state).toBe("SOURCE_REQUIRED");
   await page.getByRole("button", { name: "연간계획안 확정", exact: true }).click();
   await expect(page.getByRole("button", { name: "확정됨", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: /다시 생성하기/ })).toBeDisabled();
@@ -100,7 +90,6 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
     "우리 반과 새로운 친구",
     "우리 반 이름 알아보기",
     "친구와 인사 나누기",
-    "교통안전 교육",
   ]);
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
