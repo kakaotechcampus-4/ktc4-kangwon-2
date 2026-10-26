@@ -443,6 +443,20 @@ class MonthlyPlan:
             None,
         )
 
+    def cell_state_assessment(self, cell: MonthlyCell) -> ConstraintAssessment | None:
+        """The assessment an edited or regenerated Cell's empty value is judged by.
+
+        A safety week the placement policy leaves out stays validly empty, as at generation;
+        a plan generated without placement keeps the statutory assessment for every week.
+        """
+        if (
+            cell.section_key == "safety_education"
+            and cell.safety is None
+            and any(other.safety is not None for other in self.cells)
+        ):
+            return None
+        return self.constraint("STATUTORY_SAFETY_EDUCATION")
+
     @property
     def unresolved_constraints(self) -> tuple[ConstraintAssessment, ...]:
         return tuple(

@@ -30,7 +30,7 @@ MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2]
 
 def _rows(march: list[str] | None = None) -> list[list[str]]:
     """12개월치. `march` 를 주면 첫 줄(3월)만 그걸로 바꾼다."""
-    rows = [[f"{m}월", f"{m}월 주제", "", ""] for m in MONTHS]
+    rows = [[f"{m}월", f"{m}월 주제", ""] for m in MONTHS]
     if march is not None:
         rows[0] = march
     return rows
@@ -76,18 +76,17 @@ def test_제목과_칸이_채워지고_머리행은_그대로다():
     texts = ["".join(t.itertext()) for t in section.iter(f"{{{NS['hp']}}}t")]
     assert "햇님반 2026학년도 연간 보육계획안" in texts
     assert "제목" not in texts
-    assert [_lines(_cell(section, 0, c)) for c in range(4)] == [
+    assert [_lines(_cell(section, 0, c)) for c in range(3)] == [
         ["월"],
         ["주제"],
         ["소주제"],
-        ["안전교육"],
     ]
     assert _lines(_cell(section, 1, 0)) == ["3월"]
     assert _lines(_cell(section, 12, 1)) == ["2월 주제"]
 
 
 def test_칸_안_줄바꿈은_문단으로_나뉘고_특수문자는_그대로_보인다():
-    rows = _rows(["3월", "A & B <C>", "첫째\n둘째", ""])
+    rows = _rows(["3월", "A & B <C>", "첫째\n둘째"])
     section = _section(fill_table(TEMPLATE, "제목줄", 1, rows))
 
     assert _lines(_cell(section, 1, 1)) == ["A & B <C>"]
@@ -97,7 +96,7 @@ def test_칸_안_줄바꿈은_문단으로_나뉘고_특수문자는_그대로_�
 
 
 def test_XML_에_못_담는_제어문자는_빼고_탭은_띄어쓰기로_바꾼다():
-    rows = _rows(["3월", "가\x00나\t다", "", ""])
+    rows = _rows(["3월", "가\x00나\t다", ""])
     section = _section(fill_table(TEMPLATE, "제목줄", 1, rows))
 
     assert _lines(_cell(section, 1, 1)) == ["가나 다"]
@@ -119,8 +118,8 @@ def test_미리보기_글자도_채운_내용으로_바뀐다():
 
     preview = out.read("Preview/PrvText.txt").decode("utf-8").splitlines()
     assert preview[0] == "제목줄"
-    assert preview[1] == "<월><주제><소주제><안전교육>"
-    assert preview[2] == "<3월><3월 주제><><>"
+    assert preview[1] == "<월><주제><소주제>"
+    assert preview[2] == "<3월><3월 주제><>"
 
 
 @pytest.mark.parametrize(
@@ -222,13 +221,8 @@ def test_hwp_를_고르면_hwp_로_바꿔_내려준다(db_session, mine, tmp_pat
     disposition = response.headers["content-disposition"]
     assert f'filename="plan-{plan["id"]}.hwp"' in disposition
     assert disposition.endswith(".hwp")  # filename* 도 .hwp 다
-    expected = [["월", "주제", "소주제", "안전교육"]] + [
-        [
-            f"{month['month']}월",
-            month["theme"],
-            "\n".join(month["sub_themes"]),
-            "\n".join(month["safety_education"]),
-        ]
+    expected = [["월", "주제", "소주제"]] + [
+        [f"{month['month']}월", month["theme"], "\n".join(month["sub_themes"])]
         for month in plan["months"]
     ]
     assert _hwp_rows(response.content, tmp_path) == [
@@ -348,7 +342,8 @@ def test_남의_원_계획안은_404(db_session, mine, teacher):
     assert client.get(f"/api/plans/{plan['id']}/export/hwp").status_code == 404
 
 
-def test_연간_안전교육은_저장한_공식이름으로_본문과_미리보기에_나온다(mine):
+def test_연간_안전교육은_저장돼_있어도_hwpx_에_싣지_않는다(mine):
+    """2026-10-22 결정 — 연간 안전교육 칸은 꺼 뒀다. 값은 API · DB 에 남고 양식에만 없다."""
     plan = client.post(
         "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id}
     ).json()
@@ -367,9 +362,11 @@ def test_연간_안전교육은_저장한_공식이름으로_본문과_미리보
     label = next(
         c["label"] for c in plan["safety_categories"] if c["category_id"] == "traffic_safety"
     )
+    assert response.json()["safety_education"] == ["traffic_safety"]
     section = _section(exported.content)
-    assert _lines(_cell(section, 1, 3)) == [label]
+    assert section.find(".//hp:tbl", NS).get("colCnt") == "3"
     archive = zipfile.ZipFile(io.BytesIO(exported.content))
     preview = archive.read("Preview/PrvText.txt").decode()
-    assert label in preview and "친구와 인사하기" in preview
-    assert "traffic_safety" not in preview
+    assert "친구와 인사하기" in preview
+    assert label not in preview and "traffic_safety" not in preview
+    assert "안전교육" not in preview
