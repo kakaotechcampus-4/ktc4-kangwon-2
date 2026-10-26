@@ -19,8 +19,15 @@ const { handlers } = await import("../msw/handlers.ts");
 const { resetTestData, read } = await import("../msw/data/store.ts");
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
-const { createAnnualPlan, listAnnualPlans, getAnnualPlan, putAnnualMonth, confirmAnnualPlan } =
-  await import("../lib/api/plans.ts");
+const {
+  createAnnualPlan,
+  listAnnualPlans,
+  getAnnualPlan,
+  getAnnualPlanAudit,
+  putAnnualMonth,
+  confirmAnnualPlan,
+} = await import("../lib/api/plans.ts");
+const { createMonthlyPlan } = await import("../lib/api/monthly.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 
 const server = setupServer(...handlers);
@@ -152,7 +159,7 @@ test("one annual plan per class: 409 ALREADY_EXISTS · nothing added", async () 
   assert.equal(read().plans.length, 1);
 });
 
-test("format: 빠지거나 모르는 값 · PLAY_PROJECT+form_id 는 422, PLAY_PROJECT 는 503 · 아무것도 안 만든다", async () => {
+test("format: 빠지거나 모르는 값 · PLAY_PROJECT+form_id 는 422 · 놀이 프로젝트 응답은 4구간 × 후보 10개", async () => {
   const klass = await newClass();
   await rejects(createAnnualPlan({ class_id: klass.id, form_id: null }), 422, "VALIDATION_FAILED", [
     "format",
@@ -169,21 +176,30 @@ test("format: 빠지거나 모르는 값 · PLAY_PROJECT+form_id 는 422, PLAY_P
     "VALIDATION_FAILED",
     ["form_id"],
   );
-  await assert.rejects(
-    createAnnualPlan({ class_id: klass.id, form_id: null, format: "PLAY_PROJECT" }),
-    (e) => {
-      assert.ok(e instanceof ApiError);
-      assert.equal(e.status, 503);
-      assert.equal(e.body.error.code, "DEPENDENCY_UNAVAILABLE");
-      assert.equal(
-        e.body.error.message,
-        "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-      );
-      assert.deepEqual(e.body.error.fields, []);
-      return true;
-    },
-  );
   assert.equal(read().plans.length, 0);
+  const plan = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "PLAY_PROJECT",
+  });
+  assert.equal(plan.format, "PLAY_PROJECT");
+  assert.equal(plan.format_version, "play-project-layout-v0.2.0");
+  assert.deepEqual(
+    plan.periods.map(({ period_key, label, months, candidates }) => [
+      period_key,
+      label,
+      months,
+      candidates.length,
+    ]),
+    [
+      ["m03_m05", "3월~5월", [3, 4, 5], 10],
+      ["m06_m08", "6월~8월", [6, 7, 8], 10],
+      ["m09_m11", "9월~11월", [9, 10, 11], 10],
+      ["m12_m02", "12월~2월", [12, 1, 2], 10],
+    ],
+  );
+  assert.deepEqual(await getAnnualPlan(plan.id), plan);
+  assert.equal(read().plans.length, 1);
 });
 
 test("list items carry format", async () => {
@@ -196,6 +212,49 @@ test("list items carry format", async () => {
     (await listAnnualPlans()).items.map((i) => i.format),
     ["MONTHLY_THEME"],
   );
+  const playProject = await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "PLAY_PROJECT",
+  });
+  assert.equal(
+    (await listAnnualPlans()).items.find((i) => i.id === playProject.id)?.format,
+    "PLAY_PROJECT",
+  );
+});
+
+test("PLAY_PROJECT does not support month edits, confirmation, audit, or monthly descendants", async () => {
+  const klass = await newClass();
+  const plan = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "PLAY_PROJECT",
+  });
+  const message = "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.";
+  for (const request of [
+    putAnnualMonth(plan.id, 3, { theme: "주제", sub_themes: [] }),
+    confirmAnnualPlan(plan.id),
+    getAnnualPlanAudit(plan.id),
+  ])
+    await assert.rejects(request, (e) => {
+      assert.ok(e instanceof ApiError);
+      assert.equal(e.status, 409);
+      assert.equal(e.body.error.code, "GATE_BLOCKED");
+      assert.equal(e.body.error.message, message);
+      assert.deepEqual(e.body.error.fields, []);
+      return true;
+    });
+  await rejects(
+    createMonthlyPlan({
+      class_id: klass.id,
+      month: 3,
+      profile_ref: { profile_id: "test", profile_version: "test" },
+    }),
+    409,
+    "GATE_BLOCKED",
+    ["class_id"],
+  );
+  assert.equal(read().monthlyPlans.length, 0);
 });
 
 test("list gives stored created_at · confirmed_at, newest first", async () => {

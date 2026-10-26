@@ -147,7 +147,12 @@ export default function GenerationFlow({
       }
       if (success) {
         try {
-          setAnnualData(await getAnnualPlan(id));
+          const plan = await getAnnualPlan(id);
+          if (plan.format === "PLAY_PROJECT") {
+            setNotice("이 계획안은 결과 화면에서 볼 수 있어요.");
+            return false;
+          }
+          setAnnualData(plan);
         } catch {
           setNotice("내용은 저장했지만 안전교육 검사 결과를 다시 읽지 못했어요. 새로고침해주세요.");
           return false;

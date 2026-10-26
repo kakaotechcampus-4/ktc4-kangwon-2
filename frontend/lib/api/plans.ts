@@ -2,7 +2,7 @@ import { apiRequest } from "./client";
 import { downloadHwpx } from "./export";
 import type {
   AnnualInput,
-  AnnualPlan,
+  AnnualPlanResponse,
   AnnualPlanSummary,
   AnnualMonth,
   AnnualAuditEvent,
@@ -10,7 +10,7 @@ import type {
   ConfirmResult,
 } from "./types";
 export const createAnnualPlan = (data: AnnualInput, signal?: AbortSignal) =>
-  apiRequest<AnnualPlan>("/api/plans/annual", {
+  apiRequest<AnnualPlanResponse>("/api/plans/annual", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -23,7 +23,7 @@ export const listAnnualPlans = (classId?: number, signal?: AbortSignal) =>
     { signal },
   );
 export const getAnnualPlan = (id: number, signal?: AbortSignal) =>
-  apiRequest<AnnualPlan>("/api/plans/annual/" + id, { signal });
+  apiRequest<AnnualPlanResponse>("/api/plans/annual/" + id, { signal });
 /** 전체 교체다. theme 과 sub_themes 를 둘 다 보낸다 — 하나만 보내면 나머지가 지워진다(§6). */
 export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
   apiRequest<AnnualMonth>("/api/plans/annual/" + id + "/months/" + month, {

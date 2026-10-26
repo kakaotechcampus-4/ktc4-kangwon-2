@@ -6,7 +6,10 @@ import type {
   AnnualMonth,
   MonthInput,
   AnnualPlan,
+  AnnualPlanResponse,
   AnnualPlanSummary,
+  PlayProjectAnnualPlan,
+  MonthlyCell,
   ConfirmResult,
 } from "../../lib/api/types";
 
@@ -62,6 +65,46 @@ export const months = (): AnnualMonth[] =>
     ],
     generation: { method: "RULE_LLM", rule_id: "mock.yearly.theme", rule_version: "mock-v1" },
   }));
+const projectGeneration = {
+  method: "RULE_LLM",
+  rule_id: "play_project.generate",
+  rule_version: "play-project-planner-v6",
+};
+const projectCell = (value: string, evidence: MonthlyCell["evidence"] = []) => ({
+  value,
+  evidence,
+  generation: projectGeneration,
+});
+const projectPeriods = (): PlayProjectAnnualPlan["periods"] =>
+  [
+    { period_key: "m03_m05", label: "3월~5월", months: [3, 4, 5] },
+    { period_key: "m06_m08", label: "6월~8월", months: [6, 7, 8] },
+    { period_key: "m09_m11", label: "9월~11월", months: [9, 10, 11] },
+    { period_key: "m12_m02", label: "12월~2월", months: [12, 1, 2] },
+  ].map((period, periodIndex) => ({
+    ...period,
+    candidates: Array.from({ length: 10 }, (_, index) => {
+      const number = index + 1;
+      return {
+        row_key: "cand" + number,
+        play_name: projectCell(
+          `${period.months[0]}~${period.months[period.months.length - 1]}월 함께하는 놀이 ${number}`,
+        ),
+        materials: projectCell("종이 상자, 크레파스"),
+        support_direction: projectCell("유아가 관심을 보이는 재료를 충분히 탐색하도록 돕습니다."),
+        learning: projectCell(
+          "재료의 모양과 성질을 탐색하며 새로운 놀이 방법을 발견한다.\n친구와 생각을 나누며 함께 놀이를 이어간다.",
+          [1, 2].map((item) => ({
+            source_type: "CURRICULUM",
+            source_id: `nuri2019.${periodIndex + 1}.${number}.${item}`,
+            source_version: "nuri-curriculum-content-v0.1.0",
+            effective_date: null,
+            display_name: null,
+          })),
+        ),
+      };
+    }),
+  }));
 /** 서버 Core 의 생성 행위자(generate_yearly_plan). */
 const SYSTEM_ACTOR = "yearly_application";
 /** 서버는 `user_{users.id}` 다. 목업 계정 id 는 하나다. */
@@ -100,18 +143,30 @@ const checks = (): AnnualPlan["checks"] =>
     })),
   );
 /** 응답에는 시각을 담지 않는다 — 목록 요약 · 확정 응답만 준다(§4 · §5). */
-const detail = (p: MockAnnualPlan): AnnualPlan => ({
-  id: p.id,
-  class_id: p.class_id,
-  // 이 필드가 생기기 전에 브라우저에 쌓인 목업 계획안은 월간 주제형이다(ADR-043).
-  format: p.format ?? "MONTHLY_THEME",
-  school_year: p.school_year,
-  status: p.status,
-  months: p.months,
-  safety_categories: safetyCategories,
-  checked_rules: p.checked_rules,
-  checks: p.checks,
-});
+const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
+  if (p.format === "PLAY_PROJECT")
+    return {
+      id: p.id,
+      class_id: p.class_id,
+      school_year: p.school_year,
+      status: p.status,
+      format: p.format,
+      format_version: p.format_version,
+      periods: p.periods,
+    };
+  return {
+    id: p.id,
+    class_id: p.class_id,
+    // format 도입 전 저장된 목업은 필드가 없어 월간 주제형으로 읽는다(ADR-043 읽기 호환).
+    format: "MONTHLY_THEME",
+    school_year: p.school_year,
+    status: p.status,
+    months: p.months,
+    safety_categories: safetyCategories,
+    checked_rules: p.checked_rules,
+    checks: p.checks,
+  };
+};
 export const findPlan = (id: number) => {
   const plan = read().plans.find((p) => p.id === id);
   return plan && detail(plan);
@@ -136,33 +191,51 @@ export const addPlan = (input: AnnualInput, schoolYear: number) =>
   commit((db) => {
     const id = db.next++,
       at = stamp(db, id);
-    const plan: MockAnnualPlan = {
-      id,
-      class_id: input.class_id,
-      format: "MONTHLY_THEME",
-      school_year: schoolYear,
-      status: "DRAFT",
-      months: months(),
-      checked_rules: ["legal_hours"],
-      checks: checks(),
-      created_at: at,
-      confirmed_at: null,
-    };
+    const plan: MockAnnualPlan =
+      input.format === "PLAY_PROJECT"
+        ? {
+            id,
+            class_id: input.class_id,
+            school_year: schoolYear,
+            status: "DRAFT",
+            format: "PLAY_PROJECT",
+            format_version: "play-project-layout-v0.2.0",
+            periods: projectPeriods(),
+            created_at: at,
+            confirmed_at: null,
+          }
+        : {
+            id,
+            class_id: input.class_id,
+            format: "MONTHLY_THEME",
+            school_year: schoolYear,
+            status: "DRAFT",
+            months: months(),
+            checked_rules: ["legal_hours"],
+            checks: checks(),
+            created_at: at,
+            confirmed_at: null,
+          };
     db.plans.push(plan);
-    // 서버처럼 계획안 1건 + 달마다 1건, 같은 시각 · 시스템 행위자.
-    const created = { actor: null, system_actor: SYSTEM_ACTOR };
-    record(
-      db,
-      id,
-      event("CREATED", at, created),
-      ...plan.months.map((m) => event("CREATED", at, { ...created, month: m.month })),
-    );
+    if (plan.format === "MONTHLY_THEME") {
+      // 서버처럼 계획안 1건 + 달마다 1건, 같은 시각 · 시스템 행위자.
+      const created = { actor: null, system_actor: SYSTEM_ACTOR };
+      record(
+        db,
+        id,
+        event("CREATED", at, created),
+        ...plan.months.map((m) => event("CREATED", at, { ...created, month: m.month })),
+      );
+    }
     return detail(plan);
   });
 /** 그 달 전체 교체. 교사가 고쳐도 `evidence` · `generation` 은 그대로다 (§6). */
 export const putMonth = (id: number, month: number, input: MonthInput) =>
   commit((db) => {
-    const plan = db.plans.find((p) => p.id === id)!;
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "MONTHLY_THEME" }> =>
+        p.id === id && p.format !== "PLAY_PROJECT",
+    )!;
     const m = plan.months.find((m) => m.month === month)!;
     // 주제가 그대로여도 남는다(서버와 같다) — 그때 before · after 가 같다. 소주제는 이력에 없다.
     const value_change = { before: m.theme, after: input.theme };

@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/app/AppHeader";
 import { getAnnualPlan } from "@/lib/api/plans";
-import type { AnnualPlan } from "@/lib/api/types";
+import type { AnnualPlanResponse } from "@/lib/api/types";
 import { loadAnnualContext, type AnnualContext } from "@/lib/plan-generator/context";
 import GenerationFlow from "./GenerationFlow";
+import PlayProjectResult from "./PlayProjectResult";
 /** 한 번의 조회 결과 — 어떤 요청(key)에 대한 값인지 함께 들고 있어서 id/재시도가 바뀌면 자동으로 무효가 된다. */
 interface Loaded {
   key: string;
-  plan: AnnualPlan | null;
+  plan: AnnualPlanResponse | null;
   context?: AnnualContext;
   error: string;
 }
@@ -30,7 +31,13 @@ export default function AnnualResult({ id }: { id: number }) {
     let live = true;
     getAnnualPlan(id, controller.signal)
       .then((plan) => {
-        if (live) setLoaded({ key, plan, context: loadAnnualContext(id), error: "" });
+        if (live)
+          setLoaded({
+            key,
+            plan,
+            context: plan.format === "MONTHLY_THEME" ? loadAnnualContext(id) : undefined,
+            error: "",
+          });
       })
       .catch((e) => {
         if (live && !controller.signal.aborted)
@@ -60,8 +67,12 @@ export default function AnnualResult({ id }: { id: number }) {
   return (
     <>
       <AppHeader
-        title="연간계획안"
-        description="생성된 계획안을 확인하고 수정·확정해주세요."
+        title={plan?.format === "PLAY_PROJECT" ? "연간계획안 · 놀이 프로젝트형" : "연간계획안"}
+        description={
+          plan?.format === "PLAY_PROJECT"
+            ? "생성된 놀이 후보를 구간별로 확인해주세요."
+            : "생성된 계획안을 확인하고 수정·확정해주세요."
+        }
         divider={false}
       />
       {error ? (
@@ -73,6 +84,8 @@ export default function AnnualResult({ id }: { id: number }) {
         <p role="status" className="px-4 lg:px-10">
           계획안을 불러오고 있어요.
         </p>
+      ) : plan.format === "PLAY_PROJECT" ? (
+        <PlayProjectResult key={id + ":" + retry} plan={plan} />
       ) : (
         <GenerationFlow
           key={id + ":" + retry}

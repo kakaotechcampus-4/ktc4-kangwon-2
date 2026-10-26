@@ -205,6 +205,43 @@ export interface AnnualPlan {
   /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */
   checks: { rule: string; severity: string; detail: string; month: number | null }[];
 }
+export interface PlayProjectAnnualPlan {
+  id: number;
+  class_id: number;
+  school_year: number;
+  status: "DRAFT" | "CONFIRMED";
+  format: "PLAY_PROJECT";
+  format_version: string;
+  periods: {
+    period_key: string;
+    label: string;
+    months: number[];
+    candidates: {
+      row_key: string;
+      play_name: {
+        value: string;
+        evidence: MonthlyCell["evidence"];
+        generation: MonthlyCell["generation"];
+      };
+      materials: {
+        value: string;
+        evidence: MonthlyCell["evidence"];
+        generation: MonthlyCell["generation"];
+      };
+      support_direction: {
+        value: string;
+        evidence: MonthlyCell["evidence"];
+        generation: MonthlyCell["generation"];
+      };
+      learning: {
+        value: string;
+        evidence: MonthlyCell["evidence"];
+        generation: MonthlyCell["generation"];
+      };
+    }[];
+  }[];
+}
+export type AnnualPlanResponse = AnnualPlan | PlayProjectAnnualPlan;
 /** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
 export interface AnnualPlanSummary {
   id: number;

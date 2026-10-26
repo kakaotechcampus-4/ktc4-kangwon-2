@@ -312,7 +312,7 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
-    // 서버 순서: 형식 422(format → form_id) → 반 404 → 중복 409 → PLAY_PROJECT 503.
+    // 서버 순서: 형식 422(format → form_id) → 반 404 → 중복 409.
     if (b.format !== "MONTHLY_THEME" && b.format !== "PLAY_PROJECT") return bad("format");
     if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
     if (b.format === "PLAY_PROJECT" && b.form_id != null) return bad("form_id");
@@ -322,13 +322,8 @@ export const handlers = [
     // 서버처럼 반 하나에 연간 하나다.
     if (annualFor(klass.id))
       return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
-    // 서버가 교육과정 참고자료가 없거나 승인 전일 때 주는 응답이다(지금 상태).
-    if (b.format === "PLAY_PROJECT")
-      return failure(
-        "DEPENDENCY_UNAVAILABLE",
-        "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-      );
     if (request.signal.aborted) return HttpResponse.error();
+    // 실제 서버는 교육과정 참고자료 승인 전까지 503을 반환하지만, 화면 작업용 목업은 승인 뒤 응답 모양을 만든다.
     return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
       status: 201,
     });
@@ -374,6 +369,11 @@ export const handlers = [
       month = Number(params.month),
       plan = findPlan(id);
     if (!plan) return annualMissing();
+    if (plan.format === "PLAY_PROJECT")
+      return failure(
+        "GATE_BLOCKED",
+        "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.",
+      );
     if (!plan.months.some((m) => m.month === month))
       return failure("NOT_FOUND", "그 달이 없습니다.", "month");
     if (plan.status === "CONFIRMED")
@@ -385,16 +385,28 @@ export const handlers = [
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");
     if (s) return s;
-    const id = Number(params.id);
-    if (!findPlan(id)) return annualMissing();
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format === "PLAY_PROJECT")
+      return failure(
+        "GATE_BLOCKED",
+        "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.",
+      );
     // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
   }),
   http.get("*/api/plans/annual/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "annual-audit");
     if (s) return s;
-    const id = Number(params.id);
-    if (!findPlan(id)) return annualMissing();
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format === "PLAY_PROJECT")
+      return failure(
+        "GATE_BLOCKED",
+        "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.",
+      );
     return HttpResponse.json({ items: listAnnualAudit(id) });
   }),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
@@ -421,6 +433,12 @@ export const handlers = [
     const annual = annualFor(klass.id);
     if (!annual)
       return failure("GATE_BLOCKED", "연간계획안을 먼저 만들어 확정해주세요.", "class_id");
+    if (annual.format === "PLAY_PROJECT")
+      return failure(
+        "GATE_BLOCKED",
+        "놀이 프로젝트형 연간계획안은 월간계획안으로 이어지지 않습니다.",
+        "class_id",
+      );
     if (annual.status !== "CONFIRMED")
       return failure("GATE_BLOCKED", "연간계획안을 먼저 확정해주세요.", "class_id");
     const profileRef = {
