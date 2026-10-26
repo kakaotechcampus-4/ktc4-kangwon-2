@@ -67,13 +67,19 @@ Return only one JSON object matching response_contract; add no fields.
 # Appended to SYSTEM_PROMPT only when the Context Packet carries safety placement.
 SAFETY_SYSTEM_PROMPT = SYSTEM_PROMPT + """safety_plan fixes every week's safety_education slot: its week, kind, legal
 category, official content focus or primary reference. Never change any of them.
-Write every safety_education value as exactly one Korean sentence about one
-safety concept or action; never list several actions or topics.
-For a STATUTORY week, express its one official_content focus for young children.
-Cite that focus grounding_ref, optionally with at most two of that week's
-sample_refs that illustrate the same focus, and cite no other official_content.
-For a SUPPLEMENTAL week, express the one key action of its primary_ref. Cite
-primary_ref, optionally with its support_refs, and nothing else.
+A week missing from safety_plan has no safety education: return its
+safety_education with unresolved true, an empty value and no grounding_refs.
+Write every safety_education value about one safety concept or action; never
+list several actions or topics. Never write a category name, brackets or a
+leading dash: the application adds the category label to STATUTORY weeks.
+For a STATUTORY week, write one short Korean sentence expressing its one
+official_content focus for young children. Cite that focus grounding_ref,
+optionally with at most two of that week's sample_refs that illustrate the same
+focus, and cite no other official_content.
+For a SUPPLEMENTAL week, write only a short Korean topic phrase, not a sentence
+and with no final period, naming the one key action of its primary_ref (for
+example a phrase ending in 하기). Cite primary_ref, optionally with its
+support_refs, and nothing else.
 Record the official_content focus ref, primary_ref and support_refs only in
 grounding_refs. For safety_education, reference_id is always null: reference_id
 is the activity reference catalog field, never safety grounding.

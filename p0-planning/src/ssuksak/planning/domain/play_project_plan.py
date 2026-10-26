@@ -8,12 +8,19 @@ A separate aggregate from ``YearlyPlan`` — it has no monthly theme and no mont
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 
-from .errors import InvalidDomainValueError
-from .identifiers import PlanId
+from .errors import InvalidDomainValueError, InvalidStateTransitionError
+from .identifiers import ActorId, ItemId, PlanId
 from .plan import PlanItem, PlanStatus
-from .provenance import AuditHistory, EvidenceSourceType
+from .provenance import (
+    AuditEvent,
+    AuditEventType,
+    AuditHistory,
+    EvidenceSourceType,
+    SelectionChange,
+)
 
 PLAY_PROJECT_FORMAT = "PLAY_PROJECT"
 ROW_FIELDS = ("play_name", "materials", "support_direction", "learning")
@@ -78,11 +85,18 @@ class PlayRow:
 class PlayPeriodRows:
     period: PlayPeriod
     candidates: tuple[PlayRow, ...]
+    # The kept candidates' row_keys in document order. Candidates are never dropped or
+    # reordered, so an unkept candidate keeps its values, address and history.
+    selected: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         keys = [row.row_key for row in self.candidates]
         if not keys or len(keys) != len(set(keys)):
             raise InvalidDomainValueError("PlayPeriodRows needs unique candidates")
+        if not isinstance(self.selected, tuple) or len(self.selected) != len(set(self.selected)):
+            raise InvalidDomainValueError("PlayPeriodRows.selected must be unique row keys")
+        if not set(self.selected) <= set(keys):
+            raise InvalidDomainValueError("PlayPeriodRows.selected names an unknown candidate")
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,3 +129,77 @@ class PlayProjectYearlyPlan:
         ]
         if len(item_ids) != len(set(item_ids)):
             raise InvalidDomainValueError("PlayProjectYearlyPlan item ids must be unique")
+
+    def ensure_mutable(self, operation: str) -> None:
+        if not self.status.is_mutable:
+            raise InvalidStateTransitionError(
+                f"{operation} is not allowed for a CONFIRMED Play-project Plan"
+            )
+
+    def find_item(self, item_id: ItemId) -> tuple[PlayPeriodRows, PlayRow, str] | None:
+        for period in self.periods:
+            for row in period.candidates:
+                for name in ROW_FIELDS:
+                    if getattr(row, name).item_id == item_id:
+                        return period, row, name
+        return None
+
+    def replace_item(self, item_id: ItemId, replacement: PlanItem) -> PlayProjectYearlyPlan:
+        self.ensure_mutable("replace_item")
+        found = self.find_item(item_id)
+        if found is None:
+            raise InvalidDomainValueError(f"Play-project item not found: {item_id}")
+        if replacement.item_id != item_id:
+            raise InvalidDomainValueError("Play-project item replacement must preserve ItemId")
+        period, row, name = found
+        rows = tuple(replace(r, **{name: replacement}) if r is row else r for r in period.candidates)
+        return self._with_period(replace(period, candidates=rows))
+
+    def select(
+        self,
+        selections: dict[str, tuple[str, ...]],
+        *,
+        actor_id: ActorId,
+        occurred_at: datetime,
+    ) -> PlayProjectYearlyPlan:
+        """Apply every period's selection at once; a period whose selection is unchanged adds
+        no event. A bad period raises before anything is applied."""
+        self.ensure_mutable("select")
+        plan = self
+        for period_key, after in selections.items():
+            period = plan._period(period_key)
+            if period is None:
+                raise InvalidDomainValueError(f"Play-project period not found: {period_key}")
+            if after == period.selected:
+                continue
+            event = AuditEvent(
+                event_type=AuditEventType.CANDIDATES_SELECTED,
+                occurred_at=occurred_at,
+                plan_id=self.plan_id,
+                actor_id=actor_id,
+                selection_change=SelectionChange(period_key, period.selected, after),
+            )
+            plan = replace(
+                plan._with_period(replace(period, selected=after)),
+                audit=plan.audit.append(event),
+            )
+        return plan
+
+    def confirm(self, *, actor_id: ActorId, occurred_at: datetime) -> PlayProjectYearlyPlan:
+        self.ensure_mutable("confirm")
+        event = AuditEvent(
+            event_type=AuditEventType.CONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(self, status=PlanStatus.CONFIRMED, audit=self.audit.append(event))
+
+    def _period(self, key: str) -> PlayPeriodRows | None:
+        return next((p for p in self.periods if p.period.key == key), None)
+
+    def _with_period(self, updated: PlayPeriodRows) -> PlayProjectYearlyPlan:
+        periods = tuple(
+            updated if p.period.key == updated.period.key else p for p in self.periods
+        )
+        return replace(self, periods=periods)
