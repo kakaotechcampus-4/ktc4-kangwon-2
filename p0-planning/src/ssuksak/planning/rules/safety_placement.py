@@ -40,6 +40,28 @@ def official_ref(category_id: str, index: int) -> str:
     return f"annex6:{category_id}:{index}"
 
 
+# Short screen names of the six legal categories — product display policy (Human Decision
+# 2026-10-22), not the legal labels, which stay in the legal Rule.
+STATUTORY_SHORT_LABELS = {
+    "traffic_safety": "교통안전",
+    "sexual_violence_prevention": "성폭력 예방",
+    "child_abuse_prevention": "아동학대 예방",
+    "missing_and_abduction_prevention": "실종·유괴 예방",
+    "disaster_preparedness_safety": "재난대비",
+    "infectious_disease_and_drug_misuse_prevention": "감염병·약물 예방",
+}
+
+
+def safety_display_value(placement: SafetyPlacement | None, content: str) -> str:
+    """A STATUTORY week reads "[교통안전] - 내용"; any other safety value is kept as written.
+
+    The Rule owns the label, so the LLM writes only the content after it.
+    """
+    if placement is None or placement.kind is not SafetyKind.STATUTORY or not content.strip():
+        return content
+    return f"[{STATUTORY_SHORT_LABELS[placement.category_id]}] - {content}"
+
+
 def is_official_ref(ref: str, category_id: str | None = None) -> bool:
     prefix = "annex6:" if category_id is None else f"annex6:{category_id}:"
     return ref.startswith(prefix)
@@ -93,8 +115,12 @@ def month_safety_slots(
     target_month: YearMonth,
     active_weeks: tuple[WeekPeriod, ...],
     rule: SafetyLegalRule | None = None,
+    supplemental: bool = True,
 ) -> tuple[SafetySlot, ...]:
-    """One slot per active week: the policy's STATUTORY weeks, SUPPLEMENTAL elsewhere."""
+    """One slot per active week: the policy's STATUTORY weeks, SUPPLEMENTAL elsewhere.
+
+    Without supplemental only the STATUTORY weeks get a slot.
+    """
     if policy.focus_rule is not None and rule is None:
         raise ValueError("A focus policy needs the legal Rule's official content items")
     statutory = {entry.week_ordinal: entry.category_id for entry in policy.for_month(target_month.calendar_month)}
@@ -118,6 +144,7 @@ def month_safety_slots(
             ),
         )
         for ordinal, period in enumerate(active_weeks, start=1)
+        if supplemental or ordinal in statutory
     )
 
 
