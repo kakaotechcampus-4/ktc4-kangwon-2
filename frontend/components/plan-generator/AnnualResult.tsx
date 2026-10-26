@@ -92,7 +92,6 @@ export default function AnnualResult({ id }: { id: number }) {
           phase="done"
           stepIndex={4}
           initialConfirmed={plan.status === "CONFIRMED"}
-          annualPlan={plan}
           request={request}
           contents={{
             ...context?.companions,
@@ -110,8 +109,6 @@ export default function AnnualResult({ id }: { id: number }) {
                 label: m.month + "월",
                 title: m.theme,
                 detail: m.sub_themes.join("\n"),
-                safetyEducation:
-                  m.safety_education_state === "SOURCE_REQUIRED" ? null : m.safety_education,
               })),
             },
           }}

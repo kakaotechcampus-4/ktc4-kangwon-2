@@ -26,8 +26,6 @@ import {
   downloadAnnualHwpx,
   getAnnualPlan,
 } from "@/lib/api/plans";
-import type { AnnualPlan } from "@/lib/api/types";
-import AnnualSafetyField from "./AnnualSafetyField";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 
 type Request = {
@@ -72,9 +70,7 @@ export default function GenerationFlow({
   onBack,
   onRetry,
   initialConfirmed = false,
-  annualPlan,
 }: {
-  annualPlan?: AnnualPlan;
   initialConfirmed?: boolean;
   phase: "generating" | "done";
   stepIndex: number;
@@ -100,7 +96,6 @@ export default function GenerationFlow({
   const [confirmed, setConfirmed] = useState(initialConfirmed);
   const [confirming, setConfirming] = useState(false);
   const annualBaseline = useRef(contents.annual?.rows || []);
-  const [annualData, setAnnualData] = useState(annualPlan);
   async function saveAnnualRows() {
     const id = contents.annual?.annualPlanId;
     if (!id) return true;
@@ -114,23 +109,15 @@ export default function GenerationFlow({
         if (JSON.stringify(row) === JSON.stringify(annualBaseline.current[i])) continue;
         setSavingRows((prev) => [...prev, i]);
         try {
+          // 연간 안전교육 칸은 꺼 뒀다(2026-10-22). 안 보내면 서버가 저장된 값을 그대로 둔다.
           const result = await putAnnualMonth(id, parseInt(row.label), {
             theme: row.title,
             sub_themes: row.detail.split("\n"),
-            safety_education: row.safetyEducation,
           });
           const saved = {
             label: result.month + "월",
             title: result.theme,
             detail: result.sub_themes.join("\n"),
-            ...(row.safetyEducation !== undefined
-              ? {
-                  safetyEducation:
-                    result.safety_education_state === "SOURCE_REQUIRED"
-                      ? null
-                      : result.safety_education,
-                }
-              : {}),
           };
           annualBaseline.current = annualBaseline.current.map((r, j) => (j === i ? saved : r));
           setRowErrors((prev) => ({ ...prev, [i]: "" }));
@@ -152,9 +139,8 @@ export default function GenerationFlow({
             setNotice("이 계획안은 결과 화면에서 볼 수 있어요.");
             return false;
           }
-          setAnnualData(plan);
         } catch {
-          setNotice("내용은 저장했지만 안전교육 검사 결과를 다시 읽지 못했어요. 새로고침해주세요.");
+          setNotice("내용은 저장했지만 계획안을 다시 읽지 못했어요. 새로고침해주세요.");
           return false;
         }
       }
@@ -504,8 +490,8 @@ export default function GenerationFlow({
               {active === "annual" && confirmed && (
                 <p className={styles.footnote}>
                   확정했어요. 이제 이 계획안을 바탕으로 월간계획안을 만들 수 있어요. 확정한
-                  연간계획안은 수정하거나 지울 수 없어요 — 소주제와 안전교육은 확정 전에
-                  입력해주세요. 한글 파일로 내려받은 뒤에는 파일에서 직접 수정할 수 있어요.
+                  연간계획안은 수정하거나 지울 수 없어요 — 소주제는 확정 전에 다듬어주세요. 한글
+                  파일로 내려받은 뒤에는 파일에서 직접 수정할 수 있어요.
                 </p>
               )}
               <article
@@ -545,24 +531,10 @@ export default function GenerationFlow({
                 {active === "annual" && contents.annual?.annualPlanId && (
                   <p className={styles.footnote}>
                     소주제는 월별 주제와 반 연령을 바탕으로 만든 초안이에요. 「내용 수정」에서
-                    다듬어주세요. 안전교육은 원에서 정한 배치 계획을 교사가 직접 입력해주세요.
+                    다듬어주세요.
                     {drafts.annual.some((row) => !row.detail.trim()) &&
                       ` 소주제 미입력 ${drafts.annual.filter((row) => !row.detail.trim()).length}개월 · 입력하지 않은 칸은 파일에도 비어 있어요.`}
                   </p>
-                )}
-                {active === "annual" && annualData && (
-                  <details className={styles.footnote}>
-                    <summary>안전교육 검사 안내 {annualData.checks.length}건</summary>
-                    <p>
-                      배치 주기와 연간 시수는 별도예요. 교육시간 입력이 없어 연간 시수는 확인하지
-                      못해요.
-                    </p>
-                    <ul>
-                      {annualData.checks.map((check, index) => (
-                        <li key={index}>{check.detail}</li>
-                      ))}
-                    </ul>
-                  </details>
                 )}
                 <div className={styles.rows}>
                   {drafts[active].map((row, index) => (
@@ -613,23 +585,6 @@ export default function GenerationFlow({
                             <h5>{row.title}</h5>
                             <p>{row.detail || (active === "annual" ? "소주제 미입력" : "")}</p>
                           </>
-                        )}
-                        {active === "annual" && contents.annual?.annualPlanId && (
-                          <AnnualSafetyField
-                            month={row.label}
-                            value={row.safetyEducation ?? null}
-                            categories={annualData?.safety_categories ?? []}
-                            editing={editing}
-                            disabled={saving || confirming}
-                            onChange={(value) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                annual: prev.annual.map((r, i) =>
-                                  i === index ? { ...r, safetyEducation: value } : r,
-                                ),
-                              }))
-                            }
-                          />
                         )}
                         {active === "annual" && rowErrors[index] && (
                           <p role="alert">{rowErrors[index]}</p>
