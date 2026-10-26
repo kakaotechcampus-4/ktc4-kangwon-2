@@ -95,6 +95,8 @@ class AuditEventType(str, Enum):
     REGENERATED = "REGENERATED"
     TEACHER_EDITED = "TEACHER_EDITED"
     CONFIRMED = "CONFIRMED"
+    # Plan-level: a teacher saved which candidates a play-project period keeps (2026-10-26).
+    CANDIDATES_SELECTED = "CANDIDATES_SELECTED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +130,26 @@ class GenerationMethodChange:
 
 
 @dataclass(frozen=True, slots=True)
+class SelectionChange:
+    """The kept candidates of one period before and after a save, in document order."""
+
+    period_key: str
+    before: tuple[str, ...]
+    after: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not _is_non_blank(self.period_key):
+            raise InvalidDomainValueError("SelectionChange.period_key must be non-blank")
+        for keys in (self.before, self.after):
+            if not isinstance(keys, tuple) or not all(_is_non_blank(key) for key in keys):
+                raise InvalidDomainValueError("SelectionChange keys must be non-blank strings")
+            if len(keys) != len(set(keys)):
+                raise InvalidDomainValueError("SelectionChange keys must be unique")
+        if self.before == self.after:
+            raise InvalidDomainValueError("SelectionChange must change the selection")
+
+
+@dataclass(frozen=True, slots=True)
 class AuditEvent:
     event_type: AuditEventType
     occurred_at: datetime
@@ -137,6 +159,7 @@ class AuditEvent:
     system_actor: str | None = None
     value_change: ValueChange | None = None
     generation_change: GenerationMethodChange | None = None
+    selection_change: SelectionChange | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_type, AuditEventType):
@@ -178,6 +201,21 @@ class AuditEvent:
         ):
             raise InvalidDomainValueError(
                 "TEACHER_EDITED requires actor_id, item_id and value_change"
+            )
+        if self.event_type is AuditEventType.CANDIDATES_SELECTED:
+            if (
+                self.actor_id is None
+                or not isinstance(self.selection_change, SelectionChange)
+                or self.item_id is not None
+                or self.value_change is not None
+                or self.generation_change is not None
+            ):
+                raise InvalidDomainValueError(
+                    "CANDIDATES_SELECTED is a plan-level teacher event with selection_change only"
+                )
+        elif self.selection_change is not None:
+            raise InvalidDomainValueError(
+                "Only CANDIDATES_SELECTED carries selection_change"
             )
 
 
