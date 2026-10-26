@@ -706,6 +706,7 @@ Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · PA
                                     ACTIVITY_REFERENCE · CALENDAR · EVENT · TREND …
 Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL
 Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHER_EDITED · CONFIRMED
+                                    CANDIDATES_SELECTED — 놀이 프로젝트형 후보 선택 저장, 계획안 단위(ADR-042 후속)
 ```
 
 - **`evidence` 는 배열이다.** 한 칸이 여러 근거를 가질 수 있다.
