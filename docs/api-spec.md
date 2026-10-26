@@ -736,6 +736,7 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 빈 배열 `[]`은 「이 달 배치 없음」(`NOT_PLACED`), 6종 중 하나 이상은 `PLACED`다.
 월별 입력과 변경 전·후 값, 행위자·시각은 `plans.annual_safety`에 저장한다. AI는 배치를 만들지 않는다.
 12개월 모두 입력돼야 주기를 검사할 수 있고 교육시간 입력은 없으므로 연간 시수는 계속 `UNVERIFIED`다.
+**화면·HWPX 에서 꺼 둠(2026-10-22 결정).** 연간 화면은 이 칸과 검사 안내를 보여주지도 보내지도 않고, 연간 HWPX 는 월·주제·소주제 3열이다. API 필드·`plans.annual_safety`는 유지한다.
 
 **`sub_themes`는 생성 시 12개월을 묶어 만든다(ADR-041).** 확정한 규칙의 주제와 반 연령을 입력으로,
 달마다 2~5개의 짧은 소주제 초안을 받는다. 주제 12개월 생성 후 소주제 12개월 생성, 최대 두 번의 문서 단위 호출이다.
@@ -788,6 +789,7 @@ Evidence     이 값이 어디서 왔나     CURRICULUM · THEME_REFERENCE · PA
                                     ACTIVITY_REFERENCE · CALENDAR · EVENT · TREND …
 Generation   어떻게 만들어졌나       RULE_ONLY · RULE_LLM · IMPORTED · MANUAL
 Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHER_EDITED · CONFIRMED
+                                    CANDIDATES_SELECTED — 놀이 프로젝트형 후보 선택 저장, 계획안 단위(ADR-042 후속)
 ```
 
 - **`evidence` 는 배열이다.** 한 칸이 여러 근거를 가질 수 있다.
@@ -1276,16 +1278,18 @@ profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 
 **같은 반 · 같은 달은 하나다**(ADR-034 §5). `DRAFT` 든 `CONFIRMED` 든 `ALREADY_EXISTS` 409 —
 FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(screen-spec §5.3).
 
-### 안전교육 — 근거가 없으면 비워 두고 그렇다고 표시한다
+### 안전교육 — 배치 정책 v2 로 채운다
 
-**M4 는 안전교육 배치 정책(`ssuksak-safety-placement-v2`)을 넘기지 않는다**(D-M4-03).
-그래서 안전교육 칸은 Core 의 「근거 필요」 경로를 탄다(OD-M04 의 source-required 경로).
+**월간 생성은 안전교육 배치 정책 `ssuksak-safety-placement-v2` 를 넘긴다**(2026-10-22 결정 — 넘기지 않던 D-M4-03 을 대체).
 
-- 칸은 항상 있고 `state: "EMPTY_UNRESOLVED"`, `value: ""` 다. 규칙도 LLM 도 내용을 지어내지 않는다.
-- `constraints` 에 `STATUTORY_SAFETY_EDUCATION` · `NOT_VERIFIED_SOURCE_REQUIRED` 가 실린다.
-  **「법정 요건을 충족한다」도 「위반이다」도 말하지 않는다.**
-- 다른 Section 은 영향이 없다. 근거가 있는 칸은 `FILLED` 와 `evidence` 를 갖는다.
-- 비어 있어도 확정할 수 있다(Core 계약). 화면은 확정 전에 비어 있다는 것을 보여 준다.
+- 법정 주: 법정 6구분을 정책이 정한 월 · 주(한 달 1개면 2주, 2개면 2 · 4주)에 둔다. 값은 `[교통안전] - 내용` —
+  대괄호 안 짧은 이름은 규칙이 붙이고 LLM 은 `- ` 뒤 내용만 쓴다.
+- 그 밖의 활성 주: 보충 안전교육을 넣지 않는다(2026-10-23 결정). 칸은 `EMPTY_VALID` · 값 `""` · 배치 정보(`safety`) 없음이다.
+  LLM 이 그 주에 값을 내면 버리고, 채워진 채로 오면 검사가 막는다.
+- 법정 주의 안전교육 칸은 빈 채로 저장되지 않는다. 근거 오류는 저장을 막는다(ADR-037).
+- `constraints` 의 `STATUTORY_SAFETY_EDUCATION` 은 그대로 `NOT_VERIFIED_SOURCE_REQUIRED` 다 — 계획안에 시간 정보가 없어
+  연간 시수는 검사하지 않는다(`SAFETY_ANNUAL_HOURS_NOT_VERIFIED`). **「법정 요건을 충족한다」도 「위반이다」도 말하지 않는다.**
+- 안전교육 칸은 다시 만들기 대상이 아니다. 교사는 고칠 수 있다.
 
 ### 월간계획안 응답 — 생성 · 단건 조회가 같은 형식
 

@@ -90,6 +90,9 @@ from .ports import (
 
 SYSTEM_ACTOR = "weekly_application"
 THEME_RULE_ID = "weekly.theme.parent_theme"
+# A placed parent safety Cell already reads as the week's line (「[교통안전] - 내용」 or a
+# supplemental topic), so the week takes it as is (Human Decision 2026-10-22, §8).
+SAFETY_COPY_RULE_ID = "weekly.safety.parent_placement"
 EMPTY_RULE_ID = "weekly.cell.rule_only_empty"
 # Outdoor ranking = the monthly ranking with one weekly key: §4-2 「가점」 for the parent's
 # same-week activity, placed after repeat-avoidance and the parent-theme link — a bonus,
@@ -274,9 +277,16 @@ class GenerateWeeklyPlan:
                 evidence, snapshots = (parent_evidence,), (theme_snapshot,)
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, THEME_RULE_ID, WEEKLY_RULE_VERSION)
             elif key == SAFETY_KEY:
-                # RULE_ONLY writes no safety text: empty-first, and writing the parent's
-                # teacher sentence is the LLM path (§8). No placement is claimed.
+                # Writing the parent's teacher sentence is the LLM path (§8); a placed parent
+                # Cell is copied and cited. The week claims no placement of its own.
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, SAFETY_RULE_ID, SAFETY_RULE_VERSION)
+                placed = _parent_cell(parent, key, period.week_id)
+                if placed is not None and placed.safety is not None and placed.value.strip():
+                    value = placed.value
+                    evidence, snapshots = (parent_evidence,), (_cited(lineage, placed),)
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_ONLY, SAFETY_COPY_RULE_ID, WEEKLY_RULE_VERSION
+                    )
             elif key == OUTDOOR_PLAY_SLOT and catalog is not None and not llm:
                 picked = outdoor.selection
                 generation = GenerationMethodDetail(

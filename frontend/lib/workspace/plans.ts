@@ -4,7 +4,6 @@ export type PlanRow = {
   label: string;
   title: string;
   detail: string;
-  safetyEducation?: string[] | null;
 };
 export type PlanContent = {
   annualPlanId?: number;

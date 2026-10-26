@@ -30,6 +30,8 @@ class SafetyRuleSelector:
 @dataclass(frozen=True, slots=True)
 class SafetyPlacementSelector:
     policy_version: str
+    # False: only the policy's STATUTORY weeks get safety education; the other weeks stay empty.
+    supplemental: bool = True
 
     def __post_init__(self) -> None:
         _non_blank(self.policy_version, "SafetyPlacementSelector.policy_version")
