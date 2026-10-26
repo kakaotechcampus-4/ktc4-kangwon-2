@@ -949,6 +949,56 @@ def test_unconfirm_marks_documents_built_on_it_stale_but_not_itself(db_session):
     assert _stale(db_session, daily, weekly, above) == [False, True, True]
 
 
+def test_unconfirm_reports_only_documents_built_directly_on_it(db_session):
+    _, daily, weekly, above = _chain(db_session)
+
+    response = client.post(f"/api/documents/{daily.id}/unconfirm?include_impact=true")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "DRAFT"
+    # 연쇄로 stale 이 된 above 는 안내 건수에 넣지 않는다 — 직접 근거로 쓴 주간만 센다.
+    assert response.json()["review_impact"] == {
+        "affected_document_ids": [weekly.id],
+        "newly_stale_document_ids": [weekly.id],
+    }
+    assert _stale(db_session, weekly, above) == [True, True]
+
+
+def test_unconfirm_counts_already_stale_documents_as_affected_only(db_session):
+    _, daily, weekly, _ = _chain(db_session)
+    weekly.stale = True
+    db_session.flush()
+
+    impact = client.post(f"/api/documents/{daily.id}/unconfirm?include_impact=true").json()
+
+    assert impact["review_impact"] == {
+        "affected_document_ids": [weekly.id],
+        "newly_stale_document_ids": [],
+    }
+
+
+def test_unconfirm_again_reports_no_impact(db_session):
+    _, daily, _, _ = _chain(db_session)
+    client.post(f"/api/documents/{daily.id}/unconfirm")
+
+    again = client.post(f"/api/documents/{daily.id}/unconfirm?include_impact=true")
+
+    # 이미 초안이면 이번 요청이 바꾼 것이 없다.
+    assert again.status_code == 200
+    assert again.json()["review_impact"] == {
+        "affected_document_ids": [],
+        "newly_stale_document_ids": [],
+    }
+
+
+def test_unconfirm_without_option_keeps_the_detail_shape(db_session):
+    _, daily, _, _ = _chain(db_session)
+
+    response = client.post(f"/api/documents/{daily.id}/unconfirm")
+
+    assert "review_impact" not in response.json()
+
+
 # ── POST /api/documents/{id}/refresh ────────────────────────────────────────
 def _stale_observation_document(session):
     _, klass, child = _make_center_class_child(session)

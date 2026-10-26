@@ -86,6 +86,7 @@ export default function PlanSetup() {
           <label className={ws.field}>
             연간 안전교육 시간
             <input
+              name="safety_edu_hours"
               type="number"
               min={0}
               value={config.safety_edu_hours}

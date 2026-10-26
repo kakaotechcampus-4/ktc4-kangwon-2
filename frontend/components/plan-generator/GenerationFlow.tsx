@@ -531,6 +531,7 @@ export default function GenerationFlow({
                         {editing ? (
                           <>
                             <input
+                              name="title"
                               disabled={saving || confirming}
                               aria-label={`${row.label} 활동명`}
                               value={row.title}
