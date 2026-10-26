@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import workspace from "@/components/workspace/Workspace.module.css";
 import tabs from "./GenerationFlow.module.css";
@@ -26,6 +26,22 @@ export function togglePlayPick(picks: string[], rowKey: string) {
     : picks.length < MAX_PICKS
       ? [...picks, rowKey]
       : picks;
+}
+
+export function floatingNextBottom(rect: { top: number; height: number }): number | null {
+  return rect.top > 0 ? rect.height + 12 : null;
+}
+
+export function nextPlayProjectPeriod(
+  plan: PlayProjectAnnualPlan,
+  picks: Record<string, string[]>,
+  activePeriod: number,
+) {
+  for (let offset = 1; offset < plan.periods.length; offset++) {
+    const index = (activePeriod + offset) % plan.periods.length;
+    if ((picks[plan.periods[index].period_key]?.length ?? 0) < MAX_PICKS) return index;
+  }
+  return null;
 }
 
 export function buildPlayProjectPreviewRows(
@@ -56,8 +72,12 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
     rowKey: string;
     field: PlayField;
   } | null>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const floatingRef = useRef<HTMLButtonElement>(null);
   const period = plan.periods[activePeriod];
   const periodPicks = picks[period.period_key] ?? [];
+  const nextPeriod = nextPlayProjectPeriod(plan, picks, activePeriod);
+  const showFloating = step === 0 && periodPicks.length === MAX_PICKS;
   const pickedCandidates = periodPicks.map((key) =>
     period.candidates.find((candidate) => candidate.row_key === key)!,
   );
@@ -67,6 +87,21 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
     (candidate) => candidate.row_key === selectedCell?.rowKey,
   );
   const selectedField = selectedCell && fields.find((field) => field.key === selectedCell.field);
+
+  useEffect(() => {
+    if (!showFloating || typeof ResizeObserver === "undefined") return;
+    const nav = document.querySelector('aside[aria-label="주 메뉴"]');
+    const button = floatingRef.current;
+    if (!nav || !button) return;
+    const update = () => {
+      const bottom = floatingNextBottom(nav.getBoundingClientRect());
+      button.style.bottom = bottom === null ? "" : `${bottom}px`;
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [showFloating]);
 
   function toggleCandidate(rowKey: string) {
     if (
@@ -84,6 +119,18 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
   function selectCell(periodIndex: number, rowKey: string, field: PlayField) {
     setActivePeriod(periodIndex);
     setSelectedCell({ periodKey: plan.periods[periodIndex].period_key, rowKey, field });
+  }
+
+  function advance() {
+    if (nextPeriod === null) {
+      setStep(1);
+      document.getElementById(panelId)?.focus();
+      return;
+    }
+    setActivePeriod(nextPeriod);
+    setSelectedCell(null);
+    tabListRef.current?.scrollIntoView?.({ block: "start" });
+    document.getElementById(tabId(nextPeriod))?.focus();
   }
 
   function renderPicking() {
@@ -217,12 +264,15 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
                             selectedCell?.rowKey === candidate.row_key &&
                             selectedCell?.field === field.key;
                           return (
-                            <td key={field.key}>
+                            <td
+                              key={field.key}
+                              className={selected ? styles.selectedCell : undefined}
+                            >
                               <button
                                 type="button"
                                 aria-label={`${candidate.play_name.value} ${field.heading}`}
                                 aria-pressed={selected}
-                                className={`${styles.cellButton} ${selected ? styles.selectedCell : ""}`}
+                                className={styles.cellButton}
                                 onClick={() =>
                                   selectCell(
                                     plan.periods.indexOf(row.period),
@@ -281,6 +331,7 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
         <p>고른 놀이는 아직 저장되지 않아요. 새로고침하면 처음부터 다시 골라야 해요.</p>
       </div>
       <div
+        ref={tabListRef}
         role="tablist"
         aria-label="놀이 프로젝트 기간"
         className={`${tabs.tabs} ${tabs.wrappingTabs}`}
@@ -308,10 +359,22 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
         role="tabpanel"
         aria-labelledby={tabId(activePeriod)}
         tabIndex={0}
-        className={styles.panel}
+        className={`${styles.panel} ${showFloating ? styles.panelWithFloating : ""}`}
       >
         {step === 0 ? renderPicking() : renderArrangement()}
       </section>
+      {showFloating && (
+        <button
+          ref={floatingRef}
+          type="button"
+          className={`${workspace.primary} ${styles.floatingNext}`}
+          onClick={advance}
+        >
+          {nextPeriod === null
+            ? "배치하고 다듬기로 →"
+            : `다음: ${plan.periods[nextPeriod].label} 고르기 →`}
+        </button>
+      )}
     </main>
   );
 }

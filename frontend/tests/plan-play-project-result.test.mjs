@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const jsx = (type, props, key) => ({ type, props, key });
 const runtime = { jsx, jsxs: jsx, Fragment: "fragment" };
 const esModule = (value) => ({ __esModule: true, default: value });
-function compile(path, modules) {
+function compile(path, modules, document) {
   const source = readFileSync(new URL(path, import.meta.url), "utf8");
   const code = require("next/dist/compiled/babel/core").transformSync(source, {
     filename: fileURLToPath(new URL(path, import.meta.url)),
@@ -21,7 +21,7 @@ function compile(path, modules) {
     ],
   }).code;
   const compiled = { exports: {} };
-  new Function("require", "module", "exports", code)(
+  new Function("require", "module", "exports", "document", code)(
     (name) => {
       if (name === "react/jsx-runtime") return runtime;
       assert.ok(name in modules, "unhandled import: " + name);
@@ -29,6 +29,7 @@ function compile(path, modules) {
     },
     compiled,
     compiled.exports,
+    document,
   );
   return compiled.exports;
 }
@@ -72,7 +73,7 @@ function plan() {
   };
 }
 const css = Object.fromEntries(
-  ["page", "badge", "notice", "stack", "card", "eyebrow"].map((key) => [key, key]),
+  ["page", "badge", "notice", "stack", "card", "eyebrow", "primary"].map((key) => [key, key]),
 );
 const resultStyles = new Proxy({}, { get: (_target, key) => String(key) });
 const resultTabs = {
@@ -84,6 +85,8 @@ const resultTabs = {
 };
 function resultRenderer(planValue, initial = []) {
   const state = [...initial];
+  const focused = [];
+  const tabListRef = { current: null };
   let cursor = 0;
   const useState = (value) => {
     const index = cursor++;
@@ -93,21 +96,29 @@ function resultRenderer(planValue, initial = []) {
       (next) => (state[index] = typeof next === "function" ? next(state[index]) : next),
     ];
   };
-  const { default: Result } = compile("../components/plan-generator/PlayProjectResult.tsx", {
-    react: { useState },
-    "@/components/workspace/Workspace.module.css": esModule(css),
-    "./GenerationFlow.module.css": esModule(resultTabs),
-    "./PlayProjectResult.module.css": esModule(resultStyles),
-  });
+  const { default: Result } = compile(
+    "../components/plan-generator/PlayProjectResult.tsx",
+    {
+      react: { useState, useRef: () => tabListRef, useEffect: () => {} },
+      "@/components/workspace/Workspace.module.css": esModule(css),
+      "./GenerationFlow.module.css": esModule(resultTabs),
+      "./PlayProjectResult.module.css": esModule(resultStyles),
+    },
+    { getElementById: (id) => ({ focus: () => focused.push(id) }) },
+  );
   const render = () => {
     cursor = 0;
     return resolve(jsx(Result, { plan: planValue }));
   };
-  return { render, state };
+  return { render, state, focused };
 }
 function playResult() {
   return compile("../components/plan-generator/PlayProjectResult.tsx", {
-    react: { useState: (value) => [typeof value === "function" ? value() : value, () => {}] },
+    react: {
+      useState: (value) => [typeof value === "function" ? value() : value, () => {}],
+      useRef: (value) => ({ current: value }),
+      useEffect: () => {},
+    },
     "@/components/workspace/Workspace.module.css": esModule(css),
     "./GenerationFlow.module.css": esModule(resultTabs),
     "./PlayProjectResult.module.css": esModule(resultStyles),
@@ -171,6 +182,164 @@ test("pick helper enforces five picks in pick order and preview rows preserve th
   assert.equal(rows[2].candidate, null);
 });
 
+test("floating next clears the bottom nav and leaves the left sidebar to CSS", () => {
+  const { floatingNextBottom } = playResult();
+  assert.equal(floatingNextBottom({ top: 795, height: 105 }), 117);
+  assert.equal(floatingNextBottom({ top: 0, height: 900 }), null);
+});
+
+test("floating next observes nav size, updates its bottom, and disconnects", (t) => {
+  const effects = [];
+  const state = [0, 0, { period0: ["cand0", "cand1", "cand2", "cand3", "cand4"] }, null];
+  const button = { style: {} };
+  const nav = { getBoundingClientRect: () => ({ top: 795, height: 105 }) };
+  const observer = { observe: t.mock.fn(), disconnect: t.mock.fn() };
+  let cursor = 0;
+  let resize;
+  const original = globalThis.ResizeObserver;
+  t.after(() => {
+    if (original === undefined) delete globalThis.ResizeObserver;
+    else globalThis.ResizeObserver = original;
+  });
+  globalThis.ResizeObserver = function (callback) {
+    resize = callback;
+    return observer;
+  };
+  const { default: Result } = compile(
+    "../components/plan-generator/PlayProjectResult.tsx",
+    {
+      react: {
+        useState: () => [state[cursor++], () => {}],
+        useRef: () => ({ current: button }),
+        useEffect: (effect) => effects.push(effect),
+      },
+      "@/components/workspace/Workspace.module.css": esModule(css),
+      "./GenerationFlow.module.css": esModule(resultTabs),
+      "./PlayProjectResult.module.css": esModule(resultStyles),
+    },
+    { querySelector: (selector) => (assert.equal(selector, 'aside[aria-label="주 메뉴"]'), nav) },
+  );
+  Result({ plan: plan() });
+  const cleanup = effects[0]();
+  assert.equal(button.style.bottom, "117px");
+  assert.deepEqual(
+    observer.observe.mock.calls.map((call) => call.arguments),
+    [[nav]],
+  );
+  nav.getBoundingClientRect = () => ({ top: 0, height: 900 });
+  resize();
+  assert.equal(button.style.bottom, "");
+  cleanup();
+  assert.equal(observer.disconnect.mock.callCount(), 1);
+});
+
+test("phone period tabs use two grid columns in the 767px media block", () => {
+  const source = readFileSync(
+    new URL("../components/plan-generator/GenerationFlow.module.css", import.meta.url),
+    "utf8",
+  );
+  const mobile = source.split("@media (max-width: 767px) {")[1].split("@media")[0];
+  const wrapping = mobile.match(/\.wrappingTabs\s*\{([^}]+)\}/)[1];
+  assert.match(wrapping, /display:\s*grid\s*;/);
+  assert.match(wrapping, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*;/);
+});
+
+test("next period helper skips full periods and wraps in period order", () => {
+  const { nextPlayProjectPeriod } = playResult();
+  const full = ["cand0", "cand1", "cand2", "cand3", "cand4"];
+  const picks = { period0: full, period2: full };
+  assert.equal(nextPlayProjectPeriod(plan(), picks, 2), 3);
+  assert.equal(nextPlayProjectPeriod(plan(), picks, 3), 1);
+  picks.period3 = full;
+  assert.equal(nextPlayProjectPeriod(plan(), picks, 2), 1);
+  picks.period1 = full;
+  assert.equal(nextPlayProjectPeriod(plan(), picks, 2), null);
+});
+
+test("a full active period shows one floating next button that switches tabs and scrolls up", () => {
+  const full = ["cand0", "cand1", "cand2", "cand3", "cand4"];
+  const view = resultRenderer(plan(), [0, 0, { period0: full }, null]);
+  let nodes = all(view.render());
+  let floating = nodes.filter((node) => node.props?.className?.includes("floatingNext"));
+  assert.equal(floating.length, 1);
+  assert.equal(floating[0].type, "button");
+  assert.equal(text(floating[0]), "다음: 6월~8월 고르기 →");
+  assert.ok(floating[0].props.className.includes("primary"));
+  assert.ok(
+    nodes
+      .find((node) => node.props?.role === "tabpanel")
+      .props.className.includes("panelWithFloating"),
+  );
+  floating[0].props.onClick();
+  nodes = all(view.render());
+  assert.equal(text(nodes.find((node) => node.props?.["aria-selected"])), "6월~8월 · 0/5");
+  assert.equal(nodes.filter((node) => node.props?.className?.includes("floatingNext")).length, 0);
+  nodes
+    .find((node) => node.props?.role === "tab" && text(node) === "3월~5월 · 5/5")
+    .props.onClick();
+  nodes = all(view.render());
+  let scrolled;
+  nodes.find((node) => node.props?.role === "tablist").props.ref.current = {
+    scrollIntoView: (options) => {
+      scrolled = options;
+    },
+  };
+  floating = nodes.filter((node) => node.props?.className?.includes("floatingNext"));
+  floating[0].props.onClick();
+  assert.deepEqual(scrolled, { block: "start" });
+});
+
+test("floating next focuses the newly active period tab", () => {
+  const full = ["cand0", "cand1", "cand2", "cand3", "cand4"];
+  const view = resultRenderer(plan(), [0, 0, { period0: full }, null]);
+  const nodes = all(view.render());
+  nodes.find((node) => node.props?.className?.includes("floatingNext")).props.onClick();
+  const activeTab = all(view.render()).find((node) => node.props?.["aria-selected"]);
+  assert.equal(text(activeTab), "6월~8월 · 0/5");
+  assert.deepEqual(view.focused, [activeTab.props.id]);
+});
+
+test("all four full periods show only the floating arrangement button and none in step two", () => {
+  const full = ["cand0", "cand1", "cand2", "cand3", "cand4"];
+  const picks = Object.fromEntries(plan().periods.map((period) => [period.period_key, full]));
+  const view = resultRenderer(plan(), [2, 0, picks, null]);
+  let nodes = all(view.render());
+  const floating = nodes.filter((node) => node.props?.className?.includes("floatingNext"));
+  assert.equal(floating.length, 1);
+  assert.equal(floating[0].type, "button");
+  assert.equal(text(floating[0]), "배치하고 다듬기로 →");
+  assert.equal(
+    nodes.some((node) => node.type === "button" && text(node).startsWith("다음:")),
+    false,
+  );
+  floating[0].props.onClick();
+  nodes = all(view.render());
+  assert.ok(nodes.some((node) => node.type === "table"));
+  assert.deepEqual(view.focused, [nodes.find((node) => node.props?.role === "tabpanel").props.id]);
+  assert.equal(nodes.filter((node) => node.props?.className?.includes("floatingNext")).length, 0);
+  assert.ok(
+    !nodes
+      .find((node) => node.props?.role === "tabpanel")
+      .props.className.includes("panelWithFloating"),
+  );
+});
+
+test("an active period with fewer than five picks has no floating button or extra padding", () => {
+  const view = resultRenderer(plan(), [
+    0,
+    0,
+    { period0: ["cand0", "cand1", "cand2", "cand3"] },
+    null,
+  ]);
+  const nodes = all(view.render());
+  assert.equal(nodes.filter((node) => node.props?.className?.includes("floatingNext")).length, 0);
+  assert.ok(
+    !nodes
+      .find((node) => node.props?.role === "tabpanel")
+      .props.className.includes("panelWithFloating"),
+  );
+});
+
 test("five picks disable the remaining candidates and unpicking opens a slot", () => {
   const view = resultRenderer(plan());
   let nodes = all(view.render());
@@ -215,11 +384,13 @@ test("selected preview cells sync the read-only viewer, field chips, highlight, 
   assert.ok(
     nodes.some((node) => node.type === "label" && node.props.htmlFor === textarea.props.id),
   );
-  assert.ok(
-    nodes.some(
-      (node) => node.props?.className?.includes("selectedCell") && node.props["aria-pressed"],
-    ),
-  );
+  const highlighted = nodes.filter((node) => node.props?.className?.includes("selectedCell"));
+  assert.equal(highlighted.length, 1);
+  assert.equal(highlighted[0].type, "td");
+  assert.equal(highlighted[0].props.children.type, "button");
+  assert.equal(highlighted[0].props.children.props["aria-pressed"], true);
+  assert.equal(highlighted[0].props.children.props["aria-label"], "놀이 2 놀이명");
+  assert.ok(!highlighted[0].props.children.props.className.includes("selectedCell"));
   assert.ok(nodes.some((node) => text(node) === "아직 수정 기능은 제공하지 않아요."));
   assert.ok(nodes.some((node) => text(node).includes("고른 놀이는 아직 저장되지 않아요.")));
   nodes.find((node) => node.type === "button" && text(node) === "지원매체").props.onClick();
@@ -229,9 +400,9 @@ test("selected preview cells sync the read-only viewer, field chips, highlight, 
   assert.ok(
     nodes.some(
       (node) =>
-        node.type === "button" &&
-        node.props["aria-label"] === "놀이 2 지원매체" &&
-        node.props["aria-pressed"] &&
+        node.type === "td" &&
+        node.props.children.props["aria-label"] === "놀이 2 지원매체" &&
+        node.props.children.props["aria-pressed"] &&
         node.props.className.includes("selectedCell"),
     ),
   );
