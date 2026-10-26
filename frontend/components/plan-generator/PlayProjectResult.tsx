@@ -15,6 +15,7 @@ const fields = [
 ] as const;
 type PlayField = (typeof fields)[number]["key"];
 type PreviewRow = {
+  key: string;
   period: PlayProjectAnnualPlan["periods"][number];
   candidate: PlayProjectAnnualPlan["periods"][number]["candidates"][number] | null;
   rowSpan: number | undefined;
@@ -26,6 +27,15 @@ export function togglePlayPick(picks: string[], rowKey: string) {
     : picks.length < MAX_PICKS
       ? [...picks, rowKey]
       : picks;
+}
+
+export function movePlayPick(picks: string[], rowKey: string, delta: -1 | 1): string[] {
+  const index = picks.indexOf(rowKey);
+  const next = index + delta;
+  if (index < 0 || next < 0 || next >= picks.length) return picks;
+  const moved = [...picks];
+  [moved[index], moved[next]] = [moved[next], moved[index]];
+  return moved;
 }
 
 export function floatingNextBottom(rect: { top: number; height: number }): number | null {
@@ -54,15 +64,16 @@ export function buildPlayProjectPreviewRows(
     );
     return selected.length
       ? selected.map<PreviewRow>((candidate, index) => ({
+          key: `${period.period_key}-${index}`,
           period,
           candidate,
           rowSpan: index === 0 ? selected.length : undefined,
         }))
-      : [{ period, candidate: null, rowSpan: 1 }];
+      : [{ key: `${period.period_key}-empty`, period, candidate: null, rowSpan: 1 }];
   });
 }
 
-// 화면 선택만 제공한다. 저장 · 수정 · 순서 바꾸기 · 쪽 넘김은 아직 지원하지 않는다.
+// 화면 상태만 제공한다. 저장 · 수정 · 쪽 넘김은 아직 지원하지 않는다.
 export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPlan }) {
   const [activePeriod, setActivePeriod] = useState(0);
   const [step, setStep] = useState(0);
@@ -121,10 +132,39 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
     setSelectedCell({ periodKey: plan.periods[periodIndex].period_key, rowKey, field });
   }
 
+  function moveCandidate(rowKey: string, delta: -1 | 1) {
+    setPicks((current) => ({
+      ...current,
+      [period.period_key]: movePlayPick(current[period.period_key] ?? [], rowKey, delta),
+    }));
+    requestAnimationFrame(() => {
+      const arrow = document.getElementById(
+        `${pickId(rowKey)}-${delta}`,
+      ) as HTMLButtonElement | null;
+      (arrow?.disabled ? document.getElementById(pickId(rowKey)) : arrow)?.focus();
+    });
+  }
+
+  function removeCandidate(rowKey: string) {
+    toggleCandidate(rowKey);
+    requestAnimationFrame(() => document.getElementById(pickedHeadingId)?.focus());
+  }
+
+  function addCandidate(rowKey: string) {
+    toggleCandidate(rowKey);
+    requestAnimationFrame(() => document.getElementById(pickId(rowKey))?.focus());
+  }
+
+  function goToStep(index: number) {
+    if (index === step) return;
+    setStep(index);
+    requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+  }
+
   function advance() {
     if (nextPeriod === null) {
-      setStep(1);
-      document.getElementById(panelId)?.focus();
+      goToStep(1);
+      document.getElementById(panelId)?.focus({ preventScroll: true });
       return;
     }
     setActivePeriod(nextPeriod);
@@ -176,60 +216,129 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
     );
   }
 
-  function renderArrangement() {
+  function renderArrangement(interactive = true) {
     const rows = buildPlayProjectPreviewRows(plan, picks);
     return (
-      <div className={styles.arrangementGrid}>
-        <section
-          className={`${workspace.card} ${styles.leftPanel}`}
-          aria-label="고른 놀이와 선택한 칸"
-        >
-          <h2>고른 놀이 {periodPicks.length}</h2>
+      <div className={interactive ? styles.arrangementGrid : styles.draftArrangement}>
+        {interactive && (
           <div className={workspace.stack}>
-            {pickedCandidates.map((candidate) => (
-              <button
-                type="button"
-                key={candidate.row_key}
-                aria-pressed={
-                  selectedCell?.periodKey === period.period_key &&
-                  selectedCell.rowKey === candidate.row_key
-                }
-                className={`${workspace.item} ${styles.playButton}`}
-                onClick={() => selectCell(activePeriod, candidate.row_key, "play_name")}
-              >
-                {candidate.play_name.value}
-              </button>
-            ))}
-          </div>
-          {selectedCandidate && selectedCell && selectedField ? (
-            <div className={`${workspace.field} ${styles.viewer}`}>
-              <div className={workspace.pills} aria-label="미리 볼 칸">
-                {fields.map((field) => (
-                  <button
-                    type="button"
-                    key={field.key}
-                    aria-pressed={selectedCell.field === field.key}
-                    className={selectedCell.field === field.key ? workspace.selected : undefined}
-                    onClick={() => setSelectedCell({ ...selectedCell, field: field.key })}
-                  >
-                    {field.label}
-                  </button>
+            <section
+              className={`${workspace.card} ${styles.leftPanel}`}
+              aria-label="고른 놀이와 선택한 칸"
+            >
+              <h2 id={pickedHeadingId} tabIndex={-1}>
+                고른 놀이 {periodPicks.length}
+              </h2>
+              <div className={workspace.stack}>
+                {pickedCandidates.map((candidate, index) => (
+                  <div key={candidate.row_key} className={styles.pickedRow}>
+                    <button
+                      type="button"
+                      id={pickId(candidate.row_key)}
+                      aria-pressed={
+                        selectedCell?.periodKey === period.period_key &&
+                        selectedCell.rowKey === candidate.row_key
+                      }
+                      className={`${workspace.item} ${styles.playButton}`}
+                      onClick={() => selectCell(activePeriod, candidate.row_key, "play_name")}
+                    >
+                      {candidate.play_name.value}
+                    </button>
+                    <div className={styles.rowControls}>
+                      {([-1, 1] as const).map((delta) => (
+                        <button
+                          type="button"
+                          key={delta}
+                          id={`${pickId(candidate.row_key)}-${delta}`}
+                          aria-label={`${index + 1}번째 놀이 ${delta === -1 ? "위로" : "아래로"}`}
+                          disabled={
+                            delta === -1 ? index === 0 : index === pickedCandidates.length - 1
+                          }
+                          onClick={() => moveCandidate(candidate.row_key, delta)}
+                        >
+                          {delta === -1 ? "↑" : "↓"}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        aria-label={`${candidate.play_name.value} 빼기`}
+                        onClick={() => removeCandidate(candidate.row_key)}
+                      >
+                        빼기
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
-              <label htmlFor="play-project-selected-cell">{selectedField.label}</label>
-              <textarea
-                id="play-project-selected-cell"
-                readOnly
-                value={selectedCandidate[selectedField.key].value}
-              />
-              <p>아직 수정 기능은 제공하지 않아요.</p>
-            </div>
-          ) : (
-            <p className={`${workspace.muted} ${styles.hint}`}>
-              오른쪽 문서의 칸을 누르면 여기에서 볼 수 있어요.
-            </p>
-          )}
-        </section>
+              {selectedCandidate && selectedCell && selectedField ? (
+                <div className={`${workspace.field} ${styles.viewer}`}>
+                  <div className={workspace.pills} aria-label="미리 볼 칸">
+                    {fields.map((field) => (
+                      <button
+                        type="button"
+                        key={field.key}
+                        aria-pressed={selectedCell.field === field.key}
+                        className={
+                          selectedCell.field === field.key ? workspace.selected : undefined
+                        }
+                        onClick={() => setSelectedCell({ ...selectedCell, field: field.key })}
+                      >
+                        {field.label}
+                      </button>
+                    ))}
+                  </div>
+                  <label htmlFor="play-project-selected-cell">{selectedField.label}</label>
+                  <textarea
+                    id="play-project-selected-cell"
+                    readOnly
+                    value={selectedCandidate[selectedField.key].value}
+                  />
+                  <p>아직 수정 기능은 제공하지 않아요.</p>
+                </div>
+              ) : (
+                <p className={`${workspace.muted} ${styles.hint}`}>
+                  오른쪽 문서의 칸을 누르면 여기에서 볼 수 있어요.
+                </p>
+              )}
+            </section>
+            <section
+              className={`${workspace.card} ${styles.availableCard}`}
+              aria-label="넣을 수 있는 놀이"
+            >
+              <h2>넣을 수 있는 놀이 {period.candidates.length - periodPicks.length}</h2>
+              <div className={workspace.stack}>
+                {period.candidates.map((candidate, index) => {
+                  if (periodPicks.includes(candidate.row_key)) return null;
+                  return (
+                    <div key={candidate.row_key} className={styles.pickedRow}>
+                      <div className={styles.availableName}>
+                        <p className={workspace.eyebrow}>후보 {index + 1}</p>
+                        <p>{candidate.play_name.value}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className={workspace.secondary}
+                        aria-label={`${candidate.play_name.value} 넣기`}
+                        disabled={periodPicks.length >= MAX_PICKS}
+                        onClick={() => addCandidate(candidate.row_key)}
+                      >
+                        넣기
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {periodPicks.length === MAX_PICKS && (
+                <p
+                  role="status"
+                  className={`${workspace.muted} ${styles.limitMessage} ${styles.availableLimit}`}
+                >
+                  5개를 모두 골랐어요. 바꾸려면 하나를 빼 주세요.
+                </p>
+              )}
+            </section>
+          </div>
+        )}
         <section
           className={`${workspace.card} ${styles.sheet}`}
           aria-label="연간놀이계획안 미리보기"
@@ -250,8 +359,9 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
               <tbody>
                 {rows.map((row) => {
                   const candidate = row.candidate;
+                  // 내장 브라우저가 옮긴 행을 다시 그리지 않아 구간 안 위치를 고정한다.
                   return (
-                    <tr key={`${row.period.period_key}-${candidate?.row_key ?? "empty"}`}>
+                    <tr key={row.key}>
                       {row.rowSpan ? (
                         <th scope="rowgroup" rowSpan={row.rowSpan}>
                           {row.period.label}
@@ -259,6 +369,12 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
                       ) : null}
                       {candidate ? (
                         fields.map((field) => {
+                          if (!interactive)
+                            return (
+                              <td key={field.key} className={styles.plainCell}>
+                                {candidate[field.key].value}
+                              </td>
+                            );
                           const selected =
                             selectedCell?.periodKey === row.period.period_key &&
                             selectedCell?.rowKey === candidate.row_key &&
@@ -302,23 +418,46 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
     );
   }
 
+  function renderDraft() {
+    const shortages = plan.periods
+      .filter((item) => (picks[item.period_key]?.length ?? 0) < MAX_PICKS)
+      .map((item) => `${item.label}이 ${picks[item.period_key]?.length ?? 0}개`);
+    return (
+      <div className={workspace.stack}>
+        {shortages.length > 0 && (
+          <p role="status" className={workspace.muted}>
+            {shortages.join(", ")}예요. 확정하려면 구간마다 5개가 필요해요.
+          </p>
+        )}
+        <div>
+          <button type="button" className={workspace.secondary} onClick={() => goToStep(1)}>
+            ← 배치하고 다듬기로
+          </button>
+        </div>
+        {renderArrangement(false)}
+      </div>
+    );
+  }
+
   const tabId = (index: number) => `play-project-tab-${plan.id}-${index}`;
   const panelId = `play-project-panel-${plan.id}`;
+  const pickedHeadingId = `${panelId}-picked`;
+  const pickId = (rowKey: string) => `${panelId}-${period.period_key}-${rowKey}`;
   return (
     <main className={workspace.page}>
       <div className={styles.meta}>
         <span className={workspace.badge}>{plan.status === "DRAFT" ? "초안" : "확정"}</span>
         <span>{plan.school_year}학년도</span>
       </div>
-      <ol className={tabs.steps} aria-label="놀이 프로젝트 결과 단계">
-        {["① 놀이 고르기", "② 배치하고 다듬기"].map((label, index) => (
+      <ol className={`${tabs.steps} ${styles.steps}`} aria-label="놀이 프로젝트 결과 단계">
+        {["① 놀이 고르기", "② 배치하고 다듬기", "③ 전체 초안 보기"].map((label, index) => (
           <li key={label} className={step === index ? tabs.reached : undefined}>
             <span>0{index + 1}</span>
             <button
               type="button"
               className={styles.stepButton}
               aria-current={step === index ? "step" : undefined}
-              onClick={() => setStep(index)}
+              onClick={() => goToStep(index)}
             >
               {label}
             </button>
@@ -361,7 +500,9 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
         tabIndex={0}
         className={`${styles.panel} ${showFloating ? styles.panelWithFloating : ""}`}
       >
-        {step === 0 ? renderPicking() : renderArrangement()}
+        {step === 0 && renderPicking()}
+        {step === 1 && renderArrangement()}
+        {step === 2 && renderDraft()}
       </section>
       {showFloating && (
         <button
