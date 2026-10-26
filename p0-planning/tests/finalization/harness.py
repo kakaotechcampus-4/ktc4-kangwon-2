@@ -211,9 +211,10 @@ class RequestAwareMonthlyLlm:
         safety_plan = body.get("safety_plan")
 
         def safety_value(index: int) -> dict[str, object] | None:
-            if safety_plan is None:
+            week_id = request.expected_week_ids[index - 1].value
+            slot = next((w for w in (safety_plan or {}).get("weeks", ()) if w["week_id"] == week_id), None)
+            if slot is None:  # no placement plan, or a week the plan leaves out
                 return None
-            slot = safety_plan["weeks"][index - 1]
             if slot["kind"] == "STATUTORY":
                 refs = [slot["official_content"][0]["grounding_ref"]]
             elif slot["primary_ref"]:

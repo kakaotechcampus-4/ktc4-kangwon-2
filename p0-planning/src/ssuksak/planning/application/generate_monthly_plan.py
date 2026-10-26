@@ -49,7 +49,7 @@ from ..rules.monthly_template_resolver import (
     resolve_snapshot_sections,
 )
 from ..rules.monthly_theme_derivation import derive_monthly_theme
-from ..rules.safety_placement import PLACEMENT_RULE_ID, month_safety_slots
+from ..rules.safety_placement import PLACEMENT_RULE_ID, month_safety_slots, safety_display_value
 from ..domain.monthly_verification import FindingKind
 from ..rules.monthly_week_periods import canonical_week_periods
 from .monthly_dto import (
@@ -216,6 +216,7 @@ class GenerateMonthlyPlan:
                     command.target_month,
                     tuple(period for period in week_periods if period.active),
                     safety_rule,
+                    supplemental=command.safety_placement.supplemental,
                 )
             except ValueError as exc:
                 raise MonthlyApplicationError("safety_placement_policy_invalid", str(exc)) from exc
@@ -369,11 +370,11 @@ class GenerateMonthlyPlan:
                 "monthly_safety_verification_failed",
                 "Safety placement verification failed before the Plan was saved: " + ", ".join(blocked),
             )
-        # Human Decision: with safety placement no active safety week may stay empty.
+        # Human Decision: with safety placement no placed safety week may stay empty.
         empty = [
             str(cell.week_id)
             for cell in (plan.section(SAFETY_SECTION_KEY).cells if safety_slots else ())
-            if cell.cell_state is not CellState.FILLED
+            if cell.safety is not None and cell.cell_state is not CellState.FILLED
         ]
         if empty:
             raise MonthlyApplicationError(
@@ -436,6 +437,15 @@ class GenerateMonthlyPlan:
                 else None
             )
             unresolved = False
+            # A week the placement policy leaves out has no safety education: whatever the
+            # LLM proposed there is dropped and the Cell stays validly empty.
+            unplaced = (
+                section.section_key == SAFETY_SECTION_KEY
+                and bool(safety_placements)
+                and week_id not in safety_placements
+            )
+            if unplaced:
+                proposed = None
             if mode is MonthlyGenerationMode.LLM_PLANNER and proposed is not None:
                 # The prompt that produced this cell's current value (initial or repair).
                 prompt_version = planner_outcome.prompt_version_for(
@@ -447,6 +457,7 @@ class GenerateMonthlyPlan:
                     evidence = theme.evidence
                     generation = theme.generation
                 elif section.section_key == SAFETY_SECTION_KEY:
+                    value = safety_display_value(safety_placements.get(week_id), value)
                     evidence = deduplicate_evidence(
                         (
                             EvidenceSource(
@@ -568,7 +579,9 @@ class GenerateMonthlyPlan:
                 )
 
             state = (
-                CellState.EMPTY_UNRESOLVED
+                CellState.EMPTY_VALID
+                if unplaced
+                else CellState.EMPTY_UNRESOLVED
                 if unresolved
                 else resolve_cell_state(
                     section_key=section.section_key,

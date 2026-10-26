@@ -20,6 +20,7 @@ from ssuksak.planning.rules.safety_placement import (
     ANNUAL_HOURS_NOT_VERIFIED,
     OFFICIAL_GROUNDING_MISSING,
     PLACEMENT_RULE_REF,
+    STATUTORY_SHORT_LABELS,
     is_official_ref,
     verify_monthly_safety_placement,
 )
@@ -107,9 +108,12 @@ def test_placement_fills_statutory_and_supplemental_safety_weeks(month, statutor
         if category:
             assert cell.safety.kind is SafetyKind.STATUTORY
             assert official and all(is_official_ref(s.source_id, category) and s.source_version == LEGAL for s in official)
+            # The Rule writes the label; the LLM wrote only what follows it.
+            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] - ")
         else:
             assert cell.safety.kind is SafetyKind.SUPPLEMENTAL
             assert samples and not official
+            assert not cell.value.startswith("[")
     # Other Sections are unchanged by safety placement.
     for key in ("goals", "basic_habit", "focus", "outdoor_play"):
         assert all(cell.cell_state is CellState.FILLED for cell in plan.section(key).cells)
@@ -329,3 +333,121 @@ def test_an_unresolved_active_safety_week_is_never_saved(monkeypatch):
         )
     assert exc.value.code == "monthly_safety_cell_unresolved"
     assert harness.monthly_plans.save_count == 0
+
+
+STATUTORY_ONLY = replace(SAFETY_PLACEMENT, supplemental=False)
+
+
+@pytest.mark.parametrize(
+    ("month", "statutory"),
+    [
+        (YearMonth(2026, 9), [None, "traffic_safety", None, "sexual_violence_prevention", None]),
+        (YearMonth(2026, 6), [None, "child_abuse_prevention", None, None]),
+    ],
+    ids=["two-statutory", "one-statutory"],
+)
+def test_statutory_only_placement_leaves_the_other_weeks_validly_empty(month, statutory, approved_classification):
+    # Human Decision 2026-10-23: no supplemental safety education — only the policy's STATUTORY weeks.
+    harness, plan = _generate(month, placement=STATUTORY_ONLY)
+    body = json.loads(harness.provider.monthly_requests[-1].user_content)
+
+    assert [w["kind"] for w in body["safety_plan"]["weeks"]] == ["STATUTORY"] * sum(map(bool, statutory))
+    for cell, category in zip(plan.section("safety_education").cells, statutory):
+        if category:
+            assert cell.safety.kind is SafetyKind.STATUTORY and cell.cell_state is CellState.FILLED
+            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] - ")
+        else:
+            assert cell.safety is None and cell.cell_state is CellState.EMPTY_VALID and cell.value == ""
+            assert cell.generation.method is GenerationMethod.RULE_ONLY
+            assert all(s.source_type is not EvidenceSourceType.INSTITUTION_SAMPLE for s in cell.evidence)
+    safety_findings = [(f.code, f.finding_kind) for f in plan.verification_report.findings if f.location.section_key != "outdoor_play"]
+    assert safety_findings == [(ANNUAL_HOURS_NOT_VERIFIED, FindingKind.NOT_VERIFIED)]
+    assert harness.confirm_monthly(plan).status is PlanStatus.CONFIRMED
+
+
+def test_a_value_proposed_for_an_unplaced_week_is_rejected():
+    from ssuksak.planning.planner.contracts import ProposedSectionValue
+    from ssuksak.planning.planner.validation import SafetySlotReason, safety_slot_problem
+
+    empty = ProposedSectionValue("safety_education", "", True)
+    filled = ProposedSectionValue("safety_education", "길 건너기", False, ("ev_1",))
+
+    assert safety_slot_problem(None, empty, {}) is None
+    assert safety_slot_problem(None, filled, {}).reason is SafetySlotReason.UNPLACED_WEEK_FILLED
+
+
+@pytest.mark.parametrize("label", ["[교통안전] - ", "[성폭력 예방] - "], ids=["same-category", "other-category"])
+def test_a_statutory_value_carrying_a_label_is_repaired_and_labelled_once(label, approved_classification):
+    # Codex A-01: the Rule owns the label; a model-written label is a repairable finding, never stored.
+    harness = PlanningHarness()
+    original = harness.provider.generate_monthly
+    clean, repairs = {}, []
+
+    def label_then_repair(request):
+        if request.repair_targets:
+            repairs.append(request)
+            patches = [{"week_id": week, "section_key": key, "value": clean[week]} for week, key, _ in request.repair_targets]
+            return clean["response"].__class__(json.dumps({"patches": patches}, ensure_ascii=False), clean["response"].model, None)
+        response = original(request)
+        payload = json.loads(response.content)
+        week = payload["weeks"][1]
+        cell = next(s for s in week["sections"] if s["section_key"] == "safety_education")
+        clean.update({week["week_id"]: cell["value"], "response": response})
+        cell["value"] = label + cell["value"]
+        return response.__class__(json.dumps(payload, ensure_ascii=False), response.model, response.request_id)
+
+    harness.provider.generate_monthly = label_then_repair
+    parent = harness.confirm_yearly(harness.generate_yearly(AGES).plan)
+    plan = harness.generate_monthly(
+        parent, MonthlyGenerationMode.LLM_PLANNER, target_month=YearMonth(2026, 9), profile=EXTENDED_PROFILE,
+        safety_placement=STATUTORY_ONLY,
+    ).plan
+    week_id = next(key for key in clean if key != "response")
+    traffic = plan.section("safety_education").cells[1]
+
+    assert traffic.value == f"[교통안전] - {clean[week_id]}" and traffic.value.count("[") == 1
+    assert [r.repair_targets for r in repairs] == [((week_id, "safety_education", ("value",)),)]
+
+
+def test_a_statutory_value_with_a_label_is_a_text_policy_finding():
+    from ssuksak.planning.context.models import SafetySlotContext
+    from ssuksak.planning.planner.contracts import ProposedSectionValue
+    from ssuksak.planning.planner.service import REPAIRABLE_CODES
+    from ssuksak.planning.planner.validation import (
+        SafetySlotReason,
+        safety_slot_problem,
+    )
+
+    slot = SafetySlotContext("2026-09-w2", SafetyKind.STATUTORY, "traffic_safety")
+    official = {"annex6:traffic_safety:4": type("Official", (), {"category_id": "traffic_safety"})()}
+    labelled = ProposedSectionValue("safety_education", "[교통안전] - 길을 건널 때 손을 들어요.", False, ("annex6:traffic_safety:4",))
+    plain = replace(labelled, value="길을 건널 때 손을 들어요.")
+
+    problem = safety_slot_problem(slot, labelled, official)
+    assert problem.reason is SafetySlotReason.DISPLAY_LABEL_IN_CONTENT
+    assert problem.code.value in REPAIRABLE_CODES
+    assert safety_slot_problem(slot, plain, official) is None
+
+
+def test_an_unplaced_week_a_teacher_empties_again_stays_validly_empty(approved_classification):
+    # Codex A-02: edit judges an emptied Cell by the same placement as generation.
+    harness, plan = _generate(YearMonth(2026, 9), placement=STATUTORY_ONLY)
+    week_one = plan.section("safety_education").cells[0]
+    assert week_one.cell_state is CellState.EMPTY_VALID
+
+    filled = harness.edit_monthly(plan, item_id=week_one.item_id, value="교사가 쓴 안전 이야기")
+    emptied = harness.edit_monthly(filled, item_id=week_one.item_id, value="")
+
+    assert filled.find_cell(week_one.item_id)[3].cell_state is CellState.FILLED
+    assert emptied.find_cell(week_one.item_id)[3].cell_state is CellState.EMPTY_VALID
+    assert harness.confirm_monthly(emptied).status is PlanStatus.CONFIRMED
+
+
+def test_without_placement_an_emptied_safety_week_stays_unresolved():
+    harness, plan = _generate(YearMonth(2026, 9), placement=None)
+    week_one = plan.section("safety_education").cells[0]
+
+    filled = harness.edit_monthly(plan, item_id=week_one.item_id, value="교사가 쓴 안전 이야기")
+    emptied = harness.edit_monthly(filled, item_id=week_one.item_id, value="")
+
+    assert emptied.find_cell(week_one.item_id)[3].cell_state is CellState.EMPTY_UNRESOLVED

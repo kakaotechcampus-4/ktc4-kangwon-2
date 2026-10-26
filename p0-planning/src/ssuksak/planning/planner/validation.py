@@ -86,15 +86,19 @@ class SafetySlotReason(str, Enum):
     SUPPLEMENTAL_SLOT_EMPTY = "SUPPLEMENTAL_SLOT_EMPTY"
     PRIMARY_REF_MISSING = "PRIMARY_REF_MISSING"
     NON_PRIMARY_REF = "NON_PRIMARY_REF"
+    UNPLACED_WEEK_FILLED = "UNPLACED_WEEK_FILLED"
     MULTIPLE_SENTENCES = "MULTIPLE_SENTENCES"
     SAME_TEXT_AS_OTHER_WEEK = "SAME_TEXT_AS_OTHER_WEEK"
     SAME_REFERENCE_AS_OTHER_WEEK = "SAME_REFERENCE_AS_OTHER_WEEK"
     SAME_TOPIC_AS_OTHER_WEEK = "SAME_TOPIC_AS_OTHER_WEEK"
     SAFETY_REFERENCE_ID_FORBIDDEN = "SAFETY_REFERENCE_ID_FORBIDDEN"
+    DISPLAY_LABEL_IN_CONTENT = "DISPLAY_LABEL_IN_CONTENT"
 
 
 MAX_STATUTORY_SAMPLE_REFS = 2
 _SENTENCE_END = re.compile(r"[.!?。]+")
+# A leading "[label]" — the Rule adds the STATUTORY label, so the LLM text must not carry one.
+_DISPLAY_LABEL = re.compile(r"^\s*\[[^\]\n]*\]")
 
 
 def sentence_count(text: str) -> int:
@@ -154,9 +158,16 @@ def safety_slot_problem(
     official: dict[str, OfficialSafetyContent],
     references: dict[str, SafetyReferenceContext] | None = None,
 ) -> SafetySlotProblem | None:
-    """How a safety value breaks its Rule-fixed slot, or None when it does not."""
+    """How a safety value breaks its Rule-fixed slot, or None when it does not.
+
+    A week without a slot has no safety education and must stay unresolved.
+    """
     if slot is None:
-        return None
+        if value.unresolved:
+            return None
+        return SafetySlotProblem(
+            ProposalValidationCode.SAFETY_PLACEMENT_MISMATCH, SafetySlotReason.UNPLACED_WEEK_FILLED, "NONE", "VALUE"
+        )
     categories = {official[ref].category_id for ref in value.grounding_refs if ref in official}
     samples = [references[ref] for ref in value.grounding_refs if references and ref in references]
     placement = ProposalValidationCode.SAFETY_PLACEMENT_MISMATCH
@@ -184,6 +195,11 @@ def safety_slot_problem(
         if slot.focus_ref is not None and len(samples) > MAX_STATUTORY_SAMPLE_REFS:
             return SafetySlotProblem(
                 grounding, SafetySlotReason.TOO_MANY_SAMPLE_REFS, f"<={MAX_STATUTORY_SAMPLE_REFS}", str(len(samples))
+            )
+        if _DISPLAY_LABEL.match(value.value):
+            # Same or other category, the label would be doubled; a value-only rewrite fixes it.
+            return SafetySlotProblem(
+                ProposalValidationCode.TEXT_POLICY, SafetySlotReason.DISPLAY_LABEL_IN_CONTENT, "NO_LABEL", "LABEL"
             )
         return None
     if categories:
