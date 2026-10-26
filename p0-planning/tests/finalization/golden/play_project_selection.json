@@ -1,0 +1,185 @@
+{
+  "contract": "play-project selection · edit · confirm (2026-10-26 decisions D-1 D-2 D-3)",
+  "fixture": "four layout v0.2 periods, ten candidates each (cand1..cand10), DRAFT, nothing kept",
+  "notes": [
+    "Each step may carry expect: {error, problems} for a rejected step or {saved: bool}.",
+    "Case expect describes the stored plan after the last step.",
+    "plan_events lists plan-level events after CREATED."
+  ],
+  "cases": [
+    {
+      "id": "partial_save_zero_three",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand3", "cand1", "cand7"], "m06_m08": []}, "expect": {"saved": true}}
+      ],
+      "expect": {
+        "status": "DRAFT",
+        "selected": {"m03_m05": ["cand3", "cand1", "cand7"], "m06_m08": [], "m09_m11": [], "m12_m02": []},
+        "plan_events": [
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": [], "after": ["cand3", "cand1", "cand7"]}
+        ]
+      }
+    },
+    {
+      "id": "same_selection_is_noop",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand1", "cand2"]}, "expect": {"saved": true}},
+        {"op": "select", "selections": {"m03_m05": ["cand1", "cand2"], "m06_m08": []}, "expect": {"saved": false}}
+      ],
+      "expect": {
+        "selected": {"m03_m05": ["cand1", "cand2"], "m06_m08": [], "m09_m11": [], "m12_m02": []},
+        "plan_events": [
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": [], "after": ["cand1", "cand2"]}
+        ]
+      }
+    },
+    {
+      "id": "reorder_only",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand1", "cand2", "cand3", "cand4", "cand5"]}},
+        {"op": "select", "selections": {"m03_m05": ["cand5", "cand4", "cand3", "cand2", "cand1"]}, "expect": {"saved": true}}
+      ],
+      "expect": {
+        "plan_events": [
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": [], "after": ["cand1", "cand2", "cand3", "cand4", "cand5"]},
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": ["cand1", "cand2", "cand3", "cand4", "cand5"], "after": ["cand5", "cand4", "cand3", "cand2", "cand1"]}
+        ]
+      }
+    },
+    {
+      "id": "swap_one_keeps_candidates",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand1", "cand2", "cand3", "cand4", "cand5"]}},
+        {"op": "select", "selections": {"m03_m05": ["cand1", "cand2", "cand9", "cand4", "cand5"]}}
+      ],
+      "expect": {
+        "candidates_unchanged": true,
+        "plan_events": [
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": [], "after": ["cand1", "cand2", "cand3", "cand4", "cand5"]},
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": ["cand1", "cand2", "cand3", "cand4", "cand5"], "after": ["cand1", "cand2", "cand9", "cand4", "cand5"]}
+        ]
+      }
+    },
+    {
+      "id": "two_periods_one_changed",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand1"]}},
+        {"op": "select", "selections": {"m03_m05": ["cand1"], "m09_m11": ["cand2", "cand4"]}, "expect": {"saved": true}}
+      ],
+      "expect": {
+        "plan_events": [
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": [], "after": ["cand1"]},
+          {"type": "CANDIDATES_SELECTED", "period_key": "m09_m11", "before": [], "after": ["cand2", "cand4"]}
+        ]
+      }
+    },
+    {
+      "id": "one_bad_period_saves_nothing",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand1"]}},
+        {"op": "select", "selections": {"m06_m08": ["cand1", "cand2"], "m09_m11": ["cand1", "cand2", "cand3", "cand4", "cand5", "cand6"]},
+         "expect": {"error": "invalid_selection", "problems": ["m09_m11: more than 5"]}}
+      ],
+      "expect": {
+        "selected": {"m03_m05": ["cand1"], "m06_m08": [], "m09_m11": [], "m12_m02": []},
+        "plan_events": [
+          {"type": "CANDIDATES_SELECTED", "period_key": "m03_m05", "before": [], "after": ["cand1"]}
+        ]
+      }
+    },
+    {
+      "id": "rejected_selections",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand1", "cand1"]}, "expect": {"error": "invalid_selection", "problems": ["m03_m05: duplicate candidate"]}},
+        {"op": "select", "selections": {"m03_m05": ["cand11"]}, "expect": {"error": "invalid_selection", "problems": ["m03_m05: unknown candidate"]}},
+        {"op": "select", "selections": {"m01_m02": ["cand1"]}, "expect": {"error": "invalid_selection", "problems": ["m01_m02: unknown period"]}},
+        {"op": "select", "actor": null, "selections": {"m03_m05": ["cand1"]}, "expect": {"error": "opaque_actor_required"}}
+      ],
+      "expect": {
+        "selected": {"m03_m05": [], "m06_m08": [], "m09_m11": [], "m12_m02": []},
+        "plan_events": []
+      }
+    },
+    {
+      "id": "edit_kept_candidate",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand2"]}},
+        {"op": "edit", "period": "m03_m05", "row": "cand2", "field": "materials", "value": "솔방울, 바구니", "expect": {"saved": true}}
+      ],
+      "expect": {
+        "item": {"period": "m03_m05", "row": "cand2", "field": "materials", "value": "솔방울, 바구니",
+                 "events": ["CREATED", "TEACHER_EDITED"], "generation_method": "RULE_LLM"}
+      }
+    },
+    {
+      "id": "edit_rejected",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand2"]}},
+        {"op": "edit", "period": "m03_m05", "row": "cand3", "field": "play_name", "value": "새 이름", "expect": {"error": "candidate_not_selected"}},
+        {"op": "edit", "period": "m03_m05", "row": "cand2", "field": "learning", "value": "자유 문장", "expect": {"error": "field_not_editable"}}
+      ],
+      "expect": {
+        "item": {"period": "m03_m05", "row": "cand3", "field": "play_name", "events": ["CREATED"]}
+      }
+    },
+    {
+      "id": "unkept_edited_candidate_keeps_value",
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand2"]}},
+        {"op": "edit", "period": "m03_m05", "row": "cand2", "field": "play_name", "value": "교사가 고친 이름"},
+        {"op": "select", "selections": {"m03_m05": []}},
+        {"op": "select", "selections": {"m03_m05": ["cand2"]}}
+      ],
+      "expect": {
+        "selected": {"m03_m05": ["cand2"], "m06_m08": [], "m09_m11": [], "m12_m02": []},
+        "item": {"period": "m03_m05", "row": "cand2", "field": "play_name", "value": "교사가 고친 이름",
+                 "events": ["CREATED", "TEACHER_EDITED"]}
+      }
+    },
+    {
+      "id": "confirm_four_by_five",
+      "steps": [
+        {"op": "select_full"},
+        {"op": "confirm", "expect": {"saved": true}}
+      ],
+      "expect": {"status": "CONFIRMED", "last_plan_event": {"type": "CONFIRMED", "actor": "teacher_1"}}
+    },
+    {
+      "id": "confirm_incomplete",
+      "steps": [
+        {"op": "select_full"},
+        {"op": "select", "selections": {"m06_m08": ["cand1", "cand2", "cand3", "cand4"]}},
+        {"op": "confirm", "expect": {"error": "selection_incomplete", "problems": ["m06_m08: 4 kept, needs 5"]}}
+      ],
+      "expect": {"status": "DRAFT"}
+    },
+    {
+      "id": "confirm_missing_period",
+      "fixture_periods": ["m03_m05", "m06_m08", "m09_m11"],
+      "steps": [
+        {"op": "select", "selections": {"m03_m05": ["cand1", "cand2", "cand3", "cand4", "cand5"], "m06_m08": ["cand1", "cand2", "cand3", "cand4", "cand5"], "m09_m11": ["cand1", "cand2", "cand3", "cand4", "cand5"]}},
+        {"op": "confirm", "expect": {"error": "selection_incomplete", "problems": ["m12_m02: missing period"]}}
+      ],
+      "expect": {"status": "DRAFT"}
+    },
+    {
+      "id": "confirm_actor_required",
+      "steps": [
+        {"op": "select_full"},
+        {"op": "confirm", "actor": null, "expect": {"error": "opaque_actor_required"}}
+      ],
+      "expect": {"status": "DRAFT"}
+    },
+    {
+      "id": "confirmed_is_read_only",
+      "steps": [
+        {"op": "select_full"},
+        {"op": "confirm"},
+        {"op": "select", "selections": {"m03_m05": ["cand6"]}, "expect": {"error": "state"}},
+        {"op": "edit", "period": "m03_m05", "row": "cand1", "field": "play_name", "value": "x", "expect": {"error": "state"}},
+        {"op": "confirm", "expect": {"error": "state"}}
+      ],
+      "expect": {"status": "CONFIRMED"}
+    }
+  ]
+}

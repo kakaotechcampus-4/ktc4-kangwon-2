@@ -275,12 +275,15 @@ def test_주제를_비우거나_빈_칸을_공백으로_고치면_422_이고_아
     monkeypatch.setattr(monthly_router, "monthly_llm_provider", no_llm)
     session, plan, center = world["session"], world["plan"], world["mine"]["center"]
     theme = _cell(plan, "theme")
-    empty = next(c for c in _cells(plan).values() if c["value"] == "")  # 근거 없는 안전교육 칸
+    # 빈 칸을 소주제로 만든다 — 배치 정책 뒤 빈 안전교육 칸은 법정 주가 아닌 「비어도 되는」 칸이다.
+    empty = _cell(plan, "focus")
+    assert _edit(plan["id"], empty["item_id"], "", 1).status_code == 200
+    plan = _get(plan["id"])
     row, _ = _stored(session, center, plan["id"])
     before = (row.revision, row.status, json.dumps(row.body, sort_keys=True))
 
     for target in (theme, empty):
-        response = _edit(plan["id"], target["item_id"], value, 1)
+        response = _edit(plan["id"], target["item_id"], value, 2)
         assert _error(response) == (422, "VALIDATION_FAILED", ["value"])
         # Core 문구(규칙 id · 영문 사유)를 내보내지 않는다.
         assert response.json()["error"]["message"] == (
@@ -381,6 +384,9 @@ def test_생성_방식이_없는_칸은_편집도_재생성도_422_이고_문구
     # 생성 방식이 없는 칸이 생기면 계획안 응답을 그리지 못한다. 정상 편집을 먼저 끝낸다.
     focus = _cell(plan, "focus")  # 다시 만들 수 있는 칸. 비워야 생성 방식을 지울 수 있다
     assert _edit(plan["id"], focus["item_id"], "", 1).status_code == 200
+    # 편집 거절을 볼 빈 칸. 위와 같은 이유로 다른 주 소주제를 비운다.
+    other = _cell(plan, "focus", 1)
+    assert _edit(plan["id"], other["item_id"], "", 2).status_code == 200
 
     revision = _strip_generation(session, center, plan["id"], focus["item_id"])
     response = _regenerate(plan["id"], focus["item_id"], revision)
@@ -388,9 +394,8 @@ def test_생성_방식이_없는_칸은_편집도_재생성도_422_이고_문구
     assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
 
     # 비어 있는 칸이라 생성 방식을 지워도 Core 불변식을 지킨다.
-    safety = _cell(plan, "safety_education")
-    revision = _strip_generation(session, center, plan["id"], safety["item_id"])
-    response = _edit(plan["id"], safety["item_id"], "교사 값", revision)
+    revision = _strip_generation(session, center, plan["id"], other["item_id"])
+    response = _edit(plan["id"], other["item_id"], "교사 값", revision)
     assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
     assert response.json()["error"]["message"] == "이 칸은 고칠 수 없습니다."
     assert "Generation" not in response.text
@@ -439,9 +444,9 @@ def test_확정은_한_번만_저장되고_재호출은_revision_과_무관하�
     assert (confirmed["status"], confirmed["revision"]) == ("CONFIRMED", 2)
     assert confirmed["confirmed_at"] is not None
     assert _get(plan["id"]) == confirmed
-    # 안전교육 「근거 필요」 상태로도 확정된다 — 충족했다는 뜻이 아니다.
+    # 안전교육은 법정 주만 채워진 채 확정된다 — 법정 시수를 충족했다는 뜻이 아니다.
     safety = next(s for s in confirmed["sections"] if s["section_key"] == "safety_education")
-    assert {c["state"] for c in safety["cells"]} == {"EMPTY_UNRESOLVED"}
+    assert {c["state"] for c in safety["cells"]} == {"FILLED", "EMPTY_VALID"}
     constraint = next(
         c for c in confirmed["constraints"] if c["code"] == "STATUTORY_SAFETY_EDUCATION"
     )
