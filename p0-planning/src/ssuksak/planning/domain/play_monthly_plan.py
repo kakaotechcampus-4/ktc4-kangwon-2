@@ -4,19 +4,24 @@ Its parent is a CONFIRMED ``PlayProjectYearlyPlan``. The plan keeps the header l
 made with, the parent plays it read, the Reference versions it used, and values that may be
 blank: teacher-input cells start empty, and safety candidates are kept apart from the weekly
 placement, which starts unplaced. Every list row and candidate is addressed by its ``ItemId``,
-never by its position.
+never by its position. A row a teacher deletes leaves the document but stays whole in
+``removed_activities``; adding, deleting and placing are plan-level ARRANGEMENT_CHANGED events.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from enum import Enum
 
-from .errors import InvalidDomainValueError
-from .identifiers import ItemId, PlanId
+from .errors import InvalidDomainValueError, InvalidStateTransitionError
+from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
 from .plan import PlanStatus
 from .provenance import (
+    ArrangementChange,
+    AuditEvent,
+    AuditEventType,
     AuditHistory,
     EvidenceSource,
     EvidenceSourceType,
@@ -28,6 +33,9 @@ from .week_period import WeekId, WeekPeriod
 from .year_month import YearMonth
 
 PLAY_MONTHLY_FORMAT = "PLAY_MONTHLY"
+PLAY_SECTIONS = ("together", "free_play")
+DRILL_CELL_KEY = "fire_disaster_drill"
+DRILL_COPY_RULE_ID = "play_monthly.drill_copy"
 
 
 def _non_blank(value: object, path: str) -> None:
@@ -123,7 +131,9 @@ class PlayActivity:
     """One row of 함께 하는 활동 or 유아 예상 자유놀이: a play name with its links.
 
     PARENT_PLAN evidence appears only when the row actually builds on one parent play, and
-    then the parent item is snapshotted. CURRICULUM evidence lists the linked content ids.
+    then the parent item is snapshotted. CURRICULUM evidence lists the content ids linked at
+    generation and never changes; ``content_ids`` holds the current links, which a teacher may
+    change within the plan's curriculum catalog version (M2-D18, I-1).
 
     ``description`` explains the play for the teacher on the edit screen (M2-D16). It is its
     own cell, paired to the name by semantic key, and is never printed in the document.
@@ -131,11 +141,18 @@ class PlayActivity:
 
     cell: PlayMonthlyCell
     description: PlayMonthlyCell
+    content_ids: tuple[str, ...]
     parent_snapshot: ParentLineage | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.cell, PlayMonthlyCell):
             raise InvalidDomainValueError("PlayActivity.cell must be PlayMonthlyCell")
+        if not isinstance(self.content_ids, tuple) or not all(
+            isinstance(i, str) and i.strip() for i in self.content_ids
+        ):
+            raise InvalidDomainValueError("PlayActivity.content_ids must be non-blank strings")
+        if len(self.content_ids) != len(set(self.content_ids)):
+            raise InvalidDomainValueError("PlayActivity.content_ids must be unique")
         if not isinstance(self.description, PlayMonthlyCell):
             raise InvalidDomainValueError("PlayActivity.description must be PlayMonthlyCell")
         if self.description.semantic_key != f"{self.cell.semantic_key}.description":
@@ -157,6 +174,18 @@ class PlayActivity:
             raise InvalidDomainValueError(
                 "PlayActivity cites PARENT_PLAN exactly when it snapshots a parent play"
             )
+
+
+@dataclass(frozen=True, slots=True)
+class RemovedActivity:
+    """A row a teacher deleted, kept whole for history (I-3). Never shown, exported or confirmed."""
+
+    section: str
+    activity: PlayActivity
+
+    def __post_init__(self) -> None:
+        if self.section not in PLAY_SECTIONS or not isinstance(self.activity, PlayActivity):
+            raise InvalidDomainValueError("RemovedActivity needs a play section and a PlayActivity")
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +370,7 @@ class PlayMonthlyPlan:
     drill_candidates: tuple[DrillCandidate, ...]
     teacher_inputs: tuple[PlayMonthlyCell, ...]
     audit: AuditHistory = field(default_factory=AuditHistory)
+    removed_activities: tuple[RemovedActivity, ...] = ()
     format: str = PLAY_MONTHLY_FORMAT
 
     def __post_init__(self) -> None:
@@ -378,12 +408,30 @@ class PlayMonthlyPlan:
             raise InvalidDomainValueError("Drill candidates must name distinct topics")
         if tuple(t.semantic_key for t in self.teacher_inputs) != self.layout.teacher_input_keys:
             raise InvalidDomainValueError("teacher_inputs must follow the layout's teacher-input keys")
-        if any(
-            t.generation is not None and t.generation.method is not GenerationMethod.MANUAL
-            for t in self.teacher_inputs
+        drill_ids = {d.cell.item_id for d in self.drill_candidates}
+        for t in self.teacher_inputs:
+            if t.generation is None or t.generation.method is GenerationMethod.MANUAL:
+                continue
+            # The one exception (M2-D17): the drill cell holds a copied drill candidate.
+            copies = [e for e in t.audit if e.event_type is AuditEventType.CANDIDATE_COPIED]
+            if (
+                t.semantic_key != DRILL_CELL_KEY
+                or t.generation != self.drill_copy_generation
+                or not copies
+                or any(e.copied_from not in drill_ids for e in copies)
+            ):
+                raise InvalidDomainValueError(
+                    "A teacher-input cell is MANUAL, or the drill cell holds a copied drill candidate"
+                )
+        if not isinstance(self.removed_activities, tuple) or not all(
+            isinstance(r, RemovedActivity) for r in self.removed_activities
         ):
-            raise InvalidDomainValueError("A teacher-input cell is never generated; only MANUAL")
-        cells = self.cells()
+            raise InvalidDomainValueError("PlayMonthlyPlan.removed_activities must be RemovedActivity")
+        # Archived rows keep their ids, so a removed id is never used again.
+        cells = (
+            *self.cells(),
+            *(c for r in self.removed_activities for c in (r.activity.cell, r.activity.description)),
+        )
         for name in ("item_id", "semantic_key"):
             values = [getattr(cell, name) for cell in cells]
             if len(values) != len(set(values)):
@@ -401,3 +449,157 @@ class PlayMonthlyPlan:
             *(d.cell for d in self.drill_candidates),
             *self.teacher_inputs,
         )
+
+    @property
+    def drill_copy_generation(self) -> GenerationMethodDetail:
+        return GenerationMethodDetail(
+            GenerationMethod.RULE_ONLY, rule_id=DRILL_COPY_RULE_ID, rule_version=self.layout.layout_version
+        )
+
+    def ensure_mutable(self, operation: str) -> None:
+        if not self.status.is_mutable:
+            raise InvalidStateTransitionError(
+                f"{operation} is not allowed for a CONFIRMED PlayMonthlyPlan"
+            )
+
+    def find_cell(self, item_id: ItemId) -> PlayMonthlyCell | None:
+        return next((c for c in self.cells() if c.item_id == item_id), None)
+
+    def replace_cell(self, updated: PlayMonthlyCell) -> PlayMonthlyPlan:
+        """Swap the cell with the same ``item_id`` and ``semantic_key``; nothing else moves."""
+        self.ensure_mutable("replace_cell")
+        current = self.find_cell(updated.item_id)
+        if current is None or current.semantic_key != updated.semantic_key:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan cell not found: {updated.item_id}")
+
+        def swap(cell: PlayMonthlyCell) -> PlayMonthlyCell:
+            return updated if cell.item_id == updated.item_id else cell
+
+        def rows(activities: tuple[PlayActivity, ...]) -> tuple[PlayActivity, ...]:
+            return tuple(
+                replace(a, cell=swap(a.cell), description=swap(a.description)) for a in activities
+            )
+
+        return replace(
+            self,
+            theme=swap(self.theme),
+            rationale=swap(self.rationale),
+            together=rows(self.together),
+            free_play=rows(self.free_play),
+            habits=tuple(
+                replace(h, habit=replace(h.habit, cell=swap(h.habit.cell))) for h in self.habits
+            ),
+            safety_candidates=tuple(replace(c, cell=swap(c.cell)) for c in self.safety_candidates),
+            health=replace(self.health, cell=swap(self.health.cell)),
+            nutrition=replace(self.nutrition, cell=swap(self.nutrition.cell)),
+            drill_candidates=tuple(replace(d, cell=swap(d.cell)) for d in self.drill_candidates),
+            teacher_inputs=tuple(swap(t) for t in self.teacher_inputs),
+        )
+
+    def replace_activity(self, updated: PlayActivity) -> PlayMonthlyPlan:
+        """Swap the row whose name cell has the same ``item_id``; its section and place stay."""
+        self.ensure_mutable("replace_activity")
+        current = self.activity(updated.cell.item_id)
+        if current is None or current.description.item_id != updated.description.item_id:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan activity not found: {updated.cell.item_id}")
+
+        def swap(activities: tuple[PlayActivity, ...]) -> tuple[PlayActivity, ...]:
+            return tuple(updated if a is current else a for a in activities)
+
+        return replace(self, together=swap(self.together), free_play=swap(self.free_play))
+
+    def activity(self, name_item_id: ItemId) -> PlayActivity | None:
+        return next(
+            (a for a in (*self.together, *self.free_play) if a.cell.item_id == name_item_id), None
+        )
+
+    def add_activity(
+        self, section: str, activity: PlayActivity, *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        """Append a teacher's new row at the end of a section (M2-D03)."""
+        self.ensure_mutable("add_activity")
+        rows = self._rows(section)
+        return self._arranged(
+            section, _row_ids(rows), _row_ids((*rows, activity)), actor_id, occurred_at,
+            **{section: (*rows, activity)},
+        )
+
+    def remove_activity(
+        self, name_item_id: ItemId, *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        """Drop a row from the document and keep it whole in ``removed_activities`` (I-3)."""
+        self.ensure_mutable("remove_activity")
+        current = self.activity(name_item_id)
+        if current is None:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan activity not found: {name_item_id}")
+        section = next(s for s in PLAY_SECTIONS if any(a is current for a in getattr(self, s)))
+        rows = getattr(self, section)
+        kept = tuple(a for a in rows if a is not current)
+        return self._arranged(
+            section, _row_ids(rows), _row_ids(kept), actor_id, occurred_at,
+            **{section: kept},
+            removed_activities=(*self.removed_activities, RemovedActivity(section, current)),
+        )
+
+    def place_safety(
+        self,
+        week_id: WeekId,
+        candidate_item_id: ItemId | None,
+        *,
+        actor_id: ActorId,
+        occurred_at: datetime,
+    ) -> PlayMonthlyPlan:
+        """Place a kept safety candidate in one week, or clear it with ``None`` (M2-D08).
+
+        The same candidate may be placed in several weeks."""
+        self.ensure_mutable("place_safety")
+        current = next((s for s in self.safety_weeks if s.week_id == week_id), None)
+        if current is None:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan week not found: {week_id}")
+
+        def ids(item_id: ItemId | None) -> tuple[str, ...]:
+            return () if item_id is None else (item_id.value,)
+
+        return self._arranged(
+            week_id.value, ids(current.candidate_item_id), ids(candidate_item_id), actor_id, occurred_at,
+            safety_weeks=tuple(
+                SafetyWeek(week_id, candidate_item_id) if s is current else s for s in self.safety_weeks
+            ),
+        )
+
+    def _rows(self, section: str) -> tuple[PlayActivity, ...]:
+        if section not in PLAY_SECTIONS:
+            raise InvalidDomainValueError(f"Unknown play section: {section}")
+        return getattr(self, section)
+
+    def _arranged(
+        self,
+        scope: str,
+        before: tuple[str, ...],
+        after: tuple[str, ...],
+        actor_id: ActorId,
+        occurred_at: datetime,
+        **changes: object,
+    ) -> PlayMonthlyPlan:
+        event = AuditEvent(
+            event_type=AuditEventType.ARRANGEMENT_CHANGED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+            arrangement_change=ArrangementChange(scope, before, after),
+        )
+        return replace(self, audit=self.audit.append(event), **changes)
+
+    def confirm(self, *, actor_id: ActorId, occurred_at: datetime) -> PlayMonthlyPlan:
+        self.ensure_mutable("confirm")
+        event = AuditEvent(
+            event_type=AuditEventType.CONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(self, status=PlanStatus.CONFIRMED, audit=self.audit.append(event))
+
+
+def _row_ids(rows: tuple[PlayActivity, ...]) -> tuple[str, ...]:
+    return tuple(a.cell.item_id.value for a in rows)
