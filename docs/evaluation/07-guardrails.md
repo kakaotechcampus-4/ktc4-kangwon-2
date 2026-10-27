@@ -28,11 +28,14 @@
 
 ## 키와 비용
 
-- **로컬에서 `real` 모드를 코드가 막는다** — 키가 팀 공유라 6명이 각자 부르면 어디로 새는지 모른다
+- **로컬에서 `real` 모드를 코드가 막는다** — 키가 팀 공유라 6명이 각자 부르면 어디로 새는지 모른다.
+  `backend/app/shared/llm/client.py` 의 `post_json`:
   ```python
-  if os.getenv("LLM_MODE") == "real" and not os.getenv("IS_SERVER"):
-      raise RuntimeError("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다.")
+  if not settings.is_server:
+      raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
   ```
+  **설정을 읽는 자리가 아니라 망을 타는 자리에 걸었다.** `require_config` 에 걸었더니 가짜 transport 를
+  쓰는 테스트 47개가 같이 막혔다 — 그쪽은 망을 타지 않는다. 월간 어댑터도 이 함수를 쓰므로 같은 가드에 걸린다
 - `LLM_MODE=mock` 이 기본값
 - 예산 ₩120,000/월, **초과 시 키 자동 삭제.** 자동 차단은 일부러 안 만들었다 —
   90%에서 끊으면 파일럿 중 교사 앞에서 서비스가 멈춘다. 사람이 판단할 기회를 남겼다 (2026-09-21 결정)

@@ -207,9 +207,12 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 - `LLM_MODE=mock`이 기본값이다.
 - **로컬에서 `real` 모드를 코드로 막는다.** 키가 팀 공유라, 6명이 각자 로컬에서 부르면 어디로 새는지 아무도 모른다.
 
+`shared/llm/client.py` 의 `post_json` — **설정을 읽는 자리가 아니라 망을 타는 자리에 건다.**
+  `require_config` 에 걸었더니 가짜 transport 를 쓰는 테스트 47개가 같이 막혔다.
+
 ```python
-if os.getenv("LLM_MODE") == "real" and not os.getenv("IS_SERVER"):
-    raise RuntimeError("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다.")
+if not settings.is_server:
+    raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
 ```
 
 - 프롬프트는 **문서 단위 배치**로 설계한다 — 연간은 12개월, 월간은 한 달, 주간은 한 주를 한 번에. 칸 단위로 호출하면

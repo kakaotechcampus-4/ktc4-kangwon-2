@@ -18,7 +18,8 @@ AI 가 만든다    초안(DRAFT)                      ← 교사가 준 사실�
 
 ## 왜 이렇게 나왔는지 교사가 볼 수 있다
 
-- **출처를 칸 단위로 기록한다.** 세 축을 한 값에 섞지 않는다 — [CLAUDE.md](../../CLAUDE.md) §생성 · PR #15
+- **출처를 칸 단위로 기록한다.** 세 축을 한 값에 섞지 않는다 — [CLAUDE.md](../../CLAUDE.md) §생성 · PR #15 ·
+  `p0-planning/src/ssuksak/planning/domain/provenance.py` (`EvidenceSourceType` 12개 · 값이 코드와 문서가 같다)
 
   | 축 | 묻는 것 | 값 |
   |---|---|---|
