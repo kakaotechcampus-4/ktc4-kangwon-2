@@ -7,7 +7,6 @@
 
 import io
 import json
-import logging
 from urllib import error as urllib_error
 
 import pytest
@@ -36,6 +35,13 @@ def usage_lines(monkeypatch):
     lines = []
     # `app.server` 로거는 propagate=False 라 caplog 가 못 본다.
     monkeypatch.setattr(llm.logger, "info", lambda fmt, *args: lines.append(fmt % args))
+    return lines
+
+
+@pytest.fixture
+def warning_lines(monkeypatch):
+    lines = []
+    monkeypatch.setattr(llm.logger, "warning", lambda fmt, *args: lines.append(fmt % args))
     return lines
 
 
@@ -74,27 +80,24 @@ def test_월간_호출은_보낸_모델_이름으로_한_줄을_남긴다(monkey
 
 @pytest.mark.parametrize("field", [*USAGE, "all"])
 @pytest.mark.parametrize("value", ["LEAK_MARKER", "LINE_MARKER\nINJECTED_MARKER", True, -1, 1.5])
-def test_잘못된_사용량은_원문을_기록하지_않는다(monkeypatch, caplog, field, value):
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "is_server", True)
-    monkeypatch.setattr(llm.logger, "propagate", True)
-    caplog.set_level(logging.INFO, logger=llm.logger.name)
+def test_잘못된_사용량은_원문을_기록하지_않는다(
+    monkeypatch, usage_lines, warning_lines, field, value
+):
     fields = USAGE if field == "all" else [field]
     _answer(monkeypatch, {"usage": {**USAGE, **dict.fromkeys(fields, value)}})
 
     llm.post_json("https://x", headers={}, payload={"model": "test-model"}, timeout=1)
 
     expected = {**USAGE, **dict.fromkeys(fields, "-")}
-    assert [record.message for record in caplog.records if record.levelno == logging.INFO] == [
+    assert usage_lines == [
         f"llm_usage model=test-model prompt={expected['prompt_tokens']} "
         f"completion={expected['completion_tokens']} total={expected['total_tokens']}"
     ]
-    assert [record.message for record in caplog.records if record.levelno == logging.WARNING] == [
-        "llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=test-model"
-    ]
+    assert warning_lines == ["llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=test-model"]
     assert all(
-        marker not in caplog.text for marker in ("LEAK_MARKER", "LINE_MARKER", "INJECTED_MARKER")
+        marker not in line
+        for line in usage_lines + warning_lines
+        for marker in ("LEAK_MARKER", "LINE_MARKER", "INJECTED_MARKER")
     )
 
 
@@ -106,20 +109,18 @@ def test_잘못된_사용량은_원문을_기록하지_않는다(monkeypatch, ca
         ({}, "- - -"),
     ],
 )
-def test_정상값과_누락된_사용량은_경고하지_않는다(monkeypatch, caplog, usage, expected):
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "is_server", True)
-    monkeypatch.setattr(llm.logger, "propagate", True)
-    caplog.set_level(logging.INFO, logger=llm.logger.name)
+def test_정상값과_누락된_사용량은_경고하지_않는다(
+    monkeypatch, usage_lines, warning_lines, usage, expected
+):
     _answer(monkeypatch, {"usage": usage})
 
     llm.post_json("https://x", headers={}, payload={"model": "test-model"}, timeout=1)
 
     prompt, completion, total = expected.split()
-    assert [record.message for record in caplog.records] == [
+    assert usage_lines == [
         f"llm_usage model=test-model prompt={prompt} completion={completion} total={total}"
     ]
+    assert warning_lines == []
 
 
 def test_전송_성공_줄은_응답_usage_원문을_남기지_않는다(monkeypatch, usage_lines):

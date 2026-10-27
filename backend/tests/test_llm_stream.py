@@ -1,7 +1,6 @@
 """PLAY_PROJECT 의 SSE 전송. 진짜 엘리스는 부르지 않는다."""
 
 import json
-import logging
 import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -55,6 +54,13 @@ def usage_lines(monkeypatch):
     monkeypatch.setattr(settings, "is_server", True)
     lines = []
     monkeypatch.setattr(llm.logger, "info", lambda fmt, *args: lines.append(fmt % args))
+    return lines
+
+
+@pytest.fixture
+def warning_lines(monkeypatch):
+    lines = []
+    monkeypatch.setattr(llm.logger, "warning", lambda fmt, *args: lines.append(fmt % args))
     return lines
 
 
@@ -137,10 +143,7 @@ def test_valid_sse_returns_assembled_content_and_logs_usage_once(monkeypatch, us
 
 @pytest.mark.parametrize("field", [*USAGE, "all"])
 @pytest.mark.parametrize("value", ["LEAK_MARKER", "LINE_MARKER\nINJECTED_MARKER", True, -1, 1.5])
-def test_invalid_usage_is_not_logged(monkeypatch, caplog, field, value):
-    monkeypatch.setattr(settings, "is_server", True)
-    monkeypatch.setattr(llm.logger, "propagate", True)
-    caplog.set_level(logging.INFO, logger=llm.logger.name)
+def test_invalid_usage_is_not_logged(monkeypatch, usage_lines, warning_lines, field, value):
     fields = USAGE if field == "all" else [field]
     _connection(
         monkeypatch,
@@ -155,15 +158,15 @@ def test_invalid_usage_is_not_logged(monkeypatch, caplog, field, value):
     )
 
     expected = {**USAGE, **dict.fromkeys(fields, "-")}
-    assert [record.message for record in caplog.records if record.levelno == logging.INFO] == [
+    assert usage_lines == [
         f"llm_usage model=test-model prompt={expected['prompt_tokens']} "
         f"completion={expected['completion_tokens']} total={expected['total_tokens']}"
     ]
-    assert [record.message for record in caplog.records if record.levelno == logging.WARNING] == [
-        "llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=test-model"
-    ]
+    assert warning_lines == ["llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=test-model"]
     assert all(
-        marker not in caplog.text for marker in ("LEAK_MARKER", "LINE_MARKER", "INJECTED_MARKER")
+        marker not in line
+        for line in usage_lines + warning_lines
+        for marker in ("LEAK_MARKER", "LINE_MARKER", "INJECTED_MARKER")
     )
 
 
@@ -175,10 +178,9 @@ def test_invalid_usage_is_not_logged(monkeypatch, caplog, field, value):
         ({}, "- - -"),
     ],
 )
-def test_valid_and_missing_usage_are_not_warned(monkeypatch, caplog, usage, expected):
-    monkeypatch.setattr(settings, "is_server", True)
-    monkeypatch.setattr(llm.logger, "propagate", True)
-    caplog.set_level(logging.INFO, logger=llm.logger.name)
+def test_valid_and_missing_usage_are_not_warned(
+    monkeypatch, usage_lines, warning_lines, usage, expected
+):
     _connection(monkeypatch, [*_sse("{}", usage=usage), b"data: [DONE]\n\n"])
 
     monthly_llm.SharedLlmTransport().post_stream(
@@ -189,9 +191,10 @@ def test_valid_and_missing_usage_are_not_warned(monkeypatch, caplog, usage, expe
     )
 
     prompt, completion, total = expected.split()
-    assert [record.message for record in caplog.records] == [
+    assert usage_lines == [
         f"llm_usage model=test-model prompt={prompt} completion={completion} total={total}"
     ]
+    assert warning_lines == []
 
 
 @pytest.mark.parametrize(("status", "error"), [(429, LlmBudgetExceeded), (500, LlmFailed)])
