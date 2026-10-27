@@ -584,6 +584,11 @@ def _six_rows(data):
         (_set(("drills", 0, "topic_id"), "snow"), "UNKNOWN_DRILL_TOPIC"),  # not chosen for April
         (_set(("drills", 1, "topic_id"), "fire_a"), "DUPLICATE_DRILL_TOPIC"),
         (_set(("drills", 0, "text"), "4월 14일 오전에 대피 훈련을 해요"), "UNSUPPORTED_FACT"),
+        (_set(("safety", 0, "text"), "annex6:traffic_safety:1 길을 건너는 약속을 알아보아요"),
+         "SOURCE_IDENTIFIER_LEAKAGE"),
+        (_set(("together", 0, "name"), "t.1 봄 산책 놀이"), "SOURCE_IDENTIFIER_LEAKAGE"),
+        (_set(("rationale",), "m03_m05.cand4 놀이를 이어 가는 달입니다."), "SOURCE_IDENTIFIER_LEAKAGE"),
+        (_set(("theme",), "he1 건강한 봄"), "SOURCE_IDENTIFIER_LEAKAGE"),
     ],
 )
 def test_invalid_output_is_rejected_after_one_failed_repair(edit, code):
@@ -770,3 +775,27 @@ def test_drill_origins_need_unique_ids_and_sha256_digests():
     twice = (DrillOrigin("test.guide", "합성", "0" * 64, "1"), DrillOrigin("test.guide", "합성", "1" * 64, "2"))
     with pytest.raises(InvalidDomainValueError):
         replace(DRILLS, origins=twice)
+
+
+def test_a_repair_that_removes_the_internal_id_is_stored_clean():
+    use_case, command, plans, provider, _ = _run(_set(("together", 3, "name"), "t.2 모래 놀이"))
+
+    plan = use_case.execute(command)
+
+    issues = json.loads(provider.requests[1].user_content)["issues"]
+    assert issues == [{"location": "together[3]", "code": "SOURCE_IDENTIFIER_LEAKAGE"}]
+    assert plans.save_count == 1 and plan.together[3].cell.value == "함께 놀이 4"
+
+
+def test_theme_and_rationale_cite_the_parent_period_they_were_written_from():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+
+    for cell in (plan.theme, plan.rationale):
+        (source,) = cell.evidence
+        assert (source.source_type, source.source_id, source.source_version) == (
+            EvidenceSourceType.PARENT_PLAN,
+            "parent-1",
+            "m03_m05",
+        )
+        assert source.display_name == PLAY_PROJECT_LAYOUT_V0_2.periods[0].label

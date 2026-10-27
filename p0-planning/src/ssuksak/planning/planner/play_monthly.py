@@ -116,6 +116,20 @@ class PlayMonthlyRequest:
     drill_topic_ids: tuple[str, ...]  # fixed by the Rule; the LLM writes one sentence each
     fingerprint: str
 
+    @property
+    def source_refs(self) -> frozenset[str]:
+        """Internal ids handed to the LLM; none may appear in teacher-visible text."""
+        return frozenset(
+            {
+                *self.allowed_content_ids,
+                *self.parent_refs,
+                *(ref for slot in self.safety_slots for ref, _ in slot.allowed),
+                *self.habit_entry_ids,
+                *self.health_entry_ids,
+                *self.nutrition_entry_ids,
+            }
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ProposedActivity:
@@ -314,7 +328,8 @@ def validate_play_monthly(
 
     def text(location: str, value: str, **limits: int) -> None:
         # Safety words are expected content in a plan that has its own safety section.
-        for code in visible_text_violations(value, **limits):
+        # The repair is validated against the first request too, so its ids stay blocked.
+        for code in visible_text_violations(value, evidence_refs=request.source_refs, **limits):
             if code != "SAFETY_CONTENT_LEAKAGE":
                 add(location, code)
         if unsupported_facts(value, request.fact_source):
