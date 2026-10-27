@@ -332,7 +332,14 @@ class CopyPlayMonthlyDrillCandidate:
             raise PlayMonthlyLifecycleError("play_monthly_drill_candidate_blank", "The drill candidate is blank")
         cell = next(t for t in plan.teacher_inputs if t.semantic_key == DRILL_CELL_KEY)
         generation = plan.drill_copy_generation
-        if (cell.value, cell.evidence, cell.generation) == (candidate.value, candidate.evidence, generation):
+        source = next(
+            (e.copied_from for e in reversed(cell.audit.events) if e.event_type is AuditEventType.CANDIDATE_COPIED),
+            None,
+        )
+        # Another candidate with the same sentence is still a new source, so it is recorded.
+        if (cell.value, cell.evidence, cell.generation, source) == (
+            candidate.value, candidate.evidence, generation, candidate.item_id,
+        ):
             return plan  # the cell already holds this copy
         event = AuditEvent(
             event_type=AuditEventType.CANDIDATE_COPIED,

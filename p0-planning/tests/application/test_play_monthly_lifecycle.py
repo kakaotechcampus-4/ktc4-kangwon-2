@@ -722,3 +722,18 @@ def test_only_the_drill_cell_may_hold_a_copy_and_only_of_this_plans_drill_candid
     assert _drill(holding(drill, generation=rule_only, audit=drill.audit.append(
         _copied_event(plan, drill, source)
     ))).value == "x"
+
+
+def test_another_candidate_with_the_same_sentence_is_still_recorded_as_the_new_source():
+    plan, plans, edit, _ = _draft()
+    first, second = plan.drill_candidates[:2]
+    _edit(edit, plan, second.cell, first.cell.value)
+    copied = _copy(plans, plan, first)
+    saves = plans.save_count
+
+    switched = _copy(plans, copied, second)
+
+    event = _drill(switched).audit.events[-1]
+    assert (event.event_type, event.copied_from) == (AuditEventType.CANDIDATE_COPIED, second.cell.item_id)
+    assert event.value_change == ValueChange(first.cell.value, first.cell.value)
+    assert plans.save_count == saves + 1
