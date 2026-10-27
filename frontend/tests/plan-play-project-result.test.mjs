@@ -57,6 +57,7 @@ function plan() {
   const cell = (value) => ({ value, evidence: [], generation: { method: "RULE_LLM" } });
   return {
     id: 41,
+    revision: 3,
     class_id: 8,
     school_year: 2026,
     status: "DRAFT",
@@ -66,6 +67,7 @@ function plan() {
       period_key: "period" + period,
       label,
       months: [],
+      selected: [],
       candidates: Array.from({ length: 10 }, (_, i) => ({
         row_key: "cand" + i,
         play_name: cell("놀이 " + i),
@@ -107,7 +109,19 @@ const { default: Picking } = compile("../components/plan-generator/PlayProjectPi
   "./PlayProjectResult.module.css": esModule(resultStyles),
   "./playProjectPagination": sheetHelpers,
 });
+// 저장 훅 대역 — 화면이 무엇을 저장하라고 넘겼는지와 저장 표시만 본다. 큐 규칙은 따로 시험한다.
+const saveStub = { calls: [], retries: 0, status: "idle", conflict: null };
 const sheetModules = {
+  "@/lib/hooks/use-play-selection-save": {
+    usePlaySelectionSave: (_id, _revision, onConflict) => {
+      saveStub.conflict = onConflict;
+      return {
+        status: saveStub.status,
+        save: (selections) => saveStub.calls.push(selections),
+        retry: () => saveStub.retries++,
+      };
+    },
+  },
   "./playProjectPagination": sheetHelpers,
   "./PlayProjectSheet": esModule(Sheet),
   "./PlayProjectPicking": esModule(Picking),
@@ -126,6 +140,7 @@ function resultRenderer(planValue, initial = [], desktop = false) {
   const scrolls = [];
   const frames = [];
   const tabListRef = { current: null };
+  let picksBox;
   let tree;
   let cursor = 0;
   const useState = (value) => {
@@ -141,7 +156,7 @@ function resultRenderer(planValue, initial = [], desktop = false) {
     {
       react: {
         useState,
-        useRef: () => tabListRef,
+        useRef: (value) => (value === null ? tabListRef : (picksBox ??= { current: value })),
         useEffect: () => {},
         useSyncExternalStore: (_subscribe, get) => get(),
       },
@@ -233,10 +248,7 @@ test("PlayProjectResult shows notices, accessible period tabs, and ten complete 
       .some((node) => /수정|확정|내려받기|저장/.test(text(node))),
     false,
   );
-  assert.match(
-    rendered,
-    /고른 놀이는 아직 저장되지 않아요\. 새로고침하면 처음부터 다시 골라야 해요\./,
-  );
+  assert.doesNotMatch(rendered, /아직 저장되지 않아요|새로고침하면 처음부터/);
 });
 
 test("pick helper enforces five picks in pick order and preview rows preserve that order", () => {
@@ -452,7 +464,7 @@ test("available plays disable every add at five picks and reopen the removed can
   assert.equal(buttons.length, 5);
   assert.ok(buttons.every((node) => node.props.disabled === true));
   assert.equal(
-    text(availableNodes().find((node) => node.props?.role === "status")),
+    text(availableNodes().find((node) => node.props?.role === "status" && text(node))),
     "5개를 모두 골랐어요. 바꾸려면 하나를 빼 주세요.",
   );
   nodes.find((node) => node.props?.["aria-label"] === "놀이 4 빼기").props.onClick();
@@ -464,7 +476,7 @@ test("available plays disable every add at five picks and reopen the removed can
   );
   assert.ok(buttons.every((node) => node.props.disabled === false));
   assert.equal(
-    availableNodes().some((node) => node.props?.role === "status"),
+    availableNodes().some((node) => node.props?.role === "status" && text(node)),
     false,
   );
 });
@@ -506,7 +518,7 @@ test("full draft shows only short periods, plain table, tabs, and arrangement re
   ]);
   let nodes = all(view.render());
   assert.equal(
-    text(nodes.find((node) => node.props?.role === "status")),
+    text(nodes.find((node) => node.props?.role === "status" && text(node))),
     "9월~11월이 3개, 12월~2월이 0개예요. 확정하려면 구간마다 5개가 필요해요.",
   );
   const table = tables(nodes);
@@ -590,7 +602,7 @@ test("full draft omits the shortage line when all four periods have five picks",
   const full = ["cand0", "cand1", "cand2", "cand3", "cand4"];
   const picks = Object.fromEntries(plan().periods.map((period) => [period.period_key, full]));
   const nodes = all(resultRenderer(plan(), [0, 2, picks, null]).render());
-  assert.equal(nodes.filter((node) => node.props?.role === "status").length, 0);
+  assert.equal(nodes.filter((node) => node.props?.role === "status" && text(node)).length, 0);
   assert.equal(
     nodes.some((node) => text(node).includes("확정하려면 구간마다 5개가 필요해요.")),
     false,
@@ -826,7 +838,7 @@ test("selected preview cells sync the read-only viewer, field chips, highlight, 
   assert.equal(highlighted[0].props.children.props["aria-label"], "놀이 2 놀이명");
   assert.ok(!highlighted[0].props.children.props.className.includes("selectedCell"));
   assert.ok(nodes.some((node) => text(node) === "아직 수정 기능은 제공하지 않아요."));
-  assert.ok(nodes.some((node) => text(node).includes("고른 놀이는 아직 저장되지 않아요.")));
+  assert.ok(!nodes.some((node) => text(node).includes("아직 저장되지 않아요")));
   nodes.find((node) => node.type === "button" && text(node) === "지원매체").props.onClick();
   nodes = all(view.render());
   textarea = nodes.find((node) => node.type === "textarea");
@@ -1386,7 +1398,11 @@ test("AnnualResult routes a PLAY_PROJECT response to PlayProjectResult", async (
     ];
   };
   const { default: Result } = compile("../components/plan-generator/AnnualResult.tsx", {
-    react: { useState: stateHook, useEffect: (effect) => effects.push(effect) },
+    react: {
+      useState: stateHook,
+      useRef: (value) => ({ current: value }),
+      useEffect: (effect) => effects.push(effect),
+    },
     "next/navigation": { useRouter: () => ({ push: () => {} }) },
     "@/components/app/AppHeader": esModule(({ title, description }) =>
       jsx("app-header", { title, description }),
@@ -1864,4 +1880,249 @@ test("desktop selected oversized cells use nearest scrolling", () => {
     frames.shift()();
     assert.deepEqual(scrolls.pop(), { top: expected, left: 0 });
   }
+});
+
+const statusText = (nodes) => text(nodes.find((node) => node.props?.role === "status"));
+test("picks start from the server's selected lists, so a reload keeps them", () => {
+  const saved = plan();
+  saved.periods[0].selected = ["cand4", "cand1"];
+  const nodes = all(resultRenderer(saved).render());
+  const tabs = nodes.filter((node) => node.props?.role === "tab").map(text);
+  assert.deepEqual(tabs, ["3월~5월 · 2/5", "6월~8월 · 0/5", "9월~11월 · 0/5", "12월~2월 · 0/5"]);
+});
+
+test("every picking change goes through one save call with all four periods", () => {
+  saveStub.calls.length = 0;
+  const view = resultRenderer(plan());
+  pickToggles(all(view.render()))[2].props.onClick();
+  assert.deepEqual(saveStub.calls.pop(), {
+    period0: ["cand2"],
+    period1: [],
+    period2: [],
+    period3: [],
+  });
+  pickToggles(all(view.render()))[0].props.onClick();
+  assert.deepEqual(saveStub.calls.pop().period0, ["cand2", "cand0"]);
+  all(view.render())
+    .find((node) => node.props?.["aria-label"] === "놀이 2 빼기")
+    .props.onClick();
+  assert.deepEqual(saveStub.calls.pop().period0, ["cand0"]);
+  assert.equal(saveStub.calls.length, 0);
+});
+
+test("a pick that changes nothing (sixth play) is not saved", () => {
+  saveStub.calls.length = 0;
+  const full = plan();
+  full.periods[0].selected = ["cand0", "cand1", "cand2", "cand3", "cand4"];
+  const view = resultRenderer(full);
+  const sixth = pickToggles(all(view.render())).find((node) =>
+    node.props["aria-label"].includes("「놀이 5」"),
+  );
+  assert.ok(sixth);
+  sixth.props.onClick();
+  assert.equal(saveStub.calls.length, 0);
+});
+
+test("save status shows in a status line with a retry button only on failure", () => {
+  const { default: Result } = playResult();
+  const render = (status) => {
+    saveStub.status = status;
+    return all(resolve(jsx(Result, { plan: plan(), onConflict: () => {} })));
+  };
+  try {
+    assert.equal(statusText(render("idle")), "");
+    assert.equal(statusText(render("saving")), "저장 중…");
+    assert.equal(statusText(render("saved")), "저장됨");
+    assert.equal(
+      render("saved").some((node) => node.type === "button" && text(node) === "다시 저장"),
+      false,
+    );
+    const failed = render("failed");
+    assert.equal(statusText(failed), "저장하지 못했어요");
+    const retries = saveStub.retries;
+    failed.find((node) => node.type === "button" && text(node) === "다시 저장").props.onClick();
+    assert.equal(saveStub.retries, retries + 1);
+  } finally {
+    saveStub.status = "idle";
+  }
+});
+
+test("the reloaded-after-conflict notice shows up as a status message", () => {
+  const { default: Result } = playResult();
+  const message = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
+  const nodes = all(resolve(jsx(Result, { plan: plan(), notice: message })));
+  assert.ok(nodes.some((node) => node.props?.role === "status" && text(node) === message));
+});
+
+test("AnnualResult reloads the plan on a save conflict and keeps the notice", async () => {
+  const first = plan();
+  const fresh = { ...plan(), revision: 9 };
+  fresh.periods[0].selected = ["cand7"];
+  let served = first;
+  const state = [];
+  const effects = [];
+  let cursor = 0;
+  const stateHook = (initial) => {
+    const index = cursor++;
+    if (!(index in state)) state[index] = typeof initial === "function" ? initial() : initial;
+    return [
+      state[index],
+      (value) => (state[index] = typeof value === "function" ? value(state[index]) : value),
+    ];
+  };
+  const { default: Result } = compile("../components/plan-generator/AnnualResult.tsx", {
+    react: {
+      useState: stateHook,
+      useRef: (value) => ({ current: value }),
+      useEffect: (effect) => effects.push(effect),
+    },
+    "next/navigation": { useRouter: () => ({ push: () => {} }) },
+    "@/components/app/AppHeader": esModule(() => jsx("app-header", {})),
+    "@/lib/api/plans": { getAnnualPlan: async () => served },
+    "@/lib/plan-generator/context": { loadAnnualContext: () => undefined },
+    "./GenerationFlow": esModule(() => jsx("generation-flow", {})),
+    "./PlayProjectResult": esModule(() => jsx("play-project-result", {})),
+  });
+  const render = () => {
+    cursor = 0;
+    return all(Result({ id: first.id }));
+  };
+  const shown = () => render().find((node) => node.props?.onConflict);
+  render();
+  effects[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  const before = shown();
+  assert.equal(before.props.notice, undefined);
+  served = fresh;
+  before.props.onConflict();
+  await new Promise((resolve) => setImmediate(resolve));
+  const after = shown();
+  assert.equal(after.props.plan.revision, 9);
+  assert.deepEqual(after.props.plan.periods[0].selected, ["cand7"]);
+  assert.equal(after.props.notice, "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.");
+  assert.notEqual(after.key, before.key);
+});
+
+test("every way of changing picks saves all four periods as the full body", () => {
+  const full = (period0, period1 = []) => ({ period0, period1, period2: [], period3: [] });
+  const start = { period0: ["cand0", "cand1", "cand2"], period1: ["cand4"] };
+  const after = (step, tab, desktop, act) => {
+    saveStub.calls.length = 0;
+    const view = resultRenderer(plan(), FULL_STATE({ ...start }, step, tab), desktop);
+    act(all(view.render()), view);
+    assert.equal(saveStub.calls.length, 1);
+    return saveStub.calls[0];
+  };
+  const byLabel = (nodes, label) => nodes.find((node) => node.props?.["aria-label"] === label);
+  // ① 선택 · 해제(× 와 같은 흐름)
+  assert.deepEqual(
+    after(0, "edit", false, (nodes) => byLabel(nodes, "「놀이 5」 선택하기").props.onClick()),
+    full(["cand0", "cand1", "cand2", "cand5"], ["cand4"]),
+  );
+  assert.deepEqual(
+    after(0, "edit", false, (nodes) => byLabel(nodes, "「놀이 1」 선택됨").props.onClick()),
+    full(["cand0", "cand2"], ["cand4"]),
+  );
+  // ① 오른쪽 목록의 ×
+  assert.deepEqual(
+    after(0, "edit", false, (nodes) => byLabel(nodes, "놀이 0 빼기").props.onClick()),
+    full(["cand1", "cand2"], ["cand4"]),
+  );
+  // ② ↑ ↓ · 빼기 · 넣기
+  assert.deepEqual(
+    after(1, "picked", false, (nodes) => byLabel(nodes, "1번째 놀이 아래로").props.onClick()),
+    full(["cand1", "cand0", "cand2"], ["cand4"]),
+  );
+  assert.deepEqual(
+    after(1, "picked", false, (nodes) => byLabel(nodes, "놀이 2 빼기").props.onClick()),
+    full(["cand0", "cand1"], ["cand4"]),
+  );
+  assert.deepEqual(
+    after(1, "picked", false, (nodes) => byLabel(nodes, "놀이 7 넣기").props.onClick()),
+    full(["cand0", "cand1", "cand2", "cand7"], ["cand4"]),
+  );
+  // ② 끌어놓기: 문서 행 → 다른 문서 행
+  assert.deepEqual(
+    after(1, "edit", DESKTOP, (nodes, view) => {
+      draggableRows(nodes)[0].props.onDragStart(dragEvent());
+      draggableRows(all(view.render()))[2].props.onDrop(dragEvent());
+    }),
+    full(["cand1", "cand2", "cand0"], ["cand4"]),
+  );
+});
+
+test("two picks changed before a re-render both survive (latest value, not the render's)", () => {
+  saveStub.calls.length = 0;
+  const view = resultRenderer(plan());
+  const nodes = all(view.render());
+  pickToggles(nodes)[3].props.onClick();
+  pickToggles(nodes)[1].props.onClick();
+  assert.deepEqual(saveStub.calls.at(-1).period0, ["cand3", "cand1"]);
+});
+
+test("the stale notice is dismissed when the next pick is made", () => {
+  const { default: Result } = playResult();
+  let dismissed = 0;
+  const nodes = all(
+    resolve(
+      jsx(Result, { plan: plan(), onDismissNotice: () => dismissed++, onConflict: () => {} }),
+    ),
+  );
+  pickToggles(nodes)[0].props.onClick();
+  assert.equal(dismissed, 1);
+});
+
+test("overlapping conflict reloads keep only the last request's plan, and picking dismisses the notice", async () => {
+  const first = plan();
+  const answers = [];
+  const state = [];
+  const refs = [];
+  const effects = [];
+  let cursor = 0;
+  let refCursor = 0;
+  let calls = 0;
+  const stateHook = (initial) => {
+    const index = cursor++;
+    if (!(index in state)) state[index] = typeof initial === "function" ? initial() : initial;
+    return [
+      state[index],
+      (value) => (state[index] = typeof value === "function" ? value(state[index]) : value),
+    ];
+  };
+  const { default: Result } = compile("../components/plan-generator/AnnualResult.tsx", {
+    react: {
+      useState: stateHook,
+      useRef: (value) => (refs[refCursor] ??= { current: value }) && refs[refCursor++],
+      useEffect: (effect) => effects.push(effect),
+    },
+    "next/navigation": { useRouter: () => ({ push: () => {} }) },
+    "@/components/app/AppHeader": esModule(() => jsx("app-header", {})),
+    "@/lib/api/plans": {
+      getAnnualPlan: () =>
+        calls++ === 0 ? Promise.resolve(first) : new Promise((resolve) => answers.push(resolve)),
+    },
+    "@/lib/plan-generator/context": { loadAnnualContext: () => undefined },
+    "./GenerationFlow": esModule(() => jsx("generation-flow", {})),
+    "./PlayProjectResult": esModule(() => jsx("play-project-result", {})),
+  });
+  const render = () => {
+    cursor = 0;
+    refCursor = 0;
+    return all(Result({ id: first.id }));
+  };
+  const shown = () => render().find((node) => node.props?.onConflict);
+  render();
+  effects[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  const screen = shown();
+  const older = screen.props.onConflict();
+  const newer = screen.props.onConflict();
+  answers[1]({ ...plan(), revision: 8 });
+  await newer;
+  answers[0]({ ...plan(), revision: 5 }); // 늦게 온 옛 응답
+  await older;
+  assert.equal(shown().props.plan.revision, 8);
+  assert.ok(shown().props.notice);
+  shown().props.onDismissNotice();
+  assert.equal(shown().props.notice, undefined);
 });

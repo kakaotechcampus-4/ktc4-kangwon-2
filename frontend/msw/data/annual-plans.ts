@@ -9,6 +9,7 @@ import type {
   AnnualPlanResponse,
   AnnualPlanSummary,
   PlayProjectAnnualPlan,
+  PlayCell,
   MonthlyCell,
   ConfirmResult,
 } from "../../lib/api/types";
@@ -70,12 +71,20 @@ const projectGeneration = {
   rule_id: "play_project.generate",
   rule_version: "play-project-planner-v6",
 };
-const projectCell = (value: string, evidence: MonthlyCell["evidence"] = []) => ({
+/** 서버처럼 `item_` + 32자리 hex. 목업은 계획안 · 구간 · 후보 · 칸 번호로 결정적으로 만든다. */
+const itemId = (...parts: number[]) =>
+  "item_" + parts.map((n) => n.toString(16).padStart(32 / parts.length, "0")).join("");
+const projectCell = (
+  item_id: string,
+  value: string,
+  evidence: MonthlyCell["evidence"] = [],
+): PlayCell => ({
+  item_id,
   value,
   evidence,
   generation: projectGeneration,
 });
-const projectPeriods = (): PlayProjectAnnualPlan["periods"] =>
+const projectPeriods = (planId: number): PlayProjectAnnualPlan["periods"] =>
   [
     { period_key: "m03_m05", label: "3월~5월", months: [3, 4, 5] },
     { period_key: "m06_m08", label: "6월~8월", months: [6, 7, 8] },
@@ -83,16 +92,22 @@ const projectPeriods = (): PlayProjectAnnualPlan["periods"] =>
     { period_key: "m12_m02", label: "12월~2월", months: [12, 1, 2] },
   ].map((period, periodIndex) => ({
     ...period,
+    selected: [],
     candidates: Array.from({ length: 10 }, (_, index) => {
       const number = index + 1;
       return {
         row_key: "cand" + number,
         play_name: projectCell(
+          itemId(planId, periodIndex, number, 1),
           `${period.months[0]}~${period.months[period.months.length - 1]}월 함께하는 놀이 ${number}`,
         ),
-        materials: projectCell("종이 상자, 크레파스"),
-        support_direction: projectCell("유아가 관심을 보이는 재료를 충분히 탐색하도록 돕습니다."),
+        materials: projectCell(itemId(planId, periodIndex, number, 2), "종이 상자, 크레파스"),
+        support_direction: projectCell(
+          itemId(planId, periodIndex, number, 3),
+          "유아가 관심을 보이는 재료를 충분히 탐색하도록 돕습니다.",
+        ),
         learning: projectCell(
+          itemId(planId, periodIndex, number, 4),
           "재료의 모양과 성질을 탐색하며 새로운 놀이 방법을 발견한다.\n친구와 생각을 나누며 함께 놀이를 이어간다.",
           [1, 2].map((item) => ({
             source_type: "CURRICULUM",
@@ -147,12 +162,14 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
   if (p.format === "PLAY_PROJECT")
     return {
       id: p.id,
+      // 이 키가 생기기 전에 저장된 목업 계획안에는 없다 — 서버가 첫 상태로 주는 값으로 읽는다.
+      revision: p.revision ?? 1,
       class_id: p.class_id,
       school_year: p.school_year,
       status: p.status,
       format: p.format,
       format_version: p.format_version,
-      periods: p.periods,
+      periods: p.periods.map((period) => ({ ...period, selected: period.selected ?? [] })),
     };
   return {
     id: p.id,
@@ -199,8 +216,9 @@ export const addPlan = (input: AnnualInput, schoolYear: number) =>
             school_year: schoolYear,
             status: "DRAFT",
             format: "PLAY_PROJECT",
+            revision: 1,
             format_version: "play-project-layout-v0.2.0",
-            periods: projectPeriods(),
+            periods: projectPeriods(id),
             created_at: at,
             confirmed_at: null,
           }
@@ -278,3 +296,23 @@ export const confirmPlan = (id: number): ConfirmResult =>
 /** 이 키가 생기기 전에 저장된 목업 이력에는 `value_change` 가 없다 — 서버처럼 null 로 준다. */
 export const listAnnualAudit = (id: number): AnnualAuditEvent[] =>
   (read().annualAudit[id] ?? []).map((e) => ({ ...e, value_change: e.value_change ?? null }));
+
+/**
+ * 고르기를 통째로 바꾼다 (§6-1). 같은 선택이면 revision 도 그대로다(서버와 같다).
+ * 호출하기 전에 핸들러가 형식 · 확정 · revision · 없는 row_key 를 이미 걸렀다.
+ */
+export const putPlaySelection = (id: number, selections: Record<string, string[]>) =>
+  commit((db) => {
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "PLAY_PROJECT" }> =>
+        p.id === id && p.format === "PLAY_PROJECT",
+    )!;
+    const same = plan.periods.every(
+      (period) => (period.selected ?? []).join() === selections[period.period_key].join(),
+    );
+    if (!same) {
+      plan.periods.forEach((period) => (period.selected = selections[period.period_key]));
+      plan.revision = (plan.revision ?? 1) + 1; // 옛 저장본은 `revision` 이 없다(조회와 같이 1 로 읽는다).
+    }
+    return detail(plan);
+  });

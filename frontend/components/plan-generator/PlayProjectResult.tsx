@@ -14,6 +14,7 @@ import tabs from "./GenerationFlow.module.css";
 import styles from "./PlayProjectResult.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet, { type PlayDnd } from "./PlayProjectSheet";
+import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import {
   cellButtonId,
   eulReul,
@@ -24,6 +25,26 @@ import {
 export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 
 const MAX_PICKS = 5;
+
+const SAVE_LABEL = {
+  idle: "",
+  saving: "저장 중…",
+  saved: "저장됨",
+  failed: "저장하지 못했어요",
+  reloading: "최신 내용을 다시 불러오는 중…",
+};
+
+// 서버가 저장해 둔 고르기(selected)가 처음 상태다. 새로고침해도 고른 것이 그대로 보인다.
+export function picksFromPlan(plan: PlayProjectAnnualPlan): Record<string, string[]> {
+  return Object.fromEntries(plan.periods.map((item) => [item.period_key, item.selected]));
+}
+
+// 저장 요청은 네 구간을 전부 보낸다. 아직 안 고른 구간은 빈 목록이다.
+export function selectionsOf(plan: PlayProjectAnnualPlan, picks: Record<string, string[]>) {
+  return Object.fromEntries(
+    plan.periods.map((item) => [item.period_key, picks[item.period_key] ?? []]),
+  );
+}
 
 export function togglePlayPick(picks: string[], rowKey: string) {
   return picks.includes(rowKey)
@@ -195,11 +216,24 @@ function PickedListRow({
   );
 }
 
-// 고른 놀이와 보기 설정은 화면 상태에만 둔다.
-export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPlan }) {
+// 보기 설정은 화면 상태에만 둔다. 고른 놀이는 바뀔 때마다 바로 저장한다(ADR-044).
+export default function PlayProjectResult({
+  plan,
+  notice,
+  onConflict,
+  onDismissNotice,
+}: {
+  plan: PlayProjectAnnualPlan;
+  /** 다시 불러온 직후에 보이는 안내. */
+  notice?: string;
+  /** 다른 곳에서 바뀌어 저장이 막혔을 때. 부모가 최신 계획안을 다시 불러오고, 끝나면 돌려준다. */
+  onConflict: () => Promise<void>;
+  /** 고르기가 바뀌거나 저장이 성공하면 다시 불러온 안내를 지우도록 부모에게 알린다. */
+  onDismissNotice?: () => void;
+}) {
   const [activePeriod, setActivePeriod] = useState(0);
   const [step, setStep] = useState(0);
-  const [picks, setPicks] = useState<Record<string, string[]>>({});
+  const [picks, setPicks] = useState(() => picksFromPlan(plan));
   const [selectedCell, setSelectedCell] = useState<{
     periodKey: string;
     rowKey: string;
@@ -216,6 +250,9 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
   const [moveNotice, setMoveNotice] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
   const wide = useSyncExternalStore(subscribeWide, isWide, () => false);
+  const saving = usePlaySelectionSave(plan.id, plan.revision, onConflict, onDismissNotice);
+  // 고르기의 최신 값. 이벤트 핸들러에서만 읽고 쓴다 — 같은 렌더에서 두 번 바뀌어도 앞 변경을 잃지 않는다.
+  const latestPicks = useRef(picks);
   const tabListRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLButtonElement>(null);
   const period = plan.periods[activePeriod];
@@ -259,10 +296,20 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
           : current,
       );
     }
-    setPicks((current) => ({
-      ...current,
-      [period.period_key]: togglePlayPick(current[period.period_key] ?? [], rowKey),
-    }));
+    applyPicks(period.period_key, (list) => togglePlayPick(list, rowKey));
+  }
+
+  // 고르기를 바꾸는 곳은 전부 여기를 지난다 — 최신 값에서 다음 값을 만들어 화면에 반영하고 저장 큐에 넣는다.
+  // 바뀐 게 없으면 null, 바뀌었으면 그 구간의 새 목록을 돌려준다.
+  function applyPicks(periodKey: string, change: (list: string[]) => string[]) {
+    const list = latestPicks.current[periodKey] ?? [];
+    const next = change(list);
+    if (next === list) return null;
+    latestPicks.current = { ...latestPicks.current, [periodKey]: next };
+    setPicks(latestPicks.current);
+    onDismissNotice?.();
+    saving.save(selectionsOf(plan, latestPicks.current));
+    return next;
   }
 
   // 목록의 놀이명을 눌러 고를 때(keepTab)는 넓은 화면에서만 목록 탭에 머문다. 좁은 화면은 문서 강조가 안 보인다.
@@ -282,10 +329,7 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
 
   function moveCandidate(rowKey: string, delta: -1 | 1) {
     setMoveNotice(movedNotice(candidateName(period, rowKey), periodPicks.indexOf(rowKey) + delta));
-    setPicks((current) => ({
-      ...current,
-      [period.period_key]: movePlayPick(current[period.period_key] ?? [], rowKey, delta),
-    }));
+    applyPicks(period.period_key, (list) => movePlayPick(list, rowKey, delta));
     requestAnimationFrame(() => {
       const arrow = document.getElementById(
         `${pickId(rowKey)}-${delta}`,
@@ -298,11 +342,9 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
     const from = drag;
     setDrag(null);
     if (!from || from.periodKey !== periodKey) return;
-    const current = picks[periodKey] ?? [];
-    const placed = placePlayPick(current, from.rowKey, toIndex);
-    if (placed === current) return;
+    const placed = applyPicks(periodKey, (list) => placePlayPick(list, from.rowKey, toIndex));
+    if (!placed) return;
     const periodIndex = plan.periods.findIndex((item) => item.period_key === periodKey);
-    setPicks((all) => ({ ...all, [periodKey]: placed }));
     // 다른 구간의 문서 행을 옮겼으면 왼쪽 목록과 안내가 그 구간을 가리키게 한다.
     if (periodIndex !== activePeriod) setActivePeriod(periodIndex);
     setMoveNotice(
@@ -641,6 +683,12 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
       <div className={styles.meta}>
         <span className={workspace.badge}>{plan.status === "DRAFT" ? "초안" : "확정"}</span>
         <span>{plan.school_year}학년도</span>
+        <span role="status">{SAVE_LABEL[saving.status]}</span>
+        {saving.status === "failed" && (
+          <button type="button" className={workspace.secondary} onClick={saving.retry}>
+            다시 저장
+          </button>
+        )}
       </div>
       <ol className={`${tabs.steps} ${styles.steps}`} aria-label="놀이 프로젝트 결과 단계">
         {["① 놀이 고르기", "② 배치하고 다듬기", "③ 전체 초안 보기"].map((label, index) => (
@@ -657,10 +705,14 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
           </li>
         ))}
       </ol>
+      {notice && (
+        <p role="status" className={workspace.notice}>
+          {notice}
+        </p>
+      )}
       <div className={workspace.notice}>
         <p>놀이 프로젝트형은 아직 확정 · 내려받기를 할 수 없어요.</p>
         <p>이 반은 월간 · 주간계획안을 만들 수 없어요.</p>
-        <p>고른 놀이는 아직 저장되지 않아요. 새로고침하면 처음부터 다시 골라야 해요.</p>
       </div>
       <div className={styles.tabRow}>
         <div

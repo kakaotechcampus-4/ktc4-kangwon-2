@@ -205,8 +205,17 @@ export interface AnnualPlan {
   /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */
   checks: { rule: string; severity: string; detail: string; month: number | null }[];
 }
+/** 놀이 프로젝트형 칸 하나. `item_id` 는 칸 단위 저장이 쓰는 이름표다(ADR-044). */
+export interface PlayCell {
+  item_id: string;
+  value: string;
+  evidence: MonthlyCell["evidence"];
+  generation: MonthlyCell["generation"];
+}
 export interface PlayProjectAnnualPlan {
   id: number;
+  /** 저장할 때마다 1 씩 는다. 저장 요청에 `expected_revision` 으로 되돌려 보낸다. */
+  revision: number;
   class_id: number;
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
@@ -216,28 +225,14 @@ export interface PlayProjectAnnualPlan {
     period_key: string;
     label: string;
     months: number[];
+    /** 교사가 고른 후보의 row_key. 고른 순서 그대로이고 최대 5개다. */
+    selected: string[];
     candidates: {
       row_key: string;
-      play_name: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
-      materials: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
-      support_direction: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
-      learning: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
+      play_name: PlayCell;
+      materials: PlayCell;
+      support_direction: PlayCell;
+      learning: PlayCell;
     }[];
   }[];
 }

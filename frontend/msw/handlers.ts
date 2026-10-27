@@ -18,6 +18,7 @@ import {
   listPlans,
   addPlan,
   putMonth,
+  putPlaySelection,
   confirmPlan,
   listAnnualAudit,
   safetyCategories,
@@ -370,10 +371,7 @@ export const handlers = [
       plan = findPlan(id);
     if (!plan) return annualMissing();
     if (plan.format === "PLAY_PROJECT")
-      return failure(
-        "GATE_BLOCKED",
-        "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.",
-      );
+      return failure("GATE_BLOCKED", "놀이 프로젝트형은 칸 편집으로 고칩니다.");
     if (!plan.months.some((m) => m.month === month))
       return failure("NOT_FOUND", "그 달이 없습니다.", "month");
     if (plan.status === "CONFIRMED")
@@ -381,6 +379,34 @@ export const handlers = [
     // 공백만 있는 주제는 Core 가 거절한다 — 서버도 fields 를 주지 않는다.
     if (!b.theme.trim()) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.");
     return HttpResponse.json(putMonth(id, month, b as unknown as MonthInput));
+  }),
+  http.put("*/api/plans/annual/:id/selection", async ({ request, params }) => {
+    const s = await scenario(request, "annual-selection");
+    if (s) return s;
+    // 서버 순서: 본문 형식 422 → 계획안 404 → 형식 409 → 확정 409 → revision 409 → 없는 row_key 422 (§6-1).
+    const b = await body(request);
+    if (!b) return bad("body");
+    const wrong = selectionProblems(b.selections);
+    if (badRevision(b)) wrong.push("expected_revision");
+    if (wrong.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...wrong);
+    const selections = b.selections as Record<string, string[]>;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format !== "PLAY_PROJECT")
+      return failure("GATE_BLOCKED", "월별 주제형은 월별 칸 수정으로 고칩니다.");
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    if (plan.revision !== b.expected_revision) return stale();
+    const unknown = plan.periods
+      .filter((period) =>
+        selections[period.period_key].some(
+          (key) => !period.candidates.some((candidate) => candidate.row_key === key),
+        ),
+      )
+      .map((period) => "selections." + period.period_key);
+    if (unknown.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...unknown);
+    return HttpResponse.json(putPlaySelection(id, selections));
   }),
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");
@@ -795,6 +821,26 @@ const stale = () =>
     "그 사이 다른 화면에서 계획안이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
     "expected_revision",
   );
+const PLAY_PERIODS = ["m03_m05", "m06_m08", "m09_m11", "m12_m02"];
+/** 네 구간이 전부 있고 구간마다 중복 없는 5개 이하 목록이어야 한다 (§6-1). 문제 있는 칸 이름을 모은다. */
+function selectionProblems(selections: unknown): string[] {
+  if (!selections || typeof selections !== "object" || Array.isArray(selections))
+    return ["selections"];
+  const given = selections as Record<string, unknown>;
+  const unknownKeys = Object.keys(given).filter((key) => !PLAY_PERIODS.includes(key));
+  return [...PLAY_PERIODS, ...unknownKeys]
+    .filter((key) => {
+      const list = given[key];
+      return (
+        !Array.isArray(list) ||
+        list.length > 5 ||
+        !list.every((v) => typeof v === "string") ||
+        new Set(list).size !== list.length ||
+        unknownKeys.includes(key)
+      );
+    })
+    .map((key) => "selections." + key);
+}
 /** 문자열 "3" · true 는 거절한다 (§9-3). */
 const badRevision = (b: Record<string, unknown>) =>
   !integer(b.expected_revision) || b.expected_revision < 1;

@@ -231,16 +231,19 @@ test("PLAY_PROJECT does not support month edits, confirmation, audit, or monthly
     format: "PLAY_PROJECT",
   });
   const message = "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.";
-  for (const request of [
-    putAnnualMonth(plan.id, 3, { theme: "주제", sub_themes: [] }),
-    confirmAnnualPlan(plan.id),
-    getAnnualPlanAudit(plan.id),
+  for (const [request, expected] of [
+    [
+      putAnnualMonth(plan.id, 3, { theme: "주제", sub_themes: [] }),
+      "놀이 프로젝트형은 칸 편집으로 고칩니다.",
+    ],
+    [confirmAnnualPlan(plan.id), message],
+    [getAnnualPlanAudit(plan.id), message],
   ])
     await assert.rejects(request, (e) => {
       assert.ok(e instanceof ApiError);
       assert.equal(e.status, 409);
       assert.equal(e.body.error.code, "GATE_BLOCKED");
-      assert.equal(e.body.error.message, message);
+      assert.equal(e.body.error.message, expected);
       assert.deepEqual(e.body.error.fields, []);
       return true;
     });

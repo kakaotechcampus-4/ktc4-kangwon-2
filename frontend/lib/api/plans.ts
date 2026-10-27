@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import { downloadHwpx } from "./export";
+import { isAlreadyConfirmed, isStaleWrite } from "./documents";
 import type {
   AnnualInput,
   AnnualPlanResponse,
@@ -8,6 +9,7 @@ import type {
   AnnualAuditEvent,
   MonthInput,
   ConfirmResult,
+  PlayProjectAnnualPlan,
 } from "./types";
 export const createAnnualPlan = (data: AnnualInput, signal?: AbortSignal) =>
   apiRequest<AnnualPlanResponse>("/api/plans/annual", {
@@ -31,6 +33,24 @@ export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/**
+ * 놀이 프로젝트형의 고른 놀이를 저장한다 (§6-1). 네 구간을 전부 보낸다 — 빠지면 422 다.
+ * `expectedRevision` 이 다르면 409 `STALE_WRITE`, 확정본이면 409 `ALREADY_CONFIRMED`.
+ */
+export const savePlaySelection = (
+  id: number,
+  selections: Record<string, string[]>,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<PlayProjectAnnualPlan>("/api/plans/annual/" + id + "/selection", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selections, expected_revision: expectedRevision }),
+    signal,
+  });
+/** 다른 곳에서 바뀌어 저장이 막힌 것인가 — 409 `STALE_WRITE` · `ALREADY_CONFIRMED`. */
+export const isSaveConflict = (error: unknown) => isStaleWrite(error) || isAlreadyConfirmed(error);
 /** 변경 이력. 시간순이고 필터 · 페이지가 없다 — 화면이 `month` 로 거른다. */
 export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
