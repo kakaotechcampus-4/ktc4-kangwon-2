@@ -18,6 +18,7 @@
 | 서버와 무슨 약속을 했나 | [docs/api-spec.md](docs/api-spec.md) |
 | 아직 안 정한 것 | [docs/미확정사항.md](docs/미확정사항.md) |
 | 왜 이렇게 했나 | [docs/adr/](docs/adr/) |
+| 평가 때 뭘 근거로 대나 | [docs/evaluation/](docs/evaluation/) — 항목 10개 |
 | 디렉터리 · 브랜치 | [docs/structure.md](docs/structure.md) · [docs/branch-strategy.md](docs/branch-strategy.md) |
 
 **`p0-planning/` 안에는 더 좁은 규칙이 따로 있다** — [p0-planning/CLAUDE.md](p0-planning/CLAUDE.md).
@@ -62,6 +63,23 @@
 
 형식과 근거 라벨은 [docs/adr/README.md](docs/adr/README.md).
 코드에는 결과만 남고 대안과 근거는 사라진다. 3주 뒤에 "이거 왜 이렇게 했지"를 묻는 사람은 우리 자신이다.
+
+---
+
+## 평가 근거를 남긴다
+
+**PR 을 올릴 때, 그 작업이 걸리는 평가 항목 파일에 한 줄을 더한다** — [docs/evaluation/](docs/evaluation/).
+어느 항목인지 모르겠으면 [docs/evaluation/README.md](docs/evaluation/README.md) 의 표를 본다.
+
+한 줄 = **주장 하나 + 근거 하나.** 근거는 커밋 · PR 번호 · ADR · 코드 경로 중 하나다.
+
+```
+- 아동 실명이 LLM 프롬프트에 안 간다 — `backend/app/shared/childCode/` · ADR-004
+```
+
+- **근거 없는 줄은 적지 않는다.** 저장소 밖 문서도 근거가 아니다(ADR-031).
+- **「아직 아닌 것」 칸을 비워 두지 않는다.** 비면 평가 때 질문으로 돌아온다.
+- 막판에 몰아 쓰면 무엇을 왜 했는지 아무도 기억 못 한다 — ADR 과 같은 이유다.
 
 ---
 
