@@ -336,6 +336,34 @@ def test_put_updates_review_note_and_title_and_bumps_updated_at(db_session):
     assert datetime.fromisoformat(payload["updated_at"]) > original_updated_at
 
 
+def test_put_saves_the_class_note_and_leaves_it_alone_when_omitted(db_session):
+    """반 운영 특이사항은 교사가 직접 적는 칸이다. 안 보낸 요청이 지우면 안 된다."""
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+    fact = "\n\n".join(s.text for s in sources)
+    body = _put_body(
+        doc,
+        sections=[
+            {"heading": "사실", "body": fact, "source_ids": [s.source_id for s in sources]},
+            {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
+            {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+        ],
+    )
+
+    saved = client.put(f"/api/documents/{doc.id}", json={**body, "class_note": "-결석 : 이가명"})
+    assert saved.status_code == 200
+    assert saved.json()["class_note"] == "-결석 : 이가명"
+
+    again = client.put(
+        f"/api/documents/{doc.id}", json={**body, "updated_at": saved.json()["updated_at"]}
+    )
+    assert again.status_code == 200
+    assert again.json()["class_note"] == "-결석 : 이가명"
+    assert client.get(f"/api/documents/{doc.id}").json()["class_note"] == "-결석 : 이가명"
+
+
 def test_put_missing_document_returns_not_found(db_session):
     response = client.put(
         "/api/documents/999999",

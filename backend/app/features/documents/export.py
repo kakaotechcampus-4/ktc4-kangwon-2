@@ -10,6 +10,7 @@
 관찰 기록의 영역은 원본에서 읽는다. 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
 """
 
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Response, status
@@ -42,6 +43,8 @@ DAILY_LOG_HEADER_ROWS = 1
 # 주간 보육일지 양식의 머리행(날짜 · 그날의 놀이와 일과) 줄 수.
 WEEKLY_LOG_HEADER_ROWS = 1
 WEEKDAYS = "월화수목금토일"
+# 일일 보육일지 사실 한 줄의 머리 — `[오전 실내놀이 09:20~10:40]`. 시간은 떼고 이름만 남긴다.
+_ROUTINE_HEAD = re.compile(r"^\[(.+?)(?:\s\d{1,2}:\d{2}~\d{1,2}:\d{2})?\]")
 
 
 @router.get("/{document_id}/export/hwp")
@@ -73,7 +76,7 @@ def export_document(
     if doc.kind == "observation":
         content = _observation(session, doc, sources, evaluation)
     elif doc.kind == "weeklyLog":
-        content = _weekly_log(doc, sources, evaluation)
+        content = _weekly_log(session, doc, sources, evaluation)
     else:
         content = _daily_log(session, doc, sources, evaluation)
     return download(content, f"document-{doc.id}", doc.title, format)
@@ -188,25 +191,73 @@ def _daily_log(
         doc.title,
         DAILY_LOG_HEADER_ROWS,
         rows,
-        [["놀이 평가 및 다음날 지원계획", evaluation]],
+        [
+            ["놀이 평가 및 다음날 지원계획", evaluation],
+            # 공식 양식 5종 전부에 있는 칸이다. 교사가 안 적었으면 빈 칸으로 나간다 —
+            # 종이에서 칸 자체가 사라지면 제출할 때 손으로 그려 넣어야 한다.
+            ["반 운영 특이사항", doc.class_note.strip()],
+        ],
     )
 
 
-def _weekly_log(doc: Document, sources: list[DocumentSource], evaluation: str) -> bytes:
-    """확정한 일일 보육일지마다 한 줄씩, 꼬리 칸에 해석 + 지원을 넣는다.
+def _weekly_log(
+    session: Session, doc: Document, sources: list[DocumentSource], evaluation: str
+) -> bytes:
+    """확정한 일일 보육일지마다 한 줄씩. 꼬리는 주간 총평이다.
 
-    **원본을 다시 읽지 않는다.** 근거는 교사가 확정한 일일 보육일지의 「사실」이고, 그 사본이
-    `DocumentSource.text` 에 그대로 있다. 원본이 지워졌거나 확정이 풀렸으면 이 문서가
-    `stale` 이 되어 위에서 이미 막힌다(`stale.py`) — 여기서 다시 볼 것이 없다.
+    칸은 현장 실물(멘토 제공 2025 주간 보육일지)과 같다 —
+    `날짜 | 우리반 놀이 | 놀이 이해 및 분석 | 앞으로의 지원방향 | 반 운영 특이사항`.
+    가운데 셋이 우리 3층(사실 · 해석 · 지원)과 그대로 맞는다.
+
+    **「우리반 놀이」는 그날 일과 이름만 적는다.** 활동실행까지 넣으면 한 줄이 종이 한 장이
+    된다. 실물도 놀이 이름을 늘어놓고, 무슨 일이 있었는지는 분석 칸에서 읽는다.
     """
-    rows = [
-        [f"{s.date.month}/{s.date.day}({WEEKDAYS[s.date.weekday()]})", s.text.strip()]
-        for s in sorted(sources, key=lambda s: s.date)
-    ]
+    dailies = {
+        d.id: d
+        for d in session.scalars(
+            select(Document).where(Document.id.in_([s.source_id for s in sources]))
+        )
+    }
+    _missing([f"sources.{s.source_id}" for s in sources if s.source_id not in dailies])
+
+    bodies = {
+        (row.document_id, row.heading): row.body
+        for row in session.execute(
+            select(DocumentSection.document_id, DocumentSection.heading, DocumentSection.body)
+            .where(DocumentSection.document_id.in_(dailies))
+            .where(DocumentSection.heading.in_(("해석", "지원")))
+        ).all()
+    }
+    rows = []
+    for copy in sorted(sources, key=lambda s: s.date):
+        daily = dailies[copy.source_id]
+        rows.append(
+            [
+                f"{copy.date.month}/{copy.date.day}({WEEKDAYS[copy.date.weekday()]})",
+                "\n".join(_routine_names(copy.text)),
+                bodies.get((daily.id, "해석"), ""),
+                bodies.get((daily.id, "지원"), ""),
+                daily.class_note.strip(),
+            ]
+        )
     return fill_grid(
         (TEMPLATE_DIR / "weekly_log.hwpx").read_bytes(),
         doc.title,
         WEEKLY_LOG_HEADER_ROWS,
         rows,
-        [["놀이 평가 및 다음 주 지원계획", evaluation]],
+        [["주간 총평", evaluation]],
     )
+
+
+def _routine_names(fact: str) -> list[str]:
+    """일일 보육일지의 사실에서 일과 이름만 뽑는다.
+
+    사실 한 줄은 `[오전 실내놀이 09:20~10:40] 활동실행` 이다
+    (`routines/models.py` `fact_text`). 대괄호 안에서 시간을 떼면 일과 이름이 남는다.
+    """
+    names = []
+    for line in fact.splitlines():
+        head = _ROUTINE_HEAD.match(line.strip())
+        if head:
+            names.append(head.group(1).strip())
+    return names

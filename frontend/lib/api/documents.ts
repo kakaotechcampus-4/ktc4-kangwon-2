@@ -94,6 +94,7 @@ export interface ApiDocumentDetail extends Omit<ApiDocumentListItem, "sources_co
   sections: ApiDocumentSection[];
   sources: ApiDocumentSource[];
   review_note: string;
+  class_note: string;
 }
 
 /**
@@ -190,6 +191,7 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     sections,
     sources,
     reviewNote: dto.review_note,
+    classNote: dto.class_note ?? "",
     // 새 문서는 서버가 `<규칙버전>-mock` 으로 알리고, 예전 문서는 떼어낸 접두어로 안다.
     mockDraft: legacyMock || /-mock$/.test(dto.generation.rule_version ?? ""),
   };
@@ -279,10 +281,17 @@ export async function createDocument(input: DocumentCreateInput): Promise<Server
   return toDocument(dto);
 }
 
-/** 세 칸만 보낸다. 상태·반·아동·기간은 서버가 지킨다 (§11). */
+/** 본문 세 칸과 메모를 보낸다. 상태·반·아동·기간은 서버가 지킨다 (§11). */
 export async function updateDocument(
   localId: string,
-  input: { kind: string; sections: Section[]; reviewNote: string; updatedAt: string },
+  input: {
+    kind: string;
+    sections: Section[];
+    reviewNote: string;
+    updatedAt: string;
+    /** 반 운영 특이사항. 안 보내면 서버가 이전 값을 그대로 둔다. */
+    classNote?: string;
+  },
 ): Promise<ServerDocument> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
@@ -298,6 +307,7 @@ export async function updateDocument(
     body: JSON.stringify({
       sections,
       review_note: input.reviewNote,
+      ...(input.classNote === undefined ? {} : { class_note: input.classNote }),
       updated_at: input.updatedAt,
     }),
   });

@@ -477,13 +477,21 @@ export default function DocumentsPage() {
           void reloadList();
           return next;
         },
-        save: async (sections: SavedDocument["sections"], reviewNote: string) => {
-          const saved = await selection.save(sections, reviewNote);
+        save: async (
+          sections: SavedDocument["sections"],
+          reviewNote: string,
+          classNote?: string,
+        ) => {
+          const saved = await selection.save(sections, reviewNote, classNote);
           void reloadList();
           return saved;
         },
-        saveAndConfirm: async (sections: SavedDocument["sections"], reviewNote: string) => {
-          const confirmed = await selection.saveAndConfirm(sections, reviewNote);
+        saveAndConfirm: async (
+          sections: SavedDocument["sections"],
+          reviewNote: string,
+          classNote?: string,
+        ) => {
+          const confirmed = await selection.saveAndConfirm(sections, reviewNote, classNote);
           void reloadList();
           return confirmed;
         },

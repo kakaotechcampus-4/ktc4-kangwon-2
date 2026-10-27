@@ -99,6 +99,8 @@ class DocumentDetailResponse(BaseModel):
     sources: list[DocumentSourceItem]
     generation: DocumentGeneration
     review_note: str
+    # 반 운영 특이사항. 일일 보육일지만 쓴다 — 나머지 종류는 늘 빈 문자열이다.
+    class_note: str
     created_at: datetime
     updated_at: datetime
 
@@ -138,6 +140,8 @@ class DocumentUpdateRequest(BaseModel):
     title: str | None = None
     sections: list[DocumentSectionUpdate]
     review_note: str = ""
+    # 반 운영 특이사항. 안 보내면 이전 값을 그대로 둔다 — 예전 화면이 지우지 않게.
+    class_note: str | None = None
     updated_at: datetime
 
 

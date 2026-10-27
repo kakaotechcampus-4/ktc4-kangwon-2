@@ -24,7 +24,13 @@ export interface DocumentGateway {
   get(localId: string): Promise<ServerDocument>;
   update(
     localId: string,
-    input: { kind: string; sections: Section[]; reviewNote: string; updatedAt: string },
+    input: {
+      kind: string;
+      sections: Section[];
+      reviewNote: string;
+      updatedAt: string;
+      classNote?: string;
+    },
   ): Promise<ServerDocument>;
   confirm(localId: string): Promise<ServerDocument>;
   unconfirm(localId: string): Promise<ServerDocument>;
@@ -67,11 +73,13 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
     mine: number,
     sections: Section[],
     reviewNote: string,
+    classNote?: string,
   ) {
     const saved = await api.update(doc.id, {
       kind: doc.kind,
       sections,
       reviewNote,
+      classNote,
       updatedAt: doc.updatedAt,
     });
     // 그 사이 다른 문서로 옮겼으면 서버 저장은 그대로 두고 화면만 건드리지 않는다.
@@ -152,8 +160,8 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
     },
 
     /** 저장·확정·삭제는 한 번에 하나만. 화면이 막혀 있어도 여기서 한 번 더 막는다. */
-    save: (sections: Section[], reviewNote: string) =>
-      mutate((doc, mine) => update(doc, mine, sections, reviewNote)),
+    save: (sections: Section[], reviewNote: string, classNote?: string) =>
+      mutate((doc, mine) => update(doc, mine, sections, reviewNote, classNote)),
 
     /**
      * 저장과 확정은 하나의 작업이다.
@@ -161,9 +169,9 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
      * 대상은 시작할 때 잡은 문서 하나뿐이다 — `await` 뒤에 선택을 다시 읽으면
      * A 를 저장하고 B 를 확정하게 된다. 그 사이 다른 문서로 옮겼으면 확정하지 않는다.
      */
-    saveAndConfirm: (sections: Section[], reviewNote: string) =>
+    saveAndConfirm: (sections: Section[], reviewNote: string, classNote?: string) =>
       mutate(async (doc, mine) => {
-        await update(doc, mine, sections, reviewNote);
+        await update(doc, mine, sections, reviewNote, classNote);
         if (mine !== generation) throw new Error(MOVED);
         const confirmed = await api.confirm(doc.id);
         if (mine === generation) set({ detail: confirmed });

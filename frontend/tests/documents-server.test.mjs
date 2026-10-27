@@ -1436,10 +1436,8 @@ function editorHarness(selection) {
   render();
   return {
     render,
-    textarea: () =>
-      all(tree).find(
-        (node) => node.type === "textarea" && node.props["aria-label"] === "해석 내용",
-      ),
+    textarea: (label = "해석 내용") =>
+      all(tree).find((node) => node.type === "textarea" && node.props["aria-label"] === label),
     button: (label) => all(tree).find((node) => node.type === "button" && content(node) === label),
     links: () => all(tree).filter((node) => node.type === "link"),
     checks: () =>
@@ -2011,4 +2009,36 @@ test("후속 #6 mock 접두어 정리는 교사가 쓴 사실과 일반 문서 �
     dto.sections.map((s) => s.body),
   );
   assert.equal(teacher.mockDraft, false);
+});
+
+test("일일 보육일지 편집기는 반 운영 특이사항을 적어 서버로 보낸다", async () => {
+  let sent = null;
+  const selection = createSelection(
+    {
+      get: async () => doc(2, { kind: "dailyLog", childId: "", childName: "" }),
+      update: async (_id, input) => {
+        sent = input;
+        return doc(2, { kind: "dailyLog", classNote: input.classNote, updatedAt: "t1" });
+      },
+    },
+    describe,
+  );
+  selection.select("document:2", 1);
+  await tick();
+  const editor = editorHarness(selection);
+
+  const note = editor.textarea("반 운영 특이사항");
+  assert.ok(note, "일일 보육일지에는 특이사항 칸이 있다");
+  note.props.onChange({ target: { value: "-결석 : 이가명" } });
+  editor.render();
+
+  await editor.button("초안 저장").props.onClick();
+  assert.equal(sent.classNote, "-결석 : 이가명");
+});
+
+test("관찰일지 편집기에는 반 운영 특이사항 칸이 없다", async () => {
+  const selection = createSelection({ get: async () => doc(3) }, describe);
+  selection.select("document:3", 1);
+  await tick();
+  assert.equal(editorHarness(selection).textarea("반 운영 특이사항"), undefined);
 });

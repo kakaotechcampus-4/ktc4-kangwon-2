@@ -70,6 +70,15 @@ class Document(Base):
     generation_rule_id: Mapped[str | None] = mapped_column(String(80))
     generation_rule_version: Mapped[str | None] = mapped_column(String(20))
     review_note: Mapped[str] = mapped_column(Text, default="")
+    class_note: Mapped[str] = mapped_column(
+        Text,
+        default="",
+        server_default="",
+        comment=(
+            "반 운영 특이사항 — 결석 · 부모면담 · 감염병 · 안전사고. 교사가 직접 적는다. "
+            "근거에서 나오지 않아 stale 판정에 들어가지 않는다"
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

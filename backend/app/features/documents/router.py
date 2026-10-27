@@ -223,6 +223,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
             rule_version=doc.generation_rule_version,
         ),
         review_note=doc.review_note,
+        class_note=doc.class_note,
         created_at=doc.created_at.astimezone(UTC),
         updated_at=doc.updated_at.astimezone(UTC),
     )
@@ -532,7 +533,7 @@ def update_document(
     session: DbSession,
     user: CurrentUser,
 ) -> DocumentDetailResponse:
-    """`title` · `sections` · `review_note` 전체 교체 (docs/api-spec.md §11).
+    """`title` · `sections` · `review_note` · `class_note` 전체 교체 (docs/api-spec.md §11).
 
     `PATCH` 가 아니라 `PUT` 이다 — 셋 다 매번 통째로 받는다. `사실` 항목은 근거
     원문을 그대로 이어붙인 것과 정확히 같아야 하고, 다르면 거절한다. 교사가
@@ -563,6 +564,8 @@ def update_document(
     if body.title is not None:
         doc.title = body.title
     doc.review_note = body.review_note
+    if body.class_note is not None:
+        doc.class_note = body.class_note
     # sections 가 documents 와 다른 테이블이라, 그것만 바뀌어도 documents 행의
     # onupdate 가 저절로 안 걸린다 — STALE_WRITE 판정이 최신 시각을 보게 직접 찍는다.
     doc.updated_at = datetime.now(UTC)

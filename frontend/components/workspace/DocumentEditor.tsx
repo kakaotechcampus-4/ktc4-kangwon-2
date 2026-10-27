@@ -54,9 +54,13 @@ export interface ServerDocumentActions {
   pending: boolean;
   /** 최신 조회 중 다른 문서로 옮겼으면 null 이며 현재 편집기를 바꾸지 않는다. */
   reload: () => Promise<SavedDocument | null>;
-  save: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
+  save: (sections: Section[], reviewNote: string, classNote?: string) => Promise<SavedDocument>;
   /** 저장과 확정은 한 작업이다 — 대상 문서가 중간에 바뀌지 않는다. */
-  saveAndConfirm: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
+  saveAndConfirm: (
+    sections: Section[],
+    reviewNote: string,
+    classNote?: string,
+  ) => Promise<SavedDocument>;
   /** 확정을 되돌린다. 근거를 다시 반영하지는 않는다 — 교사가 따로 누른다.
    *  `newlyStaleCount` 는 이 문서를 근거로 써서 이번에 다시 검토 대상이 된 문서 수다. */
   unconfirm: () => Promise<SavedDocument & { newlyStaleCount?: number }>;
@@ -208,8 +212,8 @@ export default function DocumentEditor({
       try {
         const note = confirm ? "교사 사실·해석·지원 검토 완료" : "교사 검토 전";
         const next = confirm
-          ? await server.saveAndConfirm(doc.sections, note)
-          : await server.save(doc.sections, note);
+          ? await server.saveAndConfirm(doc.sections, note, doc.classNote)
+          : await server.save(doc.sections, note, doc.classNote);
         setBaseline(next);
         setDoc(next);
         setChecks([false, false, false]);
@@ -523,6 +527,30 @@ export default function DocumentEditor({
             </blockquote>
           ))}
         </details>
+      )}
+      {/* 공식 보육일지 양식 5종 전부에 있는 칸이다 (docs/references/보육일지-공식양식.md).
+          놀이 기록이 아니라 그날 반에 있었던 일이라 근거에서 나오지 않는다 — 교사가 적는다.
+          주간 보육일지는 날짜마다 그날 일일 일지의 이 칸을 끌어다 쓴다. */}
+      {server && doc.kind === "dailyLog" && (
+        <section>
+          <h3>반 운영 특이사항</h3>
+          <p className={ws.hint}>
+            결석 · 부모면담 · 감염병 · 안전사고처럼 그날 반에 있었던 일이에요. 없으면 비워두세요.
+          </p>
+          {editable ? (
+            <label className={ws.field}>
+              <textarea
+                aria-label="반 운영 특이사항"
+                maxLength={2000}
+                disabled={working || stale}
+                value={doc.classNote ?? ""}
+                onChange={(e) => setDoc((prev) => ({ ...prev, classNote: e.target.value }))}
+              />
+            </label>
+          ) : (
+            <p>{doc.classNote || "적지 않았어요."}</p>
+          )}
+        </section>
       )}
       {editable && (
         <>

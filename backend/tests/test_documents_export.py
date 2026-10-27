@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from hwpx.hwp5.summary import AUTHOR, LAST_AUTHOR, read_summary
 from lxml import etree
+from sqlalchemy import select
 
 from app.features.centers.models import Center, Child, Class
 from app.features.documents import export as document_export
@@ -518,13 +519,16 @@ def test_일과마다_한_줄씩_늘려_담고_꼬리_칸에_평가를_넣는다
         # 시간이 없는 일과는 같은 순서 안에서 뒤로 간다.
         ["", "특별활동", "", "음악 수업에 참여했다."],
     ]
-    assert rows[4] == [
-        "놀이 평가 및 다음날 지원계획",
-        f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음날 지원계획) {SUPPORT}",
+    assert rows[4:] == [
+        [
+            "놀이 평가 및 다음날 지원계획",
+            f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음날 지원계획) {SUPPORT}",
+        ],
+        ["반 운영 특이사항", ""],
     ]
     # 줄을 끼워 넣은 만큼 표의 줄 수도 늘어야 한글이 연다.
-    assert table.get("rowCnt") == "5"
-    assert len(table.findall("hp:tr", NS)) == 5
+    assert table.get("rowCnt") == "6"
+    assert len(table.findall("hp:tr", NS)) == 6
 
 
 def test_일과가_하나면_원형_줄만_채운다(db_session, mine):
@@ -542,7 +546,7 @@ def test_일과가_하나면_원형_줄만_채운다(db_session, mine):
 
     table, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
 
-    assert table.get("rowCnt") == "3"
+    assert table.get("rowCnt") == "4"
     assert rows[1] == ["09:00~10:00", "실내놀이", "", "블록으로 다리를 만들었다."]
 
 
@@ -592,6 +596,7 @@ def test_줄을_늘린_일일_보육일지도_hwp_로_바꿔_내려준다(db_ses
             "놀이 평가 및 다음날 지원계획",
             f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음날 지원계획) {SUPPORT}",
         ],
+        ["반 운영 특이사항", ""],
     ]
     assert _hwp_rows(response.content, tmp_path) == [
         [_as_read(text) for text in row] for row in expected
@@ -628,8 +633,32 @@ def test_양식_표_줄_수가_머리_원형_꼬리와_다르면_만들지_않�
         )
 
 
-def _weekly_log(session, klass, dailies, *, status="CONFIRMED"):
-    """확정한 일일 보육일지들을 근거로 둔 주간 보육일지. `dailies` 는 (날짜, 사실) 쌍이다."""
+def _weekly_log(session, klass, days, *, status="CONFIRMED"):
+    """확정한 일일 보육일지들을 근거로 둔 주간 보육일지.
+
+    `days` 는 (날짜, 일과 이름, 활동실행, 반 운영 특이사항) 이다. 주간은 일일 문서를 근거로
+    삼으므로 일일 문서도 같이 만든다.
+    """
+    sources = []
+    for day, name, execution, class_note in days:
+        routine = RoutineRecord(
+            class_id=klass.id,
+            date=day,
+            position=0,
+            start_time=None,
+            end_time=None,
+            name=name,
+            plan="",
+            execution=execution,
+        )
+        session.add(routine)
+        session.flush()
+        daily = _daily_log(session, klass, [routine])
+        daily.start_date = daily.end_date = day
+        daily.class_note = class_note
+        session.flush()
+        sources.append((daily, day))
+
     doc = Document(
         kind="weeklyLog",
         title="햇살반 주간 보육일지 (9/21~9/25)",
@@ -647,12 +676,17 @@ def _weekly_log(session, klass, dailies, *, status="CONFIRMED"):
     )
     session.add(doc)
     session.flush()
-    for index, (day, fact) in enumerate(dailies):
+    for daily, day in sources:
+        fact = session.scalar(
+            select(DocumentSection.body).where(
+                DocumentSection.document_id == daily.id, DocumentSection.heading == "사실"
+            )
+        )
         session.add(
             DocumentSource(
                 document_id=doc.id,
                 source_kind="document",
-                source_id=1000 + index,
+                source_id=daily.id,
                 class_id=klass.id,
                 child_id=None,
                 date=day,
@@ -660,22 +694,22 @@ def _weekly_log(session, klass, dailies, *, status="CONFIRMED"):
                 source_status="CONFIRMED",
             )
         )
-    fact = "\n\n".join(text for _, text in dailies)
+    fact = "\n\n".join(f"[{name}] {execution}" for _, name, execution, _ in days)
     for heading, body in [("사실", fact), ("해석", INTERPRETATION), ("지원", SUPPORT)]:
         session.add(DocumentSection(document_id=doc.id, heading=heading, body=body, source_ids=[]))
     session.flush()
     return doc
 
 
-def test_주간_보육일지는_날짜마다_한_줄씩_담고_꼬리_칸에_평가를_넣는다(db_session, mine):
+def test_주간_보육일지는_날짜마다_한_줄씩_담고_꼬리에_주간_총평을_넣는다(db_session, mine):
     klass, _ = mine
     # 교사가 고른 순서가 날짜순이 아니어도 종이는 날짜순이다.
     doc = _weekly_log(
         db_session,
         klass,
         [
-            (date(2026, 9, 23), "낙엽으로 왕관을 만들었다."),
-            (date(2026, 9, 21), "블록으로 성을 쌓았다."),
+            (date(2026, 9, 23), "실내놀이", "낙엽으로 왕관을 만들었다.", ""),
+            (date(2026, 9, 21), "쌓기놀이", "블록으로 성을 쌓았다.", "-결석 : 이가명"),
         ],
     )
 
@@ -684,11 +718,11 @@ def test_주간_보육일지는_날짜마다_한_줄씩_담고_꼬리_칸에_평
     assert response.status_code == 200
     _, rows = _grid(response.content)
     assert rows == [
-        ["날짜", "그날의 놀이와 일과"],
-        ["9/21(월)", "블록으로 성을 쌓았다."],
-        ["9/23(수)", "낙엽으로 왕관을 만들었다."],
+        ["날짜", "우리반 놀이", "놀이 이해 및 분석", "앞으로의 지원방향", "반 운영 특이사항"],
+        ["9/21(월)", "쌓기놀이", INTERPRETATION, SUPPORT, "-결석 : 이가명"],
+        ["9/23(수)", "실내놀이", INTERPRETATION, SUPPORT, ""],
         [
-            "놀이 평가 및 다음 주 지원계획",
+            "주간 총평",
             f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음 주 지원계획) {SUPPORT}",
         ],
     ]
@@ -697,10 +731,40 @@ def test_주간_보육일지는_날짜마다_한_줄씩_담고_꼬리_칸에_평
 def test_주간_보육일지도_확정본만_내보낸다(db_session, mine):
     klass, _ = mine
     doc = _weekly_log(
-        db_session, klass, [(date(2026, 9, 21), "블록으로 성을 쌓았다.")], status="DRAFT"
+        db_session,
+        klass,
+        [(date(2026, 9, 21), "쌓기놀이", "블록으로 성을 쌓았다.", "")],
+        status="DRAFT",
     )
 
     response = client.get(f"/api/documents/{doc.id}/export/hwp")
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "GATE_BLOCKED"
+
+
+def test_일일_보육일지_꼬리에_반_운영_특이사항_줄이_있다(db_session, mine):
+    klass, _ = mine
+    routine = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=time(9, 20),
+        end=time(10, 40),
+        name="오전 실내놀이",
+        execution="블록으로 성을 쌓았다.",
+    )
+    doc = _daily_log(db_session, klass, [routine])
+    doc.class_note = "-결석 : 이가명\n-부모 개별면담 진행"
+    db_session.flush()
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 200
+    _, rows = _grid(response.content)
+    assert rows[-1] == ["반 운영 특이사항", "-결석 : 이가명\n-부모 개별면담 진행"]
+    # 교사가 안 적어도 칸은 남는다 — 종이에서 칸이 사라지면 손으로 그려 넣어야 한다.
+    doc.class_note = ""
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[-1] == ["반 운영 특이사항", ""]
