@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 기록 모아보기 — 한 주를 한눈에 놓고, 하루를 골라 그날 기록을 본다 (S-J6 · FR-705).
+ * 주간 기록 — 한 주를 한눈에 놓고, 하루를 골라 그날 기록을 본다 (S-J6 · FR-705).
  *
  * 관찰 기록 화면은 아이별로 찾을 때 쓰고, 이 화면은 「이번 주 뭐가 비었지」를 볼 때 쓴다.
  * 그래서 주간 띠가 먼저 오고 목록이 뒤에 온다.
@@ -120,7 +120,7 @@ export default function QuickRecordsPage() {
 
   return (
     <WorkspacePage
-      title="기록 모아보기"
+      title="주간 기록"
       description="한 주를 펼쳐 놓고, 어느 날이 비었는지 확인하세요."
       action={
         <Link

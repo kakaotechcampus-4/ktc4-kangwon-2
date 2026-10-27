@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Icon } from "./icons";
 import { formatKoreanDate } from "@/lib/greeting";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import {
@@ -25,19 +24,22 @@ const subscribeClasses = (changed: () => void) => {
 
 /** 사이드바 메뉴 이름과 같아야 한다 — 다르면 어디 있는지 되묻게 된다. */
 const PAGE_NAMES: [prefix: string, name: string][] = [
-  ["/plans", "계획 노트"],
-  ["/templates", "계획 노트"],
-  ["/trends", "계획 노트"],
-  ["/quick-records", "기록 모아보기"],
+  ["/plans", "계획안"],
+  ["/templates", "계획안"],
+  ["/trends", "계획안"],
+  ["/quick-records", "주간 기록"],
   ["/records", "관찰 기록"],
   ["/compare", "관찰 기록"],
   ["/documents", "문서 보관함"],
-  ["/evaluation", "평가 준비"],
+  ["/evaluation", "평가 점검"],
   ["/settings", "설정"],
 ];
 
 /**
- * 본문 맨 위 얇은 띠. 「우리 반 작업실 / 계획 노트」 처럼 지금 어디인지만 알린다.
+ * 본문 맨 위 얇은 띠. 지금 어느 화면에서 어느 반을 보고 있는지만 알린다.
+ *
+ * 「우리 반 작업실 /」 는 뺐다 — 한 단뿐인 길 안내는 알려주는 것이 없다.
+ * 설정 아이콘도 뺐다 — 사이드바에 「설정」이 이미 있다.
  * 모바일에서는 사이드바가 하단으로 내려가므로 여기에 로고를 같이 둔다.
  */
 export default function WorkspaceTopBar() {
@@ -69,10 +71,6 @@ export default function WorkspaceTopBar() {
         >
           Ssample.
         </Link>
-        <span className="hidden text-ink-soft sm:inline">우리 반 작업실</span>
-        <span aria-hidden="true" className="hidden text-line sm:inline">
-          /
-        </span>
         <span className="font-medium text-ink">{page}</span>
       </div>
 
@@ -82,9 +80,6 @@ export default function WorkspaceTopBar() {
         <span aria-label="상단 현재 반" className="hidden truncate sm:inline">
           {className}
         </span>
-        <Link href="/settings" aria-label="설정" className="flex min-h-11 items-center">
-          <Icon name="settings" className="h-4 w-4" />
-        </Link>
       </div>
     </header>
   );

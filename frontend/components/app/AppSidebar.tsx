@@ -17,27 +17,50 @@ interface NavItem {
   match?: (path: string) => boolean;
 }
 
-/** 이름은 디자인의 작업실 용어를 따른다 — 「계획안」보다 「계획 노트」가 교사의 말이다. */
-const NAV: NavItem[] = [
-  { key: "home", label: "우리 반", href: "/", icon: "home" },
+/**
+ * 메뉴를 **재료와 결과물**로 가른다.
+ *
+ * 교사가 친 한 줄(기록)과 그것으로 만든 문서(보육일지·계획안)는 하는 일이 다른데,
+ * 이름이 둘 다 「기록」·「문서」로 섞여 있어 어디서 무엇을 하는지 헷갈렸다.
+ */
+const HOME: NavItem = { key: "home", label: "우리 반", href: "/", icon: "home" };
+
+const GROUPS: { title: string; items: NavItem[] }[] = [
   {
-    key: "plans",
-    label: "계획 노트",
-    href: "/plans",
-    icon: "plan",
-    match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
+    title: "기록",
+    items: [
+      {
+        key: "records",
+        label: "관찰 기록",
+        href: "/records",
+        icon: "users",
+        match: (p) => p.startsWith("/records") || p === "/compare",
+      },
+      { key: "quick", label: "주간 기록", href: "/quick-records", icon: "record" },
+    ],
   },
-  { key: "quick", label: "기록 모아보기", href: "/quick-records", icon: "record" },
   {
-    key: "records",
-    label: "관찰 기록",
-    href: "/records",
-    icon: "users",
-    match: (p) => p.startsWith("/records") || p === "/compare",
+    title: "문서",
+    items: [
+      {
+        key: "plans",
+        label: "계획안",
+        href: "/plans",
+        icon: "plan",
+        match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
+      },
+      { key: "docs", label: "문서 보관함", href: "/documents", icon: "doc" },
+      { key: "eval", label: "평가 점검", href: "/evaluation", icon: "eval" },
+    ],
   },
-  { key: "docs", label: "문서 보관함", href: "/documents", icon: "doc" },
-  { key: "eval", label: "평가 준비", href: "/evaluation", icon: "eval" },
 ];
+
+const itemBase =
+  "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[13px] font-medium transition-all " +
+  "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[13px] text-[10.5px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start";
+const activeStyle =
+  "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
+const idle = "border border-transparent text-ink-soft lg:hover:translate-x-1 hover:bg-shell-hover";
 
 /** 데스크톱 좌측 고정 사이드바. 모바일에서는 하단 네비게이션으로 접힌다. */
 export default function AppSidebar() {
@@ -59,14 +82,6 @@ export default function AppSidebar() {
   );
 
   const isActive = (item: NavItem) => (item.match ? item.match(pathname) : item.href === pathname);
-
-  const itemBase =
-    "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[13px] font-medium transition-all " +
-    "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[13px] text-[10.5px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start";
-  const active =
-    "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
-  const idle =
-    "border border-transparent text-ink-soft lg:hover:translate-x-1 hover:bg-shell-hover";
 
   return (
     <aside
@@ -122,26 +137,18 @@ export default function AppSidebar() {
         )}
       </div>
 
-      <p className="hidden lg:block px-6 pb-3 text-[9px] tracking-[0.18em] text-ink-soft">
-        MY WORKSPACE
-      </p>
-
+      {/* 모바일에서는 하단 띠 한 줄이라 묶음 제목을 접는다 (`contents`). */}
       <nav className="contents lg:block lg:space-y-1 lg:px-3">
-        {NAV.map((item) => (
-          <Link
-            key={item.key}
-            href={item.href}
-            aria-current={isActive(item) ? "page" : undefined}
-            className={`${itemBase} ${isActive(item) ? active : idle}`}
-          >
-            <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
-            <span>{item.label}</span>
-            {isActive(item) && (
-              <span aria-hidden="true" className="ml-auto hidden lg:inline font-display text-lg">
-                ↗
-              </span>
-            )}
-          </Link>
+        <NavLink item={HOME} active={isActive(HOME)} />
+        {GROUPS.map((group) => (
+          <div key={group.title} className="contents lg:block lg:pt-4">
+            <p className="hidden px-3 pb-1 text-[10px] font-medium text-ink-soft lg:block">
+              {group.title}
+            </p>
+            {group.items.map((item) => (
+              <NavLink key={item.key} item={item} active={isActive(item)} />
+            ))}
+          </div>
         ))}
       </nav>
 
@@ -202,6 +209,24 @@ function switchClass(classId: string) {
   if (!settings || classId === settings.primaryClassId) return;
   if (!saveClassSettings({ ...settings, primaryClassId: classId })) return;
   window.location.reload();
+}
+
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={`${itemBase} ${active ? activeStyle : idle}`}
+    >
+      <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
+      <span>{item.label}</span>
+      {active && (
+        <span aria-hidden="true" className="ml-auto hidden lg:inline font-display text-lg">
+          ↗
+        </span>
+      )}
+    </Link>
+  );
 }
 
 /** 쪽지 윗변에 붙인 종이테이프. 장식이라 읽어주지 않는다. */

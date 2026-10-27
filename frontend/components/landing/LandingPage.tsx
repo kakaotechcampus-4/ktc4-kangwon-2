@@ -141,7 +141,7 @@ function Brand() {
   );
 }
 
-/** 계획 노트가 어떻게 생겼는지 보여주는 예시. 실제 생성 결과가 아니라 소개용 그림이다. */
+/** 계획안이 어떻게 생겼는지 보여주는 예시. 실제 생성 결과가 아니라 소개용 그림이다. */
 const PREVIEW_ROWS = [
   { label: "주제", first: "가을이 찾아왔어요", second: "알록달록 가을빛" },
   { label: "자유 놀이", first: "나뭇잎 가게 놀이", second: "자연물로 꾸미기" },
@@ -152,7 +152,7 @@ function PlanPreview() {
   return (
     <div className="overflow-hidden rounded-sm border border-line bg-paper shadow-[6px_7px_0_var(--pg-line)]">
       <div className="flex items-center justify-between border-b border-line bg-primary-tint px-5 py-3">
-        <span className="text-xs font-semibold text-primary-ink">햇살반의 계획 노트</span>
+        <span className="text-xs font-semibold text-primary-ink">햇살반의 계획안</span>
         <Icon name="plan" className="h-4 w-4 text-primary" />
       </div>
       <div className="p-5 sm:p-6">
