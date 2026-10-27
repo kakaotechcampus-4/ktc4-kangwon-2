@@ -1012,24 +1012,28 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 { "value": "가을 자연물로 꾸미는 놀이", "expected_revision": 3 }
 ```
 
-- `value` 는 필수 문자열이며 빈 값 · 공백만 있는 값은 거절한다. **고른 후보의 `play_name` · `materials` · `support_direction` 만** 고칠 수 있다. `learning` 은 읽기 전용이다.
+- `value` 는 필수 문자열이다. 앞뒤 공백을 털고 1~600자이며 빈 값 · 공백만 있는 값은 거절한다(600자 근거는 ADR-044 §2). **고른 후보의 `play_name` · `materials` · `support_direction` 만** 고칠 수 있다. `learning` 은 읽기 전용이다.
 - 칸 주소는 응답의 Core `item_id` 그대로다. `row_key` 나 표시 순번으로 대신하지 않는다.
-- 화면의 「저장」 버튼으로 바뀐 칸을 하나씩 보내고 응답의 revision 을 다음 칸에 넘긴다. 같은 값은 월간처럼 422 다(API 에서 검사).
+- 화면은 입력을 1초 멈추거나 다른 칸으로 옮기면 바뀐 칸을 보낸다(저장 버튼 없음). 하나씩 보내고 응답의 revision 을 다음 요청에 넘긴다. 마지막으로 저장한 값과 같으면 보내지 않는다. 같은 값은 월간처럼 422 다(API 에서 검사).
+- 되돌리기 · 다시 하기는 이전 상태를 선택 저장 · 칸 편집으로 다시 저장한다. 새 API 가 없고, 실제로 바뀐 저장마다 revision 이 오르고 이력이 남는다(ADR-044 §2).
+- 확정(§7)은 기다리거나 보내는 중인 저장을 모두 끝낸 뒤 마지막 응답의 revision 으로 보낸다. 저장이 하나라도 실패하면 확정하지 않는다.
 - `evidence` · `generation`(`rule_id` · `rule_version` 포함) · `item_id` 는 그대로다. `TEACHER_EDITED` 에 이전 값 · 새 값 · 행위자를 남긴다. 고친 후보를 뺐다 다시 골라도 값 · 이력은 남는다.
 
 #### 오류 — 선택 저장 · 칸 편집 · §7 놀이 프로젝트형 확정
 
 Core 오류의 영어 원문은 서버 기록에만 남기고, 422 문구는 「입력값을 확인해주세요.」다. 실패하면 본문 · revision · 이력을 바꾸지 않는다.
 
+**검사 순서** — 요청 모양 · 개수 · 길이(구간 누락 · 모르는 구간 · 5개 초과 · 중복 · 빈 값 · 600자 · revision 타입)는 스키마가 소유 검사보다 먼저 본다(CLAUDE.md 「입력 검사 — 스키마에서 막는다」). 그래서 이런 값이면 없는 계획안 · 확정본에도 422 다. 스키마를 통과하면 소유(404) → 형식(409) → 확정(409) → revision(409) → Core 내용 검사(422) 순이다.
+
 | code | status | 언제 · Core 대응 | `fields` |
 |---|---|---|---|
-| `NOT_FOUND` | 404 | 없거나 남의 원 계획안(`play_project_plan_not_found` 포함). 소유 검사가 먼저다 | `["id"]` |
+| `NOT_FOUND` | 404 | 없거나 남의 원 계획안(`play_project_plan_not_found` 포함). 스키마 검사 다음, 다른 검사보다 먼저다 | `["id"]` |
 | `GATE_BLOCKED` | 409 | 놀이 프로젝트형에 §6 월별 칸 수정 호출. 「놀이 프로젝트형은 칸 편집으로 고칩니다.」 | `[]` |
 | `GATE_BLOCKED` | 409 | 월별 주제형에 선택 저장 · 칸 편집 호출. 「월별 주제형은 월별 칸 수정으로 고칩니다.」 | `[]` |
 | `VALIDATION_FAILED` | 422 | 입력 모양 · revision 타입이 틀림 | 해당 필드 |
 | `VALIDATION_FAILED` | 422 | 구간 누락(API 검사) · 모르는 구간 · 5개 초과 · 중복 또는 없는 `row_key`(`invalid_selection`) | 해당 `selections.<구간 키>` |
 | `VALIDATION_FAILED` | 422 | 빈 `item_id`(`InvalidDomainValueError`) · 잘못된 `item_id`(`invalid_item_id`) · 배움 편집(`field_not_editable`) · 미선택 후보 편집(`candidate_not_selected`) · 모르는 칸(`play_project_item_not_found`) | `["item_id"]` |
-| `VALIDATION_FAILED` | 422 | 빈 값 · 공백만 있는 값(`InvalidDomainValueError`) · 같은 값 편집(API 검사) | `["value"]` |
+| `VALIDATION_FAILED` | 422 | 빈 값 · 공백만 있는 값(`InvalidDomainValueError`) · 600자 초과 · 같은 값 편집(API 검사) | `["value"]` |
 | `STALE_WRITE` | 409 | revision 불일치. 이미 확정된 계획안의 확정 재호출은 200(§7) | `["expected_revision"]` |
 | `ALREADY_CONFIRMED` | 409 | 확정 뒤 선택 · 편집(`InvalidStateTransitionError`) | `[]` |
 | `VALIDATION_FAILED` | 422 | 확정에 필요한 구간별 5개 미충족(`selection_incomplete`). 부족 구간 키를 반환한다 | 예: `["m09_m11", "m12_m02"]` |
