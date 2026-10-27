@@ -525,7 +525,7 @@ function ClassroomCard({
     <section className="rounded-md border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream text-sage-ink font-mono text-[11px]">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream text-sage-ink font-mono text-[12px]">
             {index + 1}
           </span>
           <h2 className="font-semibold text-[16px] text-ink">반 정보</h2>
@@ -854,7 +854,7 @@ function StepDone({
           ],
         ].map(([k, v]) => (
           <div key={k} className="rounded-md bg-cream px-2.5 py-3">
-            <dt className="font-mono text-[10.5px] tracking-wider text-ink-soft">{k}</dt>
+            <dt className="font-mono text-[12px] tracking-wider text-ink-soft">{k}</dt>
             <dd className="mt-0.5 text-[14px] lg:text-[15px] font-bold text-ink break-words">
               {v}
             </dd>

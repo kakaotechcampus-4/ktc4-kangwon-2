@@ -63,7 +63,7 @@ export default function WorkspaceTopBar() {
 
   return (
     <header className="sticky top-0 z-20 flex h-[60px] items-center justify-between border-b border-line bg-cream/90 px-4 backdrop-blur lg:px-8">
-      <div className="flex items-center gap-3 text-[11px]">
+      <div className="flex items-center gap-3 text-[12px]">
         <Link
           href="/"
           aria-label="쌤플 홈으로"
@@ -74,7 +74,7 @@ export default function WorkspaceTopBar() {
         <span className="font-medium text-ink">{page}</span>
       </div>
 
-      <div className="flex items-center gap-3 text-[11px] text-ink-soft">
+      <div className="flex items-center gap-3 text-[12px] text-ink-soft">
         <span className="hidden md:inline">{today}</span>
         <span aria-hidden="true" className="hidden h-6 border-l border-line md:inline" />
         <span aria-label="상단 현재 반" className="hidden truncate sm:inline">

@@ -150,7 +150,7 @@ function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => v
             {plan.school_year}학년도 연간계획안
           </span>
           <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] ${
               confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
             }`}
           >
@@ -170,7 +170,7 @@ function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => v
         <button
           type="button"
           onClick={onReset}
-          className="self-start text-[11px] font-mono text-ink-soft underline"
+          className="self-start text-[12px] font-mono text-ink-soft underline"
         >
           [테스트] 이 계획안과 딸린 월간 전부 지우기
         </button>

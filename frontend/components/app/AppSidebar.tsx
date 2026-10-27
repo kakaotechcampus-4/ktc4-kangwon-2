@@ -57,7 +57,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
 
 const itemBase =
   "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[13px] font-medium transition-all " +
-  "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[13px] text-[10.5px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start";
+  "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[13px] text-[11px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start";
 const activeStyle =
   "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
 const idle = "border border-transparent text-ink-soft lg:hover:translate-x-1 hover:bg-shell-hover";
@@ -109,12 +109,12 @@ export default function AppSidebar() {
           ☀
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block truncate text-[11px] text-ink-soft">
+          <span className="block truncate text-[12px] text-ink-soft">
             {room.orgName || "원 정보 없음"}
           </span>
           <span className="mt-1 block truncate text-xs font-medium text-ink">
             {room.className || "반 정보 없음"}
-            {room.age && <span className="text-[11px] text-ink-soft"> · {room.age}</span>}
+            {room.age && <span className="text-[12px] text-ink-soft"> · {room.age}</span>}
           </span>
         </span>
         <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
@@ -142,7 +142,7 @@ export default function AppSidebar() {
         <NavLink item={HOME} active={isActive(HOME)} />
         {GROUPS.map((group) => (
           <div key={group.title} className="contents lg:block lg:pt-4">
-            <p className="hidden px-3 pb-1 text-[10px] font-medium text-ink-soft lg:block">
+            <p className="hidden px-3 pb-1 text-[12px] font-medium text-ink-soft lg:block">
               {group.title}
             </p>
             {group.items.map((item) => (
@@ -173,12 +173,12 @@ export default function AppSidebar() {
         <div className="flex items-center justify-between px-1">
           <Link
             href="/settings"
-            className="flex min-h-11 items-center gap-2 text-[11px] text-ink-soft"
+            className="flex min-h-11 items-center gap-2 text-[12px] text-ink-soft"
           >
             <Icon name="settings" className="h-4 w-4" />
             설정
           </Link>
-          <Link href="/logout" className="flex min-h-11 items-center text-[11px] text-ink-soft">
+          <Link href="/logout" className="flex min-h-11 items-center text-[12px] text-ink-soft">
             로그아웃
           </Link>
         </div>
@@ -188,7 +188,7 @@ export default function AppSidebar() {
             {teacher.slice(0, 1) || "쌤"}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-[11px] font-medium text-ink">
+            <p className="truncate text-[12px] font-medium text-ink">
               {teacher ? `${teacher} 선생님` : "선생님"}
             </p>
           </div>
