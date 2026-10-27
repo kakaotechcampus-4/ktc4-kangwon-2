@@ -1,3 +1,4 @@
+import { LegalFooter } from "@/components/legal/LegalPage";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/app/icons";
 
@@ -124,10 +125,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-6 text-[11px] text-ink-soft sm:px-8">
-        <span>Ssample · 쌤플</span>
-        <span>강원대 2팀 · 카카오테크캠퍼스 4기</span>
-      </footer>
+      <LegalFooter width="max-w-[1180px]" />
     </div>
   );
 }
