@@ -74,8 +74,22 @@ def export_document(
     return download(content, f"document-{doc.id}", doc.title, format)
 
 
+# 꼬리 칸 하나에 해석 + 지원이 함께 들어간다. 종이에서 둘을 가르는 머리말은
+# 문서마다 다르다 — 일일 보육일지의 칸 이름은 「놀이 평가 및 다음날 지원계획」이고
+# 관찰일지는 「평가」다. 칸 이름과 어긋나는 머리말을 쓰면 교사가 제출할 때 고쳐야 한다.
+_EVAL_HEADINGS = {
+    "observation": ("배움", "지원"),
+    "dailyLog": ("놀이 평가", "다음날 지원계획"),
+}
+
+
 def _evaluation(session: Session, doc: Document) -> str:
-    """꼬리 칸 하나에 들어갈 해석 + 지원. 머리말 없이 빈 줄 하나로 나눈다."""
+    """꼬리 칸 하나에 들어갈 해석 + 지원. 공식 작성 사례처럼 머리말로 나눈다.
+
+    한 칸에 둘을 이어 붙이면 어디까지가 평가이고 어디부터가 계획인지 종이에서 안 보인다.
+    중앙육아종합지원센터 공식 작성 사례가 `▸ 놀이상황)` · `▸ 놀이지원)` 로 가르는 자리다
+    (docs/references/보육일지-공식양식.md).
+    """
     bodies = dict(
         session.execute(
             select(DocumentSection.heading, DocumentSection.body).where(
@@ -83,7 +97,8 @@ def _evaluation(session: Session, doc: Document) -> str:
             )
         ).all()
     )
-    return f"{bodies['해석']}\n\n{bodies['지원']}"
+    first, second = _EVAL_HEADINGS.get(doc.kind, ("해석", "지원"))
+    return f"▸ {first}) {bodies['해석']}\n\n▸ {second}) {bodies['지원']}"
 
 
 def _missing(fields: list[str]) -> None:

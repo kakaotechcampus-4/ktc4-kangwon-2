@@ -148,8 +148,8 @@ def test_확정된_관찰일지를_영역_행과_평가_칸에_나눠_담는다(
     assert table["의사소통"] == ["(9/10) 개미 집 이야기를 했다."]
     # 기록이 없는 영역은 빈 칸으로 둔다. 막지 않는다.
     assert table["신체운동·건강"] == [""]
-    # 해석과 지원은 머리말 없이 빈 줄 하나를 사이에 두고 한 칸에 들어간다.
-    assert table["평가"] == [INTERPRETATION, "", SUPPORT]
+    # 해석과 지원은 문서마다 다른 머리말을 달고 빈 줄 하나를 사이에 두고 한 칸에 들어간다.
+    assert table["평가"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
 
 
 def test_2축_원은_두_줄짜리_양식으로_나간다(db_session, mine):
@@ -170,7 +170,7 @@ def test_2축_원은_두_줄짜리_양식으로_나간다(db_session, mine):
     assert list(table) == ["영역", "일상생활", "놀이활동", "평가"]
     assert table["놀이활동"] == ["(9/5) 블록으로 길을 만들었다."]
     assert table["일상생활"] == [""]
-    assert table["평가"] == [INTERPRETATION, "", SUPPORT]
+    assert table["평가"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
 
 
 def test_축을_바꾼_뒤_옛_축_기록을_내보내면_이유를_말한다(db_session, mine):
@@ -221,7 +221,7 @@ def test_관찰일지를_hwp_로_바꿔_내려준다(db_session, mine, tmp_path)
         ["사회관계", ""],
         ["예술경험", ""],
         ["자연탐구", "(9/5) 화단에서 지렁이를 찾았다.\n(9/22) 개미를 3분 동안 바라보았다."],
-        ["평가", f"{INTERPRETATION}\n\n{SUPPORT}"],
+        ["평가", f"▸ 배움) {INTERPRETATION}\n\n▸ 지원) {SUPPORT}"],
     ]
     assert _hwp_rows(response.content, tmp_path) == [
         [_as_read(text) for text in row] for row in expected
@@ -518,7 +518,10 @@ def test_일과마다_한_줄씩_늘려_담고_꼬리_칸에_평가를_넣는다
         # 시간이 없는 일과는 같은 순서 안에서 뒤로 간다.
         ["", "특별활동", "", "음악 수업에 참여했다."],
     ]
-    assert rows[4] == ["놀이 평가 및 다음날 지원계획", f"{INTERPRETATION}\n\n{SUPPORT}"]
+    assert rows[4] == [
+        "놀이 평가 및 다음날 지원계획",
+        f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음날 지원계획) {SUPPORT}",
+    ]
     # 줄을 끼워 넣은 만큼 표의 줄 수도 늘어야 한글이 연다.
     assert table.get("rowCnt") == "5"
     assert len(table.findall("hp:tr", NS)) == 5
@@ -585,7 +588,10 @@ def test_줄을_늘린_일일_보육일지도_hwp_로_바꿔_내려준다(db_ses
         ["07:30~09:00", "등원", "웃으며 맞이하기", "교사와 인사하고 가방을 정리했다."],
         ["11:00~11:40", "바깥놀이", "낙엽 모으기\n낙엽 세기", "산책길에서 낙엽을 모았다."],
         ["11:40~12:30", "점심", "", "스스로 수저를 챙겼다."],
-        ["놀이 평가 및 다음날 지원계획", f"{INTERPRETATION}\n\n{SUPPORT}"],
+        [
+            "놀이 평가 및 다음날 지원계획",
+            f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음날 지원계획) {SUPPORT}",
+        ],
     ]
     assert _hwp_rows(response.content, tmp_path) == [
         [_as_read(text) for text in row] for row in expected
