@@ -25,10 +25,14 @@ from app.features.plans.runtime import FixedPlanIdGenerator, SystemClock, UuidGe
 from app.features.plans.schemas import (
     EvidenceOut,
     GenerationOut,
+    PlayAuditEventOut,
+    PlayAuditOut,
     PlayCandidateOut,
     PlayCellOut,
     PlayPeriodOut,
     PlayProjectPlanOut,
+    SelectionChangeOut,
+    ValueChangeOut,
 )
 from app.shared.llm import is_mock
 
@@ -165,6 +169,42 @@ def to_out(row: Plan, plan: PlayProjectYearlyPlan) -> PlayProjectPlanOut:
     )
 
 
+def audit_out(plan: PlayProjectYearlyPlan) -> PlayAuditOut:
+    """계획안 · 모든 후보 칸의 저장된 이벤트를 발생 시각순으로. type 은 걸러내지 않는다."""
+    events = list(plan.audit.events)
+    for period in plan.periods:
+        for candidate in period.candidates:
+            for name in ROW_FIELDS:
+                events += getattr(candidate, name).audit.events
+    events.sort(key=lambda event: event.occurred_at)  # 안정 정렬 — 같은 시각이면 원래 순서
+    return PlayAuditOut(
+        items=[
+            PlayAuditEventOut(
+                type=e.event_type.value,
+                occurred_at=e.occurred_at,
+                actor=e.actor_id.value if e.actor_id is not None else None,
+                system_actor=e.system_actor,
+                value_change=(
+                    ValueChangeOut(before=e.value_change.before, after=e.value_change.after)
+                    if e.value_change is not None
+                    else None
+                ),
+                item_id=e.item_id.value if e.item_id is not None else None,
+                selection_change=(
+                    SelectionChangeOut(
+                        period_key=e.selection_change.period_key,
+                        before=list(e.selection_change.before),
+                        after=list(e.selection_change.after),
+                    )
+                    if e.selection_change is not None
+                    else None
+                ),
+            )
+            for e in events
+        ]
+    )
+
+
 def _no_duplicates(keys: list[str]) -> list[str]:
     if len(keys) != len(set(keys)):
         raise ValueError("같은 후보를 두 번 고를 수 없습니다")
@@ -198,3 +238,9 @@ class EditItemIn(RevisionIn):
     value: Annotated[
         str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=600)
     ]
+
+
+class ConfirmIn(RevisionIn):
+    # 월별 주제형은 본문을 안 읽으므로 `{}` 도 받아야 한다.
+    # 놀이형의 「없음」은 라우터가 422 로 막고, 타입이 틀린 값은 여기서 먼저 422 다.
+    expected_revision: Annotated[int, Field(ge=1, strict=True)] | None = None
