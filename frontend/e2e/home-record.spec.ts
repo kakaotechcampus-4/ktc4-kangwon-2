@@ -111,10 +111,19 @@ async function saveHome(page: Page, fact: string, expectedClassId: number) {
   await page.getByRole("button", { name: "기록 남기기", exact: true }).click();
   return confirmHome(page, expectedClassId);
 }
+/** 「이렇게 남길까요?」의 아이 칸에서 첫 아이를 고른다. 비워 둔 채로는 저장이 막힌다. */
+async function pickChild(page: Page) {
+  const picker = page.getByRole("combobox", { name: "아이", exact: true });
+  const first = await picker.locator("option[value!='']").first().getAttribute("value");
+  await picker.selectOption(first!);
+}
+
 async function confirmHome(page: Page, expectedClassId: number) {
   const posted = page.waitForResponse(
     (r) => r.url().endsWith("/api/observations") && r.request().method() === "POST",
   );
+  // 아이 칸은 비어 있는 채로 열린다 — 고르기 전에는 「이대로 남기기」가 눌리지 않는다.
+  await pickChild(page);
   await page.getByRole("button", { name: "이대로 남기기", exact: true }).click();
   const response = await posted;
   expect(response.status()).toBe(201);
@@ -240,6 +249,7 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   const latePost = page.waitForResponse(
     (r) => r.url().endsWith("/api/observations") && r.request().method() === "POST",
   );
+  await pickChild(page);
   await page.getByRole("button", { name: "이대로 남기기", exact: true }).click();
   await saveStarted;
   await page.getByRole("combobox", { name: "반", exact: true }).selectOption({ label: "달님반" });

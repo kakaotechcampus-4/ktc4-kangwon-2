@@ -209,10 +209,14 @@ function Compose({
   // 받아쓴 말은 적던 글 뒤에 붙인다. 덮어쓰면 쓰던 걸 잃는다.
   const dictation = useDictation((said) => setFact((prev) => (prev ? `${prev} ${said}` : said)));
 
-  // 반·아동은 늦게 도착한다. 그때 useState 를 맞추는 대신 그릴 때 첫 항목으로 떨어뜨린다 —
+  // 반은 늦게 도착한다. 그때 useState 를 맞추는 대신 그릴 때 고른다 —
   // effect 안에서 setState 하면 렌더가 한 번 더 돈다. 반을 고르는 규칙은 홈에 하나만 둔다.
+  //
+  // **아이는 첫 항목으로 떨어뜨리지 않는다.** 영역과 다르다 — 영역을 잘못 고르면 교사가
+  // 그 기록을 고치면 되지만, 아이를 잘못 고르면 **다른 아이의 기록**이 된다.
+  // 바쁜 교사가 확인하지 않고 「이대로 남기기」를 누르면 조용히 그렇게 저장됐다.
   const classroom = classes.find((c) => c.id === activeClassId);
-  const child = classroom?.children.find((c) => c.id === childId) ?? classroom?.children[0];
+  const child = classroom?.children.find((c) => c.id === childId);
 
   async function save() {
     if (!fact.trim() || !activeClassId || !child || busy) return;
@@ -344,6 +348,7 @@ function Compose({
                     onChange={(e) => setChildId(e.target.value)}
                     className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
                   >
+                    <option value="">누구인지 골라주세요</option>
                     {classroom?.children.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -374,7 +379,7 @@ function Compose({
                 >
                   더 쓸래요
                 </button>
-                <button type="button" disabled={busy} onClick={save} className={PRIMARY}>
+                <button type="button" disabled={busy || !child} onClick={save} className={PRIMARY}>
                   {busy ? "남기는 중" : "이대로 남기기"}
                 </button>
               </div>
