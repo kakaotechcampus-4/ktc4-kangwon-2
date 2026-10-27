@@ -4,7 +4,9 @@ The Rule fixes the month, weeks, list sizes, the parent plays, the allowed 누�
 ids, the eight safety slots with each slot's allowed refs, and the approved daily-life
 entries. The LLM writes theme, rationale, play names and safety sentences, and picks ids
 inside those ranges. Habit / health / nutrition text is the approved entry sentence: the LLM
-picks the entry, never rewrites it. Teacher-input cells and weekly safety placement are not
+picks the entry, never rewrites it. The Rule also fixes the 소방대피 · 재난대비 topics; the LLM
+writes one candidate sentence per topic, never a date, route, assembly place or procedure.
+Teacher-input cells and weekly safety placement are not
 part of the response at all.
 """
 
@@ -32,7 +34,7 @@ SYSTEM_PROMPT = (
     "너는 어린이집 놀이중심 월간계획안 초안을 쓰는 도우미다. 응답은 JSON 객체 하나다: "
     '{"target_month", "theme", "rationale", "together": [{"name", "content_ids", "parent_ref"}], '
     '"free_play": [{"name", "content_ids", "parent_ref"}], "safety": [{"slot", "text", "refs"}], '
-    '"habits": [{"week_id", "entry_id"}], "health_entry_id", "nutrition_entry_id"}. '
+    '"habits": [{"week_id", "entry_id"}], "health_entry_id", "nutrition_entry_id", "drills": [{"topic_id", "text"}]}. '
     "target_month 는 요청 값을 그대로 쓴다. "
     "theme 은 이 달에 예상되는 놀이를 나타내는 놀이 주제다. rationale 은 이 주제를 고른 까닭을 합니다체 2~4문장으로 쓴다 — "
     "부모 연간의 해당 시기 놀이와 계절 · 생활을 바탕으로 예상되는 놀이를 설명하고, 유아가 실제로 보인 관심 · 관찰 · 실시 · 성과를 사실처럼 쓰지 않는다. "
@@ -46,6 +48,8 @@ SYSTEM_PROMPT = (
     "refs 는 그 slot 의 allowed_refs 중 text 가 실제로 근거한 것이다 — 법정 영역 slot 은 정확히 1개, 생활안전 slot 은 1개 이상이다. "
     "habits 는 weeks 의 week_id 마다 하나씩, habit_entries 의 entry_id 를 고른다. 주차 수가 항목 수보다 많지 않으면 같은 항목을 되풀이하지 않는다. "
     "health_entry_id 는 health_entries, nutrition_entry_id 는 nutrition_entries 의 entry_id 중 하나다. 그 문장은 쓰지 않는다. "
+    "drills 는 drill_topics 의 topic_id 마다 하나씩, 그 상황을 가정한 소방대피 · 재난대비 훈련 주제를 유아가 알아듣는 말로 한 문장 쓴다. "
+    "훈련 날짜 · 시각 · 대피 경로 · 집결 장소 · 담당자 · 실시 결과와 그 원의 비상대응 절차는 쓰지 않는다 — 교사가 쓴다. "
     "발달 · 건강 효과를 단정하지 않는다. 반 이름 · 원 이름은 쓰지 않는다. "
     "어린이날 · 추석처럼 누구나 아는 공휴일 · 기념일은 쓸 수 있다. "
     "그 원만의 행사, 입력에 없는 날짜 · 요일 · 시각 · 사람 이름 · 기관 정보는 지어내지 않는다."
@@ -62,6 +66,7 @@ _SAFETY_SCHEMA = _object_schema(
     {"slot": _STRING, "text": _STRING, "refs": {"type": "array", "items": _STRING}}
 )
 _HABIT_SCHEMA = _object_schema({"week_id": _STRING, "entry_id": _STRING})
+_DRILL_SCHEMA = _object_schema({"topic_id": _STRING, "text": _STRING})
 RESPONSE_SCHEMA = _object_schema(
     {
         "target_month": _STRING,
@@ -73,6 +78,7 @@ RESPONSE_SCHEMA = _object_schema(
         "habits": {"type": "array", "items": _HABIT_SCHEMA},
         "health_entry_id": _STRING,
         "nutrition_entry_id": _STRING,
+        "drills": {"type": "array", "items": _DRILL_SCHEMA},
     }
 )
 
@@ -106,6 +112,7 @@ class PlayMonthlyRequest:
     habit_entry_ids: tuple[str, ...]
     health_entry_ids: frozenset[str]
     nutrition_entry_ids: frozenset[str]
+    drill_topic_ids: tuple[str, ...]  # fixed by the Rule; the LLM writes one sentence each
     fingerprint: str
 
 
@@ -134,6 +141,7 @@ class PlayMonthlyProposal:
     habits: tuple[tuple[str, str], ...]  # (week_id, entry_id)
     health_entry_id: str
     nutrition_entry_id: str
+    drills: tuple[tuple[str, str], ...]  # (topic_id, text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +175,7 @@ def build_play_monthly_request(
     habit_entries: tuple[DailyLifeEntry, ...],
     health_entries: tuple[DailyLifeEntry, ...],
     nutrition_entries: tuple[DailyLifeEntry, ...],
+    drill_topics: tuple[tuple[str, str, str], ...],  # (topic_id, label, situation)
     reference_versions: tuple[str, ...],
 ) -> PlayMonthlyRequest:
     def entries(values: tuple[DailyLifeEntry, ...]) -> list[dict]:
@@ -191,6 +200,9 @@ def build_play_monthly_request(
         "habit_entries": entries(habit_entries),
         "health_entries": entries(health_entries),
         "nutrition_entries": entries(nutrition_entries),
+        "drill_topics": [
+            {"topic_id": t, "label": label, "situation": situation} for t, label, situation in drill_topics
+        ],
     }
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayMonthlyRequest(
@@ -207,6 +219,7 @@ def build_play_monthly_request(
         habit_entry_ids=tuple(e.entry_id for e in habit_entries),
         health_entry_ids=frozenset(e.entry_id for e in health_entries),
         nutrition_entry_ids=frozenset(e.entry_id for e in nutrition_entries),
+        drill_topic_ids=tuple(t for t, _, _ in drill_topics),
         fingerprint=_fingerprint(PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT, user_content, *reference_versions),
     )
 
@@ -283,6 +296,9 @@ def parse_play_monthly_proposal(content: str) -> PlayMonthlyProposal:
         ),
         health_entry_id=data["health_entry_id"],
         nutrition_entry_id=data["nutrition_entry_id"],
+        drills=tuple(
+            (_require_str(d["topic_id"]), _require_str(d["text"])) for d in items("drills", _DRILL_SCHEMA)
+        ),
     )
 
 
@@ -382,6 +398,19 @@ def validate_play_monthly(
         add("health", "UNKNOWN_ENTRY")
     if proposal.nutrition_entry_id not in request.nutrition_entry_ids:
         add("nutrition", "UNKNOWN_ENTRY")
+
+    topics = set(request.drill_topic_ids)
+    written: set[str] = set()
+    for topic_id, drill_text in proposal.drills:
+        if topic_id not in topics:
+            add("drills", "UNKNOWN_DRILL_TOPIC")
+        elif topic_id in written:
+            add("drills", "DUPLICATE_DRILL_TOPIC")
+        else:
+            written.add(topic_id)
+            text(f"drills:{topic_id}", drill_text)
+    if written != topics:
+        add("drills", "MISSING_DRILL_TOPIC")
     return tuple(dict.fromkeys(issues))
 
 
@@ -405,6 +434,7 @@ def changed_locations(before: PlayMonthlyProposal, after: PlayMonthlyProposal) -
     for section, old, new in (
         ("safety", {s.slot: s for s in before.safety}, {s.slot: s for s in after.safety}),
         ("habits", dict(before.habits), dict(after.habits)),
+        ("drills", dict(before.drills), dict(after.drills)),
     ):
         reshaped = old.keys() != new.keys() or (len(old), len(new)) != (
             len(getattr(before, section)),

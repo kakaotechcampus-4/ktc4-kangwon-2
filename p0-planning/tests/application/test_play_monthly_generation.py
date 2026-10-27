@@ -18,6 +18,7 @@ from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
 from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
+from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonSafetyLegalRuleRepository
 from ssuksak.adapters.safety_evidence_classification_repository import (
     JsonSafetyEvidenceClassificationRepository,
@@ -32,6 +33,7 @@ from ssuksak.planning.application.generate_play_monthly_plan import (
 from ssuksak.planning.application.generate_play_project_plan import PLAY_PROJECT_LAYOUT_V0_2
 from ssuksak.planning.domain.curriculum_reference import CurriculumCatalog, CurriculumContent
 from ssuksak.planning.domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
+from ssuksak.planning.domain.drill_topic_reference import DrillKind, DrillOrigin, DrillTopic, DrillTopicCatalog
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.plan import PlanItem, PlanStatus
@@ -80,6 +82,27 @@ DAILY = DailyLifeCatalog(
         DailyLifeEntry("he1", DailyLifeKind.HEALTH, "건강", "합성 건강 1", "t.2"),
         DailyLifeEntry("he2", DailyLifeKind.HEALTH, "건강", "합성 건강 2", "t.2"),
         DailyLifeEntry("nu1", DailyLifeKind.NUTRITION, "영양", "합성 영양 1", "t.3"),
+    ),
+)
+ALL_MONTHS = tuple(range(1, 13))
+DRILLS = DrillTopicCatalog(
+    "test.drills",
+    "test-drills-v1",
+    ActivationStatus.HUMAN_APPROVED,
+    CURRICULUM.catalog_id,
+    CURRICULUM.catalog_version,
+    (DrillOrigin("test.guide", "합성 안내서", "0" * 64, "1-2"),),
+    tuple(
+        DrillTopic(topic_id, kind, label, f"합성 {label} 상황", "t.4", months, "test.guide")
+        for topic_id, kind, label, months in (
+            ("fire_a", DrillKind.FIRE, "화재 가", ALL_MONTHS),
+            ("quake", DrillKind.DISASTER, "지진", ALL_MONTHS),
+            ("fire_b", DrillKind.FIRE, "화재 나", ALL_MONTHS),
+            ("fire_c", DrillKind.FIRE, "화재 다", ALL_MONTHS),
+            ("fire_d", DrillKind.FIRE, "화재 라", ALL_MONTHS),
+            ("snow", DrillKind.DISASTER, "폭설", (12, 1, 2)),
+            ("flood", DrillKind.DISASTER, "수해", (6, 7, 8, 9)),
+        )
     ),
 )
 
@@ -142,6 +165,7 @@ def _valid(request) -> dict:
         ],
         "health_entry_id": "he1",
         "nutrition_entry_id": "nu1",
+        "drills": [{"topic_id": t, "text": f"{t} 상황을 가정해 대피 훈련을 해요"} for t in request.drill_topic_ids],
     }
 
 
@@ -197,6 +221,7 @@ def _run(
     parent=None,
     curriculum=CURRICULUM,
     daily=DAILY,
+    drills=DRILLS,
     rule=RULE,
     classification=CLASSIFIED,
     quality=QUALITY_TABLE,
@@ -213,6 +238,7 @@ def _run(
         plan_repository=plans,
         curriculum_repository=_Catalogs(curriculum),
         daily_life_repository=_Catalogs(daily),
+        drill_repository=_Catalogs(drills),
         safety_rule_repository=_Value(rule),
         evidence_repository=_Value(STORE),
         safety_classification_repository=_Value(classification),
@@ -235,6 +261,8 @@ def _run(
                 legal_rule_version=LEGAL,
                 safety_classification_version=CLASSIFICATION,
                 safety_quality_version=QUALITY,
+                drill_catalog_id=DRILLS.catalog_id,
+                drill_catalog_version=DRILLS.catalog_version,
             ),
             **command_changes,
         }
@@ -421,6 +449,14 @@ def _one_topic(quality):
             DailyLifeEntry("x", DailyLifeKind.HABIT, "습관", "합성", "t.99"),))),
          "DAILY_LIFE_UNKNOWN_CONTENT_ID"),
         (dict(daily=replace(DAILY, entries=DAILY.of_kind(DailyLifeKind.HABIT))), "DAILY_LIFE_REFERENCE_INCOMPLETE"),
+        (dict(drills=replace(DRILLS, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW)),
+         "DRILL_REFERENCE_NOT_ACTIVE"),
+        (dict(drill_catalog_version="test-drills-v0"), "DRILL_REFERENCE_NOT_FOUND"),
+        (dict(drills=replace(DRILLS, curriculum_catalog_version="other")), "DRILL_CURRICULUM_MISMATCH"),
+        (dict(drills=replace(DRILLS, topics=DRILLS.topics + (
+            DrillTopic("x", DrillKind.FIRE, "화재", "합성", "t.99", ALL_MONTHS, "test.guide"),))),
+         "DRILL_UNKNOWN_CONTENT_ID"),
+        (dict(drills=replace(DRILLS, topics=DRILLS.topics[:4])), "DRILL_TOPICS_INSUFFICIENT"),
         (dict(rule=replace(RULE, runtime_active=False)), "SAFETY_RULE_NOT_ACTIVE"),
         (dict(legal_rule_version="other-rule"), "SAFETY_RULE_NOT_FOUND"),
         (dict(quality=replace(QUALITY_TABLE, runtime_active=False)), "SAFETY_EVIDENCE_NOT_ACTIVE"),
@@ -544,6 +580,10 @@ def _six_rows(data):
         (_set(("target_month",), "2027-05"), "TARGET_MONTH_MISMATCH"),
         (_set(("theme",), "4월 14일 소풍 놀이"), "UNSUPPORTED_FACT"),
         (_set(("rationale",), "홍길동 선생님과 함께하는 놀이를 예상합니다."), "UNSUPPORTED_FACT"),
+        (_set(("drills",), []), "MISSING_DRILL_TOPIC"),
+        (_set(("drills", 0, "topic_id"), "snow"), "UNKNOWN_DRILL_TOPIC"),  # not chosen for April
+        (_set(("drills", 1, "topic_id"), "fire_a"), "DUPLICATE_DRILL_TOPIC"),
+        (_set(("drills", 0, "text"), "4월 14일 오전에 대피 훈련을 해요"), "UNSUPPORTED_FACT"),
     ],
 )
 def test_invalid_output_is_rejected_after_one_failed_repair(edit, code):
@@ -563,6 +603,7 @@ def test_invalid_output_is_rejected_after_one_failed_repair(edit, code):
         _set(("class_notice",), "교사가 쓸 안내"),  # a teacher-input cell is not a response field
         _set(("safety", 0, "week_id"), "2027-04-W1"),  # weekly placement is the teacher's
         _set(("together", 0, "content_ids"), "t.1"),
+        _set(("drills", 0, "assembly_place"), "놀이터"),  # place and route are the teacher's
     ],
 )
 def test_unrequested_fields_are_parse_errors_and_store_nothing(edit):
@@ -639,3 +680,76 @@ def test_domain_rejects_generated_teacher_input_and_unknown_placement():
         + plan.safety_weeks[1:],
     )
     assert placed.safety_weeks[0].candidate_item_id == plan.safety_candidates[0].cell.item_id
+
+
+def test_drill_candidates_are_five_curriculum_topics_and_the_drill_cell_stays_blank():
+    use_case, command, _, provider, _ = _run()
+    plan = use_case.execute(command)
+
+    # April has no seasonal topic: the five all-month topics in catalog order.
+    assert [d.topic_id for d in plan.drill_candidates] == ["fire_a", "quake", "fire_b", "fire_c", "fire_d"]
+    for candidate in plan.drill_candidates:
+        (source,) = candidate.cell.evidence
+        assert (source.source_type, source.source_id) == (EvidenceSourceType.CURRICULUM, "t.4")
+        assert candidate.cell.semantic_key == f"fire_disaster_drill.candidate.{candidate.topic_id}"
+        assert candidate.cell.value == f"{candidate.topic_id} 상황을 가정해 대피 훈련을 해요"
+    (drill_cell,) = [t for t in plan.teacher_inputs if t.semantic_key == "fire_disaster_drill"]
+    assert drill_cell.value == "" and drill_cell.generation is None
+    assert (plan.references.drill_catalog_id, plan.references.drill_catalog_version) == (
+        "test.drills",
+        "test-drills-v1",
+    )
+    payload = json.loads(provider.requests[0].user_content)
+    chosen = [d.topic_id for d in plan.drill_candidates]
+    assert [t["topic_id"] for t in payload["drill_topics"]] == list(provider.requests[0].drill_topic_ids) == chosen
+
+
+@pytest.mark.parametrize(
+    ("month", "topics"),
+    [
+        (1, ["snow", "fire_a", "quake", "fire_b", "fire_c"]),
+        (7, ["flood", "fire_a", "quake", "fire_b", "fire_c"]),
+        (4, ["fire_a", "quake", "fire_b", "fire_c", "fire_d"]),
+    ],
+)
+def test_seasonal_drill_topics_come_first_in_their_months(month, topics):
+    year = 2027 if month >= 3 else 2028
+    use_case, command, *_ = _run(target_month=YearMonth(year, month))
+
+    assert [d.topic_id for d in use_case.execute(command).drill_candidates] == topics
+
+
+def test_repair_rewrites_only_the_flagged_drill_sentence():
+    use_case, command, plans, provider, _ = _run(_set(("drills", 2, "text"), "4월 14일에 대피해요"))
+
+    plan = use_case.execute(command)
+
+    repair = json.loads(provider.requests[1].user_content)
+    assert repair["issues"] == [{"location": "drills:fire_b", "code": "UNSUPPORTED_FACT"}]
+    versions = {d.topic_id: d.cell.generation.rule_version for d in plan.drill_candidates}
+    assert versions.pop("fire_b") == PLAY_MONTHLY_REPAIR_PROMPT_VERSION
+    assert set(versions.values()) == {PLAY_MONTHLY_PROMPT_VERSION}
+
+
+def test_the_real_drill_draft_loads_pending_and_is_rejected():
+    real = JsonDrillTopicReferenceRepository()
+    drills = real.get_catalog("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
+    assert drills.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
+    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_1.drill_candidate_count
+    assert {t.content_id for t in drills.topics} == {"nuri2019.1.3.4"}
+    use_case, command, plans, provider, _ = _run(
+        drills=drills, drill_catalog_id=drills.catalog_id, drill_catalog_version=drills.catalog_version
+    )
+
+    with pytest.raises(PlayMonthlyGenerationError, match="DRILL_REFERENCE_NOT_ACTIVE"):
+        use_case.execute(command)
+    assert provider.requests == [] and plans.save_count == 0
+
+
+def test_domain_rejects_duplicate_drill_topics():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+    first = plan.drill_candidates[0]
+
+    with pytest.raises(InvalidDomainValueError):
+        replace(plan, drill_candidates=plan.drill_candidates + (replace(first, cell=plan.drill_candidates[1].cell),))

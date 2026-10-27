@@ -63,13 +63,15 @@ class PlayMonthlyLayout:
     sections: tuple[LayoutSection, ...]
     together_count: int
     free_play_count: int
+    drill_candidate_count: int
 
     def __post_init__(self) -> None:
         _non_blank(self.layout_version, "PlayMonthlyLayout.layout_version")
         keys = [section.semantic_key for section in self.sections]
         if not keys or len(keys) != len(set(keys)):
             raise InvalidDomainValueError("PlayMonthlyLayout needs unique sections")
-        if any(type(n) is not int or n < 1 for n in (self.together_count, self.free_play_count)):
+        counts = (self.together_count, self.free_play_count, self.drill_candidate_count)
+        if any(type(n) is not int or n < 1 for n in counts):
             raise InvalidDomainValueError("PlayMonthlyLayout list sizes must be positive")
 
     @property
@@ -208,6 +210,22 @@ class EntryCell:
 
 
 @dataclass(frozen=True, slots=True)
+class DrillCandidate:
+    """A 소방대피 · 재난대비 topic candidate. The document's drill cell is a separate
+    teacher-input cell that starts blank; a candidate is never placed automatically."""
+
+    cell: PlayMonthlyCell
+    topic_id: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cell, PlayMonthlyCell):
+            raise InvalidDomainValueError("DrillCandidate.cell must be PlayMonthlyCell")
+        _non_blank(self.topic_id, "DrillCandidate.topic_id")
+        if not self.cell.cites_only(EvidenceSourceType.CURRICULUM):
+            raise InvalidDomainValueError("DrillCandidate cites CURRICULUM only")
+
+
+@dataclass(frozen=True, slots=True)
 class HabitWeek:
     week_id: WeekId
     habit: EntryCell
@@ -272,6 +290,8 @@ class PlayMonthlyReferences:
     evidence_store_sha256: str
     safety_classification_version: str
     safety_quality_version: str
+    drill_catalog_id: str
+    drill_catalog_version: str
     prompt_version: str
     request_fingerprint: str
 
@@ -301,6 +321,7 @@ class PlayMonthlyPlan:
     safety_weeks: tuple[SafetyWeek, ...]
     health: EntryCell
     nutrition: EntryCell
+    drill_candidates: tuple[DrillCandidate, ...]
     teacher_inputs: tuple[PlayMonthlyCell, ...]
     audit: AuditHistory = field(default_factory=AuditHistory)
     format: str = PLAY_MONTHLY_FORMAT
@@ -335,6 +356,9 @@ class PlayMonthlyPlan:
             for s in self.safety_weeks
         ):
             raise InvalidDomainValueError("A safety placement must name a kept candidate")
+        topics = [d.topic_id for d in self.drill_candidates]
+        if len(topics) != len(set(topics)):
+            raise InvalidDomainValueError("Drill candidates must name distinct topics")
         if tuple(t.semantic_key for t in self.teacher_inputs) != self.layout.teacher_input_keys:
             raise InvalidDomainValueError("teacher_inputs must follow the layout's teacher-input keys")
         if any(
@@ -357,5 +381,6 @@ class PlayMonthlyPlan:
             *(c.cell for c in self.safety_candidates),
             self.health.cell,
             self.nutrition.cell,
+            *(d.cell for d in self.drill_candidates),
             *self.teacher_inputs,
         )
