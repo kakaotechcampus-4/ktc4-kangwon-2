@@ -1,4 +1,5 @@
-"""PLAY_MONTHLY lifecycle L1: edit one cell and confirm (2026-10-27, M2-D09 · M2-D13 · I-6).
+"""PLAY_MONTHLY lifecycle: L1 edit one cell and confirm (M2-D09 · M2-D13 · I-6), L2 change a
+play's curriculum links (M2-D18 · I-1 · I-2). Decisions 2026-10-27.
 
 Plans come from the real generation use case with the Fake provider of the generation tests.
 """
@@ -16,6 +17,8 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     ConfirmPlayMonthlyPlanCommand,
     EditPlayMonthlyCell,
     EditPlayMonthlyCellCommand,
+    EditPlayMonthlyContentIds,
+    EditPlayMonthlyContentIdsCommand,
     PlayMonthlyLifecycleError,
     PlayMonthlyNotice,
     play_monthly_notices,
@@ -23,13 +26,9 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
 from ssuksak.planning.domain.errors import InvalidDomainValueError, InvalidStateTransitionError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.plan import PlanStatus
-from ssuksak.planning.domain.provenance import (
-    AuditEventType,
-    EvidenceSource,
-    EvidenceSourceType,
-    GenerationMethod,
-)
-from tests.application.test_play_monthly_generation import _run
+from ssuksak.planning.domain.provenance import AuditEventType, GenerationMethod, LinkChange
+from ssuksak.planning.domain.theme_reference import ActivationStatus
+from tests.application.test_play_monthly_generation import CURRICULUM, _Catalogs, _run
 
 NOW = datetime(2027, 2, 21, tzinfo=UTC)
 TEACHER = ActorId("teacher-1")
@@ -186,9 +185,7 @@ def test_notices_name_unplaced_safety_weeks_and_blank_habits_health_nutrition():
 
 
 def _with_content_ids(activity, count):
-    keep = tuple(s for s in activity.cell.evidence if s.source_type is not EvidenceSourceType.CURRICULUM)
-    curriculum = tuple(EvidenceSource(EvidenceSourceType.CURRICULUM, f"c{n}", "v") for n in range(count))
-    return replace(activity, cell=replace(activity.cell, evidence=curriculum + keep))
+    return replace(activity, content_ids=tuple(f"c{n}" for n in range(count)))
 
 
 @pytest.mark.parametrize(
@@ -267,3 +264,138 @@ def test_replace_cell_refuses_an_unknown_cell_or_a_moved_semantic_key():
         plan.replace_cell(replace(plan.theme, item_id=ItemId("nope")))
     with pytest.raises(InvalidDomainValueError):
         plan.replace_cell(replace(plan.theme, semantic_key="rationale"))
+
+
+# --- L2: curriculum links -------------------------------------------------------------------
+
+
+def _links(plans, *catalogs):
+    return EditPlayMonthlyContentIds(
+        plan_repository=plans,
+        curriculum_repository=_Catalogs(*(catalogs or (CURRICULUM,))),
+        clock=FixedClock(NOW),
+    )
+
+
+def _link(use_case, plan, activity, ids):
+    return use_case.execute(EditPlayMonthlyContentIdsCommand(plan.plan_id, TEACHER, activity.cell.item_id, ids))
+
+
+def _unlinked(activity, count):
+    """Catalog ids the play does not link yet, so the change is never a no-op."""
+    return tuple(c.content_id for c in CURRICULUM.contents if c.content_id not in activity.content_ids)[:count]
+
+
+@pytest.mark.parametrize("count", [1, 3])
+def test_a_link_change_keeps_generation_evidence_and_is_not_a_text_edit(count):
+    plan, plans, _, confirm = _draft()
+    activity = plan.free_play[1]
+    ids = _unlinked(activity, count)
+    saves = plans.save_count
+
+    updated = _link(_links(plans), plan, activity, ids)
+
+    after = updated.activity(activity.cell.item_id)
+    assert after.content_ids == ids
+    assert (after.cell.value, after.cell.evidence, after.cell.generation) == (
+        activity.cell.value,
+        activity.cell.evidence,
+        activity.cell.generation,
+    )
+    assert after.description == activity.description
+    event = after.cell.audit.events[-1]
+    assert (event.event_type, event.actor_id, event.item_id, event.value_change) == (
+        AuditEventType.TEACHER_EDITED,
+        TEACHER,
+        activity.cell.item_id,
+        None,
+    )
+    assert event.link_change == LinkChange(activity.content_ids, ids, CURRICULUM.catalog_version)
+    assert not after.cell.audit.current_value_teacher_edited()
+    assert [a for a in (*updated.together, *updated.free_play) if a is not after] == [
+        a for a in (*plan.together, *plan.free_play) if a != activity
+    ]
+    assert plans.save_count == saves + 1
+    assert confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
+
+
+def test_a_text_edit_stays_teacher_edited_after_a_later_link_change():
+    plan, plans, edit, _ = _draft()
+    plan = _edit(edit, plan, plan.together[0].cell, "교사가 바꾼 놀이명")
+
+    updated = _link(_links(plans), plan, plan.together[0], _unlinked(plan.together[0], 2))
+
+    cell = updated.together[0].cell
+    assert cell.value == "교사가 바꾼 놀이명" and cell.audit.current_value_teacher_edited()
+
+
+@pytest.mark.parametrize(
+    ("ids", "problem"),
+    [
+        ((), "0 content ids, needs 1~3"),
+        (("t.1", "t.2", "t.3", "t.4"), "4 content ids, needs 1~3"),
+        (("t.5", "t.5"), "duplicate content id"),
+        (("t.99",), "t.99: not in test-curriculum-v1"),
+    ],
+)
+def test_bad_links_are_rejected_and_save_nothing(ids, problem):
+    plan, plans, _, _ = _draft()
+    saves = plans.save_count
+
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        _link(_links(plans), plan, plan.together[2], ids)
+
+    assert error.value.code == "invalid_content_ids" and problem in error.value.problems
+    assert plans.save_count == saves
+
+
+@pytest.mark.parametrize(
+    "catalogs",
+    [
+        (),
+        (replace(CURRICULUM, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW),),
+        (replace(CURRICULUM, catalog_version="test-curriculum-v2"),),
+    ],
+    ids=["missing", "not-approved", "other-version-only"],
+)
+def test_links_are_checked_only_against_the_plans_own_approved_catalog_version(catalogs):
+    plan, plans, _, _ = _draft()
+    use_case = EditPlayMonthlyContentIds(
+        plan_repository=plans, curriculum_repository=_Catalogs(*catalogs), clock=FixedClock(NOW)
+    )
+
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        _link(use_case, plan, plan.together[0], _unlinked(plan.together[0], 1))
+
+    assert error.value.code == "curriculum_reference_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("command", "code"),
+    [
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].description.item_id, ("t.1",)), "play_monthly_activity_not_found"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.theme.item_id, ("t.1",)), "play_monthly_activity_not_found"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].cell.item_id, "t.1"), "invalid_content_ids"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, "teacher-1", p.together[0].cell.item_id, ("t.1",)), "opaque_actor_required"),
+    ],
+)
+def test_a_link_change_needs_a_play_name_a_list_and_an_actor(command, code):
+    plan, plans, _, _ = _draft()
+
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        _links(plans).execute(command(plan))
+
+    assert error.value.code == code
+
+
+def test_the_same_links_write_nothing_and_a_confirmed_plan_refuses_links():
+    plan, plans, _, confirm = _draft()
+    activity = plan.together[0]
+    saves = plans.save_count
+
+    assert _link(_links(plans), plan, activity, list(activity.content_ids)) == plan
+    assert plans.save_count == saves
+
+    confirmed = confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    with pytest.raises(InvalidStateTransitionError):
+        _link(_links(plans), confirmed, confirmed.together[0], _unlinked(activity, 1))

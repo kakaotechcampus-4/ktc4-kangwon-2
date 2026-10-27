@@ -126,7 +126,9 @@ class PlayActivity:
     """One row of 함께 하는 활동 or 유아 예상 자유놀이: a play name with its links.
 
     PARENT_PLAN evidence appears only when the row actually builds on one parent play, and
-    then the parent item is snapshotted. CURRICULUM evidence lists the linked content ids.
+    then the parent item is snapshotted. CURRICULUM evidence lists the content ids linked at
+    generation and never changes; ``content_ids`` holds the current links, which a teacher may
+    change within the plan's curriculum catalog version (M2-D18, I-1).
 
     ``description`` explains the play for the teacher on the edit screen (M2-D16). It is its
     own cell, paired to the name by semantic key, and is never printed in the document.
@@ -134,11 +136,18 @@ class PlayActivity:
 
     cell: PlayMonthlyCell
     description: PlayMonthlyCell
+    content_ids: tuple[str, ...]
     parent_snapshot: ParentLineage | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.cell, PlayMonthlyCell):
             raise InvalidDomainValueError("PlayActivity.cell must be PlayMonthlyCell")
+        if not isinstance(self.content_ids, tuple) or not all(
+            isinstance(i, str) and i.strip() for i in self.content_ids
+        ):
+            raise InvalidDomainValueError("PlayActivity.content_ids must be non-blank strings")
+        if len(self.content_ids) != len(set(self.content_ids)):
+            raise InvalidDomainValueError("PlayActivity.content_ids must be unique")
         if not isinstance(self.description, PlayMonthlyCell):
             raise InvalidDomainValueError("PlayActivity.description must be PlayMonthlyCell")
         if self.description.semantic_key != f"{self.cell.semantic_key}.description":
@@ -160,13 +169,6 @@ class PlayActivity:
             raise InvalidDomainValueError(
                 "PlayActivity cites PARENT_PLAN exactly when it snapshots a parent play"
             )
-
-    @property
-    def content_ids(self) -> tuple[str, ...]:
-        """The linked curriculum content ids, read from the name's CURRICULUM evidence."""
-        return tuple(
-            s.source_id for s in self.cell.evidence if s.source_type is EvidenceSourceType.CURRICULUM
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,6 +452,23 @@ class PlayMonthlyPlan:
             nutrition=replace(self.nutrition, cell=swap(self.nutrition.cell)),
             drill_candidates=tuple(replace(d, cell=swap(d.cell)) for d in self.drill_candidates),
             teacher_inputs=tuple(swap(t) for t in self.teacher_inputs),
+        )
+
+    def replace_activity(self, updated: PlayActivity) -> PlayMonthlyPlan:
+        """Swap the row whose name cell has the same ``item_id``; its section and place stay."""
+        self.ensure_mutable("replace_activity")
+        current = self.activity(updated.cell.item_id)
+        if current is None or current.description.item_id != updated.description.item_id:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan activity not found: {updated.cell.item_id}")
+
+        def swap(activities: tuple[PlayActivity, ...]) -> tuple[PlayActivity, ...]:
+            return tuple(updated if a is current else a for a in activities)
+
+        return replace(self, together=swap(self.together), free_play=swap(self.free_play))
+
+    def activity(self, name_item_id: ItemId) -> PlayActivity | None:
+        return next(
+            (a for a in (*self.together, *self.free_play) if a.cell.item_id == name_item_id), None
         )
 
     def confirm(self, *, actor_id: ActorId, occurred_at: datetime) -> PlayMonthlyPlan:

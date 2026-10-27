@@ -337,7 +337,7 @@ class GeneratePlayMonthlyPlan:
                 description = cell(
                     f"{section}[{index}].description", f"{name.semantic_key}.description", row.description, evidence
                 )
-                rows.append(PlayActivity(name, description, lineage))
+                rows.append(PlayActivity(name, description, row.content_ids, lineage))
             return tuple(rows)
 
         def entry_cell(location: str, semantic_key: str, entry: DailyLifeEntry) -> EntryCell:

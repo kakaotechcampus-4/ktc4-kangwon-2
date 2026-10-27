@@ -14,6 +14,7 @@ from ssuksak.planning.domain.provenance import (
     GenerationMethod,
     GenerationMethodChange,
     GenerationMethodDetail,
+    LinkChange,
     ValueChange,
 )
 
@@ -201,3 +202,48 @@ def test_the_current_value_is_teacher_edited_only_until_a_later_regeneration(eve
     history = AuditHistory(tuple(_event(kind, minute) for minute, kind in enumerate(events)))
 
     assert history.current_value_teacher_edited() is edited
+
+
+def _links_only(minute):
+    return AuditEvent(
+        event_type=AuditEventType.TEACHER_EDITED, occurred_at=NOW.replace(minute=minute), plan_id=PlanId("plan_001"),
+        item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"), link_change=LinkChange(("a",), ("b", "c"), "v1"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("events", "edited"),
+    [
+        ((AuditEventType.CREATED,), False),
+        ((AuditEventType.CREATED, AuditEventType.TEACHER_EDITED), True),
+        ((AuditEventType.CREATED, AuditEventType.REGENERATED), False),
+    ],
+    ids=["generated", "text-edited", "regenerated"],
+)
+def test_a_links_only_edit_never_changes_whether_the_text_is_teacher_edited(events, edited):
+    history = AuditHistory(tuple(_event(kind, minute) for minute, kind in enumerate(events)))
+
+    assert history.append(_links_only(len(events))).current_value_teacher_edited() is edited
+
+
+def test_a_teacher_edit_may_carry_links_only_and_only_a_teacher_edit_carries_links():
+    assert _links_only(0).value_change is None
+    with pytest.raises(InvalidDomainValueError, match="Only TEACHER_EDITED"):
+        AuditEvent(
+            event_type=AuditEventType.REGENERATED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+            item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"), link_change=LinkChange((), ("a",), "v1"),
+        )
+
+
+@pytest.mark.parametrize(
+    "args",
+    [(("a", "a"), ("b",), "v1"), (("a",), ("a",), "v1"), (("a",), ("b",), " "), ((" ",), ("b",), "v1")],
+    ids=["duplicate", "unchanged", "blank-version", "blank-id"],
+)
+def test_a_link_change_needs_unique_ids_a_real_change_and_a_version(args):
+    with pytest.raises(InvalidDomainValueError):
+        LinkChange(*args)
+
+
+def test_a_link_change_may_start_from_no_links():
+    assert LinkChange((), ("a",), "v1").before == ()

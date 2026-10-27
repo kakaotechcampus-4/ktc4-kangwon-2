@@ -4,6 +4,10 @@
 - An edit changes one cell's value only. A generated cell keeps its Generation Method and
   evidence; the change is a TEACHER_EDITED event on that cell. A cell never written before (a
   teacher-input cell) becomes MANUAL on its first write. Saving the same value is a no-op.
+- A play's curriculum links (M2-D18, I-1 · I-2) are 1~3 unique content ids of the plan's own
+  curriculum catalog version. Changing them keeps the generation-time CURRICULUM evidence and
+  records a TEACHER_EDITED event with a ``link_change`` only, so the play name does not count as
+  teacher-edited text. The official content text is never stored; it is read from the Reference.
 - Confirm (M2-D09 · I-6) needs a theme, a rationale, and in each play section at least one row,
   every row named and linked to 1~3 content ids. Descriptions, teacher-input cells, habits,
   safety placement and health · nutrition may stay blank: ``play_monthly_notices`` reports the
@@ -14,6 +18,7 @@ Teacher text is not checked against the AI sentence policy. Codes are internal, 
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from ..domain.errors import DomainError
@@ -24,10 +29,12 @@ from ..domain.provenance import (
     AuditEventType,
     GenerationMethod,
     GenerationMethodDetail,
+    LinkChange,
     ValueChange,
 )
 from ..domain.week_period import WeekId
 from ..planner.play_monthly import CONTENT_MAX, CONTENT_MIN
+from .generate_play_project_plan import CurriculumReferenceRepository
 from .ports import Clock, PlanRepository
 
 
@@ -45,6 +52,14 @@ class EditPlayMonthlyCellCommand:
     actor_id: ActorId
     item_id: ItemId
     new_value: str
+
+
+@dataclass(frozen=True, slots=True)
+class EditPlayMonthlyContentIdsCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_id: ItemId  # the play's name cell
+    content_ids: Sequence[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +110,72 @@ class EditPlayMonthlyCell:
                 value=command.new_value,
                 generation=cell.generation or GenerationMethodDetail(GenerationMethod.MANUAL),
                 audit=cell.audit.append(event),
+            )
+        )
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class EditPlayMonthlyContentIds:
+    def __init__(
+        self,
+        *,
+        plan_repository: PlanRepository[PlayMonthlyPlan],
+        curriculum_repository: CurriculumReferenceRepository,
+        clock: Clock,
+    ) -> None:
+        self._plans = plan_repository
+        self._curriculum = curriculum_repository
+        self._clock = clock
+
+    def execute(self, command: EditPlayMonthlyContentIdsCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("edit")
+        actor_id = _require_actor(command.actor_id)
+        if not isinstance(command.item_id, ItemId):
+            raise PlayMonthlyLifecycleError("invalid_item_id", "Edit requires ItemId")
+        activity = plan.activity(command.item_id)
+        if activity is None:
+            raise PlayMonthlyLifecycleError(
+                "play_monthly_activity_not_found", f"PlayMonthlyPlan play not found: {command.item_id}"
+            )
+        ids = command.content_ids
+        if isinstance(ids, str) or not all(isinstance(i, str) for i in ids):
+            raise PlayMonthlyLifecycleError("invalid_content_ids", "content_ids must be a list of strings")
+        ids = tuple(ids)
+        if ids == activity.content_ids:
+            return plan
+        references = plan.references
+        catalog = self._curriculum.get_catalog(
+            references.curriculum_catalog_id, references.curriculum_catalog_version
+        )
+        if catalog is None or not catalog.is_active:
+            raise PlayMonthlyLifecycleError(
+                "curriculum_reference_unavailable", "The plan's curriculum catalog version is not available"
+            )
+        problems = []
+        if not CONTENT_MIN <= len(ids) <= CONTENT_MAX:
+            problems.append(f"{len(ids)} content ids, needs {CONTENT_MIN}~{CONTENT_MAX}")
+        if len(ids) != len(set(ids)):
+            problems.append("duplicate content id")
+        problems += [f"{i}: not in {catalog.catalog_version}" for i in ids if catalog.get(i) is None]
+        if problems:
+            raise PlayMonthlyLifecycleError(
+                "invalid_content_ids", "Curriculum links rejected", tuple(problems)
+            )
+        event = AuditEvent(
+            event_type=AuditEventType.TEACHER_EDITED,
+            occurred_at=self._clock.now(),
+            plan_id=plan.plan_id,
+            item_id=activity.cell.item_id,
+            actor_id=actor_id,
+            link_change=LinkChange(activity.content_ids, ids, catalog.catalog_version),
+        )
+        updated = plan.replace_activity(
+            replace(
+                activity,
+                content_ids=ids,
+                cell=replace(activity.cell, audit=activity.cell.audit.append(event)),
             )
         )
         self._plans.save(updated.plan_id, updated)

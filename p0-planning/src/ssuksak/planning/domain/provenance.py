@@ -150,6 +150,26 @@ class SelectionChange:
 
 
 @dataclass(frozen=True, slots=True)
+class LinkChange:
+    """A teacher's change to a play's curriculum content ids, within one catalog version."""
+
+    before: tuple[str, ...]
+    after: tuple[str, ...]
+    catalog_version: str
+
+    def __post_init__(self) -> None:
+        for ids in (self.before, self.after):
+            if not isinstance(ids, tuple) or not all(_is_non_blank(i) for i in ids):
+                raise InvalidDomainValueError("LinkChange ids must be non-blank strings")
+            if len(ids) != len(set(ids)):
+                raise InvalidDomainValueError("LinkChange ids must be unique")
+        if self.before == self.after:
+            raise InvalidDomainValueError("LinkChange must change the links")
+        if not _is_non_blank(self.catalog_version):
+            raise InvalidDomainValueError("LinkChange.catalog_version must be non-blank")
+
+
+@dataclass(frozen=True, slots=True)
 class AuditEvent:
     event_type: AuditEventType
     occurred_at: datetime
@@ -160,6 +180,7 @@ class AuditEvent:
     value_change: ValueChange | None = None
     generation_change: GenerationMethodChange | None = None
     selection_change: SelectionChange | None = None
+    link_change: LinkChange | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_type, AuditEventType):
@@ -192,15 +213,20 @@ class AuditEvent:
             raise InvalidDomainValueError(
                 "AuditEvent.generation_change must be GenerationMethodChange when set"
             )
-        # A teacher edit changes the value, never the Generation Method, so it needs no
-        # generation_change (REGENERATED is where the method changes).
+        if self.link_change is not None and (
+            self.event_type is not AuditEventType.TEACHER_EDITED
+            or not isinstance(self.link_change, LinkChange)
+        ):
+            raise InvalidDomainValueError("Only TEACHER_EDITED carries a LinkChange")
+        # A teacher edit changes the value or the curriculum links, never the Generation
+        # Method, so it needs no generation_change (REGENERATED is where the method changes).
         if self.event_type is AuditEventType.TEACHER_EDITED and (
             self.actor_id is None
             or self.item_id is None
-            or self.value_change is None
+            or (self.value_change is None and self.link_change is None)
         ):
             raise InvalidDomainValueError(
-                "TEACHER_EDITED requires actor_id, item_id and value_change"
+                "TEACHER_EDITED requires actor_id, item_id and value_change or link_change"
             )
         if self.event_type is AuditEventType.CANDIDATES_SELECTED:
             if (
@@ -244,10 +270,16 @@ class AuditHistory:
         return AuditHistory(self.events + (event,))
 
     def current_value_teacher_edited(self) -> bool:
-        """True when a teacher edit set the current value: no later regeneration."""
+        """True when a teacher edit set the current value: no later regeneration.
+
+        A links-only edit (no value_change) leaves the value as it was, so it is skipped.
+        """
         for event in reversed(self.events):
-            if event.event_type is not AuditEventType.CONFIRMED:
-                return event.event_type is AuditEventType.TEACHER_EDITED
+            if event.event_type is AuditEventType.CONFIRMED or (
+                event.event_type is AuditEventType.TEACHER_EDITED and event.value_change is None
+            ):
+                continue
+            return event.event_type is AuditEventType.TEACHER_EDITED
         return False
 
     def __iter__(self) -> Iterator[AuditEvent]:
