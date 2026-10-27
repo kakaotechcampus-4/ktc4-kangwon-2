@@ -591,6 +591,7 @@ def _six_rows(data):
         (_set(("theme",), "4월 14일 소풍 놀이"), "UNSUPPORTED_FACT"),
         (_set(("rationale",), "홍길동 선생님과 함께하는 놀이를 예상합니다."), "UNSUPPORTED_FACT"),
         (_set(("together", 0, "description"), "4월 14일에 공원에서 하는 놀이입니다."), "UNSUPPORTED_FACT"),
+        (_set(("free_play", 2, "description"), "t.3 내용과 연결되는 놀이입니다."), "SOURCE_IDENTIFIER_LEAKAGE"),
         (_set(("drills",), []), "MISSING_DRILL_TOPIC"),
         (_set(("drills", 0, "topic_id"), "snow"), "UNKNOWN_DRILL_TOPIC"),  # not chosen for April
         (_set(("drills", 1, "topic_id"), "fire_a"), "DUPLICATE_DRILL_TOPIC"),
