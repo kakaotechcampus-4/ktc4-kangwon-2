@@ -227,7 +227,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         raise _gate("연간계획안을 먼저 만들어 확정해주세요.")
     # 놀이 프로젝트형 본문은 YearlyPlan 이 아니라 읽기 전에 막는다. 확정 여부와 관계없다.
     if format_of(parent_row) == PLAY_PROJECT_FORMAT:
-        raise _gate("놀이 프로젝트형 연간계획안은 월간계획안으로 이어지지 않습니다.")
+        raise _gate("놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다.")
     parent_id = parent_row.id
     parent = PostgresPlanRepository(
         session, center_id=center_id, kind="annual", plan_type=YearlyPlan
