@@ -1,7 +1,7 @@
 import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
-import { isApiNotFound } from "./client";
+import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
 import { createCenter, joinCenter, updateCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
@@ -110,12 +110,26 @@ async function syncCenterOnce(settings: ClassSettings) {
     saveLinks(links);
     return updated.id;
   }
-  const center = await createCenter(data);
-  links.center = { id: center.id, signature };
-  links.classes = {};
-  links.children = {};
-  saveLinks(links);
-  return center.id;
+  try {
+    const center = await createCenter(data);
+    links.center = { id: center.id, signature };
+    links.classes = {};
+    links.children = {};
+    saveLinks(links);
+    return center.id;
+  } catch (error) {
+    // **서버에는 원이 있는데 브라우저에는 연결이 없다.** 기기를 바꿨거나 저장소를 지운
+    // 교사다 — 그 교사는 원을 만든 적이 있으니 서버가 409 로 거절하고, 예전에는 거기서
+    // 온보딩이 막혔다. 내 원을 찾아 지금 입력대로 고치고 연결을 다시 맺는다.
+    if (!isAlreadyExists(error)) throw error;
+    const { center_id } = await getMe();
+    if (center_id === null) throw error;
+    const updated = await updateCenter(center_id, data);
+    // 반 · 아동 연결은 지우지 않는다 — 서버에 남아 있던 것을 adoptServerClasses 가 들인다.
+    links.center = { id: updated.id, signature };
+    saveLinks(links);
+    return updated.id;
+  }
 }
 /**
  * 초대 코드로 기존 원에 들어간다 (§1-1). 원 정보는 서버 값으로 채우고, syncCenter 가 같은

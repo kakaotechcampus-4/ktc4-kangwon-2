@@ -278,6 +278,43 @@ test("S1: 생성이 실패하면 id 없이 던진다 — 화면이 다음 단계
   }
 });
 
+test("S1: 기기를 바꿔 연결이 없어도 원을 또 만들지 않고 고친다 — 409 로 막히던 자리", async () => {
+  // 서버에는 원이 있는데 브라우저 연결만 없는 상태다. 목업 저장소는 그 둘을 따로 둘 수
+  // 없어서(연결을 지우면 목업의 「내 원」도 사라진다) 서버 쪽 응답만 여기서 바꿔 준다.
+  const stop = await start();
+  const rec = recorder();
+  try {
+    server.use(
+      http.post("*/api/centers", () =>
+        HttpResponse.json(
+          { error: { code: "ALREADY_EXISTS", message: "이미 등록한 원이 있습니다.", fields: [] } },
+          { status: 409 },
+        ),
+      ),
+      http.get("*/api/auth/me", () =>
+        HttpResponse.json({ id: 1, email: "fixture@example.com", name: "선생님", center_id: 42 }),
+      ),
+      http.patch("*/api/centers/42", async ({ request }) =>
+        HttpResponse.json({ id: 42, ...(await request.json()) }),
+      ),
+    );
+
+    const centerId = await onboarding.syncCenter({ ...SETTINGS, orgName: "옮겨 온 어린이집" });
+
+    assert.equal(centerId, 42, "내 원을 찾아 그대로 쓴다");
+    const patch = rec.seen.find((r) => r.method === "PATCH" && r.path === "/api/centers/42");
+    assert.ok(patch, "거절당한 뒤에는 PATCH /api/centers/{id} 로 간다");
+    assert.equal(patch.body.name, "옮겨 온 어린이집");
+    // 다음 단계(반 만들기)가 이 id 로 가도록 연결도 남는다.
+    const stored = JSON.parse(localStorage.snapshot()).find(([key]) => key.includes("apiLinks"));
+    assert.ok(stored, "연결 정보를 저장해야 한다");
+    assert.equal(JSON.parse(stored[1]).center.id, 42);
+  } finally {
+    rec.stop();
+    stop();
+  }
+});
+
 test("S2: 반 생성은 실제 center_id 로 가고 연령을 범위로 보낸다", async () => {
   const stop = await start();
   const rec = recorder();
