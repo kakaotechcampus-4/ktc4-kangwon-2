@@ -88,7 +88,9 @@ export default function AppSidebar() {
       aria-label="주 메뉴"
       className={
         "bg-shell z-30 " +
-        "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:border-r lg:border-shell-line lg:flex lg:flex-col " +
+        // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
+        // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
+        "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:border-r lg:border-shell-line lg:flex lg:flex-col " +
         "fixed bottom-0 inset-x-0 flex flex-row border-t border-shell-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
       }
     >

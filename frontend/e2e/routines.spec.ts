@@ -349,9 +349,9 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
       1,
     );
     await page.getByRole("button", { name: "검사 결과 접기", exact: true }).click();
-    await expect(page.getByText(/형식·원문 대조를 통과했어요/)).toHaveCount(0);
+    await expect(page.getByText(/기본 항목은 통과했어요/)).toHaveCount(0);
     await page.getByRole("button", { name: /기본 항목 검사|AI 검증하기/ }).click();
-    await expect(page.getByText(/형식·원문 대조를 통과했어요/)).toBeVisible();
+    await expect(page.getByText(/기본 항목은 통과했어요/)).toBeVisible();
     await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
     await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
     await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
