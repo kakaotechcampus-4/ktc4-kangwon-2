@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "./icons";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
+import { loadClassSettings, primaryClassFor, saveClassSettings } from "@/lib/onboarding/settings";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
+import type { ClassroomEntry } from "@/lib/onboarding/types";
 
 interface NavItem {
   key: string;
@@ -50,9 +51,11 @@ export default function AppSidebar() {
         orgName: settings?.orgName ?? "",
         className: klass?.className ?? "",
         age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
+        classId: klass?.id ?? "",
+        classes: settings?.classes ?? [],
       };
     },
-    { orgName: "", className: "", age: "" },
+    { orgName: "", className: "", age: "", classId: "", classes: [] as ClassroomEntry[] },
   );
 
   const isActive = (item: NavItem) => (item.match ? item.match(pathname) : item.href === pathname);
@@ -81,11 +84,12 @@ export default function AppSidebar() {
         <span className="font-display text-xl font-bold text-ink">쌤플</span>
       </Link>
 
-      {/* 어느 반 작업실에 들어와 있는지. 반을 바꾸는 건 설정에서 한다. */}
-      <Link
-        href="/settings"
-        className="hidden lg:flex mx-4 mb-7 items-center gap-2.5 rounded-md border border-line bg-paper p-3 text-left shadow-pg-card"
-      >
+      {/*
+        어느 반 작업실에 들어와 있는지. 카드에 꺾쇠가 달려 있어 반 목록이 열릴 것처럼 보이는데
+        설정 화면으로 넘어가 버렸다 (수린 점검 4). 반이 둘 이상이면 여기서 바로 바꾼다.
+        반이 하나뿐이면 바꿀 것이 없으므로 예전처럼 설정으로 보낸다.
+      */}
+      <div className="relative mx-4 mb-7 hidden lg:flex items-center gap-2.5 rounded-md border border-line bg-paper p-3 text-left shadow-pg-card">
         <span className="flex h-8 w-8 items-center justify-center rounded-full border border-sun bg-sun-tint text-lg text-sun-ink">
           ☀
         </span>
@@ -99,7 +103,24 @@ export default function AppSidebar() {
           </span>
         </span>
         <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
-      </Link>
+        {room.classes.length > 1 ? (
+          <select
+            aria-label="반 바꾸기"
+            value={room.classId}
+            onChange={(e) => switchClass(e.target.value)}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          >
+            {room.classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.className}
+                {c.ageGroup ? ` · ${AGE_LABEL[c.ageGroup as AgeGroup]}` : ""}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <Link href="/settings" aria-label="원·반 설정" className="absolute inset-0" />
+        )}
+      </div>
 
       <p className="hidden lg:block px-6 pb-3 text-[9px] tracking-[0.18em] text-ink-soft">
         MY WORKSPACE
@@ -169,6 +190,19 @@ export default function AppSidebar() {
       </div>
     </aside>
   );
+}
+
+/**
+ * 주 반을 바꾸고 화면을 다시 읽는다.
+ *
+ * 각 화면은 들어올 때 담당 반을 한 번만 읽어 둔다. 설정만 고쳐 두면 사이드바 이름만 바뀌고
+ * 본문은 그대로 이전 반의 기록을 보여준다. 다시 불러와야 모든 화면이 같은 반을 본다.
+ */
+function switchClass(classId: string) {
+  const settings = loadClassSettings();
+  if (!settings || classId === settings.primaryClassId) return;
+  if (!saveClassSettings({ ...settings, primaryClassId: classId })) return;
+  window.location.reload();
 }
 
 /** 쪽지 윗변에 붙인 종이테이프. 장식이라 읽어주지 않는다. */

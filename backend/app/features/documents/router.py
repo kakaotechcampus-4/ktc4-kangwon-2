@@ -849,10 +849,17 @@ def refresh_document(
             body.resolutions,
         )
     if missing and plan is None:
+        # **교사가 할 수 있는 것만 말한다** (수린 점검 10). 빼기·바꾸기는 일과 근거의 일일
+        # 보육일지에서만 되고, 그마저도 남은 근거가 있어야 한다. 관찰일지의 관찰 기록을 전부
+        # 지운 교사에게 「빼거나 바꿀 근거를 골라주세요」 라고 하면 고를 것이 없는 화면만 연다.
+        resolvable = doc.kind == "dailyLog" and all(c.source_kind == "routine" for c in sources)
+        survives = any(c.source_id not in missing_ids for c in sources)
         raise _error(
             status.HTTP_409_CONFLICT,
             "GATE_BLOCKED",
-            "근거 기록이 사라졌습니다. 남은 근거로 이어가려면 빼거나 바꿀 근거를 골라주세요.",
+            "근거 기록이 사라졌습니다. 남은 근거로 이어가려면 빼거나 바꿀 근거를 골라주세요."
+            if resolvable and survives
+            else "근거 기록이 사라졌습니다. 이 문서는 지우고 남은 기록으로 새로 만들어주세요.",
             missing,
         )
     if unconfirmed:

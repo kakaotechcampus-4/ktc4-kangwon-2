@@ -1051,6 +1051,19 @@ def test_refresh_refuses_when_a_source_is_gone(db_session):
     assert detail["sources"][0]["text"] == "개미를 3분 동안 바라보았다."
 
 
+def test_refresh_tells_observation_teacher_to_start_over(db_session):
+    """관찰일지는 사라진 근거를 빼거나 바꿀 수 없다 — 고를 것이 없는 화면으로 보내지 않는다."""
+    doc_id, record = _stale_observation_document(db_session)
+    assert client.delete(f"/api/observations/{record.id}").status_code == 204
+
+    response = client.post(f"/api/documents/{doc_id}/refresh")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "근거 기록이 사라졌습니다. 이 문서는 지우고 남은 기록으로 새로 만들어주세요."
+    )
+
+
 def test_refresh_refuses_confirmed_documents(db_session):
     doc = _ready_document(db_session)
     doc.status = "CONFIRMED"
