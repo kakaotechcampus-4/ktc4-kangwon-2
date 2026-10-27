@@ -124,15 +124,26 @@ class PlayActivity:
 
     PARENT_PLAN evidence appears only when the row actually builds on one parent play, and
     then the parent item is snapshotted. CURRICULUM evidence lists the linked content ids.
+
+    ``description`` explains the play for the teacher on the edit screen (M2-D16). It is its
+    own cell, paired to the name by semantic key, and is never printed in the document.
     """
 
     cell: PlayMonthlyCell
+    description: PlayMonthlyCell
     parent_snapshot: ParentLineage | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.cell, PlayMonthlyCell):
             raise InvalidDomainValueError("PlayActivity.cell must be PlayMonthlyCell")
-        if not self.cell.cites_only(EvidenceSourceType.CURRICULUM, EvidenceSourceType.PARENT_PLAN):
+        if not isinstance(self.description, PlayMonthlyCell):
+            raise InvalidDomainValueError("PlayActivity.description must be PlayMonthlyCell")
+        if self.description.semantic_key != f"{self.cell.semantic_key}.description":
+            raise InvalidDomainValueError("PlayActivity.description must pair with its name cell")
+        if not all(
+            c.cites_only(EvidenceSourceType.CURRICULUM, EvidenceSourceType.PARENT_PLAN)
+            for c in (self.cell, self.description)
+        ):
             raise InvalidDomainValueError("PlayActivity cites CURRICULUM and PARENT_PLAN only")
         cites_parent = any(
             s.source_type is EvidenceSourceType.PARENT_PLAN for s in self.cell.evidence
@@ -382,7 +393,7 @@ class PlayMonthlyPlan:
         return (
             self.theme,
             self.rationale,
-            *(a.cell for a in (*self.together, *self.free_play)),
+            *(c for a in (*self.together, *self.free_play) for c in (a.cell, a.description)),
             *(h.habit.cell for h in self.habits),
             *(c.cell for c in self.safety_candidates),
             self.health.cell,
