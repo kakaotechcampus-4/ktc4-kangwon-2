@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/app/AppLayout";
-import { Icon, type IconName } from "@/components/app/icons";
+import { Icon } from "@/components/app/icons";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -148,19 +148,16 @@ export default function HomePage() {
       <Compose
         classes={classes}
         date={todayDate}
-        className={className}
         activeClassId={activeClassId}
         onPickClass={pickClass}
         onSaved={recordSaved}
         onError={setMessage}
-        todayCount={todayRecords.length}
       />
 
       <TodayList records={todayRecords} loading={records === null} />
 
-      <div className="mt-8 grid items-start gap-6 md:grid-cols-2">
+      <div className="mt-8">
         <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
-        <DomainBoard records={todayRecords} />
       </div>
     </PageContainer>
   );
@@ -177,8 +174,6 @@ type Classroom = ReturnType<typeof useClasses>[number];
 function Compose({
   classes,
   date,
-  className,
-  todayCount,
   activeClassId,
   onPickClass,
   onSaved,
@@ -186,8 +181,6 @@ function Compose({
 }: {
   classes: Classroom[];
   date: string;
-  className: string;
-  todayCount: number;
   /** 홈이 정한 지금 반. 홈의 조회와 같은 값이라 통계와 저장 대상이 어긋나지 않는다. */
   activeClassId: string;
   onPickClass: (id: string) => void;
@@ -242,14 +235,9 @@ function Compose({
 
   return (
     <section>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-[24px] font-bold text-ink lg:text-[29px]">
-          지금, 한 줄 기록
-        </h2>
-        <span className="text-[11px] text-ink-soft">
-          {date.slice(5).replace("-", "월 ")}일{className && ` · ${className}`}
-        </span>
-      </div>
+      <h2 className="mb-4 font-display text-[24px] font-bold text-ink lg:text-[29px]">
+        지금, 한 줄 기록
+      </h2>
 
       {!classroom?.children.length ? (
         <div className={`${CARD} text-center text-xs text-ink-soft`}>
@@ -263,10 +251,8 @@ function Compose({
           <div className="overflow-hidden rounded-sm border border-line bg-paper shadow-pg-hard">
             <div className="flex items-center justify-between gap-2 border-b border-paper-warm-line bg-paper-warm px-4 py-3">
               <span className="flex items-center gap-2 text-[11px] text-ink-soft">
-                <Icon name="edit" className="h-3.5 w-3.5" />
-                {classroom?.className} · 본 말과 행동
+                <Icon name="edit" className="h-3.5 w-3.5" />본 말과 행동
               </span>
-              <span className="text-[10px] text-ink-soft">아이 한 명씩 남겨요</span>
             </div>
             <textarea
               aria-label="빠른 기록 내용"
@@ -284,7 +270,7 @@ function Compose({
                   그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.
                   한 줄짜리 빠른 기록 자리라 RecordsPage 보다 짧게 적는다. */}
               <span className="hidden text-[10px] text-ink-soft sm:block">
-                본 그대로 적어 주세요 · <b>상황 → 행동 → 반응 → 교사 지원</b> 순서면 더 좋아요
+                <b>상황 · 행동 · 반응 · 교사 지원</b> 순서면 좋아요
               </span>
               <div className="ml-auto flex items-center gap-3">
                 {dictation.supported && (
@@ -387,19 +373,6 @@ function Compose({
           )}
         </>
       )}
-
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4">
-        <span className="text-xs text-ink-soft">
-          오늘 남긴 기록 <strong className="text-ink">{todayCount}</strong>건
-        </span>
-        <Link
-          href="/records"
-          className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-tint-line bg-primary-tint px-3 text-xs font-semibold text-primary-ink"
-        >
-          관찰 기록으로 가기
-          <Icon name="arrow" className="h-4 w-4" />
-        </Link>
-      </div>
     </section>
   );
 }
@@ -486,52 +459,6 @@ function ChildSpotlight({
           </div>
         </>
       )}
-    </section>
-  );
-}
-
-/** 우리 반 한눈에 — 오늘 어느 영역이 비었는지. 평가에서 영역 하나가 비면 바로 걸린다. */
-// 2축(일상생활 · 놀이활동)에는 아이콘을 따로 두지 않았다 — 없으면 `record` 를 쓴다.
-const DOMAIN_ICON: Record<string, IconName> = {
-  "신체운동·건강": "body",
-  의사소통: "talk",
-  사회관계: "social",
-  예술경험: "art",
-  자연탐구: "nature",
-  일상생활: "record",
-  놀이활동: "art",
-};
-
-function DomainBoard({ records }: { records: ServerObservation[] }) {
-  const domains = useObservationDomains();
-  return (
-    <section className={CARD}>
-      <h3 className="font-display text-[22px] font-bold text-ink">우리 반 한눈에</h3>
-      <p className="mt-1 text-[11px] text-ink-soft">오늘의 놀이와 관찰 영역</p>
-      {/* 칸 수를 고정하지 않는다 — 5영역 원은 다섯, 2축 원은 둘이다. */}
-      <ul
-        className="mt-5 grid gap-2 text-center"
-        style={{ gridTemplateColumns: `repeat(${domains.length}, minmax(0, 1fr))` }}
-      >
-        {domains.map((domain) => {
-          const filled = records.some((r) => r.domain === domain);
-          return (
-            <li key={domain} className="flex flex-col items-center gap-1.5">
-              <span
-                className={`flex h-12 w-12 items-center justify-center rounded-[18px] ${
-                  filled ? "bg-primary-tint text-primary-ink" : "bg-cream text-ink-soft"
-                }`}
-              >
-                <Icon name={DOMAIN_ICON[domain] ?? "record"} className="h-6 w-6" />
-              </span>
-              <span className="text-[10px] leading-tight text-ink-soft">{domain}</span>
-              <span className={`text-[9px] ${filled ? "text-primary" : "text-ink-soft"}`}>
-                {filled ? "기록 있음" : "—"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }

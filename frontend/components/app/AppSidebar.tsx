@@ -184,7 +184,6 @@ export default function AppSidebar() {
             <p className="truncate text-[11px] font-medium text-ink">
               {teacher ? `${teacher} 선생님` : "선생님"}
             </p>
-            <p className="mt-0.5 text-[9px] text-ink-soft">오늘도 수고 많으세요.</p>
           </div>
         </div>
       </div>
