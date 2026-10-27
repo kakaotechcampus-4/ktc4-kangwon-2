@@ -150,7 +150,7 @@ def test_확정된_관찰일지를_영역_행과_평가_칸에_나눠_담는다(
     # 기록이 없는 영역은 빈 칸으로 둔다. 막지 않는다.
     assert table["신체운동·건강"] == [""]
     # 해석과 지원은 문서마다 다른 머리말을 달고 빈 줄 하나를 사이에 두고 한 칸에 들어간다.
-    assert table["평가"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
+    assert table["종합해석"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
 
 
 def test_2축_원은_두_줄짜리_양식으로_나간다(db_session, mine):
@@ -168,10 +168,10 @@ def test_2축_원은_두_줄짜리_양식으로_나간다(db_session, mine):
 
     assert response.status_code == 200, response.text
     table = _table(response.content)
-    assert list(table) == ["영역", "일상생활", "놀이활동", "평가"]
+    assert list(table) == ["영역", "일상생활", "놀이활동", "총평"]
     assert table["놀이활동"] == ["(9/5) 블록으로 길을 만들었다."]
     assert table["일상생활"] == [""]
-    assert table["평가"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
+    assert table["총평"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
 
 
 def test_축을_바꾼_뒤_옛_축_기록을_내보내면_이유를_말한다(db_session, mine):
@@ -222,7 +222,7 @@ def test_관찰일지를_hwp_로_바꿔_내려준다(db_session, mine, tmp_path)
         ["사회관계", ""],
         ["예술경험", ""],
         ["자연탐구", "(9/5) 화단에서 지렁이를 찾았다.\n(9/22) 개미를 3분 동안 바라보았다."],
-        ["평가", f"▸ 배움) {INTERPRETATION}\n\n▸ 지원) {SUPPORT}"],
+        ["종합해석", f"▸ 배움) {INTERPRETATION}\n\n▸ 지원) {SUPPORT}"],
     ]
     assert _hwp_rows(response.content, tmp_path) == [
         [_as_read(text) for text in row] for row in expected
@@ -242,7 +242,7 @@ def test_영역_행은_누리과정_순서로_고정이다(db_session, mine):
         "사회관계",
         "예술경험",
         "자연탐구",
-        "평가",
+        "종합해석",
     ]
 
 

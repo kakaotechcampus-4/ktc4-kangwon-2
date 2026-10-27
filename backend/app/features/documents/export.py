@@ -125,6 +125,9 @@ def _missing(fields: list[str]) -> None:
 # 축마다 양식이 다르다. 줄 수가 달라서 한 양식으로는 `fill_table` 이 거절한다
 # (`shared/hwpx.py` — 양식 표 줄 수와 채울 줄 수가 같아야 한다).
 AXIS_TEMPLATE = {"NURI_5": "observation.hwpx", "DAILY_PLAY_2": "observation_daily_play.hwpx"}
+# 맨 아래 한 칸의 이름. 교사가 쓴 관찰일지를 그대로 따른다
+# (`docs/references/관찰일지-서술-기준.md` — 5영역 A02 는 「종합해석」, 2축 S05 는 「총평」).
+AXIS_TAIL = {"NURI_5": "종합해석", "DAILY_PLAY_2": "총평"}
 
 
 def _observation(
@@ -158,7 +161,7 @@ def _observation(
             )
         by_domain[domain].append(f"({source.date.month}/{source.date.day}) {source.text}")
     rows = [[domain, "\n".join(lines)] for domain, lines in by_domain.items()]
-    rows.append(["평가", evaluation])
+    rows.append([AXIS_TAIL[axis], evaluation])
     return fill_table(
         (TEMPLATE_DIR / AXIS_TEMPLATE[axis]).read_bytes(),
         doc.title,
