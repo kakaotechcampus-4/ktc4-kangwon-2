@@ -54,6 +54,33 @@ test("Next HTML 404는 ApiError가 아니라 MswTransportError로 분리된다",
   }
 });
 
+test("HTML 응답의 MSW 안내는 mocking이 enabled일 때만 보여준다", async () => {
+  const original = globalThis.fetch;
+  const mocking = process.env.NEXT_PUBLIC_API_MOCKING;
+  globalThis.fetch = async () =>
+    new Response(HTML_404, { status: 404, headers: { "Content-Type": "text/html" } });
+  try {
+    for (const value of ["enabled", "disabled", undefined]) {
+      if (value === undefined) delete process.env.NEXT_PUBLIC_API_MOCKING;
+      else process.env.NEXT_PUBLIC_API_MOCKING = value;
+      await assert.rejects(apiRequest("/api/auth/me"), (error) => {
+        assert.ok(error instanceof MswTransportError);
+        assert.equal(
+          error.message,
+          value === "enabled"
+            ? "개발용 API(MSW)가 요청을 가로채지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."
+            : "서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.",
+        );
+        return true;
+      });
+    }
+  } finally {
+    globalThis.fetch = original;
+    if (mocking === undefined) delete process.env.NEXT_PUBLIC_API_MOCKING;
+    else process.env.NEXT_PUBLIC_API_MOCKING = mocking;
+  }
+});
+
 test("JSON NOT_FOUND는 기존 ApiError(404)로 유지되고 성공 응답도 그대로다", async () => {
   const original = globalThis.fetch;
   try {

@@ -265,6 +265,7 @@ const annualPlan = {
   id: 5,
   class_id: 3,
   school_year: 2026,
+  format: "MONTHLY_THEME",
   status: "CONFIRMED",
   created_at: "2026-09-10T00:00:00Z",
   confirmed_at: "2026-09-11T00:00:00Z",
@@ -489,6 +490,53 @@ test("표시할 문서가 없는 조회 실패는 전체 오류를 쓰고 재시
 });
 
 // ── 문서 보관함에 연간계획안을 합친다 (S-J5 · FR-701) ─────────────────────────
+test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 형식을 덧붙인다", async () => {
+  for (const format of ["MONTHLY_THEME", "PLAY_PROJECT"]) {
+    const page = documentsHarness({ plans: [{ ...annualPlan, format }] });
+    await page.mount();
+    const [link] = page.links().filter((node) => node.props.href === "/plans/annual/5");
+    const secondLine = nodes(link).find((node) => node.type === "p");
+    assert.equal(
+      texts(secondLine).join(""),
+      "햇살반 · 연간 보육계획안" + (format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""),
+    );
+  }
+});
+
+test("계획 노트는 놀이 프로젝트형에만 상태 옆 둥근 배지를 보여준다", () => {
+  const code = require("next/dist/compiled/babel/core").transformSync(
+    read("../components/plan-generator/PlanNotebookPage.tsx"),
+    {
+      filename: "PlanNotebookPage.tsx",
+      babelrc: false,
+      configFile: false,
+      presets: [
+        [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+        [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+        require("next/dist/compiled/babel/preset-typescript"),
+      ],
+    },
+  ).code;
+  const notebook = { exports: {} };
+  const imports = {
+    "react/jsx-runtime": { jsx, jsxs: jsx },
+    "@/lib/workspace/model": workspaceModel,
+  };
+  new Function("require", "module", "exports", code + "\nexports.PlanCard = PlanCard;")(
+    (name) => imports[name] ?? {},
+    notebook,
+    notebook.exports,
+  );
+  for (const format of ["MONTHLY_THEME", "PLAY_PROJECT"]) {
+    const tree = notebook.exports.PlanCard({ plan: { ...annualPlan, format }, onReset() {} });
+    const pills = nodes(tree).filter((node) => node.props.className?.includes("rounded-full"));
+    assert.deepEqual(
+      pills.map((node) => texts(node).join("")),
+      format === "PLAY_PROJECT" ? ["확정", "놀이 프로젝트형"] : ["확정"],
+    );
+  }
+});
+
 test("연간계획안을 일지와 섞어 최신순으로 보이고 계획안 화면으로 보낸다", async () => {
   const page = documentsHarness({ items: [serverDocument], plans: [annualPlan] });
   await page.mount();

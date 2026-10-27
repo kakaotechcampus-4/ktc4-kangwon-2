@@ -466,7 +466,7 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
       </ol>
       <div className={workspace.notice}>
         <p>놀이 프로젝트형은 아직 확정 · 내려받기를 할 수 없어요.</p>
-        <p>이 반은 월간 · 주간계획안을 만들 수 없어요.</p>
+        <p>놀이 프로젝트형은 아직 월간 · 주간계획안으로 이어지지 않아요.</p>
         <p>고른 놀이는 아직 저장되지 않아요. 새로고침하면 처음부터 다시 골라야 해요.</p>
       </div>
       <div

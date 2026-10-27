@@ -328,6 +328,7 @@ export default function DocumentsPage() {
       id: `annual:${p.id}`,
       source: "plan" as const,
       serverId: p.id,
+      format: p.format,
       title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
       // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
       className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
@@ -810,6 +811,9 @@ export default function DocumentsPage() {
                       <p className={ws.muted}>
                         {d.className ? `${d.className} · ` : ""}
                         {DOCUMENT_KINDS[d.kind]}
+                        {d.source === "plan" && d.format === "PLAY_PROJECT"
+                          ? " · 놀이 프로젝트형"
+                          : ""}
                       </p>
                     </>
                   );
