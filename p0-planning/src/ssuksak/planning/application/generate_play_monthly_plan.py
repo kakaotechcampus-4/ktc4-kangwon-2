@@ -301,6 +301,13 @@ class GeneratePlayMonthlyPlan:
                 audit=created(item_id),
             )
 
+        parent_period = EvidenceSource(
+            EvidenceSourceType.PARENT_PLAN,
+            parent.plan_id.value,
+            snapshot.period_key,
+            display_name=period.period.label,
+        )
+
         def curriculum(content_id: str) -> EvidenceSource:
             return EvidenceSource(EvidenceSourceType.CURRICULUM, content_id, catalog.catalog_version)
 
@@ -389,8 +396,9 @@ class GeneratePlayMonthlyPlan:
                 prompt_version=PLAY_MONTHLY_PROMPT_VERSION,
                 request_fingerprint=request.fingerprint,
             ),
-            theme=cell("theme", "theme", proposal.theme, ()),
-            rationale=cell("rationale", "rationale", proposal.rationale, ()),
+            # Theme and rationale are written from the parent period's selected plays.
+            theme=cell("theme", "theme", proposal.theme, (parent_period,)),
+            rationale=cell("rationale", "rationale", proposal.rationale, (parent_period,)),
             together=activities("together"),
             free_play=activities("free_play"),
             habits=tuple(
