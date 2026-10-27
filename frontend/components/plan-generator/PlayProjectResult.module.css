@@ -153,71 +153,142 @@
   color: var(--pg-ink-soft);
   font-size: 12px;
 }
+/* 화면 글꼴은 앱 기본값이다. 양식의 나눔고딕과 쪽 나눔까지 같지는 않다. */
 .sheet {
-  box-shadow: var(--pg-shadow);
-}
-.previewWrap {
+  min-width: 0;
   max-width: 100%;
-  overscroll-behavior-x: contain;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: #e5e7eb;
+}
+.sheetToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: var(--pg-paper);
+}
+.sheetToolbar button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px;
+  border: 1px solid var(--pg-line);
+  border-radius: 4px;
+  background: var(--pg-paper);
+  font: inherit;
+  cursor: pointer;
+}
+.sheetViewport {
+  max-width: 100%;
+  padding: 12px;
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+/* shortcut: CSS zoom 미지원 브라우저는 100%, 지원이 필요해지면 별도 배율 처리를 한다. */
+.sheetPages {
+  display: grid;
+  width: max-content;
+  gap: 16px;
+}
+.sheetPage {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 7mm 8mm;
+  background: white;
+  color: #222;
+  box-shadow: var(--pg-shadow);
+  font-family: var(--font-body), "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+.sheetTitle {
+  margin: 0;
+  padding-bottom: 10pt;
+  font-size: 20pt;
+  line-height: 1.4;
+  text-align: center;
+}
+.sheetMeasure {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.sheetContentHeight {
+  height: 283mm;
 }
 .preview {
   width: 100%;
   min-width: 0;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 12px;
+  font-size: 7.5pt;
+  line-height: 1.5;
 }
 .preview th,
 .preview td {
   border: 1px solid var(--pg-line);
+  padding: 0;
   vertical-align: top;
   overflow-wrap: anywhere;
 }
-.preview .plainCell {
-  padding: 9px;
-  line-height: 1.7;
-  white-space: pre-line;
-}
 .preview thead th:nth-child(1) {
-  width: 9%;
+  width: 5.5%;
 }
-.preview thead th:nth-child(2),
+.preview thead th:nth-child(2) {
+  width: 14%;
+}
 .preview thead th:nth-child(3) {
-  width: 17%;
+  width: 15.5%;
 }
 .preview thead th:nth-child(4) {
-  width: 33%;
+  width: 37%;
 }
 .preview thead th:nth-child(5) {
-  width: 24%;
+  width: 28%;
 }
-.preview thead th,
-.preview tbody th {
-  padding: 9px;
+.preview thead th {
+  height: 11.3mm;
+  padding: 2px;
+  font-size: 10.5pt;
+  line-height: 1.4;
+  vertical-align: middle;
+  text-align: center;
   background: var(--pg-cream);
-  text-align: left;
-  line-height: 1.6;
+}
+.preview tbody tr {
+  height: 3.5mm;
+}
+.preview tbody th {
+  text-align: center;
+  font-weight: 400;
 }
 .preview td {
   height: 1px;
+}
+.preview .plainCell {
   padding: 0;
 }
-.cellButton {
-  display: flex;
-  align-items: flex-start;
-  width: 100%;
-  height: 100%;
-  min-height: 72px;
-  padding: 9px;
-  border: 0;
-  background: transparent;
-  color: var(--pg-ink);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.7;
-  text-align: left;
+.cellContent {
+  display: block;
+  min-height: 3.5mm;
+  padding: 2px;
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+.cellButton {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
 }
 .preview .cellButton:focus-visible {
@@ -229,19 +300,26 @@
   background: var(--pg-success-tint);
 }
 .empty {
-  padding: 18px;
   color: var(--pg-ink-soft);
   text-align: center;
 }
-@media (max-width: 1100px) {
+@media (min-width: 1024px) {
+  .sheet {
+    position: sticky;
+    top: 72px;
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 84px);
+  }
+  .sheetViewport {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+}
+@media (max-width: 1023px) {
   .arrangementGrid {
     grid-template-columns: 1fr;
-  }
-  .previewWrap {
-    overflow-x: auto;
-  }
-  .preview {
-    min-width: 640px;
   }
 }
 /* 유리는 뒤에 비칠 것이 있어야 보인다. 배경이 평평하니 카드가 은은한 색을 직접 품는다. */

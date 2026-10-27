@@ -43,12 +43,13 @@ function resolve(node) {
 }
 function all(node) {
   if (Array.isArray(node)) return node.flatMap(all);
-  if (!node || typeof node !== "object") return [];
+  if (!node || typeof node !== "object" || node.props?.["aria-hidden"]) return [];
   return [node, ...all(node.props?.children)];
 }
 function text(node) {
   if (Array.isArray(node)) return node.map(text).join("");
-  if (node && typeof node === "object") return text(node.props?.children);
+  if (node && typeof node === "object")
+    return node.props?.["aria-hidden"] ? "" : text(node.props?.children);
   return typeof node === "string" || typeof node === "number" ? String(node) : "";
 }
 function plan() {
@@ -85,7 +86,26 @@ const resultTabs = {
   wrappingTabs: "wrappingTabs",
   activeTab: "active",
 };
-function resultRenderer(planValue, initial = []) {
+const sheetHelpers = compile("../components/plan-generator/playProjectPagination.ts", {});
+const { default: Sheet, windowScrollDelta } = compile(
+  "../components/plan-generator/PlayProjectSheet.tsx",
+  {
+    react: {
+      useState: (value) => [typeof value === "function" ? value() : value, () => {}],
+      useRef: (value) => ({ current: value }),
+      useEffect: () => {},
+      useMemo: (compute) => compute(),
+    },
+    "./playProjectPagination": sheetHelpers,
+    "./PlayProjectResult.module.css": esModule(resultStyles),
+  },
+);
+const sheetModules = {
+  "./playProjectPagination": sheetHelpers,
+  "./PlayProjectSheet": esModule(Sheet),
+};
+const tables = (nodes) => nodes.filter((node) => node.type === "table");
+function resultRenderer(planValue, initial = [], desktop = false) {
   const state = [...initial];
   const focused = [];
   const focusOptions = [];
@@ -109,6 +129,7 @@ function resultRenderer(planValue, initial = []) {
       "@/components/workspace/Workspace.module.css": esModule(css),
       "./GenerationFlow.module.css": esModule(resultTabs),
       "./PlayProjectResult.module.css": esModule(resultStyles),
+      ...sheetModules,
     },
     {
       getElementById: (id) => {
@@ -122,7 +143,7 @@ function resultRenderer(planValue, initial = []) {
       },
     },
     (callback) => frames.push(callback),
-    { scrollTo: (options) => scrolls.push(options) },
+    { scrollTo: (options) => scrolls.push(options), matchMedia: () => ({ matches: desktop }) },
   );
   const render = () => {
     cursor = 0;
@@ -148,6 +169,7 @@ function playResult() {
     "@/components/workspace/Workspace.module.css": esModule(css),
     "./GenerationFlow.module.css": esModule(resultTabs),
     "./PlayProjectResult.module.css": esModule(resultStyles),
+    ...sheetModules,
   });
 }
 
@@ -269,7 +291,7 @@ test("arrangement controls move only active-period picks and request focus after
     nodes.filter((node) => node.props?.className?.includes("playButton")).map(text),
     ["놀이 1", "놀이 0", "놀이 2"],
   );
-  const table = nodes.find((node) => node.type === "table");
+  const table = tables(nodes);
   assert.deepEqual(
     all(table)
       .filter((node) => node.props?.["aria-label"]?.endsWith(" 놀이명"))
@@ -294,7 +316,9 @@ test("preview row keys stay in their period positions while reordered cell conte
   ]);
   let nodes = all(view.render());
   const rows = () =>
-    all(nodes.find((node) => node.type === "tbody")).filter((node) => node.type === "tr");
+    nodes
+      .filter((node) => node.type === "tbody")
+      .flatMap((body) => all(body).filter((node) => node.type === "tr"));
   const keys = rows().map((row) => row.key);
   assert.deepEqual(keys, [
     "period0-empty",
@@ -463,7 +487,7 @@ test("full draft shows only short periods, plain table, tabs, and arrangement re
     text(nodes.find((node) => node.props?.role === "status")),
     "9월~11월이 3개, 12월~2월이 0개예요. 확정하려면 구간마다 5개가 필요해요.",
   );
-  const table = nodes.find((node) => node.type === "table");
+  const table = tables(nodes);
   assert.equal(all(table).filter((node) => node.type === "button").length, 0);
   assert.equal(
     nodes.some((node) => node.props?.className?.includes("selectedCell")),
@@ -481,7 +505,7 @@ test("full draft shows only short periods, plain table, tabs, and arrangement re
     nodes.some((node) => node.props?.className?.includes("floatingNext")),
     false,
   );
-  assert.equal(all(table).filter((node) => node.props?.scope === "col").length, 5);
+  assert.equal(all(table).filter((node) => node.props?.scope === "col").length, 10);
   assert.deepEqual(
     all(table)
       .filter((node) => node.props?.scope === "rowgroup")
@@ -499,7 +523,7 @@ test("full draft shows only short periods, plain table, tabs, and arrangement re
     .find((node) => node.props?.role === "tab" && text(node) === "9월~11월 · 3/5")
     .props.onClick();
   nodes = all(view.render());
-  assert.equal(text(nodes.find((node) => node.type === "table")), text(table));
+  assert.equal(text(tables(nodes)), text(table));
   assert.equal(text(nodes.find((node) => node.props?.["aria-selected"])), "9월~11월 · 3/5");
   nodes
     .find((node) => node.type === "button" && text(node) === "← 배치하고 다듬기로")
@@ -585,6 +609,7 @@ test("floating next observes nav size, updates its bottom, and disconnects", (t)
       "@/components/workspace/Workspace.module.css": esModule(css),
       "./GenerationFlow.module.css": esModule(resultTabs),
       "./PlayProjectResult.module.css": esModule(resultStyles),
+      ...sheetModules,
     },
     { querySelector: (selector) => (assert.equal(selector, 'aside[aria-label="주 메뉴"]'), nav) },
   );
@@ -842,11 +867,17 @@ test("un-picking a play clears its selected preview cell", () => {
 });
 
 test("PlayProjectResult does not use browser storage", () => {
-  const source = readFileSync(
-    new URL("../components/plan-generator/PlayProjectResult.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/i);
+  for (const file of [
+    "PlayProjectResult.tsx",
+    "PlayProjectSheet.tsx",
+    "playProjectPagination.ts",
+  ]) {
+    const source = readFileSync(
+      new URL("../components/plan-generator/" + file, import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/i, file);
+  }
 });
 
 test("AnnualResult routes a PLAY_PROJECT response to PlayProjectResult", async () => {
@@ -901,4 +932,444 @@ test("AnnualResult routes a PLAY_PROJECT response to PlayProjectResult", async (
       (node) => node.type === "app-header" && node.props.title === "연간계획안 · 놀이 프로젝트형",
     ),
   );
+});
+
+test("paginatePlaySheet starts each template group on a titled page", () => {
+  const rows = sheetHelpers.buildPlayProjectPreviewRows(plan(), { period0: ["cand0", "cand1"] });
+  const groups = [rows.slice(0, 3), rows.slice(3)].map((group) =>
+    group.map((row) => ({ ...row, height: 20, labelHeight: 10 })),
+  );
+  const pages = sheetHelpers.paginatePlaySheet(groups, {
+    contentHeight: 100,
+    titleHeight: 10,
+    headerHeight: 10,
+  });
+  assert.equal(pages.length, 2);
+  assert.deepEqual(
+    pages.map((page) => [page.group, page.title]),
+    [
+      [0, true],
+      [1, true],
+    ],
+  );
+  assert.deepEqual(
+    pages.map((page) => page.rows.map((row) => row.key)),
+    groups.map((group) => group.map((row) => row.key)),
+  );
+});
+
+test("paginatePlaySheet repeats the period label on a continuation and preserves row order", () => {
+  const rows = sheetHelpers.buildPlayProjectPreviewRows(plan(), {
+    period0: ["cand0", "cand1", "cand2"],
+    period1: ["cand3"],
+  });
+  const groups = [rows.slice(0, 4), rows.slice(4)].map((group) =>
+    group.map((row) => ({ ...row, height: 30, labelHeight: 10 })),
+  );
+  const pages = sheetHelpers.paginatePlaySheet(groups, {
+    contentHeight: 100,
+    titleHeight: 10,
+    headerHeight: 10,
+  });
+  assert.deepEqual(
+    pages.map((page) => [page.group, page.title]),
+    [
+      [0, true],
+      [0, false],
+      [1, true],
+    ],
+  );
+  assert.deepEqual(
+    pages.flatMap((page) => page.rows.map((row) => row.key)),
+    rows.map((row) => row.key),
+  );
+  assert.equal(pages[0].rows[0].rowSpan, 2);
+  const continuation = pages[1].rows[0];
+  assert.equal(continuation.rowSpan, 1);
+  assert.equal(continuation.period.label, "3월~5월");
+  assert.equal(pages[1].rows[1].rowSpan, 1);
+});
+
+test("paginatePlaySheet leaves an oversize row alone without an empty page", () => {
+  const rows = sheetHelpers.buildPlayProjectPreviewRows(plan(), { period0: ["cand0", "cand1"] });
+  const pages = sheetHelpers.paginatePlaySheet(
+    [
+      [
+        { ...rows[0], height: 200 },
+        { ...rows[1], height: 20 },
+      ],
+    ],
+    { contentHeight: 100, titleHeight: 10, headerHeight: 10 },
+  );
+  assert.deepEqual(
+    pages.map((page) => [page.title, page.rows.length]),
+    [
+      [true, 1],
+      [false, 1],
+    ],
+  );
+  assert.equal(pages[0].rows[0].key, rows[0].key);
+});
+
+test("zoom steps round fit, move ten percent, and clamp manual zoom to 50–150", () => {
+  const { stepPlaySheetZoom: zoom } = sheetHelpers;
+  assert.equal(zoom(100, 1), 110);
+  assert.equal(zoom(100, -1), 90);
+  assert.equal(zoom(72, 1), 80);
+  assert.equal(zoom(72, -1), 60);
+  assert.equal(zoom(150, 1), 150);
+  assert.equal(zoom(50, -1), 50);
+  assert.equal(zoom(32, 1), 50);
+  assert.equal(zoom(32, -1), 50);
+});
+
+test("both sheet steps expose page navigation and share manual zoom then return to fit", () => {
+  const view = resultRenderer(plan(), [0, 1, { period0: ["cand0"] }, null]);
+  let nodes = all(view.render());
+  const button = (label) =>
+    nodes.find(
+      (node) =>
+        node.type === "button" && (node.props["aria-label"] === label || text(node) === label),
+    );
+  for (const label of ["1쪽", "2쪽", "축소", "확대", "맞춤"]) assert.ok(button(label), label);
+  button("확대").props.onClick();
+  nodes = all(view.render());
+  assert.ok(text(nodes).includes("110%"));
+  button("③ 전체 초안 보기").props.onClick();
+  nodes = all(view.render());
+  assert.ok(text(nodes).includes("110%"));
+  for (const label of ["1쪽", "2쪽", "축소", "확대", "맞춤"]) assert.ok(button(label), label);
+  assert.equal(all(tables(nodes)).filter((node) => node.type === "button").length, 0);
+  button("맞춤").props.onClick();
+  nodes = all(view.render());
+  assert.ok(text(nodes).includes("맞춤 100%"));
+});
+
+test("period tabs clear selection even for the current period and request its first row in both sheet steps", () => {
+  const view = resultRenderer(plan(), [
+    0,
+    1,
+    { period0: ["cand0"] },
+    { periodKey: "period0", rowKey: "cand0", field: "play_name" },
+  ]);
+  for (const step of [1, 2]) {
+    view.state[1] = step;
+    view.state[3] = { periodKey: "period0", rowKey: "cand0", field: "play_name" };
+    const tab = all(view.render()).find((node) => node.props?.role === "tab");
+    tab.props.onClick();
+    assert.equal(view.state[3], null);
+    assert.equal(view.state[5].periodKey, "period0");
+    assert.equal(view.state[5].request, step);
+  }
+});
+
+test("reordering measured sheets retains continuation positions and refreshes text before measuring again", () => {
+  const pp = plan();
+  const picks = { period0: ["cand0", "cand1", "cand2"] };
+  const rows = sheetHelpers
+    .buildPlayProjectPreviewRows(pp, picks)
+    .map((row) => ({ ...row, height: 30 }));
+  const groups = [rows.slice(0, 4), rows.slice(4)];
+  const dimensions = { contentHeight: 100, titleHeight: 10, headerHeight: 10 };
+  const measured = {
+    groups,
+    dimensions,
+    pages: sheetHelpers.paginatePlaySheet(groups, dimensions),
+  };
+  let cursor = 0;
+  let zoom;
+  const { default: MeasuredSheet } = compile("../components/plan-generator/PlayProjectSheet.tsx", {
+    react: {
+      useState: () => [[measured, 32][cursor++], () => {}],
+      useRef: () => ({ current: null }),
+      useEffect: () => {},
+      useMemo: (compute) => compute(),
+    },
+    "./playProjectPagination": sheetHelpers,
+    "./PlayProjectResult.module.css": esModule(resultStyles),
+  });
+  const render = (picks) => {
+    cursor = 0;
+    return all(
+      resolve(
+        jsx(MeasuredSheet, {
+          plan: pp,
+          picks,
+          interactive: true,
+          selectedCell: null,
+          onSelectCell: () => {},
+          zoom: { mode: "fit", percent: 100 },
+          onZoomChange: (next) => (zoom = next),
+          scrollPeriod: null,
+        }),
+      ),
+    );
+  };
+  const before = render(picks);
+  const after = render({ period0: ["cand2", "cand1", "cand0"] });
+  assert.equal(before.filter((node) => node.props?.["data-page"] !== undefined).length, 3);
+  assert.equal(after.filter((node) => node.props?.["data-page"] !== undefined).length, 3);
+  assert.deepEqual(
+    tables(after).map((table) =>
+      all(table)
+        .filter((node) => node.type === "tr")
+        .map((row) => row.key),
+    ),
+    tables(before).map((table) =>
+      all(table)
+        .filter((node) => node.type === "tr")
+        .map((row) => row.key),
+    ),
+  );
+  assert.deepEqual(
+    after.filter((node) => node.props?.["aria-label"]?.endsWith(" 놀이명")).map(text),
+    ["놀이 2", "놀이 1", "놀이 0"],
+  );
+  assert.equal(after.find((node) => node.props?.className === "sheetPages").props.style.zoom, 0.32);
+  assert.ok(text(after).includes("맞춤 32%"));
+  after.find((node) => node.props?.["aria-label"] === "확대").props.onClick();
+  assert.deepEqual(zoom, { mode: "manual", percent: 50 });
+});
+
+test("page and period navigation scroll to the requested target once", () => {
+  const effects = [];
+  const effectDeps = [];
+  const frames = [];
+  const scrolls = [];
+  const windowScrolls = [];
+  let targetTop = 800;
+  let boxTop = 700;
+  let measuredTarget;
+  const row = { dataset: { period: "period3" } };
+  const other = { dataset: { period: "period0" } };
+  const cell = { dataset: { period: "period3", rowKey: "cand0", cell: "play_name" } };
+  const pages = [{}, {}];
+  for (const target of [row, other, cell, ...pages]) {
+    target.getBoundingClientRect = () => {
+      measuredTarget = target;
+      return { top: targetTop, bottom: targetTop + 20, left: 0, right: 100 };
+    };
+  }
+  const viewport = {
+    querySelectorAll: (selector) =>
+      selector === "tbody tr" ? [other, row] : selector === "[data-cell]" ? [cell] : pages,
+    getBoundingClientRect: () => ({ top: boxTop, bottom: boxTop + 300, left: 0, right: 300 }),
+    scrollBy: (delta) => {
+      scrolls.push(delta);
+      targetTop -= delta.top;
+    },
+  };
+  const refs = [{ current: viewport }, { current: null }, { current: null }];
+  let refIndex = 0;
+  let effectIndex = 0;
+  let memo;
+  let memoDeps;
+  let renderedPages;
+  const planValue = plan();
+  const picks = {};
+  const { default: ScrollSheet } = compile(
+    "../components/plan-generator/PlayProjectSheet.tsx",
+    {
+      react: {
+        useState: (initial) => [typeof initial === "function" ? initial() : initial, () => {}],
+        useRef: () => refs[refIndex++],
+        useMemo: (compute, deps) => {
+          if (!memoDeps || deps.some((value, i) => !Object.is(value, memoDeps[i]))) {
+            memo = compute();
+            memoDeps = deps;
+          }
+          return memo;
+        },
+        useEffect: (effect, deps) => {
+          const index = effectIndex++;
+          if (
+            !effectDeps[index] ||
+            deps.some((value, i) => !Object.is(value, effectDeps[index][i]))
+          ) {
+            effects[index] = effect;
+            effectDeps[index] = deps;
+          }
+        },
+      },
+      "./playProjectPagination": {
+        ...sheetHelpers,
+        paginatePlaySheet: (...args) => (renderedPages ??= sheetHelpers.paginatePlaySheet(...args)),
+      },
+      "./PlayProjectResult.module.css": esModule(resultStyles),
+    },
+    undefined,
+    (callback) => frames.push(callback),
+    {
+      matchMedia: () => ({ matches: true }),
+      innerHeight: 600,
+      scrollBy: (delta) => windowScrolls.push(delta),
+    },
+  );
+  const render = (request) => {
+    refIndex = 0;
+    effectIndex = 0;
+    effects.length = 0;
+    return all(
+      resolve(
+        jsx(ScrollSheet, {
+          plan: planValue,
+          picks,
+          interactive: true,
+          selectedCell: null,
+          onSelectCell: () => {},
+          zoom: { mode: "fit", percent: 100 },
+          onZoomChange: () => {},
+          scrollPeriod: request,
+        }),
+      ),
+    );
+  };
+  let nodes = render(null);
+  nodes.find((node) => node.type === "button" && text(node) === "2쪽").props.onClick();
+  assert.equal(measuredTarget, pages[1]);
+  assert.deepEqual(scrolls.pop(), { top: 100, left: 0 });
+  assert.deepEqual(windowScrolls.pop(), { top: 120 });
+
+  boxTop = 300;
+  targetTop = 400;
+  nodes.find((node) => node.type === "button" && text(node) === "1쪽").props.onClick();
+  assert.equal(measuredTarget, pages[0]);
+  assert.equal(windowScrolls.length, 0);
+
+  boxTop = 700;
+  targetTop = 800;
+  const request = { periodKey: "period3", request: 1 };
+  nodes = render(request);
+  effects[2]();
+  frames.shift()();
+  assert.equal(measuredTarget, row);
+  assert.deepEqual(scrolls.pop(), { top: 100, left: 0 });
+  assert.deepEqual(windowScrolls.pop(), { top: 120 });
+  renderedPages = undefined;
+  render(request); // Remeasure and changed pages must not repeat the request.
+  effects[2]();
+  assert.equal(frames.length, 0);
+  render(null); // A step change clears the request.
+  effects[2]();
+  assert.equal(frames.length, 0);
+
+  targetTop = 800;
+  nodes = render({ periodKey: "period3", request: 2 });
+  effects[2]();
+  nodes.find((node) => node.type === "button" && text(node) === "2쪽").props.onClick();
+  assert.equal(measuredTarget, pages[1]);
+  scrolls.length = 0;
+  frames.shift()();
+  assert.equal(scrolls.length, 0);
+
+  targetTop = 800;
+  render({ periodKey: "period3", request: 3, cell: { rowKey: "cand0", field: "play_name" } });
+  effects[2]();
+  frames.shift()();
+  assert.equal(measuredTarget, cell);
+  assert.deepEqual(scrolls.pop(), { top: 0, left: 0 });
+  assert.deepEqual(windowScrolls.pop(), { top: 220 });
+});
+
+test("window adjustment requires up to 80 pixels of the target to be visible", () => {
+  assert.equal(windowScrollDelta({ top: 100, bottom: 180 }, 900), 0);
+  assert.equal(windowScrollDelta({ top: -10, bottom: 40 }, 900), -10);
+  assert.equal(windowScrollDelta({ top: 899, bottom: 999 }, 900), 79);
+  assert.equal(windowScrollDelta({ top: 900, bottom: 950 }, 800), 150);
+  assert.equal(windowScrollDelta({ top: 880, bottom: 900 }, 900), 0);
+});
+
+test("phone play and field selection do not request a sheet scroll", () => {
+  const view = resultRenderer(plan(), [0, 1, { period0: ["cand0"] }, null]);
+  let nodes = all(view.render());
+  nodes.find((node) => node.type === "button" && text(node) === "놀이 0").props.onClick();
+  assert.equal(view.state[5], null);
+  nodes = all(view.render());
+  nodes.find((node) => node.type === "button" && text(node) === "지원매체").props.onClick();
+  assert.equal(view.state[5], null);
+  assert.equal(view.state[3].field, "materials");
+});
+
+test("desktop play selection requests its cell and a step change clears it", () => {
+  const view = resultRenderer(plan(), [0, 1, { period0: ["cand0"] }, null], true);
+  const nodes = all(view.render());
+  nodes.find((node) => node.type === "button" && text(node) === "놀이 0").props.onClick();
+  assert.deepEqual(view.state[5].cell, { rowKey: "cand0", field: "play_name" });
+  all(view.render())
+    .find((node) => node.type === "button" && text(node) === "③ 전체 초안 보기")
+    .props.onClick();
+  assert.equal(view.state[5], null);
+});
+
+test("removing and readding a selected play cancels its pending scroll request", () => {
+  const view = resultRenderer(plan(), [0, 1, { period0: ["cand0"] }, null], true);
+  let nodes = all(view.render());
+  nodes.find((node) => node.type === "button" && text(node) === "놀이 0").props.onClick();
+  assert.equal(view.state[5].cell.rowKey, "cand0");
+  nodes = all(view.render());
+  nodes.find((node) => node.props?.["aria-label"] === "놀이 0 빼기").props.onClick();
+  assert.equal(view.state[5], null);
+  nodes = all(view.render());
+  nodes.find((node) => node.props?.["aria-label"] === "놀이 0 넣기").props.onClick();
+  assert.equal(view.state[5], null);
+});
+
+test("desktop selected oversized cells use nearest scrolling", () => {
+  const effects = [];
+  const frames = [];
+  const scrolls = [];
+  let rect = { top: 50, bottom: 500, left: 0, right: 200 };
+  const cell = {
+    dataset: { period: "period0", rowKey: "cand0", cell: "support_direction" },
+    getBoundingClientRect: () => rect,
+  };
+  const viewport = {
+    querySelectorAll: () => [cell],
+    getBoundingClientRect: () => ({ top: 100, bottom: 400, left: 0, right: 300 }),
+    scrollBy: (delta) => scrolls.push(delta),
+  };
+  const refs = [{ current: viewport }, { current: null }, { current: null }];
+  let cursor = 0;
+  const { default: ScrollSheet } = compile(
+    "../components/plan-generator/PlayProjectSheet.tsx",
+    {
+      react: {
+        useState: (initial) => [typeof initial === "function" ? initial() : initial, () => {}],
+        useRef: () => refs[cursor++],
+        useMemo: (compute) => compute(),
+        useEffect: (effect) => effects.push(effect),
+      },
+      "./playProjectPagination": sheetHelpers,
+      "./PlayProjectResult.module.css": esModule(resultStyles),
+    },
+    undefined,
+    (callback) => frames.push(callback),
+    { matchMedia: () => ({ matches: true }), innerHeight: 1000, scrollBy: () => {} },
+  );
+  for (const [index, nextRect, expected] of [
+    [0, rect, 0],
+    [1, { top: 50, bottom: 350, left: 0, right: 200 }, -50],
+    [2, { top: 150, bottom: 550, left: 0, right: 200 }, 50],
+  ]) {
+    rect = nextRect;
+    cursor = 0;
+    effects.length = 0;
+    ScrollSheet({
+      plan: plan(),
+      picks: { period0: ["cand0"] },
+      interactive: true,
+      selectedCell: null,
+      onSelectCell: () => {},
+      zoom: { mode: "fit", percent: 100 },
+      onZoomChange: () => {},
+      scrollPeriod: {
+        periodKey: "period0",
+        request: index,
+        cell: { rowKey: "cand0", field: "support_direction" },
+      },
+    });
+    effects[2]();
+    frames.shift()();
+    assert.deepEqual(scrolls.pop(), { top: expected, left: 0 });
+  }
 });

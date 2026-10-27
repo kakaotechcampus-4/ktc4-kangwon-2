@@ -5,21 +5,11 @@ import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import workspace from "@/components/workspace/Workspace.module.css";
 import tabs from "./GenerationFlow.module.css";
 import styles from "./PlayProjectResult.module.css";
+import PlayProjectSheet from "./PlayProjectSheet";
+import { fields, type PlayField, type SheetZoom } from "./playProjectPagination";
+export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 
 const MAX_PICKS = 5;
-const fields = [
-  { key: "play_name", label: "놀이명", heading: "놀이명" },
-  { key: "materials", label: "지원매체", heading: "지원매체" },
-  { key: "support_direction", label: "지원 방향", heading: "내용 및 지원 방향 예상하기" },
-  { key: "learning", label: "놀이를 통한 배움", heading: "놀이를 통한 배움" },
-] as const;
-type PlayField = (typeof fields)[number]["key"];
-type PreviewRow = {
-  key: string;
-  period: PlayProjectAnnualPlan["periods"][number];
-  candidate: PlayProjectAnnualPlan["periods"][number]["candidates"][number] | null;
-  rowSpan: number | undefined;
-};
 
 export function togglePlayPick(picks: string[], rowKey: string) {
   return picks.includes(rowKey)
@@ -54,26 +44,7 @@ export function nextPlayProjectPeriod(
   return null;
 }
 
-export function buildPlayProjectPreviewRows(
-  plan: PlayProjectAnnualPlan,
-  picks: Record<string, string[]>,
-) {
-  return plan.periods.flatMap<PreviewRow>((period) => {
-    const selected = (picks[period.period_key] ?? []).map((key) =>
-      period.candidates.find((candidate) => candidate.row_key === key)!,
-    );
-    return selected.length
-      ? selected.map<PreviewRow>((candidate, index) => ({
-          key: `${period.period_key}-${index}`,
-          period,
-          candidate,
-          rowSpan: index === 0 ? selected.length : undefined,
-        }))
-      : [{ key: `${period.period_key}-empty`, period, candidate: null, rowSpan: 1 }];
-  });
-}
-
-// 화면 상태만 제공한다. 저장 · 수정 · 쪽 넘김은 아직 지원하지 않는다.
+// 고른 놀이와 보기 설정은 화면 상태에만 둔다.
 export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPlan }) {
   const [activePeriod, setActivePeriod] = useState(0);
   const [step, setStep] = useState(0);
@@ -82,6 +53,12 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
     periodKey: string;
     rowKey: string;
     field: PlayField;
+  } | null>(null);
+  const [zoom, setZoom] = useState<SheetZoom>({ mode: "fit", percent: 100 });
+  const [scrollPeriod, setScrollPeriod] = useState<{
+    periodKey: string;
+    request: number;
+    cell?: { rowKey: string; field: PlayField };
   } | null>(null);
   const tabListRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLButtonElement>(null);
@@ -115,12 +92,15 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
   }, [showFloating]);
 
   function toggleCandidate(rowKey: string) {
-    if (
-      periodPicks.includes(rowKey) &&
-      selectedCell?.periodKey === period.period_key &&
-      selectedCell.rowKey === rowKey
-    )
-      setSelectedCell(null);
+    if (periodPicks.includes(rowKey)) {
+      if (selectedCell?.periodKey === period.period_key && selectedCell.rowKey === rowKey)
+        setSelectedCell(null);
+      setScrollPeriod((current) =>
+        current?.periodKey === period.period_key && current.cell?.rowKey === rowKey
+          ? null
+          : current,
+      );
+    }
     setPicks((current) => ({
       ...current,
       [period.period_key]: togglePlayPick(current[period.period_key] ?? [], rowKey),
@@ -129,7 +109,14 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
 
   function selectCell(periodIndex: number, rowKey: string, field: PlayField) {
     setActivePeriod(periodIndex);
-    setSelectedCell({ periodKey: plan.periods[periodIndex].period_key, rowKey, field });
+    const periodKey = plan.periods[periodIndex].period_key;
+    setSelectedCell({ periodKey, rowKey, field });
+    if (window.matchMedia("(min-width: 1024px)").matches)
+      setScrollPeriod((current) => ({
+        periodKey,
+        request: (current?.request ?? 0) + 1,
+        cell: { rowKey, field },
+      }));
   }
 
   function moveCandidate(rowKey: string, delta: -1 | 1) {
@@ -157,8 +144,19 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
 
   function goToStep(index: number) {
     if (index === step) return;
+    setScrollPeriod(null);
     setStep(index);
     requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+  }
+
+  function goToPeriod(index: number) {
+    setActivePeriod(index);
+    setSelectedCell(null);
+    if (step > 0)
+      setScrollPeriod((current) => ({
+        periodKey: plan.periods[index].period_key,
+        request: (current?.request ?? 0) + 1,
+      }));
   }
 
   function advance() {
@@ -217,7 +215,6 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
   }
 
   function renderArrangement(interactive = true) {
-    const rows = buildPlayProjectPreviewRows(plan, picks);
     return (
       <div className={interactive ? styles.arrangementGrid : styles.draftArrangement}>
         {interactive && (
@@ -281,7 +278,7 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
                         className={
                           selectedCell.field === field.key ? workspace.selected : undefined
                         }
-                        onClick={() => setSelectedCell({ ...selectedCell, field: field.key })}
+                        onClick={() => selectCell(activePeriod, selectedCell.rowKey, field.key)}
                       >
                         {field.label}
                       </button>
@@ -339,81 +336,16 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
             </section>
           </div>
         )}
-        <section
-          className={`${workspace.card} ${styles.sheet}`}
-          aria-label="연간놀이계획안 미리보기"
-        >
-          <h2>{plan.school_year} 연간놀이계획안</h2>
-          <div className={styles.previewWrap}>
-            <table className={styles.preview}>
-              <thead>
-                <tr>
-                  <th scope="col">시기</th>
-                  {fields.map((field) => (
-                    <th scope="col" key={field.key}>
-                      {field.heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const candidate = row.candidate;
-                  // 내장 브라우저가 옮긴 행을 다시 그리지 않아 구간 안 위치를 고정한다.
-                  return (
-                    <tr key={row.key}>
-                      {row.rowSpan ? (
-                        <th scope="rowgroup" rowSpan={row.rowSpan}>
-                          {row.period.label}
-                        </th>
-                      ) : null}
-                      {candidate ? (
-                        fields.map((field) => {
-                          if (!interactive)
-                            return (
-                              <td key={field.key} className={styles.plainCell}>
-                                {candidate[field.key].value}
-                              </td>
-                            );
-                          const selected =
-                            selectedCell?.periodKey === row.period.period_key &&
-                            selectedCell?.rowKey === candidate.row_key &&
-                            selectedCell?.field === field.key;
-                          return (
-                            <td
-                              key={field.key}
-                              className={selected ? styles.selectedCell : undefined}
-                            >
-                              <button
-                                type="button"
-                                aria-label={`${candidate.play_name.value} ${field.heading}`}
-                                aria-pressed={selected}
-                                className={styles.cellButton}
-                                onClick={() =>
-                                  selectCell(
-                                    plan.periods.indexOf(row.period),
-                                    candidate.row_key,
-                                    field.key,
-                                  )
-                                }
-                              >
-                                {candidate[field.key].value}
-                              </button>
-                            </td>
-                          );
-                        })
-                      ) : (
-                        <td colSpan={4} className={styles.empty}>
-                          아직 고른 놀이가 없어요
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <PlayProjectSheet
+          plan={plan}
+          picks={picks}
+          interactive={interactive}
+          selectedCell={selectedCell}
+          onSelectCell={selectCell}
+          zoom={zoom}
+          onZoomChange={setZoom}
+          scrollPeriod={scrollPeriod}
+        />
       </div>
     );
   }
@@ -484,10 +416,7 @@ export default function PlayProjectResult({ plan }: { plan: PlayProjectAnnualPla
             aria-selected={activePeriod === index}
             aria-controls={panelId}
             className={activePeriod === index ? tabs.activeTab : undefined}
-            onClick={() => {
-              setActivePeriod(index);
-              if (selectedCell && selectedCell.periodKey !== item.period_key) setSelectedCell(null);
-            }}
+            onClick={() => goToPeriod(index)}
           >
             {item.label} · {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}
           </button>
