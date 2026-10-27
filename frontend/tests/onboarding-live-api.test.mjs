@@ -231,6 +231,29 @@ test("S1: 원 생성은 지역 두 칸을 그대로 보내고 응답 id 를 다�
   }
 });
 
+test("S1: 이미 만든 원은 다시 만들지 않고 고친다 — 409 가 나던 자리", async () => {
+  const stop = await start();
+  const rec = recorder();
+  try {
+    const centerId = await onboarding.syncCenter(SETTINGS);
+    const renamed = { ...SETTINGS, orgName: "이름 바꾼 어린이집", directorName: "박원장" };
+
+    const again = await onboarding.syncCenter(renamed);
+
+    assert.equal(again, centerId, "같은 원을 쓴다");
+    const posts = rec.seen.filter((r) => r.method === "POST" && r.path === "/api/centers");
+    assert.equal(posts.length, 1, "원을 또 만들지 않는다");
+    const patch = rec.seen.find((r) => r.method === "PATCH");
+    assert.ok(patch, "PATCH /api/centers/{id} 를 불러야 한다");
+    assert.equal(patch.body.name, "이름 바꾼 어린이집");
+    assert.equal(patch.body.director_name, "박원장");
+    assert.equal(read().centers.at(-1).name, "이름 바꾼 어린이집");
+  } finally {
+    rec.stop();
+    stop();
+  }
+});
+
 test("S1: 생성이 실패하면 id 없이 던진다 — 화면이 다음 단계로 못 넘어간다", async () => {
   const stop = await start();
   try {

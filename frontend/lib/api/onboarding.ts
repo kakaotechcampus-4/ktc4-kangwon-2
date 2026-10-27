@@ -3,7 +3,7 @@ import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isApiNotFound } from "./client";
 import { getMe } from "./auth";
-import { createCenter, joinCenter } from "./centers";
+import { createCenter, joinCenter, updateCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
 import { normalizeProvince } from "../onboarding/regions";
@@ -100,12 +100,16 @@ async function syncCenterOnce(settings: ClassSettings) {
     signature = JSON.stringify(data),
     links = readLinks();
   if (links.center?.signature === signature) return links.center.id;
-  // **서버에서 받아온 원은 그대로 쓴다.** 초대받았거나 기기를 바꾼 교사는 원 정보를
-  // 화면에 들고 있지 않아 서명이 영영 안 맞는다. 그때마다 원을 새로 만들면 원이 쌓이고
-  // (서버가 거절하기도 한다) links.classes 까지 비워서 방금 들인 반이 날아간다.
-  // 그 교사의 원 정보 수정은 서버에 반영되지 않는다 — 원 수정 API 가 생겨야 풀린다.
-  if (links.center?.signature === ADOPTED) return links.center.id;
-  // P0 has no center update endpoint: retain old server objects, create a new snapshot.
+  // **이미 만든 원은 고친다.** 예전에는 수정 API 가 없어 원을 새로 만들었는데, 서버가
+  // 「이미 등록한 원이 있습니다」 409 로 거절하거나 원이 쌓였고, links.classes 를 비워서
+  // 방금 들인 반까지 날아갔다. 초대받았거나 기기를 바꾼 교사(ADOPTED)도 같은 길로 간다 —
+  // 그 교사의 원 정보 수정이 서버에 반영되지 않던 것이 이것으로 풀린다.
+  if (links.center) {
+    const updated = await updateCenter(links.center.id, data);
+    links.center = { id: updated.id, signature };
+    saveLinks(links);
+    return updated.id;
+  }
   const center = await createCenter(data);
   links.center = { id: center.id, signature };
   links.classes = {};
