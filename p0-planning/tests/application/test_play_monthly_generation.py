@@ -544,6 +544,11 @@ def _six_rows(data):
         (_set(("target_month",), "2027-05"), "TARGET_MONTH_MISMATCH"),
         (_set(("theme",), "4월 14일 소풍 놀이"), "UNSUPPORTED_FACT"),
         (_set(("rationale",), "홍길동 선생님과 함께하는 놀이를 예상합니다."), "UNSUPPORTED_FACT"),
+        (_set(("safety", 0, "text"), "annex6:traffic_safety:1 길을 건너는 약속을 알아보아요"),
+         "SOURCE_IDENTIFIER_LEAKAGE"),
+        (_set(("together", 0, "name"), "t.1 봄 산책 놀이"), "SOURCE_IDENTIFIER_LEAKAGE"),
+        (_set(("rationale",), "m03_m05.cand4 놀이를 이어 가는 달입니다."), "SOURCE_IDENTIFIER_LEAKAGE"),
+        (_set(("theme",), "he1 건강한 봄"), "SOURCE_IDENTIFIER_LEAKAGE"),
     ],
 )
 def test_invalid_output_is_rejected_after_one_failed_repair(edit, code):
@@ -639,3 +644,27 @@ def test_domain_rejects_generated_teacher_input_and_unknown_placement():
         + plan.safety_weeks[1:],
     )
     assert placed.safety_weeks[0].candidate_item_id == plan.safety_candidates[0].cell.item_id
+
+
+def test_a_repair_that_removes_the_internal_id_is_stored_clean():
+    use_case, command, plans, provider, _ = _run(_set(("together", 3, "name"), "t.2 모래 놀이"))
+
+    plan = use_case.execute(command)
+
+    issues = json.loads(provider.requests[1].user_content)["issues"]
+    assert issues == [{"location": "together[3]", "code": "SOURCE_IDENTIFIER_LEAKAGE"}]
+    assert plans.save_count == 1 and plan.together[3].cell.value == "함께 놀이 4"
+
+
+def test_theme_and_rationale_cite_the_parent_period_they_were_written_from():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+
+    for cell in (plan.theme, plan.rationale):
+        (source,) = cell.evidence
+        assert (source.source_type, source.source_id, source.source_version) == (
+            EvidenceSourceType.PARENT_PLAN,
+            "parent-1",
+            "m03_m05",
+        )
+        assert source.display_name == PLAY_PROJECT_LAYOUT_V0_2.periods[0].label
