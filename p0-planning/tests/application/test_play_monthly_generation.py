@@ -693,6 +693,7 @@ def test_drill_candidates_are_five_curriculum_topics_and_the_drill_cell_stays_bl
         assert (source.source_type, source.source_id) == (EvidenceSourceType.CURRICULUM, "t.4")
         assert candidate.cell.semantic_key == f"fire_disaster_drill.candidate.{candidate.topic_id}"
         assert candidate.cell.value == f"{candidate.topic_id} 상황을 가정해 대피 훈련을 해요"
+    assert [d.label for d in plan.drill_candidates] == ["화재 가", "지진", "화재 나", "화재 다", "화재 라"]
     (drill_cell,) = [t for t in plan.teacher_inputs if t.semantic_key == "fire_disaster_drill"]
     assert drill_cell.value == "" and drill_cell.generation is None
     assert (plan.references.drill_catalog_id, plan.references.drill_catalog_version) == (
@@ -753,3 +754,19 @@ def test_domain_rejects_duplicate_drill_topics():
 
     with pytest.raises(InvalidDomainValueError):
         replace(plan, drill_candidates=plan.drill_candidates + (replace(first, cell=plan.drill_candidates[1].cell),))
+
+
+def test_a_sentence_about_another_topic_is_not_caught_so_the_label_goes_with_it():
+    # Known limit: only ids and invented facts are checked. The teacher sees the Rule's label.
+    use_case, command, *_ = _run(_set(("drills", 0, "text"), "지진이 나면 책상 아래로 몸을 숨겨요"))
+    first = use_case.execute(command).drill_candidates[0]
+
+    assert (first.topic_id, first.label) == ("fire_a", "화재 가")
+
+
+def test_drill_origins_need_unique_ids_and_sha256_digests():
+    with pytest.raises(InvalidDomainValueError):
+        DrillOrigin("test.guide", "합성", "not-a-sha256", "1")
+    twice = (DrillOrigin("test.guide", "합성", "0" * 64, "1"), DrillOrigin("test.guide", "합성", "1" * 64, "2"))
+    with pytest.raises(InvalidDomainValueError):
+        replace(DRILLS, origins=twice)

@@ -212,15 +212,21 @@ class EntryCell:
 @dataclass(frozen=True, slots=True)
 class DrillCandidate:
     """A 소방대피 · 재난대비 topic candidate. The document's drill cell is a separate
-    teacher-input cell that starts blank; a candidate is never placed automatically."""
+    teacher-input cell that starts blank; a candidate is never placed automatically.
+
+    ``topic_id`` and ``label`` are the Rule's choice. The sentence is checked for its topic id
+    and for invented facts, not for matching the topic, so the screen shows ``label`` next to
+    it and the teacher reviews the sentence."""
 
     cell: PlayMonthlyCell
     topic_id: str
+    label: str
 
     def __post_init__(self) -> None:
         if not isinstance(self.cell, PlayMonthlyCell):
             raise InvalidDomainValueError("DrillCandidate.cell must be PlayMonthlyCell")
         _non_blank(self.topic_id, "DrillCandidate.topic_id")
+        _non_blank(self.label, "DrillCandidate.label")
         if not self.cell.cites_only(EvidenceSourceType.CURRICULUM):
             raise InvalidDomainValueError("DrillCandidate cites CURRICULUM only")
 

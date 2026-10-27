@@ -4,8 +4,9 @@ The Rule fixes the month, weeks, list sizes, the parent plays, the allowed 누�
 ids, the eight safety slots with each slot's allowed refs, and the approved daily-life
 entries. The LLM writes theme, rationale, play names and safety sentences, and picks ids
 inside those ranges. Habit / health / nutrition text is the approved entry sentence: the LLM
-picks the entry, never rewrites it. The Rule also fixes the 소방대피 · 재난대비 topics; the LLM
-writes one candidate sentence per topic, never a date, route, assembly place or procedure.
+picks the entry, never rewrites it. The Rule also fixes the 소방대피 · 재난대비 topic ids; the LLM
+writes one candidate sentence per id, never a date, route, assembly place or procedure.
+Validation checks the ids and invented facts, not whether a sentence matches its topic.
 Teacher-input cells and weekly safety placement are not
 part of the response at all.
 """

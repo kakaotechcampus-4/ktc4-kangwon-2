@@ -7,6 +7,7 @@ an official monthly schedule; the catalog says nothing about how often a drill m
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -35,6 +36,8 @@ class DrillOrigin:
 
     def __post_init__(self) -> None:
         _non_blank(self, "origin_id", "title", "sha256", "pages")
+        if re.fullmatch(r"[0-9a-f]{64}", self.sha256) is None:
+            raise InvalidDomainValueError("DrillOrigin.sha256 must be a lowercase SHA-256 hex digest")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +78,10 @@ class DrillTopicCatalog:
         ids = [topic.topic_id for topic in self.topics]
         if not ids or len(ids) != len(set(ids)):
             raise InvalidDomainValueError("DrillTopicCatalog needs unique topic ids")
-        if not {t.origin_id for t in self.topics} <= {o.origin_id for o in self.origins}:
+        origin_ids = [origin.origin_id for origin in self.origins]
+        if len(origin_ids) != len(set(origin_ids)):
+            raise InvalidDomainValueError("DrillTopicCatalog needs unique origin ids")
+        if not {t.origin_id for t in self.topics} <= set(origin_ids):
             raise InvalidDomainValueError("DrillTopic.origin_id must name a catalog origin")
 
     @property

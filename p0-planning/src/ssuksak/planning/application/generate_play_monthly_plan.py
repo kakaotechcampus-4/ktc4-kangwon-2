@@ -413,6 +413,7 @@ class GeneratePlayMonthlyPlan:
                         (curriculum(topic.content_id),),
                     ),
                     topic.topic_id,
+                    topic.label,
                 )
                 for topic in drill_topics
             ),
