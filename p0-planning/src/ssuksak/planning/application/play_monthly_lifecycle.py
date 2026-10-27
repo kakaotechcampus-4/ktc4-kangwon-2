@@ -1,4 +1,4 @@
-"""Edit and confirm a DRAFT play-centred monthly plan (PLAY_MONTHLY, lifecycle L1).
+"""Edit, arrange and confirm a DRAFT play-centred monthly plan (PLAY_MONTHLY, lifecycle L1~L3).
 
 2026-10-27 decisions:
 - An edit changes one cell's value only. A generated cell keeps its Generation Method and
@@ -8,6 +8,11 @@
   curriculum catalog version. Changing them keeps the generation-time CURRICULUM evidence and
   records a TEACHER_EDITED event with a ``link_change`` only, so the play name does not count as
   teacher-edited text. The official content text is never stored; it is read from the Reference.
+- Rows (M2-D03, I-3): a teacher adds a blank row at the end of a section or deletes a row. The
+  deleted row is archived whole in the plan; ids are never reused; there is no undo or reorder.
+  A new row's cells start without generation and become MANUAL on their first write.
+- Safety (M2-D08, I-3): each week holds at most one kept candidate; a candidate may be reused
+  across weeks; ``None`` clears the week. Rows and placement are ARRANGEMENT_CHANGED events.
 - Confirm (M2-D09 · I-6) needs a theme, a rationale, and in each play section at least one row,
   every row named and linked to 1~3 content ids. Descriptions, teacher-input cells, habits,
   safety placement and health · nutrition may stay blank: ``play_monthly_notices`` reports the
@@ -23,10 +28,11 @@ from dataclasses import dataclass, replace
 
 from ..domain.errors import DomainError
 from ..domain.identifiers import ActorId, ItemId, PlanId
-from ..domain.play_monthly_plan import PlayMonthlyPlan
+from ..domain.play_monthly_plan import PLAY_SECTIONS, PlayActivity, PlayMonthlyCell, PlayMonthlyPlan
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
+    AuditHistory,
     GenerationMethod,
     GenerationMethodDetail,
     LinkChange,
@@ -35,7 +41,7 @@ from ..domain.provenance import (
 from ..domain.week_period import WeekId
 from ..planner.play_monthly import CONTENT_MAX, CONTENT_MIN
 from .generate_play_project_plan import CurriculumReferenceRepository
-from .ports import Clock, PlanRepository
+from .ports import Clock, IdGenerator, PlanRepository
 
 
 class PlayMonthlyLifecycleError(DomainError):
@@ -60,6 +66,28 @@ class EditPlayMonthlyContentIdsCommand:
     actor_id: ActorId
     item_id: ItemId  # the play's name cell
     content_ids: Sequence[str]
+
+
+@dataclass(frozen=True, slots=True)
+class AddPlayMonthlyActivityCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    section: str  # together · free_play
+
+
+@dataclass(frozen=True, slots=True)
+class RemovePlayMonthlyActivityCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_id: ItemId  # the play's name cell
+
+
+@dataclass(frozen=True, slots=True)
+class PlacePlayMonthlySafetyCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    week_id: WeekId
+    candidate_item_id: ItemId | None  # None clears the week
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +205,86 @@ class EditPlayMonthlyContentIds:
                 content_ids=ids,
                 cell=replace(activity.cell, audit=activity.cell.audit.append(event)),
             )
+        )
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class AddPlayMonthlyActivity:
+    def __init__(
+        self, *, plan_repository: PlanRepository[PlayMonthlyPlan], id_generator: IdGenerator, clock: Clock
+    ) -> None:
+        self._plans = plan_repository
+        self._ids = id_generator
+        self._clock = clock
+
+    def execute(self, command: AddPlayMonthlyActivityCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("add")
+        actor_id = _require_actor(command.actor_id)
+        if command.section not in PLAY_SECTIONS:
+            raise PlayMonthlyLifecycleError("invalid_section", f"Unknown play section: {command.section}")
+        now = self._clock.now()
+
+        def blank(item_id: ItemId, semantic_key: str) -> PlayMonthlyCell:
+            created = AuditEvent(
+                event_type=AuditEventType.CREATED,
+                occurred_at=now,
+                plan_id=plan.plan_id,
+                item_id=item_id,
+                actor_id=actor_id,
+            )
+            return PlayMonthlyCell(item_id=item_id, semantic_key=semantic_key, audit=AuditHistory((created,)))
+
+        name_id = self._ids.new_item_id()
+        key = f"{command.section}.{name_id.value}"
+        row = PlayActivity(blank(name_id, key), blank(self._ids.new_item_id(), f"{key}.description"), ())
+        updated = plan.add_activity(command.section, row, actor_id=actor_id, occurred_at=now)
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class RemovePlayMonthlyActivity:
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: RemovePlayMonthlyActivityCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("remove")
+        actor_id = _require_actor(command.actor_id)
+        if not isinstance(command.item_id, ItemId) or plan.activity(command.item_id) is None:
+            raise PlayMonthlyLifecycleError(
+                "play_monthly_activity_not_found", f"PlayMonthlyPlan play not found: {command.item_id}"
+            )
+        updated = plan.remove_activity(command.item_id, actor_id=actor_id, occurred_at=self._clock.now())
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class PlacePlayMonthlySafety:
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: PlacePlayMonthlySafetyCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("place")
+        actor_id = _require_actor(command.actor_id)
+        week = next((s for s in plan.safety_weeks if s.week_id == command.week_id), None)
+        if week is None:
+            raise PlayMonthlyLifecycleError(
+                "play_monthly_week_not_found", f"PlayMonthlyPlan week not found: {command.week_id}"
+            )
+        candidate = command.candidate_item_id
+        if candidate is not None and candidate not in {c.cell.item_id for c in plan.safety_candidates}:
+            raise PlayMonthlyLifecycleError(
+                "play_monthly_safety_candidate_not_found", f"Safety candidate not found: {candidate}"
+            )
+        if candidate == week.candidate_item_id:
+            return plan
+        updated = plan.place_safety(
+            command.week_id, candidate, actor_id=actor_id, occurred_at=self._clock.now()
         )
         self._plans.save(updated.plan_id, updated)
         return updated

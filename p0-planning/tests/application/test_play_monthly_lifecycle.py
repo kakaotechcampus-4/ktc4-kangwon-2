@@ -1,5 +1,6 @@
 """PLAY_MONTHLY lifecycle: L1 edit one cell and confirm (M2-D09 · M2-D13 · I-6), L2 change a
-play's curriculum links (M2-D18 · I-1 · I-2). Decisions 2026-10-27.
+play's curriculum links (M2-D18 · I-1 · I-2), L3 add · remove rows and place safety weeks
+(M2-D03 · M2-D08 · I-3). Decisions 2026-10-27.
 
 Plans come from the real generation use case with the Fake provider of the generation tests.
 """
@@ -11,23 +12,31 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ssuksak.adapters.deterministic import FixedClock
+from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.planning.application.play_monthly_lifecycle import (
+    AddPlayMonthlyActivity,
+    AddPlayMonthlyActivityCommand,
     ConfirmPlayMonthlyPlan,
     ConfirmPlayMonthlyPlanCommand,
     EditPlayMonthlyCell,
     EditPlayMonthlyCellCommand,
     EditPlayMonthlyContentIds,
     EditPlayMonthlyContentIdsCommand,
+    PlacePlayMonthlySafety,
+    PlacePlayMonthlySafetyCommand,
     PlayMonthlyLifecycleError,
     PlayMonthlyNotice,
+    RemovePlayMonthlyActivity,
+    RemovePlayMonthlyActivityCommand,
     play_monthly_notices,
 )
 from ssuksak.planning.domain.errors import InvalidDomainValueError, InvalidStateTransitionError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.plan import PlanStatus
+from ssuksak.planning.domain.play_monthly_plan import RemovedActivity
 from ssuksak.planning.domain.provenance import AuditEventType, GenerationMethod, LinkChange
 from ssuksak.planning.domain.theme_reference import ActivationStatus
+from ssuksak.planning.domain.week_period import WeekId
 from tests.application.test_play_monthly_generation import CURRICULUM, _Catalogs, _run
 
 NOW = datetime(2027, 2, 21, tzinfo=UTC)
@@ -404,3 +413,151 @@ def test_the_same_links_write_nothing_and_a_confirmed_plan_refuses_links():
     confirmed = confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
     with pytest.raises(InvalidStateTransitionError):
         _link(_links(plans), confirmed, confirmed.together[0], _unlinked(activity, 1))
+
+
+def _arrange(plans):
+    clock = FixedClock(NOW)
+    return (
+        AddPlayMonthlyActivity(plan_repository=plans, id_generator=DeterministicIdGenerator("added"), clock=clock),
+        RemovePlayMonthlyActivity(plan_repository=plans, clock=clock),
+        PlacePlayMonthlySafety(plan_repository=plans, clock=clock),
+    )
+
+
+def _arrangement(plan):
+    event = plan.audit.events[-1]
+    assert (event.event_type, event.actor_id, event.item_id) == (AuditEventType.ARRANGEMENT_CHANGED, TEACHER, None)
+    change = event.arrangement_change
+    return change.scope, change.before, change.after
+
+
+def _ids(rows):
+    return tuple(a.cell.item_id.value for a in rows)
+
+
+def test_an_added_row_starts_blank_at_the_end_and_becomes_manual_when_written():
+    plan, plans, edit, confirm = _draft()
+    add, *_ = _arrange(plans)
+
+    updated = add.execute(AddPlayMonthlyActivityCommand(plan.plan_id, TEACHER, "free_play"))
+
+    row = updated.free_play[-1]
+    assert updated.free_play[:-1] == plan.free_play and updated.together == plan.together
+    assert row.cell.item_id not in {c.item_id for c in plan.cells()}
+    assert row.description.semantic_key == f"{row.cell.semantic_key}.description"
+    for cell in (row.cell, row.description):
+        assert (cell.value, cell.evidence, cell.generation) == ("", (), None)
+        assert [(e.event_type, e.actor_id) for e in cell.audit] == [(AuditEventType.CREATED, TEACHER)]
+    assert (row.content_ids, row.parent_snapshot) == ((), None)
+    assert _arrangement(updated) == ("free_play", _ids(plan.free_play), _ids(updated.free_play))
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    where = f"free_play:{row.cell.item_id.value}"
+    assert set(error.value.problems) == {f"{where}: blank name", f"{where}: 0 content ids"}
+
+    named = _edit(edit, updated, row.cell, "새 놀이")
+    linked = _link(_links(plans), named, named.free_play[-1], _unlinked(row, 2))
+
+    assert linked.free_play[-1].cell.generation.method is GenerationMethod.MANUAL
+    assert linked.free_play[-1].description.generation is None
+    assert confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
+
+
+def test_a_removed_row_leaves_the_document_but_stays_whole_in_the_archive():
+    plan, plans, edit, confirm = _draft()
+    _, remove, _ = _arrange(plans)
+    edited = _edit(edit, plan, plan.together[1].description, "교사가 고친 설명")
+    target = edited.together[1]
+
+    updated = remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, target.cell.item_id))
+
+    assert updated.together == edited.together[:1] + edited.together[2:]
+    assert updated.removed_activities == (RemovedActivity("together", target),)
+    assert target.description.audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
+    assert _arrangement(updated) == ("together", _ids(edited.together), _ids(updated.together))
+    assert not {target.cell.item_id, target.description.item_id} & {c.item_id for c in updated.cells()}
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        _edit(edit, updated, target.cell, "다시")
+    assert error.value.code == "play_monthly_cell_not_found"
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, target.cell.item_id))
+    assert error.value.code == "play_monthly_activity_not_found"
+    with pytest.raises(InvalidDomainValueError):
+        updated.add_activity("together", target, actor_id=TEACHER, occurred_at=NOW)  # archived ids stay taken
+    confirmed = confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    assert confirmed.removed_activities == updated.removed_activities
+
+
+def test_a_section_may_be_emptied_in_draft_but_confirm_needs_a_row():
+    plan, plans, _, confirm = _draft()
+    _, remove, _ = _arrange(plans)
+
+    for row in plan.together:
+        updated = remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, row.cell.item_id))
+
+    assert updated.together == () and len(updated.removed_activities) == len(plan.together)
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    assert error.value.problems == ("together: no rows",)
+
+
+def test_a_safety_candidate_is_placed_reused_and_cleared_week_by_week():
+    plan, plans, _, _ = _draft()
+    *_, place = _arrange(plans)
+    first, second = plan.safety_weeks[:2]
+    candidate = plan.safety_candidates[3].cell.item_id
+
+    def run(week, item_id):
+        return place.execute(PlacePlayMonthlySafetyCommand(plan.plan_id, TEACHER, week.week_id, item_id))
+
+    run(first, candidate)
+    both = run(second, candidate)
+    cleared = run(first, None)
+    saves = plans.save_count
+
+    assert [s.candidate_item_id for s in both.safety_weeks[:2]] == [candidate, candidate]
+    assert _arrangement(both) == (second.week_id.value, (), (candidate.value,))
+    assert cleared.safety_weeks[0].candidate_item_id is None
+    assert _arrangement(cleared) == (first.week_id.value, (candidate.value,), ())
+    assert cleared.safety_candidates == plan.safety_candidates
+    assert PlayMonthlyNotice("SAFETY_UNPLACED", first.week_id) in play_monthly_notices(cleared)
+    assert run(first, None) == cleared and plans.save_count == saves
+
+
+@pytest.mark.parametrize(
+    ("command", "code"),
+    [
+        (lambda p: AddPlayMonthlyActivityCommand(p.plan_id, TEACHER, "habits"), "invalid_section"),
+        (lambda p: AddPlayMonthlyActivityCommand(p.plan_id, "teacher-1", "together"), "opaque_actor_required"),
+        (lambda p: RemovePlayMonthlyActivityCommand(p.plan_id, TEACHER, p.together[0].description.item_id), "play_monthly_activity_not_found"),
+        (lambda p: RemovePlayMonthlyActivityCommand(p.plan_id, TEACHER, p.theme.item_id), "play_monthly_activity_not_found"),
+        (lambda p: PlacePlayMonthlySafetyCommand(p.plan_id, TEACHER, WeekId.of(p.target_month, 9), None), "play_monthly_week_not_found"),
+        (lambda p: PlacePlayMonthlySafetyCommand(p.plan_id, TEACHER, p.weeks[0].week_id, p.drill_candidates[0].cell.item_id), "play_monthly_safety_candidate_not_found"),
+    ],
+)
+def test_arrangement_refuses_unknown_targets_and_writes_nothing(command, code):
+    plan, plans, _, _ = _draft()
+    use_cases = dict(
+        zip((AddPlayMonthlyActivityCommand, RemovePlayMonthlyActivityCommand, PlacePlayMonthlySafetyCommand), _arrange(plans))
+    )
+    saves = plans.save_count
+    request = command(plan)
+
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        use_cases[type(request)].execute(request)
+
+    assert error.value.code == code and plans.save_count == saves
+
+
+def test_a_confirmed_plan_refuses_rows_and_placement():
+    plan, plans, _, confirm = _draft()
+    confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    add, remove, place = _arrange(plans)
+
+    for use_case, request in (
+        (add, AddPlayMonthlyActivityCommand(plan.plan_id, TEACHER, "together")),
+        (remove, RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, plan.together[0].cell.item_id)),
+        (place, PlacePlayMonthlySafetyCommand(plan.plan_id, TEACHER, plan.weeks[0].week_id, plan.safety_candidates[0].cell.item_id)),
+    ):
+        with pytest.raises(InvalidStateTransitionError):
+            use_case.execute(request)

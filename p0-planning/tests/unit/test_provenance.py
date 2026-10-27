@@ -6,6 +6,7 @@ import pytest
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.provenance import (
+    ArrangementChange,
     AuditEvent,
     AuditEventType,
     AuditHistory,
@@ -247,3 +248,39 @@ def test_a_link_change_needs_unique_ids_a_real_change_and_a_version(args):
 
 def test_a_link_change_may_start_from_no_links():
     assert LinkChange((), ("a",), "v1").before == ()
+
+
+def _arranged(**fields):
+    return AuditEvent(
+        event_type=AuditEventType.ARRANGEMENT_CHANGED, occurred_at=NOW, plan_id=PlanId("plan_001"), **fields
+    )
+
+
+def test_an_arrangement_change_is_a_plan_level_teacher_event():
+    change = ArrangementChange("together", ("a", "b"), ("a",))
+
+    assert _arranged(actor_id=ActorId("teacher_001"), arrangement_change=change).item_id is None
+    for fields in (
+        {"system_actor": "system"},
+        {"actor_id": ActorId("teacher_001"), "item_id": ItemId("item_001")},
+        {"actor_id": ActorId("teacher_001"), "value_change": ValueChange("", "x")},
+    ):
+        with pytest.raises(InvalidDomainValueError, match="ARRANGEMENT_CHANGED"):
+            _arranged(**{"arrangement_change": change, **fields})
+    with pytest.raises(InvalidDomainValueError, match="ARRANGEMENT_CHANGED"):
+        _arranged(actor_id=ActorId("teacher_001"))
+    with pytest.raises(InvalidDomainValueError, match="Only ARRANGEMENT_CHANGED"):
+        AuditEvent(
+            event_type=AuditEventType.CONFIRMED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+            actor_id=ActorId("teacher_001"), arrangement_change=change,
+        )
+
+
+@pytest.mark.parametrize(
+    "args",
+    [(" ", (), ("a",)), ("w", ("a", "a"), ()), ("w", ("a",), ("a",)), ("w", (" ",), ())],
+    ids=["blank-scope", "duplicate", "unchanged", "blank-id"],
+)
+def test_an_arrangement_change_needs_a_scope_unique_ids_and_a_real_change(args):
+    with pytest.raises(InvalidDomainValueError):
+        ArrangementChange(*args)

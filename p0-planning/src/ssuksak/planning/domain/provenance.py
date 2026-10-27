@@ -97,6 +97,8 @@ class AuditEventType(str, Enum):
     CONFIRMED = "CONFIRMED"
     # Plan-level: a teacher saved which candidates a play-project period keeps (2026-10-26).
     CANDIDATES_SELECTED = "CANDIDATES_SELECTED"
+    # Plan-level: a teacher added or removed a play row, or placed a safety week (2026-10-27).
+    ARRANGEMENT_CHANGED = "ARRANGEMENT_CHANGED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +152,26 @@ class SelectionChange:
 
 
 @dataclass(frozen=True, slots=True)
+class ArrangementChange:
+    """The active item ids of one scope (a play section or a week) before and after a change."""
+
+    scope: str
+    before: tuple[str, ...]
+    after: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not _is_non_blank(self.scope):
+            raise InvalidDomainValueError("ArrangementChange.scope must be non-blank")
+        for ids in (self.before, self.after):
+            if not isinstance(ids, tuple) or not all(_is_non_blank(i) for i in ids):
+                raise InvalidDomainValueError("ArrangementChange ids must be non-blank strings")
+            if len(ids) != len(set(ids)):
+                raise InvalidDomainValueError("ArrangementChange ids must be unique")
+        if self.before == self.after:
+            raise InvalidDomainValueError("ArrangementChange must change the arrangement")
+
+
+@dataclass(frozen=True, slots=True)
 class LinkChange:
     """A teacher's change to a play's curriculum content ids, within one catalog version."""
 
@@ -181,6 +203,7 @@ class AuditEvent:
     generation_change: GenerationMethodChange | None = None
     selection_change: SelectionChange | None = None
     link_change: LinkChange | None = None
+    arrangement_change: ArrangementChange | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_type, AuditEventType):
@@ -243,6 +266,19 @@ class AuditEvent:
             raise InvalidDomainValueError(
                 "Only CANDIDATES_SELECTED carries selection_change"
             )
+        if self.event_type is AuditEventType.ARRANGEMENT_CHANGED:
+            if (
+                self.actor_id is None
+                or not isinstance(self.arrangement_change, ArrangementChange)
+                or self.item_id is not None
+                or self.value_change is not None
+                or self.generation_change is not None
+            ):
+                raise InvalidDomainValueError(
+                    "ARRANGEMENT_CHANGED is a plan-level teacher event with arrangement_change only"
+                )
+        elif self.arrangement_change is not None:
+            raise InvalidDomainValueError("Only ARRANGEMENT_CHANGED carries arrangement_change")
 
 
 @dataclass(frozen=True, slots=True)
