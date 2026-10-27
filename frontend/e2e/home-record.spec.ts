@@ -114,7 +114,8 @@ async function saveHome(page: Page, fact: string, expectedClassId: number) {
 /** 「이렇게 남길까요?」의 아이 칸에서 첫 아이를 고른다. 비워 둔 채로는 저장이 막힌다. */
 async function pickChild(page: Page) {
   const picker = page.getByRole("combobox", { name: "아이", exact: true });
-  const first = await picker.locator("option[value!='']").first().getAttribute("value");
+  // `option[value!='']` 은 CSS 가 아니다 — 셀렉터 자체가 SyntaxError 로 터진다.
+  const first = await picker.locator("option:not([value=''])").first().getAttribute("value");
   await picker.selectOption(first!);
 }
 

@@ -538,10 +538,10 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     classB: other.id,
     preservedDate: "2026-10-16",
   });
-  await page.getByRole("link", { name: "기록 모아보기", exact: true }).click();
+  await page.getByRole("link", { name: "주간 기록", exact: true }).click();
   await expect(page).toHaveURL(/\/quick-records$/);
   await expect(
-    page.getByRole("heading", { name: "기록 모아보기", exact: true, level: 1 }),
+    page.getByRole("heading", { name: "주간 기록", exact: true, level: 1 }),
   ).toBeVisible();
   await page.getByRole("combobox", { name: "반", exact: true }).selectOption({ label: "달님반" });
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
