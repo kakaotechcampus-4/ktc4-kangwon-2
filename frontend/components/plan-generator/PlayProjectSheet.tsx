@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import {
   buildPlayProjectPreviewRows,
+  cellButtonId,
   fields,
   paginatePlaySheet,
   stepPlaySheetZoom,
@@ -12,6 +13,15 @@ import {
   type SheetZoom,
 } from "./playProjectPagination";
 import styles from "./PlayProjectResult.module.css";
+
+// ② 에서 놀이 행을 끌어 같은 구간 안 순서를 바꾼다. 처리는 PlayProjectResult 가 한다.
+export type PlayDnd = {
+  dragging: { periodKey: string; rowKey: string; over: number | null } | null;
+  start: (periodKey: string, rowKey: string, event: DragEvent, from: "list" | "doc") => void;
+  over: (periodKey: string, index: number, event: DragEvent) => void;
+  drop: (periodKey: string, index: number, event: DragEvent) => void;
+  end: () => void;
+};
 
 type Props = {
   plan: PlayProjectAnnualPlan;
@@ -26,6 +36,7 @@ type Props = {
     request: number;
     cell?: { rowKey: string; field: PlayField };
   } | null;
+  dnd?: PlayDnd;
 };
 
 export function windowScrollDelta(rect: { top: number; bottom: number }, height: number) {
@@ -42,6 +53,7 @@ export default function PlayProjectSheet({
   zoom,
   onZoomChange,
   scrollPeriod,
+  dnd,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -208,9 +220,30 @@ export default function PlayProjectSheet({
         <tbody>
           {rows.map((row) => {
             const candidate = row.candidate;
+            const periodKey = row.period.period_key;
+            const index = candidate ? (picks[periodKey] ?? []).indexOf(candidate.row_key) : -1;
+            const dragging = dnd?.dragging?.periodKey === periodKey ? dnd.dragging : null;
+            const dragProps =
+              candidate && dnd && interactive && !measuring
+                ? {
+                    draggable: true,
+                    // 끌던 줄이 먼저다 — 자기 자리에는 놓을 자리 표시를 켜지 않는다.
+                    className:
+                      dragging?.rowKey === candidate.row_key
+                        ? styles.dragging
+                        : dragging?.over === index
+                          ? styles.dropOver
+                          : undefined,
+                    onDragStart: (event: DragEvent) =>
+                      dnd.start(periodKey, candidate.row_key, event, "doc"),
+                    onDragOver: (event: DragEvent) => dnd.over(periodKey, index, event),
+                    onDrop: (event: DragEvent) => dnd.drop(periodKey, index, event),
+                    onDragEnd: dnd.end,
+                  }
+                : {};
             // 내장 브라우저가 옮긴 행을 다시 그리지 않아 구간 안 위치를 고정한다.
             return (
-              <tr key={row.key} data-row={row.key} data-period={row.period.period_key}>
+              <tr key={row.key} data-row={row.key} data-period={periodKey} {...dragProps}>
                 {row.rowSpan ? (
                   <th scope="rowgroup" rowSpan={row.rowSpan}>
                     <span className={styles.cellContent} data-label={row.period.period_key}>
@@ -242,6 +275,7 @@ export default function PlayProjectSheet({
                       >
                         <button
                           type="button"
+                          id={cellButtonId(row.period.period_key, candidate.row_key, field.key)}
                           aria-label={`${candidate.play_name.value} ${field.heading}`}
                           aria-pressed={selected}
                           className={`${styles.cellButton} ${styles.cellContent}`}

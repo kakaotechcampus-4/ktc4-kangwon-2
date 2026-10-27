@@ -36,6 +36,17 @@ export function buildPlayProjectPreviewRows(
   });
 }
 
+export function cellButtonId(periodKey: string, rowKey: string, field: PlayField) {
+  return `play-project-cell-${periodKey}-${rowKey}-${field}`;
+}
+
+// 한글 받침에 맞춰 을/를. 한글이 아니면 둘 다 적는다.
+export function eulReul(name: string) {
+  const code = name.trim().charCodeAt(name.trim().length - 1) - 0xac00;
+  if (code < 0 || code > 11171) return "을(를)";
+  return code % 28 === 0 ? "를" : "을";
+}
+
 export function stepPlaySheetZoom(current: number, delta: -1 | 1) {
   return Math.max(50, Math.min(150, Math.round(current / 10) * 10 + delta * 10));
 }

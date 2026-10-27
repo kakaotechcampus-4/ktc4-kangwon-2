@@ -43,13 +43,14 @@ function resolve(node) {
 }
 function all(node) {
   if (Array.isArray(node)) return node.flatMap(all);
-  if (!node || typeof node !== "object" || node.props?.["aria-hidden"]) return [];
+  if (!node || typeof node !== "object" || node.props?.["aria-hidden"] || node.props?.hidden)
+    return [];
   return [node, ...all(node.props?.children)];
 }
 function text(node) {
   if (Array.isArray(node)) return node.map(text).join("");
   if (node && typeof node === "object")
-    return node.props?.["aria-hidden"] ? "" : text(node.props?.children);
+    return node.props?.["aria-hidden"] || node.props?.hidden ? "" : text(node.props?.children);
   return typeof node === "string" || typeof node === "number" ? String(node) : "";
 }
 function plan() {
@@ -100,13 +101,26 @@ const { default: Sheet, windowScrollDelta } = compile(
     "./PlayProjectResult.module.css": esModule(resultStyles),
   },
 );
+const { default: Picking } = compile("../components/plan-generator/PlayProjectPicking.tsx", {
+  react: { useRef: (value) => ({ current: value }), useEffect: () => {} },
+  "@/components/workspace/Workspace.module.css": esModule(css),
+  "./PlayProjectResult.module.css": esModule(resultStyles),
+  "./playProjectPagination": sheetHelpers,
+});
 const sheetModules = {
   "./playProjectPagination": sheetHelpers,
   "./PlayProjectSheet": esModule(Sheet),
+  "./PlayProjectPicking": esModule(Picking),
 };
+const pickToggles = (nodes) =>
+  nodes.filter((node) => /^「.*」 선택(하기|됨)$/.test(node.props?.["aria-label"] ?? ""));
 const tables = (nodes) => nodes.filter((node) => node.type === "table");
 function resultRenderer(planValue, initial = [], desktop = false) {
-  const state = [...initial];
+  // ② 를 짧은 상태로 시작하는 테스트는 숨은 「선택한 놀이」 패널이 아니라 보이는 쪽을 쓴다.
+  const state =
+    initial.length === 4 && initial[1] === 1
+      ? [...initial, { mode: "fit", percent: 100 }, null, "picked"]
+      : [...initial];
   const focused = [];
   const focusOptions = [];
   const scrolls = [];
@@ -125,7 +139,12 @@ function resultRenderer(planValue, initial = [], desktop = false) {
   const { default: Result } = compile(
     "../components/plan-generator/PlayProjectResult.tsx",
     {
-      react: { useState, useRef: () => tabListRef, useEffect: () => {} },
+      react: {
+        useState,
+        useRef: () => tabListRef,
+        useEffect: () => {},
+        useSyncExternalStore: (_subscribe, get) => get(),
+      },
       "@/components/workspace/Workspace.module.css": esModule(css),
       "./GenerationFlow.module.css": esModule(resultTabs),
       "./PlayProjectResult.module.css": esModule(resultStyles),
@@ -165,6 +184,7 @@ function playResult() {
       useState: (value) => [typeof value === "function" ? value() : value, () => {}],
       useRef: (value) => ({ current: value }),
       useEffect: () => {},
+      useSyncExternalStore: (_subscribe, get) => get(),
     },
     "@/components/workspace/Workspace.module.css": esModule(css),
     "./GenerationFlow.module.css": esModule(resultTabs),
@@ -199,12 +219,14 @@ test("PlayProjectResult shows notices, accessible period tabs, and ten complete 
   assert.ok(tabs.every((tab) => tab.props["aria-controls"] === panel.props.id));
   const cards = nodes.filter((node) => node.type === "article");
   assert.equal(cards.length, 10);
-  const checkboxes = nodes.filter((node) => node.type === "input");
-  assert.equal(checkboxes.length, 10);
-  assert.equal(checkboxes[2].props["aria-label"], "후보 3 고르기");
+  assert.equal(pickToggles(nodes).length, 10);
+  assert.equal(nodes.filter((node) => node.type === "input").length, 0);
   assert.equal(text(nodes.find((node) => node.type === "h2")), "놀이 0");
-  for (const label of ["지원매체", "내용 및 지원 방향 예상하기", "놀이를 통한 배움", "배움 한 줄"])
-    assert.ok(text(cards[0]).includes(label));
+  // 카드는 요약만 보인다: 놀이명 · 지원 방향 앞부분 · 지원매체. 배움은 자세히 보기 안에 있다.
+  assert.ok(text(cards[0]).includes("지원매체 종이 상자"));
+  assert.ok(text(cards[0]).includes("관심을 따라 돕습니다."));
+  assert.equal(text(cards[0]).includes("배움 한 줄"), false);
+  assert.equal(text(pickToggles(nodes)[2]), "+ 선택하기");
   assert.equal(
     nodes
       .filter((node) => node.type === "button")
@@ -404,7 +426,7 @@ test("available plays keep candidate order and add appends, focuses, and checks 
   nodes.find((node) => text(node) === "① 놀이 고르기").props.onClick();
   nodes = all(view.render());
   assert.equal(
-    nodes.find((node) => node.props?.["aria-label"] === "후보 4 고르기").props.checked,
+    nodes.find((node) => node.props?.["aria-label"] === "「놀이 3」 선택됨").props["aria-pressed"],
     true,
   );
   nodes.find((node) => text(node) === "② 배치하고 다듬기").props.onClick();
@@ -468,9 +490,9 @@ test("remove unpicks, clears selection/count, focuses heading, and re-picking ap
   assert.ok(nodes.some((node) => node.props?.role === "tab" && text(node) === "3월~5월 · 2/5"));
   nodes.find((node) => text(node) === "① 놀이 고르기").props.onClick();
   nodes = all(view.render());
-  const checkbox = nodes.find((node) => node.props?.["aria-label"] === "후보 2 고르기");
-  assert.equal(checkbox.props.checked, false);
-  checkbox.props.onChange();
+  const toggle = nodes.find((node) => node.props?.["aria-label"] === "「놀이 1」 선택하기");
+  assert.equal(toggle.props["aria-pressed"], false);
+  toggle.props.onClick();
   assert.deepEqual(view.state[2].period0, ["cand0", "cand2", "cand1"]);
 });
 
@@ -605,6 +627,7 @@ test("floating next observes nav size, updates its bottom, and disconnects", (t)
         useState: () => [state[cursor++], () => {}],
         useRef: () => ({ current: button }),
         useEffect: (effect) => effects.push(effect),
+        useSyncExternalStore: (_subscribe, get) => get(),
       },
       "@/components/workspace/Workspace.module.css": esModule(css),
       "./GenerationFlow.module.css": esModule(resultTabs),
@@ -753,22 +776,23 @@ test("an active period with fewer than five picks has no floating button or extr
 test("five picks disable the remaining candidates and unpicking opens a slot", () => {
   const view = resultRenderer(plan());
   let nodes = all(view.render());
-  for (const checkbox of nodes.filter((node) => node.type === "input").slice(0, 5)) {
-    checkbox.props.onChange();
+  for (const toggle of pickToggles(nodes).slice(0, 5)) {
+    toggle.props.onClick();
     nodes = all(view.render());
   }
-  let checkboxes = nodes.filter((node) => node.type === "input");
-  assert.equal(checkboxes.filter((node) => node.props.checked).length, 5);
-  assert.equal(checkboxes.filter((node) => node.props.disabled).length, 5);
+  let toggles = pickToggles(nodes);
+  assert.equal(toggles.filter((node) => node.props["aria-pressed"]).length, 5);
+  assert.equal(toggles.filter((node) => node.props.disabled).length, 5);
+  assert.deepEqual(toggles.slice(0, 5).map(text), Array(5).fill("✓ 선택됨"));
   assert.ok(
     nodes.some((node) => text(node).includes("5개를 모두 골랐어요. 바꾸려면 하나를 빼 주세요.")),
   );
   assert.ok(nodes.some((node) => node.props?.role === "tab" && text(node) === "3월~5월 · 5/5"));
-  checkboxes.find((node) => node.props.checked).props.onChange();
+  toggles.find((node) => node.props["aria-pressed"]).props.onClick();
   nodes = all(view.render());
-  checkboxes = nodes.filter((node) => node.type === "input");
-  assert.equal(checkboxes.filter((node) => node.props.checked).length, 4);
-  assert.equal(checkboxes.filter((node) => node.props.disabled).length, 0);
+  toggles = pickToggles(nodes);
+  assert.equal(toggles.filter((node) => node.props["aria-pressed"]).length, 4);
+  assert.equal(toggles.filter((node) => node.props.disabled).length, 0);
   assert.equal(
     nodes.some((node) => text(node).includes("5개를 모두 골랐어요.")),
     false,
@@ -851,7 +875,7 @@ test("un-picking a play clears its selected preview cell", () => {
   assert.ok(nodes.some((node) => node.type === "textarea"));
   nodes.find((node) => node.type === "button" && text(node) === "① 놀이 고르기").props.onClick();
   nodes = all(view.render());
-  nodes.filter((node) => node.type === "input")[2].props.onChange();
+  pickToggles(nodes)[2].props.onClick();
   nodes = all(view.render());
   nodes
     .find((node) => node.type === "button" && text(node) === "② 배치하고 다듬기")
@@ -866,10 +890,478 @@ test("un-picking a play clears its selected preview cell", () => {
   );
 });
 
+const fit = { mode: "fit", percent: 100 };
+const FULL_STATE = (picks, step, tab = "edit", detail = null, cell = null) => [
+  0,
+  step,
+  picks,
+  cell,
+  fit,
+  null,
+  tab,
+  detail,
+  "",
+  null,
+];
+const draggableRows = (nodes) => all(tables(nodes)).filter((node) => node.props?.draggable);
+const dragEvent = () => ({
+  dataTransfer: { setData() {}, effectAllowed: "" },
+  preventDefault() {},
+});
+
+test("pick buttons toggle with aria-pressed and the side list fills from the top with empty slots", () => {
+  const view = resultRenderer(plan());
+  let nodes = all(view.render());
+  const panel = () => nodes.find((node) => node.props?.["aria-label"] === "고른 놀이");
+  const slots = () =>
+    all(panel()).filter((node) => node.type === "li" && node.props.className === "slot");
+  assert.equal(slots().length, 5);
+  assert.ok(slots().every((slot) => text(slot).includes("우리 반의 놀이를 골라 주세요")));
+  pickToggles(nodes)[3].props.onClick();
+  pickToggles(nodes)[1].props.onClick();
+  nodes = all(view.render());
+  assert.deepEqual(
+    pickToggles(nodes).map((node) => node.props["aria-pressed"]),
+    [false, true, false, true, false, false, false, false, false, false],
+  );
+  assert.equal(text(pickToggles(nodes)[1]), "✓ 선택됨");
+  assert.equal(text(panel().props.children[0]), "고른 놀이 2/5");
+  assert.deepEqual(slots().map(text), [
+    "1놀이 3×",
+    "2놀이 1×",
+    "3우리 반의 놀이를 골라 주세요",
+    "4우리 반의 놀이를 골라 주세요",
+    "5우리 반의 놀이를 골라 주세요",
+  ]);
+  assert.ok(nodes.some((node) => node.type === "strong" && text(node) === "2"));
+  assert.ok(text(nodes.find((node) => node.props?.className === "total")).includes("/20개 선택"));
+  assert.ok(
+    text(all(panel()).find((node) => node.props?.["aria-label"] === "구간별 진행")).includes(
+      "3월~5월2/5",
+    ),
+  );
+  all(panel())
+    .find((node) => node.props?.["aria-label"] === "놀이 3 빼기")
+    .props.onClick();
+  nodes = all(view.render());
+  assert.deepEqual(view.state[2].period0, ["cand1"]);
+  assert.equal(text(slots()[0]), "1놀이 1×");
+  assert.equal(text(nodes.find((node) => node.props?.className === "total")), "전체 1/20개 선택");
+  const arrange = all(panel()).find((node) => text(node) === "배치하고 다듬기로");
+  assert.equal(arrange.props.disabled, undefined);
+  arrange.props.onClick();
+  assert.equal(view.state[1], 1);
+});
+
+test("the detail dialog shows read-only fields and toggles the pick without closing", () => {
+  const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand1"] }, 0));
+  let nodes = all(view.render());
+  assert.equal(
+    nodes.some((node) => node.type === "dialog"),
+    false,
+  );
+  nodes.find((node) => node.props?.["aria-label"] === "놀이 3 자세히 살펴보기").props.onClick();
+  assert.equal(view.state[7], "cand3");
+  nodes = all(view.render());
+  const dialog = nodes.find((node) => node.type === "dialog");
+  assert.equal(dialog.props["aria-labelledby"], "play-project-detail-title");
+  const inside = all(dialog);
+  for (const label of ["지원매체", "내용 및 지원 방향 예상하기", "놀이를 통한 배움", "배움 한 줄"])
+    assert.ok(text(dialog).includes(label), label);
+  assert.equal(
+    inside.some((node) => node.type === "textarea" || node.type === "input"),
+    false,
+  );
+  const toggle = inside.find((node) => node.props?.["aria-label"] === "「놀이 3」 선택하기");
+  assert.equal(toggle.props["aria-pressed"], false);
+  toggle.props.onClick();
+  nodes = all(view.render());
+  assert.deepEqual(view.state[2].period0, ["cand1", "cand3"]);
+  assert.equal(view.state[7], "cand3");
+  assert.equal(
+    all(nodes.find((node) => node.type === "dialog")).find(
+      (n) => n.props?.["aria-label"] === "「놀이 3」 선택됨",
+    ).props["aria-pressed"],
+    true,
+  );
+  // 닫기 · 배경 클릭은 dialog.close() 만 부른다. 상태는 네이티브 close 이벤트(Esc 도 같다)가 푼다.
+  const open = nodes.find((node) => node.type === "dialog");
+  let closed = 0;
+  open.props.ref.current = { close: () => closed++ };
+  all(open)
+    .find((node) => text(node) === "닫기")
+    .props.onClick();
+  open.props.onClick({ target: "inner", currentTarget: "outer" });
+  assert.equal(closed, 1);
+  open.props.onClick({ target: "outer", currentTarget: "outer" });
+  assert.equal(closed, 2);
+  assert.equal(view.state[7], "cand3");
+  open.props.onClose();
+  assert.equal(view.state[7], null);
+});
+
+test("the detail dialog cannot add a sixth pick but can still remove one", () => {
+  const five = ["cand0", "cand1", "cand2", "cand4", "cand5"];
+  const view = resultRenderer(plan(), FULL_STATE({ period0: five }, 0, "edit", "cand3"));
+  let nodes = all(view.render());
+  const label = (name) => (node) => node.props?.["aria-label"] === name;
+  assert.equal(
+    all(nodes.find((n) => n.type === "dialog")).find(label("「놀이 3」 선택하기")).props.disabled,
+    true,
+  );
+  view.state[7] = "cand0";
+  nodes = all(view.render());
+  const toggle = all(nodes.find((n) => n.type === "dialog")).find(label("「놀이 0」 선택됨"));
+  assert.equal(toggle.props.disabled, false);
+  toggle.props.onClick();
+  assert.deepEqual(view.state[2].period0, ["cand1", "cand2", "cand4", "cand5"]);
+});
+
+test("step two has two left tabs and a document cell press switches to the edit tab", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0", "cand1"] }, 1, "picked"),
+    true,
+  );
+  let nodes = all(view.render());
+  const leftTabs = () =>
+    all(nodes.find((node) => node.props?.["aria-label"] === "왼쪽 패널")).filter(
+      (node) => node.props?.role === "tab",
+    );
+  assert.deepEqual(leftTabs().map(text), ["내용 편집", "선택한 놀이 2"]);
+  assert.deepEqual(
+    leftTabs().map((tab) => tab.props["aria-selected"]),
+    [false, true],
+  );
+  // 안 보이는 패널(hidden)은 하네스가 건너뛴다 — 보이는 패널은 선택된 탭의 것 하나뿐이다.
+  const visiblePanels = () =>
+    nodes.filter(
+      (node) => node.props?.role === "tabpanel" && node.props["aria-labelledby"].includes("-left-"),
+    );
+  const selectedTab = () => leftTabs().find((tab) => tab.props["aria-selected"]);
+  assert.equal(visiblePanels().length, 1);
+  assert.equal(visiblePanels()[0].props.id, selectedTab().props["aria-controls"]);
+  assert.equal(visiblePanels()[0].props["aria-labelledby"], selectedTab().props.id);
+  leftTabs()[0].props.onClick();
+  nodes = all(view.render());
+  assert.equal(visiblePanels().length, 1);
+  assert.equal(visiblePanels()[0].props["aria-labelledby"], leftTabs()[0].props.id);
+  leftTabs()[1].props.onClick();
+  nodes = all(view.render());
+  nodes.find((node) => node.props?.["aria-label"] === "놀이 1 지원매체").props.onClick();
+  assert.equal(view.state[6], "edit");
+  nodes = all(view.render());
+  assert.equal(visiblePanels()[0].props["aria-labelledby"], leftTabs()[0].props.id);
+  // 넓은 화면에서 목록의 놀이명 버튼은 탭을 바꾸지 않는다.
+  leftTabs()[1].props.onClick();
+  nodes = all(view.render());
+  nodes.find((node) => node.props?.className?.includes("playButton")).props.onClick();
+  assert.equal(view.state[6], "picked");
+});
+
+test("placePlayPick moves to a slot, shifts the rest, and ignores same slot or unknown keys", () => {
+  const { placePlayPick } = playResult();
+  const picks = ["a", "b", "c", "d"];
+  assert.deepEqual(placePlayPick(picks, "d", 0), ["d", "a", "b", "c"]);
+  assert.deepEqual(placePlayPick(picks, "a", 2), ["b", "c", "a", "d"]);
+  assert.deepEqual(placePlayPick(picks, "a", 3), ["b", "c", "d", "a"]);
+  assert.equal(placePlayPick(picks, "b", 1), picks);
+  assert.equal(placePlayPick(picks, "zzz", 0), picks);
+  assert.deepEqual(placePlayPick(picks, "a", 99), ["b", "c", "d", "a"]);
+  assert.deepEqual(placePlayPick(picks, "d", -5), ["d", "a", "b", "c"]);
+  assert.deepEqual(picks, ["a", "b", "c", "d"]);
+});
+
+const DESKTOP = true;
+const picksOf = (view, key) => view.state[2][key];
+
+test("dragging a document row onto another row of the same period reorders and announces it", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0", "cand1", "cand2"], period1: ["cand4"] }, 1),
+    DESKTOP,
+  );
+  let nodes = all(view.render());
+  const rows = () => draggableRows(nodes);
+  assert.equal(rows().length, 4);
+  rows()[0].props.onDragStart(dragEvent());
+  nodes = all(view.render());
+  assert.ok(rows()[0].props.className.includes("dragging"));
+  rows()[1].props.onDragOver(dragEvent());
+  nodes = all(view.render());
+  assert.ok(rows()[1].props.className.includes("dropOver"));
+  rows()[2].props.onDragOver(dragEvent());
+  nodes = all(view.render());
+  assert.equal(rows()[1].props.className, undefined);
+  assert.ok(rows()[2].props.className.includes("dropOver"));
+  rows()[2].props.onDrop(dragEvent());
+  nodes = all(view.render());
+  assert.deepEqual(picksOf(view, "period0"), ["cand1", "cand2", "cand0"]);
+  assert.deepEqual(picksOf(view, "period1"), ["cand4"]);
+  assert.equal(view.state[9], null);
+  const status = nodes.filter((node) => node.props?.role === "status" && text(node));
+  assert.deepEqual(status.map(text), ["「놀이 0」을(를) 3번째로 옮겼어요"]);
+  // 옮긴 놀이의 첫 칸으로 포커스를 보낸다(고른 칸이 없으므로).
+  view.flushFrames();
+  assert.deepEqual(view.focused, ["play-project-cell-period0-cand0-play_name"]);
+});
+
+test("a document drop focuses the same field when that play's cell is selected", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0", "cand1"] }, 1, "edit", null, {
+      periodKey: "period0",
+      rowKey: "cand0",
+      field: "materials",
+    }),
+    DESKTOP,
+  );
+  let nodes = all(view.render());
+  draggableRows(nodes)[0].props.onDragStart(dragEvent());
+  nodes = all(view.render());
+  draggableRows(nodes)[1].props.onDrop(dragEvent());
+  all(view.render());
+  view.flushFrames();
+  assert.deepEqual(view.focused, ["play-project-cell-period0-cand0-materials"]);
+});
+
+test("the dragged row never shows a drop marker on its own slot", () => {
+  const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand0", "cand1"] }, 1), DESKTOP);
+  let nodes = all(view.render());
+  draggableRows(nodes)[0].props.onDragStart(dragEvent());
+  nodes = all(view.render());
+  draggableRows(nodes)[0].props.onDragOver(dragEvent());
+  nodes = all(view.render());
+  assert.ok(draggableRows(nodes)[0].props.className.includes("dragging"));
+  assert.equal(draggableRows(nodes)[0].props.className.includes("dropOver"), false);
+});
+
+test("dragging over another period clears the drop marker and blocks the drop", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0", "cand1"], period1: ["cand4", "cand0"] }, 1),
+    DESKTOP,
+  );
+  let nodes = all(view.render());
+  const before = JSON.stringify(view.state[2]);
+  draggableRows(nodes)[0].props.onDragStart(dragEvent());
+  nodes = all(view.render());
+  draggableRows(nodes)[1].props.onDragOver(dragEvent());
+  nodes = all(view.render());
+  assert.ok(draggableRows(nodes)[1].props.className.includes("dropOver"));
+  let prevented = false;
+  draggableRows(nodes)[2].props.onDragOver({
+    ...dragEvent(),
+    preventDefault: () => (prevented = true),
+  });
+  assert.equal(prevented, false);
+  nodes = all(view.render());
+  assert.equal(draggableRows(nodes)[1].props.className, undefined);
+  draggableRows(nodes)[2].props.onDrop(dragEvent());
+  assert.equal(JSON.stringify(view.state[2]), before);
+  assert.equal(view.state[8], "");
+  assert.equal(view.state[0], 0);
+  nodes = all(view.render());
+  draggableRows(nodes)[1].props.onDragStart(dragEvent());
+  nodes = all(view.render());
+  draggableRows(nodes)[1].props.onDrop(dragEvent());
+  assert.equal(JSON.stringify(view.state[2]), before);
+  assert.equal(view.state[8], "");
+});
+
+test("reordering a non-active period in the document makes that period active", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0"], period1: ["cand4", "cand5", "cand6"] }, 1),
+    DESKTOP,
+  );
+  let nodes = all(view.render());
+  draggableRows(nodes)[1].props.onDragStart(dragEvent());
+  nodes = all(view.render());
+  draggableRows(nodes)[3].props.onDrop(dragEvent());
+  assert.equal(view.state[0], 1);
+  assert.deepEqual(picksOf(view, "period1"), ["cand5", "cand6", "cand4"]);
+  nodes = all(view.render());
+  assert.ok(
+    nodes.some(
+      (node) =>
+        node.props?.role === "tab" &&
+        node.props["aria-selected"] &&
+        text(node).startsWith("6월~8월"),
+    ),
+  );
+});
+
+test("list rows drag onto document rows and focus the moved row's list button", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0", "cand1", "cand2"] }, 1, "picked"),
+    DESKTOP,
+  );
+  let nodes = all(view.render());
+  const listRows = () =>
+    nodes.filter((node) => node.props?.draggable && node.props.className?.includes("pickedRow"));
+  assert.equal(listRows().length, 3);
+  listRows()[2].props.onDragStart(dragEvent());
+  nodes = all(view.render());
+  draggableRows(nodes)[0].props.onDrop(dragEvent());
+  nodes = all(view.render());
+  view.flushFrames();
+  assert.deepEqual(picksOf(view, "period0"), ["cand2", "cand0", "cand1"]);
+  const moved = nodes.find((node) => node.props?.className?.includes("playButton"));
+  assert.equal(text(moved), "놀이 2");
+  assert.equal(view.focused.at(-1), moved.props.id);
+  nodes.find((node) => node.props?.["aria-label"] === "2번째 놀이 위로").props.onClick();
+  nodes = all(view.render());
+  assert.deepEqual(picksOf(view, "period0"), ["cand0", "cand2", "cand1"]);
+  assert.equal(view.state[8], "「놀이 0」을(를) 1번째로 옮겼어요");
+  assert.ok(nodes.some((node) => node.props?.role === "status" && text(node) === view.state[8]));
+});
+
+test("narrow screens turn dragging off, keep the arrows, and a list name press opens the edit tab", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0", "cand1"] }, 1, "picked"),
+    false,
+  );
+  let nodes = all(view.render());
+  assert.equal(draggableRows(nodes).length, 0);
+  assert.equal(nodes.filter((node) => node.props?.draggable).length, 0);
+  assert.ok(nodes.some((node) => node.props?.["aria-label"] === "1번째 놀이 아래로"));
+  nodes.find((node) => node.props?.className?.includes("playButton")).props.onClick();
+  assert.equal(view.state[6], "edit");
+});
+
+test("wide screens keep the picked tab when a list name is pressed", () => {
+  const view = resultRenderer(
+    plan(),
+    FULL_STATE({ period0: ["cand0", "cand1"] }, 1, "picked"),
+    DESKTOP,
+  );
+  all(view.render())
+    .find((node) => node.props?.className?.includes("playButton"))
+    .props.onClick();
+  assert.equal(view.state[6], "picked");
+});
+
+test("pure helpers for focus targets, tab keys, and names", () => {
+  const { removeFocusSlot, leftTabTarget, dropFocusField } = playResult();
+  assert.equal(removeFocusSlot(3, 0), 0);
+  assert.equal(removeFocusSlot(3, 1), 1);
+  assert.equal(removeFocusSlot(3, 2), null);
+  assert.equal(removeFocusSlot(1, 0), null);
+  assert.equal(leftTabTarget("ArrowRight", "edit"), "picked");
+  assert.equal(leftTabTarget("ArrowRight", "picked"), "edit");
+  assert.equal(leftTabTarget("ArrowLeft", "edit"), "picked");
+  assert.equal(leftTabTarget("Home", "picked"), "edit");
+  assert.equal(leftTabTarget("End", "edit"), "picked");
+  assert.equal(leftTabTarget("Enter", "edit"), null);
+  assert.equal(dropFocusField("list", "a", null), null);
+  assert.equal(dropFocusField("doc", "a", null), "play_name");
+  assert.equal(dropFocusField("doc", "a", { rowKey: "b", field: "learning" }), "play_name");
+  assert.equal(dropFocusField("doc", "a", { rowKey: "a", field: "learning" }), "learning");
+  assert.equal(sheetHelpers.eulReul("솔방울 길"), "을");
+  assert.equal(sheetHelpers.eulReul("나무 놀이터"), "를");
+  assert.equal(sheetHelpers.eulReul("놀이 0"), "을(를)");
+  assert.equal(
+    sheetHelpers.cellButtonId("p0", "c1", "materials"),
+    "play-project-cell-p0-c1-materials",
+  );
+});
+
+test("left tablist is a roving tabindex and arrow, Home, End keys activate and focus a tab", () => {
+  const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand0"] }, 1, "edit"), DESKTOP);
+  let nodes = all(view.render());
+  const list = () => nodes.find((node) => node.props?.["aria-label"] === "왼쪽 패널");
+  const tabs = () => all(list()).filter((node) => node.props?.role === "tab");
+  assert.deepEqual(
+    tabs().map((tab) => tab.props.tabIndex),
+    [0, -1],
+  );
+  const key = (name) => {
+    let prevented = false;
+    list().props.onKeyDown({ key: name, preventDefault: () => (prevented = true) });
+    return prevented;
+  };
+  assert.equal(key("ArrowRight"), true);
+  assert.equal(view.state[6], "picked");
+  nodes = all(view.render());
+  assert.deepEqual(
+    tabs().map((tab) => tab.props.tabIndex),
+    [-1, 0],
+  );
+  assert.equal(view.focused.at(-1), tabs()[1].props.id);
+  key("Home");
+  assert.equal(view.state[6], "edit");
+  nodes = all(view.render());
+  assert.equal(view.focused.at(-1), tabs()[0].props.id);
+  key("End");
+  assert.equal(view.state[6], "picked");
+  assert.equal(key("a"), false);
+  assert.equal(view.state[6], "picked");
+});
+
+test("removing from the side list focuses the next slot's x, or the panel heading at the end", () => {
+  const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand0", "cand1", "cand2"] }, 0));
+  let nodes = all(view.render());
+  const panel = () => nodes.find((node) => node.props?.["aria-label"] === "고른 놀이");
+  const remove = (name) =>
+    all(panel()).find((node) => node.props?.["aria-label"] === `${name} 빼기`);
+  remove("놀이 0").props.onClick();
+  nodes = all(view.render());
+  view.flushFrames();
+  assert.equal(view.focused.at(-1), remove("놀이 1").props.id);
+  assert.ok(view.focused.at(-1).endsWith("-remove-0"));
+  remove("놀이 2").props.onClick();
+  nodes = all(view.render());
+  view.flushFrames();
+  const heading = all(panel()).find((node) => node.type === "h2");
+  assert.equal(heading.props.tabIndex, -1);
+  assert.equal(view.focused.at(-1), heading.props.id);
+  assert.ok(heading.props.id.endsWith("-heading"));
+});
+
+test("changing the period closes the detail dialog and clears the drag and notice", () => {
+  const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand0"] }, 0, "edit", "cand3"));
+  view.state[8] = "안내";
+  view.state[9] = { periodKey: "period0", rowKey: "cand0", from: "doc", over: 0 };
+  all(view.render())
+    .find((node) => node.props?.role === "tab" && text(node).startsWith("6월~8월"))
+    .props.onClick();
+  assert.equal(view.state[7], null);
+  assert.equal(view.state[8], "");
+  assert.equal(view.state[9], null);
+});
+
+test("selecting a cell or switching a left tab clears the move notice", () => {
+  const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand0"] }, 1, "picked"), DESKTOP);
+  view.state[8] = "안내";
+  all(view.render())
+    .find((node) => node.props?.["aria-label"] === "놀이 0 지원매체")
+    .props.onClick();
+  assert.equal(view.state[8], "");
+  view.state[8] = "안내";
+  const tab = all(view.render()).find(
+    (node) => node.props?.role === "tab" && text(node) === "선택한 놀이 1",
+  );
+  tab.props.onClick();
+  assert.equal(view.state[8], "");
+});
+
+test("pick button names contain the visible words and the play name", () => {
+  const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand1"] }, 0));
+  const toggles = pickToggles(all(view.render()));
+  const visible = (node) => text(node).replace(/^[+✓] /, "");
+  assert.ok(toggles.every((node) => node.props["aria-label"].includes(visible(node))));
+  assert.equal(toggles[0].props["aria-label"], "「놀이 0」 선택하기");
+  assert.equal(toggles[1].props["aria-label"], "「놀이 1」 선택됨");
+});
+
 test("PlayProjectResult does not use browser storage", () => {
   for (const file of [
     "PlayProjectResult.tsx",
     "PlayProjectSheet.tsx",
+    "PlayProjectPicking.tsx",
     "playProjectPagination.ts",
   ]) {
     const source = readFileSync(

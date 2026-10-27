@@ -19,7 +19,10 @@
   cursor: pointer;
 }
 .stepButton:focus-visible,
-.pick input:focus-visible,
+.toggle:focus-visible,
+.detailButton:focus-visible,
+.slotRemove:focus-visible,
+.leftTabs button:focus-visible,
 .playButton:focus-visible,
 .cellButton:focus-visible {
   outline: 2px solid var(--pg-primary);
@@ -66,19 +69,241 @@
 .draftArrangement {
   min-width: 0;
 }
-.cardHeading {
-  align-items: flex-start;
+.tabRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
 }
-.cardHeading h2 {
+.total {
+  margin: 0;
+  color: var(--pg-ink-soft);
+  white-space: nowrap;
+}
+.total strong {
+  color: var(--pg-primary-ink);
+  font-size: 18px;
+}
+.pickLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.candidateGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+}
+.candidateCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.candidatePicked {
+  border-color: var(--pg-success-line);
+  background: var(--pg-success-tint);
+}
+.candidateName {
   overflow-wrap: anywhere;
 }
-.pick {
-  flex-shrink: 0;
+.summary {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+  line-height: 1.8;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
-.pick input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--pg-success);
+.materialLine {
+  margin: auto 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.materialLine span {
+  margin-right: 6px;
+  color: var(--pg-ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+.cardActions,
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--pg-line);
+}
+.toggle,
+.detailButton {
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.detailButton {
+  border-color: transparent;
+  background: transparent;
+  color: var(--pg-ink-soft);
+  text-decoration: underline;
+}
+.toggle[aria-pressed="true"] {
+  border-color: var(--pg-success-line);
+  background: var(--pg-success-tint);
+  color: var(--pg-success);
+  font-weight: 700;
+}
+.toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pickedPanel h2 {
+  margin: 0;
+}
+.slots {
+  display: grid;
+  gap: 4px;
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+}
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--pg-line);
+}
+.slotNo {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--pg-paper-warm);
+  color: var(--pg-ink-soft);
+  font-size: 12px;
+}
+.slotName {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.slotEmpty {
+  flex: 1;
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+}
+.slotRemove {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--pg-ink-soft);
+  font-size: 20px;
+  cursor: pointer;
+}
+.periodProgress {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--pg-line);
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+  list-style: none;
+}
+.periodProgress li {
+  display: flex;
+  justify-content: space-between;
+}
+.arrange {
+  width: 100%;
+  min-height: 44px;
+}
+.dialog {
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--pg-line);
+  border-radius: 12px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+}
+.dialog::backdrop {
+  background: var(--pg-scrim);
+}
+.dialogBody {
+  display: grid;
+  gap: 4px;
+  padding: 22px;
+}
+.dialogBody h2 {
+  overflow-wrap: anywhere;
+}
+.periodTabs {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+.leftTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--pg-line);
+}
+.leftTabs button {
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--pg-ink-soft);
+  font: inherit;
+  cursor: pointer;
+}
+.leftTabs button[aria-selected="true"] {
+  border-bottom-color: var(--pg-primary);
+  color: var(--pg-primary-ink);
+  font-weight: 700;
+}
+.moveNotice {
+  min-height: 1.5em;
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+.grip {
+  align-self: center;
+  color: var(--pg-ink-soft);
+  cursor: grab;
+}
+.dragging {
+  opacity: 0.5;
+}
+.dropOver {
+  outline: 2px dashed var(--pg-primary);
+  outline-offset: 2px;
+}
+.preview tr.dropOver {
+  outline: 0;
+}
+.preview tr.dropOver td {
+  box-shadow: inset 0 3px 0 var(--pg-primary);
+}
+.preview tr[draggable="true"] {
+  cursor: grab;
 }
 .fields {
   display: grid;
@@ -198,7 +423,7 @@
   min-height: 297mm;
   padding: 7mm 8mm;
   background: white;
-  color: #222;
+  color: var(--pg-doc-ink);
   box-shadow: var(--pg-shadow);
   font-family: var(--font-body), "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
@@ -232,7 +457,7 @@
 }
 .preview th,
 .preview td {
-  border: 1px solid var(--pg-line);
+  border: 1px solid var(--pg-doc-line);
   padding: 0;
   vertical-align: top;
   overflow-wrap: anywhere;
@@ -315,6 +540,20 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+  }
+}
+@media (min-width: 700px) and (max-width: 1023px), (min-width: 1280px) {
+  .candidateGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .pickLayout {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+  .pickedPanel {
+    position: sticky;
+    top: 72px;
   }
 }
 @media (max-width: 1023px) {
