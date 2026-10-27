@@ -523,7 +523,9 @@ def test_놀이_프로젝트형_반의_월간_생성은_LLM_앞에서_409(world,
     error = response.json()["error"]
     assert error["code"] == "GATE_BLOCKED"
     assert error["fields"] == ["class_id"]
-    assert error["message"] == "놀이 프로젝트형 연간계획안은 월간계획안으로 이어지지 않습니다."
+    assert (
+        error["message"] == "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다."
+    )
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "monthly")) is None
 
 
