@@ -337,7 +337,42 @@ def create_document(
 
     # 근거를 불러와 사본 행을 만든다. 순서는 교사가 고른 순서 그대로다.
     copies: list[DocumentSource] = []
-    if body.kind == "weeklyLog":
+    if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
+        # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
+        # 교사는 고른 대로 만들어진 줄 안다.
+        raise _invalid(["source_kind"])
+    if body.kind == "weeklyLog" and body.source_kind == "routine":
+        # 일일 보육일지를 쓰지 않는 원이다. 일일이 쓰는 것과 같은 재료(일과 기록)를
+        # 그 주 전체에서 받는다 — 하루치만 받는 일일과 기간만 다르다.
+        by_id = {
+            r.id: r
+            for r in session.scalars(
+                select(RoutineRecord)
+                .join(Class, Class.id == RoutineRecord.class_id)
+                .where(RoutineRecord.id.in_(body.source_ids), Class.center_id == user.center_id)
+            )
+        }
+        for source_id in body.source_ids:
+            source = by_id.get(source_id)
+            if (
+                source is None
+                or source.class_id != body.class_id
+                or not (body.start <= source.date <= body.end)
+                or not source.execution.strip()
+            ):
+                fields.append(f"sources.{source_id}")
+                continue
+            copies.append(
+                DocumentSource(
+                    source_kind="routine",
+                    source_id=source.id,
+                    class_id=source.class_id,
+                    child_id=None,
+                    date=source.date,
+                    text=source.fact_text(),
+                )
+            )
+    elif body.kind == "weeklyLog":
         by_id = {
             d.id: d
             for d in session.scalars(
@@ -800,9 +835,13 @@ def refresh_document(
             continue
         if copy.source_kind == "routine":
             routine = session.get(RoutineRecord, copy.source_id)
-            if routine is None or not routine.execution.strip() or routine.date != doc.start_date:
-                # 활동실행을 비웠거나 다른 날로 옮겼으면 이 날의 사실이 사라진 것이다.
-                # 원본 없음과 같다.
+            if (
+                routine is None
+                or not routine.execution.strip()
+                or not (doc.start_date <= routine.date <= doc.end_date)
+            ):
+                # 활동실행을 비웠거나 문서 기간 밖으로 옮겼으면 이 문서의 사실이 사라진 것이다.
+                # 원본 없음과 같다. 일일은 하루라 start_date == end_date 로 전과 같다.
                 missing.append(field)
                 missing_ids.add(copy.source_id)
                 fresh.append(None)

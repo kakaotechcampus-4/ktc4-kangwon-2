@@ -11,6 +11,7 @@
 """
 
 import re
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Response, status
@@ -215,6 +216,9 @@ def _weekly_log(
     **「우리반 놀이」는 그날 일과 이름만 적는다.** 활동실행까지 넣으면 한 줄이 종이 한 장이
     된다. 실물도 놀이 이름을 늘어놓고, 무슨 일이 있었는지는 분석 칸에서 읽는다.
     """
+    if any(s.source_kind == "routine" for s in sources):
+        return _weekly_log_from_routines(doc, sources, evaluation)
+
     dailies = {
         d.id: d
         for d in session.scalars(
@@ -243,6 +247,37 @@ def _weekly_log(
                 daily.class_note.strip(),
             ]
         )
+    return fill_grid(
+        (TEMPLATE_DIR / "weekly_log.hwpx").read_bytes(),
+        doc.title,
+        WEEKLY_LOG_HEADER_ROWS,
+        rows,
+        [["주간 총평", evaluation]],
+    )
+
+
+def _weekly_log_from_routines(
+    doc: Document, sources: list[DocumentSource], evaluation: str
+) -> bytes:
+    """일일 보육일지를 쓰지 않는 원의 주간. 일과 기록을 날짜로 묶어 한 줄씩 담는다.
+
+    **날짜별 「놀이 이해 및 분석」 · 「앞으로의 지원방향」은 비워서 내보낸다.** 그 칸은 하루치
+    해석과 지원인데, 이 문서에는 한 주를 통째로 본 해석 · 지원 하나뿐이다. 그것은 꼬리
+    「주간 총평」에 들어간다. 지어내서 채우면 교사가 쓰지 않은 말이 종이에 찍힌다.
+    """
+    by_date: dict[date, list[str]] = {}
+    for source in sources:
+        by_date.setdefault(source.date, []).extend(_routine_names(source.text))
+    rows = [
+        [
+            f"{day.month}/{day.day}({WEEKDAYS[day.weekday()]})",
+            "\n".join(names),
+            "",
+            "",
+            "",
+        ]
+        for day, names in sorted(by_date.items())
+    ]
     return fill_grid(
         (TEMPLATE_DIR / "weekly_log.hwpx").read_bytes(),
         doc.title,

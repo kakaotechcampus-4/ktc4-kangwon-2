@@ -148,8 +148,18 @@ class DocumentUpdateRequest(BaseModel):
 class DocumentCreateRequest(BaseModel):
     """`POST /api/documents`. 교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
-    `source_ids` 는 `kind` 마다 가리키는 것이 다르다 — `weeklyLog` 만 확정된 일일 보육일지 id 고,
-    나머지는 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로 `사실` 에 이어 붙는다.
+    `source_ids` 는 `kind` 마다 가리키는 것이 다르다 — `dailyLog` 는 일과 기록 id,
+    `observation` · `assessment` 는 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로
+    `사실` 에 이어 붙는다.
+
+    `weeklyLog` 만 **두 가지**다. `source_kind` 로 고른다 —
+
+        dailyLog   확정된 일일 보육일지 id (기본값. 예전 호출과 같다)
+        routine    그 주의 일과 기록 id
+
+    일일 보육일지를 쓰지 않고 주간만 쓰는 원이 있다. 개정 누리과정 놀이실행자료도
+    「월간 · 주간 · 일일을 모두 수립할 필요 없고 하나만 선택」이라고 적는다
+    (`docs/references/보육일지-공식양식.md`). 일일을 거치게 하면 그 원은 주간을 못 만든다.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -160,6 +170,8 @@ class DocumentCreateRequest(BaseModel):
     start: date
     end: date
     source_ids: list[int]
+    # `weeklyLog` 에서만 쓴다. 안 보내면 예전처럼 확정된 일일 보육일지를 근거로 본다.
+    source_kind: Literal["dailyLog", "routine"] = "dailyLog"
 
 
 class DocumentChecks(BaseModel):

@@ -254,12 +254,20 @@ export interface DocumentCreateInput {
   start: string;
   end: string;
   sourceIds: string[];
+  /**
+   * 주간 보육일지의 근거가 어디서 오나 (§11). 생략하면 확정한 일일 보육일지다.
+   * `"routine"` 은 일일 보육일지를 쓰지 않는 원 — 그 주 일과 기록을 바로 받는다.
+   */
+  sourceKind?: "dailyLog" | "routine";
 }
 
 export async function createDocument(input: DocumentCreateInput): Promise<ServerDocument> {
   const class_id = classServerId(input.classId);
   const child_id = input.childId ? childServerId(input.childId) : null;
-  const source_ids = input.sourceIds.map((id) => sourceServerId(input.kind, id));
+  // 일과 기록을 근거로 쓰는 주간은 id 가 일과 표의 것이다 — 문서 접두사로 풀면 안 된다.
+  const source_ids = input.sourceIds.map((id) =>
+    input.sourceKind === "routine" ? routineServerId(id) : sourceServerId(input.kind, id),
+  );
   if (
     class_id === null ||
     (input.childId && child_id === null) ||
@@ -276,6 +284,7 @@ export async function createDocument(input: DocumentCreateInput): Promise<Server
       start: input.start,
       end: input.end,
       source_ids,
+      ...(input.sourceKind ? { source_kind: input.sourceKind } : {}),
     }),
   });
   return toDocument(dto);

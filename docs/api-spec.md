@@ -2088,12 +2088,13 @@ execution   활동실행 — 사실 층.  선택(저장은 비어도 된다).  �
 ```
 
 `affected_document_ids`는 **이번에 실제 변경·삭제된 근거를 직접 인용한, 같은 기관의
-확정 일일 보육일지** ID다. 사본과 현재 사실·날짜가 다르거나 원본이 삭제된 경우를 센다.
+확정 문서** ID다. 일과 기록을 직접 인용하는 종류는 둘이다 — 일일 보육일지와,
+`source_kind: "routine"` 으로 만든 주간 보육일지(§11). 사본과 현재 사실·날짜가 다르거나 원본이 삭제된 경우를 센다.
 시간은 초만 달라져도 변경이다. 요청 전후 이름·시간·활동실행·날짜가 같으면(계획·순서만
 수정한 경우 포함) 두 배열 모두 빈다. `newly_stale_document_ids`는 그중 이번 요청으로
 `stale=false`에서 `true`가 된 문서다. 이미 stale인 문서는 affected에만 포함된다.
 
-초안과 전파된 주간 문서는 기존 정책대로 stale 처리하되 안내 건수에서 제외한다.
+초안과 **연쇄로 전파된** 문서(확정 일일 보육일지를 근거로 쓴 주간)는 기존 정책대로 stale 처리하되 안내 건수에서 제외한다.
 다른 기관 문서는 영향 조회·전파 대상에서 제외한다. 기존 refresh·확정 정책은 유지한다.
 응답은 커밋 성공 후에만 반환한다.
 
@@ -2127,7 +2128,7 @@ observation  관찰일지        아동 단위   기간     종이 한 장 = 아
 assessment   영유아 평가      아동 단위   기간
 ```
 
-**문서 1개가 교사가 제출하는 종이 1장이다.** 종이 위 배치는 아래 「종이 한 장」에 적었다. `weeklyLog` · `assessment` 의 배치는 이번 개정 범위 밖이다.
+**문서 1개가 교사가 제출하는 종이 1장이다.** 종이 위 배치는 아래 「종이 한 장」에 적었다. `assessment` 의 배치는 이번 개정 범위 밖이다.
 
 **계획안(`annual` · `monthly`)은 이 엔드포인트가 아니다.** §4 ~ §7 이 다룬다.
 같은 「문서」라는 말을 쓰지만 근거가 다르다 — 계획안은 참조자료에서, 일지는 교사 기록에서 나온다.
@@ -2142,6 +2143,17 @@ assessment   영유아 평가      아동 단위   기간
   "start": "2026-09-01", "end": "2026-09-30",
   "source_ids": [12, 15, 19] }
 ```
+
+**`source_kind` 는 주간 보육일지에서만 고른다.** 생략하면 `"dailyLog"` 다.
+
+```
+source_kind   값                받는 kind      근거
+"dailyLog"    생략했을 때 기본    weeklyLog     확정된 일일 보육일지 (아래 층 구조)
+"routine"                        weeklyLog     일과 기록 — 일일 보육일지를 쓰지 않는 원
+```
+
+`weeklyLog` 가 아닌데 `"dailyLog"` 아닌 값을 보내면 `VALIDATION_FAILED` 422
+`fields: ["source_kind"]` 다. 보낸 값이 반영되지 않는데 받으면 교사는 고른 대로 만들어진 줄 안다.
 
 **Response** `201`
 
@@ -2160,7 +2172,7 @@ assessment   영유아 평가      아동 단위   기간
     { "id": 12, "date": "2026-09-22", "domain": "자연탐구", "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v1" },
-  "review_note": "",
+  "review_note": "", "class_note": "",
   "created_at": "...", "updated_at": "..."
 }
 ```
@@ -2186,6 +2198,7 @@ assessment   영유아 평가      아동 단위   기간
 ```
 양식          ① 사실 칸                ②③ 해석 + 지원 칸
 일일 보육일지   일과 행마다 「활동실행」     놀이 평가 및 다음날 지원계획
+주간 보육일지   날짜 행마다 「우리반 놀이」   놀이 이해 및 분석 / 앞으로의 지원방향 (두 칸)
 관찰기록       영역 행마다 「관찰내용」     평가
 ```
 
@@ -2223,13 +2236,48 @@ assessment   영유아 평가      아동 단위   기간
 - **일과 행 수를 고정하지 않는다.** [실측] 같은 반도 특별활동이 있는 날은 행이 하나 더 있고, 같은 일과도 날에 따라 끝나는 시간이 다르다.
 - **시간 · 일과 · 활동계획은 교사 입력을 그대로 싣는다.** 모델이 채우지 않는다.
 
+#### 주간 보육일지 — 반 1개 × 한 주 × 날짜 격자
+
+```
+머리   기간 · 반 · 결재란
+본문   날짜 | 우리반 놀이 | 놀이 이해 및 분석 | 앞으로의 지원방향 | 반 운영 특이사항
+       ← 하루에 한 줄.  줄 수 고정 안 함
+꼬리   주간 총평                              ← 해석 + 지원
+```
+
+- **[실측] 멘토가 준 현장 실물(2025년 도담어린이집 만3세)에서 가운데 세 칸이 우리 3층과 그대로 맞는다.**
+  실물은 하루마다 표를 하나씩 두는데, 우리는 한 표에 날짜마다 한 줄이다(2020 공식 사례 ③과 같은 모양).
+- **「우리반 놀이」는 그날 일과 **이름만** 적는다.** 활동실행까지 넣으면 한 줄이 종이 한 장이 된다.
+  실물도 놀이 이름을 늘어놓고, 무슨 일이 있었는지는 분석 칸에서 읽는다.
+- **근거가 일일 보육일지면** 분석 · 지원방향 칸은 그 일일 문서의 `해석` · `지원` 이고,
+  특이사항 칸은 그 일일 문서의 `class_note` 다.
+- **근거가 일과 기록(`source_kind: "routine"`)이면 그 세 칸을 비운다.** 날짜별 해석 · 지원이
+  이 문서에는 없다 — 한 주를 통째로 본 것 하나뿐이고 그것은 꼬리 「주간 총평」에 들어간다.
+  지어내서 채우면 교사가 쓰지 않은 말이 종이에 찍힌다.
+
+#### 반 운영 특이사항 — `class_note`
+
+**[실측] 공식 양식 5종과 멘토 실물 전부에 있는 칸이다.** 결석 · 부모면담 · 감염병 · 안전사고처럼
+그날 **반에 있었던 일**이라 놀이 기록이 아니다. 근거(관찰 · 일과 기록)에서 나오지 않아 교사가 직접 적는다.
+
+```
+documents.class_note   TEXT  기본 ""     3층(sections) 밖이다
+```
+
+- **`sections` 의 heading 셋(사실 · 해석 · 지원)을 건드리지 않는다.** 성격이 다른 칸이다.
+- `PUT /api/documents/{id}` 가 받는다. **보내지 않으면 이전 값을 둔다** — 이 칸을 모르는 예전 화면이 지우지 않게.
+- 단건 조회 · 생성 · 수정 · 확정 응답에 `class_note` 로 담긴다. 목록에는 담지 않는다.
+- **교사가 비워 둬도 종이에는 칸이 나간다.** 칸이 사라지면 손으로 그려 넣어야 한다.
+- 일일 보육일지 꼬리 두 번째 줄, 주간 보육일지 다섯 번째 열이다.
+
 ### `source_ids` 가 가리키는 것은 `kind` 마다 다르다
 
 ```
 dailyLog      일과 기록 id           §10-1            ← 관찰 기록이 아니다
 observation   관찰 기록 id           §10
 assessment    관찰 기록 id           §10
-weeklyLog     확정된 일일 보육일지 id   §11   ← 관찰 기록이 아니다
+weeklyLog     확정된 일일 보육일지 id   §11   source_kind: "dailyLog" (기본)
+weeklyLog     일과 기록 id           §10-1   source_kind: "routine"
 ```
 
 **주간 보육일지는 일일 보육일지를 근거로 쓴다.** 관찰 기록에서 바로 뽑지 않는다.
@@ -2238,6 +2286,12 @@ weeklyLog     확정된 일일 보육일지 id   §11   ← 관찰 기록이 아
 ```
 관찰 기록  →  일일 보육일지  →  주간 보육일지
 ```
+
+**[실측] 일일 보육일지를 아예 쓰지 않고 주간만 쓰는 원이 있다.** 그런 원에서는 위 층이
+비어 있어 주간을 만들 수 없다. 그래서 `source_kind: "routine"` 으로 **일일이 쓰는 것과 같은
+재료(일과 기록)를 그 주 전체에서 받는다** — 하루치만 받는 일일과 기간만 다르다.
+거절 규칙도 일일과 같다(없거나 남의 원 · 다른 반 · 활동실행이 비었다). 날짜는 `start ~ end` 안이다.
+`refresh` 도 같다 — 활동실행을 비웠거나 **문서 기간 밖으로** 옮긴 일과는 원본 없음과 같이 409 다.
 
 **근거로 쓸 일일 보육일지는 `CONFIRMED` 여야 한다.** `DRAFT` 를 근거로 쓰면
 그게 바뀔 때 주간이 통째로 흔들린다. 확정 전이면 `GATE_BLOCKED` 409 다.
@@ -2455,7 +2509,7 @@ GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": 
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
 POST   /api/documents/{id}/verify                                3단 LLM Judge.  **미구현 — 지금은 404**
-PUT    /api/documents/{id}                                       title · sections · review_note
+PUT    /api/documents/{id}                                       title · sections · review_note · class_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
 POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
@@ -2514,7 +2568,8 @@ assessment    observation · dailyLog
 
 ### 내보내기 — `GET /api/documents/{id}/export/hwp`
 
-**관찰일지 · 일일 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼 복제한다.
+**관찰일지 · 일일 보육일지 · 주간 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼,
+주간 보육일지는 날짜 줄 하나를 그 주 날짜 수만큼 복제한다.
 
 **§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` 다 ·
 확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
@@ -2545,7 +2600,7 @@ assessment    observation · dailyLog
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
-| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 | `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 

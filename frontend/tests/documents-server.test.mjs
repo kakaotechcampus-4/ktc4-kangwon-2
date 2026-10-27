@@ -375,6 +375,31 @@ test("주간 보육일지 생성은 문서 id 를 근거로 보낸다", async ()
   }
   assert.deepEqual(calls[0].body.source_ids, [5]);
   assert.equal(calls[0].body.child_id, null);
+  // 생략하면 서버 기본값(확정한 일일 보육일지)이다.
+  assert.equal("source_kind" in calls[0].body, false);
+});
+
+test("일과 근거 주간은 일과 기록 id 와 source_kind 를 보낸다", async () => {
+  browser();
+  const { calls, restore } = serve(() =>
+    json({ ...WEEKLY_DETAIL, sources: [{ ...WEEKLY_DETAIL.sources[0], id: 7 }] }, 201),
+  );
+  try {
+    await documents.createDocument({
+      kind: "weeklyLog",
+      classId: "class-abc",
+      childId: "",
+      start: "2026-09-21",
+      end: "2026-09-25",
+      sourceIds: ["routine:7"],
+      sourceKind: "routine",
+    });
+  } finally {
+    restore();
+  }
+  // 문서 접두사로 풀면 null 이 되어 보내지 못한다 — 일과 표의 id 다.
+  assert.deepEqual(calls[0].body.source_ids, [7]);
+  assert.equal(calls[0].body.source_kind, "routine");
 });
 
 test("매핑을 못 찾으면 생성 요청 자체를 보내지 않는다", async () => {
@@ -524,6 +549,21 @@ test("source assertions receive identical text for LF and CRLF checkouts", () =>
     const lf = read(name);
     assert.equal(normalizeNewlines(lf.replace(/\n/g, "\r\n")), lf);
   }
+});
+
+test("주간 보육일지는 근거를 확정 일일 보육일지와 일과 기록 중에 고른다", () => {
+  const page = read("DocumentsPage.tsx");
+
+  assert.ok(page.includes('useState<"dailyLog" | "routine">("dailyLog")'));
+  // 일과 기록을 근거로 쓰는 두 경우가 한 조건으로 묶여 있다 — 후보 · 조회 · 링크가 같이 간다.
+  assert.ok(
+    page.includes('kind === "dailyLog" || (kind === "weeklyLog" && weeklyFrom === "routine")'),
+  );
+  // 주간은 하루가 아니라 그 주를 묻는다.
+  assert.ok(page.includes("listDayRoutines(cls, from, to)"));
+  assert.ok(page.includes('`${classId}|${start}|${kind === "dailyLog" ? start : end}`'));
+  // 고른 근거 종류를 서버에 그대로 넘긴다 (§11 `source_kind`).
+  assert.ok(page.includes('...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {})'));
 });
 
 test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", () => {

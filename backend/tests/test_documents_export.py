@@ -743,6 +743,93 @@ def test_주간_보육일지도_확정본만_내보낸다(db_session, mine):
     assert response.json()["error"]["code"] == "GATE_BLOCKED"
 
 
+def _weekly_log_from_routines(session, klass, days):
+    """일과 기록을 바로 근거로 둔 주간 보육일지 — 일일 보육일지를 쓰지 않는 원이다.
+
+    `days` 는 (날짜, 일과 이름, 활동실행) 이다.
+    """
+    doc = Document(
+        kind="weeklyLog",
+        title="햇살반 주간 보육일지 (9/21~9/25)",
+        class_id=klass.id,
+        child_id=None,
+        start_date=date(2026, 9, 21),
+        end_date=date(2026, 9, 25),
+        status="CONFIRMED",
+        origin="AI",
+        stale=False,
+        generation_method="RULE_LLM",
+        generation_rule_id="weeklyLog-draft",
+        generation_rule_version="v1",
+        review_note="",
+    )
+    session.add(doc)
+    session.flush()
+    facts = []
+    for day, name, execution in days:
+        routine = RoutineRecord(
+            class_id=klass.id,
+            date=day,
+            position=0,
+            start_time=None,
+            end_time=None,
+            name=name,
+            plan="",
+            execution=execution,
+        )
+        session.add(routine)
+        session.flush()
+        facts.append(routine.fact_text())
+        session.add(
+            DocumentSource(
+                document_id=doc.id,
+                source_kind="routine",
+                source_id=routine.id,
+                class_id=klass.id,
+                child_id=None,
+                date=day,
+                text=routine.fact_text(),
+            )
+        )
+    body = {"사실": "\n\n".join(facts), "해석": INTERPRETATION, "지원": SUPPORT}
+    for heading, text in body.items():
+        session.add(DocumentSection(document_id=doc.id, heading=heading, body=text, source_ids=[]))
+    session.flush()
+    return doc
+
+
+def test_일과_기록을_근거로_쓴_주간은_날짜별_해석_지원_칸을_비운다(db_session, mine):
+    """하루치 해석 · 지원이 없는 문서다. 한 주를 통째로 본 것 하나가 꼬리에 들어간다.
+
+    지어내서 채우면 교사가 쓰지 않은 말이 종이에 찍힌다.
+    """
+    klass, _ = mine
+    doc = _weekly_log_from_routines(
+        db_session,
+        klass,
+        [
+            (date(2026, 9, 23), "실내놀이", "낙엽으로 왕관을 만들었다."),
+            (date(2026, 9, 21), "쌓기놀이", "블록으로 성을 쌓았다."),
+            # 같은 날 일과가 둘이면 한 줄에 이름을 모아 담는다.
+            (date(2026, 9, 21), "바깥놀이", "모래로 산을 만들었다."),
+        ],
+    )
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 200
+    _, rows = _grid(response.content)
+    assert rows == [
+        ["날짜", "우리반 놀이", "놀이 이해 및 분석", "앞으로의 지원방향", "반 운영 특이사항"],
+        ["9/21(월)", "쌓기놀이\n바깥놀이", "", "", ""],
+        ["9/23(수)", "실내놀이", "", "", ""],
+        [
+            "주간 총평",
+            f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음 주 지원계획) {SUPPORT}",
+        ],
+    ]
+
+
 def test_일일_보육일지_꼬리에_반_운영_특이사항_줄이_있다(db_session, mine):
     klass, _ = mine
     routine = _routine(
