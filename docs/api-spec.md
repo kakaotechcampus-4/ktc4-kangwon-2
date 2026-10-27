@@ -556,7 +556,7 @@ PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운
 
 **`format` 은 필수다**(ADR-043) — `MONTHLY_THEME`(월별 주제형) · `PLAY_PROJECT`(놀이 프로젝트형). 없거나 모르는 값은 422 `VALIDATION_FAILED` `["format"]`.
 **`PLAY_PROJECT` 에 `form_id` 가 있으면 422** `["form_id"]` — 놀이 프로젝트형은 기관 양식을 쓰지 않는다. 저장하면 그 양식을 따른 것처럼 보인다.
-**지금 화면은 `format` 을 보내지 않는다.** 서버 변경과 화면 변경이 틈 없이 들어가야 한다(머지 순서는 코드 PR 에서 정한다).
+**현재 화면은 `MONTHLY_THEME` 을 보내고, 형식 선택 카드는 아직 없다.** 서버 변경과 화면 변경이 틈 없이 들어가야 한다(머지 순서는 코드 PR 에서 정한다).
 형식은 `plans.body.format` 에 저장한다 — 열 · migration 은 없다. `body` 에 `format` 이 없는 행은 `MONTHLY_THEME` 이다(ADR-042 · ADR-043).
 
 **`school_year` 를 받지 않는다.** `class_id` 가 학년도를 결정한다 — `classes` 행은
