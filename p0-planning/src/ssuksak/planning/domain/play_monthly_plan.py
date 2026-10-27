@@ -1,0 +1,361 @@
+"""Play-centred monthly plan (PLAY_MONTHLY): a separate aggregate from the v1 ``MonthlyPlan``.
+
+Its parent is a CONFIRMED ``PlayProjectYearlyPlan``. The plan keeps the header layout it was
+made with, the parent plays it read, the Reference versions it used, and values that may be
+blank: teacher-input cells start empty, and safety candidates are kept apart from the weekly
+placement, which starts unplaced. Every list row and candidate is addressed by its ``ItemId``,
+never by its position.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+
+from .errors import InvalidDomainValueError
+from .identifiers import ItemId, PlanId
+from .lineage import ParentLineage
+from .plan import PlanStatus
+from .provenance import (
+    AuditHistory,
+    EvidenceSource,
+    EvidenceSourceType,
+    GenerationMethod,
+    GenerationMethodDetail,
+)
+from .safety_placement import SafetyKind
+from .week_period import WeekId, WeekPeriod
+from .year_month import YearMonth
+
+PLAY_MONTHLY_FORMAT = "PLAY_MONTHLY"
+
+
+def _non_blank(value: object, path: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidDomainValueError(f"{path} must be a non-blank string")
+
+
+class LayoutRole(str, Enum):
+    TITLE = "TITLE"  # a printed group header with no value
+    CALENDAR = "CALENDAR"  # filled from the system calendar (예상 기간)
+    GENERATED = "GENERATED"
+    TEACHER_INPUT = "TEACHER_INPUT"  # starts blank; never generated
+
+
+@dataclass(frozen=True, slots=True)
+class LayoutSection:
+    semantic_key: str
+    source_label: str
+    role: LayoutRole
+
+    def __post_init__(self) -> None:
+        _non_blank(self.semantic_key, "LayoutSection.semantic_key")
+        _non_blank(self.source_label, "LayoutSection.source_label")
+        if not isinstance(self.role, LayoutRole):
+            raise InvalidDomainValueError("LayoutSection.role is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class PlayMonthlyLayout:
+    """Versioned header layout and initial list sizes, captured into each plan."""
+
+    layout_version: str
+    sections: tuple[LayoutSection, ...]
+    together_count: int
+    free_play_count: int
+
+    def __post_init__(self) -> None:
+        _non_blank(self.layout_version, "PlayMonthlyLayout.layout_version")
+        keys = [section.semantic_key for section in self.sections]
+        if not keys or len(keys) != len(set(keys)):
+            raise InvalidDomainValueError("PlayMonthlyLayout needs unique sections")
+        if any(type(n) is not int or n < 1 for n in (self.together_count, self.free_play_count)):
+            raise InvalidDomainValueError("PlayMonthlyLayout list sizes must be positive")
+
+    @property
+    def teacher_input_keys(self) -> tuple[str, ...]:
+        return tuple(s.semantic_key for s in self.sections if s.role is LayoutRole.TEACHER_INPUT)
+
+
+@dataclass(frozen=True, slots=True)
+class PlayMonthlyCell:
+    """An editable value that may be blank.
+
+    No generation means nothing was ever written (a teacher-input cell before its first
+    write). A generated value keeps its generation even when a teacher later clears it.
+    """
+
+    item_id: ItemId
+    semantic_key: str
+    value: str = ""
+    evidence: tuple[EvidenceSource, ...] = ()
+    generation: GenerationMethodDetail | None = None
+    audit: AuditHistory = field(default_factory=AuditHistory)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.item_id, ItemId):
+            raise InvalidDomainValueError("PlayMonthlyCell.item_id must be ItemId")
+        _non_blank(self.semantic_key, "PlayMonthlyCell.semantic_key")
+        if not isinstance(self.value, str):
+            raise InvalidDomainValueError("PlayMonthlyCell.value must be a string")
+        if not isinstance(self.evidence, tuple) or not all(
+            isinstance(source, EvidenceSource) for source in self.evidence
+        ):
+            raise InvalidDomainValueError("PlayMonthlyCell.evidence must be EvidenceSource values")
+        if self.generation is None:
+            if self.value.strip() or self.evidence:
+                raise InvalidDomainValueError(
+                    "A PlayMonthlyCell without generation must be blank and cite nothing"
+                )
+        elif not isinstance(self.generation, GenerationMethodDetail):
+            raise InvalidDomainValueError("PlayMonthlyCell.generation is invalid")
+        if not isinstance(self.audit, AuditHistory):
+            raise InvalidDomainValueError("PlayMonthlyCell.audit must be AuditHistory")
+
+    def cites_only(self, *types: EvidenceSourceType) -> bool:
+        return all(source.source_type in types for source in self.evidence)
+
+
+@dataclass(frozen=True, slots=True)
+class PlayActivity:
+    """One row of 함께 하는 활동 or 유아 예상 자유놀이: a play name with its links.
+
+    PARENT_PLAN evidence appears only when the row actually builds on one parent play, and
+    then the parent item is snapshotted. CURRICULUM evidence lists the linked content ids.
+    """
+
+    cell: PlayMonthlyCell
+    parent_snapshot: ParentLineage | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cell, PlayMonthlyCell):
+            raise InvalidDomainValueError("PlayActivity.cell must be PlayMonthlyCell")
+        if not self.cell.cites_only(EvidenceSourceType.CURRICULUM, EvidenceSourceType.PARENT_PLAN):
+            raise InvalidDomainValueError("PlayActivity cites CURRICULUM and PARENT_PLAN only")
+        cites_parent = any(
+            s.source_type is EvidenceSourceType.PARENT_PLAN for s in self.cell.evidence
+        )
+        if self.parent_snapshot is not None and (
+            not isinstance(self.parent_snapshot, ParentLineage)
+            or self.parent_snapshot.parent_item_id is None
+        ):
+            raise InvalidDomainValueError("PlayActivity.parent_snapshot must be item-level")
+        if cites_parent != (self.parent_snapshot is not None):
+            raise InvalidDomainValueError(
+                "PlayActivity cites PARENT_PLAN exactly when it snapshots a parent play"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyCandidate:
+    """A proposed safety education item; placing it in a week is separate (``SafetyWeek``).
+
+    STATUTORY: one of the six legal categories, grounded in that category's official items.
+    SUPPLEMENTAL: 생활안전, grounded in approved institution samples of one topic.
+    """
+
+    cell: PlayMonthlyCell
+    kind: SafetyKind
+    category_id: str | None = None
+    topic_group: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cell, PlayMonthlyCell):
+            raise InvalidDomainValueError("SafetyCandidate.cell must be PlayMonthlyCell")
+        if not isinstance(self.kind, SafetyKind):
+            raise InvalidDomainValueError("SafetyCandidate.kind is invalid")
+        statutory = self.kind is SafetyKind.STATUTORY
+        named = self.category_id if statutory else self.topic_group
+        other = self.topic_group if statutory else self.category_id
+        _non_blank(named, "SafetyCandidate category_id/topic_group")
+        if other is not None:
+            raise InvalidDomainValueError(
+                "STATUTORY names a category_id only; SUPPLEMENTAL names a topic_group only"
+            )
+        source = EvidenceSourceType.SAFETY_RULE if statutory else EvidenceSourceType.INSTITUTION_SAMPLE
+        if not self.cell.cites_only(source):
+            raise InvalidDomainValueError(f"{self.kind.value} safety cites {source.value} only")
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyWeek:
+    """Which candidate a teacher placed in one week; ``None`` = not placed yet."""
+
+    week_id: WeekId
+    candidate_item_id: ItemId | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.week_id, WeekId):
+            raise InvalidDomainValueError("SafetyWeek.week_id must be WeekId")
+        if self.candidate_item_id is not None and not isinstance(self.candidate_item_id, ItemId):
+            raise InvalidDomainValueError("SafetyWeek.candidate_item_id must be ItemId")
+
+
+@dataclass(frozen=True, slots=True)
+class EntryCell:
+    """A cell filled from a daily-life Reference entry; ``entry_id`` is the entry it came from."""
+
+    cell: PlayMonthlyCell
+    entry_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cell, PlayMonthlyCell):
+            raise InvalidDomainValueError("EntryCell.cell must be PlayMonthlyCell")
+        if self.entry_id is not None:
+            _non_blank(self.entry_id, "EntryCell.entry_id")
+        if not self.cell.cites_only(EvidenceSourceType.CURRICULUM):
+            raise InvalidDomainValueError("EntryCell cites CURRICULUM only")
+
+
+@dataclass(frozen=True, slots=True)
+class HabitWeek:
+    week_id: WeekId
+    habit: EntryCell
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.week_id, WeekId) or not isinstance(self.habit, EntryCell):
+            raise InvalidDomainValueError("HabitWeek needs a WeekId and an EntryCell")
+
+
+@dataclass(frozen=True, slots=True)
+class ParentPlay:
+    """A selected parent candidate as it was read: its row_key and play_name item."""
+
+    row_key: str
+    play_name_item_id: ItemId
+    play_name: str
+    materials: str
+    support_direction: str
+
+    def __post_init__(self) -> None:
+        for name in ("row_key", "play_name", "materials", "support_direction"):
+            _non_blank(getattr(self, name), f"ParentPlay.{name}")
+        if not isinstance(self.play_name_item_id, ItemId):
+            raise InvalidDomainValueError("ParentPlay.play_name_item_id must be ItemId")
+
+
+@dataclass(frozen=True, slots=True)
+class ParentPlaySnapshot:
+    """Plan-level parent input: the confirmed yearly plan, its period and its selected plays."""
+
+    lineage: ParentLineage
+    layout_version: str
+    period_key: str
+    plays: tuple[ParentPlay, ...]
+    emphasized: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.lineage, ParentLineage) or self.lineage.parent_item_id is not None:
+            raise InvalidDomainValueError("ParentPlaySnapshot.lineage must be plan-level")
+        _non_blank(self.layout_version, "ParentPlaySnapshot.layout_version")
+        _non_blank(self.period_key, "ParentPlaySnapshot.period_key")
+        keys = [play.row_key for play in self.plays]
+        if not keys or len(keys) != len(set(keys)):
+            raise InvalidDomainValueError("ParentPlaySnapshot needs unique selected plays")
+        if len(self.emphasized) != len(set(self.emphasized)) or not set(self.emphasized) <= set(keys):
+            raise InvalidDomainValueError("ParentPlaySnapshot.emphasized must name selected plays")
+
+    def play(self, row_key: str) -> ParentPlay | None:
+        return next((p for p in self.plays if p.row_key == row_key), None)
+
+
+@dataclass(frozen=True, slots=True)
+class PlayMonthlyReferences:
+    """Exact versions of everything the generation read, for reproduction."""
+
+    curriculum_catalog_id: str
+    curriculum_catalog_version: str
+    daily_life_catalog_id: str
+    daily_life_catalog_version: str
+    legal_rule_version: str
+    evidence_store_version: str
+    evidence_store_sha256: str
+    safety_classification_version: str
+    safety_quality_version: str
+    prompt_version: str
+    request_fingerprint: str
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            _non_blank(getattr(self, name), f"PlayMonthlyReferences.{name}")
+
+
+@dataclass(frozen=True, slots=True)
+class PlayMonthlyPlan:
+    plan_id: PlanId
+    school_year: int
+    classroom_ref: str
+    target_month: YearMonth
+    target_ages: frozenset[int]
+    status: PlanStatus
+    layout: PlayMonthlyLayout
+    weeks: tuple[WeekPeriod, ...]
+    parent: ParentPlaySnapshot
+    references: PlayMonthlyReferences
+    theme: PlayMonthlyCell
+    rationale: PlayMonthlyCell
+    together: tuple[PlayActivity, ...]
+    free_play: tuple[PlayActivity, ...]
+    habits: tuple[HabitWeek, ...]
+    safety_candidates: tuple[SafetyCandidate, ...]
+    safety_weeks: tuple[SafetyWeek, ...]
+    health: EntryCell
+    nutrition: EntryCell
+    teacher_inputs: tuple[PlayMonthlyCell, ...]
+    audit: AuditHistory = field(default_factory=AuditHistory)
+    format: str = PLAY_MONTHLY_FORMAT
+
+    def __post_init__(self) -> None:
+        if self.format != PLAY_MONTHLY_FORMAT:
+            raise InvalidDomainValueError("PlayMonthlyPlan.format must be PLAY_MONTHLY")
+        if not isinstance(self.plan_id, PlanId):
+            raise InvalidDomainValueError("PlayMonthlyPlan.plan_id must be PlanId")
+        _non_blank(self.classroom_ref, "PlayMonthlyPlan.classroom_ref")
+        if not isinstance(self.status, PlanStatus):
+            raise InvalidDomainValueError("PlayMonthlyPlan.status is invalid")
+        if not self.target_ages or any(age not in {3, 4, 5} for age in self.target_ages):
+            raise InvalidDomainValueError("target_ages must be a non-empty subset of {3, 4, 5}")
+        month = self.target_month
+        if not isinstance(month, YearMonth) or type(self.school_year) is not int:
+            raise InvalidDomainValueError("PlayMonthlyPlan needs a YearMonth and an int school_year")
+        if month.calendar_year != (self.school_year if month.calendar_month >= 3 else self.school_year + 1):
+            raise InvalidDomainValueError("target_month must belong to the school year")
+        week_ids = tuple(week.week_id for week in self.weeks)
+        if not week_ids or len(set(week_ids)) != len(week_ids) or any(
+            w.target_month != month for w in week_ids
+        ):
+            raise InvalidDomainValueError("PlayMonthlyPlan.weeks must be unique weeks of target_month")
+        if tuple(h.week_id for h in self.habits) != week_ids:
+            raise InvalidDomainValueError("PlayMonthlyPlan needs one habit per week, in week order")
+        if tuple(s.week_id for s in self.safety_weeks) != week_ids:
+            raise InvalidDomainValueError("PlayMonthlyPlan needs one safety placement per week")
+        candidate_ids = {c.cell.item_id for c in self.safety_candidates}
+        if any(
+            s.candidate_item_id is not None and s.candidate_item_id not in candidate_ids
+            for s in self.safety_weeks
+        ):
+            raise InvalidDomainValueError("A safety placement must name a kept candidate")
+        if tuple(t.semantic_key for t in self.teacher_inputs) != self.layout.teacher_input_keys:
+            raise InvalidDomainValueError("teacher_inputs must follow the layout's teacher-input keys")
+        if any(
+            t.generation is not None and t.generation.method is not GenerationMethod.MANUAL
+            for t in self.teacher_inputs
+        ):
+            raise InvalidDomainValueError("A teacher-input cell is never generated; only MANUAL")
+        cells = self.cells()
+        for name in ("item_id", "semantic_key"):
+            values = [getattr(cell, name) for cell in cells]
+            if len(values) != len(set(values)):
+                raise InvalidDomainValueError(f"PlayMonthlyPlan {name}s must be unique")
+
+    def cells(self) -> tuple[PlayMonthlyCell, ...]:
+        return (
+            self.theme,
+            self.rationale,
+            *(a.cell for a in (*self.together, *self.free_play)),
+            *(h.habit.cell for h in self.habits),
+            *(c.cell for c in self.safety_candidates),
+            self.health.cell,
+            self.nutrition.cell,
+            *self.teacher_inputs,
+        )
