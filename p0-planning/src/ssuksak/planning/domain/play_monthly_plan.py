@@ -9,14 +9,17 @@ never by its position.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from enum import Enum
 
-from .errors import InvalidDomainValueError
-from .identifiers import ItemId, PlanId
+from .errors import InvalidDomainValueError, InvalidStateTransitionError
+from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
 from .plan import PlanStatus
 from .provenance import (
+    AuditEvent,
+    AuditEventType,
     AuditHistory,
     EvidenceSource,
     EvidenceSourceType,
@@ -157,6 +160,13 @@ class PlayActivity:
             raise InvalidDomainValueError(
                 "PlayActivity cites PARENT_PLAN exactly when it snapshots a parent play"
             )
+
+    @property
+    def content_ids(self) -> tuple[str, ...]:
+        """The linked curriculum content ids, read from the name's CURRICULUM evidence."""
+        return tuple(
+            s.source_id for s in self.cell.evidence if s.source_type is EvidenceSourceType.CURRICULUM
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,3 +411,53 @@ class PlayMonthlyPlan:
             *(d.cell for d in self.drill_candidates),
             *self.teacher_inputs,
         )
+
+    def ensure_mutable(self, operation: str) -> None:
+        if not self.status.is_mutable:
+            raise InvalidStateTransitionError(
+                f"{operation} is not allowed for a CONFIRMED PlayMonthlyPlan"
+            )
+
+    def find_cell(self, item_id: ItemId) -> PlayMonthlyCell | None:
+        return next((c for c in self.cells() if c.item_id == item_id), None)
+
+    def replace_cell(self, updated: PlayMonthlyCell) -> PlayMonthlyPlan:
+        """Swap the cell with the same ``item_id`` and ``semantic_key``; nothing else moves."""
+        self.ensure_mutable("replace_cell")
+        current = self.find_cell(updated.item_id)
+        if current is None or current.semantic_key != updated.semantic_key:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan cell not found: {updated.item_id}")
+
+        def swap(cell: PlayMonthlyCell) -> PlayMonthlyCell:
+            return updated if cell.item_id == updated.item_id else cell
+
+        def rows(activities: tuple[PlayActivity, ...]) -> tuple[PlayActivity, ...]:
+            return tuple(
+                replace(a, cell=swap(a.cell), description=swap(a.description)) for a in activities
+            )
+
+        return replace(
+            self,
+            theme=swap(self.theme),
+            rationale=swap(self.rationale),
+            together=rows(self.together),
+            free_play=rows(self.free_play),
+            habits=tuple(
+                replace(h, habit=replace(h.habit, cell=swap(h.habit.cell))) for h in self.habits
+            ),
+            safety_candidates=tuple(replace(c, cell=swap(c.cell)) for c in self.safety_candidates),
+            health=replace(self.health, cell=swap(self.health.cell)),
+            nutrition=replace(self.nutrition, cell=swap(self.nutrition.cell)),
+            drill_candidates=tuple(replace(d, cell=swap(d.cell)) for d in self.drill_candidates),
+            teacher_inputs=tuple(swap(t) for t in self.teacher_inputs),
+        )
+
+    def confirm(self, *, actor_id: ActorId, occurred_at: datetime) -> PlayMonthlyPlan:
+        self.ensure_mutable("confirm")
+        event = AuditEvent(
+            event_type=AuditEventType.CONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(self, status=PlanStatus.CONFIRMED, audit=self.audit.append(event))
