@@ -57,7 +57,7 @@
     }
     unplace(p, index) { this.state.slots[p][index] = null; }
     edit(p, id, field, value) {
-      if (!this.state.selected[p]?.includes(id) || !FIELDS.includes(field)) throw new Error('INVALID_EDIT');
+      if (!this.rows[p]?.[id] || ![...FIELDS, 'learning_content_ids'].includes(field)) throw new Error('INVALID_EDIT');
       if (field === 'learning_content_ids' ? !this.validLearning(value) : typeof value !== 'string') throw new Error('INVALID_VALUE');
       const key = `${p}:${id}`, edits = this.state.edits[key] || {};
       if (JSON.stringify(value) === JSON.stringify(this.rows[p][id][field])) delete edits[field]; else edits[field] = value;

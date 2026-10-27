@@ -1,10 +1,11 @@
 (() => {
   'use strict';
-  const activeModel = 'demo';
-  const data = window.PLAY_PROJECT_DEMO, curriculum = window.PLAY_CURRICULUM;
-  const STORAGE = 'ssemple-ui-draft-yearly-v1';
+  const activeModel = new URLSearchParams(location.search).get('model') === 'luna' ? 'luna' : 'sol';
+  const data = activeModel === 'sol' ? window.PLAY_PROJECT_SOL : window.PLAY_PROJECT_LIVE, curriculum = window.PLAY_CURRICULUM;
+  const STORAGE = activeModel === 'sol' ? 'ssuksak-shared-document-editor-sol-v1' : 'ssuksak-shared-document-editor-demo-v1';
   let saved = null; try { saved = JSON.parse(localStorage.getItem(STORAGE)); } catch {}
   const model = new window.PlayEditorModel(data, curriculum, saved);
+  try { localStorage.setItem('ssuksak-local-active-yearly-model',activeModel); } catch {}
   const PERIODS = [
     {key:'m03_m05', name:'봄', label:'3~5월', months:'3월~5월'},
     {key:'m06_m08', name:'여름', label:'6~8월', months:'6월~8월'},
@@ -18,14 +19,22 @@
   let typingKey = null, drag = null, toastTimer, saveTimer, detailId = null;
   document.querySelectorAll('[data-monthly-link]').forEach(link=>link.addEventListener('click',event=>{
     event.preventDefault();clearTimeout(saveTimer);
-    try { localStorage.setItem(STORAGE,JSON.stringify(model.state)); }
+    try { localStorage.setItem(STORAGE,JSON.stringify(model.state));localStorage.setItem('ssuksak-local-active-yearly-model',activeModel); }
     catch { notify('저장 공간을 확인해 주세요. 현재 편집 내용을 유지합니다.');return; }
     const month={m03_m05:3,m06_m08:7,m09_m11:10,m12_m02:12}[view.period];
     location.assign(`/monthly/?month=${month}`);
   }));
   const $ = id => document.getElementById(id);
   document.body.dataset.exampleModel = activeModel;
-  document.querySelector('.prototype-pill').textContent = '디자인 검토용 · 합성 후보 40개';
+  $('example-model').value = activeModel;
+  document.querySelector('.prototype-pill').textContent = `${activeModel === 'sol' ? 'Sol' : 'Luna'} 생성 예시 · 후보 40개`;
+  $('example-model').onchange = event => {
+    try { localStorage.setItem(STORAGE, JSON.stringify(model.state)); }
+    catch { notify('저장 공간을 확인해 주세요. 현재 편집 화면을 유지합니다.'); return; }
+    const url = new URL(location.href);
+    url.searchParams.set('model', event.target.value === 'luna' ? 'luna' : 'sol');
+    location.assign(url.href);
+  };
   const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const periodInfo = key => PERIODS.find(p => p.key === key);
   const chosen = () => model.state.selected[view.period];
@@ -119,7 +128,7 @@
     const row = model.row(p.key,id), field = view.field;
     let form;
     if (field === 'learning_content_ids') {
-      form = `<div class="form-label">놀이를 통한 배움 <span class="character-count">읽기 전용</span></div><div class="learning-selected">${learningHTML(row)}</div><p class="field-hint">표시는 누리과정 내용으로 그립니다. 연간 배움 연결 변경은 후속이므로 이 시제품에서는 편집하지 않아요.</p>`;
+      form = `<div class="form-label">놀이를 통한 배움 <span class="character-count">${row.learning_content_ids.length}개 선택</span></div><div class="learning-selected">${learningHTML(row)}</div><p class="field-hint">본문에 드러난 유아의 경험과 연결되는 내용을 2~3개 골라 주세요. 선택한 내용은 문서에 원문으로 들어가요.</p><input class="curriculum-search" id="curriculum-search" placeholder="배움 내용이나 영역 검색" aria-label="배움 내용 검색"><div class="curriculum-list">${curriculum.map(c=>`<label class="curriculum-option" data-search="${esc(c.display)}"><input type="checkbox" data-learning="${c.id}" ${row.learning_content_ids.includes(c.id)?'checked':''}><span><b>${esc(c.domain)} · ${esc(c.category)}</b>${esc(c.text)}</span></label>`).join('')}</div>`;
     } else {
       form = `<label class="form-label" for="field-value">${FIELD_NAMES[field]}<span id="character-count" class="character-count">${row[field].length}자</span></label><textarea id="field-value" class="editor-input ${field==='play_name'?'name-input':field==='support_direction'?'support-input':''}" data-edit-field="${field}" spellcheck="false">${esc(row[field])}</textarea><p class="field-hint">${field==='support_direction'?'이 놀이에서 교사가 준비하고 도울 내용을 편하게 다듬어 주세요. 수정하는 동안 문서에 바로 반영돼요.':field==='materials'?'실제로 준비할 물품을 쉼표로 나누어 적어 주세요.':'유아의 호기심이 떠오르는 이름으로 바꿔 볼 수 있어요.'}</p>`;
     }
@@ -186,6 +195,12 @@
     if(field==='play_name') document.querySelector('.inspector .edit-title').textContent=event.target.value || '놀이명을 입력해 주세요';
   });
   $('inspector-content').addEventListener('focusout',event=>{ if(event.target.dataset.editField) typingKey=null; });
+  $('inspector-content').addEventListener('change',event=>{
+    const content=event.target.dataset.learning, id=currentId(); if(!content||!id) return;
+    let ids=model.row(view.period,id).learning_content_ids.slice(); ids=event.target.checked?[...ids,content]:ids.filter(x=>x!==content);
+    if(ids.length<2||ids.length>3) { event.target.checked=!event.target.checked; notify('배움은 2~3개를 선택해 주세요. 다른 배움을 먼저 추가하거나 빼면 바꿀 수 있어요.'); return; }
+    mutate(()=>model.edit(view.period,id,'learning_content_ids',ids)); renderPaper(); renderInspector();
+  });
   document.addEventListener('dragstart',event=>{
     const card=event.target.closest('[data-drag-id]'); if(!card) return;
     drag={p:card.dataset.period,id:card.dataset.dragId}; event.dataTransfer.setData('text/plain',JSON.stringify(drag)); event.dataTransfer.effectAllowed='move';

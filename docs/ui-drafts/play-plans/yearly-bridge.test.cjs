@@ -1,8 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const Model=require('./yearly/model.js'),Bridge=require('./yearly-bridge.js');
 const context={};context.window=context;
-for(const name of ['../data.js','demo-candidates.js','../curriculum.js'])vm.runInNewContext(fs.readFileSync(__dirname+'/yearly/'+name,'utf8'),context);
-const data=context.PLAY_PROJECT_DEMO,curriculum=context.PLAY_CURRICULUM;
+for(const name of ['sol-candidates.js','live-candidates.js','curriculum.js'])vm.runInNewContext(fs.readFileSync(__dirname+'/yearly/'+name,'utf8'),context);
+const data=context.PLAY_PROJECT_SOL,curriculum=context.PLAY_CURRICULUM;
 function chosen(){const m=new Model(data,curriculum);for(let i=1;i<=5;i++)m.toggle('m09_m11','cand'+i);return m;}
 
 test('all months resolve the shared yearly season, including January and February',()=>{
@@ -26,6 +26,6 @@ test('missing or partial selection never silently chooses five candidates',()=>{
   assert.equal(r.status,'incomplete');assert.equal(r.count,4);assert.deepEqual(r.plays,[]);
 });
 test('different model data and malformed storage cannot become a parent selection',()=>{
-  const saved=chosen().snapshot();assert.equal(Bridge.read({...data,run_id:'another-fixture'},curriculum,saved,10).status,'invalid');
+  const saved=chosen().snapshot();assert.equal(Bridge.read(context.PLAY_PROJECT_LIVE,curriculum,saved,10).status,'invalid');
   saved.edits['m09_m11:cand1']={learning_content_ids:null};assert.equal(Bridge.read(data,curriculum,saved,10).status,'invalid');
 });

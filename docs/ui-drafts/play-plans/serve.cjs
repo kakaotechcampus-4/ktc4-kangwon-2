@@ -3,13 +3,11 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-const files = new Set([
-  'index.html', 'app.js', 'styles.css', 'model.js', 'data.js', 'curriculum.js',
-  'plans-nav.css', 'yearly-bridge.js', 'assets/nanum-gothic.ttf', 'assets/FONT-LICENSE.txt',
-  'yearly/index.html', 'yearly/app.js', 'yearly/styles.css', 'yearly/model.js', 'yearly/demo-candidates.js',
-]);
+const files = new Set(require('./frontend-source-manifest.json').map(entry => entry.file)
+  .filter(name => !name.endsWith('.test.cjs')));
 const types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf', '.txt': 'text/plain; charset=utf-8'};
+  '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf', '.txt': 'text/plain; charset=utf-8',
+  '.json': 'application/json; charset=utf-8'};
 
 function createServer() {
   return http.createServer(async (request, response) => {

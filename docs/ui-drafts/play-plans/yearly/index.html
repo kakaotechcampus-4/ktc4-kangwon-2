@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'"><meta name="color-scheme" content="light"><title>연간 놀이계획안 체험 · 쌤플</title>
   <link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="/plans-nav.css">
-  <script src="../data.js" defer></script><script src="demo-candidates.js" defer></script><script src="../curriculum.js" defer></script><script src="model.js" defer></script><script src="app.js" defer></script>
+  <script src="live-candidates.js" defer></script><script src="sol-candidates.js" defer></script><script src="curriculum.js" defer></script><script src="model.js" defer></script><script src="app.js" defer></script>
 </head>
 <body>
 <aside class="sidebar">
@@ -13,12 +13,12 @@
   <div class="nav-caption">선생님의 작업 공간</div>
   <div class="nav-item">⌂ <span>홈</span></div><div class="nav-item current">▤ <span>계획안</span><i></i></div>
   <a class="subnav current local-link" href="/yearly/">연간 놀이 계획</a><a class="subnav local-link" href="/monthly/?month=10" data-monthly-link>월간 놀이 계획 →</a><div class="subnav">주간 계획</div>
-  <div class="sidebar-note"><span class="status-dot"></span>디자인 DRAFT<small>각자의 브라우저에 저장돼요.<br>PC 화면에서 사용해 주세요.</small></div>
+  <div class="sidebar-note"><span class="status-dot"></span>체험용 시제품<small>각자의 브라우저에 저장돼요.<br>PC 화면에서 사용해 주세요.</small></div>
 </aside>
 <div class="workspace">
-  <header class="topbar"><div class="breadcrumbs">계획안 <span>/</span> <strong>연간 놀이 계획</strong></div><nav class="plan-nav" aria-label="계획안 종류"><a href="/yearly/" aria-current="page">연간 계획</a><a href="/monthly/?month=10" data-monthly-link>월간 계획</a></nav><div class="top-meta"><span id="save-state" role="status">이 브라우저에 저장</span><span class="avatar">예</span> 예시반</div></header>
+  <header class="topbar"><div class="breadcrumbs">계획안 <span>/</span> <strong>연간 놀이 계획</strong></div><nav class="plan-nav" aria-label="계획안 종류"><a href="/yearly/" aria-current="page">연간 계획</a><a href="/monthly/?month=10" data-monthly-link>월간 계획</a></nav><div class="top-meta"><label class="example-picker">예시 모델 <select id="example-model"><option value="sol">Sol · 새 생성</option><option value="luna">Luna · 기존 생성</option></select></label><span id="save-state" role="status">이 브라우저에 저장</span><span class="avatar">예</span> 예시반</div></header>
   <main>
-    <section class="page-heading"><div><div class="eyebrow">2026학년도 · 만 4세 · 예시반</div><h1 id="page-title">함께 펼쳐 갈 놀이를 골라요</h1><p id="page-description">지원매체를 살펴보고, 각 구간에서 우리 반에 어울리는 놀이 5개를 골라 주세요.</p></div><span class="prototype-pill">디자인 검토용 · 합성 후보 40개</span></section>
+    <section class="page-heading"><div><div class="eyebrow">2026학년도 · 만 4세 · 예시반</div><h1 id="page-title">함께 펼쳐 갈 놀이를 골라요</h1><p id="page-description">지원매체를 살펴보고, 각 구간에서 우리 반에 어울리는 놀이 5개를 골라 주세요.</p></div><span class="prototype-pill">체험용 · 예시 후보 40개</span></section>
     <nav id="stepper" class="stepper" aria-label="계획안 작성 단계"><button data-step="choose" aria-current="step"><b>1</b>놀이 고르기</button><span></span><button data-step="edit"><b>2</b>배치하고 다듬기</button><span></span><button data-step="preview"><b>3</b>전체 초안 보기</button></nav>
     <div class="period-bar"><div id="period-tabs" class="period-tabs" role="tablist" aria-label="계획 구간"></div><div id="total-progress" class="total-progress"></div></div>
     <section id="choose-view">

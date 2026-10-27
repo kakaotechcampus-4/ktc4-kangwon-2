@@ -8,20 +8,21 @@
   const programs=['인성교육','수놀이','지구친구','꼬마농부 텃밭','한글놀이'],days=['월','화','수','목','금'];
   const view={tab:'edit',field:'theme',id:null,index:null,week:null,zoom:null};
   let model,undo=[],redo=[],typing=null,drag=null,toastTimer;
-  const storage=month=>`ssemple-ui-draft-monthly-v1-${month}`;
+  let connection=null,generating=false,drillMessage='';
+  const storage=month=>`ssuksak-monthly-v2-prototype-v1-${month}`;
   let parentContext={status:'missing',plays:[]};
   function readParentContext(){
-    let saved=null;try{saved=JSON.parse(localStorage.getItem('ssemple-ui-draft-yearly-v1'));}catch{}
-    parentContext=MonthlyParentBridge.read(PLAY_PROJECT_DEMO,PLAY_CURRICULUM,saved,model.month);
+    let source='sol',saved=null;try{source=localStorage.getItem('ssuksak-local-active-yearly-model')==='luna'?'luna':'sol';saved=JSON.parse(localStorage.getItem(source==='sol'?'ssuksak-shared-document-editor-sol-v1':'ssuksak-shared-document-editor-demo-v1'));}catch{}
+    parentContext=MonthlyParentBridge.read(source==='sol'?PLAY_PROJECT_SOL:PLAY_PROJECT_LIVE,PLAY_CURRICULUM,saved,model.month);
     model.season={...D.season(model.month),parents:parentContext.status==='ready'?parentContext.plays.map(p=>p.name):[...D.season(model.month).parents]};
-    $('yearly-link').href=`/yearly/?period=${MonthlyParentBridge.periodKey(model.month)}`;
+    $('yearly-link').href=`/yearly/?model=${source}&period=${MonthlyParentBridge.periodKey(model.month)}`;
   }
   function parentSummary(){
     const linked=parentContext.status==='ready';
     const note=linked?'같은 브라우저의 연간 선택·편집 내용을 읽었어요. 아직 서비스에서 확정한 부모 계획은 아닙니다.':`연간 화면에서 이 계절의 놀이 5개를 선택해 주세요${parentContext.status==='incomplete'?` (현재 ${parentContext.count}/5개)`:''}. 아래는 화면 확인용 예시입니다.`;
     return `<details class="context-box" open><summary>${linked?'연간에서 선택한 놀이':'연간 연결 예시'} · ${model.season.months}</summary><ol>${model.season.parents.map((name,i)=>`<li>${esc(name)}${linked?`<details><summary>지원매체·지원 방향</summary><p>${esc(parentContext.plays[i].materials)}</p><p>${esc(parentContext.plays[i].support)}</p></details>`:''}<p><button class="small-button" data-action="parent-add" data-group="together" data-index="${i}">함께 하는 활동에 추가</button> <button class="small-button" data-action="parent-add" data-group="free" data-index="${i}">자유놀이에 추가</button></p></li>`).join('')}</ol><p class="parent-link-note">${esc(note)}${model.state.monthlyGeneration?' 기존 실측 초안은 생성 당시의 예시 연간을 사용했으며, 이 목록으로 자동 재생성되지 않습니다.':''}</p></details>`;
   }
-  function load(month){let saved=null;try{saved=JSON.parse(localStorage.getItem(storage(month)));}catch{}model=new MonthlyEditor(month,saved);view.week=model.weeks[0].id;view.field='theme';view.id=null;view.index=null;view.tab='edit';undo=[];redo=[];typing=null;$('month').value=month;render();$('paper-canvas').scrollTop=0;$('inspector-body').scrollTop=0;if(saved&&!model.restored)notify('저장된 예시 형식을 확인할 수 없어 원본 예시를 열었어요.');}
+  function load(month){let saved=null;try{saved=JSON.parse(localStorage.getItem(storage(month)));}catch{}model=new MonthlyEditor(month,saved);view.week=model.weeks[0].id;view.field='theme';view.id=null;view.index=null;view.tab='edit';undo=[];redo=[];typing=null;$('month').value=month;$('load-monthly-live').disabled=![7,10].includes(month);$('load-monthly-live').textContent=`${month}월 Sol 실측 초안`;render();$('paper-canvas').scrollTop=0;$('inspector-body').scrollTop=0;if(saved&&!model.restored)notify('저장된 예시 형식을 확인할 수 없어 원본 예시를 열었어요.');}
   function notify(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),2600);}
   function persist(){try{localStorage.setItem(storage(model.month),JSON.stringify(model.state));$('save-state').textContent='이 브라우저에 저장됨';}catch{$('save-state').textContent='브라우저 저장 공간을 확인해 주세요';}$('undo').disabled=!undo.length;$('redo').disabled=!redo.length;}
   function change(fn,key=null){const before=model.snapshot();try{fn();}catch{model.restore(before);notify('배치 위치나 입력 내용을 확인해 주세요.');return false;}if(JSON.stringify(before)!==JSON.stringify(model.state)){if(!key||typing!==key){undo.push(before);if(undo.length>40)undo.shift();}redo=[];typing=key;persist();}return true;}
@@ -55,7 +56,35 @@
     return `<div class="edit-kicker">우리 반의 생활과 안전</div><h2 class="edit-heading">안전교육을 골라 배치해요</h2><p class="edit-hint">후보를 오른쪽 주차 칸으로 끌어놓으세요. 버튼으로도 배치할 수 있어요.</p>${weekSelect()}<p class="pool-note">한 주에 1개 · 같은 후보를 다른 주에도 쓸 수 있어요.<br>빈 주차는 안내 사항이며 초안 확인을 막지 않아요.</p>${s.safetyCandidates.map(c=>{const used=model.weeks.filter(w=>s.safetySlots[w.id]===c.id);return `<article class="pool-card ${used.length?'assigned':''}" draggable="true" data-drag-safety="${c.id}"><div class="pool-label"><span>⠿ ${esc(c.label)}</span><span>${esc(c.kind)}</span></div><h3>${esc(c.title)||'내용 미작성'}</h3><div class="pool-actions"><small>${used.length?used.map(w=>w.label).join(' · ')+' 배치':'배치 전'}</small><div><button class="small-button" data-field="safety" data-id="${c.id}">편집</button> <button class="small-button" data-action="assign" data-id="${c.id}">이 주에 배치</button></div></div></article>`;}).join('')}${parentSummary()}`;
   }
   function drillPool(){
-    return `<section class="drill-pool" aria-label="소방 재난 훈련 후보"><div class="pool-section"><h3>소방·재난대비 후보 5개</h3><span>화면 예시</span></div><p class="pool-note">후보를 골라 넣거나 직접 작성하세요. 날짜·경로·집결 장소는 선생님이 정해 주세요.</p><button class="secondary drill-generate" disabled>AI 후보 생성 · API 연결 전</button><p class="helper">디자인 확인용 예시입니다. 유료 호출·법정 충족 검사는 하지 않습니다.</p>${model.state.drillCandidates.map(c=>`<article class="pool-card drill-card"><h3>${esc(c.title)}</h3><div class="pool-actions"><small>예시 주제 · 실시 기록 아님</small><button class="small-button" data-action="choose-drill" data-id="${esc(c.id)}">문서에 넣기</button></div></article>`).join('')}</section>`;
+    const generated=model.state.drillGeneration;
+    const sourceNames={'fire-kitchen':'조리실 화재','fire-electric':'전기 화재',earthquake:'지진',snow:'폭설·결빙',flood:'수해'};
+    const live=connection?.mode==='live',demo=connection?.mode==='demo';
+    const caption=generated?(generated.mode==='live'?`${generated.model} · 실제 생성 후보`:'가짜 전송 · 무료 연결시험 결과'):'화면 확인용 예시 · AI 생성 전';
+    const help=live?`이번 실행 최대 1회 · ${connection.budgetWon}원 한도. 버튼을 누르면 유료 호출됩니다.`:demo?'무료 연결시험 모드입니다. 실제 LLM은 호출하지 않습니다.':'실제 LLM 경로는 준비되어 있어요. 유료 호출은 아직 켜지 않았습니다.';
+    return `<section class="drill-pool" aria-label="소방 재난 훈련 후보"><div class="pool-section"><h3>소방·재난대비 후보 5개</h3><span>${generated?'생성됨':'예시'}</span></div><p class="pool-note">후보를 골라 넣거나 아래에 직접 작성하세요. 후보를 다시 만들어도 이미 작성한 내용은 유지돼요.<br>실제 날짜·경로·집결 장소는 선생님이 정해 주세요.</p><p class="helper">${esc(caption)}</p><button class="secondary drill-generate" data-action="generate-drills" ${generating||!connection?.canGenerate?'disabled':''}>${generating?'후보를 만들고 있어요…':demo?'무료 연결시험 · 후보 5개':live?'AI로 훈련 후보 5개 생성':'AI 생성 · 호출 승인 대기'}</button><p class="helper">${esc(help)}</p><p class="drill-message" role="status">${esc(drillMessage)}</p>${model.state.drillCandidates.map(c=>`<article class="pool-card drill-card"><div class="pool-label"><span>${c.sourceIds.map(id=>esc(sourceNames[id])).join(' · ')}</span></div><h3>${esc(c.title)}</h3><div class="pool-actions"><small>주제 제안 · 실시 기록 아님</small><button class="small-button" data-action="choose-drill" data-id="${esc(c.id)}">문서에 넣기</button></div></article>`).join('')}<details class="context-box"><summary>후보의 공식 자료 범위</summary><p class="helper">2026 보육사업안내 부록 8 · PDF 241~244쪽(인쇄 237~240쪽)의 상황을 정리한 로컬 검토용 요약입니다. 구체적인 대피 절차와 법정 충족을 자동 판정하지 않습니다. 안전교육 주차 배치와는 별도예요.</p></details></section>`;
+  }
+  async function loadConnection(){
+    try{const r=await fetch('/api/drills/status',{cache:'no-store'});if(!r.ok)throw Error();connection=await r.json();}
+    catch{connection=null;}
+    $('connection-state').textContent=connection?.mode==='live'?`훈련 후보 · ${connection.model} 연결 / 최대 1회`:connection?.mode==='demo'?'훈련 후보 · 무료 연결시험 모드':'훈련 후보 · 실제 호출 대기';
+    if(view.tab==='edit'&&view.field==='drill')renderInspector();
+  }
+  async function generateDrills(){
+    if(generating||!connection?.canGenerate)return;
+    const target=model,previous=JSON.stringify(model.state.drillCandidates);
+    generating=true;drillMessage='새 후보를 요청하고 있어요. 기존 문서와 후보는 그대로 보관 중입니다.';renderInspector();
+    try{
+      const r=await fetch('/api/drills/generate',{method:'POST',headers:{'Content-Type':'application/json','X-Local-CSRF':connection.csrfToken},body:JSON.stringify({month:target.month})});
+      const data=await r.json();
+      if(!r.ok)throw Error(data.error||'GENERATION_FAILED');
+      if(model!==target||JSON.stringify(model.state.drillCandidates)!==previous){drillMessage='월이나 후보 상태가 바뀌어 새 결과를 적용하지 않았어요.';notify(drillMessage);return;}
+      if(!change(()=>model.replaceDrills(data.candidates,data.metadata)))throw Error('INVALID_PROVIDER_ANSWER');
+      drillMessage=data.metadata.mode==='demo'?'무료 연결시험 완료 · 실제 LLM 생성 문장이 아닙니다.':`후보 5개를 만들었어요. 실제 비용 추정 ${Number(data.usage?.estimatedWon??0).toFixed(2)}원. 내용을 검토한 뒤 골라 주세요.`;
+      renderPaper();notify('후보 5개를 준비했어요. 문서 내용은 바꾸지 않았어요.');
+    }catch(e){
+      const messages={LIVE_CALL_NOT_ENABLED:'유료 호출을 켜기 전입니다.',CALL_LIMIT_REACHED:'이번 실행의 호출 1회를 사용했어요.',BUDGET_LIMIT_REACHED:'예산을 넘을 수 있어 전송하지 않았어요.',PROVIDER_USAGE_UNKNOWN:'토큰 사용량을 확인하지 못해 이후 호출을 멈췄어요.',PROVIDER_RESERVATION_EXCEEDED:'공급자 응답이 예약 한도를 넘어 이후 호출을 멈췄어요.',GENERATION_IN_PROGRESS:'다른 생성 요청이 진행 중입니다.'};
+      drillMessage=(messages[e.message]||'후보 생성에 실패했어요. 추가 유료 호출이나 자동 재시도는 하지 않습니다.')+' 기존 후보와 문서는 유지했어요.';
+    }finally{generating=false;await loadConnection();if(view.tab==='edit'&&view.field==='drill')renderInspector();}
   }
   function renderInspector(){
     $('tab-edit').setAttribute('aria-selected',view.tab==='edit');$('tab-pool').setAttribute('aria-selected',view.tab==='pool');
@@ -97,6 +126,7 @@
     const a=b.dataset.action;if(!a)return;
     if(a==='assign')applyCandidate(b.dataset.id);
     else if(a==='choose-drill'){if(value().trim()&&view.field==='drill'&&value()!==model.state.drillCandidates.find(c=>c.id===b.dataset.id)?.title){pendingDrill=b.dataset.id;$('replace-drill-dialog').showModal();}else{change(()=>model.chooseDrill(b.dataset.id));render();notify('훈련 주제를 문서에 넣었어요. 직접 수정할 수 있어요.');}}
+    else if(a==='generate-drills')generateDrills();
     else if(a==='unassign'){change(()=>model.assign(null,b.dataset.week));render();}
     else if(a==='open-pool'){view.tab='pool';renderInspector();}
     else if(a==='add'){let id;if(change(()=>{id=model.add(b.dataset.group);}))select(b.dataset.group,id);$('edit-text')?.focus();}
@@ -117,7 +147,10 @@
   let pendingDrill=null;
   $('cancel-drill-replace').onclick=()=>{pendingDrill=null;$('replace-drill-dialog').close();};
   $('confirm-drill-replace').onclick=()=>{if(pendingDrill){change(()=>model.chooseDrill(pendingDrill));render();}pendingDrill=null;$('replace-drill-dialog').close();};
-
+  let pendingMonthly=null;
+  $('load-monthly-live').onclick=async()=>{try{const file=model.month===10?'/monthly-october-core-live.json':'/monthly-july-live.json';const r=await fetch(file,{cache:'no-store'});if(!r.ok)throw Error();pendingMonthly=await r.json();if(pendingMonthly.target!==model.target)throw Error();$('monthly-live-title').textContent=`Sol로 생성한 ${model.month}월 초안을 볼까요?`;$('monthly-live-dialog').showModal();}catch{pendingMonthly=null;notify('아직 실측 결과가 준비되지 않았거나 월이 달라요.');}};
+  $('cancel-monthly-live').onclick=()=>{pendingMonthly=null;$('monthly-live-dialog').close();};
+  $('confirm-monthly-live').onclick=()=>{if(!pendingMonthly)return;try{localStorage.setItem(`${storage(model.month)}-before-sol-${Date.now()}`,JSON.stringify(model.snapshot()));}catch{notify('기존 초안을 복사 보관할 공간이 부족해요. 현재 내용은 유지합니다.');return;}if(change(()=>model.applyMonthResult(pendingMonthly))){view.field='theme';view.tab='edit';view.id=null;render();$('inspector-body').scrollTop=0;$('paper-canvas').scrollTop=0;notify(`${model.month}월 Sol 초안을 불러왔어요. 안전교육과 훈련은 후보에서 골라 주세요.`);}pendingMonthly=null;$('monthly-live-dialog').close();};
   $('month').innerHTML=[3,4,5,6,7,8,9,10,11,12,1,2].map(m=>`<option value="${m}">${m<3?'2027':'2026'}년 ${m}월</option>`).join('');$('month').onchange=e=>load(Number(e.target.value));
   $('zoom-fit').onclick=()=>{view.zoom=null;fit();};$('zoom-in').onclick=()=>{view.zoom=Math.min(1.6,(view.zoom??Math.min(1,($('paper-canvas').clientWidth-52)/794))+.1);fit();};$('zoom-out').onclick=()=>{view.zoom=Math.max(.3,(view.zoom??Math.min(1,($('paper-canvas').clientWidth-52)/794))-.1);fit();};
   new ResizeObserver(fit).observe($('paper-canvas'));document.fonts.ready.then(fit);
@@ -132,5 +165,5 @@
   });
   document.addEventListener('dragend',()=>{drag=null;document.querySelectorAll('.drop-over').forEach(x=>x.classList.remove('drop-over'));});
   const requestedMonth=Number(new URLSearchParams(location.search).get('month'));load(Number.isInteger(requestedMonth)&&requestedMonth>=1&&requestedMonth<=12?requestedMonth:7);
-  $('connection-state').textContent='디자인 DRAFT · API 연결 없음';
+  loadConnection();
 })();
