@@ -338,12 +338,11 @@ export default function DocumentsPage() {
       stale: false,
     })),
   ];
+  // 「다시 검토」는 상태가 아니라 근거가 바뀌었다는 표시다. 상태 칸과 따로 센다.
+  const matchesFilter = (d: (typeof entries)[number]) =>
+    filter === "all" ? true : filter === "stale" ? d.stale : d.status === filter;
   const library = entries
-    .filter(
-      (d) =>
-        (filter === "all" || d.status === filter) &&
-        `${d.title} ${d.childName} ${d.className}`.includes(search),
-    )
+    .filter((d) => matchesFilter(d) && `${d.title} ${d.childName} ${d.className}`.includes(search))
     .sort(byArchiveOrder);
 
   const activeServerId = documentServerId(active);
@@ -737,6 +736,9 @@ export default function DocumentsPage() {
                 ["all", "전체"],
                 ["draft", "검토 중"],
                 ["confirmed", "확정"],
+                // 근거가 바뀐 문서를 바로 추려 본다. 문서가 쌓이면 목록을 훑어
+                // 「· 재검토」를 찾아야 했다 (수린 점검).
+                ["stale", "다시 검토"],
               ].map(([id, label]) => (
                 <button
                   key={id}
@@ -744,7 +746,12 @@ export default function DocumentsPage() {
                   className={filter === id ? ws.selected : undefined}
                   onClick={() => setFilter(id)}
                 >
-                  {label} {entries.filter((d) => id === "all" || d.status === id).length}
+                  {label}{" "}
+                  {
+                    entries.filter((d) =>
+                      id === "all" ? true : id === "stale" ? d.stale : d.status === id,
+                    ).length
+                  }
                 </button>
               ))}
             </div>

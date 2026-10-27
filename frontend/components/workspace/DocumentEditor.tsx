@@ -424,6 +424,9 @@ export default function DocumentEditor({
           <span className={ws.badge}>
             {doc.status === "confirmed" ? "교사 확정" : "검토 중인 초안"}
           </span>
+          {/* 근거가 바뀐 문서는 제목 줄에서 바로 보여야 한다. 아래쪽 안내문만으로는
+              문서를 열고 스크롤해야 알 수 있었다 (수린 점검). */}
+          {server?.stale && <span className={ws.badge}>다시 검토</span>}
           <span className={ws.muted}>
             {doc.origin === "import"
               ? "등록 증빙"

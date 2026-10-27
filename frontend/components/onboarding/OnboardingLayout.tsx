@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { fontClassName } from "@/lib/fonts";
 import OnboardingStepIndicator from "./OnboardingStepIndicator";
 import type { OnboardingStep } from "@/lib/onboarding/types";
+import { readToken } from "@/lib/auth/token";
+import { useClientState } from "@/lib/hooks/use-client-state";
 
 /**
  * 시작 설정(온보딩)의 틀. 브랜드 머리 + 진행 표시 + 종이 한 장.
@@ -17,10 +19,19 @@ export default function OnboardingLayout({
   step: OnboardingStep;
   children: ReactNode;
 }) {
+  // 로고가 가는 곳은 교사가 누구냐에 따라 다르다. 처음 가입한 사람에게는 아직 원이 없어
+  // 메인으로 보내봐야 할 일이 없지만, 설정을 고치러 들어온 교사에게 소개 화면을 띄우면
+  // 쓰던 자리에서 튕겨 나간다 (수린 점검).
+  const [signedIn] = useClientState(() => !!readToken(), false);
+  const home = signedIn ? "/" : "/welcome";
   return (
     <div className={`${fontClassName} min-h-screen bg-cream px-5 py-6 font-body text-ink sm:px-8`}>
       <header className="mx-auto flex max-w-[1000px] items-center justify-between gap-3">
-        <Link href="/welcome" aria-label="쌤플 소개로" className="flex items-baseline">
+        <Link
+          href={home}
+          aria-label={signedIn ? "쌤플 메인으로" : "쌤플 소개로"}
+          className="flex items-baseline"
+        >
           <span className="text-[27px] font-bold tracking-[-0.04em] text-primary-deep">
             Ssample<span className="text-peach-strong">.</span>
           </span>
