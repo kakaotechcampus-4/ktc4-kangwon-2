@@ -152,8 +152,14 @@ def _valid(request) -> dict:
         "target_month": request.target_month,
         "theme": "봄 길을 걸어요",
         "rationale": "봄에는 바깥에서 새싹과 꽃을 만나는 놀이가 이어질 것으로 예상합니다.",
-        "together": [{"name": f"함께 놀이 {n}", "content_ids": ids[:2], "parent_ref": None} for n in range(1, 6)],
-        "free_play": [{"name": f"자유놀이 {n}", "content_ids": ids[2:3], "parent_ref": None} for n in range(1, 6)],
+        "together": [
+            {"name": f"함께 놀이 {n}", "description": f"함께 놀이 {n}을 설명해요.", "content_ids": ids[:2], "parent_ref": None}
+            for n in range(1, 6)
+        ],
+        "free_play": [
+            {"name": f"자유놀이 {n}", "description": f"자유놀이 {n}을 설명해요.", "content_ids": ids[2:3], "parent_ref": None}
+            for n in range(1, 6)
+        ],
         # Contains safety words (교통안전 …) on purpose: ordinary here, not leakage.
         "safety": [
             {"slot": s.slot, "text": f"{s.label} 약속을 함께 알아보아요", "refs": [s.allowed[0][0]]}
@@ -337,6 +343,7 @@ def test_only_selected_plays_of_the_season_reach_the_request():
     plays = payload["parent_plays"]
     assert [p["ref"] for p in plays] == [f"m03_m05.{key}" for key in SELECTED]
     assert [p["emphasized"] for p in plays] == [False, False, False, True, False]
+    assert (plays[0]["materials"], plays[0]["support_direction"]) == ("종이 상자", "자료를 더해 줍니다.")
     content = provider.requests[0].user_content
     assert "m03_m05 놀이 1\"" not in content and "m03_m05 놀이 3" not in content  # unselected
     assert "m06_m08" not in content  # other season
@@ -555,7 +562,7 @@ def _duplicate_name(data):
 
 
 def _six_rows(data):
-    data["together"].append({"name": "여섯째 놀이", "content_ids": ["t.1"], "parent_ref": None})
+    data["together"].append({"name": "여섯째 놀이", "description": "설명", "content_ids": ["t.1"], "parent_ref": None})
 
 
 @pytest.mark.parametrize(
@@ -580,6 +587,7 @@ def _six_rows(data):
         (_set(("target_month",), "2027-05"), "TARGET_MONTH_MISMATCH"),
         (_set(("theme",), "4월 14일 소풍 놀이"), "UNSUPPORTED_FACT"),
         (_set(("rationale",), "홍길동 선생님과 함께하는 놀이를 예상합니다."), "UNSUPPORTED_FACT"),
+        (_set(("together", 0, "description"), "4월 14일에 공원에서 하는 놀이입니다."), "UNSUPPORTED_FACT"),
         (_set(("drills",), []), "MISSING_DRILL_TOPIC"),
         (_set(("drills", 0, "topic_id"), "snow"), "UNKNOWN_DRILL_TOPIC"),  # not chosen for April
         (_set(("drills", 1, "topic_id"), "fire_a"), "DUPLICATE_DRILL_TOPIC"),
@@ -604,6 +612,8 @@ def test_invalid_output_is_rejected_after_one_failed_repair(edit, code):
         _set(("safety", 0, "week_id"), "2027-04-W1"),  # weekly placement is the teacher's
         _set(("together", 0, "content_ids"), "t.1"),
         _set(("drills", 0, "assembly_place"), "놀이터"),  # place and route are the teacher's
+        _set(("free_play", 0, "description"), None),
+        lambda data: data["together"][0].pop("description"),
     ],
 )
 def test_unrequested_fields_are_parse_errors_and_store_nothing(edit):
@@ -770,3 +780,59 @@ def test_drill_origins_need_unique_ids_and_sha256_digests():
     twice = (DrillOrigin("test.guide", "합성", "0" * 64, "1"), DrillOrigin("test.guide", "합성", "1" * 64, "2"))
     with pytest.raises(InvalidDomainValueError):
         replace(DRILLS, origins=twice)
+
+
+def test_each_activity_pairs_a_document_name_with_an_edit_screen_description():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+
+    for activity in plan.together + plan.free_play:
+        name, description = activity.cell, activity.description
+        assert description.semantic_key == f"{name.semantic_key}.description"
+        assert description.item_id != name.item_id and description.evidence == name.evidence
+        assert description.value == f"{name.value}을 설명해요."
+        assert description.generation.method is GenerationMethod.RULE_LLM
+    assert plan.together[0].cell.semantic_key == f"together.{plan.together[0].cell.item_id.value}"
+
+
+@pytest.mark.parametrize(
+    ("second", "versions"),
+    [
+        # The repair rewrites only the flagged description; the name keeps its first version.
+        (_set(("together", 1, "description"), "물이 담긴 통에 여러 재료를 띄워 보는 놀이입니다."), None),
+        # Renaming the play while repairing its description is outside the flagged location.
+        (_set(("together", 1, "name"), "다른 놀이 이름"), "REPAIR_CHANGED_UNFLAGGED"),
+    ],
+)
+def test_a_description_repair_stays_inside_the_description(second, versions):
+    invent = _set(("together", 1, "description"), "4월 14일에 하는 놀이입니다.")
+
+    def repair(data):
+        invent(data)
+        second(data)
+
+    use_case, command, plans, provider, _ = _run(invent, repair)
+    if versions is not None:
+        with pytest.raises(ProposalRejectedError) as error:
+            use_case.execute(command)
+        assert versions in error.value.validation_codes and plans.save_count == 0
+        return
+    plan = use_case.execute(command)
+
+    issues = json.loads(provider.requests[1].user_content)["issues"]
+    assert issues == [{"location": "together[1].description", "code": "UNSUPPORTED_FACT"}]
+    row = plan.together[1]
+    assert (row.cell.generation.rule_version, row.description.generation.rule_version) == (
+        PLAY_MONTHLY_PROMPT_VERSION,
+        PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
+    )
+    assert row.description.value == "물이 담긴 통에 여러 재료를 띄워 보는 놀이입니다."
+
+
+def test_domain_keeps_a_description_paired_with_its_name():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+    first, second = plan.together[:2]
+
+    with pytest.raises(InvalidDomainValueError):
+        replace(first, description=second.description)
