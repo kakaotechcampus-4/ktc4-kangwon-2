@@ -34,6 +34,8 @@ from .year_month import YearMonth
 
 PLAY_MONTHLY_FORMAT = "PLAY_MONTHLY"
 PLAY_SECTIONS = ("together", "free_play")
+DRILL_CELL_KEY = "fire_disaster_drill"
+DRILL_COPY_RULE_ID = "play_monthly.drill_copy"
 
 
 def _non_blank(value: object, path: str) -> None:
@@ -406,11 +408,21 @@ class PlayMonthlyPlan:
             raise InvalidDomainValueError("Drill candidates must name distinct topics")
         if tuple(t.semantic_key for t in self.teacher_inputs) != self.layout.teacher_input_keys:
             raise InvalidDomainValueError("teacher_inputs must follow the layout's teacher-input keys")
-        if any(
-            t.generation is not None and t.generation.method is not GenerationMethod.MANUAL
-            for t in self.teacher_inputs
-        ):
-            raise InvalidDomainValueError("A teacher-input cell is never generated; only MANUAL")
+        drill_ids = {d.cell.item_id for d in self.drill_candidates}
+        for t in self.teacher_inputs:
+            if t.generation is None or t.generation.method is GenerationMethod.MANUAL:
+                continue
+            # The one exception (M2-D17): the drill cell holds a copied drill candidate.
+            copies = [e for e in t.audit if e.event_type is AuditEventType.CANDIDATE_COPIED]
+            if (
+                t.semantic_key != DRILL_CELL_KEY
+                or t.generation != self.drill_copy_generation
+                or not copies
+                or any(e.copied_from not in drill_ids for e in copies)
+            ):
+                raise InvalidDomainValueError(
+                    "A teacher-input cell is MANUAL, or the drill cell holds a copied drill candidate"
+                )
         if not isinstance(self.removed_activities, tuple) or not all(
             isinstance(r, RemovedActivity) for r in self.removed_activities
         ):
@@ -436,6 +448,12 @@ class PlayMonthlyPlan:
             self.nutrition.cell,
             *(d.cell for d in self.drill_candidates),
             *self.teacher_inputs,
+        )
+
+    @property
+    def drill_copy_generation(self) -> GenerationMethodDetail:
+        return GenerationMethodDetail(
+            GenerationMethod.RULE_ONLY, rule_id=DRILL_COPY_RULE_ID, rule_version=self.layout.layout_version
         )
 
     def ensure_mutable(self, operation: str) -> None:

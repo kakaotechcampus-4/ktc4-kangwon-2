@@ -99,6 +99,8 @@ class AuditEventType(str, Enum):
     CANDIDATES_SELECTED = "CANDIDATES_SELECTED"
     # Plan-level: a teacher added or removed a play row, or placed a safety week (2026-10-27).
     ARRANGEMENT_CHANGED = "ARRANGEMENT_CHANGED"
+    # Cell-level: a teacher copied a same-plan candidate into a cell (2026-10-27, M2-D17).
+    CANDIDATE_COPIED = "CANDIDATE_COPIED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +206,7 @@ class AuditEvent:
     selection_change: SelectionChange | None = None
     link_change: LinkChange | None = None
     arrangement_change: ArrangementChange | None = None
+    copied_from: ItemId | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_type, AuditEventType):
@@ -279,6 +282,19 @@ class AuditEvent:
                 )
         elif self.arrangement_change is not None:
             raise InvalidDomainValueError("Only ARRANGEMENT_CHANGED carries arrangement_change")
+        # generation_change is absent only when the cell was never written before the copy.
+        if self.event_type is AuditEventType.CANDIDATE_COPIED:
+            if (
+                self.actor_id is None
+                or self.item_id is None
+                or not isinstance(self.copied_from, ItemId)
+                or self.value_change is None
+            ):
+                raise InvalidDomainValueError(
+                    "CANDIDATE_COPIED requires actor_id, item_id, copied_from and value_change"
+                )
+        elif self.copied_from is not None:
+            raise InvalidDomainValueError("Only CANDIDATE_COPIED carries copied_from")
 
 
 @dataclass(frozen=True, slots=True)

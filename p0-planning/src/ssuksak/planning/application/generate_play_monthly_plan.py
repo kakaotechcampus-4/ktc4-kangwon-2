@@ -22,6 +22,7 @@ from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.plan import PlanStatus
 from ..domain.play_monthly_plan import (
+    DRILL_CELL_KEY,
     DrillCandidate,
     EntryCell,
     HabitWeek,
@@ -84,7 +85,6 @@ SYSTEM_ACTOR = "play_monthly_application"
 RULE_ID = "play_monthly.generate"
 LIFE_SAFETY_LABEL = "life_safety"
 LIFE_SAFETY_SLOTS = ("life_safety_1", "life_safety_2")
-DRILL_CELL_KEY = "fire_disaster_drill"
 
 # Header layout measured from the reference monthly plan, not a national standard. Specialized-
 # program sub-headers are that institution's own programs and are not reproduced.

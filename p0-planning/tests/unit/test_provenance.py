@@ -284,3 +284,30 @@ def test_an_arrangement_change_is_a_plan_level_teacher_event():
 def test_an_arrangement_change_needs_a_scope_unique_ids_and_a_real_change(args):
     with pytest.raises(InvalidDomainValueError):
         ArrangementChange(*args)
+
+
+def _copied(**fields):
+    return AuditEvent(
+        event_type=AuditEventType.CANDIDATE_COPIED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+        **{"actor_id": ActorId("teacher_001"), "item_id": ItemId("item_001"), **fields},
+    )
+
+
+def test_a_candidate_copy_names_its_source_and_only_a_copy_does():
+    event = _copied(value_change=ValueChange("", "x"), copied_from=ItemId("item_002"))
+
+    assert AuditHistory((event,)).current_value_teacher_edited() is False
+    for fields in (
+        {"value_change": ValueChange("", "x")},
+        {"copied_from": ItemId("item_002")},
+        {"value_change": ValueChange("", "x"), "copied_from": "item_002"},
+        {"value_change": ValueChange("", "x"), "copied_from": ItemId("item_002"), "item_id": None},
+    ):
+        with pytest.raises(InvalidDomainValueError, match="CANDIDATE_COPIED"):
+            _copied(**fields)
+    with pytest.raises(InvalidDomainValueError, match="Only CANDIDATE_COPIED"):
+        AuditEvent(
+            event_type=AuditEventType.TEACHER_EDITED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+            item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"),
+            value_change=ValueChange("", "x"), copied_from=ItemId("item_002"),
+        )

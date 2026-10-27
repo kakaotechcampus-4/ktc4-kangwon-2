@@ -1,6 +1,6 @@
 """PLAY_MONTHLY lifecycle: L1 edit one cell and confirm (M2-D09 · M2-D13 · I-6), L2 change a
 play's curriculum links (M2-D18 · I-1 · I-2), L3 add · remove rows and place safety weeks
-(M2-D03 · M2-D08 · I-3). Decisions 2026-10-27.
+(M2-D03 · M2-D08 · I-3), L4 copy a drill candidate (M2-D17 · I-4). Decisions 2026-10-27.
 
 Plans come from the real generation use case with the Fake provider of the generation tests.
 """
@@ -18,6 +18,8 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     AddPlayMonthlyActivityCommand,
     ConfirmPlayMonthlyPlan,
     ConfirmPlayMonthlyPlanCommand,
+    CopyPlayMonthlyDrillCandidate,
+    CopyPlayMonthlyDrillCandidateCommand,
     EditPlayMonthlyCell,
     EditPlayMonthlyCellCommand,
     EditPlayMonthlyContentIds,
@@ -33,8 +35,15 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
 from ssuksak.planning.domain.errors import InvalidDomainValueError, InvalidStateTransitionError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.plan import PlanStatus
-from ssuksak.planning.domain.play_monthly_plan import RemovedActivity
-from ssuksak.planning.domain.provenance import AuditEventType, GenerationMethod, LinkChange
+from ssuksak.planning.domain.play_monthly_plan import DRILL_CELL_KEY, RemovedActivity
+from ssuksak.planning.domain.provenance import (
+    AuditEvent,
+    AuditEventType,
+    GenerationMethod,
+    GenerationMethodDetail,
+    LinkChange,
+    ValueChange,
+)
 from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.domain.week_period import WeekId
 from tests.application.test_play_monthly_generation import CURRICULUM, _Catalogs, _run
@@ -580,3 +589,136 @@ def test_a_week_whose_placed_candidate_was_cleared_gets_a_blank_notice_but_still
     assert [n.week_id for n in notices if n.code == "SAFETY_BLANK"] == weeks
     assert not {n.week_id for n in notices if n.code == "SAFETY_UNPLACED"} & set(weeks)
     assert confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
+
+
+def _copy(plans, plan, candidate, actor=TEACHER):
+    return CopyPlayMonthlyDrillCandidate(plan_repository=plans, clock=FixedClock(NOW)).execute(
+        CopyPlayMonthlyDrillCandidateCommand(plan.plan_id, actor, candidate.cell.item_id)
+    )
+
+
+def _drill(plan):
+    return _teacher_input(plan, DRILL_CELL_KEY)
+
+
+def test_a_copied_candidate_is_a_rule_only_snapshot_that_later_edits_never_link():
+    plan, plans, edit, confirm = _draft()
+    candidate = plan.drill_candidates[2]
+
+    copied = _copy(plans, plan, candidate)
+
+    cell = _drill(copied)
+    copy_generation = GenerationMethodDetail(
+        GenerationMethod.RULE_ONLY, rule_id="play_monthly.drill_copy", rule_version=plan.layout.layout_version
+    )
+    assert (cell.value, cell.evidence, cell.generation) == (
+        candidate.cell.value, candidate.cell.evidence, copy_generation,
+    )
+    event = cell.audit.events[-1]
+    assert (event.event_type, event.actor_id, event.copied_from) == (
+        AuditEventType.CANDIDATE_COPIED, TEACHER, candidate.cell.item_id,
+    )
+    assert event.value_change == ValueChange("", candidate.cell.value) and event.generation_change is None
+    assert copied.drill_candidates == plan.drill_candidates
+
+    source_edited = _edit(edit, copied, candidate.cell, "후보를 고친 문장")
+    assert _drill(source_edited) == cell
+    cell_edited = _edit(edit, source_edited, cell, "가져온 뒤 고친 문장")
+    assert _drill(cell_edited).generation == copy_generation
+    assert _drill(cell_edited).audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
+    assert cell_edited.drill_candidates[2].cell.value == "후보를 고친 문장"
+    cleared = _edit(edit, cell_edited, cell, "")
+    assert (_drill(cleared).value, _drill(cleared).generation) == ("", copy_generation)
+    assert confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
+
+
+def test_copying_over_a_written_cell_records_the_method_change_and_the_new_source():
+    plan, plans, edit, _ = _draft()
+    first, second = plan.drill_candidates[:2]
+    written = _edit(edit, plan, _drill(plan), "교사가 직접 쓴 훈련")
+    manual = _drill(written).generation
+
+    replaced = _copy(plans, _copy(plans, written, first), second)
+
+    events = [e for e in _drill(replaced).audit if e.event_type is AuditEventType.CANDIDATE_COPIED]
+    assert [e.copied_from for e in events] == [first.cell.item_id, second.cell.item_id]
+    assert events[0].value_change == ValueChange("교사가 직접 쓴 훈련", first.cell.value)
+    assert (events[0].generation_change.before, events[0].generation_change.after) == (
+        manual, replaced.drill_copy_generation,
+    )
+    assert events[1].value_change == ValueChange(first.cell.value, second.cell.value)
+    assert _drill(replaced).value == second.cell.value
+
+
+def test_copying_the_held_candidate_again_writes_nothing():
+    plan, plans, _, _ = _draft()
+    copied = _copy(plans, plan, plan.drill_candidates[0])
+    saves = plans.save_count
+
+    assert _copy(plans, copied, plan.drill_candidates[0]) == copied and plans.save_count == saves
+
+
+@pytest.mark.parametrize(
+    ("command", "code"),
+    [
+        (lambda p: CopyPlayMonthlyDrillCandidateCommand(p.plan_id, TEACHER, p.safety_candidates[0].cell.item_id), "play_monthly_drill_candidate_not_found"),
+        (lambda p: CopyPlayMonthlyDrillCandidateCommand(p.plan_id, TEACHER, _drill(p).item_id), "play_monthly_drill_candidate_not_found"),
+        (lambda p: CopyPlayMonthlyDrillCandidateCommand(p.plan_id, TEACHER, p.drill_candidates[0].cell.item_id.value), "play_monthly_drill_candidate_not_found"),
+        (lambda p: CopyPlayMonthlyDrillCandidateCommand(p.plan_id, TEACHER, []), "play_monthly_drill_candidate_not_found"),
+        (lambda p: CopyPlayMonthlyDrillCandidateCommand(p.plan_id, "teacher-1", p.drill_candidates[0].cell.item_id), "opaque_actor_required"),
+    ],
+)
+def test_a_copy_needs_a_drill_candidate_of_this_plan_and_an_actor(command, code):
+    plan, plans, _, _ = _draft()
+    saves = plans.save_count
+
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        CopyPlayMonthlyDrillCandidate(plan_repository=plans, clock=FixedClock(NOW)).execute(command(plan))
+
+    assert error.value.code == code and plans.save_count == saves
+
+
+def test_a_blank_candidate_is_not_copied_and_a_confirmed_plan_refuses_copies():
+    plan, plans, edit, confirm = _draft()
+    blank = _edit(edit, plan, plan.drill_candidates[1].cell, " ")
+
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        _copy(plans, blank, plan.drill_candidates[1])
+    assert error.value.code == "play_monthly_drill_candidate_blank"
+
+    confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    with pytest.raises(InvalidStateTransitionError):
+        _copy(plans, plan, plan.drill_candidates[0])
+
+
+def _copied_event(plan, cell, source):
+    return AuditEvent(
+        event_type=AuditEventType.CANDIDATE_COPIED, occurred_at=NOW, plan_id=plan.plan_id,
+        item_id=cell.item_id, actor_id=TEACHER, value_change=ValueChange("", "x"), copied_from=source,
+    )
+
+
+def test_only_the_drill_cell_may_hold_a_copy_and_only_of_this_plans_drill_candidates():
+    plan, *_ = _draft()
+    drill = _drill(plan)
+    other = next(t for t in plan.teacher_inputs if t.semantic_key != DRILL_CELL_KEY)
+    rule_only = plan.drill_copy_generation
+    source = plan.drill_candidates[0].cell.item_id
+
+    def holding(cell, **changes):
+        return plan.replace_cell(replace(cell, value="x", **changes))
+
+    with pytest.raises(InvalidDomainValueError):  # RULE_ONLY without a copy event
+        holding(drill, generation=rule_only)
+    with pytest.raises(InvalidDomainValueError):  # another teacher-input cell
+        holding(other, generation=rule_only, audit=other.audit.append(_copied_event(plan, other, source)))
+    with pytest.raises(InvalidDomainValueError):  # a source outside the drill candidates
+        holding(drill, generation=rule_only, audit=drill.audit.append(
+            _copied_event(plan, drill, plan.safety_candidates[0].cell.item_id)
+        ))
+    with pytest.raises(InvalidDomainValueError):  # a different rule identity
+        holding(drill, generation=GenerationMethodDetail(GenerationMethod.RULE_ONLY, rule_id="x", rule_version="1"),
+                audit=drill.audit.append(_copied_event(plan, drill, source)))
+    assert _drill(holding(drill, generation=rule_only, audit=drill.audit.append(
+        _copied_event(plan, drill, source)
+    ))).value == "x"

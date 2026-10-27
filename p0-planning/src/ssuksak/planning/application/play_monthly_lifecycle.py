@@ -13,6 +13,10 @@
   A new row's cells start without generation and become MANUAL on their first write.
 - Safety (M2-D08, I-3): each week holds at most one kept candidate; a candidate may be reused
   across weeks; ``None`` clears the week. Rows and placement are ARRANGEMENT_CHANGED events.
+- Drill (M2-D17, I-4): a teacher copies one of the plan's drill candidates into the drill cell.
+  The cell takes the candidate's value and CURRICULUM evidence as it is at that moment and
+  becomes RULE_ONLY (``play_monthly.drill_copy``); a CANDIDATE_COPIED event names the source.
+  A later edit of either cell never changes the other, and an edit keeps RULE_ONLY.
 - Confirm (M2-D09 · I-6) needs a theme, a rationale, and in each play section at least one row,
   every row named and linked to 1~3 content ids. Descriptions, teacher-input cells, habits,
   safety placement and health · nutrition may stay blank: ``play_monthly_notices`` reports the
@@ -28,12 +32,19 @@ from dataclasses import dataclass, replace
 
 from ..domain.errors import DomainError
 from ..domain.identifiers import ActorId, ItemId, PlanId
-from ..domain.play_monthly_plan import PLAY_SECTIONS, PlayActivity, PlayMonthlyCell, PlayMonthlyPlan
+from ..domain.play_monthly_plan import (
+    DRILL_CELL_KEY,
+    PLAY_SECTIONS,
+    PlayActivity,
+    PlayMonthlyCell,
+    PlayMonthlyPlan,
+)
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
     AuditHistory,
     GenerationMethod,
+    GenerationMethodChange,
     GenerationMethodDetail,
     LinkChange,
     ValueChange,
@@ -88,6 +99,13 @@ class PlacePlayMonthlySafetyCommand:
     actor_id: ActorId
     week_id: WeekId
     candidate_item_id: ItemId | None  # None clears the week
+
+
+@dataclass(frozen=True, slots=True)
+class CopyPlayMonthlyDrillCandidateCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    candidate_item_id: ItemId
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +306,54 @@ class PlacePlayMonthlySafety:
             return plan
         updated = plan.place_safety(
             command.week_id, candidate, actor_id=actor_id, occurred_at=self._clock.now()
+        )
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class CopyPlayMonthlyDrillCandidate:
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: CopyPlayMonthlyDrillCandidateCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("copy")
+        actor_id = _require_actor(command.actor_id)
+        candidate = next(
+            (d.cell for d in plan.drill_candidates if d.cell.item_id == command.candidate_item_id), None
+        )
+        if not isinstance(command.candidate_item_id, ItemId) or candidate is None:
+            raise PlayMonthlyLifecycleError(
+                "play_monthly_drill_candidate_not_found",
+                f"Drill candidate not found: {command.candidate_item_id}",
+            )
+        if not candidate.value.strip():
+            raise PlayMonthlyLifecycleError("play_monthly_drill_candidate_blank", "The drill candidate is blank")
+        cell = next(t for t in plan.teacher_inputs if t.semantic_key == DRILL_CELL_KEY)
+        generation = plan.drill_copy_generation
+        if (cell.value, cell.evidence, cell.generation) == (candidate.value, candidate.evidence, generation):
+            return plan  # the cell already holds this copy
+        event = AuditEvent(
+            event_type=AuditEventType.CANDIDATE_COPIED,
+            occurred_at=self._clock.now(),
+            plan_id=plan.plan_id,
+            item_id=cell.item_id,
+            actor_id=actor_id,
+            value_change=ValueChange(cell.value, candidate.value),
+            generation_change=(
+                None if cell.generation is None else GenerationMethodChange(cell.generation, generation)
+            ),
+            copied_from=candidate.item_id,
+        )
+        updated = plan.replace_cell(
+            replace(
+                cell,
+                value=candidate.value,
+                evidence=candidate.evidence,
+                generation=generation,
+                audit=cell.audit.append(event),
+            )
         )
         self._plans.save(updated.plan_id, updated)
         return updated
