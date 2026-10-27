@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'"><meta name="color-scheme" content="light"><title>연간 놀이계획안 체험 · 쌤플</title>
+  <link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="/plans-nav.css">
+  <script src="../data.js" defer></script><script src="demo-candidates.js" defer></script><script src="../curriculum.js" defer></script><script src="model.js" defer></script><script src="app.js" defer></script>
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="./"><span class="brand-flower">✳</span>쌤플<span class="brand-dot">.</span></a>
+  <div class="center-card"><span class="center-avatar">봄</span><div><strong>우리 어린이집</strong><small>예시반 · 만 4세</small></div></div>
+  <div class="nav-caption">선생님의 작업 공간</div>
+  <div class="nav-item">⌂ <span>홈</span></div><div class="nav-item current">▤ <span>계획안</span><i></i></div>
+  <a class="subnav current local-link" href="/yearly/">연간 놀이 계획</a><a class="subnav local-link" href="/monthly/?month=10" data-monthly-link>월간 놀이 계획 →</a><div class="subnav">주간 계획</div>
+  <div class="sidebar-note"><span class="status-dot"></span>디자인 DRAFT<small>각자의 브라우저에 저장돼요.<br>PC 화면에서 사용해 주세요.</small></div>
+</aside>
+<div class="workspace">
+  <header class="topbar"><div class="breadcrumbs">계획안 <span>/</span> <strong>연간 놀이 계획</strong></div><nav class="plan-nav" aria-label="계획안 종류"><a href="/yearly/" aria-current="page">연간 계획</a><a href="/monthly/?month=10" data-monthly-link>월간 계획</a></nav><div class="top-meta"><span id="save-state" role="status">이 브라우저에 저장</span><span class="avatar">예</span> 예시반</div></header>
+  <main>
+    <section class="page-heading"><div><div class="eyebrow">2026학년도 · 만 4세 · 예시반</div><h1 id="page-title">함께 펼쳐 갈 놀이를 골라요</h1><p id="page-description">지원매체를 살펴보고, 각 구간에서 우리 반에 어울리는 놀이 5개를 골라 주세요.</p></div><span class="prototype-pill">디자인 검토용 · 합성 후보 40개</span></section>
+    <nav id="stepper" class="stepper" aria-label="계획안 작성 단계"><button data-step="choose" aria-current="step"><b>1</b>놀이 고르기</button><span></span><button data-step="edit"><b>2</b>배치하고 다듬기</button><span></span><button data-step="preview"><b>3</b>전체 초안 보기</button></nav>
+    <div class="period-bar"><div id="period-tabs" class="period-tabs" role="tablist" aria-label="계획 구간"></div><div id="total-progress" class="total-progress"></div></div>
+    <section id="choose-view">
+      <div class="choice-layout"><div><div class="section-heading"><div><h2 id="choice-heading"></h2><p>놀이의 시작을 제안해요. 펼쳐 가는 방향은 유아들과 함께 정해요.</p></div><span class="quiet-label">미리 생성한 예시 후보</span></div><div id="candidate-grid" class="candidate-grid"></div></div>
+        <aside class="selection-summary"><span class="eyebrow">OUR PLAY PLAN</span><h2>우리 반이 고른 놀이 <strong id="selection-count"></strong></h2><p id="selection-period"></p><ol id="selected-list"></ol><div id="all-periods-progress" class="all-periods-progress"></div><button id="to-editor" class="primary wide">선택한 놀이 배치하기 →</button><p class="small-note">선택 후에도 문서를 보며 순서를 바꿀 수 있어요.</p></aside>
+      </div>
+    </section>
+    <section id="edit-view" hidden>
+      <div class="editor-toolbar"><div><span class="live-dot"></span><strong>왼쪽에서 다듬고, 오른쪽 문서로 확인해요</strong><span class="toolbar-help">문서의 칸을 누르면 해당 편집기가 열려요.</span></div><div class="toolbar-actions"><button id="undo" class="quiet-button">↶ 되돌리기</button><button id="redo" class="quiet-button">↷ 다시 실행</button><button id="to-preview" class="secondary">전체 초안 보기 ↗</button></div></div>
+      <div class="editor-layout"><aside class="inspector"><div id="inspector-tabs" class="inspector-tabs" role="tablist" aria-label="편집 도구"><button data-inspector="edit" role="tab">내용 편집</button><button data-inspector="pool" role="tab">선택한 놀이 <span id="pool-count">0</span></button></div><div id="inspector-content" class="inspector-content"></div><div class="inspector-footer">변경 사항은 이 브라우저에 자동으로 저장돼요.<br>실제 서비스의 계획안 확정·제출은 하지 않아요.</div></aside><section class="canvas-panel" aria-label="오른쪽 문서 양식 미리보기"><div class="canvas-toolbar"><div id="page-tabs" class="page-tabs" aria-label="문서 쪽 선택"></div><div class="zoom-controls"><button id="zoom-out" aria-label="문서 축소">−</button><span id="zoom-label">맞춤</span><button id="zoom-in" aria-label="문서 확대">+</button><button id="zoom-fit" class="fit-button">맞춤</button><button id="expand-document" class="expand-button" aria-label="문서 크게 보기 — 읽기 전용">⤢ 크게 보기</button></div></div><div id="paper-canvas" class="paper-canvas"><div id="paper-frame" class="paper-frame"><div id="editor-paper"></div></div></div><div class="canvas-footer"><span>왼쪽 놀이를 문서의 칸으로 끌어놓으세요.</span><span>A4 세로 · 2쪽 구성</span></div></section>
+      </div>
+    </section>
+    <section id="preview-view" hidden><div class="preview-toolbar"><div><h2>우리 반의 연간 놀이계획안</h2><p id="preview-status"></p></div><div><button id="back-to-edit" class="secondary">← 문서 편집으로</button><button id="print" class="primary">PDF / 인쇄</button></div></div><div id="preview-pages" class="preview-pages"></div><p class="small-note">브라우저 미리보기이며 한글 파일의 실제 쪽 나눔과는 차이가 있을 수 있어요.</p></section>
+  </main>
+</div>
+<dialog id="detail-dialog" aria-labelledby="detail-title"><button id="close-detail" class="close-dialog" aria-label="상세 닫기">×</button><span id="detail-period" class="eyebrow"></span><h2 id="detail-title"></h2><div id="detail-body"></div><button id="detail-choose" class="primary wide"></button></dialog>
+<dialog id="large-document" class="large-document" aria-labelledby="large-document-title"><header><div><strong id="large-document-title">문서 크게 보기</strong><span class="readonly-pill">읽기 전용</span><small>편집 내용이 반영된 문서를 크게 확인해요.</small></div><button id="close-large-document" class="secondary">닫고 편집 계속하기 ×</button></header><div id="large-document-pages" class="large-document-pages"></div></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body></html>

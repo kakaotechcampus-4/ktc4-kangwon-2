@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow"><meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>월간 놀이계획안 편집 · 쌤플</title>
+  <link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="/plans-nav.css">
+  <script src="curriculum.js" defer></script><script src="data.js" defer></script><script src="/yearly/demo-candidates.js" defer></script><script src="/yearly/model.js" defer></script><script src="/yearly-bridge.js" defer></script><script src="model.js" defer></script><script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span aria-hidden="true">✳</span> 쌤플<span class="brand-dot">.</span></a>
+    <nav class="plan-nav" aria-label="계획안 종류"><a id="yearly-link" href="/yearly/">연간 계획</a><a href="/monthly/?month=10" aria-current="page">월간 계획</a></nav><span class="badge">디자인 DRAFT</span>
+    <span id="save-state" class="save-state" role="status">이 브라우저에 저장</span>
+    <button id="reset" class="quiet">예시 초기화</button>
+  </header>
+  <main class="workspace">
+    <section class="heading">
+      <div><p class="eyebrow">2026학년도 · 만 4세 · 놀이중심 월간 v2</p><h1>우리 반의 한 달을 그려요</h1></div>
+      <div class="heading-actions"><label class="month-label" for="month">계획 월</label><select id="month" aria-label="계획 월"></select><button id="undo" class="quiet" aria-label="되돌리기">↶</button><button id="redo" class="quiet" aria-label="다시 실행">↷</button><button id="preview" class="primary">전체 초안 보기 ↗</button></div>
+    </section>
+    <div class="editor-layout">
+      <aside class="inspector" aria-label="왼쪽 편집 도구">
+        <div class="inspector-tabs" role="tablist" aria-label="편집 도구"><button id="tab-edit" role="tab" aria-controls="inspector-body" aria-selected="true">내용 편집</button><button id="tab-pool" role="tab" aria-controls="inspector-body" aria-selected="false">놀이·안전 후보 <span>8</span></button></div>
+        <nav class="section-nav" aria-label="문서 구역"><button data-jump="theme">기본</button><button data-jump="together">놀이</button><button data-jump="habits">생활·교육</button><button data-jump="drill">훈련·운영</button></nav>
+        <div id="inspector-body" class="inspector-body" role="tabpanel"></div>
+        <div class="inspector-footer"><span class="local-dot"></span><span id="connection-state">합성 예시 · API 연결 없음</span><br>편집 내용은 이 브라우저에만 저장돼요.</div>
+      </aside>
+      <section class="canvas-panel" aria-label="오른쪽 월간 문서 미리보기">
+        <div class="canvas-toolbar"><div><span class="paper-icon" aria-hidden="true">▤</span><strong id="document-caption">7월 놀이계획안</strong><span class="live"><i></i>실시간 반영</span></div><div class="zoom-tools"><button id="zoom-out" aria-label="문서 축소">−</button><span id="zoom-label">맞춤</span><button id="zoom-in" aria-label="문서 확대">+</button><button id="zoom-fit">맞춤</button><button id="expand">⤢ 크게 보기</button></div></div>
+        <div id="paper-canvas" class="paper-canvas" tabindex="0" aria-label="문서 스크롤 영역"><div id="paper-frame" class="paper-frame"><div id="paper"></div></div></div>
+        <footer class="canvas-footer"><span id="document-status" role="status"></span><span>칸을 누르면 왼쪽에서 편집할 수 있어요.</span></footer>
+      </section>
+    </div>
+  </main>
+  <dialog id="preview-dialog" aria-labelledby="preview-title"><header class="dialog-header"><div><strong id="preview-title">월간 놀이계획안</strong><span class="badge">읽기 전용</span><p id="preview-status"></p></div><div><button id="print" class="primary">PDF / 인쇄</button><button id="close-preview" class="secondary">닫고 편집하기 ×</button></div></header><div id="preview-paper" class="preview-paper"></div><p class="print-note">브라우저 미리보기입니다. 내용이 길어지면 인쇄 시 다음 쪽으로 이어집니다. HWPX 내보내기는 연결 전입니다.</p></dialog>
+  <dialog id="reset-dialog" class="reset-dialog" aria-labelledby="reset-title"><h2 id="reset-title">이번 달 예시를 처음부터 볼까요?</h2><p>현재 월의 편집 내용을 예시로 되돌립니다. 다른 달은 유지됩니다.</p><div><button id="cancel-reset" class="secondary">취소</button><button id="confirm-reset" class="primary">예시로 되돌리기</button></div></dialog>
+  <dialog id="replace-drill-dialog" class="reset-dialog" aria-labelledby="replace-drill-title"><h2 id="replace-drill-title">작성한 훈련 내용을 바꿀까요?</h2><p>선택한 후보로 현재 훈련 내용을 바꿉니다. 바꾼 뒤에는 되돌리기로 복원할 수 있어요.</p><div><button id="cancel-drill-replace" class="secondary">유지하기</button><button id="confirm-drill-replace" class="primary">선택한 후보로 바꾸기</button></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
