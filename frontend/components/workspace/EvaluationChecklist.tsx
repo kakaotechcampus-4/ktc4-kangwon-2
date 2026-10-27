@@ -13,9 +13,17 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { Message, ws } from "./WorkspaceUI";
 import EvaluationAuto from "./EvaluationAuto";
 import EvaluationSelfCheck from "./EvaluationSelfCheck";
+import EvaluationFiles from "./EvaluationFiles";
+import {
+  TEACHER_DOCS,
+  readChecks,
+  withFound,
+  writeChecks,
+  type Scan,
+} from "@/lib/workspace/evaluation-files";
 import styles from "./Evaluation.module.css";
 
-const TABS = ["docs", "self"] as const;
+const TABS = ["docs", "files", "self"] as const;
 type Tab = (typeof TABS)[number];
 
 /** 고른 탭은 주소(?tab=)에 남긴다. 새로고침하거나 다른 화면에 다녀와도 같은 탭이 열린다. */
@@ -25,7 +33,7 @@ function readTab(): Tab {
   return TABS.find((t) => t === tab) ?? "docs";
 }
 
-/** Official indicators and saved checks come from §12, never from browser-local documents. */
+/** 지표와 자체평가 체크는 서버(api-spec §12)에서 온다. 이 브라우저에 두는 것은 서류 점검 체크(항목 id)뿐이다. */
 export default function EvaluationChecklist({
   refresh,
   children,
@@ -39,6 +47,10 @@ export default function EvaluationChecklist({
   const [error, setError] = useState("");
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [initiallyOpen, setInitiallyOpen] = useState(new Set<string>());
+  // 파일 이름 검사 결과는 화면 메모리에만 둔다. 이름에 아동 실명이 있을 수 있다(ADR-045).
+  const [scan, setScan] = useState<Scan | null>(null);
+  // 서류 점검 체크(항목 id 만). 원 · 학년도를 안 뒤에 이 브라우저에서 읽는다.
+  const [fileChecks, setFileChecks] = useState<string[]>([]);
   const [reload, setReload] = useState(0);
   const [tab, setTab] = useClientState<Tab>(readTab, "docs");
   const running = useRef(false);
@@ -54,6 +66,7 @@ export default function EvaluationChecklist({
         if (controller.signal.aborted) return;
         setCenterId(user.center_id);
         setChecklist(result);
+        setFileChecks(readChecks(user.center_id, result.school_year));
         // 안 끝난 첫 평가항목 하나만 펼쳐서 연다. 나머지는 접어 두어 스크롤을 줄인다.
         const next = result.items.find((item) => item.kind === "SELF_CHECK" && !item.complete);
         setInitiallyOpen(new Set(next ? [next.indicator] : []));
@@ -96,6 +109,17 @@ export default function EvaluationChecklist({
     } finally {
       running.current = false;
     }
+  }
+
+  function saveFileChecks(next: string[]) {
+    setFileChecks(next);
+    if (centerId !== null && checklist) writeChecks(centerId, checklist.school_year, next);
+  }
+
+  /** 폴더를 고르면 이름으로 찾은 서류를 체크해 둔다. 교사가 한 체크는 그대로 둔다. */
+  function scanned(result: Scan) {
+    setScan(result);
+    saveFileChecks(withFound(fileChecks, result));
   }
 
   function choose(next: Tab) {
@@ -142,6 +166,8 @@ export default function EvaluationChecklist({
   const supported = autos.filter((item) => item.verdict === "SUPPORTED").length;
   const checked = selfs.reduce((sum, item) => sum + item.progress.checked, 0);
   const total = selfs.reduce((sum, item) => sum + item.progress.total, 0);
+  // 서류 점검 칸은 체크리스트를 센다 — 이름으로 찾아 자동 체크한 것과 교사가 직접 체크한 것을 함께.
+  const filesDone = TEACHER_DOCS.filter((d) => fileChecks.includes(`doc:${d.id}`)).length;
   // 다 채운 칸은 숫자 대신 「✓ 완료」. 아래 줄은 무엇을 채웠는지만 말한다 — 평가 통과가 아니다(ADR-022).
   const DONE = "✓ 완료";
   const tiles: Record<Tab, [label: string, value: string, sub: string]> = {
@@ -153,6 +179,13 @@ export default function EvaluationChecklist({
         : supported === autos.length
           ? "기준 건수를 채웠어요"
           : `보완 필요 ${autos.length - supported}개`,
+    ],
+    files: [
+      "서류 점검",
+      filesDone === TEACHER_DOCS.length ? DONE : `${filesDone} / ${TEACHER_DOCS.length}`,
+      filesDone === TEACHER_DOCS.length
+        ? "선생님 서류를 다 챙겼어요 · 내용은 직접 확인"
+        : `챙길 서류 ${TEACHER_DOCS.length - filesDone}개`,
     ],
     self: [
       "자체평가",
@@ -198,6 +231,23 @@ export default function EvaluationChecklist({
         hidden={tab !== "docs"}
       >
         <EvaluationAuto items={autos} />
+      </div>
+      <div
+        role="tabpanel"
+        id="eval-panel-files"
+        aria-labelledby="eval-tab-files"
+        hidden={tab !== "files"}
+      >
+        {centerId !== null && (
+          <EvaluationFiles
+            scan={scan}
+            onScan={scanned}
+            checks={fileChecks}
+            onToggle={(id, on) =>
+              saveFileChecks(on ? [...fileChecks, id] : fileChecks.filter((v) => v !== id))
+            }
+          />
+        )}
       </div>
       <div
         role="tabpanel"
