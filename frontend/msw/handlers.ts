@@ -436,7 +436,7 @@ export const handlers = [
     if (annual.format === "PLAY_PROJECT")
       return failure(
         "GATE_BLOCKED",
-        "놀이 프로젝트형 연간계획안은 월간계획안으로 이어지지 않습니다.",
+        "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다.",
         "class_id",
       );
     if (annual.status !== "CONFIRMED")
