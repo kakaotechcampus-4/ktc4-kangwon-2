@@ -140,7 +140,7 @@ class EditPlayMonthlyContentIds:
                 "play_monthly_activity_not_found", f"PlayMonthlyPlan play not found: {command.item_id}"
             )
         ids = command.content_ids
-        if isinstance(ids, str) or not all(isinstance(i, str) for i in ids):
+        if not isinstance(ids, (list, tuple)) or not all(isinstance(i, str) for i in ids):
             raise PlayMonthlyLifecycleError("invalid_content_ids", "content_ids must be a list of strings")
         ids = tuple(ids)
         if ids == activity.content_ids:

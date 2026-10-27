@@ -376,6 +376,11 @@ def test_links_are_checked_only_against_the_plans_own_approved_catalog_version(c
         (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].description.item_id, ("t.1",)), "play_monthly_activity_not_found"),
         (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.theme.item_id, ("t.1",)), "play_monthly_activity_not_found"),
         (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].cell.item_id, "t.1"), "invalid_content_ids"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].cell.item_id, None), "invalid_content_ids"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].cell.item_id, 1), "invalid_content_ids"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].cell.item_id, {"t.1"}), "invalid_content_ids"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].cell.item_id, {"t.1": "t.2"}), "invalid_content_ids"),
+        (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, TEACHER, p.together[0].cell.item_id, ["t.1", 2]), "invalid_content_ids"),
         (lambda p: EditPlayMonthlyContentIdsCommand(p.plan_id, "teacher-1", p.together[0].cell.item_id, ("t.1",)), "opaque_actor_required"),
     ],
 )
