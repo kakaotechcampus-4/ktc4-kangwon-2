@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   DOCUMENT_KINDS,
-  downloadText,
   validateDocument,
   type DocumentKind,
   type SavedDocument,
@@ -680,20 +679,6 @@ export default function DocumentEditor({
             월간계획안 만들기 →
           </Link>
         )}
-        {/* 일지도 같다 — 확정했고 근거가 그대로일 때만. 근거가 바뀐 채로 내보내면
-            교사가 확정한 것과 다른 종이가 나간다 (서버도 409 로 거절한다). */}
-        <button
-          className={ws.secondary}
-          disabled={stale}
-          onClick={() =>
-            downloadText(
-              doc.title,
-              `${doc.title}\n${doc.className} ${doc.childName}\n${doc.start} ~ ${doc.end}\n상태: ${doc.status === "confirmed" ? "교사 확정" : "검토 전 초안"}\n\n${doc.sections.map((s) => `${s.heading}\n${s.body}`).join("\n\n")}\n\n${doc.reviewNote}`,
-            )
-          }
-        >
-          텍스트 내려받기
-        </button>
         {/* 확정 문서는 지울 수 없다 — 서버가 409 ALREADY_CONFIRMED 로 거절한다.
             눌러도 실패할 버튼을 보여 주면 교사는 고장으로 읽는다. 확정 취소가 먼저다. */}
         {server && editable && (
