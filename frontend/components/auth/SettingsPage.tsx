@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useClientState, useHydrated } from "@/lib/hooks/use-client-state";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
 import { EMPTY_CLASS_SETTINGS, MONTH_ORDER, type CharacterMessages } from "@/lib/onboarding/types";
-import { getCurrentUser } from "@/lib/api/auth";
+import { changePassword, getCurrentUser } from "@/lib/api/auth";
+import { invalidFields } from "@/lib/api/client";
 import {
   createInvite,
   getCenterSettings,
@@ -162,6 +163,7 @@ export default function SettingsPage() {
       {centerId !== null && <ObservationAxisCard centerId={centerId} />}
       {centerId !== null && <TrendsCard centerId={centerId} />}
       {centerId !== null && <InviteCard centerId={centerId} />}
+      <PasswordCard />
     </WorkspacePage>
   );
 }
@@ -320,6 +322,85 @@ function InviteCard({ centerId }: { centerId: number }) {
       <button type="button" className={ws.secondary} onClick={create} disabled={busy}>
         {busy ? "만들고 있어요." : invite ? "새 코드 만들기" : "초대 코드 만들기"}
       </button>
+    </section>
+  );
+}
+
+/**
+ * 비밀번호 바꾸기.
+ *
+ * **다른 곳에서 쓰던 비밀번호로 가입한 교사에게 바꿀 자리가 있어야 한다.** 크롬은 자기가
+ * 저장해 둔 비밀번호가 다른 주소의 입력 칸에 들어가면 피싱으로 의심하고 구글에 알린다.
+ */
+function PasswordCard() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setDone(false);
+    try {
+      await changePassword(current, next);
+      setCurrent("");
+      setNext("");
+      setDone(true);
+    } catch (caught) {
+      const fields = invalidFields(caught, {
+        current_password: "current_password",
+        new_password: "new_password",
+      });
+      if (fields.includes("current_password")) setError("지금 비밀번호가 맞지 않아요.");
+      else if (fields.includes("new_password"))
+        setError("지금 쓰는 비밀번호와 같아요. 다른 비밀번호를 적어주세요.");
+      else setError("바꾸지 못했어요. 잠시 뒤 다시 해주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={ws.card} style={{ marginTop: 24 }}>
+      <h2>비밀번호 바꾸기</h2>
+      <p>
+        다른 곳에서 쓰는 비밀번호와 같다면 바꿔주세요.
+        <strong> 쌤플에서만 쓰는 비밀번호</strong>가 안전해요.
+      </p>
+      <form onSubmit={submit}>
+        <label className={ws.field}>
+          지금 비밀번호
+          <input
+            type="password"
+            name="current-password"
+            autoComplete="current-password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            required
+          />
+        </label>
+        <label className={ws.field}>
+          새 비밀번호
+          <input
+            type="password"
+            name="new-password"
+            autoComplete="new-password"
+            minLength={8}
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            required
+          />
+        </label>
+        <p className={ws.muted}>여덟 자 이상이면 돼요.</p>
+        <button type="submit" className={ws.secondary} disabled={busy}>
+          바꾸기
+        </button>
+      </form>
+      {error && <Message error>{error}</Message>}
+      <p role="status">{busy ? "바꾸고 있어요." : done ? "비밀번호를 바꿨어요." : ""}</p>
     </section>
   );
 }

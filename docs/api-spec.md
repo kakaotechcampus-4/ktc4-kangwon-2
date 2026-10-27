@@ -41,7 +41,19 @@ login    { "email": "a@b.kr", "password": "여덟자이상" }                   
 응답     { "token": "...", "user": { "id": 1, "email": "...", "name": "...", "center_id": null } }
 
 me       GET /api/auth/me                                               → 200  위 user 모양
+
+비밀번호 PATCH /api/auth/password
+         { "current_password": "지금 것", "new_password": "여덟자이상" }      → 204
 ```
+
+**비밀번호를 바꿀 자리가 있어야 한다.** 다른 곳에서 쓰던 비밀번호로 가입한 교사가
+바꿀 길이 없으면 계정을 새로 만드는 수밖에 없다. 크롬은 자기가 저장해 둔 비밀번호가
+다른 주소의 입력 칸에 들어가면 그것을 피싱 신호로 보고 구글에 알린다.
+
+지금 비밀번호가 틀리거나 새 비밀번호가 지금 것과 같으면 **422 `VALIDATION_FAILED`** 다
+(`fields` 는 `current_password` 또는 `new_password`). **401 을 쓰지 않는다** — 401 은
+「토큰을 못 믿겠다」는 뜻으로 이미 쓰고 있어서, 화면이 로그인 만료로 읽고 교사를
+로그인 화면으로 내보낸다.
 
 **토큰을 `Authorization: Bearer <token>` 으로 실어 보낸다.** 12시간 뒤 만료된다.
 
