@@ -1,6 +1,7 @@
 """PLAY_PROJECT 의 SSE 전송. 진짜 엘리스는 부르지 않는다."""
 
 import json
+import logging
 import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -132,6 +133,65 @@ def test_valid_sse_returns_assembled_content_and_logs_usage_once(monkeypatch, us
 
     assert result["choices"][0]["message"]["content"] == content
     assert usage_lines == ["llm_usage model=test-model prompt=120 completion=30 total=150"]
+
+
+@pytest.mark.parametrize("field", [*USAGE, "all"])
+@pytest.mark.parametrize("value", ["LEAK_MARKER", "LINE_MARKER\nINJECTED_MARKER", True, -1, 1.5])
+def test_invalid_usage_is_not_logged(monkeypatch, caplog, field, value):
+    monkeypatch.setattr(settings, "is_server", True)
+    monkeypatch.setattr(llm.logger, "propagate", True)
+    caplog.set_level(logging.INFO, logger=llm.logger.name)
+    fields = USAGE if field == "all" else [field]
+    _connection(
+        monkeypatch,
+        [*_sse("{}", usage={**USAGE, **dict.fromkeys(fields, value)}), b"data: [DONE]\n\n"],
+    )
+
+    monthly_llm.SharedLlmTransport().post_stream(
+        f"{BASE}/chat/completions",
+        headers={},
+        payload={"model": "test-model", "response_format": {}},
+        timeout=30,
+    )
+
+    expected = {**USAGE, **dict.fromkeys(fields, "-")}
+    assert [record.message for record in caplog.records if record.levelno == logging.INFO] == [
+        f"llm_usage model=test-model prompt={expected['prompt_tokens']} "
+        f"completion={expected['completion_tokens']} total={expected['total_tokens']}"
+    ]
+    assert [record.message for record in caplog.records if record.levelno == logging.WARNING] == [
+        "llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=test-model"
+    ]
+    assert all(
+        marker not in caplog.text for marker in ("LEAK_MARKER", "LINE_MARKER", "INJECTED_MARKER")
+    )
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        ({"prompt_tokens": 0, "completion_tokens": 30, "total_tokens": 30}, "0 30 30"),
+        ({"prompt_tokens": 0}, "0 - -"),
+        ({}, "- - -"),
+    ],
+)
+def test_valid_and_missing_usage_are_not_warned(monkeypatch, caplog, usage, expected):
+    monkeypatch.setattr(settings, "is_server", True)
+    monkeypatch.setattr(llm.logger, "propagate", True)
+    caplog.set_level(logging.INFO, logger=llm.logger.name)
+    _connection(monkeypatch, [*_sse("{}", usage=usage), b"data: [DONE]\n\n"])
+
+    monthly_llm.SharedLlmTransport().post_stream(
+        f"{BASE}/chat/completions",
+        headers={},
+        payload={"model": "test-model", "response_format": {}},
+        timeout=30,
+    )
+
+    prompt, completion, total = expected.split()
+    assert [record.message for record in caplog.records] == [
+        f"llm_usage model=test-model prompt={prompt} completion={completion} total={total}"
+    ]
 
 
 @pytest.mark.parametrize(("status", "error"), [(429, LlmBudgetExceeded), (500, LlmFailed)])
