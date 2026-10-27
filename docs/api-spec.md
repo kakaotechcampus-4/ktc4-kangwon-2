@@ -572,6 +572,8 @@ FK 다 — 양식 원본은 하나만 두고 계획안 여러 개가 그걸 가�
 
 **Response** `201`
 
+월별 주제형은 ADR-042 이전 모양이라 `format_version` 을 싣지 않는다 — 화면은 `format` 으로만 가른다(ADR-042 §2 공통 머리의 `format_version` 은 놀이 프로젝트형에만 해당).
+
 ```json
 {
   "id": 10,
@@ -658,6 +660,9 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
                         "evidence": [
                           { "source_type": "CURRICULUM", "source_id": "nuri2019.1.1.1",
                             "source_version": "nuri-curriculum-content-v0.1.0",
+                            "effective_date": null, "display_name": "…" },
+                          { "source_type": "CURRICULUM", "source_id": "nuri2019.1.1.2",
+                            "source_version": "nuri-curriculum-content-v0.1.0",
                             "effective_date": null, "display_name": "…" } ],
                         "generation": { "…": "위와 같다" } } }
         // cand2 … cand10
@@ -694,7 +699,8 @@ generation                     §4 의 generation 과 같은 객체
 
 **호출 단위** (ADR-043) — 한 요청이다. 서버가 Core 를 구간마다 한 번 `m03_m05` → `m06_m08` → `m09_m11` → `m12_m02` 순으로 부르고,
 앞 구간의 놀이명을 `avoid_play_names` 로 넘긴다. 네 구간이 모두 통과해야 한 번 저장한다. **하나라도 실패하면 아무것도 저장하지 않는다.**
-구간당 마감은 120초이고 전체 마감은 없다. 120초는 구간 하나의 호출 전체에 거는 벽시계 한도이며(읽기 한 번 상한이 아니다) 이 형식에만 적용한다 — 월간 · 문서 · 연간 월별 주제형의 기존 30초 타임아웃은 그대로다. nginx `proxy_read_timeout` 은 이 경로만 510초다(나머지는 120초). **최악의 대기가 약 8.5분이다.**
+구간당 마감은 120초이고 서버 자체의 전체 마감은 없다. 120초는 구간 하나의 호출 전체에 거는 벽시계 한도이며(읽기 한 번 상한이 아니다) 이 형식에만 적용한다 — 월간 · 문서 · 연간 월별 주제형의 기존 30초 타임아웃은 그대로다.
+nginx `proxy_read_timeout` 은 upstream 에서 두 번 읽는 사이의 무응답 간격 한도다 — 이 경로만 510초(= 4 × 120 + 30), 나머지는 120초다. 이 요청은 네 구간이 모두 끝날 때까지 브라우저에 아무것도 보내지 않으므로 그 간격이 전체 실행 시간과 같아, 실제로는 510초가 요청 전체의 상한이 된다. **최악의 대기가 약 8.5분이다.**
 호출마다 `llm_usage` 한 줄이 남아 계획안 하나에 4줄이다(ADR-036). `stop` 으로 끝나지 않은 스트림은 토큰을 쓰고도 줄이 남지 않는다.
 
 ```
