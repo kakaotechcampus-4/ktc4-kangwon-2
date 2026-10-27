@@ -165,7 +165,10 @@ def _valid(request) -> dict:
         ],
         "health_entry_id": "he1",
         "nutrition_entry_id": "nu1",
-        "drills": [{"topic_id": t, "text": f"{t} 상황을 가정해 대피 훈련을 해요"} for t in request.drill_topic_ids],
+        "drills": [
+            {"topic_id": t, "text": f"{n}번째 상황을 가정해 대피 훈련을 해요"}
+            for n, t in enumerate(request.drill_topic_ids, 1)
+        ],
     }
 
 
@@ -584,6 +587,7 @@ def _six_rows(data):
         (_set(("drills", 0, "topic_id"), "snow"), "UNKNOWN_DRILL_TOPIC"),  # not chosen for April
         (_set(("drills", 1, "topic_id"), "fire_a"), "DUPLICATE_DRILL_TOPIC"),
         (_set(("drills", 0, "text"), "4월 14일 오전에 대피 훈련을 해요"), "UNSUPPORTED_FACT"),
+        (_set(("drills", 0, "text"), "fire_a 상황을 가정해 대피 훈련을 해요"), "SOURCE_IDENTIFIER_LEAKAGE"),
         (_set(("safety", 0, "text"), "annex6:traffic_safety:1 길을 건너는 약속을 알아보아요"),
          "SOURCE_IDENTIFIER_LEAKAGE"),
         (_set(("together", 0, "name"), "t.1 봄 산책 놀이"), "SOURCE_IDENTIFIER_LEAKAGE"),
@@ -693,11 +697,11 @@ def test_drill_candidates_are_five_curriculum_topics_and_the_drill_cell_stays_bl
 
     # April has no seasonal topic: the five all-month topics in catalog order.
     assert [d.topic_id for d in plan.drill_candidates] == ["fire_a", "quake", "fire_b", "fire_c", "fire_d"]
-    for candidate in plan.drill_candidates:
+    for n, candidate in enumerate(plan.drill_candidates, 1):
         (source,) = candidate.cell.evidence
         assert (source.source_type, source.source_id) == (EvidenceSourceType.CURRICULUM, "t.4")
         assert candidate.cell.semantic_key == f"fire_disaster_drill.candidate.{candidate.topic_id}"
-        assert candidate.cell.value == f"{candidate.topic_id} 상황을 가정해 대피 훈련을 해요"
+        assert candidate.cell.value == f"{n}번째 상황을 가정해 대피 훈련을 해요"
     assert [d.label for d in plan.drill_candidates] == ["화재 가", "지진", "화재 나", "화재 다", "화재 라"]
     (drill_cell,) = [t for t in plan.teacher_inputs if t.semantic_key == "fire_disaster_drill"]
     assert drill_cell.value == "" and drill_cell.generation is None

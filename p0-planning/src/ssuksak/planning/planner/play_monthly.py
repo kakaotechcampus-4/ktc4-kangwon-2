@@ -127,6 +127,7 @@ class PlayMonthlyRequest:
                 *self.habit_entry_ids,
                 *self.health_entry_ids,
                 *self.nutrition_entry_ids,
+                *self.drill_topic_ids,
             }
         )
 
