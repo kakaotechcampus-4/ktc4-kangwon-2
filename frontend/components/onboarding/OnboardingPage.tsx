@@ -3,7 +3,7 @@ import AgeSelection from "./AgeSelection";
 
 import { useEffect, useRef, useState } from "react";
 import { useHydrated } from "@/lib/hooks/use-client-state";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import OnboardingLayout, { StepFooter, StepHeading } from "./OnboardingLayout";
 import FormField, { TextInput } from "./FormField";
 import Select from "./Select";
@@ -76,6 +76,9 @@ function readStartup(step: OnboardingStep) {
 
 export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) {
   const router = useRouter();
+  // 설정에서 「원 정보 확인」·「반·담당 반 관리」로 들어온 교사는 그 단계만 고치러 온 것이다.
+  // 끝까지 걸어가 아동 명단에서 「설정 완료」를 눌러야 끝나던 것이 번거로웠다 (수린 점검).
+  const fromSettings = useSearchParams().get("from") === "settings";
   const hydrated = useHydrated();
   const [saveError, setSaveError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -131,7 +134,7 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
     setSettings(next);
     if (step === 3 && !saveClassSettings(next)) setSaveError("로컬 화면 캐시 저장 실패");
   }
-  async function go(next: OnboardingStep) {
+  async function go(next: OnboardingStep, exit = false) {
     if (saving.current) return;
     saving.current = true;
     setBusy(true);
@@ -149,13 +152,15 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
           : settings;
       if (!saveClassSettings(submitted)) throw new Error("설정을 저장하지 못했어요.");
       router.push(
-        next === 1
-          ? "/onboarding/center"
-          : next === 2
-            ? "/onboarding/classes"
-            : next === 3
-              ? "/onboarding/children"
-              : "/settings",
+        exit
+          ? "/settings"
+          : next === 1
+            ? "/onboarding/center"
+            : next === 2
+              ? "/onboarding/classes"
+              : next === 3
+                ? "/onboarding/children"
+                : "/settings",
       );
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "저장 실패");
@@ -195,6 +200,11 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
       if (!saveClassSettings(done) || !completeAccountOnboarding())
         throw new Error("설정을 저장하지 못했어요.");
       setSettings(done);
+      // 설정에서 명단만 고치러 온 교사에게는 환영 인사를 다시 띄우지 않는다.
+      if (fromSettings) {
+        router.push("/settings");
+        return;
+      }
       try {
         sessionStorage.setItem(WELCOME_KEY, "1");
       } catch {}
@@ -224,7 +234,13 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
       {busy && <p role="status">저장 중이에요.</p>}
       <fieldset disabled={busy} className="contents">
         {step === 1 && (
-          <StepOrgInfo settings={settings} onChange={patch} onNext={() => go(2)} onJoin={join} />
+          <StepOrgInfo
+            settings={settings}
+            onChange={patch}
+            onNext={() => go(2)}
+            onJoin={join}
+            onSaveAndExit={fromSettings ? () => go(2, true) : undefined}
+          />
         )}
         {step === 2 && (
           <StepClasses
@@ -232,6 +248,7 @@ export default function OnboardingPage({ step = 1 }: { step?: OnboardingStep }) 
             onChange={patch}
             onPrev={() => go(1)}
             onNext={() => go(3)}
+            onSaveAndExit={fromSettings ? () => go(3, true) : undefined}
           />
         )}
         {step === 3 && (
@@ -265,11 +282,14 @@ function StepOrgInfo({
   onChange,
   onNext,
   onJoin,
+  onSaveAndExit,
 }: {
   settings: ClassSettings;
   onChange: (p: Partial<ClassSettings>) => void;
   onNext: () => void;
   onJoin: (code: string) => void;
+  /** 설정에서 들어온 교사에게만 준다 — 이 단계만 저장하고 설정으로 돌아간다. */
+  onSaveAndExit?: () => void;
 }) {
   const districts = districtsFor(settings.regionProvince);
   const canNext =
@@ -330,6 +350,13 @@ function StepOrgInfo({
       </FormField>
 
       <StepFooter
+        left={
+          onSaveAndExit && (
+            <GhostButton disabled={!canNext} onClick={onSaveAndExit}>
+              저장하고 설정으로
+            </GhostButton>
+          )
+        }
         right={
           <PrimaryButton
             disabled={!canNext}
@@ -382,11 +409,14 @@ function StepClasses({
   onChange,
   onPrev,
   onNext,
+  onSaveAndExit,
 }: {
   settings: ClassSettings;
   onChange: (p: Partial<ClassSettings>) => void;
   onPrev: () => void;
   onNext: () => void;
+  /** 설정에서 들어온 교사에게만 준다 — 이 단계만 저장하고 설정으로 돌아간다. */
+  onSaveAndExit?: () => void;
 }) {
   function updateClass(id: string, patch: Partial<ClassroomEntry>) {
     onChange({
@@ -454,7 +484,16 @@ function StepClasses({
       </GhostButton>
 
       <StepFooter
-        left={<GhostButton onClick={onPrev}>이전</GhostButton>}
+        left={
+          <>
+            <GhostButton onClick={onPrev}>이전</GhostButton>
+            {onSaveAndExit && (
+              <GhostButton disabled={!canNext} onClick={onSaveAndExit}>
+                저장하고 설정으로
+              </GhostButton>
+            )}
+          </>
+        }
         right={
           <PrimaryButton
             disabled={!canNext}
