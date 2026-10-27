@@ -20,7 +20,7 @@ registerHooks({
 });
 
 const documents = await import("../lib/api/documents.ts");
-const { ApiError } = await import("../lib/api/client.ts");
+const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 
@@ -1390,6 +1390,9 @@ function editorHarness(selection) {
     },
     "./WorkspaceUI": { ws: {}, Message: "message", AIHint: "ai-hint", useAIStatus: () => false },
     "./document-selection": { serverIssues },
+    // 실제 invalidFields 를 쓴다 — 서버가 짚은 칸을 화면 이름으로 바꾸는 길이
+    // 스텁이면 "어느 칸이 틀렸나" 를 검증하지 못한다.
+    "@/lib/api/client": { ApiError, invalidFields },
     "./SourceReview": { default: "source-review" },
     "@/lib/api/storage-context": { API_STORAGE_CONTEXT },
     "@/lib/api/plans": {},
@@ -1548,6 +1551,33 @@ test("확정된 서버 문서에만 확정 취소가 보이고 초안에는 보�
 
   const draft = await editing();
   assert.equal(draft.editor.button("확정 취소"), undefined);
+});
+
+test("확정이 막히면 서버가 짚은 칸을 교사 말로 알려준다", async () => {
+  // 서버 게이트는 글자 수 말고도 사실·원문 대조와 해석의 숫자를 본다
+  // (backend/app/shared/gates/sections.py). 화면 검사를 통과해도 여기서 막힐 수 있는데,
+  // 「입력값을 확인해주세요」만 띄우면 교사가 어느 칸을 고칠지 알 수 없었다.
+  const { editor } = await editing(
+    {},
+    {
+      confirm: async () => {
+        throw new ApiError(422, {
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "입력값을 확인해주세요.",
+            fields: ["sections.해석"],
+          },
+        });
+      },
+    },
+  );
+  editor.checks().forEach((box) => box.props.onChange({ target: { checked: true } }));
+  editor.render();
+  editor.button("검토 완료 · 문서 확정").props.onClick();
+  await tick();
+  editor.render();
+  assert.match(editor.text(), /해석 칸이 원본과 맞지 않아요/);
+  assert.match(editor.text(), /해석 칸을 고쳐주세요/);
 });
 
 test("사실 칸 아래에 원본을 고치는 곳을 알려준다", async () => {

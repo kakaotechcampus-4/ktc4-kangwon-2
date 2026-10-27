@@ -12,6 +12,7 @@ import {
 import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
+import { invalidFields } from "@/lib/api/client";
 import {
   downloadDocumentHwpx,
   isStaleWrite,
@@ -65,6 +66,19 @@ export interface ServerDocumentActions {
   remove: () => Promise<void>;
   reconfirm?: (input: ReconfirmInput) => Promise<SavedDocument>;
 }
+
+/**
+ * 서버가 `VALIDATION_FAILED` 로 짚는 칸 이름 → 화면에 보이는 칸 이름.
+ *
+ * 서버는 `sections.해석` 처럼 돌려주는데 그대로 띄우면 교사가 어디를 고칠지 모른다.
+ * 점 뒤가 없는 이름(`sections`)은 칸 셋 모양 자체가 틀린 경우다.
+ */
+const SECTION_LABELS: Record<string, string> = {
+  sections: "사실 · 해석 · 지원",
+  "sections.사실": "사실",
+  "sections.해석": "해석",
+  "sections.지원": "지원",
+};
 
 export default function DocumentEditor({
   initial,
@@ -206,7 +220,18 @@ export default function DocumentEditor({
         if (isStaleWrite(e)) {
           setStaleWrite(true);
         } else {
-          setMessage(e instanceof Error ? e.message : "저장하지 못했어요.");
+          // 서버가 짚은 칸을 버리지 않는다. 「입력값을 확인해주세요」만 띄우면
+          // 교사가 어디가 틀렸는지 알 길이 없다.
+          const blocked = invalidFields(e, SECTION_LABELS);
+          setIssues(blocked.map((name) => `${name} 칸을 고쳐주세요.`));
+          setIssuesOpen(blocked.length > 0);
+          setMessage(
+            blocked.length
+              ? `${blocked.join(" · ")} 칸이 원본과 맞지 않아요.`
+              : e instanceof Error
+                ? e.message
+                : "저장하지 못했어요.",
+          );
         }
       } finally {
         setBusy(false);
@@ -516,7 +541,7 @@ export default function DocumentEditor({
                 ? `반려 · 수정이 필요해요\n${issues.map((s) => `• ${s}`).join("\n")}`
                 : available && verified
                   ? "AI 검증에서 문제를 찾지 못했어요. 교사 최종 검토를 진행해주세요."
-                  : "형식·원문 대조를 통과했어요. 의미의 정확성은 교사가 확인해주세요."}
+                  : "기본 항목은 통과했어요. 원본 대조는 확정할 때 서버가 합니다."}
             </Message>
           )}
           {/* 일지는 한 번만 묻는다. 세 칸을 따로 받던 때는 교사가 같은 문서를 세 번 훑어야 했다.
