@@ -100,7 +100,7 @@ class ConfirmPlayMonthlyPlanCommand:
 class PlayMonthlyNotice:
     """A blank the teacher may want to fill; never a confirm failure or a legal judgement."""
 
-    code: str  # SAFETY_UNPLACED · HABIT_BLANK · HEALTH_BLANK · NUTRITION_BLANK
+    code: str  # SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_BLANK · NUTRITION_BLANK
     week_id: WeekId | None = None
 
 
@@ -277,7 +277,10 @@ class PlacePlayMonthlySafety:
                 "play_monthly_week_not_found", f"PlayMonthlyPlan week not found: {command.week_id}"
             )
         candidate = command.candidate_item_id
-        if candidate is not None and candidate not in {c.cell.item_id for c in plan.safety_candidates}:
+        if candidate is not None and (
+            not isinstance(candidate, ItemId)
+            or candidate not in {c.cell.item_id for c in plan.safety_candidates}
+        ):
             raise PlayMonthlyLifecycleError(
                 "play_monthly_safety_candidate_not_found", f"Safety candidate not found: {candidate}"
             )
@@ -328,10 +331,12 @@ def confirm_problems(plan: PlayMonthlyPlan) -> tuple[str, ...]:
 
 
 def play_monthly_notices(plan: PlayMonthlyPlan) -> tuple[PlayMonthlyNotice, ...]:
+    # A placed candidate whose sentence a teacher cleared is as empty as an unplaced week.
+    texts = {c.cell.item_id: c.cell.value for c in plan.safety_candidates}
     notices = [
-        PlayMonthlyNotice("SAFETY_UNPLACED", s.week_id)
+        PlayMonthlyNotice("SAFETY_UNPLACED" if s.candidate_item_id is None else "SAFETY_BLANK", s.week_id)
         for s in plan.safety_weeks
-        if s.candidate_item_id is None
+        if s.candidate_item_id is None or not texts[s.candidate_item_id].strip()
     ]
     notices += [
         PlayMonthlyNotice("HABIT_BLANK", h.week_id) for h in plan.habits if not h.habit.cell.value.strip()

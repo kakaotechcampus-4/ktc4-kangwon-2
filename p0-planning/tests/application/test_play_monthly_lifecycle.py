@@ -533,6 +533,9 @@ def test_a_safety_candidate_is_placed_reused_and_cleared_week_by_week():
         (lambda p: RemovePlayMonthlyActivityCommand(p.plan_id, TEACHER, p.theme.item_id), "play_monthly_activity_not_found"),
         (lambda p: PlacePlayMonthlySafetyCommand(p.plan_id, TEACHER, WeekId.of(p.target_month, 9), None), "play_monthly_week_not_found"),
         (lambda p: PlacePlayMonthlySafetyCommand(p.plan_id, TEACHER, p.weeks[0].week_id, p.drill_candidates[0].cell.item_id), "play_monthly_safety_candidate_not_found"),
+        (lambda p: PlacePlayMonthlySafetyCommand(p.plan_id, TEACHER, p.weeks[0].week_id, []), "play_monthly_safety_candidate_not_found"),
+        (lambda p: PlacePlayMonthlySafetyCommand(p.plan_id, TEACHER, p.weeks[0].week_id, {}), "play_monthly_safety_candidate_not_found"),
+        (lambda p: PlacePlayMonthlySafetyCommand(p.plan_id, TEACHER, p.weeks[0].week_id, p.safety_candidates[0].cell.item_id.value), "play_monthly_safety_candidate_not_found"),
     ],
 )
 def test_arrangement_refuses_unknown_targets_and_writes_nothing(command, code):
@@ -561,3 +564,19 @@ def test_a_confirmed_plan_refuses_rows_and_placement():
     ):
         with pytest.raises(InvalidStateTransitionError):
             use_case.execute(request)
+
+
+def test_a_week_whose_placed_candidate_was_cleared_gets_a_blank_notice_but_still_confirms():
+    plan, plans, edit, confirm = _draft()
+    *_, place = _arrange(plans)
+    candidate = plan.safety_candidates[0]
+    weeks = [s.week_id for s in plan.safety_weeks[:2]]
+    for week_id in weeks:
+        place.execute(PlacePlayMonthlySafetyCommand(plan.plan_id, TEACHER, week_id, candidate.cell.item_id))
+
+    cleared = _edit(edit, plans.get(plan.plan_id), candidate.cell, " ")
+
+    notices = play_monthly_notices(cleared)
+    assert [n.week_id for n in notices if n.code == "SAFETY_BLANK"] == weeks
+    assert not {n.week_id for n in notices if n.code == "SAFETY_UNPLACED"} & set(weeks)
+    assert confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
