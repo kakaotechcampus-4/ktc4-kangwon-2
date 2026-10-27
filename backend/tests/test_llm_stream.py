@@ -57,6 +57,13 @@ def usage_lines(monkeypatch):
     return lines
 
 
+@pytest.fixture
+def warning_lines(monkeypatch):
+    lines = []
+    monkeypatch.setattr(llm.logger, "warning", lambda fmt, *args: lines.append(fmt % args))
+    return lines
+
+
 def _sse(content, *, usage=USAGE):
     chunks = [
         {"choices": [{"delta": {"content": content}, "finish_reason": None}]},
@@ -132,6 +139,62 @@ def test_valid_sse_returns_assembled_content_and_logs_usage_once(monkeypatch, us
 
     assert result["choices"][0]["message"]["content"] == content
     assert usage_lines == ["llm_usage model=test-model prompt=120 completion=30 total=150"]
+
+
+@pytest.mark.parametrize("field", [*USAGE, "all"])
+@pytest.mark.parametrize("value", ["LEAK_MARKER", "LINE_MARKER\nINJECTED_MARKER", True, -1, 1.5])
+def test_invalid_usage_is_not_logged(monkeypatch, usage_lines, warning_lines, field, value):
+    fields = USAGE if field == "all" else [field]
+    _connection(
+        monkeypatch,
+        [*_sse("{}", usage={**USAGE, **dict.fromkeys(fields, value)}), b"data: [DONE]\n\n"],
+    )
+
+    monthly_llm.SharedLlmTransport().post_stream(
+        f"{BASE}/chat/completions",
+        headers={},
+        payload={"model": "test-model", "response_format": {}},
+        timeout=30,
+    )
+
+    expected = {**USAGE, **dict.fromkeys(fields, "-")}
+    assert usage_lines == [
+        f"llm_usage model=test-model prompt={expected['prompt_tokens']} "
+        f"completion={expected['completion_tokens']} total={expected['total_tokens']}"
+    ]
+    assert warning_lines == ["llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=test-model"]
+    assert all(
+        marker not in line
+        for line in usage_lines + warning_lines
+        for marker in ("LEAK_MARKER", "LINE_MARKER", "INJECTED_MARKER")
+    )
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        ({"prompt_tokens": 0, "completion_tokens": 30, "total_tokens": 30}, "0 30 30"),
+        ({"prompt_tokens": 0}, "0 - -"),
+        ({}, "- - -"),
+    ],
+)
+def test_valid_and_missing_usage_are_not_warned(
+    monkeypatch, usage_lines, warning_lines, usage, expected
+):
+    _connection(monkeypatch, [*_sse("{}", usage=usage), b"data: [DONE]\n\n"])
+
+    monthly_llm.SharedLlmTransport().post_stream(
+        f"{BASE}/chat/completions",
+        headers={},
+        payload={"model": "test-model", "response_format": {}},
+        timeout=30,
+    )
+
+    prompt, completion, total = expected.split()
+    assert usage_lines == [
+        f"llm_usage model=test-model prompt={prompt} completion={completion} total={total}"
+    ]
+    assert warning_lines == []
 
 
 @pytest.mark.parametrize(("status", "error"), [(429, LlmBudgetExceeded), (500, LlmFailed)])

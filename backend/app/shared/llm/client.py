@@ -103,12 +103,24 @@ def _log_usage(result: object, model: object) -> None:
     if not isinstance(usage, Mapping):
         # 모델이 usage 를 안 줄 수도 있다. 그것 때문에 생성을 실패시키지 않는다.
         return
+    values = []
+    invalid = False
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        if key not in usage:
+            values.append("-")
+            continue
+        value = usage[key]
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            values.append(value)
+        else:
+            values.append("-")
+            invalid = True
+    if invalid:
+        logger.warning("llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=%s", model)
     logger.info(
         "llm_usage model=%s prompt=%s completion=%s total=%s",
         model,
-        usage.get("prompt_tokens", "-"),
-        usage.get("completion_tokens", "-"),
-        usage.get("total_tokens", "-"),
+        *values,
     )
 
 
