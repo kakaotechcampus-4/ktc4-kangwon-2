@@ -39,6 +39,9 @@ OBSERVATION_HEADER_ROWS = 1
 # 일일 보육일지 양식의 머리행(시간 · 일과 · 활동계획 · 활동실행) 줄 수.
 # 그 아래가 일과 원형 한 줄, 꼬리 한 줄이다.
 DAILY_LOG_HEADER_ROWS = 1
+# 주간 보육일지 양식의 머리행(날짜 · 그날의 놀이와 일과) 줄 수.
+WEEKLY_LOG_HEADER_ROWS = 1
+WEEKDAYS = "월화수목금토일"
 
 
 @router.get("/{document_id}/export/hwp")
@@ -46,11 +49,11 @@ def export_document(
     document_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
 ) -> Response:
     doc = _own_document(session, user, document_id)
-    if doc.kind not in ("observation", "dailyLog"):
+    if doc.kind not in ("observation", "dailyLog", "weeklyLog"):
         raise _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "VALIDATION_FAILED",
-            "관찰일지와 일일 보육일지만 내보낼 수 있습니다.",
+            "관찰일지와 보육일지만 내보낼 수 있습니다.",
             ["kind"],
         )
     if doc.status != "CONFIRMED":
@@ -69,6 +72,8 @@ def export_document(
     evaluation = _evaluation(session, doc)
     if doc.kind == "observation":
         content = _observation(session, doc, sources, evaluation)
+    elif doc.kind == "weeklyLog":
+        content = _weekly_log(doc, sources, evaluation)
     else:
         content = _daily_log(session, doc, sources, evaluation)
     return download(content, f"document-{doc.id}", doc.title, format)
@@ -80,6 +85,7 @@ def export_document(
 _EVAL_HEADINGS = {
     "observation": ("배움", "지원"),
     "dailyLog": ("놀이 평가", "다음날 지원계획"),
+    "weeklyLog": ("놀이 평가", "다음 주 지원계획"),
 }
 
 
@@ -183,4 +189,24 @@ def _daily_log(
         DAILY_LOG_HEADER_ROWS,
         rows,
         [["놀이 평가 및 다음날 지원계획", evaluation]],
+    )
+
+
+def _weekly_log(doc: Document, sources: list[DocumentSource], evaluation: str) -> bytes:
+    """확정한 일일 보육일지마다 한 줄씩, 꼬리 칸에 해석 + 지원을 넣는다.
+
+    **원본을 다시 읽지 않는다.** 근거는 교사가 확정한 일일 보육일지의 「사실」이고, 그 사본이
+    `DocumentSource.text` 에 그대로 있다. 원본이 지워졌거나 확정이 풀렸으면 이 문서가
+    `stale` 이 되어 위에서 이미 막힌다(`stale.py`) — 여기서 다시 볼 것이 없다.
+    """
+    rows = [
+        [f"{s.date.month}/{s.date.day}({WEEKDAYS[s.date.weekday()]})", s.text.strip()]
+        for s in sorted(sources, key=lambda s: s.date)
+    ]
+    return fill_grid(
+        (TEMPLATE_DIR / "weekly_log.hwpx").read_bytes(),
+        doc.title,
+        WEEKLY_LOG_HEADER_ROWS,
+        rows,
+        [["놀이 평가 및 다음 주 지원계획", evaluation]],
     )

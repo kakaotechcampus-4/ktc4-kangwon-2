@@ -626,3 +626,81 @@ def test_양식_표_줄_수가_머리_원형_꼬리와_다르면_만들지_않�
             [["a", "b"]],
             [["평가", "c"]],
         )
+
+
+def _weekly_log(session, klass, dailies, *, status="CONFIRMED"):
+    """확정한 일일 보육일지들을 근거로 둔 주간 보육일지. `dailies` 는 (날짜, 사실) 쌍이다."""
+    doc = Document(
+        kind="weeklyLog",
+        title="햇살반 주간 보육일지 (9/21~9/25)",
+        class_id=klass.id,
+        child_id=None,
+        start_date=date(2026, 9, 21),
+        end_date=date(2026, 9, 25),
+        status=status,
+        origin="AI",
+        stale=False,
+        generation_method="RULE_LLM",
+        generation_rule_id="weeklyLog-draft",
+        generation_rule_version="v1",
+        review_note="",
+    )
+    session.add(doc)
+    session.flush()
+    for index, (day, fact) in enumerate(dailies):
+        session.add(
+            DocumentSource(
+                document_id=doc.id,
+                source_kind="document",
+                source_id=1000 + index,
+                class_id=klass.id,
+                child_id=None,
+                date=day,
+                text=fact,
+                source_status="CONFIRMED",
+            )
+        )
+    fact = "\n\n".join(text for _, text in dailies)
+    for heading, body in [("사실", fact), ("해석", INTERPRETATION), ("지원", SUPPORT)]:
+        session.add(DocumentSection(document_id=doc.id, heading=heading, body=body, source_ids=[]))
+    session.flush()
+    return doc
+
+
+def test_주간_보육일지는_날짜마다_한_줄씩_담고_꼬리_칸에_평가를_넣는다(db_session, mine):
+    klass, _ = mine
+    # 교사가 고른 순서가 날짜순이 아니어도 종이는 날짜순이다.
+    doc = _weekly_log(
+        db_session,
+        klass,
+        [
+            (date(2026, 9, 23), "낙엽으로 왕관을 만들었다."),
+            (date(2026, 9, 21), "블록으로 성을 쌓았다."),
+        ],
+    )
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 200
+    _, rows = _grid(response.content)
+    assert rows == [
+        ["날짜", "그날의 놀이와 일과"],
+        ["9/21(월)", "블록으로 성을 쌓았다."],
+        ["9/23(수)", "낙엽으로 왕관을 만들었다."],
+        [
+            "놀이 평가 및 다음 주 지원계획",
+            f"▸ 놀이 평가) {INTERPRETATION}\n\n▸ 다음 주 지원계획) {SUPPORT}",
+        ],
+    ]
+
+
+def test_주간_보육일지도_확정본만_내보낸다(db_session, mine):
+    klass, _ = mine
+    doc = _weekly_log(
+        db_session, klass, [(date(2026, 9, 21), "블록으로 성을 쌓았다.")], status="DRAFT"
+    )
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GATE_BLOCKED"
