@@ -12,7 +12,7 @@
 | [01-problem-scenario.md](01-problem-scenario.md) | 누구의 어떤 문제인가 · 실제로 조사한 것 |
 | [02-stability-usability.md](02-stability-usability.md) | 안 죽는가 · 교사가 쓸 수 있는가 |
 | [03-agentic-experience.md](03-agentic-experience.md) | 교사가 겪는 AI — 어디까지 AI 가 하고 어디서 사람이 정하나 |
-| [04-service-completeness.md](04-service-completeness.md) | 기능이 끝까지 도는가 · **핵심 기능 하나** |
+| [04-service-completeness.md](04-service-completeness.md) | 기능이 끝까지 도는가 · **핵심 기능** |
 | [05-agentic-implementation.md](05-agentic-implementation.md) | 안에서 어떻게 돌아가나 — Rule · LLM · Rule |
 | [06-ai-quality.md](06-ai-quality.md) | 나온 글이 쓸 만한가 · 어떻게 재는가 |
 | [07-guardrails.md](07-guardrails.md) | 하면 안 되는 것을 코드가 막는가 |
