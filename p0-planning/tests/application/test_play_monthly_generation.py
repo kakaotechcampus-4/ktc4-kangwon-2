@@ -18,13 +18,14 @@ from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
 from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
+from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonSafetyLegalRuleRepository
 from ssuksak.adapters.safety_evidence_classification_repository import (
     JsonSafetyEvidenceClassificationRepository,
 )
 from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
 from ssuksak.planning.application.generate_play_monthly_plan import (
-    PLAY_MONTHLY_LAYOUT_V0_1,
+    PLAY_MONTHLY_LAYOUT_V0_2,
     GeneratePlayMonthlyPlan,
     GeneratePlayMonthlyPlanCommand,
     PlayMonthlyGenerationError,
@@ -32,6 +33,7 @@ from ssuksak.planning.application.generate_play_monthly_plan import (
 from ssuksak.planning.application.generate_play_project_plan import PLAY_PROJECT_LAYOUT_V0_2
 from ssuksak.planning.domain.curriculum_reference import CurriculumCatalog, CurriculumContent
 from ssuksak.planning.domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
+from ssuksak.planning.domain.drill_topic_reference import DrillKind, DrillOrigin, DrillTopic, DrillTopicCatalog
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.plan import PlanItem, PlanStatus
@@ -82,6 +84,27 @@ DAILY = DailyLifeCatalog(
         DailyLifeEntry("nu1", DailyLifeKind.NUTRITION, "영양", "합성 영양 1", "t.3"),
     ),
 )
+ALL_MONTHS = tuple(range(1, 13))
+DRILLS = DrillTopicCatalog(
+    "test.drills",
+    "test-drills-v1",
+    ActivationStatus.HUMAN_APPROVED,
+    CURRICULUM.catalog_id,
+    CURRICULUM.catalog_version,
+    (DrillOrigin("test.guide", "합성 안내서", "0" * 64, "1-2"),),
+    tuple(
+        DrillTopic(topic_id, kind, label, f"합성 {label} 상황", "t.4", months, "test.guide")
+        for topic_id, kind, label, months in (
+            ("fire_a", DrillKind.FIRE, "화재 가", ALL_MONTHS),
+            ("quake", DrillKind.DISASTER, "지진", ALL_MONTHS),
+            ("fire_b", DrillKind.FIRE, "화재 나", ALL_MONTHS),
+            ("fire_c", DrillKind.FIRE, "화재 다", ALL_MONTHS),
+            ("fire_d", DrillKind.FIRE, "화재 라", ALL_MONTHS),
+            ("snow", DrillKind.DISASTER, "폭설", (12, 1, 2)),
+            ("flood", DrillKind.DISASTER, "수해", (6, 7, 8, 9)),
+        )
+    ),
+)
 
 
 def _item(item_id: str, value: str, evidence=()) -> PlanItem:
@@ -129,8 +152,14 @@ def _valid(request) -> dict:
         "target_month": request.target_month,
         "theme": "봄 길을 걸어요",
         "rationale": "봄에는 바깥에서 새싹과 꽃을 만나는 놀이가 이어질 것으로 예상합니다.",
-        "together": [{"name": f"함께 놀이 {n}", "content_ids": ids[:2], "parent_ref": None} for n in range(1, 6)],
-        "free_play": [{"name": f"자유놀이 {n}", "content_ids": ids[2:3], "parent_ref": None} for n in range(1, 6)],
+        "together": [
+            {"name": f"함께 놀이 {n}", "description": f"함께 놀이 {n}을 설명해요.", "content_ids": ids[:2], "parent_ref": None}
+            for n in range(1, 6)
+        ],
+        "free_play": [
+            {"name": f"자유놀이 {n}", "description": f"자유놀이 {n}을 설명해요.", "content_ids": ids[2:3], "parent_ref": None}
+            for n in range(1, 6)
+        ],
         # Contains safety words (교통안전 …) on purpose: ordinary here, not leakage.
         "safety": [
             {"slot": s.slot, "text": f"{s.label} 약속을 함께 알아보아요", "refs": [s.allowed[0][0]]}
@@ -142,6 +171,10 @@ def _valid(request) -> dict:
         ],
         "health_entry_id": "he1",
         "nutrition_entry_id": "nu1",
+        "drills": [
+            {"topic_id": t, "text": f"{n}번째 상황을 가정해 대피 훈련을 해요"}
+            for n, t in enumerate(request.drill_topic_ids, 1)
+        ],
     }
 
 
@@ -197,6 +230,7 @@ def _run(
     parent=None,
     curriculum=CURRICULUM,
     daily=DAILY,
+    drills=DRILLS,
     rule=RULE,
     classification=CLASSIFIED,
     quality=QUALITY_TABLE,
@@ -213,6 +247,7 @@ def _run(
         plan_repository=plans,
         curriculum_repository=_Catalogs(curriculum),
         daily_life_repository=_Catalogs(daily),
+        drill_repository=_Catalogs(drills),
         safety_rule_repository=_Value(rule),
         evidence_repository=_Value(STORE),
         safety_classification_repository=_Value(classification),
@@ -235,6 +270,8 @@ def _run(
                 legal_rule_version=LEGAL,
                 safety_classification_version=CLASSIFICATION,
                 safety_quality_version=QUALITY,
+                drill_catalog_id=DRILLS.catalog_id,
+                drill_catalog_version=DRILLS.catalog_version,
             ),
             **command_changes,
         }
@@ -263,7 +300,7 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert (plan.health.cell.value, plan.health.entry_id) == ("합성 건강 1", "he1")
     assert (plan.nutrition.cell.value, plan.nutrition.entry_id) == ("합성 영양 1", "nu1")
     # Teacher-input cells: blank, never generated, each with its own CREATED event.
-    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_1.teacher_input_keys
+    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_2.teacher_input_keys
     assert all(t.value == "" and t.generation is None and t.evidence == () for t in plan.teacher_inputs)
     cells = plan.cells()
     assert all(
@@ -272,10 +309,15 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert len({c.item_id for c in cells}) == len(cells)
     # A list row's semantic key carries its own item id, not its position.
     assert all(a.cell.semantic_key == f"together.{a.cell.item_id.value}" for a in plan.together)
-    generated = [c for c in cells if c.generation is not None]
+    # The direction and header strings are Rule copies (layout v0.2.0); the rest is RULE_LLM.
+    copies = {plan.direction.item_id, *(c.item_id for c in plan.display.cells())}
+    generated = [c for c in cells if c.generation is not None and c.item_id not in copies]
     assert {(c.generation.method, c.generation.rule_version) for c in generated} == {
         (GenerationMethod.RULE_LLM, PLAY_MONTHLY_PROMPT_VERSION)
     }
+    assert {
+        (c.generation.method, c.generation.rule_version) for c in cells if c.item_id in copies and c.generation
+    } == {(GenerationMethod.RULE_ONLY, "play-monthly-layout-v0.2.0")}
     assert [e.event_type for e in plan.audit] == [AuditEventType.CREATED]
 
 
@@ -295,7 +337,7 @@ def test_snapshot_keeps_parent_references_and_request_fingerprint():
     )
     assert (refs.legal_rule_version, refs.evidence_store_sha256) == (LEGAL, STORE.content_sha256)
     assert (refs.safety_classification_version, refs.safety_quality_version) == (CLASSIFICATION, QUALITY)
-    assert plan.layout.layout_version == "play-monthly-layout-v0.1.0"
+    assert plan.layout.layout_version == "play-monthly-layout-v0.2.0"
 
     other, emphasized, *_ = _run(emphasized_row_keys=("cand4",))
     assert other.execute(emphasized).references.request_fingerprint != refs.request_fingerprint
@@ -309,6 +351,7 @@ def test_only_selected_plays_of_the_season_reach_the_request():
     plays = payload["parent_plays"]
     assert [p["ref"] for p in plays] == [f"m03_m05.{key}" for key in SELECTED]
     assert [p["emphasized"] for p in plays] == [False, False, False, True, False]
+    assert (plays[0]["materials"], plays[0]["support_direction"]) == ("종이 상자", "자료를 더해 줍니다.")
     content = provider.requests[0].user_content
     assert "m03_m05 놀이 1\"" not in content and "m03_m05 놀이 3" not in content  # unselected
     assert "m06_m08" not in content  # other season
@@ -421,6 +464,14 @@ def _one_topic(quality):
             DailyLifeEntry("x", DailyLifeKind.HABIT, "습관", "합성", "t.99"),))),
          "DAILY_LIFE_UNKNOWN_CONTENT_ID"),
         (dict(daily=replace(DAILY, entries=DAILY.of_kind(DailyLifeKind.HABIT))), "DAILY_LIFE_REFERENCE_INCOMPLETE"),
+        (dict(drills=replace(DRILLS, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW)),
+         "DRILL_REFERENCE_NOT_ACTIVE"),
+        (dict(drill_catalog_version="test-drills-v0"), "DRILL_REFERENCE_NOT_FOUND"),
+        (dict(drills=replace(DRILLS, curriculum_catalog_version="other")), "DRILL_CURRICULUM_MISMATCH"),
+        (dict(drills=replace(DRILLS, topics=DRILLS.topics + (
+            DrillTopic("x", DrillKind.FIRE, "화재", "합성", "t.99", ALL_MONTHS, "test.guide"),))),
+         "DRILL_UNKNOWN_CONTENT_ID"),
+        (dict(drills=replace(DRILLS, topics=DRILLS.topics[:4])), "DRILL_TOPICS_INSUFFICIENT"),
         (dict(rule=replace(RULE, runtime_active=False)), "SAFETY_RULE_NOT_ACTIVE"),
         (dict(legal_rule_version="other-rule"), "SAFETY_RULE_NOT_FOUND"),
         (dict(quality=replace(QUALITY_TABLE, runtime_active=False)), "SAFETY_EVIDENCE_NOT_ACTIVE"),
@@ -519,7 +570,7 @@ def _duplicate_name(data):
 
 
 def _six_rows(data):
-    data["together"].append({"name": "여섯째 놀이", "content_ids": ["t.1"], "parent_ref": None})
+    data["together"].append({"name": "여섯째 놀이", "description": "설명", "content_ids": ["t.1"], "parent_ref": None})
 
 
 @pytest.mark.parametrize(
@@ -544,6 +595,13 @@ def _six_rows(data):
         (_set(("target_month",), "2027-05"), "TARGET_MONTH_MISMATCH"),
         (_set(("theme",), "4월 14일 소풍 놀이"), "UNSUPPORTED_FACT"),
         (_set(("rationale",), "홍길동 선생님과 함께하는 놀이를 예상합니다."), "UNSUPPORTED_FACT"),
+        (_set(("together", 0, "description"), "4월 14일에 공원에서 하는 놀이입니다."), "UNSUPPORTED_FACT"),
+        (_set(("free_play", 2, "description"), "t.3 내용과 연결되는 놀이입니다."), "SOURCE_IDENTIFIER_LEAKAGE"),
+        (_set(("drills",), []), "MISSING_DRILL_TOPIC"),
+        (_set(("drills", 0, "topic_id"), "snow"), "UNKNOWN_DRILL_TOPIC"),  # not chosen for April
+        (_set(("drills", 1, "topic_id"), "fire_a"), "DUPLICATE_DRILL_TOPIC"),
+        (_set(("drills", 0, "text"), "4월 14일 오전에 대피 훈련을 해요"), "UNSUPPORTED_FACT"),
+        (_set(("drills", 0, "text"), "fire_a 상황을 가정해 대피 훈련을 해요"), "SOURCE_IDENTIFIER_LEAKAGE"),
         (_set(("safety", 0, "text"), "annex6:traffic_safety:1 길을 건너는 약속을 알아보아요"),
          "SOURCE_IDENTIFIER_LEAKAGE"),
         (_set(("together", 0, "name"), "t.1 봄 산책 놀이"), "SOURCE_IDENTIFIER_LEAKAGE"),
@@ -568,6 +626,9 @@ def test_invalid_output_is_rejected_after_one_failed_repair(edit, code):
         _set(("class_notice",), "교사가 쓸 안내"),  # a teacher-input cell is not a response field
         _set(("safety", 0, "week_id"), "2027-04-W1"),  # weekly placement is the teacher's
         _set(("together", 0, "content_ids"), "t.1"),
+        _set(("drills", 0, "assembly_place"), "놀이터"),  # place and route are the teacher's
+        _set(("free_play", 0, "description"), None),
+        lambda data: data["together"][0].pop("description"),
     ],
 )
 def test_unrequested_fields_are_parse_errors_and_store_nothing(edit):
@@ -644,6 +705,152 @@ def test_domain_rejects_generated_teacher_input_and_unknown_placement():
         + plan.safety_weeks[1:],
     )
     assert placed.safety_weeks[0].candidate_item_id == plan.safety_candidates[0].cell.item_id
+
+
+def test_drill_candidates_are_five_curriculum_topics_and_the_drill_cell_stays_blank():
+    use_case, command, _, provider, _ = _run()
+    plan = use_case.execute(command)
+
+    # April has no seasonal topic: the five all-month topics in catalog order.
+    assert [d.topic_id for d in plan.drill_candidates] == ["fire_a", "quake", "fire_b", "fire_c", "fire_d"]
+    for n, candidate in enumerate(plan.drill_candidates, 1):
+        (source,) = candidate.cell.evidence
+        assert (source.source_type, source.source_id) == (EvidenceSourceType.CURRICULUM, "t.4")
+        assert candidate.cell.semantic_key == f"fire_disaster_drill.candidate.{candidate.topic_id}"
+        assert candidate.cell.value == f"{n}번째 상황을 가정해 대피 훈련을 해요"
+    assert [d.label for d in plan.drill_candidates] == ["화재 가", "지진", "화재 나", "화재 다", "화재 라"]
+    (drill_cell,) = [t for t in plan.teacher_inputs if t.semantic_key == "fire_disaster_drill"]
+    assert drill_cell.value == "" and drill_cell.generation is None
+    assert (plan.references.drill_catalog_id, plan.references.drill_catalog_version) == (
+        "test.drills",
+        "test-drills-v1",
+    )
+    payload = json.loads(provider.requests[0].user_content)
+    chosen = [d.topic_id for d in plan.drill_candidates]
+    assert [t["topic_id"] for t in payload["drill_topics"]] == list(provider.requests[0].drill_topic_ids) == chosen
+
+
+@pytest.mark.parametrize(
+    ("month", "topics"),
+    [
+        (1, ["snow", "fire_a", "quake", "fire_b", "fire_c"]),
+        (7, ["flood", "fire_a", "quake", "fire_b", "fire_c"]),
+        (4, ["fire_a", "quake", "fire_b", "fire_c", "fire_d"]),
+    ],
+)
+def test_seasonal_drill_topics_come_first_in_their_months(month, topics):
+    year = 2027 if month >= 3 else 2028
+    use_case, command, *_ = _run(target_month=YearMonth(year, month))
+
+    assert [d.topic_id for d in use_case.execute(command).drill_candidates] == topics
+
+
+def test_repair_rewrites_only_the_flagged_drill_sentence():
+    use_case, command, plans, provider, _ = _run(_set(("drills", 2, "text"), "4월 14일에 대피해요"))
+
+    plan = use_case.execute(command)
+
+    repair = json.loads(provider.requests[1].user_content)
+    assert repair["issues"] == [{"location": "drills:fire_b", "code": "UNSUPPORTED_FACT"}]
+    versions = {d.topic_id: d.cell.generation.rule_version for d in plan.drill_candidates}
+    assert versions.pop("fire_b") == PLAY_MONTHLY_REPAIR_PROMPT_VERSION
+    assert set(versions.values()) == {PLAY_MONTHLY_PROMPT_VERSION}
+
+
+def test_the_real_drill_draft_loads_pending_and_is_rejected():
+    real = JsonDrillTopicReferenceRepository()
+    drills = real.get_catalog("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
+    assert drills.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
+    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
+    assert {t.content_id for t in drills.topics} == {"nuri2019.1.3.4"}
+    use_case, command, plans, provider, _ = _run(
+        drills=drills, drill_catalog_id=drills.catalog_id, drill_catalog_version=drills.catalog_version
+    )
+
+    with pytest.raises(PlayMonthlyGenerationError, match="DRILL_REFERENCE_NOT_ACTIVE"):
+        use_case.execute(command)
+    assert provider.requests == [] and plans.save_count == 0
+
+
+def test_domain_rejects_duplicate_drill_topics():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+    first = plan.drill_candidates[0]
+
+    with pytest.raises(InvalidDomainValueError):
+        replace(plan, drill_candidates=plan.drill_candidates + (replace(first, cell=plan.drill_candidates[1].cell),))
+
+
+def test_a_sentence_about_another_topic_is_not_caught_so_the_label_goes_with_it():
+    # Known limit: only ids and invented facts are checked. The teacher sees the Rule's label.
+    use_case, command, *_ = _run(_set(("drills", 0, "text"), "지진이 나면 책상 아래로 몸을 숨겨요"))
+    first = use_case.execute(command).drill_candidates[0]
+
+    assert (first.topic_id, first.label) == ("fire_a", "화재 가")
+
+
+def test_drill_origins_need_unique_ids_and_sha256_digests():
+    with pytest.raises(InvalidDomainValueError):
+        DrillOrigin("test.guide", "합성", "not-a-sha256", "1")
+    twice = (DrillOrigin("test.guide", "합성", "0" * 64, "1"), DrillOrigin("test.guide", "합성", "1" * 64, "2"))
+    with pytest.raises(InvalidDomainValueError):
+        replace(DRILLS, origins=twice)
+
+
+def test_each_activity_pairs_a_document_name_with_an_edit_screen_description():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+
+    for activity in plan.together + plan.free_play:
+        name, description = activity.cell, activity.description
+        assert description.semantic_key == f"{name.semantic_key}.description"
+        assert description.item_id != name.item_id and description.evidence == name.evidence
+        assert description.value == f"{name.value}을 설명해요."
+        assert description.generation.method is GenerationMethod.RULE_LLM
+    assert plan.together[0].cell.semantic_key == f"together.{plan.together[0].cell.item_id.value}"
+
+
+@pytest.mark.parametrize(
+    ("second", "versions"),
+    [
+        # The repair rewrites only the flagged description; the name keeps its first version.
+        (_set(("together", 1, "description"), "물이 담긴 통에 여러 재료를 띄워 보는 놀이입니다."), None),
+        # Renaming the play while repairing its description is outside the flagged location.
+        (_set(("together", 1, "name"), "다른 놀이 이름"), "REPAIR_CHANGED_UNFLAGGED"),
+    ],
+)
+def test_a_description_repair_stays_inside_the_description(second, versions):
+    invent = _set(("together", 1, "description"), "4월 14일에 하는 놀이입니다.")
+
+    def repair(data):
+        invent(data)
+        second(data)
+
+    use_case, command, plans, provider, _ = _run(invent, repair)
+    if versions is not None:
+        with pytest.raises(ProposalRejectedError) as error:
+            use_case.execute(command)
+        assert versions in error.value.validation_codes and plans.save_count == 0
+        return
+    plan = use_case.execute(command)
+
+    issues = json.loads(provider.requests[1].user_content)["issues"]
+    assert issues == [{"location": "together[1].description", "code": "UNSUPPORTED_FACT"}]
+    row = plan.together[1]
+    assert (row.cell.generation.rule_version, row.description.generation.rule_version) == (
+        PLAY_MONTHLY_PROMPT_VERSION,
+        PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
+    )
+    assert row.description.value == "물이 담긴 통에 여러 재료를 띄워 보는 놀이입니다."
+
+
+def test_domain_keeps_a_description_paired_with_its_name():
+    use_case, command, *_ = _run()
+    plan = use_case.execute(command)
+    first, second = plan.together[:2]
+
+    with pytest.raises(InvalidDomainValueError):
+        replace(first, description=second.description)
 
 
 def test_a_repair_that_removes_the_internal_id_is_stored_clean():

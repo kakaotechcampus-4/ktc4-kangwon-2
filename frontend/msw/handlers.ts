@@ -3,6 +3,7 @@ import { failure, scenario } from "./scenarios";
 import {
   findCenter,
   addCenter,
+  patchCenter,
   putConfig,
   currentCenterId,
   findGreetings,
@@ -141,6 +142,17 @@ export const handlers = [
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+  }),
+  // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
+  http.patch("*/api/centers/:centerId", async ({ request, params }) => {
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
+      if (k in b && !text(b[k])) return bad(k);
+    if ("region_sido" in b !== "region_sigungu" in b) return bad("region_sido");
+    return HttpResponse.json(patchCenter(id, b as Partial<CenterInput>));
   }),
   // 초대 코드 (§1-1). 목업은 계정이 하나라 코드를 하나로 고정한다.
   http.post("*/api/centers/:centerId/invites", ({ params }) => {
@@ -479,6 +491,29 @@ export const handlers = [
     }
     // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
+  }),
+  // 실제 서버: 확정본은 200 hwpx(가짜 파일), 미확정은 형식 상관없이 409 — 문구만 형식별 (§9).
+  http.get("*/api/plans/:id/export/hwp", async ({ request, params }) => {
+    const s = await scenario(request, "annual-export");
+    if (s) return s;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.status !== "CONFIRMED") {
+      return failure(
+        "GATE_BLOCKED",
+        plan.format === "PLAY_PROJECT"
+          ? "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다."
+          : "확정된 계획안만 내보낼 수 있습니다.",
+      );
+    }
+    const name = `plan-${id}.hwpx`;
+    return new HttpResponse("MSW hwpx", {
+      headers: {
+        "Content-Type": "application/hwp+zip",
+        "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
+      },
+    });
   }),
   http.get("*/api/plans/annual/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "annual-audit");
