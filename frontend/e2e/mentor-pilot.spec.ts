@@ -2,6 +2,23 @@ import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { expect, test, type Download, type Page } from "@playwright/test";
 
+/**
+ * 보관함은 **반 → 관찰일지 → 아이 → 날짜** 로만 탐색한다.
+ * 예전의 전체 문서 목록은 없앴으므로 제목만으로 바로 누르지 않는다.
+ */
+async function openObservation(
+  page: Page,
+  doc: { title: string; child_name: string; start: string },
+) {
+  await page.getByRole("complementary", { name: "반 선택" }).getByText("햇살반").click();
+  await page.getByRole("button", { name: "관찰일지", exact: true }).click();
+  await page.getByRole("button", { name: doc.child_name, exact: true }).click();
+  await page.getByLabel("날짜 선택").fill(doc.start);
+  await page
+    .getByRole("button", { name: new RegExp(doc.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+}
+
 async function verifyHwpx(file: Download, path: string, expected: string[]) {
   expect(file.suggestedFilename()).toMatch(/\.hwpx$/);
   await file.saveAs(path);
@@ -239,9 +256,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
     (document: { kind: string }) => document.kind === "observation",
   );
   await page.getByRole("button", { name: "보관함 보기", exact: true }).click();
-  await page
-    .getByRole("button", { name: new RegExp(saved.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
-    .click();
+  await openObservation(page, saved);
   await expect(page.getByText("교사 확정", { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: info.outputPath("observation-confirmed.png"), fullPage: true });
 
@@ -256,9 +271,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await page.getByRole("button", { name: "수정 저장", exact: true }).click();
   await expect(page.getByText("수정했어요.", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
-  await page
-    .getByRole("button", { name: new RegExp(saved.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
-    .click();
+  await openObservation(page, saved);
   await expect(
     page.getByText("이 문서의 근거로 사용된 관찰 기록이 변경되었습니다.", { exact: false }),
   ).toBeVisible();

@@ -1,0 +1,866 @@
+/* 문서 보관함(S-J5) 전용. 전역 스타일과 다른 화면은 건드리지 않는다.
+   색은 쌤플 기준색만 쓴다 — Main #AFCDB5 · Point1 #F2B8A8 · Point2 #A9D8D0 · Dark #7EAD8B. */
+
+/* 전역 사이드바(232px) 오른쪽 전체를 쓴다. WorkspacePage 의 `.page`(max-width·가운데 정렬·
+   40px 좌우 여백)를 쓰지 않는 이유 — 그걸 쓰면 반 사이드바가 전역 사이드바에서 떨어진다. */
+.archive {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  /* 상단바가 60px 이다 (AppLayout 의 Suspense fallback 과 WorkspaceTopBar 가 같은 값). */
+  min-height: calc(100vh - 60px);
+}
+.archive button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.archive :is(button, a, input, textarea, select):focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 3px;
+}
+/* 오른쪽 본문만 여백을 갖는다 — 왼쪽 사이드바는 경계에 딱 붙는다. */
+.content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 24px 32px 48px;
+  color: var(--pg-ink);
+}
+
+/* ── 왼쪽 반 선택 (문서 보관함 안쪽에만 있다. 전역 사이드바와 별개다) ── */
+.classRail {
+  position: sticky;
+  top: 60px;
+  align-self: flex-start;
+  flex: 0 0 252px;
+  overflow: hidden;
+  /* 전역 사이드바에 바로 붙는다 — 왼쪽 테두리도 바깥 여백도 두지 않는다.
+     색은 전역 사이드바와 같은 셸 토큰이다. 둘이 한 벌로 보여야 한다. */
+  border: 0;
+  border-right: 1px solid var(--pg-shell-line);
+  border-radius: 0;
+  background: var(--pg-shell);
+  padding: 20px 16px;
+  /* 상단바 아래부터 화면 끝까지. */
+  height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+}
+.railHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 4px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.railHead svg {
+  width: 18px;
+  height: 18px;
+  color: var(--pg-sage-ink);
+}
+.classList {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* 반이 많아지면 목록만 구른다. 잎사귀 그림은 아래에 그대로 남는다. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--pg-shell-line) transparent;
+}
+.classCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--pg-ink);
+  background: var(--pg-paper);
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  box-shadow: var(--pg-shadow-card);
+  cursor: pointer;
+}
+.classCard:hover {
+  background: var(--pg-shell-hover);
+}
+/* 고른 반에만 민트(세이지)를 쓴다 — 사이드바 전체를 칠하지 않는다. */
+.classCard[aria-pressed="true"] {
+  background: var(--pg-sage-tint);
+  border-color: var(--pg-sage);
+  color: var(--pg-sage-ink);
+  font-weight: 750;
+}
+.classCard[aria-pressed="true"] svg {
+  color: var(--pg-sage-ink);
+}
+.classCard .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.classCard svg {
+  width: 16px;
+  height: 16px;
+  color: var(--pg-ink-soft);
+  flex: none;
+}
+.railEmpty {
+  position: relative;
+  z-index: 1;
+  margin: 0 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.decor {
+  pointer-events: none;
+  position: absolute;
+  bottom: -40px;
+  left: -46px;
+  width: 240px;
+  height: 300px;
+  opacity: 0.28;
+}
+
+/* ── 오른쪽 본문 ── */
+.periodBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.periodNav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 8px;
+  border: 1px solid #d7e6dc;
+  border-radius: 14px;
+  background: #fff;
+}
+.periodNav strong {
+  min-width: 182px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 750;
+}
+.periodNav button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #729a88;
+  cursor: pointer;
+}
+.periodNav button:hover:not(:disabled) {
+  background: #e7f4ea;
+}
+.periodNav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.periodNav svg {
+  width: 18px;
+  height: 18px;
+}
+.periodDate {
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid #d7e6dc;
+  border-radius: 12px;
+  font-size: 14px;
+  color: #40566a;
+}
+
+.typeGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.typeCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 132px;
+  padding: 12px 8px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: #f2f8f3;
+  color: #23334b;
+  cursor: pointer;
+  text-align: center;
+}
+.typeCard strong {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+.typeCard small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #72849a;
+}
+.typeCard svg {
+  width: 38px;
+  height: 38px;
+  margin-bottom: 2px;
+}
+.typeCard[data-type="annual"] {
+  background: #f0f8f2;
+}
+.typeCard[data-type="annual"] svg {
+  color: #70be9a;
+}
+.typeCard[data-type="monthly"] {
+  background: #fff4f1;
+}
+.typeCard[data-type="monthly"] svg {
+  color: #f08b7f;
+}
+.typeCard[data-type="weekly"] {
+  background: #f0f8fd;
+}
+.typeCard[data-type="weekly"] svg {
+  color: #70b0e6;
+}
+.typeCard[data-type="care"] {
+  background: #fffbf0;
+}
+.typeCard[data-type="care"] svg {
+  color: #edae51;
+}
+.typeCard[data-type="observation"] {
+  background: #f8f4ff;
+}
+.typeCard[data-type="observation"] svg {
+  color: #b28de7;
+}
+.typeCard[aria-pressed="true"] {
+  border-color: #7ead8b;
+  box-shadow: 0 3px 14px rgba(43, 65, 62, 0.06);
+}
+.typeCard[data-type="monthly"][aria-pressed="true"] {
+  border-color: #f2b8a8;
+}
+.typeCard[data-type="weekly"][aria-pressed="true"] {
+  border-color: #a9d8d0;
+}
+
+/* ── 빈 화면 ── */
+.blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 360px;
+  padding: 28px 16px;
+  border: 1px solid #e7ebe8;
+  border-radius: 16px;
+  background: #fff;
+  text-align: center;
+}
+.blank h3 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.5px;
+}
+.blank p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #79899c;
+}
+.blankArt {
+  width: 220px;
+  max-width: 70%;
+  height: auto;
+}
+.blankArtSmall {
+  width: 150px;
+  max-width: 60%;
+  height: auto;
+}
+
+/* ── 문서 카드 그리드 ── */
+.panel {
+  border: 1px solid #f0eeea;
+  border-radius: 16px;
+  background: #fff;
+  padding: 16px;
+  min-width: 0;
+}
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.panelHead h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+}
+.panelHeadLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.docGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.docCard,
+.addCard {
+  border: 1px solid #e9edeb;
+  border-radius: 13px;
+  background: #fff;
+  padding: 10px;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.docCard:hover {
+  border-color: #9fcfb5;
+}
+/* 검토 중은 연한 살구, 확정은 연한 민트. 재검토는 확정 톤을 유지한 채 테두리만 다르다. */
+.docCard[data-state="draft"] {
+  background: #fffaf7;
+  border-color: #f4d6cc;
+}
+.docCard[data-state="confirmed"] {
+  background: #f8fbf9;
+  border-color: #cfe4d7;
+}
+.cardAction {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4a7a63;
+}
+.docCard[data-state="draft"] .cardAction {
+  color: #b4705c;
+}
+
+/* 상세 화면으로 들어갔을 때 목록으로 돌아가는 길. */
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 9px 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  box-shadow: var(--pg-shadow-card);
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--pg-ink);
+  cursor: pointer;
+}
+.backLink:hover {
+  background: var(--pg-shell-hover);
+}
+.cover {
+  position: relative;
+  overflow: hidden;
+  height: 136px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 18px;
+  gap: 2px;
+  text-align: center;
+}
+.cover[data-type="annual"] {
+  background: #f0f8f3;
+  color: #328b6c;
+}
+.cover[data-type="monthly"] {
+  background: #fbf5ed;
+  color: #c2795f;
+}
+.cover[data-type="weekly"] {
+  background: #edf5fa;
+  color: #5c8fbe;
+}
+.cover[data-type="care"] {
+  background: #fffbf0;
+  color: #a9792f;
+}
+.cover[data-type="observation"] {
+  background: #f8f4ff;
+  color: #7a5ca8;
+}
+.cover b {
+  position: relative;
+  z-index: 2;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.cover small {
+  position: relative;
+  z-index: 2;
+  font-size: 12px;
+}
+.coverArt {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 78px;
+  opacity: 0.92;
+}
+.docTitle {
+  margin-top: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.docFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 12px;
+  color: #8190a0;
+}
+.addCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 210px;
+  border: 1.5px dashed #8bbfa2;
+  color: #31936e;
+  font-size: 14px;
+  font-weight: 800;
+}
+.addCard:hover:not(:disabled) {
+  background: #f7fcf8;
+}
+.addCard:disabled {
+  border-color: #d6ddd8;
+  color: #93a2a8;
+  cursor: default;
+}
+.addCard span.plus {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #e8f4ea;
+  color: #39a37a;
+}
+.addCard:disabled span.plus {
+  background: #f1f3f1;
+  color: #a7b3ad;
+}
+.addCard svg {
+  width: 26px;
+  height: 26px;
+}
+.addNote {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #7d8b86;
+  max-width: 85%;
+  text-align: center;
+}
+
+/* ── 상태 배지 ── */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 100px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.status[data-state="confirmed"] {
+  background: #e6f4eb;
+  color: #35815f;
+}
+.status[data-state="draft"] {
+  background: #fdeee8;
+  color: #b4705c;
+}
+.status[data-state="none"] {
+  background: #f3f5f3;
+  color: #7f8d85;
+}
+
+/* ── 일지(관찰 · 보육) 화면 ── */
+.journal {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+/* 관찰일지 · 보육일지가 같은 오른쪽 열을 쓴다 — 빈 화면도 같은 높이로 가운데 선다. */
+.journalMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 420px;
+}
+.journalMain > .blank {
+  flex: 1;
+}
+.roster {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e7ebe8;
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+}
+.roster h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  letter-spacing: -0.4px;
+}
+.roster h4 span {
+  color: #3f9e77;
+}
+.rosterList {
+  display: flex;
+  flex-direction: column;
+  /* 아이가 많아도 화면이 길어지지 않게 목록만 구른다. */
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #d0dfd6 transparent;
+}
+.childRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-bottom: 1px solid #edf0ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #26384d;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+}
+.childRow:hover {
+  background: #f6faf7;
+}
+.childRow[aria-pressed="true"] {
+  background: #eaf5ed;
+}
+.childRow svg {
+  width: 16px;
+  height: 16px;
+  color: #8b9b9a;
+  flex: none;
+}
+/* 칸 경계가 안 보여서 한 단계 진하게 했다(#e5eae8 → #d9dfdc). 굵기는 1px 그대로다.
+   `--pg-line` 은 따뜻한 베이지라 달력의 세이지 계열에서 색이 튄다 — 여기서는 쓰지 않는다. */
+.dayStrip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid #d9dfdc;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 4px 10px;
+  border: 0;
+  border-right: 1px solid #d9dfdc;
+  background: #fff;
+  color: #2b3b53;
+  cursor: pointer;
+}
+.day:last-child {
+  border-right: 0;
+}
+.day:hover {
+  background: #f6fbf8;
+}
+.day[aria-pressed="true"] {
+  background: #f2faf5;
+  box-shadow: inset 0 0 0 1px #b5ddc4;
+}
+.day .date {
+  font-size: 13px;
+  font-weight: 800;
+}
+.day .dow {
+  font-size: 11px;
+  color: #718399;
+}
+.day .mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+.day .mark svg {
+  width: 12px;
+  height: 12px;
+}
+.day .mark[data-state="confirmed"] {
+  border: 1.5px solid #95c6a8;
+  background: #f4fcf6;
+  color: #4f9f7d;
+}
+.day .mark[data-state="draft"] {
+  border: 1.5px solid #f2b8a8;
+  background: #fdf2ee;
+  color: #b4705c;
+}
+.day .mark[data-state="none"] {
+  border: 1.5px solid #cad6cf;
+  background: #fff;
+}
+.day .state {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b9bab;
+  text-align: center;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  color: #7e8d9e;
+}
+.legend i {
+  display: inline-block;
+  vertical-align: middle;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 50%;
+}
+.legend i[data-state="confirmed"] {
+  background: #95c6a8;
+}
+.legend i[data-state="draft"] {
+  background: #f2b8a8;
+}
+.legend i[data-state="none"] {
+  background: #fff;
+  border: 1.5px solid #b2c0ba;
+}
+.dayDocs {
+  margin-top: 12px;
+  border: 1px solid #eaece8;
+  border-radius: 13px;
+  padding: 14px;
+}
+.dayDocs h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.docLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid #ebefed;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.docLine:hover {
+  border-color: #9fcfb5;
+}
+.docLine small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: #93a0aa;
+}
+.scopeTabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e2eae5;
+  border-radius: 10px;
+  background: #f7faf8;
+}
+.scopeTabs button {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5c7487;
+  background: transparent;
+  cursor: pointer;
+}
+.scopeTabs button[aria-pressed="true"] {
+  background: #fff;
+  color: #2f6b52;
+  box-shadow: 0 1px 3px rgba(32, 53, 42, 0.08);
+}
+
+.note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8b9a9f;
+}
+
+/* ── 태블릿 ── */
+@media (max-width: 1100px) {
+  .classRail {
+    flex-basis: 204px;
+    padding: 16px 12px;
+  }
+  .content {
+    padding: 18px 18px 40px;
+  }
+  .docGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .journal {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+  .typeCard small {
+    display: none;
+  }
+  .periodNav strong {
+    min-width: 140px;
+  }
+}
+
+/* ── 모바일: 반 선택을 가로 스크롤 줄로 바꾼다 ── */
+@media (max-width: 760px) {
+  .archive {
+    display: block;
+    min-height: 0;
+  }
+  .content {
+    padding: 14px 14px 32px;
+  }
+  .classRail {
+    position: static;
+    height: auto;
+    flex-basis: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--pg-shell-line);
+    padding: 12px;
+  }
+  .railHead {
+    margin-bottom: 10px;
+  }
+  .classList {
+    flex: none;
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+  }
+  .classCard {
+    width: auto;
+    min-width: 128px;
+    min-height: 48px;
+  }
+  .classCard svg {
+    display: none;
+  }
+  .decor {
+    display: none;
+  }
+  .typeGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .typeCard {
+    min-height: 92px;
+    padding: 10px 6px;
+  }
+  .typeCard strong {
+    font-size: 13px;
+  }
+  .typeCard svg {
+    width: 28px;
+    height: 28px;
+  }
+  .docGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .journal {
+    display: block;
+  }
+  .roster {
+    margin-bottom: 12px;
+  }
+  .rosterList {
+    max-height: 190px;
+  }
+  .panel {
+    padding: 12px;
+  }
+  .dayStrip {
+    /* 7칸이 화면 밖으로 잘리지 않게 가로로 구른다. */
+    grid-template-columns: repeat(7, minmax(62px, 1fr));
+    overflow-x: auto;
+  }
+  .day .state {
+    font-size: 10px;
+  }
+  .periodNav {
+    width: 100%;
+  }
+  .periodNav strong {
+    flex: 1;
+    min-width: 0;
+  }
+}

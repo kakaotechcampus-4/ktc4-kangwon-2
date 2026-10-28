@@ -292,6 +292,7 @@ function documentsHarness({
   let cursor = 0,
     mounted = false,
     selection,
+    pickClass = () => {},
     tree;
   const state = (initial) => {
     const slot = cursor++;
@@ -358,6 +359,29 @@ function documentsHarness({
     "@/lib/onboarding/settings": { chosenClassFor: () => null, loadClassSettings: () => null },
     "./DailyLogSources": { default: "daily-log-sources", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
+    // 보관함 탐색(반 → 종류 → 기간)은 자기 테스트가 따로 본다. 여기서는 목록과
+    // 선택 문서 상세만 보므로, 넘겨받은 `detail` 만 그대로 그려 준다.
+    "./DocumentArchiveView": {
+      default: ({ header, documents, annual, onOpen, onPickClass, detail }) => {
+        pickClass = onPickClass;
+        return jsx("archive", {
+          children: [
+            header,
+            ...documents.map((d) =>
+              jsx("button", { children: d.title, onClick: () => onOpen(d.id) }),
+            ),
+            ...(annual ?? []).map((p) =>
+              jsx("link", {
+                children: `${p.school_year}학년도 연간 보육계획안`,
+                href: `/plans/annual/${p.id}`,
+              }),
+            ),
+            detail,
+          ],
+        });
+      },
+      __esModule: true,
+    },
     "./document-selection": {
       createSelection: (...args) => {
         selection = createSelection(...args);
@@ -413,6 +437,7 @@ function documentsHarness({
       await settle();
       render();
     },
+    pickClass: (id) => pickClass(id),
     links: () => nodes(tree).filter((node) => node.type === "link"),
     selection: () => selection,
     editor: () => nodes(tree).find((node) => node.type === "editor"),
@@ -474,38 +499,30 @@ test("목록이 비어도 이미 받은 선택 문서 상세가 있으면 조회
   assert.equal(page.errors().length, 1);
 });
 
-test("표시할 문서가 없는 조회 실패는 전체 오류를 쓰고 재시도 성공 후 기존 empty를 표시한다", async () => {
+test("표시할 문서가 없는 조회 실패는 오류와 재시도를 띄우고, 성공하면 오류를 걷는다", async () => {
   const page = documentsHarness({ fail: true });
-  assert.match(page.text(), /문서를 불러오고 있어요/);
   await page.mount();
   assert.equal(page.editor(), undefined);
   assert.equal(page.errors().length, 1);
-  assert.equal(page.text().includes("보관된 문서가 없어요"), false);
   page.fail(false);
   await page.button("다시 시도").props.onClick();
   page.render();
   assert.equal(page.errors().length, 0);
-  assert.match(page.text(), /보관된 문서가 없어요/);
+  assert.equal(page.button("다시 시도"), undefined);
 });
 
-// ── 문서 보관함에 연간계획안을 합친다 (S-J5 · FR-701) ─────────────────────────
-test("연간계획안을 일지와 섞어 최신순으로 보이고 계획안 화면으로 보낸다", async () => {
+// ── 보관함은 종류(연간 · 월간 · 주간 · 보육 · 관찰)로만 탐색한다 (S-J5 · FR-701) ──
+test("일지와 연간계획안을 각자 보관함 뷰로 넘긴다", async () => {
   const page = documentsHarness({ items: [serverDocument], plans: [annualPlan] });
   await page.mount();
-  // 계획안(09-10)이 일지(09-02)보다 최신이라 위에 온다.
-  const plan = page.text().indexOf("2026학년도 연간 보육계획안");
-  const journal = page.text().indexOf(serverDocument.title);
-  assert.ok(plan > -1 && journal > -1, "둘 다 그려야 한다");
-  assert.ok(plan < journal);
+  // 둘은 다른 API 라 한 목록으로 합치지 않는다 — 종류 칸이 각자 받는다.
+  assert.ok(page.text().includes(serverDocument.title));
+  assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
   const [link] = page.links().filter((node) => node.props.href?.startsWith("/plans/"));
   assert.equal(link.props.href, "/plans/annual/5");
-  // 반 이름은 반 목록에서 찾는다. 제목 · 종류 · 날짜 · 상태만 그린다.
-  const text = page.text();
-  assert.match(text, /햇살반 · 연간 보육계획안/);
-  assert.match(text, /2026\.09\.10/);
-  assert.equal(/근거 \d+건/.test(text), false);
-  // 확정 건수에 계획안도 든다.
-  assert.ok(page.button("확정").props.children.includes(1));
+  // 지워진 전체 목록(필터 · 검색)을 다시 띄우지 않는다.
+  assert.equal(page.text().includes("전체 문서 목록"), false);
+  assert.equal(page.button("확정"), undefined);
 });
 
 test("계획안 목록만 실패하면 일지는 그대로 보이고 계획안만 다시 시도한다", async () => {
@@ -528,6 +545,17 @@ test("일지 목록만 실패해도 받은 계획안은 그린다", async () => 
   assert.ok(page.button("다시 시도"));
 });
 
+test("보관함에는 상단 문서 만들기 단추를 두지 않는다", async () => {
+  // 만들기는 종류별 화면 안의 작성 단추로만 한다 — 반을 골라도 상단에 다시 뜨면 안 된다.
+  const page = documentsHarness({ items: [serverDocument] });
+  await page.mount();
+  assert.equal(page.button("기록으로 문서 만들기"), undefined);
+  page.pickClass("class-1");
+  page.render();
+  assert.equal(page.button("기록으로 문서 만들기"), undefined);
+  assert.equal(page.text().includes("기록으로 문서 만들기"), false);
+});
+
 test("계획안 목록만 실패하고 일지가 없으면 「문서가 없다」고 하지 않는다", async () => {
   const page = documentsHarness({ planFail: true });
   await page.mount();
@@ -535,11 +563,11 @@ test("계획안 목록만 실패하고 일지가 없으면 「문서가 없다�
   assert.equal(page.text().includes("보관된 문서가 없어요"), false);
 });
 
-test("일지가 비고 계획안이 아직 오는 중이면 빈 화면 대신 불러오는 중을 띄운다", async () => {
+test("계획안이 아직 오는 중이어도 「문서가 없다」고 하지 않는다", async () => {
   const page = documentsHarness({ planPending: true });
   await page.mount();
-  assert.match(page.text(), /문서를 불러오고 있어요/);
   assert.equal(page.text().includes("보관된 문서가 없어요"), false);
+  assert.equal(page.errors().length, 0);
 });
 
 test("계획안을 먼저 받으면 일지가 오는 중이어도 계획안부터 그린다", async () => {
@@ -554,12 +582,6 @@ test("계획안을 먼저 받으면 일지가 오는 중이어도 계획안부�
   assert.equal(page.text().includes("문서를 불러오고 있어요"), false);
   assert.match(page.text(), /일지를 불러오고 있어요/);
   assert.equal(page.text().includes(serverDocument.title), false);
-  // 일지가 아직 안 왔으니 「검토 중」으로 걸러 확정된 계획안이 빠져도 「문서가 없다」고 하지 않는다.
-  page.button("검토 중").props.onClick();
-  page.render();
-  assert.equal(page.text().includes("보관된 문서가 없어요"), false);
-  page.button("전체").props.onClick();
-  page.render();
 
   await page.releaseList();
   assert.ok(page.text().includes("2026학년도 연간 보육계획안"));

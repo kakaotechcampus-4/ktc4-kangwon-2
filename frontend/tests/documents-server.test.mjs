@@ -1089,7 +1089,8 @@ test("선택 id가 같아도 화면을 떠나거나 unmount하면 생성 자동 
   assert.equal(selection.get().detail, null);
   const page = read("DocumentsPage.tsx");
   assert.ok(page.includes("latestList.current += 1;\n      selection.leaveCreation()"));
-  assert.ok(page.includes("selection.leaveCreation();\n            setMode("));
+  // 들여쓰기는 보지 않는다 — 「모드를 바꾸기 전에 생성 문맥을 버린다」만 본다.
+  assert.match(page, /selection\.leaveCreation\(\);\s*\n\s*setMode\(/);
 });
 
 test("한 생성 문맥은 한 번만 열 수 있고 새 생성은 이전 문맥을 무효화한다", () => {

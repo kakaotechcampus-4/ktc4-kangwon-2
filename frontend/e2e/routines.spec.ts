@@ -386,7 +386,8 @@ test("S-J2 빈 상태 — 활동실행 없는 저장 줄에서 실제 입력 링
     page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }),
   ).toBeDisabled();
   await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
-  await page.getByRole("button", { name: "＋ 기록으로 문서 만들기", exact: true }).click();
+  // 보관함 상단의 생성 단추는 없앴다. 생성 화면은 기존 딥링크(S-J1 → S-J2)로 들어간다.
+  await page.goto(`/documents?kind=dailyLog&class_id=${classId}&date=${date}`);
   await page.getByRole("combobox", { name: "문서 종류" }).selectOption("dailyLog");
   await page.getByRole("combobox", { name: "담당 반" }).selectOption({ label: "햇살반" });
   await expect(page.getByRole("heading", { name: "선택할 수 있는 일과가 없어요" })).toBeVisible();
@@ -724,11 +725,7 @@ test("후속 #6~11 — 실제 근거 비교·편집·단일 확인·원자적 �
       execution: "아이들이 낙엽놀이를 즐겁게 진행함",
     });
   expect(dbDocument(doc.id)).toEqual({ id: doc.id, status: "CONFIRMED", stale: true });
-  await page.goto("/documents");
-  await page
-    .getByRole("button", { name: new RegExp(doc.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
-    .click();
-  const review = page.getByRole("region", { name: "변경된 근거 검토" });
+  const review = await openDocument(page, doc.title, date);
   await expect(review.getByText("변경된 일과 기록 2건")).toBeVisible();
   await expect(review.getByRole("heading", { name: "수정 전", exact: true })).toHaveCount(2);
   await expect(review.getByText(/아이들이 낙엽놀이를 즐겁게 진행함/)).toHaveCount(2);
@@ -833,8 +830,15 @@ async function confirmedDailyLog(page: Page, classId: number, date: string, name
   return routines;
 }
 
-async function openDocument(page: Page, title: string) {
+/**
+ * 보관함은 **반 → 문서 종류 → 날짜** 로만 탐색한다. 예전의 전체 문서 목록은 없앴으므로
+ * 제목만으로 바로 누르지 않는다.
+ */
+async function openDocument(page: Page, title: string, date: string, className = "햇살반") {
   await page.goto("/documents");
+  await page.getByRole("complementary", { name: "반 선택" }).getByText(className).click();
+  await page.getByRole("button", { name: "보육일지", exact: true }).click();
+  await page.getByLabel("날짜 선택").fill(date);
   await page
     .getByRole("button", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
     .click();
@@ -885,7 +889,7 @@ test("후속 #12 — 삭제된 근거를 다른 일과로 대체해 같은 문�
     sent = route.request().postData();
     await route.continue();
   });
-  const review = await openDocument(page, doc.title);
+  const review = await openDocument(page, doc.title, date);
   await expect(page.getByRole("button", { name: "변경된 근거 반영하기" })).toHaveCount(0);
   await expect(review.getByText("보육일지에 사용된 일과 기록 1건이 삭제되었습니다.")).toBeVisible();
   await expect(review.getByRole("heading", { name: "지워질 일과 09:00~10:00" })).toBeVisible();
@@ -939,7 +943,7 @@ test("후속 #13 — 삭제된 근거를 제외하고, 전부 빼려 하면 서�
   });
   await api(page, `/api/routines/${gone.id}`, "DELETE");
 
-  const review = await openDocument(page, doc.title);
+  const review = await openDocument(page, doc.title, date);
   const submit = review.getByRole("button", { name: "변경사항 반영하고 재확정", exact: true });
   // 대체 후보가 없으면 대체하기를 고를 수 없다.
   await expect(review.getByRole("radio", { name: /다른 일과 기록으로 대체하기/ })).toBeDisabled();
@@ -1059,7 +1063,7 @@ test("후속 #15 — 확정 취소된 초안에서 삭제된 근거를 처리하
   expect(blocked.status()).toBe(409);
   expect((await blocked.json()).error.code).toBe("GATE_BLOCKED");
 
-  const review = await openDocument(page, doc.title);
+  const review = await openDocument(page, doc.title, date);
   // 5) 초안에서도 같은 복구 화면이 뜨고, 막다른 안내 대신 선택지를 준다.
   await expect(review.getByText("보육일지에 사용된 일과 기록 1건이 삭제되었습니다.")).toBeVisible();
   await expect(review.getByRole("heading", { name: "없어질 일과 09:00~10:00" })).toBeVisible();
@@ -1125,7 +1129,7 @@ test("후속 #16 — 초안에서 삭제된 근거를 제외하고, 전부 빼�
   expect((await alive.json()).error.code).toBe("VALIDATION_FAILED");
   expect(await api(page, `/api/documents/${doc.id}`)).toEqual(before);
 
-  const review = await openDocument(page, doc.title);
+  const review = await openDocument(page, doc.title, date);
   await expect(review.getByRole("radio", { name: /다른 일과 기록으로 대체하기/ })).toBeDisabled();
   await review.getByRole("radio", { name: /보육일지에서도 제외하기/ }).check();
   await review.getByRole("button", { name: "변경사항 반영하기", exact: true }).click();
