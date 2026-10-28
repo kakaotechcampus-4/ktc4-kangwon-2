@@ -190,7 +190,7 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),
-  ).toContainText("집계 1건");
+  ).toContainText("집계에 들어간 문서 1건");
   const checklist = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(checklist.items[0].count).toBe(1);
   expect(checklist.items[0].verdict).toBe("INSUFFICIENT");
@@ -270,11 +270,18 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
 });
 
-test("멘토: 평가 점검는 서버의 9개 지표·19개 요소를 보여주고 체크를 보존한다", async ({
+test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주고 체크를 보존한다", async ({
   page,
 }, info) => {
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
+  await page.getByRole("tab", { name: /^자체평가/ }).click();
+  // 안 끝난 첫 평가항목만 펼쳐져 있다. 접힌 평가항목을 하나씩 펼쳐 19개를 센다.
+  // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다. 영역(section) 밖의 옛 사전점검 접기는 열지 않는다.
+  const closed = page
+    .getByRole("tabpanel", { name: /^자체평가/ })
+    .locator("section details:not([open]) > summary");
+  while (await closed.count()) await closed.first().click();
   await expect(page.getByRole("checkbox")).toHaveCount(19);
   const checklist = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(checklist.items).toHaveLength(9);
@@ -282,7 +289,7 @@ test("멘토: 평가 점검는 서버의 9개 지표·19개 요소를 보여주�
     .elements[0];
   const check = page.getByRole("checkbox").first();
   await check.check();
-  await expect(page.getByText("자기 점검을 저장했어요.")).toBeVisible();
+  await expect(page.getByText(/저장됨/)).toBeVisible();
   await page.reload();
   await expect(check).toBeChecked();
   const saved = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);

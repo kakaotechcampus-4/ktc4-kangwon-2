@@ -8,9 +8,7 @@ import {
   downloadText,
   today,
   validPeriod,
-  validateDocument,
   type DocumentKind,
-  type SavedDocument,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
 import { requestAI } from "@/lib/workspace/ai-client";
@@ -18,23 +16,35 @@ import { importDocument, isRecordKind, type EvidenceNotice } from "@/lib/api/doc
 import { isUnauthenticated } from "@/lib/api/client";
 import { WorkspacePage, Empty, Message, useClasses, useAIStatus, ws } from "./WorkspaceUI";
 import EvaluationChecklist from "./EvaluationChecklist";
+import styles from "./Evaluation.module.css";
 const MANUAL =
   "https://www.kicece.or.kr/kce/front/keyword?keyword=%EB%A7%A4%EB%89%B4%EC%96%BC&x=0&y=0";
 export default function EvaluationPage() {
+  const [refresh, setRefresh] = useState(0);
   return (
     <WorkspacePage
       title="평가 점검"
-      description="확정 문서 현황과 평가요소별 자기 점검을 확인하세요."
+      description="평가 때 보여줄 자료가 모였는지, 무엇을 더 쓰면 되는지 알려드려요."
+      action={
+        <button
+          type="button"
+          className={`${ws.secondary} ${styles.refresh}`}
+          onClick={() => setRefresh((n) => n + 1)}
+        >
+          현황 새로고침
+        </button>
+      }
     >
-      <EvaluationChecklist />
-      <details style={{ marginTop: 32 }}>
-        <summary>기존 증빙 등록 · 사전점검</summary>
-        <p className={ws.hint}>
-          등록한 증빙은 문서 보관함에 저장되고 위 평가 점검 현황에 반영돼요. 아래 AI 대조는 이
-          브라우저에 남아 있는 예전 자료만 봐요.
-        </p>
-        <LocalDocumentReview />
-      </details>
+      <EvaluationChecklist refresh={refresh}>
+        <details>
+          <summary>기존 증빙 등록 · 사전점검</summary>
+          <p className={ws.hint}>
+            등록한 증빙은 문서 보관함에 저장되고 위 평가 점검 현황에 반영돼요. 아래 AI 대조는 이
+            브라우저에 남아 있는 예전 자료만 봐요.
+          </p>
+          <LocalDocumentReview />
+        </details>
+      </EvaluationChecklist>
     </WorkspacePage>
   );
 }
