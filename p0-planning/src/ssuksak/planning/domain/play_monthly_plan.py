@@ -6,10 +6,20 @@ blank: teacher-input cells start empty, and safety candidates are kept apart fro
 placement, which starts unplaced. Every list row and candidate is addressed by its ``ItemId``,
 never by its position. A row a teacher deletes leaves the document but stays whole in
 ``removed_activities``; adding, deleting and placing are plan-level ARRANGEMENT_CHANGED events.
+
+Layout v0.2.0 (2026-10-28 D-1 ~ D-10) adds cells the teacher owns. The play direction is the
+theme copied once at generation and then edited on its own (never refilled). The display
+strings (title · ages · class · period) only print: editing them never moves the month, the
+ages or the weeks. The specialized timetable is five titles over five contents. The
+special-activity timetable is one tree per weekday: a split keeps the cell (id, value, history)
+as the first part and adds one new cell, a boundary keeps its ``split_id`` until it is removed,
+a removed cell stays whole in ``removed_timetable_cells``, and splitting, removing and
+resizing are plan-level TIMETABLE_CHANGED events with the numbers before and after.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
@@ -27,6 +37,9 @@ from .provenance import (
     EvidenceSourceType,
     GenerationMethod,
     GenerationMethodDetail,
+    SplitAxis,
+    TimetableChange,
+    TimetableOperation,
 )
 from .safety_placement import SafetyKind
 from .week_period import WeekId, WeekPeriod
@@ -36,6 +49,19 @@ PLAY_MONTHLY_FORMAT = "PLAY_MONTHLY"
 PLAY_SECTIONS = ("together", "free_play")
 DRILL_CELL_KEY = "fire_disaster_drill"
 DRILL_COPY_RULE_ID = "play_monthly.drill_copy"
+DIRECTION_KEY = "expected_play_direction"
+DIRECTION_COPY_RULE_ID = "play_monthly.direction_copy"
+DISPLAY_RULE_ID = "play_monthly.document_display"
+DISPLAY_KEYS = ("document_title", "age_label", "class_name", "expected_period")
+SPECIALIZED_KEY = "specialized_timetable"
+SPECIALIZED_COLUMNS = 5
+SPECIAL_ACTIVITY_KEY = "special_activity_timetable"
+DAYS = ("mon", "tue", "wed", "thu", "fri")  # the timetable always keeps Monday to Friday
+# Prototype limits (2026-10-28 D-3): provisional until a Hangul render confirms them.
+MAX_SPLIT_DEPTH = 4
+SPLIT_RATIO_RANGE = (10, 90)  # a boundary's first part, percent
+COLUMN_MIN_PERCENT = 5
+HEIGHT_MM_RANGE = (16, 80)
 
 
 def _non_blank(value: object, path: str) -> None:
@@ -48,6 +74,7 @@ class LayoutRole(str, Enum):
     CALENDAR = "CALENDAR"  # filled from the system calendar (예상 기간)
     GENERATED = "GENERATED"
     TEACHER_INPUT = "TEACHER_INPUT"  # starts blank; never generated
+    TEACHER_TABLE = "TEACHER_TABLE"  # teacher-written table, addressed cell by cell
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,6 +351,119 @@ class ParentPlaySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class DocumentDisplay:
+    """What the document header shows (2026-10-28 D-2). Copied from the plan at generation,
+    then edited freely, blanks included; editing never changes the classroom, ages, month or weeks.
+    """
+
+    title: PlayMonthlyCell
+    age: PlayMonthlyCell
+    class_name: PlayMonthlyCell
+    period: PlayMonthlyCell
+
+    def cells(self) -> tuple[PlayMonthlyCell, ...]:
+        return (self.title, self.age, self.class_name, self.period)
+
+    def __post_init__(self) -> None:
+        cells = self.cells()
+        if not all(isinstance(c, PlayMonthlyCell) for c in cells):
+            raise InvalidDomainValueError("DocumentDisplay values must be PlayMonthlyCell")
+        if tuple(c.semantic_key for c in cells) != DISPLAY_KEYS:
+            raise InvalidDomainValueError("DocumentDisplay cells must follow DISPLAY_KEYS")
+        for c in cells:
+            if c.generation is not None and c.generation.method is not GenerationMethod.MANUAL and (
+                c.generation.rule_id != DISPLAY_RULE_ID
+            ):
+                raise InvalidDomainValueError("A display cell is the display copy or MANUAL")
+            if not c.cites_only(EvidenceSourceType.CALENDAR, EvidenceSourceType.CLASSROOM_PROFILE):
+                raise InvalidDomainValueError("A display cell cites CALENDAR and CLASSROOM_PROFILE only")
+
+
+@dataclass(frozen=True, slots=True)
+class TimetableNode:
+    """One part of a day in the special-activity timetable: a cell, or a boundary splitting a
+    part in two. A boundary has its own ``split_id`` so a resize names it even after other
+    parts are removed; ``ratio`` is its first part's percent. One dataclass for both shapes so
+    the plan codec reads it back."""
+
+    cell: PlayMonthlyCell | None = None
+    split_id: ItemId | None = None
+    axis: SplitAxis | None = None
+    ratio: int | None = None
+    children: tuple[TimetableNode, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.cell is not None:
+            if not isinstance(self.cell, PlayMonthlyCell) or (
+                self.split_id, self.axis, self.ratio, self.children
+            ) != (None, None, None, ()):
+                raise InvalidDomainValueError("A timetable cell node holds its cell only")
+            return
+        low, high = SPLIT_RATIO_RANGE
+        if (
+            not isinstance(self.split_id, ItemId)
+            or not isinstance(self.axis, SplitAxis)
+            or type(self.ratio) is not int
+            or not low <= self.ratio <= high
+            or not isinstance(self.children, tuple)
+            or len(self.children) != 2
+            or not all(isinstance(c, TimetableNode) for c in self.children)
+        ):
+            raise InvalidDomainValueError("A timetable boundary needs split_id, axis, ratio and two parts")
+
+    @property
+    def depth(self) -> int:
+        return 0 if self.cell is not None else 1 + max(c.depth for c in self.children)
+
+    def leaves(self) -> tuple[PlayMonthlyCell, ...]:
+        if self.cell is not None:
+            return (self.cell,)
+        return tuple(leaf for c in self.children for leaf in c.leaves())
+
+    def boundaries(self) -> tuple[TimetableNode, ...]:
+        if self.cell is not None:
+            return ()
+        return (self, *(b for c in self.children for b in c.boundaries()))
+
+    def rebuilt(self, visit: Callable[[TimetableNode], TimetableNode | None]) -> TimetableNode:
+        """A copy where ``visit`` may replace any node; ``None`` keeps it and looks inside."""
+        found = visit(self)
+        if found is not None:
+            return found
+        if self.cell is not None:
+            return self
+        return replace(self, children=tuple(c.rebuilt(visit) for c in self.children))
+
+
+@dataclass(frozen=True, slots=True)
+class TimetableSize:
+    column_widths: tuple[int, ...]  # Monday to Friday, percent of the table width
+    height_mm: int
+
+    def __post_init__(self) -> None:
+        widths = self.column_widths
+        if (
+            not isinstance(widths, tuple)
+            or len(widths) != len(DAYS)
+            or not all(type(w) is int and w >= COLUMN_MIN_PERCENT for w in widths)
+            or sum(widths) != 100
+        ):
+            raise InvalidDomainValueError(
+                f"TimetableSize needs {len(DAYS)} int percents of at least {COLUMN_MIN_PERCENT}, summing to 100"
+            )
+        low, high = HEIGHT_MM_RANGE
+        if type(self.height_mm) is not int or not low <= self.height_mm <= high:
+            raise InvalidDomainValueError(f"TimetableSize.height_mm must be {low}~{high}")
+
+
+def specialized_keys() -> tuple[str, ...]:
+    """Five title cells, then the five content cells under them."""
+    return tuple(
+        f"{SPECIALIZED_KEY}.{part}.{i}" for part in ("header", "content") for i in range(SPECIALIZED_COLUMNS)
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class PlayMonthlyReferences:
     """Exact versions of everything the generation read, for reproduction."""
 
@@ -369,8 +509,17 @@ class PlayMonthlyPlan:
     nutrition: EntryCell
     drill_candidates: tuple[DrillCandidate, ...]
     teacher_inputs: tuple[PlayMonthlyCell, ...]
+    # 2026-10-28 (layout v0.2.0): the centre play direction and the header strings are copied
+    # once at generation and then edited on their own; the timetables are written cell by cell.
+    direction: PlayMonthlyCell
+    display: DocumentDisplay
+    specialized_timetable: tuple[PlayMonthlyCell, ...]
+    special_activity: tuple[TimetableNode, ...]  # Monday to Friday
+    special_activity_size: TimetableSize
     audit: AuditHistory = field(default_factory=AuditHistory)
     removed_activities: tuple[RemovedActivity, ...] = ()
+    # A timetable cell a teacher removed, kept whole for history (D-7). Never printed.
+    removed_timetable_cells: tuple[PlayMonthlyCell, ...] = ()
     format: str = PLAY_MONTHLY_FORMAT
 
     def __post_init__(self) -> None:
@@ -427,15 +576,56 @@ class PlayMonthlyPlan:
             isinstance(r, RemovedActivity) for r in self.removed_activities
         ):
             raise InvalidDomainValueError("PlayMonthlyPlan.removed_activities must be RemovedActivity")
-        # Archived rows keep their ids, so a removed id is never used again.
+        self._check_document_cells()
+        # Archived rows and cells keep their ids, so a removed id is never used again.
         cells = (
             *self.cells(),
             *(c for r in self.removed_activities for c in (r.activity.cell, r.activity.description)),
+            *self.removed_timetable_cells,
         )
         for name in ("item_id", "semantic_key"):
             values = [getattr(cell, name) for cell in cells]
+            if name == "item_id":
+                values += [b.split_id for day in self.special_activity for b in day.boundaries()]
             if len(values) != len(set(values)):
                 raise InvalidDomainValueError(f"PlayMonthlyPlan {name}s must be unique")
+
+    def _check_document_cells(self) -> None:
+        if not isinstance(self.direction, PlayMonthlyCell) or self.direction.semantic_key != DIRECTION_KEY:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan.direction must be the {DIRECTION_KEY} cell")
+        if self.direction.generation is not None and self.direction.generation.method is not (
+            GenerationMethod.MANUAL
+        ) and self.direction.generation.rule_id != DIRECTION_COPY_RULE_ID:
+            raise InvalidDomainValueError("The direction cell is the theme copy or MANUAL")
+        if not self.direction.cites_only(EvidenceSourceType.PARENT_PLAN):
+            raise InvalidDomainValueError("The direction cell cites PARENT_PLAN only, like the theme")
+        if not isinstance(self.display, DocumentDisplay):
+            raise InvalidDomainValueError("PlayMonthlyPlan.display must be DocumentDisplay")
+        specialized = self.specialized_timetable
+        if not isinstance(specialized, tuple) or not all(isinstance(c, PlayMonthlyCell) for c in specialized):
+            raise InvalidDomainValueError("specialized_timetable must be PlayMonthlyCell values")
+        if tuple(c.semantic_key for c in specialized) != specialized_keys():
+            raise InvalidDomainValueError("specialized_timetable must follow its ten cell keys")
+        days = self.special_activity
+        if not isinstance(days, tuple) or len(days) != len(DAYS) or not all(
+            isinstance(d, TimetableNode) for d in days
+        ):
+            raise InvalidDomainValueError("special_activity needs one part tree per weekday")
+        if any(d.depth > MAX_SPLIT_DEPTH for d in days):
+            raise InvalidDomainValueError(f"A timetable day splits at most {MAX_SPLIT_DEPTH} deep")
+        for day, tree in zip(DAYS, days, strict=True):
+            if not all(c.semantic_key.startswith(f"{SPECIAL_ACTIVITY_KEY}.{day}.") for c in tree.leaves()):
+                raise InvalidDomainValueError(f"A {day} timetable cell must use its day's key")
+        if not isinstance(self.special_activity_size, TimetableSize):
+            raise InvalidDomainValueError("special_activity_size must be TimetableSize")
+        if not isinstance(self.removed_timetable_cells, tuple) or not all(
+            isinstance(c, PlayMonthlyCell) and c.semantic_key.startswith(f"{SPECIAL_ACTIVITY_KEY}.")
+            for c in self.removed_timetable_cells
+        ):
+            raise InvalidDomainValueError("removed_timetable_cells must be timetable cells")
+        written = (*specialized, *(c for d in days for c in d.leaves()), *self.removed_timetable_cells)
+        if any(c.generation is not None and c.generation.method is not GenerationMethod.MANUAL for c in written):
+            raise InvalidDomainValueError("Timetable cells are written by a teacher only")
 
     def cells(self) -> tuple[PlayMonthlyCell, ...]:
         return (
@@ -448,6 +638,10 @@ class PlayMonthlyPlan:
             self.nutrition.cell,
             *(d.cell for d in self.drill_candidates),
             *self.teacher_inputs,
+            self.direction,
+            *self.display.cells(),
+            *self.specialized_timetable,
+            *(c for day in self.special_activity for c in day.leaves()),
         )
 
     @property
@@ -494,6 +688,13 @@ class PlayMonthlyPlan:
             nutrition=replace(self.nutrition, cell=swap(self.nutrition.cell)),
             drill_candidates=tuple(replace(d, cell=swap(d.cell)) for d in self.drill_candidates),
             teacher_inputs=tuple(swap(t) for t in self.teacher_inputs),
+            direction=swap(self.direction),
+            display=DocumentDisplay(*(swap(c) for c in self.display.cells())),
+            specialized_timetable=tuple(swap(c) for c in self.specialized_timetable),
+            special_activity=tuple(
+                day.rebuilt(lambda n: TimetableNode(cell=updated) if n.cell is current else None)
+                for day in self.special_activity
+            ),
         )
 
     def replace_activity(self, updated: PlayActivity) -> PlayMonthlyPlan:
@@ -566,6 +767,144 @@ class PlayMonthlyPlan:
                 SafetyWeek(week_id, candidate_item_id) if s is current else s for s in self.safety_weeks
             ),
         )
+
+    def timetable_day(self, item_id: ItemId) -> int | None:
+        """The weekday index holding this timetable cell, or ``None``."""
+        return next(
+            (i for i, day in enumerate(self.special_activity) if any(c.item_id == item_id for c in day.leaves())),
+            None,
+        )
+
+    def timetable_depth(self, item_id: ItemId) -> int:
+        """How many boundaries sit above this timetable cell."""
+
+        def walk(node: TimetableNode, depth: int) -> int | None:
+            if node.cell is not None:
+                return depth if node.cell.item_id == item_id else None
+            return next((d for c in node.children if (d := walk(c, depth + 1)) is not None), None)
+
+        day = self.timetable_day(item_id)
+        if day is None:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan timetable cell not found: {item_id}")
+        return walk(self.special_activity[day], 0)
+
+    def next_timetable_key(self, day: int) -> str:
+        """A key never used on that day: removed cells keep theirs, so numbers only grow."""
+        prefix = f"{SPECIAL_ACTIVITY_KEY}.{DAYS[day]}."
+        used = [
+            int(c.semantic_key.removeprefix(prefix))
+            for c in (*self.special_activity[day].leaves(), *self.removed_timetable_cells)
+            if c.semantic_key.startswith(prefix)
+        ]
+        return f"{prefix}{max(used, default=0) + 1}"
+
+    def split_timetable_cell(
+        self,
+        item_id: ItemId,
+        axis: SplitAxis,
+        *,
+        split_id: ItemId,
+        new_cell: PlayMonthlyCell,
+        actor_id: ActorId,
+        occurred_at: datetime,
+    ) -> PlayMonthlyPlan:
+        """The cell keeps its id, value and history as the first part; ``new_cell`` is the second."""
+        self.ensure_mutable("split_timetable_cell")
+        day = self.timetable_day(item_id)
+        if day is None:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan timetable cell not found: {item_id}")
+
+        def split(node: TimetableNode) -> TimetableNode | None:
+            if node.cell is None or node.cell.item_id != item_id:
+                return None
+            return TimetableNode(
+                split_id=split_id, axis=axis, ratio=50, children=(node, TimetableNode(cell=new_cell))
+            )
+
+        change = TimetableChange(
+            TimetableOperation.SPLIT, split_id=split_id, axis=axis, cell_id=item_id, new_cell_id=new_cell.item_id
+        )
+        return self._timetable_changed(change, actor_id, occurred_at, special_activity=self._days(day, split))
+
+    def remove_timetable_cell(
+        self, item_id: ItemId, *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        """Drop a cell from the document and keep it whole; its sibling takes the place.
+
+        A weekday's last cell cannot be removed, only cleared."""
+        self.ensure_mutable("remove_timetable_cell")
+        day = self.timetable_day(item_id)
+        if day is None:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan timetable cell not found: {item_id}")
+        parent = next(
+            (
+                b for b in self.special_activity[day].boundaries()
+                if any(c.cell is not None and c.cell.item_id == item_id for c in b.children)
+            ),
+            None,
+        )
+        if parent is None:
+            raise InvalidDomainValueError("A weekday keeps at least one timetable cell")
+        removed = next(c.cell for c in parent.children if c.cell is not None and c.cell.item_id == item_id)
+        sibling = next(c for c in parent.children if c.cell is not removed)
+        change = TimetableChange(
+            TimetableOperation.REMOVE, split_id=parent.split_id, axis=parent.axis, cell_id=item_id
+        )
+        return self._timetable_changed(
+            change, actor_id, occurred_at,
+            special_activity=self._days(day, lambda n: sibling if n is parent else None),
+            removed_timetable_cells=(*self.removed_timetable_cells, removed),
+        )
+
+    def resize_timetable_split(
+        self, split_id: ItemId, ratio: int, *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        self.ensure_mutable("resize_timetable")
+        day, boundary = next(
+            ((i, b) for i, d in enumerate(self.special_activity) for b in d.boundaries() if b.split_id == split_id),
+            (None, None),
+        )
+        if boundary is None:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan timetable boundary not found: {split_id}")
+        change = TimetableChange(
+            TimetableOperation.RESIZE_SPLIT, split_id=split_id, before=(boundary.ratio,), after=(ratio,)
+        )
+        return self._timetable_changed(
+            change, actor_id, occurred_at,
+            special_activity=self._days(day, lambda n: replace(n, ratio=ratio) if n is boundary else None),
+        )
+
+    def resize_timetable(self, size: TimetableSize, *, actor_id: ActorId, occurred_at: datetime) -> PlayMonthlyPlan:
+        """Change the day-column widths or the height; one event per changed measure."""
+        self.ensure_mutable("resize_timetable")
+        current = self.special_activity_size
+        plan = self
+        for operation, before, after in (
+            (TimetableOperation.RESIZE_COLUMNS, current.column_widths, size.column_widths),
+            (TimetableOperation.RESIZE_HEIGHT, (current.height_mm,), (size.height_mm,)),
+        ):
+            if before != after:
+                plan = plan._timetable_changed(
+                    TimetableChange(operation, before=before, after=after), actor_id, occurred_at
+                )
+        return replace(plan, special_activity_size=size)
+
+    def _days(
+        self, day: int, visit: Callable[[TimetableNode], TimetableNode | None]
+    ) -> tuple[TimetableNode, ...]:
+        return tuple(tree.rebuilt(visit) if i == day else tree for i, tree in enumerate(self.special_activity))
+
+    def _timetable_changed(
+        self, change: TimetableChange, actor_id: ActorId, occurred_at: datetime, **changes: object
+    ) -> PlayMonthlyPlan:
+        event = AuditEvent(
+            event_type=AuditEventType.TIMETABLE_CHANGED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+            timetable_change=change,
+        )
+        return replace(self, audit=self.audit.append(event), **changes)
 
     def _rows(self, section: str) -> tuple[PlayActivity, ...]:
         if section not in PLAY_SECTIONS:

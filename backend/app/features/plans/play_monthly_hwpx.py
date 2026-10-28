@@ -12,9 +12,10 @@
   기본생활습관은 「[분류]」 문단 + 문장 문단, 건강 · 영양은 「[건강] 」 · 「[영양] 」 + 문장.
   빈 칸에는 붙이지 않는다.
 - 비워 두는 곳: 우리반 안내사항(출력 안 함, 2026-10-28 결정). 하단 고정 문구 두 줄은 손대지 않는다.
-- 이번 단계는 기본 양식 채우기다. 특성화 · 특별활동 시간표 격자는 비워 두고, 가운데 「예상되는
-  놀이 방향」 은 주제 값을 쓴다. 칸별 시간표(나누기 · 삭제 · 크기)와 독립 놀이 방향의 저장 ·
-  내보내기는 후속이다(같은 날 요청, Core 계약 전).
+- 제목 · 반 표시 · 예상 기간 · 가운데 「예상되는 놀이 방향」 은 계획의 표시 칸 값을 그대로 쓴다
+  (layout v0.2.0, 2026-10-28 D-2 · D-6 — 교사가 지운 빈 값도 빈 채로). 반 표시 = 연령 + 반 이름.
+- 특성화 · 특별활동 시간표 격자는 아직 비워 둔다. Core 는 칸별 값 · 나눔 · 크기를 갖지만 격자
+  그리기는 후속이다.
 - 글자 크기를 줄이거나 자르지 않는다 — 길면 한글이 쪽을 넘긴다(표 `pageBreak="CELL"`).
   전달본 표는 「글자처럼 취급」(`treatAsChar="1"`)이라 쪽을 못 넘기고 1쪽 아래가 잘린다.
   양식 파일은 그대로 두고 채울 때 끈다 — 다른 양식(월간 v1 · 연간 · 주간)과 같은 값이다.
@@ -67,8 +68,7 @@ WEEK_FIRST_COLUMN = 3  # 그 왼쪽은 줄 이름 칸
 WEEK_COUNTS = (4, 5)  # Core 주차 규칙(평일 3일 이상인 월~금 주)이 만드는 수
 
 
-def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: str) -> bytes:
-    """`class_label` 은 서버가 맞춘 반 표시 — 예: 「만 3세 햇살반」, 혼합 「만 3·4세 햇살반」."""
+def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
     with zipfile.ZipFile(io.BytesIO(template)) as src:
         infos = src.infolist()
         parts = {info.filename: src.read(info.filename) for info in infos}
@@ -88,17 +88,16 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: st
     if len(doc.weeks) not in WEEK_COUNTS:
         raise TemplateMismatch(f"주차가 {len(doc.weeks)}개다 — 양식은 4주 · 5주만 나눈다.")
 
-    title = f"{doc.month}월 놀이계획안"
     heading = cells[(0, 0)].findall("hp:subList/hp:p", NS)
     if len(heading) != 2:
         raise TemplateMismatch("제목 칸은 제목 · 반 표시 두 문단이어야 한다.")
-    _set_paragraph(heading[0], title)
-    _set_paragraph(heading[1], class_label)
+    _set_paragraph(heading[0], doc.title)
+    _set_paragraph(heading[1], " ".join(v for v in (doc.age, doc.class_name) if v))
 
     _set_text(cells[(1, 2)], doc.theme)
-    _set_text(cells[(2, 2)], f"{doc.start_date:%Y.%m.%d} ~ {doc.end_date:%Y.%m.%d}")
+    _set_text(cells[(2, 2)], doc.period)
     _set_text(cells[(3, 2)], doc.rationale)
-    _set_text(cells[(5, 7)], doc.theme)  # 가운데 놀이 방향 — 독립 값은 후속, 지금은 주제
+    _set_text(cells[(5, 7)], doc.direction)
     _set_text(cells[(6, 0)], "\n".join(doc.together))
     _set_text(cells[(6, 12)], "\n".join(doc.free_play))
     _set_text(cells[(11, 3)], doc.drill)
@@ -118,7 +117,7 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: st
     )
 
     parts[SECTION] = _dump(section)
-    parts[PACKAGE] = _package(parts[PACKAGE], title)
+    parts[PACKAGE] = _package(parts[PACKAGE], doc.title)
     if PREVIEW in parts:
         parts[PREVIEW] = _preview(section)
 

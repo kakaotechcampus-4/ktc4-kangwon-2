@@ -3,24 +3,29 @@
 The Hangul export fills its template from this. Kept rows only (a removed row stays in the
 archive, not the document), names without descriptions, the safety sentence a teacher placed
 in each week (blank when none), and the drill cell's own value, never its candidates. The
-class notice is not printed (2026-10-28 decision). Also decided that day: the period is the
-whole target month, and a habit prints the label of the daily-life entry it was picked from,
-read from the plan's own catalog version.
+class notice is not printed (2026-10-28 decision). Also decided that day: a habit prints the
+label of the daily-life entry it was picked from, read from the plan's own catalog version.
 
-This step fills the base template only. The timetables are left out and the centre play
-direction reuses the theme: per-cell timetables (split · delete · resize) and an independent
-play direction were requested later the same day and wait for their own Core contract.
+Layout v0.2.0 (2026-10-28 D-2 · D-6): the header strings and the centre play direction are the
+plan's own cells — the teacher's text, blanks included — not values computed here. The
+timetables print cell by cell: the specialized one as five titles over five contents, the
+special-activity one as each weekday's parts with their boundaries and the table size.
 """
 
 from __future__ import annotations
 
-import calendar
 from dataclasses import dataclass
-from datetime import date
 
 from ..domain.daily_life_reference import DailyLifeCatalog
 from ..domain.errors import InvalidDomainValueError
-from ..domain.play_monthly_plan import DRILL_CELL_KEY, PlayMonthlyPlan
+from ..domain.play_monthly_plan import (
+    DRILL_CELL_KEY,
+    SPECIALIZED_COLUMNS,
+    PlayMonthlyPlan,
+    TimetableNode,
+    TimetableSize,
+)
+from ..domain.provenance import SplitAxis
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,12 +36,23 @@ class PlayMonthlyDocumentWeek:
 
 
 @dataclass(frozen=True, slots=True)
+class PlayMonthlyDocumentPart:
+    """A special-activity part: its text, or a boundary (``axis``, first-part ``ratio``) over two parts."""
+
+    text: str = ""
+    axis: SplitAxis | None = None
+    ratio: int | None = None
+    parts: tuple[PlayMonthlyDocumentPart, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class PlayMonthlyDocument:
-    month: int
-    target_ages: frozenset[int]
-    start_date: date
-    end_date: date
+    title: str
+    age: str
+    class_name: str
+    period: str
     theme: str
+    direction: str
     rationale: str
     together: tuple[str, ...]
     free_play: tuple[str, ...]
@@ -46,6 +62,16 @@ class PlayMonthlyDocument:
     nutrition: str
     birthdays: str
     home_connection: str
+    specialized_titles: tuple[str, ...]  # five
+    specialized_contents: tuple[str, ...]  # five, under the titles
+    special_activity: tuple[PlayMonthlyDocumentPart, ...]  # Monday to Friday
+    special_activity_size: TimetableSize
+
+
+def _part(node: TimetableNode) -> PlayMonthlyDocumentPart:
+    if node.cell is not None:
+        return PlayMonthlyDocumentPart(node.cell.value)
+    return PlayMonthlyDocumentPart(axis=node.axis, ratio=node.ratio, parts=tuple(_part(c) for c in node.children))
 
 
 def play_monthly_document(plan: PlayMonthlyPlan, daily_life: DailyLifeCatalog) -> PlayMonthlyDocument:
@@ -57,7 +83,7 @@ def play_monthly_document(plan: PlayMonthlyPlan, daily_life: DailyLifeCatalog) -
         raise InvalidDomainValueError("The habit labels must come from the plan's own daily-life catalog")
     safety = {c.cell.item_id: c.cell.value for c in plan.safety_candidates}
     teacher = {t.semantic_key: t.value for t in plan.teacher_inputs}
-    year, month = plan.target_month.calendar_year, plan.target_month.calendar_month
+    specialized = tuple(c.value for c in plan.specialized_timetable)
 
     def label(habit) -> str:
         if not (habit.entry_id and habit.cell.value.strip()):
@@ -67,12 +93,14 @@ def play_monthly_document(plan: PlayMonthlyPlan, daily_life: DailyLifeCatalog) -
             raise InvalidDomainValueError(f"Daily-life entry {habit.entry_id} is missing from the plan's catalog")
         return entry.label
 
+    display = plan.display
     return PlayMonthlyDocument(
-        month=month,
-        target_ages=plan.target_ages,
-        start_date=date(year, month, 1),
-        end_date=date(year, month, calendar.monthrange(year, month)[1]),
+        title=display.title.value,
+        age=display.age.value,
+        class_name=display.class_name.value,
+        period=display.period.value,
         theme=plan.theme.value,
+        direction=plan.direction.value,
         rationale=plan.rationale.value,
         # A name is one list line, so a line break inside it would read as two plays.
         together=tuple(" ".join(a.cell.value.split()) for a in plan.together),
@@ -90,4 +118,8 @@ def play_monthly_document(plan: PlayMonthlyPlan, daily_life: DailyLifeCatalog) -
         nutrition=plan.nutrition.cell.value,
         birthdays=teacher["class_birthdays"],
         home_connection=teacher["home_connection"],
+        specialized_titles=specialized[:SPECIALIZED_COLUMNS],
+        specialized_contents=specialized[SPECIALIZED_COLUMNS:],
+        special_activity=tuple(_part(day) for day in plan.special_activity),
+        special_activity_size=plan.special_activity_size,
     )
