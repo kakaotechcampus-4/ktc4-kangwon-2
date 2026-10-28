@@ -48,7 +48,8 @@ globalThis.window = {
 };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-function mount({ fail = null } = {}) {
+function mount({ fail = null, hold = false, drafting = false } = {}) {
+  const gates = [];
   let server = base();
   const sent = [];
   const slots = [];
@@ -67,9 +68,15 @@ function mount({ fail = null } = {}) {
     useEffect: (fn) => effects.push(fn),
   };
   const bump = (plan) => (server = { ...plan, revision: plan.revision + 1 });
+  const gate = async () => {
+    if (!hold) return;
+    const error = await new Promise((resolve) => gates.push(resolve));
+    if (error) throw error;
+  };
   const api = {
     editPlayMonthlyCell: async (id, itemId, value, rev) => {
       sent.push(["cell", itemId, value, rev]);
+      await gate();
       if (fail) throw fail;
       return bump(queueModule.overlayCells(server, { [itemId]: value }));
     },
@@ -97,7 +104,7 @@ function mount({ fail = null } = {}) {
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)((n) => modules[n], compiled, compiled.exports);
-  const shown = { plan: base(), rejected: 0 };
+  const shown = { plan: base(), rejected: [] };
   let hook;
   const render = () => {
     cursor = 0;
@@ -106,13 +113,14 @@ function mount({ fail = null } = {}) {
       shown.plan,
       (p) => (shown.plan = p),
       () => {},
-      () => shown.rejected++,
+      (itemId) => shown.rejected.push(itemId),
+      drafting,
     );
     effects.forEach((fn) => fn());
     return hook;
   };
   render();
-  return { shown, sent, render, get: () => hook };
+  return { shown, sent, render, get: () => hook, gates };
 }
 
 test("edit shows at once, sends, and undo/redo walk cell and safety steps", async () => {
@@ -186,7 +194,7 @@ test("a 422 puts the server value back, clears history and reports", async () =>
   assert.equal(m.shown.plan.theme.value, "거절");
   await tick();
   assert.equal(m.shown.plan.theme.value, "주제");
-  assert.equal(m.shown.rejected, 1);
+  assert.deepEqual(m.shown.rejected, ["t"]);
   assert.equal(m.render().canUndo, false);
   assert.deepEqual(await m.get().whenIdle(), { saved: true, revision: 1 });
 });
@@ -201,4 +209,42 @@ test("freeze refuses new work and unfreeze accepts it again", async () => {
   m.get().editCell("t", "X");
   assert.equal(m.shown.plan.theme.value, "X");
   assert.deepEqual(await m.get().whenIdle(), { saved: true, revision: 2 });
+});
+
+test("a 422 on one cell leaves another pending cell's value and the undo base intact", async () => {
+  const m = mount({ hold: true });
+  m.get().editCell("t", "A1"); // 보내는 중(곧 거절)
+  m.get().editCell("n", "B1"); // 대기
+  m.gates[0]({ status: 422 });
+  await tick();
+  assert.equal(m.shown.plan.theme.value, "주제"); // 거절된 칸만 되돌아간다
+  assert.equal(m.shown.plan.together[0].name.value, "B1"); // 대기 중인 칸은 그대로
+  assert.deepEqual(m.shown.rejected, ["t"]);
+  m.gates[1](); // B1 저장
+  await tick();
+  assert.equal(m.shown.plan.together[0].name.value, "B1");
+  m.render().editCell("n", "B2");
+  m.gates[2]();
+  await tick();
+  m.render().undo();
+  m.gates[3]();
+  await tick();
+  assert.deepEqual(
+    m.sent.map((s) => s.slice(1, 3)),
+    [
+      ["t", "A1"],
+      ["n", "B1"],
+      ["n", "B2"],
+      ["n", "B1"],
+    ],
+  );
+  assert.equal(m.shown.plan.together[0].name.value, "B1");
+});
+
+test("typed-but-unsaved text (drafting) turns on the leave warning even when the queue is idle", () => {
+  listeners.clear();
+  mount();
+  assert.equal(listeners.size, 0);
+  mount({ drafting: true });
+  assert.equal(listeners.size, 1);
 });

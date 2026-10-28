@@ -49,7 +49,12 @@ function compile(path, modules) {
 const resolve = (node) => {
   if (Array.isArray(node)) return node.map(resolve);
   if (!node || typeof node !== "object") return node;
-  if (typeof node.type === "function") return resolve(node.type(node.props));
+  if (typeof node.type === "function") {
+    const out = resolve(node.type(node.props));
+    return node.key !== undefined && out && typeof out === "object" && !Array.isArray(out)
+      ? { ...out, key: node.key }
+      : out;
+  }
   return { ...node, props: { ...node.props, children: resolve(node.props.children) } };
 };
 const all = (node) =>
@@ -125,16 +130,32 @@ const sheetStub = (props) => jsx("sheet", props);
 const editorStub = (props) => jsx("editor", props);
 const saved = [];
 let saveState = { status: "idle", canUndo: false, canRedo: false };
-const saveStub = () => ({
-  ...saveState,
-  editCell: (...a) => saved.push(["edit", ...a]),
-  undo: () => saved.push(["undo"]),
-  redo: () => saved.push(["redo"]),
-  retry: () => saved.push(["retry"]),
-  whenIdle: () => saved.push(["idle"]),
-  freeze: () => saved.push(["freeze"]),
-  unfreeze: () => saved.push(["unfreeze"]),
-});
+let conflict;
+let saveArgs = [];
+const saveStub = (...args) => {
+  saveArgs = args;
+  const [plan, onPlan, onConflict] = args;
+  conflict = onConflict;
+  return {
+    ...saveState,
+    placeSafety: (...a) => (
+      saved.push(["safety", ...a]),
+      onPlan(queueModule.withSafety(plan, a[0], a[1]))
+    ),
+    copyDrill: (...a) => saved.push(["copy", ...a]),
+    removeActivity: (id) => (
+      saved.push(["remove", id]),
+      onPlan(queueModule.withoutActivity(plan, id))
+    ),
+    editCell: (...a) => saved.push(["edit", ...a]),
+    undo: () => saved.push(["undo"]),
+    redo: () => saved.push(["redo"]),
+    retry: () => saved.push(["retry"]),
+    whenIdle: () => saved.push(["idle"]),
+    freeze: () => saved.push(["freeze"]),
+    unfreeze: () => saved.push(["unfreeze"]),
+  };
+};
 const barStub = (props) => jsx("confirmbar", props);
 const historyStub = (props) => jsx("history", props);
 function load() {
@@ -151,6 +172,9 @@ function load() {
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
     "./PlayCellEditor": esModule(editorStub),
     "./PlayMonthlySheet": esModule(sheetStub),
+    "./PlayMonthlySafetyPanel": esModule((props) => jsx("safety", props)),
+    "./PlayMonthlyDrillPanel": esModule((props) => jsx("drill", props)),
+    "./PlayMonthlyRowRemove": esModule((props) => jsx("remove", props)),
     "./PlayMonthlyConfirmBar": esModule(barStub),
     "./PlayMonthlyHistory": esModule(historyStub),
     "./playProjectPagination": {},
@@ -280,6 +304,92 @@ test("연간에서 고른 놀이 5개와 놀이 행의 누리과정 연결 ID �
   assert.equal(chips.length, 15);
   assert.deepEqual(chips.slice(0, 2), ["t.1", "t.2"]);
   assert.equal(all(side).filter((n) => ["button", "input", "textarea"].includes(n.type)).length, 0);
+});
+
+const node = (tree, type) => all(tree).filter((n) => n.type === type);
+
+test("안전 배치 · 훈련 복사 · 행 빼기 패널을 훅에 잇는다", async () => {
+  const plan = fixture();
+  const { tree, View, h } = await open(plan.id, async () => plan);
+  saved.length = 0;
+  const [safety] = node(tree, "safety");
+  const weekId = plan.safety_weeks[0].week_id;
+  const cand = plan.safety_candidates[0].cell.item_id;
+  assert.equal(safety.props.disabled, false);
+  safety.props.onPlace(weekId, cand);
+  safety.props.onPlace(weekId, null);
+  node(tree, "drill")[0].props.onCopy(cand);
+  assert.deepEqual(saved, [
+    ["safety", weekId, cand],
+    ["safety", weekId, null],
+    ["copy", cand],
+  ]);
+  // 두면 화면 계획안에 입혀진다.
+  safety.props.onPlace(weekId, cand);
+  const after = h.render(View, { id: plan.id });
+  assert.equal(node(after, "safety")[0].props.plan.safety_weeks[0].candidate_item_id, cand);
+  // 놀이 행 15개가 아니라 10개(함께 5 · 자유놀이 5), 각 구역 이름이 붙는다.
+  const removes = node(after, "remove");
+  assert.equal(removes.length, 10);
+  assert.equal(removes[0].props.section, "함께 하는 활동");
+  assert.equal(removes[9].props.section, "자유놀이");
+  assert.ok(removes.every((r) => r.props.isLastInSection === false));
+  const target = removes[0].props.activity.activity_id;
+  removes[0].props.onRemove(target);
+  const gone = h.render(View, { id: plan.id });
+  assert.equal(node(gone, "remove").length, 9);
+  assert.ok(node(gone, "remove").every((r) => r.props.activity.activity_id !== target));
+  assert.deepEqual(saved.at(-1), ["remove", target]);
+  saved.length = 0;
+});
+
+test("구역에 행이 하나 남으면 마지막 행으로 알린다", async () => {
+  const plan = fixture(false, (p) => ((p.together = p.together.slice(0, 1)), p));
+  const { tree } = await open(plan.id, async () => plan);
+  const flags = node(tree, "remove").map((r) => r.props.isLastInSection);
+  assert.deepEqual(flags, [true, false, false, false, false, false]);
+});
+
+test("확정본에는 안전 · 훈련 패널과 행 빼기가 없다", async () => {
+  const plan = fixture(true);
+  const { tree } = await open(plan.id, async () => plan);
+  for (const t of ["safety", "drill", "remove"]) assert.equal(node(tree, t).length, 0, t);
+});
+
+test("저장이 409 로 멈추면 패널 · 행 빼기를 잠근다", async () => {
+  const plan = fixture();
+  const { tree, View, h } = await open(plan.id, async () => plan);
+  assert.equal(node(tree, "drill")[0].props.disabled, false);
+  conflict();
+  const locked = h.render(View, { id: plan.id });
+  for (const t of ["safety", "drill", "remove"])
+    assert.ok(
+      node(locked, t).every((n) => n.props.disabled === true),
+      t,
+    );
+});
+
+test("확정을 진행하는 동안(freeze 뒤) 패널 · 행 빼기를 잠그고, 끝나면(unfreeze) 푼다", async () => {
+  const plan = fixture();
+  const { tree, View, h } = await open(plan.id, async () => plan);
+  const bar = () => node(h.render(View, { id: plan.id }), "confirmbar")[0];
+  const flags = (t) =>
+    ["safety", "drill", "remove"].map((k) => node(t, k).map((n) => n.props.disabled));
+  assert.ok(
+    flags(tree)
+      .flat()
+      .every((d) => d === false),
+  );
+  node(tree, "confirmbar")[0].props.freeze();
+  const frozen = h.render(View, { id: plan.id });
+  assert.ok(flags(frozen).every((f) => f.length > 0 && f.every((d) => d === true)));
+  bar().props.unfreeze();
+  assert.ok(
+    flags(h.render(View, { id: plan.id }))
+      .flat()
+      .every((d) => d === false),
+  );
+  saved.length = 0;
 });
 
 test("강조한 놀이에는 표시가 붙는다", async () => {
@@ -563,4 +673,29 @@ test("문서 용지 — onSelect 가 있으면 칸이 누르는 칸이 되고 �
   theme.props.onClick();
   theme.props.onKeyDown({ key: "Enter", preventDefault() {} });
   assert.deepEqual(picked, [plan.theme.item_id, plan.theme.item_id]);
+});
+
+test("거절된 칸만 입력창을 다시 열고, 옛 입력창이 사라지며 보내는 글은 버린다 · 입력 중이면 떠날 때 경고 조건", async () => {
+  const plan = fixture();
+  const { View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  all(h.render(View, props))
+    .find((n) => n.type === "sheet")
+    .props.onSelect(plan.theme.item_id);
+  const first = all(h.render(View, props)).find((n) => n.type === "editor");
+  assert.equal(saveArgs[4], false);
+  first.props.onDraft("쓰는 중");
+  h.render(View, props);
+  assert.equal(saveArgs[4], true);
+  saveArgs[3](plan.theme.item_id); // 422 로 그 칸이 되돌아갔다
+  const second = all(h.render(View, props)).find((n) => n.type === "editor");
+  assert.notEqual(second.key, first.key);
+  assert.equal(saveArgs[4], false);
+  first.props.onSave("옛 입력창의 글"); // 옛 입력창 cleanup
+  assert.deepEqual(saved, []);
+  second.props.onSave("새 글");
+  assert.deepEqual(saved.pop(), ["edit", plan.theme.item_id, "새 글"]);
+  // 다른 칸의 입력창은 다시 열리지 않는다.
+  saveArgs[3]("다른 칸");
+  assert.equal(all(h.render(View, props)).find((n) => n.type === "editor").key, second.key);
 });
