@@ -94,7 +94,9 @@ class DocumentSection(Base):
 
     __tablename__ = "document_sections"
     __table_args__ = (
-        CheckConstraint("heading IN ('사실', '해석', '지원')", name="heading"),
+        # 「첨부 원문」은 증빙 등록(origin=IMPORT)만 쓴다 — 우리가 만든 문서가 아니라
+        # 사실 · 해석 · 지원 3층이 없다 (api-spec §11 「증빙 등록」).
+        CheckConstraint("heading IN ('사실', '해석', '지원', '첨부 원문')", name="heading"),
         UniqueConstraint("document_id", "heading"),
     )
 
