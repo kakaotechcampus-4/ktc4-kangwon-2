@@ -97,6 +97,10 @@ class AuditEventType(str, Enum):
     CONFIRMED = "CONFIRMED"
     # Plan-level: a teacher saved which candidates a play-project period keeps (2026-10-26).
     CANDIDATES_SELECTED = "CANDIDATES_SELECTED"
+    # Plan-level: a teacher added or removed a play row, or placed a safety week (2026-10-27).
+    ARRANGEMENT_CHANGED = "ARRANGEMENT_CHANGED"
+    # Cell-level: a teacher copied a same-plan candidate into a cell (2026-10-27, M2-D17).
+    CANDIDATE_COPIED = "CANDIDATE_COPIED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +154,46 @@ class SelectionChange:
 
 
 @dataclass(frozen=True, slots=True)
+class ArrangementChange:
+    """The active item ids of one scope (a play section or a week) before and after a change."""
+
+    scope: str
+    before: tuple[str, ...]
+    after: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not _is_non_blank(self.scope):
+            raise InvalidDomainValueError("ArrangementChange.scope must be non-blank")
+        for ids in (self.before, self.after):
+            if not isinstance(ids, tuple) or not all(_is_non_blank(i) for i in ids):
+                raise InvalidDomainValueError("ArrangementChange ids must be non-blank strings")
+            if len(ids) != len(set(ids)):
+                raise InvalidDomainValueError("ArrangementChange ids must be unique")
+        if self.before == self.after:
+            raise InvalidDomainValueError("ArrangementChange must change the arrangement")
+
+
+@dataclass(frozen=True, slots=True)
+class LinkChange:
+    """A teacher's change to a play's curriculum content ids, within one catalog version."""
+
+    before: tuple[str, ...]
+    after: tuple[str, ...]
+    catalog_version: str
+
+    def __post_init__(self) -> None:
+        for ids in (self.before, self.after):
+            if not isinstance(ids, tuple) or not all(_is_non_blank(i) for i in ids):
+                raise InvalidDomainValueError("LinkChange ids must be non-blank strings")
+            if len(ids) != len(set(ids)):
+                raise InvalidDomainValueError("LinkChange ids must be unique")
+        if self.before == self.after:
+            raise InvalidDomainValueError("LinkChange must change the links")
+        if not _is_non_blank(self.catalog_version):
+            raise InvalidDomainValueError("LinkChange.catalog_version must be non-blank")
+
+
+@dataclass(frozen=True, slots=True)
 class AuditEvent:
     event_type: AuditEventType
     occurred_at: datetime
@@ -160,6 +204,9 @@ class AuditEvent:
     value_change: ValueChange | None = None
     generation_change: GenerationMethodChange | None = None
     selection_change: SelectionChange | None = None
+    link_change: LinkChange | None = None
+    arrangement_change: ArrangementChange | None = None
+    copied_from: ItemId | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_type, AuditEventType):
@@ -192,15 +239,20 @@ class AuditEvent:
             raise InvalidDomainValueError(
                 "AuditEvent.generation_change must be GenerationMethodChange when set"
             )
-        # A teacher edit changes the value, never the Generation Method, so it needs no
-        # generation_change (REGENERATED is where the method changes).
+        if self.link_change is not None and (
+            self.event_type is not AuditEventType.TEACHER_EDITED
+            or not isinstance(self.link_change, LinkChange)
+        ):
+            raise InvalidDomainValueError("Only TEACHER_EDITED carries a LinkChange")
+        # A teacher edit changes the value or the curriculum links, never the Generation
+        # Method, so it needs no generation_change (REGENERATED is where the method changes).
         if self.event_type is AuditEventType.TEACHER_EDITED and (
             self.actor_id is None
             or self.item_id is None
-            or self.value_change is None
+            or (self.value_change is None and self.link_change is None)
         ):
             raise InvalidDomainValueError(
-                "TEACHER_EDITED requires actor_id, item_id and value_change"
+                "TEACHER_EDITED requires actor_id, item_id and value_change or link_change"
             )
         if self.event_type is AuditEventType.CANDIDATES_SELECTED:
             if (
@@ -217,6 +269,32 @@ class AuditEvent:
             raise InvalidDomainValueError(
                 "Only CANDIDATES_SELECTED carries selection_change"
             )
+        if self.event_type is AuditEventType.ARRANGEMENT_CHANGED:
+            if (
+                self.actor_id is None
+                or not isinstance(self.arrangement_change, ArrangementChange)
+                or self.item_id is not None
+                or self.value_change is not None
+                or self.generation_change is not None
+            ):
+                raise InvalidDomainValueError(
+                    "ARRANGEMENT_CHANGED is a plan-level teacher event with arrangement_change only"
+                )
+        elif self.arrangement_change is not None:
+            raise InvalidDomainValueError("Only ARRANGEMENT_CHANGED carries arrangement_change")
+        # generation_change is absent only when the cell was never written before the copy.
+        if self.event_type is AuditEventType.CANDIDATE_COPIED:
+            if (
+                self.actor_id is None
+                or self.item_id is None
+                or not isinstance(self.copied_from, ItemId)
+                or self.value_change is None
+            ):
+                raise InvalidDomainValueError(
+                    "CANDIDATE_COPIED requires actor_id, item_id, copied_from and value_change"
+                )
+        elif self.copied_from is not None:
+            raise InvalidDomainValueError("Only CANDIDATE_COPIED carries copied_from")
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,10 +322,16 @@ class AuditHistory:
         return AuditHistory(self.events + (event,))
 
     def current_value_teacher_edited(self) -> bool:
-        """True when a teacher edit set the current value: no later regeneration."""
+        """True when a teacher edit set the current value: no later regeneration.
+
+        A links-only edit (no value_change) leaves the value as it was, so it is skipped.
+        """
         for event in reversed(self.events):
-            if event.event_type is not AuditEventType.CONFIRMED:
-                return event.event_type is AuditEventType.TEACHER_EDITED
+            if event.event_type is AuditEventType.CONFIRMED or (
+                event.event_type is AuditEventType.TEACHER_EDITED and event.value_change is None
+            ):
+                continue
+            return event.event_type is AuditEventType.TEACHER_EDITED
         return False
 
     def __iter__(self) -> Iterator[AuditEvent]:
