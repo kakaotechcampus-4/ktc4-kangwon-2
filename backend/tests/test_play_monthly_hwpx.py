@@ -9,13 +9,16 @@ from io import BytesIO
 
 import pytest
 from lxml import etree
+from ssuksak.planning.application.generate_play_monthly_plan import SPECIAL_ACTIVITY_START
 from ssuksak.planning.application.play_monthly_document import (
     PlayMonthlyDocument,
+    PlayMonthlyDocumentPart,
     PlayMonthlyDocumentWeek,
 )
 from ssuksak.planning.domain.play_monthly_plan import TimetableSize
+from ssuksak.planning.domain.provenance import SplitAxis
 
-from app.features.plans.play_monthly_hwpx import TEMPLATE, fill_play_monthly
+from app.features.plans.play_monthly_hwpx import HWPUNIT_PER_MM, TEMPLATE, fill_play_monthly
 from app.features.plans.play_project_hwpx import TEMPLATE as PLAY_PROJECT_TEMPLATE
 from app.shared.hwpx import NS, TemplateMismatch, to_hwp
 
@@ -25,6 +28,27 @@ FOOTER = [
     " 융통성 있게 구성되었습니다. ",  # 전달본 그대로 — 끝 공백까지
     "*유아들의 흥미도와 참여 정도에 따라 다른 방향으로 조정됩니다.",
 ]
+
+
+V, H = SplitAxis.VERTICAL, SplitAxis.HORIZONTAL
+
+
+def parts(shape, texts) -> PlayMonthlyDocumentPart:
+    """Core 시작 모양 표기(None = 칸, (축, 비율, 첫째, 둘째) = 경계) → 문서 칸.
+
+    글은 차례로 붙인다.
+    """
+    if shape is None:
+        return PlayMonthlyDocumentPart(next(texts))
+    axis, ratio, first, second = shape
+    return PlayMonthlyDocumentPart(
+        axis=axis, ratio=ratio, parts=(parts(first, texts), parts(second, texts))
+    )
+
+
+def days(*shapes) -> tuple[PlayMonthlyDocumentPart, ...]:
+    texts = iter(f"특활 {i}" for i in range(1, 100))
+    return tuple(parts(shape, texts) for shape in shapes)
 
 
 def document(weeks: int = 5, plays: int = 5) -> PlayMonthlyDocument:
@@ -49,9 +73,9 @@ def document(weeks: int = 5, plays: int = 5) -> PlayMonthlyDocument:
         nutrition="",  # 빈 칸에는 「[영양] 」 을 붙이지 않는다
         birthdays="합성 생일",
         home_connection="합성 가정연계",
-        specialized_titles=("",) * 5,
-        specialized_contents=("",) * 5,
-        special_activity=(),
+        specialized_titles=tuple(f"특성화 {i}" for i in range(1, 6)),
+        specialized_contents=("합성 내용", "", "", "", ""),
+        special_activity=days(*SPECIAL_ACTIVITY_START),
         special_activity_size=TimetableSize((20, 20, 20, 20, 20), 24),
     )
 
@@ -83,6 +107,41 @@ def week_row(content: bytes, row: int) -> list[etree._Element]:
         (tc for (r, c), tc in cells(content).items() if r == row and c > 0),
         key=lambda tc: int(tc.find("hp:cellAddr", NS).get("colAddr")),
     )
+
+
+def x_span(tc: etree._Element, content: bytes) -> tuple[int, int]:
+    """칸의 왼쪽 · 오른쪽 세로선 x — 격자 번호가 바뀌어도 비교할 수 있다."""
+    x = {0: 0}
+    tcs = list(table(content).iterfind("hp:tr/hp:tc", NS))
+    for _ in tcs:
+        for other in tcs:
+            c = int(other.find("hp:cellAddr", NS).get("colAddr"))
+            if c in x:
+                end = c + int(other.find("hp:cellSpan", NS).get("colSpan"))
+                x[end] = x[c] + int(other.find("hp:cellSz", NS).get("width"))
+    c = int(tc.find("hp:cellAddr", NS).get("colAddr"))
+    return x[c], x[c + int(tc.find("hp:cellSpan", NS).get("colSpan"))]
+
+
+def special_cells(content: bytes) -> list[etree._Element]:
+    """특별활동 칸 구역(요일 머리 아래 행들) — 위 → 아래, 왼쪽 → 오른쪽."""
+    rows = int(table(content).get("rowCnt")) - 28 + 2  # 전달본 칸 구역은 2행
+    return sorted(
+        (tc for (r, c), tc in cells(content).items() if 20 <= r < 20 + rows),
+        key=lambda tc: (
+            int(tc.find("hp:cellAddr", NS).get("rowAddr")),
+            int(tc.find("hp:cellAddr", NS).get("colAddr")),
+        ),
+    )
+
+
+def text(tc: etree._Element) -> str:
+    return "".join(tc.itertext())
+
+
+def size(tc: etree._Element) -> tuple[int, int]:
+    found = tc.find("hp:cellSz", NS)
+    return int(found.get("width")), int(found.get("height"))
 
 
 def assert_whole_grid(content: bytes) -> None:
@@ -169,29 +228,90 @@ def test_values_land_in_their_cells(filled: bytes) -> None:
     ]
 
 
-def test_footer_timetables_and_labels_stay_as_the_template(filled: bytes) -> None:
+def test_footer_and_labels_stay_as_the_template(filled: bytes) -> None:
     template, got = cells(TEMPLATE.read_bytes()), cells(filled)
     assert lines(got[(27, 0)]) == FOOTER
-    for row in (*range(14, 24), 26, 27):
+    for row in (14, 17, 18, 19, 22, 23, 26, 27):
         for address in [a for a in template if a[0] == row]:
             assert lines(got[address]) == lines(template[address])
-    assert all(not "".join(got[a].itertext()) for a in template if a[0] in (15, 16, 20, 21))
 
 
-def test_five_weeks_keep_the_template_grid(filled: bytes) -> None:
+def test_specialized_titles_and_contents_fill_the_template_cells(filled: bytes) -> None:
+    got = cells(filled)
+    columns = (0, 4, 8, 11, 14)
+    assert [lines(got[(15, c)]) for c in columns] == [[f"특성화 {i}"] for i in range(1, 6)]
+    assert [lines(got[(16, c)]) for c in columns] == [["합성 내용"], *[[""]] * 4]
+
+
+def test_five_weeks_and_the_start_timetable_keep_the_template_grid(filled: bytes) -> None:
+    """칸 구역(20~21행)은 Core 시작 모양(정수 비율)으로 다시 그려 폭 · 높이만 몇 단위 다르다."""
+
     def shape(content: bytes) -> list[tuple]:
         return [
             (
                 tc.find("hp:cellAddr", NS).attrib,
                 tc.find("hp:cellSpan", NS).attrib,
-                tc.find("hp:cellSz", NS).get("width"),
-                tc.get("borderFillIDRef"),
+                *(() if r in (20, 21) else (size(tc)[0], tc.get("borderFillIDRef"))),
             )
             for tc in table(content).iterfind("hp:tr/hp:tc", NS)
+            for r in [int(tc.find("hp:cellAddr", NS).get("rowAddr"))]
         ]
 
     assert shape(filled) == shape(TEMPLATE.read_bytes())
     assert table(filled).get("colCnt") == "17"
+    template = special_cells(TEMPLATE.read_bytes())
+    for got, want in zip(special_cells(filled), template, strict=True):
+        assert all(abs(a - b) <= 30 for a, b in zip(size(got), size(want), strict=True))
+    assert_whole_grid(filled)
+
+
+def test_special_activity_parts_are_printed_where_the_tree_puts_them(filled: bytes) -> None:
+    order = [1, 2, 5, 6, 7, 8, 11, 12, 13, 3, 4, 9, 10]  # 칸 주소 순서 — 월 · 수 아래 칸은 21행
+    assert [lines(tc) for tc in special_cells(filled)] == [[f"특활 {i}"] for i in order]
+
+
+def test_a_deeper_split_adds_rows_and_moves_the_rows_below() -> None:
+    thursday = (V, 30, None, (V, 50, None, (H, 10, None, None)))
+    shapes = (*SPECIAL_ACTIVITY_START[:3], thursday, SPECIAL_ACTIVITY_START[4])
+    doc = replace(document(), special_activity=days(*shapes))
+    content = fill_play_monthly(TEMPLATE.read_bytes(), doc)
+
+    assert_whole_grid(content)
+    assert table(content).get("rowCnt") == "30"  # 경계 높이 30 · 48 · 65 % → 칸 구역 2행 → 4행
+    got = cells(content)
+    assert lines(got[(26, 0)]) == ["우리반 생일"]
+    assert lines(got[(27, 3)]) == ["합성 가정연계"]
+    assert lines(got[(29, 0)]) == FOOTER
+    found = sorted((text(tc) for tc in special_cells(content)), key=lambda t: int(t.split()[1]))
+    assert found == [f"특활 {i}" for i in range(1, 17)]
+    height = round(24 * HWPUNIT_PER_MM)
+    first = height * 30 // 100
+    thursday_cells = [tc for tc in special_cells(content) if text(tc) in {"특활 11", "특활 12"}]
+    assert [size(tc)[1] for tc in thursday_cells] == [first, (height - first) * 50 // 100]
+
+
+def test_column_widths_and_height_are_drawn() -> None:
+    widths = (30, 10, 20, 25, 15)
+    doc = replace(document(), special_activity_size=TimetableSize(widths, 40))
+    content = fill_play_monthly(TEMPLATE.read_bytes(), doc)
+
+    assert_whole_grid(content)
+    header = sorted(
+        (tc for (r, c), tc in cells(content).items() if r == 19),
+        key=lambda tc: int(tc.find("hp:cellAddr", NS).get("colAddr")),
+    )
+    total = int(table(content).find("hp:sz", NS).get("width"))
+    got = [x1 - x0 for x0, x1 in (x_span(tc, content) for tc in header)]
+    assert all(abs(g - total * w // 100) <= 30 for g, w in zip(got, widths, strict=True))
+    thursday = next(tc for tc in special_cells(content) if text(tc) == "특활 11")
+    assert size(thursday)[1] == round(40 * HWPUNIT_PER_MM)
+    assert x_span(thursday, content) == x_span(header[3], content)
+
+
+def test_a_wrong_number_of_special_activity_days_is_refused() -> None:
+    doc = replace(document(), special_activity=document().special_activity[:4])
+    with pytest.raises(TemplateMismatch):
+        fill_play_monthly(TEMPLATE.read_bytes(), doc)
 
 
 def test_a_four_week_month_gets_four_equal_columns_in_the_first_four_colors() -> None:
