@@ -49,7 +49,12 @@ function compile(path, modules) {
 const resolve = (node) => {
   if (Array.isArray(node)) return node.map(resolve);
   if (!node || typeof node !== "object") return node;
-  if (typeof node.type === "function") return resolve(node.type(node.props));
+  if (typeof node.type === "function") {
+    const out = resolve(node.type(node.props));
+    return node.key !== undefined && out && typeof out === "object" && !Array.isArray(out)
+      ? { ...out, key: node.key }
+      : out;
+  }
   return { ...node, props: { ...node.props, children: resolve(node.props.children) } };
 };
 const all = (node) =>
@@ -125,7 +130,9 @@ const sheetStub = (props) => jsx("sheet", props);
 const editorStub = (props) => jsx("editor", props);
 const saved = [];
 let saveState = { status: "idle", canUndo: false, canRedo: false };
-const saveStub = () => ({
+let saveArgs = [];
+const saveStub = (...args) => ({
+  ...((saveArgs = args), {}),
   ...saveState,
   editCell: (...a) => saved.push(["edit", ...a]),
   undo: () => saved.push(["undo"]),
@@ -507,4 +514,29 @@ test("문서 용지 — onSelect 가 있으면 칸이 누르는 칸이 되고 �
   theme.props.onClick();
   theme.props.onKeyDown({ key: "Enter", preventDefault() {} });
   assert.deepEqual(picked, [plan.theme.item_id, plan.theme.item_id]);
+});
+
+test("거절된 칸만 입력창을 다시 열고, 옛 입력창이 사라지며 보내는 글은 버린다 · 입력 중이면 떠날 때 경고 조건", async () => {
+  const plan = fixture();
+  const { View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  all(h.render(View, props))
+    .find((n) => n.type === "sheet")
+    .props.onSelect(plan.theme.item_id);
+  const first = all(h.render(View, props)).find((n) => n.type === "editor");
+  assert.equal(saveArgs[4], false);
+  first.props.onDraft("쓰는 중");
+  h.render(View, props);
+  assert.equal(saveArgs[4], true);
+  saveArgs[3](plan.theme.item_id); // 422 로 그 칸이 되돌아갔다
+  const second = all(h.render(View, props)).find((n) => n.type === "editor");
+  assert.notEqual(second.key, first.key);
+  assert.equal(saveArgs[4], false);
+  first.props.onSave("옛 입력창의 글"); // 옛 입력창 cleanup
+  assert.deepEqual(saved, []);
+  second.props.onSave("새 글");
+  assert.deepEqual(saved.pop(), ["edit", plan.theme.item_id, "새 글"]);
+  // 다른 칸의 입력창은 다시 열리지 않는다.
+  saveArgs[3]("다른 칸");
+  assert.equal(all(h.render(View, props)).find((n) => n.type === "editor").key, second.key);
 });
