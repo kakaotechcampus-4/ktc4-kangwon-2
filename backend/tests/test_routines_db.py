@@ -263,6 +263,89 @@ def test_확정까지_가고_주간_보육일지의_근거가_된다(mine):
     assert weekly.json()["sources"][0]["text"] == _facts(doc)
 
 
+def _weekly_from_routines(klass, routines, **kw):
+    """일일 보육일지를 쓰지 않는 원의 주간 — 그 주 일과 기록을 바로 근거로 준다 (§11)."""
+    body = {
+        "kind": "weeklyLog",
+        "class_id": klass.id,
+        "start": "2026-09-21",
+        "end": "2026-09-27",
+        "source_ids": [r["id"] for r in routines],
+        "source_kind": "routine",
+        **kw,
+    }
+    return client.post("/api/documents", json=body)
+
+
+def test_일일_보육일지_없이_일과_기록으로_주간을_만든다(db_session, mine):
+    """[실측] 일일을 아예 쓰지 않고 주간만 쓰는 원이 있다. 그 원에서는 위 층이 비어 있다."""
+    monday = _routine(mine["sun"], date="2026-09-21", name="쌓기놀이").json()
+    wednesday = _routine(mine["sun"], date="2026-09-23", name="실내놀이").json()
+
+    response = _weekly_from_routines(mine["sun"], [monday, wednesday])
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert [s["text"] for s in payload["sources"]] == [
+        "[쌓기놀이 09:20~10:40] 블록 3개로 길을 만들었다.",
+        "[실내놀이 09:20~10:40] 블록 3개로 길을 만들었다.",
+    ]
+    rows = db_session.scalars(
+        select(DocumentSource).where(DocumentSource.document_id == payload["id"])
+    ).all()
+    assert {r.source_kind for r in rows} == {"routine"}
+    # 사실은 일일과 같은 규칙으로 잇는다 — 고른 순서대로 빈 줄 하나다.
+    assert _facts(payload) == "\n\n".join(s["text"] for s in payload["sources"])
+
+
+def test_주간이_아닌데_일과_근거를_고르면_거절한다(mine):
+    """보낸 값이 반영되지 않는데 받으면 교사는 고른 대로 만들어진 줄 안다."""
+    record = _routine(mine["sun"]).json()
+
+    response = _daily(mine["sun"], [record], source_kind="routine")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["source_kind"]
+
+
+def test_기간_밖_일과와_활동실행이_빈_일과는_주간_근거가_못_된다(mine):
+    outside = _routine(mine["sun"], date="2026-09-28", name="다음주 놀이").json()
+    empty = _routine(mine["sun"], date="2026-09-22", name="빈 일과", execution="").json()
+
+    response = _weekly_from_routines(mine["sun"], [outside, empty])
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == [
+        f"sources.{outside['id']}",
+        f"sources.{empty['id']}",
+    ]
+
+
+def test_일과를_고치면_일과_근거_주간도_다시_검토_대상으로_센다(db_session, mine):
+    """연쇄로 stale 이 된 주간은 안내 건수에서 빼지만, **직접 인용한** 주간은 센다 (§10-1)."""
+    record = _routine(mine["sun"], date="2026-09-21").json()
+    weekly = _weekly_from_routines(mine["sun"], [record]).json()
+    confirmed = client.post(f"/api/documents/{weekly['id']}/confirm", json={"checks": CHECKS})
+    assert confirmed.status_code == 200, confirmed.text
+
+    changed = client.put(
+        f"/api/routines/{record['id']}?include_impact=true",
+        json=_update_body(record, execution="블록으로 성을 쌓았다."),
+    )
+
+    assert changed.json()["review_impact"] == {
+        "affected_document_ids": [weekly["id"]],
+        "newly_stale_document_ids": [weekly["id"]],
+    }
+    assert _stale(db_session, weekly["id"]) is True
+    # 확정을 풀고 다시 부르면 새 사실로 이어지고 stale 이 풀린다 — 날짜를 기간으로 본다.
+    client.post(f"/api/documents/{weekly['id']}/unconfirm")
+    refreshed = client.post(f"/api/documents/{weekly['id']}/refresh", json={"resolutions": []})
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["stale"] is False
+    assert _facts(refreshed.json()) == "[오전 실내놀이 09:20~10:40] 블록으로 성을 쌓았다."
+
+
 # ── 일과 기록을 고치면 그걸 쓴 일지가 stale ──────────────────────────────────
 def _stale(db_session, doc_id):
     db_session.expire_all()
