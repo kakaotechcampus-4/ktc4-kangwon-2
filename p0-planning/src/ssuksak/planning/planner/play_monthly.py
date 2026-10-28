@@ -2,10 +2,13 @@
 
 The Rule fixes the month, weeks, list sizes, the parent plays, the allowed 누리과정 content
 ids, the eight safety slots with each slot's allowed refs, and the approved daily-life
-entries. The LLM writes theme, rationale, play names and safety sentences, and picks ids
-inside those ranges. Habit / health / nutrition text is the approved entry sentence: the LLM
-picks the entry, never rewrites it. Teacher-input cells and weekly safety placement are not
-part of the response at all.
+entries. The LLM writes theme, rationale, play names with their edit-screen descriptions
+and safety sentences, and picks ids inside those ranges. Habit / health / nutrition text is
+the approved entry sentence: the LLM picks the entry, never rewrites it. The Rule also fixes
+the 소방대피 · 재난대비 topic ids; the LLM writes one candidate sentence per id, never a date,
+route, assembly place or procedure. Validation checks the ids and invented facts, not whether
+a sentence matches its topic. Teacher-input cells and weekly safety placement are not part of
+the response at all.
 """
 
 from __future__ import annotations
@@ -23,29 +26,37 @@ from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
 
-PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v1"
-PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v1"
+PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v2"
+PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v2"
 CONTENT_MIN, CONTENT_MAX = 1, 3  # content ids per activity (first contract proposal)
 ACTIVITY_SECTIONS = ("together", "free_play")
 
 SYSTEM_PROMPT = (
     "너는 어린이집 놀이중심 월간계획안 초안을 쓰는 도우미다. 응답은 JSON 객체 하나다: "
-    '{"target_month", "theme", "rationale", "together": [{"name", "content_ids", "parent_ref"}], '
-    '"free_play": [{"name", "content_ids", "parent_ref"}], "safety": [{"slot", "text", "refs"}], '
-    '"habits": [{"week_id", "entry_id"}], "health_entry_id", "nutrition_entry_id"}. '
+    '{"target_month", "theme", "rationale", "together": [{"name", "description", "content_ids", "parent_ref"}], '
+    '"free_play": [{"name", "description", "content_ids", "parent_ref"}], "safety": [{"slot", "text", "refs"}], '
+    '"habits": [{"week_id", "entry_id"}], "health_entry_id", "nutrition_entry_id", "drills": [{"topic_id", "text"}]}. '
     "target_month 는 요청 값을 그대로 쓴다. "
     "theme 은 이 달에 예상되는 놀이를 나타내는 놀이 주제다. rationale 은 이 주제를 고른 까닭을 합니다체 2~4문장으로 쓴다 — "
     "부모 연간의 해당 시기 놀이와 계절 · 생활을 바탕으로 예상되는 놀이를 설명하고, 유아가 실제로 보인 관심 · 관찰 · 실시 · 성과를 사실처럼 쓰지 않는다. "
-    "together 는 함께 하는 활동, free_play 는 유아 예상 자유놀이다. 각각 counts 의 개수를 정확히 쓰고, name 은 놀이 이름이다. "
+    "together 는 함께 하는 활동, free_play 는 유아 예상 자유놀이다. 각각 counts 의 개수를 정확히 쓴다. "
+    "name 은 문서에 들어갈 짧은 놀이 이름이다. 분류 이름만 쓰지 말고 무엇을 가지고 무엇을 해 보는지 드러나게 쓰며, 모든 이름을 같은 어미로 맞추지 않는다. "
+    "description 은 교사가 편집 화면에서 어떤 놀이인지 이해하도록 합니다체 1~3문장으로 쓴다 — "
+    "준비해 볼 수 있는 재료나 공간, 놀이 대상, 유아가 해 볼 수 있는 행동이나 탐색을 쓴다. "
+    "재료는 준비 제안이며 원에 있다고 단정하지 않는다. 유아가 다음에 할 행동의 순서나 만들어야 할 결과물을 정해 두지 않는다. "
     "모든 놀이 이름은 서로 달라야 한다. "
     "parent_plays 는 부모 연간에서 교사가 고른 이 시기의 놀이다. emphasized 가 true 인 놀이는 이번 달에 더 이어 갈 놀이다. "
+    "parent_plays 의 materials · support_direction 은 참고 맥락이다. 고른 놀이를 모두 참고하되, 다섯 놀이를 이번 달에 하나씩 반드시 넣어야 하는 것은 아니다. "
     "어떤 놀이가 부모 놀이 하나를 실제로 이어 가면 parent_ref 에 그 놀이의 ref 를 쓰고, 연간에 없는 새 놀이면 null 로 둔다. "
-    f"content_ids 는 curriculum_contents 의 content_id 중 그 놀이에 실제로 드러나는 경험과 명확하게 연결되는 {CONTENT_MIN}~{CONTENT_MAX}개다. "
+    "content_ids 는 curriculum_contents 의 content_id 중 그 놀이의 name 과 description 에 실제로 드러나는 "
+    f"유아 경험과 명확하게 연결되는 {CONTENT_MIN}~{CONTENT_MAX}개다. "
     "개수를 채우려고 연결이 약한 내용을 고르지 않는다. "
     "safety 는 safety_slots 의 slot 마다 정확히 하나씩 쓴다. text 는 그 달 유아에게 할 안전교육 내용 한 문장이며, 「[교통안전]」 같은 영역 이름을 앞에 붙이지 않는다. "
     "refs 는 그 slot 의 allowed_refs 중 text 가 실제로 근거한 것이다 — 법정 영역 slot 은 정확히 1개, 생활안전 slot 은 1개 이상이다. "
     "habits 는 weeks 의 week_id 마다 하나씩, habit_entries 의 entry_id 를 고른다. 주차 수가 항목 수보다 많지 않으면 같은 항목을 되풀이하지 않는다. "
     "health_entry_id 는 health_entries, nutrition_entry_id 는 nutrition_entries 의 entry_id 중 하나다. 그 문장은 쓰지 않는다. "
+    "drills 는 drill_topics 의 topic_id 마다 하나씩, 그 상황을 가정한 소방대피 · 재난대비 훈련 주제를 유아가 알아듣는 말로 한 문장 쓴다. "
+    "훈련 날짜 · 시각 · 대피 경로 · 집결 장소 · 담당자 · 실시 결과와 그 원의 비상대응 절차는 쓰지 않는다 — 교사가 쓴다. "
     "발달 · 건강 효과를 단정하지 않는다. 반 이름 · 원 이름은 쓰지 않는다. "
     "어린이날 · 추석처럼 누구나 아는 공휴일 · 기념일은 쓸 수 있다. "
     "그 원만의 행사, 입력에 없는 날짜 · 요일 · 시각 · 사람 이름 · 기관 정보는 지어내지 않는다."
@@ -56,12 +67,18 @@ REPAIR_INSTRUCTION = (
 )
 
 _ACTIVITY_SCHEMA = _object_schema(
-    {"name": _STRING, "content_ids": {"type": "array", "items": _STRING}, "parent_ref": {"type": ["string", "null"]}}
+    {
+        "name": _STRING,
+        "description": _STRING,
+        "content_ids": {"type": "array", "items": _STRING},
+        "parent_ref": {"type": ["string", "null"]},
+    }
 )
 _SAFETY_SCHEMA = _object_schema(
     {"slot": _STRING, "text": _STRING, "refs": {"type": "array", "items": _STRING}}
 )
 _HABIT_SCHEMA = _object_schema({"week_id": _STRING, "entry_id": _STRING})
+_DRILL_SCHEMA = _object_schema({"topic_id": _STRING, "text": _STRING})
 RESPONSE_SCHEMA = _object_schema(
     {
         "target_month": _STRING,
@@ -73,6 +90,7 @@ RESPONSE_SCHEMA = _object_schema(
         "habits": {"type": "array", "items": _HABIT_SCHEMA},
         "health_entry_id": _STRING,
         "nutrition_entry_id": _STRING,
+        "drills": {"type": "array", "items": _DRILL_SCHEMA},
     }
 )
 
@@ -106,6 +124,7 @@ class PlayMonthlyRequest:
     habit_entry_ids: tuple[str, ...]
     health_entry_ids: frozenset[str]
     nutrition_entry_ids: frozenset[str]
+    drill_topic_ids: tuple[str, ...]  # fixed by the Rule; the LLM writes one sentence each
     fingerprint: str
 
     @property
@@ -119,6 +138,7 @@ class PlayMonthlyRequest:
                 *self.habit_entry_ids,
                 *self.health_entry_ids,
                 *self.nutrition_entry_ids,
+                *self.drill_topic_ids,
             }
         )
 
@@ -126,6 +146,7 @@ class PlayMonthlyRequest:
 @dataclass(frozen=True, slots=True)
 class ProposedActivity:
     name: str
+    description: str
     content_ids: tuple[str, ...]
     parent_ref: str | None
 
@@ -148,6 +169,7 @@ class PlayMonthlyProposal:
     habits: tuple[tuple[str, str], ...]  # (week_id, entry_id)
     health_entry_id: str
     nutrition_entry_id: str
+    drills: tuple[tuple[str, str], ...]  # (topic_id, text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +203,7 @@ def build_play_monthly_request(
     habit_entries: tuple[DailyLifeEntry, ...],
     health_entries: tuple[DailyLifeEntry, ...],
     nutrition_entries: tuple[DailyLifeEntry, ...],
+    drill_topics: tuple[tuple[str, str, str], ...],  # (topic_id, label, situation)
     reference_versions: tuple[str, ...],
 ) -> PlayMonthlyRequest:
     def entries(values: tuple[DailyLifeEntry, ...]) -> list[dict]:
@@ -205,6 +228,9 @@ def build_play_monthly_request(
         "habit_entries": entries(habit_entries),
         "health_entries": entries(health_entries),
         "nutrition_entries": entries(nutrition_entries),
+        "drill_topics": [
+            {"topic_id": t, "label": label, "situation": situation} for t, label, situation in drill_topics
+        ],
     }
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayMonthlyRequest(
@@ -221,6 +247,7 @@ def build_play_monthly_request(
         habit_entry_ids=tuple(e.entry_id for e in habit_entries),
         health_entry_ids=frozenset(e.entry_id for e in health_entries),
         nutrition_entry_ids=frozenset(e.entry_id for e in nutrition_entries),
+        drill_topic_ids=tuple(t for t, _, _ in drill_topics),
         fingerprint=_fingerprint(PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT, user_content, *reference_versions),
     )
 
@@ -279,7 +306,11 @@ def parse_play_monthly_proposal(content: str) -> PlayMonthlyProposal:
         for a in items(name, _ACTIVITY_SCHEMA):
             if a["parent_ref"] is not None:
                 _require_str(a["parent_ref"])
-            result.append(ProposedActivity(_require_str(a["name"]), strings(a["content_ids"]), a["parent_ref"]))
+            result.append(
+                ProposedActivity(
+                    _require_str(a["name"]), _require_str(a["description"]), strings(a["content_ids"]), a["parent_ref"]
+                )
+            )
         return tuple(result)
 
     return PlayMonthlyProposal(
@@ -297,6 +328,9 @@ def parse_play_monthly_proposal(content: str) -> PlayMonthlyProposal:
         ),
         health_entry_id=data["health_entry_id"],
         nutrition_entry_id=data["nutrition_entry_id"],
+        drills=tuple(
+            (_require_str(d["topic_id"]), _require_str(d["text"])) for d in items("drills", _DRILL_SCHEMA)
+        ),
     )
 
 
@@ -331,6 +365,7 @@ def validate_play_monthly(
         for index, row in enumerate(rows):
             location = f"{section}[{index}]"
             text(location, row.name)
+            text(f"{location}.description", row.description)
             name = " ".join(row.name.split())
             if name in names:
                 add(location, "DUPLICATE_PLAY_NAME")
@@ -397,11 +432,27 @@ def validate_play_monthly(
         add("health", "UNKNOWN_ENTRY")
     if proposal.nutrition_entry_id not in request.nutrition_entry_ids:
         add("nutrition", "UNKNOWN_ENTRY")
+
+    topics = set(request.drill_topic_ids)
+    written: set[str] = set()
+    for topic_id, drill_text in proposal.drills:
+        if topic_id not in topics:
+            add("drills", "UNKNOWN_DRILL_TOPIC")
+        elif topic_id in written:
+            add("drills", "DUPLICATE_DRILL_TOPIC")
+        else:
+            written.add(topic_id)
+            text(f"drills:{topic_id}", drill_text)
+    if written != topics:
+        add("drills", "MISSING_DRILL_TOPIC")
     return tuple(dict.fromkeys(issues))
 
 
 def changed_locations(before: PlayMonthlyProposal, after: PlayMonthlyProposal) -> frozenset[str]:
-    """Where a repair changed the proposal: element locations, or a whole section when its shape changed."""
+    """Where a repair changed the proposal: element locations, or a whole section when its shape changed.
+
+    An activity's description is its own location (``together[2].description``), so a repair
+    flagged on the description cannot rename the play, and the reverse."""
     changed: set[str] = {
         name
         for name in ("target_month", "theme", "rationale")
@@ -416,10 +467,15 @@ def changed_locations(before: PlayMonthlyProposal, after: PlayMonthlyProposal) -
         if len(old) != len(new):
             changed.add(section)
         else:
-            changed.update(f"{section}[{i}]" for i, (a, b) in enumerate(zip(old, new)) if a != b)
+            for i, (a, b) in enumerate(zip(old, new)):
+                if (a.name, a.content_ids, a.parent_ref) != (b.name, b.content_ids, b.parent_ref):
+                    changed.add(f"{section}[{i}]")
+                if a.description != b.description:
+                    changed.add(f"{section}[{i}].description")
     for section, old, new in (
         ("safety", {s.slot: s for s in before.safety}, {s.slot: s for s in after.safety}),
         ("habits", dict(before.habits), dict(after.habits)),
+        ("drills", dict(before.drills), dict(after.drills)),
     ):
         reshaped = old.keys() != new.keys() or (len(old), len(new)) != (
             len(getattr(before, section)),

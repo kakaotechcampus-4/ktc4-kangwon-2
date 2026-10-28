@@ -16,11 +16,14 @@ from typing import Protocol
 
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
+from ..domain.drill_topic_reference import DrillTopic, DrillTopicCatalog
 from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.plan import PlanStatus
 from ..domain.play_monthly_plan import (
+    DRILL_CELL_KEY,
+    DrillCandidate,
     EntryCell,
     HabitWeek,
     LayoutRole,
@@ -109,6 +112,7 @@ PLAY_MONTHLY_LAYOUT_V0_1 = PlayMonthlyLayout(
     ),
     together_count=5,
     free_play_count=5,
+    drill_candidate_count=5,  # M2-D15: candidates, not a drill frequency
 )
 
 
@@ -122,6 +126,10 @@ class PlayMonthlyGenerationError(DomainError):
 
 class DailyLifeReferenceRepository(Protocol):
     def get_catalog(self, catalog_id: str, catalog_version: str) -> DailyLifeCatalog | None: ...
+
+
+class DrillTopicReferenceRepository(Protocol):
+    def get_catalog(self, catalog_id: str, catalog_version: str) -> DrillTopicCatalog | None: ...
 
 
 class SafetyClassificationRepository(Protocol):
@@ -145,6 +153,8 @@ class GeneratePlayMonthlyPlanCommand:
     legal_rule_version: str
     safety_classification_version: str
     safety_quality_version: str
+    drill_catalog_id: str
+    drill_catalog_version: str
     emphasized_row_keys: tuple[str, ...] = ()  # optional teacher emphasis among the selected plays
 
 
@@ -160,6 +170,7 @@ class GeneratePlayMonthlyPlan:
         plan_repository: PlanRepository[PlayMonthlyPlan],
         curriculum_repository: CurriculumReferenceRepository,
         daily_life_repository: DailyLifeReferenceRepository,
+        drill_repository: DrillTopicReferenceRepository,
         safety_rule_repository: SafetyLegalRuleRepository,
         evidence_repository: InstitutionEvidenceRepository,
         safety_classification_repository: SafetyClassificationRepository,
@@ -172,6 +183,7 @@ class GeneratePlayMonthlyPlan:
         self._plans = plan_repository
         self._curriculum = curriculum_repository
         self._daily_life = daily_life_repository
+        self._drills = drill_repository
         self._safety_rules = safety_rule_repository
         self._evidence = evidence_repository
         self._classification = safety_classification_repository
@@ -183,6 +195,7 @@ class GeneratePlayMonthlyPlan:
     def execute(self, command: GeneratePlayMonthlyPlanCommand) -> PlayMonthlyPlan:
         parent, snapshot = self._parent(command)
         catalog, daily = self._daily_life_references(command)
+        drills, drill_topics = self._drill_topics(command, catalog)
         rule, store, life_slots, records = self._safety_references(command)
         month = command.target_month
         weeks = canonical_week_periods(month)
@@ -224,10 +237,12 @@ class GeneratePlayMonthlyPlan:
             habit_entries=daily.of_kind(DailyLifeKind.HABIT),
             health_entries=daily.of_kind(DailyLifeKind.HEALTH),
             nutrition_entries=daily.of_kind(DailyLifeKind.NUTRITION),
+            drill_topics=tuple((t.topic_id, t.label, t.situation) for t in drill_topics),
             reference_versions=(
                 PLAY_MONTHLY_LAYOUT_V0_1.layout_version,
                 catalog.catalog_version,
                 daily.catalog_version,
+                drills.catalog_version,
                 rule.legal_rule_version,
                 store.ingestion_version,
                 store.content_sha256,
@@ -318,7 +333,11 @@ class GeneratePlayMonthlyPlan:
                         parent_item_id=play.play_name_item_id,
                         snapshot_value=play.play_name,
                     )
-                rows.append(PlayActivity(cell(f"{section}[{index}]", None, row.name, evidence), lineage))
+                name = cell(f"{section}[{index}]", None, row.name, evidence)
+                description = cell(
+                    f"{section}[{index}].description", f"{name.semantic_key}.description", row.description, evidence
+                )
+                rows.append(PlayActivity(name, description, row.content_ids, lineage))
             return tuple(rows)
 
         def entry_cell(location: str, semantic_key: str, entry: DailyLifeEntry) -> EntryCell:
@@ -349,6 +368,7 @@ class GeneratePlayMonthlyPlan:
                 topic_group=slot.topic_group,
             )
 
+        drill_texts = dict(proposal.drills)
         by_slot = {item.slot: item for item in proposal.safety}
         habits = dict(proposal.habits)
         plan = PlayMonthlyPlan(
@@ -371,6 +391,8 @@ class GeneratePlayMonthlyPlan:
                 evidence_store_sha256=store.content_sha256,
                 safety_classification_version=command.safety_classification_version,
                 safety_quality_version=command.safety_quality_version,
+                drill_catalog_id=drills.catalog_id,
+                drill_catalog_version=drills.catalog_version,
                 prompt_version=PLAY_MONTHLY_PROMPT_VERSION,
                 request_fingerprint=request.fingerprint,
             ),
@@ -394,6 +416,19 @@ class GeneratePlayMonthlyPlan:
             safety_weeks=tuple(SafetyWeek(w.week_id) for w in weeks),
             health=entry_cell("health", "health_nutrition.health", daily.get(proposal.health_entry_id)),
             nutrition=entry_cell("nutrition", "health_nutrition.nutrition", daily.get(proposal.nutrition_entry_id)),
+            drill_candidates=tuple(
+                DrillCandidate(
+                    cell(
+                        f"drills:{topic.topic_id}",
+                        f"{DRILL_CELL_KEY}.candidate.{topic.topic_id}",
+                        drill_texts[topic.topic_id],
+                        (curriculum(topic.content_id),),
+                    ),
+                    topic.topic_id,
+                    topic.label,
+                )
+                for topic in drill_topics
+            ),
             teacher_inputs=tuple(
                 PlayMonthlyCell(item_id=(item_id := self._ids.new_item_id()), semantic_key=key, audit=created(item_id))
                 for key in layout.teacher_input_keys
@@ -479,6 +514,31 @@ class GeneratePlayMonthlyPlan:
         if any(not daily.of_kind(kind) for kind in DailyLifeKind):
             raise _fail("DAILY_LIFE_REFERENCE_INCOMPLETE")
         return catalog, daily
+
+    def _drill_topics(
+        self, command: GeneratePlayMonthlyPlanCommand, catalog: CurriculumCatalog
+    ) -> tuple[DrillTopicCatalog, tuple[DrillTopic, ...]]:
+        drills = self._drills.get_catalog(command.drill_catalog_id, command.drill_catalog_version)
+        if drills is None:
+            raise _fail("DRILL_REFERENCE_NOT_FOUND")
+        if not drills.is_active:
+            raise _fail("DRILL_REFERENCE_NOT_ACTIVE")
+        if (drills.curriculum_catalog_id, drills.curriculum_catalog_version) != (
+            catalog.catalog_id,
+            catalog.catalog_version,
+        ):
+            raise _fail("DRILL_CURRICULUM_MISMATCH")
+        if any(catalog.get(topic.content_id) is None for topic in drills.topics):
+            raise _fail("DRILL_UNKNOWN_CONTENT_ID")
+        count = PLAY_MONTHLY_LAYOUT_V0_1.drill_candidate_count
+        eligible = drills.for_month(command.target_month.calendar_month)
+        # Month-limited topics (e.g. 폭설 in winter) first, then catalog order.
+        # ponytail: fixed order, so a month without a seasonal topic always gets the same five;
+        # add rotation only if teachers ask for variety.
+        topics = sorted(eligible, key=lambda t: len(t.applicable_months) == 12)[:count]
+        if len(topics) < count:
+            raise _fail("DRILL_TOPICS_INSUFFICIENT")
+        return drills, tuple(topics)
 
     def _safety_references(self, command: GeneratePlayMonthlyPlanCommand):
         rule: SafetyLegalRule | None = self._safety_rules.get_legal_rule(command.legal_rule_version)

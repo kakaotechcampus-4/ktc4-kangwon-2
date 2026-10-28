@@ -275,6 +275,8 @@ def _break_row(session, plan_id: int, how: str) -> None:
     row = session.get(Plan, plan_id)
     if how == "classroom_ref":
         values = {"classroom_ref": "햇살반"}
+    elif how == "body_not_object":
+        values = {"body": []}
     else:
         body = copy.deepcopy(row.body)
         snapshot = body["template_snapshot"]
@@ -298,6 +300,7 @@ def _break_row(session, plan_id: int, how: str) -> None:
     [
         ("snapshot_missing", "template_snapshot_missing"),
         ("snapshot_not_object", "template_snapshot_missing"),
+        ("body_not_object", "template_snapshot_missing"),
         ("profile_ref_missing", "profile_ref_missing"),
         ("profile_ref_not_object", "profile_ref_missing"),
         ("profile_ref_invalid", "profile_ref_invalid"),
