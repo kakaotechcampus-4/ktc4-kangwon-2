@@ -83,3 +83,12 @@ def test_habit_labels_come_only_from_the_plans_own_daily_life_catalog():
 
     with pytest.raises(InvalidDomainValueError):
         play_monthly_document(plan, replace(DAILY, catalog_version="other"))
+
+
+def test_a_picked_entry_missing_from_the_catalog_is_refused_not_printed_without_its_label():
+    plan, *_ = _draft()
+    picked = plan.habits[0].habit.entry_id
+    missing = replace(DAILY, entries=tuple(e for e in DAILY.entries if e.entry_id != picked))
+
+    with pytest.raises(InvalidDomainValueError):
+        play_monthly_document(plan, missing)

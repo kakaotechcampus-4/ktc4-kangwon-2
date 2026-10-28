@@ -11,8 +11,10 @@
 - 표시(2026-10-28 하민 결정, 3월 검증 사례와 같게): 예상 기간 「2026.03.01 ~ 2026.03.31」,
   기본생활습관은 「[분류]」 문단 + 문장 문단, 건강 · 영양은 「[건강] 」 · 「[영양] 」 + 문장.
   빈 칸에는 붙이지 않는다.
-- 비워 두는 곳: 특성화 · 특별활동 시간표 격자(교사 입력의 칸 나누기 미정), 우리반 안내사항
-  (출력 안 함). 하단 고정 문구 두 줄은 손대지 않는다.
+- 비워 두는 곳: 우리반 안내사항(출력 안 함, 2026-10-28 결정). 하단 고정 문구 두 줄은 손대지 않는다.
+- 이번 단계는 기본 양식 채우기다. 특성화 · 특별활동 시간표 격자는 비워 두고, 가운데 「예상되는
+  놀이 방향」 은 주제 값을 쓴다. 칸별 시간표(나누기 · 삭제 · 크기)와 독립 놀이 방향의 저장 ·
+  내보내기는 후속이다(같은 날 요청, Core 계약 전).
 - 글자 크기를 줄이거나 자르지 않는다 — 길면 한글이 쪽을 넘긴다(표 `pageBreak="CELL"`).
   전달본 표는 「글자처럼 취급」(`treatAsChar="1"`)이라 쪽을 못 넘기고 1쪽 아래가 잘린다.
   양식 파일은 그대로 두고 채울 때 끈다 — 다른 양식(월간 v1 · 연간 · 주간)과 같은 값이다.
@@ -96,7 +98,7 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: st
     _set_text(cells[(1, 2)], doc.theme)
     _set_text(cells[(2, 2)], f"{doc.start_date:%Y.%m.%d} ~ {doc.end_date:%Y.%m.%d}")
     _set_text(cells[(3, 2)], doc.rationale)
-    _set_text(cells[(5, 7)], doc.theme)  # 가운데 「놀이 주제」 는 주제 값 자리다
+    _set_text(cells[(5, 7)], doc.theme)  # 가운데 놀이 방향 — 독립 값은 후속, 지금은 주제
     _set_text(cells[(6, 0)], "\n".join(doc.together))
     _set_text(cells[(6, 12)], "\n".join(doc.free_play))
     _set_text(cells[(11, 3)], doc.drill)

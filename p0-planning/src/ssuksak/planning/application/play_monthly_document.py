@@ -3,9 +3,13 @@
 The Hangul export fills its template from this. Kept rows only (a removed row stays in the
 archive, not the document), names without descriptions, the safety sentence a teacher placed
 in each week (blank when none), and the drill cell's own value, never its candidates. The
-timetables and the class notice are not printed (2026-10-28 decision). Also decided that day:
-the period is the whole target month, and a habit prints the label of the daily-life entry it
-was picked from, read from the plan's own catalog version.
+class notice is not printed (2026-10-28 decision). Also decided that day: the period is the
+whole target month, and a habit prints the label of the daily-life entry it was picked from,
+read from the plan's own catalog version.
+
+This step fills the base template only. The timetables are left out and the centre play
+direction reuses the theme: per-cell timetables (split · delete · resize) and an independent
+play direction were requested later the same day and wait for their own Core contract.
 """
 
 from __future__ import annotations
@@ -56,8 +60,12 @@ def play_monthly_document(plan: PlayMonthlyPlan, daily_life: DailyLifeCatalog) -
     year, month = plan.target_month.calendar_year, plan.target_month.calendar_month
 
     def label(habit) -> str:
-        entry = daily_life.get(habit.entry_id) if habit.entry_id and habit.cell.value.strip() else None
-        return entry.label if entry else ""
+        if not (habit.entry_id and habit.cell.value.strip()):
+            return ""
+        entry = daily_life.get(habit.entry_id)
+        if entry is None:  # a dropped label would print as if none was ever picked
+            raise InvalidDomainValueError(f"Daily-life entry {habit.entry_id} is missing from the plan's catalog")
+        return entry.label
 
     return PlayMonthlyDocument(
         month=month,
