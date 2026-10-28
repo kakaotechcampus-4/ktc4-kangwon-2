@@ -200,10 +200,19 @@ function PlayMonthlyBody({
   // 입력 중 글(문서가 바로 따라간다) · 고른 칸 · 입력창을 다시 열 번호(되돌리기 · 거절) · 안내.
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
-  const [epoch, setEpoch] = useState(0);
+  // 입력창을 다시 여는 번호 — "*" 는 전부(되돌리기 · 다시 하기), 칸 id 는 그 칸만(거절). 화면 번호(state)와 핸들러가 읽는 ref 를 같이 올린다.
+  const [bumps, setBumps] = useState<Record<string, number>>({});
+  const bumpsRef = useRef(bumps);
+  const stamp = (all: Record<string, number>, id: string) => `${all["*"] ?? 0}:${all[id] ?? 0}`;
+  const bump = (id = "*") => {
+    bumpsRef.current = { ...bumpsRef.current, [id]: (bumpsRef.current[id] ?? 0) + 1 };
+    setBumps(bumpsRef.current);
+  };
   const [message, setMessage] = useState("");
   // 409 로 저장이 멈추면 최신 계획안으로 바뀔 때까지 구조 편집을 잠근다.
   const [stopped, setStopped] = useState(false);
+  const clearLive = (id: string) =>
+    setLive((drafts) => Object.fromEntries(Object.entries(drafts).filter(([k]) => k !== id)));
   const save = usePlayMonthlySave(
     plan,
     setPlan,
@@ -211,11 +220,14 @@ function PlayMonthlyBody({
       setStopped(true);
       onConflict();
     },
-    () => {
-      setLive({});
-      setEpoch((n) => n + 1);
+    (itemId) => {
+      if (itemId) {
+        clearLive(itemId);
+        bump(itemId);
+      }
       setMessage("저장하지 못한 칸은 원래대로 되돌렸어요.");
     },
+    Object.keys(live).length > 0,
   );
   const confirmed = plan.status === "CONFIRMED";
   const locked = stopped; // 확정 시작(freeze)으로 잠글 때도 이 값에 || 로 더한다.
@@ -224,14 +236,12 @@ function PlayMonthlyBody({
   const through = (direction: "undo" | "redo") => {
     save[direction]();
     setLive({});
-    setEpoch((n) => n + 1);
+    bump();
     setMessage(direction === "undo" ? "되돌렸어요" : "다시 했어요");
   };
   const row = [...plan.together, ...plan.free_play].find((r) => r.name.item_id === selected);
   const editing = !confirmed && selected && labels[selected] ? [selected] : [];
   if (row) editing.push(row.description.item_id);
-  const clearLive = (id: string) =>
-    setLive((drafts) => Object.fromEntries(Object.entries(drafts).filter(([k]) => k !== id)));
   const summary = noticeSummary(plan.notices);
   const rows = [...plan.together, ...plan.free_play];
   return (
@@ -274,21 +284,26 @@ function PlayMonthlyBody({
               <section aria-label="칸 편집">
                 <h2>칸 편집</h2>
                 {editing.length === 0 && <p>문서의 칸을 누르면 여기서 고칠 수 있어요.</p>}
-                {editing.map((itemId, index) => (
-                  <PlayCellEditor
-                    key={itemId + ":" + epoch}
-                    id={"play-monthly-cell-" + index}
-                    label={labels[itemId]}
-                    value={cellValue(plan, itemId) ?? ""}
-                    allowBlank
-                    onDraft={(text) => setLive((drafts) => ({ ...drafts, [itemId]: text }))}
-                    onSave={(text) => {
-                      clearLive(itemId);
-                      save.editCell(itemId, text);
-                    }}
-                    onRevert={() => clearLive(itemId)}
-                  />
-                ))}
+                {editing.map((itemId, index) => {
+                  const mine = stamp(bumps, itemId);
+                  return (
+                    <PlayCellEditor
+                      key={itemId + ":" + mine}
+                      id={"play-monthly-cell-" + index}
+                      label={labels[itemId]}
+                      value={cellValue(plan, itemId) ?? ""}
+                      allowBlank
+                      onDraft={(text) => setLive((drafts) => ({ ...drafts, [itemId]: text }))}
+                      onSave={(text) => {
+                        // 거절 · 되돌리기로 다시 열린 뒤 옛 입력창이 사라지며 보내는 글은 버린다.
+                        if (mine !== stamp(bumpsRef.current, itemId)) return;
+                        clearLive(itemId);
+                        save.editCell(itemId, text);
+                      }}
+                      onRevert={() => clearLive(itemId)}
+                    />
+                  );
+                })}
               </section>
             )}
             {!confirmed && (

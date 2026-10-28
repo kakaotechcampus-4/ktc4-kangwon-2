@@ -54,13 +54,17 @@ const call = (id: number, job: Job, revision: number) =>
 
 /**
  * 놀이 월간의 모든 쓰기를 한 줄로 저장한다(규칙은 `createPlayMonthlyQueue`). 바꾼 값은 `onPlan` 으로 화면에 바로 입히고,
- * 큐가 비면 서버가 돌려준 계획안으로 맞춘다. 거절(422)이면 서버 값으로 되돌리고 `onRejected` 를 부른다.
+ * 큐가 비면 서버가 돌려준 계획안으로 맞춘다. 거절(422)이면 **그 작업의 칸 · 주만** 서버 값으로 되돌리고
+ * (다른 대기 작업의 값은 화면에 남긴다) `onRejected(칸 item_id)` 를 부른다. `drafting` 은 입력 중이라 아직 큐에 안 들어간 글이 있다는 뜻이다.
  */
 export function usePlayMonthlySave(
   plan: PlayMonthlyPlan,
   onPlan: (plan: PlayMonthlyPlan) => void,
   onConflict: () => void,
-  onRejected?: () => void,
+  /** 거절돼 되돌린 칸의 item_id. 안전 배치 · 삭제 · 복사가 거절됐으면 null. */
+  onRejected?: (itemId: string | null) => void,
+  /** 입력 중인 미저장 글이 있는가 — 떠날 때 경고에 더한다. */
+  drafting = false,
 ): PlayMonthlySave {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [history, setHistoryState] = useState<History>(EMPTY_HISTORY);
@@ -99,11 +103,20 @@ export function usePlayMonthlySave(
       isConflict: isSaveConflict,
       isRejected: isRejectedSave,
       onStatus: setStatus,
-      onRejected: () => {
-        apply(server.current);
-        // 되돌릴 걸음이 서버와 어긋났을 수 있어 목록을 비운다.
+      onRejected: (job) => {
+        // 거절된 작업의 칸 · 주만 서버 확인값으로 되돌린다. 뒤에 대기 중인 다른 작업의 낙관값은 그대로 둔다.
+        apply(
+          job.kind === "cell"
+            ? overlayCells(view.current, {
+                [job.itemId]: cellValue(server.current, job.itemId) ?? "",
+              })
+            : job.kind === "safety"
+              ? withSafety(view.current, job.weekId, safetyOf(server.current, job.weekId))
+              : server.current, // ponytail: 삭제 · 복사 거절은 드물어 통째로 서버 계획안(대기 변경은 큐가 비면 다시 맞춰진다)
+        );
+        // 남은 걸음의 before 가 거짓이 될 수 있어 목록을 비운다.
         setHistory(EMPTY_HISTORY);
-        latest.current.onRejected?.();
+        latest.current.onRejected?.(job.kind === "cell" ? job.itemId : null);
       },
       onDrained: () => apply(server.current),
       onConflict: () => mounted.current && latest.current.onConflict(),
@@ -145,7 +158,7 @@ export function usePlayMonthlySave(
     setHistory(moved.history);
   }
 
-  const unsent = hasUnsentSave(status);
+  const unsent = hasUnsentSave(status) || drafting;
   useEffect(() => {
     if (!unsent) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
