@@ -6,6 +6,7 @@ import pytest
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.provenance import (
+    ArrangementChange,
     AuditEvent,
     AuditEventType,
     AuditHistory,
@@ -14,6 +15,7 @@ from ssuksak.planning.domain.provenance import (
     GenerationMethod,
     GenerationMethodChange,
     GenerationMethodDetail,
+    LinkChange,
     ValueChange,
 )
 
@@ -201,3 +203,111 @@ def test_the_current_value_is_teacher_edited_only_until_a_later_regeneration(eve
     history = AuditHistory(tuple(_event(kind, minute) for minute, kind in enumerate(events)))
 
     assert history.current_value_teacher_edited() is edited
+
+
+def _links_only(minute):
+    return AuditEvent(
+        event_type=AuditEventType.TEACHER_EDITED, occurred_at=NOW.replace(minute=minute), plan_id=PlanId("plan_001"),
+        item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"), link_change=LinkChange(("a",), ("b", "c"), "v1"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("events", "edited"),
+    [
+        ((AuditEventType.CREATED,), False),
+        ((AuditEventType.CREATED, AuditEventType.TEACHER_EDITED), True),
+        ((AuditEventType.CREATED, AuditEventType.REGENERATED), False),
+    ],
+    ids=["generated", "text-edited", "regenerated"],
+)
+def test_a_links_only_edit_never_changes_whether_the_text_is_teacher_edited(events, edited):
+    history = AuditHistory(tuple(_event(kind, minute) for minute, kind in enumerate(events)))
+
+    assert history.append(_links_only(len(events))).current_value_teacher_edited() is edited
+
+
+def test_a_teacher_edit_may_carry_links_only_and_only_a_teacher_edit_carries_links():
+    assert _links_only(0).value_change is None
+    with pytest.raises(InvalidDomainValueError, match="Only TEACHER_EDITED"):
+        AuditEvent(
+            event_type=AuditEventType.REGENERATED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+            item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"), link_change=LinkChange((), ("a",), "v1"),
+        )
+
+
+@pytest.mark.parametrize(
+    "args",
+    [(("a", "a"), ("b",), "v1"), (("a",), ("a",), "v1"), (("a",), ("b",), " "), ((" ",), ("b",), "v1")],
+    ids=["duplicate", "unchanged", "blank-version", "blank-id"],
+)
+def test_a_link_change_needs_unique_ids_a_real_change_and_a_version(args):
+    with pytest.raises(InvalidDomainValueError):
+        LinkChange(*args)
+
+
+def test_a_link_change_may_start_from_no_links():
+    assert LinkChange((), ("a",), "v1").before == ()
+
+
+def _arranged(**fields):
+    return AuditEvent(
+        event_type=AuditEventType.ARRANGEMENT_CHANGED, occurred_at=NOW, plan_id=PlanId("plan_001"), **fields
+    )
+
+
+def test_an_arrangement_change_is_a_plan_level_teacher_event():
+    change = ArrangementChange("together", ("a", "b"), ("a",))
+
+    assert _arranged(actor_id=ActorId("teacher_001"), arrangement_change=change).item_id is None
+    for fields in (
+        {"system_actor": "system"},
+        {"actor_id": ActorId("teacher_001"), "item_id": ItemId("item_001")},
+        {"actor_id": ActorId("teacher_001"), "value_change": ValueChange("", "x")},
+    ):
+        with pytest.raises(InvalidDomainValueError, match="ARRANGEMENT_CHANGED"):
+            _arranged(**{"arrangement_change": change, **fields})
+    with pytest.raises(InvalidDomainValueError, match="ARRANGEMENT_CHANGED"):
+        _arranged(actor_id=ActorId("teacher_001"))
+    with pytest.raises(InvalidDomainValueError, match="Only ARRANGEMENT_CHANGED"):
+        AuditEvent(
+            event_type=AuditEventType.CONFIRMED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+            actor_id=ActorId("teacher_001"), arrangement_change=change,
+        )
+
+
+@pytest.mark.parametrize(
+    "args",
+    [(" ", (), ("a",)), ("w", ("a", "a"), ()), ("w", ("a",), ("a",)), ("w", (" ",), ())],
+    ids=["blank-scope", "duplicate", "unchanged", "blank-id"],
+)
+def test_an_arrangement_change_needs_a_scope_unique_ids_and_a_real_change(args):
+    with pytest.raises(InvalidDomainValueError):
+        ArrangementChange(*args)
+
+
+def _copied(**fields):
+    return AuditEvent(
+        event_type=AuditEventType.CANDIDATE_COPIED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+        **{"actor_id": ActorId("teacher_001"), "item_id": ItemId("item_001"), **fields},
+    )
+
+
+def test_a_candidate_copy_names_its_source_and_only_a_copy_does():
+    event = _copied(value_change=ValueChange("", "x"), copied_from=ItemId("item_002"))
+
+    assert AuditHistory((event,)).current_value_teacher_edited() is False
+    for fields in (
+        {"value_change": ValueChange("", "x")},
+        {"copied_from": ItemId("item_002")},
+        {"value_change": ValueChange("", "x"), "copied_from": "item_002"},
+        {"value_change": ValueChange("", "x"), "copied_from": ItemId("item_002"), "item_id": None},
+    ):
+        with pytest.raises(InvalidDomainValueError, match="CANDIDATE_COPIED"):
+            _copied(**fields)
+    with pytest.raises(InvalidDomainValueError, match="Only CANDIDATE_COPIED"):
+        AuditEvent(
+            event_type=AuditEventType.TEACHER_EDITED, occurred_at=NOW, plan_id=PlanId("plan_001"),
+            item_id=ItemId("item_001"), actor_id=ActorId("teacher_001"),
+            value_change=ValueChange("", "x"), copied_from=ItemId("item_002"),
+        )

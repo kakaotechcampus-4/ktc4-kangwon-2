@@ -32,6 +32,19 @@ export async function signup(name: string, email: string, password: string): Pro
   return result;
 }
 
+/**
+ * 비밀번호를 바꾼다 (`PATCH /api/auth/password`).
+ *
+ * 지금 비밀번호가 틀리면 422 `VALIDATION_FAILED` 에 `current_password` 가 담겨 온다.
+ */
+export async function changePassword(current: string, next: string): Promise<void> {
+  await apiRequest<void>("/api/auth/password", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: current, new_password: next }),
+  });
+}
+
 export async function login(email: string, password: string): Promise<AuthResult> {
   const result = await apiRequest<AuthResult>("/api/auth/login", {
     method: "POST",

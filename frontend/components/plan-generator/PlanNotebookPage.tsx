@@ -16,9 +16,9 @@ const PRIMARY =
   "bg-primary px-4 text-xs font-semibold text-white shadow-pg-card transition-colors hover:bg-primary-hover";
 
 /**
- * 계획 노트 — 만들어 둔 계획안을 모아 본다. 만드는 곳은 /plans/annual/new 다.
+ * 계획안 — 만들어 둔 계획안을 모아 본다. 만드는 곳은 /plans/annual/new 다.
  *
- * 이 화면이 없으면 사이드바의 「계획 노트」가 곧바로 생성 양식으로 떨어져서,
+ * 이 화면이 없으면 사이드바의 「계획안」이 곧바로 생성 양식으로 떨어져서,
  * 이미 만든 계획안을 다시 찾을 길이 없다.
  */
 export default function PlanNotebookPage() {
@@ -65,7 +65,7 @@ export default function PlanNotebookPage() {
     <PageContainer>
       <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-[34px] font-bold text-ink lg:text-[44px]">계획 노트</h1>
+          <h1 className="font-display text-[34px] font-bold text-ink lg:text-[44px]">계획안</h1>
           <p className="mt-1 text-xs text-ink-soft">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -150,7 +150,7 @@ function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => v
             {plan.school_year}학년도 연간계획안
           </span>
           <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] ${
               confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
             }`}
           >
@@ -170,7 +170,7 @@ function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => v
         <button
           type="button"
           onClick={onReset}
-          className="self-start text-[11px] font-mono text-ink-soft underline"
+          className="self-start text-[12px] font-mono text-ink-soft underline"
         >
           [테스트] 이 계획안과 딸린 월간 전부 지우기
         </button>
