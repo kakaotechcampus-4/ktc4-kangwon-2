@@ -13,12 +13,18 @@ from __future__ import annotations
 import logging
 import time
 
-from ssuksak.adapters.elice_openai_monthly import EliceOpenAiMonthlyAdapter, MonthlyLlmConfig
+from ssuksak.adapters.elice_openai_monthly import (
+    EliceOpenAiMonthlyAdapter,
+    MonthlyLlmConfig,
+    assemble_chat_stream,
+)
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 
-from app.shared.llm import TIMEOUT_SECONDS, is_mock, post_json, require_config
+from app.shared.llm import TIMEOUT_SECONDS, is_mock, post_json, post_stream, require_config
 
 _log = logging.getLogger(__name__)
+# PLAY_PROJECT 스트림만 쓴다. ADR-043 §5의 구간별 전체 시간이다(read 제한 아님).
+PLAY_PROJECT_STREAM_DEADLINE_SECONDS = 120
 
 
 class SharedLlmTransport:
@@ -44,6 +50,36 @@ class SharedLlmTransport:
             raise
         # 응답의 usage 객체는 남기지 않는다(Codex W7a2-02) — 모델이 어떤 문자열 필드를 붙여 올지
         # 모른다. 토큰 수는 `post_json` 의 `llm_usage` 줄이 숫자로 남긴다.
+        _log.info(
+            "monthly llm call ok schema=%s model=%s seconds=%.2f",
+            schema,
+            payload.get("model"),
+            time.perf_counter() - started,
+        )
+        return result
+
+    def post_stream(self, url, *, headers, payload, timeout):
+        """놀이 프로젝트만 기간별로 스트리밍한다(ADR-043 §5)."""
+        schema = payload.get("response_format", {}).get("json_schema", {}).get("name")
+        started = time.perf_counter()
+        try:
+            result = post_stream(
+                url,
+                headers=headers,
+                payload=payload,
+                timeout=timeout,
+                fold=assemble_chat_stream,
+                deadline=PLAY_PROJECT_STREAM_DEADLINE_SECONDS,
+            )
+        except Exception as error:
+            _log.warning(
+                "monthly llm call failed schema=%s model=%s seconds=%.2f error=%s",
+                schema,
+                payload.get("model"),
+                time.perf_counter() - started,
+                type(error).__name__,
+            )
+            raise
         _log.info(
             "monthly llm call ok schema=%s model=%s seconds=%.2f",
             schema,
