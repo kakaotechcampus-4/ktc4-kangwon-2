@@ -21,6 +21,7 @@ const api = await import("../lib/api/centers.ts");
 // 축 목록은 상수 모듈을 그대로 쓴다 — 화면과 어긋나면 안 된다.
 const observationAxis = await import("../lib/workspace/observation-axis.ts");
 const auth = await import("../lib/api/auth.ts");
+const client = await import("../lib/api/client.ts");
 const session = await import("../lib/auth/request-session.ts");
 const local = await import("../lib/onboarding/settings.ts");
 const { EMPTY_CLASS_SETTINGS, MONTH_ORDER, DEFAULT_CHARACTER_MESSAGES } =
@@ -140,14 +141,27 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
     }
     return response(greetings);
   };
-  const slots = [],
-    setters = [],
-    effects = [],
-    pending = [];
-  let cursor = 0,
-    tree;
+  // useState·useEffect 의 칸을 **컴포넌트마다 따로** 센다. 한 줄로 세면, 화면에 늦게
+  // 나타나는 카드(원 번호를 받은 뒤에 그려지는 것들)가 먼저 그려진 카드의 칸을 밀어
+  // 엉뚱한 값을 읽는다.
+  const frames = new Map();
+  const pending = [];
+  let frame, tree;
+  const enter = (component, draw) => {
+    if (!frames.has(component))
+      frames.set(component, { slots: [], setters: [], effects: [], cursor: 0 });
+    const outer = frame;
+    frame = frames.get(component);
+    frame.cursor = 0;
+    try {
+      return draw();
+    } finally {
+      frame = outer;
+    }
+  };
   const state = (initial) => {
-    const index = cursor++;
+    const { slots, setters } = frame;
+    const index = frame.cursor++;
     if (!(index in slots)) {
       slots[index] = typeof initial === "function" ? initial() : initial;
       setters[index] = (next) => {
@@ -161,7 +175,8 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
     react: {
       useState: state,
       useEffect: (fn, deps) => {
-        const index = cursor++;
+        const { effects } = frame;
+        const index = frame.cursor++;
         if (!effects[index] || deps.some((dep, i) => !Object.is(dep, effects[index].deps[i]))) {
           effects[index]?.cleanup?.();
           effects[index] = { deps };
@@ -179,6 +194,7 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
     "@/lib/onboarding/settings": local,
     "@/lib/onboarding/types": { EMPTY_CLASS_SETTINGS, MONTH_ORDER },
     "@/lib/api/auth": auth,
+    "@/lib/api/client": client,
     "@/lib/api/centers": api,
     // 관찰 영역 축은 상수만 든 모듈이다 (React · API 를 import 하지 않는다).
     "@/lib/workspace/observation-axis": observationAxis,
@@ -190,12 +206,12 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
   const resolve = (node) => {
     if (Array.isArray(node)) return node.map(resolve);
     if (!node || typeof node !== "object") return node;
-    if (typeof node.type === "function") return resolve(node.type(node.props));
+    if (typeof node.type === "function")
+      return resolve(enter(node.type, () => node.type(node.props)));
     return { ...node, props: { ...node.props, children: resolve(node.props.children) } };
   };
   const render = () => {
-    cursor = 0;
-    tree = resolve(Page());
+    tree = resolve(enter(Page, () => Page()));
   };
   const flush = async () => {
     render();
@@ -203,7 +219,7 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
     await settle();
     render();
   };
-  t.after(() => effects.forEach((effect) => effect?.cleanup?.()));
+  t.after(() => frames.forEach(({ effects }) => effects.forEach((effect) => effect?.cleanup?.())));
   render();
   return {
     ...stub,

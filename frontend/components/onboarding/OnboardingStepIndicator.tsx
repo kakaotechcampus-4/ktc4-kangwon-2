@@ -55,7 +55,7 @@ export default function OnboardingStepIndicator({ current }: { current: Onboardi
                   n
                 )}
               </span>
-              <span className={`text-[11.5px] lg:text-[13.5px] whitespace-nowrap ${label}`}>
+              <span className={`text-[13px] lg:text-[13.5px] whitespace-nowrap ${label}`}>
                 {STEP_LABELS[n]}
               </span>
             </div>

@@ -78,7 +78,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   }
   return (
     <AuthFrame>
-      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[10px] font-semibold text-success">
+      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[12px] font-semibold text-success">
         {signup ? "쌤플과 함께 시작해요" : "다시 만나 반가워요"}
       </span>
       <h2 className="mt-4 font-display text-[30px] font-bold sm:text-[36px]">
@@ -146,7 +146,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
                   aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
                   aria-pressed={visible}
                   onClick={() => setVisible(!visible)}
-                  className="absolute bottom-1 right-1 min-h-11 px-2 text-[10px] font-medium text-success"
+                  className="absolute bottom-1 right-1 min-h-11 px-2 text-[12px] font-medium text-success"
                 >
                   {visible ? "숨김" : "보기"}
                 </button>
