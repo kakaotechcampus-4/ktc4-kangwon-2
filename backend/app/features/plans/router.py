@@ -764,7 +764,7 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     return AuditOut(items=items)
 
 
-# ── 놀이 프로젝트형 선택 저장 · 칸 편집 (api-spec §6-1, ADR-044) ──────────────────
+# ── 놀이 프로젝트형 선택 저장 · 칸 편집 (api-spec §6-1, ADR-048) ──────────────────
 
 _ALREADY_CONFIRMED = _error(409, "ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.", [])
 _STALE_WRITE = _error(

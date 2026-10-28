@@ -637,9 +637,9 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
 **`선택` 은 null 허용이지 빈 문자열 허용이 아니다.** `p0-planning` 도메인이 `None` 은 받고
 `""`·`"   "` 는 거부한다. FE 는 값이 없으면 키를 빼거나 `null` 을 보낸다.
 
-### 놀이 프로젝트형 응답 — `format: "PLAY_PROJECT"` (ADR-042 · ADR-043 · ADR-044)
+### 놀이 프로젝트형 응답 — `format: "PLAY_PROJECT"` (ADR-042 · ADR-043 · ADR-048)
 
-`months` 대신 `periods` 를 준다. 후보 10개를 보존하고, 구간마다 `selected` 에 고른 후보의 `row_key` 를 문서 배치 순서대로 저장한다. 새 계획안은 모두 `[]` 다. 저장 · 편집 · 확정 연결 계약은 ADR-044 · §6-1 · §7, 화면은 screen-spec S8 이다.
+`months` 대신 `periods` 를 준다. 후보 10개를 보존하고, 구간마다 `selected` 에 고른 후보의 `row_key` 를 문서 배치 순서대로 저장한다. 새 계획안은 모두 `[]` 다. 저장 · 편집 · 확정 연결 계약은 ADR-048 · §6-1 · §7, 화면은 screen-spec S8 이다.
 
 ```json
 {
@@ -719,7 +719,7 @@ ALREADY_EXISTS          409   같은 반 두 번째 생성 — 형식과 관계�
 **지금은 누리과정 Reference 가 `PENDING_HUMAN_REVIEW` 다.** 승인 전에는 `LLM_MODE=mock` 을 포함해 놀이 프로젝트형 생성이 모두 503 이다.
 문구는 「지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.」다.
 
-**놀이 프로젝트형 저장 연결**(ADR-044) — 선택 저장 · 칸 편집은 §6-1, 확정은 §7, 이력 API 는 §7-1, 확정본 내보내기는 §9 를 따른다.
+**놀이 프로젝트형 저장 연결**(ADR-048) — 선택 저장 · 칸 편집은 §6-1, 확정은 §7, 이력 API 는 §7-1, 확정본 내보내기는 §9 를 따른다.
 이 형식의 연간을 부모로 기존 월간을 만들면 상태와 관계없이 409 `GATE_BLOCKED` 다(§9-1). 놀이 중심 월간은 별도 경로 `/api/plans/monthly/play` 로 연결한다 — 계약은 §9-7(제안, ADR-046)이고 구현은 후속이다.
 
 ### 빈 배열이 두 가지 뜻이라 상태를 따로 둔다
@@ -976,7 +976,7 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 | success | 그 칸만 갱신 |
 | error | **그 칸만 롤백.** 나머지 수정분 유지 |
 
-### 6-1. 놀이 프로젝트형 선택 저장 · 칸 편집 (ADR-044)
+### 6-1. 놀이 프로젝트형 선택 저장 · 칸 편집 (ADR-048)
 
 **저장 연결 계약이다.** 두 API 는 `200` 에 §4 놀이 프로젝트형 응답 전체를 돌려준다(`selected` · `revision` · 각 칸의 `item_id` 포함).
 선택 저장 · 칸 편집 · §7 확정은 `expected_revision`(정수 ≥ 1)을 필수로 받는다. 문자열 `"3"` · `true` 는 422 다.
@@ -1012,10 +1012,10 @@ audit        그 뒤에 누가 손댔나                 여기 쌓인다
 { "value": "가을 자연물로 꾸미는 놀이", "expected_revision": 3 }
 ```
 
-- `value` 는 필수 문자열이다. 앞뒤 공백을 털고 1~600자이며 빈 값 · 공백만 있는 값은 거절한다(600자 근거는 ADR-044 §2). **고른 후보의 `play_name` · `materials` · `support_direction` 만** 고칠 수 있다. `learning` 은 읽기 전용이다.
+- `value` 는 필수 문자열이다. 앞뒤 공백을 털고 1~600자이며 빈 값 · 공백만 있는 값은 거절한다(600자 근거는 ADR-048 §2). **고른 후보의 `play_name` · `materials` · `support_direction` 만** 고칠 수 있다. `learning` 은 읽기 전용이다.
 - 칸 주소는 응답의 Core `item_id` 그대로다. `row_key` 나 표시 순번으로 대신하지 않는다.
 - 화면은 입력을 1초 멈추거나 다른 칸으로 옮기면 바뀐 칸을 보낸다(저장 버튼 없음). 하나씩 보내고 응답의 revision 을 다음 요청에 넘긴다. 마지막으로 저장한 값과 같으면 보내지 않는다. 같은 값은 월간처럼 422 다(API 에서 검사).
-- 되돌리기 · 다시 하기는 이전 상태를 선택 저장 · 칸 편집으로 다시 저장한다. 새 API 가 없고, 실제로 바뀐 저장마다 revision 이 오르고 이력이 남는다(ADR-044 §2).
+- 되돌리기 · 다시 하기는 이전 상태를 선택 저장 · 칸 편집으로 다시 저장한다. 새 API 가 없고, 실제로 바뀐 저장마다 revision 이 오르고 이력이 남는다(ADR-048 §2).
 - 확정(§7)은 기다리거나 보내는 중인 저장을 모두 끝낸 뒤 마지막 응답의 revision 으로 보낸다. 저장이 하나라도 실패하면 확정하지 않는다.
 - `evidence` · `generation`(`rule_id` · `rule_version` 포함) · `item_id` 는 그대로다. `TEACHER_EDITED` 에 이전 값 · 새 값 · 행위자를 남긴다. 고친 후보를 뺐다 다시 골라도 값 · 이력은 남는다.
 
@@ -1046,7 +1046,7 @@ Core 오류의 영어 원문은 서버 기록에만 남기고, 422 문구는 「
 
 **월별 주제형 Response** `200` → `{ "id": 10, "status": "CONFIRMED", "confirmed_at": "..." }`
 
-**놀이 프로젝트형 Request**(ADR-044)
+**놀이 프로젝트형 Request**(ADR-048)
 
 ```json
 { "expected_revision": 3 }
@@ -1111,7 +1111,7 @@ value_change   TEACHER_EDITED 면 {before, after} — 그때 바뀐 theme 값.  
 **결정 — `value_change` 를 더한다(ADR-030 PM-07 B).** `generation_change` 는 넣지 않는다 — 연간은 재생성이 없어 늘 `null` 이 된다.
 구현은 연간 Backend Y3′ 다.
 
-**놀이 프로젝트형 이력**(ADR-044) — 같은 API 를 연다. 응답은 `{ "items": [...] }` 이며 계획안 · 모든 후보 칸의 저장된 이벤트를 발생 시각순으로 합친다.
+**놀이 프로젝트형 이력**(ADR-048) — 같은 API 를 연다. 응답은 `{ "items": [...] }` 이며 계획안 · 모든 후보 칸의 저장된 이벤트를 발생 시각순으로 합친다.
 `type` 은 `CREATED` · `CANDIDATES_SELECTED` · `TEACHER_EDITED` · `CONFIRMED` 다. `occurred_at` · `actor` · `system_actor` · `value_change` 는 위와 같은 뜻이고 `month` 는 항상 null 이다.
 이 형식은 칸 주소 `item_id` 와 선택 변화 `selection_change` 도 싣는다. 해당하지 않으면 null 이다.
 
@@ -1291,7 +1291,7 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 **확정본만 내보낸다.** DRAFT 면 `GATE_BLOCKED` 409 다. 내보낸 파일은 제출 문서라,
 교사가 확인하지 않은 초안이 그대로 제출되는 길을 만들지 않는다.
 
-**놀이 프로젝트형도 확정본만 내보낸다**(ADR-044). DRAFT 는 409 `GATE_BLOCKED`, 문구 「놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.」, `fields: []` 다.
+**놀이 프로젝트형도 확정본만 내보낸다**(ADR-048). DRAFT 는 409 `GATE_BLOCKED`, 문구 「놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.」, `fields: []` 다.
 기본 hwpx · `?format=hwpx|hwp` 를 그대로 쓴다. 하민의 `backend/app/features/plans/play_project_hwpx.py` 양식 · renderer 에 네 구간의 고른 5개만 `selected` 순서대로 넘긴다. 미선택 후보 · 출처 마커는 파일에 넣지 않는다.
 
 **출처를 싣지 않는다.** `evidence` · `generation` 은 화면이 근거를 보여주는 값이지
@@ -2193,7 +2193,7 @@ emphasized_row_keys   문자열 배열.  선택(기본 []).  부모 연간의 �
 **부모 연간을 받지 않는다.** 서버가 반으로 찾는다(§4 「반당 하나다」). `profile_ref` · 양식 · 트렌드 · 날씨를 받지 않는다.
 
 생성 순서: **스키마(422)** → 반 소유 → `month` → **같은 반 · 같은 달 월간이 이미 있으면 409 `ALREADY_EXISTS`**(기존 · 놀이 무관) → 연간이 없으면 409 `GATE_BLOCKED` → 연간이 놀이 프로젝트형이 아니면 409(읽기 전에) →
-**연간이 확정된 놀이 프로젝트형이어야 한다.** 상태 `CONFIRMED` 와 본문의 `CONFIRMED` 이벤트가 **둘 다** 있어야 한다(ADR-044 §4 — 그래서 연간 확정은 본문 전체를 저장한다) → 참조자료 검사 → LLM.
+**연간이 확정된 놀이 프로젝트형이어야 한다.** 상태 `CONFIRMED` 와 본문의 `CONFIRMED` 이벤트가 **둘 다** 있어야 한다(ADR-048 §4 — 그래서 연간 확정은 본문 전체를 저장한다) → 참조자료 검사 → LLM.
 
 **생성은 요청 안에서 기다리고 `201` 에 단건 응답 전체를 준다.** LLM 호출 1회 + 수리 1회까지다. 걸리는 시간을 재 본 적이 없다 — 구현 뒤 재서 너무 길면 스트리밍으로 바꾸고 이 절을 고친다. 실패하면 아무것도 저장하지 않는다. 호출 기록은 `shared/llm` 의 `llm_usage`(ADR-036)다.
 
@@ -2315,7 +2315,7 @@ DRAFT · revision 다름      STALE_WRITE 409.  아무것도 바꾸지 않는다
 ```
 
 - **확정 조건**(Core `confirm_problems`): 주제와 선정 이유가 비지 않고, `together` · `free_play` 에 각각 한 행 이상이며, 모든 행에 이름이 있고 누리과정이 1~3개 걸려 있다. **습관 · 안전 배치 · 건강 · 영양 · 교사 입력 칸이 비어도 확정된다**(`notices` 가 알려 줄 뿐).
-- 서버는 Core 확정을 부르고 **그 결과 본문 전체를 저장한다**(ADR-044 §4 와 같다 — 상태 칸만 바꾸면 계획안 단위 `CONFIRMED` 이벤트가 본문에 없다).
+- 서버는 Core 확정을 부르고 **그 결과 본문 전체를 저장한다**(ADR-048 §4 와 같다 — 상태 칸만 바꾸면 계획안 단위 `CONFIRMED` 이벤트가 본문에 없다).
 - 부족하면 422 `VALIDATION_FAILED` 이고 `fields` 는 위치 키다(초안 — 하민 리뷰). Core 는 `theme: blank` · `rationale: blank` · `together: no rows` · `together:<item_id>: blank name` · `together:<item_id>: n content ids` 로 준다.
 
 ```
@@ -2379,7 +2379,7 @@ together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
 | `ALREADY_EXISTS` | 409 | 같은 반 · 같은 달 월간이 있다(기존 · 놀이 무관). 동시 요청은 DB 유일 제약이 막고 409 로 바꾼다 | `["class_id","month"]` |
 | `GATE_BLOCKED` | 409 | 그 반의 연간이 없다 · 확정 전이다(`PARENT_NOT_FOUND` · `PARENT_NOT_CONFIRMED`). 「연간계획안을 먼저 만들어 확정해주세요.」 · 「연간계획안을 먼저 확정해주세요.」 | `["class_id"]` |
 | `GATE_BLOCKED` | 409 | 연간이 놀이 프로젝트형이 아니다(`PARENT_NOT_PLAY_PROJECT`). 읽기 전에 막는다. 「월별 주제형 연간계획안으로는 놀이 중심 월간계획안을 만들 수 없습니다.」 | `["class_id"]` |
-| `INTERNAL_ERROR` | 500 | **운영 확인이 필요한 상태다**: 상태는 확정인데 본문에 확정 기록이 없다 · 구간에 5개가 안 찼다 · 구간을 못 찾는다(`PARENT_CONFIRMATION_MISSING` · `PARENT_SELECTION_INCOMPLETE` · `PARENT_PERIOD_MISSING`), 서버가 반 · 학년도를 맞춰 찾으므로 날 수 없는 `PARENT_CLASSROOM_MISMATCH` · `PARENT_SCHOOL_YEAR_MISMATCH` · `PARENT_LAYOUT_UNKNOWN`. **연간을 다시 확정해도 풀리지 않는다**(확정 재호출은 200 · 무변경, ADR-044 §4). 공개 `message` 는 공통 고정 문구 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」이고 원인은 서버 기록에만 남긴다 | `[]` |
+| `INTERNAL_ERROR` | 500 | **운영 확인이 필요한 상태다**: 상태는 확정인데 본문에 확정 기록이 없다 · 구간에 5개가 안 찼다 · 구간을 못 찾는다(`PARENT_CONFIRMATION_MISSING` · `PARENT_SELECTION_INCOMPLETE` · `PARENT_PERIOD_MISSING`), 서버가 반 · 학년도를 맞춰 찾으므로 날 수 없는 `PARENT_CLASSROOM_MISMATCH` · `PARENT_SCHOOL_YEAR_MISMATCH` · `PARENT_LAYOUT_UNKNOWN`. **연간을 다시 확정해도 풀리지 않는다**(확정 재호출은 200 · 무변경, ADR-048 §4). 공개 `message` 는 공통 고정 문구 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」이고 원인은 서버 기록에만 남긴다 | `[]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | LLM 설정이 없다(`LlmUnavailable`, 기존 월간 §9-1 과 같다) · 참조자료를 쓸 수 없다. 재시도 무의미. `CURRICULUM_REFERENCE_*` · `DAILY_LIFE_*` · `DRILL_*` · `SAFETY_*` · `LIFE_SAFETY_GROUNDING_INSUFFICIENT`. 「지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.」 | `[]` |
 | `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제(401 · 403 · 429) | `[]` |
 | `GENERATION_FAILED` | 500 | LLM 호출이 깨졌다(시간 초과 포함) · 응답이 계약을 어겼다(수리 1회 뒤에도) · 검증 실패(`ProposalParseError` · `ProposalRejectedError`). **재시도 가능.** 부분 저장 없음 | `[]` |
