@@ -28,6 +28,17 @@ import {
   safetyCategories,
 } from "./data/annual-plans";
 import {
+  copyPlayMonthlyDrill,
+  editPlayMonthlyCell,
+  findPlayMonthly,
+  findPlayMonthlyFor,
+  listPlayMonthly,
+  placePlayMonthlySafety,
+  playCells,
+  removePlayMonthly,
+  removePlayMonthlyActivity,
+} from "./data/play-monthly";
+import {
   REGENERATABLE,
   addMonthly,
   annualFor,
@@ -474,6 +485,153 @@ export const handlers = [
     if (!plan) return annualMissing();
     return HttpResponse.json({ items: listAnnualAudit(id) });
   }),
+  // 놀이 중심 월간 (api-spec §9-7). **`/monthly/:id` 보다 먼저 둔다** — 아니면 `play` 가 id 로 잡힌다.
+  // 서버 순서: 스키마 422(경로 · 본문 · 쿼리) → 경로의 item · week 형식 422 → 소유 404 → 기존 월간 409
+  // → 확정 409 → revision 409 → 내용 404 · 422. 같은 입력은 200 · 무변경, 바뀌면 revision + 1.
+  http.post("*/api/plans/monthly/play", async ({ request }) => {
+    const s = await scenario(request, "play-monthly-create");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    const keys = b.emphasized_row_keys ?? [];
+    const trimmed = Array.isArray(keys)
+      ? keys.map((k) => (typeof k === "string" ? k.trim() : ""))
+      : [];
+    const wrong = [
+      ...(integer(b.class_id) ? [] : ["class_id"]),
+      ...(integer(b.month) && b.month >= 1 && b.month <= 12 ? [] : ["month"]),
+      ...(Array.isArray(keys) &&
+      trimmed.length <= 5 &&
+      trimmed.every((k) => k.length >= 1 && k.length <= 20) &&
+      new Set(trimmed).size === trimmed.length
+        ? []
+        : ["emphasized_row_keys"]),
+    ];
+    if (wrong.length) return invalid(wrong);
+    const klass = myClass(Number(b.class_id));
+    if (!klass) return classMissing();
+    const target = targetMonthOf(klass.school_year, Number(b.month));
+    if (findMonthlyFor(klass.id, target) || findPlayMonthlyFor(klass.id, target))
+      return failure(
+        "ALREADY_EXISTS",
+        "이 반의 그 달 월간계획안이 이미 있습니다.",
+        "class_id",
+        "month",
+      );
+    const annual = annualFor(klass.id);
+    const gate = !annual
+      ? "연간계획안을 먼저 만들어 확정해주세요."
+      : annual.format !== "PLAY_PROJECT"
+        ? "월별 주제형 연간계획안으로는 놀이 중심 월간계획안을 만들 수 없습니다."
+        : annual.status !== "CONFIRMED"
+          ? "연간계획안을 먼저 확정해주세요."
+          : null;
+    if (gate) return failure("GATE_BLOCKED", gate, "class_id");
+    // 서버는 생성 규칙이 아직 없어 게이트 뒤에서 항상 503 이다. 아무것도 저장하지 않는다.
+    return failure(
+      "DEPENDENCY_UNAVAILABLE",
+      "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
+    );
+  }),
+  http.get("*/api/plans/monthly/play", async ({ request }) => {
+    const s = await scenario(request, "play-monthly-list");
+    if (s) return s;
+    const raw = new URL(request.url).searchParams.get("class_id");
+    if (raw === null) {
+      const center = currentCenterId();
+      const ids = center === null ? [] : listClasses(center).map((c) => c.id);
+      return HttpResponse.json({ items: listPlayMonthly(ids) });
+    }
+    if (!/^-?\d+$/.test(raw)) return invalid(["class_id"]);
+    const klass = myClass(Number(raw));
+    return klass ? HttpResponse.json({ items: listPlayMonthly([klass.id]) }) : classMissing();
+  }),
+  http.get("*/api/plans/monthly/play/:id", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-get");
+    if (s) return s;
+    const plan = playOwn(String(params.id));
+    return plan instanceof Response ? plan : HttpResponse.json(plan);
+  }),
+  http.delete("*/api/plans/monthly/play/:id", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-delete");
+    if (s) return s;
+    const plan = playOwn(String(params.id));
+    if (plan instanceof Response) return plan;
+    if (plan.status === "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
+    removePlayMonthly(plan.id);
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.put("*/api/plans/monthly/play/:id/cells/:itemId", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-cell");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      typeof b.value === "string" && [...b.value.trim()].length <= 600 ? [] : ["value"],
+    );
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const cell = playCells(plan).find((c) => c.item_id === itemId);
+    if (!cell) return failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+    const value = String(b.value).trim();
+    // 같은 값은 422 — 빈 값 → 빈 값(공백만 든 칸 포함)도 같다.
+    if (value === cell.value || !(value || cell.value.trim())) return invalid(["value"]);
+    return HttpResponse.json(editPlayMonthlyCell(plan.id, itemId, value));
+  }),
+  http.delete("*/api/plans/monthly/play/:id/activities/:itemId", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => [], true); // revision 은 쿼리다
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    if (![...plan.together, ...plan.free_play].some((a) => a.activity_id === itemId))
+      return failure("NOT_FOUND", "그 행을 찾을 수 없습니다.", "item_id");
+    return HttpResponse.json(removePlayMonthlyActivity(plan.id, itemId));
+  }),
+  http.put("*/api/plans/monthly/play/:id/safety-weeks/:weekId", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-safety");
+    if (s) return s;
+    // 키는 필수이고 값만 null 일 수 있다.
+    const b = await playInput(request, params.id, (b) =>
+      b.candidate_item_id === null || typeof b.candidate_item_id === "string"
+        ? []
+        : ["candidate_item_id"],
+    );
+    if (b instanceof Response) return b;
+    const weekId = decodeURIComponent(String(params.weekId)),
+      candidate = b.candidate_item_id as string | null;
+    if (!/^\d{4}-(0[1-9]|1[0-2])-W[1-9]\d?$/.test(weekId)) return invalid(["week_id"]);
+    if (candidate !== null && !candidate.trim()) return invalid(["candidate_item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    if (!plan.safety_weeks.some((w) => w.week_id === weekId))
+      return failure("NOT_FOUND", "그 주를 찾을 수 없습니다.", "week_id");
+    if (candidate !== null && !plan.safety_candidates.some((c) => c.cell.item_id === candidate))
+      return invalid(["candidate_item_id"]);
+    return HttpResponse.json(placePlayMonthlySafety(plan.id, weekId, candidate));
+  }),
+  http.post(
+    "*/api/plans/monthly/play/:id/drill-candidates/:itemId/copy",
+    async ({ request, params }) => {
+      const s = await scenario(request, "play-monthly-drill");
+      if (s) return s;
+      const b = await playInput(request, params.id, () => []);
+      if (b instanceof Response) return b;
+      const itemId = decodeURIComponent(String(params.itemId));
+      if (!itemId.trim()) return invalid(["item_id"]);
+      const plan = playGate(params.id, b);
+      if (plan instanceof Response) return plan;
+      const drill = plan.drill_candidates.find((d) => d.cell.item_id === itemId);
+      if (!drill) return failure("NOT_FOUND", "그 훈련 후보를 찾을 수 없습니다.", "item_id");
+      if (!drill.cell.value.trim()) return invalid(["item_id"]);
+      return HttpResponse.json(copyPlayMonthlyDrill(plan.id, itemId));
+    },
+  ),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
   http.post("*/api/plans/monthly", async ({ request }) => {
     const s = await scenario(request, "monthly", 1200);
@@ -501,7 +659,7 @@ export const handlers = [
     if (annual.format === "PLAY_PROJECT")
       return failure(
         "GATE_BLOCKED",
-        "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다.",
+        "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다. 놀이 중심 월간계획안으로 만들어 주세요.",
         "class_id",
       );
     if (annual.status !== "CONFIRMED")
@@ -539,14 +697,14 @@ export const handlers = [
     const s = await scenario(request, "monthly-get");
     if (s) return s;
     const plan = myMonthly(Number(params.id));
-    return plan ? HttpResponse.json(plan) : planMissing();
+    return plan ? HttpResponse.json(plan) : planMissing(Number(params.id));
   }),
   // 변경 이력 (§9-5). 소유를 먼저 본다 — 남의 계획안이면 item_id 를 보기 전에 404 ["id"].
   http.get("*/api/plans/monthly/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "monthly-audit");
     if (s) return s;
     const plan = myMonthly(Number(params.id));
-    if (!plan) return planMissing();
+    if (!plan) return planMissing(Number(params.id));
     const items = listAudit(plan, new URL(request.url).searchParams.get("item_id"));
     return items
       ? HttpResponse.json({ items })
@@ -586,7 +744,7 @@ export const handlers = [
     if (!b) return bad("body");
     if (badRevision(b)) return bad("expected_revision");
     const plan = myMonthly(Number(params.id));
-    if (!plan) return planMissing();
+    if (!plan) return planMissing(Number(params.id));
     // 이미 확정이면 revision 과 상관없이 200 · 저장된 그대로 (D-M5-CONFIRM-01).
     if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
     if (plan.revision !== b.expected_revision) return stale();
@@ -853,13 +1011,59 @@ async function weeklyCellWrite(request: Request, id: string, itemId: string, nee
 }
 const annualMissing = () => failure("NOT_FOUND", "계획안을 찾을 수 없습니다.", "id");
 const classMissing = () => failure("NOT_FOUND", "반을 찾을 수 없습니다.", "class_id");
-const planMissing = () => failure("NOT_FOUND", "월간계획안을 찾을 수 없습니다.", "id");
+/** 기존 월간 경로가 놀이 월간 id 를 받으면 없는 것이 아니라 409 다(서버: 형식 검사). */
+const planMissing = (legacyId?: number) =>
+  legacyId !== undefined && myPlayMonthly(legacyId)
+    ? failure("GATE_BLOCKED", "놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.")
+    : failure("NOT_FOUND", "월간계획안을 찾을 수 없습니다.", "id");
 const stale = () =>
   failure(
     "STALE_WRITE",
     "그 사이 다른 화면에서 계획안이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
     "expected_revision",
   );
+const invalid = (fields: string[]) =>
+  failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...fields);
+const myPlayMonthly = (id: number) => {
+  const plan = findPlayMonthly(id);
+  return plan && myClass(plan.class_id) ? plan : undefined;
+};
+/** 이 원의 놀이 월간. 경로 id 가 정수가 아니면 422, 없거나 남의 원이면 404, 기존 월간이면 409. */
+function playOwn(raw: unknown) {
+  if (!/^\d+$/.test(String(raw))) return invalid(["plan_id"]);
+  const id = Number(raw);
+  return (
+    myPlayMonthly(id) ??
+    (myMonthly(id)
+      ? failure("GATE_BLOCKED", "기존 월간계획안은 /api/plans/monthly 경로로 다룹니다.")
+      : planMissing())
+  );
+}
+/** 스키마 검사. 경로 id · 본문(또는 쿼리) revision · `check` 가 모은 칸을 한 번에 422 로 준다. */
+async function playInput(
+  request: Request,
+  rawId: unknown,
+  check: (b: Record<string, unknown>) => string[],
+  revisionInQuery = false,
+) {
+  const given = new URL(request.url).searchParams.get("expected_revision");
+  const b = revisionInQuery
+    ? { expected_revision: given !== null && /^\d+$/.test(given) ? Number(given) : null }
+    : await body(request);
+  const wrong = [
+    ...(/^\d+$/.test(String(rawId)) ? [] : ["plan_id"]),
+    ...(b ? [...(badRevision(b) ? ["expected_revision"] : []), ...check(b)] : ["body"]),
+  ];
+  return wrong.length ? invalid(wrong) : b!;
+}
+/** 소유 → 형식 → 확정 → revision. 통과하면 계획안을 준다. */
+function playGate(rawId: unknown, b: Record<string, unknown>) {
+  const plan = playOwn(rawId);
+  if (plan instanceof Response) return plan;
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+  return plan.revision === b.expected_revision ? plan : stale();
+}
 const PLAY_PERIODS = ["m03_m05", "m06_m08", "m09_m11", "m12_m02"];
 /** 네 구간이 전부 있고 구간마다 중복 없는 5개 이하 목록이어야 한다 (§6-1). 문제 있는 칸 이름을 모은다. */
 function selectionProblems(selections: unknown): string[] {
@@ -890,7 +1094,7 @@ async function cellWrite(request: Request, id: string, itemId: string, needsValu
   if (needsValue && typeof b.value !== "string") return bad("value");
   if (badRevision(b)) return bad("expected_revision");
   const plan = myMonthly(Number(id));
-  if (!plan) return planMissing();
+  if (!plan) return planMissing(Number(id));
   if (plan.status === "CONFIRMED")
     return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
   if (plan.revision !== b.expected_revision) return stale();

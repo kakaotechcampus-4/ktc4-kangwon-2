@@ -4,6 +4,7 @@ import type {
   ApiChild,
   AnnualAuditEvent,
   AnnualPlan,
+  PlayMonthlyPlan,
   PlayProjectAnnualPlan,
   PlanConfig,
   MonthlyAuditEvent,
@@ -31,6 +32,8 @@ export interface Database {
     }
   >;
   monthlyPlans: MonthlyPlan[];
+  /** 놀이 중심 월간. 기존 월간과 id 를 나눠 쓴다(`next`) — 서버는 한 표다. */
+  playMonthlyPlans: PlayMonthlyPlan[];
   /** 주간계획안 (weekly-plan-contract §13). 변경 이력은 아직 화면이 쓰지 않아 두지 않는다. */
   weeklyPlans: WeeklyPlan[];
   /** 월간 변경 이력. 키는 plan id. 서버처럼 계획안 단위와 칸(item_id) 단위로 따로 쌓는다. */
@@ -78,6 +81,7 @@ const empty = (): Database => ({
   greetings: {},
   centerSettings: {},
   monthlyPlans: [],
+  playMonthlyPlans: [],
   weeklyPlans: [],
   monthlyAudit: {},
   annualAudit: {},
@@ -114,6 +118,7 @@ export function read(): Database {
     greetings: parsed.greetings ?? {},
     centerSettings: parsed.centerSettings ?? {},
     monthlyPlans: parsed.monthlyPlans ?? [],
+    playMonthlyPlans: parsed.playMonthlyPlans ?? [],
     weeklyPlans: parsed.weeklyPlans ?? [],
     monthlyAudit: parsed.monthlyAudit ?? {},
     annualAudit: parsed.annualAudit ?? {},

@@ -237,6 +237,94 @@ export interface PlayProjectAnnualPlan {
   }[];
 }
 export type AnnualPlanResponse = AnnualPlan | PlayProjectAnnualPlan;
+
+/** 놀이 중심 월간의 칸. 한 번도 쓰지 않은 교사 입력 칸은 `generation` 이 null 이고 `evidence` 가 `[]` 다. */
+export interface PlayMonthlyCell {
+  item_id: string;
+  value: string;
+  evidence: MonthlyCell["evidence"];
+  generation: MonthlyCell["generation"] | null;
+}
+export interface PlayMonthlyActivity {
+  /** 이름 칸의 `item_id` 와 같다. 행 주소다. */
+  activity_id: string;
+  name: PlayMonthlyCell;
+  description: PlayMonthlyCell;
+  /** 생성한 행은 1~3개, 행 추가 직후의 빈 행은 0개다. 공식 문구는 응답에 없다. */
+  content_ids: string[];
+  parent_item_id: string | null;
+}
+/** 놀이 중심 월간 단건 응답 (api-spec §9-7). 변경 API 는 모두 이 전체를 돌려준다. */
+export interface PlayMonthlyPlan {
+  id: number;
+  class_id: number;
+  school_year: number;
+  month: number;
+  target_month: string;
+  status: "DRAFT" | "CONFIRMED";
+  /** 저장할 때마다 1 씩 는다. 변경 요청에 `expected_revision` 으로 되돌려 보낸다. */
+  revision: number;
+  format: "PLAY_MONTHLY";
+  format_version: string;
+  created_at: string;
+  confirmed_at: string | null;
+  target_ages: number[];
+  weeks: {
+    week_id: string;
+    label: string;
+    start_date: string;
+    end_date: string;
+    active: boolean;
+  }[];
+  parent: {
+    annual_plan_id: number;
+    period_key: string;
+    layout_version: string;
+    confirmed_at: string;
+    plays: {
+      row_key: string;
+      play_name_item_id: string;
+      play_name: string;
+      materials: string;
+      support_direction: string;
+      emphasized: boolean;
+    }[];
+  };
+  theme: PlayMonthlyCell;
+  rationale: PlayMonthlyCell;
+  together: PlayMonthlyActivity[];
+  free_play: PlayMonthlyActivity[];
+  habits: { week_id: string; entry_id: string | null; cell: PlayMonthlyCell }[];
+  safety_candidates: {
+    kind: "STATUTORY" | "SUPPLEMENTAL";
+    category_id: string | null;
+    topic_group: string | null;
+    cell: PlayMonthlyCell;
+  }[];
+  /** 주마다 하나. `candidate_item_id` 가 null 이면 아직 안 둔 주. */
+  safety_weeks: { week_id: string; candidate_item_id: string | null }[];
+  health: { entry_id: string | null; cell: PlayMonthlyCell };
+  nutrition: { entry_id: string | null; cell: PlayMonthlyCell };
+  drill_candidates: { topic_id: string; label: string; cell: PlayMonthlyCell }[];
+  /** key: fire_disaster_drill · specialized_timetable · special_activity_timetable · class_notice · class_birthdays · home_connection */
+  teacher_inputs: { key: string; cell: PlayMonthlyCell }[];
+  /** 응답마다 계산한다. 확정을 막지 않는다. */
+  notices: {
+    code: "SAFETY_UNPLACED" | "SAFETY_BLANK" | "HABIT_BLANK" | "HEALTH_BLANK" | "NUTRITION_BLANK";
+    week_id: string | null;
+  }[];
+}
+export interface PlayMonthlySummary {
+  id: number;
+  class_id: number;
+  school_year: number;
+  month: number;
+  target_month: string;
+  status: "DRAFT" | "CONFIRMED";
+  revision: number;
+  created_at: string;
+  confirmed_at: string | null;
+}
 /** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
 export interface AnnualPlanSummary {
   id: number;
