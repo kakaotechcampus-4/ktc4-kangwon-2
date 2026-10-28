@@ -101,7 +101,11 @@ async function classWithMonthly({ confirm = true, saturday = false } = {}) {
     age_max: 5,
     child_count: null,
   });
-  const annual = await createAnnualPlan({ class_id: klass.id, form_id: null });
+  const annual = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   await confirmAnnualPlan(annual.id);
   approveTemplateForTest(BASE);
   const ref = (await createTemplateProfile(center.id, PROFILE_INPUT)).profile_ref;

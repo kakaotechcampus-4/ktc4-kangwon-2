@@ -194,6 +194,7 @@ export type WeeklyPlanSummary = Pick<
 export interface AnnualPlan {
   id: number;
   class_id: number;
+  format: "MONTHLY_THEME";
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
   months: AnnualMonth[];
@@ -208,6 +209,7 @@ export interface AnnualPlan {
 export interface AnnualPlanSummary {
   id: number;
   class_id: number;
+  format: "MONTHLY_THEME" | "PLAY_PROJECT";
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
   created_at: string;
