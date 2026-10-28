@@ -188,10 +188,13 @@ function notices(p: PlayMonthlyPlan): PlayMonthlyPlan["notices"] {
     ...(p.nutrition.cell.value.trim() ? [] : [{ code: "NUTRITION_BLANK" as const, week_id: null }]),
   ];
 }
-const view = (p: PlayMonthlyPlan): PlayMonthlyPlan => ({
-  ...structuredClone(p),
-  notices: notices(p),
-});
+/** 응답에 내지 않는 내부 값: 소방대피 칸이 마지막으로 복사한 후보의 item_id(서버는 이력의 `copied_from`). */
+type Stored = PlayMonthlyPlan & { copied_from?: string };
+const view = (p: PlayMonthlyPlan): PlayMonthlyPlan => {
+  const copy = structuredClone(p) as Stored;
+  delete copy.copied_from;
+  return { ...copy, notices: notices(p) };
+};
 
 export const findPlayMonthly = (id: number) => {
   const p = read().playMonthlyPlans.find((x) => x.id === id);
@@ -282,10 +285,11 @@ export const copyPlayMonthlyDrill = (id: number, itemId: string) =>
       evidence: from.evidence,
       generation: { method: "RULE_ONLY", rule_id: DRILL_COPY, rule_version: p.format_version },
     };
-    // ponytail: 서버는 복사 원본 후보(이력)까지 본다. 목업은 값 · 근거 · 방식이 같으면 같은 복사로 본다.
-    const sameOf = (c: Omit<PlayMonthlyCell, "item_id">) =>
-      JSON.stringify([c.value, c.evidence, c.generation]);
-    if (sameOf(to) === sameOf(copied)) return false;
+    const sameOf = (c: Omit<PlayMonthlyCell, "item_id">, source?: string) =>
+      JSON.stringify([c.value, c.evidence, c.generation, source]);
+    // 서버처럼 값 · 근거 · 방식에 복사 원본 후보까지 같아야 같은 복사다 — 문장이 같은 다른 후보는 새 복사다.
+    if (sameOf(to, (p as Stored).copied_from) === sameOf(copied, itemId)) return false;
+    (p as Stored).copied_from = itemId;
     Object.assign(to, structuredClone(copied));
     return true;
   });

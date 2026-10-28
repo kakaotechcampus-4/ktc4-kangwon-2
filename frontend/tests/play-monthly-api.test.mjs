@@ -417,6 +417,40 @@ test("drill copy fills the fire drill input as RULE_ONLY, the same copy is untou
   );
 });
 
+test("copying a different candidate with the same sentence is a new copy (revision + 1)", async () => {
+  const { id, rev, plan } = await seeded();
+  const [a, b] = plan.drill_candidates;
+  const first = await pm.copyPlayMonthlyDrill(id, a.cell.item_id, rev);
+  const edited = await pm.editPlayMonthlyCell(id, b.cell.item_id, a.cell.value, first.revision);
+  const second = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, edited.revision);
+  assert.deepEqual([first.revision, edited.revision, second.revision], [rev + 1, rev + 2, rev + 3]);
+  assert.equal(second.teacher_inputs[0].cell.value, a.cell.value);
+  assert.equal("copied_from" in second, false);
+  const again = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, second.revision);
+  assert.equal(again.revision, second.revision);
+});
+
+test("legacy monthly creation is 409 ALREADY_EXISTS when a play monthly holds that month", async () => {
+  const { klass } = await seeded(); // 11월 놀이 월간
+  const year = klass.school_year;
+  assert.equal(year, 2026);
+  await rejects(
+    apiRequest("/api/plans/monthly", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        class_id: klass.id,
+        month: 11,
+        profile_ref: { profile_id: "p", profile_version: "v" },
+      }),
+    }),
+    409,
+    "ALREADY_EXISTS",
+    "이 반의 그 달 월간계획안이 이미 있습니다.",
+    ["class_id", "month"],
+  );
+});
+
 test("row delete takes the revision from the query and drops the row; a bad query is 422", async () => {
   const { id, rev, plan } = await seeded();
   const row = plan.free_play[4].activity_id;

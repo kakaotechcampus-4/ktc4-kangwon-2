@@ -646,7 +646,10 @@ export const handlers = [
       if (typeof ref[k] !== "string" || !ref[k]) return bad("profile_ref." + k);
     const klass = myClass(b.class_id);
     if (!klass) return classMissing();
-    if (findMonthlyFor(klass.id, targetMonthOf(klass.school_year, b.month)))
+    if (
+      findMonthlyFor(klass.id, targetMonthOf(klass.school_year, b.month)) ||
+      findPlayMonthlyFor(klass.id, targetMonthOf(klass.school_year, b.month))
+    )
       return failure(
         "ALREADY_EXISTS",
         "이 반의 그 달 월간계획안이 이미 있습니다.",
