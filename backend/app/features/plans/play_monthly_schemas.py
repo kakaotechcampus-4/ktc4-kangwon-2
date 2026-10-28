@@ -5,10 +5,11 @@ Reference 판(`references`) · 지운 행(`removed_activities`) · 칸의 `seman
 """
 
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field, StrictInt, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StrictInt, StrictStr, StringConstraints
 
+from app.features.plans.monthly_schemas import RevisionIn
 from app.features.plans.schemas import EvidenceOut, GenerationOut
 
 
@@ -33,6 +34,38 @@ class CreatePlayMonthlyPlan(BaseModel):
     emphasized_row_keys: Annotated[
         list[_RowKey], Field(max_length=5), AfterValidator(_no_duplicates)
     ] = []
+
+
+# ── 변경 (§9-7) ────────────────────────────────────────────────────────────
+
+
+class EditCellIn(RevisionIn):
+    # 본문이 JSONB 라 맞출 컬럼이 없다. 600자는 ADR-046 §6 (놀이형 연간 칸과 같다).
+    # 빈 값을 받는다(칸을 비운다) — min_length 를 걸지 않고 공백만 든 값은 빈 값이 된다.
+    value: Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=600)]
+
+
+# 누리과정 내용 ID 는 지금 판에서 가장 긴 것이 14자다(`nuri2019.3.3.2`, data/curriculum).
+# 20 은 영역 · 범주 · 내용 번호가 두 자리가 되어도(`nuri2019.10.10.10`, 17자) 받는 여유다.
+_ContentId = Annotated[
+    str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=20)
+]
+
+
+class ContentIdsIn(RevisionIn):
+    content_ids: Annotated[
+        list[_ContentId],
+        Field(min_length=1, max_length=3),
+        AfterValidator(_no_duplicates),
+    ]
+
+
+class AddActivityIn(RevisionIn):
+    section: Literal["together", "free_play"]
+
+
+class SafetyWeekIn(RevisionIn):
+    candidate_item_id: StrictStr | None  # 키는 필수 · 값만 null 일 수 있다
 
 
 class PlayMonthlySummary(BaseModel):
