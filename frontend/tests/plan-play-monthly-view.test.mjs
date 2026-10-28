@@ -15,6 +15,7 @@ registerHooks({
   },
 });
 const { resetTestData } = await import("../msw/data/store.ts");
+const queueModule = await import("../lib/plan-generator/playMonthlyQueue.ts");
 const { addPlayMonthly, findPlayMonthly } = await import("../msw/data/play-monthly.ts");
 
 const require = createRequire(import.meta.url);
@@ -121,6 +122,16 @@ const calls = [];
 let getResult;
 let classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
 const sheetStub = (props) => jsx("sheet", props);
+const editorStub = (props) => jsx("editor", props);
+const saved = [];
+let saveState = { status: "idle", canUndo: false, canRedo: false };
+const saveStub = () => ({
+  ...saveState,
+  editCell: (...a) => saved.push(["edit", ...a]),
+  undo: () => saved.push(["undo"]),
+  redo: () => saved.push(["redo"]),
+  retry: () => saved.push(["retry"]),
+});
 function load() {
   const h = harness();
   const mod = compile("../components/plan-generator/PlayMonthlyView.tsx", {
@@ -131,6 +142,9 @@ function load() {
     "@/lib/api/auth": { getMe: async () => ({ center_id: 1 }) },
     "@/lib/api/classes": { getClasses: () => classesResult() },
     "@/lib/api/playMonthly": { getPlayMonthly: (id) => (calls.push(id), getResult()) },
+    "@/lib/hooks/use-play-monthly-save": { usePlayMonthlySave: saveStub },
+    "@/lib/plan-generator/playMonthlyQueue": queueModule,
+    "./PlayCellEditor": esModule(editorStub),
     "./PlayMonthlySheet": esModule(sheetStub),
     "./playProjectPagination": {},
     "./PlayMonthlyView.module.css": esModule(css),
@@ -393,4 +407,104 @@ test("확대 · 축소 · 맞춤 단추 — 10% 단위, 50~150%, 맞춤은 mode 
     (n) => n.props?.style?.zoom,
   );
   assert.equal(pages.props.style.zoom, 0.8);
+});
+
+// ---- 칸 편집 (④) ----
+test("문서의 칸을 누르면 그 칸이 강조되고 옆 패널에 빈 값을 허용하는 입력창이 뜬다", async () => {
+  const plan = fixture();
+  const { View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  const sheet = () => all(h.render(View, props)).find((n) => n.type === "sheet");
+  assert.equal(sheet().props.selected, null);
+  assert.match(text(h.render(View, props)), /문서의 칸을 누르면/);
+  sheet().props.onSelect(plan.theme.item_id);
+  const tree = h.render(View, props);
+  assert.equal(all(tree).find((n) => n.type === "sheet").props.selected, plan.theme.item_id);
+  const editor = all(tree).filter((n) => n.type === "editor");
+  assert.equal(editor.length, 1);
+  assert.equal(editor[0].props.label, "놀이 주제");
+  assert.equal(editor[0].props.value, plan.theme.value);
+  assert.equal(editor[0].props.allowBlank, true);
+  editor[0].props.onSave("");
+  assert.deepEqual(saved.pop(), ["edit", plan.theme.item_id, ""]);
+});
+
+test("놀이 행 이름을 누르면 문서에 없는 「설명」 입력창이 함께 뜬다", async () => {
+  const plan = fixture();
+  const { View, h } = await open(plan.id, async () => plan);
+  const row = plan.together[0];
+  all(h.render(View, { id: plan.id }))
+    .find((n) => n.type === "sheet")
+    .props.onSelect(row.name.item_id);
+  const labels = all(h.render(View, { id: plan.id }))
+    .filter((n) => n.type === "editor")
+    .map((n) => n.props.label);
+  assert.deepEqual(labels, ["놀이 행 이름", "놀이 행 설명"]);
+});
+
+test("입력 중 글은 문서에 바로 보인다", async () => {
+  const plan = fixture();
+  const { View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  all(h.render(View, props))
+    .find((n) => n.type === "sheet")
+    .props.onSelect(plan.theme.item_id);
+  all(h.render(View, props))
+    .find((n) => n.type === "editor")
+    .props.onDraft("쓰는 중");
+  const sheet = all(h.render(View, props)).find((n) => n.type === "sheet");
+  assert.equal(sheet.props.plan.theme.value, "쓰는 중");
+});
+
+test("저장 표시 · 다시 저장 · 되돌리기 단추는 초안에만 있고 확정본에는 없다", async () => {
+  saveState = { status: "failed", canUndo: true, canRedo: false };
+  try {
+    const plan = fixture();
+    const { tree, View, h } = await open(plan.id, async () => plan);
+    assert.equal(withText(tree, "span", "저장하지 못했어요").length, 1);
+    withText(tree, "button", "다시 저장")[0].props.onClick();
+    const undo = withText(tree, "button", "되돌리기")[0];
+    assert.equal(undo.props.disabled, false);
+    assert.equal(withText(tree, "button", "다시 하기")[0].props.disabled, true);
+    undo.props.onClick();
+    assert.deepEqual(saved.splice(0), [["retry"], ["undo"]]);
+    assert.match(text(h.render(View, { id: plan.id })), /되돌렸어요/);
+    const confirmed = fixture(true);
+    const done = await open(confirmed.id, async () => confirmed);
+    assert.equal(withText(done.tree, "span", "저장하지 못했어요").length, 0);
+    assert.equal(all(done.tree).filter((n) => n.type === "button").length, 0);
+    assert.equal(all(done.tree).find((n) => n.type === "sheet").props.onSelect, undefined);
+    assert.equal(all(done.tree).filter((n) => n.type === "editor").length, 0);
+  } finally {
+    saveState = { status: "idle", canUndo: false, canRedo: false };
+  }
+});
+
+test("문서 용지 — onSelect 가 있으면 칸이 누르는 칸이 되고 고른 칸만 강조한다", () => {
+  const plan = fixture();
+  const picked = [];
+  const h = harness();
+  const { default: Sheet } = compile("../components/plan-generator/PlayMonthlySheet.tsx", {
+    react: { ...h.react, useEffect: () => {} },
+    "@/lib/api/types": {},
+    "./playProjectPagination": { stepPlaySheetZoom: (c) => c },
+    "./PlayProjectResult.module.css": esModule(css),
+    "./PlayMonthlyView.module.css": esModule(css),
+  });
+  const tree = h.render(Sheet, {
+    plan,
+    className: "",
+    zoom: { mode: "manual", percent: 100 },
+    onZoomChange: () => {},
+    selected: plan.theme.item_id,
+    onSelect: (id) => picked.push(id),
+  });
+  const cells = all(tree).filter((n) => n.props?.["data-cell"]);
+  const theme = cells.find((n) => n.props["data-cell"] === plan.theme.item_id);
+  assert.equal(theme.props.role, "button");
+  assert.match(theme.props.className, /selected/);
+  assert.equal(cells.filter((n) => /selected/.test(n.props.className)).length, 1);
+  theme.props.onClick();
+  theme.props.onKeyDown({ key: "Enter", preventDefault() {} });
+  assert.deepEqual(picked, [plan.theme.item_id, plan.theme.item_id]);
 });
