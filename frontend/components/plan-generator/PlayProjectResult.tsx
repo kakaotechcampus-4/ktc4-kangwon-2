@@ -1038,7 +1038,6 @@ export default function PlayProjectResult({
         ) : (
           <p>확정하면 한글 파일로 내려받을 수 있어요.</p>
         )}
-        <p>이 반은 월간 · 주간계획안을 만들 수 없어요.</p>
       </div>
       <div className={styles.tabRow}>
         <div

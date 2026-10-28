@@ -89,10 +89,10 @@ export type PlanConfigResponse = unknown;
 /** `school_year` 를 받지 않는다 — `class_id` 가 학년도를 정한다 (§4). */
 export interface AnnualInput {
   class_id: number;
-  /** 필수. 빠지거나 모르는 값이면 422 (§4). `PLAY_PROJECT` 는 `form_id` 가 null 이어야 한다. */
+  /** 필수. 빠지거나 모르는 값이면 422 (§4). `PLAY_PROJECT` 는 `form_id` 를 생략한다. */
   format: "MONTHLY_THEME" | "PLAY_PROJECT";
-  /** 원이 등록한 기관 양식 (§8). `null` 이면 기본 양식으로 만든다. */
-  form_id: number | null;
+  /** 원이 등록한 기관 양식 (§8). `null` 이면 기본 양식, 놀이 프로젝트형은 생략한다. */
+  form_id?: number | null;
 }
 export interface MonthInput {
   theme: string;

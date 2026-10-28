@@ -30,7 +30,9 @@ export class MswTransportError extends Error {
   readonly body: string;
   constructor(status: number, path: string, body: string) {
     super(
-      "개발용 API(MSW)가 요청을 가로채지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.",
+      process.env.NEXT_PUBLIC_API_MOCKING === "enabled"
+        ? "개발용 API(MSW)가 요청을 가로채지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."
+        : "서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.",
     );
     this.name = "MswTransportError";
     this.status = status;
