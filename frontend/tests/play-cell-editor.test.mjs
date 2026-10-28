@@ -20,7 +20,7 @@ const code = require("next/dist/compiled/babel/core").transformSync(source, {
   ],
 }).code;
 
-function mount(value = "저장된 값") {
+function mount(value = "저장된 값", extra = {}) {
   const state = [];
   const refs = [];
   const effects = [];
@@ -55,6 +55,7 @@ function mount(value = "저장된 값") {
     onDraft: (text) => calls.drafts.push(text),
     onSave: (text) => calls.saves.push(text),
     onRevert: () => calls.reverts++,
+    ...extra,
   };
   const flat = (node) =>
     Array.isArray(node)
@@ -189,4 +190,20 @@ test("an editor that disappears without a blur saves a valid draft or reverts th
   settled.leave();
   settled.unmount();
   assert.deepEqual(settled.calls.saves, ["글"]); // 떠날 때 이미 보냈다 — 또 보내지 않는다
+});
+
+test("allowBlank saves a blank value after one second and on leaving, without the blank warning", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = mount("저장된 값", { allowBlank: true });
+  assert.equal(view.type("   ").status, "");
+  t.mock.timers.tick(1000);
+  assert.deepEqual(view.calls.saves, [""]);
+  view.type("");
+  view.leave();
+  assert.deepEqual(view.calls.saves, ["", ""]);
+  assert.equal(view.calls.reverts, 0);
+  // 600자 넘으면 빈 값을 허용해도 저장하지 않는다.
+  view.type("가".repeat(601));
+  t.mock.timers.tick(5000);
+  assert.equal(view.calls.saves.length, 2);
 });

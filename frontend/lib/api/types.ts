@@ -314,6 +314,27 @@ export interface PlayMonthlyPlan {
     week_id: string | null;
   }[];
 }
+/**
+ * 놀이 중심 월간 변경 이력 하나 (`GET /api/plans/monthly/play/{id}/audit`). **열한 키가 항상 온다** — 해당이 없으면 null.
+ * `type` 은 저장된 문자열 그대로라 모르는 종류가 올 수 있다 — 화면은 건너뛴다.
+ */
+export interface PlayMonthlyAuditEvent {
+  type: "CREATED" | "TEACHER_EDITED" | "ARRANGEMENT_CHANGED" | "CANDIDATE_COPIED" | "CONFIRMED";
+  /** ISO 8601, UTC(`Z`). */
+  occurred_at: string;
+  /** 계획안 단위(생성 · 배치 · 확정)는 PLAN, 칸 단위는 CELL. */
+  scope: "PLAN" | "CELL";
+  item_id: string | null;
+  actor: string | null;
+  system_actor: string | null;
+  value_change: { before: string; after: string } | null;
+  generation_change: { before: unknown; after: unknown } | null;
+  link_change: { before: string[]; after: string[]; catalog_version: string } | null;
+  /** scope 는 together · free_play(행) 이거나 주 id(안전 배치). before · after 는 놓인 item_id 배열. */
+  arrangement_change: { scope: string; before: string[]; after: string[] } | null;
+  /** 복사한 훈련 후보의 item_id. */
+  copied_from: string | null;
+}
 export interface PlayMonthlySummary {
   id: number;
   class_id: number;

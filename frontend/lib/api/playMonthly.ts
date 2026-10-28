@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { PlayMonthlyPlan, PlayMonthlySummary } from "./types";
+import type { PlayMonthlyAuditEvent, PlayMonthlyPlan, PlayMonthlySummary } from "./types";
 
 const BASE = "/api/plans/monthly/play";
 const json = (method: "PUT" | "POST", data: unknown, signal?: AbortSignal): RequestInit => ({
@@ -87,3 +87,15 @@ export const copyPlayMonthlyDrill = (
     BASE + "/" + id + "/drill-candidates/" + encodeURIComponent(itemId) + "/copy",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
+/**
+ * 확정. 이미 확정이면 revision 과 무관하게 200 · 저장된 그대로다. 낡은 revision 은 409 `STALE_WRITE`,
+ * 부족하면 422 이고 `fields` 가 위치 키다(`theme` · `together.<item_id>` · `together.<item_id>.content_ids`).
+ */
+export const confirmPlayMonthly = (id: number, expectedRevision: number, signal?: AbortSignal) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/confirm",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/** 변경 이력. 발생 시각순이고 필터 · 페이지가 없다. */
+export const getPlayMonthlyAudit = (id: number, signal?: AbortSignal) =>
+  apiRequest<{ items: PlayMonthlyAuditEvent[] }>(BASE + "/" + id + "/audit", { signal });

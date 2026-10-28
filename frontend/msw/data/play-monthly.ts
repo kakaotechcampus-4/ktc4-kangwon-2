@@ -1,6 +1,12 @@
-import { read, commit } from "./store";
+import { read, commit, type Database } from "./store";
 import { annualFor } from "./monthly-plans";
-import type { PlayMonthlyActivity, PlayMonthlyCell, PlayMonthlyPlan } from "../../lib/api/types";
+import { MOCK_USER_ID } from "./template-profiles";
+import type {
+  PlayMonthlyActivity,
+  PlayMonthlyAuditEvent,
+  PlayMonthlyCell,
+  PlayMonthlyPlan,
+} from "../../lib/api/types";
 
 /**
  * 놀이 중심 월간 목업 (api-spec §9-7). 고정 데이터는 서버를 실제로 찍은 단건 응답(2026-10-28)의
@@ -12,6 +18,9 @@ const GEN = {
   rule_id: "play_monthly.generate",
   rule_version: "play-monthly-planner-v2",
 };
+/** 서버는 계획안을 만든 쪽을 `play_monthly_application`, 사람이 한 일은 `user_{id}` 로 적는다. */
+const SYSTEM_ACTOR = "play_monthly_application";
+const ACTOR = "user_" + MOCK_USER_ID;
 const DRILL_COPY = "play_monthly.drill_copy";
 const evidence = (type: string, id: string, version: string, name: string | null = null) => [
   {
@@ -61,6 +70,38 @@ const TEACHER_KEYS = [
   "class_birthdays",
   "home_connection",
 ];
+
+/** 이력 이벤트. 열한 키가 항상 있고 기본은 시스템이 만든 `CREATED` 다. */
+type AuditInput = Partial<PlayMonthlyAuditEvent> & Pick<PlayMonthlyAuditEvent, "scope">;
+const NONE = {
+  item_id: null,
+  actor: null,
+  system_actor: SYSTEM_ACTOR,
+  value_change: null,
+  generation_change: null,
+  link_change: null,
+  arrangement_change: null,
+  copied_from: null,
+};
+/** 시각은 앞선 이벤트보다 뒤다 — 같은 밀리초에 두 번 고쳐도 순서가 뒤집히지 않게. 한 번에 넣은 이벤트는 한 시각이다. */
+function record(db: Database, id: number, ...inputs: AuditInput[]) {
+  const list = (db.playMonthlyAudit[id] ??= []);
+  const last = Math.max(0, ...list.map((e) => Date.parse(e.occurred_at)));
+  const at = new Date(Math.max(Date.now(), last + 1));
+  list.push(
+    ...inputs.map(({ scope, ...e }): PlayMonthlyAuditEvent => ({
+      // 키 순서는 서버 응답과 같다.
+      type: e.type ?? "CREATED",
+      occurred_at: at.toISOString(),
+      scope,
+      ...NONE,
+      ...(e.actor ? { system_actor: null } : {}),
+      ...e,
+    })),
+  );
+}
+export const listPlayMonthlyAudit = (id: number): PlayMonthlyAuditEvent[] =>
+  structuredClone(read().playMonthlyAudit[id] ?? []);
 
 /** 새 놀이 월간 하나. `confirmed` 면 같은 데이터의 확정본이다. */
 export const addPlayMonthly = (classId: number, confirmed = false) =>
@@ -166,6 +207,14 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
       notices: [],
     };
     db.playMonthlyPlans.push(plan);
+    // 계획안 1건 + 칸마다 1건(서버 순서: 계획안 → 칸). 확정본이면 확정 한 건이 더 있다.
+    record(
+      db,
+      plan.id,
+      { scope: "PLAN" },
+      ...playCells(plan).map((c) => ({ scope: "CELL" as const, item_id: c.item_id })),
+    );
+    if (confirmed) record(db, plan.id, { type: "CONFIRMED", scope: "PLAN", actor: ACTOR });
     return view(plan);
   });
 
@@ -230,7 +279,10 @@ export const listPlayMonthly = (classIds: number[]) =>
       }),
     );
 export const removePlayMonthly = (id: number) =>
-  commit((db) => void (db.playMonthlyPlans = db.playMonthlyPlans.filter((p) => p.id !== id)));
+  commit((db) => {
+    db.playMonthlyPlans = db.playMonthlyPlans.filter((p) => p.id !== id);
+    delete db.playMonthlyAudit[id];
+  });
 
 /** 계획안의 모든 칸. 이 목록에 없는 item_id 는 404 다. */
 export const playCells = (p: PlayMonthlyPlan): PlayMonthlyCell[] => [
@@ -244,40 +296,72 @@ export const playCells = (p: PlayMonthlyPlan): PlayMonthlyCell[] => [
   ...p.drill_candidates.map((d) => d.cell),
   ...p.teacher_inputs.map((t) => t.cell),
 ];
-/** 바뀌었으면 revision 을 올린다. 같은 입력이면 그대로 두고 단건만 돌려준다(서버: 200 · 무변경). */
-const change = (id: number, fn: (p: PlayMonthlyPlan) => boolean) =>
+/**
+ * 바뀌었으면 revision 을 올리고 `fn` 이 말한 이력을 남긴다. 같은 입력이면 그대로 두고 단건만 돌려준다
+ * (서버: 200 · 무변경 · 이력 없음).
+ */
+const change = (
+  id: number,
+  fn: (p: PlayMonthlyPlan, log: (e: AuditInput) => void) => boolean,
+  actor = ACTOR,
+) =>
   commit((db) => {
     const p = db.playMonthlyPlans.find((x) => x.id === id)!;
-    if (fn(p)) p.revision++;
+    const events: AuditInput[] = [];
+    if (fn(p, (e) => events.push({ actor, ...e }))) {
+      p.revision++;
+      record(db, id, ...events);
+    }
     return view(p);
   });
 /** 근거 · 생성 방식은 그대로다. 처음 쓰는 칸만 MANUAL 이 된다(교사 수정은 이력에만 남는다). */
 export const editPlayMonthlyCell = (id: number, itemId: string, value: string) =>
-  change(id, (p) => {
+  change(id, (p, log) => {
     const cell = playCells(p).find((c) => c.item_id === itemId)!;
+    log({
+      type: "TEACHER_EDITED",
+      scope: "CELL",
+      item_id: itemId,
+      value_change: { before: cell.value, after: value },
+    });
     cell.value = value;
     cell.generation ??= { method: "MANUAL", rule_id: null, rule_version: null };
     return true;
   });
+const arranged = (scope: string, before: string[], after: string[]) => ({
+  type: "ARRANGEMENT_CHANGED" as const,
+  scope: "PLAN" as const,
+  arrangement_change: { scope, before, after },
+});
 export const placePlayMonthlySafety = (id: number, weekId: string, candidate: string | null) =>
-  change(id, (p) => {
+  change(id, (p, log) => {
     const week = p.safety_weeks.find((w) => w.week_id === weekId)!;
-    const same = week.candidate_item_id === candidate;
+    const before = week.candidate_item_id;
+    if (before === candidate) return false;
     week.candidate_item_id = candidate;
-    return !same;
+    log(arranged(weekId, before ? [before] : [], candidate ? [candidate] : []));
+    return true;
   });
 export const removePlayMonthlyActivity = (id: number, itemId: string) =>
-  change(id, (p) => {
-    for (const rows of [p.together, p.free_play])
-      if (rows.some((a) => a.activity_id === itemId))
-        rows.splice(
-          rows.findIndex((a) => a.activity_id === itemId),
-          1,
-        );
+  change(id, (p, log) => {
+    for (const section of ["together", "free_play"] as const) {
+      const rows = p[section];
+      const at = rows.findIndex((a) => a.activity_id === itemId);
+      if (at < 0) continue;
+      const before = rows.map((a) => a.activity_id);
+      rows.splice(at, 1);
+      log(
+        arranged(
+          section,
+          before,
+          rows.map((a) => a.activity_id),
+        ),
+      );
+    }
     return true;
   });
 export const copyPlayMonthlyDrill = (id: number, itemId: string) =>
-  change(id, (p) => {
+  change(id, (p, log) => {
     const from = p.drill_candidates.find((d) => d.cell.item_id === itemId)!.cell;
     const to = p.teacher_inputs.find((t) => t.key === TEACHER_KEYS[0])!.cell;
     const copied = {
@@ -289,7 +373,46 @@ export const copyPlayMonthlyDrill = (id: number, itemId: string) =>
       JSON.stringify([c.value, c.evidence, c.generation, source]);
     // 서버처럼 값 · 근거 · 방식에 복사 원본 후보까지 같아야 같은 복사다 — 문장이 같은 다른 후보는 새 복사다.
     if (sameOf(to, (p as Stored).copied_from) === sameOf(copied, itemId)) return false;
+    log({
+      type: "CANDIDATE_COPIED",
+      scope: "CELL",
+      item_id: to.item_id,
+      value_change: { before: to.value, after: copied.value },
+      // 복사한 칸이 이미 쓰인 적이 있을 때만 온다.
+      generation_change: to.generation ? { before: to.generation, after: copied.generation } : null,
+      copied_from: itemId,
+    });
     (p as Stored).copied_from = itemId;
     Object.assign(to, structuredClone(copied));
     return true;
+  });
+
+/** 서버 Core `confirm_problems` 의 위치 키. 비어 있으면 확정할 수 있다. */
+export function playConfirmProblems(p: PlayMonthlyPlan): string[] {
+  const blank = (c: PlayMonthlyCell) => !c.value.trim();
+  return [
+    ...(blank(p.theme) ? ["theme"] : []),
+    ...(blank(p.rationale) ? ["rationale"] : []),
+    ...(["together", "free_play"] as const).flatMap((section) => [
+      ...(p[section].length ? [] : [section]),
+      ...p[section].flatMap((a) => [
+        ...(blank(a.name) ? [section + "." + a.activity_id] : []),
+        ...(a.content_ids.length >= 1 && a.content_ids.length <= 3
+          ? []
+          : [section + "." + a.activity_id + ".content_ids"]),
+      ]),
+    ]),
+  ];
+}
+/** 확정. 이미 확정이면(동시에 온 두 번째 확정) 저장된 그대로 돌려주고 아무것도 바꾸지 않는다. */
+export const confirmPlayMonthly = (id: number) =>
+  commit((db) => {
+    const p = db.playMonthlyPlans.find((x) => x.id === id)!;
+    if (p.status !== "CONFIRMED") {
+      p.status = "CONFIRMED";
+      p.confirmed_at = new Date().toISOString();
+      p.revision++;
+      record(db, id, { type: "CONFIRMED", scope: "PLAN", actor: ACTOR });
+    }
+    return view(p);
   });

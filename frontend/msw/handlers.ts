@@ -29,11 +29,14 @@ import {
   safetyCategories,
 } from "./data/annual-plans";
 import {
+  confirmPlayMonthly,
   copyPlayMonthlyDrill,
   editPlayMonthlyCell,
   findPlayMonthly,
   findPlayMonthlyFor,
   listPlayMonthly,
+  listPlayMonthlyAudit,
+  playConfirmProblems,
   placePlayMonthlySafety,
   playCells,
   removePlayMonthly,
@@ -667,6 +670,36 @@ export const handlers = [
       return HttpResponse.json(copyPlayMonthlyDrill(plan.id, itemId));
     },
   ),
+  // 확정 순서: 스키마(본문이 있으면 정수 1 이상 — 확정본이어도) → 소유 404 · 기존 월간 409 → 이미 확정이면 200
+  // → 본문 없음 422 → revision 409 → 부족 422. 본문을 읽는 사이 바뀔 수 있어 소유 · 상태는 그 뒤에 본다.
+  http.post("*/api/plans/monthly/play/:id/confirm", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-confirm");
+    if (s) return s;
+    const b = await body(request);
+    const given = b?.expected_revision;
+    const present = given !== undefined && given !== null;
+    const wrong = [
+      ...(/^\d+$/.test(String(params.id)) ? [] : ["plan_id"]),
+      ...(present && badRevision(b!) ? ["expected_revision"] : []),
+    ];
+    if (wrong.length) return invalid(wrong);
+    const plan = playOwn(params.id);
+    if (plan instanceof Response) return plan;
+    if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
+    if (!present) return invalid(["expected_revision"]);
+    if (plan.revision !== given) return stale();
+    const lacking = playConfirmProblems(plan);
+    if (lacking.length) return invalid(lacking);
+    return HttpResponse.json(confirmPlayMonthly(plan.id));
+  }),
+  http.get("*/api/plans/monthly/play/:id/audit", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-audit");
+    if (s) return s;
+    const plan = playOwn(String(params.id));
+    return plan instanceof Response
+      ? plan
+      : HttpResponse.json({ items: listPlayMonthlyAudit(plan.id) });
+  }),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
   http.post("*/api/plans/monthly", async ({ request }) => {
     const s = await scenario(request, "monthly", 1200);
