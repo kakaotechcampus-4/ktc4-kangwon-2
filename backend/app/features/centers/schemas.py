@@ -42,6 +42,30 @@ class CenterCreate(BaseModel):
     region_sigungu: RegionPart
 
 
+class CenterUpdate(BaseModel):
+    """`PATCH /api/centers/{center_id}` 요청. **보낸 칸만 바꾼다.**
+
+    원명 · 원장 이름 · 지역은 바뀐다 — 원이 이름을 바꾸거나 원장이 교체되고, 처음에 지역을
+    잘못 고르기도 한다. 그런데 고칠 길이 없어서 `POST /api/centers` 를 다시 불러야 했고,
+    거기서는 「이미 등록한 원이 있습니다」 409 가 났다 (수린 점검).
+
+    지역 두 칸은 함께 보낸다. 시·도만 바꾸면 시·군·구가 그 시·도에 없는 값으로 남는다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Name | None = None
+    director_name: PersonName | None = None
+    region_sido: RegionPart | None = None
+    region_sigungu: RegionPart | None = None
+
+    @model_validator(mode="after")
+    def _region_pair(self):
+        if (self.region_sido is None) != (self.region_sigungu is None):
+            raise ValueError("region_sido 와 region_sigungu 는 함께 보낸다")
+        return self
+
+
 class ClassCreate(BaseModel):
     """`POST /api/centers/{center_id}/classes` 요청 (docs/api-spec.md §2).
 

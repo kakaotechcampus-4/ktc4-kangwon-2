@@ -166,26 +166,6 @@ export default function GenerationFlow({
     if (id) void hwpx.download(() => downloadAnnualHwpx(id));
   }
 
-  function download() {
-    const text = [
-      title,
-      `${request.ageLabel || AGE_LABEL[request.age]}${className ? ` · ${className}` : ""}`,
-      "검토 전 초안 · 우리 반 상황에 맞게 검토해주세요.",
-      "",
-      ...drafts[active].map((row) => `${row.label} · ${row.title}\n${row.detail}`),
-      "",
-      `추가 요청사항: ${request.memo || "없음"}`,
-    ].join("\n");
-    const url = URL.createObjectURL(
-      new Blob(["\uFEFF", text], { type: "text/plain;charset=utf-8" }),
-    );
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${title}.txt`;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setNotice("현재 계획안을 텍스트 파일로 내려받았어요.");
-  }
   async function saveDocument() {
     if (active === "annual" && !(await saveAnnualRows())) return;
     if (!classId) {
@@ -461,11 +441,7 @@ export default function GenerationFlow({
                         월간계획안 만들기 →
                       </Link>
                     </>
-                  ) : (
-                    <button className={styles.secondary} onClick={download}>
-                      ↓ 텍스트로 내려받기
-                    </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
               {/* 확정하면 「내용 수정」이 꺼진다. 그 상태에서 무엇을 할 수 있는지 안 적어

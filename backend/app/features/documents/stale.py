@@ -79,7 +79,9 @@ def source_changed(
             select(Document)
             .where(
                 Document.id.in_(document_ids),
-                Document.kind == "dailyLog",
+                # 일과 기록을 직접 인용하는 종류 둘이다 — 일일, 그리고 일일을 쓰지 않는
+                # 원의 주간. 연쇄로 stale 이 된 문서는 애초에 이 집합에 없다(§10-1).
+                Document.kind.in_(("dailyLog", "weeklyLog")),
                 Document.status == "CONFIRMED",
             )
             .order_by(Document.id)

@@ -1,4 +1,4 @@
-"""놀이 프로젝트형 확정 · 변경 이력 API (api-spec §7 · §7-1, ADR-044 §4 · §6)."""
+"""놀이 프로젝트형 확정 · 변경 이력 API (api-spec §7 · §7-1, ADR-048 §4 · §6)."""
 
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
 
@@ -407,13 +407,6 @@ def test_월별_주제형_이력은_여섯_키_그대로(world):
         set(i) == {"type", "occurred_at", "month", "actor", "system_actor", "value_change"}
         for i in items
     )
-
-
-def test_놀이형_내려받기는_여전히_409(world, saved):
-    _, row = saved
-    _select_all(row)
-    _confirm(row, 2)
-    _blocked(client.get(f"/api/plans/{row.id}/export/hwp"))
 
 
 def test_이력_모음은_계획안과_모든_칸을_안정_정렬한다(world, saved):

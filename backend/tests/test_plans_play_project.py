@@ -51,7 +51,6 @@ from ssuksak.planning.domain.provenance import (  # isort: skip
 
 client = TestClient(app)
 NOW = datetime(2026, 10, 25, 9, 0, tzinfo=UTC)
-BLOCKED = "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다."
 GENERATION = GenerationMethodDetail(
     GenerationMethod.RULE_LLM, "play_project.generate", PLAY_PROJECT_PROMPT_VERSION
 )
@@ -216,7 +215,7 @@ def saved(world):
     return plan, row
 
 
-def _blocked(response, message=BLOCKED):
+def _blocked(response, message):
     assert response.status_code == 409, response.text
     error = response.json()["error"]
     assert (error["code"], error["message"], error["fields"]) == ("GATE_BLOCKED", message, [])
@@ -497,7 +496,10 @@ def test_월별_칸_수정과_내보내기는_409_이고_행은_그대로다(wor
         ),
         "놀이 프로젝트형은 칸 편집으로 고칩니다.",
     )
-    _blocked(client.get(f"/api/plans/{row.id}/export/hwp"))
+    _blocked(
+        client.get(f"/api/plans/{row.id}/export/hwp"),
+        "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.",
+    )
 
     session.refresh(row)
     assert (row.body, row.revision, row.status) == before

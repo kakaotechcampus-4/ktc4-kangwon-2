@@ -50,6 +50,14 @@ export const addCenter = (data: CenterInput) =>
     db.centers.push(c);
     return c;
   });
+/** 원명 · 원장 이름 · 지역을 고친다 (§1). 보낸 칸만 바뀐다. */
+export const patchCenter = (id: number, patch: Partial<CenterInput>) =>
+  commit((db) => {
+    const found = db.centers.find((c) => c.id === id);
+    if (!found) return null;
+    Object.assign(found, patch);
+    return found;
+  });
 export const putConfig = (id: number, data: PlanConfig) =>
   commit((db) => {
     db.configs[id] = data;

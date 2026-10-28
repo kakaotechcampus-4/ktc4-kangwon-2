@@ -1,4 +1,4 @@
-"""놀이 프로젝트형 선택 저장 · 칸 편집 API (api-spec §6-1, ADR-044 §1~§3)."""
+"""놀이 프로젝트형 선택 저장 · 칸 편집 API (api-spec §6-1, ADR-048 §1~§3)."""
 
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
 
@@ -10,7 +10,6 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 from ssuksak.planning import PlanId
 from test_plans_play_project import (  # noqa: F401
-    BLOCKED,
     _approved,
     _klass,
     _logged_in,
@@ -290,7 +289,6 @@ def test_놀이형에_월별_칸_수정은_새_문구의_409(world, saved):
     )
     error = _error(response, 409, "GATE_BLOCKED", [])
     assert error["message"] == "놀이 프로젝트형은 칸 편집으로 고칩니다."
-    assert error["message"] != BLOCKED
 
 
 def test_확정된_놀이형은_선택도_편집도_409(world, saved):

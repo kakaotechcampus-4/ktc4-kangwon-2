@@ -25,7 +25,7 @@ from ssuksak.adapters.safety_evidence_classification_repository import (
 )
 from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
 from ssuksak.planning.application.generate_play_monthly_plan import (
-    PLAY_MONTHLY_LAYOUT_V0_1,
+    PLAY_MONTHLY_LAYOUT_V0_2,
     GeneratePlayMonthlyPlan,
     GeneratePlayMonthlyPlanCommand,
     PlayMonthlyGenerationError,
@@ -300,7 +300,7 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert (plan.health.cell.value, plan.health.entry_id) == ("합성 건강 1", "he1")
     assert (plan.nutrition.cell.value, plan.nutrition.entry_id) == ("합성 영양 1", "nu1")
     # Teacher-input cells: blank, never generated, each with its own CREATED event.
-    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_1.teacher_input_keys
+    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_2.teacher_input_keys
     assert all(t.value == "" and t.generation is None and t.evidence == () for t in plan.teacher_inputs)
     cells = plan.cells()
     assert all(
@@ -309,10 +309,15 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert len({c.item_id for c in cells}) == len(cells)
     # A list row's semantic key carries its own item id, not its position.
     assert all(a.cell.semantic_key == f"together.{a.cell.item_id.value}" for a in plan.together)
-    generated = [c for c in cells if c.generation is not None]
+    # The direction and header strings are Rule copies (layout v0.2.0); the rest is RULE_LLM.
+    copies = {plan.direction.item_id, *(c.item_id for c in plan.display.cells())}
+    generated = [c for c in cells if c.generation is not None and c.item_id not in copies]
     assert {(c.generation.method, c.generation.rule_version) for c in generated} == {
         (GenerationMethod.RULE_LLM, PLAY_MONTHLY_PROMPT_VERSION)
     }
+    assert {
+        (c.generation.method, c.generation.rule_version) for c in cells if c.item_id in copies and c.generation
+    } == {(GenerationMethod.RULE_ONLY, "play-monthly-layout-v0.2.0")}
     assert [e.event_type for e in plan.audit] == [AuditEventType.CREATED]
 
 
@@ -332,7 +337,7 @@ def test_snapshot_keeps_parent_references_and_request_fingerprint():
     )
     assert (refs.legal_rule_version, refs.evidence_store_sha256) == (LEGAL, STORE.content_sha256)
     assert (refs.safety_classification_version, refs.safety_quality_version) == (CLASSIFICATION, QUALITY)
-    assert plan.layout.layout_version == "play-monthly-layout-v0.1.0"
+    assert plan.layout.layout_version == "play-monthly-layout-v0.2.0"
 
     other, emphasized, *_ = _run(emphasized_row_keys=("cand4",))
     assert other.execute(emphasized).references.request_fingerprint != refs.request_fingerprint
@@ -756,7 +761,7 @@ def test_the_real_drill_draft_loads_pending_and_is_rejected():
     real = JsonDrillTopicReferenceRepository()
     drills = real.get_catalog("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
     assert drills.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
-    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_1.drill_candidate_count
+    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
     assert {t.content_id for t in drills.topics} == {"nuri2019.1.3.4"}
     use_case, command, plans, provider, _ = _run(
         drills=drills, drill_catalog_id=drills.catalog_id, drill_catalog_version=drills.catalog_version
