@@ -13,6 +13,8 @@ export type Job =
 export interface IdleResult {
   saved: boolean;
   revision: number;
+  /** 기다리는 사이 422 로 버린 작업이 있었다. */
+  rejected?: boolean;
 }
 
 /** 보내지 못한 저장이 남아 있는가 — 탭을 닫기 전에 경고할 때만 참이다. */
@@ -130,7 +132,9 @@ export function createPlayMonthlyQueue(options: Options) {
         return Promise.resolve<IdleResult>({ saved: !stopped && jobs.length === 0, revision });
       const start = rejections;
       return new Promise<IdleResult>((resolve) =>
-        waiters.push((r) => resolve(rejections === start ? r : { ...r, saved: false })),
+        waiters.push((r) =>
+          resolve(rejections === start ? r : { ...r, saved: false, rejected: true }),
+        ),
       );
     },
     /** 확정 시작 — 이후 새 작업을 받지 않는다. */
@@ -234,3 +238,7 @@ export function moveStep(h: History, direction: "undo" | "redo") {
         : { undo: [...to, step], redo: rest },
   };
 }
+
+/** 훈련 후보를 붙여 넣는 「소방대피/재난대비」 칸의 item_id. */
+export const drillTarget = (plan: PlayMonthlyPlan) =>
+  plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.item_id;

@@ -334,15 +334,39 @@ test("확인 상자: 첫 버튼은 아니요이고 포커스를 받으며, Escap
   const tree = h.render(C, props);
   const buttons = all(tree).filter((n) => n.type === "button");
   assert.equal(buttons[0].props["data-act"], "no");
-  let focused = 0;
-  buttons[0].props.ref({ focus: () => focused++ });
-  assert.equal(focused, 1);
+  assert.equal(typeof buttons[0].props.ref, "object"); // 안정된 ref — 인라인 함수면 다시 그릴 때마다 포커스를 가져간다
   const box = all(tree).find((n) => n.props?.role === "group");
   box.props.onKeyDown({ key: "Enter" });
   assert.deepEqual(calls, []);
   box.props.onKeyDown({ key: "Escape" });
   assert.deepEqual(calls, ["no"]);
   assert.ok(all(h.render(C, { ...props, disabled: true })).find(act("yes")).props.disabled);
+});
+
+test("확인 상자: 열릴 때 한 번만 아니요로 포커스를 옮기고, 닫히면 연 버튼으로 돌린다", () => {
+  const log = [];
+  let ref;
+  let effect;
+  const react = {
+    useRef: () => (ref ??= { current: { focus: () => log.push("no") } }),
+    // 마운트 때 한 번만 도는 효과 하나(deps []). cleanup 은 닫힐 때 부른다.
+    useEffect: (fn, deps) => {
+      assert.deepEqual(deps, []);
+      effect ??= fn();
+    },
+  };
+  const C = compile(dir + "PlayMonthlyConfirm.tsx", {
+    react,
+    "./PlayMonthlyStructure.module.css": esModule(css),
+  }).default;
+  globalThis.document = { activeElement: { focus: () => log.push("opener") } };
+  const props = { message: "m", yes: "예", onYes() {}, onNo() {} };
+  C(props);
+  C(props);
+  C({ ...props, disabled: true }); // 다시 그려도 포커스를 다시 가져가지 않는다
+  assert.deepEqual(log, ["no"]);
+  effect(); // 닫힘
+  assert.deepEqual(log, ["no", "opener"]);
 });
 
 test("복사 · 비우기 버튼 이름에 후보명 · 주 이름이 들어가고 빈 후보에 이름이 있다", () => {

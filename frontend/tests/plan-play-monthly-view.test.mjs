@@ -131,6 +131,7 @@ const editorStub = (props) => jsx("editor", props);
 const saved = [];
 let saveState = { status: "idle", canUndo: false, canRedo: false };
 let conflict;
+let refuse = false; // 큐가 받지 않는 상황(확정 중 · 409 로 멈춤)
 let saveArgs = [];
 const saveStub = (...args) => {
   saveArgs = args;
@@ -142,14 +143,14 @@ const saveStub = (...args) => {
       saved.push(["safety", ...a]),
       onPlan(queueModule.withSafety(plan, a[0], a[1]))
     ),
-    copyDrill: (...a) => saved.push(["copy", ...a]),
+    copyDrill: (...a) => (saved.push(["copy", ...a]), !refuse),
     removeActivity: (id) => (
       saved.push(["remove", id]),
       onPlan(queueModule.withoutActivity(plan, id))
     ),
-    editCell: (...a) => saved.push(["edit", ...a]),
-    undo: () => saved.push(["undo"]),
-    redo: () => saved.push(["redo"]),
+    editCell: (...a) => (saved.push(["edit", ...a]), !refuse),
+    undo: () => (saved.push(["undo"]), !refuse),
+    redo: () => (saved.push(["redo"]), !refuse),
     retry: () => saved.push(["retry"]),
     whenIdle: () => saved.push(["idle"]),
     freeze: () => saved.push(["freeze"]),
@@ -698,4 +699,122 @@ test("거절된 칸만 입력창을 다시 열고, 옛 입력창이 사라지며
   // 다른 칸의 입력창은 다시 열리지 않는다.
   saveArgs[3]("다른 칸");
   assert.equal(all(h.render(View, props)).find((n) => n.type === "editor").key, second.key);
+});
+
+const drillCell = (plan) => plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill").cell;
+async function openDrillEditor() {
+  const plan = fixture();
+  const { View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  all(h.render(View, props))
+    .find((n) => n.type === "sheet")
+    .props.onSelect(drillCell(plan).item_id);
+  const editor = () => all(h.render(View, props)).find((n) => n.type === "editor");
+  return { plan, View, h, props, editor };
+}
+
+test("열린 소방대피 입력창에서 훈련을 복사하면 입력창이 다시 열리고 옛 글은 버려진다", async () => {
+  const { plan, h, View, props, editor } = await openDrillEditor();
+  const first = editor();
+  first.props.onDraft("쓰는 중");
+  h.render(View, props);
+  const candidate = plan.drill_candidates[0].cell.item_id;
+  saved.length = 0;
+  node(h.render(View, props), "drill")[0].props.onCopy(candidate);
+  const second = editor();
+  assert.notEqual(second.key, first.key); // 입력창이 새로 열린다(복사된 글을 보인다)
+  assert.equal(
+    all(h.render(View, props)).find((n) => n.type === "sheet").props.plan.teacher_inputs[0].cell
+      .value,
+    drillCell(plan).value,
+    "입력 중이던 글은 문서에서 치워졌다",
+  );
+  first.props.onSave("옛 글"); // 옛 입력창이 사라지며 보내는 글
+  assert.deepEqual(saved, [["copy", candidate]]);
+});
+
+test("큐가 복사를 받지 않으면 열린 입력창을 그대로 둔다", async () => {
+  const { plan, h, View, props, editor } = await openDrillEditor();
+  const first = editor();
+  refuse = true;
+  try {
+    node(h.render(View, props), "drill")[0].props.onCopy(plan.drill_candidates[0].cell.item_id);
+  } finally {
+    refuse = false;
+  }
+  assert.equal(editor().key, first.key);
+});
+
+test("확정하는 동안 되돌리기 · 다시 하기는 잠기고 입력창은 읽기 전용이다", async () => {
+  saveState = { status: "idle", canUndo: true, canRedo: true };
+  try {
+    const { View, h, props, editor } = await openDrillEditor();
+    const buttons = () =>
+      ["되돌리기", "다시 하기"].map((l) => withText(h.render(View, props), "button", l)[0]);
+    assert.ok(buttons().every((b) => b.props.disabled === false));
+    assert.equal(editor().props.readOnly, false);
+    node(h.render(View, props), "confirmbar")[0].props.freeze();
+    assert.ok(buttons().every((b) => b.props.disabled === true));
+    assert.equal(editor().props.readOnly, true);
+    node(h.render(View, props), "confirmbar")[0].props.unfreeze();
+    assert.ok(buttons().every((b) => b.props.disabled === false));
+    assert.equal(editor().props.readOnly, false);
+    saved.length = 0;
+  } finally {
+    saveState = { status: "idle", canUndo: false, canRedo: false };
+  }
+});
+
+test("큐가 되돌리기를 거절하면 「되돌렸어요」도 없고 입력 중 글도 남는다", async () => {
+  saveState = { status: "idle", canUndo: true, canRedo: true };
+  try {
+    const { plan, View, h, props, editor } = await openDrillEditor();
+    editor().props.onDraft("쓰는 중");
+    refuse = true;
+    withText(h.render(View, props), "button", "되돌리기")[0].props.onClick();
+    withText(h.render(View, props), "button", "다시 하기")[0].props.onClick();
+    refuse = false;
+    const tree = h.render(View, props);
+    assert.doesNotMatch(text(tree), /되돌렸어요|다시 했어요/);
+    assert.equal(
+      all(tree).find((n) => n.type === "sheet").props.plan.teacher_inputs[0].cell.value,
+      "쓰는 중",
+    );
+    assert.notEqual(drillCell(plan).value, "쓰는 중");
+    withText(tree, "button", "되돌리기")[0].props.onClick();
+    assert.match(text(h.render(View, props)), /되돌렸어요/);
+    saved.length = 0;
+  } finally {
+    refuse = false;
+    saveState = { status: "idle", canUndo: false, canRedo: false };
+  }
+});
+
+test("큐가 칸 저장을 받지 않으면 입력 중 글을 지우지 않는다", async () => {
+  const { plan, h, View, props, editor } = await openDrillEditor();
+  editor().props.onDraft("확정 중에 쓴 글");
+  refuse = true;
+  try {
+    editor().props.onSave("확정 중에 쓴 글");
+  } finally {
+    refuse = false;
+  }
+  const sheet = all(h.render(View, props)).find((n) => n.type === "sheet");
+  assert.equal(sheet.props.plan.teacher_inputs[0].cell.value, "확정 중에 쓴 글");
+  assert.notEqual(drillCell(plan).value, "확정 중에 쓴 글");
+  saved.length = 0;
+});
+
+test("거절 안내 — 칸이면 「칸」, 안전 배치 · 삭제 · 복사면 「변경」, 확정 바의 409 도 저장을 멈춘다", async () => {
+  const plan = fixture();
+  const { View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  h.render(View, props);
+  saveArgs[3](null, "cell");
+  assert.match(text(h.render(View, props)), /저장하지 못한 칸은 원래대로/);
+  saveArgs[3](null, "safety");
+  assert.match(text(h.render(View, props)), /저장하지 못한 변경은 원래대로/);
+  assert.doesNotMatch(text(h.render(View, props)), /저장하지 못한 칸은/);
+  node(h.render(View, props), "confirmbar")[0].props.onConflict();
+  assert.ok(node(h.render(View, props), "drill")[0].props.disabled);
 });

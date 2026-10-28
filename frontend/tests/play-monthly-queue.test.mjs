@@ -109,7 +109,7 @@ test("a rejected (422) job is dropped alone, the line goes on, and whenIdle says
   assert.equal(t.sent.length, 2);
   assert.equal(t.sent[1].expected, 1);
   await t.done(1);
-  assert.deepEqual(await idle, { saved: false, revision: 2 });
+  assert.deepEqual(await idle, { saved: false, revision: 2, rejected: true });
   assert.deepEqual(await t.queue.whenIdle(), { saved: true, revision: 2 });
 });
 

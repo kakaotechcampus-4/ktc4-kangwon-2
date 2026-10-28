@@ -162,8 +162,18 @@ test("confirm bar: blur, freeze, wait for the queue, then confirm with the revis
     "idle",
     ["confirm", 5, 7], // plan.revision 은 3 이지만 큐가 끝난 뒤의 7 로 보낸다
     ["confirmed", { id: 5, status: "CONFIRMED", revision: 8 }],
-    "unfreeze",
+    // 확정되면 큐를 다시 열지 않는다 — 열린 입력창의 마지막 저장이 확정본을 덮지 못하게.
   ]);
+});
+
+test("confirm bar: a save rejected while waiting says it was put back, not 'save again'", async () => {
+  const b = bar({ whenIdle: async () => ({ saved: false, revision: 7, rejected: true }) });
+  const after = await b.click();
+  assert.equal(
+    text(all(after).find((n) => n.props?.role === "alert")),
+    "저장하지 못한 곳을 원래대로 되돌렸어요. 확인한 뒤 다시 확정해 주세요.",
+  );
+  assert.equal(b.log.at(-1), "unfreeze");
 });
 
 test("confirm bar: a failed save means no confirm, a Korean message, and unfreeze", async () => {

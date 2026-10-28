@@ -25,6 +25,7 @@ export default function PlayCellEditor({
   onSave,
   onRevert,
   allowBlank = false,
+  readOnly,
 }: {
   id: string;
   label: string;
@@ -38,6 +39,8 @@ export default function PlayCellEditor({
   onRevert: () => void;
   /** 빈 값도 저장한다(놀이 월간). 기본은 거절 — 연간 동작 그대로. */
   allowBlank?: boolean;
+  /** 고칠 수 없다(놀이 월간 확정 중). 기본은 고칠 수 있다. */
+  readOnly?: boolean;
 }) {
   const [text, setText] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,6 +95,7 @@ export default function PlayCellEditor({
       <textarea
         id={id}
         value={text}
+        readOnly={readOnly}
         aria-invalid={blank || over}
         aria-describedby={`${id}-count`}
         onChange={change}

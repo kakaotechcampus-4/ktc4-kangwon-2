@@ -50,7 +50,7 @@ export default function PlayMonthlyConfirmBar({
 }: {
   plan: PlayMonthlyPlan;
   /** 남은 저장이 모두 끝나길 기다린다. `saved` 가 false 면 실패한 저장이 있다. */
-  whenIdle: () => Promise<{ saved: boolean; revision: number }>;
+  whenIdle: () => Promise<{ saved: boolean; revision: number; rejected?: boolean }>;
   /** 이 뒤로 새 변경을 받지 않는다. */
   freeze: () => void;
   unfreeze: () => void;
@@ -75,16 +75,22 @@ export default function PlayMonthlyConfirmBar({
     lock.current = true;
     setConfirming(true);
     setError("");
+    let confirmed = false;
     try {
       (document.activeElement as HTMLElement | null)?.blur();
       freeze(); // blur 가 넣은 마지막 저장까지는 받았다.
       const idle = await whenIdle();
       if (!mounted.current) return;
       if (!idle.saved) {
-        setError("저장하지 못했어요. 다시 저장한 뒤 확정해 주세요.");
+        setError(
+          idle.rejected
+            ? "저장하지 못한 곳을 원래대로 되돌렸어요. 확인한 뒤 다시 확정해 주세요."
+            : "저장하지 못했어요. 다시 저장한 뒤 확정해 주세요.",
+        );
         return;
       }
       const done = await confirmPlayMonthly(plan.id, idle.revision);
+      confirmed = true;
       if (mounted.current) onConfirmed(done);
     } catch (e) {
       if (!mounted.current) return;
@@ -107,7 +113,8 @@ export default function PlayMonthlyConfirmBar({
       );
     } finally {
       lock.current = false;
-      unfreeze();
+      // 확정되면 큐를 다시 열지 않는다 — 열린 입력창의 마지막 저장이 확정본을 덮으려 하지 못하게.
+      if (!confirmed) unfreeze();
       if (mounted.current) setConfirming(false);
     }
   }

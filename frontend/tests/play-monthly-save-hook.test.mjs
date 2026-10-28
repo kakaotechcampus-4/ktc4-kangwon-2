@@ -40,6 +40,8 @@ const base = () => ({
   ],
   free_play: [],
   safety_weeks: [{ week_id: "w1", candidate_item_id: null }],
+  teacher_inputs: [{ key: "fire_disaster_drill", cell: { item_id: "f", value: "옛 글" } }],
+  drill_candidates: [{ topic_id: "d1", label: "화재", cell: { item_id: "x", value: "후보 글" } }],
 });
 const listeners = new Set();
 globalThis.window = {
@@ -48,7 +50,7 @@ globalThis.window = {
 };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-function mount({ fail = null, hold = false, drafting = false } = {}) {
+function mount({ fail = null, hold = false, drafting = false, failCopy = null } = {}) {
   const gates = [];
   let server = base();
   const sent = [];
@@ -90,7 +92,8 @@ function mount({ fail = null, hold = false, drafting = false } = {}) {
     },
     copyPlayMonthlyDrill: async (id, itemId, rev) => {
       sent.push(["copy", itemId, rev]);
-      return bump(server);
+      if (failCopy) throw failCopy;
+      return bump(queueModule.overlayCells(server, { f: "후보 글" }));
     },
   };
   const modules = {
@@ -104,7 +107,7 @@ function mount({ fail = null, hold = false, drafting = false } = {}) {
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)((n) => modules[n], compiled, compiled.exports);
-  const shown = { plan: base(), rejected: [] };
+  const shown = { plan: base(), rejected: [], kinds: [] };
   let hook;
   const render = () => {
     cursor = 0;
@@ -113,7 +116,7 @@ function mount({ fail = null, hold = false, drafting = false } = {}) {
       shown.plan,
       (p) => (shown.plan = p),
       () => {},
-      (itemId) => shown.rejected.push(itemId),
+      (itemId, kind) => (shown.rejected.push(itemId), shown.kinds.push(kind)),
       drafting,
     );
     effects.forEach((fn) => fn());
@@ -247,4 +250,38 @@ test("typed-but-unsaved text (drafting) turns on the leave warning even when the
   assert.equal(listeners.size, 0);
   mount({ drafting: true });
   assert.equal(listeners.size, 1);
+});
+
+test("drill copy shows the candidate text at once and says the queue took it", async () => {
+  const m = mount();
+  assert.equal(m.get().copyDrill("x"), true);
+  assert.equal(m.shown.plan.teacher_inputs[0].cell.value, "후보 글");
+  await tick();
+  assert.deepEqual(m.sent.at(-1).slice(0, 2), ["copy", "x"]);
+});
+
+test("a rejected drill copy puts the old text back and names the pasted-into cell", async () => {
+  const m = mount({ failCopy: { status: 422 } });
+  m.get().copyDrill("x");
+  await tick();
+  assert.equal(m.shown.plan.teacher_inputs[0].cell.value, "옛 글");
+  assert.deepEqual(m.shown.rejected, ["f"]);
+  assert.deepEqual(m.shown.kinds, ["copy"]);
+});
+
+test("while frozen editCell, copyDrill, undo and redo all say the queue refused", async () => {
+  const m = mount();
+  m.get().editCell("t", "A");
+  await tick();
+  m.render().undo();
+  await tick();
+  m.render().freeze();
+  assert.equal(m.get().editCell("t", "B"), false);
+  assert.equal(m.get().copyDrill("x"), false);
+  assert.equal(m.get().redo(), false);
+  assert.equal(m.shown.plan.theme.value, "주제"); // 다시 하기를 받지 않았으니 화면이 그대로다
+  assert.equal(m.get().canRedo, true); // 걸음도 소비되지 않았다
+  m.get().unfreeze();
+  assert.equal(m.get().undo(), false); // 되돌릴 걸음이 없다
+  assert.equal(m.get().redo(), true);
 });

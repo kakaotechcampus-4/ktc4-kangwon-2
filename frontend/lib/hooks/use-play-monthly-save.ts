@@ -13,6 +13,7 @@ import {
   EMPTY_HISTORY,
   cellValue,
   createPlayMonthlyQueue,
+  drillTarget,
   hasUnsentSave,
   moveStep,
   overlayCells,
@@ -29,16 +30,18 @@ import {
 
 export type PlayMonthlySave = {
   status: SaveStatus;
-  editCell(itemId: string, value: string): void;
+  /** 큐가 받았으면(또는 바꿀 것이 없으면) true. 확정 중 · 409 로 멈춘 뒤에는 false. */
+  editCell(itemId: string, value: string): boolean;
   placeSafety(weekId: string, candidateItemId: string | null): void;
   removeActivity(itemId: string): void;
-  copyDrill(itemId: string): void;
+  copyDrill(itemId: string): boolean;
   whenIdle(): Promise<IdleResult>;
   freeze(): void;
   unfreeze(): void;
   retry(): void;
-  undo(): void;
-  redo(): void;
+  /** 큐가 받았으면 true. */
+  undo(): boolean;
+  redo(): boolean;
   canUndo: boolean;
   canRedo: boolean;
 };
@@ -61,8 +64,8 @@ export function usePlayMonthlySave(
   plan: PlayMonthlyPlan,
   onPlan: (plan: PlayMonthlyPlan) => void,
   onConflict: () => void,
-  /** 거절돼 되돌린 칸의 item_id. 안전 배치 · 삭제 · 복사가 거절됐으면 null. */
-  onRejected?: (itemId: string | null) => void,
+  /** 거절돼 되돌린 칸의 item_id(복사면 붙여 넣은 칸). 안전 배치 · 삭제가 거절됐으면 null. kind 는 거절된 작업 종류. */
+  onRejected?: (itemId: string | null, kind: Job["kind"]) => void,
   /** 입력 중인 미저장 글이 있는가 — 떠날 때 경고에 더한다. */
   drafting = false,
 ): PlayMonthlySave {
@@ -116,7 +119,14 @@ export function usePlayMonthlySave(
         );
         // 남은 걸음의 before 가 거짓이 될 수 있어 목록을 비운다.
         setHistory(EMPTY_HISTORY);
-        latest.current.onRejected?.(job.kind === "cell" ? job.itemId : null);
+        latest.current.onRejected?.(
+          job.kind === "cell"
+            ? job.itemId
+            : job.kind === "copy"
+              ? (drillTarget(view.current) ?? null)
+              : null,
+          job.kind,
+        );
       },
       onDrained: () => apply(server.current),
       onConflict: () => mounted.current && latest.current.onConflict(),
@@ -142,20 +152,21 @@ export function usePlayMonthlySave(
 
   function through(direction: "undo" | "redo") {
     const moved = moveStep(past.current, direction);
-    if (!moved) return;
+    if (!moved) return false;
     const { step } = moved;
     const target = direction === "undo" ? "before" : "after";
     const ok =
       step.kind === "cell"
         ? queue.enqueue({ kind: "cell", itemId: step.itemId, value: step[target] })
         : queue.enqueue({ kind: "safety", weekId: step.weekId, candidateItemId: step[target] });
-    if (!ok) return;
+    if (!ok) return false;
     apply(
       step.kind === "cell"
         ? overlayCells(view.current, { [step.itemId]: step[target] })
         : withSafety(view.current, step.weekId, step[target]),
     );
     setHistory(moved.history);
+    return true;
   }
 
   const unsent = hasUnsentSave(status) || drafting;
@@ -170,8 +181,8 @@ export function usePlayMonthlySave(
     status,
     editCell: (itemId, value) => {
       const before = cellValue(view.current, itemId);
-      if (before === undefined || before === value) return;
-      setCell(itemId, value, { kind: "cell", itemId, before, after: value });
+      if (before === undefined || before === value) return true;
+      return setCell(itemId, value, { kind: "cell", itemId, before, after: value });
     },
     placeSafety: (weekId, candidateItemId) => {
       const before = safetyOf(view.current, weekId);
@@ -198,7 +209,16 @@ export function usePlayMonthlySave(
         null,
       );
     },
-    copyDrill: (itemId) => void submit({ kind: "copy", itemId }, null, null),
+    // 복사는 붙여 넣을 글을 알고 있으니 화면에 바로 입힌다(열린 입력창도 이 글로 다시 열린다).
+    copyDrill: (itemId) => {
+      const target = drillTarget(view.current);
+      const text = view.current.drill_candidates.find((d) => d.cell.item_id === itemId)?.cell.value;
+      const next =
+        target !== undefined && text !== undefined
+          ? overlayCells(view.current, { [target]: text })
+          : null;
+      return submit({ kind: "copy", itemId }, next, null);
+    },
     whenIdle: () => queue.whenIdle(),
     freeze: () => queue.freeze(),
     unfreeze: () => queue.unfreeze(),

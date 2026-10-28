@@ -8,7 +8,7 @@ import { getClasses } from "@/lib/api/classes";
 import { getPlayMonthly } from "@/lib/api/playMonthly";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
 import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
-import { cellValue, overlayCells } from "@/lib/plan-generator/playMonthlyQueue";
+import { cellValue, drillTarget, overlayCells } from "@/lib/plan-generator/playMonthlyQueue";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
@@ -222,12 +222,16 @@ function PlayMonthlyBody({
       setStopped(true);
       onConflict();
     },
-    (itemId) => {
+    (itemId, kind) => {
       if (itemId) {
         clearLive(itemId);
         bump(itemId);
       }
-      setMessage("저장하지 못한 칸은 원래대로 되돌렸어요.");
+      setMessage(
+        kind === "cell"
+          ? "저장하지 못한 칸은 원래대로 되돌렸어요."
+          : "저장하지 못한 변경은 원래대로 되돌렸어요.",
+      );
     },
     Object.keys(live).length > 0,
   );
@@ -238,10 +242,18 @@ function PlayMonthlyBody({
   const shown = overlayCells(plan, live);
   const labels = cellLabels(plan);
   const through = (direction: "undo" | "redo") => {
-    save[direction]();
+    if (!save[direction]()) return;
     setLive({});
     bump();
     setMessage(direction === "undo" ? "되돌렸어요" : "다시 했어요");
+  };
+  const copyDrill = (candidateId: string) => {
+    if (!save.copyDrill(candidateId)) return;
+    const target = drillTarget(plan);
+    if (target) {
+      clearLive(target);
+      bump(target);
+    }
   };
   const row = [...plan.together, ...plan.free_play].find((r) => r.name.item_id === selected);
   const editing = !confirmed && selected && labels[selected] ? [selected] : [];
@@ -270,7 +282,7 @@ function PlayMonthlyBody({
                   key={direction}
                   type="button"
                   className={workspace.secondary}
-                  disabled={direction === "undo" ? !save.canUndo : !save.canRedo}
+                  disabled={locked || !(direction === "undo" ? save.canUndo : save.canRedo)}
                   onClick={() => through(direction)}
                 >
                   <span aria-hidden="true">{direction === "undo" ? "⟲" : "⟳"}</span>{" "}
@@ -294,7 +306,10 @@ function PlayMonthlyBody({
             save.unfreeze();
           }}
           onConfirmed={setPlan}
-          onConflict={onConflict}
+          onConflict={() => {
+            setStopped(true);
+            onConflict();
+          }}
         />
         <PlayMonthlyHistory id={plan.id} />
         <div className={styles.layout}>
@@ -312,12 +327,12 @@ function PlayMonthlyBody({
                       label={labels[itemId]}
                       value={cellValue(plan, itemId) ?? ""}
                       allowBlank
+                      readOnly={locked}
                       onDraft={(text) => setLive((drafts) => ({ ...drafts, [itemId]: text }))}
                       onSave={(text) => {
                         // 거절 · 되돌리기로 다시 열린 뒤 옛 입력창이 사라지며 보내는 글은 버린다.
                         if (mine !== stamp(bumpsRef.current, itemId)) return;
-                        clearLive(itemId);
-                        save.editCell(itemId, text);
+                        if (save.editCell(itemId, text)) clearLive(itemId);
                       }}
                       onRevert={() => clearLive(itemId)}
                     />
@@ -328,7 +343,7 @@ function PlayMonthlyBody({
             {!confirmed && (
               <>
                 <PlayMonthlySafetyPanel plan={plan} onPlace={save.placeSafety} disabled={locked} />
-                <PlayMonthlyDrillPanel plan={plan} onCopy={save.copyDrill} disabled={locked} />
+                <PlayMonthlyDrillPanel plan={plan} onCopy={copyDrill} disabled={locked} />
               </>
             )}
             <h2>연간에서 고른 놀이</h2>
