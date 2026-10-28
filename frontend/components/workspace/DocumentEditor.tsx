@@ -11,6 +11,7 @@ import {
 import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
+import { Icon } from "@/components/app/icons";
 import { invalidFields } from "@/lib/api/client";
 import {
   downloadDocumentHwpx,
@@ -44,6 +45,12 @@ const LAYER_HINTS: Record<string, string> = {
   사실: "교사가 입력한 원문 · 읽기 전용",
   해석: "위 사실에서 읽을 수 있는 의미만 적어주세요.",
   지원: "다음 놀이에서 교사가 할 구체적인 지원을 적어주세요.",
+};
+/** 세 칸의 이름표 색. 사실은 잠긴 칸, 해석·지원은 교사가 고치는 칸이다. */
+const LAYER_LABEL: Record<string, string> = {
+  사실: ws.layerFact,
+  해석: ws.layerInterpretation,
+  지원: ws.layerSupport,
 };
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
@@ -467,7 +474,16 @@ export default function DocumentEditor({
           className={recordDocument ? ws.documentLayer : undefined}
           key={`${section.heading}-${index}`}
         >
-          <h3>{section.heading}</h3>
+          <h3
+            className={
+              recordDocument && LAYER_LABEL[section.heading]
+                ? `${ws.layerName} ${LAYER_LABEL[section.heading]}`
+                : undefined
+            }
+          >
+            {recordDocument && section.heading === "사실" && <Icon name="lock" />}
+            {section.heading}
+          </h3>
           {recordDocument && LAYER_HINTS[section.heading] && (
             <p className={ws.hint}>{LAYER_HINTS[section.heading]}</p>
           )}

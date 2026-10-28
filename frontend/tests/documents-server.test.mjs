@@ -1439,6 +1439,8 @@ function editorHarness(selection) {
     "@/lib/api/documents": documents,
     "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/privacy/browser-storage": privacy,
+    // 이름표 앞 자물쇠. 그림일 뿐이라 null 로 둔다.
+    "@/components/app/icons": { Icon: () => null },
   };
   modules["@/lib/hooks/use-hwpx-download"] = evaluate(hwpxHookCode, modules);
   const Editor = evaluate(editorCode, modules).default;
