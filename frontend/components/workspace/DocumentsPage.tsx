@@ -97,6 +97,9 @@ export default function DocumentsPage() {
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(today);
   const [selected, setSelected] = useState<string[]>([]);
+  // 주간 보육일지의 근거를 어디서 받나 (§11 `source_kind`).
+  // 일일 보육일지를 쓰지 않는 원은 그 주 일과 기록을 바로 근거로 쓴다.
+  const [weeklyFrom, setWeeklyFrom] = useState<"dailyLog" | "routine">("dailyLog");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [invalid, setInvalid] = useState<string[]>([]);
@@ -233,15 +236,17 @@ export default function DocumentsPage() {
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);
 
+  // 일과 기록을 근거로 쓰는 두 경우다 — 일일 보육일지, 그리고 그렇게 고른 주간 보육일지.
+  const fromRoutines = kind === "dailyLog" || (kind === "weeklyLog" && weeklyFrom === "routine");
   const routineKey =
-    mode === "create" && kind === "dailyLog" && classId && validDate(start)
-      ? `${classId}|${start}`
+    mode === "create" && fromRoutines && classId && validDate(start) && validDate(end)
+      ? `${classId}|${start}|${kind === "dailyLog" ? start : end}`
       : "";
   useEffect(() => {
     if (!routineKey) return;
     let stale = false;
-    const [cls, date] = routineKey.split("|");
-    listDayRoutines(cls, date)
+    const [cls, from, to] = routineKey.split("|");
+    listDayRoutines(cls, from, to)
       .then((items) => !stale && setRoutineData({ key: routineKey, items, error: "" }))
       .catch((e) => !stale && setRoutineData({ key: routineKey, items: [], error: messageFor(e) }));
     return () => {
@@ -258,7 +263,7 @@ export default function DocumentsPage() {
         : "ready";
   const candidates: Candidate[] = useMemo(
     () =>
-      kind === "dailyLog"
+      fromRoutines
         ? routines
             .filter((r) => r.execution)
             .map((r) => ({ id: r.id, date: r.date, label: r.execution }))
@@ -283,8 +288,11 @@ export default function DocumentsPage() {
                   r.date <= end,
               )
               .map((r) => ({ id: r.id, date: r.date, label: r.fact })),
-    [kind, routines, serverDocs, records, classId, childId, start, end],
+    [fromRoutines, kind, routines, serverDocs, records, classId, childId, start, end],
   );
+  // 근거 목록이 어느 요청에서 오나. 일과 기록이면 일과 조회, 나머지는 문서 · 관찰 목록이다.
+  const sourceStatus = fromRoutines ? routineStatus : listStatus;
+  const sourceError = fromRoutines ? (routineData?.error ?? "") : listError;
   // 일일 보육일지는 고른 순서가 사실의 순서다 (S-J2). 나머지는 목록 순서 그대로 보낸다.
   const sources =
     kind === "dailyLog"
@@ -441,6 +449,7 @@ export default function DocumentsPage() {
         start,
         end,
         sourceIds: sources.map((s) => s.id),
+        ...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {}),
       });
       if (creation.adopt(created)) {
         setSelected([]);
@@ -494,13 +503,21 @@ export default function DocumentsPage() {
           void reloadList();
           return next;
         },
-        save: async (sections: SavedDocument["sections"], reviewNote: string) => {
-          const saved = await selection.save(sections, reviewNote);
+        save: async (
+          sections: SavedDocument["sections"],
+          reviewNote: string,
+          classNote?: string,
+        ) => {
+          const saved = await selection.save(sections, reviewNote, classNote);
           void reloadList();
           return saved;
         },
-        saveAndConfirm: async (sections: SavedDocument["sections"], reviewNote: string) => {
-          const confirmed = await selection.saveAndConfirm(sections, reviewNote);
+        saveAndConfirm: async (
+          sections: SavedDocument["sections"],
+          reviewNote: string,
+          classNote?: string,
+        ) => {
+          const confirmed = await selection.saveAndConfirm(sections, reviewNote, classNote);
           void reloadList();
           return confirmed;
         },
@@ -721,6 +738,26 @@ export default function DocumentsPage() {
                 </label>
               )}
             </div>
+            {kind === "weeklyLog" && (
+              <div className={ws.row}>
+                <label className={ws.field}>
+                  근거로 쓸 기록
+                  <select
+                    name="sourceKind"
+                    disabled={busy}
+                    value={weeklyFrom}
+                    onChange={(e) => {
+                      setWeeklyFrom(e.target.value as "dailyLog" | "routine");
+                      setSelected([]);
+                      clearInvalid("sources");
+                    }}
+                  >
+                    <option value="dailyLog">확정한 일일 보육일지</option>
+                    <option value="routine">일과 기록</option>
+                  </select>
+                </label>
+              </div>
+            )}
             <div className={ws.row}>
               <label className={ws.field}>
                 {kind === "dailyLog" ? "날짜" : "시작일"}
@@ -757,25 +794,27 @@ export default function DocumentsPage() {
               {kind === "dailyLog"
                 ? "일일 보육일지는 반 전체 문서라 아동은 선택하지 않아요. 하루에 한 장씩 만들어요."
                 : kind === "weeklyLog"
-                  ? "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
+                  ? weeklyFrom === "routine"
+                    ? "일일 보육일지를 쓰지 않는 원이면 그 주 일과 기록을 바로 근거로 써요. 날짜별 해석·지원 칸은 비워서 내보내고, 주간 총평 하나만 적어요."
+                    : "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
                   : kind === "assessment"
                     ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
                     : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
             </p>
             <button
               className={ws.primary}
-              disabled={busy || !!blocked || listStatus !== "ready"}
+              disabled={busy || !!blocked || listStatus !== "ready" || sourceStatus !== "ready"}
               onClick={generate}
             >
               {busy ? "초안 작성 중…" : "초안 만들기"}
             </button>
             {blocked && <p className={ws.hint}>{blocked}</p>}
-            {kind === "dailyLog" && routineHref && (
+            {fromRoutines && routineHref && (
               <Link className={ws.link} href={routineHref}>
                 새 일과 기록 입력 →
               </Link>
             )}
-            {kind !== "dailyLog" && (
+            {!fromRoutines && (
               <Link className={ws.link} href="/records">
                 새 관찰 기록 입력 →
               </Link>
@@ -804,16 +843,18 @@ export default function DocumentsPage() {
             </div>
             <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
             <WorkspaceViewState
-              status={listStatus}
-              error={listError}
+              status={sourceStatus}
+              error={sourceError}
               loading="근거 기록을 불러오고 있어요."
               empty={
                 !candidates.length && (
                   <Empty title="조건에 맞는 근거가 없어요">
                     날짜를 변경하거나{" "}
-                    {kind === "weeklyLog"
-                      ? "일일 보육일지를 먼저 작성하고 확정해주세요."
-                      : "관찰 기록을 먼저 입력해주세요."}
+                    {fromRoutines
+                      ? "일과 기록을 먼저 입력해주세요."
+                      : kind === "weeklyLog"
+                        ? "일일 보육일지를 먼저 작성하고 확정해주세요."
+                        : "관찰 기록을 먼저 입력해주세요."}
                   </Empty>
                 )
               }

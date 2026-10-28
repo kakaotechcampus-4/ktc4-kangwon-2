@@ -349,9 +349,9 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
       1,
     );
     await page.getByRole("button", { name: "검사 결과 접기", exact: true }).click();
-    await expect(page.getByText(/형식·원문 대조를 통과했어요/)).toHaveCount(0);
+    await expect(page.getByText(/기본 항목은 통과했어요/)).toHaveCount(0);
     await page.getByRole("button", { name: /기본 항목 검사|AI 검증하기/ }).click();
-    await expect(page.getByText(/형식·원문 대조를 통과했어요/)).toBeVisible();
+    await expect(page.getByText(/기본 항목은 통과했어요/)).toBeVisible();
     await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
     await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
     await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
@@ -539,10 +539,10 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     classB: other.id,
     preservedDate: "2026-10-16",
   });
-  await page.getByRole("link", { name: "기록 모아보기", exact: true }).click();
+  await page.getByRole("link", { name: "주간 기록", exact: true }).click();
   await expect(page).toHaveURL(/\/quick-records$/);
   await expect(
-    page.getByRole("heading", { name: "기록 모아보기", exact: true, level: 1 }),
+    page.getByRole("heading", { name: "주간 기록", exact: true, level: 1 }),
   ).toBeVisible();
   await page.getByRole("combobox", { name: "반", exact: true }).selectOption({ label: "달님반" });
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();

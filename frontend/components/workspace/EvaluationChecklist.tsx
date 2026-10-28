@@ -40,7 +40,7 @@ export default function EvaluationChecklist() {
         setError("");
       } catch (e) {
         if (!controller.signal.aborted)
-          setError(e instanceof Error ? e.message : "평가 준비 현황을 불러오지 못했어요.");
+          setError(e instanceof Error ? e.message : "평가 점검 현황을 불러오지 못했어요.");
       }
     })();
     return () => controller.abort();
@@ -90,7 +90,7 @@ export default function EvaluationChecklist() {
             다시 불러오기
           </button>
         ) : (
-          <p role="status">평가 준비 현황을 불러오는 중…</p>
+          <p role="status">평가 점검 현황을 불러오는 중…</p>
         )}
       </>
     );
@@ -117,7 +117,7 @@ export default function EvaluationChecklist() {
           문서 보관함 보기
         </Link>
         <Link href="/plans" className={ws.link}>
-          계획 노트 보기
+          계획안 보기
         </Link>
       </div>
       <h2>확정 문서 자동 집계</h2>

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   DOCUMENT_KINDS,
-  downloadText,
   validateDocument,
   type DocumentKind,
   type SavedDocument,
@@ -12,6 +11,8 @@ import {
 import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
+import { Icon } from "@/components/app/icons";
+import { invalidFields } from "@/lib/api/client";
 import {
   downloadDocumentHwpx,
   isStaleWrite,
@@ -45,6 +46,12 @@ const LAYER_HINTS: Record<string, string> = {
   해석: "위 사실에서 읽을 수 있는 의미만 적어주세요.",
   지원: "다음 놀이에서 교사가 할 구체적인 지원을 적어주세요.",
 };
+/** 세 칸의 이름표 색. 사실은 잠긴 칸, 해석·지원은 교사가 고치는 칸이다. */
+const LAYER_LABEL: Record<string, string> = {
+  사실: ws.layerFact,
+  해석: ws.layerInterpretation,
+  지원: ws.layerSupport,
+};
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
 export interface ServerDocumentActions {
@@ -53,9 +60,13 @@ export interface ServerDocumentActions {
   pending: boolean;
   /** 최신 조회 중 다른 문서로 옮겼으면 null 이며 현재 편집기를 바꾸지 않는다. */
   reload: () => Promise<SavedDocument | null>;
-  save: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
+  save: (sections: Section[], reviewNote: string, classNote?: string) => Promise<SavedDocument>;
   /** 저장과 확정은 한 작업이다 — 대상 문서가 중간에 바뀌지 않는다. */
-  saveAndConfirm: (sections: Section[], reviewNote: string) => Promise<SavedDocument>;
+  saveAndConfirm: (
+    sections: Section[],
+    reviewNote: string,
+    classNote?: string,
+  ) => Promise<SavedDocument>;
   /** 확정을 되돌린다. 근거를 다시 반영하지는 않는다 — 교사가 따로 누른다.
    *  `newlyStaleCount` 는 이 문서를 근거로 써서 이번에 다시 검토 대상이 된 문서 수다. */
   unconfirm: () => Promise<SavedDocument & { newlyStaleCount?: number }>;
@@ -65,6 +76,19 @@ export interface ServerDocumentActions {
   remove: () => Promise<void>;
   reconfirm?: (input: ReconfirmInput) => Promise<SavedDocument>;
 }
+
+/**
+ * 서버가 `VALIDATION_FAILED` 로 짚는 칸 이름 → 화면에 보이는 칸 이름.
+ *
+ * 서버는 `sections.해석` 처럼 돌려주는데 그대로 띄우면 교사가 어디를 고칠지 모른다.
+ * 점 뒤가 없는 이름(`sections`)은 칸 셋 모양 자체가 틀린 경우다.
+ */
+const SECTION_LABELS: Record<string, string> = {
+  sections: "사실 · 해석 · 지원",
+  "sections.사실": "사실",
+  "sections.해석": "해석",
+  "sections.지원": "지원",
+};
 
 export default function DocumentEditor({
   initial,
@@ -137,7 +161,7 @@ export default function DocumentEditor({
     : undefined;
   const hwpx = useHwpxDownload(setMessage);
   const supportsHwpx =
-    !!annualPlanId || (!!server && ["observation", "dailyLog"].includes(doc.kind));
+    !!annualPlanId || (!!server && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
   function change(index: number, body: string) {
@@ -194,8 +218,8 @@ export default function DocumentEditor({
       try {
         const note = confirm ? "교사 사실·해석·지원 검토 완료" : "교사 검토 전";
         const next = confirm
-          ? await server.saveAndConfirm(doc.sections, note)
-          : await server.save(doc.sections, note);
+          ? await server.saveAndConfirm(doc.sections, note, doc.classNote)
+          : await server.save(doc.sections, note, doc.classNote);
         setBaseline(next);
         setDoc(next);
         setChecks([false, false, false]);
@@ -206,7 +230,18 @@ export default function DocumentEditor({
         if (isStaleWrite(e)) {
           setStaleWrite(true);
         } else {
-          setMessage(e instanceof Error ? e.message : "저장하지 못했어요.");
+          // 서버가 짚은 칸을 버리지 않는다. 「입력값을 확인해주세요」만 띄우면
+          // 교사가 어디가 틀렸는지 알 길이 없다.
+          const blocked = invalidFields(e, SECTION_LABELS);
+          setIssues(blocked.map((name) => `${name} 칸을 고쳐주세요.`));
+          setIssuesOpen(blocked.length > 0);
+          setMessage(
+            blocked.length
+              ? `${blocked.join(" · ")} 칸이 원본과 맞지 않아요.`
+              : e instanceof Error
+                ? e.message
+                : "저장하지 못했어요.",
+          );
         }
       } finally {
         setBusy(false);
@@ -399,6 +434,9 @@ export default function DocumentEditor({
           <span className={ws.badge}>
             {doc.status === "confirmed" ? "교사 확정" : "검토 중인 초안"}
           </span>
+          {/* 근거가 바뀐 문서는 제목 줄에서 바로 보여야 한다. 아래쪽 안내문만으로는
+              문서를 열고 스크롤해야 알 수 있었다 (수린 점검). */}
+          {server?.stale && <span className={ws.badge}>다시 검토</span>}
           <span className={ws.muted}>
             {doc.origin === "import"
               ? "등록 증빙"
@@ -436,7 +474,16 @@ export default function DocumentEditor({
           className={recordDocument ? ws.documentLayer : undefined}
           key={`${section.heading}-${index}`}
         >
-          <h3>{section.heading}</h3>
+          <h3
+            className={
+              recordDocument && LAYER_LABEL[section.heading]
+                ? `${ws.layerName} ${LAYER_LABEL[section.heading]}`
+                : undefined
+            }
+          >
+            {recordDocument && section.heading === "사실" && <Icon name="lock" />}
+            {section.heading}
+          </h3>
           {recordDocument && LAYER_HINTS[section.heading] && (
             <p className={ws.hint}>{LAYER_HINTS[section.heading]}</p>
           )}
@@ -496,6 +543,30 @@ export default function DocumentEditor({
           ))}
         </details>
       )}
+      {/* 공식 보육일지 양식 5종 전부에 있는 칸이다 (docs/references/보육일지-공식양식.md).
+          놀이 기록이 아니라 그날 반에 있었던 일이라 근거에서 나오지 않는다 — 교사가 적는다.
+          주간 보육일지는 날짜마다 그날 일일 일지의 이 칸을 끌어다 쓴다. */}
+      {server && doc.kind === "dailyLog" && (
+        <section>
+          <h3>반 운영 특이사항</h3>
+          <p className={ws.hint}>
+            결석 · 부모면담 · 감염병 · 안전사고처럼 그날 반에 있었던 일이에요. 없으면 비워두세요.
+          </p>
+          {editable ? (
+            <label className={ws.field}>
+              <textarea
+                aria-label="반 운영 특이사항"
+                maxLength={2000}
+                disabled={working || stale}
+                value={doc.classNote ?? ""}
+                onChange={(e) => setDoc((prev) => ({ ...prev, classNote: e.target.value }))}
+              />
+            </label>
+          ) : (
+            <p>{doc.classNote || "적지 않았어요."}</p>
+          )}
+        </section>
+      )}
       {editable && (
         <>
           <hr className={ws.divider} />
@@ -516,7 +587,7 @@ export default function DocumentEditor({
                 ? `반려 · 수정이 필요해요\n${issues.map((s) => `• ${s}`).join("\n")}`
                 : available && verified
                   ? "AI 검증에서 문제를 찾지 못했어요. 교사 최종 검토를 진행해주세요."
-                  : "형식·원문 대조를 통과했어요. 의미의 정확성은 교사가 확인해주세요."}
+                  : "기본 항목은 통과했어요. 원본 대조는 확정할 때 서버가 합니다."}
             </Message>
           )}
           {/* 일지는 한 번만 묻는다. 세 칸을 따로 받던 때는 교사가 같은 문서를 세 번 훑어야 했다.
@@ -624,20 +695,6 @@ export default function DocumentEditor({
             월간계획안 만들기 →
           </Link>
         )}
-        {/* 일지도 같다 — 확정했고 근거가 그대로일 때만. 근거가 바뀐 채로 내보내면
-            교사가 확정한 것과 다른 종이가 나간다 (서버도 409 로 거절한다). */}
-        <button
-          className={ws.secondary}
-          disabled={stale}
-          onClick={() =>
-            downloadText(
-              doc.title,
-              `${doc.title}\n${doc.className} ${doc.childName}\n${doc.start} ~ ${doc.end}\n상태: ${doc.status === "confirmed" ? "교사 확정" : "검토 전 초안"}\n\n${doc.sections.map((s) => `${s.heading}\n${s.body}`).join("\n\n")}\n\n${doc.reviewNote}`,
-            )
-          }
-        >
-          텍스트 내려받기
-        </button>
         {/* 확정 문서는 지울 수 없다 — 서버가 409 ALREADY_CONFIRMED 로 거절한다.
             눌러도 실패할 버튼을 보여 주면 교사는 고장으로 읽는다. 확정 취소가 먼저다. */}
         {server && editable && (

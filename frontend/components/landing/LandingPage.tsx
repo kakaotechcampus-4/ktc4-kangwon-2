@@ -1,3 +1,4 @@
+import { LegalFooter } from "@/components/legal/LegalPage";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/app/icons";
 
@@ -49,7 +50,7 @@ export default function LandingPage() {
       <main>
         <section className="mx-auto grid max-w-[1180px] items-center gap-12 px-5 py-14 sm:px-8 sm:py-20 lg:grid-cols-[0.95fr_1.05fr]">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-note-line bg-note-soft px-3 py-2 text-[11px] font-medium text-sun-ink">
+            <span className="inline-flex items-center gap-2 rounded-full border border-note-line bg-note-soft px-3 py-2 text-[12px] font-medium text-sun-ink">
               <Icon name="plan" className="h-4 w-4" />
               선생님의 계획과 기록을 위한 작업실
             </span>
@@ -124,10 +125,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-6 text-[11px] text-ink-soft sm:px-8">
-        <span>Ssample · 쌤플</span>
-        <span>강원대 2팀 · 카카오테크캠퍼스 4기</span>
-      </footer>
+      <LegalFooter width="max-w-[1180px]" />
     </div>
   );
 }
@@ -143,7 +141,7 @@ function Brand() {
   );
 }
 
-/** 계획 노트가 어떻게 생겼는지 보여주는 예시. 실제 생성 결과가 아니라 소개용 그림이다. */
+/** 계획안이 어떻게 생겼는지 보여주는 예시. 실제 생성 결과가 아니라 소개용 그림이다. */
 const PREVIEW_ROWS = [
   { label: "주제", first: "가을이 찾아왔어요", second: "알록달록 가을빛" },
   { label: "자유 놀이", first: "나뭇잎 가게 놀이", second: "자연물로 꾸미기" },
@@ -154,15 +152,15 @@ function PlanPreview() {
   return (
     <div className="overflow-hidden rounded-sm border border-line bg-paper shadow-[6px_7px_0_var(--pg-line)]">
       <div className="flex items-center justify-between border-b border-line bg-primary-tint px-5 py-3">
-        <span className="text-xs font-semibold text-primary-ink">햇살반의 계획 노트</span>
+        <span className="text-xs font-semibold text-primary-ink">햇살반의 계획안</span>
         <Icon name="plan" className="h-4 w-4 text-primary" />
       </div>
       <div className="p-5 sm:p-6">
         <div className="mb-5 flex items-end justify-between gap-3">
           <h2 className="font-display text-[26px] font-bold sm:text-[31px]">우리 반의 가을</h2>
-          <span className="shrink-0 text-[10px] text-ink-soft">10월 · 월간계획안</span>
+          <span className="shrink-0 text-[12px] text-ink-soft">10월 · 월간계획안</span>
         </div>
-        <table className="w-full text-left text-[11px]">
+        <table className="w-full text-left text-[12px]">
           <thead>
             <tr className="bg-note-soft">
               <th className="border-b border-line p-3 font-semibold">주차</th>
@@ -194,7 +192,7 @@ function QuickRecordNote() {
         aria-hidden="true"
         className="pointer-events-none absolute -top-3 left-1/2 h-6 w-16 -translate-x-1/2 rotate-3 border border-white/60 bg-tape"
       />
-      <span className="flex items-center gap-2 text-[11px] font-semibold text-sun-ink">
+      <span className="flex items-center gap-2 text-[12px] font-semibold text-sun-ink">
         <Icon name="edit" className="h-4 w-4" />
         지금, 한 줄 기록
       </span>
@@ -202,7 +200,7 @@ function QuickRecordNote() {
         “도토리를 나란히 놓고
         <br />큰 것과 작은 것을 비교했다.”
       </p>
-      <span className="mt-3 inline-block rounded bg-paper px-2 py-1 text-[10px] text-sun-ink">
+      <span className="mt-3 inline-block rounded bg-paper px-2 py-1 text-[12px] text-sun-ink">
         아이 A · 자연탐구
       </span>
     </div>

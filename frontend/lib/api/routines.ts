@@ -211,11 +211,17 @@ export function timeRange(start: string | null, end: string | null) {
  *
  * 반은 화면 id 로 받아 서버 id 로 바꾼다. 연결이 없으면 부르지 않는다 — 남의 반을
  * 부르느니 「다시 불러와주세요」가 낫다.
+ *
+ * `to` 를 주면 그 날까지 받는다 — 일과 기록을 근거로 쓰는 주간 보육일지가 한 주를 받는다 (§11).
  */
-export async function listDayRoutines(classLocalId: string, date: string): Promise<RoutineLine[]> {
+export async function listDayRoutines(
+  classLocalId: string,
+  date: string,
+  to: string = date,
+): Promise<RoutineLine[]> {
   const id = classServerId(classLocalId);
   if (id === null) throw new Error(UNMAPPED_CLASS);
-  const rows = await listRoutinesOfDay(id, date);
+  const rows = await listRoutines({ class_id: id, from: date, to });
   return rows.map((row) => ({
     id: routineLocalId(row.id),
     date: row.date,

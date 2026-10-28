@@ -24,7 +24,13 @@ export interface DocumentGateway {
   get(localId: string): Promise<ServerDocument>;
   update(
     localId: string,
-    input: { kind: string; sections: Section[]; reviewNote: string; updatedAt: string },
+    input: {
+      kind: string;
+      sections: Section[];
+      reviewNote: string;
+      updatedAt: string;
+      classNote?: string;
+    },
   ): Promise<ServerDocument>;
   confirm(localId: string): Promise<ServerDocument>;
   unconfirm(localId: string): Promise<ServerDocument>;
@@ -67,11 +73,13 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
     mine: number,
     sections: Section[],
     reviewNote: string,
+    classNote?: string,
   ) {
     const saved = await api.update(doc.id, {
       kind: doc.kind,
       sections,
       reviewNote,
+      classNote,
       updatedAt: doc.updatedAt,
     });
     // 그 사이 다른 문서로 옮겼으면 서버 저장은 그대로 두고 화면만 건드리지 않는다.
@@ -152,8 +160,8 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
     },
 
     /** 저장·확정·삭제는 한 번에 하나만. 화면이 막혀 있어도 여기서 한 번 더 막는다. */
-    save: (sections: Section[], reviewNote: string) =>
-      mutate((doc, mine) => update(doc, mine, sections, reviewNote)),
+    save: (sections: Section[], reviewNote: string, classNote?: string) =>
+      mutate((doc, mine) => update(doc, mine, sections, reviewNote, classNote)),
 
     /**
      * 저장과 확정은 하나의 작업이다.
@@ -161,9 +169,9 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
      * 대상은 시작할 때 잡은 문서 하나뿐이다 — `await` 뒤에 선택을 다시 읽으면
      * A 를 저장하고 B 를 확정하게 된다. 그 사이 다른 문서로 옮겼으면 확정하지 않는다.
      */
-    saveAndConfirm: (sections: Section[], reviewNote: string) =>
+    saveAndConfirm: (sections: Section[], reviewNote: string, classNote?: string) =>
       mutate(async (doc, mine) => {
-        await update(doc, mine, sections, reviewNote);
+        await update(doc, mine, sections, reviewNote, classNote);
         if (mine !== generation) throw new Error(MOVED);
         const confirmed = await api.confirm(doc.id);
         if (mine === generation) set({ detail: confirmed });
@@ -198,10 +206,16 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
 export type Selection = ReturnType<typeof createSelection>;
 
 /**
- * 서버 문서 확정 전 최소 확인. 나머지 판정은 서버 게이트가 한다 (§11).
+ * 서버 문서 확정 전 **최소** 확인. 나머지 판정은 서버 게이트가 한다 (§11).
  *
  * `validateDocument` 의 상투어 정규식은 계약에 없는 규칙이라 정상 문장까지 막는다.
- * 서버가 보는 것은 해석·지원의 길이(20자)뿐이다.
+ * 그래서 여기서는 글자 수만 본다.
+ *
+ * **서버는 이보다 많이 본다** (backend/app/shared/gates/sections.py `_check`) —
+ * 칸 이름·개수, `사실` 이 근거 원문을 이어붙인 것과 글자까지 같은지,
+ * 해석에 나온 숫자가 사실에도 있는지, `source_ids` 가 유효한지.
+ * 그 넷을 여기서 되풀이하지 않는다. 복제는 한쪽만 고쳐져 또 어긋난다.
+ * 대신 서버가 거절하면 `fields` 로 어느 칸인지 화면에 보여준다 (DocumentEditor).
  */
 export function serverIssues(doc: Pick<SavedDocument, "sections">): string[] {
   return ["해석", "지원"]
