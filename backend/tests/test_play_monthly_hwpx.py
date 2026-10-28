@@ -4,7 +4,7 @@
 """
 
 import zipfile
-from datetime import date
+from dataclasses import replace
 from io import BytesIO
 
 import pytest
@@ -13,6 +13,7 @@ from ssuksak.planning.application.play_monthly_document import (
     PlayMonthlyDocument,
     PlayMonthlyDocumentWeek,
 )
+from ssuksak.planning.domain.play_monthly_plan import TimetableSize
 
 from app.features.plans.play_monthly_hwpx import TEMPLATE, fill_play_monthly
 from app.features.plans.play_project_hwpx import TEMPLATE as PLAY_PROJECT_TEMPLATE
@@ -28,11 +29,12 @@ FOOTER = [
 
 def document(weeks: int = 5, plays: int = 5) -> PlayMonthlyDocument:
     return PlayMonthlyDocument(
-        month=3,
-        target_ages=frozenset({3, 4}),
-        start_date=date(2027, 3, 1),
-        end_date=date(2027, 3, 31),
+        title="3월 놀이계획안",
+        age="만 3·4세",
+        class_name="햇살반",
+        period="2027.03.01 ~ 2027.03.31",
         theme="합성 주제",
+        direction="합성 놀이 방향",
         rationale="합성 이유",
         together=tuple(f"함께 놀이 {i}" for i in range(1, plays + 1)),
         free_play=tuple(f"자유 놀이 {i}" for i in range(1, plays + 1)),
@@ -47,6 +49,10 @@ def document(weeks: int = 5, plays: int = 5) -> PlayMonthlyDocument:
         nutrition="",  # 빈 칸에는 「[영양] 」 을 붙이지 않는다
         birthdays="합성 생일",
         home_connection="합성 가정연계",
+        specialized_titles=("",) * 5,
+        specialized_contents=("",) * 5,
+        special_activity=(),
+        special_activity_size=TimetableSize((20, 20, 20, 20, 20), 24),
     )
 
 
@@ -101,7 +107,7 @@ def assert_whole_grid(content: bytes) -> None:
 
 @pytest.fixture(scope="module")
 def filled() -> bytes:
-    return fill_play_monthly(TEMPLATE.read_bytes(), document(), CLASS)
+    return fill_play_monthly(TEMPLATE.read_bytes(), document())
 
 
 def test_the_template_is_one_28_by_17_table_with_77_cells() -> None:
@@ -132,9 +138,15 @@ def test_title_is_month_only_and_class_stays_on_its_right_aligned_paragraph(fill
     assert "2027" not in "".join(got.itertext())
 
 
+def test_the_class_line_is_the_age_alone_when_the_class_name_is_blank() -> None:
+    content = fill_play_monthly(TEMPLATE.read_bytes(), replace(document(), class_name=""))
+    assert lines(cells(content)[(0, 0)]) == ["3월 놀이계획안", "만 3·4세"]
+
+
 def test_values_land_in_their_cells(filled: bytes) -> None:
     got = cells(filled)
-    assert lines(got[(1, 2)]) == lines(got[(5, 7)]) == ["합성 주제"]
+    assert lines(got[(1, 2)]) == ["합성 주제"]
+    assert lines(got[(5, 7)]) == ["합성 놀이 방향"]
     assert lines(got[(2, 2)]) == ["2027.03.01 ~ 2027.03.31"]
     assert lines(got[(3, 2)]) == ["합성 이유"]
     assert lines(got[(6, 0)]) == [f"함께 놀이 {i}" for i in range(1, 6)]
@@ -183,7 +195,7 @@ def test_five_weeks_keep_the_template_grid(filled: bytes) -> None:
 
 
 def test_a_four_week_month_gets_four_equal_columns_in_the_first_four_colors() -> None:
-    content = fill_play_monthly(TEMPLATE.read_bytes(), document(4), CLASS)
+    content = fill_play_monthly(TEMPLATE.read_bytes(), document(4))
 
     assert_whole_grid(content)
     for row in (8, 9, 10):
@@ -199,11 +211,11 @@ def test_a_four_week_month_gets_four_equal_columns_in_the_first_four_colors() ->
 @pytest.mark.parametrize("weeks", [3, 6])
 def test_a_week_count_outside_the_core_rule_is_refused(weeks: int) -> None:
     with pytest.raises(TemplateMismatch):
-        fill_play_monthly(TEMPLATE.read_bytes(), document(weeks), CLASS)
+        fill_play_monthly(TEMPLATE.read_bytes(), document(weeks))
 
 
 def test_every_play_row_is_printed_without_truncation() -> None:
-    content = fill_play_monthly(TEMPLATE.read_bytes(), document(plays=12), CLASS)
+    content = fill_play_monthly(TEMPLATE.read_bytes(), document(plays=12))
     got, template = cells(content), cells(TEMPLATE.read_bytes())
 
     for address, name in (((6, 0), "함께"), ((6, 12), "자유")):
@@ -230,7 +242,7 @@ def test_preview_lists_the_values_not_the_placeholders(filled: bytes) -> None:
 
 def test_another_template_is_refused() -> None:
     with pytest.raises(TemplateMismatch):
-        fill_play_monthly(PLAY_PROJECT_TEMPLATE.read_bytes(), document(), CLASS)
+        fill_play_monthly(PLAY_PROJECT_TEMPLATE.read_bytes(), document())
 
 
 def test_the_filled_hwpx_converts_to_hwp(filled: bytes) -> None:
