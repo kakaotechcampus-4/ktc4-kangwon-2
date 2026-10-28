@@ -8,12 +8,12 @@ import {
   downloadText,
   today,
   validPeriod,
-  validateDocument,
   type DocumentKind,
-  type SavedDocument,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
 import { requestAI } from "@/lib/workspace/ai-client";
+import { importDocument, isRecordKind, type EvidenceNotice } from "@/lib/api/documents";
+import { isUnauthenticated } from "@/lib/api/client";
 import { WorkspacePage, Empty, Message, useClasses, useAIStatus, ws } from "./WorkspaceUI";
 import EvaluationChecklist from "./EvaluationChecklist";
 import styles from "./Evaluation.module.css";
@@ -37,8 +37,11 @@ export default function EvaluationPage() {
     >
       <EvaluationChecklist refresh={refresh}>
         <details>
-          <summary>이 브라우저의 기존 증빙 사전점검</summary>
-          <p className={ws.hint}>아래에 등록한 자료는 위 평가 점검 현황에 반영되지 않아요.</p>
+          <summary>기존 증빙 등록 · 사전점검</summary>
+          <p className={ws.hint}>
+            등록한 증빙은 문서 보관함에 저장되고 위 평가 점검 현황에 반영돼요. 아래 AI 대조는 이
+            브라우저에 남아 있는 예전 자료만 봐요.
+          </p>
           <LocalDocumentReview />
         </details>
       </EvaluationChecklist>
@@ -76,6 +79,8 @@ function LocalDocumentReview() {
   const [filename, setFilename] = useState("");
   const [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState(false);
+  // 등록은 됐지만 교사가 알아야 하는 것 (§11 「증빙 등록」). 막지 않고 알리기만 한다.
+  const [notices, setNotices] = useState<EvidenceNotice[]>([]);
   const doc = data.documents.find((d) => d.id === active);
   const evidence = doc ? compareEvidence(doc, data.documents, data.observations) : null;
   const checks = doc
@@ -150,43 +155,55 @@ function LocalDocumentReview() {
       setBusy(false);
     }
   }
-  function registerEvidence() {
+  /**
+   * 증빙을 **서버에** 등록한다 (§11 「증빙 등록」).
+   *
+   * 브라우저에 쌓으면 평가제 집계(§12)가 못 본다. 4-2(영유아 평가)는 우리 서비스로
+   * 만드는 기능이 없어서 이 경로가 유일하게 집계에 들어가는 길이다.
+   */
+  async function registerEvidence() {
     const c = classes.find((c) => c.id === classId);
     if (!c || !fileText || !validPeriod(start, end) || !reviewed) {
       setMessage("반·작성 기간과 원문 확인 여부를 확인해주세요.");
       return;
     }
-    const now = new Date().toISOString();
-    const document: SavedDocument = {
-      id: crypto.randomUUID(),
-      title: filename,
-      kind,
-      classId,
-      className: c.className,
-      childId,
-      childName: c.children.find((c) => c.id === childId)?.name || "",
-      start,
-      end,
-      sections: [{ heading: "첨부 원문", body: fileText, sourceIds: [] }],
-      sources: [],
-      status: "confirmed",
-      origin: "import",
-      createdAt: now,
-      updatedAt: now,
-      reviewNote:
-        "교사가 원문과 기간을 확인하여 등록한 기존 증빙. AI 내용 검증과 공식 평가 판정은 별도.",
-    };
-    const issues = validateDocument(document);
-    if (issues.length) {
-      setMessage(issues.join("\n"));
-      return;
-    }
-    if (save((prev) => ({ ...prev, documents: [document, ...prev.documents] }))) {
-      setActive(document.id);
+    setBusy(true);
+    setNotices([]);
+    try {
+      if (!isRecordKind(kind)) {
+        // 계획안은 이 API 가 다루지 않는다 (§11). 고르는 칸에서 이미 빼 두었다.
+        setMessage("일지 계열 문서만 등록할 수 있어요.");
+        return;
+      }
+      const { notices } = await importDocument({
+        kind,
+        classId,
+        childId,
+        start,
+        end,
+        title: filename,
+        body: fileText,
+      });
+      setNotices(notices);
       setChecked(false);
       setImporting(false);
       setFileText("");
-      setMessage("기존 증빙을 등록했어요. 문서 유형·기간·내용을 기준으로 대조할 수 있어요.");
+      setReviewed(false);
+      setMessage(
+        notices.length
+          ? "증빙을 등록했어요. 아래 확인할 점을 봐주세요."
+          : "증빙을 등록했어요. 문서 보관함에서 볼 수 있고 평가 점검 현황에 반영돼요.",
+      );
+    } catch (e) {
+      setMessage(
+        isUnauthenticated(e)
+          ? "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요."
+          : e instanceof Error
+            ? e.message
+            : "증빙을 등록하지 못했어요.",
+      );
+    } finally {
+      setBusy(false);
     }
   }
   function exportReport() {
@@ -233,6 +250,19 @@ function LocalDocumentReview() {
       </section>
       <Message error>{error}</Message>
       <Message>{message}</Message>
+      {notices.length > 0 && (
+        <section className={ws.card} style={{ marginBottom: 22 }}>
+          <h2>등록했어요 — 확인할 점</h2>
+          <p className={ws.hint}>
+            등록은 끝났어요. 아래는 평가 점검 현황에 들어가지 않을 수 있는 자리예요.
+          </p>
+          <ul>
+            {notices.map((n) => (
+              <li key={n.code}>{n.message}</li>
+            ))}
+          </ul>
+        </section>
+      )}
       {importing && (
         <section className={ws.card} style={{ marginBottom: 22 }}>
           <h2>기존 보육일지·관찰기록·영유아 평가 등록</h2>
@@ -249,11 +279,13 @@ function LocalDocumentReview() {
                   setReviewed(false);
                 }}
               >
-                {Object.entries(DOCUMENT_KINDS).map(([key, value]) => (
-                  <option value={key} key={key}>
-                    {value}
-                  </option>
-                ))}
+                {Object.entries(DOCUMENT_KINDS)
+                  .filter(([key]) => isRecordKind(key))
+                  .map(([key, value]) => (
+                    <option value={key} key={key}>
+                      {value}
+                    </option>
+                  ))}
               </select>
             </label>
             <label className={ws.field}>
@@ -345,9 +377,9 @@ function LocalDocumentReview() {
           <button
             className={ws.primary}
             disabled={busy || !fileText || !reviewed}
-            onClick={registerEvidence}
+            onClick={() => void registerEvidence()}
           >
-            {busy ? "문서를 읽는 중…" : "증빙 등록"}
+            {busy ? "처리 중…" : "증빙 등록"}
           </button>
         </section>
       )}
