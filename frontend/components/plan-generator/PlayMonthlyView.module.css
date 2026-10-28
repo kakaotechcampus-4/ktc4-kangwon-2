@@ -89,6 +89,13 @@
   min-height: 3.5mm;
   white-space: pre-line;
 }
+.cell[role="button"] {
+  cursor: pointer;
+}
+.selected {
+  outline: 2px solid #2563eb;
+  background: #dbeafe;
+}
 .bar {
   margin: 8px 0 4px;
   font-weight: 700;

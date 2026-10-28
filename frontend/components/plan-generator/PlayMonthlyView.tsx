@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppHeader from "@/components/app/AppHeader";
 import workspace from "@/components/workspace/Workspace.module.css";
 import { ApiError } from "@/lib/api/client";
@@ -7,6 +7,9 @@ import { getMe } from "@/lib/api/auth";
 import { getClasses } from "@/lib/api/classes";
 import { getPlayMonthly } from "@/lib/api/playMonthly";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
+import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
+import { cellValue, overlayCells } from "@/lib/plan-generator/playMonthlyQueue";
+import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlySheet from "./PlayMonthlySheet";
 import type { SheetZoom } from "./playProjectPagination";
 import styles from "./PlayMonthlyView.module.css";
@@ -32,12 +35,46 @@ export function noticeSummary(notices: PlayMonthlyPlan["notices"]) {
     .join(" · ");
 }
 
+const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
+const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
+const INPUT_LABELS: Record<string, string> = {
+  fire_disaster_drill: "소방대피/재난대비",
+  specialized_timetable: "특성화 시간표",
+  special_activity_timetable: "특별활동 시간표",
+  class_notice: "안내사항",
+  class_birthdays: "우리반 생일",
+  home_connection: "가정연계",
+};
+
+/** 고칠 수 있는 칸의 이름표. 놀이 행의 「설명」은 문서에 안 나와 행 이름을 누르면 패널에 함께 뜬다. */
+export function cellLabels(plan: PlayMonthlyPlan) {
+  const labels: Record<string, string> = {
+    [plan.theme.item_id]: "놀이 주제",
+    [plan.rationale.item_id]: "주제선정이유",
+    [plan.health.cell.item_id]: "건강",
+    [plan.nutrition.cell.item_id]: "영양",
+  };
+  for (const row of [...plan.together, ...plan.free_play]) {
+    labels[row.name.item_id] = "놀이 행 이름";
+    labels[row.description.item_id] = "놀이 행 설명";
+  }
+  const weekLabel = (id: string) => plan.weeks.find((w) => w.week_id === id)?.label ?? "";
+  for (const h of plan.habits) labels[h.cell.item_id] = `기본생활습관 · ${weekLabel(h.week_id)}`;
+  for (const c of plan.safety_candidates) labels[c.cell.item_id] = "안전교육 후보";
+  for (const d of plan.drill_candidates) labels[d.cell.item_id] = `훈련 후보 · ${d.label}`;
+  for (const t of plan.teacher_inputs) labels[t.cell.item_id] = INPUT_LABELS[t.key] ?? t.key;
+  return labels;
+}
+
 export default function PlayMonthlyView({ id }: { id: number }) {
   const valid = Number.isSafeInteger(id) && id > 0;
   const [loaded, setLoaded] = useState<{
     key: string;
     plan: PlayMonthlyPlan | null;
     error: string;
+    /** 다른 곳에서 바뀌어 다시 불러왔을 때의 안내와, 화면을 새로 그리게 하는 번호. */
+    notice?: string;
+    version?: number;
   } | null>(null);
   const [names, setNames] = useState<{ classId: number; name: string } | null>(null);
   const [retry, setRetry] = useState(0);
@@ -59,6 +96,27 @@ export default function PlayMonthlyView({ id }: { id: number }) {
     return () => controller.abort();
   }, [id, key, valid]);
 
+  // 저장이 409 로 막히면 최신 계획안으로 바꾼다. 요청이 겹치면 마지막 응답만 반영한다.
+  const lastReload = useRef(0);
+  function reloadAfterConflict() {
+    const mine = ++lastReload.current;
+    const apply = (next: (cur: typeof loaded) => typeof loaded) =>
+      mine === lastReload.current && setLoaded(next);
+    getPlayMonthly(id).then(
+      (fresh) =>
+        apply((cur) => ({
+          key,
+          plan: fresh,
+          error: "",
+          notice: STALE_NOTICE,
+          version: (cur?.version ?? 0) + 1,
+        })),
+      () =>
+        apply(
+          (cur) => cur && { ...cur, notice: "최신 내용을 불러오지 못했어요. 새로고침해 주세요." },
+        ),
+    );
+  }
   const current = loaded?.key === key ? loaded : null;
   const plan = current?.plan ?? null;
   const error = valid ? (current?.error ?? "") : "올바른 계획안 주소가 아닙니다.";
@@ -104,11 +162,66 @@ export default function PlayMonthlyView({ id }: { id: number }) {
         </p>
       </>
     );
+  return (
+    <>
+      {header}
+      <PlayMonthlyBody
+        key={key + ":" + (current?.version ?? 0)}
+        initial={plan}
+        className={names?.classId === plan.class_id ? names.name : ""}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        notice={current?.notice}
+        onConflict={reloadAfterConflict}
+      />
+    </>
+  );
+}
+
+function PlayMonthlyBody({
+  initial,
+  className,
+  zoom,
+  onZoomChange,
+  notice,
+  onConflict,
+}: {
+  initial: PlayMonthlyPlan;
+  className: string;
+  zoom: SheetZoom;
+  onZoomChange: (zoom: SheetZoom) => void;
+  notice?: string;
+  onConflict: () => void;
+}) {
+  const [plan, setPlan] = useState(initial);
+  // 입력 중 글(문서가 바로 따라간다) · 고른 칸 · 입력창을 다시 열 번호(되돌리기 · 거절) · 안내.
+  const [live, setLive] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<string | null>(null);
+  const [epoch, setEpoch] = useState(0);
+  const [message, setMessage] = useState("");
+  const save = usePlayMonthlySave(plan, setPlan, onConflict, () => {
+    setLive({});
+    setEpoch((n) => n + 1);
+    setMessage("저장하지 못한 칸은 원래대로 되돌렸어요.");
+  });
+  const confirmed = plan.status === "CONFIRMED";
+  const shown = overlayCells(plan, live);
+  const labels = cellLabels(plan);
+  const through = (direction: "undo" | "redo") => {
+    save[direction]();
+    setLive({});
+    setEpoch((n) => n + 1);
+    setMessage(direction === "undo" ? "되돌렸어요" : "다시 했어요");
+  };
+  const row = [...plan.together, ...plan.free_play].find((r) => r.name.item_id === selected);
+  const editing = !confirmed && selected && labels[selected] ? [selected] : [];
+  if (row) editing.push(row.description.item_id);
+  const clearLive = (id: string) =>
+    setLive((drafts) => Object.fromEntries(Object.entries(drafts).filter(([k]) => k !== id)));
   const summary = noticeSummary(plan.notices);
   const rows = [...plan.together, ...plan.free_play];
   return (
     <>
-      {header}
       <main className={workspace.page}>
         <div className={styles.meta}>
           <span className={workspace.badge}>{plan.status === "CONFIRMED" ? "확정됨" : "초안"}</span>
@@ -116,9 +229,54 @@ export default function PlayMonthlyView({ id }: { id: number }) {
             {plan.school_year}학년도 {plan.month}월
           </span>
           {summary && <span role="status">빈 곳 · {summary} (확정을 막지 않아요)</span>}
+          {!confirmed && (
+            <>
+              <span role="status">{SAVE_LABEL[save.status]}</span>
+              {save.status === "failed" && (
+                <button type="button" className={workspace.secondary} onClick={save.retry}>
+                  다시 저장
+                </button>
+              )}
+              {(["undo", "redo"] as const).map((direction) => (
+                <button
+                  key={direction}
+                  type="button"
+                  className={workspace.secondary}
+                  disabled={direction === "undo" ? !save.canUndo : !save.canRedo}
+                  onClick={() => through(direction)}
+                >
+                  <span aria-hidden="true">{direction === "undo" ? "⟲" : "⟳"}</span>{" "}
+                  {direction === "undo" ? "되돌리기" : "다시 하기"}
+                </button>
+              ))}
+            </>
+          )}
+          <span role="status">{message}</span>
         </div>
+        {notice && <p role="status">{notice}</p>}
         <div className={styles.layout}>
           <aside className={styles.side} aria-label="연간에서 고른 놀이">
+            {!confirmed && (
+              <section aria-label="칸 편집">
+                <h2>칸 편집</h2>
+                {editing.length === 0 && <p>문서의 칸을 누르면 여기서 고칠 수 있어요.</p>}
+                {editing.map((itemId, index) => (
+                  <PlayCellEditor
+                    key={itemId + ":" + epoch}
+                    id={"play-monthly-cell-" + index}
+                    label={labels[itemId]}
+                    value={cellValue(plan, itemId) ?? ""}
+                    allowBlank
+                    onDraft={(text) => setLive((drafts) => ({ ...drafts, [itemId]: text }))}
+                    onSave={(text) => {
+                      clearLive(itemId);
+                      save.editCell(itemId, text);
+                    }}
+                    onRevert={() => clearLive(itemId)}
+                  />
+                ))}
+              </section>
+            )}
             <h2>연간에서 고른 놀이</h2>
             <ul>
               {plan.parent.plays.map((play) => (
@@ -149,10 +307,12 @@ export default function PlayMonthlyView({ id }: { id: number }) {
             </ul>
           </aside>
           <PlayMonthlySheet
-            plan={plan}
-            className={names?.classId === plan.class_id ? names.name : ""}
+            plan={shown}
+            selected={selected}
+            onSelect={confirmed ? undefined : setSelected}
+            className={className}
             zoom={zoom}
-            onZoomChange={setZoom}
+            onZoomChange={onZoomChange}
           />
         </div>
       </main>

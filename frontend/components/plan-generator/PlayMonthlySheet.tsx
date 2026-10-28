@@ -1,22 +1,41 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { PlayMonthlyActivity, PlayMonthlyPlan } from "@/lib/api/types";
 import { stepPlaySheetZoom, type SheetZoom } from "./playProjectPagination";
 import sheet from "./PlayProjectResult.module.css";
 import styles from "./PlayMonthlyView.module.css";
 
-// 칸은 글자로만 그린다. 고치기(④ · ⑤)는 data-cell 자리에 붙인다.
-const Cell = ({ id, value }: { id: string; value: string }) => (
-  <span className={styles.cell} data-cell={id}>
+/** 칸을 고를 수 있으면(`onSelect`) 누르는 칸이 되고, 고른 칸(`selected`)은 강조한다. 확정본은 `onSelect` 가 없어 글자만 그린다. */
+interface Pick {
+  selected?: string | null;
+  onSelect?: (itemId: string) => void;
+}
+const Cell = ({ id, value, selected, onSelect }: Pick & { id: string; value: string }) => (
+  <span
+    className={selected === id ? `${styles.cell} ${styles.selected}` : styles.cell}
+    data-cell={id}
+    {...(onSelect && {
+      role: "button",
+      tabIndex: 0,
+      "aria-pressed": selected === id,
+      onClick: () => onSelect(id),
+      onKeyDown: (e: KeyboardEvent<HTMLSpanElement>) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(id);
+        }
+      },
+    })}
+  >
     {value}
   </span>
 );
 const md = (date: string) => date.slice(5).replace("-", ".");
-const Rows = ({ rows }: { rows: PlayMonthlyActivity[] }) => (
+const Rows = ({ rows, ...at }: Pick & { rows: PlayMonthlyActivity[] }) => (
   <ol>
     {rows.map((row) => (
       <li key={row.activity_id}>
-        <Cell id={row.name.item_id} value={row.name.value} />
+        <Cell {...at} id={row.name.item_id} value={row.name.value} />
       </li>
     ))}
   </ol>
@@ -27,12 +46,15 @@ export default function PlayMonthlySheet({
   className,
   zoom,
   onZoomChange,
+  selected,
+  onSelect,
 }: {
   plan: PlayMonthlyPlan;
   className: string;
   zoom: SheetZoom;
   onZoomChange: (zoom: SheetZoom) => void;
-}) {
+} & Pick) {
+  const at = { selected, onSelect };
   const viewport = useRef<HTMLDivElement>(null);
   const page = useRef<HTMLElement>(null);
   const [fit, setFit] = useState(100);
@@ -59,7 +81,7 @@ export default function PlayMonthlySheet({
     return (
       <tr key={key}>
         <th scope="row">{label}</th>
-        <td>{cell && <Cell id={cell.item_id} value={cell.value} />}</td>
+        <td>{cell && <Cell {...at} id={cell.item_id} value={cell.value} />}</td>
       </tr>
     );
   };
@@ -103,7 +125,7 @@ export default function PlayMonthlySheet({
                 <tr>
                   <th scope="row">놀이 주제</th>
                   <td colSpan={3}>
-                    <Cell id={plan.theme.item_id} value={plan.theme.value} />
+                    <Cell {...at} id={plan.theme.item_id} value={plan.theme.value} />
                   </td>
                 </tr>
                 <tr>
@@ -117,7 +139,7 @@ export default function PlayMonthlySheet({
                 <tr>
                   <th scope="row">주제선정이유</th>
                   <td colSpan={3}>
-                    <Cell id={plan.rationale.item_id} value={plan.rationale.value} />
+                    <Cell {...at} id={plan.rationale.item_id} value={plan.rationale.value} />
                   </td>
                 </tr>
               </tbody>
@@ -126,7 +148,7 @@ export default function PlayMonthlySheet({
             <div className={styles.board}>
               <section>
                 <h3>함께 하는 활동</h3>
-                <Rows rows={plan.together} />
+                <Rows {...at} rows={plan.together} />
               </section>
               <div className={styles.center}>
                 <small>우리의 놀이</small>
@@ -134,7 +156,7 @@ export default function PlayMonthlySheet({
               </div>
               <section>
                 <h3>유아 예상 자유놀이</h3>
-                <Rows rows={plan.free_play} />
+                <Rows {...at} rows={plan.free_play} />
               </section>
             </div>
             <table className={styles.doc}>
@@ -158,7 +180,7 @@ export default function PlayMonthlySheet({
                     const habit = plan.habits.find((h) => h.week_id === week.week_id);
                     return (
                       <td key={week.week_id}>
-                        {habit && <Cell id={habit.cell.item_id} value={habit.cell.value} />}
+                        {habit && <Cell {...at} id={habit.cell.item_id} value={habit.cell.value} />}
                       </td>
                     );
                   })}
@@ -169,7 +191,7 @@ export default function PlayMonthlySheet({
                     const cell = safetyText(week.week_id);
                     return (
                       <td key={week.week_id}>
-                        {cell && <Cell id={cell.item_id} value={cell.value} />}
+                        {cell && <Cell {...at} id={cell.item_id} value={cell.value} />}
                       </td>
                     );
                   })}
@@ -177,7 +199,7 @@ export default function PlayMonthlySheet({
                 <tr>
                   <th scope="row">소방대피/재난대비</th>
                   <td colSpan={plan.weeks.length}>
-                    {drill && <Cell id={drill.item_id} value={drill.value} />}
+                    {drill && <Cell {...at} id={drill.item_id} value={drill.value} />}
                   </td>
                 </tr>
               </tbody>
@@ -188,11 +210,15 @@ export default function PlayMonthlySheet({
                   <th scope="row">건강‧영양교육</th>
                   <td>
                     <b>[건강]</b>{" "}
-                    <Cell id={plan.health.cell.item_id} value={plan.health.cell.value} />
+                    <Cell {...at} id={plan.health.cell.item_id} value={plan.health.cell.value} />
                   </td>
                   <td>
                     <b>[영양]</b>{" "}
-                    <Cell id={plan.nutrition.cell.item_id} value={plan.nutrition.cell.value} />
+                    <Cell
+                      {...at}
+                      id={plan.nutrition.cell.item_id}
+                      value={plan.nutrition.cell.value}
+                    />
                   </td>
                 </tr>
               </tbody>
@@ -205,7 +231,7 @@ export default function PlayMonthlySheet({
                     <tr>
                       <td>
                         {teacher(key) && (
-                          <Cell id={teacher(key)!.item_id} value={teacher(key)!.value} />
+                          <Cell {...at} id={teacher(key)!.item_id} value={teacher(key)!.value} />
                         )}
                       </td>
                     </tr>

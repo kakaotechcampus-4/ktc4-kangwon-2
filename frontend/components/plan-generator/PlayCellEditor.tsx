@@ -7,15 +7,15 @@ export const MAX_CELL_LENGTH = 600;
 /** 입력을 멈춘 뒤 저장하기까지. */
 export const SAVE_DELAY_MS = 1000;
 
-const isSavable = (raw: string) => {
+const isSavable = (raw: string, allowBlank: boolean) => {
   const length = [...raw.trim()].length;
-  return length > 0 && length <= MAX_CELL_LENGTH;
+  return (allowBlank || length > 0) && length <= MAX_CELL_LENGTH;
 };
 
 /**
  * 칸 하나의 입력창 (ADR-044 §2). 칸이 바뀌면 부모가 `key` 로 새로 만든다.
  * 입력을 1초 멈추거나 칸을 떠나면(blur) 앞뒤 공백을 턴 값으로 저장한다.
- * 비었거나 600자를 넘으면 저장하지 않고, 떠날 때 마지막 저장값(`value`)으로 되돌린다.
+ * 비었거나(`allowBlank` 면 빈 값은 저장한다) 600자를 넘으면 저장하지 않고, 떠날 때 마지막 저장값(`value`)으로 되돌린다.
  */
 export default function PlayCellEditor({
   id,
@@ -24,6 +24,7 @@ export default function PlayCellEditor({
   onDraft,
   onSave,
   onRevert,
+  allowBlank = false,
 }: {
   id: string;
   label: string;
@@ -35,18 +36,20 @@ export default function PlayCellEditor({
   onSave: (text: string) => void;
   /** 되돌렸다 — 미리보기도 마지막 저장값으로. */
   onRevert: () => void;
+  /** 빈 값도 저장한다(놀이 월간). 기본은 거절 — 연간 동작 그대로. */
+  allowBlank?: boolean;
 }) {
   const [text, setText] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 아직 저장도 되돌림도 안 한 입력이 있는가와 그 글. 입력창이 blur 없이 사라질 때만 쓴다.
   const pending = useRef<string | null>(null);
-  const latest = useRef({ onSave, onRevert });
+  const latest = useRef({ onSave, onRevert, allowBlank });
   const length = [...text.trim()].length; // 서버는 글자(코드포인트) 수로 센다.
-  const blank = length === 0;
+  const blank = length === 0 && !allowBlank;
   const over = length > MAX_CELL_LENGTH;
 
   useEffect(() => {
-    latest.current = { onSave, onRevert };
+    latest.current = { onSave, onRevert, allowBlank };
   });
   useEffect(
     () => () => {
@@ -54,7 +57,7 @@ export default function PlayCellEditor({
       const raw = pending.current;
       if (raw === null) return;
       // blur 없이 사라졌다(탭 · 칸이 바뀌어 새로 그려짐) — 저장할 만하면 보내고, 아니면 미리보기를 되돌린다.
-      if (isSavable(raw)) latest.current.onSave(raw.trim());
+      if (isSavable(raw, latest.current.allowBlank)) latest.current.onSave(raw.trim());
       else latest.current.onRevert();
     },
     [],
@@ -70,7 +73,7 @@ export default function PlayCellEditor({
   }
 
   function saveIfValid(raw: string) {
-    if (!isSavable(raw)) return;
+    if (!isSavable(raw, allowBlank)) return;
     pending.current = null;
     onSave(raw.trim());
   }
