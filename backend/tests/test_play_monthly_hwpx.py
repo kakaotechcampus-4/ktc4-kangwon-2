@@ -94,7 +94,9 @@ def cells(content: bytes) -> dict[tuple[int, int], etree._Element]:
     out = {}
     for tc in table(content).iterfind("hp:tr/hp:tc", NS):
         addr = tc.find("hp:cellAddr", NS)
-        out[(int(addr.get("rowAddr")), int(addr.get("colAddr")))] = tc
+        address = (int(addr.get("rowAddr")), int(addr.get("colAddr")))
+        assert address not in out, f"같은 주소 칸 두 개 {address}"
+        out[address] = tc
     return out
 
 
@@ -153,6 +155,8 @@ def assert_whole_grid(content: bytes) -> None:
         addr, span = tc.find("hp:cellAddr", NS), tc.find("hp:cellSpan", NS)
         r, c = int(addr.get("rowAddr")), int(addr.get("colAddr"))
         rs, cs = int(span.get("rowSpan")), int(span.get("colSpan"))
+        # 0 병합 칸은 펼치면 사라져 덮임 검사를 빠져나간다 — 크기 · 병합 수를 먼저 본다.
+        assert min(rs, cs, *size(tc)) > 0, (r, c, rs, cs, size(tc))
         covered += [(r + i, c + j) for i in range(rs) for j in range(cs)]
         spans.append((c, c + cs, int(tc.find("hp:cellSz", NS).get("width"))))
     assert sorted(covered) == [(r, c) for r in range(rows) for c in range(cols)]
@@ -285,9 +289,28 @@ def test_a_deeper_split_adds_rows_and_moves_the_rows_below() -> None:
     found = sorted((text(tc) for tc in special_cells(content)), key=lambda t: int(t.split()[1]))
     assert found == [f"특활 {i}" for i in range(1, 17)]
     height = round(24 * HWPUNIT_PER_MM)
-    first = height * 30 // 100
+    first, second = round(height * 30 / 100), round(height * 65 / 100)
     thursday_cells = [tc for tc in special_cells(content) if text(tc) in {"특활 11", "특활 12"}]
-    assert [size(tc)[1] for tc in thursday_cells] == [first, (height - first) * 50 // 100]
+    assert [size(tc)[1] for tc in thursday_cells] == [first, second - first]
+
+
+@pytest.mark.parametrize("axis", [V, H])
+def test_splitting_the_small_part_again_and_again_keeps_every_cell_positive(axis) -> None:
+    """작은 첫 갈래를 10%로 깊이 4까지 — 정수 나눗셈이면 경계가 겹쳐 0 크기 · 0 병합 칸이 나온다."""
+    small = (axis, 10, (axis, 10, (axis, 10, (axis, 10, None, None), None), None), None)
+    shapes = (*SPECIAL_ACTIVITY_START[:3], small, SPECIAL_ACTIVITY_START[4])
+    doc = replace(
+        document(),
+        special_activity=days(*shapes),
+        special_activity_size=TimetableSize((20, 20, 20, 5, 35), 16),
+    )
+    content = fill_play_monthly(TEMPLATE.read_bytes(), doc)
+
+    assert_whole_grid(content)  # 모든 칸 폭 · 높이 · 병합 수 > 0
+    raw = table(content).findall("hp:tr/hp:tc", NS)
+    assert len(raw) == len(cells(content)) == 77 - 13 + 17  # 주소 중복 없음, 칸 구역 13 → 17칸
+    found = sorted((text(tc) for tc in special_cells(content)), key=lambda t: int(t.split()[1]))
+    assert found == [f"특활 {i}" for i in range(1, 18)]
 
 
 def test_column_widths_and_height_are_drawn() -> None:

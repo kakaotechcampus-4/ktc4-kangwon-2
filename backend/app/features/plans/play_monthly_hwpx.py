@@ -31,6 +31,7 @@
 import copy
 import io
 import zipfile
+from fractions import Fraction
 from itertools import pairwise
 from pathlib import Path
 
@@ -215,13 +216,17 @@ def _set_special_activity(
         tc.find("hp:cellSz", NS).set("width", str(x1 - x0))
         span[tc] = (x0, x1)
 
+    # 경계는 분수로 펼친 뒤 정수로 옮긴다. 정수 나눗셈은 작은 쪽을 거듭 나누면 서로 다른 경계를
+    # 한 점(폭 · 높이 · 병합 수 0, 같은 주소 두 칸)으로 합친다(Codex HWTT-01).
     height = round(size.height_mm * HWPUNIT_PER_MM)
-    leaves = [
-        leaf
-        for day, (x0, x1) in zip(days, pairwise(edges), strict=True)
-        for leaf in _layout(day, x0, x1, 0, height)
-    ]
-    ys = sorted({y for *_, y0, y1 in leaves for y in (y0, y1)})
+    leaves = []
+    for day, (x0, x1) in zip(days, pairwise(edges), strict=True):
+        parts = _layout(day, Fraction(0), Fraction(1), Fraction(0), Fraction(1))
+        xs = _grid([x for _, a, b, *_ in parts for x in (a, b)], x0, x1)
+        leaves += [(text, xs[a], xs[b], y0, y1) for text, a, b, y0, y1 in parts]
+    ys = _grid([y for *_, y0, y1 in leaves for y in (y0, y1)], 0, height)
+    leaves = [(text, x0, x1, ys[y0], ys[y1]) for text, x0, x1, y0, y1 in leaves]
+    ys = sorted(ys.values())
     row = {y: i for i, y in enumerate(ys)}
     new_rows = [etree.Element(body[0].tag, body[0].attrib) for _ in ys[1:]]
     for text, x0, x1, y0, y1 in sorted(leaves, key=lambda leaf: (leaf[3], leaf[1])):
@@ -249,17 +254,34 @@ def _snap(x: int, lines: set[int]) -> int:
 
 
 def _layout(
-    part: PlayMonthlyDocumentPart, x0: int, x1: int, y0: int, y1: int
-) -> list[tuple[str, int, int, int, int]]:
+    part: PlayMonthlyDocumentPart, x0: Fraction, x1: Fraction, y0: Fraction, y1: Fraction
+) -> list[tuple[str, Fraction, Fraction, Fraction, Fraction]]:
     """나눔 트리 → (글, x0, x1, y0, y1) 사각형. 세로 나눔은 위 · 아래, 가로 나눔은 왼쪽 · 오른쪽."""
     if part.axis is None:
         return [(part.text, x0, x1, y0, y1)]
     first, second = part.parts
     if part.axis is SplitAxis.VERTICAL:
-        y = y0 + (y1 - y0) * part.ratio // 100
+        y = y0 + (y1 - y0) * Fraction(part.ratio, 100)
         return _layout(first, x0, x1, y0, y) + _layout(second, x0, x1, y, y1)
-    x = x0 + (x1 - x0) * part.ratio // 100
+    x = x0 + (x1 - x0) * Fraction(part.ratio, 100)
     return _layout(first, x0, x, y0, y1) + _layout(second, x, x1, y0, y1)
+
+
+def _grid(points: list[Fraction], start: int, end: int) -> dict[Fraction, int]:
+    """[start, end] 를 비율로 나눈 경계 → 정수 좌표. 서로 다른 경계는 1 단위 이상 떨어뜨린다.
+
+    1 단위(0.004mm) 칸은 한글이 글 높이 · 칸 여백만큼 늘린다. 경계가 단위 수보다 많으면 거절한다.
+    """
+    exact = sorted(set(points))
+    ints = [round(start + (end - start) * p) for p in exact]
+    for i in range(1, len(ints)):
+        ints[i] = max(ints[i], ints[i - 1] + 1)
+    ints[-1] = end
+    for i in range(len(ints) - 2, -1, -1):
+        ints[i] = min(ints[i], ints[i + 1] - 1)
+    if ints[0] != start:
+        raise TemplateMismatch("특별활동 칸 경계가 표 단위보다 촘촘하다.")
+    return dict(zip(exact, ints, strict=True))
 
 
 def _renumber_columns(table: etree._Element, span: dict[etree._Element, tuple[int, int]]) -> None:
