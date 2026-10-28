@@ -16,7 +16,7 @@ export const createAnnualPlan = (data: AnnualInput, signal?: AbortSignal) =>
     body: JSON.stringify(data),
     signal,
   });
-/** 계획 노트 목록. 이게 없으면 번호를 잃은 계획안을 다시 못 찾는다(§5). */
+/** 계획안 목록. 이게 없으면 번호를 잃은 계획안을 다시 못 찾는다(§5). */
 export const listAnnualPlans = (classId?: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualPlanSummary[] }>(
     "/api/plans/annual" + (classId ? "?class_id=" + classId : ""),

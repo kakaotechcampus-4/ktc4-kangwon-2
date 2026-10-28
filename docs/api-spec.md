@@ -41,7 +41,19 @@ login    { "email": "a@b.kr", "password": "여덟자이상" }                   
 응답     { "token": "...", "user": { "id": 1, "email": "...", "name": "...", "center_id": null } }
 
 me       GET /api/auth/me                                               → 200  위 user 모양
+
+비밀번호 PATCH /api/auth/password
+         { "current_password": "지금 것", "new_password": "여덟자이상" }      → 204
 ```
+
+**비밀번호를 바꿀 자리가 있어야 한다.** 다른 곳에서 쓰던 비밀번호로 가입한 교사가
+바꿀 길이 없으면 계정을 새로 만드는 수밖에 없다. 크롬은 자기가 저장해 둔 비밀번호가
+다른 주소의 입력 칸에 들어가면 그것을 피싱 신호로 보고 구글에 알린다.
+
+지금 비밀번호가 틀리거나 새 비밀번호가 지금 것과 같으면 **422 `VALIDATION_FAILED`** 다
+(`fields` 는 `current_password` 또는 `new_password`). **401 을 쓰지 않는다** — 401 은
+「토큰을 못 믿겠다」는 뜻으로 이미 쓰고 있어서, 화면이 로그인 만료로 읽고 교사를
+로그인 화면으로 내보낸다.
 
 **토큰을 `Authorization: Bearer <token>` 으로 실어 보낸다.** 12시간 뒤 만료된다.
 
@@ -2500,7 +2512,7 @@ together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
   §11 이 LLM 을 부를 때 `shared/childCode` 로 치환한다. 이 엔드포인트는 치환하지 않는다 —
   교사 화면에는 실명이 보여야 한다.
 - **브라우저에 저장하지 않는다.** 입력 즉시 서버로 보낸다 (ADR-013).
-  지금 FE 목업이 `localStorage` 에 쌓고 있다. 연동 PR 에서 제거한다.
+  화면은 `listRecords()` 로 서버를 본다 — 브라우저 저장소에 쌓지 않는다.
 
 ---
 
@@ -2558,12 +2570,13 @@ execution   활동실행 — 사실 층.  선택(저장은 비어도 된다).  �
 ```
 
 `affected_document_ids`는 **이번에 실제 변경·삭제된 근거를 직접 인용한, 같은 기관의
-확정 일일 보육일지** ID다. 사본과 현재 사실·날짜가 다르거나 원본이 삭제된 경우를 센다.
+확정 문서** ID다. 일과 기록을 직접 인용하는 종류는 둘이다 — 일일 보육일지와,
+`source_kind: "routine"` 으로 만든 주간 보육일지(§11). 사본과 현재 사실·날짜가 다르거나 원본이 삭제된 경우를 센다.
 시간은 초만 달라져도 변경이다. 요청 전후 이름·시간·활동실행·날짜가 같으면(계획·순서만
 수정한 경우 포함) 두 배열 모두 빈다. `newly_stale_document_ids`는 그중 이번 요청으로
 `stale=false`에서 `true`가 된 문서다. 이미 stale인 문서는 affected에만 포함된다.
 
-초안과 전파된 주간 문서는 기존 정책대로 stale 처리하되 안내 건수에서 제외한다.
+초안과 **연쇄로 전파된** 문서(확정 일일 보육일지를 근거로 쓴 주간)는 기존 정책대로 stale 처리하되 안내 건수에서 제외한다.
 다른 기관 문서는 영향 조회·전파 대상에서 제외한다. 기존 refresh·확정 정책은 유지한다.
 응답은 커밋 성공 후에만 반환한다.
 
@@ -2597,7 +2610,7 @@ observation  관찰일지        아동 단위   기간     종이 한 장 = 아
 assessment   영유아 평가      아동 단위   기간
 ```
 
-**문서 1개가 교사가 제출하는 종이 1장이다.** 종이 위 배치는 아래 「종이 한 장」에 적었다. `weeklyLog` · `assessment` 의 배치는 이번 개정 범위 밖이다.
+**문서 1개가 교사가 제출하는 종이 1장이다.** 종이 위 배치는 아래 「종이 한 장」에 적었다. `assessment` 의 배치는 이번 개정 범위 밖이다.
 
 **계획안(`annual` · `monthly`)은 이 엔드포인트가 아니다.** §4 ~ §7 이 다룬다.
 같은 「문서」라는 말을 쓰지만 근거가 다르다 — 계획안은 참조자료에서, 일지는 교사 기록에서 나온다.
@@ -2612,6 +2625,17 @@ assessment   영유아 평가      아동 단위   기간
   "start": "2026-09-01", "end": "2026-09-30",
   "source_ids": [12, 15, 19] }
 ```
+
+**`source_kind` 는 주간 보육일지에서만 고른다.** 생략하면 `"dailyLog"` 다.
+
+```
+source_kind   값                받는 kind      근거
+"dailyLog"    생략했을 때 기본    weeklyLog     확정된 일일 보육일지 (아래 층 구조)
+"routine"                        weeklyLog     일과 기록 — 일일 보육일지를 쓰지 않는 원
+```
+
+`weeklyLog` 가 아닌데 `"dailyLog"` 아닌 값을 보내면 `VALIDATION_FAILED` 422
+`fields: ["source_kind"]` 다. 보낸 값이 반영되지 않는데 받으면 교사는 고른 대로 만들어진 줄 안다.
 
 **Response** `201`
 
@@ -2630,7 +2654,7 @@ assessment   영유아 평가      아동 단위   기간
     { "id": 12, "date": "2026-09-22", "domain": "자연탐구", "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v1" },
-  "review_note": "",
+  "review_note": "", "class_note": "",
   "created_at": "...", "updated_at": "..."
 }
 ```
@@ -2656,6 +2680,7 @@ assessment   영유아 평가      아동 단위   기간
 ```
 양식          ① 사실 칸                ②③ 해석 + 지원 칸
 일일 보육일지   일과 행마다 「활동실행」     놀이 평가 및 다음날 지원계획
+주간 보육일지   날짜 행마다 「우리반 놀이」   놀이 이해 및 분석 / 앞으로의 지원방향 (두 칸)
 관찰기록       영역 행마다 「관찰내용」     평가
 ```
 
@@ -2693,13 +2718,48 @@ assessment   영유아 평가      아동 단위   기간
 - **일과 행 수를 고정하지 않는다.** [실측] 같은 반도 특별활동이 있는 날은 행이 하나 더 있고, 같은 일과도 날에 따라 끝나는 시간이 다르다.
 - **시간 · 일과 · 활동계획은 교사 입력을 그대로 싣는다.** 모델이 채우지 않는다.
 
+#### 주간 보육일지 — 반 1개 × 한 주 × 날짜 격자
+
+```
+머리   기간 · 반 · 결재란
+본문   날짜 | 우리반 놀이 | 놀이 이해 및 분석 | 앞으로의 지원방향 | 반 운영 특이사항
+       ← 하루에 한 줄.  줄 수 고정 안 함
+꼬리   주간 총평                              ← 해석 + 지원
+```
+
+- **[실측] 멘토가 준 현장 실물(2025년 도담어린이집 만3세)에서 가운데 세 칸이 우리 3층과 그대로 맞는다.**
+  실물은 하루마다 표를 하나씩 두는데, 우리는 한 표에 날짜마다 한 줄이다(2020 공식 사례 ③과 같은 모양).
+- **「우리반 놀이」는 그날 일과 **이름만** 적는다.** 활동실행까지 넣으면 한 줄이 종이 한 장이 된다.
+  실물도 놀이 이름을 늘어놓고, 무슨 일이 있었는지는 분석 칸에서 읽는다.
+- **근거가 일일 보육일지면** 분석 · 지원방향 칸은 그 일일 문서의 `해석` · `지원` 이고,
+  특이사항 칸은 그 일일 문서의 `class_note` 다.
+- **근거가 일과 기록(`source_kind: "routine"`)이면 그 세 칸을 비운다.** 날짜별 해석 · 지원이
+  이 문서에는 없다 — 한 주를 통째로 본 것 하나뿐이고 그것은 꼬리 「주간 총평」에 들어간다.
+  지어내서 채우면 교사가 쓰지 않은 말이 종이에 찍힌다.
+
+#### 반 운영 특이사항 — `class_note`
+
+**[실측] 공식 양식 5종과 멘토 실물 전부에 있는 칸이다.** 결석 · 부모면담 · 감염병 · 안전사고처럼
+그날 **반에 있었던 일**이라 놀이 기록이 아니다. 근거(관찰 · 일과 기록)에서 나오지 않아 교사가 직접 적는다.
+
+```
+documents.class_note   TEXT  기본 ""     3층(sections) 밖이다
+```
+
+- **`sections` 의 heading 셋(사실 · 해석 · 지원)을 건드리지 않는다.** 성격이 다른 칸이다.
+- `PUT /api/documents/{id}` 가 받는다. **보내지 않으면 이전 값을 둔다** — 이 칸을 모르는 예전 화면이 지우지 않게.
+- 단건 조회 · 생성 · 수정 · 확정 응답에 `class_note` 로 담긴다. 목록에는 담지 않는다.
+- **교사가 비워 둬도 종이에는 칸이 나간다.** 칸이 사라지면 손으로 그려 넣어야 한다.
+- 일일 보육일지 꼬리 두 번째 줄, 주간 보육일지 다섯 번째 열이다.
+
 ### `source_ids` 가 가리키는 것은 `kind` 마다 다르다
 
 ```
 dailyLog      일과 기록 id           §10-1            ← 관찰 기록이 아니다
 observation   관찰 기록 id           §10
 assessment    관찰 기록 id           §10
-weeklyLog     확정된 일일 보육일지 id   §11   ← 관찰 기록이 아니다
+weeklyLog     확정된 일일 보육일지 id   §11   source_kind: "dailyLog" (기본)
+weeklyLog     일과 기록 id           §10-1   source_kind: "routine"
 ```
 
 **주간 보육일지는 일일 보육일지를 근거로 쓴다.** 관찰 기록에서 바로 뽑지 않는다.
@@ -2708,6 +2768,12 @@ weeklyLog     확정된 일일 보육일지 id   §11   ← 관찰 기록이 아
 ```
 관찰 기록  →  일일 보육일지  →  주간 보육일지
 ```
+
+**[실측] 일일 보육일지를 아예 쓰지 않고 주간만 쓰는 원이 있다.** 그런 원에서는 위 층이
+비어 있어 주간을 만들 수 없다. 그래서 `source_kind: "routine"` 으로 **일일이 쓰는 것과 같은
+재료(일과 기록)를 그 주 전체에서 받는다** — 하루치만 받는 일일과 기간만 다르다.
+거절 규칙도 일일과 같다(없거나 남의 원 · 다른 반 · 활동실행이 비었다). 날짜는 `start ~ end` 안이다.
+`refresh` 도 같다 — 활동실행을 비웠거나 **문서 기간 밖으로** 옮긴 일과는 원본 없음과 같이 409 다.
 
 **근거로 쓸 일일 보육일지는 `CONFIRMED` 여야 한다.** `DRAFT` 를 근거로 쓰면
 그게 바뀔 때 주간이 통째로 흔들린다. 확정 전이면 `GATE_BLOCKED` 409 다.
@@ -2832,6 +2898,73 @@ origin   AI                         LLM 이 초안을 만들었다
 **`IMPORT` 는 거절 규칙을 적용하지 않는다.** `sources` 가 비고 `sections` 는
 `첨부 원문` 하나뿐이다. 우리가 만든 문서가 아니라 증빙이다.
 
+### 증빙 등록 — `POST /api/documents/import`   ★ 12주차
+
+**교사가 원에서 쓰던 서류를 올린다.** 생성(`POST /api/documents`)과 다른 길이다 —
+**근거 id 가 없고 LLM 을 부르지 않는다.**
+
+평가제 4-1 · 4-2 는 확정 문서를 센다(§12). **우리 서비스로 만든 적 없는 문서는 이 경로로만
+집계에 들어간다** — 영유아 평가는 만드는 기능이 아예 없어서 이 길이 없으면 4-2 가 늘 0 이다.
+
+**Request**
+
+```json
+{ "kind": "assessment", "class_id": 1, "child_id": 5,
+  "start": "2026-03-02", "end": "2026-08-30",
+  "title": "박서준 영유아 평가 (1학기).hwp",
+  "body": "원문 전체 ...",
+  "checks": { "original": true, "meta": true, "not_a_pass": true } }
+```
+
+| 칸 | 규칙 |
+|---|---|
+| `title` | 비면 서버가 `{아이 또는 반} {종류} ({기간})` 으로 만든다. 보통은 파일 이름이 들어온다 |
+| `body` | 원문 글자. **파일은 화면이 `/api/templates/extract` 로 먼저 글자로 바꾼다** — 이 API 는 파일을 받지 않는다 |
+| `checks` | 일지 확정의 확인 3개와 **다른 셋이다.** 사실·해석·지원이 없는 문서라 확인할 자리가 다르다 |
+
+```
+original      올린 원문이 실제 문서와 같은가
+meta          종류 · 반 · 아동 · 기간이 원문과 맞는가
+not_a_pass    등록이 평가 통과를 뜻하지 않는다는 것을 아는가
+```
+
+**확인 3개를 다 켜면 바로 `CONFIRMED` 다.** 초안으로 두면 집계에 안 들어가서 교사가
+「올렸는데 왜 0건이지」를 겪는다. 하나라도 끄면 `DRAFT` 로 둔다.
+
+거절(`VALIDATION_FAILED` 422) — `child_id`(아이 단위 종류인데 없다 · 반 단위 종류인데 있다) ·
+`end`(`dailyLog` 인데 하루가 아니다) · `start`(뒤집혔다) · `body`(비었다).
+남의 원 반 · 아동은 404 다.
+
+**Response** `201` — 단건 조회와 같은 모양에 `notices` 를 더한다.
+
+```json
+{ "id": 31, "kind": "assessment", "origin": "IMPORT", "status": "CONFIRMED",
+  "sections": [{ "heading": "첨부 원문", "body": "원문 전체 ...", "source_ids": [] }],
+  "sources": [],
+  "notices": [
+    { "code": "OUT_OF_REVIEW_PERIOD",
+      "message": "평가제가 보는 기간은 2025-10-01 ~ 2026-10-27 예요. 이 문서는 그 밖이라 4-2 집계에 들어가지 않아요." }
+  ] }
+```
+
+#### `notices` — 알리되 막지 않는다
+
+**내용을 판정하지 않는다.** 「이 문서가 지표를 충족한다」는 모델도 우리도 말하지 않는다
+(§12 · ADR-019 · ADR-022). 여기서 보는 것은 **집계에 들어갈 수 있는 모양인가**뿐이다.
+
+```
+ASSESSMENT_NEEDS_CHILD   영유아 평가인데 아동을 안 골랐다 — 4-2 는 아이마다 센다
+OUT_OF_REVIEW_PERIOD     평가제가 보는 기간 밖이다
+BODY_TOO_SHORT           원문이 50자 미만이다 — 파일을 제대로 읽었는지
+ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙이 이미 있다
+```
+
+**어긋나도 등록을 막지 않는다.** 원에서 쓰던 서류는 우리 규격을 모르고 쓰였다.
+못 올리게 하면 교사는 평가 점검 화면을 포기한다. 판정이 아니라 한 줄 안내다.
+
+**나중에 내용 점검을 붙인다면 `documents/evidence.py` 의 `check_evidence` 가 그 자리다** —
+등록 경로에서 점검을 부르는 곳은 거기 하나다.
+
 ### 동시에 고치면 뒤엣것이 이긴다 — 막는다
 
 **`PUT` 은 `updated_at` 을 같이 받는다.** 서버 값과 다르면 `STALE_WRITE` 409 로 거절한다.
@@ -2925,7 +3058,7 @@ GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": 
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
 POST   /api/documents/{id}/verify                                3단 LLM Judge.  **미구현 — 지금은 404**
-PUT    /api/documents/{id}                                       title · sections · review_note
+PUT    /api/documents/{id}                                       title · sections · review_note · class_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale
 POST   /api/documents/{id}/refresh                               근거 다시 뜨기 · stale 해제.  초안만
@@ -2984,7 +3117,8 @@ assessment    observation · dailyLog
 
 ### 내보내기 — `GET /api/documents/{id}/export/hwp`
 
-**관찰일지 · 일일 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼 복제한다.
+**관찰일지 · 일일 보육일지 · 주간 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼,
+주간 보육일지는 날짜 줄 하나를 그 주 날짜 수만큼 복제한다.
 
 **§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` 다 ·
 확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
@@ -3015,7 +3149,7 @@ assessment    observation · dailyLog
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
-| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 | `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 

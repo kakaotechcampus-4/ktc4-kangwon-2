@@ -42,6 +42,8 @@ export type SavedDocument = {
   createdAt: string;
   updatedAt: string;
   reviewNote: string;
+  /** 반 운영 특이사항 — 결석 · 부모면담 · 감염병 · 안전사고. 서버 일일 보육일지만 쓴다. */
+  classNote?: string;
   /** mock LLM 이 만든 초안. **본문이 아니라 여기로** 알린다 — 제출 문서에 시스템 글자를
    *  남기지 않으면서도 mock 을 실제 AI 로 보이게 하지 않는다. */
   mockDraft?: boolean;
