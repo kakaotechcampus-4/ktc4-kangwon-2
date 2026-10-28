@@ -125,8 +125,19 @@ const sheetStub = (props) => jsx("sheet", props);
 const editorStub = (props) => jsx("editor", props);
 const saved = [];
 let saveState = { status: "idle", canUndo: false, canRedo: false };
-const saveStub = () => ({
+let conflict;
+const saveStub = (plan, onPlan, onConflict) => ({
   ...saveState,
+  ...((conflict = onConflict), {}),
+  placeSafety: (...a) => (
+    saved.push(["safety", ...a]),
+    onPlan(queueModule.withSafety(plan, a[0], a[1]))
+  ),
+  copyDrill: (...a) => saved.push(["copy", ...a]),
+  removeActivity: (id) => (
+    saved.push(["remove", id]),
+    onPlan(queueModule.withoutActivity(plan, id))
+  ),
   editCell: (...a) => saved.push(["edit", ...a]),
   undo: () => saved.push(["undo"]),
   redo: () => saved.push(["redo"]),
@@ -146,6 +157,9 @@ function load() {
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
     "./PlayCellEditor": esModule(editorStub),
     "./PlayMonthlySheet": esModule(sheetStub),
+    "./PlayMonthlySafetyPanel": esModule((props) => jsx("safety", props)),
+    "./PlayMonthlyDrillPanel": esModule((props) => jsx("drill", props)),
+    "./PlayMonthlyRowRemove": esModule((props) => jsx("remove", props)),
     "./playProjectPagination": {},
     "./PlayMonthlyView.module.css": esModule(css),
   });
@@ -224,6 +238,69 @@ test("연간에서 고른 놀이 5개와 놀이 행의 누리과정 연결 ID �
   assert.equal(chips.length, 15);
   assert.deepEqual(chips.slice(0, 2), ["t.1", "t.2"]);
   assert.equal(all(side).filter((n) => ["button", "input", "textarea"].includes(n.type)).length, 0);
+});
+
+const node = (tree, type) => all(tree).filter((n) => n.type === type);
+
+test("안전 배치 · 훈련 복사 · 행 빼기 패널을 훅에 잇는다", async () => {
+  const plan = fixture();
+  const { tree, View, h } = await open(plan.id, async () => plan);
+  saved.length = 0;
+  const [safety] = node(tree, "safety");
+  const weekId = plan.safety_weeks[0].week_id;
+  const cand = plan.safety_candidates[0].cell.item_id;
+  assert.equal(safety.props.disabled, false);
+  safety.props.onPlace(weekId, cand);
+  safety.props.onPlace(weekId, null);
+  node(tree, "drill")[0].props.onCopy(cand);
+  assert.deepEqual(saved, [
+    ["safety", weekId, cand],
+    ["safety", weekId, null],
+    ["copy", cand],
+  ]);
+  // 두면 화면 계획안에 입혀진다.
+  safety.props.onPlace(weekId, cand);
+  const after = h.render(View, { id: plan.id });
+  assert.equal(node(after, "safety")[0].props.plan.safety_weeks[0].candidate_item_id, cand);
+  // 놀이 행 15개가 아니라 10개(함께 5 · 자유놀이 5), 각 구역 이름이 붙는다.
+  const removes = node(after, "remove");
+  assert.equal(removes.length, 10);
+  assert.equal(removes[0].props.section, "함께 하는 활동");
+  assert.equal(removes[9].props.section, "자유놀이");
+  assert.ok(removes.every((r) => r.props.isLastInSection === false));
+  const target = removes[0].props.activity.activity_id;
+  removes[0].props.onRemove(target);
+  const gone = h.render(View, { id: plan.id });
+  assert.equal(node(gone, "remove").length, 9);
+  assert.ok(node(gone, "remove").every((r) => r.props.activity.activity_id !== target));
+  assert.deepEqual(saved.at(-1), ["remove", target]);
+  saved.length = 0;
+});
+
+test("구역에 행이 하나 남으면 마지막 행으로 알린다", async () => {
+  const plan = fixture(false, (p) => ((p.together = p.together.slice(0, 1)), p));
+  const { tree } = await open(plan.id, async () => plan);
+  const flags = node(tree, "remove").map((r) => r.props.isLastInSection);
+  assert.deepEqual(flags, [true, false, false, false, false, false]);
+});
+
+test("확정본에는 안전 · 훈련 패널과 행 빼기가 없다", async () => {
+  const plan = fixture(true);
+  const { tree } = await open(plan.id, async () => plan);
+  for (const t of ["safety", "drill", "remove"]) assert.equal(node(tree, t).length, 0, t);
+});
+
+test("저장이 409 로 멈추면 패널 · 행 빼기를 잠근다", async () => {
+  const plan = fixture();
+  const { tree, View, h } = await open(plan.id, async () => plan);
+  assert.equal(node(tree, "drill")[0].props.disabled, false);
+  conflict();
+  const locked = h.render(View, { id: plan.id });
+  for (const t of ["safety", "drill", "remove"])
+    assert.ok(
+      node(locked, t).every((n) => n.props.disabled === true),
+      t,
+    );
 });
 
 test("강조한 놀이에는 표시가 붙는다", async () => {

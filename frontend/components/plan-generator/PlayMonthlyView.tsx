@@ -10,6 +10,9 @@ import type { PlayMonthlyPlan } from "@/lib/api/types";
 import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
 import { cellValue, overlayCells } from "@/lib/plan-generator/playMonthlyQueue";
 import PlayCellEditor from "./PlayCellEditor";
+import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
+import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
+import PlayMonthlySafetyPanel from "./PlayMonthlySafetyPanel";
 import PlayMonthlySheet from "./PlayMonthlySheet";
 import type { SheetZoom } from "./playProjectPagination";
 import styles from "./PlayMonthlyView.module.css";
@@ -199,12 +202,23 @@ function PlayMonthlyBody({
   const [selected, setSelected] = useState<string | null>(null);
   const [epoch, setEpoch] = useState(0);
   const [message, setMessage] = useState("");
-  const save = usePlayMonthlySave(plan, setPlan, onConflict, () => {
-    setLive({});
-    setEpoch((n) => n + 1);
-    setMessage("저장하지 못한 칸은 원래대로 되돌렸어요.");
-  });
+  // 409 로 저장이 멈추면 최신 계획안으로 바뀔 때까지 구조 편집을 잠근다.
+  const [stopped, setStopped] = useState(false);
+  const save = usePlayMonthlySave(
+    plan,
+    setPlan,
+    () => {
+      setStopped(true);
+      onConflict();
+    },
+    () => {
+      setLive({});
+      setEpoch((n) => n + 1);
+      setMessage("저장하지 못한 칸은 원래대로 되돌렸어요.");
+    },
+  );
   const confirmed = plan.status === "CONFIRMED";
+  const locked = stopped; // 확정 시작(freeze)으로 잠글 때도 이 값에 || 로 더한다.
   const shown = overlayCells(plan, live);
   const labels = cellLabels(plan);
   const through = (direction: "undo" | "redo") => {
@@ -277,6 +291,12 @@ function PlayMonthlyBody({
                 ))}
               </section>
             )}
+            {!confirmed && (
+              <>
+                <PlayMonthlySafetyPanel plan={plan} onPlace={save.placeSafety} disabled={locked} />
+                <PlayMonthlyDrillPanel plan={plan} onCopy={save.copyDrill} disabled={locked} />
+              </>
+            )}
             <h2>연간에서 고른 놀이</h2>
             <ul>
               {plan.parent.plays.map((play) => (
@@ -302,6 +322,17 @@ function PlayMonthlyBody({
                       </span>
                     ))}
                   </span>
+                  {!confirmed && (
+                    <PlayMonthlyRowRemove
+                      activity={row}
+                      section={plan.together.includes(row) ? "함께 하는 활동" : "자유놀이"}
+                      onRemove={save.removeActivity}
+                      disabled={locked}
+                      isLastInSection={
+                        (plan.together.includes(row) ? plan.together : plan.free_play).length === 1
+                      }
+                    />
+                  )}
                 </li>
               ))}
             </ul>
