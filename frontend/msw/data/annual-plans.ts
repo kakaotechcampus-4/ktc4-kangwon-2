@@ -6,7 +6,11 @@ import type {
   AnnualMonth,
   MonthInput,
   AnnualPlan,
+  AnnualPlanResponse,
   AnnualPlanSummary,
+  PlayProjectAnnualPlan,
+  PlayCell,
+  MonthlyCell,
   ConfirmResult,
 } from "../../lib/api/types";
 
@@ -62,6 +66,60 @@ export const months = (): AnnualMonth[] =>
     ],
     generation: { method: "RULE_LLM", rule_id: "mock.yearly.theme", rule_version: "mock-v1" },
   }));
+const projectGeneration = {
+  method: "RULE_LLM",
+  rule_id: "play_project.generate",
+  rule_version: "play-project-planner-v6",
+};
+/** 서버처럼 `item_` + 32자리 hex. 목업은 계획안 · 구간 · 후보 · 칸 번호로 결정적으로 만든다. */
+const itemId = (...parts: number[]) =>
+  "item_" + parts.map((n) => n.toString(16).padStart(32 / parts.length, "0")).join("");
+const projectCell = (
+  item_id: string,
+  value: string,
+  evidence: MonthlyCell["evidence"] = [],
+): PlayCell => ({
+  item_id,
+  value,
+  evidence,
+  generation: projectGeneration,
+});
+const projectPeriods = (planId: number): PlayProjectAnnualPlan["periods"] =>
+  [
+    { period_key: "m03_m05", label: "3월~5월", months: [3, 4, 5] },
+    { period_key: "m06_m08", label: "6월~8월", months: [6, 7, 8] },
+    { period_key: "m09_m11", label: "9월~11월", months: [9, 10, 11] },
+    { period_key: "m12_m02", label: "12월~2월", months: [12, 1, 2] },
+  ].map((period, periodIndex) => ({
+    ...period,
+    selected: [],
+    candidates: Array.from({ length: 10 }, (_, index) => {
+      const number = index + 1;
+      return {
+        row_key: "cand" + number,
+        play_name: projectCell(
+          itemId(planId, periodIndex, number, 1),
+          `${period.months[0]}~${period.months[period.months.length - 1]}월 함께하는 놀이 ${number}`,
+        ),
+        materials: projectCell(itemId(planId, periodIndex, number, 2), "종이 상자, 크레파스"),
+        support_direction: projectCell(
+          itemId(planId, periodIndex, number, 3),
+          "유아가 관심을 보이는 재료를 충분히 탐색하도록 돕습니다.",
+        ),
+        learning: projectCell(
+          itemId(planId, periodIndex, number, 4),
+          "재료의 모양과 성질을 탐색하며 새로운 놀이 방법을 발견한다.\n친구와 생각을 나누며 함께 놀이를 이어간다.",
+          [1, 2].map((item) => ({
+            source_type: "CURRICULUM",
+            source_id: `nuri2019.${periodIndex + 1}.${number}.${item}`,
+            source_version: "nuri-curriculum-content-v0.1.0",
+            effective_date: null,
+            display_name: null,
+          })),
+        ),
+      };
+    }),
+  }));
 /** 서버 Core 의 생성 행위자(generate_yearly_plan). */
 const SYSTEM_ACTOR = "yearly_application";
 /** 서버는 `user_{users.id}` 다. 목업 계정 id 는 하나다. */
@@ -86,6 +144,13 @@ function stamp(db: Database, id: number): string {
 }
 const record = (db: Database, id: number, ...events: AnnualAuditEvent[]) =>
   (db.annualAudit[id] ??= []).push(...events);
+/** 놀이 프로젝트형 이벤트는 여덟 키가 항상 온다(§7-1). 월별 주제형과 달리 `month` 는 늘 null 이다. */
+const PLAY_SYSTEM_ACTOR = "play_project_application";
+const playEvent = (
+  type: AnnualAuditEvent["type"],
+  occurred_at: string,
+  more: Partial<AnnualAuditEvent> = {},
+): AnnualAuditEvent => event(type, occurred_at, { item_id: null, selection_change: null, ...more });
 /**
  * 서버 검사기처럼 법정 6구분마다 「주기」 · 「시수」 UNVERIFIED 를 하나씩 낸다(P0 는 배치 입력이 없다).
  * 구분 이름 · 법정 주기 · 시수는 적지 않는다 — 법령 값의 원본은 서버 쪽 하나다.
@@ -100,18 +165,32 @@ const checks = (): AnnualPlan["checks"] =>
     })),
   );
 /** 응답에는 시각을 담지 않는다 — 목록 요약 · 확정 응답만 준다(§4 · §5). */
-const detail = (p: MockAnnualPlan): AnnualPlan => ({
-  id: p.id,
-  class_id: p.class_id,
-  // 이 필드가 생기기 전에 브라우저에 쌓인 목업 계획안은 월간 주제형이다(ADR-043).
-  format: p.format ?? "MONTHLY_THEME",
-  school_year: p.school_year,
-  status: p.status,
-  months: p.months,
-  safety_categories: safetyCategories,
-  checked_rules: p.checked_rules,
-  checks: p.checks,
-});
+const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
+  if (p.format === "PLAY_PROJECT")
+    return {
+      id: p.id,
+      // 이 키가 생기기 전에 저장된 목업 계획안에는 없다 — 서버가 첫 상태로 주는 값으로 읽는다.
+      revision: p.revision ?? 1,
+      class_id: p.class_id,
+      school_year: p.school_year,
+      status: p.status,
+      format: p.format,
+      format_version: p.format_version,
+      periods: p.periods.map((period) => ({ ...period, selected: period.selected ?? [] })),
+    };
+  return {
+    id: p.id,
+    class_id: p.class_id,
+    // format 도입 전 저장된 목업은 필드가 없어 월간 주제형으로 읽는다(ADR-043 읽기 호환).
+    format: "MONTHLY_THEME",
+    school_year: p.school_year,
+    status: p.status,
+    months: p.months,
+    safety_categories: safetyCategories,
+    checked_rules: p.checked_rules,
+    checks: p.checks,
+  };
+};
 export const findPlan = (id: number) => {
   const plan = read().plans.find((p) => p.id === id);
   return plan && detail(plan);
@@ -136,33 +215,68 @@ export const addPlan = (input: AnnualInput, schoolYear: number) =>
   commit((db) => {
     const id = db.next++,
       at = stamp(db, id);
-    const plan: MockAnnualPlan = {
-      id,
-      class_id: input.class_id,
-      format: "MONTHLY_THEME",
-      school_year: schoolYear,
-      status: "DRAFT",
-      months: months(),
-      checked_rules: ["legal_hours"],
-      checks: checks(),
-      created_at: at,
-      confirmed_at: null,
-    };
+    const plan: MockAnnualPlan =
+      input.format === "PLAY_PROJECT"
+        ? {
+            id,
+            class_id: input.class_id,
+            school_year: schoolYear,
+            status: "DRAFT",
+            format: "PLAY_PROJECT",
+            revision: 1,
+            format_version: "play-project-layout-v0.2.0",
+            periods: projectPeriods(id),
+            created_at: at,
+            confirmed_at: null,
+          }
+        : {
+            id,
+            class_id: input.class_id,
+            format: "MONTHLY_THEME",
+            school_year: schoolYear,
+            status: "DRAFT",
+            months: months(),
+            checked_rules: ["legal_hours"],
+            checks: checks(),
+            created_at: at,
+            confirmed_at: null,
+          };
     db.plans.push(plan);
-    // 서버처럼 계획안 1건 + 달마다 1건, 같은 시각 · 시스템 행위자.
-    const created = { actor: null, system_actor: SYSTEM_ACTOR };
-    record(
-      db,
-      id,
-      event("CREATED", at, created),
-      ...plan.months.map((m) => event("CREATED", at, { ...created, month: m.month })),
-    );
+    if (plan.format === "PLAY_PROJECT") {
+      // 서버처럼 계획안 1건 + 칸마다 1건(후보 40개 × 4칸), 같은 시각 · 시스템 행위자.
+      const created = { actor: null, system_actor: PLAY_SYSTEM_ACTOR };
+      record(
+        db,
+        id,
+        playEvent("CREATED", at, created),
+        ...plan.periods.flatMap((period) =>
+          period.candidates.flatMap((c) =>
+            [c.play_name, c.materials, c.support_direction, c.learning].map((cell) =>
+              playEvent("CREATED", at, { ...created, item_id: cell.item_id }),
+            ),
+          ),
+        ),
+      );
+    }
+    if (plan.format === "MONTHLY_THEME") {
+      // 서버처럼 계획안 1건 + 달마다 1건, 같은 시각 · 시스템 행위자.
+      const created = { actor: null, system_actor: SYSTEM_ACTOR };
+      record(
+        db,
+        id,
+        event("CREATED", at, created),
+        ...plan.months.map((m) => event("CREATED", at, { ...created, month: m.month })),
+      );
+    }
     return detail(plan);
   });
 /** 그 달 전체 교체. 교사가 고쳐도 `evidence` · `generation` 은 그대로다 (§6). */
 export const putMonth = (id: number, month: number, input: MonthInput) =>
   commit((db) => {
-    const plan = db.plans.find((p) => p.id === id)!;
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "MONTHLY_THEME" }> =>
+        p.id === id && p.format !== "PLAY_PROJECT",
+    )!;
     const m = plan.months.find((m) => m.month === month)!;
     // 주제가 그대로여도 남는다(서버와 같다) — 그때 before · after 가 같다. 소주제는 이력에 없다.
     const value_change = { before: m.theme, after: input.theme };
@@ -205,3 +319,106 @@ export const confirmPlan = (id: number): ConfirmResult =>
 /** 이 키가 생기기 전에 저장된 목업 이력에는 `value_change` 가 없다 — 서버처럼 null 로 준다. */
 export const listAnnualAudit = (id: number): AnnualAuditEvent[] =>
   (read().annualAudit[id] ?? []).map((e) => ({ ...e, value_change: e.value_change ?? null }));
+
+/**
+ * 고르기를 통째로 바꾼다 (§6-1). 같은 선택이면 revision 도 그대로다(서버와 같다).
+ * 호출하기 전에 핸들러가 형식 · 확정 · revision · 없는 row_key 를 이미 걸렀다.
+ */
+export const putPlaySelection = (id: number, selections: Record<string, string[]>) =>
+  commit((db) => {
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "PLAY_PROJECT" }> =>
+        p.id === id && p.format === "PLAY_PROJECT",
+    )!;
+    const same = plan.periods.every(
+      (period) => (period.selected ?? []).join() === selections[period.period_key].join(),
+    );
+    if (!same) {
+      const at = stamp(db, id);
+      record(
+        db,
+        id,
+        ...plan.periods
+          .filter(
+            (period) => (period.selected ?? []).join() !== selections[period.period_key].join(),
+          )
+          .map((period) =>
+            playEvent("CANDIDATES_SELECTED", at, {
+              selection_change: {
+                period_key: period.period_key,
+                before: period.selected ?? [],
+                after: selections[period.period_key],
+              },
+            }),
+          ),
+      );
+      plan.periods.forEach((period) => (period.selected = selections[period.period_key]));
+      plan.revision = (plan.revision ?? 1) + 1; // 옛 저장본은 `revision` 이 없다(조회와 같이 1 로 읽는다).
+    }
+    return detail(plan);
+  });
+
+/** 후보의 놀이명 · 지원매체 · 지원 방향 칸을 찾는다. 배움 칸은 고칠 수 없다. */
+const EDITABLE = ["play_name", "materials", "support_direction"] as const;
+function findPlayCell(plan: PlayProjectAnnualPlan, itemId: string) {
+  for (const period of plan.periods)
+    for (const candidate of period.candidates)
+      for (const field of EDITABLE)
+        if (candidate[field].item_id === itemId)
+          return {
+            cell: candidate[field],
+            picked: (period.selected ?? []).includes(candidate.row_key),
+          };
+  return null;
+}
+/** 고칠 수 있는 칸인가 — 고른 후보의 놀이명 · 지원매체 · 지원 방향만이다 (§6-1). */
+export const editablePlayCell = (id: number, itemId: string) => {
+  const plan = findPlan(id);
+  const found = plan?.format === "PLAY_PROJECT" ? findPlayCell(plan, itemId) : null;
+  return !!found?.picked;
+};
+/** 칸 값이 지금과 같은가. 서버는 같은 값을 422 로 거절한다. */
+export const samePlayCellValue = (id: number, itemId: string, value: string) => {
+  const plan = findPlan(id);
+  return plan?.format === "PLAY_PROJECT" && findPlayCell(plan, itemId)?.cell.value.trim() === value;
+};
+/** 칸 하나를 바꾸고 revision 을 올린다. 호출 전에 핸들러가 칸 · 같은 값을 이미 걸렀다. */
+export const putPlayCell = (id: number, itemId: string, value: string) =>
+  commit((db) => {
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "PLAY_PROJECT" }> =>
+        p.id === id && p.format === "PLAY_PROJECT",
+    )!;
+    const cell = findPlayCell(plan, itemId)!.cell;
+    record(
+      db,
+      id,
+      playEvent("TEACHER_EDITED", stamp(db, id), {
+        item_id: itemId,
+        value_change: { before: cell.value, after: value },
+      }),
+    );
+    cell.value = value;
+    plan.revision = (plan.revision ?? 1) + 1;
+    return detail(plan);
+  });
+/**
+ * 놀이 프로젝트형 확정 (§7). 호출 전에 핸들러가 404 · 이미 확정(200) · 본문 · revision · 5개 미만을 걸렀다.
+ * 확정하면 revision 이 1 오르고 이력에 `CONFIRMED` 가 남는다. 응답은 계획안 전체다.
+ */
+export const confirmPlayPlan = (id: number) =>
+  commit((db) => {
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "PLAY_PROJECT" }> =>
+        p.id === id && p.format === "PLAY_PROJECT",
+    )!;
+    // 동시에 온 두 확정 중 뒤의 것은 이미 확정이다 — 현재 확정본을 그대로 돌려주고 아무것도 바꾸지 않는다.
+    if (plan.status !== "CONFIRMED") {
+      const at = stamp(db, id);
+      plan.status = "CONFIRMED";
+      plan.confirmed_at = at;
+      plan.revision = (plan.revision ?? 1) + 1;
+      record(db, id, playEvent("CONFIRMED", at));
+    }
+    return detail(plan);
+  });

@@ -19,7 +19,12 @@ import {
   listPlans,
   addPlan,
   putMonth,
+  putPlaySelection,
+  putPlayCell,
+  editablePlayCell,
+  samePlayCellValue,
   confirmPlan,
+  confirmPlayPlan,
   listAnnualAudit,
   safetyCategories,
 } from "./data/annual-plans";
@@ -324,7 +329,7 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
-    // 서버 순서: 형식 422(format → form_id) → 반 404 → 중복 409 → PLAY_PROJECT 503.
+    // 서버 순서: 형식 422(format → form_id) → 반 404 → 중복 409.
     if (b.format !== "MONTHLY_THEME" && b.format !== "PLAY_PROJECT") return bad("format");
     if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
     if (b.format === "PLAY_PROJECT" && b.form_id != null) return bad("form_id");
@@ -334,13 +339,8 @@ export const handlers = [
     // 서버처럼 반 하나에 연간 하나다.
     if (annualFor(klass.id))
       return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
-    // 서버가 교육과정 참고자료가 없거나 승인 전일 때 주는 응답이다(지금 상태).
-    if (b.format === "PLAY_PROJECT")
-      return failure(
-        "DEPENDENCY_UNAVAILABLE",
-        "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-      );
     if (request.signal.aborted) return HttpResponse.error();
+    // 실제 서버는 교육과정 참고자료 승인 전까지 503을 반환하지만, 화면 작업용 목업은 승인 뒤 응답 모양을 만든다.
     return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
       status: 201,
     });
@@ -386,6 +386,8 @@ export const handlers = [
       month = Number(params.month),
       plan = findPlan(id);
     if (!plan) return annualMissing();
+    if (plan.format === "PLAY_PROJECT")
+      return failure("GATE_BLOCKED", "놀이 프로젝트형은 칸 편집으로 고칩니다.");
     if (!plan.months.some((m) => m.month === month))
       return failure("NOT_FOUND", "그 달이 없습니다.", "month");
     if (plan.status === "CONFIRMED")
@@ -394,19 +396,117 @@ export const handlers = [
     if (!b.theme.trim()) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.");
     return HttpResponse.json(putMonth(id, month, b as unknown as MonthInput));
   }),
+  http.put("*/api/plans/annual/:id/selection", async ({ request, params }) => {
+    const s = await scenario(request, "annual-selection");
+    if (s) return s;
+    // 서버 순서: 본문 형식 422 → 계획안 404 → 형식 409 → 확정 409 → revision 409 → 없는 row_key 422 (§6-1).
+    const b = await body(request);
+    if (!b) return bad("body");
+    const wrong = selectionProblems(b.selections);
+    if (badRevision(b)) wrong.push("expected_revision");
+    if (wrong.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...wrong);
+    const selections = b.selections as Record<string, string[]>;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format !== "PLAY_PROJECT")
+      return failure("GATE_BLOCKED", "월별 주제형은 월별 칸 수정으로 고칩니다.");
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    if (plan.revision !== b.expected_revision) return stale();
+    const unknown = plan.periods
+      .filter((period) =>
+        selections[period.period_key].some(
+          (key) => !period.candidates.some((candidate) => candidate.row_key === key),
+        ),
+      )
+      .map((period) => "selections." + period.period_key);
+    if (unknown.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...unknown);
+    return HttpResponse.json(putPlaySelection(id, selections));
+  }),
+  http.put("*/api/plans/annual/:id/cells/:itemId", async ({ request, params }) => {
+    const s = await scenario(request, "annual-cell");
+    if (s) return s;
+    // 서버 순서: 스키마 422 → 계획안 404 → 형식 409 → 확정 409 → revision 409 → 칸 422 → 같은 값 422 (§6-1).
+    const b = await body(request);
+    if (!b) return bad("body");
+    const value = typeof b.value === "string" ? b.value.trim() : "";
+    const wrong = [];
+    const length = [...value].length; // 서버는 글자(코드포인트) 수로 센다.
+    if (length < 1 || length > 600) wrong.push("value");
+    if (badRevision(b)) wrong.push("expected_revision");
+    if (wrong.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...wrong);
+    const id = Number(params.id),
+      itemId = decodeURIComponent(String(params.itemId)),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format !== "PLAY_PROJECT")
+      return failure("GATE_BLOCKED", "월별 주제형은 월별 칸 수정으로 고칩니다.");
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    if ((plan.revision ?? 1) !== b.expected_revision) return stale();
+    if (!editablePlayCell(id, itemId))
+      return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "item_id");
+    if (samePlayCellValue(id, itemId, value))
+      return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "value");
+    return HttpResponse.json(putPlayCell(id, itemId, value));
+  }),
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");
     if (s) return s;
-    const id = Number(params.id);
-    if (!findPlan(id)) return annualMissing();
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format === "PLAY_PROJECT") {
+      // 서버 순서: 404 → 본문 스키마 422(값이 있는데 정수 1 이상이 아님, 확정본이어도) → 이미 확정이면 200
+      // → 본문 없음 422 → revision 409 → 5개 미만 422 (§7). 본문을 읽는 사이 바뀔 수 있어 그 뒤에 다시 본다.
+      const b = await body(request);
+      const given = b?.expected_revision;
+      const present = given !== undefined && given !== null;
+      if (present && badRevision(b!)) return bad("expected_revision");
+      const now = findPlan(id);
+      if (!now || now.format !== "PLAY_PROJECT") return annualMissing();
+      if (now.status === "CONFIRMED") return HttpResponse.json(now);
+      if (!present) return bad("expected_revision");
+      if (now.revision !== given) return stale();
+      const lacking = now.periods
+        .filter((period) => period.selected.length !== 5)
+        .map((period) => period.period_key);
+      if (lacking.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...lacking);
+      return HttpResponse.json(confirmPlayPlan(id));
+    }
     // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
+  }),
+  // 실제 서버: 확정본은 200 hwpx(가짜 파일), 미확정은 형식 상관없이 409 — 문구만 형식별 (§9).
+  http.get("*/api/plans/:id/export/hwp", async ({ request, params }) => {
+    const s = await scenario(request, "annual-export");
+    if (s) return s;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.status !== "CONFIRMED") {
+      return failure(
+        "GATE_BLOCKED",
+        plan.format === "PLAY_PROJECT"
+          ? "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다."
+          : "확정된 계획안만 내보낼 수 있습니다.",
+      );
+    }
+    const name = `plan-${id}.hwpx`;
+    return new HttpResponse("MSW hwpx", {
+      headers: {
+        "Content-Type": "application/hwp+zip",
+        "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
+      },
+    });
   }),
   http.get("*/api/plans/annual/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "annual-audit");
     if (s) return s;
-    const id = Number(params.id);
-    if (!findPlan(id)) return annualMissing();
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
     return HttpResponse.json({ items: listAnnualAudit(id) });
   }),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.
@@ -433,6 +533,12 @@ export const handlers = [
     const annual = annualFor(klass.id);
     if (!annual)
       return failure("GATE_BLOCKED", "연간계획안을 먼저 만들어 확정해주세요.", "class_id");
+    if (annual.format === "PLAY_PROJECT")
+      return failure(
+        "GATE_BLOCKED",
+        "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다.",
+        "class_id",
+      );
     if (annual.status !== "CONFIRMED")
       return failure("GATE_BLOCKED", "연간계획안을 먼저 확정해주세요.", "class_id");
     const profileRef = {
@@ -789,6 +895,26 @@ const stale = () =>
     "그 사이 다른 화면에서 계획안이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
     "expected_revision",
   );
+const PLAY_PERIODS = ["m03_m05", "m06_m08", "m09_m11", "m12_m02"];
+/** 네 구간이 전부 있고 구간마다 중복 없는 5개 이하 목록이어야 한다 (§6-1). 문제 있는 칸 이름을 모은다. */
+function selectionProblems(selections: unknown): string[] {
+  if (!selections || typeof selections !== "object" || Array.isArray(selections))
+    return ["selections"];
+  const given = selections as Record<string, unknown>;
+  const unknownKeys = Object.keys(given).filter((key) => !PLAY_PERIODS.includes(key));
+  return [...PLAY_PERIODS, ...unknownKeys]
+    .filter((key) => {
+      const list = given[key];
+      return (
+        !Array.isArray(list) ||
+        list.length > 5 ||
+        !list.every((v) => typeof v === "string") ||
+        new Set(list).size !== list.length ||
+        unknownKeys.includes(key)
+      );
+    })
+    .map((key) => "selections." + key);
+}
 /** 문자열 "3" · true 는 거절한다 (§9-3). */
 const badRevision = (b: Record<string, unknown>) =>
   !integer(b.expected_revision) || b.expected_revision < 1;

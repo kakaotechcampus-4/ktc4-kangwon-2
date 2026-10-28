@@ -1,23 +1,58 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/app/AppHeader";
 import { getAnnualPlan } from "@/lib/api/plans";
-import type { AnnualPlan } from "@/lib/api/types";
+import type { AnnualPlanResponse } from "@/lib/api/types";
 import { loadAnnualContext, type AnnualContext } from "@/lib/plan-generator/context";
 import GenerationFlow from "./GenerationFlow";
+import PlayProjectResult from "./PlayProjectResult";
 /** 한 번의 조회 결과 — 어떤 요청(key)에 대한 값인지 함께 들고 있어서 id/재시도가 바뀌면 자동으로 무효가 된다. */
 interface Loaded {
   key: string;
-  plan: AnnualPlan | null;
+  plan: AnnualPlanResponse | null;
   context?: AnnualContext;
   error: string;
+  /** 다른 곳에서 바뀌어 다시 불러왔을 때의 안내와, 화면을 새로 그리게 하는 번호. */
+  notice?: string;
+  version?: number;
 }
+const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
 
 export default function AnnualResult({ id }: { id: number }) {
   const router = useRouter(),
     [retry, setRetry] = useState(0),
     [loaded, setLoaded] = useState<Loaded | null>(null);
+  // 저장이 409 로 막히면 최신 계획안으로 바꾼다. 재시도 key 를 올리면 안내를 잃으니 같은 key 로 덮는다.
+  // 요청이 겹치면 마지막 요청의 응답만 반영한다 — 늦게 온 옛 응답이 새 응답을 덮으면 과거 revision 으로 돌아간다.
+  const lastReload = useRef(0);
+  function reloadAfterConflict() {
+    const mine = ++lastReload.current;
+    const apply = (next: (cur: Loaded | null) => Loaded | null) => {
+      if (mine === lastReload.current) setLoaded(next);
+    };
+    return getAnnualPlan(id).then(
+      (fresh) =>
+        apply((cur) => ({
+          key,
+          plan: fresh,
+          error: "",
+          notice: STALE_NOTICE,
+          version: (cur?.version ?? 0) + 1,
+        })),
+      () =>
+        apply((cur) =>
+          cur ? { ...cur, notice: "최신 내용을 불러오지 못했어요. 새로고침해 주세요." } : cur,
+        ),
+    );
+  }
+  // 확정이 끝나면 응답 계획안으로 바꾸고 key 를 올려 확정본 화면으로 다시 그린다(안내는 비운다).
+  const confirmedPlan = (fresh: AnnualPlanResponse) => {
+    ++lastReload.current; // 늦게 온 다시 불러오기 응답이 확정본을 덮지 못하게.
+    setLoaded((cur) => ({ key, plan: fresh, error: "", version: (cur?.version ?? 0) + 1 }));
+  };
+  const dismissNotice = () =>
+    setLoaded((cur) => (cur?.notice ? { ...cur, notice: undefined } : cur));
   const valid = Number.isSafeInteger(id) && id > 0;
   const key = id + ":" + retry;
   const current = loaded?.key === key ? loaded : null;
@@ -30,7 +65,13 @@ export default function AnnualResult({ id }: { id: number }) {
     let live = true;
     getAnnualPlan(id, controller.signal)
       .then((plan) => {
-        if (live) setLoaded({ key, plan, context: loadAnnualContext(id), error: "" });
+        if (live)
+          setLoaded({
+            key,
+            plan,
+            context: plan.format === "MONTHLY_THEME" ? loadAnnualContext(id) : undefined,
+            error: "",
+          });
       })
       .catch((e) => {
         if (live && !controller.signal.aborted)
@@ -60,8 +101,12 @@ export default function AnnualResult({ id }: { id: number }) {
   return (
     <>
       <AppHeader
-        title="연간계획안"
-        description="생성된 계획안을 확인하고 수정·확정해주세요."
+        title={plan?.format === "PLAY_PROJECT" ? "연간계획안 · 놀이 프로젝트형" : "연간계획안"}
+        description={
+          plan?.format === "PLAY_PROJECT"
+            ? "생성된 놀이 후보를 구간별로 확인해주세요."
+            : "생성된 계획안을 확인하고 수정·확정해주세요."
+        }
         divider={false}
       />
       {error ? (
@@ -73,6 +118,15 @@ export default function AnnualResult({ id }: { id: number }) {
         <p role="status" className="px-4 lg:px-10">
           계획안을 불러오고 있어요.
         </p>
+      ) : plan.format === "PLAY_PROJECT" ? (
+        <PlayProjectResult
+          key={key + ":" + (current?.version ?? 0)}
+          plan={plan}
+          notice={current?.notice}
+          onConflict={reloadAfterConflict}
+          onDismissNotice={dismissNotice}
+          onConfirmed={confirmedPlan}
+        />
       ) : (
         <GenerationFlow
           key={id + ":" + retry}

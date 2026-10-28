@@ -248,11 +248,14 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             notes: [
               "연간계획안은 서버에 초안으로 저장됩니다. 추가 요청사항은 메모로 보존되며 활동에 반영하려면 내용을 수정해주세요.",
             ],
-            rows: plan.months.map((m) => ({
-              label: m.month + "월",
-              title: m.theme,
-              detail: m.sub_themes.join("\n"),
-            })),
+            rows:
+              plan.format === "MONTHLY_THEME"
+                ? plan.months.map((m) => ({
+                    label: m.month + "월",
+                    title: m.theme,
+                    detail: m.sub_themes.join("\n"),
+                  }))
+                : [],
           };
         } else if (available) {
           const result = await requestAI<{ sections: Section[]; notes: string[] }>(

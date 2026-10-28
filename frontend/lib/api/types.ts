@@ -205,6 +205,38 @@ export interface AnnualPlan {
   /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */
   checks: { rule: string; severity: string; detail: string; month: number | null }[];
 }
+/** 놀이 프로젝트형 칸 하나. `item_id` 는 칸 단위 저장이 쓰는 이름표다(ADR-044). */
+export interface PlayCell {
+  item_id: string;
+  value: string;
+  evidence: MonthlyCell["evidence"];
+  generation: MonthlyCell["generation"];
+}
+export interface PlayProjectAnnualPlan {
+  id: number;
+  /** 저장할 때마다 1 씩 는다. 저장 요청에 `expected_revision` 으로 되돌려 보낸다. */
+  revision: number;
+  class_id: number;
+  school_year: number;
+  status: "DRAFT" | "CONFIRMED";
+  format: "PLAY_PROJECT";
+  format_version: string;
+  periods: {
+    period_key: string;
+    label: string;
+    months: number[];
+    /** 교사가 고른 후보의 row_key. 고른 순서 그대로이고 최대 5개다. */
+    selected: string[];
+    candidates: {
+      row_key: string;
+      play_name: PlayCell;
+      materials: PlayCell;
+      support_direction: PlayCell;
+      learning: PlayCell;
+    }[];
+  }[];
+}
+export type AnnualPlanResponse = AnnualPlan | PlayProjectAnnualPlan;
 /** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
 export interface AnnualPlanSummary {
   id: number;
@@ -226,7 +258,7 @@ export interface ConfirmResult {
  * 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
  */
 export interface AnnualAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED";
+  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED" | "CANDIDATES_SELECTED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
   /** 그 달 theme 의 이벤트면 그 달(1~12). 계획안 단위(생성 · 확정)면 null. */
@@ -237,6 +269,10 @@ export interface AnnualAuditEvent {
   system_actor: string | null;
   /** `TEACHER_EDITED` 면 그때 바뀐 theme(소주제만 고쳤으면 둘이 같다). 그 밖에는 null. */
   value_change: { before: string; after: string } | null;
+  /** 놀이 프로젝트형만 — 칸 주소. 해당이 없으면 null. 월별 주제형은 이 키가 없다(§7-1). */
+  item_id?: string | null;
+  /** 놀이 프로젝트형 `CANDIDATES_SELECTED` 만 — 한 구간의 고르기 변화(문서 배치 순서). */
+  selection_change?: { period_key: string; before: string[]; after: string[] } | null;
 }
 /** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
 export interface ProfileRef {

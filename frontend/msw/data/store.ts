@@ -4,6 +4,7 @@ import type {
   ApiChild,
   AnnualAuditEvent,
   AnnualPlan,
+  PlayProjectAnnualPlan,
   PlanConfig,
   MonthlyAuditEvent,
   MonthlyPlan,
@@ -45,7 +46,9 @@ export interface Database {
   approvedTemplates: string[];
 }
 /** 연간계획안 + 서버가 목록 · 확정 응답에만 주는 시각. 단건 응답에서는 뺀다. */
-export type MockAnnualPlan = AnnualPlan & { created_at: string; confirmed_at: string | null };
+export type MockAnnualPlan =
+  | (AnnualPlan & { created_at: string; confirmed_at: string | null })
+  | (PlayProjectAnnualPlan & { created_at: string; confirmed_at: string | null });
 /** 저장된 이벤트. 칸 위치(scope · item_id · section_key · week_id)는 읽을 때 칸에서 붙인다. */
 export type MockAuditEvent = Omit<
   MonthlyAuditEvent,
