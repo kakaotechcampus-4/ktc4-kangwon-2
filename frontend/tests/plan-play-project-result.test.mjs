@@ -135,6 +135,8 @@ const saveStub = {
 };
 // 확정 API 대역 — 무엇을 어떤 revision 으로 보냈는지, 다음에 무엇이 오는지.
 const confirmStub = { calls: [], next: null };
+// 한글 파일 내려받기 훅 대역 — 누른 id · 진행 중 · 안내 문구를 시험이 정한다.
+const hwpxStub = { exporting: false, ran: [], message: "" };
 class StubApiError extends Error {
   constructor(status, fields) {
     super("서버 문구");
@@ -181,7 +183,23 @@ const sheetModules = {
     },
   },
   "@/lib/api/client": { ApiError: StubApiError },
+  "@/lib/hooks/use-hwpx-download": {
+    useHwpxDownload: (onMessage) => ({
+      exporting: hwpxStub.exporting,
+      download: async (fetchFile) => {
+        try {
+          await fetchFile();
+        } catch (e) {
+          onMessage(e.message);
+        }
+      },
+    }),
+  },
   "@/lib/api/plans": {
+    downloadAnnualHwpx: async (id) => {
+      hwpxStub.ran.push(id);
+      if (hwpxStub.message) throw new Error(hwpxStub.message);
+    },
     confirmPlayProject: async (id, revision) => {
       saveStub.log.push("confirm");
       confirmStub.calls.push({ id, revision });
@@ -299,7 +317,11 @@ test("PlayProjectResult shows notices, accessible period tabs, and ten complete 
     "② 배치하고 다듬기",
     "③ 전체 초안 보기",
   ]);
-  assert.match(rendered, /한글 파일 내려받기는 곧 열려요\./);
+  assert.match(rendered, /확정하면 한글 파일로 내려받을 수 있어요\./);
+  assert.equal(
+    nodes.some((node) => node.type === "button" && /한글 파일로 내려받기/.test(text(node))),
+    false,
+  );
   assert.doesNotMatch(rendered, /아직 확정 · 내려받기를 할 수 없어요/);
   assert.match(rendered, /이 반은 월간 · 주간계획안을 만들 수 없어요\./);
   const tabs = nodes.filter((node) => node.props?.role === "tab");
@@ -1657,7 +1679,7 @@ test("a confirmed plan opens as the read-only ③ table only, even when first op
   const rendered = text(nodes);
   assert.equal(text(nodes.find((node) => node.props?.className === "badge")), "확정됨");
   assert.match(rendered, /확정했어요\. 확정한 계획안은 고치거나 지울 수 없어요\./);
-  assert.match(rendered, /한글 파일 내려받기는 곧 열려요\./);
+  assert.doesNotMatch(rendered, /곧 열려요/);
   assert.ok(tables(nodes).length > 0);
   assert.equal(all(tables(nodes)).filter((node) => node.type === "button").length, 0);
   // ① ② · 되돌리기 · 다시 하기 · 확정 · 배치로 돌아가기 · 단계 표시가 모두 없다.
@@ -2662,4 +2684,42 @@ test("a confirm response that arrives after the screen went down is not handed o
   cleanups.forEach((cleanup) => cleanup()); // whenIdle 이 끝나기 전에 내려간다
   await click;
   assert.deepEqual(confirmed, []);
+});
+
+const exportButton = (nodes) =>
+  nodes.find(
+    (node) => node.type === "button" && /한글 파일로 내려받기|내려받는 중/.test(text(node)),
+  );
+function confirmedView() {
+  const confirmedPlan = plan();
+  confirmedPlan.status = "CONFIRMED";
+  confirmedPlan.periods.forEach((item) => (item.selected = FULL));
+  hwpxStub.ran = [];
+  hwpxStub.message = "";
+  hwpxStub.exporting = false;
+  return resultRenderer(confirmedPlan, [], false, { onConfirmed: () => {} });
+}
+
+test("a confirmed plan has a download button that fetches that plan's hwpx", async () => {
+  const view = confirmedView();
+  const button = exportButton(all(view.render()));
+  assert.equal(text(button), "한글 파일로 내려받기");
+  assert.notEqual(button.props.disabled, true);
+  await button.props.onClick();
+  assert.deepEqual(hwpxStub.ran, [plan().id]);
+});
+
+test("while downloading the button is off and says 내려받는 중…", () => {
+  const view = confirmedView();
+  hwpxStub.exporting = true;
+  const button = exportButton(all(view.render()));
+  assert.equal(text(button), "내려받는 중…");
+  assert.equal(button.props.disabled, true);
+});
+
+test("a failed download shows the server's words", async () => {
+  const view = confirmedView();
+  hwpxStub.message = "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.";
+  await exportButton(all(view.render())).props.onClick();
+  assert.match(text(view.render()), /확정한 뒤 내려받을 수 있습니다\./);
 });

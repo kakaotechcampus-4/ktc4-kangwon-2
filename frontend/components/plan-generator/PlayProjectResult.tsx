@@ -26,7 +26,8 @@ import {
   type EditStep,
 } from "@/lib/plan-generator/playEditHistory";
 import { ApiError } from "@/lib/api/client";
-import { confirmPlayProject, isSaveConflict } from "@/lib/api/plans";
+import { confirmPlayProject, downloadAnnualHwpx, isSaveConflict } from "@/lib/api/plans";
+import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
 import {
@@ -333,6 +334,9 @@ export default function PlayProjectResult({
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [lacking, setLacking] = useState<string[]>([]);
+  // 확정본의 한글 파일 내려받기 — 월별 주제형과 같은 훅 · 같은 함수다.
+  const [exportMessage, setExportMessage] = useState("");
+  const hwpx = useHwpxDownload(setExportMessage);
   // 확정본은 ③ 읽기 전용 표뿐이다 — 단계 표시 · ① ② 는 그리지 않는다.
   const confirmed = plan.status === "CONFIRMED";
   const step = confirmed ? 2 : pickedStep;
@@ -1015,7 +1019,21 @@ export default function PlayProjectResult({
       )}
       <div className={workspace.notice}>
         {confirmed && <p>확정했어요. 확정한 계획안은 고치거나 지울 수 없어요.</p>}
-        <p>한글 파일 내려받기는 곧 열려요.</p>
+        {confirmed ? (
+          <>
+            <button
+              type="button"
+              className={workspace.secondary}
+              disabled={hwpx.exporting}
+              onClick={() => void hwpx.download(() => downloadAnnualHwpx(plan.id))}
+            >
+              {hwpx.exporting ? "내려받는 중…" : "한글 파일로 내려받기"}
+            </button>
+            {exportMessage && <p role="status">{exportMessage}</p>}
+          </>
+        ) : (
+          <p>확정하면 한글 파일로 내려받을 수 있어요.</p>
+        )}
         <p>이 반은 월간 · 주간계획안을 만들 수 없어요.</p>
       </div>
       <div className={styles.tabRow}>

@@ -177,6 +177,42 @@ test("after confirming, selecting or editing a cell is 409 ALREADY_CONFIRMED", a
   );
 });
 
+test("export: a confirmed play plan is a 200 hwpx file, a draft is 409 GATE_BLOCKED", async () => {
+  const plan = await picked();
+  const url = (id) => "/api/plans/" + id + "/export/hwp";
+  const draft = await globalThis.fetch(url(plan.id));
+  assert.equal(draft.status, 409);
+  const error = (await draft.json()).error;
+  assert.deepEqual(error, {
+    code: "GATE_BLOCKED",
+    message: "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.",
+    fields: [],
+  });
+  await confirmPlayProject(plan.id, plan.revision);
+  const file = await globalThis.fetch(url(plan.id));
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get("content-type"), "application/hwp+zip");
+  assert.match(file.headers.get("content-disposition"), /filename="plan-\d+\.hwpx"/);
+});
+
+test("export: a monthly-theme draft is 409 with the generic words, confirmed is 200", async () => {
+  const plan = await createAnnualPlan({
+    class_id: (await newClass()).id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
+  const url = "/api/plans/" + plan.id + "/export/hwp";
+  const draft = await globalThis.fetch(url);
+  assert.equal(draft.status, 409);
+  assert.deepEqual((await draft.json()).error, {
+    code: "GATE_BLOCKED",
+    message: "확정된 계획안만 내보낼 수 있습니다.",
+    fields: [],
+  });
+  await confirmAnnualPlan(plan.id);
+  assert.equal((await globalThis.fetch(url)).status, 200);
+});
+
 test("the audit lists eight keys per event in time order, with CANDIDATES_SELECTED and CONFIRMED", async () => {
   const plan = await newPlay();
   const first = await savePlaySelection(plan.id, pick(plan, [5, 5, 3, 0]), plan.revision);
