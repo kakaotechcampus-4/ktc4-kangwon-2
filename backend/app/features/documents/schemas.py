@@ -56,9 +56,14 @@ class DocumentListResponse(BaseModel):
 
 
 class DocumentSectionItem(BaseModel):
-    """`사실` · `해석` · `지원` 항목 하나. 단건 조회·`PUT` 응답에 담긴다."""
+    """`사실` · `해석` · `지원` 항목 하나. 단건 조회·`PUT` 응답에 담긴다.
 
-    heading: Literal["사실", "해석", "지원"]
+    증빙으로 올린 문서(`origin=IMPORT`)만 `첨부 원문` 하나를 갖는다 — 우리가 만든 문서가
+    아니라 3층이 없다(§11 「증빙 등록」). **응답 전용이다.** 교사가 보내는 `PUT` 은
+    `DocumentSectionUpdate` 를 쓰므로 일지에 이 칸을 만들 길은 없다.
+    """
+
+    heading: Literal["사실", "해석", "지원", "첨부 원문"]
     body: str
     source_ids: list[int]
 
@@ -172,6 +177,62 @@ class DocumentCreateRequest(BaseModel):
     source_ids: list[int]
     # `weeklyLog` 에서만 쓴다. 안 보내면 예전처럼 확정된 일일 보육일지를 근거로 본다.
     source_kind: Literal["dailyLog", "routine"] = "dailyLog"
+
+
+class EvidenceChecks(BaseModel):
+    """증빙 등록 확인 3개 (docs/api-spec.md §11 「증빙 등록」).
+
+    일지 확정의 확인 3개(`DocumentChecks`)와 다른 셋이다. 증빙은 우리가 만든 문서가 아니라
+    교사가 원에서 쓰던 서류라, 사실·해석·지원을 확인할 자리가 없다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: 올린 원문이 실제 문서와 같은가
+    original: bool
+    #: 종류 · 반 · 아동 · 기간이 원문과 맞는가
+    meta: bool
+    #: 등록이 평가 통과를 뜻하지 않는다는 것을 아는가
+    not_a_pass: bool
+
+
+class DocumentImportRequest(BaseModel):
+    """`POST /api/documents/import`. 교사가 원에서 쓰던 서류를 증빙으로 올린다 (§11).
+
+    생성(`POST /api/documents`)과 다른 길이다 — **근거 id 가 없고 LLM 을 부르지 않는다.**
+    우리가 만든 문서가 아니라서 사실·해석·지원 대조를 하지 않는다(§11 「IMPORT」).
+
+    평가제 4-1 · 4-2 는 확정 문서를 센다(§12). 우리 서비스로 만든 적 없는 문서는
+    이 경로로만 집계에 들어간다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["dailyLog", "weeklyLog", "observation", "assessment"]
+    class_id: int
+    child_id: int | None = None
+    start: date
+    end: date
+    #: 파일 이름을 그대로 쓴다. 비면 서버가 종류 · 기간으로 만든다.
+    title: str = ""
+    #: 원문 텍스트. 파일은 화면이 `/api/templates/extract` 로 먼저 글자로 바꾼다.
+    body: str
+    checks: EvidenceChecks
+
+
+class EvidenceNotice(BaseModel):
+    """등록을 막지는 않지만 교사가 알아야 하는 것 (`evidence.check_evidence`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+
+
+class DocumentImportResponse(DocumentDetailResponse):
+    """등록 응답. 상세에 점검 결과를 더한다. 비어 있으면 걸린 것이 없다는 뜻이다."""
+
+    notices: list[EvidenceNotice] = []
 
 
 class DocumentChecks(BaseModel):

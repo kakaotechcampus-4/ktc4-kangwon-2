@@ -19,6 +19,7 @@ from app.features.documents.draft import (
     rule_id,
     rule_version,
 )
+from app.features.documents.evidence import check_evidence
 from app.features.documents.models import (
     Document,
     DocumentReconfirmation,
@@ -39,6 +40,8 @@ from app.features.documents.schemas import (
     DocumentCreateRequest,
     DocumentDetailResponse,
     DocumentGeneration,
+    DocumentImportRequest,
+    DocumentImportResponse,
     DocumentListItem,
     DocumentListResponse,
     DocumentReconfirmRequest,
@@ -299,6 +302,87 @@ def list_documents(
         for doc, class_name, child_name, sources_count_value in rows
     ]
     return DocumentListResponse(items=items)
+
+
+@router.post("/import", response_model=DocumentImportResponse, status_code=status.HTTP_201_CREATED)
+def import_document(
+    body: DocumentImportRequest, session: DbSession, user: CurrentUser
+) -> DocumentImportResponse:
+    """교사가 원에서 쓰던 서류를 증빙으로 올린다 (docs/api-spec.md §11 「증빙 등록」).
+
+    생성(`POST ""`)과 다른 길이다 — **근거 id 가 없고 LLM 을 부르지 않는다.** 우리가 만든
+    문서가 아니라서 사실 대조(`check_sections`)를 하지 않는다. `sections` 는 `첨부 원문`
+    하나뿐이고 `sources` 는 비어 있다.
+
+    평가제 4-1 · 4-2 는 확정 문서를 센다(§12). 우리 서비스로 만든 적 없는 문서 —
+    영유아 평가가 특히 그렇다 — 는 이 경로로만 집계에 들어간다.
+
+    **확인 3개를 다 켜면 바로 `CONFIRMED` 다.** 초안으로 두면 집계에 들어가지 않아
+    교사가 「올렸는데 왜 0건이지」를 겪는다. 하나라도 끄면 `DRAFT` 로 둔다.
+
+    **내용을 판정하지 않는다.** 형식 점검 결과만 `notices` 로 돌려주고 저장은 막지 않는다
+    (`evidence.py` · ADR-019).
+    """
+    fields: list[str] = []
+    if body.kind in CHILD_SCOPED_KINDS and body.child_id is None:
+        fields.append("child_id")
+    if body.kind == "dailyLog" and body.start != body.end:
+        fields.append("end")
+    if body.kind in ("dailyLog", "weeklyLog") and body.child_id is not None:
+        # 반 단위 문서다 (§11 「종이 한 장」).
+        fields.append("child_id")
+    if body.start > body.end:
+        fields.append("start")
+    if not body.body.strip():
+        fields.append("body")
+    if fields:
+        raise _invalid(fields)
+
+    classroom = require_own_class(session, user, body.class_id)
+    child = None
+    if body.child_id is not None:
+        child = require_own_child(session, user, body.child_id)
+        if child.class_id != body.class_id:
+            raise _invalid(["child_id"])
+
+    notices = check_evidence(
+        session,
+        center_id=user.center_id,
+        kind=body.kind,
+        class_id=body.class_id,
+        child_id=body.child_id,
+        start=body.start,
+        end=body.end,
+        body=body.body,
+        now=datetime.now(UTC),
+    )
+
+    checked = body.checks.original and body.checks.meta and body.checks.not_a_pass
+    subject = child.name if child else classroom.name
+    doc = Document(
+        kind=body.kind,
+        title=body.title.strip()
+        or f"{subject} {KIND_LABELS[body.kind]} ({_period(body.start, body.end)})",
+        class_id=body.class_id,
+        child_id=body.child_id,
+        start_date=body.start,
+        end_date=body.end,
+        status="CONFIRMED" if checked else "DRAFT",
+        origin="IMPORT",
+        stale=False,
+        review_note=(
+            "교사가 원문과 기간을 확인하여 등록한 기존 증빙입니다. "
+            "AI 내용 검증과 공식 평가 판정은 별도입니다."
+        ),
+    )
+    session.add(doc)
+    session.flush()
+    session.add(
+        DocumentSection(document_id=doc.id, heading="첨부 원문", body=body.body, source_ids=[])
+    )
+    session.commit()
+    detail = _build_detail_response(session, doc)
+    return DocumentImportResponse(**detail.model_dump(), notices=notices)
 
 
 @router.post("", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)

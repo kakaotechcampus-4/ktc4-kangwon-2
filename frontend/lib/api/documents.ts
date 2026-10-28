@@ -290,6 +290,60 @@ export async function createDocument(input: DocumentCreateInput): Promise<Server
   return toDocument(dto);
 }
 
+/** 교사가 원에서 쓰던 서류를 증빙으로 올린다 (§11 「증빙 등록」). */
+export interface DocumentImportInput {
+  kind: RecordKind;
+  classId: string;
+  childId: string;
+  start: string;
+  end: string;
+  /** 파일 이름. 비면 서버가 종류·기간으로 제목을 만든다. */
+  title: string;
+  /** 원문 텍스트. 파일은 `/api/templates/extract` 가 먼저 글자로 바꾼다. */
+  body: string;
+}
+
+/** 등록은 됐지만 교사가 알아야 하는 것. 비어 있으면 걸린 것이 없다. */
+export interface EvidenceNotice {
+  code: string;
+  message: string;
+}
+
+export interface ImportedDocument {
+  document: ServerDocument;
+  notices: EvidenceNotice[];
+}
+
+/**
+ * 증빙 등록. 생성(`createDocument`)과 다른 길이다 — 근거 id 가 없고 AI 를 부르지 않는다.
+ *
+ * 확인 3개는 화면이 묶어서 한 번에 받는다. 셋 다 켜야 서버가 확정으로 저장하고,
+ * 확정이라야 평가제 집계에 들어간다 (§12).
+ */
+export async function importDocument(input: DocumentImportInput): Promise<ImportedDocument> {
+  const class_id = classServerId(input.classId);
+  const child_id = input.childId ? childServerId(input.childId) : null;
+  if (class_id === null || (input.childId && child_id === null)) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiDocumentDetail & { notices?: EvidenceNotice[] }>(
+    "/api/documents/import",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: input.kind,
+        class_id,
+        child_id,
+        start: input.start,
+        end: input.end,
+        title: input.title,
+        body: input.body,
+        checks: { original: true, meta: true, not_a_pass: true },
+      }),
+    },
+  );
+  return { document: toDocument(dto), notices: dto.notices ?? [] };
+}
+
 /** 본문 세 칸과 메모를 보낸다. 상태·반·아동·기간은 서버가 지킨다 (§11). */
 export async function updateDocument(
   localId: string,
