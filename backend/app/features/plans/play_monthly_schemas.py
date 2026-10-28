@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, StrictInt, StrictStr, StringConstraints
 
-from app.features.plans.monthly_schemas import RevisionIn
+from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
 from app.features.plans.schemas import EvidenceOut, GenerationOut
 
 
@@ -190,3 +190,38 @@ class PlayMonthlyPlanOut(BaseModel):
     drill_candidates: list[DrillCandidateOut]
     teacher_inputs: list[TeacherInputOut]
     notices: list[NoticeOut]
+
+
+# ── 변경 이력 (§9-7) ───────────────────────────────────────────────────────
+
+
+class LinkChangeOut(BaseModel):
+    before: list[str]
+    after: list[str]
+    catalog_version: str
+
+
+class ArrangementChangeOut(BaseModel):
+    scope: str
+    before: list[str]
+    after: list[str]
+
+
+class PlayMonthlyAuditEventOut(BaseModel):
+    """키 11개가 늘 온다. 해당이 없으면 null 이다."""
+
+    type: str
+    occurred_at: datetime
+    scope: str
+    item_id: str | None
+    actor: str | None
+    system_actor: str | None
+    value_change: ValueChangeOut | None
+    generation_change: GenerationChangeOut | None
+    link_change: LinkChangeOut | None
+    arrangement_change: ArrangementChangeOut | None
+    copied_from: str | None
+
+
+class PlayMonthlyAuditOut(BaseModel):
+    items: list[PlayMonthlyAuditEventOut]
