@@ -486,7 +486,7 @@ def test_provider_오류가_계약_코드로_변환된다(world, monkeypatch, er
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
 
 
-def test_수정_확정_감사_내보내기는_409_이고_행은_그대로다(world, saved):
+def test_월별_칸_수정과_내보내기는_409_이고_행은_그대로다(world, saved):
     _, row = saved
     session = world["session"]
     before = (row.body, row.revision, row.status)
@@ -497,8 +497,6 @@ def test_수정_확정_감사_내보내기는_409_이고_행은_그대로다(wor
         ),
         "놀이 프로젝트형은 칸 편집으로 고칩니다.",
     )
-    _blocked(client.post(f"/api/plans/annual/{row.id}/confirm"))
-    _blocked(client.get(f"/api/plans/annual/{row.id}/audit"))
     _blocked(client.get(f"/api/plans/{row.id}/export/hwp"))
 
     session.refresh(row)

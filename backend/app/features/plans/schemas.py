@@ -191,3 +191,22 @@ class AuditEventOut(BaseModel):
 
 class AuditOut(BaseModel):
     items: list[AuditEventOut]
+
+
+class SelectionChangeOut(BaseModel):
+    period_key: str
+    before: list[str]
+    after: list[str]
+
+
+class PlayAuditEventOut(AuditEventOut):
+    """놀이 프로젝트형 이력 한 건 (api-spec §7-1). 월별 응답은 위 여섯 키 그대로 둔다."""
+
+    item_id: str | None = Field(default=None, description="칸 단위 사건이면 그 칸. 아니면 null")
+    selection_change: SelectionChangeOut | None = Field(
+        default=None, description="CANDIDATES_SELECTED 만. 문서 배치 순서"
+    )
+
+
+class PlayAuditOut(BaseModel):
+    items: list[PlayAuditEventOut]
