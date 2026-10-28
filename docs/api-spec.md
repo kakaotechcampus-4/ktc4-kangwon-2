@@ -2138,7 +2138,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
   §11 이 LLM 을 부를 때 `shared/childCode` 로 치환한다. 이 엔드포인트는 치환하지 않는다 —
   교사 화면에는 실명이 보여야 한다.
 - **브라우저에 저장하지 않는다.** 입력 즉시 서버로 보낸다 (ADR-013).
-  지금 FE 목업이 `localStorage` 에 쌓고 있다. 연동 PR 에서 제거한다.
+  화면은 `listRecords()` 로 서버를 본다 — 브라우저 저장소에 쌓지 않는다.
 
 ---
 
