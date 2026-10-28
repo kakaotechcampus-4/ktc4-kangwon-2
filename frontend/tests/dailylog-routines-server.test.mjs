@@ -15,8 +15,8 @@ registerHooks({
   },
 });
 
-const sourceApi = await import("../lib/api/routine-sources.ts");
-const routines = { ...sourceApi, listRoutines: sourceApi.listRoutineSources };
+const sourceApi = await import("../lib/api/routines.ts");
+const routines = { ...sourceApi, listRoutines: sourceApi.listDayRoutines };
 const documents = await import("../lib/api/documents.ts");
 const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 
@@ -108,6 +108,23 @@ test("그 반 · 그 날 일과를 서버 id 로 묻고 화면 id 로 돌려준�
   assert.equal(items[1].time, "11:00 ~");
   assert.equal(items[1].execution, "");
   assert.equal(items[2].time, "");
+});
+
+test("기간을 주면 그 주 일과를 한 번에 묻는다 — 일과 근거 주간 보육일지", async () => {
+  browser();
+  const { calls, restore } = serve({ items: [ROUTINE, { ...ROUTINE, id: 8, date: "2026-10-16" }] });
+  let items;
+  try {
+    items = await routines.listRoutines("class-abc", "2026-10-12", "2026-10-16");
+  } finally {
+    restore();
+  }
+
+  assert.equal(calls[0].url, "/api/routines?class_id=3&from=2026-10-12&to=2026-10-16");
+  assert.deepEqual(
+    items.map((r) => r.date),
+    ["2026-10-13", "2026-10-16"],
+  );
 });
 
 test("반을 서버 id 로 못 옮기면 묻지 않는다", async () => {

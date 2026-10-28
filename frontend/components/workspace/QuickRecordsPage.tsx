@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 기록 모아보기 — 한 주를 한눈에 놓고, 하루를 골라 그날 기록을 본다 (S-J6 · FR-705).
+ * 주간 기록 — 한 주를 한눈에 놓고, 하루를 골라 그날 기록을 본다 (S-J6 · FR-705).
  *
  * 관찰 기록 화면은 아이별로 찾을 때 쓰고, 이 화면은 「이번 주 뭐가 비었지」를 볼 때 쓴다.
  * 그래서 주간 띠가 먼저 오고 목록이 뒤에 온다.
@@ -120,7 +120,7 @@ export default function QuickRecordsPage() {
 
   return (
     <WorkspacePage
-      title="기록 모아보기"
+      title="주간 기록"
       description="한 주를 펼쳐 놓고, 어느 날이 비었는지 확인하세요."
       action={
         <Link
@@ -176,7 +176,7 @@ export default function QuickRecordsPage() {
         </div>
 
         {/* 건수만 보여주면 「관찰만 있고 일과가 없는 날」을 못 본다. 종류마다 점 색을 나눈다. */}
-        <p className="mb-3 flex justify-end gap-4 text-[11px] text-ink-soft">
+        <p className="mb-3 flex justify-end gap-4 text-[12px] text-ink-soft">
           <span className="flex items-center gap-1.5">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
             관찰
@@ -203,7 +203,7 @@ export default function QuickRecordsPage() {
                       : "border-line bg-paper hover:bg-cream"
                   }`}
                 >
-                  <span className="text-[10px] text-ink-soft">{DAY_NAMES[index]}</span>
+                  <span className="text-[12px] text-ink-soft">{DAY_NAMES[index]}</span>
                   <span className="font-display text-[22px] font-bold text-ink">
                     {Number(iso.slice(8, 10))}
                   </span>
@@ -215,7 +215,7 @@ export default function QuickRecordsPage() {
                       <span className="h-1.5 w-1.5 rounded-full bg-sage-ink" />
                     )}
                   </span>
-                  <span className="text-[10px] text-ink-soft">{total ? `${total}건` : "—"}</span>
+                  <span className="text-[12px] text-ink-soft">{total ? `${total}건` : "—"}</span>
                 </button>
               </li>
             );
@@ -264,9 +264,9 @@ export default function QuickRecordsPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-ink">{row.class_name}</span>
-                    <span className="text-[11px] text-ink-soft">{row.name}</span>
+                    <span className="text-[12px] text-ink-soft">{row.name}</span>
                   </div>
-                  <span className="shrink-0 text-[11px] text-ink-soft">
+                  <span className="shrink-0 text-[12px] text-ink-soft">
                     {timeRange(row.start, row.end)}
                   </span>
                 </div>
@@ -277,7 +277,7 @@ export default function QuickRecordsPage() {
                   <p className="mt-3 text-[13px] text-ink-soft">활동실행을 아직 적지 않았어요.</p>
                 )}
                 <div className="mt-4 border-t border-line pt-3">
-                  <span className="rounded bg-sage-tint px-2 py-1 text-[10px] text-sage-ink">
+                  <span className="rounded bg-sage-tint px-2 py-1 text-[12px] text-sage-ink">
                     일과 기록
                   </span>
                 </div>
@@ -296,15 +296,15 @@ export default function QuickRecordsPage() {
                     <span className="block truncate font-semibold text-ink">
                       {record.childName}
                     </span>
-                    <span className="text-[11px] text-ink-soft">{record.domain}</span>
+                    <span className="text-[12px] text-ink-soft">{record.domain}</span>
                   </div>
-                  <span className="shrink-0 text-[11px] text-ink-soft">
+                  <span className="shrink-0 text-[12px] text-ink-soft">
                     {localTime(record.createdAt)}
                   </span>
                 </div>
                 <p className="mt-3 text-[13px] leading-relaxed text-ink">{record.fact}</p>
                 <div className="mt-4 border-t border-line pt-3">
-                  <span className="rounded bg-primary-tint px-2 py-1 text-[10px] text-primary-ink">
+                  <span className="rounded bg-primary-tint px-2 py-1 text-[12px] text-primary-ink">
                     관찰 기록
                   </span>
                 </div>
