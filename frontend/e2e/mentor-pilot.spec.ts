@@ -19,6 +19,33 @@ async function openObservation(
     .click();
 }
 
+/** 생성한 문서의 날짜·아동·종류를 유지한 채 목록으로 돌아가 다시 연다. */
+async function reopenCreated(
+  page: Page,
+  doc: { title: string; kind: string; start: string; child_name: string | null },
+) {
+  await expect(page.getByRole("heading", { name: doc.title, exact: true, level: 2 })).toBeVisible();
+  await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
+  for (const name of ["연간 계획안", "월간 계획안", "주간 계획안", "보육일지", "관찰일지"])
+    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  await expect(page.getByLabel("날짜 선택")).toHaveValue(doc.start);
+  await expect(
+    page.getByRole("button", {
+      name: doc.kind === "observation" ? "관찰일지" : "보육일지",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+  if (doc.kind === "observation")
+    await expect(page.getByRole("button", { name: doc.child_name!, exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  await page
+    .getByRole("button", { name: new RegExp(doc.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await expect(page.getByRole("heading", { name: doc.title, exact: true, level: 2 })).toBeVisible();
+}
+
 async function verifyHwpx(file: Download, path: string, expected: string[]) {
   expect(file.suggestedFilename()).toMatch(/\.hwpx$/);
   await file.saveAs(path);
@@ -191,10 +218,18 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     .getByRole("checkbox")
     .first()
     .check();
+  const response = page.waitForResponse(
+    (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "초안 만들기", exact: true }).click();
+  const generated = await response;
+  expect(generated.status()).toBe(201);
+  const created = await generated.json();
   await expect(
     page.getByRole("link", { name: "일과 기록에서 고쳐 주세요 →", exact: true }),
   ).toHaveAttribute("href", /\/routines\?date=.*&class_id=\d+/);
+  expect(created.child_id).toBeNull();
+  await reopenCreated(page, created);
   await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
   await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
@@ -230,10 +265,17 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await page.getByRole("link", { name: "관찰일지 만들기", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
   await page.screenshot({ path: info.outputPath("observation-selection.png"), fullPage: true });
+  const response = page.waitForResponse(
+    (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "초안 만들기", exact: true }).click();
+  const generated = await response;
+  expect(generated.status()).toBe(201);
+  const created = await generated.json();
   await expect(page.getByRole("heading", { name: "사실", exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "사실 내용", exact: true })).toHaveCount(0);
   await expect(page.getByText(fact, { exact: true }).first()).toBeVisible();
+  await reopenCreated(page, created);
   await page
     .getByRole("textbox", { name: "해석 내용", exact: true })
     .fill("블록을 쌓고 친구에게 함께 놀이할 것을 제안했다.");

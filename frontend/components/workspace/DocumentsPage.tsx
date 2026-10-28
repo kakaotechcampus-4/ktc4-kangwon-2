@@ -452,6 +452,11 @@ export default function DocumentsPage() {
         ...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {}),
       });
       if (creation.adopt(created)) {
+        // 목록 재조회가 끝나기 전에도 방금 만든 문서를 기존 편집기로 연다.
+        setServerDocs((prev) => [
+          { ...created, sourcesCount: created.sources.length },
+          ...prev.filter((d) => d.id !== created.id),
+        ]);
         setSelected([]);
         setInvalid([]);
         setMode("library");

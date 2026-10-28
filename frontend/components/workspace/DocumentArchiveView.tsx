@@ -136,14 +136,26 @@ export default function DocumentArchiveView({
   /** 페이지 제목 · 설명 · 기존 생성 액션. **오른쪽 본문 안에만** 그린다. */
   header: ReactNode;
 }) {
-  const [type, setType] = useState<ArchiveType | null>(null);
-  // 현재 날짜 기준으로 시작한다. 하드코딩하지 않는다 — `today()` 는 현지 날짜다.
-  const [day, setDay] = useState(today);
-  const [month, setMonth] = useState(() => monthOf(today()));
+  // 생성 화면에서 돌아오면 선택된 문서에 맞춰 탐색도 시작한다.
+  // 이후 목록 탐색은 이 상태를 그대로 쓰므로 다른 종류의 편집기가 끼어들지 않는다.
+  const initialDoc = documents.find((d) => d.id === activeId && d.classId === classId);
+  const [type, setType] = useState<ArchiveType | null>(() => {
+    if (initialDoc?.kind === "observation") return "observation";
+    if (initialDoc?.kind === "dailyLog" || initialDoc?.kind === "weeklyLog") return "care";
+    return null;
+  });
+  const [day, setDay] = useState(() => initialDoc?.start ?? today());
+  const [month, setMonth] = useState(() => monthOf(initialDoc?.start ?? today()));
   const [schoolYear, setSchoolYear] = useState(() => schoolYearOf(today()));
-  const [childId, setChildId] = useState("");
+  const [childId, setChildId] = useState(() => {
+    if (initialDoc?.kind === "observation") return initialDoc.childId;
+    // 보육일지의 아동 선택은 탐색 맥락뿐이다. 문서는 반 · 날짜로만 고른다.
+    return initialDoc ? (classes.find((c) => c.id === classId)?.children[0]?.id ?? "") : "";
+  });
   const [childSearch, setChildSearch] = useState("");
-  const [scope, setScope] = useState<"dailyLog" | "weeklyLog">("dailyLog");
+  const [scope, setScope] = useState<"dailyLog" | "weeklyLog">(() =>
+    initialDoc?.kind === "weeklyLog" ? "weeklyLog" : "dailyLog",
+  );
   const [oldestFirst, setOldestFirst] = useState(false);
 
   const classroom = classes.find((c) => c.id === classId);
