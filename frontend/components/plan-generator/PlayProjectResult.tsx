@@ -371,7 +371,11 @@ export default function PlayProjectResult({
   const periodPicks = picks[period.period_key] ?? [];
   const nextPeriod = nextPlayProjectPeriod(plan, picks, activePeriod);
   const total = plan.periods.reduce((sum, item) => sum + (picks[item.period_key]?.length ?? 0), 0);
-  const showFloating = step === 0 && periodPicks.length === MAX_PICKS;
+  // ② 에서는 네 구간이 모두 5개일 때만 ③ 으로 가는 버튼을 띄운다.
+  const showFloating =
+    step === 0
+      ? periodPicks.length === MAX_PICKS
+      : step === 1 && total === plan.periods.length * MAX_PICKS;
   const pickedCandidates = periodPicks.map((key) =>
     period.candidates.find((candidate) => candidate.row_key === key)!,
   );
@@ -661,7 +665,7 @@ export default function PlayProjectResult({
 
   function advance() {
     if (nextPeriod === null) {
-      goToStep(1);
+      goToStep(step === 1 ? 2 : 1);
       document.getElementById(panelId)?.focus({ preventScroll: true });
       return;
     }
@@ -1087,9 +1091,11 @@ export default function PlayProjectResult({
           className={`${workspace.primary} ${styles.floatingNext}`}
           onClick={advance}
         >
-          {nextPeriod === null
-            ? "배치하고 다듬기로 →"
-            : `다음: ${plan.periods[nextPeriod].label} 고르기 →`}
+          {step === 1
+            ? "전체 초안 보기로 →"
+            : nextPeriod === null
+              ? "배치하고 다듬기로 →"
+              : `다음: ${plan.periods[nextPeriod].label} 고르기 →`}
         </button>
       )}
     </main>

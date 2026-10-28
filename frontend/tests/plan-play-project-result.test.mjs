@@ -841,7 +841,7 @@ test("floating next focuses the newly active period tab", () => {
   assert.deepEqual(view.focused, [activeTab.props.id]);
 });
 
-test("all four full periods show only the floating arrangement button and none in step two", () => {
+test("all four full periods show only the floating arrangement button and the draft button in step two", () => {
   const full = ["cand0", "cand1", "cand2", "cand3", "cand4"];
   const picks = Object.fromEntries(plan().periods.map((period) => [period.period_key, full]));
   const view = resultRenderer(plan(), [2, 0, picks, null]);
@@ -862,12 +862,35 @@ test("all four full periods show only the floating arrangement button and none i
   assert.deepEqual(view.scrolls, []);
   view.flushFrames();
   assert.deepEqual(view.scrolls, [{ top: 0 }]);
-  assert.equal(nodes.filter((node) => node.props?.className?.includes("floatingNext")).length, 0);
-  assert.ok(
-    !nodes
-      .find((node) => node.props?.role === "tabpanel")
-      .props.className.includes("panelWithFloating"),
+  assert.equal(
+    nodes
+      .filter((node) => node.props?.className?.includes("floatingNext"))
+      .map(text)
+      .join(),
+    "전체 초안 보기로 →",
   );
+});
+
+test("step two shows a floating draft button only when all four periods are full", () => {
+  const full = ["cand0", "cand1", "cand2", "cand3", "cand4"];
+  const picks = Object.fromEntries(plan().periods.map((period) => [period.period_key, full]));
+  const find = (view) =>
+    all(view.render()).filter((node) => node.props?.className?.includes("floatingNext"));
+  const view = resultRenderer(plan(), [0, 1, picks, null]);
+  const floating = find(view);
+  assert.equal(floating.length, 1);
+  assert.equal(text(floating[0]), "전체 초안 보기로 →");
+  floating[0].props.onClick();
+  view.flushFrames();
+  assert.ok(
+    all(view.render()).some(
+      (node) => node.type === "button" && text(node) === "← 배치하고 다듬기로",
+    ),
+  );
+  assert.equal(find(view).length, 0);
+  assert.deepEqual(view.scrolls, [{ top: 0 }]);
+  const short = { ...picks, period3: full.slice(0, 4) };
+  assert.equal(find(resultRenderer(plan(), [0, 1, short, null])).length, 0);
 });
 
 test("changing step scrolls to the top; clicking the current step does not", () => {
