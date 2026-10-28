@@ -2,7 +2,9 @@
 
 import json
 from dataclasses import replace
+from typing import Annotated
 
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictStr, StringConstraints
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
 
@@ -18,14 +20,19 @@ from ssuksak.planning.planner.play_project import PlayProjectRequest
 
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
+from app.features.plans.monthly_schemas import RevisionIn
 from app.features.plans.runtime import FixedPlanIdGenerator, SystemClock, UuidGenerator
 from app.features.plans.schemas import (
     EvidenceOut,
     GenerationOut,
+    PlayAuditEventOut,
+    PlayAuditOut,
     PlayCandidateOut,
     PlayCellOut,
     PlayPeriodOut,
     PlayProjectPlanOut,
+    SelectionChangeOut,
+    ValueChangeOut,
 )
 from app.shared.llm import is_mock
 
@@ -115,6 +122,7 @@ def format_of(row: Plan) -> str:
 
 def _cell(item) -> PlayCellOut:
     return PlayCellOut(
+        item_id=item.item_id.value,
         value=item.value,
         evidence=[
             EvidenceOut(
@@ -137,6 +145,7 @@ def _cell(item) -> PlayCellOut:
 def to_out(row: Plan, plan: PlayProjectYearlyPlan) -> PlayProjectPlanOut:
     return PlayProjectPlanOut(
         id=row.id,
+        revision=row.revision,
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
@@ -153,7 +162,85 @@ def to_out(row: Plan, plan: PlayProjectYearlyPlan) -> PlayProjectPlanOut:
                     )
                     for c in p.candidates
                 ],
+                selected=list(p.selected),
             )
             for p in plan.periods
         ],
     )
+
+
+def audit_out(plan: PlayProjectYearlyPlan) -> PlayAuditOut:
+    """계획안 · 모든 후보 칸의 저장된 이벤트를 발생 시각순으로. type 은 걸러내지 않는다."""
+    events = list(plan.audit.events)
+    for period in plan.periods:
+        for candidate in period.candidates:
+            for name in ROW_FIELDS:
+                events += getattr(candidate, name).audit.events
+    events.sort(key=lambda event: event.occurred_at)  # 안정 정렬 — 같은 시각이면 원래 순서
+    return PlayAuditOut(
+        items=[
+            PlayAuditEventOut(
+                type=e.event_type.value,
+                occurred_at=e.occurred_at,
+                actor=e.actor_id.value if e.actor_id is not None else None,
+                system_actor=e.system_actor,
+                value_change=(
+                    ValueChangeOut(before=e.value_change.before, after=e.value_change.after)
+                    if e.value_change is not None
+                    else None
+                ),
+                item_id=e.item_id.value if e.item_id is not None else None,
+                selection_change=(
+                    SelectionChangeOut(
+                        period_key=e.selection_change.period_key,
+                        before=list(e.selection_change.before),
+                        after=list(e.selection_change.after),
+                    )
+                    if e.selection_change is not None
+                    else None
+                ),
+            )
+            for e in events
+        ]
+    )
+
+
+def _no_duplicates(keys: list[str]) -> list[str]:
+    if len(keys) != len(set(keys)):
+        raise ValueError("같은 후보를 두 번 고를 수 없습니다")
+    return keys
+
+
+# row_key 는 Core 가 "cand1".."candN" 으로 만든다(domain/play_project_plan.py:67). 형식 · 길이
+# 규칙은 Core 에 없어 모양은 걸지 않고, 없는 후보는 Core 의 invalid_selection 이 막는다.
+# 5개는 layout.selected_per_period(application/play_project_lifecycle.py:84)와 같은 값이다.
+_Selected = Annotated[list[StrictStr], Field(max_length=5), AfterValidator(_no_duplicates)]
+
+
+class PlaySelections(BaseModel):
+    """네 구간을 모두 받는다(api-spec §6-1). 구간 키는 _PERIOD_LABELS 와 같다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    m03_m05: _Selected
+    m06_m08: _Selected
+    m09_m11: _Selected
+    m12_m02: _Selected
+
+
+class SaveSelectionIn(RevisionIn):
+    selections: PlaySelections
+
+
+class EditItemIn(RevisionIn):
+    # 본문이 JSONB 라 맞출 컬럼이 없다. Core 생성 검사의 가장 긴 칸(지원 방향 600자,
+    # planner/text_policy.py:8 MAX_RATIONALE_CHARS)에 맞춘다.
+    value: Annotated[
+        str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=600)
+    ]
+
+
+class ConfirmIn(RevisionIn):
+    # 월별 주제형은 본문을 안 읽으므로 `{}` 도 받아야 한다.
+    # 놀이형의 「없음」은 라우터가 422 로 막고, 타입이 틀린 값은 여기서 먼저 422 다.
+    expected_revision: Annotated[int, Field(ge=1, strict=True)] | None = None

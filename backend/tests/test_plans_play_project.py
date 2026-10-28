@@ -51,7 +51,6 @@ from ssuksak.planning.domain.provenance import (  # isort: skip
 
 client = TestClient(app)
 NOW = datetime(2026, 10, 25, 9, 0, tzinfo=UTC)
-BLOCKED = "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다."
 GENERATION = GenerationMethodDetail(
     GenerationMethod.RULE_LLM, "play_project.generate", PLAY_PROJECT_PROMPT_VERSION
 )
@@ -216,10 +215,10 @@ def saved(world):
     return plan, row
 
 
-def _blocked(response):
+def _blocked(response, message):
     assert response.status_code == 409, response.text
     error = response.json()["error"]
-    assert (error["code"], error["message"], error["fields"]) == ("GATE_BLOCKED", BLOCKED, [])
+    assert (error["code"], error["message"], error["fields"]) == ("GATE_BLOCKED", message, [])
 
 
 def test_저장한_계획안을_그대로_읽어온다(world, saved):
@@ -234,7 +233,7 @@ def test_저장한_계획안을_그대로_읽어온다(world, saved):
 
 
 def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다(world, saved):
-    _, row = saved
+    plan, row = saved
     response = client.get(f"/api/plans/annual/{row.id}")
 
     assert response.status_code == 200, response.text
@@ -255,6 +254,7 @@ def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다
     first = body["periods"][0]["candidates"][0]
     assert set(first) == {"row_key", "play_name", "materials", "support_direction", "learning"}
     assert first["play_name"] == {
+        "item_id": plan.periods[0].candidates[0].play_name.item_id.value,
         "value": "m03_m05 놀이 1",
         "evidence": [],
         "generation": {
@@ -485,7 +485,7 @@ def test_provider_오류가_계약_코드로_변환된다(world, monkeypatch, er
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
 
 
-def test_수정_확정_감사_내보내기는_409_이고_행은_그대로다(world, saved):
+def test_월별_칸_수정과_내보내기는_409_이고_행은_그대로다(world, saved):
     _, row = saved
     session = world["session"]
     before = (row.body, row.revision, row.status)
@@ -493,11 +493,13 @@ def test_수정_확정_감사_내보내기는_409_이고_행은_그대로다(wor
     _blocked(
         client.put(
             f"/api/plans/annual/{row.id}/months/3", json={"theme": "새 주제", "sub_themes": []}
-        )
+        ),
+        "놀이 프로젝트형은 칸 편집으로 고칩니다.",
     )
-    _blocked(client.post(f"/api/plans/annual/{row.id}/confirm"))
-    _blocked(client.get(f"/api/plans/annual/{row.id}/audit"))
-    _blocked(client.get(f"/api/plans/{row.id}/export/hwp"))
+    _blocked(
+        client.get(f"/api/plans/{row.id}/export/hwp"),
+        "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.",
+    )
 
     session.refresh(row)
     assert (row.body, row.revision, row.status) == before
@@ -523,8 +525,9 @@ def test_놀이_프로젝트형_반의_월간_생성은_LLM_앞에서_409(world,
     error = response.json()["error"]
     assert error["code"] == "GATE_BLOCKED"
     assert error["fields"] == ["class_id"]
-    assert (
-        error["message"] == "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다."
+    assert error["message"] == (
+        "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다. "
+        "놀이 중심 월간계획안으로 만들어 주세요."
     )
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "monthly")) is None
 

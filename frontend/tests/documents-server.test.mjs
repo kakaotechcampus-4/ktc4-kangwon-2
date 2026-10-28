@@ -20,7 +20,7 @@ registerHooks({
 });
 
 const documents = await import("../lib/api/documents.ts");
-const { ApiError } = await import("../lib/api/client.ts");
+const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 
@@ -375,6 +375,31 @@ test("주간 보육일지 생성은 문서 id 를 근거로 보낸다", async ()
   }
   assert.deepEqual(calls[0].body.source_ids, [5]);
   assert.equal(calls[0].body.child_id, null);
+  // 생략하면 서버 기본값(확정한 일일 보육일지)이다.
+  assert.equal("source_kind" in calls[0].body, false);
+});
+
+test("일과 근거 주간은 일과 기록 id 와 source_kind 를 보낸다", async () => {
+  browser();
+  const { calls, restore } = serve(() =>
+    json({ ...WEEKLY_DETAIL, sources: [{ ...WEEKLY_DETAIL.sources[0], id: 7 }] }, 201),
+  );
+  try {
+    await documents.createDocument({
+      kind: "weeklyLog",
+      classId: "class-abc",
+      childId: "",
+      start: "2026-09-21",
+      end: "2026-09-25",
+      sourceIds: ["routine:7"],
+      sourceKind: "routine",
+    });
+  } finally {
+    restore();
+  }
+  // 문서 접두사로 풀면 null 이 되어 보내지 못한다 — 일과 표의 id 다.
+  assert.deepEqual(calls[0].body.source_ids, [7]);
+  assert.equal(calls[0].body.source_kind, "routine");
 });
 
 test("매핑을 못 찾으면 생성 요청 자체를 보내지 않는다", async () => {
@@ -524,6 +549,21 @@ test("source assertions receive identical text for LF and CRLF checkouts", () =>
     const lf = read(name);
     assert.equal(normalizeNewlines(lf.replace(/\n/g, "\r\n")), lf);
   }
+});
+
+test("주간 보육일지는 근거를 확정 일일 보육일지와 일과 기록 중에 고른다", () => {
+  const page = read("DocumentsPage.tsx");
+
+  assert.ok(page.includes('useState<"dailyLog" | "routine">("dailyLog")'));
+  // 일과 기록을 근거로 쓰는 두 경우가 한 조건으로 묶여 있다 — 후보 · 조회 · 링크가 같이 간다.
+  assert.ok(
+    page.includes('kind === "dailyLog" || (kind === "weeklyLog" && weeklyFrom === "routine")'),
+  );
+  // 주간은 하루가 아니라 그 주를 묻는다.
+  assert.ok(page.includes("listDayRoutines(cls, from, to)"));
+  assert.ok(page.includes('`${classId}|${start}|${kind === "dailyLog" ? start : end}`'));
+  // 고른 근거 종류를 서버에 그대로 넘긴다 (§11 `source_kind`).
+  assert.ok(page.includes('...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {})'));
 });
 
 test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", () => {
@@ -1390,12 +1430,17 @@ function editorHarness(selection) {
     },
     "./WorkspaceUI": { ws: {}, Message: "message", AIHint: "ai-hint", useAIStatus: () => false },
     "./document-selection": { serverIssues },
+    // 실제 invalidFields 를 쓴다 — 서버가 짚은 칸을 화면 이름으로 바꾸는 길이
+    // 스텁이면 "어느 칸이 틀렸나" 를 검증하지 못한다.
+    "@/lib/api/client": { ApiError, invalidFields },
     "./SourceReview": { default: "source-review" },
     "@/lib/api/storage-context": { API_STORAGE_CONTEXT },
     "@/lib/api/plans": {},
     "@/lib/api/documents": documents,
     "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/privacy/browser-storage": privacy,
+    // 이름표 앞 자물쇠. 그림일 뿐이라 null 로 둔다.
+    "@/components/app/icons": { Icon: () => null },
   };
   modules["@/lib/hooks/use-hwpx-download"] = evaluate(hwpxHookCode, modules);
   const Editor = evaluate(editorCode, modules).default;
@@ -1433,10 +1478,8 @@ function editorHarness(selection) {
   render();
   return {
     render,
-    textarea: () =>
-      all(tree).find(
-        (node) => node.type === "textarea" && node.props["aria-label"] === "해석 내용",
-      ),
+    textarea: (label = "해석 내용") =>
+      all(tree).find((node) => node.type === "textarea" && node.props["aria-label"] === label),
     button: (label) => all(tree).find((node) => node.type === "button" && content(node) === label),
     links: () => all(tree).filter((node) => node.type === "link"),
     checks: () =>
@@ -1548,6 +1591,33 @@ test("확정된 서버 문서에만 확정 취소가 보이고 초안에는 보�
 
   const draft = await editing();
   assert.equal(draft.editor.button("확정 취소"), undefined);
+});
+
+test("확정이 막히면 서버가 짚은 칸을 교사 말로 알려준다", async () => {
+  // 서버 게이트는 글자 수 말고도 사실·원문 대조와 해석의 숫자를 본다
+  // (backend/app/shared/gates/sections.py). 화면 검사를 통과해도 여기서 막힐 수 있는데,
+  // 「입력값을 확인해주세요」만 띄우면 교사가 어느 칸을 고칠지 알 수 없었다.
+  const { editor } = await editing(
+    {},
+    {
+      confirm: async () => {
+        throw new ApiError(422, {
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "입력값을 확인해주세요.",
+            fields: ["sections.해석"],
+          },
+        });
+      },
+    },
+  );
+  editor.checks().forEach((box) => box.props.onChange({ target: { checked: true } }));
+  editor.render();
+  editor.button("검토 완료 · 문서 확정").props.onClick();
+  await tick();
+  editor.render();
+  assert.match(editor.text(), /해석 칸이 원본과 맞지 않아요/);
+  assert.match(editor.text(), /해석 칸을 고쳐주세요/);
 });
 
 test("사실 칸 아래에 원본을 고치는 곳을 알려준다", async () => {
@@ -1981,4 +2051,36 @@ test("후속 #6 mock 접두어 정리는 교사가 쓴 사실과 일반 문서 �
     dto.sections.map((s) => s.body),
   );
   assert.equal(teacher.mockDraft, false);
+});
+
+test("일일 보육일지 편집기는 반 운영 특이사항을 적어 서버로 보낸다", async () => {
+  let sent = null;
+  const selection = createSelection(
+    {
+      get: async () => doc(2, { kind: "dailyLog", childId: "", childName: "" }),
+      update: async (_id, input) => {
+        sent = input;
+        return doc(2, { kind: "dailyLog", classNote: input.classNote, updatedAt: "t1" });
+      },
+    },
+    describe,
+  );
+  selection.select("document:2", 1);
+  await tick();
+  const editor = editorHarness(selection);
+
+  const note = editor.textarea("반 운영 특이사항");
+  assert.ok(note, "일일 보육일지에는 특이사항 칸이 있다");
+  note.props.onChange({ target: { value: "-결석 : 이가명" } });
+  editor.render();
+
+  await editor.button("초안 저장").props.onClick();
+  assert.equal(sent.classNote, "-결석 : 이가명");
+});
+
+test("관찰일지 편집기에는 반 운영 특이사항 칸이 없다", async () => {
+  const selection = createSelection({ get: async () => doc(3) }, describe);
+  selection.select("document:3", 1);
+  await tick();
+  assert.equal(editorHarness(selection).textarea("반 운영 특이사항"), undefined);
 });
