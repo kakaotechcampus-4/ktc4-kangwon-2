@@ -18,6 +18,7 @@ from app.features.centers.schemas import (
     CenterResponse,
     CenterSettings,
     CenterSettingsUpdate,
+    CenterUpdate,
     ClassCreate,
     ClassListResponse,
     ClassResponse,
@@ -98,6 +99,32 @@ def get_center(center_id: int, session: DbSession, user: CurrentUser) -> Center:
     """
     require_own_center(user, center_id)
     return session.get(Center, center_id)
+
+
+@router.patch("/{center_id}", response_model=CenterResponse)
+def patch_center(
+    center_id: int, body: CenterUpdate, session: DbSession, user: CurrentUser
+) -> Center:
+    """원명 · 원장 이름 · 지역을 고친다 (§1). **보낸 칸만 바꾼다.**
+
+    원장이 바뀌거나 원 이름이 바뀌는 일은 실제로 일어나는데 고칠 길이 없었다.
+    `POST /api/centers` 를 다시 부르면 「이미 등록한 원이 있습니다」 409 가 난다.
+
+    원장 이름은 계획안 결재란에 인쇄된다 (docs/PRD.md S1). 바꾸면 **다음에 내보내는
+    문서부터** 새 이름이 찍힌다 — 이미 확정해 내려받은 파일은 그대로다.
+    """
+    require_own_center(user, center_id)
+    center = _center(session, center_id, lock=True)
+    if body.name is not None:
+        center.name = body.name
+    if body.director_name is not None:
+        center.director_name = body.director_name
+    if body.region_sido is not None and body.region_sigungu is not None:
+        center.region_sido = body.region_sido
+        center.region_sigungu = body.region_sigungu
+    session.commit()
+    session.refresh(center)
+    return center
 
 
 @router.post(

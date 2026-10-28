@@ -3,6 +3,7 @@ import { failure, scenario } from "./scenarios";
 import {
   findCenter,
   addCenter,
+  patchCenter,
   putConfig,
   currentCenterId,
   findGreetings,
@@ -122,6 +123,17 @@ export const handlers = [
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+  }),
+  // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
+  http.patch("*/api/centers/:centerId", async ({ request, params }) => {
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
+      if (k in b && !text(b[k])) return bad(k);
+    if ("region_sido" in b !== "region_sigungu" in b) return bad("region_sido");
+    return HttpResponse.json(patchCenter(id, b as Partial<CenterInput>));
   }),
   // 초대 코드 (§1-1). 목업은 계정이 하나라 코드를 하나로 고정한다.
   http.post("*/api/centers/:centerId/invites", ({ params }) => {

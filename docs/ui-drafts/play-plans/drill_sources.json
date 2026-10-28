@@ -1,0 +1,12 @@
+{
+  "version": "monthly-drill-local-review-v1",
+  "status": "LOCAL_REVIEW_ONLY",
+  "note": "확인한 공식 상황의 제품용 요약이다. 정식 Catalog 승인이나 실제 훈련 절차를 대신하지 않는다.",
+  "sources": [
+    {"id": "fire-kitchen", "summary": "조리실에서 화재가 발생한 가상 상황을 주제로 삼을 수 있다.", "document": "2026 보육사업안내 부록 8", "pdfPage": 243, "printedPage": 239},
+    {"id": "fire-electric", "summary": "누전 또는 전기 사용 중 화재가 발생한 가상 상황을 주제로 삼을 수 있다.", "document": "2026 보육사업안내 부록 8", "pdfPage": 243, "printedPage": 239},
+    {"id": "earthquake", "summary": "지진 발생을 가정한 훈련 주제를 제안할 수 있다.", "document": "2026 보육사업안내 부록 8", "pdfPage": 244, "printedPage": 240},
+    {"id": "snow", "summary": "폭설과 결빙 상황을 가정한 대비 훈련 주제를 제안할 수 있다.", "document": "2026 보육사업안내 부록 8", "pdfPage": 244, "printedPage": 240},
+    {"id": "flood", "summary": "수해 등 자연재난을 가정한 대비 훈련 주제를 제안할 수 있다.", "document": "2026 보육사업안내 부록 8", "pdfPage": 241, "printedPage": 237}
+  ]
+}

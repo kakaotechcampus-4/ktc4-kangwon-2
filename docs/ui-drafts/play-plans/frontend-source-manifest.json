@@ -1,0 +1,98 @@
+[
+    {
+        "file":  "app.js",
+        "sha256":  "2c94c2ab38fcb958dc7a029f0c15de7bab84509d65b8a7740b50855c59b7118d"
+    },
+    {
+        "file":  "curriculum.js",
+        "sha256":  "659dc70a671d21057cd00dfa290a3eb0b781c33808f4b18a451d69e053aa260b"
+    },
+    {
+        "file":  "data.js",
+        "sha256":  "96db0184379e2bab75425570a6957902682eb8e42c343b1f78055430b37e1f9b"
+    },
+    {
+        "file":  "drill_sources.json",
+        "sha256":  "00a0f8ccec78c7832b97e4d9eb9c3e6840c271adbc175357e0f2f3011a782719"
+    },
+    {
+        "file":  "index.html",
+        "sha256":  "1eb69a5855520b5fc25f8f685c48851ca96613324d56c3d4a2210ce78c7e9630"
+    },
+    {
+        "file":  "model.js",
+        "sha256":  "4598a62c1a52abf7a8585f2a632399d81ccbfdf6f2e49f8fd1b297c4193ad31c"
+    },
+    {
+        "file":  "model.test.cjs",
+        "sha256":  "6501d23f012269098a1fa7105d9386778aaf8ec1ece899daae0930e07c448bdd"
+    },
+    {
+        "file":  "monthly-july-live.json",
+        "sha256":  "3b545f403cba00b9b4e38fec27eed7090820c6786e4afcebd1d08dc338d00bc5"
+    },
+    {
+        "file":  "monthly-october-core-live.json",
+        "sha256":  "5c887fd3f897fd91768b6612b1e2f5553e9d16091b06e410af4c1e31c730f383"
+    },
+    {
+        "file":  "plans-nav.css",
+        "sha256":  "24220a17e8a5f49bc3f74ec587e1f8ae8925304d28ae846fcae712eb57b49c7d"
+    },
+    {
+        "file":  "styles.css",
+        "sha256":  "6b8eeff7b7b860a711f74707a7ff89eca11749130b48eab0069d08dba545548f"
+    },
+    {
+        "file":  "yearly-bridge.js",
+        "sha256":  "4f5b75b1629f3b7cee4ce7e51d0044e8021ad5a88cd6420354df9b5edca7966b"
+    },
+    {
+        "file":  "yearly-bridge.test.cjs",
+        "sha256":  "06e0d53cacb06a99344697155981e4f5a6474106b2b274955cffc919971d19aa"
+    },
+    {
+        "file":  "assets/FONT-LICENSE.txt",
+        "sha256":  "d35ee94746eb3244c25640268d1e18cd7c8c0d93717043a2f0a74836ee5a7658"
+    },
+    {
+        "file":  "assets/nanum-gothic.ttf",
+        "sha256":  "31cf6994c8c022a086d8ac6f5662b5729d1cdbe26e6886eeeb43e59e89de05dd"
+    },
+    {
+        "file":  "yearly/app.js",
+        "sha256":  "6e20bdf56a17e9cc17997e6a434a69b66e9405f76ea8270de79c3f249f77d7a9"
+    },
+    {
+        "file":  "yearly/curriculum.js",
+        "sha256":  "e572b111911d7e698d1eae2cce6ca4a6a32e553d82b980504bf3829cd87acdf7"
+    },
+    {
+        "file":  "yearly/index.html",
+        "sha256":  "f447057768bf2c6d1ac3f78b5ebd828a827d896c2cae3922b7892ed20dbf444a"
+    },
+    {
+        "file":  "yearly/live-candidates.js",
+        "sha256":  "1f71d6be01cf5821ed8350261030fc6a4166a4cfdab11aebefeb6e1b6632b5ea"
+    },
+    {
+        "file":  "yearly/model.js",
+        "sha256":  "8d9d2b63c3c74df54175d2c8d1c30cab4117fa451af987b7913fefd23af1bc3e"
+    },
+    {
+        "file":  "yearly/sol-candidates.js",
+        "sha256":  "9c7d36ab7017aaf949bb56db4ee6afddef447e21af07f06a00dd27596d47aac3"
+    },
+    {
+        "file":  "yearly/styles.css",
+        "sha256":  "ea802e6033aa68fb81a3fbd9f1254669feca1fd8296ba63d7022e581d989236d"
+    },
+    {
+        "file":  "yearly/assets/FONT-LICENSE.txt",
+        "sha256":  "d35ee94746eb3244c25640268d1e18cd7c8c0d93717043a2f0a74836ee5a7658"
+    },
+    {
+        "file":  "yearly/assets/nanum-gothic.ttf",
+        "sha256":  "31cf6994c8c022a086d8ac6f5662b5729d1cdbe26e6886eeeb43e59e89de05dd"
+    }
+]

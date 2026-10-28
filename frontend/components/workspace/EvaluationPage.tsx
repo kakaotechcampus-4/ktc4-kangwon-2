@@ -23,7 +23,7 @@ export default function EvaluationPage() {
   const [refresh, setRefresh] = useState(0);
   return (
     <WorkspacePage
-      title="평가 준비"
+      title="평가 점검"
       description="평가 때 보여줄 자료가 모였는지, 무엇을 더 쓰면 되는지 알려드려요."
       action={
         <button
@@ -38,7 +38,7 @@ export default function EvaluationPage() {
       <EvaluationChecklist refresh={refresh}>
         <details>
           <summary>이 브라우저의 기존 증빙 사전점검</summary>
-          <p className={ws.hint}>아래에 등록한 자료는 위 평가 준비 현황에 반영되지 않아요.</p>
+          <p className={ws.hint}>아래에 등록한 자료는 위 평가 점검 현황에 반영되지 않아요.</p>
           <LocalDocumentReview />
         </details>
       </EvaluationChecklist>
@@ -214,7 +214,7 @@ function LocalDocumentReview() {
   }
   return (
     <WorkspacePage
-      title="평가 준비"
+      title="평가 점검"
       description="문서와 기록을 살펴보고, 준비할 항목을 확인하세요."
     >
       <section className={ws.hero}>

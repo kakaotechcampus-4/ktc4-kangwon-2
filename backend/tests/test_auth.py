@@ -244,3 +244,57 @@ def test_남의_아동을_지울_수_없다(db_session):
 
     assert client.delete(f"/api/children/{child['id']}", headers=bearer(other)).status_code == 404
     assert client.delete(f"/api/children/{child['id']}", headers=bearer(mine)).status_code == 204
+
+
+# ── 비밀번호 변경 ──────────────────────────────────────
+
+
+def test_비밀번호를_바꾸면_새_것으로만_로그인된다(db_session):
+    token = signup(db_session)
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": ACCOUNT["password"], "new_password": "쌤플전용비번2026"},
+        headers=bearer(token),
+    )
+    assert response.status_code == 204, response.text
+
+    assert client.post("/api/auth/login", json=CREDENTIALS).status_code == 401
+    바꾼뒤 = {**CREDENTIALS, "password": "쌤플전용비번2026"}
+    assert client.post("/api/auth/login", json=바꾼뒤).status_code == 200
+
+
+def test_지금_비밀번호가_틀리면_바꾸지_못한다(db_session):
+    token = signup(db_session)
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": "틀린비밀번호", "new_password": "쌤플전용비번2026"},
+        headers=bearer(token),
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["current_password"]
+    # 틀린 요청이 비밀번호를 건드리지 않았다
+    assert client.post("/api/auth/login", json=CREDENTIALS).status_code == 200
+
+
+def test_같은_비밀번호로는_바꾸지_못한다(db_session):
+    token = signup(db_session)
+    response = client.patch(
+        "/api/auth/password",
+        json={
+            "current_password": ACCOUNT["password"],
+            "new_password": ACCOUNT["password"],
+        },
+        headers=bearer(token),
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["new_password"]
+
+
+def test_로그인하지_않으면_비밀번호를_바꾸지_못한다(db_session):
+    signup(db_session)
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": ACCOUNT["password"], "new_password": "쌤플전용비번2026"},
+    )
+    assert response.status_code == 401
+    assert client.post("/api/auth/login", json=CREDENTIALS).status_code == 200
