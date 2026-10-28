@@ -258,7 +258,7 @@ export interface ConfirmResult {
  * 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
  */
 export interface AnnualAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED";
+  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED" | "CANDIDATES_SELECTED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
   /** 그 달 theme 의 이벤트면 그 달(1~12). 계획안 단위(생성 · 확정)면 null. */
@@ -269,6 +269,10 @@ export interface AnnualAuditEvent {
   system_actor: string | null;
   /** `TEACHER_EDITED` 면 그때 바뀐 theme(소주제만 고쳤으면 둘이 같다). 그 밖에는 null. */
   value_change: { before: string; after: string } | null;
+  /** 놀이 프로젝트형만 — 칸 주소. 해당이 없으면 null. 월별 주제형은 이 키가 없다(§7-1). */
+  item_id?: string | null;
+  /** 놀이 프로젝트형 `CANDIDATES_SELECTED` 만 — 한 구간의 고르기 변화(문서 배치 순서). */
+  selection_change?: { period_key: string; before: string[]; after: string[] } | null;
 }
 /** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
 export interface ProfileRef {

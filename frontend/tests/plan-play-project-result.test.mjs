@@ -127,7 +127,21 @@ const saveStub = {
   conflict: null,
   rejected: null,
   drafting: false,
+  // whenIdle 의 다음 답과 불린 순서 — 확정이 큐를 기다린 뒤 그 revision 으로 보내는지 본다.
+  idle: { saved: true, revision: 3 },
+  gate: null,
+  queue: null, // 있으면 whenIdle 이 이 진짜 큐를 부른다
+  log: [],
 };
+// 확정 API 대역 — 무엇을 어떤 revision 으로 보냈는지, 다음에 무엇이 오는지.
+const confirmStub = { calls: [], next: null };
+class StubApiError extends Error {
+  constructor(status, fields) {
+    super("서버 문구");
+    this.status = status;
+    this.body = { error: { fields } };
+  }
+}
 // 입력창 대역 — 화면이 넘긴 값과 콜백만 본다. 입력창 규칙은 play-cell-editor.test.mjs 가 다룬다.
 const editorStub = { props: null };
 const CellEditor = (props) => (
@@ -156,8 +170,26 @@ const sheetModules = {
         save: (selections) => saveStub.calls.push(selections),
         saveCell: (itemId, value, base) => saveStub.cells.push({ itemId, value, base }),
         retry: () => saveStub.retries++,
+        whenIdle: () => {
+          saveStub.log.push("whenIdle");
+          if (saveStub.queue) return saveStub.queue.whenIdle();
+          return saveStub.gate
+            ? saveStub.gate.then(() => saveStub.idle)
+            : Promise.resolve(saveStub.idle);
+        },
       };
     },
+  },
+  "@/lib/api/client": { ApiError: StubApiError },
+  "@/lib/api/plans": {
+    confirmPlayProject: async (id, revision) => {
+      saveStub.log.push("confirm");
+      confirmStub.calls.push({ id, revision });
+      const next = confirmStub.next;
+      if (next instanceof Error) throw next;
+      return next;
+    },
+    isSaveConflict: (error) => error?.status === 409,
   },
   "@/lib/plan-generator/playEditHistory": compile("../lib/plan-generator/playEditHistory.ts", {}),
   "./PlayCellEditor": esModule(CellEditor),
@@ -168,7 +200,7 @@ const sheetModules = {
 const pickToggles = (nodes) =>
   nodes.filter((node) => /^「.*」 선택(하기|됨)$/.test(node.props?.["aria-label"] ?? ""));
 const tables = (nodes) => nodes.filter((node) => node.type === "table");
-function resultRenderer(planValue, initial = [], desktop = false) {
+function resultRenderer(planValue, initial = [], desktop = false, extraProps = {}) {
   // ② 를 짧은 상태로 시작하는 테스트는 숨은 「선택한 놀이」 패널이 아니라 보이는 쪽을 쓴다.
   const state =
     initial.length === 4 && initial[1] === 1
@@ -178,6 +210,7 @@ function resultRenderer(planValue, initial = [], desktop = false) {
   const focusOptions = [];
   const scrolls = [];
   const frames = [];
+  let effects = [];
   const tabListRef = { current: null };
   const boxes = [];
   let boxCursor = 0;
@@ -198,7 +231,7 @@ function resultRenderer(planValue, initial = [], desktop = false) {
         useState,
         useRef: (value) =>
           value === null ? tabListRef : (boxes[boxCursor++] ??= { current: value }),
-        useEffect: () => {},
+        useEffect: (effect) => effects.push(effect),
         useSyncExternalStore: (_subscribe, get) => get(),
         useMemo: (compute) => compute(),
       },
@@ -208,6 +241,7 @@ function resultRenderer(planValue, initial = [], desktop = false) {
       ...sheetModules,
     },
     {
+      activeElement: { blur: () => saveStub.log.push("blur") },
       getElementById: (id) => {
         const node = all(tree).find((node) => node.props?.id === id);
         return (
@@ -224,11 +258,14 @@ function resultRenderer(planValue, initial = [], desktop = false) {
   const render = () => {
     cursor = 0;
     boxCursor = 0;
-    tree = resolve(jsx(Result, { plan: planValue }));
+    effects = [];
+    tree = resolve(jsx(Result, { plan: planValue, ...extraProps }));
     return tree;
   };
   return {
     render,
+    // 마지막 렌더의 효과를 모두 돌리고 정리 함수들을 돌려준다(화면이 내려갈 때 부르는 것).
+    mount: () => effects.map((effect) => effect()).filter((c) => typeof c === "function"),
     state,
     focused,
     focusOptions,
@@ -262,7 +299,8 @@ test("PlayProjectResult shows notices, accessible period tabs, and ten complete 
     "② 배치하고 다듬기",
     "③ 전체 초안 보기",
   ]);
-  assert.match(rendered, /놀이 프로젝트형은 아직 확정 · 내려받기를 할 수 없어요\./);
+  assert.match(rendered, /한글 파일 내려받기는 곧 열려요\./);
+  assert.doesNotMatch(rendered, /아직 확정 · 내려받기를 할 수 없어요/);
   assert.match(rendered, /이 반은 월간 · 주간계획안을 만들 수 없어요\./);
   const tabs = nodes.filter((node) => node.props?.role === "tab");
   assert.deepEqual(tabs.map(text), [
@@ -662,10 +700,13 @@ test("floating next clears the bottom nav and leaves the left sidebar to CSS", (
 test("floating next observes nav size, updates its bottom, and disconnects", (t) => {
   const effects = [];
   const state = [0, 0, { period0: ["cand0", "cand1", "cand2", "cand3", "cand4"] }, null];
-  [state[10], state[11], state[12]] = [
+  [state[10], state[11], state[12], state[13], state[14], state[15]] = [
     {},
     { saved: {}, history: { undo: [], redo: [] }, epochs: {} },
     "",
+    false,
+    "",
+    [],
   ];
   const button = { style: {} };
   const nav = { getBoundingClientRect: () => ({ top: 795, height: 105 }) };
@@ -699,7 +740,7 @@ test("floating next observes nav size, updates its bottom, and disconnects", (t)
     { querySelector: (selector) => (assert.equal(selector, 'aside[aria-label="주 메뉴"]'), nav) },
   );
   Result({ plan: plan() });
-  const cleanup = effects[0]();
+  const cleanup = effects[1](); // [0] 은 화면이 떠 있는지 적는 효과
   assert.equal(button.style.bottom, "117px");
   assert.deepEqual(
     observer.observe.mock.calls.map((call) => call.arguments),
@@ -1464,8 +1505,8 @@ test("AnnualResult routes a PLAY_PROJECT response to PlayProjectResult", async (
       },
     },
     "./GenerationFlow": esModule(() => jsx("generation-flow", {})),
-    "./PlayProjectResult": esModule(({ plan: loaded }) =>
-      jsx("play-project-result", { id: loaded.id }),
+    "./PlayProjectResult": esModule(({ plan: loaded, onConfirmed }) =>
+      jsx("play-project-result", { id: loaded.id, status: loaded.status, onConfirmed }),
     ),
   });
   const render = () => {
@@ -1490,6 +1531,148 @@ test("AnnualResult routes a PLAY_PROJECT response to PlayProjectResult", async (
       (node) => node.type === "app-header" && node.props.title === "연간계획안 · 놀이 프로젝트형",
     ),
   );
+  // 확정이 끝나면 응답 계획안으로 바꿔 다시 그린다.
+  const shown = nodes.find((node) => node.type === "play-project-result");
+  assert.equal(shown.props.status, "DRAFT");
+  shown.props.onConfirmed({ ...pp, status: "CONFIRMED", revision: pp.revision + 1 });
+  assert.equal(
+    all(render()).find((node) => node.type === "play-project-result").props.status,
+    "CONFIRMED",
+  );
+});
+
+// ── 확정 (ADR-044 §2 · §4) ──
+const FULL = ["cand0", "cand1", "cand2", "cand3", "cand4"];
+const fullPicks = { period0: FULL, period1: FULL, period2: FULL, period3: FULL };
+const confirmButton = (nodes) =>
+  nodes.find((node) => node.type === "button" && /^확정/.test(text(node)));
+function confirmView(picks = fullPicks, props = {}) {
+  const confirmed = [];
+  const conflicts = [];
+  const view = resultRenderer(plan(), [0, 2, picks], false, {
+    onConfirmed: (next) => confirmed.push(next),
+    onConflict: async () => conflicts.push(1),
+    ...props,
+  });
+  return { view, confirmed, conflicts };
+}
+function resetConfirm(next = { id: 41, status: "CONFIRMED", revision: 10 }) {
+  saveStub.idle = { saved: true, revision: 9 };
+  saveStub.gate = null;
+  saveStub.log = [];
+  confirmStub.calls = [];
+  confirmStub.next = next;
+}
+
+test("③ confirm button is on only when all four periods have five, and always says it cannot be undone", () => {
+  resetConfirm();
+  const full = all(confirmView().view.render());
+  assert.equal(confirmButton(full).props.disabled, false);
+  assert.equal(text(confirmButton(full)), "확정하기");
+  assert.ok(full.some((node) => text(node) === "확정하면 고칠 수 없어요"));
+  const short = all(confirmView({ ...fullPicks, period3: ["cand0"] }).view.render());
+  assert.equal(confirmButton(short).props.disabled, true);
+  // 이유는 지금의 부족 안내 한 줄이 말한다.
+  assert.ok(
+    short.some((node) => text(node) === "12월~2월이 1개예요. 확정하려면 구간마다 5개가 필요해요."),
+  );
+  assert.ok(short.some((node) => text(node) === "확정하면 고칠 수 없어요"));
+});
+
+test("confirming blurs the input, waits for the queue, then confirms with the revision the queue gives", async () => {
+  const done = { id: 41, status: "CONFIRMED", revision: 10 };
+  resetConfirm(done);
+  let release;
+  saveStub.gate = new Promise((resolve) => (release = resolve));
+  const { view, confirmed } = confirmView();
+  const first = confirmButton(all(view.render())).props.onClick();
+  confirmButton(all(view.render())).props.onClick(); // 더블클릭 — ref 잠금으로 무시
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(saveStub.log, ["blur", "whenIdle"]); // 큐가 끝나기 전에는 확정하지 않는다
+  const waiting = all(view.render());
+  assert.equal(text(confirmButton(waiting)), "확정하는 중…");
+  assert.equal(confirmButton(waiting).props.disabled, true);
+  release();
+  await first;
+  assert.deepEqual(saveStub.log, ["blur", "whenIdle", "confirm"]);
+  assert.deepEqual(confirmStub.calls, [{ id: 41, revision: 9 }]);
+  assert.deepEqual(confirmed, [done]);
+  // 끝나면 다시 누를 수 있는 상태로 돌아온다.
+  assert.equal(text(confirmButton(all(view.render()))), "확정하기");
+});
+
+test("a queue that did not save everything stops the confirm with a plain message", async () => {
+  resetConfirm();
+  saveStub.idle = { saved: false, revision: 9 };
+  const { view, confirmed } = confirmView();
+  await confirmButton(all(view.render())).props.onClick();
+  assert.deepEqual(confirmStub.calls, []);
+  assert.deepEqual(confirmed, []);
+  const alert = all(view.render()).find((node) => node.props?.role === "alert");
+  assert.equal(text(alert), "저장하지 못했어요. 다시 저장한 뒤 확정해 주세요.");
+});
+
+test("a 422 names the short periods by label and highlights their tabs", async () => {
+  resetConfirm(new StubApiError(422, ["period2", "period3"]));
+  const { view, confirmed } = confirmView();
+  await confirmButton(all(view.render())).props.onClick();
+  const nodes = all(view.render());
+  assert.equal(
+    text(nodes.find((node) => node.props?.role === "alert")),
+    "9월~11월 · 12월~2월 구간이 5개가 안 돼요. 모두 5개를 골라 주세요.",
+  );
+  const tabs = nodes.filter((node) => node.props?.role === "tab");
+  assert.deepEqual(
+    tabs.map((tab) => tab.props.className?.includes("lack") ?? false),
+    [false, false, true, true],
+  );
+  assert.deepEqual(confirmed, []);
+});
+
+test("a 409 reloads through onConflict without an error line; another failure shows the server's words", async () => {
+  resetConfirm(new StubApiError(409, ["expected_revision"]));
+  const stale = confirmView();
+  await confirmButton(all(stale.view.render())).props.onClick();
+  assert.equal(stale.conflicts.length, 1);
+  assert.equal(
+    all(stale.view.render()).some((node) => node.props?.role === "alert"),
+    false,
+  );
+  resetConfirm(new StubApiError(500, []));
+  const other = confirmView();
+  await confirmButton(all(other.view.render())).props.onClick();
+  assert.equal(other.conflicts.length, 0);
+  assert.equal(
+    text(all(other.view.render()).find((node) => node.props?.role === "alert")),
+    "서버 문구",
+  );
+});
+
+test("a confirmed plan opens as the read-only ③ table only, even when first opened", () => {
+  const confirmedPlan = plan();
+  confirmedPlan.status = "CONFIRMED";
+  confirmedPlan.periods.forEach((item) => (item.selected = FULL));
+  const view = resultRenderer(confirmedPlan, [], false, { onConfirmed: () => {} });
+  const nodes = all(view.render());
+  const rendered = text(nodes);
+  assert.equal(text(nodes.find((node) => node.props?.className === "badge")), "확정됨");
+  assert.match(rendered, /확정했어요\. 확정한 계획안은 고치거나 지울 수 없어요\./);
+  assert.match(rendered, /한글 파일 내려받기는 곧 열려요\./);
+  assert.ok(tables(nodes).length > 0);
+  assert.equal(all(tables(nodes)).filter((node) => node.type === "button").length, 0);
+  // ① ② · 되돌리기 · 다시 하기 · 확정 · 배치로 돌아가기 · 단계 표시가 모두 없다.
+  assert.equal(pickToggles(nodes).length, 0);
+  assert.equal(nodes.filter((node) => node.props?.className === "stepButton").length, 0);
+  assert.equal(
+    nodes.some((node) => node.props?.["aria-label"] === "고른 놀이와 선택한 칸"),
+    false,
+  );
+  const labels = nodes.filter((node) => node.type === "button").map(text);
+  assert.equal(
+    labels.some((label) => /되돌리기|다시 하기|확정하기|배치하고 다듬기|다시 저장/.test(label)),
+    false,
+  );
+  assert.equal(nodes.filter((node) => node.props?.role === "tab").length, 4);
 });
 
 test("paginatePlaySheet starts each template group on a titled page", () => {
@@ -2393,4 +2576,90 @@ test("a rejection reopens only that cell's editor, and its old editor can no lon
   assert.notEqual(editorStub.key, stable);
   old.onSave("옛 입력창의 글"); // 사라지는 입력창의 저장은 버려진다
   assert.equal(saveStub.cells.length, 0);
+});
+
+test("while confirming, the step buttons, undo and redo and the confirm button are all off", () => {
+  resetConfirm();
+  const { view } = confirmView();
+  view.state[13] = true; // confirming
+  const nodes = all(view.render());
+  const steps = nodes.filter((node) => node.props?.className === "stepButton");
+  assert.equal(steps.length, 3);
+  assert.ok(steps.every((node) => node.props.disabled === true));
+  const labels = ["되돌리기", "다시 하기"];
+  const history = nodes.filter(
+    (node) => node.type === "button" && labels.some((l) => text(node).includes(l)),
+  );
+  assert.equal(history.length, 2);
+  assert.ok(history.every((node) => node.props.disabled === true));
+  assert.equal(confirmButton(nodes).props.disabled, true);
+  // 아닐 때는 단계 버튼이 켜져 있다.
+  const idle = all(confirmView().view.render());
+  assert.ok(
+    idle.filter((n) => n.props?.className === "stepButton").every((n) => !n.props.disabled),
+  );
+});
+
+test("a save the server rejects while the confirm waits stops the confirm (real queue)", async () => {
+  resetConfirm();
+  const { createSaveQueue } = compile("../lib/plan-generator/playSelectionQueue.ts", {});
+  const sends = [];
+  const rejected = [];
+  saveStub.queue = createSaveQueue({
+    revision: 3,
+    selections: {},
+    send: async () => ({ revision: 4 }),
+    sendCell: (itemId) =>
+      new Promise((_resolve, reject) => sends.push(() => reject({ status: 422, itemId }))),
+    isConflict: () => false,
+    isRejected: (error) => error?.status === 422,
+    onStatus: () => {},
+    onRejected: (r) => rejected.push(r),
+    onConflict: async () => {},
+  });
+  try {
+    saveStub.queue.enqueueCell("item_x", "새 글", "옛 글"); // 입력 중이던 글 — blur 가 넣은 것과 같다
+    const { view, confirmed } = confirmView();
+    const click = confirmButton(all(view.render())).props.onClick();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(confirmStub.calls.length, 0); // PUT 이 끝나기 전에는 confirm 이 없다
+    sends[0](); // 서버가 422 로 거절
+    await click;
+    assert.equal(rejected.length, 1);
+    assert.deepEqual(confirmStub.calls, []);
+    assert.deepEqual(confirmed, []);
+    assert.equal(
+      text(all(view.render()).find((node) => node.props?.role === "alert")),
+      "저장하지 못했어요. 다시 저장한 뒤 확정해 주세요.",
+    );
+  } finally {
+    saveStub.queue = null;
+  }
+});
+
+test("a screen that went down while waiting sends no confirm and calls nothing back", async () => {
+  resetConfirm();
+  let release;
+  saveStub.gate = new Promise((resolve) => (release = resolve));
+  const { view, confirmed, conflicts } = confirmView();
+  const nodes = all(view.render());
+  const cleanups = view.mount();
+  const click = confirmButton(nodes).props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  cleanups.forEach((cleanup) => cleanup()); // 언마운트
+  release();
+  await click;
+  assert.deepEqual(confirmStub.calls, []);
+  assert.deepEqual(confirmed, []);
+  assert.deepEqual(conflicts, []);
+});
+
+test("a confirm response that arrives after the screen went down is not handed on", async () => {
+  resetConfirm();
+  const { view, confirmed } = confirmView();
+  const cleanups = (view.render(), view.mount());
+  const click = confirmButton(all(view.render())).props.onClick();
+  cleanups.forEach((cleanup) => cleanup()); // whenIdle 이 끝나기 전에 내려간다
+  await click;
+  assert.deepEqual(confirmed, []);
 });

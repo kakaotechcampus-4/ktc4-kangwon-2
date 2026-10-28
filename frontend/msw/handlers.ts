@@ -23,6 +23,7 @@ import {
   editablePlayCell,
   samePlayCellValue,
   confirmPlan,
+  confirmPlayPlan,
   listAnnualAudit,
   safetyCategories,
 } from "./data/annual-plans";
@@ -444,11 +445,24 @@ export const handlers = [
     const id = Number(params.id),
       plan = findPlan(id);
     if (!plan) return annualMissing();
-    if (plan.format === "PLAY_PROJECT")
-      return failure(
-        "GATE_BLOCKED",
-        "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.",
-      );
+    if (plan.format === "PLAY_PROJECT") {
+      // 서버 순서: 404 → 본문 스키마 422(값이 있는데 정수 1 이상이 아님, 확정본이어도) → 이미 확정이면 200
+      // → 본문 없음 422 → revision 409 → 5개 미만 422 (§7). 본문을 읽는 사이 바뀔 수 있어 그 뒤에 다시 본다.
+      const b = await body(request);
+      const given = b?.expected_revision;
+      const present = given !== undefined && given !== null;
+      if (present && badRevision(b!)) return bad("expected_revision");
+      const now = findPlan(id);
+      if (!now || now.format !== "PLAY_PROJECT") return annualMissing();
+      if (now.status === "CONFIRMED") return HttpResponse.json(now);
+      if (!present) return bad("expected_revision");
+      if (now.revision !== given) return stale();
+      const lacking = now.periods
+        .filter((period) => period.selected.length !== 5)
+        .map((period) => period.period_key);
+      if (lacking.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...lacking);
+      return HttpResponse.json(confirmPlayPlan(id));
+    }
     // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
   }),
@@ -458,11 +472,6 @@ export const handlers = [
     const id = Number(params.id),
       plan = findPlan(id);
     if (!plan) return annualMissing();
-    if (plan.format === "PLAY_PROJECT")
-      return failure(
-        "GATE_BLOCKED",
-        "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.",
-      );
     return HttpResponse.json({ items: listAnnualAudit(id) });
   }),
   // 월간계획안 (docs/api-spec.md §9-1 · §9-3). 소유 검사는 「지금 원」 기준 — 남의 원 것은 없는 것과 같다.

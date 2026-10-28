@@ -143,7 +143,7 @@ test("after a conflict the queue takes nothing more and never says everything is
   t.queue.enqueueCell("item_a", "A", "B");
   t.queue.retry();
   assert.equal(t.sent.length, 1);
-  assert.equal(await t.queue.whenIdle(), false);
+  assert.equal((await t.queue.whenIdle()).saved, false);
 });
 
 test("a conflict releases whenIdle waiters with false, even if the reload itself fails", async () => {
@@ -154,10 +154,10 @@ test("a conflict releases whenIdle waiters with false, even if the reload itself
   t.queue.enqueue(sel("x"));
   const waiting = t.queue.whenIdle();
   t.gates[0]();
-  assert.equal(await waiting, false);
+  assert.equal((await waiting).saved, false);
   assert.equal(t.statuses.at(-1), "idle");
   // 큐는 풀려 있다 — 다시 불러오기가 실패해도 영영 바쁘지 않다.
-  assert.equal(await t.queue.whenIdle(), false);
+  assert.equal((await t.queue.whenIdle()).saved, false);
 });
 
 test("only a sending or failed save warns before leaving the page", () => {
@@ -241,11 +241,11 @@ test("a conflict drops waiting cell edits too", async () => {
 
 test("whenIdle resolves true once everything is saved, false when stopped, and at once when idle", async () => {
   const t = setup();
-  assert.equal(await t.queue.whenIdle(), true);
+  assert.equal((await t.queue.whenIdle()).saved, true);
   t.queue.enqueue(sel("x"));
   t.queue.enqueueCell("item_a", "A1", "A0");
   let result;
-  const waiting = t.queue.whenIdle().then((value) => (result = value));
+  const waiting = t.queue.whenIdle().then((value) => (result = value.saved));
   t.gates[0]();
   await tick();
   assert.equal(result, undefined); // 칸이 아직 남았다
@@ -256,8 +256,8 @@ test("whenIdle resolves true once everything is saved, false when stopped, and a
   t.queue.enqueueCell("item_a", "A2", "A1");
   const stopped = t.queue.whenIdle();
   t.gates[2]();
-  assert.equal(await stopped, false);
-  assert.equal(await t.queue.whenIdle(), false);
+  assert.equal((await stopped).saved, false);
+  assert.equal((await t.queue.whenIdle()).saved, false);
 });
 
 test("a screen that went down sends nothing more", async () => {
@@ -339,7 +339,7 @@ test("a failed in-flight cell does not leave a later value without a confirmed b
   w.queue.retry();
   await flush(w);
   assert.equal(w.server.cells.item_a, "A");
-  assert.equal(await w.queue.whenIdle(), true);
+  assert.equal((await w.queue.whenIdle()).saved, true);
 });
 
 test("a cell that went back to the confirmed value is skipped, and later picks still go (F2)", async () => {
@@ -365,14 +365,14 @@ test("a failed cell reverted to the confirmed value clears the failure and settl
   w.gates.shift()();
   await tick0();
   assert.equal(w.statuses.at(-1), "failed");
-  assert.equal(await w.queue.whenIdle(), false);
+  assert.equal((await w.queue.whenIdle()).saved, false);
   w.control.netDown = false;
   w.queue.enqueueCell("item_a", "S0", "A");
   w.queue.retry();
   await tick0();
   assert.equal(w.statuses.at(-1), "saved");
   assert.equal(w.sent.length, 1);
-  assert.equal(await w.queue.whenIdle(), true);
+  assert.equal((await w.queue.whenIdle()).saved, true);
 });
 
 test("pick, edit, unpick while one request flies: the cell is rejected, dropped, and the line goes on (a)", async () => {
@@ -417,7 +417,7 @@ test("four quick undos: the merged pick goes first, the cell is rejected and rev
   await flush(w);
   assert.deepEqual(w.rejected, [{ kind: "cell", itemId: "cell_X", value: "edited" }]);
   assert.equal(w.statuses.at(-1), "saved");
-  assert.equal(await w.queue.whenIdle(), true);
+  assert.equal((await w.queue.whenIdle()).saved, true);
 });
 
 test("a rejected pick save reverts to the last confirmed picks, drops piled picks, and goes on", async () => {
@@ -433,12 +433,14 @@ test("a rejected pick save reverts to the last confirmed picks, drops piled pick
   assert.equal(w.statuses.at(-1), "saved");
 });
 
-test("a rejected cell leaves nothing behind, so whenIdle resolves true", async () => {
+test("a cell rejected while whenIdle waits leaves the queue empty but whenIdle resolves false", async () => {
   const w = world();
   w.queue.enqueueCell("cell_X", "x1", "x0"); // 거절될 것
   const waiting = w.queue.whenIdle();
   await flush(w);
-  assert.equal(await waiting, true);
+  assert.equal((await waiting).saved, false);
+  // 거절은 이미 지나갔다 — 그 뒤에 새로 기다리면 큐는 비어 있어 true 다.
+  assert.equal((await w.queue.whenIdle()).saved, true);
 });
 
 test("a cell rejected while a newer value waits drops both, sends nothing more, and whenIdle is true", async () => {
@@ -449,7 +451,7 @@ test("a cell rejected while a newer value waits drops both, sends nothing more, 
   assert.deepEqual(w.sent, ["cell cell_X=v1"]);
   assert.deepEqual(w.rejected, [{ kind: "cell", itemId: "cell_X", value: "x0" }]);
   assert.equal(w.statuses.at(-1), "saved");
-  assert.equal(await w.queue.whenIdle(), true);
+  assert.equal((await w.queue.whenIdle()).saved, true);
 });
 
 test("only a 422 is thrown away; 401, 403, 404, 408, 429 and 5xx stay held for retry", async () => {
@@ -460,11 +462,38 @@ test("only a 422 is thrown away; 401, 403, 404, 408, 429 and 5xx stay held for r
     await flush(w, 2);
     assert.deepEqual(w.rejected, [], String(status));
     assert.equal(w.statuses.at(-1), "failed", String(status));
-    assert.equal(await w.queue.whenIdle(), false);
+    assert.equal((await w.queue.whenIdle()).saved, false);
     w.control.failWith = null;
     w.queue.retry();
     await flush(w, 2);
     assert.equal(w.server.cells.item_a, "A");
     assert.equal(w.statuses.at(-1), "saved");
   }
+});
+
+test("whenIdle also gives the revision of the last successful response (first one if nothing was saved)", async () => {
+  const t = setup(7);
+  assert.deepEqual(await t.queue.whenIdle(), { saved: true, revision: 7 });
+  t.queue.enqueue(sel("x"));
+  t.queue.enqueueCell("item_a", "A1", "A0");
+  const waiting = t.queue.whenIdle();
+  t.gates[0]();
+  await tick();
+  t.gates[1]();
+  assert.deepEqual(await waiting, { saved: true, revision: 9 });
+  // 실패하면 저장 못 한 변경이 남아 saved=false 이고 revision 은 마지막 성공 값 그대로다.
+  t.control.fail = new Error("network");
+  t.queue.enqueueCell("item_a", "A2", "A1");
+  const failed = t.queue.whenIdle();
+  t.gates[2]();
+  assert.deepEqual(await failed, { saved: false, revision: 9 });
+});
+
+test("a conflict gives saved=false to whenIdle waiters", async () => {
+  const t = setup(4);
+  t.control.fail = stale;
+  t.queue.enqueue(sel("x"));
+  const waiting = t.queue.whenIdle();
+  t.gates[0]();
+  assert.deepEqual(await waiting, { saved: false, revision: 4 });
 });

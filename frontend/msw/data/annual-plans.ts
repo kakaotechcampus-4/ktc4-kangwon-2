@@ -144,6 +144,13 @@ function stamp(db: Database, id: number): string {
 }
 const record = (db: Database, id: number, ...events: AnnualAuditEvent[]) =>
   (db.annualAudit[id] ??= []).push(...events);
+/** 놀이 프로젝트형 이벤트는 여덟 키가 항상 온다(§7-1). 월별 주제형과 달리 `month` 는 늘 null 이다. */
+const PLAY_SYSTEM_ACTOR = "play_project_application";
+const playEvent = (
+  type: AnnualAuditEvent["type"],
+  occurred_at: string,
+  more: Partial<AnnualAuditEvent> = {},
+): AnnualAuditEvent => event(type, occurred_at, { item_id: null, selection_change: null, ...more });
 /**
  * 서버 검사기처럼 법정 6구분마다 「주기」 · 「시수」 UNVERIFIED 를 하나씩 낸다(P0 는 배치 입력이 없다).
  * 구분 이름 · 법정 주기 · 시수는 적지 않는다 — 법령 값의 원본은 서버 쪽 하나다.
@@ -235,6 +242,22 @@ export const addPlan = (input: AnnualInput, schoolYear: number) =>
             confirmed_at: null,
           };
     db.plans.push(plan);
+    if (plan.format === "PLAY_PROJECT") {
+      // 서버처럼 계획안 1건 + 칸마다 1건(후보 40개 × 4칸), 같은 시각 · 시스템 행위자.
+      const created = { actor: null, system_actor: PLAY_SYSTEM_ACTOR };
+      record(
+        db,
+        id,
+        playEvent("CREATED", at, created),
+        ...plan.periods.flatMap((period) =>
+          period.candidates.flatMap((c) =>
+            [c.play_name, c.materials, c.support_direction, c.learning].map((cell) =>
+              playEvent("CREATED", at, { ...created, item_id: cell.item_id }),
+            ),
+          ),
+        ),
+      );
+    }
     if (plan.format === "MONTHLY_THEME") {
       // 서버처럼 계획안 1건 + 달마다 1건, 같은 시각 · 시스템 행위자.
       const created = { actor: null, system_actor: SYSTEM_ACTOR };
@@ -311,6 +334,24 @@ export const putPlaySelection = (id: number, selections: Record<string, string[]
       (period) => (period.selected ?? []).join() === selections[period.period_key].join(),
     );
     if (!same) {
+      const at = stamp(db, id);
+      record(
+        db,
+        id,
+        ...plan.periods
+          .filter(
+            (period) => (period.selected ?? []).join() !== selections[period.period_key].join(),
+          )
+          .map((period) =>
+            playEvent("CANDIDATES_SELECTED", at, {
+              selection_change: {
+                period_key: period.period_key,
+                before: period.selected ?? [],
+                after: selections[period.period_key],
+              },
+            }),
+          ),
+      );
       plan.periods.forEach((period) => (period.selected = selections[period.period_key]));
       plan.revision = (plan.revision ?? 1) + 1; // 옛 저장본은 `revision` 이 없다(조회와 같이 1 로 읽는다).
     }
@@ -348,7 +389,36 @@ export const putPlayCell = (id: number, itemId: string, value: string) =>
       (p): p is Extract<MockAnnualPlan, { format: "PLAY_PROJECT" }> =>
         p.id === id && p.format === "PLAY_PROJECT",
     )!;
-    findPlayCell(plan, itemId)!.cell.value = value;
+    const cell = findPlayCell(plan, itemId)!.cell;
+    record(
+      db,
+      id,
+      playEvent("TEACHER_EDITED", stamp(db, id), {
+        item_id: itemId,
+        value_change: { before: cell.value, after: value },
+      }),
+    );
+    cell.value = value;
     plan.revision = (plan.revision ?? 1) + 1;
+    return detail(plan);
+  });
+/**
+ * 놀이 프로젝트형 확정 (§7). 호출 전에 핸들러가 404 · 이미 확정(200) · 본문 · revision · 5개 미만을 걸렀다.
+ * 확정하면 revision 이 1 오르고 이력에 `CONFIRMED` 가 남는다. 응답은 계획안 전체다.
+ */
+export const confirmPlayPlan = (id: number) =>
+  commit((db) => {
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "PLAY_PROJECT" }> =>
+        p.id === id && p.format === "PLAY_PROJECT",
+    )!;
+    // 동시에 온 두 확정 중 뒤의 것은 이미 확정이다 — 현재 확정본을 그대로 돌려주고 아무것도 바꾸지 않는다.
+    if (plan.status !== "CONFIRMED") {
+      const at = stamp(db, id);
+      plan.status = "CONFIRMED";
+      plan.confirmed_at = at;
+      plan.revision = (plan.revision ?? 1) + 1;
+      record(db, id, playEvent("CONFIRMED", at));
+    }
     return detail(plan);
   });

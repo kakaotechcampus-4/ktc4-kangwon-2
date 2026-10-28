@@ -25,6 +25,8 @@ import {
   type EditHistory,
   type EditStep,
 } from "@/lib/plan-generator/playEditHistory";
+import { ApiError } from "@/lib/api/client";
+import { confirmPlayProject, isSaveConflict } from "@/lib/api/plans";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
 import {
@@ -109,6 +111,12 @@ function serverCellValue(plan: PlayProjectAnnualPlan, itemId: string) {
       for (const field of fields)
         if (candidate[field.key].item_id === itemId) return candidate[field.key].value;
   return "";
+}
+
+// 422 `fields` — 서버가 준 칸 이름 목록(문자열이 아닌 것은 버린다).
+function serverFields(error: ApiError): string[] {
+  const fields = (error.body as { error?: { fields?: unknown } } | null)?.error?.fields;
+  return Array.isArray(fields) ? fields.filter((f): f is string => typeof f === "string") : [];
 }
 
 export function togglePlayPick(picks: string[], rowKey: string) {
@@ -287,6 +295,7 @@ export default function PlayProjectResult({
   notice,
   onConflict,
   onDismissNotice,
+  onConfirmed,
 }: {
   plan: PlayProjectAnnualPlan;
   /** 다시 불러온 직후에 보이는 안내. */
@@ -295,9 +304,11 @@ export default function PlayProjectResult({
   onConflict: () => Promise<void>;
   /** 고르기가 바뀌거나 저장이 성공하면 다시 불러온 안내를 지우도록 부모에게 알린다. */
   onDismissNotice?: () => void;
+  /** 확정이 끝났다. 부모가 응답 계획안으로 화면을 다시 그린다. */
+  onConfirmed: (plan: PlayProjectAnnualPlan) => void;
 }) {
   const [activePeriod, setActivePeriod] = useState(0);
-  const [step, setStep] = useState(0);
+  const [pickedStep, setStep] = useState(0);
   const [picks, setPicks] = useState(() => picksFromPlan(plan));
   const [selectedCell, setSelectedCell] = useState<{
     periodKey: string;
@@ -318,6 +329,13 @@ export default function PlayProjectResult({
   const [live, setLive] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState<EditState>(EMPTY_EDIT);
   const [historyNotice, setHistoryNotice] = useState("");
+  // 확정 중 여부 · 실패 안내 · 5개가 안 찬 구간 키(탭 강조).
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
+  const [lacking, setLacking] = useState<string[]>([]);
+  // 확정본은 ③ 읽기 전용 표뿐이다 — 단계 표시 · ① ② 는 그리지 않는다.
+  const confirmed = plan.status === "CONFIRMED";
+  const step = confirmed ? 2 : pickedStep;
   const wide = useSyncExternalStore(subscribeWide, isWide, () => false);
   const saving = usePlaySelectionSave(
     plan.id,
@@ -333,6 +351,17 @@ export default function PlayProjectResult({
   const latestEdit = useRef(edit);
   const tabListRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLButtonElement>(null);
+  const confirmLock = useRef(false);
+  // 확정이 큐를 기다리기 시작한 뒤에는 새 변경을 받지 않는다(그 사이 PUT 과 confirm 이 겹치지 않게).
+  const frozen = useRef(false);
+  // 화면이 내려간 뒤에는 confirm 도 onConfirmed 도 setState 도 하지 않는다.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const shown = useMemo(() => withCellValues(plan, edit.saved, live), [plan, edit.saved, live]);
   const period = shown.periods[activePeriod];
   const periodPicks = picks[period.period_key] ?? [];
@@ -381,6 +410,7 @@ export default function PlayProjectResult({
   // 고르기를 바꾸는 곳은 전부 여기를 지난다 — 최신 값에서 다음 값을 만들어 화면에 반영하고 저장 큐에 넣는다.
   // 바뀐 게 없으면 null, 바뀌었으면 그 구간의 새 목록을 돌려준다.
   function applyPicks(periodKey: string, change: (list: string[]) => string[]) {
+    if (frozen.current) return null;
     const list = latestPicks.current[periodKey] ?? [];
     const next = change(list);
     if (next === list) return null;
@@ -413,6 +443,7 @@ export default function PlayProjectResult({
   // `epoch` 는 이 글을 낸 입력창이 그려질 때의 번호다. 그 뒤 되돌리기 · 거절로 입력창이 바뀌었으면 옛 입력창의 글은 버린다.
   function commitCell(itemId: string, value: string, record = true, epoch?: number) {
     const current = latestEdit.current;
+    if (frozen.current) return;
     if (epoch !== undefined && epoch !== (current.epochs[itemId] ?? 0)) return;
     const base = savedCellValue(itemId);
     setLive((drafts) => without(drafts, itemId));
@@ -461,6 +492,7 @@ export default function PlayProjectResult({
 
   // 되돌리기 · 다시 하기. 같은 두 저장 API 로 이전 상태를 다시 저장한다.
   function stepThrough(direction: "undo" | "redo") {
+    if (frozen.current) return;
     const popped = (direction === "undo" ? popUndo : popRedo)(latestEdit.current.history);
     if (!popped) return;
     const save = stepSave(popped.step, direction, {
@@ -845,22 +877,78 @@ export default function PlayProjectResult({
     );
   }
 
+  // 확정(ADR-044 §2 · §4): 입력 중 글을 큐에 넣고 → 남은 저장이 끝나길 기다린 뒤 → 마지막 revision 으로 확정한다.
+  async function confirm() {
+    if (confirmLock.current) return;
+    confirmLock.current = true;
+    setConfirming(true);
+    setConfirmError("");
+    setLacking([]);
+    try {
+      (document.activeElement as HTMLElement | null)?.blur();
+      frozen.current = true; // blur 가 넣은 마지막 저장까지는 받았다. 이제부터 새 변경은 받지 않는다.
+      const idle = await saving.whenIdle();
+      if (!mounted.current) return;
+      if (!idle.saved) {
+        setConfirmError("저장하지 못했어요. 다시 저장한 뒤 확정해 주세요.");
+        return;
+      }
+      const done = await confirmPlayProject(plan.id, idle.revision);
+      if (mounted.current) onConfirmed(done);
+    } catch (error) {
+      if (!mounted.current) return;
+      if (isSaveConflict(error)) {
+        await onConflict();
+        return;
+      }
+      const keys = error instanceof ApiError && error.status === 422 ? serverFields(error) : [];
+      const short = plan.periods.filter((item) => keys.includes(item.period_key));
+      if (short.length) {
+        setLacking(short.map((item) => item.period_key));
+        setConfirmError(
+          `${short.map((item) => item.label).join(" · ")} 구간이 5개가 안 돼요. 모두 5개를 골라 주세요.`,
+        );
+      } else setConfirmError(error instanceof Error ? error.message : "확정하지 못했어요.");
+    } finally {
+      confirmLock.current = false;
+      frozen.current = false;
+      if (mounted.current) setConfirming(false);
+    }
+  }
+
   function renderDraft() {
     const shortages = plan.periods
       .filter((item) => (picks[item.period_key]?.length ?? 0) < MAX_PICKS)
       .map((item) => `${item.label}이 ${picks[item.period_key]?.length ?? 0}개`);
     return (
       <div className={workspace.stack}>
-        {shortages.length > 0 && (
+        {!confirmed && shortages.length > 0 && (
           <p role="status" className={workspace.muted}>
             {shortages.join(", ")}예요. 확정하려면 구간마다 5개가 필요해요.
           </p>
         )}
-        <div>
-          <button type="button" className={workspace.secondary} onClick={() => goToStep(1)}>
-            ← 배치하고 다듬기로
-          </button>
-        </div>
+        {!confirmed && (
+          <div className={styles.meta}>
+            <button
+              type="button"
+              className={workspace.secondary}
+              disabled={confirming}
+              onClick={() => goToStep(1)}
+            >
+              ← 배치하고 다듬기로
+            </button>
+            <button
+              type="button"
+              className={workspace.primary}
+              disabled={shortages.length > 0 || confirming}
+              onClick={confirm}
+            >
+              {confirming ? "확정하는 중…" : "확정하기"}
+            </button>
+            <span className={workspace.muted}>확정하면 고칠 수 없어요</span>
+          </div>
+        )}
+        {confirmError && <p role="alert">{confirmError}</p>}
         {renderArrangement(false)}
       </div>
     );
@@ -878,20 +966,20 @@ export default function PlayProjectResult({
   return (
     <main className={workspace.page}>
       <div className={styles.meta}>
-        <span className={workspace.badge}>{plan.status === "DRAFT" ? "초안" : "확정"}</span>
+        <span className={workspace.badge}>{confirmed ? "확정됨" : "초안"}</span>
         <span>{plan.school_year}학년도</span>
         <span role="status">{SAVE_LABEL[saving.status]}</span>
-        {saving.status === "failed" && (
+        {!confirmed && saving.status === "failed" && (
           <button type="button" className={workspace.secondary} onClick={saving.retry}>
             다시 저장
           </button>
         )}
-        {(["undo", "redo"] as const).map((direction) => (
+        {(confirmed ? [] : (["undo", "redo"] as const)).map((direction) => (
           <button
             key={direction}
             type="button"
             className={workspace.secondary}
-            disabled={edit.history[direction].length === 0}
+            disabled={confirming || edit.history[direction].length === 0}
             onClick={() => stepThrough(direction)}
           >
             <span aria-hidden="true">{direction === "undo" ? "⟲" : "⟳"}</span>{" "}
@@ -900,7 +988,11 @@ export default function PlayProjectResult({
         ))}
         <span role="status">{historyNotice}</span>
       </div>
-      <ol className={`${tabs.steps} ${styles.steps}`} aria-label="놀이 프로젝트 결과 단계">
+      <ol
+        className={`${tabs.steps} ${styles.steps}`}
+        aria-label="놀이 프로젝트 결과 단계"
+        hidden={confirmed}
+      >
         {["① 놀이 고르기", "② 배치하고 다듬기", "③ 전체 초안 보기"].map((label, index) => (
           <li key={label} className={step === index ? tabs.reached : undefined}>
             <span>0{index + 1}</span>
@@ -908,6 +1000,7 @@ export default function PlayProjectResult({
               type="button"
               className={styles.stepButton}
               aria-current={step === index ? "step" : undefined}
+              disabled={confirming}
               onClick={() => goToStep(index)}
             >
               {label}
@@ -921,7 +1014,8 @@ export default function PlayProjectResult({
         </p>
       )}
       <div className={workspace.notice}>
-        <p>놀이 프로젝트형은 아직 확정 · 내려받기를 할 수 없어요.</p>
+        {confirmed && <p>확정했어요. 확정한 계획안은 고치거나 지울 수 없어요.</p>}
+        <p>한글 파일 내려받기는 곧 열려요.</p>
         <p>이 반은 월간 · 주간계획안을 만들 수 없어요.</p>
       </div>
       <div className={styles.tabRow}>
@@ -939,7 +1033,14 @@ export default function PlayProjectResult({
               role="tab"
               aria-selected={activePeriod === index}
               aria-controls={panelId}
-              className={activePeriod === index ? tabs.activeTab : undefined}
+              className={
+                [
+                  activePeriod === index && tabs.activeTab,
+                  lacking.includes(item.period_key) && styles.lack,
+                ]
+                  .filter(Boolean)
+                  .join(" ") || undefined
+              }
               onClick={() => goToPeriod(index)}
             >
               {item.label} · {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}

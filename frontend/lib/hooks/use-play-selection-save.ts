@@ -66,7 +66,7 @@ export function usePlaySelectionSave(
     saveCell: (itemId: string, value: string, base: string) =>
       queue.enqueueCell(itemId, value, base),
     retry: () => queue.retry(),
-    /** 남은 저장이 모두 끝나면 true, 멈췄으면 false. 확정 버튼이 부른다. */
+    /** 남은 저장이 모두 끝나면 `saved` true 와 마지막 revision, 멈췄으면 false. 확정 버튼이 부른다. */
     whenIdle: () => queue.whenIdle(),
   };
 }

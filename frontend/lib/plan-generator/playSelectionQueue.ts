@@ -4,6 +4,12 @@ export type Selections = Record<string, string[]>;
 /** 보내지 못한 저장이 남아 있는가 — 탭을 닫기 전에 경고할 때만 참이다. 409 로 버린 변경은 남은 저장이 아니다. */
 export const hasUnsentSave = (status: SaveStatus) => status === "saving" || status === "failed";
 
+/** `whenIdle` 의 답. `revision` 은 마지막으로 성공한 응답의 revision 이다(저장이 없었으면 처음 revision). */
+export interface IdleResult {
+  saved: boolean;
+  revision: number;
+}
+
 /** 서버가 받지 않아 버린 저장 — 화면은 이 값(서버가 확인한 값)으로 되돌린다. */
 export type Rejected =
   { kind: "picks"; selections: Selections } | { kind: "cell"; itemId: string; value: string };
@@ -55,13 +61,16 @@ export function createSaveQueue(options: Options) {
   let active = true;
   // 409 로 멈췄다. 화면은 곧 새 계획안으로 바뀌므로 이 큐는 더 받지 않고, 다 저장됐다고도 하지 않는다.
   let stopped = false;
+  // 서버가 거절(422)해 버린 저장의 횟수. whenIdle 이 기다리는 사이 늘었으면 덜 저장된 것이다.
+  let rejections = 0;
   let status: SaveStatus = "idle";
-  const waiters: ((saved: boolean) => void)[] = [];
+  const waiters: ((result: IdleResult) => void)[] = [];
 
   const setStatus = (next: SaveStatus) => options.onStatus((status = next));
   const empty = () => picks === null && cells.size === 0;
+  const idle = (saved = !stopped && empty()): IdleResult => ({ saved, revision });
   const settle = (saved = !stopped && empty()) =>
-    waiters.splice(0).forEach((resolve) => resolve(saved));
+    waiters.splice(0).forEach((resolve) => resolve(idle(saved)));
   const clear = () => {
     picks = null;
     cells = new Map();
@@ -123,6 +132,7 @@ export function createSaveQueue(options: Options) {
           settle();
           return;
         }
+        rejections++;
         // 서버가 받지 않는다 — 이 저장과 그 위에 쌓인 같은 종류만 버리고 화면을 확인된 값으로 되돌린다.
         if (job.kind === "picks") {
           picks = null;
@@ -159,10 +169,16 @@ export function createSaveQueue(options: Options) {
     retry() {
       void pump();
     },
-    /** 보낼 것도 보내는 중인 것도 없어질 때까지 기다린다. 다 저장됐으면 true, 실패나 409 로 멈췄으면 false. 확정 전에 쓴다(ADR-044 §2). */
+    /** 보낼 것도 보내는 중인 것도 없어질 때까지 기다린다. 다 저장됐으면 `saved` true, 실패나 409 로 멈췄으면 false. 확정 전에 쓴다(ADR-044 §2). */
     whenIdle() {
-      if (!busy) return Promise.resolve(!stopped && empty());
-      return new Promise<boolean>((resolve) => waiters.push(resolve));
+      if (!busy) return Promise.resolve(idle());
+      const start = rejections;
+      // 기다리는 사이 422 로 버려진 저장이 있으면 큐가 비었어도 다 저장된 것이 아니다(ADR-044 §2).
+      return new Promise<IdleResult>((resolve) =>
+        waiters.push((result) =>
+          resolve(rejections === start ? result : { ...result, saved: false }),
+        ),
+      );
     },
     /** 화면이 내려가면 false. 늦게 온 409 가 새 화면을 또 다시 불러오게 하지 않는다. */
     setActive(value: boolean) {

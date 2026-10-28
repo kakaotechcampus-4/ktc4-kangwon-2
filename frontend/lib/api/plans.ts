@@ -99,6 +99,18 @@ export const TEST_RESET_ENABLED = process.env.NEXT_PUBLIC_ALLOW_TEST_RESET === "
 export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
 
+/**
+ * 놀이 프로젝트형 확정 (§7). 읽은 revision 을 같이 보내고, 응답은 계획안 전체다.
+ * 부족하면 422 `fields` 가 부족 구간 키 배열, revision 이 다르면 409 `STALE_WRITE`.
+ * 이미 확정이면 revision 과 무관하게 200 이다.
+ */
+export const confirmPlayProject = (id: number, expectedRevision: number) =>
+  apiRequest<PlayProjectAnnualPlan>("/api/plans/annual/" + id + "/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expected_revision: expectedRevision }),
+  });
+
 /** 확정한 연간계획안을 hwpx 로 내려받는다 (§9). */
 export const downloadAnnualHwpx = (id: number) =>
   downloadHwpx(`/api/plans/${id}/export/hwp`, "연간계획안.hwpx");

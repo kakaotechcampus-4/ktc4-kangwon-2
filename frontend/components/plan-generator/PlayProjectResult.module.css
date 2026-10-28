@@ -257,6 +257,10 @@
   flex: 1 1 360px;
   min-width: 0;
 }
+.lack {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 2px;
+}
 .leftTabs {
   display: flex;
   flex-wrap: wrap;

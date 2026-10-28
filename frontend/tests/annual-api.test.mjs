@@ -19,14 +19,8 @@ const { handlers } = await import("../msw/handlers.ts");
 const { resetTestData, read } = await import("../msw/data/store.ts");
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
-const {
-  createAnnualPlan,
-  listAnnualPlans,
-  getAnnualPlan,
-  getAnnualPlanAudit,
-  putAnnualMonth,
-  confirmAnnualPlan,
-} = await import("../lib/api/plans.ts");
+const { createAnnualPlan, listAnnualPlans, getAnnualPlan, putAnnualMonth, confirmAnnualPlan } =
+  await import("../lib/api/plans.ts");
 const { createMonthlyPlan } = await import("../lib/api/monthly.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 
@@ -223,21 +217,18 @@ test("list items carry format", async () => {
   );
 });
 
-test("PLAY_PROJECT does not support month edits, confirmation, audit, or monthly descendants", async () => {
+test("PLAY_PROJECT does not support month edits or monthly descendants", async () => {
   const klass = await newClass();
   const plan = await createAnnualPlan({
     class_id: klass.id,
     form_id: null,
     format: "PLAY_PROJECT",
   });
-  const message = "놀이 프로젝트형 연간계획안은 아직 수정 · 확정 · 내려받기를 지원하지 않습니다.";
   for (const [request, expected] of [
     [
       putAnnualMonth(plan.id, 3, { theme: "주제", sub_themes: [] }),
       "놀이 프로젝트형은 칸 편집으로 고칩니다.",
     ],
-    [confirmAnnualPlan(plan.id), message],
-    [getAnnualPlanAudit(plan.id), message],
   ])
     await assert.rejects(request, (e) => {
       assert.ok(e instanceof ApiError);
