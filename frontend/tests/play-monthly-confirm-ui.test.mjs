@@ -195,7 +195,7 @@ test("confirm bar: 422 lists what is lacking by counting the fields", async () =
   const after = await b.click();
   assert.equal(
     text(all(after).find((n) => n.props?.role === "alert")),
-    "확정하려면 채워야 할 곳이 있어요: 놀이 주제 · 이름 없는 함께 하는 활동 2개 · 누리과정 연결이 없는 행 2개",
+    "확정하려면 채워야 할 곳이 있어요: 놀이 주제 · 이름 없는 함께 하는 활동 2개 · 누리과정 연결을 1~3개로 맞춰야 하는 행 2개",
   );
   assert.equal(b.log.at(-1), "unfreeze");
 });
@@ -211,6 +211,16 @@ test("confirm bar: 409 hands over to onConflict and says nothing itself", async 
     );
     assert.equal(b.log.includes("unfreeze"), true);
   }
+});
+
+test("confirm bar: onConflict rejecting still says so and unfreezes", async () => {
+  const b = bar({
+    confirm: () => Promise.reject(new StubApiError(409, "STALE_WRITE")),
+    onConflict: () => Promise.reject(new Error("net")),
+  });
+  const after = await b.click();
+  assert.match(text(withText(after, "p", "최신 내용")[0]), /새로고침해 주세요/);
+  assert.equal(b.log.at(-1), "unfreeze");
 });
 
 test("confirm bar: any other failure shows its message and unfreezes", async () => {
@@ -263,7 +273,7 @@ test("confirmShortages: counts rows, names the sections, skips unknown keys", ()
   // 같은 행이 이름 · 연결 둘 다 모자라도 연결은 행 수로 센다
   assert.equal(
     confirmShortages(["together.i.content_ids", "together.i.content_ids"]),
-    "누리과정 연결이 없는 행 1개",
+    "누리과정 연결을 1~3개로 맞춰야 하는 행 1개",
   );
 });
 
@@ -357,4 +367,70 @@ test("audit panel: the many CREATED cells fold into one line, a teacher-added on
 
 test("audit panel: no events says so", () => {
   assert.match(text(panel([])), /아직 이력이 없어요/);
+});
+
+// ---- 변경 이력 보기 ----
+function history(audit) {
+  const h = harness();
+  const calls = [];
+  const mod = compile("../components/plan-generator/PlayMonthlyHistory.tsx", {
+    react: h.react,
+    "@/components/workspace/Workspace.module.css": esModule(css),
+    "@/lib/api/playMonthly": {
+      getPlayMonthlyAudit: (id, signal) => (calls.push([id, signal]), audit()),
+    },
+    "./PlayMonthlyAuditPanel": esModule((props) => jsx("panel", props)),
+  });
+  const render = () => h.render(mod.default, { id: 5 });
+  const press = async (label) => {
+    withText(render(), "button", label)[0].props.onClick();
+    render();
+    await tick();
+    return render();
+  };
+  return { calls, h, render, press };
+}
+
+test("history: nothing is read until the button is pressed; pressing again folds it", async () => {
+  const items = [ev("CONFIRMED", "PLAN")];
+  const v = history(async () => ({ items }));
+  assert.equal(v.calls.length, 0);
+  assert.equal(
+    all(v.render()).some((n) => n.type === "panel"),
+    false,
+  );
+  const open = await v.press("변경 이력 보기");
+  assert.deepEqual(v.calls[0][0], 5);
+  assert.equal(all(open).find((n) => n.type === "panel").props.events, items);
+  const folded = await v.press("변경 이력 접기");
+  assert.equal(
+    all(folded).some((n) => n.type === "panel"),
+    false,
+  );
+  assert.equal(withText(folded, "button", "변경 이력 보기").length, 1);
+});
+
+test("history: says it is reading, and says so when reading fails", async () => {
+  const reading = history(() => new Promise(() => {}));
+  withText(reading.render(), "button", "변경 이력 보기")[0].props.onClick();
+  assert.match(text(reading.render()), /변경 이력을 읽고 있어요/);
+  const failing = history(() => Promise.reject(new Error("x")));
+  const after = await failing.press("변경 이력 보기");
+  assert.match(text(withText(after, "p", "불러오지")[0]), /변경 이력을 불러오지 못했어요/);
+});
+
+test("history: a late answer after unmount is ignored, and the request is aborted", async () => {
+  let arrive;
+  const v = history(() => new Promise((done) => (arrive = done)));
+  withText(v.render(), "button", "변경 이력 보기")[0].props.onClick();
+  v.render();
+  const signal = v.calls[0][1];
+  v.h.unmount();
+  assert.equal(signal.aborted, true);
+  arrive({ items: [ev("CONFIRMED", "PLAN")] });
+  await tick();
+  assert.equal(
+    all(v.render()).some((n) => n.type === "panel"),
+    false,
+  );
 });

@@ -131,7 +131,12 @@ const saveStub = () => ({
   undo: () => saved.push(["undo"]),
   redo: () => saved.push(["redo"]),
   retry: () => saved.push(["retry"]),
+  whenIdle: () => saved.push(["idle"]),
+  freeze: () => saved.push(["freeze"]),
+  unfreeze: () => saved.push(["unfreeze"]),
 });
+const barStub = (props) => jsx("confirmbar", props);
+const historyStub = (props) => jsx("history", props);
 function load() {
   const h = harness();
   const mod = compile("../components/plan-generator/PlayMonthlyView.tsx", {
@@ -146,6 +151,8 @@ function load() {
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
     "./PlayCellEditor": esModule(editorStub),
     "./PlayMonthlySheet": esModule(sheetStub),
+    "./PlayMonthlyConfirmBar": esModule(barStub),
+    "./PlayMonthlyHistory": esModule(historyStub),
     "./playProjectPagination": {},
     "./PlayMonthlyView.module.css": esModule(css),
   });
@@ -208,6 +215,55 @@ test("확정본이면 「확정됨」 배지가 있고 확정 · 이력 · 인�
     all(tree).filter((n) => n.type === "button"),
     [],
   );
+});
+
+test("확정 바와 이력은 초안 · 확정본 모두 계획안 id 로 달고, 저장 훅의 함수를 그대로 넘긴다", async () => {
+  const plan = fixture();
+  const { tree } = await open(plan.id, async () => plan);
+  const bar = all(tree).find((n) => n.type === "confirmbar");
+  assert.equal(bar.props.plan.id, plan.id);
+  saved.length = 0;
+  for (const name of ["whenIdle", "freeze", "unfreeze"]) bar.props[name]();
+  assert.deepEqual(saved.splice(0), [["idle"], ["freeze"], ["unfreeze"]]);
+  assert.equal(all(tree).find((n) => n.type === "history").props.id, plan.id);
+  const done = fixture(true);
+  const confirmed = await open(done.id, async () => done);
+  assert.equal(all(confirmed.tree).find((n) => n.type === "history").props.id, done.id);
+});
+
+test("확정 응답을 받으면 확정본 화면 — 칸 편집 패널 · 저장 표시 · 되돌리기 없이 「확정됨」 배지", async () => {
+  const plan = fixture();
+  const { View, h, tree } = await open(plan.id, async () => plan);
+  assert.equal(withText(tree, "h2", "칸 편집").length, 1);
+  assert.equal(typeof all(tree).find((n) => n.type === "sheet").props.onSelect, "function");
+  all(tree)
+    .find((n) => n.type === "confirmbar")
+    .props.onConfirmed({ ...plan, status: "CONFIRMED", revision: plan.revision + 1 });
+  const after = h.render(View, { id: plan.id });
+  assert.equal(withText(after, "span", "확정됨").length, 1);
+  assert.equal(withText(after, "h2", "칸 편집").length, 0);
+  assert.equal(all(after).find((n) => n.type === "sheet").props.onSelect, undefined);
+  assert.equal(all(after).filter((n) => n.type === "button").length, 0);
+  // 확정 바의 마무리(unfreeze)가 뒤따라도 화면은 그대로 확정본이다.
+  all(after)
+    .find((n) => n.type === "confirmbar")
+    .props.unfreeze();
+  assert.equal(withText(h.render(View, { id: plan.id }), "span", "확정됨").length, 1);
+  saved.length = 0;
+});
+
+test("확정 바의 409 는 기존 다시 불러오기 — 최신 계획안으로 바꾸고 안내한다", async () => {
+  const plan = fixture();
+  const fresh = { ...plan, revision: plan.revision + 5 };
+  const { View, h, tree } = await open(plan.id, async () => plan);
+  getResult = async () => fresh;
+  all(tree)
+    .find((n) => n.type === "confirmbar")
+    .props.onConflict();
+  await new Promise((done) => setTimeout(done, 0));
+  const after = h.render(View, { id: plan.id });
+  assert.match(text(after), /다른 곳에서 바뀌었어요/);
+  assert.equal(calls.length, 2, "다시 불러왔다");
 });
 
 test("연간에서 고른 놀이 5개와 놀이 행의 누리과정 연결 ID 칩을 읽기 전용으로 보인다", async () => {

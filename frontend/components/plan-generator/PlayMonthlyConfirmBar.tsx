@@ -9,7 +9,7 @@ import type { PlayMonthlyPlan } from "@/lib/api/types";
 const SECTION = { together: "함께 하는 활동", free_play: "자유놀이" } as const;
 
 /**
- * 서버 422 `fields`(위치 키)를 한 줄로 — 예: 「놀이 주제 · 이름 없는 함께 하는 활동 1개 · 누리과정 연결이 없는 행 1개」.
+ * 서버 422 `fields`(위치 키)를 한 줄로 — 예: 「놀이 주제 · 이름 없는 함께 하는 활동 1개 · 누리과정 연결을 1~3개로 맞춰야 하는 행 1개」.
  * 모르는 키는 건너뛴다. 아무것도 못 읽으면 빈 문자열이다.
  */
 export function confirmShortages(fields: string[]) {
@@ -28,7 +28,7 @@ export function confirmShortages(fields: string[]) {
   (Object.keys(names) as (keyof typeof names)[]).forEach(
     (s) => names[s] && parts.push(`이름 없는 ${SECTION[s]} ${names[s]}개`),
   );
-  if (links.size) parts.push(`누리과정 연결이 없는 행 ${links.size}개`);
+  if (links.size) parts.push(`누리과정 연결을 1~3개로 맞춰야 하는 행 ${links.size}개`);
   return parts.join(" · ");
 }
 const serverFields = (error: ApiError): string[] => {
@@ -89,7 +89,11 @@ export default function PlayMonthlyConfirmBar({
     } catch (e) {
       if (!mounted.current) return;
       if (isSaveConflict(e)) {
-        await onConflict();
+        try {
+          await onConflict();
+        } catch {
+          setError("최신 내용을 불러오지 못했어요. 새로고침해 주세요.");
+        }
         return;
       }
       const lacking =

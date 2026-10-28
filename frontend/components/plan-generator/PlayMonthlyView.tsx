@@ -10,6 +10,8 @@ import type { PlayMonthlyPlan } from "@/lib/api/types";
 import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
 import { cellValue, overlayCells } from "@/lib/plan-generator/playMonthlyQueue";
 import PlayCellEditor from "./PlayCellEditor";
+import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
+import PlayMonthlyHistory from "./PlayMonthlyHistory";
 import PlayMonthlySheet from "./PlayMonthlySheet";
 import type { SheetZoom } from "./playProjectPagination";
 import styles from "./PlayMonthlyView.module.css";
@@ -254,6 +256,15 @@ function PlayMonthlyBody({
           <span role="status">{message}</span>
         </div>
         {notice && <p role="status">{notice}</p>}
+        <PlayMonthlyConfirmBar
+          plan={plan}
+          whenIdle={save.whenIdle}
+          freeze={save.freeze}
+          unfreeze={save.unfreeze}
+          onConfirmed={setPlan}
+          onConflict={onConflict}
+        />
+        <PlayMonthlyHistory id={plan.id} />
         <div className={styles.layout}>
           <aside className={styles.side} aria-label="연간에서 고른 놀이">
             {!confirmed && (
