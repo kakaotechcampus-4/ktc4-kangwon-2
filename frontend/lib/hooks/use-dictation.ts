@@ -33,10 +33,29 @@ function recognitionClass(): RecognitionClass | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+/**
+ * 아직 못 읽은 말만 이어 붙인다.
+ *
+ * **`event.results` 는 누적이다.** 한 번 말해도 `onresult` 가 여러 번 불리는데, 그때마다
+ * 지금까지 받은 것이 **전부** 다시 들어 있다. 매번 전체를 이어 붙이면 같은 말이 네댓 번
+ * 적힌다. 그래서 어디까지 읽었는지 기억해 두고 그 뒤만 읽는다.
+ */
+export function transcriptFrom(
+  results: ArrayLike<ArrayLike<{ transcript: string }>>,
+  from: number,
+): string {
+  return Array.from({ length: Math.max(results.length - from, 0) }, (_, i) => results[from + i][0])
+    .map((alternative) => alternative.transcript)
+    .join(" ")
+    .trim();
+}
+
 export function useDictation(onText: (text: string) => void) {
   const [supported] = useClientState(() => recognitionClass() !== null, false);
   const [listening, setListening] = useState(false);
   const recognition = useRef<Recognition | null>(null);
+  // 이번에 켠 뒤로 몇 개까지 읽었나.
+  const read = useRef(0);
   // onText 가 매 렌더 새 함수여도 받아쓰기를 다시 만들지 않는다.
   const handler = useRef(onText);
   useEffect(() => {
@@ -57,15 +76,14 @@ export function useDictation(onText: (text: string) => void) {
     instance.continuous = false;
     instance.interimResults = false;
     instance.onresult = (event) => {
-      const said = Array.from({ length: event.results.length }, (_, i) => event.results[i][0])
-        .map((alternative) => alternative.transcript)
-        .join(" ")
-        .trim();
+      const said = transcriptFrom(event.results, read.current);
+      read.current = event.results.length;
       if (said) handler.current(said);
     };
     instance.onerror = () => setListening(false);
     instance.onend = () => setListening(false);
     recognition.current = instance;
+    read.current = 0;
     instance.start();
     setListening(true);
   }, [listening]);

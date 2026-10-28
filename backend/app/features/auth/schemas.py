@@ -17,6 +17,15 @@ class SignupRequest(BaseModel):
     password: Password
 
 
+class PasswordChangeRequest(BaseModel):
+    """지금 비밀번호를 확인한 뒤에 바꾼다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str
+    new_password: Password
+
+
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
