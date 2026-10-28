@@ -49,7 +49,9 @@ def mine(db_session, teacher):
 
 
 def _create(klass) -> dict:
-    response = client.post("/api/plans/annual", json={"class_id": klass.id, "form_id": None})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": klass.id, "form_id": None}
+    )
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -177,7 +179,12 @@ def test_남의_반으로는_만들지_못하고_남의_계획안은_안_보인�
     assert client.get(f"/api/plans/annual/{created['id']}").status_code == 404
     assert client.post(f"/api/plans/annual/{created['id']}/confirm").status_code == 404
     assert client.get("/api/plans/annual").json()["items"] == []
-    assert client.post("/api/plans/annual", json={"class_id": mine.id}).status_code == 404
+    assert (
+        client.post(
+            "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id}
+        ).status_code
+        == 404
+    )
 
 
 def test_없는_달은_404(db_session, mine):
@@ -244,7 +251,9 @@ def test_설정이_없으면_503_이고_재시도_버튼을_띄우지_않는다(
 
     _breaks(monkeypatch, LlmUnavailable("키가 없다"))
 
-    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id}
+    )
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
@@ -255,7 +264,9 @@ def test_한도에_걸리면_운영_문의_코드로_나온다(db_session, mine,
 
     _generator_raises(monkeypatch, LlmBudgetExceeded("429"))
 
-    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id}
+    )
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "LLM_BUDGET_EXCEEDED"
@@ -267,7 +278,9 @@ def test_생성이_실패하면_부분_결과가_남지_않는다(db_session, mi
 
     _generator_raises(monkeypatch, LlmFailed("빠진 달이 있다"))
 
-    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id}
+    )
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
@@ -278,7 +291,9 @@ def test_같은_반에_연간을_두_번_만들지_못한다(db_session, mine):
     """멘토 리뷰(PR #82) — 새로고침하고 다시 누르면 두 개가 생기던 것."""
     _create(mine)
 
-    response = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": None}
+    )
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "ALREADY_EXISTS"
@@ -294,7 +309,9 @@ def test_응답을_만들다_터지면_계획안이_남지_않는다(db_session,
 
     monkeypatch.setattr(plans_router, "_detail", 터진다)
 
-    response = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": None}
+    )
     assert response.status_code == 500
     assert response.json() == {
         "error": {
@@ -326,7 +343,10 @@ def test_양식_번호가_계획안에_남는다(db_session, mine, teacher):
     db_session.add(form)
     db_session.flush()
 
-    response = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": form.id})
+    response = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": form.id},
+    )
 
     assert response.status_code == 201, response.text
     saved = db_session.get(Plan, response.json()["id"])
@@ -346,7 +366,10 @@ def test_확정_전_연간계획안을_지우면_다시_만들_수_있다(db_ses
     """반 하나에 연간은 하나다. 지울 길이 없으면 첫 초안이 마음에 안 들어도 영영 못 바꾼다."""
     plan_id = _create(mine)["id"]
     assert (
-        client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None}).status_code
+        client.post(
+            "/api/plans/annual",
+            json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": None},
+        ).status_code
         == 409
     )
 
@@ -493,7 +516,9 @@ def test_소주제_생성이_실패하면_부분_계획안도_남지_않는다(
         raise getattr(llm, failure)("test")
 
     monkeypatch.setattr("app.features.plans.router.generate_subthemes", fail)
-    response = client.post("/api/plans/annual", json={"class_id": mine.id})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id}
+    )
     assert response.status_code == status, response.text
     assert response.json()["error"]["code"] == code
     assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None

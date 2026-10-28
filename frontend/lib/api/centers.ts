@@ -22,6 +22,18 @@ export const createCenter = (data: CenterInput) =>
     body: JSON.stringify(data),
   });
 /**
+ * docs/api-spec.md §1. 원명 · 원장 이름 · 지역을 고친다. **보낸 칸만 바뀐다.**
+ *
+ * 지역 두 칸은 함께 보낸다 — 시·도만 바꾸면 시·군·구가 그 시·도에 없는 값으로 남는다.
+ */
+export const updateCenter = (centerId: number, data: Partial<CenterInput>) =>
+  apiRequest<Center>(`/api/centers/${centerId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+/**
  * docs/api-spec.md §3-1. 켜고 끄는 값만 모은다.
  *
  * **성품인사(§3)와 달리 전체 교체가 아니다.** 보낸 칸만 바뀐다 — 토글이 늘어도

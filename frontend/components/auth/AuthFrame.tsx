@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Icon } from "@/components/app/icons";
+import { LegalFooter } from "@/components/legal/LegalPage";
 
 /**
  * 로그인·가입 화면의 틀. 왼쪽은 소개, 오른쪽이 입력 칸이다.
@@ -65,6 +66,8 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
           {children}
         </section>
       </main>
+
+      <LegalFooter width="max-w-[1050px]" />
     </div>
   );
 }

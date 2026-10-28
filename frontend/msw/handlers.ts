@@ -3,6 +3,7 @@ import { failure, scenario } from "./scenarios";
 import {
   findCenter,
   addCenter,
+  patchCenter,
   putConfig,
   currentCenterId,
   findGreetings,
@@ -122,6 +123,17 @@ export const handlers = [
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+  }),
+  // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
+  http.patch("*/api/centers/:centerId", async ({ request, params }) => {
+    const id = Number(params.centerId);
+    if (!findCenter(id) || id !== currentCenterId()) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
+      if (k in b && !text(b[k])) return bad(k);
+    if ("region_sido" in b !== "region_sigungu" in b) return bad("region_sido");
+    return HttpResponse.json(patchCenter(id, b as Partial<CenterInput>));
   }),
   // 초대 코드 (§1-1). 목업은 계정이 하나라 코드를 하나로 고정한다.
   http.post("*/api/centers/:centerId/invites", ({ params }) => {
@@ -312,13 +324,22 @@ export const handlers = [
     const b = await body(request);
     if (!b) return bad("body");
     if (!integer(b.class_id)) return bad("class_id");
+    // 서버 순서: 형식 422(format → form_id) → 반 404 → 중복 409 → PLAY_PROJECT 503.
+    if (b.format !== "MONTHLY_THEME" && b.format !== "PLAY_PROJECT") return bad("format");
     if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
+    if (b.format === "PLAY_PROJECT" && b.form_id != null) return bad("form_id");
     // 연간 목업은 「지금 원」 소유 검사를 하지 않는다(서버는 남의 원 반이면 404) — 화면 목업 흐름 유지.
     const klass = findClass(Number(b.class_id));
     if (!klass) return classMissing();
     // 서버처럼 반 하나에 연간 하나다.
     if (annualFor(klass.id))
       return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
+    // 서버가 교육과정 참고자료가 없거나 승인 전일 때 주는 응답이다(지금 상태).
+    if (b.format === "PLAY_PROJECT")
+      return failure(
+        "DEPENDENCY_UNAVAILABLE",
+        "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
+      );
     if (request.signal.aborted) return HttpResponse.error();
     return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
       status: 201,

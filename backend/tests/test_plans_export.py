@@ -168,7 +168,9 @@ def mine(db_session, teacher):
 
 
 def _confirmed_plan(klass) -> dict:
-    created = client.post("/api/plans/annual", json={"class_id": klass.id, "form_id": None})
+    created = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": klass.id, "form_id": None}
+    )
     assert created.status_code == 201, created.text
     plan_id = created.json()["id"]
     edited = client.put(
@@ -315,7 +317,9 @@ def test_제출_문서에_출처가_섞이지_않는다(db_session, mine):
 
 
 def test_DRAFT_는_내보내지_않는다(db_session, mine):
-    created = client.post("/api/plans/annual", json={"class_id": mine.id, "form_id": None})
+    created = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": None}
+    )
 
     response = client.get(f"/api/plans/{created.json()['id']}/export/hwp")
 
@@ -340,7 +344,9 @@ def test_남의_원_계획안은_404(db_session, mine, teacher):
 
 def test_연간_안전교육은_저장돼_있어도_hwpx_에_싣지_않는다(mine):
     """2026-10-22 결정 — 연간 안전교육 칸은 꺼 뒀다. 값은 API · DB 에 남고 양식에만 없다."""
-    plan = client.post("/api/plans/annual", json={"class_id": mine.id}).json()
+    plan = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": mine.id}
+    ).json()
     response = client.put(
         f"/api/plans/annual/{plan['id']}/months/3",
         json={
