@@ -1,0 +1,209 @@
+{
+  "target": "2026-07",
+  "theme": "물과 빛으로 만나는 여름 놀이",
+  "rationale": "7월의 계절감을 바탕으로 물과 빛, 종이와 책을 자유롭게 탐색하는 놀이를 제안합니다. 함께 힘을 보태는 경험도 열어 두고, 만 4세 유아가 재료와 놀이 방법을 스스로 고르며 궁금한 점을 살펴볼 수 있도록 지원하고자 합니다. 놀이의 흐름과 표현 방식은 유아의 선택에 따라 달라질 수 있습니다.",
+  "groups": {
+    "together": [
+      {
+        "title": "천으로 공 굴리기",
+        "label": "",
+        "contentIds": [
+          "nuri2019.3.2.2"
+        ]
+      },
+      {
+        "title": "무지개 색 놀이",
+        "label": "",
+        "contentIds": [
+          "nuri2019.4.2.4"
+        ]
+      },
+      {
+        "title": "종이 소리 놀이",
+        "label": "",
+        "contentIds": [
+          "nuri2019.4.2.2"
+        ]
+      },
+      {
+        "title": "그림책 놀이",
+        "label": "",
+        "contentIds": [
+          "nuri2019.2.3.1"
+        ]
+      },
+      {
+        "title": "물 탐색 놀이",
+        "label": "",
+        "contentIds": [
+          "nuri2019.5.2.1"
+        ]
+      }
+    ],
+    "free": [
+      {
+        "title": "물 옮기기",
+        "label": "탐색",
+        "contentIds": [
+          "nuri2019.5.2.1"
+        ]
+      },
+      {
+        "title": "색깔 물 놀이",
+        "label": "탐색",
+        "contentIds": [
+          "nuri2019.5.2.1"
+        ]
+      },
+      {
+        "title": "종이 찢기 놀이",
+        "label": "미술",
+        "contentIds": [
+          "nuri2019.4.2.4"
+        ]
+      },
+      {
+        "title": "그림책 극놀이",
+        "label": "극놀이",
+        "contentIds": [
+          "nuri2019.4.2.5"
+        ]
+      },
+      {
+        "title": "블록 물길 놀이",
+        "label": "쌓기",
+        "contentIds": [
+          "nuri2019.5.2.3"
+        ]
+      }
+    ]
+  },
+  "safetyCandidates": [
+    {
+      "id": "traffic",
+      "label": "교통안전",
+      "title": "비 오는 날 안전하게 걸어요",
+      "kind": "법정 영역"
+    },
+    {
+      "id": "body",
+      "label": "성폭력 예방",
+      "title": "내 몸은 소중해요",
+      "kind": "법정 영역"
+    },
+    {
+      "id": "rights",
+      "label": "아동학대 예방",
+      "title": "내 마음을 말하고 도움을 청해요",
+      "kind": "법정 영역"
+    },
+    {
+      "id": "missing",
+      "label": "실종·유괴 예방",
+      "title": "길을 잃을 수 있는 때를 알아봐요",
+      "kind": "법정 영역"
+    },
+    {
+      "id": "hygiene",
+      "label": "감염병·약물 예방",
+      "title": "모르는 것은 먼저 어른에게 물어요",
+      "kind": "법정 영역"
+    },
+    {
+      "id": "disaster",
+      "label": "재난대비",
+      "title": "뜨거운 물건을 알아봐요",
+      "kind": "법정 영역"
+    },
+    {
+      "id": "playground",
+      "label": "생활안전",
+      "title": "놀이터에서 안전하게 놀이해요",
+      "kind": "생활안전"
+    },
+    {
+      "id": "tools",
+      "label": "생활안전",
+      "title": "놀이 도구를 안전하게 사용해요",
+      "kind": "생활안전"
+    }
+  ],
+  "habits": {
+    "2026-07-W1": {
+      "label": "청결",
+      "title": "놀이가 끝나면 손을 씻어요",
+      "contentId": "nuri2019.1.2.1"
+    },
+    "2026-07-W2": {
+      "label": "청결",
+      "title": "쓴 놀잇감을 제자리에 놓아요",
+      "contentId": "nuri2019.1.2.1"
+    },
+    "2026-07-W3": {
+      "label": "휴식",
+      "title": "몸이 피곤할 때 잠시 쉬어요",
+      "contentId": "nuri2019.1.2.3"
+    },
+    "2026-07-W4": {
+      "label": "언어 예절",
+      "title": "친구의 말을 듣고 이야기해요",
+      "contentId": "nuri2019.2.1.5"
+    },
+    "2026-07-W5": {
+      "label": "약속·질서",
+      "title": "함께 정한 놀이 약속을 지켜요",
+      "contentId": "nuri2019.3.2.6"
+    }
+  },
+  "drillCandidates": [
+    {
+      "id": "drill-17afcb7a09804913844a86e8de79a9f4-0",
+      "title": "조리실에 불이 난 가상 상황",
+      "sourceIds": [
+        "fire-kitchen"
+      ]
+    },
+    {
+      "id": "drill-17afcb7a09804913844a86e8de79a9f4-1",
+      "title": "전기 사용 중 불이 난 가상 상황",
+      "sourceIds": [
+        "fire-electric"
+      ]
+    },
+    {
+      "id": "drill-17afcb7a09804913844a86e8de79a9f4-2",
+      "title": "지진이 발생한 가상 상황",
+      "sourceIds": [
+        "earthquake"
+      ]
+    },
+    {
+      "id": "drill-17afcb7a09804913844a86e8de79a9f4-3",
+      "title": "폭설로 눈이 쌓이고 얼어붙은 가상 상황",
+      "sourceIds": [
+        "snow"
+      ]
+    },
+    {
+      "id": "drill-17afcb7a09804913844a86e8de79a9f4-4",
+      "title": "수해가 발생한 가상 상황",
+      "sourceIds": [
+        "flood"
+      ]
+    }
+  ],
+  "metadata": {
+    "mode": "live",
+    "model": "openai/gpt-6.1-sol",
+    "fingerprint": "89f2457af9f77a1de870b69741daa65a11b72b4fa1ee96e519f472fc175923ef",
+    "generatedAt": "2026-10-27T01:58:13.029240+00:00"
+  },
+  "health": {
+    "title": "여름 날씨에 맞는 옷차림 알아보기",
+    "contentId": "nuri2019.1.2.4"
+  },
+  "nutrition": {
+    "title": "여러 음식에 관심 갖기",
+    "contentId": "nuri2019.1.2.2"
+  }
+}
