@@ -56,7 +56,7 @@ async function api(page: Page, path: string) {
 
 test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연속 입력·저장", async ({ page }, info) => {
   await enterPilot(page);
-  await page.getByRole("link", { name: "계획 노트", exact: true }).click();
+  await page.getByRole("link", { name: "계획안", exact: true }).click();
   await page.getByRole("link", { name: "계획안 만들기", exact: true }).click();
   await page.getByRole("button", { name: "연간 한 해 놀이 흐름", exact: true }).click();
   await page.getByRole("button", { name: "계획안 생성하기", exact: true }).click();
@@ -93,11 +93,11 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ]);
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
-  await page.getByRole("link", { name: "계획 노트", exact: true }).click();
+  await page.getByRole("link", { name: "계획안", exact: true }).click();
   await page.getByRole("link", { name: "월간 양식 설정", exact: true }).click();
   await page.getByRole("button", { name: /칸으로 양식 만들기/ }).click();
   await expect(page.getByText("새 양식을 만들고 원 기본으로 설정했어요.")).toBeVisible();
-  await page.getByRole("link", { name: "계획 노트", exact: true }).click();
+  await page.getByRole("link", { name: "계획안", exact: true }).click();
   await page.getByRole("link", { name: "월간계획안", exact: true }).click();
   await page.getByRole("button", { name: /월 계획안 만들기/ }).click();
   const field = page.getByRole("textbox", { name: "칸 내용", exact: true }).first();
@@ -187,7 +187,7 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await verifyHwpx(file, info.outputPath("pilot-daily-log.hwpx"), [
     "유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.",
   ]);
-  await page.getByRole("link", { name: "평가 준비", exact: true }).click();
+  await page.getByRole("link", { name: "평가 점검", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),
   ).toContainText("집계에 들어간 문서 1건");
@@ -270,11 +270,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
 });
 
-test("멘토: 평가 준비는 서버의 9개 지표·19개 요소를 보여주고 체크를 보존한다", async ({
+test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주고 체크를 보존한다", async ({
   page,
 }, info) => {
   const user = await enterPilot(page);
-  await page.getByRole("link", { name: "평가 준비", exact: true }).click();
+  await page.getByRole("link", { name: "평가 점검", exact: true }).click();
   await page.getByRole("tab", { name: /^자체평가/ }).click();
   // 안 끝난 첫 평가항목만 펼쳐져 있다. 접힌 평가항목을 하나씩 펼쳐 19개를 센다.
   // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다. 영역(section) 밖의 옛 사전점검 접기는 열지 않는다.
@@ -314,10 +314,10 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 클릭으로 진입�
   expect((await api(page, `/api/centers/${user.center_id}/settings`)).trends_enabled).toBe(true);
   await page.getByRole("button", { name: "초대 코드 만들기", exact: true }).click();
   await expect(page.getByText(/초대 코드 [A-Z2-9]{10}/)).toBeVisible();
-  await page.getByRole("link", { name: "계획 노트", exact: true }).click();
+  await page.getByRole("link", { name: "계획안", exact: true }).click();
   await page.getByRole("link", { name: "기관 양식", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("양식");
-  await page.getByRole("link", { name: "계획 노트", exact: true }).click();
+  await page.getByRole("link", { name: "계획안", exact: true }).click();
   await page.getByRole("link", { name: "트렌드봇", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "트렌드봇", exact: true, level: 1 }),

@@ -60,7 +60,7 @@ export default function EvaluationChecklist({
         setError("");
       } catch (e) {
         if (!controller.signal.aborted)
-          setError(e instanceof Error ? e.message : "평가 준비 현황을 불러오지 못했어요.");
+          setError(e instanceof Error ? e.message : "평가 점검 현황을 불러오지 못했어요.");
       }
     })();
     return () => controller.abort();
@@ -129,7 +129,7 @@ export default function EvaluationChecklist({
             다시 불러오기
           </button>
         ) : (
-          <p role="status">평가 준비 현황을 불러오는 중…</p>
+          <p role="status">평가 점검 현황을 불러오는 중…</p>
         )}
       </>
     );
@@ -168,7 +168,7 @@ export default function EvaluationChecklist({
         {autos[0] && ` · ${autos[0].period.to}까지 확정한 문서 기준`}
       </p>
       <Message error>{error}</Message>
-      <div role="tablist" aria-label="평가 준비 보기" className={styles.tabs}>
+      <div role="tablist" aria-label="평가 점검 보기" className={styles.tabs}>
         {TABS.map((id, index) => (
           <button
             key={id}

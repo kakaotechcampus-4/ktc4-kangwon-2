@@ -223,6 +223,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
             rule_version=doc.generation_rule_version,
         ),
         review_note=doc.review_note,
+        class_note=doc.class_note,
         created_at=doc.created_at.astimezone(UTC),
         updated_at=doc.updated_at.astimezone(UTC),
     )
@@ -336,7 +337,42 @@ def create_document(
 
     # 근거를 불러와 사본 행을 만든다. 순서는 교사가 고른 순서 그대로다.
     copies: list[DocumentSource] = []
-    if body.kind == "weeklyLog":
+    if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
+        # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
+        # 교사는 고른 대로 만들어진 줄 안다.
+        raise _invalid(["source_kind"])
+    if body.kind == "weeklyLog" and body.source_kind == "routine":
+        # 일일 보육일지를 쓰지 않는 원이다. 일일이 쓰는 것과 같은 재료(일과 기록)를
+        # 그 주 전체에서 받는다 — 하루치만 받는 일일과 기간만 다르다.
+        by_id = {
+            r.id: r
+            for r in session.scalars(
+                select(RoutineRecord)
+                .join(Class, Class.id == RoutineRecord.class_id)
+                .where(RoutineRecord.id.in_(body.source_ids), Class.center_id == user.center_id)
+            )
+        }
+        for source_id in body.source_ids:
+            source = by_id.get(source_id)
+            if (
+                source is None
+                or source.class_id != body.class_id
+                or not (body.start <= source.date <= body.end)
+                or not source.execution.strip()
+            ):
+                fields.append(f"sources.{source_id}")
+                continue
+            copies.append(
+                DocumentSource(
+                    source_kind="routine",
+                    source_id=source.id,
+                    class_id=source.class_id,
+                    child_id=None,
+                    date=source.date,
+                    text=source.fact_text(),
+                )
+            )
+    elif body.kind == "weeklyLog":
         by_id = {
             d.id: d
             for d in session.scalars(
@@ -532,7 +568,7 @@ def update_document(
     session: DbSession,
     user: CurrentUser,
 ) -> DocumentDetailResponse:
-    """`title` · `sections` · `review_note` 전체 교체 (docs/api-spec.md §11).
+    """`title` · `sections` · `review_note` · `class_note` 전체 교체 (docs/api-spec.md §11).
 
     `PATCH` 가 아니라 `PUT` 이다 — 셋 다 매번 통째로 받는다. `사실` 항목은 근거
     원문을 그대로 이어붙인 것과 정확히 같아야 하고, 다르면 거절한다. 교사가
@@ -563,6 +599,8 @@ def update_document(
     if body.title is not None:
         doc.title = body.title
     doc.review_note = body.review_note
+    if body.class_note is not None:
+        doc.class_note = body.class_note
     # sections 가 documents 와 다른 테이블이라, 그것만 바뀌어도 documents 행의
     # onupdate 가 저절로 안 걸린다 — STALE_WRITE 판정이 최신 시각을 보게 직접 찍는다.
     doc.updated_at = datetime.now(UTC)
@@ -797,9 +835,13 @@ def refresh_document(
             continue
         if copy.source_kind == "routine":
             routine = session.get(RoutineRecord, copy.source_id)
-            if routine is None or not routine.execution.strip() or routine.date != doc.start_date:
-                # 활동실행을 비웠거나 다른 날로 옮겼으면 이 날의 사실이 사라진 것이다.
-                # 원본 없음과 같다.
+            if (
+                routine is None
+                or not routine.execution.strip()
+                or not (doc.start_date <= routine.date <= doc.end_date)
+            ):
+                # 활동실행을 비웠거나 문서 기간 밖으로 옮겼으면 이 문서의 사실이 사라진 것이다.
+                # 원본 없음과 같다. 일일은 하루라 start_date == end_date 로 전과 같다.
                 missing.append(field)
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
@@ -849,10 +891,17 @@ def refresh_document(
             body.resolutions,
         )
     if missing and plan is None:
+        # **교사가 할 수 있는 것만 말한다** (수린 점검 10). 빼기·바꾸기는 일과 근거의 일일
+        # 보육일지에서만 되고, 그마저도 남은 근거가 있어야 한다. 관찰일지의 관찰 기록을 전부
+        # 지운 교사에게 「빼거나 바꿀 근거를 골라주세요」 라고 하면 고를 것이 없는 화면만 연다.
+        resolvable = doc.kind == "dailyLog" and all(c.source_kind == "routine" for c in sources)
+        survives = any(c.source_id not in missing_ids for c in sources)
         raise _error(
             status.HTTP_409_CONFLICT,
             "GATE_BLOCKED",
-            "근거 기록이 사라졌습니다. 남은 근거로 이어가려면 빼거나 바꿀 근거를 골라주세요.",
+            "근거 기록이 사라졌습니다. 남은 근거로 이어가려면 빼거나 바꿀 근거를 골라주세요."
+            if resolvable and survives
+            else "근거 기록이 사라졌습니다. 이 문서는 지우고 남은 기록으로 새로 만들어주세요.",
             missing,
         )
     if unconfirmed:
