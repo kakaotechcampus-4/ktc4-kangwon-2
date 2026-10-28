@@ -4,6 +4,8 @@ import type {
   ApiChild,
   AnnualAuditEvent,
   AnnualPlan,
+  PlayMonthlyAuditEvent,
+  PlayMonthlyPlan,
   PlayProjectAnnualPlan,
   PlanConfig,
   MonthlyAuditEvent,
@@ -31,10 +33,14 @@ export interface Database {
     }
   >;
   monthlyPlans: MonthlyPlan[];
+  /** 놀이 중심 월간. 기존 월간과 id 를 나눠 쓴다(`next`) — 서버는 한 표다. */
+  playMonthlyPlans: PlayMonthlyPlan[];
   /** 주간계획안 (weekly-plan-contract §13). 변경 이력은 아직 화면이 쓰지 않아 두지 않는다. */
   weeklyPlans: WeeklyPlan[];
   /** 월간 변경 이력. 키는 plan id. 서버처럼 계획안 단위와 칸(item_id) 단위로 따로 쌓는다. */
   monthlyAudit: Record<number, MockPlanAudit>;
+  /** 놀이 월간 변경 이력. 키는 plan id. 쌓은 순서가 곧 시간순이다(시각은 앞선 것보다 늘 뒤). */
+  playMonthlyAudit: Record<number, PlayMonthlyAuditEvent[]>;
   /** 연간 변경 이력. 키는 plan id. 저장 순서 그대로 쌓고 읽을 때 서버처럼 정렬한다. */
   annualAudit: Record<number, AnnualAuditEvent[]>;
   /** 원 소유 양식 설정 버전. 지금 목업은 READY 만 만든다(DRAFT · ARCHIVED 는 테스트가 넣는다). */
@@ -78,8 +84,10 @@ const empty = (): Database => ({
   greetings: {},
   centerSettings: {},
   monthlyPlans: [],
+  playMonthlyPlans: [],
   weeklyPlans: [],
   monthlyAudit: {},
+  playMonthlyAudit: {},
   annualAudit: {},
   profiles: [],
   defaultPointers: {},
@@ -114,8 +122,10 @@ export function read(): Database {
     greetings: parsed.greetings ?? {},
     centerSettings: parsed.centerSettings ?? {},
     monthlyPlans: parsed.monthlyPlans ?? [],
+    playMonthlyPlans: parsed.playMonthlyPlans ?? [],
     weeklyPlans: parsed.weeklyPlans ?? [],
     monthlyAudit: parsed.monthlyAudit ?? {},
+    playMonthlyAudit: parsed.playMonthlyAudit ?? {},
     annualAudit: parsed.annualAudit ?? {},
     profiles: parsed.profiles ?? [],
     defaultPointers: parsed.defaultPointers ?? {},

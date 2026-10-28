@@ -127,6 +127,12 @@ export function invalidFields(error: unknown, map: Record<string, string>): stri
   return [...new Set(names)];
 }
 
+/** 서버가 「이미 있다」고 거절했나. 브라우저 연결 정보가 서버보다 뒤처졌다는 뜻이다. */
+export function isAlreadyExists(error: unknown): error is ApiError {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  return envelope(error)?.code === "ALREADY_EXISTS";
+}
+
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */
 export function isApiNotFound(error: unknown): error is ApiError {
   if (!(error instanceof ApiError) || error.status !== 404) return false;

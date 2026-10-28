@@ -75,6 +75,7 @@ class AnnualPlanOut(BaseModel):
 class PlayCellOut(BaseModel):
     """놀이 프로젝트형 칸 하나. 값과 근거 · 생성 방식은 월간과 같은 객체를 쓴다."""
 
+    item_id: str
     value: str
     evidence: list[EvidenceOut]
     generation: GenerationOut
@@ -93,12 +94,14 @@ class PlayPeriodOut(BaseModel):
     label: str
     months: list[int]
     candidates: list[PlayCandidateOut]
+    selected: list[str]  # 고른 후보의 row_key, 문서 배치 순서
 
 
 class PlayProjectPlanOut(BaseModel):
-    """놀이 프로젝트형 연간 (api-spec §4). audit · item_id 는 싣지 않는다."""
+    """놀이 프로젝트형 연간 (api-spec §4). audit 는 싣지 않는다(§7-1 이 따로 준다)."""
 
     id: int
+    revision: int
     class_id: int
     school_year: int
     status: str
@@ -188,3 +191,22 @@ class AuditEventOut(BaseModel):
 
 class AuditOut(BaseModel):
     items: list[AuditEventOut]
+
+
+class SelectionChangeOut(BaseModel):
+    period_key: str
+    before: list[str]
+    after: list[str]
+
+
+class PlayAuditEventOut(AuditEventOut):
+    """놀이 프로젝트형 이력 한 건 (api-spec §7-1). 월별 응답은 위 여섯 키 그대로 둔다."""
+
+    item_id: str | None = Field(default=None, description="칸 단위 사건이면 그 칸. 아니면 null")
+    selection_change: SelectionChangeOut | None = Field(
+        default=None, description="CANDIDATES_SELECTED 만. 문서 배치 순서"
+    )
+
+
+class PlayAuditOut(BaseModel):
+    items: list[PlayAuditEventOut]

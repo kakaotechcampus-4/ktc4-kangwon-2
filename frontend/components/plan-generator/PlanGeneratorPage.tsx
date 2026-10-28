@@ -694,7 +694,7 @@ function InputPanel(props: {
               key={s.label}
               type="button"
               onClick={() => onMemoChange(s.text)}
-              className={`text-[11.5px] min-h-[36px] rounded-full px-3 py-1.5 border transition-[filter] hover:brightness-95 ${
+              className={`text-[13px] min-h-[36px] rounded-full px-3 py-1.5 border transition-[filter] hover:brightness-95 ${
                 s.tone === "peach"
                   ? "text-peach-ink bg-peach-tint border-peach-tint"
                   : "text-mint-ink bg-mint-tint border-mint-tint"
@@ -835,7 +835,7 @@ function PeriodBlock({
       style={{ borderColor: "var(--pg-line)" }}
     >
       <span
-        className={`text-[11px] font-mono px-2 py-1 rounded-full text-ink ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
+        className={`text-[12px] font-mono px-2 py-1 rounded-full text-ink ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
       >
         {PLAN_TYPE_LABEL[type]}
       </span>
@@ -869,8 +869,8 @@ function PlanTypeCard({
       >
         <PlanTypeIcon type={type} className="text-ink-soft" />
         <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
-        <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
-        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
+        <span className="text-[12px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[12px] text-ink-soft">
           따로 열기
         </span>
       </Link>
@@ -890,9 +890,9 @@ function PlanTypeCard({
     >
       <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
       <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
-      <span className="text-[11px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+      <span className="text-[12px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
       {!ready && (
-        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[9px] text-ink-soft">
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[12px] text-ink-soft">
           준비 중
         </span>
       )}
@@ -1001,7 +1001,7 @@ function IdleState() {
         </p>
       </div>
       <p
-        className="font-mono text-[11px] px-3 py-1 rounded-full border text-ink-soft"
+        className="font-mono text-[12px] px-3 py-1 rounded-full border text-ink-soft"
         style={{ background: "var(--pg-primary-tint)", borderColor: "var(--pg-line)" }}
       >
         TIP · 추천 태그를 누르면 메모가 빠르게 채워져요

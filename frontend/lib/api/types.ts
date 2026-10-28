@@ -205,8 +205,17 @@ export interface AnnualPlan {
   /** `detail` 은 교사에게 그대로 보여도 되는 문장이다. 계획안 전체 검사면 `month` 가 null. */
   checks: { rule: string; severity: string; detail: string; month: number | null }[];
 }
+/** 놀이 프로젝트형 칸 하나. `item_id` 는 칸 단위 저장이 쓰는 이름표다(ADR-044). */
+export interface PlayCell {
+  item_id: string;
+  value: string;
+  evidence: MonthlyCell["evidence"];
+  generation: MonthlyCell["generation"];
+}
 export interface PlayProjectAnnualPlan {
   id: number;
+  /** 저장할 때마다 1 씩 는다. 저장 요청에 `expected_revision` 으로 되돌려 보낸다. */
+  revision: number;
   class_id: number;
   school_year: number;
   status: "DRAFT" | "CONFIRMED";
@@ -216,32 +225,127 @@ export interface PlayProjectAnnualPlan {
     period_key: string;
     label: string;
     months: number[];
+    /** 교사가 고른 후보의 row_key. 고른 순서 그대로이고 최대 5개다. */
+    selected: string[];
     candidates: {
       row_key: string;
-      play_name: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
-      materials: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
-      support_direction: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
-      learning: {
-        value: string;
-        evidence: MonthlyCell["evidence"];
-        generation: MonthlyCell["generation"];
-      };
+      play_name: PlayCell;
+      materials: PlayCell;
+      support_direction: PlayCell;
+      learning: PlayCell;
     }[];
   }[];
 }
 export type AnnualPlanResponse = AnnualPlan | PlayProjectAnnualPlan;
+
+/** 놀이 중심 월간의 칸. 한 번도 쓰지 않은 교사 입력 칸은 `generation` 이 null 이고 `evidence` 가 `[]` 다. */
+export interface PlayMonthlyCell {
+  item_id: string;
+  value: string;
+  evidence: MonthlyCell["evidence"];
+  generation: MonthlyCell["generation"] | null;
+}
+export interface PlayMonthlyActivity {
+  /** 이름 칸의 `item_id` 와 같다. 행 주소다. */
+  activity_id: string;
+  name: PlayMonthlyCell;
+  description: PlayMonthlyCell;
+  /** 생성한 행은 1~3개, 행 추가 직후의 빈 행은 0개다. 공식 문구는 응답에 없다. */
+  content_ids: string[];
+  parent_item_id: string | null;
+}
+/** 놀이 중심 월간 단건 응답 (api-spec §9-7). 변경 API 는 모두 이 전체를 돌려준다. */
+export interface PlayMonthlyPlan {
+  id: number;
+  class_id: number;
+  school_year: number;
+  month: number;
+  target_month: string;
+  status: "DRAFT" | "CONFIRMED";
+  /** 저장할 때마다 1 씩 는다. 변경 요청에 `expected_revision` 으로 되돌려 보낸다. */
+  revision: number;
+  format: "PLAY_MONTHLY";
+  format_version: string;
+  created_at: string;
+  confirmed_at: string | null;
+  target_ages: number[];
+  weeks: {
+    week_id: string;
+    label: string;
+    start_date: string;
+    end_date: string;
+    active: boolean;
+  }[];
+  parent: {
+    annual_plan_id: number;
+    period_key: string;
+    layout_version: string;
+    confirmed_at: string;
+    plays: {
+      row_key: string;
+      play_name_item_id: string;
+      play_name: string;
+      materials: string;
+      support_direction: string;
+      emphasized: boolean;
+    }[];
+  };
+  theme: PlayMonthlyCell;
+  rationale: PlayMonthlyCell;
+  together: PlayMonthlyActivity[];
+  free_play: PlayMonthlyActivity[];
+  habits: { week_id: string; entry_id: string | null; cell: PlayMonthlyCell }[];
+  safety_candidates: {
+    kind: "STATUTORY" | "SUPPLEMENTAL";
+    category_id: string | null;
+    topic_group: string | null;
+    cell: PlayMonthlyCell;
+  }[];
+  /** 주마다 하나. `candidate_item_id` 가 null 이면 아직 안 둔 주. */
+  safety_weeks: { week_id: string; candidate_item_id: string | null }[];
+  health: { entry_id: string | null; cell: PlayMonthlyCell };
+  nutrition: { entry_id: string | null; cell: PlayMonthlyCell };
+  drill_candidates: { topic_id: string; label: string; cell: PlayMonthlyCell }[];
+  /** key: fire_disaster_drill · specialized_timetable · special_activity_timetable · class_notice · class_birthdays · home_connection */
+  teacher_inputs: { key: string; cell: PlayMonthlyCell }[];
+  /** 응답마다 계산한다. 확정을 막지 않는다. */
+  notices: {
+    code: "SAFETY_UNPLACED" | "SAFETY_BLANK" | "HABIT_BLANK" | "HEALTH_BLANK" | "NUTRITION_BLANK";
+    week_id: string | null;
+  }[];
+}
+/**
+ * 놀이 중심 월간 변경 이력 하나 (`GET /api/plans/monthly/play/{id}/audit`). **열한 키가 항상 온다** — 해당이 없으면 null.
+ * `type` 은 저장된 문자열 그대로라 모르는 종류가 올 수 있다 — 화면은 건너뛴다.
+ */
+export interface PlayMonthlyAuditEvent {
+  type: "CREATED" | "TEACHER_EDITED" | "ARRANGEMENT_CHANGED" | "CANDIDATE_COPIED" | "CONFIRMED";
+  /** ISO 8601, UTC(`Z`). */
+  occurred_at: string;
+  /** 계획안 단위(생성 · 배치 · 확정)는 PLAN, 칸 단위는 CELL. */
+  scope: "PLAN" | "CELL";
+  item_id: string | null;
+  actor: string | null;
+  system_actor: string | null;
+  value_change: { before: string; after: string } | null;
+  generation_change: { before: unknown; after: unknown } | null;
+  link_change: { before: string[]; after: string[]; catalog_version: string } | null;
+  /** scope 는 together · free_play(행) 이거나 주 id(안전 배치). before · after 는 놓인 item_id 배열. */
+  arrangement_change: { scope: string; before: string[]; after: string[] } | null;
+  /** 복사한 훈련 후보의 item_id. */
+  copied_from: string | null;
+}
+export interface PlayMonthlySummary {
+  id: number;
+  class_id: number;
+  school_year: number;
+  month: number;
+  target_month: string;
+  status: "DRAFT" | "CONFIRMED";
+  revision: number;
+  created_at: string;
+  confirmed_at: string | null;
+}
 /** 목록용. months 12개는 담지 않는다 — 상세는 단건 조회가 준다(§5). */
 export interface AnnualPlanSummary {
   id: number;
@@ -263,7 +367,7 @@ export interface ConfirmResult {
  * 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
  */
 export interface AnnualAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED";
+  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED" | "CANDIDATES_SELECTED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
   /** 그 달 theme 의 이벤트면 그 달(1~12). 계획안 단위(생성 · 확정)면 null. */
@@ -274,6 +378,10 @@ export interface AnnualAuditEvent {
   system_actor: string | null;
   /** `TEACHER_EDITED` 면 그때 바뀐 theme(소주제만 고쳤으면 둘이 같다). 그 밖에는 null. */
   value_change: { before: string; after: string } | null;
+  /** 놀이 프로젝트형만 — 칸 주소. 해당이 없으면 null. 월별 주제형은 이 키가 없다(§7-1). */
+  item_id?: string | null;
+  /** 놀이 프로젝트형 `CANDIDATES_SELECTED` 만 — 한 구간의 고르기 변화(문서 배치 순서). */
+  selection_change?: { period_key: string; before: string[]; after: string[] } | null;
 }
 /** 생성에 쓰는 정확한 양식 설정 버전 (docs/api-spec.md §9-1 · §9-2). 「latest」 같은 별칭은 없다. */
 export interface ProfileRef {
