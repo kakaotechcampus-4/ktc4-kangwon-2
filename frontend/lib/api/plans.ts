@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { ApiError, apiRequest } from "./client";
 import { downloadHwpx } from "./export";
 import { isAlreadyConfirmed, isStaleWrite } from "./documents";
 import type {
@@ -49,8 +49,30 @@ export const savePlaySelection = (
     body: JSON.stringify({ selections, expected_revision: expectedRevision }),
     signal,
   });
+/**
+ * 놀이 프로젝트형 칸 하나를 고친다 (§6-1). 값은 앞뒤 공백을 턴 1~600자다.
+ * 지금 값과 같으면 422 라 같은 값은 보내지 않는다. 배움 칸 · 안 고른 후보 · 모르는 item 은 422 `["item_id"]`.
+ */
+export const editPlayCell = (
+  id: number,
+  itemId: string,
+  value: string,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<PlayProjectAnnualPlan>(
+    "/api/plans/annual/" + id + "/cells/" + encodeURIComponent(itemId),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value, expected_revision: expectedRevision }),
+      signal,
+    },
+  );
 /** 다른 곳에서 바뀌어 저장이 막힌 것인가 — 409 `STALE_WRITE` · `ALREADY_CONFIRMED`. */
 export const isSaveConflict = (error: unknown) => isStaleWrite(error) || isAlreadyConfirmed(error);
+/** 서버가 이 저장을 받지 않는 것인가 — 422. 다시 보내도 같은 답이다. 401 · 403 · 404 · 408 · 429 · 5xx 는 아니다(다시 저장하면 될 수 있다). */
+export const isRejectedSave = (error: unknown) => error instanceof ApiError && error.status === 422;
 /** 변경 이력. 시간순이고 필터 · 페이지가 없다 — 화면이 `month` 로 거른다. */
 export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });

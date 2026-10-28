@@ -316,3 +316,39 @@ export const putPlaySelection = (id: number, selections: Record<string, string[]
     }
     return detail(plan);
   });
+
+/** 후보의 놀이명 · 지원매체 · 지원 방향 칸을 찾는다. 배움 칸은 고칠 수 없다. */
+const EDITABLE = ["play_name", "materials", "support_direction"] as const;
+function findPlayCell(plan: PlayProjectAnnualPlan, itemId: string) {
+  for (const period of plan.periods)
+    for (const candidate of period.candidates)
+      for (const field of EDITABLE)
+        if (candidate[field].item_id === itemId)
+          return {
+            cell: candidate[field],
+            picked: (period.selected ?? []).includes(candidate.row_key),
+          };
+  return null;
+}
+/** 고칠 수 있는 칸인가 — 고른 후보의 놀이명 · 지원매체 · 지원 방향만이다 (§6-1). */
+export const editablePlayCell = (id: number, itemId: string) => {
+  const plan = findPlan(id);
+  const found = plan?.format === "PLAY_PROJECT" ? findPlayCell(plan, itemId) : null;
+  return !!found?.picked;
+};
+/** 칸 값이 지금과 같은가. 서버는 같은 값을 422 로 거절한다. */
+export const samePlayCellValue = (id: number, itemId: string, value: string) => {
+  const plan = findPlan(id);
+  return plan?.format === "PLAY_PROJECT" && findPlayCell(plan, itemId)?.cell.value.trim() === value;
+};
+/** 칸 하나를 바꾸고 revision 을 올린다. 호출 전에 핸들러가 칸 · 같은 값을 이미 걸렀다. */
+export const putPlayCell = (id: number, itemId: string, value: string) =>
+  commit((db) => {
+    const plan = db.plans.find(
+      (p): p is Extract<MockAnnualPlan, { format: "PLAY_PROJECT" }> =>
+        p.id === id && p.format === "PLAY_PROJECT",
+    )!;
+    findPlayCell(plan, itemId)!.cell.value = value;
+    plan.revision = (plan.revision ?? 1) + 1;
+    return detail(plan);
+  });

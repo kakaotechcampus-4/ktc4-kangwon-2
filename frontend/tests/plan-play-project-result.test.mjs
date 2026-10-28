@@ -38,7 +38,10 @@ function compile(path, modules, document, requestAnimationFrame, window) {
 function resolve(node) {
   if (Array.isArray(node)) return node.map(resolve);
   if (!node || typeof node !== "object") return node;
-  if (typeof node.type === "function") return resolve(node.type(node.props));
+  if (typeof node.type === "function") {
+    if (node.type === CellEditor) editorStub.key = node.key;
+    return resolve(node.type(node.props));
+  }
   return { ...node, props: { ...node.props, children: resolve(node.props.children) } };
 }
 function all(node) {
@@ -54,7 +57,13 @@ function text(node) {
   return typeof node === "string" || typeof node === "number" ? String(node) : "";
 }
 function plan() {
-  const cell = (value) => ({ value, evidence: [], generation: { method: "RULE_LLM" } });
+  let serial = 0;
+  const cell = (value) => ({
+    item_id: "item_" + serial++,
+    value,
+    evidence: [],
+    generation: { method: "RULE_LLM" },
+  });
   return {
     id: 41,
     revision: 3,
@@ -110,18 +119,48 @@ const { default: Picking } = compile("../components/plan-generator/PlayProjectPi
   "./playProjectPagination": sheetHelpers,
 });
 // 저장 훅 대역 — 화면이 무엇을 저장하라고 넘겼는지와 저장 표시만 본다. 큐 규칙은 따로 시험한다.
-const saveStub = { calls: [], retries: 0, status: "idle", conflict: null };
+const saveStub = {
+  calls: [],
+  cells: [],
+  retries: 0,
+  status: "idle",
+  conflict: null,
+  rejected: null,
+  drafting: false,
+};
+// 입력창 대역 — 화면이 넘긴 값과 콜백만 본다. 입력창 규칙은 play-cell-editor.test.mjs 가 다룬다.
+const editorStub = { props: null };
+const CellEditor = (props) => (
+  (editorStub.props = props),
+  [
+    jsx("label", { htmlFor: props.id, children: props.label }),
+    jsx("textarea", { id: props.id, value: props.value }),
+  ]
+);
 const sheetModules = {
   "@/lib/hooks/use-play-selection-save": {
-    usePlaySelectionSave: (_id, _revision, onConflict) => {
+    usePlaySelectionSave: (
+      _id,
+      _revision,
+      onConflict,
+      _onSaved,
+      onRejected,
+      _selections,
+      drafting,
+    ) => {
       saveStub.conflict = onConflict;
+      saveStub.rejected = onRejected;
+      saveStub.drafting = drafting;
       return {
         status: saveStub.status,
         save: (selections) => saveStub.calls.push(selections),
+        saveCell: (itemId, value, base) => saveStub.cells.push({ itemId, value, base }),
         retry: () => saveStub.retries++,
       };
     },
   },
+  "@/lib/plan-generator/playEditHistory": compile("../lib/plan-generator/playEditHistory.ts", {}),
+  "./PlayCellEditor": esModule(CellEditor),
   "./playProjectPagination": sheetHelpers,
   "./PlayProjectSheet": esModule(Sheet),
   "./PlayProjectPicking": esModule(Picking),
@@ -140,7 +179,8 @@ function resultRenderer(planValue, initial = [], desktop = false) {
   const scrolls = [];
   const frames = [];
   const tabListRef = { current: null };
-  let picksBox;
+  const boxes = [];
+  let boxCursor = 0;
   let tree;
   let cursor = 0;
   const useState = (value) => {
@@ -156,9 +196,11 @@ function resultRenderer(planValue, initial = [], desktop = false) {
     {
       react: {
         useState,
-        useRef: (value) => (value === null ? tabListRef : (picksBox ??= { current: value })),
+        useRef: (value) =>
+          value === null ? tabListRef : (boxes[boxCursor++] ??= { current: value }),
         useEffect: () => {},
         useSyncExternalStore: (_subscribe, get) => get(),
+        useMemo: (compute) => compute(),
       },
       "@/components/workspace/Workspace.module.css": esModule(css),
       "./GenerationFlow.module.css": esModule(resultTabs),
@@ -181,6 +223,7 @@ function resultRenderer(planValue, initial = [], desktop = false) {
   );
   const render = () => {
     cursor = 0;
+    boxCursor = 0;
     tree = resolve(jsx(Result, { plan: planValue }));
     return tree;
   };
@@ -200,6 +243,7 @@ function playResult() {
       useRef: (value) => ({ current: value }),
       useEffect: () => {},
       useSyncExternalStore: (_subscribe, get) => get(),
+      useMemo: (compute) => compute(),
     },
     "@/components/workspace/Workspace.module.css": esModule(css),
     "./GenerationFlow.module.css": esModule(resultTabs),
@@ -618,6 +662,11 @@ test("floating next clears the bottom nav and leaves the left sidebar to CSS", (
 test("floating next observes nav size, updates its bottom, and disconnects", (t) => {
   const effects = [];
   const state = [0, 0, { period0: ["cand0", "cand1", "cand2", "cand3", "cand4"] }, null];
+  [state[10], state[11], state[12]] = [
+    {},
+    { saved: {}, history: { undo: [], redo: [] }, epochs: {} },
+    "",
+  ];
   const button = { style: {} };
   const nav = { getBoundingClientRect: () => ({ top: 795, height: 105 }) };
   const observer = { observe: t.mock.fn(), disconnect: t.mock.fn() };
@@ -640,6 +689,7 @@ test("floating next observes nav size, updates its bottom, and disconnects", (t)
         useRef: () => ({ current: button }),
         useEffect: (effect) => effects.push(effect),
         useSyncExternalStore: (_subscribe, get) => get(),
+        useMemo: (compute) => compute(),
       },
       "@/components/workspace/Workspace.module.css": esModule(css),
       "./GenerationFlow.module.css": esModule(resultTabs),
@@ -825,8 +875,8 @@ test("selected preview cells sync the read-only viewer, field chips, highlight, 
   nodes = all(view.render());
   let textarea = nodes.find((node) => node.type === "textarea");
   assert.equal(textarea.props.value, "놀이 2");
-  assert.equal(textarea.props.readOnly, true);
-  assert.equal(textarea.props.disabled, undefined);
+  assert.equal(textarea.props.readOnly, undefined);
+  assert.equal(textarea.props.id, "play-project-selected-cell");
   assert.ok(
     nodes.some((node) => node.type === "label" && node.props.htmlFor === textarea.props.id),
   );
@@ -837,7 +887,7 @@ test("selected preview cells sync the read-only viewer, field chips, highlight, 
   assert.equal(highlighted[0].props.children.props["aria-pressed"], true);
   assert.equal(highlighted[0].props.children.props["aria-label"], "놀이 2 놀이명");
   assert.ok(!highlighted[0].props.children.props.className.includes("selectedCell"));
-  assert.ok(nodes.some((node) => text(node) === "아직 수정 기능은 제공하지 않아요."));
+  assert.ok(!nodes.some((node) => text(node).includes("아직 수정 기능은 제공하지 않아요")));
   assert.ok(!nodes.some((node) => text(node).includes("아직 저장되지 않아요")));
   nodes.find((node) => node.type === "button" && text(node) === "지원매체").props.onClick();
   nodes = all(view.render());
@@ -2125,4 +2175,222 @@ test("overlapping conflict reloads keep only the last request's plan, and pickin
   assert.ok(shown().props.notice);
   shown().props.onDismissNotice();
   assert.equal(shown().props.notice, undefined);
+});
+
+// ── 칸 편집 · 되돌리기 (ADR-044 §2) ──
+const editing = (field = "play_name", tab = "edit") => {
+  const served = plan();
+  const cell = served.periods[0].candidates[2][field];
+  const view = resultRenderer(
+    served,
+    FULL_STATE({ period0: ["cand2"] }, 1, tab, null, {
+      periodKey: "period0",
+      rowKey: "cand2",
+      field,
+    }),
+  );
+  saveStub.calls.length = 0;
+  saveStub.cells.length = 0;
+  view.render();
+  return { view, cell };
+};
+const historyButton = (nodes, name) =>
+  nodes.find((node) => node.type === "button" && text(node).trim().endsWith(name));
+
+test("the edit tab shows an editor for the picked play's name, materials, and support direction", () => {
+  for (const [field, value] of [
+    ["play_name", "놀이 2"],
+    ["materials", "종이 상자"],
+    ["support_direction", "관심을 따라 돕습니다."],
+  ]) {
+    const { view, cell } = editing(field);
+    const nodes = all(view.render());
+    assert.equal(editorStub.props.id, "play-project-selected-cell");
+    assert.equal(editorStub.props.value, value);
+    assert.equal(editorStub.props.label, fieldLabel(field));
+    assert.ok(cell.item_id);
+    assert.ok(!nodes.some((node) => text(node).includes("아직 수정 기능은 제공하지 않아요")));
+  }
+});
+const fieldLabel = (field) =>
+  ({ play_name: "놀이명", materials: "지원매체", support_direction: "지원 방향" })[field];
+
+test("the learning tab stays read-only with the curriculum note", () => {
+  const { view } = editing("learning");
+  editorStub.props = null;
+  const nodes = all(view.render());
+  assert.equal(editorStub.props, null);
+  const area = nodes.find((node) => node.type === "textarea");
+  assert.equal(area.props.readOnly, true);
+  assert.equal(area.props.value, "배움 한 줄\n배움 두 줄");
+  assert.ok(nodes.some((node) => text(node) === "배움은 누리과정 원문이라 고칠 수 없어요."));
+});
+
+test("saving a cell sends it once with the last saved value, and the document shows it", () => {
+  const { view, cell } = editing();
+  editorStub.props.onSave("새 놀이 이름");
+  assert.deepEqual(saveStub.cells, [
+    { itemId: cell.item_id, value: "새 놀이 이름", base: "놀이 2" },
+  ]);
+  const nodes = all(view.render());
+  assert.equal(editorStub.props.value, "새 놀이 이름");
+  assert.ok(text(nodes).includes("새 놀이 이름"));
+  // 같은 값은 보내지 않는다 — 서버는 같은 값을 422 로 거절한다.
+  editorStub.props.onSave("새 놀이 이름");
+  assert.equal(saveStub.cells.length, 1);
+  // 다음 저장의 base 는 방금 저장한 값이다.
+  editorStub.props.onSave("또 고침");
+  assert.equal(saveStub.cells[1].base, "새 놀이 이름");
+});
+
+test("typing shows in the document at once, and a revert brings the saved text back", () => {
+  const { view } = editing();
+  editorStub.props.onDraft("입력 중인 글");
+  assert.ok(text(view.render()).includes("입력 중인 글"));
+  assert.equal(saveStub.cells.length, 0);
+  editorStub.props.onRevert();
+  const after = text(view.render());
+  assert.ok(!after.includes("입력 중인 글"));
+  assert.ok(after.includes("놀이 2"));
+});
+
+test("undo and redo buttons start disabled, and undo re-saves the old value with the same cell call", () => {
+  const { view, cell } = editing();
+  let nodes = all(view.render());
+  assert.equal(historyButton(nodes, "되돌리기").props.disabled, true);
+  assert.equal(historyButton(nodes, "다시 하기").props.disabled, true);
+  editorStub.props.onSave("새 놀이 이름");
+  nodes = all(view.render());
+  assert.equal(historyButton(nodes, "되돌리기").props.disabled, false);
+  historyButton(nodes, "되돌리기").props.onClick();
+  assert.deepEqual(saveStub.cells.at(-1), {
+    itemId: cell.item_id,
+    value: "놀이 2",
+    base: "새 놀이 이름",
+  });
+  nodes = all(view.render());
+  assert.ok(text(nodes).includes("되돌렸어요"));
+  assert.equal(editorStub.props.value, "놀이 2");
+  assert.equal(historyButton(nodes, "되돌리기").props.disabled, true);
+  historyButton(nodes, "다시 하기").props.onClick();
+  assert.equal(saveStub.cells.at(-1).value, "새 놀이 이름");
+  assert.ok(text(all(view.render())).includes("다시 했어요"));
+});
+
+test("a new change empties redo, and picks and cell edits undo from one list", () => {
+  const { view, cell } = editing("play_name", "picked");
+  editorStub.props.onSave("새 놀이 이름");
+  // 고르기를 하나 더 한다 — 같은 목록의 두 번째 걸음이다.
+  all(view.render())
+    .find((node) => node.props?.["aria-label"] === "새 놀이 이름 빼기")
+    .props.onClick();
+  assert.deepEqual(saveStub.calls.pop().period0, []);
+  let nodes = all(view.render());
+  historyButton(nodes, "되돌리기").props.onClick(); // 빼기를 되돌린다
+  assert.deepEqual(saveStub.calls.pop().period0, ["cand2"]);
+  assert.equal(saveStub.cells.length, 1);
+  nodes = all(view.render());
+  assert.equal(historyButton(nodes, "다시 하기").props.disabled, false);
+  historyButton(nodes, "되돌리기").props.onClick(); // 칸 글을 되돌린다
+  assert.equal(saveStub.calls.length, 0);
+  assert.equal(saveStub.cells.at(-1).itemId, cell.item_id);
+  assert.equal(saveStub.cells.at(-1).value, "놀이 2");
+  // 새 변경이 오면 다시 하기가 비워진다.
+  // (이 시점의 입력창은 이미 새 번호로 바뀌었다 — 옛 props 의 글은 버려진다.)
+  nodes = all(view.render());
+  nodes.find((node) => node.props?.["aria-label"] === "놀이 3 넣기").props.onClick();
+  nodes = all(view.render());
+  assert.equal(historyButton(nodes, "다시 하기").props.disabled, true);
+});
+
+test("undo or redo of a cell gives the editor a new key, so it never keeps the old text", () => {
+  const { view } = editing();
+  editorStub.props.onSave("새 놀이 이름");
+  view.render();
+  const before = editorStub.key;
+  historyButton(all(view.render()), "되돌리기").props.onClick();
+  view.render();
+  const undone = editorStub.key;
+  assert.notEqual(undone, before);
+  historyButton(all(view.render()), "다시 하기").props.onClick();
+  view.render();
+  assert.notEqual(editorStub.key, undone);
+  // 저장만으로는 키가 바뀌지 않는다 — 입력 중 포커스를 잃지 않는다.
+  const stable = editorStub.key;
+  editorStub.props.onSave("계속 입력");
+  view.render();
+  assert.equal(editorStub.key, stable);
+});
+
+test("saving the trimmed server value again sends nothing", () => {
+  const { view } = editing();
+  editorStub.props.onSave("놀이 2");
+  assert.equal(saveStub.cells.length, 0);
+  assert.equal(historyButton(all(view.render()), "되돌리기").props.disabled, true);
+});
+
+test("a rejected cell goes back to the confirmed value with a status notice and an empty history", () => {
+  const { view, cell } = editing();
+  editorStub.props.onSave("새 놀이 이름");
+  view.render();
+  saveStub.rejected({ kind: "cell", itemId: cell.item_id, value: "놀이 2" });
+  const nodes = all(view.render());
+  assert.equal(editorStub.props.value, "놀이 2");
+  assert.ok(
+    nodes.some(
+      (node) =>
+        node.props?.role === "status" && text(node) === "저장하지 못한 칸은 원래대로 되돌렸어요.",
+    ),
+  );
+  assert.equal(historyButton(nodes, "되돌리기").props.disabled, true);
+});
+
+test("a rejected pick save puts the confirmed picks back", () => {
+  const { view } = editing();
+  saveStub.rejected({
+    kind: "picks",
+    selections: { period0: [], period1: [], period2: [], period3: [] },
+  });
+  const nodes = all(view.render());
+  assert.ok(text(nodes).includes("저장하지 못한 고르기는 원래대로 되돌렸어요."));
+  assert.equal(nodes.filter((node) => node.props?.role === "tab").map(text)[0], "3월~5월 · 0/5");
+});
+
+test("the same announcement twice in a row changes its text so it is read again", () => {
+  const { view } = editing();
+  editorStub.props.onSave("A");
+  editorStub.props.onSave("B");
+  const notices = [];
+  for (const name of ["되돌리기", "되돌리기"]) {
+    historyButton(all(view.render()), name).props.onClick();
+    notices.push(statusTexts(all(view.render())).find((line) => line.startsWith("되돌렸어요")));
+  }
+  assert.notEqual(notices[0], notices[1]);
+});
+const statusTexts = (nodes) => nodes.filter((node) => node.props?.role === "status").map(text);
+
+test("typing keeps the leave-page warning on until the draft is saved or put back", () => {
+  const { view } = editing();
+  editorStub.props.onDraft("입력 중");
+  view.render();
+  assert.equal(saveStub.drafting, true);
+  editorStub.props.onRevert();
+  view.render();
+  assert.equal(saveStub.drafting, false);
+});
+
+test("a rejection reopens only that cell's editor, and its old editor can no longer save", () => {
+  const { view, cell } = editing("materials");
+  view.render();
+  const stable = editorStub.key;
+  const old = editorStub.props;
+  const other = plan().periods[0].candidates[2].play_name.item_id;
+  saveStub.rejected({ kind: "cell", itemId: other, value: "놀이 2" });
+  view.render();
+  assert.equal(editorStub.key, stable);
+  saveStub.rejected({ kind: "cell", itemId: cell.item_id, value: "종이 상자" });
+  view.render();
+  assert.notEqual(editorStub.key, stable);
+  old.onSave("옛 입력창의 글"); // 사라지는 입력창의 저장은 버려진다
+  assert.equal(saveStub.cells.length, 0);
 });

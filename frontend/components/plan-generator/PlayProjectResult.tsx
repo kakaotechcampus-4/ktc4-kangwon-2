@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -14,7 +15,18 @@ import tabs from "./GenerationFlow.module.css";
 import styles from "./PlayProjectResult.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet, { type PlayDnd } from "./PlayProjectSheet";
+import PlayCellEditor from "./PlayCellEditor";
+import {
+  EMPTY_HISTORY,
+  popRedo,
+  popUndo,
+  pushStep,
+  stepSave,
+  type EditHistory,
+  type EditStep,
+} from "@/lib/plan-generator/playEditHistory";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
+import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
 import {
   cellButtonId,
   eulReul,
@@ -44,6 +56,59 @@ export function selectionsOf(plan: PlayProjectAnnualPlan, picks: Record<string, 
   return Object.fromEntries(
     plan.periods.map((item) => [item.period_key, picks[item.period_key] ?? []]),
   );
+}
+
+// 칸 글 저장 상태. `saved` 는 마지막으로 저장한 값(서버 값과 다른 칸만), `epochs` 는 칸마다 — 되돌리기 · 거절로 그 칸의 입력창을 다시 열 때 올린다.
+interface EditState {
+  saved: Record<string, string>;
+  history: EditHistory;
+  epochs: Record<string, number>;
+}
+const EMPTY_EDIT: EditState = { saved: {}, history: EMPTY_HISTORY, epochs: {} };
+
+function bumped(epochs: Record<string, number>, itemId: string) {
+  return { ...epochs, [itemId]: (epochs[itemId] ?? 0) + 1 };
+}
+
+function without(values: Record<string, string>, key: string) {
+  const rest = { ...values };
+  delete rest[key];
+  return rest;
+}
+
+// 칸 값을 화면에 입힌다. 입력 중 글(live) → 마지막 저장값(saved) → 서버 값 순이다. 바뀐 칸이 없으면 그대로 돌려준다.
+export function withCellValues(
+  plan: PlayProjectAnnualPlan,
+  saved: Record<string, string>,
+  live: Record<string, string>,
+): PlayProjectAnnualPlan {
+  if (!Object.keys(saved).length && !Object.keys(live).length) return plan;
+  const pick = (
+    cell: PlayProjectAnnualPlan["periods"][number]["candidates"][number]["play_name"],
+  ) => ({
+    ...cell,
+    value: live[cell.item_id] ?? saved[cell.item_id] ?? cell.value,
+  });
+  return {
+    ...plan,
+    periods: plan.periods.map((item) => ({
+      ...item,
+      candidates: item.candidates.map((candidate) => ({
+        ...candidate,
+        play_name: pick(candidate.play_name),
+        materials: pick(candidate.materials),
+        support_direction: pick(candidate.support_direction),
+      })),
+    })),
+  };
+}
+
+function serverCellValue(plan: PlayProjectAnnualPlan, itemId: string) {
+  for (const item of plan.periods)
+    for (const candidate of item.candidates)
+      for (const field of fields)
+        if (candidate[field.key].item_id === itemId) return candidate[field.key].value;
+  return "";
 }
 
 export function togglePlayPick(picks: string[], rowKey: string) {
@@ -249,13 +314,27 @@ export default function PlayProjectResult({
   const [detailKey, setDetailKey] = useState<string | null>(null);
   const [moveNotice, setMoveNotice] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
+  // 입력 중 글(문서 미리보기용) · 마지막으로 저장한 칸 값과 되돌리기 목록 · 되돌렸다는 안내.
+  const [live, setLive] = useState<Record<string, string>>({});
+  const [edit, setEdit] = useState<EditState>(EMPTY_EDIT);
+  const [historyNotice, setHistoryNotice] = useState("");
   const wide = useSyncExternalStore(subscribeWide, isWide, () => false);
-  const saving = usePlaySelectionSave(plan.id, plan.revision, onConflict, onDismissNotice);
+  const saving = usePlaySelectionSave(
+    plan.id,
+    plan.revision,
+    onConflict,
+    onDismissNotice,
+    onRejected,
+    selectionsOf(plan, picksFromPlan(plan)),
+    Object.keys(live).length > 0,
+  );
   // 고르기의 최신 값. 이벤트 핸들러에서만 읽고 쓴다 — 같은 렌더에서 두 번 바뀌어도 앞 변경을 잃지 않는다.
   const latestPicks = useRef(picks);
+  const latestEdit = useRef(edit);
   const tabListRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLButtonElement>(null);
-  const period = plan.periods[activePeriod];
+  const shown = useMemo(() => withCellValues(plan, edit.saved, live), [plan, edit.saved, live]);
+  const period = shown.periods[activePeriod];
   const periodPicks = picks[period.period_key] ?? [];
   const nextPeriod = nextPlayProjectPeriod(plan, picks, activePeriod);
   const total = plan.periods.reduce((sum, item) => sum + (picks[item.period_key]?.length ?? 0), 0);
@@ -264,7 +343,7 @@ export default function PlayProjectResult({
     period.candidates.find((candidate) => candidate.row_key === key)!,
   );
   const selectedPeriod =
-    selectedCell && plan.periods.find((p) => p.period_key === selectedCell.periodKey);
+    selectedCell && shown.periods.find((p) => p.period_key === selectedCell.periodKey);
   const selectedCandidate = selectedPeriod?.candidates.find(
     (candidate) => candidate.row_key === selectedCell?.rowKey,
   );
@@ -305,11 +384,106 @@ export default function PlayProjectResult({
     const list = latestPicks.current[periodKey] ?? [];
     const next = change(list);
     if (next === list) return null;
-    latestPicks.current = { ...latestPicks.current, [periodKey]: next };
-    setPicks(latestPicks.current);
-    onDismissNotice?.();
-    saving.save(selectionsOf(plan, latestPicks.current));
+    const before = selectionsOf(plan, latestPicks.current);
+    setPicksTo({ ...latestPicks.current, [periodKey]: next });
+    recordStep({ kind: "picks", before, after: selectionsOf(plan, latestPicks.current) });
     return next;
+  }
+
+  // 고르기를 이 값으로 바꾸고 저장 큐에 넣는다.
+  function setPicksTo(next: Record<string, string[]>) {
+    latestPicks.current = next;
+    setPicks(next);
+    onDismissNotice?.();
+    saving.save(selectionsOf(plan, next));
+  }
+
+  function setEditBoth(next: EditState) {
+    latestEdit.current = next;
+    setEdit(next);
+  }
+
+  // 새 변경이다 — 되돌리기 목록에 쌓고 다시 하기 목록은 비운다.
+  function recordStep(step: EditStep) {
+    setHistoryNotice("");
+    setEditBoth({ ...latestEdit.current, history: pushStep(latestEdit.current.history, step) });
+  }
+
+  // 칸 글을 저장한다. 마지막 저장값과 같으면 보내지 않는다(서버는 같은 값을 422 로 거절한다).
+  // `epoch` 는 이 글을 낸 입력창이 그려질 때의 번호다. 그 뒤 되돌리기 · 거절로 입력창이 바뀌었으면 옛 입력창의 글은 버린다.
+  function commitCell(itemId: string, value: string, record = true, epoch?: number) {
+    const current = latestEdit.current;
+    if (epoch !== undefined && epoch !== (current.epochs[itemId] ?? 0)) return;
+    const base = savedCellValue(itemId);
+    setLive((drafts) => without(drafts, itemId));
+    if (value === base.trim()) return;
+    saving.saveCell(itemId, value, base);
+    onDismissNotice?.();
+    const saved = { ...current.saved, [itemId]: value };
+    setEditBoth({ ...current, saved });
+    if (record) recordStep({ kind: "cell", itemId, before: base, after: value });
+  }
+
+  // 서버가 받지 않아 버린 저장 — 화면을 서버가 확인한 값으로 되돌린다. 되돌리기 목록은 더는 맞지 않아 비운다.
+  function onRejected(rejected: Rejected) {
+    const current = latestEdit.current;
+    if (rejected.kind === "picks") {
+      latestPicks.current = rejected.selections;
+      setPicks(rejected.selections);
+      setSelectedCell((cell) =>
+        cell && rejected.selections[cell.periodKey]?.includes(cell.rowKey) ? cell : null,
+      );
+      setEditBoth({ ...current, history: EMPTY_HISTORY });
+    } else {
+      setLive((drafts) => without(drafts, rejected.itemId));
+      const saved = { ...current.saved, [rejected.itemId]: rejected.value };
+      setEditBoth({
+        saved,
+        history: EMPTY_HISTORY,
+        epochs: bumped(current.epochs, rejected.itemId),
+      });
+    }
+    announce(
+      rejected.kind === "picks"
+        ? "저장하지 못한 고르기는 원래대로 되돌렸어요."
+        : "저장하지 못한 칸은 원래대로 되돌렸어요.",
+    );
+  }
+
+  // 같은 문장을 연달아 내도 다시 읽히도록 끝에 보이지 않는 글자를 번갈아 붙인다.
+  function announce(message: string) {
+    setHistoryNotice((previous) => (previous === message ? message + "\u200b" : message));
+  }
+
+  function savedCellValue(itemId: string) {
+    return latestEdit.current.saved[itemId] ?? serverCellValue(plan, itemId);
+  }
+
+  // 되돌리기 · 다시 하기. 같은 두 저장 API 로 이전 상태를 다시 저장한다.
+  function stepThrough(direction: "undo" | "redo") {
+    const popped = (direction === "undo" ? popUndo : popRedo)(latestEdit.current.history);
+    if (!popped) return;
+    const save = stepSave(popped.step, direction, {
+      selections: selectionsOf(plan, latestPicks.current),
+      cellValue: savedCellValue,
+    });
+    if (save?.kind === "picks") {
+      setPicksTo(save.selections);
+      if (selectedCell && !save.selections[selectedCell.periodKey]?.includes(selectedCell.rowKey))
+        setSelectedCell(null);
+    }
+    if (save?.kind === "cell") commitCell(save.itemId, save.value, false);
+    // 입력창이 새 값으로 다시 열리도록 번호를 올린다.
+    const { step } = popped;
+    setEditBoth({
+      ...latestEdit.current,
+      history: popped.history,
+      epochs:
+        step.kind === "cell"
+          ? bumped(latestEdit.current.epochs, step.itemId)
+          : latestEdit.current.epochs,
+    });
+    announce(direction === "undo" ? "되돌렸어요" : "다시 했어요");
   }
 
   // 목록의 놀이명을 눌러 고를 때(keepTab)는 넓은 화면에서만 목록 탭에 머문다. 좁은 화면은 문서 강조가 안 보인다.
@@ -467,7 +641,7 @@ export default function PlayProjectResult({
   function renderPicking() {
     return (
       <PlayProjectPicking
-        periods={plan.periods}
+        periods={shown.periods}
         period={period}
         picks={picks}
         max={MAX_PICKS}
@@ -503,14 +677,36 @@ export default function PlayProjectResult({
             </button>
           ))}
         </div>
-        <label htmlFor="play-project-selected-cell">{selectedField.label}</label>
-        <textarea
-          id="play-project-selected-cell"
-          readOnly
-          value={selectedCandidate[selectedField.key].value}
-        />
-        <p>아직 수정 기능은 제공하지 않아요.</p>
+        {renderCellField(selectedCandidate[selectedField.key], selectedField)}
       </div>
+    );
+  }
+
+  // 놀이명 · 지원매체 · 지원 방향은 입력창이고, 배움은 누리과정 원문이라 읽기만 한다.
+  function renderCellField(
+    cell: { item_id: string; value: string },
+    field: (typeof fields)[number],
+  ) {
+    if (field.key === "learning")
+      return (
+        <>
+          <label htmlFor={cellFieldId}>{field.label}</label>
+          <textarea id={cellFieldId} readOnly value={cell.value} />
+          <p>배움은 누리과정 원문이라 고칠 수 없어요.</p>
+        </>
+      );
+    const itemId = cell.item_id;
+    const epoch = edit.epochs[itemId] ?? 0;
+    return (
+      <PlayCellEditor
+        key={itemId + ":" + epoch}
+        id={cellFieldId}
+        label={field.label}
+        value={edit.saved[itemId] ?? serverCellValue(plan, itemId)}
+        onDraft={(text) => setLive((drafts) => ({ ...drafts, [itemId]: text }))}
+        onSave={(text) => commitCell(itemId, text, true, epoch)}
+        onRevert={() => setLive((drafts) => without(drafts, itemId))}
+      />
     );
   }
 
@@ -635,7 +831,7 @@ export default function PlayProjectResult({
           </div>
         )}
         <PlayProjectSheet
-          plan={plan}
+          plan={shown}
           picks={picks}
           interactive={interactive}
           selectedCell={selectedCell}
@@ -670,6 +866,7 @@ export default function PlayProjectResult({
     );
   }
 
+  const cellFieldId = "play-project-selected-cell";
   const tabId = (index: number) => `play-project-tab-${plan.id}-${index}`;
   const panelId = `play-project-panel-${plan.id}`;
   const pickedHeadingId = `${panelId}-picked`;
@@ -689,6 +886,19 @@ export default function PlayProjectResult({
             다시 저장
           </button>
         )}
+        {(["undo", "redo"] as const).map((direction) => (
+          <button
+            key={direction}
+            type="button"
+            className={workspace.secondary}
+            disabled={edit.history[direction].length === 0}
+            onClick={() => stepThrough(direction)}
+          >
+            <span aria-hidden="true">{direction === "undo" ? "⟲" : "⟳"}</span>{" "}
+            {direction === "undo" ? "되돌리기" : "다시 하기"}
+          </button>
+        ))}
+        <span role="status">{historyNotice}</span>
       </div>
       <ol className={`${tabs.steps} ${styles.steps}`} aria-label="놀이 프로젝트 결과 단계">
         {["① 놀이 고르기", "② 배치하고 다듬기", "③ 전체 초안 보기"].map((label, index) => (

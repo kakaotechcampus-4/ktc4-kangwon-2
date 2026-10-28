@@ -19,6 +19,9 @@ import {
   addPlan,
   putMonth,
   putPlaySelection,
+  putPlayCell,
+  editablePlayCell,
+  samePlayCellValue,
   confirmPlan,
   listAnnualAudit,
   safetyCategories,
@@ -407,6 +410,33 @@ export const handlers = [
       .map((period) => "selections." + period.period_key);
     if (unknown.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...unknown);
     return HttpResponse.json(putPlaySelection(id, selections));
+  }),
+  http.put("*/api/plans/annual/:id/cells/:itemId", async ({ request, params }) => {
+    const s = await scenario(request, "annual-cell");
+    if (s) return s;
+    // 서버 순서: 스키마 422 → 계획안 404 → 형식 409 → 확정 409 → revision 409 → 칸 422 → 같은 값 422 (§6-1).
+    const b = await body(request);
+    if (!b) return bad("body");
+    const value = typeof b.value === "string" ? b.value.trim() : "";
+    const wrong = [];
+    const length = [...value].length; // 서버는 글자(코드포인트) 수로 센다.
+    if (length < 1 || length > 600) wrong.push("value");
+    if (badRevision(b)) wrong.push("expected_revision");
+    if (wrong.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...wrong);
+    const id = Number(params.id),
+      itemId = decodeURIComponent(String(params.itemId)),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format !== "PLAY_PROJECT")
+      return failure("GATE_BLOCKED", "월별 주제형은 월별 칸 수정으로 고칩니다.");
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    if ((plan.revision ?? 1) !== b.expected_revision) return stale();
+    if (!editablePlayCell(id, itemId))
+      return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "item_id");
+    if (samePlayCellValue(id, itemId, value))
+      return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "value");
+    return HttpResponse.json(putPlayCell(id, itemId, value));
   }),
   http.post("*/api/plans/annual/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "confirm");
