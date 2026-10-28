@@ -16,20 +16,32 @@ import { useWorkspace } from "@/lib/workspace/store";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { WorkspacePage, Empty, Message, useClasses, useAIStatus, ws } from "./WorkspaceUI";
 import EvaluationChecklist from "./EvaluationChecklist";
+import styles from "./Evaluation.module.css";
 const MANUAL =
   "https://www.kicece.or.kr/kce/front/keyword?keyword=%EB%A7%A4%EB%89%B4%EC%96%BC&x=0&y=0";
 export default function EvaluationPage() {
+  const [refresh, setRefresh] = useState(0);
   return (
     <WorkspacePage
       title="평가 점검"
-      description="확정 문서 현황과 평가요소별 자기 점검을 확인하세요."
+      description="평가 때 보여줄 자료가 모였는지, 무엇을 더 쓰면 되는지 알려드려요."
+      action={
+        <button
+          type="button"
+          className={`${ws.secondary} ${styles.refresh}`}
+          onClick={() => setRefresh((n) => n + 1)}
+        >
+          현황 새로고침
+        </button>
+      }
     >
-      <EvaluationChecklist />
-      <details style={{ marginTop: 32 }}>
-        <summary>이 브라우저의 기존 증빙 사전점검</summary>
-        <p className={ws.hint}>아래에 등록한 자료는 위 평가 점검 현황에 반영되지 않아요.</p>
-        <LocalDocumentReview />
-      </details>
+      <EvaluationChecklist refresh={refresh}>
+        <details>
+          <summary>이 브라우저의 기존 증빙 사전점검</summary>
+          <p className={ws.hint}>아래에 등록한 자료는 위 평가 점검 현황에 반영되지 않아요.</p>
+          <LocalDocumentReview />
+        </details>
+      </EvaluationChecklist>
     </WorkspacePage>
   );
 }
