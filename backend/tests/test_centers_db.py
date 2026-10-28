@@ -58,6 +58,76 @@ def test_원을_만들면_행이_남고_지역이_두_칸으로_저장된다(db_
     assert row.director_name == "김원장"
 
 
+def test_원명과_원장_이름을_고칠_수_있다(db_session):
+    """원장이 바뀌거나 원 이름이 바뀌어도 고칠 길이 없었다 (수린 점검)."""
+    center_id = create_center()
+
+    response = client.patch(
+        f"/api/centers/{center_id}", json={"name": "새싹 어린이집", "director_name": "박원장"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "새싹 어린이집"
+    db_session.expire_all()
+    row = db_session.get(Center, center_id)
+    assert (row.name, row.director_name) == ("새싹 어린이집", "박원장")
+    # 안 보낸 칸은 그대로다.
+    assert (row.region_sido, row.region_sigungu) == ("충청북도", "충주시")
+
+
+def test_보낸_칸만_바꾼다(db_session):
+    center_id = create_center()
+
+    client.patch(f"/api/centers/{center_id}", json={"director_name": "박원장"})
+
+    db_session.expire_all()
+    row = db_session.get(Center, center_id)
+    assert (row.name, row.director_name) == ("쓱싹 어린이집", "박원장")
+
+
+def test_지역은_두_칸을_함께_보내야_한다(db_session):
+    """시·도만 바꾸면 시·군·구가 그 시·도에 없는 값으로 남는다."""
+    center_id = create_center()
+
+    response = client.patch(f"/api/centers/{center_id}", json={"region_sido": "강원특별자치도"})
+
+    assert response.status_code == 422, response.text
+    db_session.expire_all()
+    assert db_session.get(Center, center_id).region_sido == "충청북도"
+
+
+def test_지역_두_칸을_함께_보내면_바뀐다(db_session):
+    center_id = create_center()
+
+    response = client.patch(
+        f"/api/centers/{center_id}",
+        json={"region_sido": "강원특별자치도", "region_sigungu": "춘천시"},
+    )
+
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    row = db_session.get(Center, center_id)
+    assert (row.region_sido, row.region_sigungu) == ("강원특별자치도", "춘천시")
+
+
+def test_계약에_없는_칸은_422(db_session):
+    center_id = create_center()
+
+    response = client.patch(f"/api/centers/{center_id}", json={"trends_enabled": True})
+
+    assert response.status_code == 422, response.text
+
+
+def test_빈_원명은_422(db_session):
+    center_id = create_center()
+
+    response = client.patch(f"/api/centers/{center_id}", json={"name": "   "})
+
+    assert response.status_code == 422, response.text
+    db_session.expire_all()
+    assert db_session.get(Center, center_id).name == "쓱싹 어린이집"
+
+
 def test_반이_없는_원은_빈_배열이다(db_session):
     """없는 원(404)과 구분한다 — 같은 응답이면 FE 가 「반을 추가해 주세요」를 없는 원에도 띄운다."""
     center_id = create_center()

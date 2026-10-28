@@ -1,9 +1,9 @@
 import { ageRangePayload } from "./age-adapter";
 import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
-import { isApiNotFound } from "./client";
+import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
-import { createCenter, joinCenter } from "./centers";
+import { createCenter, joinCenter, updateCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
 import { normalizeProvince } from "../onboarding/regions";
@@ -100,18 +100,36 @@ async function syncCenterOnce(settings: ClassSettings) {
     signature = JSON.stringify(data),
     links = readLinks();
   if (links.center?.signature === signature) return links.center.id;
-  // **서버에서 받아온 원은 그대로 쓴다.** 초대받았거나 기기를 바꾼 교사는 원 정보를
-  // 화면에 들고 있지 않아 서명이 영영 안 맞는다. 그때마다 원을 새로 만들면 원이 쌓이고
-  // (서버가 거절하기도 한다) links.classes 까지 비워서 방금 들인 반이 날아간다.
-  // 그 교사의 원 정보 수정은 서버에 반영되지 않는다 — 원 수정 API 가 생겨야 풀린다.
-  if (links.center?.signature === ADOPTED) return links.center.id;
-  // P0 has no center update endpoint: retain old server objects, create a new snapshot.
-  const center = await createCenter(data);
-  links.center = { id: center.id, signature };
-  links.classes = {};
-  links.children = {};
-  saveLinks(links);
-  return center.id;
+  // **이미 만든 원은 고친다.** 예전에는 수정 API 가 없어 원을 새로 만들었는데, 서버가
+  // 「이미 등록한 원이 있습니다」 409 로 거절하거나 원이 쌓였고, links.classes 를 비워서
+  // 방금 들인 반까지 날아갔다. 초대받았거나 기기를 바꾼 교사(ADOPTED)도 같은 길로 간다 —
+  // 그 교사의 원 정보 수정이 서버에 반영되지 않던 것이 이것으로 풀린다.
+  if (links.center) {
+    const updated = await updateCenter(links.center.id, data);
+    links.center = { id: updated.id, signature };
+    saveLinks(links);
+    return updated.id;
+  }
+  try {
+    const center = await createCenter(data);
+    links.center = { id: center.id, signature };
+    links.classes = {};
+    links.children = {};
+    saveLinks(links);
+    return center.id;
+  } catch (error) {
+    // **서버에는 원이 있는데 브라우저에는 연결이 없다.** 기기를 바꿨거나 저장소를 지운
+    // 교사다 — 그 교사는 원을 만든 적이 있으니 서버가 409 로 거절하고, 예전에는 거기서
+    // 온보딩이 막혔다. 내 원을 찾아 지금 입력대로 고치고 연결을 다시 맺는다.
+    if (!isAlreadyExists(error)) throw error;
+    const { center_id } = await getMe();
+    if (center_id === null) throw error;
+    const updated = await updateCenter(center_id, data);
+    // 반 · 아동 연결은 지우지 않는다 — 서버에 남아 있던 것을 adoptServerClasses 가 들인다.
+    links.center = { id: updated.id, signature };
+    saveLinks(links);
+    return updated.id;
+  }
 }
 /**
  * 초대 코드로 기존 원에 들어간다 (§1-1). 원 정보는 서버 값으로 채우고, syncCenter 가 같은

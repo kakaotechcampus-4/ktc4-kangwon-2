@@ -21,13 +21,13 @@ const MANUAL =
 export default function EvaluationPage() {
   return (
     <WorkspacePage
-      title="평가 준비"
+      title="평가 점검"
       description="확정 문서 현황과 평가요소별 자기 점검을 확인하세요."
     >
       <EvaluationChecklist />
       <details style={{ marginTop: 32 }}>
         <summary>이 브라우저의 기존 증빙 사전점검</summary>
-        <p className={ws.hint}>아래에 등록한 자료는 위 평가 준비 현황에 반영되지 않아요.</p>
+        <p className={ws.hint}>아래에 등록한 자료는 위 평가 점검 현황에 반영되지 않아요.</p>
         <LocalDocumentReview />
       </details>
     </WorkspacePage>
@@ -202,7 +202,7 @@ function LocalDocumentReview() {
   }
   return (
     <WorkspacePage
-      title="평가 준비"
+      title="평가 점검"
       description="문서와 기록을 살펴보고, 준비할 항목을 확인하세요."
     >
       <section className={ws.hero}>

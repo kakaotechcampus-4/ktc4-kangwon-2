@@ -93,7 +93,7 @@ export default function ChildList({
         <div className="flex items-center justify-between">
           <span className="font-semibold text-[15px] text-ink">
             아동 명단
-            <span className="ml-1.5 align-middle font-mono text-[11px] px-2 py-0.5 rounded-full bg-mint-tint text-mint-ink">
+            <span className="ml-1.5 align-middle font-mono text-[12px] px-2 py-0.5 rounded-full bg-mint-tint text-mint-ink">
               {items.length}명
             </span>
           </span>
@@ -110,7 +110,7 @@ export default function ChildList({
           <ul className="rounded-md border-[1.5px] border-line overflow-hidden divide-y divide-line">
             {items.map((c, i) => (
               <li key={c.id} className="flex items-center gap-3 px-3.5 py-2.5 bg-paper">
-                <span className="font-mono text-[11px] text-ink-soft w-[22px]">
+                <span className="font-mono text-[12px] text-ink-soft w-[22px]">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <span

@@ -2530,6 +2530,8 @@ function homePage(
     },
     links: () => hrefsOf(view),
     classSelect: () => find("select")[0],
+    /** 「이렇게 남길까요?」의 아이 칸. 빈 값으로 시작하므로 교사가 반드시 고른다. */
+    childSelect: () => find("select")[1],
     factInput: () => find("textarea")[0] ?? find("input").find((n) => n.props?.["aria-label"]),
     button: (label) => find("button").find((n) => labelled(n).includes(label) && !n.props.disabled),
     type: (node, value) => node.props.onChange({ target: { value } }),
@@ -2542,13 +2544,48 @@ function homePage(
   };
 }
 
-/** 홈에서 한 줄 적고 저장까지. 실제 화면 순서대로 — 적기 → 기록 남기기 → 이대로 남기기. */
+/**
+ * 홈에서 한 줄 적고 저장까지. 실제 화면 순서대로 —
+ * 적기 → 기록 남기기 → **아이 고르기** → 이대로 남기기.
+ *
+ * 아이 칸은 비어 있는 채로 열린다. 고르기 전에는 「이대로 남기기」가 눌리지 않는다.
+ */
 async function homeSave(view, fact) {
   view.type(view.factInput(), fact);
   await view.flush();
   view.button("기록 남기기").props.onClick();
   await view.flush();
+  await pickFirstChild(view);
   view.button("이대로 남기기").props.onClick();
+  await view.flush();
+}
+
+test("아이를 고르기 전에는 기록을 남길 수 없다", async (t) => {
+  // 첫 아이로 떨어뜨리면 바쁜 교사가 확인하지 않고 눌렀을 때
+  // **다른 아이의 기록**이 조용히 저장된다. 영역과 달리 나중에 고치기 어렵다.
+  const records = recordsServer();
+  const view = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [ROOM_A], records });
+  await view.flush();
+  view.type(view.factInput(), "블록으로 길을 만들었다");
+  await view.flush();
+  view.button("기록 남기기").props.onClick();
+  await view.flush();
+
+  assert.equal(view.childSelect().props.value, "", "아이 칸은 비어 있는 채로 열린다");
+  assert.equal(view.button("이대로 남기기"), undefined, "고르기 전에는 눌리지 않는다");
+
+  await pickFirstChild(view);
+  assert.ok(view.button("이대로 남기기"), "고르면 눌린다");
+  view.button("이대로 남기기").props.onClick();
+  await view.flush();
+  assert.equal(records.only("add").length, 1);
+});
+
+/** 아이 칸에서 첫 아이를 고른다. 반을 바꾸면 비워지므로 바꾼 **뒤에** 부른다. */
+async function pickFirstChild(view) {
+  const picker = view.childSelect();
+  const first = all(picker).find((node) => node?.type === "option" && node.props.value);
+  view.type(picker, first.props.value);
   await view.flush();
 }
 
@@ -2701,6 +2738,7 @@ test("L 홈의 반 이름·저장·조회·일과 링크가 선택한 B 반으�
   assert.ok(view.currentClass().props.children.includes(ROOM_B.className));
   assert.ok(view.links().includes(`/routines?date=${TODAY}&class_id=7`));
   assert.equal(view.text().includes("A에서만 보이는 사실"), false);
+  await pickFirstChild(view);
   view.button("이대로 남기기").props.onClick();
   await view.flush();
   assert.equal(records.only("add").at(-1).classId, ROOM_B.id);
@@ -2782,6 +2820,7 @@ test("L A 저장 중 B로 옮겨도 저장 완료 콜백이 B 목록을 비우�
   await view.flush();
   view.button("기록 남기기").props.onClick();
   await view.flush();
+  await pickFirstChild(view);
   const pending = view.button("이대로 남기기").props.onClick();
   await view.flush();
   view.type(view.classSelect(), ROOM_B.id);
