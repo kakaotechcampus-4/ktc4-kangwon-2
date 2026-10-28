@@ -555,16 +555,16 @@ test("연간 형식을 고르기 전에는 생성할 수 없고 캡처 카드에
   await creating;
 });
 
-test("연간 선택을 해제하면 놀이 프로젝트 안내와 형식 선택이 초기화된다", async (t) => {
+test("연간 선택을 해제하면 형식 선택이 초기화되고 기관 양식 안내가 돌아온다", async (t) => {
   const p = page(t, { forms: [form(4, "기관 양식")] });
   await p.flush();
   p.chooseType("연간");
   p.chooseFormat("놀이 프로젝트형");
   p.render();
-  assert.match(p.text(), /놀이 프로젝트형은 아직/);
+  // 놀이 프로젝트형은 기관 양식을 쓰지 않아 양식 안내 문구를 숨긴다.
+  assert.doesNotMatch(p.text(), /기관 양식은 연간계획안|등록한 기관 양식은/);
   p.chooseType("연간");
   p.render();
-  assert.doesNotMatch(p.text(), /놀이 프로젝트형은 아직/);
   assert.match(p.text(), /기관 양식은 연간계획안에만 적용돼요/);
   assert.equal(p.select().props.disabled, true);
   p.chooseType("연간");
@@ -611,7 +611,7 @@ test("놀이 프로젝트형은 기관 양식을 잠그고 form_id 없이 보내
   assert.equal(p.select().props.value, "4");
   assert.equal(p.select().props.disabled, true);
   assert.equal(p.generate().props.disabled, false);
-  assert.match(p.text(), /놀이 프로젝트형은 아직 월간 · 주간계획안으로 이어지지 않아요\./);
+  assert.doesNotMatch(p.text(), /월간 · 주간계획안으로 이어지지 않아요/);
   const creating = p.generate().props.onClick();
   p.render();
   assert.match(

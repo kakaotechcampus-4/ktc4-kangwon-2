@@ -323,7 +323,7 @@ test("PlayProjectResult shows notices, accessible period tabs, and ten complete 
     false,
   );
   assert.doesNotMatch(rendered, /아직 확정 · 내려받기를 할 수 없어요/);
-  assert.match(rendered, /이 반은 월간 · 주간계획안을 만들 수 없어요\./);
+  assert.doesNotMatch(rendered, /월간 · 주간계획안을 만들 수 없어요/);
   const tabs = nodes.filter((node) => node.props?.role === "tab");
   assert.deepEqual(tabs.map(text), [
     "3월~5월 · 0/5",

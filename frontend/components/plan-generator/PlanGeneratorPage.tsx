@@ -415,15 +415,15 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
                 ))}
               </select>
             </label>
-            <p className={ws.hint}>
-              {format === "PLAY_PROJECT"
-                ? "놀이 프로젝트형은 아직 월간 · 주간계획안으로 이어지지 않아요."
-                : formsLoading
+            {format !== "PLAY_PROJECT" && (
+              <p className={ws.hint}>
+                {formsLoading
                   ? "등록한 기관 양식을 불러오고 있어요."
                   : annualSelected
                     ? "등록한 기관 양식은 연간계획안 생성에 적용돼요."
                     : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
-            </p>
+              </p>
+            )}
             <p className={ws.hint}>
               계획안은 초안으로 생성·저장돼요. 생성 후 우리 반에 맞게 검토해주세요.
             </p>
