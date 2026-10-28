@@ -121,7 +121,9 @@ def _profile(session, center_id: int, user_id: int, template=FOCUS):
 
 
 def _annual(class_id: int, *, confirm=True) -> int:
-    response = client.post("/api/plans/annual", json={"class_id": class_id, "form_id": None})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": class_id, "form_id": None}
+    )
     assert response.status_code == 201, response.json()
     plan_id = response.json()["id"]
     if confirm:
@@ -273,6 +275,8 @@ def _break_row(session, plan_id: int, how: str) -> None:
     row = session.get(Plan, plan_id)
     if how == "classroom_ref":
         values = {"classroom_ref": "햇살반"}
+    elif how == "body_not_object":
+        values = {"body": []}
     else:
         body = copy.deepcopy(row.body)
         snapshot = body["template_snapshot"]
@@ -296,6 +300,7 @@ def _break_row(session, plan_id: int, how: str) -> None:
     [
         ("snapshot_missing", "template_snapshot_missing"),
         ("snapshot_not_object", "template_snapshot_missing"),
+        ("body_not_object", "template_snapshot_missing"),
         ("profile_ref_missing", "profile_ref_missing"),
         ("profile_ref_not_object", "profile_ref_missing"),
         ("profile_ref_invalid", "profile_ref_invalid"),

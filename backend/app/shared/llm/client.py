@@ -10,8 +10,12 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
+import socket
+import threading
+import time
 from collections.abc import Mapping
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -86,7 +90,7 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
 
 
 def _log_usage(result: object, model: object) -> None:
-    """이번 호출에 쓴 토큰을 한 줄 남긴다. `post_json` 이 성공했을 때만 부른다.
+    """성공한 호출에 쓴 토큰을 한 줄 남긴다.
 
     **숫자 네 개만 적는다.** 프롬프트에는 아동 이름이 들어갈 수 있어서 내용은 한 글자도
     찍지 않는다 (ADR-004). 로거와 「한 줄로 남긴다」 규칙은 #100 이 깔아 둔 것을 쓴다.
@@ -99,12 +103,24 @@ def _log_usage(result: object, model: object) -> None:
     if not isinstance(usage, Mapping):
         # 모델이 usage 를 안 줄 수도 있다. 그것 때문에 생성을 실패시키지 않는다.
         return
+    values = []
+    invalid = False
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        if key not in usage:
+            values.append("-")
+            continue
+        value = usage[key]
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            values.append(value)
+        else:
+            values.append("-")
+            invalid = True
+    if invalid:
+        logger.warning("llm_usage: 잘못된 토큰 값을 '-' 로 남겼다 model=%s", model)
     logger.info(
         "llm_usage model=%s prompt=%s completion=%s total=%s",
         model,
-        usage.get("prompt_tokens", "-"),
-        usage.get("completion_tokens", "-"),
-        usage.get("total_tokens", "-"),
+        *values,
     )
 
 
@@ -140,4 +156,82 @@ def post_json(
     except (urllib_error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise LlmFailed("엘리스 호출이 실패했다") from exc
     _log_usage(result, payload.get("model"))
+    return result
+
+
+def post_stream(
+    url: str,
+    *,
+    headers: Mapping[str, str],
+    payload: Mapping[str, object],
+    timeout: float,
+    fold,
+    deadline: float,
+):
+    """SSE 를 읽어 조립하고 성공한 호출의 토큰 사용량을 남긴다."""
+    if not settings.is_server:
+        raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
+
+    started = time.monotonic()
+    parsed = urlparse(url)
+    path = parsed.path or "/"
+    if parsed.query:
+        path += f"?{parsed.query}"
+    connection = None
+    watchdog = None
+    lines = []
+    expired = threading.Event()
+    try:
+        connection = http.client.HTTPSConnection(
+            parsed.hostname, parsed.port, timeout=min(timeout, deadline)
+        )
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        connection.request("POST", path, body=body, headers=dict(headers))
+        sock = connection.sock
+        remaining = deadline - (time.monotonic() - started)
+        if remaining <= 0:
+            raise LlmFailed("엘리스 스트림 제한 시간이 지났다")
+
+        def abort():
+            expired.set()
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+        watchdog = threading.Timer(remaining, abort)
+        watchdog.daemon = True
+        watchdog.start()
+        response = connection.getresponse()
+        if response.status in (401, 403, 429):
+            raise LlmBudgetExceeded(f"엘리스가 {response.status} 를 냈다")
+        if not 200 <= response.status < 300:
+            raise LlmFailed(f"엘리스가 {response.status} 를 냈다")
+        while True:
+            line = response.readline()
+            if expired.is_set():
+                raise LlmFailed("엘리스 스트림 제한 시간이 지났다")
+            if not line:
+                break
+            lines.append(line.decode("utf-8").rstrip("\r\n"))
+    except (
+        http.client.HTTPException,
+        UnicodeDecodeError,
+        TimeoutError,
+        OSError,
+    ) as exc:
+        if expired.is_set():
+            raise LlmFailed("엘리스 스트림 제한 시간이 지났다") from exc
+        raise LlmFailed("엘리스 스트림 호출이 실패했다") from exc
+    finally:
+        if watchdog is not None:
+            watchdog.cancel()
+            watchdog.join()
+        if connection is not None:
+            connection.close()
+
+    result = fold(lines)
+    _log_usage(result, payload.get("model"))
+    if not isinstance(result.get("usage"), Mapping):
+        logger.warning("llm stream finished without usage model=%s", payload.get("model"))
     return result

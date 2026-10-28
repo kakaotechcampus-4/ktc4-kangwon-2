@@ -233,7 +233,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
           const serverClassId = await syncClass(settings, primary);
           // 양식은 번호만 든다 — 서버가 FK 로 가리킨다 (§4). null 이면 기본 양식이다.
           const plan = await createAnnualPlan(
-            { class_id: serverClassId, form_id: form?.id ?? null },
+            { class_id: serverClassId, form_id: form?.id ?? null, format: "MONTHLY_THEME" },
             controller.signal,
           );
           results.annual = {
