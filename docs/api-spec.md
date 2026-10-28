@@ -2158,7 +2158,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 POST   /api/plans/monthly/play                                              생성 → 201
 GET    /api/plans/monthly/play?class_id=1                                   목록
 GET    /api/plans/monthly/play/{id}                                         단건
-DELETE /api/plans/monthly/play/{id}                                         초안만 → 204
+DELETE /api/plans/monthly/play/{id}                                         초안만 → 204 (revision 없음)
 PUT    /api/plans/monthly/play/{id}/cells/{item_id}                         칸 글
 PUT    /api/plans/monthly/play/{id}/activities/{item_id}/content-ids        누리과정 연결 바꾸기
 POST   /api/plans/monthly/play/{id}/activities                              행 추가 (together · free_play)
@@ -2171,10 +2171,11 @@ GET    /api/plans/monthly/play/{id}/audit                                   변�
 
 - `play` 는 고정 글자라 `GET /api/plans/monthly/{id}` 보다 먼저 등록한다.
 - **저장은 `plans` 행 `kind='monthly'`, 본문 `format: "PLAY_MONTHLY"`** 다(ADR-045 §2). 기존 월간 목록(§9-1)은 이 행을 형식으로 빼고 경고를 남기지 않는다. 이 목록은 놀이 월간만 준다.
-- 모든 변경 · 확정은 `expected_revision`(정수 ≥ 1, 문자열 `"3"` · `true` 는 422)을 필수로 받는다. 비교와 저장은 한 문장이다(§9-3 · §6-1). actor 는 서버가 로그인 계정에서 만든다.
+- **칸 · 연결 · 행 추가/삭제 · 안전 배치 · 훈련 복사 · 확정**은 `expected_revision`(정수 ≥ 1, 문자열 `"3"` · `true` 는 422)을 필수로 받는다. **계획안 전체 삭제는 받지 않는다**(기존 월간 삭제와 같다). 비교와 저장은 한 문장이다(§9-3 · §6-1). actor 는 서버가 로그인 계정에서 만든다.
 - **검사 순서** — 스키마(422) → 소유(404) → 형식(409) → 확정(409) → revision(409) → Core 내용 검사(404 · 422). §6-1 과 같다. 스키마가 막는 것은 없는 계획안 · 확정본에도 422 다.
 - **스키마가 막는 것**: `month` 정수 1~12 · `emphasized_row_keys` 중복 · 빈 문자열 · `value` 문자열 0~600자(앞뒤 공백 제거) · `content_ids` 문자열 1~3개 · 중복 없음 · 빈 문자열 없음 · `section` 은 `together | free_play` · `expected_revision`(JSON 본문) 정수 ≥ 1. Core 오류(`invalid_content_ids` · `invalid_section` 등)는 스키마를 통과한 뒤의 것만 남는다 — 그 누리과정 판에 없는 ID 같은 것이다.
 - **형식부터 틀린 id**: 경로 `{item_id}` · `{week_id}` · 본문 `candidate_item_id` 를 서버가 `ItemId` · `WeekId` 로 만들지 못하면(빈 문자열 · `YYYY-MM-Wn` 아님) 422 이고 `fields` 는 `["item_id"]` · `["week_id"]` · 해당 본문 키다(§6-1 과 같다). 형식은 맞는데 없는 것은 Core `*_not_found` 로 아래 표대로다.
+- 주(`weeks[]`)는 Core 의 월~금 주차이며 **월 경계를 걸칠 수 있다** — 2026-09 의 `2026-09-W1` 은 `2026-08-31 ~ 2026-09-04` 다.
 - 계획안이 이 원의 놀이 월간이 아니면 404 `["id"]`, 기존 월간 id 면 409 `GATE_BLOCKED` 「기존 월간계획안은 /api/plans/monthly 경로로 다룹니다.」다.
 
 ### 생성 — `POST /api/plans/monthly/play`
@@ -2196,6 +2197,8 @@ emphasized_row_keys   문자열 배열.  선택(기본 []).  부모 연간의 �
 
 **생성은 요청 안에서 기다리고 `201` 에 단건 응답 전체를 준다.** LLM 호출 1회 + 수리 1회까지다. 걸리는 시간을 재 본 적이 없다 — 구현 뒤 재서 너무 길면 스트리밍으로 바꾸고 이 절을 고친다. 실패하면 아무것도 저장하지 않는다. 호출 기록은 `shared/llm` 의 `llm_usage`(ADR-036)다.
 
+**생성 준비 상태는 계약 승인과 다르다**(ADR-045 결과). 정상 생성에는 자료 · 로더 · provider 외에 누리과정 · 생활 문장 · 훈련 주제 **세 자료의 정식 승인(`runtime_active`)** 이 필요하고, `LLM_MODE=mock` 에서도 승인 검사를 건너뛰지 않는다. 지금 파일 그대로면 `CURRICULUM_REFERENCE_NOT_ACTIVE` 에서 먼저 막혀 503 `DEPENDENCY_UNAVAILABLE`(아래 오류 표의 자료 계열)이다. 서버는 그 전에도 저장 · 조회 · 고치기 연결과 가짜 주입 테스트를 준비할 수 있다.
+
 **기존 월간 `POST /api/plans/monthly` 는** 이 반의 연간이 놀이 프로젝트형이면 지금처럼 409 `GATE_BLOCKED` 이고 **문구만 바뀐다** — 「놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다. 놀이 중심 월간계획안으로 만들어 주세요.」(월간 화면이 `message` 를 그대로 보여 주므로 경로 이름을 쓰지 않는다. §9-1)
 
 ### 단건 응답 — 생성 · 단건 · 변경이 같은 형식 (큰 틀, 제안)
@@ -2208,7 +2211,7 @@ emphasized_row_keys   문자열 배열.  선택(기본 []).  부모 연간의 �
   "created_at": "2026-09-01T00:10:00Z", "confirmed_at": null,
   "target_ages": [4],
   "weeks": [
-    { "week_id": "2026-09-W1", "label": "1주", "start_date": "2026-09-01", "end_date": "2026-09-05", "active": true }
+    { "week_id": "2026-09-W1", "label": "1주", "start_date": "2026-08-31", "end_date": "2026-09-04", "active": true }
   ],
   "parent": {
     "annual_plan_id": 11, "period_key": "m09_m11", "layout_version": "play-project-layout-v0.2.0",
@@ -2273,7 +2276,7 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 
 - **목록** `GET /api/plans/monthly/play?class_id=1` → `{ "items": [ { id, class_id, school_year, month, target_month, status, revision, created_at, confirmed_at } ] }`. 대상 달 오름차순. `class_id` 를 빼면 내 원 전체, 남의 원 반이면 404.
 - **단건** `GET /api/plans/monthly/play/{id}` → `200`, 위 응답.
-- **삭제** `DELETE /api/plans/monthly/play/{id}` → `204`. 확정 전만 지운다. 확정본은 409 `GATE_BLOCKED` 「확정된 계획안은 지울 수 없습니다.」(월간과 같은 이유 — 반 · 달당 하나라 지우기가 없으면 다시 만들 길이 없다).
+- **삭제** `DELETE /api/plans/monthly/play/{id}` → `204`. **`expected_revision` 을 받지 않는다**(기존 월간 삭제와 같다). 확정 전만 지우며 `status = 'DRAFT'` 조건이 붙은 한 문장의 DELETE 로 보장한다(지운 행이 0이면 다시 읽어 없음 · 남의 원은 404, 확정은 409). 확정본은 409 `GATE_BLOCKED` 「확정된 계획안은 지울 수 없습니다.」(월간과 같은 이유 — 반 · 달당 하나라 지우기가 없으면 다시 만들 길이 없다).
 
 ### 변경 API — 모두 `200` 에 단건 응답 전체
 
@@ -2403,6 +2406,15 @@ together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
 | `STALE_WRITE` | 409 | `expected_revision` 이 서버 값과 다르다(삭제는 쿼리) | `["expected_revision"]` |
 | `GATE_BLOCKED` | 409 | 확정된 계획안을 지우려 했다 | `[]` |
 | `INTERNAL_ERROR` | 500 | 서버가 Core 에 타입을 잘못 넘길 때만 나는 내부 오류: `invalid_item_id` · `invalid_plan_id` · `opaque_actor_required` | `[]` |
+
+### 구현 경계 (문서 결함이 아니라 구현 검증 항목)
+
+- 자료 계열 Core 코드(`CURRICULUM_REFERENCE_*` · `DAILY_LIFE_*` · `DRILL_*` · `SAFETY_*` · `LIFE_SAFETY_GROUNDING_INSUFFICIENT`)만 503 으로 옮긴다. 모든 `ValueError` · 파일 손상 · 권한 오류를 통째로 503 으로 바꾸지 않는다.
+- 생성 중복은 **월간 유일 인덱스(`uq_plans_monthly_per_classroom_month`) 위반만** `ALREADY_EXISTS` 로 바꾼다. 다른 무결성 오류까지 409 로 삼키지 않는다.
+- LLM 을 기다리는 동안 DB 트랜잭션을 유지하지 않는다. 저장 직전 소유 · 충돌 · 상태를 조건부 SQL 로 보장한다.
+- 같은 입력 무변경(연결 · 배치 · 복사)이어도 revision 이 낡았으면 STALE_WRITE 가 먼저다. 이 순서를 테스트한다.
+- 미승인 자료를 mock 모드에서도 자동 우회하지 않는다. 합성 승인 자료는 테스트에서만 쓴다.
+- 원문 예외를 응답에 내보내지 않는다(`INTERNAL_ERROR` 는 공통 고정 문구).
 
 ### 다른 경로와의 경계
 

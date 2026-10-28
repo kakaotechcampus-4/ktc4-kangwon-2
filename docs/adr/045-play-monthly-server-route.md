@@ -19,7 +19,7 @@ ADR-043 §4 는 「놀이 중심 월간은 별도 경로, 담당 · 경로는 �
 POST   /api/plans/monthly/play                                              생성 → 201
 GET    /api/plans/monthly/play?class_id=                                    목록
 GET    /api/plans/monthly/play/{id}                                         단건
-DELETE /api/plans/monthly/play/{id}                                         초안만
+DELETE /api/plans/monthly/play/{id}                                         초안만 (revision 없음)
 PUT    /api/plans/monthly/play/{id}/cells/{item_id}                         칸 글
 PUT    /api/plans/monthly/play/{id}/activities/{item_id}/content-ids        누리과정 연결 바꾸기
 POST   /api/plans/monthly/play/{id}/activities                              행 추가 (together · free_play)
@@ -71,7 +71,7 @@ GET    /api/plans/monthly/play/{id}/audit                                   이�
 
 ### 6. 동시 수정 · 확정 — ADR-044 §3 · §4 와 같은 방식
 
-- 모든 변경 · 확정은 `expected_revision`(정수 ≥ 1)을 필수로 받는다. 저장은 `update_if_revision`(`repository.py:78`)의 「DRAFT 이고 revision 이 그대로일 때만 쓰고 +1」 한 문장이다. 실패는 409 `STALE_WRITE` · `ALREADY_CONFIRMED` 다.
+- **칸 · 연결 · 행 추가/삭제 · 안전 배치 · 훈련 복사 · 확정**은 `expected_revision`(정수 ≥ 1)을 필수로 받는다. **계획안 전체 삭제는 받지 않는다** — 기존 월간 삭제와 같다(성진 결정 2026-10-28, 아래 근거). 저장은 `update_if_revision`(`repository.py:78`)의 「DRAFT 이고 revision 이 그대로일 때만 쓰고 +1」 한 문장이다. 실패는 409 `STALE_WRITE` · `ALREADY_CONFIRMED` 다.
 - **검사 순서** — 스키마(422) → 소유(404) → 형식(409) → 확정(409) → revision(409) → Core 내용 검사(404 · 422).
 - **스키마가 먼저 막는다**(api-spec §6-1 「검사 순서」 · CLAUDE.md 「입력 검사 — 스키마에서 막는다」). 다음은 라우터 · 소유 · Core 에 들어가기 전에 422 다: `month` 정수 1~12 · `emphasized_row_keys` 중복 · 빈 문자열 · 칸 `value` 문자열 0~600자(앞뒤 공백 제거) · `content_ids` 문자열 1~3개 · 중복 없음 · 빈 문자열 없음 · `section` 은 `together | free_play` · `expected_revision` 정수 ≥ 1(JSON 본문은 `"3"` · `true` 거절). 그래서 없는 계획안 · 확정본에도 이 값들은 422 다. Core 오류(`invalid_content_ids` · `invalid_section` 등)는 **스키마를 통과한 뒤에 남는 것**만 다룬다 — 예컨대 그 누리과정 판에 없는 ID. Core `EditPlayMonthlyContentIds` 는 같은 ids 면 1~3 검사 앞에서 무변경으로 돌려주므로(`play_monthly_lifecycle.py:192-193`), 막 추가한 빈 행에 `[]` 를 보내면 Core 만으로는 200 이 된다 — 스키마가 먼저 막아 422 가 된다.
 - **형식부터 틀린 id** — 경로의 `{item_id}` · `{week_id}` · 본문의 `candidate_item_id` 를 서버가 `ItemId` · `WeekId` 로 만들지 못하면(빈 문자열 · `YYYY-MM-Wn` 아님) 422 다(`fields` 는 `["item_id"]` · `["week_id"]` · 해당 본문 키, 연간 §6-1 과 같다). 형식은 맞는데 계획안에 없는 것은 Core `*_not_found` 를 따른다. Core `invalid_item_id` 는 서버가 타입을 잘못 넘길 때만 나는 내부 오류라 500 이다.
@@ -114,7 +114,8 @@ GET    /api/plans/monthly/play/{id}/audit                                   이�
 - [실측] `confirmed_monthly_plans`(`queries.py:24-53`)는 확정된 `kind='monthly'` 행의 `body.target_month` 만 읽는다. 놀이 월간도 그 달 월간계획안으로 센다. 평가제 4-1 이 그렇게 세도 되는지는 이 ADR 이 정하지 않는다(§ 아직 정하지 않은 것, 성진).
 - [실측] 연간 삭제는 `kind='monthly'` 딸린 행이 있으면 막고(`router.py:570-576`), 시험용 지우기는 월간 · 주간 자식을 `kind` 로만 찾는다(`router.py:616`). 둘 다 본문을 읽지 않아 놀이 월간 행에 영향이 없다.
 - [판단] 새 `kind` 대신 `kind='monthly'`: 「같은 반 · 같은 달 하나」를 이미 있는 DB 제약이 지킨다. 새 `kind` 면 CHECK · 인덱스 · migration 이 필요하고 두 월간이 같은 달에 공존할 수 있게 된다.
-- [판단] DELETE 에 revision 은 쿼리 `?expected_revision=` 로 받는다. DELETE 본문은 의미가 정해져 있지 않다. 본문 없는 DELETE 에 쿼리를 붙인 선례가 있다(`DELETE /api/routines/{id}?include_impact=true`, api-spec §10-1). revision 을 DELETE 에 싣는 선례는 없다. 쿼리는 문자열로 오므로 「`"3"` 은 422」 규칙은 JSON 본문에만 해당한다 — 쿼리는 1 이상 정수로 바뀌는 값만 받고 아니면 422 `["expected_revision"]` 이다(api-spec 의 모든 DELETE 를 다시 봤다). 행 삭제는 새 `revision` 이 필요하므로 `204` 가 아니라 **`200` 에 단건 응답 전체**를 준다. 계획안 삭제(`DELETE .../play/{id}`)는 기존 월간처럼 `204` 다.
+- [판단] 계획안 전체 삭제(`DELETE .../play/{id}`)는 revision 을 요구하지 않는다. 기존 월간 삭제와 같은 규칙이다(성진 2026-10-28). 확정본 보호는 검사 뒤 지우는 방식이 아니라 **`status = 'DRAFT'` 조건이 붙은 한 문장의 DELETE** 로 보장한다. 지운 행이 0이면 다시 읽어 없음 · 남의 원은 404, 확정은 409 `GATE_BLOCKED` 「확정된 계획안은 지울 수 없습니다.」(기존 월간 삭제 문구, `monthly_router.py:362-`)다.
+- [판단] 행 삭제의 revision 은 쿼리 `?expected_revision=` 로 받는다. DELETE 본문은 의미가 정해져 있지 않다. 본문 없는 DELETE 에 쿼리를 붙인 선례가 있다(`DELETE /api/routines/{id}?include_impact=true`, api-spec §10-1). revision 을 DELETE 에 싣는 선례는 없다. 쿼리는 문자열로 오므로 「`"3"` 은 422」 규칙은 JSON 본문에만 해당한다 — 쿼리는 1 이상 정수로 바뀌는 값만 받고 아니면 422 `["expected_revision"]` 이다(api-spec 의 모든 DELETE 를 다시 봤다). 행 삭제는 새 `revision` 이 필요하므로 `204` 가 아니라 **`200` 에 단건 응답 전체**를 준다. 계획안 삭제(`DELETE .../play/{id}`)는 기존 월간처럼 `204` 다.
 - [판단] 연결 · 안전 배치 · 훈련 복사의 같은 입력 200: Core 가 무변경으로 정의했고(`play_monthly_lifecycle.py:192-193 · 305-306 · 340-343`), 화면이 같은 선택을 다시 보내는 것은 정상 경로다. 연간 선택 저장도 같은 선택이면 200 · 무변경이다(ADR-044 §1). 칸 편집만 422 인 것은 월간 §9-3 · 연간 §6-1 의 칸 편집 규칙을 따른 성진의 결정이다.
 - [출처] 하민 2026-10-27 답(메신저): 같은 반 · 같은 달 월간은 기존 · 놀이를 합쳐 하나다.
 - [판단] 생성 시간을 재기 전에 비동기 · 스트리밍을 정하지 않는다. 연간은 구간 4호출이라 숫자가 있었지만 월간은 LLM 1회 + 수리 1회이고 재 본 적이 없다.
@@ -138,19 +139,32 @@ GET    /api/plans/monthly/play/{id}/audit                                   이�
 - 이 ADR 이 채택되려면 Core 쪽 공개 창구 · 어댑터 · 데이터가 있어야 한다(아래 질문).
 - 위험: 서버 코덱(`codec.py`)이 `PlayMonthlyPlan` 을 왕복하는지 구현 전에 확인한다. 쓰기는 dataclass 필드를 그대로 직렬화한다(`codec.py:37-38`). 읽을 때 `PlayMonthlyPlan` 으로 복원되는지는 확인하지 않았다.
 - 구현은 하민 답과 백엔드 ② 뒤, 화면 · 한글 내려받기는 그 뒤다.
+- **생성 준비 상태 — 계약 승인과 다르다**(하민 2026-10-28 답). 정상 생성에는 자료 · 로더 · provider 외에 **누리과정 · 생활 문장 · 훈련 주제 세 자료의 정식 승인(`runtime_active`)** 이 필요하다. mock 모드에서도 승인 검사를 건너뛰지 않는다. 지금 파일 그대로면 누리과정이 미승인이라 생활 문장 누락보다 앞에서 `CURRICULUM_REFERENCE_NOT_ACTIVE` 로 막히고, 공개 응답은 기존 자료 계열 매핑대로 503 `DEPENDENCY_UNAVAILABLE` 이다. 서버는 그 전에도 저장 · 조회 · 고치기 연결과 가짜 주입 테스트를 준비할 수 있다(미승인 자료를 자동으로 켜지 않는다).
 
 ## 아직 정하지 않은 것
 
-### 하민에게 묻는다 (선택지는 같이 정한다)
+### 하민에게 물은 것과 답 (하민 2026-10-28 답)
+
+질문은 그대로 두고 답을 덧붙였다. 아래 답은 하민 님이 직접 확인한 내용을 옮겨 적은 것이다. 「후속 제안」은 구현 · 일정을 약속한 것이 아니다.
 
 1. **생활 문장(daily-life) Catalog 데이터와 저장소 어댑터는 누가 · 언제 · 어디에(어떤 범위로) 제공하시나요?** develop 에 없다. `DailyLifeReferenceRepository` 는 Protocol 만 있고(`generate_play_monthly_plan.py:127-128`), `p0-planning/src/ssuksak/adapters/` 에 생활 문장 어댑터가 없으며 `p0-planning/data/` 에 생활 문장 자료가 없다(`activities` · `curriculum` · `drills` · `evidence` · `rules` · `templates` · `themes`만 있다). 이것 없이는 생성이 `DAILY_LIFE_REFERENCE_NOT_FOUND`(`:504`)다.
+   **답(하민 2026-10-28):** 실제 생활 문장 JSON 과 JSON 저장소 어댑터는 없다(`DailyLifeReferenceRepository` Protocol 과 `DailyLifeCatalog` 도메인만 있다). 이미 채택한 문장은 기본생활습관 7개 · 건강 4개 · 영양 4개이며 아직 정식 Catalog ID · version 을 발행한 자료가 아니다(검토표 번호를 runtime ID 로 쓰지 않는다). **자료와 로더는 하민/Core 쪽이 묶어 제공하고 서버는 그 로더를 주입하는 안이다.** 범위: 승인된 문장 · 표시 분류 · 누리과정 연결 ID · HABIT/HEALTH/NUTRITION 구분 · Catalog ID · version · 승인 상태. 위치 제안: `p0-planning/data/daily-life/daily_life_reference_v0_1_0_draft.json` · `ssuksak/adapters/json_daily_life_reference_repository.py`. 로더 계약 제안: `get_catalog(catalog_id, catalog_version) -> DailyLifeCatalog | None`. 문장 옮겨도 runtime 승인을 처음부터 켜지 않는다(자료 판 검토 · 정식 승인은 별도). **제공 시점은 착수 · 일정 미정이라 열린 채로 둔다.**
 2. **실제 AI provider 어댑터를 Core 가 주나 서버가 만드나.** `PlayMonthlyProvider.generate_play_monthly` Protocol 만 있고(`planner/play_monthly.py:183-184`), `adapters/elice_openai_monthly.py` 에는 `generate_play_project`(`:241`)만 있다.
+   **답(하민 2026-10-28):** **Core 가 기존 Elice 월간 어댑터에 `generate_play_monthly(request: PlayMonthlyRequest) -> RawLlmResponse` 를 추가하는 안이다.** 프롬프트 · 스키마 · 파서 · 검증은 Core 소유이고 서버가 별도 프롬프트를 만들지 않는다. 수리는 Application 이 최대 1회 부르며 어댑터가 자체 재시도나 Rule 대체 결과를 만들지 않는다. **서버는 기존 공용 transport 를 주입하고 서버 실행 가드 · 설정 · 사용량 로그(`llm_usage`) · 예산/전송 오류 매핑을 유지한다**(새 네트워크 클라이언트로 우회하지 않는다). 놀이형 연간의 stream · 출력 상한 설정을 월간에 자동 적용하지 않고 동기식 경로부터 따로 검증한다. 가짜 provider · transport 테스트와 조립부도 Core 후속 제공 안이다. **존재 여부 · 완성 시점은 아직 약속되지 않았다(열림).** 실제 유료 호출은 별도 승인 후다.
 3. **생성 · lifecycle 클래스를 `ssuksak.planning` 공개 창구로 내보내실 계획이 있으신가요? 있다면 어느 클래스를 언제 내보내시나요?** `planning/__init__.py` 에 놀이 월간 이름이 없다. 서버는 놀이 프로젝트형 연간을 쓸 때도 하위 모듈을 직접 불러 쓴다(`monthly_router.py:59`, 「공개 창구에 없다」).
+   **답(하민 2026-10-28):** 공개 export 는 후속이다. 그 전까지 서버가 하위 모듈을 직접 import 해도 된다(공식 공개 창구가 준비됐다는 뜻은 아니다). 후속에서 생성 · 편집 · 연결 변경 · 행 추가/삭제 · 안전 배치 · 훈련 복사 · 확정 Use Case/Command, `PlayMonthlyPlan`, 관련 오류와 notices 를 필요한 범위에서 공개하고, JSON 로더 조립은 `adapters.monthly_composition` 방식처럼 adapters 쪽에 둔다(planning 이 adapters 를 import 하지 않는다). **공개 이름 · 시점은 열려 있다** — ①② 제공 단위에서 명시한다.
 4. **안전교육 분류 · 품질 · 증거 저장소 버전 상수는 누가 정하나.** 생성 명령이 버전 문자열을 요구한다(`GeneratePlayMonthlyPlanCommand` `generate_play_monthly_plan.py:149-157`). 서버가 어디서 읽어 넣는지 정해진 곳이 없다.
+   **답(하민 2026-10-28):** 서버 생성 명령에 넘기는 값은 프론트 입력이 아니라 Core 자료/조립부가 소유한 값이다. 서버에 사본 상수를 두지 않고 조립부에서 한 번만 관리한다. 현재 값: `legal_rule_version` = `child-welfare-act-decree-annex6-2022-06-21`(`data/rules/safety_education_legal_v1.json`) · `safety_classification_version` = `safety-evidence-classification-v0.2.0`(`data/evidence/safety_evidence_classification_v0_2_0.json`) · `safety_quality_version` = `safety-reference-quality-v0.1.0`(`data/evidence/safety_reference_quality_v0_1_0.json`). **증거 저장소 판 · SHA 는 명령 필드가 아니라 주입한 저장소(`JsonInstitutionEvidenceRepository.get_store()`, 지금 `institution-evidence-ingestion-v0.1.0`)에서 읽어** 결과 `references` 에 기록한다. 저장소 판을 위 세 판 자리에 넣으면 안 된다.
 5. **놀이 월간 아래 주간 길 · `safety_weeks` 가 주간으로 이어지나.** 주간 Core 는 `MonthlyPlan` 만 부모로 받는다(`generate_weekly_plan.py:200-208`). 놀이 월간의 주별 안전 배치(`play_monthly_plan.py:367`)가 주간 안전교육의 입력이 되는지 정해진 것이 없다.
+   **답(하민 2026-10-28):** **지원하지 않는다.** 놀이 월간의 `safety_weeks` 를 주간에 옮기는 계약 · 일정은 정하지 않았다. 부모 본문을 기존 월간으로 읽기 전에 409 `GATE_BLOCKED` 로 막는 것이 맞다. 임의 변환하지 않는다.
 6. **칸 재생성이 없는 것은 의도인가.** `play_monthly_lifecycle.py` 에 재생성 클래스가 없고, `AuditEventType.REGENERATED`(`domain/provenance.py:95`)는 놀이 월간에서 쓰이지 않는다. 기존 월간은 칸 재생성이 있다(api-spec §9-3).
+   **답(하민 2026-10-28):** **이번 범위 밖이 맞다.** lifecycle 에 재생성 Use Case 가 없고, 칸 수정 · 연결 변경 · 행 추가/삭제 · 안전 배치 · 훈련 복사 · 확정까지만 연결한다. 화면은 월간 v2 의 「칸 다시 만들기」를 노출하지 않고, 기존 월간 재생성 API 로 보내지 않는다. 향후 범위 · 일정은 미정이다.
 7. **새 이력 필드(`link_change` · `arrangement_change` · `copied_from`)의 직렬화 모양이 확정인가.** 필드는 `domain/provenance.py:207-209` 에 있고, 하민의 이력 ADR 초안은 origin 의 어느 브랜치에도 아직 없다. api-spec §9-7 의 모양은 서버가 임시로 정한 것이다.
+   **답(하민 2026-10-28):** **Core 논리 필드와 보존 규칙은 확정되어 구현돼 있고, 공개 JSON 의 물리 모양은 이번 서버 계약에서 정한다.** api-spec §9-7 의 `link_change`(`{before, after, catalog_version}`, `value_change` 는 null, 순서 변경도 기록) · `arrangement_change`(`{scope, before, after}`, 안전 배치는 0~1개) · `copied_from`(훈련 후보 `item_id`) · `generation_change`(복사 전 generation 이 없으면 null — 가짜 MANUAL 이전값을 만들지 않는다) 모양이 Core 와 맞다. **삭제 행의 칸 이력을 조회에 포함하는 제안에 동의한다.** 후보 출처가 바뀌면 같은 문장이어도 새 복사 이력이 생긴다. Core 결정 ADR 초안은 로컬에 있으나 하민 검토 전이고 push 하지 않았다 — 번호 · 경로를 근거로 쓰지 않으며 **push 시점은 열려 있다.**
 8. **`emphasized_row_keys` 를 만든 뒤 바꿀 수 있나.** 부모 스냅샷 안에 굳고(`play_monthly_plan.py:309`) 바꾸는 lifecycle 명령이 없다.
+   **답(하민 2026-10-28):** **생성할 때만 받는다.** `emphasized_row_keys` 는 그 구간에서 고른 연간 놀이만 허용하고 부모 스냅샷에 고정된다. 변경 경로를 추가하지 않는다(생성된 문장이 다시 바뀌는 기능으로 오해될 수 있어 후속 재생성 설계와 함께 따로 정한다).
+
+**아직 열린 것:** ①② 제공 시점 · ③ 공개 이름과 시점 · ⑦ Core 결정 ADR 의 push.
 
 ### 성진이 구현 전에 정한다
 
