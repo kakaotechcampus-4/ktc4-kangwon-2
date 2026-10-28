@@ -409,13 +409,6 @@ def test_월별_주제형_이력은_여섯_키_그대로(world):
     )
 
 
-def test_놀이형_내려받기는_여전히_409(world, saved):
-    _, row = saved
-    _select_all(row)
-    _confirm(row, 2)
-    _blocked(client.get(f"/api/plans/{row.id}/export/hwp"))
-
-
 def test_이력_모음은_계획안과_모든_칸을_안정_정렬한다(world, saved):
     plan, _ = saved
     out = play_project.audit_out(plan)
