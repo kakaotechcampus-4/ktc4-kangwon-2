@@ -38,7 +38,8 @@ Teacher text is not checked against the AI sentence policy. Codes are internal, 
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 
 from ..domain.errors import DomainError
@@ -52,6 +53,7 @@ from ..domain.play_monthly_plan import (
     PlayMonthlyCell,
     PlayMonthlyPlan,
     TimetableSize,
+    TimetableTooNarrowError,
 )
 from ..domain.provenance import (
     AuditEvent,
@@ -434,14 +436,15 @@ class SplitPlayMonthlyTimetableCell:
         new_cell = PlayMonthlyCell(
             item_id=item_id, semantic_key=plan.next_timetable_key(day), audit=AuditHistory((created,))
         )
-        updated = plan.split_timetable_cell(
-            command.item_id,
-            command.axis,
-            split_id=self._ids.new_item_id(),
-            new_cell=new_cell,
-            actor_id=actor_id,
-            occurred_at=now,
-        )
+        with _width_limit():
+            updated = plan.split_timetable_cell(
+                command.item_id,
+                command.axis,
+                split_id=self._ids.new_item_id(),
+                new_cell=new_cell,
+                actor_id=actor_id,
+                occurred_at=now,
+            )
         self._plans.save(updated.plan_id, updated)
         return updated
 
@@ -481,7 +484,8 @@ class ResizePlayMonthlyTimetable:
         if not boundary:
             if not isinstance(command.size, TimetableSize):
                 raise PlayMonthlyLifecycleError("invalid_timetable_size", "size must be TimetableSize")
-            updated = plan.resize_timetable(command.size, actor_id=actor_id, occurred_at=now)
+            with _width_limit():
+                updated = plan.resize_timetable(command.size, actor_id=actor_id, occurred_at=now)
         else:
             current = next(
                 (b for d in plan.special_activity for b in d.boundaries() if b.split_id == command.split_id), None
@@ -495,11 +499,24 @@ class ResizePlayMonthlyTimetable:
                 raise PlayMonthlyLifecycleError("invalid_timetable_size", f"ratio must be an int {low}~{high}")
             if command.ratio == current.ratio:
                 return plan
-            updated = plan.resize_timetable_split(command.split_id, command.ratio, actor_id=actor_id, occurred_at=now)
+            with _width_limit():
+                updated = plan.resize_timetable_split(
+                    command.split_id, command.ratio, actor_id=actor_id, occurred_at=now
+                )
         if updated == plan:
             return plan  # the same size again: no event, no write
         self._plans.save(updated.plan_id, updated)
         return updated
+
+
+@contextmanager
+def _width_limit() -> Iterator[None]:
+    """A split or resize that leaves a cell narrower than the D-3 minimum is the caller's request
+    to refuse, not a broken plan."""
+    try:
+        yield
+    except TimetableTooNarrowError as error:
+        raise PlayMonthlyLifecycleError("timetable_width_limit", str(error)) from error
 
 
 class ConfirmPlayMonthlyPlan:

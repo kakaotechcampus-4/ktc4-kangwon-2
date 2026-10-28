@@ -23,6 +23,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
+from fractions import Fraction
 
 from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
@@ -57,10 +58,13 @@ SPECIALIZED_KEY = "specialized_timetable"
 SPECIALIZED_COLUMNS = 5
 SPECIAL_ACTIVITY_KEY = "special_activity_timetable"
 DAYS = ("mon", "tue", "wed", "thu", "fri")  # the timetable always keeps Monday to Friday
-# Prototype limits (2026-10-28 D-3): provisional until a Hangul render confirms them.
+# Limits (2026-10-28 D-3). Every cell keeps at least 3.5 % of the table width (about 6.3 mm on
+# the approved template): narrower cells clip their text, and below about 4 mm Hangul widens the
+# whole table past the page margin. The other limits stay as first set.
 MAX_SPLIT_DEPTH = 4
 SPLIT_RATIO_RANGE = (10, 90)  # a boundary's first part, percent
 COLUMN_MIN_PERCENT = 5
+CELL_MIN_WIDTH_PERCENT = Fraction(7, 2)  # day width x the left/right ratios above the cell
 HEIGHT_MM_RANGE = (16, 80)
 
 
@@ -379,6 +383,10 @@ class DocumentDisplay:
                 raise InvalidDomainValueError("A display cell cites CALENDAR and CLASSROOM_PROFILE only")
 
 
+class TimetableTooNarrowError(InvalidDomainValueError):
+    """A timetable cell would be narrower than ``CELL_MIN_WIDTH_PERCENT`` of the table."""
+
+
 @dataclass(frozen=True, slots=True)
 class TimetableNode:
     """One part of a day in the special-activity timetable: a cell, or a boundary splitting a
@@ -414,6 +422,16 @@ class TimetableNode:
     @property
     def depth(self) -> int:
         return 0 if self.cell is not None else 1 + max(c.depth for c in self.children)
+
+    def narrowest(self, width: Fraction) -> Fraction:
+        """The narrowest cell's width when this part is ``width`` wide; top/bottom keeps the width."""
+        if self.cell is not None:
+            return width
+        first, second = self.children
+        if self.axis is SplitAxis.VERTICAL:
+            return min(first.narrowest(width), second.narrowest(width))
+        part = width * self.ratio / 100
+        return min(first.narrowest(part), second.narrowest(width - part))
 
     def leaves(self) -> tuple[PlayMonthlyCell, ...]:
         if self.cell is not None:
@@ -618,6 +636,11 @@ class PlayMonthlyPlan:
                 raise InvalidDomainValueError(f"A {day} timetable cell must use its day's key")
         if not isinstance(self.special_activity_size, TimetableSize):
             raise InvalidDomainValueError("special_activity_size must be TimetableSize")
+        widths = self.special_activity_size.column_widths
+        if any(tree.narrowest(Fraction(w)) < CELL_MIN_WIDTH_PERCENT for tree, w in zip(days, widths, strict=True)):
+            raise TimetableTooNarrowError(
+                f"A timetable cell keeps at least {float(CELL_MIN_WIDTH_PERCENT)}% of the table width"
+            )
         if not isinstance(self.removed_timetable_cells, tuple) or not all(
             isinstance(c, PlayMonthlyCell) and c.semantic_key.startswith(f"{SPECIAL_ACTIVITY_KEY}.")
             for c in self.removed_timetable_cells
