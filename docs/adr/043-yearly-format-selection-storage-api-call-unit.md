@@ -21,7 +21,7 @@ ADR-042 「아직 정하지 않은 것」 중 **저장의 형식 구분 위치 �
 - `POST /api/plans/annual` 본문은 `{ "class_id": 1, "format": "MONTHLY_THEME", "form_id": null }`.
 - `format` 은 **필수**, `MONTHLY_THEME` · `PLAY_PROJECT` 중 하나. 없거나 모르는 값은 422 `VALIDATION_FAILED` `["format"]`.
 - `PLAY_PROJECT` 와 `form_id` 가 함께 오면 422 `["form_id"]` — 기관 양식은 놀이 프로젝트형이 쓰지 않는다.
-- 지금 화면은 `format` 을 보내지 않는다. 서버와 화면 변경이 틈 없이 들어가야 한다(머지 순서는 코드 PR 에서 맞춘다).
+- 결정 당시 화면은 `format` 을 보내지 않았다. 서버와 화면 변경이 틈 없이 들어가야 한다(머지 순서는 코드 PR 에서 맞춘다).
 
 ### 3. 응답 — 모든 연간 응답이 `format` 을 싣는다
 

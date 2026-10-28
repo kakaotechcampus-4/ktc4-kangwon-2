@@ -121,7 +121,9 @@ def _profile(session, center_id: int, user_id: int, template=FOCUS):
 
 
 def _annual(class_id: int, *, confirm=True) -> int:
-    response = client.post("/api/plans/annual", json={"class_id": class_id, "form_id": None})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": class_id, "form_id": None}
+    )
     assert response.status_code == 201, response.json()
     plan_id = response.json()["id"]
     if confirm:

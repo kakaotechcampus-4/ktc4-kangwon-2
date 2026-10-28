@@ -1,9 +1,24 @@
-"""놀이 프로젝트형 연간계획안을 응답 형식으로 옮긴다 (api-spec §4 「놀이 프로젝트형 응답」)."""
+"""놀이 프로젝트형 연간계획안을 생성하고 응답 형식으로 옮긴다 (api-spec §4)."""
 
-# Core 가 공개 창구(`ssuksak.planning`)에 아직 안 내놓아 안쪽에서 가져온다 — router.py 와 같다.
+import json
+from dataclasses import replace
+
+from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
+
+# Core 가 공개 창구에 아직 안 내놓아 안쪽에서 가져온다 — router.py 와 같다.
+from ssuksak.planning.application.generate_play_project_plan import (
+    PLAY_PROJECT_LAYOUT_V0_2,
+    GeneratePlayProjectPlan,
+    GeneratePlayProjectPlanCommand,
+)
 from ssuksak.planning.domain.play_project_plan import ROW_FIELDS, PlayProjectYearlyPlan
+from ssuksak.planning.planner.contracts import RawLlmResponse
+from ssuksak.planning.planner.play_project import PlayProjectRequest
 
 from app.features.plans.models import Plan
+from app.features.plans.monthly_llm import monthly_llm_provider
+from app.features.plans.runtime import FixedPlanIdGenerator, SystemClock, UuidGenerator
 from app.features.plans.schemas import (
     EvidenceOut,
     GenerationOut,
@@ -12,6 +27,85 @@ from app.features.plans.schemas import (
     PlayPeriodOut,
     PlayProjectPlanOut,
 )
+from app.shared.llm import is_mock
+
+CURRICULUM_CATALOG_ID = "ssuksak.nuri-curriculum-content"
+CURRICULUM_CATALOG_VERSION = "nuri-curriculum-content-v0.1.0"
+_PERIOD_LABELS = {
+    "m03_m05": "3~5월",
+    "m06_m08": "6~8월",
+    "m09_m11": "9~11월",
+    "m12_m02": "12~2월",
+}
+
+
+class MockPlayProjectProvider:
+    def generate_play_project(self, request: PlayProjectRequest) -> RawLlmResponse:
+        content_ids = sorted(request.allowed_content_ids)
+        return RawLlmResponse(
+            content=json.dumps(
+                {
+                    "period_key": request.period_key,
+                    "rows": [
+                        {
+                            "play_name": (
+                                f"{_PERIOD_LABELS[request.period_key]} 함께하는 놀이 {index + 1}"
+                            ),
+                            "materials": "종이 상자와 천 조각, 자연물",
+                            "support_direction": (
+                                "주변의 모양과 움직임을 살펴보는 놀이를 지원하면 유아들이 "
+                                "자료를 자유롭게 놓고 이어 보며 놀이를 넓혀 갈 수 있도록 돕는다."
+                            ),
+                            "learning_content_ids": [
+                                content_ids[index % len(content_ids)],
+                                content_ids[(index + 1) % len(content_ids)],
+                            ],
+                        }
+                        for index in range(request.row_count)
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            model="mock",
+        )
+
+
+def curriculum_repository():
+    return JsonCurriculumReferenceRepository()
+
+
+def provider():
+    return MockPlayProjectProvider() if is_mock() else monthly_llm_provider()
+
+
+def generate(school_year: int, classroom_ref: str, target_ages: frozenset[int]):
+    plan_id = UuidGenerator().new_plan_id()
+    use_case = GeneratePlayProjectPlan(
+        curriculum_repository=curriculum_repository(),
+        plan_repository=InMemoryPlanRepository(),
+        provider=provider(),
+        clock=SystemClock(),
+        id_generator=FixedPlanIdGenerator(plan_id),
+    )
+    results = []
+    avoid_play_names = ()
+    for period in PLAY_PROJECT_LAYOUT_V0_2.periods:
+        result = use_case.execute(
+            GeneratePlayProjectPlanCommand(
+                school_year=school_year,
+                classroom_ref=classroom_ref,
+                target_ages=target_ages,
+                period_key=period.key,
+                curriculum_catalog_id=CURRICULUM_CATALOG_ID,
+                curriculum_catalog_version=CURRICULUM_CATALOG_VERSION,
+                avoid_play_names=avoid_play_names,
+            )
+        )
+        results.append(result)
+        avoid_play_names += tuple(
+            candidate.play_name.value for candidate in result.periods[0].candidates
+        )
+    return replace(results[0], periods=tuple(result.periods[0] for result in results))
 
 
 def format_of(row: Plan) -> str:

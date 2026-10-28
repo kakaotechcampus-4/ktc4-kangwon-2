@@ -326,7 +326,7 @@ test("고른 서버 양식은 form_id 로만 나가고 기본 양식은 null 이
   await p.generate().props.onClick();
   await settle();
   const created = p.calls.find(({ path }) => path === "/api/plans/annual");
-  assert.deepEqual(created.body, { class_id: 31, form_id: 4 });
+  assert.deepEqual(created.body, { class_id: 31, form_id: 4, format: "MONTHLY_THEME" });
   assert.deepEqual(p.replaced, ["/plans/annual/99"]);
 });
 
@@ -344,7 +344,7 @@ test("목록에 없는 양식 번호는 그대로 보내지 않고 기본 양식
     await settle();
     assert.deepEqual(
       p.calls.find(({ path }) => path === "/api/plans/annual").body,
-      { class_id: 31, form_id: null },
+      { class_id: 31, form_id: null, format: "MONTHLY_THEME" },
       stale,
     );
   }
@@ -446,6 +446,7 @@ test("목록이 도착하면 URL 로 지정한 양식 번호가 그대로 나간
   assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
     class_id: 31,
     form_id: 4,
+    format: "MONTHLY_THEME",
   });
 });
 
@@ -466,6 +467,7 @@ test("목록을 받는 중이어도 기본 양식이면 생성을 막지 않는�
   assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
     class_id: 31,
     form_id: null,
+    format: "MONTHLY_THEME",
   });
   release();
   await started;

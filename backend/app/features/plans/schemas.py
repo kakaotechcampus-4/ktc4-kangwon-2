@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 SafetyCategory = Literal[
     "traffic_safety",
@@ -128,8 +128,16 @@ class CreateAnnualPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    format: Literal["MONTHLY_THEME", "PLAY_PROJECT"]
     class_id: int
     form_id: int | None = None
+
+    @field_validator("form_id")
+    @classmethod
+    def play_project_has_no_form(cls, value: int | None, info: ValidationInfo) -> int | None:
+        if value is not None and info.data.get("format") == "PLAY_PROJECT":
+            raise ValueError("놀이 프로젝트형은 기관 양식을 쓰지 않습니다")
+        return value
 
 
 class UpdateMonth(BaseModel):

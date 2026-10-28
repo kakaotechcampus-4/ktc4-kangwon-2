@@ -14,6 +14,7 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ssuksak.adapters.elice_openai_monthly import MonthlyLlmConfigurationError
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
 
 # **`ssuksak.planning` 이 공개 창구다.** 안쪽 파일 위치를 우리가 외우면 하민이 정리할 때마다
@@ -35,7 +36,9 @@ from ssuksak.planning import (
     YearlyApplicationError,
     YearlyPlan,
 )
+from ssuksak.planning.application.generate_play_project_plan import PlayProjectGenerationError
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
+from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.rules.errors import YearlyRuleError
 from ssuksak.planning.rules.yearly_theme_selection import RULE_ID as THEME_SELECTION_RULE_ID
 
@@ -269,6 +272,96 @@ def _generation_error(error: YearlyApplicationError) -> HTTPException:
     return _domain_error(error)
 
 
+def _exception_chain(error: Exception):
+    seen = set()
+    current = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _play_project_generation_error(error: Exception) -> HTTPException:
+    chain = tuple(_exception_chain(error))
+    if any(isinstance(item, LlmBudgetExceeded) for item in chain):
+        _log.warning("annual play-project generation failed type=LlmBudgetExceeded")
+        return _503("LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요.")
+    if isinstance(error, PlayProjectGenerationError) and error.code in (
+        "CURRICULUM_REFERENCE_NOT_FOUND",
+        "CURRICULUM_REFERENCE_NOT_ACTIVE",
+    ):
+        _log.warning("annual play-project generation unavailable code=%s", error.code)
+        return _503(
+            "DEPENDENCY_UNAVAILABLE",
+            "지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
+        )
+    if any(isinstance(item, (LlmUnavailable, MonthlyLlmConfigurationError)) for item in chain):
+        _log.warning("annual play-project generation unavailable type=%s", type(error).__name__)
+        return _503(
+            "DEPENDENCY_UNAVAILABLE", "계획안 생성 기능을 지금 쓸 수 없습니다. 운영에 문의해주세요."
+        )
+    if isinstance(error, ProposalRejectedError):
+        _log.warning(
+            "annual play-project generation rejected codes=%s",
+            ",".join(error.validation_codes),
+        )
+    else:
+        code = error.code if isinstance(error, PlayProjectGenerationError) else None
+        _log.warning(
+            "annual play-project generation failed type=%s code=%s",
+            type(error).__name__,
+            code,
+        )
+    return HTTPException(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={
+            "code": "GENERATION_FAILED",
+            "message": "계획안을 만들지 못했습니다. 다시 시도해주세요.",
+            "fields": [],
+        },
+    )
+
+
+def _play_project_plan(session: Session, user: User, klass):
+    # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
+    session.commit()
+
+    # ── B. Core 실행 — DB 없음 ────────────────────────────────────────────
+    try:
+        plan = play_project.generate(
+            klass.school_year,
+            str(klass.id),
+            frozenset(range(klass.age_min, klass.age_max + 1)),
+        )
+    except Exception as error:
+        raise _play_project_generation_error(error) from error
+
+    # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    duplicate = session.scalar(
+        select(Plan.id).where(
+            Plan.center_id == user.center_id,
+            Plan.kind == "annual",
+            Plan.classroom_ref == str(klass.id),
+        )
+    )
+    if duplicate is not None:
+        raise _ALREADY_EXISTS
+    repo = PostgresPlanRepository(
+        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+    )
+    try:
+        repo.save(plan.plan_id, plan)
+    except IntegrityError as error:
+        session.rollback()
+        if getattr(getattr(error.orig, "diag", None), "constraint_name", None) == ANNUAL_UNIQUE:
+            raise _ALREADY_EXISTS from error
+        raise
+    row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
+    detail = play_project.to_out(row, plan)
+    session.commit()
+    return detail
+
+
 def _domain_error(error: Exception) -> HTTPException:
     """도메인이 낸 오류를 계약 봉투로. **원인은 도메인이 안다 — 여기서 다시 판단하지 않는다.**
 
@@ -298,7 +391,11 @@ def _domain_error(error: Exception) -> HTTPException:
     )
 
 
-@router.post("", response_model=AnnualPlanOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
+    status_code=status.HTTP_201_CREATED,
+)
 def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: CurrentUser):
     """12개월치를 만들어 DRAFT 로 저장한다.
 
@@ -318,6 +415,8 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     )
     if duplicate is not None:
         raise _ALREADY_EXISTS
+    if body.format == "PLAY_PROJECT":
+        return _play_project_plan(session, user, klass)
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
         # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
