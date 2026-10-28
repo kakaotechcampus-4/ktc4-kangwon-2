@@ -216,10 +216,10 @@ def saved(world):
     return plan, row
 
 
-def _blocked(response):
+def _blocked(response, message=BLOCKED):
     assert response.status_code == 409, response.text
     error = response.json()["error"]
-    assert (error["code"], error["message"], error["fields"]) == ("GATE_BLOCKED", BLOCKED, [])
+    assert (error["code"], error["message"], error["fields"]) == ("GATE_BLOCKED", message, [])
 
 
 def test_저장한_계획안을_그대로_읽어온다(world, saved):
@@ -234,7 +234,7 @@ def test_저장한_계획안을_그대로_읽어온다(world, saved):
 
 
 def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다(world, saved):
-    _, row = saved
+    plan, row = saved
     response = client.get(f"/api/plans/annual/{row.id}")
 
     assert response.status_code == 200, response.text
@@ -255,6 +255,7 @@ def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다
     first = body["periods"][0]["candidates"][0]
     assert set(first) == {"row_key", "play_name", "materials", "support_direction", "learning"}
     assert first["play_name"] == {
+        "item_id": plan.periods[0].candidates[0].play_name.item_id.value,
         "value": "m03_m05 놀이 1",
         "evidence": [],
         "generation": {
@@ -493,7 +494,8 @@ def test_수정_확정_감사_내보내기는_409_이고_행은_그대로다(wor
     _blocked(
         client.put(
             f"/api/plans/annual/{row.id}/months/3", json={"theme": "새 주제", "sub_themes": []}
-        )
+        ),
+        "놀이 프로젝트형은 칸 편집으로 고칩니다.",
     )
     _blocked(client.post(f"/api/plans/annual/{row.id}/confirm"))
     _blocked(client.get(f"/api/plans/annual/{row.id}/audit"))

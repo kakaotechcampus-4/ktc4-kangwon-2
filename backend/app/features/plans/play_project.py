@@ -2,7 +2,9 @@
 
 import json
 from dataclasses import replace
+from typing import Annotated
 
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictStr, StringConstraints
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
 
@@ -18,6 +20,7 @@ from ssuksak.planning.planner.play_project import PlayProjectRequest
 
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
+from app.features.plans.monthly_schemas import RevisionIn
 from app.features.plans.runtime import FixedPlanIdGenerator, SystemClock, UuidGenerator
 from app.features.plans.schemas import (
     EvidenceOut,
@@ -115,6 +118,7 @@ def format_of(row: Plan) -> str:
 
 def _cell(item) -> PlayCellOut:
     return PlayCellOut(
+        item_id=item.item_id.value,
         value=item.value,
         evidence=[
             EvidenceOut(
@@ -137,6 +141,7 @@ def _cell(item) -> PlayCellOut:
 def to_out(row: Plan, plan: PlayProjectYearlyPlan) -> PlayProjectPlanOut:
     return PlayProjectPlanOut(
         id=row.id,
+        revision=row.revision,
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
@@ -153,7 +158,43 @@ def to_out(row: Plan, plan: PlayProjectYearlyPlan) -> PlayProjectPlanOut:
                     )
                     for c in p.candidates
                 ],
+                selected=list(p.selected),
             )
             for p in plan.periods
         ],
     )
+
+
+def _no_duplicates(keys: list[str]) -> list[str]:
+    if len(keys) != len(set(keys)):
+        raise ValueError("같은 후보를 두 번 고를 수 없습니다")
+    return keys
+
+
+# row_key 는 Core 가 "cand1".."candN" 으로 만든다(domain/play_project_plan.py:67). 형식 · 길이
+# 규칙은 Core 에 없어 모양은 걸지 않고, 없는 후보는 Core 의 invalid_selection 이 막는다.
+# 5개는 layout.selected_per_period(application/play_project_lifecycle.py:84)와 같은 값이다.
+_Selected = Annotated[list[StrictStr], Field(max_length=5), AfterValidator(_no_duplicates)]
+
+
+class PlaySelections(BaseModel):
+    """네 구간을 모두 받는다(api-spec §6-1). 구간 키는 _PERIOD_LABELS 와 같다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    m03_m05: _Selected
+    m06_m08: _Selected
+    m09_m11: _Selected
+    m12_m02: _Selected
+
+
+class SaveSelectionIn(RevisionIn):
+    selections: PlaySelections
+
+
+class EditItemIn(RevisionIn):
+    # 본문이 JSONB 라 맞출 컬럼이 없다. Core 생성 검사의 가장 긴 칸(지원 방향 600자,
+    # planner/text_policy.py:8 MAX_RATIONALE_CHARS)에 맞춘다.
+    value: Annotated[
+        str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=600)
+    ]

@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ssuksak.adapters.elice_openai_monthly import MonthlyLlmConfigurationError
+from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
 
 # **`ssuksak.planning` 이 공개 창구다.** 안쪽 파일 위치를 우리가 외우면 하민이 정리할 때마다
@@ -32,11 +33,19 @@ from ssuksak.planning import (
     GenerateYearlyPlanCommand,
     InvalidDomainValueError,
     InvalidStateTransitionError,
+    ItemId,
     PlanId,
     YearlyApplicationError,
     YearlyPlan,
 )
 from ssuksak.planning.application.generate_play_project_plan import PlayProjectGenerationError
+from ssuksak.planning.application.play_project_lifecycle import (
+    EditPlayProjectItem,
+    EditPlayProjectItemCommand,
+    PlayProjectApplicationError,
+    SavePlayProjectSelection,
+    SavePlayProjectSelectionCommand,
+)
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.rules.errors import YearlyRuleError
@@ -52,7 +61,7 @@ from app.features.plans import play_project
 from app.features.plans.annual_content import generate_subthemes
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
-from app.features.plans.play_project import format_of
+from app.features.plans.play_project import EditItemIn, SaveSelectionIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.rules import verify
 from app.features.plans.runtime import SystemClock, UuidGenerator
@@ -111,6 +120,10 @@ def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
     return PostgresPlanRepository(
         session, center_id=user.center_id, kind="annual", plan_type=YearlyPlan
     )
+
+
+def _error(code: int, error_code: str, message: str, fields: list[str]) -> HTTPException:
+    return HTTPException(code, detail={"code": error_code, "message": message, "fields": fields})
 
 
 _PLAY_PROJECT_UNSUPPORTED = HTTPException(
@@ -643,7 +656,9 @@ def update_month(
     **부분 저장이 없다.** `theme` 만 보내면 `sub_themes` 가 조용히 사라지고, 교사는
     저장됐다고 믿은 채 확정에서야 발견한다(§6).
     """
-    row = _row(session, user, plan_id, lock=True)
+    row = _row(session, user, plan_id, lock=True, any_format=True)
+    if format_of(row) == PLAY_PROJECT_FORMAT:
+        raise _error(409, "GATE_BLOCKED", "놀이 프로젝트형은 칸 편집으로 고칩니다.", [])
     repo = _repo(session, user)
     plan = repo.get(PlanId(row.plan_ref))
     period = next((p for p in plan.periods if p.period.calendar_month == month), None)
@@ -744,3 +759,127 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     # 시간순. 어느 쪽에 담겼는지가 아니라 언제 일어났는지로 읽어야 한다.
     items.sort(key=lambda item: item.occurred_at)
     return AuditOut(items=items)
+
+
+# ── 놀이 프로젝트형 선택 저장 · 칸 편집 (api-spec §6-1, ADR-044) ──────────────────
+
+_ALREADY_CONFIRMED = _error(409, "ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.", [])
+_STALE_WRITE = _error(
+    409,
+    "STALE_WRITE",
+    "그 사이 다른 화면에서 계획안이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
+    ["expected_revision"],
+)
+_THEME_FORMAT = _error(409, "GATE_BLOCKED", "월별 주제형은 월별 칸 수정으로 고칩니다.", [])
+
+
+def _invalid(fields: list[str]) -> HTTPException:
+    return _error(422, "VALIDATION_FAILED", "입력값을 확인해주세요.", fields)
+
+
+def _play_project_error(error: Exception) -> HTTPException:
+    """Core 오류를 계약 코드로. 영어 원문은 서버 기록에만 남긴다."""
+    if isinstance(error, InvalidStateTransitionError):
+        return _ALREADY_CONFIRMED
+    code = getattr(error, "code", None)
+    _log.warning(
+        "play-project save rejected type=%s code=%s detail=%s", type(error).__name__, code, error
+    )
+    if code == "play_project_plan_not_found":
+        return _NOT_FOUND
+    if code == "invalid_selection":
+        # problems 는 "m03_m05: unknown candidate" 꼴이다. 구간을 못 뽑으면 selections 전체.
+        keys = {f"selections.{p.split(':')[0]}" for p in error.problems if ":" in p}
+        return _invalid(sorted(keys) or ["selections"])
+    if code in (
+        "invalid_item_id",
+        "play_project_item_not_found",
+        "field_not_editable",
+        "candidate_not_selected",
+    ):
+        return _invalid(["item_id"])
+    if isinstance(error, InvalidDomainValueError):
+        return _invalid(["value"])
+    # opaque_actor_required · unknown_layout · invalid_plan_id 는 서버 버그라 500 으로 올린다.
+    raise error
+
+
+def _play_read(session: Session, user: User, plan_id: int, expected_revision: int):
+    """소유 → 형식 → 확정됨 → revision 순. 놀이형은 FOR UPDATE 없이 조건부 UPDATE 로 쓴다."""
+    row = _row(session, user, plan_id, any_format=True)
+    if format_of(row) != PLAY_PROJECT_FORMAT:
+        raise _THEME_FORMAT
+    if row.status == "CONFIRMED":
+        raise _ALREADY_CONFIRMED
+    if row.revision != expected_revision:
+        raise _STALE_WRITE
+    repo = PostgresPlanRepository(
+        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+    )
+    plan = repo.get(PlanId(row.plan_ref))
+    if plan is None:  # _row 와 get 사이에 지워졌다
+        raise _NOT_FOUND
+    return row, repo, plan
+
+
+def _play_write(session, user, row, repo, changed, expected_revision) -> PlayProjectPlanOut:
+    # rollback 이 ORM 객체를 만료시킨다 — 그 뒤 지워졌으면 row.id 가 터지므로 먼저 잡아 둔다.
+    plan_id = row.id
+    written = repo.update_if_revision(changed.plan_id, changed, expected_revision=expected_revision)
+    if written is None:
+        session.rollback()
+        row = _row(session, user, plan_id, any_format=True)
+        raise _ALREADY_CONFIRMED if row.status == "CONFIRMED" else _STALE_WRITE
+    session.refresh(row)
+    detail = play_project.to_out(row, changed)
+    session.commit()
+    return detail
+
+
+def _drafts(plan: PlayProjectYearlyPlan) -> InMemoryPlanRepository[PlayProjectYearlyPlan]:
+    drafts: InMemoryPlanRepository[PlayProjectYearlyPlan] = InMemoryPlanRepository()
+    drafts.save(plan.plan_id, plan)
+    return drafts
+
+
+@router.put("/{plan_id}/selection", response_model=PlayProjectPlanOut)
+def save_play_project_selection(
+    plan_id: int, body: SaveSelectionIn, session: DbSession, user: CurrentUser
+):
+    row, repo, plan = _play_read(session, user, plan_id, body.expected_revision)
+    try:
+        changed = SavePlayProjectSelection(
+            plan_repository=_drafts(plan), clock=SystemClock()
+        ).execute(
+            SavePlayProjectSelectionCommand(
+                plan.plan_id, ActorId(f"user_{user.id}"), body.selections.model_dump()
+            )
+        )
+    except (PlayProjectApplicationError, InvalidStateTransitionError, InvalidDomainValueError) as e:
+        raise _play_project_error(e) from e
+    if changed.audit == plan.audit:  # 선택 · 순서가 같다 — 쓰지 않는다
+        return play_project.to_out(row, plan)
+    return _play_write(session, user, row, repo, changed, body.expected_revision)
+
+
+@router.put("/{plan_id}/cells/{item_id}", response_model=PlayProjectPlanOut)
+def edit_play_project_cell(
+    plan_id: int, item_id: str, body: EditItemIn, session: DbSession, user: CurrentUser
+):
+    row, repo, plan = _play_read(session, user, plan_id, body.expected_revision)
+    try:
+        item = ItemId(item_id)
+    except InvalidDomainValueError as error:
+        raise _play_project_error(
+            PlayProjectApplicationError("invalid_item_id", str(error))
+        ) from error
+    try:
+        changed = EditPlayProjectItem(plan_repository=_drafts(plan), clock=SystemClock()).execute(
+            EditPlayProjectItemCommand(plan.plan_id, ActorId(f"user_{user.id}"), item, body.value)
+        )
+    except (PlayProjectApplicationError, InvalidStateTransitionError, InvalidDomainValueError) as e:
+        raise _play_project_error(e) from e
+    period, candidate, name = plan.find_item(item)  # Core 가 통과시켰으니 있다
+    if getattr(candidate, name).value == body.value:  # Core 는 허용하지만 API 가 막는다(§6-1)
+        raise _invalid(["value"])
+    return _play_write(session, user, row, repo, changed, body.expected_revision)
