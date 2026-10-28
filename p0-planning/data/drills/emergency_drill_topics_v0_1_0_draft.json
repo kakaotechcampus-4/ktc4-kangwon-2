@@ -1,0 +1,187 @@
+{
+  "$schema_note": "P0 내부 Reference **Draft**다. 공개 API Schema가 아니며 runtime에 연결하지 않는다. 놀이중심 월간(PLAY_MONTHLY)의 소방대피/재난대비 훈련 주제 후보 집합이다.",
+  "schema_version": "drill-topic-reference.schema.v0",
+  "catalog_id": "ssuksak.emergency-drill-topics",
+  "catalog_version": "emergency-drill-topics-v0.1.0",
+  "supersedes": null,
+  "draft": true,
+  "created_on": "2026-10-27",
+  "locale": "ko-KR",
+  "purpose": "Rule이 대상 월에 맞는 주제 5개를 고정하고, LLM은 각 주제의 훈련 주제 문장만 쓴다. 실제 날짜·대피 경로·집결 장소·담당자·실시 결과는 교사가 작성한다.",
+  "disclaimer": "applicable_months는 제품 후보 조건이며 공식 월별 배치표가 아니다. 이 목록은 훈련 실시 횟수·법정 충족 기준을 정하지 않고, 기관의 비상대응계획 절차를 대신하지 않는다.",
+  "review": {
+    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
+    "approved_by": null,
+    "approved_at": null,
+    "runtime_active": false,
+    "runtime_rule": "runtime_active는 파생값이다. runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")를 항상 만족해야 한다.",
+    "review_points": [
+      "주제·상황 문장이 출처 쪽의 예시와 맞는지, 유아에게 다룰 수 있는 표현인지",
+      "applicable_months 초안: 폭설·결빙 12~2월, 수해 6~9월, 나머지는 연중 — 제품 판단이며 출처에 월이 없다",
+      "제외: 영유아 돌연사(교직원 대응 절차라 유아 훈련 주제로 쓰지 않음)",
+      "선택 순서: 대상 월 한정 주제를 먼저, 나머지는 이 파일의 topics 순서로 5개"
+    ]
+  },
+  "curriculum": {
+    "catalog_id": "ssuksak.nuri-curriculum-content",
+    "catalog_version": "nuri-curriculum-content-v0.1.0",
+    "note": "모든 주제는 nuri2019.1.3.4(안전사고, 화재, 재난, 학대, 유괴 등에 대처하는 방법을 경험한다)에 잇는다. 교육적 연계이며 국가가 지정한 대응이 아니다."
+  },
+  "origins": [
+    {
+      "origin_id": "guide2026.appendix8",
+      "title": "2026 보육사업안내 부록 8 「어린이집 비상대피훈련 표준 안내」",
+      "path": "references/official/60_operation_guides/2026_보육사업안내_부록.pdf",
+      "sha256": "603f7371e5f9d45ff49c1330e67d6fc71b28b2caa9dd0991639ea1fef7fed33a",
+      "pages": "PDF 241-244 (인쇄 237-240)",
+      "use": "화재 시나리오 예시(조리실 화재, 누전으로 인한 화재, 보일러 가스 누출, 콘센트 과부하), 지진, 폭설 및 결빙"
+    },
+    {
+      "origin_id": "guide2026.main",
+      "title": "2026 보육사업안내 본문 Ⅱ. 어린이집의 운영 라. 안전교육",
+      "path": "references/official/60_operation_guides/2026_보육사업안내_본문.pdf",
+      "sha256": "f5c5d2ed274eea35814e55e4aa28e7d300e37c5192a90907f5b4df6c02c5f9b9",
+      "pages": "PDF 125-126 (인쇄 117-118)",
+      "use": "비상대응계획이 대비하는 재난 유형(소방, 지진, 폭설, 수해 등)"
+    }
+  ],
+  "topics": [
+    {
+      "topic_id": "fire_kitchen",
+      "kind": "FIRE",
+      "label": "조리실 화재",
+      "situation": "어린이집 조리실에서 불이 난 상황",
+      "content_id": "nuri2019.1.3.4",
+      "applicable_months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "origin_id": "guide2026.appendix8"
+    },
+    {
+      "topic_id": "earthquake",
+      "kind": "DISASTER",
+      "label": "지진",
+      "situation": "어린이집에 있을 때 지진이 일어난 상황",
+      "content_id": "nuri2019.1.3.4",
+      "applicable_months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "origin_id": "guide2026.appendix8"
+    },
+    {
+      "topic_id": "fire_electrical",
+      "kind": "FIRE",
+      "label": "누전으로 인한 화재",
+      "situation": "전기가 새어 불이 난 상황",
+      "content_id": "nuri2019.1.3.4",
+      "applicable_months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "origin_id": "guide2026.appendix8"
+    },
+    {
+      "topic_id": "fire_gas_leak",
+      "kind": "FIRE",
+      "label": "보일러 가스 누출",
+      "situation": "보일러에서 가스가 새어 나온 상황",
+      "content_id": "nuri2019.1.3.4",
+      "applicable_months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "origin_id": "guide2026.appendix8"
+    },
+    {
+      "topic_id": "fire_outlet_overload",
+      "kind": "FIRE",
+      "label": "콘센트 과부하",
+      "situation": "콘센트에 전기를 너무 많이 써서 불이 날 수 있는 상황",
+      "content_id": "nuri2019.1.3.4",
+      "applicable_months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "origin_id": "guide2026.appendix8"
+    },
+    {
+      "topic_id": "snow_ice",
+      "kind": "DISASTER",
+      "label": "폭설·결빙",
+      "situation": "눈이 많이 쌓이거나 길이 얼어붙은 상황",
+      "content_id": "nuri2019.1.3.4",
+      "applicable_months": [
+        12,
+        1,
+        2
+      ],
+      "origin_id": "guide2026.appendix8"
+    },
+    {
+      "topic_id": "flood",
+      "kind": "DISASTER",
+      "label": "수해",
+      "situation": "비가 많이 와서 물이 넘칠 수 있는 상황",
+      "content_id": "nuri2019.1.3.4",
+      "applicable_months": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "origin_id": "guide2026.main"
+    }
+  ]
+}
