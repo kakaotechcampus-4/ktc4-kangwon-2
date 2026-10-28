@@ -9,7 +9,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Body, Depends, Query, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
@@ -17,6 +17,8 @@ from ssuksak.planning import InvalidDomainValueError, ItemId, PlanId
 from ssuksak.planning.application.play_monthly_lifecycle import (
     AddPlayMonthlyActivity,
     AddPlayMonthlyActivityCommand,
+    ConfirmPlayMonthlyPlan,
+    ConfirmPlayMonthlyPlanCommand,
     CopyPlayMonthlyDrillCandidate,
     CopyPlayMonthlyDrillCandidateCommand,
     EditPlayMonthlyCell,
@@ -54,11 +56,12 @@ from app.features.plans.monthly_router import (
     _error,
     _existing,
     _gate,
+    _generation,
     _is_play_monthly,
     _target_month,
 )
-from app.features.plans.monthly_schemas import RevisionIn
-from app.features.plans.play_project import format_of
+from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
+from app.features.plans.play_project import ConfirmIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut
@@ -361,6 +364,117 @@ def copy_drill_candidate(
         lambda drafts, plan: CopyPlayMonthlyDrillCandidate(
             plan_repository=drafts, clock=SystemClock()
         ).execute(CopyPlayMonthlyDrillCandidateCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+# ── 확정 · 변경 이력 (§9-7) ────────────────────────────────────────────────
+
+
+def _problem_field(problem: str) -> str:
+    """Core 의 `together:item_3: 5 content ids` → `together.item_3.content_ids`."""
+    key = problem.split(": ", 1)
+    where, what = key[0].replace(":", "."), key[1] if len(key) > 1 else ""
+    return f"{where}.content_ids" if "content ids" in what else where
+
+
+@router.post("/{plan_id}/confirm", response_model=s.PlayMonthlyPlanOut)
+def confirm_play_monthly_plan(
+    plan_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: Annotated[ConfirmIn | None, Body()] = None,
+):
+    row = _own_row(session, user, plan_id)
+    repo = _repo(session, user)
+    if row.status == "CONFIRMED":  # 멱등. Core 도 쓰기도 없다. expected_revision 과 무관하다
+        return _out(session, user, row, _plan(repo, row))
+    expected = None if body is None else body.expected_revision
+    if expected is None:
+        raise _invalid("expected_revision")
+    if row.revision != expected:
+        raise _STALE_WRITE
+    plan = _plan(repo, row)
+    drafts: InMemoryPlanRepository[PlayMonthlyPlan] = InMemoryPlanRepository()
+    drafts.save(plan.plan_id, plan)
+    try:
+        confirmed = ConfirmPlayMonthlyPlan(plan_repository=drafts, clock=SystemClock()).execute(
+            ConfirmPlayMonthlyPlanCommand(plan.plan_id, _actor(user))
+        )
+    except InvalidStateTransitionError as error:
+        raise _ALREADY_CONFIRMED from error
+    except PlayMonthlyLifecycleError as error:
+        if error.code != "play_monthly_incomplete":
+            raise
+        _log.warning("play monthly confirm rejected plan_id=%s %s", plan_id, error.problems)
+        raise _invalid(*(_problem_field(p) for p in error.problems)) from error
+    plan_id = row.id  # rollback 이 row 를 만료시킨다
+    written = repo.update_if_revision(confirmed.plan_id, confirmed, expected_revision=expected)
+    if written is None:  # 그 사이 바뀌었다 — 먼저 확정했으면 재호출과 같다(200)
+        session.rollback()
+        row = _own_row(session, user, plan_id)
+        if row.status != "CONFIRMED":
+            raise _STALE_WRITE
+        return _out(session, user, row, _plan(repo, row))
+    session.refresh(row)
+    detail = _out(session, user, row, confirmed)
+    session.commit()
+    return detail
+
+
+@router.get("/{plan_id}/audit", response_model=s.PlayMonthlyAuditOut)
+def get_play_monthly_audit(plan_id: int, session: DbSession, user: CurrentUser):
+    """저장된 이벤트를 읽기만 한다. 지운 행의 칸 이벤트도 싣는다."""
+    row = _own_row(session, user, plan_id)
+    plan = _plan(_repo(session, user), row)
+    removed = [
+        c for r in plan.removed_activities for c in (r.activity.cell, r.activity.description)
+    ]
+    keyed = [
+        ((e.occurred_at, 0, 0, i), _audit_event(e, False)) for i, e in enumerate(plan.audit.events)
+    ]
+    # 활성 칸(응답 순서) → 지운 행의 칸(쌓인 순서). 한 칸 안에서는 저장 순서다.
+    for position, cell in enumerate((*plan.cells(), *removed)):
+        keyed += [
+            ((e.occurred_at, 1, position, i), _audit_event(e, True))
+            for i, e in enumerate(cell.audit.events)
+        ]
+    keyed.sort(key=lambda pair: pair[0])
+    return s.PlayMonthlyAuditOut(items=[out for _, out in keyed])
+
+
+def _plan(repo, row: Plan) -> PlayMonthlyPlan:
+    plan = repo.get(PlanId(row.plan_ref))
+    if plan is None:  # _own_row 와 get 사이에 지워졌다
+        raise _NOT_FOUND
+    return plan
+
+
+def _audit_event(e, is_cell: bool) -> s.PlayMonthlyAuditEventOut:
+    value, gen, link, arr = e.value_change, e.generation_change, e.link_change, e.arrangement_change
+    return s.PlayMonthlyAuditEventOut(
+        type=e.event_type.value,
+        occurred_at=e.occurred_at,
+        scope="CELL" if is_cell else "PLAN",
+        item_id=None if e.item_id is None else e.item_id.value,
+        actor=None if e.actor_id is None else e.actor_id.value,
+        system_actor=e.system_actor,
+        value_change=None
+        if value is None
+        else ValueChangeOut(before=value.before, after=value.after),
+        generation_change=None
+        if gen is None
+        else GenerationChangeOut(before=_generation(gen.before), after=_generation(gen.after)),
+        link_change=None
+        if link is None
+        else s.LinkChangeOut(
+            before=list(link.before), after=list(link.after), catalog_version=link.catalog_version
+        ),
+        arrangement_change=None
+        if arr is None
+        else s.ArrangementChangeOut(
+            scope=arr.scope, before=list(arr.before), after=list(arr.after)
+        ),
+        copied_from=None if e.copied_from is None else e.copied_from.value,
     )
 
 

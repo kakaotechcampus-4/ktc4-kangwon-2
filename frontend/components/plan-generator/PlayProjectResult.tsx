@@ -26,7 +26,8 @@ import {
   type EditStep,
 } from "@/lib/plan-generator/playEditHistory";
 import { ApiError } from "@/lib/api/client";
-import { confirmPlayProject, isSaveConflict } from "@/lib/api/plans";
+import { confirmPlayProject, downloadAnnualHwpx, isSaveConflict } from "@/lib/api/plans";
+import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
 import {
@@ -333,6 +334,9 @@ export default function PlayProjectResult({
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [lacking, setLacking] = useState<string[]>([]);
+  // 확정본의 한글 파일 내려받기 — 월별 주제형과 같은 훅 · 같은 함수다.
+  const [exportMessage, setExportMessage] = useState("");
+  const hwpx = useHwpxDownload(setExportMessage);
   // 확정본은 ③ 읽기 전용 표뿐이다 — 단계 표시 · ① ② 는 그리지 않는다.
   const confirmed = plan.status === "CONFIRMED";
   const step = confirmed ? 2 : pickedStep;
@@ -367,7 +371,11 @@ export default function PlayProjectResult({
   const periodPicks = picks[period.period_key] ?? [];
   const nextPeriod = nextPlayProjectPeriod(plan, picks, activePeriod);
   const total = plan.periods.reduce((sum, item) => sum + (picks[item.period_key]?.length ?? 0), 0);
-  const showFloating = step === 0 && periodPicks.length === MAX_PICKS;
+  // ② 에서는 네 구간이 모두 5개일 때만 ③ 으로 가는 버튼을 띄운다.
+  const showFloating =
+    step === 0
+      ? periodPicks.length === MAX_PICKS
+      : step === 1 && total === plan.periods.length * MAX_PICKS;
   const pickedCandidates = periodPicks.map((key) =>
     period.candidates.find((candidate) => candidate.row_key === key)!,
   );
@@ -657,7 +665,7 @@ export default function PlayProjectResult({
 
   function advance() {
     if (nextPeriod === null) {
-      goToStep(1);
+      goToStep(step === 1 ? 2 : 1);
       document.getElementById(panelId)?.focus({ preventScroll: true });
       return;
     }
@@ -1015,7 +1023,21 @@ export default function PlayProjectResult({
       )}
       <div className={workspace.notice}>
         {confirmed && <p>확정했어요. 확정한 계획안은 고치거나 지울 수 없어요.</p>}
-        <p>한글 파일 내려받기는 곧 열려요.</p>
+        {confirmed ? (
+          <>
+            <button
+              type="button"
+              className={workspace.secondary}
+              disabled={hwpx.exporting}
+              onClick={() => void hwpx.download(() => downloadAnnualHwpx(plan.id))}
+            >
+              {hwpx.exporting ? "내려받는 중…" : "한글 파일로 내려받기"}
+            </button>
+            {exportMessage && <p role="status">{exportMessage}</p>}
+          </>
+        ) : (
+          <p>확정하면 한글 파일로 내려받을 수 있어요.</p>
+        )}
         <p>이 반은 월간 · 주간계획안을 만들 수 없어요.</p>
       </div>
       <div className={styles.tabRow}>
@@ -1069,9 +1091,11 @@ export default function PlayProjectResult({
           className={`${workspace.primary} ${styles.floatingNext}`}
           onClick={advance}
         >
-          {nextPeriod === null
-            ? "배치하고 다듬기로 →"
-            : `다음: ${plan.periods[nextPeriod].label} 고르기 →`}
+          {step === 1
+            ? "전체 초안 보기로 →"
+            : nextPeriod === null
+              ? "배치하고 다듬기로 →"
+              : `다음: ${plan.periods[nextPeriod].label} 고르기 →`}
         </button>
       )}
     </main>

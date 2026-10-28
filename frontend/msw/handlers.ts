@@ -489,6 +489,29 @@ export const handlers = [
     // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
     return HttpResponse.json(confirmPlan(id));
   }),
+  // 실제 서버: 확정본은 200 hwpx(가짜 파일), 미확정은 형식 상관없이 409 — 문구만 형식별 (§9).
+  http.get("*/api/plans/:id/export/hwp", async ({ request, params }) => {
+    const s = await scenario(request, "annual-export");
+    if (s) return s;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.status !== "CONFIRMED") {
+      return failure(
+        "GATE_BLOCKED",
+        plan.format === "PLAY_PROJECT"
+          ? "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다."
+          : "확정된 계획안만 내보낼 수 있습니다.",
+      );
+    }
+    const name = `plan-${id}.hwpx`;
+    return new HttpResponse("MSW hwpx", {
+      headers: {
+        "Content-Type": "application/hwp+zip",
+        "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
+      },
+    });
+  }),
   http.get("*/api/plans/annual/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "annual-audit");
     if (s) return s;
