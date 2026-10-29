@@ -49,7 +49,7 @@ def _answers(content: str):
 
     def transport(url, *, headers, payload, timeout):
         assert headers["Authorization"] == f"Bearer {KEY}"
-        # 온도를 보내지 않는다 — gpt-5.6-luna 는 0 을 거부하고 기본값만 받는다.
+        # 온도를 보내지 않는다 — gpt-6.1-sol 은 0 을 거부하고 기본값만 받는다.
         assert "temperature" not in payload
         assert payload["response_format"] == {"type": "json_object"}
         return {"choices": [{"message": {"content": content}}]}

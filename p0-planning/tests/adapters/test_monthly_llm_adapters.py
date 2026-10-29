@@ -212,7 +212,7 @@ def test_play_project_request_alone_streams_with_an_output_cap():
 def test_stream_chunks_fold_into_the_plain_response_shape():
     lines = [
         ": keep-alive",
-        'data: {"id": "req-1", "model": "gpt-6-luna", "choices": [{"delta": {"role": "assistant"}}]}',
+        'data: {"id": "req-1", "model": "gpt-6.1-sol", "choices": [{"delta": {"role": "assistant"}}]}',
         'data: {"choices": [{"delta": {"content": "{\\"a\\""}}]}',
         'data: {"choices": [{"delta": {"content": ": 1}"}, "finish_reason": "stop"}]}',
         'data: {"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}',
@@ -221,7 +221,7 @@ def test_stream_chunks_fold_into_the_plain_response_shape():
     result = assemble_chat_stream(lines)
 
     assert result["choices"] == [{"message": {"content": '{"a": 1}'}, "finish_reason": "stop"}]
-    assert (result["id"], result["model"]) == ("req-1", "gpt-6-luna")
+    assert (result["id"], result["model"]) == ("req-1", "gpt-6.1-sol")
     assert result["usage"] == {"prompt_tokens": 3, "completion_tokens": 2}
     with pytest.raises(MonthlyLlmProviderError, match="not JSON"):
         assemble_chat_stream(["data: {broken"])

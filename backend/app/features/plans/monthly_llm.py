@@ -94,7 +94,7 @@ class SharedLlmTransport:
 
 
 def monthly_llm_provider():
-    """mock 이면 요청 기반 결정적 provider, real 이면 Luna-6.
+    """mock 이면 요청 기반 결정적 provider, real 이면 Sol-6.1.
 
     real 인데 설정이 없으면 `LlmUnavailable` 를 그대로 낸다 — 부르기 전에 멈춘다.
     """
