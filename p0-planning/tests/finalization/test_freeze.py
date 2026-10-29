@@ -55,6 +55,13 @@ FROZEN_ARTIFACTS = {
     "curriculum/nuri_curriculum_content_v0_1_0_draft.json": (
         "60620932ee2dea9c326b27597d4c7fa18b501914fdd6c4fe55cf4513c6271a04"
     ),
+    # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
+    "daily-life/daily_life_reference_v0_1_0_draft.json": (
+        "2fec7d85833ac940cc46cc0bf4bf4ae2ec26cd60d89a418dedcde8649c00771c"
+    ),
+    "drills/emergency_drill_topics_v0_1_0_draft.json": (
+        "147ca0537f96141279781f202edb012300dafbfdca88f07ecf5a48dfcff9d6b7"
+    ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
         "e7b29c36ede3438204041b5d2b454e5594338c7f12c8c423bc985e308de27aed"
@@ -102,9 +109,6 @@ PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
         "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
     ),
-    "daily-life/daily_life_reference_v0_1_0_draft.json": (
-        "19fb432fba5c7bef5ed0a71138c584d93933419b31d4302d1da6e4867ab10bd7"
-    ),
 }
 
 # What a human approval may change inside `review`. Everything else is content.
@@ -133,6 +137,10 @@ PENDING_REVIEW_CONTENT = {
     ),
     "daily-life/daily_life_reference_v0_1_0_draft.json": (
         "2ae1d32fd616409458705b6ebbfe8294cd50b733540716270309d55706fbe936"
+    ),
+    # Added at approval; equals the content of the pending file on develop.
+    "drills/emergency_drill_topics_v0_1_0_draft.json": (
+        "2e99b512c80f9dd73d98f006ec39e9ff83b333f63a6c43e0c83afdb4460225a8"
     ),
 }
 

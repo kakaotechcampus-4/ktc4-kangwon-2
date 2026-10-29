@@ -10,10 +10,10 @@
   "purpose": "Rule이 대상 월에 맞는 주제 5개를 고정하고, LLM은 각 주제의 훈련 주제 문장만 쓴다. 실제 날짜·대피 경로·집결 장소·담당자·실시 결과는 교사가 작성한다.",
   "disclaimer": "applicable_months는 제품 후보 조건이며 공식 월별 배치표가 아니다. 이 목록은 훈련 실시 횟수·법정 충족 기준을 정하지 않고, 기관의 비상대응계획 절차를 대신하지 않는다.",
   "review": {
-    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
-    "approved_by": null,
-    "approved_at": null,
-    "runtime_active": false,
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_01",
+    "approved_at": "2026-10-29T17:32:24+09:00",
+    "runtime_active": true,
     "runtime_rule": "runtime_active는 파생값이다. runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")를 항상 만족해야 한다.",
     "review_points": [
       "주제·상황 문장이 출처 쪽의 예시와 맞는지, 유아에게 다룰 수 있는 표현인지",

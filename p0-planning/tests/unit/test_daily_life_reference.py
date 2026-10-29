@@ -41,11 +41,11 @@ def _payload() -> dict:
     return json.loads(DAILY_LIFE_PATH.read_text(encoding="utf-8"))
 
 
-def test_the_real_file_loads_pending_and_inactive():
+def test_the_real_file_loads_approved_and_active():
     repository = JsonDailyLifeReferenceRepository()
     catalog = repository.get_catalog(ID, VERSION)
 
-    assert catalog.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW and not catalog.is_active
+    assert catalog.activation_status is ActivationStatus.HUMAN_APPROVED and catalog.is_active
     assert repository.get_catalog(ID, "daily-life-v0.1.1") is None
     assert repository.get_catalog("ssuksak.daily-life-other", VERSION) is None
 
@@ -75,11 +75,11 @@ def test_the_team_file_cites_no_personal_working_paths():
     assert not any(marker in text for marker in ("analysis/", "handoff/", "scratch", ":/", ":\\"))
 
 
-def test_an_approved_copy_is_active():
+def test_a_withdrawn_copy_is_inactive():
     payload = _payload()
-    payload["review"].update(domain_owner_approval="HUMAN_APPROVED", runtime_active=True)
+    payload["review"].update(domain_owner_approval="PENDING_HUMAN_REVIEW", runtime_active=False)
 
-    assert parse_daily_life_payload(payload).is_active
+    assert not parse_daily_life_payload(payload).is_active
 
 
 def _set(path, value):
@@ -106,7 +106,7 @@ def _drop(path):
     "change",
     [
         _set(("review", "domain_owner_approval"), "APPROVED"),
-        _set(("review", "runtime_active"), True),  # pending but switched on
+        _set(("review", "runtime_active"), False),  # approved but switched off
         _set(("review", "runtime_active"), "false"),
         _set(("review", "runtime_active"), 0),
         _set(("entries", 0, "kind"), "SLEEP"),
