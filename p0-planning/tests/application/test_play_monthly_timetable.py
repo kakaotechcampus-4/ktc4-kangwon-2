@@ -3,6 +3,9 @@ display strings, and the special-activity timetable that the teacher splits, rem
 
 from __future__ import annotations
 
+from dataclasses import replace
+from fractions import Fraction
+
 import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
@@ -27,6 +30,7 @@ from ssuksak.planning.domain.play_monthly_plan import (
     DIRECTION_COPY_RULE_ID,
     MAX_SPLIT_DEPTH,
     TimetableSize,
+    TimetableTooNarrowError,
 )
 from ssuksak.planning.domain.provenance import (
     AuditEventType,
@@ -154,15 +158,16 @@ def test_a_split_keeps_the_first_cell_whole_and_adds_one_blank_cell_with_a_new_i
 
 
 def test_a_day_splits_at_most_four_deep_and_a_refused_split_saves_nothing():
+    # 위 · 아래 나눔은 폭을 줄이지 않아 깊이 한도만 걸린다(왼쪽 · 오른쪽 4번은 칸 폭 한도가 먼저).
     plan, plans, _, _ = _draft()
     split, _, _ = _timetable(plans)
     cell = plan.special_activity[THU].cell.item_id
     for _ in range(MAX_SPLIT_DEPTH):
-        plan = split.execute(SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.HORIZONTAL))
+        plan = split.execute(SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.VERTICAL))
     saves = plans.save_count
 
     with pytest.raises(PlayMonthlyLifecycleError) as error:
-        split.execute(SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.HORIZONTAL))
+        split.execute(SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.VERTICAL))
 
     assert error.value.code == "timetable_split_limit" and plans.save_count == saves
     assert plan.timetable_depth(cell) == MAX_SPLIT_DEPTH
@@ -336,3 +341,80 @@ def test_a_confirmed_plan_refuses_every_timetable_change():
             use_case.execute(request)
 
     assert plans.save_count == saves
+
+
+# D-3 (2026-10-28): every cell, blank ones too, keeps at least 3.5 % of the table width.
+# Width = day column % x each left/right part above it (first = ratio, second = 100 - ratio).
+
+
+def _thursday_split(width):
+    """Thursday column ``width`` %, its cell split left/right once (ratio 50)."""
+    plan, plans, _, _ = _draft()
+    split, _, resize = _timetable(plans)
+    others = (100 - width) // 4
+    size = TimetableSize((others, others, others, width, 100 - width - 3 * others), 24)
+    plan = resize.execute(ResizePlayMonthlyTimetableCommand(plan.plan_id, TEACHER, size=size))
+    cell = plan.special_activity[THU].cell.item_id
+    plan = split.execute(SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.HORIZONTAL))
+    return plan, plans, resize
+
+
+def _refused(plans, plan, run):
+    saves, stored = plans.save_count, plans.get(plan.plan_id)
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        run()
+    assert error.value.code == "timetable_width_limit"
+    assert (plans.save_count, plans.get(plan.plan_id)) == (saves, stored)  # 값 · 이력 · 저장 그대로
+
+
+@pytest.mark.parametrize("ratio", [10, 90])  # 첫 갈래 · 둘째 갈래가 각각 35% x 10% = 정확히 3.5%
+def test_a_cell_of_exactly_three_and_a_half_percent_is_allowed(ratio):
+    plan, _, resize = _thursday_split(35)
+    split_id = plan.special_activity[THU].split_id
+
+    plan = resize.execute(ResizePlayMonthlyTimetableCommand(plan.plan_id, TEACHER, split_id=split_id, ratio=ratio))
+
+    assert plan.special_activity[THU].ratio == ratio
+
+
+@pytest.mark.parametrize("ratio", [10, 90])  # 34% x 10% = 3.4%
+def test_a_boundary_resize_below_three_and_a_half_percent_is_refused(ratio):
+    plan, plans, resize = _thursday_split(34)
+    split_id = plan.special_activity[THU].split_id
+
+    _refused(plans, plan, lambda: resize.execute(
+        ResizePlayMonthlyTimetableCommand(plan.plan_id, TEACHER, split_id=split_id, ratio=ratio)
+    ))
+
+
+def test_nested_left_right_splits_multiply_and_the_third_is_refused():
+    plan, plans, _, _ = _draft()
+    split, _, _ = _timetable(plans)
+    cell = plan.special_activity[THU].cell.item_id
+    for _ in range(2):  # 20% → 10% → 5%
+        plan = split.execute(SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.HORIZONTAL))
+
+    _refused(plans, plan, lambda: split.execute(  # → 2.5%
+        SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.HORIZONTAL)
+    ))
+    # 위 · 아래 나눔은 폭을 유지하므로 같은 5% 칸도 더 나눌 수 있다.
+    plan = split.execute(SplitPlayMonthlyTimetableCellCommand(plan.plan_id, TEACHER, cell, SplitAxis.VERTICAL))
+    assert plan.timetable_depth(cell) == 3
+
+
+def test_a_column_resize_is_refused_when_another_days_cell_gets_too_narrow():
+    plan, plans, _, _ = _draft()
+    _, _, resize = _timetable(plans)
+    # 금요일 시작 모양은 33 : 67 나눔 — 열 10% 면 첫 칸 3.3%
+    size = TimetableSize((20, 20, 20, 30, 10), 24)
+
+    _refused(plans, plan, lambda: resize.execute(ResizePlayMonthlyTimetableCommand(plan.plan_id, TEACHER, size=size)))
+
+
+def test_the_start_shape_and_a_blank_narrow_cell_are_checked_alike():
+    plan, _, _, _ = _draft()
+    assert min(d.narrowest(Fraction(20)) for d in plan.special_activity) == Fraction(33, 5)  # 금 20% x 33%
+    friday = plan.special_activity[FRI]
+    assert {c.value for c in friday.leaves()} == {""}
+    with pytest.raises(TimetableTooNarrowError):  # 빈 칸이어도 저장 본문으로 만들 수 없다
+        replace(plan, special_activity_size=TimetableSize((20, 20, 20, 30, 10), 24))
