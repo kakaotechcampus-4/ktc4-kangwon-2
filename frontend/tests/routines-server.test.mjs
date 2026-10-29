@@ -30,6 +30,7 @@ const classSettings = await import("../lib/onboarding/settings.ts");
 const onboardingApi = await import("../lib/api/onboarding.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
+const childMark = await import("../lib/workspace/child-mark.ts");
 const { EMPTY_CLASS_SETTINGS } = onboardingTypes;
 
 const require = createRequire(import.meta.url);
@@ -313,6 +314,16 @@ const all = (node) => {
   if (node === null || node === undefined || typeof node === "boolean") return [];
   return typeof node === "object" ? [node, ...all(node.props?.children)] : [node];
 };
+/**
+ * 중첩된 자리까지 내려가 글자만 모은다.
+ *
+ * 바로 아래 children 만 이으면 안 되는 자리가 있다 — 아이 타일은 이름이 안쪽 span 에
+ * 있어서 `[object Object]` 가 나온다.
+ */
+const deepText = (node) =>
+  all(node)
+    .filter((part) => typeof part === "string" || typeof part === "number")
+    .join("");
 
 /**
  * React 흉내. hook 자리를 **컴포넌트 이름 + key** 로 나눠, 행 순서가 바뀌어도 각 행이
@@ -1513,7 +1524,10 @@ const ROOM_GHOST = {
 };
 
 /** 관찰 기록 화면 하나. 여기서 보는 것은 **일과 기록으로 가는 길**뿐이다. */
-function recordsPage(t, { rooms = [ROOM_A], settings = [CLASS_A], primaryClassId = CLASS_A.id } = {}) {
+function recordsPage(
+  t,
+  { rooms = [ROOM_A], settings = [CLASS_A], primaryClassId = CLASS_A.id } = {},
+) {
   browser({ rooms: settings, primaryClassId });
   t.after(() => delete globalThis.window);
   const app = host();
@@ -2471,6 +2485,20 @@ function homePage(
     "@/lib/hooks/use-dictation": {
       useDictation: () => ({ supported: false, listening: false, toggle: () => {} }),
     },
+    // `__esModule` 이 없으면 babel 의 interop 이 모듈 전체를 default 로 한 번 더 감싼다 —
+    // 컴포넌트 자리에 객체가 들어가 아무것도 그려지지 않는다.
+    "@/components/app/ChildPicker": {
+      __esModule: true,
+      default: compile("../components/app/ChildPicker.tsx", {
+        "react/jsx-runtime": runtime,
+        react: app.react,
+        "@/lib/workspace/child-mark": childMark,
+      }).default,
+    },
+    "@/components/app/SsampleNote": compile("../components/app/SsampleNote.tsx", {
+      "react/jsx-runtime": runtime,
+      react: app.react,
+    }),
   }).default;
   const view = app.mount(Page);
   t.after(app.cleanup);
@@ -2487,8 +2515,27 @@ function homePage(
       box.classes = next;
     },
     links: () => hrefsOf(view),
-    /** 「이렇게 남길까요?」의 아이 칸. 빈 값으로 시작하므로 교사가 반드시 고른다. */
-    childSelect: () => find("select")[0],
+    /**
+     * 「이렇게 남길까요?」의 아이 타일. 아무것도 눌리지 않은 채로 열리므로
+     * 교사가 반드시 고른다. `aria-pressed` 를 달고 있는 단추가 아이 타일이다.
+     */
+    childTiles: () => find("button").filter((node) => "aria-pressed" in node.props),
+    chosenChildren: () =>
+      find("button")
+        .filter((node) => node.props["aria-pressed"] === true)
+        .map(deepText),
+    /**
+     * 저장 단추. 글자가 고른 아이에 따라 바뀌므로(「김하늘 기록으로 남기기」 ·
+     * 「3명으로 남기기」) 꼬리말로 찾는다. 아무도 안 고르면 눌리지 않아 undefined 다.
+     */
+    saveButton: () =>
+      find("button").find((node) => labelled(node).endsWith("남기기") && !node.props.disabled),
+    /** 이름으로 아이 타일 하나를 집는다. */
+    childNamed: (name) =>
+      find("button").find((node) => "aria-pressed" in node.props && deepText(node).includes(name)),
+    /** 「여럿 고르기」 칸. 켜야 둘 이상 고를 수 있다. */
+    multiToggle: () => find("input").find((node) => node.props.type === "checkbox"),
+    check: (node, checked) => node.props.onChange({ target: { checked } }),
     factInput: () => find("textarea")[0] ?? find("input").find((n) => n.props?.["aria-label"]),
     button: (label) => find("button").find((n) => labelled(n).includes(label) && !n.props.disabled),
     type: (node, value) => node.props.onChange({ target: { value } }),
@@ -2503,9 +2550,9 @@ function homePage(
 
 /**
  * 홈에서 한 줄 적고 저장까지. 실제 화면 순서대로 —
- * 적기 → 누구 기록인지 고르기 → **아이 고르기** → 이대로 남기기.
+ * 적기 → 누구 기록인지 고르기 → **아이 고르기** → 남기기.
  *
- * 아이 칸은 비어 있는 채로 열린다. 고르기 전에는 「이대로 남기기」가 눌리지 않는다.
+ * 아이 칸은 비어 있는 채로 열린다. 고르기 전에는 저장 단추가 눌리지 않는다.
  */
 async function homeSave(view, fact) {
   view.type(view.factInput(), fact);
@@ -2513,7 +2560,7 @@ async function homeSave(view, fact) {
   view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
   await pickFirstChild(view);
-  view.button("이대로 남기기").props.onClick();
+  view.saveButton().props.onClick();
   await view.flush();
 }
 
@@ -2528,21 +2575,105 @@ test("아이를 고르기 전에는 기록을 남길 수 없다", async (t) => {
   view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
 
-  assert.equal(view.childSelect().props.value, "", "아이 칸은 비어 있는 채로 열린다");
-  assert.equal(view.button("이대로 남기기"), undefined, "고르기 전에는 눌리지 않는다");
+  assert.ok(view.childTiles().length, "아이 타일이 그려진다");
+  assert.deepEqual(view.chosenChildren(), [], "아이 칸은 비어 있는 채로 열린다");
+  assert.equal(view.saveButton(), undefined, "고르기 전에는 눌리지 않는다");
 
   await pickFirstChild(view);
-  assert.ok(view.button("이대로 남기기"), "고르면 눌린다");
-  view.button("이대로 남기기").props.onClick();
+  assert.ok(view.saveButton(), "고르면 눌린다");
+  view.saveButton().props.onClick();
   await view.flush();
   assert.equal(records.only("add").length, 1);
 });
 
-/** 아이 칸에서 첫 아이를 고른다. 반을 바꾸면 비워지므로 바꾼 **뒤에** 부른다. */
+/** 아이가 셋인 반. 「여럿 고르기」를 보려면 둘 이상이어야 한다. */
+const ROOM_MANY = {
+  id: CLASS_A.id,
+  className: "햇살반",
+  children: [
+    { id: "api-child-8", name: "박서준" },
+    { id: "child-haneul", name: "김하늘" },
+    { id: "child-minjae", name: "정민재" },
+  ],
+};
+
+/** 이름으로 아이 타일을 누른다. 누를 때마다 다시 찾는다 — 누르면 새로 그려진다. */
+async function pickChild(view, name) {
+  const tile = view.childNamed(name);
+  assert.ok(tile, `아이 타일을 못 찾았다: ${name}`);
+  tile.props.onClick();
+  await view.flush();
+}
+
+test("아이를 여럿 고르면 기록이 사람 수만큼 남는다", async (t) => {
+  // 「자유놀이 때 하늘·민재가 같이 블록놀이」는 한 장면이지만, 평가 증빙은 아이별로
+  // 모여야 한다. 전에는 같은 문장을 세 번 적어야 했다.
+  const records = recordsServer();
+  const view = homePage(t, {
+    rooms: [CLASS_A],
+    primaryClassId: "",
+    classes: [ROOM_MANY],
+    records,
+  });
+  await view.flush();
+  view.type(view.factInput(), "블록으로 길을 만들었다");
+  await view.flush();
+  view.button("누구 기록인지 고르기").props.onClick();
+  await view.flush();
+
+  view.check(view.multiToggle(), true);
+  await view.flush();
+  await pickChild(view, "김하늘");
+  await pickChild(view, "정민재");
+  assert.equal(view.chosenChildren().length, 2, "둘 다 눌린 상태로 남는다");
+
+  view.saveButton().props.onClick();
+  await view.flush();
+
+  const saved = records.rows();
+  assert.equal(saved.length, 2);
+  assert.deepEqual(
+    saved.map((r) => r.childId).sort(),
+    ["child-haneul", "child-minjae"],
+    "고른 아이마다 한 건씩 남는다",
+  );
+  // 문장은 둘 다 같다 — 한 장면이니까.
+  assert.deepEqual(new Set(saved.map((r) => r.fact)), new Set(["블록으로 길을 만들었다"]));
+});
+
+test("여럿 고르기를 끄면 한 명만 남는다", async (t) => {
+  // 켠 채로 둘을 골라 두고 껐을 때, 보이지 않는 아이가 같이 저장되면 안 된다.
+  const records = recordsServer();
+  const view = homePage(t, {
+    rooms: [CLASS_A],
+    primaryClassId: "",
+    classes: [ROOM_MANY],
+    records,
+  });
+  await view.flush();
+  view.type(view.factInput(), "모래를 체에 걸렀다");
+  await view.flush();
+  view.button("누구 기록인지 고르기").props.onClick();
+  await view.flush();
+
+  view.check(view.multiToggle(), true);
+  await view.flush();
+  await pickChild(view, "김하늘");
+  await pickChild(view, "정민재");
+  view.check(view.multiToggle(), false);
+  await view.flush();
+
+  assert.equal(view.chosenChildren().length, 1, "한 명만 남는다");
+  view.saveButton().props.onClick();
+  await view.flush();
+  assert.equal(records.rows().length, 1);
+});
+
+/** 아이 격자에서 첫 아이를 고른다. 반을 바꾸면 비워지므로 바꾼 **뒤에** 부른다. */
 async function pickFirstChild(view) {
-  const picker = view.childSelect();
-  const first = all(picker).find((node) => node?.type === "option" && node.props.value);
-  view.type(picker, first.props.value);
+  const tiles = view.childTiles();
+  assert.ok(tiles.length, "아이 타일이 없다");
+  tiles[0].props.onClick();
   await view.flush();
 }
 

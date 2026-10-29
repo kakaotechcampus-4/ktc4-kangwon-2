@@ -13,6 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/app/AppLayout";
 import { Icon } from "@/components/app/icons";
+import ChildPicker from "@/components/app/ChildPicker";
+import { SsampleNote } from "@/components/app/SsampleNote";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -138,6 +140,7 @@ export default function HomePage() {
         classes={classes}
         date={todayDate}
         activeClassId={activeClassId}
+        records={classRecords}
         onSaved={recordSaved}
         onError={setMessage}
       />
@@ -163,6 +166,7 @@ function Compose({
   classes,
   date,
   activeClassId,
+  records,
   onSaved,
   onError,
 }: {
@@ -170,10 +174,15 @@ function Compose({
   date: string;
   /** 홈이 정한 지금 반. 홈의 조회와 같은 값이라 통계와 저장 대상이 어긋나지 않는다. */
   activeClassId: string;
+  /** 지금 반의 기록. 고르개가 아이별 마지막 기록·이번 주 횟수를 여기서 센다. */
+  records: readonly ServerObservation[];
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const [childId, setChildId] = useState("");
+  // 아이는 여럿 고를 수 있다. 한 명만 고를 때도 배열 하나로 다룬다 — 두 갈래 상태를
+  // 두면 「여럿 고르기」를 켰다 끈 사이에 값이 어긋난다.
+  const [childIds, setChildIds] = useState<string[]>([]);
+  const [many, setMany] = useState(false);
   // 원마다 축이 다르다 (observation-axis.ts). 5영역 원이면 다섯, 2축 원이면 둘이다.
   //
   // **고른 영역 하나만 둔다.** 칸에는 첫 영역을 띄우고 상태는 빈 채로 두면, 교사가 고르지
@@ -194,21 +203,56 @@ function Compose({
   // 그 기록을 고치면 되지만, 아이를 잘못 고르면 **다른 아이의 기록**이 된다.
   // 바쁜 교사가 확인하지 않고 「이대로 남기기」를 누르면 조용히 그렇게 저장됐다.
   const classroom = classes.find((c) => c.id === activeClassId);
-  const child = classroom?.children.find((c) => c.id === childId);
+  const chosen = (classroom?.children ?? []).filter((c) => childIds.includes(c.id));
+  const saveLabel =
+    chosen.length === 1
+      ? `${chosen[0].name} 기록으로 남기기`
+      : chosen.length > 1
+        ? `${chosen.length}명으로 남기기`
+        : "이대로 남기기";
 
   async function save() {
-    if (!fact.trim() || !activeClassId || !child || busy) return;
+    const written = fact.trim();
+    if (!written || !activeClassId || !chosen.length || busy) return;
     setBusy(true);
     try {
-      await addRecord({
-        classId: activeClassId,
-        childId: child.id,
-        date,
-        domain,
-        context: "",
-        fact: fact.trim(),
-      });
+      /*
+        아이를 여럿 골랐으면 기록도 사람 수만큼 남는다. 한 장면이어도 평가 증빙은
+        아이별로 모여야 한다 (「자유놀이 때 하늘·민재가 같이 블록놀이」가 하늘의 기록
+        한 건과 민재의 기록 한 건이다).
+
+        `allSettled` 다. 하나가 실패했을 때 나머지를 되돌릴 방법이 없으므로, 남은 것은
+        남긴 채로 두고 **실패한 아이만 다시 고른 상태로** 돌려준다. 적은 글도 지우지
+        않는다 — 여기서 글을 지우면 교사가 쓴 문장이 사라진다.
+      */
+      const results = await Promise.allSettled(
+        chosen.map((c) =>
+          addRecord({
+            classId: activeClassId,
+            childId: c.id,
+            date,
+            domain,
+            context: "",
+            fact: written,
+          }),
+        ),
+      );
+      const stuck = chosen.filter((_, i) => results[i].status === "rejected");
+      if (stuck.length === results.length) {
+        const first = results[0] as PromiseRejectedResult;
+        throw first.reason;
+      }
+      if (stuck.length) {
+        setChildIds(stuck.map((c) => c.id));
+        onError(
+          `${results.length - stuck.length}명은 남겼어요. ` +
+            `${stuck.map((c) => c.name).join(" · ")} 는 못 남겼어요 — 다시 눌러주세요.`,
+        );
+        onSaved();
+        return;
+      }
       setFact("");
+      setChildIds([]);
       setConfirming(false);
       onSaved();
     } catch (e) {
@@ -225,7 +269,10 @@ function Compose({
       </h2>
 
       {!classroom?.children.length ? (
-        <div className={`${CARD} text-center text-xs text-ink-soft`}>
+        <div
+          className={`${CARD} flex flex-col items-center gap-2.5 text-center text-xs text-ink-soft`}
+        >
+          <SsampleNote mood="empty" size={44} />
           아이를 먼저 등록해 주세요.{" "}
           <Link href="/onboarding/children" className="font-semibold text-primary underline">
             아동 명단으로 가기
@@ -291,40 +338,41 @@ function Compose({
 
           {confirming && (
             <section className="mt-5 rounded-lg border border-primary-tint-line bg-primary-tint p-4">
-              <h3 className="mb-4 font-display text-2xl font-bold text-primary-ink">
+              <h3 className="mb-4 flex items-center gap-2.5 font-display text-2xl font-bold text-primary-ink">
+                <SsampleNote size={34} label={null} />
                 이렇게 남길까요?
               </h3>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="text-[13px] text-primary-ink">
-                  아이
-                  <select
-                    value={child?.id ?? ""}
-                    onChange={(e) => setChildId(e.target.value)}
-                    className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
-                  >
-                    <option value="">누구인지 골라주세요</option>
-                    {classroom?.children.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-[13px] text-primary-ink">
-                  영역
-                  <select
-                    value={domain}
-                    onChange={(e) => setDomain(e.target.value)}
-                    className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
-                  >
-                    {domains.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {/* 아이는 격자로 깔아 반 전체를 보여준다. 고르개가 「누가 오래 비었는지」까지
+                  같이 말해 주므로, 적을 아이를 고르는 자리가 치우침을 보는 자리도 된다. */}
+              <div className="rounded-md border border-line bg-paper p-3.5">
+                <ChildPicker
+                  childList={classroom?.children ?? []}
+                  records={records}
+                  today={date}
+                  selected={childIds}
+                  onSelect={setChildIds}
+                  multiple={many}
+                  onMultipleChange={(on) => {
+                    setMany(on);
+                    // 한 명 고르기로 돌아갈 때 둘 이상 골라 둔 것을 들고 가지 않는다.
+                    setChildIds((ids) => (on ? ids : ids.slice(0, 1)));
+                  }}
+                />
               </div>
+              <label className="mt-3 block max-w-[260px] text-[13px] text-primary-ink">
+                영역
+                <select
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
+                >
+                  {domains.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -333,8 +381,13 @@ function Compose({
                 >
                   더 쓸래요
                 </button>
-                <button type="button" disabled={busy || !child} onClick={save} className={PRIMARY}>
-                  {busy ? "남기는 중" : "이대로 남기기"}
+                <button
+                  type="button"
+                  disabled={busy || !chosen.length}
+                  onClick={save}
+                  className={PRIMARY}
+                >
+                  {busy ? "남기는 중" : saveLabel}
                 </button>
               </div>
             </section>
