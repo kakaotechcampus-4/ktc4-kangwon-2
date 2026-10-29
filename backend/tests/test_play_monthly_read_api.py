@@ -1,4 +1,7 @@
-"""놀이 중심 월간 서버 ② — 조회 · 목록 · 삭제 · 생성 게이트(503). 계약은 api-spec §9-7."""
+"""놀이 중심 월간 서버 ② — 조회 · 목록 · 삭제 · 생성 게이트. 계약은 api-spec §9-7.
+
+게이트를 다 지난 뒤의 생성(Core 연결)은 test_play_monthly_create_api.py 다.
+"""
 
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
 
@@ -7,7 +10,7 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 from play_monthly_factory import make_play_monthly, save_play_monthly
-from sqlalchemy import func, select
+from sqlalchemy import select
 from ssuksak.planning.domain.plan import PlanStatus
 from test_plans_play_project import _approved as _approved_play  # noqa: F401
 from test_plans_play_project import _plan
@@ -59,10 +62,6 @@ def _annual(world, *, confirmed):
 
 def _post(world, **body):
     return client.post(URL, json={"class_id": world["mine"]["class"], "month": 10, **body})
-
-
-def _count(world):
-    return world["session"].scalar(select(func.count()).select_from(Plan))
 
 
 # ── 생성 게이트 ─────────────────────────────────────────────────────────────
@@ -148,19 +147,6 @@ def test_놀이형_연간이_확정_전이면_409(world):
 
     assert _error(response) == (409, "GATE_BLOCKED", ["class_id"])
     assert response.json()["error"]["message"] == "연간계획안을 먼저 확정해주세요."
-
-
-def test_게이트를_다_지나면_503_이고_아무것도_저장하지_않는다(world):
-    _annual(world, confirmed=True)
-    before = _count(world)
-
-    response = _post(world, emphasized_row_keys=["cand1"])
-
-    assert _error(response) == (503, "DEPENDENCY_UNAVAILABLE", [])
-    assert response.json()["error"]["message"] == (
-        "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요."
-    )
-    assert _count(world) == before
 
 
 # ── 단건 ───────────────────────────────────────────────────────────────────

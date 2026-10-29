@@ -1,4 +1,4 @@
-"""놀이 중심 월간계획안 — 조회 · 목록 · 삭제 · 생성 게이트. 계약은 docs/api-spec.md §9-7 이다.
+"""놀이 중심 월간계획안 — 생성 · 조회 · 목록 · 삭제 · 고치기. 계약은 docs/api-spec.md §9-7 이다.
 
 **이 파일에 생성 규칙이 없다.** 본문은 p0-planning 이 만든 `PlayMonthlyPlan` 이고, 여기는 읽어서
 응답 모양으로 옮긴다. 오류 · 상수 · 학년도 계산은 기존 월간(`monthly_router`)의 것을 쓴다.
@@ -11,9 +11,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Query, Response, status
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ssuksak.adapters.elice_openai_monthly import (
+    MonthlyLlmConfigurationError,
+    MonthlyLlmProviderError,
+)
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.play_monthly_composition import (
+    play_monthly_command,
+    play_monthly_generation,
+)
 from ssuksak.planning import InvalidDomainValueError, ItemId, PlanId
+from ssuksak.planning.application.generate_play_monthly_plan import PlayMonthlyGenerationError
 from ssuksak.planning.application.play_monthly_lifecycle import (
     AddPlayMonthlyActivity,
     AddPlayMonthlyActivityCommand,
@@ -38,12 +48,16 @@ from ssuksak.planning.domain.play_monthly_plan import (
     PlayMonthlyCell,
     PlayMonthlyPlan,
 )
-from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
+from ssuksak.planning.domain.play_project_plan import (  # 공개 창구에 없다
+    PLAY_PROJECT_FORMAT,
+    PlayProjectYearlyPlan,
+)
 from ssuksak.planning.domain.week_period import WeekId
+from ssuksak.planning.planner.contracts import ProposalParseError, ProposalRejectedError
 
 from app.db import get_session
+from app.features.plans import monthly_llm, play_project
 from app.features.plans import play_monthly_schemas as s
-from app.features.plans import play_project
 from app.features.plans.models import Plan
 from app.features.plans.monthly_router import (
     _ALREADY_CONFIRMED,
@@ -52,6 +66,7 @@ from app.features.plans.monthly_router import (
     _NOT_DELETABLE,
     _NOT_FOUND,
     _STALE_WRITE,
+    MONTHLY_UNIQUE,
     _actor,
     _error,
     _existing,
@@ -63,10 +78,12 @@ from app.features.plans.monthly_router import (
 from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
 from app.features.plans.play_project import ConfirmIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
+from app.features.plans.router import _exception_chain
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
+from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 _log = logging.getLogger(__name__)
 
@@ -83,20 +100,76 @@ _UNAVAILABLE = _error(
     "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
     [],
 )
+_BUDGET_EXCEEDED = _error(
+    503, "LLM_BUDGET_EXCEEDED", "생성 한도에 걸렸습니다. 운영에 문의해주세요.", []
+)
+_GENERATION_FAILED = _error(
+    500, "GENERATION_FAILED", "월간계획안을 만들지 못했습니다. 다시 시도해주세요.", []
+)
+# 자료 계열 Core 코드만 503 이다(api-spec §9-7 구현 경계). 앞부분으로 가른다.
+_REFERENCE_CODES = (
+    "CURRICULUM_REFERENCE_",
+    "DAILY_LIFE_",
+    "DRILL_",
+    "SAFETY_",
+    "LIFE_SAFETY_GROUNDING_INSUFFICIENT",
+)
+# 서버가 읽은 행과 Core 가 읽은 본문이 어긋날 때만 난다. 행 게이트와 같은 문구다.
+_PARENT_GATES = {
+    "PARENT_NOT_FOUND": "연간계획안을 먼저 만들어 확정해주세요.",
+    "PARENT_NOT_CONFIRMED": "연간계획안을 먼저 확정해주세요.",
+    "PARENT_NOT_PLAY_PROJECT": (
+        "월별 주제형 연간계획안으로는 놀이 중심 월간계획안을 만들 수 없습니다."
+    ),
+}
+
+
+def _generation_error(error: Exception):
+    """계약 오류로 바꾼다. **None 이면 표에 없는 것** — 그대로 올려 공통 500 INTERNAL_ERROR 다.
+
+    Core 코드는 서버 기록에만 남긴다. 부모 확정 기록 누락 · 구간 미완성 같은
+    운영 확인 상태가 None 이다.
+    """
+    if isinstance(error, PlayMonthlyGenerationError):
+        _log.warning("play monthly generation rejected code=%s", error.code)
+        if error.code == "EMPHASIS_NOT_SELECTED":
+            return _invalid("emphasized_row_keys")
+        if error.code.startswith(_REFERENCE_CODES):
+            return _UNAVAILABLE
+        if error.code in _PARENT_GATES:
+            return _gate(_PARENT_GATES[error.code])
+        return None
+    chain = tuple(_exception_chain(error))
+    _log.warning(
+        "play monthly generation failed types=%s",
+        ",".join(type(item).__name__ for item in chain),
+    )
+    if any(isinstance(item, LlmBudgetExceeded) for item in chain):
+        return _BUDGET_EXCEEDED
+    if any(isinstance(item, (LlmUnavailable, MonthlyLlmConfigurationError)) for item in chain):
+        return _UNAVAILABLE
+    # 호출이 깨졌다(시간 초과 포함) · 수리 뒤에도 계약 위반. 재시도할 수 있다.
+    failed = (MonthlyLlmProviderError, LlmFailed, ProposalParseError, ProposalRejectedError)
+    if any(isinstance(item, failed) for item in chain):
+        return _GENERATION_FAILED
+    return None
 
 
 @router.post("", response_model=s.PlayMonthlyPlanOut, status_code=status.HTTP_201_CREATED)
 def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, user: CurrentUser):
-    """게이트까지만 한다. 생활 문장 자료 · AI 호출부가 없어 Core 생성을 안 부르고 503 이다."""
+    """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다(기존 월간과 같다)."""
+    # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
-    month = _target_month(klass.school_year, body.month)
-    if _existing(session, user.center_id, klass.id, month) is not None:
+    center_id, class_id, class_name = user.center_id, klass.id, klass.name
+    school_year = klass.school_year
+    month = _target_month(school_year, body.month)
+    if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS
     parent_row = session.scalar(
         select(Plan).where(
-            Plan.center_id == user.center_id,
+            Plan.center_id == center_id,
             Plan.kind == "annual",
-            Plan.classroom_ref == str(klass.id),
+            Plan.classroom_ref == str(class_id),
         )
     )
     if parent_row is None:
@@ -106,8 +179,61 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         raise _gate("월별 주제형 연간계획안으로는 놀이 중심 월간계획안을 만들 수 없습니다.")
     if parent_row.status != "CONFIRMED":
         raise _gate("연간계획안을 먼저 확정해주세요.")
-    # 생성이 열릴 때: 「강조가 그 구간에서 고른 놀이가 아니면 422」는 Core 가 검사한다.
-    raise _UNAVAILABLE
+    parent_id = parent_row.id
+    parent = PostgresPlanRepository(
+        session, center_id=center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+    ).get(PlanId(parent_row.plan_ref))
+    try:
+        provider = monthly_llm.play_monthly_provider()
+    except LlmUnavailable as error:
+        raise _UNAVAILABLE from error
+    # 읽기를 여기서 끝낸다. LLM 을 기다리는 동안 transaction · 연결을 잡지 않는다.
+    session.commit()
+
+    # ── B. Core 실행 — DB 없음 ────────────────────────────────────────────
+    # 부모 확정 기록 · 강조 · 자료 승인은 Core 가 본다. 자료 판은 조립부가 정한다(ADR-046 질문 4).
+    parents: InMemoryPlanRepository[PlayProjectYearlyPlan] = InMemoryPlanRepository()
+    parents.save(parent.plan_id, parent)
+    use_case = play_monthly_generation(
+        parent_repository=parents,
+        plan_repository=InMemoryPlanRepository(),  # 운영 저장은 C 에서 한다
+        provider=provider,
+        clock=SystemClock(),
+        id_generator=UuidGenerator(),
+    )
+    try:
+        plan = use_case.execute(
+            play_monthly_command(
+                parent_plan_id=parent.plan_id,
+                classroom_ref=str(class_id),
+                school_year=school_year,
+                target_month=month,
+                emphasized_row_keys=tuple(body.emphasized_row_keys),
+                class_name=class_name,
+            )
+        )
+    except Exception as error:
+        mapped = _generation_error(error)
+        if mapped is None:
+            raise
+        raise mapped from error
+
+    # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    if _existing(session, center_id, class_id, month) is not None:
+        raise _ALREADY_EXISTS
+    try:
+        _repo(session, user).save(plan.plan_id, plan)
+    except IntegrityError as error:
+        session.rollback()
+        if getattr(getattr(error.orig, "diag", None), "constraint_name", None) == MONTHLY_UNIQUE:
+            raise _ALREADY_EXISTS from error
+        raise
+    row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
+    # **응답을 다 만든 뒤에 확정한다**(기존 월간과 같다). 저장소가 flush 해 두어 commit 전에도
+    # 읽힌다.
+    detail = _detail(row, plan, parent_id)
+    session.commit()
+    return detail
 
 
 @router.get("", response_model=s.PlayMonthlyListOut)
