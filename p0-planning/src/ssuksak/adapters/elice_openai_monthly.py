@@ -42,6 +42,10 @@ from ssuksak.planning.planner.parser import (
 # Monthly / weekly requests stay unchanged (decision C: their cap lives in the bench only).
 # 10,000 (10-24 decision): with other periods' plays to avoid, a full-year run used up to 5,514.
 PLAY_PROJECT_MAX_COMPLETION_TOKENS = 10000
+# 2026-10-29 measurement: one play-centred month came back as 2,819 completion tokens over a
+# stream, past the same 2,000 non-streaming cap (the synchronous request was refused, HTTP 400).
+# It streams too, with its own cap; monthly v1 / weekly stay unchanged.
+PLAY_MONTHLY_MAX_COMPLETION_TOKENS = 6000
 
 
 class MonthlyLlmConfigurationError(RuntimeError):
@@ -249,20 +253,21 @@ class EliceOpenAiMonthlyAdapter:
             request.user_content,
             schema_name="play_project_period_proposal",
             schema=PLAY_PROJECT_RESPONSE_SCHEMA,
-            stream=True,
+            stream_cap=PLAY_PROJECT_MAX_COMPLETION_TOKENS,
         )
 
     def generate_play_monthly(self, request: PlayMonthlyRequest) -> RawLlmResponse:
         """Play-centred monthly (ADR-046 Q2): first and repair requests, one strict schema.
 
-        No stream and no output cap: the play-project settings are not carried over until a
-        synchronous run is measured. Repair is the Application's (at most once), not a retry here.
+        Streams with its own output cap (see PLAY_MONTHLY_MAX_COMPLETION_TOKENS). Repair is the
+        Application's (at most once), not a retry here.
         """
         return self._complete(
             request.system_prompt,
             request.user_content,
             schema_name="play_monthly_proposal",
             schema=PLAY_MONTHLY_RESPONSE_SCHEMA,
+            stream_cap=PLAY_MONTHLY_MAX_COMPLETION_TOKENS,
         )
 
     def _complete(
@@ -272,7 +277,7 @@ class EliceOpenAiMonthlyAdapter:
         *,
         schema_name: str,
         schema: Mapping[str, object],
-        stream: bool = False,
+        stream_cap: int | None = None,  # set: stream the reply with this output cap
     ) -> RawLlmResponse:
         payload: dict[str, object] = {
             "model": self._config.model,
@@ -289,16 +294,15 @@ class EliceOpenAiMonthlyAdapter:
             },
         }
         post = self._transport.post_json
-        if stream:
-            # Only UrllibJsonTransport streams; the backend transport does not yet (play-project
-            # is not wired to the backend). No fallback to another transport: that would skip
-            # the injected transport's guards and usage records.
+        if stream_cap is not None:
+            # No fallback to another transport when the injected one cannot stream: that would
+            # skip its guards and usage records.
             post = getattr(self._transport, "post_stream", None)
             if post is None:
                 raise MonthlyLlmConfigurationError("this LLM transport cannot stream")
             payload["stream"] = True
             payload["stream_options"] = {"include_usage": True}
-            payload["max_completion_tokens"] = PLAY_PROJECT_MAX_COMPLETION_TOKENS
+            payload["max_completion_tokens"] = stream_cap
         result = post(
             self._config.endpoint,
             headers={
