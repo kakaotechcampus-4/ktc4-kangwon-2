@@ -15,7 +15,7 @@
 
 **예산은 전송마다 먼저 예약한다**(`BudgetedTransport`). 수리를 포함해 실제로 보내기 직전에 그
 전송의 최대 비용 — 입력은 보낼 본문의 바이트 수(토큰 수는 바이트 수를 넘지 않는다), 출력은
-`OUTPUT_RESERVE_TOKENS` — 을 단가(₩141 입력 · ₩14 캐시 입력 · ₩708 출력 / 100만 토큰)로 계산해,
+`OUTPUT_RESERVE_TOKENS` — 을 단가(₩2,835 입력 · ₩141 캐시 입력 · ₩14,175 출력 / 100만 토큰)로 계산해,
 쓴 돈 + 예약이 `--budget-won`(기본 · 최대 1,000원)을 넘거나 `--max-calls`(최대 24)에 닿으면 보내지
 않는다. **출력 예약은 요청에 상한으로 붙인다**(`max_completion_tokens` = 예약 토큰 — 하민 결정 C,
 2026-10-22). 공급자가 이 칸을 수용 · 준수하면 출력 예약이 상한으로 성립한다 — 실제 수용 · 준수는
@@ -97,8 +97,9 @@ SAFETY_RULE = SafetyRuleSelector("child-welfare-act-decree-annex6-2022-06-21")
 CATALOG = ActivityCatalogSelector("ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1")
 TEACHER = ActorId("bench_teacher")
 
-# 원 / 100만 토큰 (하민 제공 2026-10-21).
-PRICE_INPUT, PRICE_CACHED, PRICE_OUTPUT = 141, 14, 708
+# 원 / 100만 토큰 — 엘리스 콘솔 gpt-6.1-sol 기준 (2026-10-29 확인).
+# luna 때는 141 · 14 · 708 이었다. 모델을 바꾸면 여기도 바꾼다(ADR-023).
+PRICE_INPUT, PRICE_CACHED, PRICE_OUTPUT = 2835, 141, 14175
 
 # (이름, 연령, 달, 주 순번, 토요일, 다시 만들 칸).
 # 주 순번은 그 달 활성 주 목록의 index 다(-1 = 마지막).
