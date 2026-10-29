@@ -31,6 +31,15 @@ _log = logging.getLogger(__name__)
 PLAY_PROJECT_STREAM_DEADLINE_SECONDS = 120
 
 
+def _why(error: BaseException) -> str:
+    """예외 이름만으로는 원인이 안 갈린다 — 메시지도 남긴다.
+
+    어댑터가 던지는 메시지는 고정된 글귀라 아동 정보 · 프롬프트 · 키가 들어가지 않는다.
+    다른 예외가 올라올 수도 있으니 200 자에서 자른다.
+    """
+    return str(error)[:200].replace("\n", " ")
+
+
 class SharedLlmTransport:
     """Core `JsonTransport` 모양으로 `shared/llm.post_json` 을 부른다.
 
@@ -45,11 +54,12 @@ class SharedLlmTransport:
             result = post_json(url, headers=headers, payload=payload, timeout=timeout)
         except Exception as error:
             _log.warning(
-                "monthly llm call failed schema=%s model=%s seconds=%.2f error=%s",
+                "monthly llm call failed schema=%s model=%s seconds=%.2f error=%s why=%s",
                 schema,
                 payload.get("model"),
                 time.perf_counter() - started,
                 type(error).__name__,
+                _why(error),
             )
             raise
         # 응답의 usage 객체는 남기지 않는다(Codex W7a2-02) — 모델이 어떤 문자열 필드를 붙여 올지
@@ -77,11 +87,12 @@ class SharedLlmTransport:
             )
         except Exception as error:
             _log.warning(
-                "monthly llm call failed schema=%s model=%s seconds=%.2f error=%s",
+                "monthly llm call failed schema=%s model=%s seconds=%.2f error=%s why=%s",
                 schema,
                 payload.get("model"),
                 time.perf_counter() - started,
                 type(error).__name__,
+                _why(error),
             )
             raise
         _log.info(
