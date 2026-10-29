@@ -61,11 +61,10 @@ export default function QuickRecordsPage() {
   const [loaded, setLoaded] = useState<WeekRecords | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useClientState(() => today(), "");
-  // 일과 기록은 반 하나의 하루다. 이 화면은 반을 안 가리므로 여기서 한 번 고르게 한다 (S-J1 들어오는 길).
-  const classes = useClasses(setError);
-  const [pickedClass, setClassId] = useState<string | null>(null);
-  const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
-  const classId = pickedClass ?? primaryClass;
+  // 값은 안 쓰지만 호출은 남긴다 — 서버에만 있는 반을 저장소로 들여오는 일을 겸한다.
+  useClasses(setError);
+  // 반은 사이드바가 정한다. 이 화면은 그 반의 한 주를 편다.
+  const [classId] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const routines = routinesPath(classId, selected);
 
   const weekStart = useMemo(() => (selected ? isoOf(mondayOf(selected)) : ""), [selected]);
@@ -138,21 +137,6 @@ export default function QuickRecordsPage() {
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-[26px] font-bold">우리 반 기록</h2>
           <div className="flex items-center gap-3 text-xs text-ink-soft">
-            <label className="flex items-center gap-2">
-              반
-              <select
-                value={classId}
-                onChange={(e) => setClassId(e.target.value)}
-                className="min-h-11 rounded-md border border-line bg-paper px-2 text-xs text-ink"
-              >
-                <option value="">반 선택</option>
-                {classes.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    {room.className || "이름 없는 반"}
-                  </option>
-                ))}
-              </select>
-            </label>
             <button
               type="button"
               aria-label="지난 주"

@@ -6,21 +6,12 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { formatKoreanDate } from "@/lib/greeting";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import {
-  CLASS_SETTINGS_CHANGED,
   loadClassSettings,
   primaryClassFor,
+  subscribeClassSettings,
 } from "@/lib/onboarding/settings";
 import { classServerId } from "@/lib/api/onboarding";
 import { routinesScope } from "@/lib/workspace/routines-route";
-
-const subscribeClasses = (changed: () => void) => {
-  window.addEventListener(CLASS_SETTINGS_CHANGED, changed);
-  window.addEventListener("storage", changed);
-  return () => {
-    window.removeEventListener(CLASS_SETTINGS_CHANGED, changed);
-    window.removeEventListener("storage", changed);
-  };
-};
 
 /** 사이드바 메뉴 이름과 같아야 한다 — 다르면 어디 있는지 되묻게 된다. */
 const PAGE_NAMES: [prefix: string, name: string][] = [
@@ -48,7 +39,7 @@ export default function WorkspaceTopBar() {
   const requestedClass = routinesScope(`?${search}`).classId;
   const page = PAGE_NAMES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "우리 반";
   const className = useSyncExternalStore(
-    subscribeClasses,
+    subscribeClassSettings,
     () => {
       const settings = loadClassSettings();
       if (pathname === "/" && requestedClass !== null)

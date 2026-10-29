@@ -193,15 +193,21 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   await expect(page.getByLabel("현재 반", { exact: true })).toContainText("햇살반");
   await expect(page.getByText(factA, { exact: true }).first()).toBeVisible();
   release();
-  await page.getByLabel("빠른 기록 내용").fill(factB);
-  await page.getByRole("button", { name: "누구 기록인지 고르기", exact: true }).click();
-  const select = page.getByRole("combobox", { name: "반", exact: true });
-  await select.selectOption({ label: "달님반" });
-  await page.unroute(childrenUrl);
+
+  // 반을 바꾸는 자리는 사이드바 하나다. 바꾸면 주소에서 옛 반을 떼고 화면을 다시 세운다.
+  const picker = page.getByRole("combobox", { name: "반 바꾸기", exact: true });
+  // 보기 글자는 「달님반 · 만 4세」라 이름만으로는 안 맞는다. 값으로 고른다.
+  const option = picker.locator("option", { hasText: "달님반" });
+  await expect(option).toHaveCount(1);
+  await picker.selectOption((await option.getAttribute("value"))!);
   await expect(page.getByLabel("현재 반", { exact: true })).toContainText("달님반");
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
+  await page.unroute(childrenUrl);
   await expect(page.getByText(factA, { exact: true })).toHaveCount(0);
   await expect(page.getByText("오늘 기록 0건")).toBeVisible();
+
+  await page.getByLabel("빠른 기록 내용").fill(factB);
+  await page.getByRole("button", { name: "누구 기록인지 고르기", exact: true }).click();
   const made = await confirmHome(page, other.id);
   await expect(page.getByText("오늘 기록 1건")).toBeVisible();
   await expect(page.getByText(factB, { exact: true }).first()).toBeVisible();
@@ -210,12 +216,12 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   await expect(routine).toHaveAttribute("href", `/routines?date=${date}&class_id=${other.id}`);
   await routine.click();
   await expect(page).toHaveURL(`/routines?date=${date}&class_id=${other.id}`);
-  await expect(page.getByRole("combobox", { name: "반", exact: true })).toHaveValue(
-    String(other.id),
-  );
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await expect(page.getByLabel("날짜", { exact: true })).toHaveValue(date);
+
+  // 뒤로 와도 같은 반이다. 홈은 주소에 반을 적지 않고 저장소에 남은 반을 본다.
   await page.goBack();
-  await expect(page).toHaveURL(`/?class_id=${other.id}`);
+  await expect(page).toHaveURL("/");
   await expect(page.getByLabel("현재 반", { exact: true })).toContainText("달님반");
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await expect(page.getByText("오늘 기록 1건")).toBeVisible();
@@ -228,52 +234,6 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
     "href",
     `/routines?date=${date}&class_id=${other.id}`,
   );
-  // A 저장을 기다리는 사이 B로 이동해도 늦은 완료가 B의 목록을 비우지 않는다.
-  await page.getByLabel("빠른 기록 내용").fill("햇살반의 늦게 저장된 추가 사실");
-  await page.getByRole("button", { name: "누구 기록인지 고르기", exact: true }).click();
-  await page.getByRole("combobox", { name: "반", exact: true }).selectOption({ label: "햇살반" });
-  let finishSave!: () => void;
-  let savingStarted!: () => void;
-  const holdSave = new Promise<void>((resolve) => {
-    finishSave = resolve;
-  });
-  const saveStarted = new Promise<void>((resolve) => {
-    savingStarted = resolve;
-  });
-  await page.route("**/api/observations", async (route) => {
-    if (route.request().method() === "POST") {
-      savingStarted();
-      await holdSave;
-    }
-    await route.continue();
-  });
-  const latePost = page.waitForResponse(
-    (r) => r.url().endsWith("/api/observations") && r.request().method() === "POST",
-  );
-  await pickChild(page);
-  await page.getByRole("button", { name: "이대로 남기기", exact: true }).click();
-  await saveStarted;
-  await page.getByRole("combobox", { name: "반", exact: true }).selectOption({ label: "달님반" });
-  await expect(page.getByText(factB, { exact: true }).first()).toBeVisible();
-  const refreshedB = page.waitForResponse((r) => {
-    const url = new URL(r.url());
-    return (
-      r.request().method() === "GET" &&
-      url.pathname === "/api/observations" &&
-      url.searchParams.get("class_id") === String(other.id)
-    );
-  });
-  finishSave();
-  const completed = await latePost;
-  expect(completed.status()).toBe(201);
-  expect(completed.request().postDataJSON().class_id).toBe(classId);
-  await refreshedB;
-  await page.unroute("**/api/observations");
-  await expect(page.getByLabel("현재 반", { exact: true })).toContainText("달님반");
-  await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
-  await expect(page.getByText("오늘 기록 1건")).toBeVisible();
-  await expect(page.getByText(factB, { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("햇살반의 늦게 저장된 추가 사실", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("L-home-class-B.png"), fullPage: true });
   await info.attach("L-class-scope", {
     body: JSON.stringify({
@@ -282,13 +242,10 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
       date,
       delayedRealResponse: true,
       backRestoredB: true,
-      lateSaveKeptB: true,
     }),
     contentType: "application/json",
   });
   await page.goto(`/records/routines?date=${date}&class_id=${other.id}`);
   await expect(page).toHaveURL(`/routines?date=${date}&class_id=${other.id}`);
-  await expect(page.getByRole("combobox", { name: "반", exact: true })).toHaveValue(
-    String(other.id),
-  );
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
 });

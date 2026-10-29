@@ -145,6 +145,19 @@ async function saved(page: Page, exact = true) {
   await expect(page.getByText(exact ? "저장했어요." : /저장했어요\./, { exact })).toBeVisible();
 }
 
+/**
+ * 반을 바꾼다. 고르개는 사이드바 하나뿐이고, 고르면 주소에서 옛 반을 떼고 다시 연다.
+ * 반이 둘 이상일 때만 나타나므로, 새로 만든 반이 목록에 붙기를 먼저 기다린다.
+ */
+async function switchClass(page: Page, label: string) {
+  const picker = page.getByRole("combobox", { name: "반 바꾸기", exact: true });
+  // 보기 글자는 「햇살반 · 만 4세」라 이름만으로는 안 맞는다. 값으로 고른다.
+  const option = picker.locator("option", { hasText: label });
+  await expect(option).toHaveCount(1);
+  await picker.selectOption((await option.getAttribute("value"))!);
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText(label);
+}
+
 async function expectNames(page: Page, expected: string[]) {
   await expect
     .poll(() =>
@@ -293,9 +306,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     expect(sourceRows[0].name).toBe("수정한 일과2");
     await page.getByRole("link", { name: "새 일과 기록 입력 →" }).click();
     await expect(page).toHaveURL(`/routines?date=${date}&class_id=${classId}`);
-    await expect(page.getByRole("combobox", { name: "반", exact: true })).toHaveValue(
-      String(classId),
-    );
+    await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("햇살반");
     await page.goBack();
     await expect(page).toHaveURL(/\/documents\?/);
     const candidates = page
@@ -476,7 +487,8 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await rows(page).nth(0).getByLabel("일과 이름").fill("햇살반 일과");
   await rows(page).nth(0).getByLabel("활동실행").fill("햇살반에서 블록을 쌓았다.");
   await saved(page);
-  await page.getByRole("combobox", { name: "반", exact: true }).selectOption(String(other.id));
+  await switchClass(page, "달님반");
+  await expect(page).toHaveURL(/\/routines(\?|$)/);
   await expect(rows(page)).toHaveCount(5);
   await expectNames(page, ["", "", "", "", ""]);
   await rows(page).nth(0).getByLabel("일과 이름").fill("달님반 일과");
@@ -494,7 +506,9 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     "달님반 일과",
   );
   await page.getByRole("link", { name: "새 일과 기록 입력 →" }).click();
-  await page.getByRole("combobox", { name: "반", exact: true }).selectOption(String(classId));
+  // 반을 바꾸면 **지금 있는 주소**를 다시 연다. 일과 기록에 도착한 뒤에 바꾼다.
+  await expect(page).toHaveURL(`/routines?date=${date}&class_id=${other.id}`);
+  await switchClass(page, "햇살반");
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("햇살반 일과");
   for (const [cls, id, fact] of [
     [classId, childId, "햇살반 관찰 사실"],
@@ -510,19 +524,16 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     });
   }
   await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
-  // 단일 반 온보딩은 담당 반을 묻지 않는다. 주 반이 없는 상태에서는 전체 조회 없이 선택을 기다린다.
-  await page.getByRole("combobox", { name: "담당 반" }).selectOption({ label: "햇살반" });
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toHaveCount(0);
-  await page.getByRole("combobox", { name: "담당 반" }).selectOption({ label: "달님반" });
+  await switchClass(page, "달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toHaveCount(0);
-  const write = page.getByRole("link", { name: /일과 기록/ }).first();
+  // 사이드바 메뉴에도 「일과 기록」이 있다. 본문의 길만 본다.
+  const write = page.getByRole("main").getByRole("link", { name: "일과 기록 →", exact: true });
   await expect(write).toHaveAttribute("href", `/routines?date=${date}&class_id=${other.id}`);
   await write.click();
-  await expect(page.getByRole("combobox", { name: "반", exact: true })).toHaveValue(
-    String(other.id),
-  );
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await page.getByLabel("날짜", { exact: true }).fill("2026-10-16");
   await expect(rows(page)).toHaveCount(5);
   await rows(page).nth(0).getByLabel("일과 이름").fill("지난 날짜 일과");
@@ -543,7 +554,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await expect(
     page.getByRole("heading", { name: "주간 기록", exact: true, level: 1 }),
   ).toBeVisible();
-  await page.getByRole("combobox", { name: "반", exact: true }).selectOption({ label: "달님반" });
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("I-quick-records-isolation.png"), fullPage: true });

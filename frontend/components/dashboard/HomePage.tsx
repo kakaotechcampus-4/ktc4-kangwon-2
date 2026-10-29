@@ -57,24 +57,13 @@ export default function HomePage() {
     }),
     { classId: null as number | null, primaryId: "" },
   );
-  const [pickedClass, setPickedClass] = useState<string | null>(null);
+  // 반은 사이드바가 정한다. 주소에 반이 적혀 오면(다른 화면에서 건너온 길) 그것이 먼저다.
   // URL의 반이 아직 도착하지 않았으면 다른 반으로 대체하지 않는다.
   const activeClass =
-    pickedClass !== null
-      ? classes.find((c) => c.id === pickedClass)
-      : entry.classId !== null
-        ? classes.find((c) => classServerId(c.id) === entry.classId)
-        : (classes.find((c) => c.id === entry.primaryId) ?? classes[0]);
+    entry.classId !== null
+      ? classes.find((c) => classServerId(c.id) === entry.classId)
+      : (classes.find((c) => c.id === entry.primaryId) ?? classes[0]);
   const activeClassId = activeClass?.id ?? "";
-  const pickClass = (id: string) => {
-    setPickedClass(id);
-    const serverId = classServerId(id);
-    if (serverId === null) return;
-    const params = new URLSearchParams(window.location.search);
-    params.set("class_id", String(serverId));
-    // 홈으로 뒤로 왔을 때도 같은 반. 반 선택만으로 history를 늘리지 않는다.
-    window.history.replaceState(null, "", `?${params}`);
-  };
 
   /** 반을 바꾸는 사이 돌아온 옛 응답이 지금 반의 목록을 덮지 않게 한다. */
   const visit = useRef(0);
@@ -149,7 +138,6 @@ export default function HomePage() {
         classes={classes}
         date={todayDate}
         activeClassId={activeClassId}
-        onPickClass={pickClass}
         onSaved={recordSaved}
         onError={setMessage}
       />
@@ -175,7 +163,6 @@ function Compose({
   classes,
   date,
   activeClassId,
-  onPickClass,
   onSaved,
   onError,
 }: {
@@ -183,11 +170,9 @@ function Compose({
   date: string;
   /** 홈이 정한 지금 반. 홈의 조회와 같은 값이라 통계와 저장 대상이 어긋나지 않는다. */
   activeClassId: string;
-  onPickClass: (id: string) => void;
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const withChildren = classes.filter((c) => c.children.length > 0);
   const [childId, setChildId] = useState("");
   // 원마다 축이 다르다 (observation-axis.ts). 5영역 원이면 다섯, 2축 원이면 둘이다.
   //
@@ -310,23 +295,6 @@ function Compose({
                 이렇게 남길까요?
               </h3>
               <div className="grid gap-3 sm:grid-cols-3">
-                <label className="text-[13px] text-primary-ink">
-                  반
-                  <select
-                    value={activeClassId}
-                    onChange={(e) => {
-                      onPickClass(e.target.value);
-                      setChildId("");
-                    }}
-                    className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
-                  >
-                    {withChildren.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.className}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <label className="text-[13px] text-primary-ink">
                   아이
                   <select

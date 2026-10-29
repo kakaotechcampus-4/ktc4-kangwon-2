@@ -16,6 +16,22 @@ import { withoutChildMetadata } from "../privacy/browser-storage";
 const KEY = "saessak.classSettings";
 export const CLASS_SETTINGS_CHANGED = "saessak:class-settings-changed";
 
+/**
+ * 반 설정이 바뀌면 알려 준다. 다른 탭에서 바꾼 것(`storage`)도 같이 듣는다.
+ *
+ * 사이드바가 유일한 반 고르개라서, 서버에만 있던 반이 뒤늦게 들어오면 **그 자리에서**
+ * 목록에 보여야 한다. 새로고침해야 보이면 그 반으로는 아예 갈 수가 없다.
+ */
+export const subscribeClassSettings = (changed: () => void) => {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(CLASS_SETTINGS_CHANGED, changed);
+  window.addEventListener("storage", changed);
+  return () => {
+    window.removeEventListener(CLASS_SETTINGS_CHANGED, changed);
+    window.removeEventListener("storage", changed);
+  };
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

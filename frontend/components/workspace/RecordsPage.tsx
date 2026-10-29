@@ -249,28 +249,6 @@ export default function RecordsPage() {
               >
                 <div className={ws.row}>
                   <label className={ws.field}>
-                    담당 반
-                    <select
-                      required
-                      disabled={!!editId}
-                      value={classId}
-                      {...fieldErrorProps("classId", invalid)}
-                      onChange={(e) => {
-                        setClassId(e.target.value);
-                        setChildId("");
-                        clearInvalid("classId");
-                      }}
-                    >
-                      <option value="">반 선택</option>
-                      {classes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.className || "이름 없는 반"}
-                        </option>
-                      ))}
-                    </select>
-                    <FieldError name="classId" invalid={invalid} />
-                  </label>
-                  <label className={ws.field}>
                     아동
                     <select
                       required

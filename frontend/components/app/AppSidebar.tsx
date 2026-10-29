@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "./icons";
+import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import { loadClassSettings, primaryClassFor, saveClassSettings } from "@/lib/onboarding/settings";
+import {
+  loadClassSettings,
+  primaryClassFor,
+  saveClassSettings,
+  subscribeClassSettings,
+} from "@/lib/onboarding/settings";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
 import type { ClassroomEntry } from "@/lib/onboarding/types";
 
@@ -69,24 +76,37 @@ const activeStyle =
   "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
 const idle = "border border-transparent text-ink-soft lg:hover:translate-x-1 hover:bg-shell-hover";
 
+const NO_ROOM = {
+  orgName: "",
+  className: "",
+  age: "",
+  classId: "",
+  classes: [] as ClassroomEntry[],
+};
+
+/** 지금 보고 있는 원·반과 고를 수 있는 반 목록. */
+function readRoom() {
+  const settings = loadClassSettings();
+  const klass = primaryClassFor(settings);
+  return {
+    orgName: settings?.orgName ?? "",
+    className: klass?.className ?? "",
+    age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
+    classId: klass?.id ?? "",
+    classes: settings?.classes ?? [],
+  };
+}
+
 /** 데스크톱 좌측 고정 사이드바. 모바일에서는 하단 네비게이션으로 접힌다. */
 export default function AppSidebar() {
   const pathname = usePathname() ?? "";
   const [teacher] = useClientState(() => accountName() || "", "");
-  const [room] = useClientState(
-    () => {
-      const settings = loadClassSettings();
-      const klass = primaryClassFor(settings);
-      return {
-        orgName: settings?.orgName ?? "",
-        className: klass?.className ?? "",
-        age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
-        classId: klass?.id ?? "",
-        classes: settings?.classes ?? [],
-      };
-    },
-    { orgName: "", className: "", age: "", classId: "", classes: [] as ClassroomEntry[] },
-  );
+  const [room, setRoom] = useClientState(readRoom, NO_ROOM);
+  // 반을 고르는 자리는 여기 하나뿐이다. **서버에만 있는 반**(다른 선생님이 만든 반,
+  // 기기를 바꾼 경우)도 여기 목록에 있어야 그 반으로 갈 수 있다. 들여오면서 저장소에도
+  // 남으므로, 아래 구독이 그것을 받아 목록을 그 자리에서 고친다.
+  const classes = useClasses();
+  useEffect(() => subscribeClassSettings(() => setRoom(readRoom())), [setRoom]);
 
   const isActive = (item: NavItem) => (item.match ? item.match(pathname) : item.href === pathname);
 
@@ -126,15 +146,17 @@ export default function AppSidebar() {
             {room.age && <span className="text-[13px] text-ink-soft"> · {room.age}</span>}
           </span>
         </span>
-        <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
-        {room.classes.length > 1 ? (
+        {classes.length > 1 && (
+          <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
+        )}
+        {classes.length > 1 ? (
           <select
             aria-label="반 바꾸기"
             value={room.classId}
             onChange={(e) => switchClass(e.target.value)}
             className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
           >
-            {room.classes.map((c) => (
+            {classes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.className}
                 {c.ageGroup ? ` · ${AGE_LABEL[c.ageGroup as AgeGroup]}` : ""}
@@ -217,7 +239,13 @@ function switchClass(classId: string) {
   const settings = loadClassSettings();
   if (!settings || classId === settings.primaryClassId) return;
   if (!saveClassSettings({ ...settings, primaryClassId: classId })) return;
-  window.location.reload();
+  // 화면들은 주소에 적힌 반을 주 반보다 먼저 본다 (깊은 링크로 들어온 길이니까).
+  // 그대로 다시 읽으면 옛 반이 이겨서 바꾼 것이 먹히지 않는다. 반만 떼고 날짜는 둔다.
+  const params = new URLSearchParams(window.location.search);
+  params.delete("class_id");
+  params.delete("class");
+  const query = params.toString();
+  window.location.href = window.location.pathname + (query ? `?${query}` : "");
 }
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {

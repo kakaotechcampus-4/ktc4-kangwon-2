@@ -204,9 +204,6 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await enterPilot(page);
   const fact = "블록 세 개를 쌓은 뒤 친구에게 같이 만들자고 말했다.";
   await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "담당 반", exact: true })
-    .selectOption({ label: "햇살반" });
   await page.getByRole("combobox", { name: "아동", exact: true }).selectOption({ label: "가나다" });
   await page.getByLabel("실제로 관찰한 사실").fill(fact);
   await page.getByRole("button", { name: "관찰 기록 저장", exact: true }).click();
@@ -248,9 +245,6 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
 
   // Read-only facts must lead back to a usable correction/review path.
   await page.getByRole("link", { name: "관찰 기록에서 고쳐 주세요 →", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "담당 반", exact: true })
-    .selectOption({ label: "햇살반" });
   await page.getByRole("button", { name: "기록 수정", exact: true }).click();
   const updatedFact = fact + " 놀이를 마친 뒤 블록을 바구니에 담았다.";
   await page.getByLabel("실제로 관찰한 사실").fill(updatedFact);

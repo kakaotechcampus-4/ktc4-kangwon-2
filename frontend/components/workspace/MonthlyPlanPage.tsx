@@ -36,6 +36,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
+import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import PlayMonthlyEntry from "./PlayMonthlyEntry";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 
@@ -72,8 +73,7 @@ export default function MonthlyPlanPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const classes = useClasses(setProblem);
   const [initialClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
-  const [pickedClass, setPickedClass] = useState<string | null>(null);
-  const localClassId = pickedClass ?? (initialClass || classes[0]?.id || "");
+  const localClassId = initialClass || classes[0]?.id || "";
   const scope = `${localClassId}|${month}`;
   const [loadedScope, setLoadedScope] = useState("");
   const [profileSource, setProfileSource] = useState("");
@@ -192,6 +192,9 @@ export default function MonthlyPlanPage() {
         (cell) => drafts[cell.item_id] !== undefined && drafts[cell.item_id] !== cell.value,
       ) ?? [];
 
+  // 반은 사이드바에서 바꾼다. 바꾸면 화면을 다시 읽으므로 고쳐 둔 칸이 사라질 수 있다.
+  useUnsavedWarning(changed.length > 0);
+
   /** Carry forward each returned revision; never discard other unsaved cells. */
   async function saveDrafts(current: MonthlyPlan): Promise<MonthlyPlan> {
     let next = current;
@@ -304,28 +307,6 @@ export default function MonthlyPlanPage() {
       )}
 
       <div className={ws.row} style={{ marginBottom: 20 }}>
-        <label className={ws.field}>
-          담당 반
-          <select
-            value={localClassId}
-            disabled={!!busy}
-            onChange={(e) => {
-              if (
-                changed.length &&
-                !window.confirm("저장하지 않은 수정 내용이 있어요. 반을 바꿀까요?")
-              )
-                return;
-              setDrafts({});
-              setPickedClass(e.target.value);
-            }}
-          >
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.className}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className={ws.field}>
           월
           <select
