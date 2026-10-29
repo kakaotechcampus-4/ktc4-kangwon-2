@@ -55,6 +55,7 @@ test("P0 clients use real URLs: center, mixed class, children, annual, patch, co
     const plan = await createAnnualPlan({
       class_id: klass.id,
       form_id: null,
+      format: "MONTHLY_THEME",
     });
     assert.deepEqual(
       plan.months.map((m) => m.month),
@@ -137,6 +138,7 @@ test("mock failure scenarios preserve data, validate bodies, and report empty co
     const input = {
       class_id: klass.id,
       form_id: null,
+      format: "MONTHLY_THEME",
     };
     for (const [code, status] of [
       ["NO_ACTIVITIES", 503],
@@ -341,6 +343,7 @@ test("single-page annual retry keeps server data unchanged on first failure and 
       await request("plans/annual?mockDelay=0", {
         class_id: klass.id,
         form_id: null,
+        format: "MONTHLY_THEME",
       })
     ).json();
     assert.deepEqual({ classes: read().classes, children: read().children }, before);

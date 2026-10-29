@@ -6,6 +6,7 @@ from app.shared.llm.client import (
     complete_json,
     is_mock,
     post_json,
+    post_stream,
     require_config,
 )
 from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
@@ -19,5 +20,6 @@ __all__ = [
     "complete_json",
     "is_mock",
     "post_json",
+    "post_stream",
     "require_config",
 ]

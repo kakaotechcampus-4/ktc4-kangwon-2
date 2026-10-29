@@ -1,16 +1,18 @@
-import { apiRequest } from "./client";
+import { ApiError, apiRequest } from "./client";
 import { downloadHwpx } from "./export";
+import { isAlreadyConfirmed, isStaleWrite } from "./documents";
 import type {
   AnnualInput,
-  AnnualPlan,
+  AnnualPlanResponse,
   AnnualPlanSummary,
   AnnualMonth,
   AnnualAuditEvent,
   MonthInput,
   ConfirmResult,
+  PlayProjectAnnualPlan,
 } from "./types";
 export const createAnnualPlan = (data: AnnualInput, signal?: AbortSignal) =>
-  apiRequest<AnnualPlan>("/api/plans/annual", {
+  apiRequest<AnnualPlanResponse>("/api/plans/annual", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -23,7 +25,7 @@ export const listAnnualPlans = (classId?: number, signal?: AbortSignal) =>
     { signal },
   );
 export const getAnnualPlan = (id: number, signal?: AbortSignal) =>
-  apiRequest<AnnualPlan>("/api/plans/annual/" + id, { signal });
+  apiRequest<AnnualPlanResponse>("/api/plans/annual/" + id, { signal });
 /** 전체 교체다. theme 과 sub_themes 를 둘 다 보낸다 — 하나만 보내면 나머지가 지워진다(§6). */
 export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
   apiRequest<AnnualMonth>("/api/plans/annual/" + id + "/months/" + month, {
@@ -31,6 +33,46 @@ export const putAnnualMonth = (id: number, month: number, data: MonthInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/**
+ * 놀이 프로젝트형의 고른 놀이를 저장한다 (§6-1). 네 구간을 전부 보낸다 — 빠지면 422 다.
+ * `expectedRevision` 이 다르면 409 `STALE_WRITE`, 확정본이면 409 `ALREADY_CONFIRMED`.
+ */
+export const savePlaySelection = (
+  id: number,
+  selections: Record<string, string[]>,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<PlayProjectAnnualPlan>("/api/plans/annual/" + id + "/selection", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selections, expected_revision: expectedRevision }),
+    signal,
+  });
+/**
+ * 놀이 프로젝트형 칸 하나를 고친다 (§6-1). 값은 앞뒤 공백을 턴 1~600자다.
+ * 지금 값과 같으면 422 라 같은 값은 보내지 않는다. 배움 칸 · 안 고른 후보 · 모르는 item 은 422 `["item_id"]`.
+ */
+export const editPlayCell = (
+  id: number,
+  itemId: string,
+  value: string,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<PlayProjectAnnualPlan>(
+    "/api/plans/annual/" + id + "/cells/" + encodeURIComponent(itemId),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value, expected_revision: expectedRevision }),
+      signal,
+    },
+  );
+/** 다른 곳에서 바뀌어 저장이 막힌 것인가 — 409 `STALE_WRITE` · `ALREADY_CONFIRMED`. */
+export const isSaveConflict = (error: unknown) => isStaleWrite(error) || isAlreadyConfirmed(error);
+/** 서버가 이 저장을 받지 않는 것인가 — 422. 다시 보내도 같은 답이다. 401 · 403 · 404 · 408 · 429 · 5xx 는 아니다(다시 저장하면 될 수 있다). */
+export const isRejectedSave = (error: unknown) => error instanceof ApiError && error.status === 422;
 /** 변경 이력. 시간순이고 필터 · 페이지가 없다 — 화면이 `month` 로 거른다. */
 export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
@@ -56,6 +98,18 @@ export const testResetAnnualPlan = (id: number) =>
 export const TEST_RESET_ENABLED = process.env.NEXT_PUBLIC_ALLOW_TEST_RESET === "1";
 export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
+
+/**
+ * 놀이 프로젝트형 확정 (§7). 읽은 revision 을 같이 보내고, 응답은 계획안 전체다.
+ * 부족하면 422 `fields` 가 부족 구간 키 배열, revision 이 다르면 409 `STALE_WRITE`.
+ * 이미 확정이면 revision 과 무관하게 200 이다.
+ */
+export const confirmPlayProject = (id: number, expectedRevision: number) =>
+  apiRequest<PlayProjectAnnualPlan>("/api/plans/annual/" + id + "/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expected_revision: expectedRevision }),
+  });
 
 /** 확정한 연간계획안을 hwpx 로 내려받는다 (§9). */
 export const downloadAnnualHwpx = (id: number) =>

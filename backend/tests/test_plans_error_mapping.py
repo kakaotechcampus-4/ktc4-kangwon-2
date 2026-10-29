@@ -50,7 +50,9 @@ def _class(session, name: str, *, commit: bool = False) -> dict:
 
 
 def _create(class_id: int):
-    return client.post("/api/plans/annual", json={"class_id": class_id, "form_id": None})
+    return client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": class_id, "form_id": None}
+    )
 
 
 def _error(response) -> tuple:

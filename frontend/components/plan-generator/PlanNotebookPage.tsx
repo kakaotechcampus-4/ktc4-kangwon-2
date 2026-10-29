@@ -149,13 +149,20 @@ function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => v
           <span className="font-display text-[22px] font-bold text-ink">
             {plan.school_year}학년도 연간계획안
           </span>
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] ${
-              confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
-            }`}
-          >
-            {confirmed ? "확정" : "초안"}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] ${
+                confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
+              }`}
+            >
+              {confirmed ? "확정" : "초안"}
+            </span>
+            {plan.format === "PLAY_PROJECT" && (
+              <span className="shrink-0 rounded-full bg-primary-tint px-2.5 py-1 text-[12px] text-primary-ink">
+                놀이 프로젝트형
+              </span>
+            )}
+          </div>
         </div>
         <p className="text-xs text-ink-soft">{localDate(plan.created_at)} 만듦</p>
         <span className="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-primary">

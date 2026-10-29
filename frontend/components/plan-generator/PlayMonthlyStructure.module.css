@@ -1,0 +1,72 @@
+.panel {
+  padding: 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font-size: 13px;
+}
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.panel ul {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.panel li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--pg-line);
+  overflow-wrap: anywhere;
+}
+.panel button,
+.confirm button,
+.remove button {
+  padding: 3px 8px;
+  border: 1px solid var(--pg-line);
+  border-radius: 4px;
+  background: var(--pg-paper);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.panel button:disabled,
+.confirm button:disabled,
+.remove button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.panel button[aria-pressed="true"] {
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+  font-size: 11px;
+}
+.note {
+  margin: 4px 0 0;
+  color: var(--pg-ink-soft);
+  font-size: 12px;
+}
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-cream);
+}
+.confirm p {
+  flex-basis: 100%;
+  margin: 0;
+}

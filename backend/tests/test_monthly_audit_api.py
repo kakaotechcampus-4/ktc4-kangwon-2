@@ -93,7 +93,10 @@ def _seed(session, name: str, email: str) -> dict:
 
 
 def _annual(seed: dict) -> int:
-    annual = client.post("/api/plans/annual", json={"class_id": seed["class"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": seed["class"], "form_id": None},
+    )
     assert annual.status_code == 201, annual.json()
     assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
     return annual.json()["id"]

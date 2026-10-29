@@ -133,9 +133,17 @@ async function world({ confirm = true } = {}) {
     age_max: 5,
     child_count: null,
   });
-  const annual = await createAnnualPlan({ class_id: klass.id, form_id: null });
+  const annual = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   if (confirm) await confirmAnnualPlan(annual.id);
-  const theirAnnual = await createAnnualPlan({ class_id: theirClass.id, form_id: null });
+  const theirAnnual = await createAnnualPlan({
+    class_id: theirClass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   await confirmAnnualPlan(theirAnnual.id);
   approveTemplateForTest(FOCUS);
   const ref = (await createTemplateProfile(center.id, INPUT)).profile_ref;

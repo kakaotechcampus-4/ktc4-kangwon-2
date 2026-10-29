@@ -59,6 +59,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.getByRole("link", { name: "계획안", exact: true }).click();
   await page.getByRole("link", { name: "계획안 만들기", exact: true }).click();
   await page.getByRole("button", { name: "연간 한 해 놀이 흐름", exact: true }).click();
+  await page.getByRole("button", { name: /^월별 주제형/ }).click();
   await page.getByRole("button", { name: "계획안 생성하기", exact: true }).click();
   await expect(page).toHaveURL(/\/plans\/annual\/\d+$/);
   const annualId = page.url().split("/").at(-1);
