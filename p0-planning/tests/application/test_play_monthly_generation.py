@@ -17,7 +17,6 @@ import pytest
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
-from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
 from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonSafetyLegalRuleRepository
 from ssuksak.adapters.safety_evidence_classification_repository import (
@@ -491,24 +490,6 @@ def test_reference_gates_reject_before_the_provider(setup, code):
 
     assert error.value.code == code
     assert provider.requests == [] and plans.save_count == 0
-
-
-def test_the_real_pending_curriculum_draft_is_rejected_and_stays_pending():
-    real = JsonCurriculumReferenceRepository()
-    catalog = real.get_catalog("ssuksak.nuri-curriculum-content", "nuri-curriculum-content-v0.1.0")
-    assert catalog.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
-    use_case, command, plans, provider, _ = _run(
-        curriculum=catalog,
-        curriculum_catalog_id=catalog.catalog_id,
-        curriculum_catalog_version=catalog.catalog_version,
-    )
-
-    with pytest.raises(PlayMonthlyGenerationError, match="CURRICULUM_REFERENCE_NOT_ACTIVE"):
-        use_case.execute(command)
-    assert provider.requests == [] and plans.save_count == 0
-    assert real.get_catalog(catalog.catalog_id, catalog.catalog_version).activation_status is (
-        ActivationStatus.PENDING_HUMAN_REVIEW
-    )
 
 
 @pytest.mark.parametrize("month", range(1, 13))

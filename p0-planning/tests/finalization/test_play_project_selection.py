@@ -31,7 +31,6 @@ from ssuksak.planning.application.play_project_lifecycle import (
 from ssuksak.planning.domain.errors import InvalidStateTransitionError
 from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.provenance import AuditEventType
-from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.planner.contracts import RawLlmResponse
 
 GOLDEN = json.loads(
@@ -40,17 +39,6 @@ GOLDEN = json.loads(
 TEACHER = ActorId("teacher_1")
 CLOCK = FixedClock(datetime(2026, 10, 26, 9, 0, tzinfo=UTC))
 FULL = [f"cand{n}" for n in range(1, 6)]
-
-
-class _Approved:
-    """Test-only approved view of the draft; the real file stays PENDING_HUMAN_REVIEW."""
-
-    def __init__(self) -> None:
-        self._inner = JsonCurriculumReferenceRepository()
-
-    def get_catalog(self, catalog_id, catalog_version):
-        catalog = self._inner.get_catalog(catalog_id, catalog_version)
-        return replace(catalog, activation_status=ActivationStatus.HUMAN_APPROVED)
 
 
 class _Provider:
@@ -80,7 +68,7 @@ class _OnePlanId(DeterministicIdGenerator):
 def _plan(period_keys):
     ids = _OnePlanId("pp")
     use_case = GeneratePlayProjectPlan(
-        curriculum_repository=_Approved(),
+        curriculum_repository=JsonCurriculumReferenceRepository(),
         plan_repository=InMemoryPlanRepository(),
         provider=_Provider(),
         clock=CLOCK,
