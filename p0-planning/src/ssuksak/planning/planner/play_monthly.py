@@ -26,8 +26,8 @@ from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
 
-PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v2"
-PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v2"
+PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v3"
+PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v3"
 CONTENT_MIN, CONTENT_MAX = 1, 3  # content ids per activity (first contract proposal)
 ACTIVITY_SECTIONS = ("together", "free_play")
 
@@ -44,6 +44,8 @@ SYSTEM_PROMPT = (
     "description 은 교사가 편집 화면에서 어떤 놀이인지 이해하도록 합니다체 1~3문장으로 쓴다 — "
     "준비해 볼 수 있는 재료나 공간, 놀이 대상, 유아가 해 볼 수 있는 행동이나 탐색을 쓴다. "
     "재료는 준비 제안이며 원에 있다고 단정하지 않는다. 유아가 다음에 할 행동의 순서나 만들어야 할 결과물을 정해 두지 않는다. "
+    "놀이마다 중요한 대상과 탐색을 중심으로 자연스럽게 쓴다 — 모든 설명을 재료 준비로 시작하거나 같은 문장 구조 · 맺는말로 되풀이하지 않는다. "
+    "준비 제안이라는 뜻을 매번 「제안합니다」로 나타낼 필요는 없다. "
     "모든 놀이 이름은 서로 달라야 한다. "
     "parent_plays 는 부모 연간에서 교사가 고른 이 시기의 놀이다. emphasized 가 true 인 놀이는 이번 달에 더 이어 갈 놀이다. "
     "parent_plays 의 materials · support_direction 은 참고 맥락이다. 고른 놀이를 모두 참고하되, 다섯 놀이를 이번 달에 하나씩 반드시 넣어야 하는 것은 아니다. "
@@ -52,6 +54,8 @@ SYSTEM_PROMPT = (
     f"유아 경험과 명확하게 연결되는 {CONTENT_MIN}~{CONTENT_MAX}개다. "
     "개수를 채우려고 연결이 약한 내용을 고르지 않는다. "
     "safety 는 safety_slots 의 slot 마다 정확히 하나씩 쓴다. text 는 그 달 유아에게 할 안전교육 내용 한 문장이며, 「[교통안전]」 같은 영역 이름을 앞에 붙이지 않는다. "
+    "text 는 주의할 대상 · 상황과 유아가 할 행동이 분명한 짧은 문장으로 쓴다 — 뜻을 더하지 않는 계절 수식 · 서론 · 부연과 여러 행동의 나열은 줄이되, "
+    "「조심해요」처럼 행동이 모호해지도록 줄이지 않고 뜻을 가르는 조건 · 부정 표현은 남긴다. "
     "refs 는 그 slot 의 allowed_refs 중 text 가 실제로 근거한 것이다 — 법정 영역 slot 은 정확히 1개, 생활안전 slot 은 1개 이상이다. "
     "habits 는 weeks 의 week_id 마다 하나씩, habit_entries 의 entry_id 를 고른다. 주차 수가 항목 수보다 많지 않으면 같은 항목을 되풀이하지 않는다. "
     "health_entry_id 는 health_entries, nutrition_entry_id 는 nutrition_entries 의 entry_id 중 하나다. 그 문장은 쓰지 않는다. "
