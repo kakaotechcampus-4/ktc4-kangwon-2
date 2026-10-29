@@ -15,12 +15,23 @@ from datetime import UTC, datetime
 import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
+from ssuksak.adapters.elice_openai_monthly import EliceOpenAiMonthlyAdapter, MonthlyLlmConfig
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
 from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
 from ssuksak.adapters.json_daily_life_reference_repository import JsonDailyLifeReferenceRepository
 from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonSafetyLegalRuleRepository
+from ssuksak.adapters.play_monthly_composition import (
+    CURRICULUM_CATALOG,
+    DAILY_LIFE_CATALOG,
+    DRILL_CATALOG,
+    LEGAL_RULE_VERSION,
+    SAFETY_CLASSIFICATION_VERSION,
+    SAFETY_QUALITY_VERSION,
+    play_monthly_command,
+    play_monthly_generation,
+)
 from ssuksak.adapters.safety_evidence_classification_repository import (
     JsonSafetyEvidenceClassificationRepository,
 )
@@ -59,6 +70,7 @@ from ssuksak.planning.planner.contracts import ProposalParseError, ProposalRejec
 from ssuksak.planning.planner.play_monthly import (
     PLAY_MONTHLY_PROMPT_VERSION,
     PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
+    RESPONSE_SCHEMA,
 )
 
 T0 = datetime(2027, 2, 1, tzinfo=UTC)
@@ -236,6 +248,7 @@ def _run(
     rule=RULE,
     classification=CLASSIFIED,
     quality=QUALITY_TABLE,
+    provider=None,
     **command_changes,
 ):
     parents = InMemoryPlanRepository()
@@ -243,7 +256,7 @@ def _run(
     if parent is not False:
         parents.save(PlanId("parent-1"), parent)
     plans = InMemoryPlanRepository()
-    provider = _Provider(*edits)
+    provider = _Provider(*edits) if provider is None else provider
     use_case = GeneratePlayMonthlyPlan(
         parent_repository=parents,
         plan_repository=plans,
@@ -834,6 +847,86 @@ def test_the_real_daily_life_sentences_are_copied_with_their_entry_and_curriculu
     # The document's [분류] comes from the plan's own catalog version.
     document = play_monthly_document(plan, daily)
     assert [w.habit_label for w in document.weeks] == [daily.get(h.habit.entry_id).label for h in plan.habits]
+
+
+class _Transport:
+    """Offline OpenAI-compatible transport: answers with the fake provider's response for the request."""
+
+    def __init__(self, fake) -> None:
+        self.fake = fake
+        self.payloads = []
+        self.request = None
+
+    def post_json(self, url, *, headers, payload, timeout):
+        self.payloads.append(payload)
+        content = self.fake.generate_play_monthly(self.request).content
+        return {"model": "gpt-6-luna", "choices": [{"message": {"content": content}}]}
+
+
+class _Adapter(EliceOpenAiMonthlyAdapter):
+    """The real adapter; it only hands the request to the offline transport so the fake can answer it."""
+
+    def generate_play_monthly(self, request):
+        self._transport.request = request
+        return super().generate_play_monthly(request)
+
+
+def test_the_elice_adapter_carries_the_first_request_and_its_repair_without_streaming():
+    transport = _Transport(_Provider(_set(("together",), []), None))
+    adapter = _Adapter(MonthlyLlmConfig("https://offline.invalid/v1", "test-only"), transport=transport)
+    use_case, command, plans, *_ = _run(provider=adapter)
+
+    use_case.execute(command)
+
+    assert len(transport.payloads) == 2 and plans.save_count == 1
+    for payload in transport.payloads:
+        assert payload["response_format"]["json_schema"] == {
+            "name": "play_monthly_proposal",
+            "strict": True,
+            "schema": RESPONSE_SCHEMA,
+        }
+        assert not {"stream", "stream_options", "max_completion_tokens"} & set(payload)
+    assert [r.prompt_version for r in transport.fake.requests] == [
+        PLAY_MONTHLY_PROMPT_VERSION,
+        PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
+    ]
+
+
+def test_the_assembly_versions_name_the_published_references():
+    assert JsonCurriculumReferenceRepository().get_catalog(*CURRICULUM_CATALOG) is not None
+    daily = JsonDailyLifeReferenceRepository().get_catalog(*DAILY_LIFE_CATALOG)
+    assert (daily.curriculum_catalog_id, daily.curriculum_catalog_version) == CURRICULUM_CATALOG
+    drills = JsonDrillTopicReferenceRepository().get_catalog(*DRILL_CATALOG)
+    assert (drills.curriculum_catalog_id, drills.curriculum_catalog_version) == CURRICULUM_CATALOG
+    assert JsonSafetyLegalRuleRepository().get_legal_rule(LEGAL_RULE_VERSION) is not None
+    assert (CLASSIFIED.classification_version, QUALITY_TABLE.quality_version) == (
+        SAFETY_CLASSIFICATION_VERSION,
+        SAFETY_QUALITY_VERSION,
+    )
+
+
+def test_the_assembly_refuses_unapproved_references_before_any_request():
+    parents, plans = InMemoryPlanRepository(), InMemoryPlanRepository()
+    parents.save(PlanId("parent-1"), _parent())
+    transport = _Transport(_Provider())
+    use_case = play_monthly_generation(
+        parent_repository=parents,
+        plan_repository=plans,
+        provider=_Adapter(MonthlyLlmConfig("https://offline.invalid/v1", "test-only"), transport=transport),
+        clock=FixedClock(datetime(2027, 2, 20, tzinfo=UTC)),
+        id_generator=DeterministicIdGenerator(),
+    )
+    command = play_monthly_command(
+        parent_plan_id=PlanId("parent-1"),
+        classroom_ref="classroom-test",
+        school_year=2027,
+        target_month=YearMonth(2027, 4),
+    )
+
+    # Which draft is reached first depends on what is approved; none is turned on by assembling.
+    with pytest.raises(PlayMonthlyGenerationError, match="REFERENCE_NOT_ACTIVE"):
+        use_case.execute(command)
+    assert transport.payloads == [] and plans.save_count == 0
 
 
 def test_domain_rejects_duplicate_drill_topics():

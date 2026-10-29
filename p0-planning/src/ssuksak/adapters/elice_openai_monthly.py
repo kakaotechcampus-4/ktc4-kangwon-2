@@ -21,6 +21,10 @@ from ssuksak.planning.planner.contracts import (
     MonthlyPlanningRequest,
     RawLlmResponse,
 )
+from ssuksak.planning.planner.play_monthly import (
+    RESPONSE_SCHEMA as PLAY_MONTHLY_RESPONSE_SCHEMA,
+    PlayMonthlyRequest,
+)
 from ssuksak.planning.planner.play_project import (
     RESPONSE_SCHEMA as PLAY_PROJECT_RESPONSE_SCHEMA,
     PlayProjectRequest,
@@ -246,6 +250,19 @@ class EliceOpenAiMonthlyAdapter:
             schema_name="play_project_period_proposal",
             schema=PLAY_PROJECT_RESPONSE_SCHEMA,
             stream=True,
+        )
+
+    def generate_play_monthly(self, request: PlayMonthlyRequest) -> RawLlmResponse:
+        """Play-centred monthly (ADR-046 Q2): first and repair requests, one strict schema.
+
+        No stream and no output cap: the play-project settings are not carried over until a
+        synchronous run is measured. Repair is the Application's (at most once), not a retry here.
+        """
+        return self._complete(
+            request.system_prompt,
+            request.user_content,
+            schema_name="play_monthly_proposal",
+            schema=PLAY_MONTHLY_RESPONSE_SCHEMA,
         )
 
     def _complete(
