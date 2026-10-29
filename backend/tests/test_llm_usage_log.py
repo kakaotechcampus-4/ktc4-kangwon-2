@@ -62,7 +62,7 @@ def test_연간_호출은_한_줄을_남긴다(monkeypatch, usage_lines):
     )
     EliceThemeTextGenerator().generate((request,))
 
-    assert usage_lines == ["llm_usage model=openai/gpt-6-luna prompt=120 completion=30 total=150"]
+    assert usage_lines == ["llm_usage model=openai/gpt-6.1-sol prompt=120 completion=30 total=150"]
 
 
 def test_월간_호출은_보낸_모델_이름으로_한_줄을_남긴다(monkeypatch, usage_lines):

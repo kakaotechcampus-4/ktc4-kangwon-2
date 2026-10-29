@@ -852,7 +852,7 @@ class _Transport:
     def post_stream(self, url, *, headers, payload, timeout):
         self.payloads.append(payload)
         content = self.fake.generate_play_monthly(self.request).content
-        return {"model": "gpt-6-luna", "choices": [{"message": {"content": content}}]}
+        return {"model": "gpt-6.1-sol", "choices": [{"message": {"content": content}}]}
 
 
 class _Adapter(EliceOpenAiMonthlyAdapter):

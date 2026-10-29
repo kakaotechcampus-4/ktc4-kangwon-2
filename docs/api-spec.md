@@ -773,7 +773,7 @@ NOT_PLACED        배치 계획이 있고 이 달엔 없다
 `safety_education_generation`도 미입력이면 null, 입력했으면 `{method: "MANUAL", rule_id: null, rule_version: null}`이다.
 주제의 `generation`을 안전교육의 생성 방식으로 읽지 않는다.
 
-**주제 문장은 `LLM_MODE=real` 일 때 AI 가 쓴다.** 모델은 `openai/gpt-6-luna` 다(ADR-023).
+**주제 문장은 `LLM_MODE=real` 일 때 AI 가 쓴다.** 모델은 `openai/gpt-6.1-sol` 다(ADR-023).
 **같은 입력에 같은 답이 온다고 가정하지 않는다** — 이 모델이 온도 0 을 거부해서 우리가
 온도를 안 보낸다. 다만 연간은 반당 하나라 다시 만들 수 없고(「반당 하나다」), 만든 뒤에는
 저장된 값이 그대로다. 달라지는 것은 **새로 만들 때뿐**이다.
@@ -2023,7 +2023,7 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
 `CONFIRMED` 무관 `ALREADY_EXISTS` 409, 동시 요청은 DB 유일 제약이 막는다)는 월간과 같다.
 
 **실제 LLM 은 설정으로 켠다(W7).** `LLM_MODE=real` 이고 `WEEKLY_LLM_ENABLED=1` 일 때만 월간과 같은 모델 · 전송
-(Luna-6)으로 만든다. `WEEKLY_LLM_ENABLED` 의 기본은 꺼짐이고, 꺼져 있으면 real 에서도 503 `DEPENDENCY_UNAVAILABLE` 이다 —
+(Sol-6.1)으로 만든다. `WEEKLY_LLM_ENABLED` 의 기본은 꺼짐이고, 꺼져 있으면 real 에서도 503 `DEPENDENCY_UNAVAILABLE` 이다 —
 실제 문장 품질을 실측(W7b)으로 확인한 뒤 켠다. 개발 · 테스트(mock)는 요청 기반 결정적 provider 로 돈다.
 
 ### 주간계획안 응답
