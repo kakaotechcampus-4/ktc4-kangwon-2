@@ -2641,6 +2641,33 @@ test("아이를 여럿 고르면 기록이 사람 수만큼 남는다", async (t
   assert.deepEqual(new Set(saved.map((r) => r.fact)), new Set(["블록으로 길을 만들었다"]));
 });
 
+test("기록이 한 건도 없는 반에서는 빈 칸을 칠하지 않는다", async (t) => {
+  // 「한 주 넘게 비었다」는 치우침을 가리키는 말이다. 처음 시작한 반은 전원이 비어 있어
+  // 열여덟 칸이 전부 노래지는데, 가리킬 치우침이 없는 자리에 경고만 남는다.
+  const records = recordsServer();
+  const view = homePage(t, {
+    rooms: [CLASS_A],
+    primaryClassId: "",
+    classes: [ROOM_MANY],
+    records,
+  });
+  await view.flush();
+  view.type(view.factInput(), "모래를 체에 걸렀다");
+  await view.flush();
+  view.button("누구 기록인지 고르기").props.onClick();
+  await view.flush();
+  assert.ok(view.text().includes("한 줄씩 쌓이면"), view.text());
+
+  await pickChild(view, "김하늘");
+  view.saveButton().props.onClick();
+  await view.flush();
+  view.type(view.factInput(), "블록으로 길을 만들었다");
+  await view.flush();
+  view.button("누구 기록인지 고르기").props.onClick();
+  await view.flush();
+  assert.ok(view.text().includes("연노랑 칸은"), "한 건이라도 쌓이면 빈 칸을 가리킨다");
+});
+
 test("여럿 고르기를 끄면 한 명만 남는다", async (t) => {
   // 켠 채로 둘을 골라 두고 껐을 때, 보이지 않는 아이가 같이 저장되면 안 된다.
   const records = recordsServer();

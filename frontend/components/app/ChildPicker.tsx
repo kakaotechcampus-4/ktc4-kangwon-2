@@ -68,6 +68,14 @@ export default function ChildPicker({
   // 교사의 손이 자리를 외우지 못한다.
   const sorted = [...childList].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
+  /*
+    기록이 **한 건도 없는 반**에서는 빈 칸을 칠하지 않는다.
+
+    「한 주 넘게 비었다」는 치우침을 가리키는 말인데, 처음 시작한 반은 전원이 비어 있어서
+    열여덟 칸이 전부 노래진다. 가리킬 치우침이 없는데 경고만 남는다.
+  */
+  const started = records.length > 0;
+
   const toggle = (id: string) => {
     if (!many) {
       onSelect([id]);
@@ -102,7 +110,7 @@ export default function ChildPicker({
         {sorted.map((child) => {
           const tally = tallyFor(records, child.id, today);
           const on = selected.includes(child.id);
-          const stale = !on && isStale(tally);
+          const stale = started && !on && isStale(tally);
           return (
             <button
               key={child.id}
@@ -133,7 +141,9 @@ export default function ChildPicker({
       </div>
 
       <p className="text-xs leading-relaxed text-ink-soft">
-        숫자는 이번 주에 적은 횟수예요. 연노랑 칸은 한 주 넘게 비어 있어요.
+        {started
+          ? "숫자는 이번 주에 적은 횟수예요. 연노랑 칸은 한 주 넘게 비어 있어요."
+          : "한 줄씩 쌓이면 여기에 아이마다 마지막 기록과 이번 주 횟수가 보여요."}
       </p>
     </div>
   );
