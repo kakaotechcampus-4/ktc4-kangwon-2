@@ -39,15 +39,15 @@ CATALOG_ID = "ssuksak.nuri-curriculum-content"
 VERSION = "nuri-curriculum-content-v0.1.0"
 
 
-class _Approved:
-    """Test-only approved view of the draft; the real file stays PENDING_HUMAN_REVIEW."""
+class _Pending:
+    """In-memory copy with the approval taken back; the real file is HUMAN_APPROVED."""
 
     def __init__(self) -> None:
         self._inner = JsonCurriculumReferenceRepository()
 
     def get_catalog(self, catalog_id, catalog_version):
         catalog = self._inner.get_catalog(catalog_id, catalog_version)
-        return replace(catalog, activation_status=ActivationStatus.HUMAN_APPROVED)
+        return replace(catalog, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW)
 
 
 class _FakeProvider:
@@ -81,7 +81,7 @@ def _rest() -> list[dict]:
 def _run(provider, curriculum=None):
     plans = InMemoryPlanRepository()
     use_case = GeneratePlayProjectPlan(
-        curriculum_repository=curriculum or _Approved(),
+        curriculum_repository=curriculum or JsonCurriculumReferenceRepository(),
         plan_repository=plans,
         provider=provider,
         clock=FixedClock(datetime(2027, 2, 1, tzinfo=UTC)),
@@ -127,7 +127,7 @@ def test_generates_a_draft_period_with_server_rendered_learning():
 
 def test_pending_reference_blocks_before_the_llm_call():
     provider = _FakeProvider(_proposal())
-    use_case, command, plans = _run(provider, JsonCurriculumReferenceRepository())
+    use_case, command, plans = _run(provider, _Pending())
 
     with pytest.raises(PlayProjectGenerationError) as error:
         use_case.execute(command)

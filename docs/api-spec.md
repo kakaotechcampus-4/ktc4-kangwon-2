@@ -728,7 +728,7 @@ GENERATION_FAILED       500   호출이 깨졌다 · 계약 위반 · 시간 초
 ALREADY_EXISTS          409   같은 반 두 번째 생성 — 형식과 관계없다
 ```
 
-**지금은 누리과정 Reference 가 `PENDING_HUMAN_REVIEW` 다.** 승인 전에는 `LLM_MODE=mock` 을 포함해 놀이 프로젝트형 생성이 모두 503 이다.
+**누리과정 Reference `nuri-curriculum-content-v0.1.0` 은 2026-10-29 사람 승인됐다(`HUMAN_APPROVED`).** 판이 없거나 승인이 거둬지면 `LLM_MODE=mock` 을 포함해 놀이 프로젝트형 생성이 모두 503 이다.
 문구는 「지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.」다.
 
 **놀이 프로젝트형 저장 연결**(ADR-048) — 선택 저장 · 칸 편집은 §6-1, 확정은 §7, 이력 API 는 §7-1, 확정본 내보내기는 §9 를 따른다.

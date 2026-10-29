@@ -61,13 +61,15 @@ def _logged_in(teacher):
     return teacher
 
 
-class _Approved:
+class _Pending:
+    """In-memory copy with the approval taken back; the real file is HUMAN_APPROVED."""
+
     def __init__(self):
         self._inner = JsonCurriculumReferenceRepository()
 
     def get_catalog(self, catalog_id, catalog_version):
         catalog = self._inner.get_catalog(catalog_id, catalog_version)
-        return replace(catalog, activation_status=ActivationStatus.HUMAN_APPROVED)
+        return replace(catalog, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW)
 
 
 class _FailingProvider:
@@ -93,7 +95,6 @@ class _ThirdPeriodInvalidProvider:
 
 
 def _approved(monkeypatch, provider=None):
-    monkeypatch.setattr(play_project, "curriculum_repository", lambda: _Approved())
     if provider is not None:
         monkeypatch.setattr(play_project, "provider", lambda: provider)
     else:
@@ -368,6 +369,7 @@ def test_요청마다_고정한_계획안_id는_서로_다르다(world, monkeypa
 
 
 def test_승인_전_누리과정이면_503이고_행을_저장하지_않는다(world, monkeypatch):
+    monkeypatch.setattr(play_project, "curriculum_repository", lambda: _Pending())
     monkeypatch.setattr(play_project, "provider", lambda: play_project.MockPlayProjectProvider())
 
     response = client.post(
