@@ -102,6 +102,9 @@ PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
         "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
     ),
+    "daily-life/daily_life_reference_v0_1_0_draft.json": (
+        "19fb432fba5c7bef5ed0a71138c584d93933419b31d4302d1da6e4867ab10bd7"
+    ),
 }
 
 # What a human approval may change inside `review`. Everything else is content.
@@ -127,6 +130,9 @@ PENDING_REVIEW_CONTENT = {
     ),
     "templates/weekly_template_a_v0_1_0.json": (
         "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
+    ),
+    "daily-life/daily_life_reference_v0_1_0_draft.json": (
+        "2ae1d32fd616409458705b6ebbfe8294cd50b733540716270309d55706fbe936"
     ),
 }
 

@@ -17,6 +17,8 @@ import pytest
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
+from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
+from ssuksak.adapters.json_daily_life_reference_repository import JsonDailyLifeReferenceRepository
 from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonSafetyLegalRuleRepository
 from ssuksak.adapters.safety_evidence_classification_repository import (
@@ -30,6 +32,7 @@ from ssuksak.planning.application.generate_play_monthly_plan import (
     PlayMonthlyGenerationError,
 )
 from ssuksak.planning.application.generate_play_project_plan import PLAY_PROJECT_LAYOUT_V0_2
+from ssuksak.planning.application.play_monthly_document import play_monthly_document
 from ssuksak.planning.domain.curriculum_reference import CurriculumCatalog, CurriculumContent
 from ssuksak.planning.domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
 from ssuksak.planning.domain.drill_topic_reference import DrillKind, DrillOrigin, DrillTopic, DrillTopicCatalog
@@ -751,6 +754,68 @@ def test_the_real_drill_draft_loads_pending_and_is_rejected():
     with pytest.raises(PlayMonthlyGenerationError, match="DRILL_REFERENCE_NOT_ACTIVE"):
         use_case.execute(command)
     assert provider.requests == [] and plans.save_count == 0
+
+
+def _real_references(*, approve_daily_life: bool):
+    """The real 누리과정 · daily-life · drill files, approved in memory only where a test needs it."""
+    daily = JsonDailyLifeReferenceRepository().get_catalog("ssuksak.daily-life", "daily-life-v0.1.0")
+    curriculum = JsonCurriculumReferenceRepository().get_catalog(
+        daily.curriculum_catalog_id, daily.curriculum_catalog_version
+    )
+    drills = JsonDrillTopicReferenceRepository().get_catalog(
+        "ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0"
+    )
+    approved = ActivationStatus.HUMAN_APPROVED
+    if approve_daily_life:
+        daily = replace(daily, activation_status=approved)
+    return dict(
+        curriculum=replace(curriculum, activation_status=approved),
+        daily=daily,
+        drills=replace(drills, activation_status=approved),
+        curriculum_catalog_id=curriculum.catalog_id,
+        curriculum_catalog_version=curriculum.catalog_version,
+        daily_life_catalog_id=daily.catalog_id,
+        daily_life_catalog_version=daily.catalog_version,
+        drill_catalog_id=drills.catalog_id,
+        drill_catalog_version=drills.catalog_version,
+    )
+
+
+def test_the_real_daily_life_file_loads_pending_and_is_rejected():
+    references = _real_references(approve_daily_life=False)
+    assert references["daily"].activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
+    use_case, command, plans, provider, _ = _run(**references)
+
+    with pytest.raises(PlayMonthlyGenerationError, match="DAILY_LIFE_REFERENCE_NOT_ACTIVE"):
+        use_case.execute(command)
+    assert provider.requests == [] and plans.save_count == 0
+
+
+def test_the_real_daily_life_sentences_are_copied_with_their_entry_and_curriculum_version():
+    references = _real_references(approve_daily_life=True)
+    daily, curriculum = references["daily"], references["curriculum"]
+    health, nutrition = "ssuksak.daily-life.health.02", "ssuksak.daily-life.nutrition.07"
+    use_case, command, plans, provider, _ = _run(
+        lambda data: data.update(health_entry_id=health, nutrition_entry_id=nutrition), **references
+    )
+
+    plan = use_case.execute(command)
+
+    assert provider.requests[0].habit_entry_ids == tuple(e.entry_id for e in daily.of_kind(DailyLifeKind.HABIT))
+    assert (plan.references.daily_life_catalog_id, plan.references.daily_life_catalog_version) == (
+        "ssuksak.daily-life",
+        "daily-life-v0.1.0",
+    )
+    picked = [(plan.health, health), (plan.nutrition, nutrition), *((h.habit, h.habit.entry_id) for h in plan.habits)]
+    for row, entry_id in picked:
+        entry = daily.get(entry_id)
+        assert (row.entry_id, row.cell.value) == (entry_id, entry.text)
+        assert [(s.source_type, s.source_id, s.source_version) for s in row.cell.evidence] == [
+            (EvidenceSourceType.CURRICULUM, entry.content_id, curriculum.catalog_version)
+        ]
+    # The document's [분류] comes from the plan's own catalog version.
+    document = play_monthly_document(plan, daily)
+    assert [w.habit_label for w in document.weeks] == [daily.get(h.habit.entry_id).label for h in plan.habits]
 
 
 def test_domain_rejects_duplicate_drill_topics():
