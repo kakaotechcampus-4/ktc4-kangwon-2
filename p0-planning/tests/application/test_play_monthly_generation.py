@@ -15,7 +15,11 @@ from datetime import UTC, datetime
 import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
-from ssuksak.adapters.elice_openai_monthly import EliceOpenAiMonthlyAdapter, MonthlyLlmConfig
+from ssuksak.adapters.elice_openai_monthly import (
+    PLAY_MONTHLY_MAX_COMPLETION_TOKENS,
+    EliceOpenAiMonthlyAdapter,
+    MonthlyLlmConfig,
+)
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
 from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
@@ -832,14 +836,20 @@ def test_the_real_daily_life_sentences_are_copied_with_their_entry_and_curriculu
 
 
 class _Transport:
-    """Offline OpenAI-compatible transport: answers with the fake provider's response for the request."""
+    """Offline streaming transport, already folded: answers with the fake provider's response.
+
+    A request that does not stream fails here.
+    """
+
+    def post_json(self, url, *, headers, payload, timeout):
+        raise AssertionError("play-monthly requests stream")
 
     def __init__(self, fake) -> None:
         self.fake = fake
         self.payloads = []
         self.request = None
 
-    def post_json(self, url, *, headers, payload, timeout):
+    def post_stream(self, url, *, headers, payload, timeout):
         self.payloads.append(payload)
         content = self.fake.generate_play_monthly(self.request).content
         return {"model": "gpt-6-luna", "choices": [{"message": {"content": content}}]}
@@ -853,7 +863,7 @@ class _Adapter(EliceOpenAiMonthlyAdapter):
         return super().generate_play_monthly(request)
 
 
-def test_the_elice_adapter_carries_the_first_request_and_its_repair_without_streaming():
+def test_the_elice_adapter_streams_the_first_request_and_its_repair_with_their_own_cap():
     transport = _Transport(_Provider(_set(("together",), []), None))
     adapter = _Adapter(MonthlyLlmConfig("https://offline.invalid/v1", "test-only"), transport=transport)
     use_case, command, plans, *_ = _run(provider=adapter)
@@ -867,7 +877,8 @@ def test_the_elice_adapter_carries_the_first_request_and_its_repair_without_stre
             "strict": True,
             "schema": RESPONSE_SCHEMA,
         }
-        assert not {"stream", "stream_options", "max_completion_tokens"} & set(payload)
+        assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
+        assert payload["max_completion_tokens"] == PLAY_MONTHLY_MAX_COMPLETION_TOKENS == 6000
     assert [r.prompt_version for r in transport.fake.requests] == [
         PLAY_MONTHLY_PROMPT_VERSION,
         PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
