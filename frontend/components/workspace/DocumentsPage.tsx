@@ -631,6 +631,13 @@ export default function DocumentsPage() {
                       <option value="routine">일과 기록</option>
                     </select>
                   </label>
+                  {/* 확정하지 않은 일일은 근거 목록에 아예 안 뜬다. 고르고 난 뒤 빈 목록을
+                      보고서야 알게 되어 「왜 비었지」로 한 번 막혔다. 여기서 먼저 말해 준다. */}
+                  <p className={ws.hint}>
+                    {weeklyFrom === "dailyLog"
+                      ? "확정한 일일 보육일지만 근거가 돼요. 아직 확정한 게 없으면 일과 기록으로 바로 만들 수 있어요."
+                      : "그 주의 일과 기록을 바로 근거로 씁니다. 일일 보육일지를 거치지 않아도 돼요."}
+                  </p>
                 </div>
               )}
               <div className={ws.row}>
@@ -671,7 +678,7 @@ export default function DocumentsPage() {
                   : kind === "weeklyLog"
                     ? weeklyFrom === "routine"
                       ? "일일 보육일지를 쓰지 않는 원이면 그 주 일과 기록을 바로 근거로 써요. 날짜별 해석·지원 칸은 비워서 내보내고, 주간 총평 하나만 적어요."
-                      : "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
+                      : "시작일과 종료일은 같은 주로 골라주세요. 그 주에 확정한 일일 보육일지가 아래에 뜹니다."
                     : kind === "assessment"
                       ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
                       : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
@@ -850,10 +857,16 @@ export default function DocumentsPage() {
                   const body = (
                     <>
                       <div className={ws.between}>
-                        <span className={ws.badge}>
+                        <span
+                          className={`${ws.badge} ${d.status === "confirmed" ? ws.badgeDone : ""}`}
+                        >
                           {d.status === "confirmed" ? "확정" : "검토 중"}
-                          {d.stale ? " · 재검토" : ""}
                         </span>
+                        {/* 「· 재검토」를 상태 글자에 이어 붙이면 상태 하나처럼 읽혔다.
+                            따로 떼어 노란 꼬리표로 둔다 — 손이 더 가야 한다는 뜻이다. */}
+                        {d.stale && (
+                          <span className={`${ws.badge} ${ws.badgeTodo}`}>다시 검토</span>
+                        )}
                         <span className={ws.muted}>{localDate(d.createdAt)}</span>
                       </div>
                       <h3 style={{ marginTop: 13 }}>{d.title}</h3>

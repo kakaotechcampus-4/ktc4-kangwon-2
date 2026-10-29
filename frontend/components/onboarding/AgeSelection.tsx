@@ -20,7 +20,7 @@ export default function AgeSelection({
 
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="font-semibold text-[15px] xl:text-lg text-ink mb-2">연령</legend>
+      <legend className="font-semibold text-[17px] xl:text-lg text-ink mb-2">연령</legend>
 
       {/* 한 줄에 3개 배치 */}
       <div className="grid grid-cols-3 gap-x-4 gap-y-1">
@@ -58,7 +58,7 @@ function AgeCheckbox({
   return (
     <label
       htmlFor={id}
-      className="flex items-center gap-2.5 min-h-[40px] text-base lg:text-[15px] xl:text-[17px] text-ink cursor-pointer select-none"
+      className="flex items-center gap-2.5 min-h-[40px] text-base lg:text-[17px] xl:text-[17px] text-ink cursor-pointer select-none"
     >
       <input
         id={id}

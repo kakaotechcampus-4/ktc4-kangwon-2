@@ -108,7 +108,7 @@ async function enterHome(page: Page) {
 
 async function saveHome(page: Page, fact: string, expectedClassId: number) {
   await page.getByLabel("빠른 기록 내용").fill(fact);
-  await page.getByRole("button", { name: "기록 남기기", exact: true }).click();
+  await page.getByRole("button", { name: "누구 기록인지 고르기", exact: true }).click();
   return confirmHome(page, expectedClassId);
 }
 /** 「이렇게 남길까요?」의 아이 칸에서 첫 아이를 고른다. 비워 둔 채로는 저장이 막힌다. */
@@ -194,7 +194,7 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   await expect(page.getByText(factA, { exact: true }).first()).toBeVisible();
   release();
   await page.getByLabel("빠른 기록 내용").fill(factB);
-  await page.getByRole("button", { name: "기록 남기기", exact: true }).click();
+  await page.getByRole("button", { name: "누구 기록인지 고르기", exact: true }).click();
   const select = page.getByRole("combobox", { name: "반", exact: true });
   await select.selectOption({ label: "달님반" });
   await page.unroute(childrenUrl);
@@ -230,7 +230,7 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   );
   // A 저장을 기다리는 사이 B로 이동해도 늦은 완료가 B의 목록을 비우지 않는다.
   await page.getByLabel("빠른 기록 내용").fill("햇살반의 늦게 저장된 추가 사실");
-  await page.getByRole("button", { name: "기록 남기기", exact: true }).click();
+  await page.getByRole("button", { name: "누구 기록인지 고르기", exact: true }).click();
   await page.getByRole("combobox", { name: "반", exact: true }).selectOption({ label: "햇살반" });
   let finishSave!: () => void;
   let savingStarted!: () => void;

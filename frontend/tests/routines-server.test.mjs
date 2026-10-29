@@ -2546,14 +2546,14 @@ function homePage(
 
 /**
  * 홈에서 한 줄 적고 저장까지. 실제 화면 순서대로 —
- * 적기 → 기록 남기기 → **아이 고르기** → 이대로 남기기.
+ * 적기 → 누구 기록인지 고르기 → **아이 고르기** → 이대로 남기기.
  *
  * 아이 칸은 비어 있는 채로 열린다. 고르기 전에는 「이대로 남기기」가 눌리지 않는다.
  */
 async function homeSave(view, fact) {
   view.type(view.factInput(), fact);
   await view.flush();
-  view.button("기록 남기기").props.onClick();
+  view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
   await pickFirstChild(view);
   view.button("이대로 남기기").props.onClick();
@@ -2568,7 +2568,7 @@ test("아이를 고르기 전에는 기록을 남길 수 없다", async (t) => {
   await view.flush();
   view.type(view.factInput(), "블록으로 길을 만들었다");
   await view.flush();
-  view.button("기록 남기기").props.onClick();
+  view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
 
   assert.equal(view.childSelect().props.value, "", "아이 칸은 비어 있는 채로 열린다");
@@ -2661,10 +2661,10 @@ test("P0 반이 둘 — A 에 적은 기록이 B 를 골랐을 때 보이지 않
     [ROOM_A.id],
   );
 
-  // 반 고르개는 「기록 남기기」를 눌러야 나오는 확인 단계 안에 있다 — 실제 화면 순서대로 간다.
+  // 반 고르개는 「누구 기록인지 고르기」를 눌러야 나오는 확인 단계 안에 있다 — 실제 화면 순서대로 간다.
   view.type(view.factInput(), "다른 반 기록을 적어 본다.");
   await view.flush();
-  view.button("기록 남기기").props.onClick();
+  view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
   view.type(view.classSelect(), ROOM_B.id);
   await view.flush();
@@ -2731,7 +2731,7 @@ test("L 홈의 반 이름·저장·조회·일과 링크가 선택한 B 반으�
   await homeSave(view, "A에서만 보이는 사실");
   view.type(view.factInput(), "B에서만 보이는 사실");
   await view.flush();
-  view.button("기록 남기기").props.onClick();
+  view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
   view.type(view.classSelect(), ROOM_B.id);
   await view.flush();
@@ -2783,7 +2783,7 @@ test("L A 반의 느린 응답이 B 반 화면과 건수를 덮지 않는다", a
   await view.flush();
   view.type(view.factInput(), "B에 적을 사실");
   await view.flush();
-  view.button("기록 남기기").props.onClick();
+  view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
   view.type(view.classSelect(), ROOM_B.id);
   await view.flush();
@@ -2818,7 +2818,7 @@ test("L A 저장 중 B로 옮겨도 저장 완료 콜백이 B 목록을 비우�
   await view.flush();
   view.type(view.factInput(), "A에서 저장을 기다리는 사실");
   await view.flush();
-  view.button("기록 남기기").props.onClick();
+  view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
   await pickFirstChild(view);
   const pending = view.button("이대로 남기기").props.onClick();

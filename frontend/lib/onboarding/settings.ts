@@ -270,9 +270,17 @@ export const shownPrimaryId = (settings: ClassSettings): string =>
  *
  * 기록 조회는 반이 조건이라 짐작한 반으로 물으면 다른 반 기록이 교사 화면에 뜬다
  * (FR-402 · FR-405). 「아무 반이나 하나」로 충분한 곳은 아래 `primaryClassFor` 를 쓴다.
+ *
+ * **반이 하나뿐이면 그 반을 돌려준다.** 고를 것이 없으면 짐작도 없다 — 다른 반이
+ * 아예 없으니 남의 반 기록이 뜰 수가 없다. 반이 둘 이상인데 고른 적이 없으면
+ * 그대로 `null` 이다. 담임이 한 반만 맡는 원에서 화면마다 「반 선택」이 떠서
+ * 기록이 없는 것처럼 보이던 것을 여기서 막는다.
  */
-export const chosenClassFor = (settings: ClassSettings | null): ClassroomEntry | null =>
-  settings?.classes.find((c) => c.id === settings.primaryClassId) ?? null;
+export const chosenClassFor = (settings: ClassSettings | null): ClassroomEntry | null => {
+  const picked = settings?.classes.find((c) => c.id === settings.primaryClassId);
+  if (picked) return picked;
+  return settings?.classes.length === 1 ? settings.classes[0] : null;
+};
 
 /** 계획안 생성 화면의 기본 반으로 첫 번째 반을 사용한다. */
 export function primaryClassFor(settings: ClassSettings | null): ClassroomEntry | null {

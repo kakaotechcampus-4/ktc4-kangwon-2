@@ -488,6 +488,10 @@ export default function DocumentEditor({
           >
             {recordDocument && section.heading === "사실" && <Icon name="lock" />}
             {section.heading}
+            {/* 자물쇠 그림만으로는 「여기는 못 고친다」가 읽히지 않았다. 글자로도 말해 준다. */}
+            {recordDocument && section.heading === "사실" && (
+              <span className={ws.readOnlyTag}>읽기 전용</span>
+            )}
           </h3>
           {recordDocument && LAYER_HINTS[section.heading] && (
             <p className={ws.hint}>{LAYER_HINTS[section.heading]}</p>

@@ -46,7 +46,7 @@ export default function ChildList({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <label htmlFor={`${idPrefix}-name`} className="font-semibold text-[15px] text-ink">
+        <label htmlFor={`${idPrefix}-name`} className="font-semibold text-[17px] text-ink">
           아동 추가
         </label>
         <div className="flex gap-2">
@@ -91,9 +91,9 @@ export default function ChildList({
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-[15px] text-ink">
+          <span className="font-semibold text-[17px] text-ink">
             아동 명단
-            <span className="ml-1.5 align-middle font-mono text-[12px] px-2 py-0.5 rounded-full bg-mint-tint text-mint-ink">
+            <span className="ml-1.5 align-middle font-mono text-[13px] px-2 py-0.5 rounded-full bg-mint-tint text-mint-ink">
               {items.length}명
             </span>
           </span>
@@ -103,19 +103,19 @@ export default function ChildList({
         </div>
 
         {items.length === 0 ? (
-          <div className="rounded-md border border-dashed border-line bg-cream px-3.5 py-5 text-center text-[13px] text-ink-soft">
+          <div className="rounded-md border border-dashed border-line bg-cream px-3.5 py-5 text-center text-[15px] text-ink-soft">
             아직 등록된 아동이 없어요. 위에서 이름을 입력해 추가해주세요.
           </div>
         ) : (
           <ul className="rounded-md border-[1.5px] border-line overflow-hidden divide-y divide-line">
             {items.map((c, i) => (
               <li key={c.id} className="flex items-center gap-3 px-3.5 py-2.5 bg-paper">
-                <span className="font-mono text-[12px] text-ink-soft w-[22px]">
+                <span className="font-mono text-[13px] text-ink-soft w-[22px]">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <span
                   aria-hidden="true"
-                  className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-full bg-mint-tint text-mint-ink text-[13px] font-bold shrink-0"
+                  className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-full bg-mint-tint text-mint-ink text-[15px] font-bold shrink-0"
                 >
                   {c.name.slice(-2)}
                 </span>

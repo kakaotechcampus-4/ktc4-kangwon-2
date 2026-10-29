@@ -525,10 +525,10 @@ function ClassroomCard({
     <section className="rounded-md border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream text-sage-ink font-mono text-[12px]">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream text-sage-ink font-mono text-[13px]">
             {index + 1}
           </span>
-          <h2 className="font-semibold text-[16px] text-ink">반 정보</h2>
+          <h2 className="font-semibold text-[17px] text-ink">반 정보</h2>
         </div>
         {canRemove && (
           <button
@@ -618,7 +618,7 @@ function ClassroomCard({
             <span className="block text-[13.5px] font-medium text-ink">
               이 반 모든 아동의 법정대리인 동의를 받았습니다.
             </span>
-            <span className="block mt-1 text-[12px] text-ink-soft">
+            <span className="block mt-1 text-[13px] text-ink-soft">
               동의 확인 전에는 아동 이름을 입력하지 않아요.
             </span>
           </span>
@@ -667,7 +667,7 @@ function StepChildren({
         <div className="justify-self-start">
           <GhostButton onClick={onPrev}>이전</GhostButton>
         </div>
-        <p className="text-center text-[13px] text-ink-soft whitespace-nowrap">
+        <p className="text-center text-[15px] text-ink-soft whitespace-nowrap">
           아동 명단은 나중에 등록할 수 있습니다.
         </p>
         <div className="justify-self-end">
@@ -748,7 +748,7 @@ export function StepCharacterMessages({
             <span className="block text-[13.5px] font-medium text-ink">
               성품교육을 사용하지 않습니다.
             </span>
-            <span className="block mt-1 text-[12px] text-ink-soft">
+            <span className="block mt-1 text-[13px] text-ink-soft">
               체크하면 아래 12개월 성품인사를 계획안에서 사용하지 않아요.
             </span>
           </span>
@@ -854,8 +854,8 @@ function StepDone({
           ],
         ].map(([k, v]) => (
           <div key={k} className="rounded-md bg-cream px-2.5 py-3">
-            <dt className="font-mono text-[12px] tracking-wider text-ink-soft">{k}</dt>
-            <dd className="mt-0.5 text-[14px] lg:text-[15px] font-bold text-ink break-words">
+            <dt className="font-mono text-[13px] tracking-wider text-ink-soft">{k}</dt>
+            <dd className="mt-0.5 text-[15px] lg:text-[17px] font-bold text-ink break-words">
               {v}
             </dd>
           </div>

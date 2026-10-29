@@ -250,7 +250,7 @@ function Compose({
         <>
           <div className="overflow-hidden rounded-sm border border-line bg-paper shadow-pg-hard">
             <div className="flex items-center justify-between gap-2 border-b border-paper-warm-line bg-paper-warm px-4 py-3">
-              <span className="flex items-center gap-2 text-[12px] text-ink-soft">
+              <span className="flex items-center gap-2 text-[13px] text-ink-soft">
                 <Icon name="edit" className="h-3.5 w-3.5" />본 말과 행동
               </span>
             </div>
@@ -269,7 +269,7 @@ function Compose({
               {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                   그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.
                   한 줄짜리 빠른 기록 자리라 RecordsPage 보다 짧게 적는다. */}
-              <span className="hidden text-[12px] text-ink-soft sm:block">
+              <span className="hidden text-[13px] text-ink-soft sm:block">
                 <b>상황 · 행동 · 반응 · 교사 지원</b> 순서면 좋아요
               </span>
               <div className="ml-auto flex items-center gap-3">
@@ -297,7 +297,7 @@ function Compose({
                     className={PRIMARY}
                   >
                     <Icon name="check" className="h-4 w-4" />
-                    기록 남기기
+                    누구 기록인지 고르기
                   </button>
                 )}
               </div>
@@ -310,7 +310,7 @@ function Compose({
                 이렇게 남길까요?
               </h3>
               <div className="grid gap-3 sm:grid-cols-3">
-                <label className="text-[12px] text-primary-ink">
+                <label className="text-[13px] text-primary-ink">
                   반
                   <select
                     value={activeClassId}
@@ -327,7 +327,7 @@ function Compose({
                     ))}
                   </select>
                 </label>
-                <label className="text-[12px] text-primary-ink">
+                <label className="text-[13px] text-primary-ink">
                   아이
                   <select
                     value={child?.id ?? ""}
@@ -342,7 +342,7 @@ function Compose({
                     ))}
                   </select>
                 </label>
-                <label className="text-[12px] text-primary-ink">
+                <label className="text-[13px] text-primary-ink">
                   영역
                   <select
                     value={domain}
@@ -399,7 +399,7 @@ function ChildSpotlight({
   return (
     <section className="relative border border-note-soft-line bg-note-soft p-5 shadow-pg-hard">
       <Tape />
-      <span className="text-[12px] font-semibold text-sun-ink">한 아이, 조금 더 가까이</span>
+      <span className="text-[13px] font-semibold text-sun-ink">한 아이, 조금 더 가까이</span>
 
       {!child ? (
         <p className="mt-4 text-xs text-sun-ink">아직 등록된 아이가 없어요.</p>
@@ -411,18 +411,18 @@ function ChildSpotlight({
             </span>
             <div>
               <h3 className="font-display text-[26px] font-bold text-ink">{child.name}</h3>
-              <span className="text-[12px] text-sun-ink">최근 관찰</span>
+              <span className="text-[13px] text-sun-ink">최근 관찰</span>
             </div>
           </div>
 
           <div className="mt-5 border-t border-note-soft-line pt-4">
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-sun-ink">
+            <span className="flex items-center gap-2 text-[13px] font-semibold text-sun-ink">
               {latest?.domain || "최근 관찰"}
               <span className="ml-auto font-normal">
                 {latest ? latest.date.slice(5).replace("-", ".") : ""}
               </span>
             </span>
-            <p className="mt-2 text-[13px] leading-[1.9] text-ink">
+            <p className="mt-2 text-[15px] leading-[1.9] text-ink">
               {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
             </p>
           </div>
@@ -430,7 +430,7 @@ function ChildSpotlight({
           <div className="mt-4 flex items-center justify-between gap-2">
             <Link
               href={childHref}
-              className="flex min-h-11 items-center gap-1 text-[12px] font-semibold text-sun-ink"
+              className="flex min-h-11 items-center gap-1 text-[13px] font-semibold text-sun-ink"
             >
               이 아이 기록 보기
               <Icon name="arrow" className="h-3 w-3" />
@@ -444,7 +444,7 @@ function ChildSpotlight({
               >
                 <Icon name="arrow" className="h-4 w-4 rotate-180" />
               </button>
-              <span className="text-[12px] text-sun-ink">
+              <span className="text-[13px] text-sun-ink">
                 {(index % children.length) + 1}/{children.length}
               </span>
               <button
@@ -485,11 +485,11 @@ function TodayList({ records, loading }: { records: ServerObservation[]; loading
             <li key={record.id} className={CARD}>
               <div className="flex items-start justify-between gap-2">
                 <span className="font-semibold text-ink">{record.childName}</span>
-                <span className="shrink-0 rounded-full bg-primary-tint px-2 py-0.5 text-[12px] text-primary-ink">
+                <span className="shrink-0 rounded-full bg-primary-tint px-2 py-0.5 text-[13px] text-primary-ink">
                   {record.domain}
                 </span>
               </div>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink">{record.fact}</p>
+              <p className="mt-2 text-[15px] leading-relaxed text-ink">{record.fact}</p>
             </li>
           ))}
         </ul>

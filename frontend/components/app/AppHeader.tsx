@@ -28,7 +28,7 @@ export default function AppHeader({
       className={`flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3.5 lg:gap-5 px-4 pt-[18px] pb-4 lg:px-10 lg:pt-7 lg:pb-[22px] ${divider ? "border-b border-line" : ""}`}
     >
       <div>
-        <div className="font-mono text-[12px] tracking-[.06em] text-ink-soft">
+        <div className="font-mono text-[13px] tracking-[.06em] text-ink-soft">
           {formatKoreanDate(date)}
         </div>
         <h1 className="font-display text-[22px] lg:text-[26px] text-ink mt-1.5 flex items-center gap-3 flex-wrap">
@@ -45,7 +45,7 @@ export default function AppHeader({
 /** ● 등원 준비 완료 — Main 계열 상태 배지 */
 export function StatusBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 font-body text-[12px] font-medium text-sage-ink bg-sage-tint rounded-full px-[11px] py-[5px]">
+    <span className="inline-flex items-center gap-1.5 font-body text-[13px] font-medium text-sage-ink bg-sage-tint rounded-full px-[11px] py-[5px]">
       <span className="w-1.5 h-1.5 rounded-full bg-sage-ink" aria-hidden="true" />
       {children}
     </span>
