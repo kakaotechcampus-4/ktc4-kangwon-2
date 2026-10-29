@@ -1086,7 +1086,7 @@ code  "승석"     ← LLM 에 나가는 값. 받침 있는 더미 한글 이름
 |---|---|
 | loading | **진행 표시 필수.** 수 초 걸린다. 놀이 프로젝트형은 수 분(최악 약 8.5분)까지 걸릴 수 있다. 빈 화면이면 교사가 다시 누른다 |
 | empty | 발생하지 않는다 — 12개월이 항상 찬다(놀이 프로젝트형은 4구간 × 10개가 항상 찬다) |
-| error | `NO_ACTIVITIES` 503 / `GENERATION_FAILED` 500. **부분 결과를 저장하지 않는다**<br>`DEPENDENCY_UNAVAILABLE` 503 — 놀이 프로젝트형은 누리과정 승인 전이면 늘 이 오류다(api-spec §4). 그 밖의 코드는 api-spec §4 와 같다 |
+| error | `NO_ACTIVITIES` 503 / `GENERATION_FAILED` 500. **부분 결과를 저장하지 않는다**<br>`DEPENDENCY_UNAVAILABLE` 503 — 놀이 프로젝트형은 누리과정 판을 쓸 수 없으면(없음 · 승인 전) 이 오류다. v0.1.0 은 2026-10-29 승인(api-spec §4). 그 밖의 코드는 api-spec §4 와 같다 |
 
 ---
 
