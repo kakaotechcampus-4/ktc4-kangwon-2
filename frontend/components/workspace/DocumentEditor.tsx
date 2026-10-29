@@ -124,6 +124,11 @@ export default function DocumentEditor({
     getAnnualPlan(annualPlanId)
       .then((plan) => {
         if (!live) return;
+        if (plan.format === "PLAY_PROJECT") {
+          setAnnualError(true);
+          setMessage("이 계획안은 결과 화면에서 볼 수 있어요.");
+          return;
+        }
         annual.current = plan;
         setDoc((prev) => ({
           ...prev,

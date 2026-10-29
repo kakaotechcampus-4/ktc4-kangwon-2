@@ -123,8 +123,21 @@ function page(
         : json({ items: forms });
     }
     if (String(path) === "/api/centers/7/classes" && method === "POST") return json({ id: 31 });
-    if (String(path) === "/api/plans/annual" && method === "POST")
-      return json({ id: 99, class_id: 31, school_year: 2026, status: "DRAFT", months: [] }, 201);
+    if (String(path) === "/api/plans/annual" && method === "POST") {
+      const { format } = JSON.parse(options.body);
+      return json(
+        {
+          id: 99,
+          class_id: 31,
+          school_year: 2026,
+          status: "DRAFT",
+          format,
+          months: [],
+          periods: [],
+        },
+        201,
+      );
+    }
     throw new Error("unexpected request: " + method + " " + path);
   };
   const replaced = [];
@@ -163,6 +176,7 @@ function page(
     },
     "react/jsx-runtime": runtime,
     "next/navigation": { useRouter: () => ({ replace: (to) => replaced.push(to) }) },
+    "next/image": { __esModule: true, default: "img" },
     // 월간 · 양식 설정 화면으로 보내는 카드가 Link 를 쓴다. 눌리는지는 이 파일이 보지 않는다.
     "next/link": { default: ({ children }) => children },
     // 409 ALREADY_EXISTS 를 가르려면 ApiError 로 instanceof 를 해야 한다.
@@ -255,12 +269,25 @@ function page(
     text: () => content(tree),
     alert: () => all(tree).find((n) => n.type === "p" && n.props.role === "alert"),
     select: () => all(tree).find((n) => n.type === "select" && !n.props.id),
+    card: (label) =>
+      all(tree).find(
+        (n) => n.type === "button" && n.props["aria-pressed"] !== undefined && content(n) === label,
+      ),
     generate: () =>
       all(tree).find((n) => n.type === "button" && n.props.children === "계획안 생성하기"),
     chooseAge: (value) => {
       all(tree)
         .find((n) => n.type === "select" && n.props.id === "age")
         .props.onChange({ target: { value } });
+    },
+    chooseFormat: (label) => {
+      render();
+      all(tree)
+        .find(
+          (n) =>
+            n.type === "button" && n.props["aria-pressed"] !== undefined && content(n) === label,
+        )
+        .props.onClick();
     },
     chooseType: (label) => {
       all(tree)
@@ -320,6 +347,7 @@ test("고른 서버 양식은 form_id 로만 나가고 기본 양식은 null 이
   await p.flush();
   p.chooseAge("5");
   p.chooseType("연간");
+  p.chooseFormat("월별 주제형");
   p.render();
   p.pick("4");
   p.render();
@@ -337,6 +365,7 @@ test("목록에 없는 양식 번호는 그대로 보내지 않고 기본 양식
     await p.flush();
     p.chooseAge("5");
     p.chooseType("연간");
+    p.chooseFormat("월별 주제형");
     p.render();
     p.pick(stale);
     p.render();
@@ -401,6 +430,7 @@ test("연간계획안을 고르면 기관 양식을 고를 수 있다", async (t
   const p = page(t, { forms: [form(4, "햇살 월간계획안")] });
   await p.flush();
   p.chooseType("연간");
+  p.chooseFormat("월별 주제형");
   p.render();
   assert.equal(p.select().props.disabled, false);
   assert.match(p.text(), /연간계획안 생성에 적용돼요/);
@@ -416,6 +446,7 @@ test("양식 목록을 받기 전에는 URL 로 지정한 양식으로 생성하
   await settle();
   p.chooseAge("5");
   p.chooseType("연간");
+  p.chooseFormat("월별 주제형");
   p.render();
   // 아직 4번이 우리 원 양식인지 모른다 — 기본 양식으로 조용히 바뀌면 안 된다.
   assert.equal(p.select().props.disabled, true);
@@ -440,6 +471,7 @@ test("목록이 도착하면 URL 로 지정한 양식 번호가 그대로 나간
   assert.equal(p.select().props.value, "4");
   p.chooseAge("5");
   p.chooseType("연간");
+  p.chooseFormat("월별 주제형");
   p.render();
   await p.generate().props.onClick();
   await settle();
@@ -460,6 +492,7 @@ test("목록을 받는 중이어도 기본 양식이면 생성을 막지 않는�
   await settle();
   p.chooseAge("5");
   p.chooseType("연간");
+  p.chooseFormat("월별 주제형");
   p.render();
   assert.equal(p.generate().props.disabled, false);
   await p.generate().props.onClick();
@@ -491,4 +524,106 @@ test("연간을 고르지 않으면 기관 양식이 생성 요청에 실리지 
   // 로컬 초안 생성기에도 양식을 넘기지 않는다 — 변환 계약이 없다.
   assert.ok(SOURCE.includes("templatePlan(type, age, period, memo, undefined, request.ageLabel)"));
   assert.ok(SOURCE.includes("template: null,"));
+});
+
+test("연간 형식을 고르기 전에는 생성할 수 없고 캡처 카드에서 명시적으로 고른다", async (t) => {
+  const p = page(t);
+  await p.flush();
+  p.chooseType("연간");
+  p.render();
+  assert.equal(p.generate().props.disabled, true);
+  for (const label of ["월별 주제형", "놀이 프로젝트형"]) {
+    const card = p.card(label);
+    assert.equal(card.props["aria-pressed"], false);
+    assert.equal(card.props["aria-label"], undefined);
+    assert.match(card.props.className, /focus-visible:/);
+    const image = p.node("img", (n) => n.props.alt === `${label} 연간계획안 예시 문서`);
+    assert.ok(image.props.src.startsWith("/plan-formats/"));
+  }
+  await p.generate().props.onClick();
+  assert.equal(
+    p.calls.some(({ path }) => path === "/api/plans/annual"),
+    false,
+  );
+  p.chooseFormat("월별 주제형");
+  p.render();
+  assert.equal(p.generate().props.disabled, false);
+  assert.doesNotMatch(p.text(), /놀이 프로젝트형은 아직/);
+  const creating = p.generate().props.onClick();
+  p.render();
+  assert.doesNotMatch(p.text(), /네 구간을 차례로/);
+  await creating;
+});
+
+test("연간 선택을 해제하면 형식 선택이 초기화되고 기관 양식 안내가 돌아온다", async (t) => {
+  const p = page(t, { forms: [form(4, "기관 양식")] });
+  await p.flush();
+  p.chooseType("연간");
+  p.chooseFormat("놀이 프로젝트형");
+  p.render();
+  // 놀이 프로젝트형은 기관 양식을 쓰지 않아 양식 안내 문구를 숨긴다.
+  assert.doesNotMatch(p.text(), /기관 양식은 연간계획안|등록한 기관 양식은/);
+  p.chooseType("연간");
+  p.render();
+  assert.match(p.text(), /기관 양식은 연간계획안에만 적용돼요/);
+  assert.equal(p.select().props.disabled, true);
+  p.chooseType("연간");
+  p.render();
+  assert.equal(p.select().props.disabled, false);
+  assert.equal(p.generate().props.disabled, true);
+  for (const label of ["월별 주제형", "놀이 프로젝트형"]) {
+    const card = p.card(label);
+    assert.equal(card.props["aria-pressed"], false);
+  }
+});
+
+test("선택한 기관 양식에서 놀이 프로젝트형으로 바꾸면 form_id 를 보내지 않는다", async (t) => {
+  const p = page(t, { forms: [form(4, "기관 양식")] });
+  await p.flush();
+  p.chooseAge("5");
+  p.chooseType("연간");
+  p.chooseFormat("월별 주제형");
+  p.render();
+  p.pick("4");
+  p.render();
+  p.chooseFormat("놀이 프로젝트형");
+  p.render();
+  assert.equal(p.select().props.value, "4");
+  assert.equal(p.select().props.disabled, true);
+  await p.generate().props.onClick();
+  assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
+    class_id: 31,
+    format: "PLAY_PROJECT",
+  });
+});
+
+test("놀이 프로젝트형은 기관 양식을 잠그고 form_id 없이 보내며 생성 안내 후 결과로 이동한다", async (t) => {
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const p = page(t, { forms: [form(4, "기관 양식")], search: "?template=4", hold: held });
+  const started = p.flush();
+  await settle();
+  p.chooseType("연간");
+  p.chooseFormat("놀이 프로젝트형");
+  p.render();
+  assert.equal(p.select().props.value, "4");
+  assert.equal(p.select().props.disabled, true);
+  assert.equal(p.generate().props.disabled, false);
+  assert.doesNotMatch(p.text(), /월간 · 주간계획안으로 이어지지 않아요/);
+  const creating = p.generate().props.onClick();
+  p.render();
+  assert.match(
+    p.node("p", (n) => n.props.role === "status").props.children,
+    /놀이 프로젝트형은 네 구간을 차례로 만들어 몇 분 걸릴 수 있어요\./,
+  );
+  await creating;
+  assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
+    class_id: 31,
+    format: "PLAY_PROJECT",
+  });
+  assert.deepEqual(p.replaced, ["/plans/annual/99"]);
+  release();
+  await started;
 });
