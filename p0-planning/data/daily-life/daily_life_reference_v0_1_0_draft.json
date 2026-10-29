@@ -8,10 +8,10 @@
   "purpose": "놀이중심 월간(PLAY_MONTHLY)의 기본생활습관(주마다 하나)·건강·영양(월마다 하나씩) 문장 후보다. LLM은 entry_id만 고르고, 칸의 문장은 서버가 이 파일에서 그대로 복사한다.",
   "disclaimer": "자체 작성한 제품 문장과 표시 분류다. 국가가 정한 예문·월별 배치표가 아니며, content_id는 누리과정 내용과의 교육적 연계다.",
   "review": {
-    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
-    "approved_by": null,
-    "approved_at": null,
-    "runtime_active": false,
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_01",
+    "approved_at": "2026-10-29T17:32:24+09:00",
+    "runtime_active": true,
     "runtime_rule": "runtime_active는 파생값이다. runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")를 항상 만족해야 한다.",
     "review_points": [
       "15개 문장·표시 분류·content_id가 2026-10-27 채택한 문장과 같은지 (docs/daily-life-reference-v0-human-review.md)",

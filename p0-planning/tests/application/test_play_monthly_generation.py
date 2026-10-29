@@ -754,14 +754,16 @@ def test_repair_rewrites_only_the_flagged_drill_sentence():
     assert set(versions.values()) == {PLAY_MONTHLY_PROMPT_VERSION}
 
 
-def test_the_real_drill_draft_loads_pending_and_is_rejected():
+def test_the_real_drill_file_is_approved_and_a_withdrawn_copy_is_rejected():
     real = JsonDrillTopicReferenceRepository()
     drills = real.get_catalog("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
-    assert drills.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
+    assert drills.activation_status is ActivationStatus.HUMAN_APPROVED
     assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
     assert {t.content_id for t in drills.topics} == {"nuri2019.1.3.4"}
     use_case, command, plans, provider, _ = _run(
-        drills=drills, drill_catalog_id=drills.catalog_id, drill_catalog_version=drills.catalog_version
+        drills=replace(drills, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW),
+        drill_catalog_id=drills.catalog_id,
+        drill_catalog_version=drills.catalog_version,
     )
 
     with pytest.raises(PlayMonthlyGenerationError, match="DRILL_REFERENCE_NOT_ACTIVE"):
@@ -769,8 +771,8 @@ def test_the_real_drill_draft_loads_pending_and_is_rejected():
     assert provider.requests == [] and plans.save_count == 0
 
 
-def _real_references(*, approve_daily_life: bool):
-    """The real 누리과정 · daily-life · drill files, approved in memory only where a test needs it."""
+def _real_references():
+    """The real, approved 누리과정 · daily-life · drill files."""
     daily = JsonDailyLifeReferenceRepository().get_catalog("ssuksak.daily-life", "daily-life-v0.1.0")
     curriculum = JsonCurriculumReferenceRepository().get_catalog(
         daily.curriculum_catalog_id, daily.curriculum_catalog_version
@@ -778,13 +780,10 @@ def _real_references(*, approve_daily_life: bool):
     drills = JsonDrillTopicReferenceRepository().get_catalog(
         "ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0"
     )
-    approved = ActivationStatus.HUMAN_APPROVED
-    if approve_daily_life:
-        daily = replace(daily, activation_status=approved)
     return dict(
-        curriculum=replace(curriculum, activation_status=approved),
+        curriculum=curriculum,
         daily=daily,
-        drills=replace(drills, activation_status=approved),
+        drills=drills,
         curriculum_catalog_id=curriculum.catalog_id,
         curriculum_catalog_version=curriculum.catalog_version,
         daily_life_catalog_id=daily.catalog_id,
@@ -794,9 +793,10 @@ def _real_references(*, approve_daily_life: bool):
     )
 
 
-def test_the_real_daily_life_file_loads_pending_and_is_rejected():
-    references = _real_references(approve_daily_life=False)
-    assert references["daily"].activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
+def test_the_real_daily_life_file_is_approved_and_a_withdrawn_copy_is_rejected():
+    references = _real_references()
+    assert references["daily"].activation_status is ActivationStatus.HUMAN_APPROVED
+    references["daily"] = replace(references["daily"], activation_status=ActivationStatus.PENDING_HUMAN_REVIEW)
     use_case, command, plans, provider, _ = _run(**references)
 
     with pytest.raises(PlayMonthlyGenerationError, match="DAILY_LIFE_REFERENCE_NOT_ACTIVE"):
@@ -805,7 +805,7 @@ def test_the_real_daily_life_file_loads_pending_and_is_rejected():
 
 
 def test_the_real_daily_life_sentences_are_copied_with_their_entry_and_curriculum_version():
-    references = _real_references(approve_daily_life=True)
+    references = _real_references()
     daily, curriculum = references["daily"], references["curriculum"]
     health, nutrition = "ssuksak.daily-life.health.02", "ssuksak.daily-life.nutrition.07"
     use_case, command, plans, provider, _ = _run(
@@ -887,10 +887,14 @@ def test_the_assembly_versions_name_the_published_references():
     )
 
 
-def test_the_assembly_refuses_unapproved_references_before_any_request():
+def _real_entries(data):
+    data.update(health_entry_id="ssuksak.daily-life.health.02", nutrition_entry_id="ssuksak.daily-life.nutrition.07")
+
+
+def test_the_assembly_generates_a_draft_from_the_approved_reference_files_offline():
     parents, plans = InMemoryPlanRepository(), InMemoryPlanRepository()
     parents.save(PlanId("parent-1"), _parent())
-    transport = _Transport(_Provider())
+    transport = _Transport(_Provider(_real_entries))
     use_case = play_monthly_generation(
         parent_repository=parents,
         plan_repository=plans,
@@ -905,10 +909,18 @@ def test_the_assembly_refuses_unapproved_references_before_any_request():
         target_month=YearMonth(2027, 4),
     )
 
-    # Which draft is reached first depends on what is approved; none is turned on by assembling.
-    with pytest.raises(PlayMonthlyGenerationError, match="REFERENCE_NOT_ACTIVE"):
-        use_case.execute(command)
-    assert transport.payloads == [] and plans.save_count == 0
+    plan = use_case.execute(command)
+
+    assert plan.status is PlanStatus.DRAFT and len(transport.payloads) == 1 and plans.save_count == 1
+    r = plan.references
+    assert (r.curriculum_catalog_id, r.curriculum_catalog_version) == CURRICULUM_CATALOG
+    assert (r.daily_life_catalog_id, r.daily_life_catalog_version) == DAILY_LIFE_CATALOG
+    assert (r.drill_catalog_id, r.drill_catalog_version) == DRILL_CATALOG
+    assert (r.legal_rule_version, r.safety_classification_version, r.safety_quality_version) == (
+        LEGAL_RULE_VERSION,
+        SAFETY_CLASSIFICATION_VERSION,
+        SAFETY_QUALITY_VERSION,
+    )
 
 
 def test_domain_rejects_duplicate_drill_topics():

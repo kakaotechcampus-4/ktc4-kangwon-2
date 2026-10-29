@@ -1,14 +1,14 @@
 # 생활 문장 Reference v0.1.0 — Human Review 요청 자료
 
-> **이 문서는 승인 요청 자료다. 승인 기록이 아니다.**
+> **2026-10-29 하민(reviewer_ai_lead_01)이 승인했다.** 아래는 승인 때 본 검토 자료다.
 >
 > ```text
 > catalog_id            : ssuksak.daily-life
 > catalog_version       : daily-life-v0.1.0
-> domain_owner_approval : PENDING_HUMAN_REVIEW
-> approved_by           : null
-> approved_at           : null
-> runtime_active        : false
+> domain_owner_approval : HUMAN_APPROVED
+> approved_by           : reviewer_ai_lead_01
+> approved_at           : 2026-10-29T17:32:24+09:00
+> runtime_active        : true
 > ```
 
 - 대상 파일: `p0-planning/data/daily-life/daily_life_reference_v0_1_0_draft.json`
@@ -64,3 +64,4 @@
 - 승인 커밋은 `review`의 승인 칸(`domain_owner_approval` · `approved_by` · `approved_at` · `runtime_active`)만 바꾼다. 판 · 파일 이름 · 문장은 그대로다.
 - `tests/finalization/test_freeze.py`: `PENDING_REVIEW_PINS`의 이 파일 항목을 빼고 새 SHA를 `FROZEN_ARTIFACTS`에 넣는다. `PENDING_REVIEW_CONTENT`의 항목은 그대로 두어 승인 칸 밖이 바뀌지 않았음을 증명한다.
 - 승인해도 놀이중심 월간 생성은 훈련 주제 자료 승인과 서버의 AI 호출 연결이 남아 있으면 계속 503이다.
+- **적용(2026-10-29):** 위 절차대로 승인했다. 훈련 주제(`emergency-drill-topics-v0.1.0`)도 같은 커밋에서 승인했다. 남은 것은 서버의 AI 호출 연결이다.
