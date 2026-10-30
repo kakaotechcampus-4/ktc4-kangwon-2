@@ -34,14 +34,7 @@
   text-align: left;
   border: 2px solid transparent;
   border-radius: 12px;
-  opacity: 0.72;
   cursor: pointer;
-}
-.tab[aria-selected="true"] {
-  opacity: 1;
-}
-.tab:hover {
-  opacity: 1;
 }
 .tabLabel {
   font-size: 13px;

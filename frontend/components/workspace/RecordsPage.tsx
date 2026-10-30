@@ -74,7 +74,8 @@ export default function RecordsPage() {
   const [editId, setEditId] = useState("");
   const [message, setMessage] = useState("");
   const [invalid, setInvalid] = useState<string[]>([]);
-  const classes = useClasses(setMessage);
+  const [classError, setClassError] = useState("");
+  const classes = useClasses(setClassError);
   const [search, setSearch] = useState("");
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);
@@ -190,6 +191,22 @@ export default function RecordsPage() {
     } finally {
       setPending(false);
     }
+  }
+
+  // 반 · 기록을 못 불러오면 안내 하나만 둔다. 「누적 0」 「먼저 반과 아동을 등록해주세요」가 같이 보이면
+  // 기록이 사라진 것으로 읽힌다. 저장 · 삭제 실패는 여기 들지 않는다 — 적던 글이 남아야 한다.
+  const loadError =
+    classError ||
+    (status === "error" ? "관찰 기록을 불러오지 못했어요. 페이지를 새로고침해주세요." : "");
+  if (loadError) {
+    return (
+      <WorkspacePage
+        title="관찰 기록"
+        description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
+      >
+        <Message error>{loadError}</Message>
+      </WorkspacePage>
+    );
   }
 
   return (

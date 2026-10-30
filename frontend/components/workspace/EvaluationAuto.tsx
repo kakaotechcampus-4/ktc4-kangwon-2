@@ -112,7 +112,7 @@ function ChildRequirement({ item }: { item: AutoIndicator }) {
         need="아동마다 확정된 영유아 평가 2건"
         have={`${children.total}명 중 ${children.met}명 채움 · 관찰일지 수로 대신 세지 않아요`}
         bar={percent(children.met, children.total)}
-        href="/documents"
+        href="/documents?kind=assessment"
         action="영유아 평가 작성하기"
         primary
       />
@@ -156,15 +156,16 @@ function AutoCard({ item }: { item: AutoIndicator }) {
           </button>
         )}
       </div>
+      {/* 펼친 내용은 누른 버튼 바로 밑에 둔다. 아래에 열리면 무엇이 열렸는지 찾아야 한다. */}
+      <div id={countedId} className={styles.counted} hidden={!counted}>
+        반마다 검토 기간의 확정 월간계획안과, 평일마다 확정한 일일 보육일지를 세요. 월간계획안{" "}
+        {item.plan_ids.length}건 · 보육일지 {item.document_ids.length}건
+      </div>
       {item.indicator === "4-1" ? (
         <ClassRequirements item={item} />
       ) : (
         <ChildRequirement item={item} />
       )}
-      <div id={countedId} className={styles.counted} hidden={!counted}>
-        반마다 검토 기간의 확정 월간계획안과, 평일마다 확정한 일일 보육일지를 세요. 월간계획안{" "}
-        {item.plan_ids.length}건 · 보육일지 {item.document_ids.length}건
-      </div>
       <ul className={styles.notes}>
         {notesFor(item).map((note) => (
           <li key={note}>{note}</li>
