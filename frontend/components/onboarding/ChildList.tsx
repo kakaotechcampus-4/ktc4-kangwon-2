@@ -53,7 +53,7 @@ export default function ChildList({
           <TextInput
             id={`${idPrefix}-name`}
             value={draft}
-            disabled={busy}
+            readOnly={busy}
             placeholder="아동 이름 입력 후 Enter"
             aria-invalid={dup || undefined}
             onChange={(e) => {

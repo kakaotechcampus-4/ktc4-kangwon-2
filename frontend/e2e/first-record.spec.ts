@@ -46,6 +46,11 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   await page.getByLabel("아동 추가").fill(child);
   await page.getByRole("button", { name: "+ 추가" }).click();
   await expect(page.getByRole("button", { name: `${child} 삭제` })).toBeVisible();
+  // Enter 로 넣으면 다음 이름을 바로 칠 수 있게 커서가 입력칸에 남는다.
+  await page.getByLabel("아동 추가").fill("나다라");
+  await page.getByLabel("아동 추가").press("Enter");
+  await expect(page.getByRole("button", { name: "나다라 삭제" })).toBeVisible();
+  await expect(page.getByLabel("아동 추가")).toBeFocused();
   await page.getByRole("button", { name: "설정 완료" }).click();
   await expect(page).not.toHaveURL(/\/onboarding/);
 
