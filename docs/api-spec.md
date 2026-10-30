@@ -1756,6 +1756,8 @@ sections[].selection
                   OPTIONAL           ② 에서 고를 수 있다 (focus · goals · basic_habit)
                   INSTITUTION_INPUT  event_schedule · drill.  월간 생성 계약이 아직 없어 고를 수 없다
                   NOT_SUPPORTED      Template 고유 칸.  Profile 에 넣을 수 없다
+                  indoor_alternative 는 Template 판에 따라 다르다 — v0.2.2 는 OPTIONAL,
+                  repeat_by 가 없는 v0.2.1 은 NOT_SUPPORTED (ADR-050)
 focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (켠 focus 는 NEUTRAL 불가, Core)
 ```
 
