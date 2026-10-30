@@ -364,4 +364,3 @@ test("W12 보관함: 목록 로딩·실패·재시도와 상세 조회 실패", 
   await page.getByRole("button", { name: "미리보기 다시 시도", exact: true }).click();
   await expect(page.getByRole("heading", { name: doc.title, exact: true, level: 2 })).toBeVisible();
 });
-
