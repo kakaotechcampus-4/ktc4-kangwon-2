@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from functools import partial
 
@@ -14,6 +14,7 @@ from ..context.models import (
     SafetySlotContext,
 )
 from ..domain.activity_reference import ActivityCatalog
+from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_constraint import ConstraintAssessment
@@ -306,6 +307,7 @@ class MonthlyContextPipeline:
         context_builder: ContextPacketBuilder,
         safety_classification_repository=None,
         safety_quality_repository=None,
+        curriculum_loader: Callable[[], CurriculumCatalog] | None = None,
     ) -> None:
         self._evidence = evidence_repository
         self._classification = classification_repository
@@ -314,6 +316,7 @@ class MonthlyContextPipeline:
         self._safety_classification = safety_classification_repository
         # Without an approved quality review, no Sample can ground a supplemental week.
         self._safety_quality = safety_quality_repository
+        self._curriculum_loader = curriculum_loader
 
     def build(
         self,
@@ -329,8 +332,15 @@ class MonthlyContextPipeline:
         keywords: tuple[str, ...] = (),
         safety_slots: tuple[SafetySlot, ...] = (),
         safety_rule: SafetyLegalRule | None = None,
+        parent_subthemes: tuple[str, ...] = (),
     ) -> MonthlyContextPacket:
         active_weeks = tuple(period for period in week_periods if period.active)
+        try:
+            curriculum = self._curriculum_loader() if self._curriculum_loader else None
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            raise MonthlyApplicationError(
+                "curriculum_reference_unavailable", "The v1 curriculum context is unavailable"
+            ) from error
         safety = _safety_context(safety_slots, safety_rule) if safety_slots and safety_rule else None
         safety_classification: SafetyEvidenceClassification | None = (
             self._safety_classification.get_classification()
@@ -384,6 +394,7 @@ class MonthlyContextPipeline:
                 assessment.constraint.code for assessment in constraint_assessments
             ),
         )
+        packet = replace(packet, curriculum=curriculum, parent_subthemes=parent_subthemes)
         return packet if packet.safety is None else replace(packet, safety=_with_supplemental_primaries(packet.safety))
 
 

@@ -59,12 +59,17 @@ class GenerateMonthlyPlanCommand:
     optional_context_names: tuple[str, ...] = ()
     # None keeps safety_education on the source-required path (OD-M04).
     safety_placement: SafetyPlacementSelector | None = None
+    parent_subthemes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.parent_yearly_plan_id, PlanId):
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.parent_yearly_plan_id must be PlanId"
             )
+        if not isinstance(self.parent_subthemes, tuple) or any(
+            not isinstance(value, str) for value in self.parent_subthemes
+        ):
+            raise InvalidDomainValueError("parent_subthemes must be strings")
         if not isinstance(self.target_month, YearMonth):
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.target_month must be YearMonth"

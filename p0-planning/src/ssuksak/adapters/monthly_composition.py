@@ -31,6 +31,7 @@ from ssuksak.adapters.safety_evidence_classification_repository import (
 from ssuksak.adapters.safety_reference_quality_repository import (
     JsonSafetyReferenceQualityRepository,
 )
+from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan
 from ssuksak.planning.application.edit_monthly_plan_item import EditMonthlyPlanItem
 from ssuksak.planning.application.generate_monthly_plan import GenerateMonthlyPlan
@@ -56,6 +57,7 @@ def monthly_context_pipeline() -> MonthlyContextPipeline:
         context_builder=ContextPacketBuilder(),
         safety_classification_repository=JsonSafetyEvidenceClassificationRepository(),
         safety_quality_repository=JsonSafetyReferenceQualityRepository(),
+        curriculum_loader=v1_curriculum_catalog,
     )
 
 

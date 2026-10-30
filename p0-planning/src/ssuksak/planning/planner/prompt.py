@@ -12,6 +12,10 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from .contracts import (
+    MONTHLY_CONTEXT_PROMPT_VERSION,
+    MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
+    MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION,
+    MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
     MONTHLY_SAFETY_PROMPT_VERSION,
@@ -20,6 +24,7 @@ from .contracts import (
     generation_target_sections,
 )
 from .text_policy import MAX_VISIBLE_TEXT_CHARS
+from .v1_guidance import V1_GUIDANCE, curriculum_context
 from ..retrieval.models import AGE_VERIFIABLE_TIERS
 from .validation import ProposalValidationIssue, is_safety_grounding, repair_targets, wrong_source_refs
 
@@ -203,7 +208,7 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
 
 
 def _base_payload(packet: MonthlyContextPacket) -> dict[str, object]:
-    return {
+    payload = {
         "target_month": packet.target_month.value,
         "ages": list(packet.ages),
         "locked_theme": {
@@ -249,6 +254,11 @@ def _base_payload(packet: MonthlyContextPacket) -> dict[str, object]:
             "activity_catalog_version": packet.lineage.activity_catalog_version,
         },
     }
+    if packet.curriculum is not None:
+        payload["curriculum_context"] = curriculum_context(packet.curriculum)
+    if packet.parent_subthemes:
+        payload["parent_subthemes"] = list(packet.parent_subthemes)
+    return payload
 
 
 def _generation_schema(
@@ -320,10 +330,18 @@ def build_monthly_planning_request(
         }
     )
     safety = packet.safety is not None
+    contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
+    version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
+    if contextual:
+        version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
-        prompt_version=MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION,
-        system_prompt=SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT,
+        prompt_version=version,
+        system_prompt=(SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT) + (
+            V1_GUIDANCE + "\nparent_subthemes는 확정된 연간의 월별 예상 소주제다. "
+            "월간 경험을 구체화하는 맥락으로 쓰며, 각 소주제를 주차에 하나씩 강제로 복사하지 않는다.\n"
+            if contextual else ""
+        ),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -381,11 +399,11 @@ def build_monthly_repair_request(
     }
     return replace(
         request,
-        prompt_version=(
-            MONTHLY_SAFETY_REPAIR_PROMPT_VERSION
-            if request.prompt_version == MONTHLY_SAFETY_PROMPT_VERSION
-            else MONTHLY_REPAIR_PROMPT_VERSION
-        ),
+        prompt_version={
+            MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION: MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
+            MONTHLY_CONTEXT_PROMPT_VERSION: MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
+            MONTHLY_SAFETY_PROMPT_VERSION: MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
+        }.get(request.prompt_version, MONTHLY_REPAIR_PROMPT_VERSION),
         system_prompt=REPAIR_HEADER + request.system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,

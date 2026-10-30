@@ -253,6 +253,7 @@ class GenerateMonthlyPlan:
                 ages=parent.target_ages,
                 parent_theme_id=parent_theme_id,
                 parent_theme_value=theme.value,
+                parent_subthemes=command.parent_subthemes,
                 week_periods=week_periods,
                 activity_catalog=catalog,
                 constraint_assessments=assessments,
@@ -357,6 +358,7 @@ class GenerateMonthlyPlan:
                 else None
             ),
             generation_mode=command.generation_mode,
+            parent_subthemes=command.parent_subthemes,
         )
         self._require_complete(plan, resolved_sections)
         plan = with_fresh_monthly_verification(plan, catalog)
