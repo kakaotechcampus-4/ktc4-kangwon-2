@@ -209,7 +209,7 @@ test.afterEach(async ({ page }, info: TestInfo) => {
   const intentional401 = info.title.includes("D E F");
   // 거절을 확인하는 시나리오는 스스로 적어 둔다 — 그 4xx 는 증거이지 사고가 아니다.
   const expected = info.annotations
-    .filter((a) => a.type === "expected-4xx")
+    .filter((a) => a.type === "expected-4xx" || a.type === "expected-http-error")
     .map((a) => a.description ?? "");
   expect(
     state.network.filter(
@@ -219,7 +219,14 @@ test.afterEach(async ({ page }, info: TestInfo) => {
         !expected.some((path) => r.url === path),
     ),
   ).toEqual([]);
-  expect(state.errors.filter((error) => !(intentional401 && /401/.test(error)))).toEqual([]);
+  const expectedConsole = info.annotations
+    .filter((a) => a.type === "expected-console-error")
+    .map((a) => a.description);
+  expect(
+    state.errors.filter(
+      (error) => !(intentional401 && /401/.test(error)) && !expectedConsole.includes(error),
+    ),
+  ).toEqual([]);
 });
 
 test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, 정확한 재검토 건수", async ({
@@ -829,18 +836,22 @@ async function confirmedDailyLog(page: Page, classId: number, date: string, name
 }
 
 /**
- * 보관함은 **반 → 문서 종류 → 아동 → 날짜** 로 탐색한다. 예전의 전체 문서 목록은 없앴으므로
+ * 보육일지는 **반 → 보육일지 → 날짜** 로 탐색한다. 예전의 전체 문서 목록은 없앴으므로
  * 제목만으로 바로 누르지 않는다.
  */
 async function openDocument(page: Page, title: string, date: string, className = "햇살반") {
   await page.goto("/documents");
   await page.getByRole("complementary", { name: "반 선택" }).getByText(className).click();
   await page.getByRole("button", { name: "보육일지", exact: true }).click();
-  // 아동 선택 뒤 달력이 열린다. 보육일지 자체는 반 · 날짜 단위다.
-  await page.getByRole("button", { name: "가나다", exact: true }).click();
+  await expect(page.getByLabel("아동 이름 검색")).toHaveCount(0);
+  await expect(page.getByText("왼쪽에서 아이를 선택해 주세요", { exact: true })).toHaveCount(0);
   await page.getByLabel("날짜 선택").fill(date);
   await page
     .getByRole("button", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await page
+    .getByRole("complementary", { name: "문서 미리보기" })
+    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
     .click();
   return page.getByRole("region", { name: "변경된 근거 검토" });
 }
@@ -1230,9 +1241,459 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
     await page
       .getByRole("button", { name: new RegExp(doc.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
       .click();
+    await page
+      .getByRole("complementary", { name: "문서 미리보기" })
+      .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
+      .click();
     await expect(
       page.getByRole("heading", { name: doc.title, exact: true, level: 2 }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
   });
 }
+
+test("보육일지 탐색 — 아동 없는 반에서도 일일·주간 조회, 수정·재열기와 반 격리", async ({
+  page,
+}, info) => {
+  const { classId, centerId, childId } = await enterHome(page);
+  const date = "2026-10-19";
+  const [routine] = await confirmedDailyLog(page, classId, date, ["블록놀이"]);
+  const daily = await api(page, "/api/documents", "POST", {
+    kind: "dailyLog",
+    class_id: classId,
+    start: date,
+    end: date,
+    source_ids: [routine.id],
+  });
+  const weekly = await api(page, "/api/documents", "POST", {
+    kind: "weeklyLog",
+    class_id: classId,
+    start: date,
+    end: "2026-10-23",
+    source_kind: "routine",
+    source_ids: [routine.id],
+  });
+  await api(page, `/api/children/${childId}`, "DELETE");
+  expect((await api(page, `/api/classes/${classId}/children`)).items).toHaveLength(0);
+  const other = await api(page, `/api/centers/${centerId}/classes`, "POST", {
+    name: "달님반",
+    teacher_name: "다른교사",
+    age_min: 4,
+    age_max: 4,
+    consent_confirmed: true,
+  });
+  await openDocument(page, daily.title, date);
+  await expect(
+    page.getByRole("heading", { name: daily.title, exact: true, level: 2 }),
+  ).toBeVisible();
+  const support = "다음 놀이에는 블록을 준비해 함께 길을 만들도록 지원한다.";
+  await page.getByRole("textbox", { name: "지원 내용", exact: true }).fill(support);
+  await page.getByRole("button", { name: "초안 저장", exact: true }).click();
+  await expect(page.getByText("작성 중인 초안을 저장했어요.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "햇살반 보육일지", exact: true })).toBeVisible();
+  await expect(page.getByText("만 4세반 · 반별 문서", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "가나다", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "＋ 보육일지 작성", exact: true })).toHaveCount(0);
+  const calendar = page.getByRole("group", { name: "보육일지 주간 달력" });
+  await expect(calendar.getByRole("button")).toHaveCount(7);
+  await expect(calendar.getByRole("button", { pressed: true })).toHaveCount(1);
+  await expect(calendar.getByRole("button", { pressed: true })).toContainText("검토 중");
+  // 이미 문서가 있는 날짜에는 하단 중복 생성 카드도 표시하지 않는다.
+  await expect(page.getByRole("button", { name: /^이 날짜 보육일지 작성/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "다음 기간", exact: true }).click();
+  await expect(page.getByLabel("날짜 선택")).toHaveValue("2026-10-26");
+  await page.getByRole("button", { name: "이전 기간", exact: true }).click();
+  await expect(page.getByLabel("날짜 선택")).toHaveValue(date);
+  await page
+    .getByRole("button", { name: new RegExp(daily.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await page
+    .getByRole("complementary", { name: "문서 미리보기" })
+    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
+    .click();
+  await expect(page.getByRole("textbox", { name: "지원 내용", exact: true })).toHaveValue(support);
+  expect(await api(page, `/api/documents/${daily.id}`)).toMatchObject({
+    id: daily.id,
+    child_id: null,
+  });
+  await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
+  await page.getByRole("button", { name: "주간", exact: true }).click();
+  await expect(page.getByLabel("아동 이름 검색")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^새 주간 보육일지 작성/ })).toBeEnabled();
+  await expect(
+    page.getByRole("button", {
+      name: new RegExp(weekly.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "이전 기간", exact: true }).click();
+  await expect(
+    page.getByRole("button", {
+      name: new RegExp(weekly.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "다음 기간", exact: true }).click();
+  await page
+    .getByRole("button", { name: new RegExp(weekly.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await page
+    .getByRole("complementary", { name: "문서 미리보기" })
+    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: weekly.title, exact: true, level: 2 }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
+  await page.getByRole("button", { name: "일일", exact: true }).click();
+  await page.getByRole("complementary", { name: "반 선택" }).getByText("달님반").click();
+  await page.getByRole("button", { name: "보육일지", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "달님반 보육일지", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: new RegExp(daily.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("아동 이름 검색")).toHaveCount(0);
+  for (const width of [390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByLabel("날짜 선택")).toBeVisible();
+    await expect(page.getByLabel("아동 이름 검색")).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      )
+      .toBeLessThanOrEqual(0);
+    await page.screenshot({
+      path: info.outputPath(`care-navigation-${width}.png`),
+      fullPage: true,
+    });
+  }
+  await page.getByRole("button", { name: /^이 날짜 보육일지 작성/ }).click();
+  const creationClass = page.getByRole("combobox", { name: "담당 반", exact: true });
+  await expect(creationClass.locator("option:checked")).toHaveText(/달님반/);
+  await expect(page.getByLabel("날짜", { exact: true })).toHaveValue(date);
+  expect(other.id).not.toBe(classId);
+  await page.screenshot({
+    path: info.outputPath("care-class-without-children.png"),
+    fullPage: true,
+  });
+});
+
+test("관찰일지 탐색 — 아동 선택·검색·변경 시 해당 아동 기록만 열고 날짜를 이동한다", async ({
+  page,
+}, info) => {
+  const { classId, childId } = await enterHome(page);
+  const other = await api(page, `/api/classes/${classId}/children`, "POST", { name: "라마바" });
+  const date = "2026-10-19";
+  const docs = [];
+  for (const [id, fact] of [
+    [childId, "블록을 쌓았다."],
+    [other.id, "공을 굴렸다."],
+  ] as const) {
+    const source = await api(page, "/api/observations", "POST", {
+      class_id: classId,
+      child_id: id,
+      date,
+      domain: "자연탐구",
+      context: "놀이",
+      fact,
+    });
+    docs.push(
+      await api(page, "/api/documents", "POST", {
+        kind: "observation",
+        class_id: classId,
+        child_id: id,
+        start: date,
+        end: date,
+        source_ids: [source.id],
+      }),
+    );
+  }
+  await page.goto("/documents");
+  await page.getByRole("complementary", { name: "반 선택" }).getByText("햇살반").click();
+  await page.getByRole("button", { name: "관찰일지", exact: true }).click();
+  await expect(page.getByLabel("아동 이름 검색")).toBeVisible();
+  await expect(page.getByText("왼쪽에서 아이를 선택해 주세요", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("날짜 선택")).toHaveCount(0);
+  await page.getByRole("button", { name: "가나다", exact: true }).click();
+  await expect(page.getByRole("button", { name: "가나다", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByLabel("날짜 선택").fill(date);
+  const calendar = page.getByRole("group", { name: "관찰일지 주간 달력" });
+  await expect(calendar.getByRole("button")).toHaveCount(7);
+  await expect(calendar.getByRole("button", { pressed: true })).toHaveCount(1);
+  await expect(calendar.getByRole("button", { pressed: true })).toContainText("검토 중");
+  await page
+    .getByRole("button", { name: new RegExp(docs[0].title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await page
+    .getByRole("complementary", { name: "문서 미리보기" })
+    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
+    .click();
+  await expect(page.getByText("블록을 쌓았다.", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("공을 굴렸다.", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
+  await page.getByLabel("아동 이름 검색").fill("라마");
+  await expect(page.getByRole("button", { name: "가나다", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "라마바", exact: true }).click();
+  await expect(page.getByRole("button", { name: "라마바", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    page.getByRole("heading", { name: docs[0].title, exact: true, level: 2 }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: new RegExp(docs[1].title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await page
+    .getByRole("complementary", { name: "문서 미리보기" })
+    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
+    .click();
+  await expect(page.getByText("공을 굴렸다.", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("블록을 쌓았다.", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
+  await page.getByRole("button", { name: "다음 기간", exact: true }).click();
+  await expect(page.getByLabel("날짜 선택")).toHaveValue("2026-10-26");
+  await expect(calendar.getByRole("button", { pressed: true })).toContainText("미작성");
+  await expect(page.getByRole("button", { name: /^이 날짜 관찰일지 작성/ })).toBeEnabled();
+  await expect(
+    page.getByRole("button", {
+      name: new RegExp(docs[1].title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "이전 기간", exact: true }).click();
+  await expect(page.getByLabel("날짜 선택")).toHaveValue(date);
+  await expect(calendar.getByRole("button", { pressed: true })).toContainText("검토 중");
+  await expect(page.getByRole("button", { name: /^이 날짜 관찰일지 작성/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: new RegExp(docs[1].title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "＋ 관찰일지 작성", exact: true })).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("observation-child-navigation.png"),
+    fullPage: true,
+  });
+});
+
+for (const width of [1600, 390]) {
+  test(`미리보기 ${width}px — 읽기 전용·조회 재시도·선택 변경·편집 복귀·반 격리`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const { classId, centerId } = await enterHome(page);
+    const documents = [];
+    for (const [date, activity] of [
+      ["2026-10-19", "블록놀이"],
+      ["2026-10-20", "공놀이"],
+    ]) {
+      const [routine] = await confirmedDailyLog(page, classId, date, [activity]);
+      documents.push(
+        await api(page, "/api/documents", "POST", {
+          kind: "dailyLog",
+          class_id: classId,
+          start: date,
+          end: date,
+          source_ids: [routine.id],
+        }),
+      );
+    }
+    const [a, b] = documents;
+    await api(page, `/api/centers/${centerId}/classes`, "POST", {
+      name: "달님반",
+      teacher_name: "다른교사",
+      age_min: 4,
+      age_max: 4,
+      consent_confirmed: true,
+    });
+    const writes: string[] = [];
+    let watching = true;
+    page.on("request", (r) => {
+      if (
+        watching &&
+        new URL(r.url()).pathname.startsWith("/api/") &&
+        !["GET", "HEAD", "OPTIONS"].includes(r.method())
+      )
+        writes.push(`${r.method()} ${new URL(r.url()).pathname}`);
+    });
+    await page.goto("/documents");
+    await page.getByRole("complementary", { name: "반 선택" }).getByText("햇살반").click();
+    await page.getByRole("button", { name: "보육일지", exact: true }).click();
+    const preview = page.getByRole("complementary", { name: "문서 미리보기" });
+    await expect(preview).toHaveCount(0);
+    const card = (title: string) =>
+      page.getByRole("button", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
+    await page.getByLabel("날짜 선택").fill(a.start);
+    let refuse = true;
+    info.annotations.push({ type: "expected-http-error", description: `/api/documents/${a.id}` });
+    info.annotations.push({
+      type: "expected-console-error",
+      description: `[API] GET /api/documents/${a.id} → 500 {error: Object}`,
+    });
+    info.annotations.push({
+      type: "expected-console-error",
+      description:
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    });
+    await page.route(`**/api/documents/${a.id}`, async (route) => {
+      if (refuse && route.request().method() === "GET") {
+        refuse = false;
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "의도한 미리보기 조회 실패" } }),
+        });
+      } else await route.continue();
+    });
+    await card(a.title).click();
+    await expect(preview.getByRole("alert")).toContainText("의도한 미리보기 조회 실패");
+    await expect(preview.getByRole("button", { name: "편집하기", exact: true })).toHaveCount(0);
+    await preview.getByRole("button", { name: "미리보기 다시 시도", exact: true }).click();
+    await expect(
+      preview.getByRole("heading", { name: a.title, exact: true, level: 2 }),
+    ).toBeVisible();
+    await expect(preview).toContainText(
+      a.sections.find((s: { heading: string }) => s.heading === "사실").body,
+    );
+    await expect(preview.locator("input,textarea,select")).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "지원 내용", exact: true })).toHaveCount(0);
+    if (width > 760) {
+      const left = await page.getByLabel("날짜 선택").boundingBox();
+      const right = await preview.boundingBox();
+      expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let requested!: () => void;
+      const arrived = new Promise<void>((resolve) => {
+        requested = resolve;
+      });
+      await page.route(`**/api/documents/${b.id}`, async (route) => {
+        const response = await route.fetch();
+        requested();
+        await held;
+        await route.fulfill({ response });
+      });
+      await page.getByLabel("날짜 선택").fill(b.start);
+      await card(b.title).click();
+      await arrived;
+      await expect(preview.getByRole("status")).toContainText("불러오고");
+      await page.getByLabel("날짜 선택").fill(a.start);
+      await card(a.title).click();
+      await expect(
+        preview.getByRole("heading", { name: a.title, exact: true, level: 2 }),
+      ).toBeVisible();
+      const late = page.waitForResponse((r) => r.url().endsWith(`/api/documents/${b.id}`));
+      release();
+      await late;
+      await expect(
+        preview.getByRole("heading", { name: b.title, exact: true, level: 2 }),
+      ).toHaveCount(0);
+      await page.unroute(`**/api/documents/${b.id}`);
+    } else {
+      await expect(page.getByLabel("날짜 선택")).toBeHidden();
+      await preview.getByRole("button", { name: "목록으로", exact: true }).click();
+      await expect(page.getByLabel("날짜 선택")).toHaveValue(a.start);
+      await card(a.title).click();
+    }
+    await expect(
+      preview.getByRole("heading", { name: a.title, exact: true, level: 2 }),
+    ).toBeVisible();
+    expect(writes).toEqual([]);
+    await page.screenshot({ path: info.outputPath(`preview-${width}.png`), fullPage: true });
+    watching = false;
+    await preview.getByRole("button", { name: "편집하기", exact: true }).click();
+    const support = "다음 놀이에는 블록을 준비해 함께 길을 만들도록 지원한다.";
+    await page.getByRole("textbox", { name: "지원 내용", exact: true }).fill(support);
+    await page.getByRole("button", { name: "초안 저장", exact: true }).click();
+    await expect(page.getByText("작성 중인 초안을 저장했어요.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
+    await expect(page.getByLabel("날짜 선택")).toHaveValue(a.start);
+    await card(a.title).click();
+    await expect(preview).toContainText(support);
+    if (width <= 760) await preview.getByRole("button", { name: "목록으로", exact: true }).click();
+    await page.getByLabel("날짜 선택").fill(b.start);
+    await card(b.title).click();
+    await expect(
+      preview.getByRole("heading", { name: b.title, exact: true, level: 2 }),
+    ).toBeVisible();
+    await expect(preview).not.toContainText(support);
+    await page.getByRole("complementary", { name: "반 선택" }).getByText("달님반").click();
+    await expect(page.getByRole("heading", { name: b.title, exact: true, level: 2 })).toHaveCount(
+      0,
+    );
+    await expect(preview).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "문서를 선택해 주세요", exact: true }),
+    ).toBeVisible();
+    expect(
+      (await api(page, `/api/documents/${a.id}`)).sections.find(
+        (s: { heading: string }) => s.heading === "지원",
+      ).body,
+    ).toBe(support);
+  });
+}
+
+test("관찰 미리보기 — 아동을 바꾸면 이전 아동 본문을 닫고 해당 아동만 표시한다", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const { classId, childId } = await enterHome(page);
+  const other = await api(page, `/api/classes/${classId}/children`, "POST", { name: "라마바" });
+  const date = "2026-10-19";
+  const docs = [];
+  for (const [id, fact] of [
+    [childId, "블록을 쌓았다."],
+    [other.id, "공을 굴렸다."],
+  ] as const) {
+    const source = await api(page, "/api/observations", "POST", {
+      class_id: classId,
+      child_id: id,
+      date,
+      domain: "자연탐구",
+      context: "놀이",
+      fact,
+    });
+    docs.push(
+      await api(page, "/api/documents", "POST", {
+        kind: "observation",
+        class_id: classId,
+        child_id: id,
+        start: date,
+        end: date,
+        source_ids: [source.id],
+      }),
+    );
+  }
+  await page.goto("/documents");
+  await page.getByRole("complementary", { name: "반 선택" }).getByText("햇살반").click();
+  await page.getByRole("button", { name: "관찰일지", exact: true }).click();
+  const preview = page.getByRole("complementary", { name: "문서 미리보기" });
+  for (const [index, name, fact, excluded] of [
+    [0, "가나다", "블록을 쌓았다.", "공을 굴렸다."],
+    [1, "라마바", "공을 굴렸다.", "블록을 쌓았다."],
+  ] as const) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(preview).toHaveCount(0);
+    await page.getByLabel("날짜 선택").fill(date);
+    await page
+      .getByRole("button", {
+        name: new RegExp(docs[index].title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      })
+      .click();
+    await expect(
+      preview.getByRole("heading", { name: docs[index].title, exact: true, level: 2 }),
+    ).toBeVisible();
+    await expect(preview).toContainText(name);
+    await expect(preview.getByText(fact, { exact: true })).toBeVisible();
+    await expect(preview.getByText(excluded, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "해석 내용", exact: true })).toHaveCount(0);
+  }
+});

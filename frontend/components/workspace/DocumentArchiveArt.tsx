@@ -353,3 +353,108 @@ export function WeeklyCover({ index, className }: { index: number; className?: s
     </svg>
   );
 }
+
+/** 보육일지 헤더의 작은 해. 업무 정보와 구분되는 장식이다. */
+export function CareSunArt({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <g stroke="#f2c576" strokeWidth="4" strokeLinecap="round">
+        <path d="M32 5v6M32 53v6M5 32h6M53 32h6M13 13l4 4M47 47l4 4M13 51l4-4M47 17l4-4" />
+      </g>
+      <circle cx="32" cy="32" r="15" fill="#ffdb91" stroke="#efc478" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** 날짜 카드의 작은 새싹·하트·꽃. 상태나 평가를 나타내지 않는다. */
+export function CareDayDecor({ variant, className }: { variant: number; className?: string }) {
+  const ornaments = [
+    <g key="sprout" fill="#bbd6ae">
+      <path d="M23 42V25" fill="none" stroke="#a5c59e" strokeWidth="3" strokeLinecap="round" />
+      <path d="M23 31C4 32 5 15 13 19c8 2 10 12 10 12M23 29c1-15 16-18 16-9-1 8-16 9-16 9" />
+    </g>,
+    <path
+      key="heart"
+      d="M24 39C2 26 7 10 16 15c4 2 7 7 8 9 5-16 18-17 17-4-1 8-9 15-17 19"
+      fill="#f5bdb5"
+    />,
+    <g key="flower" fill="#f4ce86">
+      <ellipse cx="24" cy="13" rx="7" ry="10" />
+      <ellipse cx="34" cy="23" rx="10" ry="7" />
+      <ellipse cx="28" cy="34" rx="7" ry="10" />
+      <ellipse cx="14" cy="31" rx="9" ry="7" />
+      <ellipse cx="12" cy="19" rx="9" ry="7" />
+      <circle cx="23" cy="24" r="5" fill="#fffaf0" />
+    </g>,
+    <g key="leaves" fill="#b5d2aa">
+      <path d="M24 43c0-11 4-23 11-31" fill="none" stroke="#a7c79f" strokeWidth="2" />
+      <path d="M27 31c-19-1-23-16-14-14 8 1 14 14 14 14M28 27C23 6 40 2 39 13c0 8-11 14-11 14" />
+    </g>,
+    <path
+      key="violet"
+      d="M24 39C4 28 5 11 15 16c4 1 7 6 9 9 3-16 17-19 17-5-1 9-11 16-17 19"
+      fill="#cdbde3"
+    />,
+  ];
+  return (
+    <svg className={className} viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      {ornaments[variant % ornaments.length]}
+    </svg>
+  );
+}
+
+/** 하단 작성 카드용 공책. 기존 인라인 SVG와 같은 파스텔 재료를 사용한다. */
+export function CareNotebookArt({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 170 126" aria-hidden="true" focusable="false">
+      <path
+        d="M30 95C4 72 20 39 49 43c6-35 54-36 63-4 40-2 48 48 14 60-39 31-74 19-96-4"
+        fill="#eef5ec"
+      />
+      <path
+        d="M141 88V67m0 12c-17-7-17-20-10-17 9 3 10 17 10 17m0-7c3-17 17-20 17-12-1 7-17 16-17 16"
+        fill="#bed8af"
+      />
+      <path
+        d="M139 37c-15-7-16-21-8-18 4 0 6 6 7 8 4-11 12-11 11-3-1 5-5 10-10 13"
+        fill="#f5c0b7"
+      />
+      <g transform="rotate(-9 76 68)">
+        <rect
+          x="42"
+          y="30"
+          width="67"
+          height="81"
+          rx="9"
+          fill="#fffaf0"
+          stroke="#dfc9ae"
+          strokeWidth="3"
+        />
+        <path
+          d="M52 54h40M53 70h38M53 86h27"
+          stroke="#eed9ba"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <path
+          d="M39 45h9M39 59h9M39 73h9M39 87h9M39 101h9"
+          stroke="#b7b6ab"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+        <circle cx="67" cy="58" r="2" fill="#857764" />
+        <circle cx="85" cy="58" r="2" fill="#857764" />
+        <path
+          d="M73 63q4 5 8 0"
+          fill="none"
+          stroke="#c89f8a"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </g>
+      <circle cx="115" cy="93" r="22" fill="#8fc0a9" stroke="#fff" strokeWidth="3" />
+      <path d="M115 82v22M104 93h22" stroke="#fff" strokeWidth="4" strokeLinecap="round" />
+      <path d="M29 105c-13-7-11-16-5-13 2 1 4 4 4 5 4-11 11-9 9-3-1 4-4 8-8 11" fill="#a9cfc0" />
+    </svg>
+  );
+}

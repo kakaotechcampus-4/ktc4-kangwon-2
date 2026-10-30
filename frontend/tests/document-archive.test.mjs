@@ -170,3 +170,20 @@ test("반을 바꾸면 이전 반의 문서는 열리지 않는다", () => {
     null,
   );
 });
+
+test("보육일지 탐색은 남아 있는 아동 선택과 관계없이 반·기간으로만 연다", () => {
+  for (const childId of ["", "kid-1", "kid-2"]) {
+    const daily = { kind: "dailyLog", classId: "c1", day: "2026-10-28", childId };
+    const weekly = { kind: "weeklyLog", classId: "c1", month: "2026-10", childId };
+    assert.equal(openableIn(pool, daily, "doc:1").id, "doc:1");
+    assert.equal(openableIn(pool, weekly, "doc:5").id, "doc:5");
+    assert.equal(openableIn(pool, daily, "doc:5"), null);
+    assert.equal(openableIn(pool, weekly, "doc:1"), null);
+  }
+});
+
+test("관찰일지에서 아동을 바꾸면 이전 아동 문서 상세는 열리지 않는다", () => {
+  const view = { kind: "observation", classId: "c1", childId: "kid-2", day: "2026-10-28" };
+  assert.equal(openableIn(pool, view, "doc:3"), null);
+  assert.equal(openableIn(pool, view, "doc:4").id, "doc:4");
+});

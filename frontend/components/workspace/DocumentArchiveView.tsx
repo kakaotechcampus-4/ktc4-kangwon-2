@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/app/icons";
 import { DOCUMENT_KINDS, localDate, today, type DocumentKind } from "@/lib/workspace/model";
@@ -26,12 +26,15 @@ import { classServerId } from "@/lib/api/onboarding";
 import { listMonthlyPlans } from "@/lib/api/monthly";
 import { listWeeklyPlans } from "@/lib/api/weekly";
 import type { AnnualPlanSummary, MonthlyPlanSummary, WeeklyPlanSummary } from "@/lib/api/types";
-import type { ClassroomEntry } from "@/lib/onboarding/types";
+import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/onboarding/types";
 import type { RecordKind } from "@/lib/api/documents";
 import { Message, ws } from "./WorkspaceUI";
 import {
   AnnualCover,
   CareArt,
+  CareSunArt,
+  CareDayDecor,
+  CareNotebookArt,
   MonthlyCover,
   ObservationArt,
   OverviewArt,
@@ -40,6 +43,7 @@ import {
   WeeklyCover,
 } from "./DocumentArchiveArt";
 import styles from "./DocumentArchive.module.css";
+import { PlanArchivePreview, type PlanPreviewTarget } from "./DocumentArchivePreview";
 
 /** 보관함이 목록에 그리는 일지 하나. 상세(sections · sources)는 열어야 온다 (§11). */
 export type ArchiveDoc = {
@@ -117,6 +121,9 @@ export default function DocumentArchiveView({
   documents,
   annual,
   activeId,
+  editingId,
+  onBackToPreview,
+  preview,
   onOpen,
   onCloseDetail,
   onCreate,
@@ -129,6 +136,9 @@ export default function DocumentArchiveView({
   documents: ArchiveDoc[];
   annual: AnnualPlanSummary[] | null;
   activeId: string;
+  editingId: string;
+  onBackToPreview: () => void;
+  preview: ReactNode;
   onOpen: (id: string) => void;
   onCloseDetail: () => void;
   onCreate: (kind: RecordKind, options: { date: string; childId?: string }) => void;
@@ -147,16 +157,17 @@ export default function DocumentArchiveView({
   const [day, setDay] = useState(() => initialDoc?.start ?? today());
   const [month, setMonth] = useState(() => monthOf(initialDoc?.start ?? today()));
   const [schoolYear, setSchoolYear] = useState(() => schoolYearOf(today()));
-  const [childId, setChildId] = useState(() => {
-    if (initialDoc?.kind === "observation") return initialDoc.childId;
-    // 보육일지의 아동 선택은 탐색 맥락뿐이다. 문서는 반 · 날짜로만 고른다.
-    return initialDoc ? (classes.find((c) => c.id === classId)?.children[0]?.id ?? "") : "";
-  });
+  const [childId, setChildId] = useState(() =>
+    initialDoc?.kind === "observation" ? initialDoc.childId : "",
+  );
   const [childSearch, setChildSearch] = useState("");
   const [scope, setScope] = useState<"dailyLog" | "weeklyLog">(() =>
     initialDoc?.kind === "weeklyLog" ? "weeklyLog" : "dailyLog",
   );
   const [oldestFirst, setOldestFirst] = useState(false);
+  const [planPreview, setPlanPreview] = useState<PlanPreviewTarget | null>(null);
+  const previewRef = useRef<HTMLElement>(null);
+  const [mobileList, setMobileList] = useState(false);
 
   const classroom = classes.find((c) => c.id === classId);
   const serverClassId = classId ? classServerId(classId) : null;
@@ -166,6 +177,7 @@ export default function DocumentArchiveView({
   const [seenClass, setSeenClass] = useState(classId);
   if (seenClass !== classId) {
     setSeenClass(classId);
+    setPlanPreview(null);
     setType(null);
     setChildId("");
     setChildSearch("");
@@ -249,6 +261,35 @@ export default function DocumentArchiveView({
           : { kind: "weeklyLog", classId, month }
         : null;
   const openDoc = openableIn(documents, view, activeId);
+  const shownPlan =
+    planPreview &&
+    planPreview.kind === type &&
+    planPreview.classId === serverClassId &&
+    planPreview.periodKey === (type === "annual" ? String(schoolYear) : month) &&
+    (type === "annual" ? annualOfClass : type === "monthly" ? monthlyOfClass : weeklyOfMonth).some(
+      (p) => p.id === planPreview.id,
+    )
+      ? planPreview
+      : null;
+  const previewKey = openDoc?.id ?? (shownPlan ? `${shownPlan.kind}:${shownPlan.id}` : "");
+  useEffect(() => {
+    if (previewKey && !mobileList) previewRef.current?.focus();
+  }, [previewKey, mobileList]);
+
+  function openJournal(id: string) {
+    setMobileList(false);
+    setPlanPreview(null);
+    onOpen(id);
+  }
+  function openPlan(target: PlanPreviewTarget) {
+    setMobileList(false);
+    onCloseDetail();
+    setPlanPreview(target);
+  }
+  function closePreview() {
+    setPlanPreview(null);
+    onCloseDetail();
+  }
 
   const days = useMemo(() => weekDays(day), [day]);
   const sorted = <T,>(items: T[]) => (oldestFirst ? [...items].reverse() : items);
@@ -300,7 +341,25 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p, i) => (
-            <Link key={p.id} className={styles.docCard} href={`/plans/annual/${p.id}`}>
+            <button
+              type="button"
+              key={p.id}
+              className={styles.docCard}
+              aria-pressed={shownPlan?.kind === "annual" && shownPlan.id === p.id}
+              onClick={() =>
+                openPlan({
+                  kind: "annual",
+                  id: p.id,
+                  classId: p.class_id,
+                  className: classroom?.className ?? "",
+                  title: `${p.school_year}학년도 연간계획안`,
+                  period: `${p.school_year}학년도`,
+                  periodKey: String(p.school_year),
+                  createdAt: p.created_at,
+                  href: `/plans/annual/${p.id}`,
+                })
+              }
+            >
               <div className={styles.cover} data-type="annual">
                 <b>{p.school_year}학년도</b>
                 <small>{classroom?.className}</small>
@@ -311,7 +370,7 @@ export default function DocumentArchiveView({
                 <span>{localDate(p.created_at)}</span>
                 <StatusBadge state={planStatus(p.status)} />
               </div>
-            </Link>
+            </button>
           ))}
         </PlanGrid>
       </>
@@ -359,7 +418,25 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p) => (
-            <Link key={p.id} className={styles.docCard} href="/plans/monthly">
+            <button
+              type="button"
+              key={p.id}
+              className={styles.docCard}
+              aria-pressed={shownPlan?.kind === "monthly" && shownPlan.id === p.id}
+              onClick={() =>
+                openPlan({
+                  kind: "monthly",
+                  id: p.id,
+                  classId: p.class_id,
+                  className: classroom?.className ?? "",
+                  title: `${p.month}월 월간계획안`,
+                  period: p.target_month,
+                  periodKey: p.target_month,
+                  createdAt: p.created_at,
+                  href: `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
+                })
+              }
+            >
               <div className={styles.cover} data-type="monthly">
                 <b>{monthLabel(p.target_month)}</b>
                 <small>{classroom?.className}</small>
@@ -370,7 +447,7 @@ export default function DocumentArchiveView({
                 <span>{localDate(p.created_at)}</span>
                 <StatusBadge state={planStatus(p.status)} />
               </div>
-            </Link>
+            </button>
           ))}
         </PlanGrid>
       </>
@@ -411,7 +488,25 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p, i) => (
-            <Link key={p.id} className={styles.docCard} href="/plans/weekly">
+            <button
+              type="button"
+              key={p.id}
+              className={styles.docCard}
+              aria-pressed={shownPlan?.kind === "weekly" && shownPlan.id === p.id}
+              onClick={() =>
+                openPlan({
+                  kind: "weekly",
+                  id: p.id,
+                  classId: p.class_id,
+                  className: classroom?.className ?? "",
+                  title: `${weekIdLabel(p.week_id)} 주간계획안`,
+                  period: p.week_id,
+                  periodKey: month,
+                  createdAt: p.created_at,
+                  href: `/plans/weekly?plan_id=${p.id}&class_id=${p.class_id}&week_id=${p.week_id}`,
+                })
+              }
+            >
               <div className={styles.cover} data-type="weekly">
                 {/* 주차는 서버가 준 week_id 를 읽기만 한다 — 화면이 세지 않는다. */}
                 <b>{weekIdLabel(p.week_id)}</b>
@@ -423,32 +518,18 @@ export default function DocumentArchiveView({
                 <span>{localDate(p.created_at)}</span>
                 <StatusBadge state={planStatus(p.status)} />
               </div>
-            </Link>
+            </button>
           ))}
         </PlanGrid>
       </>
     );
   }
 
-  /**
-   * 관찰일지 · 보육일지 공통 화면. **같은 2열 구조**를 쓴다 — 왼쪽 아동 목록, 오른쪽 상세.
-   *
-   * 보육일지에서 아이를 고르는 것은 **탐색 맥락일 뿐**이다. 문서는 끝까지 반 · 날짜 단위라
-   * 아동 id 로 거르지도, 아동별 가짜 문서를 만들지도 않는다.
-   */
-  function journalScreen(mode: "observation" | "care") {
-    const observation = mode === "observation";
+  /** 관찰일지는 아동을 고른 뒤 그 아동의 기록을 탐색한다. */
+  function observationView() {
     const roster = (classroom?.children ?? []).filter((c) => c.name.includes(childSearch));
-    const child = classroom?.children.find((c) => c.id === childId);
-    const name = observation ? "관찰일지" : "보육일지";
-    const weeklyDocs = sorted(
-      journalsInView(documents, { kind: "weeklyLog", classId, month }).sort((a, b) =>
-        a.start < b.start ? 1 : -1,
-      ),
-    );
-    const byWeek = !observation && scope === "weeklyLog";
     return (
-      <section className={styles.panel}>
+      <section className={`${styles.panel} ${styles.journalPanel}`}>
         <div className={styles.journal}>
           <aside className={styles.roster}>
             <h4>
@@ -480,165 +561,171 @@ export default function DocumentArchiveView({
               {!roster.length && <p className={ws.muted}>찾는 이름이 없어요.</p>}
             </div>
           </aside>
-          <div className={styles.journalMain}>
-            {!child ? (
-              <Blank
-                art={
-                  observation ? (
-                    <ObservationArt className={styles.blankArt} />
-                  ) : (
-                    <CareArt className={styles.blankArt} />
-                  )
-                }
-                title="왼쪽에서 아이를 선택해 주세요"
-              >
-                {observation
-                  ? "선택한 아이의 관찰일지를 확인하고 작성할 수 있어요."
-                  : "아이를 선택하고 우리 반의 보육일지를 확인해 보세요."}
-              </Blank>
-            ) : (
-              <>
-                <div className={styles.panelHead}>
-                  <div>
-                    <h3>{child.name}</h3>
-                    <p className={ws.muted}>
-                      {classroom?.className}
-                      {classroom?.ageGroup ? ` · ${classroom.ageGroup}` : ""}
-                      {observation ? "" : " · 보육일지는 아이별이 아니라 반별 문서예요."}
-                    </p>
-                  </div>
-                  <div className={styles.panelHeadLeft}>
-                    {!observation && (
-                      <div className={styles.scopeTabs}>
-                        <button
-                          type="button"
-                          aria-pressed={scope === "dailyLog"}
-                          onClick={() => {
-                            setScope("dailyLog");
-                            onCloseDetail();
-                          }}
-                        >
-                          일일
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={scope === "weeklyLog"}
-                          onClick={() => {
-                            setScope("weeklyLog");
-                            onCloseDetail();
-                          }}
-                        >
-                          주간
-                        </button>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      className={ws.primary}
-                      onClick={() =>
-                        observation
-                          ? onCreate("observation", { date: day, childId: child.id })
-                          : onCreate(scope, { date: day })
-                      }
-                    >
-                      ＋ {byWeek ? "주간 보육일지" : name} 작성
-                    </button>
-                  </div>
-                </div>
-                {byWeek ? (
-                  <>
-                    <PeriodNav
-                      label={monthLabel(month)}
-                      onPrev={() => setMonth((m) => shiftMonth(m, -1))}
-                      onNext={() => setMonth((m) => shiftMonth(m, 1))}
-                      picker={sortButton}
-                    />
-                    <div className={styles.docGrid}>
-                      {weeklyDocs.map((d) => (
-                        <JournalCard
-                          key={d.id}
-                          doc={d}
-                          cover="care"
-                          art={<CareArt className={styles.coverArt} />}
-                          onOpen={onOpen}
-                        />
-                      ))}
-                      {!weeklyDocs.length && (
-                        <button
-                          type="button"
-                          className={styles.addCard}
-                          onClick={() => onCreate("weeklyLog", { date: day })}
-                        >
-                          <span className="plus">
-                            <Icon name="plus" />
-                          </span>
-                          새 주간 보육일지 작성
-                          <span className={styles.addNote}>
-                            확정된 일일 보육일지를 근거로 만들어요. 근거가 없으면 서버가 막아요.
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <PeriodNav
-                      label={weekRangeLabel(days)}
-                      onPrev={() => setDay((d) => shiftDays(d, -7))}
-                      onNext={() => setDay((d) => shiftDays(d, 7))}
-                      picker={
-                        <input
-                          type="date"
-                          className={styles.periodDate}
-                          aria-label="날짜 선택"
-                          value={day}
-                          onChange={(e) => e.target.value && setDay(e.target.value)}
-                        />
-                      }
-                    />
-                    <Legend />
-                    <DayStrip
-                      days={days}
-                      day={day}
-                      onPickDay={setDay}
-                      onOpen={onOpen}
-                      cover={observation ? "observation" : "care"}
-                      art={
-                        observation ? (
-                          <ObservationArt className={styles.coverArt} />
-                        ) : (
-                          <CareArt className={styles.coverArt} />
-                        )
-                      }
-                      emptyHint={
-                        observation
-                          ? "이 날짜에 작성된 관찰일지가 없어요."
-                          : "일과 기록을 확인한 뒤 작성해 보세요."
-                      }
-                      createLabel={`이 날짜 ${name} 작성`}
-                      onCreate={() =>
-                        observation
-                          ? onCreate("observation", { date: day, childId: child.id })
-                          : onCreate("dailyLog", { date: day })
-                      }
-                      docsFor={(date) =>
-                        observation
-                          ? journalsInView(documents, {
-                              kind: "observation",
-                              classId,
-                              childId: child.id,
-                              day: date,
-                            })
-                          : journalsInView(documents, { kind: "dailyLog", classId, day: date })
-                      }
-                    />
-                  </>
-                )}
-              </>
-            )}
-          </div>
+          <div className={styles.journalMain}>{journalContent("observation")}</div>
         </div>
       </section>
+    );
+  }
+
+  /** 보육일지는 반 · 날짜/월만 고른다. 아동 명단이 없어도 탐색·작성할 수 있다. */
+  function careView() {
+    return (
+      <section className={`${styles.panel} ${styles.journalPanel}`}>
+        <div className={styles.journalMain}>{journalContent("care")}</div>
+      </section>
+    );
+  }
+
+  /** 날짜 탐색과 기존 문서 카드만 공유한다. 아동 선택은 관찰일지에만 필요하다. */
+  function journalContent(mode: "observation" | "care") {
+    const observation = mode === "observation";
+    const child = classroom?.children.find((c) => c.id === childId);
+    if (observation && !child) {
+      return (
+        <Blank
+          art={<ObservationArt className={styles.blankArt} />}
+          title="왼쪽에서 아이를 선택해 주세요"
+        >
+          선택한 아이의 관찰일지를 확인하고 작성할 수 있어요.
+        </Blank>
+      );
+    }
+    const name = observation ? "관찰일지" : "보육일지";
+    const weeklyDocs = sorted(
+      journalsInView(documents, { kind: "weeklyLog", classId, month }).sort((a, b) =>
+        a.start < b.start ? 1 : -1,
+      ),
+    );
+    const byWeek = !observation && scope === "weeklyLog";
+    return (
+      <>
+        <div className={`${styles.panelHead} ${styles.journalHeader}`}>
+          <div>
+            <div className={styles.journalTitle}>
+              <h3>{observation ? child?.name : `${classroom?.className} 보육일지`}</h3>
+              {!observation && <CareSunArt className={styles.careSun} />}
+            </div>
+            <p className={ws.muted}>
+              {observation
+                ? classroom?.className
+                : ageSelectionLabel(selectedAgesFor(classroom ?? {}))}
+              {observation && classroom?.ageGroup ? ` · ${classroom.ageGroup}` : ""}
+              {!observation && " · 반별 문서"}
+            </p>
+          </div>
+          {!observation && (
+            <div className={styles.panelHeadLeft}>
+              <div className={styles.scopeTabs}>
+                <button
+                  type="button"
+                  aria-pressed={scope === "dailyLog"}
+                  onClick={() => {
+                    setScope("dailyLog");
+                    onCloseDetail();
+                  }}
+                >
+                  일일
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={scope === "weeklyLog"}
+                  onClick={() => {
+                    setScope("weeklyLog");
+                    onCloseDetail();
+                  }}
+                >
+                  주간
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        {byWeek ? (
+          <>
+            <PeriodNav
+              label={monthLabel(month)}
+              onPrev={() => setMonth((m) => shiftMonth(m, -1))}
+              onNext={() => setMonth((m) => shiftMonth(m, 1))}
+              picker={sortButton}
+            />
+            <div className={styles.docGrid}>
+              {weeklyDocs.map((d) => (
+                <JournalCard
+                  key={d.id}
+                  doc={d}
+                  cover="care"
+                  art={<CareArt className={styles.coverArt} />}
+                  onOpen={openJournal}
+                />
+              ))}
+              {/* 상단 생성 버튼 대신 같은 생성 진입을 목록 아래에 둔다. */}
+              <button
+                type="button"
+                className={`${styles.addCard} ${styles.journalCreateCard}`}
+                onClick={() => onCreate("weeklyLog", { date: day })}
+              >
+                <CareNotebookArt className={styles.journalCreateArt} />새 주간 보육일지 작성
+                <span className={styles.addNote}>
+                  확정한 일일 보육일지 또는 일과 기록을 근거로 만들어요.
+                </span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <PeriodNav
+              label={weekRangeLabel(days)}
+              onPrev={() => setDay((d) => shiftDays(d, -7))}
+              onNext={() => setDay((d) => shiftDays(d, 7))}
+              picker={
+                <input
+                  type="date"
+                  className={styles.periodDate}
+                  aria-label="날짜 선택"
+                  value={day}
+                  onChange={(e) => e.target.value && setDay(e.target.value)}
+                />
+              }
+            />
+            <Legend />
+            <DayStrip
+              days={days}
+              day={day}
+              onPickDay={setDay}
+              onOpen={openJournal}
+              cover={observation ? "observation" : "care"}
+              art={
+                observation ? (
+                  <ObservationArt className={styles.coverArt} />
+                ) : (
+                  <CareArt className={styles.coverArt} />
+                )
+              }
+              emptyHint={
+                observation
+                  ? "이 날짜에 작성된 관찰일지가 없어요."
+                  : "일과 기록을 확인한 뒤 작성해 보세요."
+              }
+              createLabel={`이 날짜 ${name} 작성`}
+              onCreate={() =>
+                observation
+                  ? onCreate("observation", { date: day, childId })
+                  : onCreate("dailyLog", { date: day })
+              }
+              docsFor={(date) =>
+                observation
+                  ? journalsInView(documents, {
+                      kind: "observation",
+                      classId,
+                      childId,
+                      day: date,
+                    })
+                  : journalsInView(documents, { kind: "dailyLog", classId, day: date })
+              }
+            />
+          </>
+        )}
+      </>
     );
   }
 
@@ -657,6 +744,7 @@ export default function DocumentArchiveView({
             aria-pressed={type === t.key}
             onClick={() => {
               setType(t.key);
+              setPlanPreview(null);
               onCloseDetail();
             }}
           >
@@ -674,9 +762,16 @@ export default function DocumentArchiveView({
       <ClassRail classes={classes} classId={classId} onPick={onPickClass} />
       <div className={styles.content}>
         {header}
-        {openDoc ? (
+        {openDoc && editingId === openDoc.id ? (
           <>
-            <button type="button" className={styles.backLink} onClick={onCloseDetail}>
+            <button
+              type="button"
+              className={styles.backLink}
+              onClick={() => {
+                onBackToPreview();
+                setMobileList(true);
+              }}
+            >
               ← 문서 목록으로 돌아가기
             </button>
             {detail}
@@ -684,16 +779,46 @@ export default function DocumentArchiveView({
         ) : (
           <>
             {typeGrid()}
-            {type === null && (
-              <Blank art={<OverviewArt className={styles.blankArt} />} title="문서를 선택해 주세요">
-                위의 문서 종류를 선택하면 해당 문서 목록을 확인할 수 있어요.
-              </Blank>
-            )}
-            {type === "annual" && annualView()}
-            {type === "monthly" && monthlyView()}
-            {type === "weekly" && weeklyView()}
-            {type === "care" && journalScreen("care")}
-            {type === "observation" && journalScreen("observation")}
+            <div
+              className={styles.split}
+              data-preview={Boolean(previewKey)}
+              data-selected={Boolean(previewKey) && !mobileList}
+            >
+              <div className={styles.browser}>
+                {type === null && (
+                  <Blank
+                    art={<OverviewArt className={styles.blankArt} />}
+                    title="문서를 선택해 주세요"
+                  >
+                    위의 문서 종류를 선택하면 해당 문서 목록을 확인할 수 있어요.
+                  </Blank>
+                )}
+                {type === "annual" && annualView()}
+                {type === "monthly" && monthlyView()}
+                {type === "weekly" && weeklyView()}
+                {type === "care" && careView()}
+                {type === "observation" && observationView()}
+              </div>
+              {previewKey && (
+                <aside
+                  className={styles.previewPanel}
+                  aria-label="문서 미리보기"
+                  tabIndex={-1}
+                  ref={previewRef}
+                >
+                  <button type="button" className={styles.backLink} onClick={closePreview}>
+                    목록으로
+                  </button>
+                  {openDoc && preview}
+                  {shownPlan && (
+                    <PlanArchivePreview
+                      key={`${shownPlan.kind}:${shownPlan.id}`}
+                      target={shownPlan}
+                    />
+                  )}
+                </aside>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -736,7 +861,7 @@ function PlanGrid({
       <div className={styles.docGrid}>
         {blocked ? (
           <button type="button" className={styles.addCard} disabled>
-            <span className="plus">
+            <span className={styles.plus}>
               <Icon name="plus" />
             </span>
             {createLabel}
@@ -744,7 +869,7 @@ function PlanGrid({
           </button>
         ) : (
           <Link className={styles.addCard} href={createHref}>
-            <span className="plus">
+            <span className={styles.plus}>
               <Icon name="plus" />
             </span>
             {createLabel}
@@ -784,7 +909,11 @@ function DayStrip({
   const picked = docsFor(day);
   return (
     <>
-      <div className={styles.dayStrip}>
+      <div
+        className={styles.dayStrip}
+        role="group"
+        aria-label={`${cover === "care" ? "보육일지" : "관찰일지"} 주간 달력`}
+      >
         {days.map((d, i) => {
           const found = docsFor(d);
           // 한 날짜에 여러 장이면 가장 센 상태를 표시하고, 아래 카드에서 각각 확인한다.
@@ -802,12 +931,13 @@ function DayStrip({
               aria-pressed={d === day}
               onClick={() => onPickDay(d)}
             >
-              <span className="date">{shortDate(d)}</span>
-              <span className="dow">{WEEKDAY[i]}</span>
-              <span className="mark" data-state={state}>
+              <span className={styles.date}>{shortDate(d)}</span>
+              <span className={styles.dow}>{WEEKDAY[i]}</span>
+              <span className={styles.mark} data-state={state}>
                 {state === "none" ? null : <Icon name="check" />}
               </span>
-              <span className="state">{ARCHIVE_STATUS_LABEL[state]}</span>
+              <span className={styles.state}>{ARCHIVE_STATUS_LABEL[state]}</span>
+              <CareDayDecor variant={i} className={styles.dayDecor} />
             </button>
           );
         })}
@@ -818,10 +948,12 @@ function DayStrip({
         ))}
         {/* 없는 문서의 가짜 카드를 만들지 않는다 — 대신 그 날짜로 새로 쓰는 길을 연다. */}
         {!picked.length && (
-          <button type="button" className={styles.addCard} onClick={onCreate}>
-            <span className="plus">
-              <Icon name="plus" />
-            </span>
+          <button
+            type="button"
+            className={`${styles.addCard} ${styles.journalCreateCard}`}
+            onClick={onCreate}
+          >
+            <CareNotebookArt className={styles.journalCreateArt} />
             {createLabel}
             <span className={styles.addNote}>{emptyHint}</span>
           </button>
@@ -908,7 +1040,7 @@ function ClassRail({
               aria-pressed={c.id === classId}
               onClick={() => onPick(c.id)}
             >
-              <span className="grow">{c.className || "이름 없는 반"}</span>
+              <span className={styles.grow}>{c.className || "이름 없는 반"}</span>
               <Icon name="chevron" />
             </button>
           ))}

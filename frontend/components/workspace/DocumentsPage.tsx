@@ -43,6 +43,7 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { routinesPath, routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import DocumentEditor from "./DocumentEditor";
+import DocumentArchivePreview from "./DocumentArchivePreview";
 import DocumentArchiveView, { type ArchiveDoc } from "./DocumentArchiveView";
 import { createSelection } from "./document-selection";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
@@ -90,6 +91,7 @@ export default function DocumentsPage() {
     { date: "", classId: null as number | null, daily: false },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
+  const [editingId, setEditingId] = useState("");
   const [kind, setKind] = useState<DocumentKind>("observation");
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -387,8 +389,8 @@ export default function DocumentsPage() {
   // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
   const current = activeServerId === null ? localCurrent : serverCurrent;
-  // 일지가 아직 오는 중이어도 받은 계획안 · 로컬 증빙은 먼저 그린다.
-  const journalsPending = listStatus === "loading" && entries.length > 0;
+  // 첫 목록이 비어 있어도 조회가 끝나기 전에는 로딩임을 알린다.
+  const journalsPending = listStatus === "loading";
 
   /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
   const clearInvalid = (name: string) =>
@@ -418,6 +420,7 @@ export default function DocumentsPage() {
   }
 
   function open(id: string) {
+    setEditingId("");
     setMessage("");
     selection.select(id, documentServerId(id));
   }
@@ -452,6 +455,7 @@ export default function DocumentsPage() {
         ...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {}),
       });
       if (creation.adopt(created)) {
+        setEditingId(created.id);
         // 목록 재조회가 끝나기 전에도 방금 만든 문서를 기존 편집기로 연다.
         setServerDocs((prev) => [
           { ...created, sourcesCount: created.sources.length },
@@ -547,7 +551,7 @@ export default function DocumentsPage() {
   const detailPane = (
     <WorkspaceViewState
       status={chosen.status}
-      error={chosen.error}
+      error={chosen.error ? `문서를 불러오지 못했어요. ${chosen.error}` : ""}
       loading="문서를 불러오고 있어요."
       empty={
         !current && (
@@ -647,7 +651,11 @@ export default function DocumentsPage() {
                 </button>
               </div>
             )}
-            {journalsPending && <Message>일지를 불러오고 있어요.</Message>}
+            {journalsPending && (
+              <Message>
+                {entries.length ? "일지를 불러오고 있어요." : "문서 목록을 불러오고 있어요."}
+              </Message>
+            )}
           </>
         }
         classes={classes}
@@ -662,10 +670,30 @@ export default function DocumentsPage() {
         documents={archiveDocs}
         annual={plans?.items ?? null}
         activeId={active}
+        editingId={editingId}
+        onBackToPreview={() => setEditingId("")}
+        preview={
+          <DocumentArchivePreview
+            document={current?.classId === classId ? current : null}
+            status={chosen.status}
+            error={chosen.error}
+            onRetry={() => selection.select(active, activeServerId)}
+            onEdit={() => setEditingId(active)}
+          />
+        }
         onOpen={open}
         onCloseDetail={() => selection.select("", null)}
         onCreate={startCreate}
-        detail={detailPane}
+        detail={
+          <>
+            {detailPane}
+            {chosen.status === "error" && (
+              <button className={ws.secondary} onClick={() => open(active)}>
+                문서 다시 불러오기
+              </button>
+            )}
+          </>
+        }
       />
     );
 

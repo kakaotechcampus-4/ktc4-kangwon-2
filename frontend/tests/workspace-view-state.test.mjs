@@ -358,6 +358,7 @@ function documentsHarness({
     },
     "@/lib/onboarding/settings": { chosenClassFor: () => null, loadClassSettings: () => null },
     "./DailyLogSources": { default: "daily-log-sources", __esModule: true },
+    "./DocumentArchivePreview": { default: "preview", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
     // 보관함 탐색(반 → 종류 → 기간)은 자기 테스트가 따로 본다. 여기서는 목록과
     // 선택 문서 상세만 보므로, 넘겨받은 `detail` 만 그대로 그려 준다.

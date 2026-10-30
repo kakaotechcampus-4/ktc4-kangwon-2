@@ -17,6 +17,10 @@ async function openObservation(
   await page
     .getByRole("button", { name: new RegExp(doc.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
     .click();
+  await page
+    .getByRole("complementary", { name: "문서 미리보기" })
+    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
+    .click();
 }
 
 /** 생성한 문서의 날짜·아동·종류를 유지한 채 목록으로 돌아가 다시 연다. */
@@ -40,8 +44,13 @@ async function reopenCreated(
       "aria-pressed",
       "true",
     );
+  else await expect(page.getByLabel("아동 이름 검색")).toHaveCount(0);
   await page
     .getByRole("button", { name: new RegExp(doc.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .click();
+  await page
+    .getByRole("complementary", { name: "문서 미리보기" })
+    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
     .click();
   await expect(page.getByRole("heading", { name: doc.title, exact: true, level: 2 })).toBeVisible();
 }
@@ -192,6 +201,62 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
     )
     .toBeLessThanOrEqual(0);
   await page.screenshot({ path: info.outputPath("monthly-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const monthlyList = await api(page, `/api/plans/monthly?class_id=${generated.class_id}`);
+  const monthPlan = await api(page, `/api/plans/monthly/${monthlyList.items[0].id}`);
+  const week = monthPlan.weeks.find((w: { active: boolean }) => w.active);
+  const auth = await page.evaluate(() => sessionStorage.getItem("saessak.authToken"));
+  const weeklyResponse = await page.request.post("/api/plans/weekly", {
+    headers: { Authorization: `Bearer ${auth}` },
+    data: { class_id: generated.class_id, week_id: week.week_id },
+  });
+  expect(weeklyResponse.status()).toBe(201);
+  const weekPlan = await weeklyResponse.json();
+  for (const kind of ["annual", "monthly", "weekly"] as const) {
+    await page.goto("/documents");
+    await page.getByRole("complementary", { name: "반 선택" }).getByText("햇살반").click();
+    await page
+      .getByRole("button", {
+        name:
+          kind === "annual" ? "연간 계획안" : kind === "monthly" ? "월간 계획안" : "주간 계획안",
+        exact: true,
+      })
+      .click();
+    if (kind !== "annual") await page.getByLabel("월 선택").fill(monthPlan.target_month);
+    const title =
+      kind === "annual"
+        ? `${generated.school_year}학년도 연간계획안`
+        : kind === "monthly"
+          ? `${monthPlan.month}월 월간계획안`
+          : `${weekPlan.week_id.slice(0, 4)}년 ${Number(weekPlan.week_id.slice(5, 7))}월 ${weekPlan.week_id.split("W")[1]}주차 주간계획안`;
+    await page.getByRole("button", { name: new RegExp(title) }).click();
+    const preview = page.getByRole("complementary", { name: "문서 미리보기" });
+    await expect(
+      preview.getByRole("heading", { name: title, exact: true, level: 2 }),
+    ).toBeVisible();
+    if (kind === "annual") await expect(preview).toContainText("우리 반과 새로운 친구");
+    if (kind === "monthly")
+      await expect(preview).toContainText("친구와 함께 만드는 새로운 우리 반 놀이");
+    await expect(preview.locator("input,textarea,select")).toHaveCount(0);
+    const link = preview.getByRole("link", { name: "문서 열기", exact: true });
+    await expect(link).toHaveAttribute(
+      "href",
+      new RegExp(
+        kind === "annual"
+          ? `/plans/annual/${annualId}`
+          : `plan_id=${kind === "monthly" ? monthPlan.id : weekPlan.id}`,
+      ),
+    );
+    await link.click();
+    if (kind === "monthly")
+      await expect(page.getByRole("textbox", { name: "칸 내용", exact: true }).first()).toHaveValue(
+        "친구와 함께 만드는 새로운 우리 반 놀이",
+      );
+    if (kind === "weekly")
+      await expect(page.getByRole("combobox", { name: "주", exact: true })).toHaveValue(
+        weekPlan.week_id,
+      );
+  }
 });
 
 test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현황 반영까지", async ({ page }, info) => {

@@ -143,3 +143,16 @@ export function openableIn<T extends JournalDoc>(
   if (!view || !activeId) return null;
   return journalsInView(docs, view).find((d) => d.id === activeId) ?? null;
 }
+
+/** 보관함에서 기존 월간·주간 화면으로 넘기는 실제 문서 주소. 잘못된 쿼리는 무시한다. */
+export function archivePlanEntry(search: string) {
+  const query = new URLSearchParams(search);
+  const id = Number(query.get("plan_id"));
+  const classId = Number(query.get("class_id"));
+  const weekId = query.get("week_id") ?? "";
+  if (![id, classId].every((n) => Number.isSafeInteger(n) && n > 0)) return null;
+  if (weekId && !/^\d{4}-(0[1-9]|1[0-2])-W[1-9]\d*$/.test(weekId)) return null;
+  const month = weekId ? Number(weekId.slice(5, 7)) : Number(query.get("month"));
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+  return { id, classId, month, weekId };
+}
