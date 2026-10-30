@@ -258,6 +258,32 @@ export default function RecordsPage() {
       title="관찰 기록"
       description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
     >
+      {/* 반은 이 화면 전체의 범위다 — 숫자도 목록도 적는 칸도 이 반을 본다. 적는 칸 안에
+          두면 접었을 때 반을 못 바꾼다. 고치는 중에는 잠근다. */}
+      <div className={ws.card} style={{ marginBottom: 24, maxWidth: 320 }}>
+        <label className={ws.field}>
+          담당 반
+          <select
+            value={classId}
+            disabled={pending || !!editId}
+            {...fieldErrorProps("classId", invalid)}
+            onChange={(e) => {
+              setClassId(e.target.value);
+              setChildId("");
+              setOnlyChild("");
+              clearInvalid("classId");
+            }}
+          >
+            <option value="">반 선택</option>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.className || "이름 없는 반"}
+              </option>
+            ))}
+          </select>
+          <FieldError name="classId" invalid={invalid} />
+        </label>
+      </div>
       {/* 머리말 그림판(「있는 그대로 기록하면…」)을 걷었다. 화면에서 제일 크고 노랗던
           자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
@@ -319,28 +345,6 @@ export default function RecordsPage() {
                 style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
               >
                 <div className={ws.row}>
-                  <label className={ws.field}>
-                    담당 반
-                    <select
-                      required
-                      disabled={!!editId}
-                      value={classId}
-                      {...fieldErrorProps("classId", invalid)}
-                      onChange={(e) => {
-                        setClassId(e.target.value);
-                        setChildId("");
-                        clearInvalid("classId");
-                      }}
-                    >
-                      <option value="">반 선택</option>
-                      {classes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.className || "이름 없는 반"}
-                        </option>
-                      ))}
-                    </select>
-                    <FieldError name="classId" invalid={invalid} />
-                  </label>
                   <label className={ws.field}>
                     아동
                     <select
