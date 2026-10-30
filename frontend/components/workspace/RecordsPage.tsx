@@ -229,21 +229,29 @@ export default function RecordsPage() {
     }
   }
 
-  // 반 · 기록을 못 불러오면 안내 하나만 둔다. 「누적 0」 「먼저 반과 아동을 등록해주세요」가 같이 보이면
-  // 기록이 사라진 것으로 읽힌다. 저장 · 삭제 실패는 여기 들지 않는다 — 적던 글이 남아야 한다.
-  const loadError =
-    classError ||
-    (status === "error" ? "관찰 기록을 불러오지 못했어요. 페이지를 새로고침해주세요." : "");
-  if (loadError) {
+  /*
+    **반 명단**을 못 불러오면 안내 하나만 둔다. 「먼저 반과 아동을 등록해주세요」가 같이
+    보이면 멀쩡한 명단을 다시 만들러 간다.
+
+    **목록만** 못 불러온 것은 다르다. 적는 칸은 다른 길(POST)로 저장하므로 그대로 쓸 수
+    있다. 여기까지 묶어 화면을 지우면, 낮에 조회가 한 번 흔들린 교사가 그날 기록을 아예
+    못 남긴다 — 보는 걸 못 하는 것보다 무겁다. 목록 자리의 오류는 `RecordList` 가 이미
+    자기 자리에서 말한다.
+
+    저장 · 삭제 실패는 둘 다 아니다 — 적던 글이 남아야 한다.
+  */
+  if (classError) {
     return (
       <WorkspacePage
         title="관찰 기록"
         description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
       >
-        <Message error>{loadError}</Message>
+        <Message error>{classError}</Message>
       </WorkspacePage>
     );
   }
+  // 목록을 못 읽은 동안 숫자는 감춘다. 0 은 「기록이 없다」는 말이라 거짓말이 된다.
+  const countable = status !== "error";
 
   return (
     <WorkspacePage
@@ -253,7 +261,7 @@ export default function RecordsPage() {
       {/* 머리말 그림판(「있는 그대로 기록하면…」)을 걷었다. 화면에서 제일 크고 노랗던
           자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
-      <div className={ws.stats}>
+      <div className={ws.stats} hidden={!countable}>
         {[
           [
             onlyChild ? `${onlyChild.name} 기록` : `${classroom?.className ?? "우리 반"} 기록`,

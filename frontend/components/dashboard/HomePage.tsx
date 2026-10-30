@@ -38,8 +38,9 @@ const schoolYear = (date: Date) =>
 
 export default function HomePage() {
   const [message, setMessage] = useState("");
-  // 반 · 기록을 못 불러오면 아래 빈 화면 안내를 그리지 않는다. 「아이를 먼저 등록해 주세요」를
-  // 보고 멀쩡한 명단을 다시 만들러 간다. 저장 실패는 여기 들지 않는다 — 적던 글은 남아야 한다.
+  // **반 명단**을 못 불러오면 아래 빈 화면 안내를 그리지 않는다. 「아이를 먼저 등록해 주세요」를
+  // 보고 멀쩡한 명단을 다시 만들러 간다. 기록 조회가 흔들린 것은 여기 들지 않는다 — 적는 칸은
+  // 다른 길로 저장하므로 그대로 쓸 수 있어야 한다. 저장 실패도 아니다 — 적던 글은 남아야 한다.
   const [loadFailed, setLoadFailed] = useState(false);
   const onError = useCallback((m: string) => {
     setMessage(m);
@@ -98,9 +99,9 @@ export default function HomePage() {
       .catch(() => {
         if (at !== visit.current) return;
         setRecords([]);
-        onError("기록을 불러오지 못했어요. 새로고침해주세요.");
+        setMessage("기록을 불러오지 못했어요. 새로고침해주세요.");
       });
-  }, [activeClassId, onError]);
+  }, [activeClassId]);
   useEffect(() => {
     reload();
   }, [reload, recordsRevision]);
