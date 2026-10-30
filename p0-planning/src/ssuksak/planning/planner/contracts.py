@@ -27,10 +27,16 @@ MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 # Used instead of the two above when the Context Packet carries safety placement.
 MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v16"
 MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v16"
-MONTHLY_MODEL = "openai/gpt-6-luna"
+# v1 requests carrying approved curriculum or confirmed annual subthemes.
+MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v19"
+MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v11"
+MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v14"
+MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v17"
+MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v17"
+MONTHLY_MODEL = "openai/gpt-6.1-sol"
 # Providers may report the requested family without the vendor prefix, or the
-# dated snapshot they resolved it to (e.g. "gpt-6-luna-2026-10-07"). Elice answers
-# with the bare family name ("gpt-6-luna"), which is why the prefix is stripped here.
+# dated snapshot they resolved it to (e.g. "gpt-6.1-sol-2026-10-07"). Elice answers
+# with the bare family name ("gpt-6.1-sol"), which is why the prefix is stripped here.
 _MONTHLY_MODEL_SNAPSHOT = re.compile(
     re.escape(MONTHLY_MODEL.rsplit("/", 1)[-1]) + r"(?:-(\d{4}-\d{2}-\d{2}))?"
 )

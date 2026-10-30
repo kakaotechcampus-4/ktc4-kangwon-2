@@ -328,7 +328,7 @@ curriculum_links 총 개수 : 0   (49개 항목 전부 빈 배열)
   - 연결이 있는 3편은 그 놀이 사례에 대한 예시다. 이 Catalog 49개 항목의 연결 근거가 되지 않는다.
   - 사례집의 사례를 Activity의 고정 목록으로 쓰지 않는다는 원칙(`references/README.md §4.5`)도 그대로다.
 - curriculum Reference 행: 「없음」은 이 문서를 쓸 당시 기준이다.
-  - 지금은 별도의 누리과정 내용 Catalog 초안(`p0-planning/data/curriculum/nuri_curriculum_content_v0_1_0_draft.json`, 사람 승인 전)이 있다.
+  - 지금은 별도의 누리과정 내용 Catalog 초안(`p0-planning/data/curriculum/nuri_curriculum_content_v0_1_0_draft.json`, 2026-10-29 사람 승인)이 있다.
   - 그 초안은 놀이 프로젝트형 「배움」 칸이 고르는 내용 ID 목록이다. 이 Activity Catalog의 `curriculum_links` 를 새로 연결하거나 승인한 것이 아니다.
 - 이 정정은 문서만 바꾼다. 코드 · Catalog · Golden · 승인 상태는 변경하지 않는다.
 

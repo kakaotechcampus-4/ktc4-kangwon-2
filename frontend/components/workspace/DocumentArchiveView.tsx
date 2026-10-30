@@ -362,7 +362,10 @@ export default function DocumentArchiveView({
             >
               <div className={styles.cover} data-type="annual">
                 <b>{p.school_year}학년도</b>
-                <small>{classroom?.className}</small>
+                <small>
+                  {classroom?.className}
+                  {p.format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""}
+                </small>
                 <AnnualCover index={i} className={styles.coverArt} />
               </div>
               <div className={styles.docTitle}>{p.school_year}학년도 연간계획안</div>

@@ -56,8 +56,11 @@ from ssuksak.planning import (
     YearlyPlan,
     YearMonth,
 )
+from ssuksak.planning.domain.play_monthly_plan import PLAY_MONTHLY_FORMAT  # 공개 창구에 없다
+from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
 
 from app.db import get_session
+from app.features.plans.annual_content import subthemes_for_month
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_schemas import (
@@ -82,6 +85,7 @@ from app.features.plans.monthly_schemas import (
     VerificationOut,
     WeekOut,
 )
+from app.features.plans.play_project import format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut
@@ -130,6 +134,7 @@ _REFERENCE_UNAVAILABLE = frozenset(
         "safety_rule_not_found",
         "safety_rule_not_approved",
         "evidence_classification_store_mismatch",
+        "curriculum_reference_unavailable",
     }
 )
 
@@ -151,7 +156,17 @@ _PROFILE_UNUSABLE_ERROR = _error(
     "고른 양식 설정으로는 월간계획안을 만들 수 없습니다. 다른 설정을 골라주세요.",
     ["profile_ref"],
 )
+_PLAY_MONTHLY = _error(
+    409, "GATE_BLOCKED", "놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.", []
+)
 _NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
+
+
+def _is_play_monthly(row: Plan) -> bool:
+    """본문이 dict 가 아닌 깨진 행도 500 없이 지나가게 먼저 본다 — 목록은 그 행만 경고하고 뺀다."""
+    return isinstance(row.body, dict) and row.body.get("format") == PLAY_MONTHLY_FORMAT
+
+
 _UNAVAILABLE = _error(
     503,
     "DEPENDENCY_UNAVAILABLE",
@@ -223,12 +238,19 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
     )
     if parent_row is None:
         raise _gate("연간계획안을 먼저 만들어 확정해주세요.")
+    # 놀이 프로젝트형 본문은 YearlyPlan 이 아니라 읽기 전에 막는다. 확정 여부와 관계없다.
+    if format_of(parent_row) == PLAY_PROJECT_FORMAT:
+        raise _gate(
+            "놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다. "
+            "놀이 중심 월간계획안으로 만들어 주세요."
+        )
     parent_id = parent_row.id
     parent = PostgresPlanRepository(
         session, center_id=center_id, kind="annual", plan_type=YearlyPlan
     ).get(PlanId(parent_row.plan_ref))
     if parent.status.value != "CONFIRMED":
         raise _gate("연간계획안을 먼저 확정해주세요.")
+    parent_subthemes = subthemes_for_month(parent_row.sub_themes, body.month)
     try:
         profile_ref = TemplateProfileRef(
             body.profile_ref.profile_id, body.profile_ref.profile_version
@@ -273,6 +295,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
                 safety_placement=SAFETY_PLACEMENT,
+                parent_subthemes=parent_subthemes,
             )
         ).plan
     except MonthlyApplicationError as error:
@@ -313,6 +336,8 @@ def _summary(row: Plan) -> MonthlyPlanSummary | None:
     500 이 되면 교사가 월간을 아예 못 연다(#162 리뷰). 생성 경로는 늘 두 칸을 채우므로 이 행은
     손으로 넣었거나 옛 판인 행이다. 로그에는 id 와 이유만 남긴다 — 본문은 찍지 않는다.
     """
+    if _is_play_monthly(row):  # 놀이 월간은 형식으로 뺀다 — 경고 없이(ADR-046 §3)
+        return None
     # 목록은 본문 전체를 되돌리지 않는다 — Snapshot 의 ref 만 읽는다.
     snapshot = row.body.get("template_snapshot") if isinstance(row.body, dict) else None
     if not isinstance(snapshot, dict):
@@ -458,6 +483,8 @@ def _own_row(session: Session, user, plan_id: int) -> Plan:
     )
     if row is None:
         raise _NOT_FOUND
+    if _is_play_monthly(row):  # 소유 다음, 확정 · revision · 본문 읽기 앞(ADR-046 §4)
+        raise _PLAY_MONTHLY
     return row
 
 

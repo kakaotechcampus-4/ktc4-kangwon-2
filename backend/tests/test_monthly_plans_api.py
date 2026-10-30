@@ -6,7 +6,7 @@
 `replace(template, runtime_active=True)` — 로 만들고, 생성 직전 승인 검사도 같은 객체로 바꿔 낀다
 (`service.TEMPLATES`). 데이터 파일과 운영 코드는 그대로다. LLM 은 기본 `mock`(요청 기반 결정적
 provider)이고, real 경로는 전송 함수를 바꿔 껴서 오류 분류만 본다.
-**실제 Luna-6 는 부르지 않는다.**
+**실제 Sol-6.1 는 부르지 않는다.**
 """
 
 import copy
@@ -121,7 +121,9 @@ def _profile(session, center_id: int, user_id: int, template=FOCUS):
 
 
 def _annual(class_id: int, *, confirm=True) -> int:
-    response = client.post("/api/plans/annual", json={"class_id": class_id, "form_id": None})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": class_id, "form_id": None}
+    )
     assert response.status_code == 201, response.json()
     plan_id = response.json()["id"]
     if confirm:
@@ -273,6 +275,8 @@ def _break_row(session, plan_id: int, how: str) -> None:
     row = session.get(Plan, plan_id)
     if how == "classroom_ref":
         values = {"classroom_ref": "햇살반"}
+    elif how == "body_not_object":
+        values = {"body": []}
     else:
         body = copy.deepcopy(row.body)
         snapshot = body["template_snapshot"]
@@ -296,6 +300,7 @@ def _break_row(session, plan_id: int, how: str) -> None:
     [
         ("snapshot_missing", "template_snapshot_missing"),
         ("snapshot_not_object", "template_snapshot_missing"),
+        ("body_not_object", "template_snapshot_missing"),
         ("profile_ref_missing", "profile_ref_missing"),
         ("profile_ref_not_object", "profile_ref_missing"),
         ("profile_ref_invalid", "profile_ref_invalid"),
@@ -582,10 +587,10 @@ def test_real_LLM_오류는_계약_코드로_가르고_mock_으로_대신하지_
         assert 1 <= len(calls) <= 2  # 수리는 최대 1회
         assert _monthly_rows(session) == []  # 부분 결과가 남지 않는다
 
-    # 요청은 ADR-023 그대로다: Luna-6 · strict · temperature 없음 · 30초.
+    # 요청은 ADR-023 그대로다: Sol-6.1 · strict · temperature 없음 · 30초.
     sent = calls[0]
     assert sent["url"] == "https://llm.invalid/v1/chat/completions"
-    assert sent["payload"]["model"] == "openai/gpt-6-luna"
+    assert sent["payload"]["model"] == "openai/gpt-6.1-sol"
     assert sent["payload"]["response_format"]["json_schema"]["strict"] is True
     assert "temperature" not in sent["payload"]
     assert sent["timeout"] == 30.0

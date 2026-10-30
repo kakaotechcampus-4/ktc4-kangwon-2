@@ -22,6 +22,10 @@ def context_payload(packet: MonthlyContextPacket) -> dict[str, object]:
     payload = asdict(packet)
     if payload["safety"] is None:
         del payload["safety"]  # packets without safety placement keep their fingerprint
+    if payload["curriculum"] is None:
+        del payload["curriculum"]
+    if not payload["parent_subthemes"]:
+        del payload["parent_subthemes"]
     return payload
 
 

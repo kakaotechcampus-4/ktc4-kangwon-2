@@ -101,6 +101,8 @@ class AuditEventType(str, Enum):
     ARRANGEMENT_CHANGED = "ARRANGEMENT_CHANGED"
     # Cell-level: a teacher copied a same-plan candidate into a cell (2026-10-27, M2-D17).
     CANDIDATE_COPIED = "CANDIDATE_COPIED"
+    # Plan-level: a teacher split, removed or resized a timetable cell (2026-10-28, D-4 · D-9).
+    TIMETABLE_CHANGED = "TIMETABLE_CHANGED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +175,63 @@ class ArrangementChange:
             raise InvalidDomainValueError("ArrangementChange must change the arrangement")
 
 
+class SplitAxis(str, Enum):
+    VERTICAL = "VERTICAL"  # the two parts sit one above the other
+    HORIZONTAL = "HORIZONTAL"  # the two parts sit side by side
+
+
+class TimetableOperation(str, Enum):
+    SPLIT = "SPLIT"
+    REMOVE = "REMOVE"
+    RESIZE_SPLIT = "RESIZE_SPLIT"
+    RESIZE_COLUMNS = "RESIZE_COLUMNS"
+    RESIZE_HEIGHT = "RESIZE_HEIGHT"
+
+
+@dataclass(frozen=True, slots=True)
+class TimetableChange:
+    """One change to a split timetable's structure or size (2026-10-28, D-4 · D-9).
+
+    SPLIT: ``cell_id`` keeps its id and value as the first part, ``new_cell_id`` is the new
+    blank part, ``split_id`` the new boundary. REMOVE: ``cell_id`` left the document and the
+    boundary ``split_id`` went with it; its sibling took the place. RESIZE_*: numbers before
+    and after — a boundary's first-part percent (with its ``split_id``), the five day-column
+    percents, or the table height in mm. Sizes are numbers, never folded into id strings.
+    """
+
+    operation: TimetableOperation
+    split_id: ItemId | None = None
+    axis: SplitAxis | None = None
+    cell_id: ItemId | None = None
+    new_cell_id: ItemId | None = None
+    before: tuple[int, ...] = ()
+    after: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        op = self.operation
+        if not isinstance(op, TimetableOperation):
+            raise InvalidDomainValueError("TimetableChange.operation is invalid")
+        ids = {
+            "split_id": op in (TimetableOperation.SPLIT, TimetableOperation.REMOVE, TimetableOperation.RESIZE_SPLIT),
+            "cell_id": op in (TimetableOperation.SPLIT, TimetableOperation.REMOVE),
+            "new_cell_id": op is TimetableOperation.SPLIT,
+        }
+        for name, needed in ids.items():
+            value = getattr(self, name)
+            if needed != (value is not None) or (value is not None and not isinstance(value, ItemId)):
+                raise InvalidDomainValueError(f"TimetableChange.{name} does not fit {op.value}")
+        if (op in (TimetableOperation.SPLIT, TimetableOperation.REMOVE)) != isinstance(self.axis, SplitAxis):
+            raise InvalidDomainValueError(f"TimetableChange.axis does not fit {op.value}")
+        resize = op.value.startswith("RESIZE_")
+        for numbers in (self.before, self.after):
+            if not isinstance(numbers, tuple) or not all(type(n) is int for n in numbers):
+                raise InvalidDomainValueError("TimetableChange sizes must be int tuples")
+            if bool(numbers) != resize:
+                raise InvalidDomainValueError(f"TimetableChange sizes do not fit {op.value}")
+        if resize and (len(self.before) != len(self.after) or self.before == self.after):
+            raise InvalidDomainValueError("TimetableChange must change the size")
+
+
 @dataclass(frozen=True, slots=True)
 class LinkChange:
     """A teacher's change to a play's curriculum content ids, within one catalog version."""
@@ -207,6 +266,7 @@ class AuditEvent:
     link_change: LinkChange | None = None
     arrangement_change: ArrangementChange | None = None
     copied_from: ItemId | None = None
+    timetable_change: TimetableChange | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_type, AuditEventType):
@@ -282,6 +342,19 @@ class AuditEvent:
                 )
         elif self.arrangement_change is not None:
             raise InvalidDomainValueError("Only ARRANGEMENT_CHANGED carries arrangement_change")
+        if self.event_type is AuditEventType.TIMETABLE_CHANGED:
+            if (
+                self.actor_id is None
+                or not isinstance(self.timetable_change, TimetableChange)
+                or self.item_id is not None
+                or self.value_change is not None
+                or self.generation_change is not None
+            ):
+                raise InvalidDomainValueError(
+                    "TIMETABLE_CHANGED is a plan-level teacher event with timetable_change only"
+                )
+        elif self.timetable_change is not None:
+            raise InvalidDomainValueError("Only TIMETABLE_CHANGED carries timetable_change")
         # generation_change is absent only when the cell was never written before the copy.
         if self.event_type is AuditEventType.CANDIDATE_COPIED:
             if (

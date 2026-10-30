@@ -5,7 +5,7 @@
 동시성은 **서로 다른 연결 두 개**로 보고, 두 요청을 Core 단계(읽기 뒤 · 쓰기 전)에 붙잡아 둔다.
 
 Template v0.1.1 · v0.2.1 은 사람 승인 대기라 OD-N11 (A) 객체로만 Profile 을 만든다. LLM 은 기본
-mock(요청 기반 결정적 provider)이다 — **실제 Luna-6 는 부르지 않는다.**
+mock(요청 기반 결정적 provider)이다 — **실제 Sol-6.1 는 부르지 않는다.**
 """
 
 import json
@@ -111,7 +111,10 @@ def _seed(session, name: str, email: str) -> dict:
 
 def _monthly(seed: dict) -> dict:
     """부모 연간을 만들어 확정하고 9월 월간을 만든다 — 전부 API 로."""
-    annual = client.post("/api/plans/annual", json={"class_id": seed["class"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": seed["class"], "form_id": None},
+    )
     assert annual.status_code == 201, annual.json()
     assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
     created = client.post(
@@ -418,7 +421,7 @@ def test_재생성_LLM_이_실패하면_칸도_revision_도_그대로다(world, 
     ):
 
         def post_json(url, *, headers, payload, timeout, error=error):
-            assert payload["model"] == "openai/gpt-6-luna"
+            assert payload["model"] == "openai/gpt-6.1-sol"
             raise error
 
         monkeypatch.setattr(monthly_llm, "post_json", post_json)
@@ -666,7 +669,7 @@ def _real_mode_returning(monkeypatch, content: str):
 
     def post_json(url, *, headers, payload, timeout):
         sent.append(payload)
-        return {"id": "r-1", "model": "gpt-6-luna", "choices": [{"message": {"content": content}}]}
+        return {"id": "r-1", "model": "gpt-6.1-sol", "choices": [{"message": {"content": content}}]}
 
     monkeypatch.setattr(monthly_llm, "post_json", post_json)
     return sent

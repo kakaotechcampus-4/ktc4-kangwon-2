@@ -3,6 +3,7 @@
 /** 기관 양식과 입력 조건으로 계획안을 생성하고, 로딩·편집·저장 흐름을 연결합니다. */
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { selectedAgesFor, ageSelectionLabel, type SelectedAge } from "@/lib/onboarding/types";
 import { saveAnnualContext } from "@/lib/plan-generator/context";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +12,7 @@ import AppHeader from "@/components/app/AppHeader";
 import { createAnnualPlan, deleteAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
 import { getForms } from "@/lib/api/forms";
 import { syncCenter, syncClass } from "@/lib/api/onboarding";
-import type { ApiForm } from "@/lib/api/types";
+import type { AnnualInput, ApiForm } from "@/lib/api/types";
 import { SessionChangedError } from "@/lib/auth/request-session";
 import GenerationFlow from "./GenerationFlow";
 import { requestAI } from "@/lib/workspace/ai-client";
@@ -36,6 +37,16 @@ import { isValidDate } from "@/lib/plan-generator/date";
 // 헷갈리기 쉬운 것 — 「일일 보육일지」는 있다(§11). 그건 계획안이 아니라 일지고,
 // 문서 보관함(/documents)에서 만든다.
 const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly"];
+const ANNUAL_FORMATS = [
+  { value: "MONTHLY_THEME", name: "월별 주제형", image: "monthly-theme", width: 567, height: 792 },
+  {
+    value: "PLAY_PROJECT",
+    name: "놀이 프로젝트형",
+    image: "play-project",
+    width: 595,
+    height: 838,
+  },
+] as const;
 
 /**
  * 서버가 실제로 만들 수 있는 종류. 나머지 카드는 「준비 중」으로 잠근다.
@@ -108,6 +119,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
   // 온보딩에서 읽은 실제 연령([3,5] 등)은 표시용으로 보존한다. 화면 UI는 기존 드롭다운 그대로.
   const onboardingAges = useRef<SelectedAge[]>(startup.ages);
   const [planTypes, setPlanTypes] = useState<Set<PlanType>>(new Set());
+  const [format, setFormat] = useState<AnnualInput["format"] | null>(null);
   const [period, setPeriod] = useState<PeriodState>({
     annual: { year: new Date().getFullYear() },
     monthly: { month: new Date().getMonth() + 1 },
@@ -169,7 +181,8 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
     available !== null &&
     phase !== "generating" &&
     // 양식을 고른 채로 들어왔으면 목록을 받은 뒤에만 보낸다 — 조용히 기본 양식이 되지 않게.
-    !(annualSelected && formId !== "" && formsLoading) &&
+    !(annualSelected && format === "MONTHLY_THEME" && formId !== "" && formsLoading) &&
+    format !== null &&
     age !== "" &&
     planTypes.size > 0 &&
     Number.isInteger(period.annual.year) &&
@@ -181,6 +194,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
   const stageRef = useRef<HTMLElement | null>(null);
 
   function toggleType(t: PlanType) {
+    if (t === "annual" && annualSelected) setFormat(null);
     setPlanTypes((prev) => {
       const next = new Set(prev);
       if (next.has(t)) next.delete(t);
@@ -198,7 +212,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
   }
 
   async function handleGenerate() {
-    if (!canGenerate) return;
+    if (!canGenerate || format === null) return;
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -233,7 +247,11 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
           const serverClassId = await syncClass(settings, primary);
           // 양식은 번호만 든다 — 서버가 FK 로 가리킨다 (§4). null 이면 기본 양식이다.
           const plan = await createAnnualPlan(
-            { class_id: serverClassId, form_id: form?.id ?? null },
+            {
+              class_id: serverClassId,
+              format,
+              ...(format === "MONTHLY_THEME" ? { form_id: form?.id ?? null } : {}),
+            },
             controller.signal,
           );
           results.annual = {
@@ -248,11 +266,14 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             notes: [
               "연간계획안은 서버에 초안으로 저장됩니다. 추가 요청사항은 메모로 보존되며 활동에 반영하려면 내용을 수정해주세요.",
             ],
-            rows: plan.months.map((m) => ({
-              label: m.month + "월",
-              title: m.theme,
-              detail: m.sub_themes.join("\n"),
-            })),
+            rows:
+              plan.format === "MONTHLY_THEME"
+                ? plan.months.map((m) => ({
+                    label: m.month + "월",
+                    title: m.theme,
+                    detail: m.sub_themes.join("\n"),
+                  }))
+                : [],
           };
         } else if (available) {
           const result = await requestAI<{ sections: Section[]; notes: string[] }>(
@@ -383,7 +404,7 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
               사용할 기관 양식
               <select
                 value={formId}
-                disabled={!annualSelected || formsLoading}
+                disabled={!annualSelected || format === "PLAY_PROJECT" || formsLoading}
                 onChange={(e) => setFormId(e.target.value)}
               >
                 <option value="">쌤플 기본 양식</option>
@@ -394,17 +415,24 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
                 ))}
               </select>
             </label>
-            <p className={ws.hint}>
-              {formsLoading
-                ? "등록한 기관 양식을 불러오고 있어요."
-                : annualSelected
-                  ? "등록한 기관 양식은 연간계획안 생성에 적용돼요."
-                  : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
-            </p>
+            {format !== "PLAY_PROJECT" && (
+              <p className={ws.hint}>
+                {formsLoading
+                  ? "등록한 기관 양식을 불러오고 있어요."
+                  : annualSelected
+                    ? "등록한 기관 양식은 연간계획안 생성에 적용돼요."
+                    : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
+              </p>
+            )}
             <p className={ws.hint}>
               계획안은 초안으로 생성·저장돼요. 생성 후 우리 반에 맞게 검토해주세요.
             </p>
           </div>
+        )}
+        {phase === "generating" && format === "PLAY_PROJECT" && (
+          <p className={ws.hint} role="status">
+            놀이 프로젝트형은 네 구간을 차례로 만들어 몇 분 걸릴 수 있어요.
+          </p>
         )}
       </div>
       {phase !== "idle" && generated ? (
@@ -428,6 +456,8 @@ export default function PlanGeneratorPage({ embedded = false }: { embedded?: boo
             onAgeChange={setAge}
             planTypes={planTypes}
             onToggleType={toggleType}
+            format={format}
+            onFormatChange={setFormat}
             period={period}
             onPeriodChange={updatePeriod}
             memo={memo}
@@ -479,6 +509,8 @@ function InputPanel(props: {
   onAgeChange: (v: AgeGroup | "") => void;
   planTypes: Set<PlanType>;
   onToggleType: (t: PlanType) => void;
+  format: AnnualInput["format"] | null;
+  onFormatChange: (format: AnnualInput["format"]) => void;
   period: PeriodState;
   onPeriodChange: <K extends keyof PeriodState>(key: K, value: PeriodState[K]) => void;
   memo: string;
@@ -491,6 +523,8 @@ function InputPanel(props: {
     onAgeChange,
     planTypes,
     onToggleType,
+    format,
+    onFormatChange,
     period,
     onPeriodChange,
     memo,
@@ -501,7 +535,7 @@ function InputPanel(props: {
 
   return (
     <aside
-      className="rounded-md border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
+      className="min-w-0 rounded-md border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
       style={{ borderColor: "var(--pg-line)" }}
     >
       {/* 1. 대상 연령 */}
@@ -549,6 +583,22 @@ function InputPanel(props: {
           ))}
         </div>
       </section>
+
+      {planTypes.has("annual") && (
+        <fieldset className="min-w-0">
+          <legend className="mb-2.5 font-semibold text-[15px]">연간계획안 형식 (필수)</legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {ANNUAL_FORMATS.map((option) => (
+              <FormatCard
+                key={option.value}
+                option={option}
+                selected={format === option.value}
+                onSelect={() => onFormatChange(option.value)}
+              />
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       {/* 3. 기간 선택 (선택한 계획안 종류에 따라 동적으로 표시) */}
       <section className="flex flex-col gap-2.5">
@@ -673,10 +723,38 @@ function InputPanel(props: {
         <p className="text-[12px] text-center text-ink-soft">
           {canGenerate
             ? "입력한 내용을 바탕으로 계획안을 생성해요"
-            : "연령·계획안 종류·날짜를 확인해주세요. 생성 중에는 잠시 기다려주세요"}
+            : "연령·계획안 종류·형식·날짜를 확인해주세요. 생성 중에는 잠시 기다려주세요"}
         </p>
       </section>
     </aside>
+  );
+}
+
+function FormatCard({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: (typeof ANNUAL_FORMATS)[number];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className={`flex min-w-0 flex-col items-center rounded-md border p-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${selected ? "border-primary bg-primary-tint" : "border-line bg-paper"}`}
+    >
+      <span>{option.name}</span>
+      <Image
+        src={`/plan-formats/${option.image}.png`}
+        alt={`${option.name} 연간계획안 예시 문서`}
+        width={option.width}
+        height={option.height}
+        className="order-first mb-2 h-40 w-full object-contain"
+      />
+    </button>
   );
 }
 

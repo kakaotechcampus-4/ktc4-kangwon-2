@@ -4,7 +4,7 @@
 
 기반 Template v0.1.1 은 **사람 승인 대기**다(v0.2.1 은 2026-10-20 승인). 승인 경로는 OD-N11 (A) —
 `replace(template, runtime_active=True)` — 로 본다(`service.TEMPLATES` 를 바꿔 낀다). 데이터 파일과
-운영 코드는 그대로이고, 승인 대기 상태로 부르면 막혀야 한다. **실제 Luna-6 는 부르지 않는다**
+운영 코드는 그대로이고, 승인 대기 상태로 부르면 막혀야 한다. **실제 Sol-6.1 는 부르지 않는다**
 (월간 생성은 기본 mock provider).
 """
 
@@ -513,7 +513,10 @@ def test_관리_API_로_건_Profile_로_확정된_연간_뒤에만_월간을_만
     resolved = _resolution(world)
     assert resolved == {"source": "INSTITUTION_DEFAULT", "profile_ref": ref, "reason": None}
 
-    annual = client.post("/api/plans/annual", json={"class_id": world["class_a"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": world["class_a"], "form_id": None},
+    )
     assert annual.status_code == 201
     body = {"class_id": world["class_a"], "month": 9, "profile_ref": resolved["profile_ref"]}
     assert _error(client.post("/api/plans/monthly", json=body)) == (

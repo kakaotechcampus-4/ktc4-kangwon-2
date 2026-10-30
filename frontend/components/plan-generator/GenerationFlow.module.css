@@ -367,6 +367,13 @@
   background: var(--pg-primary-tint);
   border-color: var(--pg-primary);
 }
+.wrappingTabs {
+  display: flex;
+  flex-wrap: wrap;
+}
+.wrappingTabs button {
+  flex: 1 1 120px;
+}
 .fileIcon {
   display: grid;
   place-items: center;
@@ -649,6 +656,14 @@
   .tabs button {
     flex-shrink: 0;
     padding: 12px;
+  }
+  .wrappingTabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .wrappingTabs button {
+    flex-shrink: 1;
   }
   .fileIcon,
   .tabCheck,

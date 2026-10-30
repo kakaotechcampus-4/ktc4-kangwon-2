@@ -113,7 +113,11 @@ async function confirmedClass() {
     age_max: 5,
     child_count: null,
   });
-  const annual = await createAnnualPlan({ class_id: klass.id, form_id: null });
+  const annual = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   await confirmAnnualPlan(annual.id);
   return { center, klass, annual, ref: await readyRef(center.id) };
 }
@@ -254,7 +258,11 @@ test("create gates: no annual, unconfirmed annual, duplicate month, unknown prof
   const ref = await readyRef(center.id);
   const input = { class_id: klass.id, month: 9, profile_ref: ref };
   await rejects(createMonthlyPlan(input), 409, "GATE_BLOCKED", ["class_id"]);
-  const annual = await createAnnualPlan({ class_id: klass.id, form_id: null });
+  const annual = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   await rejects(createMonthlyPlan(input), 409, "GATE_BLOCKED", ["class_id"]);
   await confirmAnnualPlan(annual.id);
   await rejects(
@@ -440,7 +448,11 @@ test("another center's class, plan and profiles are not found", async () => {
     age_max: 5,
     child_count: null,
   });
-  const theirAnnual = await createAnnualPlan({ class_id: theirClass.id, form_id: null });
+  const theirAnnual = await createAnnualPlan({
+    class_id: theirClass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
   await confirmAnnualPlan(theirAnnual.id);
   const theirs = addMonthly(theirClass, theirAnnual, 9, addReadyProfile(other.id, PROFILE_INPUT));
   const item = cellOf(theirs, "goals").item_id;

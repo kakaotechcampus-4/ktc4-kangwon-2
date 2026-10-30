@@ -216,6 +216,41 @@ test("연간 계획안은 기존 GET의 실제 월·주제·소주제를 표시�
   assert.deepEqual(calls, [["annual", 1]]);
   h.unmount();
 });
+test("놀이 프로젝트형 연간 미리보기는 선택된 후보만 표시하고 기존 문서 링크를 유지한다", async () => {
+  const h = harness(async () => ({
+    id: 1,
+    class_id: 3,
+    format: "PLAY_PROJECT",
+    status: "CONFIRMED",
+    periods: [
+      {
+        label: "가을 놀이",
+        selected: ["chosen"],
+        candidates: [
+          {
+            row_key: "chosen",
+            play_name: { value: "낙엽 놀이" },
+            materials: { value: "낙엽" },
+            support_direction: { value: "자료를 준비한다" },
+            learning: { value: "모양을 비교한다" },
+          },
+          { row_key: "unselected", play_name: { value: "선택하지 않은 놀이" } },
+        ],
+      },
+    ],
+  }));
+  const t = target("annual");
+  h.render(t);
+  await settle();
+  const tree = h.render(t);
+  assert.match(text(tree), /가을 놀이 · 낙엽 놀이/);
+  assert.match(text(tree), /자료를 준비한다/);
+  assert.match(text(tree), /모양을 비교한다/);
+  assert.equal(text(tree).includes("선택하지 않은 놀이"), false);
+  assert.equal(nodes(tree).find((n) => n.type === "link").props.href, t.href);
+  h.unmount();
+});
+
 for (const kind of ["monthly", "weekly"])
   test(`${kind} 계획안은 서버의 보이는 CONTENT 값만 표시한다`, async () => {
     const h = harness(async () => ({

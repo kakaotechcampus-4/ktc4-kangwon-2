@@ -51,6 +51,17 @@ FROZEN_ARTIFACTS = {
     "templates/weekly_template_a_v0_1_0.json": (
         "60330124223859623a0f35b2e56d6058994e2b86b62146b8b40474a3b72747f9"
     ),
+    # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
+    "curriculum/nuri_curriculum_content_v0_1_0_draft.json": (
+        "60620932ee2dea9c326b27597d4c7fa18b501914fdd6c4fe55cf4513c6271a04"
+    ),
+    # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
+    "daily-life/daily_life_reference_v0_1_0_draft.json": (
+        "2fec7d85833ac940cc46cc0bf4bf4ae2ec26cd60d89a418dedcde8649c00771c"
+    ),
+    "drills/emergency_drill_topics_v0_1_0_draft.json": (
+        "147ca0537f96141279781f202edb012300dafbfdca88f07ecf5a48dfcff9d6b7"
+    ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
         "e7b29c36ede3438204041b5d2b454e5594338c7f12c8c423bc985e308de27aed"
@@ -123,6 +134,13 @@ PENDING_REVIEW_CONTENT = {
     ),
     "templates/weekly_template_a_v0_1_0.json": (
         "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
+    ),
+    "daily-life/daily_life_reference_v0_1_0_draft.json": (
+        "2ae1d32fd616409458705b6ebbfe8294cd50b733540716270309d55706fbe936"
+    ),
+    # Added at approval; equals the content of the pending file on develop.
+    "drills/emergency_drill_topics_v0_1_0_draft.json": (
+        "2e99b512c80f9dd73d98f006ec39e9ff83b333f63a6c43e0c83afdb4460225a8"
     ),
 }
 

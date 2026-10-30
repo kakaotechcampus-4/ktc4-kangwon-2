@@ -225,6 +225,7 @@ test("짚을 수 있는 칸은 모두 서버 계약의 칸 이름에서 온다",
 const workspaceModel = await import("../lib/workspace/model.ts");
 const documentApi = await import("../lib/api/documents.ts");
 const archive = await import("../lib/workspace/archive.ts");
+const archiveNavigation = await import("../lib/workspace/document-archive.ts");
 const { createSelection } = await import("../components/workspace/document-selection.ts");
 const pageCode = require("next/dist/compiled/babel/core").transformSync(documents(), {
   filename: "DocumentsPage.tsx",
@@ -265,6 +266,7 @@ const annualPlan = {
   id: 5,
   class_id: 3,
   school_year: 2026,
+  format: "MONTHLY_THEME",
   status: "CONFIRMED",
   created_at: "2026-09-10T00:00:00Z",
   confirmed_at: "2026-09-11T00:00:00Z",
@@ -510,6 +512,138 @@ test("표시할 문서가 없는 조회 실패는 오류와 재시도를 띄우�
   page.render();
   assert.equal(page.errors().length, 0);
   assert.equal(page.button("다시 시도"), undefined);
+});
+
+// ── 보관함 형식 표시와 종류별 탐색을 함께 보존한다 (S-J5 · FR-701) ──
+test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 형식을 덧붙인다", () => {
+  // PR의 반·종류별 보관함을 실제로 렌더한다. 평면 목록을 흉내 낸 스텁에 형식 표시를 복제하지 않는다.
+  const code = require("next/dist/compiled/babel/core").transformSync(
+    read("../components/workspace/DocumentArchiveView.tsx"),
+    {
+      filename: "DocumentArchiveView.tsx",
+      babelrc: false,
+      configFile: false,
+      presets: [
+        [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+        [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+        require("next/dist/compiled/babel/preset-typescript"),
+      ],
+    },
+  ).code;
+  let hook = 0;
+  const imports = {
+    "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
+    react: {
+      useState: (initial) => [
+        hook++ === 0 ? "annual" : typeof initial === "function" ? initial() : initial,
+        () => {},
+      ],
+      useMemo: (fn) => fn(),
+      useEffect() {},
+      useRef: () => ({ current: null }),
+    },
+    "next/link": { __esModule: true, default: "link" },
+    "@/components/app/icons": { Icon: "icon" },
+    "@/lib/workspace/model": { ...workspaceModel, today: () => "2026-10-28" },
+    "@/lib/workspace/document-archive": archiveNavigation,
+    "@/lib/api/onboarding": { classServerId: () => 3 },
+    "@/lib/onboarding/types": {},
+    "@/lib/api/monthly": {},
+    "@/lib/api/weekly": {},
+    "./DocumentArchivePreview": { PlanArchivePreview: "plan-preview" },
+    "./WorkspaceUI": { Message: "message", ws: {} },
+    "./DocumentArchiveArt": new Proxy({}, { get: () => "art" }),
+    "./DocumentArchive.module.css": {
+      __esModule: true,
+      default: new Proxy({}, { get: (_, name) => name }),
+    },
+  };
+  const viewModule = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (name) => {
+      assert.ok(name in imports, name);
+      return imports[name];
+    },
+    viewModule,
+    viewModule.exports,
+  );
+  const resolve = (node) => {
+    if (Array.isArray(node)) return node.map(resolve);
+    if (!node || typeof node !== "object") return node;
+    if (typeof node.type === "function") return resolve(node.type(node.props));
+    return { ...node, props: { ...node.props, children: resolve(node.props.children) } };
+  };
+  for (const format of ["MONTHLY_THEME", "PLAY_PROJECT"]) {
+    hook = 0;
+    const tree = resolve(
+      viewModule.exports.default({
+        classes: [{ id: "class-1", className: "햇살반", children: [] }],
+        classId: "class-1",
+        documents: [],
+        annual: [{ ...annualPlan, format }],
+        activeId: "",
+        editingId: "",
+        onBackToPreview() {},
+        preview: null,
+        onOpen() {},
+        onPickClass() {},
+        onCloseDetail() {},
+        onCreate() {},
+        header: null,
+        detail: null,
+      }),
+    );
+    const link = nodes(tree).find(
+      (node) => node.type === "button" && node.props.className === "docCard",
+    );
+    assert.ok(link);
+    const secondLine = nodes(link).find((node) => node.type === "small");
+    assert.equal(
+      texts(secondLine).join(""),
+      "햇살반" + (format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""),
+    );
+    const title = nodes(link).find((node) => node.props.className === "docTitle");
+    assert.equal(
+      flatten(title)
+        .filter((part) => typeof part === "string" || typeof part === "number")
+        .join(""),
+      "2026학년도 연간계획안",
+    );
+  }
+});
+
+test("계획 노트는 놀이 프로젝트형에만 상태 옆 둥근 배지를 보여준다", () => {
+  const code = require("next/dist/compiled/babel/core").transformSync(
+    read("../components/plan-generator/PlanNotebookPage.tsx"),
+    {
+      filename: "PlanNotebookPage.tsx",
+      babelrc: false,
+      configFile: false,
+      presets: [
+        [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+        [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+        require("next/dist/compiled/babel/preset-typescript"),
+      ],
+    },
+  ).code;
+  const notebook = { exports: {} };
+  const imports = {
+    "react/jsx-runtime": { jsx, jsxs: jsx },
+    "@/lib/workspace/model": workspaceModel,
+  };
+  new Function("require", "module", "exports", code + "\nexports.PlanCard = PlanCard;")(
+    (name) => imports[name] ?? {},
+    notebook,
+    notebook.exports,
+  );
+  for (const format of ["MONTHLY_THEME", "PLAY_PROJECT"]) {
+    const tree = notebook.exports.PlanCard({ plan: { ...annualPlan, format }, onReset() {} });
+    const pills = nodes(tree).filter((node) => node.props.className?.includes("rounded-full"));
+    assert.deepEqual(
+      pills.map((node) => texts(node).join("")),
+      format === "PLAY_PROJECT" ? ["확정", "놀이 프로젝트형"] : ["확정"],
+    );
+  }
 });
 
 // ── 보관함은 종류(연간 · 월간 · 주간 · 보육 · 관찰)로만 탐색한다 (S-J5 · FR-701) ──

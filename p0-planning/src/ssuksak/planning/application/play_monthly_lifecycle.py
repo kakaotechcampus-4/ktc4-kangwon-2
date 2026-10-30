@@ -22,22 +22,38 @@
   safety placement and health · nutrition may stay blank: ``play_monthly_notices`` reports the
   blank ones, and it never blocks confirm (M2-D13).
 
+2026-10-28 decisions (layout v0.2.0):
+- The centre play direction and the header strings (title, age, class name, period) are copied
+  once at generation and edited like any other cell, blanks included; nothing refills them, and
+  they never change the classroom, ages, month or weeks (D-2 · D-6).
+- Timetable cells are teacher cells (MANUAL on first write). A special-activity cell splits in
+  two: it keeps its id, value and history as the first part and a new blank cell is the second
+  (D-9). Removing a cell archives it whole and its sibling takes the place; a weekday keeps at
+  least one cell (D-7). Boundaries are resized by ``split_id``; the day columns and the height
+  as a whole. Each is one TIMETABLE_CHANGED event with numbers, not ids, for sizes (D-4).
+  Undo is the screen's, before saving; there is no undo command (D-5).
+
 Teacher text is not checked against the AI sentence policy. Codes are internal, not public API.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 
 from ..domain.errors import DomainError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.play_monthly_plan import (
     DRILL_CELL_KEY,
+    MAX_SPLIT_DEPTH,
     PLAY_SECTIONS,
+    SPLIT_RATIO_RANGE,
     PlayActivity,
     PlayMonthlyCell,
     PlayMonthlyPlan,
+    TimetableSize,
+    TimetableTooNarrowError,
 )
 from ..domain.provenance import (
     AuditEvent,
@@ -47,6 +63,7 @@ from ..domain.provenance import (
     GenerationMethodChange,
     GenerationMethodDetail,
     LinkChange,
+    SplitAxis,
     ValueChange,
 )
 from ..domain.week_period import WeekId
@@ -106,6 +123,32 @@ class CopyPlayMonthlyDrillCandidateCommand:
     plan_id: PlanId
     actor_id: ActorId
     candidate_item_id: ItemId
+
+
+@dataclass(frozen=True, slots=True)
+class SplitPlayMonthlyTimetableCellCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_id: ItemId  # a special-activity cell
+    axis: SplitAxis
+
+
+@dataclass(frozen=True, slots=True)
+class RemovePlayMonthlyTimetableCellCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_id: ItemId
+
+
+@dataclass(frozen=True, slots=True)
+class ResizePlayMonthlyTimetableCommand:
+    """Exactly one target: a boundary (``split_id`` + ``ratio``) or the whole ``size``."""
+
+    plan_id: PlanId
+    actor_id: ActorId
+    split_id: ItemId | None = None
+    ratio: int | None = None
+    size: TimetableSize | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,6 +409,116 @@ class CopyPlayMonthlyDrillCandidate:
         return updated
 
 
+class SplitPlayMonthlyTimetableCell:
+    def __init__(
+        self, *, plan_repository: PlanRepository[PlayMonthlyPlan], id_generator: IdGenerator, clock: Clock
+    ) -> None:
+        self._plans = plan_repository
+        self._ids = id_generator
+        self._clock = clock
+
+    def execute(self, command: SplitPlayMonthlyTimetableCellCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("split")
+        actor_id = _require_actor(command.actor_id)
+        day = _require_timetable_cell(plan, command.item_id)
+        if not isinstance(command.axis, SplitAxis):
+            raise PlayMonthlyLifecycleError("invalid_axis", "Split requires a SplitAxis")
+        if plan.timetable_depth(command.item_id) >= MAX_SPLIT_DEPTH:
+            raise PlayMonthlyLifecycleError(
+                "timetable_split_limit", f"A timetable day splits at most {MAX_SPLIT_DEPTH} deep"
+            )
+        now = self._clock.now()
+        item_id = self._ids.new_item_id()
+        created = AuditEvent(
+            event_type=AuditEventType.CREATED, occurred_at=now, plan_id=plan.plan_id, item_id=item_id, actor_id=actor_id
+        )
+        new_cell = PlayMonthlyCell(
+            item_id=item_id, semantic_key=plan.next_timetable_key(day), audit=AuditHistory((created,))
+        )
+        with _width_limit():
+            updated = plan.split_timetable_cell(
+                command.item_id,
+                command.axis,
+                split_id=self._ids.new_item_id(),
+                new_cell=new_cell,
+                actor_id=actor_id,
+                occurred_at=now,
+            )
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class RemovePlayMonthlyTimetableCell:
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: RemovePlayMonthlyTimetableCellCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("remove")
+        actor_id = _require_actor(command.actor_id)
+        day = _require_timetable_cell(plan, command.item_id)
+        if plan.special_activity[day].cell is not None:
+            raise PlayMonthlyLifecycleError(
+                "timetable_last_cell", "A weekday keeps at least one timetable cell; clear it instead"
+            )
+        updated = plan.remove_timetable_cell(command.item_id, actor_id=actor_id, occurred_at=self._clock.now())
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class ResizePlayMonthlyTimetable:
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: ResizePlayMonthlyTimetableCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("resize")
+        actor_id = _require_actor(command.actor_id)
+        boundary = command.split_id is not None or command.ratio is not None
+        if boundary == (command.size is not None):
+            raise PlayMonthlyLifecycleError("invalid_timetable_size", "Resize one boundary or the whole size")
+        now = self._clock.now()
+        if not boundary:
+            if not isinstance(command.size, TimetableSize):
+                raise PlayMonthlyLifecycleError("invalid_timetable_size", "size must be TimetableSize")
+            with _width_limit():
+                updated = plan.resize_timetable(command.size, actor_id=actor_id, occurred_at=now)
+        else:
+            current = next(
+                (b for d in plan.special_activity for b in d.boundaries() if b.split_id == command.split_id), None
+            )
+            if not isinstance(command.split_id, ItemId) or current is None:
+                raise PlayMonthlyLifecycleError(
+                    "timetable_boundary_not_found", f"Timetable boundary not found: {command.split_id}"
+                )
+            low, high = SPLIT_RATIO_RANGE
+            if type(command.ratio) is not int or not low <= command.ratio <= high:
+                raise PlayMonthlyLifecycleError("invalid_timetable_size", f"ratio must be an int {low}~{high}")
+            if command.ratio == current.ratio:
+                return plan
+            with _width_limit():
+                updated = plan.resize_timetable_split(
+                    command.split_id, command.ratio, actor_id=actor_id, occurred_at=now
+                )
+        if updated == plan:
+            return plan  # the same size again: no event, no write
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+@contextmanager
+def _width_limit() -> Iterator[None]:
+    """A split or resize that leaves a cell narrower than the D-3 minimum is the caller's request
+    to refuse, not a broken plan."""
+    try:
+        yield
+    except TimetableTooNarrowError as error:
+        raise PlayMonthlyLifecycleError("timetable_width_limit", str(error)) from error
+
+
 class ConfirmPlayMonthlyPlan:
     def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
         self._plans = plan_repository
@@ -431,6 +584,15 @@ def _require_plan(repository: PlanRepository[PlayMonthlyPlan], plan_id: object) 
             "play_monthly_plan_not_found", f"PlayMonthlyPlan not found: {plan_id}"
         )
     return plan
+
+
+def _require_timetable_cell(plan: PlayMonthlyPlan, item_id: object) -> int:
+    day = plan.timetable_day(item_id) if isinstance(item_id, ItemId) else None
+    if day is None:
+        raise PlayMonthlyLifecycleError(
+            "play_monthly_timetable_cell_not_found", f"Timetable cell not found: {item_id}"
+        )
+    return day
 
 
 def _require_actor(actor_id: object) -> ActorId:

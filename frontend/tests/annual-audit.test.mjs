@@ -70,7 +70,7 @@ async function newPlan() {
     age_max: 4,
     child_count: null,
   });
-  return createAnnualPlan({ class_id: klass.id, form_id: null });
+  return createAnnualPlan({ class_id: klass.id, form_id: null, format: "MONTHLY_THEME" });
 }
 const KEYS = ["actor", "month", "occurred_at", "system_actor", "type", "value_change"];
 const SCHOOL_YEAR = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];

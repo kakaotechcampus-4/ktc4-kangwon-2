@@ -55,17 +55,18 @@ def test_ids_follow_the_order_rule_and_are_unique():
     assert len(ids) == len(set(ids)) == 59
 
 
-def test_draft_is_not_runtime_active_before_human_review():
+def test_reference_is_runtime_active_after_human_review():
+    # 하민(reviewer_ai_lead_01) approved v0.1.0 on 2026-10-29; only the review fields changed.
     review = _load()["review"]
 
-    assert review["domain_owner_approval"] == "PENDING_HUMAN_REVIEW"
+    assert review["domain_owner_approval"] == "HUMAN_APPROVED"
     assert review["runtime_active"] is (
         review["domain_owner_approval"] == "HUMAN_APPROVED"
     )
 
 
 def _with_review(approval, runtime_active) -> dict:
-    doc = _load()  # in memory only; the file stays PENDING_HUMAN_REVIEW
+    doc = _load()  # in memory only; the file itself is not changed
     doc["review"].update(domain_owner_approval=approval, runtime_active=runtime_active)
     return doc
 
@@ -87,4 +88,5 @@ def test_runtime_active_must_be_derived_from_the_approval(approval, runtime_acti
 
 def test_consistent_review_metadata_parses():
     assert parse_curriculum_payload(_with_review("HUMAN_APPROVED", True)).is_active
-    assert not parse_curriculum_payload(_load()).is_active
+    assert not parse_curriculum_payload(_with_review("PENDING_HUMAN_REVIEW", False)).is_active
+    assert parse_curriculum_payload(_load()).is_active

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date
 
 import pytest
 
@@ -43,9 +42,10 @@ def test_a_draft_prints_kept_names_placed_safety_and_its_own_teacher_inputs():
 
     doc = play_monthly_document(plan, DAILY)
 
-    assert (doc.month, doc.target_ages) == (4, plan.target_ages)
-    assert (doc.start_date, doc.end_date) == (date(2027, 4, 1), date(2027, 4, 30))
-    assert (doc.theme, doc.rationale) == (plan.theme.value, plan.rationale.value)
+    display = plan.display
+    assert (doc.title, doc.age, doc.class_name, doc.period) == tuple(c.value for c in display.cells())
+    assert doc.period == "2027.04.01 ~ 2027.04.30"
+    assert (doc.theme, doc.direction, doc.rationale) == (plan.theme.value, plan.direction.value, plan.rationale.value)
     assert doc.together == tuple(a.cell.value for a in plan.together)
     assert removed.cell.value not in doc.together
     assert doc.free_play == ("물감 놀이", *(a.cell.value for a in plan.free_play[1:]))

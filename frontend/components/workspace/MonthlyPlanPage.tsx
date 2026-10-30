@@ -27,14 +27,17 @@ import {
   listMonthlyPlans,
   regenerateMonthlyCell,
 } from "@/lib/api/monthly";
+import { listAnnualPlans } from "@/lib/api/plans";
 import { classServerId, syncClass } from "@/lib/api/onboarding";
 import { getClassTemplateProfile } from "@/lib/api/templateProfiles";
 import type { MonthlyCell, MonthlyPlan, ProfileRef } from "@/lib/api/types";
+import { isPlayAnnual } from "@/lib/monthly/play-entry";
 import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { archivePlanEntry } from "@/lib/workspace/document-archive";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
+import PlayMonthlyEntry from "./PlayMonthlyEntry";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 
 function describe(e: unknown, fallback: string): string {
@@ -88,6 +91,7 @@ export default function MonthlyPlanPage() {
   const [loadedScope, setLoadedScope] = useState("");
   const [profileSource, setProfileSource] = useState("");
   const [reload, setReload] = useState(0);
+  const [isPlay, setIsPlay] = useState(false);
   const running = useRef(false);
   const loading = loadedScope !== scope;
 
@@ -113,11 +117,22 @@ export default function MonthlyPlanPage() {
         const classroom = classes.find((c) => c.id === localClassId);
         if (!settings || !classroom) return;
         const id = await syncClass(settings, classroom);
+        // 놀이형 분기. 연간 목록을 못 읽으면 기존 화면으로 둔다.
+        const annual = await listAnnualPlans(id).catch(() => null);
+        if (isPlayAnnual(annual)) {
+          if (!alive) return;
+          setIsPlay(true);
+          setClassId(id);
+          setLoadedScope(scope);
+          setProblem("");
+          return;
+        }
         const [resolution, next] = await Promise.all([
           getClassTemplateProfile(id),
           load(id, month),
         ]);
         if (!alive) return;
+        setIsPlay(false);
         setClassId(id);
         setProfile(resolution.profile_ref);
         setProfileSource(
@@ -129,6 +144,7 @@ export default function MonthlyPlanPage() {
       } catch (e) {
         if (alive) {
           setProblem(describe(e, "월간계획안을 불러오지 못했어요."));
+          setIsPlay(false);
           setLoadedScope(scope);
           setProfile(null);
           setPlan(null);
@@ -140,6 +156,7 @@ export default function MonthlyPlanPage() {
     };
   }, [load, month, localClassId, classes, scope, reload]);
 
+  const legacy = !loading && !isPlay;
   const confirmed = plan?.status === "CONFIRMED";
   const weeks = useMemo(() => plan?.weeks.filter((w) => w.active) ?? [], [plan]);
   const sections = useMemo(
@@ -354,12 +371,15 @@ export default function MonthlyPlanPage() {
       </div>
 
       {loading && <p role="status">월간계획안을 불러오는 중…</p>}
-      {!loading && profile && (
+      {!loading && isPlay && classId !== null && (
+        <PlayMonthlyEntry key={`${classId}|${month}`} classId={classId} month={month} />
+      )}
+      {legacy && profile && (
         <p className={ws.hint}>
           {profileSource} · {profile.profile_id} / {profile.profile_version}
         </p>
       )}
-      {!loading && !profile && (
+      {legacy && !profile && (
         <Empty title="월간계획안 양식을 먼저 정해주세요">
           어떤 칸을 둘지 정해야 만들 수 있어요. 「월간계획안 양식」에서 정해주세요.
           <Link href="/plans/template" className={ws.link}>
@@ -368,7 +388,7 @@ export default function MonthlyPlanPage() {
         </Empty>
       )}
 
-      {!loading && profile && !plan && (
+      {legacy && profile && !plan && (
         <Empty title={`${month}월 계획안이 아직 없어요`}>
           <button
             type="button"
@@ -381,7 +401,7 @@ export default function MonthlyPlanPage() {
         </Empty>
       )}
 
-      {!loading && plan && (
+      {legacy && plan && (
         <>
           <div className={ws.between} style={{ marginBottom: 16 }}>
             <div>

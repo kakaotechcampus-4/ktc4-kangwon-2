@@ -15,22 +15,39 @@ from datetime import UTC, datetime
 import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
+from ssuksak.adapters.elice_openai_monthly import (
+    PLAY_MONTHLY_MAX_COMPLETION_TOKENS,
+    EliceOpenAiMonthlyAdapter,
+    MonthlyLlmConfig,
+)
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
 from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculumReferenceRepository
+from ssuksak.adapters.json_daily_life_reference_repository import JsonDailyLifeReferenceRepository
 from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_reference_repositories import JsonSafetyLegalRuleRepository
+from ssuksak.adapters.play_monthly_composition import (
+    CURRICULUM_CATALOG,
+    DAILY_LIFE_CATALOG,
+    DRILL_CATALOG,
+    LEGAL_RULE_VERSION,
+    SAFETY_CLASSIFICATION_VERSION,
+    SAFETY_QUALITY_VERSION,
+    play_monthly_command,
+    play_monthly_generation,
+)
 from ssuksak.adapters.safety_evidence_classification_repository import (
     JsonSafetyEvidenceClassificationRepository,
 )
 from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
 from ssuksak.planning.application.generate_play_monthly_plan import (
-    PLAY_MONTHLY_LAYOUT_V0_1,
+    PLAY_MONTHLY_LAYOUT_V0_2,
     GeneratePlayMonthlyPlan,
     GeneratePlayMonthlyPlanCommand,
     PlayMonthlyGenerationError,
 )
 from ssuksak.planning.application.generate_play_project_plan import PLAY_PROJECT_LAYOUT_V0_2
+from ssuksak.planning.application.play_monthly_document import play_monthly_document
 from ssuksak.planning.domain.curriculum_reference import CurriculumCatalog, CurriculumContent
 from ssuksak.planning.domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
 from ssuksak.planning.domain.drill_topic_reference import DrillKind, DrillOrigin, DrillTopic, DrillTopicCatalog
@@ -57,6 +74,7 @@ from ssuksak.planning.planner.contracts import ProposalParseError, ProposalRejec
 from ssuksak.planning.planner.play_monthly import (
     PLAY_MONTHLY_PROMPT_VERSION,
     PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
+    RESPONSE_SCHEMA,
 )
 
 T0 = datetime(2027, 2, 1, tzinfo=UTC)
@@ -234,6 +252,7 @@ def _run(
     rule=RULE,
     classification=CLASSIFIED,
     quality=QUALITY_TABLE,
+    provider=None,
     **command_changes,
 ):
     parents = InMemoryPlanRepository()
@@ -241,7 +260,7 @@ def _run(
     if parent is not False:
         parents.save(PlanId("parent-1"), parent)
     plans = InMemoryPlanRepository()
-    provider = _Provider(*edits)
+    provider = _Provider(*edits) if provider is None else provider
     use_case = GeneratePlayMonthlyPlan(
         parent_repository=parents,
         plan_repository=plans,
@@ -300,7 +319,7 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert (plan.health.cell.value, plan.health.entry_id) == ("합성 건강 1", "he1")
     assert (plan.nutrition.cell.value, plan.nutrition.entry_id) == ("합성 영양 1", "nu1")
     # Teacher-input cells: blank, never generated, each with its own CREATED event.
-    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_1.teacher_input_keys
+    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_2.teacher_input_keys
     assert all(t.value == "" and t.generation is None and t.evidence == () for t in plan.teacher_inputs)
     cells = plan.cells()
     assert all(
@@ -309,10 +328,15 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert len({c.item_id for c in cells}) == len(cells)
     # A list row's semantic key carries its own item id, not its position.
     assert all(a.cell.semantic_key == f"together.{a.cell.item_id.value}" for a in plan.together)
-    generated = [c for c in cells if c.generation is not None]
+    # The direction and header strings are Rule copies (layout v0.2.0); the rest is RULE_LLM.
+    copies = {plan.direction.item_id, *(c.item_id for c in plan.display.cells())}
+    generated = [c for c in cells if c.generation is not None and c.item_id not in copies]
     assert {(c.generation.method, c.generation.rule_version) for c in generated} == {
         (GenerationMethod.RULE_LLM, PLAY_MONTHLY_PROMPT_VERSION)
     }
+    assert {
+        (c.generation.method, c.generation.rule_version) for c in cells if c.item_id in copies and c.generation
+    } == {(GenerationMethod.RULE_ONLY, "play-monthly-layout-v0.2.0")}
     assert [e.event_type for e in plan.audit] == [AuditEventType.CREATED]
 
 
@@ -332,7 +356,7 @@ def test_snapshot_keeps_parent_references_and_request_fingerprint():
     )
     assert (refs.legal_rule_version, refs.evidence_store_sha256) == (LEGAL, STORE.content_sha256)
     assert (refs.safety_classification_version, refs.safety_quality_version) == (CLASSIFICATION, QUALITY)
-    assert plan.layout.layout_version == "play-monthly-layout-v0.1.0"
+    assert plan.layout.layout_version == "play-monthly-layout-v0.2.0"
 
     other, emphasized, *_ = _run(emphasized_row_keys=("cand4",))
     assert other.execute(emphasized).references.request_fingerprint != refs.request_fingerprint
@@ -486,24 +510,6 @@ def test_reference_gates_reject_before_the_provider(setup, code):
 
     assert error.value.code == code
     assert provider.requests == [] and plans.save_count == 0
-
-
-def test_the_real_pending_curriculum_draft_is_rejected_and_stays_pending():
-    real = JsonCurriculumReferenceRepository()
-    catalog = real.get_catalog("ssuksak.nuri-curriculum-content", "nuri-curriculum-content-v0.1.0")
-    assert catalog.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
-    use_case, command, plans, provider, _ = _run(
-        curriculum=catalog,
-        curriculum_catalog_id=catalog.catalog_id,
-        curriculum_catalog_version=catalog.catalog_version,
-    )
-
-    with pytest.raises(PlayMonthlyGenerationError, match="CURRICULUM_REFERENCE_NOT_ACTIVE"):
-        use_case.execute(command)
-    assert provider.requests == [] and plans.save_count == 0
-    assert real.get_catalog(catalog.catalog_id, catalog.catalog_version).activation_status is (
-        ActivationStatus.PENDING_HUMAN_REVIEW
-    )
 
 
 @pytest.mark.parametrize("month", range(1, 13))
@@ -752,19 +758,180 @@ def test_repair_rewrites_only_the_flagged_drill_sentence():
     assert set(versions.values()) == {PLAY_MONTHLY_PROMPT_VERSION}
 
 
-def test_the_real_drill_draft_loads_pending_and_is_rejected():
+def test_the_real_drill_file_is_approved_and_a_withdrawn_copy_is_rejected():
     real = JsonDrillTopicReferenceRepository()
     drills = real.get_catalog("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
-    assert drills.activation_status is ActivationStatus.PENDING_HUMAN_REVIEW
-    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_1.drill_candidate_count
+    assert drills.activation_status is ActivationStatus.HUMAN_APPROVED
+    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
     assert {t.content_id for t in drills.topics} == {"nuri2019.1.3.4"}
     use_case, command, plans, provider, _ = _run(
-        drills=drills, drill_catalog_id=drills.catalog_id, drill_catalog_version=drills.catalog_version
+        drills=replace(drills, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW),
+        drill_catalog_id=drills.catalog_id,
+        drill_catalog_version=drills.catalog_version,
     )
 
     with pytest.raises(PlayMonthlyGenerationError, match="DRILL_REFERENCE_NOT_ACTIVE"):
         use_case.execute(command)
     assert provider.requests == [] and plans.save_count == 0
+
+
+def _real_references():
+    """The real, approved 누리과정 · daily-life · drill files."""
+    daily = JsonDailyLifeReferenceRepository().get_catalog("ssuksak.daily-life", "daily-life-v0.1.0")
+    curriculum = JsonCurriculumReferenceRepository().get_catalog(
+        daily.curriculum_catalog_id, daily.curriculum_catalog_version
+    )
+    drills = JsonDrillTopicReferenceRepository().get_catalog(
+        "ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0"
+    )
+    return dict(
+        curriculum=curriculum,
+        daily=daily,
+        drills=drills,
+        curriculum_catalog_id=curriculum.catalog_id,
+        curriculum_catalog_version=curriculum.catalog_version,
+        daily_life_catalog_id=daily.catalog_id,
+        daily_life_catalog_version=daily.catalog_version,
+        drill_catalog_id=drills.catalog_id,
+        drill_catalog_version=drills.catalog_version,
+    )
+
+
+def test_the_real_daily_life_file_is_approved_and_a_withdrawn_copy_is_rejected():
+    references = _real_references()
+    assert references["daily"].activation_status is ActivationStatus.HUMAN_APPROVED
+    references["daily"] = replace(references["daily"], activation_status=ActivationStatus.PENDING_HUMAN_REVIEW)
+    use_case, command, plans, provider, _ = _run(**references)
+
+    with pytest.raises(PlayMonthlyGenerationError, match="DAILY_LIFE_REFERENCE_NOT_ACTIVE"):
+        use_case.execute(command)
+    assert provider.requests == [] and plans.save_count == 0
+
+
+def test_the_real_daily_life_sentences_are_copied_with_their_entry_and_curriculum_version():
+    references = _real_references()
+    daily, curriculum = references["daily"], references["curriculum"]
+    health, nutrition = "ssuksak.daily-life.health.02", "ssuksak.daily-life.nutrition.07"
+    use_case, command, plans, provider, _ = _run(
+        lambda data: data.update(health_entry_id=health, nutrition_entry_id=nutrition), **references
+    )
+
+    plan = use_case.execute(command)
+
+    assert provider.requests[0].habit_entry_ids == tuple(e.entry_id for e in daily.of_kind(DailyLifeKind.HABIT))
+    assert (plan.references.daily_life_catalog_id, plan.references.daily_life_catalog_version) == (
+        "ssuksak.daily-life",
+        "daily-life-v0.1.0",
+    )
+    picked = [(plan.health, health), (plan.nutrition, nutrition), *((h.habit, h.habit.entry_id) for h in plan.habits)]
+    for row, entry_id in picked:
+        entry = daily.get(entry_id)
+        assert (row.entry_id, row.cell.value) == (entry_id, entry.text)
+        assert [(s.source_type, s.source_id, s.source_version) for s in row.cell.evidence] == [
+            (EvidenceSourceType.CURRICULUM, entry.content_id, curriculum.catalog_version)
+        ]
+    # The document's [분류] comes from the plan's own catalog version.
+    document = play_monthly_document(plan, daily)
+    assert [w.habit_label for w in document.weeks] == [daily.get(h.habit.entry_id).label for h in plan.habits]
+
+
+class _Transport:
+    """Offline streaming transport, already folded: answers with the fake provider's response.
+
+    A request that does not stream fails here.
+    """
+
+    def post_json(self, url, *, headers, payload, timeout):
+        raise AssertionError("play-monthly requests stream")
+
+    def __init__(self, fake) -> None:
+        self.fake = fake
+        self.payloads = []
+        self.request = None
+
+    def post_stream(self, url, *, headers, payload, timeout):
+        self.payloads.append(payload)
+        content = self.fake.generate_play_monthly(self.request).content
+        return {"model": "gpt-6.1-sol", "choices": [{"message": {"content": content}}]}
+
+
+class _Adapter(EliceOpenAiMonthlyAdapter):
+    """The real adapter; it only hands the request to the offline transport so the fake can answer it."""
+
+    def generate_play_monthly(self, request):
+        self._transport.request = request
+        return super().generate_play_monthly(request)
+
+
+def test_the_elice_adapter_streams_the_first_request_and_its_repair_with_their_own_cap():
+    transport = _Transport(_Provider(_set(("together",), []), None))
+    adapter = _Adapter(MonthlyLlmConfig("https://offline.invalid/v1", "test-only"), transport=transport)
+    use_case, command, plans, *_ = _run(provider=adapter)
+
+    use_case.execute(command)
+
+    assert len(transport.payloads) == 2 and plans.save_count == 1
+    for payload in transport.payloads:
+        assert payload["response_format"]["json_schema"] == {
+            "name": "play_monthly_proposal",
+            "strict": True,
+            "schema": RESPONSE_SCHEMA,
+        }
+        assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
+        assert payload["max_completion_tokens"] == PLAY_MONTHLY_MAX_COMPLETION_TOKENS == 6000
+    assert [r.prompt_version for r in transport.fake.requests] == [
+        PLAY_MONTHLY_PROMPT_VERSION,
+        PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
+    ]
+
+
+def test_the_assembly_versions_name_the_published_references():
+    assert JsonCurriculumReferenceRepository().get_catalog(*CURRICULUM_CATALOG) is not None
+    daily = JsonDailyLifeReferenceRepository().get_catalog(*DAILY_LIFE_CATALOG)
+    assert (daily.curriculum_catalog_id, daily.curriculum_catalog_version) == CURRICULUM_CATALOG
+    drills = JsonDrillTopicReferenceRepository().get_catalog(*DRILL_CATALOG)
+    assert (drills.curriculum_catalog_id, drills.curriculum_catalog_version) == CURRICULUM_CATALOG
+    assert JsonSafetyLegalRuleRepository().get_legal_rule(LEGAL_RULE_VERSION) is not None
+    assert (CLASSIFIED.classification_version, QUALITY_TABLE.quality_version) == (
+        SAFETY_CLASSIFICATION_VERSION,
+        SAFETY_QUALITY_VERSION,
+    )
+
+
+def _real_entries(data):
+    data.update(health_entry_id="ssuksak.daily-life.health.02", nutrition_entry_id="ssuksak.daily-life.nutrition.07")
+
+
+def test_the_assembly_generates_a_draft_from_the_approved_reference_files_offline():
+    parents, plans = InMemoryPlanRepository(), InMemoryPlanRepository()
+    parents.save(PlanId("parent-1"), _parent())
+    transport = _Transport(_Provider(_real_entries))
+    use_case = play_monthly_generation(
+        parent_repository=parents,
+        plan_repository=plans,
+        provider=_Adapter(MonthlyLlmConfig("https://offline.invalid/v1", "test-only"), transport=transport),
+        clock=FixedClock(datetime(2027, 2, 20, tzinfo=UTC)),
+        id_generator=DeterministicIdGenerator(),
+    )
+    command = play_monthly_command(
+        parent_plan_id=PlanId("parent-1"),
+        classroom_ref="classroom-test",
+        school_year=2027,
+        target_month=YearMonth(2027, 4),
+    )
+
+    plan = use_case.execute(command)
+
+    assert plan.status is PlanStatus.DRAFT and len(transport.payloads) == 1 and plans.save_count == 1
+    r = plan.references
+    assert (r.curriculum_catalog_id, r.curriculum_catalog_version) == CURRICULUM_CATALOG
+    assert (r.daily_life_catalog_id, r.daily_life_catalog_version) == DAILY_LIFE_CATALOG
+    assert (r.drill_catalog_id, r.drill_catalog_version) == DRILL_CATALOG
+    assert (r.legal_rule_version, r.safety_classification_version, r.safety_quality_version) == (
+        LEGAL_RULE_VERSION,
+        SAFETY_CLASSIFICATION_VERSION,
+        SAFETY_QUALITY_VERSION,
+    )
 
 
 def test_domain_rejects_duplicate_drill_topics():

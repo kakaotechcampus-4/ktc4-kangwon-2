@@ -11,6 +11,7 @@ institution isolation belongs to the parent repository's scope and the backend p
 
 from __future__ import annotations
 
+import calendar
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -22,7 +23,14 @@ from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.plan import PlanStatus
 from ..domain.play_monthly_plan import (
+    DAYS,
+    DIRECTION_COPY_RULE_ID,
+    DIRECTION_KEY,
+    DISPLAY_KEYS,
+    DISPLAY_RULE_ID,
     DRILL_CELL_KEY,
+    SPECIAL_ACTIVITY_KEY,
+    DocumentDisplay,
     DrillCandidate,
     EntryCell,
     HabitWeek,
@@ -37,6 +45,9 @@ from ..domain.play_monthly_plan import (
     PlayMonthlyReferences,
     SafetyCandidate,
     SafetyWeek,
+    TimetableNode,
+    TimetableSize,
+    specialized_keys,
 )
 from ..domain.play_project_plan import PlayProjectYearlyPlan
 from ..domain.provenance import (
@@ -47,6 +58,7 @@ from ..domain.provenance import (
     EvidenceSourceType,
     GenerationMethod,
     GenerationMethodDetail,
+    SplitAxis,
 )
 from ..domain.safety_placement import SafetyKind
 from ..domain.safety_rule import SafetyLegalRule
@@ -88,23 +100,25 @@ LIFE_SAFETY_SLOTS = ("life_safety_1", "life_safety_2")
 
 # Header layout measured from the reference monthly plan, not a national standard. Specialized-
 # program sub-headers are that institution's own programs and are not reproduced.
-PLAY_MONTHLY_LAYOUT_V0_1 = PlayMonthlyLayout(
-    layout_version="play-monthly-layout-v0.1.0",
+# v0.2.0 (2026-10-28): the centre play direction holds a value (a copy of the theme), and both
+# timetables are written cell by cell (TEACHER_TABLE) instead of as one text each.
+PLAY_MONTHLY_LAYOUT_V0_2 = PlayMonthlyLayout(
+    layout_version="play-monthly-layout-v0.2.0",
     sections=tuple(
         LayoutSection(key, label, role)
         for key, label, role in (
             ("theme", "놀이 주제", LayoutRole.GENERATED),
             ("expected_period", "예상 기간", LayoutRole.CALENDAR),
             ("rationale", "주제선정이유", LayoutRole.GENERATED),
-            ("expected_play_direction", "예상되는 놀이 방향", LayoutRole.TITLE),
+            ("expected_play_direction", "예상되는 놀이 방향", LayoutRole.GENERATED),
             ("together", "함께 하는 활동", LayoutRole.GENERATED),
             ("free_play", "유아 예상 자유놀이", LayoutRole.GENERATED),
             ("basic_habits", "기본생활습관", LayoutRole.GENERATED),
             ("safety_education", "안전교육", LayoutRole.GENERATED),
             ("fire_disaster_drill", "소방대피/재난대비", LayoutRole.TEACHER_INPUT),
             ("health_nutrition", "건강‧영양교육", LayoutRole.GENERATED),
-            ("specialized_timetable", "특성화 시간표", LayoutRole.TEACHER_INPUT),
-            ("special_activity_timetable", "특별활동 시간표", LayoutRole.TEACHER_INPUT),
+            ("specialized_timetable", "특성화 시간표", LayoutRole.TEACHER_TABLE),
+            ("special_activity_timetable", "특별활동 시간표", LayoutRole.TEACHER_TABLE),
             ("class_notice", "우리반 안내사항", LayoutRole.TEACHER_INPUT),
             ("class_birthdays", "우리반 생일", LayoutRole.TEACHER_INPUT),
             ("home_connection", "가정연계", LayoutRole.TEACHER_INPUT),
@@ -114,6 +128,19 @@ PLAY_MONTHLY_LAYOUT_V0_1 = PlayMonthlyLayout(
     free_play_count=5,
     drill_candidate_count=5,  # M2-D15: candidates, not a drill frequency
 )
+
+# The special-activity parts as the approved template draws them (전달본 rows 20~21): None is a
+# cell, (axis, first-part percent, first, second) a boundary. Percents are the template's widths
+# and heights, rounded; columns are equal and the two rows are 24 mm together.
+_ROW = (SplitAxis.HORIZONTAL, 36, None, None)
+SPECIAL_ACTIVITY_START = (
+    (SplitAxis.VERTICAL, 48, _ROW, _ROW),
+    _ROW,
+    (SplitAxis.VERTICAL, 48, _ROW, _ROW),
+    None,
+    (SplitAxis.HORIZONTAL, 33, None, None),
+)
+SPECIAL_ACTIVITY_START_SIZE = TimetableSize((20, 20, 20, 20, 20), 24)
 
 
 class PlayMonthlyGenerationError(DomainError):
@@ -156,6 +183,9 @@ class GeneratePlayMonthlyPlanCommand:
     drill_catalog_id: str
     drill_catalog_version: str
     emphasized_row_keys: tuple[str, ...] = ()  # optional teacher emphasis among the selected plays
+    # The class name the document header starts with (D-10), from the caller's classroom.
+    # Blank leaves that header cell for the teacher; it never names or checks the classroom.
+    class_name: str = ""
 
 
 def _fail(code: str) -> PlayMonthlyGenerationError:
@@ -213,7 +243,7 @@ class GeneratePlayMonthlyPlan:
             )
             for category in rule.categories
         )
-        layout = PLAY_MONTHLY_LAYOUT_V0_1
+        layout = PLAY_MONTHLY_LAYOUT_V0_2
         counts = {"together": layout.together_count, "free_play": layout.free_play_count}
         request = build_play_monthly_request(
             target_month=month.value,
@@ -239,7 +269,7 @@ class GeneratePlayMonthlyPlan:
             nutrition_entries=daily.of_kind(DailyLifeKind.NUTRITION),
             drill_topics=tuple((t.topic_id, t.label, t.situation) for t in drill_topics),
             reference_versions=(
-                PLAY_MONTHLY_LAYOUT_V0_1.layout_version,
+                PLAY_MONTHLY_LAYOUT_V0_2.layout_version,
                 catalog.catalog_version,
                 daily.catalog_version,
                 drills.catalog_version,
@@ -307,6 +337,38 @@ class GeneratePlayMonthlyPlan:
             snapshot.period_key,
             display_name=period.period.label,
         )
+
+        def blank(semantic_key: str) -> PlayMonthlyCell:
+            item_id = self._ids.new_item_id()
+            return PlayMonthlyCell(item_id=item_id, semantic_key=semantic_key, audit=created(item_id))
+
+        def copy(
+            semantic_key: str, rule_id: str, value: str, evidence: tuple[EvidenceSource, ...]
+        ) -> PlayMonthlyCell:
+            """A value the Rule copies once; a blank one is left for the teacher (no generation)."""
+            if not value.strip():
+                return blank(semantic_key)
+            item_id = self._ids.new_item_id()
+            return PlayMonthlyCell(
+                item_id=item_id,
+                semantic_key=semantic_key,
+                value=value,
+                evidence=evidence,
+                generation=GenerationMethodDetail(GenerationMethod.RULE_ONLY, rule_id, layout.layout_version),
+                audit=created(item_id),
+            )
+
+        def timetable(day: str, shape, numbers) -> TimetableNode:
+            if shape is None:
+                return TimetableNode(cell=blank(f"{SPECIAL_ACTIVITY_KEY}.{day}.{next(numbers)}"))
+            axis, ratio, first, second = shape
+            split_id = self._ids.new_item_id()
+            parts = (timetable(day, first, numbers), timetable(day, second, numbers))
+            return TimetableNode(split_id=split_id, axis=axis, ratio=ratio, children=parts)
+
+        last_day = calendar.monthrange(month.calendar_year, month.calendar_month)[1]
+        calendar_source = EvidenceSource(EvidenceSourceType.CALENDAR, month.value)
+        classroom_source = EvidenceSource(EvidenceSourceType.CLASSROOM_PROFILE, command.classroom_ref)
 
         def curriculum(content_id: str) -> EvidenceSource:
             return EvidenceSource(EvidenceSourceType.CURRICULUM, content_id, catalog.catalog_version)
@@ -429,10 +491,30 @@ class GeneratePlayMonthlyPlan:
                 )
                 for topic in drill_topics
             ),
-            teacher_inputs=tuple(
-                PlayMonthlyCell(item_id=(item_id := self._ids.new_item_id()), semantic_key=key, audit=created(item_id))
-                for key in layout.teacher_input_keys
+            teacher_inputs=tuple(blank(key) for key in layout.teacher_input_keys),
+            direction=copy(DIRECTION_KEY, DIRECTION_COPY_RULE_ID, proposal.theme, (parent_period,)),
+            display=DocumentDisplay(
+                *(
+                    copy(key, DISPLAY_RULE_ID, value, (source,))
+                    for key, value, source in zip(
+                        DISPLAY_KEYS,
+                        (
+                            f"{month.calendar_month}월 놀이계획안",
+                            "만 " + "·".join(str(age) for age in sorted(parent.target_ages)) + "세",
+                            " ".join(command.class_name.split()),
+                            f"{month.calendar_year}.{month.calendar_month:02d}.01 ~ "
+                            f"{month.calendar_year}.{month.calendar_month:02d}.{last_day:02d}",
+                        ),
+                        (calendar_source, classroom_source, classroom_source, calendar_source),
+                        strict=True,
+                    )
+                )
             ),
+            specialized_timetable=tuple(blank(key) for key in specialized_keys()),
+            special_activity=tuple(
+                timetable(day, start, iter(range(1, 9))) for day, start in zip(DAYS, SPECIAL_ACTIVITY_START, strict=True)
+            ),
+            special_activity_size=SPECIAL_ACTIVITY_START_SIZE,
             audit=created(),
         )
         self._plans.save(plan.plan_id, plan)
@@ -530,7 +612,7 @@ class GeneratePlayMonthlyPlan:
             raise _fail("DRILL_CURRICULUM_MISMATCH")
         if any(catalog.get(topic.content_id) is None for topic in drills.topics):
             raise _fail("DRILL_UNKNOWN_CONTENT_ID")
-        count = PLAY_MONTHLY_LAYOUT_V0_1.drill_candidate_count
+        count = PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
         eligible = drills.for_month(command.target_month.calendar_month)
         # Month-limited topics (e.g. 폭설 in winter) first, then catalog order.
         # ponytail: fixed order, so a month without a seasonal topic always gets the same five;

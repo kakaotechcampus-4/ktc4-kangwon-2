@@ -137,10 +137,27 @@ export function PlanArchivePreview({ target }: { target: PlanPreviewTarget }) {
       if (target.kind === "annual") {
         const annual = await getAnnualPlan(target.id, controller.signal);
         plan = annual;
-        sections = annual.months.map((m) => ({
-          heading: `${m.month}월`,
-          body: [m.theme, ...m.sub_themes].join("\n"),
-        }));
+        if (annual.format === "PLAY_PROJECT") {
+          sections = annual.periods.flatMap((period) =>
+            period.selected.flatMap((key) => {
+              const row = period.candidates.find((candidate) => candidate.row_key === key);
+              if (!row) return [];
+              return [
+                {
+                  heading: `${period.label} · ${row.play_name.value}`,
+                  body: [row.materials.value, row.support_direction.value, row.learning.value].join(
+                    "\n",
+                  ),
+                },
+              ];
+            }),
+          );
+        } else {
+          sections = annual.months.map((m) => ({
+            heading: `${m.month}월`,
+            body: [m.theme, ...m.sub_themes].join("\n"),
+          }));
+        }
       } else {
         const matrix =
           target.kind === "monthly"

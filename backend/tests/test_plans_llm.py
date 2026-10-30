@@ -49,7 +49,7 @@ def _answers(content: str):
 
     def transport(url, *, headers, payload, timeout):
         assert headers["Authorization"] == f"Bearer {KEY}"
-        # 온도를 보내지 않는다 — gpt-5.6-luna 는 0 을 거부하고 기본값만 받는다.
+        # 온도를 보내지 않는다 — gpt-6.1-sol 은 0 을 거부하고 기본값만 받는다.
         assert "temperature" not in payload
         assert payload["response_format"] == {"type": "json_object"}
         return {"choices": [{"message": {"content": content}}]}
@@ -77,6 +77,34 @@ def test_열두_달을_한_번에_보내고_받는다():
     assert len(results) == 12
     assert results[0].value == "만든 주제 3"
     assert [r.period.calendar_month for r in results] == list(ACADEMIC_MONTHS)
+    assert len(sent["user"]["curriculum_context"]["contents"]) == 59
+    assert sent["user"]["curriculum_context"]["purpose"] == "EDUCATIONAL_CONTEXT_ONLY"
+
+
+def test_unapproved_curriculum_stops_before_any_transport(monkeypatch):
+    from dataclasses import replace
+
+    from ssuksak.planning.domain.theme_reference import ActivationStatus
+
+    from app.features.plans import llm
+
+    pending = replace(
+        llm.v1_curriculum_catalog(), activation_status=ActivationStatus.PENDING_HUMAN_REVIEW
+    )
+    monkeypatch.setattr(llm, "v1_curriculum_catalog", lambda: pending)
+    calls = []
+    generator = EliceThemeTextGenerator(transport=lambda *a, **kw: calls.append(1))
+    with pytest.raises(LlmUnavailable):
+        generator.generate(_requests(1))
+    assert calls == []
+
+
+def test_curriculum_id_is_rejected_in_teacher_visible_theme():
+    generator = _answers(
+        json.dumps({"themes": [{"theme_id": "theme_0", "value": "nuri2019.1.1.1"}]})
+    )
+    with pytest.raises(LlmFailed, match="내부 누리과정 ID"):
+        generator.generate(_requests(1))
 
 
 def test_달이_빠지면_거부한다():

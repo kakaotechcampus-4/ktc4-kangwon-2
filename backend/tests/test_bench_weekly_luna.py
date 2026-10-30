@@ -102,8 +102,8 @@ def test_요청_아홉개를_돌리고_주간_호출만_센다():
     schemas = [c["schema"] for c in transport.calls]
     assert schemas.count("weekly_plan_proposal") == 5
     assert schemas.count("weekly_cell_proposal") == 4
-    # 단가: 12k 입력 · 2k 출력 = ₩1.692 + ₩1.416 = ₩3.108 / 호출
-    assert out["won"] == pytest.approx(9 * 3.108, abs=0.01)
+    # 단가: 12k 입력 · 2k 출력 = ₩34.02 + ₩28.35 = ₩62.37 / 호출 (gpt-6.1-sol)
+    assert out["won"] == pytest.approx(9 * 62.37, abs=0.01)
     decision_b = next(r for r in out["results"] if "결정 B" in r["case"])
     assert decision_b["result"] == "SAVED"
     saturday = next(r for r in out["results"] if r["case"].endswith("토"))
@@ -154,7 +154,7 @@ def test_전송마다_출력_상한을_붙이고_운영_어댑터_요청은_바�
 
 def test_응답이_예약보다_크면_그_뒤로_멈춘다():
     huge = {"prompt_tokens": 1_000_000, "completion_tokens": 600_000, "total_tokens": 1_600_000}
-    transport, out = _run(_fake(huge))  # 한 호출 ≈ ₩565 — 예약(수 원)을 넘는다
+    transport, out = _run(_fake(huge))  # 한 호출 ≈ ₩11,340 — 예약(수십 원)을 넘는다
     assert out["calls"] == 1
     assert out["stopped"] == "over_reservation"
     assert out["skipped_budget"] >= 1
@@ -163,8 +163,8 @@ def test_응답이_예약보다_크면_그_뒤로_멈춘다():
 def test_수리_전송_직전에도_예산을_본다():
     probe, _ = _run(_fake(edit=_date_once), max_calls=1)
     first_reserve = probe.calls[0]["reserved_won"]
-    # 첫 전송의 예약만큼만 — 첫 전송(실제 ₩3.1)은 되지만, 쓴 돈 + 수리 예약은 넘는다.
-    transport, out = _run(_fake(edit=_date_once), won=first_reserve)
+    # 표시 예약액의 소수 4자리 반올림 오차만 허용하고, 쓴 돈 + 수리 예약은 넘게 둔다.
+    transport, out = _run(_fake(edit=_date_once), won=first_reserve + 0.001)
     assert out["calls"] == 1
     assert out["results"][0]["result"] == "STOPPED_BUDGET"
     assert out["won"] <= out["budget_won"]

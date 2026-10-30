@@ -12,9 +12,14 @@
   기본생활습관은 「[분류]」 문단 + 문장 문단, 건강 · 영양은 「[건강] 」 · 「[영양] 」 + 문장.
   빈 칸에는 붙이지 않는다.
 - 비워 두는 곳: 우리반 안내사항(출력 안 함, 2026-10-28 결정). 하단 고정 문구 두 줄은 손대지 않는다.
-- 이번 단계는 기본 양식 채우기다. 특성화 · 특별활동 시간표 격자는 비워 두고, 가운데 「예상되는
-  놀이 방향」 은 주제 값을 쓴다. 칸별 시간표(나누기 · 삭제 · 크기)와 독립 놀이 방향의 저장 ·
-  내보내기는 후속이다(같은 날 요청, Core 계약 전).
+- 제목 · 반 표시 · 예상 기간 · 가운데 「예상되는 놀이 방향」 은 계획의 표시 칸 값을 그대로 쓴다
+  (layout v0.2.0, 2026-10-28 D-2 · D-6 — 교사가 지운 빈 값도 빈 채로). 반 표시 = 연령 + 반 이름.
+- 특성화 시간표: 전달본 제목 5칸(15행) · 내용 5칸(16행)에 그대로 채운다. 칸 구조는 그대로다.
+- 특별활동 시간표(ADR-047 · D-8): 요일 머리(19행) 아래 칸 구역(전달본 20~21행)을 교사가 나눈
+  모양대로 다시 만든다. 요일마다 나눔 트리를 사각형으로 펼치고, 모든 요일의 가로 경계를 합친
+  만큼 행을 두고, 세로 경계는 표 전체 격자에 더해 칸을 병합한다 — 전달본이 이미 쓰는 방식이다.
+  요일 열 폭(%)은 머리와 칸 구역에만, 높이(mm)는 칸 구역 전체에 쓴다. 칸은 전달본 (20,0) 칸
+  서식을 따른다. 글이 길거나 칸이 작으면 한글이 행을 늘린다 — 줄이거나 자르지 않는다.
 - 글자 크기를 줄이거나 자르지 않는다 — 길면 한글이 쪽을 넘긴다(표 `pageBreak="CELL"`).
   전달본 표는 「글자처럼 취급」(`treatAsChar="1"`)이라 쪽을 못 넘기고 1쪽 아래가 잘린다.
   양식 파일은 그대로 두고 채울 때 끈다 — 다른 양식(월간 v1 · 연간 · 주간)과 같은 값이다.
@@ -26,10 +31,17 @@
 import copy
 import io
 import zipfile
+from fractions import Fraction
+from itertools import pairwise
 from pathlib import Path
 
 from lxml import etree
-from ssuksak.planning.application.play_monthly_document import PlayMonthlyDocument
+from ssuksak.planning.application.play_monthly_document import (
+    PlayMonthlyDocument,
+    PlayMonthlyDocumentPart,
+)
+from ssuksak.planning.domain.play_monthly_plan import TimetableSize
+from ssuksak.planning.domain.provenance import SplitAxis
 
 from app.features.plans.play_project_hwpx import _preview
 from app.shared.hwpx import (
@@ -59,16 +71,23 @@ LABELS = {
     (10, 0): "안전교육",
     (11, 0): "소방대피/재난대비",
     (12, 0): "건강·영양교육",
+    (14, 0): "[ 특성화 시간표 ]",
+    (18, 0): "[ 특별활동 시간표 ]",
     (24, 0): "우리반 생일",
     (25, 0): "가정연계",
 }
 WEEK_HEADER, WEEK_HABIT, WEEK_SAFETY = 8, 9, 10
 WEEK_FIRST_COLUMN = 3  # 그 왼쪽은 줄 이름 칸
 WEEK_COUNTS = (4, 5)  # Core 주차 규칙(평일 3일 이상인 월~금 주)이 만드는 수
+SPECIALIZED_ROWS = (15, 16)  # 제목 · 내용
+SPECIALIZED_COLUMNS = (0, 4, 8, 11, 14)
+SPECIAL_HEADER, SPECIAL_FIRST, SPECIAL_ROWS = 19, 20, 2  # 요일 머리 · 칸 구역(전달본 2행)
+DAYS = ("월", "화", "수", "목", "금")
+HWPUNIT_PER_MM = 7200 / 25.4
+SNAP = round(0.5 * HWPUNIT_PER_MM)  # 요일 경계가 이만큼 안에 다른 줄 세로선이 있으면 그 선을 쓴다
 
 
-def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: str) -> bytes:
-    """`class_label` 은 서버가 맞춘 반 표시 — 예: 「만 3세 햇살반」, 혼합 「만 3·4세 햇살반」."""
+def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
     with zipfile.ZipFile(io.BytesIO(template)) as src:
         infos = src.infolist()
         parts = {info.filename: src.read(info.filename) for info in infos}
@@ -88,17 +107,16 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: st
     if len(doc.weeks) not in WEEK_COUNTS:
         raise TemplateMismatch(f"주차가 {len(doc.weeks)}개다 — 양식은 4주 · 5주만 나눈다.")
 
-    title = f"{doc.month}월 놀이계획안"
     heading = cells[(0, 0)].findall("hp:subList/hp:p", NS)
     if len(heading) != 2:
         raise TemplateMismatch("제목 칸은 제목 · 반 표시 두 문단이어야 한다.")
-    _set_paragraph(heading[0], title)
-    _set_paragraph(heading[1], class_label)
+    _set_paragraph(heading[0], doc.title)
+    _set_paragraph(heading[1], " ".join(v for v in (doc.age, doc.class_name) if v))
 
     _set_text(cells[(1, 2)], doc.theme)
-    _set_text(cells[(2, 2)], f"{doc.start_date:%Y.%m.%d} ~ {doc.end_date:%Y.%m.%d}")
+    _set_text(cells[(2, 2)], doc.period)
     _set_text(cells[(3, 2)], doc.rationale)
-    _set_text(cells[(5, 7)], doc.theme)  # 가운데 놀이 방향 — 독립 값은 후속, 지금은 주제
+    _set_text(cells[(5, 7)], doc.direction)
     _set_text(cells[(6, 0)], "\n".join(doc.together))
     _set_text(cells[(6, 12)], "\n".join(doc.free_play))
     _set_text(cells[(11, 3)], doc.drill)
@@ -106,6 +124,11 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: st
     _set_text(cells[(12, 11)], _tagged("영양", doc.nutrition))
     _set_text(cells[(24, 3)], doc.birthdays)
     _set_text(cells[(25, 3)], doc.home_connection)
+    for row, texts in zip(
+        SPECIALIZED_ROWS, (doc.specialized_titles, doc.specialized_contents), strict=True
+    ):
+        for col, text in zip(SPECIALIZED_COLUMNS, texts, strict=True):
+            _set_text(cells[(row, col)], text)
     _set_weeks(
         table,
         {
@@ -116,9 +139,10 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument, class_label: st
             WEEK_SAFETY: [w.safety for w in doc.weeks],
         },
     )
+    _set_special_activity(table, doc.special_activity, doc.special_activity_size)
 
     parts[SECTION] = _dump(section)
-    parts[PACKAGE] = _package(parts[PACKAGE], title)
+    parts[PACKAGE] = _package(parts[PACKAGE], doc.title)
     if PREVIEW in parts:
         parts[PREVIEW] = _preview(section)
 
@@ -157,6 +181,111 @@ def _set_weeks(table: etree._Element, rows: dict[int, list[str]]) -> None:
             tr.insert(at + i, tc)
             span[tc] = (edges[i], edges[i + 1])
 
+    _renumber_columns(table, span)
+
+
+def _set_special_activity(
+    table: etree._Element, days: tuple[PlayMonthlyDocumentPart, ...], size: TimetableSize
+) -> None:
+    """특별활동 칸 구역을 요일별 나눔대로 다시 만든다. 행 · 열 번호는 표 전체를 다시 매긴다."""
+    if len(days) != len(DAYS):
+        raise TemplateMismatch(f"특별활동 요일이 {len(days)}개다.")
+    trs = table.findall("hp:tr", NS)
+    tcs = table.findall("hp:tr/hp:tc", NS)
+    lines = _grid_lines(table, tcs)
+    span = {tc: (lines[_col(tc)], lines[_col(tc)] + _width(tc)) for tc in tcs}
+    left, right = lines[0], lines[int(table.get("colCnt"))]
+    header = trs[SPECIAL_HEADER].findall("hp:tc", NS)
+    if [_text(tc) for tc in header] != list(DAYS):
+        raise TemplateMismatch(f"양식 {SPECIAL_HEADER}행이 요일 머리 「월 ~ 금」 이 아니다.")
+    body = trs[SPECIAL_FIRST : SPECIAL_FIRST + SPECIAL_ROWS]
+    model = body[0].find("hp:tc", NS)  # 전달본 (20,0) — 칸 서식
+    at = list(table).index(body[0])
+    for tr in body:
+        for tc in tr.findall("hp:tc", NS):
+            del span[tc]
+        table.remove(tr)
+
+    # 퍼센트로 나눈 요일 경계는 위 특성화 표의 세로선과 몇 단위씩 어긋나 아주 가는 열을 만든다.
+    others = {x for tc, pair in span.items() if tc not in header for x in pair}
+    edges = [
+        _snap(left + (right - left) * sum(size.column_widths[:i]) // 100, others)
+        for i in range(len(DAYS) + 1)
+    ]
+    for tc, (x0, x1) in zip(header, pairwise(edges), strict=True):
+        tc.find("hp:cellSz", NS).set("width", str(x1 - x0))
+        span[tc] = (x0, x1)
+
+    # 경계는 분수로 펼친 뒤 정수로 옮긴다. 정수 나눗셈은 작은 쪽을 거듭 나누면 서로 다른 경계를
+    # 한 점(폭 · 높이 · 병합 수 0, 같은 주소 두 칸)으로 합친다(Codex HWTT-01).
+    height = round(size.height_mm * HWPUNIT_PER_MM)
+    leaves = []
+    for day, (x0, x1) in zip(days, pairwise(edges), strict=True):
+        parts = _layout(day, Fraction(0), Fraction(1), Fraction(0), Fraction(1))
+        xs = _grid([x for _, a, b, *_ in parts for x in (a, b)], x0, x1)
+        leaves += [(text, xs[a], xs[b], y0, y1) for text, a, b, y0, y1 in parts]
+    ys = _grid([y for *_, y0, y1 in leaves for y in (y0, y1)], 0, height)
+    leaves = [(text, x0, x1, ys[y0], ys[y1]) for text, x0, x1, y0, y1 in leaves]
+    ys = sorted(ys.values())
+    row = {y: i for i, y in enumerate(ys)}
+    new_rows = [etree.Element(body[0].tag, body[0].attrib) for _ in ys[1:]]
+    for text, x0, x1, y0, y1 in sorted(leaves, key=lambda leaf: (leaf[3], leaf[1])):
+        tc = copy.deepcopy(model)
+        tc.find("hp:cellSz", NS).set("width", str(x1 - x0))
+        tc.find("hp:cellSz", NS).set("height", str(y1 - y0))
+        tc.find("hp:cellSpan", NS).set("rowSpan", str(row[y1] - row[y0]))
+        _set_text(tc, text)
+        new_rows[row[y0]].append(tc)
+        span[tc] = (x0, x1)
+    for i, tr in enumerate(new_rows):
+        table.insert(at + i, tr)
+
+    trs = table.findall("hp:tr", NS)
+    for r, tr in enumerate(trs):
+        for tc in tr.findall("hp:tc", NS):
+            tc.find("hp:cellAddr", NS).set("rowAddr", str(r))
+    table.set("rowCnt", str(len(trs)))
+    _renumber_columns(table, span)
+
+
+def _snap(x: int, lines: set[int]) -> int:
+    near = min(lines, key=lambda line: abs(line - x))
+    return near if abs(near - x) <= SNAP else x
+
+
+def _layout(
+    part: PlayMonthlyDocumentPart, x0: Fraction, x1: Fraction, y0: Fraction, y1: Fraction
+) -> list[tuple[str, Fraction, Fraction, Fraction, Fraction]]:
+    """나눔 트리 → (글, x0, x1, y0, y1) 사각형. 세로 나눔은 위 · 아래, 가로 나눔은 왼쪽 · 오른쪽."""
+    if part.axis is None:
+        return [(part.text, x0, x1, y0, y1)]
+    first, second = part.parts
+    if part.axis is SplitAxis.VERTICAL:
+        y = y0 + (y1 - y0) * Fraction(part.ratio, 100)
+        return _layout(first, x0, x1, y0, y) + _layout(second, x0, x1, y, y1)
+    x = x0 + (x1 - x0) * Fraction(part.ratio, 100)
+    return _layout(first, x0, x, y0, y1) + _layout(second, x, x1, y0, y1)
+
+
+def _grid(points: list[Fraction], start: int, end: int) -> dict[Fraction, int]:
+    """[start, end] 를 비율로 나눈 경계 → 정수 좌표. 서로 다른 경계는 1 단위 이상 떨어뜨린다.
+
+    1 단위(0.004mm) 칸은 한글이 글 높이 · 칸 여백만큼 늘린다. 경계가 단위 수보다 많으면 거절한다.
+    """
+    exact = sorted(set(points))
+    ints = [round(start + (end - start) * p) for p in exact]
+    for i in range(1, len(ints)):
+        ints[i] = max(ints[i], ints[i - 1] + 1)
+    ints[-1] = end
+    for i in range(len(ints) - 2, -1, -1):
+        ints[i] = min(ints[i], ints[i + 1] - 1)
+    if ints[0] != start:
+        raise TemplateMismatch("특별활동 칸 경계가 표 단위보다 촘촘하다.")
+    return dict(zip(exact, ints, strict=True))
+
+
+def _renumber_columns(table: etree._Element, span: dict[etree._Element, tuple[int, int]]) -> None:
+    """칸마다의 x 구간으로 표 격자 열 번호 · 병합 수를 다시 매긴다."""
     index = {x: i for i, x in enumerate(sorted({x for pair in span.values() for x in pair}))}
     for tc, (x0, x1) in span.items():
         tc.find("hp:cellAddr", NS).set("colAddr", str(index[x0]))

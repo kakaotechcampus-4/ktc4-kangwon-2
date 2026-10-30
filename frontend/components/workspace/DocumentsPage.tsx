@@ -301,7 +301,8 @@ export default function DocumentsPage() {
       ? selected.flatMap((id) => candidates.filter((s) => s.id === id))
       : candidates.filter((s) => selected.includes(s.id));
 
-  // 등록 증빙은 아직 서버에 없다 — 보관함에서는 계속 브라우저 저장소를 본다.
+  // 새로 등록하는 증빙은 서버로 간다 (§11 「증빙 등록」) — 아래 서버 목록에 섞여 온다.
+  // 이 줄은 그 길이 열리기 전에 브라우저에 쌓인 증빙을 계속 보여 주기 위한 것이다.
   // 브라우저에 남은 옛 계획안은 읽지 않는다. 계획안은 이제 서버 목록에서 온다.
   const localDocs = data.documents.filter((d) => d.origin === "import");
   // 목록에는 sections · sources 가 없다 — 제목 · 종류 · 날짜 · 상태만 그린다 (§11).
@@ -334,6 +335,7 @@ export default function DocumentsPage() {
       id: `annual:${p.id}`,
       source: "plan" as const,
       serverId: p.id,
+      format: p.format,
       title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
       // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
       className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",

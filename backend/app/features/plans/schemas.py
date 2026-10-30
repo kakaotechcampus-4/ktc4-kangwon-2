@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 SafetyCategory = Literal[
     "traffic_safety",
@@ -61,6 +61,7 @@ class CheckOut(BaseModel):
 
 class AnnualPlanOut(BaseModel):
     id: int
+    format: Literal["MONTHLY_THEME"] = "MONTHLY_THEME"
     class_id: int
     school_year: int
     status: str
@@ -71,10 +72,49 @@ class AnnualPlanOut(BaseModel):
     checks: list[CheckOut]
 
 
+class PlayCellOut(BaseModel):
+    """놀이 프로젝트형 칸 하나. 값과 근거 · 생성 방식은 월간과 같은 객체를 쓴다."""
+
+    item_id: str
+    value: str
+    evidence: list[EvidenceOut]
+    generation: GenerationOut
+
+
+class PlayCandidateOut(BaseModel):
+    row_key: str
+    play_name: PlayCellOut
+    materials: PlayCellOut
+    support_direction: PlayCellOut
+    learning: PlayCellOut
+
+
+class PlayPeriodOut(BaseModel):
+    period_key: str
+    label: str
+    months: list[int]
+    candidates: list[PlayCandidateOut]
+    selected: list[str]  # 고른 후보의 row_key, 문서 배치 순서
+
+
+class PlayProjectPlanOut(BaseModel):
+    """놀이 프로젝트형 연간 (api-spec §4). audit 는 싣지 않는다(§7-1 이 따로 준다)."""
+
+    id: int
+    revision: int
+    class_id: int
+    school_year: int
+    status: str
+    format: Literal["PLAY_PROJECT"]
+    format_version: str
+    periods: list[PlayPeriodOut]
+
+
 class AnnualPlanSummary(BaseModel):
     """목록용. months 12개를 넣지 않는다 — 상세는 단건 조회가 준다(§5)."""
 
     id: int
+    format: Literal["MONTHLY_THEME", "PLAY_PROJECT"]
     class_id: int
     school_year: int
     status: str
@@ -91,8 +131,16 @@ class CreateAnnualPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    format: Literal["MONTHLY_THEME", "PLAY_PROJECT"]
     class_id: int
     form_id: int | None = None
+
+    @field_validator("form_id")
+    @classmethod
+    def play_project_has_no_form(cls, value: int | None, info: ValidationInfo) -> int | None:
+        if value is not None and info.data.get("format") == "PLAY_PROJECT":
+            raise ValueError("놀이 프로젝트형은 기관 양식을 쓰지 않습니다")
+        return value
 
 
 class UpdateMonth(BaseModel):
@@ -143,3 +191,22 @@ class AuditEventOut(BaseModel):
 
 class AuditOut(BaseModel):
     items: list[AuditEventOut]
+
+
+class SelectionChangeOut(BaseModel):
+    period_key: str
+    before: list[str]
+    after: list[str]
+
+
+class PlayAuditEventOut(AuditEventOut):
+    """놀이 프로젝트형 이력 한 건 (api-spec §7-1). 월별 응답은 위 여섯 키 그대로 둔다."""
+
+    item_id: str | None = Field(default=None, description="칸 단위 사건이면 그 칸. 아니면 null")
+    selection_change: SelectionChangeOut | None = Field(
+        default=None, description="CANDIDATES_SELECTED 만. 문서 배치 순서"
+    )
+
+
+class PlayAuditOut(BaseModel):
+    items: list[PlayAuditEventOut]
