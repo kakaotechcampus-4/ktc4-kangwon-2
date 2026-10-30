@@ -18,12 +18,6 @@ const QUESTION: Record<string, string> = {
   "4-2": "아이마다 1년에 2번 이상 발달 평가를 했나요?",
 };
 
-/** 서버가 아직 목록을 주지 않는 링크. 누르면 준비 중이라고만 알린다. */
-const LIST_LINK: Record<string, string> = {
-  "4-1": "빈 날짜 보기",
-  "4-2": "부족한 아동 보기",
-};
-
 /** `date`(YYYY-MM-DD)는 시간대가 없어 잘라 써도 된다. */
 function longDate(value: string) {
   const [y, m, d] = value.split("-").map(Number);
@@ -141,7 +135,6 @@ function notesFor(item: AutoIndicator) {
 
 function AutoCard({ item }: { item: AutoIndicator }) {
   const [counted, setCounted] = useState(false);
-  const [soon, setSoon] = useState(false);
   const countedId = `eval-counted-${item.indicator}`;
   return (
     <section className={styles.card} aria-label={`${item.indicator} ${item.title}`}>
@@ -151,28 +144,18 @@ function AutoCard({ item }: { item: AutoIndicator }) {
       </p>
       <div className={styles.titleRow}>
         <h3>{QUESTION[item.indicator] ?? item.title}</h3>
-        <div className={styles.links}>
-          {LIST_LINK[item.indicator] && (
-            <button type="button" className={styles.linkButton} onClick={() => setSoon(true)}>
-              {LIST_LINK[item.indicator]} ▾
-            </button>
-          )}
-          {item.indicator === "4-1" && (
-            <button
-              type="button"
-              className={styles.linkButton}
-              aria-expanded={counted}
-              aria-controls={countedId}
-              onClick={() => setCounted(!counted)}
-            >
-              집계에 들어간 문서 {item.count}건 ▾
-            </button>
-          )}
-        </div>
+        {item.indicator === "4-1" && (
+          <button
+            type="button"
+            className={styles.linkButton}
+            aria-expanded={counted}
+            aria-controls={countedId}
+            onClick={() => setCounted(!counted)}
+          >
+            집계에 들어간 문서 {item.count}건 ▾
+          </button>
+        )}
       </div>
-      <p role="status" className={styles.soon}>
-        {soon && "이 목록은 아직 준비 중이에요. 지금은 아래 숫자로 확인해 주세요."}
-      </p>
       {item.indicator === "4-1" ? (
         <ClassRequirements item={item} />
       ) : (
