@@ -18,12 +18,6 @@ const QUESTION: Record<string, string> = {
   "4-2": "아이마다 1년에 2번 이상 발달 평가를 했나요?",
 };
 
-/** 서버가 아직 목록을 주지 않는 링크. 누르면 준비 중이라고만 알린다. */
-const LIST_LINK: Record<string, string> = {
-  "4-1": "빈 날짜 보기",
-  "4-2": "부족한 아동 보기",
-};
-
 /** `date`(YYYY-MM-DD)는 시간대가 없어 잘라 써도 된다. */
 function longDate(value: string) {
   const [y, m, d] = value.split("-").map(Number);
@@ -118,7 +112,7 @@ function ChildRequirement({ item }: { item: AutoIndicator }) {
         need="아동마다 확정된 영유아 평가 2건"
         have={`${children.total}명 중 ${children.met}명 채움 · 관찰일지 수로 대신 세지 않아요`}
         bar={percent(children.met, children.total)}
-        href="/documents"
+        href="/documents?kind=assessment"
         action="영유아 평가 작성하기"
         primary
       />
@@ -141,7 +135,6 @@ function notesFor(item: AutoIndicator) {
 
 function AutoCard({ item }: { item: AutoIndicator }) {
   const [counted, setCounted] = useState(false);
-  const [soon, setSoon] = useState(false);
   const countedId = `eval-counted-${item.indicator}`;
   return (
     <section className={styles.card} aria-label={`${item.indicator} ${item.title}`}>
@@ -151,37 +144,28 @@ function AutoCard({ item }: { item: AutoIndicator }) {
       </p>
       <div className={styles.titleRow}>
         <h3>{QUESTION[item.indicator] ?? item.title}</h3>
-        <div className={styles.links}>
-          {LIST_LINK[item.indicator] && (
-            <button type="button" className={styles.linkButton} onClick={() => setSoon(true)}>
-              {LIST_LINK[item.indicator]} ▾
-            </button>
-          )}
-          {item.indicator === "4-1" && (
-            <button
-              type="button"
-              className={styles.linkButton}
-              aria-expanded={counted}
-              aria-controls={countedId}
-              onClick={() => setCounted(!counted)}
-            >
-              집계에 들어간 문서 {item.count}건 ▾
-            </button>
-          )}
-        </div>
+        {item.indicator === "4-1" && (
+          <button
+            type="button"
+            className={styles.linkButton}
+            aria-expanded={counted}
+            aria-controls={countedId}
+            onClick={() => setCounted(!counted)}
+          >
+            집계에 들어간 문서 {item.count}건 ▾
+          </button>
+        )}
       </div>
-      <p role="status" className={styles.soon}>
-        {soon && "이 목록은 아직 준비 중이에요. 지금은 아래 숫자로 확인해 주세요."}
-      </p>
+      {/* 펼친 내용은 누른 버튼 바로 밑에 둔다. 아래에 열리면 무엇이 열렸는지 찾아야 한다. */}
+      <div id={countedId} className={styles.counted} hidden={!counted}>
+        반마다 검토 기간의 확정 월간계획안과, 평일마다 확정한 일일 보육일지를 세요. 월간계획안{" "}
+        {item.plan_ids.length}건 · 보육일지 {item.document_ids.length}건
+      </div>
       {item.indicator === "4-1" ? (
         <ClassRequirements item={item} />
       ) : (
         <ChildRequirement item={item} />
       )}
-      <div id={countedId} className={styles.counted} hidden={!counted}>
-        반마다 검토 기간의 확정 월간계획안과, 평일마다 확정한 일일 보육일지를 세요. 월간계획안{" "}
-        {item.plan_ids.length}건 · 보육일지 {item.document_ids.length}건
-      </div>
       <ul className={styles.notes}>
         {notesFor(item).map((note) => (
           <li key={note}>{note}</li>

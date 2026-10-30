@@ -38,7 +38,13 @@ const schoolYear = (date: Date) =>
 
 export default function HomePage() {
   const [message, setMessage] = useState("");
-  const onError = useCallback((m: string) => setMessage(m), []);
+  // 반 · 기록을 못 불러오면 아래 빈 화면 안내를 그리지 않는다. 「아이를 먼저 등록해 주세요」를
+  // 보고 멀쩡한 명단을 다시 만들러 간다. 저장 실패는 여기 들지 않는다 — 적던 글은 남아야 한다.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const onError = useCallback((m: string) => {
+    setMessage(m);
+    setLoadFailed(true);
+  }, []);
   const classes = useClasses(onError);
   const [records, setRecords] = useState<ServerObservation[] | null>(null);
   const [todayDate] = useClientState(() => today(), "");
@@ -92,9 +98,9 @@ export default function HomePage() {
       .catch(() => {
         if (at !== visit.current) return;
         setRecords([]);
-        setMessage("기록을 불러오지 못했어요. 새로고침해주세요.");
+        onError("기록을 불러오지 못했어요. 새로고침해주세요.");
       });
-  }, [activeClassId]);
+  }, [activeClassId, onError]);
   useEffect(() => {
     reload();
   }, [reload, recordsRevision]);
@@ -145,20 +151,24 @@ export default function HomePage() {
         </p>
       )}
 
-      <Compose
-        classes={classes}
-        date={todayDate}
-        activeClassId={activeClassId}
-        onPickClass={pickClass}
-        onSaved={recordSaved}
-        onError={setMessage}
-      />
+      {!loadFailed && (
+        <>
+          <Compose
+            classes={classes}
+            date={todayDate}
+            activeClassId={activeClassId}
+            onPickClass={pickClass}
+            onSaved={recordSaved}
+            onError={setMessage}
+          />
 
-      <TodayList records={todayRecords} loading={records === null} />
+          <TodayList records={todayRecords} loading={records === null} />
 
-      <div className="mt-8">
-        <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
-      </div>
+          <div className="mt-8">
+            <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
+          </div>
+        </>
+      )}
     </PageContainer>
   );
 }
