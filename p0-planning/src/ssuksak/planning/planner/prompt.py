@@ -12,6 +12,10 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from .contracts import (
+    MONTHLY_CONTEXT_PROMPT_VERSION,
+    MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
+    MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION,
+    MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
     MONTHLY_SAFETY_PROMPT_VERSION,
@@ -329,7 +333,7 @@ def build_monthly_planning_request(
     contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
     version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
     if contextual:
-        version = "monthly-planner-safety-v17" if safety else "monthly-planner-v19"
+        version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
@@ -396,8 +400,8 @@ def build_monthly_repair_request(
     return replace(
         request,
         prompt_version={
-            "monthly-planner-safety-v17": "monthly-planner-safety-repair-v17",
-            "monthly-planner-v19": "monthly-planner-repair-v14",
+            MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION: MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
+            MONTHLY_CONTEXT_PROMPT_VERSION: MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
             MONTHLY_SAFETY_PROMPT_VERSION: MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
         }.get(request.prompt_version, MONTHLY_REPAIR_PROMPT_VERSION),
         system_prompt=REPAIR_HEADER + request.system_prompt,

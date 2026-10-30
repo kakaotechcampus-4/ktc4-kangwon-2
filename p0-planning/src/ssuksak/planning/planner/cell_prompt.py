@@ -13,6 +13,7 @@ from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from .contracts import (
     MONTHLY_CELL_PROMPT_VERSION,
+    MONTHLY_CONTEXT_CELL_PROMPT_VERSION,
     MonthlyCellPlanningRequest,
     MonthlyCellSnapshot,
 )
@@ -131,7 +132,7 @@ def build_monthly_cell_request(
     contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
-        prompt_version="monthly-cell-planner-v11" if contextual else MONTHLY_CELL_PROMPT_VERSION,
+        prompt_version=MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION,
         system_prompt=CELL_SYSTEM_PROMPT + (V1_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,

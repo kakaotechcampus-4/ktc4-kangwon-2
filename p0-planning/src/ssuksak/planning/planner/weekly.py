@@ -38,6 +38,10 @@ WEEKLY_REPAIR_PROMPT_VERSION = "weekly-planner-repair-v1"
 # W4b one-cell regeneration: its own prompt, like MONTHLY_CELL_PROMPT_VERSION.
 WEEKLY_CELL_PROMPT_VERSION = "weekly-cell-planner-v1"
 WEEKLY_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v1"
+WEEKLY_CONTEXT_PROMPT_VERSION = "weekly-planner-v3"
+WEEKLY_CONTEXT_REPAIR_PROMPT_VERSION = "weekly-planner-repair-v2"
+WEEKLY_CONTEXT_CELL_PROMPT_VERSION = "weekly-cell-planner-v2"
+WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v2"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
@@ -206,7 +210,7 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     return WeeklyPlanningRequest(
-        prompt_version="weekly-planner-v3" if curriculum is not None else WEEKLY_PROMPT_VERSION,
+        prompt_version=WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION,
         system_prompt=SYSTEM_PROMPT + (V1_GUIDANCE if curriculum is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         week_id=week_id,
@@ -216,7 +220,7 @@ def build_weekly_request(
         reference_candidates=reference_candidates,
         allowed_fact_text=allowed,
         packet_fingerprint=packet_fingerprint,
-        repair_prompt_version="weekly-planner-repair-v2" if curriculum is not None else WEEKLY_REPAIR_PROMPT_VERSION,
+        repair_prompt_version=WEEKLY_CONTEXT_REPAIR_PROMPT_VERSION if curriculum is not None else WEEKLY_REPAIR_PROMPT_VERSION,
         context_source_refs=curriculum_source_refs(curriculum),
     )
 
@@ -246,8 +250,8 @@ def cell_request(
     contextual = "curriculum_context" in body
     return replace(
         request,
-        prompt_version="weekly-cell-planner-v2" if contextual else WEEKLY_CELL_PROMPT_VERSION,
-        repair_prompt_version="weekly-cell-planner-repair-v2" if contextual else WEEKLY_CELL_REPAIR_PROMPT_VERSION,
+        prompt_version=WEEKLY_CONTEXT_CELL_PROMPT_VERSION if contextual else WEEKLY_CELL_PROMPT_VERSION,
+        repair_prompt_version=WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION if contextual else WEEKLY_CELL_REPAIR_PROMPT_VERSION,
         system_prompt=(
             request.system_prompt + " 이번 요청은 targets의 한 칸만 다시 쓰며 current_plan의 다른 값은 맥락으로만 읽는다."
             if contextual else CELL_SYSTEM_PROMPT

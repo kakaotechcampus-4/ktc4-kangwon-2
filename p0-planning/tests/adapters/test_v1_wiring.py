@@ -64,21 +64,33 @@ def test_monthly_generation_and_regeneration_reuse_confirmed_annual_snapshot():
     harness, provider, generate, command = _setup()
     plan = generate.execute(command).plan
     assert plan.parent_subthemes == command.parent_subthemes
+    target = plan.section("focus").cells[0]
     regenerate = monthly_composition.monthly_regeneration(
         plan_repository=harness.monthly_plans, provider=provider, clock=harness.clock
     )
-    plan = regenerate.execute(
+    result = regenerate.execute(
         RegenerateMonthlyPlanItemCommand(
             plan.plan_id,
-            plan.section("focus").cells[0].item_id,
+            target.item_id,
             ActorId("reviewer_test"),
         )
-    ).plan
+    )
+    plan = result.plan
     assert len(provider.requests) == 2
     for request in provider.requests:
         payload = json.loads(request.user_content)
         assert len(payload["curriculum_context"]["contents"]) == 59
         assert tuple(payload["parent_subthemes"]) == command.parent_subthemes
+    request_version = provider.requests[-1].prompt_version
+    regenerated = plan.find_cell(target.item_id)[3]
+    assert request_version == "monthly-cell-planner-v11"
+    assert result.planner_outcome.prompt_version == request_version
+    assert regenerated.generation.rule_version == request_version
+    change = regenerated.audit.events[-1].generation_change
+    assert change.before == target.generation
+    assert change.after == regenerated.generation
+    assert change.after.rule_version == request_version
+    assert harness.monthly_plans.get(plan.plan_id) == plan
 
 
 def test_curriculum_failure_stops_before_provider_and_storage(monkeypatch):

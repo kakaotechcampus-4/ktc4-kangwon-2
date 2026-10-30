@@ -17,12 +17,18 @@ from ssuksak.planning.planner.prompt import (
 )
 from ssuksak.planning.planner.validation import validate_monthly_proposal
 from ssuksak.planning.planner.v1_guidance import curriculum_context
+from ssuksak.planning.planner.contracts import ProposalRejectedError
+from ssuksak.planning.planner.service import MonthlyPlanner
 from ssuksak.planning.planner.weekly import (
     WeeklyTarget,
     build_weekly_request,
     cell_request,
 )
-from tests.planner.test_monthly_planner import monthly_payload, snapshots
+from tests.planner.test_monthly_planner import (
+    ScriptedMonthlyLlm,
+    monthly_payload,
+    snapshots,
+)
 
 
 def test_curriculum_is_versioned_context_without_new_allowed_cell_refs(
@@ -121,3 +127,17 @@ def test_weekly_and_cell_regeneration_keep_curriculum_and_parent_context():
         assert r.context_source_refs
     assert request.prompt_version == "weekly-planner-v3"
     assert cell.prompt_version == "weekly-cell-planner-v2"
+
+
+def test_failed_context_repair_is_reported_once(packet, snapshot, caplog):
+    packet = replace(packet, curriculum=v1_curriculum_catalog())
+    invalid = monthly_payload()
+    invalid["weeks"][0]["sections"][0]["value"] = "놀이의 변화 살펴보기 " * 30
+    provider = ScriptedMonthlyLlm(invalid, invalid)
+    with caplog.at_level("WARNING"), pytest.raises(ProposalRejectedError):
+        MonthlyPlanner(provider).plan(packet, snapshot)
+    assert len(provider.monthly_requests) == 2
+    assert provider.monthly_requests[-1].prompt_version == "monthly-planner-repair-v14"
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert warnings[0].startswith("Monthly LLM repair failed:")

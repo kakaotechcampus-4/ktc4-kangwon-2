@@ -21,7 +21,6 @@ from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class
 from ..planner.cell_service import MonthlyCellPlanner
 from ..planner.contracts import (
     LLM_CELL_SECTION_KEYS,
-    MONTHLY_CELL_PROMPT_VERSION,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
 )
@@ -259,7 +258,7 @@ class RegenerateMonthlyPlanItem:
         generation = GenerationMethodDetail(
             GenerationMethod.RULE_LLM,
             LLM_INTEGRATION_RULE_ID,
-            MONTHLY_CELL_PROMPT_VERSION,
+            outcome.prompt_version,
         )
         updated = self._replace_regenerated(
             plan,
