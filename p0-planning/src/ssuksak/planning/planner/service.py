@@ -7,8 +7,6 @@ import logging
 from ..context.models import MonthlyContextPacket
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from .contracts import (
-    MONTHLY_REPAIR_PROMPT_VERSION,
-    MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
     is_compatible_monthly_model,
     MonthlyPlanningOutcome,
     MonthlyPlanningRequest,
@@ -118,7 +116,7 @@ class MonthlyPlanner:
             else:
                 _log.warning("Monthly LLM repair failed: %s", finding_summary(validation.issues))
         if not validation.is_valid:
-            if request.prompt_version not in (MONTHLY_REPAIR_PROMPT_VERSION, MONTHLY_SAFETY_REPAIR_PROMPT_VERSION):
+            if not request.repair_targets:
                 _log.warning("Monthly LLM proposal rejected: %s", finding_summary(validation.issues))
             raise ProposalRejectedError(validation.codes, validation.issues)
         return MonthlyPlanningOutcome(

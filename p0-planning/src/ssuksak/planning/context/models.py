@@ -7,6 +7,7 @@ from datetime import date
 import re
 
 from ..domain.errors import InvalidDomainValueError
+from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.safety_placement import SafetyKind
 from ..domain.year_month import YearMonth
 from ..evidence.classification import SemanticClass
@@ -279,10 +280,20 @@ class MonthlyContextPacket:
     lineage: ContextLineage
     trimmed_blocks: tuple[str, ...] = ()
     safety: SafetyContext | None = None
+    curriculum: CurriculumCatalog | None = None
+    parent_subthemes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.packet_version != CONTEXT_PACKET_VERSION:
             raise InvalidDomainValueError("Context Packet version is invalid")
+        if self.curriculum is not None and (
+            not isinstance(self.curriculum, CurriculumCatalog) or not self.curriculum.is_active
+        ):
+            raise InvalidDomainValueError("Context curriculum must be approved")
+        if not isinstance(self.parent_subthemes, tuple) or any(
+            not isinstance(value, str) for value in self.parent_subthemes
+        ):
+            raise InvalidDomainValueError("Context parent_subthemes must be strings")
         if not isinstance(self.target_month, YearMonth):
             raise InvalidDomainValueError("Context Packet target_month must be YearMonth")
         if (

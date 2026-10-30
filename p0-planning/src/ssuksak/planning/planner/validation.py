@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 import json
 import re
+from .v1_guidance import curriculum_source_refs
 
 from ..context.models import (
     GroundingContextItem,
@@ -658,7 +659,7 @@ def validate_monthly_proposal_grounding(
             for ref in value.grounding_refs
         )
         for code in visible_text_violations(
-            value.value, evidence_refs=request.valid_grounding_refs
+            value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum)
         ):
             if code == "SAFETY_CONTENT_LEAKAGE" and safety_grounded:
                 continue

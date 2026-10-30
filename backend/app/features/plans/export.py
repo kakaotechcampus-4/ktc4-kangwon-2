@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from ssuksak.planning import PlanId
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT
 
+from app.features.plans.annual_hwpx import AnnualMonthRows, fill_annual_v1
 from app.features.plans.monthly_router import _current as _monthly_detail
 from app.features.plans.monthly_router import _own_row as _monthly_row
 from app.features.plans.monthly_schemas import SectionOut
@@ -26,17 +27,11 @@ from app.features.plans.weekly_router import _own_row as _weekly_row
 from app.features.plans.weekly_router import _weekly_repo
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
-from app.shared.hwpx import Format, download, fill_grid, fill_table
+from app.shared.hwpx import Format, download, fill_grid
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
-
-# 양식의 머리행(월 · 주제 · 소주제) 줄 수.
-# 안전교육 열은 2026-10-22 결정으로 양식에서 뺐다 — 안전교육은 월간이 채운다. 교사 입력값
-# (ADR-041)은 API · DB 에 그대로 있고 제출 문서에만 싣지 않는다. 다시 켜려면 git 이력의
-# 4열 양식과 이 줄 만들기를 되살린다.
-ANNUAL_HEADER_ROWS = 1
 
 _NOT_CONFIRMED = HTTPException(
     status.HTTP_409_CONFLICT,
@@ -116,9 +111,9 @@ def export_plan(
     klass = require_own_class(session, user, plan.class_id)
 
     title = f"{klass.name} {plan.school_year}학년도 연간 보육계획안"
-    rows = [[f"{month.month}월", month.theme, "\n".join(month.sub_themes)] for month in plan.months]
-    content = fill_table(
-        (TEMPLATE_DIR / "annual.hwpx").read_bytes(), title, ANNUAL_HEADER_ROWS, rows
+    rows = [AnnualMonthRows(month.month, month.theme, month.sub_themes) for month in plan.months]
+    content = fill_annual_v1(
+        (TEMPLATE_DIR / "annual_v1_weeks.hwpx").read_bytes(), title, plan.school_year, rows
     )
     return download(content, f"plan-{row.id}", title, format)
 

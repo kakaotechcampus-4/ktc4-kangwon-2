@@ -23,6 +23,7 @@ from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
 from ssuksak.planning import MonthlyApplicationError, WeeklyPlan
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.planner.weekly import WEEKLY_CONTEXT_CELL_PROMPT_VERSION
 
 from app.config import settings
 from app.features.auth.models import User
@@ -565,7 +566,10 @@ def test_칸을_다시_만들면_그_칸만_바뀐다(world):
         f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": _cell(plan, "goals")["item_id"]}
     ).json()["items"]
     assert audit[-1]["type"] == "REGENERATED"
-    assert audit[-1]["generation_change"]["after"]["rule_version"] == "weekly-cell-planner-v1"
+    assert (
+        audit[-1]["generation_change"]["after"]["rule_version"]
+        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+    )
 
 
 @pytest.mark.parametrize("key", ["family_link", "event_schedule", "special_program"])
