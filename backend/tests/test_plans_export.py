@@ -364,7 +364,12 @@ def test_연간_안전교육은_저장돼_있어도_hwpx_에_싣지_않는다(mi
     )
     assert response.json()["safety_education"] == ["traffic_safety"]
     section = _section(exported.content)
-    assert section.find(".//hp:tbl", NS).get("colCnt") == "3"
+    assert section.find(".//hp:tbl", NS).get("colCnt") == "8"
+    assert [_lines(_cell(section, 0, c)) for c in range(8)] == [
+        [header] for header in ["월", "생활주제", "주", "소주제"] * 2
+    ]
+    texts = "".join(section.itertext())
+    assert label not in texts and "traffic_safety" not in texts and "안전교육" not in texts
     archive = zipfile.ZipFile(io.BytesIO(exported.content))
     preview = archive.read("Preview/PrvText.txt").decode()
     assert "친구와 인사하기" in preview
