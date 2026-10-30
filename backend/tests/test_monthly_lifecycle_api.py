@@ -10,18 +10,28 @@ mock(요청 기반 결정적 provider)이다 — **실제 Sol-6.1 는 부르지 
 
 import json
 import logging
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from io import BytesIO
 from threading import Barrier
 
 import pytest
 from fastapi.testclient import TestClient
+from lxml import etree
 from sqlalchemy import delete, text
 from sqlalchemy.orm import Session
+from ssuksak.adapters import monthly_composition
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
+from ssuksak.adapters.weekly_evidence_classification_repository import (
+    InMemoryWeeklyEvidenceClassificationRepository,
+    JsonWeeklyEvidenceClassificationRepository,
+)
 from ssuksak.planning import ItemId, MonthlyPlan, PlanId
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.evidence.models import SourceSection
+from ssuksak.planning.evidence.weekly_classification import WeeklySemanticClass
 
 from app.config import settings
 from app.db import engine
@@ -39,12 +49,14 @@ from app.shared.llm import LlmBudgetExceeded, LlmFailed
 client = TestClient(app)
 
 FOCUS = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.1")
+INDOOR = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.2")
 LABELS = {
     "theme": "주제",
     "week_axis": "주",
     "outdoor_play": "바깥놀이",
     "safety_education": "안전교육",
     "focus": "소주제",
+    "indoor_alternative": "실내 대체활동",
 }
 IDLE_IN_TRANSACTION = (
     "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
@@ -69,7 +81,7 @@ def _approved(teacher, monkeypatch):
     return teacher
 
 
-def _seed(session, name: str, email: str) -> dict:
+def _seed(session, name: str, email: str, *, indoor: bool = False) -> dict:
     """원 · 계정 · 반 · READY Profile. id 만 돌려준다 — commit 뒤 ORM 객체는 만료된다."""
     center = Center(
         name=name, director_name="김원장", region_sido="강원특별자치도", region_sigungu="춘천시"
@@ -95,8 +107,8 @@ def _seed(session, name: str, email: str) -> dict:
     session.flush()
     ref = PostgresTemplateProfileRepository(session, center_id=center.id).start_from_reference(
         ApprovedTemplates(),
-        FOCUS,
-        selected_optional_keys=("focus",),
+        INDOOR if indoor else FOCUS,
+        selected_optional_keys=("focus", "indoor_alternative") if indoor else ("focus",),
         display_labels=LABELS,
         focus_variant=SemanticVariant.SUBTHEME,
         actor_id=user.id,
@@ -219,6 +231,44 @@ def test_칸을_고치면_그_칸만_바뀌고_revision_이_하나_오른다(wor
         original.generation,
         original.evidence,
     )
+
+
+@pytest.mark.parametrize("evidence", [True, False])
+def test_실내대체_칸을_만들고_고치고_확정하면_한글_문서에서_바깥놀이_아래_행이다(
+    db_session, teacher, monkeypatch, evidence
+):
+    if not evidence:  # D-5: 근거가 없으면 행은 남고 칸만 비어 교사가 채운다
+        approved = JsonWeeklyEvidenceClassificationRepository().get_classification()
+        no_match = ((SourceSection.THEME, "없는 이름", WeeklySemanticClass.INDOOR_ALTERNATIVE),)
+        nothing = replace(approved, entries=no_match)
+        monkeypatch.setattr(
+            monthly_composition,
+            "JsonWeeklyEvidenceClassificationRepository",
+            lambda: InMemoryWeeklyEvidenceClassificationRepository(nothing),
+        )
+    seed = _seed(db_session, "가원", "a@example.com", indoor=True)
+    teacher.center_id = seed["center"]
+    plan = _monthly(seed)
+
+    indoor = next(s for s in plan["sections"] if s["section_key"] == "indoor_alternative")
+    assert indoor["label"] == "실내 대체활동"
+    assert len(indoor["cells"]) == len([w for w in plan["weeks"] if w["active"]])
+    assert [bool(c["value"]) for c in indoor["cells"]] == [evidence] * len(indoor["cells"])
+
+    target = indoor["cells"][1]
+    edited = _edit(plan["id"], target["item_id"], "교사가 쓴 실내 대체활동", 1)
+    assert edited.status_code == 200, edited.json()
+    others = {k: v for k, v in _cells(edited.json()).items() if k != target["item_id"]}
+    assert others == {k: v for k, v in _cells(plan).items() if k != target["item_id"]}
+    assert _confirm(plan["id"], 2).status_code == 200
+
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        section = etree.fromstring(archive.read("Contents/section0.xml"))
+    printed = [t.text for t in section.iter("{http://www.hancom.co.kr/hwpml/2011/paragraph}t")]
+    assert printed.index("바깥놀이") < printed.index("실내 대체활동") < printed.index("안전교육")
+    assert "교사가 쓴 실내 대체활동" in printed
 
 
 def _item(cell: dict) -> ItemId:

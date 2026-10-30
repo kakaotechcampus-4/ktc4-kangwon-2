@@ -33,6 +33,9 @@ MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v11"
 MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v14"
 MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v17"
 MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v17"
+# Appended to any version above when indoor_alternative is an LLM target; requests
+# without it keep their version and prompt bytes.
+MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v1"
 MONTHLY_MODEL = "openai/gpt-6.1-sol"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-6.1-sol-2026-10-07"). Elice answers

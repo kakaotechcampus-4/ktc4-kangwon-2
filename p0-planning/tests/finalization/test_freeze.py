@@ -109,6 +109,9 @@ PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
         "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
     ),
+    "templates/monthly_template_a_v0_2_2.json": (
+        "f2f16d09b6414977aea98a8385228e51673b07a959eb6366ebb5efef731b0da8"
+    ),
 }
 
 # What a human approval may change inside `review`. Everything else is content.
@@ -131,6 +134,9 @@ PENDING_REVIEW_CONTENT = {
     ),
     "templates/monthly_template_a_v0_2_1.json": (
         "5497aba0b41065c857b7d8ece58dc0297f2ff713bed65a8a339dd0ec3a6b9be4"
+    ),
+    "templates/monthly_template_a_v0_2_2.json": (
+        "44d9be175995ea2668143a58966b8bb3969dd3dbdf860dc4925020c4ec999b5c"
     ),
     "templates/weekly_template_a_v0_1_0.json": (
         "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
@@ -242,14 +248,13 @@ def test_pending_templates_are_served_but_inactive():
     repository = JsonMonthlyTemplateRepository()
 
     # v0.2.1 was approved on 2026-10-20 (reviewer_pm_001); v0.1.1 was not. An approval
-    # never carries over to another version, so v0.1.1 stays served but inactive.
-    template = repository.get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
-    )
-    assert template is not None
-    assert not template.is_active
-    with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
-        resolve_sections(template)
+    # never carries over to another version, so v0.1.1 and v0.2.2 stay served but inactive.
+    for version in ("monthly-template-a-v0.1.1", "monthly-template-a-v0.2.2"):
+        template = repository.get_template("ssuksak.monthly-template-a", version)
+        assert template is not None
+        assert not template.is_active
+        with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
+            resolve_sections(template)
 
 
 def test_the_approved_template_is_active_and_resolves():

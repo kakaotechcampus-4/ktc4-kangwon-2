@@ -25,14 +25,10 @@ from ssuksak.planning.planner.contracts import (
 def grounding_ref_for(request, section_key: str) -> str | None:
     """First supplied evidence ref allowed for this Section's grounding_class."""
     body = json.loads(request.user_content)
-    expected = next(
-        (
-            section.get("grounding_class")
-            for section in body["generation_schema"]["sections"]
-            if section["section_key"] == section_key
-        ),
-        None,
-    )
+    classes = {s["section_key"]: s.get("grounding_class") for s in body["generation_schema"]["sections"]}
+    if section_key not in classes:
+        return None  # not an LLM target in this request, e.g. indoor_alternative without evidence
+    expected = classes[section_key]
     refs = sorted(
         item["grounding_ref"]
         for item in body["evidence"]

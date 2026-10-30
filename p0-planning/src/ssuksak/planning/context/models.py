@@ -108,6 +108,8 @@ class ContextLineage:
     activity_catalog_id: str = ""
     activity_catalog_version: str = ""
     evidence_classification_version: str = ""
+    # Only when indoor_alternative cites the Weekly classification; empty is not serialized.
+    weekly_classification_version: str = ""
 
     def __post_init__(self) -> None:
         for name in ("evidence_store_version", "retrieval_version"):
@@ -321,6 +323,10 @@ class MonthlyContextPacket:
             raise InvalidDomainValueError("Only section evidence may carry a grounding_class")
         if self.section_evidence and not self.lineage.evidence_classification_version:
             raise InvalidDomainValueError("Section evidence requires the Evidence classification version")
+        if not self.lineage.weekly_classification_version and any(
+            item.grounding_class is SemanticClass.INDOOR_ALTERNATIVE for item in self.section_evidence
+        ):
+            raise InvalidDomainValueError("Indoor alternative evidence requires the Weekly classification version")
         if self.safety is not None:
             if not isinstance(self.safety, SafetyContext):
                 raise InvalidDomainValueError("Context Packet safety is invalid")

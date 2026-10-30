@@ -85,8 +85,15 @@ from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.evidence.classification import SemanticClass
 from ssuksak.planning.domain.yearly_plan import YearlyPeriod, YearlyPlan
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
+from ssuksak.adapters.weekly_evidence_classification_repository import (
+    InMemoryWeeklyEvidenceClassificationRepository,
+    JsonWeeklyEvidenceClassificationRepository,
+)
+from ssuksak.planning.evidence.weekly_classification import WeeklySemanticClass
+from ssuksak.planning.planner.prompt import INDOOR_ALTERNATIVE_PROMPT
 from ssuksak.planning.planner.contracts import (
     MONTHLY_CELL_PROMPT_VERSION,
+    MONTHLY_INDOOR_PROMPT_TAG,
     MONTHLY_MODEL,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
@@ -2122,7 +2129,6 @@ POLICY_PENDING_SECTION_KEYS = (
     "daily_routine",
     "community_link",
     "family_link",
-    "indoor_alternative",
 )
 
 
@@ -2167,7 +2173,7 @@ def test_section_without_generation_policy_fails_closed_before_generation(sectio
 def test_unsupported_section_failure_leaves_stored_plans_unchanged():
     harness = Harness()
     stored = harness.generate().plan
-    profile = _policy_pending_profile(harness.templates, "indoor_alternative")
+    profile = _policy_pending_profile(harness.templates, "special_program")
     harness.profiles = InMemoryTemplateProfileRepository((profile,))
     saves_before = harness.plans.save_count
 
@@ -2177,6 +2183,104 @@ def test_unsupported_section_failure_leaves_stored_plans_unchanged():
     assert exc.value.code == "monthly_section_generation_policy_unsupported"
     assert harness.plans.save_count == saves_before
     assert harness.plans.get(stored.plan_id) is stored
+
+
+# ---------------------------------------------------------------- monthly v1 indoor_alternative (D-1..D-5)
+
+INDOOR_TEMPLATE = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.2")
+WEEKLY_CLASSIFICATION_REPOSITORY = JsonWeeklyEvidenceClassificationRepository()
+
+
+def _indoor_command(harness: Harness, target_month: YearMonth = TARGET_MONTH) -> GenerateMonthlyPlanCommand:
+    """A v0.2.2 Profile with indoor_alternative chosen, on a pipeline that reads the Weekly classification."""
+    base = _profile(harness.templates, INDOOR_TEMPLATE, TemplateProfileRef("monthly-profile-indoor", "v1"))
+    template = harness.templates.get_template(INDOOR_TEMPLATE.template_id, INDOOR_TEMPLATE.template_version)
+    indoor = replace(template.section("indoor_alternative"), activated=True, display_label="Indoor alternative")
+    profile = replace(
+        base, selected_optional_keys=(*base.selected_optional_keys, "indoor_alternative"), sections=(*base.sections, indoor)
+    )
+    harness.context = MonthlyContextPipeline(
+        evidence_repository=EVIDENCE_REPOSITORY,
+        classification_repository=CLASSIFICATION_REPOSITORY,
+        context_builder=ContextPacketBuilder(),
+        weekly_classification_repository=WEEKLY_CLASSIFICATION_REPOSITORY,
+    )
+    return replace(_use(harness, profile), target_month=target_month)
+
+
+@pytest.mark.parametrize("target_month", (YearMonth(2026, 9), YearMonth(2026, 10)))  # 5 and 4 active weeks
+def test_indoor_alternative_is_generated_from_weekly_indoor_evidence(target_month, monkeypatch):
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    packets = []
+    plan_once = MonthlyPlanner.plan
+    monkeypatch.setattr(MonthlyPlanner, "plan", lambda self, packet, snapshot: packets.append(packet) or plan_once(self, packet, snapshot))
+
+    plan = harness.generate(provider=provider, command=_indoor_command(harness, target_month)).plan
+
+    weekly = WEEKLY_CLASSIFICATION_REPOSITORY.get_classification()
+    records = {record.record_id: record for record in EVIDENCE_REPOSITORY.get_store().records}
+    cells = plan.section("indoor_alternative").cells
+    request = provider.monthly_requests[0]
+    assert len(cells) == len(plan.active_week_periods) == {9: 5, 10: 4}[target_month.calendar_month]
+    assert request.prompt_version.endswith(MONTHLY_INDOOR_PROMPT_TAG)
+    assert request.system_prompt.endswith(INDOOR_ALTERNATIVE_PROMPT)
+    assert packets[0].lineage.weekly_classification_version == weekly.classification_version
+    for cell in cells:
+        samples = [source for source in cell.evidence if source.source_type is EvidenceSourceType.INSTITUTION_SAMPLE]
+        assert cell.value and cell.generation.rule_version == request.prompt_version
+        assert EvidenceSourceType.PARENT_PLAN in {source.source_type for source in cell.evidence}
+        assert samples and all(
+            weekly.class_of(records[source.source_id]) is WeeklySemanticClass.INDOOR_ALTERNATIVE for source in samples
+        )
+    # Requests without indoor_alternative keep their prompt version and bytes.
+    assert Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan.section("indoor_alternative") is None
+    assert provider.monthly_requests[1].prompt_version == MONTHLY_PROMPT_VERSION
+
+
+@pytest.mark.parametrize("wrong", ("other_class", "unknown"))
+def test_indoor_alternative_rejects_other_class_or_unknown_evidence(wrong):
+    class WrongIndoorRefLlm(RequestAwareMonthlyLlm):
+        def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+            payload = json.loads(super().generate_monthly(request).content)
+            ref = grounding_ref_for(request, "focus") if wrong == "other_class" else "missing-ref"
+            for week in payload["weeks"]:
+                for section in week["sections"]:
+                    if section["section_key"] == "indoor_alternative":
+                        section["grounding_refs"] = [ref]
+            return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+    harness = Harness()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=WrongIndoorRefLlm(), command=_indoor_command(harness))
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    expected = "WRONG_SOURCE_GROUNDING" if wrong == "other_class" else "UNKNOWN_GROUNDING_REF"
+    assert expected in exc.value.__cause__.validation_codes
+    assert harness.plans.save_count == 0
+
+
+def test_indoor_alternative_weekly_classification_must_match_the_store():
+    harness = Harness()
+    provider = RequestAwareMonthlyLlm()
+    command = _indoor_command(harness)
+    approved = WEEKLY_CLASSIFICATION_REPOSITORY.get_classification()
+    harness.context = MonthlyContextPipeline(
+        evidence_repository=EVIDENCE_REPOSITORY,
+        classification_repository=CLASSIFICATION_REPOSITORY,
+        context_builder=ContextPacketBuilder(),
+        weekly_classification_repository=InMemoryWeeklyEvidenceClassificationRepository(
+            replace(approved, evidence_content_sha256="0" * 64)
+        ),
+    )
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+
+    assert exc.value.code == "evidence_classification_store_mismatch"
+    assert provider.monthly_requests == []
+    assert harness.plans.save_count == 0
 
 
 # ---------------------------------------------------------------- OD-N04 one repair attempt

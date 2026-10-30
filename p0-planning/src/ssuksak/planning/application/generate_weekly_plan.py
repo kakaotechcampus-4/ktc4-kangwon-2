@@ -39,7 +39,7 @@ from ..domain.weekly_plan import (
     WeeklyPlan,
     WeeklyTemplateSnapshot,
 )
-from ..evidence.classification import grounding_class_for
+from ..evidence.classification import SemanticClass, grounding_class_for
 from ..evidence.ports import InstitutionEvidenceRepository, WeeklyEvidenceClassificationRepository
 from ..evidence.weekly_classification import WEEKLY_GROUNDING_SCOPE
 from ..retrieval.models import RetrievedEvidence
@@ -432,7 +432,8 @@ def llm_context(
         week_periods=(period,),
         activity_catalog=catalog,
         constraint_assessments=constraint_assessments,
-        grounding_classes=snapshot_grounding_classes(snapshot),
+        # Weekly grounds indoor_alternative with its own class below (W3c), not the Monthly block.
+        grounding_classes=snapshot_grounding_classes(snapshot) - {SemanticClass.INDOOR_ALTERNATIVE},
     )
     fingerprint = packet_fingerprint(packet)
     classified: dict[str, tuple[RetrievedEvidence, ...]] = {}
