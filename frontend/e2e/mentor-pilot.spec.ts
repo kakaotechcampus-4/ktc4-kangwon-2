@@ -204,6 +204,8 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await enterPilot(page);
   const fact = "블록 세 개를 쌓은 뒤 친구에게 같이 만들자고 말했다.";
   await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
+  // 적는 칸은 접혀 있다 — 목록이 먼저다.
+  await page.getByRole("button", { name: "＋ 새 관찰 기록 쓰기" }).click();
   await page
     .getByRole("combobox", { name: "담당 반", exact: true })
     .selectOption({ label: "햇살반" });

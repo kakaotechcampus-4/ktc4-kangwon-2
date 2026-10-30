@@ -55,12 +55,26 @@ export default function RecordsPage() {
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const classId = pickedClass ?? primaryClass;
   const [childId, setChildId] = useState("");
+  /*
+    목록을 거르는 아이와 **적는 칸이 고른 아이를 따로 둔다.**
+
+    전에는 한 값이었다. 그래서 새 기록을 쓰려고 아동을 고르면 아래 목록이 조용히 그 아이
+    것만 남았고, 위 숫자는 또 전체라 셋이 서로 다른 것을 가리켰다. 거는 것과 쓰는 것은
+    다른 일이다.
+
+    홈에서 「이 아이 기록 보기」로 올 때는 둘 다 채운다 — 보러 온 김에 그 아이 기록을
+    이어 쓰는 길이 제일 짧다.
+  */
+  const [onlyChildId, setOnlyChild] = useState("");
   // entry 는 hydration 뒤에야 값이 온다. 그래서 초기값이 아니라 한 번만 도는 채움으로 넣는다.
   const [entryUsed, setEntryUsed] = useState(false);
   if ((entry.classId || entry.childId) && !entryUsed) {
     setEntryUsed(true);
     if (entry.classId) setClassId(entry.classId);
-    if (entry.childId) setChildId(entry.childId);
+    if (entry.childId) {
+      setChildId(entry.childId);
+      setOnlyChild(entry.childId);
+    }
   }
   const [date, setDate] = useState(today);
   // 원마다 축이 다르다 (observation-axis.ts). 고칠 때는 그 기록의 영역을 그대로 띄운다 —
@@ -77,8 +91,21 @@ export default function RecordsPage() {
   const [classError, setClassError] = useState("");
   const classes = useClasses(setClassError);
   const [search, setSearch] = useState("");
+  /*
+    적는 칸은 접어 둔다.
+
+    전에는 「새 관찰 기록」 폼이 화면 **왼쪽 절반**을 늘 차지해서, 기록을 보러 들어온
+    교사가 목록을 찾아야 했다. 보러 오는 길(홈의 「전체 기록」·「이 아이 기록 보기」)이
+    둘이나 되는데 도착한 화면의 주인공은 적는 칸이었다.
+
+    고칠 때(`editId`)는 접혀 있어도 열린다 — 누른 것이 안 보이면 안 된다.
+  */
+  const [writing, setWriting] = useState(false);
   const classroom = classes.find((c) => c.id === classId);
+  /** 적는 칸이 고른 아이. 저장할 때 보내는 값이다. */
   const child = classroom?.children.find((c) => c.id === childId);
+  /** 목록과 숫자를 거르고 있는 아이. 없으면 반 전체다. */
+  const onlyChild = classroom?.children.find((c) => c.id === onlyChildId);
   // 늦게 온 옛 조회가 최신 목록을 덮지 않게 조회마다 번호를 매긴다.
   const latest = useRef(0);
 
@@ -116,15 +143,21 @@ export default function RecordsPage() {
     }
   }
 
-  const shown = useMemo(
+  /**
+   * 지금 보고 있는 범위 — 이 반, 아이를 골랐으면 그 아이.
+   *
+   * **위 숫자와 아래 목록이 같은 것을 세야 한다.** 전에는 숫자가 모든 반·모든 아이였고
+   * 목록만 걸러져 있어서, 「누적 48」 아래에 3건짜리 목록이 놓였다.
+   */
+  const counted = useMemo(
     () =>
-      records.filter(
-        (r) =>
-          r.classId === classId &&
-          (!childId || r.childId === childId) &&
-          `${r.fact} ${r.childName} ${r.context}`.includes(search),
-      ),
-    [records, classId, childId, search],
+      records.filter((r) => r.classId === classId && (!onlyChildId || r.childId === onlyChildId)),
+    [records, classId, onlyChildId],
+  );
+  // 검색은 숫자에 넣지 않는다. 치는 동안 숫자가 따라 움직이면 세고 있는 것이 뭔지 흐려진다.
+  const shown = useMemo(
+    () => counted.filter((r) => `${r.fact} ${r.childName} ${r.context}`.includes(search)),
+    [counted, search],
   );
   /** 온보딩 명단에 없는 반·아동은 수정 폼을 채울 수 없다. 화면 id 를 지어내지 않는다. */
   const canEdit = (record: ServerObservation) =>
@@ -169,6 +202,9 @@ export default function RecordsPage() {
       setContext("");
       setEditId("");
       setInvalid([]);
+      // 다른 아이 기록만 보고 있는 채로 새 기록을 저장하면 저장한 것이 목록에 안 보인다.
+      // 「저장했어요」만 뜨고 아무것도 안 늘어나면 저장이 안 된 것으로 읽힌다.
+      if (!editId && onlyChildId && onlyChildId !== childId) setOnlyChild("");
       setMessage(editId ? "수정했어요." : "관찰 기록을 저장했어요.");
     } catch (e) {
       setMessage(messageFor(e));
@@ -214,25 +250,19 @@ export default function RecordsPage() {
       title="관찰 기록"
       description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
     >
-      <section className={ws.hero}>
-        <div>
-          <div className={ws.eyebrow}>RECORD · 하루의 작은 발견</div>
-          <h2>
-            있는 그대로 기록하면,
-            <br />
-            의미 있는 성장의 이야기가 돼요.
-          </h2>
-          <p>사실은 교사의 기록에서, 해석과 지원은 그 근거 위에서 시작합니다.</p>
-        </div>
-        <Link href="/documents" className={ws.primary}>
-          기록으로 문서 만들기 →
-        </Link>
-      </section>
+      {/* 머리말 그림판(「있는 그대로 기록하면…」)을 걷었다. 화면에서 제일 크고 노랗던
+          자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
+          보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
       <div className={ws.stats}>
         {[
-          ["누적 관찰 기록", records.length],
-          ["오늘 남긴 기록", records.filter((r) => r.date === today()).length],
-          ["기록한 아동", new Set(records.map((r) => `${r.classId}:${r.childId}`)).size],
+          [
+            onlyChild ? `${onlyChild.name} 기록` : `${classroom?.className ?? "우리 반"} 기록`,
+            counted.length,
+          ],
+          ["오늘 남긴 기록", counted.filter((r) => r.date === today()).length],
+          onlyChild
+            ? ["기록한 영역", new Set(counted.map((r) => r.domain)).size]
+            : ["기록한 아동", new Set(counted.map((r) => r.childId)).size],
         ].map(([label, value]) => (
           <div className={ws.card} key={label}>
             <p className={ws.muted}>{label}</p>
@@ -241,23 +271,39 @@ export default function RecordsPage() {
         ))}
       </div>
       <Message>{message}</Message>
-      <div className={ws.grid}>
+      <div className={ws.stack}>
         <section className={ws.card}>
           <div className={ws.between}>
             <h2>{editId ? "관찰 기록 수정" : "새 관찰 기록"}</h2>
-            <Link href="/onboarding" className={ws.link}>
-              반·아동 관리
-            </Link>
+            <span className={ws.actions}>
+              <Link href="/onboarding" className={ws.link}>
+                반·아동 관리
+              </Link>
+              {!editId && (
+                <button
+                  type="button"
+                  className={ws.secondary}
+                  aria-expanded={writing}
+                  onClick={() => setWriting((on) => !on)}
+                >
+                  {writing ? "접기" : "＋ 새 관찰 기록 쓰기"}
+                </button>
+              )}
+            </span>
           </div>
-          <p className={ws.hint}>
-            기록은 서버에 저장돼요. 다른 기기에서 로그인해도 같은 목록을 볼 수 있어요.
-          </p>
-          {!classes.some((c) => c.children.length) ? (
+          {!(writing || editId) ? (
+            <p className={ws.hint}>
+              길게 적을 때 여기를 펼치세요. 한 줄만 남길 때는 우리 반 홈이 더 빨라요.
+            </p>
+          ) : !classes.some((c) => c.children.length) ? (
             <Empty title="먼저 우리 반과 아동을 등록해주세요">
               <Link href="/onboarding">반·아동 등록하기 →</Link>
             </Empty>
           ) : (
             <form onSubmit={submit}>
+              <p className={ws.hint}>
+                기록은 서버에 저장돼요. 다른 기기에서 로그인해도 같은 목록을 볼 수 있어요.
+              </p>
               {/* 요청 중에는 폼 전체가 잠긴다 — 보낸 값과 그 뒤 입력이 섞이지 않게. */}
               <fieldset
                 className={ws.form}
@@ -412,8 +458,21 @@ export default function RecordsPage() {
               <Link href="/compare" className={ws.link}>
                 이전 기록과 비교 →
               </Link>
+              <Link href="/documents" className={ws.link}>
+                기록으로 문서 만들기 →
+              </Link>
             </span>
           </div>
+          {/* 홈의 「이 아이 기록 보기」로 들어오면 목록이 한 아이만 남는다. 그 사실을 화면이
+              말해 주지 않아서, 들어온 교사가 「제대로 찾아온 건가」를 알 수 없었다. */}
+          {onlyChild && (
+            <p className={ws.between}>
+              <span className={ws.badge}>지금 {onlyChild.name} 기록만 보고 있어요</span>
+              <button type="button" className={ws.link} onClick={() => setOnlyChild("")}>
+                반 전체 보기 →
+              </button>
+            </p>
+          )}
           <input
             name="record_search"
             aria-label="관찰 기록 검색"
