@@ -23,6 +23,8 @@ from .prompt import (
     valid_grounding_refs,
 )
 
+from .v1_guidance import V1_GUIDANCE
+
 MONTHLY_CELL_TASK = "monthly_cell_proposal"
 
 CELL_SYSTEM_PROMPT = """You propose exactly one canonical monthly section value.
@@ -126,10 +128,11 @@ def build_monthly_cell_request(
             },
         }
     )
+    contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
-        prompt_version=MONTHLY_CELL_PROMPT_VERSION,
-        system_prompt=CELL_SYSTEM_PROMPT,
+        prompt_version="monthly-cell-planner-v11" if contextual else MONTHLY_CELL_PROMPT_VERSION,
+        system_prompt=CELL_SYSTEM_PROMPT + (V1_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         target_week_id=target_week_id,

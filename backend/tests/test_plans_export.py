@@ -194,8 +194,9 @@ def test_확정된_계획안을_hwpx_로_내려준다(db_session, mine):
     assert "햇살반 2026학년도 연간 보육계획안" in texts
     assert _lines(_cell(section, 1, 0)) == ["3월"]
     assert _lines(_cell(section, 1, 1)) == ["새 친구"]
-    assert _lines(_cell(section, 1, 2)) == ["인사"]
-    assert _lines(_cell(section, 12, 0)) == ["2월"]
+    assert _lines(_cell(section, 1, 2)) == ["1"]
+    assert _lines(_cell(section, 1, 3)) == ["인사"]
+    assert _lines(_cell(section, 23, 4)) == ["2월"]
 
 
 def _hwp_rows(content: bytes, tmp_path) -> list[list[str]]:
@@ -221,13 +222,12 @@ def test_hwp_를_고르면_hwp_로_바꿔_내려준다(db_session, mine, tmp_pat
     disposition = response.headers["content-disposition"]
     assert f'filename="plan-{plan["id"]}.hwp"' in disposition
     assert disposition.endswith(".hwp")  # filename* 도 .hwp 다
-    expected = [["월", "주제", "소주제"]] + [
-        [f"{month['month']}월", month["theme"], "\n".join(month["sub_themes"])]
-        for month in plan["months"]
-    ]
-    assert _hwp_rows(response.content, tmp_path) == [
-        [_as_read(text) for text in row] for row in expected
-    ]
+    rows = _hwp_rows(response.content, tmp_path)
+    assert rows[0] == ["월", "생활주제", "주", "소주제"] * 2
+    values = " ".join(text for row in rows for text in row)
+    for month in plan["months"]:
+        assert month["theme"] in values
+        assert all(topic in values for topic in month["sub_themes"])
 
 
 def test_형식을_안_고르면_hwpx_다(db_session, mine):

@@ -28,6 +28,8 @@ from .contracts import (
 )
 from .parser import _STRING, _object_schema, _refs_schema
 from .text_policy import normalize_visible_text, visible_text_violations
+from .v1_guidance import V1_GUIDANCE, curriculum_context, curriculum_source_refs
+from ..domain.curriculum_reference import CurriculumCatalog
 
 _log = logging.getLogger(__name__)
 
@@ -116,6 +118,7 @@ class WeeklyPlanningRequest:
     repair_targets: tuple[str, ...] = ()
     repair_prompt_version: str = WEEKLY_REPAIR_PROMPT_VERSION
     cell_key: str | None = None  # W4b: a one-cell request targets exactly this Section
+    context_source_refs: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if not isinstance(self.week_id, WeekId):
@@ -174,6 +177,7 @@ def build_weekly_request(
     evidence: tuple[tuple[str, str, str], ...],  # (ref, text, grounding_class)
     reference_candidates: tuple[tuple[str, str], ...],
     packet_fingerprint: str,
+    curriculum: CurriculumCatalog | None = None,
 ) -> WeeklyPlanningRequest:
     body = {
         "task": "weekly_plan",
@@ -194,14 +198,16 @@ def build_weekly_request(
         "never_write": sorted(teacher_input_keys),
         "evidence": [{"grounding_ref": r, "text": text, "grounding_class": c} for r, text, c in evidence],
     }
+    if curriculum is not None:
+        body["curriculum_context"] = curriculum_context(curriculum)
     allowed = " ".join([
         *(value for _, value in parent_context),
         *(text for _, text, _ in evidence),
         *(label for _, label in reference_candidates),
     ])
     return WeeklyPlanningRequest(
-        prompt_version=WEEKLY_PROMPT_VERSION,
-        system_prompt=SYSTEM_PROMPT,
+        prompt_version="weekly-planner-v3" if curriculum is not None else WEEKLY_PROMPT_VERSION,
+        system_prompt=SYSTEM_PROMPT + (V1_GUIDANCE if curriculum is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         week_id=week_id,
         targets=targets,
@@ -210,6 +216,8 @@ def build_weekly_request(
         reference_candidates=reference_candidates,
         allowed_fact_text=allowed,
         packet_fingerprint=packet_fingerprint,
+        repair_prompt_version="weekly-planner-repair-v2" if curriculum is not None else WEEKLY_REPAIR_PROMPT_VERSION,
+        context_source_refs=curriculum_source_refs(curriculum),
     )
 
 
@@ -235,11 +243,15 @@ def cell_request(
     body["targets"] = [t for t in body["targets"] if t["section_key"] == section_key]
     body["evidence"] = [e for e in body["evidence"] if e["grounding_ref"] in target.allowed_grounding_refs]
     body["current_plan"] = dict(current_values)
+    contextual = "curriculum_context" in body
     return replace(
         request,
-        prompt_version=WEEKLY_CELL_PROMPT_VERSION,
-        repair_prompt_version=WEEKLY_CELL_REPAIR_PROMPT_VERSION,
-        system_prompt=CELL_SYSTEM_PROMPT,
+        prompt_version="weekly-cell-planner-v2" if contextual else WEEKLY_CELL_PROMPT_VERSION,
+        repair_prompt_version="weekly-cell-planner-repair-v2" if contextual else WEEKLY_CELL_REPAIR_PROMPT_VERSION,
+        system_prompt=(
+            request.system_prompt + " 이번 요청은 targets의 한 칸만 다시 쓰며 current_plan의 다른 값은 맥락으로만 읽는다."
+            if contextual else CELL_SYSTEM_PROMPT
+        ),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         targets=(target,),
         allowed_fact_text=" ".join((request.allowed_fact_text, *teacher_facts)),
@@ -431,7 +443,7 @@ def validate_weekly(values: tuple[ProposedSectionValue, ...], request: WeeklyPla
         ):
             issues.append(WeeklyIssue(WeeklyIssueCode.RESOLVED_REQUIRES_GROUNDING, key))
         policy = [
-            code for code in visible_text_violations(v.value)
+            code for code in visible_text_violations(v.value, evidence_refs=request.context_source_refs)
             if not (key == SAFETY_KEY and code == "SAFETY_CONTENT_LEAKAGE")
         ]
         if policy:

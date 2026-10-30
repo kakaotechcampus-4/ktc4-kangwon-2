@@ -60,6 +60,7 @@ from ssuksak.planning.domain.play_monthly_plan import PLAY_MONTHLY_FORMAT  # 공
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
 
 from app.db import get_session
+from app.features.plans.annual_content import subthemes_for_month
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_schemas import (
@@ -133,6 +134,7 @@ _REFERENCE_UNAVAILABLE = frozenset(
         "safety_rule_not_found",
         "safety_rule_not_approved",
         "evidence_classification_store_mismatch",
+        "curriculum_reference_unavailable",
     }
 )
 
@@ -248,6 +250,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
     ).get(PlanId(parent_row.plan_ref))
     if parent.status.value != "CONFIRMED":
         raise _gate("연간계획안을 먼저 확정해주세요.")
+    parent_subthemes = subthemes_for_month(parent_row.sub_themes, body.month)
     try:
         profile_ref = TemplateProfileRef(
             body.profile_ref.profile_id, body.profile_ref.profile_version
@@ -292,6 +295,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
                 safety_placement=SAFETY_PLACEMENT,
+                parent_subthemes=parent_subthemes,
             )
         ).plan
     except MonthlyApplicationError as error:

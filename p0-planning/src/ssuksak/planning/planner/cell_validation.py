@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from .v1_guidance import curriculum_source_refs
 
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
@@ -81,7 +82,7 @@ def validate_monthly_cell_proposal(
         return MonthlyCellValidationResult(tuple(issues))
 
     for code in visible_text_violations(
-        value.value, evidence_refs=request.valid_grounding_refs
+        value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum)
     ):
         fail(CellValidationCode.TEXT_POLICY, "value", code)
     unknown = tuple(

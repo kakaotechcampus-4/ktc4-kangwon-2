@@ -205,6 +205,7 @@ class RegenerateMonthlyPlanItem:
             ages=plan.target_ages,
             parent_theme_id=theme_reference_id(theme.evidence),
             parent_theme_value=theme.value,
+            parent_subthemes=plan.parent_subthemes,
             week_periods=plan.week_periods,
             activity_catalog=catalog,
             constraint_assessments=plan.constraint_assessments,

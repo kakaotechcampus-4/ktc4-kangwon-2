@@ -623,6 +623,7 @@ def _weekly_request(
         evidence=tuple(dict.fromkeys(evidence)),
         reference_candidates=tuple((c.activity_id, c.label) for c in outdoor.ranked[:OUTDOOR_CANDIDATE_LIMIT]),
         packet_fingerprint=fingerprint,
+        curriculum=packet.curriculum,
     )
 
 

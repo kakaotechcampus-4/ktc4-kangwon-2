@@ -210,10 +210,16 @@ class MonthlyPlan:
     activity_catalog_ref: ActivityCatalogRef | None = None
     generation_mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
     verification_report: VerificationReport | None = None
+    # The confirmed annual sidecar, preserved for later single-cell regeneration.
+    parent_subthemes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("MonthlyPlan.plan_id must be PlanId")
+        if not isinstance(self.parent_subthemes, tuple) or any(
+            not isinstance(value, str) for value in self.parent_subthemes
+        ):
+            raise InvalidDomainValueError("MonthlyPlan.parent_subthemes must be strings")
         if type(self.school_year) is not int or not 1 <= self.school_year <= 9998:
             raise InvalidDomainValueError(
                 "MonthlyPlan.school_year must be 1 through 9998"
