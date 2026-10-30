@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
+from ..domain.errors import InvalidDomainValueError
 from ..evidence.classification import EvidenceSemanticClassification, SemanticClass
 from ..evidence.models import EvidenceRecord, SourceSection
 from ..evidence.safety_classification import SafetyEvidenceClassification, SafetyReferenceKind
@@ -57,6 +58,11 @@ class MonthlyEvidenceRetriever:
             classification.require_bound_to(store.content_sha256)
         if safety_classification is not None:
             safety_classification.require_bound_to(store.content_sha256)
+        if safety_quality is not None:
+            # The quality table judges this store under this classification (v2 checks the same).
+            if safety_classification is None:
+                raise InvalidDomainValueError("Safety reference quality requires its safety classification")
+            safety_quality.require_bound_to(store.content_sha256, safety_classification.classification_version)
         self._safety_classification = safety_classification
         self._safety_quality = safety_quality
         self._store = store

@@ -12,6 +12,7 @@ from ..planning.evidence.artifact import (
     EXPECTED_NORMATIVE_STATUS,
     EXPECTED_STORE_ID,
     INGESTION_VERSION,
+    SUPPORTED_INGESTION_VERSIONS,
     evidence_content_sha256,
 )
 from ..planning.evidence.models import (
@@ -131,7 +132,7 @@ def load_evidence_store_from_dict(
         raise EvidenceStoreError("Evidence Store id is invalid")
     if payload["schema_version"] != EVIDENCE_STORE_SCHEMA_VERSION:
         raise EvidenceStoreError("Evidence Store schema version is invalid")
-    if payload["ingestion_version"] != INGESTION_VERSION:
+    if payload["ingestion_version"] not in SUPPORTED_INGESTION_VERSIONS:
         raise EvidenceStoreError("Evidence Store ingestion version is invalid")
     if payload["normative_status"] != EXPECTED_NORMATIVE_STATUS:
         raise EvidenceStoreError("Evidence Store is a corpus observation, not an approved Reference")

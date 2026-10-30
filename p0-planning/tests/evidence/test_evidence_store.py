@@ -70,6 +70,26 @@ def test_content_pin_is_enforced(payload):
         load_evidence_store_from_dict(payload, expected_content_sha256="0" * 64)
 
 
+@pytest.mark.parametrize(
+    ("version", "supported"),
+    [
+        ("institution-evidence-ingestion-v0.1.0", True),
+        ("institution-evidence-ingestion-v0.2.0", True),
+        ("institution-evidence-ingestion-v9.9.9", False),
+    ],
+)
+def test_loader_accepts_supported_store_versions_and_keeps_the_one_read(payload, version, supported):
+    altered = dict(payload)
+    altered["ingestion_version"] = version
+    altered["build"] = {"content_sha256": evidence_content_sha256(altered)}
+    if not supported:
+        with pytest.raises(EvidenceStoreError, match="ingestion version is invalid"):
+            load_evidence_store_from_dict(altered)
+        return
+    # The version read is what every INSTITUTION_SAMPLE Evidence cites as source_version.
+    assert load_evidence_store_from_dict(altered).ingestion_version == version
+
+
 def test_normative_status_cannot_be_confused_with_approved_reference(payload):
     altered = dict(payload)
     altered["normative_status"] = "HUMAN_APPROVED"
