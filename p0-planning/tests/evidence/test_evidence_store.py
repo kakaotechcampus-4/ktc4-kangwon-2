@@ -76,6 +76,8 @@ def test_content_pin_is_enforced(payload):
         ("institution-evidence-ingestion-v0.1.0", True),
         ("institution-evidence-ingestion-v0.2.0", True),
         ("institution-evidence-ingestion-v9.9.9", False),
+        ([], False),
+        ({}, False),
     ],
 )
 def test_loader_accepts_supported_store_versions_and_keeps_the_one_read(payload, version, supported):
