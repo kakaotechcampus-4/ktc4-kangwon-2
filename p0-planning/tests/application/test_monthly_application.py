@@ -2861,6 +2861,9 @@ def test_safety_candidates_generate_blank_weeks_then_teacher_places_edits_and_co
     cleared = edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, life.cell.item_id, "", TEACHER))
     assert monthly_safety_notices(cleared)[0].code == "SAFETY_BLANK"
     assert candidate_display_value(cleared.safety_candidate(life.cell.item_id)) == ""
+    # the edit command rejects whitespace, so build the stored shape directly
+    spaces = replace(life, cell=replace(life.cell, value="   ", cell_state=CellState.EMPTY_UNRESOLVED))
+    assert candidate_display_value(spaces) == ""
     with pytest.raises(MonthlyApplicationError) as blocked:  # S-2
         edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, _cell(plan, "safety_education").item_id, "직접", TEACHER))
     assert blocked.value.code == "monthly_safety_cell_not_editable"

@@ -52,12 +52,17 @@ def parse_drill_topic_payload(payload: Mapping) -> DrillTopicCatalog:
 
 class JsonDrillTopicReferenceRepository:
     def __init__(self, paths: tuple[Path, ...] = (DRAFT_DRILL_TOPIC_PATH,)) -> None:
-        self._catalogs = tuple(
-            parse_drill_topic_payload(json.loads(Path(path).read_text(encoding="utf-8"))) for path in paths
-        )
+        # 훈련 칸이 없는 생성은 파일을 읽지 않는다 — 첫 get_catalog 때 읽는다.
+        self._paths = paths
+        self._cached: tuple[DrillTopicCatalog, ...] | None = None
 
     def get_catalog(self, catalog_id: str, catalog_version: str) -> DrillTopicCatalog | None:
+        if self._cached is None:
+            self._cached = tuple(
+                parse_drill_topic_payload(json.loads(Path(path).read_text(encoding="utf-8")))
+                for path in self._paths
+            )
         return next(
-            (c for c in self._catalogs if (c.catalog_id, c.catalog_version) == (catalog_id, catalog_version)),
+            (c for c in self._cached if (c.catalog_id, c.catalog_version) == (catalog_id, catalog_version)),
             None,
         )

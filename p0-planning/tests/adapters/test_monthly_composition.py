@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import pytest
 
+from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_composition import (
     monthly_confirmation,
     monthly_edit,
     monthly_generation,
     monthly_regeneration,
+)
+from ssuksak.adapters.in_memory_template_profile_repository import (
+    InMemoryTemplateProfileRepository,
 )
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 from ssuksak.planning.application.monthly_dto import (
@@ -21,7 +28,13 @@ from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.plan import PlanStatus
 from ssuksak.planning.domain.provenance import AuditEventType
+from ssuksak.planning.domain.monthly_template_profile import TemplateProfileRef
 from ssuksak.planning.domain.year_month import YearMonth
+from tests.application.test_monthly_application import (
+    DRILL_TEMPLATE,
+    DRILL_TOPICS,
+    _profile,
+)
 from tests.finalization.harness import (
     ACTIVITY_CATALOG,
     EXTENDED_PROFILE,
@@ -134,3 +147,51 @@ def test_composed_generation_rejects_the_real_pending_template():
     assert exc.value.code == "monthly_template_not_approved"
     assert harness.monthly_plans.save_count == 0
     assert requests == []
+
+
+def test_composed_generation_wires_the_drill_reference():
+    harness = PlanningHarness()
+    parent = harness.confirm_yearly(harness.generate_yearly().plan)
+    base = _profile(harness.templates, DRILL_TEMPLATE, TemplateProfileRef("monthly-profile-drill", "v1"))
+    template = harness.templates.get_template(DRILL_TEMPLATE.template_id, DRILL_TEMPLATE.template_version)
+    drill = replace(template.section("drill"), activated=True, display_label="Drill")
+    harness.profiles = InMemoryTemplateProfileRepository(
+        (replace(base, selected_optional_keys=(*base.selected_optional_keys, "drill"), sections=(*base.sections, drill)),)
+    )
+    use_case = monthly_generation(
+        parent_plan_repository=harness.yearly_plans,
+        plan_repository=harness.monthly_plans,
+        profile_repository=harness.profiles,
+        template_repository=harness.generation_templates,
+        provider=RequestAwareMonthlyLlm(),
+        clock=harness.clock,
+        id_generator=harness.monthly_ids,
+    )
+
+    plan = use_case.execute(
+        GenerateMonthlyPlanCommand(
+            parent_yearly_plan_id=parent.plan_id,
+            target_month=YearMonth(2026, 9),
+            daycare_ref="daycare_001",
+            profile_ref=base.profile_ref,
+            safety_rule=SAFETY_RULE,
+            generation_mode=MonthlyGenerationMode.LLM_PLANNER,
+            activity_catalog=ACTIVITY_CATALOG,
+            drill_topics=DRILL_TOPICS,
+        )
+    ).plan
+
+    assert plan.drill_candidates
+
+
+def test_generation_without_drill_section_does_not_read_the_drill_file(monkeypatch):
+    monkeypatch.setattr(
+        "ssuksak.adapters.monthly_composition.JsonDrillTopicReferenceRepository",
+        lambda: JsonDrillTopicReferenceRepository((Path("/nonexistent/drill.json"),)),
+    )
+    harness = PlanningHarness()
+    parent = harness.confirm_yearly(harness.generate_yearly().plan)
+
+    plan = _generate(harness, parent, RequestAwareMonthlyLlm(), month=YearMonth(2026, 9), profile=LLM_PROFILE)
+
+    assert plan.status is PlanStatus.DRAFT

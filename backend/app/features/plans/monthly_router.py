@@ -44,6 +44,7 @@ from ssuksak.planning import (
     EditMonthlyPlanItemCommand,
     GenerateMonthlyPlanCommand,
     InvalidDomainValueError,
+    InvalidStateTransitionError,
     ItemId,
     MonthlyApplicationError,
     MonthlyGenerationMode,
@@ -53,17 +54,25 @@ from ssuksak.planning import (
     SafetyPlacementSelector,
     SafetyRuleSelector,
     TemplateProfileRef,
+    WeekId,
     YearlyPlan,
     YearMonth,
 )
+from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구에 없다
+    PlaceMonthlySafety,
+    PlaceMonthlySafetyCommand,
+    monthly_safety_notices,
+)
 from ssuksak.planning.domain.play_monthly_plan import PLAY_MONTHLY_FORMAT  # 공개 창구에 없다
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
+from ssuksak.planning.rules.safety_placement import candidate_display_value  # 공개 창구에 없다
 
 from app.db import get_session
 from app.features.plans.annual_content import subthemes_for_month
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_schemas import (
+    ArrangementChangeOut,
     CellOut,
     ConstraintOut,
     CreateMonthlyPlan,
@@ -75,10 +84,14 @@ from app.features.plans.monthly_schemas import (
     MonthlyPlanListOut,
     MonthlyPlanOut,
     MonthlyPlanSummary,
+    NoticeOut,
     ParentOut,
     ProfileRefOut,
     RevisionIn,
     RuleRefOut,
+    SafetyCandidateOut,
+    SafetyWeekIn,
+    SafetyWeekOut,
     SectionOut,
     TemplateRefOut,
     ValueChangeOut,
@@ -415,13 +428,16 @@ def get_monthly_audit(
 ):
     """저장된 변경 이력(§9-5). 계획안 `audit` 과 칸마다의 `audit` 을 읽어 한 목록으로 준다.
 
-    **읽기만 한다** — commit 도 저장도 없다. `item_id` 를 주면 그 칸의 이벤트와 계획안 단위
-    `CONFIRMED` 만 준다(screen-spec §6.3). 순서는 발생 시각, 같으면 계획안 → 칸(계획안 안의
-    순서) → 저장된 순서다. 응답 목록만 정렬하고 Core 의 기록은 건드리지 않는다.
+    **읽기만 한다** — commit 도 저장도 없다. `item_id`(후보 칸도 된다)를 주면 그 칸의 이벤트와
+    계획안 단위 `CONFIRMED` 만 준다(screen-spec §6.3). 순서는 발생 시각, 같으면 계획안 →
+    칸(계획안 안의 순서) → 저장된 순서다. 응답 목록만 정렬하고 Core 의 기록은 건드리지 않는다.
     """
     row = _own_row(session, user, plan_id)
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     cells = [(section, cell) for section in plan.sections for cell in section.cells]
+    # 후보 칸은 Section 칸 다음에 잇는다. 후보 cell 은 Section 안에 없어서 안전교육으로 적는다.
+    safety = plan.section("safety_education")
+    cells += [(safety, candidate.cell) for candidate in plan.safety_candidates]
     if item_id is not None:
         cells = [(s, c) for s, c in cells if c.item_id.value == item_id]
         if not cells:
@@ -469,6 +485,15 @@ def _audit_event(event, located) -> MonthlyAuditEventOut:
             else GenerationChangeOut(
                 before=_generation(event.generation_change.before),
                 after=_generation(event.generation_change.after),
+            )
+        ),
+        arrangement_change=(
+            None
+            if event.arrangement_change is None
+            else ArrangementChangeOut(
+                scope=event.arrangement_change.scope,
+                before=list(event.arrangement_change.before),
+                after=list(event.arrangement_change.after),
             )
         ),
     )
@@ -539,6 +564,9 @@ def _lifecycle_error(error: MonthlyApplicationError, *, editing: bool = False) -
         return _CELL_NOT_FOUND
     if error.code in {"monthly_cell_value_unchanged", "invalid_monthly_cell_value"}:
         return _VALUE_INVALID
+    # 후보 모드의 주별 안전 칸 — 값은 배치에서 온다(Core 가 편집을 막는다)
+    if error.code == "monthly_safety_cell_not_editable":
+        return _CELL_NOT_EDITABLE
     if error.code in _NOT_REGENERATABLE_CODES:
         # 편집에서 오는 것은 `monthly_cell_generation_missing` 하나다(저장된 칸에 생성 방식이 없다).
         return _CELL_NOT_EDITABLE if editing else _CELL_NOT_REGENERATABLE
@@ -579,6 +607,25 @@ def _item_id(value: str) -> ItemId:
         return ItemId(value)
     except InvalidDomainValueError as error:
         raise _CELL_NOT_FOUND from error
+
+
+def _invalid(field: str) -> HTTPException:
+    # 문구는 요청 모양 오류(main.py validation_error)와 같다.
+    return _error(422, "VALIDATION_FAILED", "입력값을 확인해주세요.", [field])
+
+
+def _week_id(value: str) -> WeekId:
+    try:
+        return WeekId(value)
+    except InvalidDomainValueError as error:
+        raise _invalid("week_id") from error
+
+
+def _candidate_id(value: str) -> ItemId:
+    try:
+        return ItemId(value)
+    except InvalidDomainValueError as error:
+        raise _invalid("candidate_item_id") from error
 
 
 def _read_draft(session: Session, user, plan_id: int, expected_revision: int) -> MonthlyPlan:
@@ -644,6 +691,38 @@ def edit_monthly_cell(
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
+@router.put("/{plan_id}/safety-weeks/{week_id}", response_model=MonthlyPlanOut)
+def place_monthly_safety(
+    plan_id: int, week_id: str, body: SafetyWeekIn, session: DbSession, user: CurrentUser
+):
+    """그 주의 안전교육으로 후보 하나를 두거나(null 이면 비운다) 바꾼다. 후보 모드 계획만 된다.
+
+    **같은 선택이면 저장하지 않는다** — Core 가 같은 계획안을 돌려주면 revision · 이력 그대로 200.
+    """
+    week = _week_id(week_id)
+    candidate = None if body.candidate_item_id is None else _candidate_id(body.candidate_item_id)
+    plan = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = PlaceMonthlySafety(plan_repository=_drafts(plan), clock=SystemClock()).execute(
+            PlaceMonthlySafetyCommand(plan.plan_id, week, candidate, _actor(user))
+        )
+    except InvalidStateTransitionError as error:  # 읽은 뒤 확정된 경우
+        raise _ALREADY_CONFIRMED from error
+    except MonthlyApplicationError as error:
+        if error.code == "monthly_safety_candidates_missing":
+            raise _error(
+                422, "VALIDATION_FAILED", "이 월간계획안에는 안전교육 후보가 없습니다.", []
+            ) from error
+        if error.code == "monthly_week_not_found":
+            raise _error(404, "NOT_FOUND", "그 주를 찾을 수 없습니다.", ["week_id"]) from error
+        if error.code == "monthly_safety_candidate_not_found":
+            raise _invalid("candidate_item_id") from error
+        raise
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
 @router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=MonthlyPlanOut)
 def regenerate_monthly_cell(
     plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
@@ -706,6 +785,8 @@ def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
     snapshot = plan.template_snapshot
     shown = {section.section_key: section for section in snapshot.sections}
     report = plan.verification_report
+    # 후보 문장의 주소는 후보 cell.item_id 다. 주마다 보일 값은 저장 없이 응답마다 계산한다.
+    candidates = {c.cell.item_id: c for c in plan.safety_candidates}
     return MonthlyPlanOut(
         id=row.id,
         class_id=int(plan.classroom_ref),
@@ -754,6 +835,31 @@ def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
                 cells=[_cell(cell) for cell in section.cells],
             )
             for section in plan.sections
+        ],
+        safety_candidates=[
+            SafetyCandidateOut(
+                kind=candidate.kind.value,
+                category_id=candidate.category_id,
+                topic_group=candidate.topic_group,
+                cell=_cell(candidate.cell),
+            )
+            for candidate in plan.safety_candidates
+        ],
+        safety_weeks=[
+            SafetyWeekOut(
+                week_id=week.week_id.value,
+                candidate_item_id=None
+                if week.candidate_item_id is None
+                else week.candidate_item_id.value,
+                display_value=""
+                if week.candidate_item_id is None
+                else candidate_display_value(candidates[week.candidate_item_id]),
+            )
+            for week in plan.safety_weeks
+        ],
+        notices=[
+            NoticeOut(code=notice.code, week_id=notice.week_id.value)
+            for notice in monthly_safety_notices(plan)
         ],
         constraints=[
             ConstraintOut(
