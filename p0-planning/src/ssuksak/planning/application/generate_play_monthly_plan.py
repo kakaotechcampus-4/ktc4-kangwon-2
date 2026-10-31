@@ -81,6 +81,7 @@ from ..planner.play_monthly import (
     validate_play_monthly,
 )
 from ..rules.monthly_week_periods import canonical_week_periods
+from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
 from .generate_play_project_plan import CurriculumReferenceRepository
 from .play_project_lifecycle import PLAY_PROJECT_LAYOUTS
 from .ports import Clock, IdGenerator, PlanRepository, SafetyLegalRuleRepository
@@ -148,10 +149,6 @@ class PlayMonthlyGenerationError(DomainError):
 
 class DailyLifeReferenceRepository(Protocol):
     def get_catalog(self, catalog_id: str, catalog_version: str) -> DailyLifeCatalog | None: ...
-
-
-class DrillTopicReferenceRepository(Protocol):
-    def get_catalog(self, catalog_id: str, catalog_version: str) -> DrillTopicCatalog | None: ...
 
 
 class SafetyClassificationRepository(Protocol):
@@ -570,26 +567,13 @@ class GeneratePlayMonthlyPlan:
         self, command: GeneratePlayMonthlyPlanCommand, catalog: CurriculumCatalog
     ) -> tuple[DrillTopicCatalog, tuple[DrillTopic, ...]]:
         drills = self._drills.get_catalog(command.drill_catalog_id, command.drill_catalog_version)
-        if drills is None:
-            raise _fail("DRILL_REFERENCE_NOT_FOUND")
-        if not drills.is_active:
-            raise _fail("DRILL_REFERENCE_NOT_ACTIVE")
-        if (drills.curriculum_catalog_id, drills.curriculum_catalog_version) != (
-            catalog.catalog_id,
-            catalog.catalog_version,
-        ):
-            raise _fail("DRILL_CURRICULUM_MISMATCH")
-        if any(catalog.get(topic.content_id) is None for topic in drills.topics):
-            raise _fail("DRILL_UNKNOWN_CONTENT_ID")
-        count = PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
-        eligible = drills.for_month(command.target_month.calendar_month)
-        # Month-limited topics (e.g. 폭설 in winter) first, then catalog order.
-        # ponytail: fixed order, so a month without a seasonal topic always gets the same five;
-        # add rotation only if teachers ask for variety.
-        topics = sorted(eligible, key=lambda t: len(t.applicable_months) == 12)[:count]
-        if len(topics) < count:
-            raise _fail("DRILL_TOPICS_INSUFFICIENT")
-        return drills, tuple(topics)
+        try:
+            topics = select_drill_topics(
+                drills, catalog, command.target_month.calendar_month, PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
+            )
+        except DrillTopicError as error:
+            raise _fail(error.code) from None
+        return drills, topics
 
     def _safety_references(self, command: GeneratePlayMonthlyPlanCommand):
         rule: SafetyLegalRule | None = self._safety_rules.get_legal_rule(command.legal_rule_version)
