@@ -7,11 +7,11 @@
   "normative_status_note": "공식 주간계획안 작성 지침은 references/official/ 에서 찾지 못했다. 모든 Section 은 판독 가능 10기관 샘플에서 관찰한 것이지 규정된 것이 아니다.",
   "issued_on": "2026-10-31",
   "review": {
-    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
-    "approved_by": null,
-    "approved_at": null,
-    "runtime_active": false,
-    "runtime_active_note": "PENDING_HUMAN_REVIEW. 대·소집단 활동과 특별활동을 요일 칸으로 나눈 재발행본이며 아직 사람 검토·승인을 받지 않았다. weekly-template-a-v0.1.0의 승인은 이 version에 계승되지 않는다. 승인 전에는 runtime 활성 Template이 아니며 주간계획안 생성의 기반 Template으로 쓰지 않는다.",
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-10-31T18:22:18+09:00",
+    "runtime_active": true,
+    "runtime_active_note": "HUMAN_APPROVED. 2026-10-31 에 도메인 담당자(reviewer_ai_lead_001)가 완성된 이 파일을 보고 승인했다. weekly-template-a-v0.1.0(2026-10-21 승인)에서 group_activity · special_program 만 요일 칸(DAY)으로 바꾼 판이다. 다른 Section 은 v0.1.0 과 같다. weekly-template-a-v0.1.0 의 승인은 이 version 에 계승되지 않는다(docs/adr/027-repeat-by-and-template-approval.md §3). 승인은 Template 의 활성 조건이다. 주간 생성이 이 판을 쓰는 전환은 요일 칸 생성·검증이 들어간 뒤 별도 변경으로 한다.",
     "reviewer_identity_rule": "reviewer_<role>_<sequence> 규칙을 따른다. Plan Confirm 의 actor_id 규칙과 섞지 않는다.",
     "change_from_supersedes": "group_activity · special_program 의 repeat_by 를 NONE → DAY 로 바꿨다(운영 요일마다 한 칸). 다른 Section 의 정의·활성화·순서·라벨·근거와 실내 놀이(indoor_play)의 주 단위 목록은 그대로다."
   },

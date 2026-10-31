@@ -228,10 +228,10 @@ def _day_plan(days=WEEKDAYS) -> WeeklyPlan:
     return _plan(template_snapshot=snapshot, cells=cells, operating_days=days)
 
 
-def test_day_template_is_pending_and_splits_only_group_activity_and_special_program():
+def test_day_template_is_approved_and_splits_only_group_activity_and_special_program():
     template = _template(TEMPLATE_DAY)
 
-    assert not template.is_active  # PENDING_HUMAN_REVIEW until a person approves it
+    assert template.is_active  # approved 2026-10-31 (reviewer_ai_lead_001); runtime still uses v0.1.0
     assert [s.section_key for s in template.activated_sections if s.repeat_by is RepeatBy.DAY] == [
         "group_activity", "special_program",
     ]
