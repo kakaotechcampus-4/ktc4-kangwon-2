@@ -10,6 +10,7 @@ from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfig,
     MonthlyLlmConfigurationError,
     MonthlyLlmProviderError,
+    MONTHLY_V1_MAX_COMPLETION_TOKENS,
     PLAY_PROJECT_MAX_COMPLETION_TOKENS,
     assemble_chat_stream,
 )
@@ -129,7 +130,9 @@ def test_elice_adapter_uses_openai_compatible_json_without_network():
     assert headers["Authorization"] == "Bearer secret"
     assert payload["model"] == MONTHLY_MODEL
     assert "temperature" not in payload
-    assert not STREAM_KEYS & set(payload)  # decision C: the cap lives in the bench only
+    # Decision T-1 (10-31): the document request (and its repair) streams with an output cap.
+    assert payload["max_completion_tokens"] == MONTHLY_V1_MAX_COMPLETION_TOKENS == 6000
+    assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
     assert payload["response_format"] == {
         "type": "json_schema",
         "json_schema": {
@@ -274,4 +277,6 @@ def test_a_transport_that_cannot_stream_is_refused_before_sending():
     )
     with pytest.raises(MonthlyLlmConfigurationError, match="cannot stream"):
         adapter.generate_play_project(SimpleNamespace(system_prompt="s", user_content="u"))
+    with pytest.raises(MonthlyLlmConfigurationError, match="cannot stream"):
+        adapter.generate_monthly(request())
     assert transport.calls == 0
