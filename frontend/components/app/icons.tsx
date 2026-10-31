@@ -25,9 +25,18 @@ export type IconName =
   | "users"
   | "help"
   | "sparkle"
-  | "lock";
+  | "lock"
+  | "more"
+  | "logout";
 
 const PATHS: Record<IconName, React.ReactNode> = {
+  more: <path d="M4 7h10M4 12h16M4 17h7" />,
+  logout: (
+    <>
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+      <path d="M10 16l-4-4 4-4M6 12h10" />
+    </>
+  ),
   lock: (
     <>
       <rect x="4.5" y="10.5" width="15" height="9" rx="2" />
