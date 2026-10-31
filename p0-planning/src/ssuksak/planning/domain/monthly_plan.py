@@ -19,12 +19,14 @@ from .monthly_template import (
 from .monthly_template_snapshot import TemplateSnapshot
 from .monthly_verification import VerificationReport
 from .plan import PlanStatus
-from .safety_placement import SafetyPlacement
+from .safety_placement import STATUTORY_SHORT_LABELS, SafetyKind, SafetyPlacement, SafetyWeek
 from .provenance import (
+    ArrangementChange,
     AuditEvent,
     AuditEventType,
     AuditHistory,
     EvidenceSource,
+    EvidenceSourceType,
     GenerationMethodDetail,
 )
 from .week_period import WeekId, WeekPeriod
@@ -141,6 +143,51 @@ class MonthlyCell:
         return self.week_id is None
 
 
+SAFETY_SECTION_KEY = "safety_education"
+# Statutory 6 + 생활안전 2 (2026-10-31 S plan): a stored Plan never keeps part of the set.
+SAFETY_CANDIDATE_COUNT = 8
+
+
+@dataclass(frozen=True, slots=True)
+class MonthlySafetyCandidate:
+    """A proposed safety education item; placing it in a week is separate (``SafetyWeek``).
+
+    STATUTORY: one legal category, grounded in that category's official items only.
+    SUPPLEMENTAL: 생활안전, grounded in approved institution samples of one topic only.
+    """
+
+    cell: MonthlyCell
+    kind: SafetyKind
+    category_id: str | None = None
+    topic_group: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cell, MonthlyCell):
+            raise InvalidDomainValueError("MonthlySafetyCandidate.cell must be MonthlyCell")
+        if (
+            self.cell.section_key != SAFETY_SECTION_KEY
+            or self.cell.week_id is not None
+            or self.cell.safety is not None
+        ):
+            raise InvalidDomainValueError(
+                "A safety candidate is a month-level safety_education Cell without placement"
+            )
+        if not isinstance(self.kind, SafetyKind):
+            raise InvalidDomainValueError("MonthlySafetyCandidate.kind is invalid")
+        statutory = self.kind is SafetyKind.STATUTORY
+        named = self.category_id if statutory else self.topic_group
+        other = self.topic_group if statutory else self.category_id
+        if not isinstance(named, str) or not named.strip() or other is not None:
+            raise InvalidDomainValueError(
+                "STATUTORY names a category_id only; SUPPLEMENTAL names a topic_group only"
+            )
+        if statutory and named not in STATUTORY_SHORT_LABELS:
+            raise InvalidDomainValueError("STATUTORY names one of the six legal categories")
+        source = EvidenceSourceType.SAFETY_RULE if statutory else EvidenceSourceType.INSTITUTION_SAMPLE
+        if any(item.source_type is not source for item in self.cell.evidence):
+            raise InvalidDomainValueError(f"{self.kind.value} safety cites {source.value} only")
+
+
 @dataclass(frozen=True, slots=True)
 class MonthlySection:
     section_key: str
@@ -212,6 +259,10 @@ class MonthlyPlan:
     verification_report: VerificationReport | None = None
     # The confirmed annual sidecar, preserved for later single-cell regeneration.
     parent_subthemes: tuple[str, ...] = ()
+    # Candidate mode (S-1): the weekly safety_education Cells stay blank and a week reads
+    # its placed candidate's current value instead. Both empty = an older Plan.
+    safety_candidates: tuple[MonthlySafetyCandidate, ...] = ()
+    safety_weeks: tuple[SafetyWeek, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
@@ -346,6 +397,7 @@ class MonthlyPlan:
             raise InvalidDomainValueError(
                 "MonthlyPlan.generation_mode must be MonthlyGenerationMode"
             )
+        self._check_safety_candidates()
         if self.verification_report is not None:
             if not isinstance(self.verification_report, VerificationReport):
                 raise InvalidDomainValueError(
@@ -355,6 +407,43 @@ class MonthlyPlan:
                 raise InvalidDomainValueError(
                     "MonthlyPlan.verification_report must target this Plan"
                 )
+
+    def _check_safety_candidates(self) -> None:
+        """A partial candidate set is rejected, never read as an older Plan."""
+        candidates, weeks = self.safety_candidates, self.safety_weeks
+        if not isinstance(candidates, tuple) or not all(
+            isinstance(item, MonthlySafetyCandidate) for item in candidates
+        ):
+            raise InvalidDomainValueError("MonthlyPlan.safety_candidates are invalid")
+        if not isinstance(weeks, tuple) or not all(isinstance(item, SafetyWeek) for item in weeks):
+            raise InvalidDomainValueError("MonthlyPlan.safety_weeks are invalid")
+        if not candidates:
+            if weeks:
+                raise InvalidDomainValueError("Safety placements need safety candidates")
+            return
+        if len(candidates) != SAFETY_CANDIDATE_COUNT:
+            raise InvalidDomainValueError(
+                f"A candidate-mode Plan keeps exactly {SAFETY_CANDIDATE_COUNT} safety candidates"
+            )
+        section = self.section(SAFETY_SECTION_KEY)
+        if section is None or any(cell.value.strip() for cell in section.cells):
+            raise InvalidDomainValueError(
+                "A candidate-mode Plan keeps its weekly safety_education Cells blank"
+            )
+        if sorted(c.category_id for c in candidates if c.kind is SafetyKind.STATUTORY) != sorted(
+            STATUTORY_SHORT_LABELS
+        ):
+            raise InvalidDomainValueError("Safety candidates are one per legal category plus two 생활안전")
+        slots = [c.category_id or c.topic_group for c in candidates]
+        ids = [c.cell.item_id for c in candidates]
+        if len(set(slots)) != len(slots) or len(set(ids)) != len(ids) or set(ids) & {
+            cell.item_id for cell in self.cells
+        }:
+            raise InvalidDomainValueError("Safety candidates need distinct slots and ItemIds")
+        if tuple(s.week_id for s in weeks) != tuple(p.week_id for p in self.active_week_periods):
+            raise InvalidDomainValueError("A candidate-mode Plan needs one safety placement per active week")
+        if any(s.candidate_item_id is not None and s.candidate_item_id not in ids for s in weeks):
+            raise InvalidDomainValueError("A safety placement must name a kept candidate")
 
     @property
     def cells(self) -> tuple[MonthlyCell, ...]:
@@ -425,6 +514,58 @@ class MonthlyPlan:
             verification_report=None,
         )
 
+    def safety_candidate(self, item_id: ItemId) -> MonthlySafetyCandidate | None:
+        return next((c for c in self.safety_candidates if c.cell.item_id == item_id), None)
+
+    def replace_safety_candidate(self, replacement: MonthlyCell) -> MonthlyPlan:
+        self.ensure_mutable("replace_safety_candidate")
+        current = self.safety_candidate(replacement.item_id) if isinstance(replacement, MonthlyCell) else None
+        if current is None:
+            raise InvalidDomainValueError("Safety candidate not found")
+        return replace(
+            self,
+            safety_candidates=tuple(
+                replace(c, cell=replacement) if c is current else c for c in self.safety_candidates
+            ),
+            verification_report=None,
+        )
+
+    def place_safety(
+        self,
+        week_id: WeekId,
+        candidate_item_id: ItemId | None,
+        *,
+        actor_id: ActorId,
+        occurred_at: datetime,
+    ) -> MonthlyPlan:
+        """Place a kept candidate in one week, or clear it with ``None``.
+
+        The same candidate may sit in several weeks; editing it changes them all."""
+        self.ensure_mutable("place_safety")
+        current = next((s for s in self.safety_weeks if s.week_id == week_id), None)
+        if current is None:
+            raise InvalidDomainValueError(f"Monthly safety week not found: {week_id}")
+
+        def ids(item_id: ItemId | None) -> tuple[str, ...]:
+            return () if item_id is None else (item_id.value,)
+
+        event = AuditEvent(
+            event_type=AuditEventType.ARRANGEMENT_CHANGED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+            arrangement_change=ArrangementChange(
+                week_id.value, ids(current.candidate_item_id), ids(candidate_item_id)
+            ),
+        )
+        return replace(
+            self,
+            safety_weeks=tuple(
+                SafetyWeek(week_id, candidate_item_id) if s is current else s for s in self.safety_weeks
+            ),
+            audit=self.audit.append(event),
+        )
+
     def confirm(self, *, actor_id: ActorId, occurred_at: datetime) -> MonthlyPlan:
         self.ensure_mutable("confirm")
         event = AuditEvent(
@@ -454,11 +595,11 @@ class MonthlyPlan:
 
         A safety week the placement policy leaves out stays validly empty, as at generation;
         a plan generated without placement keeps the statutory assessment for every week.
+        A candidate-mode Plan has no unresolved safety Cell: its blanks are notices.
         """
-        if (
-            cell.section_key == "safety_education"
-            and cell.safety is None
-            and any(other.safety is not None for other in self.cells)
+        if cell.section_key == SAFETY_SECTION_KEY and (
+            self.safety_candidates
+            or (cell.safety is None and any(other.safety is not None for other in self.cells))
         ):
             return None
         return self.constraint("STATUTORY_SAFETY_EDUCATION")

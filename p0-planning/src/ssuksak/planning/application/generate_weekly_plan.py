@@ -63,6 +63,7 @@ from ..rules.monthly_safety import (
     RULE_VERSION as SAFETY_RULE_VERSION,
     assess_safety_education,
 )
+from ..rules.safety_placement import candidate_display_value, placed_safety_candidate
 from ..rules.weekly_verification import SAFETY_GROUNDING_RULE_ID, verify_weekly_plan
 from .monthly_dto import ActivityCatalogSelector, SafetyRuleSelector
 from .monthly_errors import MonthlyApplicationError
@@ -281,7 +282,15 @@ class GenerateWeeklyPlan:
                 # Cell is copied and cited. The week claims no placement of its own.
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, SAFETY_RULE_ID, SAFETY_RULE_VERSION)
                 placed = _parent_cell(parent, key, period.week_id)
-                if placed is not None and placed.safety is not None and placed.value.strip():
+                candidate = placed_safety_candidate(parent, period.week_id)
+                if candidate is not None and candidate.cell.value.strip():
+                    # S-1: the week reads its placed candidate, labelled as the monthly plan shows it.
+                    value = candidate_display_value(candidate)
+                    evidence, snapshots = (parent_evidence,), (_cited(lineage, candidate.cell),)
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_ONLY, SAFETY_COPY_RULE_ID, WEEKLY_RULE_VERSION
+                    )
+                elif placed is not None and placed.safety is not None and placed.value.strip():
                     value = placed.value
                     evidence, snapshots = (parent_evidence,), (_cited(lineage, placed),)
                     generation = GenerationMethodDetail(
