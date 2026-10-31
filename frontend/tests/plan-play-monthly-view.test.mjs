@@ -818,3 +818,164 @@ test("거절 안내 — 칸이면 「칸」, 안전 배치 · 삭제 · 복사�
   node(h.render(View, props), "confirmbar")[0].props.onConflict();
   assert.ok(node(h.render(View, props), "drill")[0].props.disabled);
 });
+
+// ---- 월간 v1 편집 화면 (MonthlyPlanEditor) — 같은 배치, 저장 줄 경계 ----
+function openV1Editor(findings = []) {
+  globalThis.document ??= { activeElement: null };
+  const listeners = [];
+  globalThis.window = {
+    addEventListener: (type) => listeners.push(type),
+    removeEventListener: (type) => listeners.splice(listeners.indexOf(type), 1),
+  };
+  const h = harness();
+  let n = 0;
+  const cell = { item_id: "c1", week_id: "W1", value: "A", state: "FILLED", evidence: [] };
+  let server = {
+    id: 1,
+    revision: 1,
+    status: "DRAFT",
+    month: 9,
+    target_month: "2026-09",
+    parent: { theme: "" },
+    generation_mode: "LLM_PLANNER",
+    verification: { findings },
+    weeks: [{ week_id: "W1", active: true, label: "1주" }],
+    sections: [
+      {
+        section_key: "outdoor_play",
+        label: "",
+        role: "CONTENT",
+        visible: true,
+        order: 1,
+        repeat_by: "WEEK",
+        cells: [cell],
+      },
+    ],
+  };
+  const sent = [];
+  const waits = [];
+  // 서버처럼 같은 값은 거절하고(monthly_cell_value_unchanged), 응답은 시험이 풀 때까지 붙잡는다.
+  const edit = async (_id, _item, value) => {
+    sent.push(value);
+    await new Promise((ok, fail) => waits.push({ ok, fail }));
+    if (value === server.sections[0].cells[0].value) throw new StubApiError(422, "unchanged");
+    const cells = [{ ...cell, value }];
+    server = {
+      ...server,
+      revision: server.revision + 1,
+      sections: [{ ...server.sections[0], cells }],
+    };
+    return server;
+  };
+  const { default: View } = compile("../components/workspace/MonthlyPlanEditor.tsx", {
+    // 의존성 목록이 없는 effect 는 실제 React 처럼 매번 돈다.
+    react: { ...h.react, useEffect: (fn, deps) => h.react.useEffect(fn, deps ?? [n++]) },
+    "@/lib/api/client": { ApiError: StubApiError },
+    "@/lib/api/monthly": {
+      editMonthlyCell: edit,
+      confirmMonthlyPlan: async () => server,
+      regenerateMonthlyCell: async () => server,
+      getMonthlyPlanAudit: async () => ({ items: [] }),
+      downloadMonthlyHwpx: () => {},
+    },
+    "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
+    "@/lib/monthly/section-labels": { sectionName: (key) => key },
+    "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
+    "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
+    "@/components/plan-generator/PlayCellEditor": esModule(editorStub),
+    "@/components/plan-generator/PlayMonthlySheet": {
+      Cell: (props) => jsx("cell", props),
+      SheetFrame: (props) => jsx("frame", props),
+    },
+    "@/components/plan-generator/PlayMonthlyView.module.css": esModule(css),
+    "./WorkspaceUI": { ws: css },
+  });
+  const props = {
+    plan: server,
+    note: "",
+    onPlan: (next) => (props.plan = next),
+    onConflict: () => {},
+    onDelete: () => {},
+    flushRef: { current: null },
+  };
+  const render = () => h.render(View, props);
+  all(render())
+    .find((x) => x.type === "cell")
+    .props.onSelect("c1");
+  return {
+    sent,
+    waits,
+    listeners,
+    props,
+    render,
+    editor: () => all(render()).find((x) => x.type === "editor").props,
+    stored: () => server.sections[0].cells[0].value,
+    tick: () => new Promise((done) => setTimeout(done, 0)),
+  };
+}
+
+test("v1 — 안전교육 검증 안내는 영어 서버 문구 대신 한국어로 보인다", () => {
+  const finding = (code) => ({ code, section_key: "safety_education", message: "English " + code });
+  const tree = openV1Editor([
+    finding("SAFETY_ANNUAL_HOURS_NOT_VERIFIED"),
+    finding("SAFETY_OFFICIAL_GROUNDING_MISSING"),
+    finding("SAFETY_SUPPLEMENTAL_GROUNDING_INVALID"),
+  ]).render();
+  assert.doesNotMatch(text(tree), /English/);
+  assert.match(text(tree), /연간 법정 시간은 자동으로 확인하지 못했어요/);
+  assert.match(text(tree), /공식 교육 내용 근거/);
+  assert.match(text(tree), /생활안전 칸의 참고 근거/);
+});
+
+test("v1 — 저장 중에 원래 값으로 되돌리면 그 값도 보내고, 같은 글을 두 번 넘기면 한 번만 보낸다", async () => {
+  const back = openV1Editor();
+  back.editor().onDraft("B");
+  back.editor().onSave("B");
+  await back.tick();
+  back.editor().onDraft("A");
+  back.editor().onSave("A"); // B 응답 전
+  back.waits.shift().ok();
+  await back.tick();
+  back.waits.shift().ok();
+  await back.tick();
+  assert.deepEqual(back.sent, ["B", "A"]);
+  assert.equal(back.stored(), "A");
+  assert.match(text(back.render()), /저장됨/);
+
+  const twice = openV1Editor();
+  twice.editor().onSave("B"); // 1초 뒤 저장
+  await twice.tick();
+  twice.editor().onSave("B"); // 같은 글로 떠남
+  twice.waits.shift().ok();
+  await twice.tick();
+  await twice.tick();
+  assert.deepEqual(twice.sent, ["B"]);
+  assert.doesNotMatch(text(twice.render()), /저장하지 못했어요/);
+});
+
+test("v1 — 반 · 월 이동은 기다리는 동안 입력을 잠그고, 늦게 붙은 저장까지 기다려 실패하면 옮기지 않는다", async () => {
+  const view = openV1Editor();
+  view.editor().onDraft("B");
+  view.editor().onSave("B");
+  await view.tick();
+  const moving = view.props.flushRef.current(); // B 응답 전에 다른 월을 고름
+  assert.equal(view.editor().readOnly, true); // 기다리는 동안 새 글을 못 쓴다
+  assert.equal(await view.props.flushRef.current(), false); // 겹친 이동은 받지 않는다
+  view.editor().onDraft("C");
+  view.editor().onSave("C"); // 잠그기 전에 이미 출발한 저장
+  view.waits.shift().ok(); // B 성공
+  await view.tick();
+  view.waits.shift().fail(new Error("offline")); // C 실패
+  assert.equal(await moving, false);
+  const tree = view.render();
+  assert.match(text(tree), /저장하지 못한 칸이 있어요/);
+  assert.equal(view.editor().readOnly, false);
+  assert.equal(view.editor().value, "C"); // 되돌리지 않았다
+  assert.equal(all(tree).find((x) => x.type === "cell").props.value, "C");
+  assert.ok(view.listeners.includes("beforeunload"));
+  withText(tree, "button", "다시 저장")[0].props.onClick();
+  await view.tick();
+  view.waits.shift().ok();
+  assert.equal(await view.props.flushRef.current(), true);
+  assert.equal(view.stored(), "C");
+});

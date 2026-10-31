@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 
 import pytest
 
@@ -23,10 +24,11 @@ LLM = MonthlyGenerationMode.LLM_PLANNER
 def test_composition_generates_a_weekly_draft_from_the_approved_template(saturday):
     harness = WeeklyHarness()
     parent = harness.monthly_parent(mode=LLM)
+    provider = RequestAwareWeeklyLlm()
     plan = weekly_generation(
         parent_plan_repository=harness.monthly_plans,
         plan_repository=harness.weekly_plans,
-        provider=RequestAwareWeeklyLlm(),
+        provider=provider,
         clock=harness.clock,
         id_generator=harness.weekly_ids,
     ).execute(
@@ -42,6 +44,7 @@ def test_composition_generates_a_weekly_draft_from_the_approved_template(saturda
     ).plan
 
     assert plan.status is PlanStatus.DRAFT
+    assert len(json.loads(provider.requests[0].user_content)["curriculum_context"]["contents"]) == 59
     assert plan.generation_mode is LLM
     assert (OperatingDay.SAT in plan.operating_days) is saturday
     assert plan.template_snapshot.base_template_ref == WEEKLY_TEMPLATE_REF

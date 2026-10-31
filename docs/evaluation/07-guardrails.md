@@ -27,6 +27,8 @@
 - **사실기록형(알림장 · 사고보고서 · 투약의뢰서)에 생성 기능을 안 붙였다.** 없는 사실을 쓰면 문서 조작이다 — [CLAUDE.md](../../CLAUDE.md) §문서 5분류
 - 해석형은 3층 규격을 못 넘으면 반려 → [06](06-ai-quality.md)
 - 자동 제출·자동 발송 없음 — §생성
+- v1 월간은 안전 품질표의 자료 SHA·안전 분류 판이 맞지 않거나 분류가 없으면 LLM 호출·저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/finalization/test_safety_placement_e2e.py`
+- v1 월간 실내 대체활동은 주간 분류가 실내대체로 정한 기관 기록만 근거로 쓰고, 근거가 없으면 생성하지 않고 빈칸을 남긴다. 주간 분류가 자료 묶음과 맞지 않으면 LLM 호출 · 저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/application/test_monthly_application.py` · `backend/tests/test_monthly_lifecycle_api.py`
 
 ## 키와 비용
 

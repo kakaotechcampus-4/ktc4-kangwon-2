@@ -40,7 +40,14 @@ const schoolYear = (date: Date) =>
 
 export default function HomePage() {
   const [message, setMessage] = useState("");
-  const onError = useCallback((m: string) => setMessage(m), []);
+  // **반 명단**을 못 불러오면 아래 빈 화면 안내를 그리지 않는다. 「아이를 먼저 등록해 주세요」를
+  // 보고 멀쩡한 명단을 다시 만들러 간다. 기록 조회가 흔들린 것은 여기 들지 않는다 — 적는 칸은
+  // 다른 길로 저장하므로 그대로 쓸 수 있어야 한다. 저장 실패도 아니다 — 적던 글은 남아야 한다.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const onError = useCallback((m: string) => {
+    setMessage(m);
+    setLoadFailed(true);
+  }, []);
   const classes = useClasses(onError);
   const [records, setRecords] = useState<ServerObservation[] | null>(null);
   const [todayDate] = useClientState(() => today(), "");
@@ -136,20 +143,24 @@ export default function HomePage() {
         </p>
       )}
 
-      <Compose
-        classes={classes}
-        date={todayDate}
-        activeClassId={activeClassId}
-        records={classRecords}
-        onSaved={recordSaved}
-        onError={setMessage}
-      />
+      {!loadFailed && (
+        <>
+          <Compose
+            classes={classes}
+            date={todayDate}
+            activeClassId={activeClassId}
+            records={classRecords}
+            onSaved={recordSaved}
+            onError={setMessage}
+          />
 
-      <TodayList records={todayRecords} loading={records === null} />
+          <TodayList records={todayRecords} loading={records === null} />
 
-      <div className="mt-8">
-        <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
-      </div>
+          <div className="mt-8">
+            <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
+          </div>
+        </>
+      )}
     </PageContainer>
   );
 }
@@ -286,6 +297,10 @@ function Compose({
                 <Icon name="edit" className="h-3.5 w-3.5" />본 말과 행동
               </span>
             </div>
+            {/* 여기는 손글씨(`font-display`)를 쓰지 않는다. 구글 폰트의 Gaegu 는 한글을
+                89개 조각으로 쪼개 보내는데, 교사가 글자를 칠 때마다 아직 안 받은 조각이
+                생겨 그 글자만 잠깐 다른 글꼴로 보였다가 바뀐다 — 한 줄 안에서 글자가 튄다.
+                손글씨는 제목·숫자에만 쓴다(`globals.css`). */}
             <textarea
               aria-label="빠른 기록 내용"
               value={fact}
@@ -295,8 +310,16 @@ function Compose({
                 "바깥놀이에서 아이 A가 도토리를 크기별로 줄 세웠다.\n" +
                 "친구가 와서 같이 세었고, 교사는 옆에서 지켜보았다."
               }
-              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 font-display text-[22px] font-bold leading-[1.6] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
+              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 text-[20px] font-medium leading-[1.7] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
             />
+            {dictation.error && (
+              <p
+                role="status"
+                className="border-t border-paper-warm-line bg-peach-tint px-5 py-2.5 text-[13px] text-peach-ink"
+              >
+                {dictation.error}
+              </p>
+            )}
             <div className="flex items-center justify-between gap-3 border-t border-paper-warm-line px-4 py-3">
               {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                   그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.

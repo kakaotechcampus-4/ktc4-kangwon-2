@@ -14,9 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from ssuksak.planning import InvalidDomainValueError, TemplateProfileRef
-from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef, TemplateSection
 from ssuksak.planning.domain.monthly_template_profile import (
     DEFAULT_PROFILE_SECTION_KEYS,
+    DRILL_SECTION_KEY,
     INSTITUTION_INPUT_SECTION_KEYS,
     OPTIONAL_PROFILE_SECTION_KEYS,
 )
@@ -37,9 +38,11 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 # Template 의 칸 이름 → Profile 의 칸 이름 (M2 `_TEMPLATE_KEY` 의 반대 방향, habits → basic_habit).
 _PROFILE_KEY = {template_key: profile_key for profile_key, template_key in _TEMPLATE_KEY.items()}
-# 시작할 때 고를 수 있는 칸. 기관 입력 칸(event_schedule · drill)은 생성 계약이 아직 없어
-# 뺀다(BE-1 결정 ③).
-SELECTABLE_KEYS = OPTIONAL_PROFILE_SECTION_KEYS - INSTITUTION_INPUT_SECTION_KEYS
+# 시작할 때 고를 수 있는 칸. 기관 입력 칸(event_schedule)은 생성 계약이 아직 없어
+# 뺀다(BE-1 결정 ③). drill 은 Core 후보 생성이 있지만 서버 연결 전이라 아직 뺀다.
+SELECTABLE_KEYS = (
+    OPTIONAL_PROFILE_SECTION_KEYS - INSTITUTION_INPUT_SECTION_KEYS - {DRILL_SECTION_KEY}
+)
 # Core: 켠 focus 는 NEUTRAL 을 쓸 수 없다(TemplateProfile._validate_sections).
 FOCUS_VARIANTS = tuple(v.value for v in SemanticVariant if v is not SemanticVariant.NEUTRAL)
 
@@ -209,12 +212,13 @@ def list_ready_profiles(center_id: int, session: DbSession, user: CurrentUser):
 # ── BE-1 관리 API (§9-4) ──────────────────────────────────────────────────
 
 
-def _selection(profile_key: str) -> str:
+def _selection(profile_key: str, section: TemplateSection) -> str:
     if profile_key in DEFAULT_PROFILE_SECTION_KEYS:
         return "REQUIRED"
     if profile_key in INSTITUTION_INPUT_SECTION_KEYS:
         return "INSTITUTION_INPUT"
-    if profile_key in OPTIONAL_PROFILE_SECTION_KEYS:
+    # Without repeat_by the Template cannot turn it on (v0.2.1 indoor_alternative).
+    if profile_key in OPTIONAL_PROFILE_SECTION_KEYS and section.repeat_by is not None:
         return "OPTIONAL"
     return "NOT_SUPPORTED"
 
@@ -241,7 +245,7 @@ def list_monthly_templates():
                         label=section.display_label,
                         role=section.role.value,
                         repeat_by=None if section.repeat_by is None else section.repeat_by.value,
-                        selection=_selection(key),
+                        selection=_selection(key, section),
                     )
                     for section in template.sections
                     for key in [_PROFILE_KEY.get(section.section_key, section.section_key)]

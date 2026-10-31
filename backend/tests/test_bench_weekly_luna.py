@@ -163,8 +163,8 @@ def test_응답이_예약보다_크면_그_뒤로_멈춘다():
 def test_수리_전송_직전에도_예산을_본다():
     probe, _ = _run(_fake(edit=_date_once), max_calls=1)
     first_reserve = probe.calls[0]["reserved_won"]
-    # 첫 전송의 예약만큼만 — 첫 전송(실제 ₩62.4)은 되지만, 쓴 돈 + 수리 예약은 넘는다.
-    transport, out = _run(_fake(edit=_date_once), won=first_reserve)
+    # 표시 예약액의 소수 4자리 반올림 오차만 허용하고, 쓴 돈 + 수리 예약은 넘게 둔다.
+    transport, out = _run(_fake(edit=_date_once), won=first_reserve + 0.001)
     assert out["calls"] == 1
     assert out["results"][0]["result"] == "STOPPED_BUDGET"
     assert out["won"] <= out["budget_won"]

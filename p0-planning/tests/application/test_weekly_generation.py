@@ -20,6 +20,13 @@ from ssuksak.planning.rules.safety_placement import OFFICIAL_GROUNDING_MISSING
 from ssuksak.planning.application.monthly_support import theme_reference_id
 from ssuksak.planning.rules.weekly_verification import PARENT_CITATION_INVALID, verify_weekly_plan
 
+from ssuksak.planning.domain.identifiers import ItemId
+from ssuksak.planning.domain.monthly_plan import MonthlyCell, MonthlySafetyCandidate
+from ssuksak.planning.domain.provenance import GenerationMethod, GenerationMethodDetail
+from ssuksak.planning.domain.safety_placement import SafetyWeek
+from ssuksak.planning.rules.safety_placement import STATUTORY_SHORT_LABELS
+from tests.finalization.harness import TEACHER
+
 from tests.finalization.weekly_harness import WEEK, WeeklyHarness, weekly_snapshot
 
 GROUNDED = ("focus", "goals", "basic_habit", "indoor_play", "group_activity", "indoor_alternative")
@@ -330,3 +337,38 @@ def test_the_approved_weekly_template_generates_without_test_approval():
     harness = WeeklyHarness()
     plan = harness.generate_weekly(harness.monthly_parent(), templates=harness.weekly_templates).plan
     assert plan.status.value == "DRAFT"
+
+
+def test_safety_copies_the_candidate_the_teacher_placed_in_a_candidate_mode_parent():
+    harness = WeeklyHarness()
+    draft = harness.monthly_parent(confirm=False)
+
+    def candidate(n, kind, source, **slot):
+        cell = MonthlyCell(
+            ItemId(f"safety-candidate-{n}"), "safety_education", None, f"안전 문장 {n}", CellState.FILLED,
+            GenerationMethodDetail(GenerationMethod.RULE_LLM, "monthly.llm.validated_proposal", "v"),
+            (EvidenceSource(source, f"ref-{n}", "v"),),
+        )
+        return MonthlySafetyCandidate(cell, kind, **slot)
+
+    candidates = tuple(
+        candidate(n, SafetyKind.STATUTORY, EvidenceSourceType.SAFETY_RULE, category_id=category)
+        for n, category in enumerate(STATUTORY_SHORT_LABELS, 1)
+    ) + tuple(
+        candidate(n, SafetyKind.SUPPLEMENTAL, EvidenceSourceType.INSTITUTION_SAMPLE, topic_group=f"topic-{n}")
+        for n in (7, 8)
+    )
+    draft = replace(
+        draft,
+        safety_candidates=candidates,
+        safety_weeks=tuple(SafetyWeek(p.week_id) for p in draft.active_week_periods),
+    )
+    draft = draft.place_safety(WEEK, candidates[-1].cell.item_id, actor_id=TEACHER, occurred_at=harness.clock.now())
+    harness.monthly_plans.save(draft.plan_id, draft)
+    parent = harness.confirm_monthly(draft)
+
+    safety = harness.generate_weekly(parent).plan.cell("safety_education")
+
+    assert safety.value == "[생활안전] - 안전 문장 8"
+    assert safety.generation.rule_id == weekly.SAFETY_COPY_RULE_ID
+    assert [s.parent_item_id for s in safety.parent_snapshots] == [candidates[-1].cell.item_id]

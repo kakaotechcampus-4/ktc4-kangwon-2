@@ -55,6 +55,8 @@ type WeekRecords = {
   observations: ServerObservation[];
   routines: ApiRoutine[];
   error: string;
+  /** 관찰 · 일과 둘 다 못 불러왔다. 그릴 것이 없다. */
+  failedAll: boolean;
 };
 
 export default function QuickRecordsPage() {
@@ -93,6 +95,7 @@ export default function QuickRecordsPage() {
         observations: observations.status === "fulfilled" ? observations.value : [],
         routines: routineRows.status === "fulfilled" ? routineRows.value : [],
         error: failed.length ? `${failed.join("과 ")}을 불러오지 못했어요. 새로고침해주세요.` : "",
+        failedAll: failed.length === 2,
       });
     });
     return () => {
@@ -117,6 +120,19 @@ export default function QuickRecordsPage() {
   const dayRecords = observations.filter((r) => r.date === selected);
   const dayCount = dayRoutines.length + dayRecords.length;
 
+  // 반을 못 불러왔거나 관찰 · 일과 둘 다 못 불러왔으면 안내만 둔다. 빈 달력과 「남긴 기록이 없어요」가
+  // 같이 보이면 기록이 사라진 것으로 읽힌다. 한쪽만 실패했으면 다른 쪽은 그대로 그린다.
+  if (error || week?.failedAll) {
+    return (
+      <WorkspacePage
+        title="주간 기록"
+        description="한 주를 펼쳐 놓고, 어느 날이 비었는지 확인하세요."
+      >
+        <Message error>{error || week?.error}</Message>
+      </WorkspacePage>
+    );
+  }
+
   return (
     <WorkspacePage
       title="주간 기록"
@@ -131,7 +147,7 @@ export default function QuickRecordsPage() {
         </Link>
       }
     >
-      <Message error>{error || week?.error}</Message>
+      <Message error>{week?.error}</Message>
 
       <section className="rounded-sm border border-line bg-paper p-5 shadow-pg-card">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

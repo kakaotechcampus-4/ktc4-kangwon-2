@@ -7,6 +7,9 @@ import json
 
 EVIDENCE_STORE_SCHEMA_VERSION = "institution-evidence.schema.v0"
 INGESTION_VERSION = "institution-evidence-ingestion-v0.1.0"
+# Store versions a loader accepts; the version actually read is what Evidence records.
+# v0.2.0 is a cleaned derivative of v0.1.0, not a new ingestion run (the pipeline keeps v0.1.0).
+SUPPORTED_INGESTION_VERSIONS = frozenset({INGESTION_VERSION, "institution-evidence-ingestion-v0.2.0"})
 EXPECTED_STORE_ID = "ssuksak.institution-evidence"
 EXPECTED_NORMATIVE_STATUS = "CORPUS_OBSERVATION_NON_NORMATIVE"
 

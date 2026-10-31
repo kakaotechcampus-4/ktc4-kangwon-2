@@ -260,6 +260,25 @@ def test_without_approved_supplemental_grounding_generation_fails_before_the_llm
     assert harness.provider.monthly_requests == [] and harness.monthly_plans.save_count == 0
 
 
+@pytest.mark.parametrize("broken", ["store_sha", "classification_version", "no_classification"])
+def test_quality_review_not_bound_to_this_store_and_classification_fails_before_the_llm(monkeypatch, broken):
+    if broken != "no_classification":
+        field = "evidence_content_sha256" if broken == "store_sha" else "classification_version"
+        bad = replace(_QUALITY, runtime_active=True, **{field: "0" * 64})
+        monkeypatch.setattr(JsonSafetyReferenceQualityRepository, "get_quality", lambda self: bad)
+    harness = PlanningHarness()
+    if broken == "no_classification":
+        monkeypatch.setattr(harness.context, "_safety_classification", None)
+    parent = harness.confirm_yearly(harness.generate_yearly(AGES).plan)
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate_monthly(
+            parent, MonthlyGenerationMode.LLM_PLANNER, profile=EXTENDED_PROFILE, safety_placement=SAFETY_PLACEMENT
+        )
+    assert exc.value.code == "evidence_classification_store_mismatch"
+    assert harness.provider.monthly_requests == [] and harness.monthly_plans.save_count == 0
+
+
 def test_runtime_loads_the_approved_v0_2_0_classification():
     loaded = JsonSafetyEvidenceClassificationRepository().get_classification()
 
