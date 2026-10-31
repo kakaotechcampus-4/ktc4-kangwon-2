@@ -94,6 +94,24 @@ class VerificationOut(BaseModel):
     findings: list[FindingOut]
 
 
+class SafetyCandidateOut(BaseModel):
+    kind: str
+    category_id: str | None
+    topic_group: str | None
+    cell: CellOut
+
+
+class SafetyWeekOut(BaseModel):
+    week_id: str
+    candidate_item_id: str | None
+    display_value: str
+
+
+class NoticeOut(BaseModel):
+    code: str
+    week_id: str
+
+
 class MonthlyPlanOut(BaseModel):
     id: int
     class_id: int
@@ -108,6 +126,9 @@ class MonthlyPlanOut(BaseModel):
     parent: ParentOut
     weeks: list[WeekOut]
     sections: list[SectionOut]
+    safety_candidates: list[SafetyCandidateOut]
+    safety_weeks: list[SafetyWeekOut]
+    notices: list[NoticeOut]
     constraints: list[ConstraintOut]
     verification: VerificationOut
     created_at: datetime
