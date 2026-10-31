@@ -12,6 +12,8 @@ from ssuksak.adapters.evidence_classification_repository import (
     JsonEvidenceClassificationRepository,
 )
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
+from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 from ssuksak.adapters.in_memory_template_profile_repository import (
     InMemoryTemplateProfileRepository,
 )
@@ -50,7 +52,7 @@ from ssuksak.planning.domain.errors import (
 )
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_constraint import CellState
-from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
+from ssuksak.planning.domain.monthly_plan import DRILL_COPY_GENERATION, MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import (
     EmptyValuePolicy,
     RepeatBy,
@@ -82,6 +84,26 @@ from ssuksak.planning.domain.provenance import (
     GenerationMethodDetail,
 )
 from ssuksak.planning.domain.year_month import YearMonth
+from ssuksak.adapters.safety_evidence_classification_repository import (
+    JsonSafetyEvidenceClassificationRepository,
+)
+from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
+from ssuksak.planning.application.copy_monthly_drill_candidate import (
+    CopyMonthlyDrillCandidate,
+    CopyMonthlyDrillCandidateCommand,
+)
+from ssuksak.planning.application.monthly_dto import DrillTopicsSelector, SafetyCandidatesSelector
+from ssuksak.planning.application.place_monthly_safety import (
+    PlaceMonthlySafety,
+    PlaceMonthlySafetyCommand,
+    monthly_safety_notices,
+)
+from ssuksak.planning.domain.safety_placement import SafetyKind, SafetyWeek
+from ssuksak.planning.rules.safety_placement import (
+    STATUTORY_SHORT_LABELS,
+    candidate_display_value,
+    placed_safety_candidate,
+)
 from ssuksak.planning.evidence.classification import SemanticClass
 from ssuksak.planning.domain.yearly_plan import YearlyPeriod, YearlyPlan
 from ssuksak.planning.planner.cell_service import MonthlyCellPlanner
@@ -571,6 +593,7 @@ class Harness:
             context_pipeline=self.context,
             planner=planner,
             optional_context=optional_context,
+            drill_repository=JsonDrillTopicReferenceRepository(),
         )
         return use_case.execute(command or self.command(mode))
 
@@ -1001,7 +1024,7 @@ def test_legacy_proposal_shape_is_rejected_without_running_verification(monkeypa
 
 
 @pytest.mark.parametrize("mode", tuple(MonthlyGenerationMode))
-@pytest.mark.parametrize("section_key", ("event_schedule", "drill"))
+@pytest.mark.parametrize("section_key", ("event_schedule",))
 def test_active_institution_input_section_fails_closed_before_generation(
     section_key, mode
 ):
@@ -2717,3 +2740,275 @@ def test_generation_snapshot_comes_from_the_profile_not_the_approved_template():
     assert [section.section_key for section in plan.template_snapshot.sections] == [
         section.section_key for section in profile.ordered_sections
     ]
+
+
+# --- S-1: eight safety candidates, placed by the teacher -------------------------------------
+
+SAFETY_CANDIDATES = SafetyCandidatesSelector(
+    "safety-evidence-classification-v0.2.0", "safety-reference-quality-v0.1.0"
+)
+
+
+class CandidateMonthlyLlm(RequestAwareMonthlyLlm):
+    """Also words each safety candidate, citing the first ref its slot allows."""
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        payload["month_sections"] += [
+            {
+                "section_key": key,
+                "value": f"안전 약속 {n}번을 함께 지켜요.",
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [refs[0]],
+            }
+            for n, (key, refs) in enumerate(request.allowed_grounding_refs_by_section, 1)
+            if key.startswith("safety_education.")
+        ]
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+
+def _candidate_harness(selector=SAFETY_CANDIDATES):
+    harness = Harness()
+    harness.context = MonthlyContextPipeline(
+        evidence_repository=EVIDENCE_REPOSITORY,
+        classification_repository=CLASSIFICATION_REPOSITORY,
+        context_builder=ContextPacketBuilder(),
+        safety_classification_repository=JsonSafetyEvidenceClassificationRepository(),
+        safety_quality_repository=JsonSafetyReferenceQualityRepository(),
+    )
+    command = replace(harness.command(MonthlyGenerationMode.LLM_PLANNER), safety_candidates=selector)
+    return harness, command
+
+
+def test_safety_candidates_generate_blank_weeks_then_teacher_places_edits_and_confirms():
+    harness, command = _candidate_harness()
+    provider = CandidateMonthlyLlm()
+    plan = harness.generate(provider=provider, command=command).plan
+    request = provider.monthly_requests[0]
+
+    assert request.prompt_version.endswith("+safety-candidates-v1")
+    assert [c.kind for c in plan.safety_candidates] == [SafetyKind.STATUTORY] * 6 + [SafetyKind.SUPPLEMENTAL] * 2
+    statutory, life = plan.safety_candidates[0], plan.safety_candidates[-1]
+    assert [e.source_type for e in statutory.cell.evidence] == [EvidenceSourceType.SAFETY_RULE]
+    assert {e.source_type for e in life.cell.evidence} == {EvidenceSourceType.INSTITUTION_SAMPLE}
+    assert statutory.cell.generation.method is GenerationMethod.RULE_LLM
+    assert statutory.cell.generation.rule_version == request.prompt_version
+    assert all(not cell.value for cell in plan.section("safety_education").cells)
+    assert plan.safety_weeks == tuple(SafetyWeek(p.week_id) for p in plan.active_week_periods)
+    assert {n.code for n in monthly_safety_notices(plan)} == {"SAFETY_UNPLACED"}
+    assert candidate_display_value(statutory).startswith(f"[{STATUTORY_SHORT_LABELS[statutory.category_id]}] - ")
+
+    week = plan.safety_weeks[0].week_id
+    place = PlaceMonthlySafety(plan_repository=harness.plans, clock=harness.clock)
+    placed = place.execute(PlaceMonthlySafetyCommand(plan.plan_id, week, life.cell.item_id, TEACHER))
+    change = placed.audit.events[-1]
+    assert change.event_type is AuditEventType.ARRANGEMENT_CHANGED
+    assert (change.arrangement_change.before, change.arrangement_change.after) == ((), (life.cell.item_id.value,))
+    assert candidate_display_value(placed_safety_candidate(placed, week)) == "[생활안전] - " + life.cell.value
+    saves = harness.plans.save_count
+    place.execute(PlaceMonthlySafetyCommand(plan.plan_id, week, life.cell.item_id, TEACHER))
+    assert harness.plans.save_count == saves  # same selection: no save, no event
+
+    edit = EditMonthlyPlanItem(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    cleared = edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, life.cell.item_id, "", TEACHER))
+    assert monthly_safety_notices(cleared)[0].code == "SAFETY_BLANK"
+    assert candidate_display_value(cleared.safety_candidate(life.cell.item_id)) == ""
+    with pytest.raises(MonthlyApplicationError) as blocked:  # S-2
+        edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, _cell(plan, "safety_education").item_id, "직접", TEACHER))
+    assert blocked.value.code == "monthly_safety_cell_not_editable"
+    with pytest.raises(MonthlyApplicationError) as regen:
+        harness.regenerate(provider).execute(RegenerateMonthlyPlanItemCommand(plan.plan_id, life.cell.item_id, TEACHER))
+    assert regen.value.code == "monthly_cell_not_regeneratable"
+
+    confirm = ConfirmMonthlyPlan(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    assert confirm.execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
+
+
+def test_safety_candidate_evidence_mismatch_fails_before_the_llm():
+    harness, command = _candidate_harness(SafetyCandidatesSelector("other-classification", "other-quality"))
+    provider = CandidateMonthlyLlm()
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=provider, command=command)
+    assert exc.value.code == "monthly_safety_evidence_version_mismatch"
+    assert provider.monthly_requests == [] and harness.plans.save_count == 0
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        lambda p: {"safety_candidates": p.safety_candidates[:7]},
+        lambda p: {"safety_weeks": p.safety_weeks[1:]},
+        lambda p: {"safety_weeks": (SafetyWeek(p.safety_weeks[0].week_id, ItemId("unknown")),) + p.safety_weeks[1:]},
+        lambda p: {"safety_candidates": (), "safety_weeks": p.safety_weeks},
+        lambda p: {
+            "sections": tuple(
+                replace(s, cells=(replace(s.cells[0], value="직접", cell_state=CellState.FILLED),) + s.cells[1:])
+                if s.section_key == "safety_education" else s
+                for s in p.sections
+            )
+        },
+        lambda p: {"safety_candidates": (  # S-02: 5 statutory + 3 생활안전, ids kept
+            replace(
+                p.safety_candidates[7],
+                cell=replace(p.safety_candidates[7].cell, item_id=p.safety_candidates[0].cell.item_id),
+                topic_group="other-topic",
+            ),
+        ) + p.safety_candidates[1:]},
+    ],
+    ids=["seven", "weeks_mismatch", "unknown_candidate", "weeks_without_candidates", "weekly_cell_filled",
+         "five_statutory"],
+)
+def test_candidate_mode_plan_rejects_a_broken_structure(broken):
+    harness, command = _candidate_harness()
+    plan = harness.generate(provider=CandidateMonthlyLlm(), command=command).plan
+    with pytest.raises(InvalidDomainValueError):
+        replace(plan, **broken(plan))
+
+
+def test_safety_candidate_rejects_an_unknown_legal_category():  # S-02
+    harness, command = _candidate_harness()
+    statutory = harness.generate(provider=CandidateMonthlyLlm(), command=command).plan.safety_candidates[0]
+    with pytest.raises(InvalidDomainValueError):
+        replace(statutory, category_id="UNKNOWN")
+
+
+class DatedCandidateMonthlyLlm(CandidateMonthlyLlm):
+    """S-01: puts a date the input never gave into the first candidate; a repair removes it if `repairs`."""
+
+    def __init__(self, *, repairs: bool) -> None:
+        super().__init__()
+        self._repairs = repairs
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        response = super().generate_monthly(request)
+        if self._repairs and request.repair_targets:
+            return response
+        payload = json.loads(response.content)
+        first = next(c for c in payload["month_sections"] if c["section_key"].startswith("safety_education."))
+        first["value"] = "12월 31일에는 낯선 사람을 따라가지 않아요."
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), response.model, response.request_id)
+
+
+@pytest.mark.parametrize("repairs", [True, False])
+def test_safety_candidate_date_outside_the_input_is_repaired_or_rejected(repairs):
+    harness, command = _candidate_harness()
+    provider = SchemaObeyingRepair(DatedCandidateMonthlyLlm(repairs=repairs))
+    if repairs:
+        plan = harness.generate(provider=provider, command=command).plan
+        assert "12월 31일" not in plan.safety_candidates[0].cell.value and harness.plans.save_count == 1
+    else:
+        with pytest.raises(MonthlyApplicationError):
+            harness.generate(provider=provider, command=command)
+        assert harness.plans.save_count == 0
+    assert len(provider._inner.monthly_requests) == 2
+
+
+# --- D: 소방대피 · 재난대비 drill candidates, copied by the teacher ---------------------------
+
+DRILL_TEMPLATE = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.3")
+DRILL_TOPICS = DrillTopicsSelector("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
+
+
+class DrillMonthlyLlm(RequestAwareMonthlyLlm):
+    """Also words each drill topic, citing nothing; the first `leaks` calls put the first topic's id in its sentence."""
+
+    def __init__(self, leaks: int = 0) -> None:
+        super().__init__()
+        self._leaks = leaks
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        payload["month_sections"] += [
+            {"section_key": key, "value": f"{n}번 상황을 떠올리며 선생님과 함께 대피해요.",
+             "unresolved": False, "reference_id": None, "grounding_refs": []}
+            for n, (key, _) in enumerate(request.allowed_grounding_refs_by_section, 1)
+            if key.startswith("drill.")
+        ]
+        if len(self.monthly_requests) <= self._leaks:
+            first = next(s for s in payload["month_sections"] if s["section_key"].startswith("drill."))
+            first["value"] = f"{first['section_key'].removeprefix('drill.')} 상황을 가정해 선생님과 함께 대피해요."
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+
+def _drill_command(harness: Harness, mode=MonthlyGenerationMode.LLM_PLANNER) -> GenerateMonthlyPlanCommand:
+    """A v0.2.3 Profile with drill chosen, on a pipeline with the v1 curriculum."""
+    base = _profile(harness.templates, DRILL_TEMPLATE, TemplateProfileRef("monthly-profile-drill", "v1"))
+    template = harness.templates.get_template(DRILL_TEMPLATE.template_id, DRILL_TEMPLATE.template_version)
+    drill = replace(template.section("drill"), activated=True, display_label="Drill")
+    harness.profiles = InMemoryTemplateProfileRepository(
+        (replace(base, selected_optional_keys=(*base.selected_optional_keys, "drill"), sections=(*base.sections, drill)),)
+    )
+    harness.context = MonthlyContextPipeline(
+        evidence_repository=EVIDENCE_REPOSITORY,
+        classification_repository=CLASSIFICATION_REPOSITORY,
+        context_builder=ContextPacketBuilder(),
+        curriculum_loader=v1_curriculum_catalog,
+    )
+    return replace(harness.command(mode), profile_ref=base.profile_ref, drill_topics=DRILL_TOPICS)
+
+
+def test_drill_candidates_generate_a_blank_cell_then_teacher_writes_copies_edits_and_confirms():
+    harness = Harness()
+    with pytest.raises(MonthlyApplicationError) as rule_only:
+        harness.generate(command=_drill_command(harness, MonthlyGenerationMode.RULE_ONLY))
+    assert rule_only.value.code == "monthly_drill_requires_llm_planner"
+
+    provider = DrillMonthlyLlm()
+    plan = harness.generate(provider=provider, command=_drill_command(harness)).plan
+    request = provider.monthly_requests[0]
+    assert request.prompt_version.endswith("+drill-candidates-v1")
+    assert len({c.topic_id for c in plan.drill_candidates}) == 5
+    first, second = plan.drill_candidates[:2]
+    assert [(e.source_type, e.source_version) for e in first.cell.evidence] == [
+        (EvidenceSourceType.CURRICULUM, "nuri-curriculum-content-v0.1.0")
+    ]
+    assert (first.cell.generation.method, first.cell.generation.rule_version) == (
+        GenerationMethod.RULE_LLM, request.prompt_version
+    )
+    document = _cell(plan, "drill")
+    assert (document.value, document.generation) == ("", None)
+
+    edit = EditMonthlyPlanItem(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    written = _cell(edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, document.item_id, "직접 씀", TEACHER)), "drill")
+    assert written.generation.method is GenerationMethod.MANUAL
+
+    copy = CopyMonthlyDrillCandidate(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    copied = _cell(copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, first.cell.item_id, TEACHER)), "drill")
+    event = copied.audit.events[-1]
+    assert (copied.value, copied.evidence, copied.generation) == (first.cell.value, first.cell.evidence, DRILL_COPY_GENERATION)
+    assert (event.event_type, event.copied_from) == (AuditEventType.CANDIDATE_COPIED, first.cell.item_id)
+    assert event.generation_change.before.method is GenerationMethod.MANUAL
+    saves = harness.plans.save_count
+    copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, first.cell.item_id, TEACHER))
+    assert harness.plans.save_count == saves  # the Cell already holds this copy
+
+    edited = edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, document.item_id, "고친 훈련", TEACHER))
+    assert _cell(edited, "drill").generation == DRILL_COPY_GENERATION
+    edited = edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, second.cell.item_id, "고친 후보", TEACHER))
+    assert edited.drill_candidate(second.cell.item_id).cell.value == "고친 후보"
+    assert _cell(edited, "drill").value == "고친 훈련"  # a copy never follows its candidate
+    with pytest.raises(MonthlyApplicationError) as regen:
+        harness.regenerate(provider).execute(RegenerateMonthlyPlanItemCommand(plan.plan_id, first.cell.item_id, TEACHER))
+    assert regen.value.code == "monthly_cell_not_regeneratable"
+    with pytest.raises(InvalidDomainValueError):  # a copy must name a kept candidate
+        replace(edited, drill_candidates=edited.drill_candidates[1:])
+
+    confirm = ConfirmMonthlyPlan(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    confirm.execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER))
+    with pytest.raises(InvalidStateTransitionError):
+        copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, second.cell.item_id, TEACHER))
+
+
+def test_a_drill_topic_id_in_a_candidate_sentence_is_repaired_or_nothing_is_saved():
+    harness = Harness()
+    plan = harness.generate(provider=(provider := DrillMonthlyLlm(leaks=1)), command=_drill_command(harness)).plan
+    first = plan.drill_candidates[0]
+    assert len(provider.monthly_requests) == 2
+    assert first.topic_id not in first.cell.value
+    assert first.cell.generation.rule_version == provider.monthly_requests[1].prompt_version
+
+    harness = Harness()
+    with pytest.raises(MonthlyApplicationError):
+        harness.generate(provider=DrillMonthlyLlm(leaks=2), command=_drill_command(harness))
+    assert harness.plans.save_count == 0

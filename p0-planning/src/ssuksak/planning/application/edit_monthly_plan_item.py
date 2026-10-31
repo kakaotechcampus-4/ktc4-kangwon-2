@@ -6,9 +6,12 @@ from dataclasses import replace
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.monthly_plan import MonthlyPlan
+from ..domain.monthly_template_profile import DRILL_SECTION_KEY
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
+    GenerationMethod,
+    GenerationMethodDetail,
     ValueChange,
 )
 from ..rules.errors import MonthlyRuleError
@@ -47,16 +50,27 @@ class EditMonthlyPlanItem:
                 "invalid_monthly_cell_value", "Monthly Cell value must be a string"
             )
         found = plan.find_cell(item_id)
-        if found is None:
+        candidate = plan.safety_candidate(item_id) or plan.drill_candidate(item_id)
+        if found is None and candidate is None:
             raise MonthlyApplicationError(
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"
             )
-        _, _, _, cell = found
+        cell = found[3] if found is not None else candidate.cell
+        if found is not None and plan.safety_candidates and cell.section_key == "safety_education":
+            # S-2: a week reads its placed candidate; edit the candidate or place another.
+            raise MonthlyApplicationError(
+                "monthly_safety_cell_not_editable",
+                "Weekly safety Cells of a candidate-mode Plan are set by placement",
+            )
         if cell.value == command.new_value:
             raise MonthlyApplicationError(
                 "monthly_cell_value_unchanged", "Teacher edit must change the Cell value"
             )
-        if cell.generation is None:
+        generation = cell.generation
+        # The blank drill document Cell becomes MANUAL on its first write and stays MANUAL.
+        if generation is None and cell.section_key == DRILL_SECTION_KEY:
+            generation = GenerationMethodDetail(GenerationMethod.MANUAL)
+        if generation is None:
             raise MonthlyApplicationError(
                 "monthly_cell_generation_missing",
                 "Editable Monthly Cell must preserve its previous Generation Method",
@@ -89,9 +103,15 @@ class EditMonthlyPlanItem:
             cell,
             value=command.new_value,
             cell_state=cell_state,
+            generation=generation,
             audit=cell.audit.append(event),
         )
-        updated = plan.replace_cell(item_id, updated_cell)
+        if candidate is None:
+            updated = plan.replace_cell(item_id, updated_cell)
+        elif plan.drill_candidate(item_id) is not None:
+            updated = plan.replace_drill_candidate(updated_cell)
+        else:
+            updated = plan.replace_safety_candidate(updated_cell)
         catalog = load_plan_activity_catalog(self._activities, updated)
         updated = with_fresh_monthly_verification(updated, catalog)
         self._plans.save(updated.plan_id, updated)

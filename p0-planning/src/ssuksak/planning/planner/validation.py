@@ -23,17 +23,21 @@ from ..domain.monthly_template import (
     SectionRole,
     TemplateSection,
 )
-from ..domain.monthly_template_profile import INSTITUTION_INPUT_SECTION_KEYS
+from ..domain.monthly_template_profile import DRILL_SECTION_KEY, INSTITUTION_INPUT_SECTION_KEYS
 from ..domain.safety_placement import SafetyKind
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..evidence.models import SourceSection
 from ..retrieval.models import AGE_VERIFIABLE_TIERS
 from .contracts import (
+    CANDIDATE_PREFIXES,
+    DRILL_CANDIDATE_PREFIX,
+    SAFETY_CANDIDATE_PREFIX,
     MonthlyPlanProposal,
     MonthlyPlanningRequest,
     ProposedSectionValue,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from .weekly import unsupported_facts
 
 
 class ProposalValidationCode(str, Enum):
@@ -94,7 +98,11 @@ class SafetySlotReason(str, Enum):
     SAME_TOPIC_AS_OTHER_WEEK = "SAME_TOPIC_AS_OTHER_WEEK"
     SAFETY_REFERENCE_ID_FORBIDDEN = "SAFETY_REFERENCE_ID_FORBIDDEN"
     DISPLAY_LABEL_IN_CONTENT = "DISPLAY_LABEL_IN_CONTENT"
+    CANDIDATE_REFS_OUT_OF_SLOT = "CANDIDATE_REFS_OUT_OF_SLOT"
 
+
+# The LLM never writes these Sections' Cells; the drill Cell is the teacher's.
+_NOT_GENERATED_SECTION_KEYS = INSTITUTION_INPUT_SECTION_KEYS | {DRILL_SECTION_KEY}
 
 MAX_STATUTORY_SAMPLE_REFS = 2
 _SENTENCE_END = re.compile(r"[.!?。]+")
@@ -495,8 +503,12 @@ def validate_monthly_proposal_schema(
     if len(set(month_keys)) != len(month_keys):
         fail(ProposalValidationCode.DUPLICATE_SECTION, "month_sections")
 
+    targets = {key for key, _ in request.allowed_grounding_refs_by_section}
+    candidates = {key for key in targets if key.startswith(CANDIDATE_PREFIXES)}
     for value in proposal.month_sections:
         section = snapshot_sections.get(value.section_key)
+        if value.section_key in candidates:
+            continue  # checked by _safety_candidate_issues / _drill_candidate_issues
         if section is None:
             fail(
                 ProposalValidationCode.UNKNOWN_SECTION,
@@ -504,7 +516,7 @@ def validate_monthly_proposal_schema(
             )
         elif section.role is SectionRole.AXIS:
             fail(ProposalValidationCode.AXIS_CONTENT, value.section_key)
-        elif value.section_key in INSTITUTION_INPUT_SECTION_KEYS:
+        elif value.section_key in _NOT_GENERATED_SECTION_KEYS:
             fail(ProposalValidationCode.INSTITUTION_INPUT_SECTION, value.section_key)
         elif section.repeat_by is not RepeatBy.NONE:
             fail(
@@ -534,7 +546,7 @@ def validate_monthly_proposal_schema(
                     value.section_key,
                     week_id=week.week_id.value,
                 )
-            elif value.section_key in INSTITUTION_INPUT_SECTION_KEYS:
+            elif value.section_key in _NOT_GENERATED_SECTION_KEYS:
                 fail(
                     ProposalValidationCode.INSTITUTION_INPUT_SECTION,
                     value.section_key,
@@ -554,13 +566,12 @@ def validate_monthly_proposal_schema(
         and section.repeat_by is RepeatBy.NONE
         and section.required_for_generation
     }
-    missing_month = required_month - set(month_keys)
+    missing_month = (required_month | candidates) - set(month_keys)
     for key in sorted(missing_month):
         fail(ProposalValidationCode.REQUIRED_SECTION_MISSING, key)
 
     # Without approved safety grounding safety_education is not an LLM target;
     # the Core safety assessment builds its EMPTY_UNRESOLVED cells instead.
-    targets = {key for key, _ in request.allowed_grounding_refs_by_section}
     required_weekly = {
         section.section_key
         for section in snapshot.sections
@@ -659,7 +670,7 @@ def validate_monthly_proposal_grounding(
             for ref in value.grounding_refs
         )
         for code in visible_text_violations(
-            value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum)
+            value.value, evidence_refs=_hidden_ids(request, packet)
         ):
             if code == "SAFETY_CONTENT_LEAKAGE" and safety_grounded:
                 continue
@@ -781,6 +792,8 @@ def validate_monthly_proposal_grounding(
                 value.section_key,
                 week_id=week_id,
             )
+    issues.extend(_safety_candidate_issues(proposal, packet, request))
+    issues.extend(_drill_candidate_issues(proposal, packet, request))
     if packet.safety is not None:
         seen_text: dict[str, str] = {}
         seen_ref: dict[str, str] = {}
@@ -813,6 +826,127 @@ def validate_monthly_proposal_grounding(
                          actual=seen_topic[topic])
                 seen_topic.setdefault(topic, week_id)
     return MonthlyProposalValidationResult(tuple(issues))
+
+
+def _safety_candidate_issues(
+    proposal: MonthlyPlanProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyPlanningRequest,
+) -> list[ProposalValidationIssue]:
+    """Each candidate: one resolved sentence citing only its Rule-fixed slot refs."""
+    slots = {SAFETY_CANDIDATE_PREFIX + slot.slot: slot for slot in packet.safety_candidates}
+    issues: list[ProposalValidationIssue] = []
+    facts = _input_facts(request) if slots else ""
+    seen: dict[str, str] = {}
+    for value in proposal.month_sections:
+        slot = slots.get(value.section_key)
+        if slot is None:
+            continue
+        key = value.section_key
+
+        def fail(code: ProposalValidationCode, detail: str = "", _key: str = key, **located: str | None) -> None:
+            issues.append(ProposalValidationIssue(code, _key, detail, None, **located))
+
+        if value.unresolved:
+            fail(ProposalValidationCode.UNRESOLVED_NOT_ALLOWED)
+            continue
+        for code in visible_text_violations(
+            value.value, evidence_refs=_hidden_ids(request, packet)
+        ):
+            if code != "SAFETY_CONTENT_LEAKAGE":
+                fail(ProposalValidationCode.TEXT_POLICY, code, reason=code)
+        if _DISPLAY_LABEL.match(value.value):
+            reason = SafetySlotReason.DISPLAY_LABEL_IN_CONTENT.value
+            fail(ProposalValidationCode.TEXT_POLICY, reason, reason=reason)
+        if unsupported_facts(value.value, facts):
+            fail(ProposalValidationCode.TEXT_POLICY, "UNSUPPORTED_FACT", reason="UNSUPPORTED_FACT")
+        refs = value.grounding_refs
+        statutory = slot.kind is SafetyKind.STATUTORY
+        if not refs or not set(refs) <= {ref for ref, _ in slot.allowed} or (statutory and len(refs) != 1):
+            fail(
+                ProposalValidationCode.SAFETY_GROUNDING_MISMATCH,
+                reason=SafetySlotReason.CANDIDATE_REFS_OUT_OF_SLOT.value,
+                expected="1 allowed ref" if statutory else "allowed refs",
+                actual=str(len(refs)),
+            )
+        if sentence_count(value.value) > 1:
+            fail(ProposalValidationCode.SAFETY_MULTIPLE_SENTENCES, reason=SafetySlotReason.MULTIPLE_SENTENCES.value,
+                 expected="1", actual=str(sentence_count(value.value)))
+        if value.reference_id is not None:
+            fail(ProposalValidationCode.UNKNOWN_REFERENCE_ID,
+                 reason=SafetySlotReason.SAFETY_REFERENCE_ID_FORBIDDEN.value, expected="null", actual="non_null")
+        text = normalize_visible_text(value.value)
+        if not statutory and text in {normalize_visible_text(t) for _, t in slot.allowed}:
+            fail(ProposalValidationCode.SOURCE_TEXT_COPY)
+        if text in seen:
+            fail(ProposalValidationCode.SAFETY_DUPLICATE_CONTENT, reason=SafetySlotReason.SAME_TEXT_AS_OTHER_WEEK.value,
+                 expected="unique", actual=seen[text])
+        seen.setdefault(text, key)
+    return issues
+
+
+def _hidden_ids(request: MonthlyPlanningRequest, packet: MonthlyContextPacket) -> frozenset[str]:
+    """Internal ids the request shows the LLM; none may appear in teacher-visible text."""
+    return (
+        request.valid_grounding_refs
+        | curriculum_source_refs(packet.curriculum)
+        | {topic.topic_id for topic in packet.drill_topics}
+    )
+
+
+def _input_facts(request: MonthlyPlanningRequest) -> str:
+    """A repair request carries the rejected proposal; facts may only come from the original input."""
+    if request.repair_targets:
+        return json.dumps(json.loads(request.user_content)["original_request"], ensure_ascii=False)
+    return request.user_content
+
+
+def _drill_candidate_issues(
+    proposal: MonthlyPlanProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyPlanningRequest,
+) -> list[ProposalValidationIssue]:
+    """Each drill topic: one resolved sentence, no refs, no fact the input does not hold.
+
+    Whether the sentence matches its topic is not checked; the screen shows the label."""
+    keys = {DRILL_CANDIDATE_PREFIX + topic.topic_id for topic in packet.drill_topics}
+    if not keys:
+        return []
+    facts = _input_facts(request)
+    issues: list[ProposalValidationIssue] = []
+    seen: set[str] = set()
+    for value in proposal.month_sections:
+        if value.section_key not in keys:
+            continue
+
+        def fail(code: ProposalValidationCode, reason: str = "", _key: str = value.section_key) -> None:
+            issues.append(ProposalValidationIssue(code, _key, reason, None, reason=reason or None))
+
+        if value.unresolved:
+            fail(ProposalValidationCode.UNRESOLVED_NOT_ALLOWED)
+            continue
+        reasons = [
+            code
+            for code in visible_text_violations(
+                value.value, evidence_refs=_hidden_ids(request, packet)
+            )
+            if code != "SAFETY_CONTENT_LEAKAGE"
+        ]
+        if unsupported_facts(value.value, facts):
+            reasons.append("UNSUPPORTED_FACT")
+        if sentence_count(value.value) > 1:
+            reasons.append("MULTIPLE_SENTENCES")
+        text = normalize_visible_text(value.value)
+        if text in seen:
+            reasons.append("DUPLICATE_TEXT")
+        seen.add(text)
+        for reason in reasons:
+            fail(ProposalValidationCode.TEXT_POLICY, reason)
+        if value.grounding_refs:
+            fail(ProposalValidationCode.WRONG_SOURCE_GROUNDING, "DRILL_CITES_NOTHING")
+        if value.reference_id is not None:
+            fail(ProposalValidationCode.UNKNOWN_REFERENCE_ID, "REFERENCE_FORBIDDEN_FOR_SECTION")
+    return issues
 
 
 def validate_monthly_proposal(

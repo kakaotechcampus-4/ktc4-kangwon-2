@@ -233,13 +233,12 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
             "goals",
             "basic_habit",
         } | (indoor if indoor_optional else set())
-        assert {k for k, v in selection.items() if v == "INSTITUTION_INPUT"} == {
-            "event_schedule",
-            "drill",
-        }
+        assert {k for k, v in selection.items() if v == "INSTITUTION_INPUT"} == {"event_schedule"}
+        # drill 은 repeat_by 를 준 v0.2.3 부터 고를 수 있다(이 목록에는 아직 없다).
         assert {k for k, v in selection.items() if v == "NOT_SUPPORTED"} == {
             "emergency_response",
             "special_program",
+            "drill",
         } | (set() if indoor_optional else indoor)
         assert "habits" not in selection  # Template 의 habits 는 Profile 이름으로 보인다
         week = next(s for s in item["sections"] if s["section_key"] == "week_axis")

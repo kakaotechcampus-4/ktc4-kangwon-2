@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import (
     ActivityCatalogRef,
     MonthlyCell,
+    MonthlyDrillCandidate,
     MonthlyGenerationMode,
     MonthlyPlan,
+    MonthlySafetyCandidate,
     MonthlySection,
 )
 from ..domain.monthly_constraint import CellState
 from ..domain.monthly_template import EmptyValuePolicy, RepeatBy, SectionRole
 from ..domain.monthly_template_profile import (
+    DRILL_SECTION_KEY,
     INSTITUTION_INPUT_SECTION_KEYS,
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
 )
@@ -29,7 +34,8 @@ from ..domain.provenance import (
 )
 from ..domain.yearly_plan import YearlyPlan
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
-from ..planner.contracts import MonthlyPlanningOutcome
+from ..domain.safety_placement import SafetyWeek
+from ..planner.contracts import DRILL_CANDIDATE_PREFIX, SAFETY_CANDIDATE_PREFIX, MonthlyPlanningOutcome
 from ..planner.service import MonthlyPlanner
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
@@ -58,6 +64,8 @@ from .monthly_dto import (
     MonthlyActivitySelectionResult,
 )
 from .monthly_errors import MonthlyApplicationError
+from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
+from .safety_candidates import candidate_evidence
 from .monthly_support import (
     MonthlyContextPipeline,
     deduplicate_evidence,
@@ -107,6 +115,7 @@ class GenerateMonthlyPlan:
         planner: MonthlyPlanner | None = None,
         optional_context: OptionalContextProvider | None = None,
         safety_placement_repository: SafetyPlacementPolicyRepository | None = None,
+        drill_repository: DrillTopicReferenceRepository | None = None,
     ) -> None:
         self._parents = parent_plan_repository
         self._plans = plan_repository
@@ -120,6 +129,7 @@ class GenerateMonthlyPlan:
         self._planner = planner
         self._optional_context = optional_context
         self._placements = safety_placement_repository
+        self._drills = drill_repository
 
     def execute(
         self, command: GenerateMonthlyPlanCommand
@@ -195,6 +205,22 @@ class GenerateMonthlyPlan:
                 "monthly_safety_placement_requires_llm_planner",
                 "Safety placement writes content through the LLM planner only",
             )
+        candidate_mode = command.safety_candidates is not None
+        if candidate_mode and command.generation_mode is not MonthlyGenerationMode.LLM_PLANNER:
+            raise MonthlyApplicationError(
+                "monthly_safety_candidates_require_llm_planner",
+                "Safety candidates are written through the LLM planner only",
+            )
+        drill_mode = template_snapshot.section(DRILL_SECTION_KEY) is not None
+        if drill_mode and (
+            command.generation_mode is not MonthlyGenerationMode.LLM_PLANNER
+            or command.drill_topics is None
+            or self._drills is None
+        ):
+            raise MonthlyApplicationError(
+                "monthly_drill_requires_llm_planner",
+                "Drill candidates need the LLM planner and an approved drill topic Reference",
+            )
         catalog = load_activity_catalog(
             self._activities, command.activity_catalog
         )
@@ -220,6 +246,11 @@ class GenerateMonthlyPlan:
                 )
             except ValueError as exc:
                 raise MonthlyApplicationError("safety_placement_policy_invalid", str(exc)) from exc
+        if candidate_mode and not safety_active:
+            raise MonthlyApplicationError(
+                "monthly_safety_candidates_require_safety_section",
+                "Safety candidates need a safety_education Section in the Template",
+            )
         safety_assessment = assess_safety_education(
             safety_rule,
             safety_section_active=safety_active,
@@ -261,6 +292,12 @@ class GenerateMonthlyPlan:
                 safety_slots=safety_slots,
                 safety_rule=safety_rule,
             )
+            if candidate_mode:
+                packet, store, records = self._context.with_safety_candidates(
+                    packet, rule=safety_rule, selector=command.safety_candidates
+                )
+            if drill_mode:
+                packet = self._with_drill_topics(packet, command)
             available = {item.grounding_class for item in packet.section_evidence}
             missing = sorted(
                 section.section_key
@@ -309,6 +346,7 @@ class GenerateMonthlyPlan:
                 planner_outcome=planner_outcome,
                 packet=packet,
                 safety_placements={slot.week_id: slot.placement for slot in safety_slots},
+                candidate_mode=candidate_mode,
                 used_activity_ids=used_activity_ids,
                 selection_results=selection_results,
             )
@@ -328,6 +366,56 @@ class GenerateMonthlyPlan:
                     cells=cells,
                 )
             )
+
+        safety_candidates: list[MonthlySafetyCandidate] = []
+        for slot in packet.safety_candidates if candidate_mode else ():
+            key = SAFETY_CANDIDATE_PREFIX + slot.slot
+            proposed = proposal.value_for(key, None)
+            item_id = self._ids.new_item_id()
+            cell = MonthlyCell(
+                item_id=item_id,
+                section_key=SAFETY_SECTION_KEY,
+                week_id=None,
+                value=proposed.value,
+                cell_state=CellState.FILLED,
+                generation=GenerationMethodDetail(
+                    GenerationMethod.RULE_LLM, LLM_INTEGRATION_RULE_ID, planner_outcome.prompt_version_for(None, key)
+                ),
+                evidence=candidate_evidence(
+                    slot, proposed.grounding_refs,
+                    legal_rule_version=safety_rule.legal_rule_version, store=store, records=records,
+                ),
+                audit=AuditHistory(
+                    (AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)
+                ),
+            )
+            safety_candidates.append(
+                MonthlySafetyCandidate(cell, slot.kind, category_id=slot.category_id, topic_group=slot.topic_group)
+            )
+
+        drill_candidates = []
+        for topic in packet.drill_topics if drill_mode else ():
+            key = DRILL_CANDIDATE_PREFIX + topic.topic_id
+            item_id = self._ids.new_item_id()
+            cell = MonthlyCell(
+                item_id=item_id,
+                section_key=DRILL_SECTION_KEY,
+                week_id=None,
+                value=proposal.value_for(key, None).value,
+                cell_state=CellState.FILLED,
+                generation=GenerationMethodDetail(
+                    GenerationMethod.RULE_LLM, LLM_INTEGRATION_RULE_ID, planner_outcome.prompt_version_for(None, key)
+                ),
+                evidence=(
+                    EvidenceSource(
+                        EvidenceSourceType.CURRICULUM, topic.content_id, packet.curriculum.catalog_version
+                    ),
+                ),
+                audit=AuditHistory(
+                    (AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)
+                ),
+            )
+            drill_candidates.append(MonthlyDrillCandidate(cell, topic.topic_id, topic.label))
 
         plan = MonthlyPlan(
             plan_id=plan_id,
@@ -359,6 +447,9 @@ class GenerateMonthlyPlan:
             ),
             generation_mode=command.generation_mode,
             parent_subthemes=command.parent_subthemes,
+            safety_candidates=tuple(safety_candidates),
+            safety_weeks=tuple(SafetyWeek(p.week_id) for p in week_periods if p.active and candidate_mode),
+            drill_candidates=tuple(drill_candidates),
         )
         self._require_complete(plan, resolved_sections)
         plan = with_fresh_monthly_verification(plan, catalog)
@@ -413,12 +504,28 @@ class GenerateMonthlyPlan:
         planner_outcome: MonthlyPlanningOutcome | None,
         packet,
         safety_placements,
+        candidate_mode: bool,
         used_activity_ids: set[str],
         selection_results: list[MonthlyActivitySelectionResult],
     ) -> tuple[MonthlyCell, ...]:
         section = resolved.template_section
         if section.role is SectionRole.AXIS:
             return ()
+        if section.section_key == DRILL_SECTION_KEY:
+            # The document Cell starts blank and without generation, as v2's teacher-input Cell.
+            item_id = self._ids.new_item_id()
+            created = AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR)
+            return (
+                MonthlyCell(
+                    item_id=item_id,
+                    section_key=DRILL_SECTION_KEY,
+                    week_id=None,
+                    value="",
+                    cell_state=CellState.EMPTY_VALID,
+                    audit=AuditHistory((created,)),
+                    source_label=section.source_label,
+                ),
+            )
         week_ids = (
             (None,)
             if section.repeat_by is RepeatBy.NONE
@@ -440,11 +547,10 @@ class GenerateMonthlyPlan:
             )
             unresolved = False
             # A week the placement policy leaves out has no safety education: whatever the
-            # LLM proposed there is dropped and the Cell stays validly empty.
-            unplaced = (
-                section.section_key == SAFETY_SECTION_KEY
-                and bool(safety_placements)
-                and week_id not in safety_placements
+            # LLM proposed there is dropped and the Cell stays validly empty. With candidates
+            # every week starts that way until the teacher places one.
+            unplaced = section.section_key == SAFETY_SECTION_KEY and (
+                candidate_mode or (bool(safety_placements) and week_id not in safety_placements)
             )
             if unplaced:
                 proposed = None
@@ -626,6 +732,25 @@ class GenerateMonthlyPlan:
             )
         return tuple(cells)
 
+    def _with_drill_topics(self, packet, command: GenerateMonthlyPlanCommand):
+        """The packet with the month's Rule-fixed drill topics; fails before the LLM."""
+        if packet.curriculum is None:
+            raise MonthlyApplicationError(
+                "curriculum_reference_unavailable", "Drill candidates need the v1 curriculum context"
+            )
+        selector = command.drill_topics
+        try:
+            topics = select_drill_topics(
+                self._drills.get_catalog(selector.catalog_id, selector.catalog_version),
+                packet.curriculum,
+                packet.target_month.calendar_month,
+            )
+        except DrillTopicError as error:
+            raise MonthlyApplicationError(
+                "monthly_" + error.code.lower(), "Drill candidates cannot be built: " + error.code
+            ) from None
+        return replace(packet, drill_topics=topics)
+
     @staticmethod
     def _require_complete(
         plan: MonthlyPlan, resolved_sections: tuple[ResolvedSection, ...]
@@ -644,7 +769,10 @@ class GenerateMonthlyPlan:
                     "monthly_plan_incomplete",
                     f"Generated cell count is incomplete for {section.section_key}",
                 )
-        if any(cell.generation is None or not cell.audit.events for cell in plan.cells):
+        if any(
+            (cell.generation is None and cell.section_key != DRILL_SECTION_KEY) or not cell.audit.events
+            for cell in plan.cells
+        ):
             raise MonthlyApplicationError(
                 "monthly_plan_incomplete",
                 "Every generated Cell requires generation and CREATED audit metadata",
