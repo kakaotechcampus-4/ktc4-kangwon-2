@@ -4,9 +4,10 @@
  * 월간계획안(v1) 편집 — 놀이 월간과 같은 배치다. 문서에서 칸을 누르면 옆 패널에서 고친다.
  * 입력을 멈추거나 칸을 떠나면 그 칸만 저장한다(v1 칸 편집 API). 저장 · 재생성 · 확정은
  * 한 줄로 세워 앞 요청이 돌려준 revision 으로 보낸다. 409 면 덮어쓰지 않고 다시 불러온다.
+ * 저장하지 못한 글은 되돌리지 않고 남겨 다시 저장하게 한다 — 그동안 확정 · 반 · 월 이동은 멈춘다.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { ApiError } from "@/lib/api/client";
 import {
   confirmMonthlyPlan,
@@ -47,6 +48,7 @@ export default function MonthlyPlanEditor({
   onConflict,
   onDelete,
   note,
+  flushRef,
 }: {
   plan: MonthlyPlan;
   onPlan: (plan: MonthlyPlan) => void;
@@ -55,6 +57,8 @@ export default function MonthlyPlanEditor({
   onDelete: () => void;
   /** 양식 출처 한 줄. */
   note: string;
+  /** 화면이 반 · 월을 옮기기 전에 부른다 — 열린 입력을 저장하고 끝까지 기다린다. 못 저장한 칸이 남으면 false. */
+  flushRef?: RefObject<(() => Promise<boolean>) | null>;
 }) {
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -71,7 +75,8 @@ export default function MonthlyPlanEditor({
   useEffect(() => {
     latest.current = plan; // 다시 불러온 최신 계획안도 받는다.
   }, [plan]);
-  const failed = useRef(false);
+  // 저장하지 못한 칸과 그 글. 다시 저장하거나 서버 값과 같아질 때까지 남는다.
+  const failed = useRef(new Map<string, string>());
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -113,28 +118,59 @@ export default function MonthlyPlanEditor({
           ? Object.fromEntries(Object.entries(d).filter(([k]) => k !== itemId))
           : d,
       );
-    const current = cells.find((c) => c.cell.item_id === itemId)?.cell.value;
-    if (current === text) return drop();
-    setStatus("saving");
+    // 바뀐 것이 없으면(보낼 것이 없던 칸) 저장 표시는 그대로 둔다.
+    const settled = (changed: boolean) => {
+      failed.current.delete(itemId);
+      if (!mounted.current) return;
+      drop();
+      if (changed) setStatus(failed.current.size ? "failed" : "saved");
+    };
+    // 같은지는 보내기 직전에 본다 — 앞 저장이 끝난 뒤의 서버 값과 비교해야 마지막 입력을 버리지 않는다.
     enqueue(async () => {
+      const cur = latest.current;
+      const now = cur.sections.flatMap((s) => s.cells).find((c) => c.item_id === itemId)?.value;
+      if (now === text) return settled(failed.current.has(itemId));
+      if (mounted.current) setStatus("saving");
       try {
-        const cur = latest.current;
         accept(await editMonthlyCell(cur.id, itemId, text, cur.revision));
-        failed.current = false;
-        if (!mounted.current) return;
-        drop();
-        setStatus("saved");
+        settled(true);
       } catch (e) {
         if (isSaveConflict(e)) return conflict();
-        failed.current = true;
+        failed.current.set(itemId, text);
         if (!mounted.current) return;
-        drop();
-        setBumps((b) => ({ ...b, [itemId]: (b[itemId] ?? 0) + 1 }));
         setStatus("failed");
-        setMessage("저장하지 못한 칸은 원래대로 되돌렸어요. " + describe(e, ""));
+        setMessage(
+          "저장하지 못했어요. 쓴 글은 그대로 두었어요 — 「다시 저장」을 눌러 주세요. " +
+            describe(e, ""),
+        );
       }
     }).catch(() => {});
   }
+  const retry = () => failed.current.forEach((text, itemId) => saveCell(itemId, text));
+
+  /** 열린 입력창을 닫아 마지막 글을 줄에 넣고 줄이 빌 때까지 기다린다. 못 저장한 칸이 남으면 false. */
+  async function flush() {
+    (document.activeElement as HTMLElement | null)?.blur();
+    await queue.current;
+    if (!failed.current.size) return true;
+    if (mounted.current) setProblem("저장하지 못한 칸이 있어요. 「다시 저장」한 뒤 해 주세요.");
+    return false;
+  }
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flush;
+    return () => {
+      flushRef.current = null;
+    };
+  });
+  // 입력 중 · 저장 중 · 저장 실패 글이 있으면 새로고침 · 닫기 전에 묻는다.
+  const unsent = status === "saving" || status === "failed" || Object.keys(live).length > 0;
+  useEffect(() => {
+    if (!unsent || confirmed) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsent, confirmed]);
 
   /** 열린 입력창을 닫아 마지막 글을 줄에 넣고, 줄이 빌 때까지 기다린 뒤 `job` 을 한다. */
   async function afterSaves(
@@ -143,17 +179,11 @@ export default function MonthlyPlanEditor({
     done: string,
   ) {
     if (busy) return;
-    (document.activeElement as HTMLElement | null)?.blur();
     setBusy(key);
     setMessage("");
     setProblem("");
     try {
-      await queue.current;
-      if (failed.current) {
-        failed.current = false; // 실패한 칸은 이미 되돌렸다 — 확인한 뒤 다시 누르면 진행한다.
-        setProblem("저장하지 못한 칸을 원래대로 되돌렸어요. 확인한 뒤 다시 해 주세요.");
-        return;
-      }
+      if (!(await flush())) return;
       const next = await enqueue(async () => accept(await job(latest.current))).then(
         () => latest.current,
       );
@@ -203,6 +233,11 @@ export default function MonthlyPlanEditor({
         <span className={ws.muted}>{note}</span>
         {blank && <span role="status">빈 칸이 있어요 (확정을 막지 않아요)</span>}
         {!confirmed && <span role="status">{SAVE_LABEL[status]}</span>}
+        {!confirmed && status === "failed" && (
+          <button type="button" className={ws.secondary} disabled={locked} onClick={retry}>
+            다시 저장
+          </button>
+        )}
         <span role="status">{message}</span>
       </div>
       {problem && <p role="alert">{problem}</p>}
@@ -255,8 +290,9 @@ export default function MonthlyPlanEditor({
                 key={picked.cell.item_id + ":" + stamp(picked.cell.item_id)}
                 id="monthly-cell"
                 label={label(picked.section, picked.cell)}
-                value={picked.cell.value}
+                value={shown(picked.cell)}
                 allowBlank
+                maxLength={Infinity}
                 readOnly={locked}
                 onDraft={(text) => setLive((d) => ({ ...d, [picked.cell.item_id]: text }))}
                 onSave={(text) => saveCell(picked.cell.item_id, text)}

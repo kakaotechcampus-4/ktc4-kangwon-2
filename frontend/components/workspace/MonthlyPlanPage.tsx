@@ -65,6 +65,11 @@ export default function MonthlyPlanPage() {
   // 409 로 다시 불러올 때마다 올려 편집 화면을 새로 연다.
   const [version, setVersion] = useState(0);
   const running = useRef(false);
+  // 편집 화면의 「열린 입력 저장하고 기다리기」. 못 저장한 칸이 있으면 반 · 월을 옮기지 않는다.
+  const flush = useRef<(() => Promise<boolean>) | null>(null);
+  const leave = async (move: () => void) => {
+    if (!flush.current || (await flush.current())) move();
+  };
   const loading = loadedScope !== scope;
 
   /** 그 달 계획안을 불러온다. 없으면 null 로 둔다 — 화면이 만들기 버튼을 띄운다. */
@@ -190,7 +195,8 @@ export default function MonthlyPlanPage() {
             value={localClassId}
             disabled={!!busy}
             onChange={(e) => {
-              setPickedClass(e.target.value);
+              const next = e.target.value;
+              void leave(() => setPickedClass(next));
             }}
           >
             {classes.map((c) => (
@@ -206,7 +212,8 @@ export default function MonthlyPlanPage() {
             value={month}
             disabled={!!busy}
             onChange={(e) => {
-              setMonth(Number(e.target.value));
+              const next = Number(e.target.value);
+              void leave(() => setMonth(next));
             }}
           >
             {MONTHS.map((m) => (
@@ -255,6 +262,7 @@ export default function MonthlyPlanPage() {
             setMessage("다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.");
           }}
           onDelete={handleDelete}
+          flushRef={flush}
           note={
             profile ? `${profileSource} · ${profile.profile_id} / ${profile.profile_version}` : ""
           }
