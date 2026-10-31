@@ -89,7 +89,8 @@ def _section_branches(
     is one branch that fixes its reference_id and its canonical value together, so an id
     can only be returned with its own label. Theme has its one locked pair; outdoor_play
     may instead be free text with a null reference_id. A non-safety free-text branch
-    mirrors the validator: it is never unresolved and cites at least one ref.
+    mirrors the validator: it is never unresolved and cites at least one ref, except that
+    indoor_alternative may also return a week blank (unresolved, no refs).
     """
     properties = dict(_SECTION_SCHEMA["properties"])
     properties["section_key"] = {"type": "string", "enum": [section_key]}
@@ -121,7 +122,16 @@ def _section_branches(
         free["unresolved"] = {"type": "boolean", "enum": [False]}
         if refs:
             free["grounding_refs"] = dict(properties["grounding_refs"], minItems=1)
-    return [*pairs, _object_schema(dict(properties, **free))]
+    branches = [*pairs, _object_schema(dict(properties, **free))]
+    if section_key == "indoor_alternative":
+        branches.append(_object_schema(dict(
+            properties,
+            value={"type": "string", "enum": [""]},
+            unresolved={"type": "boolean", "enum": [True]},
+            reference_id={"type": "null"},
+            grounding_refs=_refs_schema(()),
+        )))
+    return branches
 
 
 def _section_schema(
