@@ -32,6 +32,7 @@ from .snapshots import _audit, _evidence, _generation
 
 WEEKLY_TEMPLATE = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.1.0")
 WEEKLY_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "data" / "templates" / "weekly_template_a_v0_1_0.json"
+WEEKLY_DAY_TEMPLATE = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.2.0")  # ADR-051
 WEEK = WeekId("2026-09-W2")
 
 
@@ -40,7 +41,9 @@ class WeeklyHarness(PlanningHarness):
         super().__init__()
         self.weekly_plans: InMemoryPlanRepository[WeeklyPlan] = InMemoryPlanRepository()
         self.weekly_ids = DeterministicIdGenerator("weekly-final")
-        self.weekly_templates = JsonMonthlyTemplateRepository(paths=(WEEKLY_TEMPLATE_PATH,))
+        self.weekly_templates = JsonMonthlyTemplateRepository(
+            paths=(WEEKLY_TEMPLATE_PATH, WEEKLY_TEMPLATE_PATH.with_name("weekly_template_a_v0_2_0.json"))
+        )
         # Generation sees the approved fixture; the real file stays PENDING (ADR-027).
         self.weekly_generation_templates = ApprovedTemplates(self.weekly_templates)
         self.weekly_provider = RequestAwareWeeklyLlm()
@@ -65,6 +68,7 @@ class WeeklyHarness(PlanningHarness):
         optional_context_names: tuple[str, ...] = (),
         provider=None,
         weekly_classification: bool = True,
+        template_ref: TemplateRef = WEEKLY_TEMPLATE,
     ) -> GenerateWeeklyPlanResult:
         return GenerateWeeklyPlan(
             parent_plan_repository=self.monthly_plans,
@@ -84,7 +88,7 @@ class WeeklyHarness(PlanningHarness):
                 parent_monthly_plan_id=parent.plan_id,
                 week_id=week_id,
                 operating_days=operating_days,
-                template_ref=WEEKLY_TEMPLATE,
+                template_ref=template_ref,
                 safety_rule=SAFETY_RULE,
                 generation_mode=mode,
                 activity_catalog=ACTIVITY_CATALOG,
@@ -94,7 +98,14 @@ class WeeklyHarness(PlanningHarness):
 
 
     def regenerate_weekly(
-        self, plan: WeeklyPlan, *, section_key: str, provider=None, actor=TEACHER, weekly_classification: bool = True
+        self,
+        plan: WeeklyPlan,
+        *,
+        section_key: str,
+        provider=None,
+        actor=TEACHER,
+        weekly_classification: bool = True,
+        day: OperatingDay | None = None,
     ) -> WeeklyPlan:
         return RegenerateWeeklyPlanCell(
             plan_repository=self.weekly_plans,
@@ -105,7 +116,7 @@ class WeeklyHarness(PlanningHarness):
             planner=WeeklyPlanner(provider or self.weekly_provider),
             evidence_repository=_EVIDENCE_REPOSITORY,
             weekly_classification_repository=self.weekly_classification if weekly_classification else None,
-        ).execute(RegenerateWeeklyPlanCellCommand(plan.plan_id, plan.cell(section_key).item_id, actor))
+        ).execute(RegenerateWeeklyPlanCellCommand(plan.plan_id, plan.cell(section_key, day).item_id, actor))
 
 
 def _cell(cell) -> dict[str, Any]:

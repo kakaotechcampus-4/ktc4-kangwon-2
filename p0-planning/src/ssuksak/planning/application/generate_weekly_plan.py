@@ -17,7 +17,7 @@ from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.monthly_plan import ActivityCatalogRef, MonthlyCell, MonthlyGenerationMode, MonthlyPlan
-from ..domain.monthly_template import MonthlyTemplate, TemplateRef
+from ..domain.monthly_template import MonthlyTemplate, RepeatBy, TemplateRef
 from ..domain.monthly_verification import FindingKind
 from ..domain.plan import PlanStatus
 from ..domain.provenance import (
@@ -255,13 +255,20 @@ class GenerateWeeklyPlan:
                 ) from exc
         selection: ActivitySelectionTrace | None = None
         cells = []
-        for section in snapshot.sections:
+        # ADR-051: a repeat_by DAY Section gets one Cell per operating day.
+        for section, day in (
+            (s, d) for s in snapshot.sections
+            for d in (command.operating_days if s.repeat_by is RepeatBy.DAY else (None,))
+        ):
             key = section.section_key
             value, evidence, snapshots = "", (), ()
             generation: GenerationMethodDetail | None = GenerationMethodDetail(
                 GenerationMethod.RULE_ONLY, EMPTY_RULE_ID, WEEKLY_RULE_VERSION
             )
-            proposed = outcome.value(key) if outcome is not None else None
+            if outcome is None:
+                proposed = None
+            else:  # an unresolved day stays empty; no other day fills it (WD-3)
+                proposed = outcome.day_value(key, day.value) if day is not None else outcome.value(key)
             if key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
                 generation = None  # teacher input only (§6-2, §10-2)
             elif proposed is not None:
@@ -324,6 +331,7 @@ class GenerateWeeklyPlan:
                 )),
                 parent_snapshots=snapshots,
                 source_label=section.source_label,
+                day=day,
             ))
 
         plan = WeeklyPlan(
@@ -605,7 +613,8 @@ def _weekly_request(
                 evidence += [(i.evidence_ref, i.text, i.grounding_class.value) for i in items]
         elif key in classified:  # W3c: grounded only by its own class (§7); no parent counterpart
             items = classified[key]
-            targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value))
+            days = tuple(d.value for d in operating_days) if section.repeat_by is RepeatBy.DAY else ()
+            targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value, days=days))
             klass = next(c for c, k in WEEKLY_GROUNDING_SCOPE.items() if k == key)
             evidence += [(i.record_id, i.record.text, klass.value) for i in items]
         elif key == OUTDOOR_KEY and outdoor.ranked:
