@@ -213,6 +213,9 @@ def export_monthly_plan(
             texts[MONTHLY_MONTH_CELLS[section.section_key]] = _month_value(section)
         elif section.section_key in MONTHLY_WEEK_ROWS:
             values = {cell.week_id: cell.value for cell in section.cells}
+            if section.section_key == "safety_education" and plan.safety_weeks:
+                # 후보 모드는 칸을 비워 두고 표시값을 응답마다 계산한다(ADR-052). 미배치 주는 빈칸.
+                values = {week.week_id: week.display_value for week in plan.safety_weeks}
             rows[MONTHLY_WEEK_ROWS[section.section_key]] = [
                 values.get(week.week_id, "") for week in weeks
             ]

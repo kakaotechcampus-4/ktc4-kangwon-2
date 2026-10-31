@@ -1,7 +1,7 @@
 """v1 월간 응답의 안전 후보 세 목록 (api-spec §9-1) — safety_candidates · safety_weeks · notices.
 
-후보 모드 계획은 실제 `POST /api/plans/monthly` 로 만든다. 서버 생성 경로는 아직 후보 모드를 켜지
-않아서(3절), 테스트 안에서 생성 명령만 바꾼다 — Core → codec → DB → GET 은 그대로 지난다.
+계획은 실제 `POST /api/plans/monthly` 로 만든다 — 기본이 후보 모드다(ADR-052). 예전 자동 배치
+계획이 필요한 테스트만 `legacy_mode` 로 생성 명령을 바꾼다.
 """
 
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
@@ -9,8 +9,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from ssuksak.planning import ActorId, MonthlyPlan
-from ssuksak.planning.application.monthly_dto import SafetyCandidatesSelector
+from ssuksak.planning import ActorId, MonthlyPlan, SafetyPlacementSelector
 from ssuksak.planning.domain.safety_placement import STATUTORY_SHORT_LABELS
 from test_monthly_lifecycle_api import (  # noqa: F401
     _approved,
@@ -24,10 +23,6 @@ from test_monthly_lifecycle_api import (  # noqa: F401
 from app.features.plans import monthly_router
 from app.features.plans.repository import PostgresPlanRepository
 
-SAFETY_CANDIDATES = SafetyCandidatesSelector(
-    "safety-evidence-classification-v0.2.0", "safety-reference-quality-v0.1.0"
-)
-
 
 @pytest.fixture
 def seed(db_session, teacher):
@@ -37,14 +32,13 @@ def seed(db_session, teacher):
 
 
 @pytest.fixture
-def candidate_mode(monkeypatch):
-    """둘은 배타라 (monthly_dto) 배치 정책을 끄고 후보 선택자를 함께 넣는다."""
+def legacy_mode(monkeypatch):
+    """2026-10-31 이전의 자동 배치 계획을 만든다. 둘은 배타라 (monthly_dto) 후보 선택자를 끈다."""
     original = monthly_router.GenerateMonthlyPlanCommand
+    placement = SafetyPlacementSelector("ssuksak-safety-placement-v2", supplemental=False)
 
     def command(**fields):
-        return original(
-            **{**fields, "safety_placement": None, "safety_candidates": SAFETY_CANDIDATES}
-        )
+        return original(**{**fields, "safety_placement": placement, "safety_candidates": None})
 
     monkeypatch.setattr(monthly_router, "GenerateMonthlyPlanCommand", command)
 
@@ -53,7 +47,7 @@ def _active_weeks(plan: dict) -> list[str]:
     return [w["week_id"] for w in plan["weeks"] if w["active"]]
 
 
-def test_기존_계획은_세_목록이_비어_있다(seed):
+def test_기존_계획은_세_목록이_비어_있다(seed, legacy_mode):
     plan = _monthly(seed)
 
     assert (plan["safety_candidates"], plan["safety_weeks"], plan["notices"]) == ([], [], [])
@@ -61,7 +55,7 @@ def test_기존_계획은_세_목록이_비어_있다(seed):
     assert (got["safety_candidates"], got["safety_weeks"], got["notices"]) == ([], [], [])
 
 
-def test_후보_모드로_만들면_후보_8개와_주마다_빈_배치와_안내가_온다(seed, candidate_mode):
+def test_후보_모드로_만들면_후보_8개와_주마다_빈_배치와_안내가_온다(seed):
     plan = _monthly(seed)
 
     candidates = plan["safety_candidates"]
@@ -77,7 +71,7 @@ def test_후보_모드로_만들면_후보_8개와_주마다_빈_배치와_안�
     assert plan["notices"] == [{"code": "SAFETY_UNPLACED", "week_id": w} for w in weeks]
 
 
-def test_저장했다_읽어도_세_목록과_sections_가_생성_응답과_같다(seed, candidate_mode):
+def test_저장했다_읽어도_세_목록과_sections_가_생성_응답과_같다(seed):
     plan = _monthly(seed)
     got = _get(plan["id"])
 
@@ -100,7 +94,7 @@ def _place(session, seed, plan: dict, week_id: str, item_id: str) -> None:
     assert repo.update_if_revision(domain.plan_id, placed, expected_revision=plan["revision"])
 
 
-def test_후보를_배치하면_그_주에_표시값이_붙고_안내가_빠진다(db_session, seed, candidate_mode):
+def test_후보를_배치하면_그_주에_표시값이_붙고_안내가_빠진다(db_session, seed):
     plan = _monthly(seed)
     statutory, supplemental = plan["safety_candidates"][0], plan["safety_candidates"][-1]
     week1, week2 = _active_weeks(plan)[:2]
@@ -122,9 +116,7 @@ def test_후보를_배치하면_그_주에_표시값이_붙고_안내가_빠진�
     assert {n["week_id"] for n in got["notices"]}.isdisjoint({week1, week2})
 
 
-def test_배치한_후보_문장을_비우면_SAFETY_BLANK_이고_표시값은_빈_문자열이다(
-    db_session, seed, candidate_mode
-):
+def test_배치한_후보_문장을_비우면_SAFETY_BLANK_이고_표시값은_빈_문자열이다(db_session, seed):
     plan = _monthly(seed)
     candidate = plan["safety_candidates"][0]["cell"]
     week = _active_weeks(plan)[0]
