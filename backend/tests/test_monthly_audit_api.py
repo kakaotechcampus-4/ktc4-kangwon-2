@@ -189,6 +189,7 @@ EVENT_KEYS = {
     "system_actor",
     "value_change",
     "generation_change",
+    "arrangement_change",
 }
 
 
@@ -213,6 +214,7 @@ def test_생성_직후에는_계획안_CREATED_하나와_칸마다_CREATED_가_�
             "system_actor": "monthly_application",
             "value_change": None,
             "generation_change": None,
+            "arrangement_change": None,
         }
     ]
     cell_events = [i for i in items if i["scope"] == "CELL"]
@@ -248,6 +250,7 @@ def test_교사_수정은_TEACHER_EDITED_와_이전_이후_값으로_남는다(w
         "system_actor": None,
         "value_change": {"before": target["value"], "after": "교사가 고친 소주제"},
         "generation_change": None,
+        "arrangement_change": None,
     }
 
 
@@ -279,6 +282,7 @@ def test_재생성은_REGENERATED_와_저장된_생성_방식_변화로_남는�
             "system_actor": None,
             "value_change": {"before": target["value"], "after": after["value"]},
             "generation_change": {"before": target["generation"], "after": after["generation"]},
+            "arrangement_change": None,
         }
     ]
 
