@@ -16,33 +16,47 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
+from ssuksak.adapters.institution_evidence_repository import (
+    JsonInstitutionEvidenceRepository,
+)
 from ssuksak.adapters.json_activity_reference_repository import (
     JsonActivityReferenceRepository,
+)
+from ssuksak.adapters.json_daily_life_reference_repository import (
+    JsonDailyLifeReferenceRepository,
 )
 from ssuksak.adapters.monthly_composition import monthly_context_pipeline
 from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
     JsonSafetyLegalRuleRepository,
 )
+from ssuksak.adapters.play_monthly_composition import DAILY_LIFE_CATALOG
 from ssuksak.adapters.weekly_evidence_classification_repository import (
     JsonWeeklyEvidenceClassificationRepository,
 )
 from ssuksak.planning.application.generate_weekly_plan import GenerateWeeklyPlan
+from ssuksak.planning.application.ports import MonthlyTemplateRepository
 from ssuksak.planning.application.weekly_lifecycle import (
     ConfirmWeeklyPlan,
     EditWeeklyPlanCell,
     RegenerateWeeklyPlanCell,
 )
-from ssuksak.planning.application.ports import MonthlyTemplateRepository
 from ssuksak.planning.domain.monthly_template import TemplateRef
-from ssuksak.planning.domain.weekly_plan import WEEKDAYS, WEEKDAYS_WITH_SATURDAY, OperatingDay
+from ssuksak.planning.domain.weekly_plan import (
+    WEEKDAYS,
+    WEEKDAYS_WITH_SATURDAY,
+    OperatingDay,
+)
 from ssuksak.planning.planner.weekly import WeeklyPlanner, WeeklyPlanningProvider
 
 WEEKLY_TEMPLATE_REF = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.1.0")
 WEEKLY_TEMPLATE_PATH = (
     Path(__file__).resolve().parents[3] / "data" / "templates" / "weekly_template_a_v0_1_0.json"
 )
+
+
+def _daily_life_catalog():
+    return JsonDailyLifeReferenceRepository().get_catalog(*DAILY_LIFE_CATALOG)
 
 
 def weekly_operating_days(saturday_enabled: bool) -> tuple[OperatingDay, ...]:
@@ -81,6 +95,7 @@ def weekly_generation(
         planner=WeeklyPlanner(provider),
         evidence_repository=JsonInstitutionEvidenceRepository(),
         weekly_classification_repository=JsonWeeklyEvidenceClassificationRepository(),
+        daily_life_loader=_daily_life_catalog,
     )
 
 
@@ -107,6 +122,7 @@ def weekly_regeneration(
         planner=WeeklyPlanner(provider),
         evidence_repository=JsonInstitutionEvidenceRepository(),
         weekly_classification_repository=JsonWeeklyEvidenceClassificationRepository(),
+        daily_life_loader=_daily_life_catalog,
     )
 
 

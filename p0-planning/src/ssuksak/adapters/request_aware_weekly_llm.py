@@ -32,7 +32,11 @@ class RequestAwareWeeklyLlm:
             if key == "theme":
                 value, grounding = f"{again}{theme} 속 이번 주 놀이", []
             elif key == "outdoor_play":
-                reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                if target.get("parent_groundable"):
+                    value, grounding = f"{again}{parent[key]}", []
+                elif target["reference_candidates"]:
+                    reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                    grounding = []
             elif key == "safety_education":
                 value, grounding = f"{again}이번 주에도 {parent['safety_education']}", []
             if target.get("days"):  # ADR-051: one distinct value per requested day

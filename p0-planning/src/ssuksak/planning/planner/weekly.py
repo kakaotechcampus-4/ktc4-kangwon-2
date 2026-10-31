@@ -17,6 +17,8 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Protocol
 
+from ..domain.curriculum_reference import CurriculumCatalog
+from ..domain.daily_life_reference import DailyLifeCatalog
 from ..domain.errors import InvalidDomainValueError
 from ..domain.week_period import WeekId
 from .contracts import (
@@ -28,8 +30,12 @@ from .contracts import (
 )
 from .parser import _STRING, _object_schema, _refs_schema
 from .text_policy import normalize_visible_text, visible_text_violations
-from .v1_guidance import V1_GUIDANCE, curriculum_context, curriculum_source_refs
-from ..domain.curriculum_reference import CurriculumCatalog
+from .v1_guidance import (
+    NATURAL_PLAY_GUIDANCE,
+    V1_GUIDANCE,
+    curriculum_context,
+    curriculum_source_refs,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -45,11 +51,29 @@ WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v2"
 # ADR-051: a request with a repeat_by DAY target appends this to every version it uses, so
 # a v0.1.0 request keeps its prompt, schema and fingerprint unchanged.
 DAY_CELLS_SUFFIX = "+day-cells-v1"
+REFERENCE_WIRING_SUFFIX = "+monthly-linked-v1"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
 # Q1 (2026-10-21): these may stand on the parent value alone (PARENT_PLAN grounding).
 PARENT_GROUNDABLE_KEYS = frozenset({"focus", "goals", "basic_habit"})
+OUTDOOR_REFERENCE_INSTRUCTION = "outdoor_play 는 reference_candidates 중 하나의 reference_id 를 고르고 value 에 그 label 을 쓴다. "
+LINKED_OUTDOOR_INSTRUCTION = (
+    "outdoor_play 는 같은 주 부모 놀이의 대상·경험을 먼저 이어 간다. "
+    "Catalog에서 고르면 reference_id와 label을 그대로 쓴다. 부모 값 또는 허용 근거로 이어 쓸 때는 "
+    "reference_id를 null로 두고 실제로 쓴 allowed_grounding_refs만 인용한다. "
+    "parent_groundable이 true인 칸은 부모 현재 값 자체도 근거이며, 이때 grounding_refs는 비울 수 있다. "
+)
+LINKED_WRITING_GUIDANCE = (
+    " 해당 주 부모 focus → 같은 주 놀이 → 실내대체 순서로 작성한다. 고르기 쉬운 놀이에 맞추려고 focus를 바꾸지 않는다. "
+    "목표는 v1 월간처럼 중심 경험을 간결하게 묶되 이번 주의 범위로 좁힌다. "
+    "놀이 이름은 기존 v1 월간처럼 대상과 경험이 보이는 짧은 활동명으로 쓴다. "
+    "실내놀이·대소집단 설명은 v2 놀이 설명과 같은 합니다체로, 유아가 탐색할 대상과 경험을 자연스럽게 쓴다. "
+    "실내대체는 같은 주 바깥놀이를 실내에서 이어 간다. 허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. "
+    "parent의 다른 주 focus도 참고해 이번 주와 다른 주의 경험을 구분하며, 진행 순서나 완성품을 강제하지 않는다. "
+    "daily_life_context는 승인된 생활 문장의 표현 참고다. 부모의 현재 습관을 다른 문장으로 교체하지 않고, "
+    "예문을 그대로 복사하거나 그 ID를 grounding_refs/reference_id로 인용하지 않는다. 단 부모 현재 값의 계승은 허용한다. "
+)
 
 SYSTEM_PROMPT = (
     "너는 어린이집 주간계획안 초안을 쓰는 도우미다. 응답은 JSON 객체 하나다: "
@@ -120,6 +144,7 @@ class WeeklyTarget:
     parent_value: str = ""
     semantic_variant: str | None = None
     days: tuple[str, ...] = ()  # repeat_by DAY: the OperatingDay values to write, in order
+    parent_groundable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +174,8 @@ class WeeklyPlanningRequest:
     cell_key: str | None = None  # W4b: a one-cell request targets exactly this Section
     context_source_refs: frozenset[str] = frozenset()
     other_day_values: tuple[str, ...] = ()  # a day cell request: the Section's other days now
+    reference_wiring: bool = False
+    reference_examples: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.week_id, WeekId):
@@ -163,6 +190,10 @@ class WeeklyPlanningRequest:
             )
         if set(keys) & self.teacher_input_keys:
             raise InvalidDomainValueError("Teacher-input Sections are never LLM targets")
+        if any(t.parent_groundable and not t.parent_value.strip() for t in self.targets):
+            raise InvalidDomainValueError("A parent-groundable target needs its current parent value")
+        if any(t.parent_groundable for t in self.targets) and not self.reference_wiring:
+            raise InvalidDomainValueError("Parent outdoor grounding requires the linked reference policy")
 
     def target(self, section_key: str) -> WeeklyTarget | None:
         return next((t for t in self.targets if t.section_key == section_key), None)
@@ -213,6 +244,9 @@ def build_weekly_request(
     reference_candidates: tuple[tuple[str, str], ...],
     packet_fingerprint: str,
     curriculum: CurriculumCatalog | None = None,
+    reference_wiring: bool = False,
+    daily_life: DailyLifeCatalog | None = None,
+    sibling_focuses: tuple[str, ...] = (),
 ) -> WeeklyPlanningRequest:
     body = {
         "task": "weekly_plan",
@@ -225,6 +259,7 @@ def build_weekly_request(
                 "semantic_variant": t.semantic_variant,
                 "allowed_grounding_refs": list(t.allowed_grounding_refs),
                 **({"days": list(t.days)} if t.days else {}),
+                **({"parent_groundable": True} if t.parent_groundable else {}),
                 **({"reference_candidates": [
                     {"reference_id": rid, "label": label} for rid, label in reference_candidates
                 ]} if t.section_key == OUTDOOR_KEY else {}),
@@ -236,15 +271,41 @@ def build_weekly_request(
     }
     if curriculum is not None:
         body["curriculum_context"] = curriculum_context(curriculum)
+    examples: tuple[str, ...] = ()
+    source_refs = curriculum_source_refs(curriculum)
+    if reference_wiring:
+        body["reference_policy_version"] = REFERENCE_WIRING_SUFFIX.lstrip("+")
+        body["monthly_focuses"] = list(sibling_focuses)
+        if daily_life is not None:
+            if not daily_life.is_active or curriculum is None or (
+                daily_life.curriculum_catalog_id, daily_life.curriculum_catalog_version
+            ) != (curriculum.catalog_id, curriculum.catalog_version) or any(
+                entry.content_id not in {content.content_id for content in curriculum.contents}
+                for entry in daily_life.entries
+            ):
+                raise InvalidDomainValueError("Weekly daily-life context must match the approved curriculum")
+            body["daily_life_context"] = {
+                "catalog_id": daily_life.catalog_id, "catalog_version": daily_life.catalog_version,
+                "purpose": "WORDING_CONTEXT_ONLY",
+                "entries": [{"entry_id": e.entry_id, "kind": e.kind.value, "label": e.label,
+                             "text": e.text, "content_id": e.content_id} for e in daily_life.entries],
+            }
+            examples = tuple(e.text for e in daily_life.entries)
+            source_refs |= {daily_life.catalog_id, daily_life.catalog_version, *(e.entry_id for e in daily_life.entries)}
     allowed = " ".join([
         *(value for _, value in parent_context),
         *(text for _, text, _ in evidence),
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
+    linked = REFERENCE_WIRING_SUFFIX if reference_wiring else ""
+    system_prompt = SYSTEM_PROMPT
+    if reference_wiring:
+        system_prompt = system_prompt.replace(OUTDOOR_REFERENCE_INSTRUCTION, LINKED_OUTDOOR_INSTRUCTION)
+        system_prompt += NATURAL_PLAY_GUIDANCE + LINKED_WRITING_GUIDANCE
     return WeeklyPlanningRequest(
-        prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + suffix,
-        system_prompt=SYSTEM_PROMPT + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else ""),
+        prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + linked + suffix,
+        system_prompt=system_prompt + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         week_id=week_id,
         targets=targets,
@@ -255,8 +316,10 @@ def build_weekly_request(
         packet_fingerprint=packet_fingerprint,
         repair_prompt_version=(
             WEEKLY_CONTEXT_REPAIR_PROMPT_VERSION if curriculum is not None else WEEKLY_REPAIR_PROMPT_VERSION
-        ) + suffix,
-        context_source_refs=curriculum_source_refs(curriculum),
+        ) + linked + suffix,
+        context_source_refs=frozenset(source_refs),
+        reference_wiring=reference_wiring,
+        reference_examples=examples,
     )
 
 
@@ -292,15 +355,16 @@ def cell_request(
     body["current_plan"] = dict(current_values)
     contextual = "curriculum_context" in body
     suffix = DAY_CELLS_SUFFIX if request.prompt_version.endswith(DAY_CELLS_SUFFIX) else ""
+    linked = REFERENCE_WIRING_SUFFIX if request.reference_wiring else ""
     return replace(
         request,
-        prompt_version=(WEEKLY_CONTEXT_CELL_PROMPT_VERSION if contextual else WEEKLY_CELL_PROMPT_VERSION) + suffix,
+        prompt_version=(WEEKLY_CONTEXT_CELL_PROMPT_VERSION if contextual else WEEKLY_CELL_PROMPT_VERSION) + linked + suffix,
         repair_prompt_version=(
             WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION if contextual else WEEKLY_CELL_REPAIR_PROMPT_VERSION
-        ) + suffix,
+        ) + linked + suffix,
         system_prompt=(
             request.system_prompt + " 이번 요청은 targets의 한 칸만 다시 쓰며 current_plan의 다른 값은 맥락으로만 읽는다."
-            if contextual else CELL_SYSTEM_PROMPT + (DAY_PROMPT if suffix else "")
+            if contextual or request.reference_wiring else CELL_SYSTEM_PROMPT + (DAY_PROMPT if suffix else "")
         ) + (DAY_CELL_PROMPT if day is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         targets=(target,),
@@ -354,12 +418,13 @@ def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
                     **fixed,
                     "value": {"type": "string", "enum": [label]},
                     "unresolved": {"type": "boolean", "enum": [False]},
-                    "grounding_refs": refs,
+                    "grounding_refs": _refs_schema(()),
                     "reference_id": {"type": "string", "enum": [reference_id]},
                 })
                 for reference_id, label in request.reference_candidates
             ]
-            continue
+            if not (request.reference_wiring and (target.parent_groundable or target.allowed_grounding_refs)):
+                continue
         branches.append(_object_schema({
             **fixed,
             "value": _STRING,
@@ -562,17 +627,23 @@ def _value_issues(
         elif ref not in target.allowed_grounding_refs:
             issues.append(WeeklyIssue(WeeklyIssueCode.WRONG_SOURCE_GROUNDING, key, day=day))
     if key == OUTDOOR_KEY:
-        if v.reference_id is None:
+        if v.reference_id is None and not (request.reference_wiring and (target.parent_groundable or target.allowed_grounding_refs)):
             issues.append(WeeklyIssue(WeeklyIssueCode.REFERENCE_REQUIRED, key))
-        elif v.reference_id not in dict(request.reference_candidates):
+            return issues
+        if v.reference_id is not None and v.reference_id not in dict(request.reference_candidates):
             issues.append(WeeklyIssue(WeeklyIssueCode.UNKNOWN_REFERENCE_ID, key))
-        return issues  # the value is the catalog label (with_reference_labels)
+        if v.reference_id is not None:
+            if v.grounding_refs and not any(i.code in {
+                WeeklyIssueCode.UNKNOWN_GROUNDING_REF, WeeklyIssueCode.WRONG_SOURCE_GROUNDING
+            } for i in issues):
+                issues.append(WeeklyIssue(WeeklyIssueCode.WRONG_SOURCE_GROUNDING, key))
+            return issues  # the value is the catalog label (with_reference_labels)
     if v.reference_id is not None:
         issues.append(WeeklyIssue(WeeklyIssueCode.REFERENCE_FORBIDDEN, key))
     if (
         not v.grounding_refs
         and key not in (THEME_KEY, SAFETY_KEY)
-        and not (key in PARENT_GROUNDABLE_KEYS and target.parent_value.strip())
+        and not ((key in PARENT_GROUNDABLE_KEYS or target.parent_groundable) and target.parent_value.strip())
     ):
         issues.append(WeeklyIssue(WeeklyIssueCode.RESOLVED_REQUIRES_GROUNDING, key, day=day))
     policy = [
@@ -585,7 +656,9 @@ def _value_issues(
     # record reads the same; copying any other institution text still is.
     visible = normalize_visible_text(v.value)
     inherited = bool(target.parent_value.strip()) and visible == normalize_visible_text(target.parent_value)
-    if visible in {normalize_visible_text(text) for _, text in request.evidence_texts} and not inherited:
+    if visible in {normalize_visible_text(text) for text in (
+        *(text for _, text in request.evidence_texts), *request.reference_examples
+    )} and not inherited:
         issues.append(WeeklyIssue(WeeklyIssueCode.SOURCE_TEXT_COPY, key, day=day))
     if unsupported_facts(v.value, request.allowed_fact_text):
         issues.append(WeeklyIssue(WeeklyIssueCode.UNSUPPORTED_FACT, key, "date_time_or_teacher_name", day=day))
