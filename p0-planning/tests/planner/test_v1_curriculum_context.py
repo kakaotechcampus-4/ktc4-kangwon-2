@@ -8,7 +8,7 @@ from ssuksak.planning.context.serialization import packet_fingerprint
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.domain.week_period import WeekId
-from ssuksak.planning.planner.cell_prompt import build_monthly_cell_request
+from ssuksak.planning.planner.cell_prompt import MONTHLY_V1_CELL_CONTEXT, build_monthly_cell_request
 from ssuksak.planning.planner.parser import parse_monthly_proposal
 from ssuksak.planning.planner.prompt import (
     MONTHLY_V1_STYLE,
@@ -59,7 +59,7 @@ def test_curriculum_is_versioned_context_without_new_allowed_cell_refs(
     assert packet_fingerprint(augmented) != packet_fingerprint(
         replace(augmented, parent_subthemes=("교사 확정값",))
     )
-    assert request.prompt_version == "monthly-planner-v20"
+    assert request.prompt_version == "monthly-planner-v21"
     assert "120 to 160" not in request.system_prompt and MONTHLY_V1_STYLE in request.system_prompt
     assert "120 to 160" in original.system_prompt and MONTHLY_V1_STYLE not in original.system_prompt
     cell = build_monthly_cell_request(
@@ -70,8 +70,16 @@ def test_curriculum_is_versioned_context_without_new_allowed_cell_refs(
         month_snapshot=snapshots(),
     )
     assert json.loads(cell.user_content)["parent_subthemes"] == body["parent_subthemes"]
-    assert cell.prompt_version == "monthly-cell-planner-v12"
-    assert MONTHLY_V1_STYLE in cell.system_prompt
+    assert cell.prompt_version == "monthly-cell-planner-v13"
+    assert MONTHLY_V1_STYLE in cell.system_prompt and MONTHLY_V1_CELL_CONTEXT in cell.system_prompt
+    plain_cell = build_monthly_cell_request(
+        packet,
+        snapshot,
+        target_week_id=WeekId("2026-09-W1"),
+        target_section_key="focus",
+        month_snapshot=snapshots(),
+    )
+    assert MONTHLY_V1_CELL_CONTEXT not in plain_cell.system_prompt
 
 
 def test_unapproved_curriculum_is_never_sent(packet):
@@ -95,7 +103,7 @@ def test_curriculum_ids_cannot_be_visible_or_used_as_grounding(packet, snapshot)
     )
     assert any(i.detail == "SOURCE_IDENTIFIER_LEAKAGE" for i in result.issues)
     repair = build_monthly_repair_request(request, json.dumps(payload), result.issues)
-    assert repair.prompt_version == "monthly-planner-repair-v15"
+    assert repair.prompt_version == "monthly-planner-repair-v16"
     assert "120 to 160" not in repair.system_prompt
     assert (
         json.loads(repair.user_content)["original_request"]["curriculum_context"]
@@ -142,7 +150,7 @@ def test_failed_context_repair_is_reported_once(packet, snapshot, caplog):
     with caplog.at_level("WARNING"), pytest.raises(ProposalRejectedError):
         MonthlyPlanner(provider).plan(packet, snapshot)
     assert len(provider.monthly_requests) == 2
-    assert provider.monthly_requests[-1].prompt_version == "monthly-planner-repair-v15"
+    assert provider.monthly_requests[-1].prompt_version == "monthly-planner-repair-v16"
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1
     assert warnings[0].startswith("Monthly LLM repair failed:")
