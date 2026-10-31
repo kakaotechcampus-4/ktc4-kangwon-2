@@ -216,7 +216,13 @@ export default function WeeklyPlanPage() {
   const otherKeys = [...cells.keys()].filter((k) => !grouped.has(k));
 
   const theme = cells.get("theme");
-  const blocked = theme && !theme.value.trim() ? "놀이 주제를 적어야 확정할 수 있어요." : "";
+  const blocked = editing
+    ? "고치던 칸을 저장하거나 취소해야 확정할 수 있어요."
+    : theme && !theme.value.trim()
+      ? "놀이 주제를 적어야 확정할 수 있어요."
+      : "";
+  /** 요청을 기다리거나 저장하지 않은 칸이 열려 있으면 다른 일(이동 · 지우기 · 다른 칸)을 시작하지 않는다. */
+  const locked = !!busy || (!!editing && !confirmed);
 
   async function run(key: string, job: () => Promise<WeeklyPlan | void>) {
     setBusy(key);
@@ -254,10 +260,13 @@ export default function WeeklyPlanPage() {
     run("edit", async () => {
       if (!plan || !editing) return;
       const cell = [...cells.values()].find((c) => c.item_id === editing.itemId);
-      const value = editing.draft;
+      // 저장이 성공한 뒤에 닫는다. 실패하면 쓴 문장을 그대로 두어 다시 저장할 수 있게 한다.
+      const next =
+        cell && editing.draft !== cell.value
+          ? await editWeeklyCell(plan.id, cell.item_id, editing.draft, plan.revision)
+          : undefined;
       setEditing(null);
-      if (!cell || value === cell.value) return;
-      return editWeeklyCell(plan.id, cell.item_id, value, plan.revision);
+      return next;
     });
 
   const handleRegenerate = (cell: WeeklyCell) =>
@@ -283,7 +292,7 @@ export default function WeeklyPlanPage() {
     const working = busy === cell.item_id;
     const empty = !cell.value.trim();
 
-    if (editing?.itemId === cell.item_id)
+    if (!confirmed && editing?.itemId === cell.item_id)
       return (
         <article key={sectionKey} className={`${s.card} ${wide ? s.wide : ""}`}>
           <div className={s.cardName}>
@@ -293,14 +302,20 @@ export default function WeeklyPlanPage() {
             className={s.editor}
             aria-label={`${name} 내용`}
             value={editing.draft}
+            readOnly={!!busy}
             autoFocus
             onChange={(e) => setEditing({ itemId: cell.item_id, draft: e.target.value })}
           />
           <div className={s.cardButtons}>
             <button type="button" className={s.btnSmall} disabled={!!busy} onClick={handleSave}>
-              저장
+              {busy === "edit" ? "저장하는 중…" : "저장"}
             </button>
-            <button type="button" className={s.btnSmall} onClick={() => setEditing(null)}>
+            <button
+              type="button"
+              className={s.btnSmall}
+              disabled={!!busy}
+              onClick={() => setEditing(null)}
+            >
               취소
             </button>
           </div>
@@ -321,7 +336,7 @@ export default function WeeklyPlanPage() {
               type="button"
               className={s.btnSmall}
               style={{ alignSelf: "flex-start" }}
-              disabled={!!busy}
+              disabled={locked}
               onClick={() => setEditing({ itemId: cell.item_id, draft: "" })}
             >
               입력하기
@@ -342,7 +357,7 @@ export default function WeeklyPlanPage() {
               <button
                 type="button"
                 className={s.btnSmall}
-                disabled={!!busy}
+                disabled={locked}
                 onClick={() => setEditing({ itemId: cell.item_id, draft: cell.value })}
               >
                 고치기
@@ -351,7 +366,7 @@ export default function WeeklyPlanPage() {
                 <button
                   type="button"
                   className={s.btnSmall}
-                  disabled={!!busy}
+                  disabled={locked}
                   onClick={() => handleRegenerate(cell)}
                 >
                   {working ? "만드는 중…" : "다시 만들기"}
@@ -390,7 +405,11 @@ export default function WeeklyPlanPage() {
         <nav aria-label={`${month}월의 주`} className={s.picker}>
           <label className={s.month}>
             월
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+            <select
+              value={month}
+              disabled={locked}
+              onChange={(e) => setMonth(Number(e.target.value))}
+            >
               {MONTHS.map((m) => (
                 <option key={m} value={m}>
                   {m}월
@@ -418,10 +437,11 @@ export default function WeeklyPlanPage() {
                 type="button"
                 aria-current={current ? "true" : undefined}
                 className={tone.join(" ")}
+                // 기다리는 응답이 다른 주 화면에 붙지 않게, 작업 중에는 주를 옮기지 않는다.
+                disabled={locked}
                 onClick={() => {
                   if (!current) setPlan(null); // 다른 주의 계획안을 띄워 두지 않는다
                   setWeekId(w.week_id);
-                  setEditing(null);
                 }}
               >
                 <b>
@@ -486,7 +506,7 @@ export default function WeeklyPlanPage() {
                     <button
                       type="button"
                       className={s.btn}
-                      disabled={!!busy}
+                      disabled={locked}
                       onClick={handleDelete}
                     >
                       초안 지우기

@@ -87,7 +87,9 @@
 }
 .btn:disabled,
 .btnPrimary:disabled,
-.btnSmall:disabled {
+.btnSmall:disabled,
+.week:disabled,
+.month select:disabled {
   opacity: 0.55;
   cursor: default;
 }
