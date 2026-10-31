@@ -8,7 +8,8 @@ import re
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.curriculum_reference import CurriculumCatalog
-from ..domain.safety_placement import SafetyKind
+from ..domain.drill_topic_reference import DrillTopic
+from ..domain.safety_placement import SafetyCandidateSlot, SafetyKind
 from ..domain.year_month import YearMonth
 from ..evidence.classification import SemanticClass
 from ..evidence.models import ReusePolicy, SourceSection
@@ -284,6 +285,10 @@ class MonthlyContextPacket:
     safety: SafetyContext | None = None
     curriculum: CurriculumCatalog | None = None
     parent_subthemes: tuple[str, ...] = ()
+    # Candidate mode (S-1): the eight Rule-fixed slots the LLM words; () = none.
+    safety_candidates: tuple[SafetyCandidateSlot, ...] = ()
+    # The drill Section's Rule-fixed topics the LLM words; () = no drill Section.
+    drill_topics: tuple[DrillTopic, ...] = ()
 
     def __post_init__(self) -> None:
         if self.packet_version != CONTEXT_PACKET_VERSION:

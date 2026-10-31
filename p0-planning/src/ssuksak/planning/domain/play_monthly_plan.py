@@ -42,7 +42,7 @@ from .provenance import (
     TimetableChange,
     TimetableOperation,
 )
-from .safety_placement import SafetyKind
+from .safety_placement import SafetyKind, SafetyWeek
 from .week_period import WeekId, WeekPeriod
 from .year_month import YearMonth
 
@@ -248,20 +248,6 @@ class SafetyCandidate:
         source = EvidenceSourceType.SAFETY_RULE if statutory else EvidenceSourceType.INSTITUTION_SAMPLE
         if not self.cell.cites_only(source):
             raise InvalidDomainValueError(f"{self.kind.value} safety cites {source.value} only")
-
-
-@dataclass(frozen=True, slots=True)
-class SafetyWeek:
-    """Which candidate a teacher placed in one week; ``None`` = not placed yet."""
-
-    week_id: WeekId
-    candidate_item_id: ItemId | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.week_id, WeekId):
-            raise InvalidDomainValueError("SafetyWeek.week_id must be WeekId")
-        if self.candidate_item_id is not None and not isinstance(self.candidate_item_id, ItemId):
-            raise InvalidDomainValueError("SafetyWeek.candidate_item_id must be ItemId")
 
 
 @dataclass(frozen=True, slots=True)
