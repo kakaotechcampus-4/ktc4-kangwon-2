@@ -14,6 +14,8 @@ import { useWorkspace } from "@/lib/workspace/store";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { importDocument, isRecordKind, type EvidenceNotice } from "@/lib/api/documents";
 import { isUnauthenticated } from "@/lib/api/client";
+import { useClientState } from "@/lib/hooks/use-client-state";
+import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { WorkspacePage, Empty, Message, useClasses, useAIStatus, ws } from "./WorkspaceUI";
 import EvaluationChecklist from "./EvaluationChecklist";
 import styles from "./Evaluation.module.css";
@@ -70,7 +72,7 @@ function LocalDocumentReview() {
   const [message, setMessage] = useState("");
   const [checked, setChecked] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [classId, setClassId] = useState("");
+  const [classId] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const [childId, setChildId] = useState("");
   const [kind, setKind] = useState<DocumentKind>("dailyLog");
   const [start, setStart] = useState(today);
@@ -286,24 +288,6 @@ function LocalDocumentReview() {
                       {value}
                     </option>
                   ))}
-              </select>
-            </label>
-            <label className={ws.field}>
-              반
-              <select
-                value={classId}
-                onChange={(e) => {
-                  setClassId(e.target.value);
-                  setChildId("");
-                  setReviewed(false);
-                }}
-              >
-                <option value="">반 선택</option>
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.className}
-                  </option>
-                ))}
               </select>
             </label>
             <label className={ws.field}>

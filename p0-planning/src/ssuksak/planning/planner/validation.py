@@ -651,7 +651,7 @@ def validate_monthly_proposal_grounding(
                 )
         if value.unresolved:
             if (
-                value.section_key != "safety_education"
+                value.section_key not in {"safety_education", "indoor_alternative"}
                 or section.empty_value_policy
                 is not EmptyValuePolicy.RENDER_EMPTY_CELL
             ):

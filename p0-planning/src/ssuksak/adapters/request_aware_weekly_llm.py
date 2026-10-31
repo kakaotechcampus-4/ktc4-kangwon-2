@@ -35,6 +35,12 @@ class RequestAwareWeeklyLlm:
                 reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
             elif key == "safety_education":
                 value, grounding = f"{again}이번 주에도 {parent['safety_education']}", []
+            if target.get("days"):  # ADR-051: one distinct value per requested day
+                sections.append({"section_key": key, "reference_id": None, "days": [
+                    {"day": day, "value": f"{value} {day}", "unresolved": False, "grounding_refs": grounding}
+                    for day in target["days"]
+                ]})
+                continue
             sections.append({
                 "section_key": key, "value": value, "unresolved": False,
                 "grounding_refs": grounding, "reference_id": reference_id,
