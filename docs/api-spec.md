@@ -1759,8 +1759,9 @@ sections[].label  Template 데이터 값 그대로.  지금 Template A 는 칸 �
 sections[].selection
                   REQUIRED           항상 들어간다 (theme · week_axis · outdoor_play · safety_education)
                   OPTIONAL           ② 에서 고를 수 있다 (focus · goals · basic_habit)
-                  INSTITUTION_INPUT  event_schedule · drill.  월간 생성 계약이 아직 없어 고를 수 없다
-                  NOT_SUPPORTED      Template 고유 칸.  Profile 에 넣을 수 없다
+                  INSTITUTION_INPUT  event_schedule.  월간 생성 계약이 아직 없어 고를 수 없다
+                  NOT_SUPPORTED      Template 고유 칸, 또는 그 판에 repeat_by 가 없는 선택 칸.  Profile 에 넣을 수 없다
+                  drill 은 repeat_by 가 없는 v0.2.1 · v0.2.2 에서 NOT_SUPPORTED 다 (v0.2.3 은 승인 대기)
                   indoor_alternative 는 Template 판에 따라 다르다 — v0.2.2 는 OPTIONAL,
                   repeat_by 가 없는 v0.2.1 은 NOT_SUPPORTED (ADR-050)
 focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (켠 focus 는 NEUTRAL 불가, Core)

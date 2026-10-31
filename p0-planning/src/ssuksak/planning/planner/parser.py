@@ -12,7 +12,7 @@ from ..domain.year_month import YearMonth
 from ..domain.monthly_template import RepeatBy
 from .contracts import (
     OUTDOOR_SECTION_KEY,
-    SAFETY_CANDIDATE_PREFIX,
+    CANDIDATE_PREFIXES,
     MonthlyCellPlanningRequest,
     MonthlyCellProposal,
     MonthlyPlanningRequest,
@@ -190,7 +190,7 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
     ]
     month = _section_schema(
         {s.section_key for s in targets if s.repeat_by is RepeatBy.NONE}
-        | {key for key in allowed if key.startswith(SAFETY_CANDIDATE_PREFIX)},
+        | {key for key in allowed if key.startswith(CANDIDATE_PREFIXES)},
         request,
         request.reference_section_keys,
         pairs,

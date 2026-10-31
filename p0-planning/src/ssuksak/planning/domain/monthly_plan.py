@@ -16,6 +16,7 @@ from .monthly_template import (
     SectionRole,
     TemplateRef,
 )
+from .monthly_template_profile import DRILL_SECTION_KEY
 from .monthly_template_snapshot import TemplateSnapshot
 from .monthly_verification import VerificationReport
 from .plan import PlanStatus
@@ -27,6 +28,7 @@ from .provenance import (
     AuditHistory,
     EvidenceSource,
     EvidenceSourceType,
+    GenerationMethod,
     GenerationMethodDetail,
 )
 from .week_period import WeekId, WeekPeriod
@@ -188,6 +190,35 @@ class MonthlySafetyCandidate:
             raise InvalidDomainValueError(f"{self.kind.value} safety cites {source.value} only")
 
 
+DRILL_COPY_RULE_ID = "monthly.drill_copy"
+DRILL_COPY_GENERATION = GenerationMethodDetail(GenerationMethod.RULE_ONLY, DRILL_COPY_RULE_ID, "v1")
+
+
+@dataclass(frozen=True, slots=True)
+class MonthlyDrillCandidate:
+    """A 소방대피 · 재난대비 topic candidate (as v2 ``DrillCandidate``). The drill Section's
+    document Cell starts blank; a candidate is never placed automatically.
+
+    ``topic_id`` and ``label`` are the Rule's choice; the screen shows ``label`` next to the
+    sentence and the teacher reviews it."""
+
+    cell: MonthlyCell
+    topic_id: str
+    label: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cell, MonthlyCell):
+            raise InvalidDomainValueError("MonthlyDrillCandidate.cell must be MonthlyCell")
+        if self.cell.section_key != DRILL_SECTION_KEY or self.cell.week_id is not None:
+            raise InvalidDomainValueError("A drill candidate is a month-level drill Cell")
+        for name in ("topic_id", "label"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise InvalidDomainValueError(f"MonthlyDrillCandidate.{name} must be non-blank")
+        if any(item.source_type is not EvidenceSourceType.CURRICULUM for item in self.cell.evidence):
+            raise InvalidDomainValueError("A drill candidate cites CURRICULUM only")
+
+
 @dataclass(frozen=True, slots=True)
 class MonthlySection:
     section_key: str
@@ -263,6 +294,8 @@ class MonthlyPlan:
     # its placed candidate's current value instead. Both empty = an older Plan.
     safety_candidates: tuple[MonthlySafetyCandidate, ...] = ()
     safety_weeks: tuple[SafetyWeek, ...] = ()
+    # The Rule's drill topics, worded by the LLM; present exactly when the drill Section is.
+    drill_candidates: tuple[MonthlyDrillCandidate, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
@@ -398,6 +431,7 @@ class MonthlyPlan:
                 "MonthlyPlan.generation_mode must be MonthlyGenerationMode"
             )
         self._check_safety_candidates()
+        self._check_drill_candidates()
         if self.verification_report is not None:
             if not isinstance(self.verification_report, VerificationReport):
                 raise InvalidDomainValueError(
@@ -444,6 +478,34 @@ class MonthlyPlan:
             raise InvalidDomainValueError("A candidate-mode Plan needs one safety placement per active week")
         if any(s.candidate_item_id is not None and s.candidate_item_id not in ids for s in weeks):
             raise InvalidDomainValueError("A safety placement must name a kept candidate")
+
+    def _check_drill_candidates(self) -> None:
+        candidates = self.drill_candidates
+        if not isinstance(candidates, tuple) or not all(
+            isinstance(item, MonthlyDrillCandidate) for item in candidates
+        ):
+            raise InvalidDomainValueError("MonthlyPlan.drill_candidates are invalid")
+        section = self.section(DRILL_SECTION_KEY)
+        if bool(candidates) != (section is not None):
+            raise InvalidDomainValueError("A drill Section and its candidates come together")
+        topics = [c.topic_id for c in candidates]
+        ids = [c.cell.item_id for c in candidates]
+        others = {cell.item_id for cell in self.cells} | {c.cell.item_id for c in self.safety_candidates}
+        if len(set(topics)) != len(topics) or len(set(ids)) != len(ids) or set(ids) & others:
+            raise InvalidDomainValueError("Drill candidates need distinct topics and ItemIds")
+        for cell in section.cells if section is not None else ():
+            if cell.generation is None or cell.generation.method is GenerationMethod.MANUAL:
+                continue
+            # The one exception (M2-D17, as v2): the Cell holds a copied drill candidate.
+            copies = [e for e in cell.audit.events if e.event_type is AuditEventType.CANDIDATE_COPIED]
+            if (
+                cell.generation != DRILL_COPY_GENERATION
+                or not copies
+                or any(e.copied_from not in ids for e in copies)
+            ):
+                raise InvalidDomainValueError(
+                    "The drill Cell is blank, MANUAL, or holds a copied drill candidate"
+                )
 
     @property
     def cells(self) -> tuple[MonthlyCell, ...]:
@@ -526,6 +588,22 @@ class MonthlyPlan:
             self,
             safety_candidates=tuple(
                 replace(c, cell=replacement) if c is current else c for c in self.safety_candidates
+            ),
+            verification_report=None,
+        )
+
+    def drill_candidate(self, item_id: ItemId) -> MonthlyDrillCandidate | None:
+        return next((c for c in self.drill_candidates if c.cell.item_id == item_id), None)
+
+    def replace_drill_candidate(self, replacement: MonthlyCell) -> MonthlyPlan:
+        self.ensure_mutable("replace_drill_candidate")
+        current = self.drill_candidate(replacement.item_id) if isinstance(replacement, MonthlyCell) else None
+        if current is None:
+            raise InvalidDomainValueError("Drill candidate not found")
+        return replace(
+            self,
+            drill_candidates=tuple(
+                replace(c, cell=replacement) if c is current else c for c in self.drill_candidates
             ),
             verification_report=None,
         )

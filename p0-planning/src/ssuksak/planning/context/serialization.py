@@ -28,6 +28,8 @@ def context_payload(packet: MonthlyContextPacket) -> dict[str, object]:
         del payload["parent_subthemes"]
     if not payload["safety_candidates"]:
         del payload["safety_candidates"]
+    if not payload["drill_topics"]:
+        del payload["drill_topics"]
     if not payload["lineage"]["weekly_classification_version"]:
         del payload["lineage"]["weekly_classification_version"]
     return payload
