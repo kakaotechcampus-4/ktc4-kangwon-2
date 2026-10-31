@@ -235,7 +235,14 @@ export default function MonthlyTemplatePage() {
             {approved.length > 1 && (
               <label className={ws.field}>
                 기반 양식
-                <select value={picked} onChange={(e) => setPicked(e.target.value)}>
+                <select
+                  value={picked}
+                  onChange={(e) => {
+                    setPicked(e.target.value);
+                    // 판마다 고를 수 있는 칸이 다르다 — 앞 판에서 고른 칸이 숨은 채 남지 않게 비운다.
+                    setExtras(new Set());
+                  }}
+                >
                   <option value="">고르기</option>
                   {approved.map((t) => (
                     <option
