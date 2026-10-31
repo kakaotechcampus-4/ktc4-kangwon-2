@@ -1,17 +1,14 @@
 """v1 월간 응답의 안전 후보 세 목록 (api-spec §9-1) — safety_candidates · safety_weeks · notices.
 
 후보 모드 계획은 실제 `POST /api/plans/monthly` 로 만든다. 서버 생성 경로는 아직 후보 모드를 켜지
-않아서(3절), 테스트 안에서 LLM 과 생성 명령만 바꾼다 — Core → codec → DB → GET 은 그대로 지난다.
+않아서(3절), 테스트 안에서 생성 명령만 바꾼다 — Core → codec → DB → GET 은 그대로 지난다.
 """
 
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
 
-import json
-from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
-from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 from ssuksak.planning import ActorId, MonthlyPlan
 from ssuksak.planning.application.monthly_dto import SafetyCandidatesSelector
 from ssuksak.planning.domain.safety_placement import STATUTORY_SHORT_LABELS
@@ -32,26 +29,6 @@ SAFETY_CANDIDATES = SafetyCandidatesSelector(
 )
 
 
-class CandidateLlm(RequestAwareMonthlyLlm):
-    """안전 후보 칸마다 문장을 하나씩 쓴다 (Core 테스트의 CandidateMonthlyLlm 과 같다)."""
-
-    def generate_monthly(self, request):
-        raw = super().generate_monthly(request)
-        payload = json.loads(raw.content)
-        payload["month_sections"] += [
-            {
-                "section_key": key,
-                "value": f"안전 약속 {n}번을 함께 지켜요.",
-                "unresolved": False,
-                "reference_id": None,
-                "grounding_refs": [refs[0]],
-            }
-            for n, (key, refs) in enumerate(request.allowed_grounding_refs_by_section, 1)
-            if key.startswith("safety_education.")
-        ]
-        return replace(raw, content=json.dumps(payload, ensure_ascii=False))
-
-
 @pytest.fixture
 def seed(db_session, teacher):
     made = _seed(db_session, "가원", "a@example.com")
@@ -69,7 +46,6 @@ def candidate_mode(monkeypatch):
             **{**fields, "safety_placement": None, "safety_candidates": SAFETY_CANDIDATES}
         )
 
-    monkeypatch.setattr(monthly_router, "monthly_llm_provider", CandidateLlm)
     monkeypatch.setattr(monthly_router, "GenerateMonthlyPlanCommand", command)
 
 
