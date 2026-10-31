@@ -29,11 +29,11 @@ MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v16"
 MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v16"
 # v1 requests carrying approved curriculum or confirmed annual subthemes.
-MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v21"
-MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v13"
-MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v16"
-MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v19"
-MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v19"
+MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v22"
+MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v14"
+MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v17"
+MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v20"
+MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v20"
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
 MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v1"

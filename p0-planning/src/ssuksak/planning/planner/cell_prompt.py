@@ -56,7 +56,8 @@ Return only one JSON object matching response_contract; add no fields.
 
 # v1 cell regeneration reads the same week's current values (teacher edits included) as context.
 MONTHLY_V1_CELL_CONTEXT = """같은 주에 focus나 outdoor_play가 있으면 month_snapshot에서 같은 week_id의 현재 값(교사가 고친 값 포함)을
-맥락으로 읽는다. 그 값은 바꾸지 않는다.
+맥락으로 읽는다. 그 값은 바꾸지 않는다. focus를 다시 쓸 때는 parent_subthemes 범위를 우선하고,
+지금 바깥놀이에 맞춰 focus를 좁히지 않는다.
 """
 
 
