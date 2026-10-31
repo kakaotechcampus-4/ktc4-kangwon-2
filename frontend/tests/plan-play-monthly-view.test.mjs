@@ -820,7 +820,7 @@ test("거절 안내 — 칸이면 「칸」, 안전 배치 · 삭제 · 복사�
 });
 
 // ---- 월간 v1 편집 화면 (MonthlyPlanEditor) — 같은 배치, 저장 줄 경계 ----
-function openV1Editor() {
+function openV1Editor(findings = []) {
   globalThis.document ??= { activeElement: null };
   const listeners = [];
   globalThis.window = {
@@ -838,7 +838,7 @@ function openV1Editor() {
     target_month: "2026-09",
     parent: { theme: "" },
     generation_mode: "LLM_PLANNER",
-    verification: { findings: [] },
+    verification: { findings },
     weeks: [{ week_id: "W1", active: true, label: "1주" }],
     sections: [
       {
@@ -912,6 +912,19 @@ function openV1Editor() {
     tick: () => new Promise((done) => setTimeout(done, 0)),
   };
 }
+
+test("v1 — 안전교육 검증 안내는 영어 서버 문구 대신 한국어로 보인다", () => {
+  const finding = (code) => ({ code, section_key: "safety_education", message: "English " + code });
+  const tree = openV1Editor([
+    finding("SAFETY_ANNUAL_HOURS_NOT_VERIFIED"),
+    finding("SAFETY_OFFICIAL_GROUNDING_MISSING"),
+    finding("SAFETY_SUPPLEMENTAL_GROUNDING_INVALID"),
+  ]).render();
+  assert.doesNotMatch(text(tree), /English/);
+  assert.match(text(tree), /연간 법정 시간은 자동으로 확인하지 못했어요/);
+  assert.match(text(tree), /공식 교육 내용 근거/);
+  assert.match(text(tree), /생활안전 칸의 참고 근거/);
+});
 
 test("v1 — 저장 중에 원래 값으로 되돌리면 그 값도 보내고, 같은 글을 두 번 넘기면 한 번만 보낸다", async () => {
   const back = openV1Editor();

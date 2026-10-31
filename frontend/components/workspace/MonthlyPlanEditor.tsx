@@ -34,6 +34,13 @@ const FINDINGS: Record<string, string> = {
     "직접 작성한 바깥놀이 문장의 연령 적합성은 자동으로 확인하지 못했어요. 교사가 내용을 확인해주세요.",
   ACTIVITY_AGE_UNSUPPORTED:
     "우리 반 연령을 모두 지원하지 않는 참고 활동이 있어요. 활동 내용과 대상 연령을 확인해주세요.",
+  // 안전교육 배치 검증(safety_placement). 서버 문구는 영어라 코드로 옮긴다.
+  SAFETY_ANNUAL_HOURS_NOT_VERIFIED:
+    "계획안에는 교육 시간이 없어 안전교육 연간 법정 시간은 자동으로 확인하지 못했어요. 실제 교육 시간은 따로 확인해주세요.",
+  SAFETY_OFFICIAL_GROUNDING_MISSING:
+    "법정 안전교육 칸의 공식 교육 내용 근거를 확인하지 못했어요. 안전교육 내용을 확인해주세요.",
+  SAFETY_SUPPLEMENTAL_GROUNDING_INVALID:
+    "생활안전 칸의 참고 근거를 확인하지 못했어요. 안전교육 내용을 확인해주세요.",
 };
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
 
