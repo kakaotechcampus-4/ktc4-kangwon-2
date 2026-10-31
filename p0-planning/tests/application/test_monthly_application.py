@@ -2841,11 +2841,57 @@ def test_safety_candidate_evidence_mismatch_fails_before_the_llm():
                 for s in p.sections
             )
         },
+        lambda p: {"safety_candidates": (  # S-02: 5 statutory + 3 생활안전, ids kept
+            replace(
+                p.safety_candidates[7],
+                cell=replace(p.safety_candidates[7].cell, item_id=p.safety_candidates[0].cell.item_id),
+                topic_group="other-topic",
+            ),
+        ) + p.safety_candidates[1:]},
     ],
-    ids=["seven", "weeks_mismatch", "unknown_candidate", "weeks_without_candidates", "weekly_cell_filled"],
+    ids=["seven", "weeks_mismatch", "unknown_candidate", "weeks_without_candidates", "weekly_cell_filled",
+         "five_statutory"],
 )
 def test_candidate_mode_plan_rejects_a_broken_structure(broken):
     harness, command = _candidate_harness()
     plan = harness.generate(provider=CandidateMonthlyLlm(), command=command).plan
     with pytest.raises(InvalidDomainValueError):
         replace(plan, **broken(plan))
+
+
+def test_safety_candidate_rejects_an_unknown_legal_category():  # S-02
+    harness, command = _candidate_harness()
+    statutory = harness.generate(provider=CandidateMonthlyLlm(), command=command).plan.safety_candidates[0]
+    with pytest.raises(InvalidDomainValueError):
+        replace(statutory, category_id="UNKNOWN")
+
+
+class DatedCandidateMonthlyLlm(CandidateMonthlyLlm):
+    """S-01: puts a date the input never gave into the first candidate; a repair removes it if `repairs`."""
+
+    def __init__(self, *, repairs: bool) -> None:
+        super().__init__()
+        self._repairs = repairs
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        response = super().generate_monthly(request)
+        if self._repairs and request.repair_targets:
+            return response
+        payload = json.loads(response.content)
+        first = next(c for c in payload["month_sections"] if c["section_key"].startswith("safety_education."))
+        first["value"] = "12월 31일에는 낯선 사람을 따라가지 않아요."
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), response.model, response.request_id)
+
+
+@pytest.mark.parametrize("repairs", [True, False])
+def test_safety_candidate_date_outside_the_input_is_repaired_or_rejected(repairs):
+    harness, command = _candidate_harness()
+    provider = SchemaObeyingRepair(DatedCandidateMonthlyLlm(repairs=repairs))
+    if repairs:
+        plan = harness.generate(provider=provider, command=command).plan
+        assert "12월 31일" not in plan.safety_candidates[0].cell.value and harness.plans.save_count == 1
+    else:
+        with pytest.raises(MonthlyApplicationError):
+            harness.generate(provider=provider, command=command)
+        assert harness.plans.save_count == 0
+    assert len(provider._inner.monthly_requests) == 2

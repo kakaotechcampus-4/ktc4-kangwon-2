@@ -13,6 +13,18 @@ PRODUCT_POLICY = "PRODUCT_POLICY"
 FOCUS_RULE = "OFFICIAL_ORDER_ROTATING_BY_SCHOOL_YEAR"
 
 
+# Short screen names of the six legal categories — product display policy (Human Decision
+# 2026-10-22), not the legal labels, which stay in the legal Rule.
+STATUTORY_SHORT_LABELS = {
+    "traffic_safety": "교통안전",
+    "sexual_violence_prevention": "성폭력 예방",
+    "child_abuse_prevention": "아동학대 예방",
+    "missing_and_abduction_prevention": "실종·유괴 예방",
+    "disaster_preparedness_safety": "재난대비",
+    "infectious_disease_and_drug_misuse_prevention": "감염병·약물 예방",
+}
+
+
 class SafetyKind(str, Enum):
     """STATUTORY counts toward the six legal categories; SUPPLEMENTAL never does."""
 

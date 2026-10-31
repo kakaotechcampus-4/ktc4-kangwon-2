@@ -19,7 +19,7 @@ from .monthly_template import (
 from .monthly_template_snapshot import TemplateSnapshot
 from .monthly_verification import VerificationReport
 from .plan import PlanStatus
-from .safety_placement import SafetyKind, SafetyPlacement, SafetyWeek
+from .safety_placement import STATUTORY_SHORT_LABELS, SafetyKind, SafetyPlacement, SafetyWeek
 from .provenance import (
     ArrangementChange,
     AuditEvent,
@@ -181,6 +181,8 @@ class MonthlySafetyCandidate:
             raise InvalidDomainValueError(
                 "STATUTORY names a category_id only; SUPPLEMENTAL names a topic_group only"
             )
+        if statutory and named not in STATUTORY_SHORT_LABELS:
+            raise InvalidDomainValueError("STATUTORY names one of the six legal categories")
         source = EvidenceSourceType.SAFETY_RULE if statutory else EvidenceSourceType.INSTITUTION_SAMPLE
         if any(item.source_type is not source for item in self.cell.evidence):
             raise InvalidDomainValueError(f"{self.kind.value} safety cites {source.value} only")
@@ -428,6 +430,10 @@ class MonthlyPlan:
             raise InvalidDomainValueError(
                 "A candidate-mode Plan keeps its weekly safety_education Cells blank"
             )
+        if sorted(c.category_id for c in candidates if c.kind is SafetyKind.STATUTORY) != sorted(
+            STATUTORY_SHORT_LABELS
+        ):
+            raise InvalidDomainValueError("Safety candidates are one per legal category plus two 생활안전")
         slots = [c.category_id or c.topic_group for c in candidates]
         ids = [c.cell.item_id for c in candidates]
         if len(set(slots)) != len(slots) or len(set(ids)) != len(ids) or set(ids) & {

@@ -35,6 +35,7 @@ from .contracts import (
     ProposedSectionValue,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from .weekly import unsupported_facts
 
 
 class ProposalValidationCode(str, Enum):
@@ -829,6 +830,12 @@ def _safety_candidate_issues(
     """Each candidate: one resolved sentence citing only its Rule-fixed slot refs."""
     slots = {SAFETY_CANDIDATE_PREFIX + slot.slot: slot for slot in packet.safety_candidates}
     issues: list[ProposalValidationIssue] = []
+    # A repair request carries the rejected proposal; facts may only come from the original input.
+    facts = (
+        json.dumps(json.loads(request.user_content)["original_request"], ensure_ascii=False)
+        if request.repair_targets and slots
+        else request.user_content
+    )
     seen: dict[str, str] = {}
     for value in proposal.month_sections:
         slot = slots.get(value.section_key)
@@ -850,6 +857,8 @@ def _safety_candidate_issues(
         if _DISPLAY_LABEL.match(value.value):
             reason = SafetySlotReason.DISPLAY_LABEL_IN_CONTENT.value
             fail(ProposalValidationCode.TEXT_POLICY, reason, reason=reason)
+        if unsupported_facts(value.value, facts):
+            fail(ProposalValidationCode.TEXT_POLICY, "UNSUPPORTED_FACT", reason="UNSUPPORTED_FACT")
         refs = value.grounding_refs
         statutory = slot.kind is SafetyKind.STATUTORY
         if not refs or not set(refs) <= {ref for ref, _ in slot.allowed} or (statutory and len(refs) != 1):

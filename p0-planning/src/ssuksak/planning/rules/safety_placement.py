@@ -20,7 +20,12 @@ from ..domain.monthly_verification import (
     ViolationLocation,
 )
 from ..domain.provenance import EvidenceSourceType
-from ..domain.safety_placement import SafetyKind, SafetyPlacement, SafetyPlacementPolicy
+from ..domain.safety_placement import (
+    STATUTORY_SHORT_LABELS,
+    SafetyKind,
+    SafetyPlacement,
+    SafetyPlacementPolicy,
+)
 from ..domain.safety_rule import SafetyLegalRule
 from ..domain.week_period import WeekId, WeekPeriod
 from ..domain.year_month import YearMonth
@@ -38,18 +43,6 @@ ANNUAL_HOURS_NOT_VERIFIED = "SAFETY_ANNUAL_HOURS_NOT_VERIFIED"
 def official_ref(category_id: str, index: int) -> str:
     """Stable id of one official content item of the legal Rule (1-based)."""
     return f"annex6:{category_id}:{index}"
-
-
-# Short screen names of the six legal categories — product display policy (Human Decision
-# 2026-10-22), not the legal labels, which stay in the legal Rule.
-STATUTORY_SHORT_LABELS = {
-    "traffic_safety": "교통안전",
-    "sexual_violence_prevention": "성폭력 예방",
-    "child_abuse_prevention": "아동학대 예방",
-    "missing_and_abduction_prevention": "실종·유괴 예방",
-    "disaster_preparedness_safety": "재난대비",
-    "infectious_disease_and_drug_misuse_prevention": "감염병·약물 예방",
-}
 
 
 def safety_display_value(placement: SafetyPlacement | None, content: str) -> str:
