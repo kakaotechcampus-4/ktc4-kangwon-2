@@ -241,6 +241,8 @@ class MonthlySection:
             self.repeat_by, RepeatBy
         ):
             raise InvalidDomainValueError("MonthlySection.repeat_by is invalid")
+        if self.repeat_by is RepeatBy.DAY:
+            raise InvalidDomainValueError("Monthly Sections cannot repeat by DAY")
         if not isinstance(self.empty_value_policy, EmptyValuePolicy):
             raise InvalidDomainValueError(
                 "MonthlySection.empty_value_policy is invalid"
