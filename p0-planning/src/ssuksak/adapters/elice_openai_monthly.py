@@ -44,8 +44,13 @@ from ssuksak.planning.planner.parser import (
 PLAY_PROJECT_MAX_COMPLETION_TOKENS = 10000
 # 2026-10-29 measurement: one play-centred month came back as 2,819 completion tokens over a
 # stream, past the same 2,000 non-streaming cap (the synchronous request was refused, HTTP 400).
-# It streams too, with its own cap; monthly v1 / weekly stay unchanged.
+# It streams too, with its own cap.
 PLAY_MONTHLY_MAX_COMPLETION_TOKENS = 6000
+# 2026-10-31 decision T-1 (replaces decision C for this request): monthly v1 document and repair
+# requests stream with the play-monthly cap. With indoor alternatives the reply was estimated
+# past the non-streaming 2,000 cap (a character-ratio estimate, not a measured failure).
+# Cell regeneration and weekly stay non-streaming.
+MONTHLY_V1_MAX_COMPLETION_TOKENS = 6000
 
 
 class MonthlyLlmConfigurationError(RuntimeError):
@@ -219,11 +224,13 @@ class EliceOpenAiMonthlyAdapter:
         self._transport = transport or UrllibJsonTransport()
 
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        """First and repair requests (repair is the Application's, at most once — not a retry)."""
         return self._complete(
             request.system_prompt,
             request.user_content,
             schema_name="monthly_plan_proposal",
             schema=monthly_response_schema(request),
+            stream_cap=MONTHLY_V1_MAX_COMPLETION_TOKENS,
         )
 
     def generate_cell(self, request: MonthlyCellPlanningRequest) -> RawLlmResponse:
