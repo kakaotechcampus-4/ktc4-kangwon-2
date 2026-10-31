@@ -1449,6 +1449,15 @@ FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(sc
           "generation": { "method": "RULE_ONLY", "rule_id": "…", "rule_version": "…" } }
       ] }
   ],
+  "safety_candidates": [
+    { "kind": "STATUTORY", "category_id": "traffic_safety", "topic_group": null,
+      "cell": { "item_id": "item_…", "week_id": null, "value": "…", "state": "FILLED",
+                "evidence": [], "generation": { "method": "RULE_LLM", "rule_id": "…", "rule_version": "…" } } }
+  ],
+  "safety_weeks": [
+    { "week_id": "2026-09-W1", "candidate_item_id": "item_…", "display_value": "[교통안전] - …" }
+  ],
+  "notices": [ { "code": "SAFETY_UNPLACED", "week_id": "2026-09-W2" } ],
   "constraints": [
     { "code": "STATUTORY_SAFETY_EDUCATION", "verification": "NOT_VERIFIED_SOURCE_REQUIRED",
       "affected_section_keys": ["safety_education"], "required_source_kinds": ["…"],
@@ -1503,6 +1512,20 @@ cells[].state         FILLED | EMPTY_VALID | EMPTY_UNRESOLVED.  필수
 cells[].evidence      배열.  필수.  §4 「출처는 세 축이다」와 같은 모양
 cells[].generation    객체.  필수.  §4 와 같은 모양 (method · rule_id · rule_version)
 
+safety_candidates[]   안전교육 후보.  필수(빈 배열 가능).  기존 계획안은 []
+safety_candidates[].kind          STATUTORY | SUPPLEMENTAL.  필수
+safety_candidates[].category_id   문자열 | null.  STATUTORY 만 값이 있다
+safety_candidates[].topic_group   문자열 | null.  SUPPLEMENTAL 만 값이 있다
+safety_candidates[].cell          cells[] 와 같은 모양.  week_id 는 null.  후보 문장의 주소는 cell.item_id
+safety_weeks[]        활성 주마다 하나.  필수(빈 배열 가능).  기존 계획안은 []
+safety_weeks[].week_id          문자열.  필수
+safety_weeks[].candidate_item_id  문자열 | null.  그 주에 배치한 후보의 cell.item_id.  배치 전이면 null
+safety_weeks[].display_value    문자열.  필수.  그 주에 보일 값(예 "[교통안전] - 문장").  읽기 전용 · 응답마다 계산 · 저장 안 함.
+                                배치가 없거나 후보 문장이 비면 ""
+notices[]             안전 주 안내.  필수(빈 배열 가능).  기존 계획안은 []
+notices[].code        SAFETY_UNPLACED | SAFETY_BLANK.  필수.  배치가 없는 주 | 배치한 후보 문장이 빈 주
+notices[].week_id     문자열.  필수
+
 constraints[]         Core 제약 평가.  필수(빈 배열 가능)
 verification          Core 검증 보고서.  필수.  findings[].kind 는 VIOLATION | NOT_VERIFIED
 created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
@@ -1510,6 +1533,8 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 
 - **출처는 §4 의 세 축 그대로다.** `evidence` 는 근거, `generation` 은 만든 방법이다.
   **`audit` 은 싣지 않는다**(§4 와 같은 이유). 변경 이력은 §9-5 `GET /api/plans/monthly/{id}/audit` 가 준다.
+- **후보 모드에서는 `safety_education` Section 의 칸이 배치 뒤에도 비어 있다.** 그 주에 보일 값은
+  `safety_weeks[].display_value` 다. `notices` 는 응답마다 계산하며 **확정을 막지 않는다.**
 - **칸을 표로 펼쳐 주지 않는다.** 행 = Section, 열 = 주는 화면이 `section_key` · `week_id` 로 맞춘다.
   양식마다 표 모양이 달라서 서버가 표를 정하면 계약이 양식에 묶인다.
 - **도메인 객체를 그대로 내보내지 않는다.** 위 필드만 옮긴다. Cell 의 `source_label` ·

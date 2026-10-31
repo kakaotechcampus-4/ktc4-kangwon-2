@@ -56,8 +56,12 @@ from ssuksak.planning import (
     YearlyPlan,
     YearMonth,
 )
+from ssuksak.planning.application.place_monthly_safety import (
+    monthly_safety_notices,  # 공개 창구에 없다
+)
 from ssuksak.planning.domain.play_monthly_plan import PLAY_MONTHLY_FORMAT  # 공개 창구에 없다
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
+from ssuksak.planning.rules.safety_placement import candidate_display_value  # 공개 창구에 없다
 
 from app.db import get_session
 from app.features.plans.annual_content import subthemes_for_month
@@ -75,10 +79,13 @@ from app.features.plans.monthly_schemas import (
     MonthlyPlanListOut,
     MonthlyPlanOut,
     MonthlyPlanSummary,
+    NoticeOut,
     ParentOut,
     ProfileRefOut,
     RevisionIn,
     RuleRefOut,
+    SafetyCandidateOut,
+    SafetyWeekOut,
     SectionOut,
     TemplateRefOut,
     ValueChangeOut,
@@ -706,6 +713,8 @@ def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
     snapshot = plan.template_snapshot
     shown = {section.section_key: section for section in snapshot.sections}
     report = plan.verification_report
+    # 후보 문장의 주소는 후보 cell.item_id 다. 주마다 보일 값은 저장 없이 응답마다 계산한다.
+    candidates = {c.cell.item_id: c for c in plan.safety_candidates}
     return MonthlyPlanOut(
         id=row.id,
         class_id=int(plan.classroom_ref),
@@ -754,6 +763,31 @@ def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
                 cells=[_cell(cell) for cell in section.cells],
             )
             for section in plan.sections
+        ],
+        safety_candidates=[
+            SafetyCandidateOut(
+                kind=candidate.kind.value,
+                category_id=candidate.category_id,
+                topic_group=candidate.topic_group,
+                cell=_cell(candidate.cell),
+            )
+            for candidate in plan.safety_candidates
+        ],
+        safety_weeks=[
+            SafetyWeekOut(
+                week_id=week.week_id.value,
+                candidate_item_id=None
+                if week.candidate_item_id is None
+                else week.candidate_item_id.value,
+                display_value=""
+                if week.candidate_item_id is None
+                else candidate_display_value(candidates[week.candidate_item_id]),
+            )
+            for week in plan.safety_weeks
+        ],
+        notices=[
+            NoticeOut(code=notice.code, week_id=notice.week_id.value)
+            for notice in monthly_safety_notices(plan)
         ],
         constraints=[
             ConstraintOut(
