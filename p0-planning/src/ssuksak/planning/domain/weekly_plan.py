@@ -1,7 +1,7 @@
 """Immutable structural model for a Weekly Plan (docs/weekly-plan-contract.md §5).
 
-One classroom x one WeekId. Every Section repeats by NONE, so the Plan holds
-exactly one Cell per Section, in Template order. The week address and its
+One classroom x one WeekId. A NONE Section holds one Cell; a DAY Section holds
+one Cell per operating day (``WeeklyCell.day``), in Template order. The week address and its
 Monday-Friday span come from the monthly WeekPeriod unchanged; Saturday is
 carried only by ``operating_days`` (contract §3).
 """
@@ -111,9 +111,12 @@ class WeeklyTemplateSnapshot:
                 raise InvalidDomainValueError(
                     "WeeklyTemplateSnapshot may contain active Sections only"
                 )
-            if section.role is not SectionRole.CONTENT or section.repeat_by is not RepeatBy.NONE:
+            if section.role is not SectionRole.CONTENT or section.repeat_by not in (
+                RepeatBy.NONE,
+                RepeatBy.DAY,
+            ):
                 raise InvalidDomainValueError(
-                    "Weekly Sections must be CONTENT with repeat_by NONE"
+                    "Weekly Sections must be CONTENT with repeat_by NONE or DAY"
                 )
             if section.parent_section_key is not None and section.parent_section_key not in keys:
                 raise InvalidDomainValueError(
@@ -160,11 +163,15 @@ class WeeklyCell:
     parent_snapshots: tuple[ParentLineage, ...] = ()
     source_label: str | None = None
     safety: SafetyPlacement | None = None
+    # Set only on a repeat_by DAY Section; (section_key, day) is the semantic address.
+    day: OperatingDay | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.item_id, ItemId):
             raise InvalidDomainValueError("WeeklyCell.item_id must be ItemId")
         _non_blank(self.section_key, "WeeklyCell.section_key")
+        if self.day is not None and not isinstance(self.day, OperatingDay):
+            raise InvalidDomainValueError("WeeklyCell.day must be OperatingDay")
         if not isinstance(self.value, str):
             raise InvalidDomainValueError("WeeklyCell.value must be a string")
         if not isinstance(self.cell_state, CellState):
@@ -280,11 +287,17 @@ class WeeklyPlan:
             isinstance(cell, WeeklyCell) for cell in self.cells
         ):
             raise InvalidDomainValueError("WeeklyPlan.cells must contain WeeklyCell values")
-        if tuple(cell.section_key for cell in self.cells) != tuple(
-            section.section_key for section in self.template_snapshot.sections
-        ):
+        expected = tuple(
+            (section.section_key, day)
+            for section in self.template_snapshot.sections
+            for day in (
+                self.operating_days if section.repeat_by is RepeatBy.DAY else (None,)
+            )
+        )
+        if tuple((cell.section_key, cell.day) for cell in self.cells) != expected:
             raise InvalidDomainValueError(
-                "WeeklyPlan needs exactly one Cell per Snapshot Section, in Section order"
+                "WeeklyPlan needs one Cell per Snapshot Section (per operating day for DAY), "
+                "in Section order"
             )
         if len({cell.item_id for cell in self.cells}) != len(self.cells):
             raise InvalidDomainValueError("WeeklyPlan cells must have unique ItemId values")
@@ -315,10 +328,17 @@ class WeeklyPlan:
         if not isinstance(self.generation_mode, MonthlyGenerationMode):
             raise InvalidDomainValueError("WeeklyPlan.generation_mode is invalid")
 
-    def cell(self, section_key: str) -> WeeklyCell:
-        found = next((cell for cell in self.cells if cell.section_key == section_key), None)
+    def cell(self, section_key: str, day: OperatingDay | None = None) -> WeeklyCell:
+        found = next(
+            (
+                cell
+                for cell in self.cells
+                if cell.section_key == section_key and cell.day is day
+            ),
+            None,
+        )
         if found is None:
-            raise InvalidDomainValueError(f"Weekly Section not found: {section_key}")
+            raise InvalidDomainValueError(f"Weekly Section not found: {section_key} {day}")
         return found
 
     def find_cell(self, item_id: ItemId) -> WeeklyCell | None:
@@ -333,8 +353,14 @@ class WeeklyPlan:
             raise InvalidDomainValueError(f"Weekly cell not found: {item_id}")
         if not isinstance(replacement, WeeklyCell):
             raise InvalidDomainValueError("replacement must be WeeklyCell")
-        if (replacement.item_id, replacement.section_key) != (current.item_id, current.section_key):
-            raise InvalidDomainValueError("Weekly replacement must preserve ItemId and section_key")
+        if (replacement.item_id, replacement.section_key, replacement.day) != (
+            current.item_id,
+            current.section_key,
+            current.day,
+        ):
+            raise InvalidDomainValueError(
+                "Weekly replacement must preserve ItemId, section_key and day"
+            )
         return replace(self, cells=tuple(replacement if cell is current else cell for cell in self.cells))
 
     def ensure_mutable(self, operation: str) -> None:

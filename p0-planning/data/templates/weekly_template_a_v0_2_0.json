@@ -1,0 +1,420 @@
+{
+  "$schema_note": "Weekly Template A v0 초안. Template instance data 이며 Reference Data 가 아니다. 주간계획안 하나는 반 하나 × 한 주다(docs/weekly-plan-contract.md). 모든 Section 이 항상 켜져 있다 — 주간은 TemplateProfile 이 없다(contract §5-2 · D-W1-06).",
+  "template_id": "ssuksak.weekly-template-a",
+  "template_version": "weekly-template-a-v0.2.0",
+  "supersedes": "weekly-template-a-v0.1.0",
+  "normative_status": "SAMPLE_DERIVED_NON_NORMATIVE",
+  "normative_status_note": "공식 주간계획안 작성 지침은 references/official/ 에서 찾지 못했다. 모든 Section 은 판독 가능 10기관 샘플에서 관찰한 것이지 규정된 것이 아니다.",
+  "issued_on": "2026-10-31",
+  "review": {
+    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
+    "approved_by": null,
+    "approved_at": null,
+    "runtime_active": false,
+    "runtime_active_note": "PENDING_HUMAN_REVIEW. 대·소집단 활동과 특별활동을 요일 칸으로 나눈 재발행본이며 아직 사람 검토·승인을 받지 않았다. weekly-template-a-v0.1.0의 승인은 이 version에 계승되지 않는다. 승인 전에는 runtime 활성 Template이 아니며 주간계획안 생성의 기반 Template으로 쓰지 않는다.",
+    "reviewer_identity_rule": "reviewer_<role>_<sequence> 규칙을 따른다. Plan Confirm 의 actor_id 규칙과 섞지 않는다.",
+    "change_from_supersedes": "group_activity · special_program 의 repeat_by 를 NONE → DAY 로 바꿨다(운영 요일마다 한 칸). 다른 Section 의 정의·활성화·순서·라벨·근거와 실내 놀이(indoor_play)의 주 단위 목록은 그대로다."
+  },
+  "evidence_base": {
+    "source_kind": "실측 샘플",
+    "measurement_record": "docs/weekly-reference-survey.md",
+    "sample_root": "references/samples/weekly/",
+    "file_count": 126,
+    "readable_file_count": 125,
+    "institution_count": 11,
+    "quantitative_denominator": 10,
+    "denominator_note": "판독 가능 기관 수. 1기관은 글자층이 없는 이미지 PDF 라 제외했다. 같은 기관의 파일은 양식이 같아 기관 단위로 센다."
+  },
+  "structure_rules": {
+    "fixed_row_schema_forbidden": true,
+    "hierarchy_max_depth": 2,
+    "hierarchy_max_depth_evidence": "계층형 라벨(생활주제 ▸ 예상놀이주제 · 생활주제 ▸ 주제)이 2기관에서 관찰된다. 이 판은 계층 Section 을 두지 않는다.",
+    "global_repeat_by_default": null,
+    "supported_repeat_by": [
+      "NONE",
+      "DAY"
+    ],
+    "supported_repeat_by_note": "DAY 는 주간계획안의 operating_days 마다 한 칸이다(월~금 5칸, 토요일 운영이면 6칸). (section_key, day) 가 의미 주소이고 칸 주소는 item_id 다. 근거가 없는 요일 칸은 비워 두고 다른 요일 값으로 채우지 않는다. 월간은 DAY 를 쓰지 않는다.",
+    "default_empty_value_policy": "RENDER_EMPTY_CELL",
+    "week_period_note": "주 주소는 부모 월간의 WeekId 를 그대로 쓴다. 토요일은 Template 이 아니라 주간계획안의 operating_days 가 가진다(contract §3).",
+    "selection_note": "REQUIRED 는 생성 칸, INSTITUTION_INPUT 은 교사 입력 칸(생성하지 않음, 처음 쓰면 MANUAL) — contract §6-2 · §10-2."
+  },
+  "sections": [
+    {
+      "semantic_key": "theme",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": true,
+      "display_label": "주제",
+      "order": 0,
+      "observed_source_labels": [
+        "주제",
+        "놀이주제",
+        "생활주제",
+        "예상놀이주제"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1"
+      }
+    },
+    {
+      "semantic_key": "focus",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "PARENT_FOCUS_CARRIED_TO_WEEK",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "소주제",
+      "order": 1,
+      "observed_source_labels": [
+        "소주제",
+        "예상놀이주제"
+      ],
+      "evidence": {
+        "observed_institutions": 3,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "명시 소주제 3기관 + 계층형(생활주제 ▸ 예상놀이주제 · 생활주제 ▸ 주제) 2기관. 주마다 바뀐다. semantic_variant 는 생성 시 정한다(W3)."
+      }
+    },
+    {
+      "semantic_key": "goals",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_9_OF_10",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "목표",
+      "order": 2,
+      "observed_source_labels": [
+        "목표(교사의 기대)",
+        "교사의 기대",
+        "놀이목표",
+        "유아의 주요경험"
+      ],
+      "evidence": {
+        "observed_institutions": 9,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1"
+      }
+    },
+    {
+      "semantic_key": "basic_habit",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "기본생활",
+      "order": 3,
+      "observed_source_labels": [
+        "기본생활습관",
+        "기본생활",
+        "기본생활 및 안전교육"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "3기관은 「기본생활 및 안전교육」 한 행이다. basic_habit 과 safety_education 두 Section 으로 나눠 담는다."
+      }
+    },
+    {
+      "semantic_key": "safety_education",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_9_OF_10",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "안전교육",
+      "order": 4,
+      "observed_source_labels": [
+        "안전교육",
+        "[교통안전]",
+        "[재난안전]"
+      ],
+      "evidence": {
+        "observed_institutions": 9,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "값은 부모 월간 칸의 배치 정보로 정한다(contract §8). 법정 충족을 주장하지 않는다(ADR-033 §4)."
+      }
+    },
+    {
+      "semantic_key": "indoor_play",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "실내놀이",
+      "order": 5,
+      "observed_source_labels": [
+        "실내자유놀이",
+        "실내놀이",
+        "놀이",
+        "예상되는 우리들만의 놀이"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "3기관은 영역별로 나누지만 P0 는 칸 하나 안 목록으로 쓴다."
+      }
+    },
+    {
+      "semantic_key": "group_activity",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_9_OF_10",
+      "repeat_by": "DAY",
+      "repeat_by_basis": "요일마다 값이 다른 행이라 운영 요일마다 한 칸을 둔다. 요일 수는 Template 이 아니라 주간계획안의 operating_days 가 정한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "대·소집단 활동",
+      "order": 6,
+      "observed_source_labels": [
+        "대·소집단활동",
+        "대·소그룹활동",
+        "이야기나누기",
+        "활동",
+        "실내활동"
+      ],
+      "evidence": {
+        "observed_institutions": 9,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "9기관 + 같은 역할의 「실내활동」 행 1기관. 요일마다 값이 다른 행이라 요일 칸으로 나눈다."
+      }
+    },
+    {
+      "semantic_key": "outdoor_play",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "바깥놀이",
+      "order": 7,
+      "observed_source_labels": [
+        "바깥놀이",
+        "실외(바깥)놀이",
+        "실외놀이"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1"
+      }
+    },
+    {
+      "semantic_key": "indoor_alternative",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "REQUIRED",
+      "required_for_generation": false,
+      "display_label": "대체놀이",
+      "order": 8,
+      "observed_source_labels": [
+        "대체놀이",
+        "대체활동",
+        "실내대체놀이"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "바깥놀이와 항상 짝으로 관찰됐다."
+      }
+    },
+    {
+      "semantic_key": "family_link",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_ALL_READABLE_INSTITUTIONS",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "INSTITUTION_INPUT",
+      "required_for_generation": false,
+      "display_label": "가정연계",
+      "order": 9,
+      "observed_source_labels": [
+        "귀가 및 가정연계",
+        "가정통신",
+        "가정연계활동",
+        "반 소식",
+        "안내합니다",
+        "부모님과 함께해요"
+      ],
+      "evidence": {
+        "observed_institutions": 10,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "공지 · 납부 · 반 소식이 섞인다. 생성하면 없는 사실이 되므로 교사 입력이다(contract §6-2)."
+      }
+    },
+    {
+      "semantic_key": "event_schedule",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_MAJORITY",
+      "repeat_by": "NONE",
+      "repeat_by_basis": "주간계획안 한 장이 한 주다. 이 Section 은 주 단위 값 하나를 둔다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "INSTITUTION_INPUT",
+      "required_for_generation": false,
+      "display_label": "행사",
+      "order": 10,
+      "observed_source_labels": [
+        "행사",
+        "행사 및 교육",
+        "준비물 및 행사"
+      ],
+      "evidence": {
+        "observed_institutions": 6,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "6~7기관(「준비물 및 행사」 1기관 포함 여부). 날짜 있는 기관 운영 사실이라 교사 입력이다."
+      }
+    },
+    {
+      "semantic_key": "special_program",
+      "role": "CONTENT",
+      "parent_section": null,
+      "depth": 1,
+      "activated": true,
+      "activation_basis": "OBSERVED_IN_7_OF_10",
+      "repeat_by": "DAY",
+      "repeat_by_basis": "요일마다 값이 다른 행이라 운영 요일마다 한 칸을 둔다. 요일 수는 Template 이 아니라 주간계획안의 operating_days 가 정한다.",
+      "empty_value_policy": "RENDER_EMPTY_CELL",
+      "category": "DEFAULT",
+      "selection": "INSTITUTION_INPUT",
+      "required_for_generation": false,
+      "display_label": "특별활동",
+      "order": 11,
+      "observed_source_labels": [
+        "특별활동",
+        "특성화",
+        "특별·특성화 활동"
+      ],
+      "evidence": {
+        "observed_institutions": 7,
+        "denominator": 10,
+        "measurement_record": "docs/weekly-reference-survey.md §3-1",
+        "note": "시간표는 기관 운영 정보라 교사 입력이다. 요일마다 한 칸이고 처음에는 비어 있다."
+      }
+    }
+  ],
+  "excluded_sections": [
+    {
+      "semantic_key": "character_greeting",
+      "observed_source_labels": [
+        "성품인사"
+      ],
+      "exclusion_reason": "월간 Template 과 같은 이유로 기본 Section 으로 두지 않는다."
+    }
+  ],
+  "candidate_sections_not_yet_defined": [
+    {
+      "semantic_key": "supplies",
+      "observed_institutions": 1,
+      "observed_note": "준비물(요일별). 1기관 행, 다른 기관은 공지 문장 안에만 있다."
+    },
+    {
+      "semantic_key": "arrival_greeting",
+      "observed_institutions": 6,
+      "observed_note": "등원 및 맞이하기. 주 1개 생활지도 문장."
+    },
+    {
+      "semantic_key": "meal_rest",
+      "observed_institutions": 6,
+      "observed_note": "점심 · 간식 · 낮잠 및 휴식. 생활지도 문장."
+    },
+    {
+      "semantic_key": "social_relations",
+      "observed_institutions": 4,
+      "observed_note": "사회관계증진(활동)."
+    },
+    {
+      "semantic_key": "last_week_record",
+      "observed_institutions": 1,
+      "observed_note": "지난주 실행 기록. 계획이 아니라 기록이다."
+    },
+    {
+      "semantic_key": "institution_specific",
+      "observed_institutions": 1,
+      "observed_note": "이달의 책 · 영양교육 · 연장반 놀이 · 종교 행 · 이음교육 · ESG 등 기관 고유 행(각 1기관)."
+    }
+  ],
+  "related_decisions": [
+    "docs/weekly-plan-contract.md (W1, #184)",
+    "docs/adr/030-pm-contract-decisions-2026-10-19.md (PM-04 · WQ-01 · WQ-02 · WQ-03)",
+    "docs/adr/027-repeat-by-and-template-approval.md",
+    "docs/adr/033-monthly-core-structural-freeze.md",
+    "docs/adr/038-class-age-range-to-core-age-set.md"
+  ]
+}

@@ -17,6 +17,12 @@ from ssuksak.planning.domain.errors import (
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.lineage import ParentLineage
 from ssuksak.planning.domain.monthly_constraint import CellState
+from ssuksak.planning.domain.monthly_plan import MonthlySection
+from ssuksak.planning.domain.monthly_template import (
+    EmptyValuePolicy,
+    RepeatBy,
+    SectionRole,
+)
 from ssuksak.planning.domain.plan import PlanStatus
 from ssuksak.planning.domain.provenance import (
     AuditEventType,
@@ -37,33 +43,35 @@ from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "data" / "templates" / "weekly_template_a_v0_1_0.json"
+TEMPLATE_DAY = TEMPLATE.with_name("weekly_template_a_v0_2_0.json")
 NOW = datetime(2026, 9, 20, 1, tzinfo=UTC)
 LLM = GenerationMethodDetail(GenerationMethod.RULE_LLM, "weekly.test", "v1")
 PARENT = ParentLineage(PlanId("monthly-1"), NOW, ActorId("user_1"))
 WEEK = canonical_week_periods(YearMonth(2026, 9))[1]
 
 
-def _template():
-    return parse_monthly_template_payload(json.loads(TEMPLATE.read_text(encoding="utf-8")))
+def _template(path: Path = TEMPLATE):
+    return parse_monthly_template_payload(json.loads(path.read_text(encoding="utf-8")))
 
 
-def _snapshot() -> WeeklyTemplateSnapshot:
+def _snapshot(path: Path = TEMPLATE) -> WeeklyTemplateSnapshot:
     return WeeklyTemplateSnapshot.from_template(
-        _template(), institution_ref="daycare-1", classroom_ref="class-1"
+        _template(path), institution_ref="daycare-1", classroom_ref="class-1"
     )
 
 
-def _cell(key: str, value: str = "") -> WeeklyCell:
+def _cell(key: str, value: str = "", day: OperatingDay | None = None) -> WeeklyCell:
     if key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
         generation = None
     else:
         generation = LLM if value else GenerationMethodDetail(GenerationMethod.RULE_ONLY, "weekly.test", "v1")
     return WeeklyCell(
-        item_id=ItemId(f"item-{key}"),
+        item_id=ItemId(f"item-{key}" + (f"-{day.value}" if day else "")),
         section_key=key,
         value=value,
         cell_state=CellState.FILLED if value else CellState.EMPTY_VALID,
         generation=generation,
+        day=day,
     )
 
 
@@ -208,3 +216,61 @@ def test_confirm_appends_event_and_confirmed_plan_is_read_only():
         confirmed.ensure_mutable("edit")
     with pytest.raises(InvalidStateTransitionError):
         confirmed.confirm(actor_id=ActorId("user_1"), occurred_at=NOW)
+
+
+def _day_plan(days=WEEKDAYS) -> WeeklyPlan:
+    snapshot = _snapshot(TEMPLATE_DAY)
+    cells = tuple(
+        _cell(s.section_key, "가을 산책" if s.section_key == "theme" else "", day)
+        for s in snapshot.sections
+        for day in (days if s.repeat_by is RepeatBy.DAY else (None,))
+    )
+    return _plan(template_snapshot=snapshot, cells=cells, operating_days=days)
+
+
+def test_day_template_is_pending_and_splits_only_group_activity_and_special_program():
+    template = _template(TEMPLATE_DAY)
+
+    assert not template.is_active  # PENDING_HUMAN_REVIEW until a person approves it
+    assert [s.section_key for s in template.activated_sections if s.repeat_by is RepeatBy.DAY] == [
+        "group_activity", "special_program",
+    ]
+    assert [s.section_key for s in template.activated_sections] == [
+        s.section_key for s in _template().activated_sections
+    ]
+
+
+@pytest.mark.parametrize("days", [WEEKDAYS, WEEKDAYS_WITH_SATURDAY])
+def test_day_section_has_one_cell_per_operating_day(days):
+    plan = _day_plan(days)
+
+    assert [c.day for c in plan.cells if c.section_key == "group_activity"] == list(days)
+    assert plan.cell("special_program", days[-1]).generation is None
+    assert plan.cell("theme").day is None
+    with pytest.raises(InvalidDomainValueError, match="not found"):
+        plan.cell("group_activity")
+    # A teacher's first write on one day's special_program cell is MANUAL.
+    target = plan.cell("special_program", OperatingDay.MON)
+    written = replace(
+        target, value="체육", cell_state=CellState.FILLED,
+        generation=GenerationMethodDetail(GenerationMethod.MANUAL),
+    )
+    assert plan.replace_cell(target.item_id, written).cell("special_program", OperatingDay.MON).value == "체육"
+    with pytest.raises(InvalidDomainValueError, match="day"):
+        plan.replace_cell(target.item_id, replace(target, day=OperatingDay.TUE))
+
+
+def test_day_cells_must_cover_operating_days_in_order():
+    plan = _day_plan()
+    saturday = _cell("group_activity", "", OperatingDay.SAT)
+    with pytest.raises(InvalidDomainValueError, match="one Cell per"):
+        _plan(template_snapshot=plan.template_snapshot, cells=tuple(c for c in plan.cells if c.day is not OperatingDay.FRI))
+    with pytest.raises(InvalidDomainValueError, match="one Cell per"):
+        _plan(template_snapshot=plan.template_snapshot, cells=(*plan.cells, saturday))
+    with pytest.raises(InvalidDomainValueError, match="one Cell per"):
+        _plan(cells=tuple(replace(c, day=OperatingDay.MON) if c.section_key == "group_activity" else c for c in _plan().cells))
+
+
+def test_monthly_sections_never_repeat_by_day():
+    with pytest.raises(InvalidDomainValueError, match="DAY"):
+        MonthlySection("indoor_play", SectionRole.CONTENT, RepeatBy.DAY, EmptyValuePolicy.RENDER_EMPTY_CELL)
