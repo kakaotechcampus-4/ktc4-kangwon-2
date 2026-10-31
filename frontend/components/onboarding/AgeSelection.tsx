@@ -55,14 +55,16 @@ function AgeChip({
   return (
     <label
       htmlFor={id}
-      className="inline-flex items-center min-h-[40px] px-4 rounded-full border-[1.5px] border-line bg-paper text-[14px] text-ink cursor-pointer select-none transition-colors hover:border-primary has-[:checked]:border-primary has-[:checked]:bg-primary-tint has-[:checked]:font-semibold has-[:checked]:text-primary-ink has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary"
+      className="relative inline-flex items-center min-h-[40px] px-4 rounded-full border-[1.5px] border-line bg-paper text-[14px] text-ink cursor-pointer select-none transition-colors hover:border-primary has-[:checked]:border-primary has-[:checked]:bg-primary-tint has-[:checked]:font-semibold has-[:checked]:text-primary-ink has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary"
     >
       <input
         id={id}
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="sr-only"
+        // 화면에서는 숨기되 버튼 전체를 덮어 둔다. sr-only 로 숨기면 라벨이 클릭을 가로채
+        // 체크박스를 직접 누르는 e2e(getByLabel(...).check())가 멈춘다
+        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none rounded-full opacity-0"
       />
       {label}
     </label>
