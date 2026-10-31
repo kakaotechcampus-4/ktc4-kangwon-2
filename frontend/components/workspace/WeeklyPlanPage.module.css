@@ -1,0 +1,345 @@
+/* 주간계획안 A안 — 카드형 편집 화면. 색은 앱 토큰만 쓴다. */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 1180px;
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.eyebrow {
+  font-size: 14px;
+  color: var(--pg-ink-soft);
+}
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+.titleRow h2 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.period {
+  font-size: 16px;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--pg-peach);
+  color: var(--pg-peach-ink);
+}
+.statusDone {
+  background: var(--pg-success-tint);
+  color: var(--pg-success);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.btn,
+.btnPrimary,
+.btnSmall {
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 10px;
+  border: 1px solid var(--pg-line);
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+}
+.btn {
+  height: 44px;
+  padding: 0 18px;
+  font-size: 15px;
+}
+.btnPrimary {
+  height: 44px;
+  padding: 0 22px;
+  font-size: 15px;
+  font-weight: 700;
+  border-color: var(--pg-primary-line);
+  background: var(--pg-primary);
+  color: #fff;
+}
+.btnPrimary:hover:not(:disabled) {
+  background: var(--pg-primary-hover);
+}
+.btnSmall {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+.btn:disabled,
+.btnPrimary:disabled,
+.btnSmall:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+}
+.month {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.month select {
+  height: 52px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid var(--pg-line);
+  background: var(--pg-paper);
+  font-size: 15px;
+  font-family: inherit;
+}
+.week {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 148px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--pg-line);
+  background: var(--pg-paper);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--pg-ink);
+}
+.week b {
+  font-size: 15px;
+}
+.week span {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.weekNone {
+  border-style: dashed;
+  background: transparent;
+}
+.weekCurrent {
+  border: 2px solid var(--pg-primary);
+  background: var(--pg-primary-tint);
+}
+.weekDone span {
+  color: var(--pg-success);
+  font-weight: 500;
+}
+
+.context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--pg-paper);
+  border: 1px solid var(--pg-line);
+  font-size: 14px;
+}
+.context > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.soft {
+  color: var(--pg-ink-soft);
+}
+.days {
+  display: inline-flex;
+  gap: 4px;
+}
+.day,
+.dayOff {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.day {
+  background: var(--pg-ink);
+  color: var(--pg-paper);
+  font-weight: 700;
+}
+.dayOff {
+  border: 1px dashed var(--pg-line);
+  color: var(--pg-ink-soft);
+}
+
+.note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.note svg {
+  flex: none;
+  margin-top: 2px;
+}
+.findings {
+  margin: 0;
+  padding: 14px 18px 14px 36px;
+  border-radius: 12px;
+  background: var(--pg-note-soft);
+  border: 1px solid var(--pg-note-soft-line);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+.groupHead h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+.grid2,
+.grid3 {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 760px) {
+  .grid2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .grid3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.wide {
+  grid-column: 1 / -1;
+}
+
+.card,
+.cardEmpty {
+  padding: 20px 22px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.card {
+  background: var(--pg-paper);
+  border: 1px solid var(--pg-line);
+}
+.cardEmpty {
+  background: transparent;
+  border: 1px dashed var(--pg-line);
+}
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cardName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cardName h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.cardButtons {
+  display: flex;
+  gap: 6px;
+}
+.value {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.75;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.valueTheme {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.source {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.chip,
+.chipEdited,
+.chipManual,
+.chipRule {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.chip {
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.chipEdited {
+  background: var(--pg-success-tint);
+  color: var(--pg-success);
+}
+.chipManual {
+  background: var(--pg-peach);
+  color: var(--pg-peach-ink);
+}
+.chipRule {
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.editor {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--pg-primary-tint-line);
+  background: var(--pg-paper);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--pg-ink);
+  resize: vertical;
+}

@@ -149,13 +149,15 @@ test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
   assert.ok(schemas.includes("teacher_input:"), "teacher_input");
 });
 
-test("클라이언트는 일곱 가지를 낸다 — 월간의 audit 은 아직 없다", () => {
+test("클라이언트는 아홉 가지를 낸다 — 이력 · 한글 파일 포함", () => {
   assert.deepEqual(Object.keys(weekly).sort(), [
     "confirmWeeklyPlan",
     "createWeeklyPlan",
     "deleteWeeklyPlan",
+    "downloadWeeklyHwpx",
     "editWeeklyCell",
     "getWeeklyPlan",
+    "getWeeklyPlanAudit",
     "listWeeklyPlans",
     "regenerateWeeklyCell",
   ]);
