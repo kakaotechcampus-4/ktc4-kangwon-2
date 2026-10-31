@@ -268,10 +268,17 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
       await expect(cell(0)).not.toHaveAttribute("role", "button");
       await expect(page.getByRole("textbox")).toHaveCount(0);
     }
-    if (kind === "weekly")
-      await expect(page.getByRole("combobox", { name: "주", exact: true })).toHaveValue(
-        weekPlan.week_id,
-      );
+    if (kind === "weekly") {
+      // 보관함 링크가 고른 주가 「보는 중」이고, 그 주 계획안이 열린다.
+      await expect(
+        page
+          .getByRole("navigation", { name: `${monthPlan.month}월의 주` })
+          .locator('[aria-current="true"]'),
+      ).toContainText(week.label);
+      await expect(
+        page.getByRole("heading", { name: week.label, exact: true, level: 2 }),
+      ).toBeVisible();
+    }
   }
 });
 
