@@ -41,3 +41,22 @@ test("여러 마디가 한꺼번에 오면 이어 붙인다", () => {
   const 받은것 = results("안녕하세요", "도토리를", "주웠어요");
   assert.equal(transcriptFrom(받은것, 1), "도토리를 주웠어요");
 });
+
+/** 실패 코드를 교사가 읽을 말로 바꾼다 (관찰 기록 리뷰 ①: 「잘 동작 안 하는 거 같다」). */
+const { whyFailed } = await import("../lib/hooks/use-dictation.ts");
+
+test("멈춤 버튼은 실패가 아니다", () => {
+  assert.equal(whyFailed("aborted"), "");
+});
+
+test("막힌 마이크와 안 들린 소리를 다르게 말한다", () => {
+  assert.match(whyFailed("not-allowed"), /허용/);
+  assert.match(whyFailed("no-speech"), /들리지 않았어요/);
+  assert.notEqual(whyFailed("not-allowed"), whyFailed("no-speech"));
+});
+
+test("모르는 코드와 빈 코드도 조용히 넘기지 않는다", () => {
+  for (const code of ["who-knows", undefined, ""]) {
+    assert.match(whyFailed(code), /받아쓰기를 못 했어요/);
+  }
+});
