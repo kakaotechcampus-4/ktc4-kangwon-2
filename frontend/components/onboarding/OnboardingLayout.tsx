@@ -39,11 +39,11 @@ export default function OnboardingLayout({
         </Link>
       </header>
 
-      <main className="mx-auto max-w-[820px] py-9 sm:py-12">
-        <div className="mb-7">
+      <main className="mx-auto max-w-[820px] py-6 sm:py-12">
+        <div className="mb-5 sm:mb-7">
           <OnboardingStepIndicator current={step} />
         </div>
-        <section className="relative border border-line bg-paper p-6 shadow-pg-hard sm:p-9">
+        <section className="relative border border-line bg-paper p-5 shadow-pg-hard sm:p-9">
           <span
             aria-hidden="true"
             className="pointer-events-none absolute -top-3 right-10 h-6 w-20 rotate-3 border border-white/60 bg-tape"
@@ -68,9 +68,10 @@ export function StepHeading({
   return (
     <div>
       {eyebrow}
+      {/* balance 는 휴대폰에서 「우리 반 아동 / 명단을…」처럼 말 중간을 끊는다. 어절 단위로만 줄을 바꾼다 */}
       <h1
-        className={`font-display text-[26px] font-bold text-ink lg:text-[32px] ${eyebrow ? "mt-3" : ""}`}
-        style={{ textWrap: "balance" }}
+        className={`font-display text-[24px] font-bold text-ink sm:text-[26px] lg:text-[32px] ${eyebrow ? "mt-3" : ""}`}
+        style={{ wordBreak: "keep-all" }}
       >
         {title}
       </h1>
