@@ -79,9 +79,13 @@ export default function MonthlyTemplatePage() {
         if (!alive) return;
         setCenterId(id);
         setTemplates(items);
-        // 승인된 양식이 하나면 고를 것이 없다. 미리 골라 둔다.
-        const usable = items.filter((t) => t.approved);
-        if (usable.length === 1) setPicked(usable[0].template_ref.template_version);
+        // 승인된 양식 중 가장 최신 판을 미리 골라 둔다. 여러 개면 목록에서 바꿀 수 있다.
+        const latest = items
+          .filter((t) => t.approved)
+          .map((t) => t.template_ref.template_version)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+          .pop();
+        if (latest) setPicked(latest);
       } catch (e) {
         if (alive) setProblem(describe(e, "양식 설정을 불러오지 못했어요."));
       }
