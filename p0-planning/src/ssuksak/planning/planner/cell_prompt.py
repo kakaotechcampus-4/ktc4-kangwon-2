@@ -18,6 +18,7 @@ from .contracts import (
     MonthlyCellSnapshot,
 )
 from .prompt import (
+    MONTHLY_V1_STYLE,
     _generation_schema,
     _prompt_payload,
     allowed_grounding_refs_by_section,
@@ -133,7 +134,7 @@ def build_monthly_cell_request(
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
         prompt_version=MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION,
-        system_prompt=CELL_SYSTEM_PROMPT + (V1_GUIDANCE if contextual else ""),
+        system_prompt=CELL_SYSTEM_PROMPT + (V1_GUIDANCE + MONTHLY_V1_STYLE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         target_week_id=target_week_id,
