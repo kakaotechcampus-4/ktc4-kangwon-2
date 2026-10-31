@@ -634,6 +634,8 @@ export default function DocumentArchiveView({
                   aria-pressed={scope === "weeklyLog"}
                   onClick={() => {
                     setScope("weeklyLog");
+                    // 일일에서 보던 날짜의 달을 연다 — 오늘 달로 돌아가면 보던 주의 주간 일지가 안 보인다.
+                    setMonth(monthOf(day));
                     onCloseDetail();
                   }}
                 >
