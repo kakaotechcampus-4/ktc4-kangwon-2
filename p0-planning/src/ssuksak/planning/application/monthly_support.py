@@ -400,6 +400,7 @@ class MonthlyContextPipeline:
                     if safety is not None
                     else ()
                 ),
+                subthemes=parent_subthemes,
             )
         )
         packet = self._context.build(
