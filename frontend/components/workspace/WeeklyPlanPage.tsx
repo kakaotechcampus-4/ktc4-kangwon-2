@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
-import { syncClass } from "@/lib/api/onboarding";
+import { classServerId, syncClass } from "@/lib/api/onboarding";
 import type { MonthlyPlan, WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import {
   confirmWeeklyPlan,
@@ -31,6 +31,8 @@ import {
   regenerateWeeklyCell,
 } from "@/lib/api/weekly";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
+import { useClientState } from "@/lib/hooks/use-client-state";
+import { archivePlanEntry } from "@/lib/workspace/document-archive";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 
@@ -53,9 +55,17 @@ function periodText(plan: WeeklyPlan): string {
 /** 교사가 적는 칸인가 (가정 연계 · 행사 · 특별활동, §6-2). 서버가 칸마다 알려 준다 (W5b). */
 const isTeacherInput = (cell: WeeklyCell) => cell.teacher_input;
 
+function readArchiveEntry() {
+  return archivePlanEntry(typeof window === "undefined" ? "" : window.location.search);
+}
+
 export default function WeeklyPlanPage() {
+  const [entry] = useClientState(readArchiveEntry, null);
   const [classId, setClassId] = useState<number | null>(null);
-  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
+  const [month, setMonth] = useClientState(
+    () => readArchiveEntry()?.month ?? new Date().getMonth() + 1,
+    new Date().getMonth() + 1,
+  );
   /** 그 달 월간계획안. 확정본이어야 주간을 만들 수 있다 (G3). */
   const [monthly, setMonthly] = useState<MonthlyPlan | null>(null);
   const [weekId, setWeekId] = useState("");
@@ -77,7 +87,11 @@ export default function WeeklyPlanPage() {
     (async () => {
       try {
         const settings = loadClassSettings();
-        const primary = settings && primaryClassFor(settings);
+        const primary =
+          settings &&
+          (entry
+            ? settings.classes.find((c) => classServerId(c.id) === entry.classId)
+            : primaryClassFor(settings));
         if (!settings || !primary) throw new Error("반 정보를 먼저 저장해주세요.");
         const id = await syncClass(settings, primary);
         const parent = await loadMonthly(id, month);
@@ -85,7 +99,12 @@ export default function WeeklyPlanPage() {
         setClassId(id);
         setMonthly(parent);
         // 달을 바꾸면 고른 주와 띄워 둔 계획안은 다른 달 것이다. 같이 비운다.
-        setWeekId("");
+        setWeekId(
+          entry?.month === month &&
+            parent?.weeks.some((w) => w.week_id === entry.weekId && w.active)
+            ? entry.weekId
+            : "",
+        );
         setPlan(null);
         setDrafts({});
       } catch (e) {
@@ -95,7 +114,7 @@ export default function WeeklyPlanPage() {
     return () => {
       alive = false;
     };
-  }, [loadMonthly, month]);
+  }, [loadMonthly, month, entry]);
 
   /** 고를 수 있는 주. 월간이 정한 활성 주차만이다 — 주간이 주를 다시 세지 않는다 (§3-1). */
   const weeks = useMemo(() => monthly?.weeks.filter((w) => w.active) ?? [], [monthly]);
@@ -107,7 +126,11 @@ export default function WeeklyPlanPage() {
     (async () => {
       try {
         const { items } = await listWeeklyPlans(classId, month);
-        const found = items.find((p) => p.week_id === weekId);
+        const found = items.find(
+          (p) =>
+            p.week_id === weekId &&
+            (!entry || entry.classId !== classId || entry.weekId !== weekId || p.id === entry.id),
+        );
         const next = found ? await getWeeklyPlan(found.id) : null;
         if (!alive) return;
         setPlan(next);
@@ -119,7 +142,7 @@ export default function WeeklyPlanPage() {
     return () => {
       alive = false;
     };
-  }, [classId, weekId, monthly, month]);
+  }, [classId, weekId, monthly, month, entry]);
 
   const confirmed = plan?.status === "CONFIRMED";
   const sections = useMemo(

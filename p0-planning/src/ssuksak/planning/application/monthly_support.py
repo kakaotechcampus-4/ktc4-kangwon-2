@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from functools import partial
 
@@ -14,6 +14,7 @@ from ..context.models import (
     SafetySlotContext,
 )
 from ..domain.activity_reference import ActivityCatalog
+from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_constraint import ConstraintAssessment
@@ -42,7 +43,12 @@ from ..rules.safety_placement import (
     select_supplemental_primaries,
     verify_monthly_safety_placement,
 )
-from .monthly_dto import ActivityCatalogSelector, SafetyPlacementSelector, SafetyRuleSelector
+from .monthly_dto import (
+    ActivityCatalogSelector,
+    SafetyCandidatesSelector,
+    SafetyPlacementSelector,
+    SafetyRuleSelector,
+)
 from .monthly_errors import MonthlyApplicationError
 from .ports import (
     ActivityReferenceRepository,
@@ -54,6 +60,7 @@ from .ports import (
     SafetyPlacementPolicyRepository,
     TemplateProfileRepository,
 )
+from .safety_candidates import SafetyCandidateError, safety_candidate_slots
 from .yearly_support import fetch_optional_context
 
 
@@ -306,6 +313,8 @@ class MonthlyContextPipeline:
         context_builder: ContextPacketBuilder,
         safety_classification_repository=None,
         safety_quality_repository=None,
+        curriculum_loader: Callable[[], CurriculumCatalog] | None = None,
+        weekly_classification_repository=None,
     ) -> None:
         self._evidence = evidence_repository
         self._classification = classification_repository
@@ -314,6 +323,9 @@ class MonthlyContextPipeline:
         self._safety_classification = safety_classification_repository
         # Without an approved quality review, no Sample can ground a supplemental week.
         self._safety_quality = safety_quality_repository
+        self._curriculum_loader = curriculum_loader
+        # Read only when the Template has indoor_alternative (D-2).
+        self._weekly_classification = weekly_classification_repository
 
     def build(
         self,
@@ -329,8 +341,15 @@ class MonthlyContextPipeline:
         keywords: tuple[str, ...] = (),
         safety_slots: tuple[SafetySlot, ...] = (),
         safety_rule: SafetyLegalRule | None = None,
+        parent_subthemes: tuple[str, ...] = (),
     ) -> MonthlyContextPacket:
         active_weeks = tuple(period for period in week_periods if period.active)
+        try:
+            curriculum = self._curriculum_loader() if self._curriculum_loader else None
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            raise MonthlyApplicationError(
+                "curriculum_reference_unavailable", "The v1 curriculum context is unavailable"
+            ) from error
         safety = _safety_context(safety_slots, safety_rule) if safety_slots and safety_rule else None
         safety_classification: SafetyEvidenceClassification | None = (
             self._safety_classification.get_classification()
@@ -342,6 +361,14 @@ class MonthlyContextPipeline:
             if safety is not None and self._safety_quality is not None
             else None
         )
+        weekly_classification = None
+        if SemanticClass.INDOOR_ALTERNATIVE in grounding_classes:
+            if self._weekly_classification is None:
+                raise MonthlyApplicationError(
+                    "monthly_section_evidence_class_unavailable",
+                    "No approved Evidence class exists for Sections: indoor_alternative",
+                )
+            weekly_classification = self._weekly_classification.get_classification()
         try:
             retriever = MonthlyEvidenceRetriever(
                 self._evidence.get_store(),
@@ -349,6 +376,7 @@ class MonthlyContextPipeline:
                 classification=self._classification.get_classification(),
                 safety_classification=safety_classification,
                 safety_quality=safety_quality,
+                weekly_classification=weekly_classification,
             )
         except InvalidDomainValueError as exc:
             raise MonthlyApplicationError(
@@ -384,7 +412,37 @@ class MonthlyContextPipeline:
                 assessment.constraint.code for assessment in constraint_assessments
             ),
         )
+        packet = replace(packet, curriculum=curriculum, parent_subthemes=parent_subthemes)
         return packet if packet.safety is None else replace(packet, safety=_with_supplemental_primaries(packet.safety))
+
+    def with_safety_candidates(
+        self,
+        packet: MonthlyContextPacket,
+        *,
+        rule: SafetyLegalRule,
+        selector: SafetyCandidatesSelector,
+    ):
+        """S-1: the packet with its eight slots, the store and the life-safety records; fails before the LLM."""
+        if self._safety_classification is None or self._safety_quality is None:
+            raise MonthlyApplicationError(
+                "monthly_safety_evidence_not_active", "Safety candidates need approved safety evidence"
+            )
+        store = self._evidence.get_store()
+        try:
+            slots, records = safety_candidate_slots(
+                rule,
+                store,
+                self._safety_classification.get_classification(),
+                self._safety_quality.get_quality(),
+                month=packet.target_month.calendar_month,
+                classification_version=selector.classification_version,
+                quality_version=selector.quality_version,
+            )
+        except SafetyCandidateError as error:
+            raise MonthlyApplicationError(
+                "monthly_" + error.code.lower(), "Safety candidates cannot be built: " + error.code
+            ) from None
+        return replace(packet, safety_candidates=slots), store, records
 
 
 def snapshot_grounding_classes(snapshot: TemplateSnapshot) -> frozenset[SemanticClass]:

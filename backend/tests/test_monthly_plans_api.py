@@ -553,11 +553,12 @@ def real_llm(monkeypatch):
         monkeypatch.setattr(settings, "elice_mlapi_base_url", "https://llm.invalid/v1")
         monkeypatch.setattr(settings, "elice_mlapi_api_key", "test-only-not-a-key")
 
-        def post_json(url, *, headers, payload, timeout):
-            calls.append({"url": url, "payload": payload, "timeout": timeout})
+        # 생성 · 수리는 스트리밍한다(결정 T-1). 조립(fold)은 진짜 코드의 몫이라 결과만 돌려준다.
+        def post_stream(url, *, headers, payload, timeout, fold, deadline):
+            calls.append({"url": url, "payload": payload, "timeout": timeout, "deadline": deadline})
             return behaviour()
 
-        monkeypatch.setattr(monthly_llm, "post_json", post_json)
+        monkeypatch.setattr(monthly_llm, "post_stream", post_stream)
 
     return install, calls
 
@@ -587,13 +588,16 @@ def test_real_LLM_오류는_계약_코드로_가르고_mock_으로_대신하지_
         assert 1 <= len(calls) <= 2  # 수리는 최대 1회
         assert _monthly_rows(session) == []  # 부분 결과가 남지 않는다
 
-    # 요청은 ADR-023 그대로다: Sol-6.1 · strict · temperature 없음 · 30초.
+    # 요청은 ADR-023 그대로다: Sol-6.1 · strict · temperature 없음 · 소켓 대기 30초.
+    # 결정 T-1: 스트리밍 · 출력 상한 6,000 · 호출당 전체 마감 120초(수리도 같다).
     sent = calls[0]
     assert sent["url"] == "https://llm.invalid/v1/chat/completions"
     assert sent["payload"]["model"] == "openai/gpt-6.1-sol"
     assert sent["payload"]["response_format"]["json_schema"]["strict"] is True
     assert "temperature" not in sent["payload"]
     assert sent["timeout"] == 30.0
+    assert (sent["payload"]["stream"], sent["payload"]["max_completion_tokens"]) == (True, 6000)
+    assert {call["deadline"] for call in calls} == {120}
 
     # 설정이 없으면 부르기 전에 멈춘다.
     calls.clear()
@@ -778,23 +782,35 @@ def test_확정된_월간을_hwpx_로_내려준다(world):
     assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "application/hwp+zip"
 
-    table, printed = _exported_table(response.content)
-    weeks = [week for week in plan["weeks"] if week["active"]]
-    weekly = [
-        s
-        for s in plan["sections"]
-        if s["visible"] and s["role"] == "CONTENT" and s["repeat_by"] == "WEEK"
-    ]
+    from app.features.plans.export import MONTHLY_MONTH_CELLS, MONTHLY_WEEK_ROWS
+    from app.shared.hwpx import NS, _cells
 
-    # 주마다 값이 있는 Section 하나가 본문 한 줄이다. 머리 7 · 본문 n · 꼬리 2.
-    assert int(table.get("rowCnt")) == 7 + len(weekly) + 2
-    for section in weekly:
-        assert section["label"] in printed
-        for cell in section["cells"]:
-            if cell["value"]:
-                assert cell["value"] in printed
-    assert weeks[0]["label"] in printed
-    assert f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}" in printed
+    table, _ = _exported_table(response.content)
+    weeks = [week for week in plan["weeks"] if week["active"]]
+    cells = {
+        address: "\n".join("".join(p.itertext()) for p in tc.iterfind("hp:subList/hp:p", NS))
+        for address, tc in _cells(table).items()
+    }
+
+    # 한 쪽 양식: 줄은 양식에 박혀 있고 주차 칸 수만 4 · 5주로 다르다.
+    assert int(table.get("rowCnt")) == 25
+    columns = sorted(col for row, col in cells if row == 6 and col > 0)
+    assert [cells[(6, col)] for col in columns] == [f"{i}주" for i in range(1, len(weeks) + 1)]
+    title, mark = cells[(0, 0)].split("\n")
+    assert title == f"{plan['month']}월 놀이계획안"
+    assert mark.startswith("만 ") and mark.endswith("세 햇살반")
+    assert cells[(2, 1)] == f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}"
+    shown = [s for s in plan["sections"] if s["visible"] and s["role"] == "CONTENT"]
+    assert {s["section_key"] for s in shown} & MONTHLY_WEEK_ROWS.keys()
+    for section in shown:
+        key = section["section_key"]
+        if key in MONTHLY_MONTH_CELLS:
+            value = "\n".join(c["value"] for c in section["cells"] if c["value"])
+            assert cells[MONTHLY_MONTH_CELLS[key]] == value
+            continue
+        by_week = {c["week_id"]: c["value"] for c in section["cells"]}
+        for col, week in zip(columns, weeks, strict=True):
+            assert cells[(MONTHLY_WEEK_ROWS[key], col)] == by_week.get(week["week_id"], "")
 
 
 def test_월간은_확정_전에_내보낼_수_없다(world):

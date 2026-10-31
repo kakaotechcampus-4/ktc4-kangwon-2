@@ -47,6 +47,8 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
 
   // 관찰 기록 한 건
   await page.goto("/records");
+  // 적는 칸은 접혀 있다 — 목록이 먼저다.
+  await page.getByRole("button", { name: "＋ 새 관찰 기록 쓰기" }).click();
   await page.getByRole("combobox", { name: "담당 반" }).selectOption({ label: "햇살반" });
   await page.getByRole("combobox", { name: "아동", exact: true }).selectOption({ label: child });
   await page.getByLabel("실제로 관찰한 사실").fill(fact);

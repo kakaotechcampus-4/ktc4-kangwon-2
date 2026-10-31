@@ -5,11 +5,13 @@ from __future__ import annotations
 import collections
 
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
+from ..domain.errors import InvalidDomainValueError
 from ..evidence.classification import EvidenceSemanticClassification, SemanticClass
 from ..evidence.models import EvidenceRecord, SourceSection
 from ..evidence.safety_classification import SafetyEvidenceClassification, SafetyReferenceKind
 from ..evidence.safety_quality import SafetyReferenceQuality
 from ..evidence.store import InstitutionEvidenceStore
+from ..evidence.weekly_classification import WeeklyEvidenceClassification, WeeklySemanticClass
 from .models import (
     AGE_VERIFIABLE_TIERS,
     CLASS_BLOCKS,
@@ -48,6 +50,7 @@ class MonthlyEvidenceRetriever:
         classification: EvidenceSemanticClassification | None = None,
         safety_classification: SafetyEvidenceClassification | None = None,
         safety_quality: SafetyReferenceQuality | None = None,
+        weekly_classification: WeeklyEvidenceClassification | None = None,
         institution_cap: int = 2,
         top_k: dict[BlockName, int] | None = None,
     ) -> None:
@@ -57,6 +60,14 @@ class MonthlyEvidenceRetriever:
             classification.require_bound_to(store.content_sha256)
         if safety_classification is not None:
             safety_classification.require_bound_to(store.content_sha256)
+        if weekly_classification is not None:
+            weekly_classification.require_bound_to(store.content_sha256)
+        self._weekly_classification = weekly_classification
+        if safety_quality is not None:
+            # The quality table judges this store under this classification (v2 checks the same).
+            if safety_classification is None:
+                raise InvalidDomainValueError("Safety reference quality requires its safety classification")
+            safety_quality.require_bound_to(store.content_sha256, safety_classification.classification_version)
         self._safety_classification = safety_classification
         self._safety_quality = safety_quality
         self._store = store
@@ -158,19 +169,31 @@ class MonthlyEvidenceRetriever:
         name = CLASS_BLOCKS[semantic_class]
         if semantic_class not in request.grounding_classes:
             return EvidenceBlock(name, self._top_k[name], "Section/variant not active in the Template Snapshot")
-        if self._classification is None:
-            raise ValueError("Section-scoped retrieval requires an approved Evidence classification")
-        records = [
-            record for record in self._store.by_month(request.target_month.calendar_month)
-            if record.general_grounding_eligible
-            and self._classification.class_of(record) is semantic_class
-        ]
+        if semantic_class is SemanticClass.INDOOR_ALTERNATIVE:
+            # D-2: the approved Weekly class, age-verifiable only like outdoor grounding.
+            if self._weekly_classification is None:
+                raise ValueError("Indoor alternative retrieval requires the approved Weekly classification")
+            records = [
+                record for record in self._store.by_month(request.target_month.calendar_month)
+                if record.general_grounding_eligible
+                and self._weekly_classification.class_of(record) is WeeklySemanticClass.INDOOR_ALTERNATIVE
+            ]
+            tiers = _GROUNDING_TIERS
+        else:
+            if self._classification is None:
+                raise ValueError("Section-scoped retrieval requires an approved Evidence classification")
+            records = [
+                record for record in self._store.by_month(request.target_month.calendar_month)
+                if record.general_grounding_eligible
+                and self._classification.class_of(record) is semantic_class
+            ]
+            tiers = _EXPANSION_TIERS
         return self._ranked_block(
             name=name,
             records=records,
             request=request,
             query_grams=grams,
-            tiers=_EXPANSION_TIERS,
+            tiers=tiers,
         )
 
     def _references(self, request: RetrievalRequest) -> EvidenceBlock:
@@ -315,5 +338,8 @@ class MonthlyEvidenceRetriever:
             activity_catalog_version=self._catalog.catalog_version if self._catalog else "",
             evidence_classification_version=(
                 self._classification.classification_version if self._classification else ""
+            ),
+            weekly_classification_version=(
+                self._weekly_classification.classification_version if self._weekly_classification else ""
             ),
         )
