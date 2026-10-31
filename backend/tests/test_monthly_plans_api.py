@@ -782,23 +782,35 @@ def test_확정된_월간을_hwpx_로_내려준다(world):
     assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "application/hwp+zip"
 
-    table, printed = _exported_table(response.content)
-    weeks = [week for week in plan["weeks"] if week["active"]]
-    weekly = [
-        s
-        for s in plan["sections"]
-        if s["visible"] and s["role"] == "CONTENT" and s["repeat_by"] == "WEEK"
-    ]
+    from app.features.plans.export import MONTHLY_MONTH_CELLS, MONTHLY_WEEK_ROWS
+    from app.shared.hwpx import NS, _cells
 
-    # 주마다 값이 있는 Section 하나가 본문 한 줄이다. 머리 7 · 본문 n · 꼬리 2.
-    assert int(table.get("rowCnt")) == 7 + len(weekly) + 2
-    for section in weekly:
-        assert section["label"] in printed
-        for cell in section["cells"]:
-            if cell["value"]:
-                assert cell["value"] in printed
-    assert weeks[0]["label"] in printed
-    assert f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}" in printed
+    table, _ = _exported_table(response.content)
+    weeks = [week for week in plan["weeks"] if week["active"]]
+    cells = {
+        address: "\n".join("".join(p.itertext()) for p in tc.iterfind("hp:subList/hp:p", NS))
+        for address, tc in _cells(table).items()
+    }
+
+    # 한 쪽 양식: 줄은 양식에 박혀 있고 주차 칸 수만 4 · 5주로 다르다.
+    assert int(table.get("rowCnt")) == 25
+    columns = sorted(col for row, col in cells if row == 6 and col > 0)
+    assert [cells[(6, col)] for col in columns] == [f"{i}주" for i in range(1, len(weeks) + 1)]
+    title, mark = cells[(0, 0)].split("\n")
+    assert title == f"{plan['month']}월 놀이계획안"
+    assert mark.startswith("만 ") and mark.endswith("세 햇살반")
+    assert cells[(2, 1)] == f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}"
+    shown = [s for s in plan["sections"] if s["visible"] and s["role"] == "CONTENT"]
+    assert {s["section_key"] for s in shown} & MONTHLY_WEEK_ROWS.keys()
+    for section in shown:
+        key = section["section_key"]
+        if key in MONTHLY_MONTH_CELLS:
+            value = "\n".join(c["value"] for c in section["cells"] if c["value"])
+            assert cells[MONTHLY_MONTH_CELLS[key]] == value
+            continue
+        by_week = {c["week_id"]: c["value"] for c in section["cells"]}
+        for col, week in zip(columns, weeks, strict=True):
+            assert cells[(MONTHLY_WEEK_ROWS[key], col)] == by_week.get(week["week_id"], "")
 
 
 def test_월간은_확정_전에_내보낼_수_없다(world):
