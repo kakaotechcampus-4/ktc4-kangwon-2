@@ -404,6 +404,9 @@ def parse_weekly_proposal(
 
 
 def _parse_days(item: dict) -> WeeklyDayValues:
+    key = item["section_key"]
+    if not isinstance(key, str) or not key.strip():  # an empty days list never builds a value that checks it
+        raise ProposalParseError("A days entry needs a section_key string")
     if item["reference_id"] is not None or not isinstance(item["days"], list):
         raise ProposalParseError("A days entry has no reference_id and a days list")
     days = []

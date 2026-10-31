@@ -19,7 +19,8 @@ from ssuksak.planning.domain.weekly_plan import (
     WEEKDAYS_WITH_SATURDAY,
     OperatingDay,
 )
-from ssuksak.planning.planner.contracts import RawLlmResponse
+from ssuksak.planning.planner.contracts import ProposalParseError, RawLlmResponse
+from ssuksak.planning.planner.weekly import parse_weekly_proposal
 
 from .weekly_harness import WEEKLY_DAY_TEMPLATE, WeeklyHarness
 
@@ -92,6 +93,19 @@ def test_a_missing_day_is_rejected_and_nothing_is_saved():
         _generate(harness, provider=provider)
     assert len(provider.requests) == 1  # DAY_MISMATCH is not repairable
     assert len(harness.weekly_plans) == 0
+
+
+@pytest.mark.parametrize("section_key", [[], {}])
+def test_a_days_entry_without_a_string_section_key_is_a_parse_error(section_key):
+    harness = WeeklyHarness()
+    _generate(harness)
+    request = harness.weekly_provider.requests[0]
+    content = json.dumps({"week_id": request.week_id.value, "sections": [
+        {"section_key": section_key, "reference_id": None, "days": []}
+    ]})
+
+    with pytest.raises(ProposalParseError):
+        parse_weekly_proposal(content, request)
 
 
 def test_a_repeated_day_value_is_repaired_for_the_whole_section():
