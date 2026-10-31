@@ -130,6 +130,8 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(page.getByLabel("3월 안전교육 입력", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("annual-edit.png"), fullPage: true });
   await page.getByRole("button", { name: "수정 완료" }).click();
+  // 클릭이 끝나도 월별 PUT 저장은 진행 중일 수 있어 완료 안내를 기다린 뒤 새로고침한다.
+  await expect(page.getByText("수정한 내용을 저장했어요.", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("우리 반과 새로운 친구", { exact: true })).toBeVisible();
   await expect(page.locator("#plan-document").getByText(/안전교육/)).toHaveCount(0);
@@ -265,10 +267,11 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
       ),
     );
     await link.click();
-    if (kind === "monthly")
-      await expect(page.getByRole("textbox", { name: "칸 내용", exact: true }).first()).toHaveValue(
-        "친구와 함께 만드는 새로운 우리 반 놀이",
-      );
+    if (kind === "monthly") {
+      await expect(cell(0)).toHaveText("친구와 함께 만드는 새로운 우리 반 놀이");
+      await expect(cell(0)).not.toHaveAttribute("role", "button");
+      await expect(page.getByRole("textbox")).toHaveCount(0);
+    }
     if (kind === "weekly")
       await expect(page.getByRole("combobox", { name: "주", exact: true })).toHaveValue(
         weekPlan.week_id,
