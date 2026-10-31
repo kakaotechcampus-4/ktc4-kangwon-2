@@ -24,12 +24,13 @@ import {
   listMonthlyPlans,
 } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
-import { syncClass } from "@/lib/api/onboarding";
+import { classServerId, syncClass } from "@/lib/api/onboarding";
 import { getClassTemplateProfile } from "@/lib/api/templateProfiles";
 import type { MonthlyPlan, ProfileRef } from "@/lib/api/types";
 import { isPlayAnnual } from "@/lib/monthly/play-entry";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { archivePlanEntry } from "@/lib/workspace/document-archive";
 import MonthlyPlanEditor from "./MonthlyPlanEditor";
 import PlayMonthlyEntry from "./PlayMonthlyEntry";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
@@ -45,10 +46,18 @@ function defaultMonth(): number {
   return new Date().getMonth() + 1;
 }
 
+function readArchiveEntry() {
+  return archivePlanEntry(typeof window === "undefined" ? "" : window.location.search);
+}
+
 export default function MonthlyPlanPage() {
+  const [entry] = useClientState(readArchiveEntry, null);
   const [classId, setClassId] = useState<number | null>(null);
   const [profile, setProfile] = useState<ProfileRef | null>(null);
-  const [month, setMonth] = useState(defaultMonth);
+  const [month, setMonth] = useClientState(
+    () => readArchiveEntry()?.month ?? defaultMonth(),
+    defaultMonth(),
+  );
   const [plan, setPlan] = useState<MonthlyPlan | null>(null);
   const [busy, setBusy] = useState<string>("");
   const [message, setMessage] = useState("");
@@ -56,7 +65,11 @@ export default function MonthlyPlanPage() {
   const classes = useClasses(setProblem);
   const [initialClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const [pickedClass, setPickedClass] = useState<string | null>(null);
-  const localClassId = pickedClass ?? (initialClass || classes[0]?.id || "");
+  const requestedClass = entry
+    ? classes.find((c) => classServerId(c.id) === entry.classId)?.id
+    : "";
+  const localClassId =
+    pickedClass ?? (entry ? (requestedClass ?? "") : initialClass || classes[0]?.id || "");
   const scope = `${localClassId}|${month}`;
   const [loadedScope, setLoadedScope] = useState("");
   const [profileSource, setProfileSource] = useState("");
@@ -81,11 +94,18 @@ export default function MonthlyPlanPage() {
   const loading = loadedScope !== scope;
 
   /** 그 달 계획안을 불러온다. 없으면 null 로 둔다 — 화면이 만들기 버튼을 띄운다. */
-  const load = useCallback(async (id: number, target: number) => {
-    const { items } = await listMonthlyPlans(id);
-    const found = items.find((p) => p.month === target);
-    return found ? await getMonthlyPlan(found.id) : null;
-  }, []);
+  const load = useCallback(
+    async (id: number, target: number) => {
+      const { items } = await listMonthlyPlans(id);
+      const found = items.find(
+        (p) =>
+          p.month === target &&
+          (!entry || entry.classId !== id || entry.month !== target || p.id === entry.id),
+      );
+      return found ? await getMonthlyPlan(found.id) : null;
+    },
+    [entry],
+  );
 
   useEffect(() => {
     let alive = true;
