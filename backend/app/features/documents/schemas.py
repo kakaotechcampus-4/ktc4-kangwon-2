@@ -56,9 +56,14 @@ class DocumentListResponse(BaseModel):
 
 
 class DocumentSectionItem(BaseModel):
-    """`사실` · `해석` · `지원` 항목 하나. 단건 조회·`PUT` 응답에 담긴다."""
+    """`사실` · `해석` · `지원` 항목 하나. 단건 조회·`PUT` 응답에 담긴다.
 
-    heading: Literal["사실", "해석", "지원"]
+    증빙으로 올린 문서(`origin=IMPORT`)만 `첨부 원문` 하나를 갖는다 — 우리가 만든 문서가
+    아니라 3층이 없다(§11 「증빙 등록」). **응답 전용이다.** 교사가 보내는 `PUT` 은
+    `DocumentSectionUpdate` 를 쓰므로 일지에 이 칸을 만들 길은 없다.
+    """
+
+    heading: Literal["사실", "해석", "지원", "첨부 원문"]
     body: str
     source_ids: list[int]
 
@@ -99,8 +104,23 @@ class DocumentDetailResponse(BaseModel):
     sources: list[DocumentSourceItem]
     generation: DocumentGeneration
     review_note: str
+    # 반 운영 특이사항. 일일 보육일지만 쓴다 — 나머지 종류는 늘 빈 문자열이다.
+    class_note: str
     created_at: datetime
     updated_at: datetime
+
+
+class DocumentReviewImpact(BaseModel):
+    """확정 취소로 영향을 받은 문서 ID — 이 문서를 직접 근거로 쓴 것만. 새 stale 을 따로 센다."""
+
+    affected_document_ids: list[int]
+    newly_stale_document_ids: list[int]
+
+
+class DocumentUnconfirmResponse(DocumentDetailResponse):
+    """`POST /api/documents/{id}/unconfirm?include_impact=true` 응답 (docs/api-spec.md §11)."""
+
+    review_impact: DocumentReviewImpact
 
 
 class DocumentSectionUpdate(BaseModel):
@@ -125,14 +145,26 @@ class DocumentUpdateRequest(BaseModel):
     title: str | None = None
     sections: list[DocumentSectionUpdate]
     review_note: str = ""
+    # 반 운영 특이사항. 안 보내면 이전 값을 그대로 둔다 — 예전 화면이 지우지 않게.
+    class_note: str | None = None
     updated_at: datetime
 
 
 class DocumentCreateRequest(BaseModel):
     """`POST /api/documents`. 교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
-    `source_ids` 는 `kind` 마다 가리키는 것이 다르다 — `weeklyLog` 만 확정된 일일 보육일지 id 고,
-    나머지는 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로 `사실` 에 이어 붙는다.
+    `source_ids` 는 `kind` 마다 가리키는 것이 다르다 — `dailyLog` 는 일과 기록 id,
+    `observation` · `assessment` 는 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로
+    `사실` 에 이어 붙는다.
+
+    `weeklyLog` 만 **두 가지**다. `source_kind` 로 고른다 —
+
+        dailyLog   확정된 일일 보육일지 id (기본값. 예전 호출과 같다)
+        routine    그 주의 일과 기록 id
+
+    일일 보육일지를 쓰지 않고 주간만 쓰는 원이 있다. 개정 누리과정 놀이실행자료도
+    「월간 · 주간 · 일일을 모두 수립할 필요 없고 하나만 선택」이라고 적는다
+    (`docs/references/보육일지-공식양식.md`). 일일을 거치게 하면 그 원은 주간을 못 만든다.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -143,6 +175,64 @@ class DocumentCreateRequest(BaseModel):
     start: date
     end: date
     source_ids: list[int]
+    # `weeklyLog` 에서만 쓴다. 안 보내면 예전처럼 확정된 일일 보육일지를 근거로 본다.
+    source_kind: Literal["dailyLog", "routine"] = "dailyLog"
+
+
+class EvidenceChecks(BaseModel):
+    """증빙 등록 확인 3개 (docs/api-spec.md §11 「증빙 등록」).
+
+    일지 확정의 확인 3개(`DocumentChecks`)와 다른 셋이다. 증빙은 우리가 만든 문서가 아니라
+    교사가 원에서 쓰던 서류라, 사실·해석·지원을 확인할 자리가 없다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: 올린 원문이 실제 문서와 같은가
+    original: bool
+    #: 종류 · 반 · 아동 · 기간이 원문과 맞는가
+    meta: bool
+    #: 등록이 평가 통과를 뜻하지 않는다는 것을 아는가
+    not_a_pass: bool
+
+
+class DocumentImportRequest(BaseModel):
+    """`POST /api/documents/import`. 교사가 원에서 쓰던 서류를 증빙으로 올린다 (§11).
+
+    생성(`POST /api/documents`)과 다른 길이다 — **근거 id 가 없고 LLM 을 부르지 않는다.**
+    우리가 만든 문서가 아니라서 사실·해석·지원 대조를 하지 않는다(§11 「IMPORT」).
+
+    평가제 4-1 · 4-2 는 확정 문서를 센다(§12). 우리 서비스로 만든 적 없는 문서는
+    이 경로로만 집계에 들어간다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["dailyLog", "weeklyLog", "observation", "assessment"]
+    class_id: int
+    child_id: int | None = None
+    start: date
+    end: date
+    #: 파일 이름을 그대로 쓴다. 비면 서버가 종류 · 기간으로 만든다.
+    title: str = ""
+    #: 원문 텍스트. 파일은 화면이 `/api/templates/extract` 로 먼저 글자로 바꾼다.
+    body: str
+    checks: EvidenceChecks
+
+
+class EvidenceNotice(BaseModel):
+    """등록을 막지는 않지만 교사가 알아야 하는 것 (`evidence.check_evidence`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+
+
+class DocumentImportResponse(DocumentDetailResponse):
+    """등록 응답. 상세에 점검 결과를 더한다. 비어 있으면 걸린 것이 없다는 뜻이다."""
+
+    notices: list[EvidenceNotice] = []
 
 
 class DocumentChecks(BaseModel):

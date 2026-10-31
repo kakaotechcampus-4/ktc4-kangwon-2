@@ -19,6 +19,7 @@ from app.features.documents.draft import (
     rule_id,
     rule_version,
 )
+from app.features.documents.evidence import check_evidence
 from app.features.documents.models import (
     Document,
     DocumentReconfirmation,
@@ -39,17 +40,21 @@ from app.features.documents.schemas import (
     DocumentCreateRequest,
     DocumentDetailResponse,
     DocumentGeneration,
+    DocumentImportRequest,
+    DocumentImportResponse,
     DocumentListItem,
     DocumentListResponse,
     DocumentReconfirmRequest,
     DocumentRefreshRequest,
+    DocumentReviewImpact,
     DocumentSectionItem,
     DocumentSourceComparison,
     DocumentSourceItem,
+    DocumentUnconfirmResponse,
     DocumentUpdateRequest,
     RelatedDocumentsResponse,
 )
-from app.features.documents.stale import document_changed
+from app.features.documents.stale import SourceImpact, document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
@@ -221,6 +226,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
             rule_version=doc.generation_rule_version,
         ),
         review_note=doc.review_note,
+        class_note=doc.class_note,
         created_at=doc.created_at.astimezone(UTC),
         updated_at=doc.updated_at.astimezone(UTC),
     )
@@ -298,6 +304,87 @@ def list_documents(
     return DocumentListResponse(items=items)
 
 
+@router.post("/import", response_model=DocumentImportResponse, status_code=status.HTTP_201_CREATED)
+def import_document(
+    body: DocumentImportRequest, session: DbSession, user: CurrentUser
+) -> DocumentImportResponse:
+    """교사가 원에서 쓰던 서류를 증빙으로 올린다 (docs/api-spec.md §11 「증빙 등록」).
+
+    생성(`POST ""`)과 다른 길이다 — **근거 id 가 없고 LLM 을 부르지 않는다.** 우리가 만든
+    문서가 아니라서 사실 대조(`check_sections`)를 하지 않는다. `sections` 는 `첨부 원문`
+    하나뿐이고 `sources` 는 비어 있다.
+
+    평가제 4-1 · 4-2 는 확정 문서를 센다(§12). 우리 서비스로 만든 적 없는 문서 —
+    영유아 평가가 특히 그렇다 — 는 이 경로로만 집계에 들어간다.
+
+    **확인 3개를 다 켜면 바로 `CONFIRMED` 다.** 초안으로 두면 집계에 들어가지 않아
+    교사가 「올렸는데 왜 0건이지」를 겪는다. 하나라도 끄면 `DRAFT` 로 둔다.
+
+    **내용을 판정하지 않는다.** 형식 점검 결과만 `notices` 로 돌려주고 저장은 막지 않는다
+    (`evidence.py` · ADR-019).
+    """
+    fields: list[str] = []
+    if body.kind in CHILD_SCOPED_KINDS and body.child_id is None:
+        fields.append("child_id")
+    if body.kind == "dailyLog" and body.start != body.end:
+        fields.append("end")
+    if body.kind in ("dailyLog", "weeklyLog") and body.child_id is not None:
+        # 반 단위 문서다 (§11 「종이 한 장」).
+        fields.append("child_id")
+    if body.start > body.end:
+        fields.append("start")
+    if not body.body.strip():
+        fields.append("body")
+    if fields:
+        raise _invalid(fields)
+
+    classroom = require_own_class(session, user, body.class_id)
+    child = None
+    if body.child_id is not None:
+        child = require_own_child(session, user, body.child_id)
+        if child.class_id != body.class_id:
+            raise _invalid(["child_id"])
+
+    notices = check_evidence(
+        session,
+        center_id=user.center_id,
+        kind=body.kind,
+        class_id=body.class_id,
+        child_id=body.child_id,
+        start=body.start,
+        end=body.end,
+        body=body.body,
+        now=datetime.now(UTC),
+    )
+
+    checked = body.checks.original and body.checks.meta and body.checks.not_a_pass
+    subject = child.name if child else classroom.name
+    doc = Document(
+        kind=body.kind,
+        title=body.title.strip()
+        or f"{subject} {KIND_LABELS[body.kind]} ({_period(body.start, body.end)})",
+        class_id=body.class_id,
+        child_id=body.child_id,
+        start_date=body.start,
+        end_date=body.end,
+        status="CONFIRMED" if checked else "DRAFT",
+        origin="IMPORT",
+        stale=False,
+        review_note=(
+            "교사가 원문과 기간을 확인하여 등록한 기존 증빙입니다. "
+            "AI 내용 검증과 공식 평가 판정은 별도입니다."
+        ),
+    )
+    session.add(doc)
+    session.flush()
+    session.add(
+        DocumentSection(document_id=doc.id, heading="첨부 원문", body=body.body, source_ids=[])
+    )
+    session.commit()
+    detail = _build_detail_response(session, doc)
+    return DocumentImportResponse(**detail.model_dump(), notices=notices)
+
+
 @router.post("", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_document(
     body: DocumentCreateRequest, session: DbSession, user: CurrentUser
@@ -334,7 +421,42 @@ def create_document(
 
     # 근거를 불러와 사본 행을 만든다. 순서는 교사가 고른 순서 그대로다.
     copies: list[DocumentSource] = []
-    if body.kind == "weeklyLog":
+    if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
+        # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
+        # 교사는 고른 대로 만들어진 줄 안다.
+        raise _invalid(["source_kind"])
+    if body.kind == "weeklyLog" and body.source_kind == "routine":
+        # 일일 보육일지를 쓰지 않는 원이다. 일일이 쓰는 것과 같은 재료(일과 기록)를
+        # 그 주 전체에서 받는다 — 하루치만 받는 일일과 기간만 다르다.
+        by_id = {
+            r.id: r
+            for r in session.scalars(
+                select(RoutineRecord)
+                .join(Class, Class.id == RoutineRecord.class_id)
+                .where(RoutineRecord.id.in_(body.source_ids), Class.center_id == user.center_id)
+            )
+        }
+        for source_id in body.source_ids:
+            source = by_id.get(source_id)
+            if (
+                source is None
+                or source.class_id != body.class_id
+                or not (body.start <= source.date <= body.end)
+                or not source.execution.strip()
+            ):
+                fields.append(f"sources.{source_id}")
+                continue
+            copies.append(
+                DocumentSource(
+                    source_kind="routine",
+                    source_id=source.id,
+                    class_id=source.class_id,
+                    child_id=None,
+                    date=source.date,
+                    text=source.fact_text(),
+                )
+            )
+    elif body.kind == "weeklyLog":
         by_id = {
             d.id: d
             for d in session.scalars(
@@ -530,7 +652,7 @@ def update_document(
     session: DbSession,
     user: CurrentUser,
 ) -> DocumentDetailResponse:
-    """`title` · `sections` · `review_note` 전체 교체 (docs/api-spec.md §11).
+    """`title` · `sections` · `review_note` · `class_note` 전체 교체 (docs/api-spec.md §11).
 
     `PATCH` 가 아니라 `PUT` 이다 — 셋 다 매번 통째로 받는다. `사실` 항목은 근거
     원문을 그대로 이어붙인 것과 정확히 같아야 하고, 다르면 거절한다. 교사가
@@ -561,6 +683,8 @@ def update_document(
     if body.title is not None:
         doc.title = body.title
     doc.review_note = body.review_note
+    if body.class_note is not None:
+        doc.class_note = body.class_note
     # sections 가 documents 와 다른 테이블이라, 그것만 바뀌어도 documents 행의
     # onupdate 가 저절로 안 걸린다 — STALE_WRITE 판정이 최신 시각을 보게 직접 찍는다.
     doc.updated_at = datetime.now(UTC)
@@ -703,26 +827,41 @@ def confirm_document(
     return _build_detail_response(session, doc)
 
 
-@router.post("/{document_id}/unconfirm", response_model=DocumentDetailResponse)
+@router.post(
+    "/{document_id}/unconfirm",
+    response_model=DocumentUnconfirmResponse | DocumentDetailResponse,
+)
 def unconfirm_document(
-    document_id: int, session: DbSession, user: CurrentUser
-) -> DocumentDetailResponse:
+    document_id: int, session: DbSession, user: CurrentUser, include_impact: bool = False
+) -> DocumentUnconfirmResponse | DocumentDetailResponse:
     """CONFIRMED → DRAFT. 확정한 문서를 교사가 다시 고칠 수 있게 한다 (docs/api-spec.md §11).
 
     **이 문서를 근거로 쓴 문서는 `stale` 이 된다.** 주간 보육일지는 **확정된** 일일 보육일지만
     근거로 받는다 — 근거가 초안으로 돌아가면 그 위에 쌓은 주간도 다시 봐야 한다.
 
     **다시 불러도 200 이다.** 확정과 같은 이유다 — 재시도를 진짜 실패와 구분할 수 없다.
+    이미 초안이면 이번 요청이 바꾼 것이 없으니 영향도 비어 있다.
+
+    `include_impact=true` 면 `review_impact` 를 더해 돌려준다 — 화면이 「N건이 다시 검토
+    대상」을 띄우는 데 쓴다. 옵션이 없으면 응답 모양은 그대로다.
     """
     doc = _own_document(session, user, document_id, lock=True)
-    if doc.status == "DRAFT":
-        return _build_detail_response(session, doc)
-
-    doc.status = "DRAFT"
-    doc.updated_at = datetime.now(UTC)
-    document_changed(session, doc.id)
-    session.commit()
-    return _build_detail_response(session, doc)
+    impact = SourceImpact()
+    if doc.status != "DRAFT":
+        doc.status = "DRAFT"
+        doc.updated_at = datetime.now(UTC)
+        impact = document_changed(session, doc.id)
+        session.commit()
+    detail = _build_detail_response(session, doc)
+    if include_impact:
+        return DocumentUnconfirmResponse(
+            **detail.model_dump(),
+            review_impact=DocumentReviewImpact(
+                affected_document_ids=list(impact.affected_document_ids),
+                newly_stale_document_ids=list(impact.newly_stale_document_ids),
+            ),
+        )
+    return detail
 
 
 @router.post("/{document_id}/refresh", response_model=DocumentDetailResponse)
@@ -780,9 +919,13 @@ def refresh_document(
             continue
         if copy.source_kind == "routine":
             routine = session.get(RoutineRecord, copy.source_id)
-            if routine is None or not routine.execution.strip() or routine.date != doc.start_date:
-                # 활동실행을 비웠거나 다른 날로 옮겼으면 이 날의 사실이 사라진 것이다.
-                # 원본 없음과 같다.
+            if (
+                routine is None
+                or not routine.execution.strip()
+                or not (doc.start_date <= routine.date <= doc.end_date)
+            ):
+                # 활동실행을 비웠거나 문서 기간 밖으로 옮겼으면 이 문서의 사실이 사라진 것이다.
+                # 원본 없음과 같다. 일일은 하루라 start_date == end_date 로 전과 같다.
                 missing.append(field)
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
@@ -832,10 +975,17 @@ def refresh_document(
             body.resolutions,
         )
     if missing and plan is None:
+        # **교사가 할 수 있는 것만 말한다** (수린 점검 10). 빼기·바꾸기는 일과 근거의 일일
+        # 보육일지에서만 되고, 그마저도 남은 근거가 있어야 한다. 관찰일지의 관찰 기록을 전부
+        # 지운 교사에게 「빼거나 바꿀 근거를 골라주세요」 라고 하면 고를 것이 없는 화면만 연다.
+        resolvable = doc.kind == "dailyLog" and all(c.source_kind == "routine" for c in sources)
+        survives = any(c.source_id not in missing_ids for c in sources)
         raise _error(
             status.HTTP_409_CONFLICT,
             "GATE_BLOCKED",
-            "근거 기록이 사라졌습니다. 남은 근거로 이어가려면 빼거나 바꿀 근거를 골라주세요.",
+            "근거 기록이 사라졌습니다. 남은 근거로 이어가려면 빼거나 바꿀 근거를 골라주세요."
+            if resolvable and survives
+            else "근거 기록이 사라졌습니다. 이 문서는 지우고 남은 기록으로 새로 만들어주세요.",
             missing,
         )
     if unconfirmed:

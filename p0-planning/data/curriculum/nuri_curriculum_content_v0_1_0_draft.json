@@ -1,0 +1,429 @@
+{
+  "$schema_note": "P0 내부 Reference **Draft**다. 공개 API Schema가 아니며 runtime에 연결하지 않는다. 내용 생성물이 아니라 고시문 원문의 machine-readable transcription이다 — 원문에 없는 영역·범주·내용을 만들거나 문구를 다듬지 않는다.",
+  "schema_version": "curriculum-reference.schema.v0",
+  "catalog_id": "ssuksak.nuri-curriculum-content",
+  "catalog_version": "nuri-curriculum-content-v0.1.0",
+  "supersedes": null,
+  "draft": true,
+  "created_on": "2026-10-24",
+  "locale": "ko-KR",
+  "purpose": "놀이 프로젝트형 연간계획안의 「놀이를 통한 배움」 칸에서 Rule·LLM이 고를 수 있는 공식 내용 ID 집합. LLM은 content_id만 고르고, 영역·내용범주·내용 문장은 서버가 이 파일의 원문으로 붙인다.",
+  "normative_status": "OFFICIAL_CURRICULUM_TRANSCRIPTION",
+  "disclaimer": "누리과정 고시문은 5개 영역의 내용범주·내용을 정할 뿐 활동·주제·놀이명·월별 배치를 정하지 않는다. 어떤 놀이에 어떤 내용을 잇는지는 교육적 연계이며 국가가 지정한 대응이 아니다.",
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_01",
+    "approved_at": "2026-10-29T11:49:18+09:00",
+    "runtime_active": true,
+    "runtime_rule": "runtime_active는 파생값이다. runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")를 항상 만족해야 한다.",
+    "review_scope_note": "교육적 판단이 아니라 (1) 인용한 고시 판본이 현행인지 (2) 영역·범주·내용 전사가 원문과 일치하는지 (3) ID 체계가 안정 주소로 쓸 만한지 세 가지만 확인한다.",
+    "proposed_reviewer": "하민(AI 리드) 또는 현장 교사",
+    "machine_checks": [
+      "보건복지부 고시문 p.10–14에서 추출한 59개 내용이 교육부 고시문 같은 쪽의 추출 결과와 영역·범주·문장까지 모두 같다.",
+      "59개 내용 문장이 모두 해설서 본문에 원문 그대로 있다.",
+      "영역별 내용 수 12/12/12/10/13, 영역당 내용범주 3개."
+    ]
+  },
+  "official_source": {
+    "title": "2019 개정 누리과정 (보건복지부 고시 제2019-152호)",
+    "path": "references/official/00_curriculum_core/2019_개정_누리과정_고시문_보건복지부.pdf",
+    "sha256": "74b489344cc34ab3e9ed8731aeb34630294f13c4495f2d87cc3addc89954cdf0",
+    "pages": "10-14",
+    "page_note": "PDF 쪽 번호(인쇄 쪽 번호와 같다). 영역마다 「2. 내용」 표 한 쪽."
+  },
+  "corroborating_sources": [
+    {
+      "title": "2019 개정 누리과정 (교육부 고시문)",
+      "path": "references/official/00_curriculum_core/2019_개정_누리과정_고시문_교육부.pdf",
+      "sha256": "f19a45e2493a8bed5f940f018315a2a5b0dfce554406edd205912a3f8dd08770",
+      "relation": "본문 동일, 머리말(「3~5세 누리과정」/「유치원 교육과정」)만 다름"
+    },
+    {
+      "title": "2019 개정 누리과정 해설서",
+      "path": "references/official/00_curriculum_core/2019_개정_누리과정_해설서.pdf",
+      "sha256": "7e1b00173e61a550fa1ab6b7762b7e906da52dbed14d592b9072758eec3c20f4",
+      "relation": "59개 내용 문장이 모두 원문 그대로 실려 있음"
+    }
+  ],
+  "id_rule": "domain_id = nuri2019.<영역 순번>, category_id = <domain_id>.<범주 순번>, content_id = <category_id>.<내용 순번>. 순번은 고시문 표의 위→아래 순서이고 1부터 센다. 고시가 바뀌면 이 파일을 고치지 않고 새 catalog_version을 발행하며, 기존 ID의 의미를 바꾸지 않는다.",
+  "excluded_from_this_file": [
+    "영역별 목표(「1. 목표」) — 배움 칸 선택 대상이 아니다.",
+    "해설서의 내용 이해·유아 경험 실제 — 해설이지 고시 내용이 아니다.",
+    "공식 놀이사례 — 재사용 허락이 확인되지 않았고 P1 prompt에 넣지 않는다."
+  ],
+  "derived_totals": {
+    "domains": 5,
+    "categories": 15,
+    "contents": 59,
+    "contents_per_domain": [
+      12,
+      12,
+      12,
+      10,
+      13
+    ]
+  },
+  "domains": [
+    {
+      "domain_id": "nuri2019.1",
+      "name": "신체운동·건강",
+      "source_page": 10,
+      "categories": [
+        {
+          "category_id": "nuri2019.1.1",
+          "name": "신체활동 즐기기",
+          "contents": [
+            {
+              "content_id": "nuri2019.1.1.1",
+              "text": "신체를 인식하고 움직인다."
+            },
+            {
+              "content_id": "nuri2019.1.1.2",
+              "text": "신체 움직임을 조절한다."
+            },
+            {
+              "content_id": "nuri2019.1.1.3",
+              "text": "기초적인 이동운동, 제자리 운동, 도구를 이용한 운동을 한다."
+            },
+            {
+              "content_id": "nuri2019.1.1.4",
+              "text": "실내외 신체활동에 자발적으로 참여한다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.1.2",
+          "name": "건강하게 생활하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.1.2.1",
+              "text": "자신의 몸과 주변을 깨끗이 한다."
+            },
+            {
+              "content_id": "nuri2019.1.2.2",
+              "text": "몸에 좋은 음식에 관심을 가지고 바른 태도로 즐겁게 먹는다."
+            },
+            {
+              "content_id": "nuri2019.1.2.3",
+              "text": "하루 일과에서 적당한 휴식을 취한다."
+            },
+            {
+              "content_id": "nuri2019.1.2.4",
+              "text": "질병을 예방하는 방법을 알고 실천한다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.1.3",
+          "name": "안전하게 생활하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.1.3.1",
+              "text": "일상에서 안전하게 놀이하고 생활한다."
+            },
+            {
+              "content_id": "nuri2019.1.3.2",
+              "text": "TV, 컴퓨터, 스마트폰 등을 바르게 사용한다."
+            },
+            {
+              "content_id": "nuri2019.1.3.3",
+              "text": "교통안전 규칙을 지킨다."
+            },
+            {
+              "content_id": "nuri2019.1.3.4",
+              "text": "안전사고, 화재, 재난, 학대, 유괴 등에 대처하는 방법을 경험한다."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_id": "nuri2019.2",
+      "name": "의사소통",
+      "source_page": 11,
+      "categories": [
+        {
+          "category_id": "nuri2019.2.1",
+          "name": "듣기와 말하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.2.1.1",
+              "text": "말이나 이야기를 관심 있게 듣는다."
+            },
+            {
+              "content_id": "nuri2019.2.1.2",
+              "text": "자신의 경험, 느낌, 생각을 말한다."
+            },
+            {
+              "content_id": "nuri2019.2.1.3",
+              "text": "상황에 적절한 단어를 사용하여 말한다."
+            },
+            {
+              "content_id": "nuri2019.2.1.4",
+              "text": "상대방이 하는 이야기를 듣고 관련해서 말한다."
+            },
+            {
+              "content_id": "nuri2019.2.1.5",
+              "text": "바른 태도로 듣고 말한다."
+            },
+            {
+              "content_id": "nuri2019.2.1.6",
+              "text": "고운 말을 사용한다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.2.2",
+          "name": "읽기와 쓰기에 관심 가지기",
+          "contents": [
+            {
+              "content_id": "nuri2019.2.2.1",
+              "text": "말과 글의 관계에 관심을 가진다."
+            },
+            {
+              "content_id": "nuri2019.2.2.2",
+              "text": "주변의 상징, 글자 등의 읽기에 관심을 가진다."
+            },
+            {
+              "content_id": "nuri2019.2.2.3",
+              "text": "자신의 생각을 글자와 비슷한 형태로 표현한다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.2.3",
+          "name": "책과 이야기 즐기기",
+          "contents": [
+            {
+              "content_id": "nuri2019.2.3.1",
+              "text": "책에 관심을 가지고 상상하기를 즐긴다."
+            },
+            {
+              "content_id": "nuri2019.2.3.2",
+              "text": "동화, 동시에서 말의 재미를 느낀다."
+            },
+            {
+              "content_id": "nuri2019.2.3.3",
+              "text": "말놀이와 이야기 짓기를 즐긴다."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_id": "nuri2019.3",
+      "name": "사회관계",
+      "source_page": 12,
+      "categories": [
+        {
+          "category_id": "nuri2019.3.1",
+          "name": "나를 알고 존중하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.3.1.1",
+              "text": "나를 알고 소중히 여긴다."
+            },
+            {
+              "content_id": "nuri2019.3.1.2",
+              "text": "나의 감정을 알고 상황에 맞게 표현한다."
+            },
+            {
+              "content_id": "nuri2019.3.1.3",
+              "text": "내가 할 수 있는 것을 스스로 한다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.3.2",
+          "name": "더불어 생활하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.3.2.1",
+              "text": "가족의 의미를 알고 화목하게 지낸다."
+            },
+            {
+              "content_id": "nuri2019.3.2.2",
+              "text": "친구와 서로 도우며 사이좋게 지낸다."
+            },
+            {
+              "content_id": "nuri2019.3.2.3",
+              "text": "친구와의 갈등을 긍정적인 방법으로 해결한다."
+            },
+            {
+              "content_id": "nuri2019.3.2.4",
+              "text": "서로 다른 감정, 생각, 행동을 존중한다."
+            },
+            {
+              "content_id": "nuri2019.3.2.5",
+              "text": "친구와 어른께 예의바르게 행동한다."
+            },
+            {
+              "content_id": "nuri2019.3.2.6",
+              "text": "약속과 규칙의 필요성을 알고 지킨다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.3.3",
+          "name": "사회에 관심 가지기",
+          "contents": [
+            {
+              "content_id": "nuri2019.3.3.1",
+              "text": "내가 살고 있는 곳에 대해 궁금한 것을 알아본다."
+            },
+            {
+              "content_id": "nuri2019.3.3.2",
+              "text": "우리나라에 대해 자부심을 가진다."
+            },
+            {
+              "content_id": "nuri2019.3.3.3",
+              "text": "다양한 문화에 관심을 가진다."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_id": "nuri2019.4",
+      "name": "예술경험",
+      "source_page": 13,
+      "categories": [
+        {
+          "category_id": "nuri2019.4.1",
+          "name": "아름다움 찾아보기",
+          "contents": [
+            {
+              "content_id": "nuri2019.4.1.1",
+              "text": "자연과 생활에서 아름다움을 느끼고 즐긴다."
+            },
+            {
+              "content_id": "nuri2019.4.1.2",
+              "text": "예술적 요소에 관심을 갖고 찾아본다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.4.2",
+          "name": "창의적으로 표현하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.4.2.1",
+              "text": "노래를 즐겨 부른다."
+            },
+            {
+              "content_id": "nuri2019.4.2.2",
+              "text": "신체, 사물, 악기로 간단한 소리와 리듬을 만들어 본다."
+            },
+            {
+              "content_id": "nuri2019.4.2.3",
+              "text": "신체나 도구를 활용하여 움직임과 춤으로 자유롭게 표현한다."
+            },
+            {
+              "content_id": "nuri2019.4.2.4",
+              "text": "다양한 미술 재료와 도구로 자신의 생각과 느낌을 표현한다."
+            },
+            {
+              "content_id": "nuri2019.4.2.5",
+              "text": "극놀이로 경험이나 이야기를 표현한다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.4.3",
+          "name": "예술 감상하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.4.3.1",
+              "text": "다양한 예술을 감상하며 상상하기를 즐긴다."
+            },
+            {
+              "content_id": "nuri2019.4.3.2",
+              "text": "서로 다른 예술 표현을 존중한다."
+            },
+            {
+              "content_id": "nuri2019.4.3.3",
+              "text": "우리나라 전통 예술에 관심을 갖고 친숙해진다."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_id": "nuri2019.5",
+      "name": "자연탐구",
+      "source_page": 14,
+      "categories": [
+        {
+          "category_id": "nuri2019.5.1",
+          "name": "탐구과정 즐기기",
+          "contents": [
+            {
+              "content_id": "nuri2019.5.1.1",
+              "text": "주변 세계와 자연에 대해 지속적으로 호기심을 가진다."
+            },
+            {
+              "content_id": "nuri2019.5.1.2",
+              "text": "궁금한 것을 탐구하는 과정에 즐겁게 참여한다."
+            },
+            {
+              "content_id": "nuri2019.5.1.3",
+              "text": "탐구과정에서 서로 다른 생각에 관심을 가진다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.5.2",
+          "name": "생활 속에서 탐구하기",
+          "contents": [
+            {
+              "content_id": "nuri2019.5.2.1",
+              "text": "물체의 특성과 변화를 여러 가지 방법으로 탐색한다."
+            },
+            {
+              "content_id": "nuri2019.5.2.2",
+              "text": "물체를 세어 수량을 알아본다."
+            },
+            {
+              "content_id": "nuri2019.5.2.3",
+              "text": "물체의 위치와 방향, 모양을 알고 구별한다."
+            },
+            {
+              "content_id": "nuri2019.5.2.4",
+              "text": "일상에서 길이, 무게 등의 속성을 비교한다."
+            },
+            {
+              "content_id": "nuri2019.5.2.5",
+              "text": "주변에서 반복되는 규칙을 찾는다."
+            },
+            {
+              "content_id": "nuri2019.5.2.6",
+              "text": "일상에서 모은 자료를 기준에 따라 분류한다."
+            },
+            {
+              "content_id": "nuri2019.5.2.7",
+              "text": "도구와 기계에 대해 관심을 가진다."
+            }
+          ]
+        },
+        {
+          "category_id": "nuri2019.5.3",
+          "name": "자연과 더불어 살기",
+          "contents": [
+            {
+              "content_id": "nuri2019.5.3.1",
+              "text": "주변의 동식물에 관심을 가진다."
+            },
+            {
+              "content_id": "nuri2019.5.3.2",
+              "text": "생명과 자연환경을 소중히 여긴다."
+            },
+            {
+              "content_id": "nuri2019.5.3.3",
+              "text": "날씨와 계절의 변화를 생활과 관련짓는다."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

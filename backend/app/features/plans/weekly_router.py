@@ -65,6 +65,7 @@ from app.features.plans.monthly_router import (
     _error,
     _gate,
     _generation,
+    _is_play_monthly,
     _item_id,
     _target_month,
 )
@@ -202,6 +203,9 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     )
     if parent_row is None:
         raise _gate("월간계획안을 먼저 만들어 확정해주세요.")
+    # 주간 Core 는 MonthlyPlan 만 부모로 받는다. 놀이 월간은 읽기 전에 막는다(ADR-046 §4).
+    if _is_play_monthly(parent_row):
+        raise _gate("놀이 중심 월간계획안 아래에서는 주간계획안을 만들 수 없습니다.")
     parent_id = parent_row.id
     parent = PostgresPlanRepository(
         session, center_id=center_id, kind="monthly", plan_type=MonthlyPlan

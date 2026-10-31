@@ -12,14 +12,22 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from .contracts import (
+    MONTHLY_CONTEXT_PROMPT_VERSION,
+    MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
+    MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION,
+    MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
+    MONTHLY_INDOOR_PROMPT_TAG,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
+    MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG,
     MONTHLY_SAFETY_PROMPT_VERSION,
     MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
+    SAFETY_CANDIDATE_PREFIX,
     MonthlyPlanningRequest,
     generation_target_sections,
 )
 from .text_policy import MAX_VISIBLE_TEXT_CHARS
+from .v1_guidance import V1_GUIDANCE, curriculum_context
 from ..retrieval.models import AGE_VERIFIABLE_TIERS
 from .validation import ProposalValidationIssue, is_safety_grounding, repair_targets, wrong_source_refs
 
@@ -67,19 +75,47 @@ Return only one JSON object matching response_contract; add no fields.
 # Appended to SYSTEM_PROMPT only when the Context Packet carries safety placement.
 SAFETY_SYSTEM_PROMPT = SYSTEM_PROMPT + """safety_plan fixes every week's safety_education slot: its week, kind, legal
 category, official content focus or primary reference. Never change any of them.
-Write every safety_education value as exactly one Korean sentence about one
-safety concept or action; never list several actions or topics.
-For a STATUTORY week, express its one official_content focus for young children.
-Cite that focus grounding_ref, optionally with at most two of that week's
-sample_refs that illustrate the same focus, and cite no other official_content.
-For a SUPPLEMENTAL week, express the one key action of its primary_ref. Cite
-primary_ref, optionally with its support_refs, and nothing else.
+A week missing from safety_plan has no safety education: return its
+safety_education with unresolved true, an empty value and no grounding_refs.
+Write every safety_education value about one safety concept or action; never
+list several actions or topics. Never write a category name, brackets or a
+leading dash: the application adds the category label to STATUTORY weeks.
+For a STATUTORY week, write one short Korean sentence expressing its one
+official_content focus for young children. Cite that focus grounding_ref,
+optionally with at most two of that week's sample_refs that illustrate the same
+focus, and cite no other official_content.
+For a SUPPLEMENTAL week, write only a short Korean topic phrase, not a sentence
+and with no final period, naming the one key action of its primary_ref (for
+example a phrase ending in 하기). Cite primary_ref, optionally with its
+support_refs, and nothing else.
 Record the official_content focus ref, primary_ref and support_refs only in
 grounding_refs. For safety_education, reference_id is always null: reference_id
 is the activity reference catalog field, never safety grounding.
 Never write the same safety sentence in two weeks.
 State only safety practice found in the cited official_content or evidence; add
 no new safety rules, numbers, legal duties, education hours, or schedules.
+"""
+
+# Appended only when indoor_alternative is an LLM target (MONTHLY_INDOOR_PROMPT_TAG).
+INDOOR_ALTERNATIVE_PROMPT = """For indoor_alternative, write each week's indoor activity that replaces that
+same week's outdoor_play experience on a day the class stays inside; write the
+two cells of a week together as a pair. Do not write general indoor free play.
+Do not state that particular materials or spaces are available, and do not
+invent weather or claim that the activity was carried out.
+"""
+
+# Appended only when the Context Packet carries safety_candidates (MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG).
+SAFETY_CANDIDATES_PROMPT = """safety_candidates lists this month's safety education candidates; a teacher
+later places them into weeks. Return one month_sections entry per candidate,
+keyed by its section_key, with unresolved false and reference_id null.
+Write one short Korean sentence for young children about one safety action
+found in the candidate's allowed texts. Never write a category name, brackets
+or a leading dash: the application adds the label.
+A STATUTORY candidate cites exactly one of its allowed grounding_refs; a
+SUPPLEMENTAL candidate cites one or more of its allowed grounding_refs. Cite no
+other ref. Never write the same sentence for two candidates and never copy an
+allowed text verbatim. Add no safety rules, procedures, times, numbers, legal
+duties or results not found in the cited text.
 """
 
 REPAIR_HEADER = f"""You repair one monthly plan proposal.
@@ -119,8 +155,18 @@ def official_safety_refs(packet: MonthlyContextPacket) -> tuple[str, ...]:
 
 
 def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
-    return frozenset(item.evidence_ref for item in packet.grounding_items) | frozenset(
-        official_safety_refs(packet)
+    return (
+        frozenset(item.evidence_ref for item in packet.grounding_items)
+        | frozenset(official_safety_refs(packet))
+        | frozenset(ref for slot in packet.safety_candidates for ref, _ in slot.allowed)
+    )
+
+
+def safety_candidate_targets(packet: MonthlyContextPacket) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Each candidate's month_sections key with the refs its Rule-fixed slot allows."""
+    return tuple(
+        (SAFETY_CANDIDATE_PREFIX + slot.slot, tuple(ref for ref, _ in slot.allowed))
+        for slot in packet.safety_candidates
     )
 
 
@@ -138,11 +184,15 @@ def generation_targets(
     refs = tuple(sorted(evidence))
     targets = []
     for section in generation_target_sections(snapshot):
+        if section.section_key == "safety_education" and packet.safety_candidates:
+            continue  # S-1: weekly cells stay blank; the candidates are the targets
         wrong = set(wrong_source_refs(section, refs, evidence))
         allowed = tuple(ref for ref in refs if ref not in wrong)
-        if section.section_key == "outdoor_play":
-            # Outdoor may cite only age-verifiable evidence; the schema enum enforces it.
+        if section.section_key in {"outdoor_play", "indoor_alternative"}:
+            # Only age-verifiable evidence; the schema enum enforces it.
             allowed = tuple(ref for ref in allowed if evidence[ref].age_match in AGE_VERIFIABLE_TIERS)
+        if section.section_key == "indoor_alternative" and not allowed:
+            continue  # D-5: no evidence leaves its cells empty for the teacher
         if section.section_key == "safety_education":
             allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
             allowed += tuple(sorted(official_safety_refs(packet)))
@@ -157,7 +207,7 @@ def allowed_grounding_refs_by_section(
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
     return tuple(
         (section.section_key, refs) for section, refs in generation_targets(packet, snapshot)
-    )
+    ) + safety_candidate_targets(packet)
 
 
 def _safety_plan(packet: MonthlyContextPacket) -> dict[str, object]:
@@ -193,11 +243,20 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
     payload = _base_payload(packet)
     if packet.safety is not None:
         payload["safety_plan"] = _safety_plan(packet)
+    if packet.safety_candidates:
+        payload["safety_candidates"] = [
+            {
+                "section_key": SAFETY_CANDIDATE_PREFIX + slot.slot,
+                "kind": slot.kind.value,
+                "allowed": [{"grounding_ref": ref, "text": text} for ref, text in slot.allowed],
+            }
+            for slot in packet.safety_candidates
+        ]
     return payload
 
 
 def _base_payload(packet: MonthlyContextPacket) -> dict[str, object]:
-    return {
+    payload = {
         "target_month": packet.target_month.value,
         "ages": list(packet.ages),
         "locked_theme": {
@@ -243,6 +302,11 @@ def _base_payload(packet: MonthlyContextPacket) -> dict[str, object]:
             "activity_catalog_version": packet.lineage.activity_catalog_version,
         },
     }
+    if packet.curriculum is not None:
+        payload["curriculum_context"] = curriculum_context(packet.curriculum)
+    if packet.parent_subthemes:
+        payload["parent_subthemes"] = list(packet.parent_subthemes)
+    return payload
 
 
 def _generation_schema(
@@ -314,10 +378,24 @@ def build_monthly_planning_request(
         }
     )
     safety = packet.safety is not None
+    contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
+    indoor = any(section.section_key == "indoor_alternative" for section, _ in generation_targets(packet, snapshot))
+    version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
+    if contextual:
+        version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
+    if indoor:
+        version += MONTHLY_INDOOR_PROMPT_TAG
+    if packet.safety_candidates:
+        version += MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
-        prompt_version=MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION,
-        system_prompt=SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT,
+        prompt_version=version,
+        system_prompt=(SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT) + (
+            V1_GUIDANCE + "\nparent_subthemes는 확정된 연간의 월별 예상 소주제다. "
+            "월간 경험을 구체화하는 맥락으로 쓰며, 각 소주제를 주차에 하나씩 강제로 복사하지 않는다.\n"
+            if contextual else ""
+        ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
+        + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -373,13 +451,15 @@ def build_monthly_repair_request(
             ]
         },
     }
+    base = request.prompt_version.split("+", 1)[0]  # tags keep their order after the repair version
     return replace(
         request,
-        prompt_version=(
-            MONTHLY_SAFETY_REPAIR_PROMPT_VERSION
-            if request.prompt_version == MONTHLY_SAFETY_PROMPT_VERSION
-            else MONTHLY_REPAIR_PROMPT_VERSION
-        ),
+        prompt_version={
+            MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION: MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
+            MONTHLY_CONTEXT_PROMPT_VERSION: MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
+            MONTHLY_SAFETY_PROMPT_VERSION: MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
+        }.get(base, MONTHLY_REPAIR_PROMPT_VERSION)
+        + request.prompt_version[len(base):],
         system_prompt=REPAIR_HEADER + request.system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,

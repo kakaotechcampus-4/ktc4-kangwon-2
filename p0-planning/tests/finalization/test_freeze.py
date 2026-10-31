@@ -51,9 +51,24 @@ FROZEN_ARTIFACTS = {
     "templates/weekly_template_a_v0_1_0.json": (
         "60330124223859623a0f35b2e56d6058994e2b86b62146b8b40474a3b72747f9"
     ),
+    # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
+    "curriculum/nuri_curriculum_content_v0_1_0_draft.json": (
+        "60620932ee2dea9c326b27597d4c7fa18b501914fdd6c4fe55cf4513c6271a04"
+    ),
+    # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
+    "daily-life/daily_life_reference_v0_1_0_draft.json": (
+        "2fec7d85833ac940cc46cc0bf4bf4ae2ec26cd60d89a418dedcde8649c00771c"
+    ),
+    "drills/emergency_drill_topics_v0_1_0_draft.json": (
+        "147ca0537f96141279781f202edb012300dafbfdca88f07ecf5a48dfcff9d6b7"
+    ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
         "e7b29c36ede3438204041b5d2b454e5594338c7f12c8c423bc985e308de27aed"
+    ),
+    # Human-approved 2026-10-31 (reviewer_ai_lead_001). ADR-050 D-3: approval metadata only.
+    "templates/monthly_template_a_v0_2_2.json": (
+        "f7b1ab1994de2114fb886cfb5aee270adc02cb6e5d64a1958b24cc70812e4ae1"
     ),
     "templates/monthly_template_a_v0_2_0.json": (
         "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
@@ -121,8 +136,18 @@ PENDING_REVIEW_CONTENT = {
     "templates/monthly_template_a_v0_2_1.json": (
         "5497aba0b41065c857b7d8ece58dc0297f2ff713bed65a8a339dd0ec3a6b9be4"
     ),
+    "templates/monthly_template_a_v0_2_2.json": (
+        "44d9be175995ea2668143a58966b8bb3969dd3dbdf860dc4925020c4ec999b5c"
+    ),
     "templates/weekly_template_a_v0_1_0.json": (
         "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
+    ),
+    "daily-life/daily_life_reference_v0_1_0_draft.json": (
+        "2ae1d32fd616409458705b6ebbfe8294cd50b733540716270309d55706fbe936"
+    ),
+    # Added at approval; equals the content of the pending file on develop.
+    "drills/emergency_drill_topics_v0_1_0_draft.json": (
+        "2e99b512c80f9dd73d98f006ec39e9ff83b333f63a6c43e0c83afdb4460225a8"
     ),
 }
 
@@ -225,9 +250,7 @@ def test_pending_templates_are_served_but_inactive():
 
     # v0.2.1 was approved on 2026-10-20 (reviewer_pm_001); v0.1.1 was not. An approval
     # never carries over to another version, so v0.1.1 stays served but inactive.
-    template = repository.get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
-    )
+    template = repository.get_template("ssuksak.monthly-template-a", "monthly-template-a-v0.1.1")
     assert template is not None
     assert not template.is_active
     with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
@@ -237,12 +260,11 @@ def test_pending_templates_are_served_but_inactive():
 def test_the_approved_template_is_active_and_resolves():
     repository = JsonMonthlyTemplateRepository()
 
-    template = repository.get_template(
-        "ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"
-    )
-    assert template is not None
-    assert template.is_active
-    assert resolve_sections(template)
+    for version in ("monthly-template-a-v0.2.1", "monthly-template-a-v0.2.2"):
+        template = repository.get_template("ssuksak.monthly-template-a", version)
+        assert template is not None
+        assert template.is_active
+        assert resolve_sections(template)
 
 
 def test_display_mode_era_templates_are_frozen_but_not_served():

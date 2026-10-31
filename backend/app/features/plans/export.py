@@ -13,25 +13,25 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Response, status
 from ssuksak.planning import PlanId
+from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT
 
+from app.features.plans.annual_hwpx import AnnualMonthRows, fill_annual_v1
 from app.features.plans.monthly_router import _current as _monthly_detail
 from app.features.plans.monthly_router import _own_row as _monthly_row
 from app.features.plans.monthly_schemas import SectionOut
-from app.features.plans.router import DbSession, _detail, _repo, _row
-from app.features.plans.rules.verify import safety_categories
+from app.features.plans.play_project import format_of
+from app.features.plans.play_project_hwpx import PlayPeriodRows, PlayRow, fill_play_project
+from app.features.plans.router import DbSession, _detail, _play_plan, _repo, _row
 from app.features.plans.weekly_router import _current as _weekly_detail
 from app.features.plans.weekly_router import _own_row as _weekly_row
 from app.features.plans.weekly_router import _weekly_repo
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
-from app.shared.hwpx import Format, download, fill_grid, fill_table
+from app.shared.hwpx import Format, download, fill_grid
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
-
-# 양식의 머리행(월 · 주제 · 소주제 · 안전교육) 줄 수.
-ANNUAL_HEADER_ROWS = 1
 
 _NOT_CONFIRMED = HTTPException(
     status.HTTP_409_CONFLICT,
@@ -42,6 +42,58 @@ _NOT_CONFIRMED = HTTPException(
     },
 )
 
+_PLAY_NOT_CONFIRMED = HTTPException(
+    status.HTTP_409_CONFLICT,
+    detail={
+        "code": "GATE_BLOCKED",
+        "message": "놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.",
+        "fields": [],
+    },
+)
+
+# 양식 시기 칸(두 줄: 기간 · 계절). 구간 키는 Core layout 의 period.key 다.
+PLAY_PERIOD_LABELS = {
+    "m03_m05": "3~5월\n봄",
+    "m06_m08": "6~8월\n여름",
+    "m09_m11": "9~11월\n가을",
+    "m12_m02": "12~2월\n겨울",
+}
+
+
+def _learning(value: str) -> list[tuple[str, str, str]]:
+    """배움 칸 글(`영역 - 범주 - 내용` 줄들)을 세 조각으로. 영역 · 범주 이름에 「 - 」가 없다."""
+    lines = []
+    for line in value.splitlines():
+        parts = line.split(" - ", 2)
+        if len(parts) != 3:
+            # 서버가 만든 칸이라 정상이면 늘 세 조각이다. 아니면 데이터가 깨진 것이라 500 이다.
+            raise ValueError(f"배움 줄이 세 조각이 아니다: {line!r}")
+        lines.append((parts[0], parts[1], parts[2]))
+    return lines
+
+
+def _export_play_project(session, user, row, format: Format) -> Response:
+    plan = _play_plan(session, user, row)
+    klass = require_own_class(session, user, int(plan.classroom_ref))
+    periods = []
+    for p in plan.periods:
+        by_key = {c.row_key: c for c in p.candidates}
+        rows = [
+            PlayRow(
+                c.play_name.value,
+                c.materials.value,
+                c.support_direction.value,
+                _learning(c.learning.value),
+            )
+            for c in (by_key[key] for key in p.selected)
+        ]
+        periods.append(PlayPeriodRows(PLAY_PERIOD_LABELS[p.period.key], rows))
+    title = f"{plan.school_year} 연간놀이계획안 - {klass.name}"
+    content = fill_play_project(
+        (TEMPLATE_DIR / "play_project_annual.hwpx").read_bytes(), title, periods
+    )
+    return download(content, f"plan-{row.id}", title, format)
+
 
 @router.get("/{plan_id}/export/hwp")
 def export_plan(
@@ -49,24 +101,19 @@ def export_plan(
 ) -> Response:
     """확정된 연간계획안을 내보낸다. 월간은 아래 별도 경로를 쓴다."""
     row = _row(session, user, plan_id)
+    if format_of(row) == PLAY_PROJECT_FORMAT:
+        if row.status != "CONFIRMED":
+            raise _PLAY_NOT_CONFIRMED
+        return _export_play_project(session, user, row, format)
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
     plan = _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
     klass = require_own_class(session, user, plan.class_id)
 
     title = f"{klass.name} {plan.school_year}학년도 연간 보육계획안"
-    safety_labels = {item["category_id"]: item["label"] for item in safety_categories()}
-    rows = [
-        [
-            f"{month.month}월",
-            month.theme,
-            "\n".join(month.sub_themes),
-            "\n".join(safety_labels[category] for category in month.safety_education),
-        ]
-        for month in plan.months
-    ]
-    content = fill_table(
-        (TEMPLATE_DIR / "annual.hwpx").read_bytes(), title, ANNUAL_HEADER_ROWS, rows
+    rows = [AnnualMonthRows(month.month, month.theme, month.sub_themes) for month in plan.months]
+    content = fill_annual_v1(
+        (TEMPLATE_DIR / "annual_v1_weeks.hwpx").read_bytes(), title, plan.school_year, rows
     )
     return download(content, f"plan-{row.id}", title, format)
 

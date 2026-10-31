@@ -79,9 +79,13 @@ export default function MonthlyTemplatePage() {
         if (!alive) return;
         setCenterId(id);
         setTemplates(items);
-        // 승인된 양식이 하나면 고를 것이 없다. 미리 골라 둔다.
-        const usable = items.filter((t) => t.approved);
-        if (usable.length === 1) setPicked(usable[0].template_ref.template_version);
+        // 승인된 양식 중 가장 최신 판을 미리 골라 둔다. 여러 개면 목록에서 바꿀 수 있다.
+        const latest = items
+          .filter((t) => t.approved)
+          .map((t) => t.template_ref.template_version)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+          .pop();
+        if (latest) setPicked(latest);
       } catch (e) {
         if (alive) setProblem(describe(e, "양식 설정을 불러오지 못했어요."));
       }
@@ -231,7 +235,14 @@ export default function MonthlyTemplatePage() {
             {approved.length > 1 && (
               <label className={ws.field}>
                 기반 양식
-                <select value={picked} onChange={(e) => setPicked(e.target.value)}>
+                <select
+                  value={picked}
+                  onChange={(e) => {
+                    setPicked(e.target.value);
+                    // 판마다 고를 수 있는 칸이 다르다 — 앞 판에서 고른 칸이 숨은 채 남지 않게 비운다.
+                    setExtras(new Set());
+                  }}
+                >
                   <option value="">고르기</option>
                   {approved.map((t) => (
                     <option

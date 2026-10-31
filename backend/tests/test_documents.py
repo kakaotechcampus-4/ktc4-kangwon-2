@@ -336,6 +336,34 @@ def test_put_updates_review_note_and_title_and_bumps_updated_at(db_session):
     assert datetime.fromisoformat(payload["updated_at"]) > original_updated_at
 
 
+def test_put_saves_the_class_note_and_leaves_it_alone_when_omitted(db_session):
+    """반 운영 특이사항은 교사가 직접 적는 칸이다. 안 보낸 요청이 지우면 안 된다."""
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+    fact = "\n\n".join(s.text for s in sources)
+    body = _put_body(
+        doc,
+        sections=[
+            {"heading": "사실", "body": fact, "source_ids": [s.source_id for s in sources]},
+            {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
+            {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+        ],
+    )
+
+    saved = client.put(f"/api/documents/{doc.id}", json={**body, "class_note": "-결석 : 이가명"})
+    assert saved.status_code == 200
+    assert saved.json()["class_note"] == "-결석 : 이가명"
+
+    again = client.put(
+        f"/api/documents/{doc.id}", json={**body, "updated_at": saved.json()["updated_at"]}
+    )
+    assert again.status_code == 200
+    assert again.json()["class_note"] == "-결석 : 이가명"
+    assert client.get(f"/api/documents/{doc.id}").json()["class_note"] == "-결석 : 이가명"
+
+
 def test_put_missing_document_returns_not_found(db_session):
     response = client.put(
         "/api/documents/999999",
@@ -949,6 +977,56 @@ def test_unconfirm_marks_documents_built_on_it_stale_but_not_itself(db_session):
     assert _stale(db_session, daily, weekly, above) == [False, True, True]
 
 
+def test_unconfirm_reports_only_documents_built_directly_on_it(db_session):
+    _, daily, weekly, above = _chain(db_session)
+
+    response = client.post(f"/api/documents/{daily.id}/unconfirm?include_impact=true")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "DRAFT"
+    # 연쇄로 stale 이 된 above 는 안내 건수에 넣지 않는다 — 직접 근거로 쓴 주간만 센다.
+    assert response.json()["review_impact"] == {
+        "affected_document_ids": [weekly.id],
+        "newly_stale_document_ids": [weekly.id],
+    }
+    assert _stale(db_session, weekly, above) == [True, True]
+
+
+def test_unconfirm_counts_already_stale_documents_as_affected_only(db_session):
+    _, daily, weekly, _ = _chain(db_session)
+    weekly.stale = True
+    db_session.flush()
+
+    impact = client.post(f"/api/documents/{daily.id}/unconfirm?include_impact=true").json()
+
+    assert impact["review_impact"] == {
+        "affected_document_ids": [weekly.id],
+        "newly_stale_document_ids": [],
+    }
+
+
+def test_unconfirm_again_reports_no_impact(db_session):
+    _, daily, _, _ = _chain(db_session)
+    client.post(f"/api/documents/{daily.id}/unconfirm")
+
+    again = client.post(f"/api/documents/{daily.id}/unconfirm?include_impact=true")
+
+    # 이미 초안이면 이번 요청이 바꾼 것이 없다.
+    assert again.status_code == 200
+    assert again.json()["review_impact"] == {
+        "affected_document_ids": [],
+        "newly_stale_document_ids": [],
+    }
+
+
+def test_unconfirm_without_option_keeps_the_detail_shape(db_session):
+    _, daily, _, _ = _chain(db_session)
+
+    response = client.post(f"/api/documents/{daily.id}/unconfirm")
+
+    assert "review_impact" not in response.json()
+
+
 # ── POST /api/documents/{id}/refresh ────────────────────────────────────────
 def _stale_observation_document(session):
     _, klass, child = _make_center_class_child(session)
@@ -999,6 +1077,19 @@ def test_refresh_refuses_when_a_source_is_gone(db_session):
     detail = client.get(f"/api/documents/{doc_id}").json()
     assert detail["stale"] is True
     assert detail["sources"][0]["text"] == "개미를 3분 동안 바라보았다."
+
+
+def test_refresh_tells_observation_teacher_to_start_over(db_session):
+    """관찰일지는 사라진 근거를 빼거나 바꿀 수 없다 — 고를 것이 없는 화면으로 보내지 않는다."""
+    doc_id, record = _stale_observation_document(db_session)
+    assert client.delete(f"/api/observations/{record.id}").status_code == 204
+
+    response = client.post(f"/api/documents/{doc_id}/refresh")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "근거 기록이 사라졌습니다. 이 문서는 지우고 남은 기록으로 새로 만들어주세요."
+    )
 
 
 def test_refresh_refuses_confirmed_documents(db_session):

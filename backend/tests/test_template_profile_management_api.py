@@ -4,7 +4,7 @@
 
 기반 Template v0.1.1 은 **사람 승인 대기**다(v0.2.1 은 2026-10-20 승인). 승인 경로는 OD-N11 (A) —
 `replace(template, runtime_active=True)` — 로 본다(`service.TEMPLATES` 를 바꿔 낀다). 데이터 파일과
-운영 코드는 그대로이고, 승인 대기 상태로 부르면 막혀야 한다. **실제 Luna-6 는 부르지 않는다**
+운영 코드는 그대로이고, 승인 대기 상태로 부르면 막혀야 한다. **실제 Sol-6.1 는 부르지 않는다**
 (월간 생성은 기본 mock provider).
 """
 
@@ -219,6 +219,9 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
         assert item["approved"] is template.is_active
         assert len(item["sections"]) == len(template.sections)
         selection = {s["section_key"]: s["selection"] for s in item["sections"]}
+        # 실내대체는 repeat_by 를 준 v0.2.2 에서만 고를 수 있다.
+        indoor = {"indoor_alternative"}
+        indoor_optional = item["template_ref"]["template_version"] == "monthly-template-a-v0.2.2"
         assert {k for k, v in selection.items() if v == "REQUIRED"} == {
             "theme",
             "week_axis",
@@ -229,16 +232,15 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
             "focus",
             "goals",
             "basic_habit",
-        }
+        } | (indoor if indoor_optional else set())
         assert {k for k, v in selection.items() if v == "INSTITUTION_INPUT"} == {
             "event_schedule",
             "drill",
         }
         assert {k for k, v in selection.items() if v == "NOT_SUPPORTED"} == {
             "emergency_response",
-            "indoor_alternative",
             "special_program",
-        }
+        } | (set() if indoor_optional else indoor)
         assert "habits" not in selection  # Template 의 habits 는 Profile 이름으로 보인다
         week = next(s for s in item["sections"] if s["section_key"] == "week_axis")
         assert (week["role"], week["repeat_by"]) == ("AXIS", None)
@@ -513,7 +515,10 @@ def test_관리_API_로_건_Profile_로_확정된_연간_뒤에만_월간을_만
     resolved = _resolution(world)
     assert resolved == {"source": "INSTITUTION_DEFAULT", "profile_ref": ref, "reason": None}
 
-    annual = client.post("/api/plans/annual", json={"class_id": world["class_a"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": world["class_a"], "form_id": None},
+    )
     assert annual.status_code == 201
     body = {"class_id": world["class_a"], "month": 9, "profile_ref": resolved["profile_ref"]}
     assert _error(client.post("/api/plans/monthly", json=body)) == (

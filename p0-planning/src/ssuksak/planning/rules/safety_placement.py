@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain.monthly_plan import MonthlyCell, MonthlyPlan
+from ..domain.monthly_plan import MonthlyCell, MonthlyPlan, MonthlySafetyCandidate
 from ..domain.monthly_verification import (
     FindingKind,
     Severity,
@@ -20,7 +20,12 @@ from ..domain.monthly_verification import (
     ViolationLocation,
 )
 from ..domain.provenance import EvidenceSourceType
-from ..domain.safety_placement import SafetyKind, SafetyPlacement, SafetyPlacementPolicy
+from ..domain.safety_placement import (
+    STATUTORY_SHORT_LABELS,
+    SafetyKind,
+    SafetyPlacement,
+    SafetyPlacementPolicy,
+)
 from ..domain.safety_rule import SafetyLegalRule
 from ..domain.week_period import WeekId, WeekPeriod
 from ..domain.year_month import YearMonth
@@ -38,6 +43,32 @@ ANNUAL_HOURS_NOT_VERIFIED = "SAFETY_ANNUAL_HOURS_NOT_VERIFIED"
 def official_ref(category_id: str, index: int) -> str:
     """Stable id of one official content item of the legal Rule (1-based)."""
     return f"annex6:{category_id}:{index}"
+
+
+def safety_display_value(placement: SafetyPlacement | None, content: str) -> str:
+    """A STATUTORY week reads "[교통안전] - 내용"; any other safety value is kept as written.
+
+    The Rule owns the label, so the LLM writes only the content after it.
+    """
+    if placement is None or placement.kind is not SafetyKind.STATUTORY or not content.strip():
+        return content
+    return f"[{STATUTORY_SHORT_LABELS[placement.category_id]}] - {content}"
+
+
+def candidate_display_value(candidate: MonthlySafetyCandidate) -> str:
+    """"[교통안전] - 문장" / "[생활안전] - 문장"; a blank sentence stays blank (no label)."""
+    content = candidate.cell.value
+    if not content.strip():
+        return content
+    if candidate.kind is SafetyKind.STATUTORY:
+        return f"[{STATUTORY_SHORT_LABELS[candidate.category_id]}] - {content}"
+    return f"[생활안전] - {content}"
+
+
+def placed_safety_candidate(plan: MonthlyPlan, week_id: WeekId) -> MonthlySafetyCandidate | None:
+    """The candidate a teacher placed in this week of a candidate-mode Plan, if any."""
+    placed = next((s.candidate_item_id for s in plan.safety_weeks if s.week_id == week_id), None)
+    return None if placed is None else plan.safety_candidate(placed)
 
 
 def is_official_ref(ref: str, category_id: str | None = None) -> bool:
@@ -93,8 +124,12 @@ def month_safety_slots(
     target_month: YearMonth,
     active_weeks: tuple[WeekPeriod, ...],
     rule: SafetyLegalRule | None = None,
+    supplemental: bool = True,
 ) -> tuple[SafetySlot, ...]:
-    """One slot per active week: the policy's STATUTORY weeks, SUPPLEMENTAL elsewhere."""
+    """One slot per active week: the policy's STATUTORY weeks, SUPPLEMENTAL elsewhere.
+
+    Without supplemental only the STATUTORY weeks get a slot.
+    """
     if policy.focus_rule is not None and rule is None:
         raise ValueError("A focus policy needs the legal Rule's official content items")
     statutory = {entry.week_ordinal: entry.category_id for entry in policy.for_month(target_month.calendar_month)}
@@ -118,6 +153,7 @@ def month_safety_slots(
             ),
         )
         for ordinal, period in enumerate(active_weeks, start=1)
+        if supplemental or ordinal in statutory
     )
 
 

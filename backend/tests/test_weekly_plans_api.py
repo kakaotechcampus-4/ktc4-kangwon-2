@@ -23,6 +23,7 @@ from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
 from ssuksak.planning import MonthlyApplicationError, WeeklyPlan
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.planner.weekly import WEEKLY_CONTEXT_CELL_PROMPT_VERSION
 
 from app.config import settings
 from app.features.auth.models import User
@@ -106,7 +107,10 @@ def _seed(session, name: str, email: str) -> dict:
 
 def _monthly(seed: dict, *, confirm: bool = True) -> dict:
     """부모 연간을 만들어 확정하고 9월 월간을 만든다(확정까지) — 전부 API 로."""
-    annual = client.post("/api/plans/annual", json={"class_id": seed["class"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": seed["class"], "form_id": None},
+    )
     assert annual.status_code == 201, annual.json()
     assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
     monthly = client.post(
@@ -562,7 +566,10 @@ def test_칸을_다시_만들면_그_칸만_바뀐다(world):
         f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": _cell(plan, "goals")["item_id"]}
     ).json()["items"]
     assert audit[-1]["type"] == "REGENERATED"
-    assert audit[-1]["generation_change"]["after"]["rule_version"] == "weekly-cell-planner-v1"
+    assert (
+        audit[-1]["generation_change"]["after"]["rule_version"]
+        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+    )
 
 
 @pytest.mark.parametrize("key", ["family_link", "event_schedule", "special_program"])

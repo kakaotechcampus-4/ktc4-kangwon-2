@@ -20,7 +20,7 @@ registerHooks({
 });
 
 const documents = await import("../lib/api/documents.ts");
-const { ApiError } = await import("../lib/api/client.ts");
+const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 
@@ -375,6 +375,31 @@ test("주간 보육일지 생성은 문서 id 를 근거로 보낸다", async ()
   }
   assert.deepEqual(calls[0].body.source_ids, [5]);
   assert.equal(calls[0].body.child_id, null);
+  // 생략하면 서버 기본값(확정한 일일 보육일지)이다.
+  assert.equal("source_kind" in calls[0].body, false);
+});
+
+test("일과 근거 주간은 일과 기록 id 와 source_kind 를 보낸다", async () => {
+  browser();
+  const { calls, restore } = serve(() =>
+    json({ ...WEEKLY_DETAIL, sources: [{ ...WEEKLY_DETAIL.sources[0], id: 7 }] }, 201),
+  );
+  try {
+    await documents.createDocument({
+      kind: "weeklyLog",
+      classId: "class-abc",
+      childId: "",
+      start: "2026-09-21",
+      end: "2026-09-25",
+      sourceIds: ["routine:7"],
+      sourceKind: "routine",
+    });
+  } finally {
+    restore();
+  }
+  // 문서 접두사로 풀면 null 이 되어 보내지 못한다 — 일과 표의 id 다.
+  assert.deepEqual(calls[0].body.source_ids, [7]);
+  assert.equal(calls[0].body.source_kind, "routine");
 });
 
 test("매핑을 못 찾으면 생성 요청 자체를 보내지 않는다", async () => {
@@ -526,6 +551,21 @@ test("source assertions receive identical text for LF and CRLF checkouts", () =>
   }
 });
 
+test("주간 보육일지는 근거를 확정 일일 보육일지와 일과 기록 중에 고른다", () => {
+  const page = read("DocumentsPage.tsx");
+
+  assert.ok(page.includes('useState<"dailyLog" | "routine">("dailyLog")'));
+  // 일과 기록을 근거로 쓰는 두 경우가 한 조건으로 묶여 있다 — 후보 · 조회 · 링크가 같이 간다.
+  assert.ok(
+    page.includes('kind === "dailyLog" || (kind === "weeklyLog" && weeklyFrom === "routine")'),
+  );
+  // 주간은 하루가 아니라 그 주를 묻는다.
+  assert.ok(page.includes("listDayRoutines(cls, from, to)"));
+  assert.ok(page.includes('`${classId}|${start}|${kind === "dailyLog" ? start : end}`'));
+  // 고른 근거 종류를 서버에 그대로 넘긴다 (§11 `source_kind`).
+  assert.ok(page.includes('...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {})'));
+});
+
 test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", () => {
   const page = read("DocumentsPage.tsx");
 
@@ -542,8 +582,9 @@ test("문서 화면이 §11 문서를 저장소나 AI 로 만들지 않는다", 
     "deleteDocument",
   ])
     assert.equal(page.includes(used), true, used);
-  // 계획안과 등록 증빙만 브라우저 저장소에서 읽는다.
-  assert.ok(page.includes('d.origin === "import" || !isRecordKind(d.kind)'));
+  // 등록 증빙만 브라우저 저장소에서 읽는다. 계획안은 서버 목록에서 온다 (FR-701).
+  assert.ok(page.includes('data.documents.filter((d) => d.origin === "import")'));
+  assert.ok(page.includes("listAnnualPlans"));
   // 편집기에 올리는 서버 문서는 언제나 지금 고른 문서다.
   assert.ok(page.includes("chosen.detail?.id === active ? chosen.detail : null"));
   assert.ok(page.includes("serverActions = serverCurrent"));
@@ -1389,12 +1430,17 @@ function editorHarness(selection) {
     },
     "./WorkspaceUI": { ws: {}, Message: "message", AIHint: "ai-hint", useAIStatus: () => false },
     "./document-selection": { serverIssues },
+    // 실제 invalidFields 를 쓴다 — 서버가 짚은 칸을 화면 이름으로 바꾸는 길이
+    // 스텁이면 "어느 칸이 틀렸나" 를 검증하지 못한다.
+    "@/lib/api/client": { ApiError, invalidFields },
     "./SourceReview": { default: "source-review" },
     "@/lib/api/storage-context": { API_STORAGE_CONTEXT },
     "@/lib/api/plans": {},
     "@/lib/api/documents": documents,
     "@/lib/workspace/routines-route": routinesRoute,
     "@/lib/privacy/browser-storage": privacy,
+    // 이름표 앞 자물쇠. 그림일 뿐이라 null 로 둔다.
+    "@/components/app/icons": { Icon: () => null },
   };
   modules["@/lib/hooks/use-hwpx-download"] = evaluate(hwpxHookCode, modules);
   const Editor = evaluate(editorCode, modules).default;
@@ -1432,10 +1478,8 @@ function editorHarness(selection) {
   render();
   return {
     render,
-    textarea: () =>
-      all(tree).find(
-        (node) => node.type === "textarea" && node.props["aria-label"] === "해석 내용",
-      ),
+    textarea: (label = "해석 내용") =>
+      all(tree).find((node) => node.type === "textarea" && node.props["aria-label"] === label),
     button: (label) => all(tree).find((node) => node.type === "button" && content(node) === label),
     links: () => all(tree).filter((node) => node.type === "link"),
     checks: () =>
@@ -1549,6 +1593,33 @@ test("확정된 서버 문서에만 확정 취소가 보이고 초안에는 보�
   assert.equal(draft.editor.button("확정 취소"), undefined);
 });
 
+test("확정이 막히면 서버가 짚은 칸을 교사 말로 알려준다", async () => {
+  // 서버 게이트는 글자 수 말고도 사실·원문 대조와 해석의 숫자를 본다
+  // (backend/app/shared/gates/sections.py). 화면 검사를 통과해도 여기서 막힐 수 있는데,
+  // 「입력값을 확인해주세요」만 띄우면 교사가 어느 칸을 고칠지 알 수 없었다.
+  const { editor } = await editing(
+    {},
+    {
+      confirm: async () => {
+        throw new ApiError(422, {
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "입력값을 확인해주세요.",
+            fields: ["sections.해석"],
+          },
+        });
+      },
+    },
+  );
+  editor.checks().forEach((box) => box.props.onChange({ target: { checked: true } }));
+  editor.render();
+  editor.button("검토 완료 · 문서 확정").props.onClick();
+  await tick();
+  editor.render();
+  assert.match(editor.text(), /해석 칸이 원본과 맞지 않아요/);
+  assert.match(editor.text(), /해석 칸을 고쳐주세요/);
+});
+
 test("사실 칸 아래에 원본을 고치는 곳을 알려준다", async () => {
   const { editor } = await editing({ kind: "observation" });
   assert.deepEqual(
@@ -1584,6 +1655,25 @@ test("확정 취소는 확인창 없이 바로 서버를 부르고 초안으로 
   assert.equal(selection.get().detail.status, "draft");
   assert.ok(editor.textarea(), "초안이므로 다시 고칠 수 있다");
   assert.match(editor.text(), /확정을 취소했어요/);
+});
+
+test("확정 취소로 다시 검토 대상이 된 문서가 있으면 그 수를 말하고, 없으면 말하지 않는다", async () => {
+  const { editor } = await editing(
+    { status: "confirmed" },
+    { unconfirm: async () => ({ ...doc(1, { status: "draft" }), newlyStaleCount: 2 }) },
+  );
+  await editor.button("확정 취소").props.onClick();
+  editor.render();
+  assert.match(editor.text(), /이 문서를 근거로 쓴 문서 2건이 다시 검토 대상이 되었어요/);
+
+  const none = await editing(
+    { status: "confirmed" },
+    { unconfirm: async () => ({ ...doc(1, { status: "draft" }), newlyStaleCount: 0 }) },
+  );
+  await none.editor.button("확정 취소").props.onClick();
+  none.editor.render();
+  assert.match(none.editor.text(), /확정을 취소했어요/);
+  assert.equal(/다시 검토 대상이 되었어요/.test(none.editor.text()), false);
 });
 
 test("확정 취소는 근거를 다시 반영하지 않는다 — stale 은 그대로 남는다", async () => {
@@ -1721,7 +1811,10 @@ test("늦게 온 확정 취소·근거 반영 응답은 그 사이 고른 다른
 
 test("확정 취소·근거 반영은 서버 id 로 POST 하고 본문을 보내지 않는다", async () => {
   browser();
-  const { calls, restore } = serve(() => json({ ...DETAIL, status: "DRAFT", stale: false }));
+  const impact = { affected_document_ids: [], newly_stale_document_ids: [] };
+  const { calls, restore } = serve(() =>
+    json({ ...DETAIL, status: "DRAFT", stale: false, review_impact: impact }),
+  );
   try {
     await documents.unconfirmDocument("document:17");
     await documents.refreshDocument("document:17");
@@ -1731,11 +1824,37 @@ test("확정 취소·근거 반영은 서버 id 로 POST 하고 본문을 보내
   assert.deepEqual(
     calls.map(({ url, method, body }) => [url, method, body]),
     [
-      ["/api/documents/17/unconfirm", "POST", undefined],
+      // 확정 취소는 영향(「N건이 다시 검토 대상」)을 같이 받는다.
+      ["/api/documents/17/unconfirm?include_impact=true", "POST", undefined],
       ["/api/documents/17/refresh", "POST", undefined],
     ],
   );
   assert.equal(calls[0].auth, `Bearer ${TOKEN}`);
+});
+
+test("영향이 없는 확정 취소 응답도 초안으로 받는다 — 안내만 빠진다", async () => {
+  browser();
+  const { restore } = serve(() => json({ ...DETAIL, status: "DRAFT" }));
+  try {
+    const doc = await documents.unconfirmDocument("document:17");
+    assert.equal(doc.status, "draft");
+    assert.equal(doc.newlyStaleCount, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("확정 취소 응답의 새 stale 수를 화면 문서에 싣는다", async () => {
+  browser();
+  const impact = { affected_document_ids: [21, 22], newly_stale_document_ids: [21] };
+  const { restore } = serve(() => json({ ...DETAIL, status: "DRAFT", review_impact: impact }));
+  try {
+    const doc = await documents.unconfirmDocument("document:17");
+    assert.equal(doc.status, "draft");
+    assert.equal(doc.newlyStaleCount, 1);
+  } finally {
+    restore();
+  }
 });
 
 test("서버에서 오지 않은 id 는 확정 취소·근거 반영 요청 자체를 보내지 않는다", async () => {
@@ -1932,4 +2051,36 @@ test("후속 #6 mock 접두어 정리는 교사가 쓴 사실과 일반 문서 �
     dto.sections.map((s) => s.body),
   );
   assert.equal(teacher.mockDraft, false);
+});
+
+test("일일 보육일지 편집기는 반 운영 특이사항을 적어 서버로 보낸다", async () => {
+  let sent = null;
+  const selection = createSelection(
+    {
+      get: async () => doc(2, { kind: "dailyLog", childId: "", childName: "" }),
+      update: async (_id, input) => {
+        sent = input;
+        return doc(2, { kind: "dailyLog", classNote: input.classNote, updatedAt: "t1" });
+      },
+    },
+    describe,
+  );
+  selection.select("document:2", 1);
+  await tick();
+  const editor = editorHarness(selection);
+
+  const note = editor.textarea("반 운영 특이사항");
+  assert.ok(note, "일일 보육일지에는 특이사항 칸이 있다");
+  note.props.onChange({ target: { value: "-결석 : 이가명" } });
+  editor.render();
+
+  await editor.button("초안 저장").props.onClick();
+  assert.equal(sent.classNote, "-결석 : 이가명");
+});
+
+test("관찰일지 편집기에는 반 운영 특이사항 칸이 없다", async () => {
+  const selection = createSelection({ get: async () => doc(3) }, describe);
+  selection.select("document:3", 1);
+  await tick();
+  assert.equal(editorHarness(selection).textarea("반 운영 특이사항"), undefined);
 });

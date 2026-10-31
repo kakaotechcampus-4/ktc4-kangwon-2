@@ -1,0 +1,282 @@
+{
+  "schema_version": "daily-life-reference.schema.v0",
+  "catalog_id": "ssuksak.daily-life",
+  "catalog_version": "daily-life-v0.1.0",
+  "supersedes": null,
+  "created_on": "2026-10-29",
+  "locale": "ko-KR",
+  "purpose": "놀이중심 월간(PLAY_MONTHLY)의 기본생활습관(주마다 하나)·건강·영양(월마다 하나씩) 문장 후보다. LLM은 entry_id만 고르고, 칸의 문장은 서버가 이 파일에서 그대로 복사한다.",
+  "disclaimer": "자체 작성한 제품 문장과 표시 분류다. 국가가 정한 예문·월별 배치표가 아니며, content_id는 누리과정 내용과의 교육적 연계다.",
+  "review": {
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_01",
+    "approved_at": "2026-10-29T17:32:24+09:00",
+    "runtime_active": true,
+    "runtime_rule": "runtime_active는 파생값이다. runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")를 항상 만족해야 한다.",
+    "review_points": [
+      "15개 문장·표시 분류·content_id가 2026-10-27 채택한 문장과 같은지 (docs/daily-life-reference-v0-human-review.md)",
+      "각 content_id가 해당 생활 장면과 이어지는지",
+      "habit.04와 nutrition.07은 같은 문장이다. 구역이 달라 각각 채택했으며 같은 달에 두 칸에 함께 나올 수 있다",
+      "제품에 실을 문장·출처 표기의 이용 범위"
+    ]
+  },
+  "curriculum": {
+    "catalog_id": "ssuksak.nuri-curriculum-content",
+    "catalog_version": "nuri-curriculum-content-v0.1.0"
+  },
+  "origins": [
+    {
+      "origin_id": "nuri2019.notice.mohw",
+      "title": "2019 개정 누리과정 (보건복지부 고시 제2019-152호)",
+      "path": "references/official/00_curriculum_core/2019_개정_누리과정_고시문_보건복지부.pdf",
+      "sha256": "74b489344cc34ab3e9ed8731aeb34630294f13c4495f2d87cc3addc89954cdf0",
+      "page_note": "PDF 쪽 번호(인쇄 쪽 번호와 같다). 영역마다 「2. 내용」 표 한 쪽.",
+      "use": "각 문장의 content_id가 가리키는 내용 문장"
+    },
+    {
+      "origin_id": "nuri2019.commentary",
+      "title": "2019 개정 누리과정 해설서",
+      "path": "references/official/00_curriculum_core/2019_개정_누리과정_해설서.pdf",
+      "sha256": "7e1b00173e61a550fa1ab6b7762b7e906da52dbed14d592b9072758eec3c20f4",
+      "page_note": "채택 검토 때 적은 쪽 번호다. PDF·인쇄 쪽 구분은 다시 확인하지 않았다.",
+      "use": "손 씻기·이 닦기·주변 정리·식생활·휴식 등 생활 장면 검토 보조"
+    }
+  ],
+  "entries": [
+    {
+      "entry_id": "ssuksak.daily-life.habit.01",
+      "kind": "HABIT",
+      "label": "청결",
+      "text": "놀이한 뒤 손을 깨끗이 씻어요",
+      "content_id": "nuri2019.1.2.1",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "67"
+        }
+      ]
+    },
+    {
+      "entry_id": "ssuksak.daily-life.habit.02",
+      "kind": "HABIT",
+      "label": "청결",
+      "text": "사용한 놀잇감을 제자리에 정리해요",
+      "content_id": "nuri2019.1.2.1",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "67"
+        }
+      ]
+    },
+    {
+      "entry_id": "ssuksak.daily-life.habit.04",
+      "kind": "HABIT",
+      "label": "식습관",
+      "text": "식사 자리에 앉아 즐겁게 먹어요",
+      "content_id": "nuri2019.1.2.2",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "67"
+        }
+      ]
+    },
+    {
+      "entry_id": "ssuksak.daily-life.habit.06",
+      "kind": "HABIT",
+      "label": "휴식",
+      "text": "몸이 피곤하면 잠시 쉬어요",
+      "content_id": "nuri2019.1.2.3",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "68"
+        }
+      ]
+    },
+    {
+      "entry_id": "ssuksak.daily-life.habit.10",
+      "kind": "HABIT",
+      "label": "언어 예절",
+      "text": "친구의 이야기를 듣고 말해요",
+      "content_id": "nuri2019.2.1.5",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "11"
+        }
+      ]
+    },
+    {
+      "entry_id": "ssuksak.daily-life.habit.15",
+      "kind": "HABIT",
+      "label": "약속·질서",
+      "text": "함께 정한 놀이 약속을 지켜요",
+      "content_id": "nuri2019.3.2.6",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "12"
+        }
+      ]
+    },
+    {
+      "entry_id": "ssuksak.daily-life.habit.17",
+      "kind": "HABIT",
+      "label": "감정 표현",
+      "text": "속상한 마음을 말이나 몸짓으로 전해요",
+      "content_id": "nuri2019.3.1.2",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "12"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "85"
+        }
+      ]
+    },
+    {
+      "entry_id": "ssuksak.daily-life.health.01",
+      "kind": "HEALTH",
+      "label": "손 씻기",
+      "text": "손을 깨끗이 하는 방법을 알아봐요",
+      "content_id": "nuri2019.1.2.1",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        }
+      ],
+      "review_caution": "특정 세정 제품·효과·시간을 근거 없이 추가하지 않음"
+    },
+    {
+      "entry_id": "ssuksak.daily-life.health.02",
+      "kind": "HEALTH",
+      "label": "이 닦기",
+      "text": "이를 깨끗이 하는 방법에 관심을 가져요",
+      "content_id": "nuri2019.1.2.1",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "67"
+        }
+      ],
+      "review_caution": "해설 p.67에서 이 닦기 설명 확인. 의학적 효과·용량 설명 추가 안 함"
+    },
+    {
+      "entry_id": "ssuksak.daily-life.health.03",
+      "kind": "HEALTH",
+      "label": "내 몸의 휴식",
+      "text": "내 몸이 쉬고 싶을 때를 알아봐요",
+      "content_id": "nuri2019.1.2.3",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        }
+      ],
+      "review_caution": "같은 시간·같은 방법으로 쉬도록 강요하지 않음"
+    },
+    {
+      "entry_id": "ssuksak.daily-life.health.04",
+      "kind": "HEALTH",
+      "label": "날씨와 옷차림",
+      "text": "날씨에 맞는 옷차림을 알아봐요",
+      "content_id": "nuri2019.1.2.4",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "68"
+        }
+      ],
+      "review_caution": "해설 p.68과 연결. 특정 옷차림이 질병을 치료한다고 쓰지 않음"
+    },
+    {
+      "entry_id": "ssuksak.daily-life.nutrition.05",
+      "kind": "NUTRITION",
+      "label": "음식에 관심 갖기",
+      "text": "몸에 좋은 음식에 관심을 가져요",
+      "content_id": "nuri2019.1.2.2",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        }
+      ],
+      "review_caution": "특정 음식을 악역으로 분류하거나 영양소 효능을 창작하지 않음"
+    },
+    {
+      "entry_id": "ssuksak.daily-life.nutrition.06",
+      "kind": "NUTRITION",
+      "label": "즐거운 식사",
+      "text": "편안하고 즐겁게 식사하는 방법을 알아봐요",
+      "content_id": "nuri2019.1.2.2",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        }
+      ],
+      "review_caution": "먹는 양·속도·남김을 통제하는 문장으로 바꾸지 않음"
+    },
+    {
+      "entry_id": "ssuksak.daily-life.nutrition.07",
+      "kind": "NUTRITION",
+      "label": "식사할 때의 자세",
+      "text": "식사 자리에 앉아 즐겁게 먹어요",
+      "content_id": "nuri2019.1.2.2",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        }
+      ],
+      "review_caution": "Reference 문장과 유사하나 출력 출처는 별도 추적. 기본생활습관과 중복될 수 있음"
+    },
+    {
+      "entry_id": "ssuksak.daily-life.nutrition.08",
+      "kind": "NUTRITION",
+      "label": "다양한 음식 경험",
+      "text": "여러 음식에 관심을 가져요",
+      "content_id": "nuri2019.1.2.2",
+      "origin_refs": [
+        {
+          "origin_id": "nuri2019.notice.mohw",
+          "pages": "10"
+        },
+        {
+          "origin_id": "nuri2019.commentary",
+          "pages": "67"
+        }
+      ],
+      "review_caution": "해설 p.67의 식생활 설명과 연결. 강제 맛보기·정해진 양 먹기로 확대하지 않음"
+    }
+  ]
+}

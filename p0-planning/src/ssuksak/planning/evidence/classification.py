@@ -26,6 +26,8 @@ class SemanticClass(str, Enum):
     BASIC_HABIT = "BASIC_HABIT"
     SUBTHEME = "SUBTHEME"
     EXPECTED_PLAY = "EXPECTED_PLAY"
+    # Assigned by the approved Weekly classification, never by the Monthly file (D-2).
+    INDOOR_ALTERNATIVE = "INDOOR_ALTERNATIVE"
     EXCLUDED = "EXCLUDED"
 
 
@@ -36,7 +38,12 @@ GROUNDING_SCOPE: dict[SemanticClass, tuple[str, SemanticVariant | None]] = {
     SemanticClass.SUBTHEME: ("focus", SemanticVariant.SUBTHEME),
     SemanticClass.EXPECTED_PLAY: ("focus", SemanticVariant.EXPECTED_PLAY),
 }
-CLASS_SCOPED_SECTION_KEYS = frozenset(key for key, _ in GROUNDING_SCOPE.values())
+# Monthly indoor_alternative cites the approved Weekly INDOOR_ALTERNATIVE records.
+_SECTION_SCOPE = {
+    **GROUNDING_SCOPE,
+    SemanticClass.INDOOR_ALTERNATIVE: ("indoor_alternative", None),
+}
+CLASS_SCOPED_SECTION_KEYS = frozenset(key for key, _ in _SECTION_SCOPE.values())
 
 
 def grounding_class_for(section: TemplateSection) -> SemanticClass | None:
@@ -45,7 +52,7 @@ def grounding_class_for(section: TemplateSection) -> SemanticClass | None:
     A class-scoped Section (goals, basic_habit, focus) whose semantic variant
     has no approved class, such as focus WEEKLY_THEME, returns None.
     """
-    for semantic_class, (section_key, variant) in GROUNDING_SCOPE.items():
+    for semantic_class, (section_key, variant) in _SECTION_SCOPE.items():
         if section.section_key == section_key and (
             variant is None or section.semantic_variant is variant
         ):
@@ -80,7 +87,7 @@ class EvidenceSemanticClassification:
                 raise InvalidDomainValueError("Evidence classification source_section is invalid")
             if not isinstance(label, str) or not label.strip():
                 raise InvalidDomainValueError("Evidence classification source_label must be non-blank")
-            if not isinstance(semantic_class, SemanticClass) or semantic_class is SemanticClass.EXCLUDED:
+            if not isinstance(semantic_class, SemanticClass) or semantic_class not in GROUNDING_SCOPE:
                 raise InvalidDomainValueError(
                     "Evidence classification entries list allowed classes only; EXCLUDED is the default"
                 )

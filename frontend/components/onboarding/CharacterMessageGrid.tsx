@@ -95,12 +95,12 @@ function MessageCard({
     >
       <div className="flex items-center justify-between">
         <span
-          className={`font-mono text-[11px] tracking-wide px-2.5 py-[3px] rounded-full font-medium ${isCurrent ? "bg-sage text-ink" : "bg-cream text-sage-ink"}`}
+          className={`font-mono text-[12px] tracking-wide px-2.5 py-[3px] rounded-full font-medium ${isCurrent ? "bg-sage text-ink" : "bg-cream text-sage-ink"}`}
         >
           {month}월{isCurrent ? " · 이번 달" : ""}
         </span>
         {!disabled && edited && (
-          <span className="font-mono text-[10px] px-1.5 rounded-full bg-peach-tint text-peach-ink">
+          <span className="font-mono text-[12px] px-1.5 rounded-full bg-peach-tint text-peach-ink">
             수정됨
           </span>
         )}

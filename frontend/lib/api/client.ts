@@ -30,7 +30,9 @@ export class MswTransportError extends Error {
   readonly body: string;
   constructor(status: number, path: string, body: string) {
     super(
-      "개발용 API(MSW)가 요청을 가로채지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.",
+      process.env.NEXT_PUBLIC_API_MOCKING === "enabled"
+        ? "개발용 API(MSW)가 요청을 가로채지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."
+        : "서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.",
     );
     this.name = "MswTransportError";
     this.status = status;
@@ -123,6 +125,12 @@ export function invalidFields(error: unknown, map: Record<string, string>): stri
     .map((field) => map[field] ?? map[field.split(".")[0]])
     .filter((name): name is string => !!name);
   return [...new Set(names)];
+}
+
+/** 서버가 「이미 있다」고 거절했나. 브라우저 연결 정보가 서버보다 뒤처졌다는 뜻이다. */
+export function isAlreadyExists(error: unknown): error is ApiError {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  return envelope(error)?.code === "ALREADY_EXISTS";
 }
 
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */

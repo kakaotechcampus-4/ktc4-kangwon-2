@@ -164,5 +164,6 @@ class ContextPacketBuilder:
                 retrieval.activity_catalog_id,
                 retrieval.activity_catalog_version,
                 retrieval.evidence_classification_version,
+                retrieval.weekly_classification_version,
             ),
         )

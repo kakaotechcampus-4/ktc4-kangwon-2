@@ -21,7 +21,6 @@ from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class
 from ..planner.cell_service import MonthlyCellPlanner
 from ..planner.contracts import (
     LLM_CELL_SECTION_KEYS,
-    MONTHLY_CELL_PROMPT_VERSION,
     OUTDOOR_SECTION_KEY,
     MonthlyCellSnapshot,
 )
@@ -80,6 +79,10 @@ class RegenerateMonthlyPlanItem:
         item_id = require_item_id(command.item_id)
         actor_id = require_actor(command.actor_id)
         found = plan.find_cell(item_id)
+        if found is None and plan.safety_candidate(item_id) is not None:
+            raise MonthlyApplicationError(
+                "monthly_cell_not_regeneratable", "Safety candidates are not regeneratable"
+            )
         if found is None:
             raise MonthlyApplicationError(
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"
@@ -205,6 +208,7 @@ class RegenerateMonthlyPlanItem:
             ages=plan.target_ages,
             parent_theme_id=theme_reference_id(theme.evidence),
             parent_theme_value=theme.value,
+            parent_subthemes=plan.parent_subthemes,
             week_periods=plan.week_periods,
             activity_catalog=catalog,
             constraint_assessments=plan.constraint_assessments,
@@ -258,7 +262,7 @@ class RegenerateMonthlyPlanItem:
         generation = GenerationMethodDetail(
             GenerationMethod.RULE_LLM,
             LLM_INTEGRATION_RULE_ID,
-            MONTHLY_CELL_PROMPT_VERSION,
+            outcome.prompt_version,
         )
         updated = self._replace_regenerated(
             plan,
@@ -295,7 +299,7 @@ class RegenerateMonthlyPlanItem:
             cell_state=resolve_cell_state(
                 section_key=cell.section_key,
                 value=new_value,
-                assessment=plan.constraint("STATUTORY_SAFETY_EDUCATION"),
+                assessment=plan.cell_state_assessment(cell),
             ),
             generation=generation,
             evidence=evidence,

@@ -1605,12 +1605,27 @@ function recordsPage(t, { rooms = [ROOM_A] } = {}) {
         .filter((part) => typeof part === "string")
         .join(" "),
     type: (node, value) => node.props.onChange({ target: { value } }),
+    /** 적는 칸은 접혀 있다. 날짜·반을 고르려면 먼저 펼친다. */
+    openForm: () => {
+      const button = all(view.tree()).find(
+        (node) =>
+          node?.type === "button" &&
+          all(node.props?.children)
+            .filter((part) => typeof part === "string")
+            .join("")
+            .includes("새 관찰 기록 쓰기"),
+      );
+      assert.ok(button, "「＋ 새 관찰 기록 쓰기」 단추를 찾지 못했다");
+      button.props.onClick();
+      view.render();
+    },
   };
 }
 
 test("P1-3 기록 모아보기에서 고른 반 · 날짜를 그대로 일과 기록으로 들고 간다", async (t) => {
   const view = recordsPage(t);
   await view.flush();
+  view.openForm();
   // 아직 반을 안 골랐다 — 날짜만 들고 간다. 아무 반이나 붙이지 않는다.
   assert.ok(view.links().includes(`/routines?date=${TODAY}&class_id=3`), view.links().join(" , "));
 
@@ -1650,6 +1665,7 @@ test("P1 고른 반의 서버 번호를 모르면 주소를 만들지 않는다"
 test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간다", async (t) => {
   const view = recordsPage(t, { rooms: [ROOM_A, ROOM_B, ROOM_GHOST] });
   await view.flush();
+  view.openForm();
   view.type(view.selects()[0], ROOM_B.id);
   view.render();
   view.type(view.dateInput(), "2026-10-06");
@@ -1663,6 +1679,7 @@ test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간�
 test("P1 CASE B — 고른 반의 서버 번호가 없으면 다른 반으로 보내지 않는다", async (t) => {
   const view = recordsPage(t, { rooms: [ROOM_A, ROOM_B, ROOM_GHOST] });
   await view.flush();
+  view.openForm();
   view.type(view.selects()[0], ROOM_GHOST.id);
   view.render();
   view.type(view.dateInput(), "2026-10-06");
@@ -2282,8 +2299,15 @@ const hrefsOf = (view) =>
     .filter((node) => node?.props?.href)
     .map((node) => node.props.href);
 
-/** 기록 모아보기 화면 하나. 여기서 보는 것은 **고른 반 · 날짜를 들고 가는가**뿐이다. */
-function quickRecordsPage(t, { rooms = [ROOM_A, ROOM_B] } = {}) {
+/**
+ * 기록 모아보기 화면 하나. 관찰 기록과 일과 기록 조회는 받은 조건을 `calls` 에 남긴다 —
+ * 두 조회가 모두 반 · 주를 짚는지 본다 (FR-405 · FR-705).
+ */
+function quickRecordsPage(
+  t,
+  { rooms = [ROOM_A, ROOM_B], observations = [], routineRows = [], routineFail = false } = {},
+) {
+  const calls = [];
   browser({ rooms: [CLASS_A, CLASS_B], primaryClassId: CLASS_A.id });
   t.after(() => delete globalThis.window);
   const app = host();
@@ -2298,7 +2322,21 @@ function quickRecordsPage(t, { rooms = [ROOM_A, ROOM_B] } = {}) {
       ws: {},
     },
     "@/components/app/icons": { Icon: "icon" },
-    "@/lib/api/records": { listRecords: async () => [] },
+    "@/lib/api/records": {
+      listRecords: async (classId, period) => {
+        calls.push({ op: "observations", classId, ...period });
+        return observations.filter((r) => r.classId === classId);
+      },
+    },
+    "@/lib/api/routines": {
+      ...routines,
+      listRoutines: async (query) => {
+        calls.push({ op: "routines", ...query });
+        if (routineFail) throw new Error("일과 서버 오류");
+        return routineRows.filter((r) => r.class_id === query.class_id);
+      },
+    },
+    "@/lib/api/onboarding": onboardingApi,
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/model": { today: () => TODAY, localTime: () => "09:00" },
     // 주소를 만드는 쪽도 진짜다 — 반 번호 변환까지 같이 본다.
@@ -2311,6 +2349,7 @@ function quickRecordsPage(t, { rooms = [ROOM_A, ROOM_B] } = {}) {
   t.after(app.cleanup);
   const find = (type) => all(view.tree()).filter((node) => node?.type === type);
   return {
+    calls,
     flush: view.flush,
     render: view.render,
     links: () => hrefsOf(view),
@@ -2366,6 +2405,60 @@ test("기록 모아보기 — 고른 반의 서버 번호를 모르면 주소를
     "서버 번호를 모르는 반인데 주소를 만들었다",
   );
   assert.ok(view.text().includes("일과 기록으로 갈 수 없어요"), view.text());
+});
+
+// ── S-J6 · FR-705 — 관찰 기록과 일과 기록을 같이 본다 ─────────────────────────
+
+/** 관찰 기록 한 줄 (화면 모양). 반은 화면 id 다. */
+const observation = (over = {}) => ({
+  id: "observation:1",
+  classId: CLASS_A.id,
+  childName: "박서준",
+  date: TODAY,
+  domain: "자연탐구",
+  fact: "도토리를 바구니에 담았다.",
+  createdAt: "2026-10-06T01:00:00Z",
+  ...over,
+});
+
+test("기록 모아보기는 관찰 기록과 일과 기록을 둘 다 고른 반 · 그 주로 부른다", async (t) => {
+  const view = quickRecordsPage(t);
+  await view.flush();
+  // TODAY(2026-10-06 화)의 주는 10/05(월) ~ 10/11(일)이다. 반 A 는 서버 반 3 이다.
+  assert.deepEqual(view.calls, [
+    { op: "observations", classId: CLASS_A.id, from: "2026-10-05", to: "2026-10-11" },
+    { op: "routines", class_id: 3, from: "2026-10-05", to: "2026-10-11" },
+  ]);
+
+  view.type(view.classSelect(), CLASS_B.id);
+  await view.flush();
+  assert.deepEqual(view.calls.slice(-2), [
+    { op: "observations", classId: CLASS_B.id, from: "2026-10-05", to: "2026-10-11" },
+    { op: "routines", class_id: 7, from: "2026-10-05", to: "2026-10-11" },
+  ]);
+});
+
+test("기록 모아보기는 그 날의 일과 기록과 관찰 기록을 섞어 보여주고 건수에 둘 다 센다", async (t) => {
+  const view = quickRecordsPage(t, {
+    observations: [observation()],
+    routineRows: [row({ id: 41, class_id: 3, date: TODAY, name: "오전 실내놀이" })],
+  });
+  await view.flush();
+  const text = view.text();
+  assert.ok(text.includes("오전 실내놀이"), text);
+  assert.ok(text.includes("일과 기록"), text);
+  assert.ok(text.includes("도토리를 바구니에 담았다."), text);
+  assert.ok(text.includes("관찰 기록"), text);
+  // 오늘 칸과 「10월 6일 N건」 둘 다 두 종류를 합쳐 센다.
+  assert.ok(text.includes("2건"), text);
+});
+
+test("기록 모아보기 — 일과 기록만 실패하면 관찰 기록은 그대로 보이고 무엇이 실패했는지 말한다", async (t) => {
+  const view = quickRecordsPage(t, { observations: [observation()], routineFail: true });
+  await view.flush();
+  const text = view.text();
+  assert.ok(text.includes("도토리를 바구니에 담았다."), text);
+  assert.ok(text.includes("일과 기록을 불러오지 못했어요"), text);
 });
 
 /**
@@ -2454,6 +2547,8 @@ function homePage(
     },
     links: () => hrefsOf(view),
     classSelect: () => find("select")[0],
+    /** 「이렇게 남길까요?」의 아이 칸. 빈 값으로 시작하므로 교사가 반드시 고른다. */
+    childSelect: () => find("select")[1],
     factInput: () => find("textarea")[0] ?? find("input").find((n) => n.props?.["aria-label"]),
     button: (label) => find("button").find((n) => labelled(n).includes(label) && !n.props.disabled),
     type: (node, value) => node.props.onChange({ target: { value } }),
@@ -2466,13 +2561,48 @@ function homePage(
   };
 }
 
-/** 홈에서 한 줄 적고 저장까지. 실제 화면 순서대로 — 적기 → 기록 남기기 → 이대로 남기기. */
+/**
+ * 홈에서 한 줄 적고 저장까지. 실제 화면 순서대로 —
+ * 적기 → 기록 남기기 → **아이 고르기** → 이대로 남기기.
+ *
+ * 아이 칸은 비어 있는 채로 열린다. 고르기 전에는 「이대로 남기기」가 눌리지 않는다.
+ */
 async function homeSave(view, fact) {
   view.type(view.factInput(), fact);
   await view.flush();
   view.button("기록 남기기").props.onClick();
   await view.flush();
+  await pickFirstChild(view);
   view.button("이대로 남기기").props.onClick();
+  await view.flush();
+}
+
+test("아이를 고르기 전에는 기록을 남길 수 없다", async (t) => {
+  // 첫 아이로 떨어뜨리면 바쁜 교사가 확인하지 않고 눌렀을 때
+  // **다른 아이의 기록**이 조용히 저장된다. 영역과 달리 나중에 고치기 어렵다.
+  const records = recordsServer();
+  const view = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [ROOM_A], records });
+  await view.flush();
+  view.type(view.factInput(), "블록으로 길을 만들었다");
+  await view.flush();
+  view.button("기록 남기기").props.onClick();
+  await view.flush();
+
+  assert.equal(view.childSelect().props.value, "", "아이 칸은 비어 있는 채로 열린다");
+  assert.equal(view.button("이대로 남기기"), undefined, "고르기 전에는 눌리지 않는다");
+
+  await pickFirstChild(view);
+  assert.ok(view.button("이대로 남기기"), "고르면 눌린다");
+  view.button("이대로 남기기").props.onClick();
+  await view.flush();
+  assert.equal(records.only("add").length, 1);
+});
+
+/** 아이 칸에서 첫 아이를 고른다. 반을 바꾸면 비워지므로 바꾼 **뒤에** 부른다. */
+async function pickFirstChild(view) {
+  const picker = view.childSelect();
+  const first = all(picker).find((node) => node?.type === "option" && node.props.value);
+  view.type(picker, first.props.value);
   await view.flush();
 }
 
@@ -2625,6 +2755,7 @@ test("L 홈의 반 이름·저장·조회·일과 링크가 선택한 B 반으�
   assert.ok(view.currentClass().props.children.includes(ROOM_B.className));
   assert.ok(view.links().includes(`/routines?date=${TODAY}&class_id=7`));
   assert.equal(view.text().includes("A에서만 보이는 사실"), false);
+  await pickFirstChild(view);
   view.button("이대로 남기기").props.onClick();
   await view.flush();
   assert.equal(records.only("add").at(-1).classId, ROOM_B.id);
@@ -2706,6 +2837,7 @@ test("L A 저장 중 B로 옮겨도 저장 완료 콜백이 B 목록을 비우�
   await view.flush();
   view.button("기록 남기기").props.onClick();
   await view.flush();
+  await pickFirstChild(view);
   const pending = view.button("이대로 남기기").props.onClick();
   await view.flush();
   view.type(view.classSelect(), ROOM_B.id);
@@ -2817,4 +2949,14 @@ test("후속 #5 명시적 정렬도 보존 중인 원본의 초를 비교한다"
   await view.flush();
   assert.deepEqual(await reloadedNames(api), ["이른 초", "늦은 초"]);
   assert.equal(api.rows().find((r) => r.id === 1).start, "09:16:40");
+});
+
+test("기록 모아보기 — 활동실행이 빈 일과는 계획을 실행처럼 띄우지 않는다", async (t) => {
+  const view = quickRecordsPage(t, {
+    routineRows: [row({ id: 42, class_id: 3, date: TODAY, plan: "자동차 굴리기", execution: "" })],
+  });
+  await view.flush();
+  const text = view.text();
+  assert.equal(text.includes("자동차 굴리기"), false, text);
+  assert.ok(text.includes("활동실행을 아직 적지 않았어요."), text);
 });

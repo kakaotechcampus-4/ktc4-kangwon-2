@@ -94,6 +94,7 @@ export interface ApiDocumentDetail extends Omit<ApiDocumentListItem, "sources_co
   sections: ApiDocumentSection[];
   sources: ApiDocumentSource[];
   review_note: string;
+  class_note: string;
 }
 
 /**
@@ -131,6 +132,8 @@ export interface RelatedDocuments {
 export interface ServerDocument extends SavedDocument {
   serverId: number;
   stale: boolean;
+  /** 확정 취소 응답에서만 온다. 이 문서를 직접 근거로 쓴 문서 중 이번에 새로 stale 이 된 수. */
+  newlyStaleCount?: number;
 }
 
 const STATUS: Record<string, SavedDocument["status"]> = { DRAFT: "draft", CONFIRMED: "confirmed" };
@@ -188,6 +191,7 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     sections,
     sources,
     reviewNote: dto.review_note,
+    classNote: dto.class_note ?? "",
     // 새 문서는 서버가 `<규칙버전>-mock` 으로 알리고, 예전 문서는 떼어낸 접두어로 안다.
     mockDraft: legacyMock || /-mock$/.test(dto.generation.rule_version ?? ""),
   };
@@ -250,12 +254,20 @@ export interface DocumentCreateInput {
   start: string;
   end: string;
   sourceIds: string[];
+  /**
+   * 주간 보육일지의 근거가 어디서 오나 (§11). 생략하면 확정한 일일 보육일지다.
+   * `"routine"` 은 일일 보육일지를 쓰지 않는 원 — 그 주 일과 기록을 바로 받는다.
+   */
+  sourceKind?: "dailyLog" | "routine";
 }
 
 export async function createDocument(input: DocumentCreateInput): Promise<ServerDocument> {
   const class_id = classServerId(input.classId);
   const child_id = input.childId ? childServerId(input.childId) : null;
-  const source_ids = input.sourceIds.map((id) => sourceServerId(input.kind, id));
+  // 일과 기록을 근거로 쓰는 주간은 id 가 일과 표의 것이다 — 문서 접두사로 풀면 안 된다.
+  const source_ids = input.sourceIds.map((id) =>
+    input.sourceKind === "routine" ? routineServerId(id) : sourceServerId(input.kind, id),
+  );
   if (
     class_id === null ||
     (input.childId && child_id === null) ||
@@ -272,15 +284,77 @@ export async function createDocument(input: DocumentCreateInput): Promise<Server
       start: input.start,
       end: input.end,
       source_ids,
+      ...(input.sourceKind ? { source_kind: input.sourceKind } : {}),
     }),
   });
   return toDocument(dto);
 }
 
-/** 세 칸만 보낸다. 상태·반·아동·기간은 서버가 지킨다 (§11). */
+/** 교사가 원에서 쓰던 서류를 증빙으로 올린다 (§11 「증빙 등록」). */
+export interface DocumentImportInput {
+  kind: RecordKind;
+  classId: string;
+  childId: string;
+  start: string;
+  end: string;
+  /** 파일 이름. 비면 서버가 종류·기간으로 제목을 만든다. */
+  title: string;
+  /** 원문 텍스트. 파일은 `/api/templates/extract` 가 먼저 글자로 바꾼다. */
+  body: string;
+}
+
+/** 등록은 됐지만 교사가 알아야 하는 것. 비어 있으면 걸린 것이 없다. */
+export interface EvidenceNotice {
+  code: string;
+  message: string;
+}
+
+export interface ImportedDocument {
+  document: ServerDocument;
+  notices: EvidenceNotice[];
+}
+
+/**
+ * 증빙 등록. 생성(`createDocument`)과 다른 길이다 — 근거 id 가 없고 AI 를 부르지 않는다.
+ *
+ * 확인 3개는 화면이 묶어서 한 번에 받는다. 셋 다 켜야 서버가 확정으로 저장하고,
+ * 확정이라야 평가제 집계에 들어간다 (§12).
+ */
+export async function importDocument(input: DocumentImportInput): Promise<ImportedDocument> {
+  const class_id = classServerId(input.classId);
+  const child_id = input.childId ? childServerId(input.childId) : null;
+  if (class_id === null || (input.childId && child_id === null)) throw new Error(UNMAPPED);
+  const dto = await apiRequest<ApiDocumentDetail & { notices?: EvidenceNotice[] }>(
+    "/api/documents/import",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: input.kind,
+        class_id,
+        child_id,
+        start: input.start,
+        end: input.end,
+        title: input.title,
+        body: input.body,
+        checks: { original: true, meta: true, not_a_pass: true },
+      }),
+    },
+  );
+  return { document: toDocument(dto), notices: dto.notices ?? [] };
+}
+
+/** 본문 세 칸과 메모를 보낸다. 상태·반·아동·기간은 서버가 지킨다 (§11). */
 export async function updateDocument(
   localId: string,
-  input: { kind: string; sections: Section[]; reviewNote: string; updatedAt: string },
+  input: {
+    kind: string;
+    sections: Section[];
+    reviewNote: string;
+    updatedAt: string;
+    /** 반 운영 특이사항. 안 보내면 서버가 이전 값을 그대로 둔다. */
+    classNote?: string;
+  },
 ): Promise<ServerDocument> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
@@ -296,6 +370,7 @@ export async function updateDocument(
     body: JSON.stringify({
       sections,
       review_note: input.reviewNote,
+      ...(input.classNote === undefined ? {} : { class_note: input.classNote }),
       updated_at: input.updatedAt,
     }),
   });
@@ -314,14 +389,22 @@ export async function confirmDocument(localId: string): Promise<ServerDocument> 
   return toDocument(dto);
 }
 
-/** 확정을 되돌린다 (§11). 이미 초안이면 서버가 그대로 200 으로 돌려준다. */
+/**
+ * 확정을 되돌린다 (§11). 이미 초안이면 서버가 그대로 200 으로 돌려준다.
+ *
+ * 영향도 같이 받는다 — 화면이 「이 문서를 근거로 쓴 문서 N건이 다시 검토 대상」을 띄운다.
+ */
 export async function unconfirmDocument(localId: string): Promise<ServerDocument> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
-  const dto = await apiRequest<ApiDocumentDetail>("/api/documents/" + id + "/unconfirm", {
-    method: "POST",
-  });
-  return toDocument(dto);
+  // 영향이 없는 응답(이 옵션을 모르는 서버)이어도 확정 취소는 그대로 반영한다. 안내만 빠진다.
+  const dto = await apiRequest<
+    ApiDocumentDetail & { review_impact?: { newly_stale_document_ids: number[] } }
+  >("/api/documents/" + id + "/unconfirm?include_impact=true", { method: "POST" });
+  return {
+    ...toDocument(dto),
+    newlyStaleCount: dto.review_impact?.newly_stale_document_ids.length,
+  };
 }
 
 /**

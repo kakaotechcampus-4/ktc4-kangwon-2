@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   DOCUMENT_KINDS,
   today,
+  localDate,
   validPeriod,
   validDate,
   compareEvidence,
@@ -35,6 +36,9 @@ import {
   type RecordKind,
 } from "@/lib/api/documents";
 import { listDayRoutines, type RoutineLine } from "@/lib/api/routines";
+import { listAnnualPlans } from "@/lib/api/plans";
+import type { AnnualPlanSummary } from "@/lib/api/types";
+import { byArchiveOrder } from "@/lib/workspace/archive";
 import DailyLogSources from "./DailyLogSources";
 import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -79,12 +83,14 @@ export default function DocumentsPage() {
   const [entry] = useClientState(
     () =>
       typeof window === "undefined"
-        ? { date: "", classId: null, daily: false }
+        ? { date: "", classId: null, daily: false, assessment: false }
         : {
             ...routinesScope(window.location.search),
             daily: new URLSearchParams(window.location.search).get("kind") === "dailyLog",
+            // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
+            assessment: new URLSearchParams(window.location.search).get("kind") === "assessment",
           },
-    { date: "", classId: null as number | null, daily: false },
+    { date: "", classId: null as number | null, daily: false, assessment: false },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
   const [kind, setKind] = useState<DocumentKind>("observation");
@@ -94,6 +100,9 @@ export default function DocumentsPage() {
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(today);
   const [selected, setSelected] = useState<string[]>([]);
+  // 주간 보육일지의 근거를 어디서 받나 (§11 `source_kind`).
+  // 일일 보육일지를 쓰지 않는 원은 그 주 일과 기록을 바로 근거로 쓴다.
+  const [weeklyFrom, setWeeklyFrom] = useState<"dailyLog" | "routine">("dailyLog");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [invalid, setInvalid] = useState<string[]>([]);
@@ -111,6 +120,10 @@ export default function DocumentsPage() {
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
+  // 연간계획안은 일지와 다른 API 다 (FR-701). 따로 부르고 따로 실패한다 — 한쪽이 죽어도
+  // 다른 쪽은 그린다. null 이면 아직 불러오는 중.
+  const [plans, setPlans] = useState<{ items: AnnualPlanSummary[]; error: string } | null>(null);
+  const latestPlans = useRef(0);
   const [dailyPrefilled, setDailyPrefilled] = useState(false);
   if (entry.daily && !dailyPrefilled) {
     setDailyPrefilled(true);
@@ -120,6 +133,12 @@ export default function DocumentsPage() {
     setStart(entry.date || today());
     setEnd(entry.date || today());
     setSelected([]);
+  }
+  const [assessmentPrefilled, setAssessmentPrefilled] = useState(false);
+  if (entry.assessment && !assessmentPrefilled) {
+    setAssessmentPrefilled(true);
+    setMode("create");
+    setKind("assessment");
   }
   // 일일 보육일지의 근거(일과 기록). 반 · 날짜를 key 로 둬서 「불러오는 중」을 따로 저장하지 않는다.
   const [routineData, setRoutineData] = useState<{
@@ -182,6 +201,31 @@ export default function DocumentsPage() {
     }
   }
 
+  // 마운트할 때 한 번. 일지를 고치거나 만들어도 계획안 목록은 바뀌지 않는다.
+  useEffect(() => {
+    const mine = ++latestPlans.current;
+    listAnnualPlans()
+      .then(({ items }) => {
+        if (mine === latestPlans.current) setPlans({ items, error: "" });
+      })
+      .catch((e) => {
+        if (mine === latestPlans.current) setPlans({ items: [], error: messageFor(e) });
+      });
+    return () => {
+      latestPlans.current += 1;
+    };
+  }, []);
+  async function reloadPlans() {
+    const mine = ++latestPlans.current;
+    setPlans(null);
+    try {
+      const { items } = await listAnnualPlans();
+      if (mine === latestPlans.current) setPlans({ items, error: "" });
+    } catch (e) {
+      if (mine === latestPlans.current) setPlans({ items: [], error: messageFor(e) });
+    }
+  }
+
   const [recordId] = useState(() =>
     typeof window === "undefined"
       ? null
@@ -204,15 +248,17 @@ export default function DocumentsPage() {
   const classroom = classes.find((c) => c.id === classId);
   const child = classroom?.children.find((c) => c.id === childId);
 
+  // 일과 기록을 근거로 쓰는 두 경우다 — 일일 보육일지, 그리고 그렇게 고른 주간 보육일지.
+  const fromRoutines = kind === "dailyLog" || (kind === "weeklyLog" && weeklyFrom === "routine");
   const routineKey =
-    mode === "create" && kind === "dailyLog" && classId && validDate(start)
-      ? `${classId}|${start}`
+    mode === "create" && fromRoutines && classId && validDate(start) && validDate(end)
+      ? `${classId}|${start}|${kind === "dailyLog" ? start : end}`
       : "";
   useEffect(() => {
     if (!routineKey) return;
     let stale = false;
-    const [cls, date] = routineKey.split("|");
-    listDayRoutines(cls, date)
+    const [cls, from, to] = routineKey.split("|");
+    listDayRoutines(cls, from, to)
       .then((items) => !stale && setRoutineData({ key: routineKey, items, error: "" }))
       .catch((e) => !stale && setRoutineData({ key: routineKey, items: [], error: messageFor(e) }));
     return () => {
@@ -229,7 +275,7 @@ export default function DocumentsPage() {
         : "ready";
   const candidates: Candidate[] = useMemo(
     () =>
-      kind === "dailyLog"
+      fromRoutines
         ? routines
             .filter((r) => r.execution)
             .map((r) => ({ id: r.id, date: r.date, label: r.execution }))
@@ -254,48 +300,68 @@ export default function DocumentsPage() {
                   r.date <= end,
               )
               .map((r) => ({ id: r.id, date: r.date, label: r.fact })),
-    [kind, routines, serverDocs, records, classId, childId, start, end],
+    [fromRoutines, kind, routines, serverDocs, records, classId, childId, start, end],
   );
+  // 근거 목록이 어느 요청에서 오나. 일과 기록이면 일과 조회, 나머지는 문서 · 관찰 목록이다.
+  const sourceStatus = fromRoutines ? routineStatus : listStatus;
+  const sourceError = fromRoutines ? (routineData?.error ?? "") : listError;
   // 일일 보육일지는 고른 순서가 사실의 순서다 (S-J2). 나머지는 목록 순서 그대로 보낸다.
   const sources =
     kind === "dailyLog"
       ? selected.flatMap((id) => candidates.filter((s) => s.id === id))
       : candidates.filter((s) => selected.includes(s.id));
 
-  // 계획안과 등록 증빙은 아직 서버에 없다 — 보관함에서는 계속 브라우저 저장소를 본다.
-  const localDocs = data.documents.filter((d) => d.origin === "import" || !isRecordKind(d.kind));
-  const library = [
+  // 새로 등록하는 증빙은 서버로 간다 (§11 「증빙 등록」) — 아래 서버 목록에 섞여 온다.
+  // 이 줄은 그 길이 열리기 전에 브라우저에 쌓인 증빙을 계속 보여 주기 위한 것이다.
+  // 브라우저에 남은 옛 계획안은 읽지 않는다. 계획안은 이제 서버 목록에서 온다.
+  const localDocs = data.documents.filter((d) => d.origin === "import");
+  // 목록에는 sections · sources 가 없다 — 제목 · 종류 · 날짜 · 상태만 그린다 (§11).
+  const entries = [
     ...serverDocs.map((d) => ({
       id: d.id,
+      source: "document" as const,
+      serverId: d.serverId,
       title: d.title,
       className: d.className,
       childName: d.childName,
       kind: d.kind,
       status: d.status,
-      start: d.start,
-      updatedAt: d.updatedAt,
-      sources: d.sourcesCount,
+      createdAt: d.createdAt,
       stale: d.stale,
     })),
     ...localDocs.map((d) => ({
       id: d.id,
+      source: "document" as const,
+      serverId: null,
       title: d.title,
       className: d.className,
       childName: d.childName,
       kind: d.kind,
       status: d.status,
-      start: d.start,
-      updatedAt: d.updatedAt,
-      sources: d.sources.length,
+      createdAt: d.createdAt,
       stale: false,
     })),
-  ]
-    .filter(
-      (d) =>
-        (filter === "all" || d.status === filter) &&
-        `${d.title} ${d.childName} ${d.className}`.includes(search),
-    )
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    ...(plans?.items ?? []).map((p) => ({
+      id: `annual:${p.id}`,
+      source: "plan" as const,
+      serverId: p.id,
+      format: p.format,
+      title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
+      // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
+      className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
+      childName: "",
+      kind: "annual" as const,
+      status: (p.status === "CONFIRMED" ? "confirmed" : "draft") as SavedDocument["status"],
+      createdAt: p.created_at,
+      stale: false,
+    })),
+  ];
+  // 「다시 검토」는 상태가 아니라 근거가 바뀌었다는 표시다. 상태 칸과 따로 센다.
+  const matchesFilter = (d: (typeof entries)[number]) =>
+    filter === "all" ? true : filter === "stale" ? d.stale : d.status === filter;
+  const library = entries
+    .filter((d) => matchesFilter(d) && `${d.title} ${d.childName} ${d.className}`.includes(search))
+    .sort(byArchiveOrder);
 
   const activeServerId = documentServerId(active);
   const localCurrent = data.documents.find((d) => d.id === active);
@@ -303,8 +369,19 @@ export default function DocumentsPage() {
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
   const current = activeServerId === null ? localCurrent : serverCurrent;
   // 목록 재조회 실패가 이미 표시 중인 목록과 편집기를 숨기지 않게 한다.
+  // 계획안 목록이 왔으면 일지 쪽이 실패해도 그것을 그린다 (FR-701 「한쪽 API 만 실패」).
   const keepDocuments =
-    listStatus === "error" && (serverDocs.length > 0 || localDocs.length > 0 || !!current);
+    listStatus === "error" &&
+    (serverDocs.length > 0 || localDocs.length > 0 || !!plans?.items.length || !!current);
+  // 일지가 아직 오는 중이어도 받은 계획안 · 로컬 증빙은 먼저 그린다.
+  const journalsPending = listStatus === "loading" && entries.length > 0;
+  // 일지는 비었는데 계획안이 아직 오는 중이면 빈 칸 대신 「불러오는 중」을 띄운다.
+  const libraryStatus: ViewStatus =
+    keepDocuments || journalsPending
+      ? "ready"
+      : listStatus === "ready" && plans === null && !entries.length
+        ? "loading"
+        : listStatus;
 
   /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
   const clearInvalid = (name: string) =>
@@ -365,6 +442,7 @@ export default function DocumentsPage() {
         start,
         end,
         sourceIds: sources.map((s) => s.id),
+        ...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {}),
       });
       if (creation.adopt(created)) {
         setSelected([]);
@@ -418,13 +496,21 @@ export default function DocumentsPage() {
           void reloadList();
           return next;
         },
-        save: async (sections: SavedDocument["sections"], reviewNote: string) => {
-          const saved = await selection.save(sections, reviewNote);
+        save: async (
+          sections: SavedDocument["sections"],
+          reviewNote: string,
+          classNote?: string,
+        ) => {
+          const saved = await selection.save(sections, reviewNote, classNote);
           void reloadList();
           return saved;
         },
-        saveAndConfirm: async (sections: SavedDocument["sections"], reviewNote: string) => {
-          const confirmed = await selection.saveAndConfirm(sections, reviewNote);
+        saveAndConfirm: async (
+          sections: SavedDocument["sections"],
+          reviewNote: string,
+          classNote?: string,
+        ) => {
+          const confirmed = await selection.saveAndConfirm(sections, reviewNote, classNote);
           void reloadList();
           return confirmed;
         },
@@ -535,6 +621,26 @@ export default function DocumentsPage() {
                   </label>
                 )}
               </div>
+              {kind === "weeklyLog" && (
+                <div className={ws.row}>
+                  <label className={ws.field}>
+                    근거로 쓸 기록
+                    <select
+                      name="sourceKind"
+                      disabled={busy}
+                      value={weeklyFrom}
+                      onChange={(e) => {
+                        setWeeklyFrom(e.target.value as "dailyLog" | "routine");
+                        setSelected([]);
+                        clearInvalid("sources");
+                      }}
+                    >
+                      <option value="dailyLog">확정한 일일 보육일지</option>
+                      <option value="routine">일과 기록</option>
+                    </select>
+                  </label>
+                </div>
+              )}
               <div className={ws.row}>
                 <label className={ws.field}>
                   {kind === "dailyLog" ? "날짜" : "시작일"}
@@ -571,25 +677,27 @@ export default function DocumentsPage() {
                 {kind === "dailyLog"
                   ? "일일 보육일지는 반 전체 문서라 아동은 선택하지 않아요. 하루에 한 장씩 만들어요."
                   : kind === "weeklyLog"
-                    ? "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
+                    ? weeklyFrom === "routine"
+                      ? "일일 보육일지를 쓰지 않는 원이면 그 주 일과 기록을 바로 근거로 써요. 날짜별 해석·지원 칸은 비워서 내보내고, 주간 총평 하나만 적어요."
+                      : "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
                     : kind === "assessment"
                       ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
                       : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
               </p>
               <button
                 className={ws.primary}
-                disabled={busy || !!blocked || listStatus !== "ready"}
+                disabled={busy || !!blocked || listStatus !== "ready" || sourceStatus !== "ready"}
                 onClick={generate}
               >
                 {busy ? "초안 작성 중…" : "초안 만들기"}
               </button>
               {blocked && <p className={ws.hint}>{blocked}</p>}
-              {kind === "dailyLog" && routineHref && (
+              {fromRoutines && routineHref && (
                 <Link className={ws.link} href={routineHref}>
                   새 일과 기록 입력 →
                 </Link>
               )}
-              {kind !== "dailyLog" && (
+              {!fromRoutines && (
                 <Link className={ws.link} href="/records">
                   새 관찰 기록 입력 →
                 </Link>
@@ -618,16 +726,18 @@ export default function DocumentsPage() {
               </div>
               <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
               <WorkspaceViewState
-                status={listStatus}
-                error={listError}
+                status={sourceStatus}
+                error={sourceError}
                 loading="근거 기록을 불러오고 있어요."
                 empty={
                   !candidates.length && (
                     <Empty title="조건에 맞는 근거가 없어요">
                       날짜를 변경하거나{" "}
-                      {kind === "weeklyLog"
-                        ? "일일 보육일지를 먼저 작성하고 확정해주세요."
-                        : "관찰 기록을 먼저 입력해주세요."}
+                      {fromRoutines
+                        ? "일과 기록을 먼저 입력해주세요."
+                        : kind === "weeklyLog"
+                          ? "일일 보육일지를 먼저 작성하고 확정해주세요."
+                          : "관찰 기록을 먼저 입력해주세요."}
                     </Empty>
                   )
                 }
@@ -677,6 +787,9 @@ export default function DocumentsPage() {
                 ["all", "전체"],
                 ["draft", "검토 중"],
                 ["confirmed", "확정"],
+                // 근거가 바뀐 문서를 바로 추려 본다. 문서가 쌓이면 목록을 훑어
+                // 「· 재검토」를 찾아야 했다 (수린 점검).
+                ["stale", "다시 검토"],
               ].map(([id, label]) => (
                 <button
                   key={id}
@@ -686,8 +799,9 @@ export default function DocumentsPage() {
                 >
                   {label}{" "}
                   {
-                    [...serverDocs, ...localDocs].filter((d) => id === "all" || d.status === id)
-                      .length
+                    entries.filter((d) =>
+                      id === "all" ? true : id === "stale" ? d.stale : d.status === id,
+                    ).length
                   }
                 </button>
               ))}
@@ -713,12 +827,26 @@ export default function DocumentsPage() {
               </button>
             </div>
           )}
+          {plans?.error && (
+            <div>
+              <Message error>계획안 목록을 불러오지 못했어요. {plans.error}</Message>
+              <button className={ws.secondary} onClick={reloadPlans}>
+                계획안 다시 시도
+              </button>
+            </div>
+          )}
+          {journalsPending && <Message>일지를 불러오고 있어요.</Message>}
           <WorkspaceViewState
-            status={keepDocuments ? "ready" : listStatus}
+            status={libraryStatus}
             error={listError}
             loading="문서를 불러오고 있어요."
             empty={
+              // 계획안을 못 불러왔으면 「문서가 없다」고 하지 않는다. 있는데 못 본 것이다.
+              // 일지가 아직 오는 중이어도 마찬가지다.
               !library.length &&
+              !journalsPending &&
+              plans !== null &&
+              !plans.error &&
               !(keepDocuments && current) && (
                 <Empty title="보관된 문서가 없어요">관찰 기록으로 첫 문서를 만들어보세요.</Empty>
               )
@@ -726,25 +854,41 @@ export default function DocumentsPage() {
           >
             <div className={ws.grid}>
               <div className={ws.list}>
-                {library.map((d) => (
-                  <button
-                    key={d.id}
-                    className={`${ws.item} ${active === d.id ? ws.selected : ""}`}
-                    onClick={() => open(d.id)}
-                  >
-                    <div className={ws.between}>
-                      <span className={ws.badge}>
-                        {d.status === "confirmed" ? "확정" : "검토 중"}
-                        {d.stale ? " · 재검토" : ""}
-                      </span>
-                      <span className={ws.muted}>{d.start}</span>
-                    </div>
-                    <h3 style={{ marginTop: 13 }}>{d.title}</h3>
-                    <p className={ws.muted}>
-                      {d.className} · {DOCUMENT_KINDS[d.kind]} · 근거 {d.sources}건
-                    </p>
-                  </button>
-                ))}
+                {library.map((d) => {
+                  const body = (
+                    <>
+                      <div className={ws.between}>
+                        <span className={ws.badge}>
+                          {d.status === "confirmed" ? "확정" : "검토 중"}
+                          {d.stale ? " · 재검토" : ""}
+                        </span>
+                        <span className={ws.muted}>{localDate(d.createdAt)}</span>
+                      </div>
+                      <h3 style={{ marginTop: 13 }}>{d.title}</h3>
+                      <p className={ws.muted}>
+                        {d.className ? `${d.className} · ` : ""}
+                        {DOCUMENT_KINDS[d.kind]}
+                        {d.source === "plan" && d.format === "PLAY_PROJECT"
+                          ? " · 놀이 프로젝트형"
+                          : ""}
+                      </p>
+                    </>
+                  );
+                  // 계획안은 S-J4 가 아니라 계획안 화면으로 연다. S-J4 는 일지 전용이다.
+                  return d.source === "plan" ? (
+                    <Link key={d.id} className={ws.item} href={`/plans/annual/${d.serverId}`}>
+                      {body}
+                    </Link>
+                  ) : (
+                    <button
+                      key={d.id}
+                      className={`${ws.item} ${active === d.id ? ws.selected : ""}`}
+                      onClick={() => open(d.id)}
+                    >
+                      {body}
+                    </button>
+                  );
+                })}
               </div>
               <WorkspaceViewState
                 status={chosen.status}

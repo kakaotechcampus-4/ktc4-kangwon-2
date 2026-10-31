@@ -332,6 +332,12 @@ select.input {
   text-align: left;
   width: 100%;
 }
+/* 보관함의 계획안은 다른 화면으로 가는 링크다. 버튼 줄과 똑같이 보이게 한다. */
+a.item {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
 .item h3 {
   font-size: 14px;
   font-weight: 600;
@@ -426,6 +432,35 @@ select.input {
 }
 .document section {
   margin: 25px 0;
+}
+/* 사실 · 해석 · 지원을 이름표로 가른다. 칸 바탕은 흰색 그대로 두고 이름표에만 색을 준다 —
+   흰 바탕은 「내가 쓰는 칸」이라는 신호라서, 고치는 칸까지 색을 깔면 그 신호가 흐려진다.
+   사실은 바탕이 누런 종이(.quote)라 색이 둘뿐이다. 색만으로 가르지 않도록 글자를 늘 같이 둔다. */
+.layerName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+.layerName svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+.layerFact {
+  background: var(--pg-paper-warm);
+  color: var(--pg-ink-soft);
+}
+.layerInterpretation {
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.layerSupport {
+  background: var(--pg-success-tint);
+  color: var(--pg-success-line);
 }
 /* 사실 · 해석 · 지원 칸만 초록. 클래스 없는 직계 section 이 그 셋이다 —
    안쪽에 들어오는 다른 화면(근거 검토)의 제목까지 물들이지 않는다. */

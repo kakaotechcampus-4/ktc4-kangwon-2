@@ -47,11 +47,18 @@ class EditMonthlyPlanItem:
                 "invalid_monthly_cell_value", "Monthly Cell value must be a string"
             )
         found = plan.find_cell(item_id)
-        if found is None:
+        candidate = plan.safety_candidate(item_id)
+        if found is None and candidate is None:
             raise MonthlyApplicationError(
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"
             )
-        _, _, _, cell = found
+        cell = found[3] if found is not None else candidate.cell
+        if found is not None and plan.safety_candidates and cell.section_key == "safety_education":
+            # S-2: a week reads its placed candidate; edit the candidate or place another.
+            raise MonthlyApplicationError(
+                "monthly_safety_cell_not_editable",
+                "Weekly safety Cells of a candidate-mode Plan are set by placement",
+            )
         if cell.value == command.new_value:
             raise MonthlyApplicationError(
                 "monthly_cell_value_unchanged", "Teacher edit must change the Cell value"
@@ -61,7 +68,7 @@ class EditMonthlyPlanItem:
                 "monthly_cell_generation_missing",
                 "Editable Monthly Cell must preserve its previous Generation Method",
             )
-        assessment = plan.constraint("STATUTORY_SAFETY_EDUCATION")
+        assessment = plan.cell_state_assessment(cell)
         # The two checks that depend only on the new value: a theme Cell cannot
         # be empty, and a blank Cell cannot become another blank value. Both are
         # the teacher's input, so they surface as an invalid Cell value.
@@ -91,7 +98,11 @@ class EditMonthlyPlanItem:
             cell_state=cell_state,
             audit=cell.audit.append(event),
         )
-        updated = plan.replace_cell(item_id, updated_cell)
+        updated = (
+            plan.replace_safety_candidate(updated_cell)
+            if candidate is not None
+            else plan.replace_cell(item_id, updated_cell)
+        )
         catalog = load_plan_activity_catalog(self._activities, updated)
         updated = with_fresh_monthly_verification(updated, catalog)
         self._plans.save(updated.plan_id, updated)

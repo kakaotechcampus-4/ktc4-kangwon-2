@@ -6,7 +6,7 @@
 `replace(template, runtime_active=True)` — 로 만들고, 생성 직전 승인 검사도 같은 객체로 바꿔 낀다
 (`service.TEMPLATES`). 데이터 파일과 운영 코드는 그대로다. LLM 은 기본 `mock`(요청 기반 결정적
 provider)이고, real 경로는 전송 함수를 바꿔 껴서 오류 분류만 본다.
-**실제 Luna-6 는 부르지 않는다.**
+**실제 Sol-6.1 는 부르지 않는다.**
 """
 
 import copy
@@ -121,7 +121,9 @@ def _profile(session, center_id: int, user_id: int, template=FOCUS):
 
 
 def _annual(class_id: int, *, confirm=True) -> int:
-    response = client.post("/api/plans/annual", json={"class_id": class_id, "form_id": None})
+    response = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": class_id, "form_id": None}
+    )
     assert response.status_code == 201, response.json()
     plan_id = response.json()["id"]
     if confirm:
@@ -236,9 +238,13 @@ def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world)
     focus_sources = {e["source_type"] for c in sections["focus"]["cells"] for e in c["evidence"]}
     assert "INSTITUTION_SAMPLE" in focus_sources  # LLM 이 쓴 칸의 Grounding
 
-    # 안전교육은 근거가 없으니 비워 두고 그렇다고 표시한다 — 충족도 위반도 말하지 않는다.
+    # 안전교육은 배치 정책 v2 의 법정 주만 「[짧은 이름] - 내용」으로 채우고 나머지 주는 비워 둔다
+    # (2026-10-22 · 10-23 결정). 법정 시수는 따지지 않으므로 제약은 그대로
+    # 「근거 필요 · 미검증」이다.
     safety = sections["safety_education"]["cells"]
-    assert {(c["state"], c["value"]) for c in safety} == {("EMPTY_UNRESOLVED", "")}
+    filled = [c for c in safety if c["state"] == "FILLED"]
+    assert filled and all(c["value"].startswith("[") for c in filled)
+    assert {(c["state"], c["value"]) for c in safety if c not in filled} == {("EMPTY_VALID", "")}
     constraints = {c["code"]: c for c in body["constraints"]}
     assert constraints["STATUTORY_SAFETY_EDUCATION"]["verification"] == (
         "NOT_VERIFIED_SOURCE_REQUIRED"
@@ -269,6 +275,8 @@ def _break_row(session, plan_id: int, how: str) -> None:
     row = session.get(Plan, plan_id)
     if how == "classroom_ref":
         values = {"classroom_ref": "햇살반"}
+    elif how == "body_not_object":
+        values = {"body": []}
     else:
         body = copy.deepcopy(row.body)
         snapshot = body["template_snapshot"]
@@ -292,6 +300,7 @@ def _break_row(session, plan_id: int, how: str) -> None:
     [
         ("snapshot_missing", "template_snapshot_missing"),
         ("snapshot_not_object", "template_snapshot_missing"),
+        ("body_not_object", "template_snapshot_missing"),
         ("profile_ref_missing", "profile_ref_missing"),
         ("profile_ref_not_object", "profile_ref_missing"),
         ("profile_ref_invalid", "profile_ref_invalid"),
@@ -544,11 +553,12 @@ def real_llm(monkeypatch):
         monkeypatch.setattr(settings, "elice_mlapi_base_url", "https://llm.invalid/v1")
         monkeypatch.setattr(settings, "elice_mlapi_api_key", "test-only-not-a-key")
 
-        def post_json(url, *, headers, payload, timeout):
-            calls.append({"url": url, "payload": payload, "timeout": timeout})
+        # 생성 · 수리는 스트리밍한다(결정 T-1). 조립(fold)은 진짜 코드의 몫이라 결과만 돌려준다.
+        def post_stream(url, *, headers, payload, timeout, fold, deadline):
+            calls.append({"url": url, "payload": payload, "timeout": timeout, "deadline": deadline})
             return behaviour()
 
-        monkeypatch.setattr(monthly_llm, "post_json", post_json)
+        monkeypatch.setattr(monthly_llm, "post_stream", post_stream)
 
     return install, calls
 
@@ -578,13 +588,16 @@ def test_real_LLM_오류는_계약_코드로_가르고_mock_으로_대신하지_
         assert 1 <= len(calls) <= 2  # 수리는 최대 1회
         assert _monthly_rows(session) == []  # 부분 결과가 남지 않는다
 
-    # 요청은 ADR-023 그대로다: Luna-6 · strict · temperature 없음 · 30초.
+    # 요청은 ADR-023 그대로다: Sol-6.1 · strict · temperature 없음 · 소켓 대기 30초.
+    # 결정 T-1: 스트리밍 · 출력 상한 6,000 · 호출당 전체 마감 120초(수리도 같다).
     sent = calls[0]
     assert sent["url"] == "https://llm.invalid/v1/chat/completions"
-    assert sent["payload"]["model"] == "openai/gpt-6-luna"
+    assert sent["payload"]["model"] == "openai/gpt-6.1-sol"
     assert sent["payload"]["response_format"]["json_schema"]["strict"] is True
     assert "temperature" not in sent["payload"]
     assert sent["timeout"] == 30.0
+    assert (sent["payload"]["stream"], sent["payload"]["max_completion_tokens"]) == (True, 6000)
+    assert {call["deadline"] for call in calls} == {120}
 
     # 설정이 없으면 부르기 전에 멈춘다.
     calls.clear()

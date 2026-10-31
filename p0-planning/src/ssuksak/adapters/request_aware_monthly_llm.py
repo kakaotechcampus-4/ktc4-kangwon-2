@@ -25,14 +25,10 @@ from ssuksak.planning.planner.contracts import (
 def grounding_ref_for(request, section_key: str) -> str | None:
     """First supplied evidence ref allowed for this Section's grounding_class."""
     body = json.loads(request.user_content)
-    expected = next(
-        (
-            section.get("grounding_class")
-            for section in body["generation_schema"]["sections"]
-            if section["section_key"] == section_key
-        ),
-        None,
-    )
+    classes = {s["section_key"]: s.get("grounding_class") for s in body["generation_schema"]["sections"]}
+    if section_key not in classes:
+        return None  # not an LLM target in this request, e.g. indoor_alternative without evidence
+    expected = classes[section_key]
     refs = sorted(
         item["grounding_ref"]
         for item in body["evidence"]
@@ -59,9 +55,10 @@ class RequestAwareMonthlyLlm:
         safety_plan = json.loads(request.user_content).get("safety_plan")
 
         def safety_value(index: int) -> dict[str, object] | None:
-            if safety_plan is None:
+            week_id = request.expected_week_ids[index - 1].value
+            slot = next((w for w in (safety_plan or {}).get("weeks", ()) if w["week_id"] == week_id), None)
+            if slot is None:  # no placement plan, or a week the plan leaves out
                 return None
-            slot = safety_plan["weeks"][index - 1]
             if slot["kind"] == "STATUTORY":
                 refs = [slot["official_content"][0]["grounding_ref"]]
             elif slot["primary_ref"]:

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/app/AppLayout";
-import { Icon, type IconName } from "@/components/app/icons";
+import { Icon } from "@/components/app/icons";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -38,7 +38,14 @@ const schoolYear = (date: Date) =>
 
 export default function HomePage() {
   const [message, setMessage] = useState("");
-  const onError = useCallback((m: string) => setMessage(m), []);
+  // **반 명단**을 못 불러오면 아래 빈 화면 안내를 그리지 않는다. 「아이를 먼저 등록해 주세요」를
+  // 보고 멀쩡한 명단을 다시 만들러 간다. 기록 조회가 흔들린 것은 여기 들지 않는다 — 적는 칸은
+  // 다른 길로 저장하므로 그대로 쓸 수 있어야 한다. 저장 실패도 아니다 — 적던 글은 남아야 한다.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const onError = useCallback((m: string) => {
+    setMessage(m);
+    setLoadFailed(true);
+  }, []);
   const classes = useClasses(onError);
   const [records, setRecords] = useState<ServerObservation[] | null>(null);
   const [todayDate] = useClientState(() => today(), "");
@@ -145,23 +152,24 @@ export default function HomePage() {
         </p>
       )}
 
-      <Compose
-        classes={classes}
-        date={todayDate}
-        className={className}
-        activeClassId={activeClassId}
-        onPickClass={pickClass}
-        onSaved={recordSaved}
-        onError={setMessage}
-        todayCount={todayRecords.length}
-      />
+      {!loadFailed && (
+        <>
+          <Compose
+            classes={classes}
+            date={todayDate}
+            activeClassId={activeClassId}
+            onPickClass={pickClass}
+            onSaved={recordSaved}
+            onError={setMessage}
+          />
 
-      <TodayList records={todayRecords} loading={records === null} />
+          <TodayList records={todayRecords} loading={records === null} />
 
-      <div className="mt-8 grid items-start gap-6 md:grid-cols-2">
-        <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
-        <DomainBoard records={todayRecords} />
-      </div>
+          <div className="mt-8">
+            <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
+          </div>
+        </>
+      )}
     </PageContainer>
   );
 }
@@ -177,8 +185,6 @@ type Classroom = ReturnType<typeof useClasses>[number];
 function Compose({
   classes,
   date,
-  className,
-  todayCount,
   activeClassId,
   onPickClass,
   onSaved,
@@ -186,8 +192,6 @@ function Compose({
 }: {
   classes: Classroom[];
   date: string;
-  className: string;
-  todayCount: number;
   /** 홈이 정한 지금 반. 홈의 조회와 같은 값이라 통계와 저장 대상이 어긋나지 않는다. */
   activeClassId: string;
   onPickClass: (id: string) => void;
@@ -209,10 +213,14 @@ function Compose({
   // 받아쓴 말은 적던 글 뒤에 붙인다. 덮어쓰면 쓰던 걸 잃는다.
   const dictation = useDictation((said) => setFact((prev) => (prev ? `${prev} ${said}` : said)));
 
-  // 반·아동은 늦게 도착한다. 그때 useState 를 맞추는 대신 그릴 때 첫 항목으로 떨어뜨린다 —
+  // 반은 늦게 도착한다. 그때 useState 를 맞추는 대신 그릴 때 고른다 —
   // effect 안에서 setState 하면 렌더가 한 번 더 돈다. 반을 고르는 규칙은 홈에 하나만 둔다.
+  //
+  // **아이는 첫 항목으로 떨어뜨리지 않는다.** 영역과 다르다 — 영역을 잘못 고르면 교사가
+  // 그 기록을 고치면 되지만, 아이를 잘못 고르면 **다른 아이의 기록**이 된다.
+  // 바쁜 교사가 확인하지 않고 「이대로 남기기」를 누르면 조용히 그렇게 저장됐다.
   const classroom = classes.find((c) => c.id === activeClassId);
-  const child = classroom?.children.find((c) => c.id === childId) ?? classroom?.children[0];
+  const child = classroom?.children.find((c) => c.id === childId);
 
   async function save() {
     if (!fact.trim() || !activeClassId || !child || busy) return;
@@ -238,14 +246,9 @@ function Compose({
 
   return (
     <section>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-[24px] font-bold text-ink lg:text-[29px]">
-          지금, 한 줄 기록
-        </h2>
-        <span className="text-[11px] text-ink-soft">
-          {date.slice(5).replace("-", "월 ")}일{className && ` · ${className}`}
-        </span>
-      </div>
+      <h2 className="mb-4 font-display text-[24px] font-bold text-ink lg:text-[29px]">
+        지금, 한 줄 기록
+      </h2>
 
       {!classroom?.children.length ? (
         <div className={`${CARD} text-center text-xs text-ink-soft`}>
@@ -258,12 +261,14 @@ function Compose({
         <>
           <div className="overflow-hidden rounded-sm border border-line bg-paper shadow-pg-hard">
             <div className="flex items-center justify-between gap-2 border-b border-paper-warm-line bg-paper-warm px-4 py-3">
-              <span className="flex items-center gap-2 text-[11px] text-ink-soft">
-                <Icon name="edit" className="h-3.5 w-3.5" />
-                {classroom?.className} · 본 말과 행동
+              <span className="flex items-center gap-2 text-[12px] text-ink-soft">
+                <Icon name="edit" className="h-3.5 w-3.5" />본 말과 행동
               </span>
-              <span className="text-[10px] text-ink-soft">아이 한 명씩 남겨요</span>
             </div>
+            {/* 여기는 손글씨(`font-display`)를 쓰지 않는다. 구글 폰트의 Gaegu 는 한글을
+                89개 조각으로 쪼개 보내는데, 교사가 글자를 칠 때마다 아직 안 받은 조각이
+                생겨 그 글자만 잠깐 다른 글꼴로 보였다가 바뀐다 — 한 줄 안에서 글자가 튄다.
+                손글씨는 제목·숫자에만 쓴다(`globals.css`). */}
             <textarea
               aria-label="빠른 기록 내용"
               value={fact}
@@ -273,14 +278,22 @@ function Compose({
                 "바깥놀이에서 아이 A가 도토리를 크기별로 줄 세웠다.\n" +
                 "친구가 와서 같이 세었고, 교사는 옆에서 지켜보았다."
               }
-              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 font-display text-[22px] font-bold leading-[1.6] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
+              className="block min-h-[150px] w-full resize-y border-0 bg-transparent p-5 text-[20px] font-medium leading-[1.7] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset placeholder:font-normal placeholder:text-ink-soft"
             />
+            {dictation.error && (
+              <p
+                role="status"
+                className="border-t border-paper-warm-line bg-peach-tint px-5 py-2.5 text-[13px] text-peach-ink"
+              >
+                {dictation.error}
+              </p>
+            )}
             <div className="flex items-center justify-between gap-3 border-t border-paper-warm-line px-4 py-3">
               {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                   그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.
                   한 줄짜리 빠른 기록 자리라 RecordsPage 보다 짧게 적는다. */}
-              <span className="hidden text-[10px] text-ink-soft sm:block">
-                본 그대로 적어 주세요 · <b>상황 → 행동 → 반응 → 교사 지원</b> 순서면 더 좋아요
+              <span className="hidden text-[12px] text-ink-soft sm:block">
+                <b>상황 · 행동 · 반응 · 교사 지원</b> 순서면 좋아요
               </span>
               <div className="ml-auto flex items-center gap-3">
                 {dictation.supported && (
@@ -320,7 +333,7 @@ function Compose({
                 이렇게 남길까요?
               </h3>
               <div className="grid gap-3 sm:grid-cols-3">
-                <label className="text-[10px] text-primary-ink">
+                <label className="text-[12px] text-primary-ink">
                   반
                   <select
                     value={activeClassId}
@@ -337,13 +350,14 @@ function Compose({
                     ))}
                   </select>
                 </label>
-                <label className="text-[10px] text-primary-ink">
+                <label className="text-[12px] text-primary-ink">
                   아이
                   <select
                     value={child?.id ?? ""}
                     onChange={(e) => setChildId(e.target.value)}
                     className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
                   >
+                    <option value="">누구인지 골라주세요</option>
                     {classroom?.children.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -351,7 +365,7 @@ function Compose({
                     ))}
                   </select>
                 </label>
-                <label className="text-[10px] text-primary-ink">
+                <label className="text-[12px] text-primary-ink">
                   영역
                   <select
                     value={domain}
@@ -374,7 +388,7 @@ function Compose({
                 >
                   더 쓸래요
                 </button>
-                <button type="button" disabled={busy} onClick={save} className={PRIMARY}>
+                <button type="button" disabled={busy || !child} onClick={save} className={PRIMARY}>
                   {busy ? "남기는 중" : "이대로 남기기"}
                 </button>
               </div>
@@ -382,19 +396,6 @@ function Compose({
           )}
         </>
       )}
-
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4">
-        <span className="text-xs text-ink-soft">
-          오늘 남긴 기록 <strong className="text-ink">{todayCount}</strong>건
-        </span>
-        <Link
-          href="/records"
-          className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-tint-line bg-primary-tint px-3 text-xs font-semibold text-primary-ink"
-        >
-          관찰 기록으로 가기
-          <Icon name="arrow" className="h-4 w-4" />
-        </Link>
-      </div>
     </section>
   );
 }
@@ -421,7 +422,7 @@ function ChildSpotlight({
   return (
     <section className="relative border border-note-soft-line bg-note-soft p-5 shadow-pg-hard">
       <Tape />
-      <span className="text-[11px] font-semibold text-sun-ink">한 아이, 조금 더 가까이</span>
+      <span className="text-[12px] font-semibold text-sun-ink">한 아이, 조금 더 가까이</span>
 
       {!child ? (
         <p className="mt-4 text-xs text-sun-ink">아직 등록된 아이가 없어요.</p>
@@ -433,12 +434,12 @@ function ChildSpotlight({
             </span>
             <div>
               <h3 className="font-display text-[26px] font-bold text-ink">{child.name}</h3>
-              <span className="text-[10px] text-sun-ink">최근 관찰</span>
+              <span className="text-[12px] text-sun-ink">최근 관찰</span>
             </div>
           </div>
 
           <div className="mt-5 border-t border-note-soft-line pt-4">
-            <span className="flex items-center gap-2 text-[11px] font-semibold text-sun-ink">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-sun-ink">
               {latest?.domain || "최근 관찰"}
               <span className="ml-auto font-normal">
                 {latest ? latest.date.slice(5).replace("-", ".") : ""}
@@ -452,7 +453,7 @@ function ChildSpotlight({
           <div className="mt-4 flex items-center justify-between gap-2">
             <Link
               href={childHref}
-              className="flex min-h-11 items-center gap-1 text-[11px] font-semibold text-sun-ink"
+              className="flex min-h-11 items-center gap-1 text-[12px] font-semibold text-sun-ink"
             >
               이 아이 기록 보기
               <Icon name="arrow" className="h-3 w-3" />
@@ -466,7 +467,7 @@ function ChildSpotlight({
               >
                 <Icon name="arrow" className="h-4 w-4 rotate-180" />
               </button>
-              <span className="text-[10px] text-sun-ink">
+              <span className="text-[12px] text-sun-ink">
                 {(index % children.length) + 1}/{children.length}
               </span>
               <button
@@ -481,52 +482,6 @@ function ChildSpotlight({
           </div>
         </>
       )}
-    </section>
-  );
-}
-
-/** 우리 반 한눈에 — 오늘 어느 영역이 비었는지. 평가에서 영역 하나가 비면 바로 걸린다. */
-// 2축(일상생활 · 놀이활동)에는 아이콘을 따로 두지 않았다 — 없으면 `record` 를 쓴다.
-const DOMAIN_ICON: Record<string, IconName> = {
-  "신체운동·건강": "body",
-  의사소통: "talk",
-  사회관계: "social",
-  예술경험: "art",
-  자연탐구: "nature",
-  일상생활: "record",
-  놀이활동: "art",
-};
-
-function DomainBoard({ records }: { records: ServerObservation[] }) {
-  const domains = useObservationDomains();
-  return (
-    <section className={CARD}>
-      <h3 className="font-display text-[22px] font-bold text-ink">우리 반 한눈에</h3>
-      <p className="mt-1 text-[11px] text-ink-soft">오늘의 놀이와 관찰 영역</p>
-      {/* 칸 수를 고정하지 않는다 — 5영역 원은 다섯, 2축 원은 둘이다. */}
-      <ul
-        className="mt-5 grid gap-2 text-center"
-        style={{ gridTemplateColumns: `repeat(${domains.length}, minmax(0, 1fr))` }}
-      >
-        {domains.map((domain) => {
-          const filled = records.some((r) => r.domain === domain);
-          return (
-            <li key={domain} className="flex flex-col items-center gap-1.5">
-              <span
-                className={`flex h-12 w-12 items-center justify-center rounded-[18px] ${
-                  filled ? "bg-primary-tint text-primary-ink" : "bg-cream text-ink-soft"
-                }`}
-              >
-                <Icon name={DOMAIN_ICON[domain] ?? "record"} className="h-6 w-6" />
-              </span>
-              <span className="text-[10px] leading-tight text-ink-soft">{domain}</span>
-              <span className={`text-[9px] ${filled ? "text-primary" : "text-ink-soft"}`}>
-                {filled ? "기록 있음" : "—"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }
@@ -553,7 +508,7 @@ function TodayList({ records, loading }: { records: ServerObservation[]; loading
             <li key={record.id} className={CARD}>
               <div className="flex items-start justify-between gap-2">
                 <span className="font-semibold text-ink">{record.childName}</span>
-                <span className="shrink-0 rounded-full bg-primary-tint px-2 py-0.5 text-[10px] text-primary-ink">
+                <span className="shrink-0 rounded-full bg-primary-tint px-2 py-0.5 text-[12px] text-primary-ink">
                   {record.domain}
                 </span>
               </div>

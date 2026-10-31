@@ -1,7 +1,7 @@
 """월간계획안 변경 이력 조회 API (BE-2). 진짜 Postgres 위에서 HTTP 로 부른다. 계약은 §9-5.
 
 이력은 M5 API(편집 · 재생성 · 확정)를 실제로 불러 만든다 — 테스트가 이벤트를 지어내지 않는다.
-LLM 은 기본 mock(요청 기반 결정적 provider)이다. **실제 Luna-6 는 부르지 않는다.**
+LLM 은 기본 mock(요청 기반 결정적 provider)이다. **실제 Sol-6.1 는 부르지 않는다.**
 Template v0.1.1 · v0.2.1 은 사람 승인 대기라 OD-N11 (A) 객체로만 Profile 을 만든다.
 """
 
@@ -93,7 +93,10 @@ def _seed(session, name: str, email: str) -> dict:
 
 
 def _annual(seed: dict) -> int:
-    annual = client.post("/api/plans/annual", json={"class_id": seed["class"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": seed["class"], "form_id": None},
+    )
     assert annual.status_code == 201, annual.json()
     assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
     return annual.json()["id"]

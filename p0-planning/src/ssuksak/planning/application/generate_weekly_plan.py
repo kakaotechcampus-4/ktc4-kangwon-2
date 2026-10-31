@@ -39,7 +39,7 @@ from ..domain.weekly_plan import (
     WeeklyPlan,
     WeeklyTemplateSnapshot,
 )
-from ..evidence.classification import grounding_class_for
+from ..evidence.classification import SemanticClass, grounding_class_for
 from ..evidence.ports import InstitutionEvidenceRepository, WeeklyEvidenceClassificationRepository
 from ..evidence.weekly_classification import WEEKLY_GROUNDING_SCOPE
 from ..retrieval.models import RetrievedEvidence
@@ -63,6 +63,7 @@ from ..rules.monthly_safety import (
     RULE_VERSION as SAFETY_RULE_VERSION,
     assess_safety_education,
 )
+from ..rules.safety_placement import candidate_display_value, placed_safety_candidate
 from ..rules.weekly_verification import SAFETY_GROUNDING_RULE_ID, verify_weekly_plan
 from .monthly_dto import ActivityCatalogSelector, SafetyRuleSelector
 from .monthly_errors import MonthlyApplicationError
@@ -90,6 +91,9 @@ from .ports import (
 
 SYSTEM_ACTOR = "weekly_application"
 THEME_RULE_ID = "weekly.theme.parent_theme"
+# A placed parent safety Cell already reads as the week's line (「[교통안전] - 내용」 or a
+# supplemental topic), so the week takes it as is (Human Decision 2026-10-22, §8).
+SAFETY_COPY_RULE_ID = "weekly.safety.parent_placement"
 EMPTY_RULE_ID = "weekly.cell.rule_only_empty"
 # Outdoor ranking = the monthly ranking with one weekly key: §4-2 「가점」 for the parent's
 # same-week activity, placed after repeat-avoidance and the parent-theme link — a bonus,
@@ -274,9 +278,24 @@ class GenerateWeeklyPlan:
                 evidence, snapshots = (parent_evidence,), (theme_snapshot,)
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, THEME_RULE_ID, WEEKLY_RULE_VERSION)
             elif key == SAFETY_KEY:
-                # RULE_ONLY writes no safety text: empty-first, and writing the parent's
-                # teacher sentence is the LLM path (§8). No placement is claimed.
+                # Writing the parent's teacher sentence is the LLM path (§8); a placed parent
+                # Cell is copied and cited. The week claims no placement of its own.
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, SAFETY_RULE_ID, SAFETY_RULE_VERSION)
+                placed = _parent_cell(parent, key, period.week_id)
+                candidate = placed_safety_candidate(parent, period.week_id)
+                if candidate is not None and candidate.cell.value.strip():
+                    # S-1: the week reads its placed candidate, labelled as the monthly plan shows it.
+                    value = candidate_display_value(candidate)
+                    evidence, snapshots = (parent_evidence,), (_cited(lineage, candidate.cell),)
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_ONLY, SAFETY_COPY_RULE_ID, WEEKLY_RULE_VERSION
+                    )
+                elif placed is not None and placed.safety is not None and placed.value.strip():
+                    value = placed.value
+                    evidence, snapshots = (parent_evidence,), (_cited(lineage, placed),)
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_ONLY, SAFETY_COPY_RULE_ID, WEEKLY_RULE_VERSION
+                    )
             elif key == OUTDOOR_PLAY_SLOT and catalog is not None and not llm:
                 picked = outdoor.selection
                 generation = GenerationMethodDetail(
@@ -422,7 +441,8 @@ def llm_context(
         week_periods=(period,),
         activity_catalog=catalog,
         constraint_assessments=constraint_assessments,
-        grounding_classes=snapshot_grounding_classes(snapshot),
+        # Weekly grounds indoor_alternative with its own class below (W3c), not the Monthly block.
+        grounding_classes=snapshot_grounding_classes(snapshot) - {SemanticClass.INDOOR_ALTERNATIVE},
     )
     fingerprint = packet_fingerprint(packet)
     classified: dict[str, tuple[RetrievedEvidence, ...]] = {}
@@ -613,6 +633,7 @@ def _weekly_request(
         evidence=tuple(dict.fromkeys(evidence)),
         reference_candidates=tuple((c.activity_id, c.label) for c in outdoor.ranked[:OUTDOOR_CANDIDATE_LIMIT]),
         packet_fingerprint=fingerprint,
+        curriculum=packet.curriculum,
     )
 
 

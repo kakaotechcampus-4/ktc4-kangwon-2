@@ -5,23 +5,33 @@
 동시성은 **서로 다른 연결 두 개**로 보고, 두 요청을 Core 단계(읽기 뒤 · 쓰기 전)에 붙잡아 둔다.
 
 Template v0.1.1 · v0.2.1 은 사람 승인 대기라 OD-N11 (A) 객체로만 Profile 을 만든다. LLM 은 기본
-mock(요청 기반 결정적 provider)이다 — **실제 Luna-6 는 부르지 않는다.**
+mock(요청 기반 결정적 provider)이다 — **실제 Sol-6.1 는 부르지 않는다.**
 """
 
 import json
 import logging
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from io import BytesIO
 from threading import Barrier
 
 import pytest
 from fastapi.testclient import TestClient
+from lxml import etree
 from sqlalchemy import delete, text
 from sqlalchemy.orm import Session
+from ssuksak.adapters import monthly_composition
 from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
+from ssuksak.adapters.weekly_evidence_classification_repository import (
+    InMemoryWeeklyEvidenceClassificationRepository,
+    JsonWeeklyEvidenceClassificationRepository,
+)
 from ssuksak.planning import ItemId, MonthlyPlan, PlanId
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.evidence.models import SourceSection
+from ssuksak.planning.evidence.weekly_classification import WeeklySemanticClass
 
 from app.config import settings
 from app.db import engine
@@ -39,12 +49,14 @@ from app.shared.llm import LlmBudgetExceeded, LlmFailed
 client = TestClient(app)
 
 FOCUS = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.1")
+INDOOR = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.2")
 LABELS = {
     "theme": "주제",
     "week_axis": "주",
     "outdoor_play": "바깥놀이",
     "safety_education": "안전교육",
     "focus": "소주제",
+    "indoor_alternative": "실내 대체활동",
 }
 IDLE_IN_TRANSACTION = (
     "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
@@ -69,7 +81,7 @@ def _approved(teacher, monkeypatch):
     return teacher
 
 
-def _seed(session, name: str, email: str) -> dict:
+def _seed(session, name: str, email: str, *, indoor: bool = False) -> dict:
     """원 · 계정 · 반 · READY Profile. id 만 돌려준다 — commit 뒤 ORM 객체는 만료된다."""
     center = Center(
         name=name, director_name="김원장", region_sido="강원특별자치도", region_sigungu="춘천시"
@@ -95,8 +107,8 @@ def _seed(session, name: str, email: str) -> dict:
     session.flush()
     ref = PostgresTemplateProfileRepository(session, center_id=center.id).start_from_reference(
         ApprovedTemplates(),
-        FOCUS,
-        selected_optional_keys=("focus",),
+        INDOOR if indoor else FOCUS,
+        selected_optional_keys=("focus", "indoor_alternative") if indoor else ("focus",),
         display_labels=LABELS,
         focus_variant=SemanticVariant.SUBTHEME,
         actor_id=user.id,
@@ -111,7 +123,10 @@ def _seed(session, name: str, email: str) -> dict:
 
 def _monthly(seed: dict) -> dict:
     """부모 연간을 만들어 확정하고 9월 월간을 만든다 — 전부 API 로."""
-    annual = client.post("/api/plans/annual", json={"class_id": seed["class"], "form_id": None})
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": seed["class"], "form_id": None},
+    )
     assert annual.status_code == 201, annual.json()
     assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
     created = client.post(
@@ -218,6 +233,44 @@ def test_칸을_고치면_그_칸만_바뀌고_revision_이_하나_오른다(wor
     )
 
 
+@pytest.mark.parametrize("evidence", [True, False])
+def test_실내대체_칸을_만들고_고치고_확정하면_한글_문서에서_바깥놀이_아래_행이다(
+    db_session, teacher, monkeypatch, evidence
+):
+    if not evidence:  # D-5: 근거가 없으면 행은 남고 칸만 비어 교사가 채운다
+        approved = JsonWeeklyEvidenceClassificationRepository().get_classification()
+        no_match = ((SourceSection.THEME, "없는 이름", WeeklySemanticClass.INDOOR_ALTERNATIVE),)
+        nothing = replace(approved, entries=no_match)
+        monkeypatch.setattr(
+            monthly_composition,
+            "JsonWeeklyEvidenceClassificationRepository",
+            lambda: InMemoryWeeklyEvidenceClassificationRepository(nothing),
+        )
+    seed = _seed(db_session, "가원", "a@example.com", indoor=True)
+    teacher.center_id = seed["center"]
+    plan = _monthly(seed)
+
+    indoor = next(s for s in plan["sections"] if s["section_key"] == "indoor_alternative")
+    assert indoor["label"] == "실내 대체활동"
+    assert len(indoor["cells"]) == len([w for w in plan["weeks"] if w["active"]])
+    assert [bool(c["value"]) for c in indoor["cells"]] == [evidence] * len(indoor["cells"])
+
+    target = indoor["cells"][1]
+    edited = _edit(plan["id"], target["item_id"], "교사가 쓴 실내 대체활동", 1)
+    assert edited.status_code == 200, edited.json()
+    others = {k: v for k, v in _cells(edited.json()).items() if k != target["item_id"]}
+    assert others == {k: v for k, v in _cells(plan).items() if k != target["item_id"]}
+    assert _confirm(plan["id"], 2).status_code == 200
+
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        section = etree.fromstring(archive.read("Contents/section0.xml"))
+    printed = [t.text for t in section.iter("{http://www.hancom.co.kr/hwpml/2011/paragraph}t")]
+    assert printed.index("바깥놀이") < printed.index("실내 대체활동") < printed.index("안전교육")
+    assert "교사가 쓴 실내 대체활동" in printed
+
+
 def _item(cell: dict) -> ItemId:
     return ItemId(cell["item_id"])
 
@@ -272,12 +325,15 @@ def test_주제를_비우거나_빈_칸을_공백으로_고치면_422_이고_아
     monkeypatch.setattr(monthly_router, "monthly_llm_provider", no_llm)
     session, plan, center = world["session"], world["plan"], world["mine"]["center"]
     theme = _cell(plan, "theme")
-    empty = next(c for c in _cells(plan).values() if c["value"] == "")  # 근거 없는 안전교육 칸
+    # 빈 칸을 소주제로 만든다 — 배치 정책 뒤 빈 안전교육 칸은 법정 주가 아닌 「비어도 되는」 칸이다.
+    empty = _cell(plan, "focus")
+    assert _edit(plan["id"], empty["item_id"], "", 1).status_code == 200
+    plan = _get(plan["id"])
     row, _ = _stored(session, center, plan["id"])
     before = (row.revision, row.status, json.dumps(row.body, sort_keys=True))
 
     for target in (theme, empty):
-        response = _edit(plan["id"], target["item_id"], value, 1)
+        response = _edit(plan["id"], target["item_id"], value, 2)
         assert _error(response) == (422, "VALIDATION_FAILED", ["value"])
         # Core 문구(규칙 id · 영문 사유)를 내보내지 않는다.
         assert response.json()["error"]["message"] == (
@@ -378,6 +434,9 @@ def test_생성_방식이_없는_칸은_편집도_재생성도_422_이고_문구
     # 생성 방식이 없는 칸이 생기면 계획안 응답을 그리지 못한다. 정상 편집을 먼저 끝낸다.
     focus = _cell(plan, "focus")  # 다시 만들 수 있는 칸. 비워야 생성 방식을 지울 수 있다
     assert _edit(plan["id"], focus["item_id"], "", 1).status_code == 200
+    # 편집 거절을 볼 빈 칸. 위와 같은 이유로 다른 주 소주제를 비운다.
+    other = _cell(plan, "focus", 1)
+    assert _edit(plan["id"], other["item_id"], "", 2).status_code == 200
 
     revision = _strip_generation(session, center, plan["id"], focus["item_id"])
     response = _regenerate(plan["id"], focus["item_id"], revision)
@@ -385,9 +444,8 @@ def test_생성_방식이_없는_칸은_편집도_재생성도_422_이고_문구
     assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
 
     # 비어 있는 칸이라 생성 방식을 지워도 Core 불변식을 지킨다.
-    safety = _cell(plan, "safety_education")
-    revision = _strip_generation(session, center, plan["id"], safety["item_id"])
-    response = _edit(plan["id"], safety["item_id"], "교사 값", revision)
+    revision = _strip_generation(session, center, plan["id"], other["item_id"])
+    response = _edit(plan["id"], other["item_id"], "교사 값", revision)
     assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
     assert response.json()["error"]["message"] == "이 칸은 고칠 수 없습니다."
     assert "Generation" not in response.text
@@ -413,7 +471,7 @@ def test_재생성_LLM_이_실패하면_칸도_revision_도_그대로다(world, 
     ):
 
         def post_json(url, *, headers, payload, timeout, error=error):
-            assert payload["model"] == "openai/gpt-6-luna"
+            assert payload["model"] == "openai/gpt-6.1-sol"
             raise error
 
         monkeypatch.setattr(monthly_llm, "post_json", post_json)
@@ -436,9 +494,9 @@ def test_확정은_한_번만_저장되고_재호출은_revision_과_무관하�
     assert (confirmed["status"], confirmed["revision"]) == ("CONFIRMED", 2)
     assert confirmed["confirmed_at"] is not None
     assert _get(plan["id"]) == confirmed
-    # 안전교육 「근거 필요」 상태로도 확정된다 — 충족했다는 뜻이 아니다.
+    # 안전교육은 법정 주만 채워진 채 확정된다 — 법정 시수를 충족했다는 뜻이 아니다.
     safety = next(s for s in confirmed["sections"] if s["section_key"] == "safety_education")
-    assert {c["state"] for c in safety["cells"]} == {"EMPTY_UNRESOLVED"}
+    assert {c["state"] for c in safety["cells"]} == {"FILLED", "EMPTY_VALID"}
     constraint = next(
         c for c in confirmed["constraints"] if c["code"] == "STATUTORY_SAFETY_EDUCATION"
     )
@@ -661,7 +719,7 @@ def _real_mode_returning(monkeypatch, content: str):
 
     def post_json(url, *, headers, payload, timeout):
         sent.append(payload)
-        return {"id": "r-1", "model": "gpt-6-luna", "choices": [{"message": {"content": content}}]}
+        return {"id": "r-1", "model": "gpt-6.1-sol", "choices": [{"message": {"content": content}}]}
 
     monkeypatch.setattr(monthly_llm, "post_json", post_json)
     return sent

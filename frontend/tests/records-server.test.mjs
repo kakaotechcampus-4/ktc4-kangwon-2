@@ -370,9 +370,14 @@ test("요청 중에는 입력 칸과 버튼이 함께 잠긴다", () => {
     assert.match(source.slice(open, source.indexOf(">", open)), /disabled=\{pending\}/);
     // 보낸 뒤에도 고칠 수 있으면 화면과 서버가 어긋난다 — 입력 칸이 잠금 안에 있어야 한다.
     for (const control of ["<textarea", "<select", "<input\n", "수정 취소", "수정 저장"]) {
-      const at = source.indexOf(control.replace("\\n", "\n"));
+      const at = source.indexOf(control.replace("\\n", "\n"), open);
       assert.ok(at > open && at < close, control);
     }
+    // 담당 반만 적는 칸 밖에 있다 — 화면 전체의 범위라, 접어 둔 채로도 바꿀 수 있어야 한다.
+    // 밖에 있으면 fieldset 이 안 잠그므로 제 손으로 잠근다.
+    const scope = source.indexOf("<select");
+    assert.ok(scope > -1 && scope < open, "담당 반 고르개는 적는 칸 밖에 있어야 한다");
+    assert.match(source.slice(scope, open), /disabled=\{pending \|\| !!editId\}/);
   }
 });
 

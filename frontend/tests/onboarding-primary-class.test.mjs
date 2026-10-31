@@ -219,7 +219,10 @@ function host() {
 
 const passthrough = (tag) => (props) => jsx(tag, props);
 
-function onboarding(t, { rooms = [CLASS_A, CLASS_B], primaryClassId = "", step = 2 } = {}) {
+function onboarding(
+  t,
+  { rooms = [CLASS_A, CLASS_B], primaryClassId = "", step = 2, search = "" } = {},
+) {
   browser({ rooms, primaryClassId });
   t.after(() => delete globalThis.window);
   const pushed = [];
@@ -232,6 +235,7 @@ function onboarding(t, { rooms = [CLASS_A, CLASS_B], primaryClassId = "", step =
     "next/navigation": {
       __esModule: true,
       useRouter: () => router,
+      useSearchParams: () => new URLSearchParams(search),
     },
     "@/lib/hooks/use-client-state": {
       __esModule: true,
@@ -483,4 +487,23 @@ test("온보딩 form을 제출하지 않은 직접 Routines scope는 strict no-p
     "strict scope에 form 기본값을 주입하지 않는다",
   );
   assert.equal(settings.loadClassSettings().primaryClassId, "");
+});
+
+test("설정에서 들어오면 그 단계만 저장하고 설정으로 돌아간다", async (t) => {
+  const view = onboarding(t, { step: 2, search: "from=settings" });
+  await view.flush();
+
+  const exit = view.button("저장하고 설정으로");
+  assert.ok(exit, "설정에서 들어온 교사에게는 돌아가는 버튼이 보인다");
+  exit.props.onClick();
+  await view.flush();
+
+  assert.deepEqual(view.pushed, ["/settings"], "아동 명단까지 걸어가지 않는다");
+  assert.equal(settings.loadClassSettings().classes.length, 2, "반은 저장된다");
+});
+
+test("설정을 거치지 않으면 돌아가는 버튼이 없다", async (t) => {
+  const view = onboarding(t, { step: 2 });
+  await view.flush();
+  assert.equal(view.button("저장하고 설정으로"), undefined);
 });
