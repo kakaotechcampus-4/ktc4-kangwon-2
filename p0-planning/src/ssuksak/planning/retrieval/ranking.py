@@ -115,3 +115,53 @@ def apply_source_diversity(
         if len(selected) == top_k:
             break
     return tuple(selected)
+
+
+def fill_subtheme_gaps(
+    ranked: Sequence[RetrievedEvidence],
+    selected: Sequence[RetrievedEvidence],
+    subthemes: Sequence[str],
+    *,
+    institution_cap: int = DEFAULT_INSTITUTION_CAP,
+) -> tuple[RetrievedEvidence, ...]:
+    """Swap in one ranked record for each subtheme no selected record matches.
+
+    Size, institution cap and already matched subthemes are kept: the record swapped out is the
+    lowest-ranked one whose removal leaves every matched subtheme matched. Matching is lexical
+    (Korean 2-gram overlap, at least two or all of a short subtheme's grams) after dropping grams
+    shared by more than half the subthemes, such as 나라 in 우리나라 / 세계 여러 나라. A subtheme with
+    no grams left is skipped. A match is not proof the record covers the subtheme's meaning.
+    """
+    subthemes = [subtheme for subtheme in subthemes if ngrams(subtheme)]
+    shared = collections.Counter(gram for subtheme in subthemes for gram in ngrams(subtheme))
+    common = {gram for gram, count in shared.items() if count * 2 > len(subthemes)}
+    grams = {subtheme: ngrams(subtheme) - common for subtheme in subthemes}
+
+    def matches(item: RetrievedEvidence, subtheme: str) -> bool:
+        wanted = grams[subtheme]
+        return bool(wanted) and len(ngrams(item.record.text) & wanted) >= min(2, len(wanted))
+
+    order = {item.record_id: index for index, item in enumerate(ranked)}
+    chosen = list(selected)
+    for subtheme in subthemes:
+        if not grams[subtheme] or any(matches(item, subtheme) for item in chosen):
+            continue
+        ids = {item.record_id for item in chosen}
+        candidates = [item for item in ranked if item.record_id not in ids and matches(item, subtheme)]
+        if not candidates:
+            continue
+        add = max(
+            candidates,
+            key=lambda item: (len(ngrams(item.record.text) & grams[subtheme]), -order[item.record_id]),
+        )
+        groups = collections.Counter(item.trace.diversity_group for item in chosen)
+        same_group_only = groups[add.trace.diversity_group] >= institution_cap
+        matched = [other for other in subthemes if any(matches(item, other) for item in chosen)]
+        for out in sorted(chosen, key=lambda item: -order[item.record_id]):
+            if same_group_only and out.trace.diversity_group != add.trace.diversity_group:
+                continue
+            rest = [item for item in chosen if item is not out]
+            if all(any(matches(item, other) for item in rest) for other in matched):
+                chosen = sorted([*rest, add], key=lambda item: order[item.record_id])
+                break
+    return tuple(chosen)

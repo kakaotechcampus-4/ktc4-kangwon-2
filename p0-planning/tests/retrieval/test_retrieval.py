@@ -44,10 +44,16 @@ from ssuksak.planning.retrieval.models import AgeMatchKind, BlockName, Retrieval
 from ssuksak.planning.retrieval.ranking import (
     age_match_kind,
     apply_source_diversity,
+    fill_subtheme_gaps,
     ngrams,
     rank_records,
 )
-from ssuksak.planning.retrieval.retriever import CLASS_BLOCKS, MonthlyEvidenceRetriever
+from ssuksak.planning.retrieval.retriever import (
+    CLASS_BLOCKS,
+    GOALS_SUBTHEME_FILL_TAG,
+    RETRIEVAL_VERSION,
+    MonthlyEvidenceRetriever,
+)
 
 
 def _record(
@@ -230,6 +236,39 @@ def test_section_blocks_hold_only_their_approved_class_and_drop_excluded():
     everywhere = {item.record_id for block in result.blocks for item in block.items}
     assert not everywhere & {"ev_x", "ev_r"}
     assert result.evidence_classification_version == "classification-test"
+
+
+def test_goals_fill_only_unmatched_subthemes_and_keep_the_rest():
+    # Two 우리나라 goals rank first; the 세계 goal ranks last and is cut at top_k 2.
+    records = (
+        _record("ev_a", text="우리나라의 음식을 맛본다", theme="우리나라", institution="A"),
+        _record("ev_b", text="우리나라의 음식에 관심을 가진다", theme="우리나라", institution="B"),
+        _record("ev_c", text="세계 여러 나라의 인사를 안다", theme="다른 주제", institution="C"),
+    )
+    ranked = rank_records(records, requested_ages=frozenset({3}), query_grams=ngrams("우리나라"))
+    selected = apply_source_diversity(ranked, top_k=2)
+    assert [item.record_id for item in selected] == ["ev_a", "ev_b"]
+
+    def ids(subthemes):
+        return [item.record_id for item in fill_subtheme_gaps(ranked, selected, subthemes)]
+
+    # 「나라」 · 「라의」 are in both subthemes, so the 우리나라 goals do not match the 세계 one.
+    assert ids(("우리나라의 음식", "세계 여러 나라의 인사")) == ["ev_a", "ev_c"]
+    # Every subtheme already matched: the selection is kept as is.
+    assert ids(("우리나라의 음식",)) == ["ev_a", "ev_b"]
+    # Nothing distinctive left after dropping shared grams: skipped, never "matches everything".
+    assert ids(("세계 여러 나라", "세계 여러 나라")) == ["ev_a", "ev_b"]
+
+
+def test_goals_subtheme_fill_is_tagged_only_when_requested():
+    store, classification = _classified_store()
+    retriever = MonthlyEvidenceRetriever(store, classification=classification)
+    request = replace(_request(frozenset({3, 4})), grounding_classes=_ALL_CLASSES)
+
+    assert retriever.retrieve(request).retrieval_version == RETRIEVAL_VERSION
+    tagged = retriever.retrieve(replace(request, subthemes=("가을 나들이",)))
+    assert tagged.retrieval_version == RETRIEVAL_VERSION + GOALS_SUBTHEME_FILL_TAG
+    assert {item.record_id for item in tagged.block(BlockName.GOALS_EVIDENCE).items} == {"ev_g"}
 
 
 def test_inactive_section_classes_are_not_retrieved():
