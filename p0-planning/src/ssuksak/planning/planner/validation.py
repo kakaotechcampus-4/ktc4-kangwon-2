@@ -670,7 +670,7 @@ def validate_monthly_proposal_grounding(
             for ref in value.grounding_refs
         )
         for code in visible_text_violations(
-            value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum)
+            value.value, evidence_refs=_hidden_ids(request, packet)
         ):
             if code == "SAFETY_CONTENT_LEAKAGE" and safety_grounded:
                 continue
@@ -851,7 +851,7 @@ def _safety_candidate_issues(
             fail(ProposalValidationCode.UNRESOLVED_NOT_ALLOWED)
             continue
         for code in visible_text_violations(
-            value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum)
+            value.value, evidence_refs=_hidden_ids(request, packet)
         ):
             if code != "SAFETY_CONTENT_LEAKAGE":
                 fail(ProposalValidationCode.TEXT_POLICY, code, reason=code)
@@ -883,6 +883,15 @@ def _safety_candidate_issues(
                  expected="unique", actual=seen[text])
         seen.setdefault(text, key)
     return issues
+
+
+def _hidden_ids(request: MonthlyPlanningRequest, packet: MonthlyContextPacket) -> frozenset[str]:
+    """Internal ids the request shows the LLM; none may appear in teacher-visible text."""
+    return (
+        request.valid_grounding_refs
+        | curriculum_source_refs(packet.curriculum)
+        | {topic.topic_id for topic in packet.drill_topics}
+    )
 
 
 def _input_facts(request: MonthlyPlanningRequest) -> str:
@@ -919,7 +928,7 @@ def _drill_candidate_issues(
         reasons = [
             code
             for code in visible_text_violations(
-                value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum)
+                value.value, evidence_refs=_hidden_ids(request, packet)
             )
             if code != "SAFETY_CONTENT_LEAKAGE"
         ]

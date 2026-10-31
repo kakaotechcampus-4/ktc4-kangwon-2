@@ -2911,7 +2911,11 @@ DRILL_TOPICS = DrillTopicsSelector("ssuksak.emergency-drill-topics", "emergency-
 
 
 class DrillMonthlyLlm(RequestAwareMonthlyLlm):
-    """Also words each drill topic, citing nothing."""
+    """Also words each drill topic, citing nothing; the first `leaks` calls put the first topic's id in its sentence."""
+
+    def __init__(self, leaks: int = 0) -> None:
+        super().__init__()
+        self._leaks = leaks
 
     def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
         payload = json.loads(super().generate_monthly(request).content)
@@ -2921,6 +2925,9 @@ class DrillMonthlyLlm(RequestAwareMonthlyLlm):
             for n, (key, _) in enumerate(request.allowed_grounding_refs_by_section, 1)
             if key.startswith("drill.")
         ]
+        if len(self.monthly_requests) <= self._leaks:
+            first = next(s for s in payload["month_sections"] if s["section_key"].startswith("drill."))
+            first["value"] = f"{first['section_key'].removeprefix('drill.')} 상황을 가정해 선생님과 함께 대피해요."
         return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
 
 
@@ -2992,3 +2999,16 @@ def test_drill_candidates_generate_a_blank_cell_then_teacher_writes_copies_edits
     with pytest.raises(InvalidStateTransitionError):
         copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, second.cell.item_id, TEACHER))
 
+
+def test_a_drill_topic_id_in_a_candidate_sentence_is_repaired_or_nothing_is_saved():
+    harness = Harness()
+    plan = harness.generate(provider=(provider := DrillMonthlyLlm(leaks=1)), command=_drill_command(harness)).plan
+    first = plan.drill_candidates[0]
+    assert len(provider.monthly_requests) == 2
+    assert first.topic_id not in first.cell.value
+    assert first.cell.generation.rule_version == provider.monthly_requests[1].prompt_version
+
+    harness = Harness()
+    with pytest.raises(MonthlyApplicationError):
+        harness.generate(provider=DrillMonthlyLlm(leaks=2), command=_drill_command(harness))
+    assert harness.plans.save_count == 0
