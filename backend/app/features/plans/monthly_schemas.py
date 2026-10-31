@@ -52,7 +52,8 @@ class CellOut(BaseModel):
     value: str
     state: str
     evidence: list[EvidenceOut]
-    generation: GenerationOut
+    # 훈련 문서 칸은 교사가 쓰거나 후보를 복사하기 전까지 생성 방식이 없다. 다른 칸은 늘 있다.
+    generation: GenerationOut | None
 
 
 class SectionOut(BaseModel):
@@ -101,6 +102,12 @@ class SafetyCandidateOut(BaseModel):
     cell: CellOut
 
 
+class DrillCandidateOut(BaseModel):
+    topic_id: str
+    label: str
+    cell: CellOut
+
+
 class SafetyWeekOut(BaseModel):
     week_id: str
     candidate_item_id: str | None
@@ -128,6 +135,7 @@ class MonthlyPlanOut(BaseModel):
     sections: list[SectionOut]
     safety_candidates: list[SafetyCandidateOut]
     safety_weeks: list[SafetyWeekOut]
+    drill_candidates: list[DrillCandidateOut]
     notices: list[NoticeOut]
     constraints: list[ConstraintOut]
     verification: VerificationOut
@@ -199,11 +207,16 @@ class MonthlyAuditEventOut(BaseModel):
     week_id: str | None = Field(description="주마다 있는 칸이면 그 주. 한 달 칸 · PLAN 이면 null")
     actor: str | None = Field(description="사람이면 opaque id(user_7). 시스템이면 null")
     system_actor: str | None = Field(description="시스템이면 그 표시. 사람이면 null")
-    value_change: ValueChangeOut | None = Field(description="TEACHER_EDITED · REGENERATED 만")
-    generation_change: GenerationChangeOut | None = Field(description="REGENERATED 만")
+    value_change: ValueChangeOut | None = Field(
+        description="TEACHER_EDITED · REGENERATED · CANDIDATE_COPIED 만"
+    )
+    generation_change: GenerationChangeOut | None = Field(
+        description="REGENERATED · CANDIDATE_COPIED(덮은 칸에 생성 방식이 있었을 때) 만"
+    )
     arrangement_change: ArrangementChangeOut | None = Field(
         default=None, description="ARRANGEMENT_CHANGED 만"
     )
+    copied_from: str | None = Field(default=None, description="CANDIDATE_COPIED 만")
 
 
 class MonthlyAuditOut(BaseModel):

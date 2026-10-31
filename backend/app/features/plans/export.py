@@ -149,7 +149,8 @@ MONTHLY_TEMPLATES = {4: "monthly_v1_4weeks.hwpx", 5: "monthly_v1_5weeks.hwpx"}
 MONTHLY_PERIOD_CELL = (2, 1)
 # 한 달에 하나인 Section → 칸, 주마다 있는 Section → 줄. 주차 칸의 열은 주차 머리 줄에서 읽는다 —
 # 4주 · 5주 양식의 열 주소가 다르다.
-MONTHLY_MONTH_CELLS = {"theme": (1, 1), "goals": (3, 1)}
+# 소방대피/재난대비는 주 칸 없이 한 칸(12행, 12열 합침)이다.
+MONTHLY_MONTH_CELLS = {"theme": (1, 1), "goals": (3, 1), "drill": (12, 1)}
 MONTHLY_WEEK_ROWS = {
     "focus": 7,
     "outdoor_play": 8,
@@ -168,6 +169,7 @@ MONTHLY_LABELS = {
     (9, 0): "실내 대체활동",
     (10, 0): "기본생활습관",
     (11, 0): "안전교육",
+    (12, 0): "소방대피/재난대비",
 }
 
 _UNSUPPORTED_WEEKS = HTTPException(
@@ -192,7 +194,8 @@ def export_monthly_plan(
     """월간계획안을 hwpx 로 내려준다. 연간과 같이 확정본만, 출처는 빼고 내보낸다.
 
     줄은 양식에 박혀 있다. 원이 켜지 않은 Section(목표 · 기본생활습관 · 실내 대체활동)과
-    아직 계획안이 만들지 않는 줄(소방대피 · 행사 · 시간표)은 빈칸이다 — 교사가 한글에서 적는다.
+    아직 계획안이 만들지 않는 줄(행사 · 시간표)은 빈칸이다 — 교사가 한글에서 적는다.
+    소방대피/재난대비 줄은 훈련 칸이 있는 계획만 채운다(없으면 빈칸).
     양식에 자리가 없는 Section 이 오면 버리지 않고 멈춘다.
     """
     row = _monthly_row(session, user, plan_id)
