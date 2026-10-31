@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
+from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
 from ssuksak.adapters.monthly_composition import (
     monthly_confirmation,
     monthly_edit,
@@ -180,3 +182,16 @@ def test_composed_generation_wires_the_drill_reference():
     ).plan
 
     assert plan.drill_candidates
+
+
+def test_generation_without_drill_section_does_not_read_the_drill_file(monkeypatch):
+    monkeypatch.setattr(
+        "ssuksak.adapters.monthly_composition.JsonDrillTopicReferenceRepository",
+        lambda: JsonDrillTopicReferenceRepository((Path("/nonexistent/drill.json"),)),
+    )
+    harness = PlanningHarness()
+    parent = harness.confirm_yearly(harness.generate_yearly().plan)
+
+    plan = _generate(harness, parent, RequestAwareMonthlyLlm(), month=YearMonth(2026, 9), profile=LLM_PROFILE)
+
+    assert plan.status is PlanStatus.DRAFT
