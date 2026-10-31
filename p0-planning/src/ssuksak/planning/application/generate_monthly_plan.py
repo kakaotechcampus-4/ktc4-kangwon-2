@@ -285,7 +285,6 @@ class GenerateMonthlyPlan:
                 parent_theme_id=parent_theme_id,
                 parent_theme_value=theme.value,
                 parent_subthemes=command.parent_subthemes,
-                keywords=command.parent_subthemes,
                 week_periods=week_periods,
                 activity_catalog=catalog,
                 constraint_assessments=assessments,
