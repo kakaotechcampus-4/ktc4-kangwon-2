@@ -50,7 +50,7 @@ export default function LandingPage() {
       <main>
         <section className="mx-auto grid max-w-[1180px] items-center gap-12 px-5 py-14 sm:px-8 sm:py-20 lg:grid-cols-[0.95fr_1.05fr]">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-note-line bg-note-soft px-3 py-2 text-[12px] font-medium text-sun-ink">
+            <span className="inline-flex items-center gap-2 rounded-full border border-note-line bg-note-soft px-3 py-2 text-[13px] font-medium text-sun-ink">
               <Icon name="plan" className="h-4 w-4" />
               선생님의 계획과 기록을 위한 작업실
             </span>
@@ -158,9 +158,9 @@ function PlanPreview() {
       <div className="p-5 sm:p-6">
         <div className="mb-5 flex items-end justify-between gap-3">
           <h2 className="font-display text-[26px] font-bold sm:text-[31px]">우리 반의 가을</h2>
-          <span className="shrink-0 text-[12px] text-ink-soft">10월 · 월간계획안</span>
+          <span className="shrink-0 text-[13px] text-ink-soft">10월 · 월간계획안</span>
         </div>
-        <table className="w-full text-left text-[12px]">
+        <table className="w-full text-left text-[13px]">
           <thead>
             <tr className="bg-note-soft">
               <th className="border-b border-line p-3 font-semibold">주차</th>
@@ -192,7 +192,7 @@ function QuickRecordNote() {
         aria-hidden="true"
         className="pointer-events-none absolute -top-3 left-1/2 h-6 w-16 -translate-x-1/2 rotate-3 border border-white/60 bg-tape"
       />
-      <span className="flex items-center gap-2 text-[12px] font-semibold text-sun-ink">
+      <span className="flex items-center gap-2 text-[13px] font-semibold text-sun-ink">
         <Icon name="edit" className="h-4 w-4" />
         지금, 한 줄 기록
       </span>
@@ -200,7 +200,7 @@ function QuickRecordNote() {
         “도토리를 나란히 놓고
         <br />큰 것과 작은 것을 비교했다.”
       </p>
-      <span className="mt-3 inline-block rounded bg-paper px-2 py-1 text-[12px] text-sun-ink">
+      <span className="mt-3 inline-block rounded bg-paper px-2 py-1 text-[13px] text-sun-ink">
         아이 A · 자연탐구
       </span>
     </div>

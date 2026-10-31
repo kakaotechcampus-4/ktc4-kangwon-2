@@ -19,10 +19,10 @@ export default function FormField({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={id} className="font-semibold text-[15px] xl:text-lg text-ink">
+      <label htmlFor={id} className="font-semibold text-[17px] xl:text-lg text-ink">
         {label}
         {optional && (
-          <span className="ml-1.5 align-middle font-mono text-[12px] tracking-wider text-ink-soft border border-line rounded-full px-1.5 py-px">
+          <span className="ml-1.5 align-middle font-mono text-[13px] tracking-wider text-ink-soft border border-line rounded-full px-1.5 py-px">
             선택
           </span>
         )}

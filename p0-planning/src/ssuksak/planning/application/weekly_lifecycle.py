@@ -276,6 +276,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
                 "LLM_PLANNER regeneration requires a Context Pipeline and a Weekly Planner",
             )
         key = cell.section_key
+        day = cell.day.value if cell.day is not None else None
         context = llm_context(
             self._context, self._evidence, self._weekly_classification,
             parent=parent, period=plan.week_period, operating_days=plan.operating_days,
@@ -294,8 +295,10 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
         request = cell_request(
             context.request,
             key,
+            day=day,
             current_values=tuple(
-                (c.section_key, c.value) for c in plan.cells if c.item_id != cell.item_id and c.value.strip()
+                (c.section_key if c.day is None else f"{c.section_key}:{c.day.value}", c.value)
+                for c in plan.cells if c.item_id != cell.item_id and c.value.strip()
             ),
             # Decision B (2026-10-21): a teacher-edited current value is the teacher's fact too.
             teacher_facts=tuple(
@@ -310,7 +313,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
             raise WeeklyApplicationError(
                 "weekly_llm_cell_planning_failed", "Weekly Cell planning failed before the Plan was saved"
             ) from exc
-        proposed = outcome.value(key)
+        proposed = outcome.day_value(key, day) if day is not None else outcome.value(key)
         if proposed is None or proposed.unresolved:  # the teacher asked for a new value
             raise WeeklyApplicationError(
                 "weekly_llm_cell_planning_failed", "Weekly Cell planning returned no value"
