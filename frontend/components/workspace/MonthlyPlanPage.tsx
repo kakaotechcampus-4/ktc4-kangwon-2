@@ -64,12 +64,11 @@ export default function MonthlyPlanPage() {
   const [problem, setProblem] = useState("");
   const classes = useClasses(setProblem);
   const [initialClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
-  const [pickedClass, setPickedClass] = useState<string | null>(null);
   const requestedClass = entry
     ? classes.find((c) => classServerId(c.id) === entry.classId)?.id
     : "";
-  const localClassId =
-    pickedClass ?? (entry ? (requestedClass ?? "") : initialClass || classes[0]?.id || "");
+  // 반은 사이드바에서 한 번만 고른다. 문서 보관함에서 들어왔을 때만 그 반을 따른다.
+  const localClassId = entry ? (requestedClass ?? "") : initialClass || classes[0]?.id || "";
   const scope = `${localClassId}|${month}`;
   const [loadedScope, setLoadedScope] = useState("");
   const [profileSource, setProfileSource] = useState("");
@@ -217,23 +216,6 @@ export default function MonthlyPlanPage() {
       )}
 
       <div className={ws.row} style={{ marginBottom: 20 }}>
-        <label className={ws.field}>
-          담당 반
-          <select
-            value={localClassId}
-            disabled={!!busy || moving}
-            onChange={(e) => {
-              const next = e.target.value;
-              void leave(() => setPickedClass(next));
-            }}
-          >
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.className}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className={ws.field}>
           월
           <select
