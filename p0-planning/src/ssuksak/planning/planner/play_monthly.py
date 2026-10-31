@@ -20,6 +20,7 @@ from typing import Protocol
 
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.daily_life_reference import DailyLifeEntry
+from ..domain.safety_placement import SafetyCandidateSlot as SafetySlot
 from ..domain.safety_placement import SafetyKind
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
@@ -97,18 +98,6 @@ RESPONSE_SCHEMA = _object_schema(
         "drills": {"type": "array", "items": _DRILL_SCHEMA},
     }
 )
-
-
-@dataclass(frozen=True, slots=True)
-class SafetySlot:
-    """One of the eight safety candidate slots; the Rule fixes its kind and allowed refs."""
-
-    slot: str  # a legal category_id, or life_safety_1 / life_safety_2
-    kind: SafetyKind
-    label: str
-    allowed: tuple[tuple[str, str], ...]  # (ref, grounding text)
-    category_id: str | None = None
-    topic_group: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -717,7 +717,7 @@ generation                     §4 의 generation 과 같은 객체
 
 **호출 단위** (ADR-043) — 한 요청이다. 서버가 Core 를 구간마다 한 번 `m03_m05` → `m06_m08` → `m09_m11` → `m12_m02` 순으로 부르고,
 앞 구간의 놀이명을 `avoid_play_names` 로 넘긴다. 네 구간이 모두 통과해야 한 번 저장한다. **하나라도 실패하면 아무것도 저장하지 않는다.**
-구간당 마감은 120초이고 서버 자체의 전체 마감은 없다. 120초는 구간 하나의 호출 전체에 거는 벽시계 한도이며(읽기 한 번 상한이 아니다) 이 형식에만 적용한다 — 월간 · 문서 · 연간 월별 주제형의 기존 30초 타임아웃은 그대로다.
+구간당 마감은 120초이고 서버 자체의 전체 마감은 없다. 120초는 구간 하나의 호출 전체에 거는 벽시계 한도이며(읽기 한 번 상한이 아니다) 이 형식에만 적용한다 — 문서 · 연간 월별 주제형의 기존 30초 타임아웃은 그대로다(월간 생성은 2026-10-31 부터 같은 120초 스트리밍이다, §9-1).
 nginx `proxy_read_timeout` 은 upstream 에서 두 번 읽는 사이의 무응답 간격 한도다 — 이 경로만 510초(= 4 × 120 + 30), 나머지는 120초다. 이 요청은 네 구간이 모두 끝날 때까지 브라우저에 아무것도 보내지 않으므로 그 간격이 전체 실행 시간과 같아, 실제로는 510초가 요청 전체의 상한이 된다. **최악의 대기가 약 8.5분이다.**
 호출마다 `llm_usage` 한 줄이 남아 계획안 하나에 4줄이다(ADR-036). `stop` 으로 끝나지 않은 스트림은 토큰을 쓰고도 줄이 남지 않는다.
 
@@ -1385,6 +1385,11 @@ profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 
 **조건부 채택이다**(ADR-036 §2). Luna-6 실측 3건(2026-10-09)이 LLM 10.3 ~ 13.0초 · 수리 0회 ·
 400 없음이었다 — 호출 타임아웃 30초 · nginx `proxy_read_timeout 120s` 안이다. 표본이 3건이라 운영
 호출 기록에서 호출 시간이 자주 20초를 넘거나 타임아웃 · 수리가 반복되면 다시 정한다.
+**갱신(2026-10-31, 결정 T-1):** 첫 요청 · 수리(최대 1회)를 서버 안에서 스트리밍한다. 출력 상한 6,000 토큰,
+호출마다 전체 마감 120초, 소켓 대기(응답 헤더 · 다음 조각)는 30초 그대로다. 실내대체 등 칸이 늘어 비스트리밍
+출력 상한 2,000 토큰을 넘을 위험이 있다고 추정했기 때문이다(실패를 잰 것은 아니다). HTTP 응답은 지금처럼 완성된
+단건이다. nginx 는 이 경로(`= /api/plans/monthly`, 같은 URI 의 목록 GET 포함)만 270초(= 2 × 120 + 30)다.
+수리는 검증에 실패한 응답을 고치는 호출이며 네트워크 실패 재시도는 없다. 칸 재생성 · 주간은 바꾸지 않는다.
 
 **부분 결과를 저장하지 않는다.** 어디서 실패해도 계획안 행이 생기지 않는다.
 
@@ -1754,13 +1759,17 @@ sections[].label  Template 데이터 값 그대로.  지금 Template A 는 칸 �
 sections[].selection
                   REQUIRED           항상 들어간다 (theme · week_axis · outdoor_play · safety_education)
                   OPTIONAL           ② 에서 고를 수 있다 (focus · goals · basic_habit)
-                  INSTITUTION_INPUT  event_schedule · drill.  월간 생성 계약이 아직 없어 고를 수 없다
-                  NOT_SUPPORTED      Template 고유 칸.  Profile 에 넣을 수 없다
+                  INSTITUTION_INPUT  event_schedule.  월간 생성 계약이 아직 없어 고를 수 없다
+                  NOT_SUPPORTED      Template 고유 칸, 또는 그 판에 repeat_by 가 없는 선택 칸.  Profile 에 넣을 수 없다
+                  drill 은 repeat_by 가 없는 v0.2.1 · v0.2.2 에서 NOT_SUPPORTED 다 (v0.2.3 은 승인됐지만 서버 연결 전이라 이 목록에 없다)
+                  indoor_alternative 는 Template 판에 따라 다르다 — v0.2.2 는 OPTIONAL,
+                  repeat_by 가 없는 v0.2.1 은 NOT_SUPPORTED (ADR-050)
 focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (켠 focus 는 NEUTRAL 불가, Core)
 ```
 
 - 원 범위가 없는 전역 Reference 다. 로그인만 본다.
 - **지금 값: v0.2.1 은 `approved: true`**(2026-10-20 PM 승인, `reviewer_pm_001` — ADR-030 「후속 결정」),
+  **v0.2.2 는 `approved: true`**(2026-10-31 도메인 담당자 승인, `reviewer_ai_lead_001` — ADR-050 D-3),
   **v0.1.1 은 `approved: false`**(사람 승인 대기, ADR-027 §3). 승인을 바꾸는 API 는 없다.
 
 ### ② Reference 기반 시작 — `POST /api/centers/{center_id}/template-profiles`

@@ -33,7 +33,11 @@ from urllib import request as urllib_request
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.adapters.deterministic_theme_text_generator import DeterministicThemeTextGenerator
-from ssuksak.adapters.elice_openai_monthly import EliceOpenAiMonthlyAdapter, MonthlyLlmConfig
+from ssuksak.adapters.elice_openai_monthly import (
+    EliceOpenAiMonthlyAdapter,
+    MonthlyLlmConfig,
+    assemble_chat_stream,
+)
 from ssuksak.adapters.evidence_classification_repository import (
     JsonEvidenceClassificationRepository,
 )
@@ -111,14 +115,15 @@ class TimedTransport:
         self._open = post
         self.calls: list[dict] = []
 
-    def post_json(self, url, *, headers, payload, timeout):
+    def post_json(self, url, *, headers, payload, timeout, read=None):
+        read = read or (lambda response: json.loads(response.read().decode("utf-8")))
         record = {"schema": payload["response_format"]["json_schema"]["name"]}
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         request = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
         started = time.perf_counter()
         try:
             with self._open(request, timeout=timeout) as response:
-                result = json.loads(response.read().decode("utf-8"))
+                result = read(response)
                 record["status"] = response.status
         except urllib_error.HTTPError as exc:
             record["status"] = exc.code
@@ -134,6 +139,19 @@ class TimedTransport:
         record["usage"] = result.get("usage")
         record["model"] = result.get("model")
         return result
+
+    def post_stream(self, url, *, headers, payload, timeout):
+        """월간 생성 · 수리는 스트리밍한다(결정 T-1).
+
+        전체 마감은 서버 전송(`SharedLlmTransport`)에만 있다.
+        """
+        return self.post_json(
+            url,
+            headers=headers,
+            payload=payload,
+            timeout=timeout,
+            read=lambda response: assemble_chat_stream(line.decode("utf-8") for line in response),
+        )
 
 
 class _ApprovedTemplates:

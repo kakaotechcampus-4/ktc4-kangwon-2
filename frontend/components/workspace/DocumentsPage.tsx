@@ -83,12 +83,14 @@ export default function DocumentsPage() {
   const [entry] = useClientState(
     () =>
       typeof window === "undefined"
-        ? { date: "", classId: null, daily: false }
+        ? { date: "", classId: null, daily: false, assessment: false }
         : {
             ...routinesScope(window.location.search),
             daily: new URLSearchParams(window.location.search).get("kind") === "dailyLog",
+            // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
+            assessment: new URLSearchParams(window.location.search).get("kind") === "assessment",
           },
-    { date: "", classId: null as number | null, daily: false },
+    { date: "", classId: null as number | null, daily: false, assessment: false },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
   const [editingId, setEditingId] = useState("");
@@ -129,6 +131,12 @@ export default function DocumentsPage() {
     setStart(entry.date || today());
     setEnd(entry.date || today());
     setSelected([]);
+  }
+  const [assessmentPrefilled, setAssessmentPrefilled] = useState(false);
+  if (entry.assessment && !assessmentPrefilled) {
+    setAssessmentPrefilled(true);
+    setMode("create");
+    setKind("assessment");
   }
   // 일일 보육일지의 근거(일과 기록). 반 · 날짜를 key 로 둬서 「불러오는 중」을 따로 저장하지 않는다.
   const [routineData, setRoutineData] = useState<{

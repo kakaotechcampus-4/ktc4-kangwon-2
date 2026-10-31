@@ -36,7 +36,7 @@ from .monthly_verification import (
     _require_age_catalog,
     _trusted_activity_candidate,
 )
-from .safety_placement import OFFICIAL_GROUNDING_MISSING, is_official_ref
+from .safety_placement import OFFICIAL_GROUNDING_MISSING, is_official_ref, placed_safety_candidate
 
 SAFETY_SECTION_KEY = "safety_education"
 SAFETY_GROUNDING_RULE_ID = "weekly.safety.grounding"
@@ -176,6 +176,9 @@ def _cites_parent_safety_cell(plan: WeeklyPlan, cell: WeeklyCell, parent: Monthl
         return False
     section = parent.section(SAFETY_SECTION_KEY)
     parent_cell = section.cell_for_week(plan.week_id) if section is not None else None
+    if parent.safety_candidates:  # S-1: the week's placed candidate stands in for the blank Cell
+        candidate = placed_safety_candidate(parent, plan.week_id)
+        parent_cell = candidate.cell if candidate is not None else None
     if parent_cell is None or not parent_cell.value.strip():
         return False
     cites_plan = any(

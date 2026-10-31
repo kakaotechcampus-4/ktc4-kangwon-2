@@ -8,7 +8,8 @@ import re
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.curriculum_reference import CurriculumCatalog
-from ..domain.safety_placement import SafetyKind
+from ..domain.drill_topic_reference import DrillTopic
+from ..domain.safety_placement import SafetyCandidateSlot, SafetyKind
 from ..domain.year_month import YearMonth
 from ..evidence.classification import SemanticClass
 from ..evidence.models import ReusePolicy, SourceSection
@@ -108,6 +109,8 @@ class ContextLineage:
     activity_catalog_id: str = ""
     activity_catalog_version: str = ""
     evidence_classification_version: str = ""
+    # Only when indoor_alternative cites the Weekly classification; empty is not serialized.
+    weekly_classification_version: str = ""
 
     def __post_init__(self) -> None:
         for name in ("evidence_store_version", "retrieval_version"):
@@ -282,6 +285,10 @@ class MonthlyContextPacket:
     safety: SafetyContext | None = None
     curriculum: CurriculumCatalog | None = None
     parent_subthemes: tuple[str, ...] = ()
+    # Candidate mode (S-1): the eight Rule-fixed slots the LLM words; () = none.
+    safety_candidates: tuple[SafetyCandidateSlot, ...] = ()
+    # The drill Section's Rule-fixed topics the LLM words; () = no drill Section.
+    drill_topics: tuple[DrillTopic, ...] = ()
 
     def __post_init__(self) -> None:
         if self.packet_version != CONTEXT_PACKET_VERSION:
@@ -321,6 +328,10 @@ class MonthlyContextPacket:
             raise InvalidDomainValueError("Only section evidence may carry a grounding_class")
         if self.section_evidence and not self.lineage.evidence_classification_version:
             raise InvalidDomainValueError("Section evidence requires the Evidence classification version")
+        if not self.lineage.weekly_classification_version and any(
+            item.grounding_class is SemanticClass.INDOOR_ALTERNATIVE for item in self.section_evidence
+        ):
+            raise InvalidDomainValueError("Indoor alternative evidence requires the Weekly classification version")
         if self.safety is not None:
             if not isinstance(self.safety, SafetyContext):
                 raise InvalidDomainValueError("Context Packet safety is invalid")

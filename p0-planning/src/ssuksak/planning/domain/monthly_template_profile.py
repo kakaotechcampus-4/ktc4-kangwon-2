@@ -21,14 +21,16 @@ DEFAULT_PROFILE_SECTION_KEYS = frozenset(
     {"theme", "week_axis", "outdoor_play", "safety_education"}
 )
 OPTIONAL_PROFILE_SECTION_KEYS = frozenset(
-    {"focus", "goals", "basic_habit", "event_schedule", "drill"}
+    {"focus", "goals", "basic_habit", "event_schedule", "drill", "indoor_alternative"}
 )
 # Full Monthly v1 section 5: explicit institution input, never invented by the
 # LLM. No institution-input contract exists yet, so generation refuses them.
-INSTITUTION_INPUT_SECTION_KEYS = frozenset({"event_schedule", "drill"})
+INSTITUTION_INPUT_SECTION_KEYS = frozenset({"event_schedule"})
+# The document's drill Cell starts blank; the teacher writes it or copies one of the
+# Rule's drill topic candidates into it. The LLM words the candidates, never the Cell.
+DRILL_SECTION_KEY = "drill"
 TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS = frozenset(
     {
-        "indoor_alternative",
         "special_program",
         "emergency_response",
         "daily_routine",

@@ -57,7 +57,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
 
 const itemBase =
   "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[13px] font-medium transition-all " +
-  "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[13px] text-[11px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start";
+  "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[13px] text-[11px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start text-center lg:text-left";
 const activeStyle =
   "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
 const idle = "border border-transparent text-ink-soft lg:hover:translate-x-1 hover:bg-shell-hover";
