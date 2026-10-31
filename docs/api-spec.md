@@ -1761,11 +1761,14 @@ sections[].selection
                   OPTIONAL           ② 에서 고를 수 있다 (focus · goals · basic_habit)
                   INSTITUTION_INPUT  event_schedule · drill.  월간 생성 계약이 아직 없어 고를 수 없다
                   NOT_SUPPORTED      Template 고유 칸.  Profile 에 넣을 수 없다
+                  indoor_alternative 는 Template 판에 따라 다르다 — v0.2.2 는 OPTIONAL,
+                  repeat_by 가 없는 v0.2.1 은 NOT_SUPPORTED (ADR-050)
 focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (켠 focus 는 NEUTRAL 불가, Core)
 ```
 
 - 원 범위가 없는 전역 Reference 다. 로그인만 본다.
 - **지금 값: v0.2.1 은 `approved: true`**(2026-10-20 PM 승인, `reviewer_pm_001` — ADR-030 「후속 결정」),
+  **v0.2.2 는 `approved: true`**(2026-10-31 도메인 담당자 승인, `reviewer_ai_lead_001` — ADR-050 D-3),
   **v0.1.1 은 `approved: false`**(사람 승인 대기, ADR-027 §3). 승인을 바꾸는 API 는 없다.
 
 ### ② Reference 기반 시작 — `POST /api/centers/{center_id}/template-profiles`

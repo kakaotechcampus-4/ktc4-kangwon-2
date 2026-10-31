@@ -219,6 +219,9 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
         assert item["approved"] is template.is_active
         assert len(item["sections"]) == len(template.sections)
         selection = {s["section_key"]: s["selection"] for s in item["sections"]}
+        # 실내대체는 repeat_by 를 준 v0.2.2 에서만 고를 수 있다.
+        indoor = {"indoor_alternative"}
+        indoor_optional = item["template_ref"]["template_version"] == "monthly-template-a-v0.2.2"
         assert {k for k, v in selection.items() if v == "REQUIRED"} == {
             "theme",
             "week_axis",
@@ -229,16 +232,15 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
             "focus",
             "goals",
             "basic_habit",
-        }
+        } | (indoor if indoor_optional else set())
         assert {k for k, v in selection.items() if v == "INSTITUTION_INPUT"} == {
             "event_schedule",
             "drill",
         }
         assert {k for k, v in selection.items() if v == "NOT_SUPPORTED"} == {
             "emergency_response",
-            "indoor_alternative",
             "special_program",
-        }
+        } | (set() if indoor_optional else indoor)
         assert "habits" not in selection  # Template 의 habits 는 Profile 이름으로 보인다
         week = next(s for s in item["sections"] if s["section_key"] == "week_axis")
         assert (week["role"], week["repeat_by"]) == ("AXIS", None)

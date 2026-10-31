@@ -16,6 +16,7 @@ from .contracts import (
     MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
     MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION,
     MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
+    MONTHLY_INDOOR_PROMPT_TAG,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
     MONTHLY_SAFETY_PROMPT_VERSION,
@@ -93,6 +94,14 @@ State only safety practice found in the cited official_content or evidence; add
 no new safety rules, numbers, legal duties, education hours, or schedules.
 """
 
+# Appended only when indoor_alternative is an LLM target (MONTHLY_INDOOR_PROMPT_TAG).
+INDOOR_ALTERNATIVE_PROMPT = """For indoor_alternative, write each week's indoor activity that replaces that
+same week's outdoor_play experience on a day the class stays inside; write the
+two cells of a week together as a pair. Do not write general indoor free play.
+Do not state that particular materials or spaces are available, and do not
+invent weather or claim that the activity was carried out.
+"""
+
 REPAIR_HEADER = f"""You repair one monthly plan proposal.
 rejected_proposal failed semantic validation. Each validation_findings entry
 names a failed code with its section_key and week_id; a null week_id is the
@@ -151,9 +160,11 @@ def generation_targets(
     for section in generation_target_sections(snapshot):
         wrong = set(wrong_source_refs(section, refs, evidence))
         allowed = tuple(ref for ref in refs if ref not in wrong)
-        if section.section_key == "outdoor_play":
-            # Outdoor may cite only age-verifiable evidence; the schema enum enforces it.
+        if section.section_key in {"outdoor_play", "indoor_alternative"}:
+            # Only age-verifiable evidence; the schema enum enforces it.
             allowed = tuple(ref for ref in allowed if evidence[ref].age_match in AGE_VERIFIABLE_TIERS)
+        if section.section_key == "indoor_alternative" and not allowed:
+            continue  # D-5: no evidence leaves its cells empty for the teacher
         if section.section_key == "safety_education":
             allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
             allowed += tuple(sorted(official_safety_refs(packet)))
@@ -331,9 +342,12 @@ def build_monthly_planning_request(
     )
     safety = packet.safety is not None
     contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
+    indoor = any(section.section_key == "indoor_alternative" for section, _ in generation_targets(packet, snapshot))
     version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
     if contextual:
         version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
+    if indoor:
+        version += MONTHLY_INDOOR_PROMPT_TAG
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
@@ -341,7 +355,7 @@ def build_monthly_planning_request(
             V1_GUIDANCE + "\nparent_subthemes는 확정된 연간의 월별 예상 소주제다. "
             "월간 경험을 구체화하는 맥락으로 쓰며, 각 소주제를 주차에 하나씩 강제로 복사하지 않는다.\n"
             if contextual else ""
-        ),
+        ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -397,13 +411,15 @@ def build_monthly_repair_request(
             ]
         },
     }
+    base = request.prompt_version.removesuffix(MONTHLY_INDOOR_PROMPT_TAG)
     return replace(
         request,
         prompt_version={
             MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION: MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
             MONTHLY_CONTEXT_PROMPT_VERSION: MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
             MONTHLY_SAFETY_PROMPT_VERSION: MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
-        }.get(request.prompt_version, MONTHLY_REPAIR_PROMPT_VERSION),
+        }.get(base, MONTHLY_REPAIR_PROMPT_VERSION)
+        + request.prompt_version[len(base):],
         system_prompt=REPAIR_HEADER + request.system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,

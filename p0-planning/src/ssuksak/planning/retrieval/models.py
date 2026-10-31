@@ -36,6 +36,7 @@ class BlockName(str, Enum):
     BASIC_HABIT_EVIDENCE = "basic_habit_evidence"
     SUBTHEME_EVIDENCE = "subtheme_evidence"
     EXPECTED_PLAY_EVIDENCE = "expected_play_evidence"
+    INDOOR_ALTERNATIVE_EVIDENCE = "indoor_alternative_evidence"
     REFERENCE_ACTIVITIES = "reference_activities"
     OTHER_OUTDOOR_EVIDENCE = "other_outdoor_evidence"
     SAFETY_EDUCATION_EVIDENCE = "safety_education_evidence"
@@ -49,6 +50,7 @@ CLASS_BLOCKS = {
     SemanticClass.BASIC_HABIT: BlockName.BASIC_HABIT_EVIDENCE,
     SemanticClass.SUBTHEME: BlockName.SUBTHEME_EVIDENCE,
     SemanticClass.EXPECTED_PLAY: BlockName.EXPECTED_PLAY_EVIDENCE,
+    SemanticClass.INDOOR_ALTERNATIVE: BlockName.INDOOR_ALTERNATIVE_EVIDENCE,
 }
 
 
@@ -150,6 +152,7 @@ class MonthlyEvidenceRetrievalResult:
     activity_catalog_id: str = ""
     activity_catalog_version: str = ""
     evidence_classification_version: str = ""
+    weekly_classification_version: str = ""
 
     def block(self, name: BlockName) -> EvidenceBlock:
         for block in self.blocks:

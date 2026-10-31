@@ -96,6 +96,13 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
 
   await page.getByRole("link", { name: "계획안", exact: true }).click();
   await page.getByRole("link", { name: "월간 양식 설정", exact: true }).click();
+  // Latest approved version is preselected. Switching versions drops picks the other one lacks.
+  const base = page.getByLabel("기반 양식");
+  await expect(base).toHaveValue("monthly-template-a-v0.2.2");
+  await page.getByRole("checkbox", { name: /실내 대체활동/ }).check();
+  await base.selectOption("monthly-template-a-v0.2.1");
+  await base.selectOption("monthly-template-a-v0.2.2");
+  await expect(page.getByRole("checkbox", { name: /실내 대체활동/ })).not.toBeChecked();
   await page.getByRole("button", { name: /칸으로 양식 만들기/ }).click();
   await expect(page.getByText("새 양식을 만들고 원 기본으로 설정했어요.")).toBeVisible();
   await page.getByRole("link", { name: "계획안", exact: true }).click();
