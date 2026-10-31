@@ -28,6 +28,17 @@
   margin: 0 0 8px;
   font-size: 14px;
 }
+/* 칸 편집 입력창 — 이름표 아래 패널 폭 그대로. */
+.side label {
+  display: block;
+  margin-bottom: 4px;
+}
+.side textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 8em;
+  font: inherit;
+}
 .side ul {
   margin: 0 0 16px;
   padding: 0;

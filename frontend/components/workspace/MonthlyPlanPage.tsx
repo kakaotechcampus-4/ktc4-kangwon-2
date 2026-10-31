@@ -8,34 +8,29 @@
  *
  * **revision 을 들고 다닌다.** 편집 · 재생성 · 확정은 읽을 때 받은 `revision` 을
  * `expected_revision` 으로 보낸다. 그 사이 다른 화면에서 바뀌었으면 409 `STALE_WRITE` 다 —
- * 덮어쓰지 않고 다시 불러오라고 말한다.
+ * 덮어쓰지 않고 최신 계획안을 다시 불러온다. 편집 화면은 놀이 월간과 같다(MonthlyPlanEditor).
  *
  * **비어 있어도 확정할 수 있다.** 안전교육처럼 근거가 없어 비는 칸이 있다(§9-1 M4).
  * 규칙도 LLM 도 거기를 지어내지 않는다. 확정 전에 비어 있다는 것만 보여준다.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ApiError } from "@/lib/api/client";
 import {
-  confirmMonthlyPlan,
   createMonthlyPlan,
   deleteMonthlyPlan,
-  downloadMonthlyHwpx,
-  editMonthlyCell,
   getMonthlyPlan,
   listMonthlyPlans,
-  regenerateMonthlyCell,
 } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
 import { syncClass } from "@/lib/api/onboarding";
 import { getClassTemplateProfile } from "@/lib/api/templateProfiles";
-import type { MonthlyCell, MonthlyPlan, ProfileRef } from "@/lib/api/types";
+import type { MonthlyPlan, ProfileRef } from "@/lib/api/types";
 import { isPlayAnnual } from "@/lib/monthly/play-entry";
-import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
+import MonthlyPlanEditor from "./MonthlyPlanEditor";
 import PlayMonthlyEntry from "./PlayMonthlyEntry";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 
@@ -45,16 +40,6 @@ function describe(e: unknown, fallback: string): string {
 }
 
 const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
-const REGENERATABLE = new Set(["focus", "outdoor_play", "basic_habit", "goals"]);
-const FINDINGS: Record<string, string> = {
-  ACTIVITY_REFERENCE_NOT_VERIFIED:
-    "수정한 내용과 기존 참고 활동의 연결을 자동으로 확인하지 못했어요. 교사가 내용을 확인해주세요.",
-  ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED:
-    "직접 작성한 바깥놀이 문장의 연령 적합성은 자동으로 확인하지 못했어요. 교사가 내용을 확인해주세요.",
-  ACTIVITY_AGE_UNSUPPORTED:
-    "우리 반 연령을 모두 지원하지 않는 참고 활동이 있어요. 활동 내용과 대상 연령을 확인해주세요.",
-};
-
 /** 그 달의 「지금」. 3월 시작 학년도라 1 · 2월은 다음 해다. */
 function defaultMonth(): number {
   return new Date().getMonth() + 1;
@@ -68,8 +53,6 @@ export default function MonthlyPlanPage() {
   const [busy, setBusy] = useState<string>("");
   const [message, setMessage] = useState("");
   const [problem, setProblem] = useState("");
-  const hwpx = useHwpxDownload(setMessage);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const classes = useClasses(setProblem);
   const [initialClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const [pickedClass, setPickedClass] = useState<string | null>(null);
@@ -79,7 +62,22 @@ export default function MonthlyPlanPage() {
   const [profileSource, setProfileSource] = useState("");
   const [reload, setReload] = useState(0);
   const [isPlay, setIsPlay] = useState(false);
+  // 409 로 다시 불러올 때마다 올려 편집 화면을 새로 연다.
+  const [version, setVersion] = useState(0);
   const running = useRef(false);
+  // 편집 화면의 「열린 입력 저장하고 기다리기」. 못 저장한 칸이 있으면 반 · 월을 옮기지 않는다.
+  const flush = useRef<(() => Promise<boolean>) | null>(null);
+  // 이동을 기다리는 동안 반 · 월 선택도 잠근다(겹친 이동 방지).
+  const [moving, setMoving] = useState(false);
+  const leave = async (move: () => void) => {
+    if (moving) return;
+    setMoving(true);
+    try {
+      if (!flush.current || (await flush.current())) move();
+    } finally {
+      setMoving(false);
+    }
+  };
   const loading = loadedScope !== scope;
 
   /** 그 달 계획안을 불러온다. 없으면 null 로 둔다 — 화면이 만들기 버튼을 띄운다. */
@@ -137,15 +135,6 @@ export default function MonthlyPlanPage() {
   }, [load, month, localClassId, classes, scope, reload]);
 
   const legacy = !loading && !isPlay;
-  const confirmed = plan?.status === "CONFIRMED";
-  const weeks = useMemo(() => plan?.weeks.filter((w) => w.active) ?? [], [plan]);
-  const sections = useMemo(
-    () =>
-      (plan?.sections ?? [])
-        .filter((s) => s.visible && s.role === "CONTENT")
-        .sort((a, b) => a.order - b.order),
-    [plan],
-  );
 
   async function run(key: string, job: () => Promise<MonthlyPlan | void>) {
     if (running.current || loading) return;
@@ -181,104 +170,8 @@ export default function MonthlyPlanPage() {
       if (!plan || classId === null) return;
       await deleteMonthlyPlan(plan.id);
       setPlan(await load(classId, month));
-      setDrafts({});
       setMessage("지웠어요. 다시 만들 수 있어요.");
     });
-
-  const changed =
-    plan?.sections
-      .flatMap((s) => s.cells)
-      .filter(
-        (cell) => drafts[cell.item_id] !== undefined && drafts[cell.item_id] !== cell.value,
-      ) ?? [];
-
-  /** Carry forward each returned revision; never discard other unsaved cells. */
-  async function saveDrafts(current: MonthlyPlan): Promise<MonthlyPlan> {
-    let next = current;
-    for (const cell of changed) {
-      next = await editMonthlyCell(next.id, cell.item_id, drafts[cell.item_id], next.revision);
-      setPlan(next);
-      setDrafts((before) => {
-        const remaining = { ...before };
-        delete remaining[cell.item_id];
-        return remaining;
-      });
-    }
-    return next;
-  }
-
-  const handleSave = () =>
-    run("save", async () => {
-      if (!plan) return;
-      const next = await saveDrafts(plan);
-      setMessage("수정한 내용을 저장했어요.");
-      return next;
-    });
-
-  const handleRegenerate = (cell: MonthlyCell) =>
-    run(cell.item_id, async () => {
-      if (!plan) return;
-      if (!window.confirm("이 칸을 다시 만들면 현재 내용이 바뀌어요. 계속할까요?")) return;
-      const next = await saveDrafts(plan);
-      return regenerateMonthlyCell(next.id, cell.item_id, next.revision);
-    });
-
-  const handleConfirm = () =>
-    run("confirm", async () => {
-      if (!plan) return;
-      const saved = await saveDrafts(plan);
-      const next = await confirmMonthlyPlan(saved.id, saved.revision);
-      setMessage("확정했어요. 이제 고칠 수 없어요.");
-      return next;
-    });
-
-  /** 칸 하나. 한 달짜리 Section 은 주와 상관없이 칸이 하나다. */
-  function renderCell(cell: MonthlyCell, sectionKey: string) {
-    const value = drafts[cell.item_id] ?? cell.value;
-    const working = busy === cell.item_id;
-    return (
-      <div className={ws.stack}>
-        <textarea
-          className={ws.input}
-          rows={3}
-          value={value}
-          readOnly={confirmed}
-          disabled={!!busy}
-          aria-label="칸 내용"
-          onChange={(e) => setDrafts((before) => ({ ...before, [cell.item_id]: e.target.value }))}
-        />
-        {cell.state === "EMPTY_UNRESOLVED" && (
-          <span className={ws.hint}>근거가 없어 비워 두었어요. 직접 적어주세요.</span>
-        )}
-        {cell.evidence.length > 0 && (
-          <details className={ws.muted}>
-            <summary className={ws.link}>근거 보기</summary>
-            {[
-              ...new Set(
-                cell.evidence.map((e) =>
-                  e.source_type === "SAFETY_RULE"
-                    ? "안전교육 기준"
-                    : e.display_name || e.source_type,
-                ),
-              ),
-            ].join(" · ")}
-          </details>
-        )}
-        {!confirmed &&
-          REGENERATABLE.has(sectionKey) &&
-          (plan?.generation_mode !== "RULE_ONLY" || sectionKey === "outdoor_play") && (
-            <button
-              type="button"
-              className={ws.link}
-              disabled={!!busy}
-              onClick={() => handleRegenerate(cell)}
-            >
-              {working ? "…" : "↻ 이 칸만 다시 만들기"}
-            </button>
-          )}
-      </div>
-    );
-  }
 
   return (
     <WorkspacePage
@@ -308,15 +201,10 @@ export default function MonthlyPlanPage() {
           담당 반
           <select
             value={localClassId}
-            disabled={!!busy}
+            disabled={!!busy || moving}
             onChange={(e) => {
-              if (
-                changed.length &&
-                !window.confirm("저장하지 않은 수정 내용이 있어요. 반을 바꿀까요?")
-              )
-                return;
-              setDrafts({});
-              setPickedClass(e.target.value);
+              const next = e.target.value;
+              void leave(() => setPickedClass(next));
             }}
           >
             {classes.map((c) => (
@@ -330,15 +218,10 @@ export default function MonthlyPlanPage() {
           월
           <select
             value={month}
-            disabled={!!busy}
+            disabled={!!busy || moving}
             onChange={(e) => {
-              if (
-                changed.length &&
-                !window.confirm("저장하지 않은 수정 내용이 있어요. 월을 바꿀까요?")
-              )
-                return;
-              setDrafts({});
-              setMonth(Number(e.target.value));
+              const next = Number(e.target.value);
+              void leave(() => setMonth(next));
             }}
           >
             {MONTHS.map((m) => (
@@ -353,11 +236,6 @@ export default function MonthlyPlanPage() {
       {loading && <p role="status">월간계획안을 불러오는 중…</p>}
       {!loading && isPlay && classId !== null && (
         <PlayMonthlyEntry key={`${classId}|${month}`} classId={classId} month={month} />
-      )}
-      {legacy && profile && (
-        <p className={ws.hint}>
-          {profileSource} · {profile.profile_id} / {profile.profile_version}
-        </p>
       )}
       {legacy && !profile && (
         <Empty title="월간계획안 양식을 먼저 정해주세요">
@@ -382,128 +260,21 @@ export default function MonthlyPlanPage() {
       )}
 
       {legacy && plan && (
-        <>
-          <div className={ws.between} style={{ marginBottom: 16 }}>
-            <div>
-              <span className={ws.eyebrow}>{plan.target_month}</span>
-              {plan.parent.theme && <p className={ws.muted}>연간 주제 · {plan.parent.theme}</p>}
-            </div>
-            <div className={ws.actions}>
-              {confirmed ? (
-                <>
-                  <span className={ws.badge}>확정됨</span>
-                  <button
-                    type="button"
-                    className={ws.primary}
-                    disabled={hwpx.exporting}
-                    onClick={() => hwpx.download(() => downloadMonthlyHwpx(plan.id))}
-                  >
-                    {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className={ws.secondary}
-                    disabled={!!busy || !changed.length}
-                    onClick={handleSave}
-                  >
-                    {busy === "save" ? "저장하는 중…" : "수정 내용 저장"}
-                  </button>
-                  <button
-                    type="button"
-                    className={ws.secondary}
-                    disabled={!!busy}
-                    onClick={handleDelete}
-                  >
-                    지우고 다시 만들기
-                  </button>
-                  <button
-                    type="button"
-                    className={ws.primary}
-                    disabled={!!busy}
-                    onClick={handleConfirm}
-                  >
-                    {busy === "confirm" ? "확정하는 중…" : "확정하기"}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          {!confirmed && changed.length > 0 && (
-            <p className={ws.hint}>
-              저장하지 않은 수정 {changed.length}칸 · 확정할 때도 먼저 저장해요.
-            </p>
-          )}
-          {!confirmed && (
-            <p className={ws.hint}>
-              내용을 확인하고 확정하면 한글 파일(hwpx)로 내려받을 수 있어요.
-            </p>
-          )}
-          {sections.some((section) => section.cells.some((cell) => !cell.value.trim())) && (
-            <p className={ws.hint}>
-              비어 있는 칸이 있어요. 확정하거나 내려받아도 자동으로 채워지지 않아요.
-            </p>
-          )}
-
-          {plan.verification.findings.length > 0 && (
-            <ul className={ws.list} style={{ marginBottom: 16 }}>
-              {[
-                ...new Map(
-                  plan.verification.findings.map((finding) => [
-                    `${finding.code}|${finding.section_key}`,
-                    finding,
-                  ]),
-                ).values(),
-              ].map((f, i) => (
-                <li key={i} className={ws.hint}>
-                  {FINDINGS[f.code] ?? f.message}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className={ws.scroll}>
-            <table className={ws.monthlyTable}>
-              <thead>
-                <tr>
-                  <th scope="col">구분</th>
-                  {weeks.map((w) => (
-                    <th key={w.week_id} scope="col">
-                      {w.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sections.map((section) => {
-                  const byWeek = new Map(section.cells.map((c) => [c.week_id, c]));
-                  const whole = section.repeat_by !== "WEEK";
-                  return (
-                    <tr key={section.section_key}>
-                      <th scope="row">{sectionName(section.section_key, section.label)}</th>
-                      {whole ? (
-                        <td colSpan={Math.max(weeks.length, 1)}>
-                          {section.cells[0] && renderCell(section.cells[0], section.section_key)}
-                        </td>
-                      ) : (
-                        weeks.map((w) => {
-                          const cell = byWeek.get(w.week_id);
-                          return (
-                            <td key={w.week_id}>
-                              {cell ? renderCell(cell, section.section_key) : null}
-                            </td>
-                          );
-                        })
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
+        <MonthlyPlanEditor
+          key={plan.id + ":" + version}
+          plan={plan}
+          onPlan={setPlan}
+          onConflict={() => {
+            setVersion((v) => v + 1);
+            setReload((n) => n + 1);
+            setMessage("다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.");
+          }}
+          onDelete={handleDelete}
+          flushRef={flush}
+          note={
+            profile ? `${profileSource} · ${profile.profile_id} / ${profile.profile_version}` : ""
+          }
+        />
       )}
     </WorkspacePage>
   );
