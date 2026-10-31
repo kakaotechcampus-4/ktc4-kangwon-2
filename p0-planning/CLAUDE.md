@@ -56,8 +56,9 @@ Rule-selected theme per month; the LLM writes its text and may not replace it.
   from the canonical `WeekPeriod` list.
 - A section's time unit is `repeat_by`: `NONE` (one value per document) or `WEEK`
   (one value per active week). `null` is for AXIS sections and inactive content
-  sections. Monthly accepts only `NONE` and `WEEK`; Weekly P0 does not use `DAY`
-  (ADR-027, ADR-030 WQ-02).
+  sections. Monthly accepts only `NONE` and `WEEK`. Weekly uses `NONE`, plus `DAY`
+  (one cell per operating day) for `group_activity` and `special_program` only
+  (ADR-051, which narrows ADR-030 WQ-02).
 - Keep the internal `semantic_key` separate from the source form's `source_label`.
 - Do not fix the physical row of `safety_education` as a domain rule.
 - A new Template version starts `PENDING_HUMAN_REVIEW` and is never activated until
