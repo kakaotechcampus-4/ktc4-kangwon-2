@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain.monthly_plan import MonthlyCell, MonthlyPlan
+from ..domain.monthly_plan import MonthlyCell, MonthlyPlan, MonthlySafetyCandidate
 from ..domain.monthly_verification import (
     FindingKind,
     Severity,
@@ -60,6 +60,22 @@ def safety_display_value(placement: SafetyPlacement | None, content: str) -> str
     if placement is None or placement.kind is not SafetyKind.STATUTORY or not content.strip():
         return content
     return f"[{STATUTORY_SHORT_LABELS[placement.category_id]}] - {content}"
+
+
+def candidate_display_value(candidate: MonthlySafetyCandidate) -> str:
+    """"[교통안전] - 문장" / "[생활안전] - 문장"; a blank sentence stays blank (no label)."""
+    content = candidate.cell.value
+    if not content.strip():
+        return content
+    if candidate.kind is SafetyKind.STATUTORY:
+        return f"[{STATUTORY_SHORT_LABELS[candidate.category_id]}] - {content}"
+    return f"[생활안전] - {content}"
+
+
+def placed_safety_candidate(plan: MonthlyPlan, week_id: WeekId) -> MonthlySafetyCandidate | None:
+    """The candidate a teacher placed in this week of a candidate-mode Plan, if any."""
+    placed = next((s.candidate_item_id for s in plan.safety_weeks if s.week_id == week_id), None)
+    return None if placed is None else plan.safety_candidate(placed)
 
 
 def is_official_ref(ref: str, category_id: str | None = None) -> bool:

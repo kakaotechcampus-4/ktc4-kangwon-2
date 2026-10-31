@@ -79,6 +79,10 @@ class RegenerateMonthlyPlanItem:
         item_id = require_item_id(command.item_id)
         actor_id = require_actor(command.actor_id)
         found = plan.find_cell(item_id)
+        if found is None and plan.safety_candidate(item_id) is not None:
+            raise MonthlyApplicationError(
+                "monthly_cell_not_regeneratable", "Safety candidates are not regeneratable"
+            )
         if found is None:
             raise MonthlyApplicationError(
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"

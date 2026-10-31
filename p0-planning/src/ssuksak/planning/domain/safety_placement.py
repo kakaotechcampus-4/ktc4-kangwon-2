@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .errors import InvalidDomainValueError
+from .identifiers import ItemId
+from .week_period import WeekId
 
 PRODUCT_POLICY = "PRODUCT_POLICY"
 FOCUS_RULE = "OFFICIAL_ORDER_ROTATING_BY_SCHOOL_YEAR"
@@ -109,3 +111,29 @@ class SafetyPlacement:
             )
         _require_text("SafetyPlacement.policy_version", self.policy_version)
         _require_text("SafetyPlacement.legal_rule_version", self.legal_rule_version)
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyCandidateSlot:
+    """One of the eight safety candidate slots; the Rule fixes its kind and allowed refs."""
+
+    slot: str  # a legal category_id, or life_safety_1 / life_safety_2
+    kind: SafetyKind
+    label: str
+    allowed: tuple[tuple[str, str], ...]  # (ref, grounding text)
+    category_id: str | None = None
+    topic_group: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyWeek:
+    """Which candidate a teacher placed in one week; ``None`` = not placed yet."""
+
+    week_id: WeekId
+    candidate_item_id: ItemId | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.week_id, WeekId):
+            raise InvalidDomainValueError("SafetyWeek.week_id must be WeekId")
+        if self.candidate_item_id is not None and not isinstance(self.candidate_item_id, ItemId):
+            raise InvalidDomainValueError("SafetyWeek.candidate_item_id must be ItemId")

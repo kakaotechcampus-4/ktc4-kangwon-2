@@ -8,6 +8,7 @@ from ..domain.monthly_plan import (
     MonthlyCell,
     MonthlyGenerationMode,
     MonthlyPlan,
+    MonthlySafetyCandidate,
     MonthlySection,
 )
 from ..domain.monthly_constraint import CellState
@@ -29,7 +30,8 @@ from ..domain.provenance import (
 )
 from ..domain.yearly_plan import YearlyPlan
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
-from ..planner.contracts import MonthlyPlanningOutcome
+from ..domain.safety_placement import SafetyWeek
+from ..planner.contracts import SAFETY_CANDIDATE_PREFIX, MonthlyPlanningOutcome
 from ..planner.service import MonthlyPlanner
 from ..rules.monthly_activity_selection import (
     RULE_ID as ACTIVITY_RULE_ID,
@@ -58,6 +60,7 @@ from .monthly_dto import (
     MonthlyActivitySelectionResult,
 )
 from .monthly_errors import MonthlyApplicationError
+from .safety_candidates import candidate_evidence
 from .monthly_support import (
     MonthlyContextPipeline,
     deduplicate_evidence,
@@ -195,6 +198,12 @@ class GenerateMonthlyPlan:
                 "monthly_safety_placement_requires_llm_planner",
                 "Safety placement writes content through the LLM planner only",
             )
+        candidate_mode = command.safety_candidates is not None
+        if candidate_mode and command.generation_mode is not MonthlyGenerationMode.LLM_PLANNER:
+            raise MonthlyApplicationError(
+                "monthly_safety_candidates_require_llm_planner",
+                "Safety candidates are written through the LLM planner only",
+            )
         catalog = load_activity_catalog(
             self._activities, command.activity_catalog
         )
@@ -220,6 +229,11 @@ class GenerateMonthlyPlan:
                 )
             except ValueError as exc:
                 raise MonthlyApplicationError("safety_placement_policy_invalid", str(exc)) from exc
+        if candidate_mode and not safety_active:
+            raise MonthlyApplicationError(
+                "monthly_safety_candidates_require_safety_section",
+                "Safety candidates need a safety_education Section in the Template",
+            )
         safety_assessment = assess_safety_education(
             safety_rule,
             safety_section_active=safety_active,
@@ -261,6 +275,10 @@ class GenerateMonthlyPlan:
                 safety_slots=safety_slots,
                 safety_rule=safety_rule,
             )
+            if candidate_mode:
+                packet, store, records = self._context.with_safety_candidates(
+                    packet, rule=safety_rule, selector=command.safety_candidates
+                )
             available = {item.grounding_class for item in packet.section_evidence}
             missing = sorted(
                 section.section_key
@@ -309,6 +327,7 @@ class GenerateMonthlyPlan:
                 planner_outcome=planner_outcome,
                 packet=packet,
                 safety_placements={slot.week_id: slot.placement for slot in safety_slots},
+                candidate_mode=candidate_mode,
                 used_activity_ids=used_activity_ids,
                 selection_results=selection_results,
             )
@@ -327,6 +346,32 @@ class GenerateMonthlyPlan:
                     source_label=section.source_label,
                     cells=cells,
                 )
+            )
+
+        safety_candidates: list[MonthlySafetyCandidate] = []
+        for slot in packet.safety_candidates if candidate_mode else ():
+            key = SAFETY_CANDIDATE_PREFIX + slot.slot
+            proposed = proposal.value_for(key, None)
+            item_id = self._ids.new_item_id()
+            cell = MonthlyCell(
+                item_id=item_id,
+                section_key=SAFETY_SECTION_KEY,
+                week_id=None,
+                value=proposed.value,
+                cell_state=CellState.FILLED,
+                generation=GenerationMethodDetail(
+                    GenerationMethod.RULE_LLM, LLM_INTEGRATION_RULE_ID, planner_outcome.prompt_version_for(None, key)
+                ),
+                evidence=candidate_evidence(
+                    slot, proposed.grounding_refs,
+                    legal_rule_version=safety_rule.legal_rule_version, store=store, records=records,
+                ),
+                audit=AuditHistory(
+                    (AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)
+                ),
+            )
+            safety_candidates.append(
+                MonthlySafetyCandidate(cell, slot.kind, category_id=slot.category_id, topic_group=slot.topic_group)
             )
 
         plan = MonthlyPlan(
@@ -359,6 +404,8 @@ class GenerateMonthlyPlan:
             ),
             generation_mode=command.generation_mode,
             parent_subthemes=command.parent_subthemes,
+            safety_candidates=tuple(safety_candidates),
+            safety_weeks=tuple(SafetyWeek(p.week_id) for p in week_periods if p.active and candidate_mode),
         )
         self._require_complete(plan, resolved_sections)
         plan = with_fresh_monthly_verification(plan, catalog)
@@ -413,6 +460,7 @@ class GenerateMonthlyPlan:
         planner_outcome: MonthlyPlanningOutcome | None,
         packet,
         safety_placements,
+        candidate_mode: bool,
         used_activity_ids: set[str],
         selection_results: list[MonthlyActivitySelectionResult],
     ) -> tuple[MonthlyCell, ...]:
@@ -440,11 +488,10 @@ class GenerateMonthlyPlan:
             )
             unresolved = False
             # A week the placement policy leaves out has no safety education: whatever the
-            # LLM proposed there is dropped and the Cell stays validly empty.
-            unplaced = (
-                section.section_key == SAFETY_SECTION_KEY
-                and bool(safety_placements)
-                and week_id not in safety_placements
+            # LLM proposed there is dropped and the Cell stays validly empty. With candidates
+            # every week starts that way until the teacher places one.
+            unplaced = section.section_key == SAFETY_SECTION_KEY and (
+                candidate_mode or (bool(safety_placements) and week_id not in safety_placements)
             )
             if unplaced:
                 proposed = None

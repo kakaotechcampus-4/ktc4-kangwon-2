@@ -36,6 +36,11 @@ MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v1
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
 MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v1"
+# Appended when the Context Packet carries the eight safety candidates (S-1).
+MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v1"
+# A candidate is a month_sections entry keyed safety_education.<slot>; Template
+# section keys hold no dot, so these never collide with a Section.
+SAFETY_CANDIDATE_PREFIX = "safety_education."
 MONTHLY_MODEL = "openai/gpt-6.1-sol"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-6.1-sol-2026-10-07"). Elice answers

@@ -19,8 +19,10 @@ from .contracts import (
     MONTHLY_INDOOR_PROMPT_TAG,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
+    MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG,
     MONTHLY_SAFETY_PROMPT_VERSION,
     MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
+    SAFETY_CANDIDATE_PREFIX,
     MonthlyPlanningRequest,
     generation_target_sections,
 )
@@ -102,6 +104,20 @@ Do not state that particular materials or spaces are available, and do not
 invent weather or claim that the activity was carried out.
 """
 
+# Appended only when the Context Packet carries safety_candidates (MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG).
+SAFETY_CANDIDATES_PROMPT = """safety_candidates lists this month's safety education candidates; a teacher
+later places them into weeks. Return one month_sections entry per candidate,
+keyed by its section_key, with unresolved false and reference_id null.
+Write one short Korean sentence for young children about one safety action
+found in the candidate's allowed texts. Never write a category name, brackets
+or a leading dash: the application adds the label.
+A STATUTORY candidate cites exactly one of its allowed grounding_refs; a
+SUPPLEMENTAL candidate cites one or more of its allowed grounding_refs. Cite no
+other ref. Never write the same sentence for two candidates and never copy an
+allowed text verbatim. Add no safety rules, procedures, times, numbers, legal
+duties or results not found in the cited text.
+"""
+
 REPAIR_HEADER = f"""You repair one monthly plan proposal.
 rejected_proposal failed semantic validation. Each validation_findings entry
 names a failed code with its section_key and week_id; a null week_id is the
@@ -139,8 +155,18 @@ def official_safety_refs(packet: MonthlyContextPacket) -> tuple[str, ...]:
 
 
 def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
-    return frozenset(item.evidence_ref for item in packet.grounding_items) | frozenset(
-        official_safety_refs(packet)
+    return (
+        frozenset(item.evidence_ref for item in packet.grounding_items)
+        | frozenset(official_safety_refs(packet))
+        | frozenset(ref for slot in packet.safety_candidates for ref, _ in slot.allowed)
+    )
+
+
+def safety_candidate_targets(packet: MonthlyContextPacket) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Each candidate's month_sections key with the refs its Rule-fixed slot allows."""
+    return tuple(
+        (SAFETY_CANDIDATE_PREFIX + slot.slot, tuple(ref for ref, _ in slot.allowed))
+        for slot in packet.safety_candidates
     )
 
 
@@ -158,6 +184,8 @@ def generation_targets(
     refs = tuple(sorted(evidence))
     targets = []
     for section in generation_target_sections(snapshot):
+        if section.section_key == "safety_education" and packet.safety_candidates:
+            continue  # S-1: weekly cells stay blank; the candidates are the targets
         wrong = set(wrong_source_refs(section, refs, evidence))
         allowed = tuple(ref for ref in refs if ref not in wrong)
         if section.section_key in {"outdoor_play", "indoor_alternative"}:
@@ -179,7 +207,7 @@ def allowed_grounding_refs_by_section(
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
     return tuple(
         (section.section_key, refs) for section, refs in generation_targets(packet, snapshot)
-    )
+    ) + safety_candidate_targets(packet)
 
 
 def _safety_plan(packet: MonthlyContextPacket) -> dict[str, object]:
@@ -215,6 +243,15 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
     payload = _base_payload(packet)
     if packet.safety is not None:
         payload["safety_plan"] = _safety_plan(packet)
+    if packet.safety_candidates:
+        payload["safety_candidates"] = [
+            {
+                "section_key": SAFETY_CANDIDATE_PREFIX + slot.slot,
+                "kind": slot.kind.value,
+                "allowed": [{"grounding_ref": ref, "text": text} for ref, text in slot.allowed],
+            }
+            for slot in packet.safety_candidates
+        ]
     return payload
 
 
@@ -348,6 +385,8 @@ def build_monthly_planning_request(
         version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
     if indoor:
         version += MONTHLY_INDOOR_PROMPT_TAG
+    if packet.safety_candidates:
+        version += MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
@@ -355,7 +394,8 @@ def build_monthly_planning_request(
             V1_GUIDANCE + "\nparent_subthemes는 확정된 연간의 월별 예상 소주제다. "
             "월간 경험을 구체화하는 맥락으로 쓰며, 각 소주제를 주차에 하나씩 강제로 복사하지 않는다.\n"
             if contextual else ""
-        ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else ""),
+        ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
+        + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -411,7 +451,7 @@ def build_monthly_repair_request(
             ]
         },
     }
-    base = request.prompt_version.removesuffix(MONTHLY_INDOOR_PROMPT_TAG)
+    base = request.prompt_version.split("+", 1)[0]  # tags keep their order after the repair version
     return replace(
         request,
         prompt_version={

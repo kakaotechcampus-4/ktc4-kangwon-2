@@ -38,6 +38,18 @@ class SafetyPlacementSelector:
 
 
 @dataclass(frozen=True, slots=True)
+class SafetyCandidatesSelector:
+    """S-1: eight safety candidates the teacher places; weekly safety Cells start blank."""
+
+    classification_version: str
+    quality_version: str
+
+    def __post_init__(self) -> None:
+        _non_blank(self.classification_version, "SafetyCandidatesSelector.classification_version")
+        _non_blank(self.quality_version, "SafetyCandidatesSelector.quality_version")
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityCatalogSelector:
     catalog_id: str
     catalog_version: str
@@ -60,6 +72,8 @@ class GenerateMonthlyPlanCommand:
     # None keeps safety_education on the source-required path (OD-M04).
     safety_placement: SafetyPlacementSelector | None = None
     parent_subthemes: tuple[str, ...] = ()
+    # Mutually exclusive with safety_placement; requires LLM_PLANNER.
+    safety_candidates: SafetyCandidatesSelector | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.parent_yearly_plan_id, PlanId):
@@ -103,6 +117,13 @@ class GenerateMonthlyPlanCommand:
         if len(set(self.optional_context_names)) != len(self.optional_context_names):
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.optional_context_names must be unique"
+            )
+        if self.safety_candidates is not None and (
+            not isinstance(self.safety_candidates, SafetyCandidatesSelector)
+            or self.safety_placement is not None
+        ):
+            raise InvalidDomainValueError(
+                "GenerateMonthlyPlanCommand.safety_candidates is invalid or combined with safety_placement"
             )
         if self.safety_placement is not None and not isinstance(
             self.safety_placement, SafetyPlacementSelector
