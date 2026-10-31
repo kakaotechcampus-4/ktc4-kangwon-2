@@ -20,7 +20,6 @@ import { isSaveConflict } from "@/lib/api/plans";
 import type { MonthlyAuditEvent, MonthlyCell, MonthlyPlan } from "@/lib/api/types";
 import { sectionName } from "@/lib/monthly/section-labels";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
-import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import { Cell, SheetFrame } from "@/components/plan-generator/PlayMonthlySheet";
 import type { SheetZoom } from "@/components/plan-generator/playProjectPagination";
@@ -92,9 +91,6 @@ export default function MonthlyPlanEditor({
       mounted.current = false;
     };
   }, []);
-
-  // 저장하지 못한 글이 남은 채 새로고침 · 탭 닫기 · 반 바꾸기로 떠나면 브라우저가 한 번 묻는다.
-  useUnsavedWarning(status === "failed");
 
   const confirmed = plan.status === "CONFIRMED";
   const locked = !!busy;
@@ -257,13 +253,17 @@ export default function MonthlyPlanEditor({
         {plan.parent.theme && <span className={ws.muted}>연간 주제 · {plan.parent.theme}</span>}
         <span className={ws.muted}>{note}</span>
         {blank && <span role="status">빈 칸이 있어요 (확정을 막지 않아요)</span>}
-        {!confirmed && <span role="status">{SAVE_LABEL[status]}</span>}
-        {!confirmed && status === "failed" && (
-          <button type="button" className={ws.secondary} disabled={locked} onClick={retry}>
-            다시 저장
-          </button>
-        )}
-        <span role="status">{message}</span>
+        {/* 저장 표시와 안내는 줄을 따로 쓴다. 같은 줄에 두면 「저장됨」이 「저장 중…」으로
+            바뀔 때 줄이 접혔다 펴지면서 바로 아래 「확정하기」가 커서 밑에서 움직였다. */}
+        <span className={styles.metaLine}>
+          {!confirmed && <span role="status">{SAVE_LABEL[status]}</span>}
+          {!confirmed && status === "failed" && (
+            <button type="button" className={ws.secondary} disabled={locked} onClick={retry}>
+              다시 저장
+            </button>
+          )}
+          <span role="status">{message}</span>
+        </span>
       </div>
       {problem && <p role="alert">{problem}</p>}
       <div className={ws.actions} style={{ marginBottom: 12 }}>

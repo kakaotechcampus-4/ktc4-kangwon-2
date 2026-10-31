@@ -881,7 +881,6 @@ function openV1Editor(findings = []) {
     "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
     "@/lib/monthly/section-labels": { sectionName: (key) => key },
     "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
-    "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     "@/components/plan-generator/PlayCellEditor": esModule(editorStub),
     "@/components/plan-generator/PlayMonthlySheet": {
       Cell: (props) => jsx("cell", props),
