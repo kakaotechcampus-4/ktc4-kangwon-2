@@ -36,7 +36,7 @@ MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v20"
 MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v20"
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
-MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v1"
+MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v2"  # v2: a week may be unresolved
 # Appended when the Context Packet carries the eight safety candidates (S-1).
 MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v2"
 # A candidate is a month_sections entry keyed safety_education.<slot>; Template

@@ -104,6 +104,9 @@ same week's outdoor_play experience on a day the class stays inside; write the
 two cells of a week together as a pair. Do not write general indoor free play.
 Do not state that particular materials or spaces are available, and do not
 invent weather or claim that the activity was carried out.
+When no supplied grounding continues that week's outdoor_play, return that week's
+indoor_alternative with value "", unresolved true and no grounding_refs; do not
+borrow an unrelated activity or add a subject the cited text does not have.
 """
 
 # Appended only when the Context Packet carries safety_candidates (MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG).

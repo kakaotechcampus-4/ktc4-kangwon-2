@@ -2261,6 +2261,53 @@ def test_indoor_alternative_is_generated_from_weekly_indoor_evidence(target_mont
     assert provider.monthly_requests[1].prompt_version == MONTHLY_PROMPT_VERSION
 
 
+class BlankIndoorLlm(RequestAwareMonthlyLlm):
+    """Returns indoor_alternative as the given shape in the first `weeks` weeks."""
+
+    def __init__(self, weeks: int, filled: bool = False):
+        super().__init__()
+        self.weeks, self.filled = weeks, filled
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        for week in payload["weeks"][: self.weeks]:
+            for section in week["sections"]:
+                if section["section_key"] == "indoor_alternative":
+                    blank = {"value": "", "unresolved": True} if not self.filled else {}
+                    section.update(blank, grounding_refs=[], reference_id=None)
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+
+@pytest.mark.parametrize("weeks", (1, 5))
+def test_indoor_alternative_week_may_be_left_unresolved(weeks):
+    """The LLM may leave a week's indoor_alternative blank; nothing checks why (IU-1, IU-2)."""
+    harness = Harness()
+    provider = BlankIndoorLlm(weeks)
+
+    plan = harness.generate(provider=provider, command=_indoor_command(harness)).plan
+
+    version = provider.monthly_requests[0].prompt_version
+    cells = plan.section("indoor_alternative").cells
+    for index, cell in enumerate(cells):
+        assert cell.generation.method is GenerationMethod.RULE_LLM and cell.generation.rule_version == version
+        if index < weeks:
+            assert cell.value == "" and cell.cell_state is CellState.EMPTY_UNRESOLVED
+        else:
+            assert cell.value and cell.cell_state is CellState.FILLED
+    assert all(cell.value for cell in plan.section("outdoor_play").cells)
+
+
+def test_filled_indoor_alternative_still_needs_a_ref():
+    harness = Harness()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=BlankIndoorLlm(1, filled=True), command=_indoor_command(harness))
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    assert "RESOLVED_REQUIRES_GROUNDING" in exc.value.__cause__.validation_codes
+    assert harness.plans.save_count == 0
+
+
 @pytest.mark.parametrize("wrong", ("other_class", "unknown"))
 def test_indoor_alternative_rejects_other_class_or_unknown_evidence(wrong):
     class WrongIndoorRefLlm(RequestAwareMonthlyLlm):
