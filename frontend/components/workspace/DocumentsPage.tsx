@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   DOCUMENT_KINDS,
   today,
-  localDate,
   validPeriod,
   validDate,
   compareEvidence,
@@ -38,13 +37,14 @@ import {
 import { listDayRoutines, type RoutineLine } from "@/lib/api/routines";
 import { listAnnualPlans } from "@/lib/api/plans";
 import type { AnnualPlanSummary } from "@/lib/api/types";
-import { byArchiveOrder } from "@/lib/workspace/archive";
 import DailyLogSources from "./DailyLogSources";
 import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { routinesPath, routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import DocumentEditor from "./DocumentEditor";
+import DocumentArchivePreview from "./DocumentArchivePreview";
+import DocumentArchiveView, { type ArchiveDoc } from "./DocumentArchiveView";
 import { createSelection } from "./document-selection";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
@@ -93,6 +93,7 @@ export default function DocumentsPage() {
     { date: "", classId: null as number | null, daily: false, assessment: false },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
+  const [editingId, setEditingId] = useState("");
   const [kind, setKind] = useState<DocumentKind>("observation");
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -113,9 +114,6 @@ export default function DocumentsPage() {
       ? (classes.find((c) => classServerId(c.id) === entry.classId)?.id ?? "")
       : primaryClass;
   const classId = pickedClass ?? requestedClass;
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
-
   const [serverDocs, setServerDocs] = useState<DocumentSummary[]>([]);
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
@@ -356,32 +354,53 @@ export default function DocumentsPage() {
       stale: false,
     })),
   ];
-  // 「다시 검토」는 상태가 아니라 근거가 바뀌었다는 표시다. 상태 칸과 따로 센다.
-  const matchesFilter = (d: (typeof entries)[number]) =>
-    filter === "all" ? true : filter === "stale" ? d.stale : d.status === filter;
-  const library = entries
-    .filter((d) => matchesFilter(d) && `${d.title} ${d.childName} ${d.className}`.includes(search))
-    .sort(byArchiveOrder);
+
+  // 보관함 탐색(반 → 종류 → 기간)이 쓰는 목록. 계획안은 각자 API 가 따로 준다.
+  const archiveDocs: ArchiveDoc[] = [
+    ...serverDocs.map((d) => ({
+      id: d.id,
+      kind: d.kind,
+      title: d.title,
+      classId: d.classId,
+      childId: d.childId,
+      start: d.start,
+      status: d.status,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    })),
+    ...localDocs.map((d) => ({
+      id: d.id,
+      kind: d.kind,
+      title: d.title,
+      classId: d.classId,
+      childId: d.childId,
+      start: d.start,
+      status: d.status,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    })),
+  ];
+
+  /** 보관함에서 「작성」을 누르면 **기존 생성 화면**으로 넘어간다 — 가짜 생성을 만들지 않는다. */
+  function startCreate(next: RecordKind, options: { date: string; childId?: string }) {
+    selection.leaveCreation();
+    setMode("create");
+    setKind(next);
+    setChildId(options.childId ?? "");
+    setStart(options.date);
+    setEnd(options.date);
+    setSelected([]);
+    setInvalid([]);
+    setMessage("");
+  }
 
   const activeServerId = documentServerId(active);
   const localCurrent = data.documents.find((d) => d.id === active);
   // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
   const current = activeServerId === null ? localCurrent : serverCurrent;
-  // 목록 재조회 실패가 이미 표시 중인 목록과 편집기를 숨기지 않게 한다.
-  // 계획안 목록이 왔으면 일지 쪽이 실패해도 그것을 그린다 (FR-701 「한쪽 API 만 실패」).
-  const keepDocuments =
-    listStatus === "error" &&
-    (serverDocs.length > 0 || localDocs.length > 0 || !!plans?.items.length || !!current);
-  // 일지가 아직 오는 중이어도 받은 계획안 · 로컬 증빙은 먼저 그린다.
-  const journalsPending = listStatus === "loading" && entries.length > 0;
-  // 일지는 비었는데 계획안이 아직 오는 중이면 빈 칸 대신 「불러오는 중」을 띄운다.
-  const libraryStatus: ViewStatus =
-    keepDocuments || journalsPending
-      ? "ready"
-      : listStatus === "ready" && plans === null && !entries.length
-        ? "loading"
-        : listStatus;
+  // 첫 목록이 비어 있어도 조회가 끝나기 전에는 로딩임을 알린다.
+  const journalsPending = listStatus === "loading";
 
   /** 고친 칸만 지운다. 서버가 함께 짚은 다른 칸은 아직 그대로다. */
   const clearInvalid = (name: string) =>
@@ -411,6 +430,7 @@ export default function DocumentsPage() {
   }
 
   function open(id: string) {
+    setEditingId("");
     setMessage("");
     selection.select(id, documentServerId(id));
   }
@@ -445,6 +465,12 @@ export default function DocumentsPage() {
         ...(kind === "weeklyLog" ? { sourceKind: weeklyFrom } : {}),
       });
       if (creation.adopt(created)) {
+        setEditingId(created.id);
+        // 목록 재조회가 끝나기 전에도 방금 만든 문서를 기존 편집기로 연다.
+        setServerDocs((prev) => [
+          { ...created, sourcesCount: created.sources.length },
+          ...prev.filter((d) => d.id !== created.id),
+        ]);
         setSelected([]);
         setInvalid([]);
         setMode("library");
@@ -532,412 +558,387 @@ export default function DocumentsPage() {
       }
     : undefined;
 
-  return (
-    <WorkspacePage title="문서 보관함" description="계획안과 일지를 한곳에서 확인하고 관리하세요.">
-      <div className={ws.hero}>
-        <div>
-          <div className={ws.eyebrow}>DOCUMENTS · 기록을 의미 있는 문서로</div>
-          <h2>사실은 그대로, 지원은 구체적으로.</h2>
-          <p>일일·주간 보육일지부터 관찰일지와 영유아 평가까지 한곳에서 관리해요.</p>
-        </div>
-        <button
-          className={ws.primary}
-          onClick={() => {
-            selection.leaveCreation();
-            setMode(mode === "create" ? "library" : "create");
-            setMessage("");
-          }}
-        >
-          {mode === "create" ? "보관함 보기" : "＋ 기록으로 문서 만들기"}
-        </button>
-      </div>
+  const detailPane = (
+    <WorkspaceViewState
+      status={chosen.status}
+      error={chosen.error ? `문서를 불러오지 못했어요. ${chosen.error}` : ""}
+      loading="문서를 불러오고 있어요."
+      empty={
+        !current && (
+          <Empty title="확인할 문서를 선택해주세요">
+            초안을 수정하고 원본과 대조한 후 확정할 수 있어요.
+          </Empty>
+        )
+      }
+    >
+      {current ? (
+        <DocumentEditor
+          key={current.id}
+          initial={current}
+          server={serverActions}
+          onSave={(doc, expected) =>
+            save((prev) => {
+              assertDocumentUnchanged(
+                prev.documents.find((d) => d.id === doc.id),
+                expected,
+              );
+              if (
+                doc.status === "confirmed" &&
+                compareEvidence(doc, prev.documents, prev.observations).linked.some(
+                  (r) => r.state !== "일치",
+                )
+              )
+                throw new Error(
+                  "원본이 변경되었거나 없어졌어요. 최신 기록으로 초안을 다시 생성해주세요.",
+                );
+              return {
+                ...prev,
+                documents: invalidateDependents(
+                  prev.documents.map((d) => (d.id === doc.id ? doc : d)),
+                  doc.id,
+                ),
+              };
+            })
+          }
+        />
+      ) : null}
+    </WorkspaceViewState>
+  );
+
+  /** 제목 · 설명 · 생성 액션. 보관함에서는 **반 사이드바 오른쪽 본문 안에만** 그린다. */
+  /** 생성 화면에서 보관함으로 돌아오는 단추. **보관함 쪽에는 두지 않는다.** */
+  const modeButton = (
+    <button
+      className={ws.primary}
+      onClick={() => {
+        selection.leaveCreation();
+        setMode("library");
+        setMessage("");
+      }}
+    >
+      보관함 보기
+    </button>
+  );
+  const notices = (
+    <>
       <Message error>{error}</Message>
       <Message>{message}</Message>
-      {mode === "create" ? (
-        <div className={ws.grid}>
-          <section className={ws.card}>
-            <h2>문서 작성 조건</h2>
-            <div className={ws.form}>
+    </>
+  );
+  /** 보관함 모드는 `WorkspacePage` 를 쓰지 않는다(전폭 3단이라) — 제목을 직접 그린다. */
+  const head = (
+    <>
+      <div className={ws.pageHead}>
+        <div>
+          <h1>문서 보관함</h1>
+          <p>계획안과 일지를 한곳에서 확인하고 관리하세요.</p>
+        </div>
+        {/* 보관함은 찾아보는 곳이다. 만들기는 종류별 화면 안의 작성 단추로만 한다. */}
+      </div>
+      {notices}
+    </>
+  );
+
+  if (mode === "library")
+    return (
+      <DocumentArchiveView
+        header={
+          <>
+            {head}
+            {listStatus === "error" && (
+              <div>
+                <Message error>{listError}</Message>
+                <button className={ws.secondary} disabled={busy} onClick={reloadList}>
+                  다시 시도
+                </button>
+              </div>
+            )}
+            {plans?.error && (
+              <div>
+                <Message error>계획안 목록을 불러오지 못했어요. {plans.error}</Message>
+                <button className={ws.secondary} onClick={reloadPlans}>
+                  계획안 다시 시도
+                </button>
+              </div>
+            )}
+            {journalsPending && (
+              <Message>
+                {entries.length ? "일지를 불러오고 있어요." : "문서 목록을 불러오고 있어요."}
+              </Message>
+            )}
+          </>
+        }
+        classes={classes}
+        classId={classId}
+        onPickClass={(id) => {
+          setClassId(id);
+          setChildId("");
+          setSelected([]);
+          setMessage("");
+          selection.select("", null);
+        }}
+        documents={archiveDocs}
+        annual={plans?.items ?? null}
+        activeId={active}
+        editingId={editingId}
+        onBackToPreview={() => setEditingId("")}
+        preview={
+          <DocumentArchivePreview
+            document={current?.classId === classId ? current : null}
+            status={chosen.status}
+            error={chosen.error}
+            onRetry={() => selection.select(active, activeServerId)}
+            onEdit={() => setEditingId(active)}
+          />
+        }
+        onOpen={open}
+        onCloseDetail={() => selection.select("", null)}
+        onCreate={startCreate}
+        detail={
+          <>
+            {detailPane}
+            {chosen.status === "error" && (
+              <button className={ws.secondary} onClick={() => open(active)}>
+                문서 다시 불러오기
+              </button>
+            )}
+          </>
+        }
+      />
+    );
+
+  return (
+    <WorkspacePage
+      title="문서 보관함"
+      description="계획안과 일지를 한곳에서 확인하고 관리하세요."
+      action={modeButton}
+    >
+      {notices}
+      <div className={ws.grid}>
+        <section className={ws.card}>
+          <h2>문서 작성 조건</h2>
+          <div className={ws.form}>
+            <label className={ws.field}>
+              문서 종류
+              <select
+                disabled={busy}
+                value={kind}
+                {...fieldErrorProps("kind", invalid)}
+                onChange={(e) => changeKind(e.target.value as DocumentKind)}
+              >
+                {RECORD_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {DOCUMENT_KINDS[k]}
+                  </option>
+                ))}
+              </select>
+              <FieldError name="kind" invalid={invalid} />
+            </label>
+            <div className={ws.row}>
               <label className={ws.field}>
-                문서 종류
+                담당 반
                 <select
                   disabled={busy}
-                  value={kind}
-                  {...fieldErrorProps("kind", invalid)}
-                  onChange={(e) => changeKind(e.target.value as DocumentKind)}
+                  value={classId}
+                  {...fieldErrorProps("classId", invalid)}
+                  onChange={(e) => {
+                    setClassId(e.target.value);
+                    setChildId("");
+                    setSelected([]);
+                    clearInvalid("classId");
+                  }}
                 >
-                  {RECORD_KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {DOCUMENT_KINDS[k]}
+                  <option value="">반 선택</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.className || "이름 없는 반"}
                     </option>
                   ))}
                 </select>
-                <FieldError name="kind" invalid={invalid} />
+                <FieldError name="classId" invalid={invalid} />
               </label>
-              <div className={ws.row}>
+              {kind !== "dailyLog" && (
                 <label className={ws.field}>
-                  담당 반
+                  대상 아동
                   <select
                     disabled={busy}
-                    value={classId}
-                    {...fieldErrorProps("classId", invalid)}
+                    value={childId}
+                    {...fieldErrorProps("childId", invalid)}
                     onChange={(e) => {
-                      setClassId(e.target.value);
-                      setChildId("");
+                      setChildId(e.target.value);
                       setSelected([]);
-                      clearInvalid("classId");
+                      clearInvalid("childId");
                     }}
                   >
-                    <option value="">반 선택</option>
-                    {classes.map((c) => (
+                    <option value="">반 전체</option>
+                    {classroom?.children.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.className || "이름 없는 반"}
+                        {c.name}
                       </option>
                     ))}
                   </select>
-                  <FieldError name="classId" invalid={invalid} />
+                  <FieldError name="childId" invalid={invalid} />
                 </label>
-                {kind !== "dailyLog" && (
-                  <label className={ws.field}>
-                    대상 아동
-                    <select
-                      disabled={busy}
-                      value={childId}
-                      {...fieldErrorProps("childId", invalid)}
-                      onChange={(e) => {
-                        setChildId(e.target.value);
-                        setSelected([]);
-                        clearInvalid("childId");
-                      }}
-                    >
-                      <option value="">반 전체</option>
-                      {classroom?.children.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <FieldError name="childId" invalid={invalid} />
-                  </label>
-                )}
-              </div>
-              {kind === "weeklyLog" && (
-                <div className={ws.row}>
-                  <label className={ws.field}>
-                    근거로 쓸 기록
-                    <select
-                      name="sourceKind"
-                      disabled={busy}
-                      value={weeklyFrom}
-                      onChange={(e) => {
-                        setWeeklyFrom(e.target.value as "dailyLog" | "routine");
-                        setSelected([]);
-                        clearInvalid("sources");
-                      }}
-                    >
-                      <option value="dailyLog">확정한 일일 보육일지</option>
-                      <option value="routine">일과 기록</option>
-                    </select>
-                  </label>
-                </div>
               )}
+            </div>
+            {kind === "weeklyLog" && (
               <div className={ws.row}>
                 <label className={ws.field}>
-                  {kind === "dailyLog" ? "날짜" : "시작일"}
+                  근거로 쓸 기록
+                  <select
+                    name="sourceKind"
+                    disabled={busy}
+                    value={weeklyFrom}
+                    onChange={(e) => {
+                      setWeeklyFrom(e.target.value as "dailyLog" | "routine");
+                      setSelected([]);
+                      clearInvalid("sources");
+                    }}
+                  >
+                    <option value="dailyLog">확정한 일일 보육일지</option>
+                    <option value="routine">일과 기록</option>
+                  </select>
+                </label>
+              </div>
+            )}
+            <div className={ws.row}>
+              <label className={ws.field}>
+                {kind === "dailyLog" ? "날짜" : "시작일"}
+                <input
+                  name="start"
+                  disabled={busy}
+                  type="date"
+                  value={start}
+                  {...fieldErrorProps("start", invalid)}
+                  onChange={(e) => changeStart(e.target.value)}
+                />
+                <FieldError name="start" invalid={invalid} />
+              </label>
+              {kind !== "dailyLog" && (
+                <label className={ws.field}>
+                  종료일
                   <input
-                    name="start"
+                    name="end"
                     disabled={busy}
                     type="date"
-                    value={start}
-                    {...fieldErrorProps("start", invalid)}
-                    onChange={(e) => changeStart(e.target.value)}
+                    value={end}
+                    {...fieldErrorProps("end", invalid)}
+                    onChange={(e) => {
+                      setEnd(e.target.value);
+                      setSelected([]);
+                      clearInvalid("end");
+                    }}
                   />
-                  <FieldError name="start" invalid={invalid} />
+                  <FieldError name="end" invalid={invalid} />
                 </label>
-                {kind !== "dailyLog" && (
-                  <label className={ws.field}>
-                    종료일
+              )}
+            </div>
+            <p className={ws.hint}>
+              {kind === "dailyLog"
+                ? "일일 보육일지는 반 전체 문서라 아동은 선택하지 않아요. 하루에 한 장씩 만들어요."
+                : kind === "weeklyLog"
+                  ? weeklyFrom === "routine"
+                    ? "일일 보육일지를 쓰지 않는 원이면 그 주 일과 기록을 바로 근거로 써요. 날짜별 해석·지원 칸은 비워서 내보내고, 주간 총평 하나만 적어요."
+                    : "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
+                  : kind === "assessment"
+                    ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
+                    : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
+            </p>
+            <button
+              className={ws.primary}
+              disabled={busy || !!blocked || listStatus !== "ready" || sourceStatus !== "ready"}
+              onClick={generate}
+            >
+              {busy ? "초안 작성 중…" : "초안 만들기"}
+            </button>
+            {blocked && <p className={ws.hint}>{blocked}</p>}
+            {fromRoutines && routineHref && (
+              <Link className={ws.link} href={routineHref}>
+                새 일과 기록 입력 →
+              </Link>
+            )}
+            {!fromRoutines && (
+              <Link className={ws.link} href="/records">
+                새 관찰 기록 입력 →
+              </Link>
+            )}
+          </div>
+        </section>
+        {kind === "dailyLog" && (
+          <DailyLogSources
+            status={routineStatus}
+            error={routineData?.error ?? ""}
+            routines={routines}
+            selected={selected}
+            busy={busy}
+            writeHref={routineHref}
+            onToggle={toggleSource}
+            onSelectAll={() =>
+              setSelected(sources.length === candidates.length ? [] : candidates.map((s) => s.id))
+            }
+          />
+        )}
+        {kind !== "dailyLog" && (
+          <section className={ws.card}>
+            <div className={ws.between}>
+              <h2>문서에 사용할 근거</h2>
+              <span className={ws.badge}>{sources.length}건 선택</span>
+            </div>
+            <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
+            <WorkspaceViewState
+              status={sourceStatus}
+              error={sourceError}
+              loading="근거 기록을 불러오고 있어요."
+              empty={
+                !candidates.length && (
+                  <Empty title="조건에 맞는 근거가 없어요">
+                    날짜를 변경하거나{" "}
+                    {fromRoutines
+                      ? "일과 기록을 먼저 입력해주세요."
+                      : kind === "weeklyLog"
+                        ? "일일 보육일지를 먼저 작성하고 확정해주세요."
+                        : "관찰 기록을 먼저 입력해주세요."}
+                  </Empty>
+                )
+              }
+            >
+              <button
+                disabled={busy}
+                className={ws.secondary}
+                onClick={() =>
+                  setSelected(
+                    sources.length === candidates.length ? [] : candidates.map((s) => s.id),
+                  )
+                }
+              >
+                {sources.length === candidates.length ? "선택 해제" : "모두 선택"}
+              </button>
+              <div role="group" className={ws.scroll} {...fieldErrorProps("sources", invalid)}>
+                {candidates.map((s) => (
+                  <label key={s.id} className={ws.check}>
                     <input
-                      name="end"
+                      type="checkbox"
                       disabled={busy}
-                      type="date"
-                      value={end}
-                      {...fieldErrorProps("end", invalid)}
+                      checked={selected.includes(s.id)}
                       onChange={(e) => {
-                        setEnd(e.target.value);
-                        setSelected([]);
-                        clearInvalid("end");
+                        setSelected((prev) =>
+                          e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
+                        );
+                        clearInvalid("sources");
                       }}
                     />
-                    <FieldError name="end" invalid={invalid} />
+                    <span>
+                      <b>{s.date}</b>
+                      <small>{s.label}</small>
+                    </span>
                   </label>
-                )}
+                ))}
               </div>
-              <p className={ws.hint}>
-                {kind === "dailyLog"
-                  ? "일일 보육일지는 반 전체 문서라 아동은 선택하지 않아요. 하루에 한 장씩 만들어요."
-                  : kind === "weeklyLog"
-                    ? weeklyFrom === "routine"
-                      ? "일일 보육일지를 쓰지 않는 원이면 그 주 일과 기록을 바로 근거로 써요. 날짜별 해석·지원 칸은 비워서 내보내고, 주간 총평 하나만 적어요."
-                      : "주간 보육일지는 검토가 완료된 일일 보육일지만 근거로 사용해요."
-                    : kind === "assessment"
-                      ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
-                      : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
-              </p>
-              <button
-                className={ws.primary}
-                disabled={busy || !!blocked || listStatus !== "ready" || sourceStatus !== "ready"}
-                onClick={generate}
-              >
-                {busy ? "초안 작성 중…" : "초안 만들기"}
-              </button>
-              {blocked && <p className={ws.hint}>{blocked}</p>}
-              {fromRoutines && routineHref && (
-                <Link className={ws.link} href={routineHref}>
-                  새 일과 기록 입력 →
-                </Link>
-              )}
-              {!fromRoutines && (
-                <Link className={ws.link} href="/records">
-                  새 관찰 기록 입력 →
-                </Link>
-              )}
-            </div>
+              <FieldError name="sources" invalid={invalid} />
+            </WorkspaceViewState>
           </section>
-          {kind === "dailyLog" && (
-            <DailyLogSources
-              status={routineStatus}
-              error={routineData?.error ?? ""}
-              routines={routines}
-              selected={selected}
-              busy={busy}
-              writeHref={routineHref}
-              onToggle={toggleSource}
-              onSelectAll={() =>
-                setSelected(sources.length === candidates.length ? [] : candidates.map((s) => s.id))
-              }
-            />
-          )}
-          {kind !== "dailyLog" && (
-            <section className={ws.card}>
-              <div className={ws.between}>
-                <h2>문서에 사용할 근거</h2>
-                <span className={ws.badge}>{sources.length}건 선택</span>
-              </div>
-              <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
-              <WorkspaceViewState
-                status={sourceStatus}
-                error={sourceError}
-                loading="근거 기록을 불러오고 있어요."
-                empty={
-                  !candidates.length && (
-                    <Empty title="조건에 맞는 근거가 없어요">
-                      날짜를 변경하거나{" "}
-                      {fromRoutines
-                        ? "일과 기록을 먼저 입력해주세요."
-                        : kind === "weeklyLog"
-                          ? "일일 보육일지를 먼저 작성하고 확정해주세요."
-                          : "관찰 기록을 먼저 입력해주세요."}
-                    </Empty>
-                  )
-                }
-              >
-                <button
-                  disabled={busy}
-                  className={ws.secondary}
-                  onClick={() =>
-                    setSelected(
-                      sources.length === candidates.length ? [] : candidates.map((s) => s.id),
-                    )
-                  }
-                >
-                  {sources.length === candidates.length ? "선택 해제" : "모두 선택"}
-                </button>
-                <div role="group" className={ws.scroll} {...fieldErrorProps("sources", invalid)}>
-                  {candidates.map((s) => (
-                    <label key={s.id} className={ws.check}>
-                      <input
-                        type="checkbox"
-                        disabled={busy}
-                        checked={selected.includes(s.id)}
-                        onChange={(e) => {
-                          setSelected((prev) =>
-                            e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
-                          );
-                          clearInvalid("sources");
-                        }}
-                      />
-                      <span>
-                        <b>{s.date}</b>
-                        <small>{s.label}</small>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <FieldError name="sources" invalid={invalid} />
-              </WorkspaceViewState>
-            </section>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className={ws.between}>
-            <div className={ws.pills}>
-              {[
-                ["all", "전체"],
-                ["draft", "검토 중"],
-                ["confirmed", "확정"],
-                // 근거가 바뀐 문서를 바로 추려 본다. 문서가 쌓이면 목록을 훑어
-                // 「· 재검토」를 찾아야 했다 (수린 점검).
-                ["stale", "다시 검토"],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  aria-pressed={filter === id}
-                  className={filter === id ? ws.selected : undefined}
-                  onClick={() => setFilter(id)}
-                >
-                  {label}{" "}
-                  {
-                    entries.filter((d) =>
-                      id === "all" ? true : id === "stale" ? d.stale : d.status === id,
-                    ).length
-                  }
-                </button>
-              ))}
-            </div>
-            <Link className={ws.link} href="/evaluation">
-              평가제·증빙 점검 →
-            </Link>
-          </div>
-          <input
-            name="document_search"
-            className={ws.input}
-            style={{ margin: "17px 0" }}
-            aria-label="문서 검색"
-            placeholder="문서 제목, 반, 아동으로 검색"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {listStatus === "error" && (
-            <div>
-              {keepDocuments && <Message error>{listError}</Message>}
-              <button className={ws.secondary} disabled={busy} onClick={reloadList}>
-                다시 시도
-              </button>
-            </div>
-          )}
-          {plans?.error && (
-            <div>
-              <Message error>계획안 목록을 불러오지 못했어요. {plans.error}</Message>
-              <button className={ws.secondary} onClick={reloadPlans}>
-                계획안 다시 시도
-              </button>
-            </div>
-          )}
-          {journalsPending && <Message>일지를 불러오고 있어요.</Message>}
-          <WorkspaceViewState
-            status={libraryStatus}
-            error={listError}
-            loading="문서를 불러오고 있어요."
-            empty={
-              // 계획안을 못 불러왔으면 「문서가 없다」고 하지 않는다. 있는데 못 본 것이다.
-              // 일지가 아직 오는 중이어도 마찬가지다.
-              !library.length &&
-              !journalsPending &&
-              plans !== null &&
-              !plans.error &&
-              !(keepDocuments && current) && (
-                <Empty title="보관된 문서가 없어요">관찰 기록으로 첫 문서를 만들어보세요.</Empty>
-              )
-            }
-          >
-            <div className={ws.grid}>
-              <div className={ws.list}>
-                {library.map((d) => {
-                  const body = (
-                    <>
-                      <div className={ws.between}>
-                        <span className={ws.badge}>
-                          {d.status === "confirmed" ? "확정" : "검토 중"}
-                          {d.stale ? " · 재검토" : ""}
-                        </span>
-                        <span className={ws.muted}>{localDate(d.createdAt)}</span>
-                      </div>
-                      <h3 style={{ marginTop: 13 }}>{d.title}</h3>
-                      <p className={ws.muted}>
-                        {d.className ? `${d.className} · ` : ""}
-                        {DOCUMENT_KINDS[d.kind]}
-                        {d.source === "plan" && d.format === "PLAY_PROJECT"
-                          ? " · 놀이 프로젝트형"
-                          : ""}
-                      </p>
-                    </>
-                  );
-                  // 계획안은 S-J4 가 아니라 계획안 화면으로 연다. S-J4 는 일지 전용이다.
-                  return d.source === "plan" ? (
-                    <Link key={d.id} className={ws.item} href={`/plans/annual/${d.serverId}`}>
-                      {body}
-                    </Link>
-                  ) : (
-                    <button
-                      key={d.id}
-                      className={`${ws.item} ${active === d.id ? ws.selected : ""}`}
-                      onClick={() => open(d.id)}
-                    >
-                      {body}
-                    </button>
-                  );
-                })}
-              </div>
-              <WorkspaceViewState
-                status={chosen.status}
-                error={chosen.error}
-                loading="문서를 불러오고 있어요."
-                empty={
-                  !current && (
-                    <Empty title="확인할 문서를 선택해주세요">
-                      초안을 수정하고 원본과 대조한 후 확정할 수 있어요.
-                    </Empty>
-                  )
-                }
-              >
-                {current ? (
-                  <DocumentEditor
-                    key={current.id}
-                    initial={current}
-                    server={serverActions}
-                    onSave={(doc, expected) =>
-                      save((prev) => {
-                        assertDocumentUnchanged(
-                          prev.documents.find((d) => d.id === doc.id),
-                          expected,
-                        );
-                        if (
-                          doc.status === "confirmed" &&
-                          compareEvidence(doc, prev.documents, prev.observations).linked.some(
-                            (r) => r.state !== "일치",
-                          )
-                        )
-                          throw new Error(
-                            "원본이 변경되었거나 없어졌어요. 최신 기록으로 초안을 다시 생성해주세요.",
-                          );
-                        return {
-                          ...prev,
-                          documents: invalidateDependents(
-                            prev.documents.map((d) => (d.id === doc.id ? doc : d)),
-                            doc.id,
-                          ),
-                        };
-                      })
-                    }
-                  />
-                ) : null}
-              </WorkspaceViewState>
-            </div>
-          </WorkspaceViewState>
-        </>
-      )}
+        )}
+      </div>
     </WorkspacePage>
   );
 }
