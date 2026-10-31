@@ -68,7 +68,8 @@ export default function WorkspaceTopBar() {
       <div className="flex items-center gap-3 text-[13px] text-ink-soft">
         <span className="hidden md:inline">{today}</span>
         <span aria-hidden="true" className="hidden h-6 border-l border-line md:inline" />
-        <span aria-label="상단 현재 반" className="hidden truncate sm:inline">
+        {/* 휴대폰에서도 보인다 — 사이드바 반 카드가 없는 폭에서 지금 반을 알려 주는 곳은 여기뿐이다 */}
+        <span aria-label="상단 현재 반" className="max-w-[40vw] truncate">
           {className}
         </span>
       </div>

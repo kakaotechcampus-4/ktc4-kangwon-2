@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "./icons";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
@@ -69,11 +69,20 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
   },
 ];
 
+/**
+ * 휴대폰 하단 띠에 바로 두는 메뉴. 7개를 다 두면 한 칸이 50px 남짓이라 이름이 두 줄로 꺾였다.
+ * 매일 쓰는 넷만 두고 나머지(주간 기록 · 문서 보관함 · 평가 점검)와 설정 · 로그아웃은 「더보기」로 보낸다.
+ */
+const MOBILE_TABS = new Set(["home", "records", "routines", "plans"]);
+
+// 휴대폰 글자는 12px 한 줄. 15px 가 같이 붙어 있으면 그쪽이 이겨 「관찰 기록」이 두 줄로 꺾였다.
 const itemBase =
-  "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[15px] font-medium transition-all " +
+  "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] font-medium transition-all whitespace-nowrap " +
   "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[15px] text-[12px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start text-center lg:text-left";
+// 휴대폰 하단 띠에서는 칸을 칠하지 않고 보라 글자로만 지금 화면을 알린다 (시안 A).
 const activeStyle =
-  "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
+  "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card " +
+  "max-lg:border-transparent max-lg:bg-transparent max-lg:shadow-none";
 const idle = "border border-transparent text-ink-soft lg:hover:translate-x-1 hover:bg-shell-hover";
 
 const NO_ROOM = {
@@ -177,10 +186,25 @@ export default function AppSidebar() {
               {group.title}
             </p>
             {group.items.map((item) => (
-              <NavLink key={item.key} item={item} active={isActive(item)} />
+              <NavLink
+                key={item.key}
+                item={item}
+                active={isActive(item)}
+                desktopOnly={!MOBILE_TABS.has(item.key)}
+              />
             ))}
           </div>
         ))}
+        <MoreMenu
+          items={GROUPS.flatMap((g) => g.items).filter((item) => !MOBILE_TABS.has(item.key))}
+          active={
+            pathname.startsWith("/settings") ||
+            GROUPS.some((g) => g.items.some((i) => !MOBILE_TABS.has(i.key) && isActive(i)))
+          }
+          isActive={isActive}
+          room={room}
+          classes={classes}
+        />
       </nav>
 
       <div className="hidden lg:block mt-auto px-5 pb-5">
@@ -248,12 +272,20 @@ function switchClass(classId: string) {
   window.location.href = window.location.pathname + (query ? `?${query}` : "");
 }
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+function NavLink({
+  item,
+  active,
+  desktopOnly = false,
+}: {
+  item: NavItem;
+  active: boolean;
+  desktopOnly?: boolean;
+}) {
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`${itemBase} ${active ? activeStyle : idle}`}
+      className={`${itemBase} ${active ? activeStyle : idle} ${desktopOnly ? "max-lg:hidden" : ""}`}
     >
       <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
       <span>{item.label}</span>
@@ -263,6 +295,125 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         </span>
       )}
     </Link>
+  );
+}
+
+/**
+ * 휴대폰 하단 「더보기」. 하단 띠에 못 둔 메뉴와 설정 · 로그아웃 · 지금 반을 아래에서 올라오는 종이 한 장에 담는다.
+ * 전에는 휴대폰에서 설정 · 로그아웃으로 가는 길이 아예 없었다.
+ *
+ * 브라우저의 모달 `<dialog>` 를 쓴다 — Esc · 휴대폰 뒤로 가기로 닫히고, 포커스가 안에 머물고,
+ * 닫히면 연 버튼으로 돌아간다. 데스크톱에서는 사이드바에 다 있으므로 버튼을 숨긴다.
+ */
+function MoreMenu({
+  items,
+  active,
+  isActive,
+  room,
+  classes,
+}: {
+  items: NavItem[];
+  active: boolean;
+  isActive: (item: NavItem) => boolean;
+  room: ReturnType<typeof readRoom>;
+  classes: ClassroomEntry[];
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const close = () => ref.current?.close();
+  const open = () => {
+    ref.current?.showModal();
+    // 시트가 열린 동안 뒤 본문이 같이 스크롤되지 않게 한다. close 이벤트에서 되돌린다.
+    document.body.style.overflow = "hidden";
+  };
+  const row =
+    "flex min-h-12 w-full items-center gap-3 border-b border-line px-1 text-[15px] text-ink last:border-b-0";
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={open}
+        aria-haspopup="dialog"
+        aria-current={active ? "page" : undefined}
+        className={`${itemBase} ${active ? activeStyle : idle} lg:hidden`}
+      >
+        <Icon name="more" className="h-[17px] w-[17px] shrink-0" />
+        <span>더보기</span>
+      </button>
+
+      <dialog
+        ref={ref}
+        aria-label="더보기"
+        onClose={() => (document.body.style.overflow = "")}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) close();
+        }}
+        className="m-0 mt-auto w-full max-w-none rounded-t-xl border-t border-line bg-paper p-0 text-ink backdrop:bg-[rgba(52,49,47,0.4)] lg:hidden"
+      >
+        <div className="flex flex-col gap-4 px-4 pt-5 pb-[calc(20px+env(safe-area-inset-bottom))]">
+          <div className="flex items-center gap-3 border border-line border-l-[3px] border-l-sun bg-cream p-3 shadow-pg-card">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] text-ink-soft">
+                {room.orgName || "원 정보 없음"}
+              </span>
+              <span className="block truncate text-[15px] font-semibold">
+                {room.className || "반 정보 없음"}
+                {room.age && ` · ${room.age}`}
+              </span>
+            </span>
+            {classes.length > 1 ? (
+              <label className="relative shrink-0 text-[13px] font-semibold text-primary-ink underline underline-offset-4">
+                반 바꾸기
+                <select
+                  aria-label="반 바꾸기"
+                  value={room.classId}
+                  onChange={(e) => switchClass(e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                >
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.className}
+                      {c.ageGroup ? ` · ${AGE_LABEL[c.ageGroup as AgeGroup]}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <Link
+                href="/settings"
+                onClick={close}
+                className="flex min-h-10 shrink-0 items-center text-[13px] font-semibold text-primary-ink underline underline-offset-4"
+              >
+                반 바꾸기
+              </Link>
+            )}
+          </div>
+
+          <nav aria-label="더보기 메뉴">
+            {items.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                onClick={close}
+                aria-current={isActive(item) ? "page" : undefined}
+                className={`${row} aria-[current=page]:font-semibold aria-[current=page]:text-primary-ink`}
+              >
+                <Icon name={item.icon} className="h-5 w-5 shrink-0 text-ink-soft" />
+                {item.label}
+              </Link>
+            ))}
+            <Link href="/settings" onClick={close} className={row}>
+              <Icon name="settings" className="h-5 w-5 shrink-0 text-ink-soft" />
+              설정
+            </Link>
+            <Link href="/logout" onClick={close} className={`${row} text-ink-soft`}>
+              <Icon name="logout" className="h-5 w-5 shrink-0" />
+              로그아웃
+            </Link>
+          </nav>
+        </div>
+      </dialog>
+    </>
   );
 }
 
