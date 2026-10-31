@@ -50,6 +50,18 @@ class SafetyCandidatesSelector:
 
 
 @dataclass(frozen=True, slots=True)
+class DrillTopicsSelector:
+    """The approved drill topic Reference the drill Section's candidates come from."""
+
+    catalog_id: str
+    catalog_version: str
+
+    def __post_init__(self) -> None:
+        _non_blank(self.catalog_id, "DrillTopicsSelector.catalog_id")
+        _non_blank(self.catalog_version, "DrillTopicsSelector.catalog_version")
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityCatalogSelector:
     catalog_id: str
     catalog_version: str
@@ -74,6 +86,8 @@ class GenerateMonthlyPlanCommand:
     parent_subthemes: tuple[str, ...] = ()
     # Mutually exclusive with safety_placement; requires LLM_PLANNER.
     safety_candidates: SafetyCandidatesSelector | None = None
+    # Required when the Profile has the drill Section; requires LLM_PLANNER.
+    drill_topics: DrillTopicsSelector | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.parent_yearly_plan_id, PlanId):
@@ -125,6 +139,8 @@ class GenerateMonthlyPlanCommand:
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.safety_candidates is invalid or combined with safety_placement"
             )
+        if self.drill_topics is not None and not isinstance(self.drill_topics, DrillTopicsSelector):
+            raise InvalidDomainValueError("GenerateMonthlyPlanCommand.drill_topics is invalid")
         if self.safety_placement is not None and not isinstance(
             self.safety_placement, SafetyPlacementSelector
         ):

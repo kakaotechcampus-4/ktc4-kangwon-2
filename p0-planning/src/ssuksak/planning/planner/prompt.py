@@ -15,6 +15,7 @@ from .contracts import (
     MONTHLY_CONTEXT_PROMPT_VERSION,
     MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
     MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION,
+    MONTHLY_DRILL_CANDIDATES_PROMPT_TAG,
     MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
     MONTHLY_INDOOR_PROMPT_TAG,
     MONTHLY_PROMPT_VERSION,
@@ -22,6 +23,7 @@ from .contracts import (
     MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG,
     MONTHLY_SAFETY_PROMPT_VERSION,
     MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
+    DRILL_CANDIDATE_PREFIX,
     SAFETY_CANDIDATE_PREFIX,
     MonthlyPlanningRequest,
     generation_target_sections,
@@ -118,6 +120,16 @@ allowed text verbatim. Add no safety rules, procedures, times, numbers, legal
 duties or results not found in the cited text.
 """
 
+# Appended only when the Context Packet carries drill_topics (MONTHLY_DRILL_CANDIDATES_PROMPT_TAG).
+DRILL_CANDIDATES_PROMPT = """drill_topics lists this month's fire evacuation and disaster drill topics; a
+teacher later copies one into the plan. Return one month_sections entry per
+topic, keyed by its section_key, with unresolved false, reference_id null and
+no grounding_refs. Write one short Korean sentence, in words young children
+understand, about a drill that assumes the topic's situation. Never write the
+same sentence for two topics. Do not invent dates, times, people in charge,
+evacuation routes, assembly points, procedures or results.
+"""
+
 REPAIR_HEADER = f"""You repair one monthly plan proposal.
 rejected_proposal failed semantic validation. Each validation_findings entry
 names a failed code with its section_key and week_id; a null week_id is the
@@ -163,11 +175,13 @@ def valid_grounding_refs(packet: MonthlyContextPacket) -> frozenset[str]:
 
 
 def safety_candidate_targets(packet: MonthlyContextPacket) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """Each candidate's month_sections key with the refs its Rule-fixed slot allows."""
+    """Each candidate's month_sections key with the refs its Rule-fixed slot allows.
+
+    A drill candidate cites nothing: its curriculum evidence comes from the Rule's topic."""
     return tuple(
         (SAFETY_CANDIDATE_PREFIX + slot.slot, tuple(ref for ref, _ in slot.allowed))
         for slot in packet.safety_candidates
-    )
+    ) + tuple((DRILL_CANDIDATE_PREFIX + topic.topic_id, ()) for topic in packet.drill_topics)
 
 
 def generation_targets(
@@ -251,6 +265,11 @@ def _prompt_payload(packet: MonthlyContextPacket) -> dict[str, object]:
                 "allowed": [{"grounding_ref": ref, "text": text} for ref, text in slot.allowed],
             }
             for slot in packet.safety_candidates
+        ]
+    if packet.drill_topics:
+        payload["drill_topics"] = [
+            {"section_key": DRILL_CANDIDATE_PREFIX + t.topic_id, "label": t.label, "situation": t.situation}
+            for t in packet.drill_topics
         ]
     return payload
 
@@ -387,6 +406,8 @@ def build_monthly_planning_request(
         version += MONTHLY_INDOOR_PROMPT_TAG
     if packet.safety_candidates:
         version += MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG
+    if packet.drill_topics:
+        version += MONTHLY_DRILL_CANDIDATES_PROMPT_TAG
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
@@ -395,7 +416,8 @@ def build_monthly_planning_request(
             "월간 경험을 구체화하는 맥락으로 쓰며, 각 소주제를 주차에 하나씩 강제로 복사하지 않는다.\n"
             if contextual else ""
         ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
-        + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else ""),
+        + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else "")
+        + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,

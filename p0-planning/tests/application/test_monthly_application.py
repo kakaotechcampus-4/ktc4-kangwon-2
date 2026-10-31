@@ -12,6 +12,8 @@ from ssuksak.adapters.evidence_classification_repository import (
     JsonEvidenceClassificationRepository,
 )
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.json_drill_topic_reference_repository import JsonDrillTopicReferenceRepository
+from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 from ssuksak.adapters.in_memory_template_profile_repository import (
     InMemoryTemplateProfileRepository,
 )
@@ -50,7 +52,7 @@ from ssuksak.planning.domain.errors import (
 )
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.monthly_constraint import CellState
-from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
+from ssuksak.planning.domain.monthly_plan import DRILL_COPY_GENERATION, MonthlyGenerationMode, MonthlyPlan
 from ssuksak.planning.domain.monthly_template import (
     EmptyValuePolicy,
     RepeatBy,
@@ -86,7 +88,11 @@ from ssuksak.adapters.safety_evidence_classification_repository import (
     JsonSafetyEvidenceClassificationRepository,
 )
 from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
-from ssuksak.planning.application.monthly_dto import SafetyCandidatesSelector
+from ssuksak.planning.application.copy_monthly_drill_candidate import (
+    CopyMonthlyDrillCandidate,
+    CopyMonthlyDrillCandidateCommand,
+)
+from ssuksak.planning.application.monthly_dto import DrillTopicsSelector, SafetyCandidatesSelector
 from ssuksak.planning.application.place_monthly_safety import (
     PlaceMonthlySafety,
     PlaceMonthlySafetyCommand,
@@ -587,6 +593,7 @@ class Harness:
             context_pipeline=self.context,
             planner=planner,
             optional_context=optional_context,
+            drill_repository=JsonDrillTopicReferenceRepository(),
         )
         return use_case.execute(command or self.command(mode))
 
@@ -1017,7 +1024,7 @@ def test_legacy_proposal_shape_is_rejected_without_running_verification(monkeypa
 
 
 @pytest.mark.parametrize("mode", tuple(MonthlyGenerationMode))
-@pytest.mark.parametrize("section_key", ("event_schedule", "drill"))
+@pytest.mark.parametrize("section_key", ("event_schedule",))
 def test_active_institution_input_section_fails_closed_before_generation(
     section_key, mode
 ):
@@ -2895,3 +2902,113 @@ def test_safety_candidate_date_outside_the_input_is_repaired_or_rejected(repairs
             harness.generate(provider=provider, command=command)
         assert harness.plans.save_count == 0
     assert len(provider._inner.monthly_requests) == 2
+
+
+# --- D: 소방대피 · 재난대비 drill candidates, copied by the teacher ---------------------------
+
+DRILL_TEMPLATE = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.3")
+DRILL_TOPICS = DrillTopicsSelector("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
+
+
+class DrillMonthlyLlm(RequestAwareMonthlyLlm):
+    """Also words each drill topic, citing nothing; the first `leaks` calls put the first topic's id in its sentence."""
+
+    def __init__(self, leaks: int = 0) -> None:
+        super().__init__()
+        self._leaks = leaks
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        payload["month_sections"] += [
+            {"section_key": key, "value": f"{n}번 상황을 떠올리며 선생님과 함께 대피해요.",
+             "unresolved": False, "reference_id": None, "grounding_refs": []}
+            for n, (key, _) in enumerate(request.allowed_grounding_refs_by_section, 1)
+            if key.startswith("drill.")
+        ]
+        if len(self.monthly_requests) <= self._leaks:
+            first = next(s for s in payload["month_sections"] if s["section_key"].startswith("drill."))
+            first["value"] = f"{first['section_key'].removeprefix('drill.')} 상황을 가정해 선생님과 함께 대피해요."
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+
+def _drill_command(harness: Harness, mode=MonthlyGenerationMode.LLM_PLANNER) -> GenerateMonthlyPlanCommand:
+    """A v0.2.3 Profile with drill chosen, on a pipeline with the v1 curriculum."""
+    base = _profile(harness.templates, DRILL_TEMPLATE, TemplateProfileRef("monthly-profile-drill", "v1"))
+    template = harness.templates.get_template(DRILL_TEMPLATE.template_id, DRILL_TEMPLATE.template_version)
+    drill = replace(template.section("drill"), activated=True, display_label="Drill")
+    harness.profiles = InMemoryTemplateProfileRepository(
+        (replace(base, selected_optional_keys=(*base.selected_optional_keys, "drill"), sections=(*base.sections, drill)),)
+    )
+    harness.context = MonthlyContextPipeline(
+        evidence_repository=EVIDENCE_REPOSITORY,
+        classification_repository=CLASSIFICATION_REPOSITORY,
+        context_builder=ContextPacketBuilder(),
+        curriculum_loader=v1_curriculum_catalog,
+    )
+    return replace(harness.command(mode), profile_ref=base.profile_ref, drill_topics=DRILL_TOPICS)
+
+
+def test_drill_candidates_generate_a_blank_cell_then_teacher_writes_copies_edits_and_confirms():
+    harness = Harness()
+    with pytest.raises(MonthlyApplicationError) as rule_only:
+        harness.generate(command=_drill_command(harness, MonthlyGenerationMode.RULE_ONLY))
+    assert rule_only.value.code == "monthly_drill_requires_llm_planner"
+
+    provider = DrillMonthlyLlm()
+    plan = harness.generate(provider=provider, command=_drill_command(harness)).plan
+    request = provider.monthly_requests[0]
+    assert request.prompt_version.endswith("+drill-candidates-v1")
+    assert len({c.topic_id for c in plan.drill_candidates}) == 5
+    first, second = plan.drill_candidates[:2]
+    assert [(e.source_type, e.source_version) for e in first.cell.evidence] == [
+        (EvidenceSourceType.CURRICULUM, "nuri-curriculum-content-v0.1.0")
+    ]
+    assert (first.cell.generation.method, first.cell.generation.rule_version) == (
+        GenerationMethod.RULE_LLM, request.prompt_version
+    )
+    document = _cell(plan, "drill")
+    assert (document.value, document.generation) == ("", None)
+
+    edit = EditMonthlyPlanItem(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    written = _cell(edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, document.item_id, "직접 씀", TEACHER)), "drill")
+    assert written.generation.method is GenerationMethod.MANUAL
+
+    copy = CopyMonthlyDrillCandidate(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    copied = _cell(copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, first.cell.item_id, TEACHER)), "drill")
+    event = copied.audit.events[-1]
+    assert (copied.value, copied.evidence, copied.generation) == (first.cell.value, first.cell.evidence, DRILL_COPY_GENERATION)
+    assert (event.event_type, event.copied_from) == (AuditEventType.CANDIDATE_COPIED, first.cell.item_id)
+    assert event.generation_change.before.method is GenerationMethod.MANUAL
+    saves = harness.plans.save_count
+    copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, first.cell.item_id, TEACHER))
+    assert harness.plans.save_count == saves  # the Cell already holds this copy
+
+    edited = edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, document.item_id, "고친 훈련", TEACHER))
+    assert _cell(edited, "drill").generation == DRILL_COPY_GENERATION
+    edited = edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, second.cell.item_id, "고친 후보", TEACHER))
+    assert edited.drill_candidate(second.cell.item_id).cell.value == "고친 후보"
+    assert _cell(edited, "drill").value == "고친 훈련"  # a copy never follows its candidate
+    with pytest.raises(MonthlyApplicationError) as regen:
+        harness.regenerate(provider).execute(RegenerateMonthlyPlanItemCommand(plan.plan_id, first.cell.item_id, TEACHER))
+    assert regen.value.code == "monthly_cell_not_regeneratable"
+    with pytest.raises(InvalidDomainValueError):  # a copy must name a kept candidate
+        replace(edited, drill_candidates=edited.drill_candidates[1:])
+
+    confirm = ConfirmMonthlyPlan(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    confirm.execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER))
+    with pytest.raises(InvalidStateTransitionError):
+        copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, second.cell.item_id, TEACHER))
+
+
+def test_a_drill_topic_id_in_a_candidate_sentence_is_repaired_or_nothing_is_saved():
+    harness = Harness()
+    plan = harness.generate(provider=(provider := DrillMonthlyLlm(leaks=1)), command=_drill_command(harness)).plan
+    first = plan.drill_candidates[0]
+    assert len(provider.monthly_requests) == 2
+    assert first.topic_id not in first.cell.value
+    assert first.cell.generation.rule_version == provider.monthly_requests[1].prompt_version
+
+    harness = Harness()
+    with pytest.raises(MonthlyApplicationError):
+        harness.generate(provider=DrillMonthlyLlm(leaks=2), command=_drill_command(harness))
+    assert harness.plans.save_count == 0
