@@ -13,7 +13,7 @@ export default function PrimaryButton({ className = "", ...rest }: ButtonProps) 
     <button
       type="button"
       {...rest}
-      className={`${base} font-semibold border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover disabled:bg-line disabled:text-ink-soft ${className}`}
+      className={`${base} font-semibold border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover disabled:opacity-40 disabled:shadow-none disabled:hover:bg-primary ${className}`}
     />
   );
 }

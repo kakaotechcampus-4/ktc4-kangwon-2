@@ -13,17 +13,13 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   const child = "가나다";
   const fact = "블록 세 개를 쌓은 뒤 더 높이 만들래라고 말했다.";
 
-  // 가입 → 로그인
+  // 가입 → 온보딩
   await page.goto("/signup");
   await page.getByLabel("선생님 이름").fill("테스트교사");
   await page.getByLabel("이메일").fill(email);
   await page.locator("#auth-password").fill(password);
   await page.getByLabel("비밀번호 확인").fill(password);
   await page.getByRole("button", { name: "회원가입" }).click();
-  await page.getByRole("link", { name: "로그인하러 가기" }).click();
-  await page.getByLabel("이메일").fill(email);
-  await page.locator("#auth-password").fill(password);
-  await page.getByRole("button", { name: "로그인" }).click();
 
   // S1 원 정보
   await expect(page).toHaveURL(/\/onboarding\/center$/);
