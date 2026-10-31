@@ -22,6 +22,7 @@ from ssuksak.planning.application.generate_weekly_plan import (
 from ssuksak.planning.application.weekly_lifecycle import (
     RegenerateWeeklyPlanCellCommand,
 )
+from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.identifiers import ActorId
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.plan import PlanStatus
@@ -130,7 +131,8 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
         provider=provider, clock=harness.clock,
     ).execute(RegenerateWeeklyPlanCellCommand(before.plan_id, outdoor.item_id, ActorId("test_reviewer")))
     assert after.cell("outdoor_play").item_id == outdoor.item_id
-    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v1+day-cells-v1"
+    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v2+day-cells-v1"
+    assert any(e.source_type is EvidenceSourceType.INSTITUTION_SAMPLE for e in after.cell("outdoor_play").evidence)
     assert all(a == b for a, b in zip(before.cells, after.cells) if a.item_id != outdoor.item_id)
     assert json.loads(provider.requests[-1].user_content)["daily_life_context"] == body["daily_life_context"]
 
@@ -145,4 +147,41 @@ def test_day_reference_failure_stops_before_provider_and_storage(monkeypatch, mi
     with pytest.raises(WeeklyApplicationError) as error:
         _day_generation(harness, provider).execute(_day_command(parent))
     assert error.value.code == "weekly_reference_context_unavailable"
+    assert not provider.requests and len(harness.weekly_plans) == 0
+
+
+@pytest.mark.parametrize("changed, cited", [(False, False), (True, False), (True, True)])
+def test_day_outdoor_needs_institution_grounding_unless_inheriting_parent(changed, cited):
+    from ssuksak.planning.planner.weekly import parse_weekly_proposal, validate_weekly
+
+    harness, provider = WeeklyHarness(), RequestAwareWeeklyLlm()
+    parent = harness.monthly_parent(mode=LLM)
+    _day_generation(harness, provider).execute(_day_command(parent))
+    request = provider.requests[-1]
+    target = request.target("outdoor_play")
+    answer = json.loads(provider.generate_weekly(request).content)
+    outdoor = next(s for s in answer["sections"] if s["section_key"] == "outdoor_play")
+    outdoor["reference_id"] = None
+    outdoor["value"] = "물총 놀이" if changed else f"  {target.parent_value}  "
+    outdoor["grounding_refs"] = list(target.allowed_grounding_refs[:1]) if cited else []
+    issues = validate_weekly(parse_weekly_proposal(json.dumps(answer), request), request)
+    missing = any(i.section_key == "outdoor_play" and i.code.value == "RESOLVED_REQUIRES_GROUNDING" for i in issues)
+    assert missing is (changed and not cited)
+
+
+def test_day_unrelated_request_error_is_not_reported_as_unavailable_reference(monkeypatch):
+    import importlib
+
+    generation = importlib.import_module("ssuksak.planning.application.generate_weekly_plan")
+    failure = InvalidDomainValueError("unrelated request invariant")
+
+    def broken_request(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(generation, "_weekly_request", broken_request)
+    harness, provider = WeeklyHarness(), RequestAwareWeeklyLlm()
+    parent = harness.monthly_parent(mode=LLM)
+    with pytest.raises(InvalidDomainValueError) as error:
+        _day_generation(harness, provider).execute(_day_command(parent))
+    assert error.value is failure
     assert not provider.requests and len(harness.weekly_plans) == 0

@@ -33,7 +33,8 @@ class RequestAwareWeeklyLlm:
                 value, grounding = f"{again}{theme} 속 이번 주 놀이", []
             elif key == "outdoor_play":
                 if target.get("parent_groundable"):
-                    value, grounding = f"{again}{parent[key]}", []
+                    value = f"{again}{parent[key]}" if refs else parent[key]
+                    grounding = refs[:1] if again else []
                 elif target["reference_candidates"]:
                     reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
                     grounding = []

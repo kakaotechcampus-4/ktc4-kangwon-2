@@ -51,7 +51,7 @@ WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v2"
 # ADR-051: a request with a repeat_by DAY target appends this to every version it uses, so
 # a v0.1.0 request keeps its prompt, schema and fingerprint unchanged.
 DAY_CELLS_SUFFIX = "+day-cells-v1"
-REFERENCE_WIRING_SUFFIX = "+monthly-linked-v1"
+REFERENCE_WIRING_SUFFIX = "+monthly-linked-v2"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
@@ -62,7 +62,8 @@ LINKED_OUTDOOR_INSTRUCTION = (
     "outdoor_play 는 같은 주 부모 놀이의 대상·경험을 먼저 이어 간다. "
     "Catalog에서 고르면 reference_id와 label을 그대로 쓴다. 부모 값 또는 허용 근거로 이어 쓸 때는 "
     "reference_id를 null로 두고 실제로 쓴 allowed_grounding_refs만 인용한다. "
-    "parent_groundable이 true인 칸은 부모 현재 값 자체도 근거이며, 이때 grounding_refs는 비울 수 있다. "
+    "parent_groundable이 true이고 부모 현재 값을 그대로 이어 쓸 때만 grounding_refs를 비울 수 있다. "
+    "부모와 다른 문장을 쓰면 허용된 바깥놀이 기관 근거를 반드시 인용한다. "
 )
 LINKED_WRITING_GUIDANCE = (
     " 해당 주 부모 focus → 같은 주 놀이 → 실내대체 순서로 작성한다. 고르기 쉬운 놀이에 맞추려고 focus를 바꾸지 않는다. "
@@ -232,6 +233,16 @@ class WeeklyPlanningProvider(Protocol):
     def generate_weekly(self, request: WeeklyPlanningRequest) -> RawLlmResponse: ...
 
 
+def validate_daily_life_context(daily_life: DailyLifeCatalog, curriculum: CurriculumCatalog | None) -> None:
+    if not isinstance(daily_life, DailyLifeCatalog) or not daily_life.is_active or curriculum is None or (
+        daily_life.curriculum_catalog_id, daily_life.curriculum_catalog_version
+    ) != (curriculum.catalog_id, curriculum.catalog_version) or any(
+        entry.content_id not in {content.content_id for content in curriculum.contents}
+        for entry in daily_life.entries
+    ):
+        raise InvalidDomainValueError("Weekly daily-life context must match the approved curriculum")
+
+
 def build_weekly_request(
     *,
     week_id: WeekId,
@@ -277,13 +288,7 @@ def build_weekly_request(
         body["reference_policy_version"] = REFERENCE_WIRING_SUFFIX.lstrip("+")
         body["monthly_focuses"] = list(sibling_focuses)
         if daily_life is not None:
-            if not daily_life.is_active or curriculum is None or (
-                daily_life.curriculum_catalog_id, daily_life.curriculum_catalog_version
-            ) != (curriculum.catalog_id, curriculum.catalog_version) or any(
-                entry.content_id not in {content.content_id for content in curriculum.contents}
-                for entry in daily_life.entries
-            ):
-                raise InvalidDomainValueError("Weekly daily-life context must match the approved curriculum")
+            validate_daily_life_context(daily_life, curriculum)
             body["daily_life_context"] = {
                 "catalog_id": daily_life.catalog_id, "catalog_version": daily_life.catalog_version,
                 "purpose": "WORDING_CONTEXT_ONLY",
@@ -640,10 +645,13 @@ def _value_issues(
             return issues  # the value is the catalog label (with_reference_labels)
     if v.reference_id is not None:
         issues.append(WeeklyIssue(WeeklyIssueCode.REFERENCE_FORBIDDEN, key))
+    visible = normalize_visible_text(v.value)
+    inherited = bool(target.parent_value.strip()) and visible == normalize_visible_text(target.parent_value)
     if (
         not v.grounding_refs
         and key not in (THEME_KEY, SAFETY_KEY)
-        and not ((key in PARENT_GROUNDABLE_KEYS or target.parent_groundable) and target.parent_value.strip())
+        and not (key in PARENT_GROUNDABLE_KEYS and target.parent_value.strip())
+        and not (key == OUTDOOR_KEY and target.parent_groundable and inherited)
     ):
         issues.append(WeeklyIssue(WeeklyIssueCode.RESOLVED_REQUIRES_GROUNDING, key, day=day))
     policy = [
@@ -654,8 +662,6 @@ def _value_issues(
         issues.append(WeeklyIssue(WeeklyIssueCode.TEXT_POLICY, key, ",".join(policy), day=day))
     # Q1: inheriting this cell's parent wording is not a copy, even when an institution
     # record reads the same; copying any other institution text still is.
-    visible = normalize_visible_text(v.value)
-    inherited = bool(target.parent_value.strip()) and visible == normalize_visible_text(target.parent_value)
     if visible in {normalize_visible_text(text) for text in (
         *(text for _, text in request.evidence_texts), *request.reference_examples
     )} and not inherited:

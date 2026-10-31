@@ -59,6 +59,7 @@ from ..planner.weekly import (
     WeeklyPlanningRequest,
     WeeklyTarget,
     build_weekly_request,
+    validate_daily_life_context,
 )
 from ..retrieval.models import RetrievedEvidence
 from ..retrieval.weekly import weekly_section_evidence
@@ -488,19 +489,13 @@ def llm_context(
     if linked and daily_life_loader is not None:
         try:
             daily_life = daily_life_loader()
-            if not isinstance(daily_life, DailyLifeCatalog) or not daily_life.is_active:
-                raise InvalidDomainValueError("Weekly daily-life context is not approved")
+            validate_daily_life_context(daily_life, packet.curriculum)
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise WeeklyApplicationError("weekly_reference_context_unavailable", "Weekly daily-life context is unavailable") from error
-    try:
-        request = _weekly_request(
-            parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
-            daily_life=daily_life,
-        )
-    except InvalidDomainValueError as error:
-        if daily_life is None:
-            raise
-        raise WeeklyApplicationError("weekly_reference_context_unavailable", "Weekly reference context is invalid") from error
+    request = _weekly_request(
+        parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
+        daily_life=daily_life,
+    )
     return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
 
 
@@ -639,8 +634,8 @@ def _weekly_request(
     parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
     *, daily_life=None,
 ) -> WeeklyPlanningRequest:
-    linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
+    linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
     targets = [WeeklyTarget(THEME_KEY, parent_value=theme_cell.value)]
     parent_context = [(THEME_KEY, theme_cell.value)]
     evidence = []
