@@ -59,7 +59,7 @@ def candidate_display_value(candidate: MonthlySafetyCandidate) -> str:
     """"[교통안전] - 문장" / "[생활안전] - 문장"; a blank sentence stays blank (no label)."""
     content = candidate.cell.value
     if not content.strip():
-        return content
+        return ""
     if candidate.kind is SafetyKind.STATUTORY:
         return f"[{STATUTORY_SHORT_LABELS[candidate.category_id]}] - {content}"
     return f"[생활안전] - {content}"
