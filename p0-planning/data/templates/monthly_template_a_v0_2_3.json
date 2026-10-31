@@ -8,11 +8,11 @@
   "normative_status_note": "전국 표준 양식이 아니라 실측 샘플에서 도출한 product adapter다. 국가 기준·법정 필수 양식·모든 기관 필수 항목을 뜻하지 않는다. 기관 실제 양식이 다르면 Override 또는 후속 Template adapter가 우선한다. / v0.2.0은 v0.1.0의 Section 정의를 그대로 두고 `focus` 하나만 활성화했다. 관측 근거와 display_mode 판정은 v0.1.0과 동일하며 새로 측정하지 않았다.",
   "issued_on": "2026-10-31",
   "review": {
-    "domain_owner_approval": "PENDING_HUMAN_REVIEW",
-    "approved_by": null,
-    "approved_at": null,
-    "runtime_active": false,
-    "runtime_active_note": "PENDING_HUMAN_REVIEW. monthly-template-a-v0.2.2(2026-10-31 도메인 담당자 승인)에서 drill 하나만 바꾼 판이다. 도메인 담당자가 완성된 이 파일을 확인한 뒤 개별 승인한다. monthly-template-a-v0.2.2의 승인은 이 version에 계승되지 않는다(docs/adr/027-repeat-by-and-template-approval.md §3). 승인 전에는 runtime 활성 Template이 아니며 Plan 생성의 기반 Template으로 쓰지 않는다.",
+    "domain_owner_approval": "HUMAN_APPROVED",
+    "approved_by": "reviewer_ai_lead_001",
+    "approved_at": "2026-10-31T15:37:36+09:00",
+    "runtime_active": true,
+    "runtime_active_note": "HUMAN_APPROVED. 2026-10-31 에 도메인 담당자(reviewer_ai_lead_001)가 완성된 이 파일을 보고 승인했다. monthly-template-a-v0.2.2(2026-10-31 승인)에서 drill 하나만 바꾼 판이다 — 한 달에 문서 칸 하나(NONE), 선택 항목(OPTIONAL, 기본 비활성), safety_education 바로 다음. 다른 Section 은 v0.2.2 와 같다. monthly-template-a-v0.2.2 의 승인을 계승한 것이 아니라 이 version 에 대한 별도 승인이다(docs/adr/027-repeat-by-and-template-approval.md §3).",
     "reviewer_identity_rule": "docs/open-decisions.md OD-N10의 reviewer_<role>_<sequence> 규칙을 따른다. Plan Confirm의 actor_id 규칙과 섞지 않는다.",
     "runtime_rule": "runtime_active는 독립 스위치가 아니라 파생값이다. runtime_active == (domain_owner_approval == \"HUMAN_APPROVED\")를 항상 만족해야 한다.",
     "change_from_supersedes": "drill만 바꿨다. repeat_by null → NONE(한 달에 문서 칸 하나, 2026-10-31 결정 R-1), category OPTIONAL(선택 항목, 기본 비활성), 배열 위치를 safety_education 바로 뒤, focus 앞으로 옮겼다(결정 R-2, 기본 양식의 표시 순서이며 도메인 규칙이 아니다). merge_forbidden은 그대로다. pending_decisions의 repeat_by 미정 목록에서 drill을 뺐다. 다른 Section의 정의·활성화·라벨·근거와 상대 순서는 그대로다."

@@ -70,6 +70,10 @@ FROZEN_ARTIFACTS = {
     "templates/monthly_template_a_v0_2_2.json": (
         "f7b1ab1994de2114fb886cfb5aee270adc02cb6e5d64a1958b24cc70812e4ae1"
     ),
+    # Human-approved 2026-10-31 (reviewer_ai_lead_001). Drill R-1 · R-2: approval metadata only.
+    "templates/monthly_template_a_v0_2_3.json": (
+        "6edfddca7165a4909a9513730371fe9d3d1e98367056e9b6b5a29e59ac8c80b5"
+    ),
     "templates/monthly_template_a_v0_2_0.json": (
         "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
     ),
@@ -112,9 +116,6 @@ FROZEN_ARTIFACTS = {
 PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
         "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
-    ),
-    "templates/monthly_template_a_v0_2_3.json": (
-        "517fd8e5eb5349d1df346aad07e625d945b53a007d4f3a585c115f52bc440d42"
     ),
 }
 
@@ -243,9 +244,7 @@ def test_activity_reference_exact_versions_and_approval_are_frozen():
     repository = JsonActivityReferenceRepository()
 
     for version in ("activity-reference-v0.2.0", "activity-reference-v0.2.1"):
-        catalog = repository.get_catalog(
-            "ssuksak.outdoor-activity-reference", version
-        )
+        catalog = repository.get_catalog("ssuksak.outdoor-activity-reference", version)
         assert catalog is not None
         assert catalog.activation_status is ActivationStatus.HUMAN_APPROVED
         assert catalog.is_active
@@ -255,19 +254,24 @@ def test_pending_templates_are_served_but_inactive():
     repository = JsonMonthlyTemplateRepository()
 
     # v0.2.1 was approved on 2026-10-20 (reviewer_pm_001); v0.1.1 was not. An approval
-    # never carries over to another version, so v0.1.1 and v0.2.3 stay served but inactive.
-    for version in ("monthly-template-a-v0.1.1", "monthly-template-a-v0.2.3"):
-        template = repository.get_template("ssuksak.monthly-template-a", version)
-        assert template is not None
-        assert not template.is_active
-        with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
-            resolve_sections(template)
+    # never carries over to another version, so v0.1.1 stays served but inactive.
+    template = repository.get_template(
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
+    )
+    assert template is not None
+    assert not template.is_active
+    with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
+        resolve_sections(template)
 
 
 def test_the_approved_template_is_active_and_resolves():
     repository = JsonMonthlyTemplateRepository()
 
-    for version in ("monthly-template-a-v0.2.1", "monthly-template-a-v0.2.2"):
+    for version in (
+        "monthly-template-a-v0.2.1",
+        "monthly-template-a-v0.2.2",
+        "monthly-template-a-v0.2.3",
+    ):
         template = repository.get_template("ssuksak.monthly-template-a", version)
         assert template is not None
         assert template.is_active
@@ -283,7 +287,8 @@ def test_display_mode_era_templates_are_frozen_but_not_served():
 
 
 @pytest.mark.parametrize(
-    "legacy", ["templates/monthly_template_a.json", "templates/monthly_template_a_v0_2_0.json"]
+    "legacy",
+    ["templates/monthly_template_a.json", "templates/monthly_template_a_v0_2_0.json"],
 )
 def test_display_mode_template_files_are_rejected_not_translated(legacy):
     payload = json.loads((DATA / legacy).read_text(encoding="utf-8"))
