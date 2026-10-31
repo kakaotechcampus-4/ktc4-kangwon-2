@@ -220,7 +220,14 @@ def test_생성_직후에는_계획안_CREATED_하나와_칸마다_CREATED_가_�
     cell_events = [i for i in items if i["scope"] == "CELL"]
     assert {i["type"] for i in cell_events} == {"CREATED"}
     # 칸 수와 같고, 위치는 계획안이 준 그대로다. 같은 시각이면 계획안 → 칸(계획안 순서).
-    assert [(i["item_id"], i["section_key"], i["week_id"]) for i in cell_events] == _located(plan)
+    # 후보 모드라 안전교육 후보 칸(주 없음)이 칸 뒤에 이어 붙는다(ADR-052).
+    candidates = [
+        (c["cell"]["item_id"], "safety_education", None) for c in plan["safety_candidates"]
+    ]
+    assert len(candidates) == 8
+    assert [(i["item_id"], i["section_key"], i["week_id"]) for i in cell_events] == (
+        _located(plan) + candidates
+    )
     assert items[0]["scope"] == "PLAN"
     assert [_when(i) for i in items] == sorted(_when(i) for i in items)
     assert _audit(plan["id"]) == items  # 다시 읽어도 같은 순서

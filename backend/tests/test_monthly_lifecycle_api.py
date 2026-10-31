@@ -494,9 +494,10 @@ def test_확정은_한_번만_저장되고_재호출은_revision_과_무관하�
     assert (confirmed["status"], confirmed["revision"]) == ("CONFIRMED", 2)
     assert confirmed["confirmed_at"] is not None
     assert _get(plan["id"]) == confirmed
-    # 안전교육은 법정 주만 채워진 채 확정된다 — 법정 시수를 충족했다는 뜻이 아니다.
+    # 안전교육은 후보 모드라 주별 칸이 비어 있고(배치는 safety_weeks) 미배치인 채 확정된다 —
+    # 법정 시수를 충족했다는 뜻이 아니다.
     safety = next(s for s in confirmed["sections"] if s["section_key"] == "safety_education")
-    assert {c["state"] for c in safety["cells"]} == {"FILLED", "EMPTY_VALID"}
+    assert {c["state"] for c in safety["cells"]} == {"EMPTY_VALID"}
     constraint = next(
         c for c in confirmed["constraints"] if c["code"] == "STATUTORY_SAFETY_EDUCATION"
     )

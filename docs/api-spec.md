@@ -1323,6 +1323,7 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 
 **월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다. **놀이 중심 월간 id 면 확정 여부와 관계없이 409 `GATE_BLOCKED`** 다(「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」, §9-7 · 놀이 월간 양식이 없어 한글 내려받기는 후속).
 기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
+후보 모드 계획안(§9-1)의 안전교육 줄은 칸 값이 아니라 주마다 `safety_weeks[].display_value` 를 넣는다 — 배치하지 않은 주는 빈칸이고 출처 표시는 섞지 않는다. 예전 계획안은 칸 값 그대로다(ADR-052).
 활성 주차는 최대 5주이며 넘으면 `VALIDATION_FAILED` 422다. 비어 있는 내용은 자동으로 채우지 않는다.
 화면의 「확정하기」 후 「한글 파일로 내려받기」로 받는다. 출처와 생성 이력은 파일에 넣지 않는다.
 **원이 올린 양식으로 내보내는 것도 아직이다**(§8 양식 등록이 먼저다).
@@ -1397,18 +1398,22 @@ profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 
 **같은 반 · 같은 달은 하나다**(ADR-034 §5). `DRAFT` 든 `CONFIRMED` 든 `ALREADY_EXISTS` 409 —
 FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(screen-spec §5.3).
 
-### 안전교육 — 배치 정책 v2 로 채운다
+### 안전교육 — 후보를 만들고 교사가 주마다 고른다
 
-**월간 생성은 안전교육 배치 정책 `ssuksak-safety-placement-v2` 를 넘긴다**(2026-10-22 결정 — 넘기지 않던 D-M4-03 을 대체).
+**월간 생성은 안전교육 후보 모드로 만든다**(ADR-052 제안 — 2026-10-22 배치 정책 v2 자동 배치를 대체).
 
-- 법정 주: 법정 6구분을 정책이 정한 월 · 주(한 달 1개면 2주, 2개면 2 · 4주)에 둔다. 값은 `[교통안전] - 내용` —
-  대괄호 안 짧은 이름은 규칙이 붙이고 LLM 은 `- ` 뒤 내용만 쓴다.
-- 그 밖의 활성 주: 보충 안전교육을 넣지 않는다(2026-10-23 결정). 칸은 `EMPTY_VALID` · 값 `""` · 배치 정보(`safety`) 없음이다.
-  LLM 이 그 주에 값을 내면 버리고, 채워진 채로 오면 검사가 막는다.
-- 법정 주의 안전교육 칸은 빈 채로 저장되지 않는다. 근거 오류는 저장을 막는다(ADR-037).
-- `constraints` 의 `STATUTORY_SAFETY_EDUCATION` 은 그대로 `NOT_VERIFIED_SOURCE_REQUIRED` 다 — 계획안에 시간 정보가 없어
-  연간 시수는 검사하지 않는다(`SAFETY_ANNUAL_HOURS_NOT_VERIFIED`). **「법정 요건을 충족한다」도 「위반이다」도 말하지 않는다.**
-- 안전교육 칸은 다시 만들기 대상이 아니다. 교사는 고칠 수 있다.
+- 새 계획안은 후보 8개를 가진다 — 법정 6 + 생활안전 2(`safety_candidates`). 후보 문장은 LLM 이 쓴다.
+- 주별 안전교육 칸(`sections[]` 의 `safety_education`)은 모든 활성 주에서 `EMPTY_VALID` · 값 `""` 이다.
+  교사가 고르기 전에는 어느 주에도 후보가 놓이지 않는다 — `safety_weeks[].candidate_item_id` 는 null,
+  `notices` 는 활성 주마다 `SAFETY_UNPLACED` 다.
+- 교사는 주마다 후보 0~1개를 둔다(§9-3 `PUT .../safety-weeks/{week_id}`). 표시값은 `safety_weeks[].display_value` 이고
+  응답마다 계산한다(저장하지 않는다). 미배치 · 빈 문장은 안내(`notices`)일 뿐 **확정을 막지 않는다.**
+- **`constraints` 의 `STATUTORY_SAFETY_EDUCATION` 은 후보 모드에서도 `NOT_VERIFIED_SOURCE_REQUIRED` 다**(실측 2026-10-31) —
+  연간 시수는 검사하지 않는다. 한편 `verification.findings` 에서는 `SAFETY_ANNUAL_HOURS_NOT_VERIFIED` 가 사라진다(후보 모드는 안전 칸을
+  미해결로 보지 않는다). **「법정 요건을 충족한다」도 「위반이다」도 말하지 않는다.**
+- 안전교육 후보 칸은 다시 만들기 대상이 아니다. 후보 문장은 교사가 고칠 수 있고, 주별 안전교육 칸은 고칠 수 없다(§9-3).
+- **이미 만든 계획안은 저장된 그대로다** — 세 목록(`safety_candidates` · `safety_weeks` · `notices`)이 비어 있고
+  안전교육 칸 값을 그대로 쓴다. 응답 · 편집 · 내보내기가 예전대로 동작한다.
 
 ### 월간계획안 응답 — 생성 · 단건 조회가 같은 형식
 
@@ -1574,6 +1579,8 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 | `VALIDATION_FAILED` | 422 | 고른 Profile 의 기반 Template 이 사람 승인 전이다 · 승인이 사라졌다(생성 직전에 다시 본다, ADR-027 §6). Profile 시작(§9-4)의 409 `GATE_BLOCKED` 와 다르다 — 여기서는 이미 고른 Profile 을 못 쓰는 것이라 Profile 오류와 같이 다룬다 | `["profile_ref"]` |
 | `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제 (401 · 403 · 429) | `[]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | LLM 설정이 없다 · 서버의 승인 참조자료를 읽을 수 없다. 재시도 무의미 | `[]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 안전교육 후보를 만들 승인 자료를 쓸 수 없다 — 안전 근거가 승인 전 · 규칙 불완전 · 판 불일치 · 저장소 불일치 · 생활안전 근거 부족(Core `monthly_safety_evidence_not_active` · `monthly_safety_rule_incomplete` · `monthly_safety_evidence_version_mismatch` · `monthly_safety_evidence_store_mismatch` · `monthly_life_safety_grounding_insufficient`). **재시도해도 같다** — 운영 문의 | `[]` |
+| `VALIDATION_FAILED` | 422 | **방어 매핑.** 고른 양식에 안전교육 칸이 없다(`monthly_safety_candidates_require_safety_section`). 안전교육은 필수 Section 이라 정상 Profile 로는 나지 않는다 | `["profile_ref"]` |
 | `GENERATION_FAILED` | 500 | LLM 호출이 깨졌다(타임아웃 포함) · 응답이 계약을 어겼다(수리 1회 뒤에도) · Core 검증 실패. **재시도 가능.** 부분 저장 없음 | `[]` |
 
 **연간이 없는 것과 확정 전인 것을 같은 코드로 낸다.** FE 가 할 일(연간계획안으로 가기)이 같다.
