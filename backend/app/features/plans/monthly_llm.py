@@ -27,7 +27,9 @@ from app.shared.llm import TIMEOUT_SECONDS, is_mock, post_json, post_stream, req
 
 _log = logging.getLogger(__name__)
 # 스트림 한 번의 전체 시간이다(read 제한 아님). 놀이 프로젝트는 구간마다(ADR-043 §5),
-# 놀이 월간은 첫 요청 · 수리마다(ADR-046 §5) 한 번씩이다. nginx 대기 시간이 이 값에 맞춰져 있다.
+# 놀이 월간 · v1 월간은 첫 요청 · 수리마다(ADR-046 §5) 한 번씩이다.
+# nginx 대기 시간이 이 값에 맞춰져 있다.
+# 소켓 대기(응답 헤더 · 다음 조각)는 따로 `timeout`(공용 30초)이다.
 PLAY_PROJECT_STREAM_DEADLINE_SECONDS = 120
 
 
@@ -73,7 +75,7 @@ class SharedLlmTransport:
         return result
 
     def post_stream(self, url, *, headers, payload, timeout):
-        """놀이 프로젝트(구간별)와 놀이 월간(첫 요청 · 수리)이 스트리밍한다."""
+        """놀이 프로젝트(구간별)와 놀이 월간 · v1 월간(첫 요청 · 수리)이 스트리밍한다."""
         schema = payload.get("response_format", {}).get("json_schema", {}).get("name")
         started = time.perf_counter()
         try:

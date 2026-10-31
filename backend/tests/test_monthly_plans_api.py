@@ -553,11 +553,12 @@ def real_llm(monkeypatch):
         monkeypatch.setattr(settings, "elice_mlapi_base_url", "https://llm.invalid/v1")
         monkeypatch.setattr(settings, "elice_mlapi_api_key", "test-only-not-a-key")
 
-        def post_json(url, *, headers, payload, timeout):
-            calls.append({"url": url, "payload": payload, "timeout": timeout})
+        # 생성 · 수리는 스트리밍한다(결정 T-1). 조립(fold)은 진짜 코드의 몫이라 결과만 돌려준다.
+        def post_stream(url, *, headers, payload, timeout, fold, deadline):
+            calls.append({"url": url, "payload": payload, "timeout": timeout, "deadline": deadline})
             return behaviour()
 
-        monkeypatch.setattr(monthly_llm, "post_json", post_json)
+        monkeypatch.setattr(monthly_llm, "post_stream", post_stream)
 
     return install, calls
 
@@ -587,13 +588,16 @@ def test_real_LLM_오류는_계약_코드로_가르고_mock_으로_대신하지_
         assert 1 <= len(calls) <= 2  # 수리는 최대 1회
         assert _monthly_rows(session) == []  # 부분 결과가 남지 않는다
 
-    # 요청은 ADR-023 그대로다: Sol-6.1 · strict · temperature 없음 · 30초.
+    # 요청은 ADR-023 그대로다: Sol-6.1 · strict · temperature 없음 · 소켓 대기 30초.
+    # 결정 T-1: 스트리밍 · 출력 상한 6,000 · 호출당 전체 마감 120초(수리도 같다).
     sent = calls[0]
     assert sent["url"] == "https://llm.invalid/v1/chat/completions"
     assert sent["payload"]["model"] == "openai/gpt-6.1-sol"
     assert sent["payload"]["response_format"]["json_schema"]["strict"] is True
     assert "temperature" not in sent["payload"]
     assert sent["timeout"] == 30.0
+    assert (sent["payload"]["stream"], sent["payload"]["max_completion_tokens"]) == (True, 6000)
+    assert {call["deadline"] for call in calls} == {120}
 
     # 설정이 없으면 부르기 전에 멈춘다.
     calls.clear()
