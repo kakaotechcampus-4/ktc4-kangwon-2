@@ -67,8 +67,16 @@ export default function MonthlyPlanPage() {
   const running = useRef(false);
   // 편집 화면의 「열린 입력 저장하고 기다리기」. 못 저장한 칸이 있으면 반 · 월을 옮기지 않는다.
   const flush = useRef<(() => Promise<boolean>) | null>(null);
+  // 이동을 기다리는 동안 반 · 월 선택도 잠근다(겹친 이동 방지).
+  const [moving, setMoving] = useState(false);
   const leave = async (move: () => void) => {
-    if (!flush.current || (await flush.current())) move();
+    if (moving) return;
+    setMoving(true);
+    try {
+      if (!flush.current || (await flush.current())) move();
+    } finally {
+      setMoving(false);
+    }
   };
   const loading = loadedScope !== scope;
 
@@ -193,7 +201,7 @@ export default function MonthlyPlanPage() {
           담당 반
           <select
             value={localClassId}
-            disabled={!!busy}
+            disabled={!!busy || moving}
             onChange={(e) => {
               const next = e.target.value;
               void leave(() => setPickedClass(next));
@@ -210,7 +218,7 @@ export default function MonthlyPlanPage() {
           월
           <select
             value={month}
-            disabled={!!busy}
+            disabled={!!busy || moving}
             onChange={(e) => {
               const next = Number(e.target.value);
               void leave(() => setMonth(next));

@@ -151,14 +151,28 @@ export default function MonthlyPlanEditor({
   /** 열린 입력창을 닫아 마지막 글을 줄에 넣고 줄이 빌 때까지 기다린다. 못 저장한 칸이 남으면 false. */
   async function flush() {
     (document.activeElement as HTMLElement | null)?.blur();
-    await queue.current;
+    // 기다리는 사이 줄에 붙은 저장까지 기다린다.
+    let tail;
+    do {
+      tail = queue.current;
+      await tail;
+    } while (tail !== queue.current);
     if (!failed.current.size) return true;
     if (mounted.current) setProblem("저장하지 못한 칸이 있어요. 「다시 저장」한 뒤 해 주세요.");
     return false;
   }
   useEffect(() => {
     if (!flushRef) return;
-    flushRef.current = flush;
+    // 반 · 월 이동 — 기다리는 동안 입력창 · 단추를 잠가 새 글이 이동 뒤로 새지 않게 한다.
+    flushRef.current = async () => {
+      if (busy) return false;
+      setBusy("move");
+      try {
+        return await flush();
+      } finally {
+        if (mounted.current) setBusy("");
+      }
+    };
     return () => {
       flushRef.current = null;
     };

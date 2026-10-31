@@ -939,22 +939,29 @@ test("v1 — 저장 중에 원래 값으로 되돌리면 그 값도 보내고, �
   assert.doesNotMatch(text(twice.render()), /저장하지 못했어요/);
 });
 
-test("v1 — 반 · 월을 옮기기 전 저장이 실패하면 옮기지 않고, 쓴 글을 남겨 다시 저장하게 한다", async () => {
+test("v1 — 반 · 월 이동은 기다리는 동안 입력을 잠그고, 늦게 붙은 저장까지 기다려 실패하면 옮기지 않는다", async () => {
   const view = openV1Editor();
   view.editor().onDraft("B");
   view.editor().onSave("B");
   await view.tick();
-  const flushed = view.props.flushRef.current();
-  view.waits.shift().fail(new Error("offline"));
-  assert.equal(await flushed, false);
+  const moving = view.props.flushRef.current(); // B 응답 전에 다른 월을 고름
+  assert.equal(view.editor().readOnly, true); // 기다리는 동안 새 글을 못 쓴다
+  assert.equal(await view.props.flushRef.current(), false); // 겹친 이동은 받지 않는다
+  view.editor().onDraft("C");
+  view.editor().onSave("C"); // 잠그기 전에 이미 출발한 저장
+  view.waits.shift().ok(); // B 성공
+  await view.tick();
+  view.waits.shift().fail(new Error("offline")); // C 실패
+  assert.equal(await moving, false);
   const tree = view.render();
   assert.match(text(tree), /저장하지 못한 칸이 있어요/);
-  assert.equal(view.editor().value, "B"); // 되돌리지 않았다
-  assert.equal(all(tree).find((x) => x.type === "cell").props.value, "B");
+  assert.equal(view.editor().readOnly, false);
+  assert.equal(view.editor().value, "C"); // 되돌리지 않았다
+  assert.equal(all(tree).find((x) => x.type === "cell").props.value, "C");
   assert.ok(view.listeners.includes("beforeunload"));
   withText(tree, "button", "다시 저장")[0].props.onClick();
   await view.tick();
   view.waits.shift().ok();
   assert.equal(await view.props.flushRef.current(), true);
-  assert.equal(view.stored(), "B");
+  assert.equal(view.stored(), "C");
 });
