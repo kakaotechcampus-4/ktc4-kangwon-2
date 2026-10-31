@@ -198,7 +198,8 @@ const changeCell = (
   commit((db) => {
     const plan = db.monthlyPlans.find((p) => p.id === id)!;
     const cell = plan.sections.flatMap((s) => s.cells).find((c) => c.item_id === itemId)!;
-    const before = { value: cell.value, generation: { ...cell.generation } };
+    // 목업 칸은 늘 생성 방식이 있다(null 은 훈련 문서 칸뿐이다).
+    const before = { value: cell.value, generation: { ...cell.generation! } };
     change(cell);
     plan.revision += 1;
     const audit = (db.monthlyAudit[id] ??= { plan: [], cells: {} });
@@ -207,7 +208,7 @@ const changeCell = (
         value_change: { before: before.value, after: cell.value },
         generation_change:
           type === "REGENERATED"
-            ? { before: before.generation, after: { ...cell.generation } }
+            ? { before: before.generation, after: { ...cell.generation! } }
             : null,
       }),
     );

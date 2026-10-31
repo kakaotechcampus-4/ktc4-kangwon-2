@@ -1251,6 +1251,7 @@ POST   /api/plans/monthly                 월간 — §9-1 (구현됨, M4)
 PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨, M5)
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 PUT    /api/plans/monthly/{id}/safety-weeks/{week_id}   주별 안전교육 후보 배치 — §9-3 (후보 모드만)
+POST   /api/plans/monthly/{id}/drill-candidates/{item_id}/copy   훈련 후보를 훈련 칸에 복사 — §9-3 (훈련 칸이 있는 계획만)
 GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039)
 GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
 GET    /api/plans/weekly/{id}/export/hwp  주간 내보내기 — 확정본만, 기본 hwpx (§9-6)
@@ -1323,6 +1324,7 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 
 **월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다. **놀이 중심 월간 id 면 확정 여부와 관계없이 409 `GATE_BLOCKED`** 다(「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」, §9-7 · 놀이 월간 양식이 없어 한글 내려받기는 후속).
 기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
+한 쪽 양식 12행 「소방대피/재난대비」는 주 칸 없이 한 칸으로 합쳐져 있고, 훈련 칸(`drill`)이 있는 계획안은 그 칸 값을 넣는다 — 훈련 칸이 없거나 아직 비어 있으면 빈칸이다(후보 문장은 칸에 복사하기 전에는 문서에 가지 않는다).
 후보 모드 계획안(§9-1)의 안전교육 줄은 칸 값이 아니라 주마다 `safety_weeks[].display_value` 를 넣는다 — 배치하지 않은 주는 빈칸이고 출처 표시는 섞지 않는다. 예전 계획안은 칸 값 그대로다(ADR-052).
 활성 주차는 최대 5주이며 넘으면 `VALIDATION_FAILED` 422다. 비어 있는 내용은 자동으로 채우지 않는다.
 화면의 「확정하기」 후 「한글 파일로 내려받기」로 받는다. 출처와 생성 이력은 파일에 넣지 않는다.
@@ -1415,6 +1417,15 @@ FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(sc
 - **이미 만든 계획안은 저장된 그대로다** — 세 목록(`safety_candidates` · `safety_weeks` · `notices`)이 비어 있고
   안전교육 칸 값을 그대로 쓴다. 응답 · 편집 · 내보내기가 예전대로 동작한다.
 
+### 소방대피 · 재난대비(훈련) — 후보를 만들고 교사가 칸에 복사한다
+
+- 고른 Profile 에 훈련 칸(`drill`)이 있으면(양식 v0.2.3) 응답이 `drill_candidates` 를 가진다. 훈련 주제는 규칙이 달마다 정하고
+  문장은 LLM 이 쓴다. **훈련 문서 칸(`sections[]` 의 `drill`)은 교사가 쓰거나 후보를 복사하기 전까지 값 `""` · `generation: null` 이다.**
+  후보는 저절로 놓이지 않는다.
+- 훈련 칸이 없는 Profile 이면 `drill_candidates` 는 `[]` 이고 그 밖은 지금과 같다.
+- **훈련 칸은 양식 v0.2.3 에서만 켤 수 있고, 서버는 아직 그 판 · 칸을 고를 수 있게 열지 않았다**(화면 준비 뒤).
+  지금 §9-2 의 선택 가능한 칸 · 양식 목록에는 없다.
+
 ### 월간계획안 응답 — 생성 · 단건 조회가 같은 형식
 
 ```json
@@ -1462,6 +1473,11 @@ FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(sc
   ],
   "safety_weeks": [
     { "week_id": "2026-09-W1", "candidate_item_id": "item_…", "display_value": "[교통안전] - …" }
+  ],
+  "drill_candidates": [
+    { "topic_id": "…", "label": "소방대피 훈련",
+      "cell": { "item_id": "item_…", "week_id": null, "value": "…", "state": "FILLED",
+                "evidence": [], "generation": { "method": "RULE_LLM", "rule_id": "…", "rule_version": "…" } } }
   ],
   "notices": [ { "code": "SAFETY_UNPLACED", "week_id": "2026-09-W2" } ],
   "constraints": [
@@ -1516,7 +1532,8 @@ cells[].week_id       문자열 | null.  repeat_by = NONE 이면 null
 cells[].value         문자열.  필수.  비어 있으면 ""
 cells[].state         FILLED | EMPTY_VALID | EMPTY_UNRESOLVED.  필수
 cells[].evidence      배열.  필수.  §4 「출처는 세 축이다」와 같은 모양
-cells[].generation    객체.  필수.  §4 와 같은 모양 (method · rule_id · rule_version)
+cells[].generation    객체 | null.  §4 와 같은 모양 (method · rule_id · rule_version).  null 은 훈련 문서 칸이 비어 있을 때뿐이다 —
+                      교사가 처음 쓰면 MANUAL, 후보를 복사하면 RULE_ONLY.  다른 칸은 늘 객체다
 
 safety_candidates[]   안전교육 후보.  필수(빈 배열 가능).  기존 계획안은 []
 safety_candidates[].kind          STATUTORY | SUPPLEMENTAL.  필수
@@ -1528,6 +1545,10 @@ safety_weeks[].week_id          문자열.  필수
 safety_weeks[].candidate_item_id  문자열 | null.  그 주에 배치한 후보의 cell.item_id.  배치 전이면 null
 safety_weeks[].display_value    문자열.  필수.  그 주에 보일 값(예 "[교통안전] - 문장").  읽기 전용 · 응답마다 계산 · 저장 안 함.
                                 배치가 없거나 후보 문장이 비면 ""
+drill_candidates[]    훈련(소방대피 · 재난대비) 후보.  필수(빈 배열 가능).  훈련 칸이 없는 계획안은 []
+drill_candidates[].topic_id   문자열.  그 달에 규칙이 고른 훈련 주제
+drill_candidates[].label      문자열.  주제 표시 이름 (화면이 문장 옆에 보인다)
+drill_candidates[].cell       cells[] 와 같은 모양.  week_id 는 null.  후보 문장의 주소는 cell.item_id
 notices[]             안전 주 안내.  필수(빈 배열 가능).  기존 계획안은 []
 notices[].code        SAFETY_UNPLACED | SAFETY_BLANK.  필수.  배치가 없는 주 | 배치한 후보 문장이 빈 주
 notices[].week_id     문자열.  필수
@@ -1575,11 +1596,12 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 | `GATE_BLOCKED` | 409 | 그 반의 연간계획안이 **놀이 프로젝트형**이다. 「놀이 프로젝트형 연간계획안으로는 기존 월간계획안을 만들 수 없습니다. 놀이 중심 월간계획안으로 만들어 주세요.」 부모 행을 찾은 직후, 월별 주제형으로 읽기 전에, LLM 호출 전에, 부모 상태와 관계없이 막는다(ADR-042 §2 · ADR-043) | `["class_id"]` |
 | `NOT_FOUND` | 404 | `profile_ref` 가 없다 · READY 가 아니다 · 남의 원 것이다 (셋을 가르지 않는다, ADR-017) | `["profile_ref"]` |
 | `ALREADY_EXISTS` | 409 | 같은 반 · 같은 달 월간이 있다 (동시 요청은 DB 유일 제약이 막고 409 로 바꾼다) | `["class_id","month"]` |
-| `VALIDATION_FAILED` | 422 | 고른 Profile 로는 만들 수 없다 — 기관 입력 Section(`event_schedule` · `drill`) · 근거 없는 필수 Section 등. **재시도해도 같다.** 다른 Profile 을 고른다 | `["profile_ref"]` |
+| `VALIDATION_FAILED` | 422 | 고른 Profile 로는 만들 수 없다 — 기관 입력 Section(`event_schedule`) · 근거 없는 필수 Section 등. **재시도해도 같다.** 다른 Profile 을 고른다 | `["profile_ref"]` |
 | `VALIDATION_FAILED` | 422 | 고른 Profile 의 기반 Template 이 사람 승인 전이다 · 승인이 사라졌다(생성 직전에 다시 본다, ADR-027 §6). Profile 시작(§9-4)의 409 `GATE_BLOCKED` 와 다르다 — 여기서는 이미 고른 Profile 을 못 쓰는 것이라 Profile 오류와 같이 다룬다 | `["profile_ref"]` |
 | `LLM_BUDGET_EXCEEDED` | 503 | 한도 · 키 삭제 (401 · 403 · 429) | `[]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | LLM 설정이 없다 · 서버의 승인 참조자료를 읽을 수 없다. 재시도 무의미 | `[]` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 안전교육 후보를 만들 승인 자료를 쓸 수 없다 — 안전 근거가 승인 전 · 규칙 불완전 · 판 불일치 · 저장소 불일치 · 생활안전 근거 부족(Core `monthly_safety_evidence_not_active` · `monthly_safety_rule_incomplete` · `monthly_safety_evidence_version_mismatch` · `monthly_safety_evidence_store_mismatch` · `monthly_life_safety_grounding_insufficient`). **재시도해도 같다** — 운영 문의 | `[]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | 훈련 후보를 만들 승인 자료를 쓸 수 없다 — 훈련 주제 자료가 없음 · 승인 전 · 누리과정 판 불일치 · 모르는 내용 id · 그 달 주제 부족(Core `monthly_drill_reference_not_found` · `monthly_drill_reference_not_active` · `monthly_drill_curriculum_mismatch` · `monthly_drill_unknown_content_id` · `monthly_drill_topics_insufficient`). **재시도해도 같다** — 운영 문의. 훈련 칸이 있는 Profile 일 때만 난다 | `[]` |
 | `VALIDATION_FAILED` | 422 | **방어 매핑.** 고른 양식에 안전교육 칸이 없다(`monthly_safety_candidates_require_safety_section`). 안전교육은 필수 Section 이라 정상 Profile 로는 나지 않는다 | `["profile_ref"]` |
 | `GENERATION_FAILED` | 500 | LLM 호출이 깨졌다(타임아웃 포함) · 응답이 계약을 어겼다(수리 1회 뒤에도) · Core 검증 실패. **재시도 가능.** 부분 저장 없음 | `[]` |
 
@@ -1653,7 +1675,7 @@ READY Profile 은 사람이 승인한 Template 으로만 만들어진다(ADR-027
 ## 9-3. 월간계획안 칸 편집 · 칸 재생성 · 확정
 
 > **상태: 구현됨 (M5).** 결정은 ADR-035 §1 · §2 다(원 ID 12.4 D-3 · 12.10 D-M5-CONFIRM-01).
-> 네 API(편집 · 재생성 · 안전 배치 · 확정) 모두 `200` 에 §9-1 「월간계획안 응답」 전체를 돌려준다 — 새 `revision` 과 다시 계산한
+> 다섯 API(편집 · 재생성 · 안전 배치 · 훈련 후보 복사 · 확정) 모두 `200` 에 §9-1 「월간계획안 응답」 전체를 돌려준다 — 새 `revision` 과 다시 계산한
 > 검증 결과(`constraints` · `verification`)가 들어 있다. **안전 배치에서 같은 선택을 다시 보내면 저장하지
 > 않고 지금 저장된 그대로 200 이다**(revision · 이력이 바뀌지 않는다 — 확정 재호출과 같은 뜻).
 
@@ -1691,6 +1713,8 @@ value   문자열.  필수.  빈 문자열도 받는다(칸을 비운다 — 상
   다른 후보를 둔다. 후보 문장은 이 API 로 고친다.
 - **근거(`evidence`) · 생성 방식(`generation`)은 바뀌지 않는다.** 교사가 고쳤다는 사실은 변경
   이력(`TEACHER_EDITED`, 이전 값 · 새 값)에 남는다(§4 「출처는 세 축이다」).
+  **예외: 비어 있는 훈련 문서 칸(`drill`, `generation: null`)을 교사가 처음 쓰면 `generation` 이 `MANUAL` 이 된다.**
+  후보를 복사한 훈련 칸(`RULE_ONLY`)을 고치면 그대로다.
 - 같은 값으로 고치면 `VALIDATION_FAILED` 422 다.
 
 ### 칸 재생성 — `POST /api/plans/monthly/{id}/cells/{item_id}/regenerate`
@@ -1701,8 +1725,8 @@ value   문자열.  필수.  빈 문자열도 받는다(칸을 비운다 — 상
 
 - **그 칸만** 다시 만든다. 전체 재생성은 P0 에 없다(screen-spec §5.3). 추가 지시문은 받지 않는다.
 - 다시 만들 수 있는 칸은 Core 가 정한다 — 지금은 `focus` · `outdoor_play` · `basic_habit` · `goals`.
-  주제 · 안전교육 · 주 머리줄은 `VALIDATION_FAILED` 422 (`["item_id"]`). **안전 후보 칸도 다시 만들 수 없다**
-  (같은 422 · 「이 칸은 다시 만들 수 없습니다.」).
+  주제 · 안전교육 · 주 머리줄은 `VALIDATION_FAILED` 422 (`["item_id"]`). **안전 후보 칸 · 훈련 문서 칸(`drill`) ·
+  훈련 후보 칸도 다시 만들 수 없다**(같은 422 · 「이 칸은 다시 만들 수 없습니다.」 `["item_id"]`).
 - **교사가 고친 칸도 요청하면 다시 만든다** — 고친 값이 새 값으로 바뀐다. 덮어쓰기 확인은 화면이
   한다(M6).
 - `item_id` · `week_id` 는 그대로다. 근거는 새 결과의 근거로 바뀌고, 이전 값과 생성 방식은 변경
@@ -1738,6 +1762,31 @@ expected_revision  위와 같다
 | 형식은 맞지만 이 계획안에 없는 주 | 404 `NOT_FOUND` 「그 주를 찾을 수 없습니다.」 | `["week_id"]` |
 | 이 계획안에 없는 후보 | 422 `VALIDATION_FAILED` | `["candidate_item_id"]` |
 
+### 훈련 후보 복사 — `POST /api/plans/monthly/{id}/drill-candidates/{item_id}/copy`
+
+```json
+{ "expected_revision": 3 }
+```
+
+```
+item_id            문자열.  §9-1 drill_candidates[].cell.item_id.  형식이 틀리면 VALIDATION_FAILED 422 ["item_id"]
+expected_revision  위와 같다
+```
+
+- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
+  복사한 뒤 후보와 칸은 서로 따라가지 않는다. 성공하면 revision +1 · 변경 이력에 `CANDIDATE_COPIED`(§9-5) · §9-1 응답.
+- **같은 복사면 저장하지 않는다.** 칸이 이미 그 후보의 복사본이면 200 · 저장된 그대로(revision · 이력 그대로)다.
+- 복사한 칸은 기존 `PUT .../cells/{훈련 칸 item_id}`(§9-3 칸 편집)로 고칠 수 있다. **빈 훈련 칸에 교사가 처음 쓰면 `MANUAL`** 이다
+  (그 칸에는 생성 방식이 없었다). 이미 복사한 칸을 고치면 생성 방식은 그대로(`RULE_ONLY`)다.
+- 오류(공통 표에 더해):
+
+| 언제 | status · code | `fields` |
+|---|---|---|
+| 훈련 칸이 없는 계획안 | 422 `VALIDATION_FAILED` 「이 월간계획안에는 소방대피 · 재난대비 칸이 없습니다.」 | `[]` |
+| 이 계획안에 없는 후보 | 404 `NOT_FOUND` 「그 훈련 후보를 찾을 수 없습니다.」 | `["item_id"]` |
+| 후보 문장이 비어 있다 | 422 `VALIDATION_FAILED` | `["item_id"]` |
+| 복사 뒤 다시 검증할 때 활동 Catalog 를 쓸 수 없다 | 503 `DEPENDENCY_UNAVAILABLE` (칸 편집과 같다) | `[]` |
+
 ### 확정 — `POST /api/plans/monthly/{id}/confirm`
 
 ```json
@@ -1759,16 +1808,16 @@ FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사�
 `NOT_VERIFIED_SOURCE_REQUIRED`)로 남아 있어도 확정된다 — 「법정 요건 충족」이라는 뜻이 아니다.
 검증기 자체가 돌지 못하면 `GENERATION_FAILED` 500 이다.
 
-**되돌리기는 P1 이다.** 확정 뒤 칸 편집 · 재생성 · 안전 배치는 `ALREADY_CONFIRMED` 409 다.
+**되돌리기는 P1 이다.** 확정 뒤 칸 편집 · 재생성 · 안전 배치 · 훈련 후보 복사는 `ALREADY_CONFIRMED` 409 다.
 
-### 오류 — 네 API 공통
+### 오류 — 다섯 API 공통
 
 | code | status | 언제 | `fields` |
 |---|---|---|---|
 | `NOT_FOUND` | 404 | 계획안이 없거나 남의 원 것 · 월간이 아님 | `["id"]` |
 | `NOT_FOUND` | 404 | 그 `item_id` 칸이 없다 (편집 · 재생성) | `["item_id"]` |
 | `GATE_BLOCKED` | 409 | 놀이 중심 월간 id 다(ADR-046 §4). 「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」 소유 다음, 확정 · revision 검사 앞이다 | `[]` |
-| `ALREADY_CONFIRMED` | 409 | 확정된 계획안의 칸을 고치거나 다시 만들거나 안전 배치를 바꾸려 함 | `[]` |
+| `ALREADY_CONFIRMED` | 409 | 확정된 계획안의 칸을 고치거나 다시 만들거나 안전 배치 · 훈련 후보 복사를 바꾸려 함 | `[]` |
 | `STALE_WRITE` | 409 | `expected_revision` 이 서버 값과 다르다 (확정 재호출은 예외 — 200) | `["expected_revision"]` |
 | `VALIDATION_FAILED` | 422 | 입력 모양이 틀림 · 같은 값으로 편집 | 해당 필드 · `["value"]` |
 | `VALIDATION_FAILED` | 422 | 고칠 수 없는 칸(후보 모드의 주별 안전교육 칸) | `["item_id"]` |
@@ -1977,17 +2026,17 @@ item_id   문자열.  선택.  주면 그 칸의 이력 + 계획안 단위 CONFI
     { "type": "CREATED", "occurred_at": "2026-09-20T01:00:00Z",
       "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
       "actor": null, "system_actor": "monthly_application",
-      "value_change": null, "generation_change": null, "arrangement_change": null },
+      "value_change": null, "generation_change": null, "arrangement_change": null, "copied_from": null },
     { "type": "TEACHER_EDITED", "occurred_at": "2026-09-21T02:10:00Z",
       "scope": "CELL", "item_id": "item_7c1e…", "section_key": "focus", "week_id": "2026-09-W2",
       "actor": "user_7", "system_actor": null,
       "value_change": { "before": "가을 열매 관찰", "after": "가을 열매를 모아 세어 보기" },
-      "generation_change": null, "arrangement_change": null },
+      "generation_change": null, "arrangement_change": null, "copied_from": null },
     { "type": "ARRANGEMENT_CHANGED", "occurred_at": "2026-09-21T02:15:00Z",
       "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
       "actor": "user_7", "system_actor": null,
       "value_change": null, "generation_change": null,
-      "arrangement_change": { "scope": "2026-09-W2", "before": [], "after": ["item_4d0e…"] } },
+      "arrangement_change": { "scope": "2026-09-W2", "before": [], "after": ["item_4d0e…"] }, "copied_from": null },
     { "type": "REGENERATED", "occurred_at": "2026-09-21T02:20:00Z",
       "scope": "CELL", "item_id": "item_9a2b…", "section_key": "outdoor_play", "week_id": "2026-09-W3",
       "actor": "user_7", "system_actor": null,
@@ -1997,18 +2046,18 @@ item_id   문자열.  선택.  주면 그 칸의 이력 + 계획안 단위 CONFI
                     "rule_version": "monthly-planner-…" },
         "after":  { "method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal",
                     "rule_version": "monthly-cell-planner-v10" } },
-      "arrangement_change": null },
+      "arrangement_change": null, "copied_from": null },
     { "type": "CONFIRMED", "occurred_at": "2026-09-22T05:00:00Z",
       "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
       "actor": "user_7", "system_actor": null,
-      "value_change": null, "generation_change": null, "arrangement_change": null }
+      "value_change": null, "generation_change": null, "arrangement_change": null, "copied_from": null }
 ] }
 ```
 
 값의 모양(`item_id` · `rule_version` · 시각)은 예시다. **모든 키가 항상 온다** — 해당이 없으면 `null`.
 
 ```
-type               CREATED | TEACHER_EDITED | REGENERATED | ARRANGEMENT_CHANGED | CONFIRMED.  저장된 그대로
+type               CREATED | TEACHER_EDITED | REGENERATED | ARRANGEMENT_CHANGED | CANDIDATE_COPIED | CONFIRMED.  저장된 그대로
 occurred_at        ISO 8601.  저장된 시각 그대로 (시간대 포함)
 scope              PLAN (계획안 단위) | CELL (칸 단위)
 item_id            CELL 이면 그 칸 (§9-1 cells[].item_id).  PLAN 이면 null
@@ -2016,11 +2065,12 @@ section_key        CELL 이면 그 칸의 Section.  PLAN 이면 null
 week_id            주마다 있는 칸(repeat_by WEEK)이면 그 주.  한 달 칸 · PLAN 이면 null
 actor              사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
 system_actor       시스템이 한 일(생성)이면 그 표시 (monthly_application).  사람이면 null
-value_change       TEACHER_EDITED · REGENERATED 만.  {before, after} — 그때 바뀐 칸 값.  나머지는 null
-generation_change  REGENERATED 만.  {before, after} — 각각 §9-1 cells[].generation 과 같은 모양
-                   (method · rule_id · rule_version).  나머지는 null
+value_change       TEACHER_EDITED · REGENERATED · CANDIDATE_COPIED 만.  {before, after} — 그때 바뀐 칸 값.  나머지는 null
+generation_change  REGENERATED · CANDIDATE_COPIED 만.  {before, after} — 각각 §9-1 cells[].generation 과 같은 모양
+                   (method · rule_id · rule_version).  복사는 덮은 칸에 이미 생성 방식이 있었을 때만 온다.  나머지는 null
 arrangement_change ARRANGEMENT_CHANGED 만.  {scope, before, after} — 안전 배치면 scope 는 주 id(2026-09-W2),
                    before · after 는 그 주에 놓인 후보 item_id 배열(0~1개).  나머지는 null
+copied_from        CANDIDATE_COPIED 만.  복사한 훈련 후보의 cell.item_id (§9-1 drill_candidates[].cell.item_id).  나머지는 null
 ```
 
 **어디에 무엇이 쌓이나**
@@ -2031,6 +2081,7 @@ arrangement_change ARRANGEMENT_CHANGED 만.  {scope, before, after} — 안전 �
 | `TEACHER_EDITED` | CELL | `actor` | 있음 | null (교사 수정은 생성 방식을 바꾸지 않는다) |
 | `REGENERATED` | CELL | `actor` | 있음 | 있음 |
 | `ARRANGEMENT_CHANGED` | PLAN | `actor` | null | null (`arrangement_change` 가 있다) |
+| `CANDIDATE_COPIED` | CELL (훈련 문서 칸) | `actor` | 있음 | 덮은 칸에 생성 방식이 있었을 때만 (`copied_from` 이 있다) |
 | `CONFIRMED` | PLAN | `actor` | null | null |
 
 - **성공한 변경만 남는다.** 같은 값 편집(422) · 오래된 revision(409) · 확정 뒤 편집(409) · 실패한
@@ -2039,7 +2090,7 @@ arrangement_change ARRANGEMENT_CHANGED 만.  {scope, before, after} — 안전 �
 ### 순서
 
 `occurred_at` 오름차순. 시각이 같으면 ① 계획안 단위 → ② 칸 단위, 칸끼리는 §9-1 `sections[].cells[]`
-순서(안전 후보 칸은 그 다음, `safety_candidates[]` 순서), 한 칸 안에서는 저장된 순서다. 같은 데이터는 언제 읽어도 같은 순서다(생성 때는 계획안과 모든 칸의
+순서(안전 후보 칸은 그 다음 `safety_candidates[]` 순서, 훈련 후보 칸은 그 다음 `drill_candidates[]` 순서), 한 칸 안에서는 저장된 순서다. 같은 데이터는 언제 읽어도 같은 순서다(생성 때는 계획안과 모든 칸의
 `CREATED` 가 같은 시각이라 이 규칙이 순서를 정한다).
 
 ### `item_id` 로 고르기
@@ -2050,6 +2101,9 @@ arrangement_change ARRANGEMENT_CHANGED 만.  {scope, before, after} — 안전 �
 - **후보 칸의 `item_id` 도 받는다**(§9-1 `safety_candidates[].cell.item_id`). 그 후보 칸의 이벤트는
   `scope` `CELL` · `section_key` `safety_education` · `week_id` `null` 이다. 후보 칸은 `sections[].cells[]`
   에 없으므로 순서는 Section 칸 다음이다.
+- **훈련 후보 칸의 `item_id` 도 받는다**(§9-1 `drill_candidates[].cell.item_id`). 그 후보 칸의 이벤트는
+  `scope` `CELL` · `section_key` `drill` · `week_id` `null` 이다. 순서는 안전 후보 칸 다음이다. 복사(`CANDIDATE_COPIED`)는
+  훈련 문서 칸의 이벤트라서 훈련 문서 칸 `item_id` 로 고르면 나온다.
 - `ARRANGEMENT_CHANGED` 는 주 단위(`PLAN`)라서 `item_id` 로 고를 때 싣지 않는다 — 전체 이력에만 나온다.
 - 이 계획안에 없는 칸이면 `404 ["item_id"]` (남의 계획안 칸 id 도 같다).
 

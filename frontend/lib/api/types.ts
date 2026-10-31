@@ -108,11 +108,11 @@ export interface AnnualMonth extends MonthInput {
   /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. */
   safety_education_state: "SOURCE_REQUIRED" | "PLACED" | "NOT_PLACED";
   safety_education_source?: "TEACHER_INPUT" | null;
-  safety_education_generation?: MonthlyCell["generation"] | null;
+  safety_education_generation?: MonthlyCellGeneration | null;
   /** THEME_REFERENCE 가 정확히 하나. 교사가 고쳐도 바뀌지 않는다(§6). 모양은 월간 칸과 같다. */
   evidence: MonthlyCell["evidence"];
   /** 처음 무엇이 만들었나. 교사가 고쳐도 바뀌지 않는다 — 「교사 수정됨」은 Audit 이 말한다(§6). */
-  generation: MonthlyCell["generation"];
+  generation: MonthlyCellGeneration;
   /**
    * @deprecated 서버가 보내지 않는다 — 단일 출처 필드는 없앴다(§4 「출처는 세 축이다」). 항상 undefined.
    * 화면 배지가 아직 읽고 있어 남겨둔다. 배지를 무엇으로 정할지는 화면 결정 뒤에 고친다.
@@ -132,7 +132,7 @@ export interface WeeklyCell {
   state: "FILLED" | "EMPTY_VALID" | "EMPTY_UNRESOLVED";
   evidence: MonthlyCell["evidence"];
   /** 교사 입력 칸은 아직 아무것도 만들지 않았으면 null 이다 (§10-2). */
-  generation: MonthlyCell["generation"] | null;
+  generation: MonthlyCellGeneration | null;
   /** 근거로 쓴 부모 월간 칸마다 하나. 「그때 월간은 이랬다」를 남긴다 (§5-3). */
   parent_snapshots: { parent_item_id: string; snapshot_value: string }[];
   /** 교사가 적는 칸(가정 연계 · 행사 · 특별활동)이면 true. 첫 입력 뒤(`MANUAL`)에도 true 다 (W5b). */
@@ -210,7 +210,7 @@ export interface PlayCell {
   item_id: string;
   value: string;
   evidence: MonthlyCell["evidence"];
-  generation: MonthlyCell["generation"];
+  generation: MonthlyCellGeneration;
 }
 export interface PlayProjectAnnualPlan {
   id: number;
@@ -243,7 +243,7 @@ export interface PlayMonthlyCell {
   item_id: string;
   value: string;
   evidence: MonthlyCell["evidence"];
-  generation: MonthlyCell["generation"] | null;
+  generation: MonthlyCellGeneration | null;
 }
 export interface PlayMonthlyActivity {
   /** 이름 칸의 `item_id` 와 같다. 행 주소다. */
@@ -399,6 +399,12 @@ export interface MonthlyInput {
   month: number;
   profile_ref: ProfileRef;
 }
+/** 칸을 만든 방법. 연간 · 놀이 칸이 같이 쓰므로 null 을 넣지 않고 따로 이름을 둔다. */
+export type MonthlyCellGeneration = {
+  method: string;
+  rule_id: string | null;
+  rule_version: string | null;
+};
 /**
  * 칸 하나 (§9-1). 출처는 세 축이다 — `evidence` 는 근거, `generation` 은 만든 방법.
  * 변경 이력(audit)은 응답에 없다.
@@ -417,7 +423,8 @@ export interface MonthlyCell {
     effective_date: string | null;
     display_name: string | null;
   }[];
-  generation: { method: string; rule_id: string | null; rule_version: string | null };
+  /** 훈련 문서 칸은 교사가 쓰거나 후보를 복사하기 전까지 null. 다른 칸은 늘 있다. */
+  generation: MonthlyCellGeneration | null;
 }
 /** 주 · Section · 칸 개수를 정하지 않는다 — 화면은 받은 만큼 그린다. */
 export interface MonthlyPlan {
@@ -496,8 +503,8 @@ export interface MonthlyAuditEvent {
   value_change: { before: string; after: string } | null;
   /** REGENERATED 만. 모양은 칸의 `generation` 과 같다. */
   generation_change: {
-    before: MonthlyCell["generation"];
-    after: MonthlyCell["generation"];
+    before: MonthlyCellGeneration;
+    after: MonthlyCellGeneration;
   } | null;
 }
 /** 목록용. 칸은 단건 조회가 준다. */
