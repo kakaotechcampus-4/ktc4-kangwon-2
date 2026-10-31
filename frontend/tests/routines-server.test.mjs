@@ -1605,12 +1605,27 @@ function recordsPage(t, { rooms = [ROOM_A] } = {}) {
         .filter((part) => typeof part === "string")
         .join(" "),
     type: (node, value) => node.props.onChange({ target: { value } }),
+    /** 적는 칸은 접혀 있다. 날짜·반을 고르려면 먼저 펼친다. */
+    openForm: () => {
+      const button = all(view.tree()).find(
+        (node) =>
+          node?.type === "button" &&
+          all(node.props?.children)
+            .filter((part) => typeof part === "string")
+            .join("")
+            .includes("새 관찰 기록 쓰기"),
+      );
+      assert.ok(button, "「＋ 새 관찰 기록 쓰기」 단추를 찾지 못했다");
+      button.props.onClick();
+      view.render();
+    },
   };
 }
 
 test("P1-3 기록 모아보기에서 고른 반 · 날짜를 그대로 일과 기록으로 들고 간다", async (t) => {
   const view = recordsPage(t);
   await view.flush();
+  view.openForm();
   // 아직 반을 안 골랐다 — 날짜만 들고 간다. 아무 반이나 붙이지 않는다.
   assert.ok(view.links().includes(`/routines?date=${TODAY}&class_id=3`), view.links().join(" , "));
 
@@ -1650,6 +1665,7 @@ test("P1 고른 반의 서버 번호를 모르면 주소를 만들지 않는다"
 test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간다", async (t) => {
   const view = recordsPage(t, { rooms: [ROOM_A, ROOM_B, ROOM_GHOST] });
   await view.flush();
+  view.openForm();
   view.type(view.selects()[0], ROOM_B.id);
   view.render();
   view.type(view.dateInput(), "2026-10-06");
@@ -1663,6 +1679,7 @@ test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간�
 test("P1 CASE B — 고른 반의 서버 번호가 없으면 다른 반으로 보내지 않는다", async (t) => {
   const view = recordsPage(t, { rooms: [ROOM_A, ROOM_B, ROOM_GHOST] });
   await view.flush();
+  view.openForm();
   view.type(view.selects()[0], ROOM_GHOST.id);
   view.render();
   view.type(view.dateInput(), "2026-10-06");

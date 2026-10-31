@@ -34,14 +34,7 @@
   text-align: left;
   border: 2px solid transparent;
   border-radius: 12px;
-  opacity: 0.72;
   cursor: pointer;
-}
-.tab[aria-selected="true"] {
-  opacity: 1;
-}
-.tab:hover {
-  opacity: 1;
 }
 .tabLabel {
   font-size: 13px;
@@ -128,19 +121,6 @@
 .titleRow h3 {
   font-size: 18px;
   font-weight: 700;
-}
-.links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-}
-/* 「준비 중」 안내. 비어 있을 때 카드 사이 간격을 먹지 않게 접는다. */
-.soon {
-  font-size: 12px;
-  color: var(--pg-ink-soft);
-}
-.soon:empty {
-  display: none;
 }
 .linkButton {
   min-height: 44px;
