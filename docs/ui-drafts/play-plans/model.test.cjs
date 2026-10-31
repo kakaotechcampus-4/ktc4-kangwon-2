@@ -61,7 +61,7 @@ test('drill choices and manual writing preserve safety and do not require a mont
 test('new drill candidates preserve the chosen teacher text and invalid responses change nothing',()=>{
   const m=new Editor();m.edit('drill','이미 작성한 내용');const rows=m.snapshot().drillCandidates;
   rows[0].title='새로 만든 훈련 후보';
-  const metadata={mode:'live',model:'openai/gpt-6-luna',fingerprint:'a'.repeat(64),generatedAt:'2026-10-27T00:00:00Z'};
+  const metadata={mode:'live',model:'openai/gpt-6.1-sol',fingerprint:'a'.repeat(64),generatedAt:'2026-10-27T00:00:00Z'};
   m.replaceDrills(rows,metadata);assert.equal(m.state.ops.drill,'이미 작성한 내용');assert.equal(m.state.drillCandidates[0].title,rows[0].title);
   assert.equal(new Editor(7,m.snapshot()).restored,true);
   const before=m.snapshot();assert.throws(()=>m.replaceDrills(rows.slice(1),metadata));assert.deepEqual(m.state,before);

@@ -17,7 +17,7 @@ from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.monthly_plan import ActivityCatalogRef, MonthlyCell, MonthlyGenerationMode, MonthlyPlan
-from ..domain.monthly_template import MonthlyTemplate, TemplateRef
+from ..domain.monthly_template import MonthlyTemplate, RepeatBy, TemplateRef
 from ..domain.monthly_verification import FindingKind
 from ..domain.plan import PlanStatus
 from ..domain.provenance import (
@@ -39,7 +39,7 @@ from ..domain.weekly_plan import (
     WeeklyPlan,
     WeeklyTemplateSnapshot,
 )
-from ..evidence.classification import grounding_class_for
+from ..evidence.classification import SemanticClass, grounding_class_for
 from ..evidence.ports import InstitutionEvidenceRepository, WeeklyEvidenceClassificationRepository
 from ..evidence.weekly_classification import WEEKLY_GROUNDING_SCOPE
 from ..retrieval.models import RetrievedEvidence
@@ -63,6 +63,7 @@ from ..rules.monthly_safety import (
     RULE_VERSION as SAFETY_RULE_VERSION,
     assess_safety_education,
 )
+from ..rules.safety_placement import candidate_display_value, placed_safety_candidate
 from ..rules.weekly_verification import SAFETY_GROUNDING_RULE_ID, verify_weekly_plan
 from .monthly_dto import ActivityCatalogSelector, SafetyRuleSelector
 from .monthly_errors import MonthlyApplicationError
@@ -254,13 +255,20 @@ class GenerateWeeklyPlan:
                 ) from exc
         selection: ActivitySelectionTrace | None = None
         cells = []
-        for section in snapshot.sections:
+        # ADR-051: a repeat_by DAY Section gets one Cell per operating day.
+        for section, day in (
+            (s, d) for s in snapshot.sections
+            for d in (command.operating_days if s.repeat_by is RepeatBy.DAY else (None,))
+        ):
             key = section.section_key
             value, evidence, snapshots = "", (), ()
             generation: GenerationMethodDetail | None = GenerationMethodDetail(
                 GenerationMethod.RULE_ONLY, EMPTY_RULE_ID, WEEKLY_RULE_VERSION
             )
-            proposed = outcome.value(key) if outcome is not None else None
+            if outcome is None:
+                proposed = None
+            else:  # an unresolved day stays empty; no other day fills it (WD-3)
+                proposed = outcome.day_value(key, day.value) if day is not None else outcome.value(key)
             if key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
                 generation = None  # teacher input only (§6-2, §10-2)
             elif proposed is not None:
@@ -281,7 +289,15 @@ class GenerateWeeklyPlan:
                 # Cell is copied and cited. The week claims no placement of its own.
                 generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, SAFETY_RULE_ID, SAFETY_RULE_VERSION)
                 placed = _parent_cell(parent, key, period.week_id)
-                if placed is not None and placed.safety is not None and placed.value.strip():
+                candidate = placed_safety_candidate(parent, period.week_id)
+                if candidate is not None and candidate.cell.value.strip():
+                    # S-1: the week reads its placed candidate, labelled as the monthly plan shows it.
+                    value = candidate_display_value(candidate)
+                    evidence, snapshots = (parent_evidence,), (_cited(lineage, candidate.cell),)
+                    generation = GenerationMethodDetail(
+                        GenerationMethod.RULE_ONLY, SAFETY_COPY_RULE_ID, WEEKLY_RULE_VERSION
+                    )
+                elif placed is not None and placed.safety is not None and placed.value.strip():
                     value = placed.value
                     evidence, snapshots = (parent_evidence,), (_cited(lineage, placed),)
                     generation = GenerationMethodDetail(
@@ -315,6 +331,7 @@ class GenerateWeeklyPlan:
                 )),
                 parent_snapshots=snapshots,
                 source_label=section.source_label,
+                day=day,
             ))
 
         plan = WeeklyPlan(
@@ -432,7 +449,8 @@ def llm_context(
         week_periods=(period,),
         activity_catalog=catalog,
         constraint_assessments=constraint_assessments,
-        grounding_classes=snapshot_grounding_classes(snapshot),
+        # Weekly grounds indoor_alternative with its own class below (W3c), not the Monthly block.
+        grounding_classes=snapshot_grounding_classes(snapshot) - {SemanticClass.INDOOR_ALTERNATIVE},
     )
     fingerprint = packet_fingerprint(packet)
     classified: dict[str, tuple[RetrievedEvidence, ...]] = {}
@@ -595,7 +613,8 @@ def _weekly_request(
                 evidence += [(i.evidence_ref, i.text, i.grounding_class.value) for i in items]
         elif key in classified:  # W3c: grounded only by its own class (§7); no parent counterpart
             items = classified[key]
-            targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value))
+            days = tuple(d.value for d in operating_days) if section.repeat_by is RepeatBy.DAY else ()
+            targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value, days=days))
             klass = next(c for c, k in WEEKLY_GROUNDING_SCOPE.items() if k == key)
             evidence += [(i.record_id, i.record.text, klass.value) for i in items]
         elif key == OUTDOOR_KEY and outdoor.ranked:
@@ -623,6 +642,7 @@ def _weekly_request(
         evidence=tuple(dict.fromkeys(evidence)),
         reference_candidates=tuple((c.activity_id, c.label) for c in outdoor.ranked[:OUTDOOR_CANDIDATE_LIMIT]),
         packet_fingerprint=fingerprint,
+        curriculum=packet.curriculum,
     )
 
 

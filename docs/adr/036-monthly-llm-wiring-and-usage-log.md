@@ -21,7 +21,7 @@ GenerateMonthlyPlan / RegenerateMonthlyPlanItem          (Core)
   → MonthlyLlmProvider 포트
   → EliceOpenAiMonthlyAdapter — 요청 모양 · strict json_schema · 응답 해석   (Core)
   → transport = backend/app/shared/llm 의 post_json        (Backend — 주소 · 키 · LLM_MODE · 오류 3종)
-  → 엘리스 (gpt-6-luna, ADR-023)
+  → 엘리스 (gpt-6.1-sol, ADR-023)
 ```
 
 - **Backend 에서 LLM 으로 나가는 문은 `shared/llm` 하나다.** 연간 · 월간 · 문서가 같은 문을 쓴다.

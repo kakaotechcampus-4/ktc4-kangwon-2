@@ -13,6 +13,7 @@ import re
 from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.monthly_template import RepeatBy, SectionRole, TemplateSection
 from ..domain.monthly_template_profile import (
+    DRILL_SECTION_KEY,
     INSTITUTION_INPUT_SECTION_KEYS,
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
 )
@@ -27,10 +28,29 @@ MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 # Used instead of the two above when the Context Packet carries safety placement.
 MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v16"
 MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v16"
-MONTHLY_MODEL = "openai/gpt-6-luna"
+# v1 requests carrying approved curriculum or confirmed annual subthemes.
+MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v19"
+MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v11"
+MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v14"
+MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v17"
+MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v17"
+# Appended to any version above when indoor_alternative is an LLM target; requests
+# without it keep their version and prompt bytes.
+MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v1"
+# Appended when the Context Packet carries the eight safety candidates (S-1).
+MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v1"
+# A candidate is a month_sections entry keyed safety_education.<slot>; Template
+# section keys hold no dot, so these never collide with a Section.
+SAFETY_CANDIDATE_PREFIX = "safety_education."
+# Appended when the Context Packet carries drill topics.
+MONTHLY_DRILL_CANDIDATES_PROMPT_TAG = "+drill-candidates-v1"
+# A drill candidate is a month_sections entry keyed drill.<topic_id>.
+DRILL_CANDIDATE_PREFIX = "drill."
+CANDIDATE_PREFIXES = (SAFETY_CANDIDATE_PREFIX, DRILL_CANDIDATE_PREFIX)
+MONTHLY_MODEL = "openai/gpt-6.1-sol"
 # Providers may report the requested family without the vendor prefix, or the
-# dated snapshot they resolved it to (e.g. "gpt-6-luna-2026-10-07"). Elice answers
-# with the bare family name ("gpt-6-luna"), which is why the prefix is stripped here.
+# dated snapshot they resolved it to (e.g. "gpt-6.1-sol-2026-10-07"). Elice answers
+# with the bare family name ("gpt-6.1-sol"), which is why the prefix is stripped here.
 _MONTHLY_MODEL_SNAPSHOT = re.compile(
     re.escape(MONTHLY_MODEL.rsplit("/", 1)[-1]) + r"(?:-(\d{4}-\d{2}-\d{2}))?"
 )
@@ -62,7 +82,7 @@ def generation_target_sections(snapshot: TemplateSnapshot) -> tuple[TemplateSect
     never invented, and Template-specific Sections have no approved generation
     policy. They all stay in the Snapshot; they are just not generation targets.
     """
-    excluded = INSTITUTION_INPUT_SECTION_KEYS | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS
+    excluded = INSTITUTION_INPUT_SECTION_KEYS | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS | {DRILL_SECTION_KEY}
     return tuple(
         section
         for section in snapshot.sections

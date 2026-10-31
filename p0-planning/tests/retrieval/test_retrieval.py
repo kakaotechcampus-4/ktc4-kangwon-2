@@ -16,6 +16,7 @@ from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.evidence.classification import (
+    GROUNDING_SCOPE,
     EvidenceSemanticClassification,
     SemanticClass,
 )
@@ -211,7 +212,7 @@ def _classified_store():
     return store, classification
 
 
-_ALL_CLASSES = frozenset(set(SemanticClass) - {SemanticClass.EXCLUDED})
+_ALL_CLASSES = frozenset(GROUNDING_SCOPE)  # the Monthly classification's classes; indoor uses the Weekly one
 
 
 def test_section_blocks_hold_only_their_approved_class_and_drop_excluded():
@@ -264,8 +265,8 @@ def test_real_section_scoped_retrieval_is_deterministic_and_class_pure():
 
     assert first == retriever.retrieve(request)
     assert first.retrieval_version == "monthly-evidence-retrieval-v0.3.0"
-    for semantic_class, name in CLASS_BLOCKS.items():
-        items = first.block(name).items
+    for semantic_class in _ALL_CLASSES:
+        items = first.block(CLASS_BLOCKS[semantic_class]).items
         assert items
         assert all(classification.class_of(item.record) is semantic_class for item in items)
         assert all(item.record.week_position is None for item in items)

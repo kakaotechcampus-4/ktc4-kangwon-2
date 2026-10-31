@@ -42,7 +42,7 @@ AI 출력 검사를 ADR-037 의 세 단계(검사 전 차단 · 저장을 막는
 | 생성 경로 | **월간 경유만.** 연간 `CONFIRMED` → 월간 → 월간 `CONFIRMED` → 주간. 월간을 안 쓰는 원(`uses_monthly = false`)은 P0 미지원 | `[결정]` ADR-030 PM-04 · api-spec §9 |
 | 출력 형태 | **별도 주간계획안 하나.** 주간 · 일일 보육일지의 계획 칸은 P0 미지원. 의미 구조(WeeklyPlan)와 출력 위치는 나눈다 | `[결정]` ADR-030 「후속 결정」(U-10) |
 | 요일 | 기본 월~금 5일. 원 설정으로 토요일을 켠다. 2주 단위는 지원하지 않는다 | `[결정]` ADR-030 WQ-01 |
-| 요일별 값 | P0 는 주 단위 값만. 요일별 활동은 칸 하나 안 목록. `repeat_by = DAY` 는 후속 | `[결정]` ADR-030 WQ-02 |
+| 요일별 값 | 주 단위 값이 기본. **대·소집단 활동 · 특별활동만 요일 칸**(`repeat_by = DAY`, Template v0.2.0). 나머지 요일별 내용은 칸 하나 안 목록 | `[결정]` ADR-030 WQ-02 · ADR-051 |
 | Template 승인 | 주간 Template 도 `PENDING_HUMAN_REVIEW` 로 발행 → 실제 담당자가 승인. 절차 승인이지 개별 Template 승인이 아니다 | `[결정]` ADR-030 WQ-03 · ADR-027 |
 | 확정 취소 | 계획안(연간 · 월간 · 주간)에는 없다 | `[결정]` ADR-030 PM-03 |
 | Rule / LLM | Rule 이 후보 · 근거 · 제약 범위를 정함 → LLM 이 그 안에서 값의 의미를 정함 → Rule 이 결과를 검사. **생성은 문서 단위 배치로 부른다(주간 한 주)** | `[결정]` ADR-032 (ADR-014 보충) |
@@ -60,8 +60,8 @@ WeeklyPlan  (classroom 하나 × WeekId 하나)
 ├─ operating_days    MON..FRI | MON..SAT   ← 생성 시점 원 설정 스냅샷. 토요일은 여기에만
 ├─ target_ages       {3} | {4,5} …         ← ADR-038 연령 집합
 ├─ parent_lineage    월간 CONFIRMED plan    ← Context · 제약. 칸에 그대로 복사하지 않는다
-├─ template_snapshot 주간 전용 스냅샷 (Profile 없음) · 주간 Template A v0.1.0 (PENDING_HUMAN_REVIEW)
-└─ sections[]  (repeat_by = NONE 만 · Section 마다 칸 하나)
+├─ template_snapshot 주간 전용 스냅샷 (Profile 없음) · 주간 Template A v0.1.0 · 요일 칸 판 v0.2.0 (둘 다 승인, 생성 전환은 후속)
+└─ sections[]  (NONE = Section 마다 칸 하나 · DAY = 운영 요일마다 칸 하나, ADR-051)
    ├─ theme · focus · goals · basic_habit            생성 — 월간 승인 근거 분류 재사용
    ├─ indoor_play · indoor_alternative · group_activity
    │                                                 생성 — 주간 근거 분류(새 판, 사람 승인 뒤). 승인 전엔 빈 칸
@@ -93,7 +93,7 @@ WeeklyPlan.operating_days   (MON, TUE, WED, THU, FRI) 또는 (… , SAT)
 표시 기간                 week_period.start_date ~ (operating_days 의 마지막 요일)
 ```
 
-- 토요일이 바꾸는 것은 **표시 기간과 칸 안 요일 목록뿐**이다. WQ-02 로 값은 주 단위이므로 Section · 칸 수는 같다.
+- 토요일이 바꾸는 것은 **표시 기간, 칸 안 요일 목록, `DAY` Section 의 칸 수**(5 → 6, ADR-051)다. 나머지 Section 은 주 단위 값이라 칸 수가 같다.
 - 토요일만 다음 달로 넘어가는 주(예: 금요일이 말일)는 표시 기간이 다음 달 1일까지 간다. 소속 달 · 주차는 그대로다.
 - 일요일은 받지 않는다(PM 결정 범위 밖).
 
@@ -174,7 +174,7 @@ WeeklyPlan.operating_days   (MON, TUE, WED, THU, FRI) 또는 (… , SAT)
 | `status` | `DRAFT` · `CONFIRMED` | 같음 |
 | `parent_lineage` | 부모 월간 (계획 단위, §5-3) | 월간은 부모 연간 |
 | `template_snapshot` | 주간 전용 스냅샷 (§5-2) | **다른 타입** |
-| `sections[]` ▸ `cells[]` | 칸. **모든 Section 이 `repeat_by = NONE`** → Section 마다 칸 하나 | 월간은 `NONE` · `WEEK` |
+| `sections[]` ▸ `cells[]` | 칸. `NONE` → Section 마다 칸 하나, `DAY` → 운영 요일마다 칸 하나(`day` 필드, ADR-051) | 월간은 `NONE` · `WEEK` |
 | `constraint_assessments` · `verification_report` | 검증 결과 | 같음 |
 | `activity_catalog_ref` | 쓴 Activity Catalog 판 | 같음 |
 | `audit` | 변경 이력 | 같음 |
@@ -242,7 +242,7 @@ WeeklyPlan.operating_days   (MON, TUE, WED, THU, FRI) 또는 (… , SAT)
 - **교사 입력 칸은 생성하지 않는다.** `[선례]` 월간도 `event_schedule` 을 기관 입력 전용으로 두고, 생성 경로에 들어가면 막는다(api-spec §9-1 `VALIDATION_FAILED` 「기관 입력 Section」).
   `[실측]` W0 §6-3: 가정 알림 · 행사 날짜 · 특별활동 시간표는 연간에 없는 기관 운영 정보라, 만들면 없는 사실이 된다.
 - `event_schedule` · `special_program` 은 W0 에서 과반(6~7 · 7기관)이라 **항상 켜진 교사 입력 칸**으로 둔다. 켜고 끄는 기능(Profile)을 따로 만들지 않는다.
-- 요일별 값(대·소집단 · 행사 · 특별활동)은 칸 하나 안 목록으로 쓴다(WQ-02).
+- 행사의 요일별 값은 칸 하나 안 목록으로 쓴다(WQ-02). 대·소집단 활동 · 특별활동은 Template v0.2.0 부터 요일 칸이다(ADR-051).
 - **후속 후보** — 이번 Template 에 넣지 않는다: `supplies` 준비물(1기관) · 등원 및 맞이하기 · 점심 · 낮잠(6기관, 생활지도 문장) ·
   사회관계증진(4) · 지난주 실행 기록(1, 계획이 아니라 기록) · 기관 고유 행(이달의 책 · 종교 행 · ESG 등).
   월간 Template 의 `candidate_sections_not_yet_defined` 처럼 후보 목록에만 적는다.

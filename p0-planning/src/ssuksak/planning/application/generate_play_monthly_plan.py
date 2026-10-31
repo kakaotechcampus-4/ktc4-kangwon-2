@@ -18,7 +18,7 @@ from typing import Protocol
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
 from ..domain.drill_topic_reference import DrillTopic, DrillTopicCatalog
-from ..domain.errors import DomainError, InvalidDomainValueError
+from ..domain.errors import DomainError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.plan import PlanStatus
@@ -60,12 +60,10 @@ from ..domain.provenance import (
     GenerationMethodDetail,
     SplitAxis,
 )
-from ..domain.safety_placement import SafetyKind
 from ..domain.safety_rule import SafetyLegalRule
 from ..domain.year_month import YearMonth
-from ..evidence.models import SourceSection
 from ..evidence.ports import InstitutionEvidenceRepository
-from ..evidence.safety_classification import SafetyEvidenceClassification, SafetyReferenceKind
+from ..evidence.safety_classification import SafetyEvidenceClassification
 from ..evidence.safety_quality import SafetyReferenceQuality
 from ..planner.contracts import ProposalRejectedError
 from ..planner.play_monthly import (
@@ -73,7 +71,6 @@ from ..planner.play_monthly import (
     PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
     PlayMonthlyIssue,
     PlayMonthlyProvider,
-    SafetySlot,
     build_play_monthly_request,
     build_repair_request,
     changed_locations,
@@ -84,19 +81,18 @@ from ..planner.play_monthly import (
     validate_play_monthly,
 )
 from ..rules.monthly_week_periods import canonical_week_periods
-from ..rules.safety_placement import (
-    STATUTORY_SHORT_LABELS,
-    official_ref,
-    select_supplemental_primaries,
-)
+from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
 from .generate_play_project_plan import CurriculumReferenceRepository
 from .play_project_lifecycle import PLAY_PROJECT_LAYOUTS
 from .ports import Clock, IdGenerator, PlanRepository, SafetyLegalRuleRepository
+from .safety_candidates import (
+    SafetyCandidateError,
+    candidate_evidence,
+    safety_candidate_slots,
+)
 
 SYSTEM_ACTOR = "play_monthly_application"
 RULE_ID = "play_monthly.generate"
-LIFE_SAFETY_LABEL = "life_safety"
-LIFE_SAFETY_SLOTS = ("life_safety_1", "life_safety_2")
 
 # Header layout measured from the reference monthly plan, not a national standard. Specialized-
 # program sub-headers are that institution's own programs and are not reproduced.
@@ -153,10 +149,6 @@ class PlayMonthlyGenerationError(DomainError):
 
 class DailyLifeReferenceRepository(Protocol):
     def get_catalog(self, catalog_id: str, catalog_version: str) -> DailyLifeCatalog | None: ...
-
-
-class DrillTopicReferenceRepository(Protocol):
-    def get_catalog(self, catalog_id: str, catalog_version: str) -> DrillTopicCatalog | None: ...
 
 
 class SafetyClassificationRepository(Protocol):
@@ -226,23 +218,10 @@ class GeneratePlayMonthlyPlan:
         parent, snapshot = self._parent(command)
         catalog, daily = self._daily_life_references(command)
         drills, drill_topics = self._drill_topics(command, catalog)
-        rule, store, life_slots, records = self._safety_references(command)
+        rule, store, safety_slots, records = self._safety_references(command)
         month = command.target_month
         weeks = canonical_week_periods(month)
         period = next(p for p in parent.periods if p.period.key == snapshot.period_key)
-        statutory_slots = tuple(
-            SafetySlot(
-                slot=category.category_id,
-                kind=SafetyKind.STATUTORY,
-                label=STATUTORY_SHORT_LABELS.get(category.category_id, category.official_label),
-                allowed=tuple(
-                    (official_ref(category.category_id, i), item)
-                    for i, item in enumerate(category.content_items, 1)
-                ),
-                category_id=category.category_id,
-            )
-            for category in rule.categories
-        )
         layout = PLAY_MONTHLY_LAYOUT_V0_2
         counts = {"together": layout.together_count, "free_play": layout.free_play_count}
         request = build_play_monthly_request(
@@ -263,7 +242,7 @@ class GeneratePlayMonthlyPlan:
                 for p in snapshot.plays
             ),
             catalog=catalog,
-            safety_slots=statutory_slots + life_slots,
+            safety_slots=safety_slots,
             habit_entries=daily.of_kind(DailyLifeKind.HABIT),
             health_entries=daily.of_kind(DailyLifeKind.HEALTH),
             nutrition_entries=daily.of_kind(DailyLifeKind.NUTRITION),
@@ -407,22 +386,9 @@ class GeneratePlayMonthlyPlan:
 
         def safety(item) -> SafetyCandidate:
             slot = next(s for s in request.safety_slots if s.slot == item.slot)
-            texts = dict(slot.allowed)
-            if slot.kind is SafetyKind.STATUTORY:
-                evidence = tuple(
-                    EvidenceSource(EvidenceSourceType.SAFETY_RULE, ref, rule.legal_rule_version, display_name=texts[ref])
-                    for ref in item.refs
-                )
-            else:
-                evidence = tuple(
-                    EvidenceSource(
-                        EvidenceSourceType.INSTITUTION_SAMPLE,
-                        ref,
-                        store.ingestion_version,
-                        display_name=records[ref].source_label,
-                    )
-                    for ref in item.refs
-                )
+            evidence = candidate_evidence(
+                slot, item.refs, legal_rule_version=rule.legal_rule_version, store=store, records=records
+            )
             return SafetyCandidate(
                 cell(f"safety:{slot.slot}", f"safety_education.{slot.slot}", item.text, evidence),
                 slot.kind,
@@ -601,26 +567,13 @@ class GeneratePlayMonthlyPlan:
         self, command: GeneratePlayMonthlyPlanCommand, catalog: CurriculumCatalog
     ) -> tuple[DrillTopicCatalog, tuple[DrillTopic, ...]]:
         drills = self._drills.get_catalog(command.drill_catalog_id, command.drill_catalog_version)
-        if drills is None:
-            raise _fail("DRILL_REFERENCE_NOT_FOUND")
-        if not drills.is_active:
-            raise _fail("DRILL_REFERENCE_NOT_ACTIVE")
-        if (drills.curriculum_catalog_id, drills.curriculum_catalog_version) != (
-            catalog.catalog_id,
-            catalog.catalog_version,
-        ):
-            raise _fail("DRILL_CURRICULUM_MISMATCH")
-        if any(catalog.get(topic.content_id) is None for topic in drills.topics):
-            raise _fail("DRILL_UNKNOWN_CONTENT_ID")
-        count = PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
-        eligible = drills.for_month(command.target_month.calendar_month)
-        # Month-limited topics (e.g. 폭설 in winter) first, then catalog order.
-        # ponytail: fixed order, so a month without a seasonal topic always gets the same five;
-        # add rotation only if teachers ask for variety.
-        topics = sorted(eligible, key=lambda t: len(t.applicable_months) == 12)[:count]
-        if len(topics) < count:
-            raise _fail("DRILL_TOPICS_INSUFFICIENT")
-        return drills, tuple(topics)
+        try:
+            topics = select_drill_topics(
+                drills, catalog, command.target_month.calendar_month, PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
+            )
+        except DrillTopicError as error:
+            raise _fail(error.code) from None
+        return drills, topics
 
     def _safety_references(self, command: GeneratePlayMonthlyPlanCommand):
         rule: SafetyLegalRule | None = self._safety_rules.get_legal_rule(command.legal_rule_version)
@@ -628,68 +581,20 @@ class GeneratePlayMonthlyPlan:
             raise _fail("SAFETY_RULE_NOT_FOUND")
         if not rule.is_active:
             raise _fail("SAFETY_RULE_NOT_ACTIVE")
-        if any(not category.content_items for category in rule.categories):
-            raise _fail("SAFETY_RULE_INCOMPLETE")
         store = self._evidence.get_store()
-        classification = self._classification.get_classification()
-        quality = self._quality.get_quality()
-        if not (classification.runtime_active and quality.runtime_active):
-            raise _fail("SAFETY_EVIDENCE_NOT_ACTIVE")
-        if (classification.classification_version, quality.quality_version) != (
-            command.safety_classification_version,
-            command.safety_quality_version,
-        ):
-            raise _fail("SAFETY_EVIDENCE_VERSION_MISMATCH")
         try:
-            classification.require_bound_to(store.content_sha256)
-            classification.require_legal_rule(rule)
-            quality.require_bound_to(store.content_sha256, classification.classification_version)
-        except InvalidDomainValueError:
-            raise _fail("SAFETY_EVIDENCE_STORE_MISMATCH") from None
-
-        month = command.target_month.calendar_month
-        records = {}
-        candidates = []
-        # Target month first (tier 0), then other months' approved MONTH_INDEPENDENT contents.
-        for record in sorted(store.records, key=lambda r: (r.month != month, r.record_id)):
-            if not (
-                record.general_grounding_eligible
-                and record.source_section is SourceSection.SAFETY_EDUCATION
-                and record.text is not None
-            ):
-                continue
-            reference = classification.runtime_reference(record)
-            if (
-                reference is None
-                or reference.kind is not SafetyReferenceKind.SUPPLEMENTAL_REFERENCE
-                or reference.supplemental_label != LIFE_SAFETY_LABEL
-            ):
-                continue
-            tier = 0 if record.month == month else 1
-            group = (
-                quality.usable_topic_group(record) if tier == 0 else quality.month_independent_topic_group(record)
+            slots, records = safety_candidate_slots(
+                rule,
+                store,
+                self._classification.get_classification(),
+                self._quality.get_quality(),
+                month=command.target_month.calendar_month,
+                classification_version=command.safety_classification_version,
+                quality_version=command.safety_quality_version,
             )
-            if group is not None:
-                records[record.record_id] = record
-                candidates.append((record.record_id, LIFE_SAFETY_LABEL, group, tier))
-        try:
-            picks = select_supplemental_primaries(len(LIFE_SAFETY_SLOTS), tuple(candidates))
-        except ValueError:
-            # Never shrink the eight-candidate contract to six.
-            raise _fail("LIFE_SAFETY_GROUNDING_INSUFFICIENT") from None
-        groups = {ref: group for ref, _, group, _ in candidates}
-        slots = tuple(
-            SafetySlot(
-                slot=slot,
-                kind=SafetyKind.SUPPLEMENTAL,
-                label="생활안전",
-                allowed=tuple((ref, records[ref].text) for ref in (primary, *support)),
-                topic_group=groups[primary],
-            )
-            for slot, (primary, support) in zip(LIFE_SAFETY_SLOTS, picks)
-        )
+        except SafetyCandidateError as error:
+            raise _fail(error.code) from None
         return rule, store, slots, records
-
 
 def _rejected(issues: tuple[PlayMonthlyIssue, ...]) -> ProposalRejectedError:
     return ProposalRejectedError(tuple(dict.fromkeys(i.code for i in issues)), issues)
