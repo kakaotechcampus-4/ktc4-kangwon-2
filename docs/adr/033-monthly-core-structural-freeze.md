@@ -49,6 +49,7 @@ OD-M04 일부 대체)은 개인 결정 문서(`docs/open-decisions.md`, 저장�
   - selector 의 `supplemental=False` 면 보충 주를 만들지 않는다 — 법정 주만 채우고 나머지 주 칸은 `EMPTY_VALID` 다.
 - **selector 가 없으면** 「근거 필요」 경로다 — 안전교육 칸은 `EMPTY_UNRESOLVED`, 제약 상태는 `NOT_VERIFIED_SOURCE_REQUIRED`.
   Backend 월간 생성은 v2 를 `supplemental=False` 로 넘긴다(2026-10-22 · 10-23 결정, api-spec §9-1 「안전교육」).
+  → **새 계획안은 ADR-052 로 대체**(안전교육 후보 8개 + 교사 주별 배치, ADR-052 는 제안). 이미 만든 계획안은 저장된 그대로다.
 - 연간 법정 시수는 평가하지 않는다 — `SAFETY_ANNUAL_HOURS_NOT_VERIFIED`(NOT_VERIFIED · WARNING). `legal_hours` 규칙 자체는 DEFERRED 다.
 - 법정 6개 영역이 아닌 이름표(「생활안전」 등)를 6개 영역에 자동으로 맞추지 않는다. `emergency_response` · `drill` 은 따로 둔다.
 
