@@ -472,7 +472,9 @@ test("반 하나라 담당 반 Select가 없으면 다음에서 빈 primary를 �
   await view.next().props.onClick();
   await view.flush();
   assert.equal(settings.loadClassSettings().primaryClassId, "");
-  assert.equal(settings.chosenClassFor(settings.loadClassSettings()), null);
+  // 저장된 주 반은 그대로 빈 값이다. 다만 반이 하나뿐이면 화면은 그 반을 본다 —
+  // 고를 것이 없으니 짐작이 아니고, 다른 반 기록이 뜰 수도 없다.
+  assert.equal(settings.chosenClassFor(settings.loadClassSettings()).id, CLASS_A.id);
 });
 
 test("온보딩 form을 제출하지 않은 직접 Routines scope는 strict no-primary를 유지한다", (t) => {

@@ -24,7 +24,6 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
   const [visible, setVisible] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,8 +61,9 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
     try {
       if (signup) {
         await registerAccount(String(form.get("name")), email, password);
-        setDone(true);
-        setBusy(false);
+        if (!startDemoSession())
+          throw new Error("가입은 됐어요. 로그인 화면에서 다시 로그인해주세요.");
+        router.replace(loginDestination());
       } else {
         if (devLogin) await verifyDevAccount(email, password);
         else await verifyAccount(email, password);
@@ -78,120 +78,107 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   }
   return (
     <AuthFrame>
-      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[12px] font-semibold text-success">
+      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[13px] font-semibold text-success">
         {signup ? "쌤플과 함께 시작해요" : "다시 만나 반가워요"}
       </span>
       <h2 className="mt-4 font-display text-[30px] font-bold sm:text-[36px]">
-        {done ? "가입을 완료했어요" : signup ? "함께 시작해요" : "반가워요, 선생님"}
+        {signup ? "함께 시작해요" : "반가워요, 선생님"}
       </h2>
-      <p className="mt-1 text-xs text-ink-soft">
-        {done
-          ? "로그인하고 우리 반 초기 설정을 시작해보세요."
-          : "우리 반의 새로운 하루를 준비해 보세요."}
-      </p>
-      {done ? (
-        <Link href="/login" className={button}>
-          로그인하러 가기
-          <Icon name="arrow" className="h-4 w-4" />
-        </Link>
-      ) : (
-        <>
-          <form noValidate onSubmit={submit} className="mt-7 space-y-5">
-            {signup && (
-              <label className={label}>
-                선생님 이름
-                <input
-                  className={input}
-                  name="name"
-                  autoComplete="name"
-                  placeholder="이름을 입력해주세요"
-                  required
-                  maxLength={40}
-                  disabled={busy}
-                />
-              </label>
-            )}
-            <label className={label}>
-              이메일
-              <input
-                className={input}
-                name="email"
-                type="email"
-                autoComplete="username"
-                placeholder="teacher@example.com"
-                required
-                maxLength={254}
-                disabled={busy}
-              />
-            </label>
-            <div>
-              <label htmlFor="auth-password" className={label}>
-                비밀번호
-              </label>
-              <div className="relative">
-                <input
-                  id="auth-password"
-                  className={`${input} pr-14`}
-                  name="password"
-                  type={visible ? "text" : "password"}
-                  autoComplete={signup ? "new-password" : "current-password"}
-                  placeholder={signup ? "8자 이상 입력해주세요" : "비밀번호를 입력해주세요"}
-                  required
-                  minLength={signup ? 8 : undefined}
-                  maxLength={128}
-                  disabled={busy}
-                />
-                <button
-                  type="button"
-                  aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
-                  aria-pressed={visible}
-                  onClick={() => setVisible(!visible)}
-                  className="absolute bottom-1 right-1 min-h-11 px-2 text-[12px] font-medium text-success"
-                >
-                  {visible ? "숨김" : "보기"}
-                </button>
-              </div>
-            </div>
-            {signup && (
-              <label className={label}>
-                비밀번호 확인
-                <input
-                  className={input}
-                  name="confirm"
-                  type={visible ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="비밀번호를 한 번 더 입력해주세요"
-                  required
-                  minLength={8}
-                  maxLength={128}
-                  disabled={busy}
-                />
-              </label>
-            )}
-            {error && (
-              <p
-                role="alert"
-                className="rounded-md border border-note-line bg-note-soft p-3 text-xs leading-relaxed text-sun-ink"
-              >
-                {error}
-              </p>
-            )}
-            <button className={button} disabled={busy}>
-              {busy ? "처리 중…" : signup ? "회원가입" : "로그인"}
-              {!busy && <Icon name="arrow" className="h-4 w-4" />}
-            </button>
-          </form>
-          <p className="mt-5 text-center text-xs text-ink-soft">
-            {signup ? "이미 계정이 있으신가요?" : "아직 계정이 없으신가요?"}
-            <Link
-              href={signup ? "/login" : "/signup"}
-              className="ml-2 font-semibold text-success underline underline-offset-4"
+      <p className="mt-1 text-xs text-ink-soft">우리 반의 새로운 하루를 준비해 보세요.</p>
+      <form noValidate onSubmit={submit} className="mt-7 space-y-5">
+        {signup && (
+          <label className={label}>
+            선생님 이름
+            <input
+              className={input}
+              name="name"
+              autoComplete="name"
+              placeholder="이름을 입력해주세요"
+              required
+              maxLength={40}
+              disabled={busy}
+            />
+          </label>
+        )}
+        <label className={label}>
+          이메일
+          <input
+            className={input}
+            name="email"
+            type="email"
+            autoComplete="username"
+            placeholder="teacher@example.com"
+            required
+            maxLength={254}
+            disabled={busy}
+          />
+        </label>
+        <div>
+          <label htmlFor="auth-password" className={label}>
+            비밀번호
+          </label>
+          <div className="relative">
+            <input
+              id="auth-password"
+              className={`${input} pr-14`}
+              name="password"
+              type={visible ? "text" : "password"}
+              autoComplete={signup ? "new-password" : "current-password"}
+              placeholder={signup ? "8자 이상 입력해주세요" : "비밀번호를 입력해주세요"}
+              required
+              minLength={signup ? 8 : undefined}
+              maxLength={128}
+              disabled={busy}
+            />
+            <button
+              type="button"
+              aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
+              aria-pressed={visible}
+              onClick={() => setVisible(!visible)}
+              className="absolute bottom-1 right-1 min-h-11 px-2 text-[13px] font-medium text-success"
             >
-              {signup ? "로그인" : "회원가입"}
-            </Link>
+              {visible ? "숨김" : "보기"}
+            </button>
+          </div>
+        </div>
+        {signup && (
+          <label className={label}>
+            비밀번호 확인
+            <input
+              className={input}
+              name="confirm"
+              type={visible ? "text" : "password"}
+              autoComplete="new-password"
+              placeholder="비밀번호를 한 번 더 입력해주세요"
+              required
+              minLength={8}
+              maxLength={128}
+              disabled={busy}
+            />
+          </label>
+        )}
+        {error && (
+          <p
+            role="alert"
+            className="rounded-md border border-note-line bg-note-soft p-3 text-xs leading-relaxed text-sun-ink"
+          >
+            {error}
           </p>
-        </>
-      )}
+        )}
+        <button className={button} disabled={busy}>
+          {busy ? "처리 중…" : signup ? "회원가입" : "로그인"}
+          {!busy && <Icon name="arrow" className="h-4 w-4" />}
+        </button>
+      </form>
+      <p className="mt-5 text-center text-xs text-ink-soft">
+        {signup ? "이미 계정이 있으신가요?" : "아직 계정이 없으신가요?"}
+        <Link
+          href={signup ? "/login" : "/signup"}
+          className="ml-2 font-semibold text-success underline underline-offset-4"
+        >
+          {signup ? "로그인" : "회원가입"}
+        </Link>
+      </p>
     </AuthFrame>
   );
 }
