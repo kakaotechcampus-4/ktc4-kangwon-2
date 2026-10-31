@@ -540,14 +540,14 @@ function InputPanel(props: {
     >
       {/* 1. 대상 연령 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="age" className="font-semibold text-[15px]">
+        <label htmlFor="age" className="font-semibold text-[17px]">
           대상 연령
         </label>
         <select
           id="age"
           value={age}
           onChange={(e) => onAgeChange(e.target.value as AgeGroup | "")}
-          className="w-full rounded-md px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
+          className="w-full rounded-md px-4 py-3 min-h-[48px] text-base lg:text-[17px] border bg-paper appearance-none"
           style={{
             borderColor: "var(--pg-line)",
             backgroundImage: CHEVRON_BG,
@@ -568,7 +568,7 @@ function InputPanel(props: {
       {/* 2. 생성할 계획안 */}
       <section className="flex flex-col gap-2.5">
         <div>
-          <label className="font-semibold text-[15px]">생성할 계획안</label>
+          <label className="font-semibold text-[17px]">생성할 계획안</label>
           <p className="text-[12.5px] mt-0.5 text-ink-soft">여러 개를 함께 선택할 수 있어요</p>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
@@ -586,7 +586,7 @@ function InputPanel(props: {
 
       {planTypes.has("annual") && (
         <fieldset className="min-w-0">
-          <legend className="mb-2.5 font-semibold text-[15px]">연간계획안 형식 (필수)</legend>
+          <legend className="mb-2.5 font-semibold text-[17px]">연간계획안 형식 (필수)</legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {ANNUAL_FORMATS.map((option) => (
               <FormatCard
@@ -602,7 +602,7 @@ function InputPanel(props: {
 
       {/* 3. 기간 선택 (선택한 계획안 종류에 따라 동적으로 표시) */}
       <section className="flex flex-col gap-2.5">
-        <label className="font-semibold text-[15px]">기간 선택</label>
+        <label className="font-semibold text-[17px]">기간 선택</label>
         <label className={ws.field}>
           기준 연도
           <input
@@ -663,7 +663,7 @@ function InputPanel(props: {
                   aria-label="계획안 날짜"
                   value={period.daily.date}
                   onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
-                  className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
+                  className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[15px] border bg-paper"
                   style={{ borderColor: "var(--pg-line)" }}
                 />
               </PeriodBlock>
@@ -674,7 +674,7 @@ function InputPanel(props: {
 
       {/* 4. 추가 요청사항 / 메모 */}
       <section className="flex flex-col gap-2.5">
-        <label htmlFor="memo" className="font-semibold text-[15px]">
+        <label htmlFor="memo" className="font-semibold text-[17px]">
           추가 요청사항 / 메모
         </label>
         <textarea
@@ -685,7 +685,7 @@ function InputPanel(props: {
           placeholder={
             "예) 가을 자연물을 활용한 놀이 활동을 중심으로 작성해주세요.\n예) 실외활동과 미술활동을 포함해주세요."
           }
-          className="w-full rounded-md px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
+          className="w-full rounded-md px-4 py-3 min-h-[140px] text-base lg:text-[15px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
           style={{ borderColor: "var(--pg-line)" }}
         />
         <div className="flex flex-wrap gap-1.5">
@@ -694,7 +694,7 @@ function InputPanel(props: {
               key={s.label}
               type="button"
               onClick={() => onMemoChange(s.text)}
-              className={`text-[13px] min-h-[36px] rounded-full px-3 py-1.5 border transition-[filter] hover:brightness-95 ${
+              className={`text-[15px] min-h-[36px] rounded-full px-3 py-1.5 border transition-[filter] hover:brightness-95 ${
                 s.tone === "peach"
                   ? "text-peach-ink bg-peach-tint border-peach-tint"
                   : "text-mint-ink bg-mint-tint border-mint-tint"
@@ -712,7 +712,7 @@ function InputPanel(props: {
           type="button"
           disabled={!canGenerate}
           onClick={onGenerate}
-          className={`rounded-md py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
+          className={`rounded-md py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[17px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
             canGenerate
               ? "border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover"
               : "bg-line text-ink-soft"
@@ -720,7 +720,7 @@ function InputPanel(props: {
         >
           계획안 생성하기
         </button>
-        <p className="text-[12px] text-center text-ink-soft">
+        <p className="text-[13px] text-center text-ink-soft">
           {canGenerate
             ? "입력한 내용을 바탕으로 계획안을 생성해요"
             : "연령·계획안 종류·형식·날짜를 확인해주세요. 생성 중에는 잠시 기다려주세요"}
@@ -767,7 +767,7 @@ function MonthSelect({ value, onChange }: { value: number; onChange: (v: number)
       aria-label="계획안 월"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[15px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -800,7 +800,7 @@ function WeekSelect({
       aria-label="계획안 주차"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
+      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[15px] border bg-paper appearance-none"
       style={{
         borderColor: "var(--pg-line)",
         backgroundImage: CHEVRON_BG,
@@ -835,11 +835,11 @@ function PeriodBlock({
       style={{ borderColor: "var(--pg-line)" }}
     >
       <span
-        className={`text-[12px] font-mono px-2 py-1 rounded-full text-ink ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
+        className={`text-[13px] font-mono px-2 py-1 rounded-full text-ink ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
       >
         {PLAN_TYPE_LABEL[type]}
       </span>
-      <span className="text-[13px] text-ink-soft">{label}</span>
+      <span className="text-[15px] text-ink-soft">{label}</span>
       <div className="w-full lg:w-auto lg:ml-auto flex items-center gap-2">{children}</div>
     </div>
   );
@@ -869,8 +869,8 @@ function PlanTypeCard({
       >
         <PlanTypeIcon type={type} className="text-ink-soft" />
         <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
-        <span className="text-[12px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
-        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[12px] text-ink-soft">
+        <span className="text-[13px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[13px] text-ink-soft">
           따로 열기
         </span>
       </Link>
@@ -890,9 +890,9 @@ function PlanTypeCard({
     >
       <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
       <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
-      <span className="text-[12px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
+      <span className="text-[13px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
       {!ready && (
-        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[12px] text-ink-soft">
+        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[13px] text-ink-soft">
           준비 중
         </span>
       )}
@@ -1001,7 +1001,7 @@ function IdleState() {
         </p>
       </div>
       <p
-        className="font-mono text-[12px] px-3 py-1 rounded-full border text-ink-soft"
+        className="font-mono text-[13px] px-3 py-1 rounded-full border text-ink-soft"
         style={{ background: "var(--pg-primary-tint)", borderColor: "var(--pg-line)" }}
       >
         TIP · 추천 태그를 누르면 메모가 빠르게 채워져요
