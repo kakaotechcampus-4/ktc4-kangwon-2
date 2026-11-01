@@ -76,6 +76,7 @@ const MONTH_KEYS = [
   "safety_education_state",
   "sub_themes",
   "theme",
+  "week_count",
 ];
 
 test("create · get return the server shape (§4)", async () => {

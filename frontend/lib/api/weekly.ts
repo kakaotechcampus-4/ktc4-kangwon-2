@@ -61,10 +61,16 @@ export const regenerateWeeklyCell = (
     cell(id, itemId) + "/regenerate",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
-/** 확정. 계획안에는 확정 취소가 없다 (ADR-030 PM-03). */
+/** 확정. 풀려면 `unconfirmWeeklyPlan`. */
 export const confirmWeeklyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
   apiRequest<WeeklyPlan>(
     "/api/plans/weekly/" + id + "/confirm",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/** 확정 취소. 이미 초안이면 200 · 그대로, 낡은 revision 은 409 `STALE_WRITE`. */
+export const unconfirmWeeklyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
+  apiRequest<WeeklyPlan>(
+    "/api/plans/weekly/" + id + "/unconfirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
 /** 확정 전 주간계획안을 지운다. 그 주를 다시 만들려면 먼저 지워야 한다 (G5). 확정본은 409 다. */

@@ -22,7 +22,13 @@ const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
 const plans = await import("../lib/api/plans.ts");
 const { ApiError } = await import("../lib/api/client.ts");
-const { createAnnualPlan, putAnnualMonth, confirmAnnualPlan, getAnnualPlanAudit } = plans;
+const {
+  createAnnualPlan,
+  putAnnualMonth,
+  confirmAnnualPlan,
+  getAnnualPlanAudit,
+  unconfirmAnnualPlan,
+} = plans;
 
 const server = setupServer(...handlers);
 let mswFetch, calls, mockQuery;
@@ -109,8 +115,11 @@ test("audit: CREATED · TEACHER_EDITED · CONFIRMED with the server's six keys",
       },
     );
   }
-  const original = plan.months.find((m) => m.month === 10).theme;
-  await putAnnualMonth(plan.id, 10, { theme: "교사가 쓴 10월 주제", sub_themes: [] });
+  const october = plan.months.find((m) => m.month === 10);
+  const original = october.theme;
+  // 확정은 소주제 수 = 주 수를 요구한다(I-A).
+  const sub_themes = Array.from({ length: october.week_count }, (_, i) => i + 1 + "주 놀이");
+  await putAnnualMonth(plan.id, 10, { theme: "교사가 쓴 10월 주제", sub_themes });
   const confirmed = await confirmAnnualPlan(plan.id);
   items = (await getAnnualPlanAudit(plan.id)).items;
   assert.equal(items.length, 15);
@@ -131,6 +140,14 @@ test("audit: CREATED · TEACHER_EDITED · CONFIRMED with the server's six keys",
     system_actor: null,
     value_change: null,
   });
+  // 확정 취소(U): 초안으로 돌아가고 UNCONFIRMED 이 하나 붙는다. 이미 초안이면 그대로다.
+  assert.equal((await unconfirmAnnualPlan(plan.id)).status, "DRAFT");
+  assert.equal((await unconfirmAnnualPlan(plan.id)).status, "DRAFT");
+  items = (await getAnnualPlanAudit(plan.id)).items;
+  assert.deepEqual(
+    items.slice(15).map((e) => [e.type, e.actor]),
+    [["UNCONFIRMED", "user_1"]],
+  );
   for (const e of items) assert.deepEqual(Object.keys(e).sort(), KEYS);
   // 시간순.
   const times = items.map((e) => Date.parse(e.occurred_at));
