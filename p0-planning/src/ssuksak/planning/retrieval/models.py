@@ -68,6 +68,8 @@ class RetrievalRequest:
     safety_keywords: tuple[str, ...] = ()
     # Placed legal categories whose approved STATUTORY_REFERENCE Samples may be retrieved.
     safety_categories: tuple[str, ...] = ()
+    # Annual subthemes of the month (v1). Only the goals block uses them, to fill subtheme gaps.
+    subthemes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_month, YearMonth):
@@ -97,6 +99,8 @@ class RetrievalRequest:
             not isinstance(item, str) or not item.strip() for item in self.safety_keywords
         ):
             raise InvalidDomainValueError("RetrievalRequest.safety_keywords must contain non-blank strings")
+        if not isinstance(self.subthemes, tuple) or any(not isinstance(item, str) for item in self.subthemes):
+            raise InvalidDomainValueError("RetrievalRequest.subthemes must contain strings")
 
 
 @dataclass(frozen=True, slots=True)

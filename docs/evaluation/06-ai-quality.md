@@ -6,6 +6,8 @@
 
 ---
 
+- 주간 요일 양식은 부모 월간의 기관 근거 기반 바깥놀이를 이어 쓰고 승인 생활 문장·기존 v2 작성 기준을 참고한다 — [ADR-053](../adr/053-weekly-approved-reference-context.md) · `p0-planning/tests/adapters/test_weekly_composition.py`.
+
 ## 통과 조건을 먼저 정했다 — 3층 규격
 
 ```
@@ -35,6 +37,7 @@
 - 서술 기준을 글로 먼저 적었다 — [docs/references/관찰일지-서술-기준.md](../references/관찰일지-서술-기준.md) ·
   [관찰일지-챗봇-작성기준.md](../references/관찰일지-챗봇-작성기준.md)
 - 양식 라벨을 표준 키로 고정 — ADR-009
+- 월간 v1 목표 근거는 기존 선정에 글자 기준으로 맞지 않는 연간 소주제를 같은 적격 후보 풀에서 보충하며, 근거 개수와 기관 상한을 유지한다 — `p0-planning/src/ssuksak/planning/retrieval/ranking.py` · `p0-planning/tests/retrieval/test_retrieval.py`
 
 ## 품질에 손대지 않기로 한 것
 

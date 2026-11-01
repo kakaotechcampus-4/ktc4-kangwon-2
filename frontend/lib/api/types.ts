@@ -470,6 +470,17 @@ export interface MonthlyPlan {
       message: string;
     }[];
   };
+  /** 안전교육 후보. 기존 계획안은 `[]` 다 — 비어 있으면 화면은 후보 없이 주별 칸으로 고친다. */
+  safety_candidates: {
+    kind: "STATUTORY" | "SUPPLEMENTAL";
+    category_id: string | null;
+    topic_group: string | null;
+    cell: MonthlyCell;
+  }[];
+  /** 주마다 하나. `display_value` 는 둔 후보 문장(없거나 공백이면 ""). */
+  safety_weeks: { week_id: string; candidate_item_id: string | null; display_value: string }[];
+  /** 응답마다 계산한다. 확정을 막지 않는다. */
+  notices: { code: "SAFETY_UNPLACED" | "SAFETY_BLANK"; week_id: string }[];
   created_at: string;
   confirmed_at: string | null;
 }

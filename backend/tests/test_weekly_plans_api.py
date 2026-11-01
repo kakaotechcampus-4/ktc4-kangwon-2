@@ -981,3 +981,52 @@ def test_v0_2_0_대소집단_요일_칸을_다시_만들면_그_요일만_바뀐
         "THU",
         WEEK,
     )
+
+
+def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world, monkeypatch):
+    """ADR-051 WD-4 — v0.2.0 계획은 월~토 양식에 (section_key, day) 로 채운다(§9-6)."""
+    from lxml import etree
+
+    from app.shared.hwpx import NS, _cells
+
+    monkeypatch.setattr(
+        weekly_composition,
+        "WEEKLY_TEMPLATE_PATH",
+        WEEKLY_TEMPLATE_PATH.with_name("weekly_template_a_v0_2_0.json"),
+    )
+    monkeypatch.setattr(
+        weekly_router,
+        "WEEKLY_TEMPLATE_REF",
+        replace(weekly_router.WEEKLY_TEMPLATE_REF, template_version="weekly-template-a-v0.2.0"),
+    )
+    client.put(
+        f"/api/centers/{world['mine']['center']}/settings", json={"weekly_saturday_enabled": True}
+    )
+    plan = _create(world).json()
+    row = world["session"].get(Plan, plan["id"])
+    saturday = from_jsonable(WeeklyPlan, row.body).operating_days[-1]
+    item = from_jsonable(WeeklyPlan, row.body).cell("special_program", saturday).item_id.value
+    edited = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{item}",
+        json={"value": "토요 체육", "expected_revision": plan["revision"]},
+    ).json()
+    assert _confirm(edited).status_code == 200
+
+    response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        table = etree.fromstring(archive.read("Contents/section0.xml")).find(".//hp:tbl", NS)
+    cells = _cells(table)
+
+    def text(address):
+        return "".join(t.text or "" for t in cells[address].iter(f"{{{NS['hp']}}}t"))
+
+    world["session"].refresh(row)
+    core = from_jsonable(WeeklyPlan, row.body)
+    assert table.get("colCnt") == "7"
+    assert [text((10, col)) for col in range(1, 7)] == list("월화수목금토")
+    for col, day in enumerate(core.operating_days, start=1):
+        assert text((11, col)) == core.cell("group_activity", day).value
+    assert [text((19, col)) for col in range(1, 7)] == ["", "", "", "", "", "토요 체육"]
+    assert text((2, 1)) == core.cell("theme").value
+    assert text((0, 0)).startswith(f"{plan['week_period']['label']} 주간놀이계획안")
