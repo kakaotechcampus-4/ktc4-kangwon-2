@@ -2007,6 +2007,7 @@ scope              PLAN (계획안 단위) | CELL (칸 단위)
 item_id            CELL 이면 그 칸 (§9-1 cells[].item_id).  PLAN 이면 null
 section_key        CELL 이면 그 칸의 Section.  PLAN 이면 null
 week_id            주마다 있는 칸(repeat_by WEEK)이면 그 주.  한 달 칸 · PLAN 이면 null
+day                주간 요일 칸(repeat_by DAY)이면 그 요일 MON ~ SAT.  월간은 늘 null (§9-6)
 actor              사람이 한 일이면 opaque id (user_7).  시스템이면 null.  이름은 주지 않는다
 system_actor       시스템이 한 일(생성)이면 그 표시 (monthly_application).  사람이면 null
 value_change       TEACHER_EDITED · REGENERATED 만.  {before, after} — 그때 바뀐 칸 값.  나머지는 null
@@ -2133,8 +2134,14 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
   "created_at": "…", "confirmed_at": null }
 ```
 
-- **Section 당 칸 하나다.** `cells` 는 늘 길이 1 이다(주간 Template 은 모든 Section 이 한 주 한 칸).
-  칸 수 · 순서는 서버가 준 만큼이다.
+- **`sections[].repeat_by` 는 `"NONE"` | `"DAY"` 다(null 없음 — 주간 양식에는 축 줄이 없다).**
+  `NONE` 이면 `cells` 길이 1, `DAY` 면 `operating_days` 마다 한 칸(월 ~ 금 5칸, 토요일 운영이면 6칸)이고 순서는
+  운영 요일 순이다. 칸 수 · 순서는 서버가 준 만큼 그린다. `DAY` 는 양식 v0.2.0 의 `group_activity` ·
+  `special_program` 뿐이다(ADR-051). v0.1.0 계획은 모두 `NONE` 이고 칸 수가 그대로다.
+- **`cells[].day`** — `DAY` 칸이면 `"MON"` ~ `"SAT"`, `NONE` 칸이면 `null`. 월간 `cells[].week_id` 와 같은 방식이다.
+  편집 · 재생성은 요일 칸도 `item_id` 경로 그대로다.
+- **검사 결과(`verification.findings[]`)에는 `day` 가 없다.** Core 검사 위치에 요일이 없어서다. 화면은 검사 결과를
+  칸에 붙이지 않고 목록으로 보여 준다. 칸별로 붙이게 되면 Core 에 요일을 넣은 뒤 서버가 내보낸다.
 - **`generation` 은 `null` 일 수 있다.** 교사 입력 칸(`family_link` · `event_schedule` · `special_program`)은
   첫 입력 전에 만든 방식이 없다(주간 계약 §10-2). FE 타입은 nullable 로 둔다.
 - **`teacher_input`** — 교사가 쓰는 칸(`family_link` · `event_schedule` · `special_program`)이면 `true`.
@@ -2198,6 +2205,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 `item_id` 를 주면 그 칸의 이벤트와 계획안 단위 `CONFIRMED` 만 준다. 없는 칸은 404 `["item_id"]`.
 
 - 주간 칸에는 주가 따로 없다 — **칸 이벤트의 `week_id` 는 그 계획안의 주**다. 계획안 단위(`PLAN`)는 `null`.
+- **`day`** — 요일 칸 이벤트면 그 요일, 그 밖은 `null`. 「대·소집단 활동 · 화」처럼 보이게 하는 용도다.
 - 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. `arrangement_change` 는 늘 `null` 이다. 읽기만 한다.
 
 ### 내보내기 — `GET /api/plans/weekly/{id}/export/hwp`
@@ -2210,6 +2218,11 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 머리 3줄(반 · 기간 · 「구분 | 내용」) 아래 Section 하나가 「칸 이름 | 내용」 한 줄이다. 칸 이름은 계획안의 `label`
 — 양식에 박아두지 않는다. 기간은 `week_period.label · start_date ~ display_end_date`(토요일을 켠 원이면 토요일까지).
 교사 입력 칸(가정연계 · 행사 · 특별활동)도 그대로 실린다.
+
+**요일 양식(v0.2.0) 계획은 예외로 고정 양식 두 개를 쓴다(ADR-051 WD-4).** 월 ~ 금 · 월 ~ 토 양식 중
+`operating_days` 에 맞는 것을 고른다. 요일 머리줄 「요일 | 월 … 금(토)」과 칸 이름을 **양식에 박아 둔다** —
+위 「칸 이름은 `label`」 규칙의 예외다. 내용은 `(section_key, day)` 로 칸을 찾아 넣고, Section 순서와 양식 행
+순서를 그냥 짝짓지 않는다. v0.1.0 계획은 지금처럼 `templates/weekly.hwpx` · `label` 이다.
 
 ### 오류
 
