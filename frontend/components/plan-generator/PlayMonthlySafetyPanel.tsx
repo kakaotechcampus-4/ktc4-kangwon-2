@@ -1,9 +1,16 @@
 "use client";
 import { useState } from "react";
-import type { PlayMonthlyPlan } from "@/lib/api/types";
 import styles from "./PlayMonthlyStructure.module.css";
 
 const KIND = { STATUTORY: "법정", SUPPLEMENTAL: "생활안전" } as const;
+
+/** 패널이 읽는 칸만 — 놀이 월간과 v1 월간이 같이 쓴다. */
+type SafetyPlan = {
+  id: number;
+  weeks: { week_id: string; label: string }[];
+  safety_candidates: { kind: keyof typeof KIND; cell: { item_id: string; value: string } }[];
+  safety_weeks: { week_id: string; candidate_item_id: string | null }[];
+};
 
 /** 안전교육 후보를 골라 주마다 둔다(버튼 · 선택만, 끌어놓기 없음). 같은 후보를 여러 주에 둘 수 있다. */
 export default function PlayMonthlySafetyPanel({
@@ -11,7 +18,7 @@ export default function PlayMonthlySafetyPanel({
   onPlace,
   disabled,
 }: {
-  plan: PlayMonthlyPlan;
+  plan: SafetyPlan;
   onPlace: (weekId: string, candidateItemId: string | null) => void;
   disabled: boolean;
 }) {
