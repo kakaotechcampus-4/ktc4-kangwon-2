@@ -22,11 +22,13 @@ from .models import (
     ReferenceCandidate,
     RetrievalRequest,
 )
-from .ranking import apply_source_diversity, balance_by_age, ngrams, rank_records
+from .ranking import apply_source_diversity, balance_by_age, fill_subtheme_gaps, ngrams, rank_records
 
 RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.3.0"
 # Versioned apart so packets without safety placement keep their lineage.
 SAFETY_RETRIEVAL_VERSION = "monthly-safety-retrieval-v0.4.0"
+# Tagged only on requests carrying annual subthemes with the goals block active; others keep v0.3.0.
+GOALS_SUBTHEME_FILL_TAG = "+goals-subtheme-fill-v1"
 DEFAULT_TOP_K = {
     BlockName.INSTITUTION_MONTHLY_EVIDENCE: 12,
     BlockName.AGE_CONTRAST_EVIDENCE: 6,
@@ -102,6 +104,7 @@ class MonthlyEvidenceRetriever:
         query_grams: frozenset[str],
         tiers: tuple[AgeMatchKind, ...],
         cap: int | None = None,
+        subthemes: tuple[str, ...] = (),
     ) -> EvidenceBlock:
         ranked = rank_records(
             records,
@@ -111,6 +114,10 @@ class MonthlyEvidenceRetriever:
         )
         ranked = balance_by_age(ranked, request.ages)
         limit = self._top_k[name]
+        cap = self._cap if cap is None else cap
+        items = apply_source_diversity(ranked, top_k=limit, institution_cap=cap)
+        if subthemes:
+            items = fill_subtheme_gaps(ranked, items, subthemes, institution_cap=cap)
         return EvidenceBlock(
             name=name,
             top_k=limit,
@@ -118,9 +125,7 @@ class MonthlyEvidenceRetriever:
                 "month and section hard filters; age structural tier; Korean 2-gram "
                 "keyword score; source diversity; stable record_id tie-break"
             ),
-            items=apply_source_diversity(
-                ranked, top_k=limit, institution_cap=self._cap if cap is None else cap
-            ),
+            items=items,
             eligible_pool_size=len(ranked),
         )
 
@@ -194,6 +199,8 @@ class MonthlyEvidenceRetriever:
             request=request,
             query_grams=grams,
             tiers=tiers,
+            # Goals only: the month's top records can all sit on one subtheme (2026-11-01).
+            subthemes=request.subthemes if semantic_class is SemanticClass.GOALS else (),
         )
 
     def _references(self, request: RetrievalRequest) -> EvidenceBlock:
@@ -333,7 +340,12 @@ class MonthlyEvidenceRetriever:
             blocks=(institution, contrast, *classified, references, other, *safety),
             evidence_store_version=self._store.ingestion_version,
             evidence_store_sha256=self._store.content_sha256,
-            retrieval_version=RETRIEVAL_VERSION,
+            retrieval_version=RETRIEVAL_VERSION
+            + (
+                GOALS_SUBTHEME_FILL_TAG
+                if request.subthemes and SemanticClass.GOALS in request.grounding_classes
+                else ""
+            ),
             activity_catalog_id=self._catalog.catalog_id if self._catalog else "",
             activity_catalog_version=self._catalog.catalog_version if self._catalog else "",
             evidence_classification_version=(

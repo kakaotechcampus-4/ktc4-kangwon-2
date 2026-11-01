@@ -30,7 +30,7 @@ export default function LegalPage({
 
       <main className="mx-auto mt-8 max-w-[760px] border border-line bg-paper p-6 shadow-pg-hard sm:p-10">
         <h1 className="font-display text-[30px] font-bold sm:text-[37px]">{title}</h1>
-        <p className="mt-2 text-[11px] text-ink-soft">{updated} 기준</p>
+        <p className="mt-2 text-[12px] text-ink-soft">{updated} 기준</p>
         <div className="mt-8 space-y-7 text-sm leading-[1.9] text-ink">{children}</div>
       </main>
 
@@ -52,7 +52,7 @@ export function LegalSection({ heading, children }: { heading: string; children:
 export function LegalFooter({ width = "max-w-[760px]" }: { width?: string }) {
   return (
     <footer
-      className={`mx-auto mt-8 flex ${width} flex-wrap items-center justify-between gap-3 border-t border-line px-1 py-6 text-[11px] text-ink-soft`}
+      className={`mx-auto mt-8 flex ${width} flex-wrap items-center justify-between gap-3 border-t border-line px-1 py-6 text-[12px] text-ink-soft`}
     >
       <span>Ssample · 쌤플 — 강원대 2팀 · 카카오테크캠퍼스 4기</span>
       <span className="flex items-center gap-4">

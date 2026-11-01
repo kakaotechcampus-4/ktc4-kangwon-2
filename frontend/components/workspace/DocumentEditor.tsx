@@ -488,6 +488,14 @@ export default function DocumentEditor({
           >
             {recordDocument && section.heading === "사실" && <Icon name="lock" />}
             {section.heading}
+            {/* 자물쇠 그림만으로는 「여기는 못 고친다」가 읽히지 않았다. 글자로도 말해 준다. */}
+            {recordDocument && section.heading === "사실" && (
+              // 제목 이름에 섞이지 않게 숨긴다. 읽어 주는 도구에는 바로 아래 안내가
+              // 「교사가 입력한 원문 · 읽기 전용」이라고 이미 말한다.
+              <span aria-hidden="true" className={ws.readOnlyTag}>
+                읽기 전용
+              </span>
+            )}
           </h3>
           {recordDocument && LAYER_HINTS[section.heading] && (
             <p className={ws.hint}>{LAYER_HINTS[section.heading]}</p>

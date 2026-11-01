@@ -18,6 +18,7 @@ from .contracts import (
     MonthlyCellSnapshot,
 )
 from .prompt import (
+    MONTHLY_V1_STYLE,
     _generation_schema,
     _prompt_payload,
     allowed_grounding_refs_by_section,
@@ -51,6 +52,12 @@ grounding_refs exactly as supplied or specified; never translate them.
 Include every key required by response_contract in every object and cell;
 for a nullable field with no value, include the key with null, never omit it.
 Return only one JSON object matching response_contract; add no fields.
+"""
+
+# v1 cell regeneration reads the same week's current values (teacher edits included) as context.
+MONTHLY_V1_CELL_CONTEXT = """같은 주에 focus나 outdoor_play가 있으면 month_snapshot에서 같은 week_id의 현재 값(교사가 고친 값 포함)을
+맥락으로 읽는다. 그 값은 바꾸지 않는다. focus를 다시 쓸 때는 parent_subthemes 범위를 우선하고,
+지금 바깥놀이에 맞춰 focus를 좁히지 않는다.
 """
 
 
@@ -133,7 +140,9 @@ def build_monthly_cell_request(
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
         prompt_version=MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION,
-        system_prompt=CELL_SYSTEM_PROMPT + (V1_GUIDANCE if contextual else ""),
+        system_prompt=CELL_SYSTEM_PROMPT + (
+            V1_GUIDANCE + MONTHLY_V1_STYLE + MONTHLY_V1_CELL_CONTEXT if contextual else ""
+        ),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         target_week_id=target_week_id,

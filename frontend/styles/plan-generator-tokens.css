@@ -26,12 +26,15 @@
   --pg-shell: #ede8e0;
   --pg-shell-line: #d7d0c7;
   --pg-shell-hover: #e6dfd3;
+  /* 쪽지 쌤플의 접힌 귀. 바탕보다 한 단계 어두워야 접힌 것으로 보인다. */
+  --pg-shell-fold: #ddd5c8;
 
   /* 벽에 붙인 쪽지 */
   --pg-note: #f5e6aa;
   --pg-note-line: #d4c486;
   --pg-note-soft: #f7edce; /* 본문 쪽지 — 사이드바 쪽지보다 연하다 */
   --pg-note-soft-line: #d5c698;
+  --pg-note-fold: #e3d191; /* 쪽지 쌤플의 접힌 귀 */
   /* 쪽지 위에 붙인 종이테이프. 반투명이어야 한다 — 꽉 찬 흰색은 종이를 덧댄 것처럼 보인다. */
   --pg-tape: rgba(255, 250, 240, 0.72);
 
@@ -56,6 +59,8 @@
   --pg-sage: #cee2d5;
   --pg-sage-tint: #e8f1ea;
   --pg-sage-ink: #49654f;
+  --pg-sage-line: #9fbfa9; /* 세이지 면 위의 테두리 */
+  --pg-sage-fold: #b4cfc0; /* 쪽지 쌤플의 접힌 귀 */
 
   /* 아래 세 묶음은 원래 월간/주간/일간을 색으로 갈라 쓰던 자리다.
      새 디자인은 종류를 색이 아니라 글로 가른다(PlanNotebook 의 세 버튼은

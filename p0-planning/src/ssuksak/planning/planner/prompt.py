@@ -104,21 +104,54 @@ same week's outdoor_play experience on a day the class stays inside; write the
 two cells of a week together as a pair. Do not write general indoor free play.
 Do not state that particular materials or spaces are available, and do not
 invent weather or claim that the activity was carried out.
+When no supplied grounding continues that week's outdoor_play, return that week's
+indoor_alternative with value "", unresolved true and no grounding_refs; do not
+borrow an unrelated activity or add a subject the cited text does not have.
 """
 
 # Appended only when the Context Packet carries safety_candidates (MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG).
 SAFETY_CANDIDATES_PROMPT = """safety_candidates lists this month's safety education candidates; a teacher
 later places them into weeks. Return one month_sections entry per candidate,
 keyed by its section_key, with unresolved false and reference_id null.
-Write one short Korean sentence for young children about one safety action
-found in the candidate's allowed texts. Never write a category name, brackets
-or a leading dash: the application adds the label.
+Write one short Korean sentence for young children that makes clear what the
+candidate teaches; when its cited text states an action, show that action.
+Never write a category name, brackets or a leading dash: the application adds
+the label.
 A STATUTORY candidate cites exactly one of its allowed grounding_refs; a
 SUPPLEMENTAL candidate cites one or more of its allowed grounding_refs. Cite no
 other ref. Never write the same sentence for two candidates and never copy an
-allowed text verbatim. Add no safety rules, procedures, times, numbers, legal
-duties or results not found in the cited text.
+allowed text verbatim. Add no safety rules, actions, materials, detailed
+procedures, times, numbers, legal duties or results not found in the cited text.
 """
+
+# v1 monthly expression criteria (2026-10-31). Only requests carrying curriculum or
+# annual subthemes get these; other requests keep their prompt bytes.
+_GOALS_LENGTH = """usually
+about 120 to 160 characters, and stay concise even in a complex month."""
+_V1_GOALS_LENGTH = """in one or two
+short sentences about the month's central experience."""
+_REPAIR_GOALS_LENGTH = "and aim for about 120 to 160 characters"
+_V1_REPAIR_GOALS_LENGTH = "in one or two short sentences"
+MONTHLY_V1_STYLE = """
+월간은 한 달과 각 주에 예상하는 경험을 짧게 보여 준다. 준비물 목록·진행 순서·교사 발문·요일별 절차는 쓰지 않는다.
+- goals: 한 달의 중심 경험을 1~2문장으로 묶는다. 인용한 목표 근거가 다루는 범위 안에서 월 주제의 주요 축을 고르게 담고,
+  근거에 없는 목표나 축을 더하지 않는다. 관심·친숙함·소중함 같은 말을 나열하지 않는다.
+- focus: parent_subthemes의 주요 대상·경험을 바탕으로 정하고 그 주의 예상 경험을 짧게 쓴다. 월간 전체가 그 범위를 유지하도록 하고,
+  하나의 소주제를 여러 주로 세분화하느라 다른 주요 내용을 빠뜨리지 않는다. 주차 순서나 1:1 배치는 강제하지 않는다.
+  다른 놀이를 넣으려고 소주제 범위를 넓히지 않고, 고르기 쉬운 놀이에 맞추려고 focus를 다른 대상으로 바꾸지 않는다.
+- 작성 순서: parent_subthemes → focus → 같은 주 outdoor_play → indoor_alternative. 각 칸은 허용된 근거 범위를 지킨다.
+- outdoor_play · indoor_alternative: 대상과 경험이 드러나는 짧은 활동명으로 쓴다. reference_id로 고른 활동은 그 이름 그대로 둔다.
+- outdoor_play: 같은 주에 focus가 있으면 그 핵심 대상·경험과 이어지는 놀이를 쓴다. 허용 근거나 reference_activities에
+  그런 놀이가 있으면 그것을 고르고, 관련 없는 활동을 편하다는 이유로 고르지 않는다.
+- indoor_alternative: 같은 주 바깥놀이의 대상·경험을 실내에서 이어 가되 '바깥 … 대신 실내에서'처럼 설명하지 않는다.
+  이어 갈 근거가 없으면 근거 밖 재료·경험을 보태지 않는다.
+- 다른 주에 같은 놀이를 이름만 바꿔 다시 쓰지 않는다. 같은 주의 바깥놀이와 실내대체가 같은 놀이·경험을 나누는 것은 괜찮다.
+- basic_habit: 유아가 하는 행동이 보이는 짧은 문장으로 쓴다.
+"""
+
+
+def _v1_goals(prompt: str) -> str:
+    return prompt.replace(_GOALS_LENGTH, _V1_GOALS_LENGTH).replace(_REPAIR_GOALS_LENGTH, _V1_REPAIR_GOALS_LENGTH)
 
 # Appended only when the Context Packet carries drill_topics (MONTHLY_DRILL_CANDIDATES_PROMPT_TAG).
 DRILL_CANDIDATES_PROMPT = """drill_topics lists this month's fire evacuation and disaster drill topics; a
@@ -411,10 +444,12 @@ def build_monthly_planning_request(
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
-        system_prompt=(SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT) + (
-            V1_GUIDANCE + "\nparent_subthemes는 확정된 연간의 월별 예상 소주제다. "
+        system_prompt=(
+            _v1_goals(SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT) + V1_GUIDANCE
+            + "\nparent_subthemes는 확정된 연간의 월별 예상 소주제다. "
             "월간 경험을 구체화하는 맥락으로 쓰며, 각 소주제를 주차에 하나씩 강제로 복사하지 않는다.\n"
-            if contextual else ""
+            + MONTHLY_V1_STYLE
+            if contextual else (SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT)
         ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
         + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else "")
         + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else ""),
@@ -474,6 +509,7 @@ def build_monthly_repair_request(
         },
     }
     base = request.prompt_version.split("+", 1)[0]  # tags keep their order after the repair version
+    contextual = base in (MONTHLY_CONTEXT_PROMPT_VERSION, MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION)
     return replace(
         request,
         prompt_version={
@@ -482,7 +518,7 @@ def build_monthly_repair_request(
             MONTHLY_SAFETY_PROMPT_VERSION: MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
         }.get(base, MONTHLY_REPAIR_PROMPT_VERSION)
         + request.prompt_version[len(base):],
-        system_prompt=REPAIR_HEADER + request.system_prompt,
+        system_prompt=(_v1_goals(REPAIR_HEADER) if contextual else REPAIR_HEADER) + request.system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,
     )

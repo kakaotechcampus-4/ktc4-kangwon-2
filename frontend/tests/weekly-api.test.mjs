@@ -2,7 +2,7 @@
 // 월간과 다른 네 가지만 집중해서 본다 — Gate · 한 Section 한 칸 · 교사 입력 칸 · 토요일.
 import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
+import { createRequire, registerHooks } from "node:module";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 registerHooks({
@@ -149,13 +149,15 @@ test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
   assert.ok(schemas.includes("teacher_input:"), "teacher_input");
 });
 
-test("클라이언트는 일곱 가지를 낸다 — 월간의 audit 은 아직 없다", () => {
+test("클라이언트는 아홉 가지를 낸다 — 이력 · 한글 파일 포함", () => {
   assert.deepEqual(Object.keys(weekly).sort(), [
     "confirmWeeklyPlan",
     "createWeeklyPlan",
     "deleteWeeklyPlan",
+    "downloadWeeklyHwpx",
     "editWeeklyCell",
     "getWeeklyPlan",
+    "getWeeklyPlanAudit",
     "listWeeklyPlans",
     "regenerateWeeklyCell",
   ]);
@@ -297,4 +299,222 @@ test("서버 경로가 아직 없으면 「준비 중」으로 읽는다 — 「
     !(typeof e.body === "object" && e.body !== null && "error" in e.body);
   assert.equal(notBuiltYet(enveloped), false);
   assert.equal(notBuiltYet(missingRoute), true);
+});
+
+// ── 주간 화면 (진짜 컴포넌트) — 저장하지 않은 입력과 기다리는 응답을 지킨다 ──────────────
+
+const W1 = "2026-09-W1";
+const W2 = "2026-09-W2";
+const pageCode = createRequire(import.meta.url)("next/dist/compiled/babel/core").transformSync(
+  readFileSync(new URL("../components/workspace/WeeklyPlanPage.tsx", import.meta.url), "utf8"),
+  {
+    filename: "WeeklyPlanPage.tsx",
+    babelrc: false,
+    configFile: false,
+    presets: ["preset-env", "preset-react", "preset-typescript"].map((name) => {
+      const preset = createRequire(import.meta.url)(`next/dist/compiled/babel/${name}`);
+      if (name === "preset-env") return [preset, { targets: { node: "current" } }];
+      return name === "preset-react" ? [preset, { runtime: "automatic" }] : preset;
+    }),
+  },
+).code;
+
+/** 훅 자리가 고정인 화면 하나를 그리는 React 흉내. 서버는 `api` 로 갈아 끼운다. */
+function weeklyPage(api) {
+  const slots = [];
+  let cursor = 0;
+  let queued = [];
+  let tree = null;
+  const same = (a, b) => !!a && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+  const useState = (init) => {
+    const i = cursor++;
+    slots[i] ??= { v: typeof init === "function" ? init() : init };
+    return [
+      slots[i].v,
+      (next) => (slots[i].v = typeof next === "function" ? next(slots[i].v) : next),
+    ];
+  };
+  const memo = (fn, deps) => {
+    const i = cursor++;
+    if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { v: fn(), deps };
+    return slots[i].v;
+  };
+  const useEffect = (fn, deps) => {
+    const i = cursor++;
+    if (slots[i] && same(slots[i].deps, deps)) return;
+    const old = slots[i];
+    slots[i] = { deps, cleanup: old?.cleanup };
+    queued.push(() => {
+      slots[i].cleanup?.();
+      slots[i].cleanup = fn();
+    });
+  };
+  const node = (type, props) => (typeof type === "function" ? type(props) : { type, props });
+  const css = new Proxy({}, { get: (_, k) => String(k) });
+  const modules = {
+    react: { useState, useMemo: memo, useEffect, useCallback: (fn, deps) => memo(() => fn, deps) },
+    "react/jsx-runtime": { jsx: node, jsxs: node, Fragment: "fragment" },
+    "@/lib/api/client": { ApiError },
+    "@/lib/api/monthly": {
+      listMonthlyPlans: async () => ({ items: [{ id: 20, month: 9, status: "CONFIRMED" }] }),
+      getMonthlyPlan: async () => ({
+        id: 20,
+        weeks: [W1, W2].map((week_id, i) => ({
+          week_id,
+          label: `${i + 1}주`,
+          start_date: "2026-09-07",
+          end_date: "2026-09-11",
+          active: true,
+        })),
+      }),
+    },
+    "@/lib/api/onboarding": { classServerId: () => 1, syncClass: async () => 1 },
+    "@/lib/api/weekly": { getWeeklyPlanAudit: async () => ({ items: [] }), ...api },
+    "@/lib/hooks/use-hwpx-download": {
+      useHwpxDownload: () => ({ exporting: false, download: async () => {} }),
+    },
+    "@/lib/onboarding/settings": {
+      loadClassSettings: () => ({ classes: [{ id: "local", className: "반" }] }),
+      primaryClassFor: (s) => s.classes[0],
+    },
+    "@/lib/hooks/use-client-state": { useClientState: (read) => useState(read) },
+    "@/lib/workspace/document-archive": {
+      archivePlanEntry: () => ({ id: 11, classId: 1, month: 9, weekId: W1 }),
+    },
+    "@/lib/weekly/section-labels": { DAY_NAMES: {}, sectionName: (key) => key },
+    "./WorkspaceUI": {
+      WorkspacePage: (p) => node("page", p),
+      Empty: (p) => node("empty", p),
+      Message: (p) => node("message", p),
+    },
+    "./WeeklyPlanPage.module.css": css,
+  };
+  const page = { exports: {} };
+  new Function("require", "module", "exports", pageCode)(
+    (name) => {
+      assert.ok(name in modules, `unhandled import: ${name}`);
+      return modules[name];
+    },
+    page,
+    page.exports,
+  );
+  const all = (n) =>
+    Array.isArray(n)
+      ? n.flatMap(all)
+      : n && typeof n === "object"
+        ? [n, ...all(n.props?.children)]
+        : [];
+  const text = (n) =>
+    Array.isArray(n)
+      ? n.map(text).join("")
+      : n && typeof n === "object"
+        ? text(n.props?.children)
+        : n == null || typeof n === "boolean"
+          ? ""
+          : String(n);
+  const view = {
+    async settle() {
+      for (let i = 0; i < 12; i++) {
+        cursor = 0;
+        tree = page.exports.default();
+        const run = queued;
+        queued = [];
+        run.forEach((fn) => fn());
+        await new Promise(setImmediate);
+      }
+      cursor = 0;
+      tree = page.exports.default();
+    },
+    all: () => all(tree),
+    button: (label, scope = tree) =>
+      all(scope).find((n) => n.type === "button" && text(n).startsWith(label)),
+    card: (key) =>
+      all(tree).find(
+        (n) => n.type === "article" && all(n).some((h) => h.type === "h4" && text(h) === key),
+      ),
+    editor: () => all(tree).find((n) => n.type === "textarea"),
+  };
+  return view;
+}
+
+const draftPlan = (week_id = W1) => ({
+  id: 11,
+  class_id: 1,
+  school_year: 2026,
+  week_id,
+  status: "DRAFT",
+  revision: 1,
+  week_period: { start_date: "2026-09-07", end_date: "2026-09-11" },
+  display_end_date: "2026-09-11",
+  operating_days: ["MON"],
+  parent: { theme: "" },
+  verification: { findings: [] },
+  sections: ["theme", "focus"].map((key) => ({
+    section_key: key,
+    label: key,
+    visible: true,
+    cells: [
+      {
+        item_id: `${key}-1`,
+        value: "A",
+        state: "FILLED",
+        teacher_input: false,
+        evidence: [],
+        parent_snapshots: [],
+        generation: { method: "RULE_LLM" },
+      },
+    ],
+  })),
+});
+
+test("화면 — 저장이 실패하면 쓴 문장과 편집창을 그대로 두고, 저장하지 않은 채로는 확정·이동하지 않는다", async () => {
+  let fail = true;
+  const edits = [];
+  const view = weeklyPage({
+    listWeeklyPlans: async () => ({ items: [draftPlan()] }),
+    getWeeklyPlan: async () => draftPlan(),
+    editWeeklyCell: async (...args) => {
+      edits.push(args);
+      if (fail) throw new Error("저장 실패");
+      return { ...draftPlan(), revision: 2 };
+    },
+  });
+  await view.settle();
+  view.button("고치기", view.card("focus")).props.onClick();
+  await view.settle();
+  view.editor().props.onChange({ target: { value: "B" } });
+  await view.settle();
+
+  // 열린 편집이 있으면 확정 · 지우기 · 다른 칸 · 주/월 이동을 시작하지 않는다 (WUI-A02).
+  for (const label of ["확정하기", "초안 지우기", "1주", "2주"])
+    assert.equal(view.button(label).props.disabled, true, label);
+  assert.equal(view.button("고치기", view.card("theme")).props.disabled, true);
+  assert.equal(view.all().find((n) => n.type === "select").props.disabled, true);
+
+  await view.button("저장").props.onClick();
+  await view.settle();
+  assert.equal(edits.length, 1);
+  assert.equal(view.editor()?.props.value, "B", "실패한 입력이 남아 있어야 한다 (WUI-A01)");
+
+  fail = false;
+  await view.button("저장").props.onClick();
+  await view.settle();
+  assert.equal(edits[1][2], "B");
+  assert.equal(view.editor(), undefined, "성공한 뒤에만 닫는다");
+  assert.equal(view.button("확정하기").props.disabled, false);
+});
+
+test("화면 — 만드는 응답을 기다리는 동안 다른 주로 옮기지 않는다", async () => {
+  const view = weeklyPage({
+    listWeeklyPlans: async () => ({ items: [] }),
+    createWeeklyPlan: () => new Promise(() => {}),
+  });
+  await view.settle();
+  view.button("이 주 계획안 만들기").props.onClick();
+  await view.settle();
+  assert.equal(
+    view.button("2주").props.disabled,
+    true,
+    "늦은 1주 응답이 2주 화면에 붙는다 (WUI-A03)",
+  );
 });

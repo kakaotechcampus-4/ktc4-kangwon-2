@@ -114,6 +114,20 @@ def test_a_classification_for_another_store_is_refused():
         )
 
 
+def test_focus_search_keeps_hard_filters_and_falls_back_when_all_grams_are_shared():
+    records = (
+        _record("ev_1", text="가을 나들이", institution="A"),
+        _record("ev_2", text="세계 전통 의상을 꾸며요", institution="B"),
+        _record("ev_3", text="세계 의상", month=10, institution="C"),
+        _record("ev_4", text="세계 의상", age_scope=(), institution="D"),
+    )
+    assert _search(records, query_text="가을 나들이", top_k=1) == ["ev_1"]
+    assert _search(records, query_text="가을 나들이", top_k=1, focus_text="세계 의상",
+                   sibling_focuses=("우리나라 음식", "우리나라 놀이", "세계 의상")) == ["ev_2"]
+    assert _search(records, query_text="가을 나들이", top_k=1, focus_text="우리나라",
+                   sibling_focuses=("우리나라", "우리나라")) == ["ev_1"]
+
+
 @pytest.mark.parametrize("weekly_class", [c for c in WeeklySemanticClass if c is not WeeklySemanticClass.EXCLUDED])
 def test_the_approved_classification_grounds_every_month_and_age(weekly_class):
     store = JsonInstitutionEvidenceRepository().get_store()

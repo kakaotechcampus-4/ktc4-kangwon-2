@@ -170,6 +170,9 @@ export const addMonthly = (
         },
       ],
       verification: { executed_rules: [RULE], findings: [] },
+      safety_candidates: [],
+      safety_weeks: [],
+      notices: [],
       created_at: at,
       confirmed_at: null,
     };

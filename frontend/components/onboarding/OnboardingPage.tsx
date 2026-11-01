@@ -304,23 +304,27 @@ function StepOrgInfo({
         description="계획안 작성에 활용할 기본 정보를 먼저 설정해요."
       />
 
-      <FormField id="orgName" label="원명">
-        <TextInput
-          id="orgName"
-          value={settings.orgName}
-          placeholder="기관명을 입력해주세요"
-          onChange={(e) => onChange({ orgName: e.target.value })}
-        />
-      </FormField>
+      <JoinByCode onJoin={onJoin} />
 
-      <FormField id="directorName" label="원장 이름">
-        <TextInput
-          id="directorName"
-          value={settings.directorName}
-          placeholder="원장 이름을 입력해주세요"
-          onChange={(e) => onChange({ directorName: e.target.value })}
-        />
-      </FormField>
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-4">
+        <FormField id="orgName" label="원명">
+          <TextInput
+            id="orgName"
+            value={settings.orgName}
+            placeholder="기관명을 입력해주세요"
+            onChange={(e) => onChange({ orgName: e.target.value })}
+          />
+        </FormField>
+
+        <FormField id="directorName" label="원장 이름">
+          <TextInput
+            id="directorName"
+            value={settings.directorName}
+            placeholder="원장 이름을 입력해주세요"
+            onChange={(e) => onChange({ directorName: e.target.value })}
+          />
+        </FormField>
+      </div>
 
       <FormField label="지역">
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -367,36 +371,55 @@ function StepOrgInfo({
           </PrimaryButton>
         }
       />
-
-      <JoinByCode onJoin={onJoin} />
     </>
   );
 }
 
-/** 같은 원 선생님이 이미 원을 등록했으면, 원 정보를 다시 쓰지 않고 초대 코드로 들어간다 (§1-1). */
+/**
+ * 같은 원 선생님이 이미 원을 등록했으면, 원 정보를 다시 쓰지 않고 초대 코드로 들어간다 (§1-1).
+ * 처음엔 한 줄만 보이고, 누르면 코드 입력칸이 열린다 — 대부분의 교사는 새로 등록하는 쪽이라서.
+ */
 function JoinByCode({ onJoin }: { onJoin: (code: string) => void }) {
+  const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
+  if (!open)
+    return (
+      <p className="-mt-2 flex flex-wrap items-center gap-x-1 text-[13.5px] text-ink-soft">
+        이미 우리 원이 등록돼 있나요?
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="min-h-[36px] font-semibold text-primary-ink underline underline-offset-4 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        >
+          초대 코드로 참여하기
+        </button>
+      </p>
+    );
   return (
-    <section className="rounded-md border border-line bg-cream px-4 py-3.5 flex flex-col gap-3">
+    <section className="rounded-md bg-primary-tint px-4 py-4">
       <FormField
         id="inviteCode"
         label="초대 코드로 참여하기"
         hint="우리 원이 이미 등록돼 있다면, 등록한 선생님께 설정 화면의 초대 코드를 받아 입력해주세요."
       >
-        <TextInput
-          id="inviteCode"
-          value={code}
-          placeholder="예: ABCD2345EF"
-          onChange={(e) => setCode(e.target.value)}
-        />
+        <div className="flex gap-2">
+          <TextInput
+            id="inviteCode"
+            value={code}
+            autoFocus
+            placeholder="예: ABCD2345EF"
+            onChange={(e) => setCode(e.target.value)}
+            className="flex-1"
+          />
+          <GhostButton
+            disabled={code.trim() === ""}
+            onClick={() => onJoin(code.trim())}
+            className="shrink-0"
+          >
+            참여
+          </GhostButton>
+        </div>
       </FormField>
-      <GhostButton
-        disabled={code.trim() === ""}
-        onClick={() => onJoin(code.trim())}
-        className="self-start"
-      >
-        코드로 참여
-      </GhostButton>
     </section>
   );
 }
@@ -444,12 +467,12 @@ function StepClasses({
     <>
       <StepHeading
         title="우리 반 정보를 설정해주세요"
-        description="반 정보와 법정대리인 동의 여부를 확인해주세요. 아동 명단은 다음 단계에서 입력해요."
+        description="반 정보와 법정대리인 동의 여부를 확인해주세요."
       />
       {settings.completedAt && (
         <p role="status" className="text-sm text-ink-soft">
-          등록한 반의 이름·연령·담임·원아 수·동의 여부는 아직 수정할 수 없어요. 반 추가와 담당 반
-          선택은 가능하고, 아동 명단은 다음 단계에서 관리해요.
+          등록한 반의 이름·연령·담임·동의 여부는 아직 수정할 수 없어요. 반 추가와 담당 반 선택은
+          가능하고, 아동 명단은 다음 단계에서 관리해요.
         </p>
       )}
 
@@ -460,6 +483,7 @@ function StepClasses({
             classroom={classroom}
             index={index}
             canRemove={settings.classes.length > 1}
+            bare={settings.classes.length === 1}
             onChange={(p) => updateClass(classroom.id, p)}
             onRemove={() => removeClass(classroom.id)}
           />
@@ -479,9 +503,9 @@ function StepClasses({
           />
         </FormField>
       )}
-      <GhostButton onClick={addClass} className="self-start">
+      <TextButton onClick={addClass} className="self-start">
         + 반 추가
-      </GhostButton>
+      </TextButton>
 
       <StepFooter
         left={
@@ -512,18 +536,23 @@ function ClassroomCard({
   classroom,
   index,
   canRemove,
+  bare,
   onChange,
   onRemove,
 }: {
   classroom: ClassroomEntry;
   index: number;
   canRemove: boolean;
+  /** 반이 하나뿐이면 카드 테두리 · 번호 머리 없이 폼만 그린다 — 상자 안의 상자를 줄인다 */
+  bare: boolean;
   onChange: (p: Partial<ClassroomEntry>) => void;
   onRemove: () => void;
 }) {
   return (
-    <section className="rounded-md border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
+    <section
+      className={`flex flex-col gap-5 ${bare ? "" : "rounded-md border border-line bg-paper p-4 lg:p-5"}`}
+    >
+      <div className={`flex items-center justify-between gap-3 ${bare ? "hidden" : ""}`}>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream text-sage-ink font-mono text-[12px]">
             {index + 1}
@@ -564,33 +593,15 @@ function ClassroomCard({
         />
       </FormField>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <AgeSelection
-          value={selectedAgesFor(classroom)}
-          onChange={(selectedAges) =>
-            onChange({
-              selectedAges,
-              ageGroup: selectedAges.length === 1 ? (String(selectedAges[0]) as AgeGroup) : "",
-            })
-          }
-        />
-
-        <FormField id={`currentChildCount-${classroom.id}`} label="현재 원아 수" optional>
-          <TextInput
-            id={`currentChildCount-${classroom.id}`}
-            type="number"
-            min={0}
-            inputMode="numeric"
-            value={classroom.currentChildCount}
-            placeholder="예: 18"
-            onChange={(e) =>
-              onChange({
-                currentChildCount: e.target.value === "" ? "" : Math.max(0, Number(e.target.value)),
-              })
-            }
-          />
-        </FormField>
-      </div>
+      <AgeSelection
+        value={selectedAgesFor(classroom)}
+        onChange={(selectedAges) =>
+          onChange({
+            selectedAges,
+            ageGroup: selectedAges.length === 1 ? (String(selectedAges[0]) as AgeGroup) : "",
+          })
+        }
+      />
 
       <FormField id={`teacherName-${classroom.id}`} label="담임 이름">
         <TextInput
@@ -646,13 +657,14 @@ function StepChildren({
     <>
       <StepHeading
         title="우리 반 아동 명단을 입력해주세요"
-        description="반별로 아동의 이름을 한 명씩 등록해주세요. 아동 명단은 나중에 입력할 수도 있어요."
+        description="반별로 아동의 이름을 한 명씩 등록해주세요."
       />
       <div className="flex flex-col gap-5">
         {settings.classes.map((classroom) => (
           <ClassroomChildrenCard
             key={classroom.id}
             classroom={classroom}
+            bare={settings.classes.length === 1}
             onChange={(patch) =>
               onChange({
                 classes: settings.classes.map((c) =>
@@ -663,43 +675,42 @@ function StepChildren({
           />
         ))}
       </div>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-[54px] mt-1 border-t border-line">
-        <div className="justify-self-start">
-          <GhostButton onClick={onPrev}>이전</GhostButton>
-        </div>
-        <p className="text-center text-[13px] text-ink-soft whitespace-nowrap">
-          아동 명단은 나중에 등록할 수 있습니다.
-        </p>
-        <div className="justify-self-end">
-          <PrimaryButton onClick={onNext} className="lg:min-w-[120px]">
-            설정 완료
-          </PrimaryButton>
-        </div>
-      </div>
+      {/* 아동은 추가할 때마다 바로 저장된다. 「나중에」는 남은 명단을 가입 후 설정 화면에서 넣게 하고 설정을 끝낸다 */}
+      <StepFooter
+        left={<GhostButton onClick={onPrev}>이전</GhostButton>}
+        right={
+          <div className="flex gap-2">
+            <GhostButton onClick={onNext}>나중에</GhostButton>
+            <PrimaryButton onClick={onNext} className="lg:min-w-[120px]">
+              설정 완료
+            </PrimaryButton>
+          </div>
+        }
+      />
     </>
   );
 }
 
 function ClassroomChildrenCard({
   classroom,
+  bare,
   onChange,
 }: {
   classroom: ClassroomEntry;
+  bare: boolean;
   onChange: (p: Partial<ClassroomEntry>) => void;
 }) {
   return (
-    <section className="rounded-md border border-line bg-paper p-4 lg:p-5 flex flex-col gap-5">
-      <h2 className="font-display text-[17px] text-ink">{classroom.className} · 아동 명단</h2>
-      {classroom.currentChildCount !== "" &&
-        classroom.children.length !== classroom.currentChildCount && (
-          <p className="text-xs text-ink-soft">
-            현재 원아 수는 {classroom.currentChildCount}명으로 설정되어 있고, 현재 명단에는{" "}
-            {classroom.children.length}명이 등록되어 있습니다.
-          </p>
-        )}
+    <section
+      className={`flex flex-col gap-5 ${bare ? "" : "rounded-md border border-line bg-paper p-4 lg:p-5"}`}
+    >
+      {!bare && (
+        <h2 className="font-display text-[17px] text-ink">{classroom.className} · 아동 명단</h2>
+      )}
       <ChildList
         idPrefix={`child-${classroom.id}`}
         items={classroom.children}
+        locked={!classroom.guardianConsent}
         onAdd={async (name) => {
           const child = await addServerChild(classroom, name);
           const children = [...classroom.children, child];
