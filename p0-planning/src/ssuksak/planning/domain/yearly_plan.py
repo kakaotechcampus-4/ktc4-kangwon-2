@@ -178,6 +178,18 @@ class YearlyPlan:
             audit=self.audit.append(event),
         )
 
+    def unconfirm(self, *, actor_id: ActorId, occurred_at: datetime) -> YearlyPlan:
+        """CONFIRMED → DRAFT. Only a plan-level UNCONFIRMED event is added; a DRAFT is returned as is."""
+        if self.status is not PlanStatus.CONFIRMED:
+            return self
+        event = AuditEvent(
+            event_type=AuditEventType.UNCONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(self, status=PlanStatus.DRAFT, audit=self.audit.append(event))
+
 
 def _expected_periods(school_year: int) -> tuple[str, ...]:
     return tuple(

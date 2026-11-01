@@ -77,6 +77,8 @@ class WeeklyPlanOut(BaseModel):
     display_end_date: date
     base_template_ref: TemplateRefOut
     parent: WeeklyParentOut
+    # 부모 월간이 지금 확정이 아니거나 확정 시각이 parent.confirmed_at 과 다르다(확정 취소 계약)
+    parent_changed: bool
     sections: list[WeeklySectionOut]
     constraints: list[ConstraintOut]
     verification: VerificationOut

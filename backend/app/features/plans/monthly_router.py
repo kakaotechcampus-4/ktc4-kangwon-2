@@ -65,6 +65,9 @@ from ssuksak.planning import (
     YearlyPlan,
     YearMonth,
 )
+from ssuksak.planning.application.confirm_monthly_plan import (  # 공개 창구에 없다
+    UnconfirmMonthlyPlan,
+)
 from ssuksak.planning.application.copy_monthly_drill_candidate import (  # 공개 창구에 없다
     CopyMonthlyDrillCandidate,
     CopyMonthlyDrillCandidateCommand,
@@ -72,6 +75,7 @@ from ssuksak.planning.application.copy_monthly_drill_candidate import (  # 공�
 from ssuksak.planning.application.monthly_dto import (  # 공개 창구에 없다
     DrillTopicsSelector,
     SafetyCandidatesSelector,
+    UnconfirmMonthlyPlanCommand,
 )
 from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구에 없다
     PlaceMonthlySafety,
@@ -464,8 +468,9 @@ def get_monthly_audit(
     """저장된 변경 이력(§9-5). 계획안 `audit` 과 칸마다의 `audit` 을 읽어 한 목록으로 준다.
 
     **읽기만 한다** — commit 도 저장도 없다. `item_id`(후보 칸도 된다)를 주면 그 칸의 이벤트와
-    계획안 단위 `CONFIRMED` 만 준다(screen-spec §6.3). 순서는 발생 시각, 같으면 계획안 →
-    칸(계획안 안의 순서) → 저장된 순서다. 응답 목록만 정렬하고 Core 의 기록은 건드리지 않는다.
+    계획안 단위 `CONFIRMED` · `UNCONFIRMED` 만 준다(screen-spec §6.3). 순서는 발생 시각, 같으면
+    계획안 → 칸(계획안 안의 순서) → 저장된 순서다. 응답 목록만 정렬하고 Core 의 기록은
+    건드리지 않는다.
     """
     row = _own_row(session, user, plan_id)
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
@@ -482,7 +487,7 @@ def get_monthly_audit(
     keyed = [
         ((event.occurred_at, 0, 0, index), _audit_event(event, None))
         for index, event in enumerate(plan.audit.events)
-        if item_id is None or event.event_type.value == "CONFIRMED"
+        if item_id is None or event.event_type.value in ("CONFIRMED", "UNCONFIRMED")
     ]
     for position, (section, cell) in enumerate(cells):
         keyed += [
@@ -555,14 +560,27 @@ def _current(session: Session, user, plan_id: int) -> MonthlyPlanOut:
     """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다."""
     row = _own_row(session, user, plan_id)
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
-    parent_id = session.scalar(
-        select(Plan.id).where(
+    parent = session.scalar(
+        select(Plan).where(
             Plan.plan_ref == plan.parent_lineage.parent_plan_id.value,
             Plan.center_id == user.center_id,
             Plan.kind == "annual",
         )
     )
-    return _detail(row, plan, parent_id)
+    changed = _parent_changed(parent, plan.parent_lineage.confirmed_at)
+    return _detail(row, plan, None if parent is None else parent.id, parent_changed=changed)
+
+
+def _parent_changed(parent: Plan | None, snapshot_confirmed_at) -> bool:
+    """부모가 지금 확정이 아니거나, 지금 확정 시각이 하위가 들고 있는 스냅샷과 다르다.
+
+    화면은 안내 한 줄만 띄운다 — 막지 않는다(확정 취소 계약). 월간 · 놀이 월간 · 주간이 쓴다.
+    """
+    return (
+        parent is None
+        or parent.status != "CONFIRMED"
+        or parent.confirmed_at != snapshot_confirmed_at
+    )
 
 
 # ── 편집 · 재생성 · 확정 (§9-3) ────────────────────────────────────────────
@@ -858,7 +876,39 @@ def confirm_monthly_plan(plan_id: int, body: RevisionIn, session: DbSession, use
     return _write(session, user, plan_id, changed, body.expected_revision, confirming=True)
 
 
-def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
+@router.post("/{plan_id}/unconfirm", response_model=MonthlyPlanOut)
+def unconfirm_monthly_plan(plan_id: int, body: RevisionIn, session: DbSession, user: CurrentUser):
+    """CONFIRMED → DRAFT. 값 · 근거 · 이력은 그대로 두고 계획안 단위 `UNCONFIRMED` 를 남긴다.
+
+    **이미 DRAFT 면 revision 과 무관하게 200 이고 아무것도 쓰지 않는다** — 확정과 같은 모양이다.
+    주간이 딸려 있어도 풀린다. 주간은 부모 스냅샷을 그대로 가진다(`parent_changed`).
+    """
+    row = _own_row(session, user, plan_id)
+    if row.status != "CONFIRMED":
+        return _current(session, user, plan_id)
+    if row.revision != body.expected_revision:
+        raise _STALE_WRITE
+    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    session.commit()
+    changed = UnconfirmMonthlyPlan(plan_repository=_drafts(plan), clock=SystemClock()).execute(
+        UnconfirmMonthlyPlanCommand(plan.plan_id, _actor(user))
+    )
+    written = _monthly_repo(session, user.center_id).update_if_revision(
+        changed.plan_id, changed, expected_revision=body.expected_revision, status="CONFIRMED"
+    )
+    if written is None:
+        session.rollback()
+        if _own_row(session, user, plan_id).status == "CONFIRMED":
+            raise _STALE_WRITE
+        # 누가 먼저 풀었다 — 이미 DRAFT 일 때와 같다
+    detail = _current(session, user, plan_id)
+    session.commit()
+    return detail
+
+
+def _detail(
+    row: Plan, plan: MonthlyPlan, parent_id: int, *, parent_changed: bool = False
+) -> MonthlyPlanOut:
     """도메인 객체를 계약 형식으로. 칸 수 · 순서는 Core 가 정한 그대로다.
 
     `revision` 은 DB 행의 값이다 — 도메인에는 revision 이 없다.
@@ -890,6 +940,7 @@ def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
             theme=plan.parent_lineage.snapshot_value,
             confirmed_at=plan.parent_lineage.confirmed_at,
         ),
+        parent_changed=parent_changed,
         weeks=[
             WeekOut(
                 week_id=week.week_id.value,
