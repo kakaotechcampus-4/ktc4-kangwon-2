@@ -149,7 +149,7 @@ test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
   assert.ok(schemas.includes("teacher_input:"), "teacher_input");
 });
 
-test("클라이언트는 후보 복사와 칸 분할·삭제까지 낸다", () => {
+test("클라이언트는 후보 복사와 칸 분할·삭제 · 확정 취소까지 낸다", () => {
   assert.deepEqual(Object.keys(weekly).sort(), [
     "confirmWeeklyPlan",
     "copyWeeklyActivity",
@@ -163,6 +163,7 @@ test("클라이언트는 후보 복사와 칸 분할·삭제까지 낸다", () =
     "regenerateWeeklyCell",
     "removeWeeklyActivityCell",
     "splitWeeklyActivityCell",
+    "unconfirmWeeklyPlan",
   ]);
 });
 

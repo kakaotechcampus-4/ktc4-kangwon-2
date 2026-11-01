@@ -162,6 +162,7 @@ export const addWeekly = (
         theme: monthly.parent.theme,
         confirmed_at: monthly.confirmed_at ?? at,
       },
+      parent_changed: false, // 저장값은 쓰지 않는다 — 응답 때 handler 가 다시 계산한다.
       // 서버는 교사 입력 칸을 따로 표시하지 않는다 — 칸의 `generation` 이 가른다 (§10-2).
       sections: SECTIONS.map((key, order) => ({
         section_key: key,
@@ -289,6 +290,21 @@ export const confirmWeekly = (id: number) =>
     plan.revision += 1;
     return plan;
   });
+
+/** 확정 취소 (U). 이미 초안이면 handler 가 먼저 그대로 돌려준다. */
+export const unconfirmWeekly = (id: number) =>
+  commit((db) => {
+    const plan = db.weeklyPlans.find((p) => p.id === id)!;
+    plan.status = "DRAFT";
+    plan.confirmed_at = null;
+    plan.revision += 1;
+    return plan;
+  });
+/** 부모 월간이 지금 확정이 아니거나 확정 시각이 스냅샷과 다르면 바뀐 것이다. */
+export const monthlyChanged = (plan: WeeklyPlan) => {
+  const monthly = read().monthlyPlans.find((p) => p.id === plan.parent.monthly_plan_id);
+  return monthly?.status !== "CONFIRMED" || monthly.confirmed_at !== plan.parent.confirmed_at;
+};
 
 export const removeWeekly = (id: number) =>
   commit((db) => {

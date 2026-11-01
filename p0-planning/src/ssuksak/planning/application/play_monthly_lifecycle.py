@@ -538,6 +538,28 @@ class ConfirmPlayMonthlyPlan:
         return confirmed
 
 
+@dataclass(frozen=True, slots=True)
+class UnconfirmPlayMonthlyPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+class UnconfirmPlayMonthlyPlan:
+    """CONFIRMED → DRAFT. A DRAFT Plan comes back unchanged and is not saved."""
+
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: UnconfirmPlayMonthlyPlanCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        actor_id = _require_actor(command.actor_id)
+        unconfirmed = plan.unconfirm(actor_id=actor_id, occurred_at=self._clock.now())
+        if unconfirmed is not plan:
+            self._plans.save(unconfirmed.plan_id, unconfirmed)
+        return unconfirmed
+
+
 def confirm_problems(plan: PlayMonthlyPlan) -> tuple[str, ...]:
     problems: list[str] = []
     for name in ("theme", "rationale"):

@@ -103,6 +103,9 @@ class AuditEventType(str, Enum):
     CANDIDATE_COPIED = "CANDIDATE_COPIED"
     # Plan-level: a teacher split, removed or resized a timetable cell (2026-10-28, D-4 · D-9).
     TIMETABLE_CHANGED = "TIMETABLE_CHANGED"
+    # Plan-level: a teacher took a CONFIRMED plan back to DRAFT (2026-11-01). Values,
+    # evidence, generation methods and earlier events stay as they were.
+    UNCONFIRMED = "UNCONFIRMED"
 
 
 @dataclass(frozen=True, slots=True)

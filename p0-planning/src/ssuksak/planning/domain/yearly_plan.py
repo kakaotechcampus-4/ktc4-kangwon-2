@@ -14,10 +14,12 @@ from .provenance import (
     AuditHistory,
     EvidenceSource,
     EvidenceSourceType,
+    GenerationMethod,
 )
 from .year_month import YearMonth
 
 _ACADEMIC_MONTHS = (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2)
+_REFERENCE_FREE = (GenerationMethod.IMPORTED, GenerationMethod.MANUAL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,9 +34,11 @@ class YearlyPeriod:
             raise InvalidDomainValueError("YearlyPeriod.period must be YearMonth")
         if not isinstance(self.theme, PlanItem):
             raise InvalidDomainValueError("YearlyPeriod.theme must be PlanItem")
-        if len(self.theme_references) != 1:
+        # Imported or hand-typed themes have no Theme Reference; Rule-made ones have exactly one.
+        expected = 0 if self.theme.generation.method in _REFERENCE_FREE else 1
+        if len(self.theme_references) != expected:
             raise InvalidDomainValueError(
-                "YearlyPeriod.theme requires exactly one THEME_REFERENCE evidence"
+                f"YearlyPeriod.theme requires exactly {expected} THEME_REFERENCE evidence"
             )
 
     @property
@@ -46,8 +50,10 @@ class YearlyPeriod:
         )
 
     @property
-    def theme_id(self) -> str:
-        return self.theme_references[0].source_id
+    def theme_id(self) -> str | None:
+        """None for an IMPORTED or MANUAL theme, which has no Theme Reference."""
+        references = self.theme_references
+        return references[0].source_id if references else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +183,18 @@ class YearlyPlan:
             status=PlanStatus.CONFIRMED,
             audit=self.audit.append(event),
         )
+
+    def unconfirm(self, *, actor_id: ActorId, occurred_at: datetime) -> YearlyPlan:
+        """CONFIRMED → DRAFT. Only a plan-level UNCONFIRMED event is added; a DRAFT is returned as is."""
+        if self.status is not PlanStatus.CONFIRMED:
+            return self
+        event = AuditEvent(
+            event_type=AuditEventType.UNCONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(self, status=PlanStatus.DRAFT, audit=self.audit.append(event))
 
 
 def _expected_periods(school_year: int) -> tuple[str, ...]:

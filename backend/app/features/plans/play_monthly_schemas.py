@@ -178,6 +178,9 @@ class PlayMonthlyPlanOut(BaseModel):
     target_ages: list[int]
     weeks: list[WeekOut]
     parent: ParentOut
+    parent_changed: bool = Field(
+        description="부모 연간이 지금 확정이 아니거나 확정 시각이 parent.confirmed_at 과 다르다"
+    )
     theme: CellOut
     rationale: CellOut
     together: list[ActivityOut]

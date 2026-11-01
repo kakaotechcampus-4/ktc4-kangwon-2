@@ -168,7 +168,10 @@ function load() {
     "@/lib/api/client": { ApiError: StubApiError },
     "@/lib/api/auth": { getMe: async () => ({ center_id: 1 }) },
     "@/lib/api/classes": { getClasses: () => classesResult() },
-    "@/lib/api/playMonthly": { getPlayMonthly: (id) => (calls.push(id), getResult()) },
+    "@/lib/api/playMonthly": {
+      getPlayMonthly: (id) => (calls.push(id), getResult()),
+      unconfirmPlayMonthly: (...a) => (calls.push(["unconfirm", ...a]), getResult()),
+    },
     "@/lib/hooks/use-play-monthly-save": { usePlayMonthlySave: saveStub },
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
     "./PlayCellEditor": esModule(editorStub),
@@ -178,6 +181,7 @@ function load() {
     "./PlayMonthlyRowRemove": esModule((props) => jsx("remove", props)),
     "./PlayMonthlyConfirmBar": esModule(barStub),
     "./PlayMonthlyHistory": esModule(historyStub),
+    "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "./playProjectPagination": {},
     "./PlayMonthlyView.module.css": esModule(css),
   });
@@ -240,6 +244,19 @@ test("확정본이면 「확정됨」 배지가 있고 확정 · 이력 · 인�
     all(tree).filter((n) => n.type === "button"),
     [],
   );
+});
+
+test("확정본의 [확정 취소]는 그 revision 으로 풀고 응답을 넘긴다 · 상위가 바뀌면 한 줄 안내", async () => {
+  const done = fixture(true);
+  const { View, h, tree } = await open(done.id, async () => ({ ...done, parent_changed: true }));
+  assert.equal(withText(tree, "span", "상위 계획안이 바뀌었어요").length, 1);
+  const button = all(tree).find((n) => n.type === "unconfirm");
+  const draft = { ...done, status: "DRAFT", confirmed_at: null, revision: done.revision + 1 };
+  getResult = async () => draft;
+  button.props.onDone(await button.props.run());
+  assert.deepEqual(calls.at(-1), ["unconfirm", done.id, done.revision]);
+  // 이 대역은 key 로 다시 마운트하지 않으므로 초안 화면은 브라우저 확인 몫이다 — 여기서는 다시 그리기가 터지지 않는지만 본다.
+  assert.ok(h.render(View, { id: done.id }));
 });
 
 test("확정 바와 이력은 초안 · 확정본 모두 계획안 id 로 달고, 저장 훅의 함수를 그대로 넘긴다", async () => {
@@ -951,6 +968,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
       });
     }),
     "@/components/plan-generator/PlayMonthlySafetyPanel": esModule((props) => jsx("safety", props)),
+    "@/components/plan-generator/UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "@/components/plan-generator/PlayMonthlySheet": {
       Cell: (props) => jsx("cell", props),
       SheetFrame: (props) => jsx("frame", props),

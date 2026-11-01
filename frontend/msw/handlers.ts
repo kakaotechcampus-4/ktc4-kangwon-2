@@ -25,6 +25,8 @@ import {
   samePlayCellValue,
   confirmPlan,
   confirmPlayPlan,
+  subThemeMismatch,
+  unconfirmPlan,
   listAnnualAudit,
   safetyCategories,
 } from "./data/annual-plans";
@@ -41,10 +43,12 @@ import {
   playCells,
   removePlayMonthly,
   removePlayMonthlyActivity,
+  unconfirmPlayMonthly,
 } from "./data/play-monthly";
 import {
   REGENERATABLE,
   addMonthly,
+  annualChanged,
   annualFor,
   confirmMonthly,
   editCell,
@@ -55,6 +59,7 @@ import {
   listMonthly,
   regenerateCell,
   targetMonthOf,
+  unconfirmMonthly,
 } from "./data/monthly-plans";
 import {
   REGENERATABLE as WEEKLY_REGENERATABLE,
@@ -66,8 +71,10 @@ import {
   findWeeklyCell,
   findWeeklyFor,
   listWeekly,
+  monthlyChanged,
   regenerateWeeklyCellValue,
   removeWeekly,
+  unconfirmWeekly,
   changeWeeklyActivity,
 } from "./data/weekly-plans";
 import {
@@ -88,7 +95,9 @@ import type {
   PlanConfig,
   AnnualInput,
   MonthInput,
+  MonthlyPlan,
   ProfileRef,
+  WeeklyPlan,
 } from "../lib/api/types";
 const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
@@ -135,12 +144,14 @@ async function weeklyActivity(
   if (operation === "split" && b.axis !== "VERTICAL" && b.axis !== "HORIZONTAL") return bad("axis");
   try {
     return HttpResponse.json(
-      changeWeeklyActivity(
-        id,
-        itemId,
-        operation,
-        typeof b.candidate_item_id === "string" ? b.candidate_item_id : undefined,
-        b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? b.axis : undefined,
+      weeklyOut(
+        changeWeeklyActivity(
+          id,
+          itemId,
+          operation,
+          typeof b.candidate_item_id === "string" ? b.candidate_item_id : undefined,
+          b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? b.axis : undefined,
+        ),
       ),
     );
   } catch {
@@ -538,8 +549,28 @@ export const handlers = [
       if (lacking.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...lacking);
       return HttpResponse.json(confirmPlayPlan(id));
     }
-    // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
+    // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 처음 확정이면 달마다 소주제 수 = 주 수여야 한다 (I-A).
+    const mismatch = plan.status === "CONFIRMED" ? [] : subThemeMismatch(plan);
+    if (mismatch.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...mismatch);
     return HttpResponse.json(confirmPlan(id));
+  }),
+  // 확정 취소 (U). 본문은 그 형식의 confirm 과 같고, 이미 초안이면 200 · 그대로다.
+  http.post("*/api/plans/annual/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "annual-unconfirm");
+    if (s) return s;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format === "PLAY_PROJECT") {
+      const b = await body(request);
+      const given = b?.expected_revision;
+      const present = given !== undefined && given !== null;
+      if (present && badRevision(b!)) return bad("expected_revision");
+      if (plan.status !== "CONFIRMED") return HttpResponse.json(plan);
+      if (!present) return bad("expected_revision");
+      if (plan.revision !== given) return stale();
+    } else if (plan.status !== "CONFIRMED") return HttpResponse.json(plan);
+    return HttpResponse.json(unconfirmPlan(id));
   }),
   // 실제 서버: 확정본은 200 hwpx(가짜 파일), 미확정은 형식 상관없이 409 — 문구만 형식별 (§9).
   http.get("*/api/plans/:id/export/hwp", async ({ request, params }) => {
@@ -741,6 +772,18 @@ export const handlers = [
     if (lacking.length) return invalid(lacking);
     return HttpResponse.json(confirmPlayMonthly(plan.id));
   }),
+  http.post("*/api/plans/monthly/play/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-unconfirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = playOwn(params.id);
+    if (plan instanceof Response) return plan;
+    if (plan.status !== "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.revision !== b.expected_revision) return stale();
+    return HttpResponse.json(unconfirmPlayMonthly(plan.id));
+  }),
   http.get("*/api/plans/monthly/play/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "play-monthly-audit");
     if (s) return s;
@@ -798,7 +841,9 @@ export const handlers = [
         "profile_ref",
       );
     if (request.signal.aborted) return HttpResponse.error();
-    return HttpResponse.json(addMonthly(klass, annual, b.month, profile), { status: 201 });
+    return HttpResponse.json(monthlyOut(addMonthly(klass, annual, b.month, profile)), {
+      status: 201,
+    });
   }),
   http.get("*/api/plans/monthly", async ({ request }) => {
     const s = await scenario(request, "monthly-list");
@@ -817,7 +862,7 @@ export const handlers = [
     const s = await scenario(request, "monthly-get");
     if (s) return s;
     const plan = myMonthly(Number(params.id));
-    return plan ? HttpResponse.json(plan) : planMissing(Number(params.id));
+    return plan ? HttpResponse.json(monthlyOut(plan)) : planMissing(Number(params.id));
   }),
   // 변경 이력 (§9-5). 소유를 먼저 본다 — 남의 계획안이면 item_id 를 보기 전에 404 ["id"].
   http.get("*/api/plans/monthly/:id/audit", async ({ request, params }) => {
@@ -842,7 +887,7 @@ export const handlers = [
         "value",
       );
     return HttpResponse.json(
-      editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key),
+      monthlyOut(editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key)),
     );
   }),
   // LLM 을 부르지 않는다 — 다음 revision 을 넣은 고정 문장으로 바꾼다.
@@ -855,7 +900,9 @@ export const handlers = [
       return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");
     if (request.signal.aborted) return HttpResponse.error();
     const label = w.section.label ?? w.section.section_key;
-    return HttpResponse.json(regenerateCell(w.plan.id, w.cell.item_id, label, w.plan.revision + 1));
+    return HttpResponse.json(
+      monthlyOut(regenerateCell(w.plan.id, w.cell.item_id, label, w.plan.revision + 1)),
+    );
   }),
   http.post("*/api/plans/monthly/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "monthly-confirm");
@@ -866,9 +913,22 @@ export const handlers = [
     const plan = myMonthly(Number(params.id));
     if (!plan) return planMissing(Number(params.id));
     // 이미 확정이면 revision 과 상관없이 200 · 저장된 그대로 (D-M5-CONFIRM-01).
-    if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.status === "CONFIRMED") return HttpResponse.json(monthlyOut(plan));
     if (plan.revision !== b.expected_revision) return stale();
-    return HttpResponse.json(confirmMonthly(plan.id));
+    return HttpResponse.json(monthlyOut(confirmMonthly(plan.id)));
+  }),
+  // 확정 취소 (U). 하위 주간이 있어도 풀린다. 이미 초안이면 revision 과 상관없이 200 · 그대로.
+  http.post("*/api/plans/monthly/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-unconfirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing(Number(params.id));
+    if (plan.status !== "CONFIRMED") return HttpResponse.json(monthlyOut(plan));
+    if (plan.revision !== b.expected_revision) return stale();
+    return HttpResponse.json(monthlyOut(unconfirmMonthly(plan.id)));
   }),
   // 주간계획안 (docs/weekly-plan-contract.md §13). 월간과 같은 모양 · 같은 공개 오류 코드다.
   http.post("*/api/plans/weekly", async ({ request }) => {
@@ -896,7 +956,7 @@ export const handlers = [
     if (request.signal.aborted) return HttpResponse.error();
     const saturday = !!findCenterSettings(klass.center_id).weekly_saturday_enabled;
     return HttpResponse.json(
-      addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true),
+      weeklyOut(addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true)),
       { status: 201 },
     );
   }),
@@ -919,7 +979,7 @@ export const handlers = [
     const s = await scenario(request, "weekly-get");
     if (s) return s;
     const plan = myWeekly(Number(params.id));
-    return plan ? HttpResponse.json(plan) : weeklyMissing();
+    return plan ? HttpResponse.json(weeklyOut(plan)) : weeklyMissing();
   }),
   http.put("*/api/plans/weekly/:id/cells/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "weekly-cell");
@@ -932,7 +992,9 @@ export const handlers = [
         "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.",
         "value",
       );
-    return HttpResponse.json(editWeeklyCellValue(w.plan.id, w.cell.item_id, String(w.b.value)));
+    return HttpResponse.json(
+      weeklyOut(editWeeklyCellValue(w.plan.id, w.cell.item_id, String(w.b.value))),
+    );
   }),
   http.post("*/api/plans/weekly/:id/cells/:itemId/regenerate", async ({ request, params }) => {
     const s = await scenario(request, "weekly-regenerate", 1200);
@@ -950,7 +1012,7 @@ export const handlers = [
     if (request.signal.aborted) return HttpResponse.error();
     const label = w.section.label ?? w.section.section_key;
     return HttpResponse.json(
-      regenerateWeeklyCellValue(w.plan.id, w.cell.item_id, label, w.plan.revision + 1),
+      weeklyOut(regenerateWeeklyCellValue(w.plan.id, w.cell.item_id, label, w.plan.revision + 1)),
     );
   }),
   http.post("*/api/plans/weekly/:id/confirm", async ({ request, params }) => {
@@ -962,13 +1024,25 @@ export const handlers = [
     const plan = myWeekly(Number(params.id));
     if (!plan) return weeklyMissing();
     // 이미 확정이면 revision 과 상관없이 200 — 재시도 · 더블클릭은 실패가 아니다 (월간과 같다).
-    if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.status === "CONFIRMED") return HttpResponse.json(weeklyOut(plan));
     if (plan.revision !== b.expected_revision) return stale();
     // 놀이 주제가 비면 확정할 수 없다 (§6-2 「확정 필수」).
     const theme = plan.sections.find((s2) => s2.section_key === "theme")?.cells[0];
     if (theme && !theme.value.trim())
       return failure("VALIDATION_FAILED", "놀이 주제를 적어야 확정할 수 있습니다.", "theme");
-    return HttpResponse.json(confirmWeekly(plan.id));
+    return HttpResponse.json(weeklyOut(confirmWeekly(plan.id)));
+  }),
+  http.post("*/api/plans/weekly/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "weekly-unconfirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = myWeekly(Number(params.id));
+    if (!plan) return weeklyMissing();
+    if (plan.status !== "CONFIRMED") return HttpResponse.json(weeklyOut(plan));
+    if (plan.revision !== b.expected_revision) return stale();
+    return HttpResponse.json(weeklyOut(unconfirmWeekly(plan.id)));
   }),
   http.delete("*/api/plans/weekly/:id", async ({ request, params }) => {
     const s = await scenario(request, "weekly-delete");
@@ -1118,6 +1192,12 @@ const myWeekly = (id: number) => {
   const plan = findWeekly(id);
   return plan && myClass(plan.class_id) ? plan : undefined;
 };
+/** `parent_changed` 는 저장하지 않고 응답마다 부모를 보고 계산한다 (U). */
+const monthlyOut = (p: MonthlyPlan) => ({
+  ...p,
+  parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
+});
+const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
 const weeklyMissing = () => failure("NOT_FOUND", "주간계획안을 찾을 수 없습니다.", "id");
 /** 주간 칸 편집 · 재생성 공통. 월간 `cellWrite` 와 같은 순서로 본다. */
 async function weeklyCellWrite(request: Request, id: string, itemId: string, needsValue: boolean) {

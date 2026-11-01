@@ -131,7 +131,10 @@ def test_PUT_중에_온_확정은_기다렸다가_고친_본문을_확정한다(
         return _confirm(plan_id)
 
     put, confirm, blocked = _race(
-        lambda: _put(plan_id, 3, "고친 3월 주제", ["첫 주"]), confirm_after_peek, reached, release
+        lambda: _put(plan_id, 3, "고친 3월 주제", ["첫 주", "둘째 주", "셋째 주", "넷째 주"]),
+        confirm_after_peek,
+        reached,
+        release,
     )
 
     assert seen_during_hold == [200]
@@ -142,7 +145,7 @@ def test_PUT_중에_온_확정은_기다렸다가_고친_본문을_확정한다(
     assert events.count("CONFIRMED") == 1
     assert themes[3] == "고친 3월 주제"  # 확정된 본문에 교사 수정이 들어 있다
     assert "TEACHER_EDITED" in _month_events(plan_id, 3)
-    assert row.sub_themes["3"] == ["첫 주"]
+    assert row.sub_themes["3"] == ["첫 주", "둘째 주", "셋째 주", "넷째 주"]
 
 
 def test_확정_중에_온_PUT_은_기다렸다가_409_이고_사라지는_수정이_없다(live, monkeypatch):

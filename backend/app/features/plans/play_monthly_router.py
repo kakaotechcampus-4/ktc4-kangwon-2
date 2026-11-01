@@ -40,6 +40,8 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     PlayMonthlyLifecycleError,
     RemovePlayMonthlyActivity,
     RemovePlayMonthlyActivityCommand,
+    UnconfirmPlayMonthlyPlan,
+    UnconfirmPlayMonthlyPlanCommand,
     play_monthly_notices,
 )
 from ssuksak.planning.domain.errors import InvalidStateTransitionError
@@ -73,6 +75,7 @@ from app.features.plans.monthly_router import (
     _gate,
     _generation,
     _is_play_monthly,
+    _parent_changed,
     _target_month,
 )
 from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
@@ -547,6 +550,45 @@ def confirm_play_monthly_plan(
     return detail
 
 
+@router.post("/{plan_id}/unconfirm", response_model=s.PlayMonthlyPlanOut)
+def unconfirm_play_monthly_plan(
+    plan_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: Annotated[ConfirmIn | None, Body()] = None,
+):
+    """CONFIRMED → DRAFT. 확정과 같은 본문 · 순서다. 이미 DRAFT 면 Core 도 쓰기도 없이 200."""
+    row = _own_row(session, user, plan_id)
+    repo = _repo(session, user)
+    if row.status != "CONFIRMED":
+        return _out(session, user, row, _plan(repo, row))
+    expected = None if body is None else body.expected_revision
+    if expected is None:
+        raise _invalid("expected_revision")
+    if row.revision != expected:
+        raise _STALE_WRITE
+    plan = _plan(repo, row)
+    drafts: InMemoryPlanRepository[PlayMonthlyPlan] = InMemoryPlanRepository()
+    drafts.save(plan.plan_id, plan)
+    changed = UnconfirmPlayMonthlyPlan(plan_repository=drafts, clock=SystemClock()).execute(
+        UnconfirmPlayMonthlyPlanCommand(plan.plan_id, _actor(user))
+    )
+    plan_id = row.id  # rollback 이 row 를 만료시킨다
+    written = repo.update_if_revision(
+        changed.plan_id, changed, expected_revision=expected, status="CONFIRMED"
+    )
+    if written is None:  # 그 사이 바뀌었다 — 먼저 풀었으면 이미 DRAFT 와 같다(200)
+        session.rollback()
+        row = _own_row(session, user, plan_id)
+        if row.status == "CONFIRMED":
+            raise _STALE_WRITE
+        return _out(session, user, row, _plan(repo, row))
+    session.refresh(row)
+    detail = _out(session, user, row, changed)
+    session.commit()
+    return detail
+
+
 @router.get("/{plan_id}/audit", response_model=s.PlayMonthlyAuditOut)
 def get_play_monthly_audit(plan_id: int, session: DbSession, user: CurrentUser):
     """저장된 이벤트를 읽기만 한다. 지운 행의 칸 이벤트도 싣는다."""
@@ -611,14 +653,15 @@ def _repo(session: Session, user) -> PostgresPlanRepository[PlayMonthlyPlan]:
 
 
 def _out(session: Session, user, row: Plan, plan: PlayMonthlyPlan) -> s.PlayMonthlyPlanOut:
-    annual_id = session.scalar(
-        select(Plan.id).where(
+    annual = session.scalar(
+        select(Plan).where(
             Plan.plan_ref == plan.parent.lineage.parent_plan_id.value,
             Plan.center_id == user.center_id,
             Plan.kind == "annual",
         )
     )
-    return _detail(row, plan, annual_id)
+    changed = _parent_changed(annual, plan.parent.lineage.confirmed_at)
+    return _detail(row, plan, None if annual is None else annual.id, parent_changed=changed)
 
 
 def _own_row(session: Session, user, plan_id: int) -> Plan:
@@ -671,7 +714,9 @@ def _activity(activity: PlayActivity) -> s.ActivityOut:
     )
 
 
-def _detail(row: Plan, plan: PlayMonthlyPlan, annual_id: int | None) -> s.PlayMonthlyPlanOut:
+def _detail(
+    row: Plan, plan: PlayMonthlyPlan, annual_id: int | None, *, parent_changed: bool = False
+) -> s.PlayMonthlyPlanOut:
     parent = plan.parent
     return s.PlayMonthlyPlanOut(
         id=row.id,
@@ -713,6 +758,7 @@ def _detail(row: Plan, plan: PlayMonthlyPlan, annual_id: int | None) -> s.PlayMo
                 for p in parent.plays
             ],
         ),
+        parent_changed=parent_changed,
         theme=_cell(plan.theme),
         rationale=_cell(plan.rationale),
         together=[_activity(a) for a in plan.together],

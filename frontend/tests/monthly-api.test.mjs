@@ -123,7 +123,7 @@ async function confirmedClass() {
   return { center, klass, annual, ref: await readyRef(center.id) };
 }
 
-test("client exports 16 functions: 8 monthly + 2 profile read + 6 profile management", () => {
+test("client exports 17 functions: 9 monthly + 2 profile read + 6 profile management", () => {
   assert.deepEqual(Object.keys(monthly).sort(), [
     "confirmMonthlyPlan",
     "createMonthlyPlan",
@@ -135,6 +135,7 @@ test("client exports 16 functions: 8 monthly + 2 profile read + 6 profile manage
     "listMonthlyPlans",
     "placeMonthlySafety",
     "regenerateMonthlyCell",
+    "unconfirmMonthlyPlan",
   ]);
   assert.deepEqual(Object.keys(profiles).sort(), [
     "createTemplateProfile",

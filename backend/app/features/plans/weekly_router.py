@@ -45,6 +45,10 @@ from ssuksak.planning import (
     WeekId,
     WeeklyPlan,
 )
+from ssuksak.planning.application.weekly_lifecycle import (  # 공개 창구에 없다
+    UnconfirmWeeklyPlan,
+    UnconfirmWeeklyPlanCommand,
+)
 from ssuksak.planning.domain.provenance import SplitAxis
 from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
 
@@ -70,6 +74,7 @@ from app.features.plans.monthly_router import (
     _generation,
     _is_play_monthly,
     _item_id,
+    _parent_changed,
     _target_month,
 )
 from app.features.plans.monthly_schemas import (
@@ -322,14 +327,15 @@ def _current(session: Session, user, plan_id: int) -> WeeklyPlanOut:
     """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다."""
     row = _own_row(session, user, plan_id)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
-    parent_id = session.scalar(
-        select(Plan.id).where(
+    parent = session.scalar(
+        select(Plan).where(
             Plan.plan_ref == plan.parent_lineage.parent_plan_id.value,
             Plan.center_id == user.center_id,
             Plan.kind == "monthly",
         )
     )
-    return _detail(row, plan, parent_id)
+    changed = _parent_changed(parent, plan.parent_lineage.confirmed_at)
+    return _detail(row, plan, None if parent is None else parent.id, parent_changed=changed)
 
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -384,7 +390,9 @@ def _activity_grid(node) -> WeeklyActivityGridOut:
     )
 
 
-def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
+def _detail(
+    row: Plan, plan: WeeklyPlan, parent_id: int, *, parent_changed: bool = False
+) -> WeeklyPlanOut:
     """도메인 객체를 계약 형식으로. 칸 순서는 Core 가 정한 Template 순서 그대로다.
 
     `revision` 은 DB 행의 값이다. **`safety`(배치 정보)는 내지 않는다** — 월간도 내지 않는다.
@@ -416,6 +424,7 @@ def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
             theme=plan.parent_lineage.snapshot_value,
             confirmed_at=plan.parent_lineage.confirmed_at,
         ),
+        parent_changed=parent_changed,
         sections=[
             WeeklySectionOut(
                 section_key=section.section_key,
@@ -727,6 +736,35 @@ def confirm_weekly_plan(plan_id: int, body: RevisionIn, session: DbSession, user
     return _write(session, user, plan_id, changed, body.expected_revision, confirming=True)
 
 
+@router.post("/{plan_id}/unconfirm", response_model=WeeklyPlanOut)
+def unconfirm_weekly_plan(plan_id: int, body: RevisionIn, session: DbSession, user: CurrentUser):
+    """CONFIRMED → DRAFT. 값 · 근거 · 이력은 그대로 두고 계획안 단위 `UNCONFIRMED` 를 남긴다.
+
+    이미 DRAFT 면 revision 과 무관하게 200 이고 아무것도 쓰지 않는다(월간과 같다).
+    """
+    row = _own_row(session, user, plan_id)
+    if row.status != "CONFIRMED":
+        return _current(session, user, plan_id)
+    if row.revision != body.expected_revision:
+        raise _STALE_WRITE
+    plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    session.commit()
+    changed = UnconfirmWeeklyPlan(**_repos(plan, None)).execute(
+        UnconfirmWeeklyPlanCommand(plan.plan_id, _actor(user))
+    )
+    written = _weekly_repo(session, user.center_id).update_if_revision(
+        changed.plan_id, changed, expected_revision=body.expected_revision, status="CONFIRMED"
+    )
+    if written is None:
+        session.rollback()
+        if _own_row(session, user, plan_id).status == "CONFIRMED":
+            raise _STALE_WRITE
+        # 누가 먼저 풀었다 — 이미 DRAFT 일 때와 같다
+    detail = _current(session, user, plan_id)
+    session.commit()
+    return detail
+
+
 @router.get("/{plan_id}/audit", response_model=WeeklyAuditOut)
 def get_weekly_audit(
     plan_id: int, session: DbSession, user: CurrentUser, item_id: str | None = None
@@ -750,7 +788,7 @@ def get_weekly_audit(
     keyed = [
         ((event.occurred_at, 0, 0, index), _audit_event(event, None, None))
         for index, event in enumerate(plan.audit.events)
-        if item_id is None or event.event_type.value == "CONFIRMED"
+        if item_id is None or event.event_type.value in ("CONFIRMED", "UNCONFIRMED")
     ]
     for position, cell in enumerate(cells):
         keyed += [
