@@ -45,6 +45,8 @@ class ParentSnapshotOut(BaseModel):
 
 class WeeklyCellOut(BaseModel):
     item_id: str
+    # DAY 줄의 칸이면 그 요일(MON…SAT), 아니면 null
+    day: str | None
     value: str
     state: str
     evidence: list[EvidenceOut]
@@ -54,18 +56,18 @@ class WeeklyCellOut(BaseModel):
     # 교사가 쓰는 칸(가정연계 · 행사 · 특별활동). 첫 입력 뒤 generation 이 MANUAL 이 되므로
     # generation == null 로는 가를 수 없다. 화면은 이 값으로 재생성 버튼을 숨긴다.
     teacher_input: bool
-    day: Literal["MON", "TUE", "WED", "THU", "FRI", "SAT"] | None = None
 
 
 class WeeklySectionOut(BaseModel):
     section_key: str
     label: str | None
     role: str
+    # NONE | DAY — 주간 양식에는 축 줄이 없어 null 이 없다
+    repeat_by: str
     visible: bool
     order: int
     semantic_variant: str | None
     cells: list[WeeklyCellOut]
-    repeat_by: Literal["NONE", "DAY"] = "NONE"
 
 
 class WeeklyActivityCandidateOut(BaseModel):
@@ -93,7 +95,6 @@ class SplitWeeklyActivityIn(RevisionIn):
 
 
 class WeeklyAuditEventOut(MonthlyAuditEventOut):
-    day: str | None = None
     copied_from: str | None = None
     timetable_change: dict | None = None
 

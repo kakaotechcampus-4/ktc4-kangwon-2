@@ -24,6 +24,7 @@ from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateR
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 from ssuksak.planning import ActivityCatalogSelector, MonthlyPlan, PlanId, TemplateProfileRef
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from test_monthly_safety_read_api import legacy_mode  # noqa: F401
 
 from app.config import settings
 from app.db import engine
@@ -238,18 +239,20 @@ def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world)
     focus_sources = {e["source_type"] for c in sections["focus"]["cells"] for e in c["evidence"]}
     assert "INSTITUTION_SAMPLE" in focus_sources  # LLM 이 쓴 칸의 Grounding
 
-    # 안전교육은 배치 정책 v2 의 법정 주만 「[짧은 이름] - 내용」으로 채우고 나머지 주는 비워 둔다
-    # (2026-10-22 · 10-23 결정). 법정 시수는 따지지 않으므로 제약은 그대로
-    # 「근거 필요 · 미검증」이다.
+    # 안전교육은 후보 모드다(ADR-052): 주별 칸은 비어 있고 후보 8개 · 미배치 안내가 온다.
+    # 법정 시수는 따지지 않으므로 제약은 그대로 「근거 필요 · 미검증」이다.
     safety = sections["safety_education"]["cells"]
-    filled = [c for c in safety if c["state"] == "FILLED"]
-    assert filled and all(c["value"].startswith("[") for c in filled)
-    assert {(c["state"], c["value"]) for c in safety if c not in filled} == {("EMPTY_VALID", "")}
+    assert {(c["state"], c["value"]) for c in safety} == {("EMPTY_VALID", "")}
+    assert len(body["safety_candidates"]) == 8
     constraints = {c["code"]: c for c in body["constraints"]}
     assert constraints["STATUTORY_SAFETY_EDUCATION"]["verification"] == (
         "NOT_VERIFIED_SOURCE_REQUIRED"
     )
     assert body["verification"]["executed_rules"]
+    # 후보 모드는 안전 칸을 미해결로 보지 않는다 — 연간 시수 미검증 발견이 verification 에서 빠진다.
+    assert "SAFETY_ANNUAL_HOURS_NOT_VERIFIED" not in {
+        f["code"] for f in body["verification"]["findings"]
+    }
     assert [f["code"] for f in body["verification"]["findings"]] == [
         f.code for f in stored.verification_report.findings
     ]
@@ -837,6 +840,123 @@ def test_제출_문서에_출처가_섞이지_않는다(world):
     joined = "\n".join(text for text in printed if text)
     for banned in ("evidence", "generation", "LLM", "mock"):
         assert banned not in joined
+
+
+def _place(plan: dict, week_id: str, candidate_item_id: str, revision: int):
+    return client.put(
+        f"/api/plans/monthly/{plan['id']}/safety-weeks/{week_id}",
+        json={"expected_revision": revision, "candidate_item_id": candidate_item_id},
+    )
+
+
+def _safety_row(response, plan: dict) -> list[str]:
+    from app.features.plans.export import MONTHLY_WEEK_ROWS
+    from app.shared.hwpx import NS, _cells
+
+    table, _ = _exported_table(response.content)
+    cells = {
+        address: "\n".join("".join(p.itertext()) for p in tc.iterfind("hp:subList/hp:p", NS))
+        for address, tc in _cells(table).items()
+    }
+    columns = sorted(col for row, col in cells if row == 6 and col > 0)
+    return [cells[(MONTHLY_WEEK_ROWS["safety_education"], col)] for col in columns]
+
+
+@pytest.mark.parametrize("month", [9, 10])  # 2026-09 는 5주, 2026-10 은 4주다
+def test_안전교육_줄은_배치한_주의_표시값이고_안_고른_주는_빈칸이다(world, month):
+    _annual(world["class_a"])
+    plan = _create(world, month=month).json()
+    weeks = [w["week_id"] for w in plan["weeks"] if w["active"]]
+    candidate = plan["safety_candidates"][0]
+    placed = _place(plan, weeks[1], candidate["cell"]["item_id"], plan["revision"])
+    assert placed.status_code == 200, placed.json()
+    confirmed = client.post(
+        f"/api/plans/monthly/{plan['id']}/confirm",
+        json={"expected_revision": placed.json()["revision"]},
+    ).json()
+    display = {w["week_id"]: w["display_value"] for w in confirmed["safety_weeks"]}
+    assert display[weeks[1]].endswith(candidate["cell"]["value"]) and display[weeks[1]]
+
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    expected = [display[w] for w in weeks]
+    assert _safety_row(response, plan) == expected
+    assert len(weeks) == (5 if month == 9 else 4)
+    assert [v for v in expected if v] == [display[weeks[1]]]  # 나머지 주는 빈칸
+    assert not any(text and "evidence" in text for text in _exported_table(response.content)[1])
+
+
+@pytest.mark.usefixtures("legacy_mode")
+def test_예전_계획안은_저장된_칸_값을_그대로_안전교육_줄에_내보낸다(world):
+    plan = _confirmed(world)
+    assert plan["safety_weeks"] == []
+    section = next(s for s in plan["sections"] if s["section_key"] == "safety_education")
+    stored = {c["week_id"]: c["value"] for c in section["cells"]}
+    assert any(v.startswith("[") for v in stored.values()) and "" in stored.values()
+
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    weeks = [w["week_id"] for w in plan["weeks"] if w["active"]]
+    assert _safety_row(response, plan) == [stored[w] for w in weeks]
+
+
+def test_안전교육_줄을_숨긴_양식이면_배치한_후보가_있어도_그_줄은_빈칸이다(world, monkeypatch):
+    _annual(world["class_a"])
+    plan = _create(world).json()
+    week = next(w["week_id"] for w in plan["weeks"] if w["active"])
+    placed = _place(plan, week, plan["safety_candidates"][0]["cell"]["item_id"], plan["revision"])
+    assert placed.status_code == 200, placed.json()
+    assert placed.json()["safety_weeks"][0]["display_value"]  # 숨기지 않았다면 채워졌을 값
+    client.post(
+        f"/api/plans/monthly/{plan['id']}/confirm",
+        json={"expected_revision": placed.json()["revision"]},
+    )
+    from app.features.plans import export
+
+    original = export._monthly_detail
+
+    def hidden(session, user, plan_id):
+        detail = original(session, user, plan_id)
+        for section in detail.sections:
+            if section.section_key == "safety_education":
+                section.visible = False
+        return detail
+
+    monkeypatch.setattr(export, "_monthly_detail", hidden)
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    assert set(_safety_row(response, plan)) == {""}
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("monthly_safety_evidence_not_active", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_safety_rule_incomplete", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_safety_evidence_version_mismatch", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_safety_evidence_store_mismatch", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_life_safety_grounding_insufficient", (503, "DEPENDENCY_UNAVAILABLE")),
+        # 방어 매핑 — 안전교육은 필수 Section 이라 정상 Profile 로는 나지 않는다.
+        ("monthly_safety_candidates_require_safety_section", (422, "VALIDATION_FAILED")),
+        ("monthly_safety_candidates_require_llm_planner", (500, "GENERATION_FAILED")),
+    ],
+)
+def test_안전_후보_생성_오류는_계약_코드로_바뀌고_저장되지_않는다(
+    world, monkeypatch, code, expected
+):
+    from ssuksak.planning import MonthlyApplicationError
+
+    class Broken:
+        def execute(self, command):
+            raise MonthlyApplicationError(code, "internal detail")
+
+    monkeypatch.setattr(monthly_router, "monthly_generation", lambda **kwargs: Broken())
+    _annual(world["class_a"])
+    response = _create(world)
+
+    assert (response.status_code, response.json()["error"]["code"]) == expected
+    assert "internal detail" not in response.text
+    assert _monthly_rows(world["session"]) == []
 
 
 # ── 지우기 (§9-1) ─────────────────────────────────────────────────────────

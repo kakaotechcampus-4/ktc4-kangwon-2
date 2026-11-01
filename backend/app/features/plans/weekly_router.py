@@ -421,13 +421,13 @@ def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
                 section_key=section.section_key,
                 label=section.display_label,
                 role=section.role.value,
+                repeat_by=section.repeat_by.value,
                 visible=section.visible,
                 order=section.order,
                 semantic_variant=(
                     None if section.semantic_variant is None else section.semantic_variant.value
                 ),
                 cells=[_cell(c) for c in plan.cells if c.section_key == section.section_key],
-                repeat_by=section.repeat_by.value if section.repeat_by is not None else "NONE",
             )
             for section in plan.template_snapshot.sections
         ],
@@ -480,7 +480,7 @@ def _cell(cell) -> WeeklyCellOut:
     generation = cell.generation
     return WeeklyCellOut(
         item_id=cell.item_id.value,
-        day=cell.day.value if cell.day is not None else None,
+        day=None if cell.day is None else cell.day.value,
         value=cell.value,
         state=cell.cell_state.value,
         evidence=[

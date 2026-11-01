@@ -31,11 +31,19 @@ from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.in_memory_template_profile_repository import (
     InMemoryTemplateProfileRepository,
 )
+from ssuksak.adapters.json_activity_reference_repository import (
+    JsonActivityReferenceRepository,
+)
 from ssuksak.adapters.monthly_composition import (
     monthly_confirmation,
     monthly_edit,
     monthly_generation,
     monthly_regeneration,
+)
+from ssuksak.adapters.play_monthly_composition import (
+    DRILL_CATALOG,
+    SAFETY_CLASSIFICATION_VERSION,
+    SAFETY_QUALITY_VERSION,
 )
 from ssuksak.planning import (
     ActivityCatalogSelector,
@@ -51,12 +59,19 @@ from ssuksak.planning import (
     MonthlyPlan,
     PlanId,
     RegenerateMonthlyPlanItemCommand,
-    SafetyPlacementSelector,
     SafetyRuleSelector,
     TemplateProfileRef,
     WeekId,
     YearlyPlan,
     YearMonth,
+)
+from ssuksak.planning.application.copy_monthly_drill_candidate import (  # 공개 창구에 없다
+    CopyMonthlyDrillCandidate,
+    CopyMonthlyDrillCandidateCommand,
+)
+from ssuksak.planning.application.monthly_dto import (  # 공개 창구에 없다
+    DrillTopicsSelector,
+    SafetyCandidatesSelector,
 )
 from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구에 없다
     PlaceMonthlySafety,
@@ -76,6 +91,7 @@ from app.features.plans.monthly_schemas import (
     CellOut,
     ConstraintOut,
     CreateMonthlyPlan,
+    DrillCandidateOut,
     EditMonthlyCell,
     FindingOut,
     GenerationChangeOut,
@@ -120,9 +136,12 @@ ACTIVITY_CATALOG = ActivityCatalogSelector(
     "ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1"
 )
 SAFETY_RULE = SafetyRuleSelector("child-welfare-act-decree-annex6-2022-06-21")
-# 안전교육 배치 정책(2026-10-22 결정으로 D-M4-03 을 뒤집음). 법정 주만 채운다 —
-# 보충 주는 넣지 않는다(2026-10-23 결정). 나머지 주의 안전교육 칸은 비어 있다.
-SAFETY_PLACEMENT = SafetyPlacementSelector("ssuksak-safety-placement-v2", supplemental=False)
+# 안전교육은 후보 8개(법정 6 + 생활안전 2)를 만들고 교사가 주마다 고른다(ADR-052).
+# 판 값은 Core 조립부가 한 번만 관리한다 — 여기에 사본을 두지 않는다(ADR-046).
+SAFETY_CANDIDATES = SafetyCandidatesSelector(SAFETY_CLASSIFICATION_VERSION, SAFETY_QUALITY_VERSION)
+# 훈련(소방대피 · 재난대비) 후보의 주제 자료 판. 사본을 두지 않는다.
+# Profile 에 훈련 칸이 없으면 Core 가 쓰지 않는다.
+DRILL_TOPICS = DrillTopicsSelector(*DRILL_CATALOG)
 # 월간은 반 · 월당 하나다(결정 문서 12.5). 이 이름의 충돌만 409 로 바꾼다.
 MONTHLY_UNIQUE = "uq_plans_monthly_per_classroom_month"
 
@@ -137,6 +156,8 @@ _PROFILE_UNUSABLE = frozenset(
         # Core 최종 승인 검사(ADR-027). 보통은 생성 직전 검사가 먼저 막는다 — 같은 422 다.
         "monthly_template_not_found",
         "monthly_template_not_approved",
+        # 안전교육은 필수 Section 이라 정상 Profile 로는 나지 않는다 — 방어 매핑이다(ADR-052).
+        "monthly_safety_candidates_require_safety_section",
     }
 )
 # 서버의 승인 참조자료를 쓸 수 없다 — 운영 문의.
@@ -148,6 +169,19 @@ _REFERENCE_UNAVAILABLE = frozenset(
         "safety_rule_not_approved",
         "evidence_classification_store_mismatch",
         "curriculum_reference_unavailable",
+        # 안전교육 후보를 만들 승인 자료가 없거나 어긋났다. 다시 해도 같다(ADR-052).
+        "monthly_safety_evidence_not_active",
+        "monthly_safety_rule_incomplete",
+        "monthly_safety_evidence_version_mismatch",
+        "monthly_safety_evidence_store_mismatch",
+        "monthly_life_safety_grounding_insufficient",
+        # 훈련 주제 자료가 없거나 어긋났다. 다시 해도 같다. `monthly_drill_requires_llm_planner` 는
+        # 서버가 늘 LLM 경로로 부르니 오면 서버 버그라 매핑하지 않는다(500).
+        "monthly_drill_reference_not_found",
+        "monthly_drill_reference_not_active",
+        "monthly_drill_curriculum_mismatch",
+        "monthly_drill_unknown_content_id",
+        "monthly_drill_topics_insufficient",
     }
 )
 
@@ -307,7 +341,8 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
                 safety_rule=SAFETY_RULE,
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
-                safety_placement=SAFETY_PLACEMENT,
+                safety_candidates=SAFETY_CANDIDATES,
+                drill_topics=DRILL_TOPICS,
                 parent_subthemes=parent_subthemes,
             )
         ).plan
@@ -438,6 +473,8 @@ def get_monthly_audit(
     # 후보 칸은 Section 칸 다음에 잇는다. 후보 cell 은 Section 안에 없어서 안전교육으로 적는다.
     safety = plan.section("safety_education")
     cells += [(safety, candidate.cell) for candidate in plan.safety_candidates]
+    drill = plan.section("drill")
+    cells += [(drill, candidate.cell) for candidate in plan.drill_candidates]
     if item_id is not None:
         cells = [(s, c) for s, c in cells if c.item_id.value == item_id]
         if not cells:
@@ -496,6 +533,7 @@ def _audit_event(event, located) -> MonthlyAuditEventOut:
                 after=list(event.arrangement_change.after),
             )
         ),
+        copied_from=None if event.copied_from is None else event.copied_from.value,
     )
 
 
@@ -723,6 +761,49 @@ def place_monthly_safety(
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
+@router.post("/{plan_id}/drill-candidates/{item_id}/copy", response_model=MonthlyPlanOut)
+def copy_drill_candidate(
+    plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
+):
+    """훈련 후보 하나를 훈련 문서 칸에 복사한다. 칸은 `RULE_ONLY` · 후보의 근거가 된다.
+
+    **같은 복사면 저장하지 않는다** — Core 가 같은 계획안을 돌려주면 revision · 이력 그대로 200.
+    """
+    try:
+        candidate = ItemId(item_id)
+    except InvalidDomainValueError as error:
+        raise _invalid("item_id") from error
+    plan = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = CopyMonthlyDrillCandidate(
+            plan_repository=_drafts(plan),
+            clock=SystemClock(),
+            # 복사 뒤 다시 검증할 때 활동 Catalog 를 읽는다 — 칸 편집 조립부와 같은 저장소다.
+            activity_repository=JsonActivityReferenceRepository(),
+        ).execute(
+            CopyMonthlyDrillCandidateCommand(
+                plan_id=plan.plan_id, candidate_item_id=candidate, actor_id=_actor(user)
+            )
+        )
+    except InvalidStateTransitionError as error:  # 읽은 뒤 확정된 경우
+        raise _ALREADY_CONFIRMED from error
+    except MonthlyApplicationError as error:
+        if error.code == "monthly_drill_section_missing":
+            raise _error(
+                422, "VALIDATION_FAILED", "이 월간계획안에는 소방대피 · 재난대비 칸이 없습니다.", []
+            ) from error
+        if error.code == "monthly_drill_candidate_not_found":
+            raise _error(
+                404, "NOT_FOUND", "그 훈련 후보를 찾을 수 없습니다.", ["item_id"]
+            ) from error
+        if error.code == "monthly_drill_candidate_blank":
+            raise _invalid("item_id") from error
+        raise _lifecycle_error(error) from error  # 활동 Catalog 오류는 503(칸 편집과 같다)
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
 @router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=MonthlyPlanOut)
 def regenerate_monthly_cell(
     plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
@@ -857,6 +938,10 @@ def _detail(row: Plan, plan: MonthlyPlan, parent_id: int) -> MonthlyPlanOut:
             )
             for week in plan.safety_weeks
         ],
+        drill_candidates=[
+            DrillCandidateOut(topic_id=c.topic_id, label=c.label, cell=_cell(c.cell))
+            for c in plan.drill_candidates
+        ],
         notices=[
             NoticeOut(code=notice.code, week_id=notice.week_id.value)
             for notice in monthly_safety_notices(plan)
@@ -912,9 +997,5 @@ def _cell(cell) -> CellOut:
             )
             for source in cell.evidence
         ],
-        generation=GenerationOut(
-            method=cell.generation.method.value,
-            rule_id=cell.generation.rule_id,
-            rule_version=cell.generation.rule_version,
-        ),
+        generation=None if cell.generation is None else _generation(cell.generation),
     )

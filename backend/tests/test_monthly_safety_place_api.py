@@ -17,7 +17,7 @@ from test_monthly_lifecycle_api import (  # noqa: F401
     _stored,
     client,
 )
-from test_monthly_safety_read_api import _active_weeks, candidate_mode, seed  # noqa: F401
+from test_monthly_safety_read_api import _active_weeks, legacy_mode, seed  # noqa: F401
 
 
 def _place(plan_id, week_id, candidate_item_id, revision):
@@ -38,7 +38,7 @@ def _week(plan: dict, week_id: str) -> dict:
     return next(w for w in plan["safety_weeks"] if w["week_id"] == week_id)
 
 
-def test_배치하면_그_주에_후보가_붙고_revision_이_오르고_안내가_빠진다(seed, candidate_mode):
+def test_배치하면_그_주에_후보가_붙고_revision_이_오르고_안내가_빠진다(seed):
     plan = _monthly(seed)
     week = _active_weeks(plan)[0]
     candidate = plan["safety_candidates"][0]["cell"]
@@ -54,7 +54,7 @@ def test_배치하면_그_주에_후보가_붙고_revision_이_오르고_안내�
     assert _get(plan["id"]) == placed
 
 
-def test_null_로_비우면_다시_SAFETY_UNPLACED_이고_표시값은_빈_문자열이다(seed, candidate_mode):
+def test_null_로_비우면_다시_SAFETY_UNPLACED_이고_표시값은_빈_문자열이다(seed):
     plan = _monthly(seed)
     week = _active_weeks(plan)[0]
     placed = _place(plan["id"], week, plan["safety_candidates"][0]["cell"]["item_id"], 1).json()
@@ -67,7 +67,7 @@ def test_null_로_비우면_다시_SAFETY_UNPLACED_이고_표시값은_빈_문�
     assert {"code": "SAFETY_UNPLACED", "week_id": week} in cleared["notices"]
 
 
-def test_같은_선택을_다시_하면_저장하지_않고_revision_과_이력이_그대로다(seed, candidate_mode):
+def test_같은_선택을_다시_하면_저장하지_않고_revision_과_이력이_그대로다(seed):
     plan = _monthly(seed)
     week = _active_weeks(plan)[0]
     candidate_id = plan["safety_candidates"][0]["cell"]["item_id"]
@@ -83,9 +83,7 @@ def test_같은_선택을_다시_하면_저장하지_않고_revision_과_이력�
     assert _audit(plan["id"]) == history
 
 
-def test_옛_revision_은_409_STALE_WRITE_이고_확정된_계획은_409_ALREADY_CONFIRMED_다(
-    seed, candidate_mode
-):
+def test_옛_revision_은_409_STALE_WRITE_이고_확정된_계획은_409_ALREADY_CONFIRMED_다(seed):
     plan = _monthly(seed)
     week = _active_weeks(plan)[0]
     candidate_id = plan["safety_candidates"][0]["cell"]["item_id"]
@@ -98,7 +96,7 @@ def test_옛_revision_은_409_STALE_WRITE_이고_확정된_계획은_409_ALREADY
     assert _error(confirmed) == (409, "ALREADY_CONFIRMED", [])
 
 
-def test_형식이_틀린_주는_422_이고_없는_주는_404_다(seed, candidate_mode):
+def test_형식이_틀린_주는_422_이고_없는_주는_404_다(seed):
     plan = _monthly(seed)
     candidate_id = plan["safety_candidates"][0]["cell"]["item_id"]
 
@@ -109,7 +107,7 @@ def test_형식이_틀린_주는_422_이고_없는_주는_404_다(seed, candidat
     assert _error(other_month) == (404, "NOT_FOUND", ["week_id"])
 
 
-def test_후보_id_가_틀리거나_본문에_키가_없으면_422_다(seed, candidate_mode):
+def test_후보_id_가_틀리거나_본문에_키가_없으면_422_다(seed):
     plan = _monthly(seed)
     week = _active_weeks(plan)[0]
 
@@ -125,7 +123,7 @@ def test_후보_id_가_틀리거나_본문에_키가_없으면_422_다(seed, can
     assert _get(plan["id"])["revision"] == plan["revision"]
 
 
-def test_후보가_없는_기존_계획에_배치하면_422_다(seed):
+def test_후보가_없는_기존_계획에_배치하면_422_다(seed, legacy_mode):
     plan = _monthly(seed)
     week = _active_weeks(plan)[0]
 
@@ -135,7 +133,7 @@ def test_후보가_없는_기존_계획에_배치하면_422_다(seed):
     assert response.json()["error"]["message"] == "이 월간계획안에는 안전교육 후보가 없습니다."
 
 
-def test_후보_모드의_주별_안전_칸을_고치면_422_이고_저장되지_않는다(seed, candidate_mode):
+def test_후보_모드의_주별_안전_칸을_고치면_422_이고_저장되지_않는다(seed):
     plan = _monthly(seed)
     section = next(s for s in plan["sections"] if s["section_key"] == "safety_education")
     cell = next(c for c in section["cells"] if c["week_id"] is not None)
@@ -147,7 +145,7 @@ def test_후보_모드의_주별_안전_칸을_고치면_422_이고_저장되지
     assert _get(plan["id"]) == plan
 
 
-def test_후보_문장은_고칠_수_있고_다시_만들_수는_없다(seed, candidate_mode):
+def test_후보_문장은_고칠_수_있고_다시_만들_수는_없다(seed):
     plan = _monthly(seed)
     candidate_id = plan["safety_candidates"][0]["cell"]["item_id"]
 
@@ -160,7 +158,7 @@ def test_후보_문장은_고칠_수_있고_다시_만들_수는_없다(seed, ca
     assert regenerated.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
 
 
-def test_배치는_이력에_ARRANGEMENT_CHANGED_로_남고_후보_칸_이력도_온다(seed, candidate_mode):
+def test_배치는_이력에_ARRANGEMENT_CHANGED_로_남고_후보_칸_이력도_온다(seed):
     plan = _monthly(seed)
     week = _active_weeks(plan)[0]
     candidate_id = plan["safety_candidates"][0]["cell"]["item_id"]
