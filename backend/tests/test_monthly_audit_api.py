@@ -185,6 +185,7 @@ EVENT_KEYS = {
     "item_id",
     "section_key",
     "week_id",
+    "day",
     "actor",
     "system_actor",
     "value_change",
@@ -200,6 +201,7 @@ def test_생성_직후에는_계획안_CREATED_하나와_칸마다_CREATED_가_�
     plan = world["plan"]
     items = _audit(plan["id"])
     assert all(set(item) == EVENT_KEYS for item in items)  # 이전 근거 · revision 칸은 없다
+    assert all(i["day"] is None for i in items)
 
     plan_events = [i for i in items if i["scope"] == "PLAN"]
     assert plan_events == [
@@ -210,6 +212,7 @@ def test_생성_직후에는_계획안_CREATED_하나와_칸마다_CREATED_가_�
             "item_id": None,
             "section_key": None,
             "week_id": None,
+            "day": None,
             "actor": None,
             "system_actor": "monthly_application",
             "value_change": None,
@@ -246,6 +249,7 @@ def test_교사_수정은_TEACHER_EDITED_와_이전_이후_값으로_남는다(w
         "item_id": target["item_id"],
         "section_key": "focus",
         "week_id": target["week_id"],
+        "day": None,
         "actor": world["actor"],
         "system_actor": None,
         "value_change": {"before": target["value"], "after": "교사가 고친 소주제"},
@@ -278,6 +282,7 @@ def test_재생성은_REGENERATED_와_저장된_생성_방식_변화로_남는�
             "item_id": target["item_id"],
             "section_key": "focus",
             "week_id": target["week_id"],
+            "day": None,
             "actor": world["actor"],
             "system_actor": None,
             "value_change": {"before": target["value"], "after": after["value"]},
@@ -295,6 +300,7 @@ def test_확정은_계획안_단위_CONFIRMED_하나로_남고_재호출해도_�
     confirmed = _confirm(plan["id"], 1)
     assert confirmed.status_code == 200
     items = _audit(plan["id"])
+    assert all(i["day"] is None for i in items)
     (event,) = [i for i in items if i["type"] == "CONFIRMED"]
     assert (event["scope"], event["item_id"], event["actor"], event["system_actor"]) == (
         "PLAN",

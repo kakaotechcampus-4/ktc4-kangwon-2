@@ -370,7 +370,6 @@ def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
     """
     period = plan.week_period
     report = plan.verification_report
-    cells = {cell.section_key: cell for cell in plan.cells}
     saturday = plan.operating_days[-1].value == "SAT"
     return WeeklyPlanOut(
         id=row.id,
@@ -401,12 +400,13 @@ def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
                 section_key=section.section_key,
                 label=section.display_label,
                 role=section.role.value,
+                repeat_by=section.repeat_by.value,
                 visible=section.visible,
                 order=section.order,
                 semantic_variant=(
                     None if section.semantic_variant is None else section.semantic_variant.value
                 ),
-                cells=[_cell(cells[section.section_key])],
+                cells=[_cell(c) for c in plan.cells if c.section_key == section.section_key],
             )
             for section in plan.template_snapshot.sections
         ],
@@ -449,6 +449,7 @@ def _cell(cell) -> WeeklyCellOut:
     generation = cell.generation
     return WeeklyCellOut(
         item_id=cell.item_id.value,
+        day=None if cell.day is None else cell.day.value,
         value=cell.value,
         state=cell.cell_state.value,
         evidence=[
@@ -676,6 +677,7 @@ def _audit_event(event, cell, week: WeekId | None) -> MonthlyAuditEventOut:
         item_id=None if cell is None else cell.item_id.value,
         section_key=None if cell is None else cell.section_key,
         week_id=None if week is None else week.value,
+        day=None if cell is None or cell.day is None else cell.day.value,
         actor=None if event.actor_id is None else event.actor_id.value,
         system_actor=event.system_actor,
         value_change=(
