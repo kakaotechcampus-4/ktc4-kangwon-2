@@ -155,8 +155,10 @@ def test_activity_candidates_copy_split_reload_and_export(world, saturday):
     assert response.status_code == 201, response.text
     plan = response.json()
     assert 2 <= len(plan["activity_candidates"]) <= 10
+
     def group(p):
         return next(s["cells"] for s in p["sections"] if s["section_key"] == "group_activity")
+
     assert len(group(plan)) == 5 + saturday
     assert all(not c["value"] and c["day"] for c in group(plan))
     item = group(plan)[0]["item_id"]
@@ -200,6 +202,26 @@ def test_activity_candidates_copy_split_reload_and_export(world, saturday):
     assert any(
         e["copied_from"] == candidate["cell"]["item_id"] and e["day"] == "MON" for e in events
     )
+    # Delete a spare leaf with a query revision, leaving the two selected leaves intact.
+    spare = client.post(
+        url + "/split", json={"axis": "VERTICAL", "expected_revision": plan["revision"]}
+    ).json()
+    spare_id = next(
+        c["item_id"]
+        for c in group(spare)
+        if c["item_id"] not in {x["item_id"] for x in group(plan)}
+    )
+    delete_url = f"/api/plans/weekly/{plan['id']}/cells/{spare_id}/split"
+    assert client.delete(delete_url).status_code == 422
+    assert client.delete(delete_url, params={"expected_revision": 0}).status_code == 422
+    assert (
+        client.delete(delete_url, params={"expected_revision": plan["revision"]}).status_code == 409
+    )
+    removed = client.delete(delete_url, params={"expected_revision": spare["revision"]})
+    assert removed.status_code == 200, removed.text
+    plan = removed.json()
+    assert all(c["item_id"] != spare_id for c in group(plan))
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
     result = client.post(
         f"/api/plans/weekly/{plan['id']}/confirm", json={"expected_revision": plan["revision"]}
     )

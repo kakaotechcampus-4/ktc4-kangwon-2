@@ -16,7 +16,7 @@ import logging
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -663,16 +663,20 @@ def split_weekly_activity(
 
 @router.delete("/{plan_id}/cells/{item_id}/split", response_model=WeeklyPlanOut)
 def remove_weekly_activity_cell(
-    plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
+    plan_id: int,
+    item_id: str,
+    session: DbSession,
+    user: CurrentUser,
+    expected_revision: Annotated[int, Query(ge=1)],
 ):
-    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    plan, parent = _read_draft(session, user, plan_id, expected_revision)
     try:
         changed = weekly_activities(**_repos(plan, parent), id_generator=UuidGenerator()).remove(
             plan.plan_id, _item_id(item_id), _actor(user)
         )
     except MonthlyApplicationError as error:
         raise _lifecycle_error(error) from error
-    return _write(session, user, plan_id, changed, body.expected_revision)
+    return _write(session, user, plan_id, changed, expected_revision)
 
 
 @router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=WeeklyPlanOut)

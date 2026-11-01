@@ -10,7 +10,7 @@ from ssuksak.planning.application.play_monthly_document import PlayMonthlyDocume
 
 from app.features.plans.play_monthly_hwpx import _grid, _grid_lines, _layout, _renumber_columns
 from app.features.plans.play_project_hwpx import _preview
-from app.shared.hwpx import NS, PREVIEW, SECTION, _cells, _dump, _set_text
+from app.shared.hwpx import NS, PREVIEW, SECTION, TemplateMismatch, _cells, _dump, _set_text
 
 
 def fill_weekly_activity_grid(content, plan):
@@ -19,15 +19,19 @@ def fill_weekly_activity_grid(content, plan):
         parts = {info.filename: archive.read(info.filename) for info in infos}
     section = etree.fromstring(parts[SECTION])
     table = section.find(".//hp:tbl", NS)
-    rows = table.findall("hp:tr", NS)
+    rows = [] if table is None else table.findall("hp:tr", NS)
+    if len(rows) <= 11:
+        raise TemplateMismatch("주간 양식에 대소집단 활동 줄이 없다.")
     body = rows[11]
+    models = body.findall("hp:tc", NS)
+    if not models or "".join(t.text or "" for t in models[0].iter(f"{{{NS['hp']}}}t")) != "활동":
+        raise TemplateMismatch("주간 양식의 대소집단 활동 줄이 맞지 않는다.")
     cells = _cells(table)
     physical = _grid_lines(table, list(cells.values()))
     spans = {
         tc: (physical[col], physical[col] + int(tc.find("hp:cellSz", NS).get("width")))
         for (_, col), tc in cells.items()
     }
-    models = body.findall("hp:tc", NS)
     label = copy.deepcopy(models[0])
     label_span = spans[models[0]]
     height = int(models[0].find("hp:cellSz", NS).get("height"))

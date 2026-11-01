@@ -117,8 +117,12 @@ async function weeklyActivity(
 ) {
   const plan = myWeekly(id);
   if (!plan) return weeklyMissing();
-  const b = await body(request);
-  if (!b || !integer(b.expected_revision)) return bad("expected_revision");
+  const b: Record<string, unknown> | null =
+    operation === "remove"
+      ? { expected_revision: Number(new URL(request.url).searchParams.get("expected_revision")) }
+      : await body(request);
+  if (!b || !integer(b.expected_revision) || Number(b.expected_revision) < 1)
+    return bad("expected_revision");
   if (plan.status === "CONFIRMED")
     return failure("ALREADY_CONFIRMED", "확정된 계획안은 바꿀 수 없습니다.");
   if (plan.revision !== b.expected_revision) return stale();

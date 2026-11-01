@@ -99,7 +99,6 @@ export const splitWeeklyActivityCell = (
     json("POST", { axis, expected_revision: revision }),
   );
 export const removeWeeklyActivityCell = (id: number, itemId: string, revision: number) =>
-  apiRequest<WeeklyPlan>(
-    cell(id, itemId) + "/split",
-    json("DELETE", { expected_revision: revision }),
-  );
+  apiRequest<WeeklyPlan>(cell(id, itemId) + "/split?expected_revision=" + revision, {
+    method: "DELETE",
+  });

@@ -2172,7 +2172,7 @@ activity_candidates  boolean. 생략 시 false. true면 승인된 v0.2.0 양식�
   ] }
 ```
 
-- `activity_type`은 근거의 명시된 태그/행 이름이다. 새 공식 분류가 아니다. 명시된 유형이 없으면 `기타`다.
+- `activity_type`은 근거의 명시된 태그/행 이름에서 확인한 활동 종류다. 공백 표기를 통일하며 재료 메모 등 알려진 활동 종류가 아닌 태그는 그대로 유형으로 쓰지 않는다. 확인되지 않으면 `기타`다. 새 공식 분류가 아니다.
 - `name`/`description`은 후보 칸의 현재 값 `활동명: 설명`에서 읽는다. 후보 편집은 기존 칸 편집 경로다.
 - `activity_grids`는 운영 요일 순이다. leaf는 `cell_id`로 실제 `sections[].cells[]`를 가리킨다.
   나눈 node는 `cell_id: null`, `split_id`, `axis`, `ratio`, 두 `children`을 갖는다.
@@ -2184,8 +2184,8 @@ POST   /api/plans/weekly/{id}/cells/{item_id}/copy-activity
        { "expected_revision": 3, "candidate_item_id": "candidate_…" }
 POST   /api/plans/weekly/{id}/cells/{item_id}/split
        { "expected_revision": 3, "axis": "VERTICAL", "ratio": 50 }
-DELETE /api/plans/weekly/{id}/cells/{item_id}/split
-       { "expected_revision": 3 }
+DELETE /api/plans/weekly/{id}/cells/{item_id}/split?expected_revision=3
+       본문 없음. 쿼리는 1 이상 정수만 허용한다.
 ```
 
 성공 응답은 `200`과 상세 전체다. 확정/소유권/revision 게이트는 기존과 같다. 같은 후보가 현재 값·근거·생성 정보까지

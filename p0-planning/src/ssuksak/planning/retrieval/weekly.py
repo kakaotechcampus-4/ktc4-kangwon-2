@@ -29,12 +29,15 @@ WEEKLY_SECTION_TOP_K = 10  # the Monthly section block default
 
 def activity_type(record) -> str:
     """Keep explicit source tags; an untyped record is not assigned a guessed genre."""
+    kinds = ("이야기나누기", "동화", "동시", "동요", "새노래", "음률", "음악", "미술", "신체", "게임", "과학", "요리", "동극")
     for text in (record.text, record.source_label):
         tag = re.match(r"^\s*[\[<【(]\s*([^\]>】)]{1,20})[\]>】)]", text)
         if tag:
-            return tag.group(1).strip()
-    label = record.source_label.replace("･", "·").replace("ㆍ", "·")
-    kinds = ("이야기나누기", "동화", "동시", "동요", "새노래", "음률", "음악", "미술", "신체", "게임", "과학", "요리", "동극")
+            tokens = re.split(r"[·ㆍ･,/／]", re.sub(r"\s+", "", tag.group(1)))
+            matched = [kind for kind in kinds if kind in tokens]
+            if matched:
+                return "·".join(matched)
+    label = re.sub(r"\s+", "", record.source_label)
     matched = [kind for kind in kinds if kind in label]
     return "·".join(matched) if matched else "기타"
 

@@ -197,6 +197,7 @@ test("후보형 주간 — 빈 요일 칸에 유형별 후보를 넣고 나눈 �
   assert.equal(group(plan)[0].item_id, itemId);
   assert.equal(group(plan)[1].value, "");
   assert.equal((await weekly.getWeeklyPlan(plan.id)).activity_grids[0].children.length, 2);
+  await rejects(weekly.removeWeeklyActivityCell(plan.id, added, 0), 422, "VALIDATION_FAILED");
   plan = await weekly.removeWeeklyActivityCell(plan.id, added, plan.revision);
   assert.equal(plan.activity_grids[0].cell_id, itemId);
 });
