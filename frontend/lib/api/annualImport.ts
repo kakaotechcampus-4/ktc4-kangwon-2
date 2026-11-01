@@ -7,7 +7,7 @@ import { MONTH_ORDER } from "../onboarding/types";
  *
  * 추출은 저장하지 않는다. 교사가 12개월 표를 확인하고 [저장]을 눌러야 계획안이 생긴다.
  */
-export type ImportFileMeta = { format: "HWPX" | "DOCX" | "PDF"; sha256: string };
+export type ImportFileMeta = { format: "HWP" | "HWPX" | "DOCX" | "PDF"; sha256: string };
 export type ImportMonth = { month: number; theme: string; sub_themes: string[] };
 export interface ExtractResult {
   file: ImportFileMeta;
@@ -23,7 +23,7 @@ export interface AnnualImportInput {
   months: ImportMonth[];
 }
 
-/** 원본 파일은 서버도 저장하지 않는다. .hwp 등은 400 `UNSUPPORTED_FILE_TYPE` 이고 문구를 그대로 띄운다. */
+/** 원본 파일은 서버도 저장하지 않는다. 그 밖의 형식은 400 `UNSUPPORTED_FILE_TYPE` 이고 문구를 그대로 띄운다. */
 export function extractAnnualFile(classId: number, file: File, signal?: AbortSignal) {
   const body = new FormData();
   body.append("file", file);

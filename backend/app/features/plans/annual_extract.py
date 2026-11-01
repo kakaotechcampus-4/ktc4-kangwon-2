@@ -12,8 +12,10 @@ import io
 import json
 import logging
 import re
+import shutil
+import tempfile
 import zipfile
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
@@ -22,6 +24,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.features.forms import hwp_form
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, complete_json, is_mock
@@ -79,7 +82,7 @@ def _error(code: int, error_code: str, message: str, fields: list[str]) -> HTTPE
 
 # 오류 코드는 기존 업로드(api-spec §8 forms/parse) 관례를 따른다. 내부 예외 문구는 싣지 않는다.
 _UNSUPPORTED = _error(
-    400, "UNSUPPORTED_FILE_TYPE", "한글에서 HWPX나 PDF로 저장해서 올려 주세요", ["file"]
+    400, "UNSUPPORTED_FILE_TYPE", "HWP · HWPX · DOCX · PDF 파일만 올릴 수 있어요", ["file"]
 )
 _UNREADABLE = _error(
     422,
@@ -87,6 +90,11 @@ _UNREADABLE = _error(
     "파일에서 글자를 찾지 못했어요. 비어 있거나 손상되었거나 암호가 걸려 있는지 확인해 주세요.",
     ["file"],
 )
+# 서버에 hwp5html 이 없는 것은 교사가 고칠 수 없다 — 양식 파싱(§8)과 같이 503 이다.
+_NO_CONVERTER = _error(
+    503, "DEPENDENCY_UNAVAILABLE", "지금 한글 파일을 읽을 수 없습니다. 운영에 문의해주세요.", []
+)
+_OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # HWP 5.0 은 OLE 복합 문서다
 
 
 def detect_format(filename: str, data: bytes) -> str | None:
@@ -94,6 +102,8 @@ def detect_format(filename: str, data: bytes) -> str | None:
     suffix = PurePath(filename).suffix.lower()
     if suffix == ".pdf":
         return "PDF" if data.startswith(b"%PDF") else None
+    if suffix == ".hwp":
+        return "HWP" if data.startswith(_OLE) else None
     if suffix not in (".hwpx", ".docx"):
         return None
     try:
@@ -141,10 +151,12 @@ def _section_order(name: str) -> int:
 
 
 def extract_lines(file_format: str, data: bytes) -> list[str]:
-    """파일 → 줄 목록. 형식마다 분기 하나다 — .hwp 를 받게 되면 여기 한 분기만 더한다.
+    """파일 → 줄 목록. 형식마다 분기 하나다.
 
     읽지 못하면(손상 · 암호) 422 다. 빈 줄은 뺀다.
     """
+    if file_format == "HWP" and not shutil.which("hwp5html"):
+        raise _NO_CONVERTER
     try:
         if file_format == "PDF":
             from pypdf import PdfReader
@@ -165,6 +177,14 @@ def extract_lines(file_format: str, data: bytes) -> list[str]:
                     key=_section_order,
                 )
                 raw = [line for part in parts for line in _xml_lines(package.read(part))]
+        elif file_format == "HWP":
+            # 양식 파싱(§8)의 hwp5html 표 추출을 쓴다. 표 칸 하나가 한 줄이다.
+            # ponytail: 표 밖 문단은 버린다 — 연간 월별 주제는 표 안에 있다.
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder, "upload.hwp")
+                path.write_bytes(data)
+                tables = hwp_form.from_hwp(path)
+            raw = [cell["text"] for table in tables for row in table for cell in row]
         else:
             raise ValueError(file_format)
     except Exception as error:  # 손상 · 암호 파일. 원인 문구는 교사 화면에 싣지 않는다

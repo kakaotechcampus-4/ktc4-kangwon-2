@@ -220,7 +220,7 @@ function Panel({
               연간계획안 파일 올리기
               <input
                 type="file"
-                accept=".hwpx,.docx,.pdf"
+                accept=".hwp,.hwpx,.docx,.pdf"
                 className="sr-only"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -243,9 +243,7 @@ function Panel({
               취소
             </button>
           </div>
-          <p className="m-0 text-right text-[13px] text-[#5c5243]">
-            HWPX · DOCX · PDF — 한글(.hwp) 파일은 HWPX나 PDF로 저장해서 올려 주세요
-          </p>
+          <p className="m-0 text-right text-[13px] text-[#5c5243]">HWP · HWPX · DOCX · PDF</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">

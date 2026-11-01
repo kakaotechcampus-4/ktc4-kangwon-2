@@ -925,7 +925,7 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 ```
 
 - `months` 는 12개, 3월 → 2월 순서다. `theme` 은 빈 글자일 수 없다. 소주제는 앞뒤 공백을 지우고 빈 것을 뺀다. 저장할 때 개수는 묻지 않는다.
-- `source` — `"MANUAL"`(교사가 표에 입력) | `"FILE"`(아래 추출 결과를 교사가 확인). `FILE` 이면 `file: { "format": "HWPX" | "DOCX" | "PDF", "sha256": "…" }` 이다.
+- `source` — `"MANUAL"`(교사가 표에 입력) | `"FILE"`(아래 추출 결과를 교사가 확인). `FILE` 이면 `file: { "format": "HWP" | "HWPX" | "DOCX" | "PDF", "sha256": "…" }` 이다.
 - **Response** `201` → §4 월별 주제형 응답과 같다. `status: "DRAFT"`. 칸의 생성 방식은 `MANUAL` · `IMPORTED` 이고 Theme Reference 근거가 없다.
 - 이후 편집(§6) · 확정(§7) · 내보내기 · 월간 생성은 생성한 연간과 같다.
 
@@ -945,14 +945,14 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 }
 ```
 
-- HWPX · DOCX · PDF(글자층)를 받는다. 앱은 크기를 제한하지 않고 nginx 10MB 가 막는다(§8 과 같다).
+- HWP · HWPX · DOCX · PDF(글자층)를 받는다. `.hwp` 는 양식 파싱(§8)과 같은 `hwp5html` 로 표 칸을 읽는다(표 밖 문단은 읽지 않는다). 앱은 크기를 제한하지 않고 nginx 10MB 가 막는다(§8 과 같다).
 - 글자를 뽑아 교사 · 원장 이름과 기관명을 가린 뒤 LLM 이 월별로 칸을 배정한다. LLM 에는 앞 30,000자만 보낸다 — 그 뒤에 있는 달은 `missing` 으로 나온다.
 - **배정된 글자는 원문에 그대로 있어야 한다**(공백을 정리한 뒤 부분 문자열). 없으면 버린다. 생활주제를 못 찾은 달은 `theme: null`, `missing: true` 다.
 - 화면은 이 결과를 표에 채워 교사에게 보여 주고, 교사가 확인 · 수정한 뒤 위 표 저장(`source: "FILE"`)으로 보낸다.
 
 | | |
 |---|---|
-| error | `UNSUPPORTED_FILE_TYPE` 400 → `.hwp` 와 그 밖의 형식. 「한글에서 HWPX 나 PDF 로 저장해서 올려 주세요」(§8 관례)<br>`VALIDATION_FAILED` 422 → 손상 · 빈 파일 · 글자층 없는 PDF, `fields: ["file"]`<br>`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 → 운영 문의. 표에 직접 입력하는 길은 그대로 열려 있다 |
+| error | `UNSUPPORTED_FILE_TYPE` 400 → 그 밖의 형식, 또는 확장자와 내용이 어긋남. 「HWP · HWPX · DOCX · PDF 파일만 올릴 수 있어요」(§8 관례)<br>`VALIDATION_FAILED` 422 → 손상 · 빈 파일 · 글자층 없는 PDF, `fields: ["file"]`<br>`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 → 운영 문의(`.hwp` 를 읽을 `hwp5html` 이 서버에 없을 때도 503). 표에 직접 입력하는 길은 그대로 열려 있다 |
 
 ---
 
