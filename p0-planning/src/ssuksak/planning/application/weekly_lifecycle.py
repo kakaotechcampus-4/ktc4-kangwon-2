@@ -223,7 +223,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
         cell = plan.find_cell(item_id)
         if cell is None:
             raise WeeklyApplicationError("weekly_cell_not_found", f"Weekly Cell not found: {item_id}")
-        if cell.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
+        if cell.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS or (plan.activity_grids and cell.section_key == "group_activity"):
             raise WeeklyApplicationError(
                 "weekly_cell_not_regeneratable", "A teacher-input Cell is written by the teacher only"
             )
@@ -354,3 +354,21 @@ class ConfirmWeeklyPlan(_WeeklyLifecycle):
         confirmed = self._verified(plan).confirm(actor_id=actor_id, occurred_at=self._clock.now())
         self._plans.save(confirmed.plan_id, confirmed)
         return confirmed
+
+
+@dataclass(frozen=True, slots=True)
+class UnconfirmWeeklyPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+class UnconfirmWeeklyPlan(_WeeklyLifecycle):
+    """CONFIRMED → DRAFT. A DRAFT Plan comes back unchanged and is not saved."""
+
+    def execute(self, command: UnconfirmWeeklyPlanCommand) -> WeeklyPlan:
+        plan = self._plan(command.plan_id)
+        actor_id = require_actor(command.actor_id)
+        unconfirmed = plan.unconfirm(actor_id=actor_id, occurred_at=self._clock.now())
+        if unconfirmed is not plan:
+            self._plans.save(unconfirmed.plan_id, unconfirmed)
+        return unconfirmed

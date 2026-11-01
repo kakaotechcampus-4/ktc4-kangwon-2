@@ -26,6 +26,8 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     EditPlayMonthlyContentIdsCommand,
     PlacePlayMonthlySafety,
     PlacePlayMonthlySafetyCommand,
+    UnconfirmPlayMonthlyPlan,
+    UnconfirmPlayMonthlyPlanCommand,
     PlayMonthlyLifecycleError,
     PlayMonthlyNotice,
     RemovePlayMonthlyActivity,
@@ -263,6 +265,20 @@ def test_a_confirmed_plan_refuses_edit_and_reconfirm():
         confirmed.replace_cell(replace(confirmed.theme, value="x"))
 
     assert plans.save_count == saves
+
+
+def test_unconfirm_reopens_the_plan_and_a_draft_is_a_no_op():
+    plan, plans, edit, confirm = _draft()
+    confirmed = confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    unconfirm = UnconfirmPlayMonthlyPlan(plan_repository=plans, clock=FixedClock(NOW))
+
+    reopened = unconfirm.execute(UnconfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+
+    assert reopened.status is PlanStatus.DRAFT and reopened.cells() == confirmed.cells()
+    assert reopened.audit.events[:-1] == confirmed.audit.events
+    assert reopened.audit.events[-1].event_type is AuditEventType.UNCONFIRMED
+    assert unconfirm.execute(UnconfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)) is reopened
+    assert _edit(edit, reopened, reopened.theme, "바꾼 주제").status is PlanStatus.DRAFT
 
 
 def test_confirm_requires_an_opaque_actor():

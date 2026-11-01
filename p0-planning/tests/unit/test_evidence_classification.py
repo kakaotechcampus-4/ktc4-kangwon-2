@@ -70,9 +70,9 @@ def test_artifact_identity_and_human_approval():
     approved_at = datetime.fromisoformat(review["approved_at"])
 
     assert RAW["schema_version"] == "monthly-evidence-semantic-classification.schema.v0"
-    assert RAW["classification_version"] == "monthly-evidence-semantic-classification-v0.1.0"
+    assert RAW["classification_version"] == "monthly-evidence-semantic-classification-v0.2.0"
     assert review["domain_owner_approval"] == "HUMAN_APPROVED"
-    assert review["approved_by"] == "reviewer_ai_lead_01"
+    assert review["approved_by"] == "reviewer_ai_lead_001"
     assert "runtime_active" not in review
     assert approved_at.utcoffset() == timedelta(hours=9)
     assert approved_at <= datetime.now(timezone.utc)

@@ -21,7 +21,7 @@ from ..planning.evidence.safety_classification import (
 _EVIDENCE = Path(__file__).resolve().parents[3] / "data" / "evidence"
 SAFETY_CLASSIFICATION_V0_1_0_PATH = _EVIDENCE / "safety_evidence_classification_v0_1_0.json"
 # Runtime default: the latest version. It is used only once HUMAN_APPROVED.
-DEFAULT_SAFETY_CLASSIFICATION_PATH = _EVIDENCE / "safety_evidence_classification_v0_2_0.json"
+DEFAULT_SAFETY_CLASSIFICATION_PATH = _EVIDENCE / "safety_evidence_classification_v0_3_0.json"
 _ROOT_FIELDS = {
     "$schema_note", "schema_version", "classification_id", "classification_version", "supersedes",
     "evidence_store", "legal_rule_version", "review", "matching", "key", "item_tag_rule",

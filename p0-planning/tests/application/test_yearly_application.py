@@ -19,7 +19,10 @@ from ssuksak.adapters.json_theme_reference_repository import (
 from ssuksak.adapters.stub_optional_context_provider import (
     StubOptionalContextProvider,
 )
-from ssuksak.planning.application.confirm_yearly_plan import ConfirmYearlyPlan
+from ssuksak.planning.application.confirm_yearly_plan import (
+    ConfirmYearlyPlan,
+    UnconfirmYearlyPlan,
+)
 from ssuksak.planning.application.edit_yearly_plan_item import EditYearlyPlanItem
 from ssuksak.planning.application.generate_yearly_plan import GenerateYearlyPlan
 from ssuksak.planning.application.ports import (
@@ -35,6 +38,7 @@ from ssuksak.planning.application.yearly_dto import (
     EditYearlyPlanItemCommand,
     GenerateYearlyPlanCommand,
     RegenerateYearlyPlanItemCommand,
+    UnconfirmYearlyPlanCommand,
 )
 from ssuksak.planning.application.yearly_errors import YearlyApplicationError
 from ssuksak.planning.application.yearly_ports import (
@@ -462,6 +466,37 @@ def test_confirm_is_explicit_and_records_teacher_actor():
     assert confirmed.audit.events[-1].event_type is AuditEventType.CONFIRMED
     assert confirmed.audit.events[-1].actor_id == ACTOR
     assert harness.plans.get(draft.plan_id) is confirmed
+
+
+def test_unconfirm_returns_to_draft_keeps_history_and_draft_is_a_no_op():
+    harness = Harness()
+    draft = harness.generate().plan
+    confirmed = harness.confirm().execute(
+        ConfirmYearlyPlanCommand(plan_id=draft.plan_id, actor_id=ACTOR)
+    )
+    unconfirm = UnconfirmYearlyPlan(plan_repository=harness.plans, clock=harness.clock)
+
+    reopened = unconfirm.execute(UnconfirmYearlyPlanCommand(confirmed.plan_id, ACTOR))
+
+    assert reopened.status is PlanStatus.DRAFT
+    assert reopened.periods == confirmed.periods  # 값 · 근거 · 생성 방식 · 칸 이력 그대로
+    assert reopened.audit.events[:-1] == confirmed.audit.events
+    assert reopened.audit.events[-1].event_type is AuditEventType.UNCONFIRMED
+    assert reopened.audit.events[-1].actor_id == ACTOR
+    assert reopened.audit.events[-1].item_id is None
+    saves = harness.plans.save_count
+    assert unconfirm.execute(UnconfirmYearlyPlanCommand(reopened.plan_id, ACTOR)) is reopened
+    assert harness.plans.save_count == saves
+    item = reopened.periods[0].theme
+    edited = harness.edit().execute(
+        EditYearlyPlanItemCommand(
+            plan_id=reopened.plan_id, item_id=item.item_id, new_value="다시 고친 주제", actor_id=ACTOR
+        )
+    )
+    again = harness.confirm().execute(ConfirmYearlyPlanCommand(edited.plan_id, ACTOR))
+    assert again.status is PlanStatus.CONFIRMED
+    with pytest.raises(YearlyApplicationError):
+        unconfirm.execute(UnconfirmYearlyPlanCommand(again.plan_id, None))
 
 
 def test_confirmed_plan_rejects_edit_regenerate_and_second_confirm():

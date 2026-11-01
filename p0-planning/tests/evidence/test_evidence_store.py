@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -17,8 +18,8 @@ from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.evidence.models import ExtractionQuality, ReusePolicy
 from ssuksak.planning.evidence.ports import InstitutionEvidenceRepository
 
-EXPECTED_FILE_SHA = "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a"
-EXPECTED_CONTENT_SHA = "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea"
+EXPECTED_FILE_SHA = "5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4"
+EXPECTED_CONTENT_SHA = "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463"
 
 
 @pytest.fixture(scope="module")
@@ -32,21 +33,35 @@ def store():
 
 
 def test_approved_artifact_bytes_and_lf_are_frozen():
-    import hashlib
-
     raw = DEFAULT_EVIDENCE_STORE_PATH.read_bytes()
-    assert len(raw) == 10_947_167
+    assert len(raw) == 14_007_752
     assert b"\r" not in raw
     assert hashlib.sha256(raw).hexdigest() == EXPECTED_FILE_SHA
 
 
 def test_real_store_contract_and_counts(store, payload):
     assert isinstance(JsonInstitutionEvidenceRepository(), InstitutionEvidenceRepository)
-    assert len(store) == payload["record_count"] == 12_367
+    assert len(store) == payload["record_count"] == 12_325
     assert payload["source_count"] == len(payload["source_hash_manifest"]) == 349
     assert payload["source_text_layer_count"] == 326
     assert payload["source_image_only_count"] == 23
     assert store.content_sha256 == EXPECTED_CONTENT_SHA
+
+
+def test_privacy_derivative_removes_whole_records_and_preserves_every_retained_field(payload):
+    original = json.loads(DEFAULT_EVIDENCE_STORE_PATH.with_name("institution_evidence_v0_1_0.json").read_text(encoding="utf-8"))
+    removed = set(payload["build"]["removed_record_ids"])
+    assert len(removed) == 42
+    assert {r["record_id"] for r in original["records"]} - {r["record_id"] for r in payload["records"]} == removed
+    retained = [r for r in original["records"] if r["record_id"] not in removed]
+    # Digest comparisons keep excluded personal text out of assertion output.
+    def digest(value):
+        return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    retained_sha, actual_sha = digest(retained), digest(payload["records"])
+    original_manifest_sha = digest(original["source_hash_manifest"])
+    actual_manifest_sha = digest(payload["source_hash_manifest"])
+    assert retained_sha == actual_sha
+    assert original_manifest_sha == actual_manifest_sha
 
 
 def test_record_uses_pr0_evidence_source_and_preserves_reuse_policy(store):

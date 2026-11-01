@@ -154,7 +154,7 @@ def test_감사_기록에_생성과_확정이_남는다(db_session, mine):
     created = _create(mine)
     client.put(
         f"/api/plans/annual/{created['id']}/months/3",
-        json={"theme": "고친 주제", "sub_themes": []},
+        json={"theme": "고친 주제", "sub_themes": created["months"][0]["sub_themes"]},
     )
     client.post(f"/api/plans/annual/{created['id']}/confirm")
 
@@ -456,7 +456,7 @@ def test_생성한_모든_달에_소주제_초안이_저장된다(mine):
 def test_안전교육은_미입력과_배치없음을_구분하고_생략하면_보존한다(db_session, mine):
     plan = _create(mine)
     path = f"/api/plans/annual/{plan['id']}/months/3"
-    base = {"theme": "우리 반", "sub_themes": ["친구 만나기"]}
+    base = {"theme": "우리 반", "sub_themes": ["친구 만나기", "이름", "놀이", "약속"]}
     saved = client.put(path, json={**base, "safety_education": ["traffic_safety"]})
     assert saved.status_code == 200, saved.text
     assert saved.json()["safety_education_state"] == "PLACED"
@@ -524,3 +524,93 @@ def test_소주제_생성이_실패하면_부분_계획안도_남지_않는다(
     assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
     monkeypatch.setattr("app.features.plans.router.generate_subthemes", generate_subthemes)
     assert _create(mine)["months"][0]["sub_themes"]
+
+
+# ── 가져오기 (2026-11-01 I-A) · 확정 소주제 수 검사 ─────────────────────────────
+
+ACADEMIC = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2]
+
+
+def _import_body(klass, months=ACADEMIC, **overrides) -> dict:
+    return {
+        "class_id": klass.id,
+        "source": "MANUAL",
+        "file": None,
+        "months": [
+            {"month": m, "theme": f"{m}월 주제", "sub_themes": [" 첫째 ", "", "둘째"]}
+            for m in months
+        ],
+        **overrides,
+    }
+
+
+def test_표를_가져오면_근거_없는_MANUAL_DRAFT_로_저장된다(db_session, mine):
+    response = client.post("/api/plans/annual/import", json=_import_body(mine))
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "DRAFT" and body["format"] == "MONTHLY_THEME"
+    assert [m["month"] for m in body["months"]] == ACADEMIC
+    march = body["months"][0]
+    assert march["theme"] == "3월 주제"
+    assert march["sub_themes"] == ["첫째", "둘째"]  # strip 뒤 빈 것은 뺀다
+    assert march["week_count"] in (4, 5)
+    assert march["evidence"] == [] and march["generation"]["method"] == "MANUAL"
+    assert client.get(f"/api/plans/annual/{body['id']}").json() == body
+
+
+def test_파일에서_가져오면_IMPORTED_이고_출처_메타가_수정_뒤에도_남는다(db_session, mine):
+    file = {"format": "HWPX", "sha256": "a" * 64}
+    created = client.post(
+        "/api/plans/annual/import", json=_import_body(mine, source="FILE", file=file)
+    ).json()
+    assert {m["generation"]["method"] for m in created["months"]} == {"IMPORTED"}
+
+    client.put(
+        f"/api/plans/annual/{created['id']}/months/3", json={"theme": "고침", "sub_themes": []}
+    )
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert row.body["import_source"] == {"source": "FILE", "file": file}
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"months": []},  # 빈 표
+        {"source": "FILE"},  # FILE 인데 파일 정보 없음
+    ],
+)
+def test_가져오기_입력이_틀리면_422(db_session, mine, overrides):
+    response = client.post("/api/plans/annual/import", json=_import_body(mine, **overrides))
+    assert response.status_code == 422
+
+
+def test_가져오기_달_순서가_틀리면_422_이고_아무것도_안_남는다(db_session, mine):
+    response = client.post(
+        "/api/plans/annual/import", json=_import_body(mine, months=[4, 3, *ACADEMIC[2:]])
+    )
+
+    assert _error(response) == (422, "VALIDATION_FAILED")
+    assert response.json()["error"]["fields"] == ["months"]
+    assert client.get("/api/plans/annual").json()["items"] == []
+
+
+def test_반에_연간이_있으면_가져오기도_409(db_session, mine):
+    _create(mine)
+    response = client.post("/api/plans/annual/import", json=_import_body(mine))
+    assert _error(response) == (409, "ALREADY_EXISTS")
+
+
+def test_소주제_수가_주_수와_다른_달이_있으면_확정_422(db_session, mine):
+    created = _create(mine)
+    client.put(
+        f"/api/plans/annual/{created['id']}/months/10",
+        json={"theme": "고친 주제", "sub_themes": ["하나"]},
+    )
+
+    response = client.post(f"/api/plans/annual/{created['id']}/confirm")
+
+    assert _error(response) == (422, "VALIDATION_FAILED")
+    assert response.json()["error"]["fields"] == ["10"]
+    assert client.get(f"/api/plans/annual/{created['id']}").json()["status"] == "DRAFT"

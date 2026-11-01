@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
+from fractions import Fraction
 
+from .cell_grid import CellGridNode
 from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
@@ -224,6 +226,32 @@ class WeeklyCell:
 
 
 @dataclass(frozen=True, slots=True)
+class WeeklyActivityCandidate:
+    activity_type: str
+    cell: WeeklyCell
+
+    @property
+    def name(self) -> str:
+        return self.cell.value.partition(":")[0].strip()
+
+    @property
+    def description(self) -> str:
+        return self.cell.value.partition(":")[2].strip()
+
+    def __post_init__(self) -> None:
+        _non_blank(self.activity_type, "WeeklyActivityCandidate.activity_type")
+        if not isinstance(self.cell, WeeklyCell) or self.cell.section_key != "group_activity" or self.cell.day is not None:
+            raise InvalidDomainValueError("An activity candidate is a weekly group value without a day")
+
+
+@dataclass(frozen=True, slots=True)
+class WeeklyActivityGrid(CellGridNode[ItemId]):
+    cell: ItemId | None = None
+    children: tuple[WeeklyActivityGrid, ...] = ()
+    cell_type = ItemId
+
+
+@dataclass(frozen=True, slots=True)
 class WeeklyPlan:
     plan_id: PlanId
     school_year: int
@@ -243,6 +271,9 @@ class WeeklyPlan:
     verification_report: VerificationReport | None = None
     # Same reason as MonthlyPlan: the run record and the response say which path ran.
     generation_mode: MonthlyGenerationMode = MonthlyGenerationMode.RULE_ONLY
+    activity_candidates: tuple[WeeklyActivityCandidate, ...] = ()
+    activity_grids: tuple[WeeklyActivityGrid, ...] = ()
+    removed_activity_cells: tuple[WeeklyCell, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
@@ -287,20 +318,40 @@ class WeeklyPlan:
             isinstance(cell, WeeklyCell) for cell in self.cells
         ):
             raise InvalidDomainValueError("WeeklyPlan.cells must contain WeeklyCell values")
+        if self.activity_grids:
+            if not any(s.section_key == "group_activity" and s.repeat_by is RepeatBy.DAY for s in self.template_snapshot.sections):
+                raise InvalidDomainValueError("Activity grids require the day layout")
+            if len(self.activity_grids) != len(self.operating_days) or not all(isinstance(g, WeeklyActivityGrid) for g in self.activity_grids):
+                raise InvalidDomainValueError("Activity grids follow the operating days")
+            if any(g.depth > 4 or g.narrowest(Fraction(500, 6 * len(self.operating_days))) < Fraction(7, 2) for g in self.activity_grids):
+                raise InvalidDomainValueError("Activity split exceeds depth or minimum width")
+            actual = tuple(c.item_id for c in self.cells if c.section_key == "group_activity")
+            if actual != tuple(i for g in self.activity_grids for i in g.leaves()):
+                raise InvalidDomainValueError("Activity grid leaves must match their cells in order")
+        elif self.activity_candidates or self.removed_activity_cells:
+            raise InvalidDomainValueError("Activity candidates require a grid")
+        if not isinstance(self.activity_candidates, tuple) or not all(isinstance(c, WeeklyActivityCandidate) for c in self.activity_candidates):
+            raise InvalidDomainValueError("Invalid activity candidates")
+        if not isinstance(self.removed_activity_cells, tuple) or not all(isinstance(c, WeeklyCell) and c.section_key == "group_activity" for c in self.removed_activity_cells):
+            raise InvalidDomainValueError("Invalid removed activity cells")
         expected = tuple(
             (section.section_key, day)
             for section in self.template_snapshot.sections
-            for day in (
-                self.operating_days if section.repeat_by is RepeatBy.DAY else (None,)
-            )
+            for day in (self.operating_days if section.repeat_by is RepeatBy.DAY else (None,))
+            for _ in range(len(self.activity_grids[self.operating_days.index(day)].leaves())
+                           if self.activity_grids and section.section_key == "group_activity" else 1)
         )
         if tuple((cell.section_key, cell.day) for cell in self.cells) != expected:
             raise InvalidDomainValueError(
                 "WeeklyPlan needs one Cell per Snapshot Section (per operating day for DAY), "
                 "in Section order"
             )
-        if len({cell.item_id for cell in self.cells}) != len(self.cells):
+        all_cells = self.cells + tuple(c.cell for c in self.activity_candidates) + self.removed_activity_cells
+        if len({cell.item_id for cell in all_cells}) != len(all_cells):
             raise InvalidDomainValueError("WeeklyPlan cells must have unique ItemId values")
+        boundaries = [b.split_id for g in self.activity_grids for b in g.boundaries()]
+        if len(set(boundaries)) != len(boundaries) or set(boundaries) & {c.item_id for c in all_cells}:
+            raise InvalidDomainValueError("Weekly grid boundary IDs must be unique")
         if self.cell("theme").cell_state is not CellState.FILLED:
             raise InvalidDomainValueError("WeeklyPlan theme cannot be empty")
         if not isinstance(self.constraint_assessments, tuple) or not all(
@@ -344,7 +395,7 @@ class WeeklyPlan:
     def find_cell(self, item_id: ItemId) -> WeeklyCell | None:
         if not isinstance(item_id, ItemId):
             raise InvalidDomainValueError("WeeklyPlan.find_cell requires ItemId")
-        return next((cell for cell in self.cells if cell.item_id == item_id), None)
+        return next((cell for cell in self.cells + tuple(c.cell for c in self.activity_candidates) if cell.item_id == item_id), None)
 
     def replace_cell(self, item_id: ItemId, replacement: WeeklyCell) -> WeeklyPlan:
         self.ensure_mutable("replace_cell")
@@ -361,6 +412,8 @@ class WeeklyPlan:
             raise InvalidDomainValueError(
                 "Weekly replacement must preserve ItemId, section_key and day"
             )
+        if any(c.cell is current for c in self.activity_candidates):
+            return replace(self, activity_candidates=tuple(replace(c, cell=replacement) if c.cell is current else c for c in self.activity_candidates))
         return replace(self, cells=tuple(replacement if cell is current else cell for cell in self.cells))
 
     def ensure_mutable(self, operation: str) -> None:
@@ -379,3 +432,15 @@ class WeeklyPlan:
             actor_id=actor_id,
         )
         return replace(self, status=PlanStatus.CONFIRMED, audit=self.audit.append(event))
+
+    def unconfirm(self, *, actor_id: ActorId, occurred_at: datetime) -> WeeklyPlan:
+        """CONFIRMED → DRAFT. Only a plan-level UNCONFIRMED event is added; a DRAFT is returned as is."""
+        if self.status is not PlanStatus.CONFIRMED:
+            return self
+        event = AuditEvent(
+            event_type=AuditEventType.UNCONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(self, status=PlanStatus.DRAFT, audit=self.audit.append(event))

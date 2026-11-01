@@ -24,6 +24,8 @@ from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateR
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 from ssuksak.planning import ActivityCatalogSelector, MonthlyPlan, PlanId, TemplateProfileRef
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.year_month import YearMonth
+from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 from test_monthly_safety_read_api import legacy_mode  # noqa: F401
 
 from app.config import settings
@@ -180,6 +182,36 @@ def _error(response):
 
 
 # ── 생성 · 조회 ───────────────────────────────────────────────────────────
+
+
+def test_가져온_연간을_확정하면_월간을_만들_수_있다(world):
+    """Theme Reference 없는 연간(2026-11-01 I-A)도 부모 주제 글자로 월간을 만든다."""
+    months = []
+    for m in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2):
+        weeks = len(canonical_week_periods(YearMonth(2026 if m >= 3 else 2027, m)))
+        months.append(
+            {
+                "month": m,
+                "theme": f"{m}월 우리 동네",
+                "sub_themes": [f"{i}주" for i in range(weeks)],
+            }
+        )
+    imported = client.post(
+        "/api/plans/annual/import",
+        json={"class_id": world["class_a"], "source": "MANUAL", "file": None, "months": months},
+    )
+    assert imported.status_code == 201, imported.json()
+    annual_id = imported.json()["id"]
+    assert client.post(f"/api/plans/annual/{annual_id}/confirm").status_code == 200
+
+    created = _create(world)
+
+    assert created.status_code == 201, created.json()
+    body = created.json()
+    assert body["parent"]["annual_plan_id"] == annual_id
+    assert body["parent"]["theme"] == "9월 우리 동네"
+    theme = next(s for s in body["sections"] if s["section_key"] == "theme")["cells"][0]
+    assert [e["source_type"] for e in theme["evidence"]] == ["PARENT_PLAN"]
 
 
 def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world):

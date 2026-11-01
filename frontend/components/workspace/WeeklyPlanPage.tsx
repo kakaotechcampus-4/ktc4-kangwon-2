@@ -27,6 +27,9 @@ import {
   getWeeklyPlanAudit,
   listWeeklyPlans,
   regenerateWeeklyCell,
+  copyWeeklyActivity,
+  splitWeeklyActivityCell,
+  removeWeeklyActivityCell,
 } from "@/lib/api/weekly";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
@@ -35,6 +38,7 @@ import { archivePlanEntry } from "@/lib/workspace/document-archive";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import { WorkspacePage, Empty, Message } from "./WorkspaceUI";
 import s from "./WeeklyPlanPage.module.css";
+import WeeklyActivityPanel from "./WeeklyActivityPanel";
 
 function describe(e: unknown, fallback: string): string {
   if (e instanceof ApiError) return e.message;
@@ -70,6 +74,8 @@ function originOf(cell: WeeklyCell, edited: Set<string>): Origin {
   if (edited.has(cell.item_id)) return { label: "교사 수정", tone: s.chipEdited };
   const method = cell.generation?.method;
   if (method === "RULE_LLM") return { label: "AI 초안", tone: s.chip };
+  if (cell.generation?.rule_id === "weekly.activity_copy")
+    return { label: "후보에서 선택", tone: s.chipRule };
   if (method === "RULE_ONLY") return { label: "자동 선택", tone: s.chipRule };
   if (method === "MANUAL") return { label: "직접 입력", tone: s.chipManual };
   return null;
@@ -186,7 +192,12 @@ export default function WeeklyPlanPage() {
       .then(({ items }) => {
         const last = new Map<string, string>();
         for (const e of items)
-          if (e.item_id && (e.type === "TEACHER_EDITED" || e.type === "REGENERATED"))
+          if (
+            e.item_id &&
+            (e.type === "TEACHER_EDITED" ||
+              e.type === "REGENERATED" ||
+              e.type === "CANDIDATE_COPIED")
+          )
             last.set(e.item_id, e.type);
         if (alive)
           setEdited(new Set([...last].filter(([, t]) => t === "TEACHER_EDITED").map(([id]) => id)));
@@ -244,7 +255,7 @@ export default function WeeklyPlanPage() {
   const handleCreate = () =>
     run("create", async () => {
       if (classId === null || !weekId) return;
-      return createWeeklyPlan({ class_id: classId, week_id: weekId });
+      return createWeeklyPlan({ class_id: classId, week_id: weekId, activity_candidates: true });
     });
 
   const handleDelete = () =>
@@ -259,7 +270,10 @@ export default function WeeklyPlanPage() {
   const handleSave = () =>
     run("edit", async () => {
       if (!plan || !editing) return;
-      const cell = [...cells.values()].find((c) => c.item_id === editing.itemId);
+      const cell = [
+        ...plan.sections.flatMap((section) => section.cells),
+        ...(plan.activity_candidates ?? []).map((c) => c.cell),
+      ].find((c) => c.item_id === editing.itemId);
       // 저장이 성공한 뒤에 닫는다. 실패하면 쓴 문장을 그대로 두어 다시 저장할 수 있게 한다.
       const next =
         cell && editing.draft !== cell.value
@@ -283,10 +297,10 @@ export default function WeeklyPlanPage() {
       return next;
     });
 
-  function renderCard(sectionKey: string, wide = false) {
-    const cell = cells.get(sectionKey);
+  function renderCard(sectionKey: string, wide = false, override?: WeeklyCell, label?: string) {
+    const cell = override ?? cells.get(sectionKey);
     if (!cell) return null;
-    const name = labels.get(sectionKey) ?? sectionKey;
+    const name = label ?? labels.get(sectionKey) ?? sectionKey;
     const origin = originOf(cell, edited);
     const source = cell.teacher_input ? "" : sourceOf(cell);
     const working = busy === cell.item_id;
@@ -294,7 +308,7 @@ export default function WeeklyPlanPage() {
 
     if (!confirmed && editing?.itemId === cell.item_id)
       return (
-        <article key={sectionKey} className={`${s.card} ${wide ? s.wide : ""}`}>
+        <article key={cell.item_id} className={`${s.card} ${wide ? s.wide : ""}`}>
           <div className={s.cardName}>
             <h4>{name}</h4>
           </div>
@@ -324,7 +338,7 @@ export default function WeeklyPlanPage() {
 
     if (cell.teacher_input && empty)
       return (
-        <article key={sectionKey} className={s.cardEmpty}>
+        <article key={cell.item_id} className={s.cardEmpty}>
           <div className={s.cardName}>
             <h4>{name}</h4>
           </div>
@@ -346,7 +360,7 @@ export default function WeeklyPlanPage() {
       );
 
     return (
-      <article key={sectionKey} className={`${s.card} ${wide ? s.wide : ""}`}>
+      <article key={cell.item_id} className={`${s.card} ${wide ? s.wide : ""}`}>
         <div className={s.cardHead}>
           <div className={s.cardName}>
             <h4>{name}</h4>
@@ -362,16 +376,17 @@ export default function WeeklyPlanPage() {
               >
                 고치기
               </button>
-              {!cell.teacher_input && (
-                <button
-                  type="button"
-                  className={s.btnSmall}
-                  disabled={locked}
-                  onClick={() => handleRegenerate(cell)}
-                >
-                  {working ? "만드는 중…" : "다시 만들기"}
-                </button>
-              )}
+              {!cell.teacher_input &&
+                !(plan?.activity_grids?.length && sectionKey === "group_activity") && (
+                  <button
+                    type="button"
+                    className={s.btnSmall}
+                    disabled={locked}
+                    onClick={() => handleRegenerate(cell)}
+                  >
+                    {working ? "만드는 중…" : "다시 만들기"}
+                  </button>
+                )}
             </div>
           )}
         </div>
@@ -390,6 +405,14 @@ export default function WeeklyPlanPage() {
   }
 
   const weekLabel = weeks.find((w) => w.week_id === weekId)?.label ?? weekId;
+  function renderSection(key: string, wide = false) {
+    const section = plan?.sections.find((entry) => entry.section_key === key);
+    if (section?.repeat_by === "DAY")
+      return section.cells.map((cell) =>
+        renderCard(key, wide, cell, `${labels.get(key) ?? key} · ${DAY_NAMES[cell.day ?? ""]}`),
+      );
+    return renderCard(key, wide);
+  }
   const dayOnly = (iso: string) => shortDate(iso).replace(/\(.\)$/, "");
 
   return (
@@ -581,17 +604,45 @@ export default function WeeklyPlanPage() {
             )}
 
             {GROUPS.map((g) => {
-              const keys = g.keys.filter((k) => cells.has(k) && !teacherKeys.includes(k));
+              const keys = g.keys.filter(
+                (k) =>
+                  cells.has(k) &&
+                  !teacherKeys.includes(k) &&
+                  !(k === "group_activity" && plan.activity_grids?.length),
+              );
               if (!keys.length) return null;
               return (
                 <section key={g.title} className={s.group}>
                   <div className={s.groupHead}>
                     <h3>{g.title}</h3>
                   </div>
-                  <div className={s.grid2}>{keys.map((k) => renderCard(k, k === "theme"))}</div>
+                  <div className={s.grid2}>{keys.map((k) => renderSection(k, k === "theme"))}</div>
                 </section>
               );
             })}
+
+            {!!plan.activity_grids?.length && (
+              <WeeklyActivityPanel
+                plan={plan}
+                disabled={locked}
+                renderCell={(cell, label) => renderCard("group_activity", false, cell, label)}
+                onCopy={(cellId, candidateId) =>
+                  run("copy-activity", () =>
+                    copyWeeklyActivity(plan.id, cellId, candidateId, plan.revision),
+                  )
+                }
+                onSplit={(cellId, axis) =>
+                  run("split-activity", () =>
+                    splitWeeklyActivityCell(plan.id, cellId, axis, plan.revision),
+                  )
+                }
+                onRemove={(cellId) =>
+                  run("remove-activity", () =>
+                    removeWeeklyActivityCell(plan.id, cellId, plan.revision),
+                  )
+                }
+              />
+            )}
 
             {otherKeys.length > 0 && (
               <section className={s.group}>
@@ -608,7 +659,7 @@ export default function WeeklyPlanPage() {
                   <h3>선생님이 직접 쓰는 칸</h3>
                   <span className={s.soft}>AI가 쓰지 않아요. 비워 두어도 확정할 수 있어요.</span>
                 </div>
-                <div className={s.grid3}>{teacherKeys.map((k) => renderCard(k))}</div>
+                <div className={s.grid3}>{teacherKeys.map((k) => renderSection(k))}</div>
               </section>
             )}
           </>
