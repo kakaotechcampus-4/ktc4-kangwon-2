@@ -5,6 +5,12 @@ from dataclasses import asdict
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.errors import InvalidDomainValueError
 
+# The existing v2 description guidance, shared without changing its prompt bytes.
+NATURAL_PLAY_GUIDANCE = (
+    "놀이마다 중요한 대상과 탐색을 중심으로 자연스럽게 쓴다 — 모든 설명을 재료 준비로 시작하거나 같은 문장 구조 · 맺는말로 되풀이하지 않는다. "
+    "준비 제안이라는 뜻을 매번 「제안합니다」로 나타낼 필요는 없다. "
+)
+
 V1_GUIDANCE = """
 누리과정 참고 내용은 교육적 방향을 살피는 맥락이다. 매달 5영역을 모두 넣거나
 연령별로 내용 ID를 허용·금지하지 않는다. 활동·도구의 연령 적합성과 안전 기준은 지킨다.
