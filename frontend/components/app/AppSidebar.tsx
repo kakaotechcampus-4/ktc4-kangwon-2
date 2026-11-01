@@ -114,6 +114,8 @@ export default function AppSidebar() {
   // 누르면 넓은 사이드바가 본문 위에 겹쳐 펼쳐지고 [접기]로 닫는다. 모바일 하단 네비는 그대로다.
   const compact = useIsCompact();
   const [open, setOpen] = useState(false);
+  // 펼침은 이번 접기 구간에서만 산다 — 접기 요청이 없는 화면을 지나면 다음 편집은 다시 접혀 시작한다.
+  if (!compact && open) setOpen(false);
   const collapsed = compact && !open;
 
   return (
