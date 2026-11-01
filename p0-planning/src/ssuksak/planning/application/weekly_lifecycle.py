@@ -223,7 +223,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
         cell = plan.find_cell(item_id)
         if cell is None:
             raise WeeklyApplicationError("weekly_cell_not_found", f"Weekly Cell not found: {item_id}")
-        if cell.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
+        if cell.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS or (plan.activity_grids and cell.section_key == "group_activity"):
             raise WeeklyApplicationError(
                 "weekly_cell_not_regeneratable", "A teacher-input Cell is written by the teacher only"
             )

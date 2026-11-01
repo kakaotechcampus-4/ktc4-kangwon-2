@@ -75,6 +75,7 @@ import {
   regenerateWeeklyCellValue,
   removeWeekly,
   unconfirmWeekly,
+  changeWeeklyActivity,
 } from "./data/weekly-plans";
 import {
   addReadyProfile,
@@ -117,7 +118,57 @@ const mockAuth = (email: string, name: string) => ({
   user: { id: 1, email, name, center_id: null },
 });
 
+async function weeklyActivity(
+  request: Request,
+  id: number,
+  itemId: string,
+  operation: "copy" | "split" | "remove",
+) {
+  const plan = myWeekly(id);
+  if (!plan) return weeklyMissing();
+  const b: Record<string, unknown> | null =
+    operation === "remove"
+      ? { expected_revision: Number(new URL(request.url).searchParams.get("expected_revision")) }
+      : await body(request);
+  if (!b || !integer(b.expected_revision) || Number(b.expected_revision) < 1)
+    return bad("expected_revision");
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 바꿀 수 없습니다.");
+  if (plan.revision !== b.expected_revision) return stale();
+  if (
+    !plan.sections
+      .find((section) => section.section_key === "group_activity")
+      ?.cells.some((cell) => cell.item_id === itemId)
+  )
+    return failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+  if (operation === "split" && b.axis !== "VERTICAL" && b.axis !== "HORIZONTAL") return bad("axis");
+  try {
+    return HttpResponse.json(
+      weeklyOut(
+        changeWeeklyActivity(
+          id,
+          itemId,
+          operation,
+          typeof b.candidate_item_id === "string" ? b.candidate_item_id : undefined,
+          b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? b.axis : undefined,
+        ),
+      ),
+    );
+  } catch {
+    return bad("value");
+  }
+}
+
 export const handlers = [
+  http.post("*/api/plans/weekly/:id/cells/:itemId/copy-activity", ({ request, params }) =>
+    weeklyActivity(request, Number(params.id), String(params.itemId), "copy"),
+  ),
+  http.post("*/api/plans/weekly/:id/cells/:itemId/split", ({ request, params }) =>
+    weeklyActivity(request, Number(params.id), String(params.itemId), "split"),
+  ),
+  http.delete("*/api/plans/weekly/:id/cells/:itemId/split", ({ request, params }) =>
+    weeklyActivity(request, Number(params.id), String(params.itemId), "remove"),
+  ),
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
   // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
   http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
@@ -904,9 +955,10 @@ export const handlers = [
     if (!week || !week.active) return bad("week_id");
     if (request.signal.aborted) return HttpResponse.error();
     const saturday = !!findCenterSettings(klass.center_id).weekly_saturday_enabled;
-    return HttpResponse.json(weeklyOut(addWeekly(klass, monthly, b.week_id, saturday)), {
-      status: 201,
-    });
+    return HttpResponse.json(
+      weeklyOut(addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true)),
+      { status: 201 },
+    );
   }),
   http.get("*/api/plans/weekly", async ({ request }) => {
     const s = await scenario(request, "weekly-list");
@@ -952,7 +1004,10 @@ export const handlers = [
     // 교사 입력 칸은 만든 적이 없어 다시 만들 것도 없다 (§6-2).
     if (TEACHER_INPUT.includes(w.section.section_key))
       return failure("VALIDATION_FAILED", "교사가 적는 칸이라 다시 만들 수 없습니다.", "item_id");
-    if (!WEEKLY_REGENERATABLE.includes(w.section.section_key))
+    if (
+      !WEEKLY_REGENERATABLE.includes(w.section.section_key) ||
+      (w.plan.activity_grids?.length && w.section.section_key === "group_activity")
+    )
       return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");
     if (request.signal.aborted) return HttpResponse.error();
     const label = w.section.label ?? w.section.section_key;

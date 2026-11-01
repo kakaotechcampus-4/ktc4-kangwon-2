@@ -7,7 +7,10 @@ import json
 
 import pytest
 
-from ssuksak.adapters.institution_evidence_repository import JsonInstitutionEvidenceRepository
+from ssuksak.adapters.institution_evidence_repository import (
+    DEFAULT_EVIDENCE_STORE_PATH,
+    JsonInstitutionEvidenceRepository,
+)
 from ssuksak.adapters.monthly_reference_repositories import JsonSafetyLegalRuleRepository
 from ssuksak.adapters.safety_evidence_classification_repository import (
     DEFAULT_SAFETY_CLASSIFICATION_PATH,
@@ -27,7 +30,10 @@ from ssuksak.planning.evidence.safety_classification import (
 
 LEGAL = "child-welfare-act-decree-annex6-2022-06-21"
 KINDS = SafetyReferenceKind
-STORE = JsonInstitutionEvidenceRepository().get_store()
+# These v0.1/v0.2 classification contracts retain their original corpus binding.
+STORE = JsonInstitutionEvidenceRepository(
+    DEFAULT_EVIDENCE_STORE_PATH.with_name("institution_evidence_v0_1_0.json")
+).get_store()
 SAFETY = tuple(r for r in STORE.records if r.source_section is SourceSection.SAFETY_EDUCATION)
 
 
@@ -37,7 +43,8 @@ def _payload():
 
 
 def _payload_v2():
-    return json.loads(DEFAULT_SAFETY_CLASSIFICATION_PATH.read_text(encoding="utf-8"))
+    path = DEFAULT_SAFETY_CLASSIFICATION_PATH.with_name("safety_evidence_classification_v0_2_0.json")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _approve(payload):

@@ -101,6 +101,7 @@ CELL_SYSTEM_PROMPT = SYSTEM_PROMPT + (
 
 
 class WeeklyIssueCode(str, Enum):
+    ACTIVITY_CANDIDATE_INVALID = "ACTIVITY_CANDIDATE_INVALID"
     WEEK_MISMATCH = "WEEK_MISMATCH"
     SECTION_NOT_REQUESTED = "SECTION_NOT_REQUESTED"
     TEACHER_INPUT_VALUE = "TEACHER_INPUT_VALUE"
@@ -122,6 +123,7 @@ class WeeklyIssueCode(str, Enum):
 
 # Same idea as the monthly REPAIRABLE_CODES: wording or a ref choice inside a fixed slot.
 REPAIRABLE = frozenset({
+    WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID,
     WeeklyIssueCode.TEXT_POLICY,
     WeeklyIssueCode.SOURCE_TEXT_COPY,
     WeeklyIssueCode.WRONG_SOURCE_GROUNDING,
@@ -146,6 +148,7 @@ class WeeklyTarget:
     semantic_variant: str | None = None
     days: tuple[str, ...] = ()  # repeat_by DAY: the OperatingDay values to write, in order
     parent_groundable: bool = False
+    activity_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +274,7 @@ def build_weekly_request(
                 "allowed_grounding_refs": list(t.allowed_grounding_refs),
                 **({"days": list(t.days)} if t.days else {}),
                 **({"parent_groundable": True} if t.parent_groundable else {}),
+                **({"activity_type": t.activity_type} if t.activity_type is not None else {}),
                 **({"reference_candidates": [
                     {"reference_id": rid, "label": label} for rid, label in reference_candidates
                 ]} if t.section_key == OUTDOOR_KEY else {}),
@@ -303,11 +307,21 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
-    linked = REFERENCE_WIRING_SUFFIX if reference_wiring else ""
+    candidates = "+activity-candidates-v1" if any(t.activity_type is not None for t in targets) else ""
+    if candidates:
+        source_refs |= {t.section_key for t in targets if t.activity_type is not None}
+    linked = (REFERENCE_WIRING_SUFFIX if reference_wiring else "") + candidates
     system_prompt = SYSTEM_PROMPT
     if reference_wiring:
         system_prompt = system_prompt.replace(OUTDOOR_REFERENCE_INSTRUCTION, LINKED_OUTDOOR_INSTRUCTION)
         system_prompt += NATURAL_PLAY_GUIDANCE + LINKED_WRITING_GUIDANCE
+    if candidates:
+        system_prompt += (
+            " activity_type가 있는 target은 교사가 고를 한 주 활동 후보이며 요일에 배치하지 않는다. "
+            "각 후보는 Rule이 정한 그 유형과 허용 근거로 짧은 활동명: 설명을 쓴다. 유형 이름은 value에 붙이지 않는다. "
+            "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
+            "후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
+        )
     return WeeklyPlanningRequest(
         prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + linked + suffix,
         system_prompt=system_prompt + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else ""),
@@ -580,6 +594,7 @@ def validate_weekly(
 ) -> tuple[WeeklyIssue, ...]:
     issues: list[WeeklyIssue] = []
     seen: set[str] = set()
+    candidate_names: set[str] = set()
     for v in values:
         key = v.section_key
         if key in seen:
@@ -600,6 +615,12 @@ def validate_weekly(
             continue
         if isinstance(v, ProposedSectionValue):
             issues += _value_issues(v, target, request)
+            if target.activity_type is not None:
+                name, separator, description = v.value.partition(":")
+                normalized = normalize_visible_text(name)
+                if v.unresolved or not separator or not name.strip() or not description.strip() or normalized in candidate_names:
+                    issues.append(WeeklyIssue(WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID, key))
+                candidate_names.add(normalized)
             continue
         written = {normalize_visible_text(text) for text in request.other_day_values if text.strip()}
         for day, day_value in v.days:

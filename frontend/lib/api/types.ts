@@ -139,6 +139,33 @@ export interface WeeklyCell {
   parent_snapshots: { parent_item_id: string; snapshot_value: string }[];
   /** 교사가 적는 칸(가정 연계 · 행사 · 특별활동)이면 true. 첫 입력 뒤(`MANUAL`)에도 true 다 (W5b). */
   teacher_input: boolean;
+  day?: "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | null;
+}
+export interface WeeklyActivityGrid {
+  cell_id: string | null;
+  split_id: string | null;
+  axis: "VERTICAL" | "HORIZONTAL" | null;
+  ratio: number | null;
+  children: WeeklyActivityGrid[];
+}
+export interface WeeklyActivityCandidate {
+  activity_type: string;
+  name: string;
+  description: string;
+  cell: WeeklyCell;
+}
+
+export interface WeeklyAuditEvent extends Omit<MonthlyAuditEvent, "type"> {
+  type: MonthlyAuditEvent["type"] | "CANDIDATE_COPIED" | "TIMETABLE_CHANGED";
+  day?: WeeklyCell["day"];
+  copied_from?: string | null;
+  timetable_change?: {
+    operation: "SPLIT" | "REMOVE";
+    split_id: string;
+    axis: "VERTICAL" | "HORIZONTAL";
+    cell_id: string;
+    new_cell_id: string | null;
+  } | null;
 }
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §5-1 · §13).
@@ -175,11 +202,14 @@ export interface WeeklyPlan {
     order: number;
     semantic_variant: string | null;
     cells: WeeklyCell[];
+    repeat_by?: "NONE" | "DAY";
   }[];
   constraints: MonthlyPlan["constraints"];
   verification: MonthlyPlan["verification"];
   created_at: string;
   confirmed_at: string | null;
+  activity_candidates?: WeeklyActivityCandidate[];
+  activity_grids?: WeeklyActivityGrid[];
 }
 /** 목록용. 칸은 단건 조회가 준다. */
 export type WeeklyPlanSummary = Pick<

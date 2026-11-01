@@ -149,9 +149,10 @@ test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
   assert.ok(schemas.includes("teacher_input:"), "teacher_input");
 });
 
-test("클라이언트는 열 가지를 낸다 — 이력 · 한글 파일 · 확정 취소 포함", () => {
+test("클라이언트는 후보 복사와 칸 분할·삭제 · 확정 취소까지 낸다", () => {
   assert.deepEqual(Object.keys(weekly).sort(), [
     "confirmWeeklyPlan",
+    "copyWeeklyActivity",
     "createWeeklyPlan",
     "deleteWeeklyPlan",
     "downloadWeeklyHwpx",
@@ -160,6 +161,8 @@ test("클라이언트는 열 가지를 낸다 — 이력 · 한글 파일 · 확
     "getWeeklyPlanAudit",
     "listWeeklyPlans",
     "regenerateWeeklyCell",
+    "removeWeeklyActivityCell",
+    "splitWeeklyActivityCell",
     "unconfirmWeeklyPlan",
   ]);
 });
@@ -171,6 +174,33 @@ test("G3 — 월간이 확정되기 전에는 주간을 만들 수 없다", asyn
     409,
     "GATE_BLOCKED",
   );
+});
+
+test("후보형 주간 — 빈 요일 칸에 유형별 후보를 넣고 나눈 칸을 다시 조회한다", async () => {
+  const { klass, monthly } = await classWithMonthly();
+  let plan = await weekly.createWeeklyPlan({
+    class_id: klass.id,
+    week_id: monthly.weeks[0].week_id,
+    activity_candidates: true,
+  });
+  assert.equal(plan.activity_candidates.length, 10);
+  const group = (p) => p.sections.find((section) => section.section_key === "group_activity").cells;
+  assert.ok(group(plan).every((cell) => !cell.value));
+  const itemId = group(plan)[0].item_id;
+  const candidate = plan.activity_candidates[0];
+  plan = await weekly.copyWeeklyActivity(plan.id, itemId, candidate.cell.item_id, plan.revision);
+  assert.equal(group(plan)[0].value, `[${candidate.activity_type}] ${candidate.name}`);
+  const revision = plan.revision;
+  plan = await weekly.copyWeeklyActivity(plan.id, itemId, candidate.cell.item_id, revision);
+  assert.equal(plan.revision, revision);
+  plan = await weekly.splitWeeklyActivityCell(plan.id, itemId, "VERTICAL", plan.revision);
+  const added = group(plan)[1].item_id;
+  assert.equal(group(plan)[0].item_id, itemId);
+  assert.equal(group(plan)[1].value, "");
+  assert.equal((await weekly.getWeeklyPlan(plan.id)).activity_grids[0].children.length, 2);
+  await rejects(weekly.removeWeeklyActivityCell(plan.id, added, 0), 422, "VALIDATION_FAILED");
+  plan = await weekly.removeWeeklyActivityCell(plan.id, added, plan.revision);
+  assert.equal(plan.activity_grids[0].cell_id, itemId);
 });
 
 test("G4 — 월간에 없는 주 주소는 거절한다. 주차를 주간이 다시 세지 않는다", async () => {
@@ -389,6 +419,7 @@ function weeklyPage(api) {
       Message: (p) => node("message", p),
     },
     "./WeeklyPlanPage.module.css": css,
+    "./WeeklyActivityPanel": { default: () => null },
   };
   const page = { exports: {} };
   new Function("require", "module", "exports", pageCode)(
@@ -466,6 +497,28 @@ const draftPlan = (week_id = W1) => ({
       },
     ],
   })),
+});
+
+test("화면 — 교사 수정 뒤 후보를 다시 넣으면 후보 선택으로 표시한다", async () => {
+  const plan = draftPlan();
+  plan.sections[1].cells[0].generation = {
+    method: "RULE_ONLY",
+    rule_id: "weekly.activity_copy",
+  };
+  const view = weeklyPage({
+    listWeeklyPlans: async () => ({ items: [plan] }),
+    getWeeklyPlan: async () => plan,
+    getWeeklyPlanAudit: async () => ({
+      items: ["TEACHER_EDITED", "CANDIDATE_COPIED"].map((type) => ({
+        type,
+        item_id: "focus-1",
+      })),
+    }),
+  });
+  await view.settle();
+  const card = JSON.stringify(view.card("focus"));
+  assert.ok(card.includes("후보에서 선택"));
+  assert.ok(!card.includes("교사 수정"));
 });
 
 test("화면 — 저장이 실패하면 쓴 문장과 편집창을 그대로 두고, 저장하지 않은 채로는 확정·이동하지 않는다", async () => {
