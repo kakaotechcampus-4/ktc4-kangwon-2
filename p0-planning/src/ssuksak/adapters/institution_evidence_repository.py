@@ -31,7 +31,7 @@ DEFAULT_EVIDENCE_STORE_PATH = (
     Path(__file__).resolve().parents[3]
     / "data"
     / "evidence"
-    / "institution_evidence_v0_1_0.json"
+    / "institution_evidence_v0_2_0.json"
 )
 
 _RECORD_FIELDS = {
