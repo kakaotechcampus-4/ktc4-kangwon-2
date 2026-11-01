@@ -2086,13 +2086,14 @@ arrangement_change ARRANGEMENT_CHANGED 만.  {scope, before, after} — 안전 �
 **Request**
 
 ```json
-{ "class_id": 1, "week_id": "2026-09-W2" }
+{ "class_id": 1, "week_id": "2026-09-W2", "activity_candidates": false }
 ```
 
 ```
 class_id   정수.  필수.  내 원의 반이어야 한다(남의 원이면 404)
 week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다음 해 2월) 안이어야 한다
            부모 월간의 주(§9-1 응답 weeks[])여야 하고, 그 주가 active 여야 한다
+activity_candidates  boolean. 생략 시 false. true면 승인된 v0.2.0 양식과 활동 후보 방식을 쓴다(아래).
 ```
 
 **받지 않는 것.** `school_year`(반이 정한다) · 부모 월간(서버가 반과 `week_id` 의 달로 찾는다) ·
@@ -2153,6 +2154,57 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
   `week_period` 는 부모 월간의 주 그대로(월 ~ 금)다. FE 가 따로 계산하지 않는다.
 - 안전교육 배치 정보(`safety`)는 내지 않는다 — 월간과 같다. 저장 본문에는 남는다.
 
+### 대소집단 활동 후보 · 칸 나누기 (ADR-054)
+
+새 화면은 생성할 때 `activity_candidates: true`를 보낸다. 기존 요청·계획과 전역 양식 기본값은 그대로다.
+월·연령·승인 분류로 고른 대소집단 근거에서 유형별로 후보를 최대 10개 만든다. 같은 주 소주제와의 일치를
+선택 조건으로 삼지 않는다. 근거가 모자라면 적게 만들고, 교사가 고르기 전 요일 칸은 빈칸이다.
+
+상세 응답에는 아래 목록이 추가된다. 구판은 두 목록이 빈 배열이다.
+
+```json
+{ "activity_candidates": [
+    { "activity_type": "음률", "name": "가을 소리 찾기", "description": "자료에 있는 소리를 함께 탐색해요.",
+      "cell": { "item_id": "candidate_…", "value": "가을 소리 찾기: 자료에 있는 소리를 함께 탐색해요.", "day": null, "…": "기존 WeeklyCell 필드" } }
+  ],
+  "activity_grids": [
+    { "cell_id": "item_…", "split_id": null, "axis": null, "ratio": null, "children": [] }
+  ] }
+```
+
+- `activity_type`은 근거의 명시된 태그/행 이름이다. 새 공식 분류가 아니다. 명시된 유형이 없으면 `기타`다.
+- `name`/`description`은 후보 칸의 현재 값 `활동명: 설명`에서 읽는다. 후보 편집은 기존 칸 편집 경로다.
+- `activity_grids`는 운영 요일 순이다. leaf는 `cell_id`로 실제 `sections[].cells[]`를 가리킨다.
+  나눈 node는 `cell_id: null`, `split_id`, `axis`, `ratio`, 두 `children`을 갖는다.
+- 후보형 `group_activity`의 `DAY` 칸은 하루 여러 개일 수 있다. 요일 순·트리 leaf 순으로 내려준다.
+  `special_program`은 기존처럼 요일당 한 칸이다. 후보/선택한 대소집단 칸은 LLM 재생성을 받지 않는다.
+
+```
+POST   /api/plans/weekly/{id}/cells/{item_id}/copy-activity
+       { "expected_revision": 3, "candidate_item_id": "candidate_…" }
+POST   /api/plans/weekly/{id}/cells/{item_id}/split
+       { "expected_revision": 3, "axis": "VERTICAL", "ratio": 50 }
+DELETE /api/plans/weekly/{id}/cells/{item_id}/split
+       { "expected_revision": 3 }
+```
+
+성공 응답은 `200`과 상세 전체다. 확정/소유권/revision 게이트는 기존과 같다. 같은 후보가 현재 값·근거·생성 정보까지
+그대로 복사돼 있으면 `200`이며 revision·저장·이력은 바꾸지 않는다. 복사 뒤 교사가 고쳤다면 다시 복사한다.
+복사는 `[유형] 활동명`을 넣으며 설명은 후보에 둔다. 근거와 원 후보 ID를 보존하고 후보 수정은 이미 놓은 값을 바꾸지 않는다.
+
+`VERTICAL`은 위/아래, `HORIZONTAL`은 왼쪽/오른쪽이며 ratio 기본은 50, 허용은 정수 10~90이다.
+깊이 4·표 전체 폭 기준 최종 칸 폭 3.5% 하한을 지킨다. 첫 칸의 ID/값은 보존하고 새 빈칸을 만든다.
+삭제는 나눈 칸에만 되며 그 요일 마지막 칸은 지우지 않는다. 삭제 칸의 값·근거·이력은 저장 본문에 보관한다.
+없는 대상 칸은 404 `NOT_FOUND`, 없는/빈 후보·불가능한 분할/삭제는 422 `VALIDATION_FAILED`다.
+배치 칸과 후보의 수동 편집은 기존 경로를 쓴다.
+
+이력에는 `CANDIDATE_COPIED`/`TIMETABLE_CHANGED`가 추가되고 `copied_from`과 `timetable_change`가 nullable로 붙는다.
+요일·원 칸·분할/새 칸 ID와 axis를 기록한다. 후보와 삭제한 칸의 이력도 조회할 수 있다.
+한글에는 선택한 leaf 값과 분할 구조만 싣고 후보 설명 목록은 싣지 않는다.
+
+후보 생성과 수리만 내부 스트리밍(출력 상한 6,000토큰, 수리 최대 1회)을 쓰며 화면에는 완성된 계획 한 건을 준다.
+전체 마감 120초·소켓 대기 30초, nginx `/api/plans/weekly`는 270초다. 나머지 주간 호출은 기존 전송 그대로다.
+
 ### 조회 — `GET /api/plans/weekly/{id}`
 
 `200` — 위 응답. 없거나 남의 원 것 · 주간이 아닌 것은 404 `NOT_FOUND` `["id"]`.
@@ -2206,7 +2258,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 
 - 주간 칸에는 주가 따로 없다 — **칸 이벤트의 `week_id` 는 그 계획안의 주**다. 계획안 단위(`PLAN`)는 `null`.
 - **`day`** — 요일 칸 이벤트면 그 요일, 그 밖은 `null`. 「대·소집단 활동 · 화」처럼 보이게 하는 용도다.
-- 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. `arrangement_change` 는 늘 `null` 이다. 읽기만 한다.
+- 기본 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. 후보형 추가 이벤트/필드는 위 ADR-054 절을 따른다. `arrangement_change` 는 늘 `null` 이다. 읽기만 한다.
 
 ### 내보내기 — `GET /api/plans/weekly/{id}/export/hwp`
 

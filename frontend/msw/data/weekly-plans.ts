@@ -5,14 +5,16 @@ import type {
   WeeklyCell,
   WeeklyPlan,
   WeeklyPlanSummary,
+  WeeklyActivityGrid,
 } from "../../lib/api/types";
 
 /**
  * 주간계획안 목업 (docs/weekly-plan-contract.md §13).
  *
- * 월간 목업과 다른 점 넷 — 주차 열이 없고(Section 마다 칸 하나), 교사 입력 칸 셋은
+ * 주차 열이 없고 교사 입력 칸 셋은
  * 값을 만들지 않으며(`generation: null`), 토요일 설정이 `operating_days` 로 굳고,
  * 근거로 쓴 부모 월간 칸의 그때 값을 `parent_snapshots` 로 들고 온다.
+ * 후보 모드는 요일 칸·종류별 고정 후보·분할 트리를 쓰며 실제 생성 품질을 대신하지 않는다.
  *
  * 칸 값은 개발용 고정 문장이다 — LLM 을 부르지 않는다.
  */
@@ -96,6 +98,7 @@ export const addWeekly = (
   monthly: MonthlyPlan,
   weekId: string,
   saturday: boolean,
+  activityCandidates = false,
 ) =>
   commit((db) => {
     const id = db.next++;
@@ -174,6 +177,56 @@ export const addWeekly = (
       created_at: at,
       confirmed_at: null,
     };
+    if (activityCandidates) {
+      plan.base_template_ref = { ...TEMPLATE_REF, template_version: "weekly-template-a-v0.2.0" };
+      for (const section of plan.sections) {
+        if (section.section_key !== "group_activity" && section.section_key !== "special_program")
+          continue;
+        section.repeat_by = "DAY";
+        section.cells = plan.operating_days.map((day) => ({
+          ...cell(section.section_key),
+          item_id: `item_${id}_${section.section_key}_${day}`,
+          day: day as WeeklyCell["day"],
+          value: "",
+          state: "EMPTY_VALID" as const,
+        }));
+      }
+      const group = plan.sections.find((entry) => entry.section_key === "group_activity")!;
+      plan.activity_grids = group.cells.map((cell) => ({
+        cell_id: cell.item_id,
+        split_id: null,
+        axis: null,
+        ratio: null,
+        children: [],
+      }));
+      plan.activity_candidates = [
+        "이야기나누기",
+        "음률",
+        "신체",
+        "미술",
+        "과학",
+        "동화",
+        "게임",
+        "동시",
+        "요리",
+        "동극",
+      ].map((kind, index) => {
+        const name = `${kind} 함께 즐기기`;
+        const description = "관심 있는 대상과 움직임을 탐색합니다.";
+        return {
+          activity_type: kind,
+          name,
+          description,
+          cell: {
+            ...cell("group_activity"),
+            item_id: `item_${id}_candidate_${index}`,
+            value: `${name}: ${description}`,
+            day: null,
+            state: "FILLED",
+          },
+        };
+      });
+    }
     db.weeklyPlans.push(plan);
     return plan;
   });
@@ -184,6 +237,13 @@ const changeWeeklyCell = (id: number, itemId: string, apply: (cell: WeeklyCell) 
     const plan = db.weeklyPlans.find((p) => p.id === id)!;
     for (const section of plan.sections)
       for (const cell of section.cells) if (cell.item_id === itemId) apply(cell);
+    for (const candidate of plan.activity_candidates ?? [])
+      if (candidate.cell.item_id === itemId) {
+        apply(candidate.cell);
+        const [name, ...description] = candidate.cell.value.split(":");
+        candidate.name = name.trim();
+        candidate.description = description.join(":").trim();
+      }
     plan.revision += 1;
     return plan;
   });
@@ -191,6 +251,12 @@ const changeWeeklyCell = (id: number, itemId: string, apply: (cell: WeeklyCell) 
 export const findWeeklyCell = (plan: WeeklyPlan, itemId: string) => {
   for (const section of plan.sections)
     for (const cell of section.cells) if (cell.item_id === itemId) return { section, cell };
+  const candidate = plan.activity_candidates?.find((entry) => entry.cell.item_id === itemId);
+  if (candidate)
+    return {
+      section: plan.sections.find((entry) => entry.section_key === "group_activity")!,
+      cell: candidate.cell,
+    };
   return null;
 };
 
@@ -227,4 +293,92 @@ export const confirmWeekly = (id: number) =>
 export const removeWeekly = (id: number) =>
   commit((db) => {
     db.weeklyPlans = db.weeklyPlans.filter((p) => p.id !== id);
+  });
+
+export const changeWeeklyActivity = (
+  id: number,
+  itemId: string,
+  operation: "copy" | "split" | "remove",
+  candidateId?: string,
+  axis?: "VERTICAL" | "HORIZONTAL",
+) =>
+  commit((db) => {
+    const plan = db.weeklyPlans.find((entry) => entry.id === id)!;
+    const group = plan.sections.find((entry) => entry.section_key === "group_activity")!;
+    const cell = group.cells.find((entry) => entry.item_id === itemId);
+    if (!cell || !plan.activity_grids?.length) throw new Error("활동 칸을 찾을 수 없어요.");
+    let leaf: WeeklyActivityGrid | undefined;
+    let parent: WeeklyActivityGrid | undefined;
+    let width = 0,
+      depth = 0;
+    function visit(
+      node: WeeklyActivityGrid,
+      previous: WeeklyActivityGrid | undefined,
+      w: number,
+      d: number,
+    ) {
+      if (node.cell_id === itemId) {
+        leaf = node;
+        parent = previous;
+        width = w;
+        depth = d;
+      }
+      node.children.forEach((child, index) =>
+        visit(
+          child,
+          node,
+          node.axis === "HORIZONTAL"
+            ? (w * (index === 0 ? (node.ratio ?? 50) : 100 - (node.ratio ?? 50))) / 100
+            : w,
+          d + 1,
+        ),
+      );
+    }
+    plan.activity_grids.forEach((node) =>
+      visit(node, undefined, 500 / (6 * plan.operating_days.length), 0),
+    );
+    if (!leaf) throw new Error("활동 칸을 찾을 수 없어요.");
+    if (operation === "copy") {
+      const candidate = plan.activity_candidates?.find(
+        (entry) => entry.cell.item_id === candidateId,
+      );
+      if (!candidate?.name.trim()) throw new Error("후보를 선택해주세요.");
+      const value = `[${candidate.activity_type}] ${candidate.name}`;
+      if (cell.value === value) return plan;
+      cell.value = value;
+      cell.state = "FILLED";
+      cell.evidence = candidate.cell.evidence;
+      cell.generation = {
+        method: "RULE_ONLY",
+        rule_id: "weekly.activity_copy",
+        rule_version: "v1",
+      };
+    } else if (operation === "split") {
+      if (depth >= 4 || (axis === "HORIZONTAL" && width / 2 < 3.5))
+        throw new Error("칸 나누기 한도를 넘었어요.");
+      const next = `mock_activity_${db.next++}`;
+      const first = { ...leaf };
+      Object.assign(leaf, {
+        cell_id: null,
+        split_id: `mock_split_${db.next++}`,
+        axis,
+        ratio: 50,
+        children: [first, { cell_id: next, split_id: null, axis: null, ratio: null, children: [] }],
+      });
+      group.cells.splice(group.cells.indexOf(cell) + 1, 0, {
+        ...cell,
+        item_id: next,
+        value: "",
+        state: "EMPTY_VALID",
+        evidence: [],
+        generation: { method: "RULE_ONLY", rule_id: "weekly.activity_empty", rule_version: "v1" },
+      });
+    } else {
+      if (!parent) throw new Error("하루에 한 칸은 남겨주세요.");
+      const sibling = parent.children.find((node) => node !== leaf)!;
+      Object.assign(parent, sibling);
+      group.cells = group.cells.filter((entry) => entry.item_id !== itemId);
+    }
+    plan.revision += 1;
+    return plan;
   });

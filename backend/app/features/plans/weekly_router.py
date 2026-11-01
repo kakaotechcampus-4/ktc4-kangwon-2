@@ -23,7 +23,9 @@ from sqlalchemy.orm import Session
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import (
+    WEEKLY_DAY_TEMPLATE_REF,
     WEEKLY_TEMPLATE_REF,
+    weekly_activities,
     weekly_confirmation,
     weekly_edit,
     weekly_generation,
@@ -43,6 +45,7 @@ from ssuksak.planning import (
     WeekId,
     WeeklyPlan,
 )
+from ssuksak.planning.domain.provenance import SplitAxis
 from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
 
 from app.config import settings
@@ -74,8 +77,6 @@ from app.features.plans.monthly_schemas import (
     EditMonthlyCell,
     FindingOut,
     GenerationChangeOut,
-    MonthlyAuditEventOut,
-    MonthlyAuditOut,
     RevisionIn,
     RuleRefOut,
     TemplateRefOut,
@@ -86,8 +87,14 @@ from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut
 from app.features.plans.weekly_schemas import (
+    CopyWeeklyActivityIn,
     CreateWeeklyPlan,
     ParentSnapshotOut,
+    SplitWeeklyActivityIn,
+    WeeklyActivityCandidateOut,
+    WeeklyActivityGridOut,
+    WeeklyAuditEventOut,
+    WeeklyAuditOut,
     WeeklyCellOut,
     WeeklyParentOut,
     WeeklyPlanListOut,
@@ -238,10 +245,13 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
                 parent_monthly_plan_id=parent.plan_id,
                 week_id=week,
                 operating_days=weekly_operating_days(saturday),
-                template_ref=WEEKLY_TEMPLATE_REF,
+                template_ref=WEEKLY_DAY_TEMPLATE_REF
+                if body.activity_candidates
+                else WEEKLY_TEMPLATE_REF,
                 safety_rule=SAFETY_RULE,
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
+                activity_candidates=body.activity_candidates,
             )
         ).plan
     except MonthlyApplicationError as error:
@@ -364,6 +374,16 @@ def _own_row(session: Session, user, plan_id: int) -> Plan:
     return row
 
 
+def _activity_grid(node) -> WeeklyActivityGridOut:
+    return WeeklyActivityGridOut(
+        cell_id=None if node.cell is None else node.cell.value,
+        split_id=None if node.split_id is None else node.split_id.value,
+        axis=None if node.axis is None else node.axis.value,
+        ratio=node.ratio,
+        children=[_activity_grid(c) for c in node.children],
+    )
+
+
 def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
     """도메인 객체를 계약 형식으로. 칸 순서는 Core 가 정한 Template 순서 그대로다.
 
@@ -371,7 +391,6 @@ def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
     """
     period = plan.week_period
     report = plan.verification_report
-    cells = {cell.section_key: cell for cell in plan.cells}
     saturday = plan.operating_days[-1].value == "SAT"
     return WeeklyPlanOut(
         id=row.id,
@@ -407,7 +426,8 @@ def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
                 semantic_variant=(
                     None if section.semantic_variant is None else section.semantic_variant.value
                 ),
-                cells=[_cell(cells[section.section_key])],
+                cells=[_cell(c) for c in plan.cells if c.section_key == section.section_key],
+                repeat_by=section.repeat_by.value if section.repeat_by is not None else "NONE",
             )
             for section in plan.template_snapshot.sections
         ],
@@ -443,6 +463,16 @@ def _detail(row: Plan, plan: WeeklyPlan, parent_id: int) -> WeeklyPlanOut:
         ),
         created_at=row.created_at,
         confirmed_at=row.confirmed_at,
+        activity_candidates=[
+            WeeklyActivityCandidateOut(
+                activity_type=c.activity_type,
+                name=c.name,
+                description=c.description,
+                cell=_cell(c.cell),
+            )
+            for c in plan.activity_candidates
+        ],
+        activity_grids=[_activity_grid(g) for g in plan.activity_grids],
     )
 
 
@@ -450,6 +480,7 @@ def _cell(cell) -> WeeklyCellOut:
     generation = cell.generation
     return WeeklyCellOut(
         item_id=cell.item_id.value,
+        day=cell.day.value if cell.day is not None else None,
         value=cell.value,
         state=cell.cell_state.value,
         evidence=[
@@ -504,7 +535,12 @@ def _lifecycle_error(error: MonthlyApplicationError) -> HTTPException:
         raise error
     if error.code in {"weekly_cell_not_found", "invalid_item_id"}:
         return _CELL_NOT_FOUND
-    if error.code in {"weekly_cell_value_unchanged", "invalid_weekly_cell_value"}:
+    if error.code in {
+        "weekly_cell_value_unchanged",
+        "invalid_weekly_cell_value",
+        "weekly_activity_candidate_invalid",
+        "weekly_activity_layout_invalid",
+    }:
         return _VALUE_INVALID
     if error.code in _NOT_REGENERATABLE_CODES:
         return _CELL_NOT_REGENERATABLE
@@ -591,6 +627,54 @@ def edit_weekly_cell(
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
+@router.post("/{plan_id}/cells/{item_id}/copy-activity", response_model=WeeklyPlanOut)
+def copy_weekly_activity(
+    plan_id: int, item_id: str, body: CopyWeeklyActivityIn, session: DbSession, user: CurrentUser
+):
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = weekly_activities(**_repos(plan, parent), id_generator=UuidGenerator()).copy(
+            plan.plan_id, _item_id(item_id), _item_id(body.candidate_item_id), _actor(user)
+        )
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.post("/{plan_id}/cells/{item_id}/split", response_model=WeeklyPlanOut)
+def split_weekly_activity(
+    plan_id: int, item_id: str, body: SplitWeeklyActivityIn, session: DbSession, user: CurrentUser
+):
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = weekly_activities(**_repos(plan, parent), id_generator=UuidGenerator()).split(
+            plan.plan_id,
+            _item_id(item_id),
+            _actor(user),
+            axis=SplitAxis(body.axis),
+            ratio=body.ratio,
+        )
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.delete("/{plan_id}/cells/{item_id}/split", response_model=WeeklyPlanOut)
+def remove_weekly_activity_cell(
+    plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
+):
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = weekly_activities(**_repos(plan, parent), id_generator=UuidGenerator()).remove(
+            plan.plan_id, _item_id(item_id), _actor(user)
+        )
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
 @router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=WeeklyPlanOut)
 def regenerate_weekly_cell(
     plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
@@ -639,7 +723,7 @@ def confirm_weekly_plan(plan_id: int, body: RevisionIn, session: DbSession, user
     return _write(session, user, plan_id, changed, body.expected_revision, confirming=True)
 
 
-@router.get("/{plan_id}/audit", response_model=MonthlyAuditOut)
+@router.get("/{plan_id}/audit", response_model=WeeklyAuditOut)
 def get_weekly_audit(
     plan_id: int, session: DbSession, user: CurrentUser, item_id: str | None = None
 ):
@@ -650,7 +734,11 @@ def get_weekly_audit(
     """
     row = _own_row(session, user, plan_id)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
-    cells = list(plan.cells)
+    cells = (
+        list(plan.cells)
+        + [c.cell for c in plan.activity_candidates]
+        + list(plan.removed_activity_cells)
+    )
     if item_id is not None:
         cells = [c for c in cells if c.item_id.value == item_id]
         if not cells:
@@ -666,17 +754,29 @@ def get_weekly_audit(
             for index, event in enumerate(cell.audit.events)
         ]
     keyed.sort(key=lambda pair: pair[0])
-    return MonthlyAuditOut(items=[out for _, out in keyed])
+    return WeeklyAuditOut(items=[out for _, out in keyed])
 
 
-def _audit_event(event, cell, week: WeekId | None) -> MonthlyAuditEventOut:
-    return MonthlyAuditEventOut(
+def _audit_event(event, cell, week: WeekId | None) -> WeeklyAuditEventOut:
+    change = event.timetable_change
+    return WeeklyAuditEventOut(
         type=event.event_type.value,
         occurred_at=event.occurred_at,
         scope="PLAN" if cell is None else "CELL",
         item_id=None if cell is None else cell.item_id.value,
         section_key=None if cell is None else cell.section_key,
         week_id=None if week is None else week.value,
+        day=None if cell is None or cell.day is None else cell.day.value,
+        copied_from=None if event.copied_from is None else event.copied_from.value,
+        timetable_change=None
+        if change is None
+        else {
+            "operation": change.operation.value,
+            "split_id": change.split_id.value,
+            "axis": change.axis.value,
+            "cell_id": change.cell_id.value,
+            "new_cell_id": None if change.new_cell_id is None else change.new_cell_id.value,
+        },
         actor=None if event.actor_id is None else event.actor_id.value,
         system_actor=event.system_actor,
         value_change=(

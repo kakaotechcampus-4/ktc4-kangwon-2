@@ -25,6 +25,7 @@ from datetime import datetime
 from enum import Enum
 from fractions import Fraction
 
+from .cell_grid import CellGridNode
 from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
@@ -374,69 +375,10 @@ class TimetableTooNarrowError(InvalidDomainValueError):
 
 
 @dataclass(frozen=True, slots=True)
-class TimetableNode:
-    """One part of a day in the special-activity timetable: a cell, or a boundary splitting a
-    part in two. A boundary has its own ``split_id`` so a resize names it even after other
-    parts are removed; ``ratio`` is its first part's percent. One dataclass for both shapes so
-    the plan codec reads it back."""
-
+class TimetableNode(CellGridNode[PlayMonthlyCell]):
     cell: PlayMonthlyCell | None = None
-    split_id: ItemId | None = None
-    axis: SplitAxis | None = None
-    ratio: int | None = None
     children: tuple[TimetableNode, ...] = ()
-
-    def __post_init__(self) -> None:
-        if self.cell is not None:
-            if not isinstance(self.cell, PlayMonthlyCell) or (
-                self.split_id, self.axis, self.ratio, self.children
-            ) != (None, None, None, ()):
-                raise InvalidDomainValueError("A timetable cell node holds its cell only")
-            return
-        low, high = SPLIT_RATIO_RANGE
-        if (
-            not isinstance(self.split_id, ItemId)
-            or not isinstance(self.axis, SplitAxis)
-            or type(self.ratio) is not int
-            or not low <= self.ratio <= high
-            or not isinstance(self.children, tuple)
-            or len(self.children) != 2
-            or not all(isinstance(c, TimetableNode) for c in self.children)
-        ):
-            raise InvalidDomainValueError("A timetable boundary needs split_id, axis, ratio and two parts")
-
-    @property
-    def depth(self) -> int:
-        return 0 if self.cell is not None else 1 + max(c.depth for c in self.children)
-
-    def narrowest(self, width: Fraction) -> Fraction:
-        """The narrowest cell's width when this part is ``width`` wide; top/bottom keeps the width."""
-        if self.cell is not None:
-            return width
-        first, second = self.children
-        if self.axis is SplitAxis.VERTICAL:
-            return min(first.narrowest(width), second.narrowest(width))
-        part = width * self.ratio / 100
-        return min(first.narrowest(part), second.narrowest(width - part))
-
-    def leaves(self) -> tuple[PlayMonthlyCell, ...]:
-        if self.cell is not None:
-            return (self.cell,)
-        return tuple(leaf for c in self.children for leaf in c.leaves())
-
-    def boundaries(self) -> tuple[TimetableNode, ...]:
-        if self.cell is not None:
-            return ()
-        return (self, *(b for c in self.children for b in c.boundaries()))
-
-    def rebuilt(self, visit: Callable[[TimetableNode], TimetableNode | None]) -> TimetableNode:
-        """A copy where ``visit`` may replace any node; ``None`` keeps it and looks inside."""
-        found = visit(self)
-        if found is not None:
-            return found
-        if self.cell is not None:
-            return self
-        return replace(self, children=tuple(c.rebuilt(visit) for c in self.children))
+    cell_type = PlayMonthlyCell
 
 
 @dataclass(frozen=True, slots=True)

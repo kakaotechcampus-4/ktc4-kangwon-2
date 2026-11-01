@@ -34,6 +34,7 @@ from app.features.plans.play_project_hwpx import (
     fill_play_project,
 )
 from app.features.plans.router import DbSession, _detail, _play_plan, _repo, _row
+from app.features.plans.weekly_activity_hwpx import fill_weekly_activity_grid
 from app.features.plans.weekly_router import _current as _weekly_detail
 from app.features.plans.weekly_router import _own_row as _weekly_row
 from app.features.plans.weekly_router import _weekly_repo
@@ -315,6 +316,8 @@ def export_weekly_plan(
     if any(s.repeat_by is RepeatBy.DAY for s in core.template_snapshot.sections):
         title = f"{klass.name} {plan.week_period.label} 주간계획안"
         content = _fill_weekly_days(core, plan.display_end_date, klass.name, title)
+        if core.activity_grids:
+            content = fill_weekly_activity_grid(content, core)
         return download(content, f"weekly-plan-{row.id}", title, format)
 
     sections = sorted(
