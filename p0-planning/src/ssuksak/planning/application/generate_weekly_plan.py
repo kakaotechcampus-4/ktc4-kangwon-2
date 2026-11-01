@@ -651,7 +651,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
             item for item in weekly_section_evidence(
                 store, classification, weekly_class=weekly_class,
                 calendar_month=week_id.target_month.calendar_month, ages=parent.target_ages,
-                query_text="" if activity_candidates and key == "group_activity" else query,
+                query_text=_only_cell(parent, THEME_KEY).value if activity_candidates and key == "group_activity" else query,
                 focus_text=focus.value if focus_aware and focus is not None and not (activity_candidates and key == "group_activity") else "",
                 sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
                 by_activity_type=activity_candidates and key == "group_activity",

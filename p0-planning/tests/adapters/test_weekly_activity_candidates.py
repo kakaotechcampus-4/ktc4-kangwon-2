@@ -4,16 +4,28 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from ssuksak.adapters.institution_evidence_repository import (
+    InMemoryInstitutionEvidenceRepository,
+)
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import weekly_activities
-from ssuksak.planning.application.generate_weekly_plan import WeeklyApplicationError
+from ssuksak.planning.application.generate_weekly_plan import (
+    WeeklyApplicationError,
+    _classified_evidence,
+)
 from ssuksak.planning.domain.identifiers import ActorId, ItemId
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.provenance import AuditEventType, SplitAxis
 from ssuksak.planning.domain.weekly_plan import WeeklyPlan
+from ssuksak.planning.evidence.models import SourceSection
+from ssuksak.planning.evidence.weekly_classification import (
+    WeeklyEvidenceClassification,
+    WeeklySemanticClass,
+)
 from tests.adapters.test_weekly_composition import _day_command, _day_generation
 from tests.adapters.test_weekly_llm_adapter import MockTransport, _adapter
 from tests.finalization.weekly_harness import WeeklyHarness
+from tests.retrieval.test_weekly_retrieval import _record
 
 
 def generated():
@@ -23,6 +35,32 @@ def generated():
     use_case = weekly_activities(plan_repository=harness.weekly_plans, parent_plan_repository=harness.monthly_plans,
                                 clock=harness.clock, id_generator=harness.weekly_ids)
     return harness, provider, plan, use_case
+
+
+def test_candidate_ranking_uses_monthly_theme_but_not_weekly_focus_or_week_order():
+    parent = WeeklyHarness().monthly_parent(mode=MonthlyGenerationMode.LLM_PLANNER)
+    records = tuple(_record(f"ev_{i}", label="이야기 나누기", text=text, institution=str(i))
+                    for i, text in enumerate(("가을 열매 이야기", "교통기관 자동차 이야기", "세계 여러 나라 인사"), 1))
+    store = InMemoryInstitutionEvidenceRepository(records).get_store()
+    classification = WeeklyEvidenceClassification("weekly-classification-test", store.content_sha256,
+        ((SourceSection.INDOOR_PLAY, "이야기 나누기", WeeklySemanticClass.GROUP_ACTIVITY),))
+    week = _day_command(parent).week_id
+    other_week = next(w.week_id for w in parent.week_periods if w.active and w.week_id != week)
+
+    def selected(theme, focus, selected_week=week):
+        values = {"theme": theme, "focus": focus}
+        changed = replace(parent, sections=tuple(
+            replace(section, cells=tuple(replace(cell, value=values[section.section_key]) for cell in section.cells))
+            if section.section_key in values else section for section in parent.sections))
+        items = _classified_evidence(store, classification, changed, selected_week, {"group_activity"},
+                                     focus_aware=True, activity_candidates=True)["group_activity"]
+        return tuple(item.record_id for item in items)
+
+    autumn = selected("가을 열매", "교통기관")
+    assert autumn[0] == "ev_1"
+    assert selected("교통기관", "가을 열매")[0] == "ev_2"
+    assert selected("가을 열매", "세계 여러 나라 인사") == autumn
+    assert selected("가을 열매", "세계 여러 나라 인사", other_week) == autumn
 
 
 def test_candidates_are_unplaced_and_copy_split_remove_preserve_history_and_codec():
