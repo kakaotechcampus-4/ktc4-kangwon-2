@@ -95,6 +95,11 @@ def test_이름과_기관명만_가린다():
     assert annual_extract.mask_personal(text) == (
         "담임 교사: ○○\n원장\n○○\n○○어린이집 연간계획\n우리 반 친구\n우리 유치원"
     )
+    # 직함 앞 이름 · 「명」 표기 · 여러 명(PUI-01)
+    text = "가나다 교사\n담임교사명: 가나다\n담임: 가나다, 라마바\n담임\n가나다 · 라마바"
+    assert annual_extract.mask_personal(text) == (
+        "○○ 교사\n담임교사명: ○○\n담임: ○○, ○○\n담임\n○○ · ○○"
+    )
 
 
 @pytest.fixture
@@ -164,7 +169,11 @@ def test_mock_은_결정적으로_원문의_칸만_옮긴다(mine, monkeypatch):
     assert "5월 생활주제를 찾지 못했어요" in body["notices"]
 
 
-def test_원문에_없는_글자는_버리고_가린_원문만_보낸다(mine, monkeypatch):
+@pytest.mark.parametrize(
+    "teacher_row",
+    [["담임", "홍길동"], ["홍길동 교사"], ["담임교사명: 홍길동"], ["담임: 김하늘, 홍길동"]],
+)
+def test_원문에_없는_글자는_버리고_가린_원문만_보낸다(mine, monkeypatch, teacher_row):
     sent = {}
 
     def fake(system, user, **kwargs):
@@ -177,7 +186,7 @@ def test_원문에_없는_글자는_버리고_가린_원문만_보낸다(mine, m
 
     monkeypatch.setattr(settings, "llm_mode", "real")
     monkeypatch.setattr(annual_extract, "complete_json", fake)
-    data = _docx([["담임", "홍길동"], ["3월", "우리 반 친구", "친구 이름"], ["4월", "봄"]])
+    data = _docx([teacher_row, ["3월", "우리 반 친구", "친구 이름"], ["4월", "봄"]])
     response = _post(mine, "연간.docx", data)
 
     assert response.status_code == 200, response.text
@@ -187,3 +196,4 @@ def test_원문에_없는_글자는_버리고_가린_원문만_보낸다(mine, m
     assert months[1] == {"month": 4, "theme": None, "sub_themes": [], "missing": True}
     assert sent["max_completion_tokens"] == 2000
     assert "홍길동" not in sent["user"]
+    assert "김하늘" not in sent["user"]

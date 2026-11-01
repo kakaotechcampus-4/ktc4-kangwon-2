@@ -31,6 +31,10 @@ const draftsOf = (plan: AnnualPlan) =>
   Object.fromEntries(
     plan.months.map((m) => [m.month, { theme: m.theme, sub_themes: m.sub_themes }]),
   ) as Record<number, Draft>;
+const clean = (value: Draft): Draft => ({
+  theme: value.theme.trim(),
+  sub_themes: cleanSlots(value.sub_themes),
+});
 const same = (a: Draft, b: Draft) =>
   a.theme === b.theme && a.sub_themes.join("\n") === b.sub_themes.join("\n");
 const slotInputId = (slot: ThemeSlot) => `annual-slot-${slot.month}-${slot.slot}`;
@@ -67,10 +71,11 @@ export default function ThemeAnnualResult({
   const [full, setFull] = useState(false);
   const [asking, setAsking] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  // 서버가 받은 마지막 값 · 저장 줄(한 번에 하나씩) · 다시 저장할 달. 이벤트 핸들러에서만 읽는다.
+  // 서버가 받은 마지막 값 · 저장 줄(한 번에 하나씩) · 저장 실패한 달들 · 확정 중 잠금. 이벤트 핸들러에서만 읽는다.
   const saved = useRef(draftsOf(plan));
   const queue = useRef<Promise<void>>(Promise.resolve());
-  const failedMonth = useRef<number | null>(null);
+  const failed = useRef(new Set<number>());
+  const locked = useRef(false);
   const month = plan.months.find((m) => m.month === selected.month)!;
   const weekCount = (m: number) => plan.months.find((item) => item.month === m)!.week_count;
   const draft = drafts[selected.month];
@@ -83,6 +88,7 @@ export default function ThemeAnnualResult({
 
   // 문서에서 아직 없는 주 칸을 누르면 그 자리까지 빈 칸을 늘린다(저장 값은 같다).
   function select(slot: ThemeSlot) {
+    if (locked.current) return;
     const list = drafts[slot.month].sub_themes;
     if (typeof slot.slot === "number" && slot.slot >= list.length)
       change(slot.month, { sub_themes: [...list, ...Array(slot.slot + 1 - list.length).fill("")] });
@@ -90,12 +96,14 @@ export default function ThemeAnnualResult({
   }
 
   function change(monthNo: number, next: Partial<Draft>) {
+    if (locked.current) return;
     setDrafts((all) => ({ ...all, [monthNo]: { ...all[monthNo], ...next } }));
   }
 
   // 그 달을 저장 줄에 넣는다. 빈 소주제는 빼고 보내고, 서버 값과 같으면 보내지 않는다.
   function save(monthNo: number, value: Draft, record = true) {
-    const body = { theme: value.theme.trim(), sub_themes: cleanSlots(value.sub_themes) };
+    if (locked.current) return;
+    const body = clean(value);
     const before = saved.current[monthNo];
     if (!body.theme) {
       setMessage(`${monthNo}월 생활주제를 비울 수 없어요.`);
@@ -109,21 +117,22 @@ export default function ThemeAnnualResult({
     queue.current = queue.current.then(() =>
       putAnnualMonth(plan.id, monthNo, body).then(
         () => {
-          failedMonth.current = null;
-          setStatus("saved");
+          failed.current.delete(monthNo);
+          setStatus(failed.current.size ? "failed" : "saved");
         },
         async (error) => {
           if (isSaveConflict(error)) return onConflict();
           if (isRejectedSave(error)) {
             // 서버가 받지 않았다 — 그 달을 저장 전 값으로 되돌린다.
             saved.current = { ...saved.current, [monthNo]: before };
-            change(monthNo, before);
-            setStatus("idle");
+            failed.current.delete(monthNo);
+            setDrafts((all) => ({ ...all, [monthNo]: before })); // 확정 잠금 중에도 되돌린다
+            setStatus(failed.current.size ? "failed" : "idle");
             setMessage(`${monthNo}월은 저장하지 못해 원래대로 되돌렸어요.`);
             return;
           }
           saved.current = { ...saved.current, [monthNo]: before };
-          failedMonth.current = monthNo;
+          failed.current.add(monthNo);
           setStatus("failed");
         },
       ),
@@ -152,13 +161,23 @@ export default function ThemeAnnualResult({
   }
 
   async function confirm() {
+    // 마지막 입력을 저장 줄에 넣은 뒤 잠근다 — 잠근 뒤에는 새 편집이 확정 뒤로 밀리지 않는다.
+    (document.activeElement as HTMLElement | null)?.blur();
+    locked.current = true;
     setConfirming(true);
     setMessage("");
-    (document.activeElement as HTMLElement | null)?.blur();
     await queue.current;
     try {
-      if (failedMonth.current !== null) {
-        setMessage("저장하지 못한 달이 있어요. 다시 저장한 뒤 확정해 주세요.");
+      // 화면 값과 서버 값이 다른 달(저장 실패 · 빈 생활주제)이 있으면 옛 내용으로 확정하지 않는다.
+      const unsaved = plan.months
+        .map((m) => m.month)
+        .filter((m) => !drafts[m].theme.trim() || !same(clean(drafts[m]), saved.current[m]));
+      if (unsaved.length) {
+        setFull(false);
+        setSelected({ month: unsaved[0], slot: "theme" });
+        setMessage(
+          `${unsaved.map((m) => m + "월").join(" · ")}은 아직 저장되지 않았어요. 생활주제를 채우거나 다시 저장한 뒤 확정해 주세요.`,
+        );
         return;
       }
       await confirmAnnualPlan(plan.id);
@@ -175,6 +194,7 @@ export default function ThemeAnnualResult({
         `${months.map((m) => m + "월").join(" · ")}은 소주제 수가 주 수와 달라요. 주마다 하나씩 맞춰 주세요.`,
       );
     } finally {
+      locked.current = false;
       setAsking(false);
       setConfirming(false);
     }
@@ -198,6 +218,7 @@ export default function ThemeAnnualResult({
             className={INPUT}
             id={slotInputId({ month: selected.month, slot: "theme" })}
             value={draft.theme}
+            readOnly={confirming}
             onChange={(e) => change(selected.month, { theme: e.target.value })}
             onBlur={saveSelected}
           />
@@ -224,6 +245,7 @@ export default function ThemeAnnualResult({
                 className={`${INPUT} min-w-0 flex-1 ${selected.slot === i ? "border-[#7053a0] bg-[#f6f1fb]" : ""}`}
                 id={slotInputId({ month: selected.month, slot: i })}
                 value={value}
+                readOnly={confirming}
                 onFocus={() => setSelected({ month: selected.month, slot: i })}
                 onChange={(e) =>
                   change(selected.month, {
@@ -236,7 +258,7 @@ export default function ThemeAnnualResult({
                 type="button"
                 aria-label="위로"
                 className={SMALL}
-                disabled={i === 0}
+                disabled={i === 0 || confirming}
                 onClick={() => editSlots(moveSlot(draft.sub_themes, i, -1), i - 1)}
               >
                 ↑
@@ -245,7 +267,7 @@ export default function ThemeAnnualResult({
                 type="button"
                 aria-label="아래로"
                 className={SMALL}
-                disabled={i === draft.sub_themes.length - 1}
+                disabled={i === draft.sub_themes.length - 1 || confirming}
                 onClick={() => editSlots(moveSlot(draft.sub_themes, i, 1), i + 1)}
               >
                 ↓
@@ -254,6 +276,7 @@ export default function ThemeAnnualResult({
                 type="button"
                 aria-label="삭제"
                 className={SMALL}
+                disabled={confirming}
                 onClick={() => editSlots(removeSlot(draft.sub_themes, i), "theme")}
               >
                 삭제
@@ -262,7 +285,8 @@ export default function ThemeAnnualResult({
           ))}
           <button
             type="button"
-            className="min-h-[40px] rounded-lg border border-dashed border-[#c5b7dd] text-sm font-bold text-[#5e4b96]"
+            className="min-h-[40px] rounded-lg border border-dashed border-[#c5b7dd] text-sm font-bold text-[#5e4b96] disabled:opacity-40"
+            disabled={confirming}
             onClick={() => editSlots([...draft.sub_themes, ""], draft.sub_themes.length)}
           >
             + 소주제 추가
@@ -292,10 +316,8 @@ export default function ThemeAnnualResult({
             <button
               type="button"
               className={BUTTON.outline + " self-start"}
-              onClick={() =>
-                failedMonth.current !== null &&
-                save(failedMonth.current, drafts[failedMonth.current], false)
-              }
+              disabled={confirming}
+              onClick={() => failed.current.forEach((m) => save(m, drafts[m], false))}
             >
               다시 저장
             </button>

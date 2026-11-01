@@ -173,20 +173,28 @@ def extract_lines(file_format: str, data: bytes) -> list[str]:
 
 
 # 개인정보 가림(계약 I-B). 이름 · 기관명만 가리고 나머지 글자는 그대로 둔다.
-_ROLE = r"(?:담임\s*교사|담임|원장|교사|선생님|작성자)"
-_NOT_ROLE = r"(?!담임|원장|교사|선생님|작성자)"
-# 「담임: 홍길동」처럼 같은 줄, 또는 「담임」 칸 다음 칸이 이름 하나뿐인 경우.
-_NAME_SAME_LINE = re.compile(rf"({_ROLE}님?[ \t]*[:：]?[ \t]*){_NOT_ROLE}[가-힣]{{2,4}}(?![가-힣])")
-_NAME_NEXT_LINE = re.compile(rf"(^{_ROLE}님?[ \t]*[:：]?[ \t]*\n){_NOT_ROLE}[가-힣]{{2,4}}$", re.M)
+_ROLE = r"(?:담임\s*교사|담임|원장|원감|교사|선생님|작성자)"
+_NOT_ROLE = r"(?!담임|원장|원감|교사|선생님|작성자)"
+_NAME = rf"{_NOT_ROLE}[가-힣]{{2,4}}(?![가-힣])"
+_NAMES = rf"{_NAME}(?:[ \t]*[,，·/][ \t]*{_NAME})*"  # 「가나다, 라마바」처럼 여러 명
+_LABEL = rf"{_ROLE}(?:명|성명|이름)?님?[ \t]*[:：]?[ \t]*"  # 「담임교사명:」
+# 「담임: 홍길동」처럼 같은 줄, 「담임」 칸 다음 칸이 이름뿐인 경우, 「홍길동 교사」처럼 직함 앞.
+_NAME_SAME_LINE = re.compile(rf"({_LABEL})({_NAMES})")
+_NAME_NEXT_LINE = re.compile(rf"(^{_LABEL}\n)({_NAMES})$", re.M)
+_NAME_BEFORE_ROLE = re.compile(rf"(?<![가-힣]){_NAME}(?=[ \t]*{_ROLE})")
 # 「햇살어린이집」처럼 붙여 쓴 기관명. 띄어 쓴 「우리 유치원」은 이름이 아니라 그대로 둔다.
 _INSTITUTION = re.compile(r"[가-힣A-Za-z0-9]+(어린이집|유치원)")
 MASK = "○○"
 
 
 def mask_personal(text: str) -> str:
-    # ponytail: 정규식이라 「선생님 사랑해요」 같은 줄도 가릴 수 있다 — 그 값은 missing 이 된다.
-    text = _NAME_NEXT_LINE.sub(rf"\g<1>{MASK}", text)
-    text = _NAME_SAME_LINE.sub(rf"\g<1>{MASK}", text)
+    # ponytail: 정규식이라 「보건 교사」 같은 줄도 가린다 — 그 값은 missing 이 된다.
+    def names(match: re.Match) -> str:
+        return match[1] + re.sub(_NAME, MASK, match[2])
+
+    text = _NAME_NEXT_LINE.sub(names, text)
+    text = _NAME_SAME_LINE.sub(names, text)
+    text = _NAME_BEFORE_ROLE.sub(MASK, text)
     return _INSTITUTION.sub(rf"{MASK}\1", text)
 
 
