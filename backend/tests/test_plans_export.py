@@ -174,7 +174,8 @@ def _confirmed_plan(klass) -> dict:
     assert created.status_code == 201, created.text
     plan_id = created.json()["id"]
     edited = client.put(
-        f"/api/plans/annual/{plan_id}/months/3", json={"theme": "새 친구", "sub_themes": ["인사"]}
+        f"/api/plans/annual/{plan_id}/months/3",
+        json={"theme": "새 친구", "sub_themes": ["인사", "이름", "놀이", "약속"]},
     )
     assert edited.status_code == 200, edited.text
     assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
@@ -351,7 +352,7 @@ def test_연간_안전교육은_저장돼_있어도_hwpx_에_싣지_않는다(mi
         f"/api/plans/annual/{plan['id']}/months/3",
         json={
             "theme": "새 친구",
-            "sub_themes": ["친구와 인사하기"],
+            "sub_themes": ["친구와 인사하기", "이름", "놀이", "약속"],  # 3월 = 4주
             "safety_education": ["traffic_safety"],
         },
     )

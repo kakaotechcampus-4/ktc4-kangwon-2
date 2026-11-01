@@ -49,6 +49,9 @@ class PostgresPlanRepository[TPlan]:
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         body = to_jsonable(plan)
         row = self._session.scalar(select(Plan).where(Plan.plan_ref == plan_id.value))
+        # 가져온 연간의 파일 출처는 도메인 밖 서버 메타다. 다시 저장해도 지우지 않는다.
+        if row is not None and "import_source" in row.body:
+            body["import_source"] = row.body["import_source"]
         week = getattr(plan, "week_id", None)  # 주간만 가진다 (WeeklyPlan)
         # 월간은 target_month 를 갖고, 주간은 그 주가 속한 달을 쓴다.
         month = getattr(plan, "target_month", None) or (week and week.target_month)

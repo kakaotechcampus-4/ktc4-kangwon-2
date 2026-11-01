@@ -51,6 +51,7 @@ from ssuksak.planning.application.play_project_lifecycle import (
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.rules.errors import YearlyRuleError
+from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 from ssuksak.planning.rules.yearly_theme_selection import RULE_ID as THEME_SELECTION_RULE_ID
 
 from app.config import settings
@@ -60,7 +61,7 @@ from app.features.auth.models import User
 # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
 from app.features.forms.service import find_own_form
 from app.features.plans import play_project
-from app.features.plans.annual_content import generate_subthemes
+from app.features.plans.annual_content import generate_subthemes, subthemes_for_month
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
 from app.features.plans.play_project import ConfirmIn, EditItemIn, SaveSelectionIn, format_of
@@ -162,6 +163,7 @@ def _months(
             theme=period.theme.value,
             # 생성·교사 수정 내용은 서버가 저장한다. Core 의 주제 포트는 유지한다.
             sub_themes=sub_themes.get(str(period.period.calendar_month), []),
+            week_count=len(canonical_week_periods(period.period)),
             safety_education=placements.get(str(period.period.calendar_month), []),
             safety_education_source=(
                 "TEACHER_INPUT" if str(period.period.calendar_month) in placements else None
@@ -717,6 +719,18 @@ def confirm_annual_plan(
     if row.status == "CONFIRMED":
         return ConfirmOut(id=row.id, status=row.status, confirmed_at=row.confirmed_at)
     repo = _repo(session, user)
+    # 월간이 주차별 소주제를 쓴다. 달마다 소주제 수 = 그 달 주 수여야 확정한다(2026-11-01 I-A).
+    plan = repo.get(PlanId(row.plan_ref))
+    mismatched = [
+        str(period.period.calendar_month)
+        for period in plan.periods
+        if len(subthemes_for_month(row.sub_themes, period.period.calendar_month))
+        != len(canonical_week_periods(period.period))
+    ]
+    if mismatched:
+        raise _error(
+            422, "VALIDATION_FAILED", "달마다 소주제 수를 그 달 주 수에 맞춰주세요.", mismatched
+        )
     try:
         confirmed = ConfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
             ConfirmYearlyPlanCommand(

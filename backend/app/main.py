@@ -20,6 +20,7 @@ from app.features.evaluation.router import router as evaluation_router
 from app.features.forms.router import center_router as center_forms_router
 from app.features.forms.router import router as forms_router
 from app.features.observations.router import router as observations_router
+from app.features.plans.annual_import import router as annual_import_router
 from app.features.plans.export import router as plans_export_router
 from app.features.plans.monthly_router import router as monthly_plans_router
 from app.features.plans.play_monthly_router import router as play_monthly_plans_router
@@ -184,6 +185,7 @@ app.include_router(evaluation_router, prefix="/api", dependencies=_authenticated
 app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 app.include_router(routines_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(annual_import_router, prefix="/api", dependencies=_authenticated)
 # play 고정 경로가 monthly 의 GET /{plan_id} 보다 먼저여야 한다(api-spec §9-7)
 app.include_router(play_monthly_plans_router, prefix="/api", dependencies=_authenticated)
 app.include_router(monthly_plans_router, prefix="/api", dependencies=_authenticated)
