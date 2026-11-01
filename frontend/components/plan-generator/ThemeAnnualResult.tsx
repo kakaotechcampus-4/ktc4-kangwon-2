@@ -128,9 +128,12 @@ export default function ThemeAnnualResult({
           synced();
         },
         async (error) => {
-          // 마지막으로 넣은 값을 서버 값으로 되돌린다 — 같은 값을 다시 넣어도 다시 보낸다.
-          queued.current = { ...queued.current, [monthNo]: saved.current[monthNo] };
+          // 이 요청이 그 달의 마지막 요청일 때만(값이 아니라 같은 객체인지로 본다) 서버 값으로
+          // 되돌린다 — 같은 값을 다시 넣어도 다시 보낸다. 뒤에 요청이 있으면 그 결과에 맡긴다.
+          const latest = queued.current[monthNo] === body;
+          if (latest) queued.current = { ...queued.current, [monthNo]: saved.current[monthNo] };
           if (isSaveConflict(error)) return onConflict();
+          if (!latest) return;
           if (isRejectedSave(error)) {
             // 서버가 받지 않았다 — 그 달을 서버 값으로 되돌린다.
             failed.current.delete(monthNo);

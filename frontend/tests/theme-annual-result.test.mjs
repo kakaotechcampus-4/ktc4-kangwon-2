@@ -179,3 +179,16 @@ test("two failed saves in a row do not count as saved; retyping the first value 
   await view.confirm();
   assert.deepEqual(view.events, ["write:B", "confirm"]);
 });
+
+test("an earlier failed save does not hide a later one; going back to the old value saves again", async () => {
+  let fail;
+  const held = new Promise((_, reject) => (fail = reject));
+  const view = harness((_month, body) => (body.theme === "B" ? held : undefined));
+  await view.edit("B");
+  await view.edit("C");
+  fail(new Error("network"));
+  await settle();
+  await view.edit("3월 원래");
+  await view.confirm();
+  assert.deepEqual(view.events, ["write:C", "write:3월 원래", "confirm"]);
+});
