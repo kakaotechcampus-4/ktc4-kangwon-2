@@ -34,6 +34,8 @@ const event = (
   system_actor: null,
   value_change: null,
   generation_change: null,
+  arrangement_change: null,
+  copied_from: null,
   ...more,
 });
 /**
@@ -300,8 +302,11 @@ const placed = (e: MockAuditEvent): MonthlyAuditEvent => ({
   item_id: null,
   section_key: null,
   week_id: null,
+  day: null,
   actor: e.actor,
   system_actor: e.system_actor,
   value_change: e.value_change,
   generation_change: e.generation_change,
+  arrangement_change: e.arrangement_change ?? null,
+  copied_from: e.copied_from ?? null,
 });

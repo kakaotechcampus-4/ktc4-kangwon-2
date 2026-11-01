@@ -55,10 +55,10 @@ export interface Database {
 export type MockAnnualPlan =
   | (AnnualPlan & { created_at: string; confirmed_at: string | null })
   | (PlayProjectAnnualPlan & { created_at: string; confirmed_at: string | null });
-/** 저장된 이벤트. 칸 위치(scope · item_id · section_key · week_id)는 읽을 때 칸에서 붙인다. */
+/** 저장된 이벤트. 칸 위치(scope · item_id · section_key · week_id · day)는 읽을 때 붙인다. */
 export type MockAuditEvent = Omit<
   MonthlyAuditEvent,
-  "scope" | "item_id" | "section_key" | "week_id"
+  "scope" | "item_id" | "section_key" | "week_id" | "day"
 >;
 export interface MockPlanAudit {
   plan: MockAuditEvent[];

@@ -493,30 +493,42 @@ export interface MonthlyPlan {
 }
 /**
  * 월간계획안 변경 이력 하나 (`GET /api/plans/monthly/{id}/audit`, docs/api-spec.md §9-5).
- * **열 개 키가 항상 온다** — 해당이 없으면 null. 저장되지 않은 것(재생성 전 근거 · 이벤트별
+ * **열세 개 키가 항상 온다** — 해당이 없으면 null. 저장되지 않은 것(재생성 전 근거 · 이벤트별
  * revision · 사람 이름)은 없다.
  */
 export interface MonthlyAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "REGENERATED" | "CONFIRMED";
+  type:
+    | "CREATED"
+    | "TEACHER_EDITED"
+    | "REGENERATED"
+    | "ARRANGEMENT_CHANGED"
+    | "CANDIDATE_COPIED"
+    | "CONFIRMED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
-  /** PLAN 이면 아래 칸 위치 셋이 null 이다. */
+  /** PLAN 이면 아래 칸 위치 넷이 null 이다. */
   scope: "PLAN" | "CELL";
   item_id: string | null;
   section_key: string | null;
   /** 주마다 있는 칸이면 그 주. 한 달 칸 · PLAN 이면 null. */
   week_id: string | null;
+  /** 주간 요일 칸이면 그 요일(MON…SAT). 그 밖 · 월간 · PLAN 이면 null. */
+  day: string | null;
   /** 사람이 한 일이면 opaque id(`user_7`). 시스템이면 null. */
   actor: string | null;
   /** 시스템이 한 일(생성)이면 그 표시. 사람이면 null. */
   system_actor: string | null;
-  /** TEACHER_EDITED · REGENERATED 만. */
+  /** TEACHER_EDITED · REGENERATED · CANDIDATE_COPIED 만. */
   value_change: { before: string; after: string } | null;
-  /** REGENERATED 만. 모양은 칸의 `generation` 과 같다. */
+  /** REGENERATED · CANDIDATE_COPIED(덮은 칸에 생성 방식이 있었을 때) 만. 칸의 `generation` 과 같은 모양. */
   generation_change: {
     before: MonthlyCellGeneration;
     after: MonthlyCellGeneration;
   } | null;
+  /** ARRANGEMENT_CHANGED 만. 안전 배치면 scope 는 주 id, before · after 는 놓인 후보 item_id 배열. */
+  arrangement_change: { scope: string; before: string[]; after: string[] } | null;
+  /** CANDIDATE_COPIED 만. 복사한 훈련 후보의 item_id. */
+  copied_from: string | null;
 }
 /** 목록용. 칸은 단건 조회가 준다. */
 export type MonthlyPlanSummary = Pick<
