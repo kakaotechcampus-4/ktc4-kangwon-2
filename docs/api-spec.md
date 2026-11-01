@@ -907,6 +907,55 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 
 ---
 
+## 4-1. 연간 가져오기 — `POST /api/plans/annual/import` · `POST /api/plans/annual/import/extract` (ADR-056)
+
+이미 있는 연간계획안을 월별 주제형 연간으로 들여온다. 학기 중간에 가입해 월간부터 시작하는 원을 위한 길이다. 놀이 중심형은 후속이다.
+
+### 표 저장 — `POST /api/plans/annual/import`
+
+```json
+{
+  "class_id": 1,
+  "source": "MANUAL",
+  "file": null,
+  "months": [
+    { "month": 3, "theme": "우리 반 친구", "sub_themes": ["우리 반의 놀이 공간", "나와 친구의 이름"] }
+  ]
+}
+```
+
+- `months` 는 12개, 3월 → 2월 순서다. `theme` 은 빈 글자일 수 없다. 소주제는 앞뒤 공백을 지우고 빈 것을 뺀다. 저장할 때 개수는 묻지 않는다.
+- `source` — `"MANUAL"`(교사가 표에 입력) | `"FILE"`(아래 추출 결과를 교사가 확인). `FILE` 이면 `file: { "format": "HWPX" | "DOCX" | "PDF", "sha256": "…" }` 이다.
+- **Response** `201` → §4 월별 주제형 응답과 같다. `status: "DRAFT"`. 칸의 생성 방식은 `MANUAL` · `IMPORTED` 이고 Theme Reference 근거가 없다.
+- 이후 편집(§6) · 확정(§7) · 내보내기 · 월간 생성은 생성한 연간과 같다.
+
+| | |
+|---|---|
+| error | `VALIDATION_FAILED` 422 → 달 개수 · 순서 · 빈 `theme`<br>`ALREADY_EXISTS` 409 → 반에 연간이 이미 있다(§4 와 같다) |
+
+### 파일 추출 — `POST /api/plans/annual/import/extract`
+
+`multipart/form-data`: `file`, `class_id`. **저장하지 않는다.** 원본 파일도 보관하지 않는다.
+
+```json
+{
+  "file": { "format": "HWPX", "sha256": "…" },
+  "months": [ { "month": 3, "theme": "우리 반 친구", "sub_themes": ["…"], "missing": false } ],
+  "notices": ["2월 생활주제를 찾지 못했어요"]
+}
+```
+
+- HWPX · DOCX · PDF(글자층)를 받는다. 10MB 까지다.
+- 글자를 뽑아 교사 · 원장 이름과 기관명을 가린 뒤 LLM 이 월별로 칸을 배정한다.
+- **배정된 글자는 원문에 그대로 있어야 한다**(공백을 정리한 뒤 부분 문자열). 없으면 버린다. 생활주제를 못 찾은 달은 `theme: null`, `missing: true` 다.
+- 화면은 이 결과를 표에 채워 교사에게 보여 주고, 교사가 확인 · 수정한 뒤 위 표 저장(`source: "FILE"`)으로 보낸다.
+
+| | |
+|---|---|
+| error | `UNSUPPORTED_FILE_TYPE` 400 → `.hwp` 와 그 밖의 형식. 「한글에서 HWPX 나 PDF 로 저장해서 올려 주세요」(§8 관례)<br>`VALIDATION_FAILED` 422 → 손상 · 빈 파일 · 글자층 없는 PDF, `fields: ["file"]`<br>`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 → 운영 문의. 표에 직접 입력하는 길은 그대로 열려 있다 |
+
+---
+
 ## 5. 조회 — `GET /api/plans/annual/{id}` · `GET /api/plans/annual?class_id=`
 
 **단건** `GET /api/plans/annual/{id}` — 생성과 같은 형식. 형식에 따라 `months`(월별 주제형) 또는 `periods`(놀이 프로젝트형, §4)를 준다.
@@ -1069,7 +1118,7 @@ Core 오류의 영어 원문은 서버 기록에만 남기고, 422 문구는 「
 부족하면 422 `VALIDATION_FAILED` 이고 `fields` 는 부족 구간 키 배열이다. 예: `["m09_m11", "m12_m02"]`.
 동시 수정 · 오류는 §6-1 을 따른다. actor 는 로그인한 교사이며, 확정 뒤 선택 · 칸 편집은 `ALREADY_CONFIRMED` 409 다.
 
-**확정 취소가 없다**(ADR-030 PM-03). 확정 후 수정 요청은 `ALREADY_CONFIRMED` 409 다(§6).
+**확정 후 수정 요청은 `ALREADY_CONFIRMED` 409 다**(§6). 다시 고치려면 확정을 푼다(§7-2, ADR-055 — ADR-030 PM-03 대체).
 
 **확정한 사람은 Audit 에 남는다.** `CONFIRMED` 이벤트의 `actor` 가 로그인 계정의 opaque id(`user_7`)다(§7-1).
 담임 표시 이름으로 대신하지 않는다. 확정은 제출 · 발송을 하지 않는다.
@@ -1080,14 +1129,16 @@ Core 오류의 영어 원문은 서버 기록에만 남기고, 422 문구는 「
 확정자 · 확정 이벤트도 바뀌지 않는다(ADR-035 §2). 서버 구현은 PR #171 이다(2026-10-20 머지 — 그 전에는 409 였다).
 놀이 프로젝트형도 같다. 소유 검사 후 이미 확정이면 `expected_revision` 과 무관하게 200 이고 revision 도 그대로다. 서버는 Core 확정을 다시 부르지 않는다.
 
-**월별 주제형은 빈 `theme` 이 있는 달만 확정을 막는다**(ADR-030 PM-08). 소주제(`sub_themes`)가 비어도 막지 않는다. 생성은 12개월을 늘 채우고
-§6 PUT 이 빈 `theme` 을 422 로 거절하므로, 이 422 는 정상 경로에서는 나오지 않는다.
+**월별 주제형은 빈 `theme` 과 소주제 개수를 본다**(ADR-030 PM-08 · ADR-056).
+- 빈 `theme`: 생성은 12개월을 늘 채우고 §6 PUT 이 빈 `theme` 을 422 로 거절하므로, 정상 경로에서는 나오지 않는다.
+- **달마다 소주제 수가 그 달 주 수(`week_count`)와 같아야 한다.** 월간이 주차별 소주제를 쓰기 때문이다. 생성 결과는 늘 맞고,
+  가져온 연간(§4-1)이나 교사가 소주제를 더하거나 뺀 달이 어긋날 수 있다. 어긋나면 `fields` 가 그 달 번호 문자열이다. 예: `["10", "2"]`.
 
 | | |
 |---|---|
 | loading | 버튼 비활성 + 스피너 |
 | success | 상태 배지 `확정됨` |
-| error | `VALIDATION_FAILED` 422 — 월별 주제형은 `theme` 이 빈 달, `fields: []`(정상 경로에서는 나오지 않는다). 놀이 프로젝트형은 부족 구간 키 배열<br>문구는 고정 「입력값을 확인해주세요.」. 놀이 프로젝트형 동시 수정은 `STALE_WRITE` 409(§6-1) |
+| error | `VALIDATION_FAILED` 422 — 월별 주제형은 소주제 수가 주 수와 다른 달 번호 배열(빈 `theme` 은 `fields: []`, 정상 경로에서는 나오지 않는다). 놀이 프로젝트형은 부족 구간 키 배열<br>문구는 고정 「입력값을 확인해주세요.」. 놀이 프로젝트형 동시 수정은 `STALE_WRITE` 409(§6-1) |
 
 ### 7-1. 연간 변경 이력 — `GET /api/plans/annual/{id}/audit`
 
@@ -1136,6 +1187,28 @@ value_change   TEACHER_EDITED 면 {before, after} — 그때 바뀐 theme 값.  
 | `CONFIRMED` | null | null | null |
 
 변경이 없는 선택 저장과 실패한 요청은 이력을 남기지 않는다. **API 만 열고 S8 의 이력 패널은 후속 PR 로 둔다.**
+
+### 7-2. 확정 취소 — 연간 · 월간 · 주간 (ADR-055)
+
+```
+POST /api/plans/annual/{id}/unconfirm          본문 = 그 형식의 confirm 과 같다(월별 주제형은 없음, 놀이 프로젝트형은 expected_revision)
+POST /api/plans/monthly/{id}/unconfirm         { "expected_revision": 4 }
+POST /api/plans/monthly/play/{id}/unconfirm    본문 = §9-7 confirm 과 같다
+POST /api/plans/weekly/{id}/unconfirm          { "expected_revision": 4 }
+```
+
+**Response** `200` → 그 종류의 상세(`GET .../{id}`)와 같은 모양이다. `status: "DRAFT"`, `confirmed_at` 이 있는 형식은 `null` 이다.
+
+- CONFIRMED → DRAFT. 값 · 근거 · 생성 방식 · 기존 이력은 그대로다. 이력에 `UNCONFIRMED` 이벤트(계획안 단위, `actor` · `occurred_at`)가 더해진다.
+- revision 이 있는 종류는 1 올린다. 읽은 값과 다르면 `STALE_WRITE` 409(§6-1).
+- **이미 DRAFT 면 200 에 현재 상태를 돌려준다.** 이벤트 · revision 이 바뀌지 않는다.
+- **하위 계획이 있어도 풀 수 있다.** 하위는 부모 값의 스냅샷을 그대로 가진다. 다시 확정하면 `confirmed_at` 은 새 시각이다.
+- 새 하위 생성은 지금처럼 부모가 CONFIRMED 여야 한다. 확정을 푼 연간으로는 다시 확정할 때까지 월간을 만들 수 없다.
+- 남의 원 계획안은 404 다.
+
+**하위 상세의 `parent_changed`** — 월간(§9-1) · 놀이 월간(§9-7) · 주간(§9-6) 상세에 `parent_changed: boolean` 이 있다.
+부모가 지금 CONFIRMED 가 아니거나, 부모의 확정 시각이 하위 스냅샷의 `parent.confirmed_at` 과 다르면 `true` 다.
+화면은 「상위 계획안이 바뀌었어요」 한 줄만 띄우고 편집 · 확정을 막지 않는다.
 
 ---
 
