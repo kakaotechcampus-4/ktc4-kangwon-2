@@ -71,8 +71,10 @@ export default function ThemeAnnualResult({
   const [full, setFull] = useState(false);
   const [asking, setAsking] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  // 서버가 받은 마지막 값 · 저장 줄(한 번에 하나씩) · 저장 실패한 달들 · 확정 중 잠금. 이벤트 핸들러에서만 읽는다.
+  // 서버가 받은 값(성공 응답 뒤에만 바뀐다) · 마지막으로 저장 줄에 넣은 값 · 저장 줄(한 번에 하나씩)
+  // · 저장 실패한 달들 · 확정 중 잠금. 이벤트 핸들러에서만 읽는다.
   const saved = useRef(draftsOf(plan));
+  const queued = useRef(draftsOf(plan));
   const queue = useRef<Promise<void>>(Promise.resolve());
   const failed = useRef(new Set<number>());
   const locked = useRef(false);
@@ -100,43 +102,49 @@ export default function ThemeAnnualResult({
     setDrafts((all) => ({ ...all, [monthNo]: { ...all[monthNo], ...next } }));
   }
 
-  // 그 달을 저장 줄에 넣는다. 빈 소주제는 빼고 보내고, 서버 값과 같으면 보내지 않는다.
+  // 그 달을 저장 줄에 넣는다. 빈 소주제는 빼고 보낸다. 서버 값과 같은지는 앞 저장이 끝난 실행 시점에 본다.
   function save(monthNo: number, value: Draft, record = true) {
     if (locked.current) return;
     const body = clean(value);
-    const before = saved.current[monthNo];
+    const before = queued.current[monthNo];
     if (!body.theme) {
       setMessage(`${monthNo}월 생활주제를 비울 수 없어요.`);
       return;
     }
-    if (same(body, before)) return;
-    saved.current = { ...saved.current, [monthNo]: body };
-    if (record) setUndo((list) => [...list, { month: monthNo, before }]);
+    if (same(body, before) && !failed.current.has(monthNo)) return;
+    queued.current = { ...queued.current, [monthNo]: body };
+    if (record && !same(body, before)) setUndo((list) => [...list, { month: monthNo, before }]);
     setStatus("saving");
     setMessage("");
-    queue.current = queue.current.then(() =>
-      putAnnualMonth(plan.id, monthNo, body).then(
+    const synced = () => {
+      failed.current.delete(monthNo);
+      setStatus(failed.current.size ? "failed" : "saved");
+    };
+    queue.current = queue.current.then(() => {
+      if (same(body, saved.current[monthNo])) return synced();
+      return putAnnualMonth(plan.id, monthNo, body).then(
         () => {
-          failed.current.delete(monthNo);
-          setStatus(failed.current.size ? "failed" : "saved");
+          saved.current = { ...saved.current, [monthNo]: body };
+          synced();
         },
         async (error) => {
+          // 마지막으로 넣은 값을 서버 값으로 되돌린다 — 같은 값을 다시 넣어도 다시 보낸다.
+          queued.current = { ...queued.current, [monthNo]: saved.current[monthNo] };
           if (isSaveConflict(error)) return onConflict();
           if (isRejectedSave(error)) {
-            // 서버가 받지 않았다 — 그 달을 저장 전 값으로 되돌린다.
-            saved.current = { ...saved.current, [monthNo]: before };
+            // 서버가 받지 않았다 — 그 달을 서버 값으로 되돌린다.
             failed.current.delete(monthNo);
-            setDrafts((all) => ({ ...all, [monthNo]: before })); // 확정 잠금 중에도 되돌린다
+            const server = saved.current[monthNo];
+            setDrafts((all) => ({ ...all, [monthNo]: server })); // 확정 잠금 중에도 되돌린다
             setStatus(failed.current.size ? "failed" : "idle");
             setMessage(`${monthNo}월은 저장하지 못해 원래대로 되돌렸어요.`);
             return;
           }
-          saved.current = { ...saved.current, [monthNo]: before };
           failed.current.add(monthNo);
           setStatus("failed");
         },
-      ),
-    );
+      );
+    });
   }
 
   function saveSelected() {
@@ -171,7 +179,12 @@ export default function ThemeAnnualResult({
       // 화면 값과 서버 값이 다른 달(저장 실패 · 빈 생활주제)이 있으면 옛 내용으로 확정하지 않는다.
       const unsaved = plan.months
         .map((m) => m.month)
-        .filter((m) => !drafts[m].theme.trim() || !same(clean(drafts[m]), saved.current[m]));
+        .filter(
+          (m) =>
+            failed.current.has(m) ||
+            !drafts[m].theme.trim() ||
+            !same(clean(drafts[m]), saved.current[m]),
+        );
       if (unsaved.length) {
         setFull(false);
         setSelected({ month: unsaved[0], slot: "theme" });

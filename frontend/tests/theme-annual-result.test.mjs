@@ -161,3 +161,21 @@ test("confirm waits for queued saves and locks edits made while it waits", async
   await settle();
   assert.deepEqual(view.events, ["write:B", "confirm"]);
 });
+
+test("two failed saves in a row do not count as saved; retyping the first value sends it again", async () => {
+  let fail;
+  const firstHeld = new Promise((_, reject) => (fail = reject));
+  let online = false;
+  const view = harness((_month, body) => {
+    if (body.theme === "B" && !online) return firstHeld;
+    if (!online) throw new Error("network");
+  });
+  await view.edit("B");
+  await view.edit("C");
+  fail(new Error("network"));
+  await settle();
+  online = true;
+  await view.edit("B");
+  await view.confirm();
+  assert.deepEqual(view.events, ["write:B", "confirm"]);
+});
