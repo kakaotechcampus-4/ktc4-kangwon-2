@@ -205,6 +205,9 @@ class MonthlyAuditEventOut(BaseModel):
     item_id: str | None = Field(description="CELL 이면 그 칸. PLAN 이면 null")
     section_key: str | None = Field(description="CELL 이면 그 칸의 Section. PLAN 이면 null")
     week_id: str | None = Field(description="주마다 있는 칸이면 그 주. 한 달 칸 · PLAN 이면 null")
+    day: str | None = Field(
+        default=None, description="주간 요일 칸이면 그 요일(MON…SAT). 그 밖 · 월간 · PLAN 이면 null"
+    )
     actor: str | None = Field(description="사람이면 opaque id(user_7). 시스템이면 null")
     system_actor: str | None = Field(description="시스템이면 그 표시. 사람이면 null")
     value_change: ValueChangeOut | None = Field(

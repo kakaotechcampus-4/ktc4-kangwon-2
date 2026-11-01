@@ -2024,21 +2024,21 @@ item_id   문자열.  선택.  주면 그 칸의 이력 + 계획안 단위 CONFI
 ```json
 { "items": [
     { "type": "CREATED", "occurred_at": "2026-09-20T01:00:00Z",
-      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
+      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null, "day": null,
       "actor": null, "system_actor": "monthly_application",
       "value_change": null, "generation_change": null, "arrangement_change": null, "copied_from": null },
     { "type": "TEACHER_EDITED", "occurred_at": "2026-09-21T02:10:00Z",
-      "scope": "CELL", "item_id": "item_7c1e…", "section_key": "focus", "week_id": "2026-09-W2",
+      "scope": "CELL", "item_id": "item_7c1e…", "section_key": "focus", "week_id": "2026-09-W2", "day": null,
       "actor": "user_7", "system_actor": null,
       "value_change": { "before": "가을 열매 관찰", "after": "가을 열매를 모아 세어 보기" },
       "generation_change": null, "arrangement_change": null, "copied_from": null },
     { "type": "ARRANGEMENT_CHANGED", "occurred_at": "2026-09-21T02:15:00Z",
-      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
+      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null, "day": null,
       "actor": "user_7", "system_actor": null,
       "value_change": null, "generation_change": null,
       "arrangement_change": { "scope": "2026-09-W2", "before": [], "after": ["item_4d0e…"] }, "copied_from": null },
     { "type": "REGENERATED", "occurred_at": "2026-09-21T02:20:00Z",
-      "scope": "CELL", "item_id": "item_9a2b…", "section_key": "outdoor_play", "week_id": "2026-09-W3",
+      "scope": "CELL", "item_id": "item_9a2b…", "section_key": "outdoor_play", "week_id": "2026-09-W3", "day": null,
       "actor": "user_7", "system_actor": null,
       "value_change": { "before": "…", "after": "…" },
       "generation_change": {
@@ -2048,7 +2048,7 @@ item_id   문자열.  선택.  주면 그 칸의 이력 + 계획안 단위 CONFI
                     "rule_version": "monthly-cell-planner-v10" } },
       "arrangement_change": null, "copied_from": null },
     { "type": "CONFIRMED", "occurred_at": "2026-09-22T05:00:00Z",
-      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null,
+      "scope": "PLAN", "item_id": null, "section_key": null, "week_id": null, "day": null,
       "actor": "user_7", "system_actor": null,
       "value_change": null, "generation_change": null, "arrangement_change": null, "copied_from": null }
 ] }
@@ -2182,13 +2182,13 @@ week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다�
   "base_template_ref": { "template_id": "ssuksak.weekly-template-a", "template_version": "weekly-template-a-v0.1.0" },
   "parent": { "monthly_plan_id": 7, "theme": null, "confirmed_at": "2026-09-01T09:00:00+09:00" },
   "sections": [
-    { "section_key": "theme", "label": "주제", "role": "CONTENT", "visible": true, "order": 1, "semantic_variant": null,
-      "cells": [ { "item_id": "item_…", "value": "…", "state": "FILLED",
+    { "section_key": "theme", "label": "주제", "role": "CONTENT", "repeat_by": "NONE", "visible": true, "order": 1, "semantic_variant": null,
+      "cells": [ { "item_id": "item_…", "day": null, "value": "…", "state": "FILLED",
                    "evidence": [ … ], "generation": { "method": "RULE_LLM", "rule_id": "…", "rule_version": "…" },
                    "parent_snapshots": [ { "parent_item_id": "item_…", "snapshot_value": "…" } ],
                    "teacher_input": false } ] },
-    { "section_key": "family_link", "…": "…",
-      "cells": [ { "item_id": "item_…", "value": "", "state": "EMPTY_VALID", "evidence": [],
+    { "section_key": "family_link", "repeat_by": "NONE", "…": "…",
+      "cells": [ { "item_id": "item_…", "day": null, "value": "", "state": "EMPTY_VALID", "evidence": [],
                    "generation": null, "parent_snapshots": [], "teacher_input": true } ] }
   ],
   "constraints": [ … ], "verification": { "executed_rules": [ … ], "findings": [ … ] },
@@ -2262,7 +2262,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 ### 변경 이력 — `GET /api/plans/weekly/{id}/audit?item_id=`
 
 월간 §9-5 와 **같은 응답 모양 · 같은 순서**다(`{ "items": [ { "type", "occurred_at", "scope", "item_id",
-"section_key", "week_id", "actor", "system_actor", "value_change", "generation_change", "arrangement_change" } ] }`).
+"section_key", "week_id", "day", "actor", "system_actor", "value_change", "generation_change", "arrangement_change" } ] }`).
 `item_id` 를 주면 그 칸의 이벤트와 계획안 단위 `CONFIRMED` 만 준다. 없는 칸은 404 `["item_id"]`.
 
 - 주간 칸에는 주가 따로 없다 — **칸 이벤트의 `week_id` 는 그 계획안의 주**다. 계획안 단위(`PLAN`)는 `null`.

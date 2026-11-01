@@ -1,6 +1,7 @@
 """주간계획안 API 의 요청 · 응답 모양. 계약은 docs/api-spec.md §9-6 이다.
 
-월간(§9-1) 응답 틀을 그대로 쓰고 주간 필드만 더한다. 주간은 Section 당 칸 하나다.
+월간(§9-1) 응답 틀을 그대로 쓰고 주간 필드만 더한다.
+요일 칸 줄(DAY)은 운영 요일마다 한 칸, 그 밖은 Section 당 한 칸이다.
 """
 
 from datetime import date, datetime
@@ -37,6 +38,8 @@ class ParentSnapshotOut(BaseModel):
 
 class WeeklyCellOut(BaseModel):
     item_id: str
+    # DAY 줄의 칸이면 그 요일(MON…SAT), 아니면 null
+    day: str | None
     value: str
     state: str
     evidence: list[EvidenceOut]
@@ -52,6 +55,8 @@ class WeeklySectionOut(BaseModel):
     section_key: str
     label: str | None
     role: str
+    # NONE | DAY — 주간 양식에는 축 줄이 없어 null 이 없다
+    repeat_by: str
     visible: bool
     order: int
     semantic_variant: str | None
