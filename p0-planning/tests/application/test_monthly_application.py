@@ -2792,7 +2792,7 @@ def test_generation_snapshot_comes_from_the_profile_not_the_approved_template():
 # --- S-1: eight safety candidates, placed by the teacher -------------------------------------
 
 SAFETY_CANDIDATES = SafetyCandidatesSelector(
-    "safety-evidence-classification-v0.2.0", "safety-reference-quality-v0.1.0"
+    "safety-evidence-classification-v0.3.0", "safety-reference-quality-v0.2.0"
 )
 
 

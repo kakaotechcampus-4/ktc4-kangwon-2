@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 
 # Content that never changes again. Every entry with a `review` approval block is
-# HUMAN_APPROVED; institution_evidence_v0_1_0 is a corpus observation without an
+# HUMAN_APPROVED; the institution_evidence files are corpus observations without an
 # approval gate and is frozen for integrity only. A changed SHA is a different
 # contract (ADR-027), so these values are never edited.
 FROZEN_ARTIFACTS = {
@@ -109,6 +109,22 @@ FROZEN_ARTIFACTS = {
     ),
     "evidence/monthly_evidence_semantic_classification_v0_1_0.json": (
         "8d9930211f3cc5b993f08b263bb08266391eab686606a369f5b8e6384cb1ceaf"
+    ),
+    # Human-approved 2026-11-02 (reviewer_ai_lead_001): privacy exclusions, unchanged entry decisions.
+    "evidence/institution_evidence_v0_2_0.json": (
+        "5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4"
+    ),
+    "evidence/monthly_evidence_semantic_classification_v0_2_0.json": (
+        "464d8bcba8dd554264bc628b1a89e7b30c15183c31488836977dab530bd2dcda"
+    ),
+    "evidence/weekly_evidence_semantic_classification_v0_2_0.json": (
+        "3e9688120c14f07fe9d7ee55d8f1196bad53c32621975bcc174ab32786db6234"
+    ),
+    "evidence/safety_evidence_classification_v0_3_0.json": (
+        "9b14e38a9943a02d1bfdb4deb9c13e0e1376e9d693628b6f58dec1cd5a14b973"
+    ),
+    "evidence/safety_reference_quality_v0_2_0.json": (
+        "bc69551897b4940597e43f0e77a2b5cdac438a9eb6345c7825a15f6d5d68a3c4"
     ),
 }
 
@@ -315,16 +331,21 @@ def test_safety_reference_exact_version_and_six_categories_are_frozen():
     assert not rule.has_placement_policy
 
 
-def test_evidence_store_identity_content_hash_and_non_normative_role_are_frozen():
+@pytest.mark.parametrize(
+    ("filename", "version", "sha", "records"),
+    [
+        ("institution_evidence_v0_1_0.json", "institution-evidence-ingestion-v0.1.0",
+         "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea", 12_367),
+        ("institution_evidence_v0_2_0.json", "institution-evidence-ingestion-v0.2.0",
+         "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463", 12_325),
+    ],
+)
+def test_evidence_store_identity_content_hash_and_non_normative_role_are_frozen(filename, version, sha, records):
     store = JsonInstitutionEvidenceRepository(
-        expected_content_sha256=(
-            "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea"
-        )
+        DATA / "evidence" / filename, expected_content_sha256=sha
     ).get_store()
 
-    assert store.ingestion_version == "institution-evidence-ingestion-v0.1.0"
+    assert store.ingestion_version == version
     assert store.schema_version == "institution-evidence.schema.v0"
-    assert store.content_sha256 == (
-        "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea"
-    )
-    assert len(store.records) == 12_367
+    assert store.content_sha256 == sha
+    assert len(store.records) == records

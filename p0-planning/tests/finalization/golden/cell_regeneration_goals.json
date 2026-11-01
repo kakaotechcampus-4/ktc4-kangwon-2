@@ -6,7 +6,7 @@
     ],
     "evidence": [
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-      {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+      {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.2.0", "type": "INSTITUTION_SAMPLE"}
     ],
     "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v10"},
     "state": "FILLED",
@@ -19,7 +19,7 @@
     ],
     "evidence": [
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-      {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+      {"source_id": "ev_001a699286ca_p01_r00089_c01_i01", "source_version": "institution-evidence-ingestion-v0.2.0", "type": "INSTITUTION_SAMPLE"}
     ],
     "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v18"},
     "state": "FILLED",
@@ -27,7 +27,7 @@
     "week_id": null
   },
   "generation_mode": "LLM_PLANNER",
-  "planner": {"model": "openai/gpt-6.1-sol", "packet_fingerprint": "9e5d89075692636e3460e5e6e5c7d34cf9c9d0c9d1bbc6564ad876da238c8502", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v10"},
+  "planner": {"model": "openai/gpt-6.1-sol", "packet_fingerprint": "2fd58dc0d2a62aa8adb33c4796aaa1bf6f49e0147babe3fef6a13c4aa3f221da", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v10"},
   "report_refreshed": true,
   "schema": "monthly-cell-regeneration-golden-v2",
   "section": "goals",
