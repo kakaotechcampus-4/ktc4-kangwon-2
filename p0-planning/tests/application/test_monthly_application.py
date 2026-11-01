@@ -27,7 +27,7 @@ from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
     JsonSafetyLegalRuleRepository,
 )
-from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan
+from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan, UnconfirmMonthlyPlan
 from ssuksak.planning.application.edit_monthly_plan_item import EditMonthlyPlanItem
 from ssuksak.planning.application.generate_monthly_plan import GenerateMonthlyPlan
 from ssuksak.planning.application.monthly_dto import (
@@ -37,6 +37,7 @@ from ssuksak.planning.application.monthly_dto import (
     GenerateMonthlyPlanCommand,
     RegenerateMonthlyPlanItemCommand,
     SafetyRuleSelector,
+    UnconfirmMonthlyPlanCommand,
 )
 from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.application import monthly_support
@@ -1343,6 +1344,28 @@ def test_safety_cell_is_not_an_llm_regeneration_target():
     assert exc.value.code == "monthly_cell_not_regeneratable"
     assert harness.plans.save_count == saves_before
     assert provider.cell_requests == []
+
+
+def test_unconfirm_reopens_the_plan_once_and_keeps_its_cells_and_history():
+    harness = Harness()
+    draft = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+    unconfirm = UnconfirmMonthlyPlan(plan_repository=harness.plans, clock=harness.clock)
+
+    reopened = unconfirm.execute(UnconfirmMonthlyPlanCommand(confirmed.plan_id, TEACHER))
+
+    assert reopened.status is PlanStatus.DRAFT
+    assert reopened.sections == confirmed.sections
+    assert reopened.audit.events[:-1] == confirmed.audit.events
+    assert (reopened.audit.events[-1].event_type, reopened.audit.events[-1].actor_id) == (
+        AuditEventType.UNCONFIRMED,
+        TEACHER,
+    )
+    saves = harness.plans.save_count
+    assert unconfirm.execute(UnconfirmMonthlyPlanCommand(reopened.plan_id, TEACHER)) is reopened
+    assert harness.plans.save_count == saves
 
 
 def test_confirm_requires_teacher_and_locks_all_later_mutations():

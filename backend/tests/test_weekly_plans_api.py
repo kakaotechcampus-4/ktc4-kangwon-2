@@ -721,6 +721,33 @@ def test_확정된_주간은_고치지도_다시_만들지도_않는다(world):
     assert _error(_regenerate(plan, "goals"))[:2] == (409, "ALREADY_CONFIRMED")
 
 
+def _unconfirm(path: str, revision: int):
+    return client.post(f"{path}/unconfirm", json={"expected_revision": revision})
+
+
+def test_확정을_풀면_다시_고칠_수_있고_부모_월간을_풀면_parent_changed(world):
+    plan = _create(world).json()
+    path = f"/api/plans/weekly/{plan['id']}"
+    assert plan["parent_changed"] is False
+    assert _unconfirm(path, 99).json() == plan  # 이미 DRAFT — 아무것도 안 바뀐다
+    confirmed = _confirm(plan).json()
+    assert _error(_unconfirm(path, plan["revision"]))[:2] == (409, "STALE_WRITE")
+
+    reopened = _unconfirm(path, confirmed["revision"]).json()
+    assert (reopened["status"], reopened["confirmed_at"]) == ("DRAFT", None)
+    assert reopened["revision"] == confirmed["revision"] + 1
+    assert reopened["sections"] == confirmed["sections"]
+    goals = _cell(reopened, "goals")["item_id"]
+    events = client.get(f"{path}/audit", params={"item_id": goals}).json()["items"]
+    assert [e["type"] for e in events if e["scope"] == "PLAN"] == ["CONFIRMED", "UNCONFIRMED"]
+    assert _put(reopened, "goals", "다시 고친 목표").status_code == 200
+
+    monthly = world["monthly"]
+    unconfirmed = _unconfirm(f"/api/plans/monthly/{monthly['id']}", monthly["revision"])
+    assert unconfirmed.status_code == 200, unconfirmed.json()
+    assert client.get(path).json()["parent_changed"] is True
+
+
 def test_DRAFT_를_옛_revision_으로_확정하면_409(world):
     plan = _create(world).json()
     assert _error(_confirm(plan, revision=plan["revision"] + 1)) == (
