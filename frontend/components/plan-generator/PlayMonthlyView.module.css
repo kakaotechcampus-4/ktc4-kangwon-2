@@ -5,6 +5,14 @@
   flex-wrap: wrap;
   margin: 18px 0;
 }
+/* 저장 표시 · 안내 줄. 글자가 길어져도 위 줄의 줄바꿈을 건드리지 않는다. */
+.metaLine {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 24px;
+}
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

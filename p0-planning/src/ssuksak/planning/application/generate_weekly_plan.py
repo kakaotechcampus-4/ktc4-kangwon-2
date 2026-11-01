@@ -9,15 +9,24 @@ ages; otherwise, and always on the RULE_ONLY path, they stay empty (§7-4).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import timedelta
 
+from ..context.models import MonthlyContextPacket
+from ..context.serialization import packet_fingerprint
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT, ActivityCandidate
+from ..domain.daily_life_reference import DailyLifeCatalog
 from ..domain.errors import InvalidDomainValueError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
-from ..domain.monthly_plan import ActivityCatalogRef, MonthlyCell, MonthlyGenerationMode, MonthlyPlan
-from ..domain.monthly_template import MonthlyTemplate, TemplateRef
+from ..domain.monthly_plan import (
+    ActivityCatalogRef,
+    MonthlyCell,
+    MonthlyGenerationMode,
+    MonthlyPlan,
+)
+from ..domain.monthly_template import MonthlyTemplate, RepeatBy, TemplateRef
 from ..domain.monthly_verification import FindingKind
 from ..domain.plan import PlanStatus
 from ..domain.provenance import (
@@ -30,8 +39,6 @@ from ..domain.provenance import (
     GenerationMethodDetail,
 )
 from ..domain.week_period import WeekId
-from ..context.models import MonthlyContextPacket
-from ..context.serialization import packet_fingerprint
 from ..domain.weekly_plan import (
     WEEKLY_INSTITUTION_INPUT_SECTION_KEYS,
     OperatingDay,
@@ -40,10 +47,11 @@ from ..domain.weekly_plan import (
     WeeklyTemplateSnapshot,
 )
 from ..evidence.classification import SemanticClass, grounding_class_for
-from ..evidence.ports import InstitutionEvidenceRepository, WeeklyEvidenceClassificationRepository
+from ..evidence.ports import (
+    InstitutionEvidenceRepository,
+    WeeklyEvidenceClassificationRepository,
+)
 from ..evidence.weekly_classification import WEEKLY_GROUNDING_SCOPE
-from ..retrieval.models import RetrievedEvidence
-from ..retrieval.weekly import weekly_section_evidence
 from ..planner.weekly import (
     OUTDOOR_KEY,
     PARENT_GROUNDABLE_KEYS,
@@ -51,16 +59,25 @@ from ..planner.weekly import (
     WeeklyPlanningRequest,
     WeeklyTarget,
     build_weekly_request,
+    validate_daily_life_context,
 )
+from ..retrieval.models import RetrievedEvidence
+from ..retrieval.weekly import weekly_section_evidence
 from ..rules.monthly_activity_selection import (
     ActivitySelection,
     ActivitySelectionTrace,
+)
+from ..rules.monthly_activity_selection import (
     _sort_key as monthly_sort_key,
 )
 from ..rules.monthly_cell_state import resolve_cell_state
 from ..rules.monthly_safety import (
     RULE_ID as SAFETY_RULE_ID,
+)
+from ..rules.monthly_safety import (
     RULE_VERSION as SAFETY_RULE_VERSION,
+)
+from ..rules.monthly_safety import (
     assess_safety_education,
 )
 from ..rules.safety_placement import candidate_display_value, placed_safety_candidate
@@ -170,6 +187,7 @@ class GenerateWeeklyPlan:
         planner: WeeklyPlanner | None = None,
         evidence_repository: InstitutionEvidenceRepository | None = None,
         weekly_classification_repository: WeeklyEvidenceClassificationRepository | None = None,
+        daily_life_loader: Callable[[], DailyLifeCatalog] | None = None,
     ) -> None:
         self._parents = parent_plan_repository
         self._plans = plan_repository
@@ -184,6 +202,7 @@ class GenerateWeeklyPlan:
         # Both or neither: without them the three classified Sections stay empty (§7-4).
         self._evidence = evidence_repository
         self._weekly_classification = weekly_classification_repository
+        self._daily_life_loader = daily_life_loader
 
     def execute(self, command: GenerateWeeklyPlanCommand) -> GenerateWeeklyPlanResult:
         llm = command.generation_mode is MonthlyGenerationMode.LLM_PLANNER
@@ -245,6 +264,7 @@ class GenerateWeeklyPlan:
                 self._context, self._evidence, self._weekly_classification,
                 parent=parent, period=period, operating_days=command.operating_days, snapshot=snapshot,
                 catalog=catalog, constraint_assessments=(safety_assessment,), outdoor=outdoor,
+                daily_life_loader=self._daily_life_loader,
             )
             fingerprint = context.fingerprint
             try:
@@ -255,13 +275,20 @@ class GenerateWeeklyPlan:
                 ) from exc
         selection: ActivitySelectionTrace | None = None
         cells = []
-        for section in snapshot.sections:
+        # ADR-051: a repeat_by DAY Section gets one Cell per operating day.
+        for section, day in (
+            (s, d) for s in snapshot.sections
+            for d in (command.operating_days if s.repeat_by is RepeatBy.DAY else (None,))
+        ):
             key = section.section_key
             value, evidence, snapshots = "", (), ()
             generation: GenerationMethodDetail | None = GenerationMethodDetail(
                 GenerationMethod.RULE_ONLY, EMPTY_RULE_ID, WEEKLY_RULE_VERSION
             )
-            proposed = outcome.value(key) if outcome is not None else None
+            if outcome is None:
+                proposed = None
+            else:  # an unresolved day stays empty; no other day fills it (WD-3)
+                proposed = outcome.day_value(key, day.value) if day is not None else outcome.value(key)
             if key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
                 generation = None  # teacher input only (§6-2, §10-2)
             elif proposed is not None:
@@ -324,6 +351,7 @@ class GenerateWeeklyPlan:
                 )),
                 parent_snapshots=snapshots,
                 source_label=section.source_label,
+                day=day,
             ))
 
         plan = WeeklyPlan(
@@ -431,8 +459,10 @@ def llm_context(
     catalog,
     constraint_assessments,
     outdoor,
+    daily_life_loader: Callable[[], DailyLifeCatalog] | None = None,
 ) -> WeeklyLlmContext:
     theme_cell = _only_cell(parent, THEME_KEY)
+    linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
     packet = context_pipeline.build(
         target_month=period.week_id.target_month,
         ages=parent.target_ages,
@@ -452,10 +482,19 @@ def llm_context(
         store_version = store.ingestion_version
         keys = {section.section_key for section in snapshot.sections}
         classified = _classified_evidence(
-            store, classification_repository.get_classification(), parent, period.week_id, keys
+            store, classification_repository.get_classification(), parent, period.week_id, keys,
+            focus_aware=linked,
         )
+    daily_life = None
+    if linked and daily_life_loader is not None:
+        try:
+            daily_life = daily_life_loader()
+            validate_daily_life_context(daily_life, packet.curriculum)
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            raise WeeklyApplicationError("weekly_reference_context_unavailable", "Weekly daily-life context is unavailable") from error
     request = _weekly_request(
-        parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified
+        parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
+        daily_life=daily_life,
     )
     return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
 
@@ -470,11 +509,17 @@ def llm_cell_sources(
         cited: tuple[MonthlyCell, ...] = (theme_cell,)
         extra: tuple[EvidenceSource, ...] = ()
     elif key == OUTDOOR_KEY:
-        cited = outdoor.cited_cells
-        extra = (EvidenceSource(
-            EvidenceSourceType.ACTIVITY_REFERENCE, proposed.reference_id,
-            catalog.catalog_version, display_name=proposed.value,
-        ),)
+        if proposed.reference_id is None:
+            cited = tuple(cell for source_key in (OUTDOOR_KEY, "focus")
+                          if (cell := _parent_cell(parent, source_key, context.request.week_id)) is not None
+                          and cell.value.strip())
+            extra = packet_evidence(context.packet, proposed.grounding_refs)
+        else:
+            cited = outdoor.cited_cells
+            extra = (EvidenceSource(
+                EvidenceSourceType.ACTIVITY_REFERENCE, proposed.reference_id,
+                catalog.catalog_version, display_name=proposed.value,
+            ),)
     elif key in context.classified:
         # No parent counterpart (§7): only the chosen institution records.
         labels = {item.record_id: item.record.source_label for item in context.classified[key]}
@@ -564,7 +609,7 @@ def _parent_cell(parent: MonthlyPlan, key: str, week_id: WeekId) -> MonthlyCell 
     return section.cell_for_week(week_id) or section.cell_for_week(None)
 
 
-def _classified_evidence(store, classification, parent, week_id, keys) -> dict[str, tuple[RetrievedEvidence, ...]]:
+def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False) -> dict[str, tuple[RetrievedEvidence, ...]]:
     """W3c: evidence per classified Section; a Section with none is left out (not a target)."""
     focus = _parent_cell(parent, "focus", week_id)
     query = " ".join((_only_cell(parent, THEME_KEY).value, focus.value if focus is not None else ""))
@@ -576,6 +621,8 @@ def _classified_evidence(store, classification, parent, week_id, keys) -> dict[s
             item for item in weekly_section_evidence(
                 store, classification, weekly_class=weekly_class,
                 calendar_month=week_id.target_month.calendar_month, ages=parent.target_ages, query_text=query,
+                focus_text=focus.value if focus_aware and focus is not None else "",
+                sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
             ) if item.record.text
         )
         if items:
@@ -584,9 +631,11 @@ def _classified_evidence(store, classification, parent, week_id, keys) -> dict[s
 
 
 def _weekly_request(
-    parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified
+    parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
+    *, daily_life=None,
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
+    linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
     targets = [WeeklyTarget(THEME_KEY, parent_value=theme_cell.value)]
     parent_context = [(THEME_KEY, theme_cell.value)]
     evidence = []
@@ -603,9 +652,17 @@ def _weekly_request(
                     None if section.semantic_variant is None else section.semantic_variant.value,
                 ))
                 evidence += [(i.evidence_ref, i.text, i.grounding_class.value) for i in items]
+        elif key == OUTDOOR_KEY and linked:
+            items = packet.institution_evidence
+            if not (items or parent_value.strip() or outdoor.ranked):
+                continue
+            targets.append(WeeklyTarget(key, tuple(i.evidence_ref for i in items), parent_value,
+                                        parent_groundable=bool(parent_value.strip())))
+            evidence += [(i.evidence_ref, i.text, "OUTDOOR_PLAY") for i in items]
         elif key in classified:  # W3c: grounded only by its own class (§7); no parent counterpart
             items = classified[key]
-            targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value))
+            days = tuple(d.value for d in operating_days) if section.repeat_by is RepeatBy.DAY else ()
+            targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value, days=days))
             klass = next(c for c, k in WEEKLY_GROUNDING_SCOPE.items() if k == key)
             evidence += [(i.record_id, i.record.text, klass.value) for i in items]
         elif key == OUTDOOR_KEY and outdoor.ranked:
@@ -634,6 +691,9 @@ def _weekly_request(
         reference_candidates=tuple((c.activity_id, c.label) for c in outdoor.ranked[:OUTDOOR_CANDIDATE_LIMIT]),
         packet_fingerprint=fingerprint,
         curriculum=packet.curriculum,
+        reference_wiring=linked,
+        daily_life=daily_life,
+        sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if linked else (),
     )
 
 

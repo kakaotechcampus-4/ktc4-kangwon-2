@@ -25,6 +25,7 @@ from ..domain.safety_placement import SafetyKind
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
+from .v1_guidance import NATURAL_PLAY_GUIDANCE
 from .weekly import unsupported_facts
 
 PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v3"
@@ -45,9 +46,8 @@ SYSTEM_PROMPT = (
     "description 은 교사가 편집 화면에서 어떤 놀이인지 이해하도록 합니다체 1~3문장으로 쓴다 — "
     "준비해 볼 수 있는 재료나 공간, 놀이 대상, 유아가 해 볼 수 있는 행동이나 탐색을 쓴다. "
     "재료는 준비 제안이며 원에 있다고 단정하지 않는다. 유아가 다음에 할 행동의 순서나 만들어야 할 결과물을 정해 두지 않는다. "
-    "놀이마다 중요한 대상과 탐색을 중심으로 자연스럽게 쓴다 — 모든 설명을 재료 준비로 시작하거나 같은 문장 구조 · 맺는말로 되풀이하지 않는다. "
-    "준비 제안이라는 뜻을 매번 「제안합니다」로 나타낼 필요는 없다. "
-    "모든 놀이 이름은 서로 달라야 한다. "
+    + NATURAL_PLAY_GUIDANCE
+    + "모든 놀이 이름은 서로 달라야 한다. "
     "parent_plays 는 부모 연간에서 교사가 고른 이 시기의 놀이다. emphasized 가 true 인 놀이는 이번 달에 더 이어 갈 놀이다. "
     "parent_plays 의 materials · support_direction 은 참고 맥락이다. 고른 놀이를 모두 참고하되, 다섯 놀이를 이번 달에 하나씩 반드시 넣어야 하는 것은 아니다. "
     "어떤 놀이가 부모 놀이 하나를 실제로 이어 가면 parent_ref 에 그 놀이의 ref 를 쓰고, 연간에 없는 새 놀이면 null 로 둔다. "

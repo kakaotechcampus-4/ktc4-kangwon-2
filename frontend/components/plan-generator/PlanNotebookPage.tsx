@@ -151,14 +151,14 @@ function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => v
           </span>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] ${
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[13px] ${
                 confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
               }`}
             >
               {confirmed ? "확정" : "초안"}
             </span>
             {plan.format === "PLAY_PROJECT" && (
-              <span className="shrink-0 rounded-full bg-primary-tint px-2.5 py-1 text-[12px] text-primary-ink">
+              <span className="shrink-0 rounded-full bg-primary-tint px-2.5 py-1 text-[13px] text-primary-ink">
                 놀이 프로젝트형
               </span>
             )}
@@ -177,7 +177,7 @@ function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => v
         <button
           type="button"
           onClick={onReset}
-          className="self-start text-[12px] font-mono text-ink-soft underline"
+          className="self-start text-[13px] font-mono text-ink-soft underline"
         >
           [테스트] 이 계획안과 딸린 월간 전부 지우기
         </button>

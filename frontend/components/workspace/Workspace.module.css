@@ -13,7 +13,7 @@
   margin-bottom: 26px;
 }
 .nav a {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--pg-ink-soft);
   border-radius: 6px;
   padding: 9px 12px;
@@ -41,7 +41,7 @@
 }
 .pageHead p {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--pg-ink-soft);
 }
 @media (min-width: 1024px) {
@@ -53,11 +53,21 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: 13px;
   border-radius: 6px;
   background: var(--pg-primary-tint);
   color: var(--pg-primary-ink);
   padding: 8px 12px;
+}
+/* 꼬리표는 모양이 하나다 — 뜻은 색으로만 가른다.
+   아무 뜻 없는 숫자·이름표는 기본(연보라), 끝난 것은 초록, 손이 더 가야 하는 것은 노랑. */
+.badgeDone {
+  background: var(--pg-success-tint);
+  color: var(--pg-success-line);
+}
+.badgeTodo {
+  background: var(--pg-note-soft);
+  color: var(--pg-sun-ink);
 }
 .hero {
   display: flex;
@@ -78,7 +88,7 @@
   margin-bottom: 8px;
 }
 .hero p {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.8;
   color: var(--pg-ink-soft);
 }
@@ -107,44 +117,55 @@
 .card {
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
-  padding: 25px;
+  padding: 28px;
   border-radius: 6px;
   min-width: 0;
 }
+/* 카드 안에 또 카드가 들어가면 선이 두 겹이 된다. 안쪽은 선과 그림자를 버리고
+   위아래 여백으로만 가른다 — 한 덩어리로 읽힌다. */
+.card .card {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
 .card h2 {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   margin-bottom: 8px;
 }
 .card h3 {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 700;
   margin-bottom: 10px;
 }
 .card p {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.9;
+  max-width: 72ch;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .stack {
   display: grid;
-  gap: 18px;
+  gap: 22px;
 }
 .muted {
   color: var(--pg-ink-soft);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
 }
+/* 색은 뜻이 있는 자리에만 — 초록은 「끝난 것」, 노랑은 「손이 더 가야 하는 것」이다.
+   그냥 이름표와 숫자는 색을 빼서 그 둘이 눈에 먼저 들어오게 둔다. */
 .eyebrow {
-  color: var(--pg-success);
-  font-size: 11px;
+  color: var(--pg-ink-soft);
+  font-size: 12px;
   letter-spacing: 0.06em;
   margin-bottom: 8px;
 }
 .count {
   font-size: 30px;
-  color: var(--pg-success);
+  color: var(--pg-primary-deep);
   font-family: var(--font-display), sans-serif;
 }
 .stats {
@@ -163,13 +184,13 @@
 .field {
   display: grid;
   gap: 8px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
 }
 .field small {
   color: var(--pg-ink-soft);
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
 }
 .field input,
 .field select,
@@ -183,7 +204,7 @@
   border-radius: 6px;
   min-height: 44px;
   padding: 11px 12px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 400;
 }
 .field textarea {
@@ -215,6 +236,11 @@ select.input {
   gap: 10px;
   flex-wrap: wrap;
 }
+/* 줄 아래에 붙는 안내는 칸 옆이 아니라 칸 아래 한 줄을 차지한다. */
+.row > .hint {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}
 .row > .field {
   flex: 1;
   min-width: 130px;
@@ -240,7 +266,7 @@ select.input {
   gap: 8px;
   min-height: 44px;
   padding: 11px 17px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   border-radius: 6px;
   cursor: pointer;
@@ -272,7 +298,7 @@ select.input {
 }
 .message,
 .error {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.8;
   padding: 13px 16px;
   border-radius: 6px;
@@ -289,7 +315,7 @@ select.input {
 }
 .hint {
   color: var(--pg-ink-soft);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.8;
   margin: 12px 0;
 }
@@ -313,7 +339,7 @@ select.input {
 }
 .empty p {
   color: var(--pg-ink-soft);
-  font-size: 13px;
+  font-size: 15px;
   margin-top: 10px;
 }
 .empty a {
@@ -339,11 +365,11 @@ a.item {
   text-decoration: none;
 }
 .item h3 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 .item p {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.8;
   margin-top: 7px;
   white-space: pre-wrap;
@@ -361,7 +387,7 @@ a.item {
 .pills button {
   min-height: 38px;
   padding: 8px 14px;
-  font-size: 12px;
+  font-size: 13px;
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
   border-radius: 6px;
@@ -371,21 +397,37 @@ a.item {
   border-color: var(--pg-primary);
 }
 .quote {
+  border: 1px solid var(--pg-line);
   border-left: 3px solid var(--pg-primary-tint-line);
-  padding: 12px 16px;
+  border-radius: 6px;
+  padding: 14px 16px;
   background: var(--pg-cream);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.9;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin: 13px 0;
+}
+/* 고칠 수 없는 칸이라는 꼬리표. 제목 옆에 붙어 칸 전체를 가리킨다. */
+.readOnlyTag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+  background: var(--pg-paper-warm);
+  border: 1px solid var(--pg-paper-warm-line);
+  border-radius: 999px;
+  vertical-align: middle;
 }
 .check {
   display: flex;
   gap: 10px;
   align-items: flex-start;
   padding: 12px 0;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.8;
 }
 .check input {
@@ -398,7 +440,7 @@ a.item {
 .check small {
   display: block;
   color: var(--pg-ink-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 .divider {
   border: 0;
@@ -416,10 +458,10 @@ a.item {
   display: block;
   max-width: 100%;
   margin: 18px auto 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .document {
-  padding: 32px;
+  padding: 36px;
 }
 .document > header {
   border-bottom: 2px solid var(--pg-primary-tint-line);
@@ -431,7 +473,7 @@ a.item {
   margin: 8px 0 12px;
 }
 .document section {
-  margin: 25px 0;
+  margin: 30px 0;
 }
 /* 사실 · 해석 · 지원을 이름표로 가른다. 칸 바탕은 흰색 그대로 두고 이름표에만 색을 준다 —
    흰 바탕은 「내가 쓰는 칸」이라는 신호라서, 고치는 칸까지 색을 깔면 그 신호가 흐려진다.
@@ -442,7 +484,7 @@ a.item {
   gap: 6px;
   padding: 4px 11px;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 15px;
   margin: 0 0 4px;
 }
 .layerName svg {
@@ -468,7 +510,7 @@ a.item {
   color: var(--pg-success);
 }
 .source {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--pg-ink-soft);
   display: block;
   margin-top: 10px;
@@ -550,7 +592,7 @@ a.item {
   max-height: 260px;
   overflow: auto;
   white-space: pre-wrap;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.9;
   padding: 16px;
   background: var(--pg-cream);
@@ -558,7 +600,7 @@ a.item {
 }
 .link {
   color: var(--pg-success);
-  font-size: 13px;
+  font-size: 15px;
   text-decoration: underline;
 }
 @keyframes pulse {
@@ -605,7 +647,7 @@ a.item {
     padding: 14px 12px;
   }
   .stats .muted {
-    font-size: 10px;
+    font-size: 11px;
   }
   .count {
     font-size: 24px;
@@ -616,7 +658,7 @@ a.item {
   .field input,
   .field select,
   .field textarea {
-    font-size: 16px;
+    font-size: 17px;
   }
   .document {
     padding: 22px 18px;
@@ -627,33 +669,8 @@ a.item {
   .row > .field {
     min-width: 115px;
   }
-  /* 화면 머리 — 손글씨 제목 + 한 줄 설명 + 주된 동작 하나. */
-  .pageHead {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 28px;
-  }
-  .pageHead h1 {
-    font-family: var(--font-display), sans-serif;
-    font-size: 34px;
-    font-weight: 700;
-    line-height: 1.2;
-  }
-  .pageHead p {
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--pg-ink-soft);
-  }
-  @media (min-width: 1024px) {
-    .pageHead h1 {
-      font-size: 44px;
-    }
-  }
   .badge {
-    font-size: 11px;
+    font-size: 12px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -680,7 +697,7 @@ a.item {
 .fieldError {
   color: var(--pg-peach-ink);
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
 }
 .timePicker {
   display: flex;
@@ -745,7 +762,7 @@ a.item {
   max-width: 420px;
   min-height: 34px;
   padding: 6px 13px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--pg-ink);
   border: 1px solid var(--pg-primary-tint-line);
@@ -757,7 +774,7 @@ a.item {
   align-self: center;
   margin-left: 8px;
   padding: 1px 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--pg-primary-ink);
   background: var(--pg-primary-tint);

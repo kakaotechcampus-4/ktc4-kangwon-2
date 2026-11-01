@@ -32,9 +32,20 @@ class RequestAwareWeeklyLlm:
             if key == "theme":
                 value, grounding = f"{again}{theme} 속 이번 주 놀이", []
             elif key == "outdoor_play":
-                reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                if target.get("parent_groundable"):
+                    value = f"{again}{parent[key]}" if refs else parent[key]
+                    grounding = refs[:1] if again else []
+                elif target["reference_candidates"]:
+                    reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                    grounding = []
             elif key == "safety_education":
                 value, grounding = f"{again}이번 주에도 {parent['safety_education']}", []
+            if target.get("days"):  # ADR-051: one distinct value per requested day
+                sections.append({"section_key": key, "reference_id": None, "days": [
+                    {"day": day, "value": f"{value} {day}", "unresolved": False, "grounding_refs": grounding}
+                    for day in target["days"]
+                ]})
+                continue
             sections.append({
                 "section_key": key, "value": value, "unresolved": False,
                 "grounding_refs": grounding, "reference_id": reference_id,

@@ -6,6 +6,16 @@
 // ---------------------------------------------------------------------
 
 export const planGeneratorThemeExtend = {
+  /*
+    글자 크기 — 본문을 읽을 만한 크기로 올렸다.
+    기본 tailwind 는 `text-xs` 12px · `text-sm` 14px 이라 화면이 빽빽했다.
+    쓰는 쪽을 전부 고치는 대신 여기서 한 단계씩 올린다.
+  */
+  fontSize: {
+    xs: ["13px", "1.7"] as [string, string],
+    sm: ["15px", "1.7"] as [string, string],
+    base: ["17px", "1.75"] as [string, string],
+  },
   colors: {
     cream: "var(--pg-cream)",
     shell: {

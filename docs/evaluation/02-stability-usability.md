@@ -31,6 +31,8 @@
   9~11px 글자가 60군데 있었고 그걸 걷어냈다
 - 메뉴를 「기록 · 문서」로 갈라 이름을 고쳤다 — 커밋 `3ba17a7`
 - 말로 적기(받아쓰기) — `frontend/lib/hooks/use-dictation.ts`
+- 홈에서 아이를 드롭다운으로 찾지 않는다 — 반 전체가 격자로 깔리고 칸마다 마지막 기록·이번 주 횟수가 보인다 — 커밋 `ea67852` · `frontend/components/app/ChildPicker.tsx`
+- 한 주 넘게 기록이 빈 아이는 칸 색이 다르다 — 기록이 한 건도 없는 반에서는 칠하지 않는다 — 커밋 `80ed98a` · `frontend/tests/child-mark.test.mjs`
 
 ## 고친 실제 사고
 

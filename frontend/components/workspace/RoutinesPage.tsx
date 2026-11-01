@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getMe } from "@/lib/api/auth";
 import { getClasses } from "@/lib/api/classes";
 import { isUnauthenticated } from "@/lib/api/client";
+import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { classServerId } from "@/lib/api/onboarding";
 import {
   createRoutine,
@@ -53,7 +54,7 @@ function focusField(id: string) {
 const nameFieldId = (rowKey: string) => `routine-name-${rowKey}`;
 const SAVED = "저장했어요.";
 const NO_YESTERDAY = "어제 적은 일과가 없어요.";
-const UNKNOWN_CLASS = "주소에 적힌 반을 찾을 수 없어요. 반을 골라주세요.";
+const UNKNOWN_CLASS = "주소에 적힌 반을 찾을 수 없어요. 왼쪽 위에서 반을 골라주세요.";
 
 function messageFor(error: unknown) {
   if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
@@ -320,7 +321,6 @@ export default function RoutinesPage() {
   const [classList, setClassList] = useState<{ items: ApiClass[]; error: string } | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [pickedClass, setPickedClass] = useState<number | null>(null);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragFrom, setDragFrom] = useState<number | null>(null);
@@ -349,11 +349,10 @@ export default function RoutinesPage() {
   // 주소가 모르는 반을 가리켰다. **첫 반으로 조용히 바꾸지 않는다** — 고르라고 한다.
   const unknownClass = query.classId !== null && !!classes && known(query.classId) === null;
   /**
-   * 이 화면이 보는 반. 교사가 고른 반 → 주소 → 주 반 순이고, **반 목록에 있는 번호만** 쓴다.
-   * 셋 다 없으면 `null` 이다 — 첫 반을 대신 고르지 않는다 (FR-405).
+   * 이 화면이 보는 반. 주소 → 사이드바가 정한 반 순이고, **반 목록에 있는 번호만** 쓴다.
+   * 둘 다 없으면 `null` 이다 — 첫 반을 대신 고르지 않는다 (FR-405).
    */
-  const classId =
-    known(pickedClass) ?? (unknownClass ? null : (known(query.classId) ?? known(primaryClass)));
+  const classId = unknownClass ? null : (known(query.classId) ?? known(primaryClass));
   // 주소에 날짜가 없으면 오늘이다 (S-J1).
   const date = pickedDate ?? (query.date || today());
 
@@ -431,6 +430,8 @@ export default function RoutinesPage() {
   }
   const now = draft?.key === key ? draft : null;
   const rows = now?.rows ?? [];
+  // 반은 사이드바에서 바꾼다. 바꾸면 화면을 다시 읽으므로 적어 둔 줄이 사라질 수 있다.
+  useUnsavedWarning(unsavedRows());
 
   /** 저장을 시작한 화면(`at`)이 아직 그 화면일 때만 초안을 고친다. */
   const patch = (at: string, change: (draft: Draft) => Draft) =>
@@ -751,25 +752,6 @@ export default function RoutinesPage() {
         <section className={ws.stack}>
           <div className={`${ws.card} ${ws.row}`}>
             <label className={ws.field}>
-              반
-              <select
-                value={classId ?? ""}
-                disabled={!!busy}
-                onChange={(e) => {
-                  if (!leaveRows()) return;
-                  setPickedClass(e.target.value ? Number(e.target.value) : null);
-                  revisit();
-                }}
-              >
-                <option value="">반 선택</option>
-                {classes?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={ws.field}>
               날짜
               <input
                 name="date"
@@ -880,7 +862,7 @@ function ListEmpty({ dateOk, unknownClass }: { dateOk: boolean; unknownClass: bo
   if (!dateOk) return <Empty title="날짜를 선택해주세요" />;
   return (
     <Empty title="반을 골라주세요">
-      {unknownClass ? UNKNOWN_CLASS : "어느 반의 하루를 적을지 골라주세요."}
+      {unknownClass ? UNKNOWN_CLASS : "왼쪽 위에서 어느 반의 하루를 적을지 골라주세요."}
     </Empty>
   );
 }
@@ -970,10 +952,16 @@ function RowCard({
           onChange={(e) => set("name")(e.target.value)}
         />
         {/* placeholder 는 글자를 넣는 순간 사라져서 필수 표시로 못 쓴다. 읽어 주는 도구에는
-            input 의 aria-label 이 이미 「필수」를 담고 있어 여기는 숨긴다. */}
-        <span aria-hidden="true" className={ws.nameRequired}>
-          필수
-        </span>
+            input 의 aria-label 이 이미 「필수」를 담고 있어 여기는 숨긴다.
+
+            **아직 손대지 않은 줄에는 달지 않는다.** 빈 줄 다섯에 「필수」가 다섯 개 붙으면
+            다섯 줄을 다 채워야 하는 양식처럼 보였다. 통째로 빈 줄은 저장하지 않으므로
+            한 칸이라도 적은 줄에만 이름을 달라고 한다. */}
+        {filled(row) && (
+          <span aria-hidden="true" className={ws.nameRequired}>
+            필수
+          </span>
+        )}
       </div>
       <div className={`${ws.routineGrid} ${ws.routineHead}`}>
         <div className={ws.routineStart}>

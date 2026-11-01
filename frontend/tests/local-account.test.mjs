@@ -121,3 +121,25 @@ test("registration, credential checks, duplicate registration and safe password 
   delete globalThis.localStorage;
   delete globalThis.window;
 });
+
+test("registration signs in with a mixed-case email and enters onboarding", async () => {
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const session = new Map();
+  globalThis.window = {
+    localStorage,
+    sessionStorage: {
+      getItem: (key) => session.get(key) ?? null,
+      setItem: (key, value) => session.set(key, value),
+      removeItem: (key) => session.delete(key),
+    },
+  };
+  await registerAccount(" 민지 ", " NewTeacher@Example.com ", "demo-password-123");
+  assert.equal(startDemoSession(), true);
+  assert.equal(loginDestination(), "/onboarding/center");
+  delete globalThis.localStorage;
+  delete globalThis.window;
+});

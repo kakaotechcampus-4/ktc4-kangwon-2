@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
-import type { WeeklyPlan, WeeklyPlanSummary } from "./types";
+import { downloadHwpx } from "./export";
+import type { MonthlyAuditEvent, WeeklyPlan, WeeklyPlanSummary } from "./types";
 
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §13).
@@ -69,3 +70,10 @@ export const confirmWeeklyPlan = (id: number, expectedRevision: number, signal?:
 /** 확정 전 주간계획안을 지운다. 그 주를 다시 만들려면 먼저 지워야 한다 (G5). 확정본은 409 다. */
 export const deleteWeeklyPlan = (id: number) =>
   apiRequest<void>("/api/plans/weekly/" + id, { method: "DELETE" });
+
+/** 변경 이력. 월간과 같은 모양이다 — 「교사 수정」 표시를 여기서 읽는다. */
+export const getWeeklyPlanAudit = (id: number, signal?: AbortSignal) =>
+  apiRequest<{ items: MonthlyAuditEvent[] }>("/api/plans/weekly/" + id + "/audit", { signal });
+/** 확정본만 내려받는다 — 확정 전이면 서버가 409 다. */
+export const downloadWeeklyHwpx = (id: number) =>
+  downloadHwpx("/api/plans/weekly/" + id + "/export/hwp", "주간계획안.hwpx");

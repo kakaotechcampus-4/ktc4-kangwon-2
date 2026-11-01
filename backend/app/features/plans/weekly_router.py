@@ -174,6 +174,7 @@ def _generation_error(error: MonthlyApplicationError):
         isinstance(cause, LlmUnavailable)
         or error.code in _REFERENCE_UNAVAILABLE
         or error.code in _TEMPLATE_UNAVAILABLE
+        or error.code == "weekly_reference_context_unavailable"
     ):
         return _UNAVAILABLE
     if error.code in _WEEK_NOT_USABLE:
