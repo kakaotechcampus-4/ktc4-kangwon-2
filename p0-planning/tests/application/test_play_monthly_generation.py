@@ -79,8 +79,8 @@ from ssuksak.planning.planner.play_monthly import (
 
 T0 = datetime(2027, 2, 1, tzinfo=UTC)
 LEGAL = "child-welfare-act-decree-annex6-2022-06-21"
-CLASSIFICATION = "safety-evidence-classification-v0.2.0"
-QUALITY = "safety-reference-quality-v0.1.0"
+CLASSIFICATION = SAFETY_CLASSIFICATION_VERSION
+QUALITY = SAFETY_QUALITY_VERSION
 SELECTED = ("cand9", "cand2", "cand4", "cand5", "cand7")  # teacher order, not numeric order
 
 CURRICULUM = CurriculumCatalog(

@@ -176,3 +176,7 @@ GET    /api/plans/monthly/play/{id}/audit                                   이�
 - 평가제 4-1 이 놀이 월간을 월간계획안으로 세는가(`queries.py:24-53`). 지금 코드는 센다.
 - 누리과정 연결의 공식 문구를 응답이 함께 줄지(Core 는 문구를 저장하지 않고 Reference 에서 읽는다, `play_monthly_lifecycle.py:9-10`) · 화면에서 어떻게 보일지는 화면 PR 에서 정한다.
 - 이력에 지운 행의 칸 이벤트를 싣는 것(§8)이 화면에서 헷갈리지 않는지.
+
+## 2026-11-02 자료 판 전환
+
+Evidence Store v0.2.0 개인정보 정제 묶음과 기존 분류 재결합을 `reviewer_ai_lead_001`이 승인했다. 위 Q4 답변의 소유 경계는 그대로이고, 현재 조립부 값은 `safety-evidence-classification-v0.3.0` · `safety-reference-quality-v0.2.0`이다. 자료 판은 `institution-evidence-ingestion-v0.2.0`이며 SHA는 저장소에서 읽는다. 월간 추가 분류 252건은 포함하지 않았다. 파일·승인·Golden 변경 범위는 [검토 기록](../evidence-store-v0-2-human-review.md)에 있다.
