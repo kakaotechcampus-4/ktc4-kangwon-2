@@ -37,6 +37,10 @@ from ssuksak.adapters.monthly_composition import (
     monthly_generation,
     monthly_regeneration,
 )
+from ssuksak.adapters.play_monthly_composition import (
+    SAFETY_CLASSIFICATION_VERSION,
+    SAFETY_QUALITY_VERSION,
+)
 from ssuksak.planning import (
     ActivityCatalogSelector,
     ActorId,
@@ -51,13 +55,13 @@ from ssuksak.planning import (
     MonthlyPlan,
     PlanId,
     RegenerateMonthlyPlanItemCommand,
-    SafetyPlacementSelector,
     SafetyRuleSelector,
     TemplateProfileRef,
     WeekId,
     YearlyPlan,
     YearMonth,
 )
+from ssuksak.planning.application.monthly_dto import SafetyCandidatesSelector  # 공개 창구에 없다
 from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구에 없다
     PlaceMonthlySafety,
     PlaceMonthlySafetyCommand,
@@ -120,9 +124,9 @@ ACTIVITY_CATALOG = ActivityCatalogSelector(
     "ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1"
 )
 SAFETY_RULE = SafetyRuleSelector("child-welfare-act-decree-annex6-2022-06-21")
-# 안전교육 배치 정책(2026-10-22 결정으로 D-M4-03 을 뒤집음). 법정 주만 채운다 —
-# 보충 주는 넣지 않는다(2026-10-23 결정). 나머지 주의 안전교육 칸은 비어 있다.
-SAFETY_PLACEMENT = SafetyPlacementSelector("ssuksak-safety-placement-v2", supplemental=False)
+# 안전교육은 후보 8개(법정 6 + 생활안전 2)를 만들고 교사가 주마다 고른다(ADR-052).
+# 판 값은 Core 조립부가 한 번만 관리한다 — 여기에 사본을 두지 않는다(ADR-046).
+SAFETY_CANDIDATES = SafetyCandidatesSelector(SAFETY_CLASSIFICATION_VERSION, SAFETY_QUALITY_VERSION)
 # 월간은 반 · 월당 하나다(결정 문서 12.5). 이 이름의 충돌만 409 로 바꾼다.
 MONTHLY_UNIQUE = "uq_plans_monthly_per_classroom_month"
 
@@ -137,6 +141,8 @@ _PROFILE_UNUSABLE = frozenset(
         # Core 최종 승인 검사(ADR-027). 보통은 생성 직전 검사가 먼저 막는다 — 같은 422 다.
         "monthly_template_not_found",
         "monthly_template_not_approved",
+        # 안전교육은 필수 Section 이라 정상 Profile 로는 나지 않는다 — 방어 매핑이다(ADR-052).
+        "monthly_safety_candidates_require_safety_section",
     }
 )
 # 서버의 승인 참조자료를 쓸 수 없다 — 운영 문의.
@@ -148,6 +154,12 @@ _REFERENCE_UNAVAILABLE = frozenset(
         "safety_rule_not_approved",
         "evidence_classification_store_mismatch",
         "curriculum_reference_unavailable",
+        # 안전교육 후보를 만들 승인 자료가 없거나 어긋났다. 다시 해도 같다(ADR-052).
+        "monthly_safety_evidence_not_active",
+        "monthly_safety_rule_incomplete",
+        "monthly_safety_evidence_version_mismatch",
+        "monthly_safety_evidence_store_mismatch",
+        "monthly_life_safety_grounding_insufficient",
     }
 )
 
@@ -307,7 +319,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
                 safety_rule=SAFETY_RULE,
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
-                safety_placement=SAFETY_PLACEMENT,
+                safety_candidates=SAFETY_CANDIDATES,
                 parent_subthemes=parent_subthemes,
             )
         ).plan
