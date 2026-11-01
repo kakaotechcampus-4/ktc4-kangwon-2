@@ -36,6 +36,7 @@ from ssuksak.adapters.weekly_evidence_classification_repository import (
 )
 from ssuksak.planning.application.generate_weekly_plan import GenerateWeeklyPlan
 from ssuksak.planning.application.ports import MonthlyTemplateRepository
+from ssuksak.planning.application.weekly_activities import WeeklyActivities
 from ssuksak.planning.application.weekly_lifecycle import (
     ConfirmWeeklyPlan,
     EditWeeklyPlanCell,
@@ -50,9 +51,15 @@ from ssuksak.planning.domain.weekly_plan import (
 from ssuksak.planning.planner.weekly import WeeklyPlanner, WeeklyPlanningProvider
 
 WEEKLY_TEMPLATE_REF = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.1.0")
+WEEKLY_DAY_TEMPLATE_REF = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.2.0")
 WEEKLY_TEMPLATE_PATH = (
     Path(__file__).resolve().parents[3] / "data" / "templates" / "weekly_template_a_v0_1_0.json"
 )
+
+
+def weekly_activities(*, plan_repository, parent_plan_repository, clock, id_generator):
+    return WeeklyActivities(plan_repository=plan_repository, parent_plan_repository=parent_plan_repository,
+                            clock=clock, id_generator=id_generator, activity_repository=JsonActivityReferenceRepository())
 
 
 def _daily_life_catalog():
@@ -85,7 +92,7 @@ def weekly_generation(
         # Core finds no Template (503), instead of FileNotFoundError leaking as a 500.
         template_repository=template_repository
         or JsonMonthlyTemplateRepository(
-            paths=(WEEKLY_TEMPLATE_PATH,) if WEEKLY_TEMPLATE_PATH.is_file() else ()
+            paths=tuple(p for p in (WEEKLY_TEMPLATE_PATH, WEEKLY_TEMPLATE_PATH.with_name("weekly_template_a_v0_2_0.json")) if p.is_file())
         ),
         safety_repository=JsonSafetyLegalRuleRepository(),
         clock=clock,
