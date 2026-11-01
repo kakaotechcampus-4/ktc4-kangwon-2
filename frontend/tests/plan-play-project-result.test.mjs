@@ -112,11 +112,9 @@ const { default: Sheet, windowScrollDelta } = compile(
     "./PlayProjectResult.module.css": esModule(resultStyles),
   },
 );
+const { default: PickBoard } = compile("../components/plan-ui/PlayPickBoard.tsx", {});
 const { default: Picking } = compile("../components/plan-generator/PlayProjectPicking.tsx", {
-  react: { useRef: (value) => ({ current: value }), useEffect: () => {} },
-  "@/components/workspace/Workspace.module.css": esModule(css),
-  "./PlayProjectResult.module.css": esModule(resultStyles),
-  "./playProjectPagination": sheetHelpers,
+  "@/components/plan-ui/PlayPickBoard": esModule(PickBoard),
 });
 // 저장 훅 대역 — 화면이 무엇을 저장하라고 넘겼는지와 저장 표시만 본다. 큐 규칙은 따로 시험한다.
 const saveStub = {
@@ -215,8 +213,11 @@ const sheetModules = {
   "./PlayProjectSheet": esModule(Sheet),
   "./PlayProjectPicking": esModule(Picking),
 };
+// 고른 놀이는 목록 위로 모인다 — 시험은 후보 순서(이름 순)로 다시 세워서 본다.
 const pickToggles = (nodes) =>
-  nodes.filter((node) => /^「.*」 선택(하기|됨)$/.test(node.props?.["aria-label"] ?? ""));
+  nodes
+    .filter((node) => /^「.*」 (고르기|빼기)$/.test(node.props?.["aria-label"] ?? ""))
+    .sort((a, b) => a.props["aria-label"].localeCompare(b.props["aria-label"]));
 const tables = (nodes) => nodes.filter((node) => node.type === "table");
 function resultRenderer(planValue, initial = [], desktop = false, extraProps = {}) {
   // ② 를 짧은 상태로 시작하는 테스트는 숨은 「선택한 놀이」 패널이 아니라 보이는 쪽을 쓴다.
@@ -336,16 +337,16 @@ test("PlayProjectResult shows notices, accessible period tabs, and ten complete 
   assert.equal(panel.props.tabIndex, 0);
   assert.equal(panel.props["aria-labelledby"], tabs[0].props.id);
   assert.ok(tabs.every((tab) => tab.props["aria-controls"] === panel.props.id));
-  const cards = nodes.filter((node) => node.type === "article");
-  assert.equal(cards.length, 10);
   assert.equal(pickToggles(nodes).length, 10);
   assert.equal(nodes.filter((node) => node.type === "input").length, 0);
-  assert.equal(text(nodes.find((node) => node.type === "h2")), "놀이 0");
-  // 카드는 요약만 보인다: 놀이명 · 지원 방향 앞부분 · 지원매체. 배움은 자세히 보기 안에 있다.
-  assert.ok(text(cards[0]).includes("지원매체 종이 상자"));
-  assert.ok(text(cards[0]).includes("관심을 따라 돕습니다."));
-  assert.equal(text(cards[0]).includes("배움 한 줄"), false);
-  assert.equal(text(pickToggles(nodes)[2]), "+ 선택하기");
+  // 목록 줄은 이름 · 지원매체만. 가운데 「자세히 보기」가 첫 후보의 세 칸을 모두 보여 준다.
+  const list = nodes.find((node) => node.props?.["aria-label"] === "3월~5월 놀이 후보");
+  assert.equal(text(list).includes("관심을 따라 돕습니다."), false);
+  const detail = nodes.find((node) => node.props?.["aria-label"] === "놀이 자세히");
+  assert.equal(text(all(detail).find((node) => node.type === "h3")), "놀이 0");
+  for (const words of ["종이 상자", "관심을 따라 돕습니다.", "배움 한 줄"])
+    assert.ok(text(detail).includes(words), words);
+  assert.equal(pickToggles(nodes)[2].props["aria-pressed"], false);
   assert.equal(
     nodes
       .filter((node) => node.type === "button")
@@ -542,7 +543,7 @@ test("available plays keep candidate order and add appends, focuses, and checks 
   nodes.find((node) => text(node) === "① 놀이 고르기").props.onClick();
   nodes = all(view.render());
   assert.equal(
-    nodes.find((node) => node.props?.["aria-label"] === "「놀이 3」 선택됨").props["aria-pressed"],
+    nodes.find((node) => node.props?.["aria-label"] === "「놀이 3」 빼기").props["aria-pressed"],
     true,
   );
   nodes.find((node) => text(node) === "② 배치하고 다듬기").props.onClick();
@@ -606,7 +607,7 @@ test("remove unpicks, clears selection/count, focuses heading, and re-picking ap
   assert.ok(nodes.some((node) => node.props?.role === "tab" && text(node) === "3월~5월 · 2/5"));
   nodes.find((node) => text(node) === "① 놀이 고르기").props.onClick();
   nodes = all(view.render());
-  const toggle = nodes.find((node) => node.props?.["aria-label"] === "「놀이 1」 선택하기");
+  const toggle = nodes.find((node) => node.props?.["aria-label"] === "「놀이 1」 고르기");
   assert.equal(toggle.props["aria-pressed"], false);
   toggle.props.onClick();
   assert.deepEqual(view.state[2].period0, ["cand0", "cand2", "cand1"]);
@@ -931,7 +932,7 @@ test("five picks disable the remaining candidates and unpicking opens a slot", (
   let toggles = pickToggles(nodes);
   assert.equal(toggles.filter((node) => node.props["aria-pressed"]).length, 5);
   assert.equal(toggles.filter((node) => node.props.disabled).length, 5);
-  assert.deepEqual(toggles.slice(0, 5).map(text), Array(5).fill("✓ 선택됨"));
+  assert.ok(toggles.slice(0, 5).every((node) => node.props["aria-label"].endsWith(" 빼기")));
   assert.ok(
     nodes.some((node) => text(node).includes("5개를 모두 골랐어요. 바꾸려면 하나를 빼 주세요.")),
   );
@@ -1057,14 +1058,12 @@ const dragEvent = () => ({
   preventDefault() {},
 });
 
-test("pick buttons toggle with aria-pressed and the side list fills from the top with empty slots", () => {
+test("pick buttons toggle with aria-pressed and the side list numbers picks in pick order", () => {
   const view = resultRenderer(plan());
   let nodes = all(view.render());
-  const panel = () => nodes.find((node) => node.props?.["aria-label"] === "고른 놀이");
-  const slots = () =>
-    all(panel()).filter((node) => node.type === "li" && node.props.className === "slot");
-  assert.equal(slots().length, 5);
-  assert.ok(slots().every((slot) => text(slot).includes("우리 반의 놀이를 골라 주세요")));
+  const panel = () => nodes.find((node) => node.props?.["aria-label"] === "고른 3월~5월 놀이");
+  const slots = () => all(panel()).filter((node) => node.type === "li");
+  assert.equal(slots().length, 0);
   pickToggles(nodes)[3].props.onClick();
   pickToggles(nodes)[1].props.onClick();
   nodes = all(view.render());
@@ -1072,96 +1071,79 @@ test("pick buttons toggle with aria-pressed and the side list fills from the top
     pickToggles(nodes).map((node) => node.props["aria-pressed"]),
     [false, true, false, true, false, false, false, false, false, false],
   );
-  assert.equal(text(pickToggles(nodes)[1]), "✓ 선택됨");
-  assert.equal(text(panel().props.children[0]), "고른 놀이 2/5");
-  assert.deepEqual(slots().map(text), [
-    "1놀이 3×",
-    "2놀이 1×",
-    "3우리 반의 놀이를 골라 주세요",
-    "4우리 반의 놀이를 골라 주세요",
-    "5우리 반의 놀이를 골라 주세요",
-  ]);
+  assert.ok(text(panel()).includes("2/5"));
+  assert.deepEqual(slots().map(text), ["1놀이 3✕", "2놀이 1✕"]);
   assert.ok(nodes.some((node) => node.type === "strong" && text(node) === "2"));
   assert.ok(text(nodes.find((node) => node.props?.className === "total")).includes("/20개 선택"));
-  assert.ok(
-    text(all(panel()).find((node) => node.props?.["aria-label"] === "구간별 진행")).includes(
-      "3월~5월2/5",
-    ),
-  );
   all(panel())
     .find((node) => node.props?.["aria-label"] === "놀이 3 빼기")
     .props.onClick();
   nodes = all(view.render());
   assert.deepEqual(view.state[2].period0, ["cand1"]);
-  assert.equal(text(slots()[0]), "1놀이 1×");
+  assert.equal(text(slots()[0]), "1놀이 1✕");
   assert.equal(text(nodes.find((node) => node.props?.className === "total")), "전체 1/20개 선택");
-  const arrange = all(panel()).find((node) => text(node) === "배치하고 다듬기로");
+  const arrange = all(panel()).find(
+    (node) => node.type === "button" && text(node) === "배치하고 다듬기로",
+  );
   assert.equal(arrange.props.disabled, undefined);
   arrange.props.onClick();
   assert.equal(view.state[1], 1);
 });
 
-test("the detail dialog shows read-only fields and toggles the pick without closing", () => {
+test("the detail panel shows read-only fields and toggles the pick in place", () => {
   const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand1"] }, 0));
   let nodes = all(view.render());
-  assert.equal(
-    nodes.some((node) => node.type === "dialog"),
-    false,
-  );
-  nodes.find((node) => node.props?.["aria-label"] === "놀이 3 자세히 살펴보기").props.onClick();
+  const detail = () => all(nodes.find((node) => node.props?.["aria-label"] === "놀이 자세히"));
+  // 처음에는 첫 후보를 띄운다.
+  assert.equal(text(detail().find((node) => node.type === "h3")), "놀이 0");
+  // 줄의 이름을 누르면 가운데에 띄우기만 하고 고르지는 않는다.
+  nodes
+    .find(
+      (node) =>
+        node.type === "button" &&
+        node.props["aria-pressed"] === undefined &&
+        text(node).startsWith("놀이 3"),
+    )
+    .props.onClick();
   assert.equal(view.state[7], "cand3");
+  assert.deepEqual(view.state[2].period0, ["cand1"]);
   nodes = all(view.render());
-  const dialog = nodes.find((node) => node.type === "dialog");
-  assert.equal(dialog.props["aria-labelledby"], "play-project-detail-title");
-  const inside = all(dialog);
-  for (const label of ["지원매체", "내용 및 지원 방향 예상하기", "놀이를 통한 배움", "배움 한 줄"])
-    assert.ok(text(dialog).includes(label), label);
+  assert.equal(text(detail().find((node) => node.type === "h3")), "놀이 3");
+  for (const label of ["지원매체", "내용 및 지원 방향", "놀이를 통한 배움", "배움 한 줄"])
+    assert.ok(
+      detail().some((node) => text(node).includes(label)),
+      label,
+    );
   assert.equal(
-    inside.some((node) => node.type === "textarea" || node.type === "input"),
+    detail().some((node) => node.type === "textarea" || node.type === "input"),
     false,
   );
-  const toggle = inside.find((node) => node.props?.["aria-label"] === "「놀이 3」 선택하기");
-  assert.equal(toggle.props["aria-pressed"], false);
-  toggle.props.onClick();
+  const toggle = () => detail().find((node) => node.type === "button");
+  assert.equal(text(toggle()), "이 놀이 고르기");
+  assert.equal(toggle().props["aria-pressed"], false);
+  toggle().props.onClick();
   nodes = all(view.render());
   assert.deepEqual(view.state[2].period0, ["cand1", "cand3"]);
   assert.equal(view.state[7], "cand3");
-  assert.equal(
-    all(nodes.find((node) => node.type === "dialog")).find(
-      (n) => n.props?.["aria-label"] === "「놀이 3」 선택됨",
-    ).props["aria-pressed"],
-    true,
-  );
-  // 닫기 · 배경 클릭은 dialog.close() 만 부른다. 상태는 네이티브 close 이벤트(Esc 도 같다)가 푼다.
-  const open = nodes.find((node) => node.type === "dialog");
-  let closed = 0;
-  open.props.ref.current = { close: () => closed++ };
-  all(open)
-    .find((node) => text(node) === "닫기")
-    .props.onClick();
-  open.props.onClick({ target: "inner", currentTarget: "outer" });
-  assert.equal(closed, 1);
-  open.props.onClick({ target: "outer", currentTarget: "outer" });
-  assert.equal(closed, 2);
-  assert.equal(view.state[7], "cand3");
-  open.props.onClose();
-  assert.equal(view.state[7], null);
+  assert.equal(text(toggle()), "✓ 골랐어요");
+  assert.equal(toggle().props["aria-pressed"], true);
 });
 
-test("the detail dialog cannot add a sixth pick but can still remove one", () => {
+test("the detail panel cannot add a sixth pick but can still remove one", () => {
   const five = ["cand0", "cand1", "cand2", "cand4", "cand5"];
   const view = resultRenderer(plan(), FULL_STATE({ period0: five }, 0, "edit", "cand3"));
   let nodes = all(view.render());
-  const label = (name) => (node) => node.props?.["aria-label"] === name;
-  assert.equal(
-    all(nodes.find((n) => n.type === "dialog")).find(label("「놀이 3」 선택하기")).props.disabled,
-    true,
-  );
+  const toggle = () =>
+    all(nodes.find((node) => node.props?.["aria-label"] === "놀이 자세히")).find(
+      (node) => node.type === "button",
+    );
+  assert.equal(text(toggle()), "이 놀이 고르기");
+  assert.equal(toggle().props.disabled, true);
   view.state[7] = "cand0";
   nodes = all(view.render());
-  const toggle = all(nodes.find((n) => n.type === "dialog")).find(label("「놀이 0」 선택됨"));
-  assert.equal(toggle.props.disabled, false);
-  toggle.props.onClick();
+  assert.equal(text(toggle()), "✓ 골랐어요");
+  assert.equal(toggle().props.disabled, false);
+  toggle().props.onClick();
   assert.deepEqual(view.state[2].period0, ["cand1", "cand2", "cand4", "cand5"]);
 });
 
@@ -1452,7 +1434,7 @@ test("left tablist is a roving tabindex and arrow, Home, End keys activate and f
 test("removing from the side list focuses the next slot's x, or the panel heading at the end", () => {
   const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand0", "cand1", "cand2"] }, 0));
   let nodes = all(view.render());
-  const panel = () => nodes.find((node) => node.props?.["aria-label"] === "고른 놀이");
+  const panel = () => nodes.find((node) => node.props?.["aria-label"] === "고른 3월~5월 놀이");
   const remove = (name) =>
     all(panel()).find((node) => node.props?.["aria-label"] === `${name} 빼기`);
   remove("놀이 0").props.onClick();
@@ -1469,7 +1451,7 @@ test("removing from the side list focuses the next slot's x, or the panel headin
   assert.ok(heading.props.id.endsWith("-heading"));
 });
 
-test("changing the period closes the detail dialog and clears the drag and notice", () => {
+test("changing the period clears the detail, the drag and the notice", () => {
   const view = resultRenderer(plan(), FULL_STATE({ period0: ["cand0"] }, 0, "edit", "cand3"));
   view.state[8] = "안내";
   view.state[9] = { periodKey: "period0", rowKey: "cand0", from: "doc", over: 0 };
@@ -1501,8 +1483,8 @@ test("pick button names contain the visible words and the play name", () => {
   const toggles = pickToggles(all(view.render()));
   const visible = (node) => text(node).replace(/^[+✓] /, "");
   assert.ok(toggles.every((node) => node.props["aria-label"].includes(visible(node))));
-  assert.equal(toggles[0].props["aria-label"], "「놀이 0」 선택하기");
-  assert.equal(toggles[1].props["aria-label"], "「놀이 1」 선택됨");
+  assert.equal(toggles[0].props["aria-label"], "「놀이 0」 고르기");
+  assert.equal(toggles[1].props["aria-label"], "「놀이 1」 빼기");
 });
 
 test("PlayProjectResult does not use browser storage", () => {
@@ -2294,11 +2276,11 @@ test("every way of changing picks saves all four periods as the full body", () =
   const byLabel = (nodes, label) => nodes.find((node) => node.props?.["aria-label"] === label);
   // ① 선택 · 해제(× 와 같은 흐름)
   assert.deepEqual(
-    after(0, "edit", false, (nodes) => byLabel(nodes, "「놀이 5」 선택하기").props.onClick()),
+    after(0, "edit", false, (nodes) => byLabel(nodes, "「놀이 5」 고르기").props.onClick()),
     full(["cand0", "cand1", "cand2", "cand5"], ["cand4"]),
   );
   assert.deepEqual(
-    after(0, "edit", false, (nodes) => byLabel(nodes, "「놀이 1」 선택됨").props.onClick()),
+    after(0, "edit", false, (nodes) => byLabel(nodes, "「놀이 1」 빼기").props.onClick()),
     full(["cand0", "cand2"], ["cand4"]),
   );
   // ① 오른쪽 목록의 ×
