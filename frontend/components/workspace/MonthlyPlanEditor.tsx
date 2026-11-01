@@ -14,6 +14,7 @@ import {
   downloadMonthlyHwpx,
   editMonthlyCell,
   getMonthlyPlanAudit,
+  placeMonthlySafety,
   regenerateMonthlyCell,
 } from "@/lib/api/monthly";
 import { isSaveConflict } from "@/lib/api/plans";
@@ -21,7 +22,9 @@ import type { MonthlyAuditEvent, MonthlyCell, MonthlyPlan } from "@/lib/api/type
 import { sectionName } from "@/lib/monthly/section-labels";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
+import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import { Cell, SheetFrame } from "@/components/plan-generator/PlayMonthlySheet";
+import { noticeSummary } from "@/components/plan-generator/PlayMonthlyView";
 import type { SheetZoom } from "@/components/plan-generator/playProjectPagination";
 import styles from "@/components/plan-generator/PlayMonthlyView.module.css";
 import { ws } from "./WorkspaceUI";
@@ -69,6 +72,8 @@ export default function MonthlyPlanEditor({
 }) {
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  // 안전교육 줄에서 누른 주 — 같은 후보를 여러 주에 둘 수 있어 id 만으로는 어느 주인지 모른다.
+  const [safetyWeek, setSafetyWeek] = useState<string | null>(null);
   const [bumps, setBumps] = useState<Record<string, number>>({});
   const [status, setStatus] = useState<keyof typeof SAVE_LABEL>("idle");
   const [busy, setBusy] = useState("");
@@ -98,9 +103,27 @@ export default function MonthlyPlanEditor({
   const sections = plan.sections
     .filter((s) => s.visible && s.role === "CONTENT")
     .sort((a, b) => a.order - b.order);
-  const cells = sections.flatMap((s) => s.cells.map((cell) => ({ section: s, cell })));
-  const picked = confirmed ? null : (cells.find((c) => c.cell.item_id === selected) ?? null);
+  // 후보가 있으면 안전교육은 후보를 주에 두는 방식이다 — 주별 칸은 서버가 편집을 막고 늘 비어 있다.
+  const candidateMode = plan.safety_candidates.length > 0;
+  const cells = sections.flatMap((s) =>
+    candidateMode && s.section_key === "safety_education"
+      ? []
+      : s.cells.map((cell) => ({ section: s, cell })),
+  );
+  // 후보 칸은 누른 주에 지금 그 후보가 놓여 있을 때만 고른 칸이 된다(비우거나 바꾸면 편집기가 닫힌다).
+  const safety = sections.find((s) => s.section_key === "safety_education");
+  const candidate =
+    safety &&
+    plan.safety_weeks.find((w) => w.week_id === safetyWeek)?.candidate_item_id === selected
+      ? plan.safety_candidates.find((c) => c.cell.item_id === selected)
+      : undefined;
+  const picked = confirmed
+    ? null
+    : ((candidate && safety
+        ? { section: safety, cell: candidate.cell }
+        : cells.find((c) => c.cell.item_id === selected)) ?? null);
   const blank = cells.some(({ cell }) => !cell.value.trim());
+  const summary = noticeSummary(plan.notices);
 
   const accept = (next: MonthlyPlan) => {
     latest.current = next;
@@ -135,7 +158,10 @@ export default function MonthlyPlanEditor({
     // 같은지는 보내기 직전에 본다 — 앞 저장이 끝난 뒤의 서버 값과 비교해야 마지막 입력을 버리지 않는다.
     enqueue(async () => {
       const cur = latest.current;
-      const now = cur.sections.flatMap((s) => s.cells).find((c) => c.item_id === itemId)?.value;
+      const now = [
+        ...cur.sections.flatMap((s) => s.cells),
+        ...cur.safety_candidates.map((c) => c.cell),
+      ].find((c) => c.item_id === itemId)?.value;
       if (now === text) return settled(failed.current.has(itemId));
       if (mounted.current) setStatus("saving");
       try {
@@ -227,6 +253,12 @@ export default function MonthlyPlanEditor({
       "다시 만들었어요.",
     );
   };
+  const place = (weekId: string, candidateItemId: string | null) =>
+    afterSaves(
+      "safety:" + weekId,
+      (cur) => placeMonthlySafety(cur.id, weekId, candidateItemId, cur.revision),
+      candidateItemId ? "안전교육을 두었어요." : "안전교육을 비웠어요.",
+    );
   const confirm = () =>
     afterSaves(
       "confirm",
@@ -253,6 +285,7 @@ export default function MonthlyPlanEditor({
         {plan.parent.theme && <span className={ws.muted}>연간 주제 · {plan.parent.theme}</span>}
         <span className={ws.muted}>{note}</span>
         {blank && <span role="status">빈 칸이 있어요 (확정을 막지 않아요)</span>}
+        {!confirmed && candidateMode && summary && <span role="status">{summary}</span>}
         {/* 저장 표시와 안내는 줄을 따로 쓴다. 같은 줄에 두면 「저장됨」이 「저장 중…」으로
             바뀔 때 줄이 접혔다 펴지면서 바로 아래 「확정하기」가 커서 밑에서 움직였다. */}
         <span className={styles.metaLine}>
@@ -314,7 +347,12 @@ export default function MonthlyPlanEditor({
               <PlayCellEditor
                 key={picked.cell.item_id + ":" + stamp(picked.cell.item_id)}
                 id="monthly-cell"
-                label={label(picked.section, picked.cell)}
+                label={
+                  candidate
+                    ? "안전교육 후보 · " +
+                      (weeks.find((w) => w.week_id === safetyWeek)?.label ?? "")
+                    : label(picked.section, picked.cell)
+                }
                 value={shown(picked.cell)}
                 allowBlank
                 maxLength={Infinity}
@@ -329,6 +367,7 @@ export default function MonthlyPlanEditor({
                   )
                 }
               />
+              {candidate && <p>이 문장을 둔 다른 주도 같이 바뀌어요.</p>}
               {picked.cell.state === "EMPTY_UNRESOLVED" && (
                 <p>근거가 없어 비워 두었어요. 직접 적어주세요.</p>
               )}
@@ -359,6 +398,9 @@ export default function MonthlyPlanEditor({
                   </button>
                 )}
             </>
+          )}
+          {!confirmed && candidateMode && (
+            <PlayMonthlySafetyPanel plan={plan} onPlace={place} disabled={locked} />
           )}
         </aside>
         <SheetFrame
@@ -391,6 +433,29 @@ export default function MonthlyPlanEditor({
                       </td>
                     ) : (
                       weeks.map((w) => {
+                        if (candidateMode && section.section_key === "safety_education") {
+                          // 그 주에 둔 후보의 표시값. 표시값이 "" 여도 칸은 그려 눌러 채울 수 있게 한다.
+                          const sw = plan.safety_weeks.find((x) => x.week_id === w.week_id);
+                          return (
+                            <td key={w.week_id}>
+                              {sw?.candidate_item_id && (
+                                <Cell
+                                  selected={at.selected}
+                                  onSelect={
+                                    confirmed
+                                      ? undefined
+                                      : (id) => {
+                                          setSelected(id);
+                                          setSafetyWeek(w.week_id);
+                                        }
+                                  }
+                                  id={sw.candidate_item_id}
+                                  value={sw.display_value}
+                                />
+                              )}
+                            </td>
+                          );
+                        }
                         const cell = byWeek.get(w.week_id);
                         return (
                           <td key={w.week_id}>

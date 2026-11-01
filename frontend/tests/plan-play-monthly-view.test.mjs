@@ -820,8 +820,8 @@ test("거절 안내 — 칸이면 「칸」, 안전 배치 · 삭제 · 복사�
 });
 
 // ---- 월간 v1 편집 화면 (MonthlyPlanEditor) — 같은 배치, 저장 줄 경계 ----
-function openV1Editor(findings = []) {
-  globalThis.document ??= { activeElement: null };
+function openV1Editor(findings = [], setup = (p) => p) {
+  globalThis.document = { activeElement: null };
   const listeners = [];
   globalThis.window = {
     addEventListener: (type) => listeners.push(type),
@@ -830,7 +830,7 @@ function openV1Editor(findings = []) {
   const h = harness();
   let n = 0;
   const cell = { item_id: "c1", week_id: "W1", value: "A", state: "FILLED", evidence: [] };
-  let server = {
+  let server = setup({
     id: 1,
     revision: 1,
     status: "DRAFT",
@@ -851,28 +851,72 @@ function openV1Editor(findings = []) {
         cells: [cell],
       },
     ],
-  };
+    safety_candidates: [],
+    safety_weeks: [],
+    notices: [],
+  });
   const sent = [];
+  const edits = [];
+  const placed = [];
   const waits = [];
+  const displayOf = (candidates, itemId) => {
+    const value = candidates.find((c) => c.cell.item_id === itemId)?.cell.value ?? "";
+    return value ? `[교통안전] - ${value}` : "";
+  };
   // 서버처럼 같은 값은 거절하고(monthly_cell_value_unchanged), 응답은 시험이 풀 때까지 붙잡는다.
-  const edit = async (_id, _item, value) => {
+  const edit = async (id, itemId, value, rev) => {
     sent.push(value);
+    edits.push([id, itemId, value, rev]);
     await new Promise((ok, fail) => waits.push({ ok, fail }));
-    if (value === server.sections[0].cells[0].value) throw new StubApiError(422, "unchanged");
-    const cells = [{ ...cell, value }];
+    const prev = [
+      ...server.sections.flatMap((s) => s.cells),
+      ...server.safety_candidates.map((c) => c.cell),
+    ].find((c) => c.item_id === itemId)?.value;
+    if (value === prev) throw new StubApiError(422, "unchanged");
+    const safety_candidates = server.safety_candidates.map((c) =>
+      c.cell.item_id === itemId ? { ...c, cell: { ...c.cell, value } } : c,
+    );
     server = {
       ...server,
       revision: server.revision + 1,
-      sections: [{ ...server.sections[0], cells }],
+      sections: server.sections.map((s) => ({
+        ...s,
+        cells: s.cells.map((c) => (c.item_id === itemId ? { ...c, value } : c)),
+      })),
+      safety_candidates,
+      safety_weeks: server.safety_weeks.map((w) =>
+        w.candidate_item_id === itemId
+          ? { ...w, display_value: displayOf(safety_candidates, itemId) }
+          : w,
+      ),
     };
     return server;
   };
+  let place = async (id, weekId, candidateItemId, rev) => {
+    placed.push([id, weekId, candidateItemId, rev]);
+    server = {
+      ...server,
+      revision: server.revision + 1,
+      safety_weeks: server.safety_weeks.map((w) =>
+        w.week_id === weekId
+          ? {
+              ...w,
+              candidate_item_id: candidateItemId,
+              display_value: displayOf(server.safety_candidates, candidateItemId),
+            }
+          : w,
+      ),
+    };
+    return server;
+  };
+  const { noticeSummary } = load();
   const { default: View } = compile("../components/workspace/MonthlyPlanEditor.tsx", {
     // 의존성 목록이 없는 effect 는 실제 React 처럼 매번 돈다.
     react: { ...h.react, useEffect: (fn, deps) => h.react.useEffect(fn, deps ?? [n++]) },
     "@/lib/api/client": { ApiError: StubApiError },
     "@/lib/api/monthly": {
       editMonthlyCell: edit,
+      placeMonthlySafety: (...a) => place(...a),
       confirmMonthlyPlan: async () => server,
       regenerateMonthlyCell: async () => server,
       getMonthlyPlanAudit: async () => ({ items: [] }),
@@ -881,11 +925,37 @@ function openV1Editor(findings = []) {
     "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
     "@/lib/monthly/section-labels": { sectionName: (key) => key },
     "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
-    "@/components/plan-generator/PlayCellEditor": esModule(editorStub),
+    "@/components/plan-generator/PlayCellEditor": esModule((p) => {
+      const clear = () => {
+        globalThis.document.activeElement = null;
+      };
+      return jsx("editor", {
+        ...p,
+        onDraft: (v) => {
+          p.onDraft(v);
+          globalThis.document.activeElement = {
+            blur: () => {
+              clear();
+              p.onSave(v.trim());
+            },
+          };
+        },
+        onSave: (v) => {
+          clear();
+          p.onSave(v);
+        },
+        onRevert: () => {
+          clear();
+          p.onRevert();
+        },
+      });
+    }),
+    "@/components/plan-generator/PlayMonthlySafetyPanel": esModule((props) => jsx("safety", props)),
     "@/components/plan-generator/PlayMonthlySheet": {
       Cell: (props) => jsx("cell", props),
       SheetFrame: (props) => jsx("frame", props),
     },
+    "@/components/plan-generator/PlayMonthlyView": { noticeSummary },
     "@/components/plan-generator/PlayMonthlyView.module.css": esModule(css),
     "./WorkspaceUI": { ws: css },
   });
@@ -903,6 +973,9 @@ function openV1Editor(findings = []) {
     .props.onSelect("c1");
   return {
     sent,
+    edits,
+    placed,
+    setPlace: (fn) => (place = fn),
     waits,
     listeners,
     props,
@@ -977,4 +1050,227 @@ test("v1 — 반 · 월 이동은 기다리는 동안 입력을 잠그고, 늦�
   view.waits.shift().ok();
   assert.equal(await view.props.flushRef.current(), true);
   assert.equal(view.stored(), "C");
+});
+
+const withV1Candidates = (plan) => ({
+  ...plan,
+  weeks: [
+    { week_id: "W1", active: true, label: "1주" },
+    { week_id: "W2", active: true, label: "2주" },
+  ],
+  sections: [
+    {
+      ...plan.sections[0],
+      cells: [
+        plan.sections[0].cells[0],
+        { item_id: "c2", week_id: "W2", value: "B", state: "FILLED", evidence: [] },
+      ],
+    },
+    {
+      section_key: "safety_education",
+      label: "안전교육",
+      role: "CONTENT",
+      visible: true,
+      order: 2,
+      repeat_by: "WEEK",
+      cells: [
+        { item_id: "s_w1", week_id: "W1", value: "", state: "EMPTY_UNRESOLVED", evidence: [] },
+        { item_id: "s_w2", week_id: "W2", value: "", state: "EMPTY_UNRESOLVED", evidence: [] },
+      ],
+    },
+  ],
+  safety_candidates: [
+    {
+      kind: "STATUTORY",
+      category_id: "traffic",
+      topic_group: null,
+      cell: {
+        item_id: "cand_1",
+        week_id: null,
+        value: "횡단보도 건너기",
+        state: "FILLED",
+        evidence: [],
+      },
+    },
+  ],
+  safety_weeks: [
+    {
+      week_id: "W1",
+      candidate_item_id: "cand_1",
+      display_value: "[교통안전] - 횡단보도 건너기",
+    },
+    { week_id: "W2", candidate_item_id: null, display_value: "" },
+  ],
+  notices: [{ code: "SAFETY_UNPLACED", week_id: "W2" }],
+});
+
+test("v1 — 후보가 없는 계획은 패널과 안내가 없고 안전교육 줄이 주별 칸을 보이며 고를 수 있다", () => {
+  const view = openV1Editor([], (plan) => ({
+    ...plan,
+    sections: [
+      ...plan.sections,
+      {
+        section_key: "safety_education",
+        label: "안전교육",
+        role: "CONTENT",
+        visible: true,
+        order: 2,
+        repeat_by: "WEEK",
+        cells: [
+          {
+            item_id: "s_w1",
+            week_id: "W1",
+            value: "교통안전 약속",
+            state: "FILLED",
+            evidence: [],
+          },
+        ],
+      },
+    ],
+    notices: [{ code: "SAFETY_UNPLACED", week_id: "W1" }],
+  }));
+  const tree = view.render();
+  assert.equal(node(tree, "safety").length, 0);
+  assert.doesNotMatch(text(tree), /안전교육 1주 미배치/);
+  const [safetyRow] = rowsOf(tree, "tr", "safety_education");
+  const [safetyCell] = node(safetyRow, "cell");
+  assert.equal(safetyCell.props.id, "s_w1");
+  assert.equal(safetyCell.props.value, "교통안전 약속");
+  safetyCell.props.onSelect("s_w1");
+  assert.equal(view.editor().label, "safety_education · 1주");
+  assert.equal(view.editor().value, "교통안전 약속");
+});
+
+test("v1 — 후보가 있는 계획은 패널 · 안내를 보이고(확정본은 숨김) 안전 줄에 둔 후보의 display_value 만 그리며 빈 주별 안전 칸 때문에 「빈 칸이 있어요」가 뜨지 않는다", () => {
+  const view = openV1Editor([], withV1Candidates);
+  const tree = view.render();
+  assert.equal(node(tree, "safety").length, 1);
+  assert.match(text(tree), /안전교육 1주 미배치/);
+  assert.equal(withText(tree, "span", "빈 칸이 있어요").length, 0);
+  const [safetyRow] = rowsOf(tree, "tr", "safety_education");
+  const tds = all(safetyRow).filter((n) => n.type === "td");
+  assert.equal(tds.length, 2);
+  assert.equal(node(tds[0], "cell")[0].props.id, "cand_1");
+  assert.equal(node(tds[0], "cell")[0].props.value, "[교통안전] - 횡단보도 건너기");
+  assert.equal(node(tds[1], "cell").length, 0);
+  const ids = node(tree, "cell").map((c) => c.props.id);
+  assert.ok(!ids.includes("s_w1") && !ids.includes("s_w2"));
+
+  view.props.plan = { ...view.props.plan, status: "CONFIRMED" };
+  const confirmed = view.render();
+  assert.equal(node(confirmed, "safety").length, 0);
+  assert.doesNotMatch(text(confirmed), /안전교육 1주 미배치/);
+  const [confirmedCell] = node(rowsOf(confirmed, "tr", "safety_education")[0], "cell");
+  assert.equal(confirmedCell.props.value, "[교통안전] - 횡단보도 건너기");
+  assert.equal(confirmedCell.props.onSelect, undefined);
+});
+
+test("v1 — 후보 두기는 placeMonthlySafety(id, weekId, 후보 id, 현재 revision) 를 부르고 응답을 onPlan 으로 넘기며 409 면 onConflict", async () => {
+  const view = openV1Editor([], withV1Candidates);
+  let conflicts = 0;
+  view.props.onConflict = () => conflicts++;
+  await node(view.render(), "safety")[0].props.onPlace("W2", "cand_1");
+  assert.deepEqual(view.placed, [[1, "W2", "cand_1", 1]]);
+  assert.equal(view.props.plan.revision, 2);
+  assert.equal(view.props.plan.safety_weeks[1].candidate_item_id, "cand_1");
+  assert.match(text(view.render()), /안전교육을 두었어요/);
+
+  view.setPlace(async () => {
+    throw new StubApiError(409, "conflict");
+  });
+  await node(view.render(), "safety")[0].props.onPlace("W2", null);
+  assert.equal(conflicts, 1);
+});
+
+test("v1 — 안전 줄 칸을 누르면 편집기 라벨이 「안전교육 후보 · n주」이고 editMonthlyCell 로 저장하며 그 주를 비우면 편집기가 닫힌다", async () => {
+  const view = openV1Editor([], withV1Candidates);
+  await node(view.render(), "safety")[0].props.onPlace("W2", "cand_1");
+  const safetyCells = node(rowsOf(view.render(), "tr", "safety_education")[0], "cell");
+  safetyCells[1].props.onSelect("cand_1");
+  const opened = view.render();
+  assert.equal(view.editor().label, "안전교육 후보 · 2주");
+  assert.equal(view.editor().value, "횡단보도 건너기");
+  assert.equal(withText(opened, "button", "이 칸만 다시 만들기").length, 0);
+  assert.equal(withText(opened, "p", "이 문장을 둔 다른 주도 같이 바뀌어요.").length, 1);
+
+  view.editor().onSave("손을 들고 건너요");
+  await view.tick();
+  view.waits.shift().ok();
+  await view.tick();
+  assert.deepEqual(view.edits, [[1, "cand_1", "손을 들고 건너요", 2]]);
+
+  await node(view.render(), "safety")[0].props.onPlace("W2", null);
+  assert.equal(node(view.render(), "editor").length, 0);
+});
+
+test("v1 — 열린 입력창에 저장되지 않은 글이 있을 때 후보를 두면 칸 저장이 먼저 끝나고 그 응답 revision 으로 두며, 칸 저장이 실패하면 두지 않는다", async () => {
+  const view = openV1Editor([], withV1Candidates);
+  view.editor().onDraft("바깥놀이 수정");
+  const placing = node(view.render(), "safety")[0].props.onPlace("W2", "cand_1");
+  await view.tick();
+  assert.deepEqual(view.edits, [[1, "c1", "바깥놀이 수정", 1]]);
+  assert.deepEqual(view.placed, []);
+  view.waits.shift().ok();
+  await placing;
+  assert.deepEqual(view.placed, [[1, "W2", "cand_1", 2]]);
+  assert.equal(view.props.plan.revision, 3);
+
+  view.editor().onDraft("실패할 수정");
+  const failed = node(view.render(), "safety")[0].props.onPlace("W2", null);
+  await view.tick();
+  assert.equal(view.edits.length, 2);
+  view.waits.shift().fail(new Error("offline"));
+  await failed;
+  assert.equal(view.placed.length, 1);
+  assert.equal(view.props.plan.safety_weeks[1].candidate_item_id, "cand_1");
+  assert.match(text(view.render()), /저장하지 못한 칸이 있어요/);
+});
+
+test('v1 — 빈 후보(display_value "")도 칸을 그려 눌러 편집기를 열고, 입력 중 글은 안전 줄에 섞이지 않으며, 저장 응답으로 같은 후보를 둔 모든 주의 display_value 가 같이 바뀐다', async () => {
+  const view = openV1Editor([], (plan) => {
+    const next = withV1Candidates(plan);
+    next.safety_candidates[0].cell.value = "";
+    next.safety_weeks = [
+      { week_id: "W1", candidate_item_id: "cand_1", display_value: "" },
+      { week_id: "W2", candidate_item_id: "cand_1", display_value: "" },
+    ];
+    return next;
+  });
+  const safetyCells = () => node(rowsOf(view.render(), "tr", "safety_education")[0], "cell");
+  assert.deepEqual(
+    safetyCells().map((c) => [c.props.id, c.props.value]),
+    [
+      ["cand_1", ""],
+      ["cand_1", ""],
+    ],
+  );
+  safetyCells()[0].props.onSelect("cand_1");
+  assert.equal(view.editor().label, "안전교육 후보 · 1주");
+  assert.equal(view.editor().value, "");
+
+  view.editor().onDraft("손을 들고 건너요");
+  assert.equal(view.editor().value, "손을 들고 건너요");
+  assert.deepEqual(
+    safetyCells().map((c) => c.props.value),
+    ["", ""],
+  );
+
+  view.editor().onSave("손을 들고 건너요");
+  await view.tick();
+  assert.deepEqual(
+    safetyCells().map((c) => c.props.value),
+    ["", ""],
+  );
+  view.waits.shift().ok();
+  await view.tick();
+  assert.deepEqual(
+    safetyCells().map((c) => c.props.value),
+    ["[교통안전] - 손을 들고 건너요", "[교통안전] - 손을 들고 건너요"],
+  );
+
+  view.editor().onDraft("뛰지 않아요");
+  assert.deepEqual(
+    safetyCells().map((c) => c.props.value),
+    ["[교통안전] - 손을 들고 건너요", "[교통안전] - 손을 들고 건너요"],
+  );
 });
