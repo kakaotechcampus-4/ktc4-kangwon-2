@@ -22,6 +22,7 @@ interface NavItem {
   href: string;
   icon: IconName;
   match?: (path: string) => boolean;
+  desktopOnly?: boolean;
 }
 
 /**
@@ -41,7 +42,19 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         label: "관찰 기록",
         href: "/records",
         icon: "users",
-        match: (p) => p.startsWith("/records") || p === "/compare",
+        match: (p) =>
+          (p.startsWith("/records") &&
+            p !== "/records/children" &&
+            !p.startsWith("/records/children/")) ||
+          p === "/compare",
+      },
+      {
+        key: "children",
+        label: "아이별 모아보기",
+        href: "/records/children",
+        icon: "users",
+        desktopOnly: true,
+        match: (p) => p === "/records/children" || p.startsWith("/records/children/"),
       },
       {
         key: "routines",
@@ -70,7 +83,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
 ];
 
 const itemBase =
-  "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[15px] font-medium transition-all " +
+  "items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[15px] font-medium transition-all " +
   "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[15px] text-[12px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start text-center lg:text-left";
 const activeStyle =
   "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
@@ -253,7 +266,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`${itemBase} ${active ? activeStyle : idle}`}
+      className={`${item.desktopOnly ? "hidden lg:flex" : "flex"} ${itemBase} ${active ? activeStyle : idle}`}
     >
       <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
       <span>{item.label}</span>
