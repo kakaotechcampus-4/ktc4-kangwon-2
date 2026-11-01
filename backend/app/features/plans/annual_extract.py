@@ -32,7 +32,6 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 _log = logging.getLogger("app.server")
 
-MAX_BYTES = 10 * 1024 * 1024  # nginx client_max_body_size 10m 과 같은 값(ADR-026)
 # ponytail: 앞부분만 보낸다. 연간 표는 몇 천 자라 넉넉하다 — 잘린 뒤쪽 달은 missing 으로 드러난다.
 MAX_SOURCE_CHARS = 30_000
 ACADEMIC_MONTHS = (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2)
@@ -255,9 +254,7 @@ def extract_annual_import(
     user: CurrentUser,
 ) -> ExtractOut:
     klass = require_own_class(session, user, class_id)
-    data = file.file.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES:
-        raise _error(413, "PAYLOAD_TOO_LARGE", "10MB 이하 파일만 올릴 수 있어요", ["file"])
+    data = file.file.read()  # 크기는 nginx client_max_body_size 10m 이 막는다(§8 관례, ADR-026)
     file_format = detect_format(file.filename or "", data)
     if file_format is None:
         raise _UNSUPPORTED

@@ -38,6 +38,7 @@ from ssuksak.planning import (
     YearlyApplicationError,
     YearlyPlan,
 )
+from ssuksak.planning.application.confirm_yearly_plan import UnconfirmYearlyPlan
 from ssuksak.planning.application.generate_play_project_plan import PlayProjectGenerationError
 from ssuksak.planning.application.play_project_lifecycle import (
     ConfirmPlayProjectPlan,
@@ -47,7 +48,10 @@ from ssuksak.planning.application.play_project_lifecycle import (
     PlayProjectApplicationError,
     SavePlayProjectSelection,
     SavePlayProjectSelectionCommand,
+    UnconfirmPlayProjectPlan,
+    UnconfirmPlayProjectPlanCommand,
 )
+from ssuksak.planning.application.yearly_dto import UnconfirmYearlyPlanCommand
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.rules.errors import YearlyRuleError
@@ -602,9 +606,8 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
     있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
 
-    **왜 필요한가** — 연간을 확정하면 고칠 수도(`내용 수정` 이 꺼진다) 지울 수도
-    (`DELETE` 가 확정본을 막는다) 없다. 계획안에는 일지와 달리 `unconfirm` 이 없어서
-    빠져나올 구멍이 없다. 시험하는 동안 그 막다른 길을 열어 둔다.
+    **왜 필요한가** — `DELETE` 는 확정본과 딸린 월간을 막는다. 확정 취소(ADR-055)로 풀어도
+    딸린 월간이 있으면 지울 수 없다. 시험하는 동안 처음부터 다시 시작하는 길을 열어 둔다.
 
     **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 확정본과 딸린 월간을
     막는다. 그쪽이 교사가 쓰는 길이고, 이건 우리가 시험할 때만 쓰는 길이다. 한 경로에
@@ -962,14 +965,6 @@ def unconfirm_annual_plan(
     **월간이 딸려 있어도 풀린다** — 월간은 부모 스냅샷을 그대로 갖고 `parent_changed` 로 안다.
     풀린 연간으로는 다시 확정할 때까지 새 월간을 못 만든다(생성의 부모 확정 게이트 그대로).
     """
-    # 공개 창구에 없다. 맨 위 import 묶음을 건드리지 않으려고 여기서 가져온다.
-    from ssuksak.planning.application.confirm_yearly_plan import UnconfirmYearlyPlan
-    from ssuksak.planning.application.play_project_lifecycle import (
-        UnconfirmPlayProjectPlan,
-        UnconfirmPlayProjectPlanCommand,
-    )
-    from ssuksak.planning.application.yearly_dto import UnconfirmYearlyPlanCommand
-
     row = _row(session, user, plan_id)
     actor = ActorId(f"user_{user.id}")
     if format_of(row) == PLAY_PROJECT_FORMAT:
