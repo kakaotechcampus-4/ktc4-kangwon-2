@@ -11,6 +11,8 @@ from ssuksak.planning.application.weekly_lifecycle import (
     ConfirmWeeklyPlanCommand,
     EditWeeklyPlanCell,
     EditWeeklyPlanCellCommand,
+    UnconfirmWeeklyPlan,
+    UnconfirmWeeklyPlanCommand,
 )
 from ssuksak.planning.domain.errors import InvalidStateTransitionError
 from ssuksak.planning.domain.identifiers import ItemId
@@ -190,6 +192,20 @@ def test_confirm_records_the_actor_and_is_idempotent():
     saves = harness.weekly_plans.save_count
     assert _confirm(harness, confirmed) == confirmed  # retry: stored Plan, no new event
     assert harness.weekly_plans.save_count == saves
+
+
+def test_unconfirm_reopens_the_plan_and_a_draft_is_a_no_op():
+    harness = WeeklyHarness()
+    confirmed = _confirm(harness, _weekly(harness))
+    unconfirm = UnconfirmWeeklyPlan(**_ports(harness))
+
+    reopened = unconfirm.execute(UnconfirmWeeklyPlanCommand(confirmed.plan_id, TEACHER))
+
+    assert reopened.status is PlanStatus.DRAFT and reopened.cells == confirmed.cells
+    assert reopened.audit.events[:-1] == confirmed.audit.events
+    assert reopened.audit.events[-1].event_type is AuditEventType.UNCONFIRMED
+    assert unconfirm.execute(UnconfirmWeeklyPlanCommand(reopened.plan_id, TEACHER)) is reopened
+    assert _edit(harness, reopened, "theme", "새 주제").status is PlanStatus.DRAFT
 
 
 def test_findings_do_not_block_confirmation():

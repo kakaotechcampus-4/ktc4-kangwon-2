@@ -96,6 +96,12 @@ export const confirmPlayMonthly = (id: number, expectedRevision: number, signal?
     BASE + "/" + id + "/confirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
+/** 확정 취소. 본문은 확정과 같다. 이미 초안이면 200 · 그대로, 낡은 revision 은 409 `STALE_WRITE`. */
+export const unconfirmPlayMonthly = (id: number, expectedRevision: number, signal?: AbortSignal) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/unconfirm",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
 /** 변경 이력. 발생 시각순이고 필터 · 페이지가 없다. */
 export const getPlayMonthlyAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: PlayMonthlyAuditEvent[] }>(BASE + "/" + id + "/audit", { signal });

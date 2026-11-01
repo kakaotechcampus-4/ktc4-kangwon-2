@@ -48,7 +48,7 @@ function nextStamp(audit: MockPlanAudit): string {
 /** Core 가 다시 만들 수 있다고 하는 Section (§9-3). 나머지는 422 `["item_id"]`. */
 export const REGENERATABLE = ["focus", "outdoor_play", "basic_habit", "goals"];
 /** 평일만 센다. 월요일마다 새 주다 — 개수를 정하지 않는다. */
-function weeksOf(targetMonth: string): MonthlyPlan["weeks"] {
+export function weeksOf(targetMonth: string): MonthlyPlan["weeks"] {
   const [year, month] = targetMonth.split("-").map(Number);
   const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const spans: { start: number; end: number }[] = [];
@@ -145,7 +145,13 @@ export const addMonthly = (
       generation_mode: "LLM_PLANNER",
       profile_ref: profile.profile_ref,
       base_template_ref: profile.base_template_ref,
-      parent: { annual_plan_id: annual.id, theme, confirmed_at: new Date().toISOString() },
+      // 스냅샷은 부모의 그때 확정 시각이다 — 다시 확정하면 달라져 `parent_changed` 가 된다.
+      parent: {
+        annual_plan_id: annual.id,
+        theme,
+        confirmed_at: annualFor(klass.id)?.confirmed_at ?? at,
+      },
+      parent_changed: false, // 저장값은 쓰지 않는다 — 응답 때 handler 가 다시 계산한다.
       weeks,
       sections: profile.sections.map((s, order) => ({
         ...s,
@@ -250,6 +256,23 @@ export const confirmMonthly = (id: number) =>
     audit.plan.push(event("CONFIRMED", at));
     return plan;
   });
+
+/** 확정 취소. 값 · 이력은 그대로 두고 `UNCONFIRMED` 를 남긴다. 이미 초안이면 handler 가 먼저 막는다. */
+export const unconfirmMonthly = (id: number) =>
+  commit((db) => {
+    const plan = db.monthlyPlans.find((p) => p.id === id)!;
+    const audit = (db.monthlyAudit[id] ??= { plan: [], cells: {} });
+    plan.status = "DRAFT";
+    plan.revision += 1;
+    plan.confirmed_at = null;
+    audit.plan.push(event("UNCONFIRMED", nextStamp(audit)));
+    return plan;
+  });
+/** 부모 연간이 지금 확정이 아니거나 확정 시각이 스냅샷과 다르면 바뀐 것이다. */
+export const annualChanged = (annualId: number, confirmedAt: string) => {
+  const annual = read().plans.find((p) => p.id === annualId);
+  return annual?.status !== "CONFIRMED" || annual.confirmed_at !== confirmedAt;
+};
 
 /**
  * 변경 이력 조회 (§9-5). **읽기만 한다** — 저장소 사본(read)을 정렬하고 원본은 건드리지 않는다.

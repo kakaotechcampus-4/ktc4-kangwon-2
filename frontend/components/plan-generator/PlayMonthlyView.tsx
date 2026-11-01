@@ -5,7 +5,7 @@ import workspace from "@/components/workspace/Workspace.module.css";
 import { ApiError } from "@/lib/api/client";
 import { getMe } from "@/lib/api/auth";
 import { getClasses } from "@/lib/api/classes";
-import { getPlayMonthly } from "@/lib/api/playMonthly";
+import { getPlayMonthly, unconfirmPlayMonthly } from "@/lib/api/playMonthly";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
 import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
 import { cellValue, drillTarget, overlayCells } from "@/lib/plan-generator/playMonthlyQueue";
@@ -18,6 +18,7 @@ import PlayMonthlySafetyPanel from "./PlayMonthlySafetyPanel";
 import PlayMonthlySheet from "./PlayMonthlySheet";
 import type { SheetZoom } from "./playProjectPagination";
 import styles from "./PlayMonthlyView.module.css";
+import UnconfirmButton from "./UnconfirmButton";
 
 const NOTICES = {
   SAFETY_UNPLACED: ["안전교육", "주 미배치"],
@@ -122,6 +123,11 @@ export default function PlayMonthlyView({ id }: { id: number }) {
         ),
     );
   }
+  // 확정을 풀면 응답으로 바꾸고 번호를 올려 다시 그린다 — 확정 뒤 멈춘 저장 줄을 새로 시작한다.
+  function replace(fresh: PlayMonthlyPlan) {
+    ++lastReload.current;
+    setLoaded((cur) => ({ key, plan: fresh, error: "", version: (cur?.version ?? 0) + 1 }));
+  }
   const current = loaded?.key === key ? loaded : null;
   const plan = current?.plan ?? null;
   const error = valid ? (current?.error ?? "") : "올바른 계획안 주소가 아닙니다.";
@@ -178,6 +184,7 @@ export default function PlayMonthlyView({ id }: { id: number }) {
         onZoomChange={setZoom}
         notice={current?.notice}
         onConflict={reloadAfterConflict}
+        onReplace={replace}
       />
     </>
   );
@@ -190,6 +197,7 @@ function PlayMonthlyBody({
   onZoomChange,
   notice,
   onConflict,
+  onReplace,
 }: {
   initial: PlayMonthlyPlan;
   className: string;
@@ -197,6 +205,7 @@ function PlayMonthlyBody({
   onZoomChange: (zoom: SheetZoom) => void;
   notice?: string;
   onConflict: () => void;
+  onReplace: (plan: PlayMonthlyPlan) => void;
 }) {
   const [plan, setPlan] = useState(initial);
   // 입력 중 글(문서가 바로 따라간다) · 고른 칸 · 입력창을 다시 열 번호(되돌리기 · 거절) · 안내.
@@ -269,6 +278,19 @@ function PlayMonthlyBody({
             {plan.school_year}학년도 {plan.month}월
           </span>
           {summary && <span role="status">빈 곳 · {summary} (확정을 막지 않아요)</span>}
+          {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
+          {confirmed && (
+            <UnconfirmButton
+              message="확정을 풀면 다시 고칠 수 있어요."
+              className={workspace.secondary}
+              run={() => unconfirmPlayMonthly(plan.id, plan.revision)}
+              onDone={onReplace}
+              onConflict={() => {
+                setStopped(true);
+                onConflict();
+              }}
+            />
+          )}
           {!confirmed && (
             <>
               <span role="status">{SAVE_LABEL[save.status]}</span>

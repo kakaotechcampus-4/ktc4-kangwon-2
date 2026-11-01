@@ -16,7 +16,7 @@ from ..planning.evidence.safety_quality import (
 )
 
 DEFAULT_SAFETY_QUALITY_PATH = (
-    Path(__file__).resolve().parents[3] / "data" / "evidence" / "safety_reference_quality_v0_1_0.json"
+    Path(__file__).resolve().parents[3] / "data" / "evidence" / "safety_reference_quality_v0_2_0.json"
 )
 _ROOT_FIELDS = {
     "$schema_note", "schema_version", "quality_id", "quality_version", "classification_version",

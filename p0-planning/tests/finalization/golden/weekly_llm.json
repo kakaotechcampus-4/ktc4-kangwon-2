@@ -87,7 +87,7 @@
         {
           "type": "INSTITUTION_SAMPLE",
           "source_id": "ev_94f47aa3838e_p01_r00099_c01_i01",
-          "source_version": "institution-evidence-ingestion-v0.1.0"
+          "source_version": "institution-evidence-ingestion-v0.2.0"
         }
       ],
       "parent_snapshots": [
@@ -122,7 +122,7 @@
         {
           "type": "INSTITUTION_SAMPLE",
           "source_id": "ev_001a699286ca_p01_r00089_c01_i01",
-          "source_version": "institution-evidence-ingestion-v0.1.0"
+          "source_version": "institution-evidence-ingestion-v0.2.0"
         }
       ],
       "parent_snapshots": [],
@@ -152,7 +152,7 @@
         {
           "type": "INSTITUTION_SAMPLE",
           "source_id": "ev_675801d6d3e2_p02_r00448_c514_i01",
-          "source_version": "institution-evidence-ingestion-v0.1.0"
+          "source_version": "institution-evidence-ingestion-v0.2.0"
         }
       ],
       "parent_snapshots": [],
@@ -212,7 +212,7 @@
         {
           "type": "INSTITUTION_SAMPLE",
           "source_id": "ev_3e7deb843ef3_p01_r00271_c02_i04",
-          "source_version": "institution-evidence-ingestion-v0.1.0"
+          "source_version": "institution-evidence-ingestion-v0.2.0"
         }
       ],
       "parent_snapshots": [],
@@ -242,7 +242,7 @@
         {
           "type": "INSTITUTION_SAMPLE",
           "source_id": "ev_0d0a7a49a95a_p01_r00407_c04_i01",
-          "source_version": "institution-evidence-ingestion-v0.1.0"
+          "source_version": "institution-evidence-ingestion-v0.2.0"
         }
       ],
       "parent_snapshots": [],
@@ -323,7 +323,7 @@
         {
           "type": "INSTITUTION_SAMPLE",
           "source_id": "ev_675801d6d3e2_p02_r00343_c517_i02",
-          "source_version": "institution-evidence-ingestion-v0.1.0"
+          "source_version": "institution-evidence-ingestion-v0.2.0"
         }
       ],
       "parent_snapshots": [],

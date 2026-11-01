@@ -21,7 +21,7 @@ DEFAULT_CLASSIFICATION_PATH = (
     Path(__file__).resolve().parents[3]
     / "data"
     / "evidence"
-    / "monthly_evidence_semantic_classification_v0_1_0.json"
+    / "monthly_evidence_semantic_classification_v0_2_0.json"
 )
 
 _ROOT_FIELDS = {

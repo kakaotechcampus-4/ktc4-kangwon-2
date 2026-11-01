@@ -15,7 +15,7 @@
     ],
     "evidence": [
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-      {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+      {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.2.0", "type": "INSTITUTION_SAMPLE"}
     ],
     "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-cell-planner-v10"},
     "state": "FILLED",
@@ -26,7 +26,7 @@
     "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
     "evidence": [
       {"source_id": "yearly-final_plan_001", "source_version": "2026-09", "type": "PARENT_PLAN"},
-      {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.1.0", "type": "INSTITUTION_SAMPLE"}
+      {"source_id": "ev_1a1493419fa7_p01_r00176_c04_i01", "source_version": "institution-evidence-ingestion-v0.2.0", "type": "INSTITUTION_SAMPLE"}
     ],
     "generation": {"method": "RULE_LLM", "rule_id": "monthly.llm.validated_proposal", "rule_version": "monthly-planner-v18"},
     "state": "FILLED",
@@ -36,7 +36,7 @@
   "generation_mode": "LLM_PLANNER",
   "planner": {
     "model": "openai/gpt-6.1-sol",
-    "packet_fingerprint": "e619036b837f2331fa0b839232b8e4f4ce09bdea9dd49092bc043083ee7016b3",
+    "packet_fingerprint": "a63a6d953d2e3ee3f9d2c5b77b5e7de048adbd14d0213698453aae578a5d417e",
     "plan_snapshot_fingerprint": "b8bd38ad2ee43588591a29b54356d308a5efb8ba787587c1abfc6929bcb696f1",
     "prompt_version": "monthly-cell-planner-v10"
   },
