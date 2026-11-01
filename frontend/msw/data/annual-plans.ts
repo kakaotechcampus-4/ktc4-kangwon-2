@@ -1,5 +1,6 @@
 import { read, commit, type Database, type MockAnnualPlan } from "./store";
 import { MOCK_USER_ID } from "./template-profiles";
+import { targetMonthOf, weeksOf } from "./monthly-plans";
 import type {
   AnnualAuditEvent,
   AnnualInput,
@@ -46,11 +47,19 @@ export const safetyCategories = [
   { category_id: "disaster_preparedness_safety", label: "재난대비 안전 교육" },
   { category_id: "traffic_safety", label: "교통안전 교육" },
 ];
-export const months = (): AnnualMonth[] =>
+/** 그 달 주 수. 서버는 `canonical_week_periods` 이고 목업은 월간과 같은 평일 달력으로 센다. */
+const weekCount = (schoolYear: number, month: number) =>
+  weeksOf(targetMonthOf(schoolYear, month)).length;
+/** 소주제는 주마다 하나 — 그대로 확정할 수 있다. */
+export const months = (schoolYear: number): AnnualMonth[] =>
   [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map((month, i) => ({
     month,
     theme: themes[i],
-    sub_themes: [`${themes[i]} 알아보기`, `${themes[i]} 함께 놀이하기`],
+    sub_themes: Array.from(
+      { length: weekCount(schoolYear, month) },
+      (_, w) => `${themes[i]} ${w + 1}주 놀이`,
+    ),
+    week_count: weekCount(schoolYear, month),
     safety_education: [],
     safety_education_state: "SOURCE_REQUIRED",
     safety_education_source: null,
@@ -185,7 +194,8 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
     format: "MONTHLY_THEME",
     school_year: p.school_year,
     status: p.status,
-    months: p.months,
+    // 옛 저장본에는 `week_count` 가 없다 — 달력에서 다시 센다.
+    months: p.months.map((m) => ({ ...m, week_count: weekCount(p.school_year, m.month) })),
     safety_categories: safetyCategories,
     checked_rules: p.checked_rules,
     checks: p.checks,
@@ -235,7 +245,7 @@ export const addPlan = (input: AnnualInput, schoolYear: number) =>
             format: "MONTHLY_THEME",
             school_year: schoolYear,
             status: "DRAFT",
-            months: months(),
+            months: months(schoolYear),
             checked_rules: ["legal_hours"],
             checks: checks(),
             created_at: at,
@@ -311,6 +321,25 @@ export const confirmPlan = (id: number): ConfirmResult =>
       record(db, id, event("CONFIRMED", at));
     }
     return { id, status: "CONFIRMED", confirmed_at: plan.confirmed_at! };
+  });
+/** 소주제 수가 그 달 주 수와 다른 달 (I-A). 확정 422 의 `fields` 다. */
+export const subThemeMismatch = (plan: AnnualPlan) =>
+  plan.months.filter((m) => m.sub_themes.length !== m.week_count).map((m) => String(m.month));
+/**
+ * 확정 취소 (U). 두 형식 다 상태 · 확정 시각을 풀고 `UNCONFIRMED` 를 남긴다. 놀이 프로젝트형은 revision + 1.
+ * 이미 초안이면 handler 가 먼저 그대로 돌려준다.
+ */
+export const unconfirmPlan = (id: number) =>
+  commit((db) => {
+    const plan = db.plans.find((p) => p.id === id)!;
+    const at = stamp(db, id);
+    plan.status = "DRAFT";
+    plan.confirmed_at = null;
+    if (plan.format === "PLAY_PROJECT") {
+      plan.revision = (plan.revision ?? 1) + 1;
+      record(db, id, playEvent("UNCONFIRMED", at));
+    } else record(db, id, event("UNCONFIRMED", at));
+    return detail(plan);
   });
 /**
  * 저장 순서가 곧 서버 정렬이다 — 시각은 계속 늘어나고(stamp), 같은 시각인 생성 이벤트는 계획안 →

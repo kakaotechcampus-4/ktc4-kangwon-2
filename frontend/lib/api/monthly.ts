@@ -86,3 +86,9 @@ export const confirmMonthlyPlan = (id: number, expectedRevision: number, signal?
     "/api/plans/monthly/" + id + "/confirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
+/** 확정 취소. 이미 초안이면 200 · 그대로. 낡은 revision 은 409 `STALE_WRITE`. 딸린 주간은 그대로다. */
+export const unconfirmMonthlyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/unconfirm",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
