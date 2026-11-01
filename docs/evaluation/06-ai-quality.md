@@ -6,6 +6,8 @@
 
 ---
 
+- 주간 요일 양식은 부모 월간의 기관 근거 기반 바깥놀이를 이어 쓰고 승인 생활 문장·기존 v2 작성 기준을 참고한다 — [ADR-053](../adr/053-weekly-approved-reference-context.md) · `p0-planning/tests/adapters/test_weekly_composition.py`.
+
 ## 통과 조건을 먼저 정했다 — 3층 규격
 
 ```

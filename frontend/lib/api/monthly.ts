@@ -61,6 +61,22 @@ export const getMonthlyPlanAudit = (id: number, itemId?: string, signal?: AbortS
       (itemId === undefined ? "" : "?item_id=" + encodeURIComponent(itemId)),
     { signal },
   );
+/** 그 주에 둘 안전 후보. `null` 이면 비운다. 같은 입력이면 200 · 무변경(revision 그대로). */
+export const placeMonthlySafety = (
+  id: number,
+  weekId: string,
+  candidateItemId: string | null,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/safety-weeks/" + encodeURIComponent(weekId),
+    json(
+      "PUT",
+      { candidate_item_id: candidateItemId, expected_revision: expectedRevision },
+      signal,
+    ),
+  );
 /** 이미 확정이면 revision 과 상관없이 200 — 재시도 · 더블클릭은 실패가 아니다. */
 /** 확정 전 월간계획안을 지운다. 그 달을 다시 만들려면 먼저 지워야 한다. 확정본은 409 다. */
 export const deleteMonthlyPlan = (id: number) =>
