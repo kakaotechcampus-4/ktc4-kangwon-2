@@ -983,6 +983,37 @@ def test_v0_2_0_대소집단_요일_칸을_다시_만들면_그_요일만_바뀐
     )
 
 
+def test_월간에서_후보를_배치해_확정하면_주간_안전_칸이_그_표시값이다(db_session, teacher):
+    """후보 모드 월간(기본) → 배치 → 확정 → 주간. Core 의 후보 복사 분기를 서버 경로로 지난다."""
+    seed = _seed(db_session, "가원", "a@example.com")
+    teacher.center_id = seed["center"]
+    monthly = _monthly(seed, confirm=False)
+    candidate = monthly["safety_candidates"][0]
+    placed = client.put(
+        f"/api/plans/monthly/{monthly['id']}/safety-weeks/{WEEK}",
+        json={
+            "expected_revision": monthly["revision"],
+            "candidate_item_id": candidate["cell"]["item_id"],
+        },
+    )
+    assert placed.status_code == 200, placed.json()
+    display = next(w for w in placed.json()["safety_weeks"] if w["week_id"] == WEEK)[
+        "display_value"
+    ]
+    assert display
+    confirmed = client.post(
+        f"/api/plans/monthly/{monthly['id']}/confirm",
+        json={"expected_revision": placed.json()["revision"]},
+    )
+    assert confirmed.status_code == 200, confirmed.json()
+
+    weekly = client.post("/api/plans/weekly", json={"class_id": seed["class"], "week_id": WEEK})
+
+    assert weekly.status_code == 201, weekly.json()
+    safety = next(s for s in weekly.json()["sections"] if s["section_key"] == "safety_education")
+    assert safety["cells"][0]["value"] == display
+
+
 def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world, monkeypatch):
     """ADR-051 WD-4 — v0.2.0 계획은 월~토 양식에 (section_key, day) 로 채운다(§9-6)."""
     from lxml import etree
