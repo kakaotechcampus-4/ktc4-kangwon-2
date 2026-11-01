@@ -83,6 +83,26 @@ def test_확정_재호출은_옛_revision_이나_본문_없이도_200_이고_Cor
     assert _row(world, row).body == saved and _row(world, row).revision == 2
 
 
+def test_확정을_풀면_DRAFT_로_돌아가고_다시_고치고_확정한다(world):
+    plan, row = _play(world)
+    unconfirm = f"{URL}/{row.id}/unconfirm"
+    assert client.post(unconfirm).json()["revision"] == 1  # 이미 DRAFT — 본문 없이도 200
+    assert _confirm(row.id, 1).status_code == 200
+    assert _error(client.post(unconfirm)) == (422, "VALIDATION_FAILED", ["expected_revision"])
+    stale = client.post(unconfirm, json={"expected_revision": 1})
+    assert _error(stale) == (409, "STALE_WRITE", ["expected_revision"])
+
+    body = client.post(unconfirm, json={"expected_revision": 2}).json()
+    assert (body["status"], body["revision"], body["confirmed_at"]) == ("DRAFT", 3, None)
+    assert isinstance(body["parent_changed"], bool)
+    assert [e["type"] for e in _audit(row.id) if e["scope"] == "PLAN"][-2:] == [
+        "CONFIRMED",
+        "UNCONFIRMED",
+    ]
+    assert _call(row.id, plan, "cell", rev=3).status_code == 200
+    assert _confirm(row.id, 4).status_code == 200
+
+
 def test_초안은_revision_이_없으면_422_옛_revision_이면_409(world):
     _, row = _play(world)
     assert _error(_confirm(row.id)) == (422, "VALIDATION_FAILED", ["expected_revision"])

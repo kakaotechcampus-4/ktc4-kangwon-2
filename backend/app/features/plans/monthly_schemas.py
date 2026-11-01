@@ -131,6 +131,9 @@ class MonthlyPlanOut(BaseModel):
     profile_ref: ProfileRefOut
     base_template_ref: TemplateRefOut
     parent: ParentOut
+    parent_changed: bool = Field(
+        description="부모 연간이 지금 확정이 아니거나 확정 시각이 parent.confirmed_at 과 다르다"
+    )
     weeks: list[WeekOut]
     sections: list[SectionOut]
     safety_candidates: list[SafetyCandidateOut]

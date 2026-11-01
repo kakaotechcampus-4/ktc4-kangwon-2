@@ -103,6 +103,8 @@ export interface MonthInput {
 /** 한 달 (docs/api-spec.md §4). 출처는 세 축이다 — 근거(`evidence`) · 만든 방법(`generation`) · Audit. */
 export interface AnnualMonth extends MonthInput {
   month: number;
+  /** 그 달 주 수. 확정하려면 소주제 수가 이와 같아야 한다(다르면 확정 422 `fields` 에 그 달). */
+  week_count: number;
   /** 교사가 입력한 월별 배치. 미입력도 빈 배열이므로 state를 함께 본다. */
   safety_education: string[];
   /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. */
@@ -137,6 +139,33 @@ export interface WeeklyCell {
   parent_snapshots: { parent_item_id: string; snapshot_value: string }[];
   /** 교사가 적는 칸(가정 연계 · 행사 · 특별활동)이면 true. 첫 입력 뒤(`MANUAL`)에도 true 다 (W5b). */
   teacher_input: boolean;
+  day?: "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | null;
+}
+export interface WeeklyActivityGrid {
+  cell_id: string | null;
+  split_id: string | null;
+  axis: "VERTICAL" | "HORIZONTAL" | null;
+  ratio: number | null;
+  children: WeeklyActivityGrid[];
+}
+export interface WeeklyActivityCandidate {
+  activity_type: string;
+  name: string;
+  description: string;
+  cell: WeeklyCell;
+}
+
+export interface WeeklyAuditEvent extends Omit<MonthlyAuditEvent, "type"> {
+  type: MonthlyAuditEvent["type"] | "CANDIDATE_COPIED" | "TIMETABLE_CHANGED";
+  day?: WeeklyCell["day"];
+  copied_from?: string | null;
+  timetable_change?: {
+    operation: "SPLIT" | "REMOVE";
+    split_id: string;
+    axis: "VERTICAL" | "HORIZONTAL";
+    cell_id: string;
+    new_cell_id: string | null;
+  } | null;
 }
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §5-1 · §13).
@@ -162,8 +191,9 @@ export interface WeeklyPlan {
   /** 교사에게 보여줄 마지막 날. **서버가 계산해 준다 — 화면이 더하지 않는다** (§3-2). */
   display_end_date: string;
   base_template_ref: TemplateRef;
-  /** 부모 월간. 확정본이라 바뀌지 않는다 — 주간에 「부모가 바뀌어 stale」 은 없다 (§4-2). */
+  /** 만들 때 본 부모 월간의 스냅샷. 부모 확정이 풀리거나 다시 확정되면 `parent_changed` 가 true 다. */
   parent: { monthly_plan_id: number; theme: string | null; confirmed_at: string };
+  parent_changed: boolean;
   sections: {
     section_key: string;
     label: string | null;
@@ -172,11 +202,14 @@ export interface WeeklyPlan {
     order: number;
     semantic_variant: string | null;
     cells: WeeklyCell[];
+    repeat_by?: "NONE" | "DAY";
   }[];
   constraints: MonthlyPlan["constraints"];
   verification: MonthlyPlan["verification"];
   created_at: string;
   confirmed_at: string | null;
+  activity_candidates?: WeeklyActivityCandidate[];
+  activity_grids?: WeeklyActivityGrid[];
 }
 /** 목록용. 칸은 단건 조회가 준다. */
 export type WeeklyPlanSummary = Pick<
@@ -276,6 +309,8 @@ export interface PlayMonthlyPlan {
     end_date: string;
     active: boolean;
   }[];
+  /** 부모가 지금 확정이 아니거나, 확정 시각이 `parent.confirmed_at` 과 다르면 true. 화면은 안내만 한다. */
+  parent_changed: boolean;
   parent: {
     annual_plan_id: number;
     period_key: string;
@@ -319,7 +354,13 @@ export interface PlayMonthlyPlan {
  * `type` 은 저장된 문자열 그대로라 모르는 종류가 올 수 있다 — 화면은 건너뛴다.
  */
 export interface PlayMonthlyAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "ARRANGEMENT_CHANGED" | "CANDIDATE_COPIED" | "CONFIRMED";
+  type:
+    | "CREATED"
+    | "TEACHER_EDITED"
+    | "ARRANGEMENT_CHANGED"
+    | "CANDIDATE_COPIED"
+    | "CONFIRMED"
+    | "UNCONFIRMED";
   /** ISO 8601, UTC(`Z`). */
   occurred_at: string;
   /** 계획안 단위(생성 · 배치 · 확정)는 PLAN, 칸 단위는 CELL. */
@@ -367,7 +408,7 @@ export interface ConfirmResult {
  * 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
  */
 export interface AnnualAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED" | "CANDIDATES_SELECTED";
+  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED" | "CANDIDATES_SELECTED" | "UNCONFIRMED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
   /** 그 달 theme 의 이벤트면 그 달(1~12). 계획안 단위(생성 · 확정)면 null. */
@@ -441,6 +482,8 @@ export interface MonthlyPlan {
   profile_ref: ProfileRef;
   base_template_ref: TemplateRef;
   parent: { annual_plan_id: number; theme: string | null; confirmed_at: string };
+  /** 부모 연간이 지금 확정이 아니거나, 확정 시각이 `parent.confirmed_at` 과 다르면 true. 화면은 안내만 한다. */
+  parent_changed: boolean;
   weeks: {
     week_id: string;
     label: string;
@@ -497,7 +540,7 @@ export interface MonthlyPlan {
  * revision · 사람 이름)은 없다.
  */
 export interface MonthlyAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "REGENERATED" | "CONFIRMED";
+  type: "CREATED" | "TEACHER_EDITED" | "REGENERATED" | "CONFIRMED" | "UNCONFIRMED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
   /** PLAN 이면 아래 칸 위치 셋이 null 이다. */

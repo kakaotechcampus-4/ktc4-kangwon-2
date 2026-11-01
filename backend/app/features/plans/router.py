@@ -38,6 +38,7 @@ from ssuksak.planning import (
     YearlyApplicationError,
     YearlyPlan,
 )
+from ssuksak.planning.application.confirm_yearly_plan import UnconfirmYearlyPlan
 from ssuksak.planning.application.generate_play_project_plan import PlayProjectGenerationError
 from ssuksak.planning.application.play_project_lifecycle import (
     ConfirmPlayProjectPlan,
@@ -47,10 +48,14 @@ from ssuksak.planning.application.play_project_lifecycle import (
     PlayProjectApplicationError,
     SavePlayProjectSelection,
     SavePlayProjectSelectionCommand,
+    UnconfirmPlayProjectPlan,
+    UnconfirmPlayProjectPlanCommand,
 )
+from ssuksak.planning.application.yearly_dto import UnconfirmYearlyPlanCommand
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.rules.errors import YearlyRuleError
+from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 from ssuksak.planning.rules.yearly_theme_selection import RULE_ID as THEME_SELECTION_RULE_ID
 
 from app.config import settings
@@ -60,7 +65,7 @@ from app.features.auth.models import User
 # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
 from app.features.forms.service import find_own_form
 from app.features.plans import play_project
-from app.features.plans.annual_content import generate_subthemes
+from app.features.plans.annual_content import generate_subthemes, subthemes_for_month
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.models import Plan
 from app.features.plans.play_project import ConfirmIn, EditItemIn, SaveSelectionIn, format_of
@@ -162,6 +167,7 @@ def _months(
             theme=period.theme.value,
             # 생성·교사 수정 내용은 서버가 저장한다. Core 의 주제 포트는 유지한다.
             sub_themes=sub_themes.get(str(period.period.calendar_month), []),
+            week_count=len(canonical_week_periods(period.period)),
             safety_education=placements.get(str(period.period.calendar_month), []),
             safety_education_source=(
                 "TEACHER_INPUT" if str(period.period.calendar_month) in placements else None
@@ -600,9 +606,8 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
     있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
 
-    **왜 필요한가** — 연간을 확정하면 고칠 수도(`내용 수정` 이 꺼진다) 지울 수도
-    (`DELETE` 가 확정본을 막는다) 없다. 계획안에는 일지와 달리 `unconfirm` 이 없어서
-    빠져나올 구멍이 없다. 시험하는 동안 그 막다른 길을 열어 둔다.
+    **왜 필요한가** — `DELETE` 는 확정본과 딸린 월간을 막는다. 확정 취소(ADR-055)로 풀어도
+    딸린 월간이 있으면 지울 수 없다. 시험하는 동안 처음부터 다시 시작하는 길을 열어 둔다.
 
     **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 확정본과 딸린 월간을
     막는다. 그쪽이 교사가 쓰는 길이고, 이건 우리가 시험할 때만 쓰는 길이다. 한 경로에
@@ -717,6 +722,18 @@ def confirm_annual_plan(
     if row.status == "CONFIRMED":
         return ConfirmOut(id=row.id, status=row.status, confirmed_at=row.confirmed_at)
     repo = _repo(session, user)
+    # 월간이 주차별 소주제를 쓴다. 달마다 소주제 수 = 그 달 주 수여야 확정한다(2026-11-01 I-A).
+    plan = repo.get(PlanId(row.plan_ref))
+    mismatched = [
+        str(period.period.calendar_month)
+        for period in plan.periods
+        if len(subthemes_for_month(row.sub_themes, period.period.calendar_month))
+        != len(canonical_week_periods(period.period))
+    ]
+    if mismatched:
+        raise _error(
+            422, "VALIDATION_FAILED", "달마다 소주제 수를 그 달 주 수에 맞춰주세요.", mismatched
+        )
     try:
         confirmed = ConfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
             ConfirmYearlyPlanCommand(
@@ -927,3 +944,66 @@ def edit_play_project_cell(
     if getattr(candidate, name).value == body.value:  # Core 는 허용하지만 API 가 막는다(§6-1)
         raise _invalid(["value"])
     return _play_write(session, user, row, repo, changed, body.expected_revision)
+
+
+# ── 확정 취소 (계약 U) ─────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{plan_id}/unconfirm",
+    response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
+)
+def unconfirm_annual_plan(
+    plan_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: Annotated[ConfirmIn | None, Body()] = None,
+):
+    """CONFIRMED → DRAFT. 값 · 근거 · 이력은 그대로 두고 계획안 단위 `UNCONFIRMED` 를 남긴다.
+
+    본문 · 잠금 · 순서는 그 형식의 확정과 같다. 이미 DRAFT 면 아무것도 쓰지 않고 상세 그대로 200.
+    **월간이 딸려 있어도 풀린다** — 월간은 부모 스냅샷을 그대로 갖고 `parent_changed` 로 안다.
+    풀린 연간으로는 다시 확정할 때까지 새 월간을 못 만든다(생성의 부모 확정 게이트 그대로).
+    """
+    row = _row(session, user, plan_id)
+    actor = ActorId(f"user_{user.id}")
+    if format_of(row) == PLAY_PROJECT_FORMAT:
+        plan = _play_plan(session, user, row)
+        if row.status != "CONFIRMED":
+            return play_project.to_out(row, plan)
+        expected = body.expected_revision if body is not None else None
+        if expected is None:
+            raise _invalid(["expected_revision"])
+        if row.revision != expected:
+            raise _STALE_WRITE
+        changed = UnconfirmPlayProjectPlan(
+            plan_repository=_drafts(plan), clock=SystemClock()
+        ).execute(UnconfirmPlayProjectPlanCommand(plan.plan_id, actor))
+        repo = PostgresPlanRepository(
+            session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        )
+        plan_id = row.id  # rollback 이 row 를 만료시킨다
+        written = repo.update_if_revision(
+            changed.plan_id, changed, expected_revision=expected, status="CONFIRMED"
+        )
+        if written is None:  # 그 사이 바뀌었다 — 먼저 풀었으면 이미 DRAFT 와 같다(200)
+            session.rollback()
+            row = _row(session, user, plan_id)
+            if row.status == "CONFIRMED":
+                raise _STALE_WRITE
+            return play_project.to_out(row, _play_plan(session, user, row))
+        session.refresh(row)
+        detail = play_project.to_out(row, changed)
+        session.commit()
+        return detail
+    # 월별 주제형은 확정처럼 잠그고 다시 읽는다. revision 을 받지 않는다.
+    row = _row(session, user, plan_id, lock=True)
+    repo = _repo(session, user)
+    if row.status != "CONFIRMED":
+        return _detail(row, repo.get(PlanId(row.plan_ref)))
+    changed = UnconfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
+        UnconfirmYearlyPlanCommand(plan_id=PlanId(row.plan_ref), actor_id=actor)
+    )
+    detail = _detail(row, changed)
+    session.commit()
+    return detail

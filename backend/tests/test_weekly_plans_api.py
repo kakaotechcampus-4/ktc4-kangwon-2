@@ -143,6 +143,104 @@ def _create(world, week: str = WEEK):
     )
 
 
+@pytest.mark.parametrize("saturday", [False, True])
+def test_activity_candidates_copy_split_reload_and_export(world, saturday):
+    center = world["session"].get(Center, world["mine"]["center"])
+    center.weekly_saturday_enabled = saturday
+    world["session"].flush()
+    response = client.post(
+        "/api/plans/weekly",
+        json={"class_id": world["mine"]["class"], "week_id": WEEK, "activity_candidates": True},
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()
+    assert 2 <= len(plan["activity_candidates"]) <= 10
+
+    def group(p):
+        return next(s["cells"] for s in p["sections"] if s["section_key"] == "group_activity")
+
+    assert len(group(plan)) == 5 + saturday
+    assert all(not c["value"] and c["day"] for c in group(plan))
+    item = group(plan)[0]["item_id"]
+    url = f"/api/plans/weekly/{plan['id']}/cells/{item}"
+    candidate = plan["activity_candidates"][0]
+    body = {
+        "candidate_item_id": candidate["cell"]["item_id"],
+        "expected_revision": plan["revision"],
+    }
+    result = client.post(url + "/copy-activity", json=body)
+    assert result.status_code == 200, result.text
+    plan = result.json()
+    assert group(plan)[0]["value"] == f"[{candidate['activity_type']}] {candidate['name']}"
+    assert client.post(url + "/copy-activity", json=body).status_code == 409
+    body["expected_revision"] = plan["revision"]
+    assert client.post(url + "/copy-activity", json=body).json()["revision"] == plan["revision"]
+    result = client.post(
+        url + "/split", json={"axis": "VERTICAL", "expected_revision": plan["revision"]}
+    )
+    assert result.status_code == 200, result.text
+    plan = result.json()
+    assert len(group(plan)) == 6 + saturday
+    new_id = group(plan)[1]["item_id"]
+    second = plan["activity_candidates"][1]
+    result = client.post(
+        f"/api/plans/weekly/{plan['id']}/cells/{new_id}/copy-activity",
+        json={
+            "candidate_item_id": second["cell"]["item_id"],
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert result.status_code == 200, result.text
+    plan = result.json()
+    fetched = client.get(f"/api/plans/weekly/{plan['id']}").json()
+    assert fetched == plan
+    events = client.get(f"/api/plans/weekly/{plan['id']}/audit").json()["items"]
+    assert any(
+        e["type"] == "TIMETABLE_CHANGED" and e["timetable_change"]["new_cell_id"] == new_id
+        for e in events
+    )
+    assert any(
+        e["copied_from"] == candidate["cell"]["item_id"] and e["day"] == "MON" for e in events
+    )
+    # Delete a spare leaf with a query revision, leaving the two selected leaves intact.
+    spare = client.post(
+        url + "/split", json={"axis": "VERTICAL", "expected_revision": plan["revision"]}
+    ).json()
+    spare_id = next(
+        c["item_id"]
+        for c in group(spare)
+        if c["item_id"] not in {x["item_id"] for x in group(plan)}
+    )
+    delete_url = f"/api/plans/weekly/{plan['id']}/cells/{spare_id}/split"
+    assert client.delete(delete_url).status_code == 422
+    assert client.delete(delete_url, params={"expected_revision": 0}).status_code == 422
+    assert (
+        client.delete(delete_url, params={"expected_revision": plan["revision"]}).status_code == 409
+    )
+    removed = client.delete(delete_url, params={"expected_revision": spare["revision"]})
+    assert removed.status_code == 200, removed.text
+    plan = removed.json()
+    assert all(c["item_id"] != spare_id for c in group(plan))
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
+    result = client.post(
+        f"/api/plans/weekly/{plan['id']}/confirm", json={"expected_revision": plan["revision"]}
+    )
+    assert result.status_code == 200, result.text
+    export = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert export.status_code == 200, export.text
+    with zipfile.ZipFile(BytesIO(export.content)) as archive:
+        text = archive.read("Contents/section0.xml").decode()
+        assert candidate["name"] in text and second["name"] in text
+        assert 'rowSpan="2"' in text
+    assert (
+        client.post(
+            url + "/split",
+            json={"axis": "VERTICAL", "expected_revision": result.json()["revision"]},
+        ).status_code
+        == 409
+    )
+
+
 def _error(response) -> tuple[int, str, list[str]]:
     body = response.json()["error"]
     return response.status_code, body["code"], body["fields"]
@@ -719,6 +817,33 @@ def test_확정된_주간은_고치지도_다시_만들지도_않는다(world):
     assert _confirm(plan).status_code == 200
     assert _error(_put(plan, "goals", "새 목표"))[:2] == (409, "ALREADY_CONFIRMED")
     assert _error(_regenerate(plan, "goals"))[:2] == (409, "ALREADY_CONFIRMED")
+
+
+def _unconfirm(path: str, revision: int):
+    return client.post(f"{path}/unconfirm", json={"expected_revision": revision})
+
+
+def test_확정을_풀면_다시_고칠_수_있고_부모_월간을_풀면_parent_changed(world):
+    plan = _create(world).json()
+    path = f"/api/plans/weekly/{plan['id']}"
+    assert plan["parent_changed"] is False
+    assert _unconfirm(path, 99).json() == plan  # 이미 DRAFT — 아무것도 안 바뀐다
+    confirmed = _confirm(plan).json()
+    assert _error(_unconfirm(path, plan["revision"]))[:2] == (409, "STALE_WRITE")
+
+    reopened = _unconfirm(path, confirmed["revision"]).json()
+    assert (reopened["status"], reopened["confirmed_at"]) == ("DRAFT", None)
+    assert reopened["revision"] == confirmed["revision"] + 1
+    assert reopened["sections"] == confirmed["sections"]
+    goals = _cell(reopened, "goals")["item_id"]
+    events = client.get(f"{path}/audit", params={"item_id": goals}).json()["items"]
+    assert [e["type"] for e in events if e["scope"] == "PLAN"] == ["CONFIRMED", "UNCONFIRMED"]
+    assert _put(reopened, "goals", "다시 고친 목표").status_code == 200
+
+    monthly = world["monthly"]
+    unconfirmed = _unconfirm(f"/api/plans/monthly/{monthly['id']}", monthly["revision"])
+    assert unconfirmed.status_code == 200, unconfirmed.json()
+    assert client.get(path).json()["parent_changed"] is True
 
 
 def test_DRAFT_를_옛_revision_으로_확정하면_409(world):

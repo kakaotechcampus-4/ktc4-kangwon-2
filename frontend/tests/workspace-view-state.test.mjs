@@ -612,7 +612,7 @@ test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 �
   }
 });
 
-test("계획 노트는 놀이 프로젝트형에만 상태 옆 둥근 배지를 보여준다", () => {
+test("계획안 첫 화면 「이어서 하기」는 확정 안 한 연간 · 월간만 최근 것부터 보여준다", () => {
   const code = require("next/dist/compiled/babel/core").transformSync(
     read("../components/plan-generator/PlanNotebookPage.tsx"),
     {
@@ -631,19 +631,36 @@ test("계획 노트는 놀이 프로젝트형에만 상태 옆 둥근 배지를 
     "react/jsx-runtime": { jsx, jsxs: jsx },
     "@/lib/workspace/model": workspaceModel,
   };
-  new Function("require", "module", "exports", code + "\nexports.PlanCard = PlanCard;")(
+  new Function("require", "module", "exports", code)(
     (name) => imports[name] ?? {},
     notebook,
     notebook.exports,
   );
-  for (const format of ["MONTHLY_THEME", "PLAY_PROJECT"]) {
-    const tree = notebook.exports.PlanCard({ plan: { ...annualPlan, format }, onReset() {} });
-    const pills = nodes(tree).filter((node) => node.props.className?.includes("rounded-full"));
-    assert.deepEqual(
-      pills.map((node) => texts(node).join("")),
-      format === "PLAY_PROJECT" ? ["확정", "놀이 프로젝트형"] : ["확정"],
-    );
-  }
+  const cards = notebook.exports.draftCards(
+    [
+      annualPlan,
+      {
+        ...annualPlan,
+        id: 6,
+        format: "PLAY_PROJECT",
+        status: "DRAFT",
+        created_at: "2026-09-12T00:00:00Z",
+      },
+    ],
+    [{ id: 8, class_id: 3, month: 4, status: "DRAFT", created_at: "2026-09-20T00:00:00Z" }],
+    [
+      { id: 9, class_id: 3, month: 5, status: "DRAFT", created_at: "2026-09-15T00:00:00Z" },
+      { id: 10, class_id: 3, month: 6, status: "CONFIRMED", created_at: "2026-09-30T00:00:00Z" },
+    ],
+  );
+  assert.deepEqual(
+    cards.map(({ mode, title, href }) => [mode, title, href]),
+    [
+      ["월별 주제형", "4월 월간계획안", "/plans/monthly?plan_id=8&class_id=3&month=4"],
+      ["놀이 중심형", "5월 월간계획안", "/plans/monthly/play/9"],
+      ["놀이 중심형", "2026 연간계획안", "/plans/annual/6"],
+    ],
+  );
 });
 
 // ── 보관함은 종류(연간 · 월간 · 주간 · 보육 · 관찰)로만 탐색한다 (S-J5 · FR-701) ──

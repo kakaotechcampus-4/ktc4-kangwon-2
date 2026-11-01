@@ -162,6 +162,30 @@ class ConfirmPlayProjectPlan:
         return confirmed
 
 
+@dataclass(frozen=True, slots=True)
+class UnconfirmPlayProjectPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+class UnconfirmPlayProjectPlan:
+    """CONFIRMED → DRAFT. A DRAFT Plan comes back unchanged and is not saved."""
+
+    def __init__(
+        self, *, plan_repository: PlanRepository[PlayProjectYearlyPlan], clock: Clock
+    ) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: UnconfirmPlayProjectPlanCommand) -> PlayProjectYearlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        actor_id = _require_actor(command.actor_id)
+        unconfirmed = plan.unconfirm(actor_id=actor_id, occurred_at=self._clock.now())
+        if unconfirmed is not plan:
+            self._plans.save(unconfirmed.plan_id, unconfirmed)
+        return unconfirmed
+
+
 def _require_plan(
     repository: PlanRepository[PlayProjectYearlyPlan], plan_id: object
 ) -> PlayProjectYearlyPlan:

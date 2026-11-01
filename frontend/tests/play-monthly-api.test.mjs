@@ -104,6 +104,7 @@ test("single response has the captured key set, in every nested cell too", async
       "notices",
       "nutrition",
       "parent",
+      "parent_changed",
       "rationale",
       "revision",
       "safety_candidates",

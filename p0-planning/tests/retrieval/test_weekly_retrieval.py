@@ -3,7 +3,6 @@ from __future__ import annotations
 import collections
 
 import pytest
-
 from ssuksak.adapters.institution_evidence_repository import (
     InMemoryInstitutionEvidenceRepository,
     JsonInstitutionEvidenceRepository,
@@ -27,7 +26,7 @@ from ssuksak.planning.evidence.weekly_classification import (
     WeeklySemanticClass,
 )
 from ssuksak.planning.retrieval.models import AGE_VERIFIABLE_TIERS
-from ssuksak.planning.retrieval.weekly import weekly_section_evidence
+from ssuksak.planning.retrieval.weekly import activity_type, weekly_section_evidence
 
 INDOOR = WeeklySemanticClass.INDOOR_PLAY
 
@@ -86,6 +85,18 @@ def test_only_that_class_that_month_valid_and_age_verified_records_are_used():
     )
     assert _search(records) == ["ev_1"]
     assert _search(records, weekly_class=WeeklySemanticClass.GROUP_ACTIVITY) == ["ev_3"]
+
+
+@pytest.mark.parametrize("text,label,expected", [
+    ("[이야기 나누기] 가을 이야기", "대소집단", "이야기나누기"),
+    ("[이야기나누기] 가을 이야기", "대소집단", "이야기나누기"),
+    ("(휴지심,종이컵) 소리 탐색", "대소집단", "기타"),
+    ("[모두 함께 체험해요] 놀이", "대소집단", "기타"),
+    ("(휴지심,종이컵) 소리 탐색", "음 률", "음률"),
+    ("[과학·요리] 음식 만들기", "대소집단", "과학·요리"),
+])
+def test_activity_types_normalize_spacing_and_do_not_copy_material_notes(text, label, expected):
+    assert activity_type(_record("ev_1", text=text, label=label)) == expected
 
 
 def test_at_most_two_per_institution_and_top_k():

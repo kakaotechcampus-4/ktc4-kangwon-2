@@ -171,6 +171,12 @@ class ConfirmMonthlyPlanCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class UnconfirmMonthlyPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+@dataclass(frozen=True, slots=True)
 class MonthlyActivitySelectionResult:
     week_id: str
     trace: ActivitySelectionTrace

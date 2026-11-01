@@ -86,7 +86,10 @@ def _theme(plan_id, month) -> str:
     return next(m for m in months if m["month"] == month)["theme"]
 
 
-def _put(plan_id, month, theme, sub_themes=()):
+def _put(plan_id, month, theme, sub_themes=None):
+    if sub_themes is None:  # 확정 검사(소주제 수 = 그 달 주 수)를 지나도록 주 수만큼 채운다
+        months = client.get(f"/api/plans/annual/{plan_id}").json()["months"]
+        sub_themes = ["소주제"] * next(m for m in months if m["month"] == month)["week_count"]
     return client.put(
         f"/api/plans/annual/{plan_id}/months/{month}",
         json={"theme": theme, "sub_themes": list(sub_themes)},

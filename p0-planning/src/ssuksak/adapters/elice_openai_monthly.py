@@ -6,13 +6,14 @@ standard library, so Planning Core remains importable without an OpenAI SDK.
 
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from http.client import HTTPException
-import json
-import os
 from typing import Protocol
-from urllib import error, request as urllib_request
+from urllib import error
+from urllib import request as urllib_request
 from urllib.parse import urlparse
 
 from ssuksak.planning.planner.contracts import (
@@ -21,20 +22,26 @@ from ssuksak.planning.planner.contracts import (
     MonthlyPlanningRequest,
     RawLlmResponse,
 )
-from ssuksak.planning.planner.play_monthly import (
-    RESPONSE_SCHEMA as PLAY_MONTHLY_RESPONSE_SCHEMA,
-    PlayMonthlyRequest,
-)
-from ssuksak.planning.planner.play_project import (
-    RESPONSE_SCHEMA as PLAY_PROJECT_RESPONSE_SCHEMA,
-    PlayProjectRequest,
-)
-from ssuksak.planning.planner.weekly import WeeklyPlanningRequest, weekly_response_schema
 from ssuksak.planning.planner.parser import (
     cell_response_schema,
     monthly_response_schema,
 )
-
+from ssuksak.planning.planner.play_monthly import (
+    RESPONSE_SCHEMA as PLAY_MONTHLY_RESPONSE_SCHEMA,
+)
+from ssuksak.planning.planner.play_monthly import (
+    PlayMonthlyRequest,
+)
+from ssuksak.planning.planner.play_project import (
+    RESPONSE_SCHEMA as PLAY_PROJECT_RESPONSE_SCHEMA,
+)
+from ssuksak.planning.planner.play_project import (
+    PlayProjectRequest,
+)
+from ssuksak.planning.planner.weekly import (
+    WeeklyPlanningRequest,
+    weekly_response_schema,
+)
 
 # 2026-10-24 decision: 10 play candidates (~1,700–2,000 tokens incl. reasoning) hit the
 # 2,000-token cap the gateway holds for a non-streaming reply and came back empty. The gateway
@@ -251,6 +258,7 @@ class EliceOpenAiMonthlyAdapter:
             request.user_content,
             schema_name="weekly_cell_proposal" if request.cell_key else "weekly_plan_proposal",
             schema=weekly_response_schema(request),
+            stream_cap=6000 if any(t.activity_type is not None for t in request.targets) else None,
         )
 
     def generate_play_project(self, request: PlayProjectRequest) -> RawLlmResponse:
