@@ -112,10 +112,8 @@ def test_pending_artifact_loads_for_review_but_is_never_used_at_runtime():
 def test_every_observed_item_tag_is_classified_exactly_once():
     classification = load_safety_classification_from_dict(_payload())
     observed = {item_tag_of(record.text) for record in SAFETY} - {None}
-    tags = [entry.item_tag for entry in classification.entries]
 
-    assert len(tags) == len(set(tags))
-    assert observed <= set(tags)
+    assert {entry.item_tag for entry in classification.entries} == observed
 
 
 @pytest.mark.parametrize(
