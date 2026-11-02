@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useIsCompact } from "./compact-shell";
+import { setSidebarCollapsed, useSidebarCollapsed } from "./sidebar-collapse";
 import { Icon, type IconName } from "./icons";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
@@ -20,6 +21,8 @@ import type { ClassroomEntry } from "@/lib/onboarding/types";
 interface NavItem {
   key: string;
   label: string;
+  /** 접힌 65px 줄에 들어갈 짧은 이름. 없으면 `label` 을 그대로 쓴다. */
+  short?: string;
   href: string;
   icon: IconName;
   match?: (path: string) => boolean;
@@ -41,6 +44,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
       {
         key: "records",
         label: "관찰 기록",
+        short: "관찰",
         href: "/records",
         icon: "users",
         match: (p) =>
@@ -60,11 +64,12 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
       {
         key: "routines",
         label: "일과 기록",
+        short: "일과",
         href: "/routines",
         icon: "edit",
         match: (p) => p.startsWith("/routines"),
       },
-      { key: "quick", label: "주간 기록", href: "/quick-records", icon: "record" },
+      { key: "quick", label: "주간 기록", short: "주간", href: "/quick-records", icon: "record" },
     ],
   },
   {
@@ -77,8 +82,8 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         icon: "plan",
         match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
       },
-      { key: "docs", label: "문서 보관함", href: "/documents", icon: "doc" },
-      { key: "eval", label: "평가 점검", href: "/evaluation", icon: "eval" },
+      { key: "docs", label: "문서 보관함", short: "보관함", href: "/documents", icon: "doc" },
+      { key: "eval", label: "평가 점검", short: "평가", href: "/evaluation", icon: "eval" },
     ],
   },
 ];
@@ -123,29 +128,40 @@ export default function AppSidebar() {
   useEffect(() => subscribeClassSettings(() => setRoom(readRoom())), [setRoom]);
 
   const isActive = (item: NavItem) => (item.match ? item.match(pathname) : item.href === pathname);
-  // 편집 단계 화면이 접기를 켜면(compact-shell) 데스크톱에서 72px 아이콘 줄만 보인다. 맨 위 S. 를
-  // 누르면 넓은 사이드바가 본문 위에 겹쳐 펼쳐지고 [접기]로 닫는다. 모바일 하단 네비는 그대로다.
+  // 데스크톱 사이드바는 접었다 폈다 한다. 접으면 65px 아이콘 줄만 남는다.
+  //
+  // 접힌 줄의 아이콘 가운데와 펼친 줄의 아이콘 가운데를 **같은 자리(32.5px)** 에 둔다.
+  // 펼침은 nav 의 px-3(12) + 줄의 px-3(12) + 아이콘 17 의 절반 8.5 이고, 접힘은 폭 65 의 절반이다.
+  // 그래서 여닫아도 메뉴 아이콘이 제자리에 있고 글자만 나타났다 사라진다.
+  //
+  // 교사가 한 번도 안 눌렀으면 편집 화면(compact-shell)이 정하고, 한 번 누르면 그 선택이 이긴다.
   const compact = useIsCompact();
-  const [open, setOpen] = useState(false);
-  // 펼침은 이번 접기 구간에서만 산다 — 접기 요청이 없는 화면을 지나면 다음 편집은 다시 접혀 시작한다.
-  if (!compact && open) setOpen(false);
-  const collapsed = compact && !open;
+  const pref = useSidebarCollapsed();
+  const collapsed = pref ?? compact;
 
   return (
     <>
       {collapsed && (
         <aside
           aria-label="주 메뉴"
-          className="bg-shell z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[72px] lg:flex-col lg:items-center lg:gap-1 lg:border-r lg:border-shell-line lg:py-5"
+          className="bg-shell z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[65px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-shell-line lg:py-4"
         >
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            aria-label="메뉴 펼치기"
-            title="메뉴 펼치기"
-            className="mb-4 flex h-11 w-11 items-center justify-center rounded-md text-[22px] font-bold text-primary-deep hover:bg-shell-hover"
+          <Link
+            href="/"
+            aria-label="쌤플 홈으로"
+            className="flex h-11 w-11 items-center justify-center text-[21px] font-bold tracking-[-0.06em] text-primary-deep"
           >
             S<span className="text-peach-strong">.</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed(false)}
+            aria-expanded={false}
+            aria-label="메뉴 펼치기"
+            title="메뉴 펼치기"
+            className="mb-2 flex h-11 w-11 items-center justify-center rounded-md text-ink-soft hover:bg-shell-hover"
+          >
+            <Icon name="panel" className="h-[18px] w-[18px]" />
           </button>
           {[HOME, ...GROUPS.flatMap((g) => g.items)].map((item) => (
             <Link
@@ -154,9 +170,10 @@ export default function AppSidebar() {
               aria-label={item.label}
               title={item.label}
               aria-current={isActive(item) ? "page" : undefined}
-              className={`flex h-11 w-11 items-center justify-center rounded-md border ${isActive(item) ? activeStyle : "border-transparent text-ink-soft hover:bg-shell-hover"}`}
+              className={`flex w-full flex-col items-center justify-center gap-[3px] rounded-md border py-1.5 text-[11px] font-medium ${isActive(item) ? activeStyle : "border-transparent text-ink-soft hover:bg-shell-hover"}`}
             >
-              <Icon name={item.icon} className="h-[18px] w-[18px]" />
+              <Icon name={item.icon} className="h-[17px] w-[17px]" />
+              <span>{item.short ?? item.label}</span>
             </Link>
           ))}
           <Link
@@ -174,7 +191,6 @@ export default function AppSidebar() {
         className={
           "bg-shell z-30 " +
           (collapsed ? "lg:hidden " : "") +
-          (compact ? "lg:shadow-[8px_0_32px_-12px_rgba(43,40,38,0.35)] " : "") +
           // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
           // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
           // 그 스크롤바가 232px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).
@@ -183,15 +199,16 @@ export default function AppSidebar() {
           "fixed bottom-0 inset-x-0 flex flex-row border-t border-shell-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
         }
       >
-        {compact && (
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="absolute right-3 top-3 hidden min-h-11 rounded-md px-3 text-[13px] text-ink-soft hover:bg-shell-hover lg:block"
-          >
-            접기
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(true)}
+          aria-expanded
+          aria-label="메뉴 접기"
+          title="메뉴 접기"
+          className="absolute right-3 top-5 hidden h-11 w-11 items-center justify-center rounded-md text-ink-soft hover:bg-shell-hover lg:flex"
+        >
+          <Icon name="panel" className="h-[18px] w-[18px]" />
+        </button>
         <Link href="/" aria-label="쌤플 홈으로" className="hidden lg:block px-7 pt-6 pb-5">
           <span className="block text-[30px] font-bold tracking-[-0.06em] text-primary-deep">
             Ssample<span className="text-peach-strong">.</span>

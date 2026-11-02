@@ -6,6 +6,7 @@ export type IconName =
   | "record"
   | "doc"
   | "eval"
+  | "panel"
   | "settings"
   | "search"
   | "bell"
@@ -57,6 +58,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M8.5 12.5l2.3 2.3L15.8 9.8" />
+    </>
+  ),
+  panel: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9.5 4v16" />
     </>
   ),
   settings: (
