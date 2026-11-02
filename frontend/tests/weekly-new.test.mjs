@@ -1,4 +1,4 @@
-// 주간 만들기(Ⓦ1)의 처음 고를 달 · 주, 월간에서 이어받는 것, 주간 용지의 줄 순서.
+// 주간 만들기(Ⓦ1)의 처음 고를 달 · 주, 월간에서 이어받는 것, 주간 용지의 줄 순서, 다듬기(Ⓦ3) 칸 출처.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
@@ -147,4 +147,36 @@ test("주간 용지: 양식 순서 · 띠 · 요일 줄, 모르는 칸은 맨 �
     "가정 연계",
     "메모",
   ]);
+});
+
+test("다듬기 칸 출처: 교사 수정은 이력으로, 후보를 다시 넣으면 「후보에서 선택」", () => {
+  const { originOf } = load("../components/workspace/WeeklyEditor.tsx", {
+    react: React,
+    ...Object.fromEntries(
+      [
+        "@/lib/api/client",
+        "@/lib/api/plans",
+        "@/lib/api/weekly",
+        "@/components/plan-generator/PlayCellEditor",
+        "@/components/plan-generator/PlayMonthlyConfirm",
+        "@/components/plan-generator/PlayMonthlySafetyPanel",
+        "@/components/plan-generator/AnnualFrame",
+        "@/components/plan-generator/PlayMonthlySheet",
+        "@/components/app/compact-shell",
+        "./WeeklySheet",
+      ].map((n) => [n, {}]),
+    ),
+    "@/lib/weekly/section-labels": weeklyLabels,
+  });
+  const cell = {
+    item_id: "a",
+    value: "x",
+    teacher_input: false,
+    generation: { method: "RULE_ONLY", rule_id: "weekly.activity_copy" },
+  };
+  assert.equal(originOf(cell, new Set()), "후보에서 선택");
+  assert.equal(originOf(cell, new Set(["a"])), "교사 수정");
+  assert.equal(originOf({ ...cell, generation: { method: "RULE_LLM" } }, new Set()), "AI 초안");
+  assert.equal(originOf({ ...cell, teacher_input: true, value: " " }, new Set()), "");
+  assert.equal(originOf({ ...cell, teacher_input: true }, new Set()), "직접 입력");
 });

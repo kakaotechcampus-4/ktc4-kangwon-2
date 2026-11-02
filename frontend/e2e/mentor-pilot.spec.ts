@@ -293,14 +293,16 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
       await expect(page.getByRole("textbox")).toHaveCount(0);
     }
     if (kind === "weekly") {
-      // 보관함 링크가 고른 주가 「보는 중」이고, 그 주 계획안이 열린다.
+      // 보관함 링크로 그 주 계획안의 다듬기 화면이 열린다.
       await expect(
-        page
-          .getByRole("navigation", { name: `${monthPlan.month}월의 주` })
-          .locator('[aria-current="true"]'),
-      ).toContainText(week.label);
+        page.getByRole("heading", {
+          name: `${monthPlan.month}월 ${week.label} 주간계획안`,
+          exact: true,
+          level: 1,
+        }),
+      ).toBeVisible();
       await expect(
-        page.getByRole("heading", { name: week.label, exact: true, level: 2 }),
+        page.getByRole("region", { name: "주간계획안 미리보기", exact: true }),
       ).toBeVisible();
     }
   }
