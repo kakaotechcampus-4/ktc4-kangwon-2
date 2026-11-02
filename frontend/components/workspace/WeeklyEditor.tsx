@@ -14,22 +14,27 @@ import { isSaveConflict } from "@/lib/api/plans";
 import {
   confirmWeeklyPlan,
   copyWeeklyActivity,
+  downloadWeeklyHwpx,
   editWeeklyCell,
   getWeeklyPlanAudit,
   regenerateWeeklyCell,
   removeWeeklyActivityCell,
   splitWeeklyActivityCell,
+  unconfirmWeeklyPlan,
 } from "@/lib/api/weekly";
 import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
+import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { CARD, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
   AsideStrip,
   BigView,
   BUTTON,
+  PlanDone,
   POPOVER,
+  UNCONFIRM,
   tabClass,
   useSheetZoom,
 } from "@/components/plan-generator/AnnualFrame";
@@ -542,17 +547,49 @@ export default function WeeklyEditor({
   );
   const findings = plan.verification.findings;
 
+  // Ⓦ4 — 확정본 · 한글 내보내기 · 다음 주 만들기. 같은 주소라 링크 대신 화면을 바꾼다.
+  if (confirmed)
+    return (
+      <PlanDone
+        title={`${title}을 확정했어요`}
+        docLabel="확정된 주간계획안"
+        format="MONTHLY_THEME"
+        pages={[docOf(still)]}
+        download={() => downloadWeeklyHwpx(plan.id)}
+        next={{
+          href: `/plans/weekly?month=${month}`,
+          label: "다음 주 계획안 만들기 →",
+          hint: `${month}월 월간에서 아직 만들지 않은 주를 이어서 만들어요`,
+          onClick: onBack,
+        }}
+        unconfirm={
+          <>
+            {notice}
+            {problem && (
+              <p role="alert" className="m-0 text-[#8a2f2f]">
+                {problem}
+              </p>
+            )}
+            {message && <span role="status">{message}</span>}
+            {plan.parent_changed && <span role="status">월간계획안이 바뀌었어요</span>}
+            <UnconfirmButton
+              message="확정을 풀면 다시 고칠 수 있어요."
+              className={UNCONFIRM}
+              run={() => unconfirmWeeklyPlan(latest.current.id, latest.current.revision)}
+              onDone={accept}
+              onConflict={conflict}
+            />
+          </>
+        }
+      />
+    );
+
   return (
     <AnnualFrame
       title={title}
       format="MONTHLY_THEME"
       lead={back}
-      status={
-        <span role="status">
-          {confirmed ? "확정됨" : "작성 중"}
-          {status !== "idle" && ` · ${SAVE_LABEL[status]}`}
-        </span>
-      }
+      status={<span role="status">작성 중{status !== "idle" && ` · ${SAVE_LABEL[status]}`}</span>}
       notice={
         <div className="flex flex-col gap-1 text-sm text-[#5c5243]">
           {notice}
@@ -575,12 +612,10 @@ export default function WeeklyEditor({
               </button>
             )}
           </div>
-          {!confirmed && (
-            <p className="m-0 text-[13px]">
-              AI가 쓴 칸의 날짜 · 시각 · 선생님 이름은 입력한 내용과 대조했어요. 행사 이름처럼 그
-              밖의 사실은 확정 전에 한 번 더 확인해 주세요.
-            </p>
-          )}
+          <p className="m-0 text-[13px]">
+            AI가 쓴 칸의 날짜 · 시각 · 선생님 이름은 입력한 내용과 대조했어요. 행사 이름처럼 그 밖의
+            사실은 확정 전에 한 번 더 확인해 주세요.
+          </p>
           {findings.length > 0 && (
             <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[13px]">
               {findings.map((f, i) => (
@@ -591,41 +626,39 @@ export default function WeeklyEditor({
         </div>
       }
       actions={
-        !confirmed && (
-          <div className="relative">
-            <button
-              type="button"
-              className={BUTTON.primary}
-              disabled={locked}
-              onClick={() => {
-                // 놀이 주제가 비면 서버가 확정을 받지 않는다 — 그 칸으로 데려간다.
-                if (theme && !shown(theme).trim()) {
-                  select(theme.item_id);
-                  setProblem("놀이 주제를 적어야 확정할 수 있어요.");
-                } else setAsking("confirm");
-              }}
-            >
-              {busy === "confirm" ? "확정하는 중…" : "확정하기"}
-            </button>
-            {asking === "confirm" && (
-              <div className={POPOVER}>
-                <PlayMonthlyConfirm
-                  message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 확정한 주간은 한글 파일로 내려받을 수 있어요."
-                  yes="확정하기"
-                  no="더 다듬기"
-                  disabled={locked}
-                  onYes={() => {
-                    setAsking("");
-                    void confirm();
-                  }}
-                  onNo={() => setAsking("")}
-                />
-              </div>
-            )}
-          </div>
-        )
+        <div className="relative">
+          <button
+            type="button"
+            className={BUTTON.primary}
+            disabled={locked}
+            onClick={() => {
+              // 놀이 주제가 비면 서버가 확정을 받지 않는다 — 그 칸으로 데려간다.
+              if (theme && !shown(theme).trim()) {
+                select(theme.item_id);
+                setProblem("놀이 주제를 적어야 확정할 수 있어요.");
+              } else setAsking("confirm");
+            }}
+          >
+            {busy === "confirm" ? "확정하는 중…" : "확정하기"}
+          </button>
+          {asking === "confirm" && (
+            <div className={POPOVER}>
+              <PlayMonthlyConfirm
+                message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 확정한 주간은 한글 파일로 내려받을 수 있어요."
+                yes="확정하기"
+                no="더 다듬기"
+                disabled={locked}
+                onYes={() => {
+                  setAsking("");
+                  void confirm();
+                }}
+                onNo={() => setAsking("")}
+              />
+            </div>
+          )}
+        </div>
       }
-      aside={confirmed ? null : aside}
+      aside={aside}
       docLabel="요일형 주간 양식"
       docHint={
         <div className="flex items-center gap-1">
@@ -636,7 +669,7 @@ export default function WeeklyEditor({
         </div>
       }
     >
-      <div ref={docBox}>{docOf(confirmed ? still : editing, sheetZoom.percent / 100)}</div>
+      <div ref={docBox}>{docOf(editing, sheetZoom.percent / 100)}</div>
     </AnnualFrame>
   );
 }

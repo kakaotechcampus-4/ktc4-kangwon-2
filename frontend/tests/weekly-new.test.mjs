@@ -159,6 +159,7 @@ test("다듬기 칸 출처: 교사 수정은 이력으로, 후보를 다시 넣�
         "@/lib/api/weekly",
         "@/components/plan-generator/PlayCellEditor",
         "@/components/plan-generator/PlayMonthlyConfirm",
+        "@/components/plan-generator/UnconfirmButton",
         "@/components/plan-generator/PlayMonthlySafetyPanel",
         "@/components/plan-generator/AnnualFrame",
         "@/components/plan-generator/PlayMonthlySheet",

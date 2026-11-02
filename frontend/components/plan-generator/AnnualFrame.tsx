@@ -303,7 +303,8 @@ export function PlanDone({
   pages: ReactNode[];
   /** 한글 파일 받기(확정본만). 서버 경로가 없으면 빼고, 내보내기 칸을 숨긴다. */
   download?: () => Promise<void>;
-  next: { href: string; label: string; hint: string };
+  /** `onClick` 이 있으면 주소로 가지 않고 그것을 부른다(같은 주소 안에서 화면만 바꿀 때). */
+  next: { href: string; label: string; hint: string; onClick?: () => void };
   unconfirm: ReactNode;
 }) {
   const [page, setPage] = useState(0);
@@ -372,6 +373,13 @@ export function PlanDone({
             <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">다음 단계</h2>
             <Link
               href={next.href}
+              onClick={
+                next.onClick &&
+                ((e) => {
+                  e.preventDefault();
+                  next.onClick?.();
+                })
+              }
               className="flex min-h-[56px] items-center justify-center rounded-xl bg-[#7053a0] text-[16px] font-bold text-white"
             >
               {next.label}
