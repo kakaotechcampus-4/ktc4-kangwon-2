@@ -177,7 +177,9 @@ export default function AppSidebar() {
           (compact ? "lg:shadow-[8px_0_32px_-12px_rgba(43,40,38,0.35)] " : "") +
           // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
           // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
-          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:border-r lg:border-shell-line lg:flex lg:flex-col " +
+          // 그 스크롤바가 232px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).
+          // 자리를 늘 잡아 두면 스크롤바가 생기든 말든 폭이 그대로다.
+          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:border-r lg:border-shell-line lg:flex lg:flex-col " +
           "fixed bottom-0 inset-x-0 flex flex-row border-t border-shell-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
         }
       >
@@ -190,7 +192,7 @@ export default function AppSidebar() {
             접기
           </button>
         )}
-        <Link href="/" aria-label="쌤플 홈으로" className="hidden lg:block px-7 pt-7 pb-6">
+        <Link href="/" aria-label="쌤플 홈으로" className="hidden lg:block px-7 pt-6 pb-5">
           <span className="block text-[30px] font-bold tracking-[-0.06em] text-primary-deep">
             Ssample<span className="text-peach-strong">.</span>
           </span>
@@ -202,7 +204,7 @@ export default function AppSidebar() {
         설정 화면으로 넘어가 버렸다 (수린 점검 4). 반이 둘 이상이면 여기서 바로 바꾼다.
         반이 하나뿐이면 바꿀 것이 없으므로 예전처럼 설정으로 보낸다.
       */}
-        <div className="relative mx-4 mb-7 hidden lg:flex items-center gap-2.5 rounded-md border border-line bg-paper p-3 text-left shadow-pg-card">
+        <div className="relative mx-4 mb-6 hidden lg:flex items-center gap-2.5 rounded-md border border-line bg-paper p-3 text-left shadow-pg-card">
           <span className="flex h-8 w-8 items-center justify-center rounded-full border border-sun bg-sun-tint text-lg text-sun-ink">
             ☀
           </span>
@@ -253,7 +255,11 @@ export default function AppSidebar() {
         </nav>
 
         <div className="hidden lg:block mt-auto px-5 pb-5">
-          <div className="relative mb-6 -rotate-2 border border-note-line bg-note px-4 py-5 shadow-pg-card">
+          {/*
+            쪽지는 장식이다. 세로가 모자랄 때 메뉴·설정이 스크롤 뒤로 숨는 것보다
+            이것이 먼저 빠지는 쪽이 낫다. 880px 은 사이드바의 나머지가 다 들어가는 높이다.
+          */}
+          <div className="relative mb-5 hidden -rotate-2 border border-note-line bg-note px-4 py-4 shadow-pg-card [@media(min-height:880px)]:block">
             <Tape />
             <p className="font-display text-[22px] font-bold leading-tight text-ink">
               쌤의 계획이
