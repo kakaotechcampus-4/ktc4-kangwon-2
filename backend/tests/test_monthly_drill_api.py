@@ -18,6 +18,7 @@ from test_monthly_lifecycle_api import (  # noqa: F401
     _edit,
     _error,
     _get,
+    _regenerate,
     _seed,
     client,
 )
@@ -230,6 +231,40 @@ def test_복사한_칸도_교사가_고칠_수_있고_생성_방식은_그대로
     assert response.status_code == 200, response.json()
     cell = _drill_cell(response.json())
     assert (cell["value"], cell["generation"]["method"]) == ("고친 훈련", "RULE_ONLY")
+
+
+def test_빈_훈련_칸을_다시_만들면_422_이고_저장하지_않는다(plan):
+    before = _get(plan["id"])
+
+    response = _regenerate(plan["id"], _drill_cell(plan)["item_id"], plan["revision"])
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+    assert _get(plan["id"]) == before
+
+
+def test_후보를_복사한_훈련_칸을_다시_만들면_422_이고_저장하지_않는다(plan):
+    candidate_id = plan["drill_candidates"][0]["cell"]["item_id"]
+    copied = _copy(plan["id"], candidate_id, plan["revision"]).json()
+    assert _drill_cell(copied)["generation"]["method"] == "RULE_ONLY"
+    before = _get(plan["id"])
+
+    response = _regenerate(plan["id"], _drill_cell(copied)["item_id"], copied["revision"])
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+    assert _get(plan["id"]) == before
+
+
+def test_훈련_후보_칸을_다시_만들면_422_이고_저장하지_않는다(plan):
+    candidate_id = plan["drill_candidates"][0]["cell"]["item_id"]
+    before = _get(plan["id"])
+
+    response = _regenerate(plan["id"], candidate_id, plan["revision"])
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+    assert _get(plan["id"]) == before
 
 
 # ── 이력 ──────────────────────────────────────────────────────────────────

@@ -926,6 +926,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     };
     return server;
   };
+  let audit = async () => ({ items: [] });
   const { noticeSummary } = load();
   const { default: View } = compile("../components/workspace/MonthlyPlanEditor.tsx", {
     // 의존성 목록이 없는 effect 는 실제 React 처럼 매번 돈다.
@@ -936,7 +937,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
       placeMonthlySafety: (...a) => place(...a),
       confirmMonthlyPlan: async () => server,
       regenerateMonthlyCell: async () => server,
-      getMonthlyPlanAudit: async () => ({ items: [] }),
+      getMonthlyPlanAudit: (...a) => audit(...a),
       downloadMonthlyHwpx: () => {},
     },
     "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
@@ -994,6 +995,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     edits,
     placed,
     setPlace: (fn) => (place = fn),
+    setAudit: (fn) => (audit = fn),
     waits,
     listeners,
     props,
@@ -1291,4 +1293,56 @@ test('v1 — 빈 후보(display_value "")도 칸을 그려 눌러 편집기를 �
     safetyCells().map((c) => c.props.value),
     ["[교통안전] - 손을 들고 건너요", "[교통안전] - 손을 들고 건너요"],
   );
+});
+
+test("v1 — 변경 이력은 ARRANGEMENT_CHANGED · CANDIDATE_COPIED 를 놀이 월간 문구로 보이고 모르는 type 은 건너뛴다", async () => {
+  const view = openV1Editor();
+  const event = (more) => ({
+    type: "ARRANGEMENT_CHANGED",
+    occurred_at: "2026-09-01T00:00:00Z",
+    scope: "PLAN",
+    item_id: null,
+    section_key: null,
+    week_id: null,
+    day: null,
+    actor: "user_1",
+    system_actor: null,
+    value_change: null,
+    generation_change: null,
+    arrangement_change: null,
+    copied_from: null,
+    ...more,
+  });
+  view.setAudit(async () => ({
+    items: [
+      event({ arrangement_change: { scope: "2026-09-W2", before: [], after: ["cand_1"] } }),
+      event({ arrangement_change: { scope: "safety", before: [], after: [] } }),
+      event({ arrangement_change: null }),
+      event({
+        type: "CANDIDATE_COPIED",
+        scope: "CELL",
+        item_id: "d1",
+        section_key: "drill",
+        value_change: { before: "a", after: "b" },
+        copied_from: "dc_1",
+      }),
+      event({ type: "SOMETHING_NEW" }),
+    ],
+  }));
+  withText(view.render(), "button", "변경 이력 보기")[0].props.onClick();
+  view.render();
+  await view.tick();
+  const ol = all(view.render()).find(
+    (n) => n.type === "ol" && n.props["aria-label"] === "변경 이력",
+  );
+  assert.deepEqual(
+    node(ol, "li").map((li) => li.props.children.at(-1)),
+    [
+      "배치가 바뀌었어요 · 2주 안전교육",
+      "배치가 바뀌었어요 · 안전교육",
+      "배치가 바뀌었어요",
+      "훈련 후보를 복사했어요 「a」 → 「b」",
+    ],
+  );
+  assert.doesNotMatch(text(ol), /SOMETHING_NEW/);
 });

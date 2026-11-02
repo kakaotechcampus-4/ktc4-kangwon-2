@@ -491,6 +491,8 @@ const EVENT: Record<MonthlyAuditEvent["type"], string> = {
   CREATED: "만들었어요",
   TEACHER_EDITED: "고쳤어요",
   REGENERATED: "다시 만들었어요",
+  ARRANGEMENT_CHANGED: "배치가 바뀌었어요",
+  CANDIDATE_COPIED: "훈련 후보를 복사했어요",
   CONFIRMED: "확정했어요",
   UNCONFIRMED: "확정을 풀었어요",
 };
@@ -547,6 +549,9 @@ function MonthlyHistory({ id }: { id: number }) {
               {e === created[0]
                 ? `처음 만들어진 칸 ${created.length}개`
                 : EVENT[e.type] +
+                  (e.type === "ARRANGEMENT_CHANGED" && e.arrangement_change
+                    ? ` · ${/-W(\d+)$/.exec(e.arrangement_change.scope)?.[1]?.concat("주 ") ?? ""}안전교육`
+                    : "") +
                   (e.value_change
                     ? ` ${short(e.value_change.before)} → ${short(e.value_change.after)}`
                     : "")}
