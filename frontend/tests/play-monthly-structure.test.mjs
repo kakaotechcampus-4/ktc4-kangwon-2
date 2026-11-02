@@ -111,6 +111,7 @@ const load = (file) => {
     "./PlayMonthlyStructure.module.css": esModule(css),
     "./PlayMonthlyConfirm": esModule(confirmMod(h).default),
   };
+  mods["./PlayMonthlySafetyPanel"] = compile(dir + "PlayMonthlySafetyPanel.tsx", mods);
   return { C: compile(dir + file, mods).default, h };
 };
 const click = (tree, pred) =>
@@ -139,48 +140,37 @@ const plan = (over = {}) => ({
   ...over,
 });
 
-test("안전교육: 후보 8개와 주별 현재 배치를 보인다", () => {
+test("안전교육: 고른 주의 후보 8개 — 그 주에 둔 후보는 [빼기], 다른 주에 둔 후보는 「n주에 넣음」", () => {
   const { C, h } = load("PlayMonthlySafetyPanel.tsx");
-  const tree = h.render(C, { plan: plan(), onPlace() {}, disabled: false });
+  let tree = h.render(C, { plan: plan(), weekId: "w2", onPlace() {}, disabled: false });
   assert.equal(all(tree).filter((n) => n.props?.["data-candidate"]).length, 8);
-  assert.equal(withClass(tree, "tag").filter((n) => text(n) === "법정").length, 6);
-  assert.equal(withClass(tree, "tag").filter((n) => text(n) === "생활안전").length, 2);
-  const w1 = all(tree).find((n) => n.props?.["data-week"] === "w1");
-  assert.ok(text(w1).includes("법정 2"));
-  const w2 = all(tree).find((n) => n.props?.["data-week"] === "w2");
-  assert.ok(text(w2).includes("아직 안 뒀어요"));
-  assert.equal(all(w2).filter(act("clear")).length, 0);
+  assert.ok(text(tree).includes("2주 안전교육 후보"));
+  assert.ok(text(tree).includes("아직 비어 있어요"));
+  assert.equal(all(tree).filter(act("place")).length, 8);
+  const s2 = all(tree).find((n) => n.props?.["data-candidate"] === "s2");
+  assert.ok(text(s2).includes("법정 · 1주, 3주에 넣음"));
+  tree = h.render(C, { plan: plan(), weekId: "w1", onPlace() {}, disabled: false });
+  assert.ok(text(tree).includes("넣었어요"));
+  assert.equal(all(tree).filter(act("clear")).length, 1);
+  assert.ok(
+    text(all(tree).find((n) => n.props?.["data-candidate"] === "s2")).includes("3주에 넣음"),
+  );
 });
 
-test("안전교육: 후보를 고르기 전엔 두기가 꺼져 있고, 고르면 주마다 같은 후보를 둘 수 있다", () => {
+test("안전교육: [넣기]는 고른 주에 그 후보를, [빼기]는 null 을 넘기고, disabled 면 모든 버튼이 꺼진다", () => {
   const { C, h } = load("PlayMonthlySafetyPanel.tsx");
   const calls = [];
-  const props = { plan: plan(), onPlace: (...a) => calls.push(a), disabled: false };
-  let tree = h.render(C, props);
-  assert.ok(
-    all(tree)
-      .filter(act("place"))
-      .every((n) => n.props.disabled),
+  const onPlace = (...a) => calls.push(a);
+  click(
+    h.render(C, { plan: plan(), weekId: "w2", onPlace, disabled: false }),
+    (n) => act("place")(n) && n.props["aria-label"].endsWith("법정 3"),
   );
-  click(tree, (n) => n.props["data-candidate"] === "s3");
-  tree = h.render(C, props);
-  const place = all(tree).filter(act("place"));
-  assert.ok(place.every((n) => !n.props.disabled));
-  place[1].props.onClick();
-  place[2].props.onClick();
+  click(h.render(C, { plan: plan(), weekId: "w1", onPlace, disabled: false }), act("clear"));
   assert.deepEqual(calls, [
     ["w2", "s3"],
-    ["w3", "s3"],
+    ["w1", null],
   ]);
-});
-
-test("안전교육: 비우기는 null 을 넘기고, disabled 면 모든 버튼이 꺼진다", () => {
-  const { C, h } = load("PlayMonthlySafetyPanel.tsx");
-  const calls = [];
-  let tree = h.render(C, { plan: plan(), onPlace: (...a) => calls.push(a), disabled: false });
-  click(tree, (n) => act("clear")(n) && text(n) === "비우기");
-  assert.deepEqual(calls, [["w1", null]]);
-  tree = h.render(C, { plan: plan(), onPlace() {}, disabled: true });
+  const tree = h.render(C, { plan: plan(), weekId: "w1", onPlace() {}, disabled: true });
   assert.ok(
     all(tree)
       .filter((n) => n.type === "button")
@@ -262,28 +252,6 @@ test("행 빼기: 마지막 행이면 확정이 막힌다는 안내가 있고, d
   );
   const tree = h.render(C, { ...base, isLastInSection: false, disabled: true });
   assert.ok(all(tree).find(act("remove")).props.disabled);
-});
-
-test("안전교육: 계획이 바뀌면 고른 후보를 버리고 두기가 꺼진다", () => {
-  const { C, h } = load("PlayMonthlySafetyPanel.tsx");
-  const calls = [];
-  const onPlace = (...a) => calls.push(a);
-  click(
-    h.render(C, { plan: plan(), onPlace, disabled: false }),
-    (n) => n.props["data-candidate"] === "s3",
-  );
-  const b = plan({
-    id: 2,
-    safety_candidates: [{ kind: "STATUTORY", cell: cell("x1", "다른 계획") }],
-  });
-  const tree = h.render(C, { plan: b, onPlace, disabled: false });
-  assert.ok(
-    all(tree)
-      .filter(act("place"))
-      .every((n) => n.props.disabled),
-  );
-  assert.equal(all(tree).filter((n) => n.props["aria-pressed"] === true).length, 0);
-  assert.deepEqual(calls, []);
 });
 
 test("확인 상자: 연 채 disabled 가 되면 상자가 닫히고 콜백은 0건이다", () => {
@@ -373,16 +341,13 @@ test("복사 · 비우기 버튼 이름에 후보명 · 주 이름이 들어가�
   const s = load("PlayMonthlySafetyPanel.tsx");
   const p = plan();
   p.safety_candidates[0].cell.value = " ";
-  const tree = s.h.render(s.C, { plan: p, onPlace() {}, disabled: false });
+  const tree = s.h.render(s.C, { plan: p, weekId: "w1", onPlace() {}, disabled: false });
   const labels = (t, a) =>
     all(t)
       .filter(act(a))
       .map((n) => n.props["aria-label"]);
-  assert.deepEqual(labels(tree, "clear"), ["1주 비우기: 법정 2", "3주 비우기: 법정 2"]);
-  assert.equal(
-    all(tree).find((n) => n.props["data-candidate"] === "s1").props["aria-label"],
-    "법정 빈 후보",
-  );
+  assert.deepEqual(labels(tree, "clear"), ["1주에 빼기: 법정 2"]);
+  assert.equal(labels(tree, "place")[0], "1주에 넣기: 법정 빈 후보");
   const d = load("PlayMonthlyDrillPanel.tsx");
   assert.deepEqual(
     labels(d.h.render(d.C, { plan: plan(), onCopy() {}, disabled: false }), "copy"),

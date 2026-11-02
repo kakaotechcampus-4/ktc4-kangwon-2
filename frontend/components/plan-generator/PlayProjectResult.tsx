@@ -818,7 +818,8 @@ export default function PlayProjectResult({
   );
   return (
     <AnnualFrame
-      plan={plan}
+      title={`${plan.school_year} 연간계획안`}
+      format={plan.format}
       status={SAVE_LABEL[saving.status]}
       notice={
         <>

@@ -24,15 +24,18 @@ export const tabClass = (active: boolean) =>
 export const pageClass = (active: boolean) =>
   `min-h-[36px] min-w-[52px] rounded-lg border px-3 text-sm ${active ? "border-[#7053a0] bg-white font-bold text-[#5e4b96]" : "border-transparent text-[#5c5243] hover:bg-white/60"}`;
 
-const chip = (format: AnnualPlanResponse["format"]) => (
+type Format = AnnualPlanResponse["format"];
+export const chip = (format: Format) => (
   <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${CHIP[format][1]}`}>
     {CHIP[format][0]}
   </span>
 );
 
-/** ⑤ 결과 · 다듬기. 왼쪽 380px 패널(`aside`, 전체 보기면 null) · 오른쪽 문서. */
+/** ⑤ · Ⓜ3 결과 · 다듬기. 왼쪽 380px 패널(`aside`, 전체 보기면 null) · 오른쪽 문서. 연간 · 월간이 같이 쓴다. */
 export default function AnnualFrame({
-  plan,
+  title,
+  format,
+  lead,
   status,
   actions,
   notice,
@@ -41,7 +44,11 @@ export default function AnnualFrame({
   docHint,
   children,
 }: {
-  plan: AnnualPlanResponse;
+  /** 예: 「2026 연간계획안」 · 「11월 월간계획안」. */
+  title: string;
+  format: Format;
+  /** 제목 앞 (월간의 「←」 돌아가기). */
+  lead?: ReactNode;
   status: ReactNode;
   actions: ReactNode;
   notice?: ReactNode;
@@ -55,10 +62,9 @@ export default function AnnualFrame({
     <main className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826]">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">
-            {plan.school_year} 연간계획안
-          </h1>
-          {chip(plan.format)}
+          {lead}
+          <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h1>
+          {chip(format)}
           <span className="text-sm text-[#5c5243]">{status}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">{actions}</div>
@@ -110,6 +116,54 @@ export function AnnualDone({
   onUnconfirmed: (plan: AnnualPlanResponse) => void;
   onConflict: () => void | Promise<void>;
 }) {
+  return (
+    <PlanDone
+      title={`${plan.school_year} 연간계획안을 확정했어요`}
+      docLabel="확정된 연간계획안"
+      format={plan.format}
+      pages={pages}
+      download={() => downloadAnnualHwpx(plan.id)}
+      next={{
+        href: "/plans/monthly",
+        label: "월간계획안 만들기 →",
+        hint: "이 연간계획안을 바탕으로 만들어요",
+      }}
+      unconfirm={
+        <UnconfirmButton
+          message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 월간계획안은 그대로예요."
+          className={UNCONFIRM}
+          run={() =>
+            unconfirmAnnualPlan(plan.id, plan.format === "PLAY_PROJECT" ? plan.revision : undefined)
+          }
+          onDone={onUnconfirmed}
+          onConflict={onConflict}
+        />
+      }
+    />
+  );
+}
+
+export const UNCONFIRM = "min-h-[44px] self-start rounded-xl px-3 text-sm text-[#5c5243] underline";
+
+/** ⑥ · Ⓜ4 확정 후 틀 — 왼쪽 확정 문서(쪽이 여럿이면 쪽 번호) · 오른쪽 280px 내보내기 · 다음 단계 · 홈 · 확정 풀기. */
+export function PlanDone({
+  title,
+  docLabel,
+  format,
+  pages,
+  download,
+  next,
+  unconfirm,
+}: {
+  title: string;
+  docLabel: string;
+  format: Format;
+  pages: ReactNode[];
+  /** 한글 파일 받기(확정본만). 서버 경로가 없으면 빼고, 내보내기 칸을 숨긴다. */
+  download?: () => Promise<void>;
+  next: { href: string; label: string; hint: string };
+  unconfirm: ReactNode;
+}) {
   const [page, setPage] = useState(0);
   const [exportMessage, setExportMessage] = useState("");
   const hwpx = useHwpxDownload(setExportMessage);
@@ -122,14 +176,12 @@ export function AnnualDone({
         >
           ✓
         </span>
-        <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">
-          {plan.school_year} 연간계획안을 확정했어요
-        </h1>
-        {chip(plan.format)}
+        <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h1>
+        {chip(format)}
       </div>
       <div className="flex min-h-0 flex-1 gap-4">
         <section
-          aria-label="확정된 연간계획안"
+          aria-label={docLabel}
           className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e8e2d8] bg-[#f1ede6]"
         >
           {pages.length > 1 && (
@@ -153,34 +205,36 @@ export function AnnualDone({
           </div>
         </section>
         <aside className="flex w-[280px] shrink-0 flex-col gap-3">
-          <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
-            <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
-            <button
-              type="button"
-              disabled={hwpx.exporting}
-              onClick={() => void hwpx.download(() => downloadAnnualHwpx(plan.id))}
-              className="flex min-h-[52px] items-center gap-3 rounded-xl border border-[#ddd6ca] bg-white px-4 text-left text-[15px] font-bold hover:bg-[#f7f4ee] disabled:opacity-50"
-            >
-              <span className="flex h-8 w-10 items-center justify-center rounded-md bg-[#2f6db5] text-[11px] font-bold text-white">
-                HWP
-              </span>
-              {hwpx.exporting ? "내려받는 중…" : "한글로 내보내기"}
-            </button>
-            {exportMessage && (
-              <p role="status" className="m-0 text-[13px] text-[#5c5243]">
-                {exportMessage}
-              </p>
-            )}
-          </div>
+          {download && (
+            <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
+              <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
+              <button
+                type="button"
+                disabled={hwpx.exporting}
+                onClick={() => void hwpx.download(download)}
+                className="flex min-h-[52px] items-center gap-3 rounded-xl border border-[#ddd6ca] bg-white px-4 text-left text-[15px] font-bold hover:bg-[#f7f4ee] disabled:opacity-50"
+              >
+                <span className="flex h-8 w-10 items-center justify-center rounded-md bg-[#2f6db5] text-[11px] font-bold text-white">
+                  HWP
+                </span>
+                {hwpx.exporting ? "내려받는 중…" : "한글로 내보내기"}
+              </button>
+              {exportMessage && (
+                <p role="status" className="m-0 text-[13px] text-[#5c5243]">
+                  {exportMessage}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
             <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">다음 단계</h2>
             <Link
-              href="/plans/monthly"
+              href={next.href}
               className="flex min-h-[56px] items-center justify-center rounded-xl bg-[#7053a0] text-[16px] font-bold text-white"
             >
-              월간계획안 만들기 →
+              {next.label}
             </Link>
-            <span className="text-[13px] text-[#8a8178]">이 연간계획안을 바탕으로 만들어요</span>
+            <span className="text-[13px] text-[#8a8178]">{next.hint}</span>
           </div>
           <Link
             href="/"
@@ -202,20 +256,7 @@ export function AnnualDone({
             </svg>
             홈으로 가기
           </Link>
-          <div className="flex flex-col gap-2 text-[13px] text-[#5c5243]">
-            <UnconfirmButton
-              message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 월간계획안은 그대로예요."
-              className="min-h-[44px] self-start rounded-xl px-3 text-sm text-[#5c5243] underline"
-              run={() =>
-                unconfirmAnnualPlan(
-                  plan.id,
-                  plan.format === "PLAY_PROJECT" ? plan.revision : undefined,
-                )
-              }
-              onDone={onUnconfirmed}
-              onConflict={onConflict}
-            />
-          </div>
+          <div className="flex flex-col gap-2 text-[13px] text-[#5c5243]">{unconfirm}</div>
         </aside>
       </div>
     </main>

@@ -7,7 +7,7 @@
  * 저장하지 못한 글은 되돌리지 않고 남겨 다시 저장하게 한다 — 그동안 확정 · 반 · 월 이동은 멈춘다.
  */
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ApiError } from "@/lib/api/client";
 import {
   confirmMonthlyPlan,
@@ -21,14 +21,29 @@ import {
 import { isSaveConflict } from "@/lib/api/plans";
 import type { MonthlyAuditEvent, MonthlyCell, MonthlyPlan } from "@/lib/api/types";
 import { sectionName } from "@/lib/monthly/section-labels";
-import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
-import { Cell, SheetFrame } from "@/components/plan-generator/PlayMonthlySheet";
+import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
+import AnnualFrame, {
+  AsideStrip,
+  BUTTON,
+  PlanDone,
+  UNCONFIRM,
+  tabClass,
+} from "@/components/plan-generator/AnnualFrame";
+import {
+  Band,
+  Cell,
+  HEAD,
+  LINE,
+  Paper,
+  WeekHead,
+  period,
+  safetyCellId,
+} from "@/components/plan-generator/PlayMonthlySheet";
 import { noticeSummary } from "@/components/plan-generator/PlayMonthlyView";
-import type { SheetZoom } from "@/components/plan-generator/playProjectPagination";
-import styles from "@/components/plan-generator/PlayMonthlyView.module.css";
+import { useCompactShell } from "@/components/app/compact-shell";
 import { ws } from "./WorkspaceUI";
 
 const REGENERATABLE = new Set(["focus", "outdoor_play", "basic_habit", "goals"]);
@@ -60,6 +75,9 @@ export default function MonthlyPlanEditor({
   onConflict,
   onDelete,
   note,
+  className,
+  notice,
+  onBack,
   flushRef,
 }: {
   plan: MonthlyPlan;
@@ -69,20 +87,26 @@ export default function MonthlyPlanEditor({
   onDelete: () => void;
   /** 양식 출처 한 줄. */
   note: string;
+  /** 용지 오른쪽 위 반 이름. */
+  className: string;
+  /** 화면이 띄우는 안내(다시 불러옴 등). */
+  notice?: ReactNode;
+  /** 「←」 — 화면이 열린 입력을 저장한 뒤 만들기로 돌아간다. */
+  onBack: () => void;
   /** 화면이 반 · 월을 옮기기 전에 부른다 — 열린 입력을 저장하고 끝까지 기다린다. 못 저장한 칸이 남으면 false. */
   flushRef?: RefObject<(() => Promise<boolean>) | null>;
 }) {
   const [live, setLive] = useState<Record<string, string>>({});
+  // 고른 칸. 안전교육 후보 줄은 주 주소(`safety:<주>`) — 같은 후보를 여러 주에 둘 수 있다.
   const [selected, setSelected] = useState<string | null>(null);
-  // 안전교육 줄에서 누른 주 — 같은 후보를 여러 주에 둘 수 있어 id 만으로는 어느 주인지 모른다.
-  const [safetyWeek, setSafetyWeek] = useState<string | null>(null);
+  const [tab, setTab] = useState<"ai" | "edit">("edit");
+  const [full, setFull] = useState(false);
+  const [asking, setAsking] = useState<"" | "confirm" | "regenerate">("");
   const [bumps, setBumps] = useState<Record<string, number>>({});
   const [status, setStatus] = useState<keyof typeof SAVE_LABEL>("idle");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [problem, setProblem] = useState("");
-  const [zoom, setZoom] = useState<SheetZoom>({ mode: "fit", percent: 100 });
-  const hwpx = useHwpxDownload(setMessage);
   // 저장 줄 — 앞 요청이 끝나야 다음이 그 revision 으로 간다. 화면이 내려간 뒤에는 저장만 마친다.
   const queue = useRef<Promise<void>>(Promise.resolve());
   const latest = useRef(plan);
@@ -100,6 +124,7 @@ export default function MonthlyPlanEditor({
   }, []);
 
   const confirmed = plan.status === "CONFIRMED";
+  useCompactShell(!confirmed);
   const locked = !!busy;
   const weeks = plan.weeks.filter((w) => w.active);
   const sections = plan.sections
@@ -112,20 +137,24 @@ export default function MonthlyPlanEditor({
       ? []
       : s.cells.map((cell) => ({ section: s, cell })),
   );
-  // 후보 칸은 누른 주에 지금 그 후보가 놓여 있을 때만 고른 칸이 된다(비우거나 바꾸면 편집기가 닫힌다).
+  // 안전교육 후보 줄: 그 주에 지금 놓인 후보 문장을 고친다(비우면 편집기가 닫힌다).
   const safety = sections.find((s) => s.section_key === "safety_education");
-  const candidate =
-    safety &&
-    plan.safety_weeks.find((w) => w.week_id === safetyWeek)?.candidate_item_id === selected
-      ? plan.safety_candidates.find((c) => c.cell.item_id === selected)
-      : undefined;
+  const safetyWeek = candidateMode && selected?.startsWith("safety:") ? selected.slice(7) : null;
+  const weekCandidate = safetyWeek
+    ? plan.safety_weeks.find((w) => w.week_id === safetyWeek)?.candidate_item_id
+    : null;
+  const candidate = weekCandidate
+    ? plan.safety_candidates.find((c) => c.cell.item_id === weekCandidate)
+    : undefined;
   const picked = confirmed
     ? null
     : ((candidate && safety
         ? { section: safety, cell: candidate.cell }
         : cells.find((c) => c.cell.item_id === selected)) ?? null);
   const blank = cells.some(({ cell }) => !cell.value.trim());
-  const summary = noticeSummary(plan.notices);
+  // 안전교육 미배치 안내는 후보를 두는 방식일 때만 뜻이 있다.
+  const notices = candidateMode ? plan.notices : [];
+  const summary = noticeSummary(notices);
 
   const accept = (next: MonthlyPlan) => {
     latest.current = next;
@@ -247,14 +276,12 @@ export default function MonthlyPlanEditor({
     }
   }
 
-  const regenerate = (cell: MonthlyCell) => {
-    if (!window.confirm("이 칸을 다시 만들면 현재 내용이 바뀌어요. 계속할까요?")) return;
+  const regenerate = (cell: MonthlyCell) =>
     afterSaves(
       cell.item_id,
       (cur) => regenerateMonthlyCell(cur.id, cell.item_id, cur.revision),
       "다시 만들었어요.",
     );
-  };
   const place = (weekId: string, candidateItemId: string | null) =>
     afterSaves(
       "safety:" + weekId,
@@ -268,222 +295,416 @@ export default function MonthlyPlanEditor({
       "확정했어요. 이제 고칠 수 없어요.",
     );
 
-  const label = (section: (typeof sections)[number], cell: MonthlyCell) => {
-    const week = weeks.find((w) => w.week_id === cell.week_id)?.label;
-    return sectionName(section.section_key, section.label) + (week ? ` · ${week}` : "");
-  };
-  const at = {
-    selected: picked?.cell.item_id ?? null,
-    onSelect: confirmed ? undefined : setSelected,
-  };
+  const weekLabel = (id: string | null) => weeks.find((w) => w.week_id === id)?.label ?? "";
   const shown = (cell: MonthlyCell) => live[cell.item_id] ?? cell.value;
   const stamp = (id: string) => `${bumps["*"] ?? 0}:${bumps[id] ?? 0}`;
+  // 안전교육 줄은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
+  const select = (id: string) => {
+    setSelected(id);
+    setAsking("");
+    setTab(id.startsWith("safety:") ? "ai" : "edit");
+  };
+  const at = {
+    selected: confirmed || full ? null : selected,
+    onSelect: confirmed || full ? undefined : select,
+  };
+  const where = safetyWeek
+    ? `${weekLabel(safetyWeek)} · 안전교육`
+    : picked
+      ? (picked.cell.week_id ? `${weekLabel(picked.cell.week_id)} · ` : "") +
+        sectionName(picked.section.section_key, picked.section.label)
+      : "";
+  // 「확인할 것」 — 안전교육을 안 둔 주. 누르면 그 주 안전교육 칸으로 간다.
+  const goNotice = () => {
+    const first = notices[0];
+    if (!first) return;
+    setFull(false);
+    select(safetyCellId(first.week_id));
+  };
+  const findings = [
+    ...new Map(plan.verification.findings.map((f) => [`${f.code}|${f.section_key}`, f])).values(),
+  ];
+  // 맨 앞 주별 아닌 칸(주제 · 목표 등)은 위 표, 나머지는 주별 표 — 순서는 양식 그대로.
+  const head = sections.findIndex((s) => s.repeat_by === "WEEK");
+  const top = head < 0 ? sections : sections.slice(0, head);
+  const rest = head < 0 ? [] : sections.slice(head);
+  const span = Math.max(weeks.length, 1);
 
-  return (
-    <>
-      <div className={styles.meta}>
-        <span className={ws.badge}>{confirmed ? "확정됨" : "초안"}</span>
-        <span>{plan.target_month}</span>
-        {plan.parent.theme && <span className={ws.muted}>연간 주제 · {plan.parent.theme}</span>}
-        <span className={ws.muted}>{note}</span>
-        {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
-        {blank && <span role="status">빈 칸이 있어요 (확정을 막지 않아요)</span>}
-        {!confirmed && candidateMode && summary && <span role="status">{summary}</span>}
-        {/* 저장 표시와 안내는 줄을 따로 쓴다. 같은 줄에 두면 「저장됨」이 「저장 중…」으로
-            바뀔 때 줄이 접혔다 펴지면서 바로 아래 「확정하기」가 커서 밑에서 움직였다. */}
-        <span className={styles.metaLine}>
-          {!confirmed && <span role="status">{SAVE_LABEL[status]}</span>}
-          {!confirmed && status === "failed" && (
-            <button type="button" className={ws.secondary} disabled={locked} onClick={retry}>
-              다시 저장
-            </button>
-          )}
-          <span role="status">{message}</span>
-        </span>
-      </div>
-      {problem && <p role="alert">{problem}</p>}
-      <div className={ws.actions} style={{ marginBottom: 12 }}>
-        {confirmed ? (
-          <>
+  const editTab = (
+    <div className="flex flex-col gap-4">
+      {!where && (
+        <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
+      )}
+      {where && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[13px] text-[#5c5243]">{where.split(" · ")[0]}</span>
+          <h2 className="m-0 text-lg font-bold">{where.split(" · ")[1] ?? where}</h2>
+        </div>
+      )}
+      {picked && !candidate && picked.section.repeat_by === "WEEK" && (
+        <div role="group" aria-label="주 고르기" className="flex flex-wrap gap-1.5">
+          {picked.section.cells.map((c) => (
             <button
+              key={c.item_id}
               type="button"
-              className={ws.primary}
-              disabled={hwpx.exporting}
-              onClick={() => hwpx.download(() => downloadMonthlyHwpx(plan.id))}
+              aria-pressed={c.item_id === picked.cell.item_id}
+              className={`min-h-[36px] rounded-full border px-3.5 text-sm ${c.item_id === picked.cell.item_id ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#5e4b96]" : "border-[#ddd6ca] bg-white text-[#5c5243]"}`}
+              onClick={() => select(c.item_id)}
             >
-              {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
+              {weekLabel(c.week_id)}
             </button>
+          ))}
+        </div>
+      )}
+      {safetyWeek && !candidate && (
+        <p className="m-0 text-sm text-[#5c5243]">
+          「AI 후보」에서 이 주에 안전교육을 넣으면 고칠 수 있어요.
+        </p>
+      )}
+      {picked && (
+        <>
+          <PlayCellEditor
+            key={picked.cell.item_id + ":" + stamp(picked.cell.item_id)}
+            id="monthly-cell"
+            label={candidate ? `안전교육 후보 · ${weekLabel(safetyWeek)}` : where}
+            value={shown(picked.cell)}
+            allowBlank
+            maxLength={Infinity}
+            readOnly={locked}
+            onDraft={(text) => setLive((d) => ({ ...d, [picked.cell.item_id]: text }))}
+            onSave={(text) => saveCell(picked.cell.item_id, text)}
+            onRevert={() =>
+              setLive((d) =>
+                Object.fromEntries(Object.entries(d).filter(([k]) => k !== picked.cell.item_id)),
+              )
+            }
+          />
+          <p className="m-0 text-[13px] text-[#5c5243]">
+            {candidate
+              ? "이 문장을 둔 다른 주도 같이 바뀌어요."
+              : "고치면 오른쪽 문서에 바로 반영돼요"}
+          </p>
+          {picked.cell.state === "EMPTY_UNRESOLVED" && (
+            <p className="m-0 text-[13px] text-[#5c5243]">
+              근거가 없어 비워 두었어요. 직접 적어주세요.
+            </p>
+          )}
+          {picked.cell.evidence.length > 0 && (
+            <p className="m-0 text-[12px] text-[#5c5243]">
+              근거 ·{" "}
+              {[
+                ...new Set(
+                  picked.cell.evidence.map((e) =>
+                    e.source_type === "SAFETY_RULE"
+                      ? "안전교육 기준"
+                      : e.display_name || e.source_type,
+                  ),
+                ),
+              ].join(" · ")}
+            </p>
+          )}
+          {REGENERATABLE.has(picked.section.section_key) &&
+            (plan.generation_mode !== "RULE_ONLY" ||
+              picked.section.section_key === "outdoor_play") && (
+              <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
+                <button
+                  type="button"
+                  className={BUTTON.outline}
+                  disabled={locked}
+                  onClick={() => setAsking("regenerate")}
+                >
+                  {busy === picked.cell.item_id ? "다시 만드는 중…" : "AI로 이 칸 다시 만들기"}
+                </button>
+                {asking === "regenerate" && (
+                  <PlayMonthlyConfirm
+                    message="이 칸을 다시 만들면 지금 내용이 바뀌어요. 다시 만들까요?"
+                    yes="다시 만들기"
+                    disabled={locked}
+                    onYes={() => {
+                      setAsking("");
+                      void regenerate(picked.cell);
+                    }}
+                    onNo={() => setAsking("")}
+                  />
+                )}
+              </div>
+            )}
+        </>
+      )}
+      <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
+        <MonthlyHistory id={plan.id} />
+        <button type="button" className={BUTTON.quiet} disabled={locked} onClick={onDelete}>
+          지우고 다시 만들기
+        </button>
+        {note && <small className="text-[12px] text-[#8a8178]">{note}</small>}
+      </div>
+    </div>
+  );
+  const aiTab =
+    candidateMode && safetyWeek ? (
+      <PlayMonthlySafetyPanel plan={plan} weekId={safetyWeek} onPlace={place} disabled={locked} />
+    ) : (
+      <p className="m-0 text-sm text-[#5c5243]">
+        {candidateMode
+          ? "안전교육 칸을 누르면 넣을 후보가 보여요."
+          : "이 양식에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
+      </p>
+    );
+  const aside = (
+    <>
+      <div
+        role="tablist"
+        aria-label="고치는 방법"
+        className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+      >
+        {(["ai", "edit"] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={tabClass(tab === key)}
+            onClick={() => setTab(key)}
+          >
+            {key === "ai" ? "AI 후보" : "칸 편집"}
+          </button>
+        ))}
+      </div>
+      <AsideStrip>{where ? `${where} 칸을 골랐어요` : "아직 고른 칸이 없어요"}</AsideStrip>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
+        {tab === "ai" ? aiTab : editTab}
+      </div>
+    </>
+  );
+  const one = (section: (typeof sections)[number]) => {
+    const cell = section.cells[0];
+    return cell && <Cell {...at} id={cell.item_id} value={shown(cell)} />;
+  };
+  const row = (section: (typeof sections)[number]) => {
+    const byWeek = new Map(section.cells.map((c) => [c.week_id, c]));
+    const safetyRow = candidateMode && section.section_key === "safety_education";
+    return (
+      <tr key={section.section_key}>
+        <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
+          {sectionName(section.section_key, section.label)}
+        </th>
+        {section.repeat_by !== "WEEK" ? (
+          <td colSpan={span} className={`${LINE} align-top`}>
+            {one(section)}
+          </td>
+        ) : (
+          weeks.map((w) => {
+            if (safetyRow) {
+              // 그 주에 둔 후보의 표시값(서버가 붙인 머리말 포함) — 입력 중 글은 저장 응답 뒤에 반영된다. 비어 있어도 칸은 그린다.
+              const sw = plan.safety_weeks.find((x) => x.week_id === w.week_id);
+              return (
+                <td key={w.week_id} className={`${LINE} text-center align-middle`}>
+                  <Cell {...at} id={safetyCellId(w.week_id)} value={sw?.display_value ?? ""} />
+                </td>
+              );
+            }
+            const cell = byWeek.get(w.week_id);
+            return (
+              <td key={w.week_id} className={`${LINE} text-center align-middle`}>
+                {cell && <Cell {...at} id={cell.item_id} value={shown(cell)} />}
+              </td>
+            );
+          })
+        )}
+      </tr>
+    );
+  };
+  const back = (
+    <button
+      type="button"
+      aria-label="월간계획안 만들기로"
+      disabled={locked}
+      onClick={onBack}
+      className="flex h-11 w-11 items-center justify-center rounded-xl text-lg text-[#5c5243] hover:bg-white disabled:opacity-40"
+    >
+      ←
+    </button>
+  );
+  const askConfirm =
+    "확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 주간계획안을 만들게 돼요." +
+    (notices.length ? ` 확인할 것 ${notices.length}개가 남았어요.` : "");
+
+  const doc = (
+    <Paper label="월간계획안 미리보기" title={`${plan.month}월 월간계획안`} sub={className}>
+      <table className="w-full table-fixed border-collapse">
+        <colgroup>
+          <col style={{ width: "17%" }} />
+          <col />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
+              예상 기간
+            </th>
+            <td className={`${LINE} px-1.5 py-1`}>{period(weeks)}</td>
+          </tr>
+          {top.map((section) => (
+            <tr key={section.section_key}>
+              <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
+                {sectionName(section.section_key, section.label)}
+              </th>
+              <td className={`${LINE} align-top`}>{one(section)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rest.length > 0 && (
+        <>
+          <div className="mt-2" />
+          <Band>주별 놀이 계획</Band>
+          <table className="w-full table-fixed border-collapse">
+            <colgroup>
+              <col style={{ width: "17%" }} />
+              {weeks.map((w) => (
+                <col key={w.week_id} />
+              ))}
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col" className={`${LINE} ${HEAD}`}>
+                  구분
+                </th>
+                {weeks.map((w, i) => (
+                  <WeekHead key={w.week_id} index={i} week={w} />
+                ))}
+              </tr>
+            </thead>
+            <tbody>{rest.map(row)}</tbody>
+          </table>
+        </>
+      )}
+    </Paper>
+  );
+  // Ⓜ4 — 확정본 · 한글 내보내기 · 주간 만들기로.
+  if (confirmed)
+    return (
+      <PlanDone
+        title={`${plan.month}월 월간계획안을 확정했어요`}
+        docLabel="확정된 월간계획안"
+        format="MONTHLY_THEME"
+        pages={[doc]}
+        download={() => downloadMonthlyHwpx(plan.id)}
+        next={{
+          href: "/plans/weekly",
+          label: "주간계획안 만들기 →",
+          hint: `${plan.month}월 1주부터 이 월간을 바탕으로 만들어요`,
+        }}
+        unconfirm={
+          <>
+            {notice}
+            {problem && (
+              <p role="alert" className="m-0 text-[#8a2f2f]">
+                {problem}
+              </p>
+            )}
+            {message && <span role="status">{message}</span>}
             <UnconfirmButton
               message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 주간계획안은 그대로예요."
-              className={ws.secondary}
+              className={UNCONFIRM}
               run={() => unconfirmMonthlyPlan(latest.current.id, latest.current.revision)}
               onDone={accept}
               onConflict={conflict}
             />
           </>
-        ) : (
-          <>
-            <button type="button" className={ws.primary} disabled={locked} onClick={confirm}>
+        }
+      />
+    );
+  return (
+    <AnnualFrame
+      title={`${plan.month}월 월간계획안`}
+      format="MONTHLY_THEME"
+      lead={back}
+      status={
+        <span className="flex items-center gap-3">
+          <span role="status">작성 중{status !== "idle" && ` · ${SAVE_LABEL[status]}`}</span>
+          {notices.length > 0 && (
+            <button
+              type="button"
+              title={summary}
+              onClick={goNotice}
+              className="min-h-[32px] rounded-full bg-[#fdecea] px-3 text-[13px] font-bold text-[#b3261e]"
+            >
+              ! 확인할 것 {notices.length}
+            </button>
+          )}
+        </span>
+      }
+      notice={
+        <div className="flex flex-col gap-1 text-sm text-[#5c5243]">
+          {notice}
+          {problem && (
+            <p role="alert" className="m-0 text-[#8a2f2f]">
+              {problem}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            {plan.parent.theme && <span>연간 주제 · {plan.parent.theme}</span>}
+            {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
+            {blank && <span role="status">빈 칸이 있어요 (확정을 막지 않아요)</span>}
+            <span role="status">{message}</span>
+            {status === "failed" && (
+              <button type="button" className={BUTTON.outline} disabled={locked} onClick={retry}>
+                다시 저장
+              </button>
+            )}
+          </div>
+          {findings.length > 0 && (
+            <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[13px]">
+              {findings.map((f, i) => (
+                <li key={i}>{FINDINGS[f.code] ?? f.message}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      }
+      actions={
+        <>
+          <button
+            type="button"
+            className={BUTTON.outline}
+            aria-pressed={full}
+            onClick={() => setFull(!full)}
+          >
+            {full ? "고치기로" : "전체 보기"}
+          </button>
+          <div className="relative">
+            <button
+              type="button"
+              className={BUTTON.primary}
+              disabled={locked}
+              onClick={() => setAsking("confirm")}
+            >
               {busy === "confirm" ? "확정하는 중…" : "확정하기"}
             </button>
-            <span className={ws.muted}>
-              확정하면 고칠 수 없어요 · 확정하면 한글 파일로 내려받을 수 있어요
-            </span>
-            <button type="button" className={ws.secondary} disabled={locked} onClick={onDelete}>
-              지우고 다시 만들기
-            </button>
-          </>
-        )}
-      </div>
-      <MonthlyHistory id={plan.id} />
-      {plan.verification.findings.length > 0 && (
-        <ul className={ws.list} style={{ margin: "12px 0" }}>
-          {[
-            ...new Map(
-              plan.verification.findings.map((f) => [`${f.code}|${f.section_key}`, f]),
-            ).values(),
-          ].map((f, i) => (
-            <li key={i} className={ws.hint}>
-              {FINDINGS[f.code] ?? f.message}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className={styles.layout} style={{ marginTop: 12 }}>
-        <aside className={styles.side} aria-label="칸 편집">
-          <h2>칸 편집</h2>
-          {confirmed && <p>확정한 계획안은 고칠 수 없어요.</p>}
-          {!confirmed && !picked && <p>문서의 칸을 누르면 여기서 고칠 수 있어요.</p>}
-          {picked && (
-            <>
-              <PlayCellEditor
-                key={picked.cell.item_id + ":" + stamp(picked.cell.item_id)}
-                id="monthly-cell"
-                label={
-                  candidate
-                    ? "안전교육 후보 · " +
-                      (weeks.find((w) => w.week_id === safetyWeek)?.label ?? "")
-                    : label(picked.section, picked.cell)
-                }
-                value={shown(picked.cell)}
-                allowBlank
-                maxLength={Infinity}
-                readOnly={locked}
-                onDraft={(text) => setLive((d) => ({ ...d, [picked.cell.item_id]: text }))}
-                onSave={(text) => saveCell(picked.cell.item_id, text)}
-                onRevert={() =>
-                  setLive((d) =>
-                    Object.fromEntries(
-                      Object.entries(d).filter(([k]) => k !== picked.cell.item_id),
-                    ),
-                  )
-                }
-              />
-              {candidate && <p>이 문장을 둔 다른 주도 같이 바뀌어요.</p>}
-              {picked.cell.state === "EMPTY_UNRESOLVED" && (
-                <p>근거가 없어 비워 두었어요. 직접 적어주세요.</p>
-              )}
-              {picked.cell.evidence.length > 0 && (
-                <p>
-                  근거 ·{" "}
-                  {[
-                    ...new Set(
-                      picked.cell.evidence.map((e) =>
-                        e.source_type === "SAFETY_RULE"
-                          ? "안전교육 기준"
-                          : e.display_name || e.source_type,
-                      ),
-                    ),
-                  ].join(" · ")}
-                </p>
-              )}
-              {REGENERATABLE.has(picked.section.section_key) &&
-                (plan.generation_mode !== "RULE_ONLY" ||
-                  picked.section.section_key === "outdoor_play") && (
-                  <button
-                    type="button"
-                    className={ws.link}
-                    disabled={locked}
-                    onClick={() => regenerate(picked.cell)}
-                  >
-                    {busy === picked.cell.item_id ? "…" : "↻ 이 칸만 다시 만들기"}
-                  </button>
-                )}
-            </>
-          )}
-          {!confirmed && candidateMode && (
-            <PlayMonthlySafetyPanel plan={plan} onPlace={place} disabled={locked} />
-          )}
-        </aside>
-        <SheetFrame
-          label="월간계획안 미리보기"
-          title={`${plan.target_month.slice(0, 4)}년 ${plan.month}월 월간계획안`}
-          zoom={zoom}
-          onZoomChange={setZoom}
-        >
-          <table className={styles.doc}>
-            <thead>
-              <tr>
-                <th scope="col">구분</th>
-                {weeks.map((w) => (
-                  <th key={w.week_id} scope="col">
-                    {w.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sections.map((section) => {
-                const byWeek = new Map(section.cells.map((c) => [c.week_id, c]));
-                const one = section.cells[0];
-                return (
-                  <tr key={section.section_key}>
-                    <th scope="row">{sectionName(section.section_key, section.label)}</th>
-                    {section.repeat_by !== "WEEK" ? (
-                      <td colSpan={Math.max(weeks.length, 1)}>
-                        {one && <Cell {...at} id={one.item_id} value={shown(one)} />}
-                      </td>
-                    ) : (
-                      weeks.map((w) => {
-                        if (candidateMode && section.section_key === "safety_education") {
-                          // 그 주에 둔 후보의 표시값. 표시값이 "" 여도 칸은 그려 눌러 채울 수 있게 한다.
-                          const sw = plan.safety_weeks.find((x) => x.week_id === w.week_id);
-                          return (
-                            <td key={w.week_id}>
-                              {sw?.candidate_item_id && (
-                                <Cell
-                                  selected={at.selected}
-                                  onSelect={
-                                    confirmed
-                                      ? undefined
-                                      : (id) => {
-                                          setSelected(id);
-                                          setSafetyWeek(w.week_id);
-                                        }
-                                  }
-                                  id={sw.candidate_item_id}
-                                  value={sw.display_value}
-                                />
-                              )}
-                            </td>
-                          );
-                        }
-                        const cell = byWeek.get(w.week_id);
-                        return (
-                          <td key={w.week_id}>
-                            {cell && <Cell {...at} id={cell.item_id} value={shown(cell)} />}
-                          </td>
-                        );
-                      })
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </SheetFrame>
-      </div>
-    </>
+            {asking === "confirm" && (
+              <div className="absolute right-0 top-full z-20 mt-2 w-[380px]">
+                <PlayMonthlyConfirm
+                  message={askConfirm}
+                  yes="확정하기"
+                  no="더 다듬기"
+                  disabled={locked}
+                  onYes={() => {
+                    setAsking("");
+                    void confirm();
+                  }}
+                  onNo={() => setAsking("")}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      }
+      aside={full ? null : aside}
+      docLabel="월별 주제형 월간 양식"
+      docHint={full ? "전체 보기" : "칸을 누르면 왼쪽에서 고칠 수 있어요 · 기간은 고정"}
+    >
+      {doc}
+    </AnnualFrame>
   );
 }
 

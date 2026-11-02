@@ -314,7 +314,8 @@ export default function ThemeAnnualResult({
   );
   return (
     <AnnualFrame
-      plan={plan}
+      title={`${plan.school_year} 연간계획안`}
+      format={plan.format}
       status={SAVE_LABEL[status]}
       notice={
         <>

@@ -181,6 +181,44 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
       onBack();
     });
 
+  // 편집 화면은 다듬기 틀(Ⓜ3) 하나로 그린다 — 불러오기 · 오류일 때만 아래 쪽 화면.
+  if (legacy && plan)
+    return (
+      <MonthlyPlanEditor
+        key={plan.id + ":" + version}
+        plan={plan}
+        onPlan={setPlan}
+        onConflict={() => {
+          setVersion((v) => v + 1);
+          setReload((n) => n + 1);
+          setMessage("다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.");
+        }}
+        onDelete={handleDelete}
+        onBack={() => void leave(onBack)}
+        flushRef={flush}
+        className={classes.find((c) => c.id === localClassId)?.className ?? ""}
+        notice={
+          (message || problem) && (
+            <>
+              {message && (
+                <p role="status" className="m-0">
+                  {message}
+                </p>
+              )}
+              {problem && (
+                <p role="alert" className="m-0 text-[#8a2f2f]">
+                  {problem}
+                </p>
+              )}
+            </>
+          )
+        }
+        note={
+          profile ? `${profileSource} · ${profile.profile_id} / ${profile.profile_version}` : ""
+        }
+      />
+    );
+
   return (
     <WorkspacePage
       title="월간계획안"
@@ -218,24 +256,6 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
       {loading && <p role="status">월간계획안을 불러오는 중…</p>}
       {!loading && (isPlay || !plan) && (
         <p className={ws.hint}>이 계획안을 찾지 못했어요. 만들기 화면에서 달을 다시 골라 주세요.</p>
-      )}
-
-      {legacy && plan && (
-        <MonthlyPlanEditor
-          key={plan.id + ":" + version}
-          plan={plan}
-          onPlan={setPlan}
-          onConflict={() => {
-            setVersion((v) => v + 1);
-            setReload((n) => n + 1);
-            setMessage("다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.");
-          }}
-          onDelete={handleDelete}
-          flushRef={flush}
-          note={
-            profile ? `${profileSource} · ${profile.profile_id} / ${profile.profile_version}` : ""
-          }
-        />
       )}
     </WorkspacePage>
   );

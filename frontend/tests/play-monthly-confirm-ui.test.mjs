@@ -129,7 +129,7 @@ function bar(over = {}) {
   };
   const mod = compile("../components/plan-generator/PlayMonthlyConfirmBar.tsx", {
     react: h.react,
-    "@/components/workspace/Workspace.module.css": esModule(css),
+    "./PlayMonthlyConfirm": esModule((p) => jsx("ask", p)),
     "@/lib/api/client": { ApiError: StubApiError },
     "@/lib/api/playMonthly": {
       confirmPlayMonthly: async (id, rev) => {
@@ -153,8 +153,6 @@ function bar(over = {}) {
 
 test("confirm bar: blur, freeze, wait for the queue, then confirm with the revision it reports", async () => {
   const b = bar();
-  const first = b.render();
-  assert.equal(withText(first, "span", "확정하면 고칠 수 없어요").length, 1);
   await b.click();
   assert.deepEqual(b.log, [
     "blur",
@@ -265,6 +263,24 @@ test("confirm bar: after unmount nothing is confirmed or reported", async () => 
     b.log.some((x) => x[0] === "confirm" || x[0] === "confirmed"),
     false,
   );
+});
+
+test("confirm bar: with `ask` the first click only opens the question; 「확정하기」 there confirms, 「더 다듬기」 closes", async () => {
+  const b = bar({ ask: "확정하면 확정을 풀기 전까지 고칠 수 없어요." });
+  const opened = await b.click();
+  assert.deepEqual(b.log, []);
+  const ask = all(opened).find((n) => n.type === "ask");
+  assert.equal(ask.props.message, "확정하면 확정을 풀기 전까지 고칠 수 없어요.");
+  assert.equal(ask.props.no, "더 다듬기");
+  ask.props.onNo();
+  assert.equal(all(b.render()).filter((n) => n.type === "ask").length, 0);
+  await b.click();
+  all(b.render())
+    .find((n) => n.type === "ask")
+    .props.onYes();
+  await tick();
+  assert.deepEqual(b.log.slice(0, 3), ["blur", "freeze", "idle"]);
+  assert.equal(all(b.render()).filter((n) => n.type === "ask").length, 0);
 });
 
 test("confirm bar: a confirmed plan shows no button", () => {

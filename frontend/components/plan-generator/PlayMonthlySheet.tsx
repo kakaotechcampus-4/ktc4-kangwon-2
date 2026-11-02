@@ -1,18 +1,32 @@
 "use client";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { PlayMonthlyActivity, PlayMonthlyPlan } from "@/lib/api/types";
-import { stepPlaySheetZoom, type SheetZoom } from "./playProjectPagination";
-import sheet from "./PlayProjectResult.module.css";
-import styles from "./PlayMonthlyView.module.css";
+
+/**
+ * 월간 문서 용지 — 디자인 넘김 `monthly-docs.tsx`(내보내기 양식 모양)의 선 · 머리 색 · 주 색.
+ * 월간 v1 · 놀이 월간이 같이 쓴다. 칸은 서버가 준 만큼 그린다.
+ */
+export const LINE = "border border-[#a9d3ee]";
+export const HEAD = "bg-[#e6f3fc] font-normal text-[#5c7f99]";
+export const WEEK_BG = ["#fcd6d6", "#fde2cf", "#fdf4c8", "#dff3e6", "#e4e8fb"];
+const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
+export const TEACHER_HINT = "선생님이 적는 칸이에요";
 
 /** 칸을 고를 수 있으면(`onSelect`) 누르는 칸이 되고, 고른 칸(`selected`)은 강조한다. 확정본은 `onSelect` 가 없어 글자만 그린다. */
 export interface Pick {
   selected?: string | null;
   onSelect?: (itemId: string) => void;
 }
-export const Cell = ({ id, value, selected, onSelect }: Pick & { id: string; value: string }) => (
+/** 빈 칸은 다듬는 동안만 `hint`(기본 빨간 「비어 있어요」)를 보인다. 확정본에는 보이지 않는다. */
+export const Cell = ({
+  id,
+  value,
+  selected,
+  onSelect,
+  hint = "비어 있어요",
+}: Pick & { id: string; value: string; hint?: string }) => (
   <span
-    className={selected === id ? `${styles.cell} ${styles.selected}` : styles.cell}
+    className={`block min-h-[1.5em] whitespace-pre-line px-1.5 py-1 ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
     data-cell={id}
     {...(onSelect && {
       role: "button",
@@ -27,96 +41,133 @@ export const Cell = ({ id, value, selected, onSelect }: Pick & { id: string; val
       },
     })}
   >
-    {value}
+    {value.trim() || !onSelect ? (
+      value
+    ) : (
+      <span
+        className={`text-[11px] ${hint === TEACHER_HINT ? "text-[#8a8178]" : "text-[#c2473d]"}`}
+      >
+        {hint}
+      </span>
+    )}
   </span>
 );
-const md = (date: string) => date.slice(5).replace("-", ".");
-const Rows = ({ rows, ...at }: Pick & { rows: PlayMonthlyActivity[] }) => (
-  <ol>
-    {rows.map((row) => (
-      <li key={row.activity_id}>
-        <Cell {...at} id={row.name.item_id} value={row.name.value} />
-      </li>
-    ))}
-  </ol>
+
+export const Band = ({ children }: { children: ReactNode }) => (
+  <div className={`${LINE} bg-[#e6f3fc] py-1 text-center text-[12px] font-bold`}>
+    [ {children} ]
+  </div>
 );
 
-/** 문서 미리보기 틀 — 확대 · 축소 · 맞춤과 한 장 용지. 월간 v1 · 놀이 월간이 같이 쓴다. */
-export function SheetFrame({
+/** 주 머리 칸 — 주 색 띠 + 날짜. */
+export const WeekHead = ({
+  index,
+  week,
+}: {
+  index: number;
+  week: { label: string; start_date: string; end_date: string };
+}) => (
+  <th
+    scope="col"
+    className={`${LINE} py-0.5 font-normal`}
+    style={{ background: WEEK_BG[index % WEEK_BG.length] }}
+  >
+    {week.label}
+    <small className="block text-[10px] text-[#5c5243]">
+      {md(week.start_date)} ~ {md(week.end_date)}
+    </small>
+  </th>
+);
+const md = (date: string) => date.slice(5).replace("-", ".");
+/** 예상 기간 — 첫 주 시작 ~ 마지막 주 끝(2026.11.02 ~ 2026.11.27). */
+export const period = (weeks: { start_date: string; end_date: string }[]) =>
+  weeks.length
+    ? `${weeks[0].start_date.replaceAll("-", ".")} ~ ${weeks[weeks.length - 1].end_date.replaceAll("-", ".")}`
+    : "";
+
+/**
+ * 한 장 용지(폭 780px). 칸이 좁으면 그만큼만 줄이고 넓어도 키우지 않는다 — 확대 도구는 두지 않는다.
+ */
+export function Paper({
   label,
   title,
-  zoom,
-  onZoomChange,
+  sub,
   children,
 }: {
   label: string;
   title: string;
-  zoom: SheetZoom;
-  onZoomChange: (zoom: SheetZoom) => void;
+  sub: string;
   children: ReactNode;
 }) {
-  const viewport = useRef<HTMLDivElement>(null);
-  const page = useRef<HTMLElement>(null);
-  const [fit, setFit] = useState(100);
-  const percent = zoom.mode === "fit" ? fit : zoom.percent;
-  // 맞춤: 문서 폭이 상자에 들어오는 배율. 쪽 나누기는 계산하지 않는다(한 장 스케일).
+  const box = useRef<HTMLElement>(null);
+  const [scale, setScale] = useState(1);
   useEffect(() => {
-    const box = viewport.current;
-    if (!box || !page.current) return;
-    const update = () => {
-      const pad = getComputedStyle(box);
-      const width = box.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight);
-      setFit(Math.min(150, (width / page.current!.offsetWidth) * 100));
-    };
+    const el = box.current;
+    if (!el) return;
+    const update = () => setScale(Math.min(1, el.clientWidth / 780));
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(box);
+    observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  const step = (delta: -1 | 1) =>
-    onZoomChange({ mode: "manual", percent: stepPlaySheetZoom(percent, delta) });
   return (
-    <section className={sheet.sheet} aria-label={label}>
-      <div className={sheet.sheetToolbar}>
-        <button type="button" aria-label="축소" onClick={() => step(-1)}>
-          −
-        </button>
-        <button type="button" aria-label="확대" onClick={() => step(1)}>
-          +
-        </button>
-        <button
-          type="button"
-          aria-label="맞춤"
-          onClick={() => onZoomChange({ ...zoom, mode: "fit" })}
-        >
-          맞춤
-        </button>
-        <output>{zoom.mode === "fit" ? `맞춤 ${Math.round(percent)}%` : `${percent}%`}</output>
-      </div>
-      <div ref={viewport} className={sheet.sheetViewport}>
-        <div className={sheet.sheetPages} style={{ zoom: percent / 100 }}>
-          <article ref={page} className={sheet.sheetPage}>
-            <h2 className={sheet.sheetTitle}>{title}</h2>
-            {children}
-          </article>
-        </div>
+    <section ref={box} aria-label={label} className="w-full min-w-0">
+      <div style={{ zoom: scale }}>
+        <article className="mx-auto w-[780px] bg-white px-8 py-7 text-[12px] leading-snug text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]">
+          <div className={`${LINE} bg-[#e6f3fc] px-4 pb-1.5 pt-2.5 text-center`}>
+            <h2 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h2>
+            <div className="text-right text-[13px]">{sub}</div>
+          </div>
+          {children}
+          <p className="m-0 mt-2 bg-[#e6f3fc] px-3 py-1 text-center text-[10px] leading-snug text-[#3d3a36]">
+            *예상 놀이 방향은 [2019 개정 누리과정]의 목적에 따라 ‘유아 놀이 중심’ 활동이 진행 될 수
+            있도록 융통성 있게 구성되었습니다.
+            <br />
+            *유아들의 흥미도와 참여 정도에 따라 다른 방향으로 조정됩니다.
+          </p>
+        </article>
       </div>
     </section>
   );
 }
 
+/** 안전교육 줄의 칸 주소 — 주마다 하나(같은 후보를 여러 주에 둘 수 있어 후보 id 로는 주를 모른다). */
+export const safetyCellId = (weekId: string) => "safety:" + weekId;
+const N = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+const Rows = ({
+  rows,
+  mark,
+  ...at
+}: Pick & { rows: PlayMonthlyActivity[]; mark: (i: number) => string }) => (
+  <ol className="m-0 list-none p-0">
+    {rows.map((row, i) => (
+      <li key={row.activity_id} className="flex items-start">
+        <span aria-hidden="true" className="shrink-0 py-1 pl-1.5">
+          {mark(i)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <Cell {...at} id={row.name.item_id} value={row.name.value} />
+        </span>
+      </li>
+    ))}
+  </ol>
+);
+
+const Tagged = ({ tag, children }: { tag: string; children: ReactNode }) => (
+  <div className="flex items-start text-left">
+    <b className="shrink-0 py-1 pl-1.5">[{tag}]</b>
+    <span className="min-w-0 flex-1">{children}</span>
+  </div>
+);
+
 export default function PlayMonthlySheet({
   plan,
   className,
-  zoom,
-  onZoomChange,
   selected,
   onSelect,
 }: {
   plan: PlayMonthlyPlan;
   className: string;
-  zoom: SheetZoom;
-  onZoomChange: (zoom: SheetZoom) => void;
 } & Pick) {
   const at = { selected, onSelect };
   const teacher = (key: string) =>
@@ -125,151 +176,177 @@ export default function PlayMonthlySheet({
     const cell = teacher(key);
     return (
       <tr key={key}>
-        <th scope="row">{label}</th>
-        <td>{cell && <Cell {...at} id={cell.item_id} value={cell.value} />}</td>
+        <th scope="row" className={`${LINE} ${HEAD} w-[15%]`}>
+          {label}
+        </th>
+        <td className={`${LINE} p-0`}>
+          {cell && <Cell {...at} hint={TEACHER_HINT} id={cell.item_id} value={cell.value} />}
+        </td>
       </tr>
     );
   };
   const safetyText = (weekId: string) => {
     const picked = plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id;
-    return plan.safety_candidates.find((c) => c.cell.item_id === picked)?.cell ?? null;
+    return plan.safety_candidates.find((c) => c.cell.item_id === picked)?.cell.value ?? "";
   };
   const drill = teacher("fire_disaster_drill");
   const timetables = [
     ["specialized_timetable", "특성화 시간표"],
     ["special_activity_timetable", "특별활동 시간표"],
   ];
+  const weeks = plan.weeks;
   return (
-    <SheetFrame
+    <Paper
       label="놀이 중심 월간계획안 미리보기"
-      title={`${plan.target_month.slice(0, 4)}년 ${plan.month}월 놀이계획안`}
-      zoom={zoom}
-      onZoomChange={onZoomChange}
+      title={`${plan.month}월 놀이계획안`}
+      sub={`만 ${plan.target_ages.join("·")}세 ${className}`.trim()}
     >
-      <table className={styles.doc}>
+      <table className="w-full table-fixed border-collapse">
+        <colgroup>
+          <col style={{ width: "15%" }} />
+          <col />
+        </colgroup>
         <tbody>
           <tr>
-            <th scope="row">놀이 주제</th>
-            <td colSpan={3}>
+            <th scope="row" className={`${LINE} h-7 font-bold`}>
+              놀이 주제
+            </th>
+            <td className={`${LINE} p-0`}>
               <Cell {...at} id={plan.theme.item_id} value={plan.theme.value} />
             </td>
           </tr>
           <tr>
-            <th scope="row">예상 기간</th>
-            <td>
-              {plan.target_month.slice(0, 4)}년 {plan.month}월
-            </td>
-            <th scope="row">만 {plan.target_ages.join("·")}세</th>
-            <td>{className}</td>
+            <th scope="row" className={`${LINE} h-7 font-bold`}>
+              예상 기간
+            </th>
+            <td className={`${LINE} px-1.5`}>{period(weeks)}</td>
           </tr>
           <tr>
-            <th scope="row">주제선정이유</th>
-            <td colSpan={3}>
+            <th scope="row" className={`${LINE} font-bold`}>
+              주제선정이유
+            </th>
+            <td className={`${LINE} p-0 text-[11.5px]`}>
               <Cell {...at} id={plan.rationale.item_id} value={plan.rationale.value} />
             </td>
           </tr>
         </tbody>
       </table>
-      <div className={styles.bar}>[ 예상되는 놀이 방향 ]</div>
-      <div className={styles.board}>
-        <section>
-          <h3>함께 하는 활동</h3>
-          <Rows {...at} rows={plan.together} />
-        </section>
-        <div className={styles.center}>
-          <small>우리의 놀이</small>
-          <strong>{plan.theme.value}</strong>
-        </div>
-        <section>
-          <h3>유아 예상 자유놀이</h3>
-          <Rows {...at} rows={plan.free_play} />
-        </section>
-      </div>
-      <table className={styles.doc}>
+      <Band>예상되는 놀이 방향</Band>
+      <table className="w-full table-fixed border-collapse">
+        <colgroup>
+          <col style={{ width: "35%" }} />
+          <col style={{ width: "30%" }} />
+          <col style={{ width: "35%" }} />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th scope="col" className={`${LINE} h-6 font-normal text-[#d0479a]`}>
+              함께 하는 활동
+            </th>
+            <td rowSpan={2} className={`${LINE} px-2 text-center font-bold`}>
+              {plan.theme.value}
+            </td>
+            <th scope="col" className={`${LINE} font-normal text-[#d0479a]`}>
+              유아 예상 자유놀이
+            </th>
+          </tr>
+          <tr>
+            <td className={`${LINE} p-0 align-top`}>
+              <Rows {...at} rows={plan.together} mark={(i) => N[i] ?? `${i + 1}.`} />
+            </td>
+            <td className={`${LINE} p-0 align-top`}>
+              <Rows {...at} rows={plan.free_play} mark={() => "-"} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="mt-2" />
+      <table className="w-full table-fixed border-collapse text-[11.5px] leading-tight">
+        <colgroup>
+          <col style={{ width: "15%" }} />
+          {weeks.map((week) => (
+            <col key={week.week_id} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
-            <th scope="col">구분</th>
-            {plan.weeks.map((week) => (
-              <th scope="col" key={week.week_id}>
-                {week.label}
-                <small>
-                  {md(week.start_date)} ~ {md(week.end_date)}
-                </small>
-              </th>
+            <th scope="col" className={`${LINE} ${HEAD} h-6`}>
+              구분
+            </th>
+            {weeks.map((week, i) => (
+              <WeekHead key={week.week_id} index={i} week={week} />
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="text-center">
           <tr>
-            <th scope="row">기본생활습관</th>
-            {plan.weeks.map((week) => {
+            <th scope="row" className={`${LINE} ${HEAD} h-9`}>
+              기본생활습관
+            </th>
+            {weeks.map((week) => {
               const habit = plan.habits.find((h) => h.week_id === week.week_id);
               return (
-                <td key={week.week_id}>
+                <td key={week.week_id} className={`${LINE} p-0`}>
                   {habit && <Cell {...at} id={habit.cell.item_id} value={habit.cell.value} />}
                 </td>
               );
             })}
           </tr>
           <tr>
-            <th scope="row">안전교육</th>
-            {plan.weeks.map((week) => {
-              const cell = safetyText(week.week_id);
-              return (
-                <td key={week.week_id}>
-                  {cell && <Cell {...at} id={cell.item_id} value={cell.value} />}
-                </td>
-              );
-            })}
+            <th scope="row" className={`${LINE} ${HEAD} h-9`}>
+              안전교육
+            </th>
+            {weeks.map((week) => (
+              <td key={week.week_id} className={`${LINE} p-0`}>
+                <Cell {...at} id={safetyCellId(week.week_id)} value={safetyText(week.week_id)} />
+              </td>
+            ))}
           </tr>
           <tr>
-            <th scope="row">소방대피/재난대비</th>
-            <td colSpan={plan.weeks.length}>
-              {drill && <Cell {...at} id={drill.item_id} value={drill.value} />}
+            <th scope="row" className={`${LINE} ${HEAD} h-6`}>
+              소방대피/재난대비
+            </th>
+            <td colSpan={weeks.length} className={`${LINE} p-0 text-left`}>
+              {drill && <Cell {...at} hint={TEACHER_HINT} id={drill.item_id} value={drill.value} />}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row" className={`${LINE} ${HEAD} h-7`}>
+              건강·영양교육
+            </th>
+            <td colSpan={Math.ceil(weeks.length / 2)} className={`${LINE} p-0`}>
+              <Tagged tag="건강">
+                <Cell {...at} id={plan.health.cell.item_id} value={plan.health.cell.value} />
+              </Tagged>
+            </td>
+            <td colSpan={Math.floor(weeks.length / 2)} className={`${LINE} p-0`}>
+              <Tagged tag="영양">
+                <Cell {...at} id={plan.nutrition.cell.item_id} value={plan.nutrition.cell.value} />
+              </Tagged>
             </td>
           </tr>
         </tbody>
       </table>
-      <table className={styles.doc}>
-        <tbody>
-          <tr>
-            <th scope="row">건강‧영양교육</th>
-            <td>
-              <b>[건강]</b>{" "}
-              <Cell {...at} id={plan.health.cell.item_id} value={plan.health.cell.value} />
-            </td>
-            <td>
-              <b>[영양]</b>{" "}
-              <Cell {...at} id={plan.nutrition.cell.item_id} value={plan.nutrition.cell.value} />
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      {timetables.map(([key, label]) => (
-        <div key={key}>
-          <div className={styles.bar}>[ {label} ]</div>
-          <table className={styles.doc}>
-            <tbody>
-              <tr>
-                <td>
-                  {teacher(key) && (
-                    <Cell {...at} id={teacher(key)!.item_id} value={teacher(key)!.value} />
-                  )}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ))}
-      <div className={styles.bar}>[ 우리반 안내사항 ]</div>
-      <table className={styles.doc}>
+      {timetables.map(([key, label]) => {
+        const cell = teacher(key);
+        return (
+          <div key={key} className="mt-2">
+            <Band>{label}</Band>
+            <div className={`${LINE} border-t-0 text-[11.5px]`}>
+              {cell && <Cell {...at} hint={TEACHER_HINT} id={cell.item_id} value={cell.value} />}
+            </div>
+          </div>
+        );
+      })}
+      <div className="mt-2" />
+      <Band>우리반 안내사항</Band>
+      <table className="w-full table-fixed border-collapse text-[11.5px]">
         <tbody>
           {input("class_notice", "안내사항")}
           {input("class_birthdays", "우리반 생일")}
           {input("home_connection", "가정연계")}
         </tbody>
       </table>
-      <p className={styles.footer}>놀이 방향은 유아의 관심에 따라 달라질 수 있습니다.</p>
-    </SheetFrame>
+    </Paper>
   );
 }
