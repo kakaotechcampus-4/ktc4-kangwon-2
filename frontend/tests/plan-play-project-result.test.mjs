@@ -364,6 +364,15 @@ test("phone period tabs use two grid columns in the 767px media block", () => {
   const wrapping = mobile.match(/\.wrappingTabs\s*\{([^}]+)\}/)[1];
   assert.match(wrapping, /display:\s*grid\s*;/);
   assert.match(wrapping, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*;/);
+  // ④ 계절 탭은 Tailwind 로 같은 배치 — 좁으면 두 열, md 부터 한 줄.
+  const result = readFileSync(
+    new URL("../components/plan-generator/PlayProjectResult.tsx", import.meta.url),
+    "utf8",
+  );
+  // ④ 탭 줄(여러 줄로 쓴 쪽)만 본다. ⑤ 탭 줄은 한 줄 · flex-wrap 이라 넘치지 않는다.
+  const pick = result.match(/role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/)[1];
+  assert.match(pick, /\bgrid-cols-2\b/);
+  assert.match(pick, /\bmd:flex\b/);
 });
 
 test("PlayProjectResult does not use browser storage", () => {

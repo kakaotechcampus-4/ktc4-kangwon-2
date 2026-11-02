@@ -656,7 +656,12 @@ export default function PlayProjectResult({
               </button>
             )}
           </div>
-          <div role="tablist" aria-label="놀이 프로젝트 기간" className="flex gap-1 rounded-xl bg-[#ebe5db] p-1">
+          {/* 좁은 화면(< 768px)은 두 열 — 한 줄이면 휴대전화에서 페이지가 가로로 넘친다. */}
+          <div
+            role="tablist"
+            aria-label="놀이 프로젝트 기간"
+            className="grid w-full grid-cols-2 gap-1 rounded-xl bg-[#ebe5db] p-1 md:flex md:w-auto"
+          >
             {plan.periods.map((item, index) => {
               const count = picks[item.period_key]?.length ?? 0;
               const on = activePeriod === index;
@@ -668,7 +673,7 @@ export default function PlayProjectResult({
                   role="tab"
                   aria-selected={on}
                   aria-controls={panelId}
-                  className={`flex min-h-[44px] items-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm ${on ? "bg-white font-bold shadow-sm" : "text-[#5c5243]"} ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
+                  className={`flex min-h-[44px] items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm ${on ? "bg-white font-bold shadow-sm" : "text-[#5c5243]"} ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
                   onClick={() => goToPeriod(index)}
                 >
                   <span className="font-bold">{playSeason(item).name}</span>
