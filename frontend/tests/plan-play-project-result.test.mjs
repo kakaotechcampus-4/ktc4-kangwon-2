@@ -302,8 +302,10 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   const pp = fullPlan();
   const slots = [];
   const effects = [];
+  const compact = [];
   let index = 0;
   const { default: Result } = compile("../components/plan-generator/AnnualResult.tsx", {
+    "@/components/app/compact-shell": { useCompactShell: (on) => compact.push(on) },
     react: {
       useState(init) {
         const k = index++;
@@ -334,9 +336,11 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   effects[0]();
   await new Promise((done) => setImmediate(done));
   const shown = all(render()).find((n) => n.type === "play-result");
+  assert.equal(compact.at(-1), true, "다듬기는 사이드바를 접는다");
   shown.props.onConfirmed({ ...pp, status: "CONFIRMED" });
   const done = all(render()).find((n) => n.type === "done");
   assert.equal(done.props.pages.length, 4);
+  assert.equal(compact.at(-1), false, "확정본은 펼친다");
   done.props.onUnconfirmed({ ...pp, status: "DRAFT" });
   assert.ok(
     all(render()).some((n) => n.type === "play-result"),
