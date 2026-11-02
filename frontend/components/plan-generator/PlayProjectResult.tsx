@@ -925,6 +925,7 @@ export default function PlayProjectResult({
           className={className}
           picks={picks}
           periods={full ? plan.periods.map((_, i) => i) : [activePeriod]}
+          perPage={full ? 2 : 1}
           selectedCell={full ? null : selectedCell}
           onSelectCell={full ? undefined : selectCell}
           onDropPick={full ? undefined : dropPick}

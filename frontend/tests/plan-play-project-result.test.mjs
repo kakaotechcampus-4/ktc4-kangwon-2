@@ -254,6 +254,10 @@ test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼�
     "period3",
   ]);
   assert.deepEqual(saveStub.calls.at(-1).period0, ["cand1", "cand2", "cand3", "cand4"]);
+  const pages = (tree) => all(tree).filter((n) => n.type === "article").map((n) => n.props["aria-label"]);
+  assert.deepEqual(pages(render()), ["3월~5월"], "편집은 구간마다 한 쪽");
+  button(render(), "전체 보기").props.onClick();
+  assert.deepEqual(pages(render()), ["3월~5월 · 6월~8월", "9월~11월 · 12월~2월"], "전체 보기는 원래 문서처럼 두 구간씩");
 });
 
 test("confirm asks first, waits for the queue, then confirms with its revision", async () => {
@@ -303,7 +307,7 @@ test("a 422 goes to the first short period's AI 후보; a 409 hands over to onCo
   );
 });
 
-test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ with a page per period", async () => {
+test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ with two periods per page", async () => {
   const pp = fullPlan();
   const slots = [];
   const effects = [];
@@ -350,7 +354,11 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   assert.equal(shown.props.className, "햇살반", "문서 제목에 붙일 반 이름");
   shown.props.onConfirmed({ ...pp, status: "CONFIRMED" });
   const done = all(render()).find((n) => n.type === "done");
-  assert.equal(done.props.pages.length, 4);
+  // 원래 문서 쪽 나눔: 봄·여름 / 가을·겨울.
+  assert.deepEqual(
+    done.props.pages.map((page) => [page.props.periods, page.props.perPage]),
+    [[[0, 1], 2], [[2, 3], 2]],
+  );
   assert.equal(done.props.pages[0].props.className, "햇살반");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
   done.props.onUnconfirmed({ ...pp, status: "DRAFT" });

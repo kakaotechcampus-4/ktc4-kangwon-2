@@ -120,7 +120,7 @@ export default function AnnualResult({ id }: { id: number }) {
   const view = key + ":" + (current?.version ?? 0);
   // 놀이형 문서 제목 「- 햇살반」. 월별 주제형은 위 className(생성 때 남긴 문맥)을 그대로 쓴다.
   const playClassName = plan.format === "PLAY_PROJECT" ? settingsClassName(plan.class_id) : "";
-  // ⑥ 확정 후. 놀이 중심형은 구간마다 한 쪽, 월별 주제형은 한 쪽이다.
+  // ⑥ 확정 후. 놀이 중심형은 원래 문서처럼 두 구간씩 한 쪽(봄·여름 / 가을·겨울), 월별 주제형은 한 쪽이다.
   if (plan.status === "CONFIRMED")
     return (
       <AnnualDone
@@ -128,13 +128,14 @@ export default function AnnualResult({ id }: { id: number }) {
         plan={plan}
         pages={
           plan.format === "PLAY_PROJECT"
-            ? plan.periods.map((_, i) => (
+            ? [0, 2].map((i) => (
                 <PlayProjectSheet
                   key={i}
                   plan={plan}
                   className={playClassName}
                   picks={picksFromPlan(plan)}
-                  periods={[i]}
+                  periods={[i, i + 1].filter((n) => n < plan.periods.length)}
+                  perPage={2}
                 />
               ))
             : [
