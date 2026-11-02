@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useIsCompact } from "./compact-shell";
 import { Icon, type IconName } from "./icons";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
@@ -109,123 +110,179 @@ export default function AppSidebar() {
   useEffect(() => subscribeClassSettings(() => setRoom(readRoom())), [setRoom]);
 
   const isActive = (item: NavItem) => (item.match ? item.match(pathname) : item.href === pathname);
+  // 편집 단계 화면이 접기를 켜면(compact-shell) 데스크톱에서 72px 아이콘 줄만 보인다. 맨 위 S. 를
+  // 누르면 넓은 사이드바가 본문 위에 겹쳐 펼쳐지고 [접기]로 닫는다. 모바일 하단 네비는 그대로다.
+  const compact = useIsCompact();
+  const [open, setOpen] = useState(false);
+  // 펼침은 이번 접기 구간에서만 산다 — 접기 요청이 없는 화면을 지나면 다음 편집은 다시 접혀 시작한다.
+  if (!compact && open) setOpen(false);
+  const collapsed = compact && !open;
 
   return (
-    <aside
-      aria-label="주 메뉴"
-      className={
-        "bg-shell z-30 " +
-        // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
-        // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
-        "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:border-r lg:border-shell-line lg:flex lg:flex-col " +
-        "fixed bottom-0 inset-x-0 flex flex-row border-t border-shell-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
-      }
-    >
-      <Link href="/" aria-label="쌤플 홈으로" className="hidden lg:block px-7 pt-7 pb-6">
-        <span className="block text-[30px] font-bold tracking-[-0.06em] text-primary-deep">
-          Ssample<span className="text-peach-strong">.</span>
-        </span>
-        <span className="font-display text-xl font-bold text-ink">쌤플</span>
-      </Link>
+    <>
+      {collapsed && (
+        <aside
+          aria-label="주 메뉴"
+          className="bg-shell z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[72px] lg:flex-col lg:items-center lg:gap-1 lg:border-r lg:border-shell-line lg:py-5"
+        >
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="메뉴 펼치기"
+            title="메뉴 펼치기"
+            className="mb-4 flex h-11 w-11 items-center justify-center rounded-md text-[22px] font-bold text-primary-deep hover:bg-shell-hover"
+          >
+            S<span className="text-peach-strong">.</span>
+          </button>
+          {[HOME, ...GROUPS.flatMap((g) => g.items)].map((item) => (
+            <Link
+              key={item.key}
+              href={item.href}
+              aria-label={item.label}
+              title={item.label}
+              aria-current={isActive(item) ? "page" : undefined}
+              className={`flex h-11 w-11 items-center justify-center rounded-md border ${isActive(item) ? activeStyle : "border-transparent text-ink-soft hover:bg-shell-hover"}`}
+            >
+              <Icon name={item.icon} className="h-[18px] w-[18px]" />
+            </Link>
+          ))}
+          <Link
+            href="/settings"
+            aria-label="설정"
+            title="설정"
+            className="mt-auto flex h-11 w-11 items-center justify-center rounded-md text-ink-soft hover:bg-shell-hover"
+          >
+            <Icon name="settings" className="h-[18px] w-[18px]" />
+          </Link>
+        </aside>
+      )}
+      <aside
+        aria-label="주 메뉴"
+        className={
+          "bg-shell z-30 " +
+          (collapsed ? "lg:hidden " : "") +
+          (compact ? "lg:shadow-[8px_0_32px_-12px_rgba(43,40,38,0.35)] " : "") +
+          // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
+          // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
+          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:border-r lg:border-shell-line lg:flex lg:flex-col " +
+          "fixed bottom-0 inset-x-0 flex flex-row border-t border-shell-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
+        }
+      >
+        {compact && (
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="absolute right-3 top-3 hidden min-h-11 rounded-md px-3 text-[13px] text-ink-soft hover:bg-shell-hover lg:block"
+          >
+            접기
+          </button>
+        )}
+        <Link href="/" aria-label="쌤플 홈으로" className="hidden lg:block px-7 pt-7 pb-6">
+          <span className="block text-[30px] font-bold tracking-[-0.06em] text-primary-deep">
+            Ssample<span className="text-peach-strong">.</span>
+          </span>
+          <span className="font-display text-xl font-bold text-ink">쌤플</span>
+        </Link>
 
-      {/*
+        {/*
         어느 반 작업실에 들어와 있는지. 카드에 꺾쇠가 달려 있어 반 목록이 열릴 것처럼 보이는데
         설정 화면으로 넘어가 버렸다 (수린 점검 4). 반이 둘 이상이면 여기서 바로 바꾼다.
         반이 하나뿐이면 바꿀 것이 없으므로 예전처럼 설정으로 보낸다.
       */}
-      <div className="relative mx-4 mb-7 hidden lg:flex items-center gap-2.5 rounded-md border border-line bg-paper p-3 text-left shadow-pg-card">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-sun bg-sun-tint text-lg text-sun-ink">
-          ☀
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block truncate text-[13px] text-ink-soft">
-            {room.orgName || "원 정보 없음"}
+        <div className="relative mx-4 mb-7 hidden lg:flex items-center gap-2.5 rounded-md border border-line bg-paper p-3 text-left shadow-pg-card">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-sun bg-sun-tint text-lg text-sun-ink">
+            ☀
           </span>
-          <span className="mt-1 block truncate text-xs font-medium text-ink">
-            {room.className || "반 정보 없음"}
-            {room.age && <span className="text-[13px] text-ink-soft"> · {room.age}</span>}
+          <span className="flex-1 min-w-0">
+            <span className="block truncate text-[13px] text-ink-soft">
+              {room.orgName || "원 정보 없음"}
+            </span>
+            <span className="mt-1 block truncate text-xs font-medium text-ink">
+              {room.className || "반 정보 없음"}
+              {room.age && <span className="text-[13px] text-ink-soft"> · {room.age}</span>}
+            </span>
           </span>
-        </span>
-        {classes.length > 1 && (
-          <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
-        )}
-        {classes.length > 1 ? (
-          <select
-            aria-label="반 바꾸기"
-            value={room.classId}
-            onChange={(e) => switchClass(e.target.value)}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          >
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.className}
-                {c.ageGroup ? ` · ${AGE_LABEL[c.ageGroup as AgeGroup]}` : ""}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <Link href="/settings" aria-label="원·반 설정" className="absolute inset-0" />
-        )}
-      </div>
+          {classes.length > 1 && (
+            <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
+          )}
+          {classes.length > 1 ? (
+            <select
+              aria-label="반 바꾸기"
+              value={room.classId}
+              onChange={(e) => switchClass(e.target.value)}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            >
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.className}
+                  {c.ageGroup ? ` · ${AGE_LABEL[c.ageGroup as AgeGroup]}` : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Link href="/settings" aria-label="원·반 설정" className="absolute inset-0" />
+          )}
+        </div>
 
-      {/* 모바일에서는 하단 띠 한 줄이라 묶음 제목을 접는다 (`contents`). */}
-      <nav className="contents lg:block lg:space-y-1 lg:px-3">
-        <NavLink item={HOME} active={isActive(HOME)} />
-        {GROUPS.map((group) => (
-          <div key={group.title} className="contents lg:block lg:pt-4">
-            <p className="hidden px-3 pb-1 text-[13px] font-medium text-ink-soft lg:block">
-              {group.title}
+        {/* 모바일에서는 하단 띠 한 줄이라 묶음 제목을 접는다 (`contents`). */}
+        <nav className="contents lg:block lg:space-y-1 lg:px-3">
+          <NavLink item={HOME} active={isActive(HOME)} />
+          {GROUPS.map((group) => (
+            <div key={group.title} className="contents lg:block lg:pt-4">
+              <p className="hidden px-3 pb-1 text-[13px] font-medium text-ink-soft lg:block">
+                {group.title}
+              </p>
+              {group.items.map((item) => (
+                <NavLink key={item.key} item={item} active={isActive(item)} />
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="hidden lg:block mt-auto px-5 pb-5">
+          <div className="relative mb-6 -rotate-2 border border-note-line bg-note px-4 py-5 shadow-pg-card">
+            <Tape />
+            <p className="font-display text-[22px] font-bold leading-tight text-ink">
+              쌤의 계획이
+              <br />
+              쉬워지는 순간,
+              <br />
+              <span className="text-primary">쌤플.</span>
             </p>
-            {group.items.map((item) => (
-              <NavLink key={item.key} item={item} active={isActive(item)} />
-            ))}
+            <span
+              aria-hidden="true"
+              className="absolute bottom-3 right-3 -rotate-12 font-display text-3xl text-sun"
+            >
+              ✳
+            </span>
           </div>
-        ))}
-      </nav>
 
-      <div className="hidden lg:block mt-auto px-5 pb-5">
-        <div className="relative mb-6 -rotate-2 border border-note-line bg-note px-4 py-5 shadow-pg-card">
-          <Tape />
-          <p className="font-display text-[22px] font-bold leading-tight text-ink">
-            쌤의 계획이
-            <br />
-            쉬워지는 순간,
-            <br />
-            <span className="text-primary">쌤플.</span>
-          </p>
-          <span
-            aria-hidden="true"
-            className="absolute bottom-3 right-3 -rotate-12 font-display text-3xl text-sun"
-          >
-            ✳
-          </span>
-        </div>
+          <div className="flex items-center justify-between px-1">
+            <Link
+              href="/settings"
+              className="flex min-h-11 items-center gap-2 text-[13px] text-ink-soft"
+            >
+              <Icon name="settings" className="h-4 w-4" />
+              설정
+            </Link>
+            <Link href="/logout" className="flex min-h-11 items-center text-[13px] text-ink-soft">
+              로그아웃
+            </Link>
+          </div>
 
-        <div className="flex items-center justify-between px-1">
-          <Link
-            href="/settings"
-            className="flex min-h-11 items-center gap-2 text-[13px] text-ink-soft"
-          >
-            <Icon name="settings" className="h-4 w-4" />
-            설정
-          </Link>
-          <Link href="/logout" className="flex min-h-11 items-center text-[13px] text-ink-soft">
-            로그아웃
-          </Link>
-        </div>
-
-        <div className="mt-5 flex items-center gap-2.5 border-t border-shell-line pt-4">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sun-tint text-xs text-ink">
-            {teacher.slice(0, 1) || "쌤"}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-medium text-ink">
-              {teacher ? `${teacher} 선생님` : "선생님"}
-            </p>
+          <div className="mt-5 flex items-center gap-2.5 border-t border-shell-line pt-4">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sun-tint text-xs text-ink">
+              {teacher.slice(0, 1) || "쌤"}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium text-ink">
+                {teacher ? `${teacher} 선생님` : "선생님"}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
