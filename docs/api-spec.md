@@ -1397,7 +1397,7 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 
 **월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다. **놀이 중심 월간 id 면 확정 여부와 관계없이 409 `GATE_BLOCKED`** 다(「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」, §9-7 · 놀이 월간 양식이 없어 한글 내려받기는 후속).
 기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
-한 쪽 양식 12행 「소방대피/재난대비」는 주 칸 없이 한 칸으로 합쳐져 있고, 훈련 칸(`drill`)이 있는 계획안은 그 칸 값을 넣는다 — 훈련 칸이 없거나 아직 비어 있으면 빈칸이다(후보 문장은 칸에 복사하기 전에는 문서에 가지 않는다).
+한 쪽 양식 12행 「소방대피/재난대비」는 늘 빈칸이다 — 한글 훈련 줄은 양식 개편 때까지 내보내지 않는다.
 후보 모드 계획안(§9-1)의 안전교육 줄은 칸 값이 아니라 주마다 `safety_weeks[].display_value` 를 넣는다 — 배치하지 않은 주는 빈칸이고 출처 표시는 섞지 않는다. 예전 계획안은 칸 값 그대로다(ADR-052).
 활성 주차는 최대 5주이며 넘으면 `VALIDATION_FAILED` 422다. 비어 있는 내용은 자동으로 채우지 않는다.
 화면의 「확정하기」 후 「한글 파일로 내려받기」로 받는다. 출처와 생성 이력은 파일에 넣지 않는다.
@@ -1496,8 +1496,7 @@ FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(sc
   문장은 LLM 이 쓴다. **훈련 문서 칸(`sections[]` 의 `drill`)은 교사가 쓰거나 후보를 복사하기 전까지 값 `""` · `generation: null` 이다.**
   후보는 저절로 놓이지 않는다.
 - 훈련 칸이 없는 Profile 이면 `drill_candidates` 는 `[]` 이고 그 밖은 지금과 같다.
-- **훈련 칸은 양식 v0.2.3 에서만 켤 수 있고, 서버는 아직 그 판 · 칸을 고를 수 있게 열지 않았다**(화면 준비 뒤).
-  지금 §9-2 의 선택 가능한 칸 · 양식 목록에는 없다.
+- **훈련 칸은 양식 v0.2.3 에서 켤 수 있다.** §9-4 양식 목록에서 `OPTIONAL` 로 공개한다.
 
 ### 월간계획안 응답 — 생성 · 단건 조회가 같은 형식
 
@@ -1946,11 +1945,11 @@ sections[].label  Template 데이터 값 그대로.  지금 Template A 는 칸 �
                   그래서 ② 에서 표시 이름을 직접 보낸다
 sections[].selection
                   REQUIRED           항상 들어간다 (theme · week_axis · outdoor_play · safety_education)
-                  OPTIONAL           ② 에서 고를 수 있다 (focus · goals · basic_habit)
+                  OPTIONAL           ② 에서 고를 수 있다 (focus · goals · basic_habit · indoor_alternative · drill, 양식에 따라 다름)
                   INSTITUTION_INPUT  event_schedule.  월간 생성 계약이 아직 없어 고를 수 없다
                   NOT_SUPPORTED      Template 고유 칸, 또는 그 판에 repeat_by 가 없는 선택 칸.  Profile 에 넣을 수 없다
-                  drill 은 repeat_by 가 없는 v0.2.1 · v0.2.2 에서 NOT_SUPPORTED 다 (v0.2.3 은 승인됐지만 서버 연결 전이라 이 목록에 없다)
-                  indoor_alternative 는 Template 판에 따라 다르다 — v0.2.2 는 OPTIONAL,
+                  drill 은 v0.2.3 에서 OPTIONAL, repeat_by 가 없는 v0.2.1 · v0.2.2 에서 NOT_SUPPORTED 다
+                  indoor_alternative 는 Template 판에 따라 다르다 — v0.2.2 · v0.2.3 은 OPTIONAL,
                   repeat_by 가 없는 v0.2.1 은 NOT_SUPPORTED (ADR-050)
 focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (켠 focus 는 NEUTRAL 불가, Core)
 ```
@@ -1958,6 +1957,7 @@ focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (
 - 원 범위가 없는 전역 Reference 다. 로그인만 본다.
 - **지금 값: v0.2.1 은 `approved: true`**(2026-10-20 PM 승인, `reviewer_pm_001` — ADR-030 「후속 결정」),
   **v0.2.2 는 `approved: true`**(2026-10-31 도메인 담당자 승인, `reviewer_ai_lead_001` — ADR-050 D-3),
+  **v0.2.3 은 `approved: true`**(2026-10-31 도메인 담당자 승인),
   **v0.1.1 은 `approved: false`**(사람 승인 대기, ADR-027 §3). 승인을 바꾸는 API 는 없다.
 
 ### ② Reference 기반 시작 — `POST /api/centers/{center_id}/template-profiles`
@@ -1973,8 +1973,8 @@ focus_variants    focus 를 고를 때 쓸 수 있는 값.  NEUTRAL 은 없다 (
 
 ```
 base_template_ref        필수.  ① 의 template_ref
-selected_optional_keys   문자열 배열.  기본 [].  ① 의 OPTIONAL 만 (focus · goals · basic_habit).  중복 불가.
-                         event_schedule · drill 은 422
+selected_optional_keys   문자열 배열.  기본 [].  고른 양식의 OPTIONAL 만.  중복 불가.
+                         event_schedule · 고른 양식이 켤 수 없는 칸은 422 ["selected_optional_keys"]
 display_labels           {section_key: 표시 이름}.  **REQUIRED 칸 넷과 고른 칸 전부에 필요하다.**
                          그 밖의 키 · 빈 이름은 422 (Core: 보이는 칸은 표시 이름을 직접 받는다)
 focus_variant            focus 를 고르면 필수 (focus_variants 중 하나).  안 고르면 null
@@ -2043,7 +2043,7 @@ expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본
 | code | status | 언제 | `fields` |
 |---|---|---|---|
 | `UNAUTHENTICATED` | 401 | 로그인 안 함 | `[]` |
-| `VALIDATION_FAILED` | 422 | 입력 모양 · 고를 수 없는 칸(`event_schedule` · `drill` 포함) · 중복 | `["selected_optional_keys"]` 등 |
+| `VALIDATION_FAILED` | 422 | 입력 모양 · 고른 양식이 켤 수 없는 칸(`event_schedule` 포함) · 중복 | `["selected_optional_keys"]` 등 |
 | `VALIDATION_FAILED` | 422 | 표시 이름이 빠짐 · 빈 이름 · 고르지 않은 칸의 이름 | `["display_labels.goals", …]` (빠진 칸 전부) |
 | `VALIDATION_FAILED` | 422 | focus 를 골랐는데 `focus_variant` 가 없거나 목록 밖 · focus 없이 값이 있음 | `["focus_variant"]` |
 | `VALIDATION_FAILED` | 422 | 해제인데 `expected_profile_ref` 가 null · 키가 빠짐 | `["expected_profile_ref"]` |

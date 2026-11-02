@@ -520,6 +520,8 @@ export interface MonthlyPlan {
       message: string;
     }[];
   };
+  /** 훈련 후보. 훈련 칸이 없는 계획안은 `[]` 다. */
+  drill_candidates: { topic_id: string; label: string; cell: MonthlyCell }[];
   /** 안전교육 후보. 기존 계획안은 `[]` 다 — 비어 있으면 화면은 후보 없이 주별 칸으로 고친다. */
   safety_candidates: {
     kind: "STATUTORY" | "SUPPLEMENTAL";
