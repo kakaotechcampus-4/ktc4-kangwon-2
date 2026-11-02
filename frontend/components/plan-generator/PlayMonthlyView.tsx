@@ -16,8 +16,16 @@ import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyHistory from "./PlayMonthlyHistory";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
 import PlayMonthlySafetyPanel from "./PlayMonthlySafetyPanel";
-import PlayMonthlySheet, { safetyCellId } from "./PlayMonthlySheet";
-import AnnualFrame, { AsideStrip, BUTTON, PlanDone, UNCONFIRM, tabClass } from "./AnnualFrame";
+import PlayMonthlySheet, { PAPER_WIDTH, safetyCellId } from "./PlayMonthlySheet";
+import AnnualFrame, {
+  AsideStrip,
+  BigView,
+  BUTTON,
+  PlanDone,
+  UNCONFIRM,
+  tabClass,
+  useSheetZoom,
+} from "./AnnualFrame";
 import UnconfirmButton from "./UnconfirmButton";
 
 const NOTICES = {
@@ -226,7 +234,8 @@ function PlayMonthlyBody({
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [full, setFull] = useState(false);
+  const docBox = useRef<HTMLDivElement>(null);
+  const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   // 입력창을 다시 여는 번호 — "*" 는 전부(되돌리기 · 다시 하기), 칸 id 는 그 칸만(거절). 화면 번호(state)와 핸들러가 읽는 ref 를 같이 올린다.
   const [bumps, setBumps] = useState<Record<string, number>>({});
   const bumpsRef = useRef(bumps);
@@ -303,7 +312,6 @@ function PlayMonthlyBody({
   const goNotice = () => {
     const id = noticeTarget(plan);
     if (!id) return;
-    setFull(false);
     select(id);
   };
 
@@ -527,14 +535,6 @@ function PlayMonthlyBody({
               {direction === "undo" ? "되돌리기" : "다시 하기"}
             </button>
           ))}
-          <button
-            type="button"
-            className={BUTTON.outline}
-            aria-pressed={full}
-            onClick={() => setFull(!full)}
-          >
-            {full ? "고치기로" : "전체 보기"}
-          </button>
           <PlayMonthlyConfirmBar
             plan={plan}
             ask={
@@ -558,16 +558,29 @@ function PlayMonthlyBody({
           />
         </>
       }
-      aside={full ? null : aside}
+      aside={aside}
       docLabel="놀이 중심형 월간 양식"
-      docHint={full ? "전체 보기" : "칸을 누르면 왼쪽에서 고칠 수 있어요 · 기간은 고정"}
+      docHint={
+        <div className="flex items-center gap-1">
+          {sheetZoom.tools}
+          <span className="ml-2">
+            <BigView
+              pages={1}
+              render={() => <PlayMonthlySheet plan={shown} className={className} />}
+            />
+          </span>
+        </div>
+      }
     >
-      <PlayMonthlySheet
-        plan={shown}
-        selected={full ? null : selected}
-        onSelect={full ? undefined : select}
-        className={className}
-      />
+      <div ref={docBox}>
+        <PlayMonthlySheet
+          plan={shown}
+          selected={selected}
+          onSelect={select}
+          className={className}
+          scale={sheetZoom.percent / 100}
+        />
+      </div>
     </AnnualFrame>
   );
 }

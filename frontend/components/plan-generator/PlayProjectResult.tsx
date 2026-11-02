@@ -7,7 +7,15 @@ import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
-import AnnualFrame, { AsideStrip, BUTTON, pageClass, tabClass } from "./AnnualFrame";
+import AnnualFrame, {
+  AsideStrip,
+  BigView,
+  BUTTON,
+  POPOVER,
+  pageClass,
+  tabClass,
+  useSheetZoom,
+} from "./AnnualFrame";
 import {
   EMPTY_HISTORY,
   popRedo,
@@ -21,14 +29,7 @@ import { ApiError } from "@/lib/api/client";
 import { confirmPlayProject, errorFields, isSaveConflict } from "@/lib/api/plans";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
-import {
-  eulReul,
-  fields,
-  playSeason,
-  stepPlaySheetZoom,
-  type PlayField,
-  type SheetZoom,
-} from "./playProjectPagination";
+import { eulReul, fields, playSeason, type PlayField } from "./playProjectPagination";
 export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 
 const MAX_PICKS = 5;
@@ -157,8 +158,6 @@ type LeftTab = "edit" | "picked";
 const ROW = "flex items-center justify-between gap-3 rounded-xl border border-[#e8e2d8] px-4 py-3";
 // 문서 기준 폭(A4 세로 비율). 「맞춤」은 이 폭을 문서 칸 폭에 맞춰 키우거나 줄인다.
 const SHEET_WIDTH = 794;
-const ZOOM_BUTTON =
-  "min-h-[36px] min-w-[36px] rounded-lg px-2 text-sm text-[#5c5243] hover:bg-[#f3efe8]";
 const SMALL =
   "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] px-3 text-xs font-bold text-[#5e4b96] disabled:opacity-40";
 
@@ -200,8 +199,7 @@ export default function PlayProjectResult({
   const [editorTab, setEditorTab] = useState<LeftTab>("picked");
   const [detailKey, setDetailKey] = useState<string | null>(null);
   const [moveNotice, setMoveNotice] = useState("");
-  // 문서 크게 보기(따로 뜨는 읽기 전용 창)에서 보는 쪽. null 이면 닫힘. 한 쪽 = 두 구간(봄·여름 / 가을·겨울).
-  const [bigPage, setBigPage] = useState<number | null>(null);
+  // 문서 크게 보기 창 — 확정이 막혀 패널로 보낼 때 닫는다.
   const bigDialog = useRef<HTMLDialogElement>(null);
   const [asking, setAsking] = useState(false);
   // 입력 중 글(문서 미리보기용) · 마지막으로 저장한 칸 값과 되돌리기 목록 · 되돌렸다는 안내.
@@ -212,10 +210,8 @@ export default function PlayProjectResult({
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [lacking, setLacking] = useState<string[]>([]);
-  // 문서 배율: 기본은 100%(칸이 좁으면 그만큼만 줄임), 「맞춤」은 칸 폭에 맞춰 키우거나 줄임, −/+ 는 그 배율로 고정.
-  const [zoom, setZoom] = useState<SheetZoom>({ mode: "auto", percent: 100 });
-  const [fit, setFit] = useState(100);
   const docBox = useRef<HTMLDivElement>(null);
+  const sheetZoom = useSheetZoom(docBox, SHEET_WIDTH, step);
   const saving = usePlaySelectionSave(
     plan.id,
     plan.revision,
@@ -239,17 +235,6 @@ export default function PlayProjectResult({
       mounted.current = false;
     };
   }, []);
-  useEffect(() => {
-    const box = docBox.current;
-    if (!box) return;
-    const update = () => setFit(Math.min(150, (box.clientWidth / SHEET_WIDTH) * 100));
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, [step]);
-  const percent =
-    zoom.mode === "fit" ? fit : zoom.mode === "auto" ? Math.min(100, fit) : zoom.percent;
   const shown = useMemo(() => withCellValues(plan, edit.saved, live), [plan, edit.saved, live]);
   const period = shown.periods[activePeriod];
   const periodPicks = picks[period.period_key] ?? [];
@@ -841,16 +826,6 @@ export default function PlayProjectResult({
               {confirmError}
             </p>
           )}
-          {asking && (
-            <PlayMonthlyConfirm
-              message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
-              yes={confirming ? "확정하는 중…" : "확정하기"}
-              no="더 다듬기"
-              disabled={confirming}
-              onYes={confirm}
-              onNo={() => setAsking(false)}
-            />
-          )}
         </>
       }
       actions={
@@ -871,59 +846,50 @@ export default function PlayProjectResult({
           >
             다시 실행
           </button>
-          <button
-            type="button"
-            className={BUTTON.primary}
-            disabled={confirming}
-            onClick={() => setAsking(true)}
-          >
-            확정하기
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              className={BUTTON.primary}
+              disabled={confirming}
+              onClick={() => setAsking(true)}
+            >
+              확정하기
+            </button>
+            {asking && (
+              <div className={POPOVER}>
+                <PlayMonthlyConfirm
+                  message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
+                  yes={confirming ? "확정하는 중…" : "확정하기"}
+                  no="더 다듬기"
+                  disabled={confirming}
+                  onYes={confirm}
+                  onNo={() => setAsking(false)}
+                />
+              </div>
+            )}
+          </div>
         </>
       }
       aside={aside}
       docLabel={periodTabs}
       docHint={
-        <div role="group" aria-label="문서 배율" className="flex items-center gap-1">
-          <button
-            type="button"
-            className={ZOOM_BUTTON}
-            aria-label="문서 축소"
-            onClick={() => setZoom({ mode: "manual", percent: stepPlaySheetZoom(percent, -1) })}
-          >
-            −
-          </button>
-          <output className="min-w-[72px] text-center text-[13px]">
-            {zoom.mode === "fit" && "맞춤 "}
-            {Math.round(percent)}%
-          </output>
-          <button
-            type="button"
-            className={ZOOM_BUTTON}
-            aria-label="문서 확대"
-            onClick={() => setZoom({ mode: "manual", percent: stepPlaySheetZoom(percent, 1) })}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            className={ZOOM_BUTTON}
-            aria-pressed={zoom.mode === "fit"}
-            onClick={() => setZoom({ ...zoom, mode: zoom.mode === "fit" ? "auto" : "fit" })}
-          >
-            맞춤
-          </button>
-          <button
-            type="button"
-            className="ml-2 min-h-[36px] rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96]"
-            aria-haspopup="dialog"
-            onClick={() => {
-              setBigPage(0);
-              bigDialog.current?.showModal();
-            }}
-          >
-            ⤢ 크게 보기
-          </button>
+        <div className="flex items-center gap-1">
+          {sheetZoom.tools}
+          <span className="ml-2">
+            <BigView
+              pages={Math.ceil(plan.periods.length / 2)}
+              dialog={bigDialog}
+              render={(page) => (
+                <PlayProjectSheet
+                  plan={shown}
+                  className={className}
+                  picks={picks}
+                  periods={[page * 2, page * 2 + 1].filter((i) => i < plan.periods.length)}
+                  perPage={2}
+                />
+              )}
+            />
+          </span>
         </div>
       }
     >
@@ -932,7 +898,7 @@ export default function PlayProjectResult({
           id={panelId}
           role="tabpanel"
           aria-labelledby={tabId(activePeriod)}
-          style={{ zoom: percent / 100, width: SHEET_WIDTH }}
+          style={{ zoom: sheetZoom.percent / 100, width: SHEET_WIDTH }}
           className="mx-auto"
         >
           <PlayProjectSheet
@@ -946,59 +912,6 @@ export default function PlayProjectResult({
           />
         </section>
       </div>
-      {/* 문서 크게 보기 — 원래 시안처럼 따로 뜨는 읽기 전용 창. 쪽을 골라 본다. Esc 로도 닫힌다. */}
-      <dialog
-        ref={bigDialog}
-        aria-labelledby={`${panelId}-big-title`}
-        onClose={() => setBigPage(null)}
-        className="m-auto h-[94vh] max-h-[94vh] w-[min(1100px,96vw)] max-w-none overflow-hidden rounded-[20px] bg-[#f3efe8] p-0 text-[#2b2826] backdrop:bg-black/40"
-      >
-        {bigPage !== null && (
-          <div className="flex h-full flex-col">
-            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e2d8] bg-white px-6 py-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <strong id={`${panelId}-big-title`} className="text-[15px]">
-                  문서 크게 보기
-                </strong>
-                <span className="rounded-full bg-[#efeae2] px-2.5 py-0.5 text-xs font-bold text-[#5c5243]">
-                  읽기 전용
-                </span>
-                <div role="tablist" aria-label="쪽" className="flex gap-1.5">
-                  {Array.from({ length: Math.ceil(plan.periods.length / 2) }, (_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      role="tab"
-                      aria-selected={bigPage === i}
-                      aria-controls={`${panelId}-big-page`}
-                      className={pageClass(bigPage === i)}
-                      onClick={() => setBigPage(i)}
-                    >
-                      {i + 1}쪽
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <button
-                type="button"
-                className={BUTTON.outline}
-                onClick={() => bigDialog.current?.close()}
-              >
-                닫고 편집 계속하기 ×
-              </button>
-            </header>
-            <div id={`${panelId}-big-page`} className="min-h-0 flex-1 overflow-auto p-7">
-              <PlayProjectSheet
-                plan={shown}
-                className={className}
-                picks={picks}
-                periods={[bigPage * 2, bigPage * 2 + 1].filter((i) => i < plan.periods.length)}
-                perPage={2}
-              />
-            </div>
-          </div>
-        )}
-      </dialog>
     </AnnualFrame>
   );
 }

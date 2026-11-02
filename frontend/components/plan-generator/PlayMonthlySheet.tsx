@@ -86,17 +86,21 @@ export const period = (weeks: { start_date: string; end_date: string }[]) =>
     : "";
 
 /**
- * 한 장 용지(폭 780px). 칸이 좁으면 그만큼만 줄이고 넓어도 키우지 않는다 — 확대 도구는 두지 않는다.
+ * 한 장 용지(폭 780px). `scale` 이 없으면 칸이 좁은 만큼만 줄이고 넓어도 키우지 않는다(확정본 · 크게 보기).
+ * 다듬기는 문서 배율 도구(`useSheetZoom`)의 배율을 넘긴다.
  */
+export const PAPER_WIDTH = 780;
 export function Paper({
   label,
   title,
   sub,
+  scale: given,
   children,
 }: {
   label: string;
   title: string;
   sub: string;
+  scale?: number;
   children: ReactNode;
 }) {
   const box = useRef<HTMLElement>(null);
@@ -104,7 +108,7 @@ export function Paper({
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const update = () => setScale(Math.min(1, el.clientWidth / 780));
+    const update = () => setScale(Math.min(1, el.clientWidth / PAPER_WIDTH));
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
@@ -112,7 +116,7 @@ export function Paper({
   }, []);
   return (
     <section ref={box} aria-label={label} className="w-full min-w-0">
-      <div style={{ zoom: scale }}>
+      <div style={{ zoom: given ?? scale }}>
         <article className="mx-auto w-[780px] bg-white px-8 py-7 text-[12px] leading-snug text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]">
           <div className={`${LINE} bg-[#e6f3fc] px-4 pb-1.5 pt-2.5 text-center`}>
             <h2 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h2>
@@ -165,9 +169,12 @@ export default function PlayMonthlySheet({
   className,
   selected,
   onSelect,
+  scale,
 }: {
   plan: PlayMonthlyPlan;
   className: string;
+  /** 문서 배율(다듬기). 없으면 칸에 맞춰 줄이기만. */
+  scale?: number;
 } & Pick) {
   const at = { selected, onSelect };
   const teacher = (key: string) =>
@@ -200,6 +207,7 @@ export default function PlayMonthlySheet({
       label="놀이 중심 월간계획안 미리보기"
       title={`${plan.month}월 놀이계획안`}
       sub={`만 ${plan.target_ages.join("·")}세 ${className}`.trim()}
+      scale={scale}
     >
       <table className="w-full table-fixed border-collapse">
         <colgroup>

@@ -27,10 +27,12 @@ import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   AsideStrip,
+  BigView,
   BUTTON,
   PlanDone,
   UNCONFIRM,
   tabClass,
+  useSheetZoom,
 } from "@/components/plan-generator/AnnualFrame";
 import {
   Band,
@@ -38,6 +40,7 @@ import {
   HEAD,
   LINE,
   Paper,
+  PAPER_WIDTH,
   WeekHead,
   period,
   safetyCellId,
@@ -100,8 +103,9 @@ export default function MonthlyPlanEditor({
   // 고른 칸. 안전교육 후보 줄은 주 주소(`safety:<주>`) — 같은 후보를 여러 주에 둘 수 있다.
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [full, setFull] = useState(false);
   const [asking, setAsking] = useState<"" | "confirm" | "regenerate">("");
+  const docBox = useRef<HTMLDivElement>(null);
+  const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   const [bumps, setBumps] = useState<Record<string, number>>({});
   const [status, setStatus] = useState<keyof typeof SAVE_LABEL>("idle");
   const [busy, setBusy] = useState("");
@@ -304,10 +308,10 @@ export default function MonthlyPlanEditor({
     setAsking("");
     setTab(id.startsWith("safety:") ? "ai" : "edit");
   };
-  const at = {
-    selected: confirmed || full ? null : selected,
-    onSelect: confirmed || full ? undefined : select,
-  };
+  // 칸 고르기 — 다듬기 문서만. 확정본 · 크게 보기 창은 읽기 전용이다.
+  type Pick = { selected: string | null; onSelect?: (id: string) => void };
+  const editing: Pick = { selected, onSelect: select };
+  const still: Pick = { selected: null };
   const where = safetyWeek
     ? `${weekLabel(safetyWeek)} · 안전교육`
     : picked
@@ -318,7 +322,6 @@ export default function MonthlyPlanEditor({
   const goNotice = () => {
     const first = notices[0];
     if (!first) return;
-    setFull(false);
     select(safetyCellId(first.week_id));
   };
   const findings = [
@@ -476,11 +479,11 @@ export default function MonthlyPlanEditor({
       </div>
     </>
   );
-  const one = (section: (typeof sections)[number]) => {
+  const one = (section: (typeof sections)[number], at: Pick) => {
     const cell = section.cells[0];
     return cell && <Cell {...at} id={cell.item_id} value={shown(cell)} />;
   };
-  const row = (section: (typeof sections)[number]) => {
+  const row = (section: (typeof sections)[number], at: Pick) => {
     const byWeek = new Map(section.cells.map((c) => [c.week_id, c]));
     const safetyRow = candidateMode && section.section_key === "safety_education";
     return (
@@ -490,7 +493,7 @@ export default function MonthlyPlanEditor({
         </th>
         {section.repeat_by !== "WEEK" ? (
           <td colSpan={span} className={`${LINE} align-top`}>
-            {one(section)}
+            {one(section, at)}
           </td>
         ) : (
           weeks.map((w) => {
@@ -529,8 +532,13 @@ export default function MonthlyPlanEditor({
     "확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 주간계획안을 만들게 돼요." +
     (notices.length ? ` 확인할 것 ${notices.length}개가 남았어요.` : "");
 
-  const doc = (
-    <Paper label="월간계획안 미리보기" title={`${plan.month}월 월간계획안`} sub={className}>
+  const docOf = (at: Pick, scale?: number) => (
+    <Paper
+      label="월간계획안 미리보기"
+      title={`${plan.month}월 월간계획안`}
+      sub={className}
+      scale={scale}
+    >
       <table className="w-full table-fixed border-collapse">
         <colgroup>
           <col style={{ width: "17%" }} />
@@ -548,7 +556,7 @@ export default function MonthlyPlanEditor({
               <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
                 {sectionName(section.section_key, section.label)}
               </th>
-              <td className={`${LINE} align-top`}>{one(section)}</td>
+              <td className={`${LINE} align-top`}>{one(section, at)}</td>
             </tr>
           ))}
         </tbody>
@@ -574,7 +582,7 @@ export default function MonthlyPlanEditor({
                 ))}
               </tr>
             </thead>
-            <tbody>{rest.map(row)}</tbody>
+            <tbody>{rest.map((section) => row(section, at))}</tbody>
           </table>
         </>
       )}
@@ -587,7 +595,7 @@ export default function MonthlyPlanEditor({
         title={`${plan.month}월 월간계획안을 확정했어요`}
         docLabel="확정된 월간계획안"
         format="MONTHLY_THEME"
-        pages={[doc]}
+        pages={[docOf(still)]}
         download={() => downloadMonthlyHwpx(plan.id)}
         next={{
           href: "/plans/weekly",
@@ -664,14 +672,6 @@ export default function MonthlyPlanEditor({
       }
       actions={
         <>
-          <button
-            type="button"
-            className={BUTTON.outline}
-            aria-pressed={full}
-            onClick={() => setFull(!full)}
-          >
-            {full ? "고치기로" : "전체 보기"}
-          </button>
           <div className="relative">
             <button
               type="button"
@@ -699,11 +699,18 @@ export default function MonthlyPlanEditor({
           </div>
         </>
       }
-      aside={full ? null : aside}
+      aside={aside}
       docLabel="월별 주제형 월간 양식"
-      docHint={full ? "전체 보기" : "칸을 누르면 왼쪽에서 고칠 수 있어요 · 기간은 고정"}
+      docHint={
+        <div className="flex items-center gap-1">
+          {sheetZoom.tools}
+          <span className="ml-2">
+            <BigView pages={1} render={() => docOf(still)} />
+          </span>
+        </div>
+      }
     >
-      {doc}
+      <div ref={docBox}>{docOf(editing, sheetZoom.percent / 100)}</div>
     </AnnualFrame>
   );
 }

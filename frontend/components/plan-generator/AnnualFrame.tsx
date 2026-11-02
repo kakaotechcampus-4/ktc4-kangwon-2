@@ -1,10 +1,11 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
 import { downloadAnnualHwpx, unconfirmAnnualPlan } from "@/lib/api/plans";
 import type { AnnualPlanResponse } from "@/lib/api/types";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import UnconfirmButton from "./UnconfirmButton";
+import { stepPlaySheetZoom, type SheetZoom } from "./playProjectPagination";
 
 /** ⑤ · ⑥ 공통 모양 (디자인 넘김 result-preview · done-preview). */
 const CHIP = {
@@ -88,6 +89,147 @@ export default function AnnualFrame({
         </section>
       </div>
     </main>
+  );
+}
+
+const ZOOM_BUTTON =
+  "min-h-[36px] min-w-[36px] rounded-lg px-2 text-sm text-[#5c5243] hover:bg-[#f3efe8]";
+
+/**
+ * 문서 배율 — 기본은 100%(칸이 좁으면 그만큼만 줄임), 「맞춤」은 칸 폭에 맞춰 키우거나 줄임,
+ * −/+ 는 그 배율로 고정. `box` 는 문서를 감싼 칸(그 폭을 잰다), `percent` 로 문서를 줄인다. 연간 · 월간이 같이 쓴다.
+ */
+export function useSheetZoom(
+  box: RefObject<HTMLElement | null>,
+  width: number,
+  remeasure?: unknown,
+) {
+  const [zoom, setZoom] = useState<SheetZoom>({ mode: "auto", percent: 100 });
+  const [fit, setFit] = useState(100);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const update = () => setFit(Math.min(150, (el.clientWidth / width) * 100));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [box, width, remeasure]);
+  const percent =
+    zoom.mode === "fit" ? fit : zoom.mode === "auto" ? Math.min(100, fit) : zoom.percent;
+  const tools = (
+    <div role="group" aria-label="문서 배율" className="flex items-center gap-1">
+      <button
+        type="button"
+        className={ZOOM_BUTTON}
+        aria-label="문서 축소"
+        onClick={() => setZoom({ mode: "manual", percent: stepPlaySheetZoom(percent, -1) })}
+      >
+        −
+      </button>
+      <output className="min-w-[72px] text-center text-[13px]">
+        {zoom.mode === "fit" && "맞춤 "}
+        {Math.round(percent)}%
+      </output>
+      <button
+        type="button"
+        className={ZOOM_BUTTON}
+        aria-label="문서 확대"
+        onClick={() => setZoom({ mode: "manual", percent: stepPlaySheetZoom(percent, 1) })}
+      >
+        +
+      </button>
+      <button
+        type="button"
+        className={ZOOM_BUTTON}
+        aria-pressed={zoom.mode === "fit"}
+        onClick={() => setZoom({ ...zoom, mode: zoom.mode === "fit" ? "auto" : "fit" })}
+      >
+        맞춤
+      </button>
+    </div>
+  );
+  return { percent, tools };
+}
+
+/** 확정하기 바로 아래에 뜨는 확인 상자 자리 — 감싸는 쪽은 `relative`. 연간 · 월간이 같이 쓴다. */
+export const POPOVER = "absolute right-0 top-full z-20 mt-2 w-[380px]";
+
+/**
+ * 문서 크게 보기 — 따로 뜨는 읽기 전용 창. 쪽이 여럿이면 쪽을 골라 본다. Esc 로도 닫힌다.
+ * 닫혀 있으면 문서를 그리지 않는다. 연간 · 월간이 같이 쓴다.
+ */
+export function BigView({
+  pages,
+  render,
+  dialog,
+}: {
+  pages: number;
+  render: (page: number) => ReactNode;
+  /** 바깥에서 닫을 때(확정 실패로 패널을 열 때). */
+  dialog?: RefObject<HTMLDialogElement | null>;
+}) {
+  const own = useRef<HTMLDialogElement>(null);
+  const ref = dialog ?? own;
+  const [page, setPage] = useState<number | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="min-h-[36px] rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96]"
+        aria-haspopup="dialog"
+        onClick={() => {
+          setPage(0);
+          ref.current?.showModal();
+        }}
+      >
+        ⤢ 크게 보기
+      </button>
+      <dialog
+        ref={ref}
+        aria-labelledby="big-view-title"
+        onClose={() => setPage(null)}
+        className="m-auto h-[94vh] max-h-[94vh] w-[min(1100px,96vw)] max-w-none overflow-hidden rounded-[20px] bg-[#f3efe8] p-0 text-[#2b2826] backdrop:bg-black/40"
+      >
+        {page !== null && (
+          <div className="flex h-full flex-col">
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e2d8] bg-white px-6 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <strong id="big-view-title" className="text-[15px]">
+                  문서 크게 보기
+                </strong>
+                <span className="rounded-full bg-[#efeae2] px-2.5 py-0.5 text-xs font-bold text-[#5c5243]">
+                  읽기 전용
+                </span>
+                {pages > 1 && (
+                  <div role="tablist" aria-label="쪽" className="flex gap-1.5">
+                    {Array.from({ length: pages }, (_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        role="tab"
+                        aria-selected={page === i}
+                        aria-controls="big-view-page"
+                        className={pageClass(page === i)}
+                        onClick={() => setPage(i)}
+                      >
+                        {i + 1}쪽
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button type="button" className={BUTTON.outline} onClick={() => ref.current?.close()}>
+                닫고 편집 계속하기 ×
+              </button>
+            </header>
+            <div id="big-view-page" className="min-h-0 flex-1 overflow-auto p-7">
+              {render(page)}
+            </div>
+          </div>
+        )}
+      </dialog>
+    </>
   );
 }
 

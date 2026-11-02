@@ -121,6 +121,7 @@ const frameModules = {
   "@/lib/api/plans": plansStub,
   "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
   "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
+  "./playProjectPagination": sheetHelpers,
 };
 
 // 훅을 부른 순서대로 칸에 담는 대역. effect 는 시험이 부르지 않는다.
@@ -272,10 +273,10 @@ test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼�
       .map((n) => n.props["aria-label"]);
   assert.deepEqual(pages(render()), ["3월~5월"], "편집은 구간마다 한 쪽");
   button(render(), "⤢ 크게 보기").props.onClick();
-  // 편집 문서는 그대로 두고, 따로 뜨는 창에 원래 문서처럼 두 구간씩 한 쪽.
-  assert.deepEqual(pages(render()), ["3월~5월", "3월~5월 · 6월~8월"]);
+  // 편집 문서는 그대로 두고, 따로 뜨는 창에 원래 문서처럼 두 구간씩 한 쪽(창은 문서 머리줄에 있어 나무에서 앞).
+  assert.deepEqual(pages(render()).sort(), ["3월~5월", "3월~5월 · 6월~8월"]);
   button(render(), "2쪽").props.onClick();
-  assert.deepEqual(pages(render()), ["3월~5월", "9월~11월 · 12월~2월"], "쪽을 골라 본다");
+  assert.deepEqual(pages(render()).sort(), ["3월~5월", "9월~11월 · 12월~2월"], "쪽을 골라 본다");
   all(render())
     .find((n) => n.type === "dialog")
     .props.onClose();

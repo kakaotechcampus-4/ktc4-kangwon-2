@@ -169,6 +169,9 @@ const frameModule = {
   BUTTON: css,
   tabClass: () => "tab",
   UNCONFIRM: "unconfirm",
+  POPOVER: "popover",
+  BigView: (p) => jsx("bigview", p),
+  useSheetZoom: () => ({ percent: 100, tools: null }),
   // 확정 후 틀 대역 — 문서 쪽 · 다음 단계 · 확정 풀기를 한 나무에.
   PlanDone: (p) =>
     jsx("done", {

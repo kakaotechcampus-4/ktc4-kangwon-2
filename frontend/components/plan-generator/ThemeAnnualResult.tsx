@@ -16,7 +16,7 @@ import {
   setSlot,
   slotMismatch,
 } from "@/lib/plan-generator/subThemeSlots";
-import AnnualFrame, { AsideStrip, BUTTON, tabClass } from "./AnnualFrame";
+import AnnualFrame, { AsideStrip, BUTTON, POPOVER, tabClass } from "./AnnualFrame";
 import AnnualThemeSheet, { type ThemeSlot } from "./AnnualThemeSheet";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 
@@ -339,16 +339,6 @@ export default function ThemeAnnualResult({
               다시 저장
             </button>
           )}
-          {asking && (
-            <PlayMonthlyConfirm
-              message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
-              yes={confirming ? "확정하는 중…" : "확정하기"}
-              no="더 다듬기"
-              disabled={confirming}
-              onYes={confirm}
-              onNo={() => setAsking(false)}
-            />
-          )}
         </>
       }
       actions={
@@ -369,14 +359,28 @@ export default function ThemeAnnualResult({
           >
             {full ? "고치기로" : "전체 보기"}
           </button>
-          <button
-            type="button"
-            className={BUTTON.primary}
-            disabled={confirming}
-            onClick={() => setAsking(true)}
-          >
-            확정하기
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              className={BUTTON.primary}
+              disabled={confirming}
+              onClick={() => setAsking(true)}
+            >
+              확정하기
+            </button>
+            {asking && (
+              <div className={POPOVER}>
+                <PlayMonthlyConfirm
+                  message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
+                  yes={confirming ? "확정하는 중…" : "확정하기"}
+                  no="더 다듬기"
+                  disabled={confirming}
+                  onYes={confirm}
+                  onNo={() => setAsking(false)}
+                />
+              </div>
+            )}
+          </div>
         </>
       }
       aside={full ? null : aside}
