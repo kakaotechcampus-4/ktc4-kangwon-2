@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { getCurrentUser } from "@/lib/api/auth";
 import {
   getEvaluationChecklist,
@@ -36,11 +36,9 @@ function readTab(): Tab {
 /** 지표와 자체평가 체크는 서버(api-spec §12)에서 온다. 이 브라우저에 두는 것은 서류 점검 체크(항목 id)뿐이다. */
 export default function EvaluationChecklist({
   refresh,
-  children,
 }: {
   /** 화면 머리의 「현황 새로고침」이 올리는 수. 바뀌면 다시 불러온다. */
   refresh: number;
-  children?: ReactNode;
 }) {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [centerId, setCenterId] = useState<number | null>(null);
@@ -230,7 +228,7 @@ export default function EvaluationChecklist({
         aria-labelledby="eval-tab-docs"
         hidden={tab !== "docs"}
       >
-        <EvaluationAuto items={autos} />
+        <EvaluationAuto items={autos} onImported={() => setReload((n) => n + 1)} />
       </div>
       <div
         role="tabpanel"
@@ -260,9 +258,7 @@ export default function EvaluationChecklist({
           savedAt={savedAt}
           initiallyOpen={initiallyOpen}
           onCheck={check}
-        >
-          {children}
-        </EvaluationSelfCheck>
+        />
       </div>
     </div>
   );

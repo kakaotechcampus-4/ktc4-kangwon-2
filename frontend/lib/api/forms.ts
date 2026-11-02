@@ -5,6 +5,35 @@ import type { ApiForm } from "./types";
 /** 서버가 받는 확장자. 다른 형식은 `UNSUPPORTED_FILE_TYPE` 400 이다. */
 export const FORM_EXTENSIONS = [".hwp", ".hwpx"];
 
+type Cell = { text: string; rowspan: number; colspan: number };
+
+/** 저장하지 않고 표만 뽑는다 (§8 `POST /api/forms/parse`). DB 를 쓰지 않는다. */
+export const parseForm = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<{ tables: Cell[][][] }>("/api/forms/parse", { method: "POST", body: form });
+};
+
+/**
+ * 표를 글로 편다 — 행은 한 줄, 칸은 ` · ` 로 잇고, 표 사이는 한 줄 띄운다.
+ * 빈 칸은 버린다. 표 밖 문단은 parse 가 주지 않으므로 여기에도 없다.
+ */
+export const tableText = (tables: Cell[][][]) =>
+  tables
+    .map((table) =>
+      table
+        .map((row) =>
+          row
+            .map((cell) => cell.text.trim())
+            .filter(Boolean)
+            .join(" · "),
+        )
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .filter(Boolean)
+    .join("\n\n");
+
 /** 파싱에 성공해야 저장된다. 표가 하나도 없으면 422 다. */
 export const registerForm = (centerId: number, file: File) => {
   const form = new FormData();

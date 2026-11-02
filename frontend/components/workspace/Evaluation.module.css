@@ -122,6 +122,11 @@
   font-size: 18px;
   font-weight: 700;
 }
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
 .linkButton {
   min-height: 44px;
   font-size: 13px;
@@ -211,6 +216,14 @@
   font-size: 13px;
   line-height: 1.8;
   padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--pg-cream);
+}
+/* 예전 서류 올리기. 누른 버튼 바로 밑에 열린다. */
+.evidence {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
   border-radius: 8px;
   background: var(--pg-cream);
 }
