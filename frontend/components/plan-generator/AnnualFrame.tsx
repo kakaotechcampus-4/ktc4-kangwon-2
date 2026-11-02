@@ -46,8 +46,9 @@ export default function AnnualFrame({
   actions: ReactNode;
   notice?: ReactNode;
   aside: ReactNode | null;
-  docLabel: string;
-  docHint: string;
+  /** 문서 머리줄 왼쪽 · 오른쪽 (놀이형은 계절 탭 · 확대 도구). */
+  docLabel: ReactNode;
+  docHint: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -73,9 +74,9 @@ export default function AnnualFrame({
           aria-label="문서 미리보기"
           className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e8e2d8] bg-[#f3efe8]"
         >
-          <div className="flex items-center justify-between gap-3 border-b border-[#e8e2d8] bg-white px-5 py-2.5 text-sm">
-            <span className="font-bold">{docLabel}</span>
-            <span className="text-[#5c5243]">{docHint}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e2d8] bg-white px-5 py-2.5 text-sm">
+            <div className="font-bold">{docLabel}</div>
+            <div className="text-[#5c5243]">{docHint}</div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-6">{children}</div>
         </section>

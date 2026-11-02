@@ -1,5 +1,6 @@
 "use client";
 
+import type { DragEvent } from "react";
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import {
   buildPlayProjectPreviewRows,
@@ -22,6 +23,8 @@ type Props = {
   selectedCell?: { periodKey: string; rowKey: string; field: PlayField } | null;
   /** 있으면 칸을 누를 수 있다 — 왼쪽 패널이 그 칸으로 간다. */
   onSelectCell?: (periodIndex: number, rowKey: string, field: PlayField) => void;
+  /** 있으면 놀이를 이 줄에 끌어놓을 수 있다 — 끈 놀이가 그 줄 자리로 옮겨 간다. */
+  onDropPick?: (rowKey: string, targetRowKey: string) => void;
 };
 
 /** 놀이 중심형 연간 문서 (디자인 넘김 `V2Doc` 모양). 구간 하나가 한 쪽이다. */
@@ -32,6 +35,7 @@ export default function PlayProjectSheet({
   periods,
   selectedCell = null,
   onSelectCell,
+  onDropPick,
 }: Props) {
   const rows = buildPlayProjectPreviewRows(plan, picks);
   return (
@@ -71,7 +75,27 @@ export default function PlayProjectSheet({
                 {rows
                   .filter((row) => row.period === period)
                   .map((row) => (
-                    <tr key={row.key}>
+                    <tr
+                      key={row.key}
+                      className="data-[drop]:bg-[#f6f1fb]"
+                      {...(onDropPick &&
+                        row.candidate && {
+                          // 끌어놓을 줄 강조는 data-drop 으로만 — 상태를 두지 않는다.
+                          onDragOver: (event: DragEvent<HTMLElement>) => {
+                            event.preventDefault();
+                            event.currentTarget.dataset.drop = "";
+                          },
+                          onDragLeave: (event: DragEvent<HTMLElement>) => {
+                            delete event.currentTarget.dataset.drop;
+                          },
+                          onDrop: (event: DragEvent<HTMLElement>) => {
+                            event.preventDefault();
+                            delete event.currentTarget.dataset.drop;
+                            const dragged = event.dataTransfer.getData("text/plain");
+                            if (dragged) onDropPick(dragged, row.candidate!.row_key);
+                          },
+                        })}
+                    >
                       {row.rowSpan && (
                         <th
                           scope="rowgroup"
@@ -103,6 +127,19 @@ export default function PlayProjectSheet({
                               key={field.key}
                               className={`${CELL} ${center ? "text-center" : ""} ${field.key === "play_name" ? "font-bold" : ""} ${selected ? SELECTED : ""}`}
                             >
+                              {onDropPick && field.key === "play_name" && (
+                                <span
+                                  draggable
+                                  aria-hidden="true"
+                                  title="끌어서 순서 바꾸기"
+                                  className="mb-1 inline-block cursor-grab rounded bg-[#f3efe8] px-1.5 text-[11px] font-normal text-[#5c5243]"
+                                  onDragStart={(event) =>
+                                    event.dataTransfer.setData("text/plain", candidate.row_key)
+                                  }
+                                >
+                                  ⠿ {(picks[period.period_key] ?? []).indexOf(candidate.row_key) + 1}
+                                </span>
+                              )}
                               {onSelectCell ? (
                                 <button
                                   type="button"
