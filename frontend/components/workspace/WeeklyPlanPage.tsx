@@ -39,6 +39,7 @@ import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import { WorkspacePage, Empty, Message } from "./WorkspaceUI";
 import s from "./WeeklyPlanPage.module.css";
 import WeeklyActivityPanel from "./WeeklyActivityPanel";
+import WeeklyNew from "./WeeklyNew";
 
 function describe(e: unknown, fallback: string): string {
   if (e instanceof ApiError) return e.message;
@@ -97,7 +98,31 @@ function readArchiveEntry() {
   return archivePlanEntry(typeof window === "undefined" ? "" : window.location.search);
 }
 
+type Entry = NonNullable<ReturnType<typeof archivePlanEntry>>;
+
+/**
+ * 주소에 고른 계획안(`plan_id` · `class_id` · `week_id`)이 있으면 그 주, 없으면 만들기(Ⓦ1).
+ * 화면을 바꿀 때 주소도 바꿔 둔다 — 새로고침해도 같은 화면이다.
+ */
 export default function WeeklyPlanPage() {
+  const [entry, setEntry] = useClientState<Entry | null>(readArchiveEntry, null);
+  if (!entry)
+    return (
+      <WeeklyNew
+        onOpen={(next) => {
+          window.history.replaceState(
+            null,
+            "",
+            `/plans/weekly?plan_id=${next.id}&class_id=${next.classId}&week_id=${next.weekId}`,
+          );
+          setEntry(next);
+        }}
+      />
+    );
+  return <WeeklyCards key={entry.id} />;
+}
+
+function WeeklyCards() {
   const [entry] = useClientState(readArchiveEntry, null);
   const [classId, setClassId] = useState<number | null>(null);
   const [className, setClassName] = useState("");

@@ -420,6 +420,7 @@ function weeklyPage(api) {
     },
     "./WeeklyPlanPage.module.css": css,
     "./WeeklyActivityPanel": { default: () => null },
+    "./WeeklyNew": { default: () => null },
   };
   const page = { exports: {} };
   new Function("require", "module", "exports", pageCode)(
