@@ -32,7 +32,7 @@ export const chip = (format: Format) => (
   </span>
 );
 
-/** ⑤ · Ⓜ3 결과 · 다듬기. 왼쪽 380px 패널(`aside`, 전체 보기면 null) · 오른쪽 문서. 연간 · 월간이 같이 쓴다. */
+/** ⑤ · Ⓜ3 결과 · 다듬기. 왼쪽 380px 패널(`aside`) · 오른쪽 문서(머리줄에 배율 · 크게 보기). 연간 · 월간이 같이 쓴다. */
 export default function AnnualFrame({
   title,
   format,

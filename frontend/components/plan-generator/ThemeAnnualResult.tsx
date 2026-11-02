@@ -16,7 +16,14 @@ import {
   setSlot,
   slotMismatch,
 } from "@/lib/plan-generator/subThemeSlots";
-import AnnualFrame, { AsideStrip, BUTTON, POPOVER, tabClass } from "./AnnualFrame";
+import AnnualFrame, {
+  AsideStrip,
+  BigView,
+  BUTTON,
+  POPOVER,
+  tabClass,
+  useSheetZoom,
+} from "./AnnualFrame";
 import AnnualThemeSheet, { type ThemeSlot } from "./AnnualThemeSheet";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 
@@ -46,6 +53,8 @@ const SMALL =
  * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제 배치(위 · 아래 · 추가 · 삭제 · 글 고치기).
  * AI 후보 탭은 서버 API 가 없어 두지 않는다. 한 달 저장은 주제와 소주제를 같이 보낸다(`putAnnualMonth`).
  */
+const SHEET_WIDTH = 860;
+
 export default function ThemeAnnualResult({
   plan,
   className,
@@ -68,7 +77,9 @@ export default function ThemeAnnualResult({
   const [message, setMessage] = useState("");
   const [flagged, setFlagged] = useState<number[]>([]);
   const [undo, setUndo] = useState<{ month: number; before: Draft }[]>([]);
-  const [full, setFull] = useState(false);
+  // 문서 기준 폭(AnnualThemeSheet 최대 폭). 배율 도구가 이 폭을 문서 칸에 맞춘다.
+  const docBox = useRef<HTMLDivElement>(null);
+  const sheetZoom = useSheetZoom(docBox, SHEET_WIDTH);
   const [asking, setAsking] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // 서버가 받은 값(성공 응답 뒤에만 바뀐다) · 마지막으로 저장 줄에 넣은 값 · 저장 줄(한 번에 하나씩)
@@ -189,7 +200,6 @@ export default function ThemeAnnualResult({
             !same(clean(drafts[m]), saved.current[m]),
         );
       if (unsaved.length) {
-        setFull(false);
         setSelected({ month: unsaved[0], slot: "theme" });
         setMessage(
           `${unsaved.map((m) => m + "월").join(" · ")}은 아직 저장되지 않았어요. 생활주제를 채우거나 다시 저장한 뒤 확정해 주세요.`,
@@ -204,7 +214,6 @@ export default function ThemeAnnualResult({
       if (!months.length)
         return setMessage(error instanceof Error ? error.message : "확정하지 못했어요.");
       setFlagged(months);
-      setFull(false);
       setSelected({ month: months[0], slot: "theme" });
       setMessage(
         `${months.map((m) => m + "월").join(" · ")}은 소주제 수가 주 수와 달라요. 주마다 하나씩 맞춰 주세요.`,
@@ -312,6 +321,7 @@ export default function ThemeAnnualResult({
       </div>
     </>
   );
+  const sheetTitle = `${className ? className + " " : ""}${plan.school_year}학년도 연간 보육계획안`;
   return (
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
@@ -351,14 +361,6 @@ export default function ThemeAnnualResult({
           >
             되돌리기
           </button>
-          <button
-            type="button"
-            className={BUTTON.outline}
-            aria-pressed={full}
-            onClick={() => setFull(!full)}
-          >
-            {full ? "고치기로" : "전체 보기"}
-          </button>
           <div className="relative">
             <button
               type="button"
@@ -383,19 +385,31 @@ export default function ThemeAnnualResult({
           </div>
         </>
       }
-      aside={full ? null : aside}
+      aside={aside}
       docLabel="소주제형 기본 양식"
       docHint={
-        full ? "전체 보기" : "생활주제·소주제 칸을 누르면 왼쪽에서 고칠 수 있어요 · 월·주는 고정"
+        <div className="flex items-center gap-1">
+          {sheetZoom.tools}
+          <span className="ml-2">
+            <BigView
+              pages={1}
+              render={() => <AnnualThemeSheet title={sheetTitle} months={sheetMonths} />}
+            />
+          </span>
+        </div>
       }
     >
-      <AnnualThemeSheet
-        title={`${className ? className + " " : ""}${plan.school_year}학년도 연간 보육계획안`}
-        months={sheetMonths}
-        selected={full ? null : selected}
-        flagged={flagged.filter((m) => slotMismatch(drafts[m].sub_themes, weekCount(m)))}
-        onSelect={full ? undefined : select}
-      />
+      <div ref={docBox}>
+        <div style={{ zoom: sheetZoom.percent / 100, width: SHEET_WIDTH }} className="mx-auto">
+          <AnnualThemeSheet
+            title={sheetTitle}
+            months={sheetMonths}
+            selected={selected}
+            flagged={flagged.filter((m) => slotMismatch(drafts[m].sub_themes, weekCount(m)))}
+            onSelect={select}
+          />
+        </div>
+      </div>
     </AnnualFrame>
   );
 }
