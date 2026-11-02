@@ -24,7 +24,7 @@ const THEMES = [
   "겨울과 놀이",
   "세계 여러 나라",
 ];
-const FORMATS = { hwpx: "HWPX", docx: "DOCX", pdf: "PDF" } as const;
+const FORMATS = { hwp: "HWP", hwpx: "HWPX", docx: "DOCX", pdf: "PDF" } as const;
 const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
 
 export const annualImportHandlers = [
@@ -37,7 +37,11 @@ export const annualImportHandlers = [
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     const format = FORMATS[ext as keyof typeof FORMATS];
     if (!format)
-      return failure("UNSUPPORTED_FILE_TYPE", "한글에서 HWPX나 PDF로 저장해서 올려 주세요", "file");
+      return failure(
+        "UNSUPPORTED_FILE_TYPE",
+        "HWP · HWPX · DOCX · PDF 파일만 올릴 수 있어요",
+        "file",
+      );
     if (!findClass(Number(form?.get("class_id"))))
       return failure("NOT_FOUND", "반을 찾을 수 없습니다.", "class_id");
     const hash = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
