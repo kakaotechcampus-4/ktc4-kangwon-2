@@ -32,6 +32,7 @@ import {
 } from "./data/annual-plans";
 import {
   confirmPlayMonthly,
+  addPlayMonthly,
   copyPlayMonthlyDrill,
   editPlayMonthlyCell,
   findPlayMonthly,
@@ -645,11 +646,10 @@ export const handlers = [
           ? "연간계획안을 먼저 확정해주세요."
           : null;
     if (gate) return failure("GATE_BLOCKED", gate, "class_id");
-    // 서버는 생성 규칙이 아직 없어 게이트 뒤에서 항상 503 이다. 아무것도 저장하지 않는다.
-    return failure(
-      "DEPENDENCY_UNAVAILABLE",
-      "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-    );
+    // 서버는 생성한 초안을 201 로 준다. 목업은 고정 합성 데이터에 달 · 강조 놀이만 바꾼다.
+    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed), {
+      status: 201,
+    });
   }),
   http.get("*/api/plans/monthly/play", async ({ request }) => {
     const s = await scenario(request, "play-monthly-list");

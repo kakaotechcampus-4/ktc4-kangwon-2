@@ -13,7 +13,7 @@ const json = (method: "PUT" | "POST", data: unknown, signal?: AbortSignal): Requ
  * 확정본이면 409 `ALREADY_CONFIRMED` 다 — `plans.ts` 의 `isSaveConflict` · `isRejectedSave` 가 그대로 맞는다.
  */
 
-/** 지금은 항상 503 이다(생성 규칙이 서버에 아직 없다). 게이트는 통과한다 — 이미 있으면 409. */
+/** 연간 확정 뒤 그 달 초안을 만든다(201). 그 달이 이미 있으면 409, 자료가 없으면 503. */
 export const createPlayMonthly = (
   data: { class_id: number; month: number; emphasized_row_keys: string[] },
   signal?: AbortSignal,

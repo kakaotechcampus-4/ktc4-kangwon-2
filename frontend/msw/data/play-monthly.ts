@@ -103,9 +103,15 @@ function record(db: Database, id: number, ...inputs: AuditInput[]) {
 export const listPlayMonthlyAudit = (id: number): PlayMonthlyAuditEvent[] =>
   structuredClone(read().playMonthlyAudit[id] ?? []);
 
-/** 새 놀이 월간 하나. `confirmed` 면 같은 데이터의 확정본이다. */
-export const addPlayMonthly = (classId: number, confirmed = false) =>
+/** 새 놀이 월간 하나. `confirmed` 면 같은 데이터의 확정본이다. `month` · 강조 놀이는 생성 요청에서 온다. */
+export const addPlayMonthly = (
+  classId: number,
+  confirmed = false,
+  month = 11,
+  emphasized: string[] = [],
+) =>
   commit((db) => {
+    const ym = (month >= 3 ? 2026 : 2027) + "-" + String(month).padStart(2, "0");
     let n = 0;
     const cell = (value: string, ev: PlayMonthlyCell["evidence"]): PlayMonthlyCell => ({
       item_id: "item_" + String(++n).padStart(32, "0"),
@@ -130,8 +136,8 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
       id: db.next++,
       class_id: classId,
       school_year: 2026,
-      month: 11,
-      target_month: "2026-11",
+      month,
+      target_month: ym,
       status: confirmed ? "CONFIRMED" : "DRAFT",
       revision: 1,
       format: "PLAY_MONTHLY",
@@ -140,10 +146,10 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
       confirmed_at: confirmed ? now : null,
       target_ages: [4, 5],
       weeks: [1, 2, 3, 4].map((w) => ({
-        week_id: "2026-11-W" + w,
-        label: "11월 " + w + "주",
-        start_date: "2026-11-" + String(2 + 7 * (w - 1)).padStart(2, "0"),
-        end_date: "2026-11-" + String(6 + 7 * (w - 1)).padStart(2, "0"),
+        week_id: ym + "-W" + w,
+        label: month + "월 " + w + "주",
+        start_date: ym + "-" + String(2 + 7 * (w - 1)).padStart(2, "0"),
+        end_date: ym + "-" + String(6 + 7 * (w - 1)).padStart(2, "0"),
         active: true,
       })),
       parent: {
@@ -157,7 +163,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
           play_name: "m09_m11 놀이 " + i,
           materials: "종이 상자",
           support_direction: "자료를 더해 줍니다.",
-          emphasized: false,
+          emphasized: emphasized.includes("cand" + i),
         })),
       },
       theme: cell("봄 길을 걸어요", parentEv),
@@ -168,7 +174,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
       together: rows("함께 놀이", "t.1"),
       free_play: rows("자유놀이", "t.3"),
       habits: [1, 2, 3, 4].map((w) => ({
-        week_id: "2026-11-W" + w,
+        week_id: ym + "-W" + w,
         entry_id: "h" + w,
         cell: cell("합성 습관 " + w, curriculum("t.1")),
       })),
@@ -189,7 +195,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
         ),
       })),
       safety_weeks: [1, 2, 3, 4].map((w) => ({
-        week_id: "2026-11-W" + w,
+        week_id: ym + "-W" + w,
         candidate_item_id: null,
       })),
       health: { entry_id: "he1", cell: cell("합성 건강 1", curriculum("t.2")) },

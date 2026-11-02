@@ -169,7 +169,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(page.getByText("새 양식을 만들고 원 기본으로 설정했어요.")).toBeVisible();
   // 계획안 첫 화면에 월간 링크가 없다(2026-11-02 결정) — 주소로 간다.
   await page.goto("/plans/monthly");
-  await page.getByRole("button", { name: /월 계획안 만들기/ }).click();
+  await page.getByRole("button", { name: /월간계획안 만들기/ }).click();
   // 놀이 월간과 같은 화면: 문서에서 칸을 누르면 옆 패널에서 고치고, 입력을 멈추거나 떠나면 저장한다.
   const doc = page.getByRole("region", { name: "월간계획안 미리보기", exact: true });
   const outdoor = doc

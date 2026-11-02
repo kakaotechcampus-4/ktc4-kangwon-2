@@ -595,7 +595,7 @@ test("a draft is deleted with 204 and then it is 404", async () => {
   assert.deepEqual((await pm.listPlayMonthly()).items, []);
 });
 
-test("create passes the gates and then is 503 without saving anything", async () => {
+test("create passes the gates and then saves a draft of that month", async () => {
   const klass = await newClass();
   const create = (month = 12) =>
     pm.createPlayMonthly({ class_id: klass.id, month, emphasized_row_keys: [] });
@@ -612,14 +612,20 @@ test("create passes the gates and then is 503 without saving anything", async ()
   );
   const saved = await savePlaySelection(annual.id, pick, annual.revision);
   await confirmPlayProject(annual.id, saved.revision);
-  await rejects(
-    create(),
-    503,
-    "DEPENDENCY_UNAVAILABLE",
-    "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-    [],
+  const made = await pm.createPlayMonthly({
+    class_id: klass.id,
+    month: 12,
+    emphasized_row_keys: ["cand9"],
+  });
+  assert.deepEqual([made.month, made.target_month, made.status], [12, "2026-12", "DRAFT"]);
+  assert.deepEqual(
+    made.parent.plays.filter((p) => p.emphasized).map((p) => p.row_key),
+    ["cand9"],
   );
-  assert.deepEqual((await pm.listPlayMonthly(klass.id)).items, []);
+  assert.deepEqual(
+    (await pm.listPlayMonthly(klass.id)).items.map((p) => p.id),
+    [made.id],
+  );
   await rejects(
     pm.createPlayMonthly({ class_id: klass.id, month: 13, emphasized_row_keys: [] }),
     422,

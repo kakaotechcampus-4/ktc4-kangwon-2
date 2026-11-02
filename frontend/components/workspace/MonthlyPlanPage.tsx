@@ -17,58 +17,59 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ApiError } from "@/lib/api/client";
-import {
-  createMonthlyPlan,
-  deleteMonthlyPlan,
-  getMonthlyPlan,
-  listMonthlyPlans,
-} from "@/lib/api/monthly";
+import { deleteMonthlyPlan, getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
 import { classServerId, syncClass } from "@/lib/api/onboarding";
 import { getClassTemplateProfile } from "@/lib/api/templateProfiles";
 import type { MonthlyPlan, ProfileRef } from "@/lib/api/types";
 import { isPlayAnnual } from "@/lib/monthly/play-entry";
-import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
+import { loadClassSettings } from "@/lib/onboarding/settings";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { archivePlanEntry } from "@/lib/workspace/document-archive";
 import MonthlyPlanEditor from "./MonthlyPlanEditor";
-import PlayMonthlyEntry from "./PlayMonthlyEntry";
-import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
+import MonthlyNew from "./MonthlyNew";
+import { WorkspacePage, Message, useClasses, ws } from "./WorkspaceUI";
 
 function describe(e: unknown, fallback: string): string {
   if (e instanceof ApiError) return e.message;
   return e instanceof Error ? e.message : fallback;
 }
 
-const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
-/** 그 달의 「지금」. 3월 시작 학년도라 1 · 2월은 다음 해다. */
-function defaultMonth(): number {
-  return new Date().getMonth() + 1;
-}
-
 function readArchiveEntry() {
   return archivePlanEntry(typeof window === "undefined" ? "" : window.location.search);
 }
+type Entry = NonNullable<ReturnType<typeof archivePlanEntry>>;
 
+/**
+ * 주소에 고른 계획안(`plan_id` · `class_id` · `month`)이 있으면 편집, 없으면 만들기(Ⓜ1).
+ * 화면을 바꿀 때 주소도 바꿔 둔다 — 새로고침해도 같은 화면이다. 놀이형 초안은 자기 주소로 간다.
+ */
 export default function MonthlyPlanPage() {
-  const [entry] = useClientState(readArchiveEntry, null);
-  const [classId, setClassId] = useState<number | null>(null);
+  const [entry, setEntry] = useClientState<Entry | null>(readArchiveEntry, null);
+  const go = (next: Entry | null) => {
+    window.history.replaceState(
+      null,
+      "",
+      next
+        ? `/plans/monthly?plan_id=${next.id}&class_id=${next.classId}&month=${next.month}`
+        : "/plans/monthly",
+    );
+    setEntry(next);
+  };
+  if (!entry) return <MonthlyNew onOpen={(p) => go({ ...p, weekId: "" })} />;
+  return <MonthlyEdit key={entry.id} entry={entry} onBack={() => go(null)} />;
+}
+
+function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
   const [profile, setProfile] = useState<ProfileRef | null>(null);
-  const [month, setMonth] = useClientState(
-    () => readArchiveEntry()?.month ?? defaultMonth(),
-    defaultMonth(),
-  );
+  const month = entry.month;
   const [plan, setPlan] = useState<MonthlyPlan | null>(null);
   const [busy, setBusy] = useState<string>("");
   const [message, setMessage] = useState("");
   const [problem, setProblem] = useState("");
   const classes = useClasses(setProblem);
-  const [initialClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
-  const requestedClass = entry
-    ? classes.find((c) => classServerId(c.id) === entry.classId)?.id
-    : "";
-  // 반은 사이드바에서 한 번만 고른다. 문서 보관함에서 들어왔을 때만 그 반을 따른다.
-  const localClassId = entry ? (requestedClass ?? "") : initialClass || classes[0]?.id || "";
+  // 고른 계획안의 반. 문서 보관함 · 만들기 화면 모두 주소로 반을 준다.
+  const localClassId = classes.find((c) => classServerId(c.id) === entry.classId)?.id ?? "";
   const scope = `${localClassId}|${month}`;
   const [loadedScope, setLoadedScope] = useState("");
   const [profileSource, setProfileSource] = useState("");
@@ -99,7 +100,7 @@ export default function MonthlyPlanPage() {
       const found = items.find(
         (p) =>
           p.month === target &&
-          (!entry || entry.classId !== id || entry.month !== target || p.id === entry.id),
+          (entry.classId !== id || entry.month !== target || p.id === entry.id),
       );
       return found ? await getMonthlyPlan(found.id) : null;
     },
@@ -119,7 +120,6 @@ export default function MonthlyPlanPage() {
         if (isPlayAnnual(annual)) {
           if (!alive) return;
           setIsPlay(true);
-          setClassId(id);
           setLoadedScope(scope);
           setProblem("");
           return;
@@ -130,7 +130,6 @@ export default function MonthlyPlanPage() {
         ]);
         if (!alive) return;
         setIsPlay(false);
-        setClassId(id);
         setProfile(resolution.profile_ref);
         setProfileSource(
           resolution.source === "CLASSROOM_OVERRIDE" ? "반 지정 양식" : "원 기본 양식",
@@ -174,22 +173,12 @@ export default function MonthlyPlanPage() {
     }
   }
 
-  const handleCreate = () =>
-    run("create", async () => {
-      if (classId === null || !profile) return;
-      return createMonthlyPlan({
-        class_id: classId,
-        month,
-        profile_ref: profile,
-      });
-    });
-
+  // 지우면 만들기 화면으로 돌아가 그 달을 다시 만든다.
   const handleDelete = () =>
     run("delete", async () => {
-      if (!plan || classId === null) return;
+      if (!plan) return;
       await deleteMonthlyPlan(plan.id);
-      setPlan(await load(classId, month));
-      setMessage("지웠어요. 다시 만들 수 있어요.");
+      onBack();
     });
 
   return (
@@ -215,50 +204,20 @@ export default function MonthlyPlanPage() {
         </div>
       )}
 
-      <div className={ws.row} style={{ marginBottom: 20 }}>
-        <label className={ws.field}>
-          월
-          <select
-            value={month}
-            disabled={!!busy || moving}
-            onChange={(e) => {
-              const next = Number(e.target.value);
-              void leave(() => setMonth(next));
-            }}
-          >
-            {MONTHS.map((m) => (
-              <option key={m} value={m}>
-                {m}월
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className={ws.actions} style={{ marginBottom: 16 }}>
+        <button
+          type="button"
+          className={ws.secondary}
+          disabled={!!busy || moving}
+          onClick={() => void leave(onBack)}
+        >
+          ← 월간계획안 만들기
+        </button>
       </div>
 
       {loading && <p role="status">월간계획안을 불러오는 중…</p>}
-      {!loading && isPlay && classId !== null && (
-        <PlayMonthlyEntry key={`${classId}|${month}`} classId={classId} month={month} />
-      )}
-      {legacy && !profile && (
-        <Empty title="월간계획안 양식을 먼저 정해주세요">
-          어떤 칸을 둘지 정해야 만들 수 있어요. 「월간계획안 양식」에서 정해주세요.
-          <Link href="/plans/template" className={ws.link}>
-            월간 양식 설정으로 가기
-          </Link>
-        </Empty>
-      )}
-
-      {legacy && profile && !plan && (
-        <Empty title={`${month}월 계획안이 아직 없어요`}>
-          <button
-            type="button"
-            className={ws.primary}
-            disabled={!!busy || classId === null}
-            onClick={handleCreate}
-          >
-            {busy === "create" ? "만드는 중…" : `${month}월 계획안 만들기`}
-          </button>
-        </Empty>
+      {!loading && (isPlay || !plan) && (
+        <p className={ws.hint}>이 계획안을 찾지 못했어요. 만들기 화면에서 달을 다시 골라 주세요.</p>
       )}
 
       {legacy && plan && (
