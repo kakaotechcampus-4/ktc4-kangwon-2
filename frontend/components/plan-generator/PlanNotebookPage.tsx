@@ -6,7 +6,6 @@ import { listAnnualPlans } from "@/lib/api/plans";
 import { listMonthlyPlans } from "@/lib/api/monthly";
 import { listPlayMonthly } from "@/lib/api/playMonthly";
 import type { AnnualPlanSummary, MonthlyPlanSummary, PlayMonthlySummary } from "@/lib/api/types";
-import { localDate } from "@/lib/workspace/model";
 import AnnualImport from "./AnnualImport";
 
 /**
@@ -62,7 +61,13 @@ export function draftCards(
   ];
   return cards
     .sort((a, b) => b.created.localeCompare(a.created))
-    .map((c) => ({ ...c, date: localDate(c.created) }));
+    .map((c) => ({ ...c, date: shortDate(c.created) }));
+}
+
+// 카드 날짜는 정답지처럼 「10월 30일」. 문서 보관함은 localDate(2026.10.30) 그대로.
+function shortDate(iso: string) {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? "" : `${at.getMonth() + 1}월 ${at.getDate()}일`;
 }
 
 export default function PlanNotebookPage() {

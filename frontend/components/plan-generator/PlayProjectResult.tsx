@@ -438,7 +438,7 @@ export default function PlayProjectResult({
               className={`min-h-[36px] rounded-full border px-3 text-sm ${selectedCell.field === field.key ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#5e4b96]" : "border-[#e8e2d8] text-[#5c5243]"}`}
               onClick={() => selectCell(activePeriod, selectedCell.rowKey, field.key)}
             >
-              {field.label}
+              {field.key === "learning" ? "배움" : field.label}
             </button>
           ))}
         </div>
@@ -451,7 +451,7 @@ export default function PlayProjectResult({
             <button
               key={delta}
               type="button"
-              className="min-h-[40px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243] disabled:opacity-40"
+              className="min-h-[44px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243] disabled:opacity-40"
               disabled={delta === -1 ? index <= 0 : index >= periodPicks.length - 1}
               onClick={() => moveCandidate(selectedCandidate.row_key, delta)}
             >
@@ -460,7 +460,7 @@ export default function PlayProjectResult({
           ))}
           <button
             type="button"
-            className="min-h-[40px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243]"
+            className="min-h-[44px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243]"
             onClick={() => toggleCandidate(selectedCandidate.row_key)}
           >
             문서에서 빼기
@@ -629,7 +629,7 @@ export default function PlayProjectResult({
           className={`${pageClass(activePeriod === index)} ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
           onClick={() => goToPeriod(index)}
         >
-          {item.label} {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}
+          {[playSeason(item).name, playSeason(item).months].filter(Boolean).join(" ")} {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}
         </button>
       ))}
     </div>
@@ -723,6 +723,11 @@ export default function PlayProjectResult({
             onClick={() => selectLeftTab(tab)}
           >
             {tab === "edit" ? "칸 편집" : "AI 후보"}
+            {tab === "picked" && (
+              <span className="ml-1.5 rounded-full bg-[#efeae2] px-2 py-0.5 text-xs text-[#5c5243]">
+                {period.candidates.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
