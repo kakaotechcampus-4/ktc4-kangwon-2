@@ -37,7 +37,7 @@ router = APIRouter(prefix="/plans/annual", tags=["plans"])
 class ImportFileIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    format: Literal["HWPX", "DOCX", "PDF"]
+    format: Literal["HWP", "HWPX", "DOCX", "PDF"]
     sha256: Annotated[str, Field(pattern=r"^[0-9a-fA-F]{64}$")]
 
 

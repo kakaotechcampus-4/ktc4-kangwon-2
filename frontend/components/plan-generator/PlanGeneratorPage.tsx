@@ -17,6 +17,7 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
+import { useCompactShell } from "@/components/app/compact-shell";
 
 type Format = AnnualInput["format"];
 
@@ -76,6 +77,7 @@ function AnnualGenerator({ format }: { format: Format }) {
   const [occupied, setOccupied] = useState<number | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const year = schoolYearOf(today());
+  useCompactShell(generating);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
