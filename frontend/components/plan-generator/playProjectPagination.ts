@@ -6,6 +6,20 @@ export const fields = [
   { key: "support_direction", label: "지원 방향", heading: "내용 및 지원 방향 예상하기" },
   { key: "learning", label: "놀이를 통한 배움", heading: "놀이를 통한 배움" },
 ] as const;
+// 화면 표시용 계절 이름. Core layout label(「3월~5월」)은 그대로 두고, HWP 내려받기
+// (backend export.py PLAY_PERIOD_LABELS)와 같은 구간 키 표를 쓴다. 모르는 키면 label 그대로.
+const SEASONS: Record<string, [string, string]> = {
+  m03_m05: ["봄", "3~5월"],
+  m06_m08: ["여름", "6~8월"],
+  m09_m11: ["가을", "9~11월"],
+  m12_m02: ["겨울", "12~2월"],
+};
+
+export function playSeason(period: Pick<PlayProjectAnnualPlan["periods"][number], "period_key" | "label">) {
+  const [name, months] = SEASONS[period.period_key] ?? [period.label, ""];
+  return { name, months };
+}
+
 export type PlayField = (typeof fields)[number]["key"];
 export type SheetZoom = { mode: "fit" | "manual"; percent: number };
 export type PreviewRow = {

@@ -4,7 +4,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import { createAnnualPlan, deleteAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
 import { syncClass } from "@/lib/api/onboarding";
@@ -241,19 +240,19 @@ function AnnualGenerator({ format }: { format: Format }) {
 
         <section
           aria-label="양식 미리보기"
-          className="flex min-h-[420px] flex-col gap-4 rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] px-8 py-7"
+          className="flex min-h-[420px] flex-col gap-4 rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] px-8 py-7 lg:h-[calc(100vh-270px)] lg:min-h-[520px]"
         >
           <div className="flex items-baseline justify-between">
             <h2 className="m-0 text-lg font-bold">{look.form}</h2>
             <span className="text-sm text-[#5c5243]">이 양식으로 만들어져요</span>
           </div>
           <div className="relative min-h-0 flex-1">
-            <Image
+            {/* 정답지 ②: 종이 모양(테두리 · 그림자)이 그림 크기에 딱 맞게. fill 은 빈 띠를 남긴다. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={`/plan-formats/${look.image}.png`}
               alt={look.alt}
-              fill
-              sizes="(min-width: 1024px) 560px, 100vw"
-              className="rounded-md object-contain object-top"
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
             />
           </div>
         </section>

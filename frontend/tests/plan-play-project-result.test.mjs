@@ -321,6 +321,11 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
         throw new Error("PLAY_PROJECT should not read stored annual context");
       },
     },
+    // 놀이형 문서 제목의 반 이름은 반 설정에서 계획안 class_id 로 찾는다.
+    "@/lib/onboarding/settings": {
+      loadClassSettings: () => ({ classes: [{ id: "local-1", className: "햇살반" }] }),
+    },
+    "@/lib/api/onboarding": { classServerId: (id) => (id === "local-1" ? pp.class_id : null) },
     "./AnnualFrame": { AnnualDone: (p) => jsx("done", p) },
     "./AnnualThemeSheet": esModule((p) => jsx("theme-sheet", p)),
     "./PlayProjectSheet": esModule((p) => jsx("play-sheet", p)),
@@ -337,9 +342,11 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   await new Promise((done) => setImmediate(done));
   const shown = all(render()).find((n) => n.type === "play-result");
   assert.equal(compact.at(-1), true, "다듬기는 사이드바를 접는다");
+  assert.equal(shown.props.className, "햇살반", "문서 제목에 붙일 반 이름");
   shown.props.onConfirmed({ ...pp, status: "CONFIRMED" });
   const done = all(render()).find((n) => n.type === "done");
   assert.equal(done.props.pages.length, 4);
+  assert.equal(done.props.pages[0].props.className, "햇살반");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
   done.props.onUnconfirmed({ ...pp, status: "DRAFT" });
   assert.ok(

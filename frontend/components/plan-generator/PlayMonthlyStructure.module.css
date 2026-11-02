@@ -24,7 +24,6 @@
   overflow-wrap: anywhere;
 }
 .panel button,
-.confirm button,
 .remove button {
   padding: 3px 8px;
   border: 1px solid var(--pg-line);
@@ -35,7 +34,6 @@
   cursor: pointer;
 }
 .panel button:disabled,
-.confirm button:disabled,
 .remove button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -56,17 +54,44 @@
   color: var(--pg-ink-soft);
   font-size: 12px;
 }
+/* 확인 상자 — 디자인 확정본의 흰 카드 + 44px 버튼. [data-act] 로 .panel/.remove button 규칙보다 앞선다. */
 .confirm {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--pg-line);
-  border-radius: 6px;
-  background: var(--pg-cream);
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border: 1px solid #e8e2d8;
+  border-radius: 20px;
+  background: #fff;
 }
 .confirm p {
   flex-basis: 100%;
   margin: 0;
+  color: #2b2826;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.confirm button[data-act] {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid #ddd6ca;
+  border-radius: 12px;
+  background: #fff;
+  color: #5e4b96;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirm button[data-act="yes"] {
+  padding: 0 20px;
+  border-color: #7053a0;
+  background: #7053a0;
+  color: #fff;
+}
+.confirm button[data-act]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

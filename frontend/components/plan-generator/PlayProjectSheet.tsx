@@ -5,6 +5,7 @@ import {
   buildPlayProjectPreviewRows,
   cellButtonId,
   fields,
+  playSeason,
   type PlayField,
 } from "./playProjectPagination";
 
@@ -13,6 +14,8 @@ const CELL = "border border-black px-1.5 py-1.5 align-top whitespace-pre-line";
 
 type Props = {
   plan: PlayProjectAnnualPlan;
+  /** 제목 뒤 「- 햇살반」. HWP 내려받기 제목과 같은 모양. */
+  className?: string;
   picks: Record<string, string[]>;
   /** 그릴 구간(쪽). 구간마다 한 쪽이다. */
   periods: number[];
@@ -24,6 +27,7 @@ type Props = {
 /** 놀이 중심형 연간 문서 (디자인 넘김 `V2Doc` 모양). 구간 하나가 한 쪽이다. */
 export default function PlayProjectSheet({
   plan,
+  className = "",
   picks,
   periods,
   selectedCell = null,
@@ -34,6 +38,7 @@ export default function PlayProjectSheet({
     <div className="flex flex-col gap-6" aria-label="연간놀이계획안 미리보기">
       {periods.map((index) => {
         const period = plan.periods[index];
+        const season = playSeason(period);
         return (
           <article
             key={period.period_key}
@@ -41,7 +46,7 @@ export default function PlayProjectSheet({
             className="mx-auto w-full max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
           >
             <h3 className="m-0 mb-4 text-center text-[19px] font-bold">
-              {plan.school_year} 연간놀이계획안
+              {plan.school_year} 연간놀이계획안{className && ` - ${className}`}
             </h3>
             <table className="w-full table-fixed border-collapse text-[12.5px] leading-snug">
               <colgroup>
@@ -73,7 +78,15 @@ export default function PlayProjectSheet({
                           rowSpan={row.rowSpan}
                           className="border border-black text-center font-bold"
                         >
-                          {period.label}
+                          {season.months ? (
+                            <>
+                              {season.months}
+                              <br />
+                              {season.name}
+                            </>
+                          ) : (
+                            period.label
+                          )}
                         </th>
                       )}
                       {row.candidate ? (

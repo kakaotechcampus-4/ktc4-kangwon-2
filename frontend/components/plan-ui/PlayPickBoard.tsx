@@ -187,6 +187,7 @@ export default function PlayPickBoard({
   onRemove,
   onNext,
   nextLabel,
+  onFinishEarly,
 }: {
   /** 지금 계절 이름. 예: "3월~5월" */
   season: string;
@@ -203,6 +204,8 @@ export default function PlayPickBoard({
   onRemove: (key: string, slot: number) => void;
   onNext: () => void;
   nextLabel: string;
+  /** 있으면 큰 버튼 아래 「지금까지 고른 것으로 문서 만들기」. */
+  onFinishEarly?: () => void;
 }) {
   const byKey = new Map(candidates.map((c) => [c.key, c]));
   const shown = (focus !== null && byKey.get(focus)) || candidates[0];
@@ -222,7 +225,7 @@ export default function PlayPickBoard({
   );
 
   return (
-    <div className="flex w-full flex-col gap-4 text-[#2b2826] lg:h-[calc(100vh-260px)] lg:min-h-[520px] lg:flex-row">
+    <div className="flex w-full flex-col gap-4 text-[#2b2826] lg:h-[calc(100vh-210px)] lg:min-h-[520px] lg:flex-row">
       <section
         aria-label={`${season} 놀이 후보`}
         className={`max-h-[60vh] lg:max-h-none lg:w-[400px] lg:shrink-0 ${PANEL}`}
@@ -312,6 +315,11 @@ export default function PlayPickBoard({
           >
             {nextLabel}
           </button>
+          {onFinishEarly && (
+            <button type="button" onClick={onFinishEarly} className="min-h-[44px] text-sm text-[#5c5243]">
+              지금까지 고른 것으로 문서 만들기
+            </button>
+          )}
         </div>
       </aside>
     </div>

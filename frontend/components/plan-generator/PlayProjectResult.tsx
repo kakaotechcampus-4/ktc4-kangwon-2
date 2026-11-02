@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import workspace from "@/components/workspace/Workspace.module.css";
-import tabs from "./GenerationFlow.module.css";
-import styles from "./PlayProjectResult.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
 import PlayCellEditor from "./PlayCellEditor";
@@ -23,7 +21,7 @@ import { ApiError } from "@/lib/api/client";
 import { confirmPlayProject, errorFields, isSaveConflict } from "@/lib/api/plans";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
-import { eulReul, fields, type PlayField } from "./playProjectPagination";
+import { eulReul, fields, playSeason, type PlayField } from "./playProjectPagination";
 export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 
 const MAX_PICKS = 5;
@@ -151,12 +149,15 @@ const SMALL =
  */
 export default function PlayProjectResult({
   plan,
+  className = "",
   notice,
   onConflict,
   onDismissNotice,
   onConfirmed,
 }: {
   plan: PlayProjectAnnualPlan;
+  /** 문서 제목에 붙는 반 이름. 브라우저에 반 정보가 없으면 빈 값. */
+  className?: string;
   /** 다시 불러온 직후에 보이는 안내. */
   notice?: string;
   /** 다른 곳에서 바뀌어 저장이 막혔을 때. 부모가 최신 계획안을 다시 불러오고, 끝나면 돌려준다. */
@@ -406,6 +407,7 @@ export default function PlayProjectResult({
         onRemove={removeFromPickList}
         onDetail={setDetailKey}
         onArrange={() => setStep(1)}
+        onPeriod={goToPeriod}
       />
     );
   }
@@ -637,26 +639,55 @@ export default function PlayProjectResult({
   if (step === 0)
     return (
       <main className={workspace.page}>
-        <div className={styles.meta}>
-          <span className={workspace.badge}>초안</span>
-          <span>{plan.school_year}학년도</span>
-          <span role="status">{SAVE_LABEL[saving.status]}</span>
-          {saving.status === "failed" && (
-            <button type="button" className={workspace.secondary} onClick={saving.retry}>
-              다시 저장
-            </button>
-          )}
+        {/* 정답지 ④: 제목 · 칩 · 안내 · 저장 상태 | 계절 탭 — 한 줄. */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">놀이 고르기</h1>
+            <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
+              놀이 중심형
+            </span>
+            <span className="text-sm text-[#5c5243]">계절마다 {MAX_PICKS}개를 골라요</span>
+            <span role="status" className="text-[13px] text-[#8a8178]">
+              {SAVE_LABEL[saving.status]}
+            </span>
+            {saving.status === "failed" && (
+              <button type="button" className={workspace.secondary} onClick={saving.retry}>
+                다시 저장
+              </button>
+            )}
+          </div>
+          <div role="tablist" aria-label="놀이 프로젝트 기간" className="flex gap-1 rounded-xl bg-[#ebe5db] p-1">
+            {plan.periods.map((item, index) => {
+              const count = picks[item.period_key]?.length ?? 0;
+              const on = activePeriod === index;
+              return (
+                <button
+                  key={item.period_key}
+                  id={tabId(index)}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  aria-controls={panelId}
+                  className={`flex min-h-[44px] items-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm ${on ? "bg-white font-bold shadow-sm" : "text-[#5c5243]"} ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
+                  onClick={() => goToPeriod(index)}
+                >
+                  <span className="font-bold">{playSeason(item).name}</span>
+                  {playSeason(item).months && (
+                    <span className="text-xs font-normal text-[#8a8178]">{playSeason(item).months}</span>
+                  )}
+                  <span className={`text-xs ${count >= MAX_PICKS ? "font-bold text-[#3b5441]" : "text-[#8a8178]"}`}>
+                    {count >= MAX_PICKS ? `✓ ${count}/${MAX_PICKS}` : `${count}/${MAX_PICKS}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         {notice && (
           <p role="status" className={workspace.notice}>
             {notice}
           </p>
         )}
-        <div className={styles.tabRow}>
-          <div className={`${tabs.tabs} ${tabs.wrappingTabs} ${styles.periodTabs}`}>
-            {periodTabs}
-          </div>
-        </div>
         <section id={panelId} role="tabpanel" aria-labelledby={tabId(activePeriod)} tabIndex={0}>
           {renderPicking()}
         </section>
@@ -786,6 +817,7 @@ export default function PlayProjectResult({
       <section id={panelId} role="tabpanel" aria-labelledby={tabId(activePeriod)}>
         <PlayProjectSheet
           plan={shown}
+          className={className}
           picks={picks}
           periods={full ? plan.periods.map((_, i) => i) : [activePeriod]}
           selectedCell={full ? null : selectedCell}

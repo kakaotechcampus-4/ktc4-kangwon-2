@@ -9,6 +9,12 @@ import PlayProjectResult, { picksFromPlan } from "./PlayProjectResult";
 import PlayProjectSheet from "./PlayProjectSheet";
 import ThemeAnnualResult from "./ThemeAnnualResult";
 import { useCompactShell } from "@/components/app/compact-shell";
+import { loadClassSettings } from "@/lib/onboarding/settings";
+import { classServerId } from "@/lib/api/onboarding";
+
+/** 반 설정(온보딩 · 설정에서 적은 반 이름)에서 이 계획안 반의 이름. 상단 띠와 같은 출처. 못 찾으면 빈 값. */
+const settingsClassName = (classId: number) =>
+  loadClassSettings()?.classes.find((c) => classServerId(c.id) === classId)?.className ?? "";
 /** 한 번의 조회 결과 — 어떤 요청(key)에 대한 값인지 함께 들고 있어서 id/재시도가 바뀌면 자동으로 무효가 된다. */
 interface Loaded {
   key: string;
@@ -112,6 +118,8 @@ export default function AnnualResult({ id }: { id: number }) {
       </p>
     );
   const view = key + ":" + (current?.version ?? 0);
+  // 놀이형 문서 제목 「- 햇살반」. 월별 주제형은 위 className(생성 때 남긴 문맥)을 그대로 쓴다.
+  const playClassName = plan.format === "PLAY_PROJECT" ? settingsClassName(plan.class_id) : "";
   // ⑥ 확정 후. 놀이 중심형은 구간마다 한 쪽, 월별 주제형은 한 쪽이다.
   if (plan.status === "CONFIRMED")
     return (
@@ -121,7 +129,13 @@ export default function AnnualResult({ id }: { id: number }) {
         pages={
           plan.format === "PLAY_PROJECT"
             ? plan.periods.map((_, i) => (
-                <PlayProjectSheet key={i} plan={plan} picks={picksFromPlan(plan)} periods={[i]} />
+                <PlayProjectSheet
+                  key={i}
+                  plan={plan}
+                  className={playClassName}
+                  picks={picksFromPlan(plan)}
+                  periods={[i]}
+                />
               ))
             : [
                 <AnnualThemeSheet
@@ -139,6 +153,7 @@ export default function AnnualResult({ id }: { id: number }) {
     <PlayProjectResult
       key={view}
       plan={plan}
+      className={playClassName}
       notice={current?.notice}
       onConflict={reloadAfterConflict}
       onDismissNotice={dismissNotice}
