@@ -702,7 +702,11 @@ def _weekly_request(
             days = tuple(d.value for d in operating_days) if section.repeat_by is RepeatBy.DAY else ()
             targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value, days=days))
             klass = next(c for c, k in WEEKLY_GROUNDING_SCOPE.items() if k == key)
-            evidence += [(i.record_id, i.record.text, klass.value) for i in items]
+            evidence += [
+                (i.record_id, f"원문 영역: {i.record.source_label}\n{i.record.text}"
+                 if linked and key == "indoor_play" else i.record.text, klass.value)
+                for i in items
+            ]
         elif key == OUTDOOR_KEY and outdoor.ranked:
             targets.append(WeeklyTarget(key, (), parent_value))
         elif key == SAFETY_KEY and parent_value.strip() and parent_cell.safety is None:

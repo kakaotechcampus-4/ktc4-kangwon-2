@@ -1166,6 +1166,14 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
         f"/api/plans/weekly/{plan['id']}/cells/{item}",
         json={"value": "토요 체육", "expected_revision": plan["revision"]},
     ).json()
+    indoor = from_jsonable(WeeklyPlan, row.body).cell("indoor_play").item_id.value
+    edited = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{indoor}",
+        json={
+            "value": "[역할놀이] 가을 가게\n[쌓기놀이]: 열매 길\n분류 없는 교사 메모",
+            "expected_revision": edited["revision"],
+        },
+    ).json()
     assert _confirm(edited).status_code == 200
 
     response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
@@ -1186,3 +1194,30 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
     assert [text((19, col)) for col in range(1, 7)] == ["", "", "", "", "", "토요 체육"]
     assert text((2, 1)) == core.cell("theme").value
     assert text((0, 0)).startswith(f"{plan['week_period']['label']} 주간놀이계획안")
+    paragraphs = cells[(7, 1)].findall("hp:subList/hp:p", NS)
+    assert ["".join(p.itertext()) for p in paragraphs] == [
+        "[역할놀이] - 가을 가게",
+        "[쌓기놀이] - 열매 길",
+        "분류 없는 교사 메모",
+    ]
+    assert core.cell("indoor_play").value.startswith("[역할놀이] 가을 가게")
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+        assert "[역할놀이] - 가을 가게" in archive.read("Preview/PrvText.txt").decode()
+    namespaces = {
+        **NS,
+        "hh": "http://www.hancom.co.kr/hwpml/2011/head",
+        "hc": "http://www.hancom.co.kr/hwpml/2011/core",
+    }
+    style = header.find(f".//hh:paraPr[@id='{paragraphs[0].get('paraPrIDRef')}']", namespaces)
+    assert {s.get("value") for s in style.findall(".//hh:lineSpacing", namespaces)} == {"140"}
+    assert {s.get("value") for s in style.findall(".//hh:margin/hc:next", namespaces)} == {"100"}
+    font_id = paragraphs[0].find("hp:run", NS).get("charPrIDRef")
+    assert header.find(f".//hh:charPr[@id='{font_id}']", namespaces).get("height") == "900"
+
+
+def test_indoor_display_keeps_blank_and_untagged_teacher_text():
+    from app.features.plans.export import _indoor_play_text
+
+    for value in ("", "교사가 직접 쓴 놀이", "[역할놀이] - 가게 놀이", "[역할놀이]\n가게 놀이"):
+        assert _indoor_play_text(value) == value

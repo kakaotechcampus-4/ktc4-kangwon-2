@@ -131,7 +131,7 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
         provider=provider, clock=harness.clock,
     ).execute(RegenerateWeeklyPlanCellCommand(before.plan_id, outdoor.item_id, ActorId("test_reviewer")))
     assert after.cell("outdoor_play").item_id == outdoor.item_id
-    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v2+day-cells-v1"
+    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v3+day-cells-v1"
     assert any(e.source_type is EvidenceSourceType.INSTITUTION_SAMPLE for e in after.cell("outdoor_play").evidence)
     assert all(a == b for a, b in zip(before.cells, after.cells) if a.item_id != outdoor.item_id)
     assert json.loads(provider.requests[-1].user_content)["daily_life_context"] == body["daily_life_context"]

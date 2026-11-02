@@ -51,7 +51,7 @@ WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v2"
 # ADR-051: a request with a repeat_by DAY target appends this to every version it uses, so
 # a v0.1.0 request keeps its prompt, schema and fingerprint unchanged.
 DAY_CELLS_SUFFIX = "+day-cells-v1"
-REFERENCE_WIRING_SUFFIX = "+monthly-linked-v2"
+REFERENCE_WIRING_SUFFIX = "+monthly-linked-v3"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
@@ -70,6 +70,9 @@ LINKED_WRITING_GUIDANCE = (
     "목표는 v1 월간처럼 중심 경험을 간결하게 묶되 이번 주의 범위로 좁힌다. "
     "놀이 이름은 기존 v1 월간처럼 대상과 경험이 보이는 짧은 활동명으로 쓴다. "
     "실내놀이·대소집단 설명은 v2 놀이 설명과 같은 합니다체로, 유아가 탐색할 대상과 경험을 자연스럽게 쓴다. "
+    "실내놀이는 활동마다 줄을 나눠 '[역할놀이] - 활동명: 짧은 설명'처럼 쓴다. "
+    "대괄호에는 근거 본문이나 함께 제공한 원문 영역 이름에서 확인되는 놀이 영역만 쓰고, "
+    "영역을 확인할 수 없으면 임의 분류를 붙이지 않는다. 같은 항목의 설명은 간결하게 이어 쓴다. "
     "실내대체는 같은 주 바깥놀이를 실내에서 이어 간다. 허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. "
     "parent의 다른 주 focus도 참고해 이번 주와 다른 주의 경험을 구분하며, 진행 순서나 완성품을 강제하지 않는다. "
     "daily_life_context는 승인된 생활 문장의 표현 참고다. 부모의 현재 습관을 다른 문장으로 교체하지 않고, "
