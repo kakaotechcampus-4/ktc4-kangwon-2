@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from ..domain.monthly_plan import MonthlyPlan
 from ..domain.plan import PlanStatus
-from .monthly_dto import ConfirmMonthlyPlanCommand
+from .monthly_dto import ConfirmMonthlyPlanCommand, UnconfirmMonthlyPlanCommand
 from .monthly_support import (
     load_plan_activity_catalog,
     require_actor,
@@ -44,3 +44,19 @@ class ConfirmMonthlyPlan:
         )
         self._plans.save(confirmed.plan_id, confirmed)
         return confirmed
+
+
+class UnconfirmMonthlyPlan:
+    """CONFIRMED → DRAFT. A DRAFT Plan comes back unchanged and is not saved."""
+
+    def __init__(self, *, plan_repository: PlanRepository[MonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: UnconfirmMonthlyPlanCommand) -> MonthlyPlan:
+        plan = require_monthly_plan(self._plans, command.plan_id)
+        actor_id = require_actor(command.actor_id)
+        unconfirmed = plan.unconfirm(actor_id=actor_id, occurred_at=self._clock.now())
+        if unconfirmed is not plan:
+            self._plans.save(unconfirmed.plan_id, unconfirmed)
+        return unconfirmed

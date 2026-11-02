@@ -279,11 +279,11 @@ def test_quality_review_not_bound_to_this_store_and_classification_fails_before_
     assert harness.provider.monthly_requests == [] and harness.monthly_plans.save_count == 0
 
 
-def test_runtime_loads_the_approved_v0_2_0_classification():
+def test_runtime_loads_the_approved_v0_3_0_classification():
     loaded = JsonSafetyEvidenceClassificationRepository().get_classification()
 
     assert loaded.runtime_active and loaded.multi_tag_needs_review
-    assert loaded.classification_version == "safety-evidence-classification-v0.2.0"
+    assert loaded.classification_version == "safety-evidence-classification-v0.3.0"
 
 
 def test_supplemental_weeks_get_distinct_primary_topics_and_statutory_weeks_one_focus():

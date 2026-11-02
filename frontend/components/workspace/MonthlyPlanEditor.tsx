@@ -16,6 +16,7 @@ import {
   getMonthlyPlanAudit,
   placeMonthlySafety,
   regenerateMonthlyCell,
+  unconfirmMonthlyPlan,
 } from "@/lib/api/monthly";
 import { isSaveConflict } from "@/lib/api/plans";
 import type { MonthlyAuditEvent, MonthlyCell, MonthlyPlan } from "@/lib/api/types";
@@ -23,6 +24,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
+import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { Cell, SheetFrame } from "@/components/plan-generator/PlayMonthlySheet";
 import { noticeSummary } from "@/components/plan-generator/PlayMonthlyView";
 import type { SheetZoom } from "@/components/plan-generator/playProjectPagination";
@@ -284,6 +286,7 @@ export default function MonthlyPlanEditor({
         <span>{plan.target_month}</span>
         {plan.parent.theme && <span className={ws.muted}>연간 주제 · {plan.parent.theme}</span>}
         <span className={ws.muted}>{note}</span>
+        {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
         {blank && <span role="status">빈 칸이 있어요 (확정을 막지 않아요)</span>}
         {!confirmed && candidateMode && summary && <span role="status">{summary}</span>}
         {/* 저장 표시와 안내는 줄을 따로 쓴다. 같은 줄에 두면 「저장됨」이 「저장 중…」으로
@@ -301,14 +304,23 @@ export default function MonthlyPlanEditor({
       {problem && <p role="alert">{problem}</p>}
       <div className={ws.actions} style={{ marginBottom: 12 }}>
         {confirmed ? (
-          <button
-            type="button"
-            className={ws.primary}
-            disabled={hwpx.exporting}
-            onClick={() => hwpx.download(() => downloadMonthlyHwpx(plan.id))}
-          >
-            {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
-          </button>
+          <>
+            <button
+              type="button"
+              className={ws.primary}
+              disabled={hwpx.exporting}
+              onClick={() => hwpx.download(() => downloadMonthlyHwpx(plan.id))}
+            >
+              {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
+            </button>
+            <UnconfirmButton
+              message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 주간계획안은 그대로예요."
+              className={ws.secondary}
+              run={() => unconfirmMonthlyPlan(latest.current.id, latest.current.revision)}
+              onDone={accept}
+              onConflict={conflict}
+            />
+          </>
         ) : (
           <>
             <button type="button" className={ws.primary} disabled={locked} onClick={confirm}>
@@ -482,6 +494,7 @@ const EVENT: Record<MonthlyAuditEvent["type"], string> = {
   ARRANGEMENT_CHANGED: "배치가 바뀌었어요",
   CANDIDATE_COPIED: "훈련 후보를 복사했어요",
   CONFIRMED: "확정했어요",
+  UNCONFIRMED: "확정을 풀었어요",
 };
 const short = (text: string) => {
   const t = text.trim();

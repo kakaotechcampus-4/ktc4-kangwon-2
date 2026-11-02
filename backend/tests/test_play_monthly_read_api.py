@@ -25,7 +25,8 @@ URL = "/api/plans/monthly/play"
 LEGACY = "기존 월간계획안은 /api/plans/monthly 경로로 다룹니다."
 SINGLE_KEYS = {
     "id", "class_id", "school_year", "month", "target_month", "status", "revision", "format",
-    "format_version", "created_at", "confirmed_at", "target_ages", "weeks", "parent", "theme",
+    "format_version", "created_at", "confirmed_at", "target_ages", "weeks", "parent",
+    "parent_changed", "theme",
     "rationale", "together", "free_play", "habits", "safety_candidates", "safety_weeks", "health",
     "nutrition", "drill_candidates", "teacher_inputs", "notices",
 }  # fmt: skip

@@ -1,6 +1,6 @@
 import { apiRequest } from "./client";
 import { downloadHwpx } from "./export";
-import type { MonthlyAuditEvent, WeeklyPlan, WeeklyPlanSummary } from "./types";
+import type { WeeklyAuditEvent, WeeklyPlan, WeeklyPlanSummary } from "./types";
 
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §13).
@@ -22,7 +22,7 @@ const cell = (id: number, itemId: string) =>
  * 그 달 월간이 확정되지 않았으면 409 `GATE_BLOCKED`, 같은 주가 이미 있으면 409 `ALREADY_EXISTS` (§4-1).
  */
 export const createWeeklyPlan = (
-  data: { class_id: number; week_id: string },
+  data: { class_id: number; week_id: string; activity_candidates?: boolean },
   signal?: AbortSignal,
 ) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
 export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
@@ -61,10 +61,16 @@ export const regenerateWeeklyCell = (
     cell(id, itemId) + "/regenerate",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
-/** 확정. 계획안에는 확정 취소가 없다 (ADR-030 PM-03). */
+/** 확정. 풀려면 `unconfirmWeeklyPlan`. */
 export const confirmWeeklyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
   apiRequest<WeeklyPlan>(
     "/api/plans/weekly/" + id + "/confirm",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/** 확정 취소. 이미 초안이면 200 · 그대로, 낡은 revision 은 409 `STALE_WRITE`. */
+export const unconfirmWeeklyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
+  apiRequest<WeeklyPlan>(
+    "/api/plans/weekly/" + id + "/unconfirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
 /** 확정 전 주간계획안을 지운다. 그 주를 다시 만들려면 먼저 지워야 한다 (G5). 확정본은 409 다. */
@@ -73,7 +79,32 @@ export const deleteWeeklyPlan = (id: number) =>
 
 /** 변경 이력. 월간과 같은 모양이다 — 「교사 수정」 표시를 여기서 읽는다. */
 export const getWeeklyPlanAudit = (id: number, signal?: AbortSignal) =>
-  apiRequest<{ items: MonthlyAuditEvent[] }>("/api/plans/weekly/" + id + "/audit", { signal });
+  apiRequest<{ items: WeeklyAuditEvent[] }>("/api/plans/weekly/" + id + "/audit", { signal });
 /** 확정본만 내려받는다 — 확정 전이면 서버가 409 다. */
 export const downloadWeeklyHwpx = (id: number) =>
   downloadHwpx("/api/plans/weekly/" + id + "/export/hwp", "주간계획안.hwpx");
+
+export const copyWeeklyActivity = (
+  id: number,
+  itemId: string,
+  candidateItemId: string,
+  revision: number,
+) =>
+  apiRequest<WeeklyPlan>(
+    cell(id, itemId) + "/copy-activity",
+    json("POST", { candidate_item_id: candidateItemId, expected_revision: revision }),
+  );
+export const splitWeeklyActivityCell = (
+  id: number,
+  itemId: string,
+  axis: "VERTICAL" | "HORIZONTAL",
+  revision: number,
+) =>
+  apiRequest<WeeklyPlan>(
+    cell(id, itemId) + "/split",
+    json("POST", { axis, expected_revision: revision }),
+  );
+export const removeWeeklyActivityCell = (id: number, itemId: string, revision: number) =>
+  apiRequest<WeeklyPlan>(cell(id, itemId) + "/split?expected_revision=" + revision, {
+    method: "DELETE",
+  });

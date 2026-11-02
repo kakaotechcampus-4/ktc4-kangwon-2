@@ -40,6 +40,24 @@ def _section(content: bytes) -> etree._Element:
     return etree.fromstring(zipfile.ZipFile(io.BytesIO(content)).read("Contents/section0.xml"))
 
 
+def test_weekly_split_export_rejects_an_unexpected_activity_row():
+    from app.features.plans.weekly_activity_hwpx import fill_weekly_activity_grid
+
+    with zipfile.ZipFile(TEMPLATE_DIR / "weekly_v1_mon_fri.hwpx") as original:
+        parts = {name: original.read(name) for name in original.namelist()}
+    section = etree.fromstring(parts["Contents/section0.xml"])
+    label = section.find(".//hp:tbl", NS).findall("hp:tr", NS)[11].find("hp:tc", NS)
+    for text in label.iter(f"{{{NS['hp']}}}t"):
+        text.text = "다른 줄"
+    parts["Contents/section0.xml"] = etree.tostring(section)
+    content = io.BytesIO()
+    with zipfile.ZipFile(content, "w") as modified:
+        for name, value in parts.items():
+            modified.writestr(name, value)
+    with pytest.raises(TemplateMismatch):
+        fill_weekly_activity_grid(content.getvalue(), None)
+
+
 def _cell(section: etree._Element, row: int, col: int) -> etree._Element:
     for tc in section.find(".//hp:tbl", NS).iterfind("hp:tr/hp:tc", NS):
         addr = tc.find("hp:cellAddr", NS)
@@ -174,7 +192,8 @@ def _confirmed_plan(klass) -> dict:
     assert created.status_code == 201, created.text
     plan_id = created.json()["id"]
     edited = client.put(
-        f"/api/plans/annual/{plan_id}/months/3", json={"theme": "새 친구", "sub_themes": ["인사"]}
+        f"/api/plans/annual/{plan_id}/months/3",
+        json={"theme": "새 친구", "sub_themes": ["인사", "이름", "놀이", "약속"]},
     )
     assert edited.status_code == 200, edited.text
     assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
@@ -351,7 +370,7 @@ def test_연간_안전교육은_저장돼_있어도_hwpx_에_싣지_않는다(mi
         f"/api/plans/annual/{plan['id']}/months/3",
         json={
             "theme": "새 친구",
-            "sub_themes": ["친구와 인사하기"],
+            "sub_themes": ["친구와 인사하기", "이름", "놀이", "약속"],  # 3월 = 4주
             "safety_education": ["traffic_safety"],
         },
     )

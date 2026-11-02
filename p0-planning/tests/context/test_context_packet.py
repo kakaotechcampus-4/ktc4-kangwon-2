@@ -107,7 +107,7 @@ def test_packet_v020_carries_only_requested_section_classes(packet):
     assert packet.packet_version == "monthly-context-packet-v0.2.0"
     assert packet.lineage.retrieval_version == "monthly-evidence-retrieval-v0.3.0"
     assert packet.lineage.evidence_classification_version == (
-        "monthly-evidence-semantic-classification-v0.1.0"
+        "monthly-evidence-semantic-classification-v0.2.0"
     )
     assert {item.grounding_class for item in packet.section_evidence} == {
         SemanticClass.GOALS,

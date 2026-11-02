@@ -42,6 +42,8 @@ class MonthOut(BaseModel):
     month: int
     theme: str
     sub_themes: list[str]
+    # 그 달 주 수(canonical_week_periods). 확정 때 소주제 수가 이와 같아야 한다.
+    week_count: int
     safety_education: list[str]
     safety_education_state: str
     safety_education_source: Literal["TEACHER_INPUT"] | None = None
