@@ -365,7 +365,15 @@ function PlayMonthlyBody({
             {!confirmed && (
               <>
                 <PlayMonthlySafetyPanel plan={plan} onPlace={save.placeSafety} disabled={locked} />
-                <PlayMonthlyDrillPanel plan={plan} onCopy={copyDrill} disabled={locked} />
+                <PlayMonthlyDrillPanel
+                  candidates={plan.drill_candidates}
+                  current={
+                    plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.value ??
+                    ""
+                  }
+                  onCopy={copyDrill}
+                  disabled={locked}
+                />
               </>
             )}
             <h2>연간에서 고른 놀이</h2>

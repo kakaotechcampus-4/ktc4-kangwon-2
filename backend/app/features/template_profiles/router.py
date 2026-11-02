@@ -17,7 +17,6 @@ from ssuksak.planning import InvalidDomainValueError, TemplateProfileRef
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef, TemplateSection
 from ssuksak.planning.domain.monthly_template_profile import (
     DEFAULT_PROFILE_SECTION_KEYS,
-    DRILL_SECTION_KEY,
     INSTITUTION_INPUT_SECTION_KEYS,
     OPTIONAL_PROFILE_SECTION_KEYS,
 )
@@ -39,10 +38,8 @@ DbSession = Annotated[Session, Depends(get_session)]
 # Template 의 칸 이름 → Profile 의 칸 이름 (M2 `_TEMPLATE_KEY` 의 반대 방향, habits → basic_habit).
 _PROFILE_KEY = {template_key: profile_key for profile_key, template_key in _TEMPLATE_KEY.items()}
 # 시작할 때 고를 수 있는 칸. 기관 입력 칸(event_schedule)은 생성 계약이 아직 없어
-# 뺀다(BE-1 결정 ③). drill 은 Core 후보 생성이 있지만 서버 연결 전이라 아직 뺀다.
-SELECTABLE_KEYS = (
-    OPTIONAL_PROFILE_SECTION_KEYS - INSTITUTION_INPUT_SECTION_KEYS - {DRILL_SECTION_KEY}
-)
+# 뺀다(BE-1 결정 ③).
+SELECTABLE_KEYS = OPTIONAL_PROFILE_SECTION_KEYS - INSTITUTION_INPUT_SECTION_KEYS
 # Core: 켠 focus 는 NEUTRAL 을 쓸 수 없다(TemplateProfile._validate_sections).
 FOCUS_VARIANTS = tuple(v.value for v in SemanticVariant if v is not SemanticVariant.NEUTRAL)
 
@@ -294,6 +291,14 @@ def start_profile(center_id: int, body: StartProfile, session: DbSession, user: 
         )
     except InvalidDomainValueError as error:
         raise _invalid("base_template_ref") from error
+    template = service.TEMPLATES.get_template(
+        template_ref.template_id, template_ref.template_version
+    )
+    if template is not None:
+        for key in body.selected_optional_keys:
+            section = template.section(_TEMPLATE_KEY.get(key, key))
+            if section is None or _selection(key, section) != "OPTIONAL":
+                raise _invalid("selected_optional_keys")
     repo = PostgresTemplateProfileRepository(session, center_id=center_id)
     try:
         ref = repo.start_from_reference(
