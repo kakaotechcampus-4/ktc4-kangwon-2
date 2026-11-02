@@ -208,8 +208,20 @@ test("helpers: five picks in order, moves, removal focus, and the left tab keys"
   assert.deepEqual(movePlayPick(FULL, "cand1", -1), ["cand1", "cand0", "cand2", "cand3", "cand4"]);
   assert.deepEqual(movePlayPick(FULL, "cand0", -1), FULL);
   // 끌어놓기: 끈 놀이가 놓은 줄의 자리로 간다. 고르지 않은 놀이 · 같은 줄은 그대로.
-  assert.deepEqual(placePlayPick(FULL, "cand1", "cand3"), ["cand0", "cand2", "cand3", "cand1", "cand4"]);
-  assert.deepEqual(placePlayPick(FULL, "cand3", "cand0"), ["cand3", "cand0", "cand1", "cand2", "cand4"]);
+  assert.deepEqual(placePlayPick(FULL, "cand1", "cand3"), [
+    "cand0",
+    "cand2",
+    "cand3",
+    "cand1",
+    "cand4",
+  ]);
+  assert.deepEqual(placePlayPick(FULL, "cand3", "cand0"), [
+    "cand3",
+    "cand0",
+    "cand1",
+    "cand2",
+    "cand4",
+  ]);
   assert.equal(placePlayPick(FULL, "cand9", "cand0"), FULL);
   assert.equal(placePlayPick(FULL, "cand2", "cand2"), FULL);
   assert.equal(removeFocusSlot(3, 1), 1);
@@ -254,10 +266,20 @@ test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼�
     "period3",
   ]);
   assert.deepEqual(saveStub.calls.at(-1).period0, ["cand1", "cand2", "cand3", "cand4"]);
-  const pages = (tree) => all(tree).filter((n) => n.type === "article").map((n) => n.props["aria-label"]);
+  const pages = (tree) =>
+    all(tree)
+      .filter((n) => n.type === "article")
+      .map((n) => n.props["aria-label"]);
   assert.deepEqual(pages(render()), ["3월~5월"], "편집은 구간마다 한 쪽");
-  button(render(), "전체 보기").props.onClick();
-  assert.deepEqual(pages(render()), ["3월~5월 · 6월~8월", "9월~11월 · 12월~2월"], "전체 보기는 원래 문서처럼 두 구간씩");
+  button(render(), "⤢ 크게 보기").props.onClick();
+  // 편집 문서는 그대로 두고, 따로 뜨는 창에 원래 문서처럼 두 구간씩 한 쪽.
+  assert.deepEqual(pages(render()), ["3월~5월", "3월~5월 · 6월~8월"]);
+  button(render(), "2쪽").props.onClick();
+  assert.deepEqual(pages(render()), ["3월~5월", "9월~11월 · 12월~2월"], "쪽을 골라 본다");
+  all(render())
+    .find((n) => n.type === "dialog")
+    .props.onClose();
+  assert.deepEqual(pages(render()), ["3월~5월"], "닫으면 창 안 문서도 내린다");
 });
 
 test("confirm asks first, waits for the queue, then confirms with its revision", async () => {
@@ -357,7 +379,10 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   // 원래 문서 쪽 나눔: 봄·여름 / 가을·겨울.
   assert.deepEqual(
     done.props.pages.map((page) => [page.props.periods, page.props.perPage]),
-    [[[0, 1], 2], [[2, 3], 2]],
+    [
+      [[0, 1], 2],
+      [[2, 3], 2],
+    ],
   );
   assert.equal(done.props.pages[0].props.className, "햇살반");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
@@ -383,7 +408,9 @@ test("phone period tabs use two grid columns in the 767px media block", () => {
     "utf8",
   );
   // ④ 탭 줄(여러 줄로 쓴 쪽)만 본다. ⑤ 탭 줄은 한 줄 · flex-wrap 이라 넘치지 않는다.
-  const pick = result.match(/role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/)[1];
+  const pick = result.match(
+    /role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/,
+  )[1];
   assert.match(pick, /\bgrid-cols-2\b/);
   assert.match(pick, /\bmd:flex\b/);
 });

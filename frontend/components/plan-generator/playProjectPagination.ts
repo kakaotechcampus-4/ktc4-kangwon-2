@@ -15,13 +15,16 @@ const SEASONS: Record<string, [string, string]> = {
   m12_m02: ["겨울", "12~2월"],
 };
 
-export function playSeason(period: Pick<PlayProjectAnnualPlan["periods"][number], "period_key" | "label">) {
+export function playSeason(
+  period: Pick<PlayProjectAnnualPlan["periods"][number], "period_key" | "label">,
+) {
   const [name, months] = SEASONS[period.period_key] ?? [period.label, ""];
   return { name, months };
 }
 
 export type PlayField = (typeof fields)[number]["key"];
-export type SheetZoom = { mode: "fit" | "manual"; percent: number };
+/** auto = 100%, 칸이 좁을 때만 줄임(놀이형 연간 편집 기본). fit = 칸 폭에 맞춤. manual = −/+ 로 고른 배율. */
+export type SheetZoom = { mode: "auto" | "fit" | "manual"; percent: number };
 export type PreviewRow = {
   key: string;
   period: PlayProjectAnnualPlan["periods"][number];

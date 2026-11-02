@@ -20,7 +20,7 @@ type Props = {
   picks: Record<string, string[]>;
   /** 그릴 구간. */
   periods: number[];
-  /** 한 쪽에 담을 구간 수. 편집은 1(구간마다 한 쪽), 전체 보기는 2(봄·여름 / 가을·겨울 — 원래 문서 쪽 나눔). */
+  /** 한 쪽에 담을 구간 수. 편집은 1(구간마다 한 쪽), 크게 보기 · ⑥ 은 2(봄·여름 / 가을·겨울 — 원래 문서 쪽 나눔). */
   perPage?: number;
   selectedCell?: { periodKey: string; rowKey: string; field: PlayField } | null;
   /** 있으면 칸을 누를 수 있다 — 왼쪽 패널이 그 칸으로 간다. */
