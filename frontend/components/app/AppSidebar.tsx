@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useIsCompact } from "./compact-shell";
 import { setSidebarCollapsed, useSidebarCollapsed } from "./sidebar-collapse";
 import { Icon, type IconName } from "./icons";
+import { SsampleNote } from "./SsampleNote";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -91,9 +92,9 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
 const itemBase =
   "items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[15px] font-medium transition-all " +
   "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[15px] text-[12px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start text-center lg:text-left";
-const activeStyle =
-  "border border-primary-tint-line bg-primary-tint font-semibold text-primary-ink shadow-pg-card";
-const idle = "border border-transparent text-ink-soft lg:hover:translate-x-1 hover:bg-shell-hover";
+const activeStyle = "border border-transparent bg-rail-on font-semibold text-white";
+const idle =
+  "border border-transparent text-rail-ink-soft lg:hover:translate-x-1 hover:bg-rail-hover";
 
 const NO_ROOM = {
   orgName: "",
@@ -144,14 +145,14 @@ export default function AppSidebar() {
       {collapsed && (
         <aside
           aria-label="주 메뉴"
-          className="bg-shell z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[65px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-shell-line lg:py-4"
+          className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[65px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-rail-line lg:py-4"
         >
           <Link
             href="/"
             aria-label="쌤플 홈으로"
-            className="flex h-11 w-11 items-center justify-center text-[21px] font-bold tracking-[-0.06em] text-primary-deep"
+            className="flex h-11 w-11 items-center justify-center text-primary-tint-line"
           >
-            S<span className="text-peach-strong">.</span>
+            <Icon name="star" className="h-5 w-5" />
           </Link>
           <button
             type="button"
@@ -159,7 +160,7 @@ export default function AppSidebar() {
             aria-expanded={false}
             aria-label="메뉴 펼치기"
             title="메뉴 펼치기"
-            className="mb-2 flex h-11 w-11 items-center justify-center rounded-md text-ink-soft hover:bg-shell-hover"
+            className="mb-2 flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
           >
             <Icon name="panel" className="h-[18px] w-[18px]" />
           </button>
@@ -170,7 +171,7 @@ export default function AppSidebar() {
               aria-label={item.label}
               title={item.label}
               aria-current={isActive(item) ? "page" : undefined}
-              className={`flex w-full flex-col items-center justify-center gap-[3px] rounded-md border py-1.5 text-[11px] font-medium ${isActive(item) ? activeStyle : "border-transparent text-ink-soft hover:bg-shell-hover"}`}
+              className={`flex w-full flex-col items-center justify-center gap-[3px] rounded-md border py-1.5 text-[11px] font-medium ${isActive(item) ? activeStyle : "border-transparent text-rail-ink-soft hover:bg-rail-hover"}`}
             >
               <Icon name={item.icon} className="h-[17px] w-[17px]" />
               <span>{item.short ?? item.label}</span>
@@ -180,7 +181,7 @@ export default function AppSidebar() {
             href="/settings"
             aria-label="설정"
             title="설정"
-            className="mt-auto flex h-11 w-11 items-center justify-center rounded-md text-ink-soft hover:bg-shell-hover"
+            className="mt-auto flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
           >
             <Icon name="settings" className="h-[18px] w-[18px]" />
           </Link>
@@ -189,14 +190,14 @@ export default function AppSidebar() {
       <aside
         aria-label="주 메뉴"
         className={
-          "bg-shell z-30 " +
+          "bg-rail z-30 " +
           (collapsed ? "lg:hidden " : "") +
           // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
           // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
           // 그 스크롤바가 232px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).
           // 자리를 늘 잡아 두면 스크롤바가 생기든 말든 폭이 그대로다.
-          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:border-r lg:border-shell-line lg:flex lg:flex-col " +
-          "fixed bottom-0 inset-x-0 flex flex-row border-t border-shell-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
+          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:border-r lg:border-rail-line lg:flex lg:flex-col " +
+          "fixed bottom-0 inset-x-0 flex flex-row border-t border-rail-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
         }
       >
         <button
@@ -205,15 +206,24 @@ export default function AppSidebar() {
           aria-expanded
           aria-label="메뉴 접기"
           title="메뉴 접기"
-          className="absolute right-3 top-5 hidden h-11 w-11 items-center justify-center rounded-md text-ink-soft hover:bg-shell-hover lg:flex"
+          className="absolute right-3 top-5 hidden h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover lg:flex"
         >
           <Icon name="panel" className="h-[18px] w-[18px]" />
         </button>
-        <Link href="/" aria-label="쌤플 홈으로" className="hidden lg:block px-7 pt-6 pb-5">
-          <span className="block text-[30px] font-bold tracking-[-0.06em] text-primary-deep">
-            Ssample<span className="text-peach-strong">.</span>
+        {/* 워드마크 왼쪽에 쌤플 마크를 세운다. 글자 S 를 쓰면 바로 옆 Ssample 과 같은 글자가
+            두 번 나온다 — 쪽지에 쓰던 ✳ 는 글자와 겹치지 않고 작게 줄여도 안 뭉갠다. */}
+        <Link
+          href="/"
+          aria-label="쌤플 홈으로"
+          className="hidden items-center gap-2.5 px-6 pt-6 pb-5 lg:flex"
+        >
+          <Icon name="star" className="h-[22px] w-[22px] shrink-0 text-primary-tint-line" />
+          <span className="min-w-0">
+            <span className="block text-[26px] font-bold tracking-[-0.06em] text-rail-ink">
+              Ssample<span className="text-peach-strong">.</span>
+            </span>
+            <span className="font-display text-lg font-bold text-rail-ink-soft">쌤플</span>
           </span>
-          <span className="font-display text-xl font-bold text-ink">쌤플</span>
         </Link>
 
         {/*
@@ -221,21 +231,21 @@ export default function AppSidebar() {
         설정 화면으로 넘어가 버렸다 (수린 점검 4). 반이 둘 이상이면 여기서 바로 바꾼다.
         반이 하나뿐이면 바꿀 것이 없으므로 예전처럼 설정으로 보낸다.
       */}
-        <div className="relative mx-4 mb-6 hidden lg:flex items-center gap-2.5 rounded-md border border-line bg-paper p-3 text-left shadow-pg-card">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-sun bg-sun-tint text-lg text-sun-ink">
+        <div className="relative mx-4 mb-6 hidden lg:flex items-center gap-2.5 rounded-md border border-rail-card-line bg-rail-card p-3 text-left">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-peach-strong text-lg text-rail">
             ☀
           </span>
           <span className="flex-1 min-w-0">
-            <span className="block truncate text-[13px] text-ink-soft">
+            <span className="block truncate text-[13px] text-rail-ink-hint">
               {room.orgName || "원 정보 없음"}
             </span>
-            <span className="mt-1 block truncate text-xs font-medium text-ink">
+            <span className="mt-1 block truncate text-xs font-medium text-rail-ink">
               {room.className || "반 정보 없음"}
-              {room.age && <span className="text-[13px] text-ink-soft"> · {room.age}</span>}
+              {room.age && <span className="text-[13px] text-rail-ink-hint"> · {room.age}</span>}
             </span>
           </span>
           {classes.length > 1 && (
-            <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
+            <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-rail-ink-soft" />
           )}
           {classes.length > 1 ? (
             <select
@@ -261,7 +271,7 @@ export default function AppSidebar() {
           <NavLink item={HOME} active={isActive(HOME)} />
           {GROUPS.map((group) => (
             <div key={group.title} className="contents lg:block lg:pt-4">
-              <p className="hidden px-3 pb-1 text-[13px] font-medium text-ink-soft lg:block">
+              <p className="hidden px-3 pb-1 text-[13px] font-medium text-rail-ink-hint lg:block">
                 {group.title}
               </p>
               {group.items.map((item) => (
@@ -276,42 +286,72 @@ export default function AppSidebar() {
             쪽지는 장식이다. 세로가 모자랄 때 메뉴·설정이 스크롤 뒤로 숨는 것보다
             이것이 먼저 빠지는 쪽이 낫다. 880px 은 사이드바의 나머지가 다 들어가는 높이다.
           */}
-          <div className="relative mb-5 hidden -rotate-2 border border-note-line bg-note px-4 py-4 shadow-pg-card [@media(min-height:880px)]:block">
-            <Tape />
-            <p className="font-display text-[22px] font-bold leading-tight text-ink">
-              쌤의 계획이
-              <br />
-              쉬워지는 순간,
-              <br />
-              <span className="text-primary">쌤플.</span>
-            </p>
-            <span
-              aria-hidden="true"
-              className="absolute bottom-3 right-3 -rotate-12 font-display text-3xl text-sun"
-            >
-              ✳
-            </span>
+          <div className="relative mb-5 hidden pt-[29px] [@media(min-height:880px)]:block">
+            {/*
+              쪽지 뒤에서 쌤플이 눈만 내민다. 쪽지 윗변이 입을 가리는 높이(pt-[29px])라
+              얼굴을 통째로 올려 두는 것보다 「뒤에 있다」가 분명하다.
+              색이 다른 작은 장을 겹쳐야 한 장이 아니라 여러 장으로 보인다.
+            */}
+            <SsampleNote
+              tint="plum"
+              size={30}
+              label={null}
+              className="absolute left-[74px] top-[13px] rotate-[9deg]"
+            />
+            <SsampleNote
+              tint="sage"
+              size={28}
+              label={null}
+              className="absolute left-[104px] top-[14px] -rotate-[11deg]"
+            />
+            <SsampleNote
+              tint="clay"
+              size={26}
+              label={null}
+              className="absolute left-[130px] top-[15px] rotate-[15deg]"
+            />
+            <SsampleNote size={56} label={null} className="absolute left-4 top-0" />
+            <div className="relative -rotate-2 border border-note-line bg-note px-4 py-4 shadow-pg-card">
+              <Tape />
+              <p className="font-display text-[22px] font-bold leading-tight text-ink">
+                쌤의 계획이
+                <br />
+                쉬워지는 순간,
+                <br />
+                <span className="text-primary">쌤플.</span>
+              </p>
+              <span
+                aria-hidden="true"
+                className="absolute bottom-3 right-3 -rotate-12 font-display text-3xl text-sun"
+              >
+                ✳
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center justify-between px-1">
             <Link
               href="/settings"
-              className="flex min-h-11 items-center gap-2 text-[13px] text-ink-soft"
+              className="flex min-h-11 items-center gap-2 text-[13px] text-rail-ink-soft"
             >
               <Icon name="settings" className="h-4 w-4" />
               설정
             </Link>
-            <Link href="/logout" className="flex min-h-11 items-center text-[13px] text-ink-soft">
+            <Link
+              href="/logout"
+              className="flex min-h-11 items-center gap-2 text-[13px] text-rail-ink-soft"
+            >
+              <Icon name="logout" className="h-4 w-4" />
               로그아웃
             </Link>
           </div>
 
-          <div className="mt-5 flex items-center gap-2.5 border-t border-shell-line pt-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sun-tint text-xs text-ink">
+          <div className="mt-5 flex items-center gap-2.5 border-t border-rail-line pt-4">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-peach-strong text-xs font-semibold text-rail">
               {teacher.slice(0, 1) || "쌤"}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-ink">
+              <p className="truncate text-[13px] font-medium text-rail-ink">
                 {teacher ? `${teacher} 선생님` : "선생님"}
               </p>
             </div>
