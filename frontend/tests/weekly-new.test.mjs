@@ -169,6 +169,7 @@ test("다듬기 칸 출처: 교사 수정은 이력으로, 후보를 다시 넣�
         "@/components/app/compact-shell",
         "./WeeklySheet",
         "./WeeklyIndoorPlayPanel",
+        "./Workspace.module.css",
       ].map((n) => [n, {}]),
     ),
     "@/lib/weekly/section-labels": weeklyLabels,

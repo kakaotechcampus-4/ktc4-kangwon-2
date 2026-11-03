@@ -45,12 +45,8 @@ export default function WeeklyIndoorPlayPanel({
   return (
     <section aria-label="실내 자유놀이" className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="m-0 text-[15px] font-bold">
-          이번 주에 넣은 놀이 · {rows.filter((c) => shown(c).trim()).length}개
-        </h2>
-        <p className="m-0 text-[13px] text-[#5c5243]">
-          고른 놀이는 문서의 「이번 주 놀이」 칸에 순서대로 들어가요. 글은 「칸 편집」에서 고쳐요.
-        </p>
+        <h2 className="m-0 text-[15px] font-bold">이번 주에 넣은 놀이</h2>
+        <p className="m-0 text-[13px] text-[#5c5243]">넣은 순서대로 문서에 들어가요.</p>
       </div>
       <ol className="m-0 flex list-none flex-col gap-2 p-0">
         {rows.map((c, i) => (
@@ -65,27 +61,32 @@ export default function WeeklyIndoorPlayPanel({
               disabled={disabled}
               onClick={() => onEdit(c.item_id)}
             >
-              {shown(c).trim() || "(직접 쓸 놀이 — 눌러서 쓰기)"}
+              {shown(c).trim() || <span className="text-[#8a8178]">눌러서 직접 쓰기</span>}
             </button>
             <div className="flex shrink-0 gap-1">
-              <button
-                type="button"
-                aria-label={`${i + 1}번 놀이 위로`}
-                className={BUTTON.quiet}
-                disabled={disabled || i === 0}
-                onClick={() => move(i, -1)}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                aria-label={`${i + 1}번 놀이 아래로`}
-                className={BUTTON.quiet}
-                disabled={disabled || i === rows.length - 1}
-                onClick={() => move(i, 1)}
-              >
-                ↓
-              </button>
+              {/* 한 줄뿐이면 순서 화살표는 할 일이 없다. */}
+              {rows.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    aria-label={`${i + 1}번 놀이 위로`}
+                    className={BUTTON.quiet}
+                    disabled={disabled || i === 0}
+                    onClick={() => move(i, -1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${i + 1}번 놀이 아래로`}
+                    className={BUTTON.quiet}
+                    disabled={disabled || i === rows.length - 1}
+                    onClick={() => move(i, 1)}
+                  >
+                    ↓
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 aria-label={`${i + 1}번 놀이 빼기`}
@@ -99,14 +100,17 @@ export default function WeeklyIndoorPlayPanel({
           </li>
         ))}
       </ol>
-      <button
-        type="button"
-        className={`${BUTTON.outline} self-start`}
-        disabled={disabled || rows.some((c) => !shown(c).trim())}
-        onClick={() => onAdd(null)}
-      >
-        직접 쓸 놀이 더하기
-      </button>
+      {/* 빈 줄이 남아 있으면 그 줄부터 쓰게 — 흐린 단추를 두지 않는다. */}
+      {!rows.some((c) => !shown(c).trim()) && (
+        <button
+          type="button"
+          className={`${BUTTON.outline} self-start`}
+          disabled={disabled}
+          onClick={() => onAdd(null)}
+        >
+          직접 쓸 놀이 더하기
+        </button>
+      )}
       {!candidates.length && (
         <p className="m-0 text-[13px] text-[#5c5243]">
           쓸 수 있는 근거가 없어 후보를 만들지 않았어요. 직접 써 주세요.
