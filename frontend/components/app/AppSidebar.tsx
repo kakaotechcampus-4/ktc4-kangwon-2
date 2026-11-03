@@ -285,7 +285,7 @@ export default function AppSidebar() {
             이것이 먼저 빠지는 쪽이 낫다. 880px 으로 잡았더니 14인치 노트북(창 높이 760~800)
             에서 통째로 사라졌다 — 사이드바는 넘치면 스크롤되므로 760px 부터 보인다.
           */}
-          <div className="relative mb-3 hidden pt-[15px] [@media(min-height:700px)]:block">
+          <div className="relative mb-3 hidden pt-[22px] [@media(min-height:700px)]:block">
             {/*
               쪽지 뒤에서 포스티가 눈만 내민다. 쪽지 윗변이 입을 가리는 높이(pt-[29px])라
               얼굴을 통째로 올려 두는 것보다 「뒤에 있다」가 분명하다. 팔다리는 쪽지에 가려
@@ -534,7 +534,7 @@ function Tape() {
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute -top-4 right-3 h-6 w-20 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
+      className="pointer-events-none absolute -top-3 right-3 h-[19px] w-16 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
     />
   );
 }

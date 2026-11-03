@@ -599,12 +599,12 @@ function ChildSpotlight({
               {/* 이름 · 언제 무슨 영역 · 적힌 글 · 가는 길. 넷이 줄 없이 붙어 있으면
                   글자 크기만으로 갈라야 해서 한 덩어리로 읽힌다. */}
               {latest ? (
-                <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-ink/10 pt-2.5 text-[12.5px] font-semibold text-sun-ink">
+                <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-sun-ink">
                   <span className="min-w-0 truncate">{latest.domain}</span>
                   <span className="shrink-0 font-normal">{shortDate(latest.date)}</span>
                 </div>
               ) : (
-                <div className="mt-3 border-t border-ink/10 pt-2.5 text-[12.5px] text-sun-ink">
+                <div className="mt-3 border-t border-ink/35 pt-2.5 text-[12.5px] text-sun-ink">
                   최근 관찰
                 </div>
               )}
@@ -613,7 +613,7 @@ function ChildSpotlight({
               </p>
               <Link
                 href={childHref}
-                className="mt-3 flex min-h-10 items-center gap-1 border-t border-ink/10 pt-2.5 text-[12.5px] font-semibold text-sun-ink"
+                className="mt-3 flex min-h-10 items-center gap-1 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-sun-ink"
               >
                 이 아이 기록 보기
                 <Icon name="arrow" className="h-3 w-3" />
@@ -915,7 +915,7 @@ function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
         {href && (
           <Link
             href={href}
-            className="mt-3 inline-flex min-h-10 items-center rounded-md bg-ivory px-4 text-xs font-semibold text-ink"
+            className="mt-3 inline-flex min-h-10 items-center rounded-md border border-line bg-ivory px-4 text-xs font-semibold text-ink shadow-pg-card transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             작성하기
           </Link>
