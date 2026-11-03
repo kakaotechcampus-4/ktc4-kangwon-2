@@ -180,7 +180,7 @@ export function MonthlyNewView(props: {
   return (
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <section className="flex min-h-0 flex-col gap-5 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white px-7 py-6">
+        <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
           {/* 왼쪽 판 맨 위: 「← 돌아가기」 아래 제목 · 방식. */}
           <div className="-mt-2 flex shrink-0 flex-col gap-1">
             <Link
@@ -190,7 +190,9 @@ export function MonthlyNewView(props: {
               ← {props.back.label}
             </Link>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">월간계획안 만들기</h1>
+              <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+                월간계획안 만들기
+              </h1>
               <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
                 {look.name}
               </span>
@@ -198,7 +200,9 @@ export function MonthlyNewView(props: {
           </div>
 
           <div className="flex shrink-0 flex-col gap-2.5">
-            <h2 className="m-0 text-lg font-bold">어떤 달을 만들까요?</h2>
+            <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
+              어떤 달을 만들까요?
+            </h2>
             <div role="radiogroup" aria-label="달" className="grid grid-cols-6 gap-1.5">
               {MONTH_ORDER.map((m) => {
                 const st = plans[m]?.status;
@@ -234,7 +238,9 @@ export function MonthlyNewView(props: {
 
           <div className="flex shrink-0 flex-col gap-2.5">
             <div className="flex items-baseline justify-between">
-              <h2 className="m-0 text-lg font-bold">연간에서 이어받아요</h2>
+              <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
+                연간에서 이어받아요
+              </h2>
               {inherit && (
                 <span className="text-[13px] text-[#5c5243]">
                   {inherit.kind === "play"
@@ -293,7 +299,9 @@ export function MonthlyNewView(props: {
 
           {!play && template && !plans[month] && (
             <fieldset className="m-0 flex shrink-0 flex-col gap-1.5 border-0 p-0">
-              <legend className="mb-2.5 p-0 text-lg font-bold">어떤 칸을 넣을까요?</legend>
+              <legend className="mb-2.5 p-0 font-display text-[24px] font-bold leading-tight text-ink">
+                어떤 칸을 넣을까요?
+              </legend>
               <p className="m-0 text-[13px] text-[#5c5243]">
                 꼭 들어가요 ·{" "}
                 {template.sections
@@ -359,7 +367,7 @@ export function MonthlyNewView(props: {
               type="button"
               onClick={props.onCreate}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-[54px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {plans[month] ? `${month}월 월간계획안 열기` : `${month}월 월간계획안 만들기`}
             </button>
@@ -369,7 +377,7 @@ export function MonthlyNewView(props: {
 
         <section
           aria-label="양식 미리보기"
-          className="flex min-h-[420px] flex-col rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] p-3"
+          className="flex min-h-[420px] flex-col border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] p-3"
         >
           <div className="relative min-h-0 flex-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}

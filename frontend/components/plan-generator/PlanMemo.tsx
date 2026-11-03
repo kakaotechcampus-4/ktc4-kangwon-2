@@ -42,8 +42,11 @@ export function PlanMemoField(props: {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <label htmlFor="plan-memo" className="text-lg font-bold">
-          요청 사항 <span className="text-sm font-normal text-[#5c5243]">선택</span>
+        <label
+          htmlFor="plan-memo"
+          className="m-0 font-display text-[24px] font-bold leading-tight text-ink"
+        >
+          요청 사항 <span className="font-body text-sm font-normal text-[#5c5243]">선택</span>
         </label>
         <span className="text-[13px] text-[#8a8178]">
           {value.length}/{MEMO_MAX}

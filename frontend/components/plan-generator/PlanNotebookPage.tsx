@@ -99,7 +99,9 @@ export default function PlanNotebookPage() {
 
   return (
     <div className="flex w-full flex-col gap-5 px-7 pb-8 pt-6 text-[#2b2826]">
-      <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">어떤 계획안을 만들까요?</h1>
+      <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+        어떤 계획안을 만들까요?
+      </h1>
       <div
         className="grid gap-4"
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))" }}
@@ -115,7 +117,9 @@ export default function PlanNotebookPage() {
 
       <section className="mt-6 flex flex-col gap-[14px] border-t border-[#e3ddd2] pt-6">
         <div className="flex items-baseline gap-3">
-          <h2 className="m-0 text-lg font-bold">이어서 하기</h2>
+          <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
+            이어서 하기
+          </h2>
           <span className="text-sm text-[#5c5243]">확정하지 않은 계획안이에요</span>
         </div>
         {error && (
@@ -187,12 +191,12 @@ function Panel({
   const chip = v1 ? "bg-[#e8f1ea] text-[#3b5441]" : "bg-[#eee4f4] text-[#5e4b96]";
   const steps = v1 ? ["연간", "월간", "주간"] : ["연간", "월간"];
   return (
-    <section className="flex min-h-[340px] flex-col justify-between gap-5 rounded-[20px] border border-[#e8e2d8] bg-white px-8 py-7">
+    <section className="flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper shadow-pg px-8 py-7">
       <div className="flex flex-col gap-2">
         <span className={`text-sm font-bold ${v1 ? "text-[#49654f]" : "text-[#5e4b96]"}`}>
           {v1 ? "생활주제 따라" : "아이들 놀이 따라"}
         </span>
-        <h2 className="m-0 text-[28px] font-bold tracking-[-0.5px]">{MODE[format]}</h2>
+        <h2 className="m-0 font-display text-[34px] font-bold leading-tight">{MODE[format]}</h2>
         <p className="m-0 text-base leading-relaxed text-[#5c5243]">
           {v1
             ? "연간에서 월간, 월간에서 주간으로 차근차근 내려가요."
@@ -255,7 +259,7 @@ function Panel({
           <div className="flex items-center gap-3">
             <Link
               href={`/plans/annual/new?format=${format}`}
-              className="flex min-h-[54px] flex-1 items-center justify-center rounded-xl bg-[#7053a0] text-base font-bold text-white no-underline"
+              className="flex min-h-[54px] flex-1 items-center justify-center rounded-xl bg-[#7053a0] text-base font-bold text-white no-underline shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               연간부터 시작하기
             </Link>
@@ -283,7 +287,7 @@ function PlanCard({ card }: { card: DraftCard }) {
   return (
     <Link
       href={card.href}
-      className={`${CARD_SIZE} flex flex-col gap-3 rounded-2xl border border-[#e8e2d8] bg-white px-5 py-[18px] text-[#2b2826] no-underline`}
+      className={`${CARD_SIZE} flex flex-col gap-3 border border-line bg-paper shadow-pg-card px-5 py-[18px] text-[#2b2826] no-underline`}
     >
       <span className="flex items-center justify-between">
         <span className="rounded-full bg-[#f7edce] px-[10px] py-[3px] text-[13px] font-bold text-[#705936]">
