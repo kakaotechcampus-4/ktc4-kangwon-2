@@ -291,41 +291,43 @@ export function MonthlyNewView(props: {
           {!play && template && !plans[month] && (
             <fieldset className="m-0 flex shrink-0 flex-col gap-1.5 border-0 p-0">
               <legend className="mb-2.5 p-0 text-lg font-bold">어떤 칸을 넣을까요?</legend>
-              <p className="m-0 mb-1 text-[13px] text-[#5c5243]">
+              <p className="m-0 text-[13px] text-[#5c5243]">
                 꼭 들어가요 ·{" "}
                 {template.sections
                   .filter((s) => s.selection === "REQUIRED")
                   .map((s) => sectionName(s.section_key, s.label))
                   .join(" · ")}
               </p>
-              {template.sections
-                .filter((s) => s.selection === "OPTIONAL")
-                .map((s) => {
-                  const on = extras.includes(s.section_key);
-                  return (
-                    <label
-                      key={s.section_key}
-                      className={`flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-3 text-[14px] ${on ? "bg-[#f6f1fb] font-bold" : "bg-[#f7f4ee]"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() =>
-                          props.onExtras?.(
-                            on
-                              ? extras.filter((k) => k !== s.section_key)
-                              : [...extras, s.section_key],
-                          )
-                        }
-                        className="h-[18px] w-[18px] accent-[#7053a0]"
-                      />
-                      {sectionName(s.section_key, s.label)}
-                      <span className="ml-auto text-[12px] font-normal text-[#8a8178]">
-                        {s.repeat_by === "WEEK" ? "주마다" : "한 달에 한 번"}
-                      </span>
-                    </label>
-                  );
-                })}
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {template.sections
+                  .filter((s) => s.selection === "OPTIONAL")
+                  .map((s) => {
+                    const on = extras.includes(s.section_key);
+                    return (
+                      <label
+                        key={s.section_key}
+                        className={`flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-3 text-[14px] ${on ? "bg-[#f6f1fb] font-bold" : "bg-[#f7f4ee]"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() =>
+                            props.onExtras?.(
+                              on
+                                ? extras.filter((k) => k !== s.section_key)
+                                : [...extras, s.section_key],
+                            )
+                          }
+                          className="h-[18px] w-[18px] accent-[#7053a0]"
+                        />
+                        {sectionName(s.section_key, s.label)}
+                        <span className="ml-auto text-[12px] font-normal text-[#8a8178]">
+                          {s.repeat_by === "WEEK" ? "주마다" : "한 달에 한 번"}
+                        </span>
+                      </label>
+                    );
+                  })}
+              </div>
             </fieldset>
           )}
 

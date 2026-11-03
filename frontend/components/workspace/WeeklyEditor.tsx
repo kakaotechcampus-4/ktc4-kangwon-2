@@ -434,9 +434,13 @@ export default function WeeklyEditor({
         </>
       )}
       <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
+        <p className="m-0 text-[13px] text-[#5c5243]">
+          AI가 쓴 칸의 날짜 · 시각 · 선생님 이름은 입력한 내용과 대조했어요. 행사 이름처럼 그 밖의
+          사실은 확정 전에 한 번 더 확인해 주세요.
+        </p>
         <button
           type="button"
-          className={BUTTON.quiet}
+          className={BUTTON.plain}
           disabled={locked}
           onClick={() => void leave(onDelete)}
         >
@@ -589,7 +593,16 @@ export default function WeeklyEditor({
       title={title}
       format="MONTHLY_THEME"
       lead={back}
-      status={<span role="status">작성 중{status !== "idle" && ` · ${SAVE_LABEL[status]}`}</span>}
+      status={
+        <span className="flex items-center gap-3">
+          <span role="status">작성 중{status !== "idle" && ` · ${SAVE_LABEL[status]}`}</span>
+          {plan.parent.theme && (
+            <span className="text-[#8a8178]">
+              {month}월 월간 · {plan.parent.theme}
+            </span>
+          )}
+        </span>
+      }
       notice={
         <div className="flex flex-col gap-1 text-sm text-[#5c5243]">
           {notice}
@@ -599,11 +612,6 @@ export default function WeeklyEditor({
             </p>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            {plan.parent.theme && (
-              <span>
-                {month}월 월간 · {plan.parent.theme}
-              </span>
-            )}
             {plan.parent_changed && <span role="status">월간계획안이 바뀌었어요</span>}
             <span role="status">{message}</span>
             {status === "failed" && (
@@ -612,10 +620,6 @@ export default function WeeklyEditor({
               </button>
             )}
           </div>
-          <p className="m-0 text-[13px]">
-            AI가 쓴 칸의 날짜 · 시각 · 선생님 이름은 입력한 내용과 대조했어요. 행사 이름처럼 그 밖의
-            사실은 확정 전에 한 번 더 확인해 주세요.
-          </p>
           {findings.length > 0 && (
             <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[13px]">
               {findings.map((f, i) => (

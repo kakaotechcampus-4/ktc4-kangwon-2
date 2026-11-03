@@ -1036,7 +1036,6 @@ function openV1Editor(findings = [], setup = (p) => p) {
   });
   const props = {
     plan: server,
-    note: "",
     className: "해님반",
     onBack: () => {},
     onPlan: (next) => (props.plan = next),
@@ -1231,13 +1230,13 @@ test("v1 — 후보가 없는 계획은 패널과 안내가 없고 안전교육 
   assert.equal(view.editor().value, "교통안전 약속");
 });
 
-test("v1 — 후보가 있는 계획은 패널 · 안내를 보이고(확정본은 숨김) 안전 줄에 둔 후보의 display_value 만 그리며 빈 주별 안전 칸 때문에 「빈 칸이 있어요」가 뜨지 않는다", () => {
+test("v1 — 후보가 있는 계획은 패널 · 안내를 보이고(확정본은 숨김) 안전 줄에 둔 후보의 display_value 만 그리며 빈 주별 안전 칸 때문에 「빈 칸 있음」이 뜨지 않는다", () => {
   const view = openV1Editor([], withV1Candidates);
   const tree = view.render();
   assert.equal(node(tree, "safety").length, 0, "안전교육 칸을 고르기 전에는 패널이 없다");
   const [notice] = withText(tree, "button", "확인할 것");
   assert.match(notice.props.title, /안전교육 1주 미배치/);
-  assert.equal(withText(tree, "span", "빈 칸이 있어요").length, 0);
+  assert.equal(withText(tree, "span", "빈 칸 있음").length, 0);
   const [safetyRow] = rowsOf(tree, "tr", "safety_education");
   assert.deepEqual(
     node(safetyRow, "cell").map((c) => [c.props.id, c.props.value]),

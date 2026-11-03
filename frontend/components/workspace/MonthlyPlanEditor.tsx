@@ -77,7 +77,6 @@ export default function MonthlyPlanEditor({
   onPlan,
   onConflict,
   onDelete,
-  note,
   className,
   notice,
   onBack,
@@ -88,8 +87,6 @@ export default function MonthlyPlanEditor({
   /** 409 — 그 사이 바뀌었다. 다시 불러오는 일은 화면이 한다. */
   onConflict: () => void;
   onDelete: () => void;
-  /** 양식 출처 한 줄. */
-  note: string;
   /** 용지 오른쪽 위 반 이름. */
   className: string;
   /** 화면이 띄우는 안내(다시 불러옴 등). */
@@ -436,10 +433,9 @@ export default function MonthlyPlanEditor({
       )}
       <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
         <MonthlyHistory id={plan.id} />
-        <button type="button" className={BUTTON.quiet} disabled={locked} onClick={onDelete}>
+        <button type="button" className={BUTTON.plain} disabled={locked} onClick={onDelete}>
           지우고 다시 만들기
         </button>
-        {note && <small className="text-[12px] text-[#8a8178]">{note}</small>}
       </div>
     </div>
   );
@@ -630,6 +626,14 @@ export default function MonthlyPlanEditor({
       status={
         <span className="flex items-center gap-3">
           <span role="status">작성 중{status !== "idle" && ` · ${SAVE_LABEL[status]}`}</span>
+          {plan.parent.theme && (
+            <span className="text-[#8a8178]">연간 주제 · {plan.parent.theme}</span>
+          )}
+          {blank && (
+            <span role="status" title="확정을 막지 않아요" className="text-[#8a8178]">
+              빈 칸 있음
+            </span>
+          )}
           {notices.length > 0 && (
             <button
               type="button"
@@ -651,9 +655,7 @@ export default function MonthlyPlanEditor({
             </p>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            {plan.parent.theme && <span>연간 주제 · {plan.parent.theme}</span>}
             {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
-            {blank && <span role="status">빈 칸이 있어요 (확정을 막지 않아요)</span>}
             <span role="status">{message}</span>
             {status === "failed" && (
               <button type="button" className={BUTTON.outline} disabled={locked} onClick={retry}>
@@ -727,7 +729,7 @@ const short = (text: string) => {
   return t ? "「" + (t.length > 30 ? t.slice(0, 30) + "…" : t) + "」" : "(빈 칸)";
 };
 
-/** 「변경 이력 보기」 — 놀이 월간과 같은 자리 · 같은 모양. 만들 때 칸마다 남는 CREATED 는 한 줄로 접는다. */
+/** 「변경 이력 보기」 — 왼쪽 패널 아래 글자 버튼, 누르면 펼친다. 만들 때 칸마다 남는 CREATED 는 한 줄로 접는다. */
 function MonthlyHistory({ id }: { id: number }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<{ events: MonthlyAuditEvent[] | null; failed: boolean }>({
@@ -750,7 +752,7 @@ function MonthlyHistory({ id }: { id: number }) {
     <div>
       <button
         type="button"
-        className={ws.secondary}
+        className={BUTTON.link}
         onClick={() => {
           setState({ events: null, failed: false });
           setOpen(!open);
@@ -758,10 +760,21 @@ function MonthlyHistory({ id }: { id: number }) {
       >
         {open ? "변경 이력 접기" : "변경 이력 보기"}
       </button>
-      {open && state.failed && <p role="alert">변경 이력을 불러오지 못했어요.</p>}
-      {open && !state.failed && !state.events && <p role="status">변경 이력을 읽고 있어요.</p>}
+      {open && state.failed && (
+        <p role="alert" className="m-0 text-[13px]">
+          변경 이력을 불러오지 못했어요.
+        </p>
+      )}
+      {open && !state.failed && !state.events && (
+        <p role="status" className="m-0 text-[13px]">
+          변경 이력을 읽고 있어요.
+        </p>
+      )}
       {open && state.events && (
-        <ol aria-label="변경 이력">
+        <ol
+          aria-label="변경 이력"
+          className="m-0 flex max-h-[220px] flex-col gap-1 overflow-y-auto pl-5 text-[13px] text-[#5c5243]"
+        >
           {rows.map((e, i) => (
             <li key={i}>
               <time dateTime={e.occurred_at}>

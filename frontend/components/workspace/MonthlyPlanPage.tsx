@@ -20,8 +20,7 @@ import { ApiError } from "@/lib/api/client";
 import { deleteMonthlyPlan, getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
 import { classServerId, syncClass } from "@/lib/api/onboarding";
-import { getClassTemplateProfile } from "@/lib/api/templateProfiles";
-import type { MonthlyPlan, ProfileRef } from "@/lib/api/types";
+import type { MonthlyPlan } from "@/lib/api/types";
 import { isPlayAnnual } from "@/lib/monthly/play-entry";
 import { loadClassSettings } from "@/lib/onboarding/settings";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -61,7 +60,6 @@ export default function MonthlyPlanPage() {
 }
 
 function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
-  const [profile, setProfile] = useState<ProfileRef | null>(null);
   const month = entry.month;
   const [plan, setPlan] = useState<MonthlyPlan | null>(null);
   const [busy, setBusy] = useState<string>("");
@@ -72,7 +70,6 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
   const localClassId = classes.find((c) => classServerId(c.id) === entry.classId)?.id ?? "";
   const scope = `${localClassId}|${month}`;
   const [loadedScope, setLoadedScope] = useState("");
-  const [profileSource, setProfileSource] = useState("");
   const [reload, setReload] = useState(0);
   const [isPlay, setIsPlay] = useState(false);
   // 409 로 다시 불러올 때마다 올려 편집 화면을 새로 연다.
@@ -124,16 +121,9 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
           setProblem("");
           return;
         }
-        const [resolution, next] = await Promise.all([
-          getClassTemplateProfile(id),
-          load(id, month),
-        ]);
+        const next = await load(id, month);
         if (!alive) return;
         setIsPlay(false);
-        setProfile(resolution.profile_ref);
-        setProfileSource(
-          resolution.source === "CLASSROOM_OVERRIDE" ? "반 지정 양식" : "원 기본 양식",
-        );
         setPlan(next);
         setLoadedScope(scope);
         setProblem("");
@@ -142,7 +132,6 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
           setProblem(describe(e, "월간계획안을 불러오지 못했어요."));
           setIsPlay(false);
           setLoadedScope(scope);
-          setProfile(null);
           setPlan(null);
         }
       }
@@ -212,9 +201,6 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
               )}
             </>
           )
-        }
-        note={
-          profile ? `${profileSource} · ${profile.profile_id} / ${profile.profile_version}` : ""
         }
       />
     );

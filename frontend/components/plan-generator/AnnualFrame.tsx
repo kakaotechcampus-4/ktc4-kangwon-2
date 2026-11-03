@@ -18,6 +18,9 @@ export const BUTTON = {
     "min-h-[44px] rounded-xl border border-[#ddd6ca] bg-white px-4 text-sm font-bold text-[#5e4b96] disabled:opacity-40",
   primary:
     "min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40",
+  /** 「변경 이력 보기」처럼 패널 아래 가벼운 글자 버튼. */
+  link: "min-h-[44px] text-sm font-bold text-[#5e4b96] underline underline-offset-2 disabled:opacity-40",
+  plain: "min-h-[44px] text-sm text-[#5c5243] underline underline-offset-2 disabled:opacity-40",
 };
 export const tabClass = (active: boolean) =>
   `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-[#8a8178]"}`;
@@ -61,16 +64,19 @@ export default function AnnualFrame({
 }) {
   return (
     <main className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826]">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {lead}
-          <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h1>
-          {chip(format)}
-          <span className="text-sm text-[#5c5243]">{status}</span>
+      {/* 안내가 없으면 높이 0 — 연간 · 월간 · 주간 문서 틀이 같은 높이에서 시작한다. */}
+      <div className="flex flex-col">
+        <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {lead}
+            <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h1>
+            {chip(format)}
+            <span className="text-sm text-[#5c5243]">{status}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        {notice}
       </div>
-      {notice}
       <div className="flex min-h-0 flex-1 gap-4">
         {aside && (
           <aside className="flex w-[380px] shrink-0 flex-col rounded-[20px] border border-[#e8e2d8] bg-white">
