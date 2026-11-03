@@ -36,7 +36,6 @@ export default function WeeklyIndoorPlayPanel({
   const candidates = (plan.activity_candidates ?? []).filter(
     (c) => c.section_key === "indoor_play",
   );
-  const kinds = [...new Set(candidates.map((c) => c.activity_type))];
   const move = (index: number, delta: number) => {
     const ids = rows.map((c) => c.item_id);
     [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
@@ -116,42 +115,34 @@ export default function WeeklyIndoorPlayPanel({
           쓸 수 있는 근거가 없어 후보를 만들지 않았어요. 직접 써 주세요.
         </p>
       )}
-      {kinds.map((kind) => (
-        <div key={kind} className="flex flex-col gap-2">
-          <h3 className="m-0 text-[13px] font-bold text-[#5c5243]">{kind}</h3>
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            {candidates
-              .filter((c) => c.activity_type === kind)
-              .map((c) => {
-                const text = c.cell.value.trim();
-                // 넣으면 서버가 「[종류] - 이름」으로 옮겨 쓴다. 그 글이 목록에 있으면 넣은 후보다.
-                // 교사가 옮긴 글을 고치면 다시 「넣기」로 보이지만 서버가 같은 후보는 한 번만 넣는다.
-                const copied = `[${c.activity_type}] - ${c.name}`;
-                const here = !!c.name.trim() && rows.some((r) => r.value.trim() === copied);
-                return (
-                  <li
-                    key={c.cell.item_id}
-                    className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}
-                  >
-                    <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
-                      {c.name && <strong className="block">{c.name}</strong>}
-                      {text || "(빈 후보)"}
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={`이번 주 놀이에 넣기: ${c.name || text || "빈 후보"}`}
-                      className={PUT}
-                      disabled={disabled || !c.name.trim() || here}
-                      onClick={() => onAdd(c.cell.item_id)}
-                    >
-                      {here ? "넣음" : "넣기"}
-                    </button>
-                  </li>
-                );
-              })}
-          </ul>
-        </div>
-      ))}
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {candidates.map((c) => {
+          const text = c.cell.value.trim();
+          // 넣으면 서버가 「[종류] - 이름」으로 옮겨 쓴다. 그 글이 목록에 있으면 넣은 후보다.
+          // 교사가 옮긴 글을 고치면 다시 「넣기」로 보이지만 서버가 같은 후보는 한 번만 넣는다.
+          const copied = `[${c.activity_type}] - ${c.name}`;
+          const here = !!c.name.trim() && rows.some((r) => r.value.trim() === copied);
+          return (
+            <li key={c.cell.item_id} className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}>
+              <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
+                <strong className="block">
+                  [{c.activity_type}] {c.name}
+                </strong>
+                {text || "(빈 후보)"}
+              </div>
+              <button
+                type="button"
+                aria-label={`이번 주 놀이에 넣기: ${c.name || text || "빈 후보"}`}
+                className={PUT}
+                disabled={disabled || !c.name.trim() || here}
+                onClick={() => onAdd(c.cell.item_id)}
+              >
+                {here ? "넣음" : "넣기"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

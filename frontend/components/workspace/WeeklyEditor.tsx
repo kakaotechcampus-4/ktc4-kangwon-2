@@ -67,18 +67,6 @@ export function originOf(cell: WeeklyCell, edited: Set<string>) {
   return "";
 }
 
-/** 무엇에 기댔는가 — 한 줄. */
-function sourceOf(cell: WeeklyCell): string {
-  const parts: string[] = [];
-  const samples = cell.evidence.filter((e) => e.source_type === "INSTITUTION_SAMPLE").length;
-  if (samples) parts.push(`근거 기관 자료 ${samples}건`);
-  if (cell.evidence.some((e) => e.source_type === "ACTIVITY_REFERENCE"))
-    parts.push("활동 참고자료에서 고름");
-  if (cell.parent_snapshots.length || cell.evidence.some((e) => e.source_type === "PARENT_PLAN"))
-    parts.push("월간계획안에서 이어받음");
-  return parts.join(" · ");
-}
-
 /** 「교사 수정」 칸 — 칸마다 마지막 이력이 TEACHER_EDITED 인 것. */
 function useEdited(plan: WeeklyPlan) {
   const [edited, setEdited] = useState<Set<string>>(new Set());
@@ -343,7 +331,6 @@ export default function WeeklyEditor({
   const name = picked ? sectionName(picked.section.section_key, picked.section.label) : "";
   const where = picked ? (picked.cell.day ? `${dayOf(picked.cell)}요일 · ` : "") + name : "";
   const origin = picked ? originOf(picked.cell, edited) : "";
-  const source = picked && !picked.cell.teacher_input ? sourceOf(picked.cell) : "";
   // 같은 요일에 칸이 여럿(나눈 칸)이면 「월 1」 · 「월 2」.
   const dayLabel = (section: (typeof sections)[number], cell: WeeklyCell) => {
     const same = section.cells.filter((c) => c.day === cell.day);
@@ -415,17 +402,16 @@ export default function WeeklyEditor({
               }
             />
           </div>
-          <p className="m-0 text-[13px] text-[#5c5243]">
-            {picked.cell.teacher_input
-              ? "선생님이 직접 쓰는 칸이에요. AI가 쓰지 않아요 — 비워 두어도 확정할 수 있어요."
-              : "고치면 오른쪽 문서에 바로 반영돼요"}
-          </p>
+          {picked.cell.teacher_input && (
+            <p className="m-0 text-[13px] text-[#5c5243]">
+              선생님이 직접 쓰는 칸이에요. AI가 쓰지 않아요 — 비워 두어도 확정할 수 있어요.
+            </p>
+          )}
           {picked.cell.state === "EMPTY_UNRESOLVED" && (
             <p className="m-0 text-[13px] text-[#5c5243]">
               근거가 없어 비워 두었어요. 직접 적어주세요.
             </p>
           )}
-          {source && <p className="m-0 text-[12px] text-[#5c5243]">근거 · {source}</p>}
           {gridCell && (
             <div
               role="group"
@@ -488,10 +474,6 @@ export default function WeeklyEditor({
         </>
       )}
       <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
-        <p className="m-0 text-[13px] text-[#5c5243]">
-          AI가 쓴 칸의 날짜 · 시각 · 선생님 이름은 입력한 내용과 대조했어요. 행사 이름처럼 그 밖의
-          사실은 확정 전에 한 번 더 확인해 주세요.
-        </p>
         <button
           type="button"
           className={BUTTON.plain}
@@ -504,7 +486,6 @@ export default function WeeklyEditor({
     </div>
   );
 
-  const kinds = [...new Set(candidates.map((c) => c.activity_type))];
   const aiTab = indoorCell ? (
     <WeeklyIndoorPlayPanel
       plan={plan}
@@ -519,38 +500,31 @@ export default function WeeklyEditor({
   ) : gridCell && candidates.length ? (
     <section aria-label="활동 후보" className="flex flex-col gap-4">
       <h2 className="m-0 text-[15px] font-bold">{where} 칸에 넣을 활동</h2>
-      {kinds.map((kind) => (
-        <div key={kind} className="flex flex-col gap-2">
-          <h3 className="m-0 text-[13px] font-bold text-[#5c5243]">{kind}</h3>
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            {candidates
-              .filter((c) => c.activity_type === kind)
-              .map((c) => {
-                const text = c.cell.value.trim();
-                const here = !!text && shown(picked.cell).trim() === text;
-                return (
-                  <li
-                    key={c.cell.item_id}
-                    className={`${CARD} ${here ? "border-[#7053a0] bg-[#f6f1fb]" : "border-[#e8e2d8]"}`}
-                  >
-                    <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
-                      {text || "(빈 후보)"}
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={`${where}에 넣기: ${text || "빈 후보"}`}
-                      className={PUT}
-                      disabled={locked || !text || here}
-                      onClick={() => void put(picked.cell.item_id, c.cell.item_id)}
-                    >
-                      {here ? "넣음" : "넣기"}
-                    </button>
-                  </li>
-                );
-              })}
-          </ul>
-        </div>
-      ))}
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {candidates.map((c) => {
+          const text = c.cell.value.trim();
+          const here = !!text && shown(picked.cell).trim() === text;
+          return (
+            <li
+              key={c.cell.item_id}
+              className={`${CARD} ${here ? "border-[#7053a0] bg-[#f6f1fb]" : "border-[#e8e2d8]"}`}
+            >
+              <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
+                <strong>[{c.activity_type}]</strong> {text || "(빈 후보)"}
+              </div>
+              <button
+                type="button"
+                aria-label={`${where}에 넣기: ${text || "빈 후보"}`}
+                className={PUT}
+                disabled={locked || !text || here}
+                onClick={() => void put(picked.cell.item_id, c.cell.item_id)}
+              >
+                {here ? "넣음" : "넣기"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   ) : (
     <p className="m-0 text-sm text-[#5c5243]">
@@ -664,11 +638,6 @@ export default function WeeklyEditor({
       status={
         <span className="flex items-center gap-3">
           <span role="status">{SAVE_LABEL[status]}</span>
-          {plan.parent.theme && (
-            <span className="text-[#8a8178]">
-              {month}월 월간 · {plan.parent.theme}
-            </span>
-          )}
           <PlanMemoNote plan={plan} />
         </span>
       }

@@ -664,9 +664,6 @@ export default function MonthlyPlanEditor({
       status={
         <span className="flex items-center gap-3">
           <span role="status">{SAVE_LABEL[status]}</span>
-          {plan.parent.theme && (
-            <span className="text-[#8a8178]">연간 주제 · {plan.parent.theme}</span>
-          )}
           <PlanMemoNote plan={plan} />
           {blank && (
             <span role="status" title="확정을 막지 않아요" className="text-[#8a8178]">
