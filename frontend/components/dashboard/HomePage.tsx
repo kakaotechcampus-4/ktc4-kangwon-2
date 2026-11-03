@@ -568,7 +568,7 @@ function ChildSpotlight({
       ) : (
         <>
           <div
-            className="relative mx-3"
+            className="group relative mx-3"
             onMouseEnter={() => setPaused(true)}
             onMouseLeave={() => setPaused(false)}
             onFocusCapture={() => setPaused(true)}
@@ -588,20 +588,22 @@ function ChildSpotlight({
               </>
             )}
             <div
-              className={`relative border p-4 shadow-pg-hard ${SPOT_NOTE[index % SPOT_NOTE.length]}`}
+              key={child.id}
+              className={`pageTurn relative border p-4 shadow-pg-hard ${SPOT_NOTE[index % SPOT_NOTE.length]}`}
             >
-              <div className="flex items-baseline gap-2.5">
-                <h3 className="font-display text-[25px] font-bold leading-none text-ink">
-                  {child.name}
-                </h3>
-                <span className="text-[12px] text-sun-ink">최근 관찰</span>
-              </div>
-              <div className="mt-2.5 flex items-baseline justify-between gap-2 text-[12.5px] font-semibold text-sun-ink">
-                <span className="min-w-0 truncate">{latest?.domain || "최근 관찰"}</span>
-                <span className="shrink-0 font-normal">
-                  {latest ? shortDate(latest.date) : ""}
-                </span>
-              </div>
+              <h3 className="font-display text-[25px] font-bold leading-none text-ink">
+                {child.name}
+              </h3>
+              {/* 기록이 없으면 영역 줄을 비운다. 「최근 관찰」을 빈 자리 메우개로 쓰면
+                  제목과 같은 말이 한 쪽지에 두 번 나온다. */}
+              {latest ? (
+                <div className="mt-2.5 flex items-baseline justify-between gap-2 text-[12.5px] font-semibold text-sun-ink">
+                  <span className="min-w-0 truncate">{latest.domain}</span>
+                  <span className="shrink-0 font-normal">{shortDate(latest.date)}</span>
+                </div>
+              ) : (
+                <div className="mt-2.5 text-[12.5px] text-sun-ink">최근 관찰</div>
+              )}
               <p className="mt-1.5 text-[13.5px] leading-[1.8] text-ink">
                 {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
               </p>
@@ -619,7 +621,7 @@ function ChildSpotlight({
                   type="button"
                   aria-label="이전 아이"
                   onClick={() => turn(-1)}
-                  className="absolute -left-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft hover:text-board-ink"
+                  className="absolute -left-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft opacity-0 transition-opacity hover:text-board-ink focus-visible:opacity-100 group-hover:opacity-100"
                 >
                   <Icon name="arrow" className="h-3.5 w-3.5 rotate-180" />
                 </button>
@@ -627,7 +629,7 @@ function ChildSpotlight({
                   type="button"
                   aria-label="다음 아이"
                   onClick={() => turn(1)}
-                  className="absolute -right-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft hover:text-board-ink"
+                  className="absolute -right-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft opacity-0 transition-opacity hover:text-board-ink focus-visible:opacity-100 group-hover:opacity-100"
                 >
                   <Icon name="arrow" className="h-3.5 w-3.5" />
                 </button>

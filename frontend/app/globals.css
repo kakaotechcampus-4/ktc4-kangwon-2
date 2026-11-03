@@ -73,6 +73,27 @@ body {
   filter: drop-shadow(0 8px 16px rgba(52, 49, 47, 0.16));
 }
 
+/* 쪽지 한 장이 넘어오는 모습. 아래에서 살짝 올라오며 기울기가 펴진다.
+ * 글자만 갈아 끼우면 같은 자리에서 내용이 바뀌는 것이라 「넘어갔다」가 안 보인다. */
+@keyframes pageTurn {
+  from {
+    opacity: 0;
+    transform: translateY(7px) rotate(-1.6deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pageTurn {
+  animation: pageTurn 0.42s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pageTurn {
+    animation: none;
+  }
+}
+
 /* 교실 칠판. 첫 화면 오른쪽 줄 세 칸이 이 판 위에 붙는다.
  *
  * 면을 한 색으로 칠하면 초록 네모일 뿐이라 칠판으로 안 읽힌다. 세 겹을 쌓는다 —
