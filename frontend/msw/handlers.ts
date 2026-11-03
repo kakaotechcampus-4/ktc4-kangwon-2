@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { failure, scenario } from "./scenarios";
+import { commit } from "./data/store";
 import {
   findCenter,
   addCenter,
@@ -109,8 +110,16 @@ const memoOf = (b: Record<string, unknown>) =>
     : typeof b.memo === "string" && b.memo.trim().length <= 300
       ? b.memo.trim()
       : null;
-const withMemo = <T extends object>(plan: T, memo: string) =>
-  Object.assign(plan, { memo, memo_notices: [] });
+/** 서버처럼 메모를 계획안에 남긴다 — 다시 읽어도 돌아온다. 목업은 반영 못한 요청을 만들지 않는다. */
+const withMemo = <T extends { id: number }>(
+  plan: T,
+  memo: string,
+  table: "plans" | "monthlyPlans" | "weeklyPlans",
+) => {
+  const fields = { memo, memo_notices: [] };
+  commit((db) => Object.assign(db[table].find((p) => p.id === plan.id) ?? {}, fields));
+  return Object.assign(plan, fields);
+};
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
 const MOCK_INVITE = "MOCK234567";
 async function body(request: Request): Promise<Record<string, unknown> | null> {
@@ -427,7 +436,7 @@ export const handlers = [
     if (request.signal.aborted) return HttpResponse.error();
     // 실제 서버는 교육과정 참고자료 승인 전까지 503을 반환하지만, 화면 작업용 목업은 승인 뒤 응답 모양을 만든다.
     return HttpResponse.json(
-      withMemo(addPlan(b as unknown as AnnualInput, klass.school_year), memo),
+      withMemo(addPlan(b as unknown as AnnualInput, klass.school_year), memo, "plans"),
       {
         status: 201,
       },
@@ -859,7 +868,7 @@ export const handlers = [
       );
     if (request.signal.aborted) return HttpResponse.error();
     return HttpResponse.json(
-      monthlyOut(withMemo(addMonthly(klass, annual, b.month, profile), memo)),
+      monthlyOut(withMemo(addMonthly(klass, annual, b.month, profile), memo, "monthlyPlans")),
       {
         status: 201,
       },
@@ -982,6 +991,7 @@ export const handlers = [
         withMemo(
           addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true),
           memo,
+          "weeklyPlans",
         ),
       ),
       { status: 201 },
