@@ -297,24 +297,24 @@ export default function AppSidebar() {
               pose="cheer"
               size={21}
               label={null}
-              className="absolute left-[52px] top-[8px] rotate-[9deg]"
+              className="absolute left-[43px] top-[8px] rotate-[9deg]"
             />
             <Posty
               tone="sage"
               pose="up"
               size={19}
               label={null}
-              className="absolute left-[73px] top-[9px] -rotate-[11deg]"
+              className="absolute left-[60px] top-[9px] -rotate-[11deg]"
             />
             <Posty
               tone="clay"
               pose="stand"
               size={18}
               label={null}
-              className="absolute left-[91px] top-[10px] rotate-[15deg]"
+              className="absolute left-[75px] top-[10px] rotate-[15deg]"
             />
-            <Posty pose="wave" size={39} label={null} className="absolute left-3 top-0" />
-            <div className="relative -rotate-2 border border-note-line bg-note px-3 py-2.5 shadow-pg-card">
+            <Posty pose="wave" size={36} label={null} className="absolute left-2 top-0" />
+            <div className="relative w-[82%] -rotate-2 border border-note-line bg-note px-3 py-2.5 shadow-pg-card">
               <Tape />
               <p className="font-display text-[16px] font-bold leading-tight text-ink">
                 쌤의 계획이

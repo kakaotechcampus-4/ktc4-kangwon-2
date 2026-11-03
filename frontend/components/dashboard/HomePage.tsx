@@ -19,7 +19,6 @@ import { PageContainer } from "@/components/app/AppLayout";
 import { Icon } from "@/components/app/icons";
 import ChildPicker from "@/components/app/ChildPicker";
 import { SsampleNote } from "@/components/app/SsampleNote";
-import { Posty } from "@/components/app/Posty";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -189,13 +188,22 @@ export default function HomePage() {
           {head.day}
           <span className="relative ml-2.5 inline-block font-display text-[24px] font-bold text-ink-soft lg:text-[30px]">
             {head.dow}
-            {/* 요일 오른쪽 위로 포스티가 빼꼼 내민다. 장식이라 읽어주지 않는다. */}
-            <Posty
-              pose="wave"
-              size={38}
-              label={null}
-              className="pointer-events-none absolute -right-9 -top-8 rotate-[10deg]"
-            />
+            {/* 달력에서 오늘에 치는 동그라미. 한 바퀴를 덜 닫아 손으로 그은 자국으로 보인다.
+                요일만 감싸므로 날짜가 「11월 30일」처럼 길어져도 자리가 안 흔들린다. */}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 150 70"
+              preserveAspectRatio="none"
+              className="pointer-events-none absolute -bottom-2.5 -left-3.5 -right-3.5 -top-3 text-peach-strong"
+            >
+              <path
+                d="M74 6 C112 4 146 18 143 36 C140 56 100 66 68 64 C32 62 6 50 8 32 C10 14 42 6 78 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.6"
+                strokeLinecap="round"
+              />
+            </svg>
           </span>
         </h1>
 
@@ -231,7 +239,7 @@ export default function HomePage() {
 
             {/* 오른쪽 줄은 교실 칠판이다. 칸 제목은 쪽지 안이 아니라 판에 분필로 쓰고,
                 쪽지는 그 밑에 붙는다 — 종이마다 머리글이 달리면 쪽지가 서류로 보인다. */}
-            <div className="chalkboard flex min-w-0 flex-col gap-7 px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0">
+            <div className="chalkboard flex min-w-0 flex-col justify-between gap-10 px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0">
               {todayDate && (
                 <UnseenChildren
                   roster={activeClass?.children ?? []}
