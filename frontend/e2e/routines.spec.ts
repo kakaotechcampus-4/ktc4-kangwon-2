@@ -81,7 +81,7 @@ async function enterHome(page: Page) {
   await page.getByRole("button", { name: "+ 추가", exact: true }).click();
   await page.getByRole("button", { name: "설정 완료", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("link", { name: "오늘 일과 적기" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "일과 작성하기" })).toBeVisible();
   const me = await api(page, "/api/auth/me");
   const classes = await api(page, `/api/centers/${me.center_id}/classes`);
   const klass = classes.items.find((item: { name: string }) => item.name === "햇살반");
@@ -256,7 +256,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
       await paused;
       await route.continue();
     });
-    await page.getByRole("link", { name: "오늘 일과 적기" }).click();
+    await page.getByRole("link", { name: "일과 작성하기" }).click();
     await expect(page).toHaveURL(/\/routines\?date=.*class_id=/);
     await expect(page.getByText("이 날짜의 일과를 불러오는 중이에요…")).toBeVisible();
     release();
@@ -376,7 +376,8 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
     expect(dbDocument(documentId!)).toEqual({ id: documentId!, status: "CONFIRMED", stale: false });
     await page.getByRole("link", { name: "우리 반", exact: true }).click();
-    await page.getByRole("link", { name: "오늘 일과 적기" }).click();
+    // 이미 적힌 일과가 있으면 홈의 일과 줄 자체가 고치러 가는 길이다.
+    await page.getByRole("link", { name: /^일과 —/ }).click();
     await expect(rows(page)).toHaveCount(7);
     await rows(page).nth(0).getByLabel("활동실행").fill("블록 길을 더 길게 이어 붙였다.");
     await rows(page).nth(2).getByLabel("활동실행").fill("길 위에 자동차를 올려 굴렸다.");
@@ -396,7 +397,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
 
 test("S-J2 빈 상태 — 활동실행 없는 저장 줄에서 실제 입력 링크로 돌아간다", async ({ page }) => {
   const { classId } = await enterHome(page);
-  await page.getByRole("link", { name: "오늘 일과 적기" }).click();
+  await page.getByRole("link", { name: "일과 작성하기" }).click();
   await expect(rows(page)).toHaveCount(5);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await rows(page).nth(0).getByLabel("일과 이름").fill("시간과 이름만 있는 일과");
@@ -423,7 +424,7 @@ test("D E F J — 어제 복사·검증 오류·실제 401 저장 실패와 재�
   page,
 }, info) => {
   const { classId } = await enterHome(page);
-  await page.getByRole("link", { name: "오늘 일과 적기" }).click();
+  await page.getByRole("link", { name: "일과 작성하기" }).click();
   await expect(rows(page)).toHaveCount(5);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   const yesterday = new Date(`${date}T00:00:00Z`);
@@ -490,7 +491,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     consent_confirmed: true,
   });
   const child = await api(page, `/api/classes/${other.id}/children`, "POST", { name: "나다라" });
-  await page.getByRole("link", { name: "오늘 일과 적기" }).click();
+  await page.getByRole("link", { name: "일과 작성하기" }).click();
   await expect(rows(page)).toHaveCount(5);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await rows(page).nth(0).getByLabel("일과 이름").fill("햇살반 일과");

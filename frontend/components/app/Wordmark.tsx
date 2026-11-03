@@ -32,7 +32,7 @@ export function Wordmark({
   const tiny = size === "xs";
   return (
     <Link href={href} aria-label={label} className={`flex items-center gap-2.5 ${className ?? ""}`}>
-      {!tiny && <SsampleMark size={big ? 34 : 30} />}
+      {!tiny && <SsampleMark size={big ? 34 : 30} tone={rail ? "rail" : undefined} />}
       <span className="min-w-0">
         <span
           className={`block font-bold leading-none tracking-[-0.05em] ${
@@ -61,11 +61,17 @@ export function Wordmark({
  * `app/icon.svg` 와 같은 모양이다. 둘이 어긋나면 브라우저 탭과 화면 안의 표시가
  * 다른 서비스처럼 보이므로, 한쪽을 고치면 다른 쪽도 같이 고친다.
  */
-export function SsampleMark({ size = 34 }: { size?: number }) {
+export function SsampleMark({ size = 34, tone }: { size?: number; tone?: "rail" }) {
+  // 어두운 사이드바에서는 크림 타일이 혼자 밝게 튄다. 그 자리에서는 한 단계 떠 있는
+  // 면(rail-card)과 같은 색을 쓰고 글자만 밝힌다.
+  const skin =
+    tone === "rail"
+      ? "border border-rail-card-line bg-rail-card text-rail-ink"
+      : "bg-cream text-primary-deep";
   return (
     <span
       aria-hidden="true"
-      className="flex shrink-0 items-center justify-center rounded-[11px] bg-cream font-serif font-bold leading-none tracking-[-0.02em] text-primary-deep"
+      className={`flex shrink-0 items-center justify-center rounded-[11px] font-serif font-bold leading-none tracking-[-0.02em] ${skin}`}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.62) }}
     >
       S<span className="text-peach-strong">.</span>
