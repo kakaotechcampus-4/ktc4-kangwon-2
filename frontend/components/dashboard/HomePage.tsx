@@ -28,7 +28,7 @@ import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { routinesPath, routinesScope } from "@/lib/workspace/routines-route";
 import { classServerId } from "@/lib/api/onboarding";
-import { isStale, tallyFor, tallyLabel } from "@/lib/workspace/child-mark";
+import { isStale, staleLabel, tallyFor } from "@/lib/workspace/child-mark";
 import {
   emptyDay,
   firstWrittenDay,
@@ -51,6 +51,15 @@ const DASH = "border-0 border-t border-dashed border-line";
 const LABEL = "text-[13px] font-medium tracking-[0.12em]";
 /** 일과를 얼마나 거슬러 보나. 두 주면 「비어 있는 날」이 들어온다. */
 const LOOK_BACK = 14;
+/** 칠판에 붙이는 아이 쪽지. 색과 기울기를 번갈아 쓴다 — 같은 모양이 줄줄이 붙으면 한 장으로 보인다. */
+const KID_NOTE = [
+  "border-note-soft-line bg-note-soft -rotate-2",
+  "border-plum-line bg-plum rotate-2",
+  "border-clay-line bg-clay -rotate-1",
+  "border-sage-line bg-sage-tint rotate-1",
+];
+/** 칠판에 붙이는 쪽지 수. 넘치는 아이는 수만 분필로 적는다. */
+const PINNED = 4;
 
 export default function HomePage() {
   const [message, setMessage] = useState("");
@@ -170,56 +179,80 @@ export default function HomePage() {
 
   return (
     <PageContainer>
-      {/* 머리글은 날짜만 둔다. 반 이름 · 나이는 사이드바 반 카드와 상단 띠에 이미 있다 —
+      {/* 종이가 화면 끝까지 늘어나면 한 줄이 1300px 을 넘어 글이 안 읽힌다.
+          넓은 모니터에서도 책상 위 종이 폭으로 묶어 둔다 (PM 점검). */}
+      <div className="mx-auto w-full max-w-[1170px]">
+        {/* 머리글은 날짜만 둔다. 반 이름 · 나이는 사이드바 반 카드와 상단 띠에 이미 있다 —
           교사가 매일 보는 맨 윗자리를 라벨로 채우지 않는다. */}
-      <h1 className="mb-7 font-display text-[40px] font-bold leading-none text-primary-deep lg:text-[54px]">
-        {head.day}
-        <span className="ml-2.5 font-body text-base font-normal text-ink-soft">{head.dow}</span>
-      </h1>
-
-      {message && (
-        <p role="alert" className="mb-5 rounded-md border border-line bg-paper px-4 py-3 text-xs">
-          {message}
-        </p>
-      )}
-
-      {!loadFailed && (
-        <div className="flex flex-col gap-8 xl:flex-row xl:gap-9">
-          <div className="flex min-w-0 flex-col gap-8 xl:flex-1">
-            <Compose
-              classes={classes}
-              date={todayDate}
-              activeClassId={activeClassId}
-              records={classRecords}
-              onSaved={recordSaved}
-              onError={setMessage}
-            />
-
-            <TodaySlip
-              records={todayRecords}
-              loading={records === null}
-              routines={routineRows && todayDate ? todayRoutines : null}
-              routinesHref={routinesHref}
-              dailyLogHref={logReady ? dailyLogHref : null}
-              day={head.day}
-            />
-
-            {lastWeek && <LastWeekNote look={lastWeek} />}
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-8 xl:w-[310px] xl:shrink-0">
-            {todayDate && (
-              <UnseenChildren
-                roster={activeClass?.children ?? []}
-                records={classRecords}
-                today={todayDate}
+        <h1 className="mb-7 font-display text-[40px] font-bold leading-none text-primary-deep lg:text-[54px]">
+          {head.day}
+          <span className="relative ml-2.5 inline-block font-display text-[24px] font-bold text-ink-soft lg:text-[30px]">
+            {head.dow}
+            {/* 달력에서 오늘에 치는 동그라미. 한 바퀴를 덜 닫아 손으로 그은 자국으로 보인다.
+                요일만 감싸므로 날짜가 「11월 30일」처럼 길어져도 자리가 안 흔들린다. */}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 150 70"
+              preserveAspectRatio="none"
+              className="pointer-events-none absolute -bottom-2.5 -left-3.5 -right-3.5 -top-3 text-alert-strong"
+            >
+              <path
+                d="M74 6 C112 4 146 18 143 36 C140 56 100 66 68 64 C32 62 6 50 8 32 C10 14 42 6 78 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.6"
+                strokeLinecap="round"
               />
-            )}
-            {gapDay && <EmptyDayNote date={gapDay} href={routinesPath(activeClassId, gapDay)} />}
-            <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
+            </svg>
+          </span>
+        </h1>
+
+        {message && (
+          <p role="alert" className="mb-5 rounded-md border border-line bg-paper px-4 py-3 text-xs">
+            {message}
+          </p>
+        )}
+
+        {!loadFailed && (
+          <div className="flex flex-col gap-8 xl:flex-row xl:gap-9">
+            <div className="flex min-w-0 max-w-[820px] flex-col gap-8 xl:flex-1">
+              <Compose
+                classes={classes}
+                date={todayDate}
+                activeClassId={activeClassId}
+                records={classRecords}
+                onSaved={recordSaved}
+                onError={setMessage}
+              />
+
+              <TodaySlip
+                records={todayRecords}
+                loading={records === null}
+                routines={routineRows && todayDate ? todayRoutines : null}
+                routinesHref={routinesHref}
+                dailyLogHref={logReady ? dailyLogHref : null}
+                day={head.day}
+              />
+
+              {lastWeek && <LastWeekNote look={lastWeek} />}
+            </div>
+
+            {/* 오른쪽 줄은 교실 칠판이다. 칸 제목은 쪽지 안이 아니라 판에 분필로 쓰고,
+                쪽지는 그 밑에 붙는다 — 종이마다 머리글이 달리면 쪽지가 서류로 보인다. */}
+            <div className="chalkboard flex min-w-0 flex-col gap-[38px] self-start px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0">
+              {todayDate && (
+                <UnseenChildren
+                  roster={activeClass?.children ?? []}
+                  records={classRecords}
+                  today={todayDate}
+                />
+              )}
+              {gapDay && <EmptyDayNote date={gapDay} href={routinesPath(activeClassId, gapDay)} />}
+              <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </PageContainer>
   );
 }
@@ -364,7 +397,7 @@ function Compose({
                 "바깥놀이에서 아이 A가 도토리를 크기별로 줄 세웠다.\n" +
                 "친구가 와서 같이 세었고, 교사는 옆에서 지켜보았다."
               }
-              className="mt-3 block min-h-[136px] w-full resize-y border-0 bg-transparent p-0 text-[20px] font-medium leading-[1.7] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4 focus-visible:ring-offset-paper placeholder:font-normal placeholder:text-ink-soft"
+              className="ruledPaper mt-3 block min-h-[136px] w-full resize-y border-0 bg-transparent p-0 text-[20px] font-medium leading-[1.7] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4 focus-visible:ring-offset-paper placeholder:font-normal placeholder:text-ink-hint"
             />
             {dictation.error && (
               <p
@@ -475,7 +508,25 @@ function Compose({
   );
 }
 
-/** 한 아이, 조금 더 가까이 — 한 명씩 넘겨 보며 최근 관찰을 확인한다. */
+/** 앞장 쪽지 색. 아이가 바뀔 때마다 색도 바뀐다 — 넘어갔다는 것이 글자보다 먼저 보인다. */
+const SPOT_NOTE = [
+  "border-note-soft-line bg-note-soft",
+  "border-plum-line bg-plum",
+  "border-clay-line bg-clay",
+  "border-sage-line bg-sage-tint",
+];
+/** 자동으로 넘어가는 간격. 짧은 관찰 한 건을 읽기에 7초면 넉넉하다. */
+const TURN_MS = 7000;
+
+/**
+ * 한 아이, 조금 더 가까이 — 쪽지를 여러 장 겹쳐 두고 한 장씩 넘긴다.
+ *
+ * 책장이 넘어가듯 **스스로 넘어간다**(7초). 읽는 중에 넘어가면 방해가 되므로
+ * 마우스를 올리거나 안의 것에 초점이 가 있으면 멈춘다. 화살표로 직접 넘기면
+ * 그때부터는 자동으로 넘기지 않는다 — 교사가 고른 아이를 화면이 뺏어가면 안 된다.
+ *
+ * 움직임을 줄여 달라고 한 기기(`prefers-reduced-motion`)에서는 처음부터 자동이 없다.
+ */
 function ChildSpotlight({
   classes,
   records,
@@ -485,7 +536,19 @@ function ChildSpotlight({
 }) {
   const children = classes.flatMap((c) => c.children);
   const [index, setIndex] = useState(0);
-  const child = children[index % Math.max(children.length, 1)];
+  // 교사가 직접 넘긴 뒤에는 자동으로 움직이지 않는다.
+  const [held, setHeld] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const count = children.length;
+
+  useEffect(() => {
+    if (count < 2 || held || paused) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = setInterval(() => setIndex((p) => (p + 1) % count), TURN_MS);
+    return () => clearInterval(timer);
+  }, [count, held, paused]);
+
+  const child = children[index % Math.max(count, 1)];
   const latest = records.find((r) => r.childId === child?.id);
   // 관찰 기록 화면은 기본으로 「주 반」을 연다. 지금 보고 있는 반·아이를 같이 넘겨야 그 아이가 걸린다.
   const childHref = child
@@ -493,69 +556,98 @@ function ChildSpotlight({
         classes.find((c) => c.children.some((k) => k.id === child.id))?.id ?? "",
       )}&child=${encodeURIComponent(child.id)}`
     : "/records";
+  const turn = (step: number) => {
+    setHeld(true);
+    setIndex((p) => (p + step + count) % count);
+  };
 
   return (
-    <section className="relative border border-note-soft-line bg-note-soft p-5 shadow-pg-hard">
-      <Tape />
-      <span className="text-[13px] font-semibold text-sun-ink">한 아이, 조금 더 가까이</span>
-
+    <BoardSection title="한 아이, 조금 더 가까이">
       {!child ? (
-        <p className="mt-4 text-xs text-sun-ink">아직 등록된 아이가 없어요.</p>
+        <ChalkLine>아직 등록된 아이가 없어요</ChalkLine>
       ) : (
         <>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-[18px_14px_20px_12px] border border-note-soft-line bg-paper font-display text-[26px] font-bold text-sun-ink">
-              {child.name.slice(0, 1)}
-            </span>
-            <div>
-              <h3 className="font-display text-[26px] font-bold text-ink">{child.name}</h3>
-              <span className="text-[13px] text-sun-ink">최근 관찰</span>
-            </div>
-          </div>
-
-          <div className="mt-5 border-t border-note-soft-line pt-4">
-            <span className="flex items-center gap-2 text-[13px] font-semibold text-sun-ink">
-              {latest?.domain || "최근 관찰"}
-              <span className="ml-auto font-normal">{latest ? shortDate(latest.date) : ""}</span>
-            </span>
-            <p className="mt-2 text-[15px] leading-[1.9] text-ink">
-              {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
-            </p>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <Link
-              href={childHref}
-              className="flex min-h-11 items-center gap-1 text-[13px] font-semibold text-sun-ink"
+          <div
+            className="group relative mx-3"
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+            onFocusCapture={() => setPaused(true)}
+            onBlurCapture={() => setPaused(false)}
+          >
+            {/* 뒤에 깔린 두 장. 넘길 것이 남았다는 게 글자 없이 보인다. */}
+            {count > 1 && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 translate-x-[6px] translate-y-[8px] rotate-[2.6deg] border border-plum-line bg-plum"
+                />
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 -translate-x-[5px] translate-y-[5px] -rotate-[2deg] border border-clay-line bg-clay"
+                />
+              </>
+            )}
+            <div
+              key={child.id}
+              className={`pageTurn relative border p-4 shadow-pg-hard ${SPOT_NOTE[index % SPOT_NOTE.length]}`}
             >
-              이 아이 기록 보기
-              <Icon name="arrow" className="h-3 w-3" />
-            </Link>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="이전 아이"
-                onClick={() => setIndex((p) => (p - 1 + children.length) % children.length)}
-                className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/60"
+              <h3 className="font-display text-[25px] font-bold leading-none text-ink">
+                {child.name}
+              </h3>
+              {/* 기록이 없으면 영역 줄을 비운다. 「최근 관찰」을 빈 자리 메우개로 쓰면
+                  제목과 같은 말이 한 쪽지에 두 번 나온다. */}
+              {/* 이름 · 언제 무슨 영역 · 적힌 글 · 가는 길. 넷이 줄 없이 붙어 있으면
+                  글자 크기만으로 갈라야 해서 한 덩어리로 읽힌다. */}
+              {latest ? (
+                <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-sun-ink">
+                  <span className="min-w-0 truncate">{latest.domain}</span>
+                  <span className="shrink-0 font-normal">{shortDate(latest.date)}</span>
+                </div>
+              ) : (
+                <div className="mt-3 border-t border-ink/35 pt-2.5 text-[12.5px] text-sun-ink">
+                  최근 관찰
+                </div>
+              )}
+              <p className="mt-2 text-[13.5px] leading-[1.8] text-ink">
+                {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
+              </p>
+              <Link
+                href={childHref}
+                className="mt-3 flex min-h-10 items-center gap-1 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-sun-ink"
               >
-                <Icon name="arrow" className="h-4 w-4 rotate-180" />
-              </button>
-              <span className="text-[13px] text-sun-ink">
-                {(index % children.length) + 1}/{children.length}
-              </span>
-              <button
-                type="button"
-                aria-label="다음 아이"
-                onClick={() => setIndex((p) => (p + 1) % children.length)}
-                className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/60"
-              >
-                <Icon name="arrow" className="h-4 w-4" />
-              </button>
+                이 아이 기록 보기
+                <Icon name="arrow" className="h-3 w-3" />
+              </Link>
             </div>
+            {count > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="이전 아이"
+                  onClick={() => turn(-1)}
+                  className="absolute -left-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft opacity-0 transition-opacity hover:text-board-ink focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Icon name="arrow" className="h-3.5 w-3.5 rotate-180" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="다음 아이"
+                  onClick={() => turn(1)}
+                  className="absolute -right-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft opacity-0 transition-opacity hover:text-board-ink focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Icon name="arrow" className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
           </div>
+          {count > 1 && (
+            <p className="text-center font-display text-[16px] text-board-ink-soft">
+              {count}명 중 {(index % count) + 1}번째
+            </p>
+          )}
         </>
       )}
-    </section>
+    </BoardSection>
   );
 }
 
@@ -676,11 +768,48 @@ function TodaySlip({
   );
 }
 
+/** 칠판 한 칸 — 분필로 쓴 제목, 그 아래 붙인 쪽지, 맨 끝에 더 보러 가는 길. */
+function BoardSection({
+  title,
+  href,
+  linkLabel,
+  children,
+}: {
+  title: string;
+  href?: string;
+  linkLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-3">
+      <h2 className="font-display text-[20px] font-bold leading-tight text-board-ink">{title}</h2>
+      {children}
+      {href && linkLabel && (
+        <Link
+          href={href}
+          className="self-start font-display text-[17px] font-bold text-board-ink-soft underline underline-offset-4"
+        >
+          {linkLabel}
+        </Link>
+      )}
+    </section>
+  );
+}
+
+/** 칠판에 쓰는 분필 글. 쪽지가 없는 자리를 빈 칸으로 두지 않는다. */
+function ChalkLine({ children }: { children: ReactNode }) {
+  return <p className="font-display text-[18px] leading-[1.6] text-board-ink-soft">{children}</p>;
+}
+
 /**
- * 아직 못 만난 아이 — 한 주 넘게 기록이 없는 아이.
+ * 기록 안된 아이들 — 한 주 넘게 기록이 없는 아이. 제목은 PM 이 정한 말이다.
  *
  * 평가제에서 교사가 제일 걱정하는 것이 기록의 치우침이다. 셈은 아이 고르개와 **같은
  * 것**을 쓴다(`child-mark.ts`) — 두 자리가 다른 숫자를 말하면 둘 다 못 믿는다.
+ *
+ * **쪽지는 넉 장까지만 붙인다.** 반이 스물이면 비어 있는 아이가 열을 넘을 수 있는데,
+ * 그걸 다 붙이면 첫 화면이 빚 목록이 된다. 310px 폭에 두 장씩 두 줄이 꼭 맞고,
+ * 다섯 장이 되면 세 줄이 되면서 아래 칸이 첫 화면 밖으로 밀린다.
  */
 function UnseenChildren({
   roster,
@@ -697,35 +826,66 @@ function UnseenChildren({
   const unseen = roster
     .map((child) => ({ child, tally: tallyFor(records, child.id, today) }))
     .filter(({ tally }) => isStale(tally))
-    .sort((a, b) => waited(b.tally.days) - waited(a.tally.days))
-    .slice(0, 6);
+    .sort((a, b) => waited(b.tally.days) - waited(a.tally.days));
+  const pinned = unseen.slice(0, PINNED);
+  const rest = unseen.length - pinned.length;
+  // 쓰기 시작한 날엔 반 전체가 0번이다. 그날 스무 장을 붙이면 첫날부터 빚이 보인다.
+  const neverStarted =
+    unseen.length === roster.length && unseen.every(({ tally }) => tally.days === null);
 
   return (
-    <TornNote tone="bg-sage-tint" tape="left-1/2 -translate-x-1/2 -rotate-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className={`${LABEL} min-w-0 text-sage-ink`}>아직 못 만난 아이</h2>
-        <Link
-          href="/records/children"
-          className="shrink-0 text-xs font-semibold text-sage-ink underline"
-        >
-          아이별로 →
-        </Link>
-      </div>
+    <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이들 전부 보기 →">
       {unseen.length === 0 ? (
-        <p className="mt-3 text-xs text-ink-soft">한 주 안에 반 아이 모두 한 번씩 적혔어요.</p>
+        <ChalkLine>
+          이번 주{" "}
+          <span className="relative inline-block">
+            <span className="text-[40px] font-bold leading-none text-board-ink">모두</span>
+            {/* 「다 적었다」는 표시다. 워드마크에서 뺀 그 마크를 여기서는 칭찬으로 쓴다. */}
+            <Icon
+              name="star"
+              aria-hidden="true"
+              className="absolute -right-[18px] -top-1 h-[17px] w-[17px] text-board-ink"
+            />
+          </span>
+          <br />한 번씩 적혔어요
+        </ChalkLine>
+      ) : neverStarted ? (
+        <ChalkLine>
+          아직 아무도 안 적혔어요.
+          <br />
+          오늘 <b className="text-board-ink">한 명</b>부터 시작해요
+        </ChalkLine>
       ) : (
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {unseen.map(({ child, tally }) => (
-            <li key={child.id}>
-              <span className="flex min-h-9 items-center gap-2 rounded-md bg-ivory px-2.5 text-[13px] text-ink">
-                {child.name}
-                <b className="font-semibold text-sage-ink">{tallyLabel(tally)}</b>
-              </span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-wrap gap-x-3 gap-y-4 pt-2">
+            {pinned.map(({ child, tally }, i) => (
+              <li key={child.id}>
+                <span
+                  className={`relative block w-[94px] border px-3 pb-3 pt-2.5 shadow-[0_3px_7px_rgba(0,0,0,.3)] ${KID_NOTE[i % KID_NOTE.length]}`}
+                >
+                  {/* 아이 쪽지는 작아서 본문 테이프(w-20)가 쪽지보다 넓다. 여기만 좁게 붙인다. */}
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape"
+                  />
+                  <span className="block font-display text-[22px] font-bold leading-none text-ink">
+                    {child.name}
+                  </span>
+                  <span className="mt-1.5 block whitespace-nowrap text-[11.5px] text-ink-soft">
+                    {staleLabel(tally)}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {rest > 0 && (
+            <ChalkLine>
+              그 밖에 <b className="text-board-ink">{rest}명</b> 더
+            </ChalkLine>
+          )}
+        </>
       )}
-    </TornNote>
+    </BoardSection>
   );
 }
 
@@ -735,27 +895,31 @@ function UnseenChildren({
  */
 function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
   return (
-    <TornNote tone="bg-peach" tape="right-8 rotate-3">
-      <h2 className={`${LABEL} text-peach-ink`}>비어 있는 날</h2>
-      <div className="mt-2 flex items-baseline gap-3">
-        <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
-          {shortDate(date)}
-        </span>
-        <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
-          일과가 없어
-          <br />
-          일지를 못 만들어요
-        </span>
+    <BoardSection title="비어 있는 날">
+      {/* 칠판 위에서는 찢긴 밑(`tornPaper`)을 쓰지 않는다. 어두운 판 위에 흰 반원이
+          줄지어 떠서 종이가 톱니처럼 보인다. 판에 붙인 쪽지는 네 변이 다 반듯하다. */}
+      <div className="relative mt-1 border border-peach-line bg-peach p-5 shadow-pg-hard">
+        <Tape className="right-8 rotate-3" />
+        <div className="flex items-baseline gap-3">
+          <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
+            {shortDate(date)}
+          </span>
+          <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
+            일과가 없어
+            <br />
+            일지를 못 만들어요
+          </span>
+        </div>
+        {href && (
+          <Link
+            href={href}
+            className="mt-3 inline-flex min-h-10 items-center rounded-md border border-line bg-ivory px-4 text-xs font-semibold text-ink shadow-pg-card transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+          >
+            작성하기
+          </Link>
+        )}
       </div>
-      {href && (
-        <Link
-          href={href}
-          className="mt-3 inline-flex min-h-10 items-center rounded-md bg-ivory px-4 text-xs font-semibold text-ink"
-        >
-          그날 채우기
-        </Link>
-      )}
-    </TornNote>
+    </BoardSection>
   );
 }
 

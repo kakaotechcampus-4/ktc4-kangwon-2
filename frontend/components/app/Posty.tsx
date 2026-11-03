@@ -10,11 +10,12 @@ import type { CSSProperties } from "react";
  * **아이를 나타내는 그림이 아니다.** 아이 표식은 도형·색이고(`lib/workspace/child-mark.ts`),
  * 포스티는 서비스 쪽이 말을 거는 자리에만 선다.
  *
- * 색은 토큰만 쓴다. 빨강 쪽지(경고·지우기)는 아직 토큰이 없어 여기 없다.
+ * 색은 토큰만 쓴다. 빨강 셋은 되돌리기 어려운 일에만 쓴다 — 색이 진해질수록 돌이키기 어렵다.
  */
 
 /** 쪽지 색. 색이 곧 상태다. */
-export type PostyTone = "note" | "sage" | "shell" | "sun" | "lilac" | "plum" | "clay";
+export type PostyTone =
+  "note" | "sage" | "shell" | "sun" | "lilac" | "plum" | "clay" | "caution" | "check" | "erase";
 
 /** 팔다리 각도. 상체는 그대로다. */
 export type PostyPose =
@@ -31,6 +32,16 @@ const TONE: Record<PostyTone, { paper: string; line: string; fold: string }> = {
   lilac: { paper: "--pg-primary-tint", line: "--pg-primary-tint-line", fold: "--pg-plum-fold" },
   plum: { paper: "--pg-plum", line: "--pg-plum-line", fold: "--pg-plum-fold" },
   clay: { paper: "--pg-clay", line: "--pg-clay-line", fold: "--pg-clay-fold" },
+  /** 가벼운 주의 — 「이대로 두면 비어 있어요」 */
+  caution: { paper: "--pg-alert-soft", line: "--pg-alert-soft-line", fold: "--pg-alert-soft-fold" },
+  /** 확인 필요 — 「근거 없는 문장이 있어요」 */
+  check: { paper: "--pg-alert", line: "--pg-alert-line", fold: "--pg-alert-fold" },
+  /** 지우기 — 되돌릴 수 없는 일 */
+  erase: {
+    paper: "--pg-alert-strong",
+    line: "--pg-alert-strong-line",
+    fold: "--pg-alert-strong-fold",
+  },
 };
 
 const INK = "var(--pg-ink)";

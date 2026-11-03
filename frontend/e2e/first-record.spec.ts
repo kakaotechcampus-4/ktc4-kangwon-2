@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * 교사가 처음 하는 일 — 가입 → 원 → 반 → 아동 → 관찰 기록 → 아이별 모아보기.
+ * 교사가 처음 하는 일 — 가입 → 원 → 반 → 아동 → 관찰 기록 → 아이들 전부 보기.
  *
  * MSW 를 끈 실제 스택(Postgres · FastAPI · Next)에서 돈다. 화면이 실제 API 를 타는지가
  * 목적이라 목 데이터로 통과하면 의미가 없다. ADR-028.
@@ -55,16 +55,15 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   await page.getByRole("button", { name: "관찰 기록 저장" }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
 
-  // 데스크톱 기록 메뉴에서 진입하고, 관찰 기록과 활성 표시가 겹치지 않는다.
+  // 사이드바가 **기록**과 **문서**로 갈리면서 「아이들 전부 보기」는 메뉴에서 빠졌다.
+  // 관찰 기록 화면 안의 길로 들어가고, 그 아래 화면이므로 메뉴는 관찰 기록이 켜진 채다.
   const menu = page.getByRole("complementary", { name: "주 메뉴" });
-  const childMenu = menu.getByRole("link", { name: "아이별 모아보기", exact: true });
-  await childMenu.click();
+  const recordsMenu = menu.getByRole("link", { name: "관찰 기록", exact: true });
+  await recordsMenu.click();
+  await expect(page).toHaveURL(/\/records$/);
+  await page.getByRole("link", { name: "아이들 전부 보기", exact: true }).click();
   await expect(page).toHaveURL(/\/records\/children$/);
-  await expect(childMenu).toHaveAttribute("aria-current", "page");
-  await expect(menu.getByRole("link", { name: "관찰 기록", exact: true })).not.toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(recordsMenu).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("button", { name: `${child} · 1건` })).toBeVisible();
   await expect(page.getByText("관찰 기록 1건")).toBeVisible();
 });

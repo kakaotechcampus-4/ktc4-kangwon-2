@@ -47,6 +47,9 @@ export const planGeneratorThemeExtend = {
     line: "var(--pg-line)",
     ink: "var(--pg-ink)",
     "ink-soft": "var(--pg-ink-soft)",
+    "ink-hint": "var(--pg-ink-hint)",
+    "board-ink": "var(--pg-board-ink)",
+    "board-ink-soft": "var(--pg-board-ink-soft)",
     primary: {
       DEFAULT: "var(--pg-primary)",
       hover: "var(--pg-primary-hover)",
@@ -56,7 +59,15 @@ export const planGeneratorThemeExtend = {
       ink: "var(--pg-primary-ink)",
       deep: "var(--pg-primary-deep)",
     },
-    sage: { DEFAULT: "var(--pg-sage)", tint: "var(--pg-sage-tint)", ink: "var(--pg-sage-ink)" },
+    sage: {
+      DEFAULT: "var(--pg-sage)",
+      tint: "var(--pg-sage-tint)",
+      ink: "var(--pg-sage-ink)",
+      line: "var(--pg-sage-line)",
+    },
+    /* 쪽지 색종이. 포스티가 쓰던 색을 화면에서도 쓴다 — 쪽지가 여러 장일 때 색을 돌린다. */
+    plum: { DEFAULT: "var(--pg-plum)", line: "var(--pg-plum-line)", fold: "var(--pg-plum-fold)" },
+    clay: { DEFAULT: "var(--pg-clay)", line: "var(--pg-clay-line)", fold: "var(--pg-clay-fold)" },
     mint: {
       DEFAULT: "var(--pg-mint)",
       tint: "var(--pg-mint-tint)",
@@ -69,6 +80,15 @@ export const planGeneratorThemeExtend = {
       tint: "var(--pg-peach-tint)",
       strong: "var(--pg-peach-strong)",
       ink: "var(--pg-peach-ink)",
+    },
+    alert: {
+      soft: "var(--pg-alert-soft)",
+      "soft-line": "var(--pg-alert-soft-line)",
+      DEFAULT: "var(--pg-alert)",
+      line: "var(--pg-alert-line)",
+      strong: "var(--pg-alert-strong)",
+      "strong-line": "var(--pg-alert-strong-line)",
+      ink: "var(--pg-alert-ink)",
     },
     success: {
       DEFAULT: "var(--pg-success)",
