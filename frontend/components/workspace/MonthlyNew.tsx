@@ -6,13 +6,14 @@
  * 놀이형은 이번 달에 집중할 놀이(`emphasized_row_keys`). 만드는 동안은 원형 화면(Ⓜ2)이다.
  * 월별 주제형은 넣을 칸도 여기서 고른다(따로 양식 화면이 없다). 고른 칸이 지금 양식과 다르면
  * 새 양식(§9-4)을 만들어 원 기본으로 걸고 그 양식으로 만든다.
- * 요청 사항(메모)은 서버에 받을 칸이 없어 두지 않는다(백엔드 요청 #1).
+ * 요청 사항(메모)은 버튼 위에 둔다(ADR-057). 두 형식 모두 받는다.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
+import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
 import { createMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { createPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
 import { getAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
@@ -168,6 +169,10 @@ export function MonthlyNewView(props: {
   /** 만들 수 없는 까닭(버튼 아래 한 줄). null 이면 만들 수 있다. */
   blocked: ReactNode;
   problem: string;
+  /** 요청 사항(ADR-057). 없으면 칸을 그리지 않는다(미리보기). */
+  memo?: string;
+  memoProblem?: string | null;
+  onMemo?: (memo: string) => void;
   onMonth: (month: number) => void;
   onFocus: (keys: string[]) => void;
   onCreate: () => void;
@@ -331,6 +336,16 @@ export function MonthlyNewView(props: {
             </fieldset>
           )}
 
+          {props.onMemo && !plans[month] && (
+            <PlanMemoField
+              value={props.memo ?? ""}
+              onChange={props.onMemo}
+              error={props.memoProblem}
+              chips={["바깥놀이 많이", "비 오는 날 대체활동", "행사 반영"]}
+              placeholder="예) 셋째 주는 비 소식이 있어 실내 활동을 넉넉히"
+            />
+          )}
+
           {props.problem && (
             <p
               role="alert"
@@ -418,6 +433,8 @@ export default function MonthlyNew({
 }) {
   const router = useRouter();
   const [problem, setProblem] = useState("");
+  const [memo, setMemo] = useState("");
+  const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const local = classes.find((c) => c.id === chosen) ?? classes[0];
@@ -502,11 +519,18 @@ export default function MonthlyNew({
     controller.current = ctl;
     setBusy(true);
     setProblem("");
+    setMemoProblem(null);
+    const note = memo.trim() ? { memo: memo.trim() } : {};
     try {
       if (play) {
         const keys = inherit?.kind === "play" ? inherit.plays.map((p) => p.row_key) : [];
         const plan = await createPlayMonthly(
-          { class_id: classId, month, emphasized_row_keys: focus.filter((k) => keys.includes(k)) },
+          {
+            class_id: classId,
+            month,
+            emphasized_row_keys: focus.filter((k) => keys.includes(k)),
+            ...note,
+          },
           ctl.signal,
         );
         if (!ctl.signal.aborted) router.push(`/plans/monthly/play/${plan.id}`);
@@ -528,7 +552,7 @@ export default function MonthlyNew({
           }).catch(() => null);
         }
         const plan = await createMonthlyPlan(
-          { class_id: classId, month, profile_ref: ref },
+          { class_id: classId, month, profile_ref: ref, ...note },
           ctl.signal,
         );
         if (!ctl.signal.aborted) onOpen({ id: plan.id, classId, month });
@@ -548,7 +572,9 @@ export default function MonthlyNew({
           return;
         }
       }
-      setProblem(e instanceof Error ? e.message : "월간계획안을 만들지 못했어요.");
+      const memoMessage = memoError(e);
+      if (memoMessage) setMemoProblem(memoMessage);
+      else setProblem(e instanceof Error ? e.message : "월간계획안을 만들지 못했어요.");
     }
   }
 
@@ -599,6 +625,9 @@ export default function MonthlyNew({
       onExtras={setExtras}
       blocked={blocked}
       problem={problem}
+      memo={memo}
+      memoProblem={memoProblem}
+      onMemo={setMemo}
       onMonth={(m) => (plans[m] ? open(m) : setMonth(m))}
       onFocus={setFocus}
       onCreate={() => void create()}

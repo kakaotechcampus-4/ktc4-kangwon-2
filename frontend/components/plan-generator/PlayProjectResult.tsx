@@ -30,6 +30,7 @@ import { confirmPlayProject, errorFields, isSaveConflict } from "@/lib/api/plans
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
 import { eulReul, fields, playSeason, type PlayField } from "./playProjectPagination";
+import { PlanMemoNote } from "./PlanMemo";
 export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 
 const MAX_PICKS = 5;
@@ -805,7 +806,12 @@ export default function PlayProjectResult({
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
       format={plan.format}
-      status={SAVE_LABEL[saving.status]}
+      status={
+        <span className="flex items-center gap-3">
+          {SAVE_LABEL[saving.status]}
+          <PlanMemoNote plan={plan} />
+        </span>
+      }
       notice={
         <>
           {notice && (

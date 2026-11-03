@@ -101,6 +101,7 @@ function harness(send) {
       useSheetZoom: () => ({ percent: 100, tools: null }),
     },
     "./AnnualThemeSheet": es((p) => jsx("sheet", p)),
+    "./PlanMemo": { PlanMemoNote: () => null },
     "./PlayMonthlyConfirm": es((p) => jsx("dialog", p)),
   });
   const render = () => {

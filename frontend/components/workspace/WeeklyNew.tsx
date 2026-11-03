@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ApiError } from "@/lib/api/client";
+import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
 import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
 import { createWeeklyPlan, listWeeklyPlans } from "@/lib/api/weekly";
@@ -64,6 +65,8 @@ type MonthData = { month: number; monthly: MonthlyPlan | null; plans: WeeklyPlan
 
 export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }) {
   const [problem, setProblem] = useState("");
+  const [memo, setMemo] = useState("");
+  const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const local = classes.find((c) => c.id === chosen) ?? classes[0];
@@ -184,9 +187,15 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     controller.current = ctl;
     setBusy(true);
     setProblem("");
+    setMemoProblem(null);
     try {
       const plan = await createWeeklyPlan(
-        { class_id: classId, week_id: week.week_id, activity_candidates: true },
+        {
+          class_id: classId,
+          week_id: week.week_id,
+          activity_candidates: true,
+          ...(memo.trim() ? { memo: memo.trim() } : {}),
+        },
         ctl.signal,
       );
       if (!ctl.signal.aborted) open(plan.id, week.week_id);
@@ -199,7 +208,9 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
         const found = again?.items.find((p) => p.week_id === week.week_id);
         if (found) return open(found.id, week.week_id);
       }
-      setProblem(e instanceof Error ? e.message : "주간계획안을 만들지 못했어요.");
+      const memoMessage = memoError(e);
+      if (memoMessage) setMemoProblem(memoMessage);
+      else setProblem(e instanceof Error ? e.message : "주간계획안을 만들지 못했어요.");
     }
   }
 
@@ -338,6 +349,16 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                 </dl>
               </div>
             </div>
+          )}
+
+          {!mine && (
+            <PlanMemoField
+              value={memo}
+              onChange={setMemo}
+              error={memoProblem}
+              chips={["바깥놀이 많이", "비 오는 날 대체활동", "요일별 활동 고르게"]}
+              placeholder="예) 수요일은 견학이 있어 오전 활동을 짧게"
+            />
           )}
 
           {problem && (

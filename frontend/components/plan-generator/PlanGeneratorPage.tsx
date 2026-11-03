@@ -23,6 +23,7 @@ import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
+import { memoError, PlanMemoField } from "./PlanMemo";
 
 type Format = AnnualInput["format"];
 
@@ -77,6 +78,8 @@ function AnnualGenerator({ format }: { format: Format }) {
   }, NO_ROOM);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [memo, setMemo] = useState("");
+  const [memoProblem, setMemoProblem] = useState<string | null>(null);
   // 그 반에 연간이 이미 있을 때(409) 어느 반인지. 교사가 「새로 만들기」를 고를 때만 지운다 —
   // 확정 전이라도 교사가 쓴 글이 사라지는 일이라 조용히 지우지 않는다.
   const [occupied, setOccupied] = useState<number | null>(null);
@@ -93,6 +96,7 @@ function AnnualGenerator({ format }: { format: Format }) {
     controllerRef.current = controller;
     setGenerating(true);
     setError("");
+    setMemoProblem(null);
     setOccupied(null);
     let classId: number | null = null;
     try {
@@ -102,7 +106,12 @@ function AnnualGenerator({ format }: { format: Format }) {
       classId = await syncClass(settings, primary);
       // 놀이 중심형은 form_id 를 보내지 않는다. 월별 주제형은 null = 기본 양식 (§4).
       const plan = await createAnnualPlan(
-        { class_id: classId, format, ...(format === "MONTHLY_THEME" ? { form_id: null } : {}) },
+        {
+          class_id: classId,
+          format,
+          ...(format === "MONTHLY_THEME" ? { form_id: null } : {}),
+          ...(memo.trim() ? { memo: memo.trim() } : {}),
+        },
         controller.signal,
       );
       if (controller.signal.aborted) return;
@@ -116,7 +125,9 @@ function AnnualGenerator({ format }: { format: Format }) {
       if (controller.signal.aborted) return;
       // 만들기 경로의 409 는 「이 반의 연간계획안이 이미 있습니다」 하나뿐이다.
       if (e instanceof ApiError && e.status === 409 && classId !== null) setOccupied(classId);
-      setError(e instanceof Error ? e.message : "계획안을 생성하지 못했어요.");
+      const memoMessage = memoError(e);
+      if (memoMessage) setMemoProblem(memoMessage);
+      else setError(e instanceof Error ? e.message : "계획안을 생성하지 못했어요.");
       setGenerating(false);
     }
   }
@@ -231,7 +242,17 @@ function AnnualGenerator({ format }: { format: Format }) {
             </select>
           </div>
 
-          {/* 요청 사항(메모)은 숨긴다 — 서버에 받을 칸이 없다(백엔드 요청 #1). */}
+          <PlanMemoField
+            value={memo}
+            onChange={setMemo}
+            error={memoProblem}
+            chips={
+              format === "PLAY_PROJECT"
+                ? ["자연물 놀이 많이", "실외 활동 중심", "미술 활동 포함"]
+                : ["자연물 놀이 많이", "실외 활동 중심", "미술 활동 포함", "명절·행사 반영"]
+            }
+            placeholder="예) 가을엔 자연물 놀이를 많이 넣어주세요"
+          />
 
           <button
             type="button"

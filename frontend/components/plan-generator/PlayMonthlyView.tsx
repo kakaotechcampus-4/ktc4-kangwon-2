@@ -26,6 +26,7 @@ import AnnualFrame, {
   useSheetZoom,
 } from "./AnnualFrame";
 import UnconfirmButton from "./UnconfirmButton";
+import { PlanMemoNote } from "./PlanMemo";
 
 const NOTICES = {
   SAFETY_UNPLACED: ["안전교육", "주 미배치"],
@@ -492,6 +493,7 @@ function PlayMonthlyBody({
       status={
         <span className="flex items-center gap-3">
           <span>작성 중{save.status !== "idle" && ` · ${SAVE_LABEL[save.status]}`}</span>
+          <PlanMemoNote plan={plan} />
           {plan.notices.length > 0 && (
             <button
               type="button"

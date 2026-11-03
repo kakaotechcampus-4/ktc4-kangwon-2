@@ -15,7 +15,7 @@ const json = (method: "PUT" | "POST", data: unknown, signal?: AbortSignal): Requ
 
 /** 연간 확정 뒤 그 달 초안을 만든다(201). 그 달이 이미 있으면 409, 자료가 없으면 503. */
 export const createPlayMonthly = (
-  data: { class_id: number; month: number; emphasized_row_keys: string[] },
+  data: { class_id: number; month: number; emphasized_row_keys: string[]; memo?: string },
   signal?: AbortSignal,
 ) => apiRequest<PlayMonthlyPlan>(BASE, json("POST", data, signal));
 /** 대상 달 오름차순 요약. 기존 월간은 들어 있지 않다. */

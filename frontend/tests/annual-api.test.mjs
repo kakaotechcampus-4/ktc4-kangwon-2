@@ -99,6 +99,8 @@ test("create · get return the server shape (§4)", async () => {
     "class_id",
     "format",
     "id",
+    "memo",
+    "memo_notices",
     "months",
     "safety_categories",
     "school_year",

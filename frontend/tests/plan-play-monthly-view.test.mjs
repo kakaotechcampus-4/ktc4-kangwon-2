@@ -38,6 +38,7 @@ function compile(path, modules) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (name === "react/jsx-runtime") return runtime;
+      if (name.endsWith("/PlanMemo")) return { PlanMemoNote: () => null };
       assert.ok(name in modules, "unhandled import: " + name);
       return modules[name];
     },

@@ -22,7 +22,7 @@ const cell = (id: number, itemId: string) =>
  * 그 달 월간이 확정되지 않았으면 409 `GATE_BLOCKED`, 같은 주가 이미 있으면 409 `ALREADY_EXISTS` (§4-1).
  */
 export const createWeeklyPlan = (
-  data: { class_id: number; week_id: string; activity_candidates?: boolean },
+  data: { class_id: number; week_id: string; activity_candidates?: boolean; memo?: string },
   signal?: AbortSignal,
 ) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
 export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>

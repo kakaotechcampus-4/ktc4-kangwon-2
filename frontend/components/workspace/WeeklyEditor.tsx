@@ -41,6 +41,7 @@ import AnnualFrame, {
 import { PAPER_WIDTH, type Pick } from "@/components/plan-generator/PlayMonthlySheet";
 import { useCompactShell } from "@/components/app/compact-shell";
 import WeeklySheet from "./WeeklySheet";
+import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
 
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
 
@@ -601,6 +602,7 @@ export default function WeeklyEditor({
               {month}월 월간 · {plan.parent.theme}
             </span>
           )}
+          <PlanMemoNote plan={plan} />
         </span>
       }
       notice={

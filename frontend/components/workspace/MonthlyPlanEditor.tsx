@@ -46,6 +46,7 @@ import {
 } from "@/components/plan-generator/PlayMonthlySheet";
 import { noticeSummary } from "@/components/plan-generator/PlayMonthlyView";
 import { useCompactShell } from "@/components/app/compact-shell";
+import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
 
 const REGENERATABLE = new Set(["focus", "outdoor_play", "basic_habit", "goals"]);
 const FINDINGS: Record<string, string> = {
@@ -626,6 +627,7 @@ export default function MonthlyPlanEditor({
           {plan.parent.theme && (
             <span className="text-[#8a8178]">연간 주제 · {plan.parent.theme}</span>
           )}
+          <PlanMemoNote plan={plan} />
           {blank && (
             <span role="status" title="확정을 막지 않아요" className="text-[#8a8178]">
               빈 칸 있음

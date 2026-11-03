@@ -186,6 +186,8 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
       format: p.format,
       format_version: p.format_version,
       periods: p.periods.map((period) => ({ ...period, selected: period.selected ?? [] })),
+      memo: p.memo,
+      memo_notices: p.memo_notices,
     };
   return {
     id: p.id,
@@ -199,6 +201,8 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
     safety_categories: safetyCategories,
     checked_rules: p.checked_rules,
     checks: p.checks,
+    memo: p.memo,
+    memo_notices: p.memo_notices,
   };
 };
 export const findPlan = (id: number) => {

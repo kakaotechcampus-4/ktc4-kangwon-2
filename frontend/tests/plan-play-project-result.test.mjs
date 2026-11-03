@@ -25,6 +25,7 @@ function compile(path, modules, document, requestAnimationFrame, window) {
   new Function("require", "module", "exports", "document", "requestAnimationFrame", "window", code)(
     (name) => {
       if (name === "react/jsx-runtime") return runtime;
+      if (name === "./PlanMemo") return { PlanMemoNote: () => null };
       assert.ok(name in modules, "unhandled import: " + name);
       return modules[name];
     },

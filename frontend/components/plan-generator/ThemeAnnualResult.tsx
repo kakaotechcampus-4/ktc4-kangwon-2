@@ -26,6 +26,7 @@ import AnnualFrame, {
 } from "./AnnualFrame";
 import AnnualThemeSheet, { type ThemeSlot } from "./AnnualThemeSheet";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import { PlanMemoNote } from "./PlanMemo";
 
 type Draft = { theme: string; sub_themes: string[] };
 const SAVE_LABEL = {
@@ -326,7 +327,12 @@ export default function ThemeAnnualResult({
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
       format={plan.format}
-      status={SAVE_LABEL[status]}
+      status={
+        <span className="flex items-center gap-3">
+          {SAVE_LABEL[status]}
+          <PlanMemoNote plan={plan} />
+        </span>
+      }
       notice={
         <>
           {notice && (
