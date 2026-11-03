@@ -257,6 +257,11 @@ export default function RecordsPage() {
     <WorkspacePage
       title="관찰 기록"
       description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
+      action={
+        <Link href="/records/children" className={ws.secondary}>
+          아이별 모아보기
+        </Link>
+      }
     >
       {/* 반은 이 화면 전체의 범위다 — 숫자도 목록도 적는 칸도 이 반을 본다. 적는 칸 안에
           두면 접었을 때 반을 못 바꾼다. 고치는 중에는 잠근다. */}
