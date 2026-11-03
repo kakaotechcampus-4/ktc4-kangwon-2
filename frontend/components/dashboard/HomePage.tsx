@@ -239,7 +239,7 @@ export default function HomePage() {
 
             {/* 오른쪽 줄은 교실 칠판이다. 칸 제목은 쪽지 안이 아니라 판에 분필로 쓰고,
                 쪽지는 그 밑에 붙는다 — 종이마다 머리글이 달리면 쪽지가 서류로 보인다. */}
-            <div className="chalkboard flex min-w-0 flex-col justify-between gap-10 px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0">
+            <div className="chalkboard flex min-w-0 flex-col justify-center gap-[38px] px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0">
               {todayDate && (
                 <UnseenChildren
                   roster={activeClass?.children ?? []}
