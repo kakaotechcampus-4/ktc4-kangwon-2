@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { Icon } from "./icons";
 
 /**
  * 쌤플 워드마크. 화면마다 색과 배치가 달라져 있던 것을 한 군데로 모았다.
  *
  * 「Ssample.」은 보라(`--pg-primary-deep`), 마침표 한 점만 흙빛(`--pg-peach-strong`),
- * 한글 「쌤플」은 그 아래 손글씨체로 선다. 로그인 화면만 초록으로 쓰던 것은 없앴다 —
- * 같은 서비스인데 들어가는 문에서만 다른 색이면 다른 서비스로 보인다.
+ * 한글 「쌤플」은 그 아래 손글씨체로 선다.
  *
- * 왼쪽 ✳ 마크는 브랜드의 쪽지에서 온 것이다. 앱 아이콘(`app/icon.svg`)의 「S.」를
- * 여기 쓰지 않는 것은 바로 옆 「Ssample」과 같은 글자가 두 번 나오기 때문이다.
+ * 쌤플의 표시는 **둘**이다 — 가로로 긴 이 워드마크와, 네모 칸에 들어가는 「S.」
+ * 아이콘(`app/icon.svg`, 브라우저 탭·앱 아이콘). 워드마크 왼쪽에 쓰던 ✳ 마크는 뺐다.
+ * 표시가 셋이 되면 어느 것이 쌤플인지 흐려진다 (PM 점검 2026-11-03).
+ *
+ * 어두운 사이드바 위(`tone="rail"`)에서는 글자색만 바꾸지 않고 **크림 타일**에 얹는다.
+ * 같은 보라 글자를 그대로 쓸 수 있어, 들어가는 문마다 색이 달라 보이던 문제가 없어진다.
  */
 export function Wordmark({
   href = "/",
@@ -20,7 +22,7 @@ export function Wordmark({
 }: {
   href?: string;
   label?: string;
-  /** `rail` 은 어두운 사이드바 위. 그 외에는 크림 바탕. */
+  /** `rail` 은 어두운 사이드바 위 — 크림 타일을 깔고 그 위에 쓴다. */
   tone?: "ink" | "rail";
   size?: "sm" | "md";
   className?: string;
@@ -28,28 +30,26 @@ export function Wordmark({
   const rail = tone === "rail";
   const big = size === "md";
   return (
-    <Link href={href} aria-label={label} className={`flex items-center gap-2.5 ${className ?? ""}`}>
-      <Icon
-        name="star"
-        className={`${big ? "h-[25px] w-[25px]" : "h-[21px] w-[21px]"} shrink-0 ${
-          rail ? "text-primary-tint-line" : "text-primary"
+    <Link
+      href={href}
+      aria-label={label}
+      className={`inline-flex min-w-0 flex-col ${
+        rail ? "rounded-[14px] bg-cream px-3.5 pb-2 pt-2.5" : ""
+      } ${className ?? ""}`}
+    >
+      <span
+        className={`block font-bold leading-none tracking-[-0.05em] text-primary-deep ${
+          big ? "text-[27px]" : "text-[23px]"
         }`}
-      />
-      <span className="min-w-0">
-        <span
-          className={`block font-bold tracking-[-0.05em] ${big ? "text-[27px]" : "text-[23px]"} ${
-            rail ? "text-rail-ink" : "text-primary-deep"
-          } leading-none`}
-        >
-          Ssample<span className="text-peach-strong">.</span>
-        </span>
-        <span
-          className={`block font-display font-bold leading-tight ${
-            big ? "text-[17px]" : "text-[15px]"
-          } ${rail ? "text-rail-ink-soft" : "text-ink-soft"}`}
-        >
-          쌤플
-        </span>
+      >
+        Ssample<span className="text-peach-strong">.</span>
+      </span>
+      <span
+        className={`block font-display font-bold leading-tight text-ink-soft ${
+          big ? "text-[17px]" : "text-[15px]"
+        }`}
+      >
+        쌤플
       </span>
     </Link>
   );

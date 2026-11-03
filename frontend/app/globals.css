@@ -73,6 +73,32 @@ body {
   filter: drop-shadow(0 8px 16px rgba(52, 49, 47, 0.16));
 }
 
+/* 끝이 살짝 들린 종이. 책상에 놓인 지 좀 된 쪽지는 양 끝이 뜬다.
+ *
+ * 종이를 실제로 휠 수는 없으니 두 가지로 보인 것처럼 만든다 —
+ *  - 아래 두 모서리를 **넓고 얕게** 둥글려 바닥 가운데만 책상에 닿은 것처럼 하고,
+ *  - 그림자를 가운데(옅게)와 양 끝(짙게)으로 나눠 끝이 떠 있는 것처럼 둔다.
+ * 음수 z-index 의 가짜 그림자는 쓰지 않는다 — 조상에 바탕색이 있으면 그 밑에 깔려 안 보인다. */
+.liftedPaper {
+  border-bottom-left-radius: 46% 13px;
+  border-bottom-right-radius: 46% 13px;
+  box-shadow:
+    0 3px 4px rgba(52, 49, 47, 0.07),
+    -19px 19px 17px -17px rgba(52, 49, 47, 0.45),
+    19px 19px 17px -17px rgba(52, 49, 47, 0.45);
+}
+
+/* 공책 줄. 테두리를 두르지 않고도 「여기 적는 칸」이라고 알린다.
+ * 줄 간격은 글줄 높이(20px x 1.7 = 34px)와 같아야 글자가 줄 위에 앉는다 —
+ * 글자 크기를 바꾸면 이 값도 같이 바꿔야 한다. */
+.ruledPaper {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 33px,
+    var(--pg-line) 33px 34px
+  );
+}
+
 /* 걷는 포스티.
  *
  * 몸통을 통째로 기울이면 종이가 흔들리는 것이지 걷는 것이 아니다.

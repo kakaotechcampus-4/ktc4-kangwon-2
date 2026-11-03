@@ -209,9 +209,8 @@ export default function AppSidebar() {
         >
           <Icon name="panel" className="h-[18px] w-[18px]" />
         </button>
-        {/* 워드마크 왼쪽에 쌤플 마크를 세운다. 글자 S 를 쓰면 바로 옆 Ssample 과 같은 글자가
-            두 번 나온다 — 쪽지에 쓰던 ✳ 는 글자와 겹치지 않고 작게 줄여도 안 뭉갠다. */}
-        <Wordmark tone="rail" className="hidden px-6 pt-6 pb-5 lg:flex" />
+        {/* 어두운 레일 위라 크림 타일에 얹는다 — 벽에 붙인 쪽지처럼 보인다. */}
+        <Wordmark tone="rail" className="mx-6 mb-5 mt-6 hidden self-start lg:inline-flex" />
 
         {/*
         어느 반 작업실에 들어와 있는지. 카드에 꺾쇠가 달려 있어 반 목록이 열릴 것처럼 보이는데

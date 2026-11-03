@@ -177,7 +177,9 @@ export default function HomePage() {
           교사가 매일 보는 맨 윗자리를 라벨로 채우지 않는다. */}
         <h1 className="mb-7 font-display text-[40px] font-bold leading-none text-primary-deep lg:text-[54px]">
           {head.day}
-          <span className="ml-2.5 font-body text-base font-normal text-ink-soft">{head.dow}</span>
+          <span className="ml-2.5 font-display text-[24px] font-bold text-ink-soft lg:text-[30px]">
+            {head.dow}
+          </span>
         </h1>
 
         {message && (
@@ -342,7 +344,7 @@ function Compose({
        보인다. */
     <section className="relative pt-3">
       <Tape className="left-10 -rotate-2" />
-      <div className="relative bg-paper px-5 pb-4 pt-5 shadow-pg lg:px-6">
+      <div className="liftedPaper relative bg-paper px-5 pb-5 pt-5 lg:px-6">
         <h2 className="font-display text-[26px] font-bold text-ink">지금, 한 줄</h2>
 
         {!classroom?.children.length ? (
@@ -368,7 +370,7 @@ function Compose({
                 "바깥놀이에서 아이 A가 도토리를 크기별로 줄 세웠다.\n" +
                 "친구가 와서 같이 세었고, 교사는 옆에서 지켜보았다."
               }
-              className="mt-3 block min-h-[136px] w-full resize-y border-0 bg-transparent p-0 text-[20px] font-medium leading-[1.7] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4 focus-visible:ring-offset-paper placeholder:font-normal placeholder:text-ink-soft"
+              className="ruledPaper mt-3 block min-h-[136px] w-full resize-y border-0 bg-transparent p-0 text-[20px] font-medium leading-[1.7] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4 focus-visible:ring-offset-paper placeholder:font-normal placeholder:text-ink-hint"
             />
             {dictation.error && (
               <p
