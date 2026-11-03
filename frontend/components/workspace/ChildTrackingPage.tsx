@@ -101,7 +101,7 @@ export default function ChildTrackingPage() {
       <header className={styles.header}>
         <TrackingHeaderArt className={styles.headerArt} />
         <div>
-          <h1>아이별 모아보기</h1>
+          <h1>아이들 전부 보기</h1>
           <p>아이마다 쌓인 관찰을 살펴보고, 다음에 눈여겨볼 순간을 찾아보세요.</p>
         </div>
       </header>
