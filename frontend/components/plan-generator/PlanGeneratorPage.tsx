@@ -5,7 +5,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createAnnualPlan, deleteAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
+import {
+  createAnnualPlan,
+  deleteAnnualPlan,
+  listAnnualPlans,
+  testResetAnnualPlan,
+  TEST_RESET_ENABLED,
+} from "@/lib/api/plans";
 import { syncClass } from "@/lib/api/onboarding";
 import { ApiError } from "@/lib/api/client";
 import type { AnnualInput } from "@/lib/api/types";
@@ -129,7 +135,8 @@ function AnnualGenerator({ format }: { format: Format }) {
       const { items } = await listAnnualPlans(classId);
       const existing = items[0];
       if (!existing) throw new Error("지울 계획안을 찾지 못했어요. 새로고침 후 다시 해주세요.");
-      await deleteAnnualPlan(existing.id);
+      // 시험 모드면 확정본 · 딸린 월간 · 주간까지 지운다(서버 test-reset). 아니면 서버가 그것들을 막는다.
+      await (TEST_RESET_ENABLED ? testResetAnnualPlan : deleteAnnualPlan)(existing.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "지우지 못했어요.");
       return;

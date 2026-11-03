@@ -29,6 +29,8 @@ import {
   unconfirmPlan,
   listAnnualAudit,
   safetyCategories,
+  removePlan,
+  resetPlan,
 } from "./data/annual-plans";
 import {
   confirmPlayMonthly,
@@ -435,6 +437,25 @@ export const handlers = [
     const plan = findPlan(Number(params.id));
     return plan ? HttpResponse.json(plan) : annualMissing();
   }),
+  http.delete("*/api/plans/annual/:id", ({ params }) => {
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    const blocked = removePlan(id);
+    if (blocked === "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
+    if (blocked === "IN_USE")
+      return failure(
+        "GATE_BLOCKED",
+        "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.",
+      );
+    return new HttpResponse(null, { status: 204 });
+  }),
+  // 시험용 — 서버처럼 꺼져 있으면 없는 경로(404)다. 켜기: .env.local NEXT_PUBLIC_ALLOW_TEST_RESET=1
+  http.delete("*/api/plans/annual/:id/test-reset", ({ params }) =>
+    process.env.NEXT_PUBLIC_ALLOW_TEST_RESET === "1" && resetPlan(Number(params.id))
+      ? new HttpResponse(null, { status: 204 })
+      : annualMissing(),
+  ),
   http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
