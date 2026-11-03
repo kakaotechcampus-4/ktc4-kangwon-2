@@ -563,11 +563,6 @@ export default function PlayProjectResult({
               </button>
             </div>
           ))}
-        {periodPicks.length === MAX_PICKS && (
-          <p role="status" className="m-0 text-[13px] text-[#5c5243]">
-            5개를 모두 골랐어요. 바꾸려면 하나를 빼 주세요.
-          </p>
-        )}
       </div>
     );
   }
