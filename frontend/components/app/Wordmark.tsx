@@ -24,11 +24,13 @@ export function Wordmark({
   label?: string;
   /** `rail` 은 어두운 사이드바 위 — 크림 타일을 깔고 그 위에 쓴다. */
   tone?: "ink" | "rail";
-  size?: "sm" | "md";
+  /** `xs` 는 상단 띠처럼 한 줄밖에 없는 자리. 한글 「쌤플」을 접고 영문만 쓴다. */
+  size?: "xs" | "sm" | "md";
   className?: string;
 }) {
   const rail = tone === "rail";
   const big = size === "md";
+  const tiny = size === "xs";
   return (
     <Link
       href={href}
@@ -39,18 +41,20 @@ export function Wordmark({
     >
       <span
         className={`block font-bold leading-none tracking-[-0.05em] text-primary-deep ${
-          big ? "text-[27px]" : "text-[23px]"
+          big ? "text-[27px]" : tiny ? "text-[16px]" : "text-[23px]"
         }`}
       >
         Ssample<span className="text-peach-strong">.</span>
       </span>
-      <span
-        className={`block font-display font-bold leading-tight text-ink-soft ${
-          big ? "text-[17px]" : "text-[15px]"
-        }`}
-      >
-        쌤플
-      </span>
+      {!tiny && (
+        <span
+          className={`block font-display font-bold leading-tight text-ink-soft ${
+            big ? "text-[17px]" : "text-[15px]"
+          }`}
+        >
+          쌤플
+        </span>
+      )}
     </Link>
   );
 }

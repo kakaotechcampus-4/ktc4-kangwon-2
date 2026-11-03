@@ -145,12 +145,14 @@ export default function AppSidebar() {
           aria-label="주 메뉴"
           className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-rail-line lg:py-4"
         >
+          {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
+              브라우저 탭 아이콘(`app/icon.svg`)과 같은 표시다. */}
           <Link
             href="/"
             aria-label="쌤플 홈으로"
-            className="flex h-11 w-11 items-center justify-center text-primary-tint-line"
+            className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-cream text-[19px] font-bold leading-none tracking-[-0.04em] text-primary-deep"
           >
-            <Icon name="star" className="h-5 w-5" />
+            S<span className="text-peach-strong">.</span>
           </Link>
           <button
             type="button"
