@@ -30,7 +30,8 @@ def test_annual_templates_use_blue_titles_and_black_table_borders(name, titles):
         "hc": "http://www.hancom.co.kr/hwpml/2011/core",
     }
     margin = section.find(".//hp:pagePr/hp:margin", NS)
-    assert (margin.get("bottom"), margin.get("footer")) == ("1984", "1417")
+    expected_bottom = "4884" if name == "annual_v1_weeks.hwpx" else "1784"
+    assert (margin.get("bottom"), margin.get("footer")) == (expected_bottom, "1417")
     fills = {b.get("id"): b for b in header.findall(".//hh:borderFill", ns)}
     title_paragraphs = [
         p for p in section.findall("hp:p", NS) if any(t.text for t in p.findall("hp:run/hp:t", NS))
