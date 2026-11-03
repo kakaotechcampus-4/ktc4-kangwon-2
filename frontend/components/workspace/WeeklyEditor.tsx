@@ -282,7 +282,20 @@ export default function WeeklyEditor({
   const addIndoor = (candidateId: string | null) =>
     afterSaves(
       "indoor",
-      (cur) => addWeeklyIndoorPlay(cur.id, candidateId, cur.revision),
+      async (cur) => {
+        const next = await addWeeklyIndoorPlay(cur.id, candidateId, cur.revision);
+        // 직접 쓸 빈 줄은 「AI 후보」 목록에 안 보인다 — 바로 「칸 편집」에서 그 줄을 쓰게 한다.
+        if (!candidateId) {
+          const ids = (p: WeeklyPlan) =>
+            p.sections.find((x) => x.section_key === "indoor_play")?.cells ?? [];
+          const added = ids(next).find((c) => !ids(cur).some((o) => o.item_id === c.item_id));
+          if (added) {
+            setSelected(added.item_id);
+            setTab("edit");
+          }
+        }
+        return next;
+      },
       candidateId ? "이번 주 놀이에 넣었어요." : "직접 쓸 놀이 칸을 더했어요.",
     );
   const orderIndoor = (ids: string[]) =>
@@ -319,12 +332,6 @@ export default function WeeklyEditor({
         ? "ai"
         : "edit",
     );
-  };
-  /** 목록의 한 놀이를 「칸 편집」에서 고친다. */
-  const editRow = (id: string) => {
-    setSelected(id);
-    setAsking("");
-    setTab("edit");
   };
   const editing: Pick = { selected, onSelect: select };
   const still: Pick = { selected: null };
@@ -492,7 +499,6 @@ export default function WeeklyEditor({
       disabled={locked}
       selected={selected}
       shown={shown}
-      onEdit={editRow}
       onAdd={(id) => void addIndoor(id)}
       onOrder={(ids) => void orderIndoor(ids)}
       onRemove={(id) => void removeIndoor(id)}

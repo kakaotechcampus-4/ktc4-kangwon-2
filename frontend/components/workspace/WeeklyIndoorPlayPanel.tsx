@@ -2,7 +2,7 @@
 
 /**
  * Ⓦ3 「AI 후보」 — 후보형 실내 자유놀이(ADR-054 확장). 이번 주에 넣은 놀이 목록과 종류별 후보.
- * 넣기 · 순서 · 빼기는 서버가 한다. 놀이 글은 「칸 편집」에서 고친다(`onEdit`).
+ * 넣기 · 순서 · 빼기는 서버가 한다. 놀이 글은 문서 칸을 눌러 「칸 편집」에서 고친다.
  */
 
 import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
@@ -16,7 +16,6 @@ export default function WeeklyIndoorPlayPanel({
   disabled,
   selected = null,
   shown = (cell) => cell.value,
-  onEdit,
   onAdd,
   onOrder,
   onRemove,
@@ -26,7 +25,6 @@ export default function WeeklyIndoorPlayPanel({
   selected?: string | null;
   /** 칸의 지금 글 — 저장 전 입력 포함. */
   shown?: (cell: WeeklyCell) => string;
-  onEdit: (itemId: string) => void;
   onAdd: (candidateId: string | null) => void;
   onOrder: (itemIds: string[]) => void;
   onRemove: (itemId: string) => void;
@@ -36,35 +34,28 @@ export default function WeeklyIndoorPlayPanel({
   const candidates = (plan.activity_candidates ?? []).filter(
     (c) => c.section_key === "indoor_play",
   );
+  // 빈 줄(직접 쓸 칸)은 「칸 편집」에서 쓴다 — 여기에는 글이 있는 줄만.
+  const filled = rows.filter((c) => shown(c).trim());
   const move = (index: number, delta: number) => {
     const ids = rows.map((c) => c.item_id);
-    [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
+    const a = ids.indexOf(filled[index].item_id);
+    const b = ids.indexOf(filled[index + delta].item_id);
+    [ids[a], ids[b]] = [ids[b], ids[a]];
     onOrder(ids);
   };
   return (
     <section aria-label="실내 자유놀이" className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="m-0 text-[15px] font-bold">이번 주에 넣은 놀이</h2>
-        <p className="m-0 text-[13px] text-[#5c5243]">넣은 순서대로 문서에 들어가요.</p>
-      </div>
-      <ol className="m-0 flex list-none flex-col gap-2 p-0">
-        {rows.map((c, i) => (
+      {filled.length > 0 && <h2 className="m-0 text-[15px] font-bold">이번 주에 넣은 놀이</h2>}
+      <ol className="m-0 flex list-none flex-col gap-2 p-0 empty:hidden">
+        {filled.map((c, i) => (
           <li
             key={c.item_id}
             className={`${CARD} ${c.item_id === selected ? PICKED : "border-[#e8e2d8]"}`}
           >
-            <button
-              type="button"
-              aria-label={`${i + 1}번 놀이 고치기`}
-              className="min-w-0 flex-1 whitespace-pre-line text-left text-[14px]"
-              disabled={disabled}
-              onClick={() => onEdit(c.item_id)}
-            >
-              {shown(c).trim() || <span className="text-[#8a8178]">눌러서 직접 쓰기</span>}
-            </button>
+            <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">{shown(c).trim()}</div>
             <div className="flex shrink-0 gap-1">
               {/* 한 줄뿐이면 순서 화살표는 할 일이 없다. */}
-              {rows.length > 1 && (
+              {filled.length > 1 && (
                 <>
                   <button
                     type="button"
@@ -79,7 +70,7 @@ export default function WeeklyIndoorPlayPanel({
                     type="button"
                     aria-label={`${i + 1}번 놀이 아래로`}
                     className={BUTTON.quiet}
-                    disabled={disabled || i === rows.length - 1}
+                    disabled={disabled || i === filled.length - 1}
                     onClick={() => move(i, 1)}
                   >
                     ↓
@@ -90,7 +81,7 @@ export default function WeeklyIndoorPlayPanel({
                 type="button"
                 aria-label={`${i + 1}번 놀이 빼기`}
                 className={BUTTON.quiet}
-                disabled={disabled || (rows.length === 1 && !shown(c).trim())}
+                disabled={disabled}
                 onClick={() => onRemove(c.item_id)}
               >
                 빼기
@@ -126,7 +117,7 @@ export default function WeeklyIndoorPlayPanel({
             <li key={c.cell.item_id} className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}>
               <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
                 <strong className="block">
-                  [{c.activity_type}] {c.name}
+                  [{c.activity_type}] - {c.name}
                 </strong>
                 {text || "(빈 후보)"}
               </div>

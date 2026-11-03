@@ -321,7 +321,6 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   const props = {
     plan,
     disabled: false,
-    onEdit: (id) => calls.push(["edit", id]),
     onAdd: (id) => calls.push(id),
     onOrder: (ids) => calls.push(ids),
     onRemove: (id) => calls.push(id),
@@ -357,8 +356,7 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   byLabel("이번 주 놀이에 넣기: 가게 놀이").props.onClick();
   byLabel("1번 놀이 아래로").props.onClick();
   byLabel("1번 놀이 빼기").props.onClick();
-  byLabel("2번 놀이 고치기").props.onClick();
-  assert.deepEqual(calls, ["candidate", ["two", "one"], "one", ["edit", "two"]]);
+  assert.deepEqual(calls, ["candidate", ["two", "one"], "one"]);
   assert.ok(
     all(Panel({ ...props, disabled: true }))
       .filter((n) => n.type === "button")
