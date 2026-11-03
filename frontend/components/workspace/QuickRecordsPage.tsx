@@ -94,7 +94,9 @@ export default function QuickRecordsPage() {
         key: weekKey,
         observations: observations.status === "fulfilled" ? observations.value : [],
         routines: routineRows.status === "fulfilled" ? routineRows.value : [],
-        error: failed.length ? `${failed.join("과 ")}을 불러오지 못했어요. 새로고침해주세요.` : "",
+        error: failed.length
+          ? `${failed.join("과 ")}을 불러오지 못했습니다. 새로 고쳐 주세요.`
+          : "",
         failedAll: failed.length === 2,
       });
     });
@@ -124,10 +126,7 @@ export default function QuickRecordsPage() {
   // 같이 보이면 기록이 사라진 것으로 읽힌다. 한쪽만 실패했으면 다른 쪽은 그대로 그린다.
   if (error || week?.failedAll) {
     return (
-      <WorkspacePage
-        title="주간 기록"
-        description="한 주를 펼쳐 놓고, 어느 날이 비었는지 확인하세요."
-      >
+      <WorkspacePage title="주간 기록" description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다.">
         <Message error>{error || week?.error}</Message>
       </WorkspacePage>
     );
@@ -136,14 +135,14 @@ export default function QuickRecordsPage() {
   return (
     <WorkspacePage
       title="주간 기록"
-      description="한 주를 펼쳐 놓고, 어느 날이 비었는지 확인하세요."
+      description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다."
       action={
         <Link
           href="/"
           className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-line bg-primary px-4 text-xs font-semibold text-white shadow-pg-card hover:bg-primary-hover"
         >
           <Icon name="plus" className="h-4 w-4" />
-          기록 남기기
+          기록 적기
         </Link>
       }
     >
@@ -151,7 +150,7 @@ export default function QuickRecordsPage() {
 
       <section className="rounded-sm border border-line bg-paper p-5 shadow-pg-card">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-[26px] font-bold">우리 반 기록</h2>
+          <h2 className="font-display text-[26px] font-bold">이번 주</h2>
           <div className="flex items-center gap-3 text-xs text-ink-soft">
             <button
               type="button"
@@ -242,14 +241,14 @@ export default function QuickRecordsPage() {
               <span className="text-xs text-ink-soft">{ROUTINES_UNMAPPED}</span>
             )}
             <Link href="/records" className="text-xs font-semibold text-primary">
-              전체 기록 →
+              전체 기록 보기 →
             </Link>
           </div>
         </div>
 
         {weekKey && !week ? null : dayCount === 0 ? (
           <p className="rounded-sm border border-line bg-paper p-10 text-center text-xs text-ink-soft shadow-pg-card">
-            이 날은 남긴 기록이 없어요.
+            이 날 적은 기록이 없습니다.
           </p>
         ) : (
           <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -274,7 +273,9 @@ export default function QuickRecordsPage() {
                 {row.execution ? (
                   <p className="mt-3 text-[15px] leading-relaxed text-ink">{row.execution}</p>
                 ) : (
-                  <p className="mt-3 text-[15px] text-ink-soft">활동실행을 아직 적지 않았어요.</p>
+                  <p className="mt-3 text-[15px] text-ink-soft">
+                    실제로 한 것을 아직 적지 않았습니다.
+                  </p>
                 )}
                 <div className="mt-4 border-t border-line pt-3">
                   <span className="rounded bg-sage-tint px-2 py-1 text-[13px] text-sage-ink">

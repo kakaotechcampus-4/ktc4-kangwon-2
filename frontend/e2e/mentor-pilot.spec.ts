@@ -315,8 +315,10 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     await row.getByLabel(`${label} 시`, { exact: true }).selectOption(hour);
     await row.getByLabel(`${label} 분`, { exact: true }).selectOption("00");
   }
-  await row.getByLabel("활동계획").fill("자연물과 블록을 제공한다.");
-  await row.getByLabel("활동실행").fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
+  await row.getByLabel("하려던 것").fill("자연물과 블록을 제공한다.");
+  await row
+    .getByLabel("실제로 한 것")
+    .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
   await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   await page
     .getByRole("group", { name: "문서에 사용할 일과" })

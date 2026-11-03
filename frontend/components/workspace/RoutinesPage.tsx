@@ -776,7 +776,11 @@ export default function RoutinesPage() {
               (!dateOk || needClass) && <ListEmpty dateOk={dateOk} unknownClass={unknownClass} />
             }
           >
-            <div className={ws.list} aria-label="일과 목록">
+            <p className={ws.routineLead}>
+              시간과 일과 이름을 적고, 하려던 것과 실제로 한 것을 나눠 적습니다. 실제로 한 것이 일일
+              보육일지의 근거가 됩니다.
+            </p>
+            <div className={ws.routineSheet} aria-label="일과 목록">
               {rows.map((row, index) => (
                 <RowCard
                   key={row.key}
@@ -806,7 +810,7 @@ export default function RoutinesPage() {
               {/* 줄 수·작성 수를 세어 주던 안내는 없앴다. 교사가 화면을 보면 아는 숫자다.
                   `doneCount` 는 「오늘 일지 만들기」를 열고 닫는 조건으로 그대로 쓴다. */}
               {!doneCount && (
-                <p className={ws.hint}>활동실행을 적으면 오늘 일지를 만들 수 있어요.</p>
+                <p className={ws.hint}>실제로 한 것을 적으면 오늘 일지를 만들 수 있습니다.</p>
               )}
               <div className={ws.actions}>
                 <button
@@ -907,7 +911,7 @@ function RowCard({
   };
   return (
     <article
-      className={`${ws.item} ${ws.routineCard} ${dragFrom === index ? ws.dragging : ""} ${
+      className={`${ws.routineRow} ${dragFrom === index ? ws.dragging : ""} ${
         dragFrom !== null && dragFrom !== index && insertion
           ? insertion === "before"
             ? ws.insertBefore
@@ -937,32 +941,6 @@ function RowCard({
         onGrab(null);
       }}
     >
-      <div className={ws.nameTab}>
-        <input
-          id={nameFieldId(row.key)}
-          aria-label="일과 이름 (필수)"
-          required
-          maxLength={NAME_MAX}
-          placeholder="오전 실내놀이"
-          disabled={busy}
-          // 요약에서 이 칸으로 보낼 수 있어야 하고, 읽어 주는 도구도 오류를 알아야 한다.
-          aria-invalid={error ? true : undefined}
-          aria-errormessage={error ? `${nameFieldId(row.key)}-error` : undefined}
-          value={row.name}
-          onChange={(e) => set("name")(e.target.value)}
-        />
-        {/* placeholder 는 글자를 넣는 순간 사라져서 필수 표시로 못 쓴다. 읽어 주는 도구에는
-            input 의 aria-label 이 이미 「필수」를 담고 있어 여기는 숨긴다.
-
-            **아직 손대지 않은 줄에는 달지 않는다.** 빈 줄 다섯에 「필수」가 다섯 개 붙으면
-            다섯 줄을 다 채워야 하는 양식처럼 보였다. 통째로 빈 줄은 저장하지 않으므로
-            한 칸이라도 적은 줄에만 이름을 달라고 한다. */}
-        {filled(row) && (
-          <span aria-hidden="true" className={ws.nameRequired}>
-            필수
-          </span>
-        )}
-      </div>
       <div className={`${ws.routineGrid} ${ws.routineHead}`}>
         <div className={ws.routineStart}>
           <span
@@ -1007,6 +985,32 @@ function RowCard({
           >
             ↓
           </button>
+          <div className={ws.rowName}>
+            <input
+              id={nameFieldId(row.key)}
+              aria-label="일과 이름 (필수)"
+              required
+              maxLength={NAME_MAX}
+              placeholder="오전 실내놀이"
+              disabled={busy}
+              // 요약에서 이 칸으로 보낼 수 있어야 하고, 읽어 주는 도구도 오류를 알아야 한다.
+              aria-invalid={error ? true : undefined}
+              aria-errormessage={error ? `${nameFieldId(row.key)}-error` : undefined}
+              value={row.name}
+              onChange={(e) => set("name")(e.target.value)}
+            />
+            {/* placeholder 는 글자를 넣는 순간 사라져서 필수 표시로 못 쓴다. 읽어 주는 도구에는
+                input 의 aria-label 이 이미 「필수」를 담고 있어 여기는 숨긴다.
+
+                **아직 손대지 않은 줄에는 달지 않는다.** 빈 줄 다섯에 「필수」가 다섯 개 붙으면
+                다섯 줄을 다 채워야 하는 양식처럼 보였다. 통째로 빈 줄은 저장하지 않으므로
+                한 칸이라도 적은 줄에만 이름을 달라고 한다. */}
+            {filled(row) && (
+              <span aria-hidden="true" className={ws.nameRequired}>
+                필수
+              </span>
+            )}
+          </div>
           <RoutineTimePicker
             label="시작"
             disabled={busy}
@@ -1017,40 +1021,38 @@ function RowCard({
         <RoutineTimePicker label="종료" disabled={busy} value={row.end} onChange={set("end")} />
       </div>
       <div className={`${ws.routineGrid} ${ws.routineBody}`}>
-        <label className={ws.field}>
-          활동계획
-          <small>계획한 활동 내용을 간단히 적어주세요.</small>
-          <textarea
-            disabled={busy}
-            value={row.plan}
-            onChange={(e) => set("plan")(e.target.value)}
-          />
-        </label>
-        <label className={ws.field}>
-          활동실행
-          <small>있었던 일을 그대로 적어주세요. 일일 보육일지의 근거가 돼요.</small>
-          <textarea
-            disabled={busy}
-            value={row.execution}
-            onChange={(e) => set("execution")(e.target.value)}
-          />
-        </label>
+        <textarea
+          aria-label="하려던 것"
+          placeholder="하려던 것"
+          disabled={busy}
+          value={row.plan}
+          onChange={(e) => set("plan")(e.target.value)}
+        />
+        <textarea
+          aria-label="실제로 한 것"
+          placeholder="실제로 한 것"
+          disabled={busy}
+          value={row.execution}
+          onChange={(e) => set("execution")(e.target.value)}
+        />
       </div>
       <Message error id={`${nameFieldId(row.key)}-error`}>
         {error}
       </Message>
-      <div className={ws.actions}>
+      <div className={ws.rowTools}>
+        {dirty && (
+          <button
+            type="button"
+            className={ws.rowTool}
+            disabled={busy}
+            onClick={() => onRevert(row.key)}
+          >
+            되돌리기
+          </button>
+        )}
         <button
           type="button"
-          className={ws.secondary}
-          disabled={busy || !dirty}
-          onClick={() => onRevert(row.key)}
-        >
-          되돌리기
-        </button>
-        <button
-          type="button"
-          className={ws.secondary}
+          className={ws.rowTool}
           disabled={busy}
           onClick={() => onRemove(row.key)}
         >

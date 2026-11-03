@@ -12,8 +12,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { AXES, DEFAULT_AXIS, type ObservationAxis } from "@/lib/workspace/observation-axis";
 import type { ApiChildTracking, ApiClass, ApiObservation } from "@/lib/api/types";
 import { Icon } from "@/components/app/icons";
-import { CareDayDecor, CareNotebookArt, ObservationArt } from "./DocumentArchiveArt";
-import { DomainIllustration, FlowerMeadow } from "./ChildTrackingArt";
+import { ObservationArt } from "./DocumentArchiveArt";
 import { Message } from "./WorkspaceUI";
 import styles from "./ChildTracking.module.css";
 
@@ -24,17 +23,6 @@ interface ClassData {
 }
 
 const FAILED = "기록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
-
-/** 영역 이름은 기존 관찰 기준 상수를 따르고 색과 그림만 여기서 정한다. */
-const DOMAIN_STYLE: Record<string, string> = {
-  "신체운동·건강": "body",
-  의사소통: "talk",
-  사회관계: "social",
-  예술경험: "art",
-  자연탐구: "nature",
-  놀이활동: "play",
-  일상생활: "life",
-};
 
 /** 관찰 기록 화면이 이미 받는 반·아동 필터만 전달한다. 실명이나 본문은 주소에 넣지 않는다. */
 function recordsHref(classId: number | null, childId?: number) {
@@ -294,7 +282,9 @@ function ChildDetail({
           <h2>{child.name}</h2>
           <p className={styles.recordTotal}>기록 {child.total}건</p>
         </div>
-        <CareNotebookArt className={styles.summaryArt} />
+        <Link href={writeHref} className={styles.action}>
+          전체 기록에서 보기 →
+        </Link>
       </div>
       <DomainCounts
         counts={child.by_domain}
@@ -335,10 +325,7 @@ function DomainCounts({
     <section className={styles.domainSection} aria-label="영역별 기록 수">
       <div className={styles.sectionHead}>
         <div className={styles.sectionTitleRow}>
-          <h3>
-            <CareDayDecor variant={3} className={styles.sectionLeaf} />
-            영역별 기록 수
-          </h3>
+          <h3>영역별 기록 수</h3>
           <div className={styles.axisSwitch} role="group" aria-label="관찰 영역 보기 기준">
             <button
               type="button"
@@ -356,57 +343,38 @@ function DomainCounts({
             </button>
           </div>
         </div>
-        <p>기록 수는 관찰한 횟수예요. 발달 수준을 뜻하지 않아요.</p>
+        <p>관찰한 횟수입니다. 발달 수준을 뜻하지 않습니다.</p>
       </div>
-      <div className={styles.domainGrid} data-axis={axis} aria-label="영역별 기록 수">
-        {domains.map((domain, index) => {
-          const tone = DOMAIN_STYLE[domain] ?? "etc";
+      <ul className={styles.domainRow} data-axis={axis}>
+        {domains.map((domain) => {
           // tracking 조회가 성공해 전체 0건임을 알 때만 누락 키를 0으로 보충한다.
-          // 기록이 있는 아동의 누락 키는 숫자를 추정하지 않고 카드 안에서 안내한다.
+          // 기록이 있는 아동의 누락 키는 숫자를 추정하지 않고 「—」 로 둔다.
           const count: number | undefined = counts[domain] ?? (total === 0 ? 0 : undefined);
           return (
-            <div className={styles.domainCard} data-tone={tone} key={domain}>
-              <span className={styles.domainArt} aria-hidden="true">
-                <DomainIllustration tone={tone} />
-              </span>
-              <div className={styles.domainText}>
-                <p>{domain}</p>
-                <strong>
-                  {count ?? "—"}
-                  {count !== undefined && <span>건</span>}
-                </strong>
-                <small>
-                  {count === undefined
-                    ? playLife
-                      ? "기록 정보 없음"
-                      : "집계 정보 없음"
-                    : count
-                      ? "적은 기록 있음"
-                      : "아직 기록 없음"}
-                </small>
-              </div>
-              {playLife ? (
-                <FlowerMeadow className={styles.playLifeDecor} />
-              ) : (
-                <CareDayDecor variant={index} className={styles.domainDecor} />
-              )}
-            </div>
+            <li key={domain} data-empty={count ? undefined : true}>
+              <span>{domain}</span>
+              <b>{count ?? "—"}</b>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </section>
   );
 }
 
-/** 월별 묶음과 서버의 최신순을 그대로 유지한다. */
+/**
+ * 날짜별 기록. 관찰 기록 화면과 같은 영수증 종이 한 장이다 —
+ * 줄마다 테두리를 두르면 목록이 아니라 카드 더미가 된다.
+ * 월 제목은 묶음을 알려주고, 서버가 준 최신순은 다시 매기지 않는다.
+ */
 function Timeline({ records, writeHref }: { records: ApiObservation[]; writeHref: string }) {
   if (!records.length) {
     return (
-      <TrackingState title="아직 남긴 기록이 없어요">
-        <p>아이의 말과 행동을 한 줄씩 남겨보세요. 작은 순간들이 관찰로 쌓여요.</p>
+      <TrackingState title="아직 적은 기록이 없어요">
+        <p>아이의 말과 행동을 한 줄씩 적어 둡니다.</p>
         <Link href={writeHref} className={styles.action}>
           <Icon name="edit" />
-          관찰 기록 남기기 →
+          기록 적으러 가기 →
         </Link>
       </TrackingState>
     );
@@ -418,38 +386,29 @@ function Timeline({ records, writeHref }: { records: ApiObservation[]; writeHref
   return (
     <section className={styles.timeline}>
       <div className={styles.timelineHead}>
-        <div>
-          <h3>날짜별 기록</h3>
-        </div>
-        <span className={styles.timelineCount}>{records.length}건</span>
+        <h3>날짜별 기록</h3>
+        <span className={styles.timelineCount}>기록 {records.length}건</span>
       </div>
-      {[...months].map(([month, items]) => (
-        <section className={styles.month} key={month} aria-label={`${month} 기록`}>
-          <h4>
-            {month.slice(0, 4)}년 {Number(month.slice(5))}월 <span>{items.length}건</span>
-          </h4>
-          <ol className={styles.entries}>
+      <div aria-hidden="true" className="slipEdge top" />
+      <div className={styles.slip}>
+        {[...months].map(([month, items]) => (
+          <section key={month} aria-label={`${month} 기록`}>
+            <h4 className={styles.monthLine}>
+              {month.slice(0, 4)}년 {Number(month.slice(5))}월 <span>{items.length}건</span>
+            </h4>
             {items.map((record) => (
-              <li key={record.id}>
-                <article className={styles.recordCard}>
-                  <div className={styles.recordHead}>
-                    <time dateTime={record.date}>{shortDate(record.date)}</time>
-                    <span className={styles.domainTag}>{record.domain}</span>
-                  </div>
-                  {record.context && <p className={styles.context}>{record.context}</p>}
-                  <p className={styles.fact}>{record.fact}</p>
-                  <Link
-                    href={recordsHref(record.class_id, record.child_id)}
-                    className={styles.recordLink}
-                  >
-                    전체 기록에서 보기 <Icon name="arrow" />
-                  </Link>
-                </article>
-              </li>
+              <article className={styles.slipLine} key={record.id}>
+                <time dateTime={record.date}>{shortDate(record.date)}</time>
+                <div>
+                  <span className={styles.domainTag}>{record.domain}</span>
+                  <p>{record.fact}</p>
+                </div>
+              </article>
             ))}
-          </ol>
-        </section>
-      ))}
+          </section>
+        ))}
+      </div>
+      <div aria-hidden="true" className="slipEdge bottom" />
     </section>
   );
 }
@@ -472,8 +431,6 @@ function TrackingState({
       <ObservationArt className={styles.emptyArt} />
       <h3>{title}</h3>
       {children}
-      <FlowerMeadow className={`${styles.emptyDecor} ${styles.decorLeft}`} />
-      <FlowerMeadow className={`${styles.emptyDecor} ${styles.decorRight}`} />
     </div>
   );
 }

@@ -2423,7 +2423,7 @@ test("기록 모아보기 — 일과 기록만 실패하면 관찰 기록은 그
   await view.flush();
   const text = view.text();
   assert.ok(text.includes("도토리를 바구니에 담았다."), text);
-  assert.ok(text.includes("일과 기록을 불러오지 못했어요"), text);
+  assert.ok(text.includes("일과 기록을 불러오지 못했습니다"), text);
 });
 
 /**
@@ -3108,5 +3108,5 @@ test("기록 모아보기 — 활동실행이 빈 일과는 계획을 실행처�
   await view.flush();
   const text = view.text();
   assert.equal(text.includes("자동차 굴리기"), false, text);
-  assert.ok(text.includes("활동실행을 아직 적지 않았어요."), text);
+  assert.ok(text.includes("실제로 한 것을 아직 적지 않았습니다."), text);
 });
