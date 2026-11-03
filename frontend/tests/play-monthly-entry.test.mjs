@@ -37,6 +37,7 @@ const {
   firstExtras,
   sameColumns,
   profileInput,
+  existingAfterConflict,
 } = load("../components/workspace/MonthlyNew.tsx", {
   react: React,
   "next/link": {
@@ -204,4 +205,29 @@ test("월별 주제형 칸 고르기: 기반 양식 · 처음 켤 칸 · 같은 
   assert.match(out, /어떤 칸을 넣을까요\?/);
   assert.equal((out.match(/type="checkbox"[^>]*checked=""/g) ?? []).length, 1);
   assert.doesNotMatch(out, />drill</);
+});
+
+test("409 뒤 다시 읽기: 그 달 id, 없거나 목록 실패면 null, 기다리는 사이 취소 · 새 요청이면 null", async () => {
+  const list = async () => ({ items: [{ id: 77, month: 11 }] });
+  assert.equal(await existingAfterConflict(list, 11, () => false), 77);
+  assert.equal(await existingAfterConflict(list, 12, () => false), null);
+  assert.equal(
+    await existingAfterConflict(
+      () => Promise.reject(new Error("x")),
+      11,
+      () => false,
+    ),
+    null,
+  );
+  // 목록이 늦게 오는 동안 사용자가 취소하거나 다른 달로 새로 만들면 옛 요청은 옮기지 않는다.
+  let release;
+  let stale = false;
+  const late = existingAfterConflict(
+    () => new Promise((done) => (release = () => done({ items: [{ id: 77, month: 11 }] }))),
+    11,
+    () => stale,
+  );
+  stale = true;
+  release();
+  assert.equal(await late, null);
 });

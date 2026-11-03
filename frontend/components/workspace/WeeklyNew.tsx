@@ -359,6 +359,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
               error={memoProblem}
               chips={["바깥놀이 많이", "비 오는 날 대체활동", "요일별 활동 고르게"]}
               placeholder="예) 수요일은 견학이 있어 오전 활동을 짧게"
+              note="주제 · 안전교육은 월간에서 가져와요. 나머지 칸은 참고자료 안에서 반영해요."
             />
           )}
 

@@ -341,8 +341,9 @@ export function MonthlyNewView(props: {
               value={props.memo ?? ""}
               onChange={props.onMemo}
               error={props.memoProblem}
-              chips={["바깥놀이 많이", "비 오는 날 대체활동", "행사 반영"]}
+              chips={["바깥놀이 많이", "비 오는 날 대체활동", "행사 반영", "재난안전교육 3번"]}
               placeholder="예) 셋째 주는 비 소식이 있어 실내 활동을 넉넉히"
+              note="안전교육은 「재난안전교육 3번」 · 「2주차에 교통안전」처럼 적으면 법정 기준 안에서 넣어요."
             />
           )}
 
@@ -423,6 +424,20 @@ async function loadColumns(
     current,
     pointer: pointer.profile_ref,
   };
+}
+
+/**
+ * 만들기가 409(그 달이 이미 있음)면 목록을 다시 읽어 그 달 계획안 id 를 찾는다.
+ * 기다리는 사이 취소했거나 새 요청이 시작됐으면(`stale`) null — 옛 요청이 화면을 옮기지 않는다.
+ */
+export async function existingAfterConflict(
+  list: () => Promise<{ items: { id: number; month: number }[] }>,
+  month: number,
+  stale: () => boolean,
+): Promise<number | null> {
+  const again = await list().catch(() => null);
+  if (stale()) return null;
+  return again?.items.find((p) => p.month === month)?.id ?? null;
 }
 
 /** 고른 반의 연간 · 월간 목록 · 양식을 읽어 Ⓜ1 을 띄운다. 월별 주제형 초안은 `onOpen` 으로 연다. */
@@ -558,20 +573,24 @@ export default function MonthlyNew({
         if (!ctl.signal.aborted) onOpen({ id: plan.id, classId, month });
       }
     } catch (e) {
-      if (ctl.signal.aborted) return;
-      setBusy(false);
-      // 그 달이 이미 있으면(409) 목록을 다시 읽어 그 초안으로 간다.
+      // 취소했거나 새 요청이 시작됐으면 이 요청은 화면을 바꾸지 않는다(새 요청의 busy 도 풀지 않는다).
+      const stale = () => ctl.signal.aborted || controller.current !== ctl;
+      if (stale()) return;
+      // 그 달이 이미 있으면(409) 목록을 다시 읽어 그 초안으로 간다 — 읽는 동안 화면은 잠근 채로 둔다.
       if (e instanceof ApiError && e.status === 409) {
-        const again = await (play ? listPlayMonthly(classId) : listMonthlyPlans(classId)).catch(
-          () => null,
+        const found = await existingAfterConflict(
+          () => (play ? listPlayMonthly(classId) : listMonthlyPlans(classId)),
+          month,
+          stale,
         );
-        const found = again?.items.find((p) => p.month === month);
-        if (found) {
-          if (play) router.push(`/plans/monthly/play/${found.id}`);
-          else onOpen({ id: found.id, classId, month });
+        if (stale()) return;
+        if (found !== null) {
+          if (play) router.push(`/plans/monthly/play/${found}`);
+          else onOpen({ id: found, classId, month });
           return;
         }
       }
+      setBusy(false);
       const memoMessage = memoError(e);
       if (memoMessage) setMemoProblem(memoMessage);
       else setProblem(e instanceof Error ? e.message : "월간계획안을 만들지 못했어요.");

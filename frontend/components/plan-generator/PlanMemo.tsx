@@ -31,6 +31,8 @@ export function PlanMemoField(props: {
   chips: string[];
   placeholder: string;
   error?: string | null;
+  /** 칸 아래 안내. 화면마다 반영하는 범위가 달라 바꿔 쓸 수 있다. */
+  note?: string;
 }) {
   const { value, onChange } = props;
   const add = (chip: string) => {
@@ -75,8 +77,8 @@ export function PlanMemoField(props: {
         ))}
       </div>
       <p className="m-0 text-[13px] text-[#8a8178]">
-        주제 · 안전교육 배치처럼 정해진 칸은 바뀌지 않아요. 반영하지 못한 요청은 결과에서 알려
-        드려요.
+        {props.note ?? "정해진 양식 · 참고자료 · 안전 기준 안에서 반영해요."} 반영하지 못한 요청은
+        결과에서 알려 드려요.
       </p>
     </div>
   );
