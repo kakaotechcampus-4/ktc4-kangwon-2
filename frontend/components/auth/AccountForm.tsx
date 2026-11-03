@@ -9,7 +9,9 @@ import {
   verifyDevAccount,
   isDevLogin,
   loginDestination,
+  completeAccountOnboarding,
 } from "@/lib/auth/local-account";
+import { restoreFromServer } from "@/lib/api/onboarding";
 import { startDemoSession } from "@/lib/auth/demo-session";
 import AuthFrame from "./AuthFrame";
 
@@ -65,10 +67,12 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
           throw new Error("가입은 됐어요. 로그인 화면에서 다시 로그인해주세요.");
         router.replace(loginDestination());
       } else {
+        let centerId: number | null = null;
         if (devLogin) await verifyDevAccount(email, password);
-        else await verifyAccount(email, password);
+        else centerId = await verifyAccount(email, password);
         if (!startDemoSession())
           throw new Error("로그인 정보를 저장할 수 없어요. 브라우저 설정을 확인해주세요.");
+        if (centerId !== null) await restoreRoom(centerId);
         router.replace(loginDestination());
       }
     } catch (e) {
@@ -181,4 +185,15 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
       </p>
     </AuthFrame>
   );
+}
+
+/**
+ * 다른 기기 · 브라우저에서 로그인한 교사의 원 · 반을 서버에서 채운다 (#291).
+ * 반까지 들어오면 첫 설정을 끝낸 것으로 적어 메인으로 간다. 실패해도 로그인은 이어 간다 —
+ * 그때는 예전처럼 첫 설정으로 가고, 1단계의 409 복구가 원을 다시 잇는다.
+ */
+async function restoreRoom(centerId: number) {
+  try {
+    if (await restoreFromServer(centerId)) completeAccountOnboarding();
+  } catch {}
 }

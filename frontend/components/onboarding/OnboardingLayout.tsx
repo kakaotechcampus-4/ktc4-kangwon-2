@@ -37,6 +37,15 @@ export default function OnboardingLayout({
           </span>
           <span className="ml-3 font-display text-xl text-ink">쌤플</span>
         </Link>
+        {/* 첫 설정에서 빠져나갈 길. 전에는 주소창에 /logout 을 쳐야 했다 (#291) */}
+        {signedIn && (
+          <Link
+            href="/logout"
+            className="flex min-h-11 items-center px-2 text-[13px] text-ink-soft hover:text-ink"
+          >
+            로그아웃
+          </Link>
+        )}
       </header>
 
       <main className="mx-auto max-w-[820px] py-6 sm:py-12">
