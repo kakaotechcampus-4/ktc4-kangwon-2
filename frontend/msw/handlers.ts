@@ -76,6 +76,7 @@ import {
   removeWeekly,
   unconfirmWeekly,
   changeWeeklyActivity,
+  changeWeeklyIndoor,
 } from "./data/weekly-plans";
 import {
   addReadyProfile,
@@ -159,7 +160,63 @@ async function weeklyActivity(
   }
 }
 
+async function weeklyIndoor(
+  request: Request,
+  id: number,
+  operation: "add" | "order" | "remove",
+  itemId?: string,
+) {
+  const plan = myWeekly(id);
+  if (!plan) return weeklyMissing();
+  const b: Record<string, unknown> | null =
+    operation === "remove"
+      ? { expected_revision: Number(new URL(request.url).searchParams.get("expected_revision")) }
+      : await body(request);
+  if (!b || !integer(b.expected_revision) || Number(b.expected_revision) < 1)
+    return bad("expected_revision");
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 바꿀 수 없습니다.");
+  if (plan.revision !== b.expected_revision) return stale();
+  if (!plan.indoor_play_selection) return bad("value");
+  if (operation === "add" && b.candidate_item_id != null && typeof b.candidate_item_id !== "string")
+    return bad("candidate_item_id");
+  if (
+    operation === "order" &&
+    (!Array.isArray(b.item_ids) || !b.item_ids.every((id) => typeof id === "string"))
+  )
+    return bad("item_ids");
+  if (
+    operation === "remove" &&
+    !plan.sections
+      .find((s) => s.section_key === "indoor_play")
+      ?.cells.some((c) => c.item_id === itemId)
+  )
+    return failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+  try {
+    return HttpResponse.json(
+      weeklyOut(
+        changeWeeklyIndoor(id, operation, {
+          candidateId: typeof b.candidate_item_id === "string" ? b.candidate_item_id : null,
+          itemIds: operation === "order" ? (b.item_ids as string[]) : undefined,
+          itemId,
+        }),
+      ),
+    );
+  } catch {
+    return bad("value");
+  }
+}
+
 export const handlers = [
+  http.post("*/api/plans/weekly/:id/indoor-plays", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "add"),
+  ),
+  http.put("*/api/plans/weekly/:id/indoor-plays/order", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "order"),
+  ),
+  http.delete("*/api/plans/weekly/:id/indoor-plays/:itemId", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "remove", String(params.itemId)),
+  ),
   http.post("*/api/plans/weekly/:id/cells/:itemId/copy-activity", ({ request, params }) =>
     weeklyActivity(request, Number(params.id), String(params.itemId), "copy"),
   ),
@@ -963,7 +1020,16 @@ export const handlers = [
     if (request.signal.aborted) return HttpResponse.error();
     const saturday = !!findCenterSettings(klass.center_id).weekly_saturday_enabled;
     return HttpResponse.json(
-      weeklyOut(addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true)),
+      weeklyOut(
+        addWeekly(
+          klass,
+          monthly,
+          b.week_id,
+          saturday,
+          b.activity_candidates === true || b.indoor_play_candidates === true,
+          b.indoor_play_candidates === true,
+        ),
+      ),
       { status: 201 },
     );
   }),
@@ -1013,6 +1079,7 @@ export const handlers = [
       return failure("VALIDATION_FAILED", "교사가 적는 칸이라 다시 만들 수 없습니다.", "item_id");
     if (
       !WEEKLY_REGENERATABLE.includes(w.section.section_key) ||
+      (w.plan.indoor_play_selection && w.section.section_key === "indoor_play") ||
       (w.plan.activity_grids?.length && w.section.section_key === "group_activity")
     )
       return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");

@@ -51,6 +51,9 @@
   align-items: center;
   margin: 20px 0;
 }
+.indoor button {
+  min-height: 44px;
+}
 .target select {
   min-width: 0;
   max-width: 80%;

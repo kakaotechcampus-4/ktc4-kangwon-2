@@ -49,6 +49,7 @@ from ssuksak.planning.application.weekly_lifecycle import (  # 공개 창구에 
     UnconfirmWeeklyPlan,
     UnconfirmWeeklyPlanCommand,
 )
+from ssuksak.planning.domain.identifiers import ItemId
 from ssuksak.planning.domain.provenance import SplitAxis
 from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
 
@@ -92,8 +93,10 @@ from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut
 from app.features.plans.weekly_schemas import (
+    AddWeeklyIndoorPlayIn,
     CopyWeeklyActivityIn,
     CreateWeeklyPlan,
+    OrderWeeklyIndoorPlayIn,
     ParentSnapshotOut,
     SplitWeeklyActivityIn,
     WeeklyActivityCandidateOut,
@@ -251,12 +254,13 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
                 week_id=week,
                 operating_days=weekly_operating_days(saturday),
                 template_ref=WEEKLY_DAY_TEMPLATE_REF
-                if body.activity_candidates
+                if body.activity_candidates or body.indoor_play_candidates
                 else WEEKLY_TEMPLATE_REF,
                 safety_rule=SAFETY_RULE,
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
-                activity_candidates=body.activity_candidates,
+                activity_candidates=body.activity_candidates or body.indoor_play_candidates,
+                indoor_play_candidates=body.indoor_play_candidates,
             )
         ).plan
     except MonthlyApplicationError as error:
@@ -474,6 +478,7 @@ def _detail(
         confirmed_at=row.confirmed_at,
         activity_candidates=[
             WeeklyActivityCandidateOut(
+                section_key=c.cell.section_key,
                 activity_type=c.activity_type,
                 name=c.name,
                 description=c.description,
@@ -482,6 +487,7 @@ def _detail(
             for c in plan.activity_candidates
         ],
         activity_grids=[_activity_grid(g) for g in plan.activity_grids],
+        indoor_play_selection=plan.indoor_play_selection,
     )
 
 
@@ -652,6 +658,61 @@ def copy_weekly_activity(
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
+@router.post("/{plan_id}/indoor-plays", response_model=WeeklyPlanOut)
+def add_weekly_indoor_play(
+    plan_id: int, body: AddWeeklyIndoorPlayIn, session: DbSession, user: CurrentUser
+):
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        candidate = None if body.candidate_item_id is None else ItemId(body.candidate_item_id)
+        changed = weekly_activities(
+            **_repos(plan, parent), id_generator=UuidGenerator()
+        ).add_indoor(plan.plan_id, candidate, _actor(user))
+    except InvalidDomainValueError as error:
+        raise _VALUE_INVALID from error
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.put("/{plan_id}/indoor-plays/order", response_model=WeeklyPlanOut)
+def order_weekly_indoor_plays(
+    plan_id: int, body: OrderWeeklyIndoorPlayIn, session: DbSession, user: CurrentUser
+):
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = weekly_activities(
+            **_repos(plan, parent), id_generator=UuidGenerator()
+        ).order_indoor(plan.plan_id, tuple(ItemId(value) for value in body.item_ids), _actor(user))
+    except InvalidDomainValueError as error:
+        raise _VALUE_INVALID from error
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.delete("/{plan_id}/indoor-plays/{item_id}", response_model=WeeklyPlanOut)
+def remove_weekly_indoor_play(
+    plan_id: int,
+    item_id: str,
+    session: DbSession,
+    user: CurrentUser,
+    expected_revision: Annotated[int, Query(ge=1)],
+):
+    plan, parent = _read_draft(session, user, plan_id, expected_revision)
+    try:
+        changed = weekly_activities(
+            **_repos(plan, parent), id_generator=UuidGenerator()
+        ).remove_indoor(plan.plan_id, _item_id(item_id), _actor(user))
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, expected_revision)
+
+
 @router.post("/{plan_id}/cells/{item_id}/split", response_model=WeeklyPlanOut)
 def split_weekly_activity(
     plan_id: int, item_id: str, body: SplitWeeklyActivityIn, session: DbSession, user: CurrentUser
@@ -695,6 +756,10 @@ def regenerate_weekly_cell(
     """그 칸만 다시 만든다. LLM 을 기다리는 동안 transaction 이 없다 — 그 사이 누가
     고쳤으면 결과를 버리고 409 다."""
     plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    if plan.indoor_play_selection:
+        target = plan.find_cell(_item_id(item_id))
+        if target is not None and target.section_key == "indoor_play":
+            raise _CELL_NOT_REGENERATABLE
     try:
         provider = _weekly_provider()
     except LlmUnavailable as error:
@@ -834,4 +899,11 @@ def _audit_event(event, cell, week: WeekId | None) -> WeeklyAuditEventOut:
                 after=_generation(event.generation_change.after),
             )
         ),
+        arrangement_change=None
+        if event.arrangement_change is None
+        else {
+            "scope": event.arrangement_change.scope,
+            "before": list(event.arrangement_change.before),
+            "after": list(event.arrangement_change.after),
+        },
     )

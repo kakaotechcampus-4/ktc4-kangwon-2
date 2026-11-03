@@ -10,6 +10,7 @@
 """
 
 import io
+import re
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -332,7 +333,14 @@ def export_weekly_plan(
         (s for s in plan.sections if s.visible and s.role == "CONTENT"), key=lambda s: s.order
     )
     rows = [
-        [section.label or section.section_key, "\n".join(c.value for c in section.cells if c.value)]
+        [
+            section.label or section.section_key,
+            "\n".join(
+                _indoor_play_text(c.value) if section.section_key == "indoor_play" else c.value
+                for c in section.cells
+                if c.value
+            ),
+        ]
         for section in sections
     ]
     period = plan.week_period
@@ -390,6 +398,15 @@ WEEKLY_DAY_LABELS = {
 }
 
 
+def _indoor_play_text(value: str) -> str:
+    """기존 영역 표기만 정리한다. 교사 입력에 없는 분류는 추측해 붙이지 않는다."""
+    return re.sub(
+        r"(?m)^([ \t]*\[[^\]\r\n]+\])[ \t]*[-–—:]?[ \t]*(?=[^ \t\r\n–—:\-])",
+        r"\1 - ",
+        value,
+    )
+
+
 def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) -> bytes:
     """요일 양식 계획안을 고정 양식에 채운다. 양식에 자리가 없는 Section 이 오면 멈춘다."""
     days = plan.operating_days
@@ -406,7 +423,14 @@ def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) 
                 labels[(head, col)] = WEEKLY_DAY_NAMES[day.value]
                 texts[(head + 1, col)] = plan.cell(key, day).value
         elif key in WEEKLY_DAY_CELLS:
-            texts[WEEKLY_DAY_CELLS[key]] = plan.cell(key).value
+            value = (
+                "\n".join(c.value for c in plan.cells if c.section_key == key and c.value.strip())
+                if key == "indoor_play" and plan.indoor_play_selection
+                else plan.cell(key).value
+            )
+            texts[WEEKLY_DAY_CELLS[key]] = (
+                _indoor_play_text(value) if key == "indoor_play" else value
+            )
         else:
             raise TemplateMismatch(f"주간 요일 양식에 {key} 줄이 없다.")
     return _fill_form(

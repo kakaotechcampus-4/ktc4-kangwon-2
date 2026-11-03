@@ -2393,7 +2393,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 
 - 주간 칸에는 주가 따로 없다 — **칸 이벤트의 `week_id` 는 그 계획안의 주**다. 계획안 단위(`PLAN`)는 `null`.
 - **`day`** — 요일 칸 이벤트면 그 요일, 그 밖은 `null`. 「대·소집단 활동 · 화」처럼 보이게 하는 용도다.
-- 기본 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. 후보형 추가 이벤트/필드는 위 ADR-054 절을 따른다. `arrangement_change` 는 늘 `null` 이다. 읽기만 한다.
+- 기본 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. 후보형 추가 이벤트/필드는 ADR-054 절을 따른다. 실내놀이 목록을 추가·삭제·정렬한 `ARRANGEMENT_CHANGED`만 `arrangement_change: {scope: "indoor_play", before: string[], after: string[]}`를 반환하고 그 밖에는 `null`이다. 읽기만 한다.
 
 ### 내보내기 — `GET /api/plans/weekly/{id}/export/hwp`
 
@@ -2441,6 +2441,24 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 **Core 오류 코드를 그대로 내보내지 않는다**(CLAUDE.md §20). 위 표의 `code` 가 공개 계약이다.
 
 ---
+
+### 실내 자유놀이 후보 · 주 전체 목록 (ADR-054 확장, 로컬 구현·교차 리뷰 대상)
+
+- 생성 요청에 `indoor_play_candidates: boolean = false`를 더한다. true면 기존 활동 후보 방식과 v0.2.0 양식을 함께 사용한다. 기존 요청/저장 계획은 그대로다.
+- 상세 응답에 `indoor_play_selection: boolean`(구판 false)을 더한다. 후보는 기존 `activity_candidates[]`에 담고 각 후보에 `section_key: "group_activity" | "indoor_play"`를 더한다. 기존 후보는 group_activity다. `name`은 짧은 활동명, `description`은 기존 v2처럼 대상과 탐색이 보이는 합니다체 설명이다.
+- 후보형 실내놀이는 `sections[section_key=indoor_play].cells[]`에 주 전체의 활동을 순서대로 저장한다(day는 null). 한 항목씩 편집하며 후보를 놓기 전/마지막 항목을 지운 뒤에는 빈칸 하나를 유지한다. HWPX는 이 목록을 한 넓은 칸 안의 문단으로 출력하고 후보 목록은 내보내지 않는다.
+
+```text
+POST   /api/plans/weekly/{id}/indoor-plays
+       {expected_revision, candidate_item_id: string | null}
+       null은 직접 쓸 빈 항목 추가. 같은 빈 항목/이미 놓인 같은 후보는 200, 저장·revision 그대로.
+PUT    /api/plans/weekly/{id}/indoor-plays/order
+       {expected_revision, item_ids: string[]}
+       현재 실내놀이 칸 ID 전체의 순열이어야 한다. 순서가 같으면 200, 저장·revision 그대로.
+DELETE /api/plans/weekly/{id}/indoor-plays/{item_id}?expected_revision=N
+```
+
+세 경로는 기존 소유권·확정 게이트·revision 검사 및 상세 응답을 재사용한다. 구판/잘못된 후보/잘못된 순서는 422, 없는 칸은 404, revision 충돌은 409다. 후보 복사는 `CANDIDATE_COPIED`, 추가·삭제·순서 변경은 `ARRANGEMENT_CHANGED(scope="indoor_play")`로 남긴다. 지운 칸도 이력에 남는다. 후보와 선택한 실내놀이 항목은 교사 편집만 제공하고 AI 칸 재생성은 422다. 자료와 근거 선택은 서버/Core에서 처리하며 화면이 후보를 꾸며 내거나 provenance를 대신 만들지 않는다.
 
 ## 9-7. 놀이 중심 월간계획안 — `/api/plans/monthly/play`   (제안 — 하민 리뷰)
 

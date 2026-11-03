@@ -51,7 +51,7 @@ WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v2"
 # ADR-051: a request with a repeat_by DAY target appends this to every version it uses, so
 # a v0.1.0 request keeps its prompt, schema and fingerprint unchanged.
 DAY_CELLS_SUFFIX = "+day-cells-v1"
-REFERENCE_WIRING_SUFFIX = "+monthly-linked-v2"
+REFERENCE_WIRING_SUFFIX = "+monthly-linked-v5"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
@@ -64,12 +64,22 @@ LINKED_OUTDOOR_INSTRUCTION = (
     "reference_id를 null로 두고 실제로 쓴 allowed_grounding_refs만 인용한다. "
     "parent_groundable이 true이고 부모 현재 값을 그대로 이어 쓸 때만 grounding_refs를 비울 수 있다. "
     "부모와 다른 문장을 쓰면 허용된 바깥놀이 기관 근거를 반드시 인용한다. "
+    "기관 근거를 인용해 새로 쓰는 바깥놀이는 '활동명: 설명'으로 쓰고, "
+    "설명은 그 근거의 대상과 경험을 이번 주에 어떻게 살펴보거나 경험할지 합니다체 한 문장으로 풀어 쓴다. "
+    "Catalog label 또는 부모 현재 값을 그대로 이어 쓰는 경우에는 이 설명을 덧붙이지 않는다. "
 )
 LINKED_WRITING_GUIDANCE = (
     " 해당 주 부모 focus → 같은 주 놀이 → 실내대체 순서로 작성한다. 고르기 쉬운 놀이에 맞추려고 focus를 바꾸지 않는다. "
     "목표는 v1 월간처럼 중심 경험을 간결하게 묶되 이번 주의 범위로 좁힌다. "
-    "놀이 이름은 기존 v1 월간처럼 대상과 경험이 보이는 짧은 활동명으로 쓴다. "
+    "놀이 이름은 기존 v1 월간처럼 대상과 경험이 보이는 짧고 익숙한 명사형으로 쓰며, 원 근거의 자연스러운 표현을 우선한다. "
+    "뜻을 줄이려고 명사를 겹쳐 붙이거나 설명 말투인 '해요/해 봅니다'를 이름에 붙이지 않는다. "
     "실내놀이·대소집단 설명은 v2 놀이 설명과 같은 합니다체로, 유아가 탐색할 대상과 경험을 자연스럽게 쓴다. "
+    "후보 설명은 합니다체 1~2문장으로 쓰며 해요체·한다체를 섞지 않는다. 재료를 나열하거나 발달 효과를 단정하지 않는다. "
+    "근거가 짧은 활동명뿐이면 그 대상과 활동의 뜻을 풀어 쓴다. "
+    "설명을 구체화하려고 근거에 없는 새 재료·실험 비교 조건·진행 순서·정해진 결과물을 덧붙이지 않는다. "
+    "실내놀이는 활동마다 줄을 나눠 '[역할놀이] - 활동명: 짧은 설명'처럼 쓴다. "
+    "대괄호에는 근거 본문이나 함께 제공한 원문 영역 이름에서 확인되는 놀이 영역만 쓰고, "
+    "영역을 확인할 수 없으면 임의 분류를 붙이지 않는다. 같은 항목의 설명은 간결하게 이어 쓴다. "
     "실내대체는 같은 주 바깥놀이를 실내에서 이어 간다. 허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. "
     "parent의 다른 주 focus도 참고해 이번 주와 다른 주의 경험을 구분하며, 진행 순서나 완성품을 강제하지 않는다. "
     "daily_life_context는 승인된 생활 문장의 표현 참고다. 부모의 현재 습관을 다른 문장으로 교체하지 않고, "
@@ -320,7 +330,9 @@ def build_weekly_request(
             " activity_type가 있는 target은 교사가 고를 한 주 활동 후보이며 요일에 배치하지 않는다. "
             "각 후보는 Rule이 정한 그 유형과 허용 근거로 짧은 활동명: 설명을 쓴다. 유형 이름은 value에 붙이지 않는다. "
             "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
-            "후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
+            "같은 Section의 후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
+            "indoor_play.candidate로 시작하는 target도 같은 형식의 실내 자유놀이 후보다. "
+            "후보의 activity_type은 표시할 때 Rule이 붙이므로 value에는 영역 태그를 중복해서 쓰지 않는다. "
         )
     return WeeklyPlanningRequest(
         prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + linked + suffix,
@@ -594,7 +606,7 @@ def validate_weekly(
 ) -> tuple[WeeklyIssue, ...]:
     issues: list[WeeklyIssue] = []
     seen: set[str] = set()
-    candidate_names: set[str] = set()
+    candidate_names: set[tuple[str, str]] = set()
     for v in values:
         key = v.section_key
         if key in seen:
@@ -618,9 +630,10 @@ def validate_weekly(
             if target.activity_type is not None:
                 name, separator, description = v.value.partition(":")
                 normalized = normalize_visible_text(name)
-                if v.unresolved or not separator or not name.strip() or not description.strip() or normalized in candidate_names:
+                candidate_name = (key.partition(".")[0], normalized)
+                if v.unresolved or not separator or not name.strip() or not description.strip() or candidate_name in candidate_names:
                     issues.append(WeeklyIssue(WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID, key))
-                candidate_names.add(normalized)
+                candidate_names.add(candidate_name)
             continue
         written = {normalize_visible_text(text) for text in request.other_day_values if text.strip()}
         for day, day_value in v.days:

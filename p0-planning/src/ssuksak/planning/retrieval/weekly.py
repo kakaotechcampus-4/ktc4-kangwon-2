@@ -42,6 +42,23 @@ def activity_type(record) -> str:
     return "·".join(matched) if matched else "기타"
 
 
+def indoor_play_type(record) -> str:
+    """Use explicit source areas only; do not infer a play area from an activity."""
+    areas = {
+        "역할": "역할놀이", "쌓기": "쌓기놀이", "언어": "언어놀이",
+        "수조작": "수·조작놀이", "수·조작": "수·조작놀이", "수ㆍ조작": "수·조작놀이",
+        "미술": "미술놀이", "음률": "음률놀이", "과학": "과학놀이", "신체": "신체놀이",
+    }
+    for text in (record.source_label, record.text):
+        compact = re.sub(r"\s+", "", text)
+        tag = re.match(r"^[\[<【(]([^\]>】)]+)[\]>】)]", compact)
+        label = tag.group(1) if tag else compact if text == record.source_label else ""
+        label = re.sub(r"(?:놀이|영역)$", "", label)
+        if label in areas:
+            return areas[label]
+    return "기타"
+
+
 def weekly_section_evidence(
     store: InstitutionEvidenceStore,
     classification: WeeklyEvidenceClassification,
@@ -82,7 +99,8 @@ def weekly_section_evidence(
             seen.add(title)
             if re.match(r"^\s*[【\[<][^】\]>]*$", item.record.text):
                 continue  # an incomplete extracted tag is not an activity title
-            groups.setdefault(activity_type(item.record), []).append(item)
+            kind = indoor_play_type(item.record) if weekly_class is WeeklySemanticClass.INDOOR_PLAY else activity_type(item.record)
+            groups.setdefault(kind, []).append(item)
         ordered = []
         while any(groups.values()):
             for group in groups.values():
