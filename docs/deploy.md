@@ -127,6 +127,11 @@ Actions → Deploy → Run workflow → ref 에 브랜치 이름 (예: develop) 
 나쁜 배포가 나가면 **직전 커밋 SHA 로 다시 배포한다.** 같은 길이다 — 롤백 전용 길을
 따로 두지 않는다. 평소에 안 쓰는 길은 정작 급할 때 안 돈다.
 
+**⚠️ `docker-compose.server.yml` 이 없는 커밋으로 되감기 전에는** 서버 `.env` 의
+`COMPOSE_FILE` 줄을 지우고, 배포 디렉터리에서 `sudo docker compose config --quiet` 가
+성공하는지 확인한 뒤 workflow_dispatch 를 돌린다. 다시 켤 때는 그 파일이 들어간 배포가
+끝난 뒤 「서버 로그」의 켜는 순서를 따른다.
+
 ```
 Actions → Deploy → Run workflow → ref 에 직전 커밋 SHA → Run
 ```
@@ -254,6 +259,53 @@ cd / && rm -rf "$d"
 # cron 과 같은 조건으로 확인 — ktc-ec2-ssm-role 이 나와야 한다
 env -i PATH=/usr/bin:/bin HOME=/root aws sts get-caller-identity --query Arn --output text
 ```
+
+### 서버 로그 — 배포 뒤에도 남기려면
+
+배포마다 backend 컨테이너를 새로 만들어 json-file 로그가 사라진다(2026-10-22 확인).
+운영 서버는 journald 에 남긴다(ADR-058).
+
+**켜는 순서 (한 번만)** — 이 변경이 들어간 배포가 **끝난 뒤에** 한다.
+
+① 서버 `.env` 에 한 줄을 넣는다.
+
+```text
+COMPOSE_FILE=docker-compose.yml:docker-compose.server.yml
+```
+
+**⚠️ ① 을 배포 전에 넣지 않는다.** 서버에 아직 없는 파일을 가리켜 `docker compose` 명령이
+전부 실패한다. 밤 백업(`scripts/backup.sh` 도 `docker compose` 를 쓴다)까지 멈춘다.
+
+② backend 를 다시 만들고 ③ 로그 드라이버를 확인한다.
+
+```bash
+sudo docker compose up -d backend
+sudo docker inspect "$(sudo docker compose ps -q backend)" --format '{{.HostConfig.LogConfig.Type}}'  # journald
+```
+
+바꾸는 순간 지금 컨테이너의 json-file 로그는 마지막으로 한 번 사라진다. 남기려면 ② 전에
+`sudo docker compose logs backend --no-color > backend-before-journald.log` 로 떠 둔다.
+사용자 ID 가 들어 있으니 서버 밖으로 옮기지 않는다.
+
+**보존 30일 (한 번만).** 서버 전체 journal 에 걸린다. 용량 상한은 기본값(파일시스템 10%, 최대 4G)이다.
+파일 단위로 지워서 30일보다 조금 더 남을 수 있다.
+
+```bash
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nMaxRetentionSec=30day\n' | sudo tee /etc/systemd/journald.conf.d/ssample.conf
+sudo systemctl restart systemd-journald
+```
+
+**읽는 법:**
+
+```bash
+sudo journalctl CONTAINER_TAG=ssample-backend --since -24h -o cat --no-pager | grep unexpected_error
+bash scripts/llm-usage.sh
+```
+
+되돌리려면 ① 의 줄을 지우고 `sudo docker compose up -d backend` 를 돌린다.
+파일이 없는 커밋으로 되감을 때는 「되감을 때 (롤백)」의 경고를 먼저 본다.
+로컬에서는 켜지 않는다 — OrbStack · Docker Desktop 에는 journald 가 없다.
 
 ---
 

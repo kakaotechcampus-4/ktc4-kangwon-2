@@ -32,7 +32,9 @@ COMPLETION_WON_PER_1K=14.175  # 출력 1,000 토큰당 원  (14175 / 1000)
 
 cd "$(dirname "$0")/.."
 
-sudo docker compose logs backend --since "$SINCE" --no-color 2>/dev/null \
+# 컨테이너 로그는 배포 때 사라져 합계가 마지막 배포 뒤 것만 나왔다.
+# journal 에서 읽어 배포를 넘어 더한다(ADR-058).
+sudo journalctl CONTAINER_TAG=ssample-backend --since "-$SINCE" -o cat --no-pager 2>/dev/null \
   | grep 'llm_usage ' \
   | awk -v pw="$PROMPT_WON_PER_1K" -v cw="$COMPLETION_WON_PER_1K" '
       {
@@ -49,7 +51,7 @@ sudo docker compose logs backend --since "$SINCE" --no-color 2>/dev/null \
         n[day] += 1
       }
       END {
-        if (length(n) == 0) { print "llm_usage 줄이 없다. 아직 생성을 안 했거나 로그가 돌았다."; exit }
+        if (length(n) == 0) { print "llm_usage 줄이 없다. 아직 생성을 안 했거나 로그가 돌았거나 서버에서 journald 를 아직 안 켰다(docs/deploy.md 서버 로그)."; exit }
         printf "%-12s %6s %12s %12s %12s", "날짜", "호출", "입력", "출력", "합계"
         if (pw > 0 || cw > 0) printf " %10s", "원"
         printf "\n"
