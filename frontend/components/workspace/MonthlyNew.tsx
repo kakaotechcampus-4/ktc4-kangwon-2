@@ -349,7 +349,6 @@ export function MonthlyNewView(props: {
               error={props.memoProblem}
               chips={["바깥놀이 많이", "비 오는 날 대체활동", "행사 반영", "재난안전교육 3번"]}
               placeholder="예) 셋째 주는 비 소식이 있어 실내 활동을 넉넉히"
-              note="안전교육은 「재난안전교육 3번」 · 「2주차에 교통안전」처럼 적으면 법정 기준 안에서 넣어요."
             />
           )}
 

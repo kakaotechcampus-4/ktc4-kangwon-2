@@ -28,6 +28,10 @@ import { memoError, PlanMemoField } from "./PlanMemo";
 type Format = AnnualInput["format"];
 
 // 기관 양식 선택은 버렸다(디자인 결정) — 기본 양식만 잠근 채 보여 준다.
+/** 양식 칸 화살표 — 온보딩 Select 의 chevron 과 같은 그림. */
+const CHEVRON =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M5 9l7 7 7-7' fill='none' stroke='%236B7280' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+
 const FORMAT = {
   MONTHLY_THEME: {
     name: "월별 주제형",
@@ -210,14 +214,9 @@ function AnnualGenerator({ format }: { format: Format }) {
           </div>
 
           <div className="flex flex-col gap-3">
-            <div className="flex items-baseline justify-between">
-              <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
-                우리 반
-              </h2>
-              <Link href="/settings" className="text-sm text-[#5e4b96]">
-                반 정보 바꾸기
-              </Link>
-            </div>
+            <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
+              우리 반
+            </h2>
             <div className="grid grid-cols-3 gap-3">
               {[
                 ["반", room.className || "반 없음"],
@@ -242,7 +241,9 @@ function AnnualGenerator({ format }: { format: Format }) {
             <select
               id="form"
               disabled
-              className="min-h-[52px] rounded-xl border border-[#ddd6ca] bg-[#f7f4ee] px-4 text-base text-[#5c5243]"
+              // 기본 화살표는 칸 끝에 붙는다 — 온보딩 Select 와 같은 chevron 을 안쪽(18px)에 둔다.
+              className="min-h-[52px] appearance-none rounded-xl border border-[#ddd6ca] bg-[#f7f4ee] bg-[length:15px] bg-[right_18px_center] bg-no-repeat pl-4 pr-12 text-base text-[#5c5243]"
+              style={{ backgroundImage: CHEVRON }}
             >
               <option>{look.form}</option>
             </select>

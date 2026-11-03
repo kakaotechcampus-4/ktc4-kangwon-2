@@ -117,7 +117,7 @@ export default function PlanNotebookPage() {
 
       <section className="mt-6 flex flex-col gap-[14px] border-t border-[#e3ddd2] pt-6">
         <div className="flex items-baseline gap-3">
-          <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
+          <h2 className="m-0 font-display text-[27px] font-bold leading-tight text-ink">
             이어서 하기
           </h2>
           <span className="text-sm text-[#5c5243]">확정하지 않은 계획안이에요</span>

@@ -31,8 +31,6 @@ export function PlanMemoField(props: {
   chips: string[];
   placeholder: string;
   error?: string | null;
-  /** 칸 아래 안내. 화면마다 반영하는 범위가 달라 바꿔 쓸 수 있다. */
-  note?: string;
 }) {
   const { value, onChange } = props;
   const add = (chip: string) => {
@@ -46,7 +44,7 @@ export function PlanMemoField(props: {
           htmlFor="plan-memo"
           className="m-0 font-display text-[24px] font-bold leading-tight text-ink"
         >
-          요청 사항 <span className="font-body text-sm font-normal text-[#5c5243]">선택</span>
+          요청 사항
         </label>
         <span className="text-[13px] text-[#8a8178]">
           {value.length}/{MEMO_MAX}
@@ -79,10 +77,6 @@ export function PlanMemoField(props: {
           </button>
         ))}
       </div>
-      <p className="m-0 text-[13px] text-[#8a8178]">
-        {props.note ?? "정해진 양식 · 참고자료 · 안전 기준 안에서 반영해요."} 반영하지 못한 요청은
-        결과에서 알려 드려요.
-      </p>
     </div>
   );
 }
