@@ -371,7 +371,8 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
     expect(dbDocument(documentId!)).toEqual({ id: documentId!, status: "CONFIRMED", stale: false });
     await page.getByRole("link", { name: "우리 반", exact: true }).click();
-    await page.getByRole("link", { name: "일과 작성하기" }).click();
+    // 이미 적힌 일과가 있으면 홈의 일과 줄 자체가 고치러 가는 길이다.
+    await page.getByRole("link", { name: /^일과 —/ }).click();
     await expect(rows(page)).toHaveCount(7);
     await rows(page).nth(0).getByLabel("활동실행").fill("블록 길을 더 길게 이어 붙였다.");
     await rows(page).nth(2).getByLabel("활동실행").fill("길 위에 자동차를 올려 굴렸다.");

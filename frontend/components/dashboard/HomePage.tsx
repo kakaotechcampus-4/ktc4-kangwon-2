@@ -696,18 +696,16 @@ function TodaySlip({
           </Link>
         </div>
 
-        {/* 일과가 비면 이 줄을 아예 안 그린다 — 일과로 가는 길은 아래 일지 줄에 한 번만 둔다. */}
+        {/* 일과가 비면 이 줄을 아예 안 그린다 — 일과로 가는 길은 아래 일지 줄에 한 번만 둔다.
+            적힌 일과가 있으면 그 줄 자체가 고치러 가는 길이다. 링크 글자를 따로 달지 않는다. */}
         {names.length > 0 && (
           <>
             <hr className={DASH} />
-            <div className="flex flex-wrap items-baseline gap-3 py-3">
-              <span className="w-[52px] shrink-0 text-[13px] text-ink-soft">
-                {routineTime(routines?.[0]?.start ?? null)}
-              </span>
-              <span className="min-w-0 flex-1 text-sm text-ink">
-                {`일과 — ${names.join(" · ")}`}
-              </span>
-            </div>
+            <RoutineLine
+              href={routinesHref}
+              time={routineTime(routines?.[0]?.start ?? null)}
+              names={names}
+            />
           </>
         )}
 
@@ -763,6 +761,31 @@ function TodaySlip({
       </div>
       <div aria-hidden="true" className="slipEdge bottom" />
     </section>
+  );
+}
+
+/** 오늘 적힌 일과 한 줄. 주소가 있으면 줄 전체가 고치러 가는 길이 된다. */
+function RoutineLine({
+  href,
+  time,
+  names,
+}: {
+  href: string | null;
+  time: string;
+  names: string[];
+}) {
+  const row = "flex flex-wrap items-baseline gap-3 py-3";
+  const line = (
+    <>
+      <span className="w-[52px] shrink-0 text-[13px] text-ink-soft">{time}</span>
+      <span className="min-w-0 flex-1 text-sm text-ink">{`일과 — ${names.join(" · ")}`}</span>
+    </>
+  );
+  if (!href) return <div className={row}>{line}</div>;
+  return (
+    <Link href={href} className={`${row} hover:underline`}>
+      {line}
+    </Link>
   );
 }
 
