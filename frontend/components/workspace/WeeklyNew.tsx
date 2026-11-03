@@ -19,7 +19,7 @@ import type { MonthlyPlan, WeeklyPlanSummary } from "@/lib/api/types";
 import { isPlayAnnual } from "@/lib/monthly/play-entry";
 import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
-import { MONTH_ORDER } from "@/lib/onboarding/types";
+import { MONTH_ORDER, planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
@@ -394,8 +394,8 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
         >
           <div className="min-h-0 flex-1 overflow-y-auto">
             <WeeklySheet
-              title={`${week?.label ?? "1주"} 주간놀이계획안`}
-              sub={local?.className ?? ""}
+              title={`${month ? month + "월 " : ""}${week?.label ?? "1주"} 주간놀이계획안`}
+              sub={local ? planClassLine(local) : ""}
               start={week?.start_date ?? ""}
               end={week?.end_date ?? ""}
               days={["MON", "TUE", "WED", "THU", "FRI"]}

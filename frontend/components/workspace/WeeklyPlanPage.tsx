@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { deleteWeeklyPlan, getWeeklyPlan } from "@/lib/api/weekly";
 import { classServerId } from "@/lib/api/onboarding";
+import { planClassLine } from "@/lib/onboarding/types";
 import type { WeeklyPlan } from "@/lib/api/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { archivePlanEntry } from "@/lib/workspace/document-archive";
@@ -48,7 +49,8 @@ function WeeklyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
   // 409 로 다시 불러올 때마다 올려 편집 화면을 새로 연다.
   const [loaded, setLoaded] = useState(-1);
   const classes = useClasses(setProblem);
-  const className = classes.find((c) => classServerId(c.id) === entry.classId)?.className ?? "";
+  const klass = classes.find((c) => classServerId(c.id) === entry.classId);
+  const className = klass ? planClassLine(klass) : "";
 
   useEffect(() => {
     let alive = true;

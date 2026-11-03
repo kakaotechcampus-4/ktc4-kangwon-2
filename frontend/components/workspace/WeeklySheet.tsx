@@ -12,8 +12,6 @@ import type { WeeklyActivityGrid, WeeklyCell, WeeklyPlan } from "@/lib/api/types
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import {
   Cell,
-  HEAD,
-  LINE,
   Paper,
   TEACHER_HINT,
   period,
@@ -41,6 +39,26 @@ const BAND: Record<string, string> = {
   group_activity: "대·소집단활동",
   special_program: "특별활동 시간표",
 };
+/** 양식의 표 덩어리 — 덩어리 사이를 띄운다. 모르는 칸은 마지막 덩어리에. */
+const BLOCK: Record<string, number> = {
+  theme: 0,
+  focus: 0,
+  goals: 0,
+  indoor_play: 1,
+  group_activity: 2,
+  outdoor_play: 2,
+  indoor_alternative: 2,
+  basic_habit: 2,
+  safety_education: 2,
+  special_program: 3,
+};
+// 한글 양식(weekly_v1_mon_fri · mon_sat)의 색: 선 #BDE9FD, 이름 칸 #E1F2FE, 띠는 빗금, 요일 줄 살구색.
+const LINE = "border border-[#bde9fd]";
+const HEAD = "bg-[#e1f2fe] font-bold text-[#2b2826]";
+const DAY = "bg-[#ffe0cc] font-bold text-[#2b2826]";
+const HATCH =
+  "[background:repeating-linear-gradient(90deg,#c1f3fd_0_1px,transparent_1px_4px),#e1f2fe]";
+
 /** 양식 줄 이름이 화면 이름과 다른 칸. */
 const ROW: Record<string, string> = { goals: "이번 주 목표", indoor_alternative: "실내 대체놀이" };
 
@@ -134,16 +152,27 @@ export default function WeeklySheet({
       </div>
     );
   };
-  const rows = sheetSections(sections).flatMap((section) => {
+  const blocks: ReactNode[][] = [[], [], [], [], []];
+  blocks[0].push(
+    <tr key="period">
+      <th scope="row" className={`${LINE} ${HEAD} px-1 py-1.5`}>
+        예상 기간
+      </th>
+      <td colSpan={span} className={`${LINE} px-1.5 py-1`}>
+        {start && period([{ start_date: start, end_date: end }])}
+      </td>
+    </tr>,
+  );
+  sheetSections(sections).forEach((section) => {
     const key = section.section_key;
-    const out = [];
+    const out = blocks[BLOCK[key] ?? 4];
     if (BAND[key])
       out.push(
         <tr key={"band:" + key}>
           <th
             colSpan={span + 1}
             scope="colgroup"
-            className={`${LINE} bg-[#e6f3fc] py-1 text-[12px]`}
+            className={`${LINE} ${HATCH} py-1 text-[12px] font-bold`}
           >
             [ {BAND[key]} ]
           </th>
@@ -157,13 +186,13 @@ export default function WeeklySheet({
             요일
           </th>
           {days.map((d) => (
-            <th key={d} scope="col" className={`${LINE} ${HEAD} py-0.5`}>
+            <th key={d} scope="col" className={`${LINE} ${DAY} py-0.5`}>
               {DAY_NAMES[d] ?? d}
             </th>
           ))}
         </tr>,
         <tr key={key}>
-          <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
+          <th scope="row" className={`${LINE} ${HEAD} px-1 py-1.5`}>
             {key === "group_activity" || key === "special_program"
               ? "활동"
               : sectionName(key, section.label)}
@@ -187,7 +216,7 @@ export default function WeeklySheet({
     } else
       out.push(
         <tr key={key}>
-          <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
+          <th scope="row" className={`${LINE} ${HEAD} px-1 py-1.5`}>
             {ROW[key] ?? sectionName(key, section.label)}
           </th>
           <td
@@ -202,29 +231,22 @@ export default function WeeklySheet({
           </td>
         </tr>,
       );
-    return out;
   });
   return (
     <Paper label="주간계획안 미리보기" title={title} sub={sub} scale={scale}>
-      <table className="w-full table-fixed border-collapse">
-        <colgroup>
-          <col style={{ width: "15%" }} />
-          {days.map((d) => (
-            <col key={d} />
-          ))}
-        </colgroup>
-        <tbody>
-          <tr>
-            <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
-              예상 기간
-            </th>
-            <td colSpan={span} className={`${LINE} px-1.5 py-1`}>
-              {start && period([{ start_date: start, end_date: end }])}
-            </td>
-          </tr>
-          {rows}
-        </tbody>
-      </table>
+      {blocks
+        .filter((rows) => rows.length)
+        .map((rows, i) => (
+          <table key={i} className="mt-2.5 w-full table-fixed border-collapse">
+            <colgroup>
+              <col style={{ width: "15%" }} />
+              {days.map((d) => (
+                <col key={d} />
+              ))}
+            </colgroup>
+            <tbody>{rows}</tbody>
+          </table>
+        ))}
     </Paper>
   );
 }

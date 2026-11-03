@@ -573,7 +573,7 @@ export default function WeeklyEditor({
 
   const docOf = (at: Pick, scale?: number) => (
     <WeeklySheet
-      title={`${plan.week_period.label} 주간놀이계획안`}
+      title={`${month}월 ${plan.week_period.label} 주간놀이계획안`}
       sub={className}
       start={plan.week_period.start_date}
       end={plan.display_end_date}
