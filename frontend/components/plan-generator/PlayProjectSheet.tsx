@@ -37,6 +37,53 @@ function settle(rowKey: string) {
     ),
   );
 }
+/** 브라우저 기본 끌기 그림(가장자리가 흐려짐) 대신 쓰는 빈 그림. */
+const BLANK =
+  typeof window === "undefined"
+    ? null
+    : Object.assign(new Image(), {
+        src: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+      });
+
+/** 끄는 동안 줄 전체를 또렷하게 복사해 마우스를 따라 위아래로 옮긴다. 놓으면 지운다. */
+function lift(tr: HTMLTableRowElement, startY: number) {
+  const cells = [...tr.querySelectorAll<HTMLElement>(":scope > td")];
+  const first = cells[0].getBoundingClientRect();
+  const offset = startY - first.top;
+  const table = document.createElement("table");
+  table.className = tr.closest("table")?.className ?? "";
+  const copy = tr.cloneNode(true) as HTMLTableRowElement;
+  copy.querySelectorAll(":scope > th, [draggable]").forEach((el) => el.remove());
+  delete copy.dataset.dragging;
+  copy.querySelectorAll<HTMLElement>(":scope > td").forEach((td, i) => {
+    td.style.width = `${cells[i].getBoundingClientRect().width}px`;
+    td.style.height = `${first.height}px`;
+  });
+  table.append(copy);
+  Object.assign(table.style, {
+    position: "fixed",
+    left: `${first.left}px`,
+    top: `${first.top}px`,
+    width: `${cells.reduce((w, td) => w + td.getBoundingClientRect().width, 0)}px`,
+    background: "#fff",
+    boxShadow: "0 12px 28px rgba(60,40,100,.28)",
+    outline: "2px solid #7053a0",
+    pointerEvents: "none",
+    zIndex: "60",
+    transform: "scale(1.02)",
+  });
+  document.body.append(table);
+  const move = (event: globalThis.DragEvent) => {
+    if (event.clientY) table.style.top = `${event.clientY - offset}px`;
+  };
+  document.addEventListener("dragover", move);
+  return () => {
+    document.removeEventListener("dragover", move);
+    table.remove();
+  };
+}
+let drop: (() => void) | null = null;
+
 const CELL = "border border-black px-1.5 py-1.5 align-top whitespace-pre-line";
 
 type Props = {
@@ -163,7 +210,7 @@ export default function PlayProjectSheet({
                             return (
                               <td
                                 key={field.key}
-                                className={`${CELL} ${field.key === "play_name" && onDropPick ? "relative" : ""} ${center ? "text-center" : ""} ${field.key === "play_name" ? "font-bold" : ""} ${selected ? SELECTED : ""} ${onSelectCell ? "cursor-pointer hover:bg-[#faf7fd]" : ""}`}
+                                className={`${CELL} ${field.key === "play_name" && onDropPick ? "relative pt-[22px]" : ""} ${center ? "text-center" : ""} ${field.key === "play_name" ? "font-bold" : ""} ${selected ? SELECTED : ""} ${onSelectCell ? "cursor-pointer hover:bg-[#faf7fd]" : ""}`}
                                 // 칸 어디를 눌러도 그 칸을 고른다(글자 아래 빈 곳 포함). 글자는 버튼이라 키보드도 된다.
                                 onClick={
                                   onSelectCell
@@ -180,17 +227,21 @@ export default function PlayProjectSheet({
                                     draggable
                                     aria-hidden="true"
                                     title="끌어서 순서 바꾸기"
-                                    className="absolute left-1 top-0 z-10 -translate-y-1/2 cursor-grab rounded bg-[#7053a0] px-1 text-[11px] font-bold leading-[18px] text-white opacity-0 shadow-sm transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
+                                    className="absolute left-0 top-0 z-10 cursor-grab rounded-br-md bg-[#7053a0] px-1.5 text-[11px] font-bold leading-[18px] text-white opacity-0 transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
                                     onDragStart={(event) => {
                                       event.dataTransfer.setData("text/plain", candidate.row_key);
                                       event.dataTransfer.effectAllowed = "move";
                                       const tr = event.currentTarget.closest("tr");
                                       if (tr) {
-                                        event.dataTransfer.setDragImage(tr, 16, 16);
+                                        if (BLANK) event.dataTransfer.setDragImage(BLANK, 0, 0);
+                                        drop?.();
+                                        drop = lift(tr, event.clientY);
                                         tr.dataset.dragging = "";
                                       }
                                     }}
                                     onDragEnd={(event) => {
+                                      drop?.();
+                                      drop = null;
                                       delete event.currentTarget.closest("tr")?.dataset.dragging;
                                     }}
                                   >
