@@ -9,80 +9,9 @@ import {
   playSeason,
   type PlayField,
 } from "./playProjectPagination";
+import { dropCells, liftCells, settle } from "./rowDrag";
 
 const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
-
-/** 옮긴 줄이 새 자리에서 한 번 떠올랐다 내려앉는다. 움직임을 줄인 환경에서는 하지 않는다. */
-function settle(rowKey: string) {
-  if (
-    typeof window === "undefined" ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  )
-    return;
-  // 상태가 바뀌어 다시 그린 뒤의 줄을 잡는다.
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() =>
-      document
-        .querySelectorAll<HTMLElement>(`tr[data-row="${CSS.escape(rowKey)}"] > td`)
-        .forEach((td) =>
-          td.animate(
-            [
-              { backgroundColor: "#e9ddf7", transform: "translateY(-6px)" },
-              { backgroundColor: "#f6f1fb", transform: "translateY(0)", offset: 0.6 },
-              { backgroundColor: "transparent", transform: "translateY(0)" },
-            ],
-            { duration: 520, easing: "cubic-bezier(.2,.8,.2,1)" },
-          ),
-        ),
-    ),
-  );
-}
-/** 브라우저 기본 끌기 그림(가장자리가 흐려짐) 대신 쓰는 빈 그림. */
-const BLANK =
-  typeof window === "undefined"
-    ? null
-    : Object.assign(new Image(), {
-        src: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-      });
-
-/** 끄는 동안 줄 전체를 또렷하게 복사해 마우스를 따라 위아래로 옮긴다. 놓으면 지운다. */
-function lift(tr: HTMLTableRowElement, startY: number) {
-  const cells = [...tr.querySelectorAll<HTMLElement>(":scope > td")];
-  const first = cells[0].getBoundingClientRect();
-  const offset = startY - first.top;
-  const table = document.createElement("table");
-  table.className = tr.closest("table")?.className ?? "";
-  const copy = tr.cloneNode(true) as HTMLTableRowElement;
-  copy.querySelectorAll(":scope > th, [draggable]").forEach((el) => el.remove());
-  delete copy.dataset.dragging;
-  copy.querySelectorAll<HTMLElement>(":scope > td").forEach((td, i) => {
-    td.style.width = `${cells[i].getBoundingClientRect().width}px`;
-    td.style.height = `${first.height}px`;
-  });
-  table.append(copy);
-  Object.assign(table.style, {
-    position: "fixed",
-    left: `${first.left}px`,
-    top: `${first.top}px`,
-    width: `${cells.reduce((w, td) => w + td.getBoundingClientRect().width, 0)}px`,
-    background: "#fff",
-    boxShadow: "0 12px 28px rgba(60,40,100,.28)",
-    outline: "2px solid #7053a0",
-    pointerEvents: "none",
-    zIndex: "60",
-    transform: "scale(1.02)",
-  });
-  document.body.append(table);
-  const move = (event: globalThis.DragEvent) => {
-    if (event.clientY) table.style.top = `${event.clientY - offset}px`;
-  };
-  document.addEventListener("dragover", move);
-  return () => {
-    document.removeEventListener("dragover", move);
-    table.remove();
-  };
-}
-let drop: (() => void) | null = null;
 
 const CELL = "border border-black px-1.5 py-1.5 align-top whitespace-pre-line";
 
@@ -160,7 +89,7 @@ export default function PlayProjectSheet({
                         key={row.key}
                         data-row={row.candidate?.row_key}
                         // 끄는 줄은 흐리게, 놓을 줄은 보라 바탕 — 색은 천천히 바뀐다.
-                        className="group [&>td]:transition-[background-color,opacity] [&>td]:duration-200 [&[data-dragging]>td]:opacity-40 [&[data-drop]>td]:bg-[#efe7f8]"
+                        className="group [&>td]:transition-[background-color,opacity] [&>td]:duration-200 [&>td[data-dragging]]:opacity-40 [&[data-drop]>td]:bg-[#efe7f8]"
                         {...(onDropPick &&
                           row.candidate && {
                             // 끌어놓을 줄 강조는 data-drop 으로만 — 상태를 두지 않는다.
@@ -174,10 +103,12 @@ export default function PlayProjectSheet({
                             onDrop: (event: DragEvent<HTMLElement>) => {
                               event.preventDefault();
                               delete event.currentTarget.dataset.drop;
+                              dropCells();
                               const dragged = event.dataTransfer.getData("text/plain");
                               if (!dragged) return;
                               onDropPick(dragged, row.candidate!.row_key);
-                              if (dragged !== row.candidate!.row_key) settle(dragged);
+                              if (dragged !== row.candidate!.row_key)
+                                settle(`tr[data-row="${CSS.escape(dragged)}"] > td`);
                             },
                           })}
                       >
@@ -229,21 +160,15 @@ export default function PlayProjectSheet({
                                     title="끌어서 순서 바꾸기"
                                     className="absolute left-0 top-0 z-10 cursor-grab rounded-br-md bg-[#7053a0] px-1.5 text-[11px] font-bold leading-[18px] text-white opacity-0 transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
                                     onDragStart={(event) => {
-                                      event.dataTransfer.setData("text/plain", candidate.row_key);
-                                      event.dataTransfer.effectAllowed = "move";
                                       const tr = event.currentTarget.closest("tr");
-                                      if (tr) {
-                                        if (BLANK) event.dataTransfer.setDragImage(BLANK, 0, 0);
-                                        drop?.();
-                                        drop = lift(tr, event.clientY);
-                                        tr.dataset.dragging = "";
-                                      }
+                                      if (tr)
+                                        liftCells(
+                                          event,
+                                          [...tr.querySelectorAll<HTMLElement>(":scope > td")],
+                                          candidate.row_key,
+                                        );
                                     }}
-                                    onDragEnd={(event) => {
-                                      drop?.();
-                                      drop = null;
-                                      delete event.currentTarget.closest("tr")?.dataset.dragging;
-                                    }}
+                                    onDragEnd={dropCells}
                                   >
                                     ⠿{" "}
                                     {(picks[period.period_key] ?? []).indexOf(candidate.row_key) +

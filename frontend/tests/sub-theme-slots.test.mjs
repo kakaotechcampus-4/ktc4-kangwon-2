@@ -1,15 +1,15 @@
-// 월별 주제형 주차별 소주제 칸(계약 I-A · 화면 #3): 이동 · 삭제 · 저장 값 · 개수 어긋남 · 문서 줄 수.
+// 월별 주제형 주차별 소주제 칸(계약 I-A · 화면 #3): 끌어 옮기기 · 삭제 · 저장 값 · 개수 어긋남 · 문서 줄 수.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-const { moveSlot, removeSlot, setSlot, cleanSlots, slotMismatch, slotRows } =
+const { placeSlot, removeSlot, setSlot, cleanSlots, slotMismatch, slotRows } =
   await import("../lib/plan-generator/subThemeSlots.ts");
 
-test("move swaps neighbours and keeps the ends", () => {
+test("place moves a slot to the dropped week and pads empty weeks", () => {
   const list = ["a", "b", "c"];
-  assert.deepEqual(moveSlot(list, 0, 1), ["b", "a", "c"]);
-  assert.deepEqual(moveSlot(list, 2, -1), ["a", "c", "b"]);
-  assert.equal(moveSlot(list, 0, -1), list);
-  assert.equal(moveSlot(list, 2, 1), list);
+  assert.deepEqual(placeSlot(list, 0, 2), ["b", "c", "a"]);
+  assert.deepEqual(placeSlot(list, 2, 0), ["c", "a", "b"]);
+  assert.deepEqual(placeSlot(list, 0, 4), ["b", "c", "", "", "a"]);
+  assert.equal(placeSlot(list, 1, 1), list);
   assert.deepEqual(list, ["a", "b", "c"]);
 });
 

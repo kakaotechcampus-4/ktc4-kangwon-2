@@ -11,10 +11,11 @@ import {
 import type { AnnualPlan } from "@/lib/api/types";
 import {
   cleanSlots,
-  moveSlot,
+  placeSlot,
   removeSlot,
   setSlot,
   slotMismatch,
+  slotRows,
 } from "@/lib/plan-generator/subThemeSlots";
 import AnnualFrame, {
   AsideStrip,
@@ -51,7 +52,7 @@ const SMALL =
   "min-h-[36px] rounded-lg border border-[#e8e2d8] px-2 text-xs text-[#5c5243] disabled:opacity-40";
 
 /**
- * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제 배치(위 · 아래 · 추가 · 삭제 · 글 고치기).
+ * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제(글 고치기 · 삭제, 순서는 문서에서 끌어놓기).
  * AI 후보 탭은 서버 API 가 없어 두지 않는다. 한 달 저장은 주제와 소주제를 같이 보낸다(`putAnnualMonth`).
  */
 const SHEET_WIDTH = 860;
@@ -93,6 +94,11 @@ export default function ThemeAnnualResult({
   const month = plan.months.find((m) => m.month === selected.month)!;
   const weekCount = (m: number) => plan.months.find((item) => item.month === m)!.week_count;
   const draft = drafts[selected.month];
+  // 주마다 입력칸 — 아직 비어 있는 주도 칸을 보인다(「소주제 추가」 버튼 없이).
+  const slots = Array.from(
+    { length: slotRows(draft.sub_themes, month.week_count) },
+    (_, i) => draft.sub_themes[i] ?? "",
+  );
   const sheetMonths = plan.months.map((m) => ({ ...m, ...drafts[m.month] }));
 
   // 고른 칸의 입력창으로 포커스를 옮긴다(문서 칸을 눌렀을 때).
@@ -174,6 +180,17 @@ export default function ThemeAnnualResult({
     save(selected.month, value);
   }
 
+  // 문서에서 끌어 옮긴 소주제 — 그 달을 바로 저장한다.
+  function moveSlotTo(monthNo: number, from: number, to: number) {
+    const value = {
+      ...drafts[monthNo],
+      sub_themes: placeSlot(drafts[monthNo].sub_themes, from, to),
+    };
+    change(monthNo, value);
+    setSelected({ month: monthNo, slot: to });
+    save(monthNo, value);
+  }
+
   function stepBack() {
     const last = undo[undo.length - 1];
     if (!last) return;
@@ -230,11 +247,10 @@ export default function ThemeAnnualResult({
     selected.slot === "theme"
       ? `${selected.month}월 · 생활주제 칸을 골랐어요`
       : `${selected.month}월 · ${selected.slot < month.week_count ? selected.slot + 1 + "주" : "남는"} 소주제 칸을 골랐어요`;
-  const filled = cleanSlots(draft.sub_themes).length;
   const aside = (
     <>
       <div className="flex gap-5 border-b border-[#efeae2] px-6 pt-2">
-        <span className={tabClass(true)}>칸 편집</span>
+        <span className={`${tabClass(true)} flex items-center`}>칸 편집</span>
       </div>
       <AsideStrip>{strip}</AsideStrip>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
@@ -250,18 +266,13 @@ export default function ThemeAnnualResult({
           />
         </label>
         <section className="flex flex-col gap-2" aria-label={`${selected.month}월 소주제`}>
-          <h2 className="m-0 flex items-baseline justify-between text-[15px] font-bold">
-            소주제
-            <span className="text-xs font-normal text-[#5c5243]">
-              {month.week_count}주 · {filled}개 넣음
-            </span>
-          </h2>
+          <h2 className="m-0 text-[15px] font-bold">소주제</h2>
           {slotMismatch(draft.sub_themes, month.week_count) && (
             <p role="status" className="m-0 text-[13px] font-bold text-[#b3261e]">
               주마다 하나씩 — {month.week_count}개를 맞춰야 확정할 수 있어요.
             </p>
           )}
-          {draft.sub_themes.map((value, i) => (
+          {slots.map((value, i) => (
             <div key={i} className="flex items-center gap-1.5">
               <span className="w-9 shrink-0 text-xs font-bold text-[#5e4b96]">
                 {i < month.week_count ? i + 1 + "주" : "남음"}
@@ -275,50 +286,26 @@ export default function ThemeAnnualResult({
                 onFocus={() => setSelected({ month: selected.month, slot: i })}
                 onChange={(e) =>
                   change(selected.month, {
-                    sub_themes: setSlot(draft.sub_themes, i, e.target.value),
+                    sub_themes: setSlot(slots, i, e.target.value),
                   })
                 }
                 onBlur={saveSelected}
               />
               <button
                 type="button"
-                aria-label="위로"
-                className={SMALL}
-                disabled={i === 0 || confirming}
-                onClick={() => editSlots(moveSlot(draft.sub_themes, i, -1), i - 1)}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                aria-label="아래로"
-                className={SMALL}
-                disabled={i === draft.sub_themes.length - 1 || confirming}
-                onClick={() => editSlots(moveSlot(draft.sub_themes, i, 1), i + 1)}
-              >
-                ↓
-              </button>
-              <button
-                type="button"
                 aria-label="삭제"
                 className={SMALL}
                 disabled={confirming}
-                onClick={() => editSlots(removeSlot(draft.sub_themes, i), "theme")}
+                onClick={() => editSlots(removeSlot(slots, i), "theme")}
               >
                 삭제
               </button>
             </div>
           ))}
-          <button
-            type="button"
-            className="min-h-[40px] rounded-lg border border-dashed border-[#c5b7dd] text-sm font-bold text-[#5e4b96] disabled:opacity-40"
-            disabled={confirming}
-            onClick={() => editSlots([...draft.sub_themes, ""], draft.sub_themes.length)}
-          >
-            + 소주제 추가
-          </button>
         </section>
-        <p className="m-0 text-[13px] text-[#5c5243]">고치면 오른쪽 문서에 바로 반영돼요</p>
+        <p className="m-0 text-[13px] text-[#5c5243]">
+          고치면 오른쪽 문서에 바로 반영돼요. 문서의 소주제 칸을 끌어놓으면 순서가 바뀌어요.
+        </p>
       </div>
     </>
   );
@@ -413,6 +400,7 @@ export default function ThemeAnnualResult({
             selected={selected}
             flagged={flagged.filter((m) => slotMismatch(drafts[m].sub_themes, weekCount(m)))}
             onSelect={select}
+            onMove={confirming ? undefined : moveSlotTo}
           />
         </div>
       </div>

@@ -509,13 +509,8 @@ export default function PlayProjectResult({
   function renderCandidates() {
     return (
       <div className="flex flex-col gap-2">
-        <h2
-          id={pickedHeadingId}
-          tabIndex={-1}
-          className="m-0 mb-1 flex items-baseline justify-between text-[15px] font-bold"
-        >
+        <h2 id={pickedHeadingId} tabIndex={-1} className="m-0 mb-1 text-[15px] font-bold">
           {seasonLabel} 놀이
-          <span className="text-xs font-normal text-[#5c5243]">{periodPicks.length}개 넣음</span>
         </h2>
         {periodPicks.length > 1 && (
           <p className="m-0 text-[13px] text-[#5c5243]">
