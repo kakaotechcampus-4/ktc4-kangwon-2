@@ -33,15 +33,12 @@ export function onboardingDestination():
     return "/onboarding/classes";
   return "/onboarding/children";
 }
-export function loginDestination(): string {
+/** 원 · 반이 다 찼는가. 메인 밖 메뉴는 원 · 반이 있어야 돈다. */
+export function roomReady(): boolean {
   try {
-    return hasDemoSession() &&
-      read()?.onboardingCompletedAt &&
-      onboardingDestination() === "/onboarding/children"
-      ? "/"
-      : onboardingDestination();
+    return onboardingDestination() === "/onboarding/children";
   } catch {
-    return "/onboarding/center";
+    return false;
   }
 }
 export function completeAccountOnboarding(): boolean {
@@ -65,10 +62,8 @@ export function accountName() {
     return null;
   }
 }
-export function accessRedirect(requireOnboarding = true): string | null {
-  if (!hasDemoSession()) return "/login";
-  const destination = loginDestination();
-  return requireOnboarding && destination !== "/" ? destination : null;
+export function accessRedirect(): string | null {
+  return hasDemoSession() ? null : "/login";
 }
 /**
  * 계정을 만들고 로그인한다.

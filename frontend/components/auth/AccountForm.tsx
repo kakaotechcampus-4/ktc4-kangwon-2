@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Icon } from "@/components/app/icons";
 import { useRouter } from "next/navigation";
 import {
@@ -8,11 +8,11 @@ import {
   verifyAccount,
   verifyDevAccount,
   isDevLogin,
-  loginDestination,
   completeAccountOnboarding,
 } from "@/lib/auth/local-account";
 import { restoreFromServer } from "@/lib/api/onboarding";
 import { startDemoSession } from "@/lib/auth/demo-session";
+import { Posty } from "@/components/app/Posty";
 import AuthFrame from "./AuthFrame";
 
 const input =
@@ -27,6 +27,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [visible, setVisible] = useState(false);
+  const [done, setDone] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -65,7 +66,8 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
         await registerAccount(String(form.get("name")), email, password);
         if (!startDemoSession())
           throw new Error("가입은 됐어요. 로그인 화면에서 다시 로그인해주세요.");
-        router.replace(loginDestination());
+        setDone(true);
+        setBusy(false);
       } else {
         let centerId: number | null = null;
         if (devLogin) await verifyDevAccount(email, password);
@@ -73,13 +75,14 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
         if (!startDemoSession())
           throw new Error("로그인 정보를 저장할 수 없어요. 브라우저 설정을 확인해주세요.");
         if (centerId !== null) await restoreRoom(centerId);
-        router.replace(loginDestination());
+        router.replace("/");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "처리하지 못했어요. 다시 시도해주세요.");
       setBusy(false);
     }
   }
+  if (done) return <SignupDone />;
   return (
     <AuthFrame>
       <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[13px] font-semibold text-success">
@@ -189,11 +192,46 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
 
 /**
  * 다른 기기 · 브라우저에서 로그인한 교사의 원 · 반을 서버에서 채운다 (#291).
- * 반까지 들어오면 첫 설정을 끝낸 것으로 적어 메인으로 간다. 실패해도 로그인은 이어 간다 —
- * 그때는 예전처럼 첫 설정으로 가고, 1단계의 409 복구가 원을 다시 잇는다.
+ * 반까지 들어오면 첫 설정을 끝낸 것으로 적는다. 로그인은 늘 메인(/)으로 간다 — 실패해도 이어 가고,
+ * 그때는 메인에 닿아 다른 메뉴가 안내 카드를 보인다. 온보딩 1단계의 409 복구가 원을 다시 잇는다.
  */
 async function restoreRoom(centerId: number) {
   try {
     if (await restoreFromServer(centerId)) completeAccountOnboarding();
   } catch {}
+}
+
+/** 가입 직후 카드. 포스티는 큰 화면에서 카드 윗선에 걸터앉는다(몸통 밑이 테두리에 닿게 -99px). */
+function SignupDone() {
+  // 폼이 사라진 뒤 스크린리더가 제목을 읽게 한 번 포커스한다.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
+  return (
+    <AuthFrame>
+      <div className="flex justify-end lg:hidden">
+        <Posty pose="sitWave" size={72} label={null} />
+      </div>
+      <Posty
+        pose="sitWave"
+        size={110}
+        label={null}
+        className="absolute right-6 -top-[99px] hidden lg:block"
+      />
+      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[13px] font-semibold text-success">
+        가입 완료
+      </span>
+      <h2
+        ref={heading}
+        tabIndex={-1}
+        className="mt-4 font-display text-[30px] font-bold outline-none sm:text-[36px]"
+      >
+        가입을 완료했어요
+      </h2>
+      <p className="mt-1 text-xs text-ink-soft">이제 쌤플과 함께 우리 반의 하루를 준비해 보세요.</p>
+      <Link href="/" className={button}>
+        메인화면으로 가기
+        <Icon name="arrow" className="h-4 w-4" />
+      </Link>
+    </AuthFrame>
+  );
 }

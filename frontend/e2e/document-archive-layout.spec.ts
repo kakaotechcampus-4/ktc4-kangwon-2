@@ -32,6 +32,11 @@ async function enter(page: Page) {
   await page.locator("#auth-password").fill(password);
   await page.getByLabel("비밀번호 확인").fill(password);
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "가입을 완료했어요" })).toBeVisible();
+  await expect(page).toHaveURL(/\/signup$/);
+  await page.getByRole("link", { name: "메인화면으로 가기", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/onboarding\/center$/);
   await page.getByLabel("원명").fill("점검전용어린이집");
   await page.getByLabel("원장 이름").fill("가상원장");

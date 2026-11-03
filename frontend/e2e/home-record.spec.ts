@@ -71,6 +71,11 @@ async function enterHome(page: Page) {
   await page.locator("#auth-password").fill(password);
   await page.getByLabel("비밀번호 확인").fill(password);
   await page.getByRole("button", { name: "회원가입" }).click();
+  await expect(page.getByRole("heading", { name: "가입을 완료했어요" })).toBeVisible();
+  await expect(page).toHaveURL(/\/signup$/);
+  await page.getByRole("link", { name: "메인화면으로 가기", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto("/onboarding");
 
   // 반 하나짜리 온보딩 — 주 반을 따로 고르는 단계가 없는 경로다.
   await expect(page).toHaveURL(/\/onboarding\/center$/);
