@@ -9,7 +9,7 @@ import {
 } from "./playProjectPagination";
 
 const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
-const CELL = "border border-black px-1.5 py-1.5 align-top whitespace-pre-line";
+const CELL = "border border-[#BDE9FD] px-1.5 py-1.5 align-top whitespace-pre-line";
 
 type Props = {
   plan: PlayProjectAnnualPlan;
@@ -40,7 +40,7 @@ export default function PlayProjectSheet({
             aria-label={period.label}
             className="mx-auto w-full max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
           >
-            <h3 className="m-0 mb-4 text-center text-[19px] font-bold">
+            <h3 className="m-0 mb-4 border border-[#BDE9FD] bg-[#E1F2FE] py-2 text-center text-[19px] font-bold">
               {plan.school_year} 연간놀이계획안
             </h3>
             <table className="w-full table-fixed border-collapse text-[12.5px] leading-snug">
@@ -55,7 +55,7 @@ export default function PlayProjectSheet({
                     <th
                       key={h}
                       scope="col"
-                      className="h-8 border border-black bg-[#eef1e8] font-bold"
+                      className="h-8 border border-[#BDE9FD] bg-[#E1F2FE] font-bold"
                     >
                       {h}
                     </th>
@@ -71,7 +71,7 @@ export default function PlayProjectSheet({
                         <th
                           scope="rowgroup"
                           rowSpan={row.rowSpan}
-                          className="border border-black text-center font-bold"
+                          className="border border-[#BDE9FD] text-center font-bold"
                         >
                           {period.label}
                         </th>
