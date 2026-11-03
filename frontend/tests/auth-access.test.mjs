@@ -52,10 +52,10 @@ test("common guard handles unauthenticated access, unfinished onboarding and ret
   assert.equal(auth.accessRedirect(), "/login");
   await auth.registerAccount("노덕철", "first@example.com", "test-password-123");
   await login("first@example.com");
-  // "/" 와 다른 서비스 화면은 동일한 공통 guard를 사용한다.
-  assert.equal(auth.accessRedirect(true), "/onboarding/center");
-  assert.equal(auth.accessRedirect(false), null);
-  assert.equal(auth.accessRedirect(true), "/onboarding/center"); // 새로고침에서도 동일
+  // 공통 guard 는 세션만 본다. 원·반이 없으면 메인 밖 화면만 안내 카드로 막는다.
+  assert.equal(auth.accessRedirect(), null);
+  assert.equal(auth.onboardingDestination(), "/onboarding/center");
+  assert.equal(auth.roomReady(), false);
   assert.equal(
     settings.saveClassSettings({
       ...EMPTY_CLASS_SETTINGS,
@@ -71,14 +71,14 @@ test("common guard handles unauthenticated access, unfinished onboarding and ret
     true,
   );
   assert.equal(auth.completeAccountOnboarding(), true);
-  assert.equal(auth.accessRedirect(true), null);
+  assert.equal(auth.roomReady(), true);
   assert.equal(session.endDemoSession(), true);
   assert.equal(auth.accessRedirect(), "/login");
   assert.equal(settings.loadClassSettings(), null);
   assert.equal(settings.saveClassSettings(EMPTY_CLASS_SETTINGS), false);
   await login("first@example.com");
-  assert.equal(auth.loginDestination(), "/");
-  assert.equal(auth.accessRedirect(true), null);
+  assert.equal(auth.roomReady(), true);
+  assert.equal(auth.accessRedirect(), null);
 });
 
 test("corrupt legacy JSON and malformed legacy objects do not block valid login or signup", async () => {
@@ -125,7 +125,7 @@ test("organization, teacher and onboarding status stay isolated after account sw
   session.endDemoSession();
   await login("second@example.com");
   assert.equal(settings.loadClassSettings(), null);
-  assert.equal(auth.accessRedirect(), "/onboarding/center");
+  assert.equal(auth.roomReady(), false);
   settings.saveClassSettings({
     ...EMPTY_CLASS_SETTINGS,
     directorName: "원장",
@@ -146,7 +146,7 @@ test("organization, teacher and onboarding status stay isolated after account sw
     settings.planHeaderFor(settings.loadClassSettings(), auth.accountName()),
     "새싹어린이집 · 노덕철 선생님 · 반",
   );
-  assert.equal(auth.accessRedirect(), null);
+  assert.equal(auth.roomReady(), true);
 });
 
 test("legacy accounts missing display names do not substitute classroom teachers for account names", async () => {
@@ -190,6 +190,11 @@ test("PRD onboarding URLs, primary class migration, removal and account roles", 
   };
   settings.saveClassSettings(center);
   assert.equal(auth.onboardingDestination(), "/onboarding/classes");
+  // 반을 다 지워도 저장소는 빈 반 하나(class-1)를 채워 둔다. 그 빈 반은 반으로 치지 않는다.
+  settings.saveClassSettings({ ...center, classes: [] });
+  assert.equal(settings.loadClassSettings().classes[0].id, "class-1");
+  assert.equal(auth.onboardingDestination(), "/onboarding/classes");
+  assert.equal(auth.roomReady(), false);
   const classes = [
     {
       ...EMPTY_CLASS_SETTINGS.classes[0],
@@ -216,7 +221,8 @@ test("PRD onboarding URLs, primary class migration, removal and account roles", 
     "기관 · 김수린 선생님 · 난초반",
   );
   assert.equal(auth.completeAccountOnboarding(), true);
-  assert.equal(auth.loginDestination(), "/");
+  // 아동 명단은 없어도 된다. 원·반만 차면 메인 밖 메뉴가 열린다.
+  assert.equal(auth.roomReady(), true);
   settings.saveClassSettings({ ...center, classes: [classes[0]], primaryClassId: "b" });
   assert.equal(settings.primaryClassFor(settings.loadClassSettings()).id, "a");
 });

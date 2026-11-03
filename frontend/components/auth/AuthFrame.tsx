@@ -69,7 +69,7 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
           </div>
         </section>
 
-        <section className="border border-line bg-paper p-6 shadow-pg-hard sm:p-8">
+        <section className="relative border border-line bg-paper p-6 shadow-pg-hard sm:p-8">
           {children}
         </section>
       </main>

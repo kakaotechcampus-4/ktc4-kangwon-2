@@ -2477,6 +2477,7 @@ function homePage(
     records = recordsServer(),
     search = "",
     routineRows = async () => [],
+    ready = true,
   } = {},
 ) {
   browser({ rooms, primaryClassId, search });
@@ -2503,6 +2504,9 @@ function homePage(
     "@/lib/workspace/child-mark": childMark,
     "@/lib/workspace/home-blocks": homeBlocks,
     "@/lib/greeting": { koreanDateParts: () => ({ day: "10월 6일", dow: "화요일" }) },
+    // 원 · 반이 다 찼는지는 테스트가 정한다. 위 `browser()` 의 반 설정은 원장 · 지역이 비어
+    // 진짜 판정으로는 늘 「안 찼다」라, 진짜를 쓰면 홈 시험이 전부 조회를 건너뛴다.
+    "@/lib/auth/local-account": { roomReady: () => ready },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
@@ -2862,6 +2866,59 @@ test("P0 홈이 세는 건수와 서버에 남은 기록이 같다", async (t) =
     view.text().includes(`오늘 적은 내용 ${onServer}건`),
     `건수가 어긋난다: ${view.text()}`,
   );
+});
+
+// ── 원 · 반이 빈 메인 ─────────────────────────────────────────────────────
+//
+// 가입하자마자 메인(`/`)에 들어온다. 원 · 반이 비면 보고 있는 반은 서버 번호가 없는
+// 자리표시 반이라 조회가 던진다 — 묻지 않고, 날짜 아래 안내로 온보딩을 가리킨다 (docs/screen-spec.md).
+// 서버 번호가 붙은 반은 다르다. 설정에 빈 반 줄 하나가 남아 「안 찼다」여도 그 반 기록은 읽는다.
+
+const ROOM_SETUP_TITLE = "선생님, 우리 반부터 알려 주세요!";
+
+test("원·반이 비면 홈은 기록을 묻지 않고 등록 안내를 띄운다", async (t) => {
+  const records = recordsServer();
+  // 자리표시 반으로 물으면 실제로 던진다. 물었다면 「불러오지 못했어요」가 떴을 것이다.
+  records.api.listRecords = async (classId) => {
+    records.calls.push({ op: "list", classId });
+    throw new Error("자리표시 반은 서버 번호가 없다");
+  };
+  // 서버 번호가 없는 반 (LINKS 에 없다) — 가입 직후의 자리표시 반 모습이다.
+  const view = homePage(t, {
+    rooms: [CLASS_GHOST],
+    primaryClassId: "",
+    classes: [ROOM_GHOST],
+    records,
+    ready: false,
+  });
+  await view.flush();
+  assert.equal(records.only("list").length, 0, "원·반이 없는데 조회를 보냈다");
+  assert.equal(view.text().includes("기록을 불러오지 못했어요"), false, view.text());
+  assert.ok(view.text().includes(ROOM_SETUP_TITLE), view.text());
+  assert.ok(view.links().includes("/onboarding"), view.links().join(" "));
+});
+
+test("원·반이 덜 찼어도 서버 번호가 붙은 반이면 그 반 기록을 묻는다", async (t) => {
+  // 설정에 빈 반 줄을 남긴 교사. 안내는 뜨지만, 이미 쓰던 반의 기록까지 0건으로 보이면 안 된다.
+  const records = recordsServer();
+  const view = homePage(t, {
+    rooms: [CLASS_A],
+    primaryClassId: "",
+    classes: [ROOM_A],
+    records,
+    ready: false,
+  });
+  await view.flush();
+  assert.deepEqual([...new Set(records.only("list").map((c) => c.classId))], [ROOM_A.id]);
+  assert.ok(view.text().includes(ROOM_SETUP_TITLE), view.text());
+});
+
+test("원·반이 차 있으면 등록 안내 없이 보고 있는 반을 묻는다", async (t) => {
+  const records = recordsServer();
+  const view = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [ROOM_A], records });
+  await view.flush();
+  assert.equal(view.text().includes(ROOM_SETUP_TITLE), false, view.text());
+  assert.deepEqual([...new Set(records.only("list").map((c) => c.classId))], [ROOM_A.id]);
 });
 
 test("우리 반 — 오늘 일과에 활동실행이 적혀 있으면 그 자리에서 보육일지로 간다", async (t) => {

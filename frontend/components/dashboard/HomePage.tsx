@@ -38,6 +38,7 @@ import {
   type LastWeek,
 } from "@/lib/workspace/home-blocks";
 import { koreanDateParts } from "@/lib/greeting";
+import { roomReady } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { useDictation } from "@/lib/hooks/use-dictation";
 
@@ -74,6 +75,8 @@ export default function HomePage() {
   const classes = useClasses(onError);
   const [records, setRecords] = useState<ServerObservation[] | null>(null);
   const [todayDate] = useClientState(() => today(), "");
+  // HomePage 는 세션 확인 뒤(클라이언트)에만 뜨니 첫 렌더에 실제 값이 있다. `true` 는 서버 · 하이드레이션용 안전 기본.
+  const [ready] = useClientState(roomReady, true);
 
   /**
    * 홈이 **지금 보여 주는 반**. 빠른 기록이 저장하는 반과 **같은 값**이어야 한다.
@@ -105,7 +108,11 @@ export default function HomePage() {
   const reload = useCallback(() => {
     const at = (visit.current += 1);
     // 반이 아직 안 붙었으면 묻지 않는다. 서버 반이 늦게 도착하면 deps 가 바뀌어 다시 돈다.
-    const asked = activeClassId ? listRecords(activeClassId) : Promise.resolve([]);
+    // 자리표시 반(class-1, 서버 연결 없음)은 조회가 던진다. 원 · 반이 비어도 서버에 붙은 반은 묻는다.
+    const asked =
+      activeClassId && (ready || classServerId(activeClassId) !== null)
+        ? listRecords(activeClassId)
+        : Promise.resolve([]);
     asked
       .then((rows) => {
         if (at === visit.current) setRecords(rows);
@@ -115,7 +122,7 @@ export default function HomePage() {
         setRecords([]);
         setMessage("기록을 불러오지 못했어요. 새로고침해주세요.");
       });
-  }, [activeClassId]);
+  }, [activeClassId, ready]);
   useEffect(() => {
     reload();
   }, [reload, recordsRevision]);
@@ -206,6 +213,33 @@ export default function HomePage() {
             </svg>
           </span>
         </h1>
+
+        {!ready && (
+          <section
+            aria-labelledby="room-setup-title"
+            className="relative mb-8 -rotate-[0.6deg] border border-note-line bg-note px-6 py-5 shadow-pg-card"
+          >
+            <Tape className="left-8 -rotate-3" />
+            <div className="flex flex-wrap items-center gap-5">
+              <div className="min-w-0 flex-1 basis-60">
+                <h2
+                  id="room-setup-title"
+                  className="font-display text-[28px] font-bold leading-tight text-sun-ink"
+                >
+                  선생님, 우리 반부터 알려 주세요!
+                </h2>
+                <p className="mt-1.5 text-xs leading-[1.7] text-sun-ink">
+                  원 정보와 반 정보를 넣으면 계획안과 기록을 바로 쓸 수 있어요. 아동 명단은 나중에
+                  넣어도 돼요.
+                </p>
+              </div>
+              <Link href="/onboarding" className={PRIMARY}>
+                등록하러 갈게요
+                <Icon name="arrow" className="h-4 w-4" />
+              </Link>
+            </div>
+          </section>
+        )}
 
         {message && (
           <p role="alert" className="mb-5 rounded-md border border-line bg-paper px-4 py-3 text-xs">
