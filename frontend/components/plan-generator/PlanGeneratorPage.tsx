@@ -164,20 +164,6 @@ function AnnualGenerator({ format }: { format: Format }) {
 
   return (
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      {/* 한 줄: 왼쪽 「← 돌아가기」, 그 오른쪽 제목 · 방식. */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-        <Link
-          href="/plans"
-          className="flex min-h-[32px] shrink-0 items-center text-sm text-[#5c5243] no-underline"
-        >
-          ← 방식 다시 고르기
-        </Link>
-        <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">{year} 연간계획안 만들기</h1>
-        <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
-          {look.name}
-        </span>
-      </div>
-
       {error && (
         <p
           role="alert"
@@ -203,6 +189,24 @@ function AnnualGenerator({ format }: { format: Format }) {
       {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="flex min-h-0 flex-col gap-6 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white px-7 py-6">
+          {/* 왼쪽 판 맨 위: 「← 돌아가기」 아래 제목 · 방식. */}
+          <div className="-mt-2 flex shrink-0 flex-col gap-1">
+            <Link
+              href="/plans"
+              className="flex min-h-[32px] w-fit items-center text-sm text-[#5c5243] no-underline"
+            >
+              ← 방식 다시 고르기
+            </Link>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">
+                {year} 연간계획안 만들기
+              </h1>
+              <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
+                {look.name}
+              </span>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between">
               <h2 className="m-0 text-lg font-bold">우리 반</h2>

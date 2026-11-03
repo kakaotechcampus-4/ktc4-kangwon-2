@@ -303,9 +303,7 @@ export default function ThemeAnnualResult({
             </div>
           ))}
         </section>
-        <p className="m-0 text-[13px] text-[#5c5243]">
-          고치면 오른쪽 문서에 바로 반영돼요. 문서의 소주제 칸을 끌어놓으면 순서가 바뀌어요.
-        </p>
+        <p className="m-0 text-[13px] text-[#5c5243]">고치면 오른쪽 문서에 바로 반영돼요.</p>
       </div>
     </>
   );

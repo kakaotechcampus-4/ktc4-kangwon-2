@@ -11,14 +11,17 @@ export function useHwpxDownload(onMessage: (message: string) => void) {
   // 상태 갱신 전에 두 번 눌러도 요청이 한 번만 나가게 한다.
   const running = useRef(false);
 
-  async function download(fetchFile: () => Promise<void>) {
+  async function download(
+    fetchFile: () => Promise<void>,
+    done = "한글 파일(hwpx)로 내려받았어요.",
+  ) {
     if (running.current) return;
     running.current = true;
     setExporting(true);
     onMessage("");
     try {
       await fetchFile();
-      onMessage("한글 파일(hwpx)로 내려받았어요.");
+      onMessage(done);
     } catch (e) {
       onMessage(e instanceof Error ? e.message : "내려받지 못했어요.");
     } finally {

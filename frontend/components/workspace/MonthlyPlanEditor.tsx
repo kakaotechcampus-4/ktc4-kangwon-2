@@ -630,7 +630,7 @@ export default function MonthlyPlanEditor({
         docLabel="확정된 월간계획안"
         format="MONTHLY_THEME"
         pages={[docOf(still)]}
-        download={() => downloadMonthlyHwpx(plan.id)}
+        download={(format) => downloadMonthlyHwpx(plan.id, format)}
         next={{
           href: "/plans/weekly",
           label: "주간계획안 만들기 →",

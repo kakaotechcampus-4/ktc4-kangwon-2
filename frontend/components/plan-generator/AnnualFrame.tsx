@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
 import { downloadAnnualHwpx, unconfirmAnnualPlan } from "@/lib/api/plans";
+import type { ExportFormat } from "@/lib/api/export";
 import type { AnnualPlanResponse } from "@/lib/api/types";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import UnconfirmButton from "./UnconfirmButton";
@@ -269,7 +270,7 @@ export function AnnualDone({
       docLabel="확정된 연간계획안"
       format={plan.format}
       pages={pages}
-      download={() => downloadAnnualHwpx(plan.id)}
+      download={(format) => downloadAnnualHwpx(plan.id, format)}
       next={{
         href: "/plans/monthly",
         label: "월간계획안 만들기 →",
@@ -290,6 +291,43 @@ export function AnnualDone({
   );
 }
 
+/** 내보내기 버튼 — 로고만 보이고 이름은 aria-label · title. */
+const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string }> = {
+  pdf: { label: "PDF로 내려받기", done: "PDF로 내려받았어요.", color: "bg-[#d4483b]" },
+  hwpx: {
+    label: "한글 파일(hwpx)로 내려받기",
+    done: "한글 파일(hwpx)로 내려받았어요.",
+    color: "bg-[#2f6db5]",
+  },
+  hwp: {
+    label: "한글 파일(hwp)로 내려받기",
+    done: "한글 파일(hwp)로 내려받았어요.",
+    color: "bg-[#1f4e8c]",
+  },
+};
+
+/** 접힌 귀퉁이가 있는 문서 모양 + 형식 이름 띠. 받는 중이면 띠가 「…」. */
+function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
+  return (
+    <span aria-hidden="true" className="relative block h-12 w-10">
+      <svg viewBox="0 0 40 48" className="absolute inset-0 h-full w-full">
+        <path
+          d="M5 1h21l13 13v29a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4z"
+          fill="#fff"
+          stroke="#cfc7ba"
+          strokeWidth="2"
+        />
+        <path d="M26 1v9a4 4 0 0 0 4 4h9" fill="#ece6dc" stroke="#cfc7ba" strokeWidth="2" />
+      </svg>
+      <span
+        className={`absolute -left-1.5 bottom-2 rounded px-1 py-px text-[10px] font-extrabold leading-tight tracking-tight text-white ${EXPORTS[format].color}`}
+      >
+        {busy ? "…" : format.toUpperCase()}
+      </span>
+    </span>
+  );
+}
+
 export const UNCONFIRM = "min-h-[44px] self-start rounded-xl px-3 text-sm text-[#5c5243] underline";
 
 /** ⑥ · Ⓜ4 확정 후 틀 — 왼쪽 확정 문서(쪽이 여럿이면 쪽 번호) · 오른쪽 280px 내보내기 · 다음 단계 · 홈 · 확정 풀기. */
@@ -306,8 +344,8 @@ export function PlanDone({
   docLabel: string;
   format: Format;
   pages: ReactNode[];
-  /** 한글 파일 받기(확정본만). 서버 경로가 없으면 빼고, 내보내기 칸을 숨긴다. */
-  download?: () => Promise<void>;
+  /** 파일 받기(확정본만) — PDF · HWPX · HWP. 서버 경로가 없으면 빼고, 내보내기 칸을 숨긴다. */
+  download?: (format: ExportFormat) => Promise<void>;
   /** `onClick` 이 있으면 주소로 가지 않고 그것을 부른다(같은 주소 안에서 화면만 바꿀 때). */
   next: { href: string; label: string; hint: string; onClick?: () => void };
   unconfirm: ReactNode;
@@ -315,6 +353,12 @@ export function PlanDone({
   const [page, setPage] = useState(0);
   const [exportMessage, setExportMessage] = useState("");
   const hwpx = useHwpxDownload(setExportMessage);
+  const [busy, setBusy] = useState<ExportFormat | null>(null);
+  const save = async (format: ExportFormat) => {
+    setBusy(format);
+    await hwpx.download(() => download!(format), EXPORTS[format].done);
+    setBusy(null);
+  };
   return (
     <main className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826]">
       <div className="flex flex-wrap items-center gap-3">
@@ -356,17 +400,21 @@ export function PlanDone({
           {download && (
             <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
               <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
-              <button
-                type="button"
-                disabled={hwpx.exporting}
-                onClick={() => void hwpx.download(download)}
-                className="flex min-h-[52px] items-center gap-3 rounded-xl border border-[#ddd6ca] bg-white px-4 text-left text-[15px] font-bold hover:bg-[#f7f4ee] disabled:opacity-50"
-              >
-                <span className="flex h-8 w-10 items-center justify-center rounded-md bg-[#2f6db5] text-[11px] font-bold text-white">
-                  HWP
-                </span>
-                {hwpx.exporting ? "내려받는 중…" : "한글로 내보내기"}
-              </button>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(EXPORTS) as ExportFormat[]).map((format) => (
+                  <button
+                    key={format}
+                    type="button"
+                    aria-label={EXPORTS[format].label}
+                    title={EXPORTS[format].label}
+                    disabled={hwpx.exporting}
+                    onClick={() => void save(format)}
+                    className="flex aspect-square items-center justify-center rounded-xl border border-[#ddd6ca] bg-white hover:border-[#c5b7dd] hover:bg-[#f7f4ee] disabled:opacity-50"
+                  >
+                    <FileLogo format={format} busy={busy === format} />
+                  </button>
+                ))}
+              </div>
               {exportMessage && (
                 <p role="status" className="m-0 text-[13px] text-[#5c5243]">
                   {exportMessage}

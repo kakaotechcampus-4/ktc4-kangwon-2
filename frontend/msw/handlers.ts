@@ -696,10 +696,14 @@ export const handlers = [
           : "확정된 계획안만 내보낼 수 있습니다.",
       );
     }
-    const name = `plan-${id}.hwpx`;
-    return new HttpResponse("MSW hwpx", {
+    // `?format=pdf|hwpx|hwp` (ADR-039 · ADR-059). 다른 값은 서버처럼 422.
+    const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
+    if (!(format in type)) return bad("format");
+    const name = `plan-${id}.${format}`;
+    return new HttpResponse(`MSW ${format}`, {
       headers: {
-        "Content-Type": "application/hwp+zip",
+        "Content-Type": type[format as keyof typeof type],
         "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
       },
     });

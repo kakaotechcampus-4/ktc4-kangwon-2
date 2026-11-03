@@ -240,25 +240,28 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
 
   return (
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-        <Link
-          href={
-            draft
-              ? `/plans/monthly?plan_id=${draft.id}&class_id=${classId}&month=${month}`
-              : "/plans/monthly"
-          }
-          className="flex min-h-[32px] shrink-0 items-center text-sm text-[#5c5243] no-underline"
-        >
-          ← {month}월 월간계획안
-        </Link>
-        <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">주간계획안 만들기</h1>
-        <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
-          월별 주제형
-        </span>
-      </div>
-
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white px-7 py-6">
+          {/* 왼쪽 판 맨 위: 「← 돌아가기」 아래 제목 · 방식. */}
+          <div className="-mt-2 flex shrink-0 flex-col gap-1">
+            <Link
+              href={
+                draft
+                  ? `/plans/monthly?plan_id=${draft.id}&class_id=${classId}&month=${month}`
+                  : "/plans/monthly"
+              }
+              className="flex min-h-[32px] w-fit items-center text-sm text-[#5c5243] no-underline"
+            >
+              ← {month}월 월간계획안
+            </Link>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">주간계획안 만들기</h1>
+              <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
+                월별 주제형
+              </span>
+            </div>
+          </div>
+
           <div className="flex shrink-0 flex-col gap-2.5">
             <h2 className="m-0 text-lg font-bold">어느 달의 주간을 만들까요?</h2>
             <div role="radiogroup" aria-label="달" className="grid grid-cols-6 gap-1.5">

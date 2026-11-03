@@ -512,11 +512,6 @@ export default function PlayProjectResult({
         <h2 id={pickedHeadingId} tabIndex={-1} className="m-0 mb-1 text-[15px] font-bold">
           {seasonLabel} 놀이
         </h2>
-        {periodPicks.length > 1 && (
-          <p className="m-0 text-[13px] text-[#5c5243]">
-            넣은 놀이를 오른쪽 문서의 줄로 끌어놓으면 순서가 바뀌어요.
-          </p>
-        )}
         {pickedCandidates.map((candidate, index) => (
           <div
             key={candidate.row_key}
