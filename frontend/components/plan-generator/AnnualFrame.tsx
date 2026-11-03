@@ -330,7 +330,7 @@ export function PlanDone({
       <div className="flex min-h-0 flex-1 gap-4">
         <section
           aria-label={docLabel}
-          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e8e2d8] bg-[#f1ede6]"
+          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#d6cec0] bg-[#e6e0d5]"
         >
           {pages.length > 1 && (
             <div role="tablist" aria-label="쪽" className="flex gap-1.5 px-6 pt-4">

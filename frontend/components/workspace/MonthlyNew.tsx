@@ -36,7 +36,7 @@ import type {
 } from "@/lib/api/types";
 import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
-import { MONTH_ORDER, ageSelectionLabel, selectedAgesFor } from "@/lib/onboarding/types";
+import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
@@ -54,7 +54,6 @@ const LOOK = {
     name: "월별 주제형",
     chip: "bg-[#e8f1ea] text-[#3b5441]",
     form: "소주제형 월간 양식",
-    formHint: "4주 · 5주는 달에 맞춰 자동",
     image: "monthly-theme-month",
     steps: (m: number) => [`${m}월 주제 이어받기`, "주별 놀이 나누기", "문서로 정리하기"],
   },
@@ -62,7 +61,6 @@ const LOOK = {
     name: "놀이 중심형",
     chip: "bg-[#eee4f4] text-[#5e4b96]",
     form: "놀이 중심형 월간 양식",
-    formHint: "이 양식으로 만들어져요",
     image: "play-monthly",
     steps: (_: number, season = "") => [
       `${season} 놀이 이어받기`.trim(),
@@ -157,7 +155,6 @@ export function profileInput(template: MonthlyTemplate, extras: string[]): Templ
 
 export function MonthlyNewView(props: {
   play: boolean;
-  meta: string;
   back: { href: string; label: string };
   month: number;
   plans: Plans;
@@ -182,23 +179,20 @@ export function MonthlyNewView(props: {
   const look = play ? LOOK.play : LOOK.theme;
   return (
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <Link
           href={props.back.href}
-          className="flex min-h-[32px] items-center text-sm text-[#5c5243] no-underline"
+          className="flex min-h-[32px] shrink-0 items-center text-sm text-[#5c5243] no-underline"
         >
           ← {props.back.label}
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">월간계획안 만들기</h1>
-          <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
-            {look.name}
-          </span>
-          <span className="text-sm text-[#5c5243]">{props.meta}</span>
-        </div>
+        <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">월간계획안 만들기</h1>
+        <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
+          {look.name}
+        </span>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="flex min-h-0 flex-col gap-5 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white px-7 py-6">
           <div className="flex shrink-0 flex-col gap-2.5">
             <h2 className="m-0 text-lg font-bold">어떤 달을 만들까요?</h2>
@@ -372,12 +366,8 @@ export function MonthlyNewView(props: {
 
         <section
           aria-label="양식 미리보기"
-          className="flex min-h-[420px] flex-col gap-3 rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] px-5 py-5"
+          className="flex min-h-[420px] flex-col rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] p-3"
         >
-          <div className="flex items-baseline justify-between px-2">
-            <h2 className="m-0 text-lg font-bold">{look.form}</h2>
-            <span className="text-sm text-[#5c5243]">{look.formHint}</span>
-          </div>
           <div className="relative min-h-0 flex-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -584,22 +574,11 @@ export default function MonthlyNew({
     }
   }
 
-  const meta = [
-    local?.className,
-    local && ageSelectionLabel(selectedAgesFor(local)),
-    annual && `${annual.school_year}학년도`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
   if (busy)
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
         <GenerationRing
           title={`${month}월 월간계획안을 만들고 있어요`}
-          meta={[local?.className, play ? LOOK.play.name : LOOK.theme.name]
-            .filter(Boolean)
-            .join(" · ")}
           steps={
             play
               ? LOOK.play.steps(month, inherit?.kind === "play" ? inherit.season : "")
@@ -616,7 +595,6 @@ export default function MonthlyNew({
   return (
     <MonthlyNewView
       play={play}
-      meta={meta}
       back={
         annual
           ? { href: `/plans/annual/${annual.id}`, label: `${annual.school_year} 연간계획안` }

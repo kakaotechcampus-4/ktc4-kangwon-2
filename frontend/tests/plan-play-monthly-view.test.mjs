@@ -992,6 +992,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     // 의존성 목록이 없는 effect 는 실제 React 처럼 매번 돈다.
     react: { ...h.react, useEffect: (fn, deps) => h.react.useEffect(fn, deps ?? [n++]) },
     "@/lib/api/client": { ApiError: StubApiError },
+    "./Workspace.module.css": esModule(css),
     "@/lib/api/monthly": {
       editMonthlyCell: edit,
       placeMonthlySafety: (...a) => place(...a),

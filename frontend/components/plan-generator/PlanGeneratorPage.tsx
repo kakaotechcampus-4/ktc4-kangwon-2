@@ -158,29 +158,24 @@ function AnnualGenerator({ format }: { format: Format }) {
   if (generating)
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
-        <GenerationRing
-          meta={[room.className, room.age, look.name].filter(Boolean).join(" · ")}
-          steps={[...look.steps]}
-          onCancel={stop}
-        />
+        <GenerationRing steps={[...look.steps]} onCancel={stop} />
       </div>
     );
 
   return (
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      <div className="flex flex-col gap-1">
+      {/* 한 줄: 왼쪽 「← 돌아가기」, 그 오른쪽 제목 · 방식. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <Link
           href="/plans"
-          className="flex min-h-[32px] items-center text-sm text-[#5c5243] no-underline"
+          className="flex min-h-[32px] shrink-0 items-center text-sm text-[#5c5243] no-underline"
         >
           ← 방식 다시 고르기
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">{year} 연간계획안 만들기</h1>
-          <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
-            {look.name}
-          </span>
-        </div>
+        <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">{year} 연간계획안 만들기</h1>
+        <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
+          {look.name}
+        </span>
       </div>
 
       {error && (
@@ -205,8 +200,8 @@ function AnnualGenerator({ format }: { format: Format }) {
         </p>
       )}
 
-      {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1.1 : 오른쪽 양식 1, 화면 높이에 맞춤. */}
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="flex min-h-0 flex-col gap-6 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white px-7 py-6">
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between">
@@ -266,12 +261,8 @@ function AnnualGenerator({ format }: { format: Format }) {
 
         <section
           aria-label="양식 미리보기"
-          className="flex min-h-[420px] flex-col gap-3 rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] px-5 py-5"
+          className="flex min-h-[420px] flex-col rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] p-3"
         >
-          <div className="flex items-baseline justify-between px-2">
-            <h2 className="m-0 text-lg font-bold">{look.form}</h2>
-            <span className="text-sm text-[#5c5243]">이 양식으로 만들어져요</span>
-          </div>
           <div className="relative min-h-0 flex-1">
             {/* 정답지 ②: 종이 모양(테두리 · 그림자)이 그림 크기에 딱 맞게. fill 은 빈 띠를 남긴다. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -4,9 +4,8 @@
  * 패널 구분: 위쪽 색 띠 + 연한 머리말. 선택 표시: 고른 것을 위로 모은다.
  *
  * 상호작용
- * - 줄 왼쪽 동그라미(44px 누름 영역) = 고르기/빼기. 마우스를 올리면 "+"와 "고르기"/"빼기" 말풍선.
- * - 줄의 나머지(이름·재료) = 가운데 '자세히 보기'에 그 놀이를 띄움. 고르지는 않음.
- * - 가운데 [이 놀이 고르기]/[✓ 골랐어요] 버튼으로도 고르기/빼기.
+ * - 왼쪽 줄을 누르면 가운데 '자세히 보기'에 그 놀이를 띄운다. 고르지는 않는다(고른 줄은 ✓ 표시만).
+ * - 고르기/빼기는 가운데 맨 아래 [이 놀이 고르기]/[✓ 골랐어요] 버튼.
  * - 오른쪽: 고른 순서대로 번호, ✕로 빼기. 계절당 최대 5개(서버 규칙).
  *
  * 계절 탭은 이 판 밖(PlayProjectResult)에 있다. 판은 지금 계절 하나만 그린다.
@@ -62,59 +61,39 @@ function Head({
 function Row({
   c,
   picked,
-  full,
   focused,
-  onToggle,
   onFocus,
 }: {
   c: PickCandidate;
   picked: boolean;
-  full: boolean;
   focused: boolean;
-  onToggle: () => void;
   onFocus: () => void;
 }) {
-  const disabled = !picked && full;
   return (
     <li>
-      <div
-        className={`flex items-center gap-3 rounded-xl px-3 py-[8px] ${focused ? "bg-[#f3efe8]" : ""}`}
+      <button
+        type="button"
+        onClick={onFocus}
+        aria-current={focused ? "true" : undefined}
+        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-[#f7f3ec] ${focused ? "bg-[#f3efe8]" : ""}`}
       >
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={disabled}
-          aria-pressed={picked}
-          aria-label={`「${c.name}」 ${picked ? "빼기" : "고르기"}`}
-          className="group relative -my-1 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-[#efe7f8] focus-visible:bg-[#efe7f8] disabled:cursor-not-allowed disabled:opacity-40"
-        >
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span
-            aria-hidden="true"
-            className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold ${picked ? "bg-[#7053a0] text-white" : "border-2 border-[#cfc7bb] text-transparent group-hover:border-[#7053a0] group-hover:text-[#7053a0] group-focus-visible:border-[#7053a0] group-focus-visible:text-[#7053a0]"}`}
-          >
-            {picked ? "✓" : "+"}
-          </span>
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#2b2826] px-2 py-1 text-xs font-medium text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
-          >
-            {picked ? "빼기" : disabled ? "5개까지 골라요" : "고르기"}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={onFocus}
-          aria-current={focused ? "true" : undefined}
-          className="flex min-w-0 flex-1 flex-col text-left"
-        >
-          <span
-            className={`truncate text-[15px] ${picked ? "font-bold text-[#2b2826]" : "text-[#5c5243]"}`}
+            className={`line-clamp-2 text-[17px] leading-snug ${picked ? "font-bold text-[#2b2826]" : "text-[#5c5243]"}`}
           >
             {c.name}
           </span>
-          <span className="truncate text-[13px] text-[#8a8178]">{c.materials}</span>
-        </button>
-      </div>
+          <span className="truncate text-[14px] text-[#8a8178]">{c.materials}</span>
+        </span>
+        {picked && (
+          <span
+            aria-label="고름"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#7053a0] text-xs font-bold text-white"
+          >
+            ✓
+          </span>
+        )}
+      </button>
     </li>
   );
 }
@@ -136,22 +115,11 @@ function Detail({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-8 pb-7 pt-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] text-[#5c5243]">
-            {season} · 후보 {index + 1}
-          </span>
-          <h3 className="m-0 text-[24px] font-bold leading-snug tracking-[-0.4px]">{c.name}</h3>
-        </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={!picked && full}
-          aria-pressed={picked}
-          className={`min-h-[48px] shrink-0 rounded-xl px-5 text-[15px] font-bold disabled:opacity-40 ${picked ? "border border-[#c5b7dd] bg-[#f6f1fb] text-[#5e4b96]" : "bg-[#7053a0] text-white"}`}
-        >
-          {picked ? "✓ 골랐어요" : "이 놀이 고르기"}
-        </button>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[13px] text-[#5c5243]">
+          {season} · 후보 {index + 1}
+        </span>
+        <h3 className="m-0 text-[24px] font-bold leading-snug tracking-[-0.4px]">{c.name}</h3>
       </div>
       <dl className="m-0 flex max-w-[640px] flex-col gap-5">
         <div className="flex flex-col gap-1.5">
@@ -171,6 +139,17 @@ function Detail({
           </dd>
         </div>
       </dl>
+      <div>
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={!picked && full}
+          aria-pressed={picked}
+          className={`min-h-[48px] rounded-xl px-6 text-[15px] font-bold disabled:opacity-40 ${picked ? "border border-[#c5b7dd] bg-[#f6f1fb] text-[#5e4b96]" : "bg-[#7053a0] text-white"}`}
+        >
+          {picked ? "✓ 골랐어요" : "이 놀이 고르기"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -217,9 +196,7 @@ export default function PlayPickBoard({
       key={c.key}
       c={c}
       picked={picked.includes(c.key)}
-      full={full}
       focused={shown?.key === c.key}
-      onToggle={() => onToggle(c.key)}
       onFocus={() => onFocus(c.key)}
     />
   );
@@ -316,7 +293,11 @@ export default function PlayPickBoard({
             {nextLabel}
           </button>
           {onFinishEarly && (
-            <button type="button" onClick={onFinishEarly} className="min-h-[44px] text-sm text-[#5c5243]">
+            <button
+              type="button"
+              onClick={onFinishEarly}
+              className="min-h-[44px] text-sm text-[#5c5243]"
+            >
               지금까지 고른 것으로 문서 만들기
             </button>
           )}

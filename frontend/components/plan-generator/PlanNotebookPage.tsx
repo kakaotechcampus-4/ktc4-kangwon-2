@@ -133,15 +133,12 @@ export default function PlanNotebookPage() {
               불러오는 중…
             </p>
           )}
-          {drafts?.length === 0 && (
-            <p className="m-0 text-sm text-[#5c5243]">쓰다 만 계획안이 없어요.</p>
-          )}
           {drafts?.map((card) => (
             <PlanCard key={card.key} card={card} />
           ))}
           <Link
             href="/documents"
-            className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-[#d7d0c7] px-5 py-[18px] text-center text-[#5e4b96] no-underline"
+            className={`${CARD_SIZE} flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-[#d7d0c7] px-5 py-[18px] text-center text-[#5e4b96] no-underline`}
           >
             <span className="text-[15px] font-bold">문서 보관함에서 모두 보기 →</span>
             <span className="text-[13px] text-[#5c5243]">확정한 계획안도 여기 있어요</span>
@@ -151,6 +148,9 @@ export default function PlanNotebookPage() {
     </div>
   );
 }
+
+/** 이어서 쓰기 카드와 「모두 보기」 카드는 쓰다 만 계획안이 없어도 같은 크기. */
+const CARD_SIZE = "min-h-[156px]";
 
 const Chevron = () => (
   <svg
@@ -283,7 +283,7 @@ function PlanCard({ card }: { card: DraftCard }) {
   return (
     <Link
       href={card.href}
-      className="flex flex-col gap-3 rounded-2xl border border-[#e8e2d8] bg-white px-5 py-[18px] text-[#2b2826] no-underline"
+      className={`${CARD_SIZE} flex flex-col gap-3 rounded-2xl border border-[#e8e2d8] bg-white px-5 py-[18px] text-[#2b2826] no-underline`}
     >
       <span className="flex items-center justify-between">
         <span className="rounded-full bg-[#f7edce] px-[10px] py-[3px] text-[13px] font-bold text-[#705936]">

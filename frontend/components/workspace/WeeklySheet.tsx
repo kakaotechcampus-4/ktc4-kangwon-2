@@ -7,7 +7,7 @@
  * [특별활동 시간표] 요일별 칸 · 행사 · 가정 연계. 양식에 없는 칸은 맨 아래에 그대로 그린다.
  */
 
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { WeeklyActivityGrid, WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import {
@@ -100,6 +100,16 @@ export default function WeeklySheet({
       hint={cell.teacher_input ? TEACHER_HINT : undefined}
     />
   );
+  // 칸 둘레의 빈 곳을 눌러도 그 칸을 고른다(칸 하나짜리 표 칸 · 나눈 칸). 글 위 클릭은 Cell 이 받는다.
+  const area = (id: string | null | undefined) =>
+    at.onSelect && id
+      ? {
+          onClick: (e: MouseEvent<HTMLElement>) => {
+            if (e.target === e.currentTarget) at.onSelect!(id);
+          },
+          "data-area": id,
+        }
+      : {};
   const grid = (node: WeeklyActivityGrid, cells: WeeklyCell[]): ReactNode => {
     if (node.cell_id) {
       const cell = cells.find((c) => c.item_id === node.cell_id);
@@ -113,9 +123,10 @@ export default function WeeklySheet({
           <div
             key={child.cell_id ?? child.split_id ?? i}
             style={{ flex: i === 0 ? ratio : 100 - ratio, minWidth: 0 }}
-            className={
+            className={`flex flex-col [&>[data-cell]]:flex-1 ${
               i ? (vertical ? "border-t border-[#cfe5f4]" : "border-l border-[#cfe5f4]") : ""
-            }
+            }`}
+            {...area(child.cell_id)}
           >
             {grid(child, cells)}
           </div>
@@ -160,7 +171,11 @@ export default function WeeklySheet({
           {days.map((d, i) => {
             const cells = section.cells.filter((c) => c.day === d);
             return (
-              <td key={d} className={`${LINE} h-[72px] align-top`}>
+              <td
+                key={d}
+                className={`${LINE} h-[72px] align-top`}
+                {...area(tree ? tree[i].cell_id : cells.length === 1 ? cells[0].item_id : null)}
+              >
                 {tree
                   ? grid(tree[i], cells)
                   : cells.map((c) => <div key={c.item_id}>{cellOf(c)}</div>)}
@@ -175,7 +190,11 @@ export default function WeeklySheet({
           <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
             {ROW[key] ?? sectionName(key, section.label)}
           </th>
-          <td colSpan={span} className={`${LINE} align-top`}>
+          <td
+            colSpan={span}
+            className={`${LINE} align-top`}
+            {...area(section.cells.length === 1 ? section.cells[0].item_id : null)}
+          >
             {/* 후보형 실내 자유놀이는 주 전체 목록이 한 칸에 순서대로 들어간다. 나머지는 한 칸. */}
             {section.cells.map((c) => (
               <div key={c.item_id}>{cellOf(c)}</div>

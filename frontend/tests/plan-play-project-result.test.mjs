@@ -199,7 +199,7 @@ const selectedTab = (tree, label) =>
   );
 
 test("helpers: five picks in order, moves, removal focus, and the left tab keys", () => {
-  const { togglePlayPick, movePlayPick, placePlayPick, removeFocusSlot, leftTabTarget } = compile(
+  const { togglePlayPick, placePlayPick, removeFocusSlot, leftTabTarget } = compile(
     "../components/plan-generator/PlayProjectResult.tsx",
     new Proxy({}, { has: () => true, get: () => ({}) }),
   );
@@ -207,8 +207,6 @@ test("helpers: five picks in order, moves, removal focus, and the left tab keys"
   assert.deepEqual(togglePlayPick([], "cand3"), ["cand3"]);
   assert.deepEqual(togglePlayPick(five, "cand4"), five);
   assert.deepEqual(togglePlayPick(five, "cand1"), ["cand3", "cand8", "cand2", "cand9"]);
-  assert.deepEqual(movePlayPick(FULL, "cand1", -1), ["cand1", "cand0", "cand2", "cand3", "cand4"]);
-  assert.deepEqual(movePlayPick(FULL, "cand0", -1), FULL);
   // 끌어놓기: 끈 놀이가 놓은 줄의 자리로 간다. 고르지 않은 놀이 · 같은 줄은 그대로.
   assert.deepEqual(placePlayPick(FULL, "cand1", "cand3"), [
     "cand0",

@@ -116,16 +116,7 @@ export function togglePlayPick(picks: string[], rowKey: string) {
       : picks;
 }
 
-export function movePlayPick(picks: string[], rowKey: string, delta: -1 | 1): string[] {
-  const index = picks.indexOf(rowKey);
-  const next = index + delta;
-  if (index < 0 || next < 0 || next >= picks.length) return picks;
-  const moved = [...picks];
-  [moved[index], moved[next]] = [moved[next], moved[index]];
-  return moved;
-}
-
-// 끌어놓기: 고른 놀이를 문서의 다른 줄 자리로 옮긴다. 위로 · 아래로와 같은 순서 목록만 바꾼다.
+// 끌어놓기: 고른 놀이를 문서의 다른 줄 자리로 옮긴다. 순서 목록만 바꾼다.
 export function placePlayPick(picks: string[], rowKey: string, targetKey: string): string[] {
   const to = picks.indexOf(targetKey);
   if (!picks.includes(rowKey) || to < 0 || rowKey === targetKey) return picks;
@@ -382,11 +373,6 @@ export default function PlayProjectResult({
     setSelectedCell({ periodKey: plan.periods[periodIndex].period_key, rowKey, field });
   }
 
-  function moveCandidate(rowKey: string, delta: -1 | 1) {
-    setMoveNotice(movedNotice(candidateName(period, rowKey), periodPicks.indexOf(rowKey) + delta));
-    applyPicks(period.period_key, (list) => movePlayPick(list, rowKey, delta));
-  }
-
   // 목록이나 문서의 놀이를 문서의 다른 줄에 끌어놓았다.
   function dropPick(rowKey: string, targetKey: string) {
     if (!periodPicks.includes(rowKey)) return;
@@ -444,7 +430,7 @@ export default function PlayProjectResult({
     );
   }
 
-  // 칸 편집: 칸 칩 · 입력창 · 놀이 순서 옮기기 · 문서에서 빼기.
+  // 칸 편집: 칸 칩 · 입력창 · 문서에서 빼기. 순서는 문서에서 끌어 옮긴다.
   function renderViewer() {
     if (!selectedCandidate || !selectedCell || !selectedField)
       return (
@@ -479,17 +465,6 @@ export default function PlayProjectResult({
         </div>
         <p className="m-0 text-[13px] text-[#5c5243]">고치면 오른쪽 문서에 바로 반영돼요</p>
         <div className="flex gap-2 border-t border-[#efeae2] pt-4">
-          {([-1, 1] as const).map((delta) => (
-            <button
-              key={delta}
-              type="button"
-              className="min-h-[44px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243] disabled:opacity-40"
-              disabled={delta === -1 ? index <= 0 : index >= periodPicks.length - 1}
-              onClick={() => moveCandidate(selectedCandidate.row_key, delta)}
-            >
-              {delta === -1 ? "위로" : "아래로"}
-            </button>
-          ))}
           <button
             type="button"
             className="min-h-[44px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243]"

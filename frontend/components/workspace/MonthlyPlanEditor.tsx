@@ -22,6 +22,7 @@ import { isSaveConflict } from "@/lib/api/plans";
 import type { MonthlyCell, MonthlyPlan } from "@/lib/api/types";
 import { sectionName } from "@/lib/monthly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
+import workspace from "./Workspace.module.css";
 import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
@@ -347,9 +348,20 @@ export default function MonthlyPlanEditor({
         <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
       )}
       {where && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[13px] text-[#5c5243]">{where.split(" · ")[0]}</span>
-          <h2 className="m-0 text-lg font-bold">{where.split(" · ")[1] ?? where}</h2>
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-[13px] text-[#5c5243]">{where.split(" · ")[0]}</span>
+            <h2 className="m-0 text-lg font-bold">{where.split(" · ")[1] ?? where}</h2>
+          </div>
+          {/* 저장 상태를 입력창 가까이에도 — 읽어 주는 건 위 상태 줄(role=status) 하나. */}
+          {status !== "idle" && (
+            <span
+              aria-hidden="true"
+              className={`shrink-0 text-[13px] ${status === "failed" ? "font-bold text-[#a2492f]" : "text-[#8a8178]"}`}
+            >
+              {SAVE_LABEL[status]}
+            </span>
+          )}
         </div>
       )}
       {picked && !candidate && picked.section.repeat_by === "WEEK" && (
@@ -374,22 +386,27 @@ export default function MonthlyPlanEditor({
       )}
       {picked && (
         <>
-          <PlayCellEditor
-            key={picked.cell.item_id + ":" + stamp(picked.cell.item_id)}
-            id="monthly-cell"
-            label={candidate ? `안전교육 후보 · ${weekLabel(safetyWeek)}` : where}
-            value={shown(picked.cell)}
-            allowBlank
-            maxLength={Infinity}
-            readOnly={locked}
-            onDraft={(text) => setLive((d) => ({ ...d, [picked.cell.item_id]: text }))}
-            onSave={(text) => saveCell(picked.cell.item_id, text)}
-            onRevert={() =>
-              setLive((d) =>
-                Object.fromEntries(Object.entries(d).filter(([k]) => k !== picked.cell.item_id)),
-              )
-            }
-          />
+          {/* 칸 이름은 위 제목에 한 번 — 입력창 이름표는 화면 읽기용으로만 남긴다. */}
+          <div
+            className={`${workspace.field} [&>label]:sr-only [&_textarea]:min-h-[180px] [&_textarea]:text-base`}
+          >
+            <PlayCellEditor
+              key={picked.cell.item_id + ":" + stamp(picked.cell.item_id)}
+              id="monthly-cell"
+              label={candidate ? `안전교육 후보 · ${weekLabel(safetyWeek)}` : where}
+              value={shown(picked.cell)}
+              allowBlank
+              maxLength={Infinity}
+              readOnly={locked}
+              onDraft={(text) => setLive((d) => ({ ...d, [picked.cell.item_id]: text }))}
+              onSave={(text) => saveCell(picked.cell.item_id, text)}
+              onRevert={() =>
+                setLive((d) =>
+                  Object.fromEntries(Object.entries(d).filter(([k]) => k !== picked.cell.item_id)),
+                )
+              }
+            />
+          </div>
           <p className="m-0 text-[13px] text-[#5c5243]">
             {candidate
               ? "이 문장을 둔 다른 주도 같이 바뀌어요."

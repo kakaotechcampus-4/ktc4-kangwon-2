@@ -185,3 +185,48 @@ test("다듬기 칸 출처: 교사 수정은 이력으로, 후보를 다시 넣�
   assert.equal(originOf({ ...cell, teacher_input: true, value: " " }, new Set()), "");
   assert.equal(originOf({ ...cell, teacher_input: true }, new Set()), "직접 입력");
 });
+
+test("주간 용지: 칸 둘레의 빈 곳을 눌러도 그 칸을 고른다 — 글 위 클릭은 칸이 받는다", () => {
+  const cell = (item_id, day = null) => ({ item_id, value: "x", day, teacher_input: false });
+  const sections = sheet.BLANK_SECTIONS.map((s) =>
+    s.section_key === "theme"
+      ? { ...s, cells: [cell("theme")] }
+      : s.section_key === "group_activity"
+        ? { ...s, cells: [cell("mon", "MON"), cell("tue", "TUE")] }
+        : s,
+  );
+  const picked = [];
+  const tree = sheet.default({
+    title: "",
+    sub: "",
+    start: "",
+    end: "",
+    days: ["MON", "TUE"],
+    sections,
+    grids: [
+      { cell_id: "mon", children: [] },
+      {
+        split_id: "s",
+        axis: "VERTICAL",
+        children: [
+          { cell_id: "tue", children: [] },
+          { cell_id: "tue2", children: [] },
+        ],
+      },
+    ],
+    at: { selected: null, onSelect: (id) => picked.push(id) },
+  });
+  const all = (n) =>
+    Array.isArray(n)
+      ? n.flatMap(all)
+      : n && typeof n === "object"
+        ? [n, ...all(n.props?.children)]
+        : [];
+  const areas = all(tree).filter((n) => n.props?.["data-area"]);
+  for (const n of areas) {
+    const self = {};
+    n.props.onClick({ target: self, currentTarget: self });
+    n.props.onClick({ target: {}, currentTarget: self }); // 안쪽 글 클릭은 넘긴다
+  }
+  assert.deepEqual(picked.sort(), ["mon", "theme", "tue", "tue2"]);
+});

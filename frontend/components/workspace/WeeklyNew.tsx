@@ -19,7 +19,7 @@ import type { MonthlyPlan, WeeklyPlanSummary } from "@/lib/api/types";
 import { isPlayAnnual } from "@/lib/monthly/play-entry";
 import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
-import { MONTH_ORDER, ageSelectionLabel, selectedAgesFor } from "@/lib/onboarding/types";
+import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
@@ -222,9 +222,6 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     }
   }
 
-  const meta = [local?.className, local && ageSelectionLabel(selectedAgesFor(local))]
-    .filter(Boolean)
-    .join(" · ");
   const label = week ? `${month}월 ${week.label}` : `${month}월`;
 
   if (busy)
@@ -232,7 +229,6 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
       <div className="flex min-h-[calc(100vh-60px)]">
         <GenerationRing
           title={`${label} 주간계획안을 만들고 있어요`}
-          meta={[local?.className, "월별 주제형"].filter(Boolean).join(" · ")}
           steps={[`${label} 놀이 이어받기`, "요일별 활동 나누기", "문서로 정리하기"]}
           onCancel={() => {
             controller.current?.abort();
@@ -244,27 +240,24 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
 
   return (
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <Link
           href={
             draft
               ? `/plans/monthly?plan_id=${draft.id}&class_id=${classId}&month=${month}`
               : "/plans/monthly"
           }
-          className="flex min-h-[32px] items-center text-sm text-[#5c5243] no-underline"
+          className="flex min-h-[32px] shrink-0 items-center text-sm text-[#5c5243] no-underline"
         >
           ← {month}월 월간계획안
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">주간계획안 만들기</h1>
-          <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
-            월별 주제형
-          </span>
-          <span className="text-sm text-[#5c5243]">{meta}</span>
-        </div>
+        <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">주간계획안 만들기</h1>
+        <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
+          월별 주제형
+        </span>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white px-7 py-6">
           <div className="flex shrink-0 flex-col gap-2.5">
             <h2 className="m-0 text-lg font-bold">어느 달의 주간을 만들까요?</h2>
@@ -394,12 +387,8 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
 
         <section
           aria-label="양식 미리보기"
-          className="flex min-h-[420px] min-w-0 flex-col gap-3 rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] px-5 py-5"
+          className="flex min-h-[420px] min-w-0 flex-col rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] p-3"
         >
-          <div className="flex items-baseline justify-between px-2">
-            <h2 className="m-0 text-lg font-bold">요일형 주간 양식</h2>
-            <span className="text-sm text-[#5c5243]">토요일 운영은 원 설정을 따라요</span>
-          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <WeeklySheet
               title={`${week?.label ?? "1주"} 주간놀이계획안`}
