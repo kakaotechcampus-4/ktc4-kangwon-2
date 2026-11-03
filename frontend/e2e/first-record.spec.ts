@@ -55,8 +55,16 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   await page.getByRole("button", { name: "관찰 기록 저장" }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
 
-  // 아이별 모아보기 — 서버에서 다시 읽은 건수
-  await page.goto("/records/children");
+  // 데스크톱 기록 메뉴에서 진입하고, 관찰 기록과 활성 표시가 겹치지 않는다.
+  const menu = page.getByRole("complementary", { name: "주 메뉴" });
+  const childMenu = menu.getByRole("link", { name: "아이별 모아보기", exact: true });
+  await childMenu.click();
+  await expect(page).toHaveURL(/\/records\/children$/);
+  await expect(childMenu).toHaveAttribute("aria-current", "page");
+  await expect(menu.getByRole("link", { name: "관찰 기록", exact: true })).not.toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await expect(page.getByRole("button", { name: `${child} · 1건` })).toBeVisible();
   await expect(page.getByText("관찰 기록 1건")).toBeVisible();
 });
