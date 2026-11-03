@@ -19,7 +19,7 @@ MONTHS = (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2)
 @pytest.mark.parametrize(
     "name,titles", [("annual_v1_weeks.hwpx", 1), ("play_project_annual.hwpx", 2)]
 )
-def test_annual_templates_use_monthly_blue_title_and_table_palette(name, titles):
+def test_annual_templates_use_blue_titles_and_black_table_borders(name, titles):
     directory = Path(__file__).parents[1] / "app/features/plans/templates"
     with zipfile.ZipFile(directory / name) as archive:
         header = etree.fromstring(archive.read("Contents/header.xml"))
@@ -29,6 +29,8 @@ def test_annual_templates_use_monthly_blue_title_and_table_palette(name, titles)
         "hh": "http://www.hancom.co.kr/hwpml/2011/head",
         "hc": "http://www.hancom.co.kr/hwpml/2011/core",
     }
+    margin = section.find(".//hp:pagePr/hp:margin", NS)
+    assert (margin.get("bottom"), margin.get("footer")) == ("1984", "1417")
     fills = {b.get("id"): b for b in header.findall(".//hh:borderFill", ns)}
     title_paragraphs = [
         p for p in section.findall("hp:p", NS) if any(t.text for t in p.findall("hp:run/hp:t", NS))
@@ -45,7 +47,7 @@ def test_annual_templates_use_monthly_blue_title_and_table_palette(name, titles)
             for edge in ("leftBorder", "rightBorder", "topBorder", "bottomBorder"):
                 line = fill.find(f"hh:{edge}", ns)
                 if line is not None and line.get("type") != "NONE":
-                    assert line.get("color") == "#BDE9FD"
+                    assert line.get("color") == "#000000"
         for tc in table.find("hp:tr", NS).findall("hp:tc", NS):
             brush = fills[tc.get("borderFillIDRef")].find("hc:fillBrush/hc:winBrush", ns)
             assert brush.get("faceColor") == "#E1F2FE"
@@ -99,6 +101,16 @@ def test_each_canonical_week_is_covered_once_in_both_halves(year):
             assert topic in text and topic in preview
     assert "※" not in text
     assert table.find("hp:pos", NS).get("treatAsChar") == "0"
+    with zipfile.ZipFile(
+        Path(__file__).parents[1] / "app/features/plans/templates/play_monthly.hwpx"
+    ) as archive:
+        monthly = etree.fromstring(archive.read("Contents/section0.xml"))
+    footer = section.find(".//hp:footer", NS)
+    assert footer is not None and footer.get("applyPageType") == "BOTH"
+    assert (
+        footer.xpath(".//hp:t/text()", namespaces=NS)
+        == monthly.xpath("//hp:t/text()", namespaces=NS)[-2:]
+    )
 
 
 def test_template_keeps_nanum_gothic_and_nine_point_body():
