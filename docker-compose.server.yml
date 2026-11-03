@@ -1,0 +1,8 @@
+# 운영 서버에서만 쓴다 — 서버 .env 의 COMPOSE_FILE 이 붙인다.
+# 로컬에서 켜면 backend 가 안 뜬다(OrbStack 의 journald 오류). ADR-058 · docs/deploy.md 「서버 로그」.
+services:
+  backend:
+    logging: !override
+      driver: journald
+      options:
+        tag: ssample-backend
