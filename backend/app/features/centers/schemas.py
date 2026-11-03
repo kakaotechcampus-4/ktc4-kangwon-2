@@ -153,7 +153,8 @@ class JoinRequest(BaseModel):
 class ClassResponse(BaseModel):
     """`GET /api/centers/{center_id}/classes` 의 항목.
 
-    teacher_id 는 인증(8주차) 전까지 항상 비어 있고 계약에도 없어 내보내지 않는다.
+    teacher_id 숫자는 계약에 없어 내보내지 않는다. 대신 로그인한 계정 기준의
+    `my_access` 를 준다(ADR-059).
     updated_at 도 화면이 쓰지 않으므로 넣지 않는다.
     """
 
@@ -169,6 +170,7 @@ class ClassResponse(BaseModel):
     teacher_name: str
     consent_confirmed_at: datetime | None
     created_at: datetime
+    my_access: Literal["OWNER", "OPEN", "APPROVED", "PENDING", "REJECTED", "REVOKED", "NONE"]
 
 
 class ClassListResponse(BaseModel):

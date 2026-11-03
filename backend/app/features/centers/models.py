@@ -102,7 +102,9 @@ class Class(Base):
         comment="현재 원아 수. 선택. 아동 명단 입력 진행률에 쓴다 (docs/PRD.md S2)"
     )
     teacher_id: Mapped[int | None] = mapped_column(
-        comment="담임 계정. users.id 예정. FK 와 인덱스는 인증 PR(8주차)에서"
+        ForeignKey("users.id"),
+        index=True,
+        comment="반 주인 — 반을 만든 계정(ADR-059). NULL 은 이 결정 전에 만든 옛 반이다",
     )
     consent_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
