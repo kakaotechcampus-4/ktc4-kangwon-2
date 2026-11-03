@@ -500,7 +500,25 @@ function Compose({
   );
 }
 
-/** 한 아이, 조금 더 가까이 — 한 명씩 넘겨 보며 최근 관찰을 확인한다. */
+/** 앞장 쪽지 색. 아이가 바뀔 때마다 색도 바뀐다 — 넘어갔다는 것이 글자보다 먼저 보인다. */
+const SPOT_NOTE = [
+  "border-note-soft-line bg-note-soft",
+  "border-plum-line bg-plum",
+  "border-clay-line bg-clay",
+  "border-sage-line bg-sage-tint",
+];
+/** 자동으로 넘어가는 간격. 짧은 관찰 한 건을 읽기에 7초면 넉넉하다. */
+const TURN_MS = 7000;
+
+/**
+ * 한 아이, 조금 더 가까이 — 쪽지를 여러 장 겹쳐 두고 한 장씩 넘긴다.
+ *
+ * 책장이 넘어가듯 **스스로 넘어간다**(7초). 읽는 중에 넘어가면 방해가 되므로
+ * 마우스를 올리거나 안의 것에 초점이 가 있으면 멈춘다. 화살표로 직접 넘기면
+ * 그때부터는 자동으로 넘기지 않는다 — 교사가 고른 아이를 화면이 뺏어가면 안 된다.
+ *
+ * 움직임을 줄여 달라고 한 기기(`prefers-reduced-motion`)에서는 처음부터 자동이 없다.
+ */
 function ChildSpotlight({
   classes,
   records,
@@ -510,7 +528,19 @@ function ChildSpotlight({
 }) {
   const children = classes.flatMap((c) => c.children);
   const [index, setIndex] = useState(0);
-  const child = children[index % Math.max(children.length, 1)];
+  // 교사가 직접 넘긴 뒤에는 자동으로 움직이지 않는다.
+  const [held, setHeld] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const count = children.length;
+
+  useEffect(() => {
+    if (count < 2 || held || paused) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => setIndex((p) => (p + 1) % count), TURN_MS);
+    return () => window.clearInterval(timer);
+  }, [count, held, paused]);
+
+  const child = children[index % Math.max(count, 1)];
   const latest = records.find((r) => r.childId === child?.id);
   // 관찰 기록 화면은 기본으로 「주 반」을 연다. 지금 보고 있는 반·아이를 같이 넘겨야 그 아이가 걸린다.
   const childHref = child
@@ -518,70 +548,91 @@ function ChildSpotlight({
         classes.find((c) => c.children.some((k) => k.id === child.id))?.id ?? "",
       )}&child=${encodeURIComponent(child.id)}`
     : "/records";
+  const turn = (step: number) => {
+    setHeld(true);
+    setIndex((p) => (p + step + count) % count);
+  };
 
   return (
     <BoardSection title="한 아이, 조금 더 가까이">
-      <div className="relative mt-1 border border-note-soft-line bg-note-soft p-5 shadow-pg-hard">
-      <Tape />
       {!child ? (
-        <p className="mt-4 text-xs text-sun-ink">아직 등록된 아이가 없어요.</p>
+        <ChalkLine>아직 등록된 아이가 없어요</ChalkLine>
       ) : (
         <>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-[18px_14px_20px_12px] border border-note-soft-line bg-paper font-display text-[26px] font-bold text-sun-ink">
-              {child.name.slice(0, 1)}
-            </span>
-            <div>
-              <h3 className="font-display text-[26px] font-bold text-ink">{child.name}</h3>
-              <span className="text-[13px] text-sun-ink">최근 관찰</span>
-            </div>
-          </div>
-
-          <div className="mt-5 border-t border-note-soft-line pt-4">
-            <span className="flex items-center gap-2 text-[13px] font-semibold text-sun-ink">
-              {latest?.domain || "최근 관찰"}
-              <span className="ml-auto font-normal">{latest ? shortDate(latest.date) : ""}</span>
-            </span>
-            <p className="mt-2 text-[15px] leading-[1.9] text-ink">
-              {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
-            </p>
-          </div>
-
-          {/* 칠판 안은 264px 밖에 안 된다. 「이 아이 기록 보기」와 넘기기가 한 줄에
-              안 들어가면 줄을 바꾼다 — 글자가 두 줄로 쪼개지면 화살표만 따로 떠 보인다. */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-            <Link
-              href={childHref}
-              className="flex min-h-11 items-center gap-1 whitespace-nowrap text-[13px] font-semibold text-sun-ink"
+          <div
+            className="relative mx-3"
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+            onFocusCapture={() => setPaused(true)}
+            onBlurCapture={() => setPaused(false)}
+          >
+            {/* 뒤에 깔린 두 장. 넘길 것이 남았다는 게 글자 없이 보인다. */}
+            {count > 1 && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 translate-x-[6px] translate-y-[8px] rotate-[2.6deg] border border-plum-line bg-plum"
+                />
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 -translate-x-[5px] translate-y-[5px] -rotate-[2deg] border border-clay-line bg-clay"
+                />
+              </>
+            )}
+            <div
+              className={`relative border p-4 shadow-pg-hard ${SPOT_NOTE[index % SPOT_NOTE.length]}`}
             >
-              이 아이 기록 보기
-              <Icon name="arrow" className="h-3 w-3" />
-            </Link>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="이전 아이"
-                onClick={() => setIndex((p) => (p - 1 + children.length) % children.length)}
-                className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/60"
+              <div className="flex items-baseline gap-2.5">
+                <h3 className="font-display text-[25px] font-bold leading-none text-ink">
+                  {child.name}
+                </h3>
+                <span className="text-[12px] text-sun-ink">최근 관찰</span>
+              </div>
+              <div className="mt-2.5 flex items-baseline justify-between gap-2 text-[12.5px] font-semibold text-sun-ink">
+                <span className="min-w-0 truncate">{latest?.domain || "최근 관찰"}</span>
+                <span className="shrink-0 font-normal">
+                  {latest ? shortDate(latest.date) : ""}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[13.5px] leading-[1.8] text-ink">
+                {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
+              </p>
+              <Link
+                href={childHref}
+                className="mt-3 flex min-h-10 items-center gap-1 text-[12.5px] font-semibold text-sun-ink"
               >
-                <Icon name="arrow" className="h-4 w-4 rotate-180" />
-              </button>
-              <span className="text-[13px] text-sun-ink">
-                {(index % children.length) + 1}/{children.length}
-              </span>
-              <button
-                type="button"
-                aria-label="다음 아이"
-                onClick={() => setIndex((p) => (p + 1) % children.length)}
-                className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/60"
-              >
-                <Icon name="arrow" className="h-4 w-4" />
-              </button>
+                이 아이 기록 보기
+                <Icon name="arrow" className="h-3 w-3" />
+              </Link>
             </div>
+            {count > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="이전 아이"
+                  onClick={() => turn(-1)}
+                  className="absolute -left-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft hover:text-board-ink"
+                >
+                  <Icon name="arrow" className="h-3.5 w-3.5 rotate-180" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="다음 아이"
+                  onClick={() => turn(1)}
+                  className="absolute -right-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft hover:text-board-ink"
+                >
+                  <Icon name="arrow" className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
           </div>
+          {count > 1 && (
+            <p className="text-center font-display text-[16px] text-board-ink-soft">
+              {count}명 중 {(index % count) + 1}번째
+            </p>
+          )}
         </>
       )}
-      </div>
     </BoardSection>
   );
 }
