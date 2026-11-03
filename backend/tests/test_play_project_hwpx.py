@@ -166,6 +166,18 @@ def test_titles_preview_and_metadata(filled: bytes) -> None:
     assert not metas.get("creator") and not metas.get("lastsaveby")
 
 
+def test_footer_reuses_monthly_notice_on_both_pages(filled: bytes) -> None:
+    monthly = etree.fromstring(
+        parts((TEMPLATE.parent / "play_monthly.hwpx").read_bytes())["Contents/section0.xml"]
+    )
+    expected = monthly.xpath("//hp:t/text()", namespaces=NS)[-2:]
+    section = etree.fromstring(parts(filled)["Contents/section0.xml"])
+    footer = section.find(".//hp:footer", NS)
+    assert footer is not None and footer.get("applyPageType") == "BOTH"
+    assert footer.xpath(".//hp:t/text()", namespaces=NS) == expected
+    assert len(section.findall(".//hp:tbl", NS)) == 2
+
+
 def test_changed_paragraphs_drop_the_line_layout_cache(filled: bytes) -> None:
     for table in tables(filled):
         for tc in table.iterfind("hp:tr/hp:tc", NS):

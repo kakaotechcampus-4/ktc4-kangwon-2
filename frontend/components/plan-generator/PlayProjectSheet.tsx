@@ -116,6 +116,13 @@ export default function PlayProjectSheet({
                   ))}
               </tbody>
             </table>
+            <p className="mt-5 bg-[#E1F2FE] px-2 py-1 text-center text-[10px] leading-relaxed">
+              {
+                "*예상 놀이 방향은 [2019 개정 누리과정]의 목적에 따라 ‘유아 놀이 중심’ 활동이 진행 될 수 있도록 융통성 있게 구성되었습니다. "
+              }
+              <br />
+              {"*유아들의 흥미도와 참여 정도에 따라 다른 방향으로 조정됩니다."}
+            </p>
           </article>
         );
       })}
