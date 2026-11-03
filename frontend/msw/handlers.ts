@@ -203,6 +203,13 @@ export const handlers = [
       if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
   }),
+  // §1. 원 정보 읽기. 서버처럼 자기 원만 읽는다.
+  http.get("*/api/centers/:centerId", ({ params }) => {
+    const id = Number(params.centerId);
+    const center = findCenter(id);
+    if (!center || id !== currentCenterId()) return missing();
+    return HttpResponse.json(center);
+  }),
   // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
   http.patch("*/api/centers/:centerId", async ({ request, params }) => {
     const id = Number(params.centerId);
@@ -1196,6 +1203,7 @@ const myWeekly = (id: number) => {
 const monthlyOut = (p: MonthlyPlan) => ({
   ...p,
   parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
+  drill_candidates: p.drill_candidates ?? [],
 });
 const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
 const weeklyMissing = () => failure("NOT_FOUND", "주간계획안을 찾을 수 없습니다.", "id");

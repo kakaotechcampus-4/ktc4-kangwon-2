@@ -22,7 +22,7 @@ export const SECTION_LABELS: Record<string, string> = {
   // 한글로 뜬다 — 없으면 교사 화면에 기계 이름이 그대로 나온다.
   basic_habit: "기본생활습관",
   emergency_response: "비상대응",
-  drill: "소방대피 훈련",
+  drill: "소방대피/재난대비",
   indoor_alternative: "실내 대체활동",
   special_program: "특성화 활동",
   event_schedule: "행사 일정",
