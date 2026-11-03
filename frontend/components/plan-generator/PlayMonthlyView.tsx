@@ -13,7 +13,6 @@ import { cellValue, drillTarget, overlayCells } from "@/lib/plan-generator/playM
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
-import PlayMonthlyHistory from "./PlayMonthlyHistory";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
 import PlayMonthlySafetyPanel from "./PlayMonthlySafetyPanel";
 import PlayMonthlySheet, { PAPER_WIDTH, safetyCellId } from "./PlayMonthlySheet";
@@ -400,9 +399,6 @@ function PlayMonthlyBody({
           />
         </div>
       )}
-      <div className="border-t border-[#efeae2] pt-3 text-sm">
-        <PlayMonthlyHistory id={plan.id} />
-      </div>
     </div>
   );
   const aiTab = safetyWeek ? (

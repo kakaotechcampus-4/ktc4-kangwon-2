@@ -13,13 +13,12 @@ import {
   confirmMonthlyPlan,
   downloadMonthlyHwpx,
   editMonthlyCell,
-  getMonthlyPlanAudit,
   placeMonthlySafety,
   regenerateMonthlyCell,
   unconfirmMonthlyPlan,
 } from "@/lib/api/monthly";
 import { isSaveConflict } from "@/lib/api/plans";
-import type { MonthlyAuditEvent, MonthlyCell, MonthlyPlan } from "@/lib/api/types";
+import type { MonthlyCell, MonthlyPlan } from "@/lib/api/types";
 import { sectionName } from "@/lib/monthly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
@@ -47,7 +46,6 @@ import {
 } from "@/components/plan-generator/PlayMonthlySheet";
 import { noticeSummary } from "@/components/plan-generator/PlayMonthlyView";
 import { useCompactShell } from "@/components/app/compact-shell";
-import { ws } from "./WorkspaceUI";
 
 const REGENERATABLE = new Set(["focus", "outdoor_play", "basic_habit", "goals"]);
 const FINDINGS: Record<string, string> = {
@@ -432,7 +430,6 @@ export default function MonthlyPlanEditor({
         </>
       )}
       <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
-        <MonthlyHistory id={plan.id} />
         <button type="button" className={BUTTON.plain} disabled={locked} onClick={onDelete}>
           지우고 다시 만들기
         </button>
@@ -714,88 +711,5 @@ export default function MonthlyPlanEditor({
     >
       <div ref={docBox}>{docOf(editing, sheetZoom.percent / 100)}</div>
     </AnnualFrame>
-  );
-}
-
-const EVENT: Record<MonthlyAuditEvent["type"], string> = {
-  CREATED: "만들었어요",
-  TEACHER_EDITED: "고쳤어요",
-  REGENERATED: "다시 만들었어요",
-  CONFIRMED: "확정했어요",
-  UNCONFIRMED: "확정을 풀었어요",
-};
-const short = (text: string) => {
-  const t = text.trim();
-  return t ? "「" + (t.length > 30 ? t.slice(0, 30) + "…" : t) + "」" : "(빈 칸)";
-};
-
-/** 「변경 이력 보기」 — 왼쪽 패널 아래 글자 버튼, 누르면 펼친다. 만들 때 칸마다 남는 CREATED 는 한 줄로 접는다. */
-function MonthlyHistory({ id }: { id: number }) {
-  const [open, setOpen] = useState(false);
-  const [state, setState] = useState<{ events: MonthlyAuditEvent[] | null; failed: boolean }>({
-    events: null,
-    failed: false,
-  });
-  useEffect(() => {
-    if (!open) return;
-    const controller = new AbortController();
-    getMonthlyPlanAudit(id, undefined, controller.signal).then(
-      ({ items }) => !controller.signal.aborted && setState({ events: items, failed: false }),
-      () => !controller.signal.aborted && setState({ events: null, failed: true }),
-    );
-    return () => controller.abort();
-  }, [id, open]);
-  const events = (state.events ?? []).filter((e) => EVENT[e.type]);
-  const created = events.filter((e) => e.type === "CREATED" && e.scope === "CELL");
-  const rows = events.filter((e) => !created.includes(e) || e === created[0]);
-  return (
-    <div>
-      <button
-        type="button"
-        className={BUTTON.link}
-        onClick={() => {
-          setState({ events: null, failed: false });
-          setOpen(!open);
-        }}
-      >
-        {open ? "변경 이력 접기" : "변경 이력 보기"}
-      </button>
-      {open && state.failed && (
-        <p role="alert" className="m-0 text-[13px]">
-          변경 이력을 불러오지 못했어요.
-        </p>
-      )}
-      {open && !state.failed && !state.events && (
-        <p role="status" className="m-0 text-[13px]">
-          변경 이력을 읽고 있어요.
-        </p>
-      )}
-      {open && state.events && (
-        <ol
-          aria-label="변경 이력"
-          className="m-0 flex max-h-[220px] flex-col gap-1 overflow-y-auto pl-5 text-[13px] text-[#5c5243]"
-        >
-          {rows.map((e, i) => (
-            <li key={i}>
-              <time dateTime={e.occurred_at}>
-                {new Date(e.occurred_at).toLocaleString("ko-KR", {
-                  month: "numeric",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </time>{" "}
-              {e === created[0]
-                ? `처음 만들어진 칸 ${created.length}개`
-                : EVENT[e.type] +
-                  (e.value_change
-                    ? ` ${short(e.value_change.before)} → ${short(e.value_change.after)}`
-                    : "")}
-            </li>
-          ))}
-          {!rows.length && <li className={ws.muted}>아직 이력이 없어요</li>}
-        </ol>
-      )}
-    </div>
   );
 }

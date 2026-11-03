@@ -18,8 +18,7 @@ export const BUTTON = {
     "min-h-[44px] rounded-xl border border-[#ddd6ca] bg-white px-4 text-sm font-bold text-[#5e4b96] disabled:opacity-40",
   primary:
     "min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40",
-  /** 「변경 이력 보기」처럼 패널 아래 가벼운 글자 버튼. */
-  link: "min-h-[44px] text-sm font-bold text-[#5e4b96] underline underline-offset-2 disabled:opacity-40",
+  /** 패널 아래 가벼운 글자 버튼(「지우고 다시 만들기」). */
   plain: "min-h-[44px] text-sm text-[#5c5243] underline underline-offset-2 disabled:opacity-40",
 };
 export const tabClass = (active: boolean) =>

@@ -186,7 +186,6 @@ const frameModule = {
 };
 const shellModule = { useCompactShell: () => {} };
 const linkStub = esModule((p) => jsx("a", p));
-const historyStub = (props) => jsx("history", props);
 function load() {
   const h = harness();
   const mod = compile("../components/plan-generator/PlayMonthlyView.tsx", {
@@ -212,7 +211,6 @@ function load() {
     "./PlayMonthlyDrillPanel": esModule((props) => jsx("drill", props)),
     "./PlayMonthlyRowRemove": esModule((props) => jsx("remove", props)),
     "./PlayMonthlyConfirmBar": esModule(barStub),
-    "./PlayMonthlyHistory": esModule(historyStub),
     "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "./AnnualFrame": frameModule,
     "next/link": linkStub,
@@ -308,7 +306,7 @@ test("확정본의 [확정 취소]는 그 revision 으로 풀고 응답을 넘�
   assert.ok(h.render(View, { id: done.id }));
 });
 
-test("확정 바와 이력은 초안 · 확정본 모두 계획안 id 로 달고, 저장 훅의 함수를 그대로 넘긴다", async () => {
+test("확정 바는 계획안 id 로 달고 저장 훅의 함수를 그대로 넘긴다 · 변경 이력 버튼은 없다", async () => {
   const plan = fixture();
   const { tree } = await open(plan.id, async () => plan);
   const bar = all(tree).find((n) => n.type === "confirmbar");
@@ -316,8 +314,8 @@ test("확정 바와 이력은 초안 · 확정본 모두 계획안 id 로 달고
   saved.length = 0;
   for (const name of ["whenIdle", "freeze", "unfreeze"]) bar.props[name]();
   assert.deepEqual(saved.splice(0), [["idle"], ["freeze"], ["unfreeze"]]);
-  // 이력은 「칸 편집」 탭 아래 — 확정본 화면(Ⓜ4)은 따로 다룬다.
-  assert.equal(all(tree).find((n) => n.type === "history").props.id, plan.id);
+  // 변경 이력은 서버에만 남고 화면에는 없다(screen-spec S11 · 놀이 월간).
+  assert.equal(withText(tree, "button", "변경 이력").length, 0);
 });
 
 test("확정 응답을 받으면 확정 후 화면 — 칸 편집 패널 · 저장 표시 · 되돌리기 없이", async () => {
