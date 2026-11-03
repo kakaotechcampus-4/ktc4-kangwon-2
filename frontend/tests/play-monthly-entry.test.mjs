@@ -37,7 +37,6 @@ const {
   firstExtras,
   sameColumns,
   profileInput,
-  existingAfterConflict,
 } = load("../components/workspace/MonthlyNew.tsx", {
   react: React,
   "next/link": {
@@ -46,6 +45,7 @@ const {
   },
   "next/navigation": { useRouter: () => ({}) },
   "@/lib/api/client": { ApiError: class {} },
+  "@/lib/api/conflict": {},
   "@/lib/api/monthly": {},
   "@/lib/api/playMonthly": {},
   "@/lib/api/plans": {},
@@ -207,14 +207,18 @@ test("월별 주제형 칸 고르기: 기반 양식 · 처음 켤 칸 · 같은 
   assert.doesNotMatch(out, />drill</);
 });
 
+const { existingAfterConflict } = load("../lib/api/conflict.ts", {});
+
+// 월간 · 주간 만들기가 함께 쓴다(MNEW-01 · RUI-01).
 test("409 뒤 다시 읽기: 그 달 id, 없거나 목록 실패면 null, 기다리는 사이 취소 · 새 요청이면 null", async () => {
   const list = async () => ({ items: [{ id: 77, month: 11 }] });
-  assert.equal(await existingAfterConflict(list, 11, () => false), 77);
-  assert.equal(await existingAfterConflict(list, 12, () => false), null);
+  const month = (m) => (p) => p.month === m;
+  assert.equal(await existingAfterConflict(list, month(11), () => false), 77);
+  assert.equal(await existingAfterConflict(list, month(12), () => false), null);
   assert.equal(
     await existingAfterConflict(
       () => Promise.reject(new Error("x")),
-      11,
+      month(11),
       () => false,
     ),
     null,
@@ -224,7 +228,7 @@ test("409 뒤 다시 읽기: 그 달 id, 없거나 목록 실패면 null, 기다
   let stale = false;
   const late = existingAfterConflict(
     () => new Promise((done) => (release = () => done({ items: [{ id: 77, month: 11 }] }))),
-    11,
+    month(11),
     () => stale,
   );
   stale = true;

@@ -48,6 +48,7 @@ const { firstWeeklyMonth, firstOpenWeek, inheritWeek } = load(
     react: React,
     "next/link": { __esModule: true, default: stub },
     "@/lib/api/client": { ApiError: class {} },
+    "@/lib/api/conflict": {},
     "@/lib/api/monthly": {},
     "@/lib/api/plans": {},
     "@/lib/api/weekly": {},

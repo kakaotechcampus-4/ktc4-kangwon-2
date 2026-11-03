@@ -344,6 +344,16 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   assert.equal(text(tree).includes("숨길 집단 후보"), false);
   const buttons = all(tree).filter((n) => n.type === "button");
   const byLabel = (label) => buttons.find((n) => n.props["aria-label"] === label);
+  // 넣은 후보는 서버가 옮겨 쓴 「[종류] - 이름」으로 알아본다(RUI-N01). 빼면 다시 「넣기」.
+  assert.equal(text(byLabel("이번 주 놀이에 넣기: 가게 놀이")), "넣음");
+  assert.equal(byLabel("이번 주 놀이에 넣기: 가게 놀이").props.disabled, true);
+  const without = all(
+    Panel({
+      ...props,
+      plan: { ...plan, sections: [{ section_key: "indoor_play", cells: selected.slice(1) }] },
+    }),
+  ).find((n) => n.props?.["aria-label"] === "이번 주 놀이에 넣기: 가게 놀이");
+  assert.equal(text(without), "넣기");
   byLabel("이번 주 놀이에 넣기: 가게 놀이").props.onClick();
   byLabel("1번 놀이 아래로").props.onClick();
   byLabel("1번 놀이 빼기").props.onClick();

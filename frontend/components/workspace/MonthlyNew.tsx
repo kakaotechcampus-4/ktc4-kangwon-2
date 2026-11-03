@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
+import { existingAfterConflict } from "@/lib/api/conflict";
 import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
 import { createMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { createPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
@@ -426,20 +427,6 @@ async function loadColumns(
   };
 }
 
-/**
- * 만들기가 409(그 달이 이미 있음)면 목록을 다시 읽어 그 달 계획안 id 를 찾는다.
- * 기다리는 사이 취소했거나 새 요청이 시작됐으면(`stale`) null — 옛 요청이 화면을 옮기지 않는다.
- */
-export async function existingAfterConflict(
-  list: () => Promise<{ items: { id: number; month: number }[] }>,
-  month: number,
-  stale: () => boolean,
-): Promise<number | null> {
-  const again = await list().catch(() => null);
-  if (stale()) return null;
-  return again?.items.find((p) => p.month === month)?.id ?? null;
-}
-
 /** 고른 반의 연간 · 월간 목록 · 양식을 읽어 Ⓜ1 을 띄운다. 월별 주제형 초안은 `onOpen` 으로 연다. */
 export default function MonthlyNew({
   onOpen,
@@ -580,7 +567,7 @@ export default function MonthlyNew({
       if (e instanceof ApiError && e.status === 409) {
         const found = await existingAfterConflict(
           () => (play ? listPlayMonthly(classId) : listMonthlyPlans(classId)),
-          month,
+          (p) => p.month === month,
           stale,
         );
         if (stale()) return;

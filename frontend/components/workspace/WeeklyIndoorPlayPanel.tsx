@@ -120,7 +120,10 @@ export default function WeeklyIndoorPlayPanel({
               .filter((c) => c.activity_type === kind)
               .map((c) => {
                 const text = c.cell.value.trim();
-                const here = !!text && rows.some((r) => r.value.trim() === text);
+                // 넣으면 서버가 「[종류] - 이름」으로 옮겨 쓴다. 그 글이 목록에 있으면 넣은 후보다.
+                // 교사가 옮긴 글을 고치면 다시 「넣기」로 보이지만 서버가 같은 후보는 한 번만 넣는다.
+                const copied = `[${c.activity_type}] - ${c.name}`;
+                const here = !!c.name.trim() && rows.some((r) => r.value.trim() === copied);
                 return (
                   <li
                     key={c.cell.item_id}

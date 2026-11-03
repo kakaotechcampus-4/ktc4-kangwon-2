@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ApiError } from "@/lib/api/client";
+import { existingAfterConflict } from "@/lib/api/conflict";
 import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
 import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
@@ -201,14 +202,20 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
       );
       if (!ctl.signal.aborted) open(plan.id, week.week_id);
     } catch (e) {
-      if (ctl.signal.aborted) return;
-      setBusy(false);
-      // 그 주가 이미 있으면(409) 목록을 다시 읽어 그 초안으로 간다.
+      // 취소했거나 새 요청이 시작됐으면 이 요청은 화면을 바꾸지 않는다(새 요청의 busy 도 풀지 않는다).
+      const stale = () => ctl.signal.aborted || controller.current !== ctl;
+      if (stale()) return;
+      // 그 주가 이미 있으면(409) 목록을 다시 읽어 그 초안으로 간다 — 읽는 동안 화면은 잠근 채로 둔다.
       if (e instanceof ApiError && e.status === 409) {
-        const again = await listWeeklyPlans(classId, month!).catch(() => null);
-        const found = again?.items.find((p) => p.week_id === week.week_id);
-        if (found) return open(found.id, week.week_id);
+        const found = await existingAfterConflict(
+          () => listWeeklyPlans(classId, month!),
+          (p) => p.week_id === week.week_id,
+          stale,
+        );
+        if (stale()) return;
+        if (found !== null) return open(found, week.week_id);
       }
+      setBusy(false);
       const memoMessage = memoError(e);
       if (memoMessage) setMemoProblem(memoMessage);
       else setProblem(e instanceof Error ? e.message : "주간계획안을 만들지 못했어요.");
