@@ -164,13 +164,19 @@ test("월별 주제형 칸 고르기: 기반 양식 · 처음 켤 칸 · 같은 
     base_template_ref: { template_id: "a", template_version: "v0.1.1" },
     selected_optional_keys: ["focus", "drill"],
   };
-  assert.equal(pickTemplate(items, null).template_ref.template_version, "v0.2.1");
-  assert.equal(pickTemplate(items, current).template_ref.template_version, "v0.1.1");
-  assert.equal(pickTemplate([tpl("v1", false)], null), null);
-  const t = pickTemplate(items, current);
+  assert.equal(pickTemplate(items).template_ref.template_version, "v0.2.1");
+  assert.equal(pickTemplate([tpl("v1", false)]), null);
+  const t = pickTemplate(items);
   assert.deepEqual(firstExtras(t, current), ["focus"]);
-  assert.equal(sameColumns({ ...current, selected_optional_keys: ["focus"] }, t, ["focus"]), true);
-  assert.equal(sameColumns({ ...current, selected_optional_keys: ["focus"] }, t, ["goals"]), false);
+  // 지금 양식이 옛 판이면 같은 칸이라도 최신 판으로 새로 만든다.
+  assert.equal(sameColumns({ ...current, selected_optional_keys: ["focus"] }, t, ["focus"]), false);
+  const latest = {
+    ...current,
+    base_template_ref: t.template_ref,
+    selected_optional_keys: ["focus"],
+  };
+  assert.equal(sameColumns(latest, t, ["focus"]), true);
+  assert.equal(sameColumns(latest, t, ["goals"]), false);
   assert.equal(sameColumns(null, t, []), false);
   const input = profileInput(t, ["focus"]);
   assert.deepEqual(Object.keys(input.display_labels), ["theme", "focus"]);

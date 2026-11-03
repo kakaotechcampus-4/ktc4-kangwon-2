@@ -96,26 +96,19 @@ export function inheritOf(annual: AnnualPlanResponse | null, month: number): Inh
   };
 }
 
-/** 칸을 고를 기반 양식: 지금 양식의 기반이 아직 승인돼 있으면 그것, 아니면 승인된 최신 판. */
-export function pickTemplate(items: MonthlyTemplate[], current: ReadyProfile | null) {
-  const approved = items.filter((t) => t.approved);
-  const base = current?.base_template_ref;
-  return (
-    approved.find(
-      (t) =>
-        t.template_ref.template_id === base?.template_id &&
-        t.template_ref.template_version === base?.template_version,
-    ) ??
-    approved
-      .sort((a, b) =>
-        a.template_ref.template_version.localeCompare(b.template_ref.template_version, undefined, {
-          numeric: true,
-        }),
-      )
-      .pop() ??
-    null
-  );
-}
+/**
+ * 칸을 고를 기반 양식: 승인된 최신 판. 옛 판은 그 판으로 만든 양식 · 계획안을 열려고 남아 있을 뿐,
+ * 새로 고르는 칸은 늘 최신 판으로 만든다(판이 오를수록 고를 수 있는 칸이 늘었다).
+ */
+export const pickTemplate = (items: MonthlyTemplate[]) =>
+  items
+    .filter((t) => t.approved)
+    .sort((a, b) =>
+      a.template_ref.template_version.localeCompare(b.template_ref.template_version, undefined, {
+        numeric: true,
+      }),
+    )
+    .pop() ?? null;
 
 /** 처음 켜 둘 칸: 지금 양식에서 켠 칸 중 이 기반 양식이 고르게 하는 것. */
 export const firstExtras = (template: MonthlyTemplate, current: ReadyProfile | null) =>
@@ -409,7 +402,7 @@ async function loadColumns(
   const current = ready.items.find((p) => sameRef(p.profile_ref, resolved.profile_ref)) ?? null;
   return {
     centerId,
-    template: pickTemplate(templates.items, current),
+    template: pickTemplate(templates.items),
     current,
     pointer: pointer.profile_ref,
   };
