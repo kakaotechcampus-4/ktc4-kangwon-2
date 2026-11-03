@@ -58,7 +58,11 @@ from app.features.documents.stale import SourceImpact, document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_child, require_own_class
+from app.shared.auth.ownership import (
+    own_class_clause,
+    require_own_child,
+    require_own_class,
+)
 from app.shared.gates.sections import check_sections, join_facts
 from app.shared.llm import LlmBudgetExceeded
 
@@ -126,9 +130,12 @@ def _invalid(fields: list[str]) -> HTTPException:
 
 
 def _own_document(
-    session: Session, user: User, document_id: int, *, lock: bool = False
+    session: Session, user: User, document_id: int, *, lock: bool = False, read_only: bool = False
 ) -> Document:
-    """남의 원 문서도 없는 문서와 같은 404 다 (shared/auth/ownership.py 와 같은 이유)."""
+    """남의 원 문서도 없는 문서와 같은 404 다 (shared/auth/ownership.py 와 같은 이유).
+
+    같은 원이어도 남의 반 문서면 반 검사를 거친다. 기본이 쓰기다 — 읽기만 `read_only=True`.
+    """
     query = (
         select(Document)
         .join(Class, Class.id == Document.class_id)
@@ -141,6 +148,7 @@ def _own_document(
         raise _error(
             status.HTTP_404_NOT_FOUND, "NOT_FOUND", "문서를 찾을 수 없습니다.", ["document_id"]
         )
+    require_own_class(session, user, doc.class_id, read_only=read_only)
     return doc
 
 
@@ -267,7 +275,11 @@ def list_documents(
     if kind is not None:
         query = query.where(Document.kind == kind)
     if class_id is not None:
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Document.class_id == class_id)
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(own_class_clause(user))
     if child_id is not None:
         query = query.where(Document.child_id == child_id)
     if status is not None:
@@ -642,7 +654,9 @@ def create_document(
 @router.get("/{document_id}", response_model=DocumentDetailResponse)
 def get_document(document_id: int, session: DbSession, user: CurrentUser) -> DocumentDetailResponse:
     """단건 조회. 목록과 달리 `sections` · `sources` 를 담는다 (docs/api-spec.md §11)."""
-    return _build_detail_response(session, _own_document(session, user, document_id))
+    return _build_detail_response(
+        session, _own_document(session, user, document_id, read_only=True)
+    )
 
 
 @router.put("/{document_id}", response_model=DocumentDetailResponse)
@@ -762,6 +776,7 @@ def related_documents(
     if row is None:
         raise _error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", "문서를 찾을 수 없습니다.", ["id"])
     doc = row[0]
+    require_own_class(session, user, doc.class_id, read_only=True)
 
     expected = EXPECTED_PAIRS.get(doc.kind, DEFAULT_EXPECTED)
     query = _visible(user).where(
@@ -1041,7 +1056,7 @@ def refresh_document(
 
 @router.get("/{document_id}/source-comparison", response_model=DocumentSourceComparison)
 def compare_document_sources(document_id: int, session: DbSession, user: CurrentUser):
-    return locked_review(session, user, document_id)[4]
+    return locked_review(session, user, document_id, read_only=True)[4]
 
 
 @router.post("/{document_id}/reconfirm", response_model=DocumentDetailResponse)

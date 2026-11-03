@@ -52,7 +52,7 @@ _ROUTINE_HEAD = re.compile(r"^\[(.+?)(?:\s\d{1,2}:\d{2}~\d{1,2}:\d{2})?\]")
 def export_document(
     document_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
 ) -> Response:
-    doc = _own_document(session, user, document_id)
+    doc = _own_document(session, user, document_id, read_only=True)
     if doc.kind not in ("observation", "dailyLog", "weeklyLog"):
         raise _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,

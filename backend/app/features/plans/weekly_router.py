@@ -112,7 +112,7 @@ from app.features.plans.weekly_schemas import (
     WeekPeriodOut,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmUnavailable, is_mock
 
 _log = logging.getLogger(__name__)
@@ -298,10 +298,13 @@ def list_weekly_plans(
     if month is not None and (class_id is None or not 1 <= month <= 12):
         raise _error(422, "VALIDATION_FAILED", "입력값을 확인해주세요.", ["month"])
     if class_id is not None:
-        klass = require_own_class(session, user, class_id)
+        klass = require_own_class(session, user, class_id, read_only=True)
         query = query.where(Plan.classroom_ref == str(class_id))
         if month is not None:
             query = query.where(Plan.target_month == _target_month(klass.school_year, month).value)
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(Plan.classroom_ref.not_in(foreign_class_refs(user)))
     rows = session.scalars(query.order_by(Plan.week_id, Plan.id)).all()
     return WeeklyPlanListOut(
         items=[
@@ -328,8 +331,11 @@ def get_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 
 def _current(session: Session, user, plan_id: int) -> WeeklyPlanOut:
-    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다."""
-    row = _own_row(session, user, plan_id)
+    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다.
+
+    읽기 검사만 한다 — 쓰는 길은 모두 먼저 `_own_row`(쓰기 검사)를 지난 뒤 이걸 부른다.
+    """
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent = session.scalar(
         select(Plan).where(
@@ -372,8 +378,11 @@ def delete_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 _CONFIRMED_NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
 
 
-def _own_row(session: Session, user, plan_id: int) -> Plan:
-    """이 원의 주간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing)."""
+def _own_row(session: Session, user, plan_id: int, *, read_only: bool = False) -> Plan:
+    """이 원의 주간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing).
+
+    남의 반 계획안이면 반 검사를 거친다(ADR-059). 기본이 쓰기다 — 읽기만 `read_only=True`.
+    """
     row = session.scalar(
         select(Plan)
         .where(Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "weekly")
@@ -381,6 +390,7 @@ def _own_row(session: Session, user, plan_id: int) -> Plan:
     )
     if row is None:
         raise _NOT_FOUND
+    require_own_class(session, user, int(row.classroom_ref), read_only=read_only)
     return row
 
 
@@ -839,7 +849,7 @@ def get_weekly_audit(
     주간 칸에는 주가 따로 없다 — 칸 이벤트의 `week_id` 는 계획안의 주다. 교사 입력 칸의 첫
     `MANUAL` 은 이벤트가 아니라 칸 `generation` 으로 보인다(W4 결정 ②).
     """
-    row = _own_row(session, user, plan_id)
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     cells = (
         list(plan.cells)

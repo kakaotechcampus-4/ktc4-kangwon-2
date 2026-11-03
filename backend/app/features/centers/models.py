@@ -116,6 +116,34 @@ class Class(Base):
     )
 
 
+class ClassAccessRequest(Base):
+    """남의 반을 보겠다는 요청 한 줄 (ADR-059). 한 계정이 한 반에 줄 하나만 갖는다.
+
+    거절 · 취소 뒤에 다시 요청하면 새 줄이 아니라 같은 줄을 PENDING 으로 되돌린다.
+    """
+
+    __tablename__ = "class_access_requests"
+    __table_args__ = (
+        UniqueConstraint("class_id", "requester_id"),
+        CheckConstraint("status IN ('PENDING','APPROVED','REJECTED','REVOKED')", name="status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(
+        ForeignKey("classes.id"), index=True, comment="보고 싶은 반"
+    )
+    requester_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, comment="요청한 계정"
+    )
+    status: Mapped[str] = mapped_column(
+        String(10), comment="PENDING | APPROVED | REJECTED | REVOKED. 승인은 보기만 허락한다"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Child(Base):
     """아동. 실명을 평문 저장한다 (ADR-004).
 
