@@ -19,6 +19,7 @@
 | 아직 안 정한 것 | [docs/미확정사항.md](docs/미확정사항.md) |
 | 왜 이렇게 했나 | [docs/adr/](docs/adr/) |
 | 평가 때 뭘 근거로 대나 | [docs/evaluation/](docs/evaluation/) — 항목 10개 |
+| 화면을 무엇으로 만드나 | [docs/design/종이와-판.md](docs/design/종이와-판.md) — 종이 · 쪽지 · 칠판 · 버튼 |
 | 디렉터리 · 브랜치 | [docs/structure.md](docs/structure.md) · [docs/branch-strategy.md](docs/branch-strategy.md) |
 
 **`p0-planning/` 안에는 더 좁은 규칙이 따로 있다** — [p0-planning/CLAUDE.md](p0-planning/CLAUDE.md).
