@@ -603,6 +603,7 @@ function page(
     "next/navigation": { useRouter: () => ({ push: (href) => pushed.push(href) }) },
     "@/lib/api/auth": { getMe: async () => ({ id: 1, center_id: 42 }) },
     "@/lib/api/classes": {
+      isMyClass: (c) => c.my_access !== "NONE",
       getClasses: async () => ({ items: classes ?? [{ id: 3, name: "햇살반" }] }),
     },
     "@/lib/api/client": { isUnauthenticated: () => false },

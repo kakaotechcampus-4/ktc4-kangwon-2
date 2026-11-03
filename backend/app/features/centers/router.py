@@ -35,6 +35,25 @@ router = APIRouter(prefix="/centers", tags=["centers"])
 # Annotated 로 주입한다. 기본값 자리에서 Depends() 를 호출하면 ruff 의 B008 에 걸린다.
 DbSession = Annotated[Session, Depends(get_session)]
 
+
+def _class_response(classroom: Class, user: User) -> ClassResponse:
+    """`my_access` 는 저장된 값이 아니라 로그인한 계정과 반 주인을 견줘 낸다 (ADR-059).
+
+    요청 표가 생기기 전이라 APPROVED 이하는 아직 내지 않는다. 주인이 없는 옛 반은 OPEN.
+    """
+    if classroom.teacher_id == user.id:
+        access = "OWNER"
+    elif classroom.teacher_id is None:
+        access = "OPEN"
+    else:
+        access = "NONE"
+    # from_attributes 와 같이 getattr 로 읽는다. 가짜 세션을 쓰는 테스트도 그대로 돈다.
+    fields = {
+        name: getattr(classroom, name) for name in ClassResponse.model_fields if name != "my_access"
+    }
+    return ClassResponse(**fields, my_access=access)
+
+
 # UNIQUE(center_id, name, school_year) 의 제약 이름. app/db.py 의 NAMING_CONVENTION 이
 # 정하고 첫 마이그레이션이 이 이름으로 만들었다.
 CLASS_NAME_UNIQUE = "uq_classes_center_id_name_school_year"
@@ -196,7 +215,7 @@ def create_class(
     body: ClassCreate,
     session: DbSession,
     user: CurrentUser,
-) -> Class:
+) -> ClassResponse:
     """반을 만든다 (docs/api-spec.md §2).
 
     `school_year` 는 요청 시각으로 서버가 채우고, `consent_confirmed` 가 `true` 일 때만
@@ -214,6 +233,7 @@ def create_class(
         age_max=body.age_max,
         child_count=body.child_count,
         teacher_name=body.teacher_name,
+        teacher_id=user.id,
         consent_confirmed_at=now if body.consent_confirmed else None,
     )
     session.add(classroom)
@@ -233,7 +253,7 @@ def create_class(
             },
         ) from error
     session.refresh(classroom)
-    return classroom
+    return _class_response(classroom, user)
 
 
 @router.get("/{center_id}/classes", response_model=ClassListResponse)
@@ -256,7 +276,7 @@ def list_classes(
     classes = session.scalars(
         select(Class).where(Class.center_id == center_id).order_by(Class.id)
     ).all()
-    return ClassListResponse(items=list(classes))
+    return ClassListResponse(items=[_class_response(c, user) for c in classes])
 
 
 @router.get("/{center_id}/settings", response_model=CenterSettings)

@@ -161,8 +161,11 @@ function harness(
       chosenClassFor: () => null,
     },
     "@/lib/api/classes": {
+      isMyClass: (c) => c.my_access !== "NONE",
       getClasses: async () => ({
         items: [
+          // 남의 반이 맨 앞에 있어도 첫 반 대체로 고르지 않는다 (ADR-059).
+          { id: 5, name: "남의반", my_access: "NONE" },
           { id: 10, name: "가반" },
           { id: 20, name: "나반" },
         ],

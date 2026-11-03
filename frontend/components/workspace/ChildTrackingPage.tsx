@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { getMe } from "@/lib/api/auth";
 import { getChildTracking } from "@/lib/api/children";
-import { getClasses } from "@/lib/api/classes";
+import { getClasses, isMyClass } from "@/lib/api/classes";
 import { getObservations } from "@/lib/api/observations";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
@@ -72,7 +72,7 @@ export default function ChildTrackingPage() {
   useEffect(() => {
     getMe()
       .then((me) => (me.center_id ? getClasses(me.center_id) : { items: [] }))
-      .then(({ items }) => setClasses(items))
+      .then(({ items }) => setClasses(items.filter(isMyClass)))
       .catch(() => setError(FAILED));
   }, []);
 
