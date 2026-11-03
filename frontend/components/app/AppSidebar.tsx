@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useIsCompact } from "./compact-shell";
 import { setSidebarCollapsed, useSidebarCollapsed } from "./sidebar-collapse";
 import { Icon, type IconName } from "./icons";
-import { SsampleNote } from "./SsampleNote";
+import { Posty } from "./Posty";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -290,29 +290,33 @@ export default function AppSidebar() {
           */}
           <div className="relative mb-5 hidden pt-[29px] [@media(min-height:880px)]:block">
             {/*
-              쪽지 뒤에서 쌤플이 눈만 내민다. 쪽지 윗변이 입을 가리는 높이(pt-[29px])라
-              얼굴을 통째로 올려 두는 것보다 「뒤에 있다」가 분명하다.
+              쪽지 뒤에서 포스티가 눈만 내민다. 쪽지 윗변이 입을 가리는 높이(pt-[29px])라
+              얼굴을 통째로 올려 두는 것보다 「뒤에 있다」가 분명하다. 팔다리는 쪽지에 가려
+              손만 쪽지 위로 올라온다.
               색이 다른 작은 장을 겹쳐야 한 장이 아니라 여러 장으로 보인다.
             */}
-            <SsampleNote
-              tint="plum"
+            <Posty
+              tone="plum"
+              pose="cheer"
               size={30}
               label={null}
               className="absolute left-[74px] top-[13px] rotate-[9deg]"
             />
-            <SsampleNote
-              tint="sage"
+            <Posty
+              tone="sage"
+              pose="up"
               size={28}
               label={null}
               className="absolute left-[104px] top-[14px] -rotate-[11deg]"
             />
-            <SsampleNote
-              tint="clay"
+            <Posty
+              tone="clay"
+              pose="stand"
               size={26}
               label={null}
               className="absolute left-[130px] top-[15px] rotate-[15deg]"
             />
-            <SsampleNote size={56} label={null} className="absolute left-4 top-0" />
+            <Posty pose="wave" size={56} label={null} className="absolute left-4 top-0" />
             <div className="relative -rotate-2 border border-note-line bg-note px-4 py-4 shadow-pg-card">
               <Tape />
               <p className="font-display text-[22px] font-bold leading-tight text-ink">
@@ -533,7 +537,7 @@ function Tape() {
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute -top-3 left-1/2 h-6 w-20 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
+      className="pointer-events-none absolute -top-4 right-3 h-6 w-20 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
     />
   );
 }

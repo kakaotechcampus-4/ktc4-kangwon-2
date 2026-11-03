@@ -170,56 +170,60 @@ export default function HomePage() {
 
   return (
     <PageContainer>
-      {/* 머리글은 날짜만 둔다. 반 이름 · 나이는 사이드바 반 카드와 상단 띠에 이미 있다 —
+      {/* 종이가 화면 끝까지 늘어나면 한 줄이 1300px 을 넘어 글이 안 읽힌다.
+          넓은 모니터에서도 책상 위 종이 폭으로 묶어 둔다 (PM 점검). */}
+      <div className="mx-auto w-full max-w-[1170px]">
+        {/* 머리글은 날짜만 둔다. 반 이름 · 나이는 사이드바 반 카드와 상단 띠에 이미 있다 —
           교사가 매일 보는 맨 윗자리를 라벨로 채우지 않는다. */}
-      <h1 className="mb-7 font-display text-[40px] font-bold leading-none text-primary-deep lg:text-[54px]">
-        {head.day}
-        <span className="ml-2.5 font-body text-base font-normal text-ink-soft">{head.dow}</span>
-      </h1>
+        <h1 className="mb-7 font-display text-[40px] font-bold leading-none text-primary-deep lg:text-[54px]">
+          {head.day}
+          <span className="ml-2.5 font-body text-base font-normal text-ink-soft">{head.dow}</span>
+        </h1>
 
-      {message && (
-        <p role="alert" className="mb-5 rounded-md border border-line bg-paper px-4 py-3 text-xs">
-          {message}
-        </p>
-      )}
+        {message && (
+          <p role="alert" className="mb-5 rounded-md border border-line bg-paper px-4 py-3 text-xs">
+            {message}
+          </p>
+        )}
 
-      {!loadFailed && (
-        <div className="flex flex-col gap-8 xl:flex-row xl:gap-9">
-          <div className="flex min-w-0 flex-col gap-8 xl:flex-1">
-            <Compose
-              classes={classes}
-              date={todayDate}
-              activeClassId={activeClassId}
-              records={classRecords}
-              onSaved={recordSaved}
-              onError={setMessage}
-            />
-
-            <TodaySlip
-              records={todayRecords}
-              loading={records === null}
-              routines={routineRows && todayDate ? todayRoutines : null}
-              routinesHref={routinesHref}
-              dailyLogHref={logReady ? dailyLogHref : null}
-              day={head.day}
-            />
-
-            {lastWeek && <LastWeekNote look={lastWeek} />}
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-8 xl:w-[310px] xl:shrink-0">
-            {todayDate && (
-              <UnseenChildren
-                roster={activeClass?.children ?? []}
+        {!loadFailed && (
+          <div className="flex flex-col gap-8 xl:flex-row xl:gap-9">
+            <div className="flex min-w-0 max-w-[820px] flex-col gap-8 xl:flex-1">
+              <Compose
+                classes={classes}
+                date={todayDate}
+                activeClassId={activeClassId}
                 records={classRecords}
-                today={todayDate}
+                onSaved={recordSaved}
+                onError={setMessage}
               />
-            )}
-            {gapDay && <EmptyDayNote date={gapDay} href={routinesPath(activeClassId, gapDay)} />}
-            <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
+
+              <TodaySlip
+                records={todayRecords}
+                loading={records === null}
+                routines={routineRows && todayDate ? todayRoutines : null}
+                routinesHref={routinesHref}
+                dailyLogHref={logReady ? dailyLogHref : null}
+                day={head.day}
+              />
+
+              {lastWeek && <LastWeekNote look={lastWeek} />}
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-8 xl:w-[310px] xl:shrink-0">
+              {todayDate && (
+                <UnseenChildren
+                  roster={activeClass?.children ?? []}
+                  records={classRecords}
+                  today={todayDate}
+                />
+              )}
+              {gapDay && <EmptyDayNote date={gapDay} href={routinesPath(activeClassId, gapDay)} />}
+              <ChildSpotlight classes={activeClass ? [activeClass] : []} records={classRecords} />
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </PageContainer>
   );
 }

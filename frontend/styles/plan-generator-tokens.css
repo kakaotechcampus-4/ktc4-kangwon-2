@@ -60,6 +60,18 @@
   --pg-clay: #f0c9b6;
   --pg-clay-line: #d2a78d;
   --pg-clay-fold: #e0b49c;
+  /* 빨강 셋 — 되돌리기 어려운 일에만 쓴다. 가벼운 주의 · 확인 필요 · 지우기 순으로 진해진다.
+     크레파스 통의 다른 색과 같은 결이라 경고가 화면에서 혼자 튀지 않는다. */
+  --pg-alert-soft: #f6d3cb;
+  --pg-alert-soft-line: #d9a79c;
+  --pg-alert-soft-fold: #e8bdb2;
+  --pg-alert: #eeab9e;
+  --pg-alert-line: #c87f6f;
+  --pg-alert-fold: #dd9586;
+  --pg-alert-strong: #cf6b5c;
+  --pg-alert-strong-line: #a9493c;
+  --pg-alert-strong-fold: #bd5a4b;
+  --pg-alert-ink: #8a3327; /* 빨강 면 위·크림 위 글자. 크림에서 7:1 */
   /* 쪽지 위에 붙인 종이테이프. 반투명이어야 한다 — 꽉 찬 흰색은 종이를 덧댄 것처럼 보인다. */
   --pg-tape: rgba(255, 250, 240, 0.72);
 

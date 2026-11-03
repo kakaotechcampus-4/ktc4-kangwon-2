@@ -70,6 +70,15 @@ export const planGeneratorThemeExtend = {
       strong: "var(--pg-peach-strong)",
       ink: "var(--pg-peach-ink)",
     },
+    alert: {
+      soft: "var(--pg-alert-soft)",
+      "soft-line": "var(--pg-alert-soft-line)",
+      DEFAULT: "var(--pg-alert)",
+      line: "var(--pg-alert-line)",
+      strong: "var(--pg-alert-strong)",
+      "strong-line": "var(--pg-alert-strong-line)",
+      ink: "var(--pg-alert-ink)",
+    },
     success: {
       DEFAULT: "var(--pg-success)",
       tint: "var(--pg-success-tint)",
