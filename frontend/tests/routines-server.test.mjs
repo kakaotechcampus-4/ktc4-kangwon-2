@@ -1589,16 +1589,7 @@ function recordsPage(
     type: (node, value) => node.props.onChange({ target: { value } }),
     /** 적는 칸은 접혀 있다. 날짜·반을 고르려면 먼저 펼친다. */
     openForm: () => {
-      const button = all(view.tree()).find(
-        (node) =>
-          node?.type === "button" &&
-          all(node.props?.children)
-            .filter((part) => typeof part === "string")
-            .join("")
-            .includes("새 관찰 기록 쓰기"),
-      );
-      assert.ok(button, "「＋ 새 관찰 기록 쓰기」 단추를 찾지 못했다");
-      button.props.onClick();
+      // 적는 칸은 늘 펴져 있다. 여는 단추가 없으므로 그릴 것만 다시 그린다.
       view.render();
     },
   };
@@ -2432,7 +2423,7 @@ test("기록 모아보기 — 일과 기록만 실패하면 관찰 기록은 그
   await view.flush();
   const text = view.text();
   assert.ok(text.includes("도토리를 바구니에 담았다."), text);
-  assert.ok(text.includes("일과 기록을 불러오지 못했어요"), text);
+  assert.ok(text.includes("일과 기록을 불러오지 못했습니다"), text);
 });
 
 /**
@@ -3117,5 +3108,5 @@ test("기록 모아보기 — 활동실행이 빈 일과는 계획을 실행처�
   await view.flush();
   const text = view.text();
   assert.equal(text.includes("자동차 굴리기"), false, text);
-  assert.ok(text.includes("활동실행을 아직 적지 않았어요."), text);
+  assert.ok(text.includes("실제로 한 것을 아직 적지 않았습니다."), text);
 });

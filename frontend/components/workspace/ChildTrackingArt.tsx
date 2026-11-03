@@ -1,4 +1,4 @@
-/** 아이들 전부 보기 전용 그림. 사진이나 아동 정보가 아닌 장식용 SVG다. */
+/** 아이별 기록 전용 그림. 사진이나 아동 정보가 아닌 장식용 SVG다. */
 export type ChildPortraitVariant = "neutral" | "boy" | "girl";
 type HairStyle = "curly" | "crop" | "pigtails";
 

@@ -889,7 +889,7 @@ function UnseenChildren({
     unseen.length === roster.length && unseen.every(({ tally }) => tally.days === null);
 
   return (
-    <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이들 전부 보기 →">
+    <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이별 기록 →">
       {unseen.length === 0 ? (
         <ChalkLine>
           이번 주{" "}

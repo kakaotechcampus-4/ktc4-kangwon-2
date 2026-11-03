@@ -149,7 +149,17 @@ function harness(
     react: hooks,
     "next/link": { __esModule: true, default: "a" },
     "@/lib/api/auth": auth,
-    "@/lib/api/onboarding": { CLASS_PREFIX: "class-", CHILD_PREFIX: "child-" },
+    "@/lib/api/onboarding": {
+      CLASS_PREFIX: "class-",
+      CHILD_PREFIX: "child-",
+      // 반은 사이드바가 고른다. 시험은 연결을 안 두므로 서버가 준 첫 반으로 떨어진다.
+      classServerId: () => null,
+    },
+    "@/lib/hooks/use-client-state": { useClientState: (_read, fallback) => [fallback, () => {}] },
+    "@/lib/onboarding/settings": {
+      loadClassSettings: () => null,
+      chosenClassFor: () => null,
+    },
     "@/lib/api/classes": {
       getClasses: async () => ({
         items: [
@@ -245,12 +255,20 @@ function harness(
     },
     text: () => text(tree),
     button: (label) => nodes(tree).find((node) => node?.type === "button" && text(node) === label),
-    cards: () => byClass("domainCard"),
+    // 영역별 기록 수는 타일 다섯 장이 아니라 한 줄짜리 띠다 — li 하나가 한 영역.
+    cards: () => nodes(byClass("domainRow")).filter((node) => node?.type === "li"),
     count(domain) {
-      const card = byClass("domainCard").find((node) =>
-        nodes(node).some((n) => n?.type === "p" && text(n) === domain),
-      );
-      return text(nodes(card).find((node) => node?.type === "strong"));
+      const item = nodes(byClass("domainRow"))
+        .filter((node) => node?.type === "li")
+        .find((node) => nodes(node).some((n) => n?.type === "span" && text(n) === domain));
+      return text(nodes(item).find((node) => node?.type === "b"));
+    },
+    /** 그 영역에 기록이 하나도 없으면 띠를 흐리게 둔다. */
+    empty(domain) {
+      const item = nodes(byClass("domainRow"))
+        .filter((node) => node?.type === "li")
+        .find((node) => nodes(node).some((n) => n?.type === "span" && text(n) === domain));
+      return item?.props["data-empty"] === true;
     },
     pickChild(id) {
       nodes(tree)
@@ -264,12 +282,6 @@ function harness(
         .props.onClick();
       render();
     },
-    pickClass(id) {
-      nodes(tree)
-        .find((node) => node?.type === "select")
-        .props.onChange({ target: { value: String(id) } });
-      render();
-    },
     header: () => nodes(tree).find((node) => node?.type === "header"),
   };
 }
@@ -278,15 +290,15 @@ test("5영역·2영역은 서버의 실제 수만 표시하며 전환해도 전�
   const page = harness(t);
   await page.mount();
   assert.equal(page.cards().length, 5);
-  assert.equal(page.count("신체운동·건강"), "3건");
-  assert.equal(page.count("의사소통"), "2건");
+  assert.equal(page.count("신체운동·건강"), "3");
+  assert.equal(page.count("의사소통"), "2");
   const timeline = text(page.byClass("timeline"));
   const calls = [...page.calls];
   page.button("놀이·일상생활").props.onClick();
   await page.flush();
   assert.equal(page.cards().length, 2);
-  assert.equal(page.count("놀이활동"), "4건");
-  assert.equal(page.count("일상생활"), "1건");
+  assert.equal(page.count("놀이활동"), "4");
+  assert.equal(page.count("일상생활"), "1");
   assert.equal(text(page.byClass("timeline")), timeline);
   assert.deepEqual(page.calls, calls); // 모드 전환은 요청·기관 설정 저장을 만들지 않는다.
   page.button("누리과정 5영역").props.onClick();
@@ -305,35 +317,35 @@ test("전체 0건이면 다른 기준의 영역 키가 없어도 두 카드를 0
   const child = tracking(101, "가아동", nuriZeros);
   const page = harness(t, { children: [child] });
   await page.mount();
-  assert.equal(page.count("신체운동·건강"), "0건");
+  assert.equal(page.count("신체운동·건강"), "0");
   page.button("놀이·일상생활").props.onClick();
   page.render();
   assert.equal(page.cards().length, 2);
-  assert.equal(page.count("놀이활동"), "0건");
-  assert.equal(page.count("일상생활"), "0건");
-  for (const card of page.cards()) assert.match(text(card), /아직 기록 없음/);
+  assert.equal(page.count("놀이활동"), "0");
+  assert.equal(page.count("일상생활"), "0");
+  for (const domain of axis.DAILY_PLAY_DOMAINS) assert.ok(page.empty(domain), domain);
   assert.equal(page.byClass("domainNotice").length, 0);
-  assert.match(page.text(), /아직 남긴 기록이 없어요/);
+  assert.match(page.text(), /아직 적은 기록이 없어요/);
   page.button("누리과정 5영역").props.onClick();
   page.render();
   assert.equal(page.cards().length, 5);
-  assert.equal(page.count("신체운동·건강"), "0건");
+  assert.equal(page.count("신체운동·건강"), "0");
 });
 
 test("과거 기준의 일부 영역만 있으면 없는 집계를 대시로 표시한다", async (t) => {
   const child = tracking(101, "가아동", { "신체운동·건강": 3, 놀이활동: 0, 일상생활: 0 });
   const page = harness(t, { configuredAxis: "DAILY_PLAY_2", children: [child] });
   await page.mount();
-  assert.equal(page.count("놀이활동"), "0건");
+  assert.equal(page.count("놀이활동"), "0");
   page.button("누리과정 5영역").props.onClick();
   page.render();
   assert.equal(page.cards().length, 5);
-  assert.equal(page.count("신체운동·건강"), "3건");
+  assert.equal(page.count("신체운동·건강"), "3");
   assert.equal(page.count("의사소통"), "—");
-  assert.match(page.text(), /집계 정보 없음/);
+  assert.ok(page.empty("의사소통"));
 });
 
-test("아동 변경은 모드를 유지하고 늦은 이전 아동 응답을 무시하며 반 변경은 기본으로 돌아간다", async (t) => {
+test("아이를 바꿔도 모드는 그대로고 늦게 온 이전 아이 응답은 무시한다", async (t) => {
   const old = deferred();
   const page = harness(t, { observations: { 101: old.promise } });
   await page.mount();
@@ -341,18 +353,13 @@ test("아동 변경은 모드를 유지하고 늦은 이전 아동 응답을 무
   page.render();
   page.pickChild(102);
   assert.equal(page.byClass("timeline").length, 0);
-  assert.equal(page.count("놀이활동"), "2건");
+  assert.equal(page.count("놀이활동"), "2");
   await page.flush();
   assert.match(text(page.byClass("timeline")), /나아동/);
   old.resolve(recordsFor(first));
   await page.flush();
   assert.doesNotMatch(text(page.byClass("timeline")), /가아동/);
   assert.equal(page.button("놀이·일상생활").props["aria-pressed"], true);
-  page.pickClass(20);
-  assert.equal(page.byClass("summaryText").length, 0);
-  await page.flush();
-  assert.equal(page.button("누리과정 5영역").props["aria-pressed"], true);
-  assert.match(text(page.byClass("summaryText")), /다아동/);
 });
 
 test("늦게 도착한 기관 설정은 사용자가 선택한 모드를 덮어쓰지 않는다", async (t) => {
@@ -365,9 +372,6 @@ test("늦게 도착한 기관 설정은 사용자가 선택한 모드를 덮어�
   settings.resolve({ observation_axis: "DAILY_PLAY_2" });
   await page.flush();
   assert.equal(page.button("누리과정 5영역").props["aria-pressed"], true);
-  page.pickClass(20);
-  await page.flush();
-  assert.equal(page.button("놀이·일상생활").props["aria-pressed"], true);
 });
 
 test("상단 작성 링크는 없고 하단 빈 상태의 선택 아동 작성 링크는 유지한다", async (t) => {
@@ -375,7 +379,7 @@ test("상단 작성 링크는 없고 하단 빈 상태의 선택 아동 작성 �
   await page.mount();
   assert.equal(nodes(page.header()).filter((node) => node?.type === "a").length, 0);
   const link = nodes(page.byClass("emptyState")).find((node) => node?.type === "a");
-  assert.equal(text(link), "관찰 기록 남기기 →");
+  assert.equal(text(link), "기록 적으러 가기 →");
   assert.equal(link.props.href, "/records?class=class-10&child=child-101");
   assert.equal(page.byClass("avatar").length, 0);
   assert.equal(page.byClass("summaryAvatar").length, 0);
@@ -392,16 +396,16 @@ for (const { label, counts, play, life } of [
   {
     label: "두 영역 모두 명시적 0건",
     counts: { 놀이활동: 0, 일상생활: 0 },
-    play: "0건",
-    life: "0건",
+    play: "0",
+    life: "0",
   },
-  { label: "놀이활동만 제공", counts: { 놀이활동: 4 }, play: "4건", life: "—" },
-  { label: "일상생활만 제공", counts: { 일상생활: 2 }, play: "—", life: "2건" },
+  { label: "놀이활동만 제공", counts: { 놀이활동: 4 }, play: "4", life: "—" },
+  { label: "일상생활만 제공", counts: { 일상생활: 2 }, play: "—", life: "2" },
   {
     label: "두 영역 모두 기록 있음",
     counts: { 놀이활동: 4, 일상생활: 1 },
-    play: "4건",
-    life: "1건",
+    play: "4",
+    life: "1",
   },
   {
     label: "다른 기준 기록만 있고 두 영역 키 없음",
@@ -422,23 +426,22 @@ for (const { label, counts, play, life } of [
     assert.equal(page.count("일상생활"), life);
     assert.equal(page.byClass("domainNotice").length, 0);
     assert.equal(text(page.byClass("timeline")), before);
-    if (play === "—" || life === "—") assert.match(text(page.cards()), /기록 정보 없음/);
+    if (play === "—") assert.ok(page.empty("놀이활동"));
+    if (life === "—") assert.ok(page.empty("일상생활"));
   });
 }
 
 const playZeros = Object.fromEntries(axis.DAILY_PLAY_DOMAINS.map((domain) => [domain, 0]));
-for (const { label, counts, expected, hint } of [
+for (const { label, counts, expected } of [
   {
     label: "놀이·일상생활 기관에서 그 기준 기록만 있음",
     counts: { ...playZeros, 놀이활동: 2, 일상생활: 2 },
     expected: "—",
-    hint: /집계 정보 없음/,
   },
   {
     label: "놀이·일상생활 기관에서 전체 0건",
     counts: playZeros,
-    expected: "0건",
-    hint: /아직 기록 없음/,
+    expected: "0",
   },
 ]) {
   test(`누리과정 5영역은 항상 다섯 카드 유지: ${label}`, async (t) => {
@@ -450,7 +453,7 @@ for (const { label, counts, expected, hint } of [
     page.render();
     assert.equal(page.cards().length, 5);
     for (const domain of axis.NURI_DOMAINS) assert.equal(page.count(domain), expected, domain);
-    assert.match(text(page.cards()), hint);
+    for (const domain of axis.NURI_DOMAINS) assert.ok(page.empty(domain), domain);
     assert.equal(page.byClass("domainNotice").length, 0);
     assert.doesNotMatch(page.text(), /이 기준으로 작성된 관찰 기록이 없어요/);
     // 실제 기록 수 · 전체 타임라인은 그대로다.
@@ -458,7 +461,7 @@ for (const { label, counts, expected, hint } of [
     page.button("놀이·일상생활").props.onClick();
     page.render();
     assert.equal(page.cards().length, 2);
-    assert.equal(page.count("놀이활동"), `${counts.놀이활동}건`);
+    assert.equal(page.count("놀이활동"), String(counts.놀이활동));
   });
 }
 
@@ -475,8 +478,8 @@ test("집계 조회 중에는 0건 카드를 만들지 않고 성공한 0건 응
   request.resolve({ items: [tracking(101, "가아동", {})] });
   await page.flush();
   assert.equal(page.cards().length, 2);
-  assert.equal(page.count("놀이활동"), "0건");
-  assert.equal(page.count("일상생활"), "0건");
+  assert.equal(page.count("놀이활동"), "0");
+  assert.equal(page.count("일상생활"), "0");
 });
 
 test("집계 조회 실패를 0건으로 표시하지 않고 기존 오류 상태를 유지한다", async (t) => {

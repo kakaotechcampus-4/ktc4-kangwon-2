@@ -1,8 +1,9 @@
-/* 글꼴은 구글 폰트에서 받아 쓴다.
-   직접 담아두던 Pretendard · 고운돋움 subset 179개는 지웠다 — 구글이 이미
-   unicode-range 로 쪼개 보내서, 화면에 뜬 글자가 든 조각만 내려온다.
+/* 글꼴은 구글 폰트에서 받아 쓴다. 직접 담아두던 Pretendard · 고운돋움 subset
+   179개는 지웠다 — 구글이 이미 unicode-range 로 쪼개 보내서, 화면에 뜬 글자가
+   든 조각만 내려온다.
+   받는 자리는 `app/layout.tsx` 의 `<head>` 다. 여기서 `@import` 로 받으면
+   우리 CSS 를 다 받은 뒤에야 구글 CSS 를 받으러 가서 글꼴이 늦는다.
    @import 는 CSS 규칙상 맨 위여야 한다. 아래로 내리면 통째로 무시된다. */
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Gaegu:wght@400;700&display=swap");
 @import "../styles/plan-generator-tokens.css";
 
 @tailwind base;
