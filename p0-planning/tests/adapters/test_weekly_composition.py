@@ -100,10 +100,17 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
     assert request.target("outdoor_play").parent_groundable
     assert request.target("outdoor_play").allowed_grounding_refs
     from ssuksak.planning.planner.weekly import (
+        LINKED_OUTDOOR_INSTRUCTION,
+        LINKED_WRITING_GUIDANCE,
         parse_weekly_proposal,
         validate_weekly,
         weekly_response_schema,
+        with_reference_labels,
     )
+    assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
+    assert LINKED_WRITING_GUIDANCE in request.system_prompt
+    assert "'활동명: 설명'" in request.system_prompt
+    assert "근거에 없는 새 재료·실험 비교 조건·진행 순서·정해진 결과물" in request.system_prompt
     branches = weekly_response_schema(request)["properties"]["sections"]["items"]["anyOf"]
     assert any(b["properties"]["section_key"]["enum"] == ["outdoor_play"]
                and b["properties"]["reference_id"] == {"type": "null"} for b in branches)
@@ -116,6 +123,11 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
     offered["grounding_refs"] = list(request.target("outdoor_play").allowed_grounding_refs[:1])
     assert any(i.code.value == "WRONG_SOURCE_GROUNDING"
                for i in validate_weekly(parse_weekly_proposal(json.dumps(answer), request), request))
+    offered["value"], offered["grounding_refs"] = "An invented description", []
+    catalog_value = next(v for v in with_reference_labels(
+        parse_weekly_proposal(json.dumps(answer), request), request
+    ) if v.section_key == "outdoor_play")
+    assert catalog_value.value == request.reference_candidates[0][1]
     offered["reference_id"], offered["value"] = None, body["parent"]["outdoor_play"]
     offered["grounding_refs"] = []
     next(s for s in answer["sections"] if s["section_key"] == "basic_habit")["value"] = body["daily_life_context"]["entries"][0]["text"]
@@ -131,7 +143,9 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
         provider=provider, clock=harness.clock,
     ).execute(RegenerateWeeklyPlanCellCommand(before.plan_id, outdoor.item_id, ActorId("test_reviewer")))
     assert after.cell("outdoor_play").item_id == outdoor.item_id
-    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v4+day-cells-v1"
+    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v5+day-cells-v1"
+    assert LINKED_OUTDOOR_INSTRUCTION in provider.requests[-1].system_prompt
+    assert LINKED_WRITING_GUIDANCE in provider.requests[-1].system_prompt
     assert any(e.source_type is EvidenceSourceType.INSTITUTION_SAMPLE for e in after.cell("outdoor_play").evidence)
     assert all(a == b for a, b in zip(before.cells, after.cells) if a.item_id != outdoor.item_id)
     assert json.loads(provider.requests[-1].user_content)["daily_life_context"] == body["daily_life_context"]

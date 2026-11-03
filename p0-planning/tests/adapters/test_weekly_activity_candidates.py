@@ -121,6 +121,11 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version():
     plan = _day_generation(harness, provider).execute(replace(_day_command(parent), activity_candidates=True)).plan
     assert len(provider.requests) == 2
     assert plan.activity_candidates[0].cell.generation.rule_version == provider.requests[0].repair_prompt_version
+    from ssuksak.planning.planner.weekly import LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
+    for request in provider.requests:
+        assert "+monthly-linked-v5" in request.prompt_version
+        assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
+        assert LINKED_WRITING_GUIDANCE in request.system_prompt
 
 
 def test_candidate_generation_and_repair_use_streaming_with_an_output_cap():
