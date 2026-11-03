@@ -248,3 +248,19 @@ def test_부모_본문에_확정_기록이_없으면_공통_500(world, monkeypat
     assert _error(response) == (500, "INTERNAL_ERROR", [])
     assert calls.count == 0
     assert _monthly_count(world) == 0
+
+
+def test_요청_사항은_남고_반영한_활동에만_표시가_붙는다(world, parent):
+    """ADR-057. mock 은 첫 「함께하는 놀이」에 반영했다고 답한다."""
+    response = _post(world, memo="  숲에서 하는 놀이를 넣어 주세요  ")
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert (body["memo"], body["memo_notices"]) == ("숲에서 하는 놀이를 넣어 주세요", [])
+
+    def marked(cell):
+        return any(e["source_id"] == "teacher_memo" for e in cell["evidence"])
+
+    assert [marked(a["name"]) for a in body["together"]][:2] == [True, False]
+    assert not any(marked(a["name"]) for a in body["free_play"])
+    assert client.get(f"{URL}/{body['id']}").json() == body

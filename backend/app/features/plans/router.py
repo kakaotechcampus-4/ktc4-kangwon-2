@@ -52,7 +52,9 @@ from ssuksak.planning.application.play_project_lifecycle import (
     UnconfirmPlayProjectPlanCommand,
 )
 from ssuksak.planning.application.yearly_dto import UnconfirmYearlyPlanCommand
+from ssuksak.planning.application.yearly_memo import with_yearly_memo
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
+from ssuksak.planning.domain.teacher_memo import MemoNotice
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.rules.errors import YearlyRuleError
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
@@ -65,8 +67,19 @@ from app.features.auth.models import User
 # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
 from app.features.forms.service import find_own_form
 from app.features.plans import play_project
-from app.features.plans.annual_content import generate_subthemes, subthemes_for_month
+from app.features.plans.annual_content import (
+    generate_subthemes,
+    generate_subthemes_with_memo,
+    subthemes_for_month,
+)
+from app.features.plans.codec import to_jsonable
 from app.features.plans.llm import theme_text_generator
+from app.features.plans.memo_privacy import (
+    mask_memo,
+    memo_name_table,
+    raise_if_mask_failed,
+    unmask_text,
+)
 from app.features.plans.models import Plan
 from app.features.plans.play_project import ConfirmIn, EditItemIn, SaveSelectionIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
@@ -88,6 +101,7 @@ from app.features.plans.schemas import (
     PlayProjectPlanOut,
     UpdateMonth,
     ValueChangeOut,
+    memo_notices_out,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
@@ -208,6 +222,8 @@ def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
     months = _months(plan, row.sub_themes, row.annual_safety)
     return AnnualPlanOut(
         id=row.id,
+        memo=plan.teacher_memo,
+        memo_notices=memo_notices_out(plan),
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
@@ -332,7 +348,7 @@ def _play_project_generation_error(error: Exception) -> HTTPException:
     )
 
 
-def _play_project_plan(session: Session, user: User, klass):
+def _play_project_plan(session: Session, user: User, klass, memo: str, names):
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     session.commit()
 
@@ -342,8 +358,11 @@ def _play_project_plan(session: Session, user: User, klass):
             klass.school_year,
             str(klass.id),
             frozenset(range(klass.age_min, klass.age_max + 1)),
+            memo,
+            names,
         )
     except Exception as error:
+        raise_if_mask_failed(error)
         raise _play_project_generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
@@ -413,6 +432,8 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
+    # 요청 사항 속 아이 이름은 LLM 에 보내기 전에 가명으로 바꾼다. 못 바꾸면 여기서 422(ADR-057).
+    names = memo_name_table(session, klass.id, body.memo)
     # 연간은 반 하나에 하나다. 막지 않으면 교사가 새로고침하고 다시 눌렀을 때 두 개가
     # 생기고, 둘 중 어느 쪽이 진짜인지 아무도 모른다. **동시 요청은 이 조회로 못 막는다** —
     # 둘 다 「없다」를 보고 지나간다. 최종 보장은 models.py 의 부분 유니크 인덱스다.
@@ -426,7 +447,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     if duplicate is not None:
         raise _ALREADY_EXISTS
     if body.format == "PLAY_PROJECT":
-        return _play_project_plan(session, user, klass)
+        return _play_project_plan(session, user, klass, body.memo, names)
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
         # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
@@ -476,8 +497,23 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
     # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
+    plan = result.plan
     try:
-        row.sub_themes = generate_subthemes(result.plan)
+        if body.memo:
+            # 주제(theme_id)는 Rule 이 고른다 — 메모는 소주제에만 닿는다(ADR-057).
+            sub_themes, applied, notices = generate_subthemes_with_memo(
+                plan, mask_memo(body.memo, names)
+            )
+            row.sub_themes = {
+                month: [unmask_text(text, names) for text in texts]
+                for month, texts in sub_themes.items()
+            }
+            notices = tuple(MemoNotice(unmask_text(n.summary, names), n.reason) for n in notices)
+            plan = with_yearly_memo(plan, body.memo, applied, notices)
+            # Core 가 이미 저장한 행을 고쳐 쓴다. 저장소 save 는 revision 을 올리므로 쓰지 않는다.
+            row.body = to_jsonable(plan)
+        else:
+            row.sub_themes = generate_subthemes(plan)
     except (LlmUnavailable, LlmBudgetExceeded, LlmFailed) as error:
         # Core 가 이미 flush 했다. 실패한 생성에서 부분 계획안을 남기지 않는다.
         session.rollback()
@@ -500,7 +536,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
         ) from error
     # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
     row.form_id = body.form_id
-    detail = _detail(row, result.plan)
+    detail = _detail(row, plan)
     session.commit()
     return detail
 

@@ -28,6 +28,7 @@ from .contracts import (
     MonthlyPlanningRequest,
     generation_target_sections,
 )
+from .teacher_memo import TEACHER_MEMO_PROMPT, TEACHER_MEMO_PROMPT_TAG, cell_address
 from .text_policy import MAX_VISIBLE_TEXT_CHARS
 from .v1_guidance import V1_GUIDANCE, curriculum_context
 from ..retrieval.models import AGE_VERIFIABLE_TIERS
@@ -249,6 +250,26 @@ def generation_targets(
     return tuple(targets)
 
 
+def memo_addresses(
+    packet: MonthlyContextPacket, snapshot: TemplateSnapshot
+) -> tuple[str, ...]:
+    """Cells the teacher memo may change (ADR-057): every LLM-written cell.
+
+    The theme copies the parent plan and week safety cells follow the Rule's placement, so
+    neither is listed; a request for them comes back as memo_skipped."""
+    addresses: list[str] = []
+    for section, _ in generation_targets(packet, snapshot):
+        if section.section_key in {"theme", "safety_education"}:
+            continue
+        if section.repeat_by is RepeatBy.NONE:
+            addresses.append(cell_address(None, section.section_key))
+        else:
+            addresses.extend(cell_address(week.week_id, section.section_key) for week in packet.weeks)
+    # Safety / drill candidate sentences are LLM-written too; their week placement stays the Rule's.
+    addresses.extend(key for key, _ in safety_candidate_targets(packet))
+    return tuple(addresses)
+
+
 def allowed_grounding_refs_by_section(
     packet: MonthlyContextPacket, snapshot: TemplateSnapshot
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
@@ -441,6 +462,11 @@ def build_monthly_planning_request(
         version += MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG
     if packet.drill_topics:
         version += MONTHLY_DRILL_CANDIDATES_PROMPT_TAG
+    memo = memo_addresses(packet, snapshot) if packet.teacher_memo else None
+    if memo is not None:
+        body["teacher_memo"] = {"text": packet.teacher_memo, "addresses": list(memo)}
+        body["response_contract"]["memo_applied"] = ["address"]
+        version += TEACHER_MEMO_PROMPT_TAG
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
@@ -452,7 +478,8 @@ def build_monthly_planning_request(
             if contextual else (SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT)
         ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
         + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else "")
-        + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else ""),
+        + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else "")
+        + (TEACHER_MEMO_PROMPT if memo is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -465,6 +492,7 @@ def build_monthly_planning_request(
         valid_grounding_refs=valid_grounding_refs(packet),
         packet_fingerprint=packet_fingerprint(packet),
         allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
+        memo_addresses=memo,
     )
 
 
@@ -521,4 +549,5 @@ def build_monthly_repair_request(
         system_prompt=(_v1_goals(REPAIR_HEADER) if contextual else REPAIR_HEADER) + request.system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,
+        memo_addresses=None,  # patches only; memo_applied came with the initial proposal
     )

@@ -88,6 +88,7 @@ from ssuksak.planning.rules.safety_placement import candidate_display_value  # �
 
 from app.db import get_session
 from app.features.plans.annual_content import subthemes_for_month
+from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_schemas import (
@@ -121,7 +122,7 @@ from app.features.plans.monthly_schemas import (
 from app.features.plans.play_project import format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, memo_notices_out
 from app.features.template_profiles import service as profile_service
 from app.features.template_profiles.repository import TemplateProfileError
 from app.features.template_profiles.service import ready_profile_for_generation
@@ -277,6 +278,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
     center_id, class_id = user.center_id, klass.id
+    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-057)
     month = _target_month(klass.school_year, body.month)
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS
@@ -331,7 +333,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         profile_repository=InMemoryTemplateProfileRepository((profile,)),
         # 생성 직전 검사와 같은 Template 저장소. 부를 때 읽는다 — 테스트가 바꿔 끼운다.
         template_repository=profile_service.TEMPLATES,
-        provider=provider,
+        provider=with_masked_memo(provider, body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
     )
@@ -348,9 +350,11 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
                 safety_candidates=SAFETY_CANDIDATES,
                 drill_topics=DRILL_TOPICS,
                 parent_subthemes=parent_subthemes,
+                teacher_memo=body.memo,
             )
         ).plan
     except MonthlyApplicationError as error:
+        raise_if_mask_failed(error)
         _log.warning("monthly generation failed code=%s", error.code)
         raise _generation_error(error) from error
 
@@ -920,6 +924,8 @@ def _detail(
     candidates = {c.cell.item_id: c for c in plan.safety_candidates}
     return MonthlyPlanOut(
         id=row.id,
+        memo=plan.teacher_memo,
+        memo_notices=memo_notices_out(plan),
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         month=plan.target_month.calendar_month,

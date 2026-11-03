@@ -104,3 +104,38 @@ def test_curriculum_failure_stops_before_provider_and_storage(monkeypatch):
     assert error.value.code == "curriculum_reference_unavailable"
     assert provider.requests == []
     assert not harness.monthly_plans._plans
+
+
+def test_teacher_memo_reaches_prompt_marks_evidence_and_survives_regeneration():
+    from dataclasses import replace
+
+    from ssuksak.planning.planner.teacher_memo import TEACHER_MEMO_EVIDENCE, cell_address
+
+    harness, provider, generate, command = _setup()
+    plan = generate.execute(replace(command, teacher_memo="자연물 놀이를 많이")).plan
+    first = provider.requests[0]
+    payload = json.loads(first.user_content)
+    assert payload["teacher_memo"]["text"] == "자연물 놀이를 많이"
+    assert first.prompt_version.endswith("+teacher-memo-v1")
+    assert plan.teacher_memo == "자연물 놀이를 많이"
+    marked = [
+        cell
+        for section in plan.sections
+        for cell in section.cells
+        if TEACHER_MEMO_EVIDENCE in cell.evidence
+    ]
+    # the mock marks only the first allowed address
+    assert [cell_address(c.week_id, c.section_key) for c in marked] == list(first.memo_addresses[:1])
+    assert "theme" not in first.memo_addresses and not any(
+        a.endswith("safety_education") for a in first.memo_addresses
+    )
+
+    target = plan.section("focus").cells[0]
+    regenerate = monthly_composition.monthly_regeneration(
+        plan_repository=harness.monthly_plans, provider=provider, clock=harness.clock
+    )
+    plan = regenerate.execute(
+        RegenerateMonthlyPlanItemCommand(plan.plan_id, target.item_id, ActorId("reviewer_test"))
+    ).plan
+    assert json.loads(provider.requests[-1].user_content)["teacher_memo"]["text"] == "자연물 놀이를 많이"
+    assert TEACHER_MEMO_EVIDENCE in plan.find_cell(target.item_id)[3].evidence

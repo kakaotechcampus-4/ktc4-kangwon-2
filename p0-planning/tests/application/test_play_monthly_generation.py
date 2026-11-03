@@ -1037,3 +1037,37 @@ def test_theme_and_rationale_cite_the_parent_period_they_were_written_from():
             "m03_m05",
         )
         assert source.display_name == PLAY_PROJECT_LAYOUT_V0_2.periods[0].label
+
+
+def test_a_teacher_memo_reaches_the_prompt_marks_its_cells_and_keeps_skipped_requests():
+    memo = "재난안전을 세 번 넣고, 물놀이 느낌이 나게 해 주세요"
+
+    def answer(data):
+        data["memo_applied"] = ["free_play[0]", "safety:disaster_preparedness_safety"]
+        data["memo_skipped"] = [{"summary": "재난안전 세 번 배치", "reason": "RULE_CONFLICT"}]
+
+    use_case, command, plans, provider, _ = _run(answer, teacher_memo=memo)
+    plan = use_case.execute(command)
+
+    (request,) = provider.requests
+    assert request.prompt_version.endswith("+teacher-memo-v1")
+    assert json.loads(request.user_content)["teacher_memo"]["text"] == memo
+    marked = {
+        cell.semantic_key
+        for cell in (
+            plan.theme,
+            *(a.cell for a in plan.together + plan.free_play),
+            *(c.cell for c in plan.safety_candidates),
+        )
+        if any(s.source_id == "teacher_memo" for s in cell.evidence)
+    }
+    assert marked == {plan.free_play[0].cell.semantic_key, "safety_education.disaster_preparedness_safety"}
+    assert plan.free_play[0].cell.generation.rule_version.endswith("+teacher-memo-v1")
+    assert plan.teacher_memo == memo
+    assert [(n.summary, n.reason.value) for n in plan.memo_notices] == [("재난안전 세 번 배치", "RULE_CONFLICT")]
+    assert all(s.candidate_item_id is None for s in plan.safety_weeks)  # placement stays the teacher's
+
+    # Without a memo the request is unchanged and an answer with memo fields is a parse error.
+    plain_case, plain_command, *_ = _run(answer)
+    with pytest.raises(ProposalParseError):
+        plain_case.execute(plain_command)

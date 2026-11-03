@@ -14,6 +14,7 @@ from .contracts import (
 )
 from .parser import parse_monthly_proposal, parse_repair_patches
 from .ports import MonthlyPlanningProvider
+from .teacher_memo import split_memo_applied
 from .prompt import build_monthly_planning_request, build_monthly_repair_request
 from .validation import (
     MonthlyProposalValidationResult,
@@ -65,8 +66,9 @@ class MonthlyPlanner:
         request = build_monthly_planning_request(packet, snapshot)
         initial_prompt_version, repaired_cells = request.prompt_version, frozenset()
         response = self._generate(request)
+        content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
         # The schema pairs each reference id with its label; hydration re-asserts that pair.
-        content, _ = hydrate_reference_values(response.content, request)
+        content, _ = hydrate_reference_values(content, request)
         proposal = parse_monthly_proposal(content)
         validation = validate_monthly_proposal(proposal, packet, request)
         found = validation.issues
@@ -127,6 +129,8 @@ class MonthlyPlanner:
             request_id=response.request_id,
             initial_prompt_version=initial_prompt_version,
             repaired_cells=repaired_cells,
+            memo_applied=memo_applied,
+            memo_skipped=memo_skipped,
         )
 
     def _generate(self, request: MonthlyPlanningRequest):

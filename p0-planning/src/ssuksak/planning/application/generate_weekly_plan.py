@@ -55,6 +55,7 @@ from ..evidence.ports import (
     WeeklyEvidenceClassificationRepository,
 )
 from ..evidence.weekly_classification import WEEKLY_GROUNDING_SCOPE
+from ..planner.teacher_memo import normalize_teacher_memo, with_memo_evidence
 from ..planner.weekly import (
     OUTDOOR_KEY,
     PARENT_GROUNDABLE_KEYS,
@@ -63,6 +64,7 @@ from ..planner.weekly import (
     WeeklyTarget,
     build_weekly_request,
     validate_daily_life_context,
+    weekly_memo_address,
 )
 from ..retrieval.models import RetrievedEvidence
 from ..retrieval.weekly import activity_type, weekly_section_evidence
@@ -151,8 +153,12 @@ class GenerateWeeklyPlanCommand:
     activity_catalog: ActivityCatalogSelector | None = None
     optional_context_names: tuple[str, ...] = ()
     activity_candidates: bool = False
+    # ADR-057: the teacher's request note, applied only inside the Rule range.
+    teacher_memo: str = ""
 
     def __post_init__(self) -> None:
+        if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
+            raise InvalidDomainValueError("teacher_memo must be normalized")
         checks = (
             (self.parent_monthly_plan_id, PlanId, "parent_monthly_plan_id"),
             (self.week_id, WeekId, "week_id"),
@@ -274,6 +280,7 @@ class GenerateWeeklyPlan:
                 catalog=catalog, constraint_assessments=(safety_assessment,), outdoor=outdoor,
                 daily_life_loader=self._daily_life_loader,
                 activity_candidates=command.activity_candidates,
+                teacher_memo=command.teacher_memo,
             )
             fingerprint = context.fingerprint
             try:
@@ -308,6 +315,10 @@ class GenerateWeeklyPlan:
                     )
                     evidence, snapshots = llm_cell_sources(
                         proposed, context, parent=parent, lineage=lineage, outdoor=outdoor, catalog=catalog
+                    )
+                    evidence = with_memo_evidence(
+                        evidence,
+                        weekly_memo_address(key, None if day is None else day.value) in outcome.memo_applied,
                     )
             elif key == THEME_KEY:
                 value = theme_cell.value
@@ -376,8 +387,11 @@ class GenerateWeeklyPlan:
                 candidates.append(WeeklyActivityCandidate(target.activity_type, WeeklyCell(
                     item_id=item_id, section_key="group_activity", value=proposed.value, cell_state=CellState.FILLED,
                     generation=GenerationMethodDetail(GenerationMethod.RULE_LLM, LLM_RULE_ID, outcome.prompt_version_for(target.section_key)),
-                    evidence=(parent_evidence, *(EvidenceSource(EvidenceSourceType.INSTITUTION_SAMPLE, ref, context.store_version,
-                                                               display_name=sources[ref]) for ref in proposed.grounding_refs)),
+                    evidence=with_memo_evidence(
+                        (parent_evidence, *(EvidenceSource(EvidenceSourceType.INSTITUTION_SAMPLE, ref, context.store_version,
+                                                           display_name=sources[ref]) for ref in proposed.grounding_refs)),
+                        target.section_key in outcome.memo_applied,
+                    ),
                     audit=AuditHistory((AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)),
                     source_label=target.activity_type,
                 )))
@@ -402,6 +416,8 @@ class GenerateWeeklyPlan:
             generation_mode=command.generation_mode,
             activity_candidates=tuple(candidates),
             activity_grids=tuple(WeeklyActivityGrid(cell=c.item_id) for c in cells if c.section_key == "group_activity") if command.activity_candidates else (),
+            teacher_memo=command.teacher_memo,
+            memo_notices=outcome.memo_skipped if outcome is not None else (),
         )
         try:
             plan = replace(plan, verification_report=verify_weekly_plan(plan, catalog, parent))
@@ -490,6 +506,7 @@ def llm_context(
     outdoor,
     daily_life_loader: Callable[[], DailyLifeCatalog] | None = None,
     activity_candidates: bool = False,
+    teacher_memo: str = "",
 ) -> WeeklyLlmContext:
     theme_cell = _only_cell(parent, THEME_KEY)
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -524,7 +541,7 @@ def llm_context(
             raise WeeklyApplicationError("weekly_reference_context_unavailable", "Weekly daily-life context is unavailable") from error
     request = _weekly_request(
         parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
-        daily_life=daily_life, activity_candidates=activity_candidates,
+        daily_life=daily_life, activity_candidates=activity_candidates, teacher_memo=teacher_memo,
     )
     return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
 
@@ -664,7 +681,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
 
 def _weekly_request(
     parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
-    *, daily_life=None, activity_candidates=False,
+    *, daily_life=None, activity_candidates=False, teacher_memo="",
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -732,6 +749,7 @@ def _weekly_request(
         reference_wiring=linked,
         daily_life=daily_life,
         sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if linked else (),
+        teacher_memo=teacher_memo,
     )
 
 

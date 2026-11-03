@@ -55,6 +55,7 @@ from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION
 from app.config import settings
 from app.db import get_session
 from app.features.centers.models import Center
+from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_router import (
@@ -90,7 +91,7 @@ from app.features.plans.monthly_schemas import (
 )
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, memo_notices_out
 from app.features.plans.weekly_schemas import (
     CopyWeeklyActivityIn,
     CreateWeeklyPlan,
@@ -203,6 +204,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
     center_id, class_id = user.center_id, klass.id
+    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-057)
     week = _week(body.week_id, klass.school_year)
     if _existing(session, center_id, class_id, week) is not None:
         raise _ALREADY_EXISTS
@@ -240,7 +242,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     use_case = weekly_generation(
         parent_plan_repository=parents,
         plan_repository=InMemoryPlanRepository(),
-        provider=provider,
+        provider=with_masked_memo(provider, body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
     )
@@ -257,9 +259,11 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
                 activity_candidates=body.activity_candidates,
+                teacher_memo=body.memo,
             )
         ).plan
     except MonthlyApplicationError as error:
+        raise_if_mask_failed(error)
         _log.warning(
             "weekly generation failed code=%s cause=%s",
             error.code,
@@ -402,6 +406,8 @@ def _detail(
     saturday = plan.operating_days[-1].value == "SAT"
     return WeeklyPlanOut(
         id=row.id,
+        memo=plan.teacher_memo,
+        memo_notices=memo_notices_out(plan),
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         week_id=plan.week_id.value,

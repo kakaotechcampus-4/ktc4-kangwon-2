@@ -34,6 +34,7 @@ from ..domain.provenance import (
 )
 from ..domain.yearly_plan import YearlyPlan
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
+from ..planner.teacher_memo import cell_address, with_memo_evidence
 from ..domain.safety_placement import SafetyWeek
 from ..planner.contracts import DRILL_CANDIDATE_PREFIX, SAFETY_CANDIDATE_PREFIX, MonthlyPlanningOutcome
 from ..planner.service import MonthlyPlanner
@@ -298,6 +299,8 @@ class GenerateMonthlyPlan:
                 )
             if drill_mode:
                 packet = self._with_drill_topics(packet, command)
+            if command.teacher_memo:
+                packet = replace(packet, teacher_memo=command.teacher_memo)
             available = {item.grounding_class for item in packet.section_evidence}
             missing = sorted(
                 section.section_key
@@ -381,9 +384,12 @@ class GenerateMonthlyPlan:
                 generation=GenerationMethodDetail(
                     GenerationMethod.RULE_LLM, LLM_INTEGRATION_RULE_ID, planner_outcome.prompt_version_for(None, key)
                 ),
-                evidence=candidate_evidence(
-                    slot, proposed.grounding_refs,
-                    legal_rule_version=safety_rule.legal_rule_version, store=store, records=records,
+                evidence=with_memo_evidence(
+                    candidate_evidence(
+                        slot, proposed.grounding_refs,
+                        legal_rule_version=safety_rule.legal_rule_version, store=store, records=records,
+                    ),
+                    key in planner_outcome.memo_applied,
                 ),
                 audit=AuditHistory(
                     (AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)
@@ -406,10 +412,13 @@ class GenerateMonthlyPlan:
                 generation=GenerationMethodDetail(
                     GenerationMethod.RULE_LLM, LLM_INTEGRATION_RULE_ID, planner_outcome.prompt_version_for(None, key)
                 ),
-                evidence=(
-                    EvidenceSource(
-                        EvidenceSourceType.CURRICULUM, topic.content_id, packet.curriculum.catalog_version
+                evidence=with_memo_evidence(
+                    (
+                        EvidenceSource(
+                            EvidenceSourceType.CURRICULUM, topic.content_id, packet.curriculum.catalog_version
+                        ),
                     ),
+                    key in planner_outcome.memo_applied,
                 ),
                 audit=AuditHistory(
                     (AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)
@@ -450,6 +459,8 @@ class GenerateMonthlyPlan:
             safety_candidates=tuple(safety_candidates),
             safety_weeks=tuple(SafetyWeek(p.week_id) for p in week_periods if p.active and candidate_mode),
             drill_candidates=tuple(drill_candidates),
+            teacher_memo=command.teacher_memo,
+            memo_notices=planner_outcome.memo_skipped if planner_outcome is not None else (),
         )
         self._require_complete(plan, resolved_sections)
         plan = with_fresh_monthly_verification(plan, catalog)
@@ -620,16 +631,19 @@ class GenerateMonthlyPlan:
                         )
                     # ACTIVITY_REFERENCE XOR INSTITUTION_SAMPLE (OD-N13): a reference cell
                     # is grounded by its reference, never by cited samples.
-                    evidence = deduplicate_evidence(
-                        (
-                            *parent_evidence,
-                            *reference_evidence,
-                            *(
-                                packet_evidence(packet, proposed.grounding_refs)
-                                if packet is not None and proposed.reference_id is None
-                                else ()
-                            ),
-                        )
+                    evidence = with_memo_evidence(
+                        deduplicate_evidence(
+                            (
+                                *parent_evidence,
+                                *reference_evidence,
+                                *(
+                                    packet_evidence(packet, proposed.grounding_refs)
+                                    if packet is not None and proposed.reference_id is None
+                                    else ()
+                                ),
+                            )
+                        ),
+                        cell_address(week_id, section.section_key) in planner_outcome.memo_applied,
                     )
             elif section.section_key == THEME_SECTION_KEY:
                 value = theme.value

@@ -160,6 +160,10 @@ class RequestAwareMonthlyLlm:
         ]
         if candidates:
             month_sections += candidates
+        if getattr(request, "memo_addresses", None) is not None:
+            # A teacher memo marks the first allowed cell, so the evidence path is exercised.
+            payload["memo_applied"] = list(request.memo_addresses[:1])
+            payload["memo_skipped"] = []
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "request-aware-monthly"
         )
@@ -176,6 +180,9 @@ class RequestAwareMonthlyLlm:
                 grounding_ref_for(request, request.target_section_key),
             ),
         }
+        if getattr(request, "memo_addresses", None) is not None:
+            payload["memo_applied"] = list(request.memo_addresses)
+            payload["memo_skipped"] = []
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "request-aware-cell"
         )

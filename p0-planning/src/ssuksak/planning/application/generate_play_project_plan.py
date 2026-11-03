@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ..domain.curriculum_reference import CurriculumCatalog
-from ..domain.errors import DomainError
+from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.plan import PlanItem, PlanStatus
 from ..domain.play_project_plan import (
     PlayPeriod,
@@ -30,12 +30,12 @@ from ..domain.provenance import (
 )
 from ..planner.contracts import ProposalRejectedError
 from ..planner.play_project import (
-    PLAY_PROJECT_PROMPT_VERSION,
     PlayProjectProvider,
     build_play_project_request,
     parse_play_project_proposal,
     validate_play_project,
 )
+from ..planner.teacher_memo import normalize_teacher_memo, split_memo_applied, with_memo_evidence
 from ..rules.yearly_reference_rules import validate_age_set
 from .ports import Clock, IdGenerator, PlanRepository
 
@@ -78,6 +78,12 @@ class GeneratePlayProjectPlanCommand:
     curriculum_catalog_version: str
     layout: PlayProjectLayout = PLAY_PROJECT_LAYOUT_V0_2
     avoid_play_names: tuple[str, ...] = ()  # other periods' plays in the same year
+    # ADR-057: the teacher's request note, applied only inside the Rule range.
+    teacher_memo: str = ""
+
+    def __post_init__(self) -> None:
+        if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
+            raise InvalidDomainValueError("teacher_memo must be normalized")
 
 
 class GeneratePlayProjectPlan:
@@ -115,10 +121,12 @@ class GeneratePlayProjectPlan:
             row_count=command.layout.candidates_per_period,
             catalog=catalog,
             avoid_play_names=command.avoid_play_names,
+            teacher_memo=command.teacher_memo,
         )
-        proposal = parse_play_project_proposal(
-            self._provider.generate_play_project(request).content
+        content, memo_applied, memo_skipped = split_memo_applied(
+            self._provider.generate_play_project(request).content, request.memo_addresses
         )
+        proposal = parse_play_project_proposal(content)
         codes = validate_play_project(proposal, request)
         if codes:
             raise ProposalRejectedError(codes)
@@ -128,7 +136,7 @@ class GeneratePlayProjectPlan:
         generation = GenerationMethodDetail(
             method=GenerationMethod.RULE_LLM,
             rule_id=RULE_ID,
-            rule_version=PLAY_PROJECT_PROMPT_VERSION,
+            rule_version=request.prompt_version,
         )
 
         def item(value: str, evidence: tuple[EvidenceSource, ...] = ()) -> PlanItem:
@@ -145,21 +153,25 @@ class GeneratePlayProjectPlan:
         rows = []
         for index, row in enumerate(proposal.rows, 1):
             contents = [catalog.get(content_id) for content_id in row.learning_content_ids]
+            marked = f"cand{index}" in memo_applied
             rows.append(
                 PlayRow(
                     row_key=f"cand{index}",
-                    play_name=item(row.play_name),
-                    materials=item(row.materials),
-                    support_direction=item(row.support_direction),
+                    play_name=item(row.play_name, with_memo_evidence((), marked)),
+                    materials=item(row.materials, with_memo_evidence((), marked)),
+                    support_direction=item(row.support_direction, with_memo_evidence((), marked)),
                     learning=item(
                         "\n".join(c.display for c in contents),
-                        tuple(
-                            EvidenceSource(
-                                source_type=EvidenceSourceType.CURRICULUM,
-                                source_id=c.content_id,
-                                source_version=catalog.catalog_version,
-                            )
-                            for c in contents
+                        with_memo_evidence(
+                            tuple(
+                                EvidenceSource(
+                                    source_type=EvidenceSourceType.CURRICULUM,
+                                    source_id=c.content_id,
+                                    source_version=catalog.catalog_version,
+                                )
+                                for c in contents
+                            ),
+                            marked,
                         ),
                     ),
                 )
@@ -183,6 +195,8 @@ class GeneratePlayProjectPlan:
                     ),
                 )
             ),
+            teacher_memo=command.teacher_memo,
+            memo_notices=memo_skipped,
         )
         self._plans.save(plan.plan_id, plan)
         return plan

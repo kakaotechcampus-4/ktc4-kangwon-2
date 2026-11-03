@@ -69,6 +69,7 @@ class WeeklyHarness(PlanningHarness):
         provider=None,
         weekly_classification: bool = True,
         template_ref: TemplateRef = WEEKLY_TEMPLATE,
+        teacher_memo: str = "",
     ) -> GenerateWeeklyPlanResult:
         return GenerateWeeklyPlan(
             parent_plan_repository=self.monthly_plans,
@@ -93,6 +94,7 @@ class WeeklyHarness(PlanningHarness):
                 generation_mode=mode,
                 activity_catalog=ACTIVITY_CATALOG,
                 optional_context_names=optional_context_names,
+                teacher_memo=teacher_memo,
             )
         )
 

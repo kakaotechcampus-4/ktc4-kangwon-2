@@ -28,6 +28,7 @@ from .monthly_template import (
 )
 from .monthly_verification import VerificationReport
 from .plan import PlanStatus
+from .teacher_memo import MemoNotice, require_memo_fields
 from .provenance import (
     AuditEvent,
     AuditEventType,
@@ -274,10 +275,15 @@ class WeeklyPlan:
     activity_candidates: tuple[WeeklyActivityCandidate, ...] = ()
     activity_grids: tuple[WeeklyActivityGrid, ...] = ()
     removed_activity_cells: tuple[WeeklyCell, ...] = ()
+    # ADR-057: the teacher's request note, kept for single-cell regeneration, and the
+    # requests generation could not apply (shown to the teacher, never blocking).
+    teacher_memo: str = ""
+    memo_notices: tuple[MemoNotice, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("WeeklyPlan.plan_id must be PlanId")
+        require_memo_fields("WeeklyPlan", self.teacher_memo, self.memo_notices)
         if type(self.school_year) is not int or not 1 <= self.school_year <= 9998:
             raise InvalidDomainValueError("WeeklyPlan.school_year must be 1 through 9998")
         if not isinstance(self.week_id, WeekId):

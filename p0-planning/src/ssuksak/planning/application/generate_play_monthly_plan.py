@@ -18,7 +18,7 @@ from typing import Protocol
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
 from ..domain.drill_topic_reference import DrillTopic, DrillTopicCatalog
-from ..domain.errors import DomainError
+from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.plan import PlanStatus
@@ -67,7 +67,6 @@ from ..evidence.safety_classification import SafetyEvidenceClassification
 from ..evidence.safety_quality import SafetyReferenceQuality
 from ..planner.contracts import ProposalRejectedError
 from ..planner.play_monthly import (
-    PLAY_MONTHLY_PROMPT_VERSION,
     PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
     PlayMonthlyIssue,
     PlayMonthlyProvider,
@@ -80,6 +79,7 @@ from ..planner.play_monthly import (
     section_of,
     validate_play_monthly,
 )
+from ..planner.teacher_memo import normalize_teacher_memo, split_memo_applied, with_memo_evidence
 from ..rules.monthly_week_periods import canonical_week_periods
 from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
 from .generate_play_project_plan import CurriculumReferenceRepository
@@ -178,6 +178,12 @@ class GeneratePlayMonthlyPlanCommand:
     # The class name the document header starts with (D-10), from the caller's classroom.
     # Blank leaves that header cell for the teacher; it never names or checks the classroom.
     class_name: str = ""
+    # ADR-057: the teacher's request note, applied only inside the Rule range.
+    teacher_memo: str = ""
+
+    def __post_init__(self) -> None:
+        if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
+            raise InvalidDomainValueError("teacher_memo must be normalized")
 
 
 def _fail(code: str) -> PlayMonthlyGenerationError:
@@ -258,14 +264,16 @@ class GeneratePlayMonthlyPlan:
                 command.safety_classification_version,
                 command.safety_quality_version,
             ),
+            teacher_memo=command.teacher_memo,
         )
 
         response = self._provider.generate_play_monthly(request)
-        proposal = parse_play_monthly_proposal(response.content)
+        content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        proposal = parse_play_monthly_proposal(content)
         issues = validate_play_monthly(proposal, request)
         changed: frozenset[str] = frozenset()
         if issues:
-            repair = build_repair_request(request, response.content, issues)
+            repair = build_repair_request(request, content, issues)
             repaired = parse_play_monthly_proposal(self._provider.generate_play_monthly(repair).content)
             changed = changed_locations(proposal, repaired)
             remaining = validate_play_monthly(repaired, request) + repair_scope_issues(changed, issues)
@@ -304,7 +312,7 @@ class GeneratePlayMonthlyPlan:
                     method=GenerationMethod.RULE_LLM,
                     rule_id=RULE_ID,
                     rule_version=(
-                        PLAY_MONTHLY_REPAIR_PROMPT_VERSION if repaired_here else PLAY_MONTHLY_PROMPT_VERSION
+                        PLAY_MONTHLY_REPAIR_PROMPT_VERSION if repaired_here else request.prompt_version
                     ),
                 ),
                 audit=created(item_id),
@@ -349,6 +357,9 @@ class GeneratePlayMonthlyPlan:
         calendar_source = EvidenceSource(EvidenceSourceType.CALENDAR, month.value)
         classroom_source = EvidenceSource(EvidenceSourceType.CLASSROOM_PROFILE, command.classroom_ref)
 
+        def memo(address: str, evidence: tuple[EvidenceSource, ...]) -> tuple[EvidenceSource, ...]:
+            return with_memo_evidence(evidence, address in memo_applied)
+
         def curriculum(content_id: str) -> EvidenceSource:
             return EvidenceSource(EvidenceSourceType.CURRICULUM, content_id, catalog.catalog_version)
 
@@ -374,6 +385,7 @@ class GeneratePlayMonthlyPlan:
                         parent_item_id=play.play_name_item_id,
                         snapshot_value=play.play_name,
                     )
+                evidence = memo(f"{section}[{index}]", evidence)
                 name = cell(f"{section}[{index}]", None, row.name, evidence)
                 description = cell(
                     f"{section}[{index}].description", f"{name.semantic_key}.description", row.description, evidence
@@ -382,7 +394,8 @@ class GeneratePlayMonthlyPlan:
             return tuple(rows)
 
         def entry_cell(location: str, semantic_key: str, entry: DailyLifeEntry) -> EntryCell:
-            return EntryCell(cell(location, semantic_key, entry.text, (curriculum(entry.content_id),)), entry.entry_id)
+            evidence = memo(location.split(":", 1)[0], (curriculum(entry.content_id),))  # habits:W1 -> habits
+            return EntryCell(cell(location, semantic_key, entry.text, evidence), entry.entry_id)
 
         def safety(item) -> SafetyCandidate:
             slot = next(s for s in request.safety_slots if s.slot == item.slot)
@@ -390,7 +403,7 @@ class GeneratePlayMonthlyPlan:
                 slot, item.refs, legal_rule_version=rule.legal_rule_version, store=store, records=records
             )
             return SafetyCandidate(
-                cell(f"safety:{slot.slot}", f"safety_education.{slot.slot}", item.text, evidence),
+                cell(f"safety:{slot.slot}", f"safety_education.{slot.slot}", item.text, memo(f"safety:{slot.slot}", evidence)),
                 slot.kind,
                 category_id=slot.category_id,
                 topic_group=slot.topic_group,
@@ -421,12 +434,12 @@ class GeneratePlayMonthlyPlan:
                 safety_quality_version=command.safety_quality_version,
                 drill_catalog_id=drills.catalog_id,
                 drill_catalog_version=drills.catalog_version,
-                prompt_version=PLAY_MONTHLY_PROMPT_VERSION,
+                prompt_version=request.prompt_version,
                 request_fingerprint=request.fingerprint,
             ),
             # Theme and rationale are written from the parent period's selected plays.
-            theme=cell("theme", "theme", proposal.theme, (parent_period,)),
-            rationale=cell("rationale", "rationale", proposal.rationale, (parent_period,)),
+            theme=cell("theme", "theme", proposal.theme, memo("theme", (parent_period,))),
+            rationale=cell("rationale", "rationale", proposal.rationale, memo("rationale", (parent_period,))),
             together=activities("together"),
             free_play=activities("free_play"),
             habits=tuple(
@@ -450,7 +463,7 @@ class GeneratePlayMonthlyPlan:
                         f"drills:{topic.topic_id}",
                         f"{DRILL_CELL_KEY}.candidate.{topic.topic_id}",
                         drill_texts[topic.topic_id],
-                        (curriculum(topic.content_id),),
+                        memo(f"drills:{topic.topic_id}", (curriculum(topic.content_id),)),
                     ),
                     topic.topic_id,
                     topic.label,
@@ -482,6 +495,8 @@ class GeneratePlayMonthlyPlan:
             ),
             special_activity_size=SPECIAL_ACTIVITY_START_SIZE,
             audit=created(),
+            teacher_memo=command.teacher_memo,
+            memo_notices=memo_skipped,
         )
         self._plans.save(plan.plan_id, plan)
         return plan

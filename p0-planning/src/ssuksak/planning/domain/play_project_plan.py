@@ -14,6 +14,7 @@ from datetime import datetime
 from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .plan import PlanItem, PlanStatus
+from .teacher_memo import MemoNotice, require_memo_fields, without_memo_evidence
 from .provenance import (
     AuditEvent,
     AuditEventType,
@@ -71,10 +72,8 @@ class PlayRow:
     learning: PlanItem
 
     def __post_init__(self) -> None:
-        if not self.learning.evidence or any(
-            source.source_type is not EvidenceSourceType.CURRICULUM
-            for source in self.learning.evidence
-        ):
+        learning = without_memo_evidence(self.learning.evidence)  # ADR-057 mark is allowed
+        if not learning or any(source.source_type is not EvidenceSourceType.CURRICULUM for source in learning):
             raise InvalidDomainValueError("PlayRow.learning cites CURRICULUM evidence only")
 
     def semantic_key(self, period_key: str, field_name: str) -> str:
@@ -110,10 +109,14 @@ class PlayProjectYearlyPlan:
     periods: tuple[PlayPeriodRows, ...]
     audit: AuditHistory = field(default_factory=AuditHistory)
     format: str = PLAY_PROJECT_FORMAT
+    # ADR-057: the teacher's request note and the requests generation could not apply.
+    teacher_memo: str = ""
+    memo_notices: tuple[MemoNotice, ...] = ()
 
     def __post_init__(self) -> None:
         if self.format != PLAY_PROJECT_FORMAT:
             raise InvalidDomainValueError("PlayProjectYearlyPlan.format must be PLAY_PROJECT")
+        require_memo_fields("PlayProjectYearlyPlan", self.teacher_memo, self.memo_notices)
         if not self.classroom_ref.strip() or not self.layout_version.strip():
             raise InvalidDomainValueError("classroom_ref and layout_version must be non-blank")
         if not self.target_ages or any(age not in {3, 4, 5} for age in self.target_ages):

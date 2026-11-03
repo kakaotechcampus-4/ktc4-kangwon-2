@@ -16,6 +16,7 @@ from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.play_project_plan import PlayPeriod
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
+from .teacher_memo import TEACHER_MEMO_PROMPT, TEACHER_MEMO_PROMPT_TAG, memo_properties
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
 
@@ -91,6 +92,8 @@ class PlayProjectRequest:
     allowed_content_ids: frozenset[str]
     avoid_play_names: frozenset[str]
     packet_fingerprint: str
+    # ADR-057: row keys memo_applied may name; None = no teacher memo.
+    memo_addresses: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +110,12 @@ class PlayProjectProposal:
     rows: tuple[ProposedPlayRow, ...]
 
 
+def play_project_response_schema(request: PlayProjectRequest) -> dict:
+    if request.memo_addresses is None:
+        return RESPONSE_SCHEMA
+    return _object_schema(dict(RESPONSE_SCHEMA["properties"], **memo_properties(request.memo_addresses)))
+
+
 class PlayProjectProvider(Protocol):
     def generate_play_project(self, request: PlayProjectRequest) -> RawLlmResponse: ...
 
@@ -118,6 +127,7 @@ def build_play_project_request(
     row_count: int,
     catalog: CurriculumCatalog,
     avoid_play_names: tuple[str, ...] = (),
+    teacher_memo: str = "",
 ) -> PlayProjectRequest:
     payload = {
         "period_key": period.key,
@@ -130,18 +140,25 @@ def build_play_project_request(
             {"content_id": c.content_id, "text": c.display} for c in catalog.contents
         ],
     }
+    memo = tuple(f"cand{i}" for i in range(1, row_count + 1)) if teacher_memo else None
+    prompt_version, system_prompt = PLAY_PROJECT_PROMPT_VERSION, SYSTEM_PROMPT
+    if memo is not None:  # rows answer in order, so row i is cand{i}
+        payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
+        prompt_version += TEACHER_MEMO_PROMPT_TAG
+        system_prompt += TEACHER_MEMO_PROMPT
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayProjectRequest(
-        prompt_version=PLAY_PROJECT_PROMPT_VERSION,
-        system_prompt=SYSTEM_PROMPT,
+        prompt_version=prompt_version,
+        system_prompt=system_prompt,
         user_content=user_content,
         period_key=period.key,
         row_count=row_count,
         allowed_content_ids=frozenset(c.content_id for c in catalog.contents),
         avoid_play_names=frozenset(" ".join(n.split()) for n in avoid_play_names),
         packet_fingerprint=hashlib.sha256(
-            (PLAY_PROJECT_PROMPT_VERSION + catalog.catalog_version + user_content).encode()
+            (prompt_version + catalog.catalog_version + user_content).encode()
         ).hexdigest(),
+        memo_addresses=memo,
     )
 
 

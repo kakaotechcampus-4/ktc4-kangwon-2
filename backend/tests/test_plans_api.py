@@ -5,14 +5,20 @@ p0-planning 의 테스트가 본다. 이 파일은 「계약대로 내려주나 
 확정 뒤 수정을 막나」만 본다.
 """
 
+import json
+from dataclasses import dataclass
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from ssuksak.planning.planner.contracts import RawLlmResponse
 
 from app.config import settings
-from app.features.centers.models import Center, Class
+from app.features.centers.models import Center, Child, Class
+from app.features.plans.memo_privacy import MemoMaskFailed, with_masked_memo
 from app.features.plans.models import Plan
 from app.main import app
+from app.shared.childCode import NameTable
 
 client = TestClient(app)
 
@@ -614,3 +620,87 @@ def test_소주제_수가_주_수와_다른_달이_있으면_확정_422(db_sessi
     assert _error(response) == (422, "VALIDATION_FAILED")
     assert response.json()["error"]["fields"] == ["10"]
     assert client.get(f"/api/plans/annual/{created['id']}").json()["status"] == "DRAFT"
+
+
+# ── 요청 사항 (ADR-057) ─────────────────────────────────────────────────────
+
+
+def _marked(month) -> bool:
+    return any(e["source_id"] == "teacher_memo" for e in month["evidence"])
+
+
+def test_요청_사항은_남고_반영한_달에만_표시가_붙는다(db_session, mine):
+    """mock 은 첫 달 소주제에 반영했다고 답한다. 주제(theme_id)는 Rule 이 고른 그대로다."""
+    plain = _create(mine)
+    client.delete(f"/api/plans/annual/{plain['id']}")
+    response = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": mine.id, "memo": "  텃밭 놀이를 넣어 주세요 "},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert (body["memo"], body["memo_notices"]) == ("텃밭 놀이를 넣어 주세요", [])
+    assert [m["month"] for m in body["months"] if _marked(m)] == [3]
+    assert [m["theme"] for m in body["months"]] == [m["theme"] for m in plain["months"]]
+    assert client.get(f"/api/plans/annual/{body['id']}").json() == body
+    assert plain["memo"] == "" and not any(_marked(m) for m in plain["months"])
+
+
+def test_요청_사항은_300자까지(db_session, mine):
+    response = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": mine.id, "memo": "가" * 301},
+    )
+
+    assert response.status_code == 422
+    assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
+
+
+def test_요청_사항의_아이_이름을_가명으로_못_바꾸면_LLM_없이_422(db_session, mine):
+    # 두 아이가 같은 이름(「하나」)을 쓰면 어느 아이인지 몰라 되돌릴 수 없다.
+    db_session.add_all(
+        [
+            Child(class_id=mine.id, name="김하나", code="도아"),
+            Child(class_id=mine.id, name="박하나", code="새미"),
+        ]
+    )
+    db_session.flush()
+
+    response = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": mine.id, "memo": "하나가 좋아하는 공 놀이"},
+    )
+
+    assert _error(response) == (422, "VALUE_INVALID")
+    assert response.json()["error"]["fields"] == ["memo"]
+    assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
+
+
+@dataclass(frozen=True)
+class _Request:
+    user_content: str
+    system_prompt: str = ""
+
+
+def test_메모_속_아이_이름만_가명으로_나가고_답은_실명으로_돌아온다():
+    table = NameTable({"이가명": "도담"})
+    memo = "가명이가 좋아하는 하나씩 쌓기"
+    sent = []
+
+    class Inner:
+        def generate_weekly(self, request):
+            sent.append(request.user_content)
+            return RawLlmResponse(content='{"v": "도담이와 쌓기"}', model="m")
+
+    provider = with_masked_memo(Inner(), memo, table)
+    payload = json.dumps({"teacher_memo": {"text": memo}, "rule": "하나씩"}, ensure_ascii=False)
+
+    response = provider.generate_weekly(_Request(payload))
+
+    assert "가명" not in sent[0] and "도담이가 좋아하는" in sent[0]
+    assert '"rule": "하나씩"' in sent[0]  # 메모 밖은 건드리지 않는다
+    assert response.content == '{"v": "이가명이와 쌓기"}'
+    # 수리 요청이 앞 답(실명)을 다시 실으면 부르지 않는다.
+    with pytest.raises(MemoMaskFailed):
+        provider.generate_weekly(_Request(payload + " 이가명"))
