@@ -73,55 +73,6 @@ body {
   filter: drop-shadow(0 8px 16px rgba(52, 49, 47, 0.16));
 }
 
-/* 끝이 살짝 들린 종이. 책상에 놓인 지 좀 된 쪽지는 양 끝이 뜬다.
- *
- * 종이를 실제로 휠 수는 없으니 두 가지로 보인 것처럼 만든다 —
- *  - 아래 두 모서리를 **넓고 얕게** 둥글려 바닥 가운데만 책상에 닿은 것처럼 하고,
- *  - 그림자를 가운데(옅게)와 양 끝(짙게)으로 나눠 끝이 떠 있는 것처럼 둔다.
- * 음수 z-index 의 가짜 그림자는 쓰지 않는다 — 조상에 바탕색이 있으면 그 밑에 깔려 안 보인다. */
-.liftedPaper {
-  border-bottom-left-radius: 46% 13px;
-  border-bottom-right-radius: 46% 13px;
-  box-shadow:
-    0 3px 4px rgba(52, 49, 47, 0.07),
-    -19px 19px 17px -17px rgba(52, 49, 47, 0.45),
-    19px 19px 17px -17px rgba(52, 49, 47, 0.45);
-}
-
-/* 교실 칠판. 첫 화면 오른쪽 줄 세 칸이 이 판 위에 붙는다.
- *
- * 면을 한 색으로 칠하면 초록 네모일 뿐이라 칠판으로 안 읽힌다. 세 겹을 쌓는다 —
- * 가장자리가 어둡고 가운데가 밝은 바탕, 그 위에 분필로 지운 자국 둘.
- * 나무테는 네 변의 색을 달리해 두께를 만들고, 아래에 분필 받침을 붙인다. */
-.chalkboard {
-  position: relative;
-  background:
-    radial-gradient(130px 70px at 24% 26%, rgba(255, 255, 255, 0.05), transparent 72%),
-    radial-gradient(100px 56px at 74% 68%, rgba(255, 255, 255, 0.038), transparent 72%),
-    radial-gradient(
-      135% 115% at 50% 42%,
-      var(--pg-board-lit) 0%,
-      var(--pg-board) 52%,
-      var(--pg-board-deep) 100%
-    );
-  border: 7px solid;
-  border-color: var(--pg-frame-lit) var(--pg-frame-side) var(--pg-frame-dark) var(--pg-frame);
-  box-shadow:
-    inset 0 0 34px rgba(0, 0, 0, 0.34),
-    0 5px 12px rgba(52, 49, 47, 0.2);
-}
-/* 분필 받침. 판 아래에 걸쳐 있어 판보다 조금 넓다. */
-.chalkboard::after {
-  content: "";
-  position: absolute;
-  left: -7px;
-  right: -7px;
-  bottom: -14px;
-  height: 7px;
-  background: linear-gradient(180deg, var(--pg-frame-lit), var(--pg-frame-side));
-  box-shadow: 0 2px 4px rgba(52, 49, 47, 0.26);
-}
-
 /* 공책 줄. 테두리를 두르지 않고도 「여기 적는 칸」이라고 알린다.
  * 줄 간격은 글줄 높이(20px x 1.7 = 34px)와 같아야 글자가 줄 위에 앉는다 —
  * 글자 크기를 바꾸면 이 값도 같이 바꿔야 한다. */

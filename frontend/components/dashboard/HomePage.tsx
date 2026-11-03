@@ -19,6 +19,7 @@ import { PageContainer } from "@/components/app/AppLayout";
 import { Icon } from "@/components/app/icons";
 import ChildPicker from "@/components/app/ChildPicker";
 import { SsampleNote } from "@/components/app/SsampleNote";
+import { Posty } from "@/components/app/Posty";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -186,8 +187,15 @@ export default function HomePage() {
           교사가 매일 보는 맨 윗자리를 라벨로 채우지 않는다. */}
         <h1 className="mb-7 font-display text-[40px] font-bold leading-none text-primary-deep lg:text-[54px]">
           {head.day}
-          <span className="ml-2.5 font-display text-[24px] font-bold text-ink-soft lg:text-[30px]">
+          <span className="relative ml-2.5 inline-block font-display text-[24px] font-bold text-ink-soft lg:text-[30px]">
             {head.dow}
+            {/* 요일 오른쪽 위로 포스티가 빼꼼 내민다. 장식이라 읽어주지 않는다. */}
+            <Posty
+              pose="wave"
+              size={38}
+              label={null}
+              className="pointer-events-none absolute -right-9 -top-8 rotate-[10deg]"
+            />
           </span>
         </h1>
 
@@ -355,7 +363,7 @@ function Compose({
        보인다. */
     <section className="relative pt-3">
       <Tape className="left-10 -rotate-2" />
-      <div className="liftedPaper relative bg-paper px-5 pb-5 pt-5 lg:px-6">
+      <div className="relative bg-paper px-5 pb-4 pt-5 shadow-pg lg:px-6">
         <h2 className="font-display text-[26px] font-bold text-ink">지금, 한 줄</h2>
 
         {!classroom?.children.length ? (
@@ -731,7 +739,7 @@ function ChalkLine({ children }: { children: ReactNode }) {
 }
 
 /**
- * 아직 안 적은 아이 — 한 주 넘게 기록이 없는 아이.
+ * 기록 안된 아이들 — 한 주 넘게 기록이 없는 아이. 제목은 PM 이 정한 말이다.
  *
  * 평가제에서 교사가 제일 걱정하는 것이 기록의 치우침이다. 셈은 아이 고르개와 **같은
  * 것**을 쓴다(`child-mark.ts`) — 두 자리가 다른 숫자를 말하면 둘 다 못 믿는다.
@@ -763,7 +771,7 @@ function UnseenChildren({
     unseen.length === roster.length && unseen.every(({ tally }) => tally.days === null);
 
   return (
-    <BoardSection title="아직 안 적은 아이" href="/records/children" linkLabel="아이들 전부 보기 →">
+    <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이들 전부 보기 →">
       {unseen.length === 0 ? (
         <ChalkLine>
           이번 주{" "}
@@ -825,7 +833,10 @@ function UnseenChildren({
 function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
   return (
     <BoardSection title="비어 있는 날">
-      <TornNote tone="bg-peach" tape="right-8 rotate-3">
+      {/* 칠판 위에서는 찢긴 밑(`tornPaper`)을 쓰지 않는다. 어두운 판 위에 흰 반원이
+          줄지어 떠서 종이가 톱니처럼 보인다. 판에 붙인 쪽지는 네 변이 다 반듯하다. */}
+      <div className="relative mt-1 border border-peach-line bg-peach p-5 shadow-pg-hard">
+        <Tape className="right-8 rotate-3" />
         <div className="flex items-baseline gap-3">
           <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
             {shortDate(date)}
@@ -844,7 +855,7 @@ function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
             그날 채우기
           </Link>
         )}
-      </TornNote>
+      </div>
     </BoardSection>
   );
 }

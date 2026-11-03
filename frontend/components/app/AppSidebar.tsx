@@ -211,8 +211,7 @@ export default function AppSidebar() {
         >
           <Icon name="panel" className="h-[18px] w-[18px]" />
         </button>
-        {/* 어두운 레일 위라 크림 타일에 얹는다 — 벽에 붙인 쪽지처럼 보인다. */}
-        <Wordmark tone="rail" className="mx-6 mb-5 mt-6 hidden self-start lg:inline-flex" />
+        <Wordmark tone="rail" className="hidden px-6 pb-5 pt-6 lg:flex" />
 
         {/*
         어느 반 작업실에 들어와 있는지. 카드에 꺾쇠가 달려 있어 반 목록이 열릴 것처럼 보이는데
@@ -287,9 +286,10 @@ export default function AppSidebar() {
         <div className="hidden lg:block mt-auto px-5 pb-5">
           {/*
             쪽지는 장식이다. 세로가 모자랄 때 메뉴·설정이 스크롤 뒤로 숨는 것보다
-            이것이 먼저 빠지는 쪽이 낫다. 880px 은 사이드바의 나머지가 다 들어가는 높이다.
+            이것이 먼저 빠지는 쪽이 낫다. 880px 으로 잡았더니 14인치 노트북(창 높이 760~800)
+            에서 통째로 사라졌다 — 사이드바는 넘치면 스크롤되므로 760px 부터 보인다.
           */}
-          <div className="relative mb-5 hidden pt-[29px] [@media(min-height:880px)]:block">
+          <div className="relative mb-5 hidden pt-[29px] [@media(min-height:760px)]:block">
             {/*
               쪽지 뒤에서 포스티가 눈만 내민다. 쪽지 윗변이 입을 가리는 높이(pt-[29px])라
               얼굴을 통째로 올려 두는 것보다 「뒤에 있다」가 분명하다. 팔다리는 쪽지에 가려

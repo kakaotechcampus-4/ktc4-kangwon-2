@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Posty } from "./Posty";
 
 /**
  * 쌤플 워드마크. 화면마다 색과 배치가 달라져 있던 것을 한 군데로 모았다.
@@ -6,12 +7,11 @@ import Link from "next/link";
  * 「Ssample.」은 보라(`--pg-primary-deep`), 마침표 한 점만 흙빛(`--pg-peach-strong`),
  * 한글 「쌤플」은 그 아래 손글씨체로 선다.
  *
- * 쌤플의 표시는 **둘**이다 — 가로로 긴 이 워드마크와, 네모 칸에 들어가는 「S.」
- * 아이콘(`app/icon.svg`, 브라우저 탭·앱 아이콘). 워드마크 왼쪽에 쓰던 ✳ 마크는 뺐다.
- * 표시가 셋이 되면 어느 것이 쌤플인지 흐려진다 (PM 점검 2026-11-03).
+ * 왼쪽에 쓰던 ✳ 마크 자리에는 **포스티**가 선다. ✳ 는 쪽지에서 온 모양이긴 해도
+ * 그것만 떼어 놓으면 무엇인지 알 수 없는 별표였다. 쌤플의 얼굴은 포스티다.
  *
- * 어두운 사이드바 위(`tone="rail"`)에서는 글자색만 바꾸지 않고 **크림 타일**에 얹는다.
- * 같은 보라 글자를 그대로 쓸 수 있어, 들어가는 문마다 색이 달라 보이던 문제가 없어진다.
+ * 어두운 사이드바 위(`tone="rail"`)에서는 글자색만 바꾼다 — 밝은 타일을 깔면
+ * 사이드바에 네모 하나가 더 생겨 메뉴보다 먼저 눈에 띈다.
  */
 export function Wordmark({
   href = "/",
@@ -35,26 +35,35 @@ export function Wordmark({
     <Link
       href={href}
       aria-label={label}
-      className={`inline-flex min-w-0 flex-col ${
-        rail ? "rounded-[14px] bg-cream px-3.5 pb-2 pt-2.5" : ""
-      } ${className ?? ""}`}
+      className={`flex items-center gap-2.5 ${className ?? ""}`}
     >
+      {!tiny && (
+        <Posty
+          tone="plum"
+          pose="wave"
+          size={big ? 30 : 26}
+          label={null}
+          className="shrink-0"
+        />
+      )}
+      <span className="min-w-0">
       <span
-        className={`block font-bold leading-none tracking-[-0.05em] text-primary-deep ${
+        className={`block font-bold leading-none tracking-[-0.05em] ${
           big ? "text-[27px]" : tiny ? "text-[16px]" : "text-[23px]"
-        }`}
+        } ${rail ? "text-rail-ink" : "text-primary-deep"}`}
       >
         Ssample<span className="text-peach-strong">.</span>
       </span>
       {!tiny && (
         <span
-          className={`block font-display font-bold leading-tight text-ink-soft ${
+          className={`block font-display font-bold leading-tight ${
             big ? "text-[17px]" : "text-[15px]"
-          }`}
+          } ${rail ? "text-rail-ink-soft" : "text-ink-soft"}`}
         >
           쌤플
         </span>
       )}
+      </span>
     </Link>
   );
 }
