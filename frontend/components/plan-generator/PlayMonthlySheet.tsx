@@ -1,5 +1,12 @@
 "use client";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import type { PlayMonthlyActivity, PlayMonthlyPlan } from "@/lib/api/types";
 
 /**
@@ -90,6 +97,17 @@ export const period = (weeks: { start_date: string; end_date: string }[]) =>
  * 다듬기는 문서 배율 도구(`useSheetZoom`)의 배율을 넘긴다.
  */
 export const PAPER_WIDTH = 780;
+/**
+ * 표 칸의 빈 곳을 눌러도 그 칸의 글(Cell)을 고른다(월간 v1 · 놀이 월간 · 주간 공통).
+ * 고를 수 있는 Cell(role=button)이 하나뿐인 td 만 — 확정본은 role 이 없어 그대로. 주간 `area` 가 붙은 칸은 그쪽이 받는다.
+ */
+function pickByCell(event: MouseEvent<HTMLElement>) {
+  const td = event.target as HTMLElement;
+  if (td.tagName !== "TD" || td.dataset.area) return;
+  const cells = td.querySelectorAll<HTMLElement>("[data-cell][role=button]");
+  if (cells.length === 1) cells[0].click();
+}
+
 export function Paper({
   label,
   title,
@@ -117,7 +135,10 @@ export function Paper({
   return (
     <section ref={box} aria-label={label} className="w-full min-w-0">
       <div style={{ zoom: given ?? scale }}>
-        <article className="mx-auto w-[780px] bg-white px-8 py-7 text-[12px] leading-snug text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]">
+        <article
+          className="mx-auto w-[780px] bg-white px-8 py-7 text-[12px] leading-snug text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)] [&_td:has([data-cell][role=button])]:cursor-pointer"
+          onClick={pickByCell}
+        >
           <div className={`${LINE} bg-[#e6f3fc] px-4 pb-1.5 pt-2.5 text-center`}>
             <h2 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h2>
             <div className="text-right text-[13px]">{sub}</div>

@@ -556,6 +556,22 @@ function sheetOf(plan, more = {}) {
 const rowsOf = (tree, tag, th) =>
   all(tree).filter((n) => n.type === "tr" && withText(n, "th", th).length);
 
+test("칸의 빈 곳(td)을 눌러도 그 칸 하나의 글을 고른다", () => {
+  const paper = all(sheetOf(fixture(), { onSelect: () => {} })).find((n) => n.type === "article");
+  let clicks = 0;
+  const cell = { click: () => clicks++ };
+  const td = (cells, area) => ({
+    tagName: "TD",
+    dataset: area ? { area } : {},
+    querySelectorAll: () => cells,
+  });
+  paper.props.onClick({ target: td([cell]) });
+  paper.props.onClick({ target: td([cell, cell]) }); // 칸이 여럿이면 모른다
+  paper.props.onClick({ target: td([cell], "x") }); // 주간 area 가 받는다
+  paper.props.onClick({ target: { tagName: "SPAN", dataset: {} } });
+  assert.equal(clicks, 1);
+});
+
 test("머리표 — 주제 · 기간 · 만 나이 · 반 이름 · 주제 선정 이유", () => {
   const plan = fixture();
   const t = text(sheetOf(plan));
