@@ -25,11 +25,11 @@ from ..domain.safety_placement import SafetyKind
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
-from .v1_guidance import NATURAL_PLAY_GUIDANCE
+from .v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
 from .weekly import unsupported_facts
 
-PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v3"
-PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v3"
+PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v4"
+PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v4"
 CONTENT_MIN, CONTENT_MAX = 1, 3  # content ids per activity (first contract proposal)
 ACTIVITY_SECTIONS = ("together", "free_play")
 
@@ -40,7 +40,8 @@ SYSTEM_PROMPT = (
     '"habits": [{"week_id", "entry_id"}], "health_entry_id", "nutrition_entry_id", "drills": [{"topic_id", "text"}]}. '
     "target_month 는 요청 값을 그대로 쓴다. "
     "theme 은 이 달에 예상되는 놀이를 나타내는 놀이 주제다. rationale 은 이 주제를 고른 까닭을 합니다체 2~4문장으로 쓴다 — "
-    "부모 연간의 해당 시기 놀이와 계절 · 생활을 바탕으로 예상되는 놀이를 설명하고, 유아가 실제로 보인 관심 · 관찰 · 실시 · 성과를 사실처럼 쓰지 않는다. "
+    "연간에서 고른 해당 시기 놀이와 계절 · 생활을 바탕으로 예상되는 놀이를 설명한다. 교사가 읽을 문서이므로 입력 필드 이름이나 시스템의 부모 연결을 설명하는 개발 용어는 쓰지 않는다. "
+    "유아가 실제로 보인 관심 · 관찰 · 실시 · 성과를 사실처럼 쓰지 않는다. "
     "together 는 함께 하는 활동, free_play 는 유아 예상 자유놀이다. 각각 counts 의 개수를 정확히 쓴다. "
     "name 은 문서에 들어갈 짧은 놀이 이름이다. 분류 이름만 쓰지 말고 무엇을 가지고 무엇을 해 보는지 드러나게 쓰며, 모든 이름을 같은 어미로 맞추지 않는다. "
     "description 은 교사가 편집 화면에서 어떤 놀이인지 이해하도록 합니다체 1~3문장으로 쓴다 — "
@@ -53,11 +54,10 @@ SYSTEM_PROMPT = (
     "어떤 놀이가 부모 놀이 하나를 실제로 이어 가면 parent_ref 에 그 놀이의 ref 를 쓰고, 연간에 없는 새 놀이면 null 로 둔다. "
     "content_ids 는 curriculum_contents 의 content_id 중 그 놀이의 name 과 description 에 실제로 드러나는 "
     f"유아 경험과 명확하게 연결되는 {CONTENT_MIN}~{CONTENT_MAX}개다. "
-    "개수를 채우려고 연결이 약한 내용을 고르지 않는다. "
+    "개수를 채우려고 연결이 약한 내용을 고르지 않는다. 소재나 도구 이름만으로 배움을 연결하거나, 고른 ID에 맞추려고 설명에 없던 경험을 보태지 않는다. "
     "safety 는 safety_slots 의 slot 마다 정확히 하나씩 쓴다. text 는 그 달 유아에게 할 안전교육 내용 한 문장이며, 「[교통안전]」 같은 영역 이름을 앞에 붙이지 않는다. "
-    "text 는 주의할 대상 · 상황과 유아가 할 행동이 분명한 짧은 문장으로 쓴다 — 뜻을 더하지 않는 계절 수식 · 서론 · 부연과 여러 행동의 나열은 줄이되, "
-    "「조심해요」처럼 행동이 모호해지도록 줄이지 않고 뜻을 가르는 조건 · 부정 표현은 남긴다. "
-    "refs 는 그 slot 의 allowed_refs 중 text 가 실제로 근거한 것이다 — 법정 영역 slot 은 정확히 1개, 생활안전 slot 은 1개 이상이다. "
+    + SAFETY_TEXT_GUIDANCE
+    + "refs 는 그 slot 의 allowed_refs 중 text 가 실제로 근거한 것이다 — 법정 영역 slot 은 정확히 1개, 생활안전 slot 은 1개 이상이다. "
     "habits 는 weeks 의 week_id 마다 하나씩, habit_entries 의 entry_id 를 고른다. 주차 수가 항목 수보다 많지 않으면 같은 항목을 되풀이하지 않는다. "
     "health_entry_id 는 health_entries, nutrition_entry_id 는 nutrition_entries 의 entry_id 중 하나다. 그 문장은 쓰지 않는다. "
     "drills 는 drill_topics 의 topic_id 마다 하나씩, 그 상황을 가정한 소방대피 · 재난대비 훈련 주제를 유아가 알아듣는 말로 한 문장 쓴다. "
