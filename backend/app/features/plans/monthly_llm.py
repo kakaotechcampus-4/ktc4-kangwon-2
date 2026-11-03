@@ -174,6 +174,8 @@ class MockPlayMonthlyProvider:
                 :1
             ]
             data["memo_skipped"] = []
+            if request.safety_request_slots is not None:
+                data["safety_requests"] = []
         return RawLlmResponse(json.dumps(data, ensure_ascii=False), "mock")
 
 

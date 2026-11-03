@@ -28,7 +28,13 @@ from .contracts import (
     MonthlyPlanningRequest,
     generation_target_sections,
 )
-from .teacher_memo import TEACHER_MEMO_PROMPT, TEACHER_MEMO_PROMPT_TAG, cell_address
+from .teacher_memo import (
+    SAFETY_REQUESTS_PROMPT,
+    SAFETY_REQUESTS_PROMPT_TAG,
+    TEACHER_MEMO_PROMPT,
+    TEACHER_MEMO_PROMPT_TAG,
+    cell_address,
+)
 from .text_policy import MAX_VISIBLE_TEXT_CHARS
 from .v1_guidance import V1_GUIDANCE, curriculum_context
 from ..retrieval.models import AGE_VERIFIABLE_TIERS
@@ -467,6 +473,15 @@ def build_monthly_planning_request(
         body["teacher_memo"] = {"text": packet.teacher_memo, "addresses": list(memo)}
         body["response_contract"]["memo_applied"] = ["address"]
         version += TEACHER_MEMO_PROMPT_TAG
+    # 2층: 법정 안전교육 횟수 · 주 요청은 뽑기만 하고 Rule 이 둔다.
+    safety_slots = (
+        tuple(slot.slot for slot in packet.safety_candidates if slot.category_id is not None)
+        if memo is not None
+        else ()
+    ) or None
+    if safety_slots is not None:
+        body["safety_request_slots"] = list(safety_slots)
+        version += SAFETY_REQUESTS_PROMPT_TAG
     return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
@@ -479,7 +494,8 @@ def build_monthly_planning_request(
         ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
         + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else "")
         + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else "")
-        + (TEACHER_MEMO_PROMPT if memo is not None else ""),
+        + (TEACHER_MEMO_PROMPT if memo is not None else "")
+        + (SAFETY_REQUESTS_PROMPT if safety_slots is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -493,6 +509,7 @@ def build_monthly_planning_request(
         packet_fingerprint=packet_fingerprint(packet),
         allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
         memo_addresses=memo,
+        safety_request_slots=safety_slots,
     )
 
 
@@ -550,4 +567,5 @@ def build_monthly_repair_request(
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,
         memo_addresses=None,  # patches only; memo_applied came with the initial proposal
+        safety_request_slots=None,
     )

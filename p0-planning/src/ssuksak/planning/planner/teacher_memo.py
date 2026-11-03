@@ -15,6 +15,7 @@ from ..domain.teacher_memo import (
     TEACHER_MEMO_EVIDENCE,
     MemoNotice,
     MemoNoticeReason,
+    SafetyRequest,
 )
 
 # 디자인 요청서의 제안값. 저장 칸이 JSONB 라 맞출 컬럼 길이가 없다.
@@ -37,6 +38,65 @@ teacher_memo는 담임교사가 이번 생성에 적은 요청 사항이다. 지
   FIXED_CELL: 주어진 주소 목록에 없는 칸(상위 계획에서 복사하는 주제 · 안전교육 등)을 바꾸라고 했다.
   모두 반영했으면 빈 배열이다.
 """
+
+
+# 2층(ADR-057): 안전교육 후보가 있는 월간에 메모가 오면 붙는다. 배치는 Rule 이 한다.
+SAFETY_REQUESTS = "safety_requests"
+SAFETY_REQUESTS_PROMPT_TAG = "+safety-requests-v1"
+SAFETY_REQUESTS_PROMPT = """
+- 메모가 법정 안전교육의 횟수나 주를 요구하면(예: 「재난 안전교육 세 번 이상」, 「2주차에 교통안전」)
+  safety_requests에 옮겨 적는다. 직접 배치하지 않는다 — 주에 넣는 일은 Rule이 한다.
+  slot은 safety_request_slots 중 하나, weeks는 짚은 주의 week_id(없으면 빈 배열),
+  min_weeks는 바라는 최소 횟수다(횟수 말이 없으면 0). 이렇게 옮긴 요청은 memo_skipped에 적지 않는다.
+  생활안전 · 목록 밖 범주의 횟수 요청은 safety_requests가 아니라 memo_skipped(RULE_CONFLICT)다.
+  그런 요청이 없으면 빈 배열이다.
+"""
+
+
+def safety_request_properties(slots: tuple[str, ...], week_ids: tuple[str, ...]) -> dict[str, object]:
+    return {
+        SAFETY_REQUESTS: {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "slot": {"type": "string", "enum": list(slots)},
+                    "weeks": {"type": "array", "items": {"type": "string", "enum": list(week_ids)}},
+                    "min_weeks": {"type": "integer"},
+                },
+                "required": ["slot", "weeks", "min_weeks"],
+                "additionalProperties": False,
+            },
+        }
+    }
+
+
+def split_safety_requests(
+    content: str, slots: tuple[str, ...] | None, week_ids: tuple[str, ...]
+) -> tuple[str, tuple[SafetyRequest, ...]]:
+    """응답에서 `safety_requests` 를 떼어 낸다. 목록 밖 범주 · 주 · 횟수는 형식 오류다."""
+
+    if slots is None:
+        return content, ()
+    root = json.loads(content)
+    raw = root.pop(SAFETY_REQUESTS, None) if isinstance(root, dict) else None
+    if not isinstance(raw, list):
+        raise InvalidDomainValueError("safety_requests must be an array")
+    requests = []
+    for item in raw:
+        if not isinstance(item, dict) or set(item) != {"slot", "weeks", "min_weeks"}:
+            raise InvalidDomainValueError("safety_requests items need slot, weeks and min_weeks")
+        weeks = item["weeks"]
+        if (
+            item["slot"] not in slots
+            or not isinstance(weeks, list)
+            or any(w not in week_ids for w in weeks)
+            or type(item["min_weeks"]) is not int
+            or not 0 <= item["min_weeks"] <= len(week_ids)
+        ):
+            raise InvalidDomainValueError("safety_requests item is outside the allowed slots or weeks")
+        requests.append(SafetyRequest(item["slot"], tuple(weeks), item["min_weeks"]))
+    return json.dumps(root, ensure_ascii=False), tuple(requests)
 
 
 def cell_address(week_id: object, section_key: str) -> str:

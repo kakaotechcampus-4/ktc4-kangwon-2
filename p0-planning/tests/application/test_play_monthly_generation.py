@@ -1044,28 +1044,63 @@ def test_a_teacher_memo_reaches_the_prompt_marks_its_cells_and_keeps_skipped_req
 
     def answer(data):
         data["memo_applied"] = ["free_play[0]", "safety:disaster_preparedness_safety"]
-        data["memo_skipped"] = [{"summary": "재난안전 세 번 배치", "reason": "RULE_CONFLICT"}]
+        data["memo_skipped"] = [{"summary": "물놀이 기구 사용", "reason": "OUT_OF_RANGE"}]
+        # 2층: 횟수 · 주 요청은 뽑기만 한다. 2주차가 겹치고, 아동학대 예방은 둘 주가 남지 않는다.
+        data["safety_requests"] = [
+            {"slot": "disaster_preparedness_safety", "weeks": ["2027-04-W2"], "min_weeks": 3},
+            {"slot": "traffic_safety", "weeks": ["2027-04-W2"], "min_weeks": 0},
+            {"slot": "child_abuse_prevention", "weeks": [], "min_weeks": 2},
+        ]
 
     use_case, command, plans, provider, _ = _run(answer, teacher_memo=memo)
     plan = use_case.execute(command)
 
     (request,) = provider.requests
-    assert request.prompt_version.endswith("+teacher-memo-v1")
+    assert request.prompt_version.endswith("+teacher-memo-v1+safety-requests-v1")
     assert json.loads(request.user_content)["teacher_memo"]["text"] == memo
+    assert "life_safety_1" not in request.safety_request_slots
     marked = {
         cell.semantic_key
         for cell in (
             plan.theme,
             *(a.cell for a in plan.together + plan.free_play),
-            *(c.cell for c in plan.safety_candidates),
+            *(c.cell for c in plan.safety_candidates[:8]),
         )
         if any(s.source_id == "teacher_memo" for s in cell.evidence)
     }
-    assert marked == {plan.free_play[0].cell.semantic_key, "safety_education.disaster_preparedness_safety"}
-    assert plan.free_play[0].cell.generation.rule_version.endswith("+teacher-memo-v1")
+    # the LLM marked free_play[0] and the disaster sentence; the Rule's placement marks traffic too
+    assert marked == {
+        plan.free_play[0].cell.semantic_key,
+        "safety_education.disaster_preparedness_safety",
+        "safety_education.traffic_safety",
+    }
+    assert plan.free_play[0].cell.generation.rule_version.endswith("+teacher-memo-v1+safety-requests-v1")
     assert plan.teacher_memo == memo
-    assert [(n.summary, n.reason.value) for n in plan.memo_notices] == [("재난안전 세 번 배치", "RULE_CONFLICT")]
-    assert all(s.candidate_item_id is None for s in plan.safety_weeks)  # placement stays the teacher's
+
+    # The Rule placed them: the named week first, then the earliest free weeks; a different
+    # official item for each further disaster week (RULE_ONLY), never the LLM's sentence twice.
+    by_id = {c.cell.item_id: c for c in plan.safety_candidates}
+    placed = [by_id[s.candidate_item_id] for s in plan.safety_weeks]
+    assert [c.category_id for c in placed] == [
+        "disaster_preparedness_safety",
+        "disaster_preparedness_safety",
+        "disaster_preparedness_safety",
+        "traffic_safety",
+    ]
+    assert [c.cell.evidence[0].source_id for c in placed[:3]] == [
+        "annex6:disaster_preparedness_safety:2",
+        "annex6:disaster_preparedness_safety:1",
+        "annex6:disaster_preparedness_safety:3",
+    ]
+    extras = plan.safety_candidates[8:]
+    assert [c.cell.generation.method.value for c in extras] == ["RULE_ONLY", "RULE_ONLY"]
+    assert all(c.cell.evidence[-1].source_id == "teacher_memo" for c in extras)
+    assert len({c.cell.value for c in placed[:3]}) == 3
+    assert [(n.summary, n.reason.value) for n in plan.memo_notices] == [
+        ("물놀이 기구 사용", "OUT_OF_RANGE"),
+        ("교통안전: 2주차에는 넣지 못했어요", "RULE_CONFLICT"),
+        ("아동학대 예방 2번 중 0번만 넣었어요", "RULE_CONFLICT"),
+    ]
 
     # Without a memo the request is unchanged and an answer with memo fields is a parse error.
     plain_case, plain_command, *_ = _run(answer)

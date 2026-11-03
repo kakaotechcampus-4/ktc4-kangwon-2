@@ -465,22 +465,23 @@ class MonthlyPlan:
             if weeks:
                 raise InvalidDomainValueError("Safety placements need safety candidates")
             return
-        if len(candidates) != SAFETY_CANDIDATE_COUNT:
+        if len(candidates) < SAFETY_CANDIDATE_COUNT:
             raise InvalidDomainValueError(
-                f"A candidate-mode Plan keeps exactly {SAFETY_CANDIDATE_COUNT} safety candidates"
+                f"A candidate-mode Plan keeps at least {SAFETY_CANDIDATE_COUNT} safety candidates"
             )
         section = self.section(SAFETY_SECTION_KEY)
         if section is None or any(cell.value.strip() for cell in section.cells):
             raise InvalidDomainValueError(
                 "A candidate-mode Plan keeps its weekly safety_education Cells blank"
             )
-        if sorted(c.category_id for c in candidates if c.kind is SafetyKind.STATUTORY) != sorted(
-            STATUTORY_SHORT_LABELS
-        ):
-            raise InvalidDomainValueError("Safety candidates are one per legal category plus two 생활안전")
-        slots = [c.category_id or c.topic_group for c in candidates]
+        # Every legal category once, two 생활안전 topics; a teacher request (ADR-057) may add
+        # more sentences of a legal category, each citing a different official item.
+        statutory = [c.category_id for c in candidates if c.kind is SafetyKind.STATUTORY]
+        life = [c.topic_group for c in candidates if c.kind is not SafetyKind.STATUTORY]
+        if set(statutory) != set(STATUTORY_SHORT_LABELS) or len(life) != 2 or len(set(life)) != 2:
+            raise InvalidDomainValueError("Safety candidates are each legal category plus two 생활안전")
         ids = [c.cell.item_id for c in candidates]
-        if len(set(slots)) != len(slots) or len(set(ids)) != len(ids) or set(ids) & {
+        if len(set(ids)) != len(ids) or set(ids) & {
             cell.item_id for cell in self.cells
         }:
             raise InvalidDomainValueError("Safety candidates need distinct slots and ItemIds")

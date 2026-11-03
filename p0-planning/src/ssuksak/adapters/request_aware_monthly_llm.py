@@ -164,6 +164,8 @@ class RequestAwareMonthlyLlm:
             # A teacher memo marks the first allowed cell, so the evidence path is exercised.
             payload["memo_applied"] = list(request.memo_addresses[:1])
             payload["memo_skipped"] = []
+        if getattr(request, "safety_request_slots", None) is not None:
+            payload["safety_requests"] = []  # no count / week request: the Rule places nothing
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "request-aware-monthly"
         )

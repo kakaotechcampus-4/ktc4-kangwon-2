@@ -79,7 +79,12 @@ from ..planner.play_monthly import (
     section_of,
     validate_play_monthly,
 )
-from ..planner.teacher_memo import normalize_teacher_memo, split_memo_applied, with_memo_evidence
+from ..planner.teacher_memo import (
+    normalize_teacher_memo,
+    split_memo_applied,
+    split_safety_requests,
+    with_memo_evidence,
+)
 from ..rules.monthly_week_periods import canonical_week_periods
 from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
 from .generate_play_project_plan import CurriculumReferenceRepository
@@ -87,9 +92,13 @@ from .play_project_lifecycle import PLAY_PROJECT_LAYOUTS
 from .ports import Clock, IdGenerator, PlanRepository, SafetyLegalRuleRepository
 from .safety_candidates import (
     SafetyCandidateError,
+    apply_safety_requests,
     candidate_evidence,
     safety_candidate_slots,
 )
+from ..domain.safety_placement import SafetyKind
+from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE
+from ..rules.safety_requests import SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
 
 SYSTEM_ACTOR = "play_monthly_application"
 RULE_ID = "play_monthly.generate"
@@ -269,6 +278,7 @@ class GeneratePlayMonthlyPlan:
 
         response = self._provider.generate_play_monthly(request)
         content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        content, safety_requests = split_safety_requests(content, request.safety_request_slots, request.week_ids)
         proposal = parse_play_monthly_proposal(content)
         issues = validate_play_monthly(proposal, request)
         changed: frozenset[str] = frozenset()
@@ -412,6 +422,43 @@ class GeneratePlayMonthlyPlan:
         drill_texts = dict(proposal.drills)
         by_slot = {item.slot: item for item in proposal.safety}
         habits = dict(proposal.habits)
+        safety_candidates = tuple(safety(by_slot[s.slot]) for s in request.safety_slots)
+        safety_weeks = tuple(SafetyWeek(w.week_id) for w in weeks)
+        if safety_requests:
+
+            def extra(category: str, ref: str, text: str) -> SafetyCandidate:
+                # A further sentence of one legal category: its official item, as is (RULE_ONLY).
+                item_id = self._ids.new_item_id()
+                return SafetyCandidate(
+                    PlayMonthlyCell(
+                        item_id=item_id,
+                        semantic_key=f"safety_education.{category}.{item_id.value}",
+                        value=text,
+                        evidence=(
+                            EvidenceSource(
+                                EvidenceSourceType.SAFETY_RULE, ref, rule.legal_rule_version, display_name=text
+                            ),
+                            TEACHER_MEMO_EVIDENCE,
+                        ),
+                        generation=GenerationMethodDetail(
+                            method=GenerationMethod.RULE_ONLY,
+                            rule_id=SAFETY_REQUEST_RULE_ID,
+                            rule_version=SAFETY_REQUEST_RULE_VERSION,
+                        ),
+                        audit=created(item_id),
+                    ),
+                    SafetyKind.STATUTORY,
+                    category_id=category,
+                )
+
+            safety_candidates, safety_weeks, placed = apply_safety_requests(
+                safety_requests,
+                safety_candidates,
+                safety_weeks,
+                slots={s.slot: s.allowed for s in request.safety_slots if s.category_id is not None},
+                make_extra=extra,
+            )
+            memo_skipped += placed
         plan = PlayMonthlyPlan(
             plan_id=plan_id,
             school_year=command.school_year,
@@ -453,8 +500,8 @@ class GeneratePlayMonthlyPlan:
                 )
                 for w in weeks
             ),
-            safety_candidates=tuple(safety(by_slot[s.slot]) for s in request.safety_slots),
-            safety_weeks=tuple(SafetyWeek(w.week_id) for w in weeks),
+            safety_candidates=safety_candidates,
+            safety_weeks=safety_weeks,
             health=entry_cell("health", "health_nutrition.health", daily.get(proposal.health_entry_id)),
             nutrition=entry_cell("nutrition", "health_nutrition.nutrition", daily.get(proposal.nutrition_entry_id)),
             drill_candidates=tuple(

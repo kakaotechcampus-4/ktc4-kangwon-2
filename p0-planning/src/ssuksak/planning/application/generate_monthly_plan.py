@@ -35,7 +35,9 @@ from ..domain.provenance import (
 from ..domain.yearly_plan import YearlyPlan
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..planner.teacher_memo import cell_address, with_memo_evidence
-from ..domain.safety_placement import SafetyWeek
+from ..domain.safety_placement import SafetyKind, SafetyWeek
+from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE
+from ..rules.safety_requests import SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
 from ..planner.contracts import DRILL_CANDIDATE_PREFIX, SAFETY_CANDIDATE_PREFIX, MonthlyPlanningOutcome
 from ..planner.service import MonthlyPlanner
 from ..rules.monthly_activity_selection import (
@@ -66,7 +68,7 @@ from .monthly_dto import (
 )
 from .monthly_errors import MonthlyApplicationError
 from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
-from .safety_candidates import candidate_evidence
+from .safety_candidates import apply_safety_requests, candidate_evidence
 from .monthly_support import (
     MonthlyContextPipeline,
     deduplicate_evidence,
@@ -399,6 +401,20 @@ class GenerateMonthlyPlan:
                 MonthlySafetyCandidate(cell, slot.kind, category_id=slot.category_id, topic_group=slot.topic_group)
             )
 
+        safety_weeks = tuple(SafetyWeek(p.week_id) for p in week_periods if p.active and candidate_mode)
+        memo_notices = planner_outcome.memo_skipped if planner_outcome is not None else ()
+        if candidate_mode and planner_outcome.safety_requests:
+            safety_candidates, safety_weeks, placed_notices = apply_safety_requests(
+                planner_outcome.safety_requests,
+                tuple(safety_candidates),
+                safety_weeks,
+                slots={s.slot: s.allowed for s in packet.safety_candidates if s.category_id is not None},
+                make_extra=lambda category, ref, text: self._safety_request_extra(
+                    category, ref, text, legal_rule_version=safety_rule.legal_rule_version, plan_id=plan_id, now=now
+                ),
+            )
+            memo_notices += placed_notices
+
         drill_candidates = []
         for topic in packet.drill_topics if drill_mode else ():
             key = DRILL_CANDIDATE_PREFIX + topic.topic_id
@@ -457,10 +473,10 @@ class GenerateMonthlyPlan:
             generation_mode=command.generation_mode,
             parent_subthemes=command.parent_subthemes,
             safety_candidates=tuple(safety_candidates),
-            safety_weeks=tuple(SafetyWeek(p.week_id) for p in week_periods if p.active and candidate_mode),
+            safety_weeks=safety_weeks,
             drill_candidates=tuple(drill_candidates),
             teacher_memo=command.teacher_memo,
-            memo_notices=planner_outcome.memo_skipped if planner_outcome is not None else (),
+            memo_notices=memo_notices,
         )
         self._require_complete(plan, resolved_sections)
         plan = with_fresh_monthly_verification(plan, catalog)
@@ -764,6 +780,28 @@ class GenerateMonthlyPlan:
                 "monthly_" + error.code.lower(), "Drill candidates cannot be built: " + error.code
             ) from None
         return replace(packet, drill_topics=topics)
+
+    def _safety_request_extra(self, category, ref, text, *, legal_rule_version, plan_id, now):
+        """A further sentence of one legal category for a teacher request: its official item, as is."""
+        item_id = self._ids.new_item_id()
+        cell = MonthlyCell(
+            item_id=item_id,
+            section_key=SAFETY_SECTION_KEY,
+            week_id=None,
+            value=text,
+            cell_state=CellState.FILLED,
+            generation=GenerationMethodDetail(
+                GenerationMethod.RULE_ONLY, SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
+            ),
+            evidence=(
+                EvidenceSource(EvidenceSourceType.SAFETY_RULE, ref, legal_rule_version, display_name=text),
+                TEACHER_MEMO_EVIDENCE,
+            ),
+            audit=AuditHistory(
+                (AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)
+            ),
+        )
+        return MonthlySafetyCandidate(cell, SafetyKind.STATUTORY, category_id=category)
 
     @staticmethod
     def _require_complete(

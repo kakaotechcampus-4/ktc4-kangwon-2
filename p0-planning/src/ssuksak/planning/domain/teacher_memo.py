@@ -55,3 +55,27 @@ def require_memo_fields(owner: str, memo: object, notices: object) -> None:
         raise InvalidDomainValueError(f"{owner}.memo_notices must be MemoNotice values")
     if notices and not memo:
         raise InvalidDomainValueError(f"{owner}.memo_notices need a teacher_memo")
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyRequest:
+    """메모에서 LLM 이 뽑은 법정 안전교육 요청 하나(ADR-057 2층). 배치는 Rule 이 한다.
+
+    ``weeks`` = 교사가 짚은 주(week_id 문자열), ``min_weeks`` = 바라는 최소 주 수(0 = 개수 요청 없음).
+    """
+
+    slot: str
+    weeks: tuple[str, ...]
+    min_weeks: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.slot, str) or not self.slot.strip():
+            raise InvalidDomainValueError("SafetyRequest.slot must be non-blank")
+        if not isinstance(self.weeks, tuple) or not all(isinstance(w, str) for w in self.weeks):
+            raise InvalidDomainValueError("SafetyRequest.weeks must be week id strings")
+        if type(self.min_weeks) is not int or self.min_weeks < 0:
+            raise InvalidDomainValueError("SafetyRequest.min_weeks must be a non-negative int")
+
+    @property
+    def count(self) -> int:
+        return max(self.min_weeks, len(self.weeks))
