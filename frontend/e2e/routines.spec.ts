@@ -375,7 +375,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
     await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
     expect(dbDocument(documentId!)).toEqual({ id: documentId!, status: "CONFIRMED", stale: false });
-    await page.getByRole("link", { name: "우리 반", exact: true }).click();
+    await page.getByRole("link", { name: "홈", exact: true }).click();
     // 이미 적힌 일과가 있으면 홈의 일과 줄 자체가 고치러 가는 길이다.
     await page.getByRole("link", { name: /^일과 —/ }).click();
     await expect(rows(page)).toHaveCount(7);

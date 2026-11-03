@@ -149,7 +149,17 @@ function harness(
     react: hooks,
     "next/link": { __esModule: true, default: "a" },
     "@/lib/api/auth": auth,
-    "@/lib/api/onboarding": { CLASS_PREFIX: "class-", CHILD_PREFIX: "child-" },
+    "@/lib/api/onboarding": {
+      CLASS_PREFIX: "class-",
+      CHILD_PREFIX: "child-",
+      // 반은 사이드바가 고른다. 시험은 연결을 안 두므로 서버가 준 첫 반으로 떨어진다.
+      classServerId: () => null,
+    },
+    "@/lib/hooks/use-client-state": { useClientState: (_read, fallback) => [fallback, () => {}] },
+    "@/lib/onboarding/settings": {
+      loadClassSettings: () => null,
+      chosenClassFor: () => null,
+    },
     "@/lib/api/classes": {
       getClasses: async () => ({
         items: [
@@ -264,12 +274,6 @@ function harness(
         .props.onClick();
       render();
     },
-    pickClass(id) {
-      nodes(tree)
-        .find((node) => node?.type === "select")
-        .props.onChange({ target: { value: String(id) } });
-      render();
-    },
     header: () => nodes(tree).find((node) => node?.type === "header"),
   };
 }
@@ -333,7 +337,7 @@ test("과거 기준의 일부 영역만 있으면 없는 집계를 대시로 표
   assert.match(page.text(), /집계 정보 없음/);
 });
 
-test("아동 변경은 모드를 유지하고 늦은 이전 아동 응답을 무시하며 반 변경은 기본으로 돌아간다", async (t) => {
+test("아이를 바꿔도 모드는 그대로고 늦게 온 이전 아이 응답은 무시한다", async (t) => {
   const old = deferred();
   const page = harness(t, { observations: { 101: old.promise } });
   await page.mount();
@@ -348,11 +352,6 @@ test("아동 변경은 모드를 유지하고 늦은 이전 아동 응답을 무
   await page.flush();
   assert.doesNotMatch(text(page.byClass("timeline")), /가아동/);
   assert.equal(page.button("놀이·일상생활").props["aria-pressed"], true);
-  page.pickClass(20);
-  assert.equal(page.byClass("summaryText").length, 0);
-  await page.flush();
-  assert.equal(page.button("누리과정 5영역").props["aria-pressed"], true);
-  assert.match(text(page.byClass("summaryText")), /다아동/);
 });
 
 test("늦게 도착한 기관 설정은 사용자가 선택한 모드를 덮어쓰지 않는다", async (t) => {
@@ -365,9 +364,6 @@ test("늦게 도착한 기관 설정은 사용자가 선택한 모드를 덮어�
   settings.resolve({ observation_axis: "DAILY_PLAY_2" });
   await page.flush();
   assert.equal(page.button("누리과정 5영역").props["aria-pressed"], true);
-  page.pickClass(20);
-  await page.flush();
-  assert.equal(page.button("놀이·일상생활").props["aria-pressed"], true);
 });
 
 test("상단 작성 링크는 없고 하단 빈 상태의 선택 아동 작성 링크는 유지한다", async (t) => {

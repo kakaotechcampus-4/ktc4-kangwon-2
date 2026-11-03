@@ -1589,16 +1589,7 @@ function recordsPage(
     type: (node, value) => node.props.onChange({ target: { value } }),
     /** 적는 칸은 접혀 있다. 날짜·반을 고르려면 먼저 펼친다. */
     openForm: () => {
-      const button = all(view.tree()).find(
-        (node) =>
-          node?.type === "button" &&
-          all(node.props?.children)
-            .filter((part) => typeof part === "string")
-            .join("")
-            .includes("새 관찰 기록 쓰기"),
-      );
-      assert.ok(button, "「＋ 새 관찰 기록 쓰기」 단추를 찾지 못했다");
-      button.props.onClick();
+      // 적는 칸은 늘 펴져 있다. 여는 단추가 없으므로 그릴 것만 다시 그린다.
       view.render();
     },
   };

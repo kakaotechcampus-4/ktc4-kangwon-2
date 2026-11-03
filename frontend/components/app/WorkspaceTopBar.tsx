@@ -18,7 +18,7 @@ const PAGE_NAMES: [prefix: string, name: string][] = [
   ["/templates", "계획안"],
   ["/trends", "계획안"],
   ["/quick-records", "주간 기록"],
-  ["/records/children", "아이들 전부 보기"],
+  ["/records/children", "아이별 기록"],
   ["/records", "관찰 기록"],
   ["/compare", "관찰 기록"],
   ["/documents", "문서 보관함"],
@@ -37,7 +37,7 @@ export default function WorkspaceTopBar() {
   const pathname = usePathname() ?? "/";
   const search = useSearchParams();
   const requestedClass = routinesScope(`?${search}`).classId;
-  const page = PAGE_NAMES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "우리 반";
+  const page = PAGE_NAMES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "홈";
   const className = useSyncExternalStore(
     subscribeClassSettings,
     () => {

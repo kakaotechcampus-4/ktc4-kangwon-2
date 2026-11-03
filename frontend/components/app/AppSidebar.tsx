@@ -36,7 +36,7 @@ interface NavItem {
  * 교사가 친 한 줄(기록)과 그것으로 만든 문서(보육일지·계획안)는 하는 일이 다른데,
  * 이름이 둘 다 「기록」·「문서」로 섞여 있어 어디서 무엇을 하는지 헷갈렸다.
  */
-const HOME: NavItem = { key: "home", label: "우리 반", href: "/", icon: "home" };
+const HOME: NavItem = { key: "home", label: "홈", href: "/", icon: "home" };
 
 const GROUPS: { title: string; items: NavItem[] }[] = [
   {

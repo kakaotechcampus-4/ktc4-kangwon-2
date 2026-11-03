@@ -360,16 +360,14 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await enterPilot(page);
   const fact = "블록 세 개를 쌓은 뒤 친구에게 같이 만들자고 말했다.";
   await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
-  // 적는 칸은 접혀 있다 — 목록이 먼저다.
-  await page.getByRole("button", { name: "＋ 새 관찰 기록 쓰기" }).click();
-  await page
-    .getByRole("combobox", { name: "담당 반", exact: true })
-    .selectOption({ label: "햇살반" });
-  await page.getByRole("combobox", { name: "아동", exact: true }).selectOption({ label: "가나다" });
-  await page.getByLabel("실제로 관찰한 사실").fill(fact);
-  await page.getByRole("button", { name: "관찰 기록 저장", exact: true }).click();
+  // 적는 칸은 늘 펴져 있고, 반은 사이드바가 고른다.
+  await page.getByRole("combobox", { name: "아이", exact: true }).selectOption({ label: "가나다" });
+  await page.getByLabel("본 대로 적기").fill(fact);
+  await page.getByRole("button", { name: "남기기", exact: true }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
-  await page.getByRole("link", { name: "관찰일지 만들기", exact: true }).click();
+  // 할 일은 그 줄을 눌러야 나온다 — 줄마다 단추를 세 개씩 두지 않는다.
+  await page.locator("article button").first().click();
+  await page.getByRole("link", { name: "이 기록으로 일지 만들기", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
   await page.screenshot({ path: info.outputPath("observation-selection.png"), fullPage: true });
   const response = page.waitForResponse(
@@ -411,13 +409,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
 
   // Read-only facts must lead back to a usable correction/review path.
   await page.getByRole("link", { name: "관찰 기록에서 고쳐 주세요 →", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "담당 반", exact: true })
-    .selectOption({ label: "햇살반" });
-  await page.getByRole("button", { name: "기록 수정", exact: true }).click();
+  await page.locator("article button").first().click();
+  await page.getByRole("button", { name: "고치기", exact: true }).click();
   const updatedFact = fact + " 놀이를 마친 뒤 블록을 바구니에 담았다.";
-  await page.getByLabel("실제로 관찰한 사실").fill(updatedFact);
-  await page.getByRole("button", { name: "수정 저장", exact: true }).click();
+  await page.getByLabel("본 대로 적기").fill(updatedFact);
+  await page.getByRole("button", { name: "고친 대로 저장", exact: true }).click();
   await expect(page.getByText("수정했어요.", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
   await openObservation(page, saved);
@@ -485,7 +481,7 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 진입한다", async
   ).toBeVisible();
   await expect(page.getByText(/아직 모인 자료가 없어요|에 모았어요/)).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("link", { name: "우리 반", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "홈", exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("mobile-trends.png"), fullPage: true });
 });
 

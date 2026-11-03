@@ -2,16 +2,18 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { getMe } from "@/lib/api/auth";
-import { CHILD_PREFIX, CLASS_PREFIX } from "@/lib/api/onboarding";
 import { getChildTracking } from "@/lib/api/children";
 import { getClasses } from "@/lib/api/classes";
 import { getObservations } from "@/lib/api/observations";
+import { useClientState } from "@/lib/hooks/use-client-state";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
+import { CHILD_PREFIX, CLASS_PREFIX, classServerId } from "@/lib/api/onboarding";
+import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { AXES, DEFAULT_AXIS, type ObservationAxis } from "@/lib/workspace/observation-axis";
 import type { ApiChildTracking, ApiClass, ApiObservation } from "@/lib/api/types";
 import { Icon } from "@/components/app/icons";
 import { CareDayDecor, CareNotebookArt, ObservationArt } from "./DocumentArchiveArt";
-import { DomainIllustration, FlowerMeadow, TrackingHeaderArt } from "./ChildTrackingArt";
+import { DomainIllustration, FlowerMeadow } from "./ChildTrackingArt";
 import { Message } from "./WorkspaceUI";
 import styles from "./ChildTracking.module.css";
 
@@ -53,7 +55,6 @@ function recordsHref(classId: number | null, childId?: number) {
 export default function ChildTrackingPage() {
   const [classes, setClasses] = useState<ApiClass[] | null>(null);
   const [classData, setClassData] = useState<ClassData | null>(null);
-  const [pickedClass, setPickedClass] = useState<number | null>(null);
   const [pickedChild, setPickedChild] = useState<number | null>(null);
   const [error, setError] = useState("");
   const configuredDomains = useObservationDomains();
@@ -65,7 +66,19 @@ export default function ChildTrackingPage() {
     axis: ObservationAxis;
   } | null>(null);
 
-  const classId = pickedClass ?? classes?.[0]?.id ?? null;
+  /*
+    반은 사이드바가 고른다. 화면 안에 셀렉트를 두지 않으므로 주 반의 서버 번호를 그대로
+    쓰고, 아직 연결이 없으면 서버가 준 첫 반으로 떨어진다.
+  */
+  const [primaryServerId] = useClientState<number | null>(() => {
+    const local = chosenClassFor(loadClassSettings())?.id;
+    const bound = local ? classServerId(local) : null;
+    return typeof bound === "number" ? bound : null;
+  }, null);
+  const classId =
+    (primaryServerId && classes?.some((c) => c.id === primaryServerId) ? primaryServerId : null) ??
+    classes?.[0]?.id ??
+    null;
   const axis = axisSelection?.classId === classId ? axisSelection.axis : defaultAxis;
 
   useEffect(() => {
@@ -86,12 +99,6 @@ export default function ChildTrackingPage() {
     };
   }, [classId]);
 
-  function pickClass(id: number) {
-    setPickedClass(id);
-    setPickedChild(null);
-    setAxisSelection(null);
-  }
-
   const current = classData?.classId === classId ? classData : null;
   const child =
     current?.children.find((c) => c.child_id === pickedChild) ?? current?.children[0] ?? null;
@@ -99,10 +106,9 @@ export default function ChildTrackingPage() {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <TrackingHeaderArt className={styles.headerArt} />
         <div>
-          <h1>아이들 전부 보기</h1>
-          <p>아이마다 쌓인 관찰을 살펴보고, 다음에 눈여겨볼 순간을 찾아보세요.</p>
+          <h1>아이별 기록</h1>
+          <p>아이를 고르면 그 아이 기록만 봅니다.</p>
         </div>
       </header>
       <Message error>{error}</Message>
@@ -117,7 +123,6 @@ export default function ChildTrackingPage() {
           onPickAxis={(next) => {
             if (classId !== null) setAxisSelection({ classId, axis: next });
           }}
-          onPickClass={pickClass}
           onPickChild={setPickedChild}
         />
       )}
@@ -142,7 +147,6 @@ function Body({
   child,
   axis,
   onPickAxis,
-  onPickClass,
   onPickChild,
 }: {
   classes: ApiClass[] | null;
@@ -151,13 +155,12 @@ function Body({
   child: ApiChildTracking | null;
   axis: ObservationAxis;
   onPickAxis: (axis: ObservationAxis) => void;
-  onPickClass: (id: number) => void;
   onPickChild: (id: number) => void;
 }) {
-  if (!classes) return <TrackingState loading title="우리 반 기록을 불러오고 있어요" />;
+  if (!classes) return <TrackingState loading title="기록을 불러오고 있어요" />;
   if (!classes.length) {
     return (
-      <TrackingState title="먼저 우리 반과 아동을 등록해주세요">
+      <TrackingState title="먼저 아이를 등록해 주세요">
         <Link href="/onboarding" className={styles.action}>
           반·아동 등록하기 →
         </Link>
@@ -167,31 +170,18 @@ function Body({
   const className = classes.find((item) => item.id === classId)?.name ?? "";
   return (
     <div className={styles.workspace}>
-      <aside className={styles.selector} aria-label="반과 아동 선택">
+      <aside className={styles.selector} aria-label="아이 고르기">
+        {/* 반은 사이드바 맨 위에서 고른다. 여기에 또 두면 두 곳에서 같은 것을 고르게 된다. */}
         <div className={styles.selectorHead}>
-          <span className={styles.eyebrow}>
-            <Icon name="users" /> 우리 반 아이들
-          </span>
-          <h2>함께 지켜보는 하루</h2>
-          <p>아이들의 순간과 관찰이 한곳에 모여요.</p>
+          <h2>아이 고르기</h2>
+          <p>고른 아이의 기록만 봅니다.</p>
         </div>
-        <label className={styles.classField}>
-          반
-          <select value={classId ?? ""} onChange={(e) => onPickClass(Number(e.target.value))}>
-            {classes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <ChildList
           key={classId ?? "loading"}
           classData={classData}
           selected={child?.child_id ?? null}
           onPick={onPickChild}
         />
-        <FlowerMeadow className={styles.selectorDecor} />
       </aside>
       {/* 아이를 바꾸면 이전 아이의 본문을 즉시 걷고 새로 조회한다. */}
       {child && (
@@ -207,7 +197,7 @@ function Body({
       {!child && (
         <TrackingState
           loading={!classData}
-          title={classData ? "아이의 첫 기록을 기다리고 있어요" : "아동 정보를 불러오고 있어요"}
+          title={classData ? "아직 적은 기록이 없어요" : "아이 정보를 불러오고 있어요"}
         >
           {classData && <p>반에 아동을 등록하면 아이별로 관찰을 모아 볼 수 있어요.</p>}
         </TrackingState>
@@ -228,7 +218,7 @@ function ChildList({
   if (!classData)
     return (
       <p role="status" className={styles.helper}>
-        아동 목록을 불러오고 있어요…
+        아이 목록을 불러오고 있어요…
       </p>
     );
   if (!classData.children.length) {
@@ -244,9 +234,9 @@ function ChildList({
   return (
     <>
       <p className={styles.rosterLabel}>
-        아동 목록 <span>{classData.children.length}명</span>
+        아이 <span>{classData.children.length}명</span>
       </p>
-      <ul className={styles.childList} aria-label="아동 목록">
+      <ul className={styles.childList} aria-label="아이 목록">
         {classData.children.map((item) => (
           <li key={item.child_id}>
             <button
@@ -258,7 +248,7 @@ function ChildList({
             >
               <span className={styles.childInfo}>
                 <strong>{item.name}</strong>
-                <small>관찰 {item.total}건</small>
+                <small>기록 {item.total}건</small>
               </span>
               <Icon name="chevron" />
             </button>
@@ -300,9 +290,9 @@ function ChildDetail({
     <section className={styles.detail} aria-label={`${child.name} 관찰 기록`}>
       <div className={styles.summary}>
         <div className={styles.summaryText}>
-          <span className={styles.eyebrow}>{className} · 관찰 모음</span>
+          <span className={styles.eyebrow}>{className}</span>
           <h2>{child.name}</h2>
-          <p className={styles.recordTotal}>관찰 기록 {child.total}건</p>
+          <p className={styles.recordTotal}>기록 {child.total}건</p>
         </div>
         <CareNotebookArt className={styles.summaryArt} />
       </div>
@@ -316,7 +306,7 @@ function ChildDetail({
       {failed && (
         <Message error>기록을 불러오지 못했어요. 다른 아이를 골랐다가 다시 열어주세요.</Message>
       )}
-      {!failed && records === null && <TrackingState loading title="아이의 관찰을 모으고 있어요" />}
+      {!failed && records === null && <TrackingState loading title="기록을 불러오고 있어요" />}
       {!failed && records !== null && <Timeline records={records} writeHref={writeHref} />}
     </section>
   );
@@ -342,12 +332,12 @@ function DomainCounts({
   // 저장 계약의 두 영역을 그대로 쓰되, 시안처럼 놀이활동을 먼저 배치한다.
   const domains = playLife ? [...AXES[axis]].reverse() : AXES[axis];
   return (
-    <section className={styles.domainSection} aria-label="영역별 관찰 현황">
+    <section className={styles.domainSection} aria-label="영역별 기록 수">
       <div className={styles.sectionHead}>
         <div className={styles.sectionTitleRow}>
           <h3>
             <CareDayDecor variant={3} className={styles.sectionLeaf} />
-            영역별 관찰 현황
+            영역별 기록 수
           </h3>
           <div className={styles.axisSwitch} role="group" aria-label="관찰 영역 보기 기준">
             <button
@@ -391,7 +381,7 @@ function DomainCounts({
                       ? "기록 정보 없음"
                       : "집계 정보 없음"
                     : count
-                      ? "관찰을 남겼어요"
+                      ? "적은 기록 있음"
                       : "아직 기록 없음"}
                 </small>
               </div>
@@ -429,8 +419,7 @@ function Timeline({ records, writeHref }: { records: ApiObservation[]; writeHref
     <section className={styles.timeline}>
       <div className={styles.timelineHead}>
         <div>
-          <span className={styles.eyebrow}>아이의 순간을 차곡차곡</span>
-          <h3>관찰 기록 타임라인</h3>
+          <h3>날짜별 기록</h3>
         </div>
         <span className={styles.timelineCount}>{records.length}건</span>
       </div>
@@ -444,7 +433,7 @@ function Timeline({ records, writeHref }: { records: ApiObservation[]; writeHref
               <li key={record.id}>
                 <article className={styles.recordCard}>
                   <div className={styles.recordHead}>
-                    <time dateTime={record.date}>{record.date}</time>
+                    <time dateTime={record.date}>{shortDate(record.date)}</time>
                     <span className={styles.domainTag}>{record.domain}</span>
                   </div>
                   {record.context && <p className={styles.context}>{record.context}</p>}
@@ -453,7 +442,7 @@ function Timeline({ records, writeHref }: { records: ApiObservation[]; writeHref
                     href={recordsHref(record.class_id, record.child_id)}
                     className={styles.recordLink}
                   >
-                    관찰 기록에서 보기 <Icon name="arrow" />
+                    전체 기록에서 보기 <Icon name="arrow" />
                   </Link>
                 </article>
               </li>
@@ -487,4 +476,10 @@ function TrackingState({
       <FlowerMeadow className={`${styles.emptyDecor} ${styles.decorRight}`} />
     </div>
   );
+}
+
+/** 「2026-11-03」 을 「11.03」 으로. 달 제목이 해를 이미 말한다. */
+function shortDate(date: string) {
+  const [, m, d] = date.split("-");
+  return m && d ? `${m}.${d}` : date;
 }
