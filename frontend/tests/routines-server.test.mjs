@@ -31,6 +31,7 @@ const onboardingApi = await import("../lib/api/onboarding.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
 const childMark = await import("../lib/workspace/child-mark.ts");
+const homeBlocks = await import("../lib/workspace/home-blocks.ts");
 const { EMPTY_CLASS_SETTINGS } = onboardingTypes;
 
 const require = createRequire(import.meta.url);
@@ -2475,6 +2476,7 @@ function homePage(
     classes = rooms,
     records = recordsServer(),
     search = "",
+    routineRows = async () => [],
   } = {},
 ) {
   browser({ rooms, primaryClassId, search });
@@ -2495,8 +2497,12 @@ function homePage(
     // 대표 반 정책도 주소를 만드는 쪽도 진짜다.
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/routines-route": routinesRoute,
-    "@/lib/plan-generator/types": { AGE_LABEL: { age3: "만 3세" } },
-    "@/lib/greeting": { formatKoreanDate: () => "10월 6일" },
+    // 일과는 홈이 따로 읽는다. 기본은 「없음」이라 「오늘 일과 적기」 줄이 보인다.
+    "@/lib/api/routines": { listRoutines: () => routineRows(), routineTime: routines.routineTime },
+    // 아이 셈과 쪽지 셈은 **진짜**다. 흉내 내면 홈과 고르개가 다른 숫자를 말해도 통과한다.
+    "@/lib/workspace/child-mark": childMark,
+    "@/lib/workspace/home-blocks": homeBlocks,
+    "@/lib/greeting": { koreanDateParts: () => ({ day: "10월 6일", dow: "화요일" }) },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
@@ -2526,7 +2532,6 @@ function homePage(
   return {
     flush: view.flush,
     render: view.render,
-    currentClass: () => find("p").find((node) => node.props["aria-label"] === "현재 반"),
     search: () => globalThis.window.location.search,
     records,
     /** 서버 반이 뒤늦게 도착한 상황. 다음 flush 에서 홈이 다시 조회해야 한다. */
@@ -2558,8 +2563,8 @@ function homePage(
     factInput: () => find("textarea")[0] ?? find("input").find((n) => n.props?.["aria-label"]),
     button: (label) => find("button").find((n) => labelled(n).includes(label) && !n.props.disabled),
     type: (node, value) => node.props.onChange({ target: { value } }),
-    // 「오늘 기록 {N}건」의 N 은 숫자 노드다. 숫자를 같이 모으고 사이를 띄우지 않아야
-    // 화면에 실제로 보이는 「오늘 기록 1건」이 된다.
+    // 「오늘 적은 내용 {N}건」의 N 은 숫자 노드다. 숫자를 같이 모으고 사이를 띄우지 않아야
+    // 화면에 실제로 보이는 「오늘 적은 내용 1건」이 된다.
     text: () =>
       all(view.tree())
         .filter((part) => typeof part === "string" || typeof part === "number")
@@ -2748,7 +2753,7 @@ test("우리 반 — 대표 반의 서버 번호를 모르면 일과 길을 걸�
 // 저장은 201 인데 홈이 0건으로 보였다. 홈이 `listRecords()` 를 인자 없이 불러,
 // 주 반을 고른 적 없는 한 반짜리 계정에서 조회가 [] 로 끝났기 때문이다.
 
-test("P0 한 반 계정 — 홈에서 저장하면 오늘 기록 1건이 그 자리에 보인다", async (t) => {
+test("P0 한 반 계정 — 홈에서 저장하면 오늘 적은 내용 1건이 그 자리에 보인다", async (t) => {
   const records = recordsServer();
   const view = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [ROOM_A], records });
   await view.flush();
@@ -2763,7 +2768,7 @@ test("P0 한 반 계정 — 홈에서 저장하면 오늘 기록 1건이 그 자
     [ROOM_A.id],
     `조회한 반이 틀렸다: ${JSON.stringify(records.only("list"))}`,
   );
-  assert.ok(view.text().includes("오늘 기록 1건"), `홈이 0건으로 보인다: ${view.text()}`);
+  assert.ok(view.text().includes("오늘 적은 내용 1건"), `홈이 0건으로 보인다: ${view.text()}`);
 });
 
 test("P0 한 반 계정 — 새로고침해도 홈에 그대로 있다", async (t) => {
@@ -2776,7 +2781,7 @@ test("P0 한 반 계정 — 새로고침해도 홈에 그대로 있다", async (
   // 새로고침 = 같은 서버 위에 화면을 다시 세우는 것.
   const again = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [ROOM_A], records });
   await again.flush();
-  assert.ok(again.text().includes("오늘 기록 1건"), `새로고침 뒤 사라졌다: ${again.text()}`);
+  assert.ok(again.text().includes("오늘 적은 내용 1건"), `새로고침 뒤 사라졌다: ${again.text()}`);
 });
 
 test("P0 반이 둘 — A 에 적은 기록이 B 를 골랐을 때 보이지 않는다", async (t) => {
@@ -2789,7 +2794,7 @@ test("P0 반이 둘 — A 에 적은 기록이 B 를 골랐을 때 보이지 않
   });
   await view.flush();
   await homeSave(view, "친구에게 블록을 건네며 같이 만들자고 했다.");
-  assert.ok(view.text().includes("오늘 기록 1건"), view.text());
+  assert.ok(view.text().includes("오늘 적은 내용 1건"), view.text());
   assert.deepEqual(
     records.only("add").map((c) => c.classId),
     [ROOM_A.id],
@@ -2804,7 +2809,7 @@ test("P0 반이 둘 — A 에 적은 기록이 B 를 골랐을 때 보이지 않
   });
   await onB.flush();
 
-  assert.ok(onB.text().includes("오늘 기록 0건"), `B 반에 A 반 기록이 보인다: ${onB.text()}`);
+  assert.ok(onB.text().includes("오늘 적은 내용 0건"), `B 반에 A 반 기록이 보인다: ${onB.text()}`);
   assert.equal(
     records.only("list").at(-1).classId,
     ROOM_B.id,
@@ -2830,7 +2835,7 @@ test("P0 서버 반이 늦게 도착하면 붙은 뒤에 다시 조회한다", a
   const view = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [], records });
   await view.flush();
   assert.equal(records.only("list").length, 0, "반도 없는데 조회를 보냈다 (FR-405)");
-  assert.ok(view.text().includes("오늘 기록 0건"), view.text());
+  assert.ok(view.text().includes("오늘 적은 내용 0건"), view.text());
 
   view.arrive([ROOM_A]);
   await view.flush();
@@ -2838,7 +2843,10 @@ test("P0 서버 반이 늦게 도착하면 붙은 뒤에 다시 조회한다", a
     records.only("list").map((c) => c.classId),
     [ROOM_A.id],
   );
-  assert.ok(view.text().includes("오늘 기록 1건"), `반이 붙었는데 다시 안 읽었다: ${view.text()}`);
+  assert.ok(
+    view.text().includes("오늘 적은 내용 1건"),
+    `반이 붙었는데 다시 안 읽었다: ${view.text()}`,
+  );
 });
 
 test("P0 홈이 세는 건수와 서버에 남은 기록이 같다", async (t) => {
@@ -2850,10 +2858,50 @@ test("P0 홈이 세는 건수와 서버에 남은 기록이 같다", async (t) =
 
   const onServer = records.rows().filter((r) => r.date === TODAY && r.classId === ROOM_A.id).length;
   assert.equal(onServer, 2);
-  assert.ok(view.text().includes(`오늘 기록 ${onServer}건`), `건수가 어긋난다: ${view.text()}`);
+  assert.ok(
+    view.text().includes(`오늘 적은 내용 ${onServer}건`),
+    `건수가 어긋난다: ${view.text()}`,
+  );
 });
 
-test("L 홈의 반 이름·저장·조회·일과 링크가 고른 B 반으로 함께 바뀐다", async (t) => {
+test("우리 반 — 오늘 일과에 활동실행이 적혀 있으면 그 자리에서 보육일지로 간다", async (t) => {
+  const view = homePage(t, {
+    routineRows: async () => [
+      { id: 1, date: TODAY, start: "09:20:00", name: "오전 실내놀이", plan: "", execution: "블록" },
+    ],
+  });
+  await view.flush();
+  assert.ok(view.text().includes("오전 실내놀이"), view.text());
+  assert.ok(
+    view.links().includes(`/documents?kind=dailyLog&class_id=3&date=${TODAY}`),
+    view.links().join(" "),
+  );
+});
+
+test("우리 반 — 일과 줄만 있고 활동실행이 비면 일지로 보내지 않는다", async (t) => {
+  // S-J1 과 같은 규칙이다. 실행이 비면 일지도 빈다 — 길만 열어 두면 빈 일지가 남는다.
+  const view = homePage(t, {
+    routineRows: async () => [
+      { id: 1, date: TODAY, start: "09:20:00", name: "오전 실내놀이", plan: "쌓기", execution: "" },
+    ],
+  });
+  await view.flush();
+  assert.equal(
+    view.links().some((href) => href.startsWith("/documents?kind=dailyLog")),
+    false,
+  );
+  assert.ok(view.text().includes("일과를 적으면 만들 수 있어요"), view.text());
+});
+
+test("우리 반 — 일과를 못 읽었으면 「안 적었어요」라고 하지 않는다", async (t) => {
+  // 못 읽은 것과 없는 것은 다르다. 멀쩡히 적어 둔 교사를 재촉하면 안 된다.
+  const view = homePage(t, { routineRows: async () => Promise.reject(new Error("끊김")) });
+  await view.flush();
+  await view.flush();
+  assert.equal(view.text().includes("일과를 아직 안 적었어요"), false);
+});
+
+test("L 홈의 저장·조회·일과 링크가 고른 B 반으로 함께 바뀐다", async (t) => {
   const records = recordsServer();
   const view = homePage(t, {
     rooms: [CLASS_A, CLASS_B],
@@ -2871,13 +2919,12 @@ test("L 홈의 반 이름·저장·조회·일과 링크가 고른 B 반으로 �
     records,
   });
   await onB.flush();
-  assert.ok(onB.currentClass().props.children.includes(ROOM_B.className));
   assert.ok(onB.links().includes(`/routines?date=${TODAY}&class_id=7`));
   assert.equal(onB.text().includes("A에서만 보이는 사실"), false);
   await homeSave(onB, "B에서만 보이는 사실");
   assert.equal(records.only("add").at(-1).classId, ROOM_B.id);
   assert.equal(records.only("list").at(-1).classId, ROOM_B.id);
-  assert.ok(onB.text().includes("오늘 기록 1건"));
+  assert.ok(onB.text().includes("오늘 적은 내용 1건"));
   assert.ok(onB.text().includes("B에서만 보이는 사실"));
   // 홈은 주소에 반을 적지 않는다. 고른 반은 저장소에 남고 사이드바가 보여 준다.
 });
@@ -2898,7 +2945,6 @@ test("L 뒤로 온 B 반 URL은 반 연결이 늦어도 A 반으로 대체하지
   );
   view.arrive([ROOM_A, ROOM_B]);
   await view.flush();
-  assert.ok(view.currentClass().props.children.includes(ROOM_B.className));
   assert.equal(records.only("list").at(-1).classId, ROOM_B.id);
   assert.ok(view.links().includes(`/routines?date=${TODAY}&class_id=7`));
 });

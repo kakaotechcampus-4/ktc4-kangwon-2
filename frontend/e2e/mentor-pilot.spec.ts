@@ -90,7 +90,8 @@ async function enterPilot(page: Page) {
   await page.getByLabel("아동 추가").fill("가나다");
   await page.getByRole("button", { name: "+ 추가", exact: true }).click();
   await page.getByRole("button", { name: "설정 완료", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "우리 반", exact: true, level: 1 })).toBeVisible();
+  // 홈의 h1 은 날짜라 매일 달라진다. 홈에만 있는 적는 칸 제목으로 「도착했나」를 본다.
+  await expect(page.getByRole("heading", { name: "지금, 한 줄", exact: true })).toBeVisible();
   return api(page, "/api/auth/me");
 }
 
