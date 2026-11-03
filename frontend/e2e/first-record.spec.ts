@@ -55,16 +55,15 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   await page.getByRole("button", { name: "관찰 기록 저장" }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
 
-  // 데스크톱 기록 메뉴에서 진입하고, 관찰 기록과 활성 표시가 겹치지 않는다.
+  // 사이드바가 **기록**과 **문서**로 갈리면서 「아이별 모아보기」는 메뉴에서 빠졌다.
+  // 관찰 기록 화면 안의 길로 들어가고, 그 아래 화면이므로 메뉴는 관찰 기록이 켜진 채다.
   const menu = page.getByRole("complementary", { name: "주 메뉴" });
-  const childMenu = menu.getByRole("link", { name: "아이별 모아보기", exact: true });
-  await childMenu.click();
+  const recordsMenu = menu.getByRole("link", { name: "관찰 기록", exact: true });
+  await recordsMenu.click();
+  await expect(page).toHaveURL(/\/records$/);
+  await page.getByRole("link", { name: "아이별 모아보기", exact: true }).click();
   await expect(page).toHaveURL(/\/records\/children$/);
-  await expect(childMenu).toHaveAttribute("aria-current", "page");
-  await expect(menu.getByRole("link", { name: "관찰 기록", exact: true })).not.toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(recordsMenu).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("button", { name: `${child} · 1건` })).toBeVisible();
   await expect(page.getByText("관찰 기록 1건")).toBeVisible();
 });
