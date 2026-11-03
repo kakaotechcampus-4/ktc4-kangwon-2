@@ -296,7 +296,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
 
 test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현황 반영까지", async ({ page }, info) => {
   const user = await enterPilot(page);
-  await page.getByRole("link", { name: "오늘 일과 적기", exact: true }).click();
+  await page.getByRole("link", { name: "일과 작성하기", exact: true }).click();
   const dateInput = page.getByLabel("날짜", { exact: true });
   const yesterday = new Date((await dateInput.inputValue()) + "T12:00:00Z");
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
