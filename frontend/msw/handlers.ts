@@ -102,6 +102,15 @@ import type {
 const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
 const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
+/** 요청 사항(ADR-057). 서버처럼 앞뒤 공백을 떼고 300자까지 — 틀리면 null. 목업은 반영 못한 요청을 만들지 않는다. */
+const memoOf = (b: Record<string, unknown>) =>
+  b.memo == null
+    ? ""
+    : typeof b.memo === "string" && b.memo.trim().length <= 300
+      ? b.memo.trim()
+      : null;
+const withMemo = <T extends object>(plan: T, memo: string) =>
+  Object.assign(plan, { memo, memo_notices: [] });
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
 const MOCK_INVITE = "MOCK234567";
 async function body(request: Request): Promise<Record<string, unknown> | null> {
@@ -407,6 +416,8 @@ export const handlers = [
     if (b.format !== "MONTHLY_THEME" && b.format !== "PLAY_PROJECT") return bad("format");
     if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
     if (b.format === "PLAY_PROJECT" && b.form_id != null) return bad("form_id");
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     // 연간 목업은 「지금 원」 소유 검사를 하지 않는다(서버는 남의 원 반이면 404) — 화면 목업 흐름 유지.
     const klass = findClass(Number(b.class_id));
     if (!klass) return classMissing();
@@ -415,9 +426,12 @@ export const handlers = [
       return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
     if (request.signal.aborted) return HttpResponse.error();
     // 실제 서버는 교육과정 참고자료 승인 전까지 503을 반환하지만, 화면 작업용 목업은 승인 뒤 응답 모양을 만든다.
-    return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
-      status: 201,
-    });
+    return HttpResponse.json(
+      withMemo(addPlan(b as unknown as AnnualInput, klass.school_year), memo),
+      {
+        status: 201,
+      },
+    );
   }),
   http.get("*/api/plans/annual", async ({ request }) => {
     const s = await scenario(request, "annual-list");
@@ -624,6 +638,7 @@ export const handlers = [
       new Set(trimmed).size === trimmed.length
         ? []
         : ["emphasized_row_keys"]),
+      ...(memoOf(b) === null ? ["memo"] : []),
     ];
     if (wrong.length) return invalid(wrong);
     const klass = myClass(Number(b.class_id));
@@ -804,6 +819,8 @@ export const handlers = [
     if (typeof ref !== "object" || ref === null) return bad("profile_ref");
     for (const k of ["profile_id", "profile_version"])
       if (typeof ref[k] !== "string" || !ref[k]) return bad("profile_ref." + k);
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     const klass = myClass(b.class_id);
     if (!klass) return classMissing();
     if (
@@ -841,9 +858,12 @@ export const handlers = [
         "profile_ref",
       );
     if (request.signal.aborted) return HttpResponse.error();
-    return HttpResponse.json(monthlyOut(addMonthly(klass, annual, b.month, profile)), {
-      status: 201,
-    });
+    return HttpResponse.json(
+      monthlyOut(withMemo(addMonthly(klass, annual, b.month, profile), memo)),
+      {
+        status: 201,
+      },
+    );
   }),
   http.get("*/api/plans/monthly", async ({ request }) => {
     const s = await scenario(request, "monthly-list");
@@ -939,6 +959,8 @@ export const handlers = [
     if (!integer(b.class_id)) return bad("class_id");
     if (typeof b.week_id !== "string" || !/^\d{4}-\d{2}-W\d+$/.test(b.week_id))
       return bad("week_id");
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     const klass = myClass(b.class_id);
     if (!klass) return classMissing();
     // G5 — 같은 반 · 같은 주가 이미 있으면 DRAFT 든 CONFIRMED 든 거절한다.
@@ -956,7 +978,12 @@ export const handlers = [
     if (request.signal.aborted) return HttpResponse.error();
     const saturday = !!findCenterSettings(klass.center_id).weekly_saturday_enabled;
     return HttpResponse.json(
-      weeklyOut(addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true)),
+      weeklyOut(
+        withMemo(
+          addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true),
+          memo,
+        ),
+      ),
       { status: 201 },
     );
   }),

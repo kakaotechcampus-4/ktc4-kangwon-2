@@ -87,8 +87,20 @@ export interface PlanConfig {
 // TODO(BE): PUT plan-config 응답 body/status 미확정. 호출자는 응답 필드에 의존하지 않는다.
 export type PlanConfigResponse = unknown;
 /** `school_year` 를 받지 않는다 — `class_id` 가 학년도를 정한다 (§4). */
+/** 생성 전 「요청 사항」에서 반영하지 못한 요청 하나(ADR-057). 생성을 막지 않는다. */
+export interface MemoNotice {
+  summary: string;
+  reason: "OUT_OF_RANGE" | "RULE_CONFLICT" | "FIXED_CELL";
+}
+/** 다섯 계획안 상세가 함께 싣는다. 메모 없이 만들었거나 옛 응답이면 `""` · `[]` 또는 없음. */
+export interface PlanMemo {
+  memo?: string;
+  memo_notices?: MemoNotice[];
+}
 export interface AnnualInput {
   class_id: number;
+  /** 요청 사항 0~300자(앞뒤 공백 제거). 생략 = 메모 없음. 아이 이름을 가명으로 못 바꾸면 422 `["memo"]`. */
+  memo?: string;
   /** 필수. 빠지거나 모르는 값이면 422 (§4). `PLAY_PROJECT` 는 `form_id` 를 생략한다. */
   format: "MONTHLY_THEME" | "PLAY_PROJECT";
   /** 원이 등록한 기관 양식 (§8). `null` 이면 기본 양식, 놀이 프로젝트형은 생략한다. */
@@ -173,7 +185,7 @@ export interface WeeklyAuditEvent extends Omit<MonthlyAuditEvent, "type"> {
  * **주차 열이 없다.** 월간과 달리 모든 Section 이 `repeat_by = NONE` 이라 Section 마다
  * 칸이 하나다 (WQ-02 — 요일별 값은 칸 하나 안 목록으로 쓴다).
  */
-export interface WeeklyPlan {
+export interface WeeklyPlan extends PlanMemo {
   id: number;
   class_id: number;
   school_year: number;
@@ -224,7 +236,7 @@ export type WeeklyPlanSummary = Pick<
   | "created_at"
   | "confirmed_at"
 >;
-export interface AnnualPlan {
+export interface AnnualPlan extends PlanMemo {
   id: number;
   class_id: number;
   format: "MONTHLY_THEME";
@@ -245,7 +257,7 @@ export interface PlayCell {
   evidence: MonthlyCell["evidence"];
   generation: MonthlyCellGeneration;
 }
-export interface PlayProjectAnnualPlan {
+export interface PlayProjectAnnualPlan extends PlanMemo {
   id: number;
   /** 저장할 때마다 1 씩 는다. 저장 요청에 `expected_revision` 으로 되돌려 보낸다. */
   revision: number;
@@ -288,7 +300,7 @@ export interface PlayMonthlyActivity {
   parent_item_id: string | null;
 }
 /** 놀이 중심 월간 단건 응답 (api-spec §9-7). 변경 API 는 모두 이 전체를 돌려준다. */
-export interface PlayMonthlyPlan {
+export interface PlayMonthlyPlan extends PlanMemo {
   id: number;
   class_id: number;
   school_year: number;
@@ -439,6 +451,8 @@ export interface MonthlyInput {
   /** 달력의 달 1~12. 1~2월은 학년도의 다음 해다. */
   month: number;
   profile_ref: ProfileRef;
+  /** 요청 사항 — `AnnualInput.memo` 와 같다. */
+  memo?: string;
 }
 /** 칸을 만든 방법. 연간 · 놀이 칸이 같이 쓰므로 null 을 넣지 않고 따로 이름을 둔다. */
 export type MonthlyCellGeneration = {
@@ -468,7 +482,7 @@ export interface MonthlyCell {
   generation: MonthlyCellGeneration | null;
 }
 /** 주 · Section · 칸 개수를 정하지 않는다 — 화면은 받은 만큼 그린다. */
-export interface MonthlyPlan {
+export interface MonthlyPlan extends PlanMemo {
   id: number;
   class_id: number;
   school_year: number;
