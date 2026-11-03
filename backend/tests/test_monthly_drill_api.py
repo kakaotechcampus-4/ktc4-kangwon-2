@@ -1,8 +1,7 @@
 """v1 월간 훈련(소방대피 · 재난대비) 후보 API (api-spec §9-1 · §9-3 · §9-5).
 
-서버는 아직 v0.2.3 · drill 을 고를 수 있게 열지 않았다(MONTHLY_TEMPLATE_REFS · SELECTABLE_KEYS).
-생성 게이트는 그 둘을 보지 않으므로, 테스트는 v0.2.3 + drill 을 고른 READY Profile 을 저장소로
-직접 만들고 실제 `POST /api/plans/monthly` 를 거친다.
+서버에서 v0.2.3 · drill 을 고를 수 있다. 이 파일은 v0.2.3 + drill 을 고른 READY Profile 을
+저장소로 직접 만들고 실제 `POST /api/plans/monthly` 를 거친다.
 """
 
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
@@ -18,6 +17,7 @@ from test_monthly_lifecycle_api import (  # noqa: F401
     _edit,
     _error,
     _get,
+    _regenerate,
     _seed,
     client,
 )
@@ -232,6 +232,40 @@ def test_복사한_칸도_교사가_고칠_수_있고_생성_방식은_그대로
     assert (cell["value"], cell["generation"]["method"]) == ("고친 훈련", "RULE_ONLY")
 
 
+def test_빈_훈련_칸을_다시_만들면_422_이고_저장하지_않는다(plan):
+    before = _get(plan["id"])
+
+    response = _regenerate(plan["id"], _drill_cell(plan)["item_id"], plan["revision"])
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+    assert _get(plan["id"]) == before
+
+
+def test_후보를_복사한_훈련_칸을_다시_만들면_422_이고_저장하지_않는다(plan):
+    candidate_id = plan["drill_candidates"][0]["cell"]["item_id"]
+    copied = _copy(plan["id"], candidate_id, plan["revision"]).json()
+    assert _drill_cell(copied)["generation"]["method"] == "RULE_ONLY"
+    before = _get(plan["id"])
+
+    response = _regenerate(plan["id"], _drill_cell(copied)["item_id"], copied["revision"])
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+    assert _get(plan["id"]) == before
+
+
+def test_훈련_후보_칸을_다시_만들면_422_이고_저장하지_않는다(plan):
+    candidate_id = plan["drill_candidates"][0]["cell"]["item_id"]
+    before = _get(plan["id"])
+
+    response = _regenerate(plan["id"], candidate_id, plan["revision"])
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+    assert _get(plan["id"]) == before
+
+
 # ── 이력 ──────────────────────────────────────────────────────────────────
 
 
@@ -282,17 +316,19 @@ def _drill_row_text(response) -> str:
 
 
 @pytest.mark.parametrize("month", [9, 10])  # 2026-09 는 5주, 2026-10 은 4주다
-def test_내보내면_소방대피_재난대비_줄이_훈련_칸_값이다(seed, month):
+def test_훈련_후보를_복사해도_내보낸_12행은_빈칸이다(seed, month):
     _annual_confirmed(seed)
     plan = _create(seed, month=month).json()
     candidate = plan["drill_candidates"][0]["cell"]
     copied = _copy(plan["id"], candidate["item_id"], plan["revision"]).json()
+    assert candidate["value"].strip()
+    assert _drill_cell(_get(plan["id"]))["value"] == candidate["value"]
     assert _confirm(plan["id"], copied["revision"]).status_code == 200
 
     response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
 
     assert response.status_code == 200, response.text
-    assert _drill_row_text(response) == candidate["value"]
+    assert _drill_row_text(response) == ""
 
 
 def test_훈련_칸이_비어_있으면_그_줄은_빈칸이다(seed):

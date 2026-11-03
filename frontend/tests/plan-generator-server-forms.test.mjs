@@ -122,6 +122,7 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
     throw new Error("unexpected request: " + method + " " + path);
   };
   const replaced = [];
+  const compact = [];
 
   const slots = [],
     setters = [],
@@ -166,6 +167,7 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
     "@/lib/onboarding/settings": settingsLib,
     "@/lib/onboarding/types": onboardingTypes,
     "@/components/plan-ui/GenerationRing": { __esModule: true, default: "generation-ring" },
+    "@/components/app/compact-shell": { useCompactShell: (on) => compact.push(on) },
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)(
@@ -210,6 +212,7 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
     calls,
     replaced,
     render,
+    compact: () => compact.at(-1),
     text: () => content(tree),
     node: (type) => all(tree).find((n) => n.type === type),
     button: (label) => all(tree).find((n) => n.type === "button" && content(n) === label),
@@ -240,6 +243,7 @@ test("놀이 중심형은 form_id 를 보내지 않고, 만드는 동안 원형 
   p.render();
   const ring = p.node("generation-ring");
   assert.ok(ring);
+  assert.equal(p.compact(), true, "만드는 동안은 사이드바를 접는다");
   // 진행률은 서버가 주지 않는다 — 넘기지 않으면 고리가 스스로 돈다.
   assert.equal(ring.props.progress, undefined);
   assert.deepEqual(ring.props.steps, ["놀이 떠올리기", "계절별로 나누기", "문서로 정리하기"]);

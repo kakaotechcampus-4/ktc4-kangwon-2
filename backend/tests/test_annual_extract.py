@@ -134,12 +134,12 @@ def _post(klass, name: str, data: bytes):
     )
 
 
-def test_hwp_는_400_글자_없는_PDF_는_422(mine):
+def test_내용이_HWP_가_아니면_400_글자_없는_PDF_는_422(mine):
     response = _post(mine, "연간.hwp", b"\xd0\xcf\x11\xe0hwp")
     assert response.status_code == 400
     assert response.json()["error"] == {
         "code": "UNSUPPORTED_FILE_TYPE",
-        "message": "한글에서 HWPX나 PDF로 저장해서 올려 주세요",
+        "message": "HWP · HWPX · DOCX · PDF 파일만 올릴 수 있어요",
         "fields": ["file"],
     }
 
@@ -150,6 +150,24 @@ def test_hwp_는_400_글자_없는_PDF_는_422(mine):
     response = _post(mine, "빈.pdf", blank.getvalue())
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+
+
+def test_hwp_는_표_칸을_읽고_변환기가_없으면_503(mine, monkeypatch):
+    monkeypatch.setattr(settings, "llm_mode", "mock")
+    cells = [[{"text": "3월"}, {"text": "홍길동 교사"}], [{"text": "우리 반 친구"}]]
+    monkeypatch.setattr(annual_extract.hwp_form, "from_hwp", lambda path: [cells])
+    monkeypatch.setattr(annual_extract.shutil, "which", lambda name: "/usr/bin/hwp5html")
+    hwp = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 8
+    response = _post(mine, "연간.hwp", hwp)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["file"]["format"] == "HWP"
+    assert body["months"][0]["theme"] == "○○ 교사"  # 「3월」 다음 칸. 이름은 가려진 채다
+
+    monkeypatch.setattr(annual_extract.shutil, "which", lambda name: None)
+    response = _post(mine, "연간.hwp", hwp)
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
 
 
 def test_mock_은_결정적으로_원문의_칸만_옮긴다(mine, monkeypatch):

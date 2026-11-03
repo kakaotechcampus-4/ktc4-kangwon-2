@@ -331,6 +331,8 @@ test("안전 배치 · 훈련 복사 · 행 빼기 패널을 훅에 잇는다", 
   const { tree, View, h } = await open(plan.id, async () => plan);
   saved.length = 0;
   const [safety] = node(tree, "safety");
+  assert.deepEqual(node(tree, "drill")[0].props.candidates, plan.drill_candidates);
+  assert.equal(node(tree, "drill")[0].props.current, drillCell(plan).value);
   const weekId = plan.safety_weeks[0].week_id;
   const cand = plan.safety_candidates[0].cell.item_id;
   assert.equal(safety.props.disabled, false);
@@ -870,11 +872,13 @@ function openV1Editor(findings = [], setup = (p) => p) {
     ],
     safety_candidates: [],
     safety_weeks: [],
+    drill_candidates: [],
     notices: [],
   });
   const sent = [];
   const edits = [];
   const placed = [];
+  const copied = [];
   const waits = [];
   const displayOf = (candidates, itemId) => {
     const value = candidates.find((c) => c.cell.item_id === itemId)?.cell.value ?? "";
@@ -926,6 +930,16 @@ function openV1Editor(findings = [], setup = (p) => p) {
     };
     return server;
   };
+  let audit = async () => ({ items: [] });
+  const Confirm = compile("../components/plan-generator/PlayMonthlyConfirm.tsx", {
+    react: h.react,
+    "./PlayMonthlyStructure.module.css": esModule(css),
+  }).default;
+  const DrillPanel = compile("../components/plan-generator/PlayMonthlyDrillPanel.tsx", {
+    react: h.react,
+    "./PlayMonthlyStructure.module.css": esModule(css),
+    "./PlayMonthlyConfirm": esModule(Confirm),
+  }).default;
   const { noticeSummary } = load();
   const { default: View } = compile("../components/workspace/MonthlyPlanEditor.tsx", {
     // 의존성 목록이 없는 effect 는 실제 React 처럼 매번 돈다.
@@ -934,9 +948,21 @@ function openV1Editor(findings = [], setup = (p) => p) {
     "@/lib/api/monthly": {
       editMonthlyCell: edit,
       placeMonthlySafety: (...a) => place(...a),
+      copyMonthlyDrill: async (id, itemId, revision) => {
+        copied.push([id, itemId, revision]);
+        const value = server.drill_candidates.find((c) => c.cell.item_id === itemId).cell.value;
+        server = {
+          ...server,
+          revision: server.revision + 1,
+          sections: server.sections.map((s) =>
+            s.section_key === "drill" ? { ...s, cells: s.cells.map((c) => ({ ...c, value })) } : s,
+          ),
+        };
+        return server;
+      },
       confirmMonthlyPlan: async () => server,
       regenerateMonthlyCell: async () => server,
-      getMonthlyPlanAudit: async () => ({ items: [] }),
+      getMonthlyPlanAudit: (...a) => audit(...a),
       downloadMonthlyHwpx: () => {},
     },
     "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
@@ -968,6 +994,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
       });
     }),
     "@/components/plan-generator/PlayMonthlySafetyPanel": esModule((props) => jsx("safety", props)),
+    "@/components/plan-generator/PlayMonthlyDrillPanel": esModule(DrillPanel),
     "@/components/plan-generator/UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "@/components/plan-generator/PlayMonthlySheet": {
       Cell: (props) => jsx("cell", props),
@@ -993,7 +1020,9 @@ function openV1Editor(findings = [], setup = (p) => p) {
     sent,
     edits,
     placed,
+    copied,
     setPlace: (fn) => (place = fn),
+    setAudit: (fn) => (audit = fn),
     waits,
     listeners,
     props,
@@ -1120,6 +1149,112 @@ const withV1Candidates = (plan) => ({
     { week_id: "W2", candidate_item_id: null, display_value: "" },
   ],
   notices: [{ code: "SAFETY_UNPLACED", week_id: "W2" }],
+});
+
+const withV1Drill = (plan, value = "") => ({
+  ...plan,
+  sections: [
+    ...plan.sections,
+    {
+      section_key: "drill",
+      label: "소방대피/재난대비",
+      role: "CONTENT",
+      visible: true,
+      order: 2,
+      repeat_by: "NONE",
+      cells: [{ item_id: "drill_cell", week_id: null, value, state: "FILLED", evidence: [] }],
+    },
+  ],
+  drill_candidates: [
+    { topic_id: "fire", label: "화재", cell: { item_id: "drill_candidate", value: "대피해요" } },
+  ],
+});
+
+test("v1 — 훈련 후보가 있으면 패널과 넣기 버튼이 보이고 빈 배열이나 확정본에서는 숨긴다", () => {
+  const view = openV1Editor([], withV1Drill);
+  let tree = view.render();
+  assert.equal(withText(tree, "h2", "소방대피 훈련 후보").length, 1);
+  assert.equal(withText(tree, "button", "소방대피/재난대비 칸에 넣기").length, 1);
+  view.props.plan = { ...view.props.plan, drill_candidates: [] };
+  tree = view.render();
+  assert.equal(withText(tree, "h2", "소방대피 훈련 후보").length, 0);
+  view.props.plan = { ...withV1Drill(view.props.plan), status: "CONFIRMED" };
+  assert.equal(withText(view.render(), "h2", "소방대피 훈련 후보").length, 0);
+});
+
+test("v1 — 훈련 칸이 비었으면 확인 없이 후보를 복사하고 응답으로 계획안을 바꾼다", async () => {
+  const view = openV1Editor([], withV1Drill);
+  withText(view.render(), "button", "소방대피/재난대비 칸에 넣기")[0].props.onClick();
+  await view.tick();
+  assert.deepEqual(view.copied, [[1, "drill_candidate", 1]]);
+  assert.equal(
+    view.props.plan.sections.find((s) => s.section_key === "drill").cells[0].value,
+    "대피해요",
+  );
+  assert.match(text(view.render()), /훈련 후보를 넣었어요/);
+});
+
+test("v1 — 훈련 칸에 글이 있으면 바꾸기를 눌러야 복사한다", async () => {
+  const view = openV1Editor([], (plan) => withV1Drill(plan, "기존 글"));
+  withText(view.render(), "button", "소방대피/재난대비 칸에 넣기")[0].props.onClick();
+  assert.deepEqual(view.copied, []);
+  const tree = view.render();
+  assert.match(text(tree), /지금 쓴 글을 이 후보로 바꿀까요\?/);
+  withText(tree, "button", "바꾸기")[0].props.onClick();
+  await view.tick();
+  assert.deepEqual(view.copied, [[1, "drill_candidate", 1]]);
+});
+
+test("v1 — 저장 응답 전 훈련 칸에 쓴 글도 덮기 전에 묻고 저장이 끝난 revision 으로 복사한다", async () => {
+  const view = openV1Editor([], withV1Drill);
+  node(view.render(), "cell")
+    .find((c) => c.props.id === "drill_cell")
+    .props.onSelect("drill_cell");
+  view.editor().onDraft("저장 전 글");
+  view.editor().onSave("저장 전 글");
+  await view.tick();
+  assert.deepEqual(view.edits, [[1, "drill_cell", "저장 전 글", 1]]);
+  withText(view.render(), "button", "소방대피/재난대비 칸에 넣기")[0].props.onClick();
+  const tree = view.render();
+  assert.match(text(tree), /지금 쓴 글을 이 후보로 바꿀까요\?/);
+  assert.deepEqual(view.copied, []);
+  withText(tree, "button", "바꾸기")[0].props.onClick();
+  await view.tick();
+  assert.deepEqual(view.copied, []);
+  view.waits.shift().ok();
+  await view.tick();
+  assert.deepEqual(view.copied, [[1, "drill_candidate", 2]]);
+  assert.equal(
+    view.props.plan.sections.find((s) => s.section_key === "drill").cells[0].value,
+    "대피해요",
+  );
+});
+
+test("v1 — 공백을 다듬어 저장한 뒤 훈련 후보를 넣으면 옛 입력이 남거나 다시 저장되지 않는다", async () => {
+  const view = openV1Editor([], withV1Drill);
+  node(view.render(), "cell")
+    .find((c) => c.props.id === "drill_cell")
+    .props.onSelect("drill_cell");
+  const first = node(view.render(), "editor")[0];
+  view.editor().onDraft(" 저장 전 글 ");
+  withText(view.render(), "button", "소방대피/재난대비 칸에 넣기")[0].props.onClick();
+  const confirmation = view.render();
+  assert.match(text(confirmation), /지금 쓴 글을 이 후보로 바꿀까요\?/);
+  withText(confirmation, "button", "바꾸기")[0].props.onClick();
+  await view.tick();
+  assert.deepEqual(view.edits, [[1, "drill_cell", "저장 전 글", 1]]);
+  assert.deepEqual(view.copied, []);
+  view.waits.shift().ok();
+  await view.tick();
+  assert.deepEqual(view.copied, [[1, "drill_candidate", 2]]);
+
+  const tree = view.render();
+  assert.equal(node(tree, "cell").find((c) => c.props.id === "drill_cell").props.value, "대피해요");
+  assert.notEqual(node(tree, "editor")[0].key, first.key);
+  assert.equal(view.editor().value, "대피해요");
+  view.editor().onSave(view.editor().value); // 수정 없이 입력창을 떠난다(blur).
+  await view.tick();
+  assert.deepEqual(view.edits, [[1, "drill_cell", "저장 전 글", 1]]);
 });
 
 test("v1 — 후보가 없는 계획은 패널과 안내가 없고 안전교육 줄이 주별 칸을 보이며 고를 수 있다", () => {
@@ -1291,4 +1426,56 @@ test('v1 — 빈 후보(display_value "")도 칸을 그려 눌러 편집기를 �
     safetyCells().map((c) => c.props.value),
     ["[교통안전] - 손을 들고 건너요", "[교통안전] - 손을 들고 건너요"],
   );
+});
+
+test("v1 — 변경 이력은 ARRANGEMENT_CHANGED · CANDIDATE_COPIED 를 놀이 월간 문구로 보이고 모르는 type 은 건너뛴다", async () => {
+  const view = openV1Editor();
+  const event = (more) => ({
+    type: "ARRANGEMENT_CHANGED",
+    occurred_at: "2026-09-01T00:00:00Z",
+    scope: "PLAN",
+    item_id: null,
+    section_key: null,
+    week_id: null,
+    day: null,
+    actor: "user_1",
+    system_actor: null,
+    value_change: null,
+    generation_change: null,
+    arrangement_change: null,
+    copied_from: null,
+    ...more,
+  });
+  view.setAudit(async () => ({
+    items: [
+      event({ arrangement_change: { scope: "2026-09-W2", before: [], after: ["cand_1"] } }),
+      event({ arrangement_change: { scope: "safety", before: [], after: [] } }),
+      event({ arrangement_change: null }),
+      event({
+        type: "CANDIDATE_COPIED",
+        scope: "CELL",
+        item_id: "d1",
+        section_key: "drill",
+        value_change: { before: "a", after: "b" },
+        copied_from: "dc_1",
+      }),
+      event({ type: "SOMETHING_NEW" }),
+    ],
+  }));
+  withText(view.render(), "button", "변경 이력 보기")[0].props.onClick();
+  view.render();
+  await view.tick();
+  const ol = all(view.render()).find(
+    (n) => n.type === "ol" && n.props["aria-label"] === "변경 이력",
+  );
+  assert.deepEqual(
+    node(ol, "li").map((li) => li.props.children.at(-1)),
+    [
+      "배치가 바뀌었어요 · 2주 안전교육",
+      "배치가 바뀌었어요 · 안전교육",
+      "배치가 바뀌었어요",
+      "훈련 후보를 복사했어요 「a」 → 「b」",
+    ],
+  );
+  assert.doesNotMatch(text(ol), /SOMETHING_NEW/);
 });

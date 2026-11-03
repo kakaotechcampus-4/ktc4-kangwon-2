@@ -8,6 +8,7 @@ import AnnualThemeSheet from "./AnnualThemeSheet";
 import PlayProjectResult, { picksFromPlan } from "./PlayProjectResult";
 import PlayProjectSheet from "./PlayProjectSheet";
 import ThemeAnnualResult from "./ThemeAnnualResult";
+import { useCompactShell } from "@/components/app/compact-shell";
 /** 한 번의 조회 결과 — 어떤 요청(key)에 대한 값인지 함께 들고 있어서 id/재시도가 바뀌면 자동으로 무효가 된다. */
 interface Loaded {
   key: string;
@@ -93,6 +94,9 @@ export default function AnnualResult({ id }: { id: number }) {
       controller.abort();
     };
   }, [id, key, valid]);
+  // 확정 전(놀이 고르기 · 다듬기)은 문서 폭을 위해 사이드바를 접는다. 불러오는 동안도 접어 두어
+  // 생성 중 → 결과로 넘어올 때 한 번 펼쳤다 접히지 않게 한다. 확정본은 펼친다.
+  useCompactShell(!error && plan?.status !== "CONFIRMED");
   const className = context?.className ?? "";
   if (error)
     return (

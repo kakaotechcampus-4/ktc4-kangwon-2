@@ -84,10 +84,13 @@ const KEYS = [
   "item_id",
   "section_key",
   "week_id",
+  "day",
   "actor",
   "system_actor",
   "value_change",
   "generation_change",
+  "arrangement_change",
+  "copied_from",
 ];
 const ACTOR = "user_1"; // 목업 계정 id (서버는 user_{users.id})
 
@@ -231,10 +234,13 @@ test("create records one PLAN CREATED and one CREATED per cell; failed creates r
     item_id: null,
     section_key: null,
     week_id: null,
+    day: null,
     actor: null,
     system_actor: "monthly_application",
     value_change: null,
     generation_change: null,
+    arrangement_change: null,
+    copied_from: null,
   });
   const cells = items.slice(1);
   assert.deepEqual(
@@ -284,10 +290,13 @@ test("edit records TEACHER_EDITED on that cell only; rejected edits record nothi
     item_id: target.item_id,
     section_key: "focus",
     week_id: target.week_id,
+    day: null,
     actor: ACTOR,
     system_actor: null,
     value_change: { before: target.value, after: "교사가 고친 소주제" },
     generation_change: null,
+    arrangement_change: null,
+    copied_from: null,
   });
   assert.equal(items.length, start.length + 1);
 });
@@ -335,10 +344,13 @@ test("regenerate records value and generation before/after; failures record noth
       item_id: target.item_id,
       section_key: "focus",
       week_id: target.week_id,
+      day: null,
       actor: ACTOR,
       system_actor: null,
       value_change: { before: target.value, after: now.value },
       generation_change: { before: target.generation, after: now.generation },
+      arrangement_change: null,
+      copied_from: null,
     },
   ]);
   assert.notDeepEqual(target.generation, now.generation);

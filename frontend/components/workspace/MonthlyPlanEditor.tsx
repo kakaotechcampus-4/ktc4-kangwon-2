@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ApiError } from "@/lib/api/client";
 import {
   confirmMonthlyPlan,
+  copyMonthlyDrill,
   downloadMonthlyHwpx,
   editMonthlyCell,
   getMonthlyPlanAudit,
@@ -23,6 +24,7 @@ import type { MonthlyAuditEvent, MonthlyCell, MonthlyPlan } from "@/lib/api/type
 import { sectionName } from "@/lib/monthly/section-labels";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
+import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { Cell, SheetFrame } from "@/components/plan-generator/PlayMonthlySheet";
@@ -144,9 +146,10 @@ export default function MonthlyPlanEditor({
   };
 
   function saveCell(itemId: string, text: string) {
+    // 편집기는 다듬은 글을 저장한다.
     const drop = () =>
       setLive((d) =>
-        d[itemId] === text
+        d[itemId]?.trim() === text
           ? Object.fromEntries(Object.entries(d).filter(([k]) => k !== itemId))
           : d,
       );
@@ -261,6 +264,12 @@ export default function MonthlyPlanEditor({
       (cur) => placeMonthlySafety(cur.id, weekId, candidateItemId, cur.revision),
       candidateItemId ? "안전교육을 두었어요." : "안전교육을 비웠어요.",
     );
+  const copyDrill = (itemId: string) =>
+    afterSaves(
+      "drill",
+      (cur) => copyMonthlyDrill(cur.id, itemId, cur.revision),
+      "훈련 후보를 넣었어요.",
+    );
   const confirm = () =>
     afterSaves(
       "confirm",
@@ -277,6 +286,7 @@ export default function MonthlyPlanEditor({
     onSelect: confirmed ? undefined : setSelected,
   };
   const shown = (cell: MonthlyCell) => live[cell.item_id] ?? cell.value;
+  const drillCell = plan.sections.find((s) => s.section_key === "drill")?.cells[0];
   const stamp = (id: string) => `${bumps["*"] ?? 0}:${bumps[id] ?? 0}`;
 
   return (
@@ -414,6 +424,14 @@ export default function MonthlyPlanEditor({
           {!confirmed && candidateMode && (
             <PlayMonthlySafetyPanel plan={plan} onPlace={place} disabled={locked} />
           )}
+          {!confirmed && plan.drill_candidates.length > 0 && (
+            <PlayMonthlyDrillPanel
+              candidates={plan.drill_candidates}
+              current={drillCell ? shown(drillCell) : ""}
+              onCopy={copyDrill}
+              disabled={locked}
+            />
+          )}
         </aside>
         <SheetFrame
           label="월간계획안 미리보기"
@@ -491,6 +509,8 @@ const EVENT: Record<MonthlyAuditEvent["type"], string> = {
   CREATED: "만들었어요",
   TEACHER_EDITED: "고쳤어요",
   REGENERATED: "다시 만들었어요",
+  ARRANGEMENT_CHANGED: "배치가 바뀌었어요",
+  CANDIDATE_COPIED: "훈련 후보를 복사했어요",
   CONFIRMED: "확정했어요",
   UNCONFIRMED: "확정을 풀었어요",
 };
@@ -547,6 +567,9 @@ function MonthlyHistory({ id }: { id: number }) {
               {e === created[0]
                 ? `처음 만들어진 칸 ${created.length}개`
                 : EVENT[e.type] +
+                  (e.type === "ARRANGEMENT_CHANGED" && e.arrangement_change
+                    ? ` · ${/-W(\d+)$/.exec(e.arrangement_change.scope)?.[1]?.concat("주 ") ?? ""}안전교육`
+                    : "") +
                   (e.value_change
                     ? ` ${short(e.value_change.before)} → ${short(e.value_change.after)}`
                     : "")}
