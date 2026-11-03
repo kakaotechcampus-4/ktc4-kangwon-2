@@ -28,7 +28,7 @@ import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
 import { routinesPath, routinesScope } from "@/lib/workspace/routines-route";
 import { classServerId } from "@/lib/api/onboarding";
-import { isStale, tallyFor, tallyLabel } from "@/lib/workspace/child-mark";
+import { isStale, staleLabel, tallyFor } from "@/lib/workspace/child-mark";
 import {
   emptyDay,
   firstWrittenDay,
@@ -51,6 +51,15 @@ const DASH = "border-0 border-t border-dashed border-line";
 const LABEL = "text-[13px] font-medium tracking-[0.12em]";
 /** 일과를 얼마나 거슬러 보나. 두 주면 「비어 있는 날」이 들어온다. */
 const LOOK_BACK = 14;
+/** 칠판에 붙이는 아이 쪽지. 색과 기울기를 번갈아 쓴다 — 같은 모양이 줄줄이 붙으면 한 장으로 보인다. */
+const KID_NOTE = [
+  "border-note-soft-line bg-note-soft -rotate-2",
+  "border-plum-line bg-plum rotate-2",
+  "border-clay-line bg-clay -rotate-1",
+  "border-sage-line bg-sage-tint rotate-1",
+];
+/** 칠판에 붙이는 쪽지 수. 넘치는 아이는 수만 분필로 적는다. */
+const PINNED = 4;
 
 export default function HomePage() {
   const [message, setMessage] = useState("");
@@ -212,7 +221,9 @@ export default function HomePage() {
               {lastWeek && <LastWeekNote look={lastWeek} />}
             </div>
 
-            <div className="flex min-w-0 flex-col gap-8 xl:w-[310px] xl:shrink-0">
+            {/* 오른쪽 줄은 교실 칠판이다. 칸 제목은 쪽지 안이 아니라 판에 분필로 쓰고,
+                쪽지는 그 밑에 붙는다 — 종이마다 머리글이 달리면 쪽지가 서류로 보인다. */}
+            <div className="chalkboard flex min-w-0 flex-col gap-7 px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0">
               {todayDate && (
                 <UnseenChildren
                   roster={activeClass?.children ?? []}
@@ -501,10 +512,9 @@ function ChildSpotlight({
     : "/records";
 
   return (
-    <section className="relative border border-note-soft-line bg-note-soft p-5 shadow-pg-hard">
+    <BoardSection title="한 아이, 조금 더 가까이">
+      <div className="relative mt-1 border border-note-soft-line bg-note-soft p-5 shadow-pg-hard">
       <Tape />
-      <span className="text-[13px] font-semibold text-sun-ink">한 아이, 조금 더 가까이</span>
-
       {!child ? (
         <p className="mt-4 text-xs text-sun-ink">아직 등록된 아이가 없어요.</p>
       ) : (
@@ -529,10 +539,12 @@ function ChildSpotlight({
             </p>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-2">
+          {/* 칠판 안은 264px 밖에 안 된다. 「이 아이 기록 보기」와 넘기기가 한 줄에
+              안 들어가면 줄을 바꾼다 — 글자가 두 줄로 쪼개지면 화살표만 따로 떠 보인다. */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <Link
               href={childHref}
-              className="flex min-h-11 items-center gap-1 text-[13px] font-semibold text-sun-ink"
+              className="flex min-h-11 items-center gap-1 whitespace-nowrap text-[13px] font-semibold text-sun-ink"
             >
               이 아이 기록 보기
               <Icon name="arrow" className="h-3 w-3" />
@@ -561,7 +573,8 @@ function ChildSpotlight({
           </div>
         </>
       )}
-    </section>
+      </div>
+    </BoardSection>
   );
 }
 
@@ -682,11 +695,50 @@ function TodaySlip({
   );
 }
 
+/** 칠판 한 칸 — 분필로 쓴 제목, 그 아래 붙인 쪽지, 맨 끝에 더 보러 가는 길. */
+function BoardSection({
+  title,
+  href,
+  linkLabel,
+  children,
+}: {
+  title: string;
+  href?: string;
+  linkLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-3">
+      <h2 className="font-display text-[20px] font-bold leading-tight text-board-ink">{title}</h2>
+      {children}
+      {href && linkLabel && (
+        <Link
+          href={href}
+          className="self-start font-display text-[17px] font-bold text-board-ink-soft underline underline-offset-4"
+        >
+          {linkLabel}
+        </Link>
+      )}
+    </section>
+  );
+}
+
+/** 칠판에 쓰는 분필 글. 쪽지가 없는 자리를 빈 칸으로 두지 않는다. */
+function ChalkLine({ children }: { children: ReactNode }) {
+  return (
+    <p className="font-display text-[18px] leading-[1.6] text-board-ink-soft">{children}</p>
+  );
+}
+
 /**
- * 아직 못 만난 아이 — 한 주 넘게 기록이 없는 아이.
+ * 아직 안 적은 아이 — 한 주 넘게 기록이 없는 아이.
  *
  * 평가제에서 교사가 제일 걱정하는 것이 기록의 치우침이다. 셈은 아이 고르개와 **같은
  * 것**을 쓴다(`child-mark.ts`) — 두 자리가 다른 숫자를 말하면 둘 다 못 믿는다.
+ *
+ * **쪽지는 넉 장까지만 붙인다.** 반이 스물이면 비어 있는 아이가 열을 넘을 수 있는데,
+ * 그걸 다 붙이면 첫 화면이 빚 목록이 된다. 310px 폭에 두 장씩 두 줄이 꼭 맞고,
+ * 다섯 장이 되면 세 줄이 되면서 아래 칸이 첫 화면 밖으로 밀린다.
  */
 function UnseenChildren({
   roster,
@@ -703,35 +755,66 @@ function UnseenChildren({
   const unseen = roster
     .map((child) => ({ child, tally: tallyFor(records, child.id, today) }))
     .filter(({ tally }) => isStale(tally))
-    .sort((a, b) => waited(b.tally.days) - waited(a.tally.days))
-    .slice(0, 6);
+    .sort((a, b) => waited(b.tally.days) - waited(a.tally.days));
+  const pinned = unseen.slice(0, PINNED);
+  const rest = unseen.length - pinned.length;
+  // 쓰기 시작한 날엔 반 전체가 0번이다. 그날 스무 장을 붙이면 첫날부터 빚이 보인다.
+  const neverStarted =
+    unseen.length === roster.length && unseen.every(({ tally }) => tally.days === null);
 
   return (
-    <TornNote tone="bg-sage-tint" tape="left-1/2 -translate-x-1/2 -rotate-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className={`${LABEL} min-w-0 text-sage-ink`}>아직 못 만난 아이</h2>
-        <Link
-          href="/records/children"
-          className="shrink-0 text-xs font-semibold text-sage-ink underline"
-        >
-          아이별로 →
-        </Link>
-      </div>
+    <BoardSection title="아직 안 적은 아이" href="/records/children" linkLabel="아이들 전부 보기 →">
       {unseen.length === 0 ? (
-        <p className="mt-3 text-xs text-ink-soft">한 주 안에 반 아이 모두 한 번씩 적혔어요.</p>
+        <ChalkLine>
+          이번 주{" "}
+          <span className="relative inline-block">
+            <span className="text-[40px] font-bold leading-none text-board-ink">모두</span>
+            {/* 「다 적었다」는 표시다. 워드마크에서 뺀 그 마크를 여기서는 칭찬으로 쓴다. */}
+            <Icon
+              name="star"
+              aria-hidden="true"
+              className="absolute -right-[18px] -top-1 h-[17px] w-[17px] text-board-ink"
+            />
+          </span>
+          <br />한 번씩 적혔어요
+        </ChalkLine>
+      ) : neverStarted ? (
+        <ChalkLine>
+          아직 아무도 안 적혔어요.
+          <br />
+          오늘 <b className="text-board-ink">한 명</b>부터 시작해요
+        </ChalkLine>
       ) : (
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {unseen.map(({ child, tally }) => (
-            <li key={child.id}>
-              <span className="flex min-h-9 items-center gap-2 rounded-md bg-ivory px-2.5 text-[13px] text-ink">
-                {child.name}
-                <b className="font-semibold text-sage-ink">{tallyLabel(tally)}</b>
-              </span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-wrap gap-x-3 gap-y-4 pt-2">
+            {pinned.map(({ child, tally }, i) => (
+              <li key={child.id}>
+                <span
+                  className={`relative block w-[94px] border px-3 pb-3 pt-2.5 shadow-[0_3px_7px_rgba(0,0,0,.3)] ${KID_NOTE[i % KID_NOTE.length]}`}
+                >
+                  {/* 아이 쪽지는 작아서 본문 테이프(w-20)가 쪽지보다 넓다. 여기만 좁게 붙인다. */}
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape"
+                  />
+                  <span className="block font-display text-[22px] font-bold leading-none text-ink">
+                    {child.name}
+                  </span>
+                  <span className="mt-1.5 block whitespace-nowrap text-[11.5px] text-ink-soft">
+                    {staleLabel(tally)}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {rest > 0 && (
+            <ChalkLine>
+              그 밖에 <b className="text-board-ink">{rest}명</b> 더
+            </ChalkLine>
+          )}
+        </>
       )}
-    </TornNote>
+    </BoardSection>
   );
 }
 
@@ -741,27 +824,28 @@ function UnseenChildren({
  */
 function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
   return (
-    <TornNote tone="bg-peach" tape="right-8 rotate-3">
-      <h2 className={`${LABEL} text-peach-ink`}>비어 있는 날</h2>
-      <div className="mt-2 flex items-baseline gap-3">
-        <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
-          {shortDate(date)}
-        </span>
-        <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
-          일과가 없어
-          <br />
-          일지를 못 만들어요
-        </span>
-      </div>
-      {href && (
-        <Link
-          href={href}
-          className="mt-3 inline-flex min-h-10 items-center rounded-md bg-ivory px-4 text-xs font-semibold text-ink"
-        >
-          그날 채우기
-        </Link>
-      )}
-    </TornNote>
+    <BoardSection title="비어 있는 날">
+      <TornNote tone="bg-peach" tape="right-8 rotate-3">
+        <div className="flex items-baseline gap-3">
+          <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
+            {shortDate(date)}
+          </span>
+          <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
+            일과가 없어
+            <br />
+            일지를 못 만들어요
+          </span>
+        </div>
+        {href && (
+          <Link
+            href={href}
+            className="mt-3 inline-flex min-h-10 items-center rounded-md bg-ivory px-4 text-xs font-semibold text-ink"
+          >
+            그날 채우기
+          </Link>
+        )}
+      </TornNote>
+    </BoardSection>
   );
 }
 

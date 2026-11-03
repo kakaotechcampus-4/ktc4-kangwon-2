@@ -48,6 +48,8 @@ export const planGeneratorThemeExtend = {
     ink: "var(--pg-ink)",
     "ink-soft": "var(--pg-ink-soft)",
     "ink-hint": "var(--pg-ink-hint)",
+    "board-ink": "var(--pg-board-ink)",
+    "board-ink-soft": "var(--pg-board-ink-soft)",
     primary: {
       DEFAULT: "var(--pg-primary)",
       hover: "var(--pg-primary-hover)",
