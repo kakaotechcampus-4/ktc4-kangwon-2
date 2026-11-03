@@ -49,12 +49,14 @@ export interface Database {
   defaultPointers: Record<number, MockPointer>;
   overridePointers: Record<number, MockPointer>;
   /**
-   * 승인된 기반 Template(`template_id@template_version`). 서버 데이터와 같게 v0.2.1 은 승인,
+   * 승인된 기반 Template(`template_id@template_version`). 서버 데이터와 같게 v0.2.1 ~ v0.2.3 은 승인,
    * v0.1.1 은 검토 대기로 시작한다(p0-planning/data/templates `review.domain_owner_approval`).
    */
   approvedTemplates: string[];
 }
-const SERVER_APPROVED = ["ssuksak.monthly-template-a@monthly-template-a-v0.2.1"];
+const SERVER_APPROVED = ["v0.2.1", "v0.2.2", "v0.2.3"].map(
+  (v) => "ssuksak.monthly-template-a@monthly-template-a-" + v,
+);
 /** 연간계획안 + 서버가 목록 · 확정 응답에만 주는 시각. 단건 응답에서는 뺀다. */
 export type MockAnnualPlan =
   | (AnnualPlan & { created_at: string; confirmed_at: string | null })

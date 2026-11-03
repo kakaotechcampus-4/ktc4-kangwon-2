@@ -73,6 +73,7 @@ const cellValue = (key: string, theme: string, week: number) =>
     theme,
     focus: theme + " — " + week + "주 놀이",
     outdoor_play: week + "주 바깥 놀이",
+    indoor_alternative: week + "주 실내 대체 놀이",
     goals: theme + "을(를) 즐겁게 탐색한다",
     basic_habit: week + "주 기본생활 습관",
   })[key] ?? "";
