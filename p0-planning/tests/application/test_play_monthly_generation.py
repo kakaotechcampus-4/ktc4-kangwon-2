@@ -307,6 +307,10 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert plans.save_count == 1 and plans.get(plan.plan_id) == plan
     assert parents.save_count == 1  # only the fixture save; the parent is never written
     assert len(provider.requests) == 1
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
+    assert NATURAL_PLAY_GUIDANCE in provider.requests[0].system_prompt
+    assert SAFETY_TEXT_GUIDANCE in provider.requests[0].system_prompt
+    assert "소재나 도구 이름만으로 배움을 연결" in provider.requests[0].system_prompt
     assert (len(plan.together), len(plan.free_play)) == (5, 5)
     kinds = [c.kind for c in plan.safety_candidates]
     assert kinds == [SafetyKind.STATUTORY] * 6 + [SafetyKind.SUPPLEMENTAL] * 2
@@ -646,6 +650,9 @@ def test_repair_fixes_only_the_flagged_row():
     plan = use_case.execute(command)
 
     assert plans.save_count == 1 and len(provider.requests) == 2
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
+    assert NATURAL_PLAY_GUIDANCE in provider.requests[1].system_prompt
+    assert SAFETY_TEXT_GUIDANCE in provider.requests[1].system_prompt
     repair = json.loads(provider.requests[1].user_content)
     assert repair["issues"] == [{"location": "together[2]", "code": "UNKNOWN_CONTENT_ID"}]
     versions = [a.cell.generation.rule_version for a in plan.together]

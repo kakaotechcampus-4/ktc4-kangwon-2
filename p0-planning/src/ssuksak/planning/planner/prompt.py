@@ -29,7 +29,7 @@ from .contracts import (
     generation_target_sections,
 )
 from .text_policy import MAX_VISIBLE_TEXT_CHARS
-from .v1_guidance import V1_GUIDANCE, curriculum_context
+from .v1_guidance import SAFETY_TEXT_GUIDANCE, V1_GUIDANCE, curriculum_context
 from ..retrieval.models import AGE_VERIFIABLE_TIERS
 from .validation import ProposalValidationIssue, is_safety_grounding, repair_targets, wrong_source_refs
 
@@ -113,8 +113,7 @@ borrow an unrelated activity or add a subject the cited text does not have.
 SAFETY_CANDIDATES_PROMPT = """safety_candidates lists this month's safety education candidates; a teacher
 later places them into weeks. Return one month_sections entry per candidate,
 keyed by its section_key, with unresolved false and reference_id null.
-Write one short Korean sentence for young children that makes clear what the
-candidate teaches; when its cited text states an action, show that action.
+""" + SAFETY_TEXT_GUIDANCE + """
 Never write a category name, brackets or a leading dash: the application adds
 the label.
 A STATUTORY candidate cites exactly one of its allowed grounding_refs; a
@@ -140,7 +139,8 @@ MONTHLY_V1_STYLE = """
   하나의 소주제를 여러 주로 세분화하느라 다른 주요 내용을 빠뜨리지 않는다. 주차 순서나 1:1 배치는 강제하지 않는다.
   다른 놀이를 넣으려고 소주제 범위를 넓히지 않고, 고르기 쉬운 놀이에 맞추려고 focus를 다른 대상으로 바꾸지 않는다.
 - 작성 순서: parent_subthemes → focus → 같은 주 outdoor_play → indoor_alternative. 각 칸은 허용된 근거 범위를 지킨다.
-- outdoor_play · indoor_alternative: 대상과 경험이 드러나는 짧은 활동명으로 쓴다. reference_id로 고른 활동은 그 이름 그대로 둔다.
+- outdoor_play · indoor_alternative: 대상과 경험이 드러나는 짧고 익숙한 활동명으로 쓰며 원 근거의 자연스러운 표현을 우선한다.
+  명사를 압축해 뜻이 모호한 이름을 만들거나 근거에 없는 대상·재료를 더하지 않는다. reference_id로 고른 활동은 그 이름 그대로 둔다.
 - outdoor_play: 같은 주에 focus가 있으면 그 핵심 대상·경험과 이어지는 놀이를 쓴다. 허용 근거나 reference_activities에
   그런 놀이가 있으면 그것을 고르고, 관련 없는 활동을 편하다는 이유로 고르지 않는다.
 - indoor_alternative: 같은 주 바깥놀이의 대상·경험을 실내에서 이어 가되 '바깥 … 대신 실내에서'처럼 설명하지 않는다.

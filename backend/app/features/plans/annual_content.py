@@ -27,12 +27,15 @@ class _Draft(BaseModel):
     months: list[_Month] = Field(min_length=12, max_length=12)
 
 
+ANNUAL_SUBTHEMES_PROMPT_VERSION = "annual-subthemes-v3"
+
 SYSTEM_PROMPT = """어린이집 만3~5세반의 연간계획안 소주제 초안을 쓴다.
 각 달의 주제(theme), 대상 월(month), 반 연령(target_ages) 범위 안에서 소주제를 쓴다.
 소주제 개수는 입력 week_count(4 또는 5)와 정확히 같아야 한다.
 짧은 한국어 명사구로 쓰고 각 소주제는 120자 이내로 제한한다.
 주제를 바꾸지 않는다. 달의 계절·생활 맥락을 살피되 날씨·행사 개최를 단정하지 않는다.
 같은 달의 소주제는 서로 다른 측면을 다루고, 월 주제를 그대로 반복하지 않는다.
+월 주제가 담은 주요 대상과 경험을 목록 전체에서 유지한다. 하나의 소재만 여러 개로 나누느라 다른 주요 내용을 빠뜨리지 않는다.
 월간으로 구체화할 수 있는 짧고 익숙한 대상·경험을 쓰며 추상적인 표어를 나열하지 않는다.
 소주제 목록은 예상 순서이며 실제 운영 일정·활동 순서·결과물을 확정하지 않는다.
 실행한 사실·아동 이름·날짜·안전교육 배치·법적 충족 판정을 만들지 않는다.
@@ -69,7 +72,7 @@ def subthemes_for_month(stored, month: int) -> tuple[str, ...]:
 def generate_subthemes(plan: YearlyPlan, *, transport=None) -> dict[str, list[str]]:
     months = tuple(period.period.calendar_month for period in plan.periods)
     payload = {
-        "prompt_version": "annual-subthemes-v2",
+        "prompt_version": ANNUAL_SUBTHEMES_PROMPT_VERSION,
         "curriculum_context": approved_curriculum_context(),
         "target_ages": sorted(plan.target_ages),
         "months": [

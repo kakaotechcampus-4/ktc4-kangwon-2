@@ -18,11 +18,14 @@ from ssuksak.planning.planner.v1_guidance import V1_GUIDANCE, curriculum_context
 
 from app.shared.llm import LlmFailed, complete_json, is_mock, require_config
 
+ANNUAL_THEME_PROMPT_VERSION = "annual-theme-text-v3"
+
 SYSTEM_PROMPT = """너는 어린이집 교사의 연간보육계획안 작성을 돕는다.
 
 주어진 달마다 **주제 문장 하나**를 쓴다. 규칙:
 
 1. 반드시 참고자료의 주제(reference_label)를 벗어나지 않는다. 새 주제를 지어내지 않는다.
+   원 주제의 주요 범위를 유지한다. 말은 쉽게 바꾸되, 넓은 주제를 쓰기 쉬운 일부 소재로 임의로 좁히지 않는다.
 2. 한국어로 쓴다. 15자 이내의 명사구로 끝낸다.
 3. 대상 연령(target_ages)이 알아들을 수 있는 말을 쓴다.
 4. 활동·교구·날짜를 쓰지 않는다. 그건 월간계획안이 정한다.
@@ -65,7 +68,7 @@ class EliceThemeTextGenerator:
 def _user_content(requests: tuple[ThemeTextRequest, ...]) -> str:
     return json.dumps(
         {
-            "prompt_version": "annual-theme-text-v2",
+            "prompt_version": ANNUAL_THEME_PROMPT_VERSION,
             "curriculum_context": approved_curriculum_context(),
             "months": [
                 {

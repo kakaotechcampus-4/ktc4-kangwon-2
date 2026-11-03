@@ -5,10 +5,18 @@ from dataclasses import asdict
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.errors import InvalidDomainValueError
 
-# The existing v2 description guidance, shared without changing its prompt bytes.
+# Shared play expression criteria; callers version their prompts when this changes.
 NATURAL_PLAY_GUIDANCE = (
     "놀이마다 중요한 대상과 탐색을 중심으로 자연스럽게 쓴다 — 모든 설명을 재료 준비로 시작하거나 같은 문장 구조 · 맺는말로 되풀이하지 않는다. "
     "준비 제안이라는 뜻을 매번 「제안합니다」로 나타낼 필요는 없다. "
+    "놀이 이름은 입력 자료의 익숙하고 자연스러운 표현을 우선하며, 명사를 압축해 대상이 모호한 이름을 만들지 않는다. "
+    "설명은 유아가 살펴보거나 표현할 대상과 놀이 행동이 읽히게 쓰고, 추상적인 관심이나 경험의 나열로 끝내지 않는다. "
+)
+
+SAFETY_TEXT_GUIDANCE = (
+    "안전교육은 주의할 대상·상황이나 배울 내용이 식별되는 짧은 한 문장으로 쓴다. "
+    "허용 근거 중 그 내용을 분명하게 말할 수 있는 항목을 우선하고, 인용한 근거에 행동이 있을 때는 그 행동을 드러낸다. "
+    "뜻을 가르는 조건·부정 표현은 남기며, 더 구체적으로 보이려고 근거에 없는 대상·행동·재료·절차를 보태지 않는다. "
 )
 
 V1_GUIDANCE = """
