@@ -23,6 +23,7 @@ import { classServerId, syncClass } from "@/lib/api/onboarding";
 import type { MonthlyPlan } from "@/lib/api/types";
 import { isPlayAnnual } from "@/lib/monthly/play-entry";
 import { loadClassSettings } from "@/lib/onboarding/settings";
+import { planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { archivePlanEntry } from "@/lib/workspace/document-archive";
 import MonthlyPlanEditor from "./MonthlyPlanEditor";
@@ -185,7 +186,10 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
         onDelete={handleDelete}
         onBack={() => void leave(onBack)}
         flushRef={flush}
-        className={classes.find((c) => c.id === localClassId)?.className ?? ""}
+        className={(() => {
+          const klass = classes.find((c) => c.id === localClassId);
+          return klass ? planClassLine(klass) : "";
+        })()}
         notice={
           (message || problem) && (
             <>

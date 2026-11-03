@@ -39,13 +39,13 @@ import AnnualFrame, {
 import {
   Band,
   Cell,
-  HEAD,
   LINE,
   Paper,
   PAPER_WIDTH,
   WeekHead,
   period,
   safetyCellId,
+  TEACHER_HINT,
 } from "@/components/plan-generator/PlayMonthlySheet";
 import { noticeSummary } from "@/components/plan-generator/PlayMonthlyView";
 import { useCompactShell } from "@/components/app/compact-shell";
@@ -73,6 +73,10 @@ function describe(e: unknown, fallback: string): string {
   if (e instanceof ApiError) return e.message;
   return e instanceof Error ? e.message : fallback;
 }
+
+/** 한글 양식(monthly_v1_*weeks.hwpx)처럼 굵은 검정 머리칸. */
+const LABEL = `${LINE} bg-[#e6f3fc] px-1 py-1 font-bold`;
+const HINT = "px-1.5 py-1 align-top text-[11px] text-[#8a8178]";
 
 export default function MonthlyPlanEditor({
   plan,
@@ -522,7 +526,7 @@ export default function MonthlyPlanEditor({
     const safetyRow = candidateMode && section.section_key === "safety_education";
     return (
       <tr key={section.section_key}>
-        <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
+        <th scope="row" className={LABEL}>
           {sectionName(section.section_key, section.label)}
         </th>
         {section.repeat_by !== "WEEK" ? (
@@ -569,7 +573,7 @@ export default function MonthlyPlanEditor({
   const docOf = (at: Pick, scale?: number) => (
     <Paper
       label="월간계획안 미리보기"
-      title={`${plan.month}월 월간계획안`}
+      title={`${plan.month}월 놀이계획안`}
       sub={className}
       scale={scale}
     >
@@ -579,20 +583,28 @@ export default function MonthlyPlanEditor({
           <col />
         </colgroup>
         <tbody>
-          <tr>
-            <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
-              예상 기간
-            </th>
-            <td className={`${LINE} px-1.5 py-1`}>{period(weeks)}</td>
-          </tr>
-          {top.map((section) => (
-            <tr key={section.section_key}>
-              <th scope="row" className={`${LINE} ${HEAD} px-1 py-1`}>
-                {sectionName(section.section_key, section.label)}
-              </th>
-              <td className={`${LINE} align-top`}>{one(section, at)}</td>
-            </tr>
-          ))}
+          {/* 한글 양식 순서 — 놀이 주제 · 예상 기간 · 이번 달 목표 … */}
+          {[
+            ...top.filter((s) => s.section_key === "theme"),
+            null,
+            ...top.filter((s) => s.section_key !== "theme"),
+          ].map((section) =>
+            section ? (
+              <tr key={section.section_key}>
+                <th scope="row" className={LABEL}>
+                  {sectionName(section.section_key, section.label)}
+                </th>
+                <td className={`${LINE} align-top`}>{one(section, at)}</td>
+              </tr>
+            ) : (
+              <tr key="period">
+                <th scope="row" className={LABEL}>
+                  예상 기간
+                </th>
+                <td className={`${LINE} px-1.5 py-1`}>{period(weeks)}</td>
+              </tr>
+            ),
+          )}
         </tbody>
       </table>
       {rest.length > 0 && (
@@ -608,7 +620,7 @@ export default function MonthlyPlanEditor({
             </colgroup>
             <thead>
               <tr>
-                <th scope="col" className={`${LINE} ${HEAD}`}>
+                <th scope="col" className={LABEL}>
                   구분
                 </th>
                 {weeks.map((w, i) => (
@@ -616,10 +628,65 @@ export default function MonthlyPlanEditor({
                 ))}
               </tr>
             </thead>
-            <tbody>{rest.map((section) => row(section, at))}</tbody>
+            <tbody>
+              {rest.map((section) => row(section, at))}
+              {!rest.some((s) => s.section_key === "drill") && (
+                <tr>
+                  <th scope="row" className={LABEL}>
+                    소방대피/
+                    <br />
+                    재난대비
+                  </th>
+                  <td colSpan={span} className={`${LINE} ${HINT}`}>
+                    {TEACHER_HINT}
+                  </td>
+                </tr>
+              )}
+            </tbody>
           </table>
         </>
       )}
+      {/* 한글 양식의 선생님이 적는 표 — 계획안이 만들지 않는 칸이라 빈칸으로 둔다. */}
+      <table className="mt-2 w-full table-fixed border-collapse">
+        <colgroup>
+          <col style={{ width: "17%" }} />
+          <col />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th scope="row" className={`${LABEL} h-12`}>
+              행사 일정
+            </th>
+            <td className={`${LINE} ${HINT}`}>{TEACHER_HINT}</td>
+          </tr>
+        </tbody>
+      </table>
+      {[
+        ["특성화 시간표", ["", "", "", "", ""]],
+        ["특별활동 시간표", ["월", "화", "수", "목", "금"]],
+      ].map(([name, days]) => (
+        <div key={name as string} className="mt-2">
+          <Band>{name}</Band>
+          <table className="w-full table-fixed border-collapse">
+            <tbody>
+              <tr>
+                {(days as string[]).map((d, i) => (
+                  <th key={i} scope="col" className={`${LINE} h-6 bg-[#e6f3fc] font-bold`}>
+                    {d}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {(days as string[]).map((_, i) => (
+                  <td key={i} className={`${LINE} ${HINT} h-12`}>
+                    {TEACHER_HINT}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ))}
     </Paper>
   );
   // Ⓜ4 — 확정본 · 한글 내보내기 · 주간 만들기로.
