@@ -4,6 +4,8 @@
  * 월간계획안 만들기(Ⓜ1) — 연간을 확정한 뒤. 월별 주제형 · 놀이 중심형이 한 틀이다.
  * 달 12칸(확정한 달은 잠김, 작성 중인 달은 누르면 그 초안으로), 연간에서 이어받는 내용,
  * 놀이형은 이번 달에 집중할 놀이(`emphasized_row_keys`). 만드는 동안은 원형 화면(Ⓜ2)이다.
+ * 월별 주제형은 넣을 칸도 여기서 고른다(따로 양식 화면이 없다). 고른 칸이 지금 양식과 다르면
+ * 새 양식(§9-4)을 만들어 원 기본으로 걸고 그 양식으로 만든다.
  * 요청 사항(메모)은 서버에 받을 칸이 없어 두지 않는다(백엔드 요청 #1).
  */
 
@@ -14,9 +16,23 @@ import { ApiError } from "@/lib/api/client";
 import { createMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { createPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
 import { getAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
-import { syncClass } from "@/lib/api/onboarding";
-import { getClassTemplateProfile } from "@/lib/api/templateProfiles";
-import type { AnnualPlanResponse, ProfileRef } from "@/lib/api/types";
+import { syncCenter, syncClass } from "@/lib/api/onboarding";
+import {
+  createTemplateProfile,
+  getCenterDefaultProfile,
+  getClassTemplateProfile,
+  listMonthlyTemplates,
+  listReadyTemplateProfiles,
+  putCenterDefaultProfile,
+} from "@/lib/api/templateProfiles";
+import type {
+  AnnualPlanResponse,
+  MonthlyTemplate,
+  ProfileRef,
+  ReadyProfile,
+  TemplateProfileInput,
+} from "@/lib/api/types";
+import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER, ageSelectionLabel, selectedAgesFor } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -80,6 +96,70 @@ export function inheritOf(annual: AnnualPlanResponse | null, month: number): Inh
   };
 }
 
+/** 칸을 고를 기반 양식: 지금 양식의 기반이 아직 승인돼 있으면 그것, 아니면 승인된 최신 판. */
+export function pickTemplate(items: MonthlyTemplate[], current: ReadyProfile | null) {
+  const approved = items.filter((t) => t.approved);
+  const base = current?.base_template_ref;
+  return (
+    approved.find(
+      (t) =>
+        t.template_ref.template_id === base?.template_id &&
+        t.template_ref.template_version === base?.template_version,
+    ) ??
+    approved
+      .sort((a, b) =>
+        a.template_ref.template_version.localeCompare(b.template_ref.template_version, undefined, {
+          numeric: true,
+        }),
+      )
+      .pop() ??
+    null
+  );
+}
+
+/** 처음 켜 둘 칸: 지금 양식에서 켠 칸 중 이 기반 양식이 고르게 하는 것. */
+export const firstExtras = (template: MonthlyTemplate, current: ReadyProfile | null) =>
+  (current?.selected_optional_keys ?? []).filter((k) =>
+    template.sections.some((s) => s.section_key === k && s.selection === "OPTIONAL"),
+  );
+
+/** 지금 양식이 고른 칸과 같으면 그대로 쓴다 — 같은 양식을 또 만들지 않는다. */
+export const sameColumns = (
+  current: ReadyProfile | null,
+  template: MonthlyTemplate,
+  extras: string[],
+) =>
+  !!current &&
+  current.base_template_ref.template_version === template.template_ref.template_version &&
+  current.base_template_ref.template_id === template.template_ref.template_id &&
+  current.selected_optional_keys.length === extras.length &&
+  extras.every((k) => current.selected_optional_keys.includes(k));
+
+/**
+ * 고른 칸으로 원 양식(Profile)을 시작하는 요청 (§9-4).
+ * 화면 이름을 같이 보낸다 — 안 보내면 표의 행 이름이 기계 이름으로 뜬다.
+ * 소주제를 켜면 그 뜻도 보내야 서버가 받는다(없으면 422 `focus_variant`). 화면이 「소주제」라 부르니 SUBTHEME.
+ */
+export function profileInput(template: MonthlyTemplate, extras: string[]): TemplateProfileInput {
+  const shown = template.sections.filter(
+    (s) =>
+      s.selection === "REQUIRED" || (s.selection === "OPTIONAL" && extras.includes(s.section_key)),
+  );
+  const variants = template.focus_variants;
+  return {
+    base_template_ref: template.template_ref,
+    selected_optional_keys: extras,
+    display_labels: Object.fromEntries(
+      shown.map((s) => [s.section_key, sectionName(s.section_key, s.label)]),
+    ),
+    focus_variant: extras.includes("focus")
+      ? variants.includes("SUBTHEME")
+        ? "SUBTHEME"
+        : (variants[0] ?? "SUBTHEME")
+      : null,
+  };
+}
+
 export function MonthlyNewView(props: {
   play: boolean;
   meta: string;
@@ -88,6 +168,10 @@ export function MonthlyNewView(props: {
   plans: Plans;
   inherit: Inherit | null;
   focus: string[];
+  /** 월별 주제형만: 칸을 고를 기반 양식과 더 넣을 칸. 이미 있는 달은 고르지 않는다. */
+  template?: MonthlyTemplate | null;
+  extras?: string[];
+  onExtras?: (keys: string[]) => void;
   /** 만들 수 없는 까닭(버튼 아래 한 줄). null 이면 만들 수 있다. */
   blocked: ReactNode;
   problem: string;
@@ -95,7 +179,7 @@ export function MonthlyNewView(props: {
   onFocus: (keys: string[]) => void;
   onCreate: () => void;
 }) {
-  const { play, month, plans, inherit, focus, blocked } = props;
+  const { play, month, plans, inherit, focus, blocked, template, extras = [] } = props;
   const look = play ? LOOK.play : LOOK.theme;
   return (
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
@@ -211,6 +295,47 @@ export function MonthlyNewView(props: {
             )}
           </div>
 
+          {!play && template && !plans[month] && (
+            <fieldset className="m-0 flex shrink-0 flex-col gap-1.5 border-0 p-0">
+              <legend className="mb-2.5 p-0 text-lg font-bold">어떤 칸을 넣을까요?</legend>
+              <p className="m-0 mb-1 text-[13px] text-[#5c5243]">
+                꼭 들어가요 ·{" "}
+                {template.sections
+                  .filter((s) => s.selection === "REQUIRED")
+                  .map((s) => sectionName(s.section_key, s.label))
+                  .join(" · ")}
+              </p>
+              {template.sections
+                .filter((s) => s.selection === "OPTIONAL")
+                .map((s) => {
+                  const on = extras.includes(s.section_key);
+                  return (
+                    <label
+                      key={s.section_key}
+                      className={`flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-3 text-[14px] ${on ? "bg-[#f6f1fb] font-bold" : "bg-[#f7f4ee]"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() =>
+                          props.onExtras?.(
+                            on
+                              ? extras.filter((k) => k !== s.section_key)
+                              : [...extras, s.section_key],
+                          )
+                        }
+                        className="h-[18px] w-[18px] accent-[#7053a0]"
+                      />
+                      {sectionName(s.section_key, s.label)}
+                      <span className="ml-auto text-[12px] font-normal text-[#8a8178]">
+                        {s.repeat_by === "WEEK" ? "주마다" : "한 달에 한 번"}
+                      </span>
+                    </label>
+                  );
+                })}
+            </fieldset>
+          )}
+
           {props.problem && (
             <p
               role="alert"
@@ -259,8 +384,36 @@ type Loaded = {
   classId: number;
   annual: AnnualPlanResponse | null;
   plans: Plans;
-  profile: ProfileRef | null;
+  /** 월별 주제형만. 원 id · 칸을 고를 기반 양식 · 반이 지금 쓰는 양식 · 원 기본 포인터. */
+  centerId: number | null;
+  template: MonthlyTemplate | null;
+  current: ReadyProfile | null;
+  pointer: ProfileRef | null;
 };
+
+const sameRef = (a: ProfileRef | null, b: ProfileRef | null) =>
+  !!a && !!b && a.profile_id === b.profile_id && a.profile_version === b.profile_version;
+
+/** 월별 주제형 칸 고르기에 필요한 것. 서버에 양식이 하나도 없어도 화면은 뜬다. */
+async function loadColumns(
+  settings: NonNullable<ReturnType<typeof loadClassSettings>>,
+  classId: number,
+) {
+  const centerId = await syncCenter(settings);
+  const [templates, ready, resolved, pointer] = await Promise.all([
+    listMonthlyTemplates(),
+    listReadyTemplateProfiles(centerId),
+    getClassTemplateProfile(classId),
+    getCenterDefaultProfile(centerId),
+  ]);
+  const current = ready.items.find((p) => sameRef(p.profile_ref, resolved.profile_ref)) ?? null;
+  return {
+    centerId,
+    template: pickTemplate(templates.items, current),
+    current,
+    pointer: pointer.profile_ref,
+  };
+}
 
 /** 고른 반의 연간 · 월간 목록 · 양식을 읽어 Ⓜ1 을 띄운다. 월별 주제형 초안은 `onOpen` 으로 연다. */
 export default function MonthlyNew({
@@ -276,6 +429,7 @@ export default function MonthlyNew({
   const [data, setData] = useState<Loaded | null>(null);
   const [month, setMonth] = useState<number | null>(null);
   const [focus, setFocus] = useState<string[]>([]);
+  const [extras, setExtras] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
@@ -291,15 +445,17 @@ export default function MonthlyNew({
         const summary = (await listAnnualPlans(classId)).items[0];
         const annual = summary ? await getAnnualPlan(summary.id) : null;
         const play = annual?.format === "PLAY_PROJECT";
-        const [list, profile] = await Promise.all([
+        const none = { centerId: null, template: null, current: null, pointer: null };
+        const [list, columns] = await Promise.all([
           play ? listPlayMonthly(classId) : listMonthlyPlans(classId),
-          play ? null : getClassTemplateProfile(classId).then((r) => r.profile_ref),
+          play || !annual ? none : loadColumns(settings, classId),
         ]);
         const plans: Plans = Object.fromEntries(
           list.items.map((p) => [p.month, { id: p.id, status: p.status }]),
         );
         if (!alive) return;
-        setData({ classId, annual, plans, profile });
+        setData({ classId, annual, plans, ...columns });
+        if (columns.template) setExtras(firstExtras(columns.template, columns.current));
         setMonth((m) => m ?? firstOpenMonth(new Date().getMonth() + 1, plans));
       } catch (e) {
         if (alive) setProblem(e instanceof Error ? e.message : "불러오지 못했어요.");
@@ -321,7 +477,7 @@ export default function MonthlyNew({
       </p>
     );
 
-  const { classId, annual, plans, profile } = data;
+  const { classId, annual, plans, centerId, template, current, pointer } = data;
   const play = annual?.format === "PLAY_PROJECT";
   const inherit = inheritOf(annual, month);
   const open = (m: number) => {
@@ -339,13 +495,8 @@ export default function MonthlyNew({
       연간계획안을 확정해야 월간을 만들 수 있어요.{" "}
       <Link href={`/plans/annual/${annual.id}`}>연간계획안 열기</Link>
     </>
-  ) : !play && !profile && !plans[month] ? (
-    <>
-      월간 양식을 먼저 정해 주세요.{" "}
-      <Link href="/plans/template" className="font-bold text-[#5e4b96]">
-        월간 양식 설정으로 가기
-      </Link>
-    </>
+  ) : !play && !template && !plans[month] ? (
+    "쓸 수 있는 월간 양식이 아직 없어요. 양식은 승인을 받아야 쓸 수 있어요."
   ) : null;
 
   async function create() {
@@ -364,9 +515,25 @@ export default function MonthlyNew({
           ctl.signal,
         );
         if (!ctl.signal.aborted) router.push(`/plans/monthly/play/${plan.id}`);
-      } else if (profile) {
+      } else if (template && centerId !== null) {
+        let ref = sameColumns(current, template, extras) ? current!.profile_ref : null;
+        if (!ref) {
+          // 양식 시작은 멱등이 아니다 — 만든 양식을 바로 「지금 양식」으로 둬서 다시 눌러도 또 만들지 않는다.
+          const made = await createTemplateProfile(
+            centerId,
+            profileInput(template, extras),
+            ctl.signal,
+          );
+          ref = made.profile_ref;
+          setData((d) => d && { ...d, current: made, pointer: made.profile_ref });
+          // 다음 달도 이 칸으로 시작하게 원 기본으로 건다. 못 걸어도 이번 달은 이 양식으로 만든다.
+          await putCenterDefaultProfile(centerId, {
+            profile_ref: ref,
+            expected_profile_ref: pointer,
+          }).catch(() => null);
+        }
         const plan = await createMonthlyPlan(
-          { class_id: classId, month, profile_ref: profile },
+          { class_id: classId, month, profile_ref: ref },
           ctl.signal,
         );
         if (!ctl.signal.aborted) onOpen({ id: plan.id, classId, month });
@@ -432,6 +599,9 @@ export default function MonthlyNew({
       plans={plans}
       inherit={inherit}
       focus={focus}
+      template={template}
+      extras={extras}
+      onExtras={setExtras}
       blocked={blocked}
       problem={problem}
       onMonth={(m) => (plans[m] ? open(m) : setMonth(m))}

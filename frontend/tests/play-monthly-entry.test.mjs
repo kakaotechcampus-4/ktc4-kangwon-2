@@ -28,30 +28,37 @@ const React = require("react");
 const { isPlayAnnual } = load("../lib/monthly/play-entry.ts", {});
 const MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 const stub = () => null;
-const { MonthlyNewView, firstOpenMonth, inheritOf } = load(
-  "../components/workspace/MonthlyNew.tsx",
-  {
-    react: React,
-    "next/link": {
-      __esModule: true,
-      default: ({ href, children }) => React.createElement("a", { href }, children),
-    },
-    "next/navigation": { useRouter: () => ({}) },
-    "@/lib/api/client": { ApiError: class {} },
-    "@/lib/api/monthly": {},
-    "@/lib/api/playMonthly": {},
-    "@/lib/api/plans": {},
-    "@/lib/api/onboarding": {},
-    "@/lib/api/templateProfiles": {},
-    "@/lib/onboarding/settings": {},
-    "@/lib/onboarding/types": { MONTH_ORDER, ageSelectionLabel: stub, selectedAgesFor: stub },
-    "@/lib/hooks/use-client-state": { useClientState: stub },
-    "@/components/plan-generator/playProjectPagination": { playSeason: (p) => ({ name: p.label }) },
-    "@/components/plan-ui/GenerationRing": { __esModule: true, default: stub },
-    "@/components/app/compact-shell": { useCompactShell: stub },
-    "./WorkspaceUI": { useClasses: stub },
+const monthlyLabels = load("../lib/monthly/section-labels.ts", {});
+const {
+  MonthlyNewView,
+  firstOpenMonth,
+  inheritOf,
+  pickTemplate,
+  firstExtras,
+  sameColumns,
+  profileInput,
+} = load("../components/workspace/MonthlyNew.tsx", {
+  react: React,
+  "next/link": {
+    __esModule: true,
+    default: ({ href, children }) => React.createElement("a", { href }, children),
   },
-);
+  "next/navigation": { useRouter: () => ({}) },
+  "@/lib/api/client": { ApiError: class {} },
+  "@/lib/api/monthly": {},
+  "@/lib/api/playMonthly": {},
+  "@/lib/api/plans": {},
+  "@/lib/api/onboarding": {},
+  "@/lib/api/templateProfiles": {},
+  "@/lib/monthly/section-labels": monthlyLabels,
+  "@/lib/onboarding/settings": {},
+  "@/lib/onboarding/types": { MONTH_ORDER, ageSelectionLabel: stub, selectedAgesFor: stub },
+  "@/lib/hooks/use-client-state": { useClientState: stub },
+  "@/components/plan-generator/playProjectPagination": { playSeason: (p) => ({ name: p.label }) },
+  "@/components/plan-ui/GenerationRing": { __esModule: true, default: stub },
+  "@/components/app/compact-shell": { useCompactShell: stub },
+  "./WorkspaceUI": { useClasses: stub },
+});
 
 test("놀이형 판별: 놀이형만 참, 목록 실패(null) · 월별 주제형 · 빈 목록은 기존 화면", () => {
   assert.equal(isPlayAnnual({ items: [{ format: "PLAY_PROJECT" }] }), true);
@@ -130,4 +137,64 @@ test("화면: 확정한 달은 잠김, 작성 중 표시, 있는 달은 열기, 
     /disabled=""[^>]*>12월 월간계획안 만들기<\/button><p[^>]*>연간을 먼저 확정해 주세요/,
   );
   assert.match(blocked, /role="alert"[^>]*>실패/);
+});
+
+test("월별 주제형 칸 고르기: 기반 양식 · 처음 켤 칸 · 같은 양식 재사용 · 시작 요청", () => {
+  const sec = (section_key, selection, repeat_by = "WEEK") => ({
+    section_key,
+    label: null,
+    role: "CONTENT",
+    repeat_by,
+    selection,
+  });
+  const tpl = (v, approved = true) => ({
+    template_ref: { template_id: "a", template_version: v },
+    approved,
+    sections: [
+      sec("theme", "REQUIRED", "NONE"),
+      sec("focus", "OPTIONAL"),
+      sec("goals", "OPTIONAL", "NONE"),
+      sec("drill", "INSTITUTION_INPUT"),
+    ],
+    focus_variants: ["EXPECTED_PLAY", "SUBTHEME"],
+  });
+  const items = [tpl("v0.2.1"), tpl("v0.10.0", false), tpl("v0.1.1")];
+  const current = {
+    profile_ref: { profile_id: "p", profile_version: 1 },
+    base_template_ref: { template_id: "a", template_version: "v0.1.1" },
+    selected_optional_keys: ["focus", "drill"],
+  };
+  assert.equal(pickTemplate(items, null).template_ref.template_version, "v0.2.1");
+  assert.equal(pickTemplate(items, current).template_ref.template_version, "v0.1.1");
+  assert.equal(pickTemplate([tpl("v1", false)], null), null);
+  const t = pickTemplate(items, current);
+  assert.deepEqual(firstExtras(t, current), ["focus"]);
+  assert.equal(sameColumns({ ...current, selected_optional_keys: ["focus"] }, t, ["focus"]), true);
+  assert.equal(sameColumns({ ...current, selected_optional_keys: ["focus"] }, t, ["goals"]), false);
+  assert.equal(sameColumns(null, t, []), false);
+  const input = profileInput(t, ["focus"]);
+  assert.deepEqual(Object.keys(input.display_labels), ["theme", "focus"]);
+  assert.equal(input.focus_variant, "SUBTHEME");
+  assert.equal(profileInput(t, ["goals"]).focus_variant, null);
+  const out = renderToStaticMarkup(
+    MonthlyNewView({
+      play: false,
+      meta: "",
+      back: { href: "/plans", label: "계획안" },
+      month: 12,
+      plans: {},
+      inherit: null,
+      focus: [],
+      template: t,
+      extras: ["goals"],
+      blocked: null,
+      problem: "",
+      onMonth() {},
+      onFocus() {},
+      onCreate() {},
+    }),
+  );
+  assert.match(out, /어떤 칸을 넣을까요\?/);
+  assert.equal((out.match(/type="checkbox"[^>]*checked=""/g) ?? []).length, 1);
+  assert.doesNotMatch(out, />drill</);
 });

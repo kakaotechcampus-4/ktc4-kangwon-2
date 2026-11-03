@@ -155,20 +155,10 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ]);
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
-  // 확정 화면 → 월간 → (양식이 없어) 월간 양식 설정.
+  // 확정 화면 → 월간 만들기. 넣을 칸은 만들기 화면에서 고른다(따로 양식 화면이 없다, 2026-11-03).
   await page.getByRole("link", { name: "월간계획안 만들기 →", exact: true }).click();
-  await page.getByRole("link", { name: "월간 양식 설정으로 가기", exact: true }).click();
-  // Latest approved version is preselected. Switching versions drops picks the other one lacks.
-  const base = page.getByLabel("기반 양식");
-  await expect(base).toHaveValue("monthly-template-a-v0.2.2");
-  await page.getByRole("checkbox", { name: /실내 대체활동/ }).check();
-  await base.selectOption("monthly-template-a-v0.2.1");
-  await base.selectOption("monthly-template-a-v0.2.2");
+  await expect(page.getByRole("group", { name: "어떤 칸을 넣을까요?" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /실내 대체활동/ })).not.toBeChecked();
-  await page.getByRole("button", { name: /칸으로 양식 만들기/ }).click();
-  await expect(page.getByText("새 양식을 만들고 원 기본으로 설정했어요.")).toBeVisible();
-  // 계획안 첫 화면에 월간 링크가 없다(2026-11-02 결정) — 주소로 간다.
-  await page.goto("/plans/monthly");
   await page.getByRole("button", { name: /월간계획안 만들기/ }).click();
   // 놀이 월간과 같은 화면: 문서에서 칸을 누르면 옆 패널에서 고치고, 입력을 멈추거나 떠나면 저장한다.
   const doc = page.getByRole("region", { name: "월간계획안 미리보기", exact: true });
