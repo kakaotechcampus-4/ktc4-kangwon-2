@@ -18,16 +18,16 @@ import {
 } from "@/lib/onboarding/settings";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
 import type { ClassroomEntry } from "@/lib/onboarding/types";
+import { Wordmark } from "./Wordmark";
 
 interface NavItem {
   key: string;
   label: string;
-  /** 접힌 65px 줄에 들어갈 짧은 이름. 없으면 `label` 을 그대로 쓴다. */
+  /** 접힌 75px 줄에 들어갈 짧은 이름. 없으면 `label` 을 그대로 쓴다. */
   short?: string;
   href: string;
   icon: IconName;
   match?: (path: string) => boolean;
-  desktopOnly?: boolean;
 }
 
 /**
@@ -48,19 +48,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "관찰",
         href: "/records",
         icon: "users",
-        match: (p) =>
-          (p.startsWith("/records") &&
-            p !== "/records/children" &&
-            !p.startsWith("/records/children/")) ||
-          p === "/compare",
-      },
-      {
-        key: "children",
-        label: "아이별 모아보기",
-        href: "/records/children",
-        icon: "users",
-        desktopOnly: true,
-        match: (p) => p === "/records/children" || p.startsWith("/records/children/"),
+        match: (p) => p.startsWith("/records") || p === "/compare",
       },
       {
         key: "routines",
@@ -90,7 +78,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
 ];
 
 const itemBase =
-  "items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[15px] font-medium transition-all " +
+  "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] text-[15px] font-medium transition-all " +
   "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[15px] text-[12px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start text-center lg:text-left";
 const activeStyle = "border border-transparent bg-rail-on font-semibold text-white";
 const idle =
@@ -129,10 +117,10 @@ export default function AppSidebar() {
   useEffect(() => subscribeClassSettings(() => setRoom(readRoom())), [setRoom]);
 
   const isActive = (item: NavItem) => (item.match ? item.match(pathname) : item.href === pathname);
-  // 데스크톱 사이드바는 접었다 폈다 한다. 접으면 65px 아이콘 줄만 남는다.
+  // 데스크톱 사이드바는 접었다 폈다 한다. 접으면 75px 아이콘 줄만 남는다.
   //
-  // 접힌 줄의 아이콘 가운데와 펼친 줄의 아이콘 가운데를 **같은 자리(32.5px)** 에 둔다.
-  // 펼침은 nav 의 px-3(12) + 줄의 px-3(12) + 아이콘 17 의 절반 8.5 이고, 접힘은 폭 65 의 절반이다.
+  // 접힌 줄의 아이콘 가운데와 펼친 줄의 아이콘 가운데를 **같은 자리(37.5px)** 에 둔다.
+  // 펼침은 nav 의 px-[17px] + 줄의 px-3(12) + 아이콘 17 의 절반 8.5 이고, 접힘은 폭 75 의 절반이다.
   // 그래서 여닫아도 메뉴 아이콘이 제자리에 있고 글자만 나타났다 사라진다.
   //
   // 교사가 한 번도 안 눌렀으면 편집 화면(compact-shell)이 정하고, 한 번 누르면 그 선택이 이긴다.
@@ -145,7 +133,7 @@ export default function AppSidebar() {
       {collapsed && (
         <aside
           aria-label="주 메뉴"
-          className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[65px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-rail-line lg:py-4"
+          className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-rail-line lg:py-4"
         >
           <Link
             href="/"
@@ -191,40 +179,29 @@ export default function AppSidebar() {
         aria-label="주 메뉴"
         className={
           "bg-rail z-30 " +
+          // 여닫기는 단추로만 한다. 마우스만 올려도 펼쳐지면 글 읽다가 지나가기만 해도 덮인다 (PM).
           (collapsed ? "lg:hidden " : "") +
           // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
           // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
-          // 그 스크롤바가 232px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).
+          // 그 스크롤바가 267px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).
           // 자리를 늘 잡아 두면 스크롤바가 생기든 말든 폭이 그대로다.
-          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[232px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:border-r lg:border-rail-line lg:flex lg:flex-col " +
+          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[267px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:border-r lg:border-rail-line lg:flex lg:flex-col " +
           "fixed bottom-0 inset-x-0 flex flex-row border-t border-rail-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
         }
       >
         <button
           type="button"
-          onClick={() => setSidebarCollapsed(true)}
-          aria-expanded
-          aria-label="메뉴 접기"
-          title="메뉴 접기"
+          onClick={() => setSidebarCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "메뉴 펼치기" : "메뉴 접기"}
+          title={collapsed ? "메뉴 펼치기" : "메뉴 접기"}
           className="absolute right-3 top-5 hidden h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover lg:flex"
         >
           <Icon name="panel" className="h-[18px] w-[18px]" />
         </button>
         {/* 워드마크 왼쪽에 쌤플 마크를 세운다. 글자 S 를 쓰면 바로 옆 Ssample 과 같은 글자가
             두 번 나온다 — 쪽지에 쓰던 ✳ 는 글자와 겹치지 않고 작게 줄여도 안 뭉갠다. */}
-        <Link
-          href="/"
-          aria-label="쌤플 홈으로"
-          className="hidden items-center gap-2.5 px-6 pt-6 pb-5 lg:flex"
-        >
-          <Icon name="star" className="h-[22px] w-[22px] shrink-0 text-primary-tint-line" />
-          <span className="min-w-0">
-            <span className="block text-[26px] font-bold tracking-[-0.06em] text-rail-ink">
-              Ssample<span className="text-peach-strong">.</span>
-            </span>
-            <span className="font-display text-lg font-bold text-rail-ink-soft">쌤플</span>
-          </span>
-        </Link>
+        <Wordmark tone="rail" className="hidden px-6 pt-6 pb-5 lg:flex" />
 
         {/*
         어느 반 작업실에 들어와 있는지. 카드에 꺾쇠가 달려 있어 반 목록이 열릴 것처럼 보이는데
@@ -267,7 +244,7 @@ export default function AppSidebar() {
         </div>
 
         {/* 모바일에서는 하단 띠 한 줄이라 묶음 제목을 접는다 (`contents`). */}
-        <nav className="contents lg:block lg:space-y-1 lg:px-3">
+        <nav className="contents lg:block lg:space-y-1 lg:px-[17px]">
           <NavLink item={HOME} active={isActive(HOME)} />
           {GROUPS.map((group) => (
             <div key={group.title} className="contents lg:block lg:pt-4">
@@ -386,7 +363,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`${item.desktopOnly ? "hidden lg:flex" : "flex"} ${itemBase} ${active ? activeStyle : idle}`}
+      className={`${itemBase} ${active ? activeStyle : idle}`}
     >
       <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
       <span>{item.label}</span>
