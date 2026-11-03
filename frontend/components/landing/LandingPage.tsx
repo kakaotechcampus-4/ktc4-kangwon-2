@@ -1,6 +1,7 @@
 import { LegalFooter } from "@/components/legal/LegalPage";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/app/icons";
+import { Wordmark } from "@/components/app/Wordmark";
 
 const PRIMARY =
   "inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-primary-line " +
@@ -131,14 +132,7 @@ export default function LandingPage() {
 }
 
 function Brand() {
-  return (
-    <Link href="/welcome" aria-label="쌤플 소개로" className="flex items-baseline">
-      <span className="text-[27px] font-bold tracking-[-0.04em] text-primary-deep">
-        Ssample<span className="text-peach-strong">.</span>
-      </span>
-      <span className="ml-3 font-display text-xl text-ink">쌤플</span>
-    </Link>
-  );
+  return <Wordmark href="/welcome" label="쌤플 소개로" />;
 }
 
 /** 계획안이 어떻게 생겼는지 보여주는 예시. 실제 생성 결과가 아니라 소개용 그림이다. */

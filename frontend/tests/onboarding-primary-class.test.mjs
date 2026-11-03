@@ -241,6 +241,11 @@ function onboarding(
       __esModule: true,
       useHydrated: () => true,
     },
+    // 포스티는 그림이라 이 시험이 볼 것이 없다. 자리만 채운다.
+    "@/components/app/Posty": {
+      __esModule: true,
+      Posty: () => jsx("posty", {}),
+    },
     "./AgeSelection": {
       __esModule: true,
       default: passthrough("age-selection"),

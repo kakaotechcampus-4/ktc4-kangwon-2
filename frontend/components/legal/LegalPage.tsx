@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Wordmark } from "@/components/app/Wordmark";
 
 /**
  * 약관·개인정보처리방침처럼 글만 있는 화면의 틀.
@@ -20,12 +21,7 @@ export default function LegalPage({
   return (
     <div className="min-h-screen bg-cream px-5 py-6 text-ink sm:px-8">
       <header className="mx-auto flex max-w-[760px] items-center justify-between gap-3">
-        <Link href="/welcome" aria-label="쌤플 소개로" className="flex items-baseline">
-          <span className="text-[27px] font-bold tracking-[-0.04em] text-primary-deep">
-            Ssample<span className="text-peach-strong">.</span>
-          </span>
-          <span className="ml-3 font-display text-xl text-ink">쌤플</span>
-        </Link>
+        <Wordmark href="/welcome" label="쌤플 소개로" size="sm" />
       </header>
 
       <main className="mx-auto mt-8 max-w-[760px] border border-line bg-paper p-6 shadow-pg-hard sm:p-10">

@@ -7,6 +7,7 @@ import OnboardingStepIndicator from "./OnboardingStepIndicator";
 import type { OnboardingStep } from "@/lib/onboarding/types";
 import { readToken } from "@/lib/auth/token";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { Wordmark } from "@/components/app/Wordmark";
 
 /**
  * 시작 설정(온보딩)의 틀. 브랜드 머리 + 진행 표시 + 종이 한 장.
@@ -26,17 +27,8 @@ export default function OnboardingLayout({
   const home = signedIn ? "/" : "/welcome";
   return (
     <div className={`${fontClassName} min-h-screen bg-cream px-5 py-6 font-body text-ink sm:px-8`}>
-      <header className="mx-auto flex max-w-[1000px] items-center justify-between gap-3">
-        <Link
-          href={home}
-          aria-label={signedIn ? "쌤플 메인으로" : "쌤플 소개로"}
-          className="flex items-baseline"
-        >
-          <span className="text-[27px] font-bold tracking-[-0.04em] text-primary-deep">
-            Ssample<span className="text-peach-strong">.</span>
-          </span>
-          <span className="ml-3 font-display text-xl text-ink">쌤플</span>
-        </Link>
+      <header className="mx-auto flex max-w-[820px] items-center justify-between gap-3">
+        <Wordmark href={home} label={signedIn ? "쌤플 메인으로" : "쌤플 소개로"} />
         {/* 첫 설정에서 빠져나갈 길. 전에는 주소창에 /logout 을 쳐야 했다 (#291) */}
         {signedIn && (
           <Link

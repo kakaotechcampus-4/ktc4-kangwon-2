@@ -72,3 +72,67 @@ body {
   mask: var(--torn);
   filter: drop-shadow(0 8px 16px rgba(52, 49, 47, 0.16));
 }
+
+/* 걷는 포스티.
+ *
+ * 몸통을 통째로 기울이면 종이가 흔들리는 것이지 걷는 것이 아니다.
+ * 팔다리를 어깨·엉덩이에서 번갈아 돌리고, 몸은 한 걸음에 한 번 뜬다.
+ * `transform-box: view-box` 라야 컴포넌트가 준 viewBox 좌표로 회전축이 잡힌다. */
+@keyframes postySwingFront {
+  0%,
+  100% {
+    transform: rotate(15deg);
+  }
+  50% {
+    transform: rotate(-15deg);
+  }
+}
+@keyframes postySwingBack {
+  0%,
+  100% {
+    transform: rotate(-15deg);
+  }
+  50% {
+    transform: rotate(15deg);
+  }
+}
+@keyframes postyBob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+.postySwingFront,
+.postySwingBack {
+  transform-box: view-box;
+  animation: postySwingFront 0.72s ease-in-out infinite;
+}
+.postySwingBack {
+  animation-name: postySwingBack;
+}
+.postyWalk {
+  animation: postyBob 0.36s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .postySwingFront,
+  .postySwingBack,
+  .postyWalk {
+    animation: none;
+  }
+}
+
+/* 아직 안 지난 구간의 연결선. 발자국처럼 점을 찍는다.
+ * 1.5px 짜리 연한 실선은 화면에서 거의 보이지 않아 단계가 따로 노는 것처럼 보였다. */
+.stepTrail {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pg-ink-soft) 45%, transparent) 1.5px,
+    transparent 1.6px
+  );
+  background-size: 7px 3px;
+  background-repeat: repeat-x;
+  background-position: center;
+}
