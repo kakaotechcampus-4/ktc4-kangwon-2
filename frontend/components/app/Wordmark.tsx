@@ -31,29 +31,25 @@ export function Wordmark({
   const big = size === "md";
   const tiny = size === "xs";
   return (
-    <Link
-      href={href}
-      aria-label={label}
-      className={`flex items-center gap-2.5 ${className ?? ""}`}
-    >
+    <Link href={href} aria-label={label} className={`flex items-center gap-2.5 ${className ?? ""}`}>
       {!tiny && <SsampleMark size={big ? 34 : 30} />}
       <span className="min-w-0">
-      <span
-        className={`block font-bold leading-none tracking-[-0.05em] ${
-          big ? "text-[27px]" : tiny ? "text-[16px]" : "text-[23px]"
-        } ${rail ? "text-rail-ink" : "text-primary-deep"}`}
-      >
-        Ssample<span className="text-peach-strong">.</span>
-      </span>
-      {!tiny && (
         <span
-          className={`block font-display font-bold leading-tight ${
-            big ? "text-[17px]" : "text-[15px]"
-          } ${rail ? "text-rail-ink-soft" : "text-ink-soft"}`}
+          className={`block font-bold leading-none tracking-[-0.05em] ${
+            big ? "text-[27px]" : tiny ? "text-[16px]" : "text-[23px]"
+          } ${rail ? "text-rail-ink" : "text-primary-deep"}`}
         >
-          쌤플
+          Ssample<span className="text-peach-strong">.</span>
         </span>
-      )}
+        {!tiny && (
+          <span
+            className={`block font-display font-bold leading-tight ${
+              big ? "text-[17px]" : "text-[15px]"
+            } ${rail ? "text-rail-ink-soft" : "text-ink-soft"}`}
+          >
+            쌤플
+          </span>
+        )}
       </span>
     </Link>
   );

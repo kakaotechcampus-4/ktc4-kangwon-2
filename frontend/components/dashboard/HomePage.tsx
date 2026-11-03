@@ -798,9 +798,7 @@ function BoardSection({
 
 /** 칠판에 쓰는 분필 글. 쪽지가 없는 자리를 빈 칸으로 두지 않는다. */
 function ChalkLine({ children }: { children: ReactNode }) {
-  return (
-    <p className="font-display text-[18px] leading-[1.6] text-board-ink-soft">{children}</p>
-  );
+  return <p className="font-display text-[18px] leading-[1.6] text-board-ink-soft">{children}</p>;
 }
 
 /**

@@ -147,7 +147,11 @@ export default function AppSidebar() {
         >
           {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
               브라우저 탭 아이콘(`app/icon.svg`)과 같은 표시다. */}
-          <Link href="/" aria-label="쌤플 홈으로" className="flex h-11 w-11 items-center justify-center">
+          <Link
+            href="/"
+            aria-label="쌤플 홈으로"
+            className="flex h-11 w-11 items-center justify-center"
+          >
             <SsampleMark size={32} />
           </Link>
           <button
