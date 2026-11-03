@@ -152,7 +152,7 @@ export default function AppSidebar() {
             aria-label="쌤플 홈으로"
             className="flex h-11 w-11 items-center justify-center"
           >
-            <SsampleMark size={32} />
+            <SsampleMark size={32} tone="rail" />
           </Link>
           <button
             type="button"
