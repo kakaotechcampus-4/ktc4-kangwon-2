@@ -33,6 +33,7 @@ const {
   listMonthlyPlans,
   editMonthlyCell,
   placeMonthlySafety,
+  copyMonthlyDrill,
   regenerateMonthlyCell,
   confirmMonthlyPlan,
 } = monthly;
@@ -123,9 +124,10 @@ async function confirmedClass() {
   return { center, klass, annual, ref: await readyRef(center.id) };
 }
 
-test("client exports 17 functions: 9 monthly + 2 profile read + 6 profile management", () => {
+test("client exports monthly and profile functions", () => {
   assert.deepEqual(Object.keys(monthly).sort(), [
     "confirmMonthlyPlan",
+    "copyMonthlyDrill",
     "createMonthlyPlan",
     "deleteMonthlyPlan",
     "downloadMonthlyHwpx",
@@ -177,6 +179,7 @@ test("methods, URLs, query, encoded item_id, bodies and bearer token", async () 
   await editMonthlyCell(7, "item/a b", "가을 놀이", 4);
   await placeMonthlySafety(7, "2026-09/W 1", "cand_1", 4);
   await placeMonthlySafety(7, "2026-09/W 1", null, 5);
+  await copyMonthlyDrill(7, "drill/a b", 6);
   await regenerateMonthlyCell(7, "item/a b", 4);
   await confirmMonthlyPlan(7, 4);
   await getClassTemplateProfile(3);
@@ -193,6 +196,11 @@ test("methods, URLs, query, encoded item_id, bodies and bearer token", async () 
       ["PUT", cell, { value: "가을 놀이", expected_revision: 4 }],
       ["PUT", safetyWeek, { candidate_item_id: "cand_1", expected_revision: 4 }],
       ["PUT", safetyWeek, { candidate_item_id: null, expected_revision: 5 }],
+      [
+        "POST",
+        "/api/plans/monthly/7/drill-candidates/drill%2Fa%20b/copy",
+        { expected_revision: 6 },
+      ],
       ["POST", cell + "/regenerate", { expected_revision: 4 }],
       ["POST", "/api/plans/monthly/7/confirm", { expected_revision: 4 }],
       ["GET", "/api/classes/3/template-profile", undefined],
