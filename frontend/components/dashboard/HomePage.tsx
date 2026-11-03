@@ -544,8 +544,8 @@ function ChildSpotlight({
   useEffect(() => {
     if (count < 2 || held || paused) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = window.setInterval(() => setIndex((p) => (p + 1) % count), TURN_MS);
-    return () => window.clearInterval(timer);
+    const timer = setInterval(() => setIndex((p) => (p + 1) % count), TURN_MS);
+    return () => clearInterval(timer);
   }, [count, held, paused]);
 
   const child = children[index % Math.max(count, 1)];
