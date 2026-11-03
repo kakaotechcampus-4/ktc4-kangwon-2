@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.greetings import default_greetings
-from app.features.centers.models import Center, CenterInvite, Class, Greetings
+from app.features.centers.models import Center, CenterInvite, Class, ClassAccessRequest, Greetings
 from app.features.centers.schemas import (
     CenterCreate,
     CenterResponse,
@@ -36,17 +36,20 @@ router = APIRouter(prefix="/centers", tags=["centers"])
 DbSession = Annotated[Session, Depends(get_session)]
 
 
-def _class_response(classroom: Class, user: User) -> ClassResponse:
+def _class_response(
+    classroom: Class, user: User, requests: dict[int, str] | None = None
+) -> ClassResponse:
     """`my_access` 는 저장된 값이 아니라 로그인한 계정과 반 주인을 견줘 낸다 (ADR-059).
 
-    요청 표가 생기기 전이라 APPROVED 이하는 아직 내지 않는다. 주인이 없는 옛 반은 OPEN.
+    주인이 없는 옛 반은 OPEN. 남의 반은 이 계정의 요청 상태(`requests`: 반 id -> status)이고,
+    줄이 없으면 NONE 이다. 목록이 요청을 한 번에 읽어 넘긴다 — 반마다 읽으면 N+1 이다.
     """
     if classroom.teacher_id == user.id:
         access = "OWNER"
     elif classroom.teacher_id is None:
         access = "OPEN"
     else:
-        access = "NONE"
+        access = (requests or {}).get(classroom.id, "NONE")
     # from_attributes 와 같이 getattr 로 읽는다. 가짜 세션을 쓰는 테스트도 그대로 돈다.
     fields = {
         name: getattr(classroom, name) for name in ClassResponse.model_fields if name != "my_access"
@@ -276,7 +279,16 @@ def list_classes(
     classes = session.scalars(
         select(Class).where(Class.center_id == center_id).order_by(Class.id)
     ).all()
-    return ClassListResponse(items=[_class_response(c, user) for c in classes])
+    # dict(result) 는 Result 의 keys() 를 보고 매핑으로 착각한다 — 쌍으로 풀어 만든다.
+    requests = {
+        class_id: request_status
+        for class_id, request_status in session.execute(
+            select(ClassAccessRequest.class_id, ClassAccessRequest.status).where(
+                ClassAccessRequest.requester_id == user.id
+            )
+        )
+    }
+    return ClassListResponse(items=[_class_response(c, user, requests) for c in classes])
 
 
 @router.get("/{center_id}/settings", response_model=CenterSettings)
