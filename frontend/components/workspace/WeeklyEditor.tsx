@@ -12,13 +12,16 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api/client";
 import { isSaveConflict } from "@/lib/api/plans";
 import {
+  addWeeklyIndoorPlay,
   confirmWeeklyPlan,
   copyWeeklyActivity,
   downloadWeeklyHwpx,
   editWeeklyCell,
   getWeeklyPlanAudit,
+  orderWeeklyIndoorPlays,
   regenerateWeeklyCell,
   removeWeeklyActivityCell,
+  removeWeeklyIndoorPlay,
   splitWeeklyActivityCell,
   unconfirmWeeklyPlan,
 } from "@/lib/api/weekly";
@@ -41,6 +44,7 @@ import AnnualFrame, {
 import { PAPER_WIDTH, type Pick } from "@/components/plan-generator/PlayMonthlySheet";
 import { useCompactShell } from "@/components/app/compact-shell";
 import WeeklySheet from "./WeeklySheet";
+import WeeklyIndoorPlayPanel from "./WeeklyIndoorPlayPanel";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
 
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
@@ -152,8 +156,13 @@ export default function WeeklyEditor({
   const cells = sections.flatMap((section) => section.cells.map((cell) => ({ section, cell })));
   const picked = confirmed ? null : (cells.find((c) => c.cell.item_id === selected) ?? null);
   const grids = plan.activity_grids ?? [];
-  const candidates = plan.activity_candidates ?? [];
+  // 후보는 한 목록에 온다 — 실내 자유놀이 후보(section_key indoor_play)는 따로 쓴다.
+  const allCandidates = plan.activity_candidates ?? [];
+  const candidates = allCandidates.filter((c) => c.section_key !== "indoor_play");
+  const indoorSelection = !!plan.indoor_play_selection;
   const gridCell = !!picked && grids.length > 0 && picked.section.section_key === "group_activity";
+  // 후보형 실내 자유놀이 칸 — 목록에 넣고 · 빼고 · 순서를 바꾼다. AI 재생성은 없다(422).
+  const indoorCell = !!picked && indoorSelection && picked.section.section_key === "indoor_play";
   const theme = cells.find((c) => c.section.section_key === "theme")?.cell;
 
   const accept = (next: WeeklyPlan) => {
@@ -281,6 +290,26 @@ export default function WeeklyEditor({
       (cur) => removeWeeklyActivityCell(cur.id, cellId, cur.revision),
       "칸을 뺐어요.",
     );
+  const addIndoor = (candidateId: string | null) =>
+    afterSaves(
+      "indoor",
+      (cur) => addWeeklyIndoorPlay(cur.id, candidateId, cur.revision),
+      candidateId ? "이번 주 놀이에 넣었어요." : "직접 쓸 놀이 칸을 더했어요.",
+    );
+  const orderIndoor = (ids: string[]) =>
+    afterSaves(
+      "indoor",
+      (cur) => orderWeeklyIndoorPlays(cur.id, ids, cur.revision),
+      "순서를 바꿨어요.",
+    );
+  const removeIndoor = (itemId: string) => {
+    if (selected === itemId) setSelected(null);
+    return afterSaves(
+      "indoor",
+      (cur) => removeWeeklyIndoorPlay(cur.id, itemId, cur.revision),
+      "이번 주 놀이에서 뺐어요.",
+    );
+  };
   const confirm = () =>
     afterSaves(
       "confirm",
@@ -290,16 +319,23 @@ export default function WeeklyEditor({
 
   const shown = (cell: WeeklyCell) => live[cell.item_id] ?? cell.value;
   const dayOf = (cell: WeeklyCell) => (cell.day ? (DAY_NAMES[cell.day] ?? cell.day) : "");
-  // 대·소집단활동 칸은 후보가 있으면 「AI 후보」 탭부터, 나머지는 「칸 편집」.
+  // 대·소집단활동 칸(후보가 있을 때) · 후보형 실내 자유놀이 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
   const select = (id: string) => {
     setSelected(id);
     setAsking("");
-    const hit = cells.find((c) => c.cell.item_id === id);
+    const key = cells.find((c) => c.cell.item_id === id)?.section.section_key;
     setTab(
-      grids.length && candidates.length && hit?.section.section_key === "group_activity"
+      (grids.length && candidates.length && key === "group_activity") ||
+        (indoorSelection && key === "indoor_play")
         ? "ai"
         : "edit",
     );
+  };
+  /** 목록의 한 놀이를 「칸 편집」에서 고친다. */
+  const editRow = (id: string) => {
+    setSelected(id);
+    setAsking("");
+    setTab("edit");
   };
   const editing: Pick = { selected, onSelect: select };
   const still: Pick = { selected: null };
@@ -408,7 +444,7 @@ export default function WeeklyEditor({
               </button>
             </div>
           )}
-          {!picked.cell.teacher_input && !gridCell && (
+          {!picked.cell.teacher_input && !gridCell && !indoorCell && (
             <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
               <button
                 type="button"
@@ -452,50 +488,64 @@ export default function WeeklyEditor({
   );
 
   const kinds = [...new Set(candidates.map((c) => c.activity_type))];
-  const aiTab =
-    gridCell && candidates.length ? (
-      <section aria-label="활동 후보" className="flex flex-col gap-4">
-        <h2 className="m-0 text-[15px] font-bold">{where} 칸에 넣을 활동</h2>
-        {kinds.map((kind) => (
-          <div key={kind} className="flex flex-col gap-2">
-            <h3 className="m-0 text-[13px] font-bold text-[#5c5243]">{kind}</h3>
-            <ul className="m-0 flex list-none flex-col gap-2 p-0">
-              {candidates
-                .filter((c) => c.activity_type === kind)
-                .map((c) => {
-                  const text = c.cell.value.trim();
-                  const here = !!text && shown(picked.cell).trim() === text;
-                  return (
-                    <li
-                      key={c.cell.item_id}
-                      className={`${CARD} ${here ? "border-[#7053a0] bg-[#f6f1fb]" : "border-[#e8e2d8]"}`}
+  const aiTab = indoorCell ? (
+    <WeeklyIndoorPlayPanel
+      plan={plan}
+      disabled={locked}
+      selected={selected}
+      shown={shown}
+      onEdit={editRow}
+      onAdd={(id) => void addIndoor(id)}
+      onOrder={(ids) => void orderIndoor(ids)}
+      onRemove={(id) => void removeIndoor(id)}
+    />
+  ) : gridCell && candidates.length ? (
+    <section aria-label="활동 후보" className="flex flex-col gap-4">
+      <h2 className="m-0 text-[15px] font-bold">{where} 칸에 넣을 활동</h2>
+      {kinds.map((kind) => (
+        <div key={kind} className="flex flex-col gap-2">
+          <h3 className="m-0 text-[13px] font-bold text-[#5c5243]">{kind}</h3>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {candidates
+              .filter((c) => c.activity_type === kind)
+              .map((c) => {
+                const text = c.cell.value.trim();
+                const here = !!text && shown(picked.cell).trim() === text;
+                return (
+                  <li
+                    key={c.cell.item_id}
+                    className={`${CARD} ${here ? "border-[#7053a0] bg-[#f6f1fb]" : "border-[#e8e2d8]"}`}
+                  >
+                    <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
+                      {text || "(빈 후보)"}
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`${where}에 넣기: ${text || "빈 후보"}`}
+                      className={PUT}
+                      disabled={locked || !text || here}
+                      onClick={() => void put(picked.cell.item_id, c.cell.item_id)}
                     >
-                      <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
-                        {text || "(빈 후보)"}
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={`${where}에 넣기: ${text || "빈 후보"}`}
-                        className={PUT}
-                        disabled={locked || !text || here}
-                        onClick={() => void put(picked.cell.item_id, c.cell.item_id)}
-                      >
-                        {here ? "넣음" : "넣기"}
-                      </button>
-                    </li>
-                  );
-                })}
-            </ul>
-          </div>
-        ))}
-      </section>
-    ) : (
-      <p className="m-0 text-sm text-[#5c5243]">
-        {grids.length && candidates.length
+                      {here ? "넣음" : "넣기"}
+                    </button>
+                  </li>
+                );
+              })}
+          </ul>
+        </div>
+      ))}
+    </section>
+  ) : (
+    <p className="m-0 text-sm text-[#5c5243]">
+      {grids.length && candidates.length && indoorSelection
+        ? "대·소집단활동이나 이번 주 놀이 칸을 누르면 넣을 후보가 보여요."
+        : grids.length && candidates.length
           ? "대·소집단활동 칸을 누르면 넣을 활동 후보가 보여요."
-          : "이 주에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
-      </p>
-    );
+          : indoorSelection
+            ? "이번 주 놀이 칸을 누르면 넣을 놀이 후보가 보여요."
+            : "이 주에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
+    </p>
+  );
 
   const aside = (
     <>

@@ -288,7 +288,8 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
     (name) =>
       name === "react/jsx-runtime"
         ? { jsx, jsxs: jsx }
-        : { __esModule: true, default: new Proxy({}, { get: (_, k) => k }) },
+        : // 그 밖의 모듈은 class 문자열 (CARD · PUT 은 이름, BUTTON.quiet 는 「quiet」).
+          { CARD: "card", PUT: "put", BUTTON: new Proxy({}, { get: (_, key) => String(key) }) },
     panelModule,
     panelModule.exports,
   );
@@ -320,7 +321,7 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   const props = {
     plan,
     disabled: false,
-    renderCell: (cell) => jsx("p", { children: cell.value }),
+    onEdit: (id) => calls.push(["edit", id]),
     onAdd: (id) => calls.push(id),
     onOrder: (ids) => calls.push(ids),
     onRemove: (id) => calls.push(id),
@@ -342,21 +343,18 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   const tree = Panel(props);
   assert.equal(text(tree).includes("숨길 집단 후보"), false);
   const buttons = all(tree).filter((n) => n.type === "button");
-  buttons.find((n) => text(n) === "이번 주 놀이에 넣기").props.onClick();
-  buttons.find((n) => text(n) === "아래로").props.onClick();
-  buttons.find((n) => text(n) === "빼기").props.onClick();
-  assert.deepEqual(calls, ["candidate", ["two", "one"], "one"]);
+  const byLabel = (label) => buttons.find((n) => n.props["aria-label"] === label);
+  byLabel("이번 주 놀이에 넣기: 가게 놀이").props.onClick();
+  byLabel("1번 놀이 아래로").props.onClick();
+  byLabel("1번 놀이 빼기").props.onClick();
+  byLabel("2번 놀이 고치기").props.onClick();
+  assert.deepEqual(calls, ["candidate", ["two", "one"], "one", ["edit", "two"]]);
   assert.ok(
     all(Panel({ ...props, disabled: true }))
       .filter((n) => n.type === "button")
       .every((n) => n.props.disabled),
   );
-  assert.equal(
-    all(Panel({ ...props, plan: { ...plan, status: "CONFIRMED" } })).some(
-      (n) => n.type === "button",
-    ),
-    false,
-  );
+  assert.equal(Panel({ ...props, plan: { ...plan, status: "CONFIRMED" } }), null);
   assert.equal(Panel({ ...props, plan: { ...plan, indoor_play_selection: false } }), null);
 });
 

@@ -176,7 +176,10 @@ export default function WeeklySheet({
             {ROW[key] ?? sectionName(key, section.label)}
           </th>
           <td colSpan={span} className={`${LINE} align-top`}>
-            {section.cells[0] && cellOf(section.cells[0])}
+            {/* 후보형 실내 자유놀이는 주 전체 목록이 한 칸에 순서대로 들어간다. 나머지는 한 칸. */}
+            {section.cells.map((c) => (
+              <div key={c.item_id}>{cellOf(c)}</div>
+            ))}
           </td>
         </tr>,
       );

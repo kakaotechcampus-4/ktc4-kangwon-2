@@ -194,6 +194,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
           class_id: classId,
           week_id: week.week_id,
           activity_candidates: true,
+          indoor_play_candidates: true,
           ...(memo.trim() ? { memo: memo.trim() } : {}),
         },
         ctl.signal,
