@@ -30,9 +30,9 @@ import { PlanMemoNote } from "./PlanMemo";
 
 type Draft = { theme: string; sub_themes: string[] };
 const SAVE_LABEL = {
-  idle: "작성 중",
-  saving: "작성 중 · 저장 중…",
-  saved: "작성 중 · 자동 저장됨",
+  idle: "",
+  saving: "저장 중…",
+  saved: "자동 저장됨",
   failed: "저장하지 못했어요",
 };
 const draftsOf = (plan: AnnualPlan) =>

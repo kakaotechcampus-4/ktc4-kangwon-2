@@ -249,8 +249,8 @@ test("계획안을 읽어 반 이름과 함께 문서 용지에 넘기고 초안
   const sheet = all(tree).find((n) => n.type === "sheet");
   assert.equal(sheet.props.className, "해님반");
   assert.equal(sheet.props.plan.id, plan.id);
-  assert.match(text(tree), /작성 중/);
-  assert.doesNotMatch(text(tree), /확정됨/);
+  // 초안 표시는 「작성 중」 없이 저장 상태만(11-03 하민).
+  assert.doesNotMatch(text(tree), /작성 중|확정됨/);
 });
 
 test("반 이름 조회가 끝나지 않아도 문서는 먼저 보이고, 나중에 오면 채워진다", async () => {
@@ -692,7 +692,7 @@ test("저장 표시 · 다시 저장 · 되돌리기 단추는 초안에만 있�
   try {
     const plan = fixture();
     const { tree, View, h } = await open(plan.id, async () => plan);
-    assert.match(text(tree), /작성 중 · 저장하지 못했어요/);
+    assert.match(text(tree), /저장하지 못했어요/);
     withText(tree, "button", "다시 저장")[0].props.onClick();
     const undo = withText(tree, "button", "되돌리기")[0];
     assert.equal(undo.props.disabled, false);

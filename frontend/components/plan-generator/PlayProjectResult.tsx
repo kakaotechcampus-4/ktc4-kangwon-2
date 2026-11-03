@@ -36,9 +36,9 @@ export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 const MAX_PICKS = 5;
 
 const SAVE_LABEL = {
-  idle: "작성 중",
-  saving: "작성 중 · 저장 중…",
-  saved: "작성 중 · 자동 저장됨",
+  idle: "",
+  saving: "저장 중…",
+  saved: "자동 저장됨",
   failed: "저장하지 못했어요",
   reloading: "최신 내용을 다시 불러오는 중…",
 };
@@ -664,7 +664,6 @@ export default function PlayProjectResult({
             <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
               놀이 중심형
             </span>
-            <span className="text-sm text-[#5c5243]">계절마다 {MAX_PICKS}개를 골라요</span>
             <span role="status" className="text-[13px] text-[#8a8178]">
               {SAVE_LABEL[saving.status]}
             </span>

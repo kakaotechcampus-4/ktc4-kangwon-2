@@ -497,7 +497,7 @@ function PlayMonthlyBody({
       lead={back}
       status={
         <span className="flex items-center gap-3">
-          <span>작성 중{save.status !== "idle" && ` · ${SAVE_LABEL[save.status]}`}</span>
+          <span>{SAVE_LABEL[save.status]}</span>
           <PlanMemoNote plan={plan} />
           {plan.notices.length > 0 && (
             <button

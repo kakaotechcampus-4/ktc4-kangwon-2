@@ -663,7 +663,7 @@ export default function MonthlyPlanEditor({
       lead={back}
       status={
         <span className="flex items-center gap-3">
-          <span role="status">작성 중{status !== "idle" && ` · ${SAVE_LABEL[status]}`}</span>
+          <span role="status">{SAVE_LABEL[status]}</span>
           {plan.parent.theme && (
             <span className="text-[#8a8178]">연간 주제 · {plan.parent.theme}</span>
           )}

@@ -11,6 +11,32 @@ import {
 } from "./playProjectPagination";
 
 const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
+
+/** 옮긴 줄이 새 자리에서 한 번 떠올랐다 내려앉는다. 움직임을 줄인 환경에서는 하지 않는다. */
+function settle(rowKey: string) {
+  if (
+    typeof window === "undefined" ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  )
+    return;
+  // 상태가 바뀌어 다시 그린 뒤의 줄을 잡는다.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() =>
+      document
+        .querySelectorAll<HTMLElement>(`tr[data-row="${CSS.escape(rowKey)}"] > td`)
+        .forEach((td) =>
+          td.animate(
+            [
+              { backgroundColor: "#e9ddf7", transform: "translateY(-6px)" },
+              { backgroundColor: "#f6f1fb", transform: "translateY(0)", offset: 0.6 },
+              { backgroundColor: "transparent", transform: "translateY(0)" },
+            ],
+            { duration: 520, easing: "cubic-bezier(.2,.8,.2,1)" },
+          ),
+        ),
+    ),
+  );
+}
 const CELL = "border border-black px-1.5 py-1.5 align-top whitespace-pre-line";
 
 type Props = {
@@ -85,7 +111,9 @@ export default function PlayProjectSheet({
                     return (
                       <tr
                         key={row.key}
-                        className="data-[drop]:bg-[#f6f1fb]"
+                        data-row={row.candidate?.row_key}
+                        // 끄는 줄은 흐리게, 놓을 줄은 보라 바탕 — 색은 천천히 바뀐다.
+                        className="group [&>td]:transition-[background-color,opacity] [&>td]:duration-200 [&[data-dragging]>td]:opacity-40 [&[data-drop]>td]:bg-[#efe7f8]"
                         {...(onDropPick &&
                           row.candidate && {
                             // 끌어놓을 줄 강조는 data-drop 으로만 — 상태를 두지 않는다.
@@ -100,7 +128,9 @@ export default function PlayProjectSheet({
                               event.preventDefault();
                               delete event.currentTarget.dataset.drop;
                               const dragged = event.dataTransfer.getData("text/plain");
-                              if (dragged) onDropPick(dragged, row.candidate!.row_key);
+                              if (!dragged) return;
+                              onDropPick(dragged, row.candidate!.row_key);
+                              if (dragged !== row.candidate!.row_key) settle(dragged);
                             },
                           })}
                       >
@@ -133,7 +163,7 @@ export default function PlayProjectSheet({
                             return (
                               <td
                                 key={field.key}
-                                className={`${CELL} ${center ? "text-center" : ""} ${field.key === "play_name" ? "font-bold" : ""} ${selected ? SELECTED : ""} ${onSelectCell ? "cursor-pointer hover:bg-[#faf7fd]" : ""}`}
+                                className={`${CELL} ${field.key === "play_name" && onDropPick ? "relative" : ""} ${center ? "text-center" : ""} ${field.key === "play_name" ? "font-bold" : ""} ${selected ? SELECTED : ""} ${onSelectCell ? "cursor-pointer hover:bg-[#faf7fd]" : ""}`}
                                 // 칸 어디를 눌러도 그 칸을 고른다(글자 아래 빈 곳 포함). 글자는 버튼이라 키보드도 된다.
                                 onClick={
                                   onSelectCell
@@ -144,15 +174,25 @@ export default function PlayProjectSheet({
                                     : undefined
                                 }
                               >
+                                {/* 순서 손잡이 — 칸 왼쪽 위, 줄에 마우스를 올렸을 때만. 문서 글자를 밀어내지 않는다. */}
                                 {onDropPick && field.key === "play_name" && (
                                   <span
                                     draggable
                                     aria-hidden="true"
                                     title="끌어서 순서 바꾸기"
-                                    className="mb-1 inline-block cursor-grab rounded bg-[#f3efe8] px-1.5 text-[11px] font-normal text-[#5c5243]"
-                                    onDragStart={(event) =>
-                                      event.dataTransfer.setData("text/plain", candidate.row_key)
-                                    }
+                                    className="absolute left-1 top-0 z-10 -translate-y-1/2 cursor-grab rounded bg-[#7053a0] px-1 text-[11px] font-bold leading-[18px] text-white opacity-0 shadow-sm transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
+                                    onDragStart={(event) => {
+                                      event.dataTransfer.setData("text/plain", candidate.row_key);
+                                      event.dataTransfer.effectAllowed = "move";
+                                      const tr = event.currentTarget.closest("tr");
+                                      if (tr) {
+                                        event.dataTransfer.setDragImage(tr, 16, 16);
+                                        tr.dataset.dragging = "";
+                                      }
+                                    }}
+                                    onDragEnd={(event) => {
+                                      delete event.currentTarget.closest("tr")?.dataset.dragging;
+                                    }}
                                   >
                                     ⠿{" "}
                                     {(picks[period.period_key] ?? []).indexOf(candidate.row_key) +
