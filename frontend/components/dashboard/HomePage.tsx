@@ -194,7 +194,7 @@ export default function HomePage() {
               aria-hidden="true"
               viewBox="0 0 150 70"
               preserveAspectRatio="none"
-              className="pointer-events-none absolute -bottom-2.5 -left-3.5 -right-3.5 -top-3 text-peach-strong"
+              className="pointer-events-none absolute -bottom-2.5 -left-3.5 -right-3.5 -top-3 text-alert-strong"
             >
               <path
                 d="M74 6 C112 4 146 18 143 36 C140 56 100 66 68 64 C32 62 6 50 8 32 C10 14 42 6 78 7"
@@ -596,20 +596,24 @@ function ChildSpotlight({
               </h3>
               {/* 기록이 없으면 영역 줄을 비운다. 「최근 관찰」을 빈 자리 메우개로 쓰면
                   제목과 같은 말이 한 쪽지에 두 번 나온다. */}
+              {/* 이름 · 언제 무슨 영역 · 적힌 글 · 가는 길. 넷이 줄 없이 붙어 있으면
+                  글자 크기만으로 갈라야 해서 한 덩어리로 읽힌다. */}
               {latest ? (
-                <div className="mt-2.5 flex items-baseline justify-between gap-2 text-[12.5px] font-semibold text-sun-ink">
+                <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-ink/10 pt-2.5 text-[12.5px] font-semibold text-sun-ink">
                   <span className="min-w-0 truncate">{latest.domain}</span>
                   <span className="shrink-0 font-normal">{shortDate(latest.date)}</span>
                 </div>
               ) : (
-                <div className="mt-2.5 text-[12.5px] text-sun-ink">최근 관찰</div>
+                <div className="mt-3 border-t border-ink/10 pt-2.5 text-[12.5px] text-sun-ink">
+                  최근 관찰
+                </div>
               )}
-              <p className="mt-1.5 text-[13.5px] leading-[1.8] text-ink">
+              <p className="mt-2 text-[13.5px] leading-[1.8] text-ink">
                 {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
               </p>
               <Link
                 href={childHref}
-                className="mt-3 flex min-h-10 items-center gap-1 text-[12.5px] font-semibold text-sun-ink"
+                className="mt-3 flex min-h-10 items-center gap-1 border-t border-ink/10 pt-2.5 text-[12.5px] font-semibold text-sun-ink"
               >
                 이 아이 기록 보기
                 <Icon name="arrow" className="h-3 w-3" />
@@ -913,7 +917,7 @@ function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
             href={href}
             className="mt-3 inline-flex min-h-10 items-center rounded-md bg-ivory px-4 text-xs font-semibold text-ink"
           >
-            그날 채우기
+            작성하기
           </Link>
         )}
       </div>
