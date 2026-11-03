@@ -53,6 +53,7 @@
 | 계획안 연간 · 월간 · 주간 | `features/plans` · `p0-planning/` | `test_monthly_plans_api.py` 외 |
 | v1 월간 소방대피/재난대비 훈련 후보 (복사 · 한 달 한 칸) | `frontend/components/workspace/MonthlyPlanEditor.tsx` · `backend/app/features/plans/` | `test_monthly_drill_api.py` (서버 복사) |
 | 평가제 자체점검 | `features/evaluation` | `test_evaluation_auto.py` · `test_evaluation_judge.py` |
+| 예전 서류 증빙 등록 (HWP · HWPX · PDF · DOCX) — 4-1 · 4-2 카드에서 | `components/workspace/EvidenceImport.tsx` · ADR-057 | `tests/evidence-hwp-text.test.mjs` |
 | 양식 업로드 · 파싱 | `features/forms` | `test_forms.py` |
 | 기존 연간계획안 가져오기 (HWP · HWPX · DOCX · PDF · 직접 입력) | `features/plans/annual_extract.py` · ADR-056 | `test_annual_extract.py` |
 | hwpx 내보내기 | `shared/hwpx.py` | `test_documents_export.py` · ADR-039 |

@@ -1,6 +1,5 @@
 import {
   DOCUMENT_KINDS,
-  hasStrings,
   isObject,
   isSavedDocument,
   isSource,
@@ -68,29 +67,6 @@ export function validAIInput(task: string, payload: unknown): boolean {
       text(payload.topic, 500) && typeof payload.today === "string" && validDate(payload.today)
     );
   if (task === "verify") return isSavedDocument(payload);
-  if (task === "evaluation")
-    return (
-      isSavedDocument(payload.document) &&
-      Array.isArray(payload.criteria) &&
-      payload.criteria.length > 0 &&
-      payload.criteria.length <= 50 &&
-      payload.criteria.every(
-        (c) =>
-          isObject(c) &&
-          hasStrings(c, ["id", "label", "terms", "source"]) &&
-          text(c.id, 100) &&
-          text(c.label, 300) &&
-          text(c.source, 300),
-      )
-    );
-  if (task === "evidence")
-    return (
-      isSavedDocument(payload.document) &&
-      Array.isArray(payload.evidence) &&
-      payload.evidence.length > 0 &&
-      payload.evidence.length <= 100 &&
-      payload.evidence.every(isSavedDocument)
-    );
   if (task === "compare") {
     if (!sources(payload.sources)) return false;
     const list = payload.sources as {

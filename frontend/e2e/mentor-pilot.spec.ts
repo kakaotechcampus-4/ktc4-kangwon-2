@@ -433,7 +433,7 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
   await page.getByRole("tab", { name: /^자체평가/ }).click();
   // 안 끝난 첫 평가항목만 펼쳐져 있다. 접힌 평가항목을 하나씩 펼쳐 19개를 센다.
-  // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다. 영역(section) 밖의 옛 사전점검 접기는 열지 않는다.
+  // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다.
   const closed = page
     .getByRole("tabpanel", { name: /^자체평가/ })
     .locator("section details:not([open]) > summary");
