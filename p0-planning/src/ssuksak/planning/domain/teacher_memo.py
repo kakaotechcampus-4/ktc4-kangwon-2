@@ -78,4 +78,5 @@ class SafetyRequest:
 
     @property
     def count(self) -> int:
-        return max(self.min_weeks, len(self.weeks))
+        # 같은 주를 두 번 짚어도 한 번이다 — LLM 이 되풀이한 주소가 횟수를 늘리지 않게(Rule 의 주 정리와 같은 기준).
+        return max(self.min_weeks, len(set(self.weeks)))

@@ -1048,7 +1048,8 @@ def test_a_teacher_memo_reaches_the_prompt_marks_its_cells_and_keeps_skipped_req
         # 2층: 횟수 · 주 요청은 뽑기만 한다. 2주차가 겹치고, 아동학대 예방은 둘 주가 남지 않는다.
         data["safety_requests"] = [
             {"slot": "disaster_preparedness_safety", "weeks": ["2027-04-W2"], "min_weeks": 3},
-            {"slot": "traffic_safety", "weeks": ["2027-04-W2"], "min_weeks": 0},
+            # 같은 주를 두 번 짚어도 한 번이다(MEMO-01) — 교통안전은 한 주만 놓인다.
+            {"slot": "traffic_safety", "weeks": ["2027-04-W2", "2027-04-W2"], "min_weeks": 0},
             {"slot": "child_abuse_prevention", "weeks": [], "min_weeks": 2},
         ]
 
