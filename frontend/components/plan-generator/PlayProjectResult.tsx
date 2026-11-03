@@ -645,7 +645,9 @@ export default function PlayProjectResult({
         {/* 정답지 ④: 제목 · 칩 · 안내 · 저장 상태 | 계절 탭 — 한 줄. */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">놀이 고르기</h1>
+            <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+              놀이 고르기
+            </h1>
             <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
               놀이 중심형
             </span>

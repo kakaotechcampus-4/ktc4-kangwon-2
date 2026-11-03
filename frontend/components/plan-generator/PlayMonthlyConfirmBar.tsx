@@ -131,7 +131,7 @@ export default function PlayMonthlyConfirmBar({
     <div className="relative">
       <button
         type="button"
-        className="min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40"
+        className="min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
         disabled={confirming}
         onClick={ask ? () => setAsking(true) : confirm}
       >

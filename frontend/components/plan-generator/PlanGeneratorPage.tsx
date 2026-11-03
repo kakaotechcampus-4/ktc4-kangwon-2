@@ -58,7 +58,9 @@ export default function PlanGeneratorPage({ format }: { format: Format | null })
 function NoFormat() {
   return (
     <div className="flex w-full flex-col gap-3 px-7 pb-8 pt-6 text-[#2b2826]">
-      <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">연간계획안 만들기</h1>
+      <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+        연간계획안 만들기
+      </h1>
       <p className="m-0 text-base text-[#5c5243]">어떤 방식으로 만들지 먼저 골라 주세요.</p>
       <Link href="/plans" className="text-base font-bold text-[#5e4b96]">
         방식 고르러 가기 →
@@ -188,7 +190,7 @@ function AnnualGenerator({ format }: { format: Format }) {
 
       {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white px-7 py-6">
+        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
           {/* 왼쪽 판 맨 위: 「← 돌아가기」 아래 제목 · 방식. */}
           <div className="-mt-2 flex shrink-0 flex-col gap-1">
             <Link
@@ -198,7 +200,7 @@ function AnnualGenerator({ format }: { format: Format }) {
               ← 방식 다시 고르기
             </Link>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">
+              <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
                 {year} 연간계획안 만들기
               </h1>
               <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
@@ -209,7 +211,9 @@ function AnnualGenerator({ format }: { format: Format }) {
 
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between">
-              <h2 className="m-0 text-lg font-bold">우리 반</h2>
+              <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
+                우리 반
+              </h2>
               <Link href="/settings" className="text-sm text-[#5e4b96]">
                 반 정보 바꾸기
               </Link>
@@ -229,7 +233,10 @@ function AnnualGenerator({ format }: { format: Format }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label htmlFor="form" className="text-lg font-bold">
+            <label
+              htmlFor="form"
+              className="m-0 font-display text-[24px] font-bold leading-tight text-ink"
+            >
               양식
             </label>
             <select
@@ -257,7 +264,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             type="button"
             onClick={() => void generate()}
             disabled={!room.className}
-            className="mt-auto min-h-[56px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-auto min-h-[56px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간계획안 만들기
           </button>
@@ -265,7 +272,7 @@ function AnnualGenerator({ format }: { format: Format }) {
 
         <section
           aria-label="양식 미리보기"
-          className="flex min-h-[420px] flex-col rounded-[20px] border border-[#e8e2d8] bg-[#fbf9f5] p-3"
+          className="flex min-h-[420px] flex-col border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] p-3"
         >
           <div className="relative min-h-0 flex-1">
             {/* 정답지 ②: 종이 모양(테두리 · 그림자)이 그림 크기에 딱 맞게. fill 은 빈 띠를 남긴다. */}

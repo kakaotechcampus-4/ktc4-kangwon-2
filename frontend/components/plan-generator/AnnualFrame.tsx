@@ -16,9 +16,9 @@ const CHIP = {
 export const BUTTON = {
   quiet: "min-h-[44px] rounded-xl px-3 text-sm text-[#5c5243] disabled:opacity-40",
   outline:
-    "min-h-[44px] rounded-xl border border-[#ddd6ca] bg-white px-4 text-sm font-bold text-[#5e4b96] disabled:opacity-40",
+    "min-h-[44px] rounded-xl border border-line bg-paper px-4 text-sm font-bold text-[#5e4b96] shadow-pg-card transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none disabled:opacity-40",
   primary:
-    "min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40",
+    "min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none",
   /** 패널 아래 가벼운 글자 버튼(「지우고 다시 만들기」). */
   plain: "min-h-[44px] text-sm text-[#5c5243] underline underline-offset-2 disabled:opacity-40",
 };
@@ -69,7 +69,9 @@ export default function AnnualFrame({
         <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             {lead}
-            <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h1>
+            <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+              {title}
+            </h1>
             {chip(format)}
             <span className="text-sm text-[#5c5243]">{status}</span>
           </div>
@@ -79,15 +81,15 @@ export default function AnnualFrame({
       </div>
       <div className="flex min-h-0 flex-1 gap-4">
         {aside && (
-          <aside className="flex w-[380px] shrink-0 flex-col rounded-[20px] border border-[#e8e2d8] bg-white">
+          <aside className="flex w-[380px] shrink-0 flex-col border border-line bg-paper shadow-pg">
             {aside}
           </aside>
         )}
         <section
           aria-label="문서 미리보기"
-          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e8e2d8] bg-[#f3efe8]"
+          className="flex min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)]"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e2d8] bg-white px-5 py-2.5 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-shell-line bg-paper px-5 py-2.5 text-sm">
             <div className="font-bold">{docLabel}</div>
             <div className="text-[#5c5243]">{docHint}</div>
           </div>
@@ -368,13 +370,15 @@ export function PlanDone({
         >
           ✓
         </span>
-        <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h1>
+        <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+          {title}
+        </h1>
         {chip(format)}
       </div>
       <div className="flex min-h-0 flex-1 gap-4">
         <section
           aria-label={docLabel}
-          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#d6cec0] bg-[#e6e0d5]"
+          className="flex min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)]"
         >
           {pages.length > 1 && (
             <div role="tablist" aria-label="쪽" className="flex gap-1.5 px-6 pt-4">
@@ -398,7 +402,7 @@ export function PlanDone({
         </section>
         <aside className="flex w-[280px] shrink-0 flex-col gap-3">
           {download && (
-            <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
+            <div className="flex flex-col gap-2 border border-line bg-paper shadow-pg p-5">
               <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
               <div className="grid grid-cols-3 gap-2">
                 {(Object.keys(EXPORTS) as ExportFormat[]).map((format) => (
@@ -422,7 +426,7 @@ export function PlanDone({
               )}
             </div>
           )}
-          <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
+          <div className="flex flex-col gap-2 border border-line bg-paper shadow-pg p-5">
             <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">다음 단계</h2>
             <Link
               href={next.href}
@@ -433,7 +437,7 @@ export function PlanDone({
                   next.onClick?.();
                 })
               }
-              className="flex min-h-[56px] items-center justify-center rounded-xl bg-[#7053a0] text-[16px] font-bold text-white"
+              className="flex min-h-[56px] items-center justify-center rounded-xl bg-[#7053a0] text-[16px] font-bold text-white shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {next.label}
             </Link>
