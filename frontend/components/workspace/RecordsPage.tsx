@@ -259,7 +259,7 @@ export default function RecordsPage() {
       description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
       action={
         <Link href="/records/children" className={ws.secondary}>
-          아이별 모아보기
+          아이들 전부 보기
         </Link>
       }
     >
@@ -469,7 +469,7 @@ export default function RecordsPage() {
             </h2>
             <span className={ws.actions}>
               <Link href="/records/children" className={ws.link}>
-                아이별 모아보기 →
+                아이들 전부 보기 →
               </Link>
               <RoutinesLink classId={classId} date={date} />
               <Link href="/compare" className={ws.link}>

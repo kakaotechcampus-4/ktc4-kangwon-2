@@ -92,6 +92,19 @@ export function isStale(tally: ChildTally): boolean {
   return tally.days === null || tally.days >= STALE_DAYS;
 }
 
+/**
+ * 칠판 쪽지의 둘째 줄. 「2주째」 · 「9일째」 · 「아직 한 번도」
+ *
+ * 고르개의 `tallyLabel` 과 달리 **횟수를 쓰지 않는다** — 이 칸에 오는 아이는 모두
+ * 0번이거나 그에 가까워서 「0번」이 모든 쪽지에 똑같이 붙는다. 알려줄 것은 얼마나
+ * 오래 비었는가다. 두 주를 넘기면 일수보다 주가 읽기 쉽다.
+ */
+export function staleLabel(tally: ChildTally): string {
+  if (tally.days === null) return "아직 한 번도";
+  if (tally.days < 14) return `${tally.days}일째`;
+  return `${Math.floor(tally.days / 7)}주째`;
+}
+
 /** 타일 둘째 줄. 「오늘 · 3번」 · 「9일 전 · 0번」 · 「아직 없어요」 */
 export function tallyLabel(tally: ChildTally): string {
   if (tally.days === null) return "아직 없어요";

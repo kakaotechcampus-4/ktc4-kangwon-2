@@ -18,7 +18,7 @@ import {
 } from "@/lib/onboarding/settings";
 import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
 import type { ClassroomEntry } from "@/lib/onboarding/types";
-import { Wordmark } from "./Wordmark";
+import { SsampleMark, Wordmark } from "./Wordmark";
 
 interface NavItem {
   key: string;
@@ -85,7 +85,7 @@ const MOBILE_TABS = new Set(["home", "records", "routines", "plans"]);
 
 // 휴대폰 글자는 12px 한 줄. 15px 가 같이 붙어 있으면 그쪽이 이겨 「관찰 기록」이 두 줄로 꺾였다.
 const itemBase =
-  "flex items-center gap-3 rounded-md px-3 py-3 min-h-[46px] font-medium transition-all whitespace-nowrap " +
+  "flex items-center gap-3 rounded-md px-3 py-2.5 min-h-[44px] font-medium transition-all whitespace-nowrap " +
   "lg:flex-row flex-col lg:gap-3 gap-[3px] lg:text-[15px] text-[12px] lg:px-3 px-0.5 lg:py-3 py-1.5 flex-1 lg:flex-none justify-center lg:justify-start text-center lg:text-left";
 // 휴대폰 하단 띠에서는 칸을 칠하지 않고 글자만으로 지금 화면을 알린다 (수민 시안 A).
 // 띠가 먹색이 된 뒤로는 보라 칸이 너무 튀어, 흰 글자로 바꿨다.
@@ -145,12 +145,14 @@ export default function AppSidebar() {
           aria-label="주 메뉴"
           className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-rail-line lg:py-4"
         >
+          {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
+              브라우저 탭 아이콘(`app/icon.svg`)과 같은 표시다. */}
           <Link
             href="/"
             aria-label="쌤플 홈으로"
-            className="flex h-11 w-11 items-center justify-center text-primary-tint-line"
+            className="flex h-11 w-11 items-center justify-center"
           >
-            <Icon name="star" className="h-5 w-5" />
+            <SsampleMark size={32} />
           </Link>
           <button
             type="button"
@@ -209,16 +211,14 @@ export default function AppSidebar() {
         >
           <Icon name="panel" className="h-[18px] w-[18px]" />
         </button>
-        {/* 워드마크 왼쪽에 쌤플 마크를 세운다. 글자 S 를 쓰면 바로 옆 Ssample 과 같은 글자가
-            두 번 나온다 — 쪽지에 쓰던 ✳ 는 글자와 겹치지 않고 작게 줄여도 안 뭉갠다. */}
-        <Wordmark tone="rail" className="hidden px-6 pt-6 pb-5 lg:flex" />
+        <Wordmark tone="rail" className="hidden px-6 pb-4 pt-5 lg:flex" />
 
         {/*
         어느 반 작업실에 들어와 있는지. 카드에 꺾쇠가 달려 있어 반 목록이 열릴 것처럼 보이는데
         설정 화면으로 넘어가 버렸다 (수린 점검 4). 반이 둘 이상이면 여기서 바로 바꾼다.
         반이 하나뿐이면 바꿀 것이 없으므로 예전처럼 설정으로 보낸다.
       */}
-        <div className="relative mx-4 mb-6 hidden lg:flex items-center gap-2.5 rounded-md border border-rail-card-line bg-rail-card p-3 text-left">
+        <div className="relative mx-4 mb-4 hidden lg:flex items-center gap-2.5 rounded-md border border-rail-card-line bg-rail-card p-3 text-left">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-peach-strong text-lg text-rail">
             ☀
           </span>
@@ -257,7 +257,7 @@ export default function AppSidebar() {
         <nav className="contents lg:block lg:space-y-1 lg:px-[17px]">
           <NavLink item={HOME} active={isActive(HOME)} />
           {GROUPS.map((group) => (
-            <div key={group.title} className="contents lg:block lg:pt-4">
+            <div key={group.title} className="contents lg:block lg:pt-3">
               <p className="hidden px-3 pb-1 text-[13px] font-medium text-rail-ink-hint lg:block">
                 {group.title}
               </p>
@@ -283,12 +283,13 @@ export default function AppSidebar() {
           />
         </nav>
 
-        <div className="hidden lg:block mt-auto px-5 pb-5">
+        <div className="hidden lg:block mt-auto px-5 pb-4">
           {/*
             쪽지는 장식이다. 세로가 모자랄 때 메뉴·설정이 스크롤 뒤로 숨는 것보다
-            이것이 먼저 빠지는 쪽이 낫다. 880px 은 사이드바의 나머지가 다 들어가는 높이다.
+            이것이 먼저 빠지는 쪽이 낫다. 880px 으로 잡았더니 14인치 노트북(창 높이 760~800)
+            에서 통째로 사라졌다 — 사이드바는 넘치면 스크롤되므로 760px 부터 보인다.
           */}
-          <div className="relative mb-5 hidden pt-[29px] [@media(min-height:880px)]:block">
+          <div className="relative mb-3 hidden pt-[22px] [@media(min-height:700px)]:block">
             {/*
               쪽지 뒤에서 포스티가 눈만 내민다. 쪽지 윗변이 입을 가리는 높이(pt-[29px])라
               얼굴을 통째로 올려 두는 것보다 「뒤에 있다」가 분명하다. 팔다리는 쪽지에 가려
@@ -298,28 +299,28 @@ export default function AppSidebar() {
             <Posty
               tone="plum"
               pose="cheer"
-              size={30}
+              size={21}
               label={null}
-              className="absolute left-[74px] top-[13px] rotate-[9deg]"
+              className="absolute left-[43px] top-[8px] rotate-[9deg]"
             />
             <Posty
               tone="sage"
               pose="up"
-              size={28}
+              size={19}
               label={null}
-              className="absolute left-[104px] top-[14px] -rotate-[11deg]"
+              className="absolute left-[60px] top-[9px] -rotate-[11deg]"
             />
             <Posty
               tone="clay"
               pose="stand"
-              size={26}
+              size={18}
               label={null}
-              className="absolute left-[130px] top-[15px] rotate-[15deg]"
+              className="absolute left-[75px] top-[10px] rotate-[15deg]"
             />
-            <Posty pose="wave" size={56} label={null} className="absolute left-4 top-0" />
-            <div className="relative -rotate-2 border border-note-line bg-note px-4 py-4 shadow-pg-card">
+            <Posty pose="wave" size={36} label={null} className="absolute left-2 top-0" />
+            <div className="relative w-[82%] -rotate-2 border border-note-line bg-note px-3 py-2.5 shadow-pg-card">
               <Tape />
-              <p className="font-display text-[22px] font-bold leading-tight text-ink">
+              <p className="font-display text-[16px] font-bold leading-tight text-ink">
                 쌤의 계획이
                 <br />
                 쉬워지는 순간,
@@ -328,7 +329,7 @@ export default function AppSidebar() {
               </p>
               <span
                 aria-hidden="true"
-                className="absolute bottom-3 right-3 -rotate-12 font-display text-3xl text-sun"
+                className="absolute bottom-2 right-2.5 -rotate-12 font-display text-2xl text-sun"
               >
                 ✳
               </span>
@@ -537,7 +538,7 @@ function Tape() {
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute -top-4 right-3 h-6 w-20 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
+      className="pointer-events-none absolute -top-3 right-3 h-[19px] w-16 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
     />
   );
 }
