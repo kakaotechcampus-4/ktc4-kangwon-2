@@ -423,7 +423,11 @@ def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) 
                 labels[(head, col)] = WEEKLY_DAY_NAMES[day.value]
                 texts[(head + 1, col)] = plan.cell(key, day).value
         elif key in WEEKLY_DAY_CELLS:
-            value = plan.cell(key).value
+            value = (
+                "\n".join(c.value for c in plan.cells if c.section_key == key and c.value.strip())
+                if key == "indoor_play" and plan.indoor_play_selection
+                else plan.cell(key).value
+            )
             texts[WEEKLY_DAY_CELLS[key]] = (
                 _indoor_play_text(value) if key == "indoor_play" else value
             )

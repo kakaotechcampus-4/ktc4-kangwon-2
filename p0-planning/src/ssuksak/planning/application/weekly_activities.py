@@ -7,6 +7,7 @@ from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
     AuditHistory,
+    ArrangementChange,
     GenerationMethod,
     GenerationMethodChange,
     GenerationMethodDetail,
@@ -42,7 +43,7 @@ class WeeklyActivities(_WeeklyLifecycle):
 
     def copy(self, plan_id, item_id, candidate_item_id, actor_id):
         plan, cell, actor = self._target(plan_id, item_id, actor_id)
-        candidate = next((c for c in plan.activity_candidates if c.cell.item_id == candidate_item_id), None)
+        candidate = next((c for c in plan.activity_candidates if c.cell.item_id == candidate_item_id and c.cell.section_key == "group_activity"), None)
         if candidate is None or not candidate.cell.value.strip():
             raise WeeklyApplicationError("weekly_activity_candidate_invalid", "Select a non-blank activity candidate")
         value = f"[{candidate.activity_type}] {candidate.name}"
@@ -79,6 +80,86 @@ class WeeklyActivities(_WeeklyLifecycle):
         except InvalidDomainValueError as error:
             raise WeeklyApplicationError("weekly_activity_layout_invalid", "Split exceeds the depth or width limit") from error
         return self._save(changed)
+
+    def _indoor(self, plan_id, actor_id):
+        plan = self._plan(plan_id)
+        plan.ensure_mutable("indoor_play")
+        actor = require_actor(actor_id)
+        if not plan.indoor_play_selection:
+            raise WeeklyApplicationError("weekly_activity_layout_invalid", "This Plan has no indoor candidate list")
+        return plan, tuple(c for c in plan.cells if c.section_key == "indoor_play"), actor
+
+    def _indoor_arrangement(self, plan, cells, actor, *, removed=()):
+        before = tuple(c.item_id.value for c in plan.cells if c.section_key == "indoor_play")
+        after = tuple(c.item_id.value for c in cells if c.section_key == "indoor_play")
+        audit = plan.audit
+        if before != after:
+            audit = audit.append(AuditEvent(
+                AuditEventType.ARRANGEMENT_CHANGED, self._clock.now(), plan.plan_id, actor_id=actor,
+                arrangement_change=ArrangementChange("indoor_play", before, after),
+            ))
+        return self._save(replace(plan, cells=cells, audit=audit,
+                                  removed_activity_cells=plan.removed_activity_cells + removed))
+
+    def _blank_indoor(self, plan):
+        item_id = self._ids.new_item_id()
+        return WeeklyCell(item_id, "indoor_play", "", CellState.EMPTY_VALID,
+            GenerationMethodDetail(GenerationMethod.RULE_ONLY, "weekly.indoor_empty", "v1"),
+            audit=AuditHistory((AuditEvent(AuditEventType.CREATED, self._clock.now(), plan.plan_id,
+                                          item_id=item_id, system_actor="weekly_application"),)))
+
+    def add_indoor(self, plan_id, candidate_item_id, actor_id):
+        plan, rows, actor = self._indoor(plan_id, actor_id)
+        blank = next((c for c in rows if not c.value.strip()), None)
+        candidate = None
+        if candidate_item_id is not None:
+            candidate_id = require_item_id(candidate_item_id)
+            candidate = next((c for c in plan.activity_candidates
+                              if c.cell.section_key == "indoor_play" and c.cell.item_id == candidate_id), None)
+            if candidate is None or not candidate.name:
+                raise WeeklyApplicationError("weekly_activity_candidate_invalid", "Select a non-blank indoor play candidate")
+            if any(c.value.strip() and next((e.copied_from for e in reversed(c.audit.events)
+                    if e.event_type is AuditEventType.CANDIDATE_COPIED), None) == candidate_id for c in rows):
+                return plan
+        elif blank is not None:
+            return plan
+        cell = blank or self._blank_indoor(plan)
+        if candidate is not None:
+            value = f"[{candidate.activity_type}] - {candidate.name}"
+            generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, "weekly.activity_copy", "v1")
+            event = AuditEvent(AuditEventType.CANDIDATE_COPIED, self._clock.now(), plan.plan_id,
+                              item_id=cell.item_id, actor_id=actor, copied_from=candidate.cell.item_id,
+                              value_change=ValueChange(cell.value, value),
+                              generation_change=GenerationMethodChange(cell.generation, generation))
+            cell = replace(cell, value=value, cell_state=CellState.FILLED, generation=generation,
+                           evidence=candidate.cell.evidence, parent_snapshots=candidate.cell.parent_snapshots,
+                           source_label=candidate.activity_type, audit=cell.audit.append(event))
+        cells = tuple(cell if c is blank else c for c in plan.cells)
+        if blank is None:
+            at = next(i for i, c in enumerate(cells) if c is rows[-1]) + 1
+            cells = cells[:at] + (cell,) + cells[at:]
+        return self._indoor_arrangement(plan, cells, actor)
+
+    def order_indoor(self, plan_id, item_ids, actor_id):
+        plan, rows, actor = self._indoor(plan_id, actor_id)
+        ids = tuple(require_item_id(item) for item in item_ids)
+        if len(ids) != len(rows) or len(set(ids)) != len(ids) or set(ids) != {c.item_id for c in rows}:
+            raise WeeklyApplicationError("weekly_activity_layout_invalid", "Order must contain every indoor play cell once")
+        if ids == tuple(c.item_id for c in rows):
+            return plan
+        ordered = iter({c.item_id: c for c in rows}[item] for item in ids)
+        cells = tuple(next(ordered) if c.section_key == "indoor_play" else c for c in plan.cells)
+        return self._indoor_arrangement(plan, cells, actor)
+
+    def remove_indoor(self, plan_id, item_id, actor_id):
+        plan, rows, actor = self._indoor(plan_id, actor_id)
+        item_id = require_item_id(item_id)
+        cell = next((c for c in rows if c.item_id == item_id), None)
+        if cell is None:
+            raise WeeklyApplicationError("weekly_cell_not_found", "Indoor play cell not found")
+        replacement = (self._blank_indoor(plan),) if len(rows) == 1 else ()
+        cells = tuple(c for old in plan.cells for c in (replacement if old is cell else (old,)))
+        return self._indoor_arrangement(plan, cells, actor, removed=(cell,))
 
     def remove(self, plan_id, item_id, actor_id):
         plan, cell, actor = self._target(plan_id, item_id, actor_id)

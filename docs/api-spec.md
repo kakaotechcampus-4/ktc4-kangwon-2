@@ -2393,7 +2393,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 
 - 주간 칸에는 주가 따로 없다 — **칸 이벤트의 `week_id` 는 그 계획안의 주**다. 계획안 단위(`PLAN`)는 `null`.
 - **`day`** — 요일 칸 이벤트면 그 요일, 그 밖은 `null`. 「대·소집단 활동 · 화」처럼 보이게 하는 용도다.
-- 기본 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. 후보형 추가 이벤트/필드는 위 ADR-054 절을 따른다. `arrangement_change` 는 늘 `null` 이다. 읽기만 한다.
+- 기본 이벤트: `CREATED` · `TEACHER_EDITED` · `REGENERATED` · `CONFIRMED`. 후보형 추가 이벤트/필드는 ADR-054 절을 따른다. 실내놀이 목록을 추가·삭제·정렬한 `ARRANGEMENT_CHANGED`만 `arrangement_change: {scope: "indoor_play", before: string[], after: string[]}`를 반환하고 그 밖에는 `null`이다. 읽기만 한다.
 
 ### 내보내기 — `GET /api/plans/weekly/{id}/export/hwp`
 

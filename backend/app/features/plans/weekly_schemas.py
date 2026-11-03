@@ -22,6 +22,7 @@ class CreateWeeklyPlan(BaseModel):
     class_id: int
     week_id: str
     activity_candidates: bool = False
+    indoor_play_candidates: bool = False
 
 
 class WeeklyParentOut(BaseModel):
@@ -71,6 +72,7 @@ class WeeklySectionOut(BaseModel):
 
 
 class WeeklyActivityCandidateOut(BaseModel):
+    section_key: Literal["group_activity", "indoor_play"] = "group_activity"
     activity_type: str
     name: str
     description: str
@@ -87,6 +89,14 @@ class WeeklyActivityGridOut(BaseModel):
 
 class CopyWeeklyActivityIn(RevisionIn):
     candidate_item_id: str
+
+
+class AddWeeklyIndoorPlayIn(RevisionIn):
+    candidate_item_id: str | None = None
+
+
+class OrderWeeklyIndoorPlayIn(RevisionIn):
+    item_ids: list[str]
 
 
 class SplitWeeklyActivityIn(RevisionIn):
@@ -126,6 +136,7 @@ class WeeklyPlanOut(BaseModel):
     confirmed_at: datetime | None
     activity_candidates: list[WeeklyActivityCandidateOut] = Field(default_factory=list)
     activity_grids: list[WeeklyActivityGridOut] = Field(default_factory=list)
+    indoor_play_selection: bool = False
 
 
 class WeeklyPlanSummary(BaseModel):

@@ -99,6 +99,7 @@ export const addWeekly = (
   weekId: string,
   saturday: boolean,
   activityCandidates = false,
+  indoorCandidates = false,
 ) =>
   commit((db) => {
     const id = db.next++;
@@ -178,7 +179,7 @@ export const addWeekly = (
       created_at: at,
       confirmed_at: null,
     };
-    if (activityCandidates) {
+    if (activityCandidates || indoorCandidates) {
       plan.base_template_ref = { ...TEMPLATE_REF, template_version: "weekly-template-a-v0.2.0" };
       for (const section of plan.sections) {
         if (section.section_key !== "group_activity" && section.section_key !== "special_program")
@@ -215,6 +216,7 @@ export const addWeekly = (
         const name = `${kind} 함께 즐기기`;
         const description = "관심 있는 대상과 움직임을 탐색합니다.";
         return {
+          section_key: "group_activity" as const,
           activity_type: kind,
           name,
           description,
@@ -227,6 +229,44 @@ export const addWeekly = (
           },
         };
       });
+    }
+    plan.indoor_play_selection = indoorCandidates;
+    if (indoorCandidates) {
+      const indoor = plan.sections.find((section) => section.section_key === "indoor_play")!;
+      indoor.cells[0].value = "";
+      indoor.cells[0].state = "EMPTY_VALID";
+      indoor.cells[0].evidence = [];
+      indoor.cells[0].parent_snapshots = [];
+      indoor.cells[0].generation = {
+        method: "RULE_ONLY",
+        rule_id: "weekly.indoor_empty",
+        rule_version: "v1",
+      };
+      const examples = [
+        ["역할놀이", "열매 가게 꾸미기", "열매를 사고파는 역할을 나누며 친구와 말을 주고받습니다."],
+        [
+          "쌓기놀이",
+          "열매가 구르는 길 만들기",
+          "블록 길의 기울기를 바꾸며 열매의 움직임을 살펴봅니다.",
+        ],
+        ["미술놀이", "나뭇잎 무늬 꾸미기", "잎의 모양과 무늬를 살펴보고 여러 색으로 표현합니다."],
+      ];
+      plan.activity_candidates = [
+        ...(plan.activity_candidates ?? []),
+        ...examples.map(([kind, name, description], index) => ({
+          section_key: "indoor_play" as const,
+          activity_type: kind,
+          name,
+          description,
+          cell: {
+            ...cell("indoor_play"),
+            item_id: `item_${id}_indoor_candidate_${index}`,
+            value: `${name}: ${description}`,
+            state: "FILLED" as const,
+            day: null,
+          },
+        })),
+      ];
     }
     db.weeklyPlans.push(plan);
     return plan;
@@ -255,7 +295,9 @@ export const findWeeklyCell = (plan: WeeklyPlan, itemId: string) => {
   const candidate = plan.activity_candidates?.find((entry) => entry.cell.item_id === itemId);
   if (candidate)
     return {
-      section: plan.sections.find((entry) => entry.section_key === "group_activity")!,
+      section: plan.sections.find(
+        (entry) => entry.section_key === (candidate.section_key ?? "group_activity"),
+      )!,
       cell: candidate.cell,
     };
   return null;
@@ -311,6 +353,81 @@ export const removeWeekly = (id: number) =>
     db.weeklyPlans = db.weeklyPlans.filter((p) => p.id !== id);
   });
 
+export const changeWeeklyIndoor = (
+  id: number,
+  operation: "add" | "order" | "remove",
+  input: { candidateId?: string | null; itemIds?: string[]; itemId?: string },
+) =>
+  commit((db) => {
+    const plan = db.weeklyPlans.find((entry) => entry.id === id)!;
+    if (!plan.indoor_play_selection) throw new Error("후보 방식 계획안이 아니에요.");
+    const section = plan.sections.find((entry) => entry.section_key === "indoor_play")!;
+    const rows = section.cells;
+    const blank = () => ({
+      ...rows[0],
+      item_id: `item_indoor_${db.next++}`,
+      value: "",
+      state: "EMPTY_VALID" as const,
+      evidence: [],
+      parent_snapshots: [],
+      generation: {
+        method: "RULE_ONLY" as const,
+        rule_id: "weekly.indoor_empty",
+        rule_version: "v1",
+      },
+    });
+    if (operation === "add") {
+      const empty = rows.find((cell) => !cell.value.trim());
+      const candidate =
+        input.candidateId == null
+          ? null
+          : plan.activity_candidates?.find(
+              (entry) =>
+                entry.section_key === "indoor_play" && entry.cell.item_id === input.candidateId,
+            );
+      if (input.candidateId != null && !candidate?.name.trim())
+        throw new Error("후보를 골라주세요.");
+      if (
+        candidate &&
+        rows.some(
+          (cell) => cell.value.trim() && db.weeklyIndoorCopies[cell.item_id] === input.candidateId,
+        )
+      )
+        return plan;
+      if (!candidate && empty) return plan;
+      const cell = empty ?? blank();
+      if (candidate) {
+        cell.value = `[${candidate.activity_type}] - ${candidate.name}`;
+        cell.state = "FILLED";
+        cell.evidence = candidate.cell.evidence;
+        cell.generation = {
+          method: "RULE_ONLY",
+          rule_id: "weekly.activity_copy",
+          rule_version: "v1",
+        };
+        db.weeklyIndoorCopies[cell.item_id] = candidate.cell.item_id;
+      }
+      if (!empty) rows.push(cell);
+    } else if (operation === "order") {
+      const ids = input.itemIds ?? [];
+      if (
+        ids.length !== rows.length ||
+        new Set(ids).size !== rows.length ||
+        ids.some((id) => !rows.some((cell) => cell.item_id === id))
+      )
+        throw new Error("순서가 맞지 않아요.");
+      if (ids.every((id, index) => rows[index].item_id === id)) return plan;
+      section.cells = ids.map((id) => rows.find((cell) => cell.item_id === id)!);
+    } else {
+      if (!rows.some((cell) => cell.item_id === input.itemId)) throw new Error("칸이 없어요.");
+      section.cells =
+        rows.length === 1 ? [blank()] : rows.filter((cell) => cell.item_id !== input.itemId);
+      delete db.weeklyIndoorCopies[input.itemId!];
+    }
+    plan.revision += 1;
+    return plan;
+  });
+
 export const changeWeeklyActivity = (
   id: number,
   itemId: string,
@@ -356,7 +473,7 @@ export const changeWeeklyActivity = (
     if (!leaf) throw new Error("활동 칸을 찾을 수 없어요.");
     if (operation === "copy") {
       const candidate = plan.activity_candidates?.find(
-        (entry) => entry.cell.item_id === candidateId,
+        (entry) => entry.cell.item_id === candidateId && entry.section_key !== "indoor_play",
       );
       if (!candidate?.name.trim()) throw new Error("후보를 선택해주세요.");
       const value = `[${candidate.activity_type}] ${candidate.name}`;

@@ -22,7 +22,12 @@ const cell = (id: number, itemId: string) =>
  * 그 달 월간이 확정되지 않았으면 409 `GATE_BLOCKED`, 같은 주가 이미 있으면 409 `ALREADY_EXISTS` (§4-1).
  */
 export const createWeeklyPlan = (
-  data: { class_id: number; week_id: string; activity_candidates?: boolean },
+  data: {
+    class_id: number;
+    week_id: string;
+    activity_candidates?: boolean;
+    indoor_play_candidates?: boolean;
+  },
   signal?: AbortSignal,
 ) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
 export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
@@ -94,6 +99,22 @@ export const copyWeeklyActivity = (
     cell(id, itemId) + "/copy-activity",
     json("POST", { candidate_item_id: candidateItemId, expected_revision: revision }),
   );
+export const addWeeklyIndoorPlay = (id: number, candidateItemId: string | null, revision: number) =>
+  apiRequest<WeeklyPlan>(
+    `/api/plans/weekly/${id}/indoor-plays`,
+    json("POST", { candidate_item_id: candidateItemId, expected_revision: revision }),
+  );
+export const orderWeeklyIndoorPlays = (id: number, itemIds: string[], revision: number) =>
+  apiRequest<WeeklyPlan>(
+    `/api/plans/weekly/${id}/indoor-plays/order`,
+    json("PUT", { item_ids: itemIds, expected_revision: revision }),
+  );
+export const removeWeeklyIndoorPlay = (id: number, itemId: string, revision: number) =>
+  apiRequest<WeeklyPlan>(
+    `/api/plans/weekly/${id}/indoor-plays/${itemId}?expected_revision=${revision}`,
+    { method: "DELETE" },
+  );
+
 export const splitWeeklyActivityCell = (
   id: number,
   itemId: string,
