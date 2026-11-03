@@ -69,6 +69,9 @@ def build(source: bytes) -> bytes:
 
     titles = 0
     for p in section.findall("hp:p", NS):
+        # 안내 문단을 제목으로 바꾸지 않는다. 제목은 첫 문단과 새 쪽 시작 문단이다.
+        if p is not section[0] and p.get("pageBreak") != "1":
+            continue
         texts = p.findall("hp:run/hp:t", NS)
         if any(t.text for t in texts) and p.find(".//hp:tbl", NS) is None:
             texts[0].text = TITLE_PLACEHOLDER

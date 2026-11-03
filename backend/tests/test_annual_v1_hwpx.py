@@ -8,7 +8,7 @@ from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 
 from app.features.plans.annual_hwpx import AnnualMonthRows, fill_annual_v1
-from app.shared.hwpx import NS
+from app.shared.hwpx import NS, TITLE_PLACEHOLDER
 
 TEMPLATE = (
     Path(__file__).parents[1] / "app/features/plans/templates/annual_v1_weeks.hwpx"
@@ -30,11 +30,13 @@ def test_annual_templates_use_blue_titles_and_black_table_borders(name, titles):
         "hc": "http://www.hancom.co.kr/hwpml/2011/core",
     }
     margin = section.find(".//hp:pagePr/hp:margin", NS)
-    expected_bottom = "4884" if name == "annual_v1_weeks.hwpx" else "1784"
-    assert (margin.get("bottom"), margin.get("footer")) == (expected_bottom, "1417")
+    expected_margin = ("4884", "1417") if name == "annual_v1_weeks.hwpx" else ("1984", "0")
+    assert (margin.get("bottom"), margin.get("footer")) == expected_margin
     fills = {b.get("id"): b for b in header.findall(".//hh:borderFill", ns)}
     title_paragraphs = [
-        p for p in section.findall("hp:p", NS) if any(t.text for t in p.findall("hp:run/hp:t", NS))
+        p
+        for p in section.findall("hp:p", NS)
+        if any(t.text == TITLE_PLACEHOLDER for t in p.findall("hp:run/hp:t", NS))
     ]
     assert len(title_paragraphs) == titles
     for p in title_paragraphs:
