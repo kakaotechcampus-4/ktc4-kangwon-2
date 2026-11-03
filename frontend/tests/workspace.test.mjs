@@ -367,12 +367,12 @@ test("화면용으로 찾은 이름은 저장소에 다시 쓰이지 않는다",
   }
 });
 
-test("EvaluationPage는 대상 아동을 저장된 childName으로 그리지 않는다", async () => {
+test("증빙 등록은 아동 이름을 저장된 childName 이 아니라 서버 명단에서 그린다", async () => {
   const { readFile } = await import("node:fs/promises");
   const page = await readFile(
-    new URL("../components/workspace/EvaluationPage.tsx", import.meta.url),
+    new URL("../components/workspace/EvidenceImport.tsx", import.meta.url),
     "utf8",
   );
-  assert.equal(/\{(doc|d)\.childName/.test(page), false);
-  assert.equal(page.split("childDisplayName(classes,").length - 1, 2);
+  assert.equal(page.includes("childName"), false);
+  assert.ok(page.includes("classroom?.children.map"));
 });

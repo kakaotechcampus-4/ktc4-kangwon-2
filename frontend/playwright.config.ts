@@ -22,5 +22,16 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 20_000,
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // 기준 창 1440 x 900 — 맥북 13·14인치 기본 보기. 배율은 100%(deviceScaleFactor 1).
+  // 다른 크기를 봐야 하는 시험만 그 안에서 setViewportSize 로 바꾼다.
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 1,
+      },
+    },
+  ],
 });

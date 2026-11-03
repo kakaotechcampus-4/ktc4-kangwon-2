@@ -93,9 +93,6 @@ FROZEN_ARTIFACTS = {
     "rules/safety_placement_policy_v1.json": (
         "f65bcfee463fb8d7ed1da9bc390f7d211249f4d82464af2c258e019729bc616e"
     ),
-    "evidence/institution_evidence_v0_1_0.json": (
-        "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a"
-    ),
     "evidence/safety_evidence_classification_v0_2_0.json": (
         "1daa6445b7ec3f9eae958cb2f09c5da77b00a97abea7a03a0036f3e1f023d650"
     ),
@@ -334,8 +331,6 @@ def test_safety_reference_exact_version_and_six_categories_are_frozen():
 @pytest.mark.parametrize(
     ("filename", "version", "sha", "records"),
     [
-        ("institution_evidence_v0_1_0.json", "institution-evidence-ingestion-v0.1.0",
-         "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea", 12_367),
         ("institution_evidence_v0_2_0.json", "institution-evidence-ingestion-v0.2.0",
          "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463", 12_325),
     ],

@@ -23,6 +23,18 @@ export const planGeneratorThemeExtend = {
       line: "var(--pg-shell-line)",
       hover: "var(--pg-shell-hover)",
     },
+    rail: {
+      DEFAULT: "var(--pg-rail)",
+      line: "var(--pg-rail-line)",
+      hover: "var(--pg-rail-hover)",
+      card: "var(--pg-rail-card)",
+      "card-line": "var(--pg-rail-card-line)",
+      ink: "var(--pg-rail-ink)",
+      "ink-soft": "var(--pg-rail-ink-soft)",
+      "ink-hint": "var(--pg-rail-ink-hint)",
+      on: "var(--pg-rail-on)",
+    },
+    ivory: "var(--pg-ivory)",
     note: {
       DEFAULT: "var(--pg-note)",
       line: "var(--pg-note-line)",

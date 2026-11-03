@@ -182,7 +182,12 @@ test("안전교육: [넣기]는 고른 주에 그 후보를, [빼기]는 null �
 test("소방대피: 칸이 비었으면 확인 없이 바로 복사한다", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
   const calls = [];
-  const tree = h.render(C, { plan: plan(), onCopy: (id) => calls.push(id), disabled: false });
+  const tree = h.render(C, {
+    candidates: plan().drill_candidates,
+    current: "",
+    onCopy: (id) => calls.push(id),
+    disabled: false,
+  });
   click(tree, (n) => n.props["data-candidate"] === "d1");
   assert.deepEqual(calls, ["d1"]);
   assert.equal(all(tree).filter((n) => n.props?.role === "group").length, 0);
@@ -191,8 +196,12 @@ test("소방대피: 칸이 비었으면 확인 없이 바로 복사한다", () =
 test("소방대피: 쓴 글이 있으면 확인 상자를 거치고 아니요면 복사하지 않는다", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
   const calls = [];
-  const p = plan({ teacher_inputs: [{ key: "fire_disaster_drill", cell: cell("t1", "내 글") }] });
-  const props = { plan: p, onCopy: (id) => calls.push(id), disabled: false };
+  const props = {
+    candidates: plan().drill_candidates,
+    current: "내 글",
+    onCopy: (id) => calls.push(id),
+    disabled: false,
+  };
   click(h.render(C, props), (n) => n.props["data-candidate"] === "d1");
   assert.deepEqual(calls, []);
   let tree = h.render(C, props);
@@ -208,13 +217,23 @@ test("소방대피: 쓴 글이 있으면 확인 상자를 거치고 아니요면
 
 test("소방대피: 빈 후보와 disabled 는 버튼이 꺼진다", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
-  let tree = h.render(C, { plan: plan(), onCopy() {}, disabled: false });
+  let tree = h.render(C, {
+    candidates: plan().drill_candidates,
+    current: "",
+    onCopy() {},
+    disabled: false,
+  });
   const off = (t) =>
     all(t)
       .filter(act("copy"))
       .map((n) => n.props.disabled);
   assert.deepEqual(off(tree), [false, true]);
-  tree = h.render(C, { plan: plan(), onCopy() {}, disabled: true });
+  tree = h.render(C, {
+    candidates: plan().drill_candidates,
+    current: "",
+    onCopy() {},
+    disabled: true,
+  });
   assert.deepEqual(off(tree), [true, true]);
 });
 
@@ -265,7 +284,8 @@ test("확인 상자: 연 채 disabled 가 되면 상자가 닫히고 콜백은 0
     [
       "PlayMonthlyDrillPanel.tsx",
       {
-        plan: plan({ teacher_inputs: [{ key: "fire_disaster_drill", cell: cell("t1", "내 글") }] }),
+        candidates: plan().drill_candidates,
+        current: "내 글",
         onCopy: () => calls.push(1),
       },
       (n) => n.props["data-candidate"] === "d1",
@@ -351,7 +371,15 @@ test("복사 · 비우기 버튼 이름에 후보명 · 주 이름이 들어가�
   assert.equal(labels(tree, "place")[0], "1주에 넣기: 법정 빈 후보");
   const d = load("PlayMonthlyDrillPanel.tsx");
   assert.deepEqual(
-    labels(d.h.render(d.C, { plan: plan(), onCopy() {}, disabled: false }), "copy"),
+    labels(
+      d.h.render(d.C, {
+        candidates: plan().drill_candidates,
+        current: "",
+        onCopy() {},
+        disabled: false,
+      }),
+      "copy",
+    ),
     ["소방대피/재난대비 칸에 넣기: 화재", "소방대피/재난대비 칸에 넣기: 지진"],
   );
 });

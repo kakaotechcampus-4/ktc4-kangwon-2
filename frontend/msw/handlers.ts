@@ -80,6 +80,7 @@ import {
   removeWeekly,
   unconfirmWeekly,
   changeWeeklyActivity,
+  changeWeeklyIndoor,
 } from "./data/weekly-plans";
 import {
   addReadyProfile,
@@ -180,7 +181,63 @@ async function weeklyActivity(
   }
 }
 
+async function weeklyIndoor(
+  request: Request,
+  id: number,
+  operation: "add" | "order" | "remove",
+  itemId?: string,
+) {
+  const plan = myWeekly(id);
+  if (!plan) return weeklyMissing();
+  const b: Record<string, unknown> | null =
+    operation === "remove"
+      ? { expected_revision: Number(new URL(request.url).searchParams.get("expected_revision")) }
+      : await body(request);
+  if (!b || !integer(b.expected_revision) || Number(b.expected_revision) < 1)
+    return bad("expected_revision");
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 바꿀 수 없습니다.");
+  if (plan.revision !== b.expected_revision) return stale();
+  if (!plan.indoor_play_selection) return bad("value");
+  if (operation === "add" && b.candidate_item_id != null && typeof b.candidate_item_id !== "string")
+    return bad("candidate_item_id");
+  if (
+    operation === "order" &&
+    (!Array.isArray(b.item_ids) || !b.item_ids.every((id) => typeof id === "string"))
+  )
+    return bad("item_ids");
+  if (
+    operation === "remove" &&
+    !plan.sections
+      .find((s) => s.section_key === "indoor_play")
+      ?.cells.some((c) => c.item_id === itemId)
+  )
+    return failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+  try {
+    return HttpResponse.json(
+      weeklyOut(
+        changeWeeklyIndoor(id, operation, {
+          candidateId: typeof b.candidate_item_id === "string" ? b.candidate_item_id : null,
+          itemIds: operation === "order" ? (b.item_ids as string[]) : undefined,
+          itemId,
+        }),
+      ),
+    );
+  } catch {
+    return bad("value");
+  }
+}
+
 export const handlers = [
+  http.post("*/api/plans/weekly/:id/indoor-plays", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "add"),
+  ),
+  http.put("*/api/plans/weekly/:id/indoor-plays/order", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "order"),
+  ),
+  http.delete("*/api/plans/weekly/:id/indoor-plays/:itemId", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "remove", String(params.itemId)),
+  ),
   http.post("*/api/plans/weekly/:id/cells/:itemId/copy-activity", ({ request, params }) =>
     weeklyActivity(request, Number(params.id), String(params.itemId), "copy"),
   ),
@@ -223,6 +280,13 @@ export const handlers = [
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
     return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+  }),
+  // §1. 원 정보 읽기. 서버처럼 자기 원만 읽는다.
+  http.get("*/api/centers/:centerId", ({ params }) => {
+    const id = Number(params.centerId);
+    const center = findCenter(id);
+    if (!center || id !== currentCenterId()) return missing();
+    return HttpResponse.json(center);
   }),
   // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
   http.patch("*/api/centers/:centerId", async ({ request, params }) => {
@@ -1010,7 +1074,14 @@ export const handlers = [
     return HttpResponse.json(
       weeklyOut(
         withMemo(
-          addWeekly(klass, monthly, b.week_id, saturday, b.activity_candidates === true),
+          addWeekly(
+            klass,
+            monthly,
+            b.week_id,
+            saturday,
+            b.activity_candidates === true || b.indoor_play_candidates === true,
+            b.indoor_play_candidates === true,
+          ),
           memo,
           "weeklyPlans",
         ),
@@ -1064,6 +1135,7 @@ export const handlers = [
       return failure("VALIDATION_FAILED", "교사가 적는 칸이라 다시 만들 수 없습니다.", "item_id");
     if (
       !WEEKLY_REGENERATABLE.includes(w.section.section_key) ||
+      (w.plan.indoor_play_selection && w.section.section_key === "indoor_play") ||
       (w.plan.activity_grids?.length && w.section.section_key === "group_activity")
     )
       return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");
@@ -1254,6 +1326,7 @@ const myWeekly = (id: number) => {
 const monthlyOut = (p: MonthlyPlan) => ({
   ...p,
   parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
+  drill_candidates: p.drill_candidates ?? [],
 });
 const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
 const weeklyMissing = () => failure("NOT_FOUND", "주간계획안을 찾을 수 없습니다.", "id");

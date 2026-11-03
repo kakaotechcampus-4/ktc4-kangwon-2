@@ -61,6 +61,17 @@ export const getMonthlyPlanAudit = (id: number, itemId?: string, signal?: AbortS
       (itemId === undefined ? "" : "?item_id=" + encodeURIComponent(itemId)),
     { signal },
   );
+/** 훈련 후보를 「소방대피/재난대비」 칸에 복사한다. 같은 복사면 200 · 무변경. */
+export const copyMonthlyDrill = (
+  id: number,
+  itemId: string,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/drill-candidates/" + encodeURIComponent(itemId) + "/copy",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
 /** 그 주에 둘 안전 후보. `null` 이면 비운다. 같은 입력이면 200 · 무변경(revision 그대로). */
 export const placeMonthlySafety = (
   id: number,

@@ -10,6 +10,7 @@
 """
 
 import io
+import re
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -152,8 +153,7 @@ MONTHLY_TEMPLATES = {4: "monthly_v1_4weeks.hwpx", 5: "monthly_v1_5weeks.hwpx"}
 MONTHLY_PERIOD_CELL = (2, 1)
 # 한 달에 하나인 Section → 칸, 주마다 있는 Section → 줄. 주차 칸의 열은 주차 머리 줄에서 읽는다 —
 # 4주 · 5주 양식의 열 주소가 다르다.
-# 소방대피/재난대비는 주 칸 없이 한 칸(12행, 12열 합침)이다.
-MONTHLY_MONTH_CELLS = {"theme": (1, 1), "goals": (3, 1), "drill": (12, 1)}
+MONTHLY_MONTH_CELLS = {"theme": (1, 1), "goals": (3, 1)}
 MONTHLY_WEEK_ROWS = {
     "focus": 7,
     "outdoor_play": 8,
@@ -198,7 +198,7 @@ def export_monthly_plan(
 
     줄은 양식에 박혀 있다. 원이 켜지 않은 Section(목표 · 기본생활습관 · 실내 대체활동)과
     아직 계획안이 만들지 않는 줄(행사 · 시간표)은 빈칸이다 — 교사가 한글에서 적는다.
-    소방대피/재난대비 줄은 훈련 칸이 있는 계획만 채운다(없으면 빈칸).
+    소방대피/재난대비 줄은 양식 개편 때까지 빈칸이다.
     양식에 자리가 없는 Section 이 오면 버리지 않고 멈춘다.
     """
     row = _monthly_row(session, user, plan_id)
@@ -214,6 +214,9 @@ def export_monthly_plan(
     rows: dict[int, list[str]] = {}
     for section in plan.sections:
         if not section.visible or section.role != "CONTENT":
+            continue
+        # 한글 훈련 줄은 양식 개편 때까지 내보내지 않는다(12행은 빈칸).
+        if section.section_key == "drill":
             continue
         if section.section_key in MONTHLY_MONTH_CELLS:
             texts[MONTHLY_MONTH_CELLS[section.section_key]] = _month_value(section)
@@ -330,7 +333,14 @@ def export_weekly_plan(
         (s for s in plan.sections if s.visible and s.role == "CONTENT"), key=lambda s: s.order
     )
     rows = [
-        [section.label or section.section_key, "\n".join(c.value for c in section.cells if c.value)]
+        [
+            section.label or section.section_key,
+            "\n".join(
+                _indoor_play_text(c.value) if section.section_key == "indoor_play" else c.value
+                for c in section.cells
+                if c.value
+            ),
+        ]
         for section in sections
     ]
     period = plan.week_period
@@ -388,6 +398,15 @@ WEEKLY_DAY_LABELS = {
 }
 
 
+def _indoor_play_text(value: str) -> str:
+    """기존 영역 표기만 정리한다. 교사 입력에 없는 분류는 추측해 붙이지 않는다."""
+    return re.sub(
+        r"(?m)^([ \t]*\[[^\]\r\n]+\])[ \t]*[-–—:]?[ \t]*(?=[^ \t\r\n–—:\-])",
+        r"\1 - ",
+        value,
+    )
+
+
 def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) -> bytes:
     """요일 양식 계획안을 고정 양식에 채운다. 양식에 자리가 없는 Section 이 오면 멈춘다."""
     days = plan.operating_days
@@ -404,7 +423,14 @@ def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) 
                 labels[(head, col)] = WEEKLY_DAY_NAMES[day.value]
                 texts[(head + 1, col)] = plan.cell(key, day).value
         elif key in WEEKLY_DAY_CELLS:
-            texts[WEEKLY_DAY_CELLS[key]] = plan.cell(key).value
+            value = (
+                "\n".join(c.value for c in plan.cells if c.section_key == key and c.value.strip())
+                if key == "indoor_play" and plan.indoor_play_selection
+                else plan.cell(key).value
+            )
+            texts[WEEKLY_DAY_CELLS[key]] = (
+                _indoor_play_text(value) if key == "indoor_play" else value
+            )
         else:
             raise TemplateMismatch(f"주간 요일 양식에 {key} 줄이 없다.")
     return _fill_form(

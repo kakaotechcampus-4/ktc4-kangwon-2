@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import { ApiError } from "@/lib/api/client";
 import {
   confirmMonthlyPlan,
+  copyMonthlyDrill,
   downloadMonthlyHwpx,
   editMonthlyCell,
   placeMonthlySafety,
@@ -21,6 +22,7 @@ import { isSaveConflict } from "@/lib/api/plans";
 import type { MonthlyCell, MonthlyPlan } from "@/lib/api/types";
 import { sectionName } from "@/lib/monthly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
+import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
@@ -173,9 +175,10 @@ export default function MonthlyPlanEditor({
   };
 
   function saveCell(itemId: string, text: string) {
+    // 편집기는 다듬은 글을 저장한다.
     const drop = () =>
       setLive((d) =>
-        d[itemId] === text
+        d[itemId]?.trim() === text
           ? Object.fromEntries(Object.entries(d).filter(([k]) => k !== itemId))
           : d,
       );
@@ -288,6 +291,12 @@ export default function MonthlyPlanEditor({
       (cur) => placeMonthlySafety(cur.id, weekId, candidateItemId, cur.revision),
       candidateItemId ? "안전교육을 두었어요." : "안전교육을 비웠어요.",
     );
+  const copyDrill = (itemId: string) =>
+    afterSaves(
+      "drill",
+      (cur) => copyMonthlyDrill(cur.id, itemId, cur.revision),
+      "훈련 후보를 넣었어요.",
+    );
   const confirm = () =>
     afterSaves(
       "confirm",
@@ -297,12 +306,15 @@ export default function MonthlyPlanEditor({
 
   const weekLabel = (id: string | null) => weeks.find((w) => w.week_id === id)?.label ?? "";
   const shown = (cell: MonthlyCell) => live[cell.item_id] ?? cell.value;
+  const drillCell = plan.sections.find((s) => s.section_key === "drill")?.cells[0];
+  // 훈련 후보가 있으면 훈련 칸도 「AI 후보」 탭부터 (놀이 월간과 같다).
+  const drillId = plan.drill_candidates.length > 0 ? drillCell?.item_id : undefined;
   const stamp = (id: string) => `${bumps["*"] ?? 0}:${bumps[id] ?? 0}`;
-  // 안전교육 줄은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
+  // 안전교육 줄 · 훈련 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
   const select = (id: string) => {
     setSelected(id);
     setAsking("");
-    setTab(id.startsWith("safety:") ? "ai" : "edit");
+    setTab(id.startsWith("safety:") || id === drillId ? "ai" : "edit");
   };
   // 칸 고르기 — 다듬기 문서만. 확정본 · 크게 보기 창은 읽기 전용이다.
   type Pick = { selected: string | null; onSelect?: (id: string) => void };
@@ -440,11 +452,22 @@ export default function MonthlyPlanEditor({
   const aiTab =
     candidateMode && safetyWeek ? (
       <PlayMonthlySafetyPanel plan={plan} weekId={safetyWeek} onPlace={place} disabled={locked} />
+    ) : drillCell && selected === drillId ? (
+      <PlayMonthlyDrillPanel
+        candidates={plan.drill_candidates}
+        current={shown(drillCell)}
+        onCopy={copyDrill}
+        disabled={locked}
+      />
     ) : (
       <p className="m-0 text-sm text-[#5c5243]">
-        {candidateMode
-          ? "안전교육 칸을 누르면 넣을 후보가 보여요."
-          : "이 양식에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
+        {candidateMode && drillId
+          ? "안전교육이나 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."
+          : candidateMode
+            ? "안전교육 칸을 누르면 넣을 후보가 보여요."
+            : drillId
+              ? "소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."
+              : "이 양식에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
       </p>
     );
   const aside = (

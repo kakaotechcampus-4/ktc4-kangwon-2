@@ -3,10 +3,12 @@ import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
-import { createCenter, joinCenter, updateCenter } from "./centers";
+import { createCenter, getCenter, joinCenter, updateCenter } from "./centers";
 import { createClass, getClasses } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
 import { normalizeProvince } from "../onboarding/regions";
+import { loadClassSettings, saveClassSettings } from "../onboarding/settings";
+import { EMPTY_CLASS_SETTINGS } from "../onboarding/types";
 import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
 /** 서버에서 받아온 연결이라는 표시. 화면이 그 내용을 들고 있지 않아 서명을 만들 수 없다. */
 const ADOPTED = "adopted";
@@ -314,6 +316,54 @@ export async function adoptServerClasses(
   persist?.(filled);
   saveLinks(links);
   return filled;
+}
+
+/**
+ * 서버에는 원 · 반이 있는데 이 브라우저에는 기록이 없을 때 서버 값으로 채운다 (#291).
+ *
+ * 다른 기기 · 다른 브라우저 · 저장소를 지운 교사가 로그인하면, 첫 설정을 마쳤는지를
+ * 브라우저 기록으로만 보던 탓에 첫 설정으로 보내졌고 반 정보는 빈 칸이었다.
+ * 원 정보는 늘 채우고(첫 설정이 1단계부터 다시 묻지 않게), 반까지 들어오면 true —
+ * 그 교사는 첫 설정을 끝낸 것이다. 반이 없으면 false 이고 반 정보 단계로 이어 간다.
+ * 아동 명단은 `adoptServerClasses` 가 받고 저장소에는 실명을 남기지 않는다(ADR-013).
+ */
+export async function restoreFromServer(centerId: number): Promise<boolean> {
+  const local = loadClassSettings();
+  if (local?.completedAt) return false;
+  const center = await getCenter(centerId);
+  const data = {
+    name: center.name,
+    director_name: center.director_name,
+    region_sido: normalizeProvince(center.region_sido).trim(),
+    region_sigungu: center.region_sigungu.trim(),
+  };
+  const links = readLinks();
+  if (!links.center) {
+    links.center = { id: center.id, signature: JSON.stringify(data) };
+    saveLinks(links);
+  }
+  // 빈 칸으로 만들어 둔 반(EMPTY_CLASS_SETTINGS 의 첫 줄)은 들인 반 앞에 남기지 않는다 —
+  // 남으면 「반 정보를 다 채우지 않았다」로 읽혀 다시 첫 설정으로 간다.
+  const kept = (local?.classes ?? []).filter((c) => c.className.trim());
+  const base: ClassSettings = {
+    ...(local ?? EMPTY_CLASS_SETTINGS),
+    classes: kept.length ? kept : EMPTY_CLASS_SETTINGS.classes,
+    orgName: center.name,
+    directorName: center.director_name,
+    regionProvince: data.region_sido,
+    regionDistrict: data.region_sigungu,
+  };
+  saveClassSettings(base);
+  let restored = false;
+  await adoptServerClasses(kept, undefined, (rows) => {
+    restored = rows.length > 0;
+    saveClassSettings({
+      ...base,
+      classes: [...kept, ...rows],
+      completedAt: new Date().toISOString(),
+    });
+  });
+  return restored;
 }
 
 export async function loadServerClasses(settings: ClassSettings) {

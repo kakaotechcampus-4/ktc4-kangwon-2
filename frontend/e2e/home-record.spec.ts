@@ -92,7 +92,8 @@ async function enterHome(page: Page) {
   await page.getByRole("button", { name: "+ 추가" }).click();
   await page.getByRole("button", { name: "설정 완료" }).click();
   await expect(page).not.toHaveURL(/\/onboarding/);
-  await expect(page.getByRole("heading", { name: "우리 반", exact: true, level: 1 })).toBeVisible();
+  // 홈의 h1 은 날짜라 매일 달라진다. 홈에만 있는 적는 칸 제목으로 「도착했나」를 본다.
+  await expect(page.getByRole("heading", { name: "지금, 한 줄", exact: true })).toBeVisible();
   const me = await api(page, "/api/auth/me");
   const classes = await api(page, `/api/centers/${me.center_id}/classes`);
   const klass = classes.items.find((row: { name: string }) => row.name === "햇살반");
@@ -142,18 +143,18 @@ test("K 한 반 계정: 홈에서 저장한 관찰이 홈에 그대로 보인다
   const fact = "블록 세 개를 쌓은 뒤 더 높이 만들래라고 말했다.";
 
   // 홈에서 한 줄 남긴다.
-  await expect(page.getByText("오늘 기록 0건")).toBeVisible();
+  await expect(page.getByText("오늘 적은 내용 0건")).toBeVisible();
   const saved = await saveHome(page, fact, classId);
 
   // ★ 여기가 회귀 지점이다. 201 이 아니라 **화면**을 본다.
-  await expect(page.getByText("오늘 기록 1건")).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText("오늘 적은 내용 1건")).toBeVisible({ timeout: 5000 });
   await expect(page.getByText(fact, { exact: true }).first()).toBeVisible();
 
   // 새로고침해도 남아 있다 — 저장은 됐는데 화면만 비는 상태가 아니다.
   await page.reload();
-  await expect(page.getByText("오늘 기록 1건")).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText("오늘 적은 내용 1건")).toBeVisible({ timeout: 5000 });
   await expect(page.getByText(fact, { exact: true }).first()).toBeVisible();
-  await expect(page.getByLabel("현재 반", { exact: true })).toContainText("햇살반");
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toContainText("햇살반");
   await info.attach("K-saved-record", {
     body: JSON.stringify(saved),
     contentType: "application/json",
@@ -168,7 +169,7 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   const factA = "햇살반에서 블록 길을 만들었다.";
   const factB = "달님반에서 공을 친구에게 굴렸다.";
   await saveHome(page, factA, classId);
-  await expect(page.getByText("오늘 기록 1건")).toBeVisible();
+  await expect(page.getByText("오늘 적은 내용 1건")).toBeVisible();
   const other = await api(page, `/api/centers/${centerId}/classes`, "POST", {
     name: "달님반",
     teacher_name: "다른교사",
@@ -195,7 +196,7 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   });
   await page.reload();
   await hit;
-  await expect(page.getByLabel("현재 반", { exact: true })).toContainText("햇살반");
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toContainText("햇살반");
   await expect(page.getByText(factA, { exact: true }).first()).toBeVisible();
   release();
 
@@ -205,16 +206,15 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   const option = picker.locator("option", { hasText: "달님반" });
   await expect(option).toHaveCount(1);
   await picker.selectOption((await option.getAttribute("value"))!);
-  await expect(page.getByLabel("현재 반", { exact: true })).toContainText("달님반");
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await page.unroute(childrenUrl);
   await expect(page.getByText(factA, { exact: true })).toHaveCount(0);
-  await expect(page.getByText("오늘 기록 0건")).toBeVisible();
+  await expect(page.getByText("오늘 적은 내용 0건")).toBeVisible();
 
   await page.getByLabel("빠른 기록 내용").fill(factB);
   await page.getByRole("button", { name: "누구 기록인지 고르기", exact: true }).click();
   const made = await confirmHome(page, other.id);
-  await expect(page.getByText("오늘 기록 1건")).toBeVisible();
+  await expect(page.getByText("오늘 적은 내용 1건")).toBeVisible();
   await expect(page.getByText(factB, { exact: true }).first()).toBeVisible();
   const date = made.date as string;
   const routine = page.getByRole("link", { name: "오늘 일과 적기", exact: true });
@@ -227,14 +227,13 @@ test("L 두 반: 상단·저장·조회·일과 링크·뒤로가기와 지연 �
   // 뒤로 와도 같은 반이다. 홈은 주소에 반을 적지 않고 저장소에 남은 반을 본다.
   await page.goBack();
   await expect(page).toHaveURL("/");
-  await expect(page.getByLabel("현재 반", { exact: true })).toContainText("달님반");
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
-  await expect(page.getByText("오늘 기록 1건")).toBeVisible();
+  await expect(page.getByText("오늘 적은 내용 1건")).toBeVisible();
   await expect(page.getByText(factB, { exact: true }).first()).toBeVisible();
   await expect(page.getByText(factA, { exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByLabel("현재 반", { exact: true })).toContainText("달님반");
-  await expect(page.getByText("오늘 기록 1건")).toBeVisible();
+  await expect(page.getByLabel("상단 현재 반", { exact: true })).toContainText("달님반");
+  await expect(page.getByText("오늘 적은 내용 1건")).toBeVisible();
   await expect(page.getByRole("link", { name: "오늘 일과 적기", exact: true })).toHaveAttribute(
     "href",
     `/routines?date=${date}&class_id=${other.id}`,

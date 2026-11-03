@@ -1,22 +1,21 @@
 "use client";
 import { useState } from "react";
-import type { PlayMonthlyPlan } from "@/lib/api/types";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 import { CARD, PUT } from "./PlayMonthlySafetyPanel";
 
 /** Ⓜ3 AI 후보 — 소방대피 훈련 후보를 「소방대피/재난대비」 칸에 넣는다(09c). 쓴 글이 있으면 덮기 전에 묻는다. */
 export default function PlayMonthlyDrillPanel({
-  plan,
+  candidates,
+  current,
   onCopy,
   disabled,
 }: {
-  plan: PlayMonthlyPlan;
+  candidates: { topic_id: string; label: string; cell: { item_id: string; value: string } }[];
+  current: string;
   onCopy: (itemId: string) => void;
   disabled: boolean;
 }) {
   const [asking, setAsking] = useState<string | null>(null);
-  const current =
-    plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.value ?? "";
   if (disabled && asking) setAsking(null);
   const copy = (id: string) => {
     if (disabled) return;
@@ -30,7 +29,7 @@ export default function PlayMonthlyDrillPanel({
         <span className="text-[13px] font-normal text-[#5c5243]">넣은 뒤 고칠 수 있어요</span>
       </h2>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {plan.drill_candidates.map((d) => {
+        {candidates.map((d) => {
           const id = d.cell.item_id;
           const empty = d.cell.value.trim() === "";
           return (

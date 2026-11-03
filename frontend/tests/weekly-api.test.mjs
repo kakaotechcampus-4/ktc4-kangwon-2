@@ -151,6 +151,7 @@ test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
 
 test("클라이언트는 후보 복사와 칸 분할·삭제 · 확정 취소까지 낸다", () => {
   assert.deepEqual(Object.keys(weekly).sort(), [
+    "addWeeklyIndoorPlay",
     "confirmWeeklyPlan",
     "copyWeeklyActivity",
     "createWeeklyPlan",
@@ -160,8 +161,10 @@ test("클라이언트는 후보 복사와 칸 분할·삭제 · 확정 취소까
     "getWeeklyPlan",
     "getWeeklyPlanAudit",
     "listWeeklyPlans",
+    "orderWeeklyIndoorPlays",
     "regenerateWeeklyCell",
     "removeWeeklyActivityCell",
+    "removeWeeklyIndoorPlay",
     "splitWeeklyActivityCell",
     "unconfirmWeeklyPlan",
   ]);
@@ -210,6 +213,151 @@ test("G4 — 월간에 없는 주 주소는 거절한다. 주차를 주간이 �
     422,
     "VALIDATION_FAILED",
   );
+});
+
+test("자유놀이 후보는 여러 개를 넣고 고치고 순서를 바꾼 뒤 마지막까지 뺄 수 있다", async () => {
+  const { klass, monthly } = await classWithMonthly();
+  let plan = await weekly.createWeeklyPlan({
+    class_id: klass.id,
+    week_id: monthly.weeks[0].week_id,
+    indoor_play_candidates: true,
+  });
+  const rows = (p) => p.sections.find((s) => s.section_key === "indoor_play").cells;
+  const candidates = plan.activity_candidates.filter((c) => c.section_key === "indoor_play");
+  assert.equal(plan.indoor_play_selection, true);
+  assert.equal(rows(plan)[0].value, "");
+  plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[0].cell.item_id, plan.revision);
+  const first = rows(plan)[0].item_id;
+  assert.equal(rows(plan)[0].value, `[${candidates[0].activity_type}] - ${candidates[0].name}`);
+  plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[1].cell.item_id, plan.revision);
+  plan = await weekly.editWeeklyCell(plan.id, first, "고친 자유놀이", plan.revision);
+  const revision = plan.revision;
+  plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[0].cell.item_id, plan.revision);
+  assert.equal(plan.revision, revision);
+  assert.equal(rows(plan)[0].value, "고친 자유놀이");
+  const ids = rows(plan)
+    .map((cell) => cell.item_id)
+    .reverse();
+  plan = await weekly.orderWeeklyIndoorPlays(plan.id, ids, plan.revision);
+  assert.deepEqual(
+    rows(plan).map((cell) => cell.item_id),
+    ids,
+  );
+  await rejects(
+    weekly.orderWeeklyIndoorPlays(plan.id, [first, first], plan.revision),
+    422,
+    "VALIDATION_FAILED",
+  );
+  const group = plan.activity_candidates.find((c) => c.section_key !== "indoor_play");
+  await rejects(
+    weekly.addWeeklyIndoorPlay(plan.id, group.cell.item_id, plan.revision),
+    422,
+    "VALIDATION_FAILED",
+  );
+  await rejects(
+    weekly.regenerateWeeklyCell(plan.id, first, plan.revision),
+    422,
+    "VALIDATION_FAILED",
+  );
+  for (const id of ids) plan = await weekly.removeWeeklyIndoorPlay(plan.id, id, plan.revision);
+  assert.equal(rows(plan).length, 1);
+  assert.equal(rows(plan)[0].value, "");
+  assert.deepEqual(rows(await weekly.getWeeklyPlan(plan.id)), rows(plan));
+});
+
+test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 저장 대기·확정 상태에서 잠긴다", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  const source = readFileSync(
+    new URL("../components/workspace/WeeklyIndoorPlayPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  const code = require("next/dist/compiled/babel/core").transformSync(source, {
+    filename: "WeeklyIndoorPlayPanel.tsx",
+    babelrc: false,
+    configFile: false,
+    presets: [
+      [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+      [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+      require("next/dist/compiled/babel/preset-typescript"),
+    ],
+  }).code;
+  const jsx = (type, props) => ({ type, props });
+  const panelModule = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (name) =>
+      name === "react/jsx-runtime"
+        ? { jsx, jsxs: jsx }
+        : { __esModule: true, default: new Proxy({}, { get: (_, k) => k }) },
+    panelModule,
+    panelModule.exports,
+  );
+  const Panel = panelModule.exports.default;
+  const selected = [
+    { item_id: "one", value: "[역할놀이] - 가게 놀이" },
+    { item_id: "two", value: "[쌓기놀이] - 길 만들기" },
+  ];
+  const plan = {
+    status: "DRAFT",
+    indoor_play_selection: true,
+    sections: [{ section_key: "indoor_play", cells: selected }],
+    activity_candidates: [
+      {
+        section_key: "indoor_play",
+        activity_type: "역할놀이",
+        name: "가게 놀이",
+        cell: { item_id: "candidate", value: "가게 놀이: 말을 주고받습니다." },
+      },
+      {
+        section_key: "group_activity",
+        activity_type: "음률",
+        name: "집단 활동",
+        cell: { item_id: "group", value: "숨길 집단 후보" },
+      },
+    ],
+  };
+  const calls = [];
+  const props = {
+    plan,
+    disabled: false,
+    renderCell: (cell) => jsx("p", { children: cell.value }),
+    onAdd: (id) => calls.push(id),
+    onOrder: (ids) => calls.push(ids),
+    onRemove: (id) => calls.push(id),
+  };
+  const all = (node) =>
+    Array.isArray(node)
+      ? node.flatMap(all)
+      : node && typeof node === "object"
+        ? [node, ...all(node.props?.children)]
+        : [];
+  const text = (node) =>
+    Array.isArray(node)
+      ? node.map(text).join("")
+      : node && typeof node === "object"
+        ? text(node.props?.children)
+        : typeof node === "string"
+          ? node
+          : "";
+  const tree = Panel(props);
+  assert.equal(text(tree).includes("숨길 집단 후보"), false);
+  const buttons = all(tree).filter((n) => n.type === "button");
+  buttons.find((n) => text(n) === "이번 주 놀이에 넣기").props.onClick();
+  buttons.find((n) => text(n) === "아래로").props.onClick();
+  buttons.find((n) => text(n) === "빼기").props.onClick();
+  assert.deepEqual(calls, ["candidate", ["two", "one"], "one"]);
+  assert.ok(
+    all(Panel({ ...props, disabled: true }))
+      .filter((n) => n.type === "button")
+      .every((n) => n.props.disabled),
+  );
+  assert.equal(
+    all(Panel({ ...props, plan: { ...plan, status: "CONFIRMED" } })).some(
+      (n) => n.type === "button",
+    ),
+    false,
+  );
+  assert.equal(Panel({ ...props, plan: { ...plan, indoor_play_selection: false } }), null);
 });
 
 test("G5 — 같은 반 같은 주는 한 번만 만든다", async () => {

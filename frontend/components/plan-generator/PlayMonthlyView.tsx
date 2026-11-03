@@ -410,7 +410,12 @@ function PlayMonthlyBody({
       disabled={locked}
     />
   ) : selected && selected === drillId ? (
-    <PlayMonthlyDrillPanel plan={plan} onCopy={copyDrill} disabled={locked} />
+    <PlayMonthlyDrillPanel
+      candidates={plan.drill_candidates}
+      current={plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.value ?? ""}
+      onCopy={copyDrill}
+      disabled={locked}
+    />
   ) : (
     <p className="m-0 text-sm text-[#5c5243]">
       안전교육이나 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요.
