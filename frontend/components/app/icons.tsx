@@ -6,7 +6,10 @@ export type IconName =
   | "record"
   | "doc"
   | "eval"
+  | "panel"
   | "settings"
+  | "logout"
+  | "star"
   | "search"
   | "bell"
   | "chevron"
@@ -31,12 +34,6 @@ export type IconName =
 
 const PATHS: Record<IconName, React.ReactNode> = {
   more: <path d="M4 7h10M4 12h16M4 17h7" />,
-  logout: (
-    <>
-      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
-      <path d="M10 16l-4-4 4-4M6 12h10" />
-    </>
-  ),
   lock: (
     <>
       <rect x="4.5" y="10.5" width="15" height="9" rx="2" />
@@ -66,6 +63,28 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M8.5 12.5l2.3 2.3L15.8 9.8" />
+    </>
+  ),
+  panel: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9.5 4v16" />
+    </>
+  ),
+  /** 로그아웃 — 문에서 밖으로 나가는 화살표. 「설정」 옆에 글자만 둘 두면 둘 다 안 읽힌다. */
+  logout: (
+    <>
+      <path d="M14 20H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h8" />
+      <path d="M17 15.5 20.5 12 17 8.5" />
+      <path d="M20 12h-9" />
+    </>
+  ),
+  /** 쌤플 마크. 사이드바 쪽지에 쓰던 ✳ 를 선으로 그린 것이라 16px 까지 줄여도 안 뭉갠다. */
+  star: (
+    <>
+      <path d="M12 3.2v17.6" />
+      <path d="M4.4 7.6 19.6 16.4" />
+      <path d="M4.4 16.4 19.6 7.6" />
     </>
   ),
   settings: (

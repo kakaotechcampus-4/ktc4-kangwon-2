@@ -494,9 +494,10 @@ def test_확정은_한_번만_저장되고_재호출은_revision_과_무관하�
     assert (confirmed["status"], confirmed["revision"]) == ("CONFIRMED", 2)
     assert confirmed["confirmed_at"] is not None
     assert _get(plan["id"]) == confirmed
-    # 안전교육은 법정 주만 채워진 채 확정된다 — 법정 시수를 충족했다는 뜻이 아니다.
+    # 안전교육은 후보 모드라 주별 칸이 비어 있고(배치는 safety_weeks) 미배치인 채 확정된다 —
+    # 법정 시수를 충족했다는 뜻이 아니다.
     safety = next(s for s in confirmed["sections"] if s["section_key"] == "safety_education")
-    assert {c["state"] for c in safety["cells"]} == {"FILLED", "EMPTY_VALID"}
+    assert {c["state"] for c in safety["cells"]} == {"EMPTY_VALID"}
     constraint = next(
         c for c in confirmed["constraints"] if c["code"] == "STATUTORY_SAFETY_EDUCATION"
     )
@@ -530,6 +531,65 @@ def test_DRAFT_에_옛_revision_으로_확정하면_409(world):
     assert _get(plan["id"]) == edited
     row, _ = _stored(session, world["mine"]["center"], plan["id"])
     assert (row.status, row.revision) == ("DRAFT", 2)
+
+
+def _unconfirm(plan_id, revision):
+    return client.post(
+        f"/api/plans/monthly/{plan_id}/unconfirm", json={"expected_revision": revision}
+    )
+
+
+def test_확정을_풀면_다시_고치고_다시_확정할_수_있다(world, teacher):
+    session, plan = world["session"], world["plan"]
+    focus = _cell(plan, "focus")["item_id"]
+    # 이미 DRAFT 면 revision 과 무관하게 200 이고 아무것도 안 바뀐다.
+    assert _unconfirm(plan["id"], 99).json() == _get(plan["id"])
+    confirmed = _confirm(plan["id"], 1).json()
+    assert _error(_unconfirm(plan["id"], 1)) == (409, "STALE_WRITE", ["expected_revision"])
+
+    reopened = _unconfirm(plan["id"], 2)
+    assert reopened.status_code == 200, reopened.json()
+    body = reopened.json()
+    assert (body["status"], body["revision"], body["confirmed_at"]) == ("DRAFT", 3, None)
+    assert body["sections"] == confirmed["sections"]  # 값 · 근거 · 생성 방식 그대로
+    assert body["parent_changed"] is False
+    _, stored = _stored(session, world["mine"]["center"], plan["id"])
+    last = stored.audit.events[-1]
+    assert (last.event_type.value, last.actor_id.value) == ("UNCONFIRMED", f"user_{teacher.id}")
+    audit = client.get(f"/api/plans/monthly/{plan['id']}/audit").json()["items"]
+    assert [i["type"] for i in audit if i["scope"] == "PLAN"][-2:] == ["CONFIRMED", "UNCONFIRMED"]
+
+    assert _edit(plan["id"], focus, "다시 고친 값", 3).status_code == 200
+    again = _confirm(plan["id"], 4).json()
+    assert again["status"] == "CONFIRMED"
+    assert again["confirmed_at"] is not None
+
+
+def test_하위가_있어도_연간_확정을_풀고_하위는_parent_changed_로_안다(world):
+    plan = world["plan"]
+    annual_id = plan["parent"]["annual_plan_id"]
+    assert plan["parent_changed"] is False
+
+    reopened = client.post(f"/api/plans/annual/{annual_id}/unconfirm")
+    assert reopened.status_code == 200, reopened.json()
+    assert reopened.json()["status"] == "DRAFT"
+    assert client.post(f"/api/plans/annual/{annual_id}/unconfirm").json() == reopened.json()
+    child = _get(plan["id"])
+    assert child["parent_changed"] is True
+    assert child["parent"] == plan["parent"]  # 스냅샷은 그대로
+    audit = client.get(f"/api/plans/annual/{annual_id}/audit").json()["items"]
+    assert audit[-1]["type"] == "UNCONFIRMED"
+    # 풀린 연간으로는 새 월간을 못 만든다(부모 확정 게이트 그대로).
+    mine = world["mine"]
+    blocked = client.post(
+        "/api/plans/monthly",
+        json={"class_id": mine["class"], "month": 10, "profile_ref": mine["profile"]},
+    )
+    assert _error(blocked)[:2] == (409, "GATE_BLOCKED")
+
+    # 다시 확정해도 확정 시각이 바뀌었으니 하위는 여전히 바뀐 것으로 본다.
+    assert client.post(f"/api/plans/annual/{annual_id}/confirm").status_code == 200
+    assert _get(plan["id"])["parent_changed"] is True
 
 
 def test_조건부_UPDATE_는_DRAFT_와_revision_이_맞을_때만_쓴다(world):

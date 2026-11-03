@@ -76,10 +76,6 @@ async function enterPilot(page: Page) {
   await page.locator("#auth-password").fill("pilot-password-1234");
   await page.getByLabel("비밀번호 확인").fill("pilot-password-1234");
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
-  await page.getByRole("link", { name: "로그인하러 가기" }).click();
-  await page.getByLabel("이메일").fill(email);
-  await page.locator("#auth-password").fill("pilot-password-1234");
-  await page.getByRole("button", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/onboarding\/center$/);
   await page.getByLabel("원명").fill("파일럿어린이집");
   await page.getByLabel("원장 이름").fill("가상원장");
@@ -94,7 +90,8 @@ async function enterPilot(page: Page) {
   await page.getByLabel("아동 추가").fill("가나다");
   await page.getByRole("button", { name: "+ 추가", exact: true }).click();
   await page.getByRole("button", { name: "설정 완료", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "우리 반", exact: true, level: 1 })).toBeVisible();
+  // 홈의 h1 은 날짜라 매일 달라진다. 홈에만 있는 적는 칸 제목으로 「도착했나」를 본다.
+  await expect(page.getByRole("heading", { name: "지금, 한 줄", exact: true })).toBeVisible();
   return api(page, "/api/auth/me");
 }
 
@@ -110,10 +107,9 @@ async function api(page: Page, path: string) {
 test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연속 입력·저장", async ({ page }, info) => {
   await enterPilot(page);
   await page.getByRole("link", { name: "계획안", exact: true }).click();
-  await page.getByRole("link", { name: "계획안 만들기", exact: true }).click();
-  await page.getByRole("button", { name: "연간 한 해 놀이 흐름", exact: true }).click();
-  await page.getByRole("button", { name: /^월별 주제형/ }).click();
-  await page.getByRole("button", { name: "계획안 생성하기", exact: true }).click();
+  // 첫 화면의 첫 칸이 월별 주제형이다.
+  await page.getByRole("link", { name: "연간부터 시작하기", exact: true }).first().click();
+  await page.getByRole("button", { name: "연간계획안 만들기", exact: true }).click();
   await expect(page).toHaveURL(/\/plans\/annual\/\d+$/);
   const annualId = page.url().split("/").at(-1);
   const generated = await api(page, `/api/plans/annual/${annualId}`);
@@ -121,27 +117,38 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   expect(
     generated.months.every((month: { sub_themes: string[] }) => month.sub_themes.length >= 2),
   ).toBeTruthy();
-  await page.getByRole("button", { name: "내용 수정", exact: true }).click();
-  await page.getByLabel("3월 활동명", { exact: true }).fill("우리 반과 새로운 친구");
-  await page
-    .getByLabel("3월 활동 내용", { exact: true })
-    .fill("우리 반 이름 알아보기\n친구와 인사 나누기");
+  // 처음엔 3월 생활주제 칸이 골라져 있다. 칸을 떠나면(blur) 그 달을 저장한다.
+  await page.getByLabel("3월 생활주제", { exact: true }).fill("우리 반과 새로운 친구");
+  await page.getByLabel("3월 1번째 소주제", { exact: true }).fill("우리 반 이름 알아보기");
+  await page.getByLabel("3월 2번째 소주제", { exact: true }).fill("친구와 인사 나누기");
   // 연간 안전교육 칸은 꺼 뒀다(2026-10-22) — 화면에 입력이 없고, 저장해도 서버 값을 건드리지 않는다.
   await expect(page.getByLabel("3월 안전교육 입력", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("annual-edit.png"), fullPage: true });
-  await page.getByRole("button", { name: "수정 완료" }).click();
-  // 클릭이 끝나도 월별 PUT 저장은 진행 중일 수 있어 완료 안내를 기다린 뒤 새로고침한다.
-  await expect(page.getByText("수정한 내용을 저장했어요.", { exact: true })).toBeVisible();
+  const lastSave = page.waitForResponse(
+    (r) =>
+      r.request().method() === "PUT" &&
+      r.url().endsWith(`/api/plans/annual/${annualId}/months/3`) &&
+      (r.request().postData() ?? "").includes("친구와 인사 나누기"),
+  );
+  await page.getByLabel("3월 2번째 소주제", { exact: true }).blur();
+  expect((await lastSave).ok()).toBeTruthy();
   await page.reload();
-  await expect(page.getByText("우리 반과 새로운 친구", { exact: true })).toBeVisible();
-  await expect(page.locator("#plan-document").getByText(/안전교육/)).toHaveCount(0);
+  const sheet = page.getByRole("region", { name: "문서 미리보기", exact: true });
+  await expect(sheet.getByText("우리 반과 새로운 친구", { exact: true })).toBeVisible();
+  await expect(sheet.getByText(/안전교육/)).toHaveCount(0);
   const savedAnnual = await api(page, `/api/plans/annual/${annualId}`);
   expect(savedAnnual.months[0].safety_education_state).toBe("SOURCE_REQUIRED");
-  await page.getByRole("button", { name: "연간계획안 확정", exact: true }).click();
-  await expect(page.getByRole("button", { name: "확정됨", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: /다시 생성하기/ })).toBeDisabled();
+  await page.getByRole("button", { name: "확정하기", exact: true }).click();
+  await page
+    .getByRole("group", { name: /^확정하면/ })
+    .getByRole("button", { name: "확정하기", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: `${generated.school_year} 연간계획안을 확정했어요` }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: /한글 파일로 내려받기/ }).click();
+  await page.getByRole("button", { name: /한글로 내보내기/ }).click();
   await verifyHwpx(await download, info.outputPath("pilot-annual.hwpx"), [
     "우리 반과 새로운 친구",
     "우리 반 이름 알아보기",
@@ -149,19 +156,20 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ]);
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
-  await page.getByRole("link", { name: "계획안", exact: true }).click();
-  await page.getByRole("link", { name: "월간 양식 설정", exact: true }).click();
+  // 확정 화면 → 월간 → (양식이 없어) 월간 양식 설정.
+  await page.getByRole("link", { name: "월간계획안 만들기 →", exact: true }).click();
+  await page.getByRole("link", { name: "월간 양식 설정으로 가기", exact: true }).click();
   // Latest approved version is preselected. Switching versions drops picks the other one lacks.
   const base = page.getByLabel("기반 양식");
-  await expect(base).toHaveValue("monthly-template-a-v0.2.2");
+  await expect(base).toHaveValue("monthly-template-a-v0.2.3");
   await page.getByRole("checkbox", { name: /실내 대체활동/ }).check();
   await base.selectOption("monthly-template-a-v0.2.1");
-  await base.selectOption("monthly-template-a-v0.2.2");
+  await base.selectOption("monthly-template-a-v0.2.3");
   await expect(page.getByRole("checkbox", { name: /실내 대체활동/ })).not.toBeChecked();
   await page.getByRole("button", { name: /칸으로 양식 만들기/ }).click();
   await expect(page.getByText("새 양식을 만들고 원 기본으로 설정했어요.")).toBeVisible();
-  await page.getByRole("link", { name: "계획안", exact: true }).click();
-  await page.getByRole("link", { name: "월간계획안", exact: true }).click();
+  // 계획안 첫 화면에 월간 링크가 없다(2026-11-02 결정) — 주소로 간다.
+  await page.goto("/plans/monthly");
   await page.getByRole("button", { name: /월 계획안 만들기/ }).click();
   // 놀이 월간과 같은 화면: 문서에서 칸을 누르면 옆 패널에서 고치고, 입력을 멈추거나 떠나면 저장한다.
   const doc = page.getByRole("region", { name: "월간계획안 미리보기", exact: true });
@@ -220,7 +228,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
     )
     .toBeLessThanOrEqual(0);
   await page.screenshot({ path: info.outputPath("monthly-mobile.png"), fullPage: true });
-  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const monthlyList = await api(page, `/api/plans/monthly?class_id=${generated.class_id}`);
   const monthPlan = await api(page, `/api/plans/monthly/${monthlyList.items[0].id}`);
   const week = monthPlan.weeks.find((w: { active: boolean }) => w.active);
@@ -272,10 +280,17 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
       await expect(cell(0)).not.toHaveAttribute("role", "button");
       await expect(page.getByRole("textbox")).toHaveCount(0);
     }
-    if (kind === "weekly")
-      await expect(page.getByRole("combobox", { name: "주", exact: true })).toHaveValue(
-        weekPlan.week_id,
-      );
+    if (kind === "weekly") {
+      // 보관함 링크가 고른 주가 「보는 중」이고, 그 주 계획안이 열린다.
+      await expect(
+        page
+          .getByRole("navigation", { name: `${monthPlan.month}월의 주` })
+          .locator('[aria-current="true"]'),
+      ).toContainText(week.label);
+      await expect(
+        page.getByRole("heading", { name: week.label, exact: true, level: 2 }),
+      ).toBeVisible();
+    }
   }
 });
 
@@ -443,7 +458,8 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
   await page.screenshot({ path: info.outputPath("evaluation-checklist.png"), fullPage: true });
 });
 
-test("멘토: 설정·기관 양식·트렌드봇 화면에 클릭으로 진입한다", async ({ page }, info) => {
+// 기관 양식 · 트렌드봇은 계획안 첫 화면에서 링크를 뺐다(2026-11-02 결정) — 주소로 들어간다.
+test("멘토: 설정·기관 양식·트렌드봇 화면에 진입한다", async ({ page }, info) => {
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "설정", exact: true, level: 1 })).toBeVisible();
@@ -456,11 +472,9 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 클릭으로 진입�
   expect((await api(page, `/api/centers/${user.center_id}/settings`)).trends_enabled).toBe(true);
   await page.getByRole("button", { name: "초대 코드 만들기", exact: true }).click();
   await expect(page.getByText(/초대 코드 [A-Z2-9]{10}/)).toBeVisible();
-  await page.getByRole("link", { name: "계획안", exact: true }).click();
-  await page.getByRole("link", { name: "기관 양식", exact: true }).click();
+  await page.goto("/templates");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("양식");
-  await page.getByRole("link", { name: "계획안", exact: true }).click();
-  await page.getByRole("link", { name: "트렌드봇", exact: true }).click();
+  await page.goto("/trends");
   await expect(
     page.getByRole("heading", { name: "트렌드봇", exact: true, level: 1 }),
   ).toBeVisible();

@@ -7,6 +7,7 @@ passing Core validation when the month, the weeks or the Section set change.
 
 It never calls a network and must never stand in for a failed real provider.
 Behaviour follows ``tests/finalization/harness.py`` ``RequestAwareMonthlyLlm``.
+It also writes one sentence per candidate key (safety, drill) when the request has them.
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ import json
 
 from ssuksak.planning.domain.monthly_template import RepeatBy, SectionRole
 from ssuksak.planning.planner.contracts import (
+    DRILL_CANDIDATE_PREFIX,
     MONTHLY_MODEL,
+    SAFETY_CANDIDATE_PREFIX,
     MonthlyCellPlanningRequest,
     MonthlyPlanningRequest,
     RawLlmResponse,
@@ -140,6 +143,23 @@ class RequestAwareMonthlyLlm:
             "month_sections": month_sections,
             "weeks": weeks,
         }
+        candidates = [
+            {
+                "section_key": key,
+                "value": (
+                    f"안전 약속 {n}번을 함께 지켜요."
+                    if key.startswith(SAFETY_CANDIDATE_PREFIX)
+                    else f"{n}번 상황을 떠올리며 선생님과 함께 대피해요."
+                ),
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [refs[0]] if key.startswith(SAFETY_CANDIDATE_PREFIX) else [],
+            }
+            for n, (key, refs) in enumerate(request.allowed_grounding_refs_by_section, 1)
+            if key.startswith((SAFETY_CANDIDATE_PREFIX, DRILL_CANDIDATE_PREFIX))
+        ]
+        if candidates:
+            month_sections += candidates
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "request-aware-monthly"
         )

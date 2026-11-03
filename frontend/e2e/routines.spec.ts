@@ -61,10 +61,6 @@ async function enterHome(page: Page) {
   await page.locator("#auth-password").fill("task2-password-1234");
   await page.getByLabel("비밀번호 확인").fill("task2-password-1234");
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
-  await page.getByRole("link", { name: "로그인하러 가기" }).click();
-  await page.getByLabel("이메일").fill(email);
-  await page.locator("#auth-password").fill("task2-password-1234");
-  await page.getByRole("button", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/onboarding\/center$/);
   await page.getByLabel("원명").fill("일과테스트어린이집");
   await page.getByLabel("원장 이름").fill("테스트원장");
@@ -660,7 +656,7 @@ test("후속 #1~5 — 카드 프리뷰·12시간 피커·기존 초 보존·명�
       return original.call(this, element, x, y);
     };
   });
-  await page.setViewportSize({ width: 1600, height: 1800 });
+  await page.setViewportSize({ width: 1440, height: 1800 });
   const source = rows(page)
     .nth(1)
     .getByRole("button", { name: "2번째 줄 끌어서 옮기기", exact: true });
@@ -1493,7 +1489,7 @@ test("관찰일지 탐색 — 아동 선택·검색·변경 시 해당 아동 �
   });
 });
 
-for (const width of [1600, 390]) {
+for (const width of [1440, 390]) {
   test(`미리보기 ${width}px — 읽기 전용·조회 재시도·선택 변경·편집 복귀·반 격리`, async ({
     page,
   }, info) => {
@@ -1655,7 +1651,7 @@ for (const width of [1600, 390]) {
 test("관찰 미리보기 — 아동을 바꾸면 이전 아동 본문을 닫고 해당 아동만 표시한다", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const { classId, childId } = await enterHome(page);
   const other = await api(page, `/api/classes/${classId}/children`, "POST", { name: "라마바" });
   const date = "2026-10-19";

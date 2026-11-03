@@ -11,11 +11,13 @@
 
 import io
 import zipfile
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Response, status
 from lxml import etree
-from ssuksak.planning import PlanId
+from ssuksak.planning import PlanId, WeeklyPlan
+from ssuksak.planning.domain.monthly_template import RepeatBy
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT
 
 from app.features.plans.annual_hwpx import AnnualMonthRows, fill_annual_v1
@@ -32,6 +34,7 @@ from app.features.plans.play_project_hwpx import (
     fill_play_project,
 )
 from app.features.plans.router import DbSession, _detail, _play_plan, _repo, _row
+from app.features.plans.weekly_activity_hwpx import fill_weekly_activity_grid
 from app.features.plans.weekly_router import _current as _weekly_detail
 from app.features.plans.weekly_router import _own_row as _weekly_row
 from app.features.plans.weekly_router import _weekly_repo
@@ -168,6 +171,7 @@ MONTHLY_LABELS = {
     (9, 0): "실내 대체활동",
     (10, 0): "기본생활습관",
     (11, 0): "안전교육",
+    (12, 0): "소방대피/재난대비",
 }
 
 _UNSUPPORTED_WEEKS = HTTPException(
@@ -192,7 +196,8 @@ def export_monthly_plan(
     """월간계획안을 hwpx 로 내려준다. 연간과 같이 확정본만, 출처는 빼고 내보낸다.
 
     줄은 양식에 박혀 있다. 원이 켜지 않은 Section(목표 · 기본생활습관 · 실내 대체활동)과
-    아직 계획안이 만들지 않는 줄(소방대피 · 행사 · 시간표)은 빈칸이다 — 교사가 한글에서 적는다.
+    아직 계획안이 만들지 않는 줄(행사 · 시간표)은 빈칸이다 — 교사가 한글에서 적는다.
+    소방대피/재난대비 줄은 양식 개편 때까지 빈칸이다.
     양식에 자리가 없는 Section 이 오면 버리지 않고 멈춘다.
     """
     row = _monthly_row(session, user, plan_id)
@@ -209,10 +214,16 @@ def export_monthly_plan(
     for section in plan.sections:
         if not section.visible or section.role != "CONTENT":
             continue
+        # 한글 훈련 줄은 양식 개편 때까지 내보내지 않는다(12행은 빈칸).
+        if section.section_key == "drill":
+            continue
         if section.section_key in MONTHLY_MONTH_CELLS:
             texts[MONTHLY_MONTH_CELLS[section.section_key]] = _month_value(section)
         elif section.section_key in MONTHLY_WEEK_ROWS:
             values = {cell.week_id: cell.value for cell in section.cells}
+            if section.section_key == "safety_education" and plan.safety_weeks:
+                # 후보 모드는 칸을 비워 두고 표시값을 응답마다 계산한다(ADR-052). 미배치 주는 빈칸.
+                values = {week.week_id: week.display_value for week in plan.safety_weeks}
             rows[MONTHLY_WEEK_ROWS[section.section_key]] = [
                 values.get(week.week_id, "") for week in weeks
             ]
@@ -222,7 +233,7 @@ def export_monthly_plan(
     # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
     ages = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref)).target_ages
     title = f"{klass.name} {plan.target_month} 놀이계획안"
-    content = _fill_monthly(
+    content = _fill_form(
         (TEMPLATE_DIR / MONTHLY_TEMPLATES[len(weeks)]).read_bytes(),
         title,
         (f"{plan.month}월 놀이계획안", f"{_ages_label(ages)} {klass.name}"),
@@ -232,12 +243,13 @@ def export_monthly_plan(
     return download(content, f"monthly-plan-{row.id}", title, format)
 
 
-def _fill_monthly(
+def _fill_form(
     template: bytes,
     title: str,
     heading: tuple[str, str],
     texts: dict[tuple[int, int], str],
     rows: dict[int, list[str]],
+    labels: dict[tuple[int, int], str] = MONTHLY_LABELS,
 ) -> bytes:
     """제목 칸(0,0)의 두 문단, `texts` 의 칸, `rows` 의 주차 줄(주마다 한 칸)을 채운다.
 
@@ -249,7 +261,7 @@ def _fill_monthly(
 
     section = etree.fromstring(parts[SECTION])
     cells = _cells(section.find(".//hp:tbl", NS))
-    for address, label in MONTHLY_LABELS.items():
+    for address, label in labels.items():
         if address not in cells or _text(cells[address]) != label:
             raise TemplateMismatch(f"양식 {address} 칸이 「{label}」 이 아니다.")
     paragraphs = cells[(0, 0)].findall("hp:subList/hp:p", NS)
@@ -306,6 +318,15 @@ def export_weekly_plan(
         raise _NOT_CONFIRMED
     plan = _weekly_detail(session, user, plan_id)
     klass = require_own_class(session, user, plan.class_id)
+    # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
+    core = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    ages = core.target_ages
+    if any(s.repeat_by is RepeatBy.DAY for s in core.template_snapshot.sections):
+        title = f"{klass.name} {plan.week_period.label} 주간계획안"
+        content = _fill_weekly_days(core, plan.display_end_date, klass.name, title)
+        if core.activity_grids:
+            content = fill_weekly_activity_grid(content, core)
+        return download(content, f"weekly-plan-{row.id}", title, format)
 
     sections = sorted(
         (s for s in plan.sections if s.visible and s.role == "CONTENT"), key=lambda s: s.order
@@ -315,8 +336,6 @@ def export_weekly_plan(
         for section in sections
     ]
     period = plan.week_period
-    # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
-    ages = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref)).target_ages
     header = {
         WEEKLY_CLASS_CELL: f"{klass.name} ({_ages_label(ages)})",
         WEEKLY_PERIOD_CELL: f"{period.label} · {period.start_date} ~ {plan.display_end_date}",
@@ -331,3 +350,70 @@ def export_weekly_plan(
         header=header,
     )
     return download(content, f"weekly-plan-{row.id}", title, format)
+
+
+# ── 주간 요일 양식 (v0.2.0 · ADR-051 WD-4) ─────────────────────────────────
+
+# 요일 수마다 칸 폭이 달라 고정 양식 두 개다. 둘 다 한글 2024 에서 빈 양식 1/1쪽을 확인했다.
+# 위 `label` 줄 방식과 달리 **칸 이름을 양식에 박는다** — 칸은 (section_key, day) 로 찾는다(§9-6).
+WEEKLY_DAY_TEMPLATES = {5: "weekly_v1_mon_fri.hwpx", 6: "weekly_v1_mon_sat.hwpx"}
+WEEKLY_DAY_PERIOD_CELL = (1, 1)
+WEEKLY_DAY_CELLS = {
+    "theme": (2, 1),
+    "focus": (3, 1),
+    "goals": (4, 1),
+    "indoor_play": (7, 1),
+    "outdoor_play": (12, 1),
+    "indoor_alternative": (13, 1),
+    "basic_habit": (14, 1),
+    "safety_education": (15, 1),
+    "event_schedule": (21, 1),
+    "family_link": (22, 1),
+}
+# 요일 Section → 「요일 | 월 …」 머리 줄. 내용은 그 아래 줄이고, 요일 열은 머리 줄 글자로 확인한다.
+WEEKLY_DAY_HEADERS = {"group_activity": 10, "special_program": 18}
+WEEKLY_DAY_NAMES = {"MON": "월", "TUE": "화", "WED": "수", "THU": "목", "FRI": "금", "SAT": "토"}
+WEEKLY_DAY_LABELS = {
+    (1, 0): "예상 기간",
+    (2, 0): "놀이 주제",
+    (3, 0): "소주제",
+    (4, 0): "이번 주 목표",
+    (7, 0): "실내자유놀이",
+    (10, 0): "요일",
+    (12, 0): "바깥놀이",
+    (13, 0): "실내 대체놀이",
+    (14, 0): "기본생활습관",
+    (15, 0): "안전교육",
+    (18, 0): "요일",
+    (21, 0): "행사",
+    (22, 0): "가정 연계",
+}
+
+
+def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) -> bytes:
+    """요일 양식 계획안을 고정 양식에 채운다. 양식에 자리가 없는 Section 이 오면 멈춘다."""
+    days = plan.operating_days
+    period = plan.week_period
+    labels = dict(WEEKLY_DAY_LABELS)
+    texts = {WEEKLY_DAY_PERIOD_CELL: f"{period.start_date} ~ {end}"}
+    for section in plan.template_snapshot.sections:
+        key = section.section_key
+        if not section.visible:
+            continue
+        if key in WEEKLY_DAY_HEADERS:
+            head = WEEKLY_DAY_HEADERS[key]
+            for col, day in enumerate(days, start=1):
+                labels[(head, col)] = WEEKLY_DAY_NAMES[day.value]
+                texts[(head + 1, col)] = plan.cell(key, day).value
+        elif key in WEEKLY_DAY_CELLS:
+            texts[WEEKLY_DAY_CELLS[key]] = plan.cell(key).value
+        else:
+            raise TemplateMismatch(f"주간 요일 양식에 {key} 줄이 없다.")
+    return _fill_form(
+        (TEMPLATE_DIR / WEEKLY_DAY_TEMPLATES[len(days)]).read_bytes(),
+        title,
+        (f"{period.display_label} 주간놀이계획안", f"{_ages_label(plan.target_ages)} {class_name}"),
+        texts,
+        {},
+        labels,
+    )

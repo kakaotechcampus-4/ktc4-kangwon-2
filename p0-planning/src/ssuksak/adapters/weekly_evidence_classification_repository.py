@@ -24,7 +24,7 @@ DEFAULT_WEEKLY_CLASSIFICATION_PATH = (
     Path(__file__).resolve().parents[3]
     / "data"
     / "evidence"
-    / "weekly_evidence_semantic_classification_v0_1_0.json"
+    / "weekly_evidence_semantic_classification_v0_2_0.json"
 )
 
 _ROOT_FIELDS = {

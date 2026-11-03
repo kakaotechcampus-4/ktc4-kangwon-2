@@ -71,7 +71,7 @@ export function accessRedirect(requireOnboarding = true): string | null {
   return requireOnboarding && destination !== "/" ? destination : null;
 }
 /**
- * 계정을 만든다.
+ * 계정을 만들고 로그인한다.
  *
  * **서버가 진짜 계정을 갖는다.** 여기 남는 기록은 이름과 온보딩 진행 상태처럼 화면이
  * 쓰는 값뿐이다 — 비밀번호 판정은 서버가 한다(docs/api-spec.md §0).
@@ -82,11 +82,10 @@ export async function registerAccount(name: string, email: string, password: str
     throw new Error("이름, 이메일과 8자 이상의 비밀번호를 입력해주세요.");
   if (read(email))
     throw new Error("이미 가입된 이메일이에요. 다른 이메일을 입력하거나 로그인해주세요.");
-  await signup(name.trim(), email.trim().toLowerCase(), password);
-  localStorage.setItem(
-    accountKey(email),
-    JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase() }),
-  );
+  const account: Account = { name: name.trim(), email: email.trim().toLowerCase() };
+  await signup(account.name, account.email, password);
+  localStorage.setItem(accountKey(email), JSON.stringify(account));
+  finishSignIn(account);
 }
 /**
  * 개발용 임시 계정. `NODE_ENV === "development"`에서만 동작하고,
@@ -119,7 +118,7 @@ export async function verifyDevAccount(email: string, password: string) {
  * 성공하면 토큰이 저장되고(`lib/api/auth.ts`), 이후 모든 요청에 실려 나간다.
  * 브라우저 기록은 이름·온보딩 상태를 위해 없으면 만들어 둔다.
  */
-export async function verifyAccount(email: string, password: string) {
+export async function verifyAccount(email: string, password: string): Promise<number | null> {
   const normalized = email.trim().toLowerCase();
   const result = await login(normalized, password);
   let account = read(normalized);
@@ -127,6 +126,11 @@ export async function verifyAccount(email: string, password: string) {
     account = { name: result.user.name, email: normalized };
     localStorage.setItem(accountKey(normalized), JSON.stringify(account));
   }
+  finishSignIn(account);
+  // 원이 있으면 화면이 서버 값으로 채운다 (#291) — 이 브라우저에 기록이 없을 수 있다.
+  return result.user.center_id;
+}
+function finishSignIn(account: Account) {
   sanitizeClassSettingsStorage(account.email);
   sanitizeBrowserChildMetadata();
   migrateLegacyData(account);

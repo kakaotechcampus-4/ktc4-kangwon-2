@@ -28,6 +28,8 @@ function describe(e: PlayMonthlyAuditEvent): string | null {
       return "훈련 후보를 복사했어요" + change;
     case "CONFIRMED":
       return "확정했어요";
+    case "UNCONFIRMED":
+      return "확정을 풀었어요";
     default:
       return null;
   }

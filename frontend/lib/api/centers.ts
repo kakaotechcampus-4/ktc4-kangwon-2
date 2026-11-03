@@ -21,6 +21,8 @@ export const createCenter = (data: CenterInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+/** docs/api-spec.md §1. 자기 원만 읽는다. */
+export const getCenter = (centerId: number) => apiRequest<Center>(`/api/centers/${centerId}`);
 /**
  * docs/api-spec.md §1. 원명 · 원장 이름 · 지역을 고친다. **보낸 칸만 바뀐다.**
  *

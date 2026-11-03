@@ -27,7 +27,7 @@ from ssuksak.adapters.monthly_reference_repositories import (
     JsonMonthlyTemplateRepository,
     JsonSafetyLegalRuleRepository,
 )
-from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan
+from ssuksak.planning.application.confirm_monthly_plan import ConfirmMonthlyPlan, UnconfirmMonthlyPlan
 from ssuksak.planning.application.edit_monthly_plan_item import EditMonthlyPlanItem
 from ssuksak.planning.application.generate_monthly_plan import GenerateMonthlyPlan
 from ssuksak.planning.application.monthly_dto import (
@@ -37,6 +37,7 @@ from ssuksak.planning.application.monthly_dto import (
     GenerateMonthlyPlanCommand,
     RegenerateMonthlyPlanItemCommand,
     SafetyRuleSelector,
+    UnconfirmMonthlyPlanCommand,
 )
 from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 from ssuksak.planning.application import monthly_support
@@ -1345,6 +1346,28 @@ def test_safety_cell_is_not_an_llm_regeneration_target():
     assert provider.cell_requests == []
 
 
+def test_unconfirm_reopens_the_plan_once_and_keeps_its_cells_and_history():
+    harness = Harness()
+    draft = harness.generate(MonthlyGenerationMode.LLM_PLANNER, provider=RequestAwareMonthlyLlm()).plan
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+    unconfirm = UnconfirmMonthlyPlan(plan_repository=harness.plans, clock=harness.clock)
+
+    reopened = unconfirm.execute(UnconfirmMonthlyPlanCommand(confirmed.plan_id, TEACHER))
+
+    assert reopened.status is PlanStatus.DRAFT
+    assert reopened.sections == confirmed.sections
+    assert reopened.audit.events[:-1] == confirmed.audit.events
+    assert (reopened.audit.events[-1].event_type, reopened.audit.events[-1].actor_id) == (
+        AuditEventType.UNCONFIRMED,
+        TEACHER,
+    )
+    saves = harness.plans.save_count
+    assert unconfirm.execute(UnconfirmMonthlyPlanCommand(reopened.plan_id, TEACHER)) is reopened
+    assert harness.plans.save_count == saves
+
+
 def test_confirm_requires_teacher_and_locks_all_later_mutations():
     harness = Harness()
     provider = RequestAwareMonthlyLlm()
@@ -2261,6 +2284,53 @@ def test_indoor_alternative_is_generated_from_weekly_indoor_evidence(target_mont
     assert provider.monthly_requests[1].prompt_version == MONTHLY_PROMPT_VERSION
 
 
+class BlankIndoorLlm(RequestAwareMonthlyLlm):
+    """Returns indoor_alternative as the given shape in the first `weeks` weeks."""
+
+    def __init__(self, weeks: int, filled: bool = False):
+        super().__init__()
+        self.weeks, self.filled = weeks, filled
+
+    def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+        payload = json.loads(super().generate_monthly(request).content)
+        for week in payload["weeks"][: self.weeks]:
+            for section in week["sections"]:
+                if section["section_key"] == "indoor_alternative":
+                    blank = {"value": "", "unresolved": True} if not self.filled else {}
+                    section.update(blank, grounding_refs=[], reference_id=None)
+        return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+
+@pytest.mark.parametrize("weeks", (1, 5))
+def test_indoor_alternative_week_may_be_left_unresolved(weeks):
+    """The LLM may leave a week's indoor_alternative blank; nothing checks why (IU-1, IU-2)."""
+    harness = Harness()
+    provider = BlankIndoorLlm(weeks)
+
+    plan = harness.generate(provider=provider, command=_indoor_command(harness)).plan
+
+    version = provider.monthly_requests[0].prompt_version
+    cells = plan.section("indoor_alternative").cells
+    for index, cell in enumerate(cells):
+        assert cell.generation.method is GenerationMethod.RULE_LLM and cell.generation.rule_version == version
+        if index < weeks:
+            assert cell.value == "" and cell.cell_state is CellState.EMPTY_UNRESOLVED
+        else:
+            assert cell.value and cell.cell_state is CellState.FILLED
+    assert all(cell.value for cell in plan.section("outdoor_play").cells)
+
+
+def test_filled_indoor_alternative_still_needs_a_ref():
+    harness = Harness()
+
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=BlankIndoorLlm(1, filled=True), command=_indoor_command(harness))
+
+    assert exc.value.code == "monthly_llm_planning_failed"
+    assert "RESOLVED_REQUIRES_GROUNDING" in exc.value.__cause__.validation_codes
+    assert harness.plans.save_count == 0
+
+
 @pytest.mark.parametrize("wrong", ("other_class", "unknown"))
 def test_indoor_alternative_rejects_other_class_or_unknown_evidence(wrong):
     class WrongIndoorRefLlm(RequestAwareMonthlyLlm):
@@ -2745,7 +2815,7 @@ def test_generation_snapshot_comes_from_the_profile_not_the_approved_template():
 # --- S-1: eight safety candidates, placed by the teacher -------------------------------------
 
 SAFETY_CANDIDATES = SafetyCandidatesSelector(
-    "safety-evidence-classification-v0.2.0", "safety-reference-quality-v0.1.0"
+    "safety-evidence-classification-v0.3.0", "safety-reference-quality-v0.2.0"
 )
 
 
@@ -2787,7 +2857,7 @@ def test_safety_candidates_generate_blank_weeks_then_teacher_places_edits_and_co
     plan = harness.generate(provider=provider, command=command).plan
     request = provider.monthly_requests[0]
 
-    assert request.prompt_version.endswith("+safety-candidates-v1")
+    assert request.prompt_version.endswith("+safety-candidates-v2")
     assert [c.kind for c in plan.safety_candidates] == [SafetyKind.STATUTORY] * 6 + [SafetyKind.SUPPLEMENTAL] * 2
     statutory, life = plan.safety_candidates[0], plan.safety_candidates[-1]
     assert [e.source_type for e in statutory.cell.evidence] == [EvidenceSourceType.SAFETY_RULE]
@@ -2814,6 +2884,9 @@ def test_safety_candidates_generate_blank_weeks_then_teacher_places_edits_and_co
     cleared = edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, life.cell.item_id, "", TEACHER))
     assert monthly_safety_notices(cleared)[0].code == "SAFETY_BLANK"
     assert candidate_display_value(cleared.safety_candidate(life.cell.item_id)) == ""
+    # the edit command rejects whitespace, so build the stored shape directly
+    spaces = replace(life, cell=replace(life.cell, value="   ", cell_state=CellState.EMPTY_UNRESOLVED))
+    assert candidate_display_value(spaces) == ""
     with pytest.raises(MonthlyApplicationError) as blocked:  # S-2
         edit.execute(EditMonthlyPlanItemCommand(plan.plan_id, _cell(plan, "safety_education").item_id, "직접", TEACHER))
     assert blocked.value.code == "monthly_safety_cell_not_editable"

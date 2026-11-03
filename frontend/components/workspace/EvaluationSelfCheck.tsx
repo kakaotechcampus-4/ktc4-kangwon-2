@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import type { SelfCheckIndicator } from "@/lib/api/evaluation";
 import { ws } from "./WorkspaceUI";
 import styles from "./Evaluation.module.css";
@@ -79,13 +78,11 @@ export default function EvaluationSelfCheck({
   savedAt,
   initiallyOpen,
   onCheck,
-  children,
 }: {
   items: SelfCheckIndicator[];
   savedAt: Date | null;
   initiallyOpen: Set<string>;
   onCheck: (element: string, checked: boolean) => void;
-  children?: ReactNode;
 }) {
   return (
     <div className={ws.stack}>
@@ -115,7 +112,6 @@ export default function EvaluationSelfCheck({
         영역 1 · 2 · 3(평가항목 6개)은 쌤플 문서로 확인할 수 없어 여기서 다루지 않아요. 자체평가 때
         위원회가 교실을 보며 함께 확인해요.
       </p>
-      {children}
     </div>
   );
 }

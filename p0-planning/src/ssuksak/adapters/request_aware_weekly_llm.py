@@ -29,10 +29,17 @@ class RequestAwareWeeklyLlm:
         for target in body["targets"]:
             key, refs = target["section_key"], target["allowed_grounding_refs"]
             value, reference_id, grounding = f"{again}{theme} — 이번 주 {key} 계획", None, refs[:1]
-            if key == "theme":
+            if target.get("activity_type"):
+                value = f"{target['activity_type']} 활동 {key.rsplit('.', 1)[-1]}: 자료 속 대상을 함께 탐색합니다."
+            elif key == "theme":
                 value, grounding = f"{again}{theme} 속 이번 주 놀이", []
             elif key == "outdoor_play":
-                reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                if target.get("parent_groundable"):
+                    value = f"{again}{parent[key]}" if refs else parent[key]
+                    grounding = refs[:1] if again else []
+                elif target["reference_candidates"]:
+                    reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                    grounding = []
             elif key == "safety_education":
                 value, grounding = f"{again}이번 주에도 {parent['safety_education']}", []
             if target.get("days"):  # ADR-051: one distinct value per requested day

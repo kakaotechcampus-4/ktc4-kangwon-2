@@ -1,19 +1,27 @@
 """주간계획안 API 의 요청 · 응답 모양. 계약은 docs/api-spec.md §9-6 이다.
 
-월간(§9-1) 응답 틀을 그대로 쓰고 주간 필드만 더한다. 주간은 Section 당 칸 하나다.
+월간(§9-1) 응답 틀에 주간 요일 칸과 활동 후보·분할 격자 필드를 더한다.
 """
 
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.features.plans.monthly_schemas import ConstraintOut, TemplateRefOut, VerificationOut
+from app.features.plans.monthly_schemas import (
+    ConstraintOut,
+    MonthlyAuditEventOut,
+    RevisionIn,
+    TemplateRefOut,
+    VerificationOut,
+)
 from app.features.plans.schemas import EvidenceOut, GenerationOut
 
 
 class CreateWeeklyPlan(BaseModel):
     class_id: int
     week_id: str
+    activity_candidates: bool = False
 
 
 class WeeklyParentOut(BaseModel):
@@ -37,6 +45,8 @@ class ParentSnapshotOut(BaseModel):
 
 class WeeklyCellOut(BaseModel):
     item_id: str
+    # DAY 줄의 칸이면 그 요일(MON…SAT), 아니면 null
+    day: str | None
     value: str
     state: str
     evidence: list[EvidenceOut]
@@ -52,10 +62,45 @@ class WeeklySectionOut(BaseModel):
     section_key: str
     label: str | None
     role: str
+    # NONE | DAY — 주간 양식에는 축 줄이 없어 null 이 없다
+    repeat_by: str
     visible: bool
     order: int
     semantic_variant: str | None
     cells: list[WeeklyCellOut]
+
+
+class WeeklyActivityCandidateOut(BaseModel):
+    activity_type: str
+    name: str
+    description: str
+    cell: WeeklyCellOut
+
+
+class WeeklyActivityGridOut(BaseModel):
+    cell_id: str | None = None
+    split_id: str | None = None
+    axis: Literal["VERTICAL", "HORIZONTAL"] | None = None
+    ratio: int | None = None
+    children: list["WeeklyActivityGridOut"] = Field(default_factory=list)
+
+
+class CopyWeeklyActivityIn(RevisionIn):
+    candidate_item_id: str
+
+
+class SplitWeeklyActivityIn(RevisionIn):
+    axis: Literal["VERTICAL", "HORIZONTAL"]
+    ratio: int = Field(default=50, ge=10, le=90)
+
+
+class WeeklyAuditEventOut(MonthlyAuditEventOut):
+    copied_from: str | None = None
+    timetable_change: dict | None = None
+
+
+class WeeklyAuditOut(BaseModel):
+    items: list[WeeklyAuditEventOut]
 
 
 class WeeklyPlanOut(BaseModel):
@@ -72,11 +117,15 @@ class WeeklyPlanOut(BaseModel):
     display_end_date: date
     base_template_ref: TemplateRefOut
     parent: WeeklyParentOut
+    # 부모 월간이 지금 확정이 아니거나 확정 시각이 parent.confirmed_at 과 다르다(확정 취소 계약)
+    parent_changed: bool
     sections: list[WeeklySectionOut]
     constraints: list[ConstraintOut]
     verification: VerificationOut
     created_at: datetime
     confirmed_at: datetime | None
+    activity_candidates: list[WeeklyActivityCandidateOut] = Field(default_factory=list)
+    activity_grids: list[WeeklyActivityGridOut] = Field(default_factory=list)
 
 
 class WeeklyPlanSummary(BaseModel):

@@ -27,6 +27,8 @@ from ssuksak.planning.application.play_project_lifecycle import (
     PlayProjectApplicationError,
     SavePlayProjectSelection,
     SavePlayProjectSelectionCommand,
+    UnconfirmPlayProjectPlan,
+    UnconfirmPlayProjectPlanCommand,
 )
 from ssuksak.planning.domain.errors import InvalidStateTransitionError
 from ssuksak.planning.domain.identifiers import ActorId
@@ -189,6 +191,23 @@ def test_play_project_selection_golden(case):
         last = plan.audit.events[-1]
         assert last.event_type.value == expect["last_plan_event"]["type"]
         assert last.actor_id.value == expect["last_plan_event"]["actor"]
+
+
+def test_unconfirm_reopens_the_plan_and_a_draft_is_a_no_op():
+    original = _plan([p.key for p in PLAY_PROJECT_LAYOUT_V0_2.periods])
+    repo = InMemoryPlanRepository()
+    repo.save(original.plan_id, original)
+    _run({"op": "select_full"}, repo, original.plan_id)
+    _run({"op": "confirm"}, repo, original.plan_id)
+    confirmed = repo.get(original.plan_id)
+    unconfirm = UnconfirmPlayProjectPlan(plan_repository=repo, clock=CLOCK)
+
+    reopened = unconfirm.execute(UnconfirmPlayProjectPlanCommand(original.plan_id, TEACHER))
+
+    assert reopened.status.value == "DRAFT" and reopened.periods == confirmed.periods
+    assert reopened.audit.events[:-1] == confirmed.audit.events
+    assert reopened.audit.events[-1].event_type is AuditEventType.UNCONFIRMED
+    assert unconfirm.execute(UnconfirmPlayProjectPlanCommand(original.plan_id, TEACHER)) is reopened
 
 
 def test_candidates_selected_is_a_plan_level_teacher_event_only():

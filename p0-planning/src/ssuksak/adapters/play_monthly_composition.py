@@ -31,8 +31,8 @@ CURRICULUM_CATALOG = ("ssuksak.nuri-curriculum-content", "nuri-curriculum-conten
 DAILY_LIFE_CATALOG = ("ssuksak.daily-life", "daily-life-v0.1.0")
 DRILL_CATALOG = ("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
 LEGAL_RULE_VERSION = "child-welfare-act-decree-annex6-2022-06-21"
-SAFETY_CLASSIFICATION_VERSION = "safety-evidence-classification-v0.2.0"
-SAFETY_QUALITY_VERSION = "safety-reference-quality-v0.1.0"
+SAFETY_CLASSIFICATION_VERSION = "safety-evidence-classification-v0.3.0"
+SAFETY_QUALITY_VERSION = "safety-reference-quality-v0.2.0"
 # The Evidence Store's version and SHA are read from the store itself, not passed here.
 
 

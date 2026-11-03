@@ -29,6 +29,7 @@
 - 자동 제출·자동 발송 없음 — §생성
 - v1 월간은 안전 품질표의 자료 SHA·안전 분류 판이 맞지 않거나 분류가 없으면 LLM 호출·저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/finalization/test_safety_placement_e2e.py`
 - v1 월간 실내 대체활동은 주간 분류가 실내대체로 정한 기관 기록만 근거로 쓰고, 근거가 없으면 생성하지 않고 빈칸을 남긴다. 주간 분류가 자료 묶음과 맞지 않으면 LLM 호출 · 저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/application/test_monthly_application.py` · `backend/tests/test_monthly_lifecycle_api.py`
+- 월간 v1 실내대체는 LLM이 빈칸으로 응답한 경우 빈 값·unresolved=true·근거 없음 조합을 검사하며, 채워진 문장에 근거가 없으면 거절한다 — `p0-planning/src/ssuksak/planning/planner/parser.py` · `p0-planning/src/ssuksak/planning/planner/validation.py` · `p0-planning/tests/application/test_monthly_application.py`
 
 ## 키와 비용
 
@@ -54,6 +55,9 @@
   ```
 - 서버 인증과 센터 범위 — ADR-017 · `test_auth.py` · `features/auth/`
 - 비밀번호 scrypt · 원 초대 코드 — ADR-029
+
+- 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
+- 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`
 
 ## 아직 아닌 것
 

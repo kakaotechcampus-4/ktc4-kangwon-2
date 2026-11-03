@@ -38,3 +38,101 @@ body {
   background-position: right 12px center;
   background-size: 12px 8px;
 }
+
+/* 영수증처럼 위아래를 톱니로 자른 종이.
+ *
+ * 팀원 리뷰에서 「경계선이 없어 구분이 힘들다」고 했다. 네모 테두리를 하나 더 두르는
+ * 대신 종이의 가장자리를 만들었다 — 쌤플 화면은 종이 · 쪽지 · 테이프로 되어 있어서,
+ * 선을 더 그으면 카드가 늘지만 종이는 안 늘어난다.
+ *
+ * 톱니는 `mask` 로 깎아 낸다. 자리만 차지하는 띠라 색은 종이와 같은 아이보리다.
+ * 글자가 없으므로 화면 읽기 프로그램에는 `aria-hidden` 으로 숨긴다. */
+.slipEdge {
+  height: 9px;
+  background: var(--pg-ivory);
+}
+.slipEdge.top {
+  --slip: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) 50% / 13px 100%;
+  -webkit-mask: var(--slip);
+  mask: var(--slip);
+}
+.slipEdge.bottom {
+  --slip: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 13px 100%;
+  -webkit-mask: var(--slip);
+  mask: var(--slip);
+}
+
+/* 아래를 찢어낸 종이. 테이프로 붙여 둔 쪽지에 쓴다.
+ * 아래쪽 10px 은 찢긴 자리라 글자가 들어가지 않게 바닥 여백을 넉넉히 둔다. */
+.tornPaper {
+  --torn:
+    radial-gradient(9px at 50% 100%, #0000 97%, #000) 50% 100% / 20px 11px repeat-x,
+    linear-gradient(#000 0 0) 0 0 / 100% calc(100% - 10px) no-repeat;
+  -webkit-mask: var(--torn);
+  mask: var(--torn);
+  filter: drop-shadow(0 8px 16px rgba(52, 49, 47, 0.16));
+}
+
+/* 걷는 포스티.
+ *
+ * 몸통을 통째로 기울이면 종이가 흔들리는 것이지 걷는 것이 아니다.
+ * 팔다리를 어깨·엉덩이에서 번갈아 돌리고, 몸은 한 걸음에 한 번 뜬다.
+ * `transform-box: view-box` 라야 컴포넌트가 준 viewBox 좌표로 회전축이 잡힌다. */
+@keyframes postySwingFront {
+  0%,
+  100% {
+    transform: rotate(15deg);
+  }
+  50% {
+    transform: rotate(-15deg);
+  }
+}
+@keyframes postySwingBack {
+  0%,
+  100% {
+    transform: rotate(-15deg);
+  }
+  50% {
+    transform: rotate(15deg);
+  }
+}
+@keyframes postyBob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+.postySwingFront,
+.postySwingBack {
+  transform-box: view-box;
+  animation: postySwingFront 0.72s ease-in-out infinite;
+}
+.postySwingBack {
+  animation-name: postySwingBack;
+}
+.postyWalk {
+  animation: postyBob 0.36s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .postySwingFront,
+  .postySwingBack,
+  .postyWalk {
+    animation: none;
+  }
+}
+
+/* 아직 안 지난 구간의 연결선. 발자국처럼 점을 찍는다.
+ * 1.5px 짜리 연한 실선은 화면에서 거의 보이지 않아 단계가 따로 노는 것처럼 보였다. */
+.stepTrail {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pg-ink-soft) 45%, transparent) 1.5px,
+    transparent 1.6px
+  );
+  background-size: 7px 3px;
+  background-repeat: repeat-x;
+  background-position: center;
+}

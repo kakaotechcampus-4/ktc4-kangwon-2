@@ -47,7 +47,6 @@ def derive_monthly_theme(parent: YearlyPlan, target: YearMonth) -> ThemeDerivati
     )
     if confirmation is None or confirmation.actor_id is None:
         raise MonthlyRuleError(RULE_ID, "confirmed Yearly Plan lacks teacher confirmation audit")
-    theme_reference = period.theme_references[0]
     lineage = ParentLineage(
         parent_plan_id=parent.plan_id,
         confirmed_at=confirmation.occurred_at,
@@ -62,7 +61,8 @@ def derive_monthly_theme(parent: YearlyPlan, target: YearMonth) -> ThemeDerivati
             source_version=target.value,
             display_name=period.theme.value,
         ),
-        theme_reference,
+        # An imported or hand-typed Yearly theme has no Theme Reference (2026-11-01 I-A).
+        *period.theme_references,
     )
     return ThemeDerivation(
         value=period.theme.value,

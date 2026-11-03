@@ -1,7 +1,7 @@
 /**
- * 계획안 생성 화면의 기관 양식은 서버가 원본이다 (docs/api-spec.md §4 · §8).
+ * 연간계획안 만들기 화면 (/plans/annual/new?format=…).
  *
- * 브라우저 저장소(`workspace.templates`)를 보지 않고, 고른 양식은 `form_id` 로만 나간다.
+ * 방식은 쿼리로 오고, 월별 주제형은 `form_id: null`(기본 양식), 놀이 중심형은 `form_id` 를 보내지 않는다.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -24,14 +24,10 @@ registerHooks({
 const require = createRequire(import.meta.url);
 const plansApi = await import("../lib/api/plans.ts");
 const apiClient = await import("../lib/api/client.ts");
-const formsApi = await import("../lib/api/forms.ts");
 const onboarding = await import("../lib/api/onboarding.ts");
 const session = await import("../lib/auth/request-session.ts");
 const settingsLib = await import("../lib/onboarding/settings.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
-const planTypes = await import("../lib/plan-generator/types.ts");
-const planDate = await import("../lib/plan-generator/date.ts");
-const workspacePlans = await import("../lib/workspace/plans.ts");
 const workspaceModel = await import("../lib/workspace/model.ts");
 const { fixtureAccount, fixtureKey, fixtureSession } = await import("./auth-fixture.mjs");
 
@@ -43,19 +39,12 @@ const SOURCE = readFileSync(
 const jsx = (type, props, key) => ({ type, props, key });
 const runtime = { jsx, jsxs: jsx, Fragment: "fragment" };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+/** onClick 은 `void generate()` 라 기다릴 수 없다 — fetch 가 몇 번 오갈 때까지 돌린다. */
+const drain = async () => {
+  for (let i = 0; i < 20; i++) await settle();
+};
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-const form = (id, name) => ({
-  id,
-  center_id: 7,
-  name,
-  filename: name,
-  tables: [],
-  labels: [],
-  label_map: {},
-  created_at: "2026-10-01T00:00:00+09:00",
-});
-
 const SETTINGS = {
   ...onboardingTypes.EMPTY_CLASS_SETTINGS,
   orgName: "햇살 어린이집",
@@ -85,10 +74,7 @@ const code = require("next/dist/compiled/babel/core").transformSync(SOURCE, {
 }).code;
 
 /** 실제 TSX 를 돌린다. API 는 진짜 모듈을 쓰고 fetch 만 스텁이다. */
-function page(
-  t,
-  { forms = [], failForms = false, settings = SETTINGS, hold = null, search = "" } = {},
-) {
+function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {}) {
   const values = new Map([[fixtureKey, fixtureAccount]]);
   const storage = {
     getItem: (key) => values.get(key) ?? null,
@@ -101,10 +87,10 @@ function page(
   globalThis.window = Object.assign(new EventTarget(), {
     localStorage: storage,
     sessionStorage,
-    location: { search },
+    location: { search: "" },
     scrollTo: () => {},
   });
-  if (settings) assert.equal(settingsLib.saveClassSettings(settings), true);
+  assert.equal(settingsLib.saveClassSettings(SETTINGS), true);
 
   const calls = [];
   const originalFetch = globalThis.fetch;
@@ -116,36 +102,31 @@ function page(
       body: options.body ? JSON.parse(options.body) : null,
     });
     if (String(path) === "/api/centers" && method === "POST") return json({ id: 7 });
-    if (String(path) === "/api/centers/7/forms" && method === "GET") {
-      if (hold) await hold;
-      return failForms
-        ? json({ error: { code: "DEPENDENCY_UNAVAILABLE", message: "서버 오류", fields: [] } }, 503)
-        : json({ items: forms });
-    }
     if (String(path) === "/api/centers/7/classes" && method === "POST") return json({ id: 31 });
     if (String(path) === "/api/plans/annual" && method === "POST") {
+      if (hold) await hold;
+      if (conflict)
+        return json(
+          {
+            error: {
+              code: "ALREADY_EXISTS",
+              message: "이 반의 연간계획안이 이미 있습니다.",
+              fields: ["class_id"],
+            },
+          },
+          409,
+        );
       const { format } = JSON.parse(options.body);
-      return json(
-        {
-          id: 99,
-          class_id: 31,
-          school_year: 2026,
-          status: "DRAFT",
-          format,
-          months: [],
-          periods: [],
-        },
-        201,
-      );
+      return json({ id: 99, class_id: 31, school_year: 2026, status: "DRAFT", format }, 201);
     }
     throw new Error("unexpected request: " + method + " " + path);
   };
   const replaced = [];
+  const compact = [];
 
   const slots = [],
     setters = [],
-    effects = [],
-    pending = [];
+    effects = [];
   let cursor = 0,
     tree;
   const state = (initial) => {
@@ -162,45 +143,31 @@ function page(
     react: {
       useState: state,
       useRef: (initial) => state(() => ({ current: initial }))[0],
-      useMemo: (fn) => fn(),
-      useEffect: (fn, deps) => {
+      useEffect: (fn) => {
         const index = cursor++;
-        if (!effects[index] || deps.some((dep, i) => !Object.is(dep, effects[index].deps[i]))) {
-          effects[index]?.cleanup?.();
-          effects[index] = { deps };
-          pending.push(() => {
-            effects[index].cleanup = fn();
-          });
-        }
+        effects[index] ??= { cleanup: fn() };
       },
     },
     "react/jsx-runtime": runtime,
     "next/navigation": { useRouter: () => ({ replace: (to) => replaced.push(to) }) },
     "next/image": { __esModule: true, default: "img" },
-    // 월간 · 양식 설정 화면으로 보내는 카드가 Link 를 쓴다. 눌리는지는 이 파일이 보지 않는다.
-    "next/link": { default: ({ children }) => children },
+    "next/link": { __esModule: true, default: "a" },
     // 409 ALREADY_EXISTS 를 가르려면 ApiError 로 instanceof 를 해야 한다.
     "@/lib/api/client": apiClient,
-    "@/lib/fonts": { fontClassName: "font" },
-    "@/components/app/AppHeader": { default: "app-header" },
     "@/lib/api/plans": plansApi,
-    "@/lib/api/forms": formsApi,
     "@/lib/api/onboarding": onboarding,
     "@/lib/auth/request-session": session,
-    "./GenerationFlow": { default: "generation-flow" },
-    "@/lib/workspace/ai-client": {
-      requestAI: () => {
-        throw new Error("Unexpected AI call");
-      },
-    },
-    "@/lib/workspace/plans": workspacePlans,
     "@/lib/workspace/model": workspaceModel,
-    "@/components/workspace/WorkspaceUI": { useAIStatus: () => false, ws: {} },
-    "@/lib/plan-generator/types": planTypes,
-    "@/lib/plan-generator/context": { saveAnnualContext: () => {} },
+    "@/lib/workspace/document-archive": { schoolYearOf: () => 2026 },
+    "@/lib/hooks/use-client-state": { useClientState: (read) => [read()] },
+    "@/lib/plan-generator/context": {
+      classAnnualContext: () => ({}),
+      saveAnnualContext: () => {},
+    },
     "@/lib/onboarding/settings": settingsLib,
     "@/lib/onboarding/types": onboardingTypes,
-    "@/lib/plan-generator/date": planDate,
+    "@/components/plan-ui/GenerationRing": { __esModule: true, default: "generation-ring" },
+    "@/components/app/compact-shell": { useCompactShell: (on) => compact.push(on) },
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)(
@@ -221,7 +188,7 @@ function page(
   };
   const render = () => {
     cursor = 0;
-    tree = resolve(Page({}));
+    tree = resolve(Page({ format }));
   };
   const all = (node) => {
     if (Array.isArray(node)) return node.flatMap(all);
@@ -245,385 +212,61 @@ function page(
     calls,
     replaced,
     render,
-    flush: async () => {
-      render();
-      pending.splice(0).forEach((fn) => fn());
-      await settle();
-      render();
-    },
-    unmount: () => effects.forEach((effect) => effect?.cleanup?.()),
-    node: (type, match) => all(tree).find((n) => n.type === type && (!match || match(n))),
-    options: () => {
-      const select = all(tree).find(
-        (n) => n.type === "select" && !n.props.id && Array.isArray(n.props.children),
-      );
-      return all(select.props.children)
-        .filter((n) => n.type === "option")
-        .map((n) => ({ value: n.props.value, label: content(n) }));
-    },
-    pick: (value) => {
-      all(tree)
-        .find((n) => n.type === "select" && !n.props.id)
-        .props.onChange({ target: { value } });
-    },
+    compact: () => compact.at(-1),
     text: () => content(tree),
-    alert: () => all(tree).find((n) => n.type === "p" && n.props.role === "alert"),
-    select: () => all(tree).find((n) => n.type === "select" && !n.props.id),
-    card: (label) =>
-      all(tree).find(
-        (n) => n.type === "button" && n.props["aria-pressed"] !== undefined && content(n) === label,
-      ),
-    generate: () =>
-      all(tree).find((n) => n.type === "button" && n.props.children === "계획안 생성하기"),
-    chooseAge: (value) => {
-      all(tree)
-        .find((n) => n.type === "select" && n.props.id === "age")
-        .props.onChange({ target: { value } });
-    },
-    chooseFormat: (label) => {
-      render();
-      all(tree)
-        .find(
-          (n) =>
-            n.type === "button" && n.props["aria-pressed"] !== undefined && content(n) === label,
-        )
-        .props.onClick();
-    },
-    chooseType: (label) => {
-      all(tree)
-        .find(
-          (n) =>
-            n.type === "button" &&
-            n.props["aria-pressed"] !== undefined &&
-            content(n).startsWith(label),
-        )
-        .props.onClick();
-    },
+    node: (type) => all(tree).find((n) => n.type === type),
+    button: (label) => all(tree).find((n) => n.type === "button" && content(n) === label),
+    created: () =>
+      calls.find(({ path, method }) => path === "/api/plans/annual" && method === "POST"),
   };
 }
 
-test("계획안 생성 화면은 브라우저 저장소의 양식 목록을 보지 않는다", () => {
-  for (const banned of ["useWorkspace", "workspace.templates", "storageError"])
-    assert.equal(SOURCE.includes(banned), false, banned);
-  // 서버 양식 등록 화면과 같은 원 식별 흐름을 쓴다.
-  for (const used of ["loadClassSettings()", "syncCenter(", "getForms(", "form_id"])
-    assert.ok(SOURCE.includes(used), used);
-});
-
-test("등록된 서버 양식이 선택 목록에 이름으로 나온다", async (t) => {
-  const p = page(t, { forms: [form(4, "햇살 월간계획안"), form(9, "햇살 주간계획안")] });
-  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
-  await p.flush();
-  assert.deepEqual(p.options(), [
-    { value: "", label: "쌤플 기본 양식" },
-    { value: "4", label: "햇살 월간계획안" },
-    { value: "9", label: "햇살 주간계획안" },
-  ]);
-  assert.deepEqual(
-    p.calls.map(({ path }) => path),
-    ["/api/centers", "/api/centers/7/forms"],
-  );
-});
-
-test("등록된 양식이 없어도 기본 양식을 쓸 수 있다", async (t) => {
-  const p = page(t, { forms: [] });
-  await p.flush();
-  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
-  assert.equal(p.alert(), undefined);
-});
-
-test("양식 목록 조회가 실패해도 화면은 기본 양식으로 계속 쓸 수 있다", async (t) => {
-  const p = page(t, { failForms: true });
-  await p.flush();
-  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
-  assert.match(p.text(), /서버 오류/);
-  // 입력 패널과 생성 버튼이 그대로 남는다 — 화면 전체가 막히지 않는다.
-  assert.ok(p.node("select", (n) => n.props.id === "age"));
-  assert.ok(p.node("button", (n) => n.props.children === "계획안 생성하기"));
-});
-
-test("고른 서버 양식은 form_id 로만 나가고 기본 양식은 null 이다", async (t) => {
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")] });
-  await p.flush();
-  p.chooseAge("5");
-  p.chooseType("연간");
-  p.chooseFormat("월별 주제형");
-  p.render();
-  p.pick("4");
-  p.render();
-  await p.generate().props.onClick();
-  await settle();
-  const created = p.calls.find(({ path }) => path === "/api/plans/annual");
-  assert.deepEqual(created.body, { class_id: 31, form_id: 4, format: "MONTHLY_THEME" });
-  assert.deepEqual(p.replaced, ["/plans/annual/99"]);
-});
-
-test("목록에 없는 양식 번호는 그대로 보내지 않고 기본 양식으로 본다", async (t) => {
-  // 옛 로컬 양식 id 와, 숫자지만 우리 원 것이 아닌 번호 둘 다 본다.
-  for (const stale of ["template-local-1", "999"]) {
-    const p = page(t, { forms: [form(4, "햇살 월간계획안")] });
-    await p.flush();
-    p.chooseAge("5");
-    p.chooseType("연간");
-    p.chooseFormat("월별 주제형");
-    p.render();
-    p.pick(stale);
-    p.render();
-    await p.generate().props.onClick();
-    await settle();
-    assert.deepEqual(
-      p.calls.find(({ path }) => path === "/api/plans/annual").body,
-      { class_id: 31, form_id: null, format: "MONTHLY_THEME" },
-      stale,
-    );
-  }
-});
-
-test("응답이 오기 전에 계정이 바뀌면 다른 원 양식을 그리지 않는다", async (t) => {
-  let release;
-  const held = new Promise((resolve) => {
-    release = resolve;
-  });
-  const p = page(t, { forms: [form(4, "다른 원 양식")], hold: held });
-  const started = p.flush();
-  await settle();
-  // 양식 응답이 오기 전에 다른 계정으로 바뀐다.
-  sessionStorage.setItem("saessak.accountEmail", "other@example.com");
-  release();
-  await started;
-  for (let i = 0; i < 5; i++) await settle();
-  p.render();
-  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
-  // 계정 전환은 오류가 아니다 — 새 계정 화면에 옛 오류를 아예 남기지 않는다.
-  assert.equal(p.alert(), undefined);
-});
-
-test("화면을 떠난 뒤 도착한 응답은 state 를 건드리지 않는다", async (t) => {
-  let release;
-  const held = new Promise((resolve) => {
-    release = resolve;
-  });
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")], hold: held });
-  const started = p.flush();
-  await settle();
-  // 응답이 오기 전에 화면을 떠난다.
-  p.unmount();
-  release();
-  await started;
-  for (let i = 0; i < 5; i++) await settle();
-  p.render();
-  assert.deepEqual(p.options(), [{ value: "", label: "쌤플 기본 양식" }]);
-});
-
-// ── 양식은 연간계획안에만 붙는다 · 목록을 받기 전에는 보내지 않는다 ─────────
-test("연간계획안을 고르지 않으면 기관 양식을 고를 수 없고 이유를 알려준다", async (t) => {
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")] });
-  await p.flush();
-  assert.equal(p.select().props.disabled, true);
-  assert.match(p.text(), /기관 양식은 연간계획안에만 적용돼요/);
-  // 이 화면에서 끝까지 만들 수 있는 건 연간뿐이다. 월간은 흐름이 달라 따로 열고
-  // (/plans/monthly), 주간은 아직 서버가 없다. 그래서 다른 종류를 눌러 여는 길이 없다.
-  assert.equal(p.select().props.disabled, true);
-});
-
-test("연간계획안을 고르면 기관 양식을 고를 수 있다", async (t) => {
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")] });
-  await p.flush();
-  p.chooseType("연간");
-  p.chooseFormat("월별 주제형");
-  p.render();
-  assert.equal(p.select().props.disabled, false);
-  assert.match(p.text(), /연간계획안 생성에 적용돼요/);
-});
-
-test("양식 목록을 받기 전에는 URL 로 지정한 양식으로 생성하지 않는다", async (t) => {
-  let release;
-  const held = new Promise((resolve) => {
-    release = resolve;
-  });
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")], hold: held, search: "?template=4" });
-  const started = p.flush();
-  await settle();
-  p.chooseAge("5");
-  p.chooseType("연간");
-  p.chooseFormat("월별 주제형");
-  p.render();
-  // 아직 4번이 우리 원 양식인지 모른다 — 기본 양식으로 조용히 바뀌면 안 된다.
-  assert.equal(p.select().props.disabled, true);
-  assert.equal(p.generate().props.disabled, true);
-  assert.match(p.text(), /불러오고 있어요/);
-  await p.generate().props.onClick();
-  await settle();
-  assert.equal(
-    p.calls.some(({ path }) => path === "/api/plans/annual"),
-    false,
-  );
-  release();
-  await started;
-  for (let i = 0; i < 5; i++) await settle();
-  p.render();
-  assert.equal(p.generate().props.disabled, false, "목록이 오면 다시 만들 수 있다");
-});
-
-test("목록이 도착하면 URL 로 지정한 양식 번호가 그대로 나간다", async (t) => {
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")], search: "?template=4" });
-  await p.flush();
-  assert.equal(p.select().props.value, "4");
-  p.chooseAge("5");
-  p.chooseType("연간");
-  p.chooseFormat("월별 주제형");
-  p.render();
-  await p.generate().props.onClick();
-  await settle();
-  assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
-    class_id: 31,
-    form_id: 4,
-    format: "MONTHLY_THEME",
-  });
-});
-
-test("목록을 받는 중이어도 기본 양식이면 생성을 막지 않는다", async (t) => {
-  let release;
-  const held = new Promise((resolve) => {
-    release = resolve;
-  });
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")], hold: held });
-  const started = p.flush();
-  await settle();
-  p.chooseAge("5");
-  p.chooseType("연간");
-  p.chooseFormat("월별 주제형");
-  p.render();
-  assert.equal(p.generate().props.disabled, false);
-  await p.generate().props.onClick();
-  await settle();
-  assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
-    class_id: 31,
-    form_id: null,
-    format: "MONTHLY_THEME",
-  });
-  release();
-  await started;
-});
-
-test("연간을 고르지 않으면 기관 양식이 생성 요청에 실리지 않는다", async (t) => {
-  const p = page(t, { forms: [form(4, "햇살 월간계획안")], search: "?template=4" });
-  await p.flush();
-  p.chooseAge("5");
-  // 아무 종류도 고르지 않은 채 누른다. 월간은 이 화면에서 못 고르고(따로 열기),
-  // 주간은 「준비 중」이라 눌리지 않는다.
-  p.render();
-  await p.generate().props.onClick();
-  p.render();
-  // 연간이 아니므로 서버 생성 자체가 없고, 고른 양식 번호도 어디에도 실리지 않는다.
-  assert.deepEqual(
-    p.calls.map(({ path }) => path),
-    ["/api/centers", "/api/centers/7/forms"],
-  );
-  assert.equal(JSON.stringify(p.calls).includes("form_id"), false);
-  // 로컬 초안 생성기에도 양식을 넘기지 않는다 — 변환 계약이 없다.
-  assert.ok(SOURCE.includes("templatePlan(type, age, period, memo, undefined, request.ageLabel)"));
-  assert.ok(SOURCE.includes("template: null,"));
-});
-
-test("연간 형식을 고르기 전에는 생성할 수 없고 캡처 카드에서 명시적으로 고른다", async (t) => {
+test("월별 주제형은 기본 양식(form_id: null)으로 만들고 다듬기 화면으로 간다", async (t) => {
   const p = page(t);
-  await p.flush();
-  p.chooseType("연간");
-  p.render();
-  assert.equal(p.generate().props.disabled, true);
-  for (const label of ["월별 주제형", "놀이 프로젝트형"]) {
-    const card = p.card(label);
-    assert.equal(card.props["aria-pressed"], false);
-    assert.equal(card.props["aria-label"], undefined);
-    assert.match(card.props.className, /focus-visible:/);
-    const image = p.node("img", (n) => n.props.alt === `${label} 연간계획안 예시 문서`);
-    assert.ok(image.props.src.startsWith("/plan-formats/"));
-  }
-  await p.generate().props.onClick();
-  assert.equal(
-    p.calls.some(({ path }) => path === "/api/plans/annual"),
-    false,
-  );
-  p.chooseFormat("월별 주제형");
-  p.render();
-  assert.equal(p.generate().props.disabled, false);
-  assert.doesNotMatch(p.text(), /놀이 프로젝트형은 아직/);
-  const creating = p.generate().props.onClick();
-  p.render();
-  assert.doesNotMatch(p.text(), /네 구간을 차례로/);
-  await creating;
-});
-
-test("연간 선택을 해제하면 형식 선택이 초기화되고 기관 양식 안내가 돌아온다", async (t) => {
-  const p = page(t, { forms: [form(4, "기관 양식")] });
-  await p.flush();
-  p.chooseType("연간");
-  p.chooseFormat("놀이 프로젝트형");
-  p.render();
-  // 놀이 프로젝트형은 기관 양식을 쓰지 않아 양식 안내 문구를 숨긴다.
-  assert.doesNotMatch(p.text(), /기관 양식은 연간계획안|등록한 기관 양식은/);
-  p.chooseType("연간");
-  p.render();
-  assert.match(p.text(), /기관 양식은 연간계획안에만 적용돼요/);
-  assert.equal(p.select().props.disabled, true);
-  p.chooseType("연간");
-  p.render();
-  assert.equal(p.select().props.disabled, false);
-  assert.equal(p.generate().props.disabled, true);
-  for (const label of ["월별 주제형", "놀이 프로젝트형"]) {
-    const card = p.card(label);
-    assert.equal(card.props["aria-pressed"], false);
-  }
-});
-
-test("선택한 기관 양식에서 놀이 프로젝트형으로 바꾸면 form_id 를 보내지 않는다", async (t) => {
-  const p = page(t, { forms: [form(4, "기관 양식")] });
-  await p.flush();
-  p.chooseAge("5");
-  p.chooseType("연간");
-  p.chooseFormat("월별 주제형");
-  p.render();
-  p.pick("4");
-  p.render();
-  p.chooseFormat("놀이 프로젝트형");
-  p.render();
-  assert.equal(p.select().props.value, "4");
-  assert.equal(p.select().props.disabled, true);
-  await p.generate().props.onClick();
-  assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
-    class_id: 31,
-    format: "PLAY_PROJECT",
-  });
-});
-
-test("놀이 프로젝트형은 기관 양식을 잠그고 form_id 없이 보내며 생성 안내 후 결과로 이동한다", async (t) => {
-  let release;
-  const held = new Promise((resolve) => {
-    release = resolve;
-  });
-  const p = page(t, { forms: [form(4, "기관 양식")], search: "?template=4", hold: held });
-  const started = p.flush();
-  await settle();
-  p.chooseType("연간");
-  p.chooseFormat("놀이 프로젝트형");
-  p.render();
-  assert.equal(p.select().props.value, "4");
-  assert.equal(p.select().props.disabled, true);
-  assert.equal(p.generate().props.disabled, false);
-  assert.doesNotMatch(p.text(), /월간 · 주간계획안으로 이어지지 않아요/);
-  const creating = p.generate().props.onClick();
-  p.render();
-  assert.match(
-    p.node("p", (n) => n.props.role === "status").props.children,
-    /놀이 프로젝트형은 네 구간을 차례로 만들어 몇 분 걸릴 수 있어요\./,
-  );
-  await creating;
-  assert.deepEqual(p.calls.find(({ path }) => path === "/api/plans/annual").body, {
-    class_id: 31,
-    format: "PLAY_PROJECT",
-  });
+  assert.match(p.text(), /햇살반/);
+  p.button("연간계획안 만들기").props.onClick();
+  await drain();
+  assert.deepEqual(p.created().body, { class_id: 31, format: "MONTHLY_THEME", form_id: null });
   assert.deepEqual(p.replaced, ["/plans/annual/99"]);
+});
+
+test("놀이 중심형은 form_id 를 보내지 않고, 만드는 동안 원형 진행 화면을 보여 준다", async (t) => {
+  let release;
+  const p = page(t, {
+    format: "PLAY_PROJECT",
+    hold: new Promise((r) => {
+      release = r;
+    }),
+  });
+  p.button("연간계획안 만들기").props.onClick();
+  await drain();
+  p.render();
+  const ring = p.node("generation-ring");
+  assert.ok(ring);
+  assert.equal(p.compact(), true, "만드는 동안은 사이드바를 접는다");
+  // 진행률은 서버가 주지 않는다 — 넘기지 않으면 고리가 스스로 돈다.
+  assert.equal(ring.props.progress, undefined);
+  assert.deepEqual(ring.props.steps, ["놀이 떠올리기", "계절별로 나누기", "문서로 정리하기"]);
   release();
-  await started;
+  await drain();
+  assert.deepEqual(p.created().body, { class_id: 31, format: "PLAY_PROJECT" });
+  assert.deepEqual(p.replaced, ["/plans/annual/99"]);
+});
+
+test("반에 연간이 이미 있으면(409) 지우지 않고 「새로 만들기」를 물어본다", async (t) => {
+  const p = page(t, { conflict: true });
+  p.button("연간계획안 만들기").props.onClick();
+  await drain();
+  p.render();
+  assert.match(p.text(), /이 반의 연간계획안이 이미 있습니다/);
+  assert.ok(p.button("새로 만들기"));
+  assert.ok(p.button("그대로 두기"));
+  assert.equal(p.calls.filter(({ method }) => method === "DELETE").length, 0);
+  assert.deepEqual(p.replaced, []);
+});
+
+test("방식 없이 들어오면 만들지 않고 첫 화면으로 보낸다", (t) => {
+  const p = page(t, { format: null });
+  assert.equal(p.button("연간계획안 만들기"), undefined);
+  assert.equal(p.node("a").props.href, "/plans");
 });

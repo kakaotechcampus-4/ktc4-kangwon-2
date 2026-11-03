@@ -25,8 +25,17 @@ from ..domain.provenance import (
     ValueChange,
 )
 from ..domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS, WeeklyPlan
-from ..evidence.ports import InstitutionEvidenceRepository, WeeklyEvidenceClassificationRepository
-from ..planner.weekly import OUTDOOR_KEY, SAFETY_KEY, THEME_KEY, WeeklyPlanner, cell_request
+from ..evidence.ports import (
+    InstitutionEvidenceRepository,
+    WeeklyEvidenceClassificationRepository,
+)
+from ..planner.weekly import (
+    OUTDOOR_KEY,
+    SAFETY_KEY,
+    THEME_KEY,
+    WeeklyPlanner,
+    cell_request,
+)
 from ..rules.errors import MonthlyRuleError
 from ..rules.monthly_cell_state import resolve_cell_state
 from ..rules.weekly_verification import verify_weekly_plan
@@ -42,7 +51,12 @@ from .generate_weekly_plan import (
     require_safe_grounding,
     rule_outdoor_sources,
 )
-from .monthly_support import MonthlyContextPipeline, load_plan_activity_catalog, require_actor, require_item_id
+from .monthly_support import (
+    MonthlyContextPipeline,
+    load_plan_activity_catalog,
+    require_actor,
+    require_item_id,
+)
 from .ports import ActivityReferenceRepository, Clock, PlanRepository
 
 STATUTORY_SAFETY = "STATUTORY_SAFETY_EDUCATION"
@@ -187,6 +201,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
         planner: WeeklyPlanner | None = None,
         evidence_repository: InstitutionEvidenceRepository | None = None,
         weekly_classification_repository: WeeklyEvidenceClassificationRepository | None = None,
+        daily_life_loader=None,
     ) -> None:
         super().__init__(
             plan_repository=plan_repository,
@@ -198,6 +213,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
         self._planner = planner
         self._evidence = evidence_repository
         self._weekly_classification = weekly_classification_repository
+        self._daily_life_loader = daily_life_loader
 
     def execute(self, command: RegenerateWeeklyPlanCellCommand) -> WeeklyPlan:
         plan = self._plan(command.plan_id)
@@ -207,7 +223,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
         cell = plan.find_cell(item_id)
         if cell is None:
             raise WeeklyApplicationError("weekly_cell_not_found", f"Weekly Cell not found: {item_id}")
-        if cell.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS:
+        if cell.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS or (plan.activity_grids and cell.section_key == "group_activity"):
             raise WeeklyApplicationError(
                 "weekly_cell_not_regeneratable", "A teacher-input Cell is written by the teacher only"
             )
@@ -282,6 +298,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
             parent=parent, period=plan.week_period, operating_days=plan.operating_days,
             snapshot=plan.template_snapshot, catalog=catalog,
             constraint_assessments=plan.constraint_assessments, outdoor=outdoor,
+            daily_life_loader=self._daily_life_loader,
         )
         if context.request.target(key) is None:
             # The same Rule as generation decides; this request is refused, not the Plan.
@@ -337,3 +354,21 @@ class ConfirmWeeklyPlan(_WeeklyLifecycle):
         confirmed = self._verified(plan).confirm(actor_id=actor_id, occurred_at=self._clock.now())
         self._plans.save(confirmed.plan_id, confirmed)
         return confirmed
+
+
+@dataclass(frozen=True, slots=True)
+class UnconfirmWeeklyPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+class UnconfirmWeeklyPlan(_WeeklyLifecycle):
+    """CONFIRMED → DRAFT. A DRAFT Plan comes back unchanged and is not saved."""
+
+    def execute(self, command: UnconfirmWeeklyPlanCommand) -> WeeklyPlan:
+        plan = self._plan(command.plan_id)
+        actor_id = require_actor(command.actor_id)
+        unconfirmed = plan.unconfirm(actor_id=actor_id, occurred_at=self._clock.now())
+        if unconfirmed is not plan:
+            self._plans.save(unconfirmed.plan_id, unconfirmed)
+        return unconfirmed

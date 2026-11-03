@@ -33,6 +33,7 @@
 - 말로 적기(받아쓰기) — `frontend/lib/hooks/use-dictation.ts`
 - 홈에서 아이를 드롭다운으로 찾지 않는다 — 반 전체가 격자로 깔리고 칸마다 마지막 기록·이번 주 횟수가 보인다 — 커밋 `ea67852` · `frontend/components/app/ChildPicker.tsx`
 - 한 주 넘게 기록이 빈 아이는 칸 색이 다르다 — 기록이 한 건도 없는 반에서는 칠하지 않는다 — 커밋 `80ed98a` · `frontend/tests/child-mark.test.mjs`
+- 연간계획안을 만들고 다듬는 동안 사이드바가 72px 아이콘 줄로 접혀 문서 폭을 넓히고, 확정본에서는 다시 펼친다 — `frontend/components/app/compact-shell.ts` · `frontend/components/plan-generator/AnnualResult.tsx`
 
 ## 고친 실제 사고
 
@@ -40,6 +41,7 @@
 |---|---|---|
 | 한 번 말했는데 네댓 번 적힘 | Web Speech API `results` 가 누적인데 매번 전체를 더했다 | 커밋 `d12f872` · `frontend/tests/dictation.test.mjs` |
 | 기기 바꾼 교사가 온보딩 1단계에서 막힘 | 409 처리 | 커밋 `f607c54` |
+| 다른 브라우저로 로그인하면 첫 설정을 마친 교사도 첫 설정으로 가고 반이 빈 칸 | 첫 설정을 마쳤는지를 브라우저 기록으로만 봤다 | 이슈 #291 · `frontend/lib/api/onboarding.ts` `restoreFromServer` |
 | 서버 시각이 9시간 틀림 | `created_at` 이 UTC 인데 문자열을 잘랐다 | [CLAUDE.md](../../CLAUDE.md) §날짜·시각 |
 | 목업이 PATCH 를 받아줘 통과, 진짜 서버는 PUT | 코드를 보고 짐작하고 값을 안 봤다 | [CLAUDE.md](../../CLAUDE.md) §서버 값은 타입 말고 실제 응답을 본다 |
 

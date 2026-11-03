@@ -1,5 +1,5 @@
 import { read, commit, type Database } from "./store";
-import { annualFor } from "./monthly-plans";
+import { annualFor, annualChanged } from "./monthly-plans";
 import { MOCK_USER_ID } from "./template-profiles";
 import type {
   PlayMonthlyActivity,
@@ -150,7 +150,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
         annual_plan_id: annualFor(classId)?.id ?? 0,
         period_key: "m09_m11",
         layout_version: "play-project-layout-v0.2.0",
-        confirmed_at: now,
+        confirmed_at: annualFor(classId)?.confirmed_at ?? now,
         plays: [9, 2, 4, 5, 7].map((i) => ({
           row_key: "cand" + i,
           play_name_item_id: "m09_m11-" + i + "-name",
@@ -205,6 +205,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
         cell: { ...cell("", []), generation: null },
       })),
       notices: [],
+      parent_changed: false, // 응답마다 view 가 다시 계산한다.
     };
     db.playMonthlyPlans.push(plan);
     // 계획안 1건 + 칸마다 1건(서버 순서: 계획안 → 칸). 확정본이면 확정 한 건이 더 있다.
@@ -242,7 +243,11 @@ type Stored = PlayMonthlyPlan & { copied_from?: string };
 const view = (p: PlayMonthlyPlan): PlayMonthlyPlan => {
   const copy = structuredClone(p) as Stored;
   delete copy.copied_from;
-  return { ...copy, notices: notices(p) };
+  return {
+    ...copy,
+    notices: notices(p),
+    parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
+  };
 };
 
 export const findPlayMonthly = (id: number) => {
@@ -414,5 +419,15 @@ export const confirmPlayMonthly = (id: number) =>
       p.revision++;
       record(db, id, { type: "CONFIRMED", scope: "PLAN", actor: ACTOR });
     }
+    return view(p);
+  });
+/** 확정 취소 (U). 이미 초안이면 handler 가 먼저 그대로 돌려준다. */
+export const unconfirmPlayMonthly = (id: number) =>
+  commit((db) => {
+    const p = db.playMonthlyPlans.find((x) => x.id === id)!;
+    p.status = "DRAFT";
+    p.confirmed_at = null;
+    p.revision++;
+    record(db, id, { type: "UNCONFIRMED", scope: "PLAN", actor: ACTOR });
     return view(p);
   });

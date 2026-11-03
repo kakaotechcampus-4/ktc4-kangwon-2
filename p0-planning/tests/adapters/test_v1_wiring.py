@@ -83,7 +83,7 @@ def test_monthly_generation_and_regeneration_reuse_confirmed_annual_snapshot():
         assert tuple(payload["parent_subthemes"]) == command.parent_subthemes
     request_version = provider.requests[-1].prompt_version
     regenerated = plan.find_cell(target.item_id)[3]
-    assert request_version == "monthly-cell-planner-v11"
+    assert request_version == "monthly-cell-planner-v14"
     assert result.planner_outcome.prompt_version == request_version
     assert regenerated.generation.rule_version == request_version
     change = regenerated.audit.events[-1].generation_change

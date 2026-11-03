@@ -61,6 +61,33 @@ export const getMonthlyPlanAudit = (id: number, itemId?: string, signal?: AbortS
       (itemId === undefined ? "" : "?item_id=" + encodeURIComponent(itemId)),
     { signal },
   );
+/** 훈련 후보를 「소방대피/재난대비」 칸에 복사한다. 같은 복사면 200 · 무변경. */
+export const copyMonthlyDrill = (
+  id: number,
+  itemId: string,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/drill-candidates/" + encodeURIComponent(itemId) + "/copy",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/** 그 주에 둘 안전 후보. `null` 이면 비운다. 같은 입력이면 200 · 무변경(revision 그대로). */
+export const placeMonthlySafety = (
+  id: number,
+  weekId: string,
+  candidateItemId: string | null,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/safety-weeks/" + encodeURIComponent(weekId),
+    json(
+      "PUT",
+      { candidate_item_id: candidateItemId, expected_revision: expectedRevision },
+      signal,
+    ),
+  );
 /** 이미 확정이면 revision 과 상관없이 200 — 재시도 · 더블클릭은 실패가 아니다. */
 /** 확정 전 월간계획안을 지운다. 그 달을 다시 만들려면 먼저 지워야 한다. 확정본은 409 다. */
 export const deleteMonthlyPlan = (id: number) =>
@@ -68,5 +95,11 @@ export const deleteMonthlyPlan = (id: number) =>
 export const confirmMonthlyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
   apiRequest<MonthlyPlan>(
     "/api/plans/monthly/" + id + "/confirm",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/** 확정 취소. 이미 초안이면 200 · 그대로. 낡은 revision 은 409 `STALE_WRITE`. 딸린 주간은 그대로다. */
+export const unconfirmMonthlyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/unconfirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );

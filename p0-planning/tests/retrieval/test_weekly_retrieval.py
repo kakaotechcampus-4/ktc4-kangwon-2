@@ -3,7 +3,6 @@ from __future__ import annotations
 import collections
 
 import pytest
-
 from ssuksak.adapters.institution_evidence_repository import (
     InMemoryInstitutionEvidenceRepository,
     JsonInstitutionEvidenceRepository,
@@ -27,7 +26,7 @@ from ssuksak.planning.evidence.weekly_classification import (
     WeeklySemanticClass,
 )
 from ssuksak.planning.retrieval.models import AGE_VERIFIABLE_TIERS
-from ssuksak.planning.retrieval.weekly import weekly_section_evidence
+from ssuksak.planning.retrieval.weekly import activity_type, weekly_section_evidence
 
 INDOOR = WeeklySemanticClass.INDOOR_PLAY
 
@@ -88,6 +87,18 @@ def test_only_that_class_that_month_valid_and_age_verified_records_are_used():
     assert _search(records, weekly_class=WeeklySemanticClass.GROUP_ACTIVITY) == ["ev_3"]
 
 
+@pytest.mark.parametrize("text,label,expected", [
+    ("[이야기 나누기] 가을 이야기", "대소집단", "이야기나누기"),
+    ("[이야기나누기] 가을 이야기", "대소집단", "이야기나누기"),
+    ("(휴지심,종이컵) 소리 탐색", "대소집단", "기타"),
+    ("[모두 함께 체험해요] 놀이", "대소집단", "기타"),
+    ("(휴지심,종이컵) 소리 탐색", "음 률", "음률"),
+    ("[과학·요리] 음식 만들기", "대소집단", "과학·요리"),
+])
+def test_activity_types_normalize_spacing_and_do_not_copy_material_notes(text, label, expected):
+    assert activity_type(_record("ev_1", text=text, label=label)) == expected
+
+
 def test_at_most_two_per_institution_and_top_k():
     records = tuple(_record(f"ev_{i}", institution="A" if i < 4 else f"I{i}") for i in range(1, 10))
     found = _search(records, top_k=5)
@@ -112,6 +123,20 @@ def test_a_classification_for_another_store_is_refused():
         weekly_section_evidence(
             store, other, weekly_class=INDOOR, calendar_month=9, ages=frozenset({3}), query_text=""
         )
+
+
+def test_focus_search_keeps_hard_filters_and_falls_back_when_all_grams_are_shared():
+    records = (
+        _record("ev_1", text="가을 나들이", institution="A"),
+        _record("ev_2", text="세계 전통 의상을 꾸며요", institution="B"),
+        _record("ev_3", text="세계 의상", month=10, institution="C"),
+        _record("ev_4", text="세계 의상", age_scope=(), institution="D"),
+    )
+    assert _search(records, query_text="가을 나들이", top_k=1) == ["ev_1"]
+    assert _search(records, query_text="가을 나들이", top_k=1, focus_text="세계 의상",
+                   sibling_focuses=("우리나라 음식", "우리나라 놀이", "세계 의상")) == ["ev_2"]
+    assert _search(records, query_text="가을 나들이", top_k=1, focus_text="우리나라",
+                   sibling_focuses=("우리나라", "우리나라")) == ["ev_1"]
 
 
 @pytest.mark.parametrize("weekly_class", [c for c in WeeklySemanticClass if c is not WeeklySemanticClass.EXCLUDED])

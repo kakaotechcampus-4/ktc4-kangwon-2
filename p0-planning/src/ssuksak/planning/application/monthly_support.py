@@ -400,6 +400,7 @@ class MonthlyContextPipeline:
                     if safety is not None
                     else ()
                 ),
+                subthemes=parent_subthemes,
             )
         )
         packet = self._context.build(
@@ -460,6 +461,14 @@ def theme_reference_id(evidence: tuple[EvidenceSource, ...]) -> str:
         for source in evidence
         if source.source_type is EvidenceSourceType.THEME_REFERENCE
     )
+    if not references:
+        # Imported Yearly theme (2026-11-01 I-A): anchor on the parent plan instead.
+        # It links no Activity, so retrieval and selection fall back to the theme text.
+        references = tuple(
+            source
+            for source in evidence
+            if source.source_type is EvidenceSourceType.PARENT_PLAN
+        )
     if len(references) != 1:
         raise MonthlyApplicationError(
             "theme_reference_required",

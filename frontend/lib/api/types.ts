@@ -103,16 +103,18 @@ export interface MonthInput {
 /** 한 달 (docs/api-spec.md §4). 출처는 세 축이다 — 근거(`evidence`) · 만든 방법(`generation`) · Audit. */
 export interface AnnualMonth extends MonthInput {
   month: number;
+  /** 그 달 주 수. 확정하려면 소주제 수가 이와 같아야 한다(다르면 확정 422 `fields` 에 그 달). */
+  week_count: number;
   /** 교사가 입력한 월별 배치. 미입력도 빈 배열이므로 state를 함께 본다. */
   safety_education: string[];
   /** 빈 배열이 「안 한다」인지 「아직 모른다」인지 가른다. */
   safety_education_state: "SOURCE_REQUIRED" | "PLACED" | "NOT_PLACED";
   safety_education_source?: "TEACHER_INPUT" | null;
-  safety_education_generation?: MonthlyCell["generation"] | null;
+  safety_education_generation?: MonthlyCellGeneration | null;
   /** THEME_REFERENCE 가 정확히 하나. 교사가 고쳐도 바뀌지 않는다(§6). 모양은 월간 칸과 같다. */
   evidence: MonthlyCell["evidence"];
   /** 처음 무엇이 만들었나. 교사가 고쳐도 바뀌지 않는다 — 「교사 수정됨」은 Audit 이 말한다(§6). */
-  generation: MonthlyCell["generation"];
+  generation: MonthlyCellGeneration;
   /**
    * @deprecated 서버가 보내지 않는다 — 단일 출처 필드는 없앴다(§4 「출처는 세 축이다」). 항상 undefined.
    * 화면 배지가 아직 읽고 있어 남겨둔다. 배지를 무엇으로 정할지는 화면 결정 뒤에 고친다.
@@ -132,11 +134,38 @@ export interface WeeklyCell {
   state: "FILLED" | "EMPTY_VALID" | "EMPTY_UNRESOLVED";
   evidence: MonthlyCell["evidence"];
   /** 교사 입력 칸은 아직 아무것도 만들지 않았으면 null 이다 (§10-2). */
-  generation: MonthlyCell["generation"] | null;
+  generation: MonthlyCellGeneration | null;
   /** 근거로 쓴 부모 월간 칸마다 하나. 「그때 월간은 이랬다」를 남긴다 (§5-3). */
   parent_snapshots: { parent_item_id: string; snapshot_value: string }[];
   /** 교사가 적는 칸(가정 연계 · 행사 · 특별활동)이면 true. 첫 입력 뒤(`MANUAL`)에도 true 다 (W5b). */
   teacher_input: boolean;
+  day?: "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | null;
+}
+export interface WeeklyActivityGrid {
+  cell_id: string | null;
+  split_id: string | null;
+  axis: "VERTICAL" | "HORIZONTAL" | null;
+  ratio: number | null;
+  children: WeeklyActivityGrid[];
+}
+export interface WeeklyActivityCandidate {
+  activity_type: string;
+  name: string;
+  description: string;
+  cell: WeeklyCell;
+}
+
+export interface WeeklyAuditEvent extends Omit<MonthlyAuditEvent, "type"> {
+  type: MonthlyAuditEvent["type"] | "CANDIDATE_COPIED" | "TIMETABLE_CHANGED";
+  // 서버는 day · copied_from 키를 늘 보낸다(없으면 null). copied_from 은 월간 이력 모양에서 온다.
+  day: Exclude<WeeklyCell["day"], undefined>;
+  timetable_change?: {
+    operation: "SPLIT" | "REMOVE";
+    split_id: string;
+    axis: "VERTICAL" | "HORIZONTAL";
+    cell_id: string;
+    new_cell_id: string | null;
+  } | null;
 }
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §5-1 · §13).
@@ -162,8 +191,9 @@ export interface WeeklyPlan {
   /** 교사에게 보여줄 마지막 날. **서버가 계산해 준다 — 화면이 더하지 않는다** (§3-2). */
   display_end_date: string;
   base_template_ref: TemplateRef;
-  /** 부모 월간. 확정본이라 바뀌지 않는다 — 주간에 「부모가 바뀌어 stale」 은 없다 (§4-2). */
+  /** 만들 때 본 부모 월간의 스냅샷. 부모 확정이 풀리거나 다시 확정되면 `parent_changed` 가 true 다. */
   parent: { monthly_plan_id: number; theme: string | null; confirmed_at: string };
+  parent_changed: boolean;
   sections: {
     section_key: string;
     label: string | null;
@@ -172,11 +202,14 @@ export interface WeeklyPlan {
     order: number;
     semantic_variant: string | null;
     cells: WeeklyCell[];
+    repeat_by?: "NONE" | "DAY";
   }[];
   constraints: MonthlyPlan["constraints"];
   verification: MonthlyPlan["verification"];
   created_at: string;
   confirmed_at: string | null;
+  activity_candidates?: WeeklyActivityCandidate[];
+  activity_grids?: WeeklyActivityGrid[];
 }
 /** 목록용. 칸은 단건 조회가 준다. */
 export type WeeklyPlanSummary = Pick<
@@ -210,7 +243,7 @@ export interface PlayCell {
   item_id: string;
   value: string;
   evidence: MonthlyCell["evidence"];
-  generation: MonthlyCell["generation"];
+  generation: MonthlyCellGeneration;
 }
 export interface PlayProjectAnnualPlan {
   id: number;
@@ -243,7 +276,7 @@ export interface PlayMonthlyCell {
   item_id: string;
   value: string;
   evidence: MonthlyCell["evidence"];
-  generation: MonthlyCell["generation"] | null;
+  generation: MonthlyCellGeneration | null;
 }
 export interface PlayMonthlyActivity {
   /** 이름 칸의 `item_id` 와 같다. 행 주소다. */
@@ -276,6 +309,8 @@ export interface PlayMonthlyPlan {
     end_date: string;
     active: boolean;
   }[];
+  /** 부모가 지금 확정이 아니거나, 확정 시각이 `parent.confirmed_at` 과 다르면 true. 화면은 안내만 한다. */
+  parent_changed: boolean;
   parent: {
     annual_plan_id: number;
     period_key: string;
@@ -319,7 +354,13 @@ export interface PlayMonthlyPlan {
  * `type` 은 저장된 문자열 그대로라 모르는 종류가 올 수 있다 — 화면은 건너뛴다.
  */
 export interface PlayMonthlyAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "ARRANGEMENT_CHANGED" | "CANDIDATE_COPIED" | "CONFIRMED";
+  type:
+    | "CREATED"
+    | "TEACHER_EDITED"
+    | "ARRANGEMENT_CHANGED"
+    | "CANDIDATE_COPIED"
+    | "CONFIRMED"
+    | "UNCONFIRMED";
   /** ISO 8601, UTC(`Z`). */
   occurred_at: string;
   /** 계획안 단위(생성 · 배치 · 확정)는 PLAN, 칸 단위는 CELL. */
@@ -367,7 +408,7 @@ export interface ConfirmResult {
  * 소주제 변경 · 근거 · 사람 이름은 이력에 없다.
  */
 export interface AnnualAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED" | "CANDIDATES_SELECTED";
+  type: "CREATED" | "TEACHER_EDITED" | "CONFIRMED" | "CANDIDATES_SELECTED" | "UNCONFIRMED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
   /** 그 달 theme 의 이벤트면 그 달(1~12). 계획안 단위(생성 · 확정)면 null. */
@@ -399,6 +440,12 @@ export interface MonthlyInput {
   month: number;
   profile_ref: ProfileRef;
 }
+/** 칸을 만든 방법. 연간 · 놀이 칸이 같이 쓰므로 null 을 넣지 않고 따로 이름을 둔다. */
+export type MonthlyCellGeneration = {
+  method: string;
+  rule_id: string | null;
+  rule_version: string | null;
+};
 /**
  * 칸 하나 (§9-1). 출처는 세 축이다 — `evidence` 는 근거, `generation` 은 만든 방법.
  * 변경 이력(audit)은 응답에 없다.
@@ -417,7 +464,8 @@ export interface MonthlyCell {
     effective_date: string | null;
     display_name: string | null;
   }[];
-  generation: { method: string; rule_id: string | null; rule_version: string | null };
+  /** 훈련 문서 칸은 교사가 쓰거나 후보를 복사하기 전까지 null. 다른 칸은 늘 있다. */
+  generation: MonthlyCellGeneration | null;
 }
 /** 주 · Section · 칸 개수를 정하지 않는다 — 화면은 받은 만큼 그린다. */
 export interface MonthlyPlan {
@@ -434,6 +482,8 @@ export interface MonthlyPlan {
   profile_ref: ProfileRef;
   base_template_ref: TemplateRef;
   parent: { annual_plan_id: number; theme: string | null; confirmed_at: string };
+  /** 부모 연간이 지금 확정이 아니거나, 확정 시각이 `parent.confirmed_at` 과 다르면 true. 화면은 안내만 한다. */
+  parent_changed: boolean;
   weeks: {
     week_id: string;
     label: string;
@@ -470,35 +520,61 @@ export interface MonthlyPlan {
       message: string;
     }[];
   };
+  /** 훈련 후보. 훈련 칸이 없는 계획안은 `[]` 다. */
+  drill_candidates: { topic_id: string; label: string; cell: MonthlyCell }[];
+  /** 안전교육 후보. 기존 계획안은 `[]` 다 — 비어 있으면 화면은 후보 없이 주별 칸으로 고친다. */
+  safety_candidates: {
+    kind: "STATUTORY" | "SUPPLEMENTAL";
+    category_id: string | null;
+    topic_group: string | null;
+    cell: MonthlyCell;
+  }[];
+  /** 주마다 하나. `display_value` 는 둔 후보 문장(없거나 공백이면 ""). */
+  safety_weeks: { week_id: string; candidate_item_id: string | null; display_value: string }[];
+  /** 응답마다 계산한다. 확정을 막지 않는다. */
+  notices: { code: "SAFETY_UNPLACED" | "SAFETY_BLANK"; week_id: string }[];
   created_at: string;
   confirmed_at: string | null;
 }
 /**
  * 월간계획안 변경 이력 하나 (`GET /api/plans/monthly/{id}/audit`, docs/api-spec.md §9-5).
- * **열 개 키가 항상 온다** — 해당이 없으면 null. 저장되지 않은 것(재생성 전 근거 · 이벤트별
+ * **열세 개 키가 항상 온다** — 해당이 없으면 null. 저장되지 않은 것(재생성 전 근거 · 이벤트별
  * revision · 사람 이름)은 없다.
  */
 export interface MonthlyAuditEvent {
-  type: "CREATED" | "TEACHER_EDITED" | "REGENERATED" | "CONFIRMED";
+  type:
+    | "CREATED"
+    | "TEACHER_EDITED"
+    | "REGENERATED"
+    | "ARRANGEMENT_CHANGED"
+    | "CANDIDATE_COPIED"
+    | "CONFIRMED"
+    | "UNCONFIRMED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
-  /** PLAN 이면 아래 칸 위치 셋이 null 이다. */
+  /** PLAN 이면 아래 칸 위치 넷이 null 이다. */
   scope: "PLAN" | "CELL";
   item_id: string | null;
   section_key: string | null;
   /** 주마다 있는 칸이면 그 주. 한 달 칸 · PLAN 이면 null. */
   week_id: string | null;
+  /** 주간 요일 칸이면 그 요일(MON…SAT). 그 밖 · 월간 · PLAN 이면 null. */
+  day: string | null;
   /** 사람이 한 일이면 opaque id(`user_7`). 시스템이면 null. */
   actor: string | null;
   /** 시스템이 한 일(생성)이면 그 표시. 사람이면 null. */
   system_actor: string | null;
-  /** TEACHER_EDITED · REGENERATED 만. */
+  /** TEACHER_EDITED · REGENERATED · CANDIDATE_COPIED 만. */
   value_change: { before: string; after: string } | null;
-  /** REGENERATED 만. 모양은 칸의 `generation` 과 같다. */
+  /** REGENERATED · CANDIDATE_COPIED(덮은 칸에 생성 방식이 있었을 때) 만. 칸의 `generation` 과 같은 모양. */
   generation_change: {
-    before: MonthlyCell["generation"];
-    after: MonthlyCell["generation"];
+    before: MonthlyCellGeneration;
+    after: MonthlyCellGeneration;
   } | null;
+  /** ARRANGEMENT_CHANGED 만. 안전 배치면 scope 는 주 id, before · after 는 놓인 후보 item_id 배열. */
+  arrangement_change: { scope: string; before: string[]; after: string[] } | null;
+  /** CANDIDATE_COPIED 만. 복사한 훈련 후보의 item_id. */
+  copied_from: string | null;
 }
 /** 목록용. 칸은 단건 조회가 준다. */
 export type MonthlyPlanSummary = Pick<
