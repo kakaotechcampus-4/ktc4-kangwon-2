@@ -11,6 +11,7 @@ import sys
 import zipfile
 
 import hwpx.hwp5.writer as hwp5_writer
+import pypdf
 import pytest
 from fastapi.testclient import TestClient
 from hwpx.errors import Hwp5Error
@@ -20,6 +21,7 @@ from app.features.centers.models import Center, Class
 from app.features.forms import hwp_form
 from app.features.plans.export import TEMPLATE_DIR
 from app.main import app
+from app.shared import hwpx_pdf
 from app.shared.hwpx import NS, TemplateMismatch, fill_table
 
 client = TestClient(app)
@@ -261,10 +263,46 @@ def test_형식을_안_고르면_hwpx_다(db_session, mine):
 def test_모르는_형식은_422(db_session, mine):
     plan = _confirmed_plan(mine)
 
-    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=pdf")
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=docx")
 
     assert response.status_code == 422
     assert response.json()["error"]["fields"] == ["format"]
+
+
+def test_pdf_를_고르면_같은_표를_한_장_PDF_로_내려준다(db_session, mine):
+    plan = _confirmed_plan(mine)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=pdf")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert f'filename="plan-{plan["id"]}.pdf"' in response.headers["content-disposition"]
+    [page] = pypdf.PdfReader(io.BytesIO(response.content)).pages
+    # 좁은 칸은 PDF 에서도 줄이 바뀐다(양식이 BREAK_WORD) — 공백 · 줄바꿈을 빼고 비교한다.
+    text = re.sub(r"\s+", "", page.extract_text())
+    assert "생활주제" in text and "소주제" in text
+    for month in plan["months"]:
+        for value in [month["theme"], *month["sub_themes"]]:
+            assert re.sub(r"\s+", "", value) in text
+
+
+def test_pdf_로_못_바꾸면_hwpx_로_받으라고_한다(db_session, mine, monkeypatch):
+    """한글 글꼴이 서버에 없을 때 · 그리다 실패할 때 모두 503 — hwpx 는 그대로 받는다."""
+    plan = _confirmed_plan(mine)
+
+    def fail(hwpx):
+        raise hwpx_pdf.FontMissing("없음")
+
+    monkeypatch.setattr(hwpx_pdf, "to_pdf", fail)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=pdf")
+    default = client.get(f"/api/plans/{plan['id']}/export/hwp")
+
+    assert response.status_code == 503
+    body = response.json()["error"]
+    assert body["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert "pdf 로 바꿀 수 없습니다. hwpx 로 받아주세요" in body["message"]
+    assert default.status_code == 200
 
 
 @pytest.mark.parametrize(

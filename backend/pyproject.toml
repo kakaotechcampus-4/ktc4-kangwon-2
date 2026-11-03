@@ -26,6 +26,8 @@ dependencies = [
   "pyyaml",
   # 연간 가져오기가 PDF 글자층을 읽는다(annual_extract.py). 스캔 PDF(OCR)는 하지 않는다.
   "pypdf",
+  # 계획안 PDF 내보내기 (ADR-059). 채운 hwpx 를 표 그대로 다시 그린다(shared/hwpx_pdf.py).
+  "reportlab",
   # 계획안 생성 로직. 같은 저장소의 별도 패키지다 — 서버는 이걸 부르기만 한다.
   "ssuksak-planning",
 ]
