@@ -27,6 +27,8 @@ import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
+import RoutineCalendar, { koreanDate } from "./RoutineCalendar";
+import RoutineClock from "./RoutineClock";
 
 const CLASSES_FAILED = "반 목록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 // 서버 routine_records.name 이 50자다. 더 보내면 422 다 (§10-1).
@@ -36,23 +38,27 @@ const NAME_MAX = 50;
  * 그날 적은 게 하나도 없을 때 깔아 두는 하루 (S-J1).
  *
  * 빈 줄 다섯을 깔던 자리다. 어린이집 하루는 반마다 거의 같은데 교사가 매일 그 이름을
- * 아홉 번 다시 쳤다. 깔아 두고 **실제로 한 것만** 적게 한다 — 키즈노트 · 한그루가 그렇게 한다.
+ * 열 번 다시 쳤다. 깔아 두고 **실제로 한 것만** 적게 한다 — 키즈노트 · 한그루가 그렇게 한다.
  * 어제 적은 하루가 있으면 이 표 대신 어제의 이름 · 시간을 깐다.
+ *
+ * 이름과 시간은 국가 공식 양식의 유아 10행형 그대로다
+ * (`docs/references/보육일지-공식양식.md` — 중앙육아종합지원센터 배포, 무료 공개 자료).
  *
  * **깔아 둔 줄은 교사가 손대기 전까지 저장하지 않는다.** 손대지 않은 하루가 서버에 쌓이면
  * 일일 보육일지가 빈 일과를 근거로 삼는다.
  */
 const DEFAULT_ROUTINES: [name: string, start: string, end: string][] = [
   ["등원 및 통합보육", "07:30", "09:00"],
-  ["오전 간식", "09:00", "09:20"],
+  ["오전간식", "09:00", "09:20"],
   ["오전 실내놀이", "09:20", "10:40"],
-  ["대소집단 활동", "10:40", "11:20"],
-  ["바깥놀이", "11:20", "12:00"],
-  ["점심 식사", "12:00", "13:00"],
-  ["낮잠 및 휴식", "13:00", "14:30"],
-  ["오후 간식", "14:30", "15:00"],
-  ["하원 및 통합보육", "15:00", "19:30"],
-];
+  ["활동", "10:40", "11:00"],
+  ["바깥놀이(대체)", "11:00", "12:20"],
+  ["점심식사", "12:20", "13:20"],
+  ["낮잠 및 휴식", "13:20", "14:20"],
+  ["오후 놀이", "14:20", "15:40"],
+  ["오후간식", "15:40", "16:00"],
+  ["귀가 및 통합보육", "16:00", "17:00"],
+]
 const NAME_REQUIRED = "일과 이름을 적어 주세요.";
 const TIME_BACKWARDS = "끝나는 시간이 시작보다 빨라요.";
 const HAS_PROBLEM = "입력하지 않은 필수 항목이 있어요. 표시된 일과를 확인해 주세요.";
@@ -263,6 +269,8 @@ export default function RoutinesPage() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
+  /** 달력이 펴 놓은 달. `null` 이면 고른 날이 든 달이다 — 날짜를 바꾸면 따라간다. */
+  const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   /**
@@ -644,11 +652,49 @@ export default function RoutinesPage() {
   const doneCount = rows.filter((row) => row.execution.trim()).length;
   // 깔아 둔 하루인가. 교사가 아직 아무 줄도 안 건드렸으면 그렇게 말해 준다.
   const preset = ready && !Object.keys(now?.saved ?? {}).length && !rows.some(filled);
+  const todayDate = today();
+  // 펴 놓은 달. 날짜를 직접 쳤으면 그 달로 따라가고, 달력에서 넘겼으면 그 달에 머문다.
+  const month = pickedMonth ?? (dateOk ? date.slice(0, 7) : todayDate.slice(0, 7));
+
+  /** 날짜를 옮긴다. 적어 둔 줄이 있으면 먼저 묻는다. */
+  const moveTo = (next: string, month: string | null) => {
+    if (!leaveRows()) return;
+    setPickedDate(next);
+    setPickedMonth(month);
+    revisit();
+  };
 
   return (
     <WorkspacePage
       title="일과 기록"
       description="반 하루의 일과를 적어요. 일일 보육일지가 이 기록을 근거로 써요."
+      /*
+        저장과 「오늘 일지 만들기」는 화면 맨 아래에 있었다. 줄이 열 개라 적고 나면
+        단추가 접힌 화면 밖으로 밀려 내려간다. 제목 옆으로 올려 둔다.
+        「+ 줄 추가」는 목록 끝에 남긴다 — 새 줄이 생기는 자리가 거기다.
+      */
+      action={
+        ready ? (
+          <div className={ws.actions}>
+            <button type="button" className={ws.secondary} disabled={!!busy} onClick={save}>
+              {busy === "save" ? "저장 중…" : "저장"}
+            </button>
+            {/*
+              적은 줄이 하나라도 있으면 켠다 — **저장 여부로 판단하지 않는다** (수락 기준 3).
+              누르면 먼저 저장하고, 성공해야 S-J2 로 간다.
+            */}
+            <button
+              type="button"
+              className={ws.primary}
+              disabled={!!busy || !doneCount}
+              title={doneCount ? undefined : "실제로 한 것을 한 줄이라도 적어 주세요."}
+              onClick={openDailyLog}
+            >
+              {busy === "open" ? "저장하는 중…" : "오늘 일지 만들기 →"}
+            </button>
+          </div>
+        ) : undefined
+      }
     >
       <WorkspaceViewState
         status={classStatus}
@@ -662,8 +708,17 @@ export default function RoutinesPage() {
           )
         }
       >
-        <section className={ws.stack}>
-          <div className={`${ws.card} ${ws.row}`}>
+        {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 적는다 — 계획안 만들기와 같은 짜임이다. */}
+        <div className={ws.grid}>
+          <aside className={`${ws.card} ${ws.calendarCard}`}>
+            <RoutineCalendar
+              date={dateOk ? date : todayDate}
+              month={month}
+              today={todayDate}
+              disabled={!!busy}
+              onMonth={setPickedMonth}
+              onPick={(next) => moveTo(next, null)}
+            />
             <label className={ws.field}>
               날짜
               <input
@@ -671,80 +726,67 @@ export default function RoutinesPage() {
                 type="date"
                 value={date}
                 disabled={!!busy}
-                onChange={(e) => {
-                  if (!leaveRows()) return;
-                  setPickedDate(e.target.value);
-                  revisit();
-                }}
+                onChange={(e) => moveTo(e.target.value, null)}
               />
             </label>
-          </div>
-          {/* 그 화면에서 난 일만 보여준다 — 날짜를 옮기면 따라가지 않는다. */}
-          <Message error={message?.error}>{message?.at === key ? message.text : ""}</Message>
-          <WorkspaceViewState
-            status={listStatus}
-            loading="이 날짜의 일과를 불러오는 중이에요…"
-            error={current?.error}
-            empty={
-              (!dateOk || needClass) && <ListEmpty dateOk={dateOk} unknownClass={unknownClass} />
-            }
-          >
-            <p className={ws.routineLead}>
-              {preset
-                ? "하루를 깔아 뒀습니다. 실제로 한 것만 적으면 됩니다 — 이름과 시간은 다르면 고치고, 없던 일과는 지우세요."
-                : "실제로 한 것이 일일 보육일지의 근거가 됩니다."}
-            </p>
-            <div className={ws.routineSheet} aria-label="일과 목록">
-              {rows.map((row, index) => (
-                <RowCard
-                  key={row.key}
-                  row={row}
-                  index={index}
-                  error={errors[row.key] ?? ""}
-                  busy={!!busy}
-                  dirty={dirtyRow(row)}
-                  onEdit={editRow}
-                  onRevert={revertRow}
-                  onRemove={removeRow}
-                />
-              ))}
-            </div>
-          </WorkspaceViewState>
-          {listStatus === "error" && (
-            <button type="button" className={ws.secondary} onClick={revisit}>
-              다시 시도
-            </button>
-          )}
-          {ready && (
-            <div className={ws.stack}>
-              {/* 줄 수·작성 수를 세어 주던 안내는 없앴다. 교사가 화면을 보면 아는 숫자다.
-                  `doneCount` 는 「오늘 일지 만들기」를 열고 닫는 조건으로 그대로 쓴다. */}
-              {!doneCount && (
-                <p className={ws.hint}>실제로 한 것을 적으면 오늘 일지를 만들 수 있습니다.</p>
-              )}
-              <div className={ws.actions}>
-                <button type="button" className={ws.secondary} disabled={!!busy} onClick={addRow}>
-                  + 줄 추가
-                </button>
-                <button type="button" className={ws.primary} disabled={!!busy} onClick={save}>
-                  {busy === "save" ? "저장 중…" : "저장"}
-                </button>
-                {/*
-                  적은 줄이 하나라도 있으면 켠다 — **저장 여부로 판단하지 않는다** (수락 기준 3).
-                  누르면 먼저 저장하고, 성공해야 S-J2 로 간다.
-                */}
-                <button
-                  type="button"
-                  className={ws.primary}
-                  disabled={!!busy || !doneCount}
-                  onClick={openDailyLog}
-                >
-                  {busy === "open" ? "저장하는 중…" : "오늘 일지 만들기 →"}
-                </button>
+            {/* 고른 날을 달력 아래에 적어 둔다 — 오른쪽 기록이 어느 날 것인지가 늘 보여야 한다. */}
+            {dateOk && (
+              <p className={ws.calendarPicked}>
+                <strong>{koreanDate(date)}</strong>
+                {date === todayDate && <span> · 오늘</span>}
+              </p>
+            )}
+          </aside>
+
+          <section className={ws.stack}>
+            {/* 그 화면에서 난 일만 보여준다 — 날짜를 옮기면 따라가지 않는다. */}
+            <Message error={message?.error}>{message?.at === key ? message.text : ""}</Message>
+            <WorkspaceViewState
+              status={listStatus}
+              loading="이 날짜의 일과를 불러오는 중이에요…"
+              error={current?.error}
+              empty={
+                (!dateOk || needClass) && <ListEmpty dateOk={dateOk} unknownClass={unknownClass} />
+              }
+            >
+              <p className={ws.routineLead}>
+                {preset
+                  ? "하루를 깔아 뒀습니다. 실제로 한 것만 적으면 됩니다 — 이름과 시간은 다르면 고치고, 없던 일과는 지우세요."
+                  : "실제로 한 것이 일일 보육일지의 근거가 됩니다."}
+              </p>
+              <div className={ws.routineSheet} aria-label="일과 목록">
+                {rows.map((row, index) => (
+                  <RowCard
+                    key={row.key}
+                    row={row}
+                    index={index}
+                    error={errors[row.key] ?? ""}
+                    busy={!!busy}
+                    dirty={dirtyRow(row)}
+                    onEdit={editRow}
+                    onRevert={revertRow}
+                    onRemove={removeRow}
+                  />
+                ))}
+                <div className={ws.rowTools}>
+                  <button type="button" className={ws.rowTool} disabled={!!busy} onClick={addRow}>
+                    + 줄 추가
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-        </section>
+            </WorkspaceViewState>
+            {listStatus === "error" && (
+              <button type="button" className={ws.secondary} onClick={revisit}>
+                다시 시도
+              </button>
+            )}
+            {/* 줄 수·작성 수를 세어 주던 안내는 없앴다. 교사가 화면을 보면 아는 숫자다.
+                `doneCount` 는 「오늘 일지 만들기」를 열고 닫는 조건으로 그대로 쓴다. */}
+            {ready && !doneCount && (
+              <p className={ws.hint}>실제로 한 것을 적으면 오늘 일지를 만들 수 있습니다.</p>
+            )}
+          </section>
+        </div>
       </WorkspaceViewState>
     </WorkspacePage>
   );
@@ -809,22 +851,22 @@ function RowCard({
         </div>
         <div className={ws.rowMeta}>
           <div className={ws.rowTime}>
-            {/* 시 · 분 · 오전오후 · 지우기 네 조작점이던 자리다. 브라우저가 이미 하는 일을
-              우리가 다시 만들 이유가 없다 — 한 칸으로 줄인다. */}
-            <input
-              type="time"
-              aria-label="시작 시간"
-              disabled={busy}
+            {/* 시간은 칸에 바로 치거나 옆의 시계로 고른다. 글자로 치는 길만 두면 하루에
+              숫자 네 자를 스무 번 쳐야 하고, 시계만 두면 아는 시간도 돌려서 넣는다. */}
+            <RoutineClock
+              key="start"
+              label="시작"
               value={row.start}
-              onChange={(e) => set("start")(e.target.value)}
+              disabled={busy}
+              onChange={set("start")}
             />
             <span aria-hidden="true">~</span>
-            <input
-              type="time"
-              aria-label="종료 시간"
-              disabled={busy}
+            <RoutineClock
+              key="end"
+              label="종료"
               value={row.end}
-              onChange={(e) => set("end")(e.target.value)}
+              disabled={busy}
+              onChange={set("end")}
             />
           </div>
           <button

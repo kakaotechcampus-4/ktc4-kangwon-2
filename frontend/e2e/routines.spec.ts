@@ -19,7 +19,10 @@ const diagnostics = new WeakMap<Page, Evidence>();
 const rows = (page: Page) => page.locator('[aria-label="일과 목록"] article');
 const token = (page: Page) => page.evaluate(() => sessionStorage.getItem("saessak.authToken"));
 
-/** 시간은 한 칸이다 — 브라우저의 `<input type="time">` 을 그대로 쓴다. */
+/**
+ * 시간은 칸에 바로 친다. 옆의 시계 단추(`"시작 시간 시계로 고르기"`)는 같은 값을
+ * 고르는 다른 길이라 여기서는 쓰지 않는다 — `exact` 가 둘을 가른다.
+ */
 const pickTime = (row: Locator, label: string, value: string) =>
   row.getByLabel(`${label} 시간`, { exact: true }).fill(value);
 
@@ -34,8 +37,8 @@ async function fillPlan(row: Locator, value: string) {
   await row.getByLabel("하려던 것").fill(value);
 }
 
-/** 깔아 두는 기본 하루 (RoutinesPage DEFAULT_ROUTINES). */
-const PRESET_ROWS = 9;
+/** 깔아 두는 기본 하루 — 국가 공식 양식의 유아 10행형 (RoutinesPage DEFAULT_ROUTINES). */
+const PRESET_ROWS = 10;
 
 async function api(page: Page, path: string, method = "GET", data?: unknown) {
   const response = await page.request.fetch(path, {
@@ -222,7 +225,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
   });
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await test.step("B: 깔아 둔 하루 중 7줄을 고쳐 저장하고 새로고침 후 내용과 시간 확인", async () => {
-    // 손대지 않은 두 줄은 저장되지 않는다 — 깔아 둔 하루를 서버에 쌓지 않는다.
+    // 손대지 않은 세 줄은 저장되지 않는다 — 깔아 둔 하루를 서버에 쌓지 않는다.
     for (let i = 0; i < 7; i++) {
       const row = rows(page).nth(i);
       await row.getByLabel("일과 이름").fill(`일과${i + 1}`);

@@ -600,9 +600,22 @@ function page(
     mutations = createMutationBarrier();
     routineMutationBarriers.set(api, mutations);
   }
+  // 시계와 달력은 **진짜로** 컴파일한다. 스텁으로 두면 시간 칸과 날짜 단추가 트리에서
+  // 사라져, 「시간을 적었다」는 테스트가 아무것도 보지 못한 채 통과한다.
+  const clock = compile("../components/workspace/RoutineClock.tsx", {
+    "react/jsx-runtime": runtime,
+    react: app.react,
+    "./WorkspaceUI": { ws: {} },
+  });
+  const calendar = compile("../components/workspace/RoutineCalendar.tsx", {
+    "react/jsx-runtime": runtime,
+    "./WorkspaceUI": { ws: {} },
+  });
   const Page = compile("../components/workspace/RoutinesPage.tsx", {
     "react/jsx-runtime": runtime,
     react: app.react,
+    "./RoutineClock": clock,
+    "./RoutineCalendar": calendar,
     "next/link": { default: "link" },
     "next/navigation": { useRouter: () => ({ push: (href) => pushed.push(href) }) },
     "@/lib/api/auth": { getMe: async () => ({ id: 1, center_id: 42 }) },
@@ -632,7 +645,16 @@ function page(
       today: () => TODAY,
       validDate: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value),
     },
-    "./WorkspaceUI": { WorkspacePage: "page", Empty: "empty", Message: "message", ws: {} },
+    // 제목 옆 단추는 `action` 으로 간다. 글자 하나로 스텁을 두면 그 묶음이 트리에서
+    // 빠져(`all()` 은 children 만 내려간다) 저장 단추를 영영 못 찾는다.
+    "./WorkspaceUI": {
+      WorkspacePage: function WorkspacePage({ action, children }) {
+        return jsx("page", { children: [action, children] });
+      },
+      Empty: "empty",
+      Message: "message",
+      ws: {},
+    },
     "./WorkspaceViewState": { WorkspaceViewState },
   }).default;
 
@@ -777,13 +799,13 @@ test("그날 적은 게 없으면 기본 하루를 깐다 — 교사는 실제�
   const api = recorder();
   const view = page(t, api.api);
   await view.flush();
-  assert.equal(view.names().length, 9);
+  assert.equal(view.names().length, 10);
   assert.equal(view.nameValues()[0], "등원 및 통합보육");
   assert.deepEqual(
     view.times().slice(0, 2).map((n) => n.props.value),
     ["07:30", "09:00"],
   );
-  assert.equal(view.dones().length, 9, "줄마다 「실제로 한 것」 하나");
+  assert.equal(view.dones().length, 10, "줄마다 「실제로 한 것」 하나");
   assert.deepEqual(view.empties(), [], "하루를 깔았으니 「없어요」가 아니다");
 });
 
@@ -802,7 +824,7 @@ test("「+ 줄 추가」만 눌러서는 서버에 아무것도 가지 않는다
   view.render();
   view.button("+ 줄 추가").props.onClick();
   await view.flush();
-  assert.equal(view.names().length, 11, "기본 하루 아홉 줄에 둘을 더했다");
+  assert.equal(view.names().length, 12, "기본 하루 열 줄에 둘을 더했다");
   assert.deepEqual(api.only("create"), [], "추가로 POST 하지 않는다");
 });
 
@@ -849,7 +871,7 @@ test("손대지 않은 줄은 보내지 않고, 손댄 줄은 깔아 둔 이름 
   view.button("저장").props.onClick();
   await view.flush();
   const made = api.only("create");
-  assert.equal(made.length, 2, "손대지 않은 일곱 줄은 보내지 않는다");
+  assert.equal(made.length, 2, "손대지 않은 여덟 줄은 보내지 않는다");
   assert.deepEqual(
     made.map((c) => c.input.name),
     ["등원 및 통합보육", "오전 실내놀이"],
@@ -1127,7 +1149,7 @@ test("어제도 없으면 기본 하루를 깐다", async (t) => {
   const view = page(t, api.api);
   await view.flush();
   assert.equal(view.nameValues()[0], "등원 및 통합보육");
-  assert.equal(view.nameValues().at(-1), "하원 및 통합보육");
+  assert.equal(view.nameValues().at(-1), "귀가 및 통합보육");
 });
 
 
