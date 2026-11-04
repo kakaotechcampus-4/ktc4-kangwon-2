@@ -1020,7 +1020,9 @@ function RowCard({
       />
 
       {/* 「계획한 것」은 안 쓰는 원이 많다. 적은 줄만 펴 두고 나머지는 접는다. */}
-      <details className={ws.rowPlan} open={row.plan ? true : undefined} aria-label="계획한 것">
+      {/* 이름은 안의 글칸 하나만 갖는다. 접는 칸에도 같은 이름을 달면 「계획한 것」을 찾는
+          보조기기 · 테스트가 둘을 만나 어느 쪽인지 모른다. 접는 칸은 summary 글자로 읽힌다. */}
+      <details className={ws.rowPlan} open={row.plan ? true : undefined}>
         <summary>{row.plan ? "계획한 것" : "계획한 것 적기"} ▾</summary>
         <textarea
           aria-label="계획한 것"

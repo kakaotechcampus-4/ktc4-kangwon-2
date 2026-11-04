@@ -465,20 +465,15 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await rows(page).nth(0).getByLabel("일과 이름").fill("달님반 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("달님반에서 공을 굴렸다.");
   await saved(page);
+  // 일지는 보관함으로 가지 않고 이 화면에서 만들어 칠판 밑에 펼친다.
   await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
-  await expect(page).toHaveURL(`/documents?kind=dailyLog&class_id=${other.id}&date=${date}`);
-  await expect(page.getByRole("combobox", { name: "담당 반" })).toHaveValue(
-    (await page
-      .getByRole("combobox", { name: "담당 반" })
-      .locator("option", { hasText: "달님반" })
-      .getAttribute("value")) ?? "",
-  );
-  await expect(page.getByRole("group", { name: "문서에 사용할 일과" })).toContainText(
-    "달님반 일과",
-  );
-  await page.getByRole("link", { name: "새 일과 기록 입력 →" }).click();
-  // 반을 바꾸면 **지금 있는 주소**를 다시 연다. 일과 기록에 도착한 뒤에 바꾼다.
+  await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
   await expect(page).toHaveURL(`/routines?date=${date}&class_id=${other.id}`);
+  // 만든 일지는 고른 반(달님반) 것이고, 햇살반에는 그날 일지가 생기지 않는다.
+  const otherLogs = await api(page, `/api/documents?kind=dailyLog&class_id=${other.id}`);
+  expect(otherLogs.items.map((d: { start: string }) => d.start)).toContain(date);
+  const mineLogs = await api(page, `/api/documents?kind=dailyLog&class_id=${classId}`);
+  expect(mineLogs.items.map((d: { start: string }) => d.start)).not.toContain(date);
   await switchClass(page, "햇살반");
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("햇살반 일과");
   for (const [cls, id, fact] of [
@@ -571,16 +566,15 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
       execution: `${seed.name} 활동을 진행했다.`,
     });
   await page.goto(`/routines?date=${date}&class_id=${classId}`);
-  await expectNames(
-    page,
-    seeds.map((s) => s.name),
-  );
+  // 화면은 시간순으로 줄을 세운다. 같은 시각은 원래 순서, 시간 없는 줄은 맨 끝이다.
+  await expectNames(page, ["기존 분초", "동률 놀이", "오후 놀이", "시간 미입력"]);
   // 초가 있는 시간도 분까지만 보여 준다. 교사가 건드리지 않으면 초는 서버에 그대로 남는다.
-  await expectTime(rows(page).nth(1), "시작", "09:16");
-  await fillPlan(rows(page).nth(1), "계획만 수정함");
+  await expectTime(rows(page).nth(0), "시작", "09:16");
+  await fillPlan(rows(page).nth(0), "계획만 수정함");
   await page.getByRole("button", { name: "+ 줄 추가", exact: true }).click();
-  const added = rows(page).nth(4);
-  await pickTime(added, "시작", "00:00");
+  // 새 줄은 맨 끝에 생기고, 시계를 닫으면 시간순으로 선다 — 00:00 이라 맨 위로 간다.
+  await pickTime(rows(page).last(), "시작", "00:00");
+  const added = rows(page).first();
   await pickTime(added, "종료", "12:00");
   await added.getByLabel("실제로 한 것").fill("새벽 활동을 기록했다.");
 
@@ -596,14 +590,15 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
 
   await added.getByLabel("일과 이름").fill("새벽 놀이");
   await saved(page);
-  const order = [...seeds.map((s) => s.name), "새벽 놀이"];
+  // 저장하면 보이는 순서가 그대로 서버 순서가 된다.
+  const order = ["새벽 놀이", "기존 분초", "동률 놀이", "오후 놀이", "시간 미입력"];
   const stored = await dayRows(page, classId, date);
   expect(stored.map((r) => r.name)).toEqual(order);
-  // 교사가 안 건드린 초는 그대로다.
+  // 계획만 고친 줄도 교사가 안 건드린 초는 그대로다.
   expect(stored[1].start).toBe("09:16:25");
   expect(stored[1].end).toBe("10:21:35");
-  expect(stored[4].start).toBe("00:00:00");
-  expect(stored[4].end).toBe("12:00:00");
+  expect(stored[0].start).toBe("00:00:00");
+  expect(stored[0].end).toBe("12:00:00");
   await page.reload();
   await expectNames(page, order);
   await page.screenshot({ path: info.outputPath("routine-time-input.png"), fullPage: true });
@@ -940,15 +935,16 @@ test("후속 #14 — 일과 줄: 이름 · 시간 · 지우기가 한 줄에 서
   const card = rows(page).first();
   await expect(card.getByLabel("일과 이름")).toHaveValue("오전 실내놀이");
   const nameBox = (await card.getByLabel("일과 이름").boundingBox())!;
-  const startBox = (await card.getByLabel("시작 시간", { exact: true }).boundingBox())!;
-  const endBox = (await card.getByLabel("종료 시간", { exact: true }).boundingBox())!;
+  // 시간은 「오전 09:16 ~ 10:40」 한 칸이다. 시작 · 종료 칸은 시계판과 함께 접혀 있다.
+  const timeBox = (await card.getByRole("button", { name: /^일과 시간 / }).boundingBox())!;
   const removeBox = (await card.getByLabel("1번째 일과 지우기").boundingBox())!;
-  // 이름 · 시작 · 종료 · 지우기는 같은 줄에 왼쪽부터 차례로 선다.
-  for (const box of [startBox, endBox, removeBox])
-    expect(Math.abs(box.y - nameBox.y)).toBeLessThan(nameBox.height);
-  expect(nameBox.x).toBeLessThan(startBox.x);
-  expect(startBox.x).toBeLessThan(endBox.x);
-  expect(endBox.x).toBeLessThan(removeBox.x);
+  // 이름 · 시간 · 지우기는 같은 줄에 왼쪽부터 차례로 선다.
+  for (const box of [timeBox, removeBox])
+    expect(Math.abs(box.y + box.height / 2 - (nameBox.y + nameBox.height / 2))).toBeLessThan(
+      nameBox.height,
+    );
+  expect(nameBox.x).toBeLessThan(timeBox.x);
+  expect(timeBox.x).toBeLessThan(removeBox.x);
   // 매일 적는 「실제로 한 것」이 그 아래 넓게 서고, 「계획한 것」은 접혀 있다.
   const doneBox = (await card.getByLabel("실제로 한 것").boundingBox())!;
   expect(doneBox.y).toBeGreaterThan(nameBox.y);
