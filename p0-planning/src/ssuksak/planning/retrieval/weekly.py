@@ -72,6 +72,7 @@ def weekly_section_evidence(
     focus_text: str = "",
     sibling_focuses: tuple[str, ...] = (),
     by_activity_type: bool = False,
+    preferred_refs: tuple[str, ...] = (),
 ) -> tuple[RetrievedEvidence, ...]:
     """query_text: the parent theme and this week's focus, for the Korean 2-gram score."""
     classification.require_bound_to(store.content_sha256)
@@ -89,6 +90,10 @@ def weekly_section_evidence(
         records, requested_ages=ages, query_grams=grams, allowed_tiers=AGE_VERIFIABLE_TIERS
     )
     ordered = balance_by_age(ranked, ages)
+    # Keep a valid parent citation ahead of the top-k cutoff; never bypass the filters above.
+    if preferred_refs:
+        preferred = frozenset(preferred_refs)
+        ordered.sort(key=lambda item: item.record_id not in preferred)
     if by_activity_type:
         groups = {}
         seen = set()

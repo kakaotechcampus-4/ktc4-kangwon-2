@@ -154,3 +154,15 @@ def test_failed_context_repair_is_reported_once(packet, snapshot, caplog):
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1
     assert warnings[0].startswith("Monthly LLM repair failed:")
+
+
+def test_shared_safety_wording_keeps_specificity_and_avoids_amount_only_drug_warnings():
+    from ssuksak.planning.planner.prompt import SAFETY_CANDIDATES_PROMPT
+    from ssuksak.planning.planner.play_monthly import SYSTEM_PROMPT as PLAY_MONTHLY_PROMPT
+    from ssuksak.planning.planner.v1_guidance import SAFETY_TEXT_GUIDANCE
+
+    for prompt in (SAFETY_CANDIDATES_PROMPT, PLAY_MONTHLY_PROMPT):
+        assert SAFETY_TEXT_GUIDANCE in prompt
+        assert "많이 먹지 않아요" in prompt
+        assert "근거에 없는 대상·행동·재료·절차를 보태지 않는다" in prompt
+        assert "조심해요" in prompt

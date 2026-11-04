@@ -672,6 +672,11 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
     for weekly_class, key in WEEKLY_GROUNDING_SCOPE.items():
         if key not in keys:
             continue
+        parent_cell = _parent_cell(parent, key, week_id) if focus_aware and key == "indoor_alternative" else None
+        preferred = tuple(
+            ref.source_id for ref in parent_cell.evidence
+            if ref.source_type is EvidenceSourceType.INSTITUTION_SAMPLE
+        ) if parent_cell is not None and parent_cell.value.strip() else ()
         items = tuple(
             item for item in weekly_section_evidence(
                 store, classification, weekly_class=weekly_class,
@@ -680,6 +685,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
                 focus_text=focus.value if focus_aware and focus is not None and not (activity_candidates and key == "group_activity") else "",
                 sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
                 by_activity_type=activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play",
+                preferred_refs=preferred,
             ) if item.record.text
         )
         if items:

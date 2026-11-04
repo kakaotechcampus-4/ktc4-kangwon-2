@@ -39,7 +39,7 @@ MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v2
 # without it keep their version and prompt bytes.
 MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v2"  # v2: a week may be unresolved
 # Appended when the Context Packet carries the eight safety candidates (S-1).
-MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v3"
+MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v4"
 # A candidate is a month_sections entry keyed safety_education.<slot>; Template
 # section keys hold no dot, so these never collide with a Section.
 SAFETY_CANDIDATE_PREFIX = "safety_education."
