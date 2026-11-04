@@ -6,15 +6,25 @@
 
 ---
 
-## 숫자 (2026-10-28 기준)
+## 숫자 (2026-11-04 기준, 10-28 → 11-04)
 
 | 무엇 | 수 | 세는 법 |
 |---|---|---|
-| 백엔드 테스트 파일 | 64 | `ls backend/tests \| grep -c '^test_'` |
-| 계획 코어 테스트 파일 | 65 | `find p0-planning/tests -name 'test_*.py' \| wc -l` |
-| 프런트 테스트 파일 | 39 | `ls frontend/tests/*.test.mjs \| wc -l` |
-| E2E 시나리오 | 4 | `frontend/e2e/` — `first-record` · `home-record` · `mentor-pilot` · `routines` |
-| ADR | 41 | `ls docs/adr/*.md \| grep -v README \| wc -l` |
+| 백엔드 테스트 파일 | 64 → **85** | `ls backend/tests \| grep -c '^test_'` |
+| 계획 코어 테스트 파일 | 65 → **74** | `find p0-planning/tests -name 'test_*.py' \| wc -l` |
+| 프런트 테스트 파일 | 39 → **65** | `ls frontend/tests/*.test.mjs \| wc -l` |
+| E2E 시나리오 파일 | 4 → **5** | `frontend/e2e/` — `document-archive-layout` 추가 |
+| ADR | 41 → **58** | `ls docs/adr/*.md \| grep -v README \| wc -l` |
+
+**통과 건수 (파일 수 아님)** — CI 2026-11-04 (run 41796637037, PR #373)
+
+```
+backend         1,558 passed
+planning core   1,601 passed · 1 skipped
+frontend          909 pass · 0 fail
+```
+
+**CI 한 번 평균 8.8분** — 최근 완료 25회 (`gh run list --workflow ci.yml --status completed --limit 25`, 시작~끝)
 
 ## CI — PR 마다 6개가 돈다
 
@@ -57,5 +67,5 @@ e2e (playwright)               실제 DB 로
 
 ## 더 모을 근거
 
-- [ ] `pytest` 통과 건수(파일 수 아님) 한 번 찍어 붙이기
-- [ ] CI 평균 소요 시간
+- [x] `pytest` 통과 건수(파일 수 아님) — 위 「통과 건수」
+- [x] CI 평균 소요 시간 — 8.8분
