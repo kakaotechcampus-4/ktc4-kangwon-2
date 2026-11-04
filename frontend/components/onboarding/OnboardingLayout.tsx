@@ -2,22 +2,46 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Posty } from "@/components/app/Posty";
 import { fontClassName } from "@/lib/fonts";
-import OnboardingStepIndicator from "./OnboardingStepIndicator";
-import type { OnboardingStep } from "@/lib/onboarding/types";
 import { readToken } from "@/lib/auth/token";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import { Wordmark } from "@/components/app/Wordmark";
+
+/** 진행 글자. 원 정보 · 반 정보 · 아이 명단 세 단계와 마지막 확인. */
+const LABELS = ["원 정보 1/3", "반 정보 2/3", "아이 명단 3/3", "마지막 확인"];
+const STEPS = ["원 정보", "반", "아이 명단"];
+
+/** 오른쪽 칸 포스티의 말 — 굵은 한 줄과 풀어 쓴 한 줄. */
+export type PostySay = { title: string; body: string };
 
 /**
- * 시작 설정(온보딩)의 틀. 브랜드 머리 + 진행 표시 + 종이 한 장.
- * 카드를 둥글리지 않고 각진 그림자를 둔다 — 책상에 올려 둔 종이처럼 보이게.
+ * 시작 설정(온보딩)의 틀 — 시안 캔버스 「A · 오른쪽 포스티 칸」 그대로.
+ *
+ * 휴대폰: 흰 한 장. 맨 위 줄에 「←」 와 오른쪽 진행 글자, 그 아래 얇은 막대, 질문, 아래 넓은 주 버튼.
+ * 데스크톱: 크림 바탕 위 「쌤플」 머리 줄과 가운데 820px 흰 카드(docs/화면-기준.md 「폼 한 열」).
+ * 768px 부터는 카드 오른쪽 280px 아이보리 칸에 손 흔드는 포스티 · 말풍선(`say`) · 세 단계를 둔다.
+ * 그보다 좁으면 입력 칸이 너무 좁아져 칸을 빼고 휴대폰과 같은 한 줄로 둔다.
+ * 완료 화면처럼 진행이 없는 화면은 `stage` 를 비운다 — 진행 글자도 오른쪽 칸도 없다.
  */
 export default function OnboardingLayout({
-  step,
+  stage,
+  say,
+  live = false,
+  progress,
+  onBack,
+  footer,
   children,
 }: {
-  step: OnboardingStep;
+  /** 1~3 은 세 단계, 4 는 마지막 확인(셋 다 끝남). */
+  stage?: 1 | 2 | 3 | 4;
+  say?: PostySay;
+  /** 말풍선이 바뀔 때마다 읽어 줄지(아이 명단에서 넣고 뺄 때). */
+  live?: boolean;
+  /** 0~1 */
+  progress?: number;
+  /** 있으면 「←」 를 보인다. 첫 질문에서는 앞 화면으로 가는 함수를 준다. */
+  onBack?: () => void;
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   // 로고가 가는 곳은 교사가 누구냐에 따라 다르다. 처음 가입한 사람에게는 아직 원이 없어
@@ -25,34 +49,161 @@ export default function OnboardingLayout({
   // 쓰던 자리에서 튕겨 나간다 (수린 점검).
   const [signedIn] = useClientState(() => !!readToken(), false);
   const home = signedIn ? "/" : "/welcome";
+  const percent =
+    progress === undefined ? null : Math.round(Math.min(1, Math.max(0, progress)) * 100);
+  const label = stage && LABELS[stage - 1];
   return (
-    <div className={`${fontClassName} min-h-screen bg-cream px-5 py-6 font-body text-ink sm:px-8`}>
-      <header className="mx-auto flex max-w-[820px] items-center justify-between gap-3">
-        <Wordmark href={home} label={signedIn ? "쌤플 메인으로" : "쌤플 소개로"} />
-        {/* 첫 설정에서 빠져나갈 길. 전에는 주소창에 /logout 을 쳐야 했다 (#291) */}
-        {signedIn && (
+    <div
+      // 데스크톱은 **흰 카드만** 화면 세로 가운데에 둔다. 머리 줄은 카드 바로 위에 띄워 두고 가운데 계산에서 뺀다.
+      // 위아래 여백을 머리 줄 높이보다 크게 같게 두어, 창이 낮아도 머리 줄이 화면 밖으로 밀려나지 않는다.
+      className={`${fontClassName} flex min-h-screen flex-col items-center bg-paper font-body text-ink sm:justify-center sm:bg-cream sm:px-6 sm:py-[88px]`}
+    >
+      <div className="relative flex w-full max-w-[820px] flex-1 flex-col sm:flex-none">
+        <header className="absolute inset-x-0 bottom-full hidden h-[72px] items-center justify-between sm:flex">
           <Link
-            href="/logout"
-            className="flex min-h-11 items-center px-2 text-[13px] text-ink-soft hover:text-ink"
+            href={home}
+            aria-label={signedIn ? "쌤플 메인으로" : "쌤플 소개로"}
+            className="font-display text-[30px] font-bold text-primary-deep"
           >
-            로그아웃
+            쌤플
           </Link>
-        )}
-      </header>
+          {/* 첫 설정에서 빠져나갈 길. 전에는 주소창에 /logout 을 쳐야 했다 (#291) */}
+          {signedIn ? (
+            <Link href="/logout" className="flex min-h-11 items-center text-[14px] text-ink-soft">
+              로그아웃
+            </Link>
+          ) : (
+            <span className="text-[14px] text-ink-soft">시작 설정</span>
+          )}
+        </header>
 
-      <main className="mx-auto max-w-[820px] py-6 sm:py-12">
-        <div className="mb-5 sm:mb-7">
-          <OnboardingStepIndicator current={step} />
+        <div className="flex flex-1 bg-paper sm:min-h-[760px] sm:flex-none sm:overflow-hidden sm:rounded-[24px] sm:border sm:border-line">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex h-14 flex-none items-center gap-2 px-3 sm:px-7">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  aria-label="이전"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-ink hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M15 5l-7 7 7 7" />
+                  </svg>
+                </button>
+              )}
+              <div className="flex-1" />
+              {label && <span className="pr-3 text-[13px] font-medium text-ink-soft">{label}</span>}
+            </div>
+            {percent !== null && (
+              <div
+                role="progressbar"
+                aria-label="진행 정도"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+                className="mx-6 h-1 flex-none overflow-hidden rounded-sm bg-shell sm:mx-10"
+              >
+                <div
+                  className="h-1 rounded-sm bg-primary transition-[width] duration-300"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+            )}
+
+            <main className="flex flex-1 flex-col px-6 pb-6 pt-7 sm:px-10">{children}</main>
+
+            {footer && (
+              <div className="sticky bottom-0 flex flex-none flex-col-reverse items-stretch gap-2 bg-paper px-6 pb-5 pt-3 sm:flex-row sm:items-center sm:justify-end sm:px-10">
+                {footer}
+              </div>
+            )}
+          </div>
+
+          {stage && <PostyPanel stage={stage} say={say} live={live} />}
         </div>
-        <section className="relative border border-line bg-paper p-5 shadow-pg-hard sm:p-9">
+      </div>
+    </div>
+  );
+}
+
+/** 카드 오른쪽 칸 — 손 흔드는 포스티, 말풍선, 아래쪽 세 단계. */
+function PostyPanel({ stage, say, live }: { stage: number; say?: PostySay; live: boolean }) {
+  return (
+    <aside
+      aria-label="진행 안내"
+      className="hidden w-[280px] flex-none flex-col items-center border-l border-shell bg-ivory px-7 pb-8 pt-14 md:flex"
+    >
+      <Posty pose="wave" tone="note" face="base" size={112} tape label="포스티가 손을 흔들어요" />
+      {say && (
+        <div
+          aria-live={live ? "polite" : undefined}
+          className="relative mt-[18px] w-full rounded-2xl border border-line bg-paper px-4 py-3.5 text-center"
+          style={{ wordBreak: "keep-all" }}
+        >
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute -top-3 right-10 h-6 w-20 rotate-3 border border-white/60 bg-tape"
+            className="absolute -top-[7px] left-1/2 -ml-1.5 h-3 w-3 rotate-45 border-l border-t border-line bg-paper"
           />
-          <div className="flex flex-col gap-6 lg:gap-7">{children}</div>
-        </section>
-      </main>
-    </div>
+          <p className="text-[15px] font-bold leading-[1.6] text-ink">{say.title}</p>
+          <p className="mt-0.5 text-[14px] leading-[1.6] text-ink-soft">{say.body}</p>
+        </div>
+      )}
+      <ol aria-label="시작 설정 단계" className="mt-auto flex w-full flex-col gap-1">
+        {STEPS.map((name, i) => (
+          <StepRow key={name} n={i + 1} name={name} stage={stage} />
+        ))}
+      </ol>
+    </aside>
+  );
+}
+
+function StepRow({ n, name, stage }: { n: number; name: string; stage: number }) {
+  const done = n < stage;
+  const now = n === stage;
+  const dot =
+    "inline-flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full text-[13px] font-bold";
+  return (
+    <li aria-current={now ? "step" : undefined} className="flex min-h-11 items-center gap-3">
+      {now && <span className={`${dot} bg-primary text-white`}>{n}</span>}
+      {done && (
+        <span className={`${dot} bg-primary-tint text-primary`}>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M5 12l5 5 9-10" />
+          </svg>
+        </span>
+      )}
+      {!now && !done && (
+        <span className={`${dot} border-[1.5px] border-line bg-paper text-ink-soft`}>{n}</span>
+      )}
+      <span className="flex flex-col">
+        <span className={`text-[15px] ${now ? "font-bold text-ink" : "text-ink-soft"}`}>
+          {name}
+          {done && <span className="sr-only"> 끝남</span>}
+        </span>
+        {now && <span className="text-[13px] text-ink-soft">지금 하고 있어요</span>}
+      </span>
+    </li>
   );
 }
 

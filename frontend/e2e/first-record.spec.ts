@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { completeOnboarding } from "./onboarding";
 
 /**
  * 교사가 처음 하는 일 — 가입 → 원 → 반 → 아동 → 관찰 기록 → 아이별 기록.
@@ -50,29 +51,13 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   await expect(roomGate).toBeVisible();
   await page.getByRole("link", { name: "등록하러 가기", exact: true }).click();
 
-  // S1 원 정보
-  await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByLabel("원명").fill("테스트어린이집");
-  await page.getByLabel("원장 이름").fill("테스트원장");
-  await page.getByLabel("시·도").selectOption("강원특별자치도");
-  await page.getByLabel("시·군·구").selectOption("춘천시");
-  await page.getByRole("button", { name: "다음" }).click();
-
-  // S2 반 정보 — 동의 체크가 있어야 아동 이름을 받는다(CLAUDE.md 개인정보).
-  await expect(page).toHaveURL(/\/onboarding\/classes$/);
-  await page.getByLabel("반 이름").fill("햇살반");
-  await page.getByLabel("만 4세").check();
-  await page.getByLabel("담임 이름").fill("테스트교사");
-  await page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.").check();
-  await page.getByRole("button", { name: "다음" }).click();
-
-  // S3 아동 명단
-  await expect(page).toHaveURL(/\/onboarding\/children$/);
-  await page.getByLabel("아동 추가").fill(child);
-  await page.getByRole("button", { name: "+ 추가" }).click();
-  await expect(page.getByRole("button", { name: `${child} 삭제` })).toBeVisible();
-  await page.getByRole("button", { name: "설정 완료" }).click();
-  await expect(page).not.toHaveURL(/\/onboarding/);
+  // S1 원 정보 → S2 반 정보 → S3 아동 명단 → 마지막 확인 → 완료 → 메인
+  await completeOnboarding(page, {
+    center: "테스트어린이집",
+    director: "테스트원장",
+    teacher: "테스트교사",
+    children: [child],
+  });
   // 마치면 메인으로 돌아오고, 원·반이 찼으니 안내는 없다. 홈의 h1 은 날짜라 매일 달라진다 —
   // 적는 칸 제목으로 「도착했나」를 먼저 본다. 안 그러면 그리기 전이라 0개로 통과한다.
   await expect(page).toHaveURL(/\/$/);

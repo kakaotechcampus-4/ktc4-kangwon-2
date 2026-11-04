@@ -2,9 +2,6 @@ import type { AgeGroup } from "@/lib/plan-generator/types";
 
 export type { AgeGroup };
 
-/** 온보딩 4단계 + 완료 */
-export type OnboardingStep = 1 | 2 | 3 | 4 | "done";
-
 export interface ChildEntry {
   code?: string;
   id: string;
@@ -94,13 +91,6 @@ export const AGE_OPTIONS: { value: AgeGroup; label: string }[] = [
   { value: "5", label: "5세" },
   { value: "mixed", label: "혼합" },
 ];
-
-export const STEP_LABELS: Record<Exclude<OnboardingStep, "done">, string> = {
-  1: "원 정보",
-  2: "반 정보",
-  3: "아동 명단",
-  4: "성품인사",
-};
 
 /** Explicit empty selection stays empty; only legacy values use migration. */
 export function selectedAgesFor(value: {

@@ -1,5 +1,5 @@
-import OnboardingPage from "@/components/onboarding/OnboardingPage";
+import CenterFlow from "@/components/onboarding/CenterFlow";
 
 export default function Page() {
-  return <OnboardingPage step={1} />;
+  return <CenterFlow />;
 }

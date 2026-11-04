@@ -202,7 +202,7 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
     // 관찰 영역 축은 상수만 든 모듈이다 (React · API 를 import 하지 않는다).
     "@/lib/workspace/observation-axis": observationAxis,
     "@/lib/auth/request-session": session,
-    "@/components/onboarding/OnboardingPage": { StepCharacterMessages: "character-step" },
+    "@/components/onboarding/CharacterMessagesStep": { StepCharacterMessages: "character-step" },
     "@/components/workspace/WorkspaceUI": { Message: "message", WorkspacePage: "page", ws: {} },
     "@/components/workspace/WorkspaceViewState": { WorkspaceViewState },
   }).default;

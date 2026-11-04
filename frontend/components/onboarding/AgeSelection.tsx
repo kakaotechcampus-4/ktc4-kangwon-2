@@ -3,32 +3,34 @@ import { useId } from "react";
 import type { SelectedAge } from "@/lib/onboarding/types";
 
 /**
- * 온보딩 반 정보의 연령 선택 UI.
+ * 온보딩 반 정보의 연령 선택 — 시안 A 의 3칸 큰 타일.
  * 만 3·4·5세를 각각 독립적으로 고를 수 있다(복수 선택 가능).
  * 저장 값은 selectedAges 배열(예: [3,5])로 실제 선택을 그대로 보존한다.
- * 고른 버튼이 채워져 보이므로 「만 3~5세반」 같은 요약 글자는 따로 두지 않는다 (10/27 web뷰 수정사항).
+ * `active` 는 지금 묻는 질문일 때 — 타일이 크다. 이미 답한 칸으로 쌓이면 작아진다.
  */
 const AGES = [3, 4, 5] as const satisfies readonly SelectedAge[];
 
 export default function AgeSelection({
   value,
   onChange,
+  active = false,
 }: {
   value: SelectedAge[];
   onChange: (value: SelectedAge[]) => void;
+  active?: boolean;
 }) {
   const fieldId = useId();
 
   return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="font-semibold text-[15px] xl:text-lg text-ink mb-2">연령</legend>
-
-      <div className="flex flex-wrap gap-1.5">
+    <fieldset className="mb-7 flex flex-col gap-2.5">
+      <legend className="mb-2.5 text-[13px] font-medium text-ink-soft">연령</legend>
+      <div className="grid grid-cols-3 gap-2">
         {AGES.map((age) => (
-          <AgeChip
+          <AgeTile
             key={age}
             id={`${fieldId}-age-${age}`}
             label={`만 ${age}세`}
+            active={active}
             checked={value.includes(age)}
             onChange={(checked) =>
               onChange(AGES.filter((a) => (a === age ? checked : value.includes(a))))
@@ -40,31 +42,33 @@ export default function AgeSelection({
   );
 }
 
-/** 체크박스를 둥근 버튼 모양으로 그린다. 고른 버튼은 보라 테두리 · 연보라 바탕 */
-function AgeChip({
+/** 체크박스를 타일 모양으로 그린다. 고른 타일은 보라 테두리 · 연보라 바탕 */
+function AgeTile({
   id,
   label,
+  active,
   checked,
   onChange,
 }: {
   id: string;
   label: string;
+  active: boolean;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
     <label
       htmlFor={id}
-      className="relative inline-flex items-center min-h-[40px] px-4 rounded-full border-[1.5px] border-line bg-paper text-[14px] text-ink cursor-pointer select-none transition-colors hover:border-primary has-[:checked]:border-primary has-[:checked]:bg-primary-tint has-[:checked]:font-semibold has-[:checked]:text-primary-ink has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary"
+      className={`relative flex w-full cursor-pointer select-none items-center justify-center rounded-[14px] border-[1.5px] border-line bg-paper font-medium text-ink transition-colors hover:border-primary has-[:checked]:border-primary has-[:checked]:bg-primary-tint has-[:checked]:font-bold has-[:checked]:text-primary-ink has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${active ? "h-[60px] text-[17px]" : "h-11 text-[15px]"}`}
     >
       <input
         id={id}
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        // 화면에서는 숨기되 버튼 전체를 덮어 둔다. sr-only 로 숨기면 라벨이 클릭을 가로채
+        // 화면에서는 숨기되 타일 전체를 덮어 둔다. sr-only 로 숨기면 라벨이 클릭을 가로채
         // 체크박스를 직접 누르는 e2e(getByLabel(...).check())가 멈춘다
-        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none rounded-full opacity-0"
+        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none rounded-[14px] opacity-0"
       />
       {label}
     </label>

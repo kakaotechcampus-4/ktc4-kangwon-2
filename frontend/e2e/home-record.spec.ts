@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { completeOnboarding } from "./onboarding";
 
 /**
  * 홈 빠른 관찰 기록 — 저장한 것이 **그 자리에 보이는가** (독립 감사 P0 회귀).
@@ -78,25 +79,12 @@ async function enterHome(page: Page) {
   await page.goto("/onboarding");
 
   // 반 하나짜리 온보딩 — 주 반을 따로 고르는 단계가 없는 경로다.
-  await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByLabel("원명").fill("테스트어린이집");
-  await page.getByLabel("원장 이름").fill("테스트원장");
-  await page.getByLabel("시·도").selectOption("강원특별자치도");
-  await page.getByLabel("시·군·구").selectOption("춘천시");
-  await page.getByRole("button", { name: "다음" }).click();
-
-  await expect(page).toHaveURL(/\/onboarding\/classes$/);
-  await page.getByLabel("반 이름").fill("햇살반");
-  await page.getByLabel("만 4세").check();
-  await page.getByLabel("담임 이름").fill("테스트교사");
-  await page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.").check();
-  await page.getByRole("button", { name: "다음" }).click();
-
-  await expect(page).toHaveURL(/\/onboarding\/children$/);
-  await page.getByLabel("아동 추가").fill(child);
-  await page.getByRole("button", { name: "+ 추가" }).click();
-  await page.getByRole("button", { name: "설정 완료" }).click();
-  await expect(page).not.toHaveURL(/\/onboarding/);
+  await completeOnboarding(page, {
+    center: "테스트어린이집",
+    director: "테스트원장",
+    teacher: "테스트교사",
+    children: [child],
+  });
   // 홈의 h1 은 날짜라 매일 달라진다. 홈에만 있는 적는 칸 제목으로 「도착했나」를 본다.
   await expect(page.getByRole("heading", { name: "지금, 한 줄", exact: true })).toBeVisible();
   const me = await api(page, "/api/auth/me");

@@ -1,5 +1,5 @@
-import OnboardingPage from "@/components/onboarding/OnboardingPage";
+import ClassFlow from "@/components/onboarding/ClassFlow";
 
 export default function Page() {
-  return <OnboardingPage step={2} />;
+  return <ClassFlow />;
 }

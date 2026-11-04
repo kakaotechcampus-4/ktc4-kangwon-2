@@ -23,7 +23,7 @@ import {
   type ObservationAxis,
 } from "@/lib/workspace/observation-axis";
 import { captureSession } from "@/lib/auth/request-session";
-import { StepCharacterMessages } from "@/components/onboarding/OnboardingPage";
+import { StepCharacterMessages } from "@/components/onboarding/CharacterMessagesStep";
 import { resetTour } from "@/components/app/Tour";
 import { Message, WorkspacePage, ws } from "@/components/workspace/WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "@/components/workspace/WorkspaceViewState";
