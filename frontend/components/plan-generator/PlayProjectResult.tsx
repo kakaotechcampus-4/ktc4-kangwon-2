@@ -242,6 +242,21 @@ export default function PlayProjectResult({
     (candidate) => candidate.row_key === selectedCell?.rowKey,
   );
   const selectedField = selectedCell && fields.find((field) => field.key === selectedCell.field);
+  // 확정 전에 채울 첫 곳 — 놀이를 5개 다 고르지 않은 구간, 또는 고른 놀이의 빈 칸(배움은 서버 원문이라 뺀다).
+  const gap = (() => {
+    for (const [index, item] of shown.periods.entries()) {
+      const keys = picks[item.period_key] ?? [];
+      if (keys.length < MAX_PICKS) return { index, rowKey: null, field: null };
+      for (const rowKey of keys) {
+        const row = item.candidates.find((candidate) => candidate.row_key === rowKey);
+        const field = row && fields.find((f) => f.key !== "learning" && !row[f.key].value.trim());
+        if (field) return { index, rowKey, field: field.key };
+      }
+    }
+    return null;
+  })();
+  // 빈 곳 알림 — 0 이면 닫힘. 다시 누를 때마다 올려 새로 그려 다시 흔든다.
+  const [nudge, setNudge] = useState(0);
 
   function toggleCandidate(rowKey: string) {
     setMoveNotice("");
@@ -806,10 +821,36 @@ export default function PlayProjectResult({
               type="button"
               className={BUTTON.primary}
               disabled={confirming}
-              onClick={() => setAsking(true)}
+              onClick={() => {
+                if (!gap) return setAsking(true);
+                setAsking(false);
+                setNudge((n) => n + 1);
+              }}
             >
               확정하기
             </button>
+            {nudge > 0 && gap && (
+              <div className={POPOVER}>
+                <PlayMonthlyConfirm
+                  key={nudge}
+                  shake
+                  message={
+                    gap.rowKey
+                      ? "아직 빈칸이 남아있어요. 빈칸을 채운 뒤 확정해 주세요."
+                      : `아직 고르지 않은 놀이가 남아있어요. 기간마다 ${MAX_PICKS}개를 고른 뒤 확정해 주세요.`
+                  }
+                  no={gap.rowKey ? "빈칸 채우기" : "놀이 고르기"}
+                  onNo={() => {
+                    setNudge(0);
+                    if (gap.rowKey) selectCell(gap.index, gap.rowKey, gap.field);
+                    else {
+                      goToPeriod(gap.index);
+                      setEditorTab("picked");
+                    }
+                  }}
+                />
+              </div>
+            )}
             {asking && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm

@@ -303,6 +303,24 @@ test("confirm asks first, waits for the queue, then confirms with its revision",
   assert.deepEqual(done, [confirmStub.next]);
 });
 
+test("확정 전 빈 곳 — 5개를 다 고르지 않은 기간은 흔들리는 알림에서 그 기간 AI 후보로 보낸다", () => {
+  const p = fullPlan();
+  p.periods[1].selected = FULL.slice(0, 2);
+  const render = renderer(p);
+  all(render())
+    .find((n) => n.type === "picking")
+    .props.onArrange();
+  button(render(), "확정하기").props.onClick();
+  const ask = all(render()).find((n) => n.type === "confirm-dialog");
+  assert.equal(ask.props.shake, true);
+  assert.equal(ask.props.yes, undefined);
+  assert.match(ask.props.message, /아직 고르지 않은 놀이가 남아있어요/);
+  ask.props.onNo();
+  const tree = render();
+  assert.ok(selectedTab(tree, "6월~8월"));
+  assert.ok(selectedTab(tree, "AI 후보"));
+});
+
 test("a 422 goes to the first short period's AI 후보; a 409 hands over to onConflict", async () => {
   confirmStub.next = new StubApiError(422, ["period2", "period3"]);
   const render = renderer(fullPlan());
