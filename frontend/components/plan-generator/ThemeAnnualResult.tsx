@@ -76,6 +76,8 @@ export default function ThemeAnnualResult({
   const [message, setMessage] = useState("");
   const [flagged, setFlagged] = useState<number[]>([]);
   const [undo, setUndo] = useState<{ month: number; before: Draft }[]>([]);
+  // 다시 하기 — 되돌리기 직전 그 달 값. 새로 고치면 비운다.
+  const [redo, setRedo] = useState<{ month: number; before: Draft }[]>([]);
   // 문서 기준 폭(AnnualThemeSheet 최대 폭). 배율 도구가 이 폭을 문서 칸에 맞춘다.
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, SHEET_WIDTH);
@@ -128,7 +130,10 @@ export default function ThemeAnnualResult({
     }
     if (same(body, before) && !failed.current.has(monthNo)) return;
     queued.current = { ...queued.current, [monthNo]: body };
-    if (record && !same(body, before)) setUndo((list) => [...list, { month: monthNo, before }]);
+    if (record && !same(body, before)) {
+      setUndo((list) => [...list, { month: monthNo, before }]);
+      setRedo([]);
+    }
     setStatus("saving");
     setMessage("");
     const synced = () => {
@@ -184,9 +189,20 @@ export default function ThemeAnnualResult({
     const last = undo[undo.length - 1];
     if (!last) return;
     setUndo(undo.slice(0, -1));
+    setRedo((list) => [...list, { month: last.month, before: queued.current[last.month] }]);
     change(last.month, last.before);
     setSelected({ month: last.month, slot: "theme" });
     save(last.month, last.before, false);
+  }
+
+  function stepForward() {
+    const next = redo[redo.length - 1];
+    if (!next) return;
+    setRedo(redo.slice(0, -1));
+    setUndo((list) => [...list, { month: next.month, before: queued.current[next.month] }]);
+    change(next.month, next.before);
+    setSelected({ month: next.month, slot: "theme" });
+    save(next.month, next.before, false);
   }
 
   async function confirm() {
@@ -348,7 +364,13 @@ export default function ThemeAnnualResult({
       docLabel={null}
       docHint={
         <div className="flex items-center gap-2">
-          <UndoRedo disabled={confirming} canUndo={undo.length > 0} onUndo={stepBack} />
+          <UndoRedo
+            disabled={confirming}
+            canUndo={undo.length > 0}
+            onUndo={stepBack}
+            canRedo={redo.length > 0}
+            onRedo={stepForward}
+          />
           {sheetZoom.tools}
           <span>
             <BigView

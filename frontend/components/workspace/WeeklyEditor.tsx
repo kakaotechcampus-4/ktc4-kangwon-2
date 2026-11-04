@@ -692,7 +692,7 @@ export default function WeeklyEditor({
       aside={aside}
       docLabel={null}
       docHint={
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <UndoRedo
             disabled={locked}
             canUndo={history.canUndo}
@@ -701,7 +701,7 @@ export default function WeeklyEditor({
             onRedo={() => through("redo")}
           />
           {sheetZoom.tools}
-          <span className="ml-2">
+          <span>
             <BigView pages={1} render={() => docOf(still)} />
           </span>
         </div>
