@@ -55,16 +55,21 @@ export default function AnnualThemeSheet({
       : {};
   const HOVER = onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : "";
   const half = (list: SheetMonth[]) => (
-    <table className="w-full table-fixed border-collapse text-[12px] leading-tight">
+    <table className="w-full table-fixed border-collapse text-[13px] leading-tight">
       <colgroup>
-        {[12, 28, 8, 52].map((w, i) => (
+        {/* 양식 열 폭(HWPUNIT 2500 · 7300 · 2000 · 15696)의 비율. 줄 높이 2500 ≈ 36px. */}
+        {[9.1, 26.5, 7.3, 57.1].map((w, i) => (
           <col key={i} style={{ width: w + "%" }} />
         ))}
       </colgroup>
       <thead>
         <tr>
           {["월", "생활주제", "주", "소주제"].map((h) => (
-            <th key={h} scope="col" className="h-7 border border-black bg-[#E1F2FE] font-bold">
+            <th
+              key={h}
+              scope="col"
+              className="h-[43px] border border-black bg-[#E1F2FE] text-[15px] font-bold"
+            >
               {h}
             </th>
           ))}
@@ -110,7 +115,7 @@ export default function AnnualThemeSheet({
                     </td>
                   </>
                 )}
-                <td className={`${CELL} h-[19px] text-center`}>{extra ? "+" : i + 1}</td>
+                <td className={`${CELL} h-[36px] text-center`}>{extra ? "+" : i + 1}</td>
                 <td
                   data-slot={`${m.month}-${i}`}
                   className={`${CELL} ${HOVER} ${tint} ${on(m.month, i)} ${onMove ? "group relative pl-6 transition-[background-color,opacity] duration-200 [&[data-dragging]]:opacity-40 [&[data-drop]]:bg-[#efe7f8]" : ""}`}
@@ -177,7 +182,7 @@ export default function AnnualThemeSheet({
   );
   return (
     <div className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]">
-      <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[26px] font-bold`}>{title}</h3>
+      <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[28px] font-bold`}>{title}</h3>
       <div className="grid grid-cols-2 items-start">
         {half(months.slice(0, 6))}
         {half(months.slice(6))}

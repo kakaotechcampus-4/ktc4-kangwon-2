@@ -372,7 +372,6 @@ export default function PlayMonthlySheet({
       <Band>우리반 안내사항</Band>
       <table className="w-full table-fixed border-collapse text-[11.5px]">
         <tbody>
-          {input("class_notice", "안내사항")}
           {input("class_birthdays", "우리반 생일")}
           {input("home_connection", "가정연계")}
         </tbody>

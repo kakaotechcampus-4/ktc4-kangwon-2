@@ -619,8 +619,10 @@ test("특성화 · 특별활동 시간표는 글 칸 하나씩이고, 빈 교사
     .map(text);
   assert.ok(cells.includes("월 인성교육"));
   assert.equal(all(tree).filter((n) => n.type === "td" && /시간표/.test(text(n))).length, 0);
-  for (const label of ["안내사항", "우리반 생일", "가정연계"])
+  for (const label of ["우리반 생일", "가정연계"])
     assert.equal(text(all(rowsOf(tree, "tr", label)[0]).find((n) => n.type === "td")), "");
+  // 안내사항은 내려받기에 나오지 않아(2026-10-28) 문서 화면에도 없다.
+  assert.equal(rowsOf(tree, "tr", "안내사항").length, 0);
 });
 
 test("칸은 글자일 뿐 버튼 · 입력창이 아니고 data-cell 자리를 남긴다", () => {

@@ -56,7 +56,7 @@ export default function PlayProjectSheet({
             aria-label={page.map((period) => period.label).join(" · ")}
             className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
           >
-            <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[26px] font-bold`}>
+            <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[28px] font-bold`}>
               {plan.school_year} 연간놀이계획안{className && ` - ${className}`}
             </h3>
             <table className="w-full table-fixed border-collapse text-[13px] leading-[1.25]">
@@ -118,7 +118,7 @@ export default function PlayProjectSheet({
                           <th
                             scope="rowgroup"
                             rowSpan={row.rowSpan}
-                            className="border border-black text-center font-bold"
+                            className="border border-black text-center font-normal"
                           >
                             {season.months ? (
                               <>
