@@ -93,7 +93,7 @@ export default function AnnualThemeSheet({
                     </th>
                     <td
                       rowSpan={rows}
-                      className={`${CELL} text-center font-bold ${HOVER} ${on(m.month, "theme")}`}
+                      className={`${CELL} text-center ${HOVER} ${on(m.month, "theme")}`}
                       {...area(m.month, "theme")}
                     >
                       {onSelect ? (
