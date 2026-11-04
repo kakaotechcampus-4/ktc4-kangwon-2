@@ -22,7 +22,7 @@ export type PostyPose =
   "stand" | "up" | "hand" | "point" | "wave" | "cheer" | "run" | "think" | "sit" | "sitWave";
 
 /** 표정. */
-export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think";
+export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think" | "sad";
 
 const TONE: Record<PostyTone, { paper: string; line: string; fold: string }> = {
   note: { paper: "--pg-note", line: "--pg-note-line", fold: "--pg-note-fold" },
@@ -178,6 +178,7 @@ const SPOKEN: Record<PostyFace, string> = {
   fix: "확인이 필요해요",
   oh: "잠깐요",
   think: "생각 중이에요",
+  sad: "아직 아무것도 없어요",
 };
 
 function arm(
@@ -274,6 +275,23 @@ function Face({ kind }: { kind: PostyFace }) {
         </g>
         {eyes(19.4)}
         <ellipse cx={24} cy={27} rx={2.8} ry={3.4} {...line} />
+      </>
+    );
+  // ㅠㅠ — 처진 눈썹에 눈물 두 줄. 「비었다」보다 한 발 더 속상한 자리에만 쓴다.
+  if (kind === "sad")
+    return (
+      <>
+        {/* 눈썹은 안쪽 끝이 올라가야 슬퍼 보인다. 반대로 하면 화난 얼굴이 된다. */}
+        <g {...line}>
+          <path d="M15.4 16.6 20.4 14.6" />
+          <path d="M32.6 16.6 27.6 14.6" />
+        </g>
+        {eyes(19.8)}
+        <g {...line}>
+          <path d="M18.6 22.6v2.8" />
+          <path d="M29.4 22.6v2.8" />
+          <path d="M20.4 29.2q3.6 -2.6 7.2 0" />
+        </g>
       </>
     );
   if (kind === "empty")

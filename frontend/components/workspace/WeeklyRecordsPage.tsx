@@ -15,6 +15,7 @@ import Link from "next/link";
 import { WorkspacePage, Message, useClasses } from "./WorkspaceUI";
 import WeeklyJournalCard from "./WeeklyJournalCard";
 import { Icon, type IconName } from "@/components/app/icons";
+import { Posty } from "@/components/app/Posty";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { listRoutines, timeRange, type ApiRoutine } from "@/lib/api/routines";
@@ -240,16 +241,14 @@ export default function WeeklyRecordsPage() {
             ) : (
               <span className="text-xs text-ink-soft">{ROUTINES_UNMAPPED}</span>
             )}
-            <Link href="/records" className="text-xs font-semibold text-primary">
-              전체 기록 보기 →
-            </Link>
           </div>
         </div>
 
         {weekKey && !week ? null : dayCount === 0 ? (
-          <p className="rounded-sm border border-line bg-paper p-10 text-center text-xs text-ink-soft shadow-pg-card">
-            이 날 적은 기록이 없습니다.
-          </p>
+          <div className="flex flex-col items-center gap-3 rounded-sm border border-line bg-paper p-10 text-center shadow-pg-card">
+            <Posty pose="sit" face="sad" tone="shell" size={84} label={null} />
+            <p className="font-display text-xl font-bold">작성된 기록이 없습니다.</p>
+          </div>
         ) : (
           <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {dayRoutines.map((row) => (

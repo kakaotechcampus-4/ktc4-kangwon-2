@@ -2285,6 +2285,7 @@ function quickRecordsPage(
       ws: {},
     },
     "@/components/app/icons": { Icon: "icon" },
+    "@/components/app/Posty": { Posty: "posty" },
     // 이번 주 주간 일지 칸은 따로 테스트한다. 여기서는 자리만 둔다.
     "./WeeklyJournalCard": { default: "weekly-journal-card" },
     "@/lib/api/records": {
