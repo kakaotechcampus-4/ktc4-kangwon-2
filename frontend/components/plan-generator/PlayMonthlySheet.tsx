@@ -15,6 +15,9 @@ import type { PlayMonthlyActivity, PlayMonthlyPlan } from "@/lib/api/types";
  */
 export const LINE = "border border-[#a9d3ee]";
 export const HEAD = "bg-[#e6f3fc] font-normal text-[#5c7f99]";
+/** 제목 · 구획 띠의 세로 빗금(내보내기 양식 무늬). */
+export const HATCH =
+  "[background:repeating-linear-gradient(90deg,#c1f3fd_0_1px,transparent_1px_4px),#e1f2fe]";
 export const WEEK_BG = ["#fcd6d6", "#fde2cf", "#fdf4c8", "#dff3e6", "#e4e8fb"];
 const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
 export const TEACHER_HINT = "선생님이 적는 칸이에요";
@@ -61,9 +64,7 @@ export const Cell = ({
 );
 
 export const Band = ({ children }: { children: ReactNode }) => (
-  <div className={`${LINE} bg-[#e6f3fc] py-1 text-center text-[12px] font-bold`}>
-    [ {children} ]
-  </div>
+  <div className={`${LINE} ${HATCH} py-1 text-center text-[12px] font-bold`}>[ {children} ]</div>
 );
 
 /** 주 머리 칸 — 주 색 띠 + 날짜. */
@@ -139,7 +140,7 @@ export function Paper({
           className="mx-auto w-[780px] bg-white px-8 py-7 text-[12px] leading-snug text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)] [&_td:has([data-cell][role=button])]:cursor-pointer"
           onClick={pickByCell}
         >
-          <div className={`${LINE} bg-[#e6f3fc] px-4 pb-1.5 pt-2.5 text-center`}>
+          <div className={`${LINE} ${HATCH} px-4 pb-1.5 pt-2.5 text-center`}>
             <h2 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h2>
             <div className="text-right text-[13px]">{sub}</div>
           </div>

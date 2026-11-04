@@ -9,6 +9,7 @@ import {
   playSeason,
   type PlayField,
 } from "./playProjectPagination";
+import { HATCH } from "./PlayMonthlySheet";
 import { dropCells, liftCells, settle } from "./rowDrag";
 
 const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
@@ -55,12 +56,13 @@ export default function PlayProjectSheet({
             aria-label={page.map((period) => period.label).join(" · ")}
             className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
           >
-            <h3 className="m-0 mb-4 border border-black bg-[#E1F2FE] py-2 text-center text-[19px] font-bold">
+            <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[26px] font-bold`}>
               {plan.school_year} 연간놀이계획안{className && ` - ${className}`}
             </h3>
-            <table className="w-full table-fixed border-collapse text-[12.5px] leading-snug">
+            <table className="w-full table-fixed border-collapse text-[13px] leading-[1.25]">
               <colgroup>
-                {[8, 15, 15, 36, 26].map((w, i) => (
+                {/* 양식 열 폭(HWPUNIT 3000 · 7000 · 7500 · 19000 · 18492)의 비율. */}
+                {[5.5, 12.7, 13.6, 34.6, 33.6].map((w, i) => (
                   <col key={i} style={{ width: w + "%" }} />
                 ))}
               </colgroup>
@@ -70,7 +72,7 @@ export default function PlayProjectSheet({
                     <th
                       key={h}
                       scope="col"
-                      className="h-8 border border-black bg-[#E1F2FE] font-bold"
+                      className="h-10 border border-black bg-[#E1F2FE] text-[15px] font-bold"
                     >
                       {h}
                     </th>
@@ -141,7 +143,7 @@ export default function PlayProjectSheet({
                             return (
                               <td
                                 key={field.key}
-                                className={`${CELL} ${field.key === "play_name" && onDropPick ? "relative pt-[22px]" : ""} ${center ? "text-center" : ""} ${field.key === "play_name" ? "font-bold" : ""} ${selected ? SELECTED : ""} ${onSelectCell ? "cursor-pointer hover:bg-[#faf7fd]" : ""}`}
+                                className={`${CELL} h-[100px] ${field.key === "play_name" && onDropPick ? "relative pt-[22px]" : ""} ${center ? "text-center" : ""} ${field.key === "play_name" ? "font-bold" : ""} ${selected ? SELECTED : ""} ${onSelectCell ? "cursor-pointer hover:bg-[#faf7fd]" : ""}`}
                                 // 칸 어디를 눌러도 그 칸을 고른다(글자 아래 빈 곳 포함). 글자는 버튼이라 키보드도 된다.
                                 onClick={
                                   onSelectCell

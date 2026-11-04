@@ -1,6 +1,7 @@
 "use client";
 import type { DragEvent, MouseEvent } from "react";
 import { slotRows } from "@/lib/plan-generator/subThemeSlots";
+import { HATCH } from "./PlayMonthlySheet";
 import { dropCells, liftCells, settle } from "./rowDrag";
 
 /** 문서에 그릴 한 달. `sub_themes` 는 입력 중 목록이라 빈 칸이 있을 수 있다. */
@@ -176,9 +177,7 @@ export default function AnnualThemeSheet({
   );
   return (
     <div className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]">
-      <h3 className="m-0 mb-4 border border-black bg-[#E1F2FE] py-2 text-center text-[19px] font-bold">
-        {title}
-      </h3>
+      <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[26px] font-bold`}>{title}</h3>
       <div className="grid grid-cols-2 items-start">
         {half(months.slice(0, 6))}
         {half(months.slice(6))}

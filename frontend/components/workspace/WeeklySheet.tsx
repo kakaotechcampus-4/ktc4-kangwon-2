@@ -12,6 +12,7 @@ import type { WeeklyActivityGrid, WeeklyCell, WeeklyPlan } from "@/lib/api/types
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import {
   Cell,
+  HATCH,
   Paper,
   TEACHER_HINT,
   period,
@@ -56,8 +57,6 @@ const BLOCK: Record<string, number> = {
 const LINE = "border border-[#bde9fd]";
 const HEAD = "bg-[#e1f2fe] font-bold text-[#2b2826]";
 const DAY = "bg-[#ffe0cc] font-bold text-[#2b2826]";
-const HATCH =
-  "[background:repeating-linear-gradient(90deg,#c1f3fd_0_1px,transparent_1px_4px),#e1f2fe]";
 
 /** 양식 줄 이름이 화면 이름과 다른 칸. */
 const ROW: Record<string, string> = { goals: "이번 주 목표", indoor_alternative: "실내 대체놀이" };
