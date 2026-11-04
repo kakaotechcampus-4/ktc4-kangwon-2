@@ -84,7 +84,7 @@ export function TryOneLine() {
         <div className={`${s.tryRow} ${s.tryFact}`}>
           <b>사실</b>
           <span>
-            <em className={s.tryTag}>선생님이 적은 그대로 · 잠금</em>
+            <em className={s.tryTag}>선생님이 적은 그대로</em>
             {fact || <i className={s.tryEmpty}>적은 문장이 여기에 그대로 들어가요</i>}
           </span>
         </div>
