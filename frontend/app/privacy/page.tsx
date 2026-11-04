@@ -7,7 +7,16 @@ export const metadata = {
 
 export default function Page() {
   return (
-    <LegalPage title="개인정보처리방침" updated="2026년 10월 27일">
+    <LegalPage
+      kind="privacy"
+      title="개인정보처리방침"
+      updated="2026년 10월 27일"
+      summary={[
+        "아동 실명은 AI로 보내지 않아요. 가명으로 바꿔 보내요.",
+        "광고에 쓰지 않고, 다른 곳에 팔거나 넘기지 않아요.",
+        "지워 달라고 하면 지우고, 운영을 멈추면 모두 삭제해요.",
+      ]}
+    >
       <p>
         쌤플(Ssample)은 강원대학교 카카오테크캠퍼스 4기 2팀이 만드는 교육 프로젝트입니다. 어린이집
         교사가 보육 문서 초안을 쓰는 데 쓰입니다. 아래는 쌤플이 무엇을 저장하고, 어디로 보내고, 언제
