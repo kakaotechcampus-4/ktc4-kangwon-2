@@ -191,7 +191,34 @@ function Panel({
   const chip = v1 ? "bg-[#e8f1ea] text-[#3b5441]" : "bg-[#eee4f4] text-[#5e4b96]";
   const steps = v1 ? ["연간", "월간", "주간"] : ["연간", "월간"];
   return (
-    <section className="flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper shadow-pg px-8 py-7">
+    <section className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper shadow-pg px-8 py-7">
+      {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}
+      <details className="group absolute right-5 top-5 z-10">
+        <summary
+          aria-label={`${MODE[format]} 시작 안내`}
+          title="시작 안내"
+          className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-paper text-[#5e4b96] shadow-pg-card group-open:bg-[#f6f1fb] [&::-webkit-details-marker]:hidden"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 11v6" />
+            <path d="M12 7h.01" />
+          </svg>
+        </summary>
+        <p className="absolute right-0 top-full m-0 mt-2 w-[260px] rounded-xl border border-line bg-paper px-4 py-3 text-[14px] leading-relaxed text-[#2b2826] shadow-pg-card">
+          {v1
+            ? "월간부터 시작하면 우리 원 연간계획안을 먼저 넣어요."
+            : "놀이 중심형은 연간부터 시작해요."}
+        </p>
+      </details>
       <div className="flex flex-col gap-2">
         <span className={`text-sm font-bold ${v1 ? "text-[#49654f]" : "text-[#5e4b96]"}`}>
           {v1 ? "생활주제 따라" : "아이들 놀이 따라"}
@@ -255,28 +282,21 @@ function Panel({
           <p className="m-0 text-right text-[13px] text-[#5c5243]">HWP · HWPX · DOCX · PDF</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/plans/annual/new?format=${format}`}
-              className="flex min-h-[54px] flex-1 items-center justify-center rounded-xl bg-[#7053a0] text-base font-bold text-white no-underline shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
-            >
-              연간부터 시작하기
-            </Link>
-            <button
-              type="button"
-              onClick={() => onSkip(true)}
-              disabled={!v1}
-              className="min-h-[54px] flex-1 rounded-xl border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {v1 ? "월간부터 시작하기" : "월간부터 시작하기 (준비 중)"}
-            </button>
-          </div>
-          <p className="m-0 text-right text-[13px] text-[#5c5243]">
-            {v1
-              ? "월간부터 시작하면 우리 원 연간계획안을 먼저 넣어요"
-              : "놀이 중심형은 연간부터 시작해요"}
-          </p>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/plans/annual/new?format=${format}`}
+            className="flex min-h-[54px] flex-1 items-center justify-center rounded-xl bg-[#7053a0] text-base font-bold text-white no-underline shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+          >
+            연간부터 시작하기
+          </Link>
+          <button
+            type="button"
+            onClick={() => onSkip(true)}
+            disabled={!v1}
+            className="min-h-[54px] flex-1 rounded-xl border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {v1 ? "월간부터 시작하기" : "월간부터 시작하기 (준비 중)"}
+          </button>
         </div>
       )}
     </section>
