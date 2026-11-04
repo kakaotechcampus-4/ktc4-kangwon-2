@@ -20,6 +20,15 @@ export class ApiError extends Error {
   }
 }
 
+/** 서버 오류의 `code`. 같은 status 라도 교사가 할 일이 다를 때 갈라 본다. */
+export function errorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body as { error?: { code?: unknown } } | null;
+  return typeof body === "object" && body !== null && typeof body.error?.code === "string"
+    ? body.error.code
+    : null;
+}
+
 /**
  * /api/... 요청이 JSON API가 아니라 Next의 HTML(주로 404 페이지)을 받은 경우.
  * = MSW가 요청을 가로채지 못한 전송 계층 문제이므로, 실제 API의 NOT_FOUND와 절대 섞지 않는다.

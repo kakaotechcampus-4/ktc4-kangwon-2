@@ -2183,3 +2183,217 @@ a.item {
 .recordGrid .recordForm textarea {
   min-height: 118px;
 }
+
+/* ── 문서 보관함 · 같은 원 남의 반 (ADR-059) ── */
+.accessCard {
+  display: grid;
+  gap: 16px;
+  padding: 24px 26px 26px;
+}
+.accessHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.accessName {
+  flex: 1;
+  min-width: 0;
+}
+.card .accessName h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 28px;
+  line-height: 1.1;
+}
+.card .accessName p {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.accessBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-shell);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.accessBadge svg {
+  width: 14px;
+  height: 14px;
+}
+.accessBadge[data-state="PENDING"] {
+  border-color: var(--pg-sun);
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
+.accessBadge[data-state="APPROVED"] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+/* 포스티가 건네는 말 + 할 일 하나. 점선으로 머리와 가른다. */
+.accessSay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 18px;
+  padding: 14px 0 2px;
+  border-top: 1px dashed var(--pg-line);
+}
+.card .accessWord {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.card .accessLead {
+  margin: 3px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.accessTableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+}
+.accessTable {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.accessTable th {
+  padding: 10px 14px;
+  background: var(--pg-cream);
+  border-bottom: 1px solid var(--pg-line);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+  text-align: left;
+}
+.accessTable td {
+  padding: 11px 14px;
+  border-bottom: 1px dashed var(--pg-line);
+  vertical-align: middle;
+}
+.accessTable tr:last-child td {
+  border-bottom: 0;
+}
+.accessTable tr[aria-selected="true"] td {
+  background: var(--pg-primary-tint);
+}
+.accessTable td b {
+  display: block;
+  font-weight: 700;
+}
+.accessTable td small {
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
+.accessLocked {
+  color: var(--pg-ink-hint);
+  white-space: nowrap;
+}
+.accessLocked svg {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+.accessActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  white-space: nowrap;
+}
+.accessActions button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.accessActions button:hover {
+  background: var(--pg-cream);
+}
+.accessActions button[data-main] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.accessPreview {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+  background: var(--pg-ivory);
+}
+.accessPreview > button:first-child {
+  justify-self: end;
+}
+.accessGroup {
+  display: grid;
+  gap: 8px;
+}
+.card .accessGroup h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+}
+/* 손글씨 「1」은 「ı」로 읽힌다. 셈은 본문 글씨로 작은 알약에 담는다. */
+.accessGroup h3 span {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--pg-cream);
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  vertical-align: 3px;
+  color: var(--pg-ink-soft);
+}
+.accessGroup ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+}
+.accessGroup li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 12px 14px;
+}
+.accessGroup li + li {
+  border-top: 1px dashed var(--pg-line);
+}
+.accessGroup li b {
+  display: block;
+  font-size: 15px;
+}
+.accessGroup li small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}

@@ -36,9 +36,10 @@ export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
  * 그 달의 주간계획안들. `month` 는 **달력 달 1~12** 다 — `YYYY-MM` 이 아니다.
  * 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). `month` 는 `classId` 와 함께만 간다.
  */
-export const listWeeklyPlans = (classId: number, month: number, signal?: AbortSignal) =>
+/** `month` 를 빼면 그 반의 모든 달이다 — 승인받은 반을 한 번에 훑을 때 쓴다. */
+export const listWeeklyPlans = (classId: number, month?: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyPlanSummary[] }>(
-    "/api/plans/weekly?class_id=" + classId + "&month=" + month,
+    "/api/plans/weekly?class_id=" + classId + (month === undefined ? "" : "&month=" + month),
     { signal },
   );
 /**

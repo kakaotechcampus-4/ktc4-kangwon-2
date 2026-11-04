@@ -1297,3 +1297,50 @@
     margin-left: auto;
   }
 }
+
+/* ── 같은 원 남의 반 (ADR-059) — 반 고르기 칸 아래 묶음 ── */
+.classList + .railHead {
+  margin-top: 22px;
+}
+/* 묶음이 둘이면 첫 목록이 남은 높이를 다 먹어 둘째 묶음이 바닥으로 밀린다. 내용만큼만 선다. */
+.classList:has(+ .railHead) {
+  flex: 0 1 auto;
+}
+.railNote {
+  margin: -8px 4px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--pg-ink-soft);
+}
+/* 열람 상태. 승인된 반만 세이지, 기다리는 반은 해, 막힌 반은 흐린 회색이다. */
+.railBadge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pg-shell);
+  border: 1px solid var(--pg-line);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.railBadge[data-state="PENDING"] {
+  background: var(--pg-sun-tint);
+  border-color: var(--pg-sun);
+  color: var(--pg-sun-ink);
+}
+.railBadge[data-state="APPROVED"] {
+  background: var(--pg-sage-tint);
+  border-color: var(--pg-sage-line);
+  color: var(--pg-sage-ink);
+}
+.railCount {
+  flex: none;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pg-alert-strong);
+  color: var(--pg-paper);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}

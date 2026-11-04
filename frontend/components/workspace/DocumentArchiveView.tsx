@@ -44,6 +44,15 @@ import {
 } from "./DocumentArchiveArt";
 import styles from "./DocumentArchive.module.css";
 import { PlanArchivePreview, type PlanPreviewTarget } from "./DocumentArchivePreview";
+import {
+  ACCESS_LABEL,
+  ForeignClassPanel,
+  ReceivedPanel,
+  useClassAccess,
+  type ForeignAccess,
+} from "./ClassAccessPanels";
+import type { ApiClass } from "@/lib/api/types";
+import type { ReceivedRequest } from "@/lib/api/class-access";
 
 /** 보관함이 목록에 그리는 일지 하나. 상세(sections · sources)는 열어야 온다 (§11). */
 export type ArchiveDoc = {
@@ -182,6 +191,11 @@ export default function DocumentArchiveView({
   const [planPreview, setPlanPreview] = useState<PlanPreviewTarget | null>(null);
   const previewRef = useRef<HTMLElement>(null);
   const [mobileList, setMobileList] = useState(false);
+  // 같은 원 남의 반과 받은 열람 요청 (ADR-059). 고르면 오른쪽 본문 자리를 그 칸이 쓴다.
+  const access = useClassAccess();
+  const [foreign, setForeign] = useState<number | "received" | null>(null);
+  const foreignRoom =
+    typeof foreign === "number" ? access.others.find((c) => c.id === foreign) : undefined;
 
   const classroom = classes.find((c) => c.id === classId);
   const serverClassId = classId ? classServerId(classId) : null;
@@ -308,15 +322,41 @@ export default function DocumentArchiveView({
   const days = useMemo(() => weekDays(day), [day]);
   const sorted = <T,>(items: T[]) => (oldestFirst ? [...items].reverse() : items);
 
-  if (!classId || !classroom) {
+  const rail = (
+    <ClassRail
+      classes={classes}
+      classId={foreign === null ? classId : ""}
+      onPick={(id) => {
+        setForeign(null);
+        onPickClass(id);
+      }}
+      others={access.others}
+      received={access.received}
+      foreign={foreign}
+      onPickForeign={setForeign}
+    />
+  );
+  // 남의 반 · 받은 요청을 고르면 내 반 보관함 대신 그 칸이 선다.
+  const foreignBody =
+    foreign === "received" ? (
+      <ReceivedPanel items={access.received} onChanged={access.reload} />
+    ) : foreignRoom ? (
+      <ForeignClassPanel key={foreignRoom.id} room={foreignRoom} onChanged={access.reload} />
+    ) : null;
+
+  if (!classId || !classroom || foreign !== null) {
     return (
       <div className={styles.archive}>
-        <ClassRail classes={classes} classId={classId} onPick={onPickClass} />
+        {rail}
         <div className={styles.content}>
           {header}
-          <Blank art={<StartArt className={styles.blankArt} />} title="반을 선택해 주세요">
-            왼쪽에서 반을 선택하면 해당 반의 문서 보관함을 확인할 수 있어요.
-          </Blank>
+          {foreign !== null ? (
+            foreignBody
+          ) : (
+            <Blank art={<StartArt className={styles.blankArt} />} title="반을 선택해 주세요">
+              왼쪽에서 반을 선택하면 해당 반의 문서 보관함을 확인할 수 있어요.
+            </Blank>
+          )}
         </div>
       </div>
     );
@@ -778,7 +818,7 @@ export default function DocumentArchiveView({
 
   return (
     <div className={styles.archive}>
-      <ClassRail classes={classes} classId={classId} onPick={onPickClass} />
+      {rail}
       <div className={styles.content}>
         {header}
         {openDoc && editingId === openDoc.id ? (
@@ -1038,11 +1078,22 @@ function ClassRail({
   classes,
   classId,
   onPick,
+  others,
+  received,
+  foreign,
+  onPickForeign,
 }: {
   classes: ClassroomEntry[];
   classId: string;
   onPick: (id: string) => void;
+  /** 같은 원의 남의 반. 열람 상태(`my_access`)를 배지로 단다. */
+  others: ApiClass[];
+  /** 내 반에 온 열람 요청. 하나라도 있으면 「받은 요청」 칸을 연다. */
+  received: ReceivedRequest[];
+  foreign: number | "received" | null;
+  onPickForeign: (pick: number | "received") => void;
 }) {
+  const waiting = received.filter((r) => r.status === "PENDING").length;
   return (
     <aside className={styles.classRail} aria-label="반 선택">
       <div className={styles.railHead}>
@@ -1063,9 +1114,53 @@ function ClassRail({
               <Icon name="chevron" />
             </button>
           ))}
+          {received.length > 0 && (
+            <button
+              type="button"
+              className={styles.classCard}
+              aria-pressed={foreign === "received"}
+              onClick={() => onPickForeign("received")}
+            >
+              <span className={styles.grow}>받은 요청</span>
+              {waiting > 0 && (
+                <span className={styles.railCount} aria-label={`기다리는 요청 ${waiting}건`}>
+                  {waiting}
+                </span>
+              )}
+              <Icon name="bell" />
+            </button>
+          )}
         </div>
       ) : (
         <p className={styles.railEmpty}>등록된 반이 없어요. 설정에서 반을 먼저 만들어주세요.</p>
+      )}
+      {others.length > 0 && (
+        <>
+          <div className={styles.railHead}>
+            <Icon name="lock" />
+            같은 원 반
+          </div>
+          <p className={styles.railNote}>담임 선생님이 승인하면 문서를 볼 수 있어요.</p>
+          <div className={styles.classList}>
+            {others.map((c) => {
+              const state = (c.my_access ?? "NONE") as ForeignAccess;
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  className={styles.classCard}
+                  aria-pressed={foreign === c.id}
+                  onClick={() => onPickForeign(c.id)}
+                >
+                  <span className={styles.grow}>{c.name}</span>
+                  <span className={styles.railBadge} data-state={state}>
+                    {ACCESS_LABEL[state]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
       <SidebarDecor className={styles.decor} />
     </aside>
