@@ -7,7 +7,10 @@ import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import Link from "next/link";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   POPOVER,
@@ -38,7 +41,7 @@ const MAX_PICKS = 5;
 const SAVE_LABEL = {
   idle: "",
   saving: "저장 중…",
-  saved: "자동 저장됨",
+  saved: "저장됨",
   failed: "저장하지 못했어요",
   reloading: "최신 내용을 다시 불러오는 중…",
 };
@@ -147,7 +150,7 @@ function movedNotice(name: string, index: number) {
 }
 
 type LeftTab = "edit" | "picked";
-const ROW = "flex items-center justify-between gap-3 rounded-xl border border-[#e8e2d8] px-4 py-3";
+const ROW = "flex items-center justify-between gap-3 rounded-md border border-[#e8e2d8] px-4 py-3";
 // 문서 기준 폭(A4 세로 비율). 「맞춤」은 이 폭을 문서 칸 폭에 맞춰 키우거나 줄인다.
 const SHEET_WIDTH = 794;
 const SMALL =
@@ -476,7 +479,7 @@ export default function PlayProjectResult({
         <div className="flex gap-2 border-t border-[#efeae2] pt-4">
           <button
             type="button"
-            className="min-h-[44px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243]"
+            className={BUTTON.quiet}
             onClick={() => toggleCandidate(selectedCandidate.row_key)}
           >
             문서에서 빼기
@@ -547,7 +550,7 @@ export default function PlayProjectResult({
             </button>
             <button
               type="button"
-              className="min-h-[36px] shrink-0 text-xs text-[#5c5243] underline"
+              className={SMALL}
               aria-label={`${candidate.play_name.value} 빼기`}
               onClick={() => toggleCandidate(candidate.row_key)}
             >
@@ -635,7 +638,7 @@ export default function PlayProjectResult({
     <div
       role="tablist"
       aria-label="놀이 프로젝트 기간"
-      className="flex flex-wrap gap-0.5 rounded-xl border border-line bg-paper p-0.5 shadow-pg-card"
+      className="flex flex-wrap gap-0.5 rounded-md border border-line bg-paper p-0.5"
     >
       {plan.periods.map((item, index) => (
         <button
@@ -667,7 +670,7 @@ export default function PlayProjectResult({
         {/* 정답지 ④: 제목 · 칩 · 안내 · 저장 상태 | 계절 탭 — 한 줄. */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
               놀이 고르기
             </h1>
             <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
@@ -686,7 +689,7 @@ export default function PlayProjectResult({
           <div
             role="tablist"
             aria-label="놀이 프로젝트 기간"
-            className="grid w-full grid-cols-2 gap-1 rounded-xl bg-[#ebe5db] p-1 md:flex md:w-auto"
+            className="grid w-full grid-cols-2 gap-1 rounded-md bg-[#ebe5db] p-1 md:flex md:w-auto"
           >
             {plan.periods.map((item, index) => {
               const count = picks[item.period_key]?.length ?? 0;
@@ -750,11 +753,6 @@ export default function PlayProjectResult({
             onClick={() => selectLeftTab(tab)}
           >
             {tab === "edit" ? "칸 편집" : "AI 후보"}
-            {tab === "picked" && (
-              <span className="ml-1.5 rounded-full bg-[#efeae2] px-2 py-0.5 text-xs text-[#5c5243]">
-                {period.candidates.length}
-              </span>
-            )}
           </button>
         ))}
       </div>
@@ -785,6 +783,11 @@ export default function PlayProjectResult({
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
       format={plan.format}
+      lead={
+        <Link href="/plans" aria-label="돌아가기: 계획안" title="계획안" className={BACK_BUTTON}>
+          {BACK_ICON}
+        </Link>
+      }
       status={
         <span className="flex items-center gap-3">
           {SAVE_LABEL[saving.status]}

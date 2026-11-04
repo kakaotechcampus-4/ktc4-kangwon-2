@@ -170,6 +170,8 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
     "./PlanMemo": { PlanMemoField: () => null, memoError: () => null },
     "./AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
     "@/components/app/compact-shell": { useCompactShell: (on) => compact.push(on) },
+    "@/components/workspace/WorkspaceUI": { Tape: () => null },
+    "@/components/app/Tour": { SlideTour: () => null },
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)(

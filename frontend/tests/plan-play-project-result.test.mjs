@@ -121,6 +121,7 @@ const plansStub = {
 };
 const frameModules = {
   "next/link": esModule((props) => jsx("a", props)),
+  "@/components/workspace/WorkspaceUI": { Tape: () => null },
   "@/lib/api/plans": plansStub,
   "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
   "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
@@ -152,6 +153,7 @@ function renderer(planValue, props = {}) {
     "../components/plan-generator/PlayProjectResult.tsx",
     {
       react,
+      "next/link": esModule((props) => jsx("a", props)),
       "@/components/workspace/Workspace.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./GenerationFlow.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./PlayProjectResult.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
@@ -258,7 +260,7 @@ test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼�
   assert.deepEqual(saveStub.cells, [{ itemId: cell.item_id, value: "나뭇잎", base: cell.value }]);
   assert.match(text(render()), /나뭇잎/, "문서에 바로 보인다");
   all(render())
-    .find((n) => n.props?.role === "tab" && text(n) === `AI 후보${p.periods[0].candidates.length}`) // 개수 배지
+    .find((n) => n.props?.role === "tab" && text(n) === "AI 후보")
     .props.onClick();
   button(render(), "놀이 0 빼기").props.onClick();
   assert.deepEqual(Object.keys(saveStub.calls.at(-1)), [

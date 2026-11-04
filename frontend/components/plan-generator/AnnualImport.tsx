@@ -146,13 +146,13 @@ export default function AnnualImport({
           : "달마다 생활주제와 소주제를 적어 주세요. 소주제는 한 줄에 하나씩 써요."}
       </p>
       {notices.length > 0 && (
-        <ul className="m-0 list-none rounded-xl bg-[#f8efdc] px-4 py-3 text-sm text-[#705936]">
+        <ul className="m-0 list-none rounded-md bg-[#f8efdc] px-4 py-3 text-sm text-[#705936]">
           {notices.map((notice) => (
             <li key={notice}>{notice}</li>
           ))}
         </ul>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto border border-line bg-paper shadow-pg">
+      <div className="min-h-0 flex-1 overflow-y-auto border border-line bg-paper rounded-md">
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-[#fbf9f5] text-sm text-[#5c5243]">
             <tr>
@@ -190,7 +190,7 @@ export default function AnnualImport({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="min-h-[52px] rounded-xl bg-[#7053a0] px-8 text-base font-bold text-white disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+          className="min-h-[52px] rounded-md bg-primary-tint-line hover:bg-primary px-8 text-base font-bold text-ink hover:text-white disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
         >
           {saving ? "저장하는 중…" : "저장"}
         </button>
@@ -200,7 +200,7 @@ export default function AnnualImport({
 }
 
 const SECONDARY =
-  "min-h-[44px] rounded-xl border border-[#ddd6ca] bg-white px-4 text-sm font-bold text-[#5e4b96]";
+  "min-h-[44px] rounded-md border border-[#ddd6ca] bg-white px-4 text-sm font-bold text-[#5e4b96]";
 
 function ImportShell({
   title,
@@ -222,9 +222,7 @@ function ImportShell({
           ← 취소하고 돌아가기
         </button>
         <div className="flex items-center gap-3">
-          <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
-            {title}
-          </h1>
+          <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">{title}</h1>
           <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
             월별 주제형
           </span>
@@ -259,7 +257,7 @@ function MonthRow({
           aria-invalid={blank || undefined}
           value={row.theme}
           onChange={(e) => onEdit({ theme: e.target.value })}
-          className="min-h-[44px] w-full rounded-xl border border-[#ddd6ca] px-3 text-base"
+          className="min-h-[44px] w-full rounded-md border border-[#ddd6ca] px-3 text-base"
         />
       </td>
       <td className="px-4 py-3">
@@ -268,7 +266,7 @@ function MonthRow({
           value={row.subThemes}
           rows={Math.max(2, row.subThemes.split("\n").length)}
           onChange={(e) => onEdit({ subThemes: e.target.value })}
-          className="w-full resize-none rounded-xl border border-[#ddd6ca] px-3 py-2 text-base leading-relaxed"
+          className="w-full resize-none rounded-md border border-[#ddd6ca] px-3 py-2 text-base leading-relaxed"
         />
       </td>
     </tr>

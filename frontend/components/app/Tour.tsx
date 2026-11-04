@@ -33,7 +33,8 @@ type Step = {
 
 /**
  * 화면마다 따로. 위에서 아래로 짚어야 구멍이 튀지 않는다.
- * 계획안 · 문서 보관함 · 평가 점검은 아직 화면을 고치는 중이라 넣지 않았다(PM).
+ * 문서 보관함 · 평가 점검은 아직 화면을 고치는 중이라 넣지 않았다(PM).
+ * 계획안은 첫 화면만 짚는다. 만드는 과정은 아래 `SLIDES` 로 화면 그림을 넘겨 보여 준다.
  */
 const TOURS: Record<string, Step[]> = {
   "/": [
@@ -100,6 +101,23 @@ const TOURS: Record<string, Step[]> = {
       body: "초안인지 확정했는지가 보여요. 이어서 쓰면 칠판 밑에 일지가 펼쳐져요.",
     },
   ],
+  "/plans": [
+    {
+      at: "plans-theme",
+      title: "생활주제 따라 — 월별 주제형",
+      body: "연간 → 월간 → 주간으로 차근차근 내려가요. 우리 원 연간계획안이 이미 있으면 「월간부터 시작하기」로 파일을 올려요.",
+    },
+    {
+      at: "plans-play",
+      title: "아이들 놀이 따라 — 놀이 중심형",
+      body: "계절마다 놀이를 골라 연간을 만들고 월간으로 이어가요. 어느 방식이든 「연간부터 시작하기」를 누르면 만드는 순서를 그림으로 먼저 보여 드려요.",
+    },
+    {
+      at: "plans-continue",
+      title: "쓰다 만 계획안",
+      body: "확정하지 않은 초안은 여기서 이어 써요. 확정한 계획안은 문서 보관함에 모여요.",
+    },
+  ],
   "/weekly-records": [
     {
       at: "weekly-week",
@@ -123,6 +141,82 @@ const TOURS: Record<string, Step[]> = {
       pad: 6,
     },
   ],
+};
+
+type Slide = { title: string; body: string };
+
+/**
+ * 계획안 만들기 첫 화면에 띄우는 「만드는 순서」. 실제 화면 위를 짚지 않고 미리 찍은 화면을 넘겨 본다 —
+ * 만드는 도중에 덮개를 띄우면 AI 초안을 기다리는 화면 · 확정 창과 겹친다.
+ * 그림은 `public/plan-guide/{dir}/01.webp…` 순서대로다. 화면이 바뀌면 그림도 다시 찍는다.
+ */
+const SLIDES: Record<"MONTHLY_THEME" | "PLAY_PROJECT", { dir: string; slides: Slide[] }> = {
+  MONTHLY_THEME: {
+    dir: "theme",
+    slides: [
+      {
+        title: "요청 사항을 적고 만들어요",
+        body: "반 · 연령 · 학년도는 미리 채워져 있어요. 바라는 것을 적거나 아래 단추로 넣고 「연간계획안 만들기」를 눌러요.",
+      },
+      {
+        title: "12달 초안이 나와요",
+        body: "3월부터 다음 해 2월까지 달마다 생활주제와 주별 소주제가 채워져요. 아직 초안이라 마음껏 고칠 수 있어요.",
+      },
+      {
+        title: "칸을 눌러 고쳐요",
+        body: "문서에서 고칠 칸을 누르면 왼쪽에서 바로 고쳐요. 되돌리기 · 다시 하기도 있어요.",
+      },
+      {
+        title: "다 고쳤으면 확정해요",
+        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 더 고칠 게 있으면 「더 다듬기」를 눌러요.",
+      },
+      {
+        title: "내려받고 월간으로",
+        body: "PDF · 한글 파일로 내려받을 수 있어요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요. 다시 고치려면 「확정 취소」를 눌러요.",
+      },
+      {
+        title: "월간은 연간에서 이어받아요",
+        body: "달을 고르면 연간의 그 달 주제로 주마다 초안이 나와요. 고치고 확정하는 방법은 연간과 같아요.",
+      },
+      {
+        title: "주간은 월간에서 이어받아요",
+        body: "주를 고르면 초안이 나와요. 빈칸을 누르면 AI 후보가 뜨고, 「넣기」로 채워요.",
+      },
+    ],
+  },
+  PLAY_PROJECT: {
+    dir: "play",
+    slides: [
+      {
+        title: "요청 사항을 적고 만들어요",
+        body: "바라는 놀이를 적거나 아래 단추로 넣고 「연간계획안 만들기」를 눌러요.",
+      },
+      {
+        title: "계절마다 놀이를 골라요",
+        body: "후보를 누르면 가운데에 자세히 보여요. 「이 놀이 고르기」로 봄 · 여름 · 가을 · 겨울마다 5개씩 골라요.",
+      },
+      {
+        title: "문서에서 다듬어요",
+        body: "다 고르면 「문서 만들기 →」. 문서의 칸을 고치거나 AI 후보에서 놀이를 빼고 넣어요.",
+      },
+      {
+        title: "다 고쳤으면 확정해요",
+        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 계절마다 5개를 다 골라야 확정돼요.",
+      },
+      {
+        title: "내려받고 월간으로",
+        body: "PDF · 한글 파일로 내려받을 수 있어요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
+      },
+      {
+        title: "월간은 연간에서 이어받아요",
+        body: "달을 고르고, 그 달에 더 집중할 놀이를 골라요(안 골라도 돼요). 놀이 중심형은 주간이 없어요.",
+      },
+      {
+        title: "빈칸은 후보로 채워요",
+        body: "안전교육처럼 빈칸을 누르면 후보가 떠요. 「넣기」로 채우고 연간처럼 확정해요.",
+      },
+    ],
+  },
 };
 
 const target = (at: string) => document.querySelector<HTMLElement>(`[data-tour="${at}"]`);
@@ -333,5 +427,130 @@ export default function Tour() {
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 만드는 순서를 화면 그림으로 넘겨 본다. 처음 한 번 저절로 뜨고, 「만드는 순서 보기」로 다시 연다.
+ * 본 것 · 다시 보지 않기는 위 안내와 같은 자리에 적는다(설정의 「튜토리얼 다시 보기」로 되살아난다).
+ */
+export function SlideTour({ format }: { format: keyof typeof SLIDES }) {
+  const { dir, slides } = SLIDES[format];
+  const seen = `plan-guide:${format}`;
+  const [open, setOpen] = useState(false);
+  const [index, setIndex] = useState(0);
+  const next = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    // e2e 는 덮개에 막히지 않게 띄우지 않는다(위 안내와 같다).
+    if (navigator.webdriver || isOff() || seenPaths().includes(seen)) return;
+    const timer = window.setTimeout(() => setOpen(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [seen]);
+
+  const close = useCallback(() => {
+    markSeen(seen);
+    setOpen(false);
+  }, [seen]);
+
+  useEffect(() => {
+    if (!open) return;
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    next.current?.focus();
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+      if (e.key === "ArrowRight") setIndex((i) => Math.min(i + 1, slides.length - 1));
+      if (e.key === "ArrowLeft") setIndex((i) => Math.max(i - 1, 0));
+    };
+    window.addEventListener("keydown", key);
+    return () => {
+      document.body.style.overflow = before;
+      window.removeEventListener("keydown", key);
+    };
+  }, [open, close, slides.length]);
+
+  const again = (
+    <button
+      type="button"
+      className={styles.again}
+      onClick={() => {
+        setIndex(0);
+        setOpen(true);
+      }}
+    >
+      만드는 순서 보기
+    </button>
+  );
+  if (!open) return again;
+  const slide = slides[index];
+  const last = index === slides.length - 1;
+  return (
+    <>
+      {again}
+      <div className={styles.tour} role="dialog" aria-modal="true" aria-labelledby="slide-title">
+        <div className={styles.dim} />
+        <div className={styles.slide}>
+          <span aria-hidden="true" className={styles.tape} />
+          <Posty
+            pose="point"
+            face="base"
+            tone="note"
+            size={58}
+            label={null}
+            className={styles.posty}
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            key={index}
+            className={styles.shot}
+            src={`/plan-guide/${dir}/${String(index + 1).padStart(2, "0")}.webp`}
+            alt={`${slide.title} — 화면 예시`}
+          />
+          <p className={styles.count}>
+            {index + 1} / {slides.length}
+          </p>
+          <h2 id="slide-title" className={styles.title}>
+            {slide.title}
+          </h2>
+          <p className={styles.body}>{slide.body}</p>
+          <div className={styles.foot}>
+            <span className={styles.dots} aria-hidden="true">
+              {slides.map((s, n) => (
+                <span key={s.title + n} data-on={n === index || undefined} />
+              ))}
+            </span>
+            {index > 0 && (
+              <button type="button" className={styles.ghost} onClick={() => setIndex(index - 1)}>
+                ← 이전
+              </button>
+            )}
+            {!last && (
+              <button type="button" className={styles.ghost} onClick={close}>
+                건너뛰기
+              </button>
+            )}
+            <button
+              ref={next}
+              type="button"
+              className={styles.primary}
+              onClick={() => (last ? close() : setIndex(index + 1))}
+            >
+              {last ? "만들러 가기" : "다음 →"}
+            </button>
+          </div>
+          <button
+            type="button"
+            className={styles.off}
+            onClick={() => {
+              turnOffAll();
+              setOpen(false);
+            }}
+          >
+            다시 보지 않기
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

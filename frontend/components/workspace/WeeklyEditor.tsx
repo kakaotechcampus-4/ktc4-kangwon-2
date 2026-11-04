@@ -114,6 +114,8 @@ export default function WeeklyEditor({
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
   const [asking, setAsking] = useState<"" | "confirm" | "blank">("");
+  // 「이 칸 빼기」를 묻는 칸 — 글이 있는 칸은 되돌릴 수 없어 한 번 묻는다.
+  const [dropAsk, setDropAsk] = useState<string | null>(null);
   // 빈 칸 알림을 다시 누를 때마다 새로 그려 다시 흔든다.
   const [nudge, setNudge] = useState(0);
   const history = useCellHistory();
@@ -263,7 +265,14 @@ export default function WeeklyEditor({
   const put = (cellId: string, candidateId: string) =>
     afterSaves(
       "copy",
-      (cur) => copyWeeklyActivity(cur.id, cellId, candidateId, cur.revision),
+      async (cur) => {
+        const next = await copyWeeklyActivity(cur.id, cellId, candidateId, cur.revision);
+        const text = (p: WeeklyPlan) =>
+          p.sections.flatMap((x) => x.cells).find((c) => c.item_id === cellId)?.value ?? "";
+        // 넣기도 칸 글 변경이라 되돌리기로 되돌린다(월간과 같다).
+        history.record(cellId, text(cur), text(next));
+        return next;
+      },
       "후보를 넣었어요.",
     );
   const split = (cellId: string, axis: "VERTICAL" | "HORIZONTAL") =>
@@ -454,11 +463,27 @@ export default function WeeklyEditor({
                   locked ||
                   picked.section.cells.filter((c) => c.day === picked.cell.day).length === 1
                 }
-                onClick={() => void remove(picked.cell.item_id)}
+                onClick={() => {
+                  const id = picked.cell.item_id;
+                  if ((live[id] ?? picked.cell.value)?.trim()) setDropAsk(id);
+                  else void remove(id);
+                }}
               >
                 이 칸 빼기
               </button>
             </div>
+          )}
+          {dropAsk === picked.cell.item_id && (
+            <PlayMonthlyConfirm
+              message="이 칸의 글이 문서에서 빠지고, 되돌릴 수 없어요. 뺄까요?"
+              yes="빼기"
+              disabled={locked}
+              onYes={() => {
+                setDropAsk(null);
+                void remove(picked.cell.item_id);
+              }}
+              onNo={() => setDropAsk(null)}
+            />
           )}
         </>
       )}

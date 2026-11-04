@@ -156,6 +156,71 @@
   text-decoration: underline;
   cursor: pointer;
 }
+/* 만드는 순서(그림 넘기기) — 가운데 큰 쪽지. 그림은 화면 비율 그대로, 넘치면 아래를 자른다. */
+.dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(36, 33, 28, 0.62);
+}
+.slide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(880px, calc(100vw - 32px));
+  padding: 22px 22px 14px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 4px;
+  background: var(--pg-note-soft);
+  box-shadow:
+    var(--pg-shadow-hard),
+    0 14px 30px rgba(36, 33, 28, 0.28);
+  transform: translate(-50%, -50%);
+}
+.slide .posty {
+  top: -34px;
+  right: -14px;
+}
+.shot {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1600 / 986;
+  margin-bottom: 14px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 4px;
+  background: var(--pg-paper);
+  object-fit: cover;
+  object-position: top;
+}
+/* 낮은 화면에서는 그림을 줄여 쪽지가 화면 안에 들게 한다(포스티 · 테이프가 잘리지 않게 넘침 스크롤은 두지 않는다). */
+@media (max-height: 760px) {
+  .shot {
+    max-height: calc(100vh - 300px);
+  }
+}
+.slide .ghost,
+.slide .primary {
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .slide .dots {
+    display: none;
+  }
+  .slide .foot {
+    justify-content: flex-end;
+  }
+}
+.again {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pg-primary-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
 @media (prefers-reduced-motion: reduce) {
   .hole {
     transition: none;

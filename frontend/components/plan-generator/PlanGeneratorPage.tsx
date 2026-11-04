@@ -21,6 +21,8 @@ import { ageSelectionLabel, selectedAgesFor } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
+import { Tape } from "@/components/workspace/WorkspaceUI";
+import { SlideTour } from "@/components/app/Tour";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
@@ -62,8 +64,8 @@ export default function PlanGeneratorPage({ format }: { format: Format | null })
 /** 방식 없이 들어온 옛 주소(/plans/create · 트렌드 링크). 방식은 첫 화면에서만 고른다. */
 function NoFormat() {
   return (
-    <div className="flex w-full flex-col gap-3 px-7 pb-8 pt-6 text-[#2b2826]">
-      <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+    <div className="flex w-full flex-col gap-3 px-10 pb-12 pt-[26px] text-[#2b2826]">
+      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
         연간계획안 만들기
       </h1>
       <p className="m-0 text-base text-[#5c5243]">어떤 방식으로 만들지 먼저 골라 주세요.</p>
@@ -170,11 +172,11 @@ function AnnualGenerator({ format }: { format: Format }) {
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
       {error && (
         <p
           role="alert"
-          className="m-0 rounded-xl border border-[#e8e2d8] bg-white px-4 py-3 text-sm"
+          className="m-0 rounded-md border border-[#e8e2d8] bg-white px-4 py-3 text-sm"
         >
           {error}
           {occupied !== null && (
@@ -194,8 +196,9 @@ function AnnualGenerator({ format }: { format: Format }) {
       )}
 
       {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
+      <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <Tape />
+        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper rounded-md p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -207,11 +210,14 @@ function AnnualGenerator({ format }: { format: Format }) {
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 {year} 연간계획안 만들기
               </h1>
               <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
                 {look.name}
+              </span>
+              <span className="ml-auto">
+                <SlideTour format={format} />
               </span>
             </div>
           </div>
@@ -226,7 +232,7 @@ function AnnualGenerator({ format }: { format: Format }) {
                 ["연령", room.age || "—"],
                 ["학년도", String(year)],
               ].map(([k, v]) => (
-                <div key={k} className="flex flex-col gap-1 rounded-xl bg-[#f7f4ee] px-4 py-3">
+                <div key={k} className="flex flex-col gap-1 rounded-md bg-[#f7f4ee] px-4 py-3">
                   <span className="text-[13px] text-[#5c5243]">{k}</span>
                   <span className="text-lg font-bold">{v}</span>
                 </div>
@@ -245,7 +251,7 @@ function AnnualGenerator({ format }: { format: Format }) {
               id="form"
               disabled
               // 기본 화살표는 칸 끝에 붙는다 — 온보딩 Select 와 같은 chevron 을 안쪽(18px)에 둔다.
-              className="min-h-[52px] appearance-none rounded-xl border border-[#ddd6ca] bg-[#f7f4ee] bg-[length:15px] bg-[right_18px_center] bg-no-repeat pl-4 pr-12 text-base text-[#5c5243]"
+              className="min-h-[52px] appearance-none rounded-md border border-[#ddd6ca] bg-[#f7f4ee] bg-[length:15px] bg-[right_18px_center] bg-no-repeat pl-4 pr-12 text-base text-[#5c5243]"
               style={{ backgroundImage: CHEVRON }}
             >
               <option>{look.form}</option>
@@ -268,7 +274,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             type="button"
             onClick={() => void generate()}
             disabled={!room.className}
-            className="mt-auto min-h-[56px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+            className="mt-auto min-h-[56px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간계획안 만들기
           </button>

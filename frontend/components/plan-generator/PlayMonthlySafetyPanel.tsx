@@ -9,9 +9,9 @@ type SafetyPlan = {
   safety_weeks: { week_id: string; candidate_item_id: string | null }[];
 };
 
-export const CARD = "flex items-center gap-3 rounded-xl border px-4 py-2.5";
+export const CARD = "flex items-center gap-3 rounded-md border px-4 py-2.5";
 /** 넣은 후보 카드 — 안전교육 · 훈련 · 주간 후보가 같이 쓴다. */
-export const PICKED = "border-[#7053a0] bg-[#f6f1fb] shadow-pg-card";
+export const PICKED = "border-[#7053a0] bg-[#f6f1fb]";
 export const PUT =
   "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96] disabled:opacity-40";
 

@@ -42,7 +42,7 @@ import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
-import { useClasses } from "./WorkspaceUI";
+import { Tape, useClasses } from "./WorkspaceUI";
 
 type Status = { id: number; status: "DRAFT" | "CONFIRMED" };
 type Plans = Record<number, Status>;
@@ -179,9 +179,10 @@ export function MonthlyNewView(props: {
   const { play, month, plans, inherit, focus, blocked, template, extras = [] } = props;
   const look = play ? LOOK.play : LOOK.theme;
   return (
-    <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+      <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <Tape />
+        <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -193,7 +194,7 @@ export function MonthlyNewView(props: {
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 월간계획안 만들기
               </h1>
               <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
@@ -218,7 +219,7 @@ export function MonthlyNewView(props: {
                     aria-checked={sel}
                     disabled={st === "CONFIRMED"}
                     onClick={() => props.onMonth(m)}
-                    className={`flex min-h-[46px] flex-col items-center justify-center rounded-xl border text-[15px] leading-tight ${
+                    className={`flex min-h-[46px] flex-col items-center justify-center rounded-md border text-[15px] leading-tight ${
                       sel
                         ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#4a3780]"
                         : st === "CONFIRMED"
@@ -246,12 +247,12 @@ export function MonthlyNewView(props: {
               </h2>
             </div>
             {!inherit && (
-              <p className="m-0 rounded-xl bg-[#f7f4ee] px-4 py-3 text-sm text-[#5c5243]">
+              <p className="m-0 rounded-md bg-[#f7f4ee] px-4 py-3 text-sm text-[#5c5243]">
                 연간계획안에서 이 달의 내용을 찾지 못했어요.
               </p>
             )}
             {inherit?.kind === "theme" && (
-              <div className="rounded-xl bg-[#f7f4ee] px-4 py-3">
+              <div className="rounded-md bg-[#f7f4ee] px-4 py-3">
                 <div className="text-[17px] font-bold">{inherit.theme || "생활주제 없음"}</div>
                 <ol className="m-0 mt-2 grid list-none grid-cols-2 gap-x-4 gap-y-1 p-0 text-[14px]">
                   {inherit.subs.map((s, i) => (
@@ -351,7 +352,7 @@ export function MonthlyNewView(props: {
           {props.problem && (
             <p
               role="alert"
-              className="m-0 rounded-xl bg-[#fbeaea] px-4 py-3 text-sm text-[#8a2f2f]"
+              className="m-0 rounded-md bg-[#fbeaea] px-4 py-3 text-sm text-[#8a2f2f]"
             >
               {props.problem}
             </p>
@@ -362,7 +363,7 @@ export function MonthlyNewView(props: {
               type="button"
               onClick={props.onCreate}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="min-h-[54px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {plans[month] ? `${month}월 월간계획안 열기` : `${month}월 월간계획안 만들기`}
             </button>
