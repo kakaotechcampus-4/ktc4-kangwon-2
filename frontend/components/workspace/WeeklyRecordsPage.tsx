@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { WorkspacePage, Message, useClasses } from "./WorkspaceUI";
-import WeeklyJournalCard from "./WeeklyJournalCard";
+import WeeklyJournalCard, { useWeeklyJournal, type WeeklyJournal } from "./WeeklyJournalCard";
 import { Icon, type IconName } from "@/components/app/icons";
 import { Posty } from "@/components/app/Posty";
 import { listRecords } from "@/lib/api/records";
@@ -33,6 +33,14 @@ const DOMAIN_ICON: Record<string, IconName> = {
   예술경험: "art",
   자연탐구: "nature",
 };
+
+/** 단추를 못 누를 때 그 이유. 흐리기만 하면 고장으로 읽힌다. */
+function journalWhy(journal: WeeklyJournal) {
+  if (journal.doc) return "이번 주 주간 보육일지는 이미 만들었습니다. 아래 칸에서 이어서 쓰세요.";
+  if (journal.busy) return "만드는 중입니다.";
+  if (!journal.sources.length) return "근거로 쓸 기록이 아직 없습니다. 아래 칸에서 근거를 골라 주세요.";
+  return "이번 주 일과 기록을 모아 주간 보육일지 초안을 만듭니다.";
+}
 
 /** 그 날이 든 주의 월요일. 날짜 계산은 전부 현지 시간으로 한다 — UTC 로 돌면 하루가 밀린다. */
 function mondayOf(iso: string) {
@@ -108,8 +116,15 @@ export default function WeeklyRecordsPage() {
   }, [classId, weekKey, weekStart, weekEnd]);
 
   const week = loaded?.key === weekKey ? loaded : null;
+  const routinesForWeek = week?.routines ?? [];
+  const journal = useWeeklyJournal({
+    classId,
+    weekStart,
+    weekEnd,
+    routines: routinesForWeek,
+  });
   const observations = (week?.observations ?? []).filter((r) => r.classId === classId);
-  const routineRows = week?.routines ?? [];
+  const routineRows = routinesForWeek;
 
   const days = useMemo(
     () => (weekStart ? Array.from({ length: 7 }, (_, i) => shift(weekStart, i)) : []),
@@ -138,15 +153,28 @@ export default function WeeklyRecordsPage() {
     <WorkspacePage
       title="주간 기록"
       description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다."
+      action={
+        journal.off ? undefined : (
+          <button
+            type="button"
+            onClick={journal.make}
+            disabled={!!journal.doc || journal.busy || !journal.sources.length}
+            title={journalWhy(journal)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-line bg-primary px-4 text-sm font-semibold text-white shadow-pg-card hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Icon name="plus" className="h-4 w-4" />
+            {journal.busy ? "만드는 중…" : "주간 일지 만들기"}
+          </button>
+        )
+      }
     >
       <Message error>{week?.error}</Message>
 
       <WeeklyJournalCard
-        classId={classId}
+        state={journal}
         className={classes.find((c) => c.id === classId)?.className ?? ""}
         weekStart={weekStart}
         weekEnd={weekEnd}
-        routines={routineRows}
       />
 
       <section className="rounded-sm border border-line bg-paper p-5 shadow-pg-card">
@@ -246,7 +274,7 @@ export default function WeeklyRecordsPage() {
 
         {weekKey && !week ? null : dayCount === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-sm border border-line bg-paper p-10 text-center shadow-pg-card">
-            <Posty pose="sit" face="sad" tone="shell" size={84} label={null} />
+            <Posty pose="sit" face="empty" tone="shell" size={84} label={null} />
             <p className="font-display text-xl font-bold">작성된 기록이 없습니다.</p>
           </div>
         ) : (

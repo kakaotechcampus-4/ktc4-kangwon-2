@@ -29,15 +29,17 @@ const inWeek = (doc: DocumentSummary, start: string, end: string) =>
  * **근거는 관찰 기록이 아니다**(api-spec §11). 확정한 일일 보육일지가 기본이고,
  * 일일을 쓰지 않는 원만 그 주 일과 기록을 바로 받는다. 둘 중 하나지 섞지 않는다.
  */
-export default function WeeklyJournalCard({
+/**
+ * 칸과 화면 머리의 단추가 **같은 상태**를 본다. 단추는 제목 옆에 있어야 하고(WorkspacePage 의
+ * `action`), 근거 고르기와 상태는 칸에 있어야 해서 둘로 나뉘었다.
+ */
+export function useWeeklyJournal({
   classId,
-  className,
   weekStart,
   weekEnd,
   routines,
 }: {
   classId: string;
-  className: string;
   weekStart: string;
   weekEnd: string;
   /** 그 주 일과 기록. 주간 기록 화면이 이미 받아 둔 것을 그대로 쓴다. */
@@ -101,7 +103,38 @@ export default function WeeklyJournalCard({
     }
   }
 
-  if (serverClass === null || !weekStart) return null;
+  return {
+    /** 그 주 일지. `undefined` 는 아직 불러오는 중, `null` 은 없다. */
+    doc: journal,
+    from,
+    setFrom,
+    dailyLogs,
+    routineSources,
+    sources,
+    busy,
+    error,
+    make,
+    retry: () => setReload((n) => n + 1),
+    /** 반을 서버에서 못 찾으면 이 화면에서 할 수 있는 일이 없다. */
+    off: serverClass === null || !weekStart,
+  };
+}
+
+export type WeeklyJournal = ReturnType<typeof useWeeklyJournal>;
+
+export default function WeeklyJournalCard({
+  state,
+  className,
+  weekStart,
+  weekEnd,
+}: {
+  state: WeeklyJournal;
+  className: string;
+  weekStart: string;
+  weekEnd: string;
+}) {
+  const { doc: journal, from, setFrom, dailyLogs, routineSources, sources, busy, error } = state;
+  if (state.off) return null;
 
   return (
     <section className="mb-6 rounded-sm border border-line bg-paper p-5 shadow-pg-card">
@@ -135,29 +168,22 @@ export default function WeeklyJournalCard({
             {journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
           </Link>
         ) : journal === null ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-ink-soft">
-              근거
-              <select
-                value={from}
-                disabled={busy}
-                onChange={(e) => setFrom(e.target.value as From)}
-                className="min-h-11 rounded-md border border-line bg-paper px-2 text-xs text-ink"
-              >
-                <option value="dailyLog">{LABEL.dailyLog} {dailyLogs.length}건</option>
-                <option value="routine">{LABEL.routine} {routineSources.length}건</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={make}
-              disabled={busy || !sources.length}
-              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-line bg-primary px-4 text-xs font-semibold text-white shadow-pg-card hover:bg-primary-hover disabled:opacity-50"
+          <label className="flex items-center gap-2 text-xs text-ink-soft">
+            근거
+            <select
+              value={from}
+              disabled={busy}
+              onChange={(e) => setFrom(e.target.value as From)}
+              className="min-h-11 rounded-md border border-line bg-paper px-2 text-xs text-ink"
             >
-              <Icon name="plus" className="h-4 w-4" />
-              {busy ? "만드는 중…" : "초안 만들기"}
-            </button>
-          </div>
+              <option value="dailyLog">
+                {LABEL.dailyLog} {dailyLogs.length}건
+              </option>
+              <option value="routine">
+                {LABEL.routine} {routineSources.length}건
+              </option>
+            </select>
+          </label>
         ) : null}
       </div>
 
@@ -171,11 +197,7 @@ export default function WeeklyJournalCard({
       {error && (
         <div className="mt-3">
           <Message error>{error}</Message>
-          <button
-            type="button"
-            className="text-xs font-semibold text-primary"
-            onClick={() => setReload((n) => n + 1)}
-          >
+          <button type="button" className="text-xs font-semibold text-primary" onClick={state.retry}>
             다시 불러오기
           </button>
         </div>

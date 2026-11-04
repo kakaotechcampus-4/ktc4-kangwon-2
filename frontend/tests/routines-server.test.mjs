@@ -2287,7 +2287,10 @@ function quickRecordsPage(
     "@/components/app/icons": { Icon: "icon" },
     "@/components/app/Posty": { Posty: "posty" },
     // 이번 주 주간 일지 칸은 따로 테스트한다. 여기서는 자리만 둔다.
-    "./WeeklyJournalCard": { default: "weekly-journal-card" },
+    "./WeeklyJournalCard": {
+      default: "weekly-journal-card",
+      useWeeklyJournal: () => ({ doc: null, sources: [], busy: false, off: false, make: () => {} }),
+    },
     "@/lib/api/records": {
       listRecords: async (classId, period) => {
         calls.push({ op: "observations", classId, ...period });
@@ -3140,18 +3143,39 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
         return { id: "doc-99" };
       },
     },
-  }).default;
-  const view = app.mount(() =>
-    Card({
+  });
+  // 화면과 같은 짝으로 띄운다 — 머리의 「주간 일지 만들기」와 아래 칸이 한 상태를 본다.
+  const view = app.mount(() => {
+    const state = Card.useWeeklyJournal({
       classId: "class-1",
-      className: "햇살반",
       weekStart: "2026-11-02",
       weekEnd: "2026-11-08",
       routines: routineRows,
-    }),
-  );
+    });
+    return jsx("div", {
+      children: [
+        jsx("button", {
+          disabled: !!state.doc || state.busy || !state.sources.length,
+          onClick: state.make,
+          children: "주간 일지 만들기",
+        }),
+        Card.default({
+          state,
+          className: "햇살반",
+          weekStart: "2026-11-02",
+          weekEnd: "2026-11-08",
+        }),
+      ],
+    });
+  });
   return { view, calls, text: () => deepText(view.tree()) };
 }
+
+/** 머리의 「주간 일지 만들기」. 칸에는 이제 단추가 없다. */
+const makeButton = (view) =>
+  all(view.tree()).find(
+    (n) => n?.type === "button" && deepText(n).includes("주간 일지 만들기"),
+  );
 
 const draftWeekly = {
   id: "doc-5",
@@ -3165,6 +3189,7 @@ test("이번 주 주간 일지가 이미 있으면 만들기 대신 이어서 �
   const card = journalCard(t, { weeklies: [draftWeekly] });
   await card.view.flush();
   assert.ok(card.text().includes("이어서 쓰기"), card.text());
+  assert.equal(makeButton(card.view).props.disabled, true);
   assert.equal(card.calls.some((c) => c.op === "create"), false);
 });
 
@@ -3188,10 +3213,7 @@ test("근거를 일과 기록으로 고르면 활동실행이 있는 일과만 �
   const select = all(card.view.tree()).find((n) => n?.type === "select");
   select.props.onChange({ target: { value: "routine" } });
   await card.view.flush();
-  const make = all(card.view.tree()).find(
-    (n) => n?.type === "button" && deepText(n).includes("초안 만들기"),
-  );
-  make.props.onClick();
+  makeButton(card.view).props.onClick();
   await card.view.flush();
   const created = card.calls.find((c) => c.op === "create");
   assert.equal(created.sourceKind, "routine");
@@ -3201,12 +3223,9 @@ test("근거를 일과 기록으로 고르면 활동실행이 있는 일과만 �
   assert.ok(card.calls.some((c) => c.op === "push" && c.href === "/documents?id=doc-99"));
 });
 
-test("근거가 하나도 없으면 초안 만들기를 막고 무엇이 없는지 말한다", async (t) => {
+test("근거가 하나도 없으면 만들기를 막고 무엇이 없는지 말한다", async (t) => {
   const card = journalCard(t);
   await card.view.flush();
-  const make = all(card.view.tree()).find(
-    (n) => n?.type === "button" && deepText(n).includes("초안 만들기"),
-  );
-  assert.equal(make.props.disabled, true);
+  assert.equal(makeButton(card.view).props.disabled, true);
   assert.ok(card.text().includes("확정한 일일 보육일지가 없습니다"), card.text());
 });

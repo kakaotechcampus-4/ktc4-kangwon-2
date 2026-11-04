@@ -22,7 +22,7 @@ export type PostyPose =
   "stand" | "up" | "hand" | "point" | "wave" | "cheer" | "run" | "think" | "sit" | "sitWave";
 
 /** 표정. */
-export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think" | "sad";
+export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think";
 
 const TONE: Record<PostyTone, { paper: string; line: string; fold: string }> = {
   note: { paper: "--pg-note", line: "--pg-note-line", fold: "--pg-note-fold" },
@@ -45,6 +45,12 @@ const TONE: Record<PostyTone, { paper: string; line: string; fold: string }> = {
 };
 
 const INK = "var(--pg-ink)";
+
+/**
+ * 쪽지는 x 7~41 에 서지만 손은 그 밖으로 뻗는다 — `sit` 의 왼손 중심이 2.4,
+ * 손 반지름이 4.2 라 폭 48 짜리 틀에서는 끝이 잘렸다. 좌우로 이만큼 넓혀 둔다.
+ */
+const PAD = 4;
 
 /** 어깨·엉덩이는 쪽지에 붙어 있어 포즈가 달라도 자리가 같다. */
 const SHOULDER = { left: 7, right: 41, y: 28 };
@@ -178,7 +184,6 @@ const SPOKEN: Record<PostyFace, string> = {
   fix: "확인이 필요해요",
   oh: "잠깐요",
   think: "생각 중이에요",
-  sad: "아직 아무것도 없어요",
 };
 
 function arm(
@@ -277,23 +282,6 @@ function Face({ kind }: { kind: PostyFace }) {
         <ellipse cx={24} cy={27} rx={2.8} ry={3.4} {...line} />
       </>
     );
-  // ㅠㅠ — 처진 눈썹에 눈물 두 줄. 「비었다」보다 한 발 더 속상한 자리에만 쓴다.
-  if (kind === "sad")
-    return (
-      <>
-        {/* 눈썹은 안쪽 끝이 올라가야 슬퍼 보인다. 반대로 하면 화난 얼굴이 된다. */}
-        <g {...line}>
-          <path d="M15.4 16.6 20.4 14.6" />
-          <path d="M32.6 16.6 27.6 14.6" />
-        </g>
-        {eyes(19.8)}
-        <g {...line}>
-          <path d="M18.6 22.6v2.8" />
-          <path d="M29.4 22.6v2.8" />
-          <path d="M20.4 29.2q3.6 -2.6 7.2 0" />
-        </g>
-      </>
-    );
   if (kind === "empty")
     return (
       <>
@@ -348,9 +336,9 @@ export function Posty({
   const swinging = walk && pose === "stand";
   return (
     <svg
-      viewBox={`0 0 48 ${height}`}
+      viewBox={`${-PAD} 0 ${48 + PAD * 2} ${height}`}
       width={size}
-      height={Math.round((size * height) / 48)}
+      height={Math.round((size * height) / (48 + PAD * 2))}
       className={[swinging ? "postyWalk" : "", className].filter(Boolean).join(" ") || undefined}
       style={style}
       role={spoken ? "img" : undefined}
