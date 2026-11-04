@@ -98,8 +98,8 @@ export default function PlanNotebookPage() {
   if (importing) return <AnnualImport file={importing.file} onCancel={() => setImporting(null)} />;
 
   return (
-    <div className="flex w-full flex-col gap-5 px-7 pb-8 pt-6 text-[#2b2826]">
-      <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826]">
+      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink lg:text-[44px]">
         어떤 계획안을 만들까요?
       </h1>
       <div
@@ -199,13 +199,13 @@ function Panel({
   const chip = v1 ? "bg-[#e8f1ea] text-[#3b5441]" : "bg-[#eee4f4] text-[#5e4b96]";
   const steps = v1 ? ["연간", "월간", "주간"] : ["연간", "월간"];
   return (
-    <section className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper shadow-pg px-8 py-7">
+    <section className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7">
       {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}
       <details className="group absolute right-5 top-5 z-10">
         <summary
           aria-label={`${MODE[format]} 시작 안내`}
           title="시작 안내"
-          className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-paper text-[#5e4b96] shadow-pg-card group-open:bg-[#f6f1fb] [&::-webkit-details-marker]:hidden"
+          className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-paper text-[#5e4b96] group-open:bg-[#f6f1fb] [&::-webkit-details-marker]:hidden"
         >
           <svg
             viewBox="0 0 24 24"
@@ -221,7 +221,7 @@ function Panel({
             <path d="M12 7h.01" />
           </svg>
         </summary>
-        <p className="absolute right-0 top-full m-0 mt-2 w-[260px] rounded-xl border border-line bg-paper px-4 py-3 text-[14px] leading-relaxed text-[#2b2826] shadow-pg-card">
+        <p className="absolute right-0 top-full m-0 mt-2 w-[260px] rounded-md border border-line bg-paper px-4 py-3 text-[14px] leading-relaxed text-[#2b2826]">
           {v1
             ? "월간부터 시작하면 우리 원 연간계획안을 먼저 넣어요."
             : "놀이 중심형은 연간부터 시작해요."}
@@ -242,7 +242,7 @@ function Panel({
         {steps.map((s, i) => (
           <span key={s} className="contents">
             {i > 0 && <Chevron />}
-            <span className={`flex-1 rounded-xl py-4 text-center text-base font-bold ${chip}`}>
+            <span className={`flex-1 rounded-md py-4 text-center text-base font-bold ${chip}`}>
               {s}
             </span>
           </span>
@@ -250,7 +250,7 @@ function Panel({
         {!v1 && (
           <span className="contents">
             <span aria-hidden="true" className="w-[18px]" />
-            <span className="flex-1 rounded-xl border border-dashed border-[#d7d0c7] py-[15px] text-center text-[15px] text-[#8a8178]">
+            <span className="flex-1 rounded-md border border-dashed border-[#d7d0c7] py-[15px] text-center text-[15px] text-[#8a8178]">
               주간 없음
             </span>
           </span>
@@ -260,7 +260,7 @@ function Panel({
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
             {/* 파일 고르기는 브라우저 기본 창을 쓴다. 고르는 순간 가져오기 화면으로 넘어간다. */}
-            <label className="flex min-h-[54px] flex-[2] cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#7053a0] bg-[#f6f1fb] text-base font-bold text-[#5e4b96] focus-within:outline focus-within:outline-2 focus-within:outline-[#7053a0]">
+            <label className="flex min-h-[54px] flex-[2] cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-[#7053a0] bg-[#f6f1fb] text-base font-bold text-[#5e4b96] focus-within:outline focus-within:outline-2 focus-within:outline-[#7053a0]">
               연간계획안 파일 올리기
               <input
                 type="file"
@@ -275,7 +275,7 @@ function Panel({
             <button
               type="button"
               onClick={() => onImport(null)}
-              className="min-h-[54px] flex-1 rounded-xl border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#5e4b96]"
+              className="min-h-[54px] flex-1 rounded-md border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#5e4b96]"
             >
               파일 없이 직접 입력
             </button>
@@ -293,7 +293,7 @@ function Panel({
         <div className="flex items-center gap-3">
           <Link
             href={`/plans/annual/new?format=${format}`}
-            className="flex min-h-[54px] flex-1 items-center justify-center rounded-xl bg-[#7053a0] text-base font-bold text-white no-underline shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+            className="flex min-h-[54px] flex-1 items-center justify-center rounded-md bg-primary-tint-line hover:bg-primary text-base font-bold text-ink hover:text-white no-underline transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간부터 시작하기
           </Link>
@@ -301,7 +301,7 @@ function Panel({
             type="button"
             onClick={() => onSkip(true)}
             disabled={!v1}
-            className="min-h-[54px] flex-1 rounded-xl border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[54px] flex-1 rounded-md border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {v1 ? "월간부터 시작하기" : "월간부터 시작하기 (준비 중)"}
           </button>
@@ -315,7 +315,7 @@ function PlanCard({ card }: { card: DraftCard }) {
   return (
     <Link
       href={card.href}
-      className={`${CARD_SIZE} flex flex-col gap-3 border border-line bg-paper shadow-pg-card px-5 py-[18px] text-[#2b2826] no-underline`}
+      className={`${CARD_SIZE} flex flex-col gap-3 border border-line bg-paper px-5 py-[18px] text-[#2b2826] no-underline`}
     >
       <span className="flex items-center justify-between">
         <span className="rounded-full bg-[#f7edce] px-[10px] py-[3px] text-[13px] font-bold text-[#705936]">

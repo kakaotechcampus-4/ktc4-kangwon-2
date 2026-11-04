@@ -245,9 +245,9 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
+        <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -263,7 +263,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 주간계획안 만들기
               </h1>
               <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
@@ -287,7 +287,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                     role="radio"
                     aria-checked={sel}
                     onClick={() => setMonth(m)}
-                    className={`flex min-h-[46px] flex-col items-center justify-center rounded-xl border text-[15px] leading-tight ${
+                    className={`flex min-h-[46px] flex-col items-center justify-center rounded-md border text-[15px] leading-tight ${
                       sel
                         ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#4a3780]"
                         : done
@@ -322,7 +322,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                       aria-checked={sel}
                       disabled={p?.status === "CONFIRMED"}
                       onClick={() => (p ? open(p.id, w.week_id) : setWeekId(w.week_id))}
-                      className={`flex min-h-[52px] items-center justify-between gap-2 rounded-xl border px-4 text-left text-[15px] ${
+                      className={`flex min-h-[52px] items-center justify-between gap-2 rounded-md border px-4 text-left text-[15px] ${
                         sel
                           ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#4a3780]"
                           : p?.status === "CONFIRMED"
@@ -356,7 +356,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                   월간에서 이어받아요
                 </h2>
               </div>
-              <div className="rounded-xl bg-[#f7f4ee] px-4 py-3">
+              <div className="rounded-md bg-[#f7f4ee] px-4 py-3">
                 <div className="text-[17px] font-bold">{inherit.theme || "생활주제 없음"}</div>
                 <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[14px]">
                   {inherit.rows.map((r) => (
@@ -383,7 +383,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
           {problem && (
             <p
               role="alert"
-              className="m-0 rounded-xl bg-[#fbeaea] px-4 py-3 text-sm text-[#8a2f2f]"
+              className="m-0 rounded-md bg-[#fbeaea] px-4 py-3 text-sm text-[#8a2f2f]"
             >
               {problem}
             </p>
@@ -394,7 +394,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
               type="button"
               onClick={() => void create()}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="min-h-[54px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {mine ? `${label} 주간계획안 열기` : `${label} 주간계획안 만들기`}
             </button>

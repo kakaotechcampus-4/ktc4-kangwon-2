@@ -147,7 +147,7 @@ function movedNotice(name: string, index: number) {
 }
 
 type LeftTab = "edit" | "picked";
-const ROW = "flex items-center justify-between gap-3 rounded-xl border border-[#e8e2d8] px-4 py-3";
+const ROW = "flex items-center justify-between gap-3 rounded-md border border-[#e8e2d8] px-4 py-3";
 // 문서 기준 폭(A4 세로 비율). 「맞춤」은 이 폭을 문서 칸 폭에 맞춰 키우거나 줄인다.
 const SHEET_WIDTH = 794;
 const SMALL =
@@ -635,7 +635,7 @@ export default function PlayProjectResult({
     <div
       role="tablist"
       aria-label="놀이 프로젝트 기간"
-      className="flex flex-wrap gap-0.5 rounded-xl border border-line bg-paper p-0.5 shadow-pg-card"
+      className="flex flex-wrap gap-0.5 rounded-md border border-line bg-paper p-0.5"
     >
       {plan.periods.map((item, index) => (
         <button
@@ -667,7 +667,7 @@ export default function PlayProjectResult({
         {/* 정답지 ④: 제목 · 칩 · 안내 · 저장 상태 | 계절 탭 — 한 줄. */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
               놀이 고르기
             </h1>
             <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
@@ -686,7 +686,7 @@ export default function PlayProjectResult({
           <div
             role="tablist"
             aria-label="놀이 프로젝트 기간"
-            className="grid w-full grid-cols-2 gap-1 rounded-xl bg-[#ebe5db] p-1 md:flex md:w-auto"
+            className="grid w-full grid-cols-2 gap-1 rounded-md bg-[#ebe5db] p-1 md:flex md:w-auto"
           >
             {plan.periods.map((item, index) => {
               const count = picks[item.period_key]?.length ?? 0;
