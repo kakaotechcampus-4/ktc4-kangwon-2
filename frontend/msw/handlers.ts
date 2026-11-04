@@ -712,7 +712,7 @@ export const handlers = [
           : "확정된 계획안만 내보낼 수 있습니다.",
       );
     }
-    // `?format=pdf|hwpx|hwp` (ADR-039 · ADR-059). 다른 값은 서버처럼 422.
+    // `?format=pdf|hwpx|hwp` (ADR-039 · ADR-061). 다른 값은 서버처럼 422.
     const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
     const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
     if (!(format in type)) return bad("format");
@@ -967,7 +967,7 @@ export const handlers = [
     if (s) return s;
     // 쿼리 형식 422 가 소유 404 보다 먼저다(FastAPI 스키마).
     const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
-    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp" };
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
     if (!(format in type)) return bad("format");
     const plan = playOwn(String(params.id));
     if (plan instanceof Response) return plan;

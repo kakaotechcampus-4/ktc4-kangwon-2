@@ -627,3 +627,7 @@ def test_확정한_놀이_월간은_나눈_모양대로_hwpx_로_내려받고_�
     assert response.headers["content-type"].startswith("application/hwp+zip")
     assert "filename*=UTF-8''4%EC%9B%94" in response.headers["content-disposition"]
     assert response.content[:2] == b"PK"
+    # PDF 도 같은 hwpx 에서 그린다(ADR-061) — 나눈 시간표가 든 표도 그려지는지.
+    pdf = client.get(f"{URL}/{row.id}/export/hwp?format=pdf")
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.content[:4] == b"%PDF"

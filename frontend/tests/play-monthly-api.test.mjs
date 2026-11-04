@@ -681,11 +681,13 @@ test("timetable: split, remove, ratio and size follow the server limits; export 
   ]);
   const exported = (format) => fetch(`/api/plans/monthly/play/${id}/export/hwp?format=${format}`);
   assert.equal((await exported("hwpx")).status, 409);
-  assert.equal((await exported("pdf")).status, 422);
+  assert.equal((await exported("doc")).status, 422);
   const done = addPlayMonthly(klass.id, true, 12);
-  const file = await fetch(`/api/plans/monthly/play/${done.id}/export/hwp?format=hwp`);
-  assert.equal(file.status, 200);
-  assert.match(file.headers.get("Content-Disposition"), /play-monthly-\d+\.hwp"/);
+  for (const format of ["hwp", "pdf"]) {
+    const file = await fetch(`/api/plans/monthly/play/${done.id}/export/hwp?format=${format}`);
+    assert.equal(file.status, 200);
+    assert.ok(file.headers.get("Content-Disposition").includes(`.${format}"`));
+  }
 });
 
 test("a draft is deleted with 204 and then it is 404", async () => {
