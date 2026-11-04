@@ -15,6 +15,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@lucasmarkes/hairline": "0.5.1",
     "mammoth": "^1.12.3",
     "next": "16.3.4",
     "pdf-parse": "^2.4.5",
