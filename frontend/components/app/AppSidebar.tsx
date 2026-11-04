@@ -36,7 +36,7 @@ interface NavItem {
  * 교사가 친 한 줄(기록)과 그것으로 만든 문서(보육일지·계획안)는 하는 일이 다른데,
  * 이름이 둘 다 「기록」·「문서」로 섞여 있어 어디서 무엇을 하는지 헷갈렸다.
  */
-const HOME: NavItem = { key: "home", label: "우리 반", href: "/", icon: "home" };
+const HOME: NavItem = { key: "home", label: "홈", href: "/", icon: "home" };
 
 const GROUPS: { title: string; items: NavItem[] }[] = [
   {
@@ -152,7 +152,7 @@ export default function AppSidebar() {
             aria-label="쌤플 홈으로"
             className="flex h-11 w-11 items-center justify-center"
           >
-            <SsampleMark size={32} />
+            <SsampleMark size={32} tone="rail" />
           </Link>
           <button
             type="button"
@@ -289,7 +289,7 @@ export default function AppSidebar() {
             이것이 먼저 빠지는 쪽이 낫다. 880px 으로 잡았더니 14인치 노트북(창 높이 760~800)
             에서 통째로 사라졌다 — 사이드바는 넘치면 스크롤되므로 760px 부터 보인다.
           */}
-          <div className="relative mb-3 hidden pt-[22px] [@media(min-height:700px)]:block">
+          <div className="relative mb-9 hidden pt-[22px] [@media(min-height:700px)]:block">
             {/*
               쪽지 뒤에서 포스티가 눈만 내민다. 쪽지 윗변이 입을 가리는 높이(pt-[29px])라
               얼굴을 통째로 올려 두는 것보다 「뒤에 있다」가 분명하다. 팔다리는 쪽지에 가려

@@ -4,7 +4,7 @@ import WorkspaceTopBar from "./WorkspaceTopBar";
 import ContentShell from "./ContentShell";
 
 /**
- * 온보딩 이후 일반 서비스 화면의 공통 셸.
+ * 서비스 화면의 공통 셸. 원·반이 없으면 메인 밖은 안내 카드가 대신 뜬다.
  *   AppLayout
  *   ├ AppSidebar      (데스크톱: 좌측 고정 / 모바일: 하단 네비)
  *   ├ WorkspaceTopBar (얇은 상단 띠 — 지금 어디인지와 오늘 날짜)

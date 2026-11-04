@@ -60,6 +60,8 @@ export interface ApiClass {
   teacher_name: string;
   consent_confirmed_at: string | null;
   created_at: string;
+  /** 이 계정이 이 반을 쓸 수 있는지 (ADR-059). 옛 서버 응답에는 없다. */
+  my_access?: "OWNER" | "OPEN" | "APPROVED" | "PENDING" | "REJECTED" | "REVOKED" | "NONE";
 }
 export interface ChildInput {
   name: string;

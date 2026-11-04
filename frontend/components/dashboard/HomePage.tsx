@@ -10,7 +10,7 @@
  * 종이의 가장자리로 덩어리를 가른다(`globals.css` 의 `.slipEdge` · `.tornPaper`).
  * 네모 테두리를 더 두르면 카드가 늘지만, 교사가 보는 것은 쌓인 종이다.
  *
- * 관찰 기록은 서버에 저장된다(`addRecord`). 반 전체 일과는 오늘 일과 적기에서 입력한다.
+ * 관찰 기록은 서버에 저장된다(`addRecord`). 반 전체 일과는 일과 화면에서 입력한다.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -38,6 +38,7 @@ import {
   type LastWeek,
 } from "@/lib/workspace/home-blocks";
 import { koreanDateParts } from "@/lib/greeting";
+import { roomReady } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { useDictation } from "@/lib/hooks/use-dictation";
 
@@ -45,6 +46,11 @@ const PRIMARY =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-primary-line " +
   "bg-primary px-4 text-xs font-semibold text-white shadow-pg-card transition-colors " +
   "hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40";
+/** 보조 버튼. 보라 버튼 옆에 설 때 테두리와 도장 그림자로 버튼인 것을 분명히 한다. */
+const SECONDARY =
+  "inline-flex min-h-9 items-center justify-center rounded-md border border-line bg-paper px-3.5 " +
+  "text-xs font-semibold text-ink shadow-pg-card transition-transform " +
+  "active:translate-x-[2px] active:translate-y-[3px] active:shadow-none";
 /** 영수증 줄 사이의 점선. 선 하나로 「따로 적은 것」이 갈린다. */
 const DASH = "border-0 border-t border-dashed border-line";
 /** 쪽지 머리의 작은 라벨. 손글씨 제목과 달리 넓게 벌려 쓴다. */
@@ -74,6 +80,8 @@ export default function HomePage() {
   const classes = useClasses(onError);
   const [records, setRecords] = useState<ServerObservation[] | null>(null);
   const [todayDate] = useClientState(() => today(), "");
+  // HomePage 는 세션 확인 뒤(클라이언트)에만 뜨니 첫 렌더에 실제 값이 있다. `true` 는 서버 · 하이드레이션용 안전 기본.
+  const [ready] = useClientState(roomReady, true);
 
   /**
    * 홈이 **지금 보여 주는 반**. 빠른 기록이 저장하는 반과 **같은 값**이어야 한다.
@@ -105,7 +113,11 @@ export default function HomePage() {
   const reload = useCallback(() => {
     const at = (visit.current += 1);
     // 반이 아직 안 붙었으면 묻지 않는다. 서버 반이 늦게 도착하면 deps 가 바뀌어 다시 돈다.
-    const asked = activeClassId ? listRecords(activeClassId) : Promise.resolve([]);
+    // 자리표시 반(class-1, 서버 연결 없음)은 조회가 던진다. 원 · 반이 비어도 서버에 붙은 반은 묻는다.
+    const asked =
+      activeClassId && (ready || classServerId(activeClassId) !== null)
+        ? listRecords(activeClassId)
+        : Promise.resolve([]);
     asked
       .then((rows) => {
         if (at === visit.current) setRecords(rows);
@@ -115,7 +127,7 @@ export default function HomePage() {
         setRecords([]);
         setMessage("기록을 불러오지 못했어요. 새로고침해주세요.");
       });
-  }, [activeClassId]);
+  }, [activeClassId, ready]);
   useEffect(() => {
     reload();
   }, [reload, recordsRevision]);
@@ -206,6 +218,33 @@ export default function HomePage() {
             </svg>
           </span>
         </h1>
+
+        {!ready && (
+          <section
+            aria-labelledby="room-setup-title"
+            className="relative mb-8 -rotate-[0.6deg] border border-note-line bg-note px-6 py-5 shadow-pg-card"
+          >
+            <Tape className="left-8 -rotate-3" />
+            <div className="flex flex-wrap items-center gap-5">
+              <div className="min-w-0 flex-1 basis-60">
+                <h2
+                  id="room-setup-title"
+                  className="font-display text-[28px] font-bold leading-tight text-sun-ink"
+                >
+                  선생님, 우리 반부터 알려 주세요!
+                </h2>
+                <p className="mt-1.5 text-xs leading-[1.7] text-sun-ink">
+                  원 정보와 반 정보를 넣으면 계획안과 기록을 바로 쓸 수 있어요. 아동 명단은 나중에
+                  넣어도 돼요.
+                </p>
+              </div>
+              <Link href="/onboarding" className={PRIMARY}>
+                등록하러 갈게요
+                <Icon name="arrow" className="h-4 w-4" />
+              </Link>
+            </div>
+          </section>
+        )}
 
         {message && (
           <p role="alert" className="mb-5 rounded-md border border-line bg-paper px-4 py-3 text-xs">
@@ -684,29 +723,23 @@ function TodaySlip({
       <div className="bg-ivory px-5 lg:px-6">
         <div className="flex items-baseline justify-between gap-3 py-3">
           <h2 className={`${LABEL} min-w-0 text-ink-soft`}>
-            오늘 적은 내용 <b className="text-primary">{records.length}</b>건
+            오늘 적은 기록 <b className="text-primary">{records.length}</b>건
           </h2>
           <Link href="/records" className="shrink-0 text-xs font-semibold text-primary">
             전체 기록 →
           </Link>
         </div>
 
-        {routines && (
+        {/* 일과가 비면 이 줄을 아예 안 그린다 — 일과로 가는 길은 아래 일지 줄에 한 번만 둔다.
+            적힌 일과가 있으면 그 줄 자체가 고치러 가는 길이다. 링크 글자를 따로 달지 않는다. */}
+        {names.length > 0 && (
           <>
             <hr className={DASH} />
-            <div className="flex flex-wrap items-baseline gap-3 py-3">
-              <span className="w-[52px] shrink-0 text-[13px] text-ink-soft">
-                {routineTime(routines[0]?.start ?? null)}
-              </span>
-              <span className="min-w-0 flex-1 text-sm text-ink">
-                {names.length ? `일과 — ${names.join(" · ")}` : "일과를 아직 안 적었어요"}
-              </span>
-              {routinesHref && (
-                <Link href={routinesHref} className="shrink-0 text-xs font-semibold text-primary">
-                  오늘 일과 적기
-                </Link>
-              )}
-            </div>
+            <RoutineLine
+              href={routinesHref}
+              time={routineTime(routines?.[0]?.start ?? null)}
+              names={names}
+            />
           </>
         )}
 
@@ -740,7 +773,7 @@ function TodaySlip({
         <hr className={`${DASH} border-t-2`} />
         <div className="flex flex-wrap items-center gap-3 py-4">
           <span className="min-w-0 flex-1 border-l-[3px] border-peach-strong bg-peach-tint py-2 pl-3.5">
-            <span className={`${LABEL} block text-peach-ink`}>오늘 적은 것으로</span>
+            <span className={`${LABEL} block text-peach-ink`}>오늘 적은 기록으로</span>
             <span className="mt-0.5 block text-sm font-bold text-ink">{day} 보육일지</span>
           </span>
           {dailyLogHref ? (
@@ -749,15 +782,12 @@ function TodaySlip({
               <Icon name="arrow" className="h-4 w-4" />
             </Link>
           ) : (
-            <span className="text-[13px] text-ink-soft">
+            <span className="flex flex-wrap items-center gap-2.5 text-[13px] text-ink-soft">
               일과를 적으면 만들 수 있어요
               {routinesHref && (
-                <>
-                  {" · "}
-                  <Link href={routinesHref} className="font-semibold text-primary underline">
-                    일과 적기
-                  </Link>
-                </>
+                <Link href={routinesHref} className={SECONDARY}>
+                  일과 작성하기
+                </Link>
               )}
             </span>
           )}
@@ -765,6 +795,31 @@ function TodaySlip({
       </div>
       <div aria-hidden="true" className="slipEdge bottom" />
     </section>
+  );
+}
+
+/** 오늘 적힌 일과 한 줄. 주소가 있으면 줄 전체가 고치러 가는 길이 된다. */
+function RoutineLine({
+  href,
+  time,
+  names,
+}: {
+  href: string | null;
+  time: string;
+  names: string[];
+}) {
+  const row = "flex flex-wrap items-baseline gap-3 py-3";
+  const line = (
+    <>
+      <span className="w-[52px] shrink-0 text-[13px] text-ink-soft">{time}</span>
+      <span className="min-w-0 flex-1 text-sm text-ink">{`일과 — ${names.join(" · ")}`}</span>
+    </>
+  );
+  if (!href) return <div className={row}>{line}</div>;
+  return (
+    <Link href={href} className={`${row} hover:underline`}>
+      {line}
+    </Link>
   );
 }
 
@@ -834,7 +889,7 @@ function UnseenChildren({
     unseen.length === roster.length && unseen.every(({ tally }) => tally.days === null);
 
   return (
-    <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이들 전부 보기 →">
+    <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이별 기록 →">
       {unseen.length === 0 ? (
         <ChalkLine>
           이번 주{" "}

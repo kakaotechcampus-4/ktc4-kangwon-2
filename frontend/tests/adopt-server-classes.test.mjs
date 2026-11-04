@@ -328,3 +328,89 @@ test("★ 목록에 이미 있는 반은 두 번 담지 않는다", async () => 
 
   assert.deepEqual(await onboarding.adoptServerClasses(known), []);
 });
+
+/** 남이 주인인 반은 못 쓴다 (ADR-059). 칸이 없는 옛 서버 응답은 지금처럼 쓴다. */
+test("my_access 가 NONE 인 반은 들이지 않고 OWNER · OPEN 은 들인다", async () => {
+  browser();
+  api({
+    classes: [
+      { ...CLASS, id: 7, my_access: "OWNER" },
+      { ...CLASS, id: 8, name: "열린반", my_access: "OPEN" },
+      { ...CLASS, id: 9, name: "남의반", my_access: "NONE" },
+    ],
+  });
+  const adopted = await onboarding.adoptServerClasses([]);
+  assert.deepEqual(
+    adopted.map((c) => c.className),
+    ["햇살반", "열린반"],
+  );
+});
+
+test("my_access 칸이 없으면 지금처럼 들인다", async () => {
+  browser();
+  api();
+  assert.equal((await onboarding.adoptServerClasses([])).length, 1);
+});
+
+test("이미 목록에 있고 연결된 반이 NONE 이 되면 저장 목록에서 뺀다 — 연결은 남긴다", async () => {
+  const values = browser();
+  api({ classes: [{ ...CLASS, my_access: "NONE" }] });
+  await onboarding.adoptServerClasses([]); // 저장 키를 만든다
+  values.set(
+    linksKey(),
+    JSON.stringify({
+      classes: { "class-abc": { id: 7, signature: "" } },
+      children: {},
+      retired: [],
+    }),
+  );
+  const known = [{ id: "class-abc", className: "햇살반", children: [] }];
+  const calls = [];
+
+  await onboarding.adoptServerClasses(known, undefined, (rows, dropped) =>
+    calls.push([rows.length, dropped]),
+  );
+
+  assert.deepEqual(calls, [[0, ["class-abc"]]]);
+  assert.deepEqual(Object.keys(JSON.parse(values.get(linksKey())).classes), ["class-abc"]);
+});
+
+test("반 목록 요청이 실패하면 아무것도 빼지 않는다", async () => {
+  const values = browser();
+  api();
+  await onboarding.adoptServerClasses([]); // 저장 키를 만든다
+  server.use(http.get("*/api/centers/:id/classes", () => HttpResponse.error()));
+  values.set(
+    linksKey(),
+    JSON.stringify({
+      classes: { "class-abc": { id: 7, signature: "" } },
+      children: {},
+      retired: [],
+    }),
+  );
+  const known = [{ id: "class-abc", className: "햇살반", children: [] }];
+  const calls = [];
+
+  await assert.rejects(
+    onboarding.adoptServerClasses(known, undefined, (rows, dropped) => calls.push(dropped)),
+  );
+  assert.deepEqual(calls, []);
+});
+
+/** 11/07 재현: 한 번 쓴 계정(links · retired 가 이미 있음)에 서버가 새 반을 NONE 으로 준다. */
+test("★ 한 번 쓴 계정에 새로 생긴 NONE 반도 들이지 않는다", async () => {
+  const values = browser();
+  api({ classes: [CLASS, { ...CLASS, id: 8, name: "남의반", my_access: "NONE" }] });
+  await onboarding.adoptServerClasses([]); // 저장 키를 만든다
+  values.set(
+    linksKey(),
+    JSON.stringify({
+      classes: { "class-abc": { id: 7, signature: "" } },
+      children: {},
+      retired: [],
+    }),
+  );
+  const known = [{ id: "class-abc", className: "햇살반", children: [] }];
+
+  assert.deepEqual(await onboarding.adoptServerClasses(known), []);
+});

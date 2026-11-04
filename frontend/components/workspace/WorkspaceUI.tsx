@@ -84,17 +84,17 @@ export function useClasses(onError?: (message: string) => void) {
       // 반대로 끊기면 「연결은 있는데 목록에 없는 반」이 되어 영영 안 들어온다.
       // 화면을 떠났어도 저장은 한다. 사이드바·홈도 저장소를 본다.
       let next = local;
-      const adopted = await adoptServerClasses(
+      await adoptServerClasses(
         local,
         (name) =>
           onError?.(`${name || "반"}의 아동 명단을 못 불러왔어요. 페이지를 새로고침해주세요.`),
-        (rows) => {
-          next = [...local, ...rows];
+        (rows, dropped) => {
+          // 남의 반이 된 것은 뺀다 — 들인 반이 없어도 저장 · 화면 갱신이 필요하다.
+          next = [...local.filter((c) => !dropped.includes(c.id)), ...rows];
           saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
         },
       );
-      if (!adopted.length) return;
-      if (live) setClasses(next);
+      if (next !== local && live) setClasses(next);
     })().catch(() => {
       if (live) onError?.("반 정보를 불러오지 못했어요. 페이지를 새로고침해주세요.");
     });

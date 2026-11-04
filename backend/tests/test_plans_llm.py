@@ -62,6 +62,8 @@ def test_열두_달을_한_번에_보내고_받는다():
 
     def transport(url, *, headers, payload, timeout):
         sent["user"] = json.loads(payload["messages"][1]["content"])
+        assert sent["user"]["prompt_version"] == "annual-theme-text-v3"
+        assert "일부 소재로 임의로 좁히지 않는다" in payload["messages"][0]["content"]
         themes = [
             {"theme_id": month["theme_id"], "value": f"만든 주제 {month['month']}"}
             for month in sent["user"]["months"]

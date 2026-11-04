@@ -169,6 +169,36 @@ def test_titles_preview_and_metadata(filled: bytes) -> None:
     assert not metas.get("creator") and not metas.get("lastsaveby")
 
 
+def test_notice_reuses_monthly_text_after_each_table(filled: bytes) -> None:
+    monthly = etree.fromstring(
+        parts((TEMPLATE.parent / "play_monthly.hwpx").read_bytes())["Contents/section0.xml"]
+    )
+    expected = monthly.xpath("//hp:t/text()", namespaces=NS)[-2:]
+    section = etree.fromstring(parts(filled)["Contents/section0.xml"])
+    assert section.find(".//hp:footer", NS) is None
+    table_paragraphs = [
+        p for p in section.findall("hp:p", NS) if p.find(".//hp:tbl", NS) is not None
+    ]
+    for p in table_paragraphs:
+        first = p.getnext()
+        second = first.getnext()
+        assert [
+            "".join(node.xpath("hp:run/hp:t/text()", namespaces=NS)) for node in (first, second)
+        ] == expected
+    assert len(section.findall(".//hp:tbl", NS)) == 2
+
+
+def test_rebuilding_template_keeps_the_notice_text(filled: bytes) -> None:
+    from scripts.build_play_project_template import build
+
+    rebuilt = etree.fromstring(parts(build(filled))["Contents/section0.xml"])
+    notices = [
+        p.getnext() for p in rebuilt.findall("hp:p", NS) if p.find(".//hp:tbl", NS) is not None
+    ]
+    assert len(notices) == 2
+    assert all("2019" in "".join(p.itertext()) for p in notices)
+
+
 def test_changed_paragraphs_drop_the_line_layout_cache(filled: bytes) -> None:
     for table in tables(filled):
         for tc in table.iterfind("hp:tr/hp:tc", NS):
