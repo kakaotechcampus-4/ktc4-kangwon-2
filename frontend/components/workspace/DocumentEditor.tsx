@@ -574,7 +574,7 @@ export default function DocumentEditor({
       {doc.sources.length > 0 && (
         <details>
           <summary className={ws.link}>원본 근거 {doc.sources.length}건 펼쳐보기</summary>
-          {doc.sources.map((source, i) => (
+          {doc.sources.map((source) => (
             <blockquote key={source.id} className={ws.quote}>
               <small className={ws.muted}>
                 {source.date}
