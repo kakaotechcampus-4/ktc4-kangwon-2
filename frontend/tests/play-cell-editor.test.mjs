@@ -163,6 +163,8 @@ test("the editor is a labelled textarea", () => {
   const { area } = mount().render();
   assert.equal(area.props.id, "cell");
   assert.equal(area.props.readOnly, undefined);
+  // 높이 고정 — 끌어서 늘리지 않고 넘치는 글은 안에서 스크롤.
+  assert.match(area.props.className, /!h-\[180px\] !resize-none overflow-y-auto/);
 });
 
 test("characters are counted as code points like the server: 300 emoji are 300 and savable", (t) => {
@@ -206,13 +208,4 @@ test("allowBlank saves a blank value after one second and on leaving, without th
   view.type("가".repeat(601));
   t.mock.timers.tick(5000);
   assert.equal(view.calls.saves.length, 2);
-});
-
-test("maxLength Infinity (월간 v1) saves over 600 characters and shows no limit", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const view = mount("저장된 값", { allowBlank: true, maxLength: Infinity });
-  assert.equal(view.type("가".repeat(601)).count, "601자");
-  view.leave();
-  assert.deepEqual(view.calls.saves, ["가".repeat(601)]);
-  assert.equal(view.calls.reverts, 0);
 });

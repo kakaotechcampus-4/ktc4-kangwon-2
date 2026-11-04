@@ -161,21 +161,11 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ]);
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
-  // 확정 화면 → 월간 → (양식이 없어) 월간 양식 설정.
+  // 확정 화면 → 월간 만들기. 넣을 칸은 만들기 화면에서 고른다(따로 양식 화면이 없다, 2026-11-03).
   await page.getByRole("link", { name: "월간계획안 만들기 →", exact: true }).click();
-  await page.getByRole("link", { name: "월간 양식 설정으로 가기", exact: true }).click();
-  // Latest approved version is preselected. Switching versions drops picks the other one lacks.
-  const base = page.getByLabel("기반 양식");
-  await expect(base).toHaveValue("monthly-template-a-v0.2.3");
-  await page.getByRole("checkbox", { name: /실내 대체활동/ }).check();
-  await base.selectOption("monthly-template-a-v0.2.1");
-  await base.selectOption("monthly-template-a-v0.2.3");
+  await expect(page.getByRole("group", { name: "어떤 칸을 넣을까요?" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /실내 대체활동/ })).not.toBeChecked();
-  await page.getByRole("button", { name: /칸으로 양식 만들기/ }).click();
-  await expect(page.getByText("새 양식을 만들고 원 기본으로 설정했어요.")).toBeVisible();
-  // 계획안 첫 화면에 월간 링크가 없다(2026-11-02 결정) — 주소로 간다.
-  await page.goto("/plans/monthly");
-  await page.getByRole("button", { name: /월 계획안 만들기/ }).click();
+  await page.getByRole("button", { name: /월간계획안 만들기/ }).click();
   // 놀이 월간과 같은 화면: 문서에서 칸을 누르면 옆 패널에서 고치고, 입력을 멈추거나 떠나면 저장한다.
   const doc = page.getByRole("region", { name: "월간계획안 미리보기", exact: true });
   const outdoor = doc
@@ -185,15 +175,19 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   const firstCell = await outdoor.locator("td").first().boundingBox();
   expect(Math.abs(firstWeek!.x - firstCell!.x)).toBeLessThan(2);
   const cell = (n: number) => outdoor.locator("td").nth(n).locator("[data-cell]");
-  const field = page.getByRole("textbox", { name: /^바깥놀이 · / });
+  const field = page.getByRole("textbox", { name: / · 바깥놀이$/ });
   await cell(0).click();
   await expect(cell(0)).toHaveAttribute("aria-pressed", "true");
   await expect(field).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
   const regenerated = page.waitForResponse(
     (response) => response.url().endsWith("/regenerate") && response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "↻ 이 칸만 다시 만들기", exact: true }).click();
+  // 다시 만들기 · 확정은 브라우저 창 대신 페이지 안에서 한 번 더 묻는다.
+  await page.getByRole("button", { name: "AI로 이 칸 다시 만들기", exact: true }).click();
+  await page
+    .getByRole("group", { name: /^이 칸을 다시 만들면/ })
+    .getByRole("button", { name: "다시 만들기", exact: true })
+    .click();
   expect((await regenerated).status()).toBe(200);
   await field.fill("");
   await field.pressSequentially("친구와 함께 만드는 우리 반 놀이", { delay: 15 });
@@ -212,13 +206,22 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await cell(0).click();
   await field.fill("친구와 함께 만드는 새로운 우리 반 놀이");
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
+  await page
+    .getByRole("group", { name: /^확정하면/ })
+    .getByRole("button", { name: "확정하기", exact: true })
+    .click();
   await expect(page.getByText("확정했어요. 이제 고칠 수 없어요.")).toBeVisible();
+  // 확정 후 화면: 확정본 · 한글 내보내기 · 주간 만들기 · 홈.
+  await expect(page.getByRole("heading", { name: /월 월간계획안을 확정했어요$/ })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "주간계획안 만들기 →", exact: true }),
+  ).toHaveAttribute("href", "/plans/weekly");
   await page.reload();
   await expect(cell(0)).toHaveText("친구와 함께 만드는 새로운 우리 반 놀이");
   await expect(cell(0)).not.toHaveAttribute("role", "button");
   await expect(page.getByRole("textbox")).toHaveCount(0);
   const monthlyDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
+  await page.getByRole("button", { name: /한글로 내보내기$/ }).click();
   await verifyHwpx(await monthlyDownload, info.outputPath("pilot-monthly.hwpx"), [
     "친구와 함께 만드는 새로운 우리 반 놀이",
     "교사가 준비한 자연물을 함께 살펴본다.",
@@ -286,14 +289,16 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
       await expect(page.getByRole("textbox")).toHaveCount(0);
     }
     if (kind === "weekly") {
-      // 보관함 링크가 고른 주가 「보는 중」이고, 그 주 계획안이 열린다.
+      // 보관함 링크로 그 주 계획안의 다듬기 화면이 열린다.
       await expect(
-        page
-          .getByRole("navigation", { name: `${monthPlan.month}월의 주` })
-          .locator('[aria-current="true"]'),
-      ).toContainText(week.label);
+        page.getByRole("heading", {
+          name: `${monthPlan.month}월 ${week.label} 주간계획안`,
+          exact: true,
+          level: 1,
+        }),
+      ).toBeVisible();
       await expect(
-        page.getByRole("heading", { name: week.label, exact: true, level: 2 }),
+        page.getByRole("region", { name: "주간계획안 미리보기", exact: true }),
       ).toBeVisible();
     }
   }

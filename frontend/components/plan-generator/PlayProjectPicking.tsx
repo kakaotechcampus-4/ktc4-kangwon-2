@@ -2,6 +2,7 @@
 
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import PlayPickBoard from "@/components/plan-ui/PlayPickBoard";
+import { playSeason } from "./playProjectPagination";
 
 type Period = PlayProjectAnnualPlan["periods"][number];
 
@@ -17,6 +18,8 @@ type Props = {
   onRemove: (rowKey: string, slot: number) => void;
   onDetail: (rowKey: string | null) => void;
   onArrange: () => void;
+  /** 다음 계절 탭으로 옮긴다. */
+  onPeriod: (index: number) => void;
 };
 
 /**
@@ -25,6 +28,7 @@ type Props = {
  * 구간 탭과 진행 수는 부모가 그린다.
  */
 export default function PlayProjectPicking({
+  periods,
   period,
   picks,
   max,
@@ -34,7 +38,11 @@ export default function PlayProjectPicking({
   onRemove,
   onDetail,
   onArrange,
+  onPeriod,
 }: Props) {
+  // 정답지 ④: 다음 계절로 가기가 기본, 마지막 계절이면 문서 만들기. 중간에 끝내기는 아래 작은 버튼.
+  const index = periods.findIndex((p) => p.period_key === period.period_key);
+  const next = index >= 0 && index < periods.length - 1 ? index + 1 : null;
   const candidates = period.candidates.map((c) => ({
     key: c.row_key,
     name: c.play_name.value,
@@ -44,7 +52,7 @@ export default function PlayProjectPicking({
   }));
   return (
     <PlayPickBoard
-      season={period.label}
+      season={playSeason(period).name}
       max={max}
       candidates={candidates}
       picked={picks[period.period_key] ?? []}
@@ -53,8 +61,11 @@ export default function PlayProjectPicking({
       onFocus={onDetail}
       onToggle={onToggle}
       onRemove={onRemove}
-      onNext={onArrange}
-      nextLabel="배치하고 다듬기로"
+      onNext={next === null ? onArrange : () => onPeriod(next)}
+      nextLabel={
+        next === null ? "문서 만들기 →" : `${playSeason(periods[next]).name} 고르러 가기 →`
+      }
+      onFinishEarly={next === null ? undefined : onArrange}
     />
   );
 }

@@ -30,9 +30,12 @@ import {
   unconfirmPlan,
   listAnnualAudit,
   safetyCategories,
+  removePlan,
+  resetPlan,
 } from "./data/annual-plans";
 import {
   confirmPlayMonthly,
+  addPlayMonthly,
   copyPlayMonthlyDrill,
   editPlayMonthlyCell,
   findPlayMonthly,
@@ -44,8 +47,24 @@ import {
   playCells,
   removePlayMonthly,
   removePlayMonthlyActivity,
+  removePlayMonthlyTimetable,
+  resizePlayMonthlySplit,
+  resizePlayMonthlyTable,
+  splitPlayMonthlyTimetable,
   unconfirmPlayMonthly,
 } from "./data/play-monthly";
+import {
+  CELL_MIN_WIDTH,
+  MAX_DEPTH,
+  RATIO_RANGE,
+  boundaries,
+  locate,
+  narrowest,
+  splitLeaf,
+  tooNarrow,
+  validSize,
+  withRatio,
+} from "../lib/plan-generator/playMonthlyTimetable";
 import {
   REGENERATABLE,
   addMonthly,
@@ -521,6 +540,25 @@ export const handlers = [
     const plan = findPlan(Number(params.id));
     return plan ? HttpResponse.json(plan) : annualMissing();
   }),
+  http.delete("*/api/plans/annual/:id", ({ params }) => {
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    const blocked = removePlan(id);
+    if (blocked === "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
+    if (blocked === "IN_USE")
+      return failure(
+        "GATE_BLOCKED",
+        "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.",
+      );
+    return new HttpResponse(null, { status: 204 });
+  }),
+  // 시험용 — 서버처럼 꺼져 있으면 없는 경로(404)다. 켜기: .env.local NEXT_PUBLIC_ALLOW_TEST_RESET=1
+  http.delete("*/api/plans/annual/:id/test-reset", ({ params }) =>
+    process.env.NEXT_PUBLIC_ALLOW_TEST_RESET === "1" && resetPlan(Number(params.id))
+      ? new HttpResponse(null, { status: 204 })
+      : annualMissing(),
+  ),
   http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
@@ -674,10 +712,14 @@ export const handlers = [
           : "확정된 계획안만 내보낼 수 있습니다.",
       );
     }
-    const name = `plan-${id}.hwpx`;
-    return new HttpResponse("MSW hwpx", {
+    // `?format=pdf|hwpx|hwp` (ADR-039 · ADR-061). 다른 값은 서버처럼 422.
+    const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
+    if (!(format in type)) return bad("format");
+    const name = `plan-${id}.${format}`;
+    return new HttpResponse(`MSW ${format}`, {
       headers: {
-        "Content-Type": "application/hwp+zip",
+        "Content-Type": type[format as keyof typeof type],
         "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
       },
     });
@@ -733,11 +775,10 @@ export const handlers = [
           ? "연간계획안을 먼저 확정해주세요."
           : null;
     if (gate) return failure("GATE_BLOCKED", gate, "class_id");
-    // 서버는 생성 규칙이 아직 없어 게이트 뒤에서 항상 503 이다. 아무것도 저장하지 않는다.
-    return failure(
-      "DEPENDENCY_UNAVAILABLE",
-      "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-    );
+    // 서버는 생성한 초안을 201 로 준다. 목업은 고정 합성 데이터에 달 · 강조 놀이만 바꾼다.
+    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed), {
+      status: 201,
+    });
   }),
   http.get("*/api/plans/monthly/play", async ({ request }) => {
     const s = await scenario(request, "play-monthly-list");
@@ -838,6 +879,108 @@ export const handlers = [
       return HttpResponse.json(copyPlayMonthlyDrill(plan.id, itemId));
     },
   ),
+  // 특별활동 시간표(ADR-047) — 경로 · 코드는 제안이다. 순서는 위 변경과 같고, 내용 검사는 Core 순서다.
+  http.post("*/api/plans/monthly/play/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-split");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? [] : ["axis"],
+    );
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = locate(plan.special_activity, itemId);
+    if (!found) return timetableCellMissing();
+    if (found.path.length - 1 >= MAX_DEPTH)
+      return failure("VALIDATION_FAILED", "한 요일은 네 번까지 나눌 수 있습니다.", "item_id");
+    const axis = b.axis as "VERTICAL" | "HORIZONTAL";
+    const day = plan.special_activity[found.day];
+    const probe = splitLeaf(day, itemId, axis, "probe", { ...found.path.at(-1)!.cell! });
+    if (narrowest(probe, plan.special_activity_size.column_widths[found.day]) < CELL_MIN_WIDTH)
+      return tooNarrowFailure();
+    return HttpResponse.json(splitPlayMonthlyTimetable(plan.id, itemId, axis));
+  }),
+  http.delete("*/api/plans/monthly/play/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-split-remove");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => [], true);
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = locate(plan.special_activity, itemId);
+    if (!found) return timetableCellMissing();
+    if (found.path.length === 1)
+      return failure(
+        "VALIDATION_FAILED",
+        "요일의 마지막 칸은 지울 수 없습니다. 글을 비워 주세요.",
+        "item_id",
+      );
+    return HttpResponse.json(removePlayMonthlyTimetable(plan.id, itemId));
+  }),
+  http.put(
+    "*/api/plans/monthly/play/:id/timetable/splits/:splitId",
+    async ({ request, params }) => {
+      const s = await scenario(request, "play-monthly-split-ratio");
+      if (s) return s;
+      const b = await playInput(request, params.id, (b) => (integer(b.ratio) ? [] : ["ratio"]));
+      if (b instanceof Response) return b;
+      const splitId = decodeURIComponent(String(params.splitId));
+      if (!splitId.trim()) return invalid(["split_id"]);
+      const plan = playGate(params.id, b);
+      if (plan instanceof Response) return plan;
+      const ratio = Number(b.ratio);
+      const day = plan.special_activity.findIndex((d) =>
+        boundaries(d).some((x) => x.split_id === splitId),
+      );
+      if (day < 0) return failure("NOT_FOUND", "그 시간표 경계를 찾을 수 없습니다.", "split_id");
+      if (ratio < RATIO_RANGE[0] || ratio > RATIO_RANGE[1]) return invalid(["ratio"]);
+      const days = plan.special_activity.map((d, i) =>
+        i === day ? withRatio(d, splitId, ratio) : d,
+      );
+      if (tooNarrow(days, plan.special_activity_size.column_widths)) return tooNarrowFailure();
+      return HttpResponse.json(resizePlayMonthlySplit(plan.id, splitId, ratio));
+    },
+  ),
+  http.put("*/api/plans/monthly/play/:id/timetable/size", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-size");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.column_widths) && b.column_widths.every(integer) && integer(b.height_mm)
+        ? []
+        : ["column_widths", "height_mm"],
+    );
+    if (b instanceof Response) return b;
+    const size = { column_widths: b.column_widths as number[], height_mm: Number(b.height_mm) };
+    if (!validSize(size)) return invalid(["column_widths", "height_mm"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    if (tooNarrow(plan.special_activity, size.column_widths)) return tooNarrowFailure();
+    return HttpResponse.json(resizePlayMonthlyTable(plan.id, size));
+  }),
+  // 확정본만 한글 파일로 — 실제 서버는 양식에 나눈 모양 · 폭 · 높이 그대로 채운다. 목업은 가짜 파일.
+  http.get("*/api/plans/monthly/play/:id/export/hwp", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-export");
+    if (s) return s;
+    // 쿼리 형식 422 가 소유 404 보다 먼저다(FastAPI 스키마).
+    const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
+    if (!(format in type)) return bad("format");
+    const plan = playOwn(String(params.id));
+    if (plan instanceof Response) return plan;
+    if (plan.status !== "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안만 내보낼 수 있습니다.");
+    const name = `play-monthly-${plan.id}.${format}`;
+    return new HttpResponse(`MSW ${format}`, {
+      headers: {
+        "Content-Type": type[format as keyof typeof type],
+        "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
+      },
+    });
+  }),
   // 확정 순서: 스키마(본문이 있으면 정수 1 이상 — 확정본이어도) → 소유 404 · 기존 월간 409 → 이미 확정이면 200
   // → 본문 없음 422 → revision 409 → 부족 422. 본문을 읽는 사이 바뀔 수 있어 소유 · 상태는 그 뒤에 본다.
   http.post("*/api/plans/monthly/play/:id/confirm", async ({ request, params }) => {
@@ -1372,6 +1515,10 @@ async function playInput(
   ];
   return wrong.length ? invalid(wrong) : b!;
 }
+const timetableCellMissing = () =>
+  failure("NOT_FOUND", "그 시간표 칸을 찾을 수 없습니다.", "item_id");
+const tooNarrowFailure = () =>
+  failure("VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.");
 /** 소유 → 형식 → 확정 → revision. 통과하면 계획안을 준다. */
 function playGate(rawId: unknown, b: Record<string, unknown>) {
   const plan = playOwn(rawId);

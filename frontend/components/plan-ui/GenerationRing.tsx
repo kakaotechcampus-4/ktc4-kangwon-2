@@ -12,15 +12,12 @@ const C = 2 * Math.PI * R; // ≈ 754
 
 export default function GenerationRing({
   title = "연간계획안을 만들고 있어요",
-  meta,
   steps = ["주제 정하기", "소주제 나누기", "문서로 정리하기"],
   progress,
   step,
   onCancel,
 }: {
   title?: string;
-  /** 예: "햇살반 · 만 5세 · 월별 주제형" */
-  meta?: string;
   steps?: string[];
   /** 0~1. 모르면 생략 */
   progress?: number;
@@ -77,7 +74,6 @@ export default function GenerationRing({
         </div>
         <div className="flex flex-col items-center gap-2">
           <h1 className="m-0 text-[26px] font-bold tracking-[-0.5px]">{title}</h1>
-          {meta && <p className="m-0 text-base text-[#5c5243]">{meta}</p>}
         </div>
         <ol className="m-0 flex list-none gap-7 p-0 text-[15px]">
           {steps.map((s, i) => (

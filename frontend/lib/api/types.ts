@@ -294,6 +294,23 @@ export interface PlayMonthlyCell {
   evidence: MonthlyCell["evidence"];
   generation: MonthlyCellGeneration | null;
 }
+/**
+ * 특별활동 시간표 한 요일의 나눔 트리(ADR-047). 칸이면 `cell` 만, 경계면 나머지 넷이 온다.
+ * `VERTICAL` 은 위아래 · `HORIZONTAL` 은 좌우이고 `ratio` 는 첫 갈래(위 · 왼쪽)의 % 다.
+ */
+export interface PlayMonthlyTimetablePart {
+  cell: PlayMonthlyCell | null;
+  split_id: string | null;
+  axis: "VERTICAL" | "HORIZONTAL" | null;
+  ratio: number | null;
+  children: PlayMonthlyTimetablePart[];
+}
+export interface PlayMonthlyTimetableSize {
+  /** 월~금, 표 폭의 %. 정수 · 각 5 이상 · 합 100. */
+  column_widths: number[];
+  /** 16~80. */
+  height_mm: number;
+}
 export interface PlayMonthlyActivity {
   /** 이름 칸의 `item_id` 와 같다. 행 주소다. */
   activity_id: string;
@@ -357,8 +374,13 @@ export interface PlayMonthlyPlan extends PlanMemo {
   health: { entry_id: string | null; cell: PlayMonthlyCell };
   nutrition: { entry_id: string | null; cell: PlayMonthlyCell };
   drill_candidates: { topic_id: string; label: string; cell: PlayMonthlyCell }[];
-  /** key: fire_disaster_drill · specialized_timetable · special_activity_timetable · class_notice · class_birthdays · home_connection */
+  /** key: fire_disaster_drill · class_notice · class_birthdays · home_connection */
   teacher_inputs: { key: string; cell: PlayMonthlyCell }[];
+  /** 특성화 시간표 — 제목 5칸 다음 내용 5칸(같은 열끼리 위아래). */
+  specialized_timetable: PlayMonthlyCell[];
+  /** 특별활동 시간표 — 월~금 다섯 요일의 나눔 트리. */
+  special_activity: PlayMonthlyTimetablePart[];
+  special_activity_size: PlayMonthlyTimetableSize;
   /** 응답마다 계산한다. 확정을 막지 않는다. */
   notices: {
     code: "SAFETY_UNPLACED" | "SAFETY_BLANK" | "HABIT_BLANK" | "HEALTH_BLANK" | "NUTRITION_BLANK";
@@ -366,7 +388,7 @@ export interface PlayMonthlyPlan extends PlanMemo {
   }[];
 }
 /**
- * 놀이 중심 월간 변경 이력 하나 (`GET /api/plans/monthly/play/{id}/audit`). **열한 키가 항상 온다** — 해당이 없으면 null.
+ * 놀이 중심 월간 변경 이력 하나 (`GET /api/plans/monthly/play/{id}/audit`). **열두 키가 온다** — 해당이 없으면 null.
  * `type` 은 저장된 문자열 그대로라 모르는 종류가 올 수 있다 — 화면은 건너뛴다.
  */
 export interface PlayMonthlyAuditEvent {
@@ -375,6 +397,7 @@ export interface PlayMonthlyAuditEvent {
     | "TEACHER_EDITED"
     | "ARRANGEMENT_CHANGED"
     | "CANDIDATE_COPIED"
+    | "TIMETABLE_CHANGED"
     | "CONFIRMED"
     | "UNCONFIRMED";
   /** ISO 8601, UTC(`Z`). */
@@ -391,6 +414,16 @@ export interface PlayMonthlyAuditEvent {
   arrangement_change: { scope: string; before: string[]; after: string[] } | null;
   /** 복사한 훈련 후보의 item_id. */
   copied_from: string | null;
+  /** 시간표 나누기 · 지우기 · 크기(TIMETABLE_CHANGED). 크기는 앞뒤 숫자다. */
+  timetable_change?: {
+    operation: string;
+    split_id: string | null;
+    cell_id: string | null;
+    new_cell_id: string | null;
+    axis: "VERTICAL" | "HORIZONTAL" | null;
+    before: number[];
+    after: number[];
+  } | null;
 }
 export interface PlayMonthlySummary {
   id: number;

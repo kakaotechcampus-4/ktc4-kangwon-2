@@ -25,7 +25,7 @@ from app.main import app
 client = TestClient(app)
 KEYS = {
     "type", "occurred_at", "scope", "item_id", "actor", "system_actor", "value_change",
-    "generation_change", "link_change", "arrangement_change", "copied_from",
+    "generation_change", "link_change", "arrangement_change", "copied_from", "timetable_change",
 }  # fmt: skip
 
 

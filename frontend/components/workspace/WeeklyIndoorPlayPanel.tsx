@@ -1,116 +1,147 @@
 "use client";
 
-import type { ReactNode } from "react";
-import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
-import s from "./WeeklyActivityPanel.module.css";
+/**
+ * Ⓦ3 「AI 후보」 — 후보형 실내 자유놀이(ADR-054 확장). 이번 주에 넣은 놀이 목록과 종류별 후보.
+ * 넣기 · 순서 · 빼기는 서버가 한다. 놀이 글은 문서 칸을 눌러 「칸 편집」에서 고친다.
+ */
 
-type Props = {
-  plan: WeeklyPlan;
-  disabled: boolean;
-  renderCell: (cell: WeeklyCell, label: string) => ReactNode;
-  onAdd: (candidateId: string | null) => void;
-  onOrder: (itemIds: string[]) => void;
-  onRemove: (itemId: string) => void;
-};
+import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
+import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
+import { BUTTON } from "@/components/plan-generator/AnnualFrame";
 
 export default function WeeklyIndoorPlayPanel({
   plan,
   disabled,
-  renderCell,
+  selected = null,
+  shown = (cell) => cell.value,
   onAdd,
   onOrder,
   onRemove,
-}: Props) {
-  if (!plan.indoor_play_selection) return null;
-  const rows = plan.sections.find((section) => section.section_key === "indoor_play")?.cells ?? [];
+}: {
+  plan: WeeklyPlan;
+  disabled: boolean;
+  selected?: string | null;
+  /** 칸의 지금 글 — 저장 전 입력 포함. */
+  shown?: (cell: WeeklyCell) => string;
+  onAdd: (candidateId: string | null) => void;
+  onOrder: (itemIds: string[]) => void;
+  onRemove: (itemId: string) => void;
+}) {
+  if (!plan.indoor_play_selection || plan.status === "CONFIRMED") return null;
+  const rows = plan.sections.find((s) => s.section_key === "indoor_play")?.cells ?? [];
   const candidates = (plan.activity_candidates ?? []).filter(
-    (candidate) => candidate.section_key === "indoor_play",
+    (c) => c.section_key === "indoor_play",
   );
-  const readonly = plan.status === "CONFIRMED";
-  const kinds = [...new Set(candidates.map((candidate) => candidate.activity_type))];
-  function move(index: number, delta: number) {
-    const order = rows.map((cell) => cell.item_id);
-    [order[index], order[index + delta]] = [order[index + delta], order[index]];
-    onOrder(order);
-  }
+  // 빈 줄(직접 쓸 칸)은 「칸 편집」에서 쓴다 — 여기에는 글이 있는 줄만.
+  const filled = rows.filter((c) => shown(c).trim());
+  const move = (index: number, delta: number) => {
+    const ids = rows.map((c) => c.item_id);
+    const a = ids.indexOf(filled[index].item_id);
+    const b = ids.indexOf(filled[index + delta].item_id);
+    [ids[a], ids[b]] = [ids[b], ids[a]];
+    onOrder(ids);
+  };
   return (
-    <section className={`${s.panel} ${s.indoor}`} aria-label="실내 자유놀이 후보와 선택 목록">
-      <h3>실내 자유놀이</h3>
-      <p>
-        이번 주에 할 놀이를 영역별 후보에서 골라요. 고른 놀이는 한글 문서의 넓은 칸에 목록으로
-        들어가요.
-      </p>
-      <section aria-label="이번 주에 넣은 자유놀이">
-        <h4>이번 주에 넣은 놀이 · {rows.filter((cell) => cell.value.trim()).length}개</h4>
-        {rows.map((cell, index) => (
-          <div key={cell.item_id} className={s.leaf}>
-            {renderCell(cell, `${index + 1}번 자유놀이`)}
-            {!readonly && (
-              <div className={s.actions}>
-                <button
-                  type="button"
-                  disabled={disabled || index === 0}
-                  aria-label={`${index + 1}번 자유놀이 위로`}
-                  onClick={() => move(index, -1)}
-                >
-                  위로
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled || index === rows.length - 1}
-                  aria-label={`${index + 1}번 자유놀이 아래로`}
-                  onClick={() => move(index, 1)}
-                >
-                  아래로
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled || (rows.length === 1 && !cell.value.trim())}
-                  aria-label={`${index + 1}번 자유놀이 빼기`}
-                  onClick={() => onRemove(cell.item_id)}
-                >
-                  빼기
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-        {!readonly && (
-          <button
-            type="button"
-            disabled={disabled || rows.some((cell) => !cell.value.trim())}
-            onClick={() => onAdd(null)}
-          >
-            직접 쓸 놀이 추가
-          </button>
-        )}
-      </section>
-      {!candidates.length && (
-        <p>사용할 수 있는 근거가 없어 후보를 만들지 않았어요. 직접 입력할 수 있어요.</p>
+    <section aria-label="실내 자유놀이" className="flex flex-col gap-4">
+      {filled.length > 0 && (
+        <h2 className="m-0 font-display text-[20px] font-bold leading-tight">
+          이번 주에 넣은 놀이
+        </h2>
       )}
-      {!readonly &&
-        kinds.map((kind) => (
-          <section key={kind} className={s.kind} aria-label={`${kind} 자유놀이 후보`}>
-            <h4>{kind}</h4>
-            <div className={s.candidates}>
-              {candidates
-                .filter((candidate) => candidate.activity_type === kind)
-                .map((candidate) => (
-                  <div key={candidate.cell.item_id}>
-                    {renderCell(candidate.cell, `${kind} 후보`)}
-                    <button
-                      type="button"
-                      disabled={disabled || !candidate.name.trim()}
-                      aria-label={`${candidate.name} 이번 주 놀이에 넣기`}
-                      onClick={() => onAdd(candidate.cell.item_id)}
-                    >
-                      이번 주 놀이에 넣기
-                    </button>
-                  </div>
-                ))}
+      <ol className="m-0 flex list-none flex-col gap-2 p-0 empty:hidden">
+        {filled.map((c, i) => (
+          <li
+            key={c.item_id}
+            className={`${CARD} ${c.item_id === selected ? PICKED : "border-[#e8e2d8]"}`}
+          >
+            <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">{shown(c).trim()}</div>
+            <div className="flex shrink-0 gap-1">
+              {/* 한 줄뿐이면 순서 화살표는 할 일이 없다. */}
+              {filled.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    aria-label={`${i + 1}번 놀이 위로`}
+                    className={BUTTON.quiet}
+                    disabled={disabled || i === 0}
+                    onClick={() => move(i, -1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${i + 1}번 놀이 아래로`}
+                    className={BUTTON.quiet}
+                    disabled={disabled || i === filled.length - 1}
+                    onClick={() => move(i, 1)}
+                  >
+                    ↓
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                aria-label={`${i + 1}번 놀이 빼기`}
+                className={BUTTON.quiet}
+                disabled={disabled}
+                onClick={() => onRemove(c.item_id)}
+              >
+                빼기
+              </button>
             </div>
-          </section>
+          </li>
         ))}
+      </ol>
+      {/* 빈 줄이 남아 있으면 그 줄부터 쓰게 — 흐린 단추를 두지 않는다. */}
+      {!rows.some((c) => !shown(c).trim()) && (
+        <button
+          type="button"
+          className={`${BUTTON.outline} self-start`}
+          disabled={disabled}
+          onClick={() => onAdd(null)}
+        >
+          직접 쓸 놀이 더하기
+        </button>
+      )}
+      {!candidates.length && (
+        <p className="m-0 text-[13px] text-[#5c5243]">
+          쓸 수 있는 근거가 없어 후보를 만들지 않았어요. 직접 써 주세요.
+        </p>
+      )}
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {/* 넣으면 서버가 「[종류] - 이름」으로 옮겨 쓴다. 그 글이 목록에 있으면 넣은 후보 — 맨 위로(안전교육 후보와 같다).
+            교사가 옮긴 글을 고치면 다시 「넣기」로 보이지만 서버가 같은 후보는 한 번만 넣는다. */}
+        {[...candidates]
+          .map((c) => ({
+            c,
+            here:
+              !!c.name.trim() &&
+              rows.some((r) => r.value.trim() === `[${c.activity_type}] - ${c.name}`),
+          }))
+          .sort((a, b) => Number(b.here) - Number(a.here))
+          .map(({ c, here }) => {
+            const text = c.cell.value.trim();
+            return (
+              <li key={c.cell.item_id} className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}>
+                <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
+                  <strong className="block">
+                    [{c.activity_type}] - {c.name}
+                  </strong>
+                  {text || "(빈 후보)"}
+                </div>
+                <button
+                  type="button"
+                  aria-label={`이번 주 놀이에 넣기: ${c.name || text || "빈 후보"}`}
+                  className={PUT}
+                  disabled={disabled || !c.name.trim() || here}
+                  onClick={() => onAdd(c.cell.item_id)}
+                >
+                  {here ? "넣음" : "넣기"}
+                </button>
+              </li>
+            );
+          })}
+      </ul>
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import { downloadHwpx } from "./export";
+import { downloadHwpx, type ExportFormat } from "./export";
 import type { WeeklyAuditEvent, WeeklyPlan, WeeklyPlanSummary } from "./types";
 
 /**
@@ -27,6 +27,7 @@ export const createWeeklyPlan = (
     week_id: string;
     activity_candidates?: boolean;
     indoor_play_candidates?: boolean;
+    memo?: string;
   },
   signal?: AbortSignal,
 ) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
@@ -87,8 +88,8 @@ export const deleteWeeklyPlan = (id: number) =>
 export const getWeeklyPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyAuditEvent[] }>("/api/plans/weekly/" + id + "/audit", { signal });
 /** 확정본만 내려받는다 — 확정 전이면 서버가 409 다. */
-export const downloadWeeklyHwpx = (id: number) =>
-  downloadHwpx("/api/plans/weekly/" + id + "/export/hwp", "주간계획안.hwpx");
+export const downloadWeeklyHwpx = (id: number, format: ExportFormat = "hwpx") =>
+  downloadHwpx(`/api/plans/weekly/${id}/export/hwp?format=${format}`, `주간계획안.${format}`);
 
 export const copyWeeklyActivity = (
   id: number,

@@ -1,6 +1,19 @@
 // 놀이 월간 저장 큐: 한 줄 순서 · 칸 합치기 · 같은 값 안 보냄 · 422 · 409 · 실패 붙잡기 · whenIdle · freeze · 되돌리기 목록.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+// 큐가 시간표 도우미(./playMonthlyTimetable)를 확장자 없이 불러온다.
+registerHooks({
+  resolve(spec, ctx, next) {
+    if (spec.startsWith(".") && ctx.parentURL) {
+      const u = new URL(spec + ".ts", ctx.parentURL);
+      if (existsSync(fileURLToPath(u))) return { url: u.href, shortCircuit: true };
+    }
+    return next(spec, ctx);
+  },
+});
 const q = await import("../lib/plan-generator/playMonthlyQueue.ts");
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));

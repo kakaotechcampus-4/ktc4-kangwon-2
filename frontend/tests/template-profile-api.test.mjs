@@ -207,16 +207,28 @@ test("methods, path ids, bodies keep explicit nulls, bearer token, no retry", as
 
 // ── 기반 Template 목록 · 승인 게이트 ────────────────────────────────────────
 
-test("templates list shows both as pending; only the test fixture opens one", async () => {
+test("templates list matches the server: v0.2.1~v0.2.3 approved, v0.1.1 pending until the fixture opens it", async () => {
   await world();
   const { items } = await listMonthlyTemplates();
   assert.deepEqual(
     items.map((t) => [t.template_ref.template_version, t.approved]),
     [
       ["monthly-template-a-v0.1.1", false],
-      ["monthly-template-a-v0.2.1", false],
+      ["monthly-template-a-v0.2.1", true],
+      ["monthly-template-a-v0.2.2", true],
+      ["monthly-template-a-v0.2.3", true],
     ],
   );
+  // 판이 오를수록 고를 칸이 는다: v0.2.2 실내 대체활동(주마다), v0.2.3 소방대피 훈련(한 달).
+  const optional = (t) =>
+    t.sections.filter((s) => s.selection === "OPTIONAL").map((s) => [s.section_key, s.repeat_by]);
+  assert.deepEqual(optional(items[3]), [
+    ["indoor_alternative", "WEEK"],
+    ["drill", "NONE"],
+    ["focus", "WEEK"],
+    ["goals", "NONE"],
+    ["basic_habit", "WEEK"],
+  ]);
   const by = (sel) =>
     items[0].sections
       .filter((s) => s.selection === sel)
@@ -233,27 +245,24 @@ test("templates list shows both as pending; only the test fixture opens one", as
   assert.equal(items[0].sections.find((s) => s.section_key === "basic_habit").label, "habits");
   assert.deepEqual(items[0].focus_variants, ["SUBTHEME", "EXPECTED_PLAY", "WEEKLY_THEME"]);
 
-  approveTemplateForTest(FOCUS);
+  approveTemplateForTest(PLAIN);
   const after = (await listMonthlyTemplates()).items;
   assert.deepEqual(
     after.map((t) => t.approved),
-    [false, true],
+    [true, true, true, true],
   );
 });
 
-test("unapproved template → 409 GATE_BLOCKED and nothing stored; fixture → 201 READY", async () => {
+test("pending template → 409 GATE_BLOCKED and nothing stored; approved → 201 READY", async () => {
   const w = await world();
-  await rejects(createTemplateProfile(w.center, INPUT), 409, "GATE_BLOCKED", ["base_template_ref"]);
-  assert.equal(read().profiles.length, 0);
-
-  approveTemplateForTest(FOCUS);
-  // 승인은 Template 마다다 — 하나를 열어도 다른 것은 그대로 막힌다.
+  // 승인은 Template 마다다 — v0.2.1 이 승인돼 있어도 검토 대기 v0.1.1 은 막힌다.
   await rejects(
     createTemplateProfile(w.center, { ...INPUT, base_template_ref: PLAIN }),
     409,
     "GATE_BLOCKED",
     ["base_template_ref"],
   );
+  assert.equal(read().profiles.length, 0);
   const created = await createTemplateProfile(w.center, INPUT);
   assert.equal(created.status, "READY");
   assert.equal(created.profile_ref.profile_version, "v1");

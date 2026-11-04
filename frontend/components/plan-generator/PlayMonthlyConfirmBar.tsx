@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import workspace from "@/components/workspace/Workspace.module.css";
 import { ApiError } from "@/lib/api/client";
 import { confirmPlayMonthly } from "@/lib/api/playMonthly";
 import { isSaveConflict } from "@/lib/api/plans";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
+import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 
 const SECTION = { together: "함께 하는 활동", free_play: "자유놀이" } as const;
 
@@ -47,8 +47,11 @@ export default function PlayMonthlyConfirmBar({
   unfreeze,
   onConfirmed,
   onConflict,
+  ask,
 }: {
   plan: PlayMonthlyPlan;
+  /** 있으면 먼저 이 글로 묻고 「확정하기」를 한 번 더 눌러야 확정한다(Ⓜ3 확정 확인 창). */
+  ask?: string;
   /** 남은 저장이 모두 끝나길 기다린다. `saved` 가 false 면 실패한 저장이 있다. */
   whenIdle: () => Promise<{ saved: boolean; revision: number; rejected?: boolean }>;
   /** 이 뒤로 새 변경을 받지 않는다. */
@@ -60,6 +63,7 @@ export default function PlayMonthlyConfirmBar({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
+  const [asking, setAsking] = useState(false);
   const lock = useRef(false);
   // 화면이 내려간 뒤에는 confirm 도 onConfirmed 도 setState 도 하지 않는다.
   const mounted = useRef(true);
@@ -115,18 +119,46 @@ export default function PlayMonthlyConfirmBar({
       lock.current = false;
       // 확정되면 큐를 다시 열지 않는다 — 열린 입력창의 마지막 저장이 확정본을 덮으려 하지 못하게.
       if (!confirmed) unfreeze();
-      if (mounted.current) setConfirming(false);
+      if (mounted.current) {
+        setConfirming(false);
+        setAsking(false);
+      }
     }
   }
 
   if (plan.status === "CONFIRMED") return null;
   return (
-    <div>
-      <button type="button" className={workspace.primary} disabled={confirming} onClick={confirm}>
+    <div className="relative">
+      <button
+        type="button"
+        className="min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+        disabled={confirming}
+        onClick={ask ? () => setAsking(true) : confirm}
+      >
         {confirming ? "확정하는 중…" : "확정하기"}
-      </button>{" "}
-      <span className={workspace.muted}>확정하면 고칠 수 없어요</span>
-      {error && <p role="alert">{error}</p>}
+      </button>
+      {(asking || error) && (
+        <div className="absolute right-0 top-full z-20 mt-2 flex w-[380px] flex-col gap-2">
+          {asking && ask && (
+            <PlayMonthlyConfirm
+              message={ask}
+              yes={confirming ? "확정하는 중…" : "확정하기"}
+              no="더 다듬기"
+              disabled={confirming}
+              onYes={confirm}
+              onNo={() => setAsking(false)}
+            />
+          )}
+          {error && (
+            <p
+              role="alert"
+              className="m-0 rounded-xl border border-[#f0c9c4] bg-[#fdf1ef] px-4 py-3 text-sm text-[#8a2f2f]"
+            >
+              {error}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

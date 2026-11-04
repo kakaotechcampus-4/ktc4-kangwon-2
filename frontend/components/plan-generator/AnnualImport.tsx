@@ -152,7 +152,7 @@ export default function AnnualImport({
           ))}
         </ul>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[20px] border border-[#e8e2d8] bg-white">
+      <div className="min-h-0 flex-1 overflow-y-auto border border-line bg-paper shadow-pg">
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-[#fbf9f5] text-sm text-[#5c5243]">
             <tr>
@@ -190,7 +190,7 @@ export default function AnnualImport({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="min-h-[52px] rounded-xl bg-[#7053a0] px-8 text-base font-bold text-white disabled:opacity-50"
+          className="min-h-[52px] rounded-xl bg-[#7053a0] px-8 text-base font-bold text-white disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
         >
           {saving ? "저장하는 중…" : "저장"}
         </button>
@@ -222,7 +222,9 @@ function ImportShell({
           ← 취소하고 돌아가기
         </button>
         <div className="flex items-center gap-3">
-          <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">{title}</h1>
+          <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+            {title}
+          </h1>
           <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
             월별 주제형
           </span>

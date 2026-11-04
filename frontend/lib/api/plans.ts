@@ -1,5 +1,5 @@
 import { ApiError, apiRequest } from "./client";
-import { downloadHwpx } from "./export";
+import { downloadHwpx, type ExportFormat } from "./export";
 import { isAlreadyConfirmed, isStaleWrite } from "./documents";
 import type {
   AnnualInput,
@@ -133,6 +133,6 @@ export const confirmPlayProject = (id: number, expectedRevision: number) =>
     body: JSON.stringify({ expected_revision: expectedRevision }),
   });
 
-/** 확정한 연간계획안을 hwpx 로 내려받는다 (§9). */
-export const downloadAnnualHwpx = (id: number) =>
-  downloadHwpx(`/api/plans/${id}/export/hwp`, "연간계획안.hwpx");
+/** 확정한 연간계획안을 내려받는다 (§9). 기본 hwpx, `format` 으로 pdf · hwp. */
+export const downloadAnnualHwpx = (id: number, format: ExportFormat = "hwpx") =>
+  downloadHwpx(`/api/plans/${id}/export/hwp?format=${format}`, `연간계획안.${format}`);
