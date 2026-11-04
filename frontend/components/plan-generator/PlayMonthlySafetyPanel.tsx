@@ -34,49 +34,50 @@ export default function PlayMonthlySafetyPanel({
     <section aria-label="안전교육" className="flex flex-col gap-2">
       <h2 className="m-0 flex items-baseline justify-between text-[15px] font-bold">
         {label(weekId)} 안전교육 후보
-        <span className={`text-[13px] font-normal ${here ? "text-[#5c5243]" : "text-[#c2473d]"}`}>
-          {here ? "넣었어요" : "아직 비어 있어요"}
-        </span>
+        {!here && <span className="text-[13px] font-normal text-[#c2473d]">아직 비어 있어요</span>}
       </h2>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {plan.safety_candidates.map((c) => {
-          const id = c.cell.item_id;
-          const mine = here === id;
-          const elsewhere = plan.safety_weeks
-            .filter((w) => w.week_id !== weekId && w.candidate_item_id === id)
-            .map((w) => label(w.week_id));
-          return (
-            <li
-              key={id}
-              data-candidate={id}
-              className={`${CARD} ${
-                mine
-                  ? "border-[#7053a0] bg-[#f6f1fb]"
-                  : elsewhere.length
-                    ? "border-dashed border-[#ddd6ca] text-[#8a8178]"
-                    : "border-[#e8e2d8]"
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-bold text-[#5c5243]">
-                  {KIND[c.kind]}
-                  {elsewhere.length > 0 && ` · ${elsewhere.join(", ")}에 넣음`}
-                </div>
-                <div className="text-[14px]">{c.cell.value.trim() || "(빈 후보)"}</div>
-              </div>
-              <button
-                type="button"
-                data-act={mine ? "clear" : "place"}
-                aria-label={`${label(weekId)}에 ${mine ? "빼기" : "넣기"}: ${c.cell.value.trim() || `${KIND[c.kind]} 빈 후보`}`}
-                className={PUT}
-                disabled={disabled}
-                onClick={() => onPlace(weekId, mine ? null : id)}
+        {/* 그 주에 넣은 후보는 맨 위로 — 연간 놀이 후보 고르기와 같다. */}
+        {[...plan.safety_candidates]
+          .sort((a, b) => Number(b.cell.item_id === here) - Number(a.cell.item_id === here))
+          .map((c) => {
+            const id = c.cell.item_id;
+            const mine = here === id;
+            const elsewhere = plan.safety_weeks
+              .filter((w) => w.week_id !== weekId && w.candidate_item_id === id)
+              .map((w) => label(w.week_id));
+            return (
+              <li
+                key={id}
+                data-candidate={id}
+                className={`${CARD} ${
+                  mine
+                    ? "border-[#7053a0] bg-[#f6f1fb]"
+                    : elsewhere.length
+                      ? "border-dashed border-[#ddd6ca] text-[#8a8178]"
+                      : "border-[#e8e2d8]"
+                }`}
               >
-                {mine ? "빼기" : "넣기"}
-              </button>
-            </li>
-          );
-        })}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-bold text-[#5c5243]">
+                    {KIND[c.kind]}
+                    {elsewhere.length > 0 && ` · ${elsewhere.join(", ")}에 넣음`}
+                  </div>
+                  <div className="text-[14px]">{c.cell.value.trim() || "(빈 후보)"}</div>
+                </div>
+                <button
+                  type="button"
+                  data-act={mine ? "clear" : "place"}
+                  aria-label={`${label(weekId)}에 ${mine ? "빼기" : "넣기"}: ${c.cell.value.trim() || `${KIND[c.kind]} 빈 후보`}`}
+                  className={PUT}
+                  disabled={disabled}
+                  onClick={() => onPlace(weekId, mine ? null : id)}
+                >
+                  {mine ? "빼기" : "넣기"}
+                </button>
+              </li>
+            );
+          })}
       </ul>
     </section>
   );

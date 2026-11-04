@@ -700,7 +700,7 @@ test("저장 표시 · 다시 저장 · 되돌리기 단추는 초안에만 있�
     assert.equal(withText(tree, "button", "다시 하기")[0].props.disabled, true);
     undo.props.onClick();
     assert.deepEqual(saved.splice(0), [["retry"], ["undo"]]);
-    assert.match(text(h.render(View, { id: plan.id })), /되돌렸어요/);
+    assert.doesNotMatch(text(h.render(View, { id: plan.id })), /되돌렸어요/);
     const confirmed = fixture(true);
     const done = await open(confirmed.id, async () => confirmed);
     assert.doesNotMatch(text(done.tree), /저장하지 못했어요/);
@@ -830,7 +830,7 @@ test("확정하는 동안 되돌리기 · 다시 하기는 잠기고 입력창�
   }
 });
 
-test("큐가 되돌리기를 거절하면 「되돌렸어요」도 없고 입력 중 글도 남는다", async () => {
+test("큐가 되돌리기를 거절하면 입력 중 글이 남고, 되돌려도 「되돌렸어요」 문구는 없다", async () => {
   saveState = { status: "idle", canUndo: true, canRedo: true };
   try {
     const { plan, View, h, props, editor } = await openDrillEditor();
@@ -847,7 +847,7 @@ test("큐가 되돌리기를 거절하면 「되돌렸어요」도 없고 입력
     );
     assert.notEqual(drillCell(plan).value, "쓰는 중");
     withText(tree, "button", "되돌리기")[0].props.onClick();
-    assert.match(text(h.render(View, props)), /되돌렸어요/);
+    assert.doesNotMatch(text(h.render(View, props)), /되돌렸어요/);
     saved.length = 0;
   } finally {
     refuse = false;
@@ -1271,19 +1271,15 @@ test("v1 — 훈련 칸이 비었으면 확인 없이 후보를 복사하고 응
   assert.match(text(view.render()), /훈련 후보를 넣었어요/);
 });
 
-test("v1 — 훈련 칸에 글이 있으면 바꾸기를 눌러야 복사한다", async () => {
+test("v1 — 훈련 칸에 글이 있어도 묻지 않고 바로 복사한다", async () => {
   const view = openV1Editor([], (plan) => withV1Drill(plan, "기존 글"));
   view.pick("drill_cell");
   drillButtons(view.render())[0].props.onClick();
-  assert.deepEqual(view.copied, []);
-  const tree = view.render();
-  assert.match(text(tree), /지금 쓴 글을 이 후보로 바꿀까요\?/);
-  withText(tree, "button", "바꾸기")[0].props.onClick();
   await view.tick();
   assert.deepEqual(view.copied, [[1, "drill_candidate", 1]]);
 });
 
-test("v1 — 저장 응답 전 훈련 칸에 쓴 글도 덮기 전에 묻고 저장이 끝난 revision 으로 복사한다", async () => {
+test("v1 — 저장 응답 전 훈련 칸에 쓴 글이 있으면 저장이 끝난 revision 으로 복사한다", async () => {
   const view = openV1Editor([], withV1Drill);
   view.pick("drill_cell");
   view.tab("칸 편집");
@@ -1293,10 +1289,6 @@ test("v1 — 저장 응답 전 훈련 칸에 쓴 글도 덮기 전에 묻고 저
   assert.deepEqual(view.edits, [[1, "drill_cell", "저장 전 글", 1]]);
   view.tab("AI 후보");
   drillButtons(view.render())[0].props.onClick();
-  const tree = view.render();
-  assert.match(text(tree), /지금 쓴 글을 이 후보로 바꿀까요\?/);
-  assert.deepEqual(view.copied, []);
-  withText(tree, "button", "바꾸기")[0].props.onClick();
   await view.tick();
   assert.deepEqual(view.copied, []);
   view.waits.shift().ok();
@@ -1316,9 +1308,6 @@ test("v1 — 공백을 다듬어 저장한 뒤 훈련 후보를 넣으면 옛 �
   view.editor().onDraft(" 저장 전 글 ");
   view.tab("AI 후보");
   drillButtons(view.render())[0].props.onClick();
-  const confirmation = view.render();
-  assert.match(text(confirmation), /지금 쓴 글을 이 후보로 바꿀까요\?/);
-  withText(confirmation, "button", "바꾸기")[0].props.onClick();
   await view.tick();
   assert.deepEqual(view.edits, [[1, "drill_cell", "저장 전 글", 1]]);
   assert.deepEqual(view.copied, []);

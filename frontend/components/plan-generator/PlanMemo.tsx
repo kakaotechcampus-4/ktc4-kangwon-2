@@ -39,7 +39,7 @@ export function PlanMemoField(props: {
   };
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline gap-2">
         <label
           htmlFor="plan-memo"
           className="m-0 font-display text-[24px] font-bold leading-tight text-ink"
@@ -47,7 +47,7 @@ export function PlanMemoField(props: {
           요청 사항
         </label>
         <span className="text-[13px] text-[#8a8178]">
-          {value.length}/{MEMO_MAX}
+          {value.length}/{MEMO_MAX}자
         </span>
       </div>
       <textarea

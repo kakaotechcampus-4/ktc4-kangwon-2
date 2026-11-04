@@ -96,7 +96,14 @@ export default function PlayCellEditor({
 
   return (
     <>
-      <label htmlFor={id}>{label}</label>
+      {/* 글자 수는 입력창 왼쪽 위 — 이름표 옆(이름표를 숨긴 화면은 맨 앞). 요청 사항 칸과 같은 자리. */}
+      <div className="flex items-baseline gap-2">
+        <label htmlFor={id}>{label}</label>
+        <p id={`${id}-count`} className={`${workspace.muted} m-0 font-normal`}>
+          {length}
+          {Number.isFinite(maxLength) ? `/${maxLength}` : ""}자{over ? ` · ${overText}` : ""}
+        </p>
+      </div>
       <textarea
         id={id}
         value={text}
@@ -106,10 +113,6 @@ export default function PlayCellEditor({
         onChange={change}
         onBlur={leave}
       />
-      <p id={`${id}-count`} className={workspace.muted}>
-        {length}
-        {Number.isFinite(maxLength) ? `/${maxLength}` : ""}자{over ? ` · ${overText}` : ""}
-      </p>
       <p role="status">{blank ? "비워 둘 수 없어요" : over ? overText : ""}</p>
     </>
   );

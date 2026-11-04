@@ -241,13 +241,6 @@ export function MonthlyNewView(props: {
               <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
                 연간에서 이어받아요
               </h2>
-              {inherit && (
-                <span className="text-[13px] text-[#5c5243]">
-                  {inherit.kind === "play"
-                    ? `${inherit.season} 놀이 ${inherit.plays.length}개`
-                    : `${month}월 생활주제`}
-                </span>
-              )}
             </div>
             {!inherit && (
               <p className="m-0 rounded-xl bg-[#f7f4ee] px-4 py-3 text-sm text-[#5c5243]">
@@ -347,7 +340,7 @@ export function MonthlyNewView(props: {
               value={props.memo ?? ""}
               onChange={props.onMemo}
               error={props.memoProblem}
-              chips={["바깥놀이 많이", "비 오는 날 대체활동", "행사 반영", "재난안전교육 3번"]}
+              chips={["바깥놀이 많이", "비 오는 날 대체활동", "행사 반영"]}
               placeholder="예) 셋째 주는 비 소식이 있어 실내 활동을 넉넉히"
             />
           )}

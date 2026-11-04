@@ -352,7 +352,6 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                 <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
                   월간에서 이어받아요
                 </h2>
-                <span className="text-[13px] text-[#5c5243]">{label}</span>
               </div>
               <div className="rounded-xl bg-[#f7f4ee] px-4 py-3">
                 <div className="text-[17px] font-bold">{inherit.theme || "생활주제 없음"}</div>

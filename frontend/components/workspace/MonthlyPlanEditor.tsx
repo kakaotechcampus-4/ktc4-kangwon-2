@@ -28,7 +28,6 @@ import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafet
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
-  AsideStrip,
   BigView,
   BUTTON,
   PlanDone,
@@ -345,10 +344,7 @@ export default function MonthlyPlanEditor({
       )}
       {where && (
         <div className="flex items-end justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="text-[13px] text-[#5c5243]">{where.split(" · ")[0]}</span>
-            <h2 className="m-0 text-lg font-bold">{where.split(" · ")[1] ?? where}</h2>
-          </div>
+          <h2 className="m-0 text-lg font-bold">{where}</h2>
           {/* 저장 상태를 입력창 가까이에도 — 읽어 주는 건 위 상태 줄(role=status) 하나. */}
           {status !== "idle" && (
             <span
@@ -384,7 +380,7 @@ export default function MonthlyPlanEditor({
         <>
           {/* 칸 이름은 위 제목에 한 번 — 입력창 이름표는 화면 읽기용으로만 남긴다. */}
           <div
-            className={`${workspace.field} [&>label]:sr-only [&_textarea]:min-h-[180px] [&_textarea]:text-base`}
+            className={`${workspace.field} [&_label]:sr-only [&_textarea]:min-h-[180px] [&_textarea]:text-base`}
           >
             <PlayCellEditor
               key={picked.cell.item_id + ":" + stamp(picked.cell.item_id)}
@@ -466,7 +462,6 @@ export default function MonthlyPlanEditor({
     ) : drillCell && selected === drillId ? (
       <PlayMonthlyDrillPanel
         candidates={plan.drill_candidates}
-        current={shown(drillCell)}
         onCopy={copyDrill}
         disabled={locked}
       />
@@ -501,7 +496,6 @@ export default function MonthlyPlanEditor({
           </button>
         ))}
       </div>
-      <AsideStrip>{where ? `${where} 칸을 골랐어요` : "아직 고른 칸이 없어요"}</AsideStrip>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         {tab === "ai" ? aiTab : editTab}
       </div>
@@ -785,7 +779,7 @@ export default function MonthlyPlanEditor({
         </>
       }
       aside={aside}
-      docLabel="월별 주제형 월간 양식"
+      docLabel={null}
       docHint={
         <div className="flex items-center gap-1">
           {sheetZoom.tools}

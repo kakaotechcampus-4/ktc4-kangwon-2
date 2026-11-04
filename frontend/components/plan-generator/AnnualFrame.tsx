@@ -304,15 +304,6 @@ export function BigView({
 }
 
 /** 왼쪽 패널 안 「지금 고른 칸」 줄. */
-export function AsideStrip({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 border-b border-[#efeae2] bg-[#fbf9f5] px-6 py-2.5 text-[13px] text-[#5c5243]">
-      <span className="h-2 w-2 rounded-full bg-[#7053a0]" aria-hidden="true" />
-      {children}
-    </div>
-  );
-}
-
 /**
  * ⑥ 확정 후. 문서 전체(읽기 전용) · 한글 내보내기(PDF 는 서버에 없어 숨김) · 월간 만들기 · 홈 · 확정 취소.
  * 월간 진입은 두 형식 다 `/plans/monthly` 다 — 놀이 중심형은 그 화면이 놀이 월간 만들기로 가른다.

@@ -18,7 +18,6 @@ import {
   slotRows,
 } from "@/lib/plan-generator/subThemeSlots";
 import AnnualFrame, {
-  AsideStrip,
   BigView,
   BUTTON,
   POPOVER,
@@ -244,16 +243,11 @@ export default function ThemeAnnualResult({
     }
   }
 
-  const strip =
-    selected.slot === "theme"
-      ? `${selected.month}월 · 생활주제 칸을 골랐어요`
-      : `${selected.month}월 · ${selected.slot < month.week_count ? selected.slot + 1 + "주" : "남는"} 소주제 칸을 골랐어요`;
   const aside = (
     <>
       <div className="flex gap-5 border-b border-[#efeae2] px-6 pt-2">
         <span className={`${tabClass(true)} flex items-center`}>칸 편집</span>
       </div>
-      <AsideStrip>{strip}</AsideStrip>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] text-[#5c5243]">{selected.month}월 생활주제</span>
@@ -369,7 +363,7 @@ export default function ThemeAnnualResult({
         </>
       }
       aside={aside}
-      docLabel="소주제형 기본 양식"
+      docLabel={null}
       docHint={
         <div className="flex items-center gap-2">
           <UndoRedo disabled={confirming} canUndo={undo.length > 0} onUndo={stepBack} />

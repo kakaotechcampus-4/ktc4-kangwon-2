@@ -151,8 +151,14 @@ test("안전교육: 고른 주의 후보 8개 — 그 주에 둔 후보는 [빼�
   const s2 = all(tree).find((n) => n.props?.["data-candidate"] === "s2");
   assert.ok(text(s2).includes("법정 · 1주, 3주에 넣음"));
   tree = h.render(C, { plan: plan(), weekId: "w1", onPlace() {}, disabled: false });
-  assert.ok(text(tree).includes("넣었어요"));
+  assert.ok(!text(tree).includes("넣었어요") && !text(tree).includes("아직 비어 있어요"));
   assert.equal(all(tree).filter(act("clear")).length, 1);
+  // 그 주에 넣은 후보가 맨 위로 온다.
+  const [first] = all(tree).filter((n) => n.props?.["data-candidate"]);
+  assert.equal(
+    first.props["data-candidate"],
+    plan().safety_weeks.find((w) => w.week_id === "w1").candidate_item_id,
+  );
   assert.ok(
     text(all(tree).find((n) => n.props?.["data-candidate"] === "s2")).includes("3주에 넣음"),
   );
@@ -179,40 +185,21 @@ test("안전교육: [넣기]는 고른 주에 그 후보를, [빼기]는 null �
   );
 });
 
-test("소방대피: 칸이 비었으면 확인 없이 바로 복사한다", () => {
+test("소방대피: 쓴 글이 있어도 묻지 않고 바로 복사한다", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
   const calls = [];
   const tree = h.render(C, {
     candidates: plan().drill_candidates,
-    current: "",
     onCopy: (id) => calls.push(id),
     disabled: false,
   });
   click(tree, (n) => n.props["data-candidate"] === "d1");
   assert.deepEqual(calls, ["d1"]);
-  assert.equal(all(tree).filter((n) => n.props?.role === "group").length, 0);
-});
-
-test("소방대피: 쓴 글이 있으면 확인 상자를 거치고 아니요면 복사하지 않는다", () => {
-  const { C, h } = load("PlayMonthlyDrillPanel.tsx");
-  const calls = [];
-  const props = {
-    candidates: plan().drill_candidates,
-    current: "내 글",
-    onCopy: (id) => calls.push(id),
-    disabled: false,
-  };
-  click(h.render(C, props), (n) => n.props["data-candidate"] === "d1");
-  assert.deepEqual(calls, []);
-  let tree = h.render(C, props);
-  assert.ok(text(tree).includes("지금 쓴 글을 이 후보로 바꿀까요?"));
-  click(tree, (n) => n.props["data-act"] === "no");
-  tree = h.render(C, props);
-  assert.equal(all(tree).filter((n) => n.props?.role === "group").length, 0);
-  assert.deepEqual(calls, []);
-  click(tree, (n) => n.props["data-candidate"] === "d1");
-  click(h.render(C, props), (n) => n.props["data-act"] === "yes");
-  assert.deepEqual(calls, ["d1"]);
+  assert.ok(
+    !text(
+      h.render(C, { candidates: plan().drill_candidates, onCopy() {}, disabled: false }),
+    ).includes("바꿀까요"),
+  );
 });
 
 test("소방대피: 빈 후보와 disabled 는 버튼이 꺼진다", () => {
@@ -280,15 +267,6 @@ test("확인 상자: 연 채 disabled 가 되면 상자가 닫히고 콜백은 0
       "PlayMonthlyRowRemove.tsx",
       { activity: row, section: "자유놀이", onRemove: () => calls.push(1), isLastInSection: false },
       act("remove"),
-    ],
-    [
-      "PlayMonthlyDrillPanel.tsx",
-      {
-        candidates: plan().drill_candidates,
-        current: "내 글",
-        onCopy: () => calls.push(1),
-      },
-      (n) => n.props["data-candidate"] === "d1",
     ],
   ]) {
     const calls = [];

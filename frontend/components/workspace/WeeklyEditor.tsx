@@ -32,7 +32,6 @@ import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { CARD, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
-  AsideStrip,
   BigView,
   BUTTON,
   PlanDone,
@@ -352,16 +351,13 @@ export default function WeeklyEditor({
       {picked && (
         <>
           <div className="flex items-end justify-between gap-3">
-            <div className="flex flex-col gap-1">
-              <span className="flex items-center gap-2 text-[13px] text-[#5c5243]">
-                {picked.cell.day ? `${dayOf(picked.cell)}요일` : `${plan.week_period.label}`}
-                {origin && (
-                  <span className="rounded-full bg-[#efeae2] px-2 py-0.5 text-[11px] font-bold">
-                    {origin}
-                  </span>
-                )}
-              </span>
+            <div className="flex items-center gap-2">
               <h2 className="m-0 text-lg font-bold">{name}</h2>
+              {origin && (
+                <span className="rounded-full bg-[#efeae2] px-2 py-0.5 text-[11px] font-bold text-[#5c5243]">
+                  {origin}
+                </span>
+              )}
             </div>
             {/* 저장 상태를 입력창 가까이에도 — 읽어 주는 건 위 상태 줄(role=status) 하나. */}
             {status !== "idle" && (
@@ -390,7 +386,7 @@ export default function WeeklyEditor({
           )}
           {/* 칸 이름은 위 제목에 한 번 — 입력창 이름표는 화면 읽기용으로만 남긴다(월간과 같은 입력창). */}
           <div
-            className={`${workspace.field} [&>label]:sr-only [&_textarea]:min-h-[180px] [&_textarea]:text-base`}
+            className={`${workspace.field} [&_label]:sr-only [&_textarea]:min-h-[180px] [&_textarea]:text-base`}
           >
             <PlayCellEditor
               key={picked.cell.item_id + ":" + bump}
@@ -570,7 +566,6 @@ export default function WeeklyEditor({
           </button>
         ))}
       </div>
-      <AsideStrip>{where ? `${where} 칸을 골랐어요` : "아직 고른 칸이 없어요"}</AsideStrip>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         {tab === "ai" ? aiTab : editTab}
       </div>
@@ -713,7 +708,7 @@ export default function WeeklyEditor({
         </div>
       }
       aside={aside}
-      docLabel="요일형 주간 양식"
+      docLabel={null}
       docHint={
         <div className="flex items-center gap-1">
           {sheetZoom.tools}

@@ -17,7 +17,6 @@ import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
 import PlayMonthlySafetyPanel from "./PlayMonthlySafetyPanel";
 import PlayMonthlySheet, { PAPER_WIDTH } from "./PlayMonthlySheet";
 import AnnualFrame, {
-  AsideStrip,
   BigView,
   BUTTON,
   PlanDone,
@@ -249,7 +248,7 @@ function PlayMonthlyBody({
     if (!save[direction]()) return;
     setLive({});
     bump();
-    setMessage(direction === "undo" ? "되돌렸어요" : "다시 했어요");
+    setMessage("");
   };
   const copyDrill = (candidateId: string) => {
     if (!save.copyDrill(candidateId)) return;
@@ -285,18 +284,11 @@ function PlayMonthlyBody({
         <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
       )}
       {selected && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[13px] text-[#5c5243]">
-            {row
-              ? `예상되는 놀이 방향 · ${plan.together.includes(row) ? "함께 하는 활동" : "유아 예상 자유놀이"}`
-              : placeOf(plan, selected).split(" · ")[0]}
-          </span>
-          <h2 className="m-0 text-lg font-bold">
-            {row
-              ? `${plan.together.includes(row) ? (CIRCLED[plan.together.indexOf(row)] ?? "") + " " : ""}${row.name.value}`
-              : (placeOf(plan, selected).split(" · ")[1] ?? placeOf(plan, selected))}
-          </h2>
-        </div>
+        <h2 className="m-0 text-lg font-bold">
+          {row
+            ? `${plan.together.includes(row) ? (CIRCLED[plan.together.indexOf(row)] ?? "") + " " : ""}${row.name.value}`
+            : placeOf(plan, selected)}
+        </h2>
       )}
       {parentPlay && (
         <p className="m-0 rounded-lg bg-[#f7f4ee] px-3 py-2 text-[13px] text-[#5c5243]">
@@ -312,7 +304,11 @@ function PlayMonthlyBody({
       {editing.map((itemId, index) => {
         const mine = stamp(bumps, itemId);
         return (
-          <div key={itemId} className={workspace.field}>
+          // 칸 하나면 이름은 위 제목에 한 번 — 입력창 이름표는 화면 읽기용으로만.
+          <div
+            key={itemId}
+            className={`${workspace.field} ${editing.length === 1 ? "[&_label]:sr-only" : ""}`}
+          >
             <PlayCellEditor
               key={itemId + ":" + mine}
               id={"play-monthly-cell-" + index}
@@ -363,7 +359,6 @@ function PlayMonthlyBody({
   ) : selected && selected === drillId ? (
     <PlayMonthlyDrillPanel
       candidates={plan.drill_candidates}
-      current={plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.value ?? ""}
       onCopy={copyDrill}
       disabled={locked}
     />
@@ -392,9 +387,6 @@ function PlayMonthlyBody({
           </button>
         ))}
       </div>
-      <AsideStrip>
-        {selected ? `${placeOf(plan, selected)} 칸을 골랐어요` : "아직 고른 칸이 없어요"}
-      </AsideStrip>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         {tab === "ai" ? aiTab : editTab}
       </div>
@@ -492,7 +484,7 @@ function PlayMonthlyBody({
         </>
       }
       aside={aside}
-      docLabel="놀이 중심형 월간 양식"
+      docLabel={null}
       docHint={
         <div className="flex items-center gap-2">
           <UndoRedo

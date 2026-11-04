@@ -362,7 +362,6 @@ export default function PlayProjectResult({
           ? bumped(latestEdit.current.epochs, step.itemId)
           : latestEdit.current.epochs,
     });
-    announce(direction === "undo" ? "되돌렸어요" : "다시 했어요");
   }
 
   // 문서 칸이나 목록의 놀이명을 누르면 그 칸을 「칸 편집」에서 연다.
