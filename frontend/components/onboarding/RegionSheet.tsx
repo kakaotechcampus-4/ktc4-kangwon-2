@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { PROVINCE_OPTIONS, districtsFor } from "@/lib/onboarding/regions";
 
 const SEJONG = "세종특별자치시";
 
+/** 칸 하나 = 칠판 지우개 한 개(globals.css 의 .eraser). 색은 포스티 쪽지 색을 돌려 쓴다. */
 const item =
-  "flex min-h-12 w-full items-center justify-center squircle [--r:12px] border-[1.5px] border-line bg-paper px-2.5 py-2 text-center text-[15px] font-medium text-ink transition-colors hover:border-primary hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
+  "eraser squircle [--r-bl:6px] [--r-br:6px] [--r:10px] flex min-h-[54px] w-full items-center justify-center px-2.5 pt-1.5 text-center text-[15px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+const ERASERS = ["--pg-note", "--pg-sage", "--pg-clay", "--pg-plum"];
+const eraser = (i: number) =>
+  ({ "--eraser": `var(${ERASERS[i % ERASERS.length]})` }) as CSSProperties;
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
 /**
- * 지역 고르개. 휴대폰에서는 아래에서 올라오는 시트, 데스크톱에서는 가운데 대화 상자다.
+ * 지역 고르개 — 칠판 위에 뜨는 작은 칠판, 칸은 칠판 지우개. 휴대폰에서는 아래에서 올라오는 판,
+ * 데스크톱에서는 나무테를 두른 가운데 판이다.
  * 시·도를 고르면 같은 자리의 목록이 그 시·도의 시·군·구로 바뀐다. 세종은 시·군·구가 없어 바로 끝난다.
  * 네이티브 `<dialog>` 라서 포커스를 가두고 Esc 로 닫히며, 닫으면 눌렀던 단추로 포커스가 돌아간다.
  */
@@ -42,7 +47,7 @@ export default function RegionSheet({
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-labelledby="region-sheet-title"
-      className="m-0 mt-auto max-h-[80vh] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] border-0 bg-paper p-0 pb-6 shadow-[0_-8px_32px_rgba(46,42,38,0.14)] backdrop:bg-[rgba(46,42,38,0.45)] sm:m-auto sm:max-w-[520px] sm:[--r-bl:20px] sm:[--r-br:20px] sm:[--r:20px]"
+      className="chalkboard m-0 mt-auto max-h-[80vh] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
     >
       <div aria-hidden="true" className="mx-auto mt-3 h-1 w-10 rounded-sm bg-line sm:hidden" />
       <div className="flex items-center gap-2 px-6 pb-4 pt-3 sm:pt-5">
@@ -68,7 +73,7 @@ export default function RegionSheet({
             </svg>
           </button>
         )}
-        <h2 id="region-sheet-title" className="flex-1 text-[20px] font-bold text-ink">
+        <h2 id="region-sheet-title" className="flex-1 font-display text-[26px] font-bold text-ink">
           {province ? "시·군·구를 골라주세요" : "시·도를 골라주세요"}
         </h2>
         <button
@@ -93,21 +98,31 @@ export default function RegionSheet({
       </div>
       {province && <p className="-mt-2 mb-3.5 px-6 text-[14px] text-ink-soft">{province}</p>}
       <ul
-        className={`grid max-h-[60vh] gap-2 overflow-y-auto px-6 ${province ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
+        className={`grid max-h-[60vh] gap-3 overflow-y-auto px-6 pb-2 pt-1 ${province ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
         style={{ wordBreak: "keep-all" }}
       >
         {!province &&
-          PROVINCE_OPTIONS.map((p) => (
+          PROVINCE_OPTIONS.map((p, i) => (
             <li key={p.value}>
-              <button type="button" className={item} onClick={() => pickProvince(p.value)}>
+              <button
+                type="button"
+                className={item}
+                style={eraser(i)}
+                onClick={() => pickProvince(p.value)}
+              >
                 {p.label}
               </button>
             </li>
           ))}
         {province &&
-          districts.map((d) => (
+          districts.map((d, i) => (
             <li key={d}>
-              <button type="button" className={item} onClick={() => onPick(province, d)}>
+              <button
+                type="button"
+                className={item}
+                style={eraser(i)}
+                onClick={() => onPick(province, d)}
+              >
                 {d}
               </button>
             </li>

@@ -189,8 +189,7 @@ body {
   color: var(--pg-ink);
 }
 /* 판 위 종이 — 원래 색으로 */
-.chalkPage .paper,
-.chalkPage dialog {
+.chalkPage .paper {
   --pg-ink: var(--paper-ink);
   --pg-ink-soft: var(--paper-ink-soft);
   --pg-ink-hint: var(--paper-ink-hint);
@@ -215,6 +214,58 @@ body {
   --pg-primary-tint: var(--paper-primary-tint);
   --pg-primary-tint-line: var(--paper-primary-tint-line);
 }
+/* 칠판 위에 뜨는 작은 판(지역 고르개). .chalkboard 의 position: relative 가 대화 상자의 fixed 를 덮지 않게 되돌린다.
+ * 대화 상자는 넘치는 부분이 잘려 분필 받침은 달지 않는다. */
+.chalkPage dialog.chalkboard {
+  position: fixed;
+}
+.chalkPage dialog.chalkboard::after {
+  display: none;
+}
+
+/* 칠판 지우개 — 지역 고르개의 칸. 위는 색 손잡이(--eraser), 아래는 분필 가루가 묻은 펠트.
+ * 모서리는 .squircle 로 준다. 누르면 판에 닿듯 내려앉고, 올리면 살짝 들린다. */
+.eraser {
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 11px; /* 펠트 자리 */
+  background: var(--eraser, var(--pg-note));
+  color: var(--paper-ink);
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.3),
+    0 6px 10px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+.eraser::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 11px;
+  border-top: 1px solid rgba(0, 0, 0, 0.22);
+  background:
+    radial-gradient(4px 2px at 18% 45%, rgba(244, 241, 232, 0.6), transparent),
+    radial-gradient(5px 2px at 52% 60%, rgba(244, 241, 232, 0.45), transparent),
+    radial-gradient(4px 2px at 82% 38%, rgba(244, 241, 232, 0.55), transparent),
+    repeating-linear-gradient(90deg, #5d5955 0 2px, #4b4844 2px 4px);
+}
+.eraser:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.3),
+    0 10px 14px rgba(0, 0, 0, 0.24);
+}
+.eraser:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .eraser {
+    transition: none;
+  }
+}
+
 @media (max-width: 639px) {
   .chalkPage {
     --pg-paper: var(--pg-board); /* 휴대폰은 아래 버튼 줄이 화면에 붙어 있어 비치면 안 된다 */
@@ -226,6 +277,9 @@ body {
   }
   .chalkPage.chalkboard::after {
     display: none;
+  }
+  .chalkPage dialog.chalkboard {
+    border: 0;
   }
 }
 
