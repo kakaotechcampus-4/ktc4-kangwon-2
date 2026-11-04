@@ -1514,9 +1514,9 @@ PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨,
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 PUT    /api/plans/monthly/{id}/safety-weeks/{week_id}   주별 안전교육 후보 배치 — §9-3 (후보 모드만)
 POST   /api/plans/monthly/{id}/drill-candidates/{item_id}/copy   훈련 후보를 훈련 칸에 복사 — §9-3 (훈련 칸이 있는 계획만)
-GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039)
-GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
-GET    /api/plans/weekly/{id}/export/hwp  주간 내보내기 — 확정본만, 기본 hwpx (§9-6)
+GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039) · ?format=pdf 면 PDF (ADR-061 제안)
+GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx · hwp · pdf
+GET    /api/plans/weekly/{id}/export/hwp  주간 내보내기 — 확정본만, 기본 hwpx · hwp · pdf (§9-6)
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 W5a · 편집 · 재생성 · 확정 · 이력 W5b 구현됨)
@@ -1546,9 +1546,10 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 GET /api/plans/10/export/hwp              → plan-10.hwpx   Content-Type: application/hwp+zip
 GET /api/plans/10/export/hwp?format=hwpx  → plan-10.hwpx   (위와 같다)
 GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: application/x-hwp
+GET /api/plans/10/export/hwp?format=pdf   → plan-10.pdf    Content-Type: application/pdf
 
 응답 200    Content-Disposition: attachment; filename="plan-10.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp · pdf 면 둘 다 그 확장자)
 ```
 
 **경로 이름은 `hwp` 인데 기본은 `hwpx` 다.** 원래 hwpx 만 주던 경로라, 지금 화면을 깨지 않으려고
@@ -1565,11 +1566,22 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 변환은 hwpx 를 다 만든 뒤에만 돌므로, 같은 문서를 `format` 없이 다시 받으면 hwpx 는 나온다.
 변환기(python-hwpx)의 hwp 쓰기가 새 기능이라 무엇이 실패하든 이 코드로 준다. 재시도해도 같다.
 
+**PDF 도 같은 hwpx 에서 만든다(ADR-061, 제안).** `?format=pdf` 면 채운 hwpx 의 표를
+reportlab 으로 다시 그린다 — 칸 주소 · 병합 · 너비 · 테두리 · 바탕색 · 글자 크기 · 굵기 · 정렬 ·
+줄 나눔을 양식에서 읽는다. 계획안 종류마다 따로 그리지 않아서 연간 · 월간 · 주간 · 일지가 한 길로 나온다.
+변환은 `.hwp` 와 같이 backend 프로세스 안에서만 한다.
+
+- **문서 한 쪽이 PDF 한 장이다.** 글이 넘치면 그 쪽을 한 장에 맞춰 줄인다 — 글자가 작아진다.
+- **글꼴은 나눔고딕 하나다**(서버 이미지의 `fonts-nanum`). 양식 글꼴과 다르고 줄 간격도 근사라,
+  한글에서 연 hwpx 와 똑같지는 않다. 수정할 파일은 hwpx · hwp 로 받는다.
+- **PDF 로 못 바꾸면 같은 503 `DEPENDENCY_UNAVAILABLE` 이다 — 「이 문서는 지금 pdf 로 바꿀 수 없습니다. hwpx 로 받아주세요.」**
+  서버에 한글 글꼴이 없을 때도 이 코드다. hwpx · hwp 는 그대로 나간다.
+
 **확정본만 내보낸다.** DRAFT 면 `GATE_BLOCKED` 409 다. 내보낸 파일은 제출 문서라,
 교사가 확인하지 않은 초안이 그대로 제출되는 길을 만들지 않는다.
 
 **놀이 프로젝트형도 확정본만 내보낸다**(ADR-048). DRAFT 는 409 `GATE_BLOCKED`, 문구 「놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.」, `fields: []` 다.
-기본 hwpx · `?format=hwpx|hwp` 를 그대로 쓴다. 하민의 `backend/app/features/plans/play_project_hwpx.py` 양식 · renderer 에 네 구간의 고른 5개만 `selected` 순서대로 넘긴다. 미선택 후보 · 출처 마커는 파일에 넣지 않는다.
+기본 hwpx · `?format=hwpx|hwp|pdf` 를 그대로 쓴다. 하민의 `backend/app/features/plans/play_project_hwpx.py` 양식 · renderer 에 네 구간의 고른 5개만 `selected` 순서대로 넘긴다. 미선택 후보 · 출처 마커는 파일에 넣지 않는다.
 
 **출처를 싣지 않는다.** `evidence` · `generation` 은 화면이 근거를 보여주는 값이지
 제출 문서에 들어갈 것이 아니다. 교사가 읽는 글자만 꺼낸다.
@@ -1581,8 +1593,8 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다. 놀이 프로젝트형 DRAFT 문구는 「놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.」, `fields: []` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 계획안이다 |
-| `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
-| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
+| `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` · PDF 로 바꾸지 못했다(PDF 는 글꼴이 없을 때도). hwpx 로는 받을 수 있다 |
 
 **월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다. **놀이 중심 월간 id 면 확정 여부와 관계없이 409 `GATE_BLOCKED`** 다(「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」, §9-7 · 놀이 월간 양식이 없어 한글 내려받기는 후속).
 기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
@@ -2592,7 +2604,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 ### 내보내기 — `GET /api/plans/weekly/{id}/export/hwp`
 
 월간 내보내기(§9 「내보내기」)와 같은 규칙이다 — **확정본만**(DRAFT 는 409 `GATE_BLOCKED`), 기본 hwpx ·
-`?format=hwp` 면 `.hwp`(바꾸지 못하면 503), **근거 · 만든 방식은 싣지 않는다**, 양식 작성자 정보를 지운다.
+`?format=hwp` 면 `.hwp` · `?format=pdf` 면 PDF(바꾸지 못하면 503), **근거 · 만든 방식은 싣지 않는다**, 양식 작성자 정보를 지운다.
 파일 이름 `weekly-plan-{id}.hwpx`.
 
 **화면은 카드형이지만 제출 문서는 표 양식이다.** 양식 `templates/weekly.hwpx`(scripts/build_weekly_template.py):
@@ -3561,7 +3573,7 @@ POST   /api/documents/{id}/refresh                               근거 다시 �
 GET    /api/documents/{id}/source-comparison                     일과 근거 전후 비교와 검토 토큰
 POST   /api/documents/{id}/reconfirm                              확정된 stale 일일 일지의 원자적 재확정
 DELETE /api/documents/{id}                                       204
-GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp).  확정본만.  아래 「내보내기」
+GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp · pdf 면 PDF).  확정본만.  아래 「내보내기」
 ```
 
 **확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
@@ -3618,13 +3630,13 @@ assessment    observation · dailyLog
 **관찰일지 · 일일 보육일지 · 주간 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼,
 주간 보육일지는 날짜 줄 하나를 그 주 날짜 수만큼 복제한다.
 
-**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` 다 ·
-확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
+**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` · `?format=pdf` 면 PDF(ADR-061 제안) 다 ·
+확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp · pdf 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
 
 ```
-응답 200    Content-Type: application/hwp+zip                     (?format=hwp 면 application/x-hwp)
+응답 200    Content-Type: application/hwp+zip                     (?format=hwp 면 application/x-hwp · pdf 면 application/pdf)
             Content-Disposition: attachment; filename="document-7.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp · pdf 면 둘 다 그 확장자)
 ```
 
 **배치는 위 「종이 한 장」이다.** 해석 + 지원 칸은 `해석` 본문, 빈 줄, `지원` 본문 순서로 잇는다.
@@ -3647,9 +3659,9 @@ assessment    observation · dailyLog
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
-| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
-| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` · PDF 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
 ### 개인정보
 

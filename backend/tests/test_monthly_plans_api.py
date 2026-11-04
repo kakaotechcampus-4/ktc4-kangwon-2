@@ -846,6 +846,8 @@ def test_확정된_월간을_hwpx_로_내려준다(world):
         by_week = {c["week_id"]: c["value"] for c in section["cells"]}
         for col, week in zip(columns, weeks, strict=True):
             assert cells[(MONTHLY_WEEK_ROWS[key], col)] == by_week.get(week["week_id"], "")
+    pdf = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp?format=pdf")  # ADR-061
+    assert (pdf.status_code, pdf.headers["content-type"]) == (200, "application/pdf"), pdf.text
 
 
 def test_월간은_확정_전에_내보낼_수_없다(world):
