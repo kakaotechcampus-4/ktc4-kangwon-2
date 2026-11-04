@@ -303,7 +303,8 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     expect(dbDocument(documentId!)).toEqual({ id: documentId!, status: "CONFIRMED", stale: false });
     await page.getByRole("link", { name: "홈", exact: true }).click();
     // 이미 적힌 일과가 있으면 홈의 일과 줄 자체가 고치러 가는 길이다.
-    await page.getByRole("link", { name: /^일과 —/ }).click();
+    // 줄 이름은 「09:00 일과 — …」 처럼 시각이 앞에 온다.
+    await page.getByRole("link", { name: /일과 —/ }).click();
     await expect(rows(page)).toHaveCount(7);
     await rows(page).nth(0).getByLabel("실제로 한 것").fill("블록 길을 더 길게 이어 붙였다.");
     await rows(page).nth(2).getByLabel("실제로 한 것").fill("길 위에 자동차를 올려 굴렸다.");
@@ -537,10 +538,11 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
   await expectTime(rows(page).nth(0), "시작", "09:16");
   await fillPlan(rows(page).nth(0), "계획만 수정함");
   await page.getByRole("button", { name: "+ 줄 추가", exact: true }).click();
-  // 새 줄은 맨 끝에 생기고, 시계를 닫으면 시간순으로 선다 — 00:00 이라 맨 위로 간다.
-  await pickTime(rows(page).last(), "시작", "00:00");
+  // 새 줄은 맨 끝에 생기고, 시계를 닫으면 시간순으로 선다 — 06:00 이라 맨 위로 간다.
+  // 다른 줄과 겹치면 겹친 시간 알림이 저장을 막으므로 09:16 앞으로 둔다.
+  await pickTime(rows(page).last(), "시작", "06:00");
   const added = rows(page).first();
-  await pickTime(added, "종료", "12:00");
+  await pickTime(added, "종료", "07:00");
   await added.getByLabel("실제로 한 것").fill("새벽 활동을 기록했다.");
 
   const mutations = () =>
@@ -563,8 +565,8 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
   // 계획만 고친 줄도 교사가 안 건드린 초는 그대로다.
   expect(stored[1].start).toBe("09:16:25");
   expect(stored[1].end).toBe("10:21:35");
-  expect(stored[0].start).toBe("00:00:00");
-  expect(stored[0].end).toBe("12:00:00");
+  expect(stored[0].start).toBe("06:00:00");
+  expect(stored[0].end).toBe("07:00:00");
   await page.reload();
   await expectNames(page, order);
   await page.screenshot({ path: info.outputPath("routine-time-input.png"), fullPage: true });

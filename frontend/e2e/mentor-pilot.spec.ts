@@ -310,8 +310,9 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await row.getByLabel("일과 이름").fill("오전 실내놀이");
   // 시작 · 종료 칸은 시계판과 함께 접혀 있다. 열고 고친 뒤 닫는다.
   await row.getByRole("button", { name: /시계로 시간 고르기/ }).click();
-  await row.getByLabel("시작 시간", { exact: true }).fill("09:00");
-  await row.getByLabel("종료 시간", { exact: true }).fill("10:00");
+  // 깔아 둔 하루의 다른 줄과 겹치면 겹친 시간 알림이 저장을 막는다. 이 줄 자리(07:30~09:00) 안에서 고친다.
+  await row.getByLabel("시작 시간", { exact: true }).fill("07:40");
+  await row.getByLabel("종료 시간", { exact: true }).fill("08:50");
   await row.getByRole("button", { name: "닫기", exact: true }).click();
   // 「계획한 것」은 접혀 있다.
   await row.locator("details").locator("summary").click();
