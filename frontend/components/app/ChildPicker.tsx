@@ -150,9 +150,9 @@ export default function ChildPicker({
 }
 
 /** 아이마다 고정된 도형. 이름이 있으니 읽어 줄 것은 없다. */
-function ChildShape({ mark }: { mark: ChildMark }) {
+export function ChildShape({ mark, size = 15 }: { mark: ChildMark; size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" className="shrink-0">
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" className="shrink-0">
       <path d={SHAPES[mark.shape]} style={{ fill: TONES[mark.tone] }} />
     </svg>
   );

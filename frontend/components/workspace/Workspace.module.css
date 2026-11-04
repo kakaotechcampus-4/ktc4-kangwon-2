@@ -327,6 +327,11 @@ select.input {
   display: block;
   margin-bottom: 16px;
 }
+/* 새싹 대신 세운 그림. 글자가 아니라서 아래 여백을 따로 준다. */
+.empty > svg {
+  display: block;
+  margin: 0 auto 14px;
+}
 .empty h3 {
   font-family: var(--font-display), sans-serif;
   font-size: 26px;
@@ -1541,4 +1546,296 @@ a.item {
   .problemGo {
     margin-left: auto;
   }
+}
+
+/* ── 관찰 기록 ──────────────────────────────────────────────────────────
+   열세 건이 같은 리듬으로 흐르던 표였다. 날짜로 묶고 아이 표식을 달아,
+   「언제 · 누구」가 글을 읽기 전에 먼저 눈에 들어오게 한다. */
+.recordDays {
+  display: grid;
+  gap: 22px;
+}
+.recordDay {
+  display: grid;
+  gap: 8px;
+}
+.recordDate {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-primary-deep);
+}
+.recordDate span {
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  font-family: var(--font-body), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pg-primary-ink);
+}
+.recordSheet {
+  position: relative;
+}
+.recordRows {
+  padding: 2px 20px;
+  border: 1px solid var(--pg-line);
+  border-top: 0;
+  border-bottom: 0;
+  background: var(--pg-ivory);
+}
+.recordSplit {
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px dashed var(--pg-line);
+}
+.recordRow {
+  display: flex;
+  gap: 11px;
+  width: 100%;
+  padding: 13px 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.recordMark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 1px;
+  /* 연한 테두리 한 겹으로는 아이보리 종이 위에서 떠오르지 않았다. */
+  border: 1px solid var(--pg-shell-line);
+  border-radius: 50%;
+  background: var(--pg-paper);
+  box-shadow: 0 1px 0 rgba(43, 36, 28, 0.07);
+}
+.recordBody {
+  flex: 1;
+  min-width: 0;
+}
+.recordWho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.recordWho b {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+/* 다섯 영역이 전부 같은 보라였다. 글자를 읽어야만 갈려서, 목록을 훑어도
+   어느 영역이 비어 있는지 보이지 않았다. 색과 그림을 하나씩 준다. */
+.recordDomain {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pg-primary-ink);
+}
+.recordDomain[data-tone="body"] {
+  border-color: var(--pg-clay-line);
+  background: var(--pg-clay);
+  color: var(--pg-alert-ink);
+}
+.recordDomain[data-tone="talk"] {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.recordDomain[data-tone="social"] {
+  border-color: var(--pg-sun);
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
+.recordDomain[data-tone="art"] {
+  border-color: var(--pg-plum-line);
+  background: var(--pg-plum);
+  color: var(--pg-primary-deep);
+}
+.recordDomain[data-tone="nature"] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.recordWhere {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+.recordFact {
+  display: block;
+  margin-top: 5px;
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--pg-ink);
+}
+
+/* 적는 칸이 이 화면의 주인공이다. 흰 네모 한 장이던 자리에 테이프를 붙이고
+   포스티를 세워, 들어온 교사 눈이 「여기 적는다」에 먼저 닿게 한다. */
+.recordForm {
+  position: relative;
+}
+.recordFormHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.recordFormHead {
+  align-items: flex-end;
+}
+.recordFormWord {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+.recordFormTitle {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 31px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
+.recordFormLead {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--pg-ink-soft);
+}
+/* 적는 순서. 글 안에 굵은 글씨로 묻혀 있어 「순서」로 안 읽혔다. */
+.recordOrder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+}
+.recordSteps {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.recordSteps b {
+  padding: 2px 9px;
+  border: 1px solid var(--pg-primary-tint-line);
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pg-primary-ink);
+}
+.recordSteps b + b::before {
+  content: "→";
+  margin-right: 7px;
+  margin-left: -16px;
+  color: var(--pg-ink-hint);
+  font-weight: 400;
+}
+.recordCount {
+  margin-left: auto;
+  color: var(--pg-ink-hint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 목록 머리. 날짜 머리(손글씨 25px)보다 작아 위계가 거꾸로 서 있었다. */
+.recordListHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.recordListTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
+.recordListTitle span {
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+}
+.recordWays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* 작은 밑줄 글씨라 오른쪽 끝에서 사라졌다. 다음에 갈 곳이라 단추 모양으로 세운다. */
+.recordWay {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.recordWay:hover {
+  border-color: var(--pg-primary-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+
+/* 찾기 칸. 목록 쪽지와 같은 흰 네모라 무슨 칸인지 몰랐다. */
+.recordFind {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+}
+.recordFind:focus-within {
+  border-color: var(--pg-primary);
+  box-shadow: 0 0 0 3px var(--pg-primary-tint);
+}
+.recordFindMark {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  color: var(--pg-ink-hint);
+}
+.recordFind input {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 14px;
+}
+.recordFind input:focus {
+  outline: none;
+  box-shadow: none;
 }

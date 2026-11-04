@@ -159,7 +159,10 @@ const between = (source, from, to) => {
 };
 
 test("관찰 기록 빈 상태 제목은 계약 문구 그대로다", () => {
-  assert.ok(records().includes('<Empty title="아직 남긴 기록이 없어요">'));
+  // 줄바꿈까지 맞추지 않는다 — `art` 같은 prop 이 붙으면 형식이 달라진다.
+  const source = records();
+  assert.ok(source.includes("<Empty"), "Empty 를 쓰지 않는다");
+  assert.ok(source.includes('title="아직 남긴 기록이 없어요"'), "계약 문구가 아니다");
 });
 
 test("두 화면이 로딩·빈 상태·오류를 직접 분기하지 않는다", () => {

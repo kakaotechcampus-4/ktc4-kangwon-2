@@ -34,10 +34,19 @@ export function WorkspacePage({
     </main>
   );
 }
-export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+export function Empty({
+  title,
+  children,
+  art,
+}: {
+  title: string;
+  children?: ReactNode;
+  /** 새싹 대신 세울 그림. 포스티가 말을 거는 화면에서 쓴다. */
+  art?: ReactNode;
+}) {
   return (
     <div className={styles.empty}>
-      <span aria-hidden="true">🌱</span>
+      {art ?? <span aria-hidden="true">🌱</span>}
       <h3>{title}</h3>
       <p>{children}</p>
     </div>
