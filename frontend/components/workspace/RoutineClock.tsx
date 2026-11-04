@@ -42,8 +42,7 @@ const dialText = (minutes: number) =>
   `${String(Math.floor(minutes / 60) % 12 || 12).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
 /** `550` → `오전 09:10`. 교사가 종이에 쓰는 모양 그대로다. */
-const spokenOf = (minutes: number) =>
-  `${minutes < 12 * 60 ? "오전" : "오후"} ${dialText(minutes)}`;
+const spokenOf = (minutes: number) => `${minutes < 12 * 60 ? "오전" : "오후"} ${dialText(minutes)}`;
 
 /** 12시 위, 시계 방향. `minutes` 는 하루 기준이고 시계판은 12시간이라 나머지만 쓴다. */
 const angleOf = (minutes: number) => ((minutes % SPAN) / SPAN) * 2 * Math.PI - Math.PI / 2;

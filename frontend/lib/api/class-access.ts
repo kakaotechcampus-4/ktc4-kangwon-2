@@ -3,13 +3,7 @@ import { apiRequest, errorCode } from "./client";
 
 /** 요약이 주는 종류. 계획안 셋과 문서 넷이다. */
 export type ArchiveKind =
-  | "annual"
-  | "monthly"
-  | "weekly"
-  | "dailyLog"
-  | "weeklyLog"
-  | "observation"
-  | "assessment";
+  "annual" | "monthly" | "weekly" | "dailyLog" | "weeklyLog" | "observation" | "assessment";
 
 /** 잠긴 반에서도 보이는 한 줄 — **제목 · 아이 이름 · 문서 id 는 없다.** */
 export interface ArchiveSummaryItem {

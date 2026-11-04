@@ -57,7 +57,7 @@ export function useServerDocument(
   }, [localId, selection]);
 
   const doc = chosen.detail?.id === localId ? chosen.detail : null;
-  const then = async <T,>(work: Promise<T>) => {
+  const then = async <T>(work: Promise<T>) => {
     const next = await work;
     onChanged?.();
     return next;

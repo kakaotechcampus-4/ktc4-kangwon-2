@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 registerHooks({
   resolve(spec, ctx, next) {
     const base = spec.startsWith("@/") ? new URL("../" + spec.slice(2), import.meta.url) : null;
-    const url = base ?? (spec.startsWith(".") && ctx.parentURL ? new URL(spec, ctx.parentURL) : null);
+    const url =
+      base ?? (spec.startsWith(".") && ctx.parentURL ? new URL(spec, ctx.parentURL) : null);
     if (url) {
       const ts = new URL(url.href + ".ts");
       if (existsSync(fileURLToPath(ts))) return { url: ts.href, shortCircuit: true };
@@ -21,7 +22,8 @@ registerHooks({
 const { ApiError } = await import("../lib/api/client.ts");
 const { classAccessMessage, decideRequest } = await import("../lib/api/class-access.ts");
 
-const denied = (code) => new ApiError(403, { error: { code, message: "서버 말", fields: ["class_id"] } });
+const denied = (code) =>
+  new ApiError(403, { error: { code, message: "서버 말", fields: ["class_id"] } });
 
 test("403 두 코드는 다른 말을 한다 — 승인이 없으면 다시 요청, 보기 전용이면 누가 고치나", () => {
   assert.match(classAccessMessage(denied("CLASS_ACCESS_REQUIRED")), /다시 요청/);

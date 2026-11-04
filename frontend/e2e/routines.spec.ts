@@ -528,7 +528,10 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("I-weekly-records-isolation.png"), fullPage: true });
+  await page.screenshot({
+    path: info.outputPath("I-weekly-records-isolation.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "지난 주", exact: true }).click();
   const previous = new Date(`${date}T00:00:00Z`);
   previous.setUTCDate(previous.getUTCDate() - 7);

@@ -78,7 +78,14 @@ export default function DocumentsPage() {
   const { data, error, save } = useWorkspace();
   const [entry] = useClientState(
     () => {
-      const blank = { date: "", classId: null, daily: false, assessment: false, weekly: null, docId: "" };
+      const blank = {
+        date: "",
+        classId: null,
+        daily: false,
+        assessment: false,
+        weekly: null,
+        docId: "",
+      };
       if (typeof window === "undefined") return blank;
       const query = new URLSearchParams(window.location.search);
       const kind = query.get("kind");

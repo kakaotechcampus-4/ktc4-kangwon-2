@@ -62,7 +62,7 @@ const DEFAULT_ROUTINES: [name: string, start: string, end: string][] = [
   ["오후 놀이", "14:20", "15:40"],
   ["오후간식", "15:40", "16:00"],
   ["귀가 및 통합보육", "16:00", "17:00"],
-]
+];
 const NAME_REQUIRED = "일과 이름을 적어 주세요.";
 const TIME_BACKWARDS = "끝나는 시간이 시작보다 빨라요.";
 const HAS_PROBLEM = "입력하지 않은 필수 항목이 있어요. 표시된 일과를 확인해 주세요.";
@@ -350,9 +350,7 @@ export default function RoutinesPage() {
     error?: boolean;
     /** 고칠 줄 목록. 있으면 글 한 덩어리 대신 짚어 주는 칸으로 그린다. */
     problems?: Problem[];
-  } | null>(
-    null,
-  );
+  } | null>(null);
   /**
    * 이 화면에 몇 번째로 들어왔나. 반 · 날짜를 바꾸거나 다시 읽을 때마다 올린다.
    *
@@ -495,7 +493,9 @@ export default function RoutinesPage() {
     if (!row) return;
     const clash = clashWith(rows, row);
     if (clash) {
-      setNotice(`${withParticle(clash.name.trim() || "다른 일과")} 시간이 겹쳐요. (${spanText(clash)})`);
+      setNotice(
+        `${withParticle(clash.name.trim() || "다른 일과")} 시간이 겹쳐요. (${spanText(clash)})`,
+      );
       return;
     }
     patch(key, (d) => ({ ...d, rows: sortRoutinesByTime(d.rows) }));
@@ -1121,7 +1121,12 @@ function Tape() {
 /** 달력에서 오늘에 치는 동그라미. 한 바퀴를 덜 닫아 손으로 그은 자국으로 보인다. */
 function CircleMark() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 150 70" preserveAspectRatio="none" className={ws.circleMark}>
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 150 70"
+      preserveAspectRatio="none"
+      className={ws.circleMark}
+    >
       <path
         d="M74 6 C112 4 146 18 143 36 C140 56 100 66 68 64 C32 62 6 50 8 32 C10 14 42 6 78 7"
         fill="none"
