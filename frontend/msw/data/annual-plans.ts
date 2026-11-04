@@ -186,6 +186,8 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
       format: p.format,
       format_version: p.format_version,
       periods: p.periods.map((period) => ({ ...period, selected: period.selected ?? [] })),
+      memo: p.memo,
+      memo_notices: p.memo_notices,
     };
   return {
     id: p.id,
@@ -199,6 +201,8 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
     safety_categories: safetyCategories,
     checked_rules: p.checked_rules,
     checks: p.checks,
+    memo: p.memo,
+    memo_notices: p.memo_notices,
   };
 };
 export const findPlan = (id: number) => {
@@ -219,6 +223,38 @@ export const listPlans = (classId?: number): AnnualPlanSummary[] =>
       created_at: p.created_at,
       confirmed_at: p.confirmed_at,
     }));
+
+/** 서버 `DELETE` 와 같다 — 확정본 · 딸린 월간이 있으면 지우지 않고 그 까닭을 돌려준다. */
+export const removePlan = (id: number) =>
+  commit((db): "CONFIRMED" | "IN_USE" | null => {
+    const plan = db.plans.find((p) => p.id === id);
+    if (!plan) return null;
+    if (plan.status === "CONFIRMED") return "CONFIRMED";
+    const mine = (p: { class_id: number }) => p.class_id === plan.class_id;
+    if (db.monthlyPlans.some(mine) || db.playMonthlyPlans.some(mine)) return "IN_USE";
+    db.plans = db.plans.filter((p) => p !== plan);
+    delete db.annualAudit[id];
+    return null;
+  });
+
+/**
+ * 시험용 test-reset (서버 `ALLOW_TEST_RESET`). 확정 여부를 보지 않고 그 반의 월간 · 놀이 월간 · 주간과
+ * 이력까지 지운다. 목업은 반 하나가 학년도 하나라 반으로만 고른다.
+ */
+export const resetPlan = (id: number) =>
+  commit((db) => {
+    const plan = db.plans.find((p) => p.id === id);
+    if (!plan) return false;
+    const other = (p: { class_id: number }) => p.class_id !== plan.class_id;
+    for (const p of db.monthlyPlans.filter((p) => !other(p))) delete db.monthlyAudit[p.id];
+    for (const p of db.playMonthlyPlans.filter((p) => !other(p))) delete db.playMonthlyAudit[p.id];
+    db.monthlyPlans = db.monthlyPlans.filter(other);
+    db.playMonthlyPlans = db.playMonthlyPlans.filter(other);
+    db.weeklyPlans = db.weeklyPlans.filter(other);
+    db.plans = db.plans.filter((p) => p !== plan);
+    delete db.annualAudit[id];
+    return true;
+  });
 
 /** 학년도는 요청이 아니라 반이 정한다 (§4). */
 export const addPlan = (input: AnnualInput, schoolYear: number) =>

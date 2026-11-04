@@ -7,6 +7,7 @@ import {
   type DocumentKind,
   type SavedDocument,
   type Section,
+  type Source,
 } from "@/lib/workspace/model";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
@@ -41,6 +42,18 @@ const FACT_SOURCE: Partial<Record<DocumentKind, string>> = {
   observation: "/records",
   assessment: "/records",
 };
+/**
+ * 근거 하나가 원래 있던 곳. 일과 기록이면 그날 일과, 주간 일지면 그 일일 일지, 관찰이면 관찰 기록.
+ *
+ * 「근거 1 · 2」가 누를 수 있을 것처럼 생겼는데 눌러도 아무 일이 없었다(멘토 12주차 리뷰).
+ * 진짜로 그 근거로 데려간다. 일지를 쓰던 중이라 **새 탭**으로 연다.
+ */
+function sourceHref(kind: DocumentKind, classId: string, source: Source): string | null {
+  if (kind === "dailyLog") return routinesPath(classId, source.date);
+  if (kind === "weeklyLog") return `/documents?id=${encodeURIComponent(source.id)}`;
+  return FACT_SOURCE[kind] ?? null;
+}
+
 const LAYER_HINTS: Record<string, string> = {
   사실: "교사가 입력한 원문 · 읽기 전용",
   해석: "위 사실에서 읽을 수 있는 의미만 적어주세요.",
@@ -166,7 +179,9 @@ export default function DocumentEditor({
     : undefined;
   const hwpx = useHwpxDownload(setMessage);
   const supportsHwpx =
-    !!annualPlanId || (!!server && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
+    !!annualPlanId ||
+    // 올린 원문(IMPORT)은 해석 · 지원 칸이 없어 양식을 못 채운다 — 서버도 409 로 막는다.
+    (!!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
   function change(index: number, body: string) {
@@ -187,7 +202,7 @@ export default function DocumentEditor({
       setIssuesOpen(false);
       return;
     }
-    const local = server ? serverIssues(doc) : validateDocument(doc);
+    const local = server ? (imported ? [] : serverIssues(doc)) : validateDocument(doc);
     setIssues(local);
     setIssuesOpen(true);
     setMessage("");
@@ -208,7 +223,8 @@ export default function DocumentEditor({
     if (stale || working) return;
     if (server) {
       // AI 검증은 서버 확정 조건이 아니다 (§11) — 교사 확인 3개와 서버 게이트가 기준이다.
-      const blocking = serverIssues(doc);
+      // 올린 원문에는 해석 · 지원이 없다. 20자 규칙을 걸면 확정을 취소한 뒤 다시 확정할 수 없다.
+      const blocking = imported ? [] : serverIssues(doc);
       if (confirm && (blocking.length || !checks.every(Boolean))) {
         setIssues(blocking);
         setMessage("원본 대조와 교사 검토를 마쳐주세요.");
@@ -529,9 +545,22 @@ export default function DocumentEditor({
           {section.sourceIds.length > 0 && (
             <small className={ws.source}>
               근거:{" "}
-              {section.sourceIds
-                .map((id) => doc.sources.find((s) => s.id === id)?.date || "원본 없음")
-                .join(" · ")}
+              {section.sourceIds.map((id, i) => {
+                const source = doc.sources.find((s) => s.id === id);
+                const href = source && sourceHref(doc.kind, doc.classId, source);
+                return (
+                  <span key={id}>
+                    {i > 0 && " · "}
+                    {href ? (
+                      <a href={href} target="_blank" rel="noopener" className={ws.link}>
+                        {source.date}
+                      </a>
+                    ) : (
+                      source?.date || "원본 없음"
+                    )}
+                  </span>
+                );
+              })}
             </small>
           )}
         </section>
@@ -545,10 +574,23 @@ export default function DocumentEditor({
       {doc.sources.length > 0 && (
         <details>
           <summary className={ws.link}>원본 근거 {doc.sources.length}건 펼쳐보기</summary>
-          {doc.sources.map((source, i) => (
+          {doc.sources.map((source) => (
             <blockquote key={source.id} className={ws.quote}>
               <small className={ws.muted}>
-                근거 {i + 1} · {source.date}
+                {source.date}
+                {sourceHref(doc.kind, doc.classId, source) && (
+                  <>
+                    {" · "}
+                    <a
+                      href={sourceHref(doc.kind, doc.classId, source)!}
+                      target="_blank"
+                      rel="noopener"
+                      className={ws.link}
+                    >
+                      원본 보기 (새 탭)
+                    </a>
+                  </>
+                )}
               </small>
               <br />
               {source.text}

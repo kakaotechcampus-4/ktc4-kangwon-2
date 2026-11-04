@@ -25,12 +25,7 @@ import {
 import { classServerId } from "@/lib/api/onboarding";
 import { listMonthlyPlans } from "@/lib/api/monthly";
 import { listWeeklyPlans } from "@/lib/api/weekly";
-import type {
-  AnnualPlanSummary,
-  ClassAccess,
-  MonthlyPlanSummary,
-  WeeklyPlanSummary,
-} from "@/lib/api/types";
+import type { AnnualPlanSummary, MonthlyPlanSummary, WeeklyPlanSummary } from "@/lib/api/types";
 import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/onboarding/types";
 import type { RecordKind } from "@/lib/api/documents";
 import { Message, ws } from "./WorkspaceUI";
@@ -49,7 +44,15 @@ import {
 } from "./DocumentArchiveArt";
 import styles from "./DocumentArchive.module.css";
 import { PlanArchivePreview, type PlanPreviewTarget } from "./DocumentArchivePreview";
-import { isLocked, READ_ONLY_MESSAGE } from "./DocumentArchiveAccess";
+import {
+  ACCESS_LABEL,
+  ForeignClassPanel,
+  ReceivedPanel,
+  useClassAccess,
+  type ForeignAccess,
+} from "./ClassAccessPanels";
+import type { ApiClass } from "@/lib/api/types";
+import type { ReceivedRequest } from "@/lib/api/class-access";
 
 /** 보관함이 목록에 그리는 일지 하나. 상세(sections · sources)는 열어야 온다 (§11). */
 export type ArchiveDoc = {
@@ -64,7 +67,7 @@ export type ArchiveDoc = {
   updatedAt: string;
 };
 
-export type ArchiveType = "annual" | "monthly" | "weekly" | "care" | "observation";
+type ArchiveType = "annual" | "monthly" | "weekly" | "care" | "observation";
 
 /**
  * 문서 종류 다섯. `icon` 이 숫자면 달력을 그리고 그 숫자가 안쪽 줄 수다.
@@ -154,16 +157,8 @@ function Blank({ art, title, children }: { art: ReactNode; title: string; childr
   );
 }
 
-/** 열람만 승인된 반(APPROVED)에서 작성 자리에 대신 적는 말. 서버도 403 CLASS_READ_ONLY 로 막는다. */
-const LOCKED_HINT = READ_ONLY_MESSAGE;
-
 export default function DocumentArchiveView({
   classes,
-  readOnlyClasses,
-  classAccess,
-  pendingRequests,
-  renderLocked,
-  ownerPanel,
   classId,
   onPickClass,
   documents,
@@ -179,16 +174,6 @@ export default function DocumentArchiveView({
   header,
 }: {
   classes: ClassroomEntry[];
-  /** 열람만 승인된 반(APPROVED)의 id. 작성·수정 자리는 잠긴다 (DocumentsPage). */
-  readOnlyClasses: Set<string>;
-  /** 반마다 서버가 준 `my_access` (§2). 칸이 없는 옛 서버면 비어 있다. */
-  classAccess: Map<string, ClassAccess>;
-  /** 내가 주인인 반에 기다리는 요청 수. 반 카드에 띄운다. */
-  pendingRequests: Map<string, number>;
-  /** 승인 전 반(NONE · PENDING · REJECTED · REVOKED)의 본문 — 요청 단추와 요약. */
-  renderLocked: (type: ArchiveType | null) => ReactNode;
-  /** 내가 주인인 반을 보고 있을 때 위에 붙는 받은 요청 목록. */
-  ownerPanel: ReactNode;
   classId: string;
   onPickClass: (id: string) => void;
   documents: ArchiveDoc[];
@@ -207,11 +192,12 @@ export default function DocumentArchiveView({
   // 생성 화면에서 돌아오면 선택된 문서에 맞춰 탐색도 시작한다.
   // 이후 목록 탐색은 이 상태를 그대로 쓰므로 다른 종류의 편집기가 끼어들지 않는다.
   const initialDoc = documents.find((d) => d.id === activeId && d.classId === classId);
-  const [type, setType] = useState<ArchiveType | null>(() => {
-    if (initialDoc?.kind === "observation") return "observation";
-    if (initialDoc?.kind === "dailyLog" || initialDoc?.kind === "weeklyLog") return "care";
+  const typeOf = (kind: string | undefined): ArchiveType | null => {
+    if (kind === "observation") return "observation";
+    if (kind === "dailyLog" || kind === "weeklyLog") return "care";
     return null;
-  });
+  };
+  const [type, setType] = useState<ArchiveType | null>(() => typeOf(initialDoc?.kind));
   const [day, setDay] = useState(() => initialDoc?.start ?? today());
   const [month, setMonth] = useState(() => monthOf(initialDoc?.start ?? today()));
   const [schoolYear, setSchoolYear] = useState(() => schoolYearOf(today()));
@@ -223,15 +209,30 @@ export default function DocumentArchiveView({
     initialDoc?.kind === "weeklyLog" ? "weeklyLog" : "dailyLog",
   );
   const [oldestFirst, setOldestFirst] = useState(false);
+  // 주소(`?id=`)로 바로 들어오면 첫 그림에는 목록이 아직 없어 위 초기값이 빈 칸으로 굳는다.
+  // 그 문서가 목록에 닿는 순간 한 번만 그 칸으로 맞춘다 — 안 그러면 문서를 열어 달라
+  // 했는데 「문서를 선택해 주세요」가 뜬다.
+  const [tunedTo, setTunedTo] = useState(initialDoc ? activeId : "");
+  if (initialDoc && tunedTo !== activeId) {
+    setTunedTo(activeId);
+    setType(typeOf(initialDoc.kind));
+    setDay(initialDoc.start);
+    setMonth(monthOf(initialDoc.start));
+    if (initialDoc.kind === "observation") setChildId(initialDoc.childId);
+    if (initialDoc.kind === "dailyLog" || initialDoc.kind === "weeklyLog")
+      setScope(initialDoc.kind);
+  }
   const [planPreview, setPlanPreview] = useState<PlanPreviewTarget | null>(null);
   const previewRef = useRef<HTMLElement>(null);
   const [mobileList, setMobileList] = useState(false);
+  // 같은 원 남의 반과 받은 열람 요청 (ADR-059). 고르면 오른쪽 본문 자리를 그 칸이 쓴다.
+  const access = useClassAccess();
+  const [foreign, setForeign] = useState<number | "received" | null>(null);
+  const foreignRoom =
+    typeof foreign === "number" ? access.others.find((c) => c.id === foreign) : undefined;
 
   const classroom = classes.find((c) => c.id === classId);
-  const readOnly = readOnlyClasses.has(classId);
-  // 승인 전 반은 실제 목록 · 상세를 부르지 않는다 — 부르면 403 CLASS_ACCESS_REQUIRED 다.
-  const locked = isLocked(classAccess.get(classId));
-  const serverClassId = classId && !locked ? classServerId(classId) : null;
+  const serverClassId = classId ? classServerId(classId) : null;
 
   // 반을 바꾸면 고른 문서 종류 · 아동을 비운다 — 다른 반의 선택이 남으면 섞여 보인다.
   // ref 가 아니라 state 로 비교한다(react-hooks/refs). 렌더 중 setState 는 같은 렌더에서 걷힌다.
@@ -355,21 +356,41 @@ export default function DocumentArchiveView({
   const days = useMemo(() => weekDays(day), [day]);
   const sorted = <T,>(items: T[]) => (oldestFirst ? [...items].reverse() : items);
 
-  if (!classId || !classroom) {
+  const rail = (
+    <ClassRail
+      classes={classes}
+      classId={foreign === null ? classId : ""}
+      onPick={(id) => {
+        setForeign(null);
+        onPickClass(id);
+      }}
+      others={access.others}
+      received={access.received}
+      foreign={foreign}
+      onPickForeign={setForeign}
+    />
+  );
+  // 남의 반 · 받은 요청을 고르면 내 반 보관함 대신 그 칸이 선다.
+  const foreignBody =
+    foreign === "received" ? (
+      <ReceivedPanel items={access.received} onChanged={access.reload} />
+    ) : foreignRoom ? (
+      <ForeignClassPanel key={foreignRoom.id} room={foreignRoom} onChanged={access.reload} />
+    ) : null;
+
+  if (!classId || !classroom || foreign !== null) {
     return (
       <div className={styles.archive}>
         <ArchiveHeader>{header}</ArchiveHeader>
-        <ClassRail
-          classes={classes}
-          classAccess={classAccess}
-          pendingRequests={pendingRequests}
-          classId={classId}
-          onPick={onPickClass}
-        />
+        {rail}
         <div className={styles.content}>
-          <Blank art={<StartArt className={styles.blankArt} />} title="반을 선택해 주세요">
-            왼쪽에서 반을 선택하면 해당 반의 문서 보관함을 확인할 수 있어요.
-          </Blank>
+          {foreign !== null ? (
+            foreignBody
+          ) : (
+            <Blank art={<StartArt className={styles.blankArt} />} title="반을 선택해 주세요">
+              왼쪽에서 반을 선택하면 해당 반의 문서 보관함을 확인할 수 있어요.
+            </Blank>
+          )}
         </div>
       </div>
     );
@@ -399,11 +420,9 @@ export default function DocumentArchiveView({
           count={items.length}
           hint="학년도별 문서를 확인해 보세요."
           blocked={
-            readOnly
-              ? LOCKED_HINT
-              : annualOfClass.some((p) => p.school_year === schoolYear)
-                ? "이 학년도의 연간계획안이 이미 있어요."
-                : ""
+            annualOfClass.some((p) => p.school_year === schoolYear)
+              ? "이 학년도의 연간계획안이 이미 있어요."
+              : ""
           }
           createHref="/plans/annual/new"
           createLabel="새 연간 계획안 작성"
@@ -479,13 +498,11 @@ export default function DocumentArchiveView({
           count={items.length}
           hint="연간계획안을 바탕으로 작성해요."
           blocked={
-            readOnly
-              ? LOCKED_HINT
-              : !confirmedAnnual
-                ? "연간계획안을 먼저 확정해야 월간계획안을 만들 수 있어요."
-                : items.length
-                  ? "이 달의 월간계획안이 이미 있어요."
-                  : ""
+            !confirmedAnnual
+              ? "연간계획안을 먼저 확정해야 월간계획안을 만들 수 있어요."
+              : items.length
+                ? "이 달의 월간계획안이 이미 있어요."
+                : ""
           }
           createHref="/plans/monthly"
           createLabel="새 월간 계획안 작성"
@@ -553,11 +570,9 @@ export default function DocumentArchiveView({
           count={items.length}
           hint="월간계획안을 바탕으로 작성해요."
           blocked={
-            readOnly
-              ? LOCKED_HINT
-              : parent?.status === "CONFIRMED"
-                ? ""
-                : `${monthLabel(month)} 월간계획안을 먼저 확정해야 주간계획안을 만들 수 있어요.`
+            parent?.status === "CONFIRMED"
+              ? ""
+              : `${monthLabel(month)} 월간계획안을 먼저 확정해야 주간계획안을 만들 수 있어요.`
           }
           createHref="/plans/weekly"
           createLabel="새 주간 계획안 작성"
@@ -733,7 +748,6 @@ export default function DocumentArchiveView({
                   doc={d}
                   cover="care"
                   art={<CareArt className={styles.coverArt} />}
-                  readOnly={readOnly}
                   onOpen={openJournal}
                 />
               ))}
@@ -741,15 +755,11 @@ export default function DocumentArchiveView({
               <button
                 type="button"
                 className={`${styles.addCard} ${styles.journalCreateCard}`}
-                disabled={readOnly}
                 onClick={() => onCreate("weeklyLog", { date: day })}
               >
-                <CareNotebookArt className={styles.journalCreateArt} />
-                {readOnly ? "주간 보육일지" : "새 주간 보육일지 작성"}
+                <CareNotebookArt className={styles.journalCreateArt} />새 주간 보육일지 작성
                 <span className={styles.addNote}>
-                  {readOnly
-                    ? LOCKED_HINT
-                    : "확정한 일일 보육일지 또는 일과 기록을 근거로 만들어요."}
+                  확정한 일일 보육일지 또는 일과 기록을 근거로 만들어요.
                 </span>
               </button>
             </div>
@@ -774,7 +784,6 @@ export default function DocumentArchiveView({
             <DayStrip
               days={days}
               day={day}
-              readOnly={readOnly}
               onPickDay={setDay}
               onOpen={openJournal}
               cover={observation ? "observation" : "care"}
@@ -841,42 +850,11 @@ export default function DocumentArchiveView({
     );
   }
 
-  const rail = (
-    <ClassRail
-      classes={classes}
-      classAccess={classAccess}
-      pendingRequests={pendingRequests}
-      classId={classId}
-      onPick={onPickClass}
-    />
-  );
-
-  // 승인 전 반은 종류 칸과 요약만 그린다. 실제 목록 · 상세 · 미리보기는 열지 않는다.
-  if (locked) {
-    return (
-      <div className={styles.archive}>
-        <ArchiveHeader>{header}</ArchiveHeader>
-        {rail}
-        <div className={styles.content}>
-          {typeGrid()}
-          {renderLocked(type)}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.archive}>
       <ArchiveHeader>{header}</ArchiveHeader>
       {rail}
       <div className={styles.content}>
-        {ownerPanel}
-        {readOnly && (
-          <p className={styles.readOnlyNote} role="status">
-            <Icon name="users" />
-            {classroom.className} 문서를 참고하고 있어요. {LOCKED_HINT} 내려받기는 확정본만 돼요.
-          </p>
-        )}
         {openDoc && editingId === openDoc.id ? (
           <>
             <button
@@ -930,7 +908,6 @@ export default function DocumentArchiveView({
                     <PlanArchivePreview
                       key={`${shownPlan.kind}:${shownPlan.id}`}
                       target={shownPlan}
-                      readOnly={readOnly}
                     />
                   )}
                 </aside>
@@ -1010,7 +987,6 @@ function DayStrip({
   emptyHint,
   createLabel,
   onCreate,
-  readOnly,
 }: {
   days: string[];
   day: string;
@@ -1023,8 +999,6 @@ function DayStrip({
   emptyHint: string;
   createLabel: string;
   onCreate: () => void;
-  /** 담임이 다른 반이면 작성 자리를 잠근다. */
-  readOnly: boolean;
 }) {
   const picked = docsFor(day);
   return (
@@ -1064,26 +1038,18 @@ function DayStrip({
       </div>
       <div className={styles.docGrid} style={{ marginTop: 12 }}>
         {picked.map((d) => (
-          <JournalCard
-            key={d.id}
-            doc={d}
-            cover={cover}
-            art={art}
-            readOnly={readOnly}
-            onOpen={onOpen}
-          />
+          <JournalCard key={d.id} doc={d} cover={cover} art={art} onOpen={onOpen} />
         ))}
         {/* 없는 문서의 가짜 카드를 만들지 않는다 — 대신 그 날짜로 새로 쓰는 길을 연다. */}
         {!picked.length && (
           <button
             type="button"
             className={`${styles.addCard} ${styles.journalCreateCard}`}
-            disabled={readOnly}
             onClick={onCreate}
           >
             <CareNotebookArt className={styles.journalCreateArt} />
-            {readOnly ? "작성된 문서가 없어요" : createLabel}
-            <span className={styles.addNote}>{readOnly ? LOCKED_HINT : emptyHint}</span>
+            {createLabel}
+            <span className={styles.addNote}>{emptyHint}</span>
           </button>
         )}
       </div>
@@ -1096,13 +1062,11 @@ function JournalCard({
   doc,
   cover,
   art,
-  readOnly,
   onOpen,
 }: {
   doc: ArchiveDoc;
   cover: "care" | "observation";
   art: ReactNode;
-  readOnly: boolean;
   onOpen: (id: string) => void;
 }) {
   const state = archiveStatus(doc);
@@ -1125,8 +1089,7 @@ function JournalCard({
         <StatusBadge state={state} />
       </div>
       <div className={styles.cardAction}>
-        {/* 열람 전용 반의 초안은 이어 쓸 수 없다 — 미리보기만 연다. */}
-        {state === "draft" && !readOnly ? "이어서 작성하기 →" : "문서 열기 →"}
+        {state === "draft" ? "이어서 작성하기 →" : "문서 열기 →"}
       </div>
     </button>
   );
@@ -1146,71 +1109,91 @@ function Legend() {
 }
 
 /** 문서 보관함 안쪽 반 선택. **전역 사이드바(AppSidebar)를 대신하지 않는다.** */
-/** 반 카드 아래 작은 표. 승인 없이 읽고 쓰는 반(OPEN)과 요청 전 반(NONE)은 표를 달지 않는다. */
-const ACCESS_TAG: Partial<Record<ClassAccess, string>> = {
-  OWNER: "내 담당 반",
-  APPROVED: "열람 가능",
-  PENDING: "승인 대기",
-  REJECTED: "요청 거절됨",
-  REVOKED: "승인 취소됨",
-};
-
 function ClassRail({
   classes,
-  classAccess,
-  pendingRequests,
   classId,
   onPick,
+  others,
+  received,
+  foreign,
+  onPickForeign,
 }: {
   classes: ClassroomEntry[];
-  classAccess: Map<string, ClassAccess>;
-  pendingRequests: Map<string, number>;
   classId: string;
   onPick: (id: string) => void;
+  /** 같은 원의 남의 반. 열람 상태(`my_access`)를 배지로 단다. */
+  others: ApiClass[];
+  /** 내 반에 온 열람 요청. 하나라도 있으면 「받은 요청」 칸을 연다. */
+  received: ReceivedRequest[];
+  foreign: number | "received" | null;
+  onPickForeign: (pick: number | "received") => void;
 }) {
-  // 내 반만 있는 원에서는 모든 카드에 같은 표가 붙어 뜻이 없다. 남의 반이 섞일 때만 표를 단다.
-  const mark = classes.some((c) => {
-    const access = classAccess.get(c.id);
-    return access !== undefined && access !== "OWNER" && access !== "OPEN";
-  });
+  const waiting = received.filter((r) => r.status === "PENDING").length;
   return (
     <aside className={styles.classRail} aria-label="반 선택">
       <div className={styles.railHead}>우리 반</div>
       {classes.length ? (
         <div className={styles.classList}>
-          {classes.map((c) => {
-            const access = classAccess.get(c.id);
-            const tag = mark && access ? ACCESS_TAG[access] : undefined;
-            const pending = pendingRequests.get(c.id) ?? 0;
-            return (
-              <button
-                type="button"
-                key={c.id}
-                className={styles.classCard}
-                // 선택(aria-pressed)과 담당 여부는 따로 그린다. 담당 반은 연한 노랑이다.
-                data-mine={access === "OWNER" || undefined}
-                aria-pressed={c.id === classId}
-                onClick={() => onPick(c.id)}
-              >
-                <Icon name={isLocked(access) ? "lock" : "users"} />
-                <span className={styles.grow}>{c.className || "이름 없는 반"}</span>
-                <Icon name="chevron" />
-                {(tag || pending > 0) && (
-                  <span className={styles.mineRow}>
-                    {tag && (
-                      <span className={styles.mineTag} data-access={access}>
-                        {tag}
-                      </span>
-                    )}
-                    {pending > 0 && <span className={styles.requestCount}>요청 {pending}건</span>}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {classes.map((c) => (
+            <button
+              type="button"
+              key={c.id}
+              className={styles.classCard}
+              aria-pressed={c.id === classId}
+              onClick={() => onPick(c.id)}
+            >
+              <Icon name="users" />
+              <span className={styles.grow}>{c.className || "이름 없는 반"}</span>
+              <Icon name="chevron" />
+            </button>
+          ))}
+          {received.length > 0 && (
+            <button
+              type="button"
+              className={styles.classCard}
+              aria-pressed={foreign === "received"}
+              onClick={() => onPickForeign("received")}
+            >
+              <span className={styles.grow}>받은 요청</span>
+              {waiting > 0 && (
+                <span className={styles.railCount} aria-label={`기다리는 요청 ${waiting}건`}>
+                  {waiting}
+                </span>
+              )}
+              <Icon name="bell" />
+            </button>
+          )}
         </div>
       ) : (
         <p className={styles.railEmpty}>등록된 반이 없어요. 설정에서 반을 먼저 만들어주세요.</p>
+      )}
+      {others.length > 0 && (
+        <>
+          <div className={styles.railHead}>
+            <Icon name="lock" />
+            같은 원 반
+          </div>
+          <p className={styles.railNote}>담임 선생님이 승인하면 문서를 볼 수 있어요.</p>
+          <div className={styles.classList}>
+            {others.map((c) => {
+              const state = (c.my_access ?? "NONE") as ForeignAccess;
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  className={styles.classCard}
+                  aria-pressed={foreign === c.id}
+                  onClick={() => onPickForeign(c.id)}
+                >
+                  <span className={styles.grow}>{c.name}</span>
+                  <span className={styles.railBadge} data-state={state}>
+                    {ACCESS_LABEL[state]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
       <SidebarDecor className={styles.decor} />
     </aside>

@@ -2,11 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { downloadDocumentHwpx } from "@/lib/api/documents";
-import { downloadAnnualHwpx, getAnnualPlan } from "@/lib/api/plans";
-import { downloadMonthlyHwpx, getMonthlyPlan } from "@/lib/api/monthly";
-import { downloadWeeklyHwpx, getWeeklyPlan } from "@/lib/api/weekly";
-import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
+import { getAnnualPlan } from "@/lib/api/plans";
+import { getMonthlyPlan } from "@/lib/api/monthly";
+import { getWeeklyPlan } from "@/lib/api/weekly";
 import { DOCUMENT_KINDS, localDate, type SavedDocument, type Section } from "@/lib/workspace/model";
 import { ws } from "./WorkspaceUI";
 import styles from "./DocumentArchive.module.css";
@@ -117,7 +115,7 @@ export default function DocumentArchivePreview({
   status: "loading" | "ready" | "error";
   error: string;
   onRetry: () => void;
-  /** 없으면 열람 전용이다 — 담임이 다른 반의 문서 (DocumentsPage 의 `readOnlyClass`). */
+  /** 없으면 편집 단추를 그리지 않는다 — 승인받은 남의 반은 보기만 한다 (ADR-059). */
   onEdit?: () => void;
 }) {
   if (status === "loading") return <p role="status">문서 미리보기를 불러오고 있어요.</p>;
@@ -151,48 +149,16 @@ export default function DocumentArchivePreview({
           <p>{document.reviewNote}</p>
         </section>
       )}
-      {onEdit ? (
+      {onEdit && (
         <div className={styles.previewActions}>
           <button type="button" className={ws.primary} onClick={onEdit}>
             {document.status === "confirmed" ? "문서 열기" : "편집하기"}
           </button>
         </div>
-      ) : (
-        document.status === "confirmed" && (
-          <ReadOnlyDownload fetchFile={() => downloadDocumentHwpx(document.id)} />
-        )
       )}
     </>
   );
 }
-
-/**
- * 담임이 다른 반은 편집 화면을 열지 않고 내려받기만 둔다. 서버는 확정본만 내보낸다
- * (documents/export.py · plans/export.py) — 그래서 확정본에만 보인다.
- */
-function ReadOnlyDownload({ fetchFile }: { fetchFile: () => Promise<void> }) {
-  const [message, setMessage] = useState("");
-  const hwpx = useHwpxDownload(setMessage);
-  return (
-    <div className={styles.previewActions}>
-      <button
-        type="button"
-        className={ws.primary}
-        disabled={hwpx.exporting}
-        onClick={() => void hwpx.download(fetchFile)}
-      >
-        {hwpx.exporting ? "파일 만드는 중…" : "한글 파일로 내려받기"}
-      </button>
-      {message && <p role="status">{message}</p>}
-    </div>
-  );
-}
-
-const PLAN_DOWNLOAD = {
-  annual: downloadAnnualHwpx,
-  monthly: downloadMonthlyHwpx,
-  weekly: downloadWeeklyHwpx,
-} as const;
 
 export type PlanPreviewTarget = {
   kind: "annual" | "monthly" | "weekly";
@@ -203,18 +169,12 @@ export type PlanPreviewTarget = {
   period: string;
   periodKey: string;
   createdAt: string;
+  /** 비면 「문서 열기」를 그리지 않는다 — 승인받은 남의 반 계획안은 편집 화면으로 보내지 않는다. */
   href: string;
 };
 
 /** 권한 검사는 기존 GET API가 한다. 이동/해제 뒤 늦은 응답은 버린다. */
-export function PlanArchivePreview({
-  target,
-  readOnly = false,
-}: {
-  target: PlanPreviewTarget;
-  /** 담임이 다른 반. 편집 화면(문서 열기)으로 보내지 않는다. */
-  readOnly?: boolean;
-}) {
+export function PlanArchivePreview({ target }: { target: PlanPreviewTarget }) {
   const key = `${target.kind}:${target.classId}:${target.id}`;
   const [request, setRequest] = useState<{ key: string; content?: Content; error?: string } | null>(
     null,
@@ -305,16 +265,12 @@ export function PlanArchivePreview({
   return (
     <>
       <PreviewContent kind={DOCUMENT_KINDS[target.kind]} content={current.content} />
-      {!readOnly ? (
+      {target.href && (
         <div className={styles.previewActions}>
           <Link className={ws.primary} href={target.href}>
             문서 열기
           </Link>
         </div>
-      ) : (
-        current.content.status === "confirmed" && (
-          <ReadOnlyDownload fetchFile={() => PLAN_DOWNLOAD[target.kind](target.id)} />
-        )
       )}
     </>
   );

@@ -68,20 +68,10 @@ const serverId = (v: unknown) =>
 const bindingId = (v: unknown) =>
   typeof v === "object" && v !== null ? serverId((v as { id?: unknown }).id) : null;
 
-/**
- * 연결에 없으면 화면 id 에서 서버 id 를 읽는다.
- *
- * 문서 보관함은 **같은 원의 다른 선생님 반**도 보여준다(ADR-059). 그 반은 내 연결 표에 없고
- * (연결은 내가 만들거나 들인 반만 적는다), 화면 id 를 `CLASS_PREFIX` 규칙으로 짓는다 —
- * 그러니 접두사를 벗기면 서버 id 다. 연결이 있는 반은 그대로 연결을 쓴다.
- */
-const prefixedServerId = (localId: string, prefix: string) =>
-  localId.startsWith(prefix) ? serverId(Number(localId.slice(prefix.length))) : null;
-
 export const classServerId = (localId: string) =>
-  bindingId(valueOf(storedLinks()?.classes, localId)) ?? prefixedServerId(localId, CLASS_PREFIX);
+  bindingId(valueOf(storedLinks()?.classes, localId));
 export const childServerId = (localId: string) =>
-  serverId(valueOf(storedLinks()?.children, localId)) ?? prefixedServerId(localId, CHILD_PREFIX);
+  serverId(valueOf(storedLinks()?.children, localId));
 
 /**
  * 연결이 없는 서버 id 를 화면용 id 로 쓸 때의 접두사.

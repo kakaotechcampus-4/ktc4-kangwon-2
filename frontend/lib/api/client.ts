@@ -20,6 +20,15 @@ export class ApiError extends Error {
   }
 }
 
+/** 서버 오류의 `code`. 같은 status 라도 교사가 할 일이 다를 때 갈라 본다. */
+export function errorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body as { error?: { code?: unknown } } | null;
+  return typeof body === "object" && body !== null && typeof body.error?.code === "string"
+    ? body.error.code
+    : null;
+}
+
 /**
  * /api/... 요청이 JSON API가 아니라 Next의 HTML(주로 404 페이지)을 받은 경우.
  * = MSW가 요청을 가로채지 못한 전송 계층 문제이므로, 실제 API의 NOT_FOUND와 절대 섞지 않는다.
@@ -138,17 +147,6 @@ export function isAlreadyExists(error: unknown): error is ApiError {
   if (!(error instanceof ApiError) || error.status !== 409) return false;
   return envelope(error)?.code === "ALREADY_EXISTS";
 }
-
-const hasCode = (error: unknown, status: number, code: string): error is ApiError =>
-  error instanceof ApiError && error.status === status && envelope(error)?.code === code;
-
-/** 같은 원 다른 반인데 주인 승인이 없다 (docs/api-spec.md §2-2, `403 CLASS_ACCESS_REQUIRED`). */
-export const isClassAccessRequired = (error: unknown) =>
-  hasCode(error, 403, "CLASS_ACCESS_REQUIRED");
-/** 열람은 승인됐지만 쓰기는 주인만 한다 (§2-2, `403 CLASS_READ_ONLY`). */
-export const isClassReadOnly = (error: unknown) => hasCode(error, 403, "CLASS_READ_ONLY");
-/** 다른 화면이 먼저 바꿨다. 다시 불러와야 한다 (`409 STALE_WRITE`). */
-export const isStaleWrite = (error: unknown) => hasCode(error, 409, "STALE_WRITE");
 
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */
 export function isApiNotFound(error: unknown): error is ApiError {

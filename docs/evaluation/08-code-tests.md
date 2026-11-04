@@ -6,15 +6,25 @@
 
 ---
 
-## 숫자 (2026-10-28 기준)
+## 숫자 (2026-11-04 기준, 10-28 → 11-04)
 
 | 무엇 | 수 | 세는 법 |
 |---|---|---|
-| 백엔드 테스트 파일 | 64 | `ls backend/tests \| grep -c '^test_'` |
-| 계획 코어 테스트 파일 | 65 | `find p0-planning/tests -name 'test_*.py' \| wc -l` |
-| 프런트 테스트 파일 | 39 | `ls frontend/tests/*.test.mjs \| wc -l` |
-| E2E 시나리오 | 4 | `frontend/e2e/` — `first-record` · `home-record` · `mentor-pilot` · `routines` |
-| ADR | 41 | `ls docs/adr/*.md \| grep -v README \| wc -l` |
+| 백엔드 테스트 파일 | 64 → **85** | `ls backend/tests \| grep -c '^test_'` |
+| 계획 코어 테스트 파일 | 65 → **74** | `find p0-planning/tests -name 'test_*.py' \| wc -l` |
+| 프런트 테스트 파일 | 39 → **65** | `ls frontend/tests/*.test.mjs \| wc -l` |
+| E2E 시나리오 파일 | 4 → **5** | `frontend/e2e/` — `document-archive-layout` 추가 |
+| ADR | 41 → **58** | `ls docs/adr/*.md \| grep -v README \| wc -l` |
+
+**통과 건수 (파일 수 아님)** — CI 2026-11-04 (run 41796637037, PR #373)
+
+```
+backend         1,558 passed
+planning core   1,601 passed · 1 skipped
+frontend          909 pass · 0 fail
+```
+
+**CI 한 번 평균 8.8분** — 최근 완료 25회 (`gh run list --workflow ci.yml --status completed --limit 25`, 시작~끝)
 
 ## CI — PR 마다 6개가 돈다
 
@@ -43,8 +53,9 @@ e2e (playwright)               실제 DB 로
 | 아동 배정 동시 요청 | `test_child_allocation_concurrency.py` |
 | 확정 재시도 | `test_documents_reconfirm.py` |
 | 백업 스크립트 | `test_backup_script.py` |
+| 시간표를 나눈 월간 PDF 에서 두 줄에 걸친 칸의 긴 글이 다른 줄을 덮음 | `test_play_monthly_hwpx.py` `test_a_long_day_over_split_rows_gets_room_in_the_pdf` |
+| 화면 문구를 바꿨는데 e2e 가 옛 버튼을 찾아 develop CI 가 빨간불 | `frontend/e2e/mentor-pilot.spec.ts` |
 | 휴대폰에서 보육일지 주간 칸 날짜가 넘침 | `frontend/e2e/document-archive-layout.spec.ts` (390 · 375px) |
-| 열람 요청 목업이 계약과 달라 연동 때 터질 수 있음 | `frontend/tests/msw-class-access.test.mjs` |
 
 ## 규칙
 
@@ -55,10 +66,9 @@ e2e (playwright)               실제 DB 로
 ## 아직 아닌 것
 
 - 커버리지를 재지 않는다
-- 열람 요청 두 번 누름 막기(`inFlight`)는 브라우저로만 확인했다 — 단위 테스트가 없다
 - 프런트 테스트가 가짜 `useState` 하네스라 실제 렌더 경로를 전부 안 지난다
 
 ## 더 모을 근거
 
-- [ ] `pytest` 통과 건수(파일 수 아님) 한 번 찍어 붙이기
-- [ ] CI 평균 소요 시간
+- [x] `pytest` 통과 건수(파일 수 아님) — 위 「통과 건수」
+- [x] CI 평균 소요 시간 — 8.8분

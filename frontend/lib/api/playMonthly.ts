@@ -1,5 +1,11 @@
 import { apiRequest } from "./client";
-import type { PlayMonthlyAuditEvent, PlayMonthlyPlan, PlayMonthlySummary } from "./types";
+import { downloadHwpx, type ExportFormat } from "./export";
+import type {
+  PlayMonthlyAuditEvent,
+  PlayMonthlyPlan,
+  PlayMonthlySummary,
+  PlayMonthlyTimetableSize,
+} from "./types";
 
 const BASE = "/api/plans/monthly/play";
 const json = (method: "PUT" | "POST", data: unknown, signal?: AbortSignal): RequestInit => ({
@@ -13,9 +19,9 @@ const json = (method: "PUT" | "POST", data: unknown, signal?: AbortSignal): Requ
  * 확정본이면 409 `ALREADY_CONFIRMED` 다 — `plans.ts` 의 `isSaveConflict` · `isRejectedSave` 가 그대로 맞는다.
  */
 
-/** 지금은 항상 503 이다(생성 규칙이 서버에 아직 없다). 게이트는 통과한다 — 이미 있으면 409. */
+/** 연간 확정 뒤 그 달 초안을 만든다(201). 그 달이 이미 있으면 409, 자료가 없으면 503. */
 export const createPlayMonthly = (
-  data: { class_id: number; month: number; emphasized_row_keys: string[] },
+  data: { class_id: number; month: number; emphasized_row_keys: string[]; memo?: string },
   signal?: AbortSignal,
 ) => apiRequest<PlayMonthlyPlan>(BASE, json("POST", data, signal));
 /** 대상 달 오름차순 요약. 기존 월간은 들어 있지 않다. */
@@ -102,6 +108,56 @@ export const unconfirmPlayMonthly = (id: number, expectedRevision: number, signa
     BASE + "/" + id + "/unconfirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
+/**
+ * 특별활동 시간표 칸 나누기(ADR-047 · 제안 경로). 원래 칸(id · 글)은 위 · 왼쪽에 남고
+ * 빈 새 칸이 50:50 으로 생긴다. 한 요일은 네 번까지 — 넘으면 422.
+ */
+export const splitPlayMonthlyCell = (
+  id: number,
+  itemId: string,
+  axis: "VERTICAL" | "HORIZONTAL",
+  expectedRevision: number,
+) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/cells/" + encodeURIComponent(itemId) + "/split",
+    json("POST", { axis, expected_revision: expectedRevision }),
+  );
+/** 시간표 칸을 문서에서 뺀다. 형제가 자리를 채운다. 요일의 마지막 칸은 422. revision 은 쿼리다. */
+export const removePlayMonthlyCell = (id: number, itemId: string, expectedRevision: number) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE +
+      "/" +
+      id +
+      "/cells/" +
+      encodeURIComponent(itemId) +
+      "/split?expected_revision=" +
+      expectedRevision,
+    { method: "DELETE" },
+  );
+/** 경계 하나의 첫 갈래(위 · 왼쪽) 비율 10~90. 같은 값이면 200 · 무변경. */
+export const resizePlayMonthlySplit = (
+  id: number,
+  splitId: string,
+  ratio: number,
+  expectedRevision: number,
+) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/timetable/splits/" + encodeURIComponent(splitId),
+    json("PUT", { ratio, expected_revision: expectedRevision }),
+  );
+/** 요일 열 폭 다섯(합 100, 각 5 이상) · 표 높이 16~80mm. 칸이 3.5% 보다 좁아지면 422. */
+export const resizePlayMonthlyTable = (
+  id: number,
+  size: PlayMonthlyTimetableSize,
+  expectedRevision: number,
+) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/timetable/size",
+    json("PUT", { ...size, expected_revision: expectedRevision }),
+  );
+/** 확정본만 내려받는다(초안은 409 `GATE_BLOCKED`). 교사가 나눈 시간표 모양 그대로다. */
+export const downloadPlayMonthlyHwpx = (id: number, format: ExportFormat = "hwpx") =>
+  downloadHwpx(`${BASE}/${id}/export/hwp?format=${format}`, `월간계획안.${format}`);
 /** 변경 이력. 발생 시각순이고 필터 · 페이지가 없다. */
 export const getPlayMonthlyAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: PlayMonthlyAuditEvent[] }>(BASE + "/" + id + "/audit", { signal });

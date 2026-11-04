@@ -689,7 +689,7 @@ def test_create_document_masks_child_names_before_generation(db_session, monkeyp
     record = _observation(db_session, klass, child, 5, "이가명이 가명이와 블록을 쌓았다.")
     seen = {}
 
-    def fake_generate(kind, masked_facts):
+    def fake_generate(kind, masked_facts, curriculum=()):
         seen["facts"] = masked_facts
         return (
             "도담 해석입니다. 기록에 드러난 사실만 근거로 씁니다.",
@@ -1120,3 +1120,25 @@ def test_refresh_weekly_needs_its_daily_log_confirmed_again(db_session):
     row = db_session.query(DocumentSource).filter_by(document_id=weekly.id).one()
     db_session.refresh(row)
     assert row.source_status == "CONFIRMED"
+
+
+def test_observation_draft_hands_the_chosen_domain_curriculum_to_the_model(db_session, monkeypatch):
+    # 관찰일지 배움 칸은 교사가 고른 영역의 누리과정 내용에 잇는다 — 고시문 원문 그대로, 그 영역만.
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "도토리를 바구니에 담았다.")
+    seen = {}
+
+    def fake_generate(kind, masked_facts, curriculum=()):
+        seen["curriculum"] = list(curriculum)
+        return (
+            "자연탐구의 생활 속에서 탐구하기를 경험한다. 기록에 드러난 사실만 근거로 씁니다.",
+            "다음 활동에서 교사가 할 방법을 적습니다. 후속 관찰을 이어 갑니다.",
+        )
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201
+    domains = {row["영역"] for row in seen["curriculum"]}
+    assert domains == {record.domain}
+    assert all(row["내용범주"] and row["내용"] for row in seen["curriculum"])

@@ -1,0 +1,163 @@
+/* 처음 온 선생님 안내 — 먹빛 덮개에 해색 테두리 구멍, 테이프 붙인 쪽지 카드.
+   색은 화면과 같은 토큰만 쓴다. 덮개도 검정이 아니라 사이드바 먹색 쪽으로 기운다. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+}
+.veil {
+  position: absolute;
+  inset: 0;
+}
+/* 구멍 — 바깥으로 아주 큰 그림자를 드리워 덮개를 만든다. 구멍 안은 화면이 그대로 보인다. */
+.hole {
+  position: fixed;
+  border-radius: 12px;
+  outline: 3px solid var(--pg-sun);
+  outline-offset: 0;
+  box-shadow: 0 0 0 200vmax rgba(36, 33, 28, 0.62);
+  pointer-events: none;
+  transition:
+    top 0.2s ease,
+    left 0.2s ease,
+    width 0.2s ease,
+    height 0.2s ease;
+}
+.card {
+  position: fixed;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: 22px 20px 14px 22px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 4px;
+  background: var(--pg-note-soft);
+  box-shadow:
+    var(--pg-shadow-hard),
+    0 14px 30px rgba(36, 33, 28, 0.28);
+  transform: rotate(-0.6deg);
+}
+/* 칸이 화면을 다 덮을 만큼 크면 화면 아래에 붙인다. 휴대폰은 하단 메뉴 위로 띄운다. */
+.pinned {
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) rotate(-0.6deg);
+}
+@media (max-width: 1023px) {
+  .pinned {
+    bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+  }
+}
+.tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 74px;
+  height: 21px;
+  margin-left: -37px;
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--pg-tape);
+  box-shadow: 0 1px 2px rgba(106, 96, 80, 0.12);
+  transform: rotate(-3deg);
+}
+.posty {
+  position: absolute;
+  top: -40px;
+  right: -22px;
+  transform: rotate(6deg);
+}
+.count {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--pg-sun-ink);
+}
+.title {
+  margin: 4px 0 6px;
+  padding-right: 34px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--pg-ink);
+}
+.body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--pg-ink);
+}
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--pg-note-line);
+}
+.dots {
+  display: flex;
+  gap: 5px;
+  margin-right: auto;
+}
+.dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pg-note-line);
+}
+.dots span[data-on] {
+  width: 18px;
+  border-radius: 999px;
+  background: var(--pg-primary);
+}
+.ghost,
+.primary {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ghost {
+  border: 1px solid var(--pg-note-line);
+  background: transparent;
+  color: var(--pg-ink-soft);
+}
+.ghost:hover {
+  background: var(--pg-paper);
+}
+.primary {
+  border: 1px solid var(--pg-primary-line);
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+}
+.primary:hover {
+  background: var(--pg-primary-deep);
+}
+.primary:focus-visible,
+.ghost:focus-visible,
+.off:focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 3px;
+}
+.off {
+  display: block;
+  margin: 8px 0 0 auto;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--pg-ink-hint);
+  text-decoration: underline;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hole {
+    transition: none;
+  }
+}

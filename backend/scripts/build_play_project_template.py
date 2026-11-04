@@ -1,7 +1,7 @@
 """놀이 프로젝트형 연간 hwpx 양식을 만든다(ADR-042).
 
 다른 양식처럼 표를 손으로 그리지 않는다. 하민이 한글에서 다듬고 확인한 예시 문서(저장소 밖,
-`연간7_5pt_가독성B.hwpx`)에서 **글자만 비운다** — 쪽 · 글꼴 · 열 너비 · 병합 · 칸 여백 · 테두리는
+최종 A4·본문 9pt 문서)에서 **글자만 비운다** — 쪽 · 글꼴 · 열 너비 · 병합 · 칸 여백 · 테두리는
 그 파일 그대로다.
 
     python scripts/build_play_project_template.py <예시 문서.hwpx>
@@ -69,6 +69,9 @@ def build(source: bytes) -> bytes:
 
     titles = 0
     for p in section.findall("hp:p", NS):
+        # 안내 문단을 제목으로 바꾸지 않는다. 제목은 첫 문단과 새 쪽 시작 문단이다.
+        if p is not section[0] and p.get("pageBreak") != "1":
+            continue
         texts = p.findall("hp:run/hp:t", NS)
         if any(t.text for t in texts) and p.find(".//hp:tbl", NS) is None:
             texts[0].text = TITLE_PLACEHOLDER

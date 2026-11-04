@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
-import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
-import styles from "./PlayMonthlyStructure.module.css";
+import { CARD, PICKED, PUT } from "./PlayMonthlySafetyPanel";
 
-/** 소방대피 훈련 후보를 「소방대피/재난대비」 칸에 복사한다. 쓴 글이 있으면 덮기 전에 묻는다. */
+/**
+ * Ⓜ3 AI 후보 — 소방대피 훈련 후보를 「소방대피/재난대비」 칸에 넣는다(09c). 쓴 글이 있어도 묻지 않고 바꾼다.
+ * 칸 글이 후보 글과 같으면 넣은 후보 — 안전교육 후보처럼 칠하고 맨 위로 올린다.
+ */
 export default function PlayMonthlyDrillPanel({
   candidates,
   current,
@@ -15,46 +16,37 @@ export default function PlayMonthlyDrillPanel({
   onCopy: (itemId: string) => void;
   disabled: boolean;
 }) {
-  const [asking, setAsking] = useState<string | null>(null);
-  if (disabled && asking) setAsking(null);
-  const copy = (id: string) => {
-    if (disabled) return;
-    setAsking(null);
-    onCopy(id);
-  };
+  const placed = (d: { cell: { value: string } }) =>
+    !!current.trim() && current.trim() === d.cell.value.trim();
   return (
-    <section className={styles.panel} aria-label="소방대피 훈련">
-      <h2>소방대피 훈련 후보</h2>
-      <ul>
-        {candidates.map((d) => {
-          const id = d.cell.item_id;
-          const empty = d.cell.value.trim() === "";
-          return (
-            <li key={d.topic_id}>
-              <strong>{d.label}</strong>
-              <span>{d.cell.value}</span>
-              <button
-                type="button"
-                data-act="copy"
-                data-candidate={id}
-                aria-label={`소방대피/재난대비 칸에 넣기: ${d.label}`}
-                disabled={disabled || empty}
-                onClick={() => (current.trim() ? setAsking(id) : copy(id))}
-              >
-                소방대피/재난대비 칸에 넣기
-              </button>
-              {asking === id && (
-                <PlayMonthlyConfirm
-                  message="지금 쓴 글을 이 후보로 바꿀까요?"
-                  yes="바꾸기"
-                  disabled={disabled}
-                  onYes={() => copy(id)}
-                  onNo={() => setAsking(null)}
-                />
-              )}
-            </li>
-          );
-        })}
+    <section aria-label="소방대피 훈련" className="flex flex-col gap-2">
+      <h2 className="m-0 font-display text-[20px] font-bold leading-tight">넣을 문구 고르기</h2>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {[...candidates]
+          .sort((a, b) => Number(placed(b)) - Number(placed(a)))
+          .map((d) => {
+            const id = d.cell.item_id;
+            const mine = placed(d);
+            return (
+              <li key={d.topic_id} className={`${CARD} ${mine ? PICKED : "border-[#e8e2d8]"}`}>
+                <div className="min-w-0 flex-1 text-[14px]">
+                  <strong>{d.label}</strong>
+                  {d.cell.value && ` — ${d.cell.value}`}
+                </div>
+                <button
+                  type="button"
+                  data-act="copy"
+                  data-candidate={id}
+                  aria-label={`소방대피/재난대비 칸에 넣기: ${d.label}`}
+                  className={PUT}
+                  disabled={disabled || d.cell.value.trim() === "" || mine}
+                  onClick={() => onCopy(id)}
+                >
+                  {mine ? "넣음" : "넣기"}
+                </button>
+              </li>
+            );
+          })}
       </ul>
     </section>
   );

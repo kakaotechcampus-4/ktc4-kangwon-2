@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# PDF 내보내기 글꼴 (ADR-061). hwpx_pdf.FONT_CANDIDATES 가 나눔고딕을 이 경로에서 찾는다.
+# 없으면 PDF 만 503 이고 hwpx · hwp 는 그대로 나간다.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-nanum     && rm -rf /var/lib/apt/lists/*
+
 # 빌드 맥락이 backend/ 가 아니라 저장소 뿌리다. 계획안 생성 로직이 p0-planning 에
 # 있어서 backend 만으로는 이미지가 앱을 import 하지 못한다.
 #
@@ -29,8 +33,9 @@ COPY backend/resources ./resources
 
 RUN pip install .
 
-# hwp5html(pyhwp)이 실행되는지, XSLT 처리에 필요한 lxml이 로드되는지 확인
-RUN hwp5html --help >/dev/null && python -c "import lxml.etree"
+# hwp5html(pyhwp)이 실행되는지, XSLT 처리에 필요한 lxml이 로드되는지,
+# PDF 내보내기가 한글 글꼴을 찾는지 확인
+RUN hwp5html --help >/dev/null && python -c "import lxml.etree"     && python -c "from app.shared.hwpx_pdf import _register_fonts; _register_fonts()"
 
 # 컨테이너를 root 로 돌리지 않는다.
 # uid 를 1000 으로 못박는 이유: 마이그레이션 생성이 호스트를 마운트해서 파일을 쓴다.

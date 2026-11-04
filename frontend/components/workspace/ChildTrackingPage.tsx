@@ -175,6 +175,7 @@ function Body({
       {child && (
         <ChildDetail
           key={`${classId}:${child.child_id}`}
+          classId={classId}
           child={child}
           className={className}
           writeHref={recordsHref(classId, child.child_id)}
@@ -248,12 +249,14 @@ function ChildList({
 }
 
 function ChildDetail({
+  classId,
   child,
   className,
   writeHref,
   axis,
   onPickAxis,
 }: {
+  classId: number | null;
   child: ApiChildTracking;
   className: string;
   writeHref: string;
@@ -266,13 +269,14 @@ function ChildDetail({
   useEffect(() => {
     let stale = false;
     // 서버가 date 내림차순으로 준다 (§10). 순서를 다시 매기지 않는다.
-    getObservations({ child_id: child.child_id })
+    // 반을 같이 보낸다 — 반을 안 짚은 목록은 내 반만 준다. 승인받고 보는 반이면 빈 목록이 온다 (ADR-059).
+    getObservations({ class_id: classId ?? undefined, child_id: child.child_id })
       .then(({ items }) => !stale && setRecords(items))
       .catch(() => !stale && setFailed(true));
     return () => {
       stale = true;
     };
-  }, [child.child_id]);
+  }, [classId, child.child_id]);
 
   return (
     <section className={styles.detail} aria-label={`${child.name} 관찰 기록`}>

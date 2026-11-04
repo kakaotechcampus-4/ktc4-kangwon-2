@@ -25,6 +25,7 @@ function compile(path, modules, document, requestAnimationFrame, window) {
   new Function("require", "module", "exports", "document", "requestAnimationFrame", "window", code)(
     (name) => {
       if (name === "react/jsx-runtime") return runtime;
+      if (name === "./PlanMemo") return { PlanMemoNote: () => null };
       assert.ok(name in modules, "unhandled import: " + name);
       return modules[name];
     },
@@ -90,6 +91,8 @@ function plan() {
 const sheetHelpers = compile("../components/plan-generator/playProjectPagination.ts", {});
 const { default: Sheet } = compile("../components/plan-generator/PlayProjectSheet.tsx", {
   "./playProjectPagination": sheetHelpers,
+  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {}),
+  "./PlayMonthlySheet": { HATCH: "hatch" },
 });
 // 입력창 대역 — 화면이 넘긴 값과 콜백만 본다. 입력창 규칙은 play-cell-editor.test.mjs 가 다룬다.
 const editorStub = { props: null };
@@ -121,6 +124,7 @@ const frameModules = {
   "@/lib/api/plans": plansStub,
   "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
   "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
+  "./playProjectPagination": sheetHelpers,
 };
 
 // 훅을 부른 순서대로 칸에 담는 대역. effect 는 시험이 부르지 않는다.
@@ -197,7 +201,7 @@ const selectedTab = (tree, label) =>
   );
 
 test("helpers: five picks in order, moves, removal focus, and the left tab keys", () => {
-  const { togglePlayPick, movePlayPick, removeFocusSlot, leftTabTarget } = compile(
+  const { togglePlayPick, placePlayPick, removeFocusSlot, leftTabTarget } = compile(
     "../components/plan-generator/PlayProjectResult.tsx",
     new Proxy({}, { has: () => true, get: () => ({}) }),
   );
@@ -205,8 +209,23 @@ test("helpers: five picks in order, moves, removal focus, and the left tab keys"
   assert.deepEqual(togglePlayPick([], "cand3"), ["cand3"]);
   assert.deepEqual(togglePlayPick(five, "cand4"), five);
   assert.deepEqual(togglePlayPick(five, "cand1"), ["cand3", "cand8", "cand2", "cand9"]);
-  assert.deepEqual(movePlayPick(FULL, "cand1", -1), ["cand1", "cand0", "cand2", "cand3", "cand4"]);
-  assert.deepEqual(movePlayPick(FULL, "cand0", -1), FULL);
+  // 끌어놓기: 끈 놀이가 놓은 줄의 자리로 간다. 고르지 않은 놀이 · 같은 줄은 그대로.
+  assert.deepEqual(placePlayPick(FULL, "cand1", "cand3"), [
+    "cand0",
+    "cand2",
+    "cand3",
+    "cand1",
+    "cand4",
+  ]);
+  assert.deepEqual(placePlayPick(FULL, "cand3", "cand0"), [
+    "cand3",
+    "cand0",
+    "cand1",
+    "cand2",
+    "cand4",
+  ]);
+  assert.equal(placePlayPick(FULL, "cand9", "cand0"), FULL);
+  assert.equal(placePlayPick(FULL, "cand2", "cand2"), FULL);
   assert.equal(removeFocusSlot(3, 1), 1);
   assert.equal(removeFocusSlot(3, 2), null);
   assert.equal(leftTabTarget("ArrowRight", "picked"), "edit");
@@ -239,7 +258,7 @@ test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼�
   assert.deepEqual(saveStub.cells, [{ itemId: cell.item_id, value: "나뭇잎", base: cell.value }]);
   assert.match(text(render()), /나뭇잎/, "문서에 바로 보인다");
   all(render())
-    .find((n) => n.props?.role === "tab" && text(n) === "AI 후보")
+    .find((n) => n.props?.role === "tab" && text(n) === `AI 후보${p.periods[0].candidates.length}`) // 개수 배지
     .props.onClick();
   button(render(), "놀이 0 빼기").props.onClick();
   assert.deepEqual(Object.keys(saveStub.calls.at(-1)), [
@@ -249,6 +268,20 @@ test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼�
     "period3",
   ]);
   assert.deepEqual(saveStub.calls.at(-1).period0, ["cand1", "cand2", "cand3", "cand4"]);
+  const pages = (tree) =>
+    all(tree)
+      .filter((n) => n.type === "article")
+      .map((n) => n.props["aria-label"]);
+  assert.deepEqual(pages(render()), ["3월~5월"], "편집은 구간마다 한 쪽");
+  button(render(), "⤢ 크게 보기").props.onClick();
+  // 편집 문서는 그대로 두고, 따로 뜨는 창에 원래 문서처럼 두 구간씩 한 쪽(창은 문서 머리줄에 있어 나무에서 앞).
+  assert.deepEqual(pages(render()).sort(), ["3월~5월", "3월~5월 · 6월~8월"]);
+  button(render(), "2쪽").props.onClick();
+  assert.deepEqual(pages(render()).sort(), ["3월~5월", "9월~11월 · 12월~2월"], "쪽을 골라 본다");
+  all(render())
+    .find((n) => n.type === "dialog")
+    .props.onClose();
+  assert.deepEqual(pages(render()), ["3월~5월"], "닫으면 창 안 문서도 내린다");
 });
 
 test("confirm asks first, waits for the queue, then confirms with its revision", async () => {
@@ -268,6 +301,24 @@ test("confirm asks first, waits for the queue, then confirms with its revision",
   assert.deepEqual(saveStub.log, ["whenIdle", "confirm"]);
   assert.deepEqual(confirmStub.calls, [{ id: 41, revision: 9 }]);
   assert.deepEqual(done, [confirmStub.next]);
+});
+
+test("확정 전 빈 곳 — 5개를 다 고르지 않은 기간은 흔들리는 알림에서 그 기간 AI 후보로 보낸다", () => {
+  const p = fullPlan();
+  p.periods[1].selected = FULL.slice(0, 2);
+  const render = renderer(p);
+  all(render())
+    .find((n) => n.type === "picking")
+    .props.onArrange();
+  button(render(), "확정하기").props.onClick();
+  const ask = all(render()).find((n) => n.type === "confirm-dialog");
+  assert.equal(ask.props.shake, true);
+  assert.equal(ask.props.yes, undefined);
+  assert.match(ask.props.message, /아직 고르지 않은 놀이가 남아있어요/);
+  ask.props.onNo();
+  const tree = render();
+  assert.ok(selectedTab(tree, "6월~8월"));
+  assert.ok(selectedTab(tree, "AI 후보"));
 });
 
 test("a 422 goes to the first short period's AI 후보; a 409 hands over to onConflict", async () => {
@@ -298,7 +349,7 @@ test("a 422 goes to the first short period's AI 후보; a 409 hands over to onCo
   );
 });
 
-test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ with a page per period", async () => {
+test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ with two periods per page", async () => {
   const pp = fullPlan();
   const slots = [];
   const effects = [];
@@ -321,6 +372,11 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
         throw new Error("PLAY_PROJECT should not read stored annual context");
       },
     },
+    // 놀이형 문서 제목의 반 이름은 반 설정에서 계획안 class_id 로 찾는다.
+    "@/lib/onboarding/settings": {
+      loadClassSettings: () => ({ classes: [{ id: "local-1", className: "햇살반" }] }),
+    },
+    "@/lib/api/onboarding": { classServerId: (id) => (id === "local-1" ? pp.class_id : null) },
     "./AnnualFrame": { AnnualDone: (p) => jsx("done", p) },
     "./AnnualThemeSheet": esModule((p) => jsx("theme-sheet", p)),
     "./PlayProjectSheet": esModule((p) => jsx("play-sheet", p)),
@@ -337,9 +393,18 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   await new Promise((done) => setImmediate(done));
   const shown = all(render()).find((n) => n.type === "play-result");
   assert.equal(compact.at(-1), true, "다듬기는 사이드바를 접는다");
+  assert.equal(shown.props.className, "햇살반", "문서 제목에 붙일 반 이름");
   shown.props.onConfirmed({ ...pp, status: "CONFIRMED" });
   const done = all(render()).find((n) => n.type === "done");
-  assert.equal(done.props.pages.length, 4);
+  // 원래 문서 쪽 나눔: 봄·여름 / 가을·겨울.
+  assert.deepEqual(
+    done.props.pages.map((page) => [page.props.periods, page.props.perPage]),
+    [
+      [[0, 1], 2],
+      [[2, 3], 2],
+    ],
+  );
+  assert.equal(done.props.pages[0].props.className, "햇살반");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
   done.props.onUnconfirmed({ ...pp, status: "DRAFT" });
   assert.ok(
@@ -357,6 +422,21 @@ test("phone period tabs use two grid columns in the 767px media block", () => {
   const wrapping = mobile.match(/\.wrappingTabs\s*\{([^}]+)\}/)[1];
   assert.match(wrapping, /display:\s*grid\s*;/);
   assert.match(wrapping, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*;/);
+  // ④ 계절 탭은 Tailwind 로 같은 배치 — 좁으면 두 열, md 부터 한 줄.
+  const result = readFileSync(
+    new URL("../components/plan-generator/PlayProjectResult.tsx", import.meta.url),
+    "utf8",
+  );
+  // ④ 탭 줄(md:flex 를 쓰는 쪽)만 본다. ⑤ 탭 줄은 머리줄 · flex-wrap 이라 넘치지 않는다.
+  const pick = [
+    ...result.matchAll(
+      /role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/g,
+    ),
+  ]
+    .map((m) => m[1])
+    .find((c) => c.includes("md:flex"));
+  assert.match(pick, /\bgrid-cols-2\b/);
+  assert.match(pick, /\bmd:flex\b/);
 });
 
 test("PlayProjectResult does not use browser storage", () => {

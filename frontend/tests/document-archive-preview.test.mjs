@@ -42,7 +42,6 @@ function harness(
   gateway = async () => {
     throw new Error("Unexpected API call");
   },
-  downloads = [],
 ) {
   const values = [];
   let cursor = 0;
@@ -72,24 +71,9 @@ function harness(
     },
     "next/link": { __esModule: true, default: "link" },
     "@/lib/workspace/model": model,
-    "@/lib/api/plans": {
-      getAnnualPlan: (id, signal) => gateway("annual", id, signal),
-      downloadAnnualHwpx: async (id) => downloads.push(["annual", id]),
-    },
-    "@/lib/api/monthly": {
-      getMonthlyPlan: (id, signal) => gateway("monthly", id, signal),
-      downloadMonthlyHwpx: async (id) => downloads.push(["monthly", id]),
-    },
-    "@/lib/api/weekly": {
-      getWeeklyPlan: (id, signal) => gateway("weekly", id, signal),
-      downloadWeeklyHwpx: async (id) => downloads.push(["weekly", id]),
-    },
-    "@/lib/api/documents": {
-      downloadDocumentHwpx: async (id) => downloads.push(["document", id]),
-    },
-    "@/lib/hooks/use-hwpx-download": {
-      useHwpxDownload: () => ({ exporting: false, download: (fetchFile) => fetchFile() }),
-    },
+    "@/lib/api/plans": { getAnnualPlan: (id, signal) => gateway("annual", id, signal) },
+    "@/lib/api/monthly": { getMonthlyPlan: (id, signal) => gateway("monthly", id, signal) },
+    "@/lib/api/weekly": { getWeeklyPlan: (id, signal) => gateway("weekly", id, signal) },
     "./WorkspaceUI": { ws: {} },
     "./DocumentArchive.module.css": { __esModule: true, default: {} },
   };
@@ -104,9 +88,9 @@ function harness(
   );
   return {
     ...m.exports,
-    render(target, extra = {}) {
+    render(target) {
       cursor = 0;
-      tree = m.exports.PlanArchivePreview({ target, ...extra });
+      tree = m.exports.PlanArchivePreview({ target });
       return tree;
     },
     tree: () => tree,
@@ -175,19 +159,6 @@ test("미리보기의 유일한 문서 동작은 명시적인 기존 편집기 �
   buttons[0].props.onClick();
   assert.equal(edits, 1);
 });
-test("담임이 다른 반 문서는 편집 진입 없이 확정본 내려받기만 둔다", () => {
-  const downloads = [];
-  const { default: Preview } = harness(undefined, downloads);
-  const confirmed = Preview(props({ onEdit: undefined }));
-  const buttons = nodes(confirmed).filter((n) => n.type === "button");
-  assert.equal(buttons.length, 1);
-  assert.match(text(buttons[0]), /내려받기/);
-  assert.equal(text(confirmed).includes("편집하기"), false);
-  buttons[0].props.onClick();
-  assert.deepEqual(downloads, [["document", doc.id]]);
-  const draft = Preview(props({ onEdit: undefined, document: { ...doc, status: "draft" } }));
-  assert.equal(nodes(draft).filter((n) => n.type === "button").length, 0);
-});
 test("로딩·조회 오류는 이전 본문이나 편집 버튼을 표시하지 않고 오류 재시도만 제공한다", () => {
   const { default: Preview } = harness();
   const loading = Preview(props({ status: "loading" }));
@@ -243,24 +214,6 @@ test("연간 계획안은 기존 GET의 실제 월·주제·소주제를 표시�
   assert.match(text(tree), /실제 소주제/);
   assert.equal(nodes(tree).find((n) => n.type === "link").props.href, t.href);
   assert.deepEqual(calls, [["annual", 1]]);
-  h.unmount();
-});
-test("담임이 다른 반 계획안은 편집 화면 링크 없이 확정본 내려받기만 둔다", async () => {
-  const downloads = [];
-  const h = harness(async (_kind, id) => ({ ...annual(id), status: "CONFIRMED" }), downloads);
-  const t = target("annual");
-  h.render(t, { readOnly: true });
-  await settle();
-  const tree = h.render(t, { readOnly: true });
-  assert.match(text(tree), /실제 주제 1/);
-  assert.equal(
-    nodes(tree).some((n) => n.type === "link"),
-    false,
-  );
-  nodes(tree)
-    .find((n) => n.type === "button")
-    .props.onClick();
-  assert.deepEqual(downloads, [["annual", 1]]);
   h.unmount();
 });
 test("놀이 프로젝트형 연간 미리보기는 선택된 후보만 표시하고 기존 문서 링크를 유지한다", async () => {

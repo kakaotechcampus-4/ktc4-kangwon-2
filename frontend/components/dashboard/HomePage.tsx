@@ -278,7 +278,10 @@ export default function HomePage() {
 
             {/* 오른쪽 줄은 교실 칠판이다. 칸 제목은 쪽지 안이 아니라 판에 분필로 쓰고,
                 쪽지는 그 밑에 붙는다 — 종이마다 머리글이 달리면 쪽지가 서류로 보인다. */}
-            <div className="chalkboard flex min-w-0 flex-col gap-[38px] self-start px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0">
+            <div
+              data-tour="home-board"
+              className="chalkboard flex min-w-0 flex-col gap-[38px] self-start px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0"
+            >
               {todayDate && (
                 <UnseenChildren
                   roster={activeClass?.children ?? []}
@@ -408,7 +411,7 @@ function Compose({
     /* 적는 칸만 **흰 종이**다. 쌓인 것(영수증 · 쪽지)은 아이보리와 색종이라, 제일 밝은
        종이가 늘 「지금 적는 자리」가 된다. 테이프는 종이 바깥에 붙여야 종이에 얹힌 것으로
        보인다. */
-    <section className="relative pt-3">
+    <section className="relative pt-3" data-tour="home-compose">
       <Tape className="left-10 -rotate-2" />
       <div className="relative bg-paper px-5 pb-4 pt-5 shadow-pg lg:px-6">
         <h2 className="font-display text-[26px] font-bold text-ink">지금, 한 줄</h2>
@@ -718,7 +721,7 @@ function TodaySlip({
   if (loading) return null;
   const names = (routines ?? []).map((r) => r.name.trim()).filter(Boolean);
   return (
-    <section>
+    <section data-tour="home-today">
       <div aria-hidden="true" className="slipEdge top" />
       <div className="bg-ivory px-5 lg:px-6">
         <div className="flex items-baseline justify-between gap-3 py-3">
@@ -945,7 +948,7 @@ function UnseenChildren({
 }
 
 /**
- * 비어 있는 날 — 일과가 없어 일지를 만들 수 없는 지난 평일. **하루만** 보여 준다.
+ * 비어 있는 날 — 기록이 없어 일지를 만들 수 없는 지난 평일. **하루만** 보여 준다.
  * 빠뜨린 날을 다 세어 들이밀면 첫 화면이 빚 목록이 된다.
  */
 function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
@@ -960,7 +963,7 @@ function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
             {shortDate(date)}
           </span>
           <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
-            일과가 없어
+            기록이 없어
             <br />
             일지를 못 만들어요
           </span>
@@ -992,7 +995,7 @@ function LastWeekNote({ look }: { look: LastWeek }) {
           지난주 돌아보기 · {shortDate(look.from)}~{shortDate(look.to)}
         </h2>
         <Link
-          href="/quick-records"
+          href="/weekly-records"
           className="shrink-0 text-xs font-semibold text-primary-ink underline"
         >
           주간 기록 보기 →

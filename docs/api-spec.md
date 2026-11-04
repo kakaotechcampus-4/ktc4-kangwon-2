@@ -709,7 +709,7 @@ PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운
 **Request**
 
 ```json
-{ "class_id": 1, "format": "MONTHLY_THEME", "form_id": null }
+{ "class_id": 1, "format": "MONTHLY_THEME", "form_id": null, "memo": "" }
 ```
 
 **`format` 은 필수다**(ADR-043) — `MONTHLY_THEME`(월별 주제형) · `PLAY_PROJECT`(놀이 프로젝트형). 없거나 모르는 값은 422 `VALIDATION_FAILED` `["format"]`.
@@ -727,6 +727,47 @@ FK 다 — 양식 원본은 하나만 두고 계획안 여러 개가 그걸 가�
 양식이 수십 벌이 되고, 양식을 고쳐도 옛 계획안에는 반영되지 않는다.
 
 **그래서 파생 계획안이 남아 있는 양식은 지우지 않고 숨긴다**(§8).
+
+### 요청 사항 — `memo` (ADR-060, 생성 다섯 경로 공통)
+
+연간(두 형식) · 월간(§9-1) · 주간(§9-6) · 놀이 중심 월간(§9-7) 생성이 같은 필드를 받는다.
+
+```
+memo   문자열.  선택(기본 "").  앞뒤 공백을 떼고 0~300자.  넘으면 422 VALIDATION_FAILED ["memo"]
+       빈 값이면 메모 없음 — 생성 요청 · 결과가 메모 이전과 같다
+```
+
+- **메모는 지시가 아니라 데이터다.** LLM 은 Rule 이 허용한 후보 · 근거 · 칸 안에서만 반영한다. 주제 · 안전교육 배치 ·
+  법정 기준 · 칸 구조는 바뀌지 않는다.
+- **반영한 칸은 Evidence 하나를 더 갖는다** — `{"source_type": "CLASSROOM_PROFILE", "source_id": "teacher_memo", "display_name": "요청 사항"}`.
+  기존 근거는 그대로 있다. `generation.method` 는 바뀌지 않는다.
+  월별 주제형 연간은 주제를 Rule 이 고르므로 메모가 소주제에만 닿고, 반영한 달의 칸(`months[].evidence`)에 표시가 붙는다.
+- **반영하지 못한 요청은 응답 `memo_notices` 로 준다.** 생성을 막지 않는다.
+
+```json
+"memo": "숲에서 하는 놀이를 넣어 주세요",
+"memo_notices": [ { "summary": "3월 주제를 바꾸어 달라는 요청", "reason": "FIXED_CELL" } ]
+```
+
+```
+reason   OUT_OF_RANGE   승인 후보 · 근거 밖을 요구했다
+         RULE_CONFLICT  안전교육 배치 · 법정 기준 · 칸 구조와 부딪힌다
+         FIXED_CELL     Rule 이 복사하는 칸이다 — 월별 주제형 연간 · 월간의 주제, 주간의 주제 · 안전교육
+summary  80자 이하
+```
+
+- 상세 응답(생성 · 단건 조회)은 모두 `memo` · `memo_notices` 를 싣는다. 메모 없이 만든 계획안은 `""` · `[]` 다.
+- **법정 안전교육 횟수 · 주 요청은 Rule 이 둔다**(2층 — 월간 v1 · 놀이 중심 월간만). 「재난 안전교육 세 번 이상」,
+  「2주차에 교통안전」 같은 요청은 LLM 이 범주 · 주 · 최소 횟수로 뽑기만 하고, 만들 때 Rule 이 `safety_weeks` 에 둔다.
+  - 짚은 주 먼저, 남은 횟수는 앞쪽 빈 주부터. 이미 다른 요청이 쓴 주는 다른 주로 옮기고 알린다.
+  - 한 범주를 여러 주에 두면 주마다 다른 문장이다. 첫 주는 LLM 후보, 그다음은 그 범주의 다른 공식 내용 항목을
+    그대로 쓴 후보가 `safety_candidates` 뒤에 붙는다(`generation.method` = `RULE_ONLY`). 그래서 후보가 8개보다 많을 수 있다.
+  - 못 채운 횟수 · 주는 `memo_notices` 에 `RULE_CONFLICT` 로 온다(예: 「교통안전: 2주차에는 넣지 못했어요」).
+  - 요청으로 놓인 후보는 「요청 사항」 Evidence 를 갖는다. 놓인 뒤에는 교사가 [후보 두기]로 바꿀 수 있다. 생활안전 횟수 요청은 알림만 한다.
+- **아이 이름은 가명으로 나간다**(§9 「자유 입력 필드」). 메모에 그 반 아이 이름이 있으면 메모 글만 가명으로 바꿔 보내고 답을 되돌린다.
+  바꿀 수 없으면(두 아이가 같은 이름을 쓰는 등) 또는 보낼 요청에 그 이름이 남아 있으면 **LLM 을 부르지 않고**
+  422 `VALUE_INVALID` `["memo"]` — 화면은 「이름을 빼고 다시 적어 주세요」를 띄운다. 아무것도 저장되지 않는다.
+- **안전교육 개수 · 주차 요청**(「재난 안전교육 3회 이상」)을 Rule 이 배치하는 것은 다음 단계다(ADR-060 결정 2). 지금은 `RULE_CONFLICT` 로 알린다.
 
 **Response** `201`
 
@@ -1473,9 +1514,9 @@ PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨,
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 PUT    /api/plans/monthly/{id}/safety-weeks/{week_id}   주별 안전교육 후보 배치 — §9-3 (후보 모드만)
 POST   /api/plans/monthly/{id}/drill-candidates/{item_id}/copy   훈련 후보를 훈련 칸에 복사 — §9-3 (훈련 칸이 있는 계획만)
-GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039)
-GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx
-GET    /api/plans/weekly/{id}/export/hwp  주간 내보내기 — 확정본만, 기본 hwpx (§9-6)
+GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039) · ?format=pdf 면 PDF (ADR-061 제안)
+GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx · hwp · pdf
+GET    /api/plans/weekly/{id}/export/hwp  주간 내보내기 — 확정본만, 기본 hwpx · hwp · pdf (§9-6)
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 W5a · 편집 · 재생성 · 확정 · 이력 W5b 구현됨)
@@ -1505,9 +1546,10 @@ JSON 파싱에서 깨진다 — FE 는 이 하나를 따로 다룬다.
 GET /api/plans/10/export/hwp              → plan-10.hwpx   Content-Type: application/hwp+zip
 GET /api/plans/10/export/hwp?format=hwpx  → plan-10.hwpx   (위와 같다)
 GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: application/x-hwp
+GET /api/plans/10/export/hwp?format=pdf   → plan-10.pdf    Content-Type: application/pdf
 
 응답 200    Content-Disposition: attachment; filename="plan-10.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp · pdf 면 둘 다 그 확장자)
 ```
 
 **경로 이름은 `hwp` 인데 기본은 `hwpx` 다.** 원래 hwpx 만 주던 경로라, 지금 화면을 깨지 않으려고
@@ -1524,11 +1566,22 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 변환은 hwpx 를 다 만든 뒤에만 돌므로, 같은 문서를 `format` 없이 다시 받으면 hwpx 는 나온다.
 변환기(python-hwpx)의 hwp 쓰기가 새 기능이라 무엇이 실패하든 이 코드로 준다. 재시도해도 같다.
 
+**PDF 도 같은 hwpx 에서 만든다(ADR-061, 제안).** `?format=pdf` 면 채운 hwpx 의 표를
+reportlab 으로 다시 그린다 — 칸 주소 · 병합 · 너비 · 테두리 · 바탕색 · 글자 크기 · 굵기 · 정렬 ·
+줄 나눔을 양식에서 읽는다. 계획안 종류마다 따로 그리지 않아서 연간 · 월간 · 주간 · 일지가 한 길로 나온다.
+변환은 `.hwp` 와 같이 backend 프로세스 안에서만 한다.
+
+- **문서 한 쪽이 PDF 한 장이다.** 글이 넘치면 그 쪽을 한 장에 맞춰 줄인다 — 글자가 작아진다.
+- **글꼴은 나눔고딕 하나다**(서버 이미지의 `fonts-nanum`). 양식 글꼴과 다르고 줄 간격도 근사라,
+  한글에서 연 hwpx 와 똑같지는 않다. 수정할 파일은 hwpx · hwp 로 받는다.
+- **PDF 로 못 바꾸면 같은 503 `DEPENDENCY_UNAVAILABLE` 이다 — 「이 문서는 지금 pdf 로 바꿀 수 없습니다. hwpx 로 받아주세요.」**
+  서버에 한글 글꼴이 없을 때도 이 코드다. hwpx · hwp 는 그대로 나간다.
+
 **확정본만 내보낸다.** DRAFT 면 `GATE_BLOCKED` 409 다. 내보낸 파일은 제출 문서라,
 교사가 확인하지 않은 초안이 그대로 제출되는 길을 만들지 않는다.
 
 **놀이 프로젝트형도 확정본만 내보낸다**(ADR-048). DRAFT 는 409 `GATE_BLOCKED`, 문구 「놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.」, `fields: []` 다.
-기본 hwpx · `?format=hwpx|hwp` 를 그대로 쓴다. 하민의 `backend/app/features/plans/play_project_hwpx.py` 양식 · renderer 에 네 구간의 고른 5개만 `selected` 순서대로 넘긴다. 미선택 후보 · 출처 마커는 파일에 넣지 않는다.
+기본 hwpx · `?format=hwpx|hwp|pdf` 를 그대로 쓴다. 하민의 `backend/app/features/plans/play_project_hwpx.py` 양식 · renderer 에 네 구간의 고른 5개만 `selected` 순서대로 넘긴다. 미선택 후보 · 출처 마커는 파일에 넣지 않는다.
 
 **출처를 싣지 않는다.** `evidence` · `generation` 은 화면이 근거를 보여주는 값이지
 제출 문서에 들어갈 것이 아니다. 교사가 읽는 글자만 꺼낸다.
@@ -1540,8 +1593,8 @@ GET /api/plans/10/export/hwp?format=hwp   → plan-10.hwp    Content-Type: appli
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다. 놀이 프로젝트형 DRAFT 문구는 「놀이 프로젝트형 연간계획안은 확정한 뒤 내려받을 수 있습니다.」, `fields: []` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 계획안이다 |
-| `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
-| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
+| `VALIDATION_FAILED` | 422 | `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` · PDF 로 바꾸지 못했다(PDF 는 글꼴이 없을 때도). hwpx 로는 받을 수 있다 |
 
 **월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다. **놀이 중심 월간 id 면 확정 여부와 관계없이 409 `GATE_BLOCKED`** 다(「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」, §9-7 · 놀이 월간 양식이 없어 한글 내려받기는 후속).
 기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
@@ -1589,6 +1642,7 @@ class_id                 정수.  필수.  내 원의 반이어야 한다(남의
 month                    정수 1~12.  필수.  달력의 달이다
 profile_ref.profile_id   문자열.  필수.  빈 문자열 거부
 profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 같은 별칭은 없다
+memo                     문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」)
 ```
 
 **`school_year` 를 받지 않는다.** 연간(§4)과 같다 — `class_id` 의 학년도가 정한다.
@@ -1601,7 +1655,7 @@ profile_ref.profile_version  문자열.  필수.  정확한 버전 — "latest" 
 않는다. 무엇을 보여 줄지는 §9-2 가 준다.
 
 **받지 않는 것.** 생성 방식(서버 정책 — `LLM_PLANNER`), 참조자료 판(서버 상수), 안전교육 배치
-정책(아래), 자유 메모.
+정책(아래). 요청 사항은 `memo` 로 받는다(§4 「요청 사항」, ADR-060).
 
 **Response** `201` — 아래 「월간계획안 응답」.
 
@@ -1626,6 +1680,7 @@ FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(sc
 **월간 생성은 안전교육 후보 모드로 만든다**(ADR-052 제안 — 2026-10-22 배치 정책 v2 자동 배치를 대체).
 
 - 새 계획안은 후보 8개를 가진다 — 법정 6 + 생활안전 2(`safety_candidates`). 후보 문장은 LLM 이 쓴다.
+  요청 사항의 안전교육 횟수 요청(§4 「요청 사항」)이 있으면 법정 후보가 더 붙고 그 주들은 처음부터 놓여 있다.
 - 주별 안전교육 칸(`sections[]` 의 `safety_education`)은 모든 활성 주에서 `EMPTY_VALID` · 값 `""` 이다.
   교사가 고르기 전에는 어느 주에도 후보가 놓이지 않는다 — `safety_weeks[].candidate_item_id` 는 null,
   `notices` 는 활성 주마다 `SAFETY_UNPLACED` 다.
@@ -2378,6 +2433,7 @@ class_id   정수.  필수.  내 원의 반이어야 한다(남의 원이면 404
 week_id    문자열 YYYY-MM-Wn.  필수.  그 달이 반 학년도(3월 ~ 다음 해 2월) 안이어야 한다
            부모 월간의 주(§9-1 응답 weeks[])여야 하고, 그 주가 active 여야 한다
 activity_candidates  boolean. 생략 시 false. true면 승인된 v0.2.0 양식과 활동 후보 방식을 쓴다(아래).
+memo       문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」). 주제 · 안전교육은 월간에서 복사하므로 그 요청은 FIXED_CELL
 ```
 
 **받지 않는 것.** `school_year`(반이 정한다) · 부모 월간(서버가 반과 `week_id` 의 달로 찾는다) ·
@@ -2548,7 +2604,7 @@ POST /api/plans/weekly/{id}/confirm                      { "expected_revision": 
 ### 내보내기 — `GET /api/plans/weekly/{id}/export/hwp`
 
 월간 내보내기(§9 「내보내기」)와 같은 규칙이다 — **확정본만**(DRAFT 는 409 `GATE_BLOCKED`), 기본 hwpx ·
-`?format=hwp` 면 `.hwp`(바꾸지 못하면 503), **근거 · 만든 방식은 싣지 않는다**, 양식 작성자 정보를 지운다.
+`?format=hwp` 면 `.hwp` · `?format=pdf` 면 PDF(바꾸지 못하면 503), **근거 · 만든 방식은 싣지 않는다**, 양식 작성자 정보를 지운다.
 파일 이름 `weekly-plan-{id}.hwpx`.
 
 **화면은 카드형이지만 제출 문서는 표 양식이다.** 양식 `templates/weekly.hwpx`(scripts/build_weekly_template.py):
@@ -2650,6 +2706,7 @@ GET    /api/plans/monthly/play/{id}/audit                                   변�
 class_id              정수.  필수.  내 원의 반이어야 한다(남의 원이면 404)
 month                 정수 1~12.  필수.  달력의 달.  학년도는 반이 정한다(§9-1 과 같다)
 emphasized_row_keys   문자열 배열.  선택(기본 []).  부모 연간의 그 구간에서 고른 놀이의 row_key.  중복 · 고르지 않은 것은 422
+memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」)
 ```
 
 **부모 연간을 받지 않는다.** 서버가 반으로 찾는다(§4 「반당 하나다」). `profile_ref` · 양식 · 트렌드 · 날씨를 받지 않는다.
@@ -3516,7 +3573,7 @@ POST   /api/documents/{id}/refresh                               근거 다시 �
 GET    /api/documents/{id}/source-comparison                     일과 근거 전후 비교와 검토 토큰
 POST   /api/documents/{id}/reconfirm                              확정된 stale 일일 일지의 원자적 재확정
 DELETE /api/documents/{id}                                       204
-GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp).  확정본만.  아래 「내보내기」
+GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp · pdf 면 PDF).  확정본만.  아래 「내보내기」
 ```
 
 **확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
@@ -3573,13 +3630,13 @@ assessment    observation · dailyLog
 **관찰일지 · 일일 보육일지 · 주간 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼,
 주간 보육일지는 날짜 줄 하나를 그 주 날짜 수만큼 복제한다.
 
-**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` 다 ·
-확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
+**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` · `?format=pdf` 면 PDF(ADR-061 제안) 다 ·
+확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp · pdf 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
 
 ```
-응답 200    Content-Type: application/hwp+zip                     (?format=hwp 면 application/x-hwp)
+응답 200    Content-Type: application/hwp+zip                     (?format=hwp 면 application/x-hwp · pdf 면 application/pdf)
             Content-Disposition: attachment; filename="document-7.hwpx";
-                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp 면 둘 다 .hwp)
+                                 filename*=UTF-8''<한글 이름>.hwpx      (hwp · pdf 면 둘 다 그 확장자)
 ```
 
 **배치는 위 「종이 한 장」이다.** 해석 + 지원 칸은 `해석` 본문, 빈 줄, `지원` 본문 순서로 잇는다.
@@ -3602,9 +3659,9 @@ assessment    observation · dailyLog
 | code | status | 언제 |
 |---|---|---|
 | `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
-| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` 가 아니다.  `fields: ["format"]` |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
-| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
+| `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` · PDF 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
 ### 개인정보
 

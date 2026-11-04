@@ -12,7 +12,6 @@ import type {
   MonthlyPlan,
   ProfileRef,
   ReadyProfile,
-  ReceivedAccessRequest,
   WeeklyPlan,
 } from "../../lib/api/types";
 import type { Greetings } from "../../lib/api/centers";
@@ -50,11 +49,15 @@ export interface Database {
   /** 원 기본 포인터(키 = center id) · 반 override 포인터(키 = class id). */
   defaultPointers: Record<number, MockPointer>;
   overridePointers: Record<number, MockPointer>;
-  /** 테스트 · 개발 전용 승인 Fixture(`template_id@template_version`). 운영 Template 은 승인 대기다. */
+  /**
+   * 승인된 기반 Template(`template_id@template_version`). 서버 데이터와 같게 v0.2.1 ~ v0.2.3 은 승인,
+   * v0.1.1 은 검토 대기로 시작한다(p0-planning/data/templates `review.domain_owner_approval`).
+   */
   approvedTemplates: string[];
-  /** 내 반에 온 열람 요청(ADR-059). 목업 계정은 하나라 다른 교사의 요청은 테스트가 넣는다. */
-  accessRequests: ReceivedAccessRequest[];
 }
+const SERVER_APPROVED = ["v0.2.1", "v0.2.2", "v0.2.3"].map(
+  (v) => "ssuksak.monthly-template-a@monthly-template-a-" + v,
+);
 /** 연간계획안 + 서버가 목록 · 확정 응답에만 주는 시각. 단건 응답에서는 뺀다. */
 export type MockAnnualPlan =
   | (AnnualPlan & { created_at: string; confirmed_at: string | null })
@@ -97,8 +100,7 @@ const empty = (): Database => ({
   profiles: [],
   defaultPointers: {},
   overridePointers: {},
-  approvedTemplates: [],
-  accessRequests: [],
+  approvedTemplates: [...SERVER_APPROVED],
 });
 let memory = empty();
 function key() {
@@ -137,8 +139,7 @@ export function read(): Database {
     profiles: parsed.profiles ?? [],
     defaultPointers: parsed.defaultPointers ?? {},
     overridePointers: parsed.overridePointers ?? {},
-    approvedTemplates: parsed.approvedTemplates ?? [],
-    accessRequests: parsed.accessRequests ?? [],
+    approvedTemplates: parsed.approvedTemplates ?? [...SERVER_APPROVED],
   };
 }
 export function commit<T>(fn: (db: Database) => T): T {

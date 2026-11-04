@@ -3,8 +3,10 @@
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
 
 import io
+import re
 import zipfile
 
+import pypdf
 from fastapi.testclient import TestClient
 from lxml import etree
 from test_plans_export import _confirmed_plan, mine  # noqa: F401
@@ -120,11 +122,25 @@ def test_hwp_도_내려준다(world, saved, tmp_path):
     assert "m03_m05 놀이 5" in text and "m03_m05 놀이 6" not in text
 
 
+def test_pdf_도_내려준다(world, saved):
+    """같은 hwpx 를 다시 그린다(ADR-061). 좁은 칸은 줄이 바뀌니 공백을 빼고 본다."""
+    _, row = saved
+    _confirmed(row)
+
+    response = _get(row, "?format=pdf")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    pages = pypdf.PdfReader(io.BytesIO(response.content)).pages
+    text = re.sub(r"\s+", "", "".join(page.extract_text() for page in pages))
+    assert "m03_m05놀이5" in text and "m03_m05놀이6" not in text
+
+
 def test_잘못된_format_은_422(world, saved):
     _, row = saved
     _confirmed(row)
 
-    assert _get(row, "?format=pdf").status_code == 422
+    assert _get(row, "?format=docx").status_code == 422
 
 
 def test_월별_주제형은_그대로_내려간다(db_session, mine):

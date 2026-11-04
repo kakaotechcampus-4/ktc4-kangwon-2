@@ -153,7 +153,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: /한글로 내보내기/ }).click();
+  await page.getByRole("button", { name: "한글 파일(hwpx)로 내려받기", exact: true }).click();
   await verifyHwpx(await download, info.outputPath("pilot-annual.hwpx"), [
     "우리 반과 새로운 친구",
     "우리 반 이름 알아보기",
@@ -161,21 +161,11 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ]);
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
-  // 확정 화면 → 월간 → (양식이 없어) 월간 양식 설정.
+  // 확정 화면 → 월간 만들기. 넣을 칸은 만들기 화면에서 고른다(따로 양식 화면이 없다, 2026-11-03).
   await page.getByRole("link", { name: "월간계획안 만들기 →", exact: true }).click();
-  await page.getByRole("link", { name: "월간 양식 설정으로 가기", exact: true }).click();
-  // Latest approved version is preselected. Switching versions drops picks the other one lacks.
-  const base = page.getByLabel("기반 양식");
-  await expect(base).toHaveValue("monthly-template-a-v0.2.3");
-  await page.getByRole("checkbox", { name: /실내 대체활동/ }).check();
-  await base.selectOption("monthly-template-a-v0.2.1");
-  await base.selectOption("monthly-template-a-v0.2.3");
+  await expect(page.getByRole("group", { name: "어떤 칸을 넣을까요?" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /실내 대체활동/ })).not.toBeChecked();
-  await page.getByRole("button", { name: /칸으로 양식 만들기/ }).click();
-  await expect(page.getByText("새 양식을 만들고 원 기본으로 설정했어요.")).toBeVisible();
-  // 계획안 첫 화면에 월간 링크가 없다(2026-11-02 결정) — 주소로 간다.
-  await page.goto("/plans/monthly");
-  await page.getByRole("button", { name: /월 계획안 만들기/ }).click();
+  await page.getByRole("button", { name: /월간계획안 만들기/ }).click();
   // 놀이 월간과 같은 화면: 문서에서 칸을 누르면 옆 패널에서 고치고, 입력을 멈추거나 떠나면 저장한다.
   const doc = page.getByRole("region", { name: "월간계획안 미리보기", exact: true });
   const outdoor = doc
@@ -185,16 +175,11 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   const firstCell = await outdoor.locator("td").first().boundingBox();
   expect(Math.abs(firstWeek!.x - firstCell!.x)).toBeLessThan(2);
   const cell = (n: number) => outdoor.locator("td").nth(n).locator("[data-cell]");
-  const field = page.getByRole("textbox", { name: /^바깥놀이 · / });
+  const field = page.getByRole("textbox", { name: / · 바깥놀이$/ });
   await cell(0).click();
   await expect(cell(0)).toHaveAttribute("aria-pressed", "true");
   await expect(field).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  const regenerated = page.waitForResponse(
-    (response) => response.url().endsWith("/regenerate") && response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "↻ 이 칸만 다시 만들기", exact: true }).click();
-  expect((await regenerated).status()).toBe(200);
+  // 월간 v1 칸 편집에는 다시 만들기가 없다(81aa2fc4, 2026-11-04). 확정은 페이지 안에서 한 번 더 묻는다.
   await field.fill("");
   await field.pressSequentially("친구와 함께 만드는 우리 반 놀이", { delay: 15 });
   // A nested component used to remount this input after every character.
@@ -205,20 +190,29 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(cell(1)).toHaveAttribute("aria-pressed", "true");
   await field.fill("교사가 준비한 자연물을 함께 살펴본다.");
   await field.blur();
-  await expect(page.getByText("저장됨", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^저장됨$/ })).toBeVisible();
   await page.reload();
   await expect(cell(0)).toHaveText("친구와 함께 만드는 우리 반 놀이");
   await expect(cell(1)).toHaveText("교사가 준비한 자연물을 함께 살펴본다.");
   await cell(0).click();
   await field.fill("친구와 함께 만드는 새로운 우리 반 놀이");
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
+  await page
+    .getByRole("group", { name: /^확정하면/ })
+    .getByRole("button", { name: "확정하기", exact: true })
+    .click();
   await expect(page.getByText("확정했어요. 이제 고칠 수 없어요.")).toBeVisible();
+  // 확정 후 화면: 확정본 · 한글 내보내기 · 주간 만들기 · 홈.
+  await expect(page.getByRole("heading", { name: /월 월간계획안을 확정했어요$/ })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "주간계획안 만들기 →", exact: true }),
+  ).toHaveAttribute("href", "/plans/weekly");
   await page.reload();
   await expect(cell(0)).toHaveText("친구와 함께 만드는 새로운 우리 반 놀이");
   await expect(cell(0)).not.toHaveAttribute("role", "button");
   await expect(page.getByRole("textbox")).toHaveCount(0);
   const monthlyDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
+  await page.getByRole("button", { name: "한글 파일(hwpx)로 내려받기", exact: true }).click();
   await verifyHwpx(await monthlyDownload, info.outputPath("pilot-monthly.hwpx"), [
     "친구와 함께 만드는 새로운 우리 반 놀이",
     "교사가 준비한 자연물을 함께 살펴본다.",
@@ -286,14 +280,16 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
       await expect(page.getByRole("textbox")).toHaveCount(0);
     }
     if (kind === "weekly") {
-      // 보관함 링크가 고른 주가 「보는 중」이고, 그 주 계획안이 열린다.
+      // 보관함 링크로 그 주 계획안의 다듬기 화면이 열린다.
       await expect(
-        page
-          .getByRole("navigation", { name: `${monthPlan.month}월의 주` })
-          .locator('[aria-current="true"]'),
-      ).toContainText(week.label);
+        page.getByRole("heading", {
+          name: `${monthPlan.month}월 ${week.label} 주간계획안`,
+          exact: true,
+          level: 1,
+        }),
+      ).toBeVisible();
       await expect(
-        page.getByRole("heading", { name: week.label, exact: true, level: 2 }),
+        page.getByRole("region", { name: "주간계획안 미리보기", exact: true }),
       ).toBeVisible();
     }
   }
@@ -308,27 +304,23 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await dateInput.fill(yesterday.toISOString().slice(0, 10));
   const row = page.locator('[aria-label="일과 목록"] article').first();
   await row.getByLabel("일과 이름").fill("오전 실내놀이");
-  for (const [label, hour] of [
-    ["시작", "09"],
-    ["종료", "10"],
-  ]) {
-    await row.getByLabel(`${label} 시`, { exact: true }).selectOption(hour);
-    await row.getByLabel(`${label} 분`, { exact: true }).selectOption("00");
-  }
-  await row.getByLabel("하려던 것").fill("자연물과 블록을 제공한다.");
+  // 시작 · 종료 칸은 시계판과 함께 접혀 있다. 열고 고친 뒤 닫는다.
+  await row.getByRole("button", { name: /시계로 시간 고르기/ }).click();
+  // 깔아 둔 하루의 다른 줄과 겹치면 겹친 시간 알림이 저장을 막는다. 이 줄 자리(07:30~09:00) 안에서 고친다.
+  await row.getByLabel("시작 시간", { exact: true }).fill("07:40");
+  await row.getByLabel("종료 시간", { exact: true }).fill("08:50");
+  await row.getByRole("button", { name: "닫기", exact: true }).click();
+  // 「계획한 것」은 접혀 있다.
+  await row.locator("details").locator("summary").click();
+  await row.getByLabel("계획한 것").fill("자연물과 블록을 제공한다.");
   await row
     .getByLabel("실제로 한 것")
     .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
-  await page
-    .getByRole("group", { name: "문서에 사용할 일과" })
-    .getByRole("checkbox")
-    .first()
-    .check();
+  // 「오늘 일지 만들기」는 저장하고 이 화면에서 바로 초안을 만든다(보관함으로 가지 않는다).
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "초안 만들기", exact: true }).click();
+  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   const generated = await response;
   expect(generated.status()).toBe(201);
   const created = await generated.json();
@@ -336,7 +328,8 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     page.getByRole("link", { name: "일과 기록에서 고쳐 주세요 →", exact: true }),
   ).toHaveAttribute("href", /\/routines\?date=.*&class_id=\d+/);
   expect(created.child_id).toBeNull();
-  await reopenCreated(page, created);
+  // 일지는 칠판 밑에 바로 펼쳐진다. 그 자리에서 확정 · 내려받기까지 간다.
+  await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
   await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
   await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
@@ -347,6 +340,8 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     "유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.",
   ]);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
+  // 화면 본문은 서류 한 장이고, 평가항목별 보기는 접혀 있다.
+  await page.getByText(/^평가항목별로 보기/).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),
   ).toContainText("집계에 들어간 문서 1건");
@@ -435,22 +430,23 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
 }, info) => {
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
-  await page.getByRole("tab", { name: /^자체평가/ }).click();
+  // 현장에서 보는 19가지는 접혀 있다.
+  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
+  const selfCheck = page.getByRole("group", { name: "현장에서 보는 것 직접 확인" });
   // 안 끝난 첫 평가항목만 펼쳐져 있다. 접힌 평가항목을 하나씩 펼쳐 19개를 센다.
   // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다. 영역(section) 밖의 옛 사전점검 접기는 열지 않는다.
-  const closed = page
-    .getByRole("tabpanel", { name: /^자체평가/ })
-    .locator("section details:not([open]) > summary");
+  const closed = selfCheck.locator("section details:not([open]) > summary");
   while (await closed.count()) await closed.first().click();
-  await expect(page.getByRole("checkbox")).toHaveCount(19);
+  await expect(selfCheck.getByRole("checkbox")).toHaveCount(19);
   const checklist = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(checklist.items).toHaveLength(9);
   const first = checklist.items.find((item: { kind: string }) => item.kind === "SELF_CHECK")
     .elements[0];
-  const check = page.getByRole("checkbox").first();
+  const check = selfCheck.getByRole("checkbox").first();
   await check.check();
   await expect(page.getByText(/저장됨/)).toBeVisible();
   await page.reload();
+  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
   await expect(check).toBeChecked();
   const saved = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(

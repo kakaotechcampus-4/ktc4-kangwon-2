@@ -1,10 +1,12 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
 import { downloadAnnualHwpx, unconfirmAnnualPlan } from "@/lib/api/plans";
+import type { ExportFormat } from "@/lib/api/export";
 import type { AnnualPlanResponse } from "@/lib/api/types";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import UnconfirmButton from "./UnconfirmButton";
+import { stepPlaySheetZoom, type SheetZoom } from "./playProjectPagination";
 
 /** ⑤ · ⑥ 공통 모양 (디자인 넘김 result-preview · done-preview). */
 const CHIP = {
@@ -14,25 +16,50 @@ const CHIP = {
 export const BUTTON = {
   quiet: "min-h-[44px] rounded-xl px-3 text-sm text-[#5c5243] disabled:opacity-40",
   outline:
-    "min-h-[44px] rounded-xl border border-[#ddd6ca] bg-white px-4 text-sm font-bold text-[#5e4b96] disabled:opacity-40",
+    "min-h-[44px] rounded-xl border border-line bg-paper px-4 text-sm font-bold text-[#5e4b96] shadow-pg-card transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none disabled:opacity-40",
   primary:
-    "min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40",
+    "min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none",
+  /** 패널 아래 가벼운 글자 버튼(「지우고 다시 만들기」). */
+  plain: "min-h-[44px] text-sm text-[#5c5243] underline underline-offset-2 disabled:opacity-40",
 };
 export const tabClass = (active: boolean) =>
   `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-[#8a8178]"}`;
 /** 문서 위 쪽 · 구간 버튼. */
 export const pageClass = (active: boolean) =>
-  `min-h-[36px] min-w-[52px] rounded-lg border px-3 text-sm ${active ? "border-[#7053a0] bg-white font-bold text-[#5e4b96]" : "border-transparent text-[#5c5243] hover:bg-white/60"}`;
+  `min-h-[34px] min-w-[52px] rounded-lg px-3 text-sm ${active ? "bg-[#efe8f7] font-bold text-[#5e4b96]" : "text-[#5c5243] hover:bg-[#f3efe8]"}`;
 
-const chip = (format: AnnualPlanResponse["format"]) => (
+/** 제목 옆 「←」 돌아가기 — 만들기 · 편집 화면이 같이 쓴다. 갈 곳 이름은 aria-label · title 로. */
+export const BACK_BUTTON =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-paper shadow-pg-card transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none text-[#2b2826] no-underline hover:bg-[#f7f4ee] disabled:opacity-40";
+export const BACK_ICON = (
+  <svg
+    viewBox="0 0 24 24"
+    width="22"
+    height="22"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M19 12H5" />
+    <path d="m12 19-7-7 7-7" />
+  </svg>
+);
+
+type Format = AnnualPlanResponse["format"];
+export const chip = (format: Format) => (
   <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${CHIP[format][1]}`}>
     {CHIP[format][0]}
   </span>
 );
 
-/** ⑤ 결과 · 다듬기. 왼쪽 380px 패널(`aside`, 전체 보기면 null) · 오른쪽 문서. */
+/** ⑤ · Ⓜ3 결과 · 다듬기. 왼쪽 380px 패널(`aside`) · 오른쪽 문서(머리줄에 배율 · 크게 보기). 연간 · 월간이 같이 쓴다. */
 export default function AnnualFrame({
-  plan,
+  title,
+  format,
+  lead,
   status,
   actions,
   notice,
@@ -41,41 +68,51 @@ export default function AnnualFrame({
   docHint,
   children,
 }: {
-  plan: AnnualPlanResponse;
+  /** 예: 「2026 연간계획안」 · 「11월 월간계획안」. */
+  title: string;
+  format: Format;
+  /** 제목 앞 (월간의 「←」 돌아가기). */
+  lead?: ReactNode;
   status: ReactNode;
   actions: ReactNode;
   notice?: ReactNode;
   aside: ReactNode | null;
-  docLabel: string;
-  docHint: string;
+  /** 문서 머리줄 왼쪽 · 오른쪽 (놀이형은 계절 탭 · 확대 도구). */
+  docLabel: ReactNode;
+  docHint: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <main className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826]">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">
-            {plan.school_year} 연간계획안
-          </h1>
-          {chip(plan.format)}
-          <span className="text-sm text-[#5c5243]">{status}</span>
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-7">
+      {/* 안내가 없으면 높이 0 — 연간 · 월간 · 주간 문서 틀이 같은 높이에서 시작한다. */}
+      <div className="flex flex-col">
+        <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {lead}
+            <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+              {title}
+            </h1>
+            {chip(format)}
+            <span className="text-sm text-[#5c5243]">{status}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        {notice}
       </div>
-      {notice}
-      <div className="flex min-h-0 flex-1 gap-4">
+      {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {aside && (
-          <aside className="flex w-[380px] shrink-0 flex-col rounded-[20px] border border-[#e8e2d8] bg-white">
+          <aside className="flex w-full shrink-0 flex-col border border-line bg-paper shadow-pg lg:w-[380px]">
             {aside}
           </aside>
         )}
         <section
           aria-label="문서 미리보기"
-          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e8e2d8] bg-[#f3efe8]"
+          className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
-          <div className="flex items-center justify-between gap-3 border-b border-[#e8e2d8] bg-white px-5 py-2.5 text-sm">
-            <span className="font-bold">{docLabel}</span>
-            <span className="text-[#5c5243]">{docHint}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-shell-line bg-paper px-5 py-2.5 text-sm">
+            <div className="font-bold">{docLabel}</div>
+            <div className="text-[#5c5243]">{docHint}</div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-6">{children}</div>
         </section>
@@ -84,18 +121,212 @@ export default function AnnualFrame({
   );
 }
 
-/** 왼쪽 패널 안 「지금 고른 칸」 줄. */
-export function AsideStrip({ children }: { children: ReactNode }) {
+const ZOOM_BUTTON =
+  "flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg px-2 text-sm text-[#5c5243] hover:bg-[#f3efe8] disabled:opacity-35 disabled:hover:bg-transparent";
+/** 문서 머리줄(편집 바)의 한 묶음 — 되돌리기 · 배율을 테두리로 나눈다. */
+const TOOL_GROUP =
+  "flex items-center gap-0.5 rounded-xl border border-line bg-paper p-0.5 shadow-pg-card";
+
+const UNDO_ICON = (
+  <svg
+    viewBox="0 0 24 24"
+    width="18"
+    height="18"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </svg>
+);
+
+/** 편집 바의 되돌리기 · 다시 하기 — 글자 없이 아이콘(이름은 마우스를 올리면 · 화면 읽기). 다시 하기가 없는 화면은 `onRedo` 를 비운다. */
+export function UndoRedo({
+  onUndo,
+  canUndo,
+  onRedo,
+  canRedo = false,
+  disabled = false,
+}: {
+  onUndo: () => void;
+  canUndo: boolean;
+  onRedo?: () => void;
+  canRedo?: boolean;
+  disabled?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-2 border-b border-[#efeae2] bg-[#fbf9f5] px-6 py-2.5 text-[13px] text-[#5c5243]">
-      <span className="h-2 w-2 rounded-full bg-[#7053a0]" aria-hidden="true" />
-      {children}
+    <div role="group" aria-label="되돌리기 · 다시 하기" className={TOOL_GROUP}>
+      <button
+        type="button"
+        title="되돌리기"
+        className={ZOOM_BUTTON}
+        disabled={disabled || !canUndo}
+        onClick={onUndo}
+      >
+        {UNDO_ICON}
+        <span className="sr-only">되돌리기</span>
+      </button>
+      {onRedo && (
+        <button
+          type="button"
+          title="다시 하기"
+          className={ZOOM_BUTTON}
+          disabled={disabled || !canRedo}
+          onClick={onRedo}
+        >
+          <span className="flex -scale-x-100">{UNDO_ICON}</span>
+          <span className="sr-only">다시 하기</span>
+        </button>
+      )}
     </div>
   );
 }
 
 /**
- * ⑥ 확정 후. 문서 전체(읽기 전용) · 한글 내보내기(PDF 는 서버에 없어 숨김) · 월간 만들기 · 홈 · 확정 취소.
+ * 문서 배율 — 기본은 100%(칸이 좁으면 그만큼만 줄임), 「맞춤」은 칸 폭에 맞춰 키우거나 줄임,
+ * −/+ 는 그 배율로 고정. `box` 는 문서를 감싼 칸(그 폭을 잰다), `percent` 로 문서를 줄인다. 연간 · 월간이 같이 쓴다.
+ */
+export function useSheetZoom(
+  box: RefObject<HTMLElement | null>,
+  width: number,
+  remeasure?: unknown,
+) {
+  const [zoom, setZoom] = useState<SheetZoom>({ mode: "auto", percent: 100 });
+  const [fit, setFit] = useState(100);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const update = () => setFit(Math.min(150, (el.clientWidth / width) * 100));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [box, width, remeasure]);
+  const percent =
+    zoom.mode === "fit" ? fit : zoom.mode === "auto" ? Math.min(100, fit) : zoom.percent;
+  const tools = (
+    <div role="group" aria-label="문서 배율" className={TOOL_GROUP}>
+      <button
+        type="button"
+        className={ZOOM_BUTTON}
+        aria-label="문서 축소"
+        onClick={() => setZoom({ mode: "manual", percent: stepPlaySheetZoom(percent, -1) })}
+      >
+        −
+      </button>
+      <output className="min-w-[64px] text-center text-[13px]">
+        {zoom.mode === "fit" && "맞춤 "}
+        {Math.round(percent)}%
+      </output>
+      <button
+        type="button"
+        className={ZOOM_BUTTON}
+        aria-label="문서 확대"
+        onClick={() => setZoom({ mode: "manual", percent: stepPlaySheetZoom(percent, 1) })}
+      >
+        +
+      </button>
+      <button
+        type="button"
+        className={ZOOM_BUTTON}
+        aria-pressed={zoom.mode === "fit"}
+        onClick={() => setZoom({ ...zoom, mode: zoom.mode === "fit" ? "auto" : "fit" })}
+      >
+        맞춤
+      </button>
+    </div>
+  );
+  return { percent, tools };
+}
+
+/** 확정하기 바로 아래에 뜨는 확인 상자 자리 — 감싸는 쪽은 `relative`. 연간 · 월간이 같이 쓴다. */
+export const POPOVER = "absolute right-0 top-full z-20 mt-2 w-[380px]";
+
+/**
+ * 문서 크게 보기 — 따로 뜨는 읽기 전용 창. 쪽이 여럿이면 쪽을 골라 본다. Esc 로도 닫힌다.
+ * 닫혀 있으면 문서를 그리지 않는다. 연간 · 월간이 같이 쓴다.
+ */
+export function BigView({
+  pages,
+  render,
+  dialog,
+}: {
+  pages: number;
+  render: (page: number) => ReactNode;
+  /** 바깥에서 닫을 때(확정 실패로 패널을 열 때). */
+  dialog?: RefObject<HTMLDialogElement | null>;
+}) {
+  const own = useRef<HTMLDialogElement>(null);
+  const ref = dialog ?? own;
+  const [page, setPage] = useState<number | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="min-h-[38px] rounded-xl border border-line bg-paper shadow-pg-card transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none px-3 text-sm font-bold text-[#5e4b96] hover:bg-[#f6f1fb]"
+        aria-haspopup="dialog"
+        onClick={() => {
+          setPage(0);
+          ref.current?.showModal();
+        }}
+      >
+        ⤢ 크게 보기
+      </button>
+      <dialog
+        ref={ref}
+        aria-labelledby="big-view-title"
+        onClose={() => setPage(null)}
+        className="m-auto h-[94vh] max-h-[94vh] w-[min(1100px,96vw)] max-w-none overflow-hidden rounded-[20px] bg-[#f3efe8] p-0 text-[#2b2826] backdrop:bg-black/40"
+      >
+        {page !== null && (
+          <div className="flex h-full flex-col">
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e2d8] bg-white px-6 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <strong id="big-view-title" className="text-[15px]">
+                  문서 크게 보기
+                </strong>
+                <span className="rounded-full bg-[#efeae2] px-2.5 py-0.5 text-xs font-bold text-[#5c5243]">
+                  읽기 전용
+                </span>
+                {pages > 1 && (
+                  <div role="tablist" aria-label="쪽" className="flex gap-1.5">
+                    {Array.from({ length: pages }, (_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        role="tab"
+                        aria-selected={page === i}
+                        aria-controls="big-view-page"
+                        className={pageClass(page === i)}
+                        onClick={() => setPage(i)}
+                      >
+                        {i + 1}쪽
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button type="button" className={BUTTON.outline} onClick={() => ref.current?.close()}>
+                닫고 편집 계속하기 ×
+              </button>
+            </header>
+            <div id="big-view-page" className="min-h-0 flex-1 overflow-auto p-7">
+              {render(page)}
+            </div>
+          </div>
+        )}
+      </dialog>
+    </>
+  );
+}
+
+/** 왼쪽 패널 안 「지금 고른 칸」 줄. */
+/**
+ * ⑥ 확정 후. 문서 전체(읽기 전용) · PDF · 한글 내보내기 · 월간 만들기 · 홈 · 확정 취소.
  * 월간 진입은 두 형식 다 `/plans/monthly` 다 — 놀이 중심형은 그 화면이 놀이 월간 만들기로 가른다.
  */
 export function AnnualDone({
@@ -109,11 +340,103 @@ export function AnnualDone({
   onUnconfirmed: (plan: AnnualPlanResponse) => void;
   onConflict: () => void | Promise<void>;
 }) {
+  return (
+    <PlanDone
+      title={`${plan.school_year} 연간계획안을 확정했어요`}
+      docLabel="확정된 연간계획안"
+      format={plan.format}
+      pages={pages}
+      download={(format) => downloadAnnualHwpx(plan.id, format)}
+      next={{
+        href: "/plans/monthly",
+        label: "월간계획안 만들기 →",
+        hint: "이 연간계획안을 바탕으로 만들어요",
+      }}
+      unconfirm={
+        <UnconfirmButton
+          message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 월간계획안은 그대로예요."
+          className={UNCONFIRM}
+          run={() =>
+            unconfirmAnnualPlan(plan.id, plan.format === "PLAY_PROJECT" ? plan.revision : undefined)
+          }
+          onDone={onUnconfirmed}
+          onConflict={onConflict}
+        />
+      }
+    />
+  );
+}
+
+/** 내보내기 버튼 — 로고만 보이고 이름은 aria-label · title. */
+const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string }> = {
+  pdf: { label: "PDF로 내려받기", done: "PDF로 내려받았어요.", color: "bg-[#d4483b]" },
+  hwpx: {
+    label: "한글 파일(hwpx)로 내려받기",
+    done: "한글 파일(hwpx)로 내려받았어요.",
+    color: "bg-[#2f6db5]",
+  },
+  hwp: {
+    label: "한글 파일(hwp)로 내려받기",
+    done: "한글 파일(hwp)로 내려받았어요.",
+    color: "bg-[#1f4e8c]",
+  },
+};
+
+/** 접힌 귀퉁이가 있는 문서 모양 + 형식 이름 띠. 받는 중이면 띠가 「…」. */
+function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
+  return (
+    <span aria-hidden="true" className="relative block h-12 w-10">
+      <svg viewBox="0 0 40 48" className="absolute inset-0 h-full w-full">
+        <path
+          d="M5 1h21l13 13v29a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4z"
+          fill="#fff"
+          stroke="#cfc7ba"
+          strokeWidth="2"
+        />
+        <path d="M26 1v9a4 4 0 0 0 4 4h9" fill="#ece6dc" stroke="#cfc7ba" strokeWidth="2" />
+      </svg>
+      <span
+        className={`absolute -left-1.5 bottom-2 rounded px-1 py-px text-[10px] font-extrabold leading-tight tracking-tight text-white ${EXPORTS[format].color}`}
+      >
+        {busy ? "…" : format.toUpperCase()}
+      </span>
+    </span>
+  );
+}
+
+export const UNCONFIRM = "min-h-[44px] self-start rounded-xl px-3 text-sm text-[#5c5243] underline";
+
+/** ⑥ · Ⓜ4 확정 후 틀 — 왼쪽 확정 문서(쪽이 여럿이면 쪽 번호) · 오른쪽 280px 내보내기 · 다음 단계 · 홈 · 확정 풀기. */
+export function PlanDone({
+  title,
+  docLabel,
+  format,
+  pages,
+  download,
+  next,
+  unconfirm,
+}: {
+  title: string;
+  docLabel: string;
+  format: Format;
+  pages: ReactNode[];
+  /** 파일 받기(확정본만) — PDF · HWPX · HWP. 서버 경로가 없으면 빼고, 내보내기 칸을 숨긴다. */
+  download?: (format: ExportFormat) => Promise<void>;
+  /** `onClick` 이 있으면 주소로 가지 않고 그것을 부른다(같은 주소 안에서 화면만 바꿀 때). */
+  next: { href: string; label: string; hint: string; onClick?: () => void };
+  unconfirm: ReactNode;
+}) {
   const [page, setPage] = useState(0);
   const [exportMessage, setExportMessage] = useState("");
   const hwpx = useHwpxDownload(setExportMessage);
+  const [busy, setBusy] = useState<ExportFormat | null>(null);
+  const save = async (format: ExportFormat) => {
+    setBusy(format);
+    await hwpx.download(() => download!(format), EXPORTS[format].done);
+    setBusy(null);
+  };
   return (
-    <main className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826]">
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-7">
       <div className="flex flex-wrap items-center gap-3">
         <span
           aria-hidden="true"
@@ -121,15 +444,16 @@ export function AnnualDone({
         >
           ✓
         </span>
-        <h1 className="m-0 text-[22px] font-bold tracking-[-0.5px]">
-          {plan.school_year} 연간계획안을 확정했어요
+        <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+          {title}
         </h1>
-        {chip(plan.format)}
+        {chip(format)}
       </div>
-      <div className="flex min-h-0 flex-1 gap-4">
+      {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <section
-          aria-label="확정된 연간계획안"
-          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e8e2d8] bg-[#f1ede6]"
+          aria-label={docLabel}
+          className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
           {pages.length > 1 && (
             <div role="tablist" aria-label="쪽" className="flex gap-1.5 px-6 pt-4">
@@ -147,39 +471,52 @@ export function AnnualDone({
               ))}
             </div>
           )}
-          <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto px-6 pb-6 pt-4">
+          <div className="flex min-h-0 flex-1 items-start overflow-auto px-6 pb-6 pt-4 [justify-content:safe_center]">
             {pages[page]}
           </div>
         </section>
-        <aside className="flex w-[280px] shrink-0 flex-col gap-3">
-          <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
-            <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
-            <button
-              type="button"
-              disabled={hwpx.exporting}
-              onClick={() => void hwpx.download(() => downloadAnnualHwpx(plan.id))}
-              className="flex min-h-[52px] items-center gap-3 rounded-xl border border-[#ddd6ca] bg-white px-4 text-left text-[15px] font-bold hover:bg-[#f7f4ee] disabled:opacity-50"
-            >
-              <span className="flex h-8 w-10 items-center justify-center rounded-md bg-[#2f6db5] text-[11px] font-bold text-white">
-                HWP
-              </span>
-              {hwpx.exporting ? "내려받는 중…" : "한글로 내보내기"}
-            </button>
-            {exportMessage && (
-              <p role="status" className="m-0 text-[13px] text-[#5c5243]">
-                {exportMessage}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2 rounded-[20px] border border-[#e8e2d8] bg-white p-5">
+        <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[280px]">
+          {download && (
+            <div className="flex flex-col gap-2 border border-line bg-paper shadow-pg p-5">
+              <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(EXPORTS) as ExportFormat[]).map((format) => (
+                  <button
+                    key={format}
+                    type="button"
+                    aria-label={EXPORTS[format].label}
+                    title={EXPORTS[format].label}
+                    disabled={hwpx.exporting}
+                    onClick={() => void save(format)}
+                    className="flex aspect-square items-center justify-center rounded-xl border border-[#ddd6ca] bg-white hover:border-[#c5b7dd] hover:bg-[#f7f4ee] disabled:opacity-50"
+                  >
+                    <FileLogo format={format} busy={busy === format} />
+                  </button>
+                ))}
+              </div>
+              {exportMessage && (
+                <p role="status" className="m-0 text-[13px] text-[#5c5243]">
+                  {exportMessage}
+                </p>
+              )}
+            </div>
+          )}
+          <div className="flex flex-col gap-2 border border-line bg-paper shadow-pg p-5">
             <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">다음 단계</h2>
             <Link
-              href="/plans/monthly"
-              className="flex min-h-[56px] items-center justify-center rounded-xl bg-[#7053a0] text-[16px] font-bold text-white"
+              href={next.href}
+              onClick={
+                next.onClick &&
+                ((e) => {
+                  e.preventDefault();
+                  next.onClick?.();
+                })
+              }
+              className="flex min-h-[56px] items-center justify-center rounded-xl bg-[#7053a0] text-[16px] font-bold text-white shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
-              월간계획안 만들기 →
+              {next.label}
             </Link>
-            <span className="text-[13px] text-[#8a8178]">이 연간계획안을 바탕으로 만들어요</span>
+            <span className="text-[13px] text-[#8a8178]">{next.hint}</span>
           </div>
           <Link
             href="/"
@@ -201,20 +538,7 @@ export function AnnualDone({
             </svg>
             홈으로 가기
           </Link>
-          <div className="flex flex-col gap-2 text-[13px] text-[#5c5243]">
-            <UnconfirmButton
-              message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 월간계획안은 그대로예요."
-              className="min-h-[44px] self-start rounded-xl px-3 text-sm text-[#5c5243] underline"
-              run={() =>
-                unconfirmAnnualPlan(
-                  plan.id,
-                  plan.format === "PLAY_PROJECT" ? plan.revision : undefined,
-                )
-              }
-              onDone={onUnconfirmed}
-              onConflict={onConflict}
-            />
-          </div>
+          <div className="flex flex-col gap-2 text-[13px] text-[#5c5243]">{unconfirm}</div>
         </aside>
       </div>
     </main>

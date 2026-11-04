@@ -167,6 +167,8 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
     "@/lib/onboarding/settings": settingsLib,
     "@/lib/onboarding/types": onboardingTypes,
     "@/components/plan-ui/GenerationRing": { __esModule: true, default: "generation-ring" },
+    "./PlanMemo": { PlanMemoField: () => null, memoError: () => null },
+    "./AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
     "@/components/app/compact-shell": { useCompactShell: (on) => compact.push(on) },
   };
   const compiled = { exports: {} };

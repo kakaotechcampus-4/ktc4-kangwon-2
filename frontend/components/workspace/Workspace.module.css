@@ -225,11 +225,6 @@ select.input {
   background-position: right 12px center;
   background-size: 12px 8px;
 }
-/* 화면이 좁아도 글자가 화살표를 침범하지 않게 둔다. */
-.timePicker select {
-  background-position: right 8px center;
-  padding-right: 26px;
-}
 .row {
   display: flex;
   align-items: center;
@@ -331,6 +326,11 @@ select.input {
   font-size: 34px;
   display: block;
   margin-bottom: 16px;
+}
+/* 새싹 대신 세운 그림. 글자가 아니라서 아래 여백을 따로 준다. */
+.empty > svg {
+  display: block;
+  margin: 0 auto 14px;
 }
 .empty h3 {
   font-family: var(--font-display), sans-serif;
@@ -623,9 +623,6 @@ a.item {
   margin-top: 10px;
   overflow-wrap: anywhere;
 }
-.source:hover {
-  text-decoration: underline;
-}
 .timeline {
   border-left: 2px solid var(--pg-primary-tint-line);
   margin-left: 8px;
@@ -802,28 +799,6 @@ a.item {
   font-weight: 600;
   font-size: 12px;
 }
-.timePicker {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.timePicker select {
-  width: auto;
-  min-width: 60px;
-}
-.timePicker button {
-  white-space: nowrap;
-}
-.dragging {
-  opacity: 0.45;
-  outline: 2px dashed var(--pg-accent, #8064b4);
-}
-.insertBefore {
-  box-shadow: 0 -5px 0 #8064b4;
-}
-.insertAfter {
-  box-shadow: 0 5px 0 #8064b4;
-}
 .sourceText {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -850,25 +825,50 @@ a.item {
 /* 일과는 표다. 줄마다 카드를 두르면 하루 다섯 줄이 카드 다섯 장이 되어
    화면이 세로로 길어지고, 무엇이 한 줄인지도 테두리에 가려 안 보인다.
    여기서는 종이 한 장 위에 줄을 긋는다. */
-.routineLead {
-  margin: 0 0 10px;
-  color: var(--pg-ink-soft);
-  font-size: 14px;
-  line-height: 1.75;
-}
+/* 교실 칠판. 일과 쪽지를 여기에 붙인다 (첫 화면 오른쪽 줄과 같은 판이다).
+   `chalkboard` 는 전역 클래스라 여기서는 안쪽 여백만 잡는다. */
 .routineSheet {
-  padding: 2px 20px 14px;
-  background: var(--pg-paper);
-  border: 1px solid var(--pg-line);
-  border-radius: 6px;
+  position: relative;
+  display: grid;
+  gap: 16px;
+  padding: 22px 22px 24px;
 }
+/* 일과 한 줄 = 쪽지 한 장. 줄 사이에 선을 긋지 않아도 어디서 끝나는지 보인다. */
 .routineRow {
   position: relative;
-  padding: 14px 0;
-  border-top: 1px dashed var(--pg-line);
+  padding: 13px 15px 14px;
+  border: 1px solid;
+  border-radius: 2px;
+  box-shadow: var(--pg-shadow-hard);
 }
-.routineSheet > .routineRow:first-child {
-  border-top: 0;
+/* 시계판을 편 쪽지는 맨 위로 올라온다. 기울기(`transform`)가 쪽지마다 쌓임 맥락을
+   만들어, 올리지 않으면 아래 쪽지가 펴 놓은 시계판을 덮는다. */
+.routineRow:has([aria-expanded="true"]) {
+  z-index: 20;
+}
+/* 손으로 붙인 것처럼 번갈아 아주 조금 기운다. 크게 기울이면 열 장이 어지럽다. */
+/* 기울기도 색과 같이 쪽지를 따라간다. 자리로 정하면 줄을 세울 때 종이만 제자리에 남는다. */
+.routineRow[data-lean="0"] {
+  transform: rotate(-0.35deg);
+}
+.routineRow[data-lean="1"] {
+  transform: rotate(0.3deg);
+}
+.routineRow[data-tone="0"] {
+  border-color: var(--pg-note-soft-line);
+  background: var(--pg-note-soft);
+}
+.routineRow[data-tone="1"] {
+  border-color: var(--pg-plum-line);
+  background: var(--pg-plum);
+}
+.routineRow[data-tone="2"] {
+  border-color: var(--pg-clay-line);
+  background: var(--pg-clay);
+}
+.routineRow[data-tone="3"] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
 }
 .rowName {
   display: flex;
@@ -880,13 +880,6 @@ a.item {
 }
 .rowName input {
   flex: 1;
-}
-/* 「시작」 · 「종료」 는 셀렉트 왼쪽에 붙인다. 위에 한 줄로 두면 줄마다
-   글자 한 줄 높이가 더 들고, 다섯 줄이면 그만큼 화면이 길어진다. */
-.routineHead .field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 .rowName input {
   min-width: 0;
@@ -900,22 +893,35 @@ a.item {
   border-radius: 6px;
   background: var(--pg-paper);
 }
-.nameRequired {
-  align-self: center;
-  padding: 1px 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--pg-primary-ink);
-  background: var(--pg-primary-tint);
-  border: 1px solid var(--pg-primary-tint-line);
-  border-radius: 999px;
-}
 /* 줄 끝의 작은 단추. 줄마다 큰 단추를 두 개씩 두면 단추가 기록보다 많아진다. */
 .rowTools {
   display: flex;
   justify-content: flex-end;
   gap: 14px;
-  margin-top: 6px;
+  margin-top: 8px;
+}
+/* 되돌리기. 밑줄 친 글자였는데 단추로 안 보여 아무도 누르지 않았다. */
+.revert {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.revert:hover:not(:disabled) {
+  border-color: var(--pg-ink-soft);
+  color: var(--pg-ink);
+}
+.revertMark {
+  width: 15px;
+  height: 15px;
 }
 .rowTool {
   min-height: 32px;
@@ -932,46 +938,31 @@ a.item {
 .rowTool:hover {
   color: var(--pg-ink);
 }
-.routineGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  column-gap: 14px;
-  row-gap: 8px;
-}
-/* 한 줄의 머리 — 끌기 손잡이 · 위아래 · 이름 · 시작 · 종료를 한 줄에 둔다.
-   두 칸짜리 격자에 넣으면 이름이 들어가는 순간 시간이 아래로 밀린다. */
+/* 한 줄의 머리 — 이름 · 시간 · 지우기. 끌기 손잡이와 ↑ ↓ 는 없앴다. 순서는 시간이 정한다. */
 .routineHead {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 14px;
 }
-.routineHead .routineStart {
-  display: contents;
-}
-/* 끌기 핸들과 ↑ ↓ 에는 제목이 없다. 가운데로 맞추면 제목 높이의 절반만큼 입력칸보다
-   위로 뜨므로, 아래선을 맞추고 핸들에도 입력칸과 같은 높이를 준다. */
-.routineStart {
+/* 시간과 지우기는 한 덩어리다. 좁은 화면에서 × 만 혼자 아랫줄로 떨어지지 않게 묶는다. */
+.rowMeta {
   display: flex;
-  align-items: end;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
   gap: 10px;
-  flex-wrap: wrap;
 }
-.routineStart .badge {
-  min-height: 44px;
-  justify-content: center;
+.rowMeta .rowTool {
+  min-width: 32px;
+  font-size: 18px;
+  text-decoration: none;
 }
-/* `시 : 분 AM ×` 묶음은 약 235px 다. 그보다 좁게 줄이면 좁은 화면에서 가로 스크롤이 생긴다. */
-.routineStart > .field {
-  flex: 1;
-  min-width: fit-content;
-}
-/* 하려던 것 · 실제로 한 것. 열 이름은 표 머리에서 한 번 말했으니 여기선
-   입력칸만 나란히 둔다. */
-.routineBody {
-  margin-top: 10px;
-}
-.routineBody textarea {
+/* 매일 적는 칸은 이것 하나다. 줄에서 가장 넓게 둔다. */
+.rowDone {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
   min-height: 62px;
   padding: 9px 12px;
   border: 1px solid var(--pg-line);
@@ -981,4 +972,1563 @@ a.item {
   font-size: 14px;
   line-height: 1.7;
   resize: vertical;
+}
+/* 하려던 것은 접어 둔다 — 쓰는 원만 편다.
+   글자만 두었더니 눌리는 자리인지 안 보였다. 쪽지에 손으로 적어 붙인 꼬리표처럼
+   테두리를 두르고 손글씨로 쓴다. */
+.rowPlan {
+  margin-top: 8px;
+}
+.rowPlan summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px dashed var(--pg-ink-hint);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  font-family: var(--font-display), sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--pg-ink);
+  cursor: pointer;
+}
+.rowPlan summary::-webkit-details-marker {
+  display: none;
+}
+.rowPlan summary:hover {
+  border-style: solid;
+  background: var(--pg-paper);
+}
+.rowPlan[open] summary {
+  border-style: solid;
+  background: var(--pg-paper);
+}
+.rowPlan textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  min-height: 54px;
+  padding: 9px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+/* 제목 옆으로 올린 단추 묶음. `.actions` 는 목록 아래에 두던 것이라 위 여백을 들고 있다. */
+.pageHead .actions {
+  margin-top: 0;
+}
+
+/* ── 왼쪽 달력 ──────────────────────────────────────────────────────────────
+   날짜 칸 하나로는 「지난 금요일」을 찾으려면 달력을 띄워 두 번 눌러야 했다.
+   교사는 밀린 며칠을 몰아 적는다. 달을 펴 두고 바로 누르게 한다.
+   손글씨 달력처럼 보이게 월 이름만 손글씨체로 크게 둔다. */
+/* 왼쪽 칸 — 달력과 그날 일지 요약.
+   오른쪽 목록이 열 줄이라 훨씬 길다. 이 칸은 따라 올라와 있어야 쓸 수 있다.
+   상단 띠가 60px 를 덮고 있으므로 그 밑으로 붙인다 — 0 이면 머리가 잘린다. */
+.side {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 92px);
+  overflow: auto;
+}
+.calendarCard {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+.calendar {
+  display: grid;
+  gap: 10px;
+}
+.calendarHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.calendarMonth {
+  font-family: var(--font-display), sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
+.calendarMonth span {
+  font-size: 18px;
+  color: var(--pg-ink-soft);
+}
+.calendarStep {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--pg-line);
+  border-radius: 50%;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.calendarStep:hover {
+  background: var(--pg-shell-hover);
+}
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  text-align: center;
+}
+.calendarWeekday {
+  padding-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+/* 일요일은 빨강, 토요일은 보라. 종이 달력이 그렇게 되어 있어 안 세어도 주말이 보인다.
+   (디자인에 파랑이 없어 토요일은 쌤플의 보라를 쓴다.) */
+.calendarWeekday[data-day="0"],
+.calendarDay[data-day="0"] {
+  color: var(--pg-alert-ink);
+}
+.calendarWeekday[data-day="6"],
+.calendarDay[data-day="6"] {
+  color: var(--pg-primary-ink);
+}
+.calendarDay {
+  position: relative;
+  /* 칸이 넓어도 동그라미는 커지지 않는다. `aspect-ratio` 만 두면 폭을 따라 높이가 늘어
+     달력 하나가 휴대폰 한 화면을 다 먹는다. */
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 38px;
+  justify-self: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: none;
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.calendarDay:hover:not(:disabled) {
+  background: var(--pg-shell-hover);
+}
+/* 오늘은 동그라미만 그린다. 고른 날은 칠한다 — 둘이 겹쳐도 어느 쪽인지 보인다. */
+.calendarDay[data-today] {
+  border-color: var(--pg-line);
+}
+.calendarDay[data-picked] {
+  border-color: var(--pg-primary-line);
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+  font-weight: 700;
+}
+.calendarDay:disabled {
+  color: var(--pg-ink-hint);
+  cursor: not-allowed;
+}
+/* 그날 일과를 적어 뒀다는 점. 한 가지만 찍는다 — 색이 둘이면 범례를 달아야 하고,
+   범례를 읽어야 아는 표시는 달력에 둘 것이 아니다. */
+.calendarDot {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pg-primary);
+  transform: translateX(-50%);
+}
+.calendarDay[data-picked] .calendarDot {
+  background: var(--pg-paper);
+}
+/* 먼 날짜로 한 번에 뛰는 칸. 달력이 이미 날을 보여 주므로 넓게 둘 이유가 없다. */
+.calendarJump {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--pg-line);
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
+.calendarJump input {
+  width: auto;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 13px;
+  color: var(--pg-ink);
+}
+
+/* 오른쪽 종이의 머리 — 어느 날을 적고 있나. 첫 화면 제목과 같은 손글씨다. */
+.sheetDay {
+  margin: 0 0 10px 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pg-primary-deep);
+}
+.sheetDay span {
+  position: relative;
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 19px;
+  color: var(--pg-ink-soft);
+}
+.circleMark {
+  position: absolute;
+  inset: -10px -13px -9px;
+  color: var(--pg-alert-strong);
+  pointer-events: none;
+}
+
+/* 종이를 붙여 둔 테이프 한 조각 (첫 화면의 쪽지들과 같은 것). */
+.tape {
+  position: absolute;
+  top: -12px;
+  left: 34px;
+  z-index: 1;
+  width: 78px;
+  height: 23px;
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--pg-tape);
+  box-shadow: 0 1px 2px rgba(106, 96, 80, 0.09);
+  transform: rotate(-3deg);
+  pointer-events: none;
+}
+
+/* ── 한 일과의 시간 — 「오전 09:20 ~ 10:40」 한 칸 ──────────────────────────
+   시작 · 종료 칸 둘이던 자리다. 줄이 가로로 길어져 한 칸으로 합쳤다. */
+.clock {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.clockShown {
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px 0 0 6px;
+  border-right: 0;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.clockShown:hover:not(:disabled),
+.clockOpen:hover:not(:disabled) {
+  background: var(--pg-shell-hover);
+}
+.clockOpen {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 38px;
+  padding: 0;
+  border: 1px solid var(--pg-line);
+  border-radius: 0 6px 6px 0;
+  background: var(--pg-shell);
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.clockOpen svg {
+  width: 17px;
+  height: 17px;
+}
+.clockFace {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 296px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 14px;
+  background: var(--pg-paper);
+  box-shadow: var(--pg-shadow);
+}
+/* ── 시계판 — 방학 생활계획표처럼 펜으로 두른 동그라미에 이 일과만큼 칠한다 ── */
+.clockDial {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  margin: 0 auto;
+  overflow: visible;
+  touch-action: none;
+}
+.clockRim {
+  fill: var(--pg-sun-tint);
+  stroke: var(--pg-ink);
+  stroke-width: 2.2;
+}
+.clockPlate {
+  fill: var(--pg-ivory);
+  stroke: var(--pg-ink);
+  stroke-width: 1.3;
+}
+.clockSpan {
+  fill: var(--pg-plum);
+  fill-opacity: 0.8;
+}
+.clockTick {
+  fill: var(--pg-ink-hint);
+}
+.clockTickLong {
+  stroke: var(--pg-ink);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+.clockNumber {
+  fill: var(--pg-ink);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-display), cursive;
+  font-size: 19px;
+  font-weight: 700;
+}
+.clockHub {
+  fill: var(--pg-ink);
+}
+/* 칠 위에 앉아도 읽히게 판 색으로 테를 두른다. */
+.clockLength {
+  fill: var(--pg-primary-ink);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-display), cursive;
+  font-size: 16px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--pg-ivory);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+/* 바늘 · 손잡이는 시작 보라, 끝 초록. 위의 시작 · 종료 칸 점과 같은 색이다. */
+.clockGripFrom {
+  color: var(--pg-primary);
+}
+.clockGripTo {
+  color: var(--pg-success);
+}
+.clockHand {
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.clockKnob {
+  fill: currentColor;
+  stroke: var(--pg-paper);
+  stroke-width: 2.6;
+  filter: drop-shadow(0 1px 1.5px rgba(60, 48, 30, 0.35));
+}
+.clockGrab {
+  fill: transparent;
+  cursor: grab;
+}
+.clockGrab:active {
+  cursor: grabbing;
+}
+.clockDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+}
+/* 적어 둔 시각이 곧 고치는 칸이다. 시계판 위에 둔다 — 글자로만 보여 주면 교사가
+   그 글자를 누른다. */
+.clockFields {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.clockFields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+.clockFrom {
+  color: var(--pg-primary-ink);
+}
+.clockTo {
+  color: var(--pg-success);
+}
+.clockFields input {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--pg-ink);
+}
+.clockFrom input {
+  border-color: var(--pg-primary-line);
+}
+.clockTo input {
+  border-color: var(--pg-success-line);
+}
+.clockTilde {
+  padding-bottom: 10px;
+  color: var(--pg-ink-hint);
+}
+.clockLead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px dashed var(--pg-line);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--pg-ink-soft);
+}
+.clockDone {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--pg-primary-tint-line);
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.clockDone:hover {
+  background: var(--pg-plum);
+}
+
+@media (max-width: 1100px) {
+  .side {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* 쪽지 위에 올라앉는 칸들. 쪽지 색과 같으면 어디까지가 적는 자리인지 모른다. */
+.routineRow .rowDone,
+.routineRow .rowPlan textarea,
+.routineRow .clockShown {
+  background: var(--pg-paper);
+}
+/* 일과 이름은 쪽지에 바로 쓴 제목이다. 네모를 두르면 쪽지가 또 하나의 폼이 된다 —
+   점선 밑줄만 두고, 커서를 두면 그때 종이를 깐다. */
+.routineRow .rowName input {
+  max-width: none;
+  border: 0;
+  border-bottom: 1px dashed var(--pg-ink-hint);
+  border-radius: 0;
+  background: transparent;
+  font-size: 16px;
+}
+.routineRow .rowName input:focus {
+  background: var(--pg-paper);
+  border-radius: 4px 4px 0 0;
+}
+/* 칠판 위의 「+ 줄 추가」. 분필로 쓴 것처럼 흰 글씨다. */
+.routineSheet > .rowTools {
+  justify-content: center;
+  margin-top: 2px;
+}
+.routineSheet > .rowTools .rowTool {
+  color: var(--pg-board-ink-soft);
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  text-underline-offset: 5px;
+}
+.routineSheet > .rowTools .rowTool:hover {
+  color: var(--pg-board-ink);
+}
+
+/* 칠판 아래 오늘 일지. 일과를 적은 자리에서 그대로 이어 쓴다. */
+.journalCard {
+  display: grid;
+  gap: 10px;
+  padding: 20px 22px;
+}
+.journalHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+/* 달력 바로 밑에 붙어 있다. 머리와 몸을 가르지 않으면 한 덩어리로 읽힌다. */
+.journalRule {
+  height: 0;
+  margin: 2px 0 4px;
+  border: 0;
+  border-top: 1px dashed var(--pg-line);
+}
+.journalSay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* 포스티가 건네는 말이라 손글씨다. 옆의 그림과 글씨체가 따로 놀면 둘이 한 쌍으로 안 읽힌다. */
+.journalWord {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--pg-ink);
+}
+.journalLead {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.journalOpen {
+  justify-self: start;
+  min-height: 36px;
+  padding: 0 15px;
+  border: 1px solid var(--pg-primary-tint-line);
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-deep);
+  font-family: var(--font-display), sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.journalOpen:hover {
+  background: var(--pg-paper);
+}
+.journalTitle {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
+.journalBody {
+  padding-top: 14px;
+  border-top: 1px dashed var(--pg-line);
+}
+
+/* 스르륵 알림(`Notice`) — 시간이 겹쳤다, 이 단추를 왜 못 누르나. 적던 자리에서 눈을 떼지
+   않게 화면 아래에서 올라왔다 스스로 사라진다. 닫을 단추를 찾게 만들 말이 아니다.
+   `.notice` 는 화면 안에 놓이는 안내 칸이 이미 쓰는 이름이라 겹치지 않게 따로 둔다. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* `left: 50%` 라 그냥 두면 화면 오른쪽 절반 너비에 맞춰 접힌다 — 글 길이만큼 편다. */
+  width: max-content;
+  max-width: min(460px, calc(100vw - 32px));
+  margin: 0;
+  padding: 13px 20px 13px 16px;
+  border-radius: 999px;
+  /* 흰 종이에 빨간 테두리로는 칠판 위에서 묻혔다. 한 장을 통째로 칠한다. */
+  background: var(--pg-alert-ink);
+  box-shadow: 0 8px 22px rgba(43, 36, 28, 0.28);
+  color: var(--pg-paper);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  transform: translateX(-50%);
+  animation: toastIn 220ms ease-out;
+}
+.toastMark {
+  flex: none;
+  width: 21px;
+  height: 21px;
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+/* 휴대폰은 화면 밑에 길 띠(73px)가 붙어 있다. 그 위로 올리지 않으면 알림이 띠를 덮는다. */
+@media (max-width: 1023px) {
+  .toast {
+    bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+
+/* 고칠 곳을 포스티가 짚어 준다 (A 안).
+   띠 하나에 줄바꿈으로 붙인 글이었다. 크림 위 베이지라 안 떠올랐고 몇 군데인지도
+   세어야 알았다. 흰 종이에 올리고 왼쪽에 굵은 산호색 선을 세워 눈이 먼저 걸리게 한다. */
+.problemBoard {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--pg-alert-soft-line);
+  border-left: 5px solid var(--pg-alert-strong);
+  border-radius: 10px;
+  background: var(--pg-paper);
+}
+.problemBody {
+  flex: 1;
+  min-width: 0;
+}
+.problemHead {
+  margin: 0 0 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--pg-alert-ink);
+}
+.problemLead {
+  margin: 0 0 11px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.problemList {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.problemList li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--pg-alert-soft-line);
+  border-radius: 8px;
+  background: var(--pg-alert-soft);
+}
+.problemNo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--pg-alert-strong);
+  color: var(--pg-paper);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.problemText {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--pg-alert-ink);
+}
+.problemGo {
+  flex: none;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--pg-alert-strong);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-alert-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.problemGo:hover {
+  background: var(--pg-alert-soft);
+}
+@media (max-width: 520px) {
+  .problemList li {
+    flex-wrap: wrap;
+  }
+  .problemGo {
+    margin-left: auto;
+  }
+}
+
+/* ── 관찰 기록 ──────────────────────────────────────────────────────────
+   열세 건이 같은 리듬으로 흐르던 표였다. 날짜로 묶고 아이 표식을 달아,
+   「언제 · 누구」가 글을 읽기 전에 먼저 눈에 들어오게 한다. */
+.recordDays {
+  display: grid;
+  gap: 22px;
+}
+.recordDay {
+  display: grid;
+  gap: 8px;
+}
+.recordDate {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-primary-deep);
+}
+.recordDate span {
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  font-family: var(--font-body), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pg-primary-ink);
+}
+.recordSheet {
+  position: relative;
+}
+.recordRows {
+  padding: 2px 20px;
+  border: 1px solid var(--pg-line);
+  border-top: 0;
+  border-bottom: 0;
+  background: var(--pg-ivory);
+}
+.recordSplit {
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px dashed var(--pg-line);
+}
+.recordRow {
+  display: flex;
+  gap: 11px;
+  width: 100%;
+  padding: 13px 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.recordMark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 1px;
+  /* 연한 테두리 한 겹으로는 아이보리 종이 위에서 떠오르지 않았다. */
+  border: 1px solid var(--pg-shell-line);
+  border-radius: 50%;
+  background: var(--pg-paper);
+  box-shadow: 0 1px 0 rgba(43, 36, 28, 0.07);
+}
+.recordBody {
+  flex: 1;
+  min-width: 0;
+}
+.recordWho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.recordWho b {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+/* 다섯 영역이 전부 같은 보라였다. 글자를 읽어야만 갈려서, 목록을 훑어도
+   어느 영역이 비어 있는지 보이지 않았다. 색과 그림을 하나씩 준다. */
+.recordDomain {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pg-primary-ink);
+}
+.recordDomain[data-tone="body"] {
+  border-color: var(--pg-clay-line);
+  background: var(--pg-clay);
+  color: var(--pg-alert-ink);
+}
+.recordDomain[data-tone="talk"] {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.recordDomain[data-tone="social"] {
+  border-color: var(--pg-sun);
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
+.recordDomain[data-tone="art"] {
+  border-color: var(--pg-plum-line);
+  background: var(--pg-plum);
+  color: var(--pg-primary-deep);
+}
+.recordDomain[data-tone="nature"] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.recordWhere {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+.recordFact {
+  display: block;
+  margin-top: 5px;
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--pg-ink);
+}
+
+/* 적는 칸이 이 화면의 주인공이다. 흰 네모 한 장이던 자리에 테이프를 붙이고
+   포스티를 세워, 들어온 교사 눈이 「여기 적는다」에 먼저 닿게 한다. */
+.recordForm {
+  position: relative;
+}
+.recordFormHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.recordFormHead {
+  align-items: flex-end;
+}
+.recordFormWord {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+.recordFormTitle {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 31px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
+.recordFormLead {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--pg-ink-soft);
+}
+/* 적는 순서. 글 안에 굵은 글씨로 묻혀 있어 「순서」로 안 읽혔다. */
+.recordOrder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+}
+.recordSteps {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.recordSteps b {
+  padding: 2px 9px;
+  border: 1px solid var(--pg-primary-tint-line);
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pg-primary-ink);
+}
+.recordSteps b + b::before {
+  content: "→";
+  margin-right: 7px;
+  margin-left: -16px;
+  color: var(--pg-ink-hint);
+  font-weight: 400;
+}
+.recordCount {
+  margin-left: auto;
+  color: var(--pg-ink-hint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 목록 머리. 날짜 머리(손글씨 25px)보다 작아 위계가 거꾸로 서 있었다. */
+.recordListHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.recordListTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
+.recordListTitle span {
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+}
+.recordWays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* 작은 밑줄 글씨라 오른쪽 끝에서 사라졌다. 다음에 갈 곳이라 단추 모양으로 세운다. */
+.recordWay {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.recordWay:hover {
+  border-color: var(--pg-primary-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+
+/* 찾기 칸. 목록 쪽지와 같은 흰 네모라 무슨 칸인지 몰랐다. */
+.recordFind {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+}
+.recordFind:focus-within {
+  border-color: var(--pg-primary);
+  box-shadow: 0 0 0 3px var(--pg-primary-tint);
+}
+.recordFindMark {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  color: var(--pg-ink-hint);
+}
+.recordFind input {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 14px;
+}
+.recordFind input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ── 주간 기록 — 왼쪽은 한 주 수첩과 주간 일지 칸, 오른쪽은 그날 쪽지를 붙인 칠판 ── */
+.page button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.weekCard {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+.weekHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.weekTitle {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.weekStep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--pg-line);
+  border-radius: 50%;
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.weekStep:hover {
+  background: var(--pg-cream);
+}
+/* 수첩 한 쪽. 날마다 한 줄이고 줄 사이는 공책 줄처럼 점선으로 가른다. */
+.weekDays {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.weekDays li + li {
+  border-top: 1px dashed var(--pg-line);
+}
+.weekDay {
+  display: grid;
+  grid-template-columns: 22px 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pg-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.weekDay:hover {
+  background: var(--pg-cream);
+}
+.weekDay[aria-pressed="true"] {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+}
+.weekDow {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.weekDay[data-weekend] .weekDow {
+  color: var(--pg-alert-strong);
+}
+.weekDate {
+  position: relative;
+  justify-self: center;
+  font-family: var(--font-display), sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1;
+}
+/* 오늘에는 손으로 친 동그라미 — 달력과 같은 표시다. */
+.weekDay[data-today] .weekDate::after {
+  content: "";
+  position: absolute;
+  inset: -6px -9px -5px;
+  border: 2px solid var(--pg-alert-strong);
+  border-radius: 48% 52% 46% 54%;
+  transform: rotate(-6deg);
+}
+.weekCounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.weekCount {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.weekCount[data-kind="routine"] {
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.weekCount[data-kind="observation"] {
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.weekNone {
+  padding: 1px 9px;
+  border: 1px dashed var(--pg-line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--pg-ink-hint);
+}
+/* 근거 고르기. 칸 안 글은 손글씨지만 고르는 칸은 읽혀야 해서 본문 글씨다. */
+.journalFrom {
+  display: grid;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.journalFrom select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font: inherit;
+  font-weight: 400;
+  font-size: 14px;
+}
+
+.weekDayHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+.weekDayHead .sheetDay {
+  margin-bottom: 0;
+}
+.weekDayTotal {
+  margin-right: auto;
+  font-size: 14px;
+  color: var(--pg-ink-soft);
+}
+.weekBoard {
+  display: grid;
+  gap: 22px;
+  min-height: 260px;
+  padding: 22px 22px 26px;
+}
+/* 분필 글씨. 판 위 제목은 종이가 아니라 판에 바로 쓴 것이다. */
+.weekChalk {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.weekChalk small {
+  margin-left: 4px;
+  font-size: 17px;
+  opacity: 0.7;
+}
+.weekBlank {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 220px;
+}
+.weekGroup {
+  display: grid;
+  gap: 12px;
+}
+.weekSlips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* 일과 = 일과 기록 화면의 쪽지 그대로. 줄 번호로 색을 정해 다시 그려도 같은 색이다. */
+.weekSlip,
+.weekIndex {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 13px 15px 15px;
+  border: 1px solid;
+  border-radius: 2px;
+  box-shadow: var(--pg-shadow-hard);
+}
+.weekSlip[data-lean="0"] {
+  transform: rotate(-0.4deg);
+}
+.weekSlip[data-lean="1"] {
+  transform: rotate(0.35deg);
+}
+.weekSlip[data-tone="0"] {
+  border-color: var(--pg-note-soft-line);
+  background: var(--pg-note-soft);
+}
+.weekSlip[data-tone="1"] {
+  border-color: var(--pg-plum-line);
+  background: var(--pg-plum);
+}
+.weekSlip[data-tone="2"] {
+  border-color: var(--pg-clay-line);
+  background: var(--pg-clay);
+}
+.weekSlip[data-tone="3"] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+}
+/* 관찰 = 아이 이름을 적은 색인 카드. 일과 쪽지와 섞여도 종류가 갈린다. */
+.weekIndex {
+  border-color: var(--pg-line);
+  background:
+    linear-gradient(var(--pg-alert) 0 0) 0 44px / 100% 1px no-repeat,
+    var(--pg-paper);
+}
+.weekSlipHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-height: 24px;
+}
+.weekSlipHead b {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.weekSlipHead > span:last-child {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pg-ink-soft);
+}
+.weekSlipText {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--pg-ink);
+  overflow-wrap: anywhere;
+}
+.weekSlipNone {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--pg-ink-soft);
+}
+
+/* ── 관찰 기록 좌우 짜임 — 왼쪽 적기, 오른쪽 쌓인 기록 ── */
+.recordGrid {
+  grid-template-columns: minmax(340px, 0.8fr) minmax(0, 1.25fr);
+}
+/* 좁은 칸이라 아이를 한 줄 다 쓰고, 날짜 · 영역을 그 밑에 나란히 둔다. */
+.recordForm .row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.recordForm .row > :first-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1100px) {
+  .recordGrid {
+    grid-template-columns: 1fr;
+  }
+}
+/* 왼쪽 칸은 화면 높이 안에 「남기기」까지 들어와야 한다. 머리와 칸 사이를 줄인다. */
+.recordGrid .recordForm {
+  padding: 22px 24px 24px;
+}
+.recordGrid .recordFormHead {
+  flex-wrap: nowrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.recordGrid .recordFormTitle {
+  font-size: 27px;
+}
+.recordGrid .recordForm textarea {
+  min-height: 118px;
+}
+
+/* ── 문서 보관함 · 같은 원 남의 반 (ADR-059) ── */
+.accessCard {
+  display: grid;
+  gap: 16px;
+  padding: 24px 26px 26px;
+}
+.accessHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.accessName {
+  flex: 1;
+  min-width: 0;
+}
+.card .accessName h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 28px;
+  line-height: 1.1;
+}
+.card .accessName p {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.accessBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-shell);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.accessBadge svg {
+  width: 14px;
+  height: 14px;
+}
+.accessBadge[data-state="PENDING"] {
+  border-color: var(--pg-sun);
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
+.accessBadge[data-state="APPROVED"] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+/* 포스티가 건네는 말 + 할 일 하나. 점선으로 머리와 가른다. */
+.accessSay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 18px;
+  padding: 14px 0 2px;
+  border-top: 1px dashed var(--pg-line);
+}
+.card .accessWord {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.card .accessLead {
+  margin: 3px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.accessTableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+}
+.accessTable {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.accessTable th {
+  padding: 10px 14px;
+  background: var(--pg-cream);
+  border-bottom: 1px solid var(--pg-line);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+  text-align: left;
+}
+.accessTable td {
+  padding: 11px 14px;
+  border-bottom: 1px dashed var(--pg-line);
+  vertical-align: middle;
+}
+.accessTable tr:last-child td {
+  border-bottom: 0;
+}
+.accessTable tr[aria-selected="true"] td {
+  background: var(--pg-primary-tint);
+}
+.accessTable td b {
+  display: block;
+  font-weight: 700;
+}
+.accessTable td small {
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
+.accessLocked {
+  color: var(--pg-ink-hint);
+  white-space: nowrap;
+}
+.accessLocked svg {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+.accessActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  white-space: nowrap;
+}
+.accessActions button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.accessActions button:hover {
+  background: var(--pg-cream);
+}
+.accessActions button[data-main] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.accessPreview {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+  background: var(--pg-ivory);
+}
+.accessPreview > button:first-child {
+  justify-self: end;
+}
+.accessGroup {
+  display: grid;
+  gap: 8px;
+}
+.card .accessGroup h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+}
+/* 손글씨 「1」은 「ı」로 읽힌다. 셈은 본문 글씨로 작은 알약에 담는다. */
+.accessGroup h3 span {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--pg-cream);
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  vertical-align: 3px;
+  color: var(--pg-ink-soft);
+}
+.accessGroup ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+}
+.accessGroup li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 12px 14px;
+}
+.accessGroup li + li {
+  border-top: 1px dashed var(--pg-line);
+}
+.accessGroup li b {
+  display: block;
+  font-size: 15px;
+}
+.accessGroup li small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+
+/* 주간 일지 칸 — 그 주 일일 보육일지. 초안은 주황, 확정은 세이지. */
+.journalDays {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.journalDays li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--pg-sage-line);
+  border-radius: 8px;
+  background: var(--pg-sage-tint);
+  font-size: 13px;
+}
+.journalDays li[data-state="draft"] {
+  border-color: var(--pg-sun);
+  background: var(--pg-sun-tint);
+}
+.journalDays b {
+  font-size: 12px;
+  color: var(--pg-sage-ink);
+}
+.journalDays li[data-state="draft"] b {
+  color: var(--pg-sun-ink);
+}
+.journalDays .link {
+  margin-left: auto;
+  font-size: 13px;
 }

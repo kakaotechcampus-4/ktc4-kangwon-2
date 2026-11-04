@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { failure, scenario } from "./scenarios";
+import { commit } from "./data/store";
 import {
   findCenter,
   addCenter,
@@ -14,7 +15,6 @@ import {
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
-import { archiveSummary, listReceived, decideRequest, type Decision } from "./data/class-access";
 import {
   findPlan,
   listPlans,
@@ -30,9 +30,12 @@ import {
   unconfirmPlan,
   listAnnualAudit,
   safetyCategories,
+  removePlan,
+  resetPlan,
 } from "./data/annual-plans";
 import {
   confirmPlayMonthly,
+  addPlayMonthly,
   copyPlayMonthlyDrill,
   editPlayMonthlyCell,
   findPlayMonthly,
@@ -44,8 +47,24 @@ import {
   playCells,
   removePlayMonthly,
   removePlayMonthlyActivity,
+  removePlayMonthlyTimetable,
+  resizePlayMonthlySplit,
+  resizePlayMonthlyTable,
+  splitPlayMonthlyTimetable,
   unconfirmPlayMonthly,
 } from "./data/play-monthly";
+import {
+  CELL_MIN_WIDTH,
+  MAX_DEPTH,
+  RATIO_RANGE,
+  boundaries,
+  locate,
+  narrowest,
+  splitLeaf,
+  tooNarrow,
+  validSize,
+  withRatio,
+} from "../lib/plan-generator/playMonthlyTimetable";
 import {
   REGENERATABLE,
   addMonthly,
@@ -104,18 +123,25 @@ import type {
 const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
 const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
+/** 요청 사항(ADR-060). 서버처럼 앞뒤 공백을 떼고 300자까지 — 틀리면 null. 목업은 반영 못한 요청을 만들지 않는다. */
+const memoOf = (b: Record<string, unknown>) =>
+  b.memo == null
+    ? ""
+    : typeof b.memo === "string" && b.memo.trim().length <= 300
+      ? b.memo.trim()
+      : null;
+/** 서버처럼 메모를 계획안에 남긴다 — 다시 읽어도 돌아온다. 목업은 반영 못한 요청을 만들지 않는다. */
+const withMemo = <T extends { id: number }>(
+  plan: T,
+  memo: string,
+  table: "plans" | "monthlyPlans" | "weeklyPlans",
+) => {
+  const fields = { memo, memo_notices: [] };
+  commit((db) => Object.assign(db[table].find((p) => p.id === plan.id) ?? {}, fields));
+  return Object.assign(plan, fields);
+};
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
 const MOCK_INVITE = "MOCK234567";
-/** 다른 원 · 없는 반은 같은 404 다(§2-2). */
-const myCenterClass = (id: number) => {
-  const c = findClass(id);
-  return !!c && c.center_id === currentCenterId();
-};
-const myClassIds = () => {
-  const center = currentCenterId();
-  return center === null ? [] : listClasses(center).map((c) => c.id);
-};
-const DECISIONS: readonly Decision[] = ["APPROVED", "REJECTED", "REVOKED"];
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = await request.json();
@@ -421,10 +447,7 @@ export const handlers = [
     const s = await scenario(request, "classes");
     if (s) return s;
     const id = Number(params.centerId);
-    if (!findCenter(id)) return missing();
-    // 목업 반은 모두 이 계정이 만든 반이다 — 열람 상태는 늘 OWNER (§2 · ADR-059).
-    const items = listClasses(id).map((c) => ({ ...c, my_access: "OWNER" as const }));
-    return HttpResponse.json({ items });
+    return findCenter(id) ? HttpResponse.json({ items: listClasses(id) }) : missing();
   }),
   http.get("*/api/classes/:classId/children", async ({ request, params }) => {
     const s = await scenario(request, "children");
@@ -450,45 +473,6 @@ export const handlers = [
     if (!hasChild(id)) return missing();
     removeChild(id);
     return new HttpResponse(null, { status: 204 });
-  }),
-  // §2-2 열람 요청 (ADR-059). 순서 · 오류는 backend/app/features/class_access/router.py 와 같다.
-  http.get("*/api/classes/:classId/archive-summary", async ({ request, params }) => {
-    const s = await scenario(request, "archive-summary");
-    if (s) return s;
-    const id = Number(params.classId);
-    if (!myCenterClass(id)) return classMissing();
-    return HttpResponse.json({ items: archiveSummary(id) });
-  }),
-  http.post("*/api/classes/:classId/access-requests", async ({ request, params }) => {
-    const s = await scenario(request, "access-request");
-    if (s) return s;
-    if (!myCenterClass(Number(params.classId))) return classMissing();
-    // 목업 반은 모두 내 반(OWNER)이다. 서버도 내 반 · 주인 없는 반에 요청하면 409 다.
-    return failure("ALREADY_EXISTS", "이미 볼 수 있거나 승인을 기다리는 반입니다.", "class_id");
-  }),
-  http.get("*/api/access-requests/received", async ({ request }) => {
-    const s = await scenario(request, "access-requests");
-    if (s) return s;
-    return HttpResponse.json({ items: listReceived(myClassIds()) });
-  }),
-  http.patch("*/api/access-requests/:id", async ({ request, params }) => {
-    const s = await scenario(request, "access-decide");
-    if (s) return s;
-    // 서버는 본문 검사(422)가 먼저다. `status` 하나만, 주인이 내리는 결정 셋만 받는다.
-    const b = await body(request);
-    if (!b) return bad("status");
-    const extra = Object.keys(b).find((k) => k !== "status");
-    if (extra) return bad(extra);
-    if (!DECISIONS.includes(b.status as Decision)) return bad("status");
-    const result = decideRequest(Number(params.id), myClassIds(), b.status as Decision);
-    if (result === "missing") return failure("NOT_FOUND", "요청을 찾을 수 없습니다.", "id");
-    if (result === "stale")
-      return failure(
-        "STALE_WRITE",
-        "그 사이 다른 화면에서 요청이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
-        "status",
-      );
-    return HttpResponse.json(result);
   }),
   http.put("*/api/centers/:centerId/plan-config", async ({ request, params }) => {
     const s = await scenario(request, "plan-config");
@@ -524,6 +508,8 @@ export const handlers = [
     if (b.format !== "MONTHLY_THEME" && b.format !== "PLAY_PROJECT") return bad("format");
     if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
     if (b.format === "PLAY_PROJECT" && b.form_id != null) return bad("form_id");
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     // 연간 목업은 「지금 원」 소유 검사를 하지 않는다(서버는 남의 원 반이면 404) — 화면 목업 흐름 유지.
     const klass = findClass(Number(b.class_id));
     if (!klass) return classMissing();
@@ -532,9 +518,12 @@ export const handlers = [
       return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
     if (request.signal.aborted) return HttpResponse.error();
     // 실제 서버는 교육과정 참고자료 승인 전까지 503을 반환하지만, 화면 작업용 목업은 승인 뒤 응답 모양을 만든다.
-    return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
-      status: 201,
-    });
+    return HttpResponse.json(
+      withMemo(addPlan(b as unknown as AnnualInput, klass.school_year), memo, "plans"),
+      {
+        status: 201,
+      },
+    );
   }),
   http.get("*/api/plans/annual", async ({ request }) => {
     const s = await scenario(request, "annual-list");
@@ -551,6 +540,25 @@ export const handlers = [
     const plan = findPlan(Number(params.id));
     return plan ? HttpResponse.json(plan) : annualMissing();
   }),
+  http.delete("*/api/plans/annual/:id", ({ params }) => {
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    const blocked = removePlan(id);
+    if (blocked === "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
+    if (blocked === "IN_USE")
+      return failure(
+        "GATE_BLOCKED",
+        "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.",
+      );
+    return new HttpResponse(null, { status: 204 });
+  }),
+  // 시험용 — 서버처럼 꺼져 있으면 없는 경로(404)다. 켜기: .env.local NEXT_PUBLIC_ALLOW_TEST_RESET=1
+  http.delete("*/api/plans/annual/:id/test-reset", ({ params }) =>
+    process.env.NEXT_PUBLIC_ALLOW_TEST_RESET === "1" && resetPlan(Number(params.id))
+      ? new HttpResponse(null, { status: 204 })
+      : annualMissing(),
+  ),
   http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
@@ -704,10 +712,14 @@ export const handlers = [
           : "확정된 계획안만 내보낼 수 있습니다.",
       );
     }
-    const name = `plan-${id}.hwpx`;
-    return new HttpResponse("MSW hwpx", {
+    // `?format=pdf|hwpx|hwp` (ADR-039 · ADR-061). 다른 값은 서버처럼 422.
+    const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
+    if (!(format in type)) return bad("format");
+    const name = `plan-${id}.${format}`;
+    return new HttpResponse(`MSW ${format}`, {
       headers: {
-        "Content-Type": "application/hwp+zip",
+        "Content-Type": type[format as keyof typeof type],
         "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
       },
     });
@@ -741,6 +753,7 @@ export const handlers = [
       new Set(trimmed).size === trimmed.length
         ? []
         : ["emphasized_row_keys"]),
+      ...(memoOf(b) === null ? ["memo"] : []),
     ];
     if (wrong.length) return invalid(wrong);
     const klass = myClass(Number(b.class_id));
@@ -762,11 +775,10 @@ export const handlers = [
           ? "연간계획안을 먼저 확정해주세요."
           : null;
     if (gate) return failure("GATE_BLOCKED", gate, "class_id");
-    // 서버는 생성 규칙이 아직 없어 게이트 뒤에서 항상 503 이다. 아무것도 저장하지 않는다.
-    return failure(
-      "DEPENDENCY_UNAVAILABLE",
-      "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-    );
+    // 서버는 생성한 초안을 201 로 준다. 목업은 고정 합성 데이터에 달 · 강조 놀이만 바꾼다.
+    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed), {
+      status: 201,
+    });
   }),
   http.get("*/api/plans/monthly/play", async ({ request }) => {
     const s = await scenario(request, "play-monthly-list");
@@ -867,6 +879,108 @@ export const handlers = [
       return HttpResponse.json(copyPlayMonthlyDrill(plan.id, itemId));
     },
   ),
+  // 특별활동 시간표(ADR-047) — 경로 · 코드는 제안이다. 순서는 위 변경과 같고, 내용 검사는 Core 순서다.
+  http.post("*/api/plans/monthly/play/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-split");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? [] : ["axis"],
+    );
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = locate(plan.special_activity, itemId);
+    if (!found) return timetableCellMissing();
+    if (found.path.length - 1 >= MAX_DEPTH)
+      return failure("VALIDATION_FAILED", "한 요일은 네 번까지 나눌 수 있습니다.", "item_id");
+    const axis = b.axis as "VERTICAL" | "HORIZONTAL";
+    const day = plan.special_activity[found.day];
+    const probe = splitLeaf(day, itemId, axis, "probe", { ...found.path.at(-1)!.cell! });
+    if (narrowest(probe, plan.special_activity_size.column_widths[found.day]) < CELL_MIN_WIDTH)
+      return tooNarrowFailure();
+    return HttpResponse.json(splitPlayMonthlyTimetable(plan.id, itemId, axis));
+  }),
+  http.delete("*/api/plans/monthly/play/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-split-remove");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => [], true);
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = locate(plan.special_activity, itemId);
+    if (!found) return timetableCellMissing();
+    if (found.path.length === 1)
+      return failure(
+        "VALIDATION_FAILED",
+        "요일의 마지막 칸은 지울 수 없습니다. 글을 비워 주세요.",
+        "item_id",
+      );
+    return HttpResponse.json(removePlayMonthlyTimetable(plan.id, itemId));
+  }),
+  http.put(
+    "*/api/plans/monthly/play/:id/timetable/splits/:splitId",
+    async ({ request, params }) => {
+      const s = await scenario(request, "play-monthly-split-ratio");
+      if (s) return s;
+      const b = await playInput(request, params.id, (b) => (integer(b.ratio) ? [] : ["ratio"]));
+      if (b instanceof Response) return b;
+      const splitId = decodeURIComponent(String(params.splitId));
+      if (!splitId.trim()) return invalid(["split_id"]);
+      const plan = playGate(params.id, b);
+      if (plan instanceof Response) return plan;
+      const ratio = Number(b.ratio);
+      const day = plan.special_activity.findIndex((d) =>
+        boundaries(d).some((x) => x.split_id === splitId),
+      );
+      if (day < 0) return failure("NOT_FOUND", "그 시간표 경계를 찾을 수 없습니다.", "split_id");
+      if (ratio < RATIO_RANGE[0] || ratio > RATIO_RANGE[1]) return invalid(["ratio"]);
+      const days = plan.special_activity.map((d, i) =>
+        i === day ? withRatio(d, splitId, ratio) : d,
+      );
+      if (tooNarrow(days, plan.special_activity_size.column_widths)) return tooNarrowFailure();
+      return HttpResponse.json(resizePlayMonthlySplit(plan.id, splitId, ratio));
+    },
+  ),
+  http.put("*/api/plans/monthly/play/:id/timetable/size", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-size");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.column_widths) && b.column_widths.every(integer) && integer(b.height_mm)
+        ? []
+        : ["column_widths", "height_mm"],
+    );
+    if (b instanceof Response) return b;
+    const size = { column_widths: b.column_widths as number[], height_mm: Number(b.height_mm) };
+    if (!validSize(size)) return invalid(["column_widths", "height_mm"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    if (tooNarrow(plan.special_activity, size.column_widths)) return tooNarrowFailure();
+    return HttpResponse.json(resizePlayMonthlyTable(plan.id, size));
+  }),
+  // 확정본만 한글 파일로 — 실제 서버는 양식에 나눈 모양 · 폭 · 높이 그대로 채운다. 목업은 가짜 파일.
+  http.get("*/api/plans/monthly/play/:id/export/hwp", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-export");
+    if (s) return s;
+    // 쿼리 형식 422 가 소유 404 보다 먼저다(FastAPI 스키마).
+    const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
+    if (!(format in type)) return bad("format");
+    const plan = playOwn(String(params.id));
+    if (plan instanceof Response) return plan;
+    if (plan.status !== "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안만 내보낼 수 있습니다.");
+    const name = `play-monthly-${plan.id}.${format}`;
+    return new HttpResponse(`MSW ${format}`, {
+      headers: {
+        "Content-Type": type[format as keyof typeof type],
+        "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
+      },
+    });
+  }),
   // 확정 순서: 스키마(본문이 있으면 정수 1 이상 — 확정본이어도) → 소유 404 · 기존 월간 409 → 이미 확정이면 200
   // → 본문 없음 422 → revision 409 → 부족 422. 본문을 읽는 사이 바뀔 수 있어 소유 · 상태는 그 뒤에 본다.
   http.post("*/api/plans/monthly/play/:id/confirm", async ({ request, params }) => {
@@ -921,6 +1035,8 @@ export const handlers = [
     if (typeof ref !== "object" || ref === null) return bad("profile_ref");
     for (const k of ["profile_id", "profile_version"])
       if (typeof ref[k] !== "string" || !ref[k]) return bad("profile_ref." + k);
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     const klass = myClass(b.class_id);
     if (!klass) return classMissing();
     if (
@@ -958,9 +1074,12 @@ export const handlers = [
         "profile_ref",
       );
     if (request.signal.aborted) return HttpResponse.error();
-    return HttpResponse.json(monthlyOut(addMonthly(klass, annual, b.month, profile)), {
-      status: 201,
-    });
+    return HttpResponse.json(
+      monthlyOut(withMemo(addMonthly(klass, annual, b.month, profile), memo, "monthlyPlans")),
+      {
+        status: 201,
+      },
+    );
   }),
   http.get("*/api/plans/monthly", async ({ request }) => {
     const s = await scenario(request, "monthly-list");
@@ -1056,6 +1175,8 @@ export const handlers = [
     if (!integer(b.class_id)) return bad("class_id");
     if (typeof b.week_id !== "string" || !/^\d{4}-\d{2}-W\d+$/.test(b.week_id))
       return bad("week_id");
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     const klass = myClass(b.class_id);
     if (!klass) return classMissing();
     // G5 — 같은 반 · 같은 주가 이미 있으면 DRAFT 든 CONFIRMED 든 거절한다.
@@ -1074,13 +1195,17 @@ export const handlers = [
     const saturday = !!findCenterSettings(klass.center_id).weekly_saturday_enabled;
     return HttpResponse.json(
       weeklyOut(
-        addWeekly(
-          klass,
-          monthly,
-          b.week_id,
-          saturday,
-          b.activity_candidates === true || b.indoor_play_candidates === true,
-          b.indoor_play_candidates === true,
+        withMemo(
+          addWeekly(
+            klass,
+            monthly,
+            b.week_id,
+            saturday,
+            b.activity_candidates === true || b.indoor_play_candidates === true,
+            b.indoor_play_candidates === true,
+          ),
+          memo,
+          "weeklyPlans",
         ),
       ),
       { status: 201 },
@@ -1390,6 +1515,10 @@ async function playInput(
   ];
   return wrong.length ? invalid(wrong) : b!;
 }
+const timetableCellMissing = () =>
+  failure("NOT_FOUND", "그 시간표 칸을 찾을 수 없습니다.", "item_id");
+const tooNarrowFailure = () =>
+  failure("VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.");
 /** 소유 → 형식 → 확정 → revision. 통과하면 계획안을 준다. */
 function playGate(rawId: unknown, b: Record<string, unknown>) {
   const plan = playOwn(rawId);

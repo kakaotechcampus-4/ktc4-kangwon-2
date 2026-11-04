@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import { downloadHwpx } from "./export";
+import { downloadHwpx, type ExportFormat } from "./export";
 import type { WeeklyAuditEvent, WeeklyPlan, WeeklyPlanSummary } from "./types";
 
 /**
@@ -27,6 +27,7 @@ export const createWeeklyPlan = (
     week_id: string;
     activity_candidates?: boolean;
     indoor_play_candidates?: boolean;
+    memo?: string;
   },
   signal?: AbortSignal,
 ) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
@@ -36,9 +37,10 @@ export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
  * 그 달의 주간계획안들. `month` 는 **달력 달 1~12** 다 — `YYYY-MM` 이 아니다.
  * 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). `month` 는 `classId` 와 함께만 간다.
  */
-export const listWeeklyPlans = (classId: number, month: number, signal?: AbortSignal) =>
+/** `month` 를 빼면 그 반의 모든 달이다 — 승인받은 반을 한 번에 훑을 때 쓴다. */
+export const listWeeklyPlans = (classId: number, month?: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyPlanSummary[] }>(
-    "/api/plans/weekly?class_id=" + classId + "&month=" + month,
+    "/api/plans/weekly?class_id=" + classId + (month === undefined ? "" : "&month=" + month),
     { signal },
   );
 /**
@@ -86,8 +88,8 @@ export const deleteWeeklyPlan = (id: number) =>
 export const getWeeklyPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyAuditEvent[] }>("/api/plans/weekly/" + id + "/audit", { signal });
 /** 확정본만 내려받는다 — 확정 전이면 서버가 409 다. */
-export const downloadWeeklyHwpx = (id: number) =>
-  downloadHwpx("/api/plans/weekly/" + id + "/export/hwp", "주간계획안.hwpx");
+export const downloadWeeklyHwpx = (id: number, format: ExportFormat = "hwpx") =>
+  downloadHwpx(`/api/plans/weekly/${id}/export/hwp?format=${format}`, `주간계획안.${format}`);
 
 export const copyWeeklyActivity = (
   id: number,

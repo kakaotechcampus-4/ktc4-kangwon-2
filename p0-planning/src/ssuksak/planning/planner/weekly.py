@@ -20,6 +20,7 @@ from typing import Protocol
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.daily_life_reference import DailyLifeCatalog
 from ..domain.errors import InvalidDomainValueError
+from ..domain.teacher_memo import MemoNotice
 from ..domain.week_period import WeekId
 from .contracts import (
     ProposalParseError,
@@ -29,6 +30,12 @@ from .contracts import (
     is_compatible_monthly_model,
 )
 from .parser import _STRING, _object_schema, _refs_schema
+from .teacher_memo import (
+    TEACHER_MEMO_PROMPT,
+    TEACHER_MEMO_PROMPT_TAG,
+    memo_properties,
+    split_memo_applied,
+)
 from .text_policy import normalize_visible_text, visible_text_violations
 from .v1_guidance import (
     NATURAL_PLAY_GUIDANCE,
@@ -51,7 +58,7 @@ WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v2"
 # ADR-051: a request with a repeat_by DAY target appends this to every version it uses, so
 # a v0.1.0 request keeps its prompt, schema and fingerprint unchanged.
 DAY_CELLS_SUFFIX = "+day-cells-v1"
-REFERENCE_WIRING_SUFFIX = "+monthly-linked-v6"
+REFERENCE_WIRING_SUFFIX = "+monthly-linked-v7"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
@@ -191,6 +198,8 @@ class WeeklyPlanningRequest:
     other_day_values: tuple[str, ...] = ()  # a day cell request: the Section's other days now
     reference_wiring: bool = False
     reference_examples: tuple[str, ...] = ()
+    # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
+    memo_addresses: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.week_id, WeekId):
@@ -229,6 +238,8 @@ class WeeklyPlanningOutcome:
     packet_fingerprint: str
     repaired: frozenset[str] = frozenset()
     request_id: str | None = None
+    memo_applied: frozenset[str] = frozenset()  # weekly_memo_address of each memo-changed cell
+    memo_skipped: tuple[MemoNotice, ...] = ()  # requests the LLM could not apply
 
     def value(self, section_key: str) -> ProposedSectionValue | None:
         found = next((v for v in self.values if v.section_key == section_key), None)
@@ -245,6 +256,20 @@ class WeeklyPlanningOutcome:
 
 class WeeklyPlanningProvider(Protocol):
     def generate_weekly(self, request: WeeklyPlanningRequest) -> RawLlmResponse: ...
+
+
+def weekly_memo_address(section_key: str, day: str | None) -> str:
+    return section_key if day is None else f"{section_key}:{day}"
+
+
+def _memo_addresses(targets: tuple[WeeklyTarget, ...]) -> tuple[str, ...]:
+    """Cells the teacher memo may change (ADR-060): every target but the locked theme and safety."""
+    return tuple(
+        weekly_memo_address(t.section_key, day)
+        for t in targets
+        if t.section_key not in {THEME_KEY, "safety_education"}
+        for day in (t.days or (None,))
+    )
 
 
 def validate_daily_life_context(daily_life: DailyLifeCatalog, curriculum: CurriculumCatalog | None) -> None:
@@ -272,6 +297,7 @@ def build_weekly_request(
     reference_wiring: bool = False,
     daily_life: DailyLifeCatalog | None = None,
     sibling_focuses: tuple[str, ...] = (),
+    teacher_memo: str = "",
 ) -> WeeklyPlanningRequest:
     body = {
         "task": "weekly_plan",
@@ -321,7 +347,13 @@ def build_weekly_request(
     candidates = "+activity-candidates-v1" if any(t.activity_type is not None for t in targets) else ""
     if candidates:
         source_refs |= {t.section_key for t in targets if t.activity_type is not None}
+    memo = _memo_addresses(targets) if teacher_memo else None
+    if memo is not None:
+        body["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
+        allowed += " " + teacher_memo  # the teacher's own facts (Q2), like teacher_facts
     linked = (REFERENCE_WIRING_SUFFIX if reference_wiring else "") + candidates
+    if memo is not None:
+        linked += TEACHER_MEMO_PROMPT_TAG
     system_prompt = SYSTEM_PROMPT
     if reference_wiring:
         system_prompt = system_prompt.replace(OUTDOOR_REFERENCE_INSTRUCTION, LINKED_OUTDOOR_INSTRUCTION)
@@ -337,7 +369,8 @@ def build_weekly_request(
         )
     return WeeklyPlanningRequest(
         prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + linked + suffix,
-        system_prompt=system_prompt + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else ""),
+        system_prompt=system_prompt + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else "")
+        + (TEACHER_MEMO_PROMPT if memo is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         week_id=week_id,
         targets=targets,
@@ -352,6 +385,7 @@ def build_weekly_request(
         context_source_refs=frozenset(source_refs),
         reference_wiring=reference_wiring,
         reference_examples=examples,
+        memo_addresses=memo,
     )
 
 
@@ -388,6 +422,11 @@ def cell_request(
     contextual = "curriculum_context" in body
     suffix = DAY_CELLS_SUFFIX if request.prompt_version.endswith(DAY_CELLS_SUFFIX) else ""
     linked = REFERENCE_WIRING_SUFFIX if request.reference_wiring else ""
+    memo = None
+    if request.memo_addresses is not None:
+        memo = (weekly_memo_address(section_key, day),)
+        body["teacher_memo"]["addresses"] = list(memo)
+        linked += TEACHER_MEMO_PROMPT_TAG
     return replace(
         request,
         prompt_version=(WEEKLY_CONTEXT_CELL_PROMPT_VERSION if contextual else WEEKLY_CELL_PROMPT_VERSION) + linked + suffix,
@@ -396,12 +435,14 @@ def cell_request(
         ) + linked + suffix,
         system_prompt=(
             request.system_prompt + " 이번 요청은 targets의 한 칸만 다시 쓰며 current_plan의 다른 값은 맥락으로만 읽는다."
-            if contextual or request.reference_wiring else CELL_SYSTEM_PROMPT + (DAY_PROMPT if suffix else "")
+            if contextual or request.reference_wiring
+            else CELL_SYSTEM_PROMPT + (DAY_PROMPT if suffix else "") + (TEACHER_MEMO_PROMPT if memo else "")
         ) + (DAY_CELL_PROMPT if day is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         targets=(target,),
         allowed_fact_text=" ".join((request.allowed_fact_text, *teacher_facts)),
         cell_key=section_key,
+        memo_addresses=memo,
         # The caller labels the Section's other day cells "section_key:DAY".
         other_day_values=tuple(
             value for label, value in current_values if day is not None and label.startswith(f"{section_key}:")
@@ -464,10 +505,13 @@ def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
             "grounding_refs": refs,
             "reference_id": {"type": "null"},
         }))
-    return _object_schema({
+    root = {
         "week_id": {"type": "string", "enum": [request.week_id.value]},
         "sections": {"type": "array", "items": branches[0] if len(branches) == 1 else {"anyOf": branches}},
-    })
+    }
+    if request.memo_addresses is not None and not request.repair_targets:
+        root.update(memo_properties(request.memo_addresses))  # ADR-060
+    return _object_schema(root)
 
 
 def parse_weekly_proposal(
@@ -742,7 +786,8 @@ class WeeklyPlanner:
 
     def _plan(self, request: WeeklyPlanningRequest) -> WeeklyPlanningOutcome:
         response = self._generate(request)
-        values = with_reference_labels(parse_weekly_proposal(response.content, request), request)
+        content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        values = with_reference_labels(parse_weekly_proposal(content, request), request)
         issues = validate_weekly(values, request)
         repaired: frozenset[str] = frozenset()
         prompt_version = request.prompt_version
@@ -754,7 +799,7 @@ class WeeklyPlanner:
                 prompt_version=request.repair_prompt_version,
                 user_content=json.dumps({
                     "original_request": json.loads(request.user_content),
-                    "previous_answer": json.loads(response.content),
+                    "previous_answer": json.loads(content),
                     "fix_sections": [
                         {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {})}
                         for i in issues
@@ -803,6 +848,8 @@ class WeeklyPlanner:
             packet_fingerprint=request.packet_fingerprint,
             repaired=repaired,
             request_id=response.request_id,
+            memo_applied=memo_applied,
+            memo_skipped=memo_skipped,
         )
 
     def _generate(self, request: WeeklyPlanningRequest) -> RawLlmResponse:

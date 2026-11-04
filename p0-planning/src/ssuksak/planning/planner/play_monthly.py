@@ -24,12 +24,20 @@ from ..domain.safety_placement import SafetyCandidateSlot as SafetySlot
 from ..domain.safety_placement import SafetyKind
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
+from .teacher_memo import (
+    SAFETY_REQUESTS_PROMPT,
+    SAFETY_REQUESTS_PROMPT_TAG,
+    TEACHER_MEMO_PROMPT,
+    TEACHER_MEMO_PROMPT_TAG,
+    memo_properties,
+    safety_request_properties,
+)
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
 from .weekly import unsupported_facts
 
-PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v4"
-PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v4"
+PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v5"
+PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v5"
 CONTENT_MIN, CONTENT_MAX = 1, 3  # content ids per activity (first contract proposal)
 ACTIVITY_SECTIONS = ("together", "free_play")
 
@@ -119,6 +127,10 @@ class PlayMonthlyRequest:
     nutrition_entry_ids: frozenset[str]
     drill_topic_ids: tuple[str, ...]  # fixed by the Rule; the LLM writes one sentence each
     fingerprint: str
+    # ADR-060: the addresses memo_applied may name; None = no teacher memo (or a repair).
+    memo_addresses: tuple[str, ...] | None = None
+    # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
+    safety_request_slots: tuple[str, ...] | None = None
 
     @property
     def source_refs(self) -> frozenset[str]:
@@ -177,6 +189,31 @@ class PlayMonthlyProvider(Protocol):
     def generate_play_monthly(self, request: PlayMonthlyRequest) -> RawLlmResponse: ...
 
 
+def play_monthly_memo_addresses(
+    counts: dict[str, int], safety_slots: tuple[SafetySlot, ...], drill_topic_ids: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Every LLM-written or LLM-picked cell; week safety placement stays the teacher's."""
+    return (
+        "theme",
+        "rationale",
+        *(f"{section}[{i}]" for section in ACTIVITY_SECTIONS for i in range(counts[section])),
+        *(f"safety:{s.slot}" for s in safety_slots),
+        "habits",
+        "health",
+        "nutrition",
+        *(f"drills:{t}" for t in drill_topic_ids),
+    )
+
+
+def play_monthly_response_schema(request: PlayMonthlyRequest) -> dict:
+    if request.memo_addresses is None:
+        return RESPONSE_SCHEMA
+    properties = dict(RESPONSE_SCHEMA["properties"], **memo_properties(request.memo_addresses))
+    if request.safety_request_slots is not None:
+        properties.update(safety_request_properties(request.safety_request_slots, request.week_ids))
+    return _object_schema(properties)
+
+
 def parent_ref(period_key: str, row_key: str) -> str:
     """Parent play address; the period keeps cand1 of different seasons apart."""
     return f"{period_key}.{row_key}"
@@ -198,6 +235,7 @@ def build_play_monthly_request(
     nutrition_entries: tuple[DailyLifeEntry, ...],
     drill_topics: tuple[tuple[str, str, str], ...],  # (topic_id, label, situation)
     reference_versions: tuple[str, ...],
+    teacher_memo: str = "",
 ) -> PlayMonthlyRequest:
     def entries(values: tuple[DailyLifeEntry, ...]) -> list[dict]:
         return [{"entry_id": e.entry_id, "label": e.label, "text": e.text} for e in values]
@@ -225,10 +263,25 @@ def build_play_monthly_request(
             {"topic_id": t, "label": label, "situation": situation} for t, label, situation in drill_topics
         ],
     }
+    drill_topic_ids = tuple(t for t, _, _ in drill_topics)
+    memo = play_monthly_memo_addresses(counts, safety_slots, drill_topic_ids) if teacher_memo else None
+    prompt_version, system_prompt = PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT
+    if memo is not None:
+        payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
+        prompt_version += TEACHER_MEMO_PROMPT_TAG
+        system_prompt += TEACHER_MEMO_PROMPT
+    # 2층: 법정 안전교육 횟수 · 주 요청은 뽑기만 하고 Rule 이 둔다.
+    safety_request_slots = (
+        tuple(s.slot for s in safety_slots if s.category_id is not None) if memo is not None else ()
+    ) or None
+    if safety_request_slots is not None:
+        payload["safety_request_slots"] = list(safety_request_slots)
+        prompt_version += SAFETY_REQUESTS_PROMPT_TAG
+        system_prompt += SAFETY_REQUESTS_PROMPT
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayMonthlyRequest(
-        prompt_version=PLAY_MONTHLY_PROMPT_VERSION,
-        system_prompt=SYSTEM_PROMPT,
+        prompt_version=prompt_version,
+        system_prompt=system_prompt,
         user_content=user_content,
         fact_source=user_content,
         target_month=target_month,
@@ -240,8 +293,10 @@ def build_play_monthly_request(
         habit_entry_ids=tuple(e.entry_id for e in habit_entries),
         health_entry_ids=frozenset(e.entry_id for e in health_entries),
         nutrition_entry_ids=frozenset(e.entry_id for e in nutrition_entries),
-        drill_topic_ids=tuple(t for t, _, _ in drill_topics),
-        fingerprint=_fingerprint(PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT, user_content, *reference_versions),
+        drill_topic_ids=drill_topic_ids,
+        fingerprint=_fingerprint(prompt_version, system_prompt, user_content, *reference_versions),
+        memo_addresses=memo,
+        safety_request_slots=safety_request_slots,
     )
 
 
@@ -267,6 +322,8 @@ def build_repair_request(
             "fingerprint": _fingerprint(
                 PLAY_MONTHLY_REPAIR_PROMPT_VERSION, system_prompt, user_content, request.fingerprint
             ),
+            "memo_addresses": None,  # the repair answers in the first schema, without memo fields
+            "safety_request_slots": None,
         }
     )
 

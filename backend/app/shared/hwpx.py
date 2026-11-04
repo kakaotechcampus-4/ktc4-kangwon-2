@@ -9,6 +9,7 @@
 **`.hwp` 는 다 만든 hwpx 를 변환해서 만든다(ADR-039).** `.hwp` 를 직접 쓰지 않는다 —
 바이너리라 틀려도 어디가 틀렸는지 볼 수 없다. 채우는 코드는 hwpx 한 벌이다.
 기본은 hwpx 다. 변환기(python-hwpx)의 hwp 쓰기가 새 기능이라, 실패하면 hwpx 로 받게 한다.
+**PDF 도 같은 hwpx 를 변환해서 만든다(ADR-061, `hwpx_pdf.py`).** 실패하면 같은 503 이다.
 
 zip 안의 파일 순서와 압축 방식을 양식 그대로 따른다.
 - `mimetype` 이 맨 앞에 압축 없이 들어가야 한다. 이게 틀리면 한글이 안 연다.
@@ -29,9 +30,9 @@ from lxml import etree
 
 MEDIA_TYPE = "application/hwp+zip"
 
-Format = Literal["hwpx", "hwp"]
+Format = Literal["hwpx", "hwp", "pdf"]
 # `.hwp` 는 공식 등록된 MIME 이 없다. 가장 널리 쓰는 이름이다.
-_MEDIA_TYPES = {"hwpx": MEDIA_TYPE, "hwp": "application/x-hwp"}
+_MEDIA_TYPES = {"hwpx": MEDIA_TYPE, "hwp": "application/x-hwp", "pdf": "application/pdf"}
 
 _log = logging.getLogger("app.server")
 
@@ -192,10 +193,10 @@ def download(content: bytes, fallback_name: str, title: str, fmt: Format = "hwpx
     """내려받기 응답. 한글 파일명은 filename* 로만 안전하게 간다.
 
     filename 은 그걸 못 읽는 브라우저용이라 영문(`fallback_name`)으로 둔다.
-    `content` 는 hwpx 다. `fmt` 가 `hwp` 면 바꿔서 내려준다.
+    `content` 는 hwpx 다. `fmt` 가 `hwp` · `pdf` 면 바꿔서 내려준다.
     """
-    if fmt == "hwp":
-        content = _to_hwp_or_503(content)
+    if fmt != "hwpx":
+        content = _convert_or_503(content, fmt)
     name = quote(f"{title}.{fmt}")
     disposition = f"attachment; filename=\"{fallback_name}.{fmt}\"; filename*=UTF-8''{name}"
     return Response(
@@ -212,23 +213,34 @@ def to_hwp(hwpx: bytes) -> bytes:
         return write_hwp5({name: package.read(name) for name in package.namelist()})
 
 
-def _to_hwp_or_503(hwpx: bytes) -> bytes:
+def to_pdf(hwpx: bytes) -> bytes:
+    """다 채운 hwpx 를 PDF 로 바꾼다(ADR-061).
+
+    reportlab 은 쓸 때 불러온다 — hwp 변환기와 같은 이유다.
+    """
+    from app.shared.hwpx_pdf import to_pdf as render
+
+    return render(hwpx)
+
+
+def _convert_or_503(hwpx: bytes, fmt: Format) -> bytes:
     """변환이 실패하면 무엇이 실패했든 503 이다 — hwpx 는 이미 만들어졌으니 그걸로 받으면 된다.
 
     변환기는 hwp 쓰기를 v6.6.0(2026-09-27)에 넣었다. `Hwp5Error` 말고 다른 예외도 날 수 있다.
+    PDF 는 한글 글꼴 파일이 서버에 없을 때도 여기로 온다.
     """
     try:
-        return to_hwp(hwpx)
+        return to_hwp(hwpx) if fmt == "hwp" else to_pdf(hwpx)
     except Exception as error:
         # 예외 메시지는 남기지 않는다 — 문서 글자(아동 실명)가 섞일 수 있다(ADR-004).
         # 로그가 실패해도 503 은 지킨다. 서버 로거는 출력 실패를 다시 던진다(main.py).
         with contextlib.suppress(Exception):
-            _log.warning("hwp_convert_failed error=%s", type(error).__name__)
+            _log.warning("%s_convert_failed error=%s", fmt, type(error).__name__)
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
                 "code": "DEPENDENCY_UNAVAILABLE",
-                "message": "이 문서는 지금 hwp 로 바꿀 수 없습니다. hwpx 로 받아주세요.",
+                "message": f"이 문서는 지금 {fmt} 로 바꿀 수 없습니다. hwpx 로 받아주세요.",
                 "fields": [],
             },
         ) from error

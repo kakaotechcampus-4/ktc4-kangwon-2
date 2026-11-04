@@ -6,7 +6,17 @@ import type {
   PlayMonthlyAuditEvent,
   PlayMonthlyCell,
   PlayMonthlyPlan,
+  PlayMonthlyTimetablePart,
+  PlayMonthlyTimetableSize,
 } from "../../lib/api/types";
+import {
+  leaf,
+  leaves,
+  locate,
+  removeLeaf,
+  splitLeaf,
+  withRatio,
+} from "../../lib/plan-generator/playMonthlyTimetable";
 
 /**
  * 놀이 중심 월간 목업 (api-spec §9-7). 고정 데이터는 서버를 실제로 찍은 단건 응답(2026-10-28)의
@@ -62,16 +72,46 @@ const DRILLS = [
   ["fire_c", "화재 다"],
   ["fire_d", "화재 라"],
 ];
-const TEACHER_KEYS = [
-  "fire_disaster_drill",
-  "specialized_timetable",
-  "special_activity_timetable",
-  "class_notice",
-  "class_birthdays",
-  "home_connection",
-];
+// 서버 teacher_inputs 는 TEACHER_INPUT 칸만이다. 두 시간표는 아래 칸 · 트리로 따로 온다.
+const TEACHER_KEYS = ["fire_disaster_drill", "class_notice", "class_birthdays", "home_connection"];
 
-/** 이력 이벤트. 열한 키가 항상 있고 기본은 시스템이 만든 `CREATED` 다. */
+/** 한 번도 쓰지 않은 교사 칸 — 근거 없고 generation 이 null 이다. id 는 서버처럼 겹치지 않는 32자. */
+const blankCell = (): PlayMonthlyCell => ({
+  item_id: "item_" + crypto.randomUUID().replaceAll("-", ""),
+  value: "",
+  evidence: [],
+  generation: null,
+});
+/** Core 시작 모양(전달본 20~21행): null 은 칸, [축, 첫 갈래 %, 첫째, 둘째] 는 경계. */
+type Shape = null | ["VERTICAL" | "HORIZONTAL", number, Shape, Shape];
+const ROW: Shape = ["HORIZONTAL", 36, null, null];
+const START: Shape[] = [
+  ["VERTICAL", 48, ROW, ROW],
+  ROW,
+  ["VERTICAL", 48, ROW, ROW],
+  null,
+  ["HORIZONTAL", 33, null, null],
+];
+const build = (shape: Shape): PlayMonthlyTimetablePart =>
+  shape === null
+    ? leaf(blankCell())
+    : {
+        cell: null,
+        split_id: blankCell().item_id,
+        axis: shape[0],
+        ratio: shape[1],
+        children: [build(shape[2]), build(shape[3])],
+      };
+/** 시간표 없이 저장된 옛 목업 계획안에 시작 모양을 채운다(저장본을 버리지 않는다). */
+function withTimetable(p: PlayMonthlyPlan) {
+  p.teacher_inputs = p.teacher_inputs.filter((t) => TEACHER_KEYS.includes(t.key));
+  p.specialized_timetable ??= Array.from({ length: 10 }, blankCell);
+  p.special_activity ??= START.map(build);
+  p.special_activity_size ??= { column_widths: [20, 20, 20, 20, 20], height_mm: 24 };
+  return p;
+}
+
+/** 이력 이벤트. 열두 키가 항상 있고 기본은 시스템이 만든 `CREATED` 다. */
 type AuditInput = Partial<PlayMonthlyAuditEvent> & Pick<PlayMonthlyAuditEvent, "scope">;
 const NONE = {
   item_id: null,
@@ -82,6 +122,7 @@ const NONE = {
   link_change: null,
   arrangement_change: null,
   copied_from: null,
+  timetable_change: null,
 };
 /** 시각은 앞선 이벤트보다 뒤다 — 같은 밀리초에 두 번 고쳐도 순서가 뒤집히지 않게. 한 번에 넣은 이벤트는 한 시각이다. */
 function record(db: Database, id: number, ...inputs: AuditInput[]) {
@@ -103,9 +144,15 @@ function record(db: Database, id: number, ...inputs: AuditInput[]) {
 export const listPlayMonthlyAudit = (id: number): PlayMonthlyAuditEvent[] =>
   structuredClone(read().playMonthlyAudit[id] ?? []);
 
-/** 새 놀이 월간 하나. `confirmed` 면 같은 데이터의 확정본이다. */
-export const addPlayMonthly = (classId: number, confirmed = false) =>
+/** 새 놀이 월간 하나. `confirmed` 면 같은 데이터의 확정본이다. `month` · 강조 놀이는 생성 요청에서 온다. */
+export const addPlayMonthly = (
+  classId: number,
+  confirmed = false,
+  month = 11,
+  emphasized: string[] = [],
+) =>
   commit((db) => {
+    const ym = (month >= 3 ? 2026 : 2027) + "-" + String(month).padStart(2, "0");
     let n = 0;
     const cell = (value: string, ev: PlayMonthlyCell["evidence"]): PlayMonthlyCell => ({
       item_id: "item_" + String(++n).padStart(32, "0"),
@@ -130,8 +177,8 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
       id: db.next++,
       class_id: classId,
       school_year: 2026,
-      month: 11,
-      target_month: "2026-11",
+      month,
+      target_month: ym,
       status: confirmed ? "CONFIRMED" : "DRAFT",
       revision: 1,
       format: "PLAY_MONTHLY",
@@ -140,10 +187,10 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
       confirmed_at: confirmed ? now : null,
       target_ages: [4, 5],
       weeks: [1, 2, 3, 4].map((w) => ({
-        week_id: "2026-11-W" + w,
-        label: "11월 " + w + "주",
-        start_date: "2026-11-" + String(2 + 7 * (w - 1)).padStart(2, "0"),
-        end_date: "2026-11-" + String(6 + 7 * (w - 1)).padStart(2, "0"),
+        week_id: ym + "-W" + w,
+        label: month + "월 " + w + "주",
+        start_date: ym + "-" + String(2 + 7 * (w - 1)).padStart(2, "0"),
+        end_date: ym + "-" + String(6 + 7 * (w - 1)).padStart(2, "0"),
         active: true,
       })),
       parent: {
@@ -157,7 +204,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
           play_name: "m09_m11 놀이 " + i,
           materials: "종이 상자",
           support_direction: "자료를 더해 줍니다.",
-          emphasized: false,
+          emphasized: emphasized.includes("cand" + i),
         })),
       },
       theme: cell("봄 길을 걸어요", parentEv),
@@ -168,7 +215,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
       together: rows("함께 놀이", "t.1"),
       free_play: rows("자유놀이", "t.3"),
       habits: [1, 2, 3, 4].map((w) => ({
-        week_id: "2026-11-W" + w,
+        week_id: ym + "-W" + w,
         entry_id: "h" + w,
         cell: cell("합성 습관 " + w, curriculum("t.1")),
       })),
@@ -189,7 +236,7 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
         ),
       })),
       safety_weeks: [1, 2, 3, 4].map((w) => ({
-        week_id: "2026-11-W" + w,
+        week_id: ym + "-W" + w,
         candidate_item_id: null,
       })),
       health: { entry_id: "he1", cell: cell("합성 건강 1", curriculum("t.2")) },
@@ -204,6 +251,9 @@ export const addPlayMonthly = (classId: number, confirmed = false) =>
         key,
         cell: { ...cell("", []), generation: null },
       })),
+      specialized_timetable: Array.from({ length: 10 }, blankCell),
+      special_activity: START.map(build),
+      special_activity_size: { column_widths: [20, 20, 20, 20, 20], height_mm: 24 },
       notices: [],
       parent_changed: false, // 응답마다 view 가 다시 계산한다.
     };
@@ -252,7 +302,8 @@ const view = (p: PlayMonthlyPlan): PlayMonthlyPlan => {
 
 export const findPlayMonthly = (id: number) => {
   const p = read().playMonthlyPlans.find((x) => x.id === id);
-  return p && view(p);
+  if (p && p.special_activity) return view(p);
+  return p && commit((db) => view(withTimetable(db.playMonthlyPlans.find((x) => x.id === id)!)));
 };
 export const findPlayMonthlyFor = (classId: number, targetMonth: string) =>
   read().playMonthlyPlans.find((p) => p.class_id === classId && p.target_month === targetMonth);
@@ -300,6 +351,8 @@ export const playCells = (p: PlayMonthlyPlan): PlayMonthlyCell[] => [
   p.nutrition.cell,
   ...p.drill_candidates.map((d) => d.cell),
   ...p.teacher_inputs.map((t) => t.cell),
+  ...p.specialized_timetable,
+  ...p.special_activity.flatMap(leaves),
 ];
 /**
  * 바뀌었으면 revision 을 올리고 `fn` 이 말한 이력을 남긴다. 같은 입력이면 그대로 두고 단건만 돌려준다
@@ -391,6 +444,104 @@ export const copyPlayMonthlyDrill = (id: number, itemId: string) =>
     Object.assign(to, structuredClone(copied));
     return true;
   });
+
+// ── 특별활동 시간표 (ADR-047). 한도 검사는 handlers 가 서버 순서대로 먼저 한다. ──
+const timetableLog = (change: Partial<NonNullable<PlayMonthlyAuditEvent["timetable_change"]>>) => ({
+  type: "TIMETABLE_CHANGED" as const,
+  scope: "PLAN" as const,
+  timetable_change: {
+    operation: "",
+    split_id: null,
+    cell_id: null,
+    new_cell_id: null,
+    axis: null,
+    before: [],
+    after: [],
+    ...change,
+  },
+});
+export const splitPlayMonthlyTimetable = (
+  id: number,
+  itemId: string,
+  axis: "VERTICAL" | "HORIZONTAL",
+) =>
+  change(id, (p, log) => {
+    const day = locate(p.special_activity, itemId)!.day;
+    const added = blankCell(),
+      splitId = blankCell().item_id;
+    p.special_activity[day] = splitLeaf(p.special_activity[day], itemId, axis, splitId, added);
+    log(
+      timetableLog({
+        operation: "SPLIT",
+        split_id: splitId,
+        axis,
+        cell_id: itemId,
+        new_cell_id: added.item_id,
+      }),
+    );
+    return true;
+  });
+export const removePlayMonthlyTimetable = (id: number, itemId: string) =>
+  change(id, (p, log) => {
+    const { day, path } = locate(p.special_activity, itemId)!;
+    const parent = path[path.length - 2];
+    p.special_activity[day] = removeLeaf(p.special_activity[day], itemId);
+    log(
+      timetableLog({
+        operation: "REMOVE",
+        split_id: parent.split_id,
+        axis: parent.axis,
+        cell_id: itemId,
+      }),
+    );
+    return true;
+  });
+export const resizePlayMonthlySplit = (id: number, splitId: string, ratio: number) =>
+  change(id, (p, log) => {
+    const day = p.special_activity.findIndex((d) => JSON.stringify(d).includes(splitId));
+    const before = findBoundary(p.special_activity[day], splitId)!.ratio!;
+    if (before === ratio) return false;
+    p.special_activity[day] = withRatio(p.special_activity[day], splitId, ratio);
+    log(
+      timetableLog({
+        operation: "RESIZE_SPLIT",
+        split_id: splitId,
+        before: [before],
+        after: [ratio],
+      }),
+    );
+    return true;
+  });
+export const resizePlayMonthlyTable = (id: number, size: PlayMonthlyTimetableSize) =>
+  change(id, (p, log) => {
+    const before = p.special_activity_size;
+    const same = (a: number[], b: number[]) => a.join() === b.join();
+    if (!same(before.column_widths, size.column_widths))
+      log(
+        timetableLog({
+          operation: "RESIZE_COLUMNS",
+          before: before.column_widths,
+          after: size.column_widths,
+        }),
+      );
+    if (before.height_mm !== size.height_mm)
+      log(
+        timetableLog({
+          operation: "RESIZE_HEIGHT",
+          before: [before.height_mm],
+          after: [size.height_mm],
+        }),
+      );
+    if (same(before.column_widths, size.column_widths) && before.height_mm === size.height_mm)
+      return false;
+    p.special_activity_size = structuredClone(size);
+    return true;
+  });
+export const findBoundary = (part: PlayMonthlyTimetablePart, splitId: string) => {
+  const walk = (node: PlayMonthlyTimetablePart): PlayMonthlyTimetablePart | undefined =>
+    node.split_id === splitId ? node : node.children.map(walk).find(Boolean);
+  return walk(part);
+};
 
 /** 서버 Core `confirm_problems` 의 위치 키. 비어 있으면 확정할 수 있다. */
 export function playConfirmProblems(p: PlayMonthlyPlan): string[] {

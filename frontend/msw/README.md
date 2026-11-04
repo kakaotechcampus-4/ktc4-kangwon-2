@@ -19,7 +19,7 @@ Next 서버 재시작/재빌드가 필요합니다. /api/... 상대 경로는 �
 
 API 직접 요청: ?mockError=GENERATION_FAILED&mockDelay=2000
 기존 화면 URL: ?mswTarget=annual&mswError=NO_ACTIVITIES
-mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm, annual-audit, monthly, monthly-list, monthly-get, monthly-cell, monthly-regenerate, monthly-confirm, template-profile, template-profiles, archive-summary, access-request, access-requests, access-decide
+mswTarget: center, class-create, classes, children, child-create, child-delete, plan-config, annual, annual-get, month, confirm, annual-audit, monthly, monthly-list, monthly-get, monthly-cell, monthly-regenerate, monthly-confirm, template-profile, template-profiles
 mswDelay=5000: loading. mswEmpty=true: 반/아동 GET만 empty.
 mswError: VALIDATION_FAILED, NOT_FOUND, GATE_BLOCKED, NO_ACTIVITIES, GENERATION_FAILED. 월간은 LLM_BUDGET_EXCEEDED, DEPENDENCY_UNAVAILABLE, STALE_WRITE, ALREADY_CONFIRMED 도 쓴다.
 mswField=selected_ages: 오류 field 지정.

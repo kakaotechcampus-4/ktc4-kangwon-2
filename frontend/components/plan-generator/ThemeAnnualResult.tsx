@@ -11,20 +11,28 @@ import {
 import type { AnnualPlan } from "@/lib/api/types";
 import {
   cleanSlots,
-  moveSlot,
-  removeSlot,
+  placeSlot,
   setSlot,
   slotMismatch,
+  slotRows,
 } from "@/lib/plan-generator/subThemeSlots";
-import AnnualFrame, { AsideStrip, BUTTON, tabClass } from "./AnnualFrame";
+import AnnualFrame, {
+  BigView,
+  BUTTON,
+  POPOVER,
+  tabClass,
+  UndoRedo,
+  useSheetZoom,
+} from "./AnnualFrame";
 import AnnualThemeSheet, { type ThemeSlot } from "./AnnualThemeSheet";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import { PlanMemoNote } from "./PlanMemo";
 
 type Draft = { theme: string; sub_themes: string[] };
 const SAVE_LABEL = {
-  idle: "작성 중",
-  saving: "작성 중 · 저장 중…",
-  saved: "작성 중 · 자동 저장됨",
+  idle: "",
+  saving: "저장 중…",
+  saved: "자동 저장됨",
   failed: "저장하지 못했어요",
 };
 const draftsOf = (plan: AnnualPlan) =>
@@ -39,13 +47,13 @@ const same = (a: Draft, b: Draft) =>
   a.theme === b.theme && a.sub_themes.join("\n") === b.sub_themes.join("\n");
 const slotInputId = (slot: ThemeSlot) => `annual-slot-${slot.month}-${slot.slot}`;
 const INPUT = "rounded-xl border border-[#ddd6ca] px-3 py-2 text-[15px] leading-relaxed";
-const SMALL =
-  "min-h-[36px] rounded-lg border border-[#e8e2d8] px-2 text-xs text-[#5c5243] disabled:opacity-40";
 
 /**
- * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제 배치(위 · 아래 · 추가 · 삭제 · 글 고치기).
+ * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제(글 고치기, 순서는 문서에서 끌어놓기).
  * AI 후보 탭은 서버 API 가 없어 두지 않는다. 한 달 저장은 주제와 소주제를 같이 보낸다(`putAnnualMonth`).
  */
+const SHEET_WIDTH = 860;
+
 export default function ThemeAnnualResult({
   plan,
   className,
@@ -68,7 +76,11 @@ export default function ThemeAnnualResult({
   const [message, setMessage] = useState("");
   const [flagged, setFlagged] = useState<number[]>([]);
   const [undo, setUndo] = useState<{ month: number; before: Draft }[]>([]);
-  const [full, setFull] = useState(false);
+  // 다시 하기 — 되돌리기 직전 그 달 값. 새로 고치면 비운다.
+  const [redo, setRedo] = useState<{ month: number; before: Draft }[]>([]);
+  // 문서 기준 폭(AnnualThemeSheet 최대 폭). 배율 도구가 이 폭을 문서 칸에 맞춘다.
+  const docBox = useRef<HTMLDivElement>(null);
+  const sheetZoom = useSheetZoom(docBox, SHEET_WIDTH);
   const [asking, setAsking] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // 서버가 받은 값(성공 응답 뒤에만 바뀐다) · 마지막으로 저장 줄에 넣은 값 · 저장 줄(한 번에 하나씩)
@@ -81,6 +93,11 @@ export default function ThemeAnnualResult({
   const month = plan.months.find((m) => m.month === selected.month)!;
   const weekCount = (m: number) => plan.months.find((item) => item.month === m)!.week_count;
   const draft = drafts[selected.month];
+  // 주마다 입력칸 — 아직 비어 있는 주도 칸을 보인다(「소주제 추가」 버튼 없이).
+  const slots = Array.from(
+    { length: slotRows(draft.sub_themes, month.week_count) },
+    (_, i) => draft.sub_themes[i] ?? "",
+  );
   const sheetMonths = plan.months.map((m) => ({ ...m, ...drafts[m.month] }));
 
   // 고른 칸의 입력창으로 포커스를 옮긴다(문서 칸을 눌렀을 때).
@@ -113,7 +130,10 @@ export default function ThemeAnnualResult({
     }
     if (same(body, before) && !failed.current.has(monthNo)) return;
     queued.current = { ...queued.current, [monthNo]: body };
-    if (record && !same(body, before)) setUndo((list) => [...list, { month: monthNo, before }]);
+    if (record && !same(body, before)) {
+      setUndo((list) => [...list, { month: monthNo, before }]);
+      setRedo([]);
+    }
     setStatus("saving");
     setMessage("");
     const synced = () => {
@@ -154,21 +174,35 @@ export default function ThemeAnnualResult({
     save(selected.month, drafts[selected.month]);
   }
 
-  // 이동 · 삭제 · 추가는 바로 저장한다(빈 칸 추가는 저장 값이 같아 보내지 않는다).
-  function editSlots(next: string[], focus: ThemeSlot["slot"]) {
-    const value = { ...draft, sub_themes: next };
-    change(selected.month, value);
-    setSelected({ month: selected.month, slot: focus });
-    save(selected.month, value);
+  // 문서에서 끌어 옮긴 소주제 — 그 달을 바로 저장한다.
+  function moveSlotTo(monthNo: number, from: number, to: number) {
+    const value = {
+      ...drafts[monthNo],
+      sub_themes: placeSlot(drafts[monthNo].sub_themes, from, to),
+    };
+    change(monthNo, value);
+    setSelected({ month: monthNo, slot: to });
+    save(monthNo, value);
   }
 
   function stepBack() {
     const last = undo[undo.length - 1];
     if (!last) return;
     setUndo(undo.slice(0, -1));
+    setRedo((list) => [...list, { month: last.month, before: queued.current[last.month] }]);
     change(last.month, last.before);
     setSelected({ month: last.month, slot: "theme" });
     save(last.month, last.before, false);
+  }
+
+  function stepForward() {
+    const next = redo[redo.length - 1];
+    if (!next) return;
+    setRedo(redo.slice(0, -1));
+    setUndo((list) => [...list, { month: next.month, before: queued.current[next.month] }]);
+    change(next.month, next.before);
+    setSelected({ month: next.month, slot: "theme" });
+    save(next.month, next.before, false);
   }
 
   async function confirm() {
@@ -189,7 +223,6 @@ export default function ThemeAnnualResult({
             !same(clean(drafts[m]), saved.current[m]),
         );
       if (unsaved.length) {
-        setFull(false);
         setSelected({ month: unsaved[0], slot: "theme" });
         setMessage(
           `${unsaved.map((m) => m + "월").join(" · ")}은 아직 저장되지 않았어요. 생활주제를 채우거나 다시 저장한 뒤 확정해 주세요.`,
@@ -204,7 +237,6 @@ export default function ThemeAnnualResult({
       if (!months.length)
         return setMessage(error instanceof Error ? error.message : "확정하지 못했어요.");
       setFlagged(months);
-      setFull(false);
       setSelected({ month: months[0], slot: "theme" });
       setMessage(
         `${months.map((m) => m + "월").join(" · ")}은 소주제 수가 주 수와 달라요. 주마다 하나씩 맞춰 주세요.`,
@@ -216,20 +248,16 @@ export default function ThemeAnnualResult({
     }
   }
 
-  const strip =
-    selected.slot === "theme"
-      ? `${selected.month}월 · 생활주제 칸을 골랐어요`
-      : `${selected.month}월 · ${selected.slot < month.week_count ? selected.slot + 1 + "주" : "남는"} 소주제 칸을 골랐어요`;
-  const filled = cleanSlots(draft.sub_themes).length;
   const aside = (
     <>
       <div className="flex gap-5 border-b border-[#efeae2] px-6 pt-2">
-        <span className={tabClass(true)}>칸 편집</span>
+        <span className={`${tabClass(true)} flex items-center`}>칸 편집</span>
       </div>
-      <AsideStrip>{strip}</AsideStrip>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] text-[#5c5243]">{selected.month}월 생활주제</span>
+          <span className="font-display text-[20px] font-bold leading-tight">
+            {selected.month}월 생활주제
+          </span>
           <input
             className={INPUT}
             id={slotInputId({ month: selected.month, slot: "theme" })}
@@ -240,18 +268,13 @@ export default function ThemeAnnualResult({
           />
         </label>
         <section className="flex flex-col gap-2" aria-label={`${selected.month}월 소주제`}>
-          <h2 className="m-0 flex items-baseline justify-between text-[15px] font-bold">
-            소주제
-            <span className="text-xs font-normal text-[#5c5243]">
-              {month.week_count}주 · {filled}개 넣음
-            </span>
-          </h2>
+          <h2 className="m-0 font-display text-[20px] font-bold leading-tight">소주제</h2>
           {slotMismatch(draft.sub_themes, month.week_count) && (
             <p role="status" className="m-0 text-[13px] font-bold text-[#b3261e]">
               주마다 하나씩 — {month.week_count}개를 맞춰야 확정할 수 있어요.
             </p>
           )}
-          {draft.sub_themes.map((value, i) => (
+          {slots.map((value, i) => (
             <div key={i} className="flex items-center gap-1.5">
               <span className="w-9 shrink-0 text-xs font-bold text-[#5e4b96]">
                 {i < month.week_count ? i + 1 + "주" : "남음"}
@@ -265,57 +288,28 @@ export default function ThemeAnnualResult({
                 onFocus={() => setSelected({ month: selected.month, slot: i })}
                 onChange={(e) =>
                   change(selected.month, {
-                    sub_themes: setSlot(draft.sub_themes, i, e.target.value),
+                    sub_themes: setSlot(slots, i, e.target.value),
                   })
                 }
                 onBlur={saveSelected}
               />
-              <button
-                type="button"
-                aria-label="위로"
-                className={SMALL}
-                disabled={i === 0 || confirming}
-                onClick={() => editSlots(moveSlot(draft.sub_themes, i, -1), i - 1)}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                aria-label="아래로"
-                className={SMALL}
-                disabled={i === draft.sub_themes.length - 1 || confirming}
-                onClick={() => editSlots(moveSlot(draft.sub_themes, i, 1), i + 1)}
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                aria-label="삭제"
-                className={SMALL}
-                disabled={confirming}
-                onClick={() => editSlots(removeSlot(draft.sub_themes, i), "theme")}
-              >
-                삭제
-              </button>
             </div>
           ))}
-          <button
-            type="button"
-            className="min-h-[40px] rounded-lg border border-dashed border-[#c5b7dd] text-sm font-bold text-[#5e4b96] disabled:opacity-40"
-            disabled={confirming}
-            onClick={() => editSlots([...draft.sub_themes, ""], draft.sub_themes.length)}
-          >
-            + 소주제 추가
-          </button>
         </section>
-        <p className="m-0 text-[13px] text-[#5c5243]">고치면 오른쪽 문서에 바로 반영돼요</p>
       </div>
     </>
   );
+  const sheetTitle = `${className ? className + " " : ""}${plan.school_year}학년도 연간 보육계획안`;
   return (
     <AnnualFrame
-      plan={plan}
-      status={SAVE_LABEL[status]}
+      title={`${plan.school_year} 연간계획안`}
+      format={plan.format}
+      status={
+        <span className="flex items-center gap-3">
+          {SAVE_LABEL[status]}
+          <PlanMemoNote plan={plan} />
+        </span>
+      }
       notice={
         <>
           {notice && (
@@ -338,59 +332,67 @@ export default function ThemeAnnualResult({
               다시 저장
             </button>
           )}
-          {asking && (
-            <PlayMonthlyConfirm
-              message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
-              yes={confirming ? "확정하는 중…" : "확정하기"}
-              no="더 다듬기"
-              disabled={confirming}
-              onYes={confirm}
-              onNo={() => setAsking(false)}
-            />
-          )}
         </>
       }
       actions={
         <>
-          <button
-            type="button"
-            className={BUTTON.quiet}
-            disabled={!undo.length || confirming}
-            onClick={stepBack}
-          >
-            되돌리기
-          </button>
-          <button
-            type="button"
-            className={BUTTON.outline}
-            aria-pressed={full}
-            onClick={() => setFull(!full)}
-          >
-            {full ? "고치기로" : "전체 보기"}
-          </button>
-          <button
-            type="button"
-            className={BUTTON.primary}
-            disabled={confirming}
-            onClick={() => setAsking(true)}
-          >
-            확정하기
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              className={BUTTON.primary}
+              disabled={confirming}
+              onClick={() => setAsking(true)}
+            >
+              확정하기
+            </button>
+            {asking && (
+              <div className={POPOVER}>
+                <PlayMonthlyConfirm
+                  message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
+                  yes={confirming ? "확정하는 중…" : "확정하기"}
+                  no="더 다듬기"
+                  disabled={confirming}
+                  onYes={confirm}
+                  onNo={() => setAsking(false)}
+                />
+              </div>
+            )}
+          </div>
         </>
       }
-      aside={full ? null : aside}
-      docLabel="소주제형 기본 양식"
+      aside={aside}
+      docLabel={null}
       docHint={
-        full ? "전체 보기" : "생활주제·소주제 칸을 누르면 왼쪽에서 고칠 수 있어요 · 월·주는 고정"
+        <div className="flex items-center gap-2">
+          <UndoRedo
+            disabled={confirming}
+            canUndo={undo.length > 0}
+            onUndo={stepBack}
+            canRedo={redo.length > 0}
+            onRedo={stepForward}
+          />
+          {sheetZoom.tools}
+          <span>
+            <BigView
+              pages={1}
+              render={() => <AnnualThemeSheet title={sheetTitle} months={sheetMonths} />}
+            />
+          </span>
+        </div>
       }
     >
-      <AnnualThemeSheet
-        title={`${className ? className + " " : ""}${plan.school_year}학년도 연간 보육계획안`}
-        months={sheetMonths}
-        selected={full ? null : selected}
-        flagged={flagged.filter((m) => slotMismatch(drafts[m].sub_themes, weekCount(m)))}
-        onSelect={full ? undefined : select}
-      />
+      <div ref={docBox}>
+        <div style={{ zoom: sheetZoom.percent / 100, width: SHEET_WIDTH }} className="mx-auto">
+          <AnnualThemeSheet
+            title={sheetTitle}
+            months={sheetMonths}
+            selected={selected}
+            flagged={flagged.filter((m) => slotMismatch(drafts[m].sub_themes, weekCount(m)))}
+            onSelect={select}
+            onMove={confirming ? undefined : moveSlotTo}
+          />
+        </div>
+      </div>
     </AnnualFrame>
   );
 }

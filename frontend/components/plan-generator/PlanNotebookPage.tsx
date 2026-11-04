@@ -6,7 +6,6 @@ import { listAnnualPlans } from "@/lib/api/plans";
 import { listMonthlyPlans } from "@/lib/api/monthly";
 import { listPlayMonthly } from "@/lib/api/playMonthly";
 import type { AnnualPlanSummary, MonthlyPlanSummary, PlayMonthlySummary } from "@/lib/api/types";
-import { localDate } from "@/lib/workspace/model";
 import AnnualImport from "./AnnualImport";
 
 /**
@@ -62,7 +61,13 @@ export function draftCards(
   ];
   return cards
     .sort((a, b) => b.created.localeCompare(a.created))
-    .map((c) => ({ ...c, date: localDate(c.created) }));
+    .map((c) => ({ ...c, date: shortDate(c.created) }));
+}
+
+// 카드 날짜는 정답지처럼 「10월 30일」. 문서 보관함은 localDate(2026.10.30) 그대로.
+function shortDate(iso: string) {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? "" : `${at.getMonth() + 1}월 ${at.getDate()}일`;
 }
 
 export default function PlanNotebookPage() {
@@ -94,7 +99,9 @@ export default function PlanNotebookPage() {
 
   return (
     <div className="flex w-full flex-col gap-5 px-7 pb-8 pt-6 text-[#2b2826]">
-      <h1 className="m-0 text-[24px] font-bold tracking-[-0.5px]">어떤 계획안을 만들까요?</h1>
+      <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+        어떤 계획안을 만들까요?
+      </h1>
       <div
         className="grid gap-4"
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))" }}
@@ -110,7 +117,9 @@ export default function PlanNotebookPage() {
 
       <section className="mt-6 flex flex-col gap-[14px] border-t border-[#e3ddd2] pt-6">
         <div className="flex items-baseline gap-3">
-          <h2 className="m-0 text-lg font-bold">이어서 하기</h2>
+          <h2 className="m-0 font-display text-[27px] font-bold leading-tight text-ink">
+            이어서 하기
+          </h2>
           <span className="text-sm text-[#5c5243]">확정하지 않은 계획안이에요</span>
         </div>
         {error && (
@@ -120,7 +129,7 @@ export default function PlanNotebookPage() {
         )}
         <div
           className="grid gap-4"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 180px), 180px))" }}
         >
           {/* 목록을 받기 전에는 「없어요」라고 말하지 않는다. */}
           {drafts === null && (
@@ -128,24 +137,32 @@ export default function PlanNotebookPage() {
               불러오는 중…
             </p>
           )}
-          {drafts?.length === 0 && (
-            <p className="m-0 text-sm text-[#5c5243]">쓰다 만 계획안이 없어요.</p>
-          )}
           {drafts?.map((card) => (
             <PlanCard key={card.key} card={card} />
           ))}
           <Link
             href="/documents"
-            className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-[#d7d0c7] px-5 py-[18px] text-center text-[#5e4b96] no-underline"
+            className={`${CARD_SIZE} flex flex-col items-center justify-center gap-1 break-keep rounded-2xl border border-dashed border-[#d7d0c7] px-4 py-[18px] text-center text-[#5e4b96] no-underline`}
           >
-            <span className="text-[15px] font-bold">문서 보관함에서 모두 보기 →</span>
-            <span className="text-[13px] text-[#5c5243]">확정한 계획안도 여기 있어요</span>
+            <span className="text-[15px] font-bold">
+              문서 보관함에서
+              <br />
+              모두 보기&nbsp;→
+            </span>
+            <span className="text-[13px] text-[#5c5243]">
+              확정한 계획안도
+              <br />
+              여기 있어요
+            </span>
           </Link>
         </div>
       </section>
     </div>
   );
 }
+
+/** 이어서 쓰기 카드와 「모두 보기」 카드는 쓰다 만 계획안이 없어도 같은 크기. */
+const CARD_SIZE = "min-h-[156px]";
 
 const Chevron = () => (
   <svg
@@ -182,12 +199,39 @@ function Panel({
   const chip = v1 ? "bg-[#e8f1ea] text-[#3b5441]" : "bg-[#eee4f4] text-[#5e4b96]";
   const steps = v1 ? ["연간", "월간", "주간"] : ["연간", "월간"];
   return (
-    <section className="flex min-h-[340px] flex-col justify-between gap-5 rounded-[20px] border border-[#e8e2d8] bg-white px-8 py-7">
+    <section className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper shadow-pg px-8 py-7">
+      {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}
+      <details className="group absolute right-5 top-5 z-10">
+        <summary
+          aria-label={`${MODE[format]} 시작 안내`}
+          title="시작 안내"
+          className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-paper text-[#5e4b96] shadow-pg-card group-open:bg-[#f6f1fb] [&::-webkit-details-marker]:hidden"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 11v6" />
+            <path d="M12 7h.01" />
+          </svg>
+        </summary>
+        <p className="absolute right-0 top-full m-0 mt-2 w-[260px] rounded-xl border border-line bg-paper px-4 py-3 text-[14px] leading-relaxed text-[#2b2826] shadow-pg-card">
+          {v1
+            ? "월간부터 시작하면 우리 원 연간계획안을 먼저 넣어요."
+            : "놀이 중심형은 연간부터 시작해요."}
+        </p>
+      </details>
       <div className="flex flex-col gap-2">
         <span className={`text-sm font-bold ${v1 ? "text-[#49654f]" : "text-[#5e4b96]"}`}>
           {v1 ? "생활주제 따라" : "아이들 놀이 따라"}
         </span>
-        <h2 className="m-0 text-[28px] font-bold tracking-[-0.5px]">{MODE[format]}</h2>
+        <h2 className="m-0 font-display text-[34px] font-bold leading-tight">{MODE[format]}</h2>
         <p className="m-0 text-base leading-relaxed text-[#5c5243]">
           {v1
             ? "연간에서 월간, 월간에서 주간으로 차근차근 내려가요."
@@ -246,28 +290,21 @@ function Panel({
           <p className="m-0 text-right text-[13px] text-[#5c5243]">HWP · HWPX · DOCX · PDF</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/plans/annual/new?format=${format}`}
-              className="flex min-h-[54px] flex-1 items-center justify-center rounded-xl bg-[#7053a0] text-base font-bold text-white no-underline"
-            >
-              연간부터 시작하기
-            </Link>
-            <button
-              type="button"
-              onClick={() => onSkip(true)}
-              disabled={!v1}
-              className="min-h-[54px] flex-1 rounded-xl border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {v1 ? "월간부터 시작하기" : "월간부터 시작하기 (준비 중)"}
-            </button>
-          </div>
-          <p className="m-0 text-right text-[13px] text-[#5c5243]">
-            {v1
-              ? "월간부터 시작하면 우리 원 연간계획안을 먼저 넣어요"
-              : "놀이 중심형은 연간부터 시작해요"}
-          </p>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/plans/annual/new?format=${format}`}
+            className="flex min-h-[54px] flex-1 items-center justify-center rounded-xl bg-[#7053a0] text-base font-bold text-white no-underline shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+          >
+            연간부터 시작하기
+          </Link>
+          <button
+            type="button"
+            onClick={() => onSkip(true)}
+            disabled={!v1}
+            className="min-h-[54px] flex-1 rounded-xl border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {v1 ? "월간부터 시작하기" : "월간부터 시작하기 (준비 중)"}
+          </button>
         </div>
       )}
     </section>
@@ -278,7 +315,7 @@ function PlanCard({ card }: { card: DraftCard }) {
   return (
     <Link
       href={card.href}
-      className="flex flex-col gap-3 rounded-2xl border border-[#e8e2d8] bg-white px-5 py-[18px] text-[#2b2826] no-underline"
+      className={`${CARD_SIZE} flex flex-col gap-3 border border-line bg-paper shadow-pg-card px-5 py-[18px] text-[#2b2826] no-underline`}
     >
       <span className="flex items-center justify-between">
         <span className="rounded-full bg-[#f7edce] px-[10px] py-[3px] text-[13px] font-bold text-[#705936]">

@@ -8,6 +8,7 @@ from datetime import datetime
 from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .plan import PlanItem, PlanStatus
+from .teacher_memo import MemoNotice, require_memo_fields
 from .provenance import (
     AuditEvent,
     AuditEventType,
@@ -67,10 +68,14 @@ class YearlyPlan:
     status: PlanStatus
     periods: tuple[YearlyPeriod, ...]
     audit: AuditHistory = field(default_factory=AuditHistory)
+    # ADR-060: the teacher's request note and the requests generation could not apply.
+    teacher_memo: str = ""
+    memo_notices: tuple[MemoNotice, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("YearlyPlan.plan_id must be PlanId")
+        require_memo_fields("YearlyPlan", self.teacher_memo, self.memo_notices)
         if type(self.school_year) is not int or not 1 <= self.school_year <= 9998:
             raise InvalidDomainValueError(
                 "YearlyPlan.school_year must be an integer from 1 through 9998"

@@ -11,6 +11,9 @@ import { readToken } from "../auth/token";
  * 없으면 영문 `filename` 을 쓴다. 둘 다 없을 때만 `fallbackName` 을 쓴다 — 이름이 비면
  * 브라우저가 아무 이름이나 붙이고 `.hwpx` 확장자까지 빠져 한글에서 안 열린다.
  */
+/** 내보내기 형식 — 서버 `?format=` (api-spec §9, ADR-039 · PDF 는 ADR-061). */
+export type ExportFormat = "pdf" | "hwpx" | "hwp";
+
 export async function downloadHwpx(path: string, fallbackName: string): Promise<void> {
   const token = readToken();
   const response = await fetch(path, {

@@ -98,7 +98,6 @@
 }
 .classCard {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -117,12 +116,6 @@
 }
 .classCard:hover {
   background: var(--pg-shell-hover);
-}
-/* 내가 주인인 반(my_access OWNER)은 연한 노랑, 다른 반은 흰 종이다. 선택(aria-pressed)은
-   아래 규칙이 덮는다 — 담당 여부와 선택은 따로 그린다. */
-.classCard[data-mine] {
-  background: var(--pg-note-soft);
-  border-color: var(--pg-note-soft-line);
 }
 /* 선택 표시는 기존 aria-pressed 상태만 따른다. */
 .classCard[aria-pressed="true"] {
@@ -148,64 +141,6 @@
   width: 16px;
   height: 16px;
   color: var(--pg-ink-soft);
-  flex: none;
-}
-/* 같은 원의 다른 선생님 반이 섞일 때만 붙는다 (ClassRail 의 `mark`).
-   반 이름 줄을 좁히지 않도록 제 줄로 내린다 — 레일은 180px 남짓이다. */
-.mineRow {
-  flex: 0 0 100%;
-}
-.mineTag {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: #f0e6fb;
-  color: #6b4e86;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-}
-.mineTag[data-access="APPROVED"] {
-  background: var(--pg-sage-tint);
-  color: var(--pg-sage-ink);
-}
-.mineTag[data-access="PENDING"] {
-  background: var(--pg-sun-tint);
-  color: var(--pg-sun-ink);
-}
-.mineTag[data-access="REJECTED"],
-.mineTag[data-access="REVOKED"] {
-  background: var(--pg-shell);
-  color: var(--pg-ink-soft);
-}
-/* 내 반에 기다리는 열람 요청 수. */
-.requestCount {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--pg-alert-soft);
-  color: var(--pg-alert-ink);
-  font-size: 11px;
-  font-weight: 700;
-}
-/* 열람만 승인된 반을 보는 중이라는 알림. 작성 자리는 각 카드에서 따로 잠긴다. */
-.readOnlyNote {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 14px;
-  padding: 10px 14px;
-  border: 1px solid #e6d2f6;
-  border-radius: 16px;
-  background: #faf5ff;
-  color: #5d4376;
-  font-size: 13px;
-  font-weight: 600;
-}
-.readOnlyNote svg {
-  width: 16px;
-  height: 16px;
   flex: none;
 }
 .railEmpty {
@@ -1774,163 +1709,56 @@
   }
 }
 
-/* ── 같은 원 다른 반 열람 요청 (ADR-059) ── */
-/* 승인 전 반: 요청 단추 + 요약. 요약에는 제목 · 아이 이름이 없다. */
-.accessPanel {
-  gap: 16px;
+/* ── 같은 원 남의 반 (ADR-059) — 반 고르기 칸 아래 묶음 ── */
+.classList + .railHead {
+  margin-top: 22px;
 }
-.accessHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
+/* 묶음이 둘이면 첫 목록이 남은 높이를 다 먹어 둘째 묶음이 바닥으로 밀린다. 내용만큼만 선다.
+   줄어들지는 않는다 — 레일 높이가 고정이라 줄면 내 반 카드가 잘린다. 넘치면 둘째 목록이 구른다. */
+.classList:has(+ .railHead) {
+  flex: 0 0 auto;
 }
-.accessHead > div {
-  flex: 1 1 240px;
-  min-width: 0;
+/* 낮은 화면(레일 360px)에서도 같은 원 반 카드가 두 장은 보인다. 넘치면 아래 그림이 가려진다. */
+@media (min-width: 761px) {
+  .railNote + .classList {
+    min-height: 108px;
+  }
 }
-.accessHead h3 {
-  margin: 0 0 4px;
-  font-size: 16px;
-}
-.accessHead p {
-  margin: 0;
-}
-.accessIcon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--pg-note-soft-line);
-  background: var(--pg-note-soft);
-  color: var(--pg-ink);
-}
-.accessIcon svg {
-  width: 18px;
-  height: 18px;
-}
-.accessMessage {
-  margin: 0;
-  padding: 8px 12px;
-  border-left: 3px solid var(--pg-sun);
-  background: var(--pg-sun-tint);
-  color: var(--pg-ink);
-  font-size: 13px;
-}
-.summary {
-  border-top: 1px dashed var(--pg-line);
-  padding-top: 12px;
-}
-.summaryHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  margin-bottom: 8px;
-}
-.summaryHead h4 {
-  margin: 0;
-  font-size: 14px;
-}
-.summaryList {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.summaryList li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  padding: 8px 12px;
-  border: 1px solid var(--pg-line);
-  background: var(--pg-ivory);
-  font-size: 13px;
-}
-.summaryKind {
-  min-width: 110px;
-  font-weight: 700;
-  color: var(--pg-ink);
-}
-.summaryPeriod {
-  flex: 1 1 auto;
-  color: var(--pg-ink-soft);
-}
-.summaryEmpty {
-  margin: 0;
-  color: var(--pg-ink-soft);
-  font-size: 13px;
-}
-/* 내 반에 온 요청. 내 반을 보고 있을 때만 본문 맨 위에 붙는다. */
-.requestsPanel {
-  margin: 0 0 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--pg-note-soft-line);
-  background: var(--pg-note-soft);
-  box-shadow: var(--pg-shadow-card);
-}
-.requestsPanel h3 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 8px;
-  font-size: 14px;
-}
-.requestsPanel h3 svg {
-  width: 16px;
-  height: 16px;
-}
-.requestsPanel p {
-  margin: 0 0 6px;
-  font-size: 13px;
-}
-.requestList {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.requestList li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  padding: 8px 10px;
-  border: 1px solid var(--pg-line);
-  background: var(--pg-paper);
-}
-.requestWho {
-  display: grid;
-  flex: 1 1 180px;
-  min-width: 0;
-  font-size: 13px;
-}
-.requestWho span {
-  color: var(--pg-ink-soft);
+.railNote {
+  margin: -8px 4px 10px;
   font-size: 12px;
+  line-height: 1.5;
+  color: var(--pg-ink-soft);
 }
-.requestState {
-  padding: 3px 9px;
+/* 열람 상태. 승인된 반만 세이지, 기다리는 반은 해, 막힌 반은 흐린 회색이다. */
+.railBadge {
+  flex: none;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--pg-shell);
-  color: var(--pg-ink-soft);
-  font-size: 12px;
+  border: 1px solid var(--pg-line);
+  font-size: 11.5px;
   font-weight: 700;
-  white-space: nowrap;
+  color: var(--pg-ink-soft);
 }
-.requestState[data-state="PENDING"] {
+.railBadge[data-state="PENDING"] {
   background: var(--pg-sun-tint);
+  border-color: var(--pg-sun);
   color: var(--pg-sun-ink);
 }
-.requestState[data-state="APPROVED"] {
+.railBadge[data-state="APPROVED"] {
   background: var(--pg-sage-tint);
+  border-color: var(--pg-sage-line);
   color: var(--pg-sage-ink);
 }
-.requestActions {
-  display: flex;
-  gap: 6px;
+.railCount {
+  flex: none;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pg-alert-strong);
+  color: var(--pg-paper);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
 }

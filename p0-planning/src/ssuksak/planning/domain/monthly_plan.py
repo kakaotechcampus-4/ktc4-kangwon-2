@@ -20,6 +20,7 @@ from .monthly_template_profile import DRILL_SECTION_KEY
 from .monthly_template_snapshot import TemplateSnapshot
 from .monthly_verification import VerificationReport
 from .plan import PlanStatus
+from .teacher_memo import MemoNotice, require_memo_fields, without_memo_evidence
 from .safety_placement import STATUTORY_SHORT_LABELS, SafetyKind, SafetyPlacement, SafetyWeek
 from .provenance import (
     ArrangementChange,
@@ -186,7 +187,7 @@ class MonthlySafetyCandidate:
         if statutory and named not in STATUTORY_SHORT_LABELS:
             raise InvalidDomainValueError("STATUTORY names one of the six legal categories")
         source = EvidenceSourceType.SAFETY_RULE if statutory else EvidenceSourceType.INSTITUTION_SAMPLE
-        if any(item.source_type is not source for item in self.cell.evidence):
+        if any(item.source_type is not source for item in without_memo_evidence(self.cell.evidence)):
             raise InvalidDomainValueError(f"{self.kind.value} safety cites {source.value} only")
 
 
@@ -215,7 +216,9 @@ class MonthlyDrillCandidate:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise InvalidDomainValueError(f"MonthlyDrillCandidate.{name} must be non-blank")
-        if any(item.source_type is not EvidenceSourceType.CURRICULUM for item in self.cell.evidence):
+        if any(
+            item.source_type is not EvidenceSourceType.CURRICULUM for item in without_memo_evidence(self.cell.evidence)
+        ):
             raise InvalidDomainValueError("A drill candidate cites CURRICULUM only")
 
 
@@ -298,10 +301,15 @@ class MonthlyPlan:
     safety_weeks: tuple[SafetyWeek, ...] = ()
     # The Rule's drill topics, worded by the LLM; present exactly when the drill Section is.
     drill_candidates: tuple[MonthlyDrillCandidate, ...] = ()
+    # ADR-060: the teacher's request note, kept for single-cell regeneration, and the
+    # requests generation could not apply (shown to the teacher, never blocking).
+    teacher_memo: str = ""
+    memo_notices: tuple[MemoNotice, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("MonthlyPlan.plan_id must be PlanId")
+        require_memo_fields("MonthlyPlan", self.teacher_memo, self.memo_notices)
         if not isinstance(self.parent_subthemes, tuple) or any(
             not isinstance(value, str) for value in self.parent_subthemes
         ):
@@ -457,22 +465,23 @@ class MonthlyPlan:
             if weeks:
                 raise InvalidDomainValueError("Safety placements need safety candidates")
             return
-        if len(candidates) != SAFETY_CANDIDATE_COUNT:
+        if len(candidates) < SAFETY_CANDIDATE_COUNT:
             raise InvalidDomainValueError(
-                f"A candidate-mode Plan keeps exactly {SAFETY_CANDIDATE_COUNT} safety candidates"
+                f"A candidate-mode Plan keeps at least {SAFETY_CANDIDATE_COUNT} safety candidates"
             )
         section = self.section(SAFETY_SECTION_KEY)
         if section is None or any(cell.value.strip() for cell in section.cells):
             raise InvalidDomainValueError(
                 "A candidate-mode Plan keeps its weekly safety_education Cells blank"
             )
-        if sorted(c.category_id for c in candidates if c.kind is SafetyKind.STATUTORY) != sorted(
-            STATUTORY_SHORT_LABELS
-        ):
-            raise InvalidDomainValueError("Safety candidates are one per legal category plus two 생활안전")
-        slots = [c.category_id or c.topic_group for c in candidates]
+        # Every legal category once, two 생활안전 topics; a teacher request (ADR-060) may add
+        # more sentences of a legal category, each citing a different official item.
+        statutory = [c.category_id for c in candidates if c.kind is SafetyKind.STATUTORY]
+        life = [c.topic_group for c in candidates if c.kind is not SafetyKind.STATUTORY]
+        if set(statutory) != set(STATUTORY_SHORT_LABELS) or len(life) != 2 or len(set(life)) != 2:
+            raise InvalidDomainValueError("Safety candidates are each legal category plus two 생활안전")
         ids = [c.cell.item_id for c in candidates]
-        if len(set(slots)) != len(slots) or len(set(ids)) != len(ids) or set(ids) & {
+        if len(set(ids)) != len(ids) or set(ids) & {
             cell.item_id for cell in self.cells
         }:
             raise InvalidDomainValueError("Safety candidates need distinct slots and ItemIds")

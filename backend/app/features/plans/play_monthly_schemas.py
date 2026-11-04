@@ -10,7 +10,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, Field, StrictInt, StrictStr, StringConstraints
 
 from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, MemoIn, MemoNoticeOut
 
 
 def _no_duplicates(keys: list[str]) -> list[str]:
@@ -34,6 +34,7 @@ class CreatePlayMonthlyPlan(BaseModel):
     emphasized_row_keys: Annotated[
         list[_RowKey], Field(max_length=5), AfterValidator(_no_duplicates)
     ] = []
+    memo: MemoIn = ""
 
 
 # ── 변경 (§9-7) ────────────────────────────────────────────────────────────
@@ -62,6 +63,19 @@ class ContentIdsIn(RevisionIn):
 
 class AddActivityIn(RevisionIn):
     section: Literal["together", "free_play"]
+
+
+class SplitTimetableIn(RevisionIn):
+    axis: Literal["VERTICAL", "HORIZONTAL"]
+
+
+class TimetableRatioIn(RevisionIn):
+    ratio: StrictInt
+
+
+class TimetableSizeIn(RevisionIn):
+    column_widths: list[StrictInt]
+    height_mm: StrictInt
 
 
 class SafetyWeekIn(RevisionIn):
@@ -158,6 +172,24 @@ class TeacherInputOut(BaseModel):
     cell: CellOut
 
 
+class TimetablePartOut(BaseModel):
+    """특별활동 시간표 한 요일의 나눔 트리(ADR-047). 칸이면 `cell` 만, 경계면 나머지 넷만 온다.
+
+    `VERTICAL` 은 위아래, `HORIZONTAL` 은 좌우이고 `ratio` 는 첫 갈래(위 · 왼쪽)의 % 다.
+    """
+
+    cell: CellOut | None = None
+    split_id: str | None = None
+    axis: Literal["VERTICAL", "HORIZONTAL"] | None = None
+    ratio: int | None = None
+    children: list["TimetablePartOut"] = Field(default_factory=list)
+
+
+class TimetableSizeOut(BaseModel):
+    column_widths: list[int]  # 월~금, 표 폭의 %
+    height_mm: int
+
+
 class NoticeOut(BaseModel):
     code: str
     week_id: str | None
@@ -192,7 +224,14 @@ class PlayMonthlyPlanOut(BaseModel):
     nutrition: EntryOut
     drill_candidates: list[DrillCandidateOut]
     teacher_inputs: list[TeacherInputOut]
+    # 특성화 시간표 — 제목 5칸 다음 내용 5칸(같은 열끼리 위아래).
+    specialized_timetable: list[CellOut]
+    # 특별활동 시간표 — 월~금 다섯 요일의 나눔 트리와 크기.
+    special_activity: list[TimetablePartOut]
+    special_activity_size: TimetableSizeOut
     notices: list[NoticeOut]
+    memo: str = ""
+    memo_notices: list[MemoNoticeOut] = []
 
 
 # ── 변경 이력 (§9-7) ───────────────────────────────────────────────────────
@@ -211,7 +250,7 @@ class ArrangementChangeOut(BaseModel):
 
 
 class PlayMonthlyAuditEventOut(BaseModel):
-    """키 11개가 늘 온다. 해당이 없으면 null 이다."""
+    """키 12개가 늘 온다. 해당이 없으면 null 이다."""
 
     type: str
     occurred_at: datetime
@@ -224,6 +263,8 @@ class PlayMonthlyAuditEventOut(BaseModel):
     link_change: LinkChangeOut | None
     arrangement_change: ArrangementChangeOut | None
     copied_from: str | None
+    # 시간표 나누기 · 지우기 · 크기(TIMETABLE_CHANGED). 크기는 앞뒤 숫자다.
+    timetable_change: dict | None = None
 
 
 class PlayMonthlyAuditOut(BaseModel):
