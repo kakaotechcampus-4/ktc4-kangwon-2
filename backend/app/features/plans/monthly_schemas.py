@@ -8,7 +8,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, StrictStr
 
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, MemoIn, MemoNoticeOut
 
 
 class ProfileRefIn(BaseModel):
@@ -20,6 +20,7 @@ class CreateMonthlyPlan(BaseModel):
     class_id: int
     month: int = Field(ge=1, le=12)
     profile_ref: ProfileRefIn
+    memo: MemoIn = ""
 
 
 class ProfileRefOut(BaseModel):
@@ -142,6 +143,8 @@ class MonthlyPlanOut(BaseModel):
     notices: list[NoticeOut]
     constraints: list[ConstraintOut]
     verification: VerificationOut
+    memo: str = ""
+    memo_notices: list[MemoNoticeOut] = []
     created_at: datetime
     confirmed_at: datetime | None
 

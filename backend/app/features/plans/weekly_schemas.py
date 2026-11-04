@@ -15,7 +15,7 @@ from app.features.plans.monthly_schemas import (
     TemplateRefOut,
     VerificationOut,
 )
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, MemoIn, MemoNoticeOut
 
 
 class CreateWeeklyPlan(BaseModel):
@@ -23,6 +23,7 @@ class CreateWeeklyPlan(BaseModel):
     week_id: str
     activity_candidates: bool = False
     indoor_play_candidates: bool = False
+    memo: MemoIn = ""
 
 
 class WeeklyParentOut(BaseModel):
@@ -137,6 +138,8 @@ class WeeklyPlanOut(BaseModel):
     activity_candidates: list[WeeklyActivityCandidateOut] = Field(default_factory=list)
     activity_grids: list[WeeklyActivityGridOut] = Field(default_factory=list)
     indoor_play_selection: bool = False
+    memo: str = ""
+    memo_notices: list[MemoNoticeOut] = []
 
 
 class WeeklyPlanSummary(BaseModel):

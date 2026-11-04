@@ -123,7 +123,7 @@ import type {
 const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
 const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
-/** 요청 사항(ADR-057). 서버처럼 앞뒤 공백을 떼고 300자까지 — 틀리면 null. 목업은 반영 못한 요청을 만들지 않는다. */
+/** 요청 사항(ADR-060). 서버처럼 앞뒤 공백을 떼고 300자까지 — 틀리면 null. 목업은 반영 못한 요청을 만들지 않는다. */
 const memoOf = (b: Record<string, unknown>) =>
   b.memo == null
     ? ""

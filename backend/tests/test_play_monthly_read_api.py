@@ -29,7 +29,7 @@ SINGLE_KEYS = {
     "parent_changed", "theme",
     "rationale", "together", "free_play", "habits", "safety_candidates", "safety_weeks", "health",
     "nutrition", "drill_candidates", "teacher_inputs", "specialized_timetable",
-    "special_activity", "special_activity_size", "notices",
+    "special_activity", "special_activity_size", "notices", "memo", "memo_notices",
 }  # fmt: skip
 
 

@@ -18,6 +18,7 @@ from ssuksak.planning.domain.play_project_plan import ROW_FIELDS, PlayProjectYea
 from ssuksak.planning.planner.contracts import RawLlmResponse
 from ssuksak.planning.planner.play_project import PlayProjectRequest
 
+from app.features.plans.memo_privacy import with_masked_memo
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_schemas import RevisionIn
@@ -33,7 +34,9 @@ from app.features.plans.schemas import (
     PlayProjectPlanOut,
     SelectionChangeOut,
     ValueChangeOut,
+    memo_notices_out,
 )
+from app.shared.childCode import NameTable
 from app.shared.llm import is_mock
 
 CURRICULUM_CATALOG_ID = "ssuksak.nuri-curriculum-content"
@@ -70,6 +73,12 @@ class MockPlayProjectProvider:
                         }
                         for index in range(request.row_count)
                     ],
+                    # 요청 사항이 있으면 mock 은 첫 후보에 반영했다고 답한다(ADR-060).
+                    **(
+                        {"memo_applied": list(request.memo_addresses[:1]), "memo_skipped": []}
+                        if request.memo_addresses is not None
+                        else {}
+                    ),
                 },
                 ensure_ascii=False,
             ),
@@ -85,12 +94,18 @@ def provider():
     return MockPlayProjectProvider() if is_mock() else monthly_llm_provider()
 
 
-def generate(school_year: int, classroom_ref: str, target_ages: frozenset[int]):
+def generate(
+    school_year: int,
+    classroom_ref: str,
+    target_ages: frozenset[int],
+    memo: str = "",
+    names: NameTable | None = None,
+):
     plan_id = UuidGenerator().new_plan_id()
     use_case = GeneratePlayProjectPlan(
         curriculum_repository=curriculum_repository(),
         plan_repository=InMemoryPlanRepository(),
-        provider=provider(),
+        provider=with_masked_memo(provider(), memo, names),
         clock=SystemClock(),
         id_generator=FixedPlanIdGenerator(plan_id),
     )
@@ -106,13 +121,19 @@ def generate(school_year: int, classroom_ref: str, target_ages: frozenset[int]):
                 curriculum_catalog_id=CURRICULUM_CATALOG_ID,
                 curriculum_catalog_version=CURRICULUM_CATALOG_VERSION,
                 avoid_play_names=avoid_play_names,
+                teacher_memo=memo,
             )
         )
         results.append(result)
         avoid_play_names += tuple(
             candidate.play_name.value for candidate in result.periods[0].candidates
         )
-    return replace(results[0], periods=tuple(result.periods[0] for result in results))
+    return replace(
+        results[0],
+        periods=tuple(result.periods[0] for result in results),
+        # 기간마다 같은 요청을 못 했다고 답할 수 있다 — 한 번만 남긴다.
+        memo_notices=tuple(dict.fromkeys(n for result in results for n in result.memo_notices)),
+    )
 
 
 def format_of(row: Plan) -> str:
@@ -145,6 +166,8 @@ def _cell(item) -> PlayCellOut:
 def to_out(row: Plan, plan: PlayProjectYearlyPlan) -> PlayProjectPlanOut:
     return PlayProjectPlanOut(
         id=row.id,
+        memo=plan.teacher_memo,
+        memo_notices=memo_notices_out(plan),
         revision=row.revision,
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,

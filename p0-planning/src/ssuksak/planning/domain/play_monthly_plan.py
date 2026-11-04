@@ -30,6 +30,7 @@ from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .lineage import ParentLineage
 from .plan import PlanStatus
+from .teacher_memo import MemoNotice, require_memo_fields, without_memo_evidence
 from .provenance import (
     ArrangementChange,
     AuditEvent,
@@ -155,7 +156,8 @@ class PlayMonthlyCell:
             raise InvalidDomainValueError("PlayMonthlyCell.audit must be AuditHistory")
 
     def cites_only(self, *types: EvidenceSourceType) -> bool:
-        return all(source.source_type in types for source in self.evidence)
+        """The teacher-memo mark (ADR-060) is allowed beside any cell's own source types."""
+        return all(source.source_type in types for source in without_memo_evidence(self.evidence))
 
 
 @dataclass(frozen=True, slots=True)
@@ -467,10 +469,14 @@ class PlayMonthlyPlan:
     # A timetable cell a teacher removed, kept whole for history (D-7). Never printed.
     removed_timetable_cells: tuple[PlayMonthlyCell, ...] = ()
     format: str = PLAY_MONTHLY_FORMAT
+    # ADR-060: the teacher's request note and the requests generation could not apply.
+    teacher_memo: str = ""
+    memo_notices: tuple[MemoNotice, ...] = ()
 
     def __post_init__(self) -> None:
         if self.format != PLAY_MONTHLY_FORMAT:
             raise InvalidDomainValueError("PlayMonthlyPlan.format must be PLAY_MONTHLY")
+        require_memo_fields("PlayMonthlyPlan", self.teacher_memo, self.memo_notices)
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("PlayMonthlyPlan.plan_id must be PlanId")
         _non_blank(self.classroom_ref, "PlayMonthlyPlan.classroom_ref")

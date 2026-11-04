@@ -17,6 +17,7 @@ from .contracts import (
     MonthlyCellPlanningRequest,
     MonthlyCellSnapshot,
 )
+from .teacher_memo import TEACHER_MEMO_PROMPT, TEACHER_MEMO_PROMPT_TAG, cell_address
 from .prompt import (
     MONTHLY_V1_STYLE,
     _generation_schema,
@@ -137,12 +138,17 @@ def build_monthly_cell_request(
         }
     )
     contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
+    memo = (cell_address(target_week_id, target_section_key),) if packet.teacher_memo else None
+    if memo is not None:
+        body["teacher_memo"] = {"text": packet.teacher_memo, "addresses": list(memo)}
+        body["response_contract"]["memo_applied"] = ["address"]
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
-        prompt_version=MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION,
+        prompt_version=(MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION)
+        + (TEACHER_MEMO_PROMPT_TAG if memo is not None else ""),
         system_prompt=CELL_SYSTEM_PROMPT + (
             V1_GUIDANCE + MONTHLY_V1_STYLE + MONTHLY_V1_CELL_CONTEXT if contextual else ""
-        ),
+        ) + (TEACHER_MEMO_PROMPT if memo is not None else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         target_week_id=target_week_id,
@@ -156,4 +162,5 @@ def build_monthly_cell_request(
         packet_fingerprint=packet_fingerprint(packet),
         plan_snapshot_fingerprint=snapshot_fingerprint(month_snapshot),
         allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
+        memo_addresses=memo,
     )

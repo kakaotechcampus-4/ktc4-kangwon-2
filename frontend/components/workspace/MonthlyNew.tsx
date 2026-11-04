@@ -6,7 +6,7 @@
  * 놀이형은 이번 달에 집중할 놀이(`emphasized_row_keys`). 만드는 동안은 원형 화면(Ⓜ2)이다.
  * 월별 주제형은 넣을 칸도 여기서 고른다(따로 양식 화면이 없다). 고른 칸이 지금 양식과 다르면
  * 새 양식(§9-4)을 만들어 원 기본으로 걸고 그 양식으로 만든다.
- * 요청 사항(메모)은 버튼 위에 둔다(ADR-057). 두 형식 모두 받는다.
+ * 요청 사항(메모)은 버튼 위에 둔다(ADR-060). 두 형식 모두 받는다.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -168,7 +168,7 @@ export function MonthlyNewView(props: {
   /** 만들 수 없는 까닭(버튼 아래 한 줄). null 이면 만들 수 있다. */
   blocked: ReactNode;
   problem: string;
-  /** 요청 사항(ADR-057). 없으면 칸을 그리지 않는다(미리보기). */
+  /** 요청 사항(ADR-060). 없으면 칸을 그리지 않는다(미리보기). */
   memo?: string;
   memoProblem?: string | null;
   onMemo?: (memo: string) => void;

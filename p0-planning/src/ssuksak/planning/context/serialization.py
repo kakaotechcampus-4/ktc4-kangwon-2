@@ -30,6 +30,8 @@ def context_payload(packet: MonthlyContextPacket) -> dict[str, object]:
         del payload["safety_candidates"]
     if not payload["drill_topics"]:
         del payload["drill_topics"]
+    if not payload["teacher_memo"]:
+        del payload["teacher_memo"]
     if not payload["lineage"]["weekly_classification_version"]:
         del payload["lineage"]["weekly_classification_version"]
     return payload

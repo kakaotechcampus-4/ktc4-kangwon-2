@@ -29,6 +29,7 @@ from ..evidence.ports import (
     InstitutionEvidenceRepository,
     WeeklyEvidenceClassificationRepository,
 )
+from ..planner.teacher_memo import with_memo_evidence
 from ..planner.weekly import (
     OUTDOOR_KEY,
     SAFETY_KEY,
@@ -299,6 +300,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
             snapshot=plan.template_snapshot, catalog=catalog,
             constraint_assessments=plan.constraint_assessments, outdoor=outdoor,
             daily_life_loader=self._daily_life_loader,
+            teacher_memo=plan.teacher_memo,
         )
         if context.request.target(key) is None:
             # The same Rule as generation decides; this request is refused, not the Plan.
@@ -338,6 +340,7 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
         evidence, snapshots = llm_cell_sources(
             proposed, context, parent=parent, lineage=plan.parent_lineage, outdoor=outdoor, catalog=catalog
         )
+        evidence = with_memo_evidence(evidence, bool(outcome.memo_applied))
         generation = GenerationMethodDetail(GenerationMethod.RULE_LLM, LLM_RULE_ID, outcome.prompt_version_for(key))
         return proposed.value, evidence, snapshots, generation
 

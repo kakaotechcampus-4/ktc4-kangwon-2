@@ -6,9 +6,11 @@ one sentence per slot. A failure carries an internal ``code`` the caller maps to
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.provenance import EvidenceSource, EvidenceSourceType
-from ..domain.safety_placement import SafetyCandidateSlot, SafetyKind
+from ..domain.safety_placement import SafetyCandidateSlot, SafetyKind, SafetyWeek
 from ..domain.safety_rule import SafetyLegalRule
 from ..evidence.models import SourceSection
 from ..evidence.safety_classification import (
@@ -22,6 +24,8 @@ from ..rules.safety_placement import (
     official_ref,
     select_supplemental_primaries,
 )
+from ..rules.safety_requests import place_safety_requests
+from ..planner.teacher_memo import with_memo_evidence
 
 LIFE_SAFETY_LABEL = "life_safety"
 LIFE_SAFETY_SLOTS = ("life_safety_1", "life_safety_2")
@@ -138,4 +142,44 @@ def candidate_evidence(
             display_name=records[ref].source_label,
         )
         for ref in refs
+    )
+
+
+def apply_safety_requests(requests, candidates, weeks, *, slots, make_extra):
+    """ADR-060 2층, v1 · v2 공통: 메모의 법정 안전교육 요청을 만들 때 주에 둔다.
+
+    ``make_extra(category_id, ref, text)`` 가 그 경로의 후보 하나(RULE_ONLY · 요청 사항 Evidence)를 만든다.
+    요청으로 주에 놓인 LLM 후보에도 요청 사항 Evidence 를 붙인다. 반환: (후보들, 주 배치, 알림)."""
+    base = {c.category_id: c for c in candidates if c.kind is SafetyKind.STATUTORY}
+    placement = place_safety_requests(
+        requests,
+        week_ids=tuple(w.week_id.value for w in weeks),
+        allowed=slots,
+        cited={
+            category: tuple(e.source_id for e in c.cell.evidence if e.source_type is EvidenceSourceType.SAFETY_RULE)
+            for category, c in base.items()
+        },
+    )
+    extras: dict[str, list] = {}
+    for category, ref, text in placement.extras:
+        extras.setdefault(category, []).append(make_extra(category, ref, text))
+    used = {category for category, n in placement.weeks.values() if n == 0}
+    marked = tuple(
+        replace(c, cell=replace(c.cell, evidence=with_memo_evidence(c.cell.evidence, True)))
+        if c.kind is SafetyKind.STATUTORY and c.category_id in used
+        else c
+        for c in candidates
+    )
+
+    def item(week_id: str):
+        hit = placement.weeks.get(week_id)
+        if hit is None:
+            return None
+        category, n = hit
+        return (base[category] if n == 0 else extras[category][n - 1]).cell.item_id
+
+    return (
+        marked + tuple(c for group in extras.values() for c in group),
+        tuple(SafetyWeek(w.week_id, item(w.week_id.value)) for w in weeks),
+        placement.notices,
     )

@@ -272,3 +272,27 @@ def test_extra_key_fails_strict_parse():
     with pytest.raises(ProposalParseError):
         use_case.execute(command)
     assert len(plans) == 0
+
+
+def test_a_teacher_memo_reaches_the_prompt_and_marks_only_the_rows_it_changed():
+    payload = {
+        **_proposal(),
+        "memo_applied": ["cand2"],
+        "memo_skipped": [{"summary": "안전교육 시수 지정", "reason": "RULE_CONFLICT"}],
+    }
+    provider = _FakeProvider(payload)
+    use_case, command, _ = _run(provider)
+
+    plan = use_case.execute(replace(command, teacher_memo="물놀이를 많이 넣어 주세요"))
+
+    (request,) = provider.requests
+    assert request.prompt_version == PLAY_PROJECT_PROMPT_VERSION + "+teacher-memo-v1"
+    assert json.loads(request.user_content)["teacher_memo"]["addresses"][:2] == ["cand1", "cand2"]
+    marked = [
+        c.row_key
+        for c in plan.periods[0].candidates
+        if any(s.source_id == "teacher_memo" for s in (*c.play_name.evidence, *c.learning.evidence))
+    ]
+    assert marked == ["cand2"]
+    assert plan.teacher_memo == "물놀이를 많이 넣어 주세요"
+    assert [n.reason.value for n in plan.memo_notices] == ["RULE_CONFLICT"]
