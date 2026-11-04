@@ -592,6 +592,8 @@ function page(
 ) {
   const confirms = browser({ rooms, primaryClassId, search, confirm });
   const pushed = [];
+  /** 「오늘 일지 만들기」가 넘긴 근거 목록. 화면을 떠나지 않으므로 `pushed` 로는 못 본다. */
+  const journals = [];
   t.after(() => delete globalThis.window);
 
   const app = host();
@@ -639,11 +641,23 @@ function page(
       waitForRoutineScope: mutations.wait,
       // 달력 점은 적는 화면의 하루치 조회와 따로다. 섞으면 「하루만 읽는다」를 못 센다.
       listRoutineDates: async () => [],
+      routineLocalId: routines.routineLocalId,
       routineTime: routines.routineTime,
       routineTimeValue: routines.routineTimeValue,
       sortRoutinesByTime: routines.sortRoutinesByTime,
     },
-    "@/lib/api/documents": { listDocuments: async () => [] },
+    // 일지 칸 자체는 제 파일에서 본다. 여기서는 **근거로 무엇을 넘겼나**만 적어 둔다.
+    "./DailyJournalCard": {
+      __esModule: true,
+      default: "daily-journal",
+      useDailyJournal: () => ({
+        doc: null,
+        busy: false,
+        error: "",
+        make: async (ids) => void journals.push(ids),
+        off: true,
+      }),
+    },
     "@/lib/workspace/model": {
       today: () => TODAY,
       validDate: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value),
@@ -671,6 +685,7 @@ function page(
   return {
     confirms,
     pushed,
+    journals,
     unmount: app.cleanup,
     flush: view.flush,
     render: view.render,
@@ -1158,7 +1173,6 @@ test("어제도 없으면 기본 하루를 깐다", async (t) => {
 
 // ── 오늘 일지 만들기 (S-J1 수락 기준 3 · 3-1 · 3-2) ────────────────────────
 
-const DAILY_LOG = `/documents?kind=dailyLog&class_id=3&date=${TODAY}`;
 
 test("저장하지 않은 활동실행만으로도 「오늘 일지 만들기」가 켜진다", async (t) => {
   const api = recorder();
@@ -1183,7 +1197,9 @@ test("먼저 저장하고 그 다음에 S-J2 로 간다", async (t) => {
   view.button("오늘 일지 만들기").props.onClick();
   await view.flush();
   assert.equal(api.only("create").length, 1, "저장이 먼저다");
-  assert.deepEqual(view.pushed, [DAILY_LOG]);
+  // 방금 저장한 줄의 서버 번호가 그대로 일지의 근거가 된다. 다시 조회하지 않는다.
+  assert.deepEqual(view.journals, [[`routine:${api.rows()[0].id}`]]);
+  assert.deepEqual(view.pushed, [], "문서 보관함으로 보내지 않고 이 화면에서 연다");
 });
 
 test("저장이 실패하면 S-J2 로 가지 않고 적은 글자를 그대로 둔다", async (t) => {
@@ -1233,7 +1249,7 @@ test("두 번 눌러도 두 번 저장하거나 두 번 넘어가지 않는다",
   open.props.onClick();
   await view.flush();
   assert.equal(api.only("create").length, 1);
-  assert.deepEqual(view.pushed, [DAILY_LOG]);
+  assert.equal(view.journals.length, 1, "일지도 한 번만 만든다");
 });
 
 // ── 늦게 온 응답 (기존 보호 장치 회귀) ─────────────────────────────────────

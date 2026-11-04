@@ -17,6 +17,7 @@ const PAGE_NAMES: [prefix: string, name: string][] = [
   ["/plans", "계획안"],
   ["/templates", "계획안"],
   ["/trends", "계획안"],
+  ["/routines", "일과 기록"],
   ["/weekly-records", "주간 기록"],
   ["/records/children", "아이별 기록"],
   ["/records", "관찰 기록"],

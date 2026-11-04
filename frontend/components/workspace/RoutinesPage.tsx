@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getMe } from "@/lib/api/auth";
 import { getClasses } from "@/lib/api/classes";
@@ -12,6 +11,7 @@ import {
   deleteRoutine,
   listRoutineDates,
   listRoutines,
+  routineLocalId,
   routineTime,
   routineTimeValue,
   trackRoutineMutation,
@@ -30,6 +30,7 @@ import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
+import DailyJournalCard, { useDailyJournal } from "./DailyJournalCard";
 
 const CLASSES_FAILED = "반 목록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 // 서버 routine_records.name 이 50자다. 더 보내면 422 다 (§10-1).
@@ -257,7 +258,6 @@ function positionsFor(rows: Row[], saved: Draft["saved"]): number[] {
  * 한 번에 보낸다.
  */
 export default function RoutinesPage() {
-  const router = useRouter();
   // hydration 전에는 주소를 읽지 않는다 — 서버 HTML 과 어긋나지 않게 한다.
   const [query] = useClientState(fromQuery, NO_QUERY);
   // **교사가 고른 반만** 쓴다. 고른 적이 없으면 첫 반을 대신 고르지 않는다 (FR-402 · FR-405).
@@ -308,6 +308,7 @@ export default function RoutinesPage() {
   // 펴 놓은 달. 날짜를 직접 쳤으면 그 달로 따라가고, 달력에서 넘겼으면 그 달에 머문다.
   const month = pickedMonth ?? (validDate(date) ? date.slice(0, 7) : todayDate.slice(0, 7));
   const marked = useMonthMarks(classId, month, visit);
+  const journal = useDailyJournal({ classId, date: validDate(date) ? date : "" });
 
   /** 이 반·이 날짜. 방문이 달라도 **같은 자료**를 가리킨다 — 저장 대기줄의 칸이다. */
   const scope = `${classId}|${date}`;
@@ -494,10 +495,14 @@ export default function RoutinesPage() {
    *
    * 돌려주는 값은 「보내야 할 요청이 전부 성공했나」다. 일부가 실패하면 **초안을 비우지
    * 않는다** — 성공한 것만 초안에 반영해 두어, 다시 눌러도 같은 줄을 두 번 만들지 않는다.
+   *
+   * 함께 돌려주는 `evidence` 는 **실제로 한 것을 적은 줄의 서버 번호**다. 바로 뒤에
+   * 오늘 일지를 만들 때 근거(`source_ids`)가 된다 — 다시 조회해서 찾지 않는다.
    */
-  async function commit(): Promise<RoutineReviewImpact | null> {
+  async function commit(): Promise<{ impact: RoutineReviewImpact; evidence: string[] } | null> {
     const at = key;
     if (classId === null || !now) return null;
+    const evidence: string[] = [];
 
     let ok = true;
     const affected = new Set(now.reviewImpact?.affected_document_ids);
@@ -547,8 +552,10 @@ export default function RoutinesPage() {
             rows: d.rows.map((r) => (r.key === row.key ? { ...r, id: made.id } : r)),
             saved: { ...d.saved, [made.id]: made },
           }));
+          if (row.execution.trim()) evidence.push(routineLocalId(made.id));
           continue;
         }
+        if (row.execution.trim()) evidence.push(routineLocalId(row.id));
         if (was && sameInput(body, savedInput(was))) continue;
         const next = await trackRoutineMutation(
           scope,
@@ -560,7 +567,7 @@ export default function RoutinesPage() {
         fail(e);
       }
     }
-    return ok ? impact() : null;
+    return ok ? { impact: impact(), evidence } : null;
   }
 
   /**
@@ -589,8 +596,9 @@ export default function RoutinesPage() {
     const next = `${scope}|${visit + 1}`;
     if (!checkRows()) return;
     return run("save", async () => {
-      const impact = await commit();
-      if (!impact || !stillHere(at)) return;
+      const done = await commit();
+      if (!done || !stillHere(at)) return;
+      const impact = done.impact;
       // 서버가 정한 순서와 다듬은 값을 다시 읽는다. 문구는 **다음 방문**에 붙인다.
       const count = impact.newly_stale_document_ids.length;
       const already = impact.affected_document_ids.filter(
@@ -606,16 +614,22 @@ export default function RoutinesPage() {
   };
 
   /**
-   * 「오늘 일지 만들기」 — **저장을 먼저 하고** S-J2 로 간다 (S-J1 수락 기준 3-1).
-   * 저장이 실패하면 가지 않는다. 적은 글자는 그대로 남는다.
+   * 「오늘 일지 만들기」 — **저장을 먼저 하고 이 화면에서 연다** (S-J1 수락 기준 3-1).
+   *
+   * 전에는 문서 보관함으로 보냈다. 보관함은 다 쓴 문서가 쌓이는 곳이지 쓰는 곳이
+   * 아니고, 교사는 방금 적은 일과를 눈앞에 두고 일지를 손봐야 한다.
+   *
+   * 저장이 실패하면 만들지 않는다. 적은 글자는 그대로 남는다.
    */
   const openDailyLog = () => {
     const at = key;
-    const to = `/documents?kind=dailyLog&class_id=${classId}&date=${date}`;
     if (!checkRows()) return;
     return run("open", async () => {
-      if (classId === null || !(await commit()) || !stillHere(at)) return;
-      router.push(to);
+      if (classId === null) return;
+      const done = await commit();
+      if (!done || !stillHere(at)) return;
+      await journal.make(done.evidence);
+      revisit();
     });
   };
 
@@ -783,11 +797,8 @@ export default function RoutinesPage() {
                 다시 시도
               </button>
             )}
-            {/* 줄 수·작성 수를 세어 주던 안내는 없앴다. 교사가 화면을 보면 아는 숫자다.
-                `doneCount` 는 「오늘 일지 만들기」를 열고 닫는 조건으로 그대로 쓴다. */}
-            {ready && !doneCount && (
-              <p className={ws.hint}>실제로 한 것을 적으면 오늘 일지를 만들 수 있습니다.</p>
-            )}
+            {/* 일지는 칠판 바로 아래에 둔다 — 방금 적은 일과를 보며 손봐야 한다. */}
+            {ready && <DailyJournalCard state={journal} day={koreanDay(date).day} />}
           </section>
         </div>
       </WorkspaceViewState>

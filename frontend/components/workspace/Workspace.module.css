@@ -867,16 +867,38 @@ a.item {
   line-height: 1.7;
   resize: vertical;
 }
-/* 하려던 것은 접어 둔다 — 쓰는 원만 편다. */
+/* 하려던 것은 접어 둔다 — 쓰는 원만 편다.
+   글자만 두었더니 눌리는 자리인지 안 보였다. 쪽지에 손으로 적어 붙인 꼬리표처럼
+   테두리를 두르고 손글씨로 쓴다. */
 .rowPlan {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .rowPlan summary {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   list-style: none;
-  color: var(--pg-ink-soft);
-  font-size: 13px;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px dashed var(--pg-ink-hint);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  font-family: var(--font-display), sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--pg-ink);
   cursor: pointer;
+}
+.rowPlan summary::-webkit-details-marker {
+  display: none;
+}
+.rowPlan summary:hover {
+  border-style: solid;
+  background: var(--pg-paper);
+}
+.rowPlan[open] summary {
+  border-style: solid;
+  background: var(--pg-paper);
 }
 .rowPlan textarea {
   display: block;
@@ -1294,8 +1316,37 @@ a.item {
 }
 .routineSheet > .rowTools .rowTool {
   color: var(--pg-board-ink-soft);
-  font-size: 14px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  text-underline-offset: 5px;
 }
 .routineSheet > .rowTools .rowTool:hover {
   color: var(--pg-board-ink);
+}
+
+/* 칠판 아래 오늘 일지. 일과를 적은 자리에서 그대로 이어 쓴다. */
+.journalCard {
+  display: grid;
+  gap: 10px;
+  padding: 20px 22px;
+}
+.journalHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.journalTitle {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
+.journalBody {
+  padding-top: 14px;
+  border-top: 1px dashed var(--pg-line);
 }
