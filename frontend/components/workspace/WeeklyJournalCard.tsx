@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createDocument, listDocuments, type DocumentSummary } from "@/lib/api/documents";
 import { routineLocalId, type ApiRoutine } from "@/lib/api/routines";
 import { classServerId } from "@/lib/api/onboarding";
+import { routinesPath } from "@/lib/workspace/routines-route";
 import { Posty } from "@/components/app/Posty";
 import { Message, ws } from "./WorkspaceUI";
 import { journalMood } from "./DailyJournalCard";
@@ -47,7 +49,8 @@ export function useWeeklyJournal({
   routines: ApiRoutine[];
 }) {
   const [journal, setJournal] = useState<DocumentSummary | null | undefined>(undefined);
-  const [dailyLogs, setDailyLogs] = useState<DocumentSummary[]>([]);
+  // 그 주 일일 보육일지 전부. 근거로는 확정본만 쓰지만, 초안도 보여 줘야 무엇을 확정할지 안다.
+  const [weekDailies, setWeekDailies] = useState<DocumentSummary[]>([]);
   const [from, setFrom] = useState<From>("dailyLog");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -62,12 +65,16 @@ export function useWeeklyJournal({
     let live = true;
     Promise.all([
       listDocuments({ kind: "weeklyLog", class_id: serverClass }),
-      listDocuments({ kind: "dailyLog", class_id: serverClass, status: "CONFIRMED" }),
+      listDocuments({ kind: "dailyLog", class_id: serverClass }),
     ])
       .then(([weeklies, dailies]) => {
         if (!live) return;
         setJournal(weeklies.find((d) => inWeek(d, weekStart, weekEnd)) ?? null);
-        setDailyLogs(dailies.filter((d) => inWeek(d, weekStart, weekEnd)));
+        setWeekDailies(
+          dailies
+            .filter((d) => inWeek(d, weekStart, weekEnd))
+            .sort((a, b) => a.start.localeCompare(b.start)),
+        );
         setError("");
       })
       .catch((e) => {
@@ -80,6 +87,9 @@ export function useWeeklyJournal({
     };
   }, [serverClass, weekStart, weekEnd, reload]);
 
+  const dailyLogs = weekDailies.filter((d) => d.status === "confirmed");
+  /** 확정하지 않은 일일 일지. 근거가 되지 못하므로 「확정하러 가기」로 보낸다(멘토 12주차 리뷰). */
+  const draftDailies = weekDailies.filter((d) => d.status !== "confirmed");
   // 활동실행이 빈 일과는 서버가 근거로 받지 않는다 (§11).
   const routineSources = routines.filter((r) => r.execution).map((r) => routineLocalId(r.id));
   const sources = from === "routine" ? routineSources : dailyLogs.map((d) => d.id);
@@ -113,6 +123,9 @@ export function useWeeklyJournal({
     from,
     setFrom,
     dailyLogs,
+    draftDailies,
+    weekDailies,
+    classId,
     routineSources,
     sources,
     busy,
@@ -128,6 +141,13 @@ export function useWeeklyJournal({
 }
 
 export type WeeklyJournal = ReturnType<typeof useWeeklyJournal>;
+
+const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+/** `2026-11-03` → `11/3 화` */
+function dayLabel(iso: string) {
+  const day = new Date(iso + "T00:00:00");
+  return `${day.getMonth() + 1}/${day.getDate()} ${WEEK[day.getDay()]}`;
+}
 
 /** `2026-11-02` → `11/02` */
 const short = (iso: string) => iso.slice(5).replace("-", "/");
@@ -150,6 +170,7 @@ export default function WeeklyJournalCard({
   weekEnd: string;
 }) {
   const { doc: journal, from, setFrom, dailyLogs, routineSources, sources, busy, error } = state;
+  const { weekDailies, draftDailies } = state;
   if (state.off) return null;
   const open = !!state.openId;
   const mood = journalMood(journal);
@@ -190,12 +211,35 @@ export default function WeeklyJournalCard({
               {sources.length
                 ? "화면 맨 위 「주간 일지 만들기」를 누르세요."
                 : from === "dailyLog"
-                  ? "이 주에 확정한 일일 보육일지가 없습니다. 일일 보육일지를 쓰지 않는 원이면 근거를 「일과 기록」으로 바꿔 주세요."
+                  ? draftDailies.length
+                    ? `이 주 일일 보육일지 ${draftDailies.length}건이 아직 초안이에요. 확정해야 근거로 쓸 수 있어요.`
+                    : "이 주에 확정한 일일 보육일지가 없습니다. 일일 보육일지를 쓰지 않는 원이면 근거를 「일과 기록」으로 바꿔 주세요."
                   : "이 주 일과 기록에 「실제로 한 것」이 하나도 없습니다. 일과 기록을 먼저 적어 주세요."}
             </p>
           )}
         </div>
       </div>
+
+      {/* 그 주 일일 일지를 날마다 한 줄로. 초안은 주황으로 칠하고 그날 일과 기록으로 보낸다 —
+          일일 일지는 그 화면에서 쓰고 확정한다. */}
+      {journal === null && from === "dailyLog" && weekDailies.length > 0 && (
+        <ul className={ws.journalDays} aria-label="이 주 일일 보육일지">
+          {weekDailies.map((d) => {
+            const href = d.status === "confirmed" ? null : routinesPath(state.classId, d.start);
+            return (
+              <li key={d.id} data-state={d.status}>
+                <span>{dayLabel(d.start)}</span>
+                <b>{d.status === "confirmed" ? "확정" : "초안"}</b>
+                {href && (
+                  <Link href={href} className={ws.link}>
+                    확정하러 가기 →
+                  </Link>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {journal === null && (
         <label className={ws.journalFrom}>

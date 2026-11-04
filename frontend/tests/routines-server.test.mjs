@@ -552,7 +552,8 @@ function recorder({ rows = [], fail = null } = {}) {
           items: store
             .filter(
               (r) =>
-                r.date >= params.from && r.date <= (params.to ?? params.from) &&
+                r.date >= params.from &&
+                r.date <= (params.to ?? params.from) &&
                 r.class_id === params.class_id,
             )
             .map((r) => ({ ...r }))
@@ -752,7 +753,6 @@ const addNamed = async (view, name) => {
 const reloadedNames = async (api) =>
   (await api.api.list({ class_id: 3, from: TODAY, to: TODAY })).items.map((r) => r.name);
 
-
 // ── 주소 · 반 고르기 (S-J1 canonical route) ────────────────────────────────
 
 test("주소의 날짜 · 반으로 연다 — 없으면 오늘과 주 반이다", async (t) => {
@@ -835,7 +835,10 @@ test("그날 적은 게 없으면 기본 하루를 깐다 — 교사는 실제�
   assert.equal(view.names().length, 10);
   assert.equal(view.nameValues()[0], "등원 및 통합보육");
   assert.deepEqual(
-    view.times().slice(0, 2).map((n) => n.props.value),
+    view
+      .times()
+      .slice(0, 2)
+      .map((n) => n.props.value),
     ["07:30", "09:00"],
   );
   assert.equal(view.dones().length, 10, "줄마다 「실제로 한 것」 하나");
@@ -1185,9 +1188,7 @@ test("어제도 없으면 기본 하루를 깐다", async (t) => {
   assert.equal(view.nameValues().at(-1), "귀가 및 통합보육");
 });
 
-
 // ── 오늘 일지 만들기 (S-J1 수락 기준 3 · 3-1 · 3-2) ────────────────────────
-
 
 test("저장하지 않은 활동실행만으로도 「오늘 일지 만들기」가 켜진다", async (t) => {
   const api = recorder();
@@ -1884,7 +1885,6 @@ test("P2 다른 칸 수정과 position PUT 은 교사가 고치지 않은 서버
   assert.equal(edited.start, "09:00:30");
   assert.equal(edited.end, "09:30:45");
   assert.equal("class_id" in edited, false);
-
 });
 
 // ── 보고 있는 반 · 날짜를 주소에 적어 둔다 (P1-3 scope 동기화) ──────────────
@@ -2007,7 +2007,14 @@ function quickRecordsPage(
     "./WeeklyJournalCard": {
       default: "weekly-journal-card",
       WeeklyJournalEditor: "weekly-journal-editor",
-      useWeeklyJournal: () => ({ doc: null, sources: [], busy: false, off: false, make: () => {} }),
+      useWeeklyJournal: () => ({
+        doc: null,
+        sources: [],
+        draftDailies: [],
+        busy: false,
+        off: false,
+        make: () => {},
+      }),
     },
     "@/lib/api/records": {
       listRecords: async (classId, period) => {
@@ -2846,6 +2853,7 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
     },
     "@/lib/api/onboarding": { classServerId: (id) => (id === "class-1" ? 7 : null) },
     "@/lib/api/routines": { routineLocalId: (id) => `routine-${id}` },
+    "@/lib/workspace/routines-route": { routinesPath: (_, date) => `/routines?date=${date}` },
     "@/lib/api/documents": {
       listDocuments: async (query) => {
         calls.push({ op: "list", ...query });
@@ -2888,9 +2896,7 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
 
 /** 머리의 「주간 일지 만들기」. 칸에는 이제 단추가 없다. */
 const makeButton = (view) =>
-  all(view.tree()).find(
-    (n) => n?.type === "button" && deepText(n).includes("주간 일지 만들기"),
-  );
+  all(view.tree()).find((n) => n?.type === "button" && deepText(n).includes("주간 일지 만들기"));
 
 const draftWeekly = {
   id: "doc-5",
@@ -2905,7 +2911,10 @@ test("이번 주 주간 일지가 이미 있으면 만들기 대신 이어서 �
   await card.view.flush();
   assert.ok(card.text().includes("이어서 쓰기"), card.text());
   assert.equal(makeButton(card.view).props.disabled, true);
-  assert.equal(card.calls.some((c) => c.op === "create"), false);
+  assert.equal(
+    card.calls.some((c) => c.op === "create"),
+    false,
+  );
 });
 
 test("지난 주 일지는 이번 주 것으로 세지 않는다", async (t) => {
@@ -2938,12 +2947,20 @@ test("근거를 일과 기록으로 고르면 활동실행이 있는 일과만 �
 });
 
 test("만든 일지는 문서 보관함으로 보내지 않고 이 화면에서 편집기를 연다", async (t) => {
-  const card = journalCard(t, { dailies: [{ id: "doc-1", start: "2026-11-03" }] });
+  const card = journalCard(t, {
+    dailies: [{ id: "doc-1", start: "2026-11-03", status: "confirmed" }],
+  });
   await card.view.flush();
   makeButton(card.view).props.onClick();
   await card.view.flush();
-  assert.equal(card.calls.some((c) => c.op === "push"), false);
-  assert.ok(card.calls.some((c) => c.op === "edit" && c.id === "doc-99"), JSON.stringify(card.calls));
+  assert.equal(
+    card.calls.some((c) => c.op === "push"),
+    false,
+  );
+  assert.ok(
+    card.calls.some((c) => c.op === "edit" && c.id === "doc-99"),
+    JSON.stringify(card.calls),
+  );
   assert.ok(all(card.view.tree()).some((n) => n?.type === "document-editor"));
 });
 
@@ -2952,4 +2969,29 @@ test("근거가 하나도 없으면 만들기를 막고 무엇이 없는지 말�
   await card.view.flush();
   assert.equal(makeButton(card.view).props.disabled, true);
   assert.ok(card.text().includes("확정한 일일 보육일지가 없습니다"), card.text());
+});
+
+test("초안인 일일 일지는 근거로 세지 않고, 확정하러 갈 길을 준다", async (t) => {
+  const card = journalCard(t, {
+    dailies: [
+      { id: "doc-1", start: "2026-11-03", status: "confirmed" },
+      { id: "doc-2", start: "2026-11-04", status: "draft" },
+    ],
+  });
+  await card.view.flush();
+  makeButton(card.view).props.onClick();
+  await card.view.flush();
+  // 근거는 확정본 하나뿐이다.
+  assert.deepEqual(card.calls.find((c) => c.op === "create").sourceIds, ["doc-1"]);
+});
+
+test("확정한 일일 일지가 없고 초안만 있으면 초안이라고 말하고 그날로 보낸다", async (t) => {
+  const card = journalCard(t, { dailies: [{ id: "doc-2", start: "2026-11-04", status: "draft" }] });
+  await card.view.flush();
+  assert.equal(makeButton(card.view).props.disabled, true);
+  assert.ok(card.text().includes("아직 초안이에요"), card.text());
+  const links = all(card.view.tree())
+    .filter((n) => n?.props?.href)
+    .map((n) => n.props.href);
+  assert.ok(links.includes("/routines?date=2026-11-04"), links.join(" , "));
 });

@@ -51,7 +51,9 @@ function journalBlock(journal: WeeklyJournal) {
   if (!journal.sources.length)
     return journal.from === "routine"
       ? "이 주 일과 기록에 「실제로 한 것」이 아직 없어요. 일과 기록을 먼저 적어 주세요."
-      : "이 주에 확정한 일일 보육일지가 없어요. 일지를 확정하거나 근거를 「일과 기록」으로 바꿔 주세요.";
+      : journal.draftDailies.length
+        ? `일일 보육일지 ${journal.draftDailies.length}건이 아직 초안이에요. 「이번 주 보육일지」 칸에서 확정하러 가세요.`
+        : "이 주에 확정한 일일 보육일지가 없어요. 일지를 확정하거나 근거를 「일과 기록」으로 바꿔 주세요.";
   return null;
 }
 
