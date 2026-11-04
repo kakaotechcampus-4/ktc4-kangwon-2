@@ -79,8 +79,10 @@ export default function OnboardingLayout({
 
         {/* 768px 부터 오른쪽 칸이 있는 화면은 두 칸 격자다 — 왼쪽은 질문이 위아래를 다 쓰고,
             오른쪽은 위에 포스티 · 말풍선, 아래에 넘어가는 버튼. 버튼은 한 벌만 그려 자리만 옮긴다. */}
+        {/* 모서리는 스쿼클(이어지는 곡선). 스쿼클은 같은 반지름이면 덜 둥글어 보여 40px 로 키운다.
+            corner-shape 를 모르는 브라우저는 예전 24px 둥근 모서리 그대로다. */}
         <div
-          className={`flex flex-1 flex-col bg-paper sm:min-h-[760px] sm:flex-none sm:overflow-hidden sm:rounded-[24px] sm:border sm:border-line ${stage ? "md:grid md:grid-cols-[minmax(0,1fr)_280px] md:grid-rows-[minmax(0,1fr)_auto]" : ""}`}
+          className={`flex flex-1 flex-col bg-paper sm:min-h-[760px] sm:flex-none sm:overflow-hidden sm:rounded-[24px] sm:border sm:border-line sm:supports-[corner-shape:squircle]:rounded-[40px] sm:supports-[corner-shape:squircle]:[corner-shape:squircle] ${stage ? "md:grid md:grid-cols-[minmax(0,1fr)_280px] md:grid-rows-[minmax(0,1fr)_auto]" : ""}`}
         >
           <div className="flex min-w-0 flex-1 flex-col md:row-span-2">
             <div className="flex h-14 flex-none items-center gap-2 px-3 sm:px-7">
