@@ -129,6 +129,12 @@ export function useClasses(onError?: (message: string) => void) {
           saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
         },
       );
+      // 같은 화면의 다른 useClasses(사이드바 등)가 먼저 들였으면 여기서는 「연결은 있는데
+      // 목록에 없는 반」이라 건너뛴다. 그쪽이 목록을 먼저 저장했으니 저장소에서 받는다.
+      const stored = loadClassSettings();
+      const extra = stored?.classes.filter((c) => !next.some((n) => n.id === c.id)) ?? [];
+      if (stored && extra.length)
+        next = [...next, ...(await hydrateClassChildren({ ...stored, classes: extra }))];
       if (next !== local && live) setClasses(next);
     })().catch(() => {
       if (live) onError?.("반 정보를 불러오지 못했어요. 페이지를 새로고침해주세요.");

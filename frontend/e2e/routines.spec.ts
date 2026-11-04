@@ -542,6 +542,8 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
   // 다른 줄과 겹치면 겹친 시간 알림이 저장을 막으므로 09:16 앞으로 둔다.
   await pickTime(rows(page).last(), "시작", "06:00");
   const added = rows(page).first();
+  // 줄이 맨 위로 옮겨 선 뒤에 연다. 먼저 누르면 옛 첫 줄의 시계가 열린다.
+  await expect(added.getByRole("button", { name: /^일과 시간 오전 06:00 ~/ })).toBeVisible();
   await pickTime(added, "종료", "07:00");
   await added.getByLabel("실제로 한 것").fill("새벽 활동을 기록했다.");
 
