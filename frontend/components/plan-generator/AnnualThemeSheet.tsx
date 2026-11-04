@@ -175,7 +175,7 @@ export default function AnnualThemeSheet({
     </table>
   );
   return (
-    <div className="mx-auto w-full max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]">
+    <div className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]">
       <h3 className="m-0 mb-4 border border-black bg-[#E1F2FE] py-2 text-center text-[19px] font-bold">
         {title}
       </h3>

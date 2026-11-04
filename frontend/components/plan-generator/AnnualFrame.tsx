@@ -63,7 +63,7 @@ export default function AnnualFrame({
   children: ReactNode;
 }) {
   return (
-    <main className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826]">
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-7">
       {/* 안내가 없으면 높이 0 — 연간 · 월간 · 주간 문서 틀이 같은 높이에서 시작한다. */}
       <div className="flex flex-col">
         <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-4">
@@ -79,15 +79,16 @@ export default function AnnualFrame({
         </div>
         {notice}
       </div>
-      <div className="flex min-h-0 flex-1 gap-4">
+      {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {aside && (
-          <aside className="flex w-[380px] shrink-0 flex-col border border-line bg-paper shadow-pg">
+          <aside className="flex w-full shrink-0 flex-col border border-line bg-paper shadow-pg lg:w-[380px]">
             {aside}
           </aside>
         )}
         <section
           aria-label="문서 미리보기"
-          className="flex min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)]"
+          className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-shell-line bg-paper px-5 py-2.5 text-sm">
             <div className="font-bold">{docLabel}</div>
@@ -362,7 +363,7 @@ export function PlanDone({
     setBusy(null);
   };
   return (
-    <main className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826]">
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-7">
       <div className="flex flex-wrap items-center gap-3">
         <span
           aria-hidden="true"
@@ -375,10 +376,11 @@ export function PlanDone({
         </h1>
         {chip(format)}
       </div>
-      <div className="flex min-h-0 flex-1 gap-4">
+      {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <section
           aria-label={docLabel}
-          className="flex min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)]"
+          className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
           {pages.length > 1 && (
             <div role="tablist" aria-label="쪽" className="flex gap-1.5 px-6 pt-4">
@@ -396,11 +398,11 @@ export function PlanDone({
               ))}
             </div>
           )}
-          <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto px-6 pb-6 pt-4">
+          <div className="flex min-h-0 flex-1 items-start overflow-auto px-6 pb-6 pt-4 [justify-content:safe_center]">
             {pages[page]}
           </div>
         </section>
-        <aside className="flex w-[280px] shrink-0 flex-col gap-3">
+        <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[280px]">
           {download && (
             <div className="flex flex-col gap-2 border border-line bg-paper shadow-pg p-5">
               <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>

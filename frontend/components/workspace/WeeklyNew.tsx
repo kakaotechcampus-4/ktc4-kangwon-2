@@ -51,10 +51,15 @@ export function inheritWeek(monthly: MonthlyPlan, weekId: string) {
   const rows = sections
     .filter((s) => s.repeat_by === "WEEK")
     .flatMap((s) => {
-      const cell = s.cells.find((c) => c.week_id === weekId);
-      return cell?.value.trim()
-        ? [{ name: sectionName(s.section_key, s.label), value: cell.value }]
-        : [];
+      // 후보 방식 안전교육은 칸이 비어 있고 서버가 그 주 표시값을 준다 — 주간 Core 도 이 값을 복사한다.
+      const placed =
+        s.section_key === "safety_education"
+          ? monthly.safety_weeks?.find((w) => w.week_id === weekId)?.display_value
+          : undefined;
+      const value = placed?.trim()
+        ? placed
+        : (s.cells.find((c) => c.week_id === weekId)?.value ?? "");
+      return value.trim() ? [{ name: sectionName(s.section_key, s.label), value }] : [];
     });
   return { theme, rows };
 }

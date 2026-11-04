@@ -103,11 +103,19 @@ test("월간에서 이어받는 것: 생활주제 + 그 주의 빈칸 아닌 칸
         2,
       ),
       sec("theme", "NONE", [{ value: "가을" }], 0),
+      sec("safety_education", "WEEK", [{ week_id: "W1", value: "" }], 3),
     ],
+    safety_weeks: [{ week_id: "W1", display_value: "[교통안전] 횡단보도를 건너요" }],
   };
   assert.deepEqual(inheritWeek(monthly, "W1"), {
     theme: "가을",
-    rows: [{ name: monthlyLabels.sectionName("outdoor_play"), value: "모래놀이" }],
+    rows: [
+      { name: monthlyLabels.sectionName("outdoor_play"), value: "모래놀이" },
+      {
+        name: monthlyLabels.sectionName("safety_education"),
+        value: "[교통안전] 횡단보도를 건너요",
+      },
+    ],
   });
   assert.deepEqual(inheritWeek(monthly, "W2").rows, []);
 });

@@ -454,30 +454,35 @@ export default function WeeklyEditor({
               </button>
             </div>
           )}
-          {!picked.cell.teacher_input && !gridCell && !indoorCell && (
-            <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
-              <button
-                type="button"
-                className={BUTTON.outline}
-                disabled={locked}
-                onClick={() => setAsking("regenerate")}
-              >
-                {busy === picked.cell.item_id ? "다시 만드는 중…" : "AI로 이 칸 다시 만들기"}
-              </button>
-              {asking === "regenerate" && (
-                <PlayMonthlyConfirm
-                  message="이 칸을 다시 만들면 지금 내용이 바뀌어요. 다시 만들까요?"
-                  yes="다시 만들기"
+          {/* RULE_ONLY(옛) 주간은 Core 가 바깥놀이만 다시 만든다. */}
+          {!picked.cell.teacher_input &&
+            !gridCell &&
+            !indoorCell &&
+            (plan.generation_mode !== "RULE_ONLY" ||
+              picked.section.section_key === "outdoor_play") && (
+              <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
+                <button
+                  type="button"
+                  className={BUTTON.outline}
                   disabled={locked}
-                  onYes={() => {
-                    setAsking("");
-                    void regenerate(picked.cell);
-                  }}
-                  onNo={() => setAsking("")}
-                />
-              )}
-            </div>
-          )}
+                  onClick={() => setAsking("regenerate")}
+                >
+                  {busy === picked.cell.item_id ? "다시 만드는 중…" : "AI로 이 칸 다시 만들기"}
+                </button>
+                {asking === "regenerate" && (
+                  <PlayMonthlyConfirm
+                    message="이 칸을 다시 만들면 지금 내용이 바뀌어요. 다시 만들까요?"
+                    yes="다시 만들기"
+                    disabled={locked}
+                    onYes={() => {
+                      setAsking("");
+                      void regenerate(picked.cell);
+                    }}
+                    onNo={() => setAsking("")}
+                  />
+                )}
+              </div>
+            )}
         </>
       )}
       <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
@@ -509,7 +514,8 @@ export default function WeeklyEditor({
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {candidates.map((c) => {
           const text = c.cell.value.trim();
-          const here = !!text && shown(picked.cell).trim() === text;
+          // 서버는 「[종류] 이름」으로 복사한다(weekly_activities.copy).
+          const here = !!text && shown(picked.cell).trim() === `[${c.activity_type}] ${c.name}`;
           return (
             <li
               key={c.cell.item_id}
