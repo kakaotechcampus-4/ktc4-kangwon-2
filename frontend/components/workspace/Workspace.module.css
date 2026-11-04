@@ -516,9 +516,6 @@ a.item {
   margin-top: 10px;
   overflow-wrap: anywhere;
 }
-.source:hover {
-  text-decoration: underline;
-}
 .timeline {
   border-left: 2px solid var(--pg-primary-tint-line);
   margin-left: 8px;

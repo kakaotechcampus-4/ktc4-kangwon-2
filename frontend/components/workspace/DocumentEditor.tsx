@@ -7,6 +7,7 @@ import {
   type DocumentKind,
   type SavedDocument,
   type Section,
+  type Source,
 } from "@/lib/workspace/model";
 import { requestAI } from "@/lib/workspace/ai-client";
 import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
@@ -41,6 +42,18 @@ const FACT_SOURCE: Partial<Record<DocumentKind, string>> = {
   observation: "/records",
   assessment: "/records",
 };
+/**
+ * 근거 하나가 원래 있던 곳. 일과 기록이면 그날 일과, 주간 일지면 그 일일 일지, 관찰이면 관찰 기록.
+ *
+ * 「근거 1 · 2」가 누를 수 있을 것처럼 생겼는데 눌러도 아무 일이 없었다(멘토 12주차 리뷰).
+ * 진짜로 그 근거로 데려간다. 일지를 쓰던 중이라 **새 탭**으로 연다.
+ */
+function sourceHref(kind: DocumentKind, classId: string, source: Source): string | null {
+  if (kind === "dailyLog") return routinesPath(classId, source.date);
+  if (kind === "weeklyLog") return `/documents?id=${encodeURIComponent(source.id)}`;
+  return FACT_SOURCE[kind] ?? null;
+}
+
 const LAYER_HINTS: Record<string, string> = {
   사실: "교사가 입력한 원문 · 읽기 전용",
   해석: "위 사실에서 읽을 수 있는 의미만 적어주세요.",
@@ -529,9 +542,22 @@ export default function DocumentEditor({
           {section.sourceIds.length > 0 && (
             <small className={ws.source}>
               근거:{" "}
-              {section.sourceIds
-                .map((id) => doc.sources.find((s) => s.id === id)?.date || "원본 없음")
-                .join(" · ")}
+              {section.sourceIds.map((id, i) => {
+                const source = doc.sources.find((s) => s.id === id);
+                const href = source && sourceHref(doc.kind, doc.classId, source);
+                return (
+                  <span key={id}>
+                    {i > 0 && " · "}
+                    {href ? (
+                      <a href={href} target="_blank" rel="noopener" className={ws.link}>
+                        {source.date}
+                      </a>
+                    ) : (
+                      source?.date || "원본 없음"
+                    )}
+                  </span>
+                );
+              })}
             </small>
           )}
         </section>
@@ -548,7 +574,20 @@ export default function DocumentEditor({
           {doc.sources.map((source, i) => (
             <blockquote key={source.id} className={ws.quote}>
               <small className={ws.muted}>
-                근거 {i + 1} · {source.date}
+                {source.date}
+                {sourceHref(doc.kind, doc.classId, source) && (
+                  <>
+                    {" · "}
+                    <a
+                      href={sourceHref(doc.kind, doc.classId, source)!}
+                      target="_blank"
+                      rel="noopener"
+                      className={ws.link}
+                    >
+                      원본 보기 (새 탭)
+                    </a>
+                  </>
+                )}
               </small>
               <br />
               {source.text}
