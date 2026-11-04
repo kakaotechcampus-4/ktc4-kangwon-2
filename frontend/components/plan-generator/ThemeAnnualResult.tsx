@@ -23,6 +23,7 @@ import AnnualFrame, {
   BUTTON,
   POPOVER,
   tabClass,
+  UndoRedo,
   useSheetZoom,
 } from "./AnnualFrame";
 import AnnualThemeSheet, { type ThemeSlot } from "./AnnualThemeSheet";
@@ -303,7 +304,6 @@ export default function ThemeAnnualResult({
             </div>
           ))}
         </section>
-        <p className="m-0 text-[13px] text-[#5c5243]">고치면 오른쪽 문서에 바로 반영돼요.</p>
       </div>
     </>
   );
@@ -344,14 +344,6 @@ export default function ThemeAnnualResult({
       }
       actions={
         <>
-          <button
-            type="button"
-            className={BUTTON.quiet}
-            disabled={!undo.length || confirming}
-            onClick={stepBack}
-          >
-            되돌리기
-          </button>
           <div className="relative">
             <button
               type="button"
@@ -379,9 +371,10 @@ export default function ThemeAnnualResult({
       aside={aside}
       docLabel="소주제형 기본 양식"
       docHint={
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <UndoRedo disabled={confirming} canUndo={undo.length > 0} onUndo={stepBack} />
           {sheetZoom.tools}
-          <span className="ml-2">
+          <span>
             <BigView
               pages={1}
               render={() => <AnnualThemeSheet title={sheetTitle} months={sheetMonths} />}

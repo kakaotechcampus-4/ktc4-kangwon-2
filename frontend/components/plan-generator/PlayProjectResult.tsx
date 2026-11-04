@@ -14,6 +14,7 @@ import AnnualFrame, {
   POPOVER,
   pageClass,
   tabClass,
+  UndoRedo,
   useSheetZoom,
 } from "./AnnualFrame";
 import {
@@ -463,7 +464,6 @@ export default function PlayProjectResult({
         <div className={workspace.field}>
           {renderCellField(selectedCandidate[selectedField.key], selectedField)}
         </div>
-        <p className="m-0 text-[13px] text-[#5c5243]">고치면 오른쪽 문서에 바로 반영돼요</p>
         <div className="flex gap-2 border-t border-[#efeae2] pt-4">
           <button
             type="button"
@@ -619,7 +619,11 @@ export default function PlayProjectResult({
   const leftPanelId = (tab: string) => `${panelId}-left-${tab}-panel`;
   const pickPrefix = `${panelId}-pick`;
   const periodTabs = (
-    <div role="tablist" aria-label="놀이 프로젝트 기간" className="flex flex-wrap gap-1.5">
+    <div
+      role="tablist"
+      aria-label="놀이 프로젝트 기간"
+      className="flex flex-wrap gap-0.5 rounded-xl border border-[#e3ddd2] bg-white p-0.5"
+    >
       {plan.periods.map((item, index) => (
         <button
           key={item.period_key}
@@ -628,11 +632,16 @@ export default function PlayProjectResult({
           role="tab"
           aria-selected={activePeriod === index}
           aria-controls={panelId}
-          className={`${pageClass(activePeriod === index)} ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
+          className={`${pageClass(activePeriod === index)} inline-flex items-center gap-1.5 ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
           onClick={() => goToPeriod(index)}
         >
-          {[playSeason(item).name, playSeason(item).months].filter(Boolean).join(" ")}{" "}
-          {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}
+          {playSeason(item).name && <span>{playSeason(item).name}</span>}
+          <span className="text-[13px] font-normal opacity-75">{playSeason(item).months}</span>{" "}
+          <span
+            className={`rounded-full px-1.5 text-xs font-bold ${lacking.includes(item.period_key) ? "bg-[#fdecea]" : "bg-[#f3efe8]"}`}
+          >
+            {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}
+          </span>
         </button>
       ))}
     </div>
@@ -797,22 +806,7 @@ export default function PlayProjectResult({
       }
       actions={
         <>
-          <button
-            type="button"
-            className={BUTTON.quiet}
-            disabled={confirming || edit.history.undo.length === 0}
-            onClick={() => stepThrough("undo")}
-          >
-            되돌리기
-          </button>
-          <button
-            type="button"
-            className={BUTTON.quiet}
-            disabled={confirming || edit.history.redo.length === 0}
-            onClick={() => stepThrough("redo")}
-          >
-            다시 실행
-          </button>
+          {periodTabs}
           <div className="relative">
             <button
               type="button"
@@ -838,11 +832,18 @@ export default function PlayProjectResult({
         </>
       }
       aside={aside}
-      docLabel={periodTabs}
+      docLabel={null}
       docHint={
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <UndoRedo
+            disabled={confirming}
+            canUndo={edit.history.undo.length > 0}
+            onUndo={() => stepThrough("undo")}
+            canRedo={edit.history.redo.length > 0}
+            onRedo={() => stepThrough("redo")}
+          />
           {sheetZoom.tools}
-          <span className="ml-2">
+          <span>
             <BigView
               pages={Math.ceil(plan.periods.length / 2)}
               dialog={bigDialog}

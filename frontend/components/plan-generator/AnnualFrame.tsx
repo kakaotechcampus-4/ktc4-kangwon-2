@@ -26,7 +26,7 @@ export const tabClass = (active: boolean) =>
   `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-[#8a8178]"}`;
 /** 문서 위 쪽 · 구간 버튼. */
 export const pageClass = (active: boolean) =>
-  `min-h-[36px] min-w-[52px] rounded-lg border px-3 text-sm ${active ? "border-[#7053a0] bg-white font-bold text-[#5e4b96]" : "border-transparent text-[#5c5243] hover:bg-white/60"}`;
+  `min-h-[34px] min-w-[52px] rounded-lg px-3 text-sm ${active ? "bg-[#efe8f7] font-bold text-[#5e4b96]" : "text-[#5c5243] hover:bg-[#f3efe8]"}`;
 
 type Format = AnnualPlanResponse["format"];
 export const chip = (format: Format) => (
@@ -102,7 +102,68 @@ export default function AnnualFrame({
 }
 
 const ZOOM_BUTTON =
-  "min-h-[36px] min-w-[36px] rounded-lg px-2 text-sm text-[#5c5243] hover:bg-[#f3efe8]";
+  "flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg px-2 text-sm text-[#5c5243] hover:bg-[#f3efe8] disabled:opacity-35 disabled:hover:bg-transparent";
+/** 문서 머리줄(편집 바)의 한 묶음 — 되돌리기 · 배율을 테두리로 나눈다. */
+const TOOL_GROUP = "flex items-center gap-0.5 rounded-xl border border-[#e3ddd2] bg-white p-0.5";
+
+const UNDO_ICON = (
+  <svg
+    viewBox="0 0 24 24"
+    width="18"
+    height="18"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </svg>
+);
+
+/** 편집 바의 되돌리기 · 다시 하기 — 글자 없이 아이콘(이름은 마우스를 올리면 · 화면 읽기). 다시 하기가 없는 화면은 `onRedo` 를 비운다. */
+export function UndoRedo({
+  onUndo,
+  canUndo,
+  onRedo,
+  canRedo = false,
+  disabled = false,
+}: {
+  onUndo: () => void;
+  canUndo: boolean;
+  onRedo?: () => void;
+  canRedo?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div role="group" aria-label="되돌리기 · 다시 하기" className={TOOL_GROUP}>
+      <button
+        type="button"
+        title="되돌리기"
+        className={ZOOM_BUTTON}
+        disabled={disabled || !canUndo}
+        onClick={onUndo}
+      >
+        {UNDO_ICON}
+        <span className="sr-only">되돌리기</span>
+      </button>
+      {onRedo && (
+        <button
+          type="button"
+          title="다시 하기"
+          className={ZOOM_BUTTON}
+          disabled={disabled || !canRedo}
+          onClick={onRedo}
+        >
+          <span className="flex -scale-x-100">{UNDO_ICON}</span>
+          <span className="sr-only">다시 하기</span>
+        </button>
+      )}
+    </div>
+  );
+}
 
 /**
  * 문서 배율 — 기본은 100%(칸이 좁으면 그만큼만 줄임), 「맞춤」은 칸 폭에 맞춰 키우거나 줄임,
@@ -127,7 +188,7 @@ export function useSheetZoom(
   const percent =
     zoom.mode === "fit" ? fit : zoom.mode === "auto" ? Math.min(100, fit) : zoom.percent;
   const tools = (
-    <div role="group" aria-label="문서 배율" className="flex items-center gap-1">
+    <div role="group" aria-label="문서 배율" className={TOOL_GROUP}>
       <button
         type="button"
         className={ZOOM_BUTTON}
@@ -136,7 +197,7 @@ export function useSheetZoom(
       >
         −
       </button>
-      <output className="min-w-[72px] text-center text-[13px]">
+      <output className="min-w-[64px] text-center text-[13px]">
         {zoom.mode === "fit" && "맞춤 "}
         {Math.round(percent)}%
       </output>
@@ -185,7 +246,7 @@ export function BigView({
     <>
       <button
         type="button"
-        className="min-h-[36px] rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96]"
+        className="min-h-[38px] rounded-xl border border-[#e3ddd2] bg-white px-3 text-sm font-bold text-[#5e4b96] hover:bg-[#f6f1fb]"
         aria-haspopup="dialog"
         onClick={() => {
           setPage(0);

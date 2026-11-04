@@ -408,10 +408,14 @@ test("phone period tabs use two grid columns in the 767px media block", () => {
     new URL("../components/plan-generator/PlayProjectResult.tsx", import.meta.url),
     "utf8",
   );
-  // ④ 탭 줄(여러 줄로 쓴 쪽)만 본다. ⑤ 탭 줄은 한 줄 · flex-wrap 이라 넘치지 않는다.
-  const pick = result.match(
-    /role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/,
-  )[1];
+  // ④ 탭 줄(md:flex 를 쓰는 쪽)만 본다. ⑤ 탭 줄은 머리줄 · flex-wrap 이라 넘치지 않는다.
+  const pick = [
+    ...result.matchAll(
+      /role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/g,
+    ),
+  ]
+    .map((m) => m[1])
+    .find((c) => c.includes("md:flex"));
   assert.match(pick, /\bgrid-cols-2\b/);
   assert.match(pick, /\bmd:flex\b/);
 });

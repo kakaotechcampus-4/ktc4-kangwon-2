@@ -86,7 +86,8 @@ function harness(send) {
     isRejectedSave: () => false,
     errorFields: () => [],
   };
-  const Frame = (p) => jsx("frame", { children: [p.actions, p.notice, p.aside, p.children] });
+  const Frame = (p) =>
+    jsx("frame", { children: [p.actions, p.notice, p.aside, p.docHint, p.children] });
   const { default: Result } = compile("components/plan-generator/ThemeAnnualResult.tsx", {
     react,
     "@/lib/api/plans": apis,
@@ -99,6 +100,12 @@ function harness(send) {
       POPOVER: "",
       BigView: (p) => jsx("bigview", p),
       useSheetZoom: () => ({ percent: 100, tools: null }),
+      UndoRedo: (p) =>
+        jsx("button", {
+          disabled: !!p.disabled || !p.canUndo,
+          onClick: p.onUndo,
+          children: "되돌리기",
+        }),
     },
     "./AnnualThemeSheet": es((p) => jsx("sheet", p)),
     "./PlanMemo": { PlanMemoNote: () => null },

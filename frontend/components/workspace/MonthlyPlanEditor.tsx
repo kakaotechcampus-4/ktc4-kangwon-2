@@ -47,7 +47,6 @@ import {
   safetyCellId,
   TEACHER_HINT,
 } from "@/components/plan-generator/PlayMonthlySheet";
-import { noticeSummary } from "@/components/plan-generator/PlayMonthlyView";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
 
@@ -161,7 +160,6 @@ export default function MonthlyPlanEditor({
   const blank = cells.some(({ cell }) => !cell.value.trim());
   // 안전교육 미배치 안내는 후보를 두는 방식일 때만 뜻이 있다.
   const notices = candidateMode ? plan.notices : [];
-  const summary = noticeSummary(notices);
 
   const accept = (next: MonthlyPlan) => {
     latest.current = next;
@@ -331,12 +329,6 @@ export default function MonthlyPlanEditor({
       ? (picked.cell.week_id ? `${weekLabel(picked.cell.week_id)} · ` : "") +
         sectionName(picked.section.section_key, picked.section.label)
       : "";
-  // 「확인할 것」 — 안전교육을 안 둔 주. 누르면 그 주 안전교육 칸으로 간다.
-  const goNotice = () => {
-    const first = notices[0];
-    if (!first) return;
-    select(safetyCellId(first.week_id));
-  };
   const findings = [
     ...new Map(plan.verification.findings.map((f) => [`${f.code}|${f.section_key}`, f])).values(),
   ];
@@ -411,11 +403,9 @@ export default function MonthlyPlanEditor({
               }
             />
           </div>
-          <p className="m-0 text-[13px] text-[#5c5243]">
-            {candidate
-              ? "이 문장을 둔 다른 주도 같이 바뀌어요."
-              : "고치면 오른쪽 문서에 바로 반영돼요"}
-          </p>
+          {candidate && (
+            <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
+          )}
           {picked.cell.state === "EMPTY_UNRESOLVED" && (
             <p className="m-0 text-[13px] text-[#5c5243]">
               근거가 없어 비워 두었어요. 직접 적어주세요.
@@ -736,16 +726,6 @@ export default function MonthlyPlanEditor({
             <span role="status" title="확정을 막지 않아요" className="text-[#8a8178]">
               빈 칸 있음
             </span>
-          )}
-          {notices.length > 0 && (
-            <button
-              type="button"
-              title={summary}
-              onClick={goNotice}
-              className="min-h-[32px] rounded-full bg-[#fdecea] px-3 text-[13px] font-bold text-[#b3261e]"
-            >
-              ! 확인할 것 {notices.length}
-            </button>
           )}
         </span>
       }

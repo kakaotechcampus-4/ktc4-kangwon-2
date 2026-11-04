@@ -15,7 +15,7 @@ import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
 import PlayMonthlySafetyPanel from "./PlayMonthlySafetyPanel";
-import PlayMonthlySheet, { PAPER_WIDTH, safetyCellId } from "./PlayMonthlySheet";
+import PlayMonthlySheet, { PAPER_WIDTH } from "./PlayMonthlySheet";
 import AnnualFrame, {
   AsideStrip,
   BigView,
@@ -23,31 +23,11 @@ import AnnualFrame, {
   PlanDone,
   UNCONFIRM,
   tabClass,
+  UndoRedo,
   useSheetZoom,
 } from "./AnnualFrame";
 import UnconfirmButton from "./UnconfirmButton";
 import { PlanMemoNote } from "./PlanMemo";
-
-const NOTICES = {
-  SAFETY_UNPLACED: ["안전교육", "주 미배치"],
-  SAFETY_BLANK: ["안전교육", "주 빈 칸"],
-  HABIT_BLANK: ["기본생활습관", "주 빈 칸"],
-  HEALTH_BLANK: ["건강", "빈 칸"],
-  NUTRITION_BLANK: ["영양", "빈 칸"],
-} as const;
-
-/** 서버가 준 notices 를 한 줄로 — 예: 「안전교육 4주 미배치 · 건강 빈 칸」. 확정을 막지 않는다. */
-export function noticeSummary(notices: PlayMonthlyPlan["notices"]) {
-  return (Object.keys(NOTICES) as (keyof typeof NOTICES)[])
-    .map((code) => {
-      const weeks = notices.filter((n) => n.code === code && n.week_id !== null).length;
-      const hit = notices.some((n) => n.code === code);
-      const [name, tail] = NOTICES[code];
-      return !hit ? "" : weeks ? `${name} ${weeks}${tail}` : `${name} ${tail}`;
-    })
-    .filter(Boolean)
-    .join(" · ");
-}
 
 const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
@@ -205,17 +185,6 @@ export function placeOf(plan: PlayMonthlyPlan, id: string) {
   return cellLabels(plan)[id] ?? "";
 }
 
-/** 「확인할 것」을 누르면 갈 칸 — 첫 notice 의 칸. */
-export function noticeTarget(plan: PlayMonthlyPlan): string | null {
-  const first = plan.notices[0];
-  if (!first) return null;
-  if (first.code === "SAFETY_UNPLACED" || first.code === "SAFETY_BLANK")
-    return first.week_id ? safetyCellId(first.week_id) : null;
-  if (first.code === "HABIT_BLANK")
-    return plan.habits.find((h) => h.week_id === first.week_id)?.cell.item_id ?? null;
-  return first.code === "HEALTH_BLANK" ? plan.health.cell.item_id : plan.nutrition.cell.item_id;
-}
-
 function PlayMonthlyBody({
   initial,
   className,
@@ -309,11 +278,6 @@ function PlayMonthlyBody({
   const parentPlay =
     row?.parent_item_id &&
     plan.parent.plays.find((p) => p.play_name_item_id === row.parent_item_id);
-  const goNotice = () => {
-    const id = noticeTarget(plan);
-    if (!id) return;
-    select(id);
-  };
 
   const editTab = (
     <div className="flex flex-col gap-4">
@@ -373,19 +337,6 @@ function PlayMonthlyBody({
       })}
       {safetyWeek && weekCandidate && (
         <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
-      )}
-      {editing.length > 0 && (
-        <p className="m-0 text-[13px] text-[#5c5243]">고치면 오른쪽 문서에 바로 반영돼요</p>
-      )}
-      {row && row.content_ids.length > 0 && (
-        <p className="m-0 flex flex-wrap items-center gap-1 text-[12px] text-[#5c5243]">
-          누리과정 연결
-          {row.content_ids.map((cid) => (
-            <span key={cid} className="rounded bg-[#eee4f4] px-1.5 text-[#5e4b96]">
-              {cid}
-            </span>
-          ))}
-        </p>
       )}
       {row && (
         <div className="border-t border-[#efeae2] pt-4">
@@ -499,16 +450,6 @@ function PlayMonthlyBody({
         <span className="flex items-center gap-3">
           <span>{SAVE_LABEL[save.status]}</span>
           <PlanMemoNote plan={plan} />
-          {plan.notices.length > 0 && (
-            <button
-              type="button"
-              title={noticeSummary(plan.notices)}
-              onClick={goNotice}
-              className="min-h-[32px] rounded-full bg-[#fdecea] px-3 text-[13px] font-bold text-[#b3261e]"
-            >
-              ! 확인할 것 {plan.notices.length}
-            </button>
-          )}
         </span>
       }
       notice={
@@ -527,17 +468,6 @@ function PlayMonthlyBody({
       }
       actions={
         <>
-          {(["undo", "redo"] as const).map((direction) => (
-            <button
-              key={direction}
-              type="button"
-              className={BUTTON.quiet}
-              disabled={locked || !(direction === "undo" ? save.canUndo : save.canRedo)}
-              onClick={() => through(direction)}
-            >
-              {direction === "undo" ? "되돌리기" : "다시 하기"}
-            </button>
-          ))}
           <PlayMonthlyConfirmBar
             plan={plan}
             ask={
@@ -564,9 +494,16 @@ function PlayMonthlyBody({
       aside={aside}
       docLabel="놀이 중심형 월간 양식"
       docHint={
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <UndoRedo
+            disabled={locked}
+            canUndo={save.canUndo}
+            onUndo={() => through("undo")}
+            canRedo={save.canRedo}
+            onRedo={() => through("redo")}
+          />
           {sheetZoom.tools}
-          <span className="ml-2">
+          <span>
             <BigView
               pages={1}
               render={() => <PlayMonthlySheet plan={shown} className={className} />}
