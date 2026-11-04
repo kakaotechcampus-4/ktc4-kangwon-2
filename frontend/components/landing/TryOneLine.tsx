@@ -76,7 +76,7 @@ export function TryOneLine() {
             </label>
           ))}
         </fieldset>
-        <p className={s.tryNote}>이 칸에 적은 글은 어디로도 보내지 않아요.</p>
+        <p className={s.tryNote}>여기 적은 글은 저장되지 않아요.</p>
       </form>
 
       <figure className={s.tryDoc} aria-label="일일 보육일지 미리보기">

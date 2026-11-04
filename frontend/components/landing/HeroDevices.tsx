@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Posty } from "@/components/app/Posty";
 import { useRef, type PointerEvent } from "react";
 import s from "./Welcome.module.css";
 
@@ -35,14 +36,22 @@ export function HeroDevices() {
           <span>ssample.duckdns.org</span>
         </div>
         <Image
-          src="/landing/v2/hero-pc.webp"
-          alt="쌤플 홈 화면. 오늘 날짜 아래 「지금, 한 줄」 입력 칸과 오늘 적은 기록, 오른쪽 칠판에 이번 주 기록 안 된 아이가 보인다."
+          src="/landing/v2/hero-annual.webp"
+          alt="쌤플에서 확정한 2026학년도 연간 보육계획안. 3월부터 달마다 생활주제와 주별 소주제가 채워져 있고, 오른쪽에 내려받기와 「월간계획안 만들기」 단추가 있다."
           width={2400}
           height={1500}
           sizes="(max-width: 860px) 100vw, 880px"
           priority
         />
       </figure>
+      <p className={s.heroNote} aria-hidden="true">
+        쌤의 계획이
+        <br />
+        쉬워지는 순간,
+        <br />
+        <b>쌤플.</b>
+      </p>
+      <Posty pose="point" face="done" size={92} label={null} className={s.heroPosty} />
       <figure className={s.phone}>
         <Image
           src="/landing/v2/hero-phone.webp"

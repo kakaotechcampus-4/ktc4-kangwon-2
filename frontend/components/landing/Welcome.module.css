@@ -87,47 +87,18 @@
   text-align: center;
   overflow: hidden;
 }
-.icon {
-  display: inline-grid;
-  place-items: center;
-  width: 104px;
-  height: 104px;
-  border-radius: 26px;
-  background: linear-gradient(165deg, var(--pg-paper), var(--pg-cream));
-  box-shadow:
-    inset 0 1px 0 var(--pg-paper),
-    0 0 0 1px color-mix(in srgb, var(--pg-ink) 7%, transparent),
-    0 18px 36px -14px color-mix(in srgb, var(--pg-ink) 40%, transparent);
-}
-.iconS {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 64px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--pg-primary-deep);
-  transform: translateX(4px);
-}
-.iconDot {
-  color: var(--pg-peach-strong);
-}
 .heroTitle {
-  margin: 22px 0 0;
+  margin: 0;
   font-family: var(--font-display), cursive;
   font-weight: 700;
-  font-size: clamp(64px, 9vw, 96px);
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-.heroTag {
-  margin: 14px 0 0;
-  font-size: clamp(21px, 2.6vw, 28px);
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  color: var(--pg-ink-soft);
+  font-size: clamp(46px, 7.2vw, 88px);
+  line-height: 1.12;
+  letter-spacing: -0.01em;
 }
 .heroLead {
-  max-width: 42ch;
-  margin: 16px auto 0;
+  max-width: 40ch;
+  margin: 22px auto 0;
+  font-size: clamp(17px, 1.9vw, 19.5px);
   color: var(--pg-ink-soft);
   text-wrap: balance;
 }
@@ -268,6 +239,178 @@
   }
   .devices {
     padding-bottom: 32px;
+  }
+}
+
+/* 노트북 왼쪽 위에 붙인 노란 쪽지와, 그 아래에서 화면을 가리키는 포스티. */
+.heroNote {
+  position: absolute;
+  z-index: 3;
+  top: -26px;
+  left: -14px;
+  margin: 0;
+  padding: 16px 20px 20px;
+  width: 180px;
+  background: var(--pg-note);
+  border: 1px solid var(--pg-note-line);
+  font-family: var(--font-display), cursive;
+  font-size: 22px;
+  line-height: 1.3;
+  text-align: left;
+  color: var(--pg-ink);
+  transform: rotate(-5deg);
+  box-shadow: 0 16px 26px -16px color-mix(in srgb, var(--pg-ink) 60%, transparent);
+}
+.heroNote::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 70px;
+  height: 20px;
+  background: var(--pg-tape);
+  transform: translateX(-50%) rotate(3deg);
+}
+.heroNote b {
+  color: var(--pg-primary);
+}
+.heroPosty {
+  position: absolute;
+  z-index: 3;
+  left: -64px;
+  bottom: 70px;
+}
+@media (max-width: 1180px) {
+  .heroPosty {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .heroNote {
+    top: -34px;
+    left: -6px;
+    width: 128px;
+    padding: 10px 12px 12px;
+    font-size: 16px;
+  }
+}
+
+/* ── 계획안 세 걸음 ─────────────────────────────── */
+.planSection {
+  padding: 120px 0 0;
+}
+.plans {
+  margin-top: 40px;
+}
+.planTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.planTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 20px 0 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.planTab:hover {
+  border-color: var(--pg-primary-tint-line);
+  color: var(--pg-ink);
+}
+.planTab[aria-selected="true"] {
+  border-color: var(--pg-primary);
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+}
+.planStep {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+  font-size: 14px;
+}
+.planTab[aria-selected="true"] .planStep {
+  background: var(--pg-paper);
+}
+.planPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+  gap: 48px;
+  align-items: center;
+  margin-top: 28px;
+  padding: 44px;
+  border-radius: 28px;
+  background: var(--pg-primary-tint);
+  animation: planIn 0.5s var(--w-ease);
+}
+.planText p {
+  margin: 14px 0 0;
+  color: var(--pg-ink-soft);
+}
+.planText ul {
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--pg-primary-tint-line);
+}
+.planText li {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--pg-primary-tint-line);
+  font-size: 15.5px;
+}
+.planShot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--pg-ink) 8%, transparent),
+    0 30px 60px -28px color-mix(in srgb, var(--pg-ink) 55%, transparent);
+}
+@keyframes planIn {
+  from {
+    filter: blur(5px);
+    transform: translateY(6px);
+  }
+}
+@media (max-width: 560px) {
+  .planTabs {
+    gap: 6px;
+  }
+  .planTab {
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 12px 0 6px;
+    font-size: 14px;
+  }
+  .planStep {
+    width: 24px;
+    height: 24px;
+    font-size: 12.5px;
+  }
+}
+@media (max-width: 860px) {
+  .planPanel {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 24px;
+    border-radius: 22px;
   }
 }
 
@@ -609,81 +752,6 @@
   }
 }
 
-/* ── 아이 정보 · 묻는 것 ──────────────────────────── */
-.safe {
-  padding: 120px 0 40px;
-}
-.safeList {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  margin: 40px 0 0;
-  border-top: 1px solid var(--pg-ink);
-}
-.safeList div {
-  padding: 20px 20px 4px 0;
-}
-.safeList dt {
-  font-weight: 700;
-  font-size: 18px;
-}
-.safeList dd {
-  margin: 6px 0 0;
-  color: var(--pg-ink-soft);
-  font-size: 15.5px;
-}
-@media (max-width: 860px) {
-  .safeList {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-@media (max-width: 520px) {
-  .safeList {
-    grid-template-columns: 1fr;
-  }
-}
-.faq {
-  margin-top: 88px;
-  max-width: 760px;
-}
-.faq details {
-  border-bottom: 1px solid var(--pg-line);
-}
-.faq details:first-of-type {
-  margin-top: 18px;
-  border-top: 1px solid var(--pg-line);
-}
-.faq summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 0;
-  font-weight: 700;
-  cursor: pointer;
-  list-style: none;
-}
-.faq summary::-webkit-details-marker {
-  display: none;
-}
-.faq summary::after {
-  content: "";
-  flex: none;
-  width: 9px;
-  height: 9px;
-  margin-top: 8px;
-  border-right: 1.6px solid var(--pg-ink-soft);
-  border-bottom: 1.6px solid var(--pg-ink-soft);
-  transform: rotate(45deg);
-  transition: transform 0.25s var(--w-ease);
-}
-.faq details[open] summary::after {
-  transform: rotate(-135deg);
-}
-.faq details p {
-  margin: 0 0 20px;
-  color: var(--pg-ink-soft);
-}
-
 /* 꼬리말은 공용 LegalFooter 를 쓰고, 폰에서 화면 끝에 붙지 않게 바깥에 여백만 둔다. */
 .footer {
   padding-inline: 20px;
@@ -692,10 +760,16 @@
 /* ── 마감 ─────────────────────────────────────── */
 .end {
   padding: 128px 20px 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
 }
+.endPosty {
+  margin-bottom: 4px;
+}
 .endTitle {
-  margin: 26px 0 0;
+  margin: 18px 0 0;
   font-family: var(--font-display), cursive;
   font-size: clamp(44px, 6vw, 68px);
   font-weight: 700;
@@ -911,7 +985,8 @@
   .mac,
   .phone,
   .shot,
-  .tryRow {
+  .tryRow,
+  .planPanel {
     animation: none;
   }
   .mac,
