@@ -12,6 +12,7 @@ import {
   type TeacherDoc,
 } from "@/lib/workspace/evaluation-files";
 import { today } from "@/lib/workspace/model";
+import { Posty } from "@/components/app/Posty";
 import { ws } from "./WorkspaceUI";
 import EvidenceImport from "./EvidenceImport";
 import styles from "./Evaluation.module.css";
@@ -29,6 +30,47 @@ function shortDate(value: string) {
   const [y, m, d] = value.split("-").map(Number);
   if (!d) return `${m}월`;
   return `${m}월 ${d}일(${WEEKDAY[new Date(y, m - 1, d).getDay()]})`;
+}
+
+/** 챙긴 줄. */
+function TickMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M5.5 12.6 10 17l8.5-9.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 아직 빈 줄. 가위표는 「틀렸다」로 읽혀서 점만 둔다. */
+function DotMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="4.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 접힌 칸 앞의 꺾쇠. 열렸는지 닫혔는지 글자만으로는 몰랐다. */
+export function FoldMark() {
+  return (
+    <svg className={styles.foldMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M9 5.5 16.5 12 9 18.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 /** 서류 한 줄에서 쌤플이 아는 쪽. 쌤플이 만들지 않는 서류는 `null` 이다. */
@@ -89,7 +131,8 @@ function indicatorOf(doc: TeacherDoc) {
 }
 
 function MineCell({ result, picked }: { result: DocResult | undefined; picked: boolean }) {
-  if (!picked) return <span className={styles.rowFaint}>폴더를 고르면 찾아요</span>;
+  // 폴더를 고르기 전에는 여섯 줄이 전부 같은 말이었다. 안내는 열 이름에 한 번만 둔다.
+  if (!picked) return <span className={styles.rowFaint}>—</span>;
   if (!result) return <span className={styles.rowFaint}>—</span>;
   return (
     <span className={`${styles.chip} ${STATUS[result.status][1]}`}>
@@ -182,7 +225,7 @@ export default function EvaluationSheet({
     <div className={ws.stack}>
       <div className={styles.titleRow}>
         <div>
-          <h2 className={styles.sectionTitle}>평가 때 낼 서류</h2>
+          <h2 className={styles.sheetTitle}>평가 때 낼 서류</h2>
           <p className={ws.hint}>
             쌤플에서 확정한 문서와 선생님 컴퓨터에 있는 파일을 한 장에서 봅니다. 폴더를 고르면 파일
             <strong> 이름만 </strong>
@@ -209,31 +252,53 @@ export default function EvaluationSheet({
         />
       </div>
 
-      {/* 남은 것을 맨 위 한 줄로. 표를 끝까지 읽지 않아도 오늘 뭘 할지는 알 수 있어야 한다. */}
-      <div className={styles.lead}>
-        <strong className={styles.leadCount}>{left}</strong>
-        <div>
+      {/* 남은 것을 맨 위 한 줄로. 표를 끝까지 읽지 않아도 오늘 뭘 할지는 알 수 있어야 한다.
+          숫자 하나를 크게 놓았더니 「40px 짜리 5」가 무슨 뜻인지 옆 글을 읽어야 알았다.
+          포스티가 세는 쪽이 교사 눈에 먼저 닿는다. */}
+      <div className={styles.lead} data-done={left ? undefined : true}>
+        <Posty
+          pose={left ? "point" : "cheer"}
+          face={left ? "oh" : "done"}
+          tone={left ? "sun" : "sage"}
+          size={74}
+          label={null}
+        />
+        <div className={styles.leadWord}>
           <p className={styles.leadTitle}>
-            {left
-              ? `오늘 평가를 받는다면 서류 ${left}가지가 아직 비어 있습니다.`
-              : "낼 서류를 다 챙겼습니다."}
+            {left ? (
+              <>
+                아직 <b>{left}가지</b>가 비어 있어요
+              </>
+            ) : (
+              "낼 서류를 다 챙겼어요"
+            )}
           </p>
           <p className={styles.leadNote}>
-            쌤플이 셀 수 있는 것만 셉니다. 센 것이 내용까지 확인해 준 것은 아닙니다.
+            {left
+              ? "오늘 평가를 받는다면 그렇습니다. 쌤플이 셀 수 있는 것만 셉니다 — 센 것이 내용까지 확인해 준 것은 아닙니다."
+              : "쌤플이 셀 수 있는 것만 셉니다. 센 것이 내용까지 확인해 준 것은 아닙니다."}
           </p>
         </div>
       </div>
 
       <section className={styles.sheet} aria-label="평가 때 낼 서류">
         <div className={`${styles.row} ${styles.sheetHead}`}>
+          <span className={styles.rowState} aria-hidden="true" />
           <span className={styles.colDoc}>서류</span>
           <span className={styles.colMade}>쌤플에서 만든 것</span>
-          <span className={styles.colMine}>내 컴퓨터에 있는 것</span>
+          <span className={styles.colMine}>
+            내 컴퓨터에 있는 것
+            {!scan && <em className={styles.colHint}>폴더를 고르면 채워져요</em>}
+          </span>
           <span className={styles.colAct} />
         </div>
 
         {rows.map(({ doc, made, result, checked, done }) => (
           <div key={doc.id} className={styles.row} data-done={done || undefined}>
+            {/* 끝난 줄과 빈 줄이 똑같이 생겨서, 어디를 손대야 하는지 표를 다 읽어야 알았다. */}
+            <span className={styles.rowState} data-done={done || undefined} aria-hidden="true">
+              {done ? <TickMark /> : <DotMark />}
+            </span>
             <div className={styles.colDoc}>
               <p className={styles.docTitle}>
                 {doc.title}
@@ -291,7 +356,10 @@ export default function EvaluationSheet({
       </section>
 
       <details className={styles.fold} aria-label="원장님이 챙기는 서류">
-        <summary>원장님이 챙기는 서류 {DIRECTOR_ITEMS.length}가지</summary>
+        <summary>
+          <FoldMark />
+          원장님이 챙기는 서류 {DIRECTOR_ITEMS.length}가지
+        </summary>
         <p className={ws.hint}>선생님 폴더에는 보통 없어 찾지 않습니다. 챙겼으면 체크해 주세요.</p>
         <div className={styles.fileGroup}>
           {DIRECTOR_ITEMS.map((item) => {

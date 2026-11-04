@@ -23,6 +23,14 @@
   font-size: 18px;
   font-weight: 700;
 }
+/* 페이지 안에서 제일 큰 덩어리의 머리다. 고딕 18px 로는 바로 밑 설명과 같은 무게였다. */
+.sheetTitle {
+  font-family: var(--font-display), sans-serif;
+  font-size: 29px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-ink);
+}
 
 .card {
   display: grid;
@@ -346,21 +354,35 @@
 .lead {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 18px 22px;
+  gap: 16px;
+  padding: 16px 22px;
   border: 1px solid var(--pg-note-soft-line);
   border-radius: 12px;
   background: var(--pg-note-soft);
 }
-.leadCount {
-  font-family: var(--font-display), "Apple SD Gothic Neo", sans-serif;
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1;
+/* 다 챙기면 노란 「아직 남았다」 색을 그대로 둘 수 없다. */
+.lead[data-done] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
 }
+.leadWord {
+  flex: 1;
+  min-width: 0;
+}
+/* 「5」 하나를 40px 로 놓았더니 그 숫자가 뭘 센 것인지 옆 글을 읽어야 알았다.
+   세는 일은 글 안에서 하고, 눈이 먼저 닿는 자리는 포스티에게 준다. */
 .leadTitle {
-  font-size: 16px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 26px;
   font-weight: 700;
+  line-height: 1.2;
+  color: var(--pg-ink);
+}
+.leadTitle b {
+  color: var(--pg-alert-ink);
+}
+.lead[data-done] .leadTitle {
+  color: var(--pg-sage-ink);
 }
 .leadNote {
   margin-top: 5px;
@@ -400,6 +422,39 @@
   color: var(--pg-ink-soft);
 }
 
+/* 끝난 줄과 빈 줄이 똑같이 생겨서 표를 다 읽어야 어디를 손댈지 알았다.
+   왼쪽에 표식 한 칸을 세워, 훑기만 해도 남은 줄이 보이게 한다. */
+.rowState {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--pg-alert-soft);
+  color: var(--pg-alert-strong);
+}
+.rowState[data-done] {
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.rowState svg {
+  width: 15px;
+  height: 15px;
+}
+.sheetHead .rowState {
+  background: none;
+}
+/* 열 이름 밑에 붙는 한 줄. 여섯 줄에 같은 말을 되풀이하던 자리다. */
+.colHint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 400;
+  font-style: normal;
+  color: var(--pg-ink-hint);
+}
 .colDoc {
   flex: 1 1 0;
   min-width: 0;
@@ -485,13 +540,38 @@
   background: var(--pg-paper);
 }
 .fold > summary {
-  min-height: 44px;
+  min-height: 48px;
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 0 22px;
-  font-size: 14px;
-  font-weight: 600;
+  list-style: none;
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--pg-ink);
   cursor: pointer;
+}
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+.fold[open] > summary {
+  border-bottom: 1px dashed var(--pg-line);
+}
+.foldMark {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  color: var(--pg-primary);
+  transition: transform 140ms ease;
+}
+.fold[open] .foldMark {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .foldMark {
+    transition: none;
+  }
 }
 .fold > p {
   padding: 0 22px;

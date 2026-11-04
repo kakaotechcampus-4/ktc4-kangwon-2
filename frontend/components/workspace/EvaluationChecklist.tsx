@@ -12,7 +12,7 @@ import {
 import { Message, ws } from "./WorkspaceUI";
 import EvaluationAuto from "./EvaluationAuto";
 import EvaluationSelfCheck from "./EvaluationSelfCheck";
-import EvaluationSheet from "./EvaluationSheet";
+import EvaluationSheet, { FoldMark } from "./EvaluationSheet";
 import { readChecks, withFound, writeChecks, type Scan } from "@/lib/workspace/evaluation-files";
 import styles from "./Evaluation.module.css";
 
@@ -145,13 +145,17 @@ export default function EvaluationChecklist({
         onImported={() => setReload((n) => n + 1)}
       />
       <details className={styles.fold} aria-label="평가항목별로 보기">
-        <summary>평가항목별로 보기 · {autos.map((item) => item.indicator).join(" · ")}</summary>
+        <summary>
+          <FoldMark />
+          평가항목별로 보기 · {autos.map((item) => item.indicator).join(" · ")}
+        </summary>
         <div className={styles.foldBody}>
           <EvaluationAuto items={autos} onImported={() => setReload((n) => n + 1)} />
         </div>
       </details>
       <details className={styles.fold} aria-label="현장에서 보는 것 직접 확인">
         <summary>
+          <FoldMark />
           현장에서 보는 것 직접 확인 · {checked} / {total}
         </summary>
         <div className={styles.foldBody}>
