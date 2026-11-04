@@ -30,7 +30,7 @@ from app.features.routines.schemas import (
     RoutineUpdate,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import own_class_clause, require_own_class
 
 router = APIRouter(prefix="/routines", tags=["routines"])
 
@@ -110,7 +110,11 @@ def list_routines(
     """
     query = _visible(user)
     if class_id is not None:
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(RoutineRecord.class_id == class_id)
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(own_class_clause(user))
     if date_from is not None:
         query = query.where(RoutineRecord.date >= date_from)
     if date_to is not None:
@@ -140,6 +144,7 @@ def update_routine(
     include_impact: bool = False,
 ) -> RoutineResponse | RoutineMutationResponse:
     record = _own(session, user, record_id, lock=True)[0]
+    require_own_class(session, user, record.class_id)
     # 사본이 이미 과거 값이어도 계획/자리만 고친 요청은 새 근거 변경이 아니다.
     before = (record.date, record.start_time, record.end_time, record.name, record.execution)
     _apply(record, body)
@@ -178,6 +183,7 @@ def delete_routine(
     include_impact: bool = False,
 ) -> Response:
     record = _own(session, user, record_id, lock=True)[0]
+    require_own_class(session, user, record.class_id)
     impact = source_changed(session, "routine", record_id, None, None, center_id=user.center_id)
     session.delete(record)
     session.commit()

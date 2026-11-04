@@ -30,6 +30,9 @@ import {
   copyWeeklyActivity,
   splitWeeklyActivityCell,
   removeWeeklyActivityCell,
+  addWeeklyIndoorPlay,
+  orderWeeklyIndoorPlays,
+  removeWeeklyIndoorPlay,
 } from "@/lib/api/weekly";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
@@ -39,6 +42,7 @@ import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import { WorkspacePage, Empty, Message } from "./WorkspaceUI";
 import s from "./WeeklyPlanPage.module.css";
 import WeeklyActivityPanel from "./WeeklyActivityPanel";
+import WeeklyIndoorPlayPanel from "./WeeklyIndoorPlayPanel";
 
 function describe(e: unknown, fallback: string): string {
   if (e instanceof ApiError) return e.message;
@@ -255,7 +259,12 @@ export default function WeeklyPlanPage() {
   const handleCreate = () =>
     run("create", async () => {
       if (classId === null || !weekId) return;
-      return createWeeklyPlan({ class_id: classId, week_id: weekId, activity_candidates: true });
+      return createWeeklyPlan({
+        class_id: classId,
+        week_id: weekId,
+        activity_candidates: true,
+        indoor_play_candidates: true,
+      });
     });
 
   const handleDelete = () =>
@@ -377,7 +386,8 @@ export default function WeeklyPlanPage() {
                 고치기
               </button>
               {!cell.teacher_input &&
-                !(plan?.activity_grids?.length && sectionKey === "group_activity") && (
+                !(plan?.activity_grids?.length && sectionKey === "group_activity") &&
+                !(plan?.indoor_play_selection && sectionKey === "indoor_play") && (
                   <button
                     type="button"
                     className={s.btnSmall}
@@ -608,7 +618,8 @@ export default function WeeklyPlanPage() {
                 (k) =>
                   cells.has(k) &&
                   !teacherKeys.includes(k) &&
-                  !(k === "group_activity" && plan.activity_grids?.length),
+                  !(k === "group_activity" && plan.activity_grids?.length) &&
+                  !(k === "indoor_play" && plan.indoor_play_selection),
               );
               if (!keys.length) return null;
               return (
@@ -620,6 +631,23 @@ export default function WeeklyPlanPage() {
                 </section>
               );
             })}
+
+            {plan.indoor_play_selection && (
+              <WeeklyIndoorPlayPanel
+                plan={plan}
+                disabled={locked}
+                renderCell={(cell, label) => renderCard("indoor_play", true, cell, label)}
+                onAdd={(candidateId) =>
+                  run("add-indoor", () => addWeeklyIndoorPlay(plan.id, candidateId, plan.revision))
+                }
+                onOrder={(ids) =>
+                  run("order-indoor", () => orderWeeklyIndoorPlays(plan.id, ids, plan.revision))
+                }
+                onRemove={(itemId) =>
+                  run("remove-indoor", () => removeWeeklyIndoorPlay(plan.id, itemId, plan.revision))
+                }
+              />
+            )}
 
             {!!plan.activity_grids?.length && (
               <WeeklyActivityPanel

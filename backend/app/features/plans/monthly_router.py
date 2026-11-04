@@ -127,7 +127,7 @@ from app.features.template_profiles import service as profile_service
 from app.features.template_profiles.repository import TemplateProfileError
 from app.features.template_profiles.service import ready_profile_for_generation
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 _log = logging.getLogger(__name__)
@@ -380,8 +380,11 @@ def list_monthly_plans(session: DbSession, user: CurrentUser, class_id: int | No
     """요약만 담는다. 칸은 단건이 준다. 대상 달 오름차순."""
     query = select(Plan).where(Plan.center_id == user.center_id, Plan.kind == "monthly")
     if class_id is not None:
-        require_own_class(session, user, class_id)
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Plan.classroom_ref == str(class_id))
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(Plan.classroom_ref.not_in(foreign_class_refs(user)))
     rows = session.scalars(query.order_by(Plan.target_month, Plan.id)).all()
     summaries = (_summary(row) for row in rows)
     return MonthlyPlanListOut(items=[item for item in summaries if item is not None])
@@ -476,7 +479,7 @@ def get_monthly_audit(
     계획안 → 칸(계획안 안의 순서) → 저장된 순서다. 응답 목록만 정렬하고 Core 의 기록은
     건드리지 않는다.
     """
-    row = _own_row(session, user, plan_id)
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     cells = [(section, cell) for section in plan.sections for cell in section.cells]
     # 후보 칸은 Section 칸 다음에 잇는다. 후보 cell 은 Section 안에 없어서 안전교육으로 적는다.
@@ -546,8 +549,11 @@ def _audit_event(event, located) -> MonthlyAuditEventOut:
     )
 
 
-def _own_row(session: Session, user, plan_id: int) -> Plan:
-    """이 원의 월간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing)."""
+def _own_row(session: Session, user, plan_id: int, *, read_only: bool = False) -> Plan:
+    """이 원의 월간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing).
+
+    남의 반 계획안이면 반 검사를 거친다(ADR-059). 기본이 쓰기다 — 읽기만 `read_only=True`.
+    """
     row = session.scalar(
         select(Plan)
         .where(Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "monthly")
@@ -555,14 +561,18 @@ def _own_row(session: Session, user, plan_id: int) -> Plan:
     )
     if row is None:
         raise _NOT_FOUND
+    require_own_class(session, user, int(row.classroom_ref), read_only=read_only)
     if _is_play_monthly(row):  # 소유 다음, 확정 · revision · 본문 읽기 앞(ADR-046 §4)
         raise _PLAY_MONTHLY
     return row
 
 
 def _current(session: Session, user, plan_id: int) -> MonthlyPlanOut:
-    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다."""
-    row = _own_row(session, user, plan_id)
+    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다.
+
+    읽기 검사만 한다 — 쓰는 길은 모두 먼저 `_own_row`(쓰기 검사)를 지난 뒤 이걸 부른다.
+    """
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent = session.scalar(
         select(Plan).where(

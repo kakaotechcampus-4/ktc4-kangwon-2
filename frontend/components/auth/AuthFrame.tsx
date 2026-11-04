@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Icon } from "@/components/app/icons";
+import { Posty } from "@/components/app/Posty";
 import { LegalFooter } from "@/components/legal/LegalPage";
+import { Wordmark } from "@/components/app/Wordmark";
 
 /**
  * 로그인·가입 화면의 틀. 왼쪽은 소개, 오른쪽이 입력 칸이다.
@@ -12,13 +14,8 @@ import { LegalFooter } from "@/components/legal/LegalPage";
 export default function AuthFrame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-cream px-5 py-6 text-ink sm:px-8">
-      <header className="mx-auto flex max-w-[1140px] items-center justify-between gap-3">
-        <Link href="/welcome" aria-label="쌤플 소개로" className="flex items-baseline">
-          <span className="text-[28px] font-bold tracking-[-0.04em] text-success">
-            Ssample<span className="text-peach-strong">.</span>
-          </span>
-          <span className="ml-3 font-display text-xl text-ink">쌤플</span>
-        </Link>
+      <header className="mx-auto flex max-w-[1180px] items-center justify-between gap-3">
+        <Wordmark href="/welcome" label="쌤플 소개로" />
         <Link
           href="/welcome"
           className="flex min-h-11 items-center gap-2 text-xs text-ink-soft hover:text-ink"
@@ -28,7 +25,7 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
         </Link>
       </header>
 
-      <main className="mx-auto grid max-w-[1050px] items-center gap-10 py-10 sm:py-16 lg:grid-cols-[1fr_450px] lg:gap-20">
+      <main className="mx-auto grid max-w-[1180px] items-center gap-10 py-10 sm:py-16 lg:grid-cols-[1fr_450px] lg:gap-20">
         <section className="hidden lg:block">
           <span className="flex items-center gap-2 text-xs font-medium text-success">
             <Icon name="nature" className="h-4 w-4" />
@@ -45,7 +42,17 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
             계획부터 기록까지, 쌤플이 함께할게요.
           </p>
 
-          <div className="relative mt-9 -rotate-1 border border-note-line bg-note p-6 shadow-pg-hard">
+          {/* 첫 인사 — 노란 쪽지 + 인사 + 테이프(캐릭터 시트). 쪽지 카드 안에 넣으면
+              같은 노란색이라 묻힌다. 크림 바탕 위, 카드 바로 앞에 세운다. */}
+          <Posty
+            pose="wave"
+            tape
+            size={86}
+            label="포스티가 인사해요"
+            className="mt-8 -mb-1 ml-1 block"
+          />
+
+          <div className="relative mt-1 -rotate-1 border border-note-line bg-note p-6 shadow-pg-hard">
             <span
               aria-hidden="true"
               className="pointer-events-none absolute -top-3 right-10 h-6 w-20 rotate-3 border border-white/60 bg-tape"
@@ -62,12 +69,12 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
           </div>
         </section>
 
-        <section className="border border-line bg-paper p-6 shadow-pg-hard sm:p-8">
+        <section className="relative border border-line bg-paper p-6 shadow-pg-hard sm:p-8">
           {children}
         </section>
       </main>
 
-      <LegalFooter width="max-w-[1050px]" />
+      <LegalFooter width="max-w-[1180px]" />
     </div>
   );
 }

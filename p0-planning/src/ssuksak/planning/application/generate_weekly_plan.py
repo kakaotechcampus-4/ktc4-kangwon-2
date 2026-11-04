@@ -67,7 +67,7 @@ from ..planner.weekly import (
     weekly_memo_address,
 )
 from ..retrieval.models import RetrievedEvidence
-from ..retrieval.weekly import activity_type, weekly_section_evidence
+from ..retrieval.weekly import activity_type, indoor_play_type, weekly_section_evidence
 from ..rules.monthly_activity_selection import (
     ActivitySelection,
     ActivitySelectionTrace,
@@ -153,10 +153,14 @@ class GenerateWeeklyPlanCommand:
     activity_catalog: ActivityCatalogSelector | None = None
     optional_context_names: tuple[str, ...] = ()
     activity_candidates: bool = False
+    indoor_play_candidates: bool = False
+
     # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
 
     def __post_init__(self) -> None:
+        if type(self.activity_candidates) is not bool or type(self.indoor_play_candidates) is not bool or (self.indoor_play_candidates and not self.activity_candidates):
+            raise InvalidDomainValueError("Indoor candidates require the activity candidate layout")
         if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
             raise InvalidDomainValueError("teacher_memo must be normalized")
         checks = (
@@ -280,6 +284,7 @@ class GenerateWeeklyPlan:
                 catalog=catalog, constraint_assessments=(safety_assessment,), outdoor=outdoor,
                 daily_life_loader=self._daily_life_loader,
                 activity_candidates=command.activity_candidates,
+                indoor_play_candidates=command.indoor_play_candidates,
                 teacher_memo=command.teacher_memo,
             )
             fingerprint = context.fingerprint
@@ -359,7 +364,7 @@ class GenerateWeeklyPlan:
                 item_id=item_id,
                 section_key=key,
                 value=value,
-                cell_state=CellState.EMPTY_VALID if command.activity_candidates and key == "group_activity" else resolve_cell_state(
+                cell_state=CellState.EMPTY_VALID if (command.activity_candidates and key == "group_activity" or command.indoor_play_candidates and key == "indoor_play") else resolve_cell_state(
                     section_key=key,
                     value=value,
                     assessment=safety_assessment if key == SAFETY_KEY else None,
@@ -376,7 +381,7 @@ class GenerateWeeklyPlan:
 
         candidates = []
         if command.activity_candidates and outcome is not None:
-            sources = {i.record_id: i.record.source_label for i in context.classified.get("group_activity", ())}
+            sources = {i.record_id: i.record.source_label for items in context.classified.values() for i in items}
             for target in context.request.targets:
                 if target.activity_type is None:
                     continue
@@ -385,7 +390,7 @@ class GenerateWeeklyPlan:
                     continue
                 item_id = self._ids.new_item_id()
                 candidates.append(WeeklyActivityCandidate(target.activity_type, WeeklyCell(
-                    item_id=item_id, section_key="group_activity", value=proposed.value, cell_state=CellState.FILLED,
+                    item_id=item_id, section_key=target.section_key.partition(".")[0], value=proposed.value, cell_state=CellState.FILLED,
                     generation=GenerationMethodDetail(GenerationMethod.RULE_LLM, LLM_RULE_ID, outcome.prompt_version_for(target.section_key)),
                     evidence=with_memo_evidence(
                         (parent_evidence, *(EvidenceSource(EvidenceSourceType.INSTITUTION_SAMPLE, ref, context.store_version,
@@ -416,6 +421,7 @@ class GenerateWeeklyPlan:
             generation_mode=command.generation_mode,
             activity_candidates=tuple(candidates),
             activity_grids=tuple(WeeklyActivityGrid(cell=c.item_id) for c in cells if c.section_key == "group_activity") if command.activity_candidates else (),
+            indoor_play_selection=command.indoor_play_candidates,
             teacher_memo=command.teacher_memo,
             memo_notices=outcome.memo_skipped if outcome is not None else (),
         )
@@ -506,6 +512,7 @@ def llm_context(
     outdoor,
     daily_life_loader: Callable[[], DailyLifeCatalog] | None = None,
     activity_candidates: bool = False,
+    indoor_play_candidates: bool = False,
     teacher_memo: str = "",
 ) -> WeeklyLlmContext:
     theme_cell = _only_cell(parent, THEME_KEY)
@@ -530,7 +537,7 @@ def llm_context(
         keys = {section.section_key for section in snapshot.sections}
         classified = _classified_evidence(
             store, classification_repository.get_classification(), parent, period.week_id, keys,
-            focus_aware=linked, activity_candidates=activity_candidates,
+            focus_aware=linked, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
         )
     daily_life = None
     if linked and daily_life_loader is not None:
@@ -541,7 +548,8 @@ def llm_context(
             raise WeeklyApplicationError("weekly_reference_context_unavailable", "Weekly daily-life context is unavailable") from error
     request = _weekly_request(
         parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
-        daily_life=daily_life, activity_candidates=activity_candidates, teacher_memo=teacher_memo,
+        daily_life=daily_life, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
+        teacher_memo=teacher_memo,
     )
     return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
 
@@ -656,7 +664,7 @@ def _parent_cell(parent: MonthlyPlan, key: str, week_id: WeekId) -> MonthlyCell 
     return section.cell_for_week(week_id) or section.cell_for_week(None)
 
 
-def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False) -> dict[str, tuple[RetrievedEvidence, ...]]:
+def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False, indoor_play_candidates=False) -> dict[str, tuple[RetrievedEvidence, ...]]:
     """W3c: evidence per classified Section; a Section with none is left out (not a target)."""
     focus = _parent_cell(parent, "focus", week_id)
     query = " ".join((_only_cell(parent, THEME_KEY).value, focus.value if focus is not None else ""))
@@ -671,7 +679,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
                 query_text=_only_cell(parent, THEME_KEY).value if activity_candidates and key == "group_activity" else query,
                 focus_text=focus.value if focus_aware and focus is not None and not (activity_candidates and key == "group_activity") else "",
                 sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
-                by_activity_type=activity_candidates and key == "group_activity",
+                by_activity_type=activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play",
             ) if item.record.text
         )
         if items:
@@ -681,7 +689,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
 
 def _weekly_request(
     parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
-    *, daily_life=None, activity_candidates=False, teacher_memo="",
+    *, daily_life=None, activity_candidates=False, indoor_play_candidates=False, teacher_memo="",
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -692,11 +700,11 @@ def _weekly_request(
         key = section.section_key
         parent_cell = _parent_cell(parent, key, period.week_id) if key != THEME_KEY else None
         parent_value = parent_cell.value if parent_cell is not None else ""
-        if key == "group_activity" and activity_candidates:
+        if key == "group_activity" and activity_candidates or key == "indoor_play" and indoor_play_candidates:
             for index, item in enumerate(classified.get(key, ()), 1):
-                targets.append(WeeklyTarget(f"group_activity.candidate.{index}", (item.record_id,),
-                                            activity_type=activity_type(item.record)))
-                evidence.append((item.record_id, item.record.text, "GROUP_ACTIVITY"))
+                targets.append(WeeklyTarget(f"{key}.candidate.{index}", (item.record_id,),
+                                            activity_type=indoor_play_type(item.record) if key == "indoor_play" else activity_type(item.record)))
+                evidence.append((item.record_id, item.record.text, "INDOOR_PLAY" if key == "indoor_play" else "GROUP_ACTIVITY"))
             continue
         if key in PARENT_GROUNDABLE_KEYS:
             klass = grounding_class_for(section)  # F1 variant decides the class; WEEKLY_THEME has none
@@ -719,7 +727,11 @@ def _weekly_request(
             days = tuple(d.value for d in operating_days) if section.repeat_by is RepeatBy.DAY else ()
             targets.append(WeeklyTarget(key, tuple(i.record_id for i in items), parent_value, days=days))
             klass = next(c for c, k in WEEKLY_GROUNDING_SCOPE.items() if k == key)
-            evidence += [(i.record_id, i.record.text, klass.value) for i in items]
+            evidence += [
+                (i.record_id, f"원문 영역: {i.record.source_label}\n{i.record.text}"
+                 if linked and key == "indoor_play" else i.record.text, klass.value)
+                for i in items
+            ]
         elif key == OUTDOOR_KEY and outdoor.ranked:
             targets.append(WeeklyTarget(key, (), parent_value))
         elif key == SAFETY_KEY and parent_value.strip() and parent_cell.safety is None:

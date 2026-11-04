@@ -3,10 +3,12 @@ import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
-import { createCenter, joinCenter, updateCenter } from "./centers";
-import { createClass, getClasses } from "./classes";
+import { createCenter, getCenter, joinCenter, updateCenter } from "./centers";
+import { createClass, getClasses, isMyClass } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
 import { normalizeProvince } from "../onboarding/regions";
+import { loadClassSettings, saveClassSettings } from "../onboarding/settings";
+import { EMPTY_CLASS_SETTINGS } from "../onboarding/types";
 import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
 /** 서버에서 받아온 연결이라는 표시. 화면이 그 내용을 들고 있지 않아 서명을 만들 수 없다. */
 const ADOPTED = "adopted";
@@ -221,13 +223,20 @@ export async function adoptServerClasses(
    * 「연결은 있는데 목록에 없는 반」이 된다 — 그건 교사가 지운 반과 모양이 같아서
    * 다음부터 영영 안 들어온다. 그래서 **목록 먼저, 연결 나중**이다.
    */
-  persist?: (adopted: ClassroomEntry[]) => void,
+  persist?: (adopted: ClassroomEntry[], dropped: string[]) => void,
 ): Promise<ClassroomEntry[]> {
   const me = await getMe();
   if (!me.center_id) return [];
   const { items } = await getClasses(me.center_id);
   const links = readLinks();
   const linked = new Set(known.map((c) => links.classes[c.id]?.id).filter(Boolean));
+  // 이미 목록에 들어온 반이 그사이 남의 반이 됐으면 뺀다. 연결은 지우지 않는다 —
+  // 남아 있어야 아래 「연결은 있는데 목록에 없는 반」 규칙으로 다시 안 들어온다.
+  // 아래 조기 return 들보다 먼저 저장해야 어느 길로 끝나도 빠진다.
+  const dropped = known
+    .filter((c) => items.some((item) => item.id === links.classes[c.id]?.id && !isMyClass(item)))
+    .map((c) => c.id);
+  if (dropped.length) persist?.([], dropped);
   // 원 연결을 서버 값으로 만들어 둔다. 없으면 syncCenter 가 원을 새로 만들면서
   // links.classes · links.children 을 통째로 비운다.
   if (!links.center) links.center = { id: me.center_id, signature: ADOPTED };
@@ -256,7 +265,7 @@ export async function adoptServerClasses(
   const serverIds = new Map<string, number>();
   const adopted: ClassroomEntry[] = [];
   for (const item of items) {
-    if (linked.has(item.id) || retired.has(item.id)) continue;
+    if (linked.has(item.id) || retired.has(item.id) || !isMyClass(item)) continue;
     if (already.has(CLASS_PREFIX + item.id)) continue;
     // **연결은 있는데 목록에 없는 반은 교사가 지운 것이다.** removeClass 는 로컬 목록만
     // 지우고 연결은 남긴다. 여기서 다시 들이면 지운 반이 되살아난다.
@@ -311,9 +320,59 @@ export async function adoptServerClasses(
 
   // **목록 먼저, 연결 나중.** 중간에 끊기면 연결만 없는 상태인데, 로컬 id 가 서버 id 로
   // 정해져 있어서 기록 쪽은 같은 id 로 풀린다. 반대 순서로 끊기면 반이 영영 사라진다.
-  persist?.(filled);
+  persist?.(filled, dropped);
   saveLinks(links);
   return filled;
+}
+
+/**
+ * 서버에는 원 · 반이 있는데 이 브라우저에는 기록이 없을 때 서버 값으로 채운다 (#291).
+ *
+ * 다른 기기 · 다른 브라우저 · 저장소를 지운 교사가 로그인하면, 첫 설정을 마쳤는지를
+ * 브라우저 기록으로만 보던 탓에 첫 설정으로 보내졌고 반 정보는 빈 칸이었다.
+ * 원 정보는 늘 채우고(첫 설정이 1단계부터 다시 묻지 않게), 반까지 들어오면 true —
+ * 그 교사는 첫 설정을 끝낸 것이다. 반이 없으면 false 이고 반 정보 단계로 이어 간다.
+ * 아동 명단은 `adoptServerClasses` 가 받고 저장소에는 실명을 남기지 않는다(ADR-013).
+ */
+export async function restoreFromServer(centerId: number): Promise<boolean> {
+  const local = loadClassSettings();
+  if (local?.completedAt) return false;
+  const center = await getCenter(centerId);
+  const data = {
+    name: center.name,
+    director_name: center.director_name,
+    region_sido: normalizeProvince(center.region_sido).trim(),
+    region_sigungu: center.region_sigungu.trim(),
+  };
+  const links = readLinks();
+  if (!links.center) {
+    links.center = { id: center.id, signature: JSON.stringify(data) };
+    saveLinks(links);
+  }
+  // 빈 칸으로 만들어 둔 반(EMPTY_CLASS_SETTINGS 의 첫 줄)은 들인 반 앞에 남기지 않는다 —
+  // 남으면 「반 정보를 다 채우지 않았다」로 읽혀 다시 첫 설정으로 간다.
+  const kept = (local?.classes ?? []).filter((c) => c.className.trim());
+  const base: ClassSettings = {
+    ...(local ?? EMPTY_CLASS_SETTINGS),
+    classes: kept.length ? kept : EMPTY_CLASS_SETTINGS.classes,
+    orgName: center.name,
+    directorName: center.director_name,
+    regionProvince: data.region_sido,
+    regionDistrict: data.region_sigungu,
+  };
+  saveClassSettings(base);
+  let restored = false;
+  await adoptServerClasses(kept, undefined, (rows, dropped) => {
+    restored = rows.length > 0;
+    // 뺀 것만 있고 들인 반이 없으면 첫 설정을 끝낸 것이 아니다 — completedAt 을 넣지 않는다.
+    const classes = [...kept.filter((c) => !dropped.includes(c.id)), ...rows];
+    saveClassSettings({
+      ...base,
+      classes: classes.length ? classes : EMPTY_CLASS_SETTINGS.classes,
+      ...(restored && { completedAt: new Date().toISOString() }),
+    });
+  });
+  return restored;
 }
 
 export async function loadServerClasses(settings: ClassSettings) {

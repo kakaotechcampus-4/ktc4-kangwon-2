@@ -28,10 +28,10 @@ from tests.finalization.weekly_harness import WeeklyHarness
 from tests.retrieval.test_weekly_retrieval import _record
 
 
-def generated():
+def generated(*, indoor=False):
     harness, provider = WeeklyHarness(), RequestAwareWeeklyLlm()
     parent = harness.monthly_parent(mode=MonthlyGenerationMode.LLM_PLANNER)
-    plan = _day_generation(harness, provider).execute(replace(_day_command(parent), activity_candidates=True)).plan
+    plan = _day_generation(harness, provider).execute(replace(_day_command(parent), activity_candidates=True, indoor_play_candidates=indoor)).plan
     use_case = weekly_activities(plan_repository=harness.weekly_plans, parent_plan_repository=harness.monthly_plans,
                                 clock=harness.clock, id_generator=harness.weekly_ids)
     return harness, provider, plan, use_case
@@ -121,6 +121,11 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version():
     plan = _day_generation(harness, provider).execute(replace(_day_command(parent), activity_candidates=True)).plan
     assert len(provider.requests) == 2
     assert plan.activity_candidates[0].cell.generation.rule_version == provider.requests[0].repair_prompt_version
+    from ssuksak.planning.planner.weekly import LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
+    for request in provider.requests:
+        assert "+monthly-linked-v6" in request.prompt_version
+        assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
+        assert LINKED_WRITING_GUIDANCE in request.system_prompt
 
 
 def test_candidate_generation_and_repair_use_streaming_with_an_output_cap():
@@ -137,3 +142,68 @@ def test_candidate_generation_and_repair_use_streaming_with_an_output_cap():
     plan = _day_generation(harness, _adapter(transport)).execute(replace(_day_command(parent), activity_candidates=True)).plan
     assert plan.activity_candidates and len(transport.calls) == 2
     assert all(p["stream"] is True and p["max_completion_tokens"] == 6000 for p in transport.calls)
+
+
+def test_indoor_candidates_choose_reorder_remove_and_keep_history():
+    harness, provider, plan, actions = generated(indoor=True)
+    actor = ActorId("test_teacher")
+    candidates = [c for c in plan.activity_candidates if c.cell.section_key == "indoor_play"]
+    assert 2 <= len(candidates) <= 10
+    assert not plan.cell("indoor_play").value
+    assert "합니다체 1~2문장" in provider.requests[0].system_prompt
+    first = actions.add_indoor(plan.plan_id, candidates[0].cell.item_id, actor)
+    row = first.cell("indoor_play")
+    assert row.value == f"[{candidates[0].activity_type}] - {candidates[0].name}"
+    assert row.evidence == candidates[0].cell.evidence
+    assert row.audit.events[-1].copied_from == candidates[0].cell.item_id
+    assert actions.add_indoor(plan.plan_id, candidates[0].cell.item_id, actor) is first
+    second = actions.add_indoor(plan.plan_id, candidates[1].cell.item_id, actor)
+    rows = [c for c in second.cells if c.section_key == "indoor_play"]
+    assert len(rows) == 2 and rows[0].item_id == row.item_id
+    ordered = actions.order_indoor(plan.plan_id, tuple(c.item_id for c in reversed(rows)), actor)
+    assert ordered.cell("indoor_play").item_id == rows[1].item_id
+    with pytest.raises(WeeklyApplicationError):
+        actions.order_indoor(plan.plan_id, (rows[0].item_id, rows[0].item_id), actor)
+    removed = actions.remove_indoor(plan.plan_id, rows[0].item_id, actor)
+    empty = actions.remove_indoor(plan.plan_id, rows[1].item_id, actor)
+    assert not empty.cell("indoor_play").value
+    assert {c.item_id for c in empty.removed_activity_cells} >= {c.item_id for c in rows}
+    assert removed.audit.events[-1].arrangement_change.scope == "indoor_play"
+    group = next(c for c in empty.activity_candidates if c.cell.section_key == "group_activity")
+    with pytest.raises(WeeklyApplicationError):
+        actions.add_indoor(plan.plan_id, group.cell.item_id, actor)
+
+
+def test_indoor_area_uses_source_labels_without_guessing():
+    from types import SimpleNamespace
+    from ssuksak.planning.retrieval.weekly import indoor_play_type
+
+    for label, text, expected in [("역할 놀이", "가게 꾸미기", "역할놀이"),
+                                  ("실내놀이", "[쌓기] 길 만들기", "쌓기놀이"),
+                                  ("실내놀이", "가게에서 역할을 나눠요", "기타")]:
+        assert indoor_play_type(SimpleNamespace(source_label=label, text=text)) == expected
+
+
+def test_candidate_name_duplicates_are_checked_within_each_pool():
+    from ssuksak.planning.planner.weekly import (
+        WeeklyIssueCode,
+        parse_weekly_proposal,
+        validate_weekly,
+    )
+
+    _, provider, _, _ = generated(indoor=True)
+    request = provider.requests[0]
+    values = parse_weekly_proposal(provider.generate_weekly(request).content, request)
+    indoor = [v for v in values if v.section_key.startswith("indoor_play.candidate.")]
+    group = next(v for v in values if v.section_key.startswith("group_activity.candidate."))
+    name = group.value.partition(":")[0]
+
+    def with_name(value):
+        return replace(value, value=f"{name}: {value.value.partition(':')[2]}")
+
+    cross_pool = tuple(with_name(v) if v == indoor[0] else v for v in values)
+    assert not any(i.code is WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID
+                   for i in validate_weekly(cross_pool, request))
+    same_pool = tuple(with_name(v) if v == indoor[1] else v for v in cross_pool)
+    assert any(i.code is WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID
+               and i.section_key == indoor[1].section_key for i in validate_weekly(same_pool, request))

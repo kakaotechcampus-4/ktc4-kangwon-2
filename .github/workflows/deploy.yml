@@ -1,6 +1,10 @@
 name: Deploy
 
-# main 에 머지되면 서버에 올린다.
+# main 또는 develop 에 머지되면 서버에 올린다.
+#
+# develop 을 넣은 것은 **빠르게 보기 위해서다**(PM, 2026-11-03). develop 에 머지된 것이
+# 곧바로 운영에 나간다 — CI 와 배포는 따로 돌기 때문에 검사가 빨간불이어도 나간다.
+# 천천히 가고 싶어지면 아래 `branches` 에서 develop 한 줄만 지우면 된다.
 #
 # 서버에 들어가는 방법은 SSH 가 아니라 SSM 이다 — 카테캠 OIDC 가이드 §7.
 # 인바운드 포트가 0개고, GitHub 에 저장하는 비밀키도 0개다.
@@ -11,7 +15,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       ref:
@@ -32,8 +36,8 @@ permissions:
 env:
   INSTANCE_ID: i-041ebb00937bd371f # ktc4-team-server
   AWS_REGION: ap-northeast-2
-  # push 로 왔으면 main 이다. 손으로 돌릴 때만 고를 수 있다.
-  DEPLOY_REF: ${{ inputs.ref || 'main' }}
+  # push 로 들어오면 그 브랜치(main · develop)를 올린다. 손으로 돌릴 때만 입력값을 쓴다.
+  DEPLOY_REF: ${{ inputs.ref || github.ref_name }}
 
 jobs:
   deploy:

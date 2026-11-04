@@ -8,12 +8,52 @@ from ssuksak.planning.domain.year_month import YearMonth
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 
 from app.features.plans.annual_hwpx import AnnualMonthRows, fill_annual_v1
-from app.shared.hwpx import NS
+from app.shared.hwpx import NS, TITLE_PLACEHOLDER
 
 TEMPLATE = (
     Path(__file__).parents[1] / "app/features/plans/templates/annual_v1_weeks.hwpx"
 ).read_bytes()
 MONTHS = (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2)
+
+
+@pytest.mark.parametrize(
+    "name,titles", [("annual_v1_weeks.hwpx", 1), ("play_project_annual.hwpx", 2)]
+)
+def test_annual_templates_use_blue_titles_and_black_table_borders(name, titles):
+    directory = Path(__file__).parents[1] / "app/features/plans/templates"
+    with zipfile.ZipFile(directory / name) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+        section = etree.fromstring(archive.read("Contents/section0.xml"))
+    ns = {
+        **NS,
+        "hh": "http://www.hancom.co.kr/hwpml/2011/head",
+        "hc": "http://www.hancom.co.kr/hwpml/2011/core",
+    }
+    margin = section.find(".//hp:pagePr/hp:margin", NS)
+    expected_margin = ("4884", "1417") if name == "annual_v1_weeks.hwpx" else ("1984", "0")
+    assert (margin.get("bottom"), margin.get("footer")) == expected_margin
+    fills = {b.get("id"): b for b in header.findall(".//hh:borderFill", ns)}
+    title_paragraphs = [
+        p
+        for p in section.findall("hp:p", NS)
+        if any(t.text == TITLE_PLACEHOLDER for t in p.findall("hp:run/hp:t", NS))
+    ]
+    assert len(title_paragraphs) == titles
+    for p in title_paragraphs:
+        para = header.find(f".//hh:paraPr[@id='{p.get('paraPrIDRef')}']", ns)
+        band = fills[para.find("hh:border", ns).get("borderFillIDRef")]
+        brush = band.find("hc:fillBrush/hc:winBrush", ns)
+        assert brush.get("faceColor") == "#E1F2FE" and brush.get("hatchStyle") == "CROSS"
+    for table in section.findall(".//hp:tbl", NS):
+        for tc in table.findall("hp:tr/hp:tc", NS):
+            fill = fills[tc.get("borderFillIDRef")]
+            for edge in ("leftBorder", "rightBorder", "topBorder", "bottomBorder"):
+                line = fill.find(f"hh:{edge}", ns)
+                if line is not None and line.get("type") != "NONE":
+                    assert line.get("color") == "#000000"
+        for tc in table.find("hp:tr", NS).findall("hp:tc", NS):
+            brush = fills[tc.get("borderFillIDRef")].find("hc:fillBrush/hc:winBrush", ns)
+            assert brush.get("faceColor") == "#E1F2FE"
 
 
 @pytest.mark.parametrize("year", [2025, 2026, 2027, 2028, 2032])
@@ -64,6 +104,16 @@ def test_each_canonical_week_is_covered_once_in_both_halves(year):
             assert topic in text and topic in preview
     assert "※" not in text
     assert table.find("hp:pos", NS).get("treatAsChar") == "0"
+    with zipfile.ZipFile(
+        Path(__file__).parents[1] / "app/features/plans/templates/play_monthly.hwpx"
+    ) as archive:
+        monthly = etree.fromstring(archive.read("Contents/section0.xml"))
+    footer = section.find(".//hp:footer", NS)
+    assert footer is not None and footer.get("applyPageType") == "BOTH"
+    assert (
+        footer.xpath(".//hp:t/text()", namespaces=NS)
+        == monthly.xpath("//hp:t/text()", namespaces=NS)[-2:]
+    )
 
 
 def test_template_keeps_nanum_gothic_and_nine_point_body():

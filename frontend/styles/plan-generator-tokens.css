@@ -29,14 +29,63 @@
   /* 쪽지 쌤플의 접힌 귀. 바탕보다 한 단계 어두워야 접힌 것으로 보인다. */
   --pg-shell-fold: #ddd5c8;
 
+  /* 어두운 사이드바 — 메뉴를 본문에서 완전히 떼어 놓는다.
+     크림 위의 크림이라 사이드바와 본문의 경계가 흐렸다. 바닥을 먹색으로 내리면
+     본문의 종이가 더 밝게 떠 보이고, 메뉴는 늘 같은 자리의 어두운 기둥이 된다. */
+  --pg-rail: #2e2a26;
+  --pg-rail-line: #4a443d;
+  --pg-rail-hover: #3c3630;
+  --pg-rail-card: #3c3630; /* 반 카드 · 교사 줄처럼 한 단계 떠 있는 면 */
+  --pg-rail-card-line: #4f4840;
+  --pg-rail-ink: #efe9df; /* 사이드바 본문 글자 */
+  --pg-rail-ink-soft: #c9c2b6; /* 메뉴 이름 — 먹색 위에서 7:1 */
+  --pg-rail-ink-hint: #a79f92; /* 묶음 제목 — 먹색 위에서 4.8:1 */
+  --pg-rail-on: #4a3d6b; /* 지금 보고 있는 메뉴. 보라를 어둡게 한 것이다 */
+
+  /* 쌓인 것을 올리는 종이. 흰 입력칸보다 한 단계 내려서 「적는 자리」와 「쌓인 것」을 가른다.
+     크림 바탕보다는 밝아야 묻히지 않는다. */
+  --pg-ivory: #fbf7ed;
+
   /* 벽에 붙인 쪽지 */
   --pg-note: #f5e6aa;
   --pg-note-line: #d4c486;
   --pg-note-soft: #f7edce; /* 본문 쪽지 — 사이드바 쪽지보다 연하다 */
   --pg-note-soft-line: #d5c698;
   --pg-note-fold: #e3d191; /* 쪽지 쌤플의 접힌 귀 */
+  /* 쪽지 쌤플을 여러 장 겹칠 때 쓰는 색. 초록은 --pg-sage-* 를 그대로 쓴다.
+     빨강은 쌤플에 없다 — 오류 표시도 흙색이라, 붉은 자리는 흙빛 산호가 대신한다. */
+  --pg-plum: #e5d6f0;
+  --pg-plum-line: #c5b7dd;
+  --pg-plum-fold: #cdb9e0;
+  --pg-clay: #f0c9b6;
+  --pg-clay-line: #d2a78d;
+  --pg-clay-fold: #e0b49c;
+  /* 빨강 셋 — 되돌리기 어려운 일에만 쓴다. 가벼운 주의 · 확인 필요 · 지우기 순으로 진해진다.
+     크레파스 통의 다른 색과 같은 결이라 경고가 화면에서 혼자 튀지 않는다. */
+  --pg-alert-soft: #f6d3cb;
+  --pg-alert-soft-line: #d9a79c;
+  --pg-alert-soft-fold: #e8bdb2;
+  --pg-alert: #eeab9e;
+  --pg-alert-line: #c87f6f;
+  --pg-alert-fold: #dd9586;
+  --pg-alert-strong: #cf6b5c;
+  --pg-alert-strong-line: #a9493c;
+  --pg-alert-strong-fold: #bd5a4b;
+  --pg-alert-ink: #8a3327; /* 빨강 면 위·크림 위 글자. 크림에서 7:1 */
   /* 쪽지 위에 붙인 종이테이프. 반투명이어야 한다 — 꽉 찬 흰색은 종이를 덧댄 것처럼 보인다. */
   --pg-tape: rgba(255, 250, 240, 0.72);
+  /* 첫 화면 오른쪽 줄의 칠판. 쪽지를 붙이는 판이라 종이색보다 늘 어둡다.
+     면은 가운데가 밝고 가장자리가 어둡다 — 그래야 평평한 초록 네모가 아니라 판으로 보인다.
+     나무테는 네 변의 색이 달라야 두께가 생긴다(위가 밝고 아래가 어둡다). */
+  --pg-board: #38453e;
+  --pg-board-lit: #42514a;
+  --pg-board-deep: #2b332e;
+  --pg-board-ink: #f4f1e8; /* 분필 — 칠판 위에서 11:1 */
+  --pg-board-ink-soft: #cfdcd4; /* 분필 보조 글씨 — 칠판 위에서 7:1 */
+  --pg-frame: #8c6d49;
+  --pg-frame-lit: #9a7850;
+  --pg-frame-side: #7b5f3f;
+  --pg-frame-dark: #684f35;
 
   /* 공책 느낌의 표면 — 입력칸 머리·바닥 띠 */
   --pg-paper-warm: #fbf3df;
@@ -45,6 +94,7 @@
   /* 글자 */
   --pg-ink: #34312f; /* 본문 */
   --pg-ink-soft: #5c5243; /* 보조 — 옛 갈색(#705d47)보다 한 단계 진하다. 어느 바탕에서도 6:1 을 넘는다 */
+  --pg-ink-hint: #a3998a; /* 입력 칸의 예시 글. 본문으로 읽히면 안 되므로 한 단계 더 연하다 */
 
   /* 주 색 — 버튼 · 선택 상태. 쌤플 보라. */
   --pg-primary: #7053a0;

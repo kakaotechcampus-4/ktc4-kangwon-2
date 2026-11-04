@@ -92,15 +92,12 @@ export default function RecordsPage() {
   const classes = useClasses(setClassError);
   const [search, setSearch] = useState("");
   /*
-    적는 칸은 접어 둔다.
+    적는 칸은 펴 둔다.
 
-    전에는 「새 관찰 기록」 폼이 화면 **왼쪽 절반**을 늘 차지해서, 기록을 보러 들어온
-    교사가 목록을 찾아야 했다. 보러 오는 길(홈의 「전체 기록」·「이 아이 기록 보기」)이
-    둘이나 되는데 도착한 화면의 주인공은 적는 칸이었다.
-
-    고칠 때(`editId`)는 접혀 있어도 열린다 — 누른 것이 안 보이면 안 된다.
+    한동안 접어 뒀다. 적는 칸이 화면 왼쪽 절반을 늘 차지해서 기록을 보러 온 교사가
+    목록을 찾아야 했기 때문이다. 접으니 이번에는 적으러 온 교사가 한 번 더 눌러야 했다.
+    지금은 폼을 세 줄로 줄여 목록이 바로 아래 보이게 했다 — 접지 않고도 둘 다 보인다.
   */
-  const [writing, setWriting] = useState(false);
   const classroom = classes.find((c) => c.id === classId);
   /** 적는 칸이 고른 아이. 저장할 때 보내는 값이다. */
   const child = classroom?.children.find((c) => c.id === childId);
@@ -244,100 +241,42 @@ export default function RecordsPage() {
     return (
       <WorkspacePage
         title="관찰 기록"
-        description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
+        description="아이의 말과 행동을 적어 둡니다. 적은 것으로 일지를 만듭니다."
       >
         <Message error>{classError}</Message>
       </WorkspacePage>
     );
   }
-  // 목록을 못 읽은 동안 숫자는 감춘다. 0 은 「기록이 없다」는 말이라 거짓말이 된다.
-  const countable = status !== "error";
-
   return (
     <WorkspacePage
       title="관찰 기록"
-      description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
+      description="아이의 말과 행동을 적어 둡니다. 적은 것으로 일지를 만듭니다."
+      action={
+        <Link href="/records/children" className={ws.secondary}>
+          아이별 기록
+        </Link>
+      }
     >
-      {/* 반은 이 화면 전체의 범위다 — 숫자도 목록도 적는 칸도 이 반을 본다. 적는 칸 안에
-          두면 접었을 때 반을 못 바꾼다. 고치는 중에는 잠근다. */}
-      <div className={ws.card} style={{ marginBottom: 24, maxWidth: 320 }}>
-        <label className={ws.field}>
-          담당 반
-          <select
-            value={classId}
-            disabled={pending || !!editId}
-            {...fieldErrorProps("classId", invalid)}
-            onChange={(e) => {
-              setClassId(e.target.value);
-              setChildId("");
-              setOnlyChild("");
-              clearInvalid("classId");
-            }}
-          >
-            <option value="">반 선택</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.className || "이름 없는 반"}
-              </option>
-            ))}
-          </select>
-          <FieldError name="classId" invalid={invalid} />
-        </label>
-      </div>
+      {/* 반은 사이드바 맨 위에서 고른다. 화면 안에 또 두면 두 곳에서 같은 것을 고르게 되어
+          어느 쪽이 이기는지 교사가 알 수 없다. */}
       {/* 머리말 그림판(「있는 그대로 기록하면…」)을 걷었다. 화면에서 제일 크고 노랗던
           자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
-      <div className={ws.stats} hidden={!countable}>
-        {[
-          [
-            onlyChild ? `${onlyChild.name} 기록` : `${classroom?.className ?? "우리 반"} 기록`,
-            counted.length,
-          ],
-          ["오늘 남긴 기록", counted.filter((r) => r.date === today()).length],
-          onlyChild
-            ? ["기록한 영역", new Set(counted.map((r) => r.domain)).size]
-            : ["기록한 아동", new Set(counted.map((r) => r.childId)).size],
-        ].map(([label, value]) => (
-          <div className={ws.card} key={label}>
-            <p className={ws.muted}>{label}</p>
-            <strong className={ws.count}>{value}</strong>
-          </div>
-        ))}
-      </div>
       <Message>{message}</Message>
       <div className={ws.stack}>
         <section className={ws.card}>
           <div className={ws.between}>
-            <h2>{editId ? "관찰 기록 수정" : "새 관찰 기록"}</h2>
-            <span className={ws.actions}>
-              <Link href="/onboarding" className={ws.link}>
-                반·아동 관리
-              </Link>
-              {!editId && (
-                <button
-                  type="button"
-                  className={ws.secondary}
-                  aria-expanded={writing}
-                  onClick={() => setWriting((on) => !on)}
-                >
-                  {writing ? "접기" : "＋ 새 관찰 기록 쓰기"}
-                </button>
-              )}
-            </span>
+            <h2>{editId ? "기록 고치기" : "기록 적기"}</h2>
+            <Link href="/onboarding" className={ws.link}>
+              아이 등록하기
+            </Link>
           </div>
-          {!(writing || editId) ? (
-            <p className={ws.hint}>
-              길게 적을 때 여기를 펼치세요. 한 줄만 남길 때는 우리 반 홈이 더 빨라요.
-            </p>
-          ) : !classes.some((c) => c.children.length) ? (
-            <Empty title="먼저 우리 반과 아동을 등록해주세요">
-              <Link href="/onboarding">반·아동 등록하기 →</Link>
+          {!classes.some((c) => c.children.length) ? (
+            <Empty title="먼저 아이를 등록해 주세요">
+              <Link href="/onboarding">아이 등록하기 →</Link>
             </Empty>
           ) : (
             <form onSubmit={submit}>
-              <p className={ws.hint}>
-                기록은 서버에 저장돼요. 다른 기기에서 로그인해도 같은 목록을 볼 수 있어요.
-              </p>
               {/* 요청 중에는 폼 전체가 잠긴다 — 보낸 값과 그 뒤 입력이 섞이지 않게. */}
               <fieldset
                 className={ws.form}
@@ -346,7 +285,7 @@ export default function RecordsPage() {
               >
                 <div className={ws.row}>
                   <label className={ws.field}>
-                    아동
+                    아이
                     <select
                       required
                       disabled={!!editId}
@@ -357,7 +296,7 @@ export default function RecordsPage() {
                         clearInvalid("childId");
                       }}
                     >
-                      <option value="">아동 선택</option>
+                      <option value="">아이 고르기</option>
                       {classroom?.children.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
@@ -366,11 +305,8 @@ export default function RecordsPage() {
                     </select>
                     <FieldError name="childId" invalid={invalid} />
                   </label>
-                </div>
-                {editId && <small>반과 아동은 수정할 수 없어요. 지우고 다시 등록해주세요.</small>}
-                <div className={ws.row}>
                   <label className={ws.field}>
-                    관찰 날짜
+                    날짜
                     <input
                       name="date"
                       required
@@ -386,7 +322,7 @@ export default function RecordsPage() {
                     <FieldError name="date" invalid={invalid} />
                   </label>
                   <label className={ws.field}>
-                    관찰 영역
+                    영역
                     <select
                       value={domain}
                       {...fieldErrorProps("domain", invalid)}
@@ -402,8 +338,9 @@ export default function RecordsPage() {
                     <FieldError name="domain" invalid={invalid} />
                   </label>
                 </div>
+                {editId && <small>아이와 반은 고칠 수 없어요. 지우고 다시 적어 주세요.</small>}
                 <label className={ws.field}>
-                  놀이 상황 / 장소
+                  어디서 · 무슨 놀이
                   <input
                     name="context"
                     maxLength={CONTEXT_MAX}
@@ -421,7 +358,7 @@ export default function RecordsPage() {
                   <FieldError name="context" invalid={invalid} />
                 </label>
                 <label className={ws.field}>
-                  실제로 관찰한 사실
+                  본 대로 적기
                   <textarea
                     required
                     maxLength={5000}
@@ -446,10 +383,10 @@ export default function RecordsPage() {
                   <FieldError name="fact" invalid={invalid} />
                 </label>
                 <div className={ws.actions}>
-                  <button className={ws.primary}>{editId ? "수정 저장" : "관찰 기록 저장"}</button>
+                  <button className={ws.primary}>{editId ? "고친 대로 저장" : "남기기"}</button>
                   {editId && (
                     <button type="button" className={ws.secondary} onClick={cancelEdit}>
-                      수정 취소
+                      그만두기
                     </button>
                   )}
                 </div>
@@ -460,18 +397,12 @@ export default function RecordsPage() {
         <section className={ws.stack}>
           <div className={ws.between}>
             <h2>
-              차곡차곡 쌓인 기록 <span className={ws.muted}>{shown.length}</span>
+              기록 <span className={ws.muted}>{shown.length}건</span>
             </h2>
             <span className={ws.actions}>
-              <Link href="/records/children" className={ws.link}>
-                아이별 모아보기 →
-              </Link>
               <RoutinesLink classId={classId} date={date} />
-              <Link href="/compare" className={ws.link}>
-                이전 기록과 비교 →
-              </Link>
               <Link href="/documents" className={ws.link}>
-                기록으로 문서 만들기 →
+                문서 만들기 →
               </Link>
             </span>
           </div>
@@ -479,17 +410,17 @@ export default function RecordsPage() {
               말해 주지 않아서, 들어온 교사가 「제대로 찾아온 건가」를 알 수 없었다. */}
           {onlyChild && (
             <p className={ws.between}>
-              <span className={ws.badge}>지금 {onlyChild.name} 기록만 보고 있어요</span>
+              <span className={ws.badge}>{onlyChild.name} 기록만 보는 중</span>
               <button type="button" className={ws.link} onClick={() => setOnlyChild("")}>
-                반 전체 보기 →
+                모두 보기 →
               </button>
             </p>
           )}
           <input
             name="record_search"
-            aria-label="관찰 기록 검색"
+            aria-label="기록 찾기"
             className={ws.input}
-            placeholder="아동 이름, 놀이 내용 검색"
+            placeholder="아이 이름이나 적은 내용으로 찾기"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -555,23 +486,34 @@ export function RecordList({
         )
       }
     >
-      <div className={ws.list}>
-        {records.map((r) => (
-          <RecordItem
-            key={r.id}
-            record={r}
-            pending={pending}
-            editable={canEdit(r)}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
-        ))}
-      </div>
+      <section>
+        <div aria-hidden="true" className="slipEdge top" />
+        <div className="bg-ivory px-5 lg:px-6">
+          {records.map((r, i) => (
+            <div key={r.id}>
+              {i > 0 && <hr className="m-0 border-0 border-t border-dashed border-line" />}
+              <RecordItem
+                record={r}
+                pending={pending}
+                editable={canEdit(r)}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            </div>
+          ))}
+        </div>
+        <div aria-hidden="true" className="slipEdge bottom" />
+      </section>
     </WorkspaceViewState>
   );
 }
 
-/** 기록 카드 하나. 부모의 상태를 모른다 — 수정·삭제는 콜백으로만 알린다. */
+/**
+ * 기록 한 줄. 평소에는 글만 보이고, 줄을 누르면 그 줄에서만 할 일이 나온다.
+ *
+ * 전에는 줄마다 단추가 셋이라 기록 열세 건이면 화면에 단추가 서른아홉 개였다.
+ * 교사가 보러 온 것은 아이가 한 말이지 단추가 아니다.
+ */
 function RecordItem({
   record,
   pending,
@@ -585,39 +527,61 @@ function RecordItem({
   onEdit: (record: ServerObservation) => void;
   onDelete: (record: ServerObservation) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <article className={ws.item}>
-      <div className={ws.between}>
-        <h3>
-          {record.childName} <span className={ws.muted}>· {record.className}</span>
-        </h3>
-        <span className={ws.badge}>{record.domain}</span>
-      </div>
-      <p className={ws.muted}>
-        {record.date} {record.context && `· ${record.context}`}
-      </p>
-      <p>{record.fact}</p>
-      {!editable && <small>반·아동 정보를 확인할 수 없어 수정할 수 없어요.</small>}
-      <div className={ws.actions}>
-        {editable && (
-          <Link
+    <article>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((on) => !on)}
+        className="flex w-full gap-3 py-3.5 text-left"
+      >
+        <span className="w-[52px] shrink-0 pt-0.5 text-[13px] text-ink-soft">
+          {shortDate(record.date)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <b className="text-sm font-semibold text-ink">{record.childName}</b>
+            <span className="rounded bg-primary-tint px-2 py-0.5 text-[13px] text-primary-ink">
+              {record.domain}
+            </span>
+            {record.context && (
+              <span className="min-w-0 text-[13px] text-ink-soft">{record.context}</span>
+            )}
+          </span>
+          <span className="mt-1.5 block text-sm leading-relaxed text-ink">{record.fact}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="flex flex-wrap items-center gap-2 pb-3.5">
+          {editable ? (
+            <Link
+              className={ws.secondary}
+              href={`/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}`}
+            >
+              이 기록으로 일지 만들기
+            </Link>
+          ) : (
+            <small>반·아이 정보를 확인할 수 없어 고칠 수 없어요.</small>
+          )}
+          <button
             className={ws.secondary}
-            href={`/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}`}
+            disabled={pending || !editable}
+            onClick={() => onEdit(record)}
           >
-            관찰일지 만들기
-          </Link>
-        )}
-        <button
-          className={ws.secondary}
-          disabled={pending || !editable}
-          onClick={() => onEdit(record)}
-        >
-          기록 수정
-        </button>
-        <button className={ws.secondary} disabled={pending} onClick={() => onDelete(record)}>
-          기록 삭제
-        </button>
-      </div>
+            고치기
+          </button>
+          <button className={ws.secondary} disabled={pending} onClick={() => onDelete(record)}>
+            지우기
+          </button>
+        </div>
+      )}
     </article>
   );
+}
+
+/** 「2026-11-03」 을 「11.03」 으로. 같은 반 기록을 죽 보는 자리라 해는 줄마다 필요 없다. */
+function shortDate(date: string) {
+  const [, m, d] = date.split("-");
+  return m && d ? `${m}.${d}` : date;
 }

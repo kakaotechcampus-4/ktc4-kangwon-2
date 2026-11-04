@@ -30,16 +30,16 @@ MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v16"
 MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v16"
 # v1 requests carrying approved curriculum or confirmed annual subthemes.
-MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v22"
-MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v14"
-MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v17"
-MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v20"
-MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v20"
+MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v23"
+MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v15"
+MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v18"
+MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v21"
+MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v21"
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
 MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v2"  # v2: a week may be unresolved
 # Appended when the Context Packet carries the eight safety candidates (S-1).
-MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v2"
+MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v3"
 # A candidate is a month_sections entry keyed safety_education.<slot>; Template
 # section keys hold no dot, so these never collide with a Section.
 SAFETY_CANDIDATE_PREFIX = "safety_education."

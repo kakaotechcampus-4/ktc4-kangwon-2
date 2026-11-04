@@ -30,7 +30,9 @@ export default function WeeklyActivityPanel({
     ? selected
     : (cells[0]?.item_id ?? "");
   const readonly = plan.status === "CONFIRMED";
-  const candidates = plan.activity_candidates ?? [];
+  const candidates = (plan.activity_candidates ?? []).filter(
+    (candidate) => candidate.section_key !== "indoor_play",
+  );
   const kinds = [...new Set(candidates.map((c) => c.activity_type))];
   if (!grids.length) return null;
 

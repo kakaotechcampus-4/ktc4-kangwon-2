@@ -102,11 +102,41 @@ class Class(Base):
         comment="현재 원아 수. 선택. 아동 명단 입력 진행률에 쓴다 (docs/PRD.md S2)"
     )
     teacher_id: Mapped[int | None] = mapped_column(
-        comment="담임 계정. users.id 예정. FK 와 인덱스는 인증 PR(8주차)에서"
+        ForeignKey("users.id"),
+        index=True,
+        comment="반 주인 — 반을 만든 계정(ADR-059). NULL 은 이 결정 전에 만든 옛 반이다",
     )
     consent_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         comment="동의 확인 시각. 아동 0명이면 아동 수로 복원할 수 없다 (docs/PRD.md S2)",
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ClassAccessRequest(Base):
+    """남의 반을 보겠다는 요청 한 줄 (ADR-059). 한 계정이 한 반에 줄 하나만 갖는다.
+
+    거절 · 취소 뒤에 다시 요청하면 새 줄이 아니라 같은 줄을 PENDING 으로 되돌린다.
+    """
+
+    __tablename__ = "class_access_requests"
+    __table_args__ = (
+        UniqueConstraint("class_id", "requester_id"),
+        CheckConstraint("status IN ('PENDING','APPROVED','REJECTED','REVOKED')", name="status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(
+        ForeignKey("classes.id"), index=True, comment="보고 싶은 반"
+    )
+    requester_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, comment="요청한 계정"
+    )
+    status: Mapped[str] = mapped_column(
+        String(10), comment="PENDING | APPROVED | REJECTED | REVOKED. 승인은 보기만 허락한다"
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

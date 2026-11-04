@@ -241,8 +241,8 @@ class WeeklyActivityCandidate:
 
     def __post_init__(self) -> None:
         _non_blank(self.activity_type, "WeeklyActivityCandidate.activity_type")
-        if not isinstance(self.cell, WeeklyCell) or self.cell.section_key != "group_activity" or self.cell.day is not None:
-            raise InvalidDomainValueError("An activity candidate is a weekly group value without a day")
+        if not isinstance(self.cell, WeeklyCell) or self.cell.section_key not in {"group_activity", "indoor_play"} or self.cell.day is not None:
+            raise InvalidDomainValueError("An activity candidate is a weekly activity value without a day")
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +275,7 @@ class WeeklyPlan:
     activity_candidates: tuple[WeeklyActivityCandidate, ...] = ()
     activity_grids: tuple[WeeklyActivityGrid, ...] = ()
     removed_activity_cells: tuple[WeeklyCell, ...] = ()
+    indoor_play_selection: bool = False
     # ADR-060: the teacher's request note, kept for single-cell regeneration, and the
     # requests generation could not apply (shown to the teacher, never blocking).
     teacher_memo: str = ""
@@ -338,14 +339,25 @@ class WeeklyPlan:
             raise InvalidDomainValueError("Activity candidates require a grid")
         if not isinstance(self.activity_candidates, tuple) or not all(isinstance(c, WeeklyActivityCandidate) for c in self.activity_candidates):
             raise InvalidDomainValueError("Invalid activity candidates")
-        if not isinstance(self.removed_activity_cells, tuple) or not all(isinstance(c, WeeklyCell) and c.section_key == "group_activity" for c in self.removed_activity_cells):
+        if type(self.indoor_play_selection) is not bool or (self.indoor_play_selection and not self.activity_grids):
+            raise InvalidDomainValueError("Indoor selection requires the candidate day layout")
+        if self.indoor_play_selection and not any(
+            s.section_key == "indoor_play" and s.repeat_by is RepeatBy.NONE
+            for s in self.template_snapshot.sections
+        ):
+            raise InvalidDomainValueError("Indoor selection requires a whole-week indoor Section")
+        if any(c.cell.section_key == "indoor_play" for c in self.activity_candidates) and not self.indoor_play_selection:
+            raise InvalidDomainValueError("Indoor candidates require indoor selection")
+        if not isinstance(self.removed_activity_cells, tuple) or not all(isinstance(c, WeeklyCell) and (c.section_key == "group_activity" or self.indoor_play_selection and c.section_key == "indoor_play") for c in self.removed_activity_cells):
             raise InvalidDomainValueError("Invalid removed activity cells")
         expected = tuple(
             (section.section_key, day)
             for section in self.template_snapshot.sections
             for day in (self.operating_days if section.repeat_by is RepeatBy.DAY else (None,))
             for _ in range(len(self.activity_grids[self.operating_days.index(day)].leaves())
-                           if self.activity_grids and section.section_key == "group_activity" else 1)
+                           if self.activity_grids and section.section_key == "group_activity"
+                           else max(1, sum(c.section_key == "indoor_play" for c in self.cells))
+                           if self.indoor_play_selection and section.section_key == "indoor_play" else 1)
         )
         if tuple((cell.section_key, cell.day) for cell in self.cells) != expected:
             raise InvalidDomainValueError(

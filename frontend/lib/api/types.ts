@@ -60,6 +60,8 @@ export interface ApiClass {
   teacher_name: string;
   consent_confirmed_at: string | null;
   created_at: string;
+  /** 이 계정이 이 반을 쓸 수 있는지 (ADR-059). 옛 서버 응답에는 없다. */
+  my_access?: "OWNER" | "OPEN" | "APPROVED" | "PENDING" | "REJECTED" | "REVOKED" | "NONE";
 }
 export interface ChildInput {
   name: string;
@@ -161,6 +163,7 @@ export interface WeeklyActivityGrid {
   children: WeeklyActivityGrid[];
 }
 export interface WeeklyActivityCandidate {
+  section_key?: "group_activity" | "indoor_play";
   activity_type: string;
   name: string;
   description: string;
@@ -182,8 +185,8 @@ export interface WeeklyAuditEvent extends Omit<MonthlyAuditEvent, "type"> {
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §5-1 · §13).
  *
- * **주차 열이 없다.** 월간과 달리 모든 Section 이 `repeat_by = NONE` 이라 Section 마다
- * 칸이 하나다 (WQ-02 — 요일별 값은 칸 하나 안 목록으로 쓴다).
+ * **주차 열이 없다.** NONE은 주 전체, DAY는 운영 요일별 값이다(ADR-051).
+ * 후보형 실내놀이는 주 전체의 선택 목록을 cells 순서로 보존한다(ADR-054 확장).
  */
 export interface WeeklyPlan extends PlanMemo {
   id: number;
@@ -222,6 +225,7 @@ export interface WeeklyPlan extends PlanMemo {
   confirmed_at: string | null;
   activity_candidates?: WeeklyActivityCandidate[];
   activity_grids?: WeeklyActivityGrid[];
+  indoor_play_selection?: boolean;
 }
 /** 목록용. 칸은 단건 조회가 준다. */
 export type WeeklyPlanSummary = Pick<

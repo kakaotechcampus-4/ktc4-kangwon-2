@@ -22,6 +22,21 @@ const TONE: Record<SsampleMood, { paper: string; fold: string; line: string }> =
   empty: { paper: "var(--pg-shell)", fold: "var(--pg-shell-fold)", line: "var(--pg-shell-line)" },
 };
 
+/**
+ * 여러 장을 겹칠 때 쓰는 종이 색. 표정은 그대로 두고 색만 바꾼다.
+ *
+ * 쪽지가 노란색 하나뿐이면 겹쳐 놓아도 한 장으로 보인다. 색이 섞여야 「여러 장」이 된다.
+ * 빨강이 없는 것은 토큰과 같은 이유다 — 붉은 자리는 흙빛 산호(`clay`)가 대신한다.
+ */
+export type SsampleTint = "note" | "plum" | "sage" | "clay";
+
+const TINT: Record<SsampleTint, { paper: string; fold: string; line: string }> = {
+  note: TONE.base,
+  plum: { paper: "var(--pg-plum)", fold: "var(--pg-plum-fold)", line: "var(--pg-plum-line)" },
+  sage: { paper: "var(--pg-sage)", fold: "var(--pg-sage-fold)", line: "var(--pg-sage-line)" },
+  clay: { paper: "var(--pg-clay)", fold: "var(--pg-clay-fold)", line: "var(--pg-clay-line)" },
+};
+
 /** 읽어 줄 이름. 장식으로 쓸 때는 `label={null}` 로 끈다. */
 const SPOKEN: Record<SsampleMood, string> = {
   base: "쌤플",
@@ -33,18 +48,21 @@ const INK = "var(--pg-ink)";
 
 export function SsampleNote({
   mood = "base",
+  tint,
   size = 40,
   label,
   className,
 }: {
   mood?: SsampleMood;
+  /** 종이 색만 바꾼다. 주지 않으면 `mood` 가 정한 색을 쓴다. */
+  tint?: SsampleTint;
   /** 한 변 길이(px). 24px 아래로는 눈·입이 뭉개진다. */
   size?: number;
   /** 읽어 줄 이름을 바꾼다. `null` 이면 장식으로 숨긴다. */
   label?: string | null;
   className?: string;
 }) {
-  const tone = TONE[mood];
+  const tone = tint ? TINT[tint] : TONE[mood];
   const paper: CSSProperties = { fill: tone.paper, stroke: tone.line };
   const fold: CSSProperties = { fill: tone.fold, stroke: tone.line };
   const face: CSSProperties = { fill: "none", stroke: INK };
@@ -65,7 +83,7 @@ export function SsampleNote({
       <g transform="rotate(-4 24 24)" strokeLinejoin="round" strokeWidth={stroke}>
         <path d="M8 10H40V32L31 40H8Z" style={paper} />
         <path d="M40 32H31V40Z" style={fold} />
-        {mood === "base" && size > 28 && (
+        {mood === "base" && !tint && size > 28 && (
           <rect
             x="17"
             y="5.5"

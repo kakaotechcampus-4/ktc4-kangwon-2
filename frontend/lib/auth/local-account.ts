@@ -33,15 +33,12 @@ export function onboardingDestination():
     return "/onboarding/classes";
   return "/onboarding/children";
 }
-export function loginDestination(): string {
+/** 원 · 반이 다 찼는가. 메인 밖 메뉴는 원 · 반이 있어야 돈다. */
+export function roomReady(): boolean {
   try {
-    return hasDemoSession() &&
-      read()?.onboardingCompletedAt &&
-      onboardingDestination() === "/onboarding/children"
-      ? "/"
-      : onboardingDestination();
+    return onboardingDestination() === "/onboarding/children";
   } catch {
-    return "/onboarding/center";
+    return false;
   }
 }
 export function completeAccountOnboarding(): boolean {
@@ -65,10 +62,8 @@ export function accountName() {
     return null;
   }
 }
-export function accessRedirect(requireOnboarding = true): string | null {
-  if (!hasDemoSession()) return "/login";
-  const destination = loginDestination();
-  return requireOnboarding && destination !== "/" ? destination : null;
+export function accessRedirect(): string | null {
+  return hasDemoSession() ? null : "/login";
 }
 /**
  * 계정을 만들고 로그인한다.
@@ -118,7 +113,7 @@ export async function verifyDevAccount(email: string, password: string) {
  * 성공하면 토큰이 저장되고(`lib/api/auth.ts`), 이후 모든 요청에 실려 나간다.
  * 브라우저 기록은 이름·온보딩 상태를 위해 없으면 만들어 둔다.
  */
-export async function verifyAccount(email: string, password: string) {
+export async function verifyAccount(email: string, password: string): Promise<number | null> {
   const normalized = email.trim().toLowerCase();
   const result = await login(normalized, password);
   let account = read(normalized);
@@ -127,6 +122,8 @@ export async function verifyAccount(email: string, password: string) {
     localStorage.setItem(accountKey(normalized), JSON.stringify(account));
   }
   finishSignIn(account);
+  // 원이 있으면 화면이 서버 값으로 채운다 (#291) — 이 브라우저에 기록이 없을 수 있다.
+  return result.user.center_id;
 }
 function finishSignIn(account: Account) {
   sanitizeClassSettingsStorage(account.email);

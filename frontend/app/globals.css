@@ -1,8 +1,9 @@
-/* 글꼴은 구글 폰트에서 받아 쓴다.
-   직접 담아두던 Pretendard · 고운돋움 subset 179개는 지웠다 — 구글이 이미
-   unicode-range 로 쪼개 보내서, 화면에 뜬 글자가 든 조각만 내려온다.
+/* 글꼴은 구글 폰트에서 받아 쓴다. 직접 담아두던 Pretendard · 고운돋움 subset
+   179개는 지웠다 — 구글이 이미 unicode-range 로 쪼개 보내서, 화면에 뜬 글자가
+   든 조각만 내려온다.
+   받는 자리는 `app/layout.tsx` 의 `<head>` 다. 여기서 `@import` 로 받으면
+   우리 CSS 를 다 받은 뒤에야 구글 CSS 를 받으러 가서 글꼴이 늦는다.
    @import 는 CSS 규칙상 맨 위여야 한다. 아래로 내리면 통째로 무시된다. */
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Gaegu:wght@400;700&display=swap");
 @import "../styles/plan-generator-tokens.css";
 
 @tailwind base;
@@ -37,4 +38,168 @@ body {
   background-repeat: no-repeat;
   background-position: right 12px center;
   background-size: 12px 8px;
+}
+
+/* 영수증처럼 위아래를 톱니로 자른 종이.
+ *
+ * 팀원 리뷰에서 「경계선이 없어 구분이 힘들다」고 했다. 네모 테두리를 하나 더 두르는
+ * 대신 종이의 가장자리를 만들었다 — 쌤플 화면은 종이 · 쪽지 · 테이프로 되어 있어서,
+ * 선을 더 그으면 카드가 늘지만 종이는 안 늘어난다.
+ *
+ * 톱니는 `mask` 로 깎아 낸다. 자리만 차지하는 띠라 색은 종이와 같은 아이보리다.
+ * 글자가 없으므로 화면 읽기 프로그램에는 `aria-hidden` 으로 숨긴다. */
+.slipEdge {
+  height: 9px;
+  background: var(--pg-ivory);
+}
+.slipEdge.top {
+  --slip: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) 50% / 13px 100%;
+  -webkit-mask: var(--slip);
+  mask: var(--slip);
+}
+.slipEdge.bottom {
+  --slip: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 13px 100%;
+  -webkit-mask: var(--slip);
+  mask: var(--slip);
+}
+
+/* 아래를 찢어낸 종이. 테이프로 붙여 둔 쪽지에 쓴다.
+ * 아래쪽 10px 은 찢긴 자리라 글자가 들어가지 않게 바닥 여백을 넉넉히 둔다. */
+.tornPaper {
+  --torn:
+    radial-gradient(9px at 50% 100%, #0000 97%, #000) 50% 100% / 20px 11px repeat-x,
+    linear-gradient(#000 0 0) 0 0 / 100% calc(100% - 10px) no-repeat;
+  -webkit-mask: var(--torn);
+  mask: var(--torn);
+  filter: drop-shadow(0 8px 16px rgba(52, 49, 47, 0.16));
+}
+
+/* 쪽지 한 장이 넘어오는 모습. 아래에서 살짝 올라오며 기울기가 펴진다.
+ * 글자만 갈아 끼우면 같은 자리에서 내용이 바뀌는 것이라 「넘어갔다」가 안 보인다. */
+@keyframes pageTurn {
+  from {
+    opacity: 0;
+    transform: translateY(7px) rotate(-1.6deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pageTurn {
+  animation: pageTurn 0.42s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pageTurn {
+    animation: none;
+  }
+}
+
+/* 교실 칠판. 첫 화면 오른쪽 줄 세 칸이 이 판 위에 붙는다.
+ *
+ * 면을 한 색으로 칠하면 초록 네모일 뿐이라 칠판으로 안 읽힌다. 세 겹을 쌓는다 —
+ * 가장자리가 어둡고 가운데가 밝은 바탕, 그 위에 분필로 지운 자국 둘.
+ * 나무테는 네 변의 색을 달리해 두께를 만들고, 아래에 분필 받침을 붙인다. */
+.chalkboard {
+  position: relative;
+  background:
+    radial-gradient(130px 70px at 24% 26%, rgba(255, 255, 255, 0.05), transparent 72%),
+    radial-gradient(100px 56px at 74% 68%, rgba(255, 255, 255, 0.038), transparent 72%),
+    radial-gradient(
+      135% 115% at 50% 42%,
+      var(--pg-board-lit) 0%,
+      var(--pg-board) 52%,
+      var(--pg-board-deep) 100%
+    );
+  border: 7px solid;
+  border-color: var(--pg-frame-lit) var(--pg-frame-side) var(--pg-frame-dark) var(--pg-frame);
+  box-shadow:
+    inset 0 0 34px rgba(0, 0, 0, 0.34),
+    0 5px 12px rgba(52, 49, 47, 0.2);
+}
+/* 분필 받침. 판 아래에 걸쳐 있어 판보다 조금 넓다. */
+.chalkboard::after {
+  content: "";
+  position: absolute;
+  left: -7px;
+  right: -7px;
+  bottom: -14px;
+  height: 7px;
+  background: linear-gradient(180deg, var(--pg-frame-lit), var(--pg-frame-side));
+  box-shadow: 0 2px 4px rgba(52, 49, 47, 0.26);
+}
+
+/* 공책 줄. 테두리를 두르지 않고도 「여기 적는 칸」이라고 알린다.
+ * 줄 간격은 글줄 높이(20px x 1.7 = 34px)와 같아야 글자가 줄 위에 앉는다 —
+ * 글자 크기를 바꾸면 이 값도 같이 바꿔야 한다. */
+.ruledPaper {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 33px,
+    var(--pg-line) 33px 34px
+  );
+}
+
+/* 걷는 포스티.
+ *
+ * 몸통을 통째로 기울이면 종이가 흔들리는 것이지 걷는 것이 아니다.
+ * 팔다리를 어깨·엉덩이에서 번갈아 돌리고, 몸은 한 걸음에 한 번 뜬다.
+ * `transform-box: view-box` 라야 컴포넌트가 준 viewBox 좌표로 회전축이 잡힌다. */
+@keyframes postySwingFront {
+  0%,
+  100% {
+    transform: rotate(15deg);
+  }
+  50% {
+    transform: rotate(-15deg);
+  }
+}
+@keyframes postySwingBack {
+  0%,
+  100% {
+    transform: rotate(-15deg);
+  }
+  50% {
+    transform: rotate(15deg);
+  }
+}
+@keyframes postyBob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+.postySwingFront,
+.postySwingBack {
+  transform-box: view-box;
+  animation: postySwingFront 0.72s ease-in-out infinite;
+}
+.postySwingBack {
+  animation-name: postySwingBack;
+}
+.postyWalk {
+  animation: postyBob 0.36s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .postySwingFront,
+  .postySwingBack,
+  .postyWalk {
+    animation: none;
+  }
+}
+
+/* 아직 안 지난 구간의 연결선. 발자국처럼 점을 찍는다.
+ * 1.5px 짜리 연한 실선은 화면에서 거의 보이지 않아 단계가 따로 노는 것처럼 보였다. */
+.stepTrail {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pg-ink-soft) 45%, transparent) 1.5px,
+    transparent 1.6px
+  );
+  background-size: 7px 3px;
+  background-repeat: repeat-x;
+  background-position: center;
 }

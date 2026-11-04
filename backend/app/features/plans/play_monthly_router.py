@@ -86,7 +86,7 @@ from app.features.plans.router import _exception_chain
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut, memo_notices_out
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 _log = logging.getLogger(__name__)
@@ -247,8 +247,11 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
 def list_play_monthly_plans(session: DbSession, user: CurrentUser, class_id: int | None = None):
     query = select(Plan).where(Plan.center_id == user.center_id, Plan.kind == "monthly")
     if class_id is not None:
-        require_own_class(session, user, class_id)
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Plan.classroom_ref == str(class_id))
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(Plan.classroom_ref.not_in(foreign_class_refs(user)))
     rows = session.scalars(query.order_by(Plan.target_month, Plan.id)).all()
     return s.PlayMonthlyListOut(
         items=[
@@ -271,7 +274,7 @@ def list_play_monthly_plans(session: DbSession, user: CurrentUser, class_id: int
 
 @router.get("/{plan_id}", response_model=s.PlayMonthlyPlanOut)
 def get_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
-    row = _own_row(session, user, plan_id)
+    row = _own_row(session, user, plan_id, read_only=True)
     return _out(session, user, row, _repo(session, user).get(PlanId(row.plan_ref)))
 
 
@@ -596,7 +599,7 @@ def unconfirm_play_monthly_plan(
 @router.get("/{plan_id}/audit", response_model=s.PlayMonthlyAuditOut)
 def get_play_monthly_audit(plan_id: int, session: DbSession, user: CurrentUser):
     """저장된 이벤트를 읽기만 한다. 지운 행의 칸 이벤트도 싣는다."""
-    row = _own_row(session, user, plan_id)
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _plan(_repo(session, user), row)
     removed = [
         c for r in plan.removed_activities for c in (r.activity.cell, r.activity.description)
@@ -668,8 +671,11 @@ def _out(session: Session, user, row: Plan, plan: PlayMonthlyPlan) -> s.PlayMont
     return _detail(row, plan, None if annual is None else annual.id, parent_changed=changed)
 
 
-def _own_row(session: Session, user, plan_id: int) -> Plan:
-    """이 원의 놀이 월간 행. 없거나 남의 원이면 404, 기존 월간이면 409."""
+def _own_row(session: Session, user, plan_id: int, *, read_only: bool = False) -> Plan:
+    """이 원의 놀이 월간 행. 없거나 남의 원이면 404, 기존 월간이면 409.
+
+    남의 반 계획안이면 반 검사를 거친다(ADR-059). 기본이 쓰기다 — 읽기만 `read_only=True`.
+    """
     row = session.scalar(
         select(Plan)
         .where(Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "monthly")
@@ -677,6 +683,7 @@ def _own_row(session: Session, user, plan_id: int) -> Plan:
     )
     if row is None:
         raise _NOT_FOUND
+    require_own_class(session, user, int(row.classroom_ref), read_only=read_only)
     if not _is_play_monthly(row):
         raise _LEGACY_MONTHLY
     return row

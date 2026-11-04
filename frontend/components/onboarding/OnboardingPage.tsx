@@ -4,6 +4,7 @@ import AgeSelection from "./AgeSelection";
 import { useEffect, useRef, useState } from "react";
 import { useHydrated } from "@/lib/hooks/use-client-state";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Posty } from "@/components/app/Posty";
 import OnboardingLayout, { StepFooter, StepHeading } from "./OnboardingLayout";
 import FormField, { TextInput } from "./FormField";
 import Select from "./Select";
@@ -808,39 +809,15 @@ function StepDone({
 
   return (
     <div className="flex flex-col items-center text-center gap-[18px] py-2">
-      <svg
-        width="132"
-        height="90"
-        viewBox="0 0 132 90"
-        aria-hidden="true"
+      {/* 다 했어요 — 세이지 + 신남(캐릭터 시트). 느리게 한 번씩 뜬다. */}
+      <Posty
+        pose="cheer"
+        tone="sage"
+        face="done"
+        size={108}
+        label="다 했어요"
         style={{ animation: "pg-float 5s ease-in-out infinite" }}
-      >
-        <circle cx="40" cy="52" r="34" className="fill-sage" />
-        <circle cx="30" cy="44" r="3.2" fill="#fff" />
-        <circle cx="30" cy="44" r="1.6" fill="var(--pg-ink)" />
-        <circle cx="46" cy="44" r="3.2" fill="#fff" />
-        <circle cx="46" cy="44" r="1.6" fill="var(--pg-ink)" />
-        <path
-          d="M30 60Q38 67 47 59"
-          stroke="var(--pg-ink)"
-          strokeWidth="2.2"
-          fill="none"
-          strokeLinecap="round"
-        />
-        <circle cx="98" cy="38" r="24" className="fill-mint" />
-        <circle cx="90" cy="33" r="2.6" fill="#fff" />
-        <circle cx="90" cy="33" r="1.3" fill="var(--pg-ink)" />
-        <circle cx="103" cy="33" r="2.6" fill="#fff" />
-        <circle cx="103" cy="33" r="1.3" fill="var(--pg-ink)" />
-        <path
-          d="M91 44Q98 49 106 43"
-          stroke="var(--pg-ink)"
-          strokeWidth="2"
-          fill="none"
-          strokeLinecap="round"
-        />
-        <circle cx="118" cy="14" r="4" className="fill-peach" />
-      </svg>
+      />
 
       <div>
         <h1 className="font-display text-2xl text-ink">초기 설정이 완료되었어요!</h1>

@@ -77,7 +77,7 @@ function NothingToPick({ total, writeHref }: { total: number; writeHref: string 
   return (
     <Empty title="선택할 수 있는 일과가 없어요">
       {total
-        ? `일과 ${total}줄이 있지만 활동실행이 모두 비어 있어요. `
+        ? `일과 ${total}줄이 있지만 실제로 한 것이 모두 비어 있어요. `
         : "이 날 입력한 일과가 없어요. "}
       {writeHref && <Link href={writeHref}>일과 기록 입력 →</Link>}
     </Empty>
@@ -105,12 +105,12 @@ function RoutineRow({
         <input
           type="checkbox"
           disabled
-          aria-label={`${routine.name} — 활동실행이 비어 있어 선택할 수 없어요`}
+          aria-label={`${routine.name} — 실제로 한 것이 비어 있어 고를 수 없어요`}
         />
         <span>
           <b>{heading}</b>
           <small>
-            활동실행이 비어 있어요{" "}
+            실제로 한 것이 비어 있어요{" "}
             {writeHref && (
               <>
                 · <Link href={writeHref}>입력하기</Link>

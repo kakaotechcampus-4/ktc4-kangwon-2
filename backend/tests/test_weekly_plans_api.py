@@ -1166,6 +1166,14 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
         f"/api/plans/weekly/{plan['id']}/cells/{item}",
         json={"value": "토요 체육", "expected_revision": plan["revision"]},
     ).json()
+    indoor = from_jsonable(WeeklyPlan, row.body).cell("indoor_play").item_id.value
+    edited = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{indoor}",
+        json={
+            "value": "[역할놀이] 가을 가게\n[쌓기놀이]: 열매 길\n분류 없는 교사 메모",
+            "expected_revision": edited["revision"],
+        },
+    ).json()
     assert _confirm(edited).status_code == 200
 
     response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
@@ -1186,3 +1194,190 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
     assert [text((19, col)) for col in range(1, 7)] == ["", "", "", "", "", "토요 체육"]
     assert text((2, 1)) == core.cell("theme").value
     assert text((0, 0)).startswith(f"{plan['week_period']['label']} 주간놀이계획안")
+    paragraphs = cells[(7, 1)].findall("hp:subList/hp:p", NS)
+    assert ["".join(p.itertext()) for p in paragraphs] == [
+        "[역할놀이] - 가을 가게",
+        "[쌓기놀이] - 열매 길",
+        "분류 없는 교사 메모",
+    ]
+    assert core.cell("indoor_play").value.startswith("[역할놀이] 가을 가게")
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+        assert "[역할놀이] - 가을 가게" in archive.read("Preview/PrvText.txt").decode()
+    namespaces = {
+        **NS,
+        "hh": "http://www.hancom.co.kr/hwpml/2011/head",
+        "hc": "http://www.hancom.co.kr/hwpml/2011/core",
+    }
+    style = header.find(f".//hh:paraPr[@id='{paragraphs[0].get('paraPrIDRef')}']", namespaces)
+    assert {s.get("value") for s in style.findall(".//hh:lineSpacing", namespaces)} == {"140"}
+    assert {s.get("value") for s in style.findall(".//hh:margin/hc:next", namespaces)} == {"100"}
+    font_id = paragraphs[0].find("hp:run", NS).get("charPrIDRef")
+    assert header.find(f".//hh:charPr[@id='{font_id}']", namespaces).get("height") == "900"
+
+
+def test_indoor_display_keeps_blank_and_untagged_teacher_text():
+    from app.features.plans.export import _indoor_play_text
+
+    for value in ("", "교사가 직접 쓴 놀이", "[역할놀이] - 가게 놀이", "[역할놀이]\n가게 놀이"):
+        assert _indoor_play_text(value) == value
+
+
+@pytest.mark.parametrize("saturday", [False, True])
+def test_indoor_candidates_select_edit_order_export_and_archive(
+    world, saturday, tmp_path, monkeypatch
+):
+    world["session"].get(Center, world["mine"]["center"]).weekly_saturday_enabled = saturday
+    world["session"].flush()
+    response = client.post(
+        "/api/plans/weekly",
+        json={
+            "class_id": world["mine"]["class"],
+            "week_id": WEEK,
+            "indoor_play_candidates": True,
+        },
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()
+    assert plan["indoor_play_selection"]
+    candidates = [c for c in plan["activity_candidates"] if c["section_key"] == "indoor_play"]
+    assert 2 <= len(candidates) <= 10
+
+    def rows(p):
+        return next(s["cells"] for s in p["sections"] if s["section_key"] == "indoor_play")
+
+    def add(p, candidate):
+        return client.post(
+            f"/api/plans/weekly/{p['id']}/indoor-plays",
+            json={
+                "candidate_item_id": candidate,
+                "expected_revision": p["revision"],
+            },
+        )
+
+    assert len(rows(plan)) == 1 and not rows(plan)[0]["value"]
+    assert (
+        add(
+            {**plan, "revision": plan["revision"] + 1}, candidates[0]["cell"]["item_id"]
+        ).status_code
+        == 409
+    )
+    plan = add(plan, candidates[0]["cell"]["item_id"]).json()
+    first = rows(plan)[0]
+    assert first["value"] == f"[{candidates[0]['activity_type']}] - {candidates[0]['name']}"
+    plan = add(plan, candidates[1]["cell"]["item_id"]).json()
+    assert len(rows(plan)) == 2
+    for candidate in candidates[2:7]:
+        plan = add(plan, candidate["cell"]["item_id"]).json()
+    plan = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{first['item_id']}",
+        json={
+            "value": "[역할놀이] - 교사가 다듬은 가게 놀이",
+            "expected_revision": plan["revision"],
+        },
+    ).json()
+    duplicate = add(plan, candidates[0]["cell"]["item_id"])
+    assert duplicate.status_code == 200 and duplicate.json() == plan
+    ids = [c["item_id"] for c in reversed(rows(plan))]
+    ordered = client.put(
+        f"/api/plans/weekly/{plan['id']}/indoor-plays/order",
+        json={
+            "item_ids": ids,
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert ordered.status_code == 200, ordered.text
+    plan = ordered.json()
+    assert [c["item_id"] for c in rows(plan)] == ids
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
+    other = next(c for c in plan["activity_candidates"] if c["section_key"] == "group_activity")
+    assert add(plan, other["cell"]["item_id"]).status_code == 422
+    group_cell = next(
+        s["cells"][0] for s in plan["sections"] if s["section_key"] == "group_activity"
+    )
+    copied_group = client.post(
+        f"/api/plans/weekly/{plan['id']}/cells/{group_cell['item_id']}/copy-activity",
+        json={
+            "candidate_item_id": other["cell"]["item_id"],
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert copied_group.status_code == 200, copied_group.text
+    plan = copied_group.json()
+    assert (
+        client.put(
+            f"/api/plans/weekly/{plan['id']}/indoor-plays/order",
+            json={
+                "item_ids": [ids[0], ids[0]],
+                "expected_revision": plan["revision"],
+            },
+        ).status_code
+        == 422
+    )
+    with monkeypatch.context() as blocked:
+        blocked.setattr(
+            weekly_router,
+            "_weekly_provider",
+            lambda: pytest.fail("No provider needed for a read-only regeneration target"),
+        )
+        assert (
+            client.post(
+                f"/api/plans/weekly/{plan['id']}/cells/{ids[0]}/regenerate",
+                json={
+                    "expected_revision": plan["revision"],
+                },
+            ).status_code
+            == 422
+        )
+    confirmed = _confirm(plan)
+    assert confirmed.status_code == 200, confirmed.text
+    response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    (tmp_path / f"selected_{6 if saturday else 5}days.hwpx").write_bytes(response.content)
+    from lxml import etree
+
+    from app.shared.hwpx import NS, _cells
+
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        table = etree.fromstring(archive.read("Contents/section0.xml")).find(".//hp:tbl", NS)
+        assert candidates[0]["description"] not in archive.read("Preview/PrvText.txt").decode()
+    paragraphs = _cells(table)[(7, 1)].findall("hp:subList/hp:p", NS)
+    assert ["".join(p.itertext()) for p in paragraphs] == [c["value"] for c in rows(plan)]
+    assert add(confirmed.json(), None).status_code == 409
+    plan = client.post(
+        f"/api/plans/weekly/{plan['id']}/unconfirm",
+        json={
+            "expected_revision": confirmed.json()["revision"],
+        },
+    ).json()
+    for item_id in ids:
+        deleted = client.delete(
+            f"/api/plans/weekly/{plan['id']}/indoor-plays/{item_id}",
+            params={"expected_revision": plan["revision"]},
+        )
+        assert deleted.status_code == 200, deleted.text
+        plan = deleted.json()
+    assert len(rows(plan)) == 1 and rows(plan)[0]["value"] == ""
+    events = client.get(f"/api/plans/weekly/{plan['id']}/audit").json()["items"]
+    assert any(e["copied_from"] == candidates[0]["cell"]["item_id"] for e in events)
+    assert any(
+        e["arrangement_change"] and e["arrangement_change"]["scope"] == "indoor_play"
+        for e in events
+    )
+    manual = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{rows(plan)[0]['item_id']}",
+        json={
+            "value": "직접 정한 자유놀이",
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert manual.status_code == 200, manual.text
+    assert rows(manual.json())[0]["generation"]["method"] == "RULE_ONLY"
+    manual_events = client.get(
+        f"/api/plans/weekly/{plan['id']}/audit",
+        params={
+            "item_id": rows(plan)[0]["item_id"],
+        },
+    ).json()["items"]
+    assert manual_events[-1]["type"] == "TEACHER_EDITED"
+    assert manual_events[-1]["value_change"]["after"] == "직접 정한 자유놀이"

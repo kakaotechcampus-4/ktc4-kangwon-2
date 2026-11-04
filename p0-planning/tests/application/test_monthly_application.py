@@ -2857,7 +2857,9 @@ def test_safety_candidates_generate_blank_weeks_then_teacher_places_edits_and_co
     plan = harness.generate(provider=provider, command=command).plan
     request = provider.monthly_requests[0]
 
-    assert request.prompt_version.endswith("+safety-candidates-v2")
+    assert request.prompt_version.endswith("+safety-candidates-v3")
+    from ssuksak.planning.planner.v1_guidance import SAFETY_TEXT_GUIDANCE
+    assert SAFETY_TEXT_GUIDANCE in request.system_prompt
     assert [c.kind for c in plan.safety_candidates] == [SafetyKind.STATUTORY] * 6 + [SafetyKind.SUPPLEMENTAL] * 2
     statutory, life = plan.safety_candidates[0], plan.safety_candidates[-1]
     assert [e.source_type for e in statutory.cell.evidence] == [EvidenceSourceType.SAFETY_RULE]

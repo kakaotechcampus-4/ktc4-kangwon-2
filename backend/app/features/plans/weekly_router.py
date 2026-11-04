@@ -49,6 +49,7 @@ from ssuksak.planning.application.weekly_lifecycle import (  # 공개 창구에 
     UnconfirmWeeklyPlan,
     UnconfirmWeeklyPlanCommand,
 )
+from ssuksak.planning.domain.identifiers import ItemId
 from ssuksak.planning.domain.provenance import SplitAxis
 from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
 
@@ -93,8 +94,10 @@ from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut, memo_notices_out
 from app.features.plans.weekly_schemas import (
+    AddWeeklyIndoorPlayIn,
     CopyWeeklyActivityIn,
     CreateWeeklyPlan,
+    OrderWeeklyIndoorPlayIn,
     ParentSnapshotOut,
     SplitWeeklyActivityIn,
     WeeklyActivityCandidateOut,
@@ -110,7 +113,7 @@ from app.features.plans.weekly_schemas import (
     WeekPeriodOut,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmUnavailable, is_mock
 
 _log = logging.getLogger(__name__)
@@ -253,12 +256,13 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
                 week_id=week,
                 operating_days=weekly_operating_days(saturday),
                 template_ref=WEEKLY_DAY_TEMPLATE_REF
-                if body.activity_candidates
+                if body.activity_candidates or body.indoor_play_candidates
                 else WEEKLY_TEMPLATE_REF,
                 safety_rule=SAFETY_RULE,
                 generation_mode=MonthlyGenerationMode.LLM_PLANNER,
                 activity_catalog=ACTIVITY_CATALOG,
-                activity_candidates=body.activity_candidates,
+                activity_candidates=body.activity_candidates or body.indoor_play_candidates,
+                indoor_play_candidates=body.indoor_play_candidates,
                 teacher_memo=body.memo,
             )
         ).plan
@@ -298,10 +302,13 @@ def list_weekly_plans(
     if month is not None and (class_id is None or not 1 <= month <= 12):
         raise _error(422, "VALIDATION_FAILED", "입력값을 확인해주세요.", ["month"])
     if class_id is not None:
-        klass = require_own_class(session, user, class_id)
+        klass = require_own_class(session, user, class_id, read_only=True)
         query = query.where(Plan.classroom_ref == str(class_id))
         if month is not None:
             query = query.where(Plan.target_month == _target_month(klass.school_year, month).value)
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(Plan.classroom_ref.not_in(foreign_class_refs(user)))
     rows = session.scalars(query.order_by(Plan.week_id, Plan.id)).all()
     return WeeklyPlanListOut(
         items=[
@@ -328,8 +335,11 @@ def get_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 
 def _current(session: Session, user, plan_id: int) -> WeeklyPlanOut:
-    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다."""
-    row = _own_row(session, user, plan_id)
+    """지금 DB 에 저장된 그대로. 응답의 revision 도 행의 값이다.
+
+    읽기 검사만 한다 — 쓰는 길은 모두 먼저 `_own_row`(쓰기 검사)를 지난 뒤 이걸 부른다.
+    """
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent = session.scalar(
         select(Plan).where(
@@ -372,8 +382,11 @@ def delete_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 _CONFIRMED_NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
 
 
-def _own_row(session: Session, user, plan_id: int) -> Plan:
-    """이 원의 주간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing)."""
+def _own_row(session: Session, user, plan_id: int, *, read_only: bool = False) -> Plan:
+    """이 원의 주간 행. 조건부 UPDATE 뒤에도 DB 값을 다시 읽는다(populate_existing).
+
+    남의 반 계획안이면 반 검사를 거친다(ADR-059). 기본이 쓰기다 — 읽기만 `read_only=True`.
+    """
     row = session.scalar(
         select(Plan)
         .where(Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "weekly")
@@ -381,6 +394,7 @@ def _own_row(session: Session, user, plan_id: int) -> Plan:
     )
     if row is None:
         raise _NOT_FOUND
+    require_own_class(session, user, int(row.classroom_ref), read_only=read_only)
     return row
 
 
@@ -480,6 +494,7 @@ def _detail(
         confirmed_at=row.confirmed_at,
         activity_candidates=[
             WeeklyActivityCandidateOut(
+                section_key=c.cell.section_key,
                 activity_type=c.activity_type,
                 name=c.name,
                 description=c.description,
@@ -488,6 +503,7 @@ def _detail(
             for c in plan.activity_candidates
         ],
         activity_grids=[_activity_grid(g) for g in plan.activity_grids],
+        indoor_play_selection=plan.indoor_play_selection,
     )
 
 
@@ -658,6 +674,61 @@ def copy_weekly_activity(
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
+@router.post("/{plan_id}/indoor-plays", response_model=WeeklyPlanOut)
+def add_weekly_indoor_play(
+    plan_id: int, body: AddWeeklyIndoorPlayIn, session: DbSession, user: CurrentUser
+):
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        candidate = None if body.candidate_item_id is None else ItemId(body.candidate_item_id)
+        changed = weekly_activities(
+            **_repos(plan, parent), id_generator=UuidGenerator()
+        ).add_indoor(plan.plan_id, candidate, _actor(user))
+    except InvalidDomainValueError as error:
+        raise _VALUE_INVALID from error
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.put("/{plan_id}/indoor-plays/order", response_model=WeeklyPlanOut)
+def order_weekly_indoor_plays(
+    plan_id: int, body: OrderWeeklyIndoorPlayIn, session: DbSession, user: CurrentUser
+):
+    plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    try:
+        changed = weekly_activities(
+            **_repos(plan, parent), id_generator=UuidGenerator()
+        ).order_indoor(plan.plan_id, tuple(ItemId(value) for value in body.item_ids), _actor(user))
+    except InvalidDomainValueError as error:
+        raise _VALUE_INVALID from error
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, body.expected_revision)
+
+
+@router.delete("/{plan_id}/indoor-plays/{item_id}", response_model=WeeklyPlanOut)
+def remove_weekly_indoor_play(
+    plan_id: int,
+    item_id: str,
+    session: DbSession,
+    user: CurrentUser,
+    expected_revision: Annotated[int, Query(ge=1)],
+):
+    plan, parent = _read_draft(session, user, plan_id, expected_revision)
+    try:
+        changed = weekly_activities(
+            **_repos(plan, parent), id_generator=UuidGenerator()
+        ).remove_indoor(plan.plan_id, _item_id(item_id), _actor(user))
+    except MonthlyApplicationError as error:
+        raise _lifecycle_error(error) from error
+    return _write(session, user, plan_id, changed, expected_revision)
+
+
 @router.post("/{plan_id}/cells/{item_id}/split", response_model=WeeklyPlanOut)
 def split_weekly_activity(
     plan_id: int, item_id: str, body: SplitWeeklyActivityIn, session: DbSession, user: CurrentUser
@@ -701,6 +772,10 @@ def regenerate_weekly_cell(
     """그 칸만 다시 만든다. LLM 을 기다리는 동안 transaction 이 없다 — 그 사이 누가
     고쳤으면 결과를 버리고 409 다."""
     plan, parent = _read_draft(session, user, plan_id, body.expected_revision)
+    if plan.indoor_play_selection:
+        target = plan.find_cell(_item_id(item_id))
+        if target is not None and target.section_key == "indoor_play":
+            raise _CELL_NOT_REGENERATABLE
     try:
         provider = _weekly_provider()
     except LlmUnavailable as error:
@@ -780,7 +855,7 @@ def get_weekly_audit(
     주간 칸에는 주가 따로 없다 — 칸 이벤트의 `week_id` 는 계획안의 주다. 교사 입력 칸의 첫
     `MANUAL` 은 이벤트가 아니라 칸 `generation` 으로 보인다(W4 결정 ②).
     """
-    row = _own_row(session, user, plan_id)
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     cells = (
         list(plan.cells)
@@ -840,4 +915,11 @@ def _audit_event(event, cell, week: WeekId | None) -> WeeklyAuditEventOut:
                 after=_generation(event.generation_change.after),
             )
         ),
+        arrangement_change=None
+        if event.arrangement_change is None
+        else {
+            "scope": event.arrangement_change.scope,
+            "before": list(event.arrangement_change.before),
+            "after": list(event.arrangement_change.after),
+        },
     )
