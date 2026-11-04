@@ -1,11 +1,14 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { useClientState } from "@/lib/hooks/use-client-state";
 
 /*
  * 시작 설정(온보딩) 화면 조각. 생김새는 승인한 시안 A(한 화면에 질문 하나)를 그대로 따른다 —
@@ -197,5 +200,84 @@ export function Chevron({ size = 18 }: { size?: number }) {
     >
       <path d="M9 6l6 6-6 6" />
     </svg>
+  );
+}
+
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+const reducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia(REDUCED_MOTION).matches;
+
+/**
+ * 포스티가 말하듯 한 글자씩 늘어나는 글자 수. 글이 바뀌면 처음부터 다시 치도록 부르는 쪽이 `key` 를 글로 준다.
+ * 「동작 줄이기」를 켠 교사에게는 처음부터 다 보인다.
+ */
+export function useTypewriter(length: number) {
+  const [reduced] = useClientState(reducedMotion, false);
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (reduced || count >= length) return;
+    const id = setTimeout(() => setCount(count + 1), 35);
+    return () => clearTimeout(id);
+  }, [reduced, count, length]);
+  return reduced ? length : Math.min(count, length);
+}
+
+/**
+ * 앞에서 `shown` 글자까지만 보인다. 아직 안 나온 글자는 투명하게 자리만 잡아 둔다 —
+ * 말풍선 크기와 가운데 맞춤이 글자마다 흔들리지 않는다. 화면 읽기 프로그램용 글은 부르는 쪽이 따로 둔다.
+ */
+export function Typed({ text, shown }: { text: string; shown: number }) {
+  const n = Math.max(0, Math.min(shown, text.length));
+  return (
+    <>
+      {text.slice(0, n)}
+      <span className="opacity-0">{text.slice(n)}</span>
+    </>
+  );
+}
+
+/**
+ * 새로 묻는 입력칸이 포스티 입에서 나와 제자리에 놓인다. 질문이 바뀔 때마다 새로 그려지도록 `key` 를 질문으로 준다.
+ * 입 자리는 오른쪽 칸 포스티의 `[data-posty-mouth]`(OnboardingLayout). 그 칸이 없는 폭(767px 이하)에서는
+ * 아래에서 살짝 떠오르기만 한다. 「동작 줄이기」면 움직이지 않는다.
+ */
+export function FlyIn({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || reducedMotion()) return;
+    const mouth = document.querySelector("[data-posty-mouth]");
+    if (!mouth || mouth.getClientRects().length === 0) {
+      el.animate(
+        [
+          { transform: "translateY(14px)", opacity: 0 },
+          { transform: "none", opacity: 1 },
+        ],
+        { duration: 320, easing: "ease-out" },
+      );
+      return;
+    }
+    const m = mouth.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    const dx = m.left - (box.left + box.width / 2);
+    const dy = m.top - (box.top + box.height / 2);
+    el.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) scale(0.08)`, opacity: 0 },
+        {
+          transform: `translate(${dx * 0.85}px, ${dy * 0.85}px) scale(0.25)`,
+          opacity: 1,
+          offset: 0.15,
+        },
+        { transform: "none", opacity: 1 },
+      ],
+      { duration: 620, easing: "cubic-bezier(0.34, 1.25, 0.64, 1)" },
+    );
+  }, []);
+  // 날아오는 동안 오른쪽 칸 말풍선 위로 지나가도록 위에 둔다.
+  return (
+    <div ref={ref} className="relative z-10">
+      {children}
+    </div>
   );
 }

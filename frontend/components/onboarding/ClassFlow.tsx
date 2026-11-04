@@ -4,7 +4,15 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AgeSelection from "./AgeSelection";
 import OnboardingLayout, { type PostySay } from "./OnboardingLayout";
-import { CtaButton, ErrorLine, LineField, LoadingLine, Question, onEnter } from "./FlowParts";
+import {
+  CtaButton,
+  ErrorLine,
+  FlyIn,
+  LineField,
+  LoadingLine,
+  Question,
+  onEnter,
+} from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
 import { saveClassSettings } from "@/lib/onboarding/settings";
 import { accountName } from "@/lib/auth/local-account";
@@ -205,7 +213,7 @@ export default function ClassFlow() {
       }
     >
       <Question title={TITLES[q]} hint={HINTS[q]} focus={q === 1 || q === 3} />
-      {fields[q]}
+      <FlyIn key={q}>{fields[q]}</FlyIn>
       {answered}
       <ErrorLine>{error}</ErrorLine>
     </OnboardingLayout>

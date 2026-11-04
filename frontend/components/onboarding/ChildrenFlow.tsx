@@ -11,7 +11,9 @@ import {
   LoadingLine,
   Question,
   TextAction,
+  Typed,
   onEnter,
+  useTypewriter,
 } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
 import { addServerChild, removeServerChild } from "@/lib/api/onboarding";
@@ -149,13 +151,23 @@ function Speech({ children }: { children: string }) {
   return (
     <div className="mb-6 flex items-end gap-2.5 md:hidden">
       <Posty pose="stand" tone="note" face="base" size={44} label={null} />
-      <p
-        aria-live="polite"
-        className="max-w-[320px] rounded-[18px_18px_18px_6px] border border-note-soft-line bg-note-soft px-4 py-3 text-[15px] leading-[1.55] text-ink"
-      >
-        {children}
+      <p className="max-w-[320px] rounded-[18px_18px_18px_6px] border border-note-soft-line bg-note-soft px-4 py-3 text-[15px] leading-[1.55] text-ink">
+        <span className="sr-only" aria-live="polite">
+          {children}
+        </span>
+        <SpeechText key={children} text={children} />
       </p>
     </div>
+  );
+}
+
+/** 말풍선 글을 한 글자씩 친다(화면 읽기 프로그램에는 숨김 — 다 된 글은 바로 위 sr-only 가 읽힌다). */
+function SpeechText({ text }: { text: string }) {
+  const shown = useTypewriter(text.length);
+  return (
+    <span aria-hidden="true">
+      <Typed text={text} shown={shown} />
+    </span>
   );
 }
 

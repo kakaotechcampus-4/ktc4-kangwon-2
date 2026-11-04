@@ -10,6 +10,7 @@ import {
   CtaButton,
   ErrorLine,
   FieldLabel,
+  FlyIn,
   LineField,
   LoadingLine,
   PickButton,
@@ -247,7 +248,7 @@ export default function CenterFlow() {
       }
     >
       <Question title={TITLES[q]} hint={HINTS[q]} focus={q === 2} />
-      {fields[q]}
+      <FlyIn key={q}>{fields[q]}</FlyIn>
       {answered}
       <ErrorLine>{error}</ErrorLine>
       {sheet && <RegionSheet onPick={pickRegion} onClose={() => setSheet(false)} />}

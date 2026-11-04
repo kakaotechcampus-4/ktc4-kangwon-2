@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Posty } from "@/components/app/Posty";
+import { Typed, useTypewriter } from "./FlowParts";
 import { fontClassName } from "@/lib/fonts";
 import { readToken } from "@/lib/auth/token";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -149,10 +150,21 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
       aria-label="진행 안내"
       className="hidden flex-col items-center border-l border-shell bg-ivory px-7 pt-14 md:col-start-2 md:row-start-1 md:flex"
     >
-      <Posty pose="wave" tone="note" face="base" size={112} tape label="포스티가 손을 흔들어요" />
+      <div className="relative">
+        <Posty
+          pose="wave"
+          tone="note"
+          face="base"
+          size={112}
+          tape
+          label="포스티가 손을 흔들어요"
+          className="block"
+        />
+        {/* 입 자리 — 새 입력칸이 여기서 나온다(FlowParts 의 FlyIn). 112px 포스티의 입은 왼쪽 56 · 위 51. */}
+        <span data-posty-mouth className="absolute left-[56px] top-[51px]" />
+      </div>
       {say && (
         <div
-          aria-live={live ? "polite" : undefined}
           className="relative mt-[18px] w-full rounded-2xl border border-line bg-paper px-4 py-3.5 text-center"
           style={{ wordBreak: "keep-all" }}
         >
@@ -160,11 +172,29 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
             aria-hidden="true"
             className="absolute -top-[7px] left-1/2 -ml-1.5 h-3 w-3 rotate-45 border-l border-t border-line bg-paper"
           />
-          <p className="text-[15px] font-bold leading-[1.6] text-ink">{say.title}</p>
-          <p className="mt-0.5 text-[14px] leading-[1.6] text-ink-soft">{say.body}</p>
+          {/* 한 글자씩 치는 글은 화면 읽기 프로그램이 글자마다 읽지 않도록 숨기고, 다 된 글을 따로 둔다. */}
+          <span className="sr-only" aria-live={live ? "polite" : undefined}>
+            {say.title} {say.body}
+          </span>
+          <SayLines key={say.title + say.body} say={say} />
         </div>
       )}
     </aside>
+  );
+}
+
+/** 말풍선 두 줄 — 굵은 줄을 다 친 뒤 풀어 쓴 줄을 친다. 글이 바뀌면 `key` 로 처음부터 다시 친다. */
+function SayLines({ say }: { say: PostySay }) {
+  const shown = useTypewriter(say.title.length + say.body.length);
+  return (
+    <span aria-hidden="true" className="block">
+      <span className="block text-[15px] font-bold leading-[1.6] text-ink">
+        <Typed text={say.title} shown={shown} />
+      </span>
+      <span className="mt-0.5 block text-[14px] leading-[1.6] text-ink-soft">
+        <Typed text={say.body} shown={shown - say.title.length} />
+      </span>
+    </span>
   );
 }
 
