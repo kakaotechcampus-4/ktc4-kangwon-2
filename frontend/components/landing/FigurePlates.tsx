@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ComponentType } from "react";
+import { useSyncExternalStore, type ComponentType } from "react";
 import {
   Drawer,
   Elevator,
@@ -15,9 +15,8 @@ import s from "./Welcome.module.css";
 /**
  * 소개 화면 가운데의 「그림」 여섯 장. 선으로 그린 등각 그림이 포인터에 답한다(hairline).
  *
- * 그림마다 쌤플이 기록을 다루는 방식 하나를 맡는다. 그림이 알려 주는 읽은 값
- * (`onRead` — 「03」, 「gap 12.0」 같은 것)은 오른쪽 아래에 그대로 적는다.
- * 쉬고 있을 때 오는 「rest」는 적지 않는다 — 움직일 때의 값만 보여 준다.
+ * 그림마다 쌤플이 기록을 다루는 방식 하나를 맡는다. 판 위에는 제목과 해 볼 일만 적는다 —
+ * 그림이 내는 영어 읽은 값(「gap 12.0」)과 그림 번호는 교실 말이 아니라 싣지 않는다.
  * 손가락으로만 쓰는 기기는 가리킬 수 없으니 그림이 스스로 한 바퀴씩 움직이게 한다.
  */
 
@@ -84,19 +83,17 @@ export function FigurePlates() {
   const touchOnly = useTouchOnly();
   return (
     <ol className={s.plates}>
-      {PLATES.map((p, i) => (
-        <PlateCard key={p.title} plate={p} n={i + 1} play={touchOnly} />
+      {PLATES.map((p) => (
+        <PlateCard key={p.title} plate={p} play={touchOnly} />
       ))}
     </ol>
   );
 }
 
-function PlateCard({ plate, n, play }: { plate: Plate; n: number; play: boolean }) {
-  const [reading, setReading] = useState("");
+function PlateCard({ plate, play }: { plate: Plate; play: boolean }) {
   const { Figure } = plate;
   return (
     <li className={s.plate}>
-      <span className={s.plateNo}>그림 {n}</span>
       <span className={s.plateTitle}>{plate.title}</span>
       <Figure
         className={s.plateFigure}
@@ -104,12 +101,8 @@ function PlateCard({ plate, n, play }: { plate: Plate; n: number; play: boolean 
         theme="light"
         label={plate.label}
         play={play}
-        onRead={(text) => setReading(text === "rest" ? "" : text)}
       />
       <span className={s.plateHint}>{plate.hint}</span>
-      <span className={s.plateRead} aria-hidden="true">
-        {reading}
-      </span>
     </li>
   );
 }

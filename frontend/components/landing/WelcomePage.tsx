@@ -4,6 +4,7 @@ import { LegalFooter } from "@/components/legal/LegalPage";
 import { Wordmark } from "@/components/app/Wordmark";
 import { FigurePlates } from "./FigurePlates";
 import { HeroDevices } from "./HeroDevices";
+import { TryOneLine } from "./TryOneLine";
 import s from "./Welcome.module.css";
 
 /**
@@ -165,6 +166,12 @@ const FAQ = [
   ],
 ];
 
+/**
+ * 파일럿 선생님 후기. **받은 문장만 넣는다** — 지어내지 않는다(PRODUCT.md 「Evidence on Hand」).
+ * 비어 있으면 후기 칸은 그려지지 않는다.
+ */
+const VOICES: { quote: string; who: string }[] = [];
+
 const PHONES = [
   ["phone-records", "휴대폰의 관찰 기록 화면"],
   ["phone-routines", "휴대폰의 일과 기록 화면"],
@@ -209,8 +216,8 @@ export default function WelcomePage() {
             <Link href="/signup" className={s.btn}>
               우리 반으로 시작하기
             </Link>
-            <a href="#figures" className={s.textLink}>
-              어떻게 움직이는지 보기
+            <a href="#try" className={s.textLink}>
+              직접 한 줄 적어 보기
             </a>
           </div>
           <HeroDevices />
@@ -225,6 +232,18 @@ export default function WelcomePage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section id="try" className={s.trySection} aria-labelledby="try-title">
+          <div className={s.wrap}>
+            <h2 id="try-title" className={s.h2}>
+              직접 한 줄 적어 보세요
+            </h2>
+            <p className={s.sub}>
+              적은 문장은 사실 칸에 한 글자도 바뀌지 않고 들어가요. 그 아래 문장만 초안이에요.
+            </p>
+            <TryOneLine />
+          </div>
         </section>
 
         <section id="figures" className={s.figures} aria-labelledby="figures-title">
@@ -285,6 +304,8 @@ export default function WelcomePage() {
           </div>
         </section>
 
+        <Voices />
+
         <section id="safe" className={s.safe} aria-labelledby="safe-title">
           <div className={s.wrap}>
             <h2 id="safe-title" className={s.h2}>
@@ -327,7 +348,9 @@ export default function WelcomePage() {
         </section>
       </main>
 
-      <LegalFooter width="max-w-[1080px]" />
+      <div className={s.footer}>
+        <LegalFooter width="max-w-[1080px]" />
+      </div>
     </div>
   );
 }
@@ -359,6 +382,22 @@ function FeatureRow({ feature: f, flip }: { feature: Feature; flip: boolean }) {
         />
       </div>
     </article>
+  );
+}
+
+function Voices() {
+  if (!VOICES.length) return null;
+  return (
+    <section className={s.voices} aria-label="먼저 써 본 선생님">
+      <div className={s.wrap}>
+        {VOICES.map((v) => (
+          <figure key={v.quote}>
+            <blockquote>{v.quote}</blockquote>
+            <figcaption>{v.who}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
   );
 }
 
