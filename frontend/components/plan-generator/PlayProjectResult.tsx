@@ -528,6 +528,11 @@ export default function PlayProjectResult({
         >
           {seasonLabel} 놀이
         </h2>
+        {periodPicks.length >= MAX_PICKS && period.candidates.length > MAX_PICKS && (
+          <p className="m-0 text-[13px] text-ink-soft">
+            {MAX_PICKS}개를 다 골랐어요. 다른 후보를 넣으려면 하나를 빼 주세요.
+          </p>
+        )}
         {pickedCandidates.map((candidate, index) => (
           <div
             key={candidate.row_key}
