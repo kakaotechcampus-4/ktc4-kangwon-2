@@ -10,7 +10,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, Field, StrictInt, StrictStr, StringConstraints
 
 from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, MemoIn, MemoNoticeOut
 
 
 def _no_duplicates(keys: list[str]) -> list[str]:
@@ -34,6 +34,7 @@ class CreatePlayMonthlyPlan(BaseModel):
     emphasized_row_keys: Annotated[
         list[_RowKey], Field(max_length=5), AfterValidator(_no_duplicates)
     ] = []
+    memo: MemoIn = ""
 
 
 # ── 변경 (§9-7) ────────────────────────────────────────────────────────────
@@ -193,6 +194,8 @@ class PlayMonthlyPlanOut(BaseModel):
     drill_candidates: list[DrillCandidateOut]
     teacher_inputs: list[TeacherInputOut]
     notices: list[NoticeOut]
+    memo: str = ""
+    memo_notices: list[MemoNoticeOut] = []
 
 
 # ── 변경 이력 (§9-7) ───────────────────────────────────────────────────────

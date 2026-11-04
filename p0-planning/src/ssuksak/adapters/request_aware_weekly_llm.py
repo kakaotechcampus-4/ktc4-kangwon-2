@@ -53,5 +53,9 @@ class RequestAwareWeeklyLlm:
                 "section_key": key, "value": value, "unresolved": False,
                 "grounding_refs": grounding, "reference_id": reference_id,
             })
-        content = json.dumps({"week_id": body["week"]["week_id"], "sections": sections}, ensure_ascii=False)
+        answer = {"week_id": body["week"]["week_id"], "sections": sections}
+        if getattr(request, "memo_addresses", None) is not None and not request.repair_targets:
+            answer["memo_applied"] = list(request.memo_addresses[:1])  # exercises the evidence path
+            answer["memo_skipped"] = []
+        content = json.dumps(answer, ensure_ascii=False)
         return RawLlmResponse(content=content, model=MONTHLY_MODEL)

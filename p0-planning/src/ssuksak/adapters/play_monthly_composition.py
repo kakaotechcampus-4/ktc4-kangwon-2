@@ -63,6 +63,7 @@ def play_monthly_command(
     target_month: YearMonth,
     emphasized_row_keys: tuple[str, ...] = (),
     class_name: str = "",
+    teacher_memo: str = "",
 ) -> GeneratePlayMonthlyPlanCommand:
     """The request facts from the caller; the Reference versions from this module."""
     return GeneratePlayMonthlyPlanCommand(
@@ -81,6 +82,7 @@ def play_monthly_command(
         drill_catalog_version=DRILL_CATALOG[1],
         emphasized_row_keys=emphasized_row_keys,
         class_name=class_name,
+        teacher_memo=teacher_memo,
     )
 
 

@@ -18,6 +18,7 @@ from ..domain.monthly_template_profile import (
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
 )
 from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.teacher_memo import MemoNotice, SafetyRequest
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 
@@ -297,6 +298,10 @@ class MonthlyPlanningRequest:
     # Repair only: the cells (week_id or None for month, section_key) the repair may
     # patch and the fields it may change there. Empty for an initial request.
     repair_targets: tuple[tuple[str | None, str, tuple[str, ...]], ...] = ()
+    # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
+    memo_addresses: tuple[str, ...] | None = None
+    # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
+    safety_request_slots: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -413,6 +418,7 @@ class MonthlyCellPlanningRequest:
     packet_fingerprint: str = ""
     plan_snapshot_fingerprint: str = ""
     allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    memo_addresses: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -550,6 +556,10 @@ class MonthlyPlanningOutcome:
     # every other cell (initial value, or only deterministically normalized) the initial prompt.
     initial_prompt_version: str | None = None
     repaired_cells: frozenset[tuple[str | None, str]] = frozenset()
+    # ADR-060: cells the LLM says the teacher memo changed (planner.teacher_memo.cell_address).
+    memo_applied: frozenset[str] = frozenset()
+    memo_skipped: tuple[MemoNotice, ...] = ()  # requests the LLM could not apply
+    safety_requests: tuple[SafetyRequest, ...] = ()  # count / week requests; the Rule places them
 
     def prompt_version_for(self, week_id: str | None, section_key: str) -> str:
         """The prompt version that produced this cell's current value."""
@@ -566,3 +576,4 @@ class MonthlyCellPlanningOutcome:
     packet_fingerprint: str
     plan_snapshot_fingerprint: str
     request_id: str | None = None
+    memo_applied: bool = False

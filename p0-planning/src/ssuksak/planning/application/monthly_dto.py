@@ -10,6 +10,7 @@ from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ..domain.monthly_template_profile import TemplateProfileRef
 from ..domain.year_month import YearMonth
 from ..planner.contracts import MonthlyCellPlanningOutcome
+from ..planner.teacher_memo import normalize_teacher_memo
 from ..rules.monthly_activity_selection import ActivitySelectionTrace
 from .ports import OptionalContextResult
 
@@ -88,8 +89,12 @@ class GenerateMonthlyPlanCommand:
     safety_candidates: SafetyCandidatesSelector | None = None
     # Required when the Profile has the drill Section; requires LLM_PLANNER.
     drill_topics: DrillTopicsSelector | None = None
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
+    teacher_memo: str = ""
 
     def __post_init__(self) -> None:
+        if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
+            raise InvalidDomainValueError("teacher_memo must be normalized")
         if not isinstance(self.parent_yearly_plan_id, PlanId):
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.parent_yearly_plan_id must be PlanId"

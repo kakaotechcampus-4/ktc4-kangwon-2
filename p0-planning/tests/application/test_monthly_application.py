@@ -3087,3 +3087,31 @@ def test_a_drill_topic_id_in_a_candidate_sentence_is_repaired_or_nothing_is_save
     with pytest.raises(MonthlyApplicationError):
         harness.generate(provider=DrillMonthlyLlm(leaks=2), command=_drill_command(harness))
     assert harness.plans.save_count == 0
+
+
+def test_a_memo_safety_request_is_placed_by_the_rule_with_a_different_item_each_week():  # ADR-060 2층
+    class RequestingLlm(CandidateMonthlyLlm):
+        def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
+            payload = json.loads(super().generate_monthly(request).content)
+            payload.update(memo_applied=[], memo_skipped=[])
+            payload["safety_requests"] = [
+                {"slot": "disaster_preparedness_safety", "weeks": [], "min_weeks": 2}
+            ]
+            return RawLlmResponse(json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1")
+
+    harness, command = _candidate_harness()
+    provider = RequestingLlm()
+    plan = harness.generate(provider=provider, command=replace(command, teacher_memo="재난 안전 두 번")).plan
+    request = provider.monthly_requests[0]
+
+    assert request.prompt_version.endswith("+teacher-memo-v1+safety-requests-v1")
+    assert len(request.safety_request_slots) == 6
+    first, second = (plan.safety_candidate(s.candidate_item_id) for s in plan.safety_weeks[:2])
+    assert {first.category_id, second.category_id} == {"disaster_preparedness_safety"}
+    assert first.cell.generation.method is GenerationMethod.RULE_LLM
+    assert second.cell.generation.method is GenerationMethod.RULE_ONLY
+    assert first.cell.evidence[0].source_id != second.cell.evidence[0].source_id
+    assert all(s.candidate_item_id is None for s in plan.safety_weeks[2:])
+    assert len(plan.safety_candidates) == 9 and plan.memo_notices == ()
+    confirm = ConfirmMonthlyPlan(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
+    assert confirm.execute(ConfirmMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
