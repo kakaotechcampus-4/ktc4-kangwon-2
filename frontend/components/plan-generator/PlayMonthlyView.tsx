@@ -6,11 +6,30 @@ import workspace from "@/components/workspace/Workspace.module.css";
 import { ApiError } from "@/lib/api/client";
 import { getMe } from "@/lib/api/auth";
 import { getClasses } from "@/lib/api/classes";
-import { getPlayMonthly, unconfirmPlayMonthly } from "@/lib/api/playMonthly";
+import {
+  downloadPlayMonthlyHwpx,
+  getPlayMonthly,
+  unconfirmPlayMonthly,
+} from "@/lib/api/playMonthly";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
 import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
-import { cellValue, drillTarget, overlayCells } from "@/lib/plan-generator/playMonthlyQueue";
+import {
+  cellValue,
+  drillTarget,
+  overlayCells,
+  removal,
+} from "@/lib/plan-generator/playMonthlyQueue";
+import {
+  CELL_MIN_WIDTH,
+  MAX_DEPTH,
+  leaves,
+  locate,
+  narrowest,
+  splitLeaf,
+  timetablePlace,
+} from "@/lib/plan-generator/playMonthlyTimetable";
 import PlayCellEditor from "./PlayCellEditor";
+import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
@@ -34,8 +53,6 @@ const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
 const INPUT_LABELS: Record<string, string> = {
   fire_disaster_drill: "소방대피/재난대비",
-  specialized_timetable: "특성화 시간표",
-  special_activity_timetable: "특별활동 시간표",
   class_notice: "안내사항",
   class_birthdays: "우리반 생일",
   home_connection: "가정연계",
@@ -58,6 +75,8 @@ export function cellLabels(plan: PlayMonthlyPlan) {
   for (const c of plan.safety_candidates) labels[c.cell.item_id] = "안전교육 후보";
   for (const d of plan.drill_candidates) labels[d.cell.item_id] = `훈련 후보 · ${d.label}`;
   for (const t of plan.teacher_inputs) labels[t.cell.item_id] = INPUT_LABELS[t.key] ?? t.key;
+  for (const c of [...plan.specialized_timetable, ...plan.special_activity.flatMap(leaves)])
+    labels[c.item_id] = timetablePlace(plan, c.item_id)!;
   return labels;
 }
 
@@ -244,9 +263,21 @@ function PlayMonthlyBody({
   useCompactShell(!confirmed);
   // 확정 시작(freeze)부터 끝(unfreeze)까지도 패널 · 행 빼기를 잠근다.
   const [frozen, setFrozen] = useState(false);
-  const locked = stopped || frozen;
+  // 나누기 · 되살리기는 응답이 와야 새 칸이 생겨 그동안 편집을 잠근다.
+  const locked = stopped || frozen || save.structuring;
   const shown = overlayCells(plan, live);
   const labels = cellLabels(plan);
+  // 고른 칸이 빼기 · 되돌리기로 사라졌으면 고름을 푼다.
+  if (selected && !selected.startsWith("safety:") && !labels[selected]) setSelected(null);
+  const [asking, setAsking] = useState(false);
+  if (asking && locked) setAsking(false);
+  const slot = selected ? locate(plan.special_activity, selected) : null;
+  const removeSlot = () => {
+    const parent = slot!.path.at(-2)!;
+    const sibling = parent.children.find((c) => c.cell?.item_id !== selected)!;
+    setAsking(false);
+    if (save.removeCell(selected!)) setSelected(leaves(sibling)[0].item_id);
+  };
   const through = (direction: "undo" | "redo") => {
     if (!save[direction]()) return;
     setLive({});
@@ -338,6 +369,63 @@ function PlayMonthlyBody({
       {safetyWeek && weekCandidate && (
         <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
       )}
+      {slot && (
+        <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
+          {/* 주간 대·소집단 칸 나누기와 같은 말 · 같은 버튼(WeeklyEditor). */}
+          <div role="group" aria-label="칸 나누기" className="flex flex-wrap gap-2">
+            {(["VERTICAL", "HORIZONTAL"] as const).map((axis) => {
+              const day = plan.special_activity[slot.day];
+              const width = plan.special_activity_size.column_widths[slot.day];
+              const cramped =
+                axis === "HORIZONTAL" &&
+                narrowest(splitLeaf(day, selected!, axis, "", slot.path.at(-1)!.cell!), width) <
+                  CELL_MIN_WIDTH;
+              return (
+                <button
+                  key={axis}
+                  type="button"
+                  className={BUTTON.outline}
+                  disabled={locked || slot.path.length - 1 >= MAX_DEPTH || cramped}
+                  onClick={() => save.splitCell(selected!, axis)}
+                >
+                  {axis === "VERTICAL" ? "위아래로 나누기" : "좌우로 나누기"}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              className={BUTTON.quiet}
+              disabled={locked || slot.path.length === 1}
+              onClick={() => {
+                // 글이 있거나 되돌릴 수 없으면(형제가 나뉜 묶음) 한 번 묻는다.
+                const text = cellValue(plan, selected!)?.trim();
+                if (text || removal(plan, selected!) === null) setAsking(true);
+                else removeSlot();
+              }}
+            >
+              이 칸 빼기
+            </button>
+          </div>
+          {asking && (
+            <PlayMonthlyConfirm
+              message={
+                (cellValue(plan, selected!)?.trim() ? "이 칸의 글이 문서에서 빠져요. " : "") +
+                (removal(plan, selected!) === null
+                  ? "옆 칸이 나뉘어 있어 되돌릴 수 없어요. 뺄까요?"
+                  : "뺄까요?")
+              }
+              yes="빼기"
+              disabled={locked}
+              onYes={removeSlot}
+              onNo={() => setAsking(false)}
+            />
+          )}
+          <p className="m-0 text-[13px] text-[#5c5243]">
+            칸 경계선을 끌면 크기가 바뀌어요. 요일 머리의 오른쪽 선은 열 너비, 표 맨 아래 선은 전체
+            높이예요.
+          </p>
+        </div>
+      )}
       {row && (
         <div className="border-t border-[#efeae2] pt-4">
           <PlayMonthlyRowRemove
@@ -407,11 +495,12 @@ function PlayMonthlyBody({
       {BACK_ICON}
     </Link>
   );
-  // Ⓜ4 — 놀이 중심형은 주간 없이 다음 달 월간으로 간다. 한글 내보내기는 서버 경로가 생기면 붙인다.
+  // Ⓜ4 — 놀이 중심형은 주간 없이 다음 달 월간으로 간다.
   if (confirmed)
     return (
       <PlanDone
         title={`${plan.month}월 월간계획안을 확정했어요`}
+        download={(format) => downloadPlayMonthlyHwpx(plan.id, format)}
         docLabel="확정된 월간계획안"
         format="PLAY_PROJECT"
         pages={[<PlayMonthlySheet key="sheet" plan={plan} className={className} />]}
@@ -517,6 +606,8 @@ function PlayMonthlyBody({
           onSelect={select}
           className={className}
           scale={sheetZoom.percent / 100}
+          onRatio={locked ? undefined : save.resizeSplit}
+          onSize={locked ? undefined : save.resizeTable}
         />
       </div>
     </AnnualFrame>

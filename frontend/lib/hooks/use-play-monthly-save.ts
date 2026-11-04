@@ -6,22 +6,34 @@ import {
   editPlayMonthlyCell,
   placePlayMonthlySafety,
   removePlayMonthlyActivity,
+  removePlayMonthlyCell,
+  resizePlayMonthlySplit,
+  resizePlayMonthlyTable,
+  splitPlayMonthlyCell,
 } from "@/lib/api/playMonthly";
 import { isRejectedSave, isSaveConflict } from "@/lib/api/plans";
-import type { PlayMonthlyPlan } from "@/lib/api/types";
+import type { PlayMonthlyPlan, PlayMonthlyTimetableSize } from "@/lib/api/types";
+import { boundaries } from "@/lib/plan-generator/playMonthlyTimetable";
 import {
   EMPTY_HISTORY,
   cellValue,
   createPlayMonthlyQueue,
   drillTarget,
+  grown,
   hasUnsentSave,
   moveStep,
   overlayCells,
   pushStep,
+  remapHistory,
+  removal,
   safetyOf,
   withSafety,
+  withTimetableRatio,
+  withTimetableSize,
   withoutActivity,
+  withoutTimetableCell,
   type History,
+  type RemovedCell,
   type IdleResult,
   type Job,
   type SaveStatus,
@@ -35,6 +47,14 @@ export type PlayMonthlySave = {
   placeSafety(weekId: string, candidateItemId: string | null): void;
   removeActivity(itemId: string): void;
   copyDrill(itemId: string): boolean;
+  /** 특별활동 시간표. 나누기는 새 id 를 서버가 정해 응답 뒤에 화면이 바뀐다 — 그동안 `structuring`. */
+  splitCell(itemId: string, axis: "VERTICAL" | "HORIZONTAL"): boolean;
+  /** 형제가 묶음이면 되돌릴 수 없어 되돌리기 목록을 비운다. */
+  removeCell(itemId: string): boolean;
+  resizeSplit(splitId: string, ratio: number): void;
+  resizeTable(size: PlayMonthlyTimetableSize): void;
+  /** 응답을 기다리는 구조 변경(나누기 · 되살리기)이 있다 — 그동안 편집을 잠근다. */
+  structuring: boolean;
   whenIdle(): Promise<IdleResult>;
   freeze(): void;
   unfreeze(): void;
@@ -46,14 +66,52 @@ export type PlayMonthlySave = {
   canRedo: boolean;
 };
 
-const call = (id: number, job: Job, revision: number) =>
-  job.kind === "cell"
-    ? editPlayMonthlyCell(id, job.itemId, job.value, revision)
-    : job.kind === "safety"
-      ? placePlayMonthlySafety(id, job.weekId, job.candidateItemId, revision)
-      : job.kind === "remove"
-        ? removePlayMonthlyActivity(id, job.itemId, revision)
-        : copyPlayMonthlyDrill(id, job.itemId, revision);
+function call(id: number, job: Job, revision: number): Promise<PlayMonthlyPlan> {
+  switch (job.kind) {
+    case "cell":
+      return editPlayMonthlyCell(id, job.itemId, job.value, revision);
+    case "safety":
+      return placePlayMonthlySafety(id, job.weekId, job.candidateItemId, revision);
+    case "remove":
+      return removePlayMonthlyActivity(id, job.itemId, revision);
+    case "copy":
+      return copyPlayMonthlyDrill(id, job.itemId, revision);
+    case "split":
+      return splitPlayMonthlyCell(id, job.itemId, job.axis, revision);
+    case "removeCell":
+      return removePlayMonthlyCell(id, job.itemId, revision);
+    case "ratio":
+      return resizePlayMonthlySplit(id, job.splitId, job.ratio, revision);
+    case "size":
+      return resizePlayMonthlyTable(id, job.size, revision);
+    case "restore":
+      return restore(id, job.step, revision);
+  }
+}
+/** 되살리기가 나누기 뒤에 멈췄다 — 다시 보내면 또 나뉘므로 충돌처럼 새로 불러온다. */
+const MIDWAY = new Error("timetable restore stopped after the split");
+/** 뺀 칸 되살리기: 형제를 같은 축으로 나누고(원래 칸이 위 · 왼쪽에 남는다) 글 · 비율을 되돌린다. */
+async function restore(id: number, step: RemovedCell, revision: number) {
+  let plan = await splitPlayMonthlyCell(id, step.siblingId, step.axis, revision);
+  try {
+    const { newId, splitId } = grown(plan, step.siblingId);
+    const sibling = cellValue(plan, step.siblingId) ?? "";
+    const writes = step.first
+      ? [
+          [step.siblingId, step.text],
+          [newId, sibling],
+        ]
+      : [[newId, step.text]];
+    for (const [itemId, text] of writes)
+      if (text.trim() !== (cellValue(plan, itemId) ?? "").trim())
+        plan = await editPlayMonthlyCell(id, itemId, text, plan.revision);
+    if (step.ratio !== 50)
+      plan = await resizePlayMonthlySplit(id, splitId, step.ratio, plan.revision);
+  } catch {
+    throw MIDWAY;
+  }
+  return plan;
+}
 
 /**
  * 놀이 월간의 모든 쓰기를 한 줄로 저장한다(규칙은 `createPlayMonthlyQueue`). 바꾼 값은 `onPlan` 으로 화면에 바로 입히고,
@@ -71,6 +129,7 @@ export function usePlayMonthlySave(
 ): PlayMonthlySave {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [history, setHistoryState] = useState<History>(EMPTY_HISTORY);
+  const [structuring, setStructuring] = useState(false);
   // view: 지금 화면의 계획안(낙관 반영 포함) · server: 마지막으로 서버가 돌려준 계획안.
   const view = useRef(plan);
   const server = useRef(plan);
@@ -92,6 +151,36 @@ export function usePlayMonthlySave(
     view.current = next;
     latest.current.onPlan(next);
   };
+  // 나누기 · 되살리기 응답에서 새 id 를 읽어 걸음을 쌓거나 목록의 옛 id 를 바꾼다.
+  function settled(job: Job, fresh: PlayMonthlyPlan) {
+    if (job.kind === "split") {
+      const made = grown(fresh, job.itemId);
+      setHistory(
+        job.was
+          ? remapHistory(past.current, {
+              [job.was.newId]: made.newId,
+              [job.was.splitId]: made.splitId,
+            })
+          : pushStep(past.current, { kind: "split", itemId: job.itemId, axis: job.axis, ...made }),
+      );
+    } else if (job.kind === "restore") {
+      const { step } = job;
+      const made = grown(fresh, step.siblingId);
+      // 뺀 칸이 첫 갈래였으면 그 글은 형제 id 로, 형제 글은 새 칸으로 갔다.
+      setHistory(
+        remapHistory(
+          past.current,
+          step.first
+            ? {
+                [step.itemId]: step.siblingId,
+                [step.siblingId]: made.newId,
+                [step.splitId]: made.splitId,
+              }
+            : { [step.itemId]: made.newId, [step.splitId]: made.splitId },
+        ),
+      );
+    }
+  }
 
   // 큐의 콜백은 보낼 때(렌더 밖)에만 ref 를 읽는다.
   // eslint-disable-next-line react-hooks/refs
@@ -101,9 +190,10 @@ export function usePlayMonthlySave(
       serverValue: (itemId) => cellValue(server.current, itemId),
       send: async (job, expected) => {
         server.current = await call(plan.id, job, expected);
+        settled(job, server.current);
         return { revision: server.current.revision };
       },
-      isConflict: isSaveConflict,
+      isConflict: (error) => error === MIDWAY || isSaveConflict(error),
       isRejected: isRejectedSave,
       onStatus: setStatus,
       onRejected: (job) => {
@@ -119,6 +209,7 @@ export function usePlayMonthlySave(
         );
         // 남은 걸음의 before 가 거짓이 될 수 있어 목록을 비운다.
         setHistory(EMPTY_HISTORY);
+        setStructuring(false);
         latest.current.onRejected?.(
           job.kind === "cell"
             ? job.itemId
@@ -128,8 +219,14 @@ export function usePlayMonthlySave(
           job.kind,
         );
       },
-      onDrained: () => apply(server.current),
-      onConflict: () => mounted.current && latest.current.onConflict(),
+      onDrained: () => {
+        setStructuring(false);
+        apply(server.current);
+      },
+      onConflict: () => {
+        setStructuring(false);
+        if (mounted.current) latest.current.onConflict();
+      },
     }),
   );
 
@@ -150,21 +247,52 @@ export function usePlayMonthlySave(
       step,
     );
 
+  // 응답 뒤에야 모양을 아는 구조 변경 — 화면은 큐가 빈 뒤 서버 계획안으로 바뀐다.
+  function later(job: Job) {
+    if (!queue.enqueue(job)) return false;
+    setStructuring(true);
+    return true;
+  }
+
+  // 되돌리기 = 반대 요청을 같은 줄로 보낸다. 나누기의 반대는 새 칸 빼기, 칸 빼기의 반대는 되살리기.
+  function opposite(step: Step, undo: boolean): [Job, PlayMonthlyPlan | null] {
+    const v = view.current;
+    const target = undo ? "before" : "after";
+    switch (step.kind) {
+      case "cell":
+        return [
+          { kind: "cell", itemId: step.itemId, value: step[target] },
+          overlayCells(v, { [step.itemId]: step[target] }),
+        ];
+      case "safety":
+        return [
+          { kind: "safety", weekId: step.weekId, candidateItemId: step[target] },
+          withSafety(v, step.weekId, step[target]),
+        ];
+      case "ratio":
+        return [
+          { kind: "ratio", splitId: step.splitId, ratio: step[target] },
+          withTimetableRatio(v, step.splitId, step[target]),
+        ];
+      case "size":
+        return [{ kind: "size", size: step[target] }, withTimetableSize(v, step[target])];
+      case "split":
+        return undo
+          ? [{ kind: "removeCell", itemId: step.newId }, withoutTimetableCell(v, step.newId)]
+          : [{ kind: "split", itemId: step.itemId, axis: step.axis, was: step }, null];
+      case "removeCell":
+        return undo
+          ? [{ kind: "restore", step }, null]
+          : [{ kind: "removeCell", itemId: step.itemId }, withoutTimetableCell(v, step.itemId)];
+    }
+  }
   function through(direction: "undo" | "redo") {
     const moved = moveStep(past.current, direction);
     if (!moved) return false;
-    const { step } = moved;
-    const target = direction === "undo" ? "before" : "after";
-    const ok =
-      step.kind === "cell"
-        ? queue.enqueue({ kind: "cell", itemId: step.itemId, value: step[target] })
-        : queue.enqueue({ kind: "safety", weekId: step.weekId, candidateItemId: step[target] });
-    if (!ok) return false;
-    apply(
-      step.kind === "cell"
-        ? overlayCells(view.current, { [step.itemId]: step[target] })
-        : withSafety(view.current, step.weekId, step[target]),
-    );
+    const [job, next] = opposite(moved.step, direction === "undo");
+    if (!queue.enqueue(job)) return false;
+    if (next) apply(next);
+    else setStructuring(true);
     setHistory(moved.history);
     return true;
   }
@@ -219,6 +347,38 @@ export function usePlayMonthlySave(
           : null;
       return submit({ kind: "copy", itemId }, next, null);
     },
+    splitCell: (itemId, axis) => later({ kind: "split", itemId, axis }),
+    removeCell: (itemId) => {
+      const step = removal(view.current, itemId);
+      if (step === undefined) return false;
+      return submit(
+        { kind: "removeCell", itemId },
+        withoutTimetableCell(view.current, itemId),
+        step,
+      );
+    },
+    resizeSplit: (splitId, ratio) => {
+      const before = view.current.special_activity
+        .flatMap(boundaries)
+        .find((b) => b.split_id === splitId)?.ratio;
+      if (before == null || before === ratio) return;
+      submit({ kind: "ratio", splitId, ratio }, withTimetableRatio(view.current, splitId, ratio), {
+        kind: "ratio",
+        splitId,
+        before,
+        after: ratio,
+      });
+    },
+    resizeTable: (size) => {
+      const before = view.current.special_activity_size;
+      if (JSON.stringify(before) === JSON.stringify(size)) return;
+      submit({ kind: "size", size }, withTimetableSize(view.current, size), {
+        kind: "size",
+        before,
+        after: size,
+      });
+    },
+    structuring,
     whenIdle: () => queue.whenIdle(),
     freeze: () => queue.freeze(),
     unfreeze: () => queue.unfreeze(),

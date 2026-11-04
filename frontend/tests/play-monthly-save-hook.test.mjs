@@ -14,6 +14,11 @@ registerHooks({
   },
 });
 const queueModule = await import("../lib/plan-generator/playMonthlyQueue.ts");
+const timetable = await import("../lib/plan-generator/playMonthlyTimetable.ts");
+// 서버처럼 겹치지 않는 32자 id.
+let nextId = 0;
+const newId = () => "item_" + String(++nextId).padStart(32, "0");
+const leafOf = (value = "") => timetable.leaf({ item_id: newId(), value });
 const require = createRequire(import.meta.url);
 
 const file = fileURLToPath(new URL("../lib/hooks/use-play-monthly-save.ts", import.meta.url));
@@ -42,6 +47,8 @@ const base = () => ({
   safety_weeks: [{ week_id: "w1", candidate_item_id: null }],
   teacher_inputs: [{ key: "fire_disaster_drill", cell: { item_id: "f", value: "옛 글" } }],
   drill_candidates: [{ topic_id: "d1", label: "화재", cell: { item_id: "x", value: "후보 글" } }],
+  special_activity: [leafOf("가"), leafOf(), leafOf(), leafOf(), leafOf()],
+  special_activity_size: { column_widths: [20, 20, 20, 20, 20], height_mm: 24 },
 });
 const listeners = new Set();
 globalThis.window = {
@@ -90,6 +97,25 @@ function mount({ fail = null, hold = false, drafting = false, failCopy = null } 
       sent.push(["remove", itemId, rev]);
       return bump(queueModule.withoutActivity(server, itemId));
     },
+    splitPlayMonthlyCell: async (id, itemId, axis, rev) => {
+      sent.push(["split", itemId, axis, rev]);
+      const added = { item_id: newId(), value: "" },
+        splitId = newId();
+      return bump({
+        ...server,
+        special_activity: server.special_activity.map((d) =>
+          timetable.splitLeaf(d, itemId, axis, splitId, added),
+        ),
+      });
+    },
+    removePlayMonthlyCell: async (id, itemId, rev) => {
+      sent.push(["removeCell", itemId, rev]);
+      return bump(queueModule.withoutTimetableCell(server, itemId));
+    },
+    resizePlayMonthlySplit: async (id, splitId, ratio, rev) => {
+      sent.push(["ratio", splitId, ratio, rev]);
+      return bump(queueModule.withTimetableRatio(server, splitId, ratio));
+    },
     copyPlayMonthlyDrill: async (id, itemId, rev) => {
       sent.push(["copy", itemId, rev]);
       if (failCopy) throw failCopy;
@@ -104,10 +130,11 @@ function mount({ fail = null, hold = false, drafting = false, failCopy = null } 
       isRejectedSave: (e) => e?.status === 422,
     },
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
+    "@/lib/plan-generator/playMonthlyTimetable": timetable,
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)((n) => modules[n], compiled, compiled.exports);
-  const shown = { plan: base(), rejected: [], kinds: [] };
+  const shown = { plan: structuredClone(server), rejected: [], kinds: [] };
   let hook;
   const render = () => {
     cursor = 0;
@@ -157,6 +184,57 @@ test("edit shows at once, sends, and undo/redo walk cell and safety steps", asyn
   assert.deepEqual(
     m.sent.map((s) => s.at(-1)),
     [1, 2, 3, 4, 5],
+  );
+});
+
+test("timetable split · remove · ratio undo and redo through the server's new ids", async () => {
+  const m = mount();
+  const monday = () => m.shown.plan.special_activity[0];
+  const a = monday().cell.item_id;
+  m.get().splitCell(a, "VERTICAL");
+  assert.equal(m.render().structuring, true); // 응답 전에는 잠근다
+  await tick();
+  assert.equal(m.render().structuring, false);
+  const b1 = monday().children[1].cell.item_id;
+  m.get().editCell(b1, "나");
+  await tick();
+  m.render().undo(); // 새 칸 글
+  m.render().undo(); // 나누기 = 새 칸 빼기
+  await tick();
+  assert.equal(monday().cell.item_id, a);
+  m.render().redo(); // 다시 나누기 — 새 id 가 생긴다
+  await tick();
+  const b2 = monday().children[1].cell.item_id;
+  assert.notEqual(b2, b1);
+  m.render().redo(); // 새 칸 글 — 옛 id 가 새 id 로 바뀌어 있다
+  await tick();
+  assert.equal(monday().children[1].cell.value, "나");
+  const s2 = monday().split_id;
+  m.render().resizeSplit(s2, 70);
+  m.get().removeCell(a); // 위 칸(글 「가」)을 뺀다 — 형제가 칸 하나라 되돌릴 수 있다
+  assert.equal(monday().cell.item_id, b2);
+  await tick();
+  m.render().undo(); // 되살리기: 형제를 나누고 글 · 비율을 되돌린다
+  await tick();
+  const [top, bottom] = monday().children.map((c) => c.cell);
+  assert.deepEqual([top.item_id, top.value, bottom.value, monday().ratio], [b2, "가", "나", 70]);
+  m.render().undo(); // 비율 — 경계 id 도 새 것으로 바뀌어 있다
+  await tick();
+  assert.equal(monday().ratio, 50);
+  assert.deepEqual(
+    m.sent.slice(-6).map((s) => s.slice(0, 3)),
+    [
+      ["removeCell", a, m.sent.at(-6)[2]],
+      ["split", b2, "VERTICAL"],
+      ["cell", b2, "가"],
+      ["cell", bottom.item_id, "나"],
+      ["ratio", monday().split_id, 70],
+      ["ratio", monday().split_id, 50],
+    ],
+  );
+  assert.deepEqual(
+    m.sent.map((s) => s.at(-1)),
+    m.sent.map((_, i) => i + 1),
   );
 });
 

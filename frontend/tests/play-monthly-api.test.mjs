@@ -110,6 +110,9 @@ test("single response has the captured key set, in every nested cell too", async
       "safety_candidates",
       "safety_weeks",
       "school_year",
+      "special_activity",
+      "special_activity_size",
+      "specialized_timetable",
       "status",
       "target_ages",
       "target_month",
@@ -175,15 +178,18 @@ test("single response has the captured key set, in every nested cell too", async
   );
   assert.deepEqual(
     plan.teacher_inputs.map((t) => t.key),
-    [
-      "fire_disaster_drill",
-      "specialized_timetable",
-      "special_activity_timetable",
-      "class_notice",
-      "class_birthdays",
-      "home_connection",
-    ],
+    ["fire_disaster_drill", "class_notice", "class_birthdays", "home_connection"],
   );
+  // 시간표는 teacher_inputs 가 아니라 칸 10개 · 요일 트리 5개 · 크기로 온다.
+  assert.equal(plan.specialized_timetable.length, 10);
+  assert.deepEqual(
+    plan.special_activity.map((d) => d.axis),
+    ["VERTICAL", "HORIZONTAL", "VERTICAL", null, "HORIZONTAL"],
+  );
+  assert.deepEqual(plan.special_activity_size, {
+    column_widths: [20, 20, 20, 20, 20],
+    height_mm: 24,
+  });
   // 한 번도 쓰지 않은 교사 입력 칸: 근거 없음 · generation null.
   assert.deepEqual(plan.teacher_inputs[0].cell.evidence, []);
   assert.equal(plan.teacher_inputs[0].cell.generation, null);
@@ -586,6 +592,100 @@ test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and cannot be d
   );
   assert.equal((await pm.getPlayMonthly(id)).status, "CONFIRMED");
   assert.equal((await pm.listPlayMonthly()).items[0].confirmed_at !== null, true);
+});
+
+test("timetable: split, remove, ratio and size follow the server limits; export is confirmed-only", async () => {
+  const { id, rev, klass } = await seeded();
+  const thursday = (p) => p.special_activity[3];
+  let plan = await pm.getPlayMonthly(id);
+  const first = thursday(plan).cell.item_id;
+  await rejects(
+    pm.removePlayMonthlyCell(id, first, rev),
+    422,
+    "VALIDATION_FAILED",
+    "요일의 마지막 칸은 지울 수 없습니다. 글을 비워 주세요.",
+    ["item_id"],
+  );
+  plan = await pm.splitPlayMonthlyCell(id, first, "VERTICAL", rev);
+  assert.equal(plan.revision, rev + 1);
+  assert.equal(thursday(plan).children[0].cell.item_id, first);
+  assert.equal(thursday(plan).ratio, 50);
+  // 깊이 4 까지 — 다섯 번째는 422, revision 은 그대로.
+  let leafId = first;
+  for (let i = 0; i < 3; i++) {
+    plan = await pm.splitPlayMonthlyCell(id, leafId, "VERTICAL", plan.revision);
+    leafId = first;
+  }
+  await rejects(
+    pm.splitPlayMonthlyCell(id, leafId, "VERTICAL", plan.revision),
+    422,
+    "VALIDATION_FAILED",
+    "한 요일은 네 번까지 나눌 수 있습니다.",
+    ["item_id"],
+  );
+  const split = thursday(plan).split_id;
+  await rejects(
+    pm.resizePlayMonthlySplit(id, split, 95, plan.revision),
+    422,
+    "VALIDATION_FAILED",
+    INVALID,
+    ["ratio"],
+  );
+  const same = await pm.resizePlayMonthlySplit(id, split, 50, plan.revision);
+  assert.equal(same.revision, plan.revision);
+  plan = await pm.resizePlayMonthlySplit(id, split, 70, plan.revision);
+  assert.equal(thursday(plan).ratio, 70);
+  // 금요일 33:67 좌우 — 열을 5% 로 줄이면 왼쪽 칸이 3.5% 아래라 거절.
+  await rejects(
+    pm.resizePlayMonthlyTable(
+      id,
+      { column_widths: [20, 20, 20, 35, 5], height_mm: 24 },
+      plan.revision,
+    ),
+    422,
+    "VALIDATION_FAILED",
+    "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.",
+    [],
+  );
+  await rejects(
+    pm.resizePlayMonthlyTable(
+      id,
+      { column_widths: [20, 20, 20, 20, 21], height_mm: 24 },
+      plan.revision,
+    ),
+    422,
+    "VALIDATION_FAILED",
+    INVALID,
+    ["column_widths", "height_mm"],
+  );
+  plan = await pm.resizePlayMonthlyTable(
+    id,
+    { column_widths: [30, 15, 20, 20, 15], height_mm: 40 },
+    plan.revision,
+  );
+  assert.deepEqual(plan.special_activity_size.column_widths, [30, 15, 20, 20, 15]);
+  plan = await pm.removePlayMonthlyCell(id, first, plan.revision);
+  assert.ok(!JSON.stringify(plan.special_activity).includes(first));
+  const kinds = (await pm.getPlayMonthlyAudit(id)).items
+    .filter((e) => e.type === "TIMETABLE_CHANGED")
+    .map((e) => e.timetable_change.operation);
+  assert.deepEqual(kinds, [
+    "SPLIT",
+    "SPLIT",
+    "SPLIT",
+    "SPLIT",
+    "RESIZE_SPLIT",
+    "RESIZE_COLUMNS",
+    "RESIZE_HEIGHT",
+    "REMOVE",
+  ]);
+  const exported = (format) => fetch(`/api/plans/monthly/play/${id}/export/hwp?format=${format}`);
+  assert.equal((await exported("hwpx")).status, 409);
+  assert.equal((await exported("pdf")).status, 422);
+  const done = addPlayMonthly(klass.id, true, 12);
+  const file = await fetch(`/api/plans/monthly/play/${done.id}/export/hwp?format=hwp`);
+  assert.equal(file.status, 200);
+  assert.match(file.headers.get("Content-Disposition"), /play-monthly-\d+\.hwp"/);
 });
 
 test("a draft is deleted with 204 and then it is 404", async () => {

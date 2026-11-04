@@ -5,9 +5,23 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
 } from "react";
-import type { PlayMonthlyActivity, PlayMonthlyPlan } from "@/lib/api/types";
+import type {
+  PlayMonthlyActivity,
+  PlayMonthlyPlan,
+  PlayMonthlyTimetablePart as Part,
+  PlayMonthlyTimetableSize as Size,
+} from "@/lib/api/types";
+import {
+  COLUMN_MIN,
+  DAYS,
+  HEIGHT_RANGE,
+  RATIO_RANGE,
+  tooNarrow,
+  withRatio,
+} from "@/lib/plan-generator/playMonthlyTimetable";
 
 /**
  * 월간 문서 용지 — 디자인 넘김 `monthly-docs.tsx`(내보내기 양식 모양)의 선 · 머리 색 · 주 색.
@@ -207,11 +221,16 @@ export default function PlayMonthlySheet({
   selected,
   onSelect,
   scale,
+  onRatio,
+  onSize,
 }: {
   plan: PlayMonthlyPlan;
   className: string;
   /** 문서 배율(다듬기). 없으면 칸에 맞춰 줄이기만. */
   scale?: number;
+  /** 특별활동 시간표 경계 · 크기 — 다듬는 동안만. */
+  onRatio?: (splitId: string, ratio: number) => void;
+  onSize?: (size: Size) => void;
 } & Pick) {
   const at = { selected, onSelect };
   const teacher = (key: string) =>
@@ -234,10 +253,6 @@ export default function PlayMonthlySheet({
     return plan.safety_candidates.find((c) => c.cell.item_id === picked)?.cell.value ?? "";
   };
   const drill = teacher("fire_disaster_drill");
-  const timetables = [
-    ["specialized_timetable", "특성화 시간표"],
-    ["special_activity_timetable", "특별활동 시간표"],
-  ];
   const weeks = plan.weeks;
   return (
     <Paper
@@ -372,17 +387,7 @@ export default function PlayMonthlySheet({
           </tr>
         </tbody>
       </table>
-      {timetables.map(([key, label]) => {
-        const cell = teacher(key);
-        return (
-          <div key={key} className="mt-2">
-            <Band>{label}</Band>
-            <div className={`${LINE} border-t-0 text-[11.5px]`}>
-              {cell && <Cell {...at} hint={TEACHER_HINT} id={cell.item_id} value={cell.value} />}
-            </div>
-          </div>
-        );
-      })}
+      <Timetables plan={plan} {...at} onRatio={onRatio} onSize={onSize} />
       <div className="mt-2" />
       <Band>우리반 안내사항</Band>
       <table className="w-full table-fixed border-collapse text-[11.5px]">
@@ -392,5 +397,257 @@ export default function PlayMonthlySheet({
         </tbody>
       </table>
     </Paper>
+  );
+}
+
+/** 1mm = 283.465 HWPUNIT — 용지와 같은 배율로 그린다. */
+const mm = (n: number) => hu(n * 283.465);
+/** 요일 머리 글자색(한글 양식). */
+const DAY_COLOR = ["#b77045", "#ff5353", "#32a744", "#000", "#ff008b"];
+
+/** 끌기 · 방향키로 바꾸는 값 하나. 보이는 동안은 미리 그리고, 놓을 때 한 번 저장한다. */
+type Handle =
+  | { kind: "split"; day: number; splitId: string; axis: "VERTICAL" | "HORIZONTAL"; value: number }
+  | { kind: "column"; day: number; value: number }
+  | { kind: "height"; value: number };
+
+/**
+ * 특성화 시간표(제목 · 내용 5열)와 특별활동 시간표(요일별 나눔 트리, ADR-047).
+ * `onRatio` · `onSize` 가 있으면 경계선을 끌어 크기를 바꾼다 — 확정본 · 크게 보기에는 없다.
+ * 한도(비율 10~90 · 열 5% · 칸 3.5% · 높이 16~80mm)는 화면이 미리 지키고 최종 검사는 서버가 한다.
+ */
+function Timetables({
+  plan,
+  onRatio,
+  onSize,
+  ...at
+}: Pick & {
+  plan: PlayMonthlyPlan;
+  onRatio?: (splitId: string, ratio: number) => void;
+  onSize?: (size: Size) => void;
+}) {
+  // 끄는 중인 값과 시작점(화면 좌표 · 값 1 의 길이 · 처음 값).
+  const [drag, setDrag] = useState<{
+    handle: Handle;
+    x: number;
+    y: number;
+    length: number;
+    from: number;
+  } | null>(null);
+  const resizable = !!(onRatio && onSize && at.onSelect);
+  const size = plan.special_activity_size;
+
+  // 미리 보기 값을 입힌 모양 · 크기.
+  const shown = (handle: Handle | null) => {
+    let days = plan.special_activity;
+    let widths = size.column_widths;
+    let height = size.height_mm;
+    if (handle?.kind === "split")
+      days = days.map((d, i) =>
+        i === handle.day ? withRatio(d, handle.splitId, handle.value) : d,
+      );
+    if (handle?.kind === "column") {
+      const pair = widths[handle.day] + widths[handle.day + 1];
+      widths = widths.map((w, i) =>
+        i === handle.day ? handle.value : i === handle.day + 1 ? pair - handle.value : w,
+      );
+    }
+    if (handle?.kind === "height") height = handle.value;
+    return { days, widths, height };
+  };
+  // 한도 안의 가장 가까운 값 — 칸이 너무 좁아지면 처음 값 쪽으로 물러선다.
+  function fit(handle: Handle, wanted: number, from: number) {
+    const [low, high] =
+      handle.kind === "height"
+        ? HEIGHT_RANGE
+        : handle.kind === "split"
+          ? RATIO_RANGE
+          : [
+              COLUMN_MIN,
+              size.column_widths[handle.day] + size.column_widths[handle.day + 1] - COLUMN_MIN,
+            ];
+    let value = Math.min(high, Math.max(low, Math.round(wanted)));
+    const ok = (v: number) => {
+      const s = shown({ ...handle, value: v });
+      return !tooNarrow(s.days, s.widths);
+    };
+    while (value !== from && !ok(value)) value += value < from ? 1 : -1;
+    return value;
+  }
+  function commit(handle: Handle) {
+    if (handle.kind === "split") return onRatio?.(handle.splitId, handle.value);
+    const s = shown(handle);
+    onSize?.({ column_widths: s.widths, height_mm: s.height });
+  }
+
+  const handleProps = (handle: Handle, label: string) => ({
+    role: "separator",
+    tabIndex: 0,
+    "aria-label": label,
+    "aria-valuenow": handle.value,
+    "aria-orientation": (handle.kind === "height" ||
+    (handle.kind === "split" && handle.axis === "VERTICAL")
+      ? "horizontal"
+      : "vertical") as "horizontal" | "vertical",
+    title: "끌거나 방향키로 크기를 바꿔요",
+    "data-resize": handle.kind,
+    onClick: (e: { stopPropagation: () => void }) => e.stopPropagation(),
+    onPointerDown: (e: PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      // 값 1 만큼의 화면 길이(px, 배율 포함) — 비율은 그 마디의 1%, 열은 표 폭의 1%, 높이는 1mm.
+      const el = e.currentTarget;
+      const box = el.parentElement!.getBoundingClientRect();
+      const length =
+        handle.kind === "height"
+          ? el.parentElement!.querySelector("td > div")!.getBoundingClientRect().height /
+            handle.value
+          : handle.kind === "column"
+            ? el.closest("table")!.getBoundingClientRect().width / 100
+            : handle.axis === "HORIZONTAL"
+              ? box.width / 100
+              : box.height / 100;
+      setDrag({ handle, x: e.clientX, y: e.clientY, length, from: handle.value });
+    },
+    onPointerMove: (e: PointerEvent<HTMLDivElement>) => {
+      if (!drag) return;
+      const h = drag.handle;
+      const across = h.kind === "column" || (h.kind === "split" && h.axis === "HORIZONTAL");
+      const moved = (across ? e.clientX - drag.x : e.clientY - drag.y) / drag.length;
+      setDrag({ ...drag, handle: { ...h, value: fit(h, drag.from + moved, drag.from) } });
+    },
+    onPointerUp: () => {
+      if (drag && drag.handle.value !== drag.from) commit(drag.handle);
+      setDrag(null);
+    },
+    onPointerCancel: () => setDrag(null),
+    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+      const back = handle.kind === "height" ? "ArrowUp" : "ArrowLeft";
+      const ahead = handle.kind === "height" ? "ArrowDown" : "ArrowRight";
+      const keys =
+        handle.kind === "split" && handle.axis === "VERTICAL"
+          ? ["ArrowUp", "ArrowDown"]
+          : [back, ahead];
+      if (!keys.includes(e.key)) return;
+      e.preventDefault();
+      const step = (handle.kind === "height" ? 1 : 5) * (e.key === keys[0] ? -1 : 1);
+      const value = fit(handle, handle.value + step, handle.value);
+      if (value !== handle.value) commit({ ...handle, value });
+    },
+  });
+
+  const view = shown(drag?.handle ?? null);
+  const tree = (part: Part, day: number): ReactNode => {
+    if (part.cell)
+      return (
+        <div className="flex h-full min-h-0 min-w-0 overflow-auto [&>span]:h-full [&>span]:w-full [&>span]:text-center">
+          <Cell {...at} hint={TEACHER_HINT} id={part.cell.item_id} value={part.cell.value} />
+        </div>
+      );
+    const across = part.axis === "HORIZONTAL";
+    const ratio = part.ratio!;
+    return (
+      <div
+        className="relative grid h-full min-h-0 min-w-0"
+        style={{
+          [across ? "gridTemplateColumns" : "gridTemplateRows"]:
+            `minmax(0,${ratio}fr) minmax(0,${100 - ratio}fr)`,
+        }}
+      >
+        {part.children.map((child, i) => (
+          <div
+            key={i}
+            className={`min-h-0 min-w-0 ${i ? (across ? "border-l" : "border-t") + " border-[#a9d3ee]" : ""}`}
+          >
+            {tree(child, day)}
+          </div>
+        ))}
+        {resizable && (
+          <div
+            {...handleProps(
+              { kind: "split", day, splitId: part.split_id!, axis: part.axis!, value: ratio },
+              `${DAYS[day]}요일 칸 경계`,
+            )}
+            className={`absolute z-[3] touch-none select-none hover:bg-[#699b5b55] focus-visible:bg-[#699b5b55] ${across ? "inset-y-0 w-[9px] -translate-x-1/2 cursor-col-resize" : "inset-x-0 h-[9px] -translate-y-1/2 cursor-row-resize"}`}
+            style={across ? { left: `${ratio}%` } : { top: `${ratio}%` }}
+          />
+        )}
+      </div>
+    );
+  };
+
+  const specialized = plan.specialized_timetable;
+  return (
+    <>
+      <div className="mt-2" />
+      <Band>특성화 시간표</Band>
+      <table className="w-full table-fixed border-collapse text-[11.5px]">
+        <tbody className="text-center">
+          {[specialized.slice(0, 5), specialized.slice(5, 10)].map((row, r) => (
+            <tr key={r}>
+              {row.map((cell) => (
+                <td
+                  key={cell.item_id}
+                  className={`${LINE} p-0 ${r ? "h-[40px]" : `h-[24px] ${HEAD}`}`}
+                >
+                  <Cell {...at} hint={TEACHER_HINT} id={cell.item_id} value={cell.value} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-2" />
+      <Band>특별활동 시간표</Band>
+      <div className="relative">
+        <table className="w-full table-fixed border-collapse text-[11.5px]">
+          <colgroup>
+            {view.widths.map((w, i) => (
+              <col key={i} style={{ width: `${w}%` }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              {DAYS.map((day, i) => (
+                <th
+                  key={day}
+                  scope="col"
+                  className={`${LINE} ${HEAD} relative h-6`}
+                  style={{ color: DAY_COLOR[i] }}
+                >
+                  {day}
+                  {resizable && i < 4 && (
+                    <div
+                      {...handleProps(
+                        { kind: "column", day: i, value: size.column_widths[i] },
+                        `${day}요일 오른쪽 열 경계`,
+                      )}
+                      className="absolute inset-y-0 left-full z-[3] w-[9px] -translate-x-1/2 cursor-col-resize touch-none select-none hover:bg-[#699b5b55] focus-visible:bg-[#699b5b55]"
+                    />
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {view.days.map((day, i) => (
+                <td key={i} className={`${LINE} p-0 align-top`}>
+                  <div style={{ height: mm(view.height) }}>{tree(day, i)}</div>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+        {resizable && (
+          <div
+            {...handleProps({ kind: "height", value: size.height_mm }, "특별활동 시간표 전체 높이")}
+            className="absolute inset-x-0 top-full z-[3] h-[9px] -translate-y-1/2 cursor-row-resize touch-none select-none hover:bg-[#699b5b55] focus-visible:bg-[#699b5b55]"
+          />
+        )}
+      </div>
+    </>
   );
 }

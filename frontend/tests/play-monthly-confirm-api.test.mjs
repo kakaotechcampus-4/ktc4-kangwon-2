@@ -91,6 +91,7 @@ const KEYS = [
   "link_change",
   "arrangement_change",
   "copied_from",
+  "timetable_change",
 ];
 const post = (id, body) =>
   apiRequest("/api/plans/monthly/play/" + id + "/confirm", {
@@ -99,7 +100,11 @@ const post = (id, body) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 const audit = async (id) => (await pm.getPlayMonthlyAudit(id)).items;
-const cellCount = (plan) => new Set(JSON.stringify(plan).match(/item_[0-9a-f]{32}/g)).size;
+// 시간표 경계(split_id)는 칸이 아니다.
+const cellCount = (plan) =>
+  new Set(
+    JSON.stringify(plan, (k, v) => (k === "split_id" ? undefined : v)).match(/item_[0-9a-f]{32}/g),
+  ).size;
 
 test("confirm: draft without a body is 422, a stale revision is 409, neither changes anything", async () => {
   const { id, rev } = await seeded();

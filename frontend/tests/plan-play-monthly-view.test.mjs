@@ -16,6 +16,7 @@ registerHooks({
 });
 const { resetTestData } = await import("../msw/data/store.ts");
 const queueModule = await import("../lib/plan-generator/playMonthlyQueue.ts");
+const timetableModule = await import("../lib/plan-generator/playMonthlyTimetable.ts");
 const { addPlayMonthly, findPlayMonthly } = await import("../msw/data/play-monthly.ts");
 
 const require = createRequire(import.meta.url);
@@ -138,6 +139,7 @@ const saveStub = (...args) => {
   const [plan, onPlan, onConflict] = args;
   conflict = onConflict;
   return {
+    structuring: false,
     ...saveState,
     placeSafety: (...a) => (
       saved.push(["safety", ...a]),
@@ -149,6 +151,10 @@ const saveStub = (...args) => {
       onPlan(queueModule.withoutActivity(plan, id))
     ),
     editCell: (...a) => (saved.push(["edit", ...a]), !refuse),
+    splitCell: (...a) => (saved.push(["split", ...a]), !refuse),
+    removeCell: (...a) => (saved.push(["removeCell", ...a]), !refuse),
+    resizeSplit: (...a) => saved.push(["ratio", ...a]),
+    resizeTable: (...a) => saved.push(["size", ...a]),
     undo: () => (saved.push(["undo"]), !refuse),
     redo: () => (saved.push(["redo"]), !refuse),
     retry: () => saved.push(["retry"]),
@@ -216,10 +222,13 @@ function load() {
     "@/lib/api/playMonthly": {
       getPlayMonthly: (id) => (calls.push(id), getResult()),
       unconfirmPlayMonthly: (...a) => (calls.push(["unconfirm", ...a]), getResult()),
+      downloadPlayMonthlyHwpx: async (...a) => calls.push(["export", ...a]),
     },
     "@/lib/hooks/use-play-monthly-save": { usePlayMonthlySave: saveStub },
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
+    "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
     "./PlayCellEditor": esModule(editorStub),
+    "./PlayMonthlyConfirm": esModule((props) => jsx("ask", props)),
     "./PlayMonthlySheet": {
       __esModule: true,
       default: sheetStub,
@@ -293,12 +302,13 @@ test("반 이름 조회가 끝나지 않아도 문서는 먼저 보이고, 나�
   classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
 });
 
-test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내기 · 확정 · 이력 · 되돌리기 단추는 없다", async () => {
+test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내기는 있고 확정 · 이력 · 되돌리기 단추는 없다", async () => {
   const plan = fixture(true);
   const { tree } = await open(plan.id, async () => plan);
   assert.match(text(tree), new RegExp(`${plan.month}월 월간계획안을 확정했어요`));
   const done = all(tree).find((n) => n.type === "done");
-  assert.equal(done.props.download, undefined); // 놀이 월간 hwpx 서버 경로가 아직 없다.
+  await done.props.download("hwp");
+  assert.deepEqual(calls.at(-1), ["export", plan.id, "hwp"]);
   assert.deepEqual(done.props.next, {
     href: "/plans/monthly",
     label: `${(plan.month % 12) + 1}월 월간 만들기 →`,
@@ -386,6 +396,39 @@ test("놀이 행을 고르면 이어진 연간 놀이를 보이고 누리과정 
 const node = (tree, type) => all(tree).filter((n) => n.type === type);
 
 const drillCell = (plan) => plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill").cell;
+
+test("특별활동 칸을 고르면 나누기 · 빼기 단추가 훅에 잇고, 글이 든 칸은 빼기 전에 묻는다", async () => {
+  const plan = fixture(false, (p) => {
+    p.special_activity[0].children[0].children[0].cell.value = "체육";
+    return p;
+  });
+  const { tree, View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  saved.length = 0;
+  const thursday = plan.special_activity[3].cell.item_id;
+  pick(tree, thursday);
+  let view = h.render(View, props);
+  assert.match(text(view), /특별활동 · 목요일/);
+  const button = (v, name) => all(v).find((n) => n.type === "button" && text(n) === name);
+  // 요일의 마지막 칸은 뺄 수 없다.
+  assert.equal(button(view, "이 칸 빼기").props.disabled, true);
+  button(view, "좌우로 나누기").props.onClick();
+  const filled = plan.special_activity[0].children[0].children[0].cell.item_id;
+  pick(view, filled);
+  view = h.render(View, props);
+  button(view, "이 칸 빼기").props.onClick();
+  view = h.render(View, props);
+  const ask = all(view).find((n) => n.type === "ask");
+  assert.match(ask.props.message, /이 칸의 글이 문서에서 빠져요/);
+  ask.props.onYes();
+  assert.deepEqual(saved, [
+    ["split", thursday, "HORIZONTAL"],
+    ["removeCell", filled],
+  ]);
+  // 끄는 크기 조절은 다듬기 문서에만 이어진다.
+  const sheet = all(view).find((n) => n.type === "sheet");
+  assert.equal(typeof sheet.props.onRatio, "function");
+});
 
 test("안전교육 칸은 그 주 후보 패널, 소방대피 칸은 훈련 패널, 놀이 행은 행 빼기를 훅에 잇는다", async () => {
   const plan = fixture();
@@ -535,6 +578,7 @@ function sheetOf(plan, more = {}) {
   const h = harness();
   const { default: Sheet } = compile("../components/plan-generator/PlayMonthlySheet.tsx", {
     react: { ...h.react, useEffect: () => {} },
+    "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
   });
   return h.render(Sheet, { plan, className: "해님반", ...more });
 }
@@ -606,19 +650,34 @@ test("소방대피/재난대비는 가로로 합치고, 건강 · 영양 칸이 
   assert.ok(hn.includes("[건강]합성 건강 1") && hn.includes("[영양]합성 영양 1"));
 });
 
-test("특성화 · 특별활동 시간표는 글 칸 하나씩이고, 빈 교사 입력 칸은 빈 칸으로 그린다", () => {
+test("특성화는 제목 · 내용 5열, 특별활동은 요일별 나눈 칸 · 열 폭 · 높이 그대로 그린다", () => {
   const plan = fixture(false, (p) => {
-    p.teacher_inputs.find((i) => i.key === "specialized_timetable").cell.value = "월 인성교육";
+    p.specialized_timetable[5].value = "월 인성교육";
+    p.special_activity_size = { column_widths: [30, 15, 20, 20, 15], height_mm: 40 };
     return p;
   });
   const tree = sheetOf(plan);
   const t = text(tree);
   assert.ok(t.includes("[ 특성화 시간표 ]") && t.includes("[ 특별활동 시간표 ]"));
-  const cells = all(tree)
+  const ids = all(tree)
     .filter((n) => n.props?.["data-cell"])
-    .map(text);
-  assert.ok(cells.includes("월 인성교육"));
-  assert.equal(all(tree).filter((n) => n.type === "td" && /시간표/.test(text(n))).length, 0);
+    .map((n) => n.props["data-cell"]);
+  const leaves = plan.special_activity.flatMap(timetableModule.leaves);
+  assert.equal(leaves.length, 13); // 시작 모양 4 · 2 · 4 · 1 · 2
+  for (const c of [...plan.specialized_timetable, ...leaves]) assert.ok(ids.includes(c.item_id));
+  assert.ok(all(tree).some((n) => n.type === "data-cell" || text(n) === "월 인성교육"));
+  assert.deepEqual(
+    all(tree)
+      .filter((n) => n.type === "col" && /%$/.test(n.props.style?.width ?? ""))
+      .slice(-5)
+      .map((n) => n.props.style.width),
+    ["30%", "15%", "20%", "20%", "15%"],
+  );
+  // 확정본 · 크게 보기(onRatio 없음)에는 끄는 선이 없다.
+  assert.equal(all(tree).filter((n) => n.props?.role === "separator").length, 0);
+  const editable = sheetOf(plan, { onSelect: () => {}, onRatio: () => {}, onSize: () => {} });
+  // 경계 8 + 열 4 + 높이 1.
+  assert.equal(all(editable).filter((n) => n.props?.role === "separator").length, 13);
   for (const label of ["우리반 생일", "가정연계"])
     assert.equal(text(all(rowsOf(tree, "tr", label)[0]).find((n) => n.type === "td")), "");
   // 안내사항은 내려받기에 나오지 않아(2026-10-28) 문서 화면에도 없다.
@@ -724,6 +783,7 @@ test("문서 용지 — onSelect 가 있으면 칸이 누르는 칸이 되고 �
   const h = harness();
   const { default: Sheet } = compile("../components/plan-generator/PlayMonthlySheet.tsx", {
     react: { ...h.react, useEffect: () => {} },
+    "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
   });
   const tree = h.render(Sheet, {
     plan,
