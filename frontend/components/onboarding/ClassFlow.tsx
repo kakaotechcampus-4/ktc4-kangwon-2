@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import AgeSelection from "./AgeSelection";
 import OnboardingLayout, { type PostySay } from "./OnboardingLayout";
 import {
+  Cascade,
   CtaButton,
   ErrorLine,
-  FlyIn,
   LineField,
   LoadingLine,
   Question,
@@ -198,7 +198,8 @@ export default function ClassFlow() {
       </p>
     </div>,
   ];
-  const answered = fields.slice(0, q).reverse();
+  // 지금 질문이 맨 위, 이미 답한 칸은 그 아래에 최근 것부터 쌓는다.
+  const order = [q, ...Array.from({ length: q }, (_, i) => q - 1 - i)];
 
   return (
     <OnboardingLayout
@@ -213,8 +214,7 @@ export default function ClassFlow() {
       }
     >
       <Question title={TITLES[q]} hint={HINTS[q]} focus={q === 1 || q === 3} />
-      <FlyIn key={q}>{fields[q]}</FlyIn>
-      {answered}
+      <Cascade fields={fields} order={order} />
       <ErrorLine>{error}</ErrorLine>
     </OnboardingLayout>
   );

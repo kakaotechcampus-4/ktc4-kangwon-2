@@ -150,19 +150,7 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
       aria-label="진행 안내"
       className="hidden flex-col items-center border-l border-shell bg-ivory px-7 pt-14 md:col-start-2 md:row-start-1 md:flex"
     >
-      <div className="relative">
-        <Posty
-          pose="wave"
-          tone="note"
-          face="base"
-          size={112}
-          tape
-          label="포스티가 손을 흔들어요"
-          className="block"
-        />
-        {/* 입 자리 — 새 입력칸이 여기서 나온다(FlowParts 의 FlyIn). 112px 포스티의 입은 왼쪽 56 · 위 51. */}
-        <span data-posty-mouth className="absolute left-[56px] top-[51px]" />
-      </div>
+      <Posty pose="wave" tone="note" face="base" size={112} tape label="포스티가 손을 흔들어요" />
       {say && (
         <div
           className="relative mt-[18px] w-full rounded-2xl border border-line bg-paper px-4 py-3.5 text-center"

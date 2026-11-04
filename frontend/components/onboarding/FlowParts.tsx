@@ -237,47 +237,56 @@ export function Typed({ text, shown }: { text: string; shown: number }) {
 }
 
 /**
- * 새로 묻는 입력칸이 포스티 입에서 나와 제자리에 놓인다. 질문이 바뀔 때마다 새로 그려지도록 `key` 를 질문으로 준다.
- * 입 자리는 오른쪽 칸 포스티의 `[data-posty-mouth]`(OnboardingLayout). 그 칸이 없는 폭(767px 이하)에서는
- * 아래에서 살짝 떠오르기만 한다. 「동작 줄이기」면 움직이지 않는다.
+ * 지금 묻는 칸이 맨 위, 답한 칸은 그 아래에 최근 것부터(`order` 는 `fields` 의 번호, 맨 앞이 지금 칸).
+ * 질문이 바뀌면 밀어 내린다 — 답한 칸은 있던 자리에서 새 자리로 미끄러지고(FLIP),
+ * 새 칸은 위에서 살짝 내려오며 나타난다. 같은 번호의 칸은 같은 DOM 으로 남아 자리만 옮긴다.
+ * 「동작 줄이기」면 움직이지 않는다.
  */
-export function FlyIn({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
+export function Cascade({ fields, order }: { fields: ReactNode[]; order: number[] }) {
+  const box = useRef<HTMLDivElement>(null);
+  // 지난번 그린 뒤 칸마다 페이지 기준 위치. 스크롤이 바뀌어도 맞도록 scrollY 를 더해 둔다.
+  const last = useRef(new Map<string, number>());
+  const key = order.join(",");
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || reducedMotion()) return;
-    const mouth = document.querySelector("[data-posty-mouth]");
-    if (!mouth || mouth.getClientRects().length === 0) {
-      el.animate(
-        [
-          { transform: "translateY(14px)", opacity: 0 },
-          { transform: "none", opacity: 1 },
-        ],
-        { duration: 320, easing: "ease-out" },
-      );
-      return;
+    const root = box.current;
+    if (!root) return;
+    const animate = last.current.size > 0 && !reducedMotion();
+    const next = new Map<string, number>();
+    const first = root.firstElementChild;
+    // 「←」 로 돌아오면 그 칸은 새로 그려지지 않아 autoFocus 가 다시 안 걸린다. 여기서 옮겨 준다.
+    if (first instanceof HTMLElement && last.current.has(first.dataset.cascade ?? "")) {
+      first.querySelector<HTMLElement>('input[type="text"]')?.focus();
     }
-    const m = mouth.getBoundingClientRect();
-    const box = el.getBoundingClientRect();
-    const dx = m.left - (box.left + box.width / 2);
-    const dy = m.top - (box.top + box.height / 2);
-    el.animate(
-      [
-        { transform: `translate(${dx}px, ${dy}px) scale(0.08)`, opacity: 0 },
-        {
-          transform: `translate(${dx * 0.85}px, ${dy * 0.85}px) scale(0.25)`,
-          opacity: 1,
-          offset: 0.15,
-        },
-        { transform: "none", opacity: 1 },
-      ],
-      { duration: 620, easing: "cubic-bezier(0.34, 1.25, 0.64, 1)" },
-    );
-  }, []);
-  // 날아오는 동안 오른쪽 칸 말풍선 위로 지나가도록 위에 둔다.
+    for (const el of Array.from(root.children) as HTMLElement[]) {
+      const id = el.dataset.cascade ?? "";
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      next.set(id, top);
+      if (!animate) continue;
+      const before = last.current.get(id);
+      if (before === undefined) {
+        el.animate(
+          [
+            { transform: "translateY(-18px)", opacity: 0 },
+            { transform: "none", opacity: 1 },
+          ],
+          { duration: 360, delay: 90, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", fill: "backwards" },
+        );
+      } else if (before !== top) {
+        el.animate([{ transform: `translateY(${before - top}px)` }, { transform: "none" }], {
+          duration: 380,
+          easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        });
+      }
+    }
+    last.current = next;
+  }, [key]);
   return (
-    <div ref={ref} className="relative z-10">
-      {children}
+    <div ref={box}>
+      {order.map((i) => (
+        <div key={i} data-cascade={i}>
+          {fields[i]}
+        </div>
+      ))}
     </div>
   );
 }

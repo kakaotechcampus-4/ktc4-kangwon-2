@@ -6,11 +6,11 @@ import { Posty } from "@/components/app/Posty";
 import OnboardingLayout, { type PostySay } from "./OnboardingLayout";
 import RegionSheet from "./RegionSheet";
 import {
+  Cascade,
   Chevron,
   CtaButton,
   ErrorLine,
   FieldLabel,
-  FlyIn,
   LineField,
   LoadingLine,
   PickButton,
@@ -233,7 +233,7 @@ export default function CenterFlow() {
     </div>,
   ];
   // 지금 질문이 맨 위, 이미 답한 칸은 그 아래에 최근 것부터 쌓는다.
-  const answered = fields.slice(0, q).reverse();
+  const order = [q, ...Array.from({ length: q }, (_, i) => q - 1 - i)];
 
   return (
     <OnboardingLayout
@@ -248,8 +248,7 @@ export default function CenterFlow() {
       }
     >
       <Question title={TITLES[q]} hint={HINTS[q]} focus={q === 2} />
-      <FlyIn key={q}>{fields[q]}</FlyIn>
-      {answered}
+      <Cascade fields={fields} order={order} />
       <ErrorLine>{error}</ErrorLine>
       {sheet && <RegionSheet onPick={pickRegion} onClose={() => setSheet(false)} />}
     </OnboardingLayout>
