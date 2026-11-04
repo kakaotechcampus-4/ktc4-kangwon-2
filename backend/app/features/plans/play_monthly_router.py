@@ -165,7 +165,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
     center_id, class_id, class_name = user.center_id, klass.id, klass.name
-    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-057)
+    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     school_year = klass.school_year
     month = _target_month(school_year, body.month)
     if _existing(session, center_id, class_id, month) is not None:

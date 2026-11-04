@@ -92,7 +92,7 @@ class PlayProjectRequest:
     allowed_content_ids: frozenset[str]
     avoid_play_names: frozenset[str]
     packet_fingerprint: str
-    # ADR-057: row keys memo_applied may name; None = no teacher memo.
+    # ADR-060: row keys memo_applied may name; None = no teacher memo.
     memo_addresses: tuple[str, ...] | None = None
 
 

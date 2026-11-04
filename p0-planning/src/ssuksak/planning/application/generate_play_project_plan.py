@@ -78,7 +78,7 @@ class GeneratePlayProjectPlanCommand:
     curriculum_catalog_version: str
     layout: PlayProjectLayout = PLAY_PROJECT_LAYOUT_V0_2
     avoid_play_names: tuple[str, ...] = ()  # other periods' plays in the same year
-    # ADR-057: the teacher's request note, applied only inside the Rule range.
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
 
     def __post_init__(self) -> None:

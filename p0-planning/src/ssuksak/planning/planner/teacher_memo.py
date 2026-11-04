@@ -1,4 +1,4 @@
-"""교사가 생성 전에 적은 「요청 사항」(ADR-057).
+"""교사가 생성 전에 적은 「요청 사항」(ADR-060).
 
 메모는 Rule 이 허용한 범위 안에서만 반영한다. 메모가 없으면 프롬프트 · 출력 스키마 ·
 fingerprint 가 메모 이전과 같다 — 기존 Golden 이 그대로 통과해야 한다.
@@ -40,7 +40,7 @@ teacher_memo는 담임교사가 이번 생성에 적은 요청 사항이다. 지
 """
 
 
-# 2층(ADR-057): 안전교육 후보가 있는 월간에 메모가 오면 붙는다. 배치는 Rule 이 한다.
+# 2층(ADR-060): 안전교육 후보가 있는 월간에 메모가 오면 붙는다. 배치는 Rule 이 한다.
 SAFETY_REQUESTS = "safety_requests"
 SAFETY_REQUESTS_PROMPT_TAG = "+safety-requests-v1"
 SAFETY_REQUESTS_PROMPT = """

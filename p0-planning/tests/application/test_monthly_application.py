@@ -3087,7 +3087,7 @@ def test_a_drill_topic_id_in_a_candidate_sentence_is_repaired_or_nothing_is_save
     assert harness.plans.save_count == 0
 
 
-def test_a_memo_safety_request_is_placed_by_the_rule_with_a_different_item_each_week():  # ADR-057 2층
+def test_a_memo_safety_request_is_placed_by_the_rule_with_a_different_item_each_week():  # ADR-060 2층
     class RequestingLlm(CandidateMonthlyLlm):
         def generate_monthly(self, request: MonthlyPlanningRequest) -> RawLlmResponse:
             payload = json.loads(super().generate_monthly(request).content)

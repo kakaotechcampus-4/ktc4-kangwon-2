@@ -1,4 +1,4 @@
-"""교사가 생성 전에 적은 「요청 사항」의 domain 값(ADR-057).
+"""교사가 생성 전에 적은 「요청 사항」의 domain 값(ADR-060).
 
 메모를 반영한 칸은 Evidence 하나를 더 갖는다. 칸마다 받는 Evidence 종류를 정해 둔 domain 검사는
 이 Evidence 하나만 예외로 받는다 — 근거 종류를 넓히는 것이 아니라 「교사가 요청했다」는 표시다.
@@ -59,7 +59,7 @@ def require_memo_fields(owner: str, memo: object, notices: object) -> None:
 
 @dataclass(frozen=True, slots=True)
 class SafetyRequest:
-    """메모에서 LLM 이 뽑은 법정 안전교육 요청 하나(ADR-057 2층). 배치는 Rule 이 한다.
+    """메모에서 LLM 이 뽑은 법정 안전교육 요청 하나(ADR-060 2층). 배치는 Rule 이 한다.
 
     ``weeks`` = 교사가 짚은 주(week_id 문자열), ``min_weeks`` = 바라는 최소 주 수(0 = 개수 요청 없음).
     """

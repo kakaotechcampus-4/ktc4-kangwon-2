@@ -72,7 +72,7 @@ class PlayRow:
     learning: PlanItem
 
     def __post_init__(self) -> None:
-        learning = without_memo_evidence(self.learning.evidence)  # ADR-057 mark is allowed
+        learning = without_memo_evidence(self.learning.evidence)  # ADR-060 mark is allowed
         if not learning or any(source.source_type is not EvidenceSourceType.CURRICULUM for source in learning):
             raise InvalidDomainValueError("PlayRow.learning cites CURRICULUM evidence only")
 
@@ -109,7 +109,7 @@ class PlayProjectYearlyPlan:
     periods: tuple[PlayPeriodRows, ...]
     audit: AuditHistory = field(default_factory=AuditHistory)
     format: str = PLAY_PROJECT_FORMAT
-    # ADR-057: the teacher's request note and the requests generation could not apply.
+    # ADR-060: the teacher's request note and the requests generation could not apply.
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()
 

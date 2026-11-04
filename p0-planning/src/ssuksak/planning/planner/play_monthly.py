@@ -127,9 +127,9 @@ class PlayMonthlyRequest:
     nutrition_entry_ids: frozenset[str]
     drill_topic_ids: tuple[str, ...]  # fixed by the Rule; the LLM writes one sentence each
     fingerprint: str
-    # ADR-057: the addresses memo_applied may name; None = no teacher memo (or a repair).
+    # ADR-060: the addresses memo_applied may name; None = no teacher memo (or a repair).
     memo_addresses: tuple[str, ...] | None = None
-    # ADR-057 2층: statutory categories safety_requests may name; None = not asked.
+    # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
     safety_request_slots: tuple[str, ...] | None = None
 
     @property

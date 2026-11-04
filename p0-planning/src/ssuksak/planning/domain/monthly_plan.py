@@ -301,7 +301,7 @@ class MonthlyPlan:
     safety_weeks: tuple[SafetyWeek, ...] = ()
     # The Rule's drill topics, worded by the LLM; present exactly when the drill Section is.
     drill_candidates: tuple[MonthlyDrillCandidate, ...] = ()
-    # ADR-057: the teacher's request note, kept for single-cell regeneration, and the
+    # ADR-060: the teacher's request note, kept for single-cell regeneration, and the
     # requests generation could not apply (shown to the teacher, never blocking).
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()
@@ -474,7 +474,7 @@ class MonthlyPlan:
             raise InvalidDomainValueError(
                 "A candidate-mode Plan keeps its weekly safety_education Cells blank"
             )
-        # Every legal category once, two 생활안전 topics; a teacher request (ADR-057) may add
+        # Every legal category once, two 생활안전 topics; a teacher request (ADR-060) may add
         # more sentences of a legal category, each citing a different official item.
         statutory = [c.category_id for c in candidates if c.kind is SafetyKind.STATUTORY]
         life = [c.topic_group for c in candidates if c.kind is not SafetyKind.STATUTORY]

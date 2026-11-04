@@ -146,7 +146,7 @@ def candidate_evidence(
 
 
 def apply_safety_requests(requests, candidates, weeks, *, slots, make_extra):
-    """ADR-057 2층, v1 · v2 공통: 메모의 법정 안전교육 요청을 만들 때 주에 둔다.
+    """ADR-060 2층, v1 · v2 공통: 메모의 법정 안전교육 요청을 만들 때 주에 둔다.
 
     ``make_extra(category_id, ref, text)`` 가 그 경로의 후보 하나(RULE_ONLY · 요청 사항 Evidence)를 만든다.
     요청으로 주에 놓인 LLM 후보에도 요청 사항 Evidence 를 붙인다. 반환: (후보들, 주 배치, 알림)."""

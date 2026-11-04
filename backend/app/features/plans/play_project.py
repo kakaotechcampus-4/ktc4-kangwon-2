@@ -73,7 +73,7 @@ class MockPlayProjectProvider:
                         }
                         for index in range(request.row_count)
                     ],
-                    # 요청 사항이 있으면 mock 은 첫 후보에 반영했다고 답한다(ADR-057).
+                    # 요청 사항이 있으면 mock 은 첫 후보에 반영했다고 답한다(ADR-060).
                     **(
                         {"memo_applied": list(request.memo_addresses[:1]), "memo_skipped": []}
                         if request.memo_addresses is not None

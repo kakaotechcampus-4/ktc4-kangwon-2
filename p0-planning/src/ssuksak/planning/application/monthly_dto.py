@@ -89,7 +89,7 @@ class GenerateMonthlyPlanCommand:
     safety_candidates: SafetyCandidatesSelector | None = None
     # Required when the Profile has the drill Section; requires LLM_PLANNER.
     drill_topics: DrillTopicsSelector | None = None
-    # ADR-057: the teacher's request note, applied only inside the Rule range.
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
 
     def __post_init__(self) -> None:

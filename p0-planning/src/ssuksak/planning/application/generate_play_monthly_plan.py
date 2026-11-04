@@ -187,7 +187,7 @@ class GeneratePlayMonthlyPlanCommand:
     # The class name the document header starts with (D-10), from the caller's classroom.
     # Blank leaves that header cell for the teacher; it never names or checks the classroom.
     class_name: str = ""
-    # ADR-057: the teacher's request note, applied only inside the Rule range.
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
 
     def __post_init__(self) -> None:

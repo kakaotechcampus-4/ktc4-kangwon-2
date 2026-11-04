@@ -68,7 +68,7 @@ class YearlyPlan:
     status: PlanStatus
     periods: tuple[YearlyPeriod, ...]
     audit: AuditHistory = field(default_factory=AuditHistory)
-    # ADR-057: the teacher's request note and the requests generation could not apply.
+    # ADR-060: the teacher's request note and the requests generation could not apply.
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()
 

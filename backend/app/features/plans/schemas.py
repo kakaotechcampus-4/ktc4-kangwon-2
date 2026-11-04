@@ -13,7 +13,7 @@ from pydantic import (
 )
 from ssuksak.planning.planner.teacher_memo import TEACHER_MEMO_MAX_LENGTH
 
-# ── 요청 사항 (ADR-057) ─────────────────────────────────────────────────────
+# ── 요청 사항 (ADR-060) ─────────────────────────────────────────────────────
 # 생성 다섯 경로가 함께 받는다. 앞뒤 공백을 떼고 300자까지 — Core 의 정규화와 같다.
 # 본문이 JSONB 라 맞출 컬럼은 없다. 빈 값 = 메모 없음(요청 · 결과가 메모 이전과 같다).
 MemoIn = Annotated[

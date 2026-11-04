@@ -232,7 +232,7 @@ def _with_memo(
     safety_slots: tuple[str, ...] | None = None,
     week_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    """ADR-057: a request with a teacher memo also returns memo_applied / memo_skipped at the root,
+    """ADR-060: a request with a teacher memo also returns memo_applied / memo_skipped at the root,
     and safety_requests when it lists statutory safety slots."""
     if addresses is None:
         return schema

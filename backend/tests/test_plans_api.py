@@ -622,7 +622,7 @@ def test_소주제_수가_주_수와_다른_달이_있으면_확정_422(db_sessi
     assert client.get(f"/api/plans/annual/{created['id']}").json()["status"] == "DRAFT"
 
 
-# ── 요청 사항 (ADR-057) ─────────────────────────────────────────────────────
+# ── 요청 사항 (ADR-060) ─────────────────────────────────────────────────────
 
 
 def _marked(month) -> bool:

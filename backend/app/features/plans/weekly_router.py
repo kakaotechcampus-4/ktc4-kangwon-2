@@ -204,7 +204,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
     center_id, class_id = user.center_id, klass.id
-    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-057)
+    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     week = _week(body.week_id, klass.school_year)
     if _existing(session, center_id, class_id, week) is not None:
         raise _ALREADY_EXISTS

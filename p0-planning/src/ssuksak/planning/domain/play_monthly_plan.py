@@ -156,7 +156,7 @@ class PlayMonthlyCell:
             raise InvalidDomainValueError("PlayMonthlyCell.audit must be AuditHistory")
 
     def cites_only(self, *types: EvidenceSourceType) -> bool:
-        """The teacher-memo mark (ADR-057) is allowed beside any cell's own source types."""
+        """The teacher-memo mark (ADR-060) is allowed beside any cell's own source types."""
         return all(source.source_type in types for source in without_memo_evidence(self.evidence))
 
 
@@ -469,7 +469,7 @@ class PlayMonthlyPlan:
     # A timetable cell a teacher removed, kept whole for history (D-7). Never printed.
     removed_timetable_cells: tuple[PlayMonthlyCell, ...] = ()
     format: str = PLAY_MONTHLY_FORMAT
-    # ADR-057: the teacher's request note and the requests generation could not apply.
+    # ADR-060: the teacher's request note and the requests generation could not apply.
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()
 

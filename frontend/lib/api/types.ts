@@ -87,7 +87,7 @@ export interface PlanConfig {
 // TODO(BE): PUT plan-config 응답 body/status 미확정. 호출자는 응답 필드에 의존하지 않는다.
 export type PlanConfigResponse = unknown;
 /** `school_year` 를 받지 않는다 — `class_id` 가 학년도를 정한다 (§4). */
-/** 생성 전 「요청 사항」에서 반영하지 못한 요청 하나(ADR-057). 생성을 막지 않는다. */
+/** 생성 전 「요청 사항」에서 반영하지 못한 요청 하나(ADR-060). 생성을 막지 않는다. */
 export interface MemoNotice {
   summary: string;
   reason: "OUT_OF_RANGE" | "RULE_CONFLICT" | "FIXED_CELL";

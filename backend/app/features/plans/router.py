@@ -432,7 +432,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
-    # 요청 사항 속 아이 이름은 LLM 에 보내기 전에 가명으로 바꾼다. 못 바꾸면 여기서 422(ADR-057).
+    # 요청 사항 속 아이 이름은 LLM 에 보내기 전에 가명으로 바꾼다. 못 바꾸면 여기서 422(ADR-060).
     names = memo_name_table(session, klass.id, body.memo)
     # 연간은 반 하나에 하나다. 막지 않으면 교사가 새로고침하고 다시 눌렀을 때 두 개가
     # 생기고, 둘 중 어느 쪽이 진짜인지 아무도 모른다. **동시 요청은 이 조회로 못 막는다** —
@@ -500,7 +500,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     plan = result.plan
     try:
         if body.memo:
-            # 주제(theme_id)는 Rule 이 고른다 — 메모는 소주제에만 닿는다(ADR-057).
+            # 주제(theme_id)는 Rule 이 고른다 — 메모는 소주제에만 닿는다(ADR-060).
             sub_themes, applied, notices = generate_subthemes_with_memo(
                 plan, mask_memo(body.memo, names)
             )

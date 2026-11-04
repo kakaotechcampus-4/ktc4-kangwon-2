@@ -169,7 +169,7 @@ class MockPlayMonthlyProvider:
             ],
         }
         if request.memo_addresses is not None:
-            # 요청 사항(ADR-057): 첫 놀이 하나에 반영했다고 답한다.
+            # 요청 사항(ADR-060): 첫 놀이 하나에 반영했다고 답한다.
             data["memo_applied"] = [a for a in request.memo_addresses if a.startswith("together[")][
                 :1
             ]

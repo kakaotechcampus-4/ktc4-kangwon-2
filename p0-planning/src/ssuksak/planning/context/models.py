@@ -289,7 +289,7 @@ class MonthlyContextPacket:
     safety_candidates: tuple[SafetyCandidateSlot, ...] = ()
     # The drill Section's Rule-fixed topics the LLM words; () = no drill Section.
     drill_topics: tuple[DrillTopic, ...] = ()
-    # ADR-057: the teacher's request note; "" = none (fingerprint unchanged).
+    # ADR-060: the teacher's request note; "" = none (fingerprint unchanged).
     teacher_memo: str = ""
 
     def __post_init__(self) -> None:

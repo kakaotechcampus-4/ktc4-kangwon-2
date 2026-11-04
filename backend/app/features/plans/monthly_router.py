@@ -278,7 +278,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
     center_id, class_id = user.center_id, klass.id
-    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-057)
+    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     month = _target_month(klass.school_year, body.month)
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS

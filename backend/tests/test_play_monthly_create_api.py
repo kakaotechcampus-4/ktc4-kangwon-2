@@ -251,7 +251,7 @@ def test_부모_본문에_확정_기록이_없으면_공통_500(world, monkeypat
 
 
 def test_요청_사항은_남고_반영한_활동에만_표시가_붙는다(world, parent):
-    """ADR-057. mock 은 첫 「함께하는 놀이」에 반영했다고 답한다."""
+    """ADR-060. mock 은 첫 「함께하는 놀이」에 반영했다고 답한다."""
     response = _post(world, memo="  숲에서 하는 놀이를 넣어 주세요  ")
 
     assert response.status_code == 201, response.text

@@ -259,7 +259,7 @@ def generation_targets(
 def memo_addresses(
     packet: MonthlyContextPacket, snapshot: TemplateSnapshot
 ) -> tuple[str, ...]:
-    """Cells the teacher memo may change (ADR-057): every LLM-written cell.
+    """Cells the teacher memo may change (ADR-060): every LLM-written cell.
 
     The theme copies the parent plan and week safety cells follow the Rule's placement, so
     neither is listed; a request for them comes back as memo_skipped."""

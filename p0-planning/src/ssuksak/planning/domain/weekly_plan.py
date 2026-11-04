@@ -275,7 +275,7 @@ class WeeklyPlan:
     activity_candidates: tuple[WeeklyActivityCandidate, ...] = ()
     activity_grids: tuple[WeeklyActivityGrid, ...] = ()
     removed_activity_cells: tuple[WeeklyCell, ...] = ()
-    # ADR-057: the teacher's request note, kept for single-cell regeneration, and the
+    # ADR-060: the teacher's request note, kept for single-cell regeneration, and the
     # requests generation could not apply (shown to the teacher, never blocking).
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()

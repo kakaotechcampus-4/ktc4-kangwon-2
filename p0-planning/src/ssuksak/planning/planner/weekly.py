@@ -187,7 +187,7 @@ class WeeklyPlanningRequest:
     other_day_values: tuple[str, ...] = ()  # a day cell request: the Section's other days now
     reference_wiring: bool = False
     reference_examples: tuple[str, ...] = ()
-    # ADR-057: the cell addresses memo_applied may name; None = no teacher memo.
+    # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
     memo_addresses: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
@@ -252,7 +252,7 @@ def weekly_memo_address(section_key: str, day: str | None) -> str:
 
 
 def _memo_addresses(targets: tuple[WeeklyTarget, ...]) -> tuple[str, ...]:
-    """Cells the teacher memo may change (ADR-057): every target but the locked theme and safety."""
+    """Cells the teacher memo may change (ADR-060): every target but the locked theme and safety."""
     return tuple(
         weekly_memo_address(t.section_key, day)
         for t in targets
@@ -497,7 +497,7 @@ def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
         "sections": {"type": "array", "items": branches[0] if len(branches) == 1 else {"anyOf": branches}},
     }
     if request.memo_addresses is not None and not request.repair_targets:
-        root.update(memo_properties(request.memo_addresses))  # ADR-057
+        root.update(memo_properties(request.memo_addresses))  # ADR-060
     return _object_schema(root)
 
 

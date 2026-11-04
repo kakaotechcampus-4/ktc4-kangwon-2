@@ -153,7 +153,7 @@ class GenerateWeeklyPlanCommand:
     activity_catalog: ActivityCatalogSelector | None = None
     optional_context_names: tuple[str, ...] = ()
     activity_candidates: bool = False
-    # ADR-057: the teacher's request note, applied only inside the Rule range.
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
 
     def __post_init__(self) -> None:

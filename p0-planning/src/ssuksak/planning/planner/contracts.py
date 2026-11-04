@@ -298,9 +298,9 @@ class MonthlyPlanningRequest:
     # Repair only: the cells (week_id or None for month, section_key) the repair may
     # patch and the fields it may change there. Empty for an initial request.
     repair_targets: tuple[tuple[str | None, str, tuple[str, ...]], ...] = ()
-    # ADR-057: the cell addresses memo_applied may name; None = no teacher memo.
+    # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
     memo_addresses: tuple[str, ...] | None = None
-    # ADR-057 2층: statutory categories safety_requests may name; None = not asked.
+    # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
     safety_request_slots: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
@@ -556,7 +556,7 @@ class MonthlyPlanningOutcome:
     # every other cell (initial value, or only deterministically normalized) the initial prompt.
     initial_prompt_version: str | None = None
     repaired_cells: frozenset[tuple[str | None, str]] = frozenset()
-    # ADR-057: cells the LLM says the teacher memo changed (planner.teacher_memo.cell_address).
+    # ADR-060: cells the LLM says the teacher memo changed (planner.teacher_memo.cell_address).
     memo_applied: frozenset[str] = frozenset()
     memo_skipped: tuple[MemoNotice, ...] = ()  # requests the LLM could not apply
     safety_requests: tuple[SafetyRequest, ...] = ()  # count / week requests; the Rule places them
