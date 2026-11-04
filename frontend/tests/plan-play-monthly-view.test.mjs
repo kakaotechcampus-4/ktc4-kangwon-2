@@ -1121,7 +1121,10 @@ function openV1Editor(findings = [], setup = (p) => p) {
       period: () => "",
       safetyCellId: (weekId) => "safety:" + weekId,
     },
-    "@/components/plan-generator/PlayMonthlyConfirm": esModule((p) => jsx("ask", p)),
+    "@/components/plan-generator/PlayMonthlyConfirm": {
+      ...esModule((p) => jsx("ask", p)),
+      BlankRows: (p) => jsx("blank-rows", p),
+    },
     "@/components/plan-generator/AnnualFrame": frameModule,
     "@/components/app/compact-shell": shellModule,
     "./WorkspaceUI": { ws: css },
@@ -1170,7 +1173,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
   };
 }
 
-test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, 빈 칸이 남으면 흔들리는 알림 뒤 그대로 확정도 된다", async () => {
+test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, 빈 칸이 남으면 한 번 묻는 상자에 함께 알리고 그대로 확정도 된다", async () => {
   const view = openV1Editor();
   const settle = async () => {
     await view.tick();
@@ -1190,12 +1193,12 @@ test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, �
   view.editor().onDraft(" ");
   press("확정하기");
   const [ask] = node(view.render(), "ask");
-  assert.equal(ask.props.shake, true);
-  assert.match(ask.props.message, /아직 빈칸이 남아있어요/);
-  // 근거가 없어 비운 칸도 있어 막지 않는다 — 「그대로 확정」은 보통 확정 확인으로 넘어간다.
-  ask.props.onYes();
-  const [sure] = node(view.render(), "ask");
-  assert.equal(sure.props.yes, "확정하기");
+  assert.match(ask.props.message, /빈칸이 남아 있어요/);
+  // 근거가 없어 비운 칸도 있어 막지 않는다 — 같은 상자에서 바로 확정한다.
+  assert.equal(ask.props.yes, "확정하기");
+  const [rows] = node(view.render(), "blank-rows");
+  assert.equal(rows.props.rows.length, 1);
+  assert.equal(rows.props.rows[0].count, 1);
 });
 
 test("v1 — 안전교육 검증 안내는 영어 서버 문구 대신 한국어로 보인다", () => {
@@ -1339,7 +1342,7 @@ const withV1Drill = (plan, value = "") => ({
 const drillButtons = (tree) =>
   all(tree).filter((n) => n.type === "button" && n.props["data-act"] === "copy");
 
-test("v1 — 훈련 칸을 고르면 「AI 후보」에 훈련 후보가 보이고, 후보가 없거나 확정본이면 없다", () => {
+test("v1 — 훈련 칸을 고르면 「AI 후보」에 훈련 후보가 보이고, 후보가 없으면 탭이 없고 확정본이면 없다", () => {
   const view = openV1Editor([], withV1Drill);
   assert.equal(drillButtons(view.render()).length, 0, "훈련 칸을 고르기 전에는 패널이 없다");
   view.pick("drill_cell");
@@ -1348,7 +1351,8 @@ test("v1 — 훈련 칸을 고르면 「AI 후보」에 훈련 후보가 보이�
   assert.equal(drillButtons(tree)[0].props["aria-label"], "소방대피/재난대비 칸에 넣기: 화재");
   view.props.plan = { ...view.props.plan, drill_candidates: [] };
   view.pick("drill_cell");
-  view.tab("AI 후보");
+  // 넣을 후보가 하나도 없는 양식이면 빈 「AI 후보」 탭 자체를 두지 않는다.
+  assert.equal(withText(view.render(), "button", "AI 후보").length, 0);
   assert.equal(drillButtons(view.render()).length, 0);
   view.props.plan = { ...withV1Drill(view.props.plan), status: "CONFIRMED" };
   assert.equal(drillButtons(view.render()).length, 0);

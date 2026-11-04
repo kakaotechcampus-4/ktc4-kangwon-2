@@ -19,12 +19,12 @@ export const BUTTON = {
   outline:
     "min-h-[44px] rounded-md border border-line bg-paper px-4 text-sm font-bold text-[#5e4b96] transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none disabled:opacity-40",
   primary:
-    "min-h-[44px] rounded-md bg-primary-tint-line hover:bg-primary px-5 text-sm font-bold text-ink hover:text-white disabled:opacity-40 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none",
+    "min-h-[44px] rounded-md bg-primary hover:bg-primary-hover px-5 text-sm font-bold text-white disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none",
   /** 패널 아래 가벼운 글자 버튼(「지우고 다시 만들기」). */
   plain: "min-h-[44px] text-sm text-[#5c5243] underline underline-offset-2 disabled:opacity-40",
 };
 export const tabClass = (active: boolean) =>
-  `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-[#8a8178]"}`;
+  `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-ink-soft"}`;
 /** 문서 위 쪽 · 구간 버튼. */
 export const pageClass = (active: boolean) =>
   `min-h-[34px] min-w-[52px] rounded-lg px-3 text-sm ${active ? "bg-[#efe8f7] font-bold text-[#5e4b96]" : "text-[#5c5243] hover:bg-[#f3efe8]"}`;
@@ -102,9 +102,9 @@ export default function AnnualFrame({
       </div>
       {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        {/* 편집 패널에는 장식(테이프)을 두지 않는다 — 훑어 읽기를 방해하지 않게. 완료 화면에만. */}
         {aside && (
           <aside className="relative flex w-full shrink-0 flex-col border border-line bg-paper rounded-md lg:w-[380px]">
-            <Tape />
             {aside}
           </aside>
         )}
@@ -512,11 +512,11 @@ export function PlanDone({
                   next.onClick?.();
                 })
               }
-              className="flex min-h-[56px] items-center justify-center rounded-md bg-primary-tint-line hover:bg-primary text-[16px] font-bold text-ink hover:text-white transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="flex min-h-[56px] items-center justify-center rounded-md bg-primary hover:bg-primary-hover text-[16px] font-bold text-white transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {next.label}
             </Link>
-            <span className="text-[13px] text-[#8a8178]">{next.hint}</span>
+            <span className="text-[13px] text-ink-soft">{next.hint}</span>
           </div>
           <Link
             href="/"

@@ -25,7 +25,7 @@ import workspace from "./Workspace.module.css";
 import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
-import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
+import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   BACK_BUTTON,
   BACK_ICON,
@@ -92,7 +92,7 @@ const ROW_HU: Record<string, number> = {
 /** 목표 칸은 세로만 가운데(빈 칸 안내도 왼쪽). */
 const GOALS = "align-middle [&_[data-cell]]:justify-start";
 const rowH = (key: string) => ({ height: hu(ROW_HU[key] ?? 3600) });
-const HINT = "px-1.5 py-1 text-center align-middle text-[11px] text-[#8a8178]";
+const HINT = "px-1.5 py-1 text-center align-middle text-[11px] text-ink-soft";
 
 export default function MonthlyPlanEditor({
   plan,
@@ -120,9 +120,8 @@ export default function MonthlyPlanEditor({
   // 고른 칸. 안전교육 후보 줄은 주 주소(`safety:<주>`) — 같은 후보를 여러 주에 둘 수 있다.
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [asking, setAsking] = useState<"" | "confirm" | "blank">("");
+  const [asking, setAsking] = useState<"" | "confirm">("");
   // 빈 칸 알림을 다시 누를 때마다 새로 그려 다시 흔든다.
-  const [nudge, setNudge] = useState(0);
   const history = useCellHistory();
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
@@ -301,6 +300,8 @@ export default function MonthlyPlanEditor({
       );
       setBumps((b) => ({ ...b, "*": (b["*"] ?? 0) + 1 }));
       setMessage(done);
+      // 알림은 머리줄 저장 표시 자리에 잠깐 — 패널을 밀지 않고 저절로 사라진다.
+      setTimeout(() => mounted.current && setMessage((m) => (m === done ? "" : m)), 4000);
       return next;
     } catch (e) {
       if (isSaveConflict(e)) return conflict();
@@ -326,7 +327,7 @@ export default function MonthlyPlanEditor({
     afterSaves(
       "confirm",
       (cur) => confirmMonthlyPlan(cur.id, cur.revision),
-      "확정했어요. 이제 고칠 수 없어요.",
+      "확정했어요. 고치려면 확정을 풀어 주세요.",
     );
 
   const weekLabel = (id: string | null) => weeks.find((w) => w.week_id === id)?.label ?? "";
@@ -337,6 +338,18 @@ export default function MonthlyPlanEditor({
   // 확정 전에 알릴 빈 칸(입력 중 글 포함). 근거가 없어 비운 칸도 있어 알린 뒤 그대로 확정할 수 있다.
   // 후보로 두는 안전교육 주별 칸은 빼고 본다.
   const blanks = cells.filter(({ cell }) => !shown(cell).trim());
+  // 확정 확인은 한 번 — 남은 빈칸은 줄마다 세어 같은 상자에 보이고, 누르면 그 줄 첫 빈칸으로 간다.
+  const blankRows = sections
+    .map((s) => ({ s, empty: blanks.filter((b) => b.section === s) }))
+    .filter((r) => r.empty.length)
+    .map(({ s, empty }) => ({
+      key: s.section_key,
+      label: sectionName(s.section_key, s.label),
+      count: empty.length,
+      safety: s.section_key === "safety_education",
+      onJump: () => select(empty[0].cell.item_id),
+    }));
+  const hasAi = candidateMode || !!drillId;
   const stamp = (id: string) => `${bumps["*"] ?? 0}:${bumps[id] ?? 0}`;
   // 안전교육 줄 · 훈련 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
   const select = (id: string) => {
@@ -366,20 +379,16 @@ export default function MonthlyPlanEditor({
   const editTab = (
     <div className="flex flex-col gap-4">
       {!where && (
-        <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
+        <>
+          <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
+          {/* 처음 화면은 남은 할 일 — 줄마다 빈칸 수, 누르면 그 칸으로. */}
+          {blankRows.length > 0 && <h2 className="m-0 text-[15px] font-bold">남은 빈칸</h2>}
+          <BlankRows rows={blankRows} />
+        </>
       )}
       {where && (
         <div className="flex items-end justify-between gap-3">
-          <h2 className="m-0 font-display text-[24px] font-bold leading-tight">{where}</h2>
-          {/* 저장 상태를 입력창 가까이에도 — 읽어 주는 건 위 상태 줄(role=status) 하나. */}
-          {status !== "idle" && (
-            <span
-              aria-hidden="true"
-              className={`shrink-0 text-[13px] ${status === "failed" ? "font-bold text-[#a2492f]" : "text-[#8a8178]"}`}
-            >
-              {SAVE_LABEL[status]}
-            </span>
-          )}
+          <h2 className="m-0 text-[20px] font-bold leading-tight">{where}</h2>
         </div>
       )}
       {picked && !candidate && picked.section.repeat_by === "WEEK" && (
@@ -454,26 +463,29 @@ export default function MonthlyPlanEditor({
     );
   const aside = (
     <>
-      <div
-        role="tablist"
-        aria-label="고치는 방법"
-        className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
-      >
-        {(["ai", "edit"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            className={tabClass(tab === key)}
-            onClick={() => setTab(key)}
-          >
-            {key === "ai" ? "AI 후보" : "칸 편집"}
-          </button>
-        ))}
-      </div>
+      {/* 넣을 후보가 없는 양식이면 탭 없이 칸 편집만 — 빈 「AI 후보」 탭을 두지 않는다. */}
+      {hasAi && (
+        <div
+          role="tablist"
+          aria-label="고치는 방법"
+          className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+        >
+          {(["ai", "edit"] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              className={tabClass(tab === key)}
+              onClick={() => setTab(key)}
+            >
+              {key === "ai" ? "AI 후보" : "칸 편집"}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
-        {tab === "ai" ? aiTab : editTab}
+        {hasAi && tab === "ai" ? aiTab : editTab}
       </div>
     </>
   );
@@ -528,6 +540,7 @@ export default function MonthlyPlanEditor({
     </button>
   );
   const askConfirm =
+    (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
     "확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 주간계획안을 만들게 돼요." +
     (notices.length ? ` 확인할 것 ${notices.length}개가 남았어요.` : "");
 
@@ -702,7 +715,7 @@ export default function MonthlyPlanEditor({
       lead={back}
       status={
         <span className="flex items-center gap-3">
-          <span role="status">{SAVE_LABEL[status]}</span>
+          <span role="status">{status !== "failed" && message ? message : SAVE_LABEL[status]}</span>
           <PlanMemoNote plan={plan} />
         </span>
       }
@@ -716,7 +729,7 @@ export default function MonthlyPlanEditor({
           )}
           <div className="flex flex-wrap items-center gap-3">
             {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
-            <span role="status">{message}</span>
+            {status === "failed" && <span role="status">{message}</span>}
             {status === "failed" && (
               <button type="button" className={BUTTON.outline} disabled={locked} onClick={retry}>
                 다시 저장
@@ -739,27 +752,10 @@ export default function MonthlyPlanEditor({
               type="button"
               className={BUTTON.primary}
               disabled={locked}
-              onClick={() => {
-                if (!blanks.length) return setAsking("confirm");
-                setAsking("blank");
-                setNudge((n) => n + 1);
-              }}
+              onClick={() => setAsking("confirm")}
             >
               {busy === "confirm" ? "확정하는 중…" : "확정하기"}
             </button>
-            {asking === "blank" && (
-              <div className="absolute right-0 top-full z-20 mt-2 w-[380px]">
-                <PlayMonthlyConfirm
-                  key={nudge}
-                  shake
-                  message="아직 빈칸이 남아있어요. 채우지 않고 확정할 수도 있어요."
-                  yes="그대로 확정"
-                  onYes={() => setAsking("confirm")}
-                  no="빈칸 채우기"
-                  onNo={() => select(blanks[0].cell.item_id)}
-                />
-              </div>
-            )}
             {asking === "confirm" && (
               <div className="absolute right-0 top-full z-20 mt-2 w-[380px]">
                 <PlayMonthlyConfirm
@@ -772,7 +768,9 @@ export default function MonthlyPlanEditor({
                     void confirm();
                   }}
                   onNo={() => setAsking("")}
-                />
+                >
+                  <BlankRows rows={blankRows} />
+                </PlayMonthlyConfirm>
               </div>
             )}
           </div>

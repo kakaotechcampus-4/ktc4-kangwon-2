@@ -274,7 +274,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             type="button"
             onClick={() => void generate()}
             disabled={!room.className}
-            className="mt-auto min-h-[56px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+            className="mt-auto min-h-[56px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간계획안 만들기
           </button>

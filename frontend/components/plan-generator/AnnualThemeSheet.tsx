@@ -187,7 +187,7 @@ export default function AnnualThemeSheet({
         {half(months.slice(0, 6))}
         {half(months.slice(6))}
       </div>
-      <p className="mt-5 bg-[#E1F2FE] px-2 py-1 text-center text-[10px] leading-relaxed">
+      <p className="mt-5 bg-[#E1F2FE] px-2 py-1 text-center text-[12px] leading-relaxed">
         {
           "*예상 놀이 방향은 [2019 개정 누리과정]의 목적에 따라 ‘유아 놀이 중심’ 활동이 진행 될 수 있도록 융통성 있게 구성되었습니다. "
         }

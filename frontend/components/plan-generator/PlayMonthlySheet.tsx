@@ -41,13 +41,13 @@ export interface Pick {
   selected?: string | null;
   onSelect?: (itemId: string) => void;
 }
-/** 빈 칸은 다듬는 동안만 `hint`(기본 빨간 「비어 있어요」)를 보인다. 확정본에는 보이지 않는다. */
+/** 빈 칸은 다듬는 동안만 `hint`(기본 연한 「+ 채우기」 — 오류가 아니라 남은 할 일)를 보인다. 확정본에는 보이지 않는다. */
 export const Cell = ({
   id,
   value,
   selected,
   onSelect,
-  hint = "비어 있어요",
+  hint = "+ 채우기",
 }: Pick & { id: string; value: string; hint?: string }) => (
   <span
     className={`${!value.trim() && onSelect ? "flex items-center justify-center" : "block"} min-h-[1.5em] whitespace-pre-line px-[7px] py-[2px] ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
@@ -70,7 +70,7 @@ export const Cell = ({
     ) : (
       <span
         data-hint
-        className={`text-[11px] ${hint === TEACHER_HINT ? "text-[#8a8178]" : "text-[#c2473d]"}`}
+        className={`text-[11px] ${hint === TEACHER_HINT ? "text-ink-soft" : "text-primary-ink"}`}
       >
         {hint}
       </span>
@@ -174,7 +174,7 @@ export function Paper({
             <div className="text-right text-[19px] leading-tight">{sub}</div>
           </div>
           {children}
-          <p className="m-0 mt-[12px] bg-[#e6f3fc] px-3 py-[3px] text-center text-[10px] leading-snug text-[#3d3a36]">
+          <p className="m-0 mt-[12px] bg-[#e6f3fc] px-3 py-[3px] text-center text-[12px] leading-snug text-[#3d3a36]">
             *예상 놀이 방향은 [2019 개정 누리과정]의 목적에 따라 ‘유아 놀이 중심’ 활동이 진행 될 수
             있도록 융통성 있게 구성되었습니다.
             <br />

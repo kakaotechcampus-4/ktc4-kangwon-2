@@ -457,7 +457,7 @@ export default function PlayProjectResult({
       );
     return (
       <div className="flex flex-col gap-4">
-        <h2 className="m-0 font-display text-[24px] font-bold leading-tight">
+        <h2 className="m-0 text-[20px] font-bold leading-tight">
           {selectedCandidate.play_name.value}
         </h2>
         <div className="flex flex-wrap gap-1.5" aria-label="고칠 칸">
@@ -524,7 +524,7 @@ export default function PlayProjectResult({
         <h2
           id={pickedHeadingId}
           tabIndex={-1}
-          className="m-0 mb-1 font-display text-[20px] font-bold leading-tight"
+          className="m-0 mb-1 text-[18px] font-bold leading-tight"
         >
           {seasonLabel} 놀이
         </h2>
@@ -670,13 +670,22 @@ export default function PlayProjectResult({
         {/* 정답지 ④: 제목 · 칩 · 안내 · 저장 상태 | 계절 탭 — 한 줄. */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
+            {/* 편집 화면과 같은 ← 돌아가기. */}
+            <Link
+              href="/plans"
+              aria-label="돌아가기: 계획안"
+              title="계획안"
+              className={BACK_BUTTON}
+            >
+              {BACK_ICON}
+            </Link>
             <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
               놀이 고르기
             </h1>
             <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
               놀이 중심형
             </span>
-            <span role="status" className="text-[13px] text-[#8a8178]">
+            <span role="status" className="text-[13px] text-ink-soft">
               {SAVE_LABEL[saving.status]}
             </span>
             {saving.status === "failed" && (
@@ -707,12 +716,12 @@ export default function PlayProjectResult({
                 >
                   <span className="font-bold">{playSeason(item).name}</span>
                   {playSeason(item).months && (
-                    <span className="text-xs font-normal text-[#8a8178]">
+                    <span className="text-xs font-normal text-ink-soft">
                       {playSeason(item).months}
                     </span>
                   )}
                   <span
-                    className={`text-xs ${count >= MAX_PICKS ? "font-bold text-[#3b5441]" : "text-[#8a8178]"}`}
+                    className={`text-xs ${count >= MAX_PICKS ? "font-bold text-[#3b5441]" : "text-ink-soft"}`}
                   >
                     {count >= MAX_PICKS ? `✓ ${count}/${MAX_PICKS}` : `${count}/${MAX_PICKS}`}
                   </span>

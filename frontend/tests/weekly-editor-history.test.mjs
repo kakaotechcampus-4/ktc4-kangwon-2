@@ -160,7 +160,10 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     "@/lib/api/weekly": api,
     "@/lib/weekly/section-labels": { DAY_NAMES: {}, sectionName: (k) => k },
     "@/components/plan-generator/PlayCellEditor": es((p) => jsx("editor", p)),
-    "@/components/plan-generator/PlayMonthlyConfirm": es((p) => jsx("ask", p)),
+    "@/components/plan-generator/PlayMonthlyConfirm": {
+      ...es((p) => jsx("ask", p)),
+      BlankRows: () => null,
+    },
     "@/components/plan-generator/UnconfirmButton": es(() => null),
     "@/components/plan-generator/PlayMonthlySafetyPanel": {},
     "@/components/plan-generator/AnnualFrame": frame,
