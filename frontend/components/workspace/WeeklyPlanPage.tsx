@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { ApiError } from "@/lib/api/client";
-import { deleteWeeklyPlan, getWeeklyPlan } from "@/lib/api/weekly";
+import { getWeeklyPlan } from "@/lib/api/weekly";
 import { classServerId } from "@/lib/api/onboarding";
 import { planClassLine } from "@/lib/onboarding/types";
 import type { WeeklyPlan } from "@/lib/api/types";
@@ -81,14 +81,6 @@ function WeeklyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
         onConflict={() => {
           setReload((n) => n + 1);
           setMessage("다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.");
-        }}
-        onDelete={async () => {
-          try {
-            await deleteWeeklyPlan(plan.id);
-            onBack();
-          } catch (e) {
-            setProblem(e instanceof ApiError ? e.message : "지우지 못했어요.");
-          }
         }}
         onBack={onBack}
         className={className}

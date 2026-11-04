@@ -19,7 +19,6 @@ import {
   editWeeklyCell,
   getWeeklyPlanAudit,
   orderWeeklyIndoorPlays,
-  regenerateWeeklyCell,
   removeWeeklyActivityCell,
   removeWeeklyIndoorPlay,
   splitWeeklyActivityCell,
@@ -94,7 +93,6 @@ export default function WeeklyEditor({
   plan,
   onPlan,
   onConflict,
-  onDelete,
   onBack,
   className,
   notice,
@@ -103,7 +101,6 @@ export default function WeeklyEditor({
   onPlan: (plan: WeeklyPlan) => void;
   /** 409 — 그 사이 바뀌었다. 다시 불러오는 일은 화면이 한다. */
   onConflict: () => void;
-  onDelete: () => void;
   /** 「←」 — 열린 입력을 다 저장한 뒤 만들기로 돌아간다. */
   onBack: () => void;
   /** 용지 오른쪽 위 반 이름. */
@@ -114,7 +111,7 @@ export default function WeeklyEditor({
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [asking, setAsking] = useState<"" | "confirm" | "regenerate">("");
+  const [asking, setAsking] = useState<"" | "confirm">("");
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   const [bump, setBump] = useState(0);
@@ -256,12 +253,6 @@ export default function WeeklyEditor({
     }
   };
 
-  const regenerate = (cell: WeeklyCell) =>
-    afterSaves(
-      cell.item_id,
-      (cur) => regenerateWeeklyCell(cur.id, cell.item_id, cur.revision),
-      "다시 만들었어요.",
-    );
   const put = (cellId: string, candidateId: string) =>
     afterSaves(
       "copy",
@@ -396,7 +387,6 @@ export default function WeeklyEditor({
               label={where}
               value={shown(picked.cell)}
               allowBlank
-              maxLength={Infinity}
               readOnly={locked}
               onDraft={(text) => setLive((d) => ({ ...d, [picked.cell.item_id]: text }))}
               onSave={(text) => saveCell(picked.cell.item_id, text)}
@@ -410,11 +400,6 @@ export default function WeeklyEditor({
           {picked.cell.teacher_input && (
             <p className="m-0 text-[13px] text-[#5c5243]">
               선생님이 직접 쓰는 칸이에요. AI가 쓰지 않아요 — 비워 두어도 확정할 수 있어요.
-            </p>
-          )}
-          {picked.cell.state === "EMPTY_UNRESOLVED" && (
-            <p className="m-0 text-[13px] text-[#5c5243]">
-              근거가 없어 비워 두었어요. 직접 적어주세요.
             </p>
           )}
           {gridCell && (
@@ -452,47 +437,8 @@ export default function WeeklyEditor({
               </button>
             </div>
           )}
-          {/* RULE_ONLY(옛) 주간은 Core 가 바깥놀이만 다시 만든다. */}
-          {!picked.cell.teacher_input &&
-            !gridCell &&
-            !indoorCell &&
-            (plan.generation_mode !== "RULE_ONLY" ||
-              picked.section.section_key === "outdoor_play") && (
-              <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
-                <button
-                  type="button"
-                  className={BUTTON.outline}
-                  disabled={locked}
-                  onClick={() => setAsking("regenerate")}
-                >
-                  {busy === picked.cell.item_id ? "다시 만드는 중…" : "AI로 이 칸 다시 만들기"}
-                </button>
-                {asking === "regenerate" && (
-                  <PlayMonthlyConfirm
-                    message="이 칸을 다시 만들면 지금 내용이 바뀌어요. 다시 만들까요?"
-                    yes="다시 만들기"
-                    disabled={locked}
-                    onYes={() => {
-                      setAsking("");
-                      void regenerate(picked.cell);
-                    }}
-                    onNo={() => setAsking("")}
-                  />
-                )}
-              </div>
-            )}
         </>
       )}
-      <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
-        <button
-          type="button"
-          className={BUTTON.plain}
-          disabled={locked}
-          onClick={() => void leave(onDelete)}
-        >
-          지우고 다시 만들기
-        </button>
-      </div>
     </div>
   );
 

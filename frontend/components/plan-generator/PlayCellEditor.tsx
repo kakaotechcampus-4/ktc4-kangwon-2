@@ -39,7 +39,7 @@ export default function PlayCellEditor({
   onRevert: () => void;
   /** 빈 값도 저장한다(놀이 월간). 기본은 거절 — 연간 동작 그대로. */
   allowBlank?: boolean;
-  /** 글자 수 상한. 월간 v1 칸은 상한이 없다(Infinity). */
+  /** 글자 수 상한. 모든 칸이 기본값(600자)을 쓴다. */
   maxLength?: number;
   /** 고칠 수 없다(놀이 월간 확정 중). 기본은 고칠 수 있다. */
   readOnly?: boolean;
@@ -99,12 +99,13 @@ export default function PlayCellEditor({
       <div className="flex items-baseline justify-between gap-2">
         <label htmlFor={id}>{label}</label>
         <p id={`${id}-count`} className="m-0 ml-auto text-[13px] font-normal text-[#8a8178]">
-          {length}
-          {Number.isFinite(maxLength) ? `/${maxLength}` : ""}자{over ? ` · ${overText}` : ""}
+          {length}/{maxLength}자{over ? ` · ${overText}` : ""}
         </p>
       </div>
+      {/* 높이는 고정 — 늘리지 않고, 글이 넘치면 안에서 스크롤한다. */}
       <textarea
         id={id}
+        className="!h-[180px] !resize-none overflow-y-auto"
         value={text}
         readOnly={readOnly}
         aria-invalid={blank || over}

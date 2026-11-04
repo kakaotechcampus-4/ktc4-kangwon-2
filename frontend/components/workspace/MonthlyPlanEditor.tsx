@@ -15,7 +15,6 @@ import {
   downloadMonthlyHwpx,
   editMonthlyCell,
   placeMonthlySafety,
-  regenerateMonthlyCell,
   unconfirmMonthlyPlan,
 } from "@/lib/api/monthly";
 import { isSaveConflict } from "@/lib/api/plans";
@@ -51,7 +50,6 @@ import {
 import { useCompactShell } from "@/components/app/compact-shell";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
 
-const REGENERATABLE = new Set(["focus", "outdoor_play", "basic_habit", "goals"]);
 const FINDINGS: Record<string, string> = {
   ACTIVITY_REFERENCE_NOT_VERIFIED:
     "수정한 내용과 기존 참고 활동의 연결을 자동으로 확인하지 못했어요. 교사가 내용을 확인해주세요.",
@@ -82,7 +80,6 @@ export default function MonthlyPlanEditor({
   plan,
   onPlan,
   onConflict,
-  onDelete,
   className,
   notice,
   onBack,
@@ -92,7 +89,6 @@ export default function MonthlyPlanEditor({
   onPlan: (plan: MonthlyPlan) => void;
   /** 409 — 그 사이 바뀌었다. 다시 불러오는 일은 화면이 한다. */
   onConflict: () => void;
-  onDelete: () => void;
   /** 용지 오른쪽 위 반 이름. */
   className: string;
   /** 화면이 띄우는 안내(다시 불러옴 등). */
@@ -106,7 +102,7 @@ export default function MonthlyPlanEditor({
   // 고른 칸. 안전교육 후보 줄은 주 주소(`safety:<주>`) — 같은 후보를 여러 주에 둘 수 있다.
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [asking, setAsking] = useState<"" | "confirm" | "regenerate">("");
+  const [asking, setAsking] = useState<"" | "confirm">("");
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   const [bumps, setBumps] = useState<Record<string, number>>({});
@@ -283,12 +279,6 @@ export default function MonthlyPlanEditor({
     }
   }
 
-  const regenerate = (cell: MonthlyCell) =>
-    afterSaves(
-      cell.item_id,
-      (cur) => regenerateMonthlyCell(cur.id, cell.item_id, cur.revision),
-      "다시 만들었어요.",
-    );
   const place = (weekId: string, candidateItemId: string | null) =>
     afterSaves(
       "safety:" + weekId,
@@ -390,7 +380,6 @@ export default function MonthlyPlanEditor({
               label={candidate ? `안전교육 후보 · ${weekLabel(safetyWeek)}` : where}
               value={shown(picked.cell)}
               allowBlank
-              maxLength={Infinity}
               readOnly={locked}
               onDraft={(text) => setLive((d) => ({ ...d, [picked.cell.item_id]: text }))}
               onSave={(text) => saveCell(picked.cell.item_id, text)}
@@ -404,58 +393,8 @@ export default function MonthlyPlanEditor({
           {candidate && (
             <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
           )}
-          {picked.cell.state === "EMPTY_UNRESOLVED" && (
-            <p className="m-0 text-[13px] text-[#5c5243]">
-              근거가 없어 비워 두었어요. 직접 적어주세요.
-            </p>
-          )}
-          {picked.cell.evidence.length > 0 && (
-            <p className="m-0 text-[12px] text-[#5c5243]">
-              근거 ·{" "}
-              {[
-                ...new Set(
-                  picked.cell.evidence.map((e) =>
-                    e.source_type === "SAFETY_RULE"
-                      ? "안전교육 기준"
-                      : e.display_name || e.source_type,
-                  ),
-                ),
-              ].join(" · ")}
-            </p>
-          )}
-          {REGENERATABLE.has(picked.section.section_key) &&
-            (plan.generation_mode !== "RULE_ONLY" ||
-              picked.section.section_key === "outdoor_play") && (
-              <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
-                <button
-                  type="button"
-                  className={BUTTON.outline}
-                  disabled={locked}
-                  onClick={() => setAsking("regenerate")}
-                >
-                  {busy === picked.cell.item_id ? "다시 만드는 중…" : "AI로 이 칸 다시 만들기"}
-                </button>
-                {asking === "regenerate" && (
-                  <PlayMonthlyConfirm
-                    message="이 칸을 다시 만들면 지금 내용이 바뀌어요. 다시 만들까요?"
-                    yes="다시 만들기"
-                    disabled={locked}
-                    onYes={() => {
-                      setAsking("");
-                      void regenerate(picked.cell);
-                    }}
-                    onNo={() => setAsking("")}
-                  />
-                )}
-              </div>
-            )}
         </>
       )}
-      <div className="flex flex-col items-start gap-2 border-t border-[#efeae2] pt-3 text-sm">
-        <button type="button" className={BUTTON.plain} disabled={locked} onClick={onDelete}>
-          지우고 다시 만들기
-        </button>
-      </div>
     </div>
   );
   const aiTab =

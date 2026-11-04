@@ -1514,13 +1514,11 @@ test('v1 — 빈 후보(display_value "")도 칸을 그려 눌러 편집기를 �
   );
 });
 
-test("v1 — 확정 · 칸 다시 만들기는 페이지 안 확인을 거친 뒤에만 보낸다", async () => {
+test("v1 — 확정은 페이지 안 확인을 거친 뒤에만 보낸다 · 칸 다시 만들기 · 지우기는 없다", async () => {
   const view = openV1Editor([], withV1Candidates);
   const asks = () => node(view.render(), "ask");
-  withText(view.render(), "button", "AI로 이 칸 다시 만들기")[0].props.onClick();
-  assert.equal(asks()[0].props.message, "이 칸을 다시 만들면 지금 내용이 바뀌어요. 다시 만들까요?");
-  asks()[0].props.onNo();
-  assert.equal(asks().length, 0);
+  assert.equal(withText(view.render(), "button", "AI로 이 칸 다시 만들기").length, 0);
+  assert.equal(withText(view.render(), "button", "지우고 다시 만들기").length, 0);
   withText(view.render(), "button", "확정하기")[0].props.onClick();
   const [ask] = asks();
   assert.match(

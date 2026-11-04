@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ApiError } from "@/lib/api/client";
-import { deleteMonthlyPlan, getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
+import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
 import { classServerId, syncClass } from "@/lib/api/onboarding";
 import type { MonthlyPlan } from "@/lib/api/types";
@@ -63,7 +63,6 @@ export default function MonthlyPlanPage() {
 function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
   const month = entry.month;
   const [plan, setPlan] = useState<MonthlyPlan | null>(null);
-  const [busy, setBusy] = useState<string>("");
   const [message, setMessage] = useState("");
   const [problem, setProblem] = useState("");
   const classes = useClasses(setProblem);
@@ -75,7 +74,6 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
   const [isPlay, setIsPlay] = useState(false);
   // 409 로 다시 불러올 때마다 올려 편집 화면을 새로 연다.
   const [version, setVersion] = useState(0);
-  const running = useRef(false);
   // 편집 화면의 「열린 입력 저장하고 기다리기」. 못 저장한 칸이 있으면 반 · 월을 옮기지 않는다.
   const flush = useRef<(() => Promise<boolean>) | null>(null);
   // 이동을 기다리는 동안 반 · 월 선택도 잠근다(겹친 이동 방지).
@@ -144,33 +142,6 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
 
   const legacy = !loading && !isPlay;
 
-  async function run(key: string, job: () => Promise<MonthlyPlan | void>) {
-    if (running.current || loading) return;
-    running.current = true;
-    setBusy(key);
-    setMessage("");
-    setProblem("");
-    try {
-      const next = await job();
-      if (next) {
-        setPlan(next);
-      }
-    } catch (e) {
-      setProblem(describe(e, "처리하지 못했어요."));
-    } finally {
-      running.current = false;
-      setBusy("");
-    }
-  }
-
-  // 지우면 만들기 화면으로 돌아가 그 달을 다시 만든다.
-  const handleDelete = () =>
-    run("delete", async () => {
-      if (!plan) return;
-      await deleteMonthlyPlan(plan.id);
-      onBack();
-    });
-
   // 편집 화면은 다듬기 틀(Ⓜ3) 하나로 그린다 — 불러오기 · 오류일 때만 아래 쪽 화면.
   if (legacy && plan)
     return (
@@ -183,7 +154,6 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
           setReload((n) => n + 1);
           setMessage("다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.");
         }}
-        onDelete={handleDelete}
         onBack={() => void leave(onBack)}
         flushRef={flush}
         className={(() => {
@@ -218,12 +188,7 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
       <Message>{message}</Message>
       {problem && (
         <div className={ws.actions}>
-          <button
-            type="button"
-            className={ws.secondary}
-            disabled={!!busy}
-            onClick={() => setReload((n) => n + 1)}
-          >
+          <button type="button" className={ws.secondary} onClick={() => setReload((n) => n + 1)}>
             다시 불러오기
           </button>
           <Link href="/plans" className={ws.link}>
@@ -236,7 +201,7 @@ function MonthlyEdit({ entry, onBack }: { entry: Entry; onBack: () => void }) {
         <button
           type="button"
           className={ws.secondary}
-          disabled={!!busy || moving}
+          disabled={moving}
           onClick={() => void leave(onBack)}
         >
           ← 월간계획안 만들기
