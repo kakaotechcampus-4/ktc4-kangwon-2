@@ -56,7 +56,7 @@ export default function OnboardingLayout({
     <div
       // 데스크톱은 **흰 카드만** 화면 세로 가운데에 둔다. 머리 줄은 카드 바로 위에 띄워 두고 가운데 계산에서 뺀다.
       // 위아래 여백을 머리 줄 높이보다 크게 같게 두어, 창이 낮아도 머리 줄이 화면 밖으로 밀려나지 않는다.
-      className={`${fontClassName} flex min-h-screen flex-col items-center bg-paper font-body text-ink sm:justify-center sm:bg-cream sm:px-6 sm:py-[88px]`}
+      className={`${fontClassName} flex min-h-screen flex-col items-center bg-[var(--pg-board)] font-body text-ink sm:justify-center sm:bg-cream sm:px-6 sm:py-[88px]`}
     >
       <div className="relative flex w-full max-w-[820px] flex-1 flex-col sm:flex-none">
         <header className="absolute inset-x-0 bottom-full hidden h-[72px] items-center justify-between sm:flex">
@@ -80,7 +80,7 @@ export default function OnboardingLayout({
         {/* 768px 부터 오른쪽 칸이 있는 화면은 두 칸 격자다 — 왼쪽은 질문이 위아래를 다 쓰고,
             오른쪽은 위에 포스티 · 말풍선, 아래에 넘어가는 버튼. 버튼은 한 벌만 그려 자리만 옮긴다. */}
         <div
-          className={`flex flex-1 flex-col bg-paper sm:min-h-[760px] sm:flex-none squircle [--r:0px] sm:overflow-hidden sm:border sm:border-line sm:[--r:24px] ${stage ? "md:grid md:grid-cols-[minmax(0,1fr)_280px] md:grid-rows-[minmax(0,1fr)_auto]" : ""}`}
+          className={`chalkboard chalkPage flex flex-1 flex-col bg-paper sm:min-h-[760px] sm:flex-none ${stage ? "md:grid md:grid-cols-[minmax(0,1fr)_280px] md:grid-rows-[minmax(0,1fr)_auto]" : ""}`}
         >
           <div className="flex min-w-0 flex-1 flex-col md:row-span-2">
             <div className="flex h-14 flex-none items-center gap-2 px-3 sm:px-7">
@@ -153,7 +153,7 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
       <Posty pose="wave" tone="note" face="base" size={112} tape label="포스티가 손을 흔들어요" />
       {say && (
         <div
-          className="relative mt-[18px] w-full squircle [--r:16px] border border-line bg-paper px-4 py-3.5 text-center"
+          className="paper relative mt-[18px] w-full squircle [--r:16px] border border-line bg-paper px-4 py-3.5 text-center"
           style={{ wordBreak: "keep-all" }}
         >
           <span

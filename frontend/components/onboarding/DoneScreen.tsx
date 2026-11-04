@@ -134,7 +134,7 @@ export default function DoneScreen({
         <h1 className="font-display text-[31px] font-bold leading-[1.4] text-ink sm:text-[36px]">
           준비 끝났어요!
         </h1>
-        <p className="text-[15px] leading-[1.6] text-ink-soft">
+        <p className="font-display text-[19px] leading-[1.5] text-ink-soft">
           이제 메인 화면에서 쌤플을 시작할 수 있어요.
         </p>
 

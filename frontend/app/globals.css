@@ -147,6 +147,88 @@ body {
   box-shadow: 0 2px 4px rgba(52, 49, 47, 0.26);
 }
 
+/* 시작 설정(온보딩) 판 — 칠판에 분필로 쓴 화면. 데스크톱은 위 `.chalkboard` 와 같은 판(나무테 · 분필 받침)이고,
+ * 휴대폰은 테 없이 칠판 면만 화면 가득 깐다.
+ *
+ * 화면 코드는 그대로 두고 색 토큰만 분필 색으로 갈아 끼운다 — 글자는 분필, 줄은 흐린 분필,
+ * 강조(지금 칸 밑줄 · 진행 막대 · 주 버튼)는 노란 분필. 판 위에 붙은 종이(말풍선 · 지역 시트 · 알림)는
+ * `.paper` 로 원래 색을 돌려받는다. 원래 색은 :root 에서 미리 받아 둔다(--paper-*) — 값을 두 군데 적지 않으려고. */
+:root {
+  --paper-ink: var(--pg-ink);
+  --paper-ink-soft: var(--pg-ink-soft);
+  --paper-ink-hint: var(--pg-ink-hint);
+  --paper-line: var(--pg-line);
+  --paper-shell: var(--pg-shell);
+  --paper-paper: var(--pg-paper);
+  --paper-ivory: var(--pg-ivory);
+  --paper-cream: var(--pg-cream);
+  --paper-primary: var(--pg-primary);
+  --paper-primary-hover: var(--pg-primary-hover);
+  --paper-primary-tint: var(--pg-primary-tint);
+  --paper-primary-tint-line: var(--pg-primary-tint-line);
+  --paper-primary-ink: var(--pg-primary-ink);
+  --paper-alert-ink: var(--pg-alert-ink);
+}
+.chalkPage {
+  --pg-ink: var(--pg-board-ink);
+  --pg-ink-soft: var(--pg-board-ink-soft);
+  --pg-ink-hint: #a6b7ad; /* 입력 칸 예시 글 — 칠판 위에서 4.5:1 */
+  --pg-line: rgba(244, 241, 232, 0.32);
+  --pg-shell: rgba(244, 241, 232, 0.14);
+  --pg-paper: transparent;
+  --pg-ivory: rgba(244, 241, 232, 0.05);
+  --pg-cream: rgba(244, 241, 232, 0.12);
+  --pg-primary: var(--pg-note); /* 노란 분필 */
+  --pg-primary-hover: #fbf0c4;
+  --pg-primary-tint: rgba(245, 230, 170, 0.16);
+  --pg-primary-tint-line: rgba(245, 230, 170, 0.5);
+  --pg-primary-ink: var(--pg-note);
+  --pg-alert-ink: #f4b6aa;
+  /* 노란 분필 버튼 위 글자 */
+  --cta-ink: var(--pg-board-deep);
+  color: var(--pg-ink);
+}
+/* 판 위 종이 — 원래 색으로 */
+.chalkPage .paper,
+.chalkPage dialog {
+  --pg-ink: var(--paper-ink);
+  --pg-ink-soft: var(--paper-ink-soft);
+  --pg-ink-hint: var(--paper-ink-hint);
+  --pg-line: var(--paper-line);
+  --pg-shell: var(--paper-shell);
+  --pg-paper: var(--paper-paper);
+  --pg-ivory: var(--paper-ivory);
+  --pg-cream: var(--paper-cream);
+  --pg-primary: var(--paper-primary);
+  --pg-primary-hover: var(--paper-primary-hover);
+  --pg-primary-tint: var(--paper-primary-tint);
+  --pg-primary-tint-line: var(--paper-primary-tint-line);
+  --pg-primary-ink: var(--paper-primary-ink);
+  --pg-alert-ink: var(--paper-alert-ink);
+  color: var(--pg-ink);
+}
+/* 포스티는 쪽지다 — 팔다리 · 얼굴 선은 분필이 아니라 먹색, 쪽지 색(shell · lilac)도 원래 색 그대로.
+ * 화살표 같은 아이콘은 currentColor 나 ink-soft · primary 라 여기서 돌려받지 않는다. */
+.chalkPage svg {
+  --pg-ink: var(--paper-ink);
+  --pg-shell: var(--paper-shell);
+  --pg-primary-tint: var(--paper-primary-tint);
+  --pg-primary-tint-line: var(--paper-primary-tint-line);
+}
+@media (max-width: 639px) {
+  .chalkPage {
+    --pg-paper: var(--pg-board); /* 휴대폰은 아래 버튼 줄이 화면에 붙어 있어 비치면 안 된다 */
+  }
+  .chalkPage.chalkboard {
+    background: var(--pg-board);
+    border: 0;
+    box-shadow: none;
+  }
+  .chalkPage.chalkboard::after {
+    display: none;
+  }
+}
+
 /* 공책 줄. 테두리를 두르지 않고도 「여기 적는 칸」이라고 알린다.
  * 줄 간격은 글줄 높이(20px x 1.7 = 34px)와 같아야 글자가 줄 위에 앉는다 —
  * 글자 크기를 바꾸면 이 값도 같이 바꿔야 한다. */

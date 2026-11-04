@@ -28,8 +28,9 @@
   width: 70px;
   margin-left: -35px;
   border-radius: 50%;
-  background: var(--pg-ink);
-  opacity: 0.14;
+  /* 크림 위에서도 칠판 위에서도 그림자는 검다 */
+  background: #000;
+  opacity: 0.18;
   animation: shadow 1.25s infinite;
 }
 

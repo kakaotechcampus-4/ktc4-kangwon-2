@@ -134,7 +134,9 @@ export default function ReviewFlow() {
         </CtaButton>
       }
     >
-      <Notice onDone={() => setNotice("")}>{notice}</Notice>
+      <div className="paper">
+        <Notice onDone={() => setNotice("")}>{notice}</Notice>
+      </div>
       <Question
         title={"입력한 정보를\n확인해주세요"}
         hint="고칠 곳을 누르면 그 칸만 바로 고칠 수 있어요."

@@ -150,8 +150,8 @@ export default function ChildrenFlow() {
 function Speech({ children }: { children: string }) {
   return (
     <div className="mb-6 flex items-end gap-2.5 md:hidden">
-      <Posty pose="stand" tone="note" face="base" size={44} label={null} />
-      <p className="max-w-[320px] squircle [--r-bl:6px] [--r:18px] border border-note-soft-line bg-note-soft px-4 py-3 text-[15px] leading-[1.55] text-ink">
+      <Posty pose="stand" tone="note" face="base" size={44} label={null} className="flex-none" />
+      <p className="paper max-w-[320px] squircle [--r-bl:6px] [--r:18px] border border-note-soft-line bg-note-soft px-4 py-3 text-[15px] leading-[1.55] text-ink">
         <span className="sr-only" aria-live="polite">
           {children}
         </span>
@@ -177,8 +177,15 @@ function Locked({ name }: { name: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-end gap-2.5">
         {/* 768px 부터는 오른쪽 칸 포스티가 「잠깐요!」 한다 — 한 화면에 포스티는 하나. */}
-        <Posty pose="stand" tone="caution" face="oh" size={44} label={null} className="md:hidden" />
-        <p className="max-w-[320px] squircle [--r-bl:6px] [--r:18px] border border-alert-soft-line bg-alert-soft/40 px-4 py-3 text-[15px] leading-[1.55] text-ink">
+        <Posty
+          pose="stand"
+          tone="caution"
+          face="oh"
+          size={44}
+          label={null}
+          className="flex-none md:hidden"
+        />
+        <p className="paper max-w-[320px] squircle [--r-bl:6px] [--r:18px] border border-alert-soft-line bg-alert-soft px-4 py-3 text-[15px] leading-[1.55] text-ink">
           {eunNeun(name)} 아직 법정대리인 동의를 확인하지 않아서 아이 이름을 받지 않아요.
         </p>
       </div>
@@ -252,7 +259,7 @@ function KidInput({
           type="button"
           onClick={() => void submit()}
           disabled={empty || busy}
-          className="h-12 flex-none squircle [--r:12px] bg-primary px-5 text-[15px] font-bold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary-tint disabled:text-ink-hint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="h-12 flex-none squircle [--r:12px] bg-primary px-5 text-[15px] font-bold text-[color:var(--cta-ink,#fff)] transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary-tint disabled:text-ink-hint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           추가
         </button>

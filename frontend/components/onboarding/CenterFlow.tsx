@@ -145,7 +145,7 @@ export default function CenterFlow() {
             <br />
             우리 원은 쌤플이 처음인가요?
           </h1>
-          <p className="text-[15px] leading-[1.6] text-ink-soft">
+          <p className="font-display text-[19px] leading-[1.5] text-ink-soft">
             원 정보와 반, 아이 이름만 알려주시면 바로 시작할 수 있어요.
           </p>
           <div className="mt-1.5 flex flex-col gap-3">
