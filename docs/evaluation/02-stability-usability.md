@@ -29,6 +29,7 @@
 
   보조 글자를 옛 갈색(`#705d47` · 5.43:1)에서 한 단계 진하게 바꿨다. **문제는 대비가 아니라 크기였다** —
   9~11px 글자가 60군데 있었고 그걸 걷어냈다
+- 로그인 · 가입 입력칸 테두리를 흰 종이 위 1.4:1 에서 3.3:1 로 올렸다(입력칸 경계 기준 3:1) — `frontend/styles/plan-generator-tokens.css` `--pg-field-line`
 - 메뉴를 「기록 · 문서」로 갈라 이름을 고쳤다 — 커밋 `3ba17a7`
 - 말로 적기(받아쓰기) — `frontend/lib/hooks/use-dictation.ts`
 - 홈에서 아이를 드롭다운으로 찾지 않는다 — 반 전체가 격자로 깔리고 칸마다 마지막 기록·이번 주 횟수가 보인다 — 커밋 `ea67852` · `frontend/components/app/ChildPicker.tsx`
