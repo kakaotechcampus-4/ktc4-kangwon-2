@@ -637,10 +637,13 @@ function page(
       deleteRoutine: api.remove,
       trackRoutineMutation: mutations.track,
       waitForRoutineScope: mutations.wait,
+      // 달력 점은 적는 화면의 하루치 조회와 따로다. 섞으면 「하루만 읽는다」를 못 센다.
+      listRoutineDates: async () => [],
       routineTime: routines.routineTime,
       routineTimeValue: routines.routineTimeValue,
       sortRoutinesByTime: routines.sortRoutinesByTime,
     },
+    "@/lib/api/documents": { listDocuments: async () => [] },
     "@/lib/workspace/model": {
       today: () => TODAY,
       validDate: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value),

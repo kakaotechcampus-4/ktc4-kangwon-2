@@ -10,6 +10,7 @@ import { classServerId } from "@/lib/api/onboarding";
 import {
   createRoutine,
   deleteRoutine,
+  listRoutineDates,
   listRoutines,
   routineTime,
   routineTimeValue,
@@ -27,8 +28,9 @@ import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
-import RoutineCalendar, { koreanDate } from "./RoutineCalendar";
+import RoutineCalendar, { koreanDay, monthRange, type DayMarks } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
+import { listDocuments } from "@/lib/api/documents";
 
 const CLASSES_FAILED = "반 목록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 // 서버 routine_records.name 이 50자다. 더 보내면 422 다 (§10-1).
@@ -303,6 +305,10 @@ export default function RoutinesPage() {
   const classId = unknownClass ? null : (known(query.classId) ?? known(primaryClass));
   // 주소에 날짜가 없으면 오늘이다 (S-J1).
   const date = pickedDate ?? (query.date || today());
+  const todayDate = today();
+  // 펴 놓은 달. 날짜를 직접 쳤으면 그 달로 따라가고, 달력에서 넘겼으면 그 달에 머문다.
+  const month = pickedMonth ?? (validDate(date) ? date.slice(0, 7) : todayDate.slice(0, 7));
+  const marks = useMonthMarks(classId, month, visit);
 
   /** 이 반·이 날짜. 방문이 달라도 **같은 자료**를 가리킨다 — 저장 대기줄의 칸이다. */
   const scope = `${classId}|${date}`;
@@ -650,12 +656,6 @@ export default function RoutinesPage() {
   const ready = listStatus === "ready" && dateOk && !needClass;
   // 활동실행을 적은 줄 수 (FR-402 출력). **화면에 적힌 것으로 센다** — 저장 전이어도 센다.
   const doneCount = rows.filter((row) => row.execution.trim()).length;
-  // 깔아 둔 하루인가. 교사가 아직 아무 줄도 안 건드렸으면 그렇게 말해 준다.
-  const preset = ready && !Object.keys(now?.saved ?? {}).length && !rows.some(filled);
-  const todayDate = today();
-  // 펴 놓은 달. 날짜를 직접 쳤으면 그 달로 따라가고, 달력에서 넘겼으면 그 달에 머문다.
-  const month = pickedMonth ?? (dateOk ? date.slice(0, 7) : todayDate.slice(0, 7));
-
   /** 날짜를 옮긴다. 적어 둔 줄이 있으면 먼저 묻는다. */
   const moveTo = (next: string, month: string | null) => {
     if (!leaveRows()) return;
@@ -667,7 +667,9 @@ export default function RoutinesPage() {
   return (
     <WorkspacePage
       title="일과 기록"
-      description="반 하루의 일과를 적어요. 일일 보육일지가 이 기록을 근거로 써요."
+      /* 「일일 보육일지가 이 기록을 근거로 쓴다」는 설명은 뺐다. 화면에 들어온 교사는
+         이미 일과를 적으러 온 것이고, 제목 밑 한 줄은 매일 읽히지 않는다. */
+      description=""
       /*
         저장과 「오늘 일지 만들기」는 화면 맨 아래에 있었다. 줄이 열 개라 적고 나면
         단추가 접힌 화면 밖으로 밀려 내려간다. 제목 옆으로 올려 둔다.
@@ -711,15 +713,18 @@ export default function RoutinesPage() {
         {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 적는다 — 계획안 만들기와 같은 짜임이다. */}
         <div className={ws.grid}>
           <aside className={`${ws.card} ${ws.calendarCard}`}>
+            <Tape />
             <RoutineCalendar
               date={dateOk ? date : todayDate}
               month={month}
               today={todayDate}
+              marks={marks}
               disabled={!!busy}
               onMonth={setPickedMonth}
               onPick={(next) => moveTo(next, null)}
             />
-            <label className={ws.field}>
+            {/* 먼 날짜로 한 번에 뛰는 길. 달력이 이미 날을 보여 주므로 칸은 작게 둔다. */}
+            <label className={ws.calendarJump}>
               날짜
               <input
                 name="date"
@@ -729,13 +734,6 @@ export default function RoutinesPage() {
                 onChange={(e) => moveTo(e.target.value, null)}
               />
             </label>
-            {/* 고른 날을 달력 아래에 적어 둔다 — 오른쪽 기록이 어느 날 것인지가 늘 보여야 한다. */}
-            {dateOk && (
-              <p className={ws.calendarPicked}>
-                <strong>{koreanDate(date)}</strong>
-                {date === todayDate && <span> · 오늘</span>}
-              </p>
-            )}
           </aside>
 
           <section className={ws.stack}>
@@ -749,12 +747,17 @@ export default function RoutinesPage() {
                 (!dateOk || needClass) && <ListEmpty dateOk={dateOk} unknownClass={unknownClass} />
               }
             >
-              <p className={ws.routineLead}>
-                {preset
-                  ? "하루를 깔아 뒀습니다. 실제로 한 것만 적으면 됩니다 — 이름과 시간은 다르면 고치고, 없던 일과는 지우세요."
-                  : "실제로 한 것이 일일 보육일지의 근거가 됩니다."}
-              </p>
+              {/* 안내문을 지우고 그 자리에 날짜를 손글씨로 둔다. 「오늘 쓰고 있다」는
+                  것만 알면 되고, 어느 날인지는 오른쪽을 볼 때마다 필요하다. */}
+              <h2 className={ws.sheetDay}>
+                {koreanDay(dateOk ? date : todayDate).day}
+                <span>
+                  {koreanDay(dateOk ? date : todayDate).dow}
+                  <CircleMark />
+                </span>
+              </h2>
               <div className={ws.routineSheet} aria-label="일과 목록">
+                <Tape />
                 {rows.map((row, index) => (
                   <RowCard
                     key={row.key}
@@ -850,25 +853,15 @@ function RowCard({
           />
         </div>
         <div className={ws.rowMeta}>
-          <div className={ws.rowTime}>
-            {/* 시간은 칸에 바로 치거나 옆의 시계로 고른다. 글자로 치는 길만 두면 하루에
-              숫자 네 자를 스무 번 쳐야 하고, 시계만 두면 아는 시간도 돌려서 넣는다. */}
-            <RoutineClock
-              key="start"
-              label="시작"
-              value={row.start}
-              disabled={busy}
-              onChange={set("start")}
-            />
-            <span aria-hidden="true">~</span>
-            <RoutineClock
-              key="end"
-              label="종료"
-              value={row.end}
-              disabled={busy}
-              onChange={set("end")}
-            />
-          </div>
+          {/* 시작 · 종료 칸 둘이던 자리다. 한 칸에 「오전 09:20 ~ 10:40」로 적고,
+            누르면 시계판에서 구간을 끌어 고친다. */}
+          <RoutineClock
+            start={row.start}
+            end={row.end}
+            disabled={busy}
+            onStart={set("start")}
+            onEnd={set("end")}
+          />
           <button
             type="button"
             className={ws.rowTool}
@@ -919,5 +912,58 @@ function RowCard({
         </div>
       )}
     </article>
+  );
+}
+
+const NO_MARKS: DayMarks = { routines: [], logs: [] };
+
+/**
+ * 달력에 찍을 점 — 그 달에 일과를 적은 날과 보육일지가 있는 날.
+ *
+ * 달을 넘길 때와 저장한 뒤에만 묻는다. 적는 화면의 하루치 조회와 섞이지 않게
+ * `listRoutineDates` 를 따로 쓴다 — 섞이면 「하루만 읽는다」를 지킬 수 없다.
+ */
+function useMonthMarks(classId: number | null, month: string, visit: number): DayMarks {
+  const [marks, setMarks] = useState<DayMarks>(NO_MARKS);
+  useEffect(() => {
+    if (classId === null) return;
+    let stale = false;
+    const { from, to } = monthRange(month);
+    void (async () => {
+      // 점은 거들 뿐이다. 못 받아 와도 적는 일을 막지 않는다.
+      const [routines, logs] = await Promise.all([
+        listRoutineDates(classId, from, to).catch(() => []),
+        listDocuments({ kind: "dailyLog", class_id: classId })
+          .then((items) =>
+            items.filter((doc) => doc.start >= from && doc.start <= to).map((doc) => doc.start),
+          )
+          .catch(() => []),
+      ]);
+      if (!stale) setMarks({ routines, logs });
+    })();
+    return () => {
+      stale = true;
+    };
+  }, [classId, month, visit]);
+  return marks;
+}
+
+/** 종이를 붙여 둔 테이프 한 조각. 첫 화면의 쪽지들과 같은 것이다. */
+function Tape() {
+  return <span aria-hidden="true" className={ws.tape} />;
+}
+
+/** 달력에서 오늘에 치는 동그라미. 한 바퀴를 덜 닫아 손으로 그은 자국으로 보인다. */
+function CircleMark() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 150 70" preserveAspectRatio="none" className={ws.circleMark}>
+      <path
+        d="M74 6 C112 4 146 18 143 36 C140 56 100 66 68 64 C32 62 6 50 8 32 C10 14 42 6 78 7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

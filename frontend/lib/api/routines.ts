@@ -105,6 +105,16 @@ export const listRoutines = (params: RoutineQuery = {}) =>
 export const listRoutinesOfDay = (classId: number, date: string) =>
   listRoutines({ class_id: classId, from: date, to: date });
 
+/**
+ * 그 사이에 **일과를 적은 날**만. 달력에 점을 찍는 데 쓴다 (S-J1).
+ *
+ * 줄까지는 필요 없고 날짜만 안다. 하루치 조회와 따로 두는 것은, 적는 화면이 한 번에
+ * 하루만 읽어야 하는데 달 전체 조회가 거기 섞이면 둘을 가를 수 없어서다.
+ */
+export const listRoutineDates = async (classId: number, from: string, to: string) => [
+  ...new Set((await listRoutines({ class_id: classId, from, to })).map((row) => row.date)),
+];
+
 /** 기존 S-J1 호출과 #164의 객체 호출을 모두 지원한다. */
 export function createRoutine(data: RoutineCreateInput): Promise<ApiRoutine>;
 export function createRoutine(classId: number, input: RoutineInput): Promise<ApiRoutine>;

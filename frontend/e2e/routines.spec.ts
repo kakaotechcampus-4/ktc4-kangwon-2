@@ -20,14 +20,21 @@ const rows = (page: Page) => page.locator('[aria-label="일과 목록"] article'
 const token = (page: Page) => page.evaluate(() => sessionStorage.getItem("saessak.authToken"));
 
 /**
- * 시간은 칸에 바로 친다. 옆의 시계 단추(`"시작 시간 시계로 고르기"`)는 같은 값을
- * 고르는 다른 길이라 여기서는 쓰지 않는다 — `exact` 가 둘을 가른다.
+ * 시간은 「오전 09:20 ~ 10:40」 한 칸이고, 시작 · 종료 칸은 시계판과 함께 접혀 있다.
+ * 열고 고친 뒤 다시 닫는다 — 열어 둔 채로 두면 아래 줄을 덮는다.
  */
+async function withClock<T>(row: Locator, run: () => Promise<T>) {
+  await row.getByRole("button", { name: /시계로 시간 고르기/ }).click();
+  const out = await run();
+  await row.getByRole("button", { name: "닫기", exact: true }).click();
+  return out;
+}
+
 const pickTime = (row: Locator, label: string, value: string) =>
-  row.getByLabel(`${label} 시간`, { exact: true }).fill(value);
+  withClock(row, () => row.getByLabel(`${label} 시간`, { exact: true }).fill(value));
 
 const expectTime = (row: Locator, label: string, value: string) =>
-  expect(row.getByLabel(`${label} 시간`, { exact: true })).toHaveValue(value);
+  withClock(row, () => expect(row.getByLabel(`${label} 시간`, { exact: true })).toHaveValue(value));
 
 /** 「하려던 것」은 접혀 있다. 적으려면 먼저 편다. */
 async function fillPlan(row: Locator, value: string) {

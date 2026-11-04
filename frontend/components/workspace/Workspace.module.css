@@ -720,13 +720,8 @@ a.item {
 /* 일과는 표다. 줄마다 카드를 두르면 하루 다섯 줄이 카드 다섯 장이 되어
    화면이 세로로 길어지고, 무엇이 한 줄인지도 테두리에 가려 안 보인다.
    여기서는 종이 한 장 위에 줄을 긋는다. */
-.routineLead {
-  margin: 0 0 10px;
-  color: var(--pg-ink-soft);
-  font-size: 14px;
-  line-height: 1.75;
-}
 .routineSheet {
+  position: relative;
   padding: 2px 20px 14px;
   background: var(--pg-paper);
   border: 1px solid var(--pg-line);
@@ -792,25 +787,6 @@ a.item {
   align-items: center;
   gap: 8px 14px;
 }
-/* 시작 ~ 종료. 네 조작점짜리 묶음이던 자리라 좁아도 한 줄에 들어간다. */
-.rowTime {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--pg-ink-soft);
-  font-size: 13px;
-}
-.rowTime input {
-  width: auto;
-  min-height: 38px;
-  padding: 6px 10px;
-  border: 1px solid var(--pg-line);
-  border-radius: 6px;
-  background: var(--pg-paper);
-  font: inherit;
-  font-size: 14px;
-  color: var(--pg-ink);
-}
 /* 시간과 지우기는 한 덩어리다. 좁은 화면에서 × 만 혼자 아랫줄로 떨어지지 않게 묶는다. */
 .rowMeta {
   display: flex;
@@ -875,6 +851,7 @@ a.item {
    교사는 밀린 며칠을 몰아 적는다. 달을 펴 두고 바로 누르게 한다.
    손글씨 달력처럼 보이게 월 이름만 손글씨체로 크게 둔다. */
 .calendarCard {
+  position: relative;
   display: grid;
   gap: 14px;
   padding: 20px;
@@ -940,6 +917,7 @@ a.item {
   color: var(--pg-primary-ink);
 }
 .calendarDay {
+  position: relative;
   /* 칸이 넓어도 동그라미는 커지지 않는다. `aspect-ratio` 만 두면 폭을 따라 높이가 늘어
      달력 하나가 휴대폰 한 화면을 다 먹는다. */
   aspect-ratio: 1;
@@ -971,41 +949,128 @@ a.item {
   color: var(--pg-ink-hint);
   cursor: not-allowed;
 }
-.calendarPicked {
+/* 날짜마다 그날 남은 것. 두 점은 색이 다르다 — 같은 색이면 몇 개인지만 보인다. */
+.calendarDots {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  display: flex;
+  gap: 2px;
+  transform: translateX(-50%);
+}
+.calendarDots i,
+.calendarKey i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+.calendarDotRoutine {
+  background: var(--pg-primary);
+}
+.calendarDotLog {
+  background: var(--pg-success);
+}
+.calendarDay[data-picked] .calendarDotRoutine,
+.calendarDay[data-picked] .calendarDotLog {
+  background: var(--pg-paper);
+}
+.calendarKey {
+  display: flex;
+  gap: 14px;
   margin: 0;
   padding-top: 10px;
   border-top: 1px dashed var(--pg-line);
-  font-size: 14px;
+  font-size: 12px;
   color: var(--pg-ink-soft);
 }
-.calendarPicked strong {
-  font-size: 16px;
+.calendarKey span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+/* 먼 날짜로 한 번에 뛰는 칸. 달력이 이미 날을 보여 주므로 넓게 둘 이유가 없다. */
+.calendarJump {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
+.calendarJump input {
+  width: auto;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 13px;
   color: var(--pg-ink);
 }
 
-/* ── 시간 한 칸 + 아날로그 시계 ──────────────────────────────────────────── */
+/* 오른쪽 종이의 머리 — 어느 날을 적고 있나. 첫 화면 제목과 같은 손글씨다. */
+.sheetDay {
+  margin: 0 0 10px 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pg-primary-deep);
+}
+.sheetDay span {
+  position: relative;
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 19px;
+  color: var(--pg-ink-soft);
+}
+.circleMark {
+  position: absolute;
+  inset: -10px -13px -9px;
+  color: var(--pg-alert-strong);
+  pointer-events: none;
+}
+
+/* 종이를 붙여 둔 테이프 한 조각 (첫 화면의 쪽지들과 같은 것). */
+.tape {
+  position: absolute;
+  top: -12px;
+  left: 34px;
+  z-index: 1;
+  width: 78px;
+  height: 23px;
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--pg-tape);
+  box-shadow: 0 1px 2px rgba(106, 96, 80, 0.09);
+  transform: rotate(-3deg);
+  pointer-events: none;
+}
+
+/* ── 한 일과의 시간 — 「오전 09:20 ~ 10:40」 한 칸 ──────────────────────────
+   시작 · 종료 칸 둘이던 자리다. 줄이 가로로 길어져 한 칸으로 합쳤다. */
 .clock {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
 }
-/* 브라우저가 붙여 주는 시계 아이콘은 끈다. 같은 자리에 아이콘이 둘이면
-   어느 것이 우리 시계판인지 알 수 없다. */
-.clock input::-webkit-calendar-picker-indicator {
-  display: none;
-}
-.clock input {
-  width: auto;
+.clockShown {
   min-height: 38px;
-  padding: 6px 8px;
+  padding: 6px 12px;
   border: 1px solid var(--pg-line);
   border-radius: 6px 0 0 6px;
   border-right: 0;
   background: var(--pg-paper);
+  color: var(--pg-ink);
   font: inherit;
   font-size: 14px;
-  color: var(--pg-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.clockShown:hover:not(:disabled),
+.clockOpen:hover:not(:disabled) {
+  background: var(--pg-shell-hover);
 }
 .clockOpen {
   display: inline-flex;
@@ -1020,10 +1085,6 @@ a.item {
   color: var(--pg-ink-soft);
   cursor: pointer;
 }
-.clockOpen:hover:not(:disabled) {
-  background: var(--pg-shell-hover);
-  color: var(--pg-ink);
-}
 .clockOpen svg {
   width: 17px;
   height: 17px;
@@ -1032,8 +1093,8 @@ a.item {
   position: absolute;
   z-index: 30;
   top: calc(100% + 6px);
-  left: 0;
-  width: 232px;
+  right: 0;
+  width: 288px;
   padding: 12px;
   border: 1px solid var(--pg-line);
   border-radius: 10px;
@@ -1041,51 +1102,18 @@ a.item {
   box-shadow: var(--pg-shadow);
 }
 .clockHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.clockHead strong {
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
-  color: var(--pg-ink);
-}
-.clockMeridiem,
-.clockFoot {
-  display: flex;
-  gap: 4px;
-}
-.clockMeridiem button,
-.clockFoot button {
-  min-height: 32px;
-  padding: 0 9px;
-  border: 1px solid var(--pg-line);
-  border-radius: 6px;
-  background: var(--pg-paper);
-  color: var(--pg-ink-soft);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.clockMeridiem button[aria-pressed="true"],
-.clockFoot button[aria-pressed="true"] {
-  border-color: var(--pg-primary-line);
-  background: var(--pg-primary-tint);
-  color: var(--pg-primary-ink);
+  margin: 0 0 6px;
+  font-size: 17px;
   font-weight: 700;
-}
-.clockFoot {
-  margin-top: 8px;
-}
-.clockDone {
-  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--pg-ink);
 }
 .clockDial {
   display: block;
   width: 100%;
   height: auto;
+  touch-action: none;
 }
 .clockPlate {
   fill: var(--pg-ivory);
@@ -1100,35 +1128,76 @@ a.item {
   stroke: var(--pg-ink-hint);
   stroke-width: 1.6;
 }
-.clockHand,
-.clockPin {
-  stroke: var(--pg-primary);
-  fill: var(--pg-primary);
-  stroke-width: 2.4;
-}
-.clockSpot {
-  fill: transparent;
-}
-.clockPickedSpot {
-  fill: var(--pg-primary);
-}
-.clockNumber,
-.clockPicked {
+.clockNumber {
+  fill: var(--pg-ink-soft);
   text-anchor: middle;
   dominant-baseline: central;
-  font-size: 15px;
+  font-size: 13px;
   font-family: inherit;
 }
-.clockNumber {
-  fill: var(--pg-ink);
+/* 칠한 구간. 방학 생활계획표가 하루를 이렇게 가른다. */
+.clockSpan {
+  fill: none;
+  stroke: var(--pg-plum);
+  stroke-width: 22;
+  stroke-linecap: round;
 }
-.clockPicked {
+.clockGripFrom,
+.clockGripTo {
+  stroke: var(--pg-paper);
+  stroke-width: 2;
+  cursor: grab;
+}
+.clockGripFrom {
+  fill: var(--pg-primary);
+}
+.clockGripTo {
+  fill: var(--pg-success);
+}
+.clockGripMark {
   fill: var(--pg-paper);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-size: 11px;
   font-weight: 700;
+  font-family: inherit;
+  pointer-events: none;
 }
-/* 숫자와 동그라미 위를 덮는 누르는 자리. 글자만 누르게 하면 빗나간다. */
-.clockHit {
-  fill: transparent;
+/* 끌기로 안 되는 1분 단위와 키보드 · 화면 읽기 프로그램의 길. */
+.clockFields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.clockFields label {
+  display: grid;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--pg-ink-soft);
+}
+.clockFields input {
+  width: auto;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 13px;
+  color: var(--pg-ink);
+}
+.clockDone {
+  min-height: 34px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
 
