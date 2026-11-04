@@ -186,18 +186,25 @@ def _table(tbl: etree._Element, header: _Header) -> Table:
         if rs == 1:
             heights[r] = max(heights[r], _int(size, "height") * PT)
     widths = _widths(spans, cols)
-    # 한 줄짜리 칸이 양식 높이보다 길면 그 줄을 늘린다(한글이 하듯). 병합 칸은 근사로 두지 않는다.
-    for tc in tbl.iterfind("hp:tr/hp:tc", NS):
+
+    # 칸 글이 양식 높이보다 길면 줄을 늘린다(한글이 하듯). 한 줄짜리 칸을 먼저 맞추고,
+    # 여러 줄에 걸친 칸은 걸친 줄 높이 합이 모자란 만큼을 그 줄들에 고르게 나눈다.
+    def row_span(tc: etree._Element) -> int:
+        return _int(tc.find("hp:cellSpan", NS), "rowSpan", 1)
+
+    for tc in sorted(tbl.iterfind("hp:tr/hp:tc", NS), key=row_span):
         addr, span = tc.find("hp:cellAddr", NS), tc.find("hp:cellSpan", NS)
-        size, margin = tc.find("hp:cellSz", NS), tc.find("hp:cellMargin", NS)
-        if _int(span, "rowSpan", 1) != 1:
-            continue
-        r, c, cs = _int(addr, "rowAddr"), _int(addr, "colAddr"), _int(span, "colSpan", 1)
+        margin = tc.find("hp:cellMargin", NS)
+        r, c = _int(addr, "rowAddr"), _int(addr, "colAddr")
+        rs, cs = row_span(tc), _int(span, "colSpan", 1)
         pad = (_int(margin, "left", 141) + _int(margin, "right", 141)) * PT
         inner = sum(widths[c : c + cs]) - pad
         need = sum(p.wrap(inner, 10**6)[1] for p in grid[r][c])
         need += (_int(margin, "top", 141) + _int(margin, "bottom", 141)) * PT
-        heights[r] = max(heights[r], need)
+        short = need - sum(heights[r : r + rs])
+        if short > 0:
+            for i in range(r, r + rs):
+                heights[i] += short / rs
     return Table(grid, colWidths=widths, rowHeights=heights, style=style)
 
 
