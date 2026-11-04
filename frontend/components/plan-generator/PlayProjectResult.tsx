@@ -8,7 +8,6 @@ import PlayProjectSheet from "./PlayProjectSheet";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 import AnnualFrame, {
-  AsideStrip,
   BigView,
   BUTTON,
   POPOVER,
@@ -439,15 +438,9 @@ export default function PlayProjectResult({
           오른쪽 문서의 칸을 누르면 여기에서 고칠 수 있어요.
         </p>
       );
-    const index = periodPicks.indexOf(selectedCandidate.row_key);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <span className="text-[13px] text-[#5c5243]">
-            {seasonLabel} · {index + 1}번 놀이
-          </span>
-          <h2 className="m-0 text-lg font-bold">{selectedCandidate.play_name.value}</h2>
-        </div>
+        <h2 className="m-0 text-lg font-bold">{selectedCandidate.play_name.value}</h2>
         <div className="flex flex-wrap gap-1.5" aria-label="고칠 칸">
           {fields.map((field) => (
             <button
@@ -716,9 +709,6 @@ export default function PlayProjectResult({
       </main>
     );
 
-  const strip = selectedCandidate
-    ? `${seasonLabel} · ${periodPicks.indexOf(selectedCandidate.row_key) + 1}번 놀이 칸을 골랐어요`
-    : `${seasonLabel} · 칸을 아직 고르지 않았어요`;
   const aside = (
     <>
       <div
@@ -748,7 +738,6 @@ export default function PlayProjectResult({
           </button>
         ))}
       </div>
-      <AsideStrip>{strip}</AsideStrip>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div
           role="tabpanel"
