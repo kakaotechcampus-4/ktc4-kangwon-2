@@ -129,7 +129,7 @@ export default function PlanNotebookPage() {
         )}
         <div
           className="grid gap-4"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 180px), 180px))" }}
         >
           {/* 목록을 받기 전에는 「없어요」라고 말하지 않는다. */}
           {drafts === null && (
@@ -142,10 +142,18 @@ export default function PlanNotebookPage() {
           ))}
           <Link
             href="/documents"
-            className={`${CARD_SIZE} flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-[#d7d0c7] px-5 py-[18px] text-center text-[#5e4b96] no-underline`}
+            className={`${CARD_SIZE} flex flex-col items-center justify-center gap-1 break-keep rounded-2xl border border-dashed border-[#d7d0c7] px-4 py-[18px] text-center text-[#5e4b96] no-underline`}
           >
-            <span className="text-[15px] font-bold">문서 보관함에서 모두 보기 →</span>
-            <span className="text-[13px] text-[#5c5243]">확정한 계획안도 여기 있어요</span>
+            <span className="text-[15px] font-bold">
+              문서 보관함에서
+              <br />
+              모두 보기&nbsp;→
+            </span>
+            <span className="text-[13px] text-[#5c5243]">
+              확정한 계획안도
+              <br />
+              여기 있어요
+            </span>
           </Link>
         </div>
       </section>
