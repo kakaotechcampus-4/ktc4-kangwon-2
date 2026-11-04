@@ -24,6 +24,7 @@ import { today } from "@/lib/workspace/model";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
+import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
 
 type Format = AnnualInput["format"];
 
@@ -195,15 +196,17 @@ function AnnualGenerator({ format }: { format: Format }) {
       {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
-          {/* 왼쪽 판 맨 위: 「← 돌아가기」 아래 제목 · 방식. */}
-          <div className="-mt-2 flex shrink-0 flex-col gap-1">
-            <Link
-              href="/plans"
-              className="flex min-h-[32px] w-fit items-center text-sm text-[#5c5243] no-underline"
-            >
-              ← 방식 다시 고르기
-            </Link>
+          {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
+          <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Link
+                href="/plans"
+                aria-label="돌아가기: 방식 다시 고르기"
+                title="방식 다시 고르기"
+                className={BACK_BUTTON}
+              >
+                {BACK_ICON}
+              </Link>
               <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
                 {year} 연간계획안 만들기
               </h1>

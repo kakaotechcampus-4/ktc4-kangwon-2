@@ -17,6 +17,8 @@ import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
 import PlayMonthlySafetyPanel from "./PlayMonthlySafetyPanel";
 import PlayMonthlySheet, { PAPER_WIDTH } from "./PlayMonthlySheet";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   PlanDone,
@@ -399,9 +401,10 @@ function PlayMonthlyBody({
     <Link
       href="/plans/monthly"
       aria-label="월간계획안 만들기로"
-      className="flex h-11 w-11 items-center justify-center rounded-xl text-lg text-[#5c5243] no-underline hover:bg-white"
+      title="월간계획안 만들기로"
+      className={BACK_BUTTON}
     >
-      ←
+      {BACK_ICON}
     </Link>
   );
   // Ⓜ4 — 놀이 중심형은 주간 없이 다음 달 월간으로 간다. 한글 내보내기는 서버 경로가 생기면 붙인다.

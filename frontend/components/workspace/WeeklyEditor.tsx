@@ -32,6 +32,8 @@ import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   PlanDone,
@@ -595,11 +597,12 @@ export default function WeeklyEditor({
     <button
       type="button"
       aria-label="주간계획안 만들기로"
+      title="주간계획안 만들기로"
       disabled={locked}
       onClick={() => void leave(onBack)}
-      className="flex h-11 w-11 items-center justify-center rounded-xl text-lg text-[#5c5243] hover:bg-white disabled:opacity-40"
+      className={BACK_BUTTON}
     >
-      ←
+      {BACK_ICON}
     </button>
   );
   const findings = plan.verification.findings;

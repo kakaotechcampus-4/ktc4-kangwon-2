@@ -28,6 +28,8 @@ import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafet
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   PlanDone,
@@ -544,11 +546,12 @@ export default function MonthlyPlanEditor({
     <button
       type="button"
       aria-label="월간계획안 만들기로"
+      title="월간계획안 만들기로"
       disabled={locked}
       onClick={onBack}
-      className="flex h-11 w-11 items-center justify-center rounded-xl text-lg text-[#5c5243] hover:bg-white disabled:opacity-40"
+      className={BACK_BUTTON}
     >
-      ←
+      {BACK_ICON}
     </button>
   );
   const askConfirm =

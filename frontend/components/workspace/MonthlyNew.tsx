@@ -41,6 +41,7 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
+import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { useClasses } from "./WorkspaceUI";
 
 type Status = { id: number; status: "DRAFT" | "CONFIRMED" };
@@ -181,15 +182,17 @@ export function MonthlyNewView(props: {
     <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
-          {/* 왼쪽 판 맨 위: 「← 돌아가기」 아래 제목 · 방식. */}
-          <div className="-mt-2 flex shrink-0 flex-col gap-1">
-            <Link
-              href={props.back.href}
-              className="flex min-h-[32px] w-fit items-center text-sm text-[#5c5243] no-underline"
-            >
-              ← {props.back.label}
-            </Link>
+          {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
+          <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Link
+                href={props.back.href}
+                aria-label={`돌아가기: ${props.back.label}`}
+                title={props.back.label}
+                className={BACK_BUTTON}
+              >
+                {BACK_ICON}
+              </Link>
               <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
                 월간계획안 만들기
               </h1>

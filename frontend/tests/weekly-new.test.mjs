@@ -62,6 +62,7 @@ const { firstWeeklyMonth, firstOpenWeek, inheritWeek } = load(
     "@/components/plan-generator/PlanMemo": { PlanMemoField: stub, memoError: stub },
     "@/components/app/compact-shell": {},
     "./WorkspaceUI": {},
+    "@/components/plan-generator/AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
     "./WeeklySheet": sheet,
   },
 );

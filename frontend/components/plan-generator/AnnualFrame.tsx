@@ -28,6 +28,26 @@ export const tabClass = (active: boolean) =>
 export const pageClass = (active: boolean) =>
   `min-h-[34px] min-w-[52px] rounded-lg px-3 text-sm ${active ? "bg-[#efe8f7] font-bold text-[#5e4b96]" : "text-[#5c5243] hover:bg-[#f3efe8]"}`;
 
+/** 제목 옆 「←」 돌아가기 — 만들기 · 편집 화면이 같이 쓴다. 갈 곳 이름은 aria-label · title 로. */
+export const BACK_BUTTON =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#e3ddd2] bg-white text-[#2b2826] no-underline hover:bg-[#f3efe8] disabled:opacity-40";
+export const BACK_ICON = (
+  <svg
+    viewBox="0 0 24 24"
+    width="22"
+    height="22"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M19 12H5" />
+    <path d="m12 19-7-7 7-7" />
+  </svg>
+);
+
 type Format = AnnualPlanResponse["format"];
 export const chip = (format: Format) => (
   <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${CHIP[format][1]}`}>

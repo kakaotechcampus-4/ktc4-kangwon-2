@@ -59,6 +59,7 @@ const {
   "@/components/plan-ui/GenerationRing": { __esModule: true, default: stub },
   "@/components/plan-generator/PlanMemo": { PlanMemoField: stub, memoError: stub },
   "@/components/app/compact-shell": { useCompactShell: stub },
+  "@/components/plan-generator/AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
   "./WorkspaceUI": { useClasses: stub },
 });
 
