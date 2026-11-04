@@ -388,11 +388,12 @@ me       GET /api/auth/me                                               → 200 
 새 월간 · 주간은 부모 연간 계획안의 연령을 이어받는다(ADR-038 · ADR-062).
 **서버 응답에 따로 알리는 칸은 없다.** 화면이 알린다(아래 UI states).
 
-**이름 · 계획안** — 이미 만든 계획안과 일지는 **만들 때의 반 이름**을 지킨다(ADR-010 결정 1).
-일지는 제목과 내려받은 파일이 지금도 그렇다(`backend/app/features/documents/router.py:373`).
-일지 상세 응답의 `class_name` 은 어느 반 기록인지 보여 주는 칸이라 지금 반 이름이다(`documents/router.py:208`).
+**이름 · 계획안** — 확정한 계획안은 **확정할 때의 반 이름 · 담임 이름**을 지킨다(ADR-010 결정 1 · ADR-062).
+확정을 취소했다가 다시 확정하면 그때 값으로 다시 찍힌다 — 반 이름 오타를 고친 뒤 계획안에 반영하는 길이다.
 **계획안은 아직 아니다**(구현 전): 내보내기가 `klass.name` 을 그때그때 읽는다.
-계획안에 반 이름 스냅샷을 더하는 PR 이 이 API 보다 먼저 들어간다(ADR-062).
+계획안에 사본 열(`plans.class_name` · `teacher_name`)을 더하는 PR 이 이 API 보다 먼저 들어간다(ADR-062).
+일지는 제목과 내려받은 파일이 만들 때 이름을 지금도 지킨다(`backend/app/features/documents/router.py:373`).
+일지 상세 응답의 `class_name` 은 어느 반 기록인지 보여 주는 칸이라 지금 반 이름이다(`documents/router.py:208`).
 **이력은 남기지 않는다.** 동의는 `consent_confirmed_at` 하나만 둔다.
 
 **Response** `200` — 고쳐진 반. `GET /api/centers/{center_id}/classes` 의 item 과 같은 모양이다(`my_access` 포함).
