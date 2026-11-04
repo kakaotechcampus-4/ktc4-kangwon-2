@@ -51,7 +51,7 @@ export default function WorkspaceTopBar() {
     () => "",
   );
   return (
-    <header className="sticky top-0 z-20 flex h-[60px] items-center justify-between border-b border-line bg-cream/90 px-4 backdrop-blur lg:px-8">
+    <header className="sticky top-0 z-20 flex h-[60px] items-center justify-between border-b border-line bg-cream px-4 lg:px-8">
       <div className="flex items-center gap-3 text-[13px]">
         <Link
           href="/"

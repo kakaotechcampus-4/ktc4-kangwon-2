@@ -178,7 +178,35 @@ export default function RoutineClock({
         사라지면서 커서를 잃는다. `hidden` 은 화면 읽기 프로그램에서도 빠진다.
       */}
       <div className={ws.clockFace} hidden={!open} role="group" aria-label="일과 시간 고르기">
-        <p className={ws.clockHead}>{shown}</p>
+        {/*
+          적어 둔 시각이 곧 고치는 칸이다. 글자로만 보여 주고 고치는 칸을 따로 아래에
+          두었더니, 교사가 그 글자를 눌렀다. 누르면 고쳐지는 자리에 두는 것이 맞다.
+        */}
+        <div className={ws.clockFields}>
+          <label className={ws.clockFrom}>
+            <span>시작</span>
+            <input
+              type="time"
+              aria-label="시작 시간"
+              disabled={disabled}
+              value={start}
+              onChange={(e) => onStart(e.target.value)}
+            />
+          </label>
+          <span className={ws.clockTilde} aria-hidden="true">
+            ~
+          </span>
+          <label className={ws.clockTo}>
+            <span>종료</span>
+            <input
+              type="time"
+              aria-label="종료 시간"
+              disabled={disabled}
+              value={end}
+              onChange={(e) => onEnd(e.target.value)}
+            />
+          </label>
+        </div>
         <svg
           viewBox="0 0 200 200"
           className={ws.clockDial}
@@ -233,32 +261,12 @@ export default function RoutineClock({
           })}
         </svg>
 
-        {/* 끌기로 안 되는 1분 단위와 키보드 · 화면 읽기 프로그램의 길. */}
-        <div className={ws.clockFields}>
-          <label>
-            <span>시작</span>
-            <input
-              type="time"
-              aria-label="시작 시간"
-              disabled={disabled}
-              value={start}
-              onChange={(e) => onStart(e.target.value)}
-            />
-          </label>
-          <label>
-            <span>종료</span>
-            <input
-              type="time"
-              aria-label="종료 시간"
-              disabled={disabled}
-              value={end}
-              onChange={(e) => onEnd(e.target.value)}
-            />
-          </label>
+        <p className={ws.clockLead}>
+          손잡이를 끌어 고치세요.
           <button type="button" className={ws.clockDone} onClick={() => setOpen(false)}>
             닫기
           </button>
-        </div>
+        </p>
       </div>
     </div>
   );

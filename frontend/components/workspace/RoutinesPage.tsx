@@ -28,9 +28,8 @@ import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
-import RoutineCalendar, { koreanDay, monthRange, type DayMarks } from "./RoutineCalendar";
+import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
-import { listDocuments } from "@/lib/api/documents";
 
 const CLASSES_FAILED = "반 목록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 // 서버 routine_records.name 이 50자다. 더 보내면 422 다 (§10-1).
@@ -308,7 +307,7 @@ export default function RoutinesPage() {
   const todayDate = today();
   // 펴 놓은 달. 날짜를 직접 쳤으면 그 달로 따라가고, 달력에서 넘겼으면 그 달에 머문다.
   const month = pickedMonth ?? (validDate(date) ? date.slice(0, 7) : todayDate.slice(0, 7));
-  const marks = useMonthMarks(classId, month, visit);
+  const marked = useMonthMarks(classId, month, visit);
 
   /** 이 반·이 날짜. 방문이 달라도 **같은 자료**를 가리킨다 — 저장 대기줄의 칸이다. */
   const scope = `${classId}|${date}`;
@@ -718,7 +717,7 @@ export default function RoutinesPage() {
               date={dateOk ? date : todayDate}
               month={month}
               today={todayDate}
-              marks={marks}
+              marked={marked}
               disabled={!!busy}
               onMonth={setPickedMonth}
               onPick={(next) => moveTo(next, null)}
@@ -756,8 +755,9 @@ export default function RoutinesPage() {
                   <CircleMark />
                 </span>
               </h2>
-              <div className={ws.routineSheet} aria-label="일과 목록">
-                <Tape />
+              {/* 교실 칠판에 일과 쪽지를 붙인 모습 (첫 화면 오른쪽 줄과 같은 판이다).
+                  줄마다 종이 한 장이라 어디서 한 일과가 끝나는지 선을 안 그어도 보인다. */}
+              <div className={`${ws.routineSheet} chalkboard`} aria-label="일과 목록">
                 {rows.map((row, index) => (
                   <RowCard
                     key={row.key}
@@ -835,7 +835,7 @@ function RowCard({
 }) {
   const set = (field: Field) => (value: string) => onEdit(row.key, field, value);
   return (
-    <article className={ws.routineRow}>
+    <article className={ws.routineRow} data-tone={index % 4}>
       <div className={ws.routineHead}>
         <div className={ws.rowName}>
           <input
@@ -903,10 +903,11 @@ function RowCard({
         <div className={ws.rowTools}>
           <button
             type="button"
-            className={ws.rowTool}
+            className={ws.revert}
             disabled={busy}
             onClick={() => onRevert(row.key)}
           >
+            <UndoMark />
             되돌리기
           </button>
         </div>
@@ -915,37 +916,30 @@ function RowCard({
   );
 }
 
-const NO_MARKS: DayMarks = { routines: [], logs: [] };
+const NO_MARKS: string[] = [];
 
 /**
- * 달력에 찍을 점 — 그 달에 일과를 적은 날과 보육일지가 있는 날.
+ * 달력에 찍을 점 — 그 달에 일과를 적어 둔 날.
  *
  * 달을 넘길 때와 저장한 뒤에만 묻는다. 적는 화면의 하루치 조회와 섞이지 않게
  * `listRoutineDates` 를 따로 쓴다 — 섞이면 「하루만 읽는다」를 지킬 수 없다.
  */
-function useMonthMarks(classId: number | null, month: string, visit: number): DayMarks {
-  const [marks, setMarks] = useState<DayMarks>(NO_MARKS);
+function useMonthMarks(classId: number | null, month: string, visit: number) {
+  const [marked, setMarked] = useState<string[]>(NO_MARKS);
   useEffect(() => {
     if (classId === null) return;
     let stale = false;
     const { from, to } = monthRange(month);
     void (async () => {
       // 점은 거들 뿐이다. 못 받아 와도 적는 일을 막지 않는다.
-      const [routines, logs] = await Promise.all([
-        listRoutineDates(classId, from, to).catch(() => []),
-        listDocuments({ kind: "dailyLog", class_id: classId })
-          .then((items) =>
-            items.filter((doc) => doc.start >= from && doc.start <= to).map((doc) => doc.start),
-          )
-          .catch(() => []),
-      ]);
-      if (!stale) setMarks({ routines, logs });
+      const days = await listRoutineDates(classId, from, to).catch(() => NO_MARKS);
+      if (!stale) setMarked(days);
     })();
     return () => {
       stale = true;
     };
   }, [classId, month, visit]);
-  return marks;
+  return marked;
 }
 
 /** 종이를 붙여 둔 테이프 한 조각. 첫 화면의 쪽지들과 같은 것이다. */
@@ -963,6 +957,29 @@ function CircleMark() {
         stroke="currentColor"
         strokeWidth="2.6"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** 되돌리기 — 왼쪽으로 돌아가는 화살표. 글자만 두면 무슨 단추인지 멀리서 안 보인다. */
+function UndoMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className={ws.revertMark}>
+      <path
+        d="M4 9h9.5a5.5 5.5 0 1 1 0 11H8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7.6 5 3.6 9l4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

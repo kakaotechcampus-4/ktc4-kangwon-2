@@ -6,8 +6,9 @@
  * 날짜 칸(`<input type="date">`) 하나로는 「지난 금요일」을 찾으려면 달력을 띄워 두 번
  * 눌러야 했다. 교사는 밀린 며칠을 몰아 적는다. 그래서 달을 펴 두고 바로 누르게 한다.
  *
- * 날짜 밑의 점은 **그날 남은 것**이다. 보라는 일과 기록, 초록은 보육일지다. 빈 날을
- * 찾으려고 하루씩 눌러 볼 필요가 없다.
+ * 날짜 밑의 점은 **그날 적은 일과가 있다**는 뜻이다. 빈 날을 찾으려고 하루씩 눌러
+ * 볼 필요가 없다. 점은 한 가지만 찍는다 — 색이 둘이면 범례를 달아야 하고, 범례를
+ * 읽어야 아는 표시는 달력에 둘 것이 아니다.
  *
  * 앞날은 누르지 못한다 — 아직 하지 않은 일과를 적을 수는 없다.
  */
@@ -69,17 +70,11 @@ export function koreanDay(date: string) {
   };
 }
 
-/** 그날 남은 것. 점 두 개는 색이 다르다 — 같은 색이면 몇 개인지만 보인다. */
-export interface DayMarks {
-  routines: string[];
-  logs: string[];
-}
-
 export default function RoutineCalendar({
   date,
   month,
   today,
-  marks,
+  marked,
   disabled,
   onMonth,
   onPick,
@@ -89,7 +84,8 @@ export default function RoutineCalendar({
   /** 펴 놓은 달 (`YYYY-MM`) */
   month: string;
   today: string;
-  marks: DayMarks;
+  /** 일과를 적어 둔 날들 (`YYYY-MM-DD`) */
+  marked: string[];
   disabled: boolean;
   onMonth: (month: string) => void;
   onPick: (date: string) => void;
@@ -131,10 +127,7 @@ export default function RoutineCalendar({
           <span key={`blank:${i}`} aria-hidden="true" />
         ))}
         {days.map((day) => {
-          const routine = marks.routines.includes(day);
-          const log = marks.logs.includes(day);
-          // 점을 보고 눌렀는데 아무 말이 없으면 무슨 점인지 끝까지 모른다.
-          const kept = [routine && "일과 기록", log && "보육일지"].filter(Boolean).join(" · ");
+          const kept = marked.includes(day);
           return (
             <button
               key={day}
@@ -145,31 +138,17 @@ export default function RoutineCalendar({
               data-today={day === today || undefined}
               // 앞날은 적을 것이 없다. 흐리게만 두면 왜 안 눌리는지 모른다.
               disabled={disabled || day > today}
-              title={day > today ? "아직 오지 않은 날이에요." : kept || undefined}
-              aria-label={kept ? `${at(day).getUTCDate()}일 · ${kept}` : undefined}
+              title={day > today ? "아직 오지 않은 날이에요." : kept ? "일과를 적은 날" : undefined}
+              aria-label={kept ? `${at(day).getUTCDate()}일 · 일과를 적은 날` : undefined}
               aria-pressed={day === date}
               onClick={() => onPick(day)}
             >
               {at(day).getUTCDate()}
-              {(routine || log) && (
-                <span className={ws.calendarDots} aria-hidden="true">
-                  {routine && <i className={ws.calendarDotRoutine} />}
-                  {log && <i className={ws.calendarDotLog} />}
-                </span>
-              )}
+              {kept && <i className={ws.calendarDot} aria-hidden="true" />}
             </button>
           );
         })}
       </div>
-
-      <p className={ws.calendarKey}>
-        <span>
-          <i className={ws.calendarDotRoutine} /> 일과
-        </span>
-        <span>
-          <i className={ws.calendarDotLog} /> 보육일지
-        </span>
-      </p>
     </div>
   );
 }
