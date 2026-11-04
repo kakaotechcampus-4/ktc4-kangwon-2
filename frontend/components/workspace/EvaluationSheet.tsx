@@ -369,6 +369,16 @@ export default function EvaluationSheet({
                 </div>
               </dl>
               <Found doc={doc} result={result} />
+              {/* 올리기 폼은 칸이 여럿이라 서류 칸 너비로 편다. 오른쪽 단추 칸(176px)에 두면
+                  한 글자씩 꺾여 세로로 길게 늘어졌다. */}
+              {made?.importKind && (
+                <details className={styles.fileMore}>
+                  <summary className={styles.linkButton}>예전 서류 올리기 ▾</summary>
+                  <div className={styles.fileDetail}>
+                    <EvidenceImport kind={made.importKind} onImported={onImported} />
+                  </div>
+                </details>
+              )}
             </div>
 
             <div className={styles.colAct}>
@@ -386,14 +396,6 @@ export default function EvaluationSheet({
                   />
                   챙겼어요
                 </label>
-              )}
-              {made?.importKind && (
-                <details className={styles.fileMore}>
-                  <summary className={styles.linkButton}>예전 서류 올리기 ▾</summary>
-                  <div className={styles.fileDetail}>
-                    <EvidenceImport kind={made.importKind} onImported={onImported} />
-                  </div>
-                </details>
               )}
             </div>
           </div>
