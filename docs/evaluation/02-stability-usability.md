@@ -39,6 +39,7 @@
 - 주간 연결 프롬프트 v5는 기관 근거로 쓰는 바깥놀이에 설명을 요청하고 Catalog 이름·부모 그대로 잇기 예외를 유지한다. 생성·수리·재생성의 지침 전달은 관련 테스트로 확인하며 실제 문장 품질은 별도 실측 대상이다 — `p0-planning/src/ssuksak/planning/planner/weekly.py` · `p0-planning/tests/adapters/test_weekly_composition.py`
 - 월간 v2 특별활동 시간표를 칸 나누기 · 빼기 · 크기 조절하고, 글뿐 아니라 그 변경도 되돌리기 · 다시 하기 한다. 되살리다 멈추면 글이 다 안 돌아왔을 수 있다고 알린다 — PR #379 · `frontend/lib/hooks/use-play-monthly-save.ts` · `frontend/tests/play-monthly-save-hook.test.mjs`
 - 동의 없이 등록한 반을 다시 체크할 수 없던 흐름을 반 수정 계약으로 먼저 열었다 — ADR-062 · `docs/api-spec.md` §2 「반 수정」
+- 등록한 반의 이름 · 연령 · 담임 · 동의를 서버에서 고칠 수 있고 아이가 있는 반은 동의를 끌 수 없다 — `PATCH /api/classes/{class_id}` · `backend/tests/test_class_edit.py`
 
 ## 고친 실제 사고
 
@@ -56,7 +57,7 @@
 
 - 휴대폰 하단 메뉴가 데스크톱 값에 덮여 글자가 두 줄로 꺾인다 — 이슈 #237
 - 부하 시험을 한 적이 없다
-- 반 수정 API · 화면은 아직 없다(구현 전) — ADR-062 「결과」
+- 반 수정 화면은 아직 없다(서버 API 는 있다) — ADR-062 「결과」
 
 ## 더 모을 근거
 

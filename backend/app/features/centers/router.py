@@ -5,14 +5,21 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.greetings import default_greetings
-from app.features.centers.models import Center, CenterInvite, Class, ClassAccessRequest, Greetings
+from app.features.centers.models import (
+    Center,
+    CenterInvite,
+    Child,
+    Class,
+    ClassAccessRequest,
+    Greetings,
+)
 from app.features.centers.schemas import (
     CenterCreate,
     CenterResponse,
@@ -22,15 +29,18 @@ from app.features.centers.schemas import (
     ClassCreate,
     ClassListResponse,
     ClassResponse,
+    ClassUpdate,
     GreetingsSettings,
     InviteResponse,
     JoinRequest,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_center
+from app.shared.auth.ownership import require_own_center, require_own_class
 from app.shared.school_year import school_year_of
 
 router = APIRouter(prefix="/centers", tags=["centers"])
+# 반 하나를 가리키는 경로. 원 아래가 아니라서 prefix 가 다르다 (main.py 가 `/api` 를 붙인다).
+classes_router = APIRouter(prefix="/classes", tags=["classes"])
 
 # Annotated 로 주입한다. 기본값 자리에서 Depends() 를 호출하면 ruff 의 B008 에 걸린다.
 DbSession = Annotated[Session, Depends(get_session)]
@@ -69,6 +79,25 @@ def _violated_constraint(error: IntegrityError) -> str | None:
     외래키 위반까지 409 ALREADY_EXISTS 로 나가 원인을 숨긴다.
     """
     return getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+
+
+def _commit_class(session: Session) -> None:
+    """반을 커밋한다. 같은 원 · 학년도에 같은 이름이 있으면 409 로 바꾼다 (생성 · 수정 공통)."""
+    try:
+        session.commit()
+    except IntegrityError as error:
+        # 되돌리지 않으면 이 세션의 다음 질의가 전부 InFailedSqlTransaction 으로 죽는다.
+        session.rollback()
+        if _violated_constraint(error) != CLASS_NAME_UNIQUE:
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ALREADY_EXISTS",
+                "message": "같은 이름의 반이 이미 있습니다.",
+                "fields": ["name"],
+            },
+        ) from error
 
 
 @router.post("", response_model=CenterResponse, status_code=status.HTTP_201_CREATED)
@@ -240,21 +269,48 @@ def create_class(
         consent_confirmed_at=now if body.consent_confirmed else None,
     )
     session.add(classroom)
-    try:
-        session.commit()
-    except IntegrityError as error:
-        # 되돌리지 않으면 이 세션의 다음 질의가 전부 InFailedSqlTransaction 으로 죽는다.
-        session.rollback()
-        if _violated_constraint(error) != CLASS_NAME_UNIQUE:
-            raise
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "ALREADY_EXISTS",
-                "message": "같은 이름의 반이 이미 있습니다.",
-                "fields": ["name"],
-            },
-        ) from error
+    _commit_class(session)
+    session.refresh(classroom)
+    return _class_response(classroom, user)
+
+
+@classes_router.patch("/{class_id}", response_model=ClassResponse)
+def patch_class(
+    class_id: int, body: ClassUpdate, session: DbSession, user: CurrentUser
+) -> ClassResponse:
+    """등록한 반의 이름 · 연령 · 담임 이름 · 동의를 고친다 (§2 반 수정). **보낸 칸만 바꾼다.**
+
+    반 주인(`teacher_id`)은 바뀌지 않는다 — `teacher_name` 은 화면에 보이는 글자다.
+    """
+    require_own_class(session, user, class_id)
+    # 아이 등록(children/router.py)과 같은 행을 잠근다. 동의를 끄는 요청과 아이를 넣는 요청이
+    # 겹쳐도 「아이가 있는데 동의가 꺼진 반」이 생기지 않는다.
+    classroom = session.get(Class, class_id, with_for_update=True, populate_existing=True)
+    if body.consent_confirmed is False:
+        has_child = session.scalar(select(func.count()).where(Child.class_id == class_id))
+        if has_child:
+            # 다른 칸도 적용하지 않는다 — 한 요청이 반쯤만 먹으면 화면이 무엇이 바뀌었는지 모른다.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "GATE_BLOCKED",
+                    "message": "아이 명단이 있는 반은 동의를 끌 수 없습니다.",
+                    "fields": ["consent_confirmed"],
+                },
+            )
+    if body.name is not None:
+        classroom.name = body.name
+    if body.age_min is not None:  # 스키마가 두 칸을 함께 받는다
+        classroom.age_min = body.age_min
+        classroom.age_max = body.age_max
+    if body.teacher_name is not None:
+        classroom.teacher_name = body.teacher_name
+    if body.consent_confirmed is False:
+        classroom.consent_confirmed_at = None
+    elif body.consent_confirmed and classroom.consent_confirmed_at is None:
+        # 이미 있으면 처음 시각을 둔다 — 이 칸은 체크박스 복원용이다.
+        classroom.consent_confirmed_at = datetime.now(UTC)
+    _commit_class(session)
     session.refresh(classroom)
     return _class_response(classroom, user)
 
