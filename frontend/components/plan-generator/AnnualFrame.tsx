@@ -7,6 +7,7 @@ import type { AnnualPlanResponse } from "@/lib/api/types";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import UnconfirmButton from "./UnconfirmButton";
 import { stepPlaySheetZoom, type SheetZoom } from "./playProjectPagination";
+import { Tape } from "@/components/workspace/WorkspaceUI";
 
 /** ⑤ · ⑥ 공통 모양 (디자인 넘김 result-preview · done-preview). */
 const CHIP = {
@@ -102,7 +103,8 @@ export default function AnnualFrame({
       {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {aside && (
-          <aside className="flex w-full shrink-0 flex-col border border-line bg-paper rounded-md lg:w-[380px]">
+          <aside className="relative flex w-full shrink-0 flex-col border border-line bg-paper rounded-md lg:w-[380px]">
+            <Tape />
             {aside}
           </aside>
         )}
@@ -472,7 +474,8 @@ export function PlanDone({
             {pages[page]}
           </div>
         </section>
-        <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[280px]">
+        <aside className="relative flex w-full shrink-0 flex-col gap-3 lg:w-[280px]">
+          <Tape />
           {download && (
             <div className="flex flex-col gap-2 border border-line bg-paper rounded-md p-5">
               <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>

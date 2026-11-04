@@ -42,7 +42,7 @@ import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
-import { useClasses } from "./WorkspaceUI";
+import { Tape, useClasses } from "./WorkspaceUI";
 
 type Status = { id: number; status: "DRAFT" | "CONFIRMED" };
 type Plans = Record<number, Status>;
@@ -180,7 +180,8 @@ export function MonthlyNewView(props: {
   const look = play ? LOOK.play : LOOK.theme;
   return (
     <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+      <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <Tape />
         <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">

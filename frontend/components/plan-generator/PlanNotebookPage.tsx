@@ -7,6 +7,7 @@ import { listMonthlyPlans } from "@/lib/api/monthly";
 import { listPlayMonthly } from "@/lib/api/playMonthly";
 import type { AnnualPlanSummary, MonthlyPlanSummary, PlayMonthlySummary } from "@/lib/api/types";
 import AnnualImport from "./AnnualImport";
+import { Tape } from "@/components/workspace/WorkspaceUI";
 
 /**
  * 계획안 첫 화면 — 방식(월별 주제형 · 놀이 중심형)을 고르고, 확정 안 한 초안을 이어서 쓴다.
@@ -200,6 +201,7 @@ function Panel({
   const steps = v1 ? ["연간", "월간", "주간"] : ["연간", "월간"];
   return (
     <section className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7">
+      <Tape />
       {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}
       <details className="group absolute right-5 top-5 z-10">
         <summary

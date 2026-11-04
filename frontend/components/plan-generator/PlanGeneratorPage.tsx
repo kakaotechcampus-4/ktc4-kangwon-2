@@ -21,6 +21,7 @@ import { ageSelectionLabel, selectedAgesFor } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
+import { Tape } from "@/components/workspace/WorkspaceUI";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
@@ -194,7 +195,8 @@ function AnnualGenerator({ format }: { format: Format }) {
       )}
 
       {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+      <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <Tape />
         <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper rounded-md p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
