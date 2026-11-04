@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getMe } from "@/lib/api/auth";
-import { getClasses } from "@/lib/api/classes";
+import { getClasses, isMyClass } from "@/lib/api/classes";
 import { isUnauthenticated } from "@/lib/api/client";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { classServerId } from "@/lib/api/onboarding";
@@ -365,7 +365,7 @@ export default function RoutinesPage() {
     let stale = false;
     getMe()
       .then((me) => (me.center_id ? getClasses(me.center_id) : { items: [] }))
-      .then(({ items }) => !stale && setClassList({ items, error: "" }))
+      .then(({ items }) => !stale && setClassList({ items: items.filter(isMyClass), error: "" }))
       .catch(() => !stale && setClassList({ items: [], error: CLASSES_FAILED }));
     return () => {
       stale = true;

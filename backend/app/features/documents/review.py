@@ -27,6 +27,7 @@ from app.features.documents.schemas import (
 from app.features.documents.stale import document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
+from app.shared.auth.ownership import require_own_class
 from app.shared.gates.sections import check_sections, join_facts
 
 
@@ -187,8 +188,13 @@ def resolution_trail(copies, plan):
     ]
 
 
-def locked_review(session: Session, user: User, document_id: int):
-    """모든 쓰기와 같은 잠금 순서다. 다른 센터·반의 원본은 반환하지 않는다."""
+def locked_review(session: Session, user: User, document_id: int, *, read_only: bool = False):
+    """모든 쓰기와 같은 잠금 순서다. 다른 센터·반의 원본은 반환하지 않는다.
+
+    반 검사는 기본이 쓰기다 — 비교만 보는 `source-comparison` 이 `read_only=True` 를 준다.
+    **읽기는 원본을 잠그지 않는다.** 승인받은 다른 반 교사가 비교를 여는 동안 담임의
+    일과 수정 · 재확정이 기다리지 않게 한다(ADR-059). 잠금은 재확정(쓰기)에만 필요하다.
+    """
     doc = session.scalar(
         select(Document)
         .join(Class)
@@ -196,6 +202,7 @@ def locked_review(session: Session, user: User, document_id: int):
     )
     if doc is None:
         fail("NOT_FOUND", "문서를 찾을 수 없습니다.", ["document_id"], 404)
+    require_own_class(session, user, doc.class_id, read_only=read_only)
     if doc.kind != "dailyLog":
         fail("GATE_BLOCKED", "일과 근거의 일일 보육일지만 재확정할 수 있습니다.", ["kind"])
     before = list(
@@ -213,7 +220,8 @@ def locked_review(session: Session, user: User, document_id: int):
     # `refresh`(router.py)가 같은 이유로 이미 막는다. 여기도 같게 막는다.
     if any(copy.source_kind != "routine" for copy in before):
         fail("GATE_BLOCKED", "일과 기록이 아닌 근거가 있어 재확정할 수 없습니다.", ["kind"])
-    lock_sources(session, user, doc, before)
+    if not read_only:
+        lock_sources(session, user, doc, before)
     doc = session.scalar(
         select(Document).where(Document.id == doc.id).execution_options(populate_existing=True)
     )

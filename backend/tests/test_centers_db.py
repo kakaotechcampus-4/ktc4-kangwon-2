@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.features.auth.models import User
 from app.features.centers.models import Center, Class
 from app.main import app
 from app.shared.school_year import school_year_of
@@ -19,13 +20,30 @@ from app.shared.school_year import school_year_of
 client = TestClient(app)
 
 
+def add_user(session, user_id: int) -> None:
+    session.add(
+        User(
+            id=user_id,
+            email=f"t{user_id}@example.com",
+            name="김선생",
+            password_hash=b"x" * 64,
+            password_salt=b"y" * 16,
+        )
+    )
+    session.flush()
+
+
 @pytest.fixture(autouse=True)
-def _logged_in(teacher):
+def _logged_in(teacher, db_session):
     """이 파일은 인증을 다루지 않는다. 로그인한 교사로 고정한다 (인증은 test_auth.py).
 
     `center_id` 는 비워 둔다 — `POST /api/centers` 가 채우는 값이라 미리 넣으면
     409(한 계정 한 원)가 난다.
+
+    `classes.teacher_id` 가 `users.id` 를 가리켜서(ADR-059) 그 교사의 행이 DB 에 있어야
+    `POST /classes` 가 된다. `teacher` fixture 는 행을 넣지 않으므로 여기서 넣는다.
     """
+    add_user(db_session, teacher.id)
 
 
 CENTER = {
@@ -188,6 +206,42 @@ def test_반을_만들면_행이_남고_학년도를_서버가_채운다(db_sess
     # 화면에 고르는 칸이 없다. FE 가 보낸 값이 아니라 서버가 계산한 값이어야 한다.
     assert row.school_year == school_year_of(datetime.now(UTC))
     assert response.json()["school_year"] == row.school_year
+
+
+def test_반을_만들면_만든_계정이_주인이고_my_access_는_OWNER_다(db_session, teacher):
+    center_id = create_center()
+
+    created = client.post(f"/api/centers/{center_id}/classes", json=CLASSROOM).json()
+
+    assert db_session.get(Class, created["id"]).teacher_id == teacher.id
+    assert created["my_access"] == "OWNER"
+    # 계약에 없는 칸이다. 다른 계정의 id 를 알려 주지 않는다.
+    assert "teacher_id" not in created
+    listed = client.get(f"/api/centers/{center_id}/classes").json()["items"]
+    assert [item["my_access"] for item in listed] == ["OWNER"]
+
+
+def test_주인이_없는_옛_반은_OPEN_이고_남이_주인인_반은_NONE_이다(db_session):
+    center_id = create_center()
+    add_user(db_session, 2)
+    base = {
+        "center_id": center_id,
+        "school_year": 2026,
+        "age_min": 3,
+        "age_max": 4,
+        "teacher_name": "김선생",
+    }
+    db_session.add_all(
+        [
+            Class(name="옛반", teacher_id=None, **base),
+            Class(name="남의반", teacher_id=2, **base),
+        ]
+    )
+    db_session.flush()
+
+    items = client.get(f"/api/centers/{center_id}/classes").json()["items"]
+
+    assert {item["name"]: item["my_access"] for item in items} == {"옛반": "OPEN", "남의반": "NONE"}
 
 
 def test_동의를_확인하면_시각이_남고_아니면_null_이다(db_session):
