@@ -308,13 +308,10 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await dateInput.fill(yesterday.toISOString().slice(0, 10));
   const row = page.locator('[aria-label="일과 목록"] article').first();
   await row.getByLabel("일과 이름").fill("오전 실내놀이");
-  for (const [label, hour] of [
-    ["시작", "09"],
-    ["종료", "10"],
-  ]) {
-    await row.getByLabel(`${label} 시`, { exact: true }).selectOption(hour);
-    await row.getByLabel(`${label} 분`, { exact: true }).selectOption("00");
-  }
+  await row.getByLabel("시작 시간", { exact: true }).fill("09:00");
+  await row.getByLabel("종료 시간", { exact: true }).fill("10:00");
+  // 「하려던 것」은 접혀 있다.
+  await row.locator("details").locator("summary").click();
   await row.getByLabel("하려던 것").fill("자연물과 블록을 제공한다.");
   await row
     .getByLabel("실제로 한 것")

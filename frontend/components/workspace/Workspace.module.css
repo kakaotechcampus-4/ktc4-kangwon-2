@@ -225,11 +225,6 @@ select.input {
   background-position: right 12px center;
   background-size: 12px 8px;
 }
-/* 화면이 좁아도 글자가 화살표를 침범하지 않게 둔다. */
-.timePicker select {
-  background-position: right 8px center;
-  padding-right: 26px;
-}
 .row {
   display: flex;
   align-items: center;
@@ -699,28 +694,6 @@ a.item {
   font-weight: 600;
   font-size: 12px;
 }
-.timePicker {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.timePicker select {
-  width: auto;
-  min-width: 60px;
-}
-.timePicker button {
-  white-space: nowrap;
-}
-.dragging {
-  opacity: 0.45;
-  outline: 2px dashed var(--pg-accent, #8064b4);
-}
-.insertBefore {
-  box-shadow: 0 -5px 0 #8064b4;
-}
-.insertAfter {
-  box-shadow: 0 5px 0 #8064b4;
-}
 .sourceText {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -778,13 +751,6 @@ a.item {
 .rowName input {
   flex: 1;
 }
-/* 「시작」 · 「종료」 는 셀렉트 왼쪽에 붙인다. 위에 한 줄로 두면 줄마다
-   글자 한 줄 높이가 더 들고, 다섯 줄이면 그만큼 화면이 길어진다. */
-.routineHead .field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 .rowName input {
   min-width: 0;
   max-width: 320px;
@@ -796,16 +762,6 @@ a.item {
   border: 1px solid var(--pg-line);
   border-radius: 6px;
   background: var(--pg-paper);
-}
-.nameRequired {
-  align-self: center;
-  padding: 1px 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--pg-primary-ink);
-  background: var(--pg-primary-tint);
-  border: 1px solid var(--pg-primary-tint-line);
-  border-radius: 999px;
 }
 /* 줄 끝의 작은 단추. 줄마다 큰 단추를 두 개씩 두면 단추가 기록보다 많아진다. */
 .rowTools {
@@ -829,47 +785,76 @@ a.item {
 .rowTool:hover {
   color: var(--pg-ink);
 }
-.routineGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  column-gap: 14px;
-  row-gap: 8px;
-}
-/* 한 줄의 머리 — 끌기 손잡이 · 위아래 · 이름 · 시작 · 종료를 한 줄에 둔다.
-   두 칸짜리 격자에 넣으면 이름이 들어가는 순간 시간이 아래로 밀린다. */
+/* 한 줄의 머리 — 이름 · 시간 · 지우기. 끌기 손잡이와 ↑ ↓ 는 없앴다. 순서는 시간이 정한다. */
 .routineHead {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 14px;
 }
-.routineHead .routineStart {
-  display: contents;
-}
-/* 끌기 핸들과 ↑ ↓ 에는 제목이 없다. 가운데로 맞추면 제목 높이의 절반만큼 입력칸보다
-   위로 뜨므로, 아래선을 맞추고 핸들에도 입력칸과 같은 높이를 준다. */
-.routineStart {
+/* 시작 ~ 종료. 네 조작점짜리 묶음이던 자리라 좁아도 한 줄에 들어간다. */
+.rowTime {
   display: flex;
-  align-items: end;
+  align-items: center;
+  gap: 6px;
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+}
+.rowTime input {
+  width: auto;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 14px;
+  color: var(--pg-ink);
+}
+/* 시간과 지우기는 한 덩어리다. 좁은 화면에서 × 만 혼자 아랫줄로 떨어지지 않게 묶는다. */
+.rowMeta {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
   gap: 10px;
-  flex-wrap: wrap;
 }
-.routineStart .badge {
-  min-height: 44px;
-  justify-content: center;
+.rowMeta .rowTool {
+  min-width: 32px;
+  font-size: 18px;
+  text-decoration: none;
 }
-/* `시 : 분 AM ×` 묶음은 약 235px 다. 그보다 좁게 줄이면 좁은 화면에서 가로 스크롤이 생긴다. */
-.routineStart > .field {
-  flex: 1;
-  min-width: fit-content;
-}
-/* 하려던 것 · 실제로 한 것. 열 이름은 표 머리에서 한 번 말했으니 여기선
-   입력칸만 나란히 둔다. */
-.routineBody {
-  margin-top: 10px;
-}
-.routineBody textarea {
+/* 매일 적는 칸은 이것 하나다. 줄에서 가장 넓게 둔다. */
+.rowDone {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
   min-height: 62px;
+  padding: 9px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  resize: vertical;
+}
+/* 하려던 것은 접어 둔다 — 쓰는 원만 편다. */
+.rowPlan {
+  margin-top: 6px;
+}
+.rowPlan summary {
+  display: inline-block;
+  list-style: none;
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+.rowPlan textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  min-height: 54px;
   padding: 9px 12px;
   border: 1px solid var(--pg-line);
   border-radius: 6px;

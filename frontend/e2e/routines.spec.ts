@@ -19,26 +19,23 @@ const diagnostics = new WeakMap<Page, Evidence>();
 const rows = (page: Page) => page.locator('[aria-label="일과 목록"] article');
 const token = (page: Page) => page.evaluate(() => sessionStorage.getItem("saessak.authToken"));
 
-async function pickTime(row: Locator, label: string, value: string) {
-  const [hour, minute] = value.split(":");
-  await row
-    .getByLabel(`${label} 시`, { exact: true })
-    .selectOption(String(Number(hour) % 12 || 12).padStart(2, "0"));
-  await row.getByLabel(`${label} 분`, { exact: true }).selectOption(minute);
-  const toggle = row.getByRole("button", { name: `${label} AM/PM`, exact: true });
-  if ((await toggle.textContent()) !== (Number(hour) >= 12 ? "PM" : "AM")) await toggle.click();
+/** 시간은 한 칸이다 — 브라우저의 `<input type="time">` 을 그대로 쓴다. */
+const pickTime = (row: Locator, label: string, value: string) =>
+  row.getByLabel(`${label} 시간`, { exact: true }).fill(value);
+
+const expectTime = (row: Locator, label: string, value: string) =>
+  expect(row.getByLabel(`${label} 시간`, { exact: true })).toHaveValue(value);
+
+/** 「하려던 것」은 접혀 있다. 적으려면 먼저 편다. */
+async function fillPlan(row: Locator, value: string) {
+  const fold = row.locator("details");
+  if (!(await fold.evaluate((el) => (el as HTMLDetailsElement).open)))
+    await fold.locator("summary").click();
+  await row.getByLabel("하려던 것").fill(value);
 }
 
-async function expectTime(row: Locator, label: string, value: string) {
-  const [hour, minute] = value.split(":");
-  await expect(row.getByLabel(`${label} 시`, { exact: true })).toHaveValue(
-    String(Number(hour) % 12 || 12).padStart(2, "0"),
-  );
-  await expect(row.getByLabel(`${label} 분`, { exact: true })).toHaveValue(minute);
-  await expect(row.getByRole("button", { name: `${label} AM/PM`, exact: true })).toHaveText(
-    Number(hour) >= 12 ? "PM" : "AM",
-  );
-}
+/** 깔아 두는 기본 하루 (RoutinesPage DEFAULT_ROUTINES). */
+const PRESET_ROWS = 9;
 
 async function api(page: Page, path: string, method = "GET", data?: unknown) {
   const response = await page.request.fetch(path, {
@@ -94,47 +91,6 @@ async function enterHome(page: Page) {
     centerId: me.center_id as number,
     childId: children.items[0].id as number,
   };
-}
-
-/**
- * 잡을 점과 놓을 점을 **스크롤을 끝낸 뒤에** 잰다.
- *
- * 카드가 높아지면서 「도착 카드 아래쪽」이 화면 밖으로 나갔다. 화면 밖 좌표로는 drop 이
- * 조용히 무시돼 순서가 그대로이고, 원인이 드래그 기능으로 보인다. 그래서 두 점이 화면
- * 안인지, 놓는 점이 도착 카드의 아래쪽 절반인지(= 그 줄 "뒤"로 간다) 먼저 확인한다.
- */
-async function dragPoints(page: Page, handle: Locator, target: Locator) {
-  await target.scrollIntoViewIfNeeded();
-  await handle.scrollIntoViewIfNeeded();
-  const view = page.viewportSize()!;
-  const from = (await handle.boundingBox())!;
-  const to = (await target.boundingBox())!;
-  const grab = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
-  const drop = { x: to.x + 70, y: to.y + to.height * 0.75 };
-  for (const [what, point] of [
-    ["잡는 곳", grab],
-    ["놓는 곳", drop],
-  ] as const)
-    expect(
-      point.x > 0 && point.x < view.width && point.y > 0 && point.y < view.height,
-      `${what} 좌표가 화면 밖이다: ${JSON.stringify({ point, view })}`,
-    ).toBe(true);
-  expect(drop.y, "놓는 곳은 도착 카드의 아래쪽 절반이어야 한다").toBeGreaterThan(
-    to.y + to.height / 2,
-  );
-  return { grab, drop };
-}
-
-/** 카드를 도착 카드 뒤로 끈다. HTML5 네이티브 드래그는 **누른 뒤 움직여야** 시작된다 —
- *  한 번에 뛰면 dragstart 가 나지 않는다. */
-async function dragAfter(page: Page, handle: Locator, target: Locator) {
-  const { grab, drop } = await dragPoints(page, handle, target);
-  await page.mouse.move(grab.x, grab.y);
-  await page.mouse.down();
-  await page.mouse.move(grab.x, grab.y + 8);
-  await page.mouse.move(drop.x, drop.y, { steps: 12 });
-  await page.mouse.move(drop.x, drop.y);
-  await page.mouse.up();
 }
 
 async function dayRows(page: Page, classId: number, date: string): Promise<Routine[]> {
@@ -260,20 +216,19 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     await expect(page).toHaveURL(/\/routines\?date=.*class_id=/);
     await expect(page.getByText("이 날짜의 일과를 불러오는 중이에요…")).toBeVisible();
     release();
-    await expect(rows(page)).toHaveCount(5);
+    await expect(rows(page)).toHaveCount(PRESET_ROWS);
     await page.unroute("**/api/routines?**");
-    note(page, "A", { blankRows: 5, classId });
+    note(page, "A", { presetRows: PRESET_ROWS, classId });
   });
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
-  await test.step("B: 7줄을 입력하고 저장·새로고침 후 내용과 시간 확인", async () => {
-    await page.getByRole("button", { name: "+ 줄 추가", exact: true }).click();
-    await page.getByRole("button", { name: "+ 줄 추가", exact: true }).click();
+  await test.step("B: 깔아 둔 하루 중 7줄을 고쳐 저장하고 새로고침 후 내용과 시간 확인", async () => {
+    // 손대지 않은 두 줄은 저장되지 않는다 — 깔아 둔 하루를 서버에 쌓지 않는다.
     for (let i = 0; i < 7; i++) {
       const row = rows(page).nth(i);
       await row.getByLabel("일과 이름").fill(`일과${i + 1}`);
       await pickTime(row, "시작", `${String(8 + i).padStart(2, "0")}:00`);
       await pickTime(row, "종료", `${String(9 + i).padStart(2, "0")}:00`);
-      await row.getByLabel("하려던 것").fill("놀이 자료를 준비한다.");
+      await fillPlan(row, "놀이 자료를 준비한다.");
       if (i < 6) await row.getByLabel("실제로 한 것").fill("블록을 쌓고 길을 만들었다.");
     }
     await saved(page);
@@ -290,14 +245,9 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     }
     note(page, "B", await dayRows(page, classId, date));
   });
-  await test.step("C: 첫 줄을 네 번째로 드래그하고 저장·재조회 순서 비교", async () => {
-    // 두 줄이 동시에 보이게 한 뒤 실제 마우스로 끈다. 자동 스크롤이 드래그 시작을 가리지 않는다.
-    await page.setViewportSize({ width: 1440, height: 1800 });
-    const source = page.getByRole("button", { name: "1번째 줄 끌어서 옮기기", exact: true });
-    await dragAfter(page, source, rows(page).nth(3));
-    const expected = ["일과2", "일과3", "일과4", "일과1", "일과5", "일과6", "일과7"];
-    await expectNames(page, expected);
-    await saved(page);
+  await test.step("C: 저장한 순서가 다시 읽어도 그대로다", async () => {
+    // 끌어서 옮기기와 「시간순 정렬」은 없앴다. 순서는 적은 차례 그대로 남는다.
+    const expected = ["일과1", "일과2", "일과3", "일과4", "일과5", "일과6", "일과7"];
     await page.reload();
     await expectNames(page, expected);
     expect((await dayRows(page, classId, date)).map((r) => r.name)).toEqual(expected);
@@ -305,13 +255,13 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
   });
   let documentId: number;
   await test.step("G: 저장 전 입력을 자동 저장하고 S-J2에서 고른 순서대로 실제 초안 생성", async () => {
-    await rows(page).nth(0).getByLabel("일과 이름").fill("수정한 일과2");
+    await rows(page).nth(0).getByLabel("일과 이름").fill("수정한 일과1");
     await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
     await expect(page).toHaveURL(`/documents?kind=dailyLog&class_id=${classId}&date=${date}`);
     await expect(page.getByRole("combobox", { name: "문서 종류" })).toHaveValue("dailyLog");
     await expect(page.getByLabel("날짜", { exact: true })).toHaveValue(date);
     const sourceRows = await dayRows(page, classId, date);
-    expect(sourceRows[0].name).toBe("수정한 일과2");
+    expect(sourceRows[0].name).toBe("수정한 일과1");
     await page.getByRole("link", { name: "새 일과 기록 입력 →" }).click();
     await expect(page).toHaveURL(`/routines?date=${date}&class_id=${classId}`);
     await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("햇살반");
@@ -388,7 +338,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     const db = dbDocument(documentId!);
     expect(db.stale).toBe(true);
     note(page, "H", db);
-    await rows(page).nth(0).getByLabel("하려던 것").fill("계획만 고친다.");
+    await fillPlan(rows(page).nth(0), "계획만 고친다.");
     await saved(page);
     await expect(page.getByText(/다시 검토 대상이 되었어요|이미 재검토 대상인/)).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("A-G-H-routines.png"), fullPage: true });
@@ -398,7 +348,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
 test("S-J2 빈 상태 — 실제로 한 것이 없는 저장 줄에서 입력 링크로 돌아간다", async ({ page }) => {
   const { classId } = await enterHome(page);
   await page.getByRole("link", { name: "일과 작성하기" }).click();
-  await expect(rows(page)).toHaveCount(5);
+  await expect(rows(page)).toHaveCount(PRESET_ROWS);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await rows(page).nth(0).getByLabel("일과 이름").fill("시간과 이름만 있는 일과");
   await saved(page);
@@ -425,7 +375,7 @@ test("D E F J — 어제 복사·검증 오류·실제 401 저장 실패와 재�
 }, info) => {
   const { classId } = await enterHome(page);
   await page.getByRole("link", { name: "일과 작성하기" }).click();
-  await expect(rows(page)).toHaveCount(5);
+  await expect(rows(page)).toHaveCount(PRESET_ROWS);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   const yesterday = new Date(`${date}T00:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
@@ -438,11 +388,11 @@ test("D E F J — 어제 복사·검증 오류·실제 401 저장 실패와 재�
     plan: "어제 계획",
     execution: "어제 실행",
   });
-  await page.getByRole("button", { name: "어제 일과 불러오기", exact: true }).click();
+  // 어제 하루가 있으면 다시 열 때 그 이름 · 시간이 깔린다. 교사가 누를 단추는 없다.
+  await page.reload();
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("어제 일과");
   await expectTime(rows(page).nth(0), "시작", "09:00");
-  await expect(rows(page).nth(0).getByLabel("하려던 것")).toHaveValue("");
   await expect(rows(page).nth(0).getByLabel("실제로 한 것")).toHaveValue("");
   expect(await dayRows(page, classId, date)).toEqual([]);
   note(page, "D", { timeAndNameOnly: true, noWrite: true });
@@ -474,7 +424,7 @@ test("D E F J — 어제 복사·검증 오류·실제 401 저장 실패와 재�
   await page.reload();
   await expect(rows(page)).toHaveCount(1); // 완전히 빈 두 번째 줄만 제외했다.
   note(page, "F", { realServerStatus: 401, noNavigation: true, retrySaved: true });
-  await rows(page).nth(0).getByRole("button", { name: "줄 지우기", exact: true }).click();
+  await rows(page).nth(0).getByRole("button", { name: "1번째 일과 지우기" }).click();
   expect(await dayRows(page, classId, date)).toHaveLength(1);
   await saved(page);
   expect(await dayRows(page, classId, date)).toEqual([]);
@@ -492,15 +442,16 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   });
   const child = await api(page, `/api/classes/${other.id}/children`, "POST", { name: "나다라" });
   await page.getByRole("link", { name: "일과 작성하기" }).click();
-  await expect(rows(page)).toHaveCount(5);
+  await expect(rows(page)).toHaveCount(PRESET_ROWS);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await rows(page).nth(0).getByLabel("일과 이름").fill("햇살반 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("햇살반에서 블록을 쌓았다.");
   await saved(page);
   await switchClass(page, "달님반");
   await expect(page).toHaveURL(/\/routines(\?|$)/);
-  await expect(rows(page)).toHaveCount(5);
-  await expectNames(page, ["", "", "", "", ""]);
+  await expect(rows(page)).toHaveCount(PRESET_ROWS);
+  // 다른 반은 그날이 비어 있다 — 깔아 둔 하루가 보이고 햇살반 줄은 섞이지 않는다.
+  await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("등원 및 통합보육");
   await rows(page).nth(0).getByLabel("일과 이름").fill("달님반 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("달님반에서 공을 굴렸다.");
   await saved(page);
@@ -545,7 +496,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await write.click();
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await page.getByLabel("날짜", { exact: true }).fill("2026-10-16");
-  await expect(rows(page)).toHaveCount(5);
+  await expect(rows(page)).toHaveCount(PRESET_ROWS);
   await rows(page).nth(0).getByLabel("일과 이름").fill("지난 날짜 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("지난 날짜에 길을 만들었다.");
   await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
@@ -586,7 +537,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   });
   await page.screenshot({ path: info.outputPath("I-class-isolation.png"), fullPage: true });
 });
-test("후속 #1~5 — 카드 프리뷰·12시간 피커·기존 초 보존·명시적 안정 정렬", async ({
+test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없는 줄에서 멈춤", async ({
   page,
 }, info) => {
   const { classId } = await enterHome(page);
@@ -611,20 +562,15 @@ test("후속 #1~5 — 카드 프리뷰·12시간 피커·기존 초 보존·명�
     page,
     seeds.map((s) => s.name),
   );
+  // 초가 있는 시간도 분까지만 보여 준다. 교사가 건드리지 않으면 초는 서버에 그대로 남는다.
   await expectTime(rows(page).nth(1), "시작", "09:16");
-  await expect(
-    rows(page)
-      .nth(1)
-      .getByLabel("시작 분", { exact: true })
-      .getByRole("option", { name: "16 (기존)", exact: true }),
-  ).toHaveCount(1);
-  await rows(page).nth(1).getByLabel("하려던 것").fill("계획만 수정함");
+  await fillPlan(rows(page).nth(1), "계획만 수정함");
   await page.getByRole("button", { name: "+ 줄 추가", exact: true }).click();
-  const midnight = rows(page).nth(4);
-  await expect(midnight.getByRole("button", { name: "시작 AM/PM", exact: true })).toHaveText("AM");
-  await pickTime(midnight, "시작", "00:00");
-  await pickTime(midnight, "종료", "12:00");
-  await midnight.getByLabel("실제로 한 것").fill("새벽 활동을 기록했다.");
+  const added = rows(page).nth(4);
+  await pickTime(added, "시작", "00:00");
+  await pickTime(added, "종료", "12:00");
+  await added.getByLabel("실제로 한 것").fill("새벽 활동을 기록했다.");
+
   const mutations = () =>
     diagnostics
       .get(page)!
@@ -632,69 +578,23 @@ test("후속 #1~5 — 카드 프리뷰·12시간 피커·기존 초 보존·명�
   const initial = mutations();
   await page.getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByText(/입력하지 않은 필수 항목이 있어요/)).toBeVisible();
-  await expect(midnight.getByLabel("일과 이름")).toBeFocused();
+  await expect(added.getByLabel("일과 이름")).toBeFocused();
   expect(mutations()).toBe(initial);
-  await midnight.getByLabel("일과 이름").fill("새벽 놀이");
-  await page.getByRole("button", { name: "시간순 정렬", exact: true }).click();
-  const sorted = ["새벽 놀이", "기존 분초", "동률 놀이", "오후 놀이", "시간 미입력"];
-  await expectNames(page, sorted);
-  expect(mutations()).toBe(initial);
+
+  await added.getByLabel("일과 이름").fill("새벽 놀이");
   await saved(page);
-  let stored = await dayRows(page, classId, date);
-  expect(stored.map((r) => r.name)).toEqual(sorted);
-  expect(stored[0].start).toBe("00:00:00");
-  expect(stored[0].end).toBe("12:00:00");
+  const order = [...seeds.map((s) => s.name), "새벽 놀이"];
+  const stored = await dayRows(page, classId, date);
+  expect(stored.map((r) => r.name)).toEqual(order);
+  // 교사가 안 건드린 초는 그대로다.
   expect(stored[1].start).toBe("09:16:25");
   expect(stored[1].end).toBe("10:21:35");
+  expect(stored[4].start).toBe("00:00:00");
+  expect(stored[4].end).toBe("12:00:00");
   await page.reload();
-  await expectNames(page, sorted);
-  await expect(page.getByText(/줄 중 활동실행을 적은 줄/)).toHaveCount(0);
-  await page.evaluate(() => {
-    const original = DataTransfer.prototype.setDragImage;
-    DataTransfer.prototype.setDragImage = function (element, x, y) {
-      const card = element as HTMLElement;
-      (window as unknown as { dragPreview: unknown }).dragPreview = {
-        tag: card.tagName,
-        name: (card.querySelector('[placeholder="오전 실내놀이"]') as HTMLInputElement)?.value,
-        textareas: Array.from(card.querySelectorAll("textarea"), (n) => n.value),
-        selects: Array.from(card.querySelectorAll("select"), (n) => n.value),
-      };
-      return original.call(this, element, x, y);
-    };
-  });
-  await page.setViewportSize({ width: 1440, height: 1800 });
-  const source = rows(page)
-    .nth(1)
-    .getByRole("button", { name: "2번째 줄 끌어서 옮기기", exact: true });
-  const target = rows(page).nth(3);
-  const { grab, drop } = await dragPoints(page, source, target);
-  const beforeDrag = mutations();
-  await page.mouse.move(grab.x, grab.y);
-  await page.mouse.down();
-  await page.mouse.move(grab.x + 12, grab.y + 12, { steps: 5 });
-  await page.mouse.move(drop.x, drop.y, { steps: 20 });
-  await expect(rows(page).nth(1)).toHaveAttribute("data-dragging", "true");
-  await expect(target).toHaveAttribute("data-insertion", "after");
-  await page.screenshot({ path: info.outputPath("full-card-drag-insertion.png"), fullPage: true });
-  await page.mouse.up();
-  expect(
-    await page.evaluate(() => (window as unknown as { dragPreview: unknown }).dragPreview),
-  ).toEqual({
-    tag: "ARTICLE",
-    name: "기존 분초",
-    textareas: ["계획만 수정함", "기존 분초 활동을 진행했다."],
-    selects: ["09", "16", "10", "21"],
-  });
-  const manual = ["새벽 놀이", "동률 놀이", "오후 놀이", "기존 분초", "시간 미입력"];
-  await expectNames(page, manual);
-  expect(mutations()).toBe(beforeDrag);
-  await saved(page);
-  await page.reload();
-  await expectNames(page, manual);
-  stored = await dayRows(page, classId, date);
-  expect(stored.map((r) => r.name)).toEqual(manual);
-  await page.screenshot({ path: info.outputPath("time-picker-manual-order.png"), fullPage: true });
-  note(page, "followup #1-5", { manual, ids: stored.map((r) => r.id), secondsPreserved: true });
+  await expectNames(page, order);
+  await page.screenshot({ path: info.outputPath("routine-time-input.png"), fullPage: true });
+  note(page, "followup #1-5", { order, ids: stored.map((r) => r.id), secondsPreserved: true });
 });
 
 test("후속 #6~11 — 실제 근거 비교·편집·단일 확인·원자적 재확정·안전한 재시도", async ({
@@ -1008,7 +908,7 @@ test("후속 #13 — 삭제된 근거를 제외하고, 전부 빼려 하면 서�
   note(page, "followup #13", { document: doc.id, dropped: gone.id });
 });
 
-test("후속 #14 — 일과 줄: 손잡이 · 이름 · 시작 · 종료가 한 줄에 서고 두 입력칸의 윗선이 맞는다", async ({
+test("후속 #14 — 일과 줄: 이름 · 시간 · 지우기가 한 줄에 서고 실제로 한 것이 그 아래 넓게 선다", async ({
   page,
 }, info) => {
   const { classId } = await enterHome(page);
@@ -1027,21 +927,19 @@ test("후속 #14 — 일과 줄: 손잡이 · 이름 · 시작 · 종료가 한 
   const card = rows(page).first();
   await expect(card.getByLabel("일과 이름")).toHaveValue("오전 실내놀이");
   const nameBox = (await card.getByLabel("일과 이름").boundingBox())!;
-  const handleBox = (await card.getByLabel("1번째 줄 끌어서 옮기기").boundingBox())!;
-  const startBox = (await card.getByLabel("시작", { exact: true }).boundingBox())!;
-  const endBox = (await card.getByLabel("종료", { exact: true }).boundingBox())!;
-  // 손잡이 · 이름 · 시작 · 종료는 같은 줄에 왼쪽부터 차례로 선다.
-  for (const box of [nameBox, startBox, endBox])
-    expect(Math.abs(box.y - handleBox.y)).toBeLessThan(handleBox.height);
-  expect(handleBox.x).toBeLessThan(nameBox.x);
+  const startBox = (await card.getByLabel("시작 시간", { exact: true }).boundingBox())!;
+  const endBox = (await card.getByLabel("종료 시간", { exact: true }).boundingBox())!;
+  const removeBox = (await card.getByLabel("1번째 일과 지우기").boundingBox())!;
+  // 이름 · 시작 · 종료 · 지우기는 같은 줄에 왼쪽부터 차례로 선다.
+  for (const box of [startBox, endBox, removeBox])
+    expect(Math.abs(box.y - nameBox.y)).toBeLessThan(nameBox.height);
   expect(nameBox.x).toBeLessThan(startBox.x);
   expect(startBox.x).toBeLessThan(endBox.x);
-  // 하려던 것 · 실제로 한 것은 그 아래 같은 선에서 시작한다.
+  expect(endBox.x).toBeLessThan(removeBox.x);
+  // 매일 적는 「실제로 한 것」이 그 아래 넓게 서고, 「하려던 것」은 접혀 있다.
   const doneBox = (await card.getByLabel("실제로 한 것").boundingBox())!;
-  const planBox = (await card.getByLabel("하려던 것").boundingBox())!;
-  expect(planBox.y).toBeGreaterThan(handleBox.y);
-  expect(Math.abs(planBox.y - doneBox.y)).toBeLessThan(2);
-  expect(Math.abs(planBox.height - doneBox.height)).toBeLessThan(2);
+  expect(doneBox.y).toBeGreaterThan(nameBox.y);
+  expect(doneBox.width).toBeGreaterThan(nameBox.width);
   await page.screenshot({ path: info.outputPath("routine-card-layout.png"), fullPage: true });
   // 모바일에서도 가로 스크롤이 생기지 않는다.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1053,7 +951,7 @@ test("후속 #14 — 일과 줄: 손잡이 · 이름 · 시작 · 종료가 한 
     )
     .toBeLessThanOrEqual(0);
   await page.screenshot({ path: info.outputPath("routine-card-mobile.png"), fullPage: true });
-  note(page, "followup #14", { name: nameBox, handle: handleBox });
+  note(page, "followup #14", { name: nameBox, done: doneBox });
 });
 
 test("후속 #15 — 확정 취소된 초안에서 삭제된 근거를 처리하고 다시 확정한다", async ({

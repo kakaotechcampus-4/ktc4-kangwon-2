@@ -238,22 +238,6 @@ export function routineFactText(row: Pick<ApiRoutine, "name" | "start" | "end" |
   const when = from || to ? ` ${from}~${to}` : "";
   return `[${row.name.trim()}${when}] ${row.execution.trim()}`;
 }
-/** 시각 선택 UI만 12시간제다. API의 24시간제·null 계약은 그대로다. */
-export function routineTimeFrom12(hour: string, minute: string, period: "AM" | "PM") {
-  if (!hour || !minute) return "";
-  const h = (Number(hour) % 12) + (period === "PM" ? 12 : 0);
-  return `${String(h).padStart(2, "0")}:${minute}`;
-}
-
-export function routineTimeParts12(value: string) {
-  const [hour, minute = "00"] = value.split(":");
-  return {
-    hour: hour ? String(Number(hour) % 12 || 12).padStart(2, "0") : "",
-    minute,
-    period: (Number(hour) >= 12 ? "PM" : "AM") as "AM" | "PM",
-  };
-}
-
 /** 명시적으로 요청한 경우만 사용한다. 같은 시각은 현재 상대 순서를 유지한다. */
 export function sortRoutinesByTime<T extends { start: string | null; end: string | null }>(
   rows: T[],
