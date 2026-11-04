@@ -945,7 +945,7 @@ function UnseenChildren({
 }
 
 /**
- * 비어 있는 날 — 일과가 없어 일지를 만들 수 없는 지난 평일. **하루만** 보여 준다.
+ * 비어 있는 날 — 기록이 없어 일지를 만들 수 없는 지난 평일. **하루만** 보여 준다.
  * 빠뜨린 날을 다 세어 들이밀면 첫 화면이 빚 목록이 된다.
  */
 function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
@@ -960,7 +960,7 @@ function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
             {shortDate(date)}
           </span>
           <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
-            일과가 없어
+            기록이 없어
             <br />
             일지를 못 만들어요
           </span>
