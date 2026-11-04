@@ -47,7 +47,7 @@ interface Options {
   /** 쌓인 작업이 모두 끝났다(성공 · 거절). 화면을 서버가 확인한 계획안으로 맞춘다. */
   onDrained: () => void;
   /** 409 로 멈췄다. 부모가 다시 불러온다. */
-  onConflict: () => void;
+  onConflict: (error: unknown) => void;
 }
 
 /**
@@ -93,7 +93,7 @@ export function createPlayMonthlyQueue(options: Options) {
           busy = false;
           setStatus("idle");
           settle(false);
-          options.onConflict();
+          options.onConflict(error);
           return;
         }
         if (!options.isRejected(error)) {

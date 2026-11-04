@@ -50,6 +50,8 @@ import UnconfirmButton from "./UnconfirmButton";
 import { PlanMemoNote } from "./PlanMemo";
 
 const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
+const PARTIAL_NOTICE =
+  "뺀 칸을 되살리다 멈췄어요. 칸은 다시 나뉘었지만 글이 다 돌아오지 않았을 수 있어요 — 확인해 주세요.";
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
 const INPUT_LABELS: Record<string, string> = {
   fire_disaster_drill: "소방대피/재난대비",
@@ -111,7 +113,7 @@ export default function PlayMonthlyView({ id }: { id: number }) {
 
   // 저장이 409 로 막히면 최신 계획안으로 바꾼다. 요청이 겹치면 마지막 응답만 반영한다.
   const lastReload = useRef(0);
-  function reloadAfterConflict() {
+  function reloadAfterConflict(partial = false) {
     const mine = ++lastReload.current;
     const apply = (next: (cur: typeof loaded) => typeof loaded) =>
       mine === lastReload.current && setLoaded(next);
@@ -121,7 +123,7 @@ export default function PlayMonthlyView({ id }: { id: number }) {
           key,
           plan: fresh,
           error: "",
-          notice: STALE_NOTICE,
+          notice: partial ? PARTIAL_NOTICE : STALE_NOTICE,
           version: (cur?.version ?? 0) + 1,
         })),
       () =>
@@ -216,7 +218,7 @@ function PlayMonthlyBody({
   initial: PlayMonthlyPlan;
   className: string;
   notice?: string;
-  onConflict: () => void;
+  onConflict: (partial?: boolean) => void;
   onReplace: (plan: PlayMonthlyPlan) => void;
 }) {
   const [plan, setPlan] = useState(initial);
@@ -242,9 +244,9 @@ function PlayMonthlyBody({
   const save = usePlayMonthlySave(
     plan,
     setPlan,
-    () => {
+    (partial) => {
       setStopped(true);
-      onConflict();
+      onConflict(partial);
     },
     (itemId, kind) => {
       if (itemId) {

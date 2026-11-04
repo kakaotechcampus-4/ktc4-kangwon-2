@@ -57,7 +57,13 @@ globalThis.window = {
 };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-function mount({ fail = null, hold = false, drafting = false, failCopy = null } = {}) {
+function mount({
+  fail = null,
+  hold = false,
+  drafting = false,
+  failCopy = null,
+  failCell = null,
+} = {}) {
   const gates = [];
   let server = base();
   const sent = [];
@@ -87,6 +93,7 @@ function mount({ fail = null, hold = false, drafting = false, failCopy = null } 
       sent.push(["cell", itemId, value, rev]);
       await gate();
       if (fail) throw fail;
+      if (failCell?.(itemId, value)) throw { status: 503 };
       return bump(queueModule.overlayCells(server, { [itemId]: value }));
     },
     placePlayMonthlySafety: async (id, weekId, cand, rev) => {
@@ -134,7 +141,7 @@ function mount({ fail = null, hold = false, drafting = false, failCopy = null } 
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)((n) => modules[n], compiled, compiled.exports);
-  const shown = { plan: structuredClone(server), rejected: [], kinds: [] };
+  const shown = { plan: structuredClone(server), rejected: [], kinds: [], conflicts: [] };
   let hook;
   const render = () => {
     cursor = 0;
@@ -142,7 +149,7 @@ function mount({ fail = null, hold = false, drafting = false, failCopy = null } 
     hook = compiled.exports.usePlayMonthlySave(
       shown.plan,
       (p) => (shown.plan = p),
-      () => {},
+      (partial) => shown.conflicts.push(partial),
       (itemId, kind) => (shown.rejected.push(itemId), shown.kinds.push(kind)),
       drafting,
     );
@@ -226,8 +233,8 @@ test("timetable split · remove · ratio undo and redo through the server's new 
     [
       ["removeCell", a, m.sent.at(-6)[2]],
       ["split", b2, "VERTICAL"],
-      ["cell", b2, "가"],
       ["cell", bottom.item_id, "나"],
+      ["cell", b2, "가"],
       ["ratio", monday().split_id, 70],
       ["ratio", monday().split_id, 50],
     ],
@@ -235,6 +242,29 @@ test("timetable split · remove · ratio undo and redo through the server's new 
   assert.deepEqual(
     m.sent.map((s) => s.at(-1)),
     m.sent.map((_, i) => i + 1),
+  );
+});
+
+test("a restore that stops after the split keeps the sibling's text and says it was partial", async () => {
+  const m = mount({ failCell: (_, value) => value === "가" });
+  const monday = () => m.shown.plan.special_activity[0];
+  const a = monday().cell.item_id;
+  m.get().splitCell(a, "VERTICAL");
+  await tick();
+  const b = monday().children[1].cell.item_id;
+  m.get().editCell(b, "나");
+  m.get().removeCell(a); // 첫 갈래(글 「가」)를 뺀다
+  await tick();
+  m.render().undo(); // 나누기 · 「나」 옮기기는 되고 「가」 쓰기가 실패한다
+  await tick();
+  assert.deepEqual(m.shown.conflicts, [true]);
+  assert.deepEqual(
+    m.sent.slice(-3).map((s) => s.slice(0, 3)),
+    [
+      ["split", b, "VERTICAL"],
+      ["cell", m.sent.at(-2)[1], "나"],
+      ["cell", b, "가"],
+    ],
   );
 });
 

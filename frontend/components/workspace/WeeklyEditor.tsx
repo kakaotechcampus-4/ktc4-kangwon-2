@@ -272,10 +272,16 @@ export default function WeeklyEditor({
       (cur) => splitWeeklyActivityCell(cur.id, cellId, axis, cur.revision),
       "칸을 나눴어요.",
     );
+  // 뺀 칸은 되돌리기 · 다시 저장 목록에서도 지운다(없는 칸에 저장을 되풀이하지 않게).
+  const dropped = (itemId: string, next: WeeklyPlan) => {
+    history.forget(itemId);
+    failed.current.delete(itemId);
+    return next;
+  };
   const remove = (cellId: string) =>
     afterSaves(
       "remove",
-      (cur) => removeWeeklyActivityCell(cur.id, cellId, cur.revision),
+      async (cur) => dropped(cellId, await removeWeeklyActivityCell(cur.id, cellId, cur.revision)),
       "칸을 뺐어요.",
     );
   const addIndoor = (candidateId: string | null) =>
@@ -307,7 +313,7 @@ export default function WeeklyEditor({
     if (selected === itemId) setSelected(null);
     return afterSaves(
       "indoor",
-      (cur) => removeWeeklyIndoorPlay(cur.id, itemId, cur.revision),
+      async (cur) => dropped(itemId, await removeWeeklyIndoorPlay(cur.id, itemId, cur.revision)),
       "이번 주 놀이에서 뺐어요.",
     );
   };
@@ -319,7 +325,7 @@ export default function WeeklyEditor({
     );
 
   const shown = (cell: WeeklyCell) => live[cell.item_id] ?? cell.value;
-  // 확정 전에 채워야 하는 칸(입력 중 글 포함). 선생님이 직접 쓰는 칸(행사 등)은 비워도 된다.
+  // 확정 전에 알릴 빈 칸(입력 중 글 포함). 선생님이 직접 쓰는 칸(행사 등)은 빼고 본다.
   const blanks = cells.filter(({ cell }) => !cell.teacher_input && !shown(cell).trim());
   /** 열린 입력창 글을 먼저 줄에 넣고, 그 저장까지 끝난 목록에서 한 걸음을 꺼내 다시 저장한다. */
   const through = (direction: "undo" | "redo") => {
@@ -653,7 +659,8 @@ export default function WeeklyEditor({
             className={BUTTON.primary}
             disabled={locked}
             onClick={() => {
-              // 빈 칸이 남으면(놀이 주제가 비면 서버도 확정을 받지 않는다) 흔들리는 알림으로 채우게 한다.
+              // 빈 칸이 남으면 흔들리는 알림으로 먼저 알린다. 근거가 없어 비운 칸도 있어 그대로 확정도 된다
+              // (꼭 필요한 칸 — 놀이 주제 등 — 은 서버가 확정을 거절한다).
               if (!blanks.length) return setAsking("confirm");
               setAsking("blank");
               setNudge((n) => n + 1);
@@ -666,7 +673,9 @@ export default function WeeklyEditor({
               <PlayMonthlyConfirm
                 key={nudge}
                 shake
-                message="아직 빈칸이 남아있어요. 빈칸을 채운 뒤 확정해 주세요."
+                message="아직 빈칸이 남아있어요. 채우지 않고 확정할 수도 있어요."
+                yes="그대로 확정"
+                onYes={() => setAsking("confirm")}
                 no="빈칸 채우기"
                 onNo={() => select(blanks[0].cell.item_id)}
               />

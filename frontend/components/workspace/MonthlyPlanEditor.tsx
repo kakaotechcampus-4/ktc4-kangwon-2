@@ -334,7 +334,8 @@ export default function MonthlyPlanEditor({
   const drillCell = plan.sections.find((s) => s.section_key === "drill")?.cells[0];
   // 훈련 후보가 있으면 훈련 칸도 「AI 후보」 탭부터 (놀이 월간과 같다).
   const drillId = plan.drill_candidates.length > 0 ? drillCell?.item_id : undefined;
-  // 확정 전에 채워야 하는 칸(입력 중 글 포함). 후보로 두는 안전교육 주별 칸은 빼고 본다.
+  // 확정 전에 알릴 빈 칸(입력 중 글 포함). 근거가 없어 비운 칸도 있어 알린 뒤 그대로 확정할 수 있다.
+  // 후보로 두는 안전교육 주별 칸은 빼고 본다.
   const blanks = cells.filter(({ cell }) => !shown(cell).trim());
   const stamp = (id: string) => `${bumps["*"] ?? 0}:${bumps[id] ?? 0}`;
   // 안전교육 줄 · 훈련 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
@@ -751,7 +752,9 @@ export default function MonthlyPlanEditor({
                 <PlayMonthlyConfirm
                   key={nudge}
                   shake
-                  message="아직 빈칸이 남아있어요. 빈칸을 채운 뒤 확정해 주세요."
+                  message="아직 빈칸이 남아있어요. 채우지 않고 확정할 수도 있어요."
+                  yes="그대로 확정"
+                  onYes={() => setAsking("confirm")}
                   no="빈칸 채우기"
                   onNo={() => select(blanks[0].cell.item_id)}
                 />

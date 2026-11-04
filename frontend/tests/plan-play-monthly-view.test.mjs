@@ -1170,7 +1170,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
   };
 }
 
-test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, 빈 칸이 남으면 확정 대신 흔들리는 알림을 띄운다", async () => {
+test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, 빈 칸이 남으면 흔들리는 알림 뒤 그대로 확정도 된다", async () => {
   const view = openV1Editor();
   const settle = async () => {
     await view.tick();
@@ -1191,8 +1191,11 @@ test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, �
   press("확정하기");
   const [ask] = node(view.render(), "ask");
   assert.equal(ask.props.shake, true);
-  assert.equal(ask.props.yes, undefined);
   assert.match(ask.props.message, /아직 빈칸이 남아있어요/);
+  // 근거가 없어 비운 칸도 있어 막지 않는다 — 「그대로 확정」은 보통 확정 확인으로 넘어간다.
+  ask.props.onYes();
+  const [sure] = node(view.render(), "ask");
+  assert.equal(sure.props.yes, "확정하기");
 });
 
 test("v1 — 안전교육 검증 안내는 영어 서버 문구 대신 한국어로 보인다", () => {

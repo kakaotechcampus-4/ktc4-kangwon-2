@@ -90,7 +90,10 @@ function call(id: number, job: Job, revision: number): Promise<PlayMonthlyPlan> 
 }
 /** 되살리기가 나누기 뒤에 멈췄다 — 다시 보내면 또 나뉘므로 충돌처럼 새로 불러온다. */
 const MIDWAY = new Error("timetable restore stopped after the split");
-/** 뺀 칸 되살리기: 형제를 같은 축으로 나누고(원래 칸이 위 · 왼쪽에 남는다) 글 · 비율을 되돌린다. */
+/**
+ * 뺀 칸 되살리기: 형제를 같은 축으로 나누고(원래 칸이 위 · 왼쪽에 남는다) 글 · 비율을 되돌린다.
+ * 뺀 칸이 첫 갈래였으면 형제 글을 새 칸에 **먼저** 옮겨 둔다 — 중간에 멈춰도 형제 글은 문서에 남는다.
+ */
 async function restore(id: number, step: RemovedCell, revision: number) {
   let plan = await splitPlayMonthlyCell(id, step.siblingId, step.axis, revision);
   try {
@@ -98,8 +101,8 @@ async function restore(id: number, step: RemovedCell, revision: number) {
     const sibling = cellValue(plan, step.siblingId) ?? "";
     const writes = step.first
       ? [
-          [step.siblingId, step.text],
           [newId, sibling],
+          [step.siblingId, step.text],
         ]
       : [[newId, step.text]];
     for (const [itemId, text] of writes)
@@ -121,7 +124,8 @@ async function restore(id: number, step: RemovedCell, revision: number) {
 export function usePlayMonthlySave(
   plan: PlayMonthlyPlan,
   onPlan: (plan: PlayMonthlyPlan) => void,
-  onConflict: () => void,
+  /** `partial` = 칸 되살리기가 나누기 뒤에 멈췄다(일부만 돌아옴). */
+  onConflict: (partial: boolean) => void,
   /** 거절돼 되돌린 칸의 item_id(복사면 붙여 넣은 칸). 안전 배치 · 삭제가 거절됐으면 null. kind 는 거절된 작업 종류. */
   onRejected?: (itemId: string | null, kind: Job["kind"]) => void,
   /** 입력 중인 미저장 글이 있는가 — 떠날 때 경고에 더한다. */
@@ -223,9 +227,9 @@ export function usePlayMonthlySave(
         setStructuring(false);
         apply(server.current);
       },
-      onConflict: () => {
+      onConflict: (error) => {
         setStructuring(false);
-        if (mounted.current) latest.current.onConflict();
+        if (mounted.current) latest.current.onConflict(error === MIDWAY);
       },
     }),
   );

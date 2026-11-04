@@ -28,9 +28,16 @@ export function useCellHistory() {
     render();
     return step && { itemId: step.itemId, text: direction === "undo" ? step.from : step.to };
   };
+  /** 문서에서 빠진 칸의 걸음을 지운다 — 남기면 되돌리기가 없는 칸에 저장을 보내 404 가 난다. */
+  const forget = (itemId: string) => {
+    for (const key of ["undo", "redo"] as const)
+      lists.current[key] = lists.current[key].filter((s) => s.itemId !== itemId);
+    render();
+  };
   return {
     record,
     pop,
+    forget,
     canUndo: sizes.undo > 0,
     canRedo: sizes.redo > 0,
   };
