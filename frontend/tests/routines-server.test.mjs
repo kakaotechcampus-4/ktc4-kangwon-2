@@ -629,6 +629,8 @@ function page(
     react: app.react,
     "./RoutineClock": clock,
     "./RoutineCalendar": calendar,
+    // 포스티는 제 파일에서 본다. 여기서 보는 것은 고칠 줄 목록이다.
+    "@/components/app/Posty": { Posty: "posty" },
     "next/link": { default: "link" },
     "next/navigation": { useRouter: () => ({ push: (href) => pushed.push(href) }) },
     "@/lib/api/auth": { getMe: async () => ({ id: 1, center_id: 42 }) },
@@ -714,9 +716,9 @@ function page(
     /** 시작 · 종료 한 칸씩. 줄 순서대로 start, end, start, end … 로 나온다. */
     times: () => find("input").filter((node) => node.props.type === "time"),
     textareas: () => find("textarea"),
-    /** 줄마다 「실제로 한 것」 하나. 「하려던 것」은 접힌 칸 안에 따로 있다. */
+    /** 줄마다 「실제로 한 것」 하나. 「계획한 것」은 접힌 칸 안에 따로 있다. */
     dones: () => find("textarea").filter((n) => n.props["aria-label"] === "실제로 한 것"),
-    plans: () => find("textarea").filter((n) => n.props["aria-label"] === "하려던 것"),
+    plans: () => find("textarea").filter((n) => n.props["aria-label"] === "계획한 것"),
     cards: () => find("article"),
     empties: () => find("empty").map((node) => node.props.title),
     loading: () => all(view.tree()).some((node) => node?.props?.["aria-busy"] === "true"),

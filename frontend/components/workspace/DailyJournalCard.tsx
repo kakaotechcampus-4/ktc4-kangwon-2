@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createDocument, listDocuments, type DocumentSummary } from "@/lib/api/documents";
 import { classServerId } from "@/lib/api/onboarding";
 import { loadClassSettings } from "@/lib/onboarding/settings";
+import { Posty } from "@/components/app/Posty";
 import { Message, ws } from "./WorkspaceUI";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
@@ -91,34 +92,56 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
 
 export type DailyJournal = ReturnType<typeof useDailyJournal>;
 
+/** 일지가 어디까지 됐나 — 포스티의 자세 · 얼굴 · 색이 곧 그 상태다. */
+function moodOf(journal: DocumentSummary | null | undefined) {
+  if (journal === undefined) return { pose: "think", face: "think", tone: "shell" } as const;
+  if (!journal) return { pose: "sit", face: "empty", tone: "shell" } as const;
+  if (journal.stale) return { pose: "point", face: "fix", tone: "caution" } as const;
+  if (journal.status === "confirmed") return { pose: "cheer", face: "done", tone: "sage" } as const;
+  return { pose: "hand", face: "base", tone: "lilac" } as const;
+}
+
 export default function DailyJournalCard({ state, day }: { state: DailyJournal; day: string }) {
   if (state.off) return null;
   const journal = state.doc;
   const open = !!state.openId;
+  const mood = moodOf(journal);
+  const say =
+    journal === undefined
+      ? "오늘 일지를 찾고 있어요."
+      : journal
+        ? journal.stale
+          ? "근거가 바뀌었어요. 다시 볼 것이 있어요."
+          : journal.status === "confirmed"
+            ? "확정까지 끝냈어요."
+            : "초안까지 만들어 두었어요."
+        : "아직 만들지 않았어요.";
 
   return (
     <section className={`${ws.card} ${ws.journalCard}`}>
-      <div className={ws.journalHead}>
-        <h2 className={ws.journalTitle}>{day} 보육일지</h2>
-        {journal ? (
-          <button
-            type="button"
-            className={ws.secondary}
-            onClick={() => (open ? state.close() : state.open(journal.id))}
-          >
-            {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
-          </button>
-        ) : null}
+      <h2 className={ws.journalTitle}>{day} 보육일지</h2>
+      {/* 머리와 몸을 가르는 선. 달력 밑에 바로 붙어 있어 선이 없으면 한 덩어리로 읽힌다. */}
+      <hr className={ws.journalRule} />
+
+      <div className={ws.journalSay}>
+        <Posty pose={mood.pose} face={mood.face} tone={mood.tone} size={64} label={null} />
+        <div>
+          <p className={ws.journalWord}>{say}</p>
+          {!journal && journal !== undefined && (
+            <p className={ws.journalLead}>위의 「오늘 일지 만들기」를 누르세요.</p>
+          )}
+        </div>
       </div>
-      <p className={ws.hint}>
-        {journal === undefined
-          ? "불러오는 중…"
-          : journal
-            ? `${journal.status === "confirmed" ? "확정했습니다." : "초안까지 만들었습니다."}${
-                journal.stale ? " 근거가 바뀌어 다시 볼 것이 있습니다." : ""
-              }`
-            : "아직 만들지 않았습니다. 위의 「오늘 일지 만들기」를 누르세요."}
-      </p>
+
+      {journal ? (
+        <button
+          type="button"
+          className={ws.journalOpen}
+          onClick={() => (open ? state.close() : state.open(journal.id))}
+        >
+          {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
+        </button>
+      ) : null}
 
       {state.error && (
         <div className={ws.stack}>

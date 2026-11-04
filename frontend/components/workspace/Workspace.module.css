@@ -742,10 +742,11 @@ a.item {
   z-index: 20;
 }
 /* 손으로 붙인 것처럼 번갈아 아주 조금 기운다. 크게 기울이면 열 장이 어지럽다. */
-.routineRow:nth-child(odd) {
+/* 기울기도 색과 같이 쪽지를 따라간다. 자리로 정하면 줄을 세울 때 종이만 제자리에 남는다. */
+.routineRow[data-lean="0"] {
   transform: rotate(-0.35deg);
 }
-.routineRow:nth-child(even) {
+.routineRow[data-lean="1"] {
   transform: rotate(0.3deg);
 }
 .routineRow[data-tone="0"] {
@@ -1346,6 +1347,49 @@ a.item {
   justify-content: space-between;
   gap: 10px;
 }
+/* 달력 바로 밑에 붙어 있다. 머리와 몸을 가르지 않으면 한 덩어리로 읽힌다. */
+.journalRule {
+  height: 0;
+  margin: 2px 0 4px;
+  border: 0;
+  border-top: 1px dashed var(--pg-line);
+}
+.journalSay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* 포스티가 건네는 말이라 손글씨다. 옆의 그림과 글씨체가 따로 놀면 둘이 한 쌍으로 안 읽힌다. */
+.journalWord {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--pg-ink);
+}
+.journalLead {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.journalOpen {
+  justify-self: start;
+  min-height: 36px;
+  padding: 0 15px;
+  border: 1px solid var(--pg-primary-line);
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-deep);
+  font-family: var(--font-display), sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.journalOpen:hover {
+  background: var(--pg-paper);
+}
 .journalTitle {
   margin: 0;
   font-family: var(--font-display), sans-serif;
@@ -1366,19 +1410,27 @@ a.item {
   left: 50%;
   bottom: 28px;
   z-index: 40;
-  max-width: min(420px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(460px, calc(100vw - 32px));
   margin: 0;
-  padding: 12px 18px;
-  border: 1px solid var(--pg-alert-strong);
-  border-radius: 10px;
-  background: var(--pg-paper);
-  box-shadow: var(--pg-shadow);
-  color: var(--pg-alert-ink);
-  font-size: 14px;
-  line-height: 1.6;
-  text-align: center;
+  padding: 13px 20px 13px 16px;
+  border-radius: 999px;
+  /* 흰 종이에 빨간 테두리로는 칠판 위에서 묻혔다. 한 장을 통째로 칠한다. */
+  background: var(--pg-alert-ink);
+  box-shadow: 0 8px 22px rgba(43, 36, 28, 0.28);
+  color: var(--pg-paper);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
   transform: translateX(-50%);
   animation: noticeIn 220ms ease-out;
+}
+.noticeMark {
+  flex: none;
+  width: 21px;
+  height: 21px;
 }
 @keyframes noticeIn {
   from {
@@ -1399,5 +1451,94 @@ a.item {
 @media (prefers-reduced-motion: reduce) {
   .notice {
     animation: none;
+  }
+}
+
+/* 고칠 곳을 포스티가 짚어 준다 (A 안).
+   띠 하나에 줄바꿈으로 붙인 글이었다. 크림 위 베이지라 안 떠올랐고 몇 군데인지도
+   세어야 알았다. 흰 종이에 올리고 왼쪽에 굵은 산호색 선을 세워 눈이 먼저 걸리게 한다. */
+.problemBoard {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--pg-alert-soft-line);
+  border-left: 5px solid var(--pg-alert-strong);
+  border-radius: 10px;
+  background: var(--pg-paper);
+}
+.problemBody {
+  flex: 1;
+  min-width: 0;
+}
+.problemHead {
+  margin: 0 0 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--pg-alert-ink);
+}
+.problemLead {
+  margin: 0 0 11px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.problemList {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.problemList li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--pg-alert-soft-line);
+  border-radius: 8px;
+  background: var(--pg-alert-soft);
+}
+.problemNo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--pg-alert-strong);
+  color: var(--pg-paper);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.problemText {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--pg-alert-ink);
+}
+.problemGo {
+  flex: none;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--pg-alert-strong);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-alert-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.problemGo:hover {
+  background: var(--pg-alert-soft);
+}
+@media (max-width: 520px) {
+  .problemList li {
+    flex-wrap: wrap;
+  }
+  .problemGo {
+    margin-left: auto;
   }
 }

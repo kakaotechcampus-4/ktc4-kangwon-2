@@ -313,9 +313,9 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await row.getByLabel("시작 시간", { exact: true }).fill("09:00");
   await row.getByLabel("종료 시간", { exact: true }).fill("10:00");
   await row.getByRole("button", { name: "닫기", exact: true }).click();
-  // 「하려던 것」은 접혀 있다.
+  // 「계획한 것」은 접혀 있다.
   await row.locator("details").locator("summary").click();
-  await row.getByLabel("하려던 것").fill("자연물과 블록을 제공한다.");
+  await row.getByLabel("계획한 것").fill("자연물과 블록을 제공한다.");
   await row
     .getByLabel("실제로 한 것")
     .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");

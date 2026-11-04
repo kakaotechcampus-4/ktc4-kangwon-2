@@ -36,12 +36,12 @@ const pickTime = (row: Locator, label: string, value: string) =>
 const expectTime = (row: Locator, label: string, value: string) =>
   withClock(row, () => expect(row.getByLabel(`${label} 시간`, { exact: true })).toHaveValue(value));
 
-/** 「하려던 것」은 접혀 있다. 적으려면 먼저 편다. */
+/** 「계획한 것」은 접혀 있다. 적으려면 먼저 편다. */
 async function fillPlan(row: Locator, value: string) {
   const fold = row.locator("details");
   if (!(await fold.evaluate((el) => (el as HTMLDetailsElement).open)))
     await fold.locator("summary").click();
-  await row.getByLabel("하려던 것").fill(value);
+  await row.getByLabel("계획한 것").fill(value);
 }
 
 /** 깔아 두는 기본 하루 — 국가 공식 양식의 유아 10행형 (RoutinesPage DEFAULT_ROUTINES). */
@@ -248,7 +248,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
       await expect(rows(page).nth(i).getByLabel("일과 이름")).toHaveValue(`일과${i + 1}`);
       await expectTime(rows(page).nth(i), "시작", `${String(8 + i).padStart(2, "0")}:00`);
       await expectTime(rows(page).nth(i), "종료", `${String(9 + i).padStart(2, "0")}:00`);
-      await expect(rows(page).nth(i).getByLabel("하려던 것")).toHaveValue("놀이 자료를 준비한다.");
+      await expect(rows(page).nth(i).getByLabel("계획한 것")).toHaveValue("놀이 자료를 준비한다.");
       await expect(rows(page).nth(i).getByLabel("실제로 한 것")).toHaveValue(
         i < 6 ? "블록을 쌓고 길을 만들었다." : "",
       );
@@ -946,7 +946,7 @@ test("후속 #14 — 일과 줄: 이름 · 시간 · 지우기가 한 줄에 서
   expect(nameBox.x).toBeLessThan(startBox.x);
   expect(startBox.x).toBeLessThan(endBox.x);
   expect(endBox.x).toBeLessThan(removeBox.x);
-  // 매일 적는 「실제로 한 것」이 그 아래 넓게 서고, 「하려던 것」은 접혀 있다.
+  // 매일 적는 「실제로 한 것」이 그 아래 넓게 서고, 「계획한 것」은 접혀 있다.
   const doneBox = (await card.getByLabel("실제로 한 것").boundingBox())!;
   expect(doneBox.y).toBeGreaterThan(nameBox.y);
   expect(doneBox.width).toBeGreaterThan(nameBox.width);

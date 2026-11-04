@@ -27,6 +27,7 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
+import { Posty } from "@/components/app/Posty";
 import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
@@ -66,8 +67,25 @@ const NAME_REQUIRED = "일과 이름을 적어 주세요.";
 const TIME_BACKWARDS = "끝나는 시간이 시작보다 빨라요.";
 const HAS_PROBLEM = "입력하지 않은 필수 항목이 있어요. 표시된 일과를 확인해 주세요.";
 
-/** 교사가 고쳐야 할 줄을 **몇 번째인지까지** 말한다 — 카드 안 빨간 글씨만으로는 못 찾는다. */
-const problemSummary = (lines: string[]) => `${HAS_PROBLEM}\n${lines.join("\n")}`;
+/** 교사가 고쳐야 할 줄 한 건. 번호로 세고, 눌러서 그 칸으로 간다. */
+interface Problem {
+  rowKey: string;
+  /** 화면에서 몇 번째 줄인가 (1부터). */
+  at: number;
+  text: string;
+}
+
+/**
+ * 「간식」과 · 「바깥놀이」와 — 받침에 따라 조사를 고른다.
+ *
+ * 전에는 이름 뒤에 늘 「와」를 붙여 「간식 와 시간이 겹쳐요」가 나왔다. 교사가 읽는 글이다.
+ */
+function withParticle(name: string) {
+  const text = name.trim();
+  const last = text.charCodeAt(text.length - 1);
+  const hangul = last >= 0xac00 && last <= 0xd7a3;
+  return `「${text}」${hangul && (last - 0xac00) % 28 !== 0 ? "과" : "와"}`;
+}
 
 /** 화면 맨 위로 끌어올리고 그 칸에 커서를 둔다. 테스트 harness 에는 DOM 이 없다. */
 function focusField(id: string) {
@@ -101,9 +119,16 @@ interface Row {
   touched: boolean;
   /** 깔아 둔 처음 모습. 서버에 없는 줄의 「되돌리기」가 여기로 돌아간다. */
   base: { name: string; start: string; end: string } | null;
+  /**
+   * 쪽지 색 · 기울기 (0~3). **줄이 만들어질 때 정해지고 그 줄을 따라다닌다.**
+   *
+   * 자리(`index % 4`)로 정했더니 시간순으로 줄을 세울 때 글자만 바뀌고 색은 그 자리에
+   * 남았다 — 쪽지 한 장이 통째로 움직이는 것으로 보이지 않는다.
+   */
+  tone: number;
 }
 
-type Field = Exclude<keyof Row, "key" | "id">;
+type Field = Exclude<keyof Row, "key" | "id" | "tone">;
 
 /**
  * 이 화면의 초안 전체 (FR-402).
@@ -135,6 +160,7 @@ interface Loaded {
 let nextRowKey = 0;
 const blankRow = (): Row => ({
   key: `new:${(nextRowKey += 1)}`,
+  tone: nextRowKey % 4,
   id: null,
   start: "",
   end: "",
@@ -153,6 +179,7 @@ const presetRow = (name: string, start: string, end: string): Row => ({
   base: { name, start, end },
 });
 const serverRow = (row: ApiRoutine): Row => ({
+  ...blankRow(),
   key: `server:${row.id}`,
   id: row.id,
   start: routineTime(row.start),
@@ -317,7 +344,13 @@ export default function RoutinesPage() {
    */
   const running = useRef(false);
   // 문구에 「어느 화면에서 났나」를 붙여 둔다. 지난 날짜의 실패가 지금 날짜에 뜨면 안 된다.
-  const [message, setMessage] = useState<{ at: string; text: string; error?: boolean } | null>(
+  const [message, setMessage] = useState<{
+    at: string;
+    text: string;
+    error?: boolean;
+    /** 고칠 줄 목록. 있으면 글 한 덩어리 대신 짚어 주는 칸으로 그린다. */
+    problems?: Problem[];
+  } | null>(
     null,
   );
   /**
@@ -467,7 +500,7 @@ export default function RoutinesPage() {
     if (!row) return;
     const clash = clashWith(rows, row);
     if (clash) {
-      setNotice(`${clash.name.trim() || "다른 일과"} ${spanText(clash)} 와 시간이 겹쳐요.`);
+      setNotice(`${withParticle(clash.name.trim() || "다른 일과")} 시간이 겹쳐요. (${spanText(clash)})`);
       return;
     }
     patch(key, (d) => ({ ...d, rows: sortRoutinesByTime(d.rows) }));
@@ -528,7 +561,7 @@ export default function RoutinesPage() {
     const at = key;
     if (classId === null || !now) return false;
     const problems: Record<string, string> = {};
-    const lines: string[] = [];
+    const found: Problem[] = [];
     let first = "";
     now.rows.forEach((row, index) => {
       // 손대지 않은 빈 줄은 검사하지 않는다 — 기본 다섯 줄이 전부 오류가 되면 안 된다.
@@ -536,7 +569,7 @@ export default function RoutinesPage() {
       const problem = problemWith(row);
       if (!problem) return;
       problems[row.key] = problem;
-      lines.push(`${index + 1}번째 일과 · ${problem}`);
+      found.push({ rowKey: row.key, at: index + 1, text: problem });
       if (!first) first = row.key;
     });
     /**
@@ -555,18 +588,18 @@ export default function RoutinesPage() {
       if (!moved) return;
       const clash = clashWith(now.rows, row);
       if (!clash) return;
-      const other = clash.name.trim() || "다른 일과";
-      problems[row.key] = `${other} ${spanText(clash)} 와 시간이 겹쳐요.`;
-      lines.push(`${index + 1}번째 일과 · ${other} 와 시간이 겹쳐요`);
+      const other = withParticle(clash.name.trim() || "다른 일과");
+      problems[row.key] = `${other} 시간이 겹쳐요. (${spanText(clash)})`;
+      found.push({ rowKey: row.key, at: index + 1, text: `${other} 시간이 겹쳐요` });
       if (!first) first = row.key;
     });
     setErrors(problems);
-    if (!lines.length) {
+    if (!found.length) {
       setMessage(null);
       return true;
     }
     // 서버가 돌려준 문구가 아니라 **보내기 전에 화면이 잡은 것**이다 (§11 거절 처리와 구분).
-    setMessage({ at, text: problemSummary(lines), error: true });
+    setMessage({ at, text: HAS_PROBLEM, error: true, problems: found });
     focusField(nameFieldId(first));
     return false;
   }
@@ -838,7 +871,11 @@ export default function RoutinesPage() {
 
           <section className={ws.stack}>
             {/* 그 화면에서 난 일만 보여준다 — 날짜를 옮기면 따라가지 않는다. */}
-            <Message error={message?.error}>{message?.at === key ? message.text : ""}</Message>
+            {message?.at === key && message.problems?.length ? (
+              <ProblemBoard items={message.problems} />
+            ) : (
+              <Message error={message?.error}>{message?.at === key ? message.text : ""}</Message>
+            )}
             <WorkspaceViewState
               status={listStatus}
               loading="이 날짜의 일과를 불러오는 중이에요…"
@@ -892,6 +929,7 @@ export default function RoutinesPage() {
       </WorkspaceViewState>
       {notice && (
         <p className={ws.notice} role="status">
+          <ClashMark />
           {notice}
         </p>
       )}
@@ -915,7 +953,7 @@ function ListEmpty({ dateOk, unknownClass }: { dateOk: boolean; unknownClass: bo
 /**
  * 한 줄. 계약의 다섯 칸 그대로다 — 시작 · 종료 · 일과 이름 · 활동계획 · 활동실행 (§10-1).
  *
- * **교사가 매일 적는 것은 「실제로 한 것」 하나뿐이다.** 이름 · 시간은 깔려 있고, 「하려던 것」은
+ * **교사가 매일 적는 것은 「실제로 한 것」 하나뿐이다.** 이름 · 시간은 깔려 있고, 「계획한 것」은
  * 접어 둔다 — 쓰는 원이 있고 안 쓰는 원이 있다. 순서는 시간이 정하므로 끌기 · ↑ ↓ 는 없다.
  */
 function RowCard({
@@ -941,7 +979,7 @@ function RowCard({
 }) {
   const set = (field: Field) => (value: string) => onEdit(row.key, field, value);
   return (
-    <article className={ws.routineRow} data-tone={index % 4}>
+    <article className={ws.routineRow} data-tone={row.tone} data-lean={row.tone % 2}>
       <div className={ws.routineHead}>
         <div className={ws.rowName}>
           <input
@@ -991,12 +1029,12 @@ function RowCard({
         onChange={(e) => set("execution")(e.target.value)}
       />
 
-      {/* 「하려던 것」은 안 쓰는 원이 많다. 적은 줄만 펴 두고 나머지는 접는다. */}
-      <details className={ws.rowPlan} open={row.plan ? true : undefined} aria-label="하려던 것">
-        <summary>{row.plan ? "하려던 것" : "하려던 것 적기"} ▾</summary>
+      {/* 「계획한 것」은 안 쓰는 원이 많다. 적은 줄만 펴 두고 나머지는 접는다. */}
+      <details className={ws.rowPlan} open={row.plan ? true : undefined} aria-label="계획한 것">
+        <summary>{row.plan ? "계획한 것" : "계획한 것 적기"} ▾</summary>
         <textarea
-          aria-label="하려던 것"
-          placeholder="하려던 것"
+          aria-label="계획한 것"
+          placeholder="계획한 것"
           disabled={busy}
           value={row.plan}
           onChange={(e) => set("plan")(e.target.value)}
@@ -1020,6 +1058,42 @@ function RowCard({
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * 고칠 곳을 포스티가 짚어 준다 (A 안).
+ *
+ * 전에는 베이지 띠 안에 줄바꿈으로 이어 붙인 글 한 덩어리였다. 크림 바탕에 갈색 글씨라
+ * 떠오르지 않았고, 몇 군데인지도 세어 봐야 알았다. 포스티가 말을 거는 자리는 메인 ·
+ * 주간 기록에서 이미 쓰는 짜임이라 교사가 「서비스가 하는 말」로 바로 읽는다.
+ */
+function ProblemBoard({ items }: { items: Problem[] }) {
+  return (
+    <section className={ws.problemBoard} role="alert">
+      <Posty pose="point" face="fix" tone="caution" size={72} label={null} />
+      <div className={ws.problemBody}>
+        <p className={ws.problemHead}>고칠 곳이 {items.length}군데 있어요</p>
+        <p className={ws.problemLead}>아래를 고치면 바로 저장돼요.</p>
+        <ul className={ws.problemList}>
+          {items.map((item) => (
+            <li key={item.rowKey}>
+              <span className={ws.problemNo}>{item.at}</span>
+              <span className={ws.problemText}>
+                {item.at}번째 일과 — {item.text}
+              </span>
+              <button
+                type="button"
+                className={ws.problemGo}
+                onClick={() => focusField(nameFieldId(item.rowKey))}
+              >
+                가기 →
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }
 
@@ -1070,6 +1144,17 @@ function CircleMark() {
 }
 
 /** 되돌리기 — 왼쪽으로 돌아가는 화살표. 글자만 두면 무슨 단추인지 멀리서 안 보인다. */
+/** 겹친 시간 알림 앞에 세우는 느낌표. 글자만으로는 무슨 종류의 말인지 모른다. */
+function ClashMark() {
+  return (
+    <svg className={ws.noticeMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 7v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="16.6" r="1.15" fill="currentColor" />
+    </svg>
+  );
+}
+
 function UndoMark() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className={ws.revertMark}>
