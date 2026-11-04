@@ -60,7 +60,7 @@ const {
   "@/components/plan-generator/PlanMemo": { PlanMemoField: stub, memoError: stub },
   "@/components/app/compact-shell": { useCompactShell: stub },
   "@/components/plan-generator/AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
-  "./WorkspaceUI": { useClasses: stub },
+  "./WorkspaceUI": { useClasses: stub, Tape: () => null },
 });
 
 test("놀이형 판별: 놀이형만 참, 목록 실패(null) · 월별 주제형 · 빈 목록은 기존 화면", () => {

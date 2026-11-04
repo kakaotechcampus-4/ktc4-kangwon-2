@@ -7,7 +7,10 @@ import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import Link from "next/link";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   POPOVER,
@@ -38,7 +41,7 @@ const MAX_PICKS = 5;
 const SAVE_LABEL = {
   idle: "",
   saving: "저장 중…",
-  saved: "자동 저장됨",
+  saved: "저장됨",
   failed: "저장하지 못했어요",
   reloading: "최신 내용을 다시 불러오는 중…",
 };
@@ -476,7 +479,7 @@ export default function PlayProjectResult({
         <div className="flex gap-2 border-t border-[#efeae2] pt-4">
           <button
             type="button"
-            className="min-h-[44px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243]"
+            className={BUTTON.quiet}
             onClick={() => toggleCandidate(selectedCandidate.row_key)}
           >
             문서에서 빼기
@@ -547,7 +550,7 @@ export default function PlayProjectResult({
             </button>
             <button
               type="button"
-              className="min-h-[36px] shrink-0 text-xs text-[#5c5243] underline"
+              className={SMALL}
               aria-label={`${candidate.play_name.value} 빼기`}
               onClick={() => toggleCandidate(candidate.row_key)}
             >
@@ -750,11 +753,6 @@ export default function PlayProjectResult({
             onClick={() => selectLeftTab(tab)}
           >
             {tab === "edit" ? "칸 편집" : "AI 후보"}
-            {tab === "picked" && (
-              <span className="ml-1.5 rounded-full bg-[#efeae2] px-2 py-0.5 text-xs text-[#5c5243]">
-                {period.candidates.length}
-              </span>
-            )}
           </button>
         ))}
       </div>
@@ -785,6 +783,11 @@ export default function PlayProjectResult({
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
       format={plan.format}
+      lead={
+        <Link href="/plans" aria-label="돌아가기: 계획안" title="계획안" className={BACK_BUTTON}>
+          {BACK_ICON}
+        </Link>
+      }
       status={
         <span className="flex items-center gap-3">
           {SAVE_LABEL[saving.status]}

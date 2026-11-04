@@ -16,7 +16,10 @@ import {
   slotMismatch,
   slotRows,
 } from "@/lib/plan-generator/subThemeSlots";
+import Link from "next/link";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   POPOVER,
@@ -32,7 +35,7 @@ type Draft = { theme: string; sub_themes: string[] };
 const SAVE_LABEL = {
   idle: "",
   saving: "저장 중…",
-  saved: "자동 저장됨",
+  saved: "저장됨",
   failed: "저장하지 못했어요",
 };
 const draftsOf = (plan: AnnualPlan) =>
@@ -304,6 +307,11 @@ export default function ThemeAnnualResult({
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
       format={plan.format}
+      lead={
+        <Link href="/plans" aria-label="돌아가기: 계획안" title="계획안" className={BACK_BUTTON}>
+          {BACK_ICON}
+        </Link>
+      }
       status={
         <span className="flex items-center gap-3">
           {SAVE_LABEL[status]}
