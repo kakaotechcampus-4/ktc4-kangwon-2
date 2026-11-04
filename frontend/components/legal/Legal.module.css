@@ -119,8 +119,11 @@
 }
 
 .paper {
-  padding: 48px 56px 56px;
-  border-radius: 6px;
+  min-width: 0;
+}
+.head {
+  padding: 44px 48px 36px;
+  border-radius: 16px;
   background: var(--pg-paper);
   box-shadow: var(--pg-shadow);
 }
@@ -172,13 +175,16 @@
 }
 
 .body {
-  margin-top: 36px;
-  font-size: 15.5px;
+  font-size: 17px;
   line-height: 1.85;
   color: var(--pg-ink);
 }
+/* 머리말 한 단락 — 제목 카드 바로 아래 */
 .body > p {
   margin: 0;
+  padding: 26px 48px 0;
+  font-size: 16px;
+  color: var(--pg-ink-soft);
 }
 .body a {
   color: var(--pg-primary-ink);
@@ -191,17 +197,26 @@
   background: linear-gradient(transparent 62%, var(--pg-note) 62%);
 }
 .section {
-  margin-top: 44px;
-  padding-top: 30px;
-  border-top: 1px solid var(--pg-line);
+  margin-top: 18px;
+  padding: 30px 48px 34px;
+  border-radius: 16px;
+  background: var(--pg-paper);
+  box-shadow:
+    0 1px 0 var(--pg-line),
+    0 10px 26px -20px color-mix(in srgb, var(--pg-ink) 45%, transparent);
   scroll-margin-top: 90px;
+}
+.body > p + .section {
+  margin-top: 26px;
 }
 .heading {
   display: flex;
   align-items: center;
   gap: 12px;
   margin: 0;
-  font-size: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--pg-line);
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.4;
   letter-spacing: -0.02em;
@@ -210,32 +225,58 @@
   flex: none;
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--pg-primary-tint);
-  color: var(--pg-primary-ink);
-  font-size: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 .sectionBody {
   display: grid;
-  gap: 12px;
-  margin-top: 14px;
-  padding-left: 42px;
+  gap: 14px;
+  margin-top: 18px;
   color: var(--pg-ink);
 }
 .sectionBody p {
   margin: 0;
 }
 .sectionBody ul {
-  display: grid;
-  gap: 6px;
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
+  list-style: none;
 }
-.sectionBody li::marker {
-  color: var(--pg-primary);
+/* 목록은 한 줄씩 구분선으로 나눈다 — 앞에 굵은 이름이 있으면 그 줄의 제목이 된다 */
+.sectionBody li {
+  position: relative;
+  padding: 13px 0 13px 22px;
+  border-bottom: 1px dashed var(--pg-line);
+}
+.sectionBody li:first-child {
+  padding-top: 2px;
+}
+.sectionBody li:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+.sectionBody li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: calc(13px + 0.8em);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pg-primary);
+}
+.sectionBody li:first-child::before {
+  top: calc(2px + 0.8em);
+}
+.sectionBody li > b {
+  display: block;
+  font-weight: 700;
+  color: var(--pg-ink);
 }
 
 /* 공용 꼬리말은 그대로 쓰고, 좁은 화면에서 화면 끝에 붙지 않게 바깥 여백만 준다. */
@@ -277,10 +318,20 @@
   .tocNarrow .tocList {
     margin-top: 10px;
   }
-  .paper {
-    padding: 30px 22px 36px;
+  .head {
+    padding: 28px 22px 26px;
   }
-  .sectionBody {
-    padding-left: 0;
+  .body {
+    font-size: 16px;
+  }
+  .body > p {
+    padding: 20px 6px 0;
+    font-size: 15px;
+  }
+  .section {
+    padding: 22px 20px 24px;
+  }
+  .heading {
+    font-size: 19px;
   }
 }

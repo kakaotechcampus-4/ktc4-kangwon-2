@@ -72,13 +72,15 @@ export default function LegalPage({
         <LegalToc items={toc} />
 
         <main className={s.paper}>
-          <h1 className={s.title}>{title}</h1>
-          <p className={s.updated}>{updated} 기준</p>
-          <ul className={s.summary} aria-label="한눈에 보기">
-            {summary.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+          <div className={s.head}>
+            <h1 className={s.title}>{title}</h1>
+            <p className={s.updated}>{updated} 기준</p>
+            <ul className={s.summary} aria-label="한눈에 보기">
+              {summary.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
           <div className={s.body}>{children}</div>
         </main>
       </div>
