@@ -179,7 +179,9 @@ export default function DocumentEditor({
     : undefined;
   const hwpx = useHwpxDownload(setMessage);
   const supportsHwpx =
-    !!annualPlanId || (!!server && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
+    !!annualPlanId ||
+    // 올린 원문(IMPORT)은 해석 · 지원 칸이 없어 양식을 못 채운다 — 서버도 409 로 막는다.
+    (!!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
   function change(index: number, body: string) {
@@ -200,7 +202,7 @@ export default function DocumentEditor({
       setIssuesOpen(false);
       return;
     }
-    const local = server ? serverIssues(doc) : validateDocument(doc);
+    const local = server ? (imported ? [] : serverIssues(doc)) : validateDocument(doc);
     setIssues(local);
     setIssuesOpen(true);
     setMessage("");
@@ -221,7 +223,8 @@ export default function DocumentEditor({
     if (stale || working) return;
     if (server) {
       // AI 검증은 서버 확정 조건이 아니다 (§11) — 교사 확인 3개와 서버 게이트가 기준이다.
-      const blocking = serverIssues(doc);
+      // 올린 원문에는 해석 · 지원이 없다. 20자 규칙을 걸면 확정을 취소한 뒤 다시 확정할 수 없다.
+      const blocking = imported ? [] : serverIssues(doc);
       if (confirm && (blocking.length || !checks.every(Boolean))) {
         setIssues(blocking);
         setMessage("원본 대조와 교사 검토를 마쳐주세요.");

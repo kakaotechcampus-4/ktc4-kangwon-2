@@ -60,6 +60,14 @@ def export_document(
             "관찰일지와 보육일지만 내보낼 수 있습니다.",
             ["kind"],
         )
+    if doc.origin == "IMPORT":
+        # 올린 원문에는 해석 · 지원 칸이 없어 양식을 채울 수 없다. 원래 파일이 교사에게 있다.
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "올린 원문은 한글 파일로 다시 만들지 않습니다. 원래 파일을 써 주세요.",
+            ["origin"],
+        )
     if doc.status != "CONFIRMED":
         raise _error(
             status.HTTP_409_CONFLICT, "GATE_BLOCKED", "확정된 문서만 내보낼 수 있습니다.", []

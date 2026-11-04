@@ -59,8 +59,8 @@ class DocumentSectionItem(BaseModel):
     """`사실` · `해석` · `지원` 항목 하나. 단건 조회·`PUT` 응답에 담긴다.
 
     증빙으로 올린 문서(`origin=IMPORT`)만 `첨부 원문` 하나를 갖는다 — 우리가 만든 문서가
-    아니라 3층이 없다(§11 「증빙 등록」). **응답 전용이다.** 교사가 보내는 `PUT` 은
-    `DocumentSectionUpdate` 를 쓰므로 일지에 이 칸을 만들 길은 없다.
+    아니라 3층이 없다(§11 「증빙 등록」). `PUT` 도 이 칸을 받지만 라우터가 가른다 —
+    IMPORT 문서는 `첨부 원문` 하나만, 우리가 만든 문서는 이 칸을 못 만든다.
     """
 
     heading: Literal["사실", "해석", "지원", "첨부 원문"]
@@ -124,11 +124,11 @@ class DocumentUnconfirmResponse(DocumentDetailResponse):
 
 
 class DocumentSectionUpdate(BaseModel):
-    """`PUT` 요청의 섹션 하나."""
+    """`PUT` 요청의 섹션 하나. `첨부 원문` 은 증빙으로 올린(IMPORT) 문서만 쓴다."""
 
     model_config = ConfigDict(extra="forbid")
 
-    heading: Literal["사실", "해석", "지원"]
+    heading: Literal["사실", "해석", "지원", "첨부 원문"]
     body: str
     source_ids: list[int] = []
 
@@ -214,7 +214,8 @@ class DocumentImportRequest(BaseModel):
     start: date
     end: date
     #: 파일 이름을 그대로 쓴다. 비면 서버가 종류 · 기간으로 만든다.
-    title: str = ""
+    #: `documents.title` 이 200자라 그 안에서 받는다 — 넘으면 저장할 때 500 이 났다.
+    title: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
     #: 원문 텍스트. 파일은 화면이 `/api/templates/extract` 로 먼저 글자로 바꾼다.
     body: str
     checks: EvidenceChecks

@@ -690,12 +690,22 @@ def update_document(
             ["updated_at"],
         )
 
-    sources = _sources(session, document_id)
-    fields = check_sections(
-        body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
-    )
-    if fields:
-        raise _invalid(fields)
+    imported = doc.origin == "IMPORT"
+    attached = [s.heading == "첨부 원문" for s in body.sections]
+    if imported:
+        # 증빙으로 올린 원문은 우리가 만든 문서가 아니다 — 사실 · 해석 · 지원 대조를 하지 않고,
+        # 칸은 올린 그대로 `첨부 원문` 하나다. 확정을 취소한 뒤 고치고 다시 확정하는 길이다.
+        if attached != [True] or not body.sections[0].body.strip():
+            raise _invalid(["sections"])
+    else:
+        if any(attached):
+            raise _invalid(["sections"])
+        sources = _sources(session, document_id)
+        fields = check_sections(
+            body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
+        )
+        if fields:
+            raise _invalid(fields)
 
     if body.title is not None:
         doc.title = body.title
