@@ -192,6 +192,7 @@ function arm(
   w: number,
   hand: number,
   swing?: string,
+  ink = INK,
 ) {
   const d = curve
     ? `M${startX} ${SHOULDER.y}Q${(startX + x) / 2 + curve} ${(SHOULDER.y + y) / 2} ${x} ${y}`
@@ -201,8 +202,8 @@ function arm(
       className={swing}
       style={swing ? { transformOrigin: `${startX}px ${SHOULDER.y}px` } : undefined}
     >
-      <path d={d} fill="none" stroke={INK} strokeWidth={w} strokeLinecap="round" />
-      <circle cx={x} cy={y} r={hand} fill={INK} />
+      <path d={d} fill="none" stroke={ink} strokeWidth={w} strokeLinecap="round" />
+      <circle cx={x} cy={y} r={hand} fill={ink} />
     </g>
   );
 }
@@ -214,13 +215,14 @@ function leg(
   w: number,
   foot: number,
   swing?: string,
+  ink = INK,
 ) {
   return (
     <g className={swing} style={swing ? { transformOrigin: `${hipX}px ${HIP.y}px` } : undefined}>
       <path
         d={`M${hipX} ${HIP.y}L${x} ${y}`}
         fill="none"
-        stroke={INK}
+        stroke={ink}
         strokeWidth={w}
         strokeLinecap="round"
       />
@@ -229,7 +231,7 @@ function leg(
         cy={y + 1}
         rx={foot}
         ry={foot * 0.59}
-        fill={INK}
+        fill={ink}
       />
     </g>
   );
@@ -305,6 +307,7 @@ export function Posty({
   tape = false,
   walk = false,
   wave = false,
+  onDark = false,
   label,
   className,
   style,
@@ -327,6 +330,11 @@ export function Posty({
    * 오른팔을 든 포즈(`wave` · `sitWave`)에만 쓴다. 「동작 줄이기」면 멈춰 있다.
    */
   wave?: boolean;
+  /**
+   * 어두운 바탕(먹색 사이드바 · 보라 칸) 위에 설 때. 팔다리만 종이색으로 바꾼다 —
+   * 먹선 그대로면 바탕에 묻혀 쪽지만 떠 보인다. 얼굴은 쪽지 위라 그대로 먹색이다.
+   */
+  onDark?: boolean;
   label?: string | null;
   className?: string;
   style?: CSSProperties;
@@ -341,6 +349,7 @@ export function Posty({
   const foot = thin ? 6 : 5.4;
   const swinging = walk && pose === "stand";
   const waving = wave && (pose === "wave" || pose === "sitWave");
+  const limb = onDark ? "var(--pg-paper)" : INK;
   return (
     <svg
       viewBox={`${-PAD} 0 ${48 + PAD * 2} ${height}`}
@@ -352,16 +361,17 @@ export function Posty({
       aria-label={spoken ?? undefined}
       aria-hidden={spoken ? undefined : true}
     >
-      {arm(SHOULDER.left, arms[0], w, hand, swinging ? "postySwingBack" : undefined)}
+      {arm(SHOULDER.left, arms[0], w, hand, swinging ? "postySwingBack" : undefined, limb)}
       {arm(
         SHOULDER.right,
         arms[1],
         w,
         hand,
         swinging ? "postySwingFront" : waving ? "postyWave" : undefined,
+        limb,
       )}
-      {leg(HIP.left, feet[0], false, w, foot, swinging ? "postySwingFront" : undefined)}
-      {leg(HIP.right, feet[1], true, w, foot, swinging ? "postySwingBack" : undefined)}
+      {leg(HIP.left, feet[0], false, w, foot, swinging ? "postySwingFront" : undefined, limb)}
+      {leg(HIP.right, feet[1], true, w, foot, swinging ? "postySwingBack" : undefined, limb)}
       <path
         d="M7 5H41V34L31 43H7Z"
         fill={`var(${skin.paper})`}

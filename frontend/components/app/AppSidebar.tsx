@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useIsCompact } from "./compact-shell";
 import { setSidebarCollapsed, useSidebarCollapsed } from "./sidebar-collapse";
 import { Icon, type IconName } from "./icons";
-import { Posty } from "./Posty";
+import { Posty, type PostyPose } from "./Posty";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -27,6 +27,8 @@ interface NavItem {
   short?: string;
   href: string;
   icon: IconName;
+  /** 지금 화면이면 이름 오른쪽에 서는 포스티의 자세. 메뉴마다 다르다. */
+  pose: PostyPose;
   match?: (path: string) => boolean;
 }
 
@@ -36,7 +38,7 @@ interface NavItem {
  * 교사가 친 한 줄(기록)과 그것으로 만든 문서(보육일지·계획안)는 하는 일이 다른데,
  * 이름이 둘 다 「기록」·「문서」로 섞여 있어 어디서 무엇을 하는지 헷갈렸다.
  */
-const HOME: NavItem = { key: "home", label: "홈", href: "/", icon: "home" };
+const HOME: NavItem = { key: "home", label: "홈", href: "/", icon: "home", pose: "wave" };
 
 const GROUPS: { title: string; items: NavItem[] }[] = [
   {
@@ -48,6 +50,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "관찰",
         href: "/records",
         icon: "users",
+        pose: "think",
         match: (p) => p.startsWith("/records") || p === "/compare",
       },
       {
@@ -56,9 +59,17 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "일과",
         href: "/routines",
         icon: "edit",
+        pose: "run",
         match: (p) => p.startsWith("/routines"),
       },
-      { key: "quick", label: "주간 기록", short: "주간", href: "/weekly-records", icon: "record" },
+      {
+        key: "quick",
+        label: "주간 기록",
+        short: "주간",
+        href: "/weekly-records",
+        icon: "record",
+        pose: "point",
+      },
     ],
   },
   {
@@ -69,10 +80,25 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         label: "계획안",
         href: "/plans",
         icon: "plan",
+        pose: "hand",
         match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
       },
-      { key: "docs", label: "문서 보관함", short: "보관함", href: "/documents", icon: "doc" },
-      { key: "eval", label: "평가 점검", short: "평가", href: "/evaluation", icon: "eval" },
+      {
+        key: "docs",
+        label: "문서 보관함",
+        short: "보관함",
+        href: "/documents",
+        icon: "doc",
+        pose: "up",
+      },
+      {
+        key: "eval",
+        label: "평가 점검",
+        short: "평가",
+        href: "/evaluation",
+        icon: "eval",
+        pose: "cheer",
+      },
     ],
   },
 ];
@@ -405,10 +431,17 @@ function NavLink({
     >
       <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
       <span>{item.label}</span>
+      {/* 지금 화면 표시. 전에는 ↗ 였는데 바깥 링크로 읽혔다(멘토 12주차 리뷰). 포스티가
+          메뉴마다 다른 자세로 콩콩 뛴다 — 홈은 손을 흔든다. */}
       {active && (
-        <span aria-hidden="true" className="ml-auto hidden lg:inline font-display text-lg">
-          ↗
-        </span>
+        <Posty
+          pose={item.pose}
+          size={32}
+          onDark
+          wave={item.pose === "wave"}
+          label={null}
+          className="postyHop -my-2 ml-auto hidden shrink-0 lg:block"
+        />
       )}
     </Link>
   );

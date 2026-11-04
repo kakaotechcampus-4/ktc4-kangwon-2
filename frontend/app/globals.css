@@ -203,7 +203,29 @@ body {
   transform-box: view-box;
   animation: postyWave 2.6s ease-in-out infinite;
 }
+/* 콩콩 뛰는 포스티 — 사이드바의 지금 화면 표시. 한 번 뛰고 내려앉아 살짝 눌린 뒤 쉰다. */
+@keyframes postyHop {
+  0%,
+  56%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  18% {
+    transform: translateY(-4px) scaleY(1.03);
+  }
+  34% {
+    transform: translateY(0) scaleY(0.92);
+  }
+  44% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+.postyHop {
+  transform-origin: 50% 100%;
+  animation: postyHop 2.2s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
+  .postyHop,
   .postySwingFront,
   .postySwingBack,
   .postyWalk,
