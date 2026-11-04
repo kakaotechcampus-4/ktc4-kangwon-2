@@ -201,7 +201,8 @@ export default function Tour() {
   // 화면이 바뀌면 그 화면 안내를 새로 연다. 지난 화면 안내는 `open.path` 가 달라 이미 닫혀 있다.
   useEffect(() => {
     const tour = TOURS[path];
-    if (!tour || isOff() || seenPaths().includes(path)) return;
+    // 자동화 브라우저(e2e)에는 띄우지 않는다. 덮개가 화면을 막아 모든 시나리오가 첫 화면에서 멈춘다.
+    if (!tour || navigator.webdriver || isOff() || seenPaths().includes(path)) return;
     // 서버에서 기록을 받아 오는 동안은 칸이 없다. 하나라도 생겨야 세기 시작한다.
     let alive = true;
     let tries = 0;
