@@ -30,7 +30,7 @@ import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
-import { CARD, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
+import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
   BigView,
   BUTTON,
@@ -508,30 +508,34 @@ export default function WeeklyEditor({
     <section aria-label="활동 후보" className="flex flex-col gap-4">
       <h2 className="m-0 text-[15px] font-bold">{where} 칸에 넣을 활동</h2>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {candidates.map((c) => {
-          const text = c.cell.value.trim();
-          // 서버는 「[종류] 이름」으로 복사한다(weekly_activities.copy).
-          const here = !!text && shown(picked.cell).trim() === `[${c.activity_type}] ${c.name}`;
-          return (
-            <li
-              key={c.cell.item_id}
-              className={`${CARD} ${here ? "border-[#7053a0] bg-[#f6f1fb]" : "border-[#e8e2d8]"}`}
-            >
-              <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
-                <strong>[{c.activity_type}]</strong> {text || "(빈 후보)"}
-              </div>
-              <button
-                type="button"
-                aria-label={`${where}에 넣기: ${text || "빈 후보"}`}
-                className={PUT}
-                disabled={locked || !text || here}
-                onClick={() => void put(picked.cell.item_id, c.cell.item_id)}
-              >
-                {here ? "넣음" : "넣기"}
-              </button>
-            </li>
-          );
-        })}
+        {/* 넣은 후보는 맨 위로 — 안전교육 후보와 같다. 서버는 「[종류] 이름」으로 복사한다(weekly_activities.copy). */}
+        {[...candidates]
+          .map((c) => ({
+            c,
+            here:
+              !!c.cell.value.trim() &&
+              shown(picked.cell).trim() === `[${c.activity_type}] ${c.name}`,
+          }))
+          .sort((a, b) => Number(b.here) - Number(a.here))
+          .map(({ c, here }) => {
+            const text = c.cell.value.trim();
+            return (
+              <li key={c.cell.item_id} className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}>
+                <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
+                  <strong>[{c.activity_type}]</strong> {text || "(빈 후보)"}
+                </div>
+                <button
+                  type="button"
+                  aria-label={`${where}에 넣기: ${text || "빈 후보"}`}
+                  className={PUT}
+                  disabled={locked || !text || here}
+                  onClick={() => void put(picked.cell.item_id, c.cell.item_id)}
+                >
+                  {here ? "넣음" : "넣기"}
+                </button>
+              </li>
+            );
+          })}
       </ul>
     </section>
   ) : (

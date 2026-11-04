@@ -190,16 +190,26 @@ test("소방대피: 쓴 글이 있어도 묻지 않고 바로 복사한다", () 
   const calls = [];
   const tree = h.render(C, {
     candidates: plan().drill_candidates,
+    current: "쓴 글",
     onCopy: (id) => calls.push(id),
     disabled: false,
   });
   click(tree, (n) => n.props["data-candidate"] === "d1");
   assert.deepEqual(calls, ["d1"]);
-  assert.ok(
-    !text(
-      h.render(C, { candidates: plan().drill_candidates, onCopy() {}, disabled: false }),
-    ).includes("바꿀까요"),
+  assert.ok(!text(tree).includes("바꿀까요"));
+});
+
+test("소방대피: 넣은 후보는 안전교육처럼 맨 위 · 「넣음」", () => {
+  const { C, h } = load("PlayMonthlyDrillPanel.tsx");
+  const candidates = plan().drill_candidates.map((d) =>
+    d.cell.item_id === "d2" ? { ...d, cell: { ...d.cell, value: "숨어요" } } : d,
   );
+  const copy = all(
+    h.render(C, { candidates, current: "숨어요", onCopy() {}, disabled: false }),
+  ).filter(act("copy"));
+  assert.equal(copy[0].props["data-candidate"], "d2");
+  assert.equal(copy[0].props.disabled, true);
+  assert.equal(text(copy[0]), "넣음");
 });
 
 test("소방대피: 빈 후보와 disabled 는 버튼이 꺼진다", () => {

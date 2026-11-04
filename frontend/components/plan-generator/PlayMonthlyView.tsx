@@ -361,6 +361,7 @@ function PlayMonthlyBody({
   ) : selected && selected === drillId ? (
     <PlayMonthlyDrillPanel
       candidates={plan.drill_candidates}
+      current={plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.value ?? ""}
       onCopy={copyDrill}
       disabled={locked}
     />

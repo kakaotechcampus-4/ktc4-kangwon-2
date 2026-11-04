@@ -462,6 +462,7 @@ export default function MonthlyPlanEditor({
     ) : drillCell && selected === drillId ? (
       <PlayMonthlyDrillPanel
         candidates={plan.drill_candidates}
+        current={shown(drillCell)}
         onCopy={copyDrill}
         disabled={locked}
       />

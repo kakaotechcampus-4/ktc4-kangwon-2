@@ -6,10 +6,8 @@
  */
 
 import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
-import { CARD, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
+import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import { BUTTON } from "@/components/plan-generator/AnnualFrame";
-
-const PICKED = "border-[#7053a0] bg-[#f6f1fb]";
 
 export default function WeeklyIndoorPlayPanel({
   plan,
@@ -107,32 +105,38 @@ export default function WeeklyIndoorPlayPanel({
         </p>
       )}
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {candidates.map((c) => {
-          const text = c.cell.value.trim();
-          // 넣으면 서버가 「[종류] - 이름」으로 옮겨 쓴다. 그 글이 목록에 있으면 넣은 후보다.
-          // 교사가 옮긴 글을 고치면 다시 「넣기」로 보이지만 서버가 같은 후보는 한 번만 넣는다.
-          const copied = `[${c.activity_type}] - ${c.name}`;
-          const here = !!c.name.trim() && rows.some((r) => r.value.trim() === copied);
-          return (
-            <li key={c.cell.item_id} className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}>
-              <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
-                <strong className="block">
-                  [{c.activity_type}] - {c.name}
-                </strong>
-                {text || "(빈 후보)"}
-              </div>
-              <button
-                type="button"
-                aria-label={`이번 주 놀이에 넣기: ${c.name || text || "빈 후보"}`}
-                className={PUT}
-                disabled={disabled || !c.name.trim() || here}
-                onClick={() => onAdd(c.cell.item_id)}
-              >
-                {here ? "넣음" : "넣기"}
-              </button>
-            </li>
-          );
-        })}
+        {/* 넣으면 서버가 「[종류] - 이름」으로 옮겨 쓴다. 그 글이 목록에 있으면 넣은 후보 — 맨 위로(안전교육 후보와 같다).
+            교사가 옮긴 글을 고치면 다시 「넣기」로 보이지만 서버가 같은 후보는 한 번만 넣는다. */}
+        {[...candidates]
+          .map((c) => ({
+            c,
+            here:
+              !!c.name.trim() &&
+              rows.some((r) => r.value.trim() === `[${c.activity_type}] - ${c.name}`),
+          }))
+          .sort((a, b) => Number(b.here) - Number(a.here))
+          .map(({ c, here }) => {
+            const text = c.cell.value.trim();
+            return (
+              <li key={c.cell.item_id} className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}>
+                <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
+                  <strong className="block">
+                    [{c.activity_type}] - {c.name}
+                  </strong>
+                  {text || "(빈 후보)"}
+                </div>
+                <button
+                  type="button"
+                  aria-label={`이번 주 놀이에 넣기: ${c.name || text || "빈 후보"}`}
+                  className={PUT}
+                  disabled={disabled || !c.name.trim() || here}
+                  onClick={() => onAdd(c.cell.item_id)}
+                >
+                  {here ? "넣음" : "넣기"}
+                </button>
+              </li>
+            );
+          })}
       </ul>
     </section>
   );

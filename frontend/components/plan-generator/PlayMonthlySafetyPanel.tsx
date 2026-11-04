@@ -10,6 +10,8 @@ type SafetyPlan = {
 };
 
 export const CARD = "flex items-center gap-3 rounded-xl border px-4 py-2.5";
+/** 넣은 후보 카드 — 안전교육 · 훈련 · 주간 후보가 같이 쓴다. */
+export const PICKED = "border-[#7053a0] bg-[#f6f1fb]";
 export const PUT =
   "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96] disabled:opacity-40";
 
@@ -52,7 +54,7 @@ export default function PlayMonthlySafetyPanel({
                 data-candidate={id}
                 className={`${CARD} ${
                   mine
-                    ? "border-[#7053a0] bg-[#f6f1fb]"
+                    ? PICKED
                     : elsewhere.length
                       ? "border-dashed border-[#ddd6ca] text-[#8a8178]"
                       : "border-[#e8e2d8]"
