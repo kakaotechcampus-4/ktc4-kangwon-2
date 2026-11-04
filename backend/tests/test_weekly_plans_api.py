@@ -488,7 +488,11 @@ def test_DRAFT_는_지우고_다시_만들_수_있다_확정본은_못_지운다
     again = _create(world)
     assert again.status_code == 201
 
-    db_session.execute(update(Plan).where(Plan.id == again.json()["id"]).values(status="CONFIRMED"))
+    db_session.execute(
+        update(Plan)
+        .where(Plan.id == again.json()["id"])
+        .values(status="CONFIRMED", class_name="햇살반", teacher_name="김선생")
+    )
     assert _error(client.delete(f"/api/plans/weekly/{again.json()['id']}")) == (
         409,
         "GATE_BLOCKED",
@@ -505,7 +509,11 @@ def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우�
         row = real(session, user, plan_id)
         session.expunge(row)  # 삭제는 DRAFT 로 읽은 값을 그대로 들고 간다
         # 다른 요청의 확정은 이미 commit 됐다 — 이 요청이 409 로 되돌려도 남아야 한다.
-        session.execute(update(Plan).where(Plan.id == plan_id).values(status="CONFIRMED"))
+        session.execute(
+            update(Plan)
+            .where(Plan.id == plan_id)
+            .values(status="CONFIRMED", class_name="햇살반", teacher_name="김선생")
+        )
         session.commit()
         return row
 

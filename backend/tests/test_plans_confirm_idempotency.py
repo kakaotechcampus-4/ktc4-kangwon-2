@@ -166,6 +166,8 @@ def test_확정된_것이어도_남의_원_없는_id_연간이_아닌_id_는_404
         school_year=2026,
         classroom_ref="0",
         status="CONFIRMED",
+        class_name="햇살반",
+        teacher_name="김선생",
         body={},
         sub_themes={},
         # 월간 저장(M3) 뒤로는 월간 행에 target_month 가 있어야 한다. 그 전 스키마에는 칸이 없다.

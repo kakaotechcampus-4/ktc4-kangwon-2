@@ -356,6 +356,8 @@ def test_요약은_열람_권한이_없어도_주고_제목_이름_id_는_없다
                 school_year=2026,
                 classroom_ref=str(klass.id),
                 status="CONFIRMED",
+                class_name=klass.name,
+                teacher_name=klass.teacher_name,
                 target_month="2026-10",
                 body={},
             ),

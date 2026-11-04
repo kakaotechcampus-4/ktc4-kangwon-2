@@ -618,7 +618,11 @@ def test_확정한_놀이_월간은_나눈_모양대로_hwpx_로_내려받고_�
     plan, row = _play(world)
     _split(row.id, plan.special_activity[THURSDAY].cell.item_id.value, "HORIZONTAL")
     assert client.get(f"{URL}/{row.id}/export/hwp").status_code == 409
-    world["session"].execute(update(Plan).where(Plan.id == row.id).values(status="CONFIRMED"))
+    world["session"].execute(
+        update(Plan)
+        .where(Plan.id == row.id)
+        .values(status="CONFIRMED", class_name="햇살반", teacher_name="김선생")
+    )
     world["session"].commit()
 
     response = client.get(f"{URL}/{row.id}/export/hwp")
