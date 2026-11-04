@@ -18,8 +18,8 @@ export type PostySay = { title: string; body: string };
  * 시작 설정(온보딩)의 틀 — 시안 캔버스 「A · 오른쪽 포스티 칸」 그대로.
  *
  * 휴대폰: 흰 한 장. 맨 위 줄에 「←」 와 오른쪽 진행 글자, 그 아래 얇은 막대, 질문, 아래 넓은 주 버튼.
- * 데스크톱: 크림 바탕 위 「쌤플」 머리 줄과 가운데 820px 흰 카드(docs/화면-기준.md 「폼 한 열」).
- * 768px 부터는 카드 오른쪽 280px 아이보리 칸에 손 흔드는 포스티 · 말풍선(`say`)을 두고, 넘어가는 버튼도 그 칸 아래로 간다.
+ * 데스크톱: 크림 바탕 위 「쌤플」 머리 줄과 가운데 칠판(.chalkPage). 칠판이라 폼 한 열(820px)보다 넓게 1100px 까지 편다.
+ * 768px 부터는 칠판 오른쪽 280px(1024px 부터 320px) 칸에 손 흔드는 포스티 · 말풍선(`say`)을 두고, 넘어가는 버튼도 그 칸 아래로 간다.
  * 그보다 좁으면 입력 칸이 너무 좁아져 칸을 빼고 휴대폰과 같은 한 줄로 둔다.
  * 완료 화면처럼 진행이 없는 화면은 `stage` 를 비운다 — 진행 글자도 오른쪽 칸도 없다.
  */
@@ -58,7 +58,7 @@ export default function OnboardingLayout({
       // 위아래 여백을 머리 줄 높이보다 크게 같게 두어, 창이 낮아도 머리 줄이 화면 밖으로 밀려나지 않는다.
       className={`${fontClassName} flex min-h-screen flex-col items-center bg-[var(--pg-board)] font-body text-ink sm:justify-center sm:bg-cream sm:px-6 sm:py-[88px]`}
     >
-      <div className="relative flex w-full max-w-[820px] flex-1 flex-col sm:flex-none">
+      <div className="relative flex w-full max-w-[1100px] flex-1 flex-col sm:flex-none">
         <header className="absolute inset-x-0 bottom-full hidden h-[72px] items-center justify-between sm:flex">
           <Link
             href={home}
@@ -80,7 +80,7 @@ export default function OnboardingLayout({
         {/* 768px 부터 오른쪽 칸이 있는 화면은 두 칸 격자다 — 왼쪽은 질문이 위아래를 다 쓰고,
             오른쪽은 위에 포스티 · 말풍선, 아래에 넘어가는 버튼. 버튼은 한 벌만 그려 자리만 옮긴다. */}
         <div
-          className={`chalkboard chalkPage flex flex-1 flex-col bg-paper sm:min-h-[760px] sm:flex-none ${stage ? "md:grid md:grid-cols-[minmax(0,1fr)_280px] md:grid-rows-[minmax(0,1fr)_auto]" : ""}`}
+          className={`chalkboard chalkPage flex flex-1 flex-col bg-paper sm:min-h-[760px] sm:flex-none ${stage ? "md:grid md:grid-cols-[minmax(0,1fr)_280px] md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_320px]" : ""}`}
         >
           <div className="flex min-w-0 flex-1 flex-col md:row-span-2">
             <div className="flex h-14 flex-none items-center gap-2 px-3 sm:px-7">
