@@ -22,8 +22,12 @@ const LAST = 23 * 60 + 55;
 /** 시각이 없을 때 시계판이 여는 자리. 어린이집 하루가 대개 여기서 시작한다. */
 const FALLBACK = { start: 9 * 60, end: 10 * 60 };
 
-const RING = 66;
-const HAND = 15;
+/** 칠한 부채꼴 끝 · 손잡이가 서는 반지름. 숫자(`NUMBER`)보다 바깥이라 숫자가 칠 위에 읽힌다. */
+const RIM = 82;
+const NUMBER = 60;
+/** 손잡이 그림은 작게, 누르는 자리는 손가락만큼 크게 — 그림만 키우면 숫자를 가린다. */
+const KNOB = 8;
+const GRAB = 18;
 
 const minutesOf = (value: string) => {
   const [h, m] = value.split(":").map(Number);
@@ -49,15 +53,25 @@ const pointOf = (minutes: number, radius: number) => ({
 });
 
 /**
- * 시작에서 종료까지 시계 방향으로 그은 호.
+ * 시작에서 종료까지 시계 방향으로 칠한 부채꼴 — 방학 생활계획표의 한 칸.
  *
- * 12시간을 넘는 일과는 없다. 넘어 보이면 시계판을 한 바퀴 돈 것이라 긴 쪽으로 긋는다.
+ * 테두리를 따라 굵은 띠만 긋던 때는 숫자와 손잡이가 띠 위에서 겹쳤다. 가운데부터 칠하면
+ * 「이만큼이 이 일과」가 한눈에 보이고 숫자는 칠 위에 그대로 읽힌다.
+ * 12시간을 넘는 일과는 없다. 넘어 보이면 시계판을 한 바퀴 돈 것이라 긴 쪽으로 칠한다.
  */
-function arcPath(from: number, to: number) {
+function wedgePath(from: number, to: number) {
   const sweep = ((to % SPAN) - (from % SPAN) + SPAN) % SPAN;
-  const a = pointOf(from, RING);
-  const b = pointOf(to, RING);
-  return `M ${a.x} ${a.y} A ${RING} ${RING} 0 ${sweep > SPAN / 2 ? 1 : 0} 1 ${b.x} ${b.y}`;
+  const a = pointOf(from, RIM);
+  const b = pointOf(to, RIM);
+  return `M 100 100 L ${a.x} ${a.y} A ${RIM} ${RIM} 0 ${sweep > SPAN / 2 ? 1 : 0} 1 ${b.x} ${b.y} Z`;
+}
+
+/** `80` → `1시간 20분`. 가운데에 손글씨로 적는다. */
+function lengthText(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest}분`;
+  return rest ? `${hours}시간 ${rest}분` : `${hours}시간`;
 }
 
 /**
@@ -127,6 +141,7 @@ export default function RoutineClock({
   const to = minutesOf(end) ?? FALLBACK.end;
   // 같은 반이면 뒤쪽의 「오전 · 오후」는 군더더기다 — 열 줄에 스무 번 나온다.
   const sameHalf = Math.floor(from / 720) === Math.floor(to / 720);
+  const length = start && end && to > from ? lengthText(to - from) : "";
   const shown =
     start && end
       ? `${spokenOf(from)} ~ ${sameHalf ? dialText(to) : spokenOf(to)}`
@@ -196,7 +211,10 @@ export default function RoutineClock({
         */}
         <div className={ws.clockFields}>
           <label className={ws.clockFrom}>
-            <span>시작</span>
+            <span>
+              <i className={ws.clockDot} aria-hidden="true" />
+              시작
+            </span>
             <input
               type="time"
               aria-label="시작 시간"
@@ -209,7 +227,10 @@ export default function RoutineClock({
             ~
           </span>
           <label className={ws.clockTo}>
-            <span>종료</span>
+            <span>
+              <i className={ws.clockDot} aria-hidden="true" />
+              종료
+            </span>
             <input
               type="time"
               aria-label="종료 시간"
@@ -227,11 +248,18 @@ export default function RoutineClock({
           onPointerUp={() => (dragging.current = "")}
           onPointerCancel={() => (dragging.current = "")}
         >
-          <circle cx="100" cy="100" r="92" className={ws.clockPlate} />
-          {/* 눈금. 숫자 사이를 재는 눈이 있어야 시계로 읽힌다. */}
+          {/* 펜으로 두른 테두리 두 겹. 포스티와 같은 먹선이라 같은 화면의 물건으로 읽힌다. */}
+          <circle cx="100" cy="100" r="96" className={ws.clockRim} />
+          <circle cx="100" cy="100" r="88" className={ws.clockPlate} />
+          <path d={wedgePath(from, to)} className={ws.clockSpan} />
+          {/* 눈금. 시는 길게, 5분은 점으로 — 선만 60개면 톱니처럼 보인다. */}
           {Array.from({ length: 60 }, (_, i) => {
-            const outer = pointOf(i * 12, 90);
-            const inner = pointOf(i * 12, i % 5 === 0 ? 82 : 86);
+            if (i % 5) {
+              const dot = pointOf(i * 12, 84);
+              return <circle key={i} cx={dot.x} cy={dot.y} r={0.9} className={ws.clockTick} />;
+            }
+            const outer = pointOf(i * 12, 86);
+            const inner = pointOf(i * 12, 80);
             return (
               <line
                 key={i}
@@ -239,12 +267,12 @@ export default function RoutineClock({
                 y1={inner.y}
                 x2={outer.x}
                 y2={outer.y}
-                className={i % 5 === 0 ? ws.clockTickLong : ws.clockTick}
+                className={ws.clockTickLong}
               />
             );
           })}
           {Array.from({ length: 12 }, (_, i) => {
-            const spot = pointOf(i * 60, 46);
+            const spot = pointOf(i * 60, NUMBER);
             return (
               <text key={i} x={spot.x} y={spot.y} className={ws.clockNumber}>
                 {i === 0 ? 12 : i}
@@ -252,29 +280,34 @@ export default function RoutineClock({
             );
           })}
 
-          {/* 칠한 구간. 방학 생활계획표가 하루를 이렇게 가른다. */}
-          <path d={arcPath(from, to)} className={ws.clockSpan} />
+          {/* 가운데 — 이 일과가 얼마나 걸리나. 숫자 둘을 빼 보지 않아도 된다. */}
+          <circle cx="100" cy="100" r="3.2" className={ws.clockHub} />
+          {length && (
+            <text x="100" y="122" className={ws.clockLength}>
+              {length}
+            </text>
+          )}
+
           {(["start", "end"] as const).map((which) => {
-            const spot = pointOf(which === "start" ? from : to, RING);
+            const spot = pointOf(which === "start" ? from : to, RIM);
             return (
-              <g key={which}>
+              <g key={which} className={which === "start" ? ws.clockGripFrom : ws.clockGripTo}>
+                <line x1="100" y1="100" x2={spot.x} y2={spot.y} className={ws.clockHand} />
+                <circle cx={spot.x} cy={spot.y} r={KNOB} className={ws.clockKnob} />
                 <circle
                   cx={spot.x}
                   cy={spot.y}
-                  r={HAND}
-                  className={which === "start" ? ws.clockGripFrom : ws.clockGripTo}
+                  r={GRAB}
+                  className={ws.clockGrab}
                   onPointerDown={grab(which)}
                 />
-                <text x={spot.x} y={spot.y} className={ws.clockGripMark} aria-hidden="true">
-                  {which === "start" ? "시작" : "끝"}
-                </text>
               </g>
             );
           })}
         </svg>
 
         <p className={ws.clockLead}>
-          손잡이를 끌어 고치세요.
+          동그란 손잡이를 끌어 고치세요.
           <button type="button" className={ws.clockDone} onClick={() => setOpen(false)}>
             닫기
           </button>

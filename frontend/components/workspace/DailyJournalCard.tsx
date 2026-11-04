@@ -95,7 +95,8 @@ export type DailyJournal = ReturnType<typeof useDailyJournal>;
 /** 일지가 어디까지 됐나 — 포스티의 자세 · 얼굴 · 색이 곧 그 상태다. */
 function moodOf(journal: DocumentSummary | null | undefined) {
   if (journal === undefined) return { pose: "think", face: "think", tone: "shell" } as const;
-  if (!journal) return { pose: "sit", face: "empty", tone: "shell" } as const;
+  // 앉아서 「비었어요」 하던 자리. 교사가 할 일이 남은 칸이라, 일어서서 손을 흔들어 부른다.
+  if (!journal) return { pose: "wave", face: "oh", tone: "note" } as const;
   if (journal.stale) return { pose: "point", face: "fix", tone: "caution" } as const;
   if (journal.status === "confirmed") return { pose: "cheer", face: "done", tone: "sage" } as const;
   return { pose: "hand", face: "base", tone: "lilac" } as const;
@@ -124,11 +125,18 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
       <hr className={ws.journalRule} />
 
       <div className={ws.journalSay}>
-        <Posty pose={mood.pose} face={mood.face} tone={mood.tone} size={64} label={null} />
+        <Posty
+          pose={mood.pose}
+          face={mood.face}
+          tone={mood.tone}
+          size={64}
+          wave={journal === null}
+          label={null}
+        />
         <div>
           <p className={ws.journalWord}>{say}</p>
           {!journal && journal !== undefined && (
-            <p className={ws.journalLead}>위의 「오늘 일지 만들기」를 누르세요.</p>
+            <p className={ws.journalLead}>화면 맨 위 「오늘 일지 만들기 →」를 누르세요.</p>
           )}
         </div>
       </div>

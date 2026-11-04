@@ -1160,68 +1160,104 @@ a.item {
 .clockFace {
   position: absolute;
   z-index: 30;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   right: 0;
-  width: 288px;
-  padding: 12px;
+  width: 296px;
+  padding: 14px 14px 12px;
   border: 1px solid var(--pg-line);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--pg-paper);
   box-shadow: var(--pg-shadow);
 }
+/* ── 시계판 — 방학 생활계획표처럼 펜으로 두른 동그라미에 이 일과만큼 칠한다 ── */
 .clockDial {
   display: block;
   width: 100%;
+  max-width: 240px;
   height: auto;
+  margin: 0 auto;
+  overflow: visible;
   touch-action: none;
+}
+.clockRim {
+  fill: var(--pg-sun-tint);
+  stroke: var(--pg-ink);
+  stroke-width: 2.2;
 }
 .clockPlate {
   fill: var(--pg-ivory);
-  stroke: var(--pg-line);
+  stroke: var(--pg-ink);
+  stroke-width: 1.3;
 }
-.clockTick,
-.clockTickLong {
-  stroke: var(--pg-line);
-  stroke-width: 1;
-}
-.clockTickLong {
-  stroke: var(--pg-ink-hint);
-  stroke-width: 1.6;
-}
-.clockNumber {
-  fill: var(--pg-ink-soft);
-  text-anchor: middle;
-  dominant-baseline: central;
-  font-size: 13px;
-  font-family: inherit;
-}
-/* 칠한 구간. 방학 생활계획표가 하루를 이렇게 가른다. */
 .clockSpan {
-  fill: none;
-  stroke: var(--pg-plum);
-  stroke-width: 22;
+  fill: var(--pg-plum);
+  fill-opacity: 0.8;
+}
+.clockTick {
+  fill: var(--pg-ink-hint);
+}
+.clockTickLong {
+  stroke: var(--pg-ink);
+  stroke-width: 2.2;
   stroke-linecap: round;
 }
-.clockGripFrom,
-.clockGripTo {
-  stroke: var(--pg-paper);
-  stroke-width: 2;
-  cursor: grab;
-}
-.clockGripFrom {
-  fill: var(--pg-primary);
-}
-.clockGripTo {
-  fill: var(--pg-success);
-}
-.clockGripMark {
-  fill: var(--pg-paper);
+.clockNumber {
+  fill: var(--pg-ink);
   text-anchor: middle;
   dominant-baseline: central;
-  font-size: 11px;
+  font-family: var(--font-display), cursive;
+  font-size: 19px;
   font-weight: 700;
-  font-family: inherit;
-  pointer-events: none;
+}
+.clockHub {
+  fill: var(--pg-ink);
+}
+/* 칠 위에 앉아도 읽히게 판 색으로 테를 두른다. */
+.clockLength {
+  fill: var(--pg-primary-ink);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-display), cursive;
+  font-size: 16px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--pg-ivory);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+/* 바늘 · 손잡이는 시작 보라, 끝 초록. 위의 시작 · 종료 칸 점과 같은 색이다. */
+.clockGripFrom {
+  color: var(--pg-primary);
+}
+.clockGripTo {
+  color: var(--pg-success);
+}
+.clockHand {
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.clockKnob {
+  fill: currentColor;
+  stroke: var(--pg-paper);
+  stroke-width: 2.6;
+  filter: drop-shadow(0 1px 1.5px rgba(60, 48, 30, 0.35));
+}
+.clockGrab {
+  fill: transparent;
+  cursor: grab;
+}
+.clockGrab:active {
+  cursor: grabbing;
+}
+.clockDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
 }
 /* 적어 둔 시각이 곧 고치는 칸이다. 시계판 위에 둔다 — 글자로만 보여 주면 교사가
    그 글자를 누른다. */
@@ -1236,7 +1272,7 @@ a.item {
   display: grid;
   gap: 4px;
   min-width: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 .clockFrom {
@@ -1282,17 +1318,18 @@ a.item {
 .clockDone {
   flex-shrink: 0;
   min-height: 32px;
-  padding: 0 11px;
-  border: 1px solid var(--pg-line);
-  border-radius: 6px;
-  background: var(--pg-shell);
-  color: var(--pg-ink);
+  padding: 0 14px;
+  border: 1px solid var(--pg-primary-tint-line);
+  border-radius: 999px;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
   font: inherit;
   font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
 }
 .clockDone:hover {
-  background: var(--pg-shell-hover);
+  background: var(--pg-plum);
 }
 
 @media (max-width: 1100px) {
@@ -1383,7 +1420,7 @@ a.item {
   justify-self: start;
   min-height: 36px;
   padding: 0 15px;
-  border: 1px solid var(--pg-primary-line);
+  border: 1px solid var(--pg-primary-tint-line);
   border-radius: 999px;
   background: var(--pg-primary-tint);
   color: var(--pg-primary-deep);
