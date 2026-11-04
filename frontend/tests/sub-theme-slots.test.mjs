@@ -1,7 +1,7 @@
 // 월별 주제형 주차별 소주제 칸(계약 I-A · 화면 #3): 끌어 옮기기 · 삭제 · 저장 값 · 개수 어긋남 · 문서 줄 수.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-const { placeSlot, removeSlot, setSlot, cleanSlots, slotMismatch, slotRows } =
+const { placeSlot, setSlot, cleanSlots, slotMismatch, slotRows } =
   await import("../lib/plan-generator/subThemeSlots.ts");
 
 test("place moves a slot to the dropped week and pads empty weeks", () => {
@@ -13,8 +13,7 @@ test("place moves a slot to the dropped week and pads empty weeks", () => {
   assert.deepEqual(list, ["a", "b", "c"]);
 });
 
-test("remove, set and the saved value drop blanks after trimming", () => {
-  assert.deepEqual(removeSlot(["a", "b", "c"], 1), ["a", "c"]);
+test("set and the saved value drop blanks after trimming", () => {
   assert.deepEqual(setSlot(["a", ""], 1, "b"), ["a", "b"]);
   assert.deepEqual(cleanSlots([" a ", "", "  ", "b"]), ["a", "b"]);
 });

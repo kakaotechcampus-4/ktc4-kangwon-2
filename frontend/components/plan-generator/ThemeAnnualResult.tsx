@@ -12,7 +12,6 @@ import type { AnnualPlan } from "@/lib/api/types";
 import {
   cleanSlots,
   placeSlot,
-  removeSlot,
   setSlot,
   slotMismatch,
   slotRows,
@@ -48,11 +47,9 @@ const same = (a: Draft, b: Draft) =>
   a.theme === b.theme && a.sub_themes.join("\n") === b.sub_themes.join("\n");
 const slotInputId = (slot: ThemeSlot) => `annual-slot-${slot.month}-${slot.slot}`;
 const INPUT = "rounded-xl border border-[#ddd6ca] px-3 py-2 text-[15px] leading-relaxed";
-const SMALL =
-  "min-h-[36px] rounded-lg border border-[#e8e2d8] px-2 text-xs text-[#5c5243] disabled:opacity-40";
 
 /**
- * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제(글 고치기 · 삭제, 순서는 문서에서 끌어놓기).
+ * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제(글 고치기, 순서는 문서에서 끌어놓기).
  * AI 후보 탭은 서버 API 가 없어 두지 않는다. 한 달 저장은 주제와 소주제를 같이 보낸다(`putAnnualMonth`).
  */
 const SHEET_WIDTH = 860;
@@ -172,14 +169,6 @@ export default function ThemeAnnualResult({
     save(selected.month, drafts[selected.month]);
   }
 
-  // 이동 · 삭제 · 추가는 바로 저장한다(빈 칸 추가는 저장 값이 같아 보내지 않는다).
-  function editSlots(next: string[], focus: ThemeSlot["slot"]) {
-    const value = { ...draft, sub_themes: next };
-    change(selected.month, value);
-    setSelected({ month: selected.month, slot: focus });
-    save(selected.month, value);
-  }
-
   // 문서에서 끌어 옮긴 소주제 — 그 달을 바로 저장한다.
   function moveSlotTo(monthNo: number, from: number, to: number) {
     const value = {
@@ -286,15 +275,6 @@ export default function ThemeAnnualResult({
                 }
                 onBlur={saveSelected}
               />
-              <button
-                type="button"
-                aria-label="삭제"
-                className={SMALL}
-                disabled={confirming}
-                onClick={() => editSlots(removeSlot(slots, i), "theme")}
-              >
-                삭제
-              </button>
             </div>
           ))}
         </section>

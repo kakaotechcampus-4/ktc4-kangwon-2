@@ -11,7 +11,6 @@ export const placeSlot = (list: string[], from: number, to: number) => {
   next.splice(to, 0, value);
   return next;
 };
-export const removeSlot = (list: string[], index: number) => list.filter((_, i) => i !== index);
 export const setSlot = (list: string[], index: number, value: string) =>
   list.map((item, i) => (i === index ? value : item));
 /** 저장 값 — 앞뒤 공백을 지우고 빈 칸을 뺀다. */
