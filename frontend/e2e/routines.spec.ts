@@ -264,61 +264,27 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     note(page, "C", expected);
   });
   let documentId: number;
-  await test.step("G: 저장 전 입력을 자동 저장하고 S-J2에서 고른 순서대로 실제 초안 생성", async () => {
+  await test.step("G: 저장 전 입력을 먼저 저장하고, 실제로 한 것이 있는 일과로 이 화면에서 초안 생성", async () => {
     await rows(page).nth(0).getByLabel("일과 이름").fill("수정한 일과1");
-    await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
-    await expect(page).toHaveURL(`/documents?kind=dailyLog&class_id=${classId}&date=${date}`);
-    await expect(page.getByRole("combobox", { name: "문서 종류" })).toHaveValue("dailyLog");
-    await expect(page.getByLabel("날짜", { exact: true })).toHaveValue(date);
-    const sourceRows = await dayRows(page, classId, date);
-    expect(sourceRows[0].name).toBe("수정한 일과1");
-    await page.getByRole("link", { name: "새 일과 기록 입력 →" }).click();
-    await expect(page).toHaveURL(`/routines?date=${date}&class_id=${classId}`);
-    await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("햇살반");
-    await page.goBack();
-    await expect(page).toHaveURL(/\/documents\?/);
-    const candidates = page
-      .getByRole("group", { name: "문서에 사용할 일과" })
-      .getByRole("checkbox");
-    await expect(candidates).toHaveCount(7);
-    await expect(candidates.nth(6)).toBeDisabled();
-    await candidates.nth(2).check();
-    await candidates.nth(0).check();
     const response = page.waitForResponse(
       (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
     );
-    let release!: () => void;
-    const paused = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await page.route("**/api/documents", async (route) => {
-      if (route.request().method() === "POST") await paused;
-      await route.continue();
-    });
-    await page.getByRole("button", { name: "초안 만들기", exact: true }).click();
-    await expect(page.getByText("보육일지 초안을 작성하고 있어요. 30초쯤 걸려요.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "초안 작성 중…", exact: true })).toBeDisabled();
-    release();
+    // 일지는 보관함으로 가지 않고 이 화면에서 만든다 — 고르는 단계 없이, 실제로 한 것을
+    // 적은 줄 전부를 화면 순서(시간순) 그대로 근거로 삼는다.
+    await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
     const generated = await response;
-    await page.unroute("**/api/documents");
     expect(generated.status()).toBe(201);
-    expect(generated.request().postDataJSON().source_ids).toEqual([
-      sourceRows[2].id,
-      sourceRows[0].id,
-    ]);
+    await expect(page).toHaveURL(`/routines?date=${date}&class_id=${classId}`);
+    const sourceRows = await dayRows(page, classId, date);
+    expect(sourceRows[0].name).toBe("수정한 일과1");
+    const expectedIds = sourceRows.filter((r) => r.execution).map((r) => r.id);
+    expect(generated.request().postDataJSON().source_ids).toEqual(expectedIds);
     const doc = await generated.json();
     documentId = doc.id;
-    expect(doc.sources.map((source: { id: number }) => source.id)).toEqual([
-      sourceRows[2].id,
-      sourceRows[0].id,
-    ]);
+    expect(doc.sources.map((source: { id: number }) => source.id)).toEqual(expectedIds);
+    await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
     await expect(
       page.getByRole("heading", { name: doc.title, exact: true, level: 2 }),
-    ).toBeVisible();
-    await expect(
-      page.getByText(doc.sections.find((s: { heading: string }) => s.heading === "사실").body, {
-        exact: true,
-      }),
     ).toBeVisible();
     note(page, "G", { documentId, selectedIds: doc.sources.map((s: { id: number }) => s.id) });
   });
@@ -504,10 +470,9 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
   await rows(page).nth(0).getByLabel("일과 이름").fill("지난 날짜 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("지난 날짜에 길을 만들었다.");
+  // 지난 날짜도 그 날짜 · 그 반 그대로 이 화면에서 일지를 만든다.
   await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
-  await expect(page).toHaveURL(`/documents?kind=dailyLog&class_id=${other.id}&date=2026-10-16`);
-  await expect(page.getByLabel("날짜", { exact: true })).toHaveValue("2026-10-16");
-  await page.getByRole("link", { name: "새 일과 기록 입력 →" }).click();
+  await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
   await expect(page).toHaveURL(`/routines?date=2026-10-16&class_id=${other.id}`);
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("지난 날짜 일과");
   note(page, "I S-J1/S-J2 scope", {
@@ -584,7 +549,8 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
       .network.filter((r) => /\/api\/routines(?:\/|$)/.test(r.url) && r.method !== "GET").length;
   const initial = mutations();
   await page.getByRole("button", { name: "저장", exact: true }).click();
-  await expect(page.getByText(/입력하지 않은 필수 항목이 있어요/)).toBeVisible();
+  // 고칠 곳은 포스티 안내판이 줄마다 짚어 준다.
+  await expect(page.getByRole("alert").filter({ hasText: "고칠 곳이" })).toBeVisible();
   await expect(added.getByLabel("일과 이름")).toBeFocused();
   expect(mutations()).toBe(initial);
 

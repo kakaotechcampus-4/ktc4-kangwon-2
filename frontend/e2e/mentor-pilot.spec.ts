@@ -319,16 +319,11 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await row
     .getByLabel("실제로 한 것")
     .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
-  await page
-    .getByRole("group", { name: "문서에 사용할 일과" })
-    .getByRole("checkbox")
-    .first()
-    .check();
+  // 「오늘 일지 만들기」는 저장하고 이 화면에서 바로 초안을 만든다(보관함으로 가지 않는다).
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "초안 만들기", exact: true }).click();
+  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   const generated = await response;
   expect(generated.status()).toBe(201);
   const created = await generated.json();
@@ -336,7 +331,8 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     page.getByRole("link", { name: "일과 기록에서 고쳐 주세요 →", exact: true }),
   ).toHaveAttribute("href", /\/routines\?date=.*&class_id=\d+/);
   expect(created.child_id).toBeNull();
-  await reopenCreated(page, created);
+  // 일지는 칠판 밑에 바로 펼쳐진다. 그 자리에서 확정 · 내려받기까지 간다.
+  await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
   await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
   await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();

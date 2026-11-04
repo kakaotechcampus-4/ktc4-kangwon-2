@@ -100,6 +100,9 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   // 고른 아이 칸의 건수. 문구가 「기록 1건」으로 바뀌었다(#368) — 아이 목록에도 같은 글이 있어
   // 아이 칸 안에서 찾는다.
   await expect(
-    page.getByRole("region", { name: `${child} 관찰 기록` }).getByText("기록 1건", { exact: true }),
+    page
+      .getByRole("region", { name: `${child} 관찰 기록` })
+      .getByText("기록 1건", { exact: true })
+      .first(),
   ).toBeVisible();
 });
