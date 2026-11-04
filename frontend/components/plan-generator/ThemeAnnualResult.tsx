@@ -261,7 +261,7 @@ export default function ThemeAnnualResult({
           />
         </label>
         <section className="flex flex-col gap-2" aria-label={`${selected.month}월 소주제`}>
-          <h2 className="m-0 text-[15px] font-bold">소주제</h2>
+          <h2 className="m-0 font-display text-[20px] font-bold leading-tight">소주제</h2>
           {slotMismatch(draft.sub_themes, month.week_count) && (
             <p role="status" className="m-0 text-[13px] font-bold text-[#b3261e]">
               주마다 하나씩 — {month.week_count}개를 맞춰야 확정할 수 있어요.

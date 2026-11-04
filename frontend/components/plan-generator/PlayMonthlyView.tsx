@@ -287,7 +287,7 @@ function PlayMonthlyBody({
         <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
       )}
       {selected && (
-        <h2 className="m-0 text-lg font-bold">
+        <h2 className="m-0 font-display text-[24px] font-bold leading-tight">
           {/* 놀이 행은 문서 순서(함께 하는 활동 위→아래, 그다음 자유놀이)로 「n 번째 칸」. */}
           {row
             ? `${ORDINAL[rows.indexOf(row)] ?? rows.indexOf(row) + 1} 번째 칸`

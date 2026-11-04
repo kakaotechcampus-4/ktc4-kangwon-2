@@ -43,7 +43,11 @@ export default function WeeklyIndoorPlayPanel({
   };
   return (
     <section aria-label="실내 자유놀이" className="flex flex-col gap-4">
-      {filled.length > 0 && <h2 className="m-0 text-[15px] font-bold">이번 주에 넣은 놀이</h2>}
+      {filled.length > 0 && (
+        <h2 className="m-0 font-display text-[20px] font-bold leading-tight">
+          이번 주에 넣은 놀이
+        </h2>
+      )}
       <ol className="m-0 flex list-none flex-col gap-2 p-0 empty:hidden">
         {filled.map((c, i) => (
           <li

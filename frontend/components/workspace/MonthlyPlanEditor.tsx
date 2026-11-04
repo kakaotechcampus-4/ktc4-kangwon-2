@@ -346,7 +346,7 @@ export default function MonthlyPlanEditor({
       )}
       {where && (
         <div className="flex items-end justify-between gap-3">
-          <h2 className="m-0 text-lg font-bold">{where}</h2>
+          <h2 className="m-0 font-display text-[24px] font-bold leading-tight">{where}</h2>
           {/* 저장 상태를 입력창 가까이에도 — 읽어 주는 건 위 상태 줄(role=status) 하나. */}
           {status !== "idle" && (
             <span

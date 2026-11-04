@@ -354,7 +354,7 @@ export default function WeeklyEditor({
         <>
           <div className="flex items-end justify-between gap-3">
             <div className="flex items-center gap-2">
-              <h2 className="m-0 text-lg font-bold">{name}</h2>
+              <h2 className="m-0 font-display text-[24px] font-bold leading-tight">{name}</h2>
               {origin && (
                 <span className="rounded-full bg-[#efeae2] px-2 py-0.5 text-[11px] font-bold text-[#5c5243]">
                   {origin}
@@ -508,7 +508,9 @@ export default function WeeklyEditor({
     />
   ) : gridCell && candidates.length ? (
     <section aria-label="활동 후보" className="flex flex-col gap-4">
-      <h2 className="m-0 text-[15px] font-bold">{where} 칸에 넣을 활동</h2>
+      <h2 className="m-0 font-display text-[20px] font-bold leading-tight">
+        {where} 칸에 넣을 활동
+      </h2>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {/* 넣은 후보는 맨 위로 — 안전교육 후보와 같다. 서버는 「[종류] 이름」으로 복사한다(weekly_activities.copy). */}
         {[...candidates]

@@ -11,7 +11,7 @@ type SafetyPlan = {
 
 export const CARD = "flex items-center gap-3 rounded-xl border px-4 py-2.5";
 /** 넣은 후보 카드 — 안전교육 · 훈련 · 주간 후보가 같이 쓴다. */
-export const PICKED = "border-[#7053a0] bg-[#f6f1fb]";
+export const PICKED = "border-[#7053a0] bg-[#f6f1fb] shadow-pg-card";
 export const PUT =
   "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96] disabled:opacity-40";
 
@@ -34,9 +34,14 @@ export default function PlayMonthlySafetyPanel({
   const here = plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id ?? null;
   return (
     <section aria-label="안전교육" className="flex flex-col gap-2">
-      <h2 className="m-0 flex items-baseline justify-between text-[15px] font-bold">
+      <h2 className="m-0 flex items-center justify-between gap-2 font-display text-[20px] font-bold leading-tight">
         {label(weekId)} 안전교육 후보
-        {!here && <span className="text-[13px] font-normal text-[#c2473d]">아직 비어 있어요</span>}
+        {/* 우리 반 화면의 복숭아색 쪽지 안내처럼. */}
+        {!here && (
+          <span className="shrink-0 rounded-full bg-peach-tint px-2.5 py-0.5 font-body text-[12px] font-semibold text-peach-ink">
+            아직 비어 있어요
+          </span>
+        )}
       </h2>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {/* 그 주에 넣은 후보는 맨 위로 — 연간 놀이 후보 고르기와 같다. */}

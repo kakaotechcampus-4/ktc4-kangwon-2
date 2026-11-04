@@ -30,7 +30,7 @@ export const pageClass = (active: boolean) =>
 
 /** 제목 옆 「←」 돌아가기 — 만들기 · 편집 화면이 같이 쓴다. 갈 곳 이름은 aria-label · title 로. */
 export const BACK_BUTTON =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#e3ddd2] bg-white text-[#2b2826] no-underline hover:bg-[#f3efe8] disabled:opacity-40";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-paper shadow-pg-card transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none text-[#2b2826] no-underline hover:bg-[#f7f4ee] disabled:opacity-40";
 export const BACK_ICON = (
   <svg
     viewBox="0 0 24 24"
@@ -124,7 +124,8 @@ export default function AnnualFrame({
 const ZOOM_BUTTON =
   "flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg px-2 text-sm text-[#5c5243] hover:bg-[#f3efe8] disabled:opacity-35 disabled:hover:bg-transparent";
 /** 문서 머리줄(편집 바)의 한 묶음 — 되돌리기 · 배율을 테두리로 나눈다. */
-const TOOL_GROUP = "flex items-center gap-0.5 rounded-xl border border-[#e3ddd2] bg-white p-0.5";
+const TOOL_GROUP =
+  "flex items-center gap-0.5 rounded-xl border border-line bg-paper p-0.5 shadow-pg-card";
 
 const UNDO_ICON = (
   <svg
@@ -266,7 +267,7 @@ export function BigView({
     <>
       <button
         type="button"
-        className="min-h-[38px] rounded-xl border border-[#e3ddd2] bg-white px-3 text-sm font-bold text-[#5e4b96] hover:bg-[#f6f1fb]"
+        className="min-h-[38px] rounded-xl border border-line bg-paper shadow-pg-card transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none px-3 text-sm font-bold text-[#5e4b96] hover:bg-[#f6f1fb]"
         aria-haspopup="dialog"
         onClick={() => {
           setPage(0);

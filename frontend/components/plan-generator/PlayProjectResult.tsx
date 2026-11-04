@@ -439,7 +439,9 @@ export default function PlayProjectResult({
       );
     return (
       <div className="flex flex-col gap-4">
-        <h2 className="m-0 text-lg font-bold">{selectedCandidate.play_name.value}</h2>
+        <h2 className="m-0 font-display text-[24px] font-bold leading-tight">
+          {selectedCandidate.play_name.value}
+        </h2>
         <div className="flex flex-wrap gap-1.5" aria-label="고칠 칸">
           {fields.map((field) => (
             <button
@@ -501,7 +503,11 @@ export default function PlayProjectResult({
   function renderCandidates() {
     return (
       <div className="flex flex-col gap-2">
-        <h2 id={pickedHeadingId} tabIndex={-1} className="m-0 mb-1 text-[15px] font-bold">
+        <h2
+          id={pickedHeadingId}
+          tabIndex={-1}
+          className="m-0 mb-1 font-display text-[20px] font-bold leading-tight"
+        >
           {seasonLabel} 놀이
         </h2>
         {pickedCandidates.map((candidate, index) => (
@@ -614,7 +620,7 @@ export default function PlayProjectResult({
     <div
       role="tablist"
       aria-label="놀이 프로젝트 기간"
-      className="flex flex-wrap gap-0.5 rounded-xl border border-[#e3ddd2] bg-white p-0.5"
+      className="flex flex-wrap gap-0.5 rounded-xl border border-line bg-paper p-0.5 shadow-pg-card"
     >
       {plan.periods.map((item, index) => (
         <button

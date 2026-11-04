@@ -20,7 +20,7 @@ export default function PlayMonthlyDrillPanel({
     !!current.trim() && current.trim() === d.cell.value.trim();
   return (
     <section aria-label="소방대피 훈련" className="flex flex-col gap-2">
-      <h2 className="m-0 text-[15px] font-bold">넣을 문구 고르기</h2>
+      <h2 className="m-0 font-display text-[20px] font-bold leading-tight">넣을 문구 고르기</h2>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {[...candidates]
           .sort((a, b) => Number(placed(b)) - Number(placed(a)))
