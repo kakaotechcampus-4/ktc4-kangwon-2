@@ -689,7 +689,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
 
 def _weekly_request(
     parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
-    *, daily_life=None, activity_candidates=False, indoor_play_candidates=False, teacher_memo="",
+    *, daily_life=None, activity_candidates=False, indoor_play_candidates=False, teacher_memo="",
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
