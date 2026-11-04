@@ -313,7 +313,7 @@
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--note);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   color: #6b5414;
 }
@@ -341,7 +341,7 @@
   grid-template-columns: 3.6em 1fr;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .lp .pk-bars i {
   display: block;
@@ -363,7 +363,7 @@
 .lp .pk-months i {
   padding: 3px 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.22);
   border: 1px solid rgba(255, 255, 255, 0.28);
   font-style: normal;
   font-size: 11px;
@@ -1044,7 +1044,7 @@
   background: none;
   font-size: 12.5px;
   font-weight: 700;
-  opacity: 0.5;
+  opacity: 0.78;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
   transition: opacity 0.3s;
@@ -2299,4 +2299,10 @@
 /* 공용 꼬리말 — 좁은 화면에서 화면 끝에 붙지 않게 */
 .lp .lp-footer {
   padding: 8px 20px 36px;
+}
+
+/* 흙빛 쪽지 위의 작은 글자는 보조 갈색이 묻힌다 — 본문 먹색으로 */
+.lp .k-eval small,
+.lp .slip b small {
+  color: var(--ink);
 }
