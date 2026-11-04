@@ -133,13 +133,18 @@ def test_a4_nine_point_layout_survives_fill_and_rebuild(filled: bytes) -> None:
     for content in (TEMPLATE.read_bytes(), filled, build(filled)):
         files = parts(content)
         header = etree.fromstring(files["Contents/header.xml"])
-        fonts = {p.get("id"): int(p.get("height")) for p in header.findall(".//hh:charPr", header_ns)}
+        fonts = {
+            p.get("id"): int(p.get("height")) for p in header.findall(".//hh:charPr", header_ns)
+        }
         for table in tables(content):
             assert int(table.find("hp:sz", NS).get("height")) == 72800
             for row in table.findall("hp:tr", NS)[1:]:
                 for cell in row.findall("hp:tc", NS):
                     assert int(cell.find("hp:cellSz", NS).get("height")) >= 7000
-                    assert all(fonts[run.get("charPrIDRef")] >= 900 for run in cell.findall(".//hp:run", NS))
+                    assert all(
+                        fonts[run.get("charPrIDRef")] >= 900
+                        for run in cell.findall(".//hp:run", NS)
+                    )
 
 
 def test_every_selected_play_lands_in_its_period_and_row(filled: bytes) -> None:
