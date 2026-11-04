@@ -108,6 +108,9 @@ def test_template_is_blank_two_tables_with_merged_periods() -> None:
         assert sorted(covered) == [(r, c) for r in range(11) for c in range(5)]
         body = [tc for tc in table.iterfind("hp:tr/hp:tc", NS) if tc.get("header") == "0"]
         assert len(body) == 42  # 시기 2 + 10줄 × 4
+        # 열 폭 — 편집 화면(PlayProjectSheet) 열 비율이 이 값을 따른다.
+        head = table.find("hp:tr", NS).iterfind("hp:tc/hp:cellSz", NS)
+        assert [int(sz.get("width")) for sz in head] == [3000, 7000, 7500, 19000, 18492]
         assert all(not "".join(tc.itertext()).strip() for tc in body)
     files = parts(template)
     assert files["Contents/section0.xml"].decode().count("<hp:t>제목</hp:t>") == 2
