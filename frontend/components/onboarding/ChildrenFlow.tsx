@@ -131,8 +131,15 @@ export default function ChildrenFlow() {
             classroom={classroom}
             onAdd={add}
           />
-          <p className="mb-2.5 mt-6 text-[14px] font-bold text-ink-soft">
+          <p className="mt-6 text-[14px] font-bold text-ink-soft">
             {classroom.className} · {count}명
+          </p>
+          {/* 이름을 누르면 지워진다는 것을 칠판 귀퉁이에 미리 적어 둔다 — 지우는 단추(✕)가 따로 없다. */}
+          <p className="mb-2 font-display text-[18px] text-ink-soft">
+            <span className="text-primary" aria-hidden="true">
+              ★
+            </span>{" "}
+            이름을 누르면 지워져요
           </p>
           <KidChips items={classroom.children} onRemove={remove} />
         </>
@@ -293,31 +300,17 @@ function KidChips({
 
   return (
     <>
-      <ul className="flex flex-wrap gap-2">
+      <ul className="flex flex-wrap gap-x-5 gap-y-1">
         {items.map((child) => (
-          <li
-            key={child.id}
-            className="inline-flex items-center gap-0.5 rounded-full bg-cream py-0 pl-3.5 pr-0.5 text-[15px] font-medium text-ink"
-          >
-            {child.name}
+          <li key={child.id}>
+            {/* 칠판에 분필로 적은 이름. 누르면 지워진다 — 올리면 분필로 줄을 그어 미리 보여 준다. */}
             <button
               type="button"
               aria-label={`${child.name} 명단에서 빼기`}
               onClick={() => void remove(child)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-shell focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              className="min-h-11 px-1 font-display text-[26px] font-bold leading-tight text-ink decoration-primary decoration-[3px] hover:line-through focus-visible:line-through focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                aria-hidden="true"
-              >
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
+              {child.name}
             </button>
           </li>
         ))}
