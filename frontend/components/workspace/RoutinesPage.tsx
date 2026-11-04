@@ -800,7 +800,7 @@ export default function RoutinesPage() {
       */
       action={
         ready ? (
-          <div className={ws.actions}>
+          <div className={ws.actions} data-tour="routines-actions">
             <button type="button" className={ws.secondary} disabled={!!busy} onClick={save}>
               {busy === "save" ? "저장 중…" : "저장"}
             </button>
@@ -836,7 +836,7 @@ export default function RoutinesPage() {
         {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 적는다 — 계획안 만들기와 같은 짜임이다. */}
         <div className={ws.grid}>
           <div className={ws.side}>
-            <aside className={`${ws.card} ${ws.calendarCard}`}>
+            <aside className={`${ws.card} ${ws.calendarCard}`} data-tour="routines-calendar">
               <Tape />
               <RoutineCalendar
                 date={dateOk ? date : todayDate}
@@ -890,7 +890,11 @@ export default function RoutinesPage() {
               </h2>
               {/* 교실 칠판에 일과 쪽지를 붙인 모습 (첫 화면 오른쪽 줄과 같은 판이다).
                   줄마다 종이 한 장이라 어디서 한 일과가 끝나는지 선을 안 그어도 보인다. */}
-              <div className={`${ws.routineSheet} chalkboard`} aria-label="일과 목록">
+              <div
+                className={`${ws.routineSheet} chalkboard`}
+                aria-label="일과 목록"
+                data-tour="routines-board"
+              >
                 {rows.map((row, index) => (
                   <RowCard
                     key={row.key}

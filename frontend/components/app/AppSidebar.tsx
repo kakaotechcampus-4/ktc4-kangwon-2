@@ -207,6 +207,7 @@ export default function AppSidebar() {
       )}
       <aside
         aria-label="주 메뉴"
+        data-tour="nav"
         className={
           "bg-rail z-30 " +
           // 여닫기는 단추로만 한다. 마우스만 올려도 펼쳐지면 글 읽다가 지나가기만 해도 덮인다 (PM).

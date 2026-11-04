@@ -187,6 +187,9 @@ function page(t, { centerId = 42, failGet = false, greetings = serverGreetings()
       },
     },
     "next/link": { default: "link" },
+    "next/navigation": { useRouter: () => ({ push: () => {} }) },
+    // 화면 안내 다시 보기 단추가 부른다. 안내 자체는 이 테스트가 보지 않는다.
+    "@/components/app/Tour": { resetTour: () => {} },
     "@/lib/hooks/use-client-state": {
       useClientState: (read) => state(read),
       useHydrated: () => true,

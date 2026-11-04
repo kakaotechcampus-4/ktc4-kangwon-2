@@ -178,6 +178,7 @@ export default function WeeklyRecordsPage() {
           <button
             type="button"
             className={ws.primary}
+            data-tour="weekly-make"
             aria-disabled={blocked ? true : undefined}
             onClick={() => (blocked ? setNotice(blocked) : journal.make())}
           >
@@ -190,7 +191,7 @@ export default function WeeklyRecordsPage() {
       {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 본다 — 일과 기록과 같은 짜임이다. */}
       <div className={ws.grid}>
         <div className={ws.side}>
-          <aside className={`${ws.card} ${ws.weekCard}`}>
+          <aside className={`${ws.card} ${ws.weekCard}`} data-tour="weekly-week">
             <span aria-hidden="true" className={ws.tape} />
             <div className={ws.weekHead}>
               <button
@@ -281,7 +282,11 @@ export default function WeeklyRecordsPage() {
           </div>
 
           {/* 교실 칠판에 그날 쪽지를 붙인 모습 — 일과 기록 화면과 같은 판이다. */}
-          <div className={`${ws.weekBoard} chalkboard`} aria-label="그날 기록">
+          <div
+            className={`${ws.weekBoard} chalkboard`}
+            aria-label="그날 기록"
+            data-tour="weekly-board"
+          >
             {weekKey && !week ? (
               <p className={ws.weekChalk}>불러오는 중…</p>
             ) : dayCount === 0 ? (

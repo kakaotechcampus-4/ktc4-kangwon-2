@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useClientState, useHydrated } from "@/lib/hooks/use-client-state";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
@@ -23,6 +24,7 @@ import {
 } from "@/lib/workspace/observation-axis";
 import { captureSession } from "@/lib/auth/request-session";
 import { StepCharacterMessages } from "@/components/onboarding/OnboardingPage";
+import { resetTour } from "@/components/app/Tour";
 import { Message, WorkspacePage, ws } from "@/components/workspace/WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "@/components/workspace/WorkspaceViewState";
 
@@ -36,6 +38,7 @@ function greetingSettings(greetings: Greetings) {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [settings, setSettings] = useClientState(
     () => loadClassSettings() || EMPTY_CLASS_SETTINGS,
     EMPTY_CLASS_SETTINGS,
@@ -138,6 +141,17 @@ export default function SettingsPage() {
         <Link href="/onboarding/children?from=settings" className={ws.secondary}>
           아동 명단 수정
         </Link>
+        {/* 끈 안내도 본 안내도 되살리고 첫 화면으로 간다 — 홈에서 바로 다시 뜬다. */}
+        <button
+          type="button"
+          className={ws.secondary}
+          onClick={() => {
+            resetTour();
+            router.push("/");
+          }}
+        >
+          화면 안내 다시 보기
+        </button>
       </div>
       {ready && (
         <section className={ws.card} style={{ marginTop: 24 }}>

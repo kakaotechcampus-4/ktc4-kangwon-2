@@ -288,7 +288,7 @@ export default function RecordsPage() {
           오른쪽 기록을 「고치기」 하면 바로 옆에서 고친다. */}
       <div className={`${ws.grid} ${ws.recordGrid}`}>
         <div className={ws.side}>
-          <section className={`${ws.card} ${ws.recordForm}`}>
+          <section className={`${ws.card} ${ws.recordForm}`} data-tour="records-form">
             <div className={ws.recordFormHead}>
               <Posty pose="hand" face="base" tone="note" size={56} label={null} />
               <div className={ws.recordFormWord}>
@@ -397,7 +397,7 @@ export default function RecordsPage() {
                     />
                     {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                       그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다. */}
-                    <small className={ws.recordOrder}>
+                    <small className={ws.recordOrder} data-tour="records-order">
                       <span className={ws.recordSteps} aria-label="적는 순서">
                         {["상황", "행동", "반응", "교사 지원"].map((step) => (
                           <b key={step}>{step}</b>
@@ -421,7 +421,7 @@ export default function RecordsPage() {
             )}
           </section>
         </div>
-        <section className={ws.stack}>
+        <section className={ws.stack} data-tour="records-list">
           <div className={ws.recordListHead}>
             <h2 className={ws.recordListTitle}>
               쌓인 기록 <span>{shown.length}건</span>

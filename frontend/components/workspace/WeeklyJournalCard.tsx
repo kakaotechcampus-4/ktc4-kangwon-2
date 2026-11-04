@@ -186,7 +186,7 @@ export default function WeeklyJournalCard({
         : "아직 만들지 않았어요.";
 
   return (
-    <section className={`${ws.card} ${ws.journalCard}`}>
+    <section className={`${ws.card} ${ws.journalCard}`} data-tour="weekly-journal">
       <div>
         <h2 className={ws.journalTitle}>이번 주 보육일지</h2>
         <p className={ws.journalLead}>
