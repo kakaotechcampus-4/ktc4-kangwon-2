@@ -18,12 +18,16 @@ from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmProviderError,
 )
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.json_daily_life_reference_repository import (
+    JsonDailyLifeReferenceRepository,
+)
 from ssuksak.adapters.play_monthly_composition import (
     play_monthly_command,
     play_monthly_generation,
 )
 from ssuksak.planning import InvalidDomainValueError, ItemId, PlanId
 from ssuksak.planning.application.generate_play_monthly_plan import PlayMonthlyGenerationError
+from ssuksak.planning.application.play_monthly_document import play_monthly_document
 from ssuksak.planning.application.play_monthly_lifecycle import (
     AddPlayMonthlyActivity,
     AddPlayMonthlyActivityCommand,
@@ -40,6 +44,12 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     PlayMonthlyLifecycleError,
     RemovePlayMonthlyActivity,
     RemovePlayMonthlyActivityCommand,
+    RemovePlayMonthlyTimetableCell,
+    RemovePlayMonthlyTimetableCellCommand,
+    ResizePlayMonthlyTimetable,
+    ResizePlayMonthlyTimetableCommand,
+    SplitPlayMonthlyTimetableCell,
+    SplitPlayMonthlyTimetableCellCommand,
     UnconfirmPlayMonthlyPlan,
     UnconfirmPlayMonthlyPlanCommand,
     play_monthly_notices,
@@ -49,11 +59,14 @@ from ssuksak.planning.domain.play_monthly_plan import (
     PlayActivity,
     PlayMonthlyCell,
     PlayMonthlyPlan,
+    TimetableNode,
+    TimetableSize,
 )
 from ssuksak.planning.domain.play_project_plan import (  # 공개 창구에 없다
     PLAY_PROJECT_FORMAT,
     PlayProjectYearlyPlan,
 )
+from ssuksak.planning.domain.provenance import SplitAxis
 from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.planner.contracts import ProposalParseError, ProposalRejectedError
 
@@ -79,6 +92,8 @@ from app.features.plans.monthly_router import (
     _target_month,
 )
 from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
+from app.features.plans.play_monthly_hwpx import TEMPLATE as PLAY_MONTHLY_TEMPLATE
+from app.features.plans.play_monthly_hwpx import fill_play_monthly
 from app.features.plans.play_project import ConfirmIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.router import _exception_chain
@@ -86,6 +101,7 @@ from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
+from app.shared.hwpx import Format, download
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 _log = logging.getLogger(__name__)
@@ -324,6 +340,26 @@ _LIFECYCLE_ERRORS = {
     "invalid_content_ids": _invalid("content_ids"),
     "play_monthly_drill_candidate_blank": _invalid("item_id"),
     "curriculum_reference_unavailable": _REFERENCE_UNAVAILABLE,
+    # 특별활동 시간표(ADR-047). 한도 수치는 Core 가 정하고 문구는 교사가 고칠 방법을 말한다.
+    "play_monthly_timetable_cell_not_found": _error(
+        404, "NOT_FOUND", "그 시간표 칸을 찾을 수 없습니다.", ["item_id"]
+    ),
+    "timetable_boundary_not_found": _error(
+        404, "NOT_FOUND", "그 시간표 경계를 찾을 수 없습니다.", ["split_id"]
+    ),
+    "timetable_split_limit": _error(
+        422, "VALIDATION_FAILED", "한 요일은 네 번까지 나눌 수 있습니다.", ["item_id"]
+    ),
+    "timetable_last_cell": _error(
+        422,
+        "VALIDATION_FAILED",
+        "요일의 마지막 칸은 지울 수 없습니다. 글을 비워 주세요.",
+        ["item_id"],
+    ),
+    "timetable_width_limit": _error(
+        422, "VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.", []
+    ),
+    "invalid_timetable_size": _invalid("ratio"),
 }
 
 
@@ -480,6 +516,90 @@ def place_safety(
     )
 
 
+# ── 특별활동 시간표 나누기 · 지우기 · 크기 (ADR-047). 경로는 주간 칸 나누기와 같은 모양이다. ──
+
+
+@router.post("/{plan_id}/cells/{item_id}/split", response_model=s.PlayMonthlyPlanOut)
+def split_timetable_cell(
+    plan_id: int, item_id: str, body: s.SplitTimetableIn, session: DbSession, user: CurrentUser
+):
+    """원래 칸(id · 글 · 이력)은 위 · 왼쪽에 남고 아래 · 오른쪽에 빈 새 칸이 50:50 으로 생긴다."""
+    item = _item(item_id)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: SplitPlayMonthlyTimetableCell(
+            plan_repository=drafts, id_generator=UuidGenerator(), clock=SystemClock()
+        ).execute(
+            SplitPlayMonthlyTimetableCellCommand(
+                plan.plan_id, _actor(user), item, SplitAxis(body.axis)
+            )
+        ),
+    )
+
+
+@router.delete("/{plan_id}/cells/{item_id}/split", response_model=s.PlayMonthlyPlanOut)
+def remove_timetable_cell(
+    plan_id: int,
+    item_id: str,
+    session: DbSession,
+    user: CurrentUser,
+    expected_revision: Annotated[int, Query(ge=1)],
+):
+    """칸을 문서에서 뺀다. 형제 칸(묶음)이 자리를 채우고, 뺀 칸은 이력과 함께 보관된다."""
+    item = _item(item_id)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        expected_revision,
+        lambda drafts, plan: RemovePlayMonthlyTimetableCell(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(RemovePlayMonthlyTimetableCellCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+@router.put("/{plan_id}/timetable/splits/{split_id}", response_model=s.PlayMonthlyPlanOut)
+def resize_timetable_split(
+    plan_id: int, split_id: str, body: s.TimetableRatioIn, session: DbSession, user: CurrentUser
+):
+    """경계 하나의 첫 갈래(위 · 왼쪽) 비율. 같은 값이면 200 · 무변경."""
+    split = _item(split_id, "split_id")
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizePlayMonthlyTimetable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            ResizePlayMonthlyTimetableCommand(
+                plan.plan_id, _actor(user), split_id=split, ratio=body.ratio
+            )
+        ),
+    )
+
+
+@router.put("/{plan_id}/timetable/size", response_model=s.PlayMonthlyPlanOut)
+def resize_timetable(plan_id: int, body: s.TimetableSizeIn, session: DbSession, user: CurrentUser):
+    """요일 열 폭 다섯(합 100) · 표 높이(mm). 같은 값이면 200 · 무변경."""
+    try:
+        size = TimetableSize(tuple(body.column_widths), body.height_mm)
+    except InvalidDomainValueError as error:
+        raise _invalid("column_widths", "height_mm") from error
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizePlayMonthlyTimetable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(ResizePlayMonthlyTimetableCommand(plan.plan_id, _actor(user), size=size)),
+    )
+
+
 @router.post("/{plan_id}/drill-candidates/{item_id}/copy", response_model=s.PlayMonthlyPlanOut)
 def copy_drill_candidate(
     plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
@@ -589,6 +709,35 @@ def unconfirm_play_monthly_plan(
     return detail
 
 
+_NOT_EXPORTABLE = _error(409, "GATE_BLOCKED", "확정된 계획안만 내보낼 수 있습니다.", [])
+
+
+@router.get("/{plan_id}/export/hwp")
+def export_play_monthly_plan(
+    plan_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
+) -> Response:
+    """확정한 놀이 월간을 양식 `play_monthly.hwpx` 에 채워 내려준다(다른 내보내기와 같은 규칙).
+
+    교사가 나눈 특별활동 시간표 모양 · 열 폭 · 높이 그대로다. 근거 · 이력 · 보관한 칸은 싣지 않는다.
+    """
+    row = _own_row(session, user, plan_id)
+    if row.status != "CONFIRMED":
+        raise _NOT_EXPORTABLE
+    plan = _plan(_repo(session, user), row)
+    references = plan.references
+    daily_life = JsonDailyLifeReferenceRepository().get_catalog(
+        references.daily_life_catalog_id, references.daily_life_catalog_version
+    )
+    if daily_life is None:  # 계획안이 읽은 판이 없어졌다 — 습관 이름표를 지어낼 수 없다
+        raise _UNAVAILABLE
+    content = fill_play_monthly(
+        PLAY_MONTHLY_TEMPLATE.read_bytes(), play_monthly_document(plan, daily_life)
+    )
+    klass = require_own_class(session, user, int(plan.classroom_ref))
+    title = f"{plan.target_month.calendar_month}월 놀이계획안 - {klass.name}"
+    return download(content, f"play-monthly-{row.id}", title, format)
+
+
 @router.get("/{plan_id}/audit", response_model=s.PlayMonthlyAuditOut)
 def get_play_monthly_audit(plan_id: int, session: DbSession, user: CurrentUser):
     """저장된 이벤트를 읽기만 한다. 지운 행의 칸 이벤트도 싣는다."""
@@ -643,7 +792,21 @@ def _audit_event(e, is_cell: bool) -> s.PlayMonthlyAuditEventOut:
             scope=arr.scope, before=list(arr.before), after=list(arr.after)
         ),
         copied_from=None if e.copied_from is None else e.copied_from.value,
+        timetable_change=None
+        if e.timetable_change is None
+        else _timetable_change(e.timetable_change),
     )
+
+
+def _timetable_change(change) -> dict:
+    ids = {k: getattr(change, k) for k in ("split_id", "cell_id", "new_cell_id")}
+    return {
+        "operation": change.operation.value,
+        **{k: None if v is None else v.value for k, v in ids.items()},
+        "axis": None if change.axis is None else change.axis.value,
+        "before": list(change.before),
+        "after": list(change.after),
+    }
 
 
 def _repo(session: Session, user) -> PostgresPlanRepository[PlayMonthlyPlan]:
@@ -700,6 +863,17 @@ def _cell(cell: PlayMonthlyCell) -> s.CellOut:
             rule_id=generation.rule_id,
             rule_version=generation.rule_version,
         ),
+    )
+
+
+def _timetable_part(node: TimetableNode) -> s.TimetablePartOut:
+    if node.cell is not None:
+        return s.TimetablePartOut(cell=_cell(node.cell))
+    return s.TimetablePartOut(
+        split_id=node.split_id.value,
+        axis=node.axis.value,
+        ratio=node.ratio,
+        children=[_timetable_part(c) for c in node.children],
     )
 
 
@@ -794,6 +968,12 @@ def _detail(
         teacher_inputs=[
             s.TeacherInputOut(key=t.semantic_key, cell=_cell(t)) for t in plan.teacher_inputs
         ],
+        specialized_timetable=[_cell(c) for c in plan.specialized_timetable],
+        special_activity=[_timetable_part(day) for day in plan.special_activity],
+        special_activity_size=s.TimetableSizeOut(
+            column_widths=list(plan.special_activity_size.column_widths),
+            height_mm=plan.special_activity_size.height_mm,
+        ),
         notices=[
             s.NoticeOut(code=n.code, week_id=None if n.week_id is None else n.week_id.value)
             for n in play_monthly_notices(plan)

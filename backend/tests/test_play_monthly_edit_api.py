@@ -496,3 +496,134 @@ def test_공백뿐인_연결_ID_는_없는_계획안에도_먼저_422(world):
         "VALIDATION_FAILED",
         {"content_ids"},
     )
+
+
+# ── 특별활동 시간표 나누기 · 지우기 · 크기 (ADR-047) ─────────────────────────────
+
+THURSDAY = 3  # 시작 모양에서 나뉘지 않은 한 칸이다
+
+
+def _day(body, day=THURSDAY):
+    return body["special_activity"][day]
+
+
+def _split(row_id, item, axis="VERTICAL", rev=1):
+    return client.post(
+        f"{URL}/{row_id}/cells/{item}/split", json={"axis": axis, "expected_revision": rev}
+    )
+
+
+@pytest.mark.parametrize("axis", ["VERTICAL", "HORIZONTAL"])
+def test_시간표_칸을_나누면_원래_칸은_첫_갈래에_남고_새_칸은_빈_채로_생긴다(world, axis):
+    plan, row = _play(world)
+    leaf = plan.special_activity[THURSDAY].cell
+    plan = _stored(world, row)
+    response = _split(row.id, leaf.item_id.value, axis)
+    assert response.status_code == 200, response.json()
+    day = _day(response.json())
+    assert (day["axis"], day["ratio"]) == (axis, 50)
+    first, second = (c["cell"] for c in day["children"])
+    assert (first["item_id"], first["value"]) == (leaf.item_id.value, leaf.value)
+    assert second["value"] == "" and second["item_id"] != leaf.item_id.value
+    # 다시 읽어도 같은 모양이고 원래 칸의 이력이 이어진다
+    assert _day(client.get(f"{URL}/{row.id}").json()) == day
+    stored = _stored(world, row)
+    assert stored.find_cell(leaf.item_id).audit == leaf.audit
+    assert stored.audit.events[-1].event_type is AuditEventType.TIMETABLE_CHANGED
+
+
+def test_나눈_칸을_지우면_형제가_자리를_채우고_지운_칸은_보관되며_마지막_칸은_못_지운다(world):
+    plan, row = _play(world)
+    leaf = plan.special_activity[THURSDAY].cell.item_id.value
+    new = _day(_split(row.id, leaf).json())["children"][1]["cell"]["item_id"]
+    nested = _day(_split(row.id, new, "HORIZONTAL", rev=2).json())
+    newest = nested["children"][1]["children"][1]["cell"]["item_id"]
+    client.put(f"{URL}/{row.id}/cells/{newest}", json={"value": "쓴 글", "expected_revision": 3})
+
+    gone = client.delete(f"{URL}/{row.id}/cells/{leaf}/split", params={"expected_revision": 4})
+
+    assert gone.status_code == 200, gone.json()
+    day = _day(gone.json())  # 남은 좌우 묶음이 요일 전체가 된다
+    assert day["axis"] == "HORIZONTAL"
+    assert [c["cell"]["item_id"] for c in day["children"]] == [new, newest]
+    assert day["children"][1]["cell"]["value"] == "쓴 글"
+    assert [c.item_id.value for c in _stored(world, row).removed_timetable_cells] == [leaf]
+    client.delete(f"{URL}/{row.id}/cells/{new}/split", params={"expected_revision": 5})
+    last = client.delete(f"{URL}/{row.id}/cells/{newest}/split", params={"expected_revision": 6})
+    assert last.status_code == 422
+    assert _row(world, row).revision == 6
+
+
+def test_시간표_크기는_한도_밖이면_422_이고_아무것도_바꾸지_않는다(world):
+    plan, row = _play(world)
+    leaf = plan.special_activity[THURSDAY].cell.item_id.value
+    split_id = _day(_split(row.id, leaf, "HORIZONTAL").json())["split_id"]
+    size = f"{URL}/{row.id}/timetable/size"
+    bad = [
+        client.put(
+            size,
+            json={"column_widths": [30, 20, 20, 20, 20], "height_mm": 24, "expected_revision": 2},
+        ),
+        client.put(
+            size,
+            json={"column_widths": [4, 24, 24, 24, 24], "height_mm": 24, "expected_revision": 2},
+        ),
+        client.put(size, json={"column_widths": [20] * 5, "height_mm": 81, "expected_revision": 2}),
+        # 목요일 5% 를 다시 반으로 나누면 칸이 2.5% — 실제 칸 폭 3.5% 아래
+        client.put(
+            size,
+            json={"column_widths": [35, 20, 20, 5, 20], "height_mm": 24, "expected_revision": 2},
+        ),
+        client.put(
+            f"{URL}/{row.id}/timetable/splits/{split_id}",
+            json={"ratio": 91, "expected_revision": 2},
+        ),
+    ]
+    assert [r.status_code for r in bad] == [422] * 5
+    assert _row(world, row).revision == 2
+
+    ok = client.put(
+        size, json={"column_widths": [24, 19, 19, 19, 19], "height_mm": 40, "expected_revision": 2}
+    )
+    assert ok.json()["special_activity_size"] == {
+        "column_widths": [24, 19, 19, 19, 19],
+        "height_mm": 40,
+    }
+    ratio = client.put(
+        f"{URL}/{row.id}/timetable/splits/{split_id}", json={"ratio": 70, "expected_revision": 3}
+    )
+    assert (_day(ratio.json())["ratio"], ratio.json()["revision"]) == (70, 4)
+    same = client.put(
+        f"{URL}/{row.id}/timetable/splits/{split_id}", json={"ratio": 70, "expected_revision": 4}
+    )
+    assert same.json()["revision"] == 4
+
+
+def test_한_요일은_네_번까지만_나뉜다(world):
+    plan, row = _play(world)
+    item = plan.special_activity[THURSDAY].cell.item_id.value
+    for rev in range(1, 5):
+        assert _split(row.id, item, rev=rev).status_code == 200
+    assert _split(row.id, item, rev=5).status_code == 422
+
+
+def test_확정한_놀이_월간은_나눈_모양대로_hwpx_로_내려받고_초안은_409(world, monkeypatch):
+    from play_monthly_factory import DAILY
+
+    from app.features.plans import play_monthly_router
+
+    monkeypatch.setattr(
+        play_monthly_router, "JsonDailyLifeReferenceRepository", lambda: _Catalogs(DAILY)
+    )
+    plan, row = _play(world)
+    _split(row.id, plan.special_activity[THURSDAY].cell.item_id.value, "HORIZONTAL")
+    assert client.get(f"{URL}/{row.id}/export/hwp").status_code == 409
+    world["session"].execute(update(Plan).where(Plan.id == row.id).values(status="CONFIRMED"))
+    world["session"].commit()
+
+    response = client.get(f"{URL}/{row.id}/export/hwp")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("application/hwp+zip")
+    assert "filename*=UTF-8''4%EC%9B%94" in response.headers["content-disposition"]
+    assert response.content[:2] == b"PK"
