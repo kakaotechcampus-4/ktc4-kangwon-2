@@ -13,7 +13,15 @@ import {
   type SavedDocument,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
-import { isUnauthenticated, invalidFields } from "@/lib/api/client";
+import {
+  isAlreadyExists,
+  isApiNotFound,
+  isClassAccessRequired,
+  isClassReadOnly,
+  isStaleWrite,
+  isUnauthenticated,
+  invalidFields,
+} from "@/lib/api/client";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import {
@@ -36,17 +44,40 @@ import {
 } from "@/lib/api/documents";
 import { listDayRoutines, type RoutineLine } from "@/lib/api/routines";
 import { listAnnualPlans } from "@/lib/api/plans";
-import type { AnnualPlanSummary } from "@/lib/api/types";
+import type { AnnualPlanSummary, ApiClass, ClassAccess } from "@/lib/api/types";
+import { getMe } from "@/lib/api/auth";
+import {
+  decideAccessRequest,
+  getArchiveSummary,
+  getClasses,
+  getReceivedRequests,
+  requestClassAccess,
+} from "@/lib/api/classes";
+import { getChildren } from "@/lib/api/children";
+import type { ChildEntry, ClassroomEntry } from "@/lib/onboarding/types";
 import DailyLogSources from "./DailyLogSources";
-import { classServerId } from "@/lib/api/onboarding";
+import { CHILD_PREFIX, CLASS_PREFIX, classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { routinesPath, routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import DocumentEditor from "./DocumentEditor";
 import DocumentArchivePreview from "./DocumentArchivePreview";
 import DocumentArchiveView, { type ArchiveDoc } from "./DocumentArchiveView";
+import {
+  ACCESS_REQUIRED_MESSAGE,
+  LockedClassPanel,
+  READ_ONLY_MESSAGE,
+  ReceivedRequestsPanel,
+  isLocked,
+  type ReceivedState,
+  type SummaryState,
+} from "./DocumentArchiveAccess";
 import { createSelection } from "./document-selection";
-import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
+import { Empty, Message, useClasses, ws } from "./WorkspaceUI";
+import { Icon } from "@/components/app/icons";
+import { ArchiveNoteArt } from "./DocumentArchiveArt";
+import { FlowerMeadow } from "./ChildTrackingArt";
+import creation from "./DocumentCreation.module.css";
 import {
   WorkspaceViewState,
   FieldError,
@@ -75,7 +106,46 @@ const NO_ROUTINES: RoutineLine[] = [];
 
 function messageFor(error: unknown) {
   if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
+  // 같은 원 다른 반의 권한 거절 (docs/api-spec.md §2-2). 서버 문구 대신 화면 말로 바꾼다.
+  if (isClassAccessRequired(error)) return ACCESS_REQUIRED_MESSAGE;
+  if (isClassReadOnly(error)) return READ_ONLY_MESSAGE;
   return error instanceof Error ? error.message : "요청을 처리하지 못했어요.";
+}
+
+const DECIDED = {
+  APPROVED: "열람을 승인했어요. 이제 그 선생님이 이 반 문서를 볼 수 있어요.",
+  REJECTED: "요청을 거절했어요.",
+  REVOKED: "열람 승인을 취소했어요. 그 선생님은 더 이상 이 반 문서를 볼 수 없어요.",
+} as const;
+
+/** 같은 원의 반 전부와 각 반의 `my_access` (§2). 원이 없는 계정이면 null. */
+async function fetchCenterClasses(): Promise<ApiClass[] | null> {
+  const me = await getMe();
+  if (me.center_id === null) return null;
+  return (await getClasses(me.center_id)).items;
+}
+
+/**
+ * 보관함 목록. `class_id` 없는 문서 목록은 OWNER · OPEN 반 것만 준다(§2-2) — 승인된 남의 반을
+ * 보고 있으면 그 반 목록을 `class_id` 로 따로 받아 합친다. 승인 전 반은 기록을 부르지 않는다.
+ */
+async function fetchLists(
+  classId: string,
+  approvedServerId: number | null,
+  locked: boolean,
+): Promise<[DocumentSummary[], ServerObservation[]]> {
+  const [own, approved, observations] = await Promise.all([
+    listDocuments(),
+    approvedServerId === null ? [] : listDocuments({ class_id: approvedServerId }),
+    locked ? [] : listRecords(classId),
+  ]);
+  return [[...own, ...approved.filter((d) => !own.some((o) => o.id === d.id))], observations];
+}
+
+/** 받은 요청 중 지금 보고 있는 내 반 것만. */
+function ownRequests(state: ReceivedState, serverClassId: number | null): ReceivedState {
+  if (state.status !== "ready") return state;
+  return { status: "ready", items: state.items.filter((r) => r.class_id === serverClassId) };
 }
 
 export default function DocumentsPage() {
@@ -114,6 +184,117 @@ export default function DocumentsPage() {
       ? (classes.find((c) => classServerId(c.id) === entry.classId)?.id ?? "")
       : primaryClass;
   const classId = pickedClass ?? requestedClass;
+  /**
+   * **보관함만** 같은 원의 모든 반을 본다 (§2 의 반 목록은 원 단위다).
+   * 다른 화면은 그대로 `useClasses` — 담당 반만 쓴다.
+   */
+  const [centerClasses, setCenterClasses] = useState<ApiClass[]>([]);
+  useEffect(() => {
+    let live = true;
+    fetchCenterClasses()
+      // 못 받아도 담당 반 목록은 이미 그려져 있다. 보관함이 좁아질 뿐이다.
+      .then((items) => live && items && setCenterClasses(items))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  /**
+   * 반 목록을 다시 받아 `my_access` 를 최신으로 맞춘다. 요청 · 승인 · 취소는 다른 계정이
+   * 바꾸므로, 반을 고를 때와 권한 거절(403 · 409 · 404)을 받았을 때 다시 묻는다.
+   */
+  async function refreshAccess() {
+    const items = await fetchCenterClasses().catch(() => null);
+    if (items) setCenterClasses(items);
+  }
+  // 반마다 서버가 준 열람 상태 (§2). 칸이 없는 옛 서버면 비어 있고, 그때는 지금처럼 다 연다.
+  const accessByServerId = useMemo(
+    () =>
+      new Map(
+        centerClasses.flatMap((c) =>
+          c.my_access ? ([[c.id, c.my_access]] as [number, ClassAccess][]) : [],
+        ),
+      ),
+    [centerClasses],
+  );
+  const classServer = classId ? classServerId(classId) : null;
+  const classAccess = classServer === null ? undefined : accessByServerId.get(classServer);
+  // 승인 전 반이면 실제 자료(문서 · 기록 · 명단)를 부르지 않는다 — 403 CLASS_ACCESS_REQUIRED 다.
+  const lockedClass = isLocked(classAccess);
+  // 승인된 남의 반은 class_id 를 붙여야 목록에 나온다 (§2-2 「반 단위 API 공통 규칙」).
+  const approvedServerId = classAccess === "APPROVED" ? classServer : null;
+  // 고른 반이 담당 반이 아니면 아이 명단이 로컬에 없다. 관찰일지는 아이를 골라야 열린다.
+  // 읽을 수 있는 반(OWNER · OPEN · APPROVED)만 명단을 부른다.
+  const guestClassId =
+    classId && !lockedClass && !classes.some((c) => c.id === classId) ? classId : "";
+  const [roster, setRoster] = useState<{ classId: string; children: ChildEntry[] }>({
+    classId: "",
+    children: [],
+  });
+  useEffect(() => {
+    const serverId = guestClassId ? classServerId(guestClassId) : null;
+    if (serverId === null) return;
+    let live = true;
+    getChildren(serverId)
+      .then(({ items }) => {
+        if (!live) return;
+        setRoster({
+          classId: guestClassId,
+          children: items.map((kid) => ({
+            // 기록 쪽(documents.ts · observations.ts)이 연결 없는 서버 id 를 푸는 규칙과 같다.
+            id: CHILD_PREFIX + kid.id,
+            name: kid.name,
+            code: kid.code,
+          })),
+        });
+      })
+      .catch(() => live && setMessage("이 반의 아동 명단을 불러오지 못했어요."));
+    return () => {
+      live = false;
+    };
+  }, [guestClassId]);
+  /**
+   * 보관함에 그릴 반 목록(같은 원 전부)과, 반마다의 열람 상태 · **열람만 되는** 반.
+   *
+   * 읽기는 OWNER · OPEN · APPROVED, 쓰기는 OWNER · OPEN 이다 (ADR-059 · §2-2).
+   * APPROVED 반은 서버가 쓰기를 403 CLASS_READ_ONLY 로 막고, 화면도 작성·수정 단추를 감춘다.
+   * `my_access` 를 안 주는 옛 서버에서는 아무 반도 잠기지 않아 예전과 똑같이 동작한다.
+   */
+  const archive = useMemo(() => {
+    const known = new Set(classes.map((c) => classServerId(c.id)));
+    const guests = centerClasses
+      .filter((item) => !known.has(item.id))
+      .map<ClassroomEntry>((item) => {
+        const id = CLASS_PREFIX + item.id;
+        return {
+          id,
+          className: item.name,
+          ageGroup: "",
+          // 서버는 연령을 범위로만 들고 있다 (lib/api/age-adapter.ts).
+          selectedAges: [
+            ...([3, 4, 5] as const).filter((a) => a >= item.age_min && a <= item.age_max),
+          ],
+          currentChildCount: item.child_count ?? "",
+          teacherName: item.teacher_name,
+          guardianConsent: item.consent_confirmed_at !== null,
+          childrenSkipped: false,
+          children: roster.classId === id ? roster.children : [],
+        };
+      });
+    const list = [...classes, ...guests];
+    const access = new Map(
+      list.flatMap((c) => {
+        const a = accessByServerId.get(classServerId(c.id) ?? -1);
+        return a ? ([[c.id, a]] as [string, ClassAccess][]) : [];
+      }),
+    );
+    return {
+      list,
+      access,
+      readOnly: new Set(list.filter((c) => access.get(c.id) === "APPROVED").map((c) => c.id)),
+    };
+  }, [classes, centerClasses, roster, accessByServerId]);
+  const readOnlyClass = archive.readOnly.has(classId);
   const [serverDocs, setServerDocs] = useState<DocumentSummary[]>([]);
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
@@ -165,7 +346,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     const mine = ++latestList.current;
-    Promise.all([listDocuments(), listRecords(classId)])
+    fetchLists(classId, approvedServerId, lockedClass)
       .then(([documents, observations]) => {
         if (mine !== latestList.current) return;
         setServerDocs(documents);
@@ -177,16 +358,18 @@ export default function DocumentsPage() {
         if (mine !== latestList.current) return;
         setListError(messageFor(e));
         setListStatus("error");
+        // 보는 사이 승인이 취소됐다 — 반 상태를 다시 받아 요청 화면으로 돌린다.
+        if (isClassAccessRequired(e)) void refreshAccess();
       });
     return () => {
       latestList.current += 1;
       selection.leaveCreation();
     };
-  }, [selection, classId]);
+  }, [selection, classId, approvedServerId, lockedClass]);
   async function reloadList() {
     const mine = ++latestList.current;
     try {
-      const [documents, observations] = await Promise.all([listDocuments(), listRecords(classId)]);
+      const [documents, observations] = await fetchLists(classId, approvedServerId, lockedClass);
       if (mine !== latestList.current) return;
       setServerDocs(documents);
       setRecords(observations);
@@ -196,6 +379,7 @@ export default function DocumentsPage() {
       if (mine !== latestList.current) return;
       setListError(messageFor(e));
       setListStatus("error");
+      if (isClassAccessRequired(e)) void refreshAccess();
     }
   }
 
@@ -223,6 +407,149 @@ export default function DocumentsPage() {
       if (mine === latestPlans.current) setPlans({ items: [], error: messageFor(e) });
     }
   }
+  // class_id 없는 연간 목록에는 승인된 남의 반이 없다(§2-2). 그 반을 볼 때만 따로 부른다.
+  const [approvedAnnual, setApprovedAnnual] = useState<{
+    classId: number;
+    items: AnnualPlanSummary[];
+  } | null>(null);
+  useEffect(() => {
+    if (approvedServerId === null) return;
+    let live = true;
+    listAnnualPlans(approvedServerId)
+      .then(({ items }) => live && setApprovedAnnual({ classId: approvedServerId, items }))
+      .catch((e) => {
+        if (!live) return;
+        setApprovedAnnual({ classId: approvedServerId, items: [] });
+        setMessage(`연간계획안을 불러오지 못했어요. ${messageFor(e)}`);
+        if (isClassAccessRequired(e)) void refreshAccess();
+      });
+    return () => {
+      live = false;
+    };
+  }, [approvedServerId]);
+  const annualItems = useMemo(() => {
+    const own = plans?.items ?? [];
+    if (approvedAnnual === null || approvedAnnual.classId !== approvedServerId) return own;
+    return [...own, ...approvedAnnual.items.filter((p) => !own.some((o) => o.id === p.id))];
+  }, [plans, approvedAnnual, approvedServerId]);
+
+  // 승인 전 반의 요약 (§2-2 「요약」). 같은 원이면 열람 상태와 관계없이 받는다.
+  const lockedServerId = lockedClass ? classServer : null;
+  const [summary, setSummary] = useState<{ classId: number; state: SummaryState } | null>(null);
+  const [summaryRetry, setSummaryRetry] = useState(0);
+  useEffect(() => {
+    if (lockedServerId === null) return;
+    let live = true;
+    getArchiveSummary(lockedServerId)
+      .then(
+        ({ items }) =>
+          live && setSummary({ classId: lockedServerId, state: { status: "ready", items } }),
+      )
+      .catch((e) => {
+        if (!live) return;
+        setSummary({ classId: lockedServerId, state: { status: "error", error: messageFor(e) } });
+        // 404 는 다른 원 · 없는 반이다. 반 목록을 다시 받아 그 반을 지운다 — 정보를 더 보이지 않는다.
+        if (isApiNotFound(e)) void refreshAccess();
+      });
+    return () => {
+      live = false;
+    };
+  }, [lockedServerId, summaryRetry]);
+  const summaryState: SummaryState =
+    summary?.classId === lockedServerId ? summary.state : { status: "loading" };
+
+  // 열람 요청 (§2-2 「요청」). 누르는 동안 단추를 끈다 — 같은 요청이 두 번 나가지 않게.
+  const [requesting, setRequesting] = useState(false);
+  // 단추가 꺼지는 것은 다음 렌더다. 그 사이 두 번째 클릭이 들어와도 요청은 하나만 나가게 ref 로 막는다.
+  const inFlight = useRef(false);
+  const [accessMessage, setAccessMessage] = useState({ classId: "", text: "" });
+  async function requestAccess() {
+    if (inFlight.current || lockedServerId === null) return;
+    inFlight.current = true;
+    const target = lockedServerId;
+    const forClass = classId;
+    setRequesting(true);
+    setAccessMessage({ classId: forClass, text: "" });
+    try {
+      const created = await requestClassAccess(target);
+      setCenterClasses((prev) =>
+        prev.map((c) => (c.id === target ? { ...c, my_access: created.status } : c)),
+      );
+      setAccessMessage({
+        classId: forClass,
+        text: "열람을 요청했어요. 담당 선생님이 승인하면 문서를 볼 수 있어요.",
+      });
+    } catch (e) {
+      // 실패하면 지금 상태를 그대로 둔다. 409 · 404 는 서버 상태가 화면과 다르다는 뜻이라 다시 받는다.
+      if (isAlreadyExists(e)) {
+        await refreshAccess();
+        setAccessMessage({
+          classId: forClass,
+          text: "이미 요청했거나 열람할 수 있는 반이에요. 최신 상태로 바꿨어요.",
+        });
+      } else if (isApiNotFound(e)) {
+        await refreshAccess();
+        setAccessMessage({ classId: forClass, text: "이 반을 찾을 수 없어요." });
+      } else {
+        setAccessMessage({ classId: forClass, text: `요청하지 못했어요. ${messageFor(e)}` });
+      }
+    } finally {
+      inFlight.current = false;
+      setRequesting(false);
+    }
+  }
+
+  // 내 반에 온 요청 (§2-2 「받은 요청」). 메일 없이 화면 안 목록으로만 알린다.
+  const [received, setReceived] = useState<ReceivedState>({ status: "loading" });
+  const [receivedRetry, setReceivedRetry] = useState(0);
+  useEffect(() => {
+    let live = true;
+    getReceivedRequests()
+      .then(({ items }) => live && setReceived({ status: "ready", items }))
+      .catch((e) => live && setReceived({ status: "error", error: messageFor(e) }));
+    return () => {
+      live = false;
+    };
+  }, [receivedRetry]);
+  const [deciding, setDeciding] = useState<number | null>(null);
+  const [decideMessage, setDecideMessage] = useState("");
+  async function decide(id: number, next: "APPROVED" | "REJECTED" | "REVOKED") {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setDeciding(id);
+    setDecideMessage("");
+    try {
+      const updated = await decideAccessRequest(id, next);
+      setReceived((prev) =>
+        prev.status === "ready"
+          ? { status: "ready", items: prev.items.map((r) => (r.id === id ? updated : r)) }
+          : prev,
+      );
+      setDecideMessage(DECIDED[next]);
+    } catch (e) {
+      // 다른 화면이 먼저 처리했거나(409) 요청이 사라졌다(404). 목록을 다시 받는다.
+      if (isStaleWrite(e) || isApiNotFound(e)) {
+        setDecideMessage("다른 화면에서 먼저 처리된 요청이에요. 최신 상태를 불러왔어요.");
+        setReceivedRetry((n) => n + 1);
+      } else {
+        setDecideMessage(`처리하지 못했어요. ${messageFor(e)}`);
+      }
+    } finally {
+      inFlight.current = false;
+      setDeciding(null);
+    }
+  }
+  // 내 반(OWNER)마다 기다리는 요청 수 — 반 카드에 띄운다.
+  const pendingRequests = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (received.status !== "ready") return counts;
+    for (const r of received.items) {
+      if (r.status !== "PENDING") continue;
+      const local = archive.list.find((c) => classServerId(c.id) === r.class_id);
+      if (local) counts.set(local.id, (counts.get(local.id) ?? 0) + 1);
+    }
+    return counts;
+  }, [received, archive.list]);
 
   const [recordId] = useState(() =>
     typeof window === "undefined"
@@ -339,14 +666,14 @@ export default function DocumentsPage() {
       createdAt: d.createdAt,
       stale: false,
     })),
-    ...(plans?.items ?? []).map((p) => ({
+    ...annualItems.map((p) => ({
       id: `annual:${p.id}`,
       source: "plan" as const,
       serverId: p.id,
       format: p.format,
       title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
       // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
-      className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
+      className: archive.list.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
       childName: "",
       kind: "annual" as const,
       status: (p.status === "CONFIRMED" ? "confirmed" : "draft") as SavedDocument["status"],
@@ -383,6 +710,8 @@ export default function DocumentsPage() {
 
   /** 보관함에서 「작성」을 누르면 **기존 생성 화면**으로 넘어간다 — 가짜 생성을 만들지 않는다. */
   function startCreate(next: RecordKind, options: { date: string; childId?: string }) {
+    // 담임이 다른 반은 열람만 한다. 보관함이 단추를 감추지만 여기서도 막는다.
+    if (readOnlyClass) return;
     selection.leaveCreation();
     setMode("create");
     setKind(next);
@@ -397,8 +726,11 @@ export default function DocumentsPage() {
   const activeServerId = documentServerId(active);
   const localCurrent = data.documents.find((d) => d.id === active);
   // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
-  const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
-  const current = activeServerId === null ? localCurrent : serverCurrent;
+  const serverDetail = chosen.detail?.id === active ? chosen.detail : null;
+  // 담임이 다른 반의 문서는 **열람만** 한다. 미리보기(current)는 그대로 두고, 고칠 수 있는
+  // 문서(serverCurrent)에서만 뺀다 — 아래 serverActions 가 통째로 끊긴다. 서버도 403 이다.
+  const serverCurrent = readOnlyClass ? null : serverDetail;
+  const current = activeServerId === null ? localCurrent : serverDetail;
   // 첫 목록이 비어 있어도 조회가 끝나기 전에는 로딩임을 알린다.
   const journalsPending = listStatus === "loading";
 
@@ -439,6 +771,7 @@ export default function DocumentsPage() {
     if (
       busy ||
       !classroom ||
+      readOnlyClass ||
       !validPeriod(start, end) ||
       !sources.length ||
       !isRecordKind(kind) ||
@@ -631,7 +964,7 @@ export default function DocumentsPage() {
       <div className={ws.pageHead}>
         <div>
           <h1>문서 보관함</h1>
-          <p>계획안과 일지를 한곳에서 확인하고 관리하세요.</p>
+          <p>계획안과 작성한 문서들이 차곡차곡 모여 있어요.</p>
         </div>
         {/* 보관함은 찾아보는 곳이다. 만들기는 종류별 화면 안의 작성 단추로만 한다. */}
       </div>
@@ -668,19 +1001,52 @@ export default function DocumentsPage() {
             )}
           </>
         }
-        classes={classes}
+        classes={archive.list}
+        readOnlyClasses={archive.readOnly}
+        classAccess={archive.access}
+        pendingRequests={pendingRequests}
+        renderLocked={(type) =>
+          isLocked(classAccess) && (
+            <LockedClassPanel
+              className={archive.list.find((c) => c.id === classId)?.className ?? ""}
+              access={classAccess}
+              type={type}
+              summary={summaryState}
+              requesting={requesting}
+              message={accessMessage.classId === classId ? accessMessage.text : ""}
+              onRequest={requestAccess}
+              onRetrySummary={() => setSummaryRetry((n) => n + 1)}
+            />
+          )
+        }
+        ownerPanel={
+          classAccess === "OWNER" && (
+            <ReceivedRequestsPanel
+              className={archive.list.find((c) => c.id === classId)?.className ?? ""}
+              state={ownRequests(received, classServer)}
+              busyId={deciding}
+              message={decideMessage}
+              onDecide={decide}
+              onRetry={() => setReceivedRetry((n) => n + 1)}
+            />
+          )
+        }
         classId={classId}
         onPickClass={(id) => {
           setClassId(id);
+          // 요청 · 승인은 다른 계정이 바꾼다. 반을 고를 때마다 상태를 다시 받는다.
+          void refreshAccess();
           setChildId("");
           setSelected([]);
           setMessage("");
+          // 편집 중이던 문서가 반을 바꿨다 돌아왔을 때 다시 열리지 않게 한다.
+          setEditingId("");
           selection.select("", null);
         }}
         documents={archiveDocs}
-        annual={plans?.items ?? null}
+        annual={plans ? annualItems : null}
         activeId={active}
-        editingId={editingId}
+        editingId={readOnlyClass ? "" : editingId}
         onBackToPreview={() => setEditingId("")}
         preview={
           <DocumentArchivePreview
@@ -688,7 +1054,7 @@ export default function DocumentsPage() {
             status={chosen.status}
             error={chosen.error}
             onRetry={() => selection.select(active, activeServerId)}
-            onEdit={() => setEditingId(active)}
+            onEdit={readOnlyClass ? undefined : () => setEditingId(active)}
           />
         }
         onOpen={open}
@@ -708,16 +1074,49 @@ export default function DocumentsPage() {
     );
 
   return (
-    <WorkspacePage
-      title="문서 보관함"
-      description="계획안과 일지를 한곳에서 확인하고 관리하세요."
-      action={modeButton}
-    >
+    <main className={`${ws.page} ${creation.page}`}>
+      <header className={`${ws.pageHead} ${creation.header}`}>
+        <ArchiveNoteArt className={creation.headerCharacter} />
+        <div className={creation.headerCopy}>
+          <h1>문서 보관함</h1>
+          <p>우리 반의 일과를 문서로 정리하고 안전하게 보관해요.</p>
+        </div>
+        {modeButton}
+        <svg
+          className={creation.headerLandscape}
+          viewBox="0 0 600 160"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M180 57q-9-16 8-22 3-21 23-19 18-2 23 18 21-2 22 14 0 12-15 12h-49q-9 0-12-3m185-7q-8-16 9-21 6-22 26-19 20-1 25 20 21-3 22 15 0 10-15 10h-55q-10 0-12-5"
+            fill="#fffdfa"
+          />
+          <path
+            d="M49 160q-4-24 24-24-2-28 27-29 20-26 43-2 27-9 35 17 30-1 32 38m99 0q-1-24 22-26 0-26 28-24 13-30 40-25 26-1 34 25 24-9 36 17 35-3 36 33"
+            fill="#e4eacb"
+          />
+          <path
+            d="m16 153-3-8m11 8 2-11m7 11 4-6"
+            stroke="#accb85"
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+        </svg>
+      </header>
       {notices}
-      <div className={ws.grid}>
-        <section className={ws.card}>
-          <h2>문서 작성 조건</h2>
-          <div className={ws.form}>
+      <div className={creation.grid}>
+        <section className={`${ws.card} ${creation.card}`}>
+          <div className={creation.cardHead}>
+            <span className={creation.cardIcon}>
+              <Icon name="record" />
+            </span>
+            <div>
+              <h2>문서 작성 조건</h2>
+              <p className={creation.cardDescription}>문서 종류, 담당 반, 날짜 등을 선택해요.</p>
+            </div>
+          </div>
+          <div className={`${ws.form} ${creation.form}`}>
             <label className={ws.field}>
               문서 종류
               <select
@@ -749,11 +1148,13 @@ export default function DocumentsPage() {
                   }}
                 >
                   <option value="">반 선택</option>
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.className || "이름 없는 반"}
-                    </option>
-                  ))}
+                  {classes
+                    .filter((c) => !archive.readOnly.has(c.id))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.className || "이름 없는 반"}
+                      </option>
+                    ))}
                 </select>
                 <FieldError name="classId" invalid={invalid} />
               </label>
@@ -852,7 +1253,7 @@ export default function DocumentsPage() {
                     : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
             </p>
             <button
-              className={ws.primary}
+              className={`${ws.primary} ${creation.generate}`}
               disabled={busy || !!blocked || listStatus !== "ready" || sourceStatus !== "ready"}
               onClick={generate}
             >
@@ -861,7 +1262,7 @@ export default function DocumentsPage() {
             {blocked && <p className={ws.hint}>{blocked}</p>}
             {fromRoutines && routineHref && (
               <Link className={ws.link} href={routineHref}>
-                새 일과 기록 입력 →
+                새 일과 기록 열기 →
               </Link>
             )}
             {!fromRoutines && (
@@ -886,26 +1287,40 @@ export default function DocumentsPage() {
           />
         )}
         {kind !== "dailyLog" && (
-          <section className={ws.card}>
-            <div className={ws.between}>
-              <h2>문서에 사용할 근거</h2>
-              <span className={ws.badge}>{sources.length}건 선택</span>
+          <section className={`${ws.card} ${creation.card} ${creation.evidenceCard}`}>
+            <div className={creation.cardHead}>
+              <span className={creation.cardIcon}>
+                <Icon name="doc" />
+              </span>
+              <div>
+                <h2>문서에 사용할 근거</h2>
+                <p className={creation.cardDescription}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
+              </div>
+              <span className={`${ws.badge} ${creation.count}`}>{sources.length}건 선택</span>
             </div>
-            <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
             <WorkspaceViewState
               status={sourceStatus}
               error={sourceError}
               loading="근거 기록을 불러오고 있어요."
               empty={
                 !candidates.length && (
-                  <Empty title="조건에 맞는 근거가 없어요">
-                    날짜를 변경하거나{" "}
-                    {fromRoutines
-                      ? "일과 기록을 먼저 입력해주세요."
-                      : kind === "weeklyLog"
-                        ? "일일 보육일지를 먼저 작성하고 확정해주세요."
-                        : "관찰 기록을 먼저 입력해주세요."}
-                  </Empty>
+                  // 일일 보육일지 쪽(DailyLogSources)과 같은 빈 화면이다. 한 화면에서 종류만
+                  // 바꿨는데 그림이 달라지면 다른 기능으로 읽힌다.
+                  <div className={`${ws.empty} ${creation.empty}`}>
+                    <div className={creation.emptyGarden} aria-hidden="true">
+                      <FlowerMeadow className={creation.emptyFlowers} />
+                      <ArchiveNoteArt tone="sage" className={creation.emptyCharacter} />
+                    </div>
+                    <h3>조건에 맞는 근거가 없어요</h3>
+                    <p>
+                      날짜를 변경하거나{" "}
+                      {fromRoutines
+                        ? "일과 기록을 먼저 입력해주세요."
+                        : kind === "weeklyLog"
+                          ? "일일 보육일지를 먼저 작성하고 확정해주세요."
+                          : "관찰 기록을 먼저 입력해주세요."}
+                    </p>
+                  </div>
                 )
               }
             >
@@ -946,6 +1361,6 @@ export default function DocumentsPage() {
           </section>
         )}
       </div>
-    </WorkspacePage>
+    </main>
   );
 }

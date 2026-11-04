@@ -55,6 +55,9 @@
   ```
 - 서버 인증과 센터 범위 — ADR-017 · `test_auth.py` · `features/auth/`
 - 비밀번호 scrypt · 원 초대 코드 — ADR-029
+- 같은 원 다른 반 문서는 반 주인이 승인해야 열리고, 승인받아도 읽기만 된다 — 보관함이 반마다 `my_access` 로 잠금 · 읽기 전용 · 쓰기를 가른다 — ADR-059 · `frontend/components/workspace/DocumentArchiveAccess.tsx` · `frontend/components/workspace/DocumentsPage.tsx`
+- 승인 전 반에는 종류 · 기간 · 상태 요약만 보이고 제목 · 아이 이름은 화면에 오지 않는다 — ADR-059 · `frontend/lib/api/classes.ts` `getArchiveSummary` · `frontend/tests/class-access-api.test.mjs`
+- 승인된 반 자료는 `class_id` 를 붙여서만 부르고, 반을 바꾸면 늦게 온 이전 반 응답이 화면에 끼지 않는다 — `frontend/components/workspace/DocumentsPage.tsx` · `frontend/components/workspace/DocumentArchiveView.tsx`
 
 - 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
 - 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`
@@ -62,6 +65,7 @@
 ## 아직 아닌 것
 
 - 속도 제한(rate limit)이 없다
+- 열람 승인이 취소돼도 이미 열어 둔 보관함 화면은 반을 다시 고르거나 서버가 403 을 줄 때까지 그대로다 — 실시간으로 알리지 않는다
 - 로그에서 개인정보를 거르는 검사가 자동이 아니다 — `test_error_logging.py` · `test_llm_logging.py` 가 일부만 본다
 
 ## 더 모을 근거

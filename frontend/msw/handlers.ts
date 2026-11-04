@@ -14,6 +14,7 @@ import {
 import type { Greetings } from "../lib/api/centers";
 import { findClass, listClasses, addClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
+import { archiveSummary, listReceived, decideRequest, type Decision } from "./data/class-access";
 import {
   findPlan,
   listPlans,
@@ -105,6 +106,16 @@ const integer = (v: unknown): v is number => Number.isInteger(v);
 const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
 const MOCK_INVITE = "MOCK234567";
+/** 다른 원 · 없는 반은 같은 404 다(§2-2). */
+const myCenterClass = (id: number) => {
+  const c = findClass(id);
+  return !!c && c.center_id === currentCenterId();
+};
+const myClassIds = () => {
+  const center = currentCenterId();
+  return center === null ? [] : listClasses(center).map((c) => c.id);
+};
+const DECISIONS: readonly Decision[] = ["APPROVED", "REJECTED", "REVOKED"];
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = await request.json();
@@ -410,7 +421,10 @@ export const handlers = [
     const s = await scenario(request, "classes");
     if (s) return s;
     const id = Number(params.centerId);
-    return findCenter(id) ? HttpResponse.json({ items: listClasses(id) }) : missing();
+    if (!findCenter(id)) return missing();
+    // 목업 반은 모두 이 계정이 만든 반이다 — 열람 상태는 늘 OWNER (§2 · ADR-059).
+    const items = listClasses(id).map((c) => ({ ...c, my_access: "OWNER" as const }));
+    return HttpResponse.json({ items });
   }),
   http.get("*/api/classes/:classId/children", async ({ request, params }) => {
     const s = await scenario(request, "children");
@@ -436,6 +450,45 @@ export const handlers = [
     if (!hasChild(id)) return missing();
     removeChild(id);
     return new HttpResponse(null, { status: 204 });
+  }),
+  // §2-2 열람 요청 (ADR-059). 순서 · 오류는 backend/app/features/class_access/router.py 와 같다.
+  http.get("*/api/classes/:classId/archive-summary", async ({ request, params }) => {
+    const s = await scenario(request, "archive-summary");
+    if (s) return s;
+    const id = Number(params.classId);
+    if (!myCenterClass(id)) return classMissing();
+    return HttpResponse.json({ items: archiveSummary(id) });
+  }),
+  http.post("*/api/classes/:classId/access-requests", async ({ request, params }) => {
+    const s = await scenario(request, "access-request");
+    if (s) return s;
+    if (!myCenterClass(Number(params.classId))) return classMissing();
+    // 목업 반은 모두 내 반(OWNER)이다. 서버도 내 반 · 주인 없는 반에 요청하면 409 다.
+    return failure("ALREADY_EXISTS", "이미 볼 수 있거나 승인을 기다리는 반입니다.", "class_id");
+  }),
+  http.get("*/api/access-requests/received", async ({ request }) => {
+    const s = await scenario(request, "access-requests");
+    if (s) return s;
+    return HttpResponse.json({ items: listReceived(myClassIds()) });
+  }),
+  http.patch("*/api/access-requests/:id", async ({ request, params }) => {
+    const s = await scenario(request, "access-decide");
+    if (s) return s;
+    // 서버는 본문 검사(422)가 먼저다. `status` 하나만, 주인이 내리는 결정 셋만 받는다.
+    const b = await body(request);
+    if (!b) return bad("status");
+    const extra = Object.keys(b).find((k) => k !== "status");
+    if (extra) return bad(extra);
+    if (!DECISIONS.includes(b.status as Decision)) return bad("status");
+    const result = decideRequest(Number(params.id), myClassIds(), b.status as Decision);
+    if (result === "missing") return failure("NOT_FOUND", "요청을 찾을 수 없습니다.", "id");
+    if (result === "stale")
+      return failure(
+        "STALE_WRITE",
+        "그 사이 다른 화면에서 요청이 바뀌었습니다. 새로 불러온 뒤 다시 해주세요.",
+        "status",
+      );
+    return HttpResponse.json(result);
   }),
   http.put("*/api/centers/:centerId/plan-config", async ({ request, params }) => {
     const s = await scenario(request, "plan-config");

@@ -12,6 +12,7 @@ import type {
   MonthlyPlan,
   ProfileRef,
   ReadyProfile,
+  ReceivedAccessRequest,
   WeeklyPlan,
 } from "../../lib/api/types";
 import type { Greetings } from "../../lib/api/centers";
@@ -51,6 +52,8 @@ export interface Database {
   overridePointers: Record<number, MockPointer>;
   /** 테스트 · 개발 전용 승인 Fixture(`template_id@template_version`). 운영 Template 은 승인 대기다. */
   approvedTemplates: string[];
+  /** 내 반에 온 열람 요청(ADR-059). 목업 계정은 하나라 다른 교사의 요청은 테스트가 넣는다. */
+  accessRequests: ReceivedAccessRequest[];
 }
 /** 연간계획안 + 서버가 목록 · 확정 응답에만 주는 시각. 단건 응답에서는 뺀다. */
 export type MockAnnualPlan =
@@ -95,6 +98,7 @@ const empty = (): Database => ({
   defaultPointers: {},
   overridePointers: {},
   approvedTemplates: [],
+  accessRequests: [],
 });
 let memory = empty();
 function key() {
@@ -134,6 +138,7 @@ export function read(): Database {
     defaultPointers: parsed.defaultPointers ?? {},
     overridePointers: parsed.overridePointers ?? {},
     approvedTemplates: parsed.approvedTemplates ?? [],
+    accessRequests: parsed.accessRequests ?? [],
   };
 }
 export function commit<T>(fn: (db: Database) => T): T {

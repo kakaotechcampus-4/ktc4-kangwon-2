@@ -83,8 +83,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     }
   }
   if (!response.ok) {
-    console.error("[API] " + method + " " + path + " → " + response.status, body);
-    throw new ApiError(response.status, body);
+    const error = new ApiError(response.status, body);
+    // 서버가 봉투(`{error:{code}}`)를 붙여 **의도대로 거절한** 4xx 는 호출부가 받아서
+    // 처리한다(예: 원이 이미 있다는 409). 그것을 console.error 로 적으면 Next 개발
+    // 오버레이가 뜬다. **숨기지는 않는다** — 같은 줄을 warn 으로 남기고 그대로 던진다.
+    const line = "[API] " + method + " " + path + " → " + response.status;
+    if (response.status < 500 && envelope(error) !== null) console.warn(line, body);
+    else console.error(line, body);
+    throw error;
   }
   return body as T;
 }
@@ -132,6 +138,17 @@ export function isAlreadyExists(error: unknown): error is ApiError {
   if (!(error instanceof ApiError) || error.status !== 409) return false;
   return envelope(error)?.code === "ALREADY_EXISTS";
 }
+
+const hasCode = (error: unknown, status: number, code: string): error is ApiError =>
+  error instanceof ApiError && error.status === status && envelope(error)?.code === code;
+
+/** 같은 원 다른 반인데 주인 승인이 없다 (docs/api-spec.md §2-2, `403 CLASS_ACCESS_REQUIRED`). */
+export const isClassAccessRequired = (error: unknown) =>
+  hasCode(error, 403, "CLASS_ACCESS_REQUIRED");
+/** 열람은 승인됐지만 쓰기는 주인만 한다 (§2-2, `403 CLASS_READ_ONLY`). */
+export const isClassReadOnly = (error: unknown) => hasCode(error, 403, "CLASS_READ_ONLY");
+/** 다른 화면이 먼저 바꿨다. 다시 불러와야 한다 (`409 STALE_WRITE`). */
+export const isStaleWrite = (error: unknown) => hasCode(error, 409, "STALE_WRITE");
 
 /** 실제 API가 돌려준 JSON NOT_FOUND인지 (= 오래된 로컬 연결 정보 정리 대상인지) */
 export function isApiNotFound(error: unknown): error is ApiError {

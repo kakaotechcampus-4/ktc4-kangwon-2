@@ -43,6 +43,8 @@ e2e (playwright)               실제 DB 로
 | 아동 배정 동시 요청 | `test_child_allocation_concurrency.py` |
 | 확정 재시도 | `test_documents_reconfirm.py` |
 | 백업 스크립트 | `test_backup_script.py` |
+| 휴대폰에서 보육일지 주간 칸 날짜가 넘침 | `frontend/e2e/document-archive-layout.spec.ts` (390 · 375px) |
+| 열람 요청 목업이 계약과 달라 연동 때 터질 수 있음 | `frontend/tests/msw-class-access.test.mjs` |
 
 ## 규칙
 
@@ -53,6 +55,7 @@ e2e (playwright)               실제 DB 로
 ## 아직 아닌 것
 
 - 커버리지를 재지 않는다
+- 열람 요청 두 번 누름 막기(`inFlight`)는 브라우저로만 확인했다 — 단위 테스트가 없다
 - 프런트 테스트가 가짜 `useState` 하네스라 실제 렌더 경로를 전부 안 지난다
 
 ## 더 모을 근거

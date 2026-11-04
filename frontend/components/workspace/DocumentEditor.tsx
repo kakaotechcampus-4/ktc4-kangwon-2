@@ -581,8 +581,7 @@ export default function DocumentEditor({
         </section>
       )}
       {editable && (
-        <>
-          <hr className={ws.divider} />
+        <div className={ws.verify}>
           <h3>사실 · 해석 · 지원 검증</h3>
           <AIHint available={available} />
           <button className={ws.secondary} disabled={working || stale} onClick={verify}>
@@ -645,7 +644,7 @@ export default function DocumentEditor({
               </label>
             ))
           )}
-        </>
+        </div>
       )}
       <Message>{message}</Message>
       <div className={ws.actions}>

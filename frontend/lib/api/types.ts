@@ -61,7 +61,33 @@ export interface ApiClass {
   consent_confirmed_at: string | null;
   created_at: string;
   /** 이 계정이 이 반을 쓸 수 있는지 (ADR-059). 옛 서버 응답에는 없다. */
-  my_access?: "OWNER" | "OPEN" | "APPROVED" | "PENDING" | "REJECTED" | "REVOKED" | "NONE";
+  my_access?: ClassAccess;
+}
+/** 읽기는 OWNER · OPEN · APPROVED, 쓰기는 OWNER · OPEN 이다 (docs/api-spec.md §2 · §2-2). */
+export type ClassAccess =
+  "OWNER" | "OPEN" | "APPROVED" | "PENDING" | "REJECTED" | "REVOKED" | "NONE";
+/**
+ * `GET /api/classes/{id}/archive-summary` 의 한 줄 (§2-2). **제목 · 아이 이름 · 문서 id 는 없다** —
+ * 열람 승인이 없는 교사에게도 나가는 요약이다. `start` · `end` 는 시간대 없는 `YYYY-MM-DD`.
+ */
+export interface ArchiveSummaryItem {
+  kind: "annual" | "monthly" | "weekly" | "dailyLog" | "weeklyLog" | "observation" | "assessment";
+  start: string;
+  end: string;
+  status: "DRAFT" | "CONFIRMED";
+}
+/** 열람 요청 한 줄 (§2-2). `created_at` · `updated_at` 은 UTC(`Z`)다. */
+export interface AccessRequest {
+  id: number;
+  class_id: number;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "REVOKED";
+  created_at: string;
+  updated_at: string;
+}
+/** 내 반에 온 요청 (`GET /api/access-requests/received`). */
+export interface ReceivedAccessRequest extends AccessRequest {
+  class_name: string;
+  requester_name: string;
 }
 export interface ChildInput {
   name: string;

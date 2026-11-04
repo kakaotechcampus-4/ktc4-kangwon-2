@@ -128,6 +128,26 @@ test("id 문자열에서 숫자를 뽑아내지 않는다", () => {
   assert.equal(classServerId("3"), null);
 });
 
+test("server- 접두사가 붙은 화면 id 는 그 자체가 서버 id 다", () => {
+  // 문서 보관함은 같은 원의 다른 선생님 반도 보여준다. 그 반은 내 매핑에 없고,
+  // 화면 id 를 CLASS_PREFIX 규칙으로 짓는다 — 접두사를 벗기면 서버 id 다.
+  signedIn();
+  assert.equal(classServerId("server-class:12"), 12);
+  assert.equal(childServerId("server-child:34"), 34);
+  // 매핑이 있으면 매핑이 먼저다.
+  assert.equal(classServerId("class-abc"), 3);
+});
+
+test("접두사만 같고 숫자가 아니면 지어내지 않는다", () => {
+  signedIn();
+  for (const bad of ["server-class:", "server-class:0", "server-class:-1", "server-class:1.5"]) {
+    assert.equal(classServerId(bad), null, bad);
+  }
+  for (const bad of ["server-child:", "server-child:abc", "server-child:0"]) {
+    assert.equal(childServerId(bad), null, bad);
+  }
+});
+
 test("저장 내용이 깨져 있어도 값을 지어내지 않는다", () => {
   signedIn([[linksKey(EMAIL), "{"]]);
   assert.equal(classServerId("class-abc"), null);
