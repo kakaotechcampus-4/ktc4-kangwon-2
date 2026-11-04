@@ -14,6 +14,7 @@ import {
   routineLocalId,
   routineTime,
   routineTimeValue,
+  sortRoutinesByTime,
   trackRoutineMutation,
   updateRoutine,
   waitForRoutineScope,
@@ -30,7 +31,7 @@ import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
-import DailyJournalCard, { useDailyJournal } from "./DailyJournalCard";
+import DailyJournalCard, { DailyJournalEditor, useDailyJournal } from "./DailyJournalCard";
 
 const CLASSES_FAILED = "반 목록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 // 서버 routine_records.name 이 50자다. 더 보내면 422 다 (§10-1).
@@ -166,11 +167,14 @@ const serverRow = (row: ApiRoutine): Row => ({
 const draftFrom = (key: string, rows: ApiRoutine[], preset?: ApiRoutine[]): Draft => ({
   key,
   // 그날 적은 게 없으면 어제 하루를, 어제도 없으면 기본 하루를 깐다 (S-J1 · FR-403).
-  rows: rows.length
-    ? rows.map(serverRow)
-    : preset?.length
-      ? preset.map((row) => presetRow(row.name, routineTime(row.start), routineTime(row.end)))
-      : DEFAULT_ROUTINES.map(([name, start, end]) => presetRow(name, start, end)),
+  // 읽자마자 시간순으로 세운다 — 번호가 겹친 지난 데이터도 교사 눈에는 시간 순이어야 한다.
+  rows: sortRoutinesByTime(
+    rows.length
+      ? rows.map(serverRow)
+      : preset?.length
+        ? preset.map((row) => presetRow(row.name, routineTime(row.start), routineTime(row.end)))
+        : DEFAULT_ROUTINES.map(([name, start, end]) => presetRow(name, start, end)),
+  ),
   removed: [],
   saved: Object.fromEntries(rows.map((row) => [row.id, row])),
 });
@@ -189,6 +193,35 @@ function problemWith(row: Row): string {
   if (row.name.trim().length > NAME_MAX) return `일과 이름은 ${NAME_MAX}자까지예요.`;
   if (row.start && row.end && row.start >= row.end) return TIME_BACKWARDS;
   return "";
+}
+
+/** 시작과 끝이 둘 다 있고 앞뒤가 맞는 줄. 겹침은 이런 줄끼리만 따질 수 있다. */
+const spans = (row: Row) => Boolean(row.start && row.end) && row.start < row.end;
+
+/** `09:20 ~ 10:40` */
+const spanText = (row: Row) => `${row.start} ~ ${row.end}`;
+
+/**
+ * 이 줄과 같은 시간을 쓰고 있는 다른 일과. 없으면 `null`.
+ *
+ * 하루 일과는 줄을 서는 것이다 — 등원이 끝나야 실내놀이가 시작한다. 일일 보육일지도
+ * 시간 순으로 한 줄씩 받으므로 겹친 두 칸을 넣을 자리가 없다.
+ *
+ * **저장될 줄끼리만 본다.** 깔아 둔 기본 하루는 손대기 전까지 서버로 가지 않는다 —
+ * 그걸 겹침으로 세면, 교사가 고른 몇 줄이 아직 손대지 않은 줄과 부딪혀 저장이 막힌다.
+ */
+function clashWith(rows: Row[], row: Row): Row | null {
+  if (!spans(row) || !filled(row)) return null;
+  return (
+    rows.find(
+      (other) =>
+        other.key !== row.key &&
+        spans(other) &&
+        filled(other) &&
+        other.start < row.end &&
+        row.start < other.end,
+    ) ?? null
+  );
 }
 
 /** 분 단위 입력을 건드리지 않았다면 서버의 초도 보존한다 — 같은 position의 정렬 근거다. */
@@ -232,19 +265,21 @@ const fromQuery = () =>
   typeof window === "undefined" ? NO_QUERY : routinesScope(window.location.search);
 
 /**
- * 보낼 `position`.
+ * 보낼 `position`. 화면 순서가 곧 시간순이다.
  *
- * 화면 순서는 **서버가 준 순서 그대로**다. 끌어서 옮기기와 「시간순 정렬」을 없앤 뒤로
- * 줄이 자리를 바꾸는 길은 없고, 새 줄은 언제나 맨 뒤에 붙는다. 그래서 기존 줄의 번호는
- * 건드리지 않고 새 줄만 마지막 번호 뒤로 이어 붙인다.
- *
- * **번호 자체를 고쳐 쓰지 않는다.** 서버 번호는 `0,0,0` 처럼 겹칠 수 있고(지난 데이터가
+ * **번호를 되도록 고쳐 쓰지 않는다.** 서버 번호는 `0,0,0` 처럼 겹칠 수 있고(지난 데이터가
  * 그렇다), 그걸 `0,1,2` 로 다듬으면 교사가 건드리지도 않은 줄이 전부 `PUT` 대상이 된다.
+ * 기존 줄의 번호는 그대로 두고 새 줄만 마지막 번호 뒤로 이어 붙인다.
+ *
+ * 그렇게 얻은 번호가 **화면 순서와 거꾸로 서면** 그때만 처음부터 다시 매긴다. 시간을
+ * 고쳐 줄이 자리를 바꾼 경우다 — 안 그러면 다시 읽을 때 서버가 준 옛 순서로 돌아간다.
  */
 function positionsFor(rows: Row[], saved: Draft["saved"]): number[] {
   const known = rows.map((row) => (row.id === null ? null : (saved[row.id] ?? null)));
   let next = known.reduce((max, row) => (row ? Math.max(max, row.position) : max), -1);
-  return known.map((row) => (row ? row.position : (next += 1)));
+  const kept = known.map((row) => (row ? row.position : (next += 1)));
+  const settled = kept.every((value, index) => index === 0 || kept[index - 1] <= value);
+  return settled ? kept : rows.map((_, index) => index);
 }
 
 /**
@@ -273,6 +308,8 @@ export default function RoutinesPage() {
   /** 달력이 펴 놓은 달. `null` 이면 고른 날이 든 달이다 — 날짜를 바꾸면 따라간다. */
   const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** 화면 아래에 잠깐 떴다 사라지는 알림. 시간이 겹쳤다는 말을 적던 자리에서 본다. */
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   /**
    * 지금 요청이 도는 중인가. `busy` 는 **다시 그려져야** 버튼이 잠기므로, 그 사이에 한 번 더
@@ -400,6 +437,13 @@ export default function RoutinesPage() {
   // 반은 사이드바에서 바꾼다. 바꾸면 화면을 다시 읽으므로 적어 둔 줄이 사라질 수 있다.
   useUnsavedWarning(unsavedRows());
 
+  // 읽을 만큼만 두고 치운다. 교사가 닫을 단추를 찾게 만들 안내가 아니다.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 4500);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   /** 저장을 시작한 화면(`at`)이 아직 그 화면일 때만 초안을 고친다. */
   const patch = (at: string, change: (draft: Draft) => Draft) =>
     setDraft((prev) => (prev && prev.key === at ? change(prev) : prev));
@@ -411,6 +455,23 @@ export default function RoutinesPage() {
         row.key === rowKey ? { ...row, [field]: value, touched: true } : row,
       ),
     }));
+
+  /**
+   * 시계를 닫았다 — 이 줄의 시간이 정해졌다.
+   *
+   * 다른 일과와 겹치면 **줄을 세우지 않고** 알린다. 겹친 채로 자리를 바꾸면 어느 줄이
+   * 잘못됐는지 더 못 찾는다. 겹치지 않으면 그 자리에서 시간순으로 다시 세운다.
+   */
+  const timeSet = (rowKey: string) => {
+    const row = rows.find((r) => r.key === rowKey);
+    if (!row) return;
+    const clash = clashWith(rows, row);
+    if (clash) {
+      setNotice(`${clash.name.trim() || "다른 일과"} ${spanText(clash)} 와 시간이 겹쳐요.`);
+      return;
+    }
+    patch(key, (d) => ({ ...d, rows: sortRoutinesByTime(d.rows) }));
+  };
 
   /** 「+ 줄 추가」는 화면에만 더한다. 서버는 저장할 때 안다 (S-J1 동작표). */
   const addRow = () => patch(key, (d) => ({ ...d, rows: [...d.rows, blankRow()] }));
@@ -476,6 +537,27 @@ export default function RoutinesPage() {
       if (!problem) return;
       problems[row.key] = problem;
       lines.push(`${index + 1}번째 일과 · ${problem}`);
+      if (!first) first = row.key;
+    });
+    /**
+     * 겹친 시간은 **이번에 시간을 바꾼 줄**에서만 막는다.
+     *
+     * 지난 데이터에는 겹친 날이 이미 있다 — 서버가 막은 적이 없다. 그런 날을 통째로
+     * 저장 불가로 만들면 교사가 글자 하나 고치려고 남의 줄부터 손봐야 한다. 지금
+     * 만들어진 겹침만 돌려보내고, 예전 것은 그대로 둔다.
+     */
+    now.rows.forEach((row, index) => {
+      if (problems[row.key]) return;
+      const was = row.id === null ? null : now.saved[row.id];
+      const moved = was
+        ? routineTime(was.start) !== row.start || routineTime(was.end) !== row.end
+        : spans(row);
+      if (!moved) return;
+      const clash = clashWith(now.rows, row);
+      if (!clash) return;
+      const other = clash.name.trim() || "다른 일과";
+      problems[row.key] = `${other} ${spanText(clash)} 와 시간이 겹쳐요.`;
+      lines.push(`${index + 1}번째 일과 · ${other} 와 시간이 겹쳐요`);
       if (!first) first = row.key;
     });
     setErrors(problems);
@@ -725,29 +807,34 @@ export default function RoutinesPage() {
       >
         {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 적는다 — 계획안 만들기와 같은 짜임이다. */}
         <div className={ws.grid}>
-          <aside className={`${ws.card} ${ws.calendarCard}`}>
-            <Tape />
-            <RoutineCalendar
-              date={dateOk ? date : todayDate}
-              month={month}
-              today={todayDate}
-              marked={marked}
-              disabled={!!busy}
-              onMonth={setPickedMonth}
-              onPick={(next) => moveTo(next, null)}
-            />
-            {/* 먼 날짜로 한 번에 뛰는 길. 달력이 이미 날을 보여 주므로 칸은 작게 둔다. */}
-            <label className={ws.calendarJump}>
-              날짜
-              <input
-                name="date"
-                type="date"
-                value={date}
+          <div className={ws.side}>
+            <aside className={`${ws.card} ${ws.calendarCard}`}>
+              <Tape />
+              <RoutineCalendar
+                date={dateOk ? date : todayDate}
+                month={month}
+                today={todayDate}
+                marked={marked}
                 disabled={!!busy}
-                onChange={(e) => moveTo(e.target.value, null)}
+                onMonth={setPickedMonth}
+                onPick={(next) => moveTo(next, null)}
               />
-            </label>
-          </aside>
+              {/* 먼 날짜로 한 번에 뛰는 길. 달력이 이미 날을 보여 주므로 칸은 작게 둔다. */}
+              <label className={ws.calendarJump}>
+                날짜
+                <input
+                  name="date"
+                  type="date"
+                  value={date}
+                  disabled={!!busy}
+                  onChange={(e) => moveTo(e.target.value, null)}
+                />
+              </label>
+            </aside>
+            {/* 「오늘 일지가 어디까지 됐나」는 날짜와 같이 본다 — 달력 바로 밑에 둔다.
+                일지를 펴면 편집기는 오른쪽 칠판 밑으로 나온다. 좁은 칸에서 쓸 글이 아니다. */}
+            {ready && <DailyJournalCard state={journal} day={koreanDay(date).day} />}
+          </div>
 
           <section className={ws.stack}>
             {/* 그 화면에서 난 일만 보여준다 — 날짜를 옮기면 따라가지 않는다. */}
@@ -781,6 +868,7 @@ export default function RoutinesPage() {
                     busy={!!busy}
                     dirty={dirtyRow(row)}
                     onEdit={editRow}
+                    onTimeSet={timeSet}
                     onRevert={revertRow}
                     onRemove={removeRow}
                   />
@@ -797,11 +885,16 @@ export default function RoutinesPage() {
                 다시 시도
               </button>
             )}
-            {/* 일지는 칠판 바로 아래에 둔다 — 방금 적은 일과를 보며 손봐야 한다. */}
-            {ready && <DailyJournalCard state={journal} day={koreanDay(date).day} />}
+            {/* 편집기는 칠판 바로 아래다 — 방금 적은 일과를 보며 손봐야 한다. */}
+            {ready && <DailyJournalEditor state={journal} day={koreanDay(date).day} />}
           </section>
         </div>
       </WorkspaceViewState>
+      {notice && (
+        <p className={ws.notice} role="status">
+          {notice}
+        </p>
+      )}
     </WorkspacePage>
   );
 }
@@ -832,6 +925,7 @@ function RowCard({
   busy,
   dirty,
   onEdit,
+  onTimeSet,
   onRevert,
   onRemove,
 }: {
@@ -841,6 +935,7 @@ function RowCard({
   busy: boolean;
   dirty: boolean;
   onEdit: (rowKey: string, field: Field, value: string) => void;
+  onTimeSet: (rowKey: string) => void;
   onRevert: (rowKey: string) => void;
   onRemove: (rowKey: string) => void;
 }) {
@@ -872,6 +967,7 @@ function RowCard({
             disabled={busy}
             onStart={set("start")}
             onEnd={set("end")}
+            onDone={() => onTimeSet(row.key)}
           />
           <button
             type="button"

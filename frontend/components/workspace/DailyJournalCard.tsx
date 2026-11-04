@@ -92,11 +92,6 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
 export type DailyJournal = ReturnType<typeof useDailyJournal>;
 
 export default function DailyJournalCard({ state, day }: { state: DailyJournal; day: string }) {
-  const edit = useServerDocument(state.openId, {
-    onChanged: state.retry,
-    // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
-    onRemoved: state.close,
-  });
   if (state.off) return null;
   const journal = state.doc;
   const open = !!state.openId;
@@ -122,31 +117,47 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
             ? `${journal.status === "confirmed" ? "확정했습니다." : "초안까지 만들었습니다."}${
                 journal.stale ? " 근거가 바뀌어 다시 볼 것이 있습니다." : ""
               }`
-            : "아직 만들지 않았습니다. 실제로 한 것을 적고 위의 「오늘 일지 만들기」를 누르세요."}
+            : "아직 만들지 않았습니다. 위의 「오늘 일지 만들기」를 누르세요."}
       </p>
 
-      {(state.error || edit.status === "error") && (
+      {state.error && (
         <div className={ws.stack}>
-          <Message error>{state.error || edit.error}</Message>
+          <Message error>{state.error}</Message>
           <button type="button" className={ws.rowTool} onClick={state.retry}>
             다시 불러오기
           </button>
         </div>
       )}
+    </section>
+  );
+}
 
-      {open && (
-        <div className={ws.journalBody}>
-          {edit.status === "loading" && <p className={ws.hint}>일지를 불러오는 중…</p>}
-          {edit.doc && (
-            <DocumentEditor
-              key={edit.doc.id}
-              initial={edit.doc}
-              server={edit.server}
-              /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
-              onSave={() => true}
-            />
-          )}
-        </div>
+/**
+ * 펴 놓은 일지 — **오른쪽 칠판 밑**에 선다.
+ *
+ * 요약 칸은 날짜와 같이 봐야 해서 달력 밑에 있지만, 그 칸은 좁다. 일지는 문단을 쓰는
+ * 글이라 읽을 수 있는 너비가 필요하고, 방금 적은 일과가 바로 위에 있어야 한다.
+ */
+export function DailyJournalEditor({ state, day }: { state: DailyJournal; day: string }) {
+  const edit = useServerDocument(state.openId, {
+    onChanged: state.retry,
+    // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
+    onRemoved: state.close,
+  });
+  if (state.off || !state.openId) return null;
+
+  return (
+    <section className={`${ws.card} ${ws.journalCard}`} aria-label={`${day} 보육일지`}>
+      {edit.status === "loading" && <p className={ws.hint}>일지를 불러오는 중…</p>}
+      {edit.status === "error" && <Message error>{edit.error}</Message>}
+      {edit.doc && (
+        <DocumentEditor
+          key={edit.doc.id}
+          initial={edit.doc}
+          server={edit.server}
+          /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
+          onSave={() => true}
+        />
       )}
     </section>
   );

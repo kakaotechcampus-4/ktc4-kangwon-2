@@ -924,17 +924,23 @@ a.item {
    날짜 칸 하나로는 「지난 금요일」을 찾으려면 달력을 띄워 두 번 눌러야 했다.
    교사는 밀린 며칠을 몰아 적는다. 달을 펴 두고 바로 누르게 한다.
    손글씨 달력처럼 보이게 월 이름만 손글씨체로 크게 둔다. */
+/* 왼쪽 칸 — 달력과 그날 일지 요약.
+   오른쪽 목록이 열 줄이라 훨씬 길다. 이 칸은 따라 올라와 있어야 쓸 수 있다.
+   상단 띠가 60px 를 덮고 있으므로 그 밑으로 붙인다 — 0 이면 머리가 잘린다. */
+.side {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 92px);
+  overflow: auto;
+}
 .calendarCard {
   position: relative;
   display: grid;
   gap: 14px;
   padding: 20px;
-  position: sticky;
-  /* 오른쪽 목록이 열 줄이라 훨씬 길다. 달력은 따라 올라와 있어야 쓸 수 있다.
-     상단 띠가 60px 를 덮고 있으므로 그 밑으로 붙인다 — 0 이면 머리가 잘린다. */
-  top: 76px;
-  max-height: calc(100vh - 92px);
-  overflow: auto;
 }
 .calendar {
   display: grid;
@@ -1284,8 +1290,10 @@ a.item {
 }
 
 @media (max-width: 1100px) {
-  .calendarCard {
+  .side {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -1349,4 +1357,47 @@ a.item {
 .journalBody {
   padding-top: 14px;
   border-top: 1px dashed var(--pg-line);
+}
+
+/* 시간이 겹쳤다는 알림. 적던 자리에서 눈을 떼지 않게 화면 아래에서 스르륵 올라왔다
+   스스로 사라진다 — 닫을 단추를 찾게 만들 말이 아니다. */
+.notice {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 40;
+  max-width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  padding: 12px 18px;
+  border: 1px solid var(--pg-alert-strong);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  box-shadow: var(--pg-shadow);
+  color: var(--pg-alert-ink);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+  transform: translateX(-50%);
+  animation: noticeIn 220ms ease-out;
+}
+@keyframes noticeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+/* 휴대폰은 화면 밑에 길 띠(73px)가 붙어 있다. 그 위로 올리지 않으면 알림이 띠를 덮는다. */
+@media (max-width: 1023px) {
+  .notice {
+    bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+  }
 }

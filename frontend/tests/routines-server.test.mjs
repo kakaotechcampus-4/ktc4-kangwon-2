@@ -105,6 +105,12 @@ function browser({ rooms, primaryClassId, search = "", confirm = true } = {}) {
       return confirm;
     },
   };
+  // 시계 팝오버는 바깥 누르기 · Escape 를 document 에서 듣는다. 커서 옮기기도 여기로 온다.
+  globalThis.document = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    getElementById: () => null,
+  };
   if (rooms)
     classSettings.saveClassSettings({
       ...EMPTY_CLASS_SETTINGS,
@@ -360,7 +366,9 @@ function host() {
       prev?.cleanup?.();
       effects[index] = { deps: deps ?? [] };
       pending.push(() => {
-        effects[index].cleanup = fn();
+        // 큐에 넣은 뒤 그 줄이 사라졌을 수 있다 (날짜를 옮기면 줄이 통째로 바뀐다).
+        // React 도 사라진 컴포넌트의 effect 는 돌리지 않는다.
+        if (effects[index]) effects[index].cleanup = fn();
       });
     }
   };
@@ -594,7 +602,10 @@ function page(
   const pushed = [];
   /** 「오늘 일지 만들기」가 넘긴 근거 목록. 화면을 떠나지 않으므로 `pushed` 로는 못 본다. */
   const journals = [];
-  t.after(() => delete globalThis.window);
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
 
   const app = host();
   let mutations = routineMutationBarriers.get(api);
@@ -1335,6 +1346,7 @@ test("P1-1 저장된 설정에 주 반이 없으면 어떤 helper 도 첫 반을
   // 계획안 · 사이드바 제목처럼 「아무 반이나 하나」로 충분한 곳은 그대로 둔다.
   assert.equal(classSettings.primaryClassFor(stored).id, CLASS_A.id);
   delete globalThis.window;
+  delete globalThis.document;
 });
 
 test("P1-1 주 반을 고르면 그 반이다", () => {
@@ -1343,6 +1355,7 @@ test("P1-1 주 반을 고르면 그 반이다", () => {
   assert.equal(classSettings.chosenClassFor(stored).id, CLASS_B.id);
   assert.equal(onboardingApi.classServerId(CLASS_B.id), 7);
   delete globalThis.window;
+  delete globalThis.document;
 });
 
 // ── P1-2 · 저장이 끝났을 때 아직 그 화면인가 ────────────────────────────────
@@ -1505,7 +1518,10 @@ function recordsPage(
   { rooms = [ROOM_A], settings = [CLASS_A], primaryClassId = CLASS_A.id } = {},
 ) {
   browser({ rooms: settings, primaryClassId });
-  t.after(() => delete globalThis.window);
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
   const app = host();
   const Page = compile("../components/workspace/RecordsPage.tsx", {
     "react/jsx-runtime": runtime,
@@ -1608,6 +1624,7 @@ test("P1 고른 반의 서버 번호를 모르면 주소를 만들지 않는다"
   // 아무 반도 안 골랐으면 날짜만 들고 가는 게 맞다 — 이건 다른 상태다.
   assert.equal(routinesRoute.routinesPath("", TODAY), `/routines?date=${TODAY}`);
   delete globalThis.window;
+  delete globalThis.document;
 });
 
 test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간다", async (t) => {
@@ -1662,6 +1679,95 @@ test("P1-2 저장을 기다리는 사이 날짜를 바꾸면 새 화면에 「�
   assert.equal(view.text().includes("저장했어요"), false, "다음 날짜 화면에 옛 결과를 띄웠다");
   assert.equal(api.only("list").length, asked, "다음 날짜를 공연히 다시 읽었다");
   assert.equal(view.dateInput().props.value, "2026-10-07");
+});
+
+// ── 시간순 정렬과 겹침 ────────────────────────────────────────────────────
+// 줄을 끌어서 옮기는 길은 없다. 순서를 정하는 것은 시간 하나뿐이라, 시계를 닫는 순간
+// 그 자리에서 다시 줄을 세운다. 같은 시간을 두 일과가 쓰면 세우지 않고 알린다.
+
+/** 그 줄의 시계를 열어 값을 넣고 닫는다. 닫을 때 정렬 · 겹침 검사가 돈다. */
+async function setSpan(view, index, from, to) {
+  view.rowButton(index, "시계로 시간 고르기").props.onClick();
+  view.render();
+  const times = () => all(view.cards()[index]).filter((n) => n?.props?.type === "time");
+  if (from !== null) view.type(times()[0], from);
+  view.render();
+  if (to !== null) view.type(times()[1], to);
+  view.render();
+  view.rowButton(index, "닫기").props.onClick();
+  await view.flush();
+}
+
+test("시계를 닫으면 그 자리에서 시간순으로 다시 선다", async (t) => {
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "A", position: 0, start: "09:00:00", end: "10:00:00" }),
+      row({ id: 2, name: "B", position: 1, start: "11:00:00", end: "12:00:00" }),
+      row({ id: 3, name: "C", position: 2, start: "13:00:00", end: "14:00:00" }),
+    ],
+  });
+  const view = page(t, api.api);
+  await view.flush();
+  assert.deepEqual(view.nameValues(), ["A", "B", "C"]);
+
+  await setSpan(view, 2, "07:00", "08:00");
+  assert.deepEqual(view.nameValues(), ["C", "A", "B"], "시계를 닫았는데 자리를 바꾸지 않았다");
+
+  view.button("저장").props.onClick();
+  await view.flush();
+  // 화면 순서가 서버 번호와 거꾸로 섰으므로 번호를 다시 매긴다.
+  assert.deepEqual(await reloadedNames(api), ["C", "A", "B"]);
+});
+
+test("시간이 겹치면 줄을 세우지 않고 알린다", async (t) => {
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "앞 일과", position: 0, start: "09:00:00", end: "10:00:00" }),
+      row({ id: 2, name: "뒤 일과", position: 1, start: "11:00:00", end: "12:00:00" }),
+    ],
+  });
+  const view = page(t, api.api);
+  await view.flush();
+
+  await setSpan(view, 1, "09:30", null);
+  assert.ok(view.text().includes("시간이 겹쳐요"), view.text());
+  assert.deepEqual(view.nameValues(), ["앞 일과", "뒤 일과"], "겹친 채로 자리를 바꿨다");
+
+  // 겹친 채로 저장하지 않는다 — 이번에 시간을 바꾼 줄이라 돌려보낸다.
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(writes(api), [], "겹친 시간을 그대로 보냈다");
+
+  // 겹치지 않게 고치면 알림이 사라지고 저장된다.
+  await setSpan(view, 1, "10:30", null);
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(
+    writes(api).map((c) => [c.op, c.id, c.input.start]),
+    [["update", 2, "10:30"]],
+  );
+});
+
+test("깔아 둔 하루와 겹치는 것은 막지 않는다 — 저장되지 않는 줄이다", async (t) => {
+  // 그날도 어제도 비었다. 기본 하루 열 줄이 깔리고, 교사는 그중 한 줄만 적는다.
+  const api = recorder();
+  const view = page(t, api.api);
+  await view.flush();
+  assert.equal(view.cards().length, 10);
+
+  // 「오전 실내놀이」(09:20~10:40)를 앞 줄들과 겹치는 08:00~11:00 으로 늘린다.
+  view.type(view.dones()[2], "블록으로 길을 만들었다.");
+  await view.flush();
+  await setSpan(view, 2, "08:00", "11:00");
+  assert.equal(view.text().includes("시간이 겹쳐요"), false, view.text());
+
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(
+    writes(api).map((c) => [c.op, c.input.name, c.input.start, c.input.end]),
+    [["create", "오전 실내놀이", "08:00", "11:00"]],
+    "손대지 않은 줄과 겹친다고 저장을 막았다",
+  );
 });
 
 // ── P2 · 안 바꾼 순서는 번호를 고쳐 쓰지 않는다 ────────────────────────────
@@ -1870,7 +1976,10 @@ function quickRecordsPage(
 ) {
   const calls = [];
   browser({ rooms: settings, primaryClassId });
-  t.after(() => delete globalThis.window);
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
   const app = host();
   const Page = compile("../components/workspace/WeeklyRecordsPage.tsx", {
     "react/jsx-runtime": runtime,
@@ -2076,7 +2185,10 @@ function homePage(
   } = {},
 ) {
   browser({ rooms, primaryClassId, search });
-  t.after(() => delete globalThis.window);
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
   const app = host();
   // 서버 반은 늦게 온다. 테스트가 도중에 바꿔 끼울 수 있게 상자로 둔다.
   const box = { classes };
@@ -2633,15 +2745,17 @@ test("후속 #5 저장 전에는 어떤 요청도 보내지 않고 입력·ID �
   });
   const view = page(t, api.api);
   await view.flush();
-  assert.deepEqual(view.nameValues(), ["늦음", "빠름", "동률", "미입력"]);
+  // 서버 번호가 아니라 시간이 순서를 정한다. 같은 시각이면 서버가 준 차례 그대로,
+  // 시간이 없는 줄은 맨 뒤다.
+  assert.deepEqual(view.nameValues(), ["빠름", "동률", "늦음", "미입력"]);
   view.type(view.dones()[0], "저장 전 실행 수정");
   await view.flush();
   assert.equal(writes(api).length, 0);
   view.button("저장").props.onClick();
   await view.flush();
-  // 순서는 서버가 준 그대로다 — 줄을 옮기는 길이 없어 다시 읽어도 바뀌지 않는다.
-  assert.deepEqual(await reloadedNames(api), ["늦음", "빠름", "동률", "미입력"]);
-  assert.equal(api.rows().find((r) => r.id === 1).execution, "저장 전 실행 수정");
+  // 화면 순서가 서버 번호와 거꾸로 섰으므로 번호를 다시 매긴다 — 다시 읽어도 같은 순서다.
+  assert.deepEqual(await reloadedNames(api), ["빠름", "동률", "늦음", "미입력"]);
+  assert.equal(api.rows().find((r) => r.id === 2).execution, "저장 전 실행 수정");
 });
 
 test("번호가 겹친 지난 데이터는 시각을 고치면 그 시각이 순서를 정한다", async (t) => {

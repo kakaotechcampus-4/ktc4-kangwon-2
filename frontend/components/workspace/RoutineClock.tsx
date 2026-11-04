@@ -84,18 +84,30 @@ export default function RoutineClock({
   disabled,
   onStart,
   onEnd,
+  onDone,
 }: {
   start: string;
   end: string;
   disabled: boolean;
   onStart: (value: string) => void;
   onEnd: (value: string) => void;
+  /** 시계를 닫았다 — 이 일과의 시간이 정해졌다. 닫는 길이 넷이라 한곳에서 알린다. */
+  onDone?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
   const dial = useRef<SVGSVGElement | null>(null);
   /** 지금 끌고 있는 손잡이. 끌지 않을 때는 빈 문자열이다. */
   const dragging = useRef<"start" | "end" | "">("");
+
+  /** 열렸다가 닫힌 순간만 잡는다. 닫기 단추 · 바깥 누르기 · Escape · 다시 누르기 전부 여기로 온다. */
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) onDone?.();
+    wasOpen.current = open;
+    // `onDone` 은 매 렌더 새 함수다. 여기 넣으면 열고 닫지 않아도 계속 돈다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
