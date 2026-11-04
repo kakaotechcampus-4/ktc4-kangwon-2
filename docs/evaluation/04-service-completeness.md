@@ -57,6 +57,7 @@
 | 양식 업로드 · 파싱 | `features/forms` | `test_forms.py` |
 | 기존 연간계획안 가져오기 (HWP · HWPX · DOCX · PDF · 직접 입력) | `features/plans/annual_extract.py` · ADR-056 | `test_annual_extract.py` |
 | hwpx 내보내기 | `shared/hwpx.py` | `test_documents_export.py` · ADR-039 |
+| PDF 내려받기 (계획안 · 일지, hwpx 를 다시 그린다) | `shared/hwpx_pdf.py` · ADR-061 · PR #375 | `test_plans_export.py` · `test_play_monthly_hwpx.py` |
 
 기능 폴더 13개 — `ls backend/app/features/`.
 

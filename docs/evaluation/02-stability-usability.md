@@ -37,6 +37,7 @@
 - 주간 실내자유놀이는 영역 표기와 활동을 구분하고, 5일·6일 HWPX에서 9pt·줄간격 140%·항목 뒤 1pt 여백을 사용한다 — `backend/app/features/plans/export.py` · `backend/app/features/plans/templates/weekly_v1_mon_fri.hwpx` · `weekly_v1_mon_sat.hwpx`
 - 주간 자유놀이 후보에서 여러 활동을 선택하고 개별 수정·빼기·순서 변경할 수 있으며, 복사한 원 후보와 변경 이력을 서버가 보존한다 — `p0-planning/src/ssuksak/planning/application/weekly_activities.py` · `backend/tests/test_weekly_plans_api.py` · `frontend/components/workspace/WeeklyIndoorPlayPanel.tsx`
 - 주간 연결 프롬프트 v5는 기관 근거로 쓰는 바깥놀이에 설명을 요청하고 Catalog 이름·부모 그대로 잇기 예외를 유지한다. 생성·수리·재생성의 지침 전달은 관련 테스트로 확인하며 실제 문장 품질은 별도 실측 대상이다 — `p0-planning/src/ssuksak/planning/planner/weekly.py` · `p0-planning/tests/adapters/test_weekly_composition.py`
+- 월간 v2 특별활동 시간표를 칸 나누기 · 빼기 · 크기 조절하고, 글뿐 아니라 그 변경도 되돌리기 · 다시 하기 한다. 되살리다 멈추면 글이 다 안 돌아왔을 수 있다고 알린다 — PR #379 · `frontend/lib/hooks/use-play-monthly-save.ts` · `frontend/tests/play-monthly-save-hook.test.mjs`
 
 ## 고친 실제 사고
 
