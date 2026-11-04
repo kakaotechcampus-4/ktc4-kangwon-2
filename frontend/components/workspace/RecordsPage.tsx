@@ -110,6 +110,8 @@ export default function RecordsPage() {
   const [classError, setClassError] = useState("");
   const classes = useClasses(setClassError);
   const [search, setSearch] = useState("");
+  /** 목록을 거르는 영역. 빈 값이면 다섯 영역 전부다. */
+  const [area, setArea] = useState("");
   /*
     적는 칸은 펴 둔다.
 
@@ -172,9 +174,19 @@ export default function RecordsPage() {
   );
   // 검색은 숫자에 넣지 않는다. 치는 동안 숫자가 따라 움직이면 세고 있는 것이 뭔지 흐려진다.
   const shown = useMemo(
-    () => counted.filter((r) => `${r.fact} ${r.childName} ${r.context}`.includes(search)),
-    [counted, search],
+    () =>
+      counted.filter(
+        (r) =>
+          (!area || r.domain === area) && `${r.fact} ${r.childName} ${r.context}`.includes(search),
+      ),
+    [counted, search, area],
   );
+  /** 영역 칩에 붙는 숫자 — 지금 보고 있는 범위(반 · 아이)에서 센다. */
+  const areaCounts = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const r of counted) n.set(r.domain, (n.get(r.domain) ?? 0) + 1);
+    return n;
+  }, [counted]);
   /** 온보딩 명단에 없는 반·아동은 수정 폼을 채울 수 없다. 화면 id 를 지어내지 않는다. */
   const canEdit = (record: ServerObservation) =>
     classes.some((c) => c.id === record.classId && c.children.some((k) => k.id === record.childId));
@@ -457,6 +469,21 @@ export default function RecordsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
+          <div className={ws.recordFilters} role="group" aria-label="영역으로 거르기">
+            {["", ...Object.keys(DOMAIN_LOOK)].map((name) => (
+              <button
+                key={name || "all"}
+                type="button"
+                aria-pressed={area === name}
+                className={ws.recordFilter}
+                data-tone={DOMAIN_LOOK[name]?.tone}
+                onClick={() => setArea(name)}
+              >
+                {name || "전체"}
+                <span>{name ? (areaCounts.get(name) ?? 0) : counted.length}</span>
+              </button>
+            ))}
+          </div>
           <RecordList
             status={status}
             error={listError}
@@ -529,23 +556,18 @@ export function RecordList({
               {longDate(date)}
               <span>{day.length}건</span>
             </h3>
-            <div className={ws.recordSheet}>
-              <div aria-hidden="true" className="slipEdge top" />
-              <div className={ws.recordRows}>
-                {day.map((r, i) => (
-                  <div key={r.id}>
-                    {i > 0 && <hr className={ws.recordSplit} />}
-                    <RecordItem
-                      record={r}
-                      pending={pending}
-                      editable={canEdit(r)}
-                      onEdit={onEdit}
-                      onDelete={onDelete}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div aria-hidden="true" className="slipEdge bottom" />
+            {/* 한 줄이 화면 끝까지 가면 긴 기록은 읽히지 않는다. 폭이 정해진 카드로 나눈다. */}
+            <div className={ws.recordCards}>
+              {day.map((r) => (
+                <RecordItem
+                  key={r.id}
+                  record={r}
+                  pending={pending}
+                  editable={canEdit(r)}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
+              ))}
             </div>
           </section>
         ))}
@@ -575,33 +597,31 @@ function RecordItem({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <article>
+    <article className={ws.recordCard} data-open={open || undefined}>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((on) => !on)}
         className={ws.recordRow}
       >
-        {/* 아이 표식. 이름 글자를 읽기 전에 누구 기록인지 눈에 먼저 들어온다. */}
-        <span className={ws.recordMark}>
-          <ChildShape mark={markFor(record.childId)} size={17} />
-        </span>
-        <span className={ws.recordBody}>
-          <span className={ws.recordWho}>
-            <b>{record.childName}</b>
-            <span className={ws.recordDomain} data-tone={DOMAIN_LOOK[record.domain]?.tone}>
-              {DOMAIN_LOOK[record.domain] && (
-                <Icon name={DOMAIN_LOOK[record.domain].icon} width={13} height={13} />
-              )}
-              {record.domain}
-            </span>
-            {record.context && <span className={ws.recordWhere}>{record.context}</span>}
+        <span className={ws.recordWho}>
+          {/* 아이 표식. 이름 글자를 읽기 전에 누구 기록인지 눈에 먼저 들어온다. */}
+          <span className={ws.recordMark}>
+            <ChildShape mark={markFor(record.childId)} size={15} />
           </span>
-          <span className={ws.recordFact}>{record.fact}</span>
+          <b>{record.childName}</b>
+          <span className={ws.recordDomain} data-tone={DOMAIN_LOOK[record.domain]?.tone}>
+            {DOMAIN_LOOK[record.domain] && (
+              <Icon name={DOMAIN_LOOK[record.domain].icon} width={13} height={13} />
+            )}
+            {record.domain}
+          </span>
         </span>
+        <span className={ws.recordFact}>{record.fact}</span>
+        {record.context && <span className={ws.recordWhere}>{record.context}</span>}
       </button>
       {open && (
-        <div className="flex flex-wrap items-center gap-2 pb-3.5">
+        <div className={ws.recordActions}>
           {editable ? (
             <Link
               className={ws.secondary}

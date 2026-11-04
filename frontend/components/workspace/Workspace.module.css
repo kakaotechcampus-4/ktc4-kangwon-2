@@ -1590,90 +1590,106 @@ a.item {
    「언제 · 누구」가 글을 읽기 전에 먼저 눈에 들어오게 한다. */
 .recordDays {
   display: grid;
-  gap: 22px;
+  gap: 28px;
 }
 .recordDay {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
+/* 날짜는 묶음의 머리. 뒤로 가는 선을 그어 어디서 다음 날이 시작하는지 보이게 한다. */
 .recordDate {
   display: flex;
-  align-items: baseline;
-  gap: 9px;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   font-family: var(--font-display), sans-serif;
-  font-size: 25px;
+  font-size: 23px;
   font-weight: 700;
   line-height: 1.1;
   color: var(--pg-primary-deep);
 }
 .recordDate span {
-  padding: 1px 9px;
+  padding: 2px 9px;
   border-radius: 999px;
   background: var(--pg-primary-tint);
   font-family: var(--font-body), sans-serif;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--pg-primary-ink);
 }
-.recordSheet {
-  position: relative;
+.recordDate::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--pg-line);
 }
-.recordRows {
-  padding: 2px 20px;
+/* 기록 카드 — 폭을 정해 한 줄이 너무 길어지지 않게 한다. 넓으면 두 줄로 선다. */
+.recordCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.recordCard {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--pg-line);
-  border-top: 0;
-  border-bottom: 0;
-  background: var(--pg-ivory);
+  border-radius: 14px;
+  background: var(--pg-paper);
+  box-shadow: 0 1px 0 rgba(43, 36, 28, 0.05);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
-.recordSplit {
-  height: 0;
-  margin: 0;
-  border: 0;
-  border-top: 1px dashed var(--pg-line);
+.recordCard:hover,
+.recordCard[data-open] {
+  border-color: var(--pg-primary-tint-line);
+  box-shadow: 0 12px 26px -18px rgba(43, 36, 28, 0.45);
 }
 .recordRow {
   display: flex;
-  gap: 11px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
   width: 100%;
-  padding: 13px 0;
+  padding: 16px 18px;
   text-align: left;
   background: none;
   border: 0;
+  border-radius: 14px;
   cursor: pointer;
+}
+.recordRow:focus-visible {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+.recordWho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
 }
 .recordMark {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  margin-top: 1px;
-  /* 연한 테두리 한 겹으로는 아이보리 종이 위에서 떠오르지 않았다. */
+  width: 28px;
+  height: 28px;
   border: 1px solid var(--pg-shell-line);
   border-radius: 50%;
-  background: var(--pg-paper);
-  box-shadow: 0 1px 0 rgba(43, 36, 28, 0.07);
-}
-.recordBody {
-  flex: 1;
-  min-width: 0;
-}
-.recordWho {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
+  background: var(--pg-ivory);
 }
 .recordWho b {
-  font-size: 15px;
+  margin-right: auto;
+  font-size: 15.5px;
   font-weight: 700;
   color: var(--pg-ink);
 }
 /* 다섯 영역이 전부 같은 보라였다. 글자를 읽어야만 갈려서, 목록을 훑어도
    어느 영역이 비어 있는지 보이지 않았다. 색과 그림을 하나씩 준다. */
-.recordDomain {
+.recordDomain,
+.recordFilter {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1685,42 +1701,106 @@ a.item {
   font-weight: 600;
   color: var(--pg-primary-ink);
 }
-.recordDomain[data-tone="body"] {
+.recordDomain[data-tone="body"],
+.recordFilter[data-tone="body"][aria-pressed="true"] {
   border-color: var(--pg-clay-line);
   background: var(--pg-clay);
   color: var(--pg-alert-ink);
 }
-.recordDomain[data-tone="talk"] {
+.recordDomain[data-tone="talk"],
+.recordFilter[data-tone="talk"][aria-pressed="true"] {
   border-color: var(--pg-primary-tint-line);
   background: var(--pg-primary-tint);
   color: var(--pg-primary-ink);
 }
-.recordDomain[data-tone="social"] {
+.recordDomain[data-tone="social"],
+.recordFilter[data-tone="social"][aria-pressed="true"] {
   border-color: var(--pg-sun);
   background: var(--pg-sun-tint);
   color: var(--pg-sun-ink);
 }
-.recordDomain[data-tone="art"] {
+.recordDomain[data-tone="art"],
+.recordFilter[data-tone="art"][aria-pressed="true"] {
   border-color: var(--pg-plum-line);
   background: var(--pg-plum);
   color: var(--pg-primary-deep);
 }
-.recordDomain[data-tone="nature"] {
+.recordDomain[data-tone="nature"],
+.recordFilter[data-tone="nature"][aria-pressed="true"] {
   border-color: var(--pg-sage-line);
   background: var(--pg-sage-tint);
   color: var(--pg-sage-ink);
 }
+.recordFact {
+  display: block;
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--pg-ink);
+}
 .recordWhere {
-  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
   font-size: 12.5px;
   color: var(--pg-ink-soft);
 }
-.recordFact {
-  display: block;
-  margin-top: 5px;
-  font-size: 14.5px;
-  line-height: 1.75;
+.recordWhere::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pg-ink-hint);
+}
+.recordActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 18px 14px;
+  border-top: 1px dashed var(--pg-line);
+}
+/* 카드 안의 단추는 작게 — 한 줄에 셋이 들어가야 카드가 길어지지 않는다 */
+.recordActions .secondary {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.recordActions .secondary:first-child {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+/* 영역으로 거르기 — 고른 칩만 그 영역 색이 된다 */
+.recordFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.recordFilter {
+  min-height: 34px;
+  padding: 0 12px;
+  border-color: var(--pg-line);
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.recordFilter span {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.recordFilter:hover {
+  border-color: var(--pg-primary-tint-line);
   color: var(--pg-ink);
+}
+.recordFilter[aria-pressed="true"]:not([data-tone]) {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
 }
 
 /* 적는 칸이 이 화면의 주인공이다. 흰 네모 한 장이던 자리에 테이프를 붙이고
@@ -2163,6 +2243,14 @@ a.item {
 @media (max-width: 1100px) {
   .recordGrid {
     grid-template-columns: 1fr;
+  }
+}
+/* 목록을 내려도 적는 칸이 따라온다. 화면이 낮으면 칸이 잘리니 키가 큰 화면에서만. */
+@media (min-width: 1101px) and (min-height: 860px) {
+  .recordGrid > .side {
+    position: sticky;
+    top: 84px;
+    align-self: start;
   }
 }
 /* 왼쪽 칸은 화면 높이 안에 「남기기」까지 들어와야 한다. 머리와 칸 사이를 줄인다. */
