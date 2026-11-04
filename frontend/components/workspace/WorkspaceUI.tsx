@@ -76,6 +76,32 @@ const NO_CLASSES: ClassroomEntry[] = [];
  * 초대받은 교사(§1-1)와 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는
  * 멀쩡히 있는데도. 실제로 초대 기능을 붙이면서 드러났다.
  */
+/**
+ * 스르륵 올라왔다 4.5초 뒤 스스로 사라지는 한 줄 알림.
+ *
+ * 화면을 막을 일은 아니지만 교사가 바로 알아야 하는 말 — 「시간이 겹쳐요」,
+ * 「왜 이 단추가 안 눌리나」 같은 것. 흐린 단추만 두면 고장으로 읽힌다.
+ */
+export function Notice({ children, onDone }: { children: string; onDone: () => void }) {
+  useEffect(() => {
+    if (!children) return;
+    const timer = setTimeout(onDone, 4500);
+    return () => clearTimeout(timer);
+    // `onDone` 은 매 렌더 새 함수다. 넣으면 다시 그릴 때마다 시계가 처음부터 돈다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [children]);
+  if (!children) return null;
+  return (
+    <p className={styles.toast} role="status">
+      <svg className={styles.toastMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M12 7v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="12" cy="16.6" r="1.15" fill="currentColor" />
+      </svg>
+      {children}
+    </p>
+  );
+}
 export function useClasses(onError?: (message: string) => void) {
   const [classes, setClasses] = useClientState<ClassroomEntry[]>(
     () => loadClassSettings()?.classes || NO_CLASSES,

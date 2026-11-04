@@ -1445,9 +1445,10 @@ a.item {
   border-top: 1px dashed var(--pg-line);
 }
 
-/* 시간이 겹쳤다는 알림. 적던 자리에서 눈을 떼지 않게 화면 아래에서 스르륵 올라왔다
-   스스로 사라진다 — 닫을 단추를 찾게 만들 말이 아니다. */
-.notice {
+/* 스르륵 알림(`Notice`) — 시간이 겹쳤다, 이 단추를 왜 못 누르나. 적던 자리에서 눈을 떼지
+   않게 화면 아래에서 올라왔다 스스로 사라진다. 닫을 단추를 찾게 만들 말이 아니다.
+   `.notice` 는 화면 안에 놓이는 안내 칸이 이미 쓰는 이름이라 겹치지 않게 따로 둔다. */
+.toast {
   position: fixed;
   left: 50%;
   bottom: 28px;
@@ -1455,6 +1456,8 @@ a.item {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* `left: 50%` 라 그냥 두면 화면 오른쪽 절반 너비에 맞춰 접힌다 — 글 길이만큼 편다. */
+  width: max-content;
   max-width: min(460px, calc(100vw - 32px));
   margin: 0;
   padding: 13px 20px 13px 16px;
@@ -1467,14 +1470,14 @@ a.item {
   font-weight: 600;
   line-height: 1.5;
   transform: translateX(-50%);
-  animation: noticeIn 220ms ease-out;
+  animation: toastIn 220ms ease-out;
 }
-.noticeMark {
+.toastMark {
   flex: none;
   width: 21px;
   height: 21px;
 }
-@keyframes noticeIn {
+@keyframes toastIn {
   from {
     opacity: 0;
     transform: translate(-50%, 14px);
@@ -1486,12 +1489,12 @@ a.item {
 }
 /* 휴대폰은 화면 밑에 길 띠(73px)가 붙어 있다. 그 위로 올리지 않으면 알림이 띠를 덮는다. */
 @media (max-width: 1023px) {
-  .notice {
+  .toast {
     bottom: calc(85px + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .notice {
+  .toast {
     animation: none;
   }
 }
@@ -1875,4 +1878,274 @@ a.item {
 .recordFind input:focus {
   outline: none;
   box-shadow: none;
+}
+
+/* ── 주간 기록 — 왼쪽은 한 주 수첩과 주간 일지 칸, 오른쪽은 그날 쪽지를 붙인 칠판 ── */
+.page button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.weekCard {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+.weekHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.weekTitle {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.weekStep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--pg-line);
+  border-radius: 50%;
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.weekStep:hover {
+  background: var(--pg-cream);
+}
+/* 수첩 한 쪽. 날마다 한 줄이고 줄 사이는 공책 줄처럼 점선으로 가른다. */
+.weekDays {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.weekDays li + li {
+  border-top: 1px dashed var(--pg-line);
+}
+.weekDay {
+  display: grid;
+  grid-template-columns: 22px 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pg-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.weekDay:hover {
+  background: var(--pg-cream);
+}
+.weekDay[aria-pressed="true"] {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+}
+.weekDow {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.weekDay[data-weekend] .weekDow {
+  color: var(--pg-alert-strong);
+}
+.weekDate {
+  position: relative;
+  justify-self: center;
+  font-family: var(--font-display), sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1;
+}
+/* 오늘에는 손으로 친 동그라미 — 달력과 같은 표시다. */
+.weekDay[data-today] .weekDate::after {
+  content: "";
+  position: absolute;
+  inset: -6px -9px -5px;
+  border: 2px solid var(--pg-alert-strong);
+  border-radius: 48% 52% 46% 54%;
+  transform: rotate(-6deg);
+}
+.weekCounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.weekCount {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.weekCount[data-kind="routine"] {
+  background: var(--pg-sage-tint);
+  color: var(--pg-sage-ink);
+}
+.weekCount[data-kind="observation"] {
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.weekNone {
+  padding: 1px 9px;
+  border: 1px dashed var(--pg-line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--pg-ink-hint);
+}
+/* 근거 고르기. 칸 안 글은 손글씨지만 고르는 칸은 읽혀야 해서 본문 글씨다. */
+.journalFrom {
+  display: grid;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.journalFrom select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font: inherit;
+  font-weight: 400;
+  font-size: 14px;
+}
+
+.weekDayHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+.weekDayHead .sheetDay {
+  margin-bottom: 0;
+}
+.weekDayTotal {
+  margin-right: auto;
+  font-size: 14px;
+  color: var(--pg-ink-soft);
+}
+.weekBoard {
+  display: grid;
+  gap: 22px;
+  min-height: 260px;
+  padding: 22px 22px 26px;
+}
+/* 분필 글씨. 판 위 제목은 종이가 아니라 판에 바로 쓴 것이다. */
+.weekChalk {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.weekChalk small {
+  margin-left: 4px;
+  font-size: 17px;
+  opacity: 0.7;
+}
+.weekBlank {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 220px;
+}
+.weekGroup {
+  display: grid;
+  gap: 12px;
+}
+.weekSlips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* 일과 = 일과 기록 화면의 쪽지 그대로. 줄 번호로 색을 정해 다시 그려도 같은 색이다. */
+.weekSlip,
+.weekIndex {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 13px 15px 15px;
+  border: 1px solid;
+  border-radius: 2px;
+  box-shadow: var(--pg-shadow-hard);
+}
+.weekSlip[data-lean="0"] {
+  transform: rotate(-0.4deg);
+}
+.weekSlip[data-lean="1"] {
+  transform: rotate(0.35deg);
+}
+.weekSlip[data-tone="0"] {
+  border-color: var(--pg-note-soft-line);
+  background: var(--pg-note-soft);
+}
+.weekSlip[data-tone="1"] {
+  border-color: var(--pg-plum-line);
+  background: var(--pg-plum);
+}
+.weekSlip[data-tone="2"] {
+  border-color: var(--pg-clay-line);
+  background: var(--pg-clay);
+}
+.weekSlip[data-tone="3"] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+}
+/* 관찰 = 아이 이름을 적은 색인 카드. 일과 쪽지와 섞여도 종류가 갈린다. */
+.weekIndex {
+  border-color: var(--pg-line);
+  background:
+    linear-gradient(var(--pg-alert) 0 0) 0 44px / 100% 1px no-repeat,
+    var(--pg-paper);
+}
+.weekSlipHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-height: 24px;
+}
+.weekSlipHead b {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.weekSlipHead > span:last-child {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pg-ink-soft);
+}
+.weekSlipText {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--pg-ink);
+  overflow-wrap: anywhere;
+}
+.weekSlipNone {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--pg-ink-soft);
 }

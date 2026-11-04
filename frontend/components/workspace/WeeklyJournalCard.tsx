@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { createDocument, listDocuments, type DocumentSummary } from "@/lib/api/documents";
 import { routineLocalId, type ApiRoutine } from "@/lib/api/routines";
 import { classServerId } from "@/lib/api/onboarding";
-import { Message } from "./WorkspaceUI";
-import { Icon } from "@/components/app/icons";
+import { Posty } from "@/components/app/Posty";
+import { Message, ws } from "./WorkspaceUI";
+import { journalMood } from "./DailyJournalCard";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
 
@@ -128,6 +129,15 @@ export function useWeeklyJournal({
 
 export type WeeklyJournal = ReturnType<typeof useWeeklyJournal>;
 
+/** `2026-11-02` → `11/02` */
+const short = (iso: string) => iso.slice(5).replace("-", "/");
+
+/**
+ * 이번 주 일지가 어디까지 됐나 — 주 고르기 바로 밑에 선다.
+ *
+ * 펴 놓은 일지까지 이 칸에 두면 좁은 왼쪽 칸에서 문단을 써야 하고, 그날 기록은
+ * 일지 밑으로 밀려 내려간다. 편집기는 `WeeklyJournalEditor` 로 오른쪽에 둔다 (일과 기록과 같다).
+ */
 export default function WeeklyJournalCard({
   state,
   className,
@@ -140,98 +150,110 @@ export default function WeeklyJournalCard({
   weekEnd: string;
 }) {
   const { doc: journal, from, setFrom, dailyLogs, routineSources, sources, busy, error } = state;
+  if (state.off) return null;
+  const open = !!state.openId;
+  const mood = journalMood(journal);
+  const say =
+    journal === undefined
+      ? "이번 주 일지를 찾고 있어요."
+      : journal
+        ? journal.stale
+          ? "근거가 바뀌었어요. 다시 볼 것이 있어요."
+          : journal.status === "confirmed"
+            ? "확정까지 끝냈어요."
+            : "초안까지 만들어 두었어요."
+        : "아직 만들지 않았어요.";
+
+  return (
+    <section className={`${ws.card} ${ws.journalCard}`}>
+      <div>
+        <h2 className={ws.journalTitle}>이번 주 보육일지</h2>
+        <p className={ws.journalLead}>
+          {className} · {short(weekStart)} – {short(weekEnd)}
+        </p>
+      </div>
+      <hr className={ws.journalRule} />
+
+      <div className={ws.journalSay}>
+        <Posty
+          pose={mood.pose}
+          face={mood.face}
+          tone={mood.tone}
+          size={64}
+          wave={journal === null && sources.length > 0}
+          label={null}
+        />
+        <div>
+          <p className={ws.journalWord}>{say}</p>
+          {journal === null && (
+            <p className={ws.journalLead}>
+              {sources.length
+                ? "화면 맨 위 「주간 일지 만들기」를 누르세요."
+                : from === "dailyLog"
+                  ? "이 주에 확정한 일일 보육일지가 없습니다. 일일 보육일지를 쓰지 않는 원이면 근거를 「일과 기록」으로 바꿔 주세요."
+                  : "이 주 일과 기록에 「실제로 한 것」이 하나도 없습니다. 일과 기록을 먼저 적어 주세요."}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {journal === null && (
+        <label className={ws.journalFrom}>
+          무엇으로 쓸까요
+          <select value={from} disabled={busy} onChange={(e) => setFrom(e.target.value as From)}>
+            <option value="dailyLog">
+              {LABEL.dailyLog} {dailyLogs.length}건
+            </option>
+            <option value="routine">
+              {LABEL.routine} {routineSources.length}건
+            </option>
+          </select>
+        </label>
+      )}
+      {journal && (
+        <button
+          type="button"
+          className={ws.journalOpen}
+          onClick={() => (open ? state.close() : state.open(journal.id))}
+        >
+          {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
+        </button>
+      )}
+
+      {error && (
+        <div className={ws.stack}>
+          <Message error>{error}</Message>
+          <button type="button" className={ws.rowTool} onClick={state.retry}>
+            다시 불러오기
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 펴 놓은 주간 일지 — 오른쪽 칠판 밑에 선다. 문단을 쓰는 글이라 넓은 칸이 필요하다. */
+export function WeeklyJournalEditor({ state }: { state: WeeklyJournal }) {
   // 일지는 이 화면에서 끝까지 쓴다 — 문서 보관함은 다 쓴 문서가 쌓이는 곳이지 쓰는 곳이 아니다.
   const edit = useServerDocument(state.openId, {
     onChanged: state.retry,
     // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
     onRemoved: state.close,
   });
-  if (state.off) return null;
-  const open = !!state.openId;
+  if (state.off || !state.openId) return null;
 
   return (
-    <section className="mb-6 rounded-sm border border-line bg-paper p-5 shadow-pg-card">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold">
-            이번 주 주간 보육일지
-            <span className="ml-2 text-xs font-normal text-ink-soft">
-              {className} · {weekStart.slice(5).replace("-", "/")} –{" "}
-              {weekEnd.slice(5).replace("-", "/")}
-            </span>
-          </h2>
-          {journal === undefined ? (
-            <p className="mt-1 text-xs text-ink-soft">불러오는 중…</p>
-          ) : journal ? (
-            <p className="mt-1 text-xs text-ink-soft">
-              {journal.status === "confirmed" ? "확정했습니다." : "초안까지 만들었습니다."}
-              {journal.stale && " 근거가 바뀌어 다시 볼 것이 있습니다."}
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-ink-soft">아직 만들지 않았습니다.</p>
-          )}
-        </div>
-
-        {journal ? (
-          <button
-            type="button"
-            onClick={() => (open ? state.close() : state.open(journal.id))}
-            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-tint-line bg-primary-tint px-3 text-xs font-semibold text-primary-ink"
-          >
-            <Icon name="doc" className="h-4 w-4" />
-            {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
-          </button>
-        ) : journal === null ? (
-          <label className="flex items-center gap-2 text-xs text-ink-soft">
-            근거
-            <select
-              value={from}
-              disabled={busy}
-              onChange={(e) => setFrom(e.target.value as From)}
-              className="min-h-11 rounded-md border border-line bg-paper px-2 text-xs text-ink"
-            >
-              <option value="dailyLog">
-                {LABEL.dailyLog} {dailyLogs.length}건
-              </option>
-              <option value="routine">
-                {LABEL.routine} {routineSources.length}건
-              </option>
-            </select>
-          </label>
-        ) : null}
-      </div>
-
-      {journal === null && !sources.length && (
-        <p className="mt-3 text-xs text-ink-soft">
-          {from === "dailyLog"
-            ? "이 주에 확정한 일일 보육일지가 없습니다. 일일 보육일지를 쓰지 않는 원이면 근거를 「일과 기록」으로 바꿔 주세요."
-            : "이 주 일과 기록에 「실제로 한 것」이 하나도 없습니다. 일과 기록을 먼저 적어 주세요."}
-        </p>
-      )}
-      {error && (
-        <div className="mt-3">
-          <Message error>{error}</Message>
-          <button type="button" className="text-xs font-semibold text-primary" onClick={state.retry}>
-            다시 불러오기
-          </button>
-        </div>
-      )}
-
-      {open && (
-        <div className="mt-5 border-t border-line pt-5">
-          <Message error={edit.status === "error"}>
-            {edit.status === "error" ? edit.error : edit.status === "loading" ? "일지를 불러오는 중…" : ""}
-          </Message>
-          {edit.doc && (
-            <DocumentEditor
-              key={edit.doc.id}
-              initial={edit.doc}
-              server={edit.server}
-              /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
-              onSave={() => true}
-            />
-          )}
-        </div>
+    <section className={`${ws.card} ${ws.journalCard}`} aria-label="이번 주 주간 보육일지">
+      {edit.status === "loading" && <p className={ws.hint}>일지를 불러오는 중…</p>}
+      {edit.status === "error" && <Message error>{edit.error}</Message>}
+      {edit.doc && (
+        <DocumentEditor
+          key={edit.doc.id}
+          initial={edit.doc}
+          server={edit.server}
+          /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
+          onSave={() => true}
+        />
       )}
     </section>
   );

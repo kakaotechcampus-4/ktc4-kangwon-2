@@ -28,7 +28,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { Posty } from "@/components/app/Posty";
-import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
+import { WorkspacePage, Empty, Message, Notice, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
@@ -471,11 +471,6 @@ export default function RoutinesPage() {
   useUnsavedWarning(unsavedRows());
 
   // 읽을 만큼만 두고 치운다. 교사가 닫을 단추를 찾게 만들 안내가 아니다.
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 4500);
-    return () => clearTimeout(timer);
-  }, [notice]);
 
   /** 저장을 시작한 화면(`at`)이 아직 그 화면일 때만 초안을 고친다. */
   const patch = (at: string, change: (draft: Draft) => Draft) =>
@@ -927,12 +922,7 @@ export default function RoutinesPage() {
           </section>
         </div>
       </WorkspaceViewState>
-      {notice && (
-        <p className={ws.notice} role="status">
-          <ClashMark />
-          {notice}
-        </p>
-      )}
+      <Notice onDone={() => setNotice("")}>{notice}</Notice>
     </WorkspacePage>
   );
 }
@@ -1144,17 +1134,6 @@ function CircleMark() {
 }
 
 /** 되돌리기 — 왼쪽으로 돌아가는 화살표. 글자만 두면 무슨 단추인지 멀리서 안 보인다. */
-/** 겹친 시간 알림 앞에 세우는 느낌표. 글자만으로는 무슨 종류의 말인지 모른다. */
-function ClashMark() {
-  return (
-    <svg className={ws.noticeMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M12 7v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="12" cy="16.6" r="1.15" fill="currentColor" />
-    </svg>
-  );
-}
-
 function UndoMark() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className={ws.revertMark}>

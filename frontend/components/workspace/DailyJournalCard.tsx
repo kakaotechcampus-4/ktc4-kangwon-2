@@ -92,8 +92,8 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
 
 export type DailyJournal = ReturnType<typeof useDailyJournal>;
 
-/** 일지가 어디까지 됐나 — 포스티의 자세 · 얼굴 · 색이 곧 그 상태다. */
-function moodOf(journal: DocumentSummary | null | undefined) {
+/** 일지가 어디까지 됐나 — 포스티의 자세 · 얼굴 · 색이 곧 그 상태다. 주간 일지 칸도 같이 쓴다. */
+export function journalMood(journal: DocumentSummary | null | undefined) {
   if (journal === undefined) return { pose: "think", face: "think", tone: "shell" } as const;
   // 앉아서 「비었어요」 하던 자리. 교사가 할 일이 남은 칸이라, 일어서서 손을 흔들어 부른다.
   if (!journal) return { pose: "wave", face: "oh", tone: "note" } as const;
@@ -106,7 +106,7 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
   if (state.off) return null;
   const journal = state.doc;
   const open = !!state.openId;
-  const mood = moodOf(journal);
+  const mood = journalMood(journal);
   const say =
     journal === undefined
       ? "오늘 일지를 찾고 있어요."

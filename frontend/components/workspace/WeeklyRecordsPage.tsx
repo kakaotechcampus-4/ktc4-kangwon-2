@@ -12,8 +12,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { WorkspacePage, Message, useClasses } from "./WorkspaceUI";
-import WeeklyJournalCard, { useWeeklyJournal, type WeeklyJournal } from "./WeeklyJournalCard";
+import { WorkspacePage, Message, Notice, useClasses, ws } from "./WorkspaceUI";
+import WeeklyJournalCard, {
+  WeeklyJournalEditor,
+  useWeeklyJournal,
+  type WeeklyJournal,
+} from "./WeeklyJournalCard";
 import { Icon, type IconName } from "@/components/app/icons";
 import { Posty } from "@/components/app/Posty";
 import { listRecords } from "@/lib/api/records";
@@ -34,12 +38,21 @@ const DOMAIN_ICON: Record<string, IconName> = {
   자연탐구: "nature",
 };
 
-/** 단추를 못 누를 때 그 이유. 흐리기만 하면 고장으로 읽힌다. */
-function journalWhy(journal: WeeklyJournal) {
-  if (journal.doc) return "이번 주 주간 보육일지는 이미 만들었습니다. 아래 칸에서 이어서 쓰세요.";
-  if (journal.busy) return "만드는 중입니다.";
-  if (!journal.sources.length) return "근거로 쓸 기록이 아직 없습니다. 아래 칸에서 근거를 골라 주세요.";
-  return "이번 주 일과 기록을 모아 주간 보육일지 초안을 만듭니다.";
+/**
+ * 「주간 일지 만들기」를 못 누르는 이유. 흐린 단추만 두면 고장으로 읽혀서, 눌렀을 때
+ * 스르륵 알림으로 말한다. `null` 이면 누를 수 있다.
+ */
+function journalBlock(journal: WeeklyJournal) {
+  if (journal.doc === undefined)
+    return "이번 주 일지를 아직 찾고 있어요. 잠시 뒤 다시 눌러 주세요.";
+  if (journal.doc)
+    return "이번 주 일지는 이미 만들었어요. 「이번 주 보육일지」 칸에서 이어서 쓰세요.";
+  if (journal.busy) return "일지를 만드는 중이에요.";
+  if (!journal.sources.length)
+    return journal.from === "routine"
+      ? "이 주 일과 기록에 「실제로 한 것」이 아직 없어요. 일과 기록을 먼저 적어 주세요."
+      : "이 주에 확정한 일일 보육일지가 없어요. 일지를 확정하거나 근거를 「일과 기록」으로 바꿔 주세요.";
+  return null;
 }
 
 /** 그 날이 든 주의 월요일. 날짜 계산은 전부 현지 시간으로 한다 — UTC 로 돌면 하루가 밀린다. */
@@ -72,6 +85,7 @@ type WeekRecords = {
 export default function WeeklyRecordsPage() {
   const [loaded, setLoaded] = useState<WeekRecords | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [selected, setSelected] = useClientState(() => today(), "");
   // 서버에만 있는 반을 저장소로 들여오는 일을 겸한다. 반 이름은 주간 일지 칸이 쓴다.
   const classes = useClasses(setError);
@@ -149,18 +163,21 @@ export default function WeeklyRecordsPage() {
     );
   }
 
+  const blocked = journalBlock(journal);
+  const todayIso = today();
+
   return (
     <WorkspacePage
       title="주간 기록"
       description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다."
       action={
         journal.off ? undefined : (
+          /* `disabled` 면 눌러도 아무 일이 없어 이유를 말할 수 없다. 눌리게 두고 막는다. */
           <button
             type="button"
-            onClick={journal.make}
-            disabled={!!journal.doc || journal.busy || !journal.sources.length}
-            title={journalWhy(journal)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-line bg-primary px-4 text-sm font-semibold text-white shadow-pg-card hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className={ws.primary}
+            aria-disabled={blocked ? true : undefined}
+            onClick={() => (blocked ? setNotice(blocked) : journal.make())}
           >
             <Icon name="plus" className="h-4 w-4" />
             {journal.busy ? "만드는 중…" : "주간 일지 만들기"}
@@ -168,179 +185,174 @@ export default function WeeklyRecordsPage() {
         )
       }
     >
-      <Message error>{week?.error}</Message>
-
-      <WeeklyJournalCard
-        state={journal}
-        className={classes.find((c) => c.id === classId)?.className ?? ""}
-        weekStart={weekStart}
-        weekEnd={weekEnd}
-      />
-
-      <section className="rounded-sm border border-line bg-paper p-5 shadow-pg-card">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-[26px] font-bold">이번 주</h2>
-          <div className="flex items-center gap-3 text-xs text-ink-soft">
-            <button
-              type="button"
-              aria-label="지난 주"
-              onClick={() => setSelected(shift(selected, -7))}
-              className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-cream"
-            >
-              <Icon name="arrow" className="h-4 w-4 rotate-180" />
-            </button>
-            <span>
-              {days.length > 0 && `${label(days[0])} – ${Number(days[6].slice(8, 10))}일`}
-            </span>
-            <button
-              type="button"
-              aria-label="다음 주"
-              onClick={() => setSelected(shift(selected, 7))}
-              className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-cream"
-            >
-              <Icon name="arrow" className="h-4 w-4" />
-            </button>
-          </div>
+      {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 본다 — 일과 기록과 같은 짜임이다. */}
+      <div className={ws.grid}>
+        <div className={ws.side}>
+          <aside className={`${ws.card} ${ws.weekCard}`}>
+            <span aria-hidden="true" className={ws.tape} />
+            <div className={ws.weekHead}>
+              <button
+                type="button"
+                aria-label="지난 주"
+                className={ws.weekStep}
+                onClick={() => setSelected(shift(selected, -7))}
+              >
+                <Icon name="arrow" className="h-4 w-4 rotate-180" />
+              </button>
+              <h2 className={ws.weekTitle}>
+                {days.length > 0 && `${label(days[0])} – ${Number(days[6].slice(8, 10))}일`}
+              </h2>
+              <button
+                type="button"
+                aria-label="다음 주"
+                className={ws.weekStep}
+                onClick={() => setSelected(shift(selected, 7))}
+              >
+                <Icon name="arrow" className="h-4 w-4" />
+              </button>
+            </div>
+            {/* 한 주를 수첩처럼 세로로 편다. 건수만 두면 「관찰만 있고 일과가 없는 날」을
+                못 보니 종류마다 따로 센다. 빈 날은 점선으로 비워 둔다. */}
+            <ul className={ws.weekDays}>
+              {days.map((iso, index) => {
+                const count = countOf(iso);
+                const total = count.observations + count.routines;
+                return (
+                  <li key={iso}>
+                    <button
+                      type="button"
+                      aria-pressed={iso === selected}
+                      className={ws.weekDay}
+                      data-empty={total ? undefined : true}
+                      data-today={iso === todayIso ? true : undefined}
+                      data-weekend={index > 4 ? true : undefined}
+                      onClick={() => setSelected(iso)}
+                    >
+                      <span className={ws.weekDow}>{DAY_NAMES[index]}</span>
+                      <span className={ws.weekDate}>{Number(iso.slice(8, 10))}</span>
+                      <span className={ws.weekCounts}>
+                        {count.routines > 0 && (
+                          <span className={ws.weekCount} data-kind="routine">
+                            {`일과 ${count.routines}`}
+                          </span>
+                        )}
+                        {count.observations > 0 && (
+                          <span className={ws.weekCount} data-kind="observation">
+                            {`관찰 ${count.observations}`}
+                          </span>
+                        )}
+                        {!total && <span className={ws.weekNone}>비었어요</span>}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+          <WeeklyJournalCard
+            state={journal}
+            className={classes.find((c) => c.id === classId)?.className ?? ""}
+            weekStart={weekStart}
+            weekEnd={weekEnd}
+          />
         </div>
 
-        {/* 건수만 보여주면 「관찰만 있고 일과가 없는 날」을 못 본다. 종류마다 점 색을 나눈다. */}
-        <p className="mb-3 flex justify-end gap-4 text-[13px] text-ink-soft">
-          <span className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
-            관찰
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-sage-ink" />
-            일과
-          </span>
-        </p>
-        <ul className="grid grid-cols-7 gap-2">
-          {days.map((iso, index) => {
-            const count = countOf(iso);
-            const total = count.observations + count.routines;
-            const active = iso === selected;
-            return (
-              <li key={iso}>
-                <button
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setSelected(iso)}
-                  className={`flex w-full flex-col items-center gap-1.5 rounded-md border px-1 py-3 transition-colors ${
-                    active
-                      ? "border-primary-tint-line bg-primary-tint"
-                      : "border-line bg-paper hover:bg-cream"
-                  }`}
-                >
-                  <span className="text-[13px] text-ink-soft">{DAY_NAMES[index]}</span>
-                  <span className="font-display text-[22px] font-bold text-ink">
-                    {Number(iso.slice(8, 10))}
-                  </span>
-                  <span aria-hidden="true" className="flex h-1.5 gap-1">
-                    {count.observations > 0 && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                    )}
-                    {count.routines > 0 && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-sage-ink" />
-                    )}
-                  </span>
-                  <span className="text-[13px] text-ink-soft">{total ? `${total}건` : "—"}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      <section className="mt-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <span className="text-sm font-semibold">
-            {selected && label(selected)}{" "}
-            <span className="ml-1 text-xs font-normal text-ink-soft">{dayCount}건</span>
-          </span>
-          <div className="flex flex-wrap items-center gap-3">
+        <section className={ws.stack}>
+          <Message error>{week?.error}</Message>
+          <div className={ws.weekDayHead}>
+            <h2 className={ws.sheetDay}>
+              {selected && label(selected)}
+              <span>
+                {selected &&
+                  `${DAY_NAMES[(new Date(selected + "T00:00:00").getDay() + 6) % 7]}요일`}
+              </span>
+            </h2>
+            <span className={ws.weekDayTotal}>{`${dayCount}건`}</span>
             {routines ? (
-              <Link
-                href={routines}
-                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-tint-line bg-primary-tint px-3 text-xs font-semibold text-primary-ink"
-              >
+              <Link href={routines} className={ws.secondary}>
                 <Icon name="edit" className="h-4 w-4" />
                 일과 적기
               </Link>
             ) : (
-              <span className="text-xs text-ink-soft">{ROUTINES_UNMAPPED}</span>
+              <span className={ws.hint}>{ROUTINES_UNMAPPED}</span>
             )}
           </div>
-        </div>
 
-        {weekKey && !week ? null : dayCount === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-sm border border-line bg-paper p-10 text-center shadow-pg-card">
-            <Posty pose="sit" face="empty" tone="shell" size={84} label={null} />
-            <p className="font-display text-xl font-bold">작성된 기록이 없습니다.</p>
-          </div>
-        ) : (
-          <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {dayRoutines.map((row) => (
-              <li
-                key={`routine-${row.id}`}
-                className="rounded-sm border border-line bg-paper p-5 shadow-pg-card"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-sage-tint text-sage-ink">
-                    <Icon name="edit" className="h-5 w-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold text-ink">{row.class_name}</span>
-                    <span className="text-[13px] text-ink-soft">{row.name}</span>
+          {/* 교실 칠판에 그날 쪽지를 붙인 모습 — 일과 기록 화면과 같은 판이다. */}
+          <div className={`${ws.weekBoard} chalkboard`} aria-label="그날 기록">
+            {weekKey && !week ? (
+              <p className={ws.weekChalk}>불러오는 중…</p>
+            ) : dayCount === 0 ? (
+              <div className={ws.weekBlank}>
+                <Posty pose="sitWave" face="empty" tone="shell" size={84} wave label={null} />
+                <p className={ws.weekChalk}>이 날은 아직 비어 있어요</p>
+              </div>
+            ) : (
+              <>
+                {dayRoutines.length > 0 && (
+                  <div className={ws.weekGroup}>
+                    <h3 className={ws.weekChalk}>
+                      일과 기록 <small>{dayRoutines.length}</small>
+                    </h3>
+                    <ul className={ws.weekSlips}>
+                      {dayRoutines.map((row) => (
+                        <li
+                          key={`routine-${row.id}`}
+                          className={ws.weekSlip}
+                          data-tone={row.id % 4}
+                          data-lean={row.id % 2}
+                        >
+                          <div className={ws.weekSlipHead}>
+                            <b>{row.name}</b>
+                            <span>{timeRange(row.start, row.end)}</span>
+                          </div>
+                          {/* 계획을 대신 띄우지 않는다. 하지 않은 일이 한 일처럼 보인다. */}
+                          {row.execution ? (
+                            <p className={ws.weekSlipText}>{row.execution}</p>
+                          ) : (
+                            <p className={ws.weekSlipNone}>실제로 한 것을 아직 적지 않았습니다.</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <span className="shrink-0 text-[13px] text-ink-soft">
-                    {timeRange(row.start, row.end)}
-                  </span>
-                </div>
-                {/* 계획을 대신 띄우지 않는다. 하지 않은 일이 한 일처럼 보인다. */}
-                {row.execution ? (
-                  <p className="mt-3 text-[15px] leading-relaxed text-ink">{row.execution}</p>
-                ) : (
-                  <p className="mt-3 text-[15px] text-ink-soft">
-                    실제로 한 것을 아직 적지 않았습니다.
-                  </p>
                 )}
-                <div className="mt-4 border-t border-line pt-3">
-                  <span className="rounded bg-sage-tint px-2 py-1 text-[13px] text-sage-ink">
-                    일과 기록
-                  </span>
-                </div>
-              </li>
-            ))}
-            {dayRecords.map((record) => (
-              <li
-                key={record.id}
-                className="rounded-sm border border-line bg-paper p-5 shadow-pg-card"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-primary-tint text-primary-ink">
-                    <Icon name={DOMAIN_ICON[record.domain] ?? "edit"} className="h-5 w-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold text-ink">
-                      {record.childName}
-                    </span>
-                    <span className="text-[13px] text-ink-soft">{record.domain}</span>
+                {dayRecords.length > 0 && (
+                  <div className={ws.weekGroup}>
+                    <h3 className={ws.weekChalk}>
+                      관찰 기록 <small>{dayRecords.length}</small>
+                    </h3>
+                    <ul className={ws.weekSlips}>
+                      {dayRecords.map((record) => (
+                        <li key={record.id} className={ws.weekIndex}>
+                          <div className={ws.weekSlipHead}>
+                            <b>{record.childName}</b>
+                            <span
+                              className={ws.recordDomain}
+                              data-tone={DOMAIN_ICON[record.domain]}
+                            >
+                              <Icon
+                                name={DOMAIN_ICON[record.domain] ?? "edit"}
+                                className="h-3.5 w-3.5"
+                              />
+                              {record.domain}
+                            </span>
+                            <span>{localTime(record.createdAt)}</span>
+                          </div>
+                          <p className={ws.weekSlipText}>{record.fact}</p>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <span className="shrink-0 text-[13px] text-ink-soft">
-                    {localTime(record.createdAt)}
-                  </span>
-                </div>
-                <p className="mt-3 text-[15px] leading-relaxed text-ink">{record.fact}</p>
-                <div className="mt-4 border-t border-line pt-3">
-                  <span className="rounded bg-primary-tint px-2 py-1 text-[13px] text-primary-ink">
-                    관찰 기록
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                )}
+              </>
+            )}
+          </div>
+          {/* 편집기는 칠판 바로 아래다 — 그 주 기록을 보며 손봐야 한다. */}
+          <WeeklyJournalEditor state={journal} />
+        </section>
+      </div>
+      <Notice onDone={() => setNotice("")}>{notice}</Notice>
     </WorkspacePage>
   );
 }

@@ -684,6 +684,7 @@ function page(
       },
       Empty: "empty",
       Message: "message",
+      Notice: "notice",
       ws: {},
     },
     "./WorkspaceViewState": { WorkspaceViewState },
@@ -1996,6 +1997,7 @@ function quickRecordsPage(
     "./WorkspaceUI": {
       WorkspacePage: "page",
       Message: "message",
+      Notice: "notice",
       useClasses: () => rooms,
       ws: {},
     },
@@ -2004,6 +2006,7 @@ function quickRecordsPage(
     // 이번 주 주간 일지 칸은 따로 테스트한다. 여기서는 자리만 둔다.
     "./WeeklyJournalCard": {
       default: "weekly-journal-card",
+      WeeklyJournalEditor: "weekly-journal-editor",
       useWeeklyJournal: () => ({ doc: null, sources: [], busy: false, off: false, make: () => {} }),
     },
     "@/lib/api/records": {
@@ -2823,8 +2826,11 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
     react: app.react,
     "next/link": { default: "link" },
     "next/navigation": { useRouter: () => ({ push: (href) => calls.push({ op: "push", href }) }) },
-    "./WorkspaceUI": { Message: "message" },
-    "@/components/app/icons": { Icon: "icon" },
+    "./WorkspaceUI": { Message: "message", ws: {} },
+    "@/components/app/Posty": { Posty: "posty" },
+    "./DailyJournalCard": {
+      journalMood: () => ({ pose: "stand", face: "base", tone: "note" }),
+    },
     // 편집기 자체는 보관함 테스트가 본다. 여기서는 열렸는지만 본다.
     "./DocumentEditor": { __esModule: true, default: "document-editor" },
     "./use-server-document": {
@@ -2872,6 +2878,8 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
           weekStart: "2026-11-02",
           weekEnd: "2026-11-08",
         }),
+        // 펴 놓은 일지는 오른쪽 칠판 밑에 따로 선다. 화면과 같이 둘 다 띄운다.
+        Card.WeeklyJournalEditor({ state }),
       ],
     });
   });
@@ -2905,7 +2913,7 @@ test("지난 주 일지는 이번 주 것으로 세지 않는다", async (t) => 
     weeklies: [{ ...draftWeekly, id: "doc-4", start: "2026-10-26", end: "2026-11-01" }],
   });
   await card.view.flush();
-  assert.ok(card.text().includes("아직 만들지 않았습니다."), card.text());
+  assert.ok(card.text().includes("아직 만들지 않았어요."), card.text());
 });
 
 test("근거를 일과 기록으로 고르면 활동실행이 있는 일과만 그 종류로 보낸다", async (t) => {
