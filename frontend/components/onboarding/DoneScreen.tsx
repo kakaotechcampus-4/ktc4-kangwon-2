@@ -140,7 +140,7 @@ export default function DoneScreen({
 
         <dl className="mt-2 grid w-full grid-cols-3 gap-2">
           {rows.map(([k, v]) => (
-            <div key={k} className="rounded-[14px] bg-cream px-2 py-3.5">
+            <div key={k} className="squircle [--r:14px] bg-cream px-2 py-3.5">
               <dt className="text-[13px] text-ink-soft">{k}</dt>
               <dd className="mt-1 text-[15px] font-bold text-ink" style={{ wordBreak: "keep-all" }}>
                 {v}

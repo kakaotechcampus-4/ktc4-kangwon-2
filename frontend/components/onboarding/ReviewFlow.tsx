@@ -142,7 +142,7 @@ export default function ReviewFlow() {
 
       <section aria-label="원 정보" className="mb-6">
         <SectionTitle>원 정보</SectionTitle>
-        <div className="divide-y divide-shell overflow-hidden rounded-2xl border border-line">
+        <div className="divide-y divide-shell overflow-hidden squircle [--r:16px] border border-line">
           <Row
             label="원 이름"
             value={settings.orgName}
@@ -225,7 +225,7 @@ function ClassCard({
   return (
     <section
       aria-label={`${classroom.className} 정보`}
-      className="mb-3 overflow-hidden rounded-2xl border border-line"
+      className="mb-3 overflow-hidden squircle [--r:16px] border border-line"
     >
       <div className="flex items-center justify-between gap-2 px-[18px] pb-1 pt-4">
         <h3 className="text-[17px] font-bold text-ink">{classroom.className}</h3>
@@ -283,7 +283,7 @@ function PrimaryPicker({
     <section aria-label="주로 보는 반" className="mb-3 mt-3">
       <SectionTitle>주로 보는 반</SectionTitle>
       <p className="mb-2 text-[13.5px] text-ink-soft">메인 화면에서 이 반을 먼저 보여드려요.</p>
-      <div className="divide-y divide-shell overflow-hidden rounded-2xl border border-line">
+      <div className="divide-y divide-shell overflow-hidden squircle [--r:16px] border border-line">
         {classes.map((c, i) => {
           const on = c.id === selected;
           return (

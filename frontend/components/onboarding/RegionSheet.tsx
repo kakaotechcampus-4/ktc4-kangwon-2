@@ -6,9 +6,9 @@ import { PROVINCE_OPTIONS, districtsFor } from "@/lib/onboarding/regions";
 const SEJONG = "세종특별자치시";
 
 const item =
-  "flex min-h-12 w-full items-center justify-center rounded-xl border-[1.5px] border-line bg-paper px-2.5 py-2 text-center text-[15px] font-medium text-ink transition-colors hover:border-primary hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
+  "flex min-h-12 w-full items-center justify-center squircle [--r:12px] border-[1.5px] border-line bg-paper px-2.5 py-2 text-center text-[15px] font-medium text-ink transition-colors hover:border-primary hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 const iconButton =
-  "inline-flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
+  "inline-flex h-10 w-10 items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
 /**
  * 지역 고르개. 휴대폰에서는 아래에서 올라오는 시트, 데스크톱에서는 가운데 대화 상자다.
@@ -42,7 +42,7 @@ export default function RegionSheet({
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-labelledby="region-sheet-title"
-      className="m-0 mt-auto max-h-[80vh] w-full max-w-none rounded-t-[24px] border-0 bg-paper p-0 pb-6 shadow-[0_-8px_32px_rgba(46,42,38,0.14)] backdrop:bg-[rgba(46,42,38,0.45)] sm:m-auto sm:max-w-[520px] sm:rounded-[20px]"
+      className="m-0 mt-auto max-h-[80vh] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] border-0 bg-paper p-0 pb-6 shadow-[0_-8px_32px_rgba(46,42,38,0.14)] backdrop:bg-[rgba(46,42,38,0.45)] sm:m-auto sm:max-w-[520px] sm:[--r-bl:20px] sm:[--r-br:20px] sm:[--r:20px]"
     >
       <div aria-hidden="true" className="mx-auto mt-3 h-1 w-10 rounded-sm bg-line sm:hidden" />
       <div className="flex items-center gap-2 px-6 pb-4 pt-3 sm:pt-5">

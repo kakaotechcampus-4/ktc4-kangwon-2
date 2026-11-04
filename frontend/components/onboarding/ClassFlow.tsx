@@ -230,7 +230,7 @@ export function ConsentBox({
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3.5 rounded-2xl border-[1.5px] p-[18px] ${checked ? "border-primary bg-primary-tint" : "border-line bg-ivory"}`}
+      className={`flex cursor-pointer items-start gap-3.5 squircle [--r:16px] border-[1.5px] p-[18px] ${checked ? "border-primary bg-primary-tint" : "border-line bg-ivory"}`}
     >
       <input
         type="checkbox"

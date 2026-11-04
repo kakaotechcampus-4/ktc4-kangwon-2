@@ -164,7 +164,7 @@ export function PickButton({
 
 /** 아래 주 버튼. 휴대폰은 폭을 다 쓰고, 데스크톱은 오른쪽에 붙는다. 링크(완료 화면)도 같은 모양을 쓴다. */
 export const ctaClass =
-  "inline-flex h-14 w-full items-center justify-center rounded-[14px] bg-primary px-7 text-[17px] font-bold text-white transition-colors " +
+  "inline-flex h-14 w-full items-center justify-center squircle [--r:14px] bg-primary px-7 text-[17px] font-bold text-white transition-colors " +
   "hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary-tint disabled:text-ink-hint " +
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:w-auto sm:min-w-[200px]";
 

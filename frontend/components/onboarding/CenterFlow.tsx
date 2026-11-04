@@ -260,7 +260,7 @@ function ForkButton({ title, sub, onClick }: { title: string; sub: string; onCli
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[76px] w-full items-center gap-3 rounded-2xl border-[1.5px] border-line bg-paper px-[18px] py-4 text-left text-ink transition-colors hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+      className="flex min-h-[76px] w-full items-center gap-3 squircle [--r:16px] border-[1.5px] border-line bg-paper px-[18px] py-4 text-left text-ink transition-colors hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
     >
       <span className="flex flex-1 flex-col gap-1">
         <span className="text-[17px] font-bold">{title}</span>

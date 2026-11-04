@@ -10,6 +10,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 스쿼클 모서리(이어지는 곡선) — 시작 설정 화면이 쓴다. 반지름은 `[--r:14px]` 로 주고, 한 모서리만 다르면
+   `[--r-bl:6px]` · `[--r-br:0px]` 로 덮는다. corner-shape 를 아는 브라우저(Chromium)에서만 스쿼클이 된다.
+   스쿼클은 같은 반지름이면 덜 둥글어 보여 1.65배로 키운다(카드 24 → 40). 모르는 브라우저(Safari · Firefox)는
+   주어진 반지름 그대로 둥근 모서리다. 동그라미 · 알약 모양(rounded-full)은 그대로 둔다 — 스쿼클이면 찌그러져 보인다. */
+@layer components {
+  .squircle {
+    --sq: 1;
+    border-radius: calc(var(--r) * var(--sq)) calc(var(--r) * var(--sq))
+      calc(var(--r-br, var(--r)) * var(--sq)) calc(var(--r-bl, var(--r)) * var(--sq));
+  }
+}
+@supports (corner-shape: squircle) {
+  .squircle {
+    --sq: 1.65;
+    corner-shape: squircle;
+  }
+}
+
 :root {
   --font-body: "Noto Sans KR";
   --font-display: Gaegu; /* 손글씨체. 제목·숫자에만 쓴다 — 본문에 쓰면 읽기 힘들다. */

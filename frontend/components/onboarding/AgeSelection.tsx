@@ -59,7 +59,7 @@ function AgeTile({
   return (
     <label
       htmlFor={id}
-      className={`relative flex w-full cursor-pointer select-none items-center justify-center rounded-[14px] border-[1.5px] border-line bg-paper font-medium text-ink transition-colors hover:border-primary has-[:checked]:border-primary has-[:checked]:bg-primary-tint has-[:checked]:font-bold has-[:checked]:text-primary-ink has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${active ? "h-[60px] text-[17px]" : "h-11 text-[15px]"}`}
+      className={`relative flex w-full cursor-pointer select-none items-center justify-center squircle [--r:14px] border-[1.5px] border-line bg-paper font-medium text-ink transition-colors hover:border-primary has-[:checked]:border-primary has-[:checked]:bg-primary-tint has-[:checked]:font-bold has-[:checked]:text-primary-ink has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${active ? "h-[60px] text-[17px]" : "h-11 text-[15px]"}`}
     >
       <input
         id={id}
@@ -68,7 +68,7 @@ function AgeTile({
         onChange={(e) => onChange(e.target.checked)}
         // 화면에서는 숨기되 타일 전체를 덮어 둔다. sr-only 로 숨기면 라벨이 클릭을 가로채
         // 체크박스를 직접 누르는 e2e(getByLabel(...).check())가 멈춘다
-        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none rounded-[14px] opacity-0"
+        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none squircle [--r:14px] opacity-0"
       />
       {label}
     </label>
