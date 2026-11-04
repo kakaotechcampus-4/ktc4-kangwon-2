@@ -135,12 +135,7 @@ export default function ChildrenFlow() {
             {classroom.className} · {count}명
           </p>
           {/* 이름을 누르면 지워진다는 것을 칠판 귀퉁이에 미리 적어 둔다 — 지우는 단추(✕)가 따로 없다. */}
-          <p className="mb-2 font-display text-[18px] text-ink-soft">
-            <span className="text-primary" aria-hidden="true">
-              ★
-            </span>{" "}
-            이름을 누르면 지워져요
-          </p>
+          <p className="mb-2 font-display text-[18px] text-ink-soft">이름을 누르면 지워져요</p>
           <KidChips items={classroom.children} onRemove={remove} />
         </>
       )}
