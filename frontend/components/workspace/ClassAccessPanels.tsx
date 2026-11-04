@@ -271,7 +271,8 @@ type Row = {
   period: string;
   confirmed: boolean;
   view: { doc: string } | { plan: PlanPreviewTarget };
-  hwp: () => Promise<void>;
+  /** 없으면 한글 파일로 못 만든다 — 증빙으로 올린 원문(IMPORT)은 서버가 409 로 막는다. */
+  hwp?: () => Promise<void>;
 };
 
 function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) {
@@ -320,7 +321,7 @@ function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) 
             period: d.start === d.end ? d.start : `${d.start} ~ ${d.end}`,
             confirmed: d.status === "confirmed",
             view: { doc: d.id },
-            hwp: () => downloadDocumentHwpx(d.id),
+            hwp: d.origin === "import" ? undefined : () => downloadDocumentHwpx(d.id),
           });
       if (annual.status === "fulfilled")
         for (const p of annual.value.items) {
@@ -381,7 +382,7 @@ function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) 
   async function download(row: Row) {
     setError("");
     try {
-      await row.hwp();
+      await row.hwp?.();
     } catch (e) {
       setError(classAccessMessage(e) ?? (e instanceof Error ? e.message : "내려받지 못했어요."));
     }
@@ -420,7 +421,7 @@ function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) 
                         보기
                       </button>
                       {/* 초안은 서버가 hwp 를 주지 않는다 — 단추를 두면 누를 때마다 실패한다. */}
-                      {row.confirmed && (
+                      {row.confirmed && row.hwp && (
                         <button type="button" onClick={() => download(row)}>
                           hwp
                         </button>

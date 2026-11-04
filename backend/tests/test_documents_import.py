@@ -284,3 +284,20 @@ def test_증빙_제목은_200자_안에서_받는다(db_session):
 
     assert response.status_code == 422, response.text
     assert "title" in response.json()["error"]["fields"]
+
+
+def test_문서를_고칠_때도_제목은_200자_안이다(db_session):
+    _, klass, child = _center_class_child(db_session)
+    created = client.post("/api/documents/import", json=_payload(klass, child)).json()
+    undone = client.post(f"/api/documents/{created['id']}/unconfirm").json()
+
+    response = client.put(
+        f"/api/documents/{created['id']}",
+        json={
+            "title": "가" * 201,
+            "sections": [{"heading": "첨부 원문", "body": _ORIGINAL}],
+            "updated_at": undone["updated_at"],
+        },
+    )
+
+    assert response.status_code == 422, response.text

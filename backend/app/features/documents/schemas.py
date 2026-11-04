@@ -142,7 +142,8 @@ class DocumentUpdateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str | None = None
+    #: `documents.title` 이 200자다. 넘으면 저장할 때 500 이 난다.
+    title: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
     sections: list[DocumentSectionUpdate]
     review_note: str = ""
     # 반 운영 특이사항. 안 보내면 이전 값을 그대로 둔다 — 예전 화면이 지우지 않게.
