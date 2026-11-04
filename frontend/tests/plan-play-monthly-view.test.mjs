@@ -672,6 +672,10 @@ test("놀이 행 이름을 누르면 문서에 없는 「설명」 입력창이 
     .filter((n) => n.type === "editor")
     .map((n) => n.props.label);
   assert.deepEqual(labels, ["놀이 행 이름", "놀이 행 설명"]);
+  // 큰 제목은 행 이름 대신 문서 순서 「첫 번째 칸」.
+  const shown = text(h.render(View, { id: plan.id }));
+  assert.match(shown, /첫 번째 칸/);
+  assert.doesNotMatch(shown, /①/);
 });
 
 test("입력 중 글은 문서에 바로 보인다", async () => {

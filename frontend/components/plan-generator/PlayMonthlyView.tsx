@@ -172,6 +172,7 @@ export default function PlayMonthlyView({ id }: { id: number }) {
 }
 
 const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+const ORDINAL = ["첫", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열"];
 
 /** 왼쪽 띠 · 머리에 쓰는 「어느 칸」. 안전교육 줄은 주 주소(`safety:<주>`)로 온다. */
 export function placeOf(plan: PlayMonthlyPlan, id: string) {
@@ -285,8 +286,9 @@ function PlayMonthlyBody({
       )}
       {selected && (
         <h2 className="m-0 text-lg font-bold">
+          {/* 놀이 행은 문서 순서(함께 하는 활동 위→아래, 그다음 자유놀이)로 「n 번째 칸」. */}
           {row
-            ? `${plan.together.includes(row) ? (CIRCLED[plan.together.indexOf(row)] ?? "") + " " : ""}${row.name.value}`
+            ? `${ORDINAL[rows.indexOf(row)] ?? rows.indexOf(row) + 1} 번째 칸`
             : placeOf(plan, selected)}
         </h2>
       )}
