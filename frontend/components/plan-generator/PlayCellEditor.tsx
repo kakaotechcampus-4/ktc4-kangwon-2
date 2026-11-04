@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import workspace from "@/components/workspace/Workspace.module.css";
 
 export const MAX_CELL_LENGTH = 600;
 /** 입력을 멈춘 뒤 저장하기까지. */
@@ -96,10 +95,10 @@ export default function PlayCellEditor({
 
   return (
     <>
-      {/* 글자 수는 입력창 왼쪽 위 — 이름표 옆(이름표를 숨긴 화면은 맨 앞). 요청 사항 칸과 같은 자리. */}
-      <div className="flex items-baseline gap-2">
+      {/* 글자 수는 입력창 오른쪽 위 — 요청 사항 칸과 같은 자리(이름표를 숨겨도 오른쪽). */}
+      <div className="flex items-baseline justify-between gap-2">
         <label htmlFor={id}>{label}</label>
-        <p id={`${id}-count`} className={`${workspace.muted} m-0 font-normal`}>
+        <p id={`${id}-count`} className="m-0 ml-auto text-[13px] font-normal text-[#8a8178]">
           {length}
           {Number.isFinite(maxLength) ? `/${maxLength}` : ""}자{over ? ` · ${overText}` : ""}
         </p>

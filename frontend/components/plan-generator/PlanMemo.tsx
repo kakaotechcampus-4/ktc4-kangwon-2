@@ -39,7 +39,7 @@ export function PlanMemoField(props: {
   };
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-baseline justify-between">
         <label
           htmlFor="plan-memo"
           className="m-0 font-display text-[24px] font-bold leading-tight text-ink"
