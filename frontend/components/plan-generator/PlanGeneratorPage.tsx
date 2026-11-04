@@ -167,7 +167,12 @@ function AnnualGenerator({ format }: { format: Format }) {
   if (generating)
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
-        <GenerationRing steps={[...look.steps]} onCancel={stop} />
+        <GenerationRing
+          kind={`annual:${format}`}
+          expect={20}
+          steps={[...look.steps]}
+          onCancel={stop}
+        />
       </div>
     );
 
