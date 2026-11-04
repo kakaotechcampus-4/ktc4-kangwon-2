@@ -20,6 +20,7 @@ from ssuksak.planning.domain.provenance import SplitAxis
 
 from app.features.plans.play_monthly_hwpx import HWPUNIT_PER_MM, TEMPLATE, fill_play_monthly
 from app.features.plans.play_project_hwpx import TEMPLATE as PLAY_PROJECT_TEMPLATE
+from app.shared import hwpx_pdf
 from app.shared.hwpx import NS, TemplateMismatch, to_hwp
 
 CLASS = "만 3·4세 햇살반"
@@ -329,6 +330,32 @@ def test_column_widths_and_height_are_drawn() -> None:
     thursday = next(tc for tc in special_cells(content) if text(tc) == "특활 11")
     assert size(thursday)[1] == round(40 * HWPUNIT_PER_MM)
     assert x_span(thursday, content) == x_span(header[3], content)
+
+
+def test_a_long_day_over_split_rows_gets_room_in_the_pdf() -> None:
+    """화요일만 나누면 월요일 칸이 두 줄에 걸친다 — PDF 도 그 칸의 긴 글 높이를 잰다(PDF-R01)."""
+    long = "\n".join(f"활동 안내 {i:02d}" for i in range(20))
+    tuesday = PlayMonthlyDocumentPart(
+        axis=V, ratio=50, parts=(PlayMonthlyDocumentPart("위"), PlayMonthlyDocumentPart("아래"))
+    )
+    rest = tuple(PlayMonthlyDocumentPart("") for _ in range(3))
+    doc = replace(document(), special_activity=(PlayMonthlyDocumentPart(long), tuesday, *rest))
+    content = fill_play_monthly(TEMPLATE.read_bytes(), doc)
+    hwpx_pdf._register_fonts()
+    with zipfile.ZipFile(BytesIO(content)) as package:
+        header = hwpx_pdf._Header(etree.fromstring(package.read("Contents/header.xml")))
+    drawn = hwpx_pdf._table(table(content), header)
+
+    monday = next(tc for tc in special_cells(content) if "활동 안내 00" in text(tc))
+    addr, span = monday.find("hp:cellAddr", NS), monday.find("hp:cellSpan", NS)
+    r, c = int(addr.get("rowAddr")), int(addr.get("colAddr"))
+    rs, cs = int(span.get("rowSpan")), int(span.get("colSpan"))
+    style = drawn._cellStyles[r][c]
+    inner = sum(drawn._colWidths[c : c + cs]) - style.leftPadding - style.rightPadding
+    need = sum(p.wrap(inner, 10**6)[1] for p in drawn._cellvalues[r][c])
+    need += style.topPadding + style.bottomPadding
+    assert rs == 2
+    assert sum(drawn._rowHeights[r : r + rs]) >= need - 0.01
 
 
 def test_a_wrong_number_of_special_activity_days_is_refused() -> None:

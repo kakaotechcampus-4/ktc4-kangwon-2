@@ -153,7 +153,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: /한글로 내보내기/ }).click();
+  await page.getByRole("button", { name: "한글 파일(hwpx)로 내려받기", exact: true }).click();
   await verifyHwpx(await download, info.outputPath("pilot-annual.hwpx"), [
     "우리 반과 새로운 친구",
     "우리 반 이름 알아보기",
@@ -179,16 +179,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await cell(0).click();
   await expect(cell(0)).toHaveAttribute("aria-pressed", "true");
   await expect(field).toBeVisible();
-  const regenerated = page.waitForResponse(
-    (response) => response.url().endsWith("/regenerate") && response.request().method() === "POST",
-  );
-  // 다시 만들기 · 확정은 브라우저 창 대신 페이지 안에서 한 번 더 묻는다.
-  await page.getByRole("button", { name: "AI로 이 칸 다시 만들기", exact: true }).click();
-  await page
-    .getByRole("group", { name: /^이 칸을 다시 만들면/ })
-    .getByRole("button", { name: "다시 만들기", exact: true })
-    .click();
-  expect((await regenerated).status()).toBe(200);
+  // 월간 v1 칸 편집에는 다시 만들기가 없다(81aa2fc4, 2026-11-04). 확정은 페이지 안에서 한 번 더 묻는다.
   await field.fill("");
   await field.pressSequentially("친구와 함께 만드는 우리 반 놀이", { delay: 15 });
   // A nested component used to remount this input after every character.
@@ -199,7 +190,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(cell(1)).toHaveAttribute("aria-pressed", "true");
   await field.fill("교사가 준비한 자연물을 함께 살펴본다.");
   await field.blur();
-  await expect(page.getByText("저장됨", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^저장됨$/ })).toBeVisible();
   await page.reload();
   await expect(cell(0)).toHaveText("친구와 함께 만드는 우리 반 놀이");
   await expect(cell(1)).toHaveText("교사가 준비한 자연물을 함께 살펴본다.");
@@ -221,7 +212,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(cell(0)).not.toHaveAttribute("role", "button");
   await expect(page.getByRole("textbox")).toHaveCount(0);
   const monthlyDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: /한글로 내보내기$/ }).click();
+  await page.getByRole("button", { name: "한글 파일(hwpx)로 내려받기", exact: true }).click();
   await verifyHwpx(await monthlyDownload, info.outputPath("pilot-monthly.hwpx"), [
     "친구와 함께 만드는 새로운 우리 반 놀이",
     "교사가 준비한 자연물을 함께 살펴본다.",

@@ -30,6 +30,8 @@
 - v1 월간은 안전 품질표의 자료 SHA·안전 분류 판이 맞지 않거나 분류가 없으면 LLM 호출·저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/finalization/test_safety_placement_e2e.py`
 - v1 월간 실내 대체활동은 주간 분류가 실내대체로 정한 기관 기록만 근거로 쓰고, 근거가 없으면 생성하지 않고 빈칸을 남긴다. 주간 분류가 자료 묶음과 맞지 않으면 LLM 호출 · 저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/application/test_monthly_application.py` · `backend/tests/test_monthly_lifecycle_api.py`
 - 월간 v1 실내대체는 LLM이 빈칸으로 응답한 경우 빈 값·unresolved=true·근거 없음 조합을 검사하며, 채워진 문장에 근거가 없으면 거절한다 — `p0-planning/src/ssuksak/planning/planner/parser.py` · `p0-planning/src/ssuksak/planning/planner/validation.py` · `p0-planning/tests/application/test_monthly_application.py`
+- 교사 「요청 사항」이 안전교육 횟수 · 주차를 말해도 LLM 은 정해진 모양으로 뽑기만 하고 배치는 Rule 이 한다. 반영 못한 요청은 `memo_notices` 로 보인다 — PR #378 · ADR-060 · `p0-planning/src/ssuksak/planning/rules/safety_requests.py`
+- 요청 사항에 반 아이 이름이 있으면 메모 글만 가명으로 바꿔 보내고, 못 바꾸면 LLM 을 부르지 않고 422 — PR #378 · `backend/app/features/plans/memo_privacy.py`
 
 ## 키와 비용
 
