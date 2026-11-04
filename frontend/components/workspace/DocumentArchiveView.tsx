@@ -149,11 +149,12 @@ export default function DocumentArchiveView({
   // 생성 화면에서 돌아오면 선택된 문서에 맞춰 탐색도 시작한다.
   // 이후 목록 탐색은 이 상태를 그대로 쓰므로 다른 종류의 편집기가 끼어들지 않는다.
   const initialDoc = documents.find((d) => d.id === activeId && d.classId === classId);
-  const [type, setType] = useState<ArchiveType | null>(() => {
-    if (initialDoc?.kind === "observation") return "observation";
-    if (initialDoc?.kind === "dailyLog" || initialDoc?.kind === "weeklyLog") return "care";
+  const typeOf = (kind: string | undefined): ArchiveType | null => {
+    if (kind === "observation") return "observation";
+    if (kind === "dailyLog" || kind === "weeklyLog") return "care";
     return null;
-  });
+  };
+  const [type, setType] = useState<ArchiveType | null>(() => typeOf(initialDoc?.kind));
   const [day, setDay] = useState(() => initialDoc?.start ?? today());
   const [month, setMonth] = useState(() => monthOf(initialDoc?.start ?? today()));
   const [schoolYear, setSchoolYear] = useState(() => schoolYearOf(today()));
@@ -165,6 +166,19 @@ export default function DocumentArchiveView({
     initialDoc?.kind === "weeklyLog" ? "weeklyLog" : "dailyLog",
   );
   const [oldestFirst, setOldestFirst] = useState(false);
+  // 주소(`?id=`)로 바로 들어오면 첫 그림에는 목록이 아직 없어 위 초기값이 빈 칸으로 굳는다.
+  // 그 문서가 목록에 닿는 순간 한 번만 그 칸으로 맞춘다 — 안 그러면 문서를 열어 달라
+  // 했는데 「문서를 선택해 주세요」가 뜬다.
+  const [tunedTo, setTunedTo] = useState(initialDoc ? activeId : "");
+  if (initialDoc && tunedTo !== activeId) {
+    setTunedTo(activeId);
+    setType(typeOf(initialDoc.kind));
+    setDay(initialDoc.start);
+    setMonth(monthOf(initialDoc.start));
+    if (initialDoc.kind === "observation") setChildId(initialDoc.childId);
+    if (initialDoc.kind === "dailyLog" || initialDoc.kind === "weeklyLog")
+      setScope(initialDoc.kind);
+  }
   const [planPreview, setPlanPreview] = useState<PlanPreviewTarget | null>(null);
   const previewRef = useRef<HTMLElement>(null);
   const [mobileList, setMobileList] = useState(false);

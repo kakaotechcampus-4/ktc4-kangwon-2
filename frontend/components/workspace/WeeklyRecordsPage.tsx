@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { WorkspacePage, Message, useClasses } from "./WorkspaceUI";
+import WeeklyJournalCard from "./WeeklyJournalCard";
 import { Icon, type IconName } from "@/components/app/icons";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -59,12 +60,12 @@ type WeekRecords = {
   failedAll: boolean;
 };
 
-export default function QuickRecordsPage() {
+export default function WeeklyRecordsPage() {
   const [loaded, setLoaded] = useState<WeekRecords | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useClientState(() => today(), "");
-  // 값은 안 쓰지만 호출은 남긴다 — 서버에만 있는 반을 저장소로 들여오는 일을 겸한다.
-  useClasses(setError);
+  // 서버에만 있는 반을 저장소로 들여오는 일을 겸한다. 반 이름은 주간 일지 칸이 쓴다.
+  const classes = useClasses(setError);
   // 반은 사이드바가 정한다. 이 화면은 그 반의 한 주를 편다.
   const [classId] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const routines = routinesPath(classId, selected);
@@ -136,21 +137,16 @@ export default function QuickRecordsPage() {
     <WorkspacePage
       title="주간 기록"
       description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다."
-      action={
-        // 이 화면의 단위는 한 주다. 그래서 머리의 단추는 그 주의 주간 보육일지로 간다 —
-        // 하루치를 적는 길은 아래 「일과 적기」에 따로 있다.
-        <Link
-          href={`/documents?kind=weeklyLog&start=${weekStart}&end=${weekEnd}${
-            classServerId(classId) ? `&class_id=${classServerId(classId)}` : ""
-          }`}
-          className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-line bg-primary px-4 text-xs font-semibold text-white shadow-pg-card hover:bg-primary-hover"
-        >
-          <Icon name="plus" className="h-4 w-4" />
-          주간 일지 만들기
-        </Link>
-      }
     >
       <Message error>{week?.error}</Message>
+
+      <WeeklyJournalCard
+        classId={classId}
+        className={classes.find((c) => c.id === classId)?.className ?? ""}
+        weekStart={weekStart}
+        weekEnd={weekEnd}
+        routines={routineRows}
+      />
 
       <section className="rounded-sm border border-line bg-paper p-5 shadow-pg-card">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

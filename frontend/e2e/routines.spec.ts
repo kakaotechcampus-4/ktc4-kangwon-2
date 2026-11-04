@@ -560,14 +560,14 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     preservedDate: "2026-10-16",
   });
   await page.getByRole("link", { name: "주간 기록", exact: true }).click();
-  await expect(page).toHaveURL(/\/quick-records$/);
+  await expect(page).toHaveURL(/\/weekly-records$/);
   await expect(
     page.getByRole("heading", { name: "주간 기록", exact: true, level: 1 }),
   ).toBeVisible();
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("I-quick-records-isolation.png"), fullPage: true });
+  await page.screenshot({ path: info.outputPath("I-weekly-records-isolation.png"), fullPage: true });
   await page.getByRole("button", { name: "지난 주", exact: true }).click();
   const previous = new Date(`${date}T00:00:00Z`);
   previous.setUTCDate(previous.getUTCDate() - 7);
@@ -579,7 +579,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   );
   await quickWrite.click();
   await expect(page).toHaveURL(`/routines?date=${previousDate}&class_id=${other.id}`);
-  note(page, "I quick-records entry", {
+  note(page, "I weekly-records entry", {
     classA: classId,
     classB: other.id,
     preservedDate: previousDate,

@@ -58,7 +58,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         icon: "edit",
         match: (p) => p.startsWith("/routines"),
       },
-      { key: "quick", label: "주간 기록", short: "주간", href: "/quick-records", icon: "record" },
+      { key: "quick", label: "주간 기록", short: "주간", href: "/weekly-records", icon: "record" },
     ],
   },
   {

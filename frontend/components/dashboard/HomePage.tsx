@@ -992,7 +992,7 @@ function LastWeekNote({ look }: { look: LastWeek }) {
           지난주 돌아보기 · {shortDate(look.from)}~{shortDate(look.to)}
         </h2>
         <Link
-          href="/quick-records"
+          href="/weekly-records"
           className="shrink-0 text-xs font-semibold text-primary-ink underline"
         >
           주간 기록 보기 →

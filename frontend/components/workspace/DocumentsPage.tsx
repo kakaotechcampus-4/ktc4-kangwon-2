@@ -82,7 +82,7 @@ export default function DocumentsPage() {
   const { data, error, save } = useWorkspace();
   const [entry] = useClientState(
     () => {
-      const blank = { date: "", classId: null, daily: false, assessment: false, weekly: null };
+      const blank = { date: "", classId: null, daily: false, assessment: false, weekly: null, docId: "" };
       if (typeof window === "undefined") return blank;
       const query = new URLSearchParams(window.location.search);
       const kind = query.get("kind");
@@ -97,6 +97,8 @@ export default function DocumentsPage() {
         assessment: kind === "assessment",
         // 주간 기록 화면의 「주간 일지 만들기」가 여는 길. 보고 있던 주를 그대로 받는다.
         weekly: kind === "weeklyLog" ? { start: day("start"), end: day("end") } : null,
+        // 다른 화면에서 문서 하나를 바로 열 때. 모르는 id 면 보관함을 연다.
+        docId: documentServerId(query.get("id") ?? "") === null ? "" : (query.get("id") as string),
       };
     },
     {
@@ -105,6 +107,7 @@ export default function DocumentsPage() {
       daily: false,
       assessment: false,
       weekly: null as { start: string; end: string } | null,
+      docId: "",
     },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
@@ -187,6 +190,14 @@ export default function DocumentsPage() {
   );
   const chosen = useSyncExternalStore(selection.subscribe, selection.get, selection.get);
   const active = chosen.active;
+
+  // 주소로 받은 문서를 한 번만 연다. select 는 바깥 저장소를 건드려 그리는 중에 부르지 않는다.
+  const openedFromUrl = useRef(false);
+  useEffect(() => {
+    if (!entry.docId || openedFromUrl.current) return;
+    openedFromUrl.current = true;
+    selection.select(entry.docId, documentServerId(entry.docId));
+  }, [entry.docId, selection]);
 
   useEffect(() => {
     const mine = ++latestList.current;
