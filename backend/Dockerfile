@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# PDF 내보내기 글꼴 (ADR-059). hwpx_pdf.FONT_CANDIDATES 가 나눔고딕을 이 경로에서 찾는다.
+# PDF 내보내기 글꼴 (ADR-061). hwpx_pdf.FONT_CANDIDATES 가 나눔고딕을 이 경로에서 찾는다.
 # 없으면 PDF 만 503 이고 hwpx · hwp 는 그대로 나간다.
 RUN apt-get update && apt-get install -y --no-install-recommends fonts-nanum     && rm -rf /var/lib/apt/lists/*
 

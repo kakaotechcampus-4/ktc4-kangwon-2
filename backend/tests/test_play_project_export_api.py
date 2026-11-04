@@ -123,7 +123,7 @@ def test_hwp_도_내려준다(world, saved, tmp_path):
 
 
 def test_pdf_도_내려준다(world, saved):
-    """같은 hwpx 를 다시 그린다(ADR-059). 좁은 칸은 줄이 바뀌니 공백을 빼고 본다."""
+    """같은 hwpx 를 다시 그린다(ADR-061). 좁은 칸은 줄이 바뀌니 공백을 빼고 본다."""
     _, row = saved
     _confirmed(row)
 

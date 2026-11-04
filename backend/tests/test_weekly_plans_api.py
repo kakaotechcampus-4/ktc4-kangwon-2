@@ -1178,7 +1178,7 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
 
     response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
     assert response.status_code == 200, response.text
-    pdf = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp?format=pdf")  # ADR-059
+    pdf = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp?format=pdf")  # ADR-061
     assert (pdf.status_code, pdf.headers["content-type"]) == (200, "application/pdf"), pdf.text
     with zipfile.ZipFile(BytesIO(response.content)) as archive:
         table = etree.fromstring(archive.read("Contents/section0.xml")).find(".//hp:tbl", NS)

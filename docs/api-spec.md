@@ -1325,7 +1325,7 @@ PUT    /api/plans/monthly/{id}/cells/{item_id}  칸 편집 — §9-3 (구현됨,
 POST   /api/plans/monthly/{id}/cells/{item_id}/regenerate   이 칸만 다시 — §9-3 (구현됨, M5)
 PUT    /api/plans/monthly/{id}/safety-weeks/{week_id}   주별 안전교육 후보 배치 — §9-3 (후보 모드만)
 POST   /api/plans/monthly/{id}/drill-candidates/{item_id}/copy   훈련 후보를 훈련 칸에 복사 — §9-3 (훈련 칸이 있는 계획만)
-GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039) · ?format=pdf 면 PDF (ADR-059 제안)
+GET    /api/plans/{id}/export/hwp         내보내기 — 기본 hwpx · ?format=hwp 면 .hwp (ADR-039) · ?format=pdf 면 PDF (ADR-061 제안)
 GET    /api/plans/monthly/{id}/export/hwp 월간 내보내기 — 확정본만, 기본 hwpx · hwp · pdf
 GET    /api/plans/weekly/{id}/export/hwp  주간 내보내기 — 확정본만, 기본 hwpx · hwp · pdf (§9-6)
 GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현됨)
@@ -1377,7 +1377,7 @@ GET /api/plans/10/export/hwp?format=pdf   → plan-10.pdf    Content-Type: appli
 변환은 hwpx 를 다 만든 뒤에만 돌므로, 같은 문서를 `format` 없이 다시 받으면 hwpx 는 나온다.
 변환기(python-hwpx)의 hwp 쓰기가 새 기능이라 무엇이 실패하든 이 코드로 준다. 재시도해도 같다.
 
-**PDF 도 같은 hwpx 에서 만든다(ADR-059, 제안).** `?format=pdf` 면 채운 hwpx 의 표를
+**PDF 도 같은 hwpx 에서 만든다(ADR-061, 제안).** `?format=pdf` 면 채운 hwpx 의 표를
 reportlab 으로 다시 그린다 — 칸 주소 · 병합 · 너비 · 테두리 · 바탕색 · 글자 크기 · 굵기 · 정렬 ·
 줄 나눔을 양식에서 읽는다. 계획안 종류마다 따로 그리지 않아서 연간 · 월간 · 주간 · 일지가 한 길로 나온다.
 변환은 `.hwp` 와 같이 backend 프로세스 안에서만 한다.
@@ -3432,7 +3432,7 @@ assessment    observation · dailyLog
 **관찰일지 · 일일 보육일지 · 주간 보육일지가 된다.** 일일 보육일지는 양식의 일과 줄 하나를 그날 일과 수만큼,
 주간 보육일지는 날짜 줄 하나를 그 주 날짜 수만큼 복제한다.
 
-**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` · `?format=pdf` 면 PDF(ADR-059 제안) 다 ·
+**§9 계획안 내보내기와 같은 규칙이다.** JSON 이 아니라 파일이 내려온다 · 기본은 `hwpx` 이고 `?format=hwp` 면 `.hwp` · `?format=pdf` 면 PDF(ADR-061 제안) 다 ·
 확정본만 · 출처를 싣지 않는다 · 작성자 정보를 지운다 · hwp · pdf 로 못 바꾸면 503 `DEPENDENCY_UNAVAILABLE`.
 
 ```

@@ -1,4 +1,4 @@
-# ADR-059: PDF 는 내보낸 hwpx 의 표를 reportlab 으로 다시 그려 만든다
+# ADR-061: PDF 는 내보낸 hwpx 의 표를 reportlab 으로 다시 그려 만든다
 
 - 2026-11-03
 - 상태 — 채택 (2026-11-03 하민 — 새 의존성 `reportlab` · 서버 이미지 `fonts-nanum` · 일지 PDF 내려받기 포함)

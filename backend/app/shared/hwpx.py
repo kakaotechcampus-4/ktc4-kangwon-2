@@ -9,7 +9,7 @@
 **`.hwp` 는 다 만든 hwpx 를 변환해서 만든다(ADR-039).** `.hwp` 를 직접 쓰지 않는다 —
 바이너리라 틀려도 어디가 틀렸는지 볼 수 없다. 채우는 코드는 hwpx 한 벌이다.
 기본은 hwpx 다. 변환기(python-hwpx)의 hwp 쓰기가 새 기능이라, 실패하면 hwpx 로 받게 한다.
-**PDF 도 같은 hwpx 를 변환해서 만든다(ADR-059, `hwpx_pdf.py`).** 실패하면 같은 503 이다.
+**PDF 도 같은 hwpx 를 변환해서 만든다(ADR-061, `hwpx_pdf.py`).** 실패하면 같은 503 이다.
 
 zip 안의 파일 순서와 압축 방식을 양식 그대로 따른다.
 - `mimetype` 이 맨 앞에 압축 없이 들어가야 한다. 이게 틀리면 한글이 안 연다.
@@ -214,7 +214,7 @@ def to_hwp(hwpx: bytes) -> bytes:
 
 
 def to_pdf(hwpx: bytes) -> bytes:
-    """다 채운 hwpx 를 PDF 로 바꾼다(ADR-059).
+    """다 채운 hwpx 를 PDF 로 바꾼다(ADR-061).
 
     reportlab 은 쓸 때 불러온다 — hwp 변환기와 같은 이유다.
     """
