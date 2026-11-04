@@ -1,0 +1,152 @@
+/* 설정 화면 전용. 세 묶음을 쌓인 종이 위쪽에 붙은 색 인덱스로 나눈다.
+   고른 인덱스만 맨 앞 종이에 붙어 있고, 나머지는 종이 뒤로 들어간다. */
+
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding-left: 28px;
+}
+/* 아래 12px 는 종이에 가려진다. 위치를 정해 둬야 z-index 로 종이 앞뒤를 가를 수 있다. */
+.tab {
+  position: relative;
+  z-index: 0;
+  margin-bottom: -12px;
+  padding: 10px 22px 22px;
+  border-radius: 6px 6px 2px 2px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--pg-ink-soft);
+  box-shadow: 0 1px 2px rgba(52, 49, 47, 0.08);
+  transform: translateY(8px);
+  cursor: pointer;
+}
+.tab[aria-selected="true"] {
+  z-index: 2;
+  font-weight: 700;
+  color: var(--pg-ink);
+  box-shadow: 0 2px 5px rgba(52, 49, 47, 0.14);
+  transform: none;
+}
+.center {
+  background: var(--pg-sage);
+}
+.records {
+  background: var(--pg-plum);
+}
+.account {
+  background: var(--pg-peach);
+}
+
+/* 뒤에 깔린 종이 두 장. 앞 종이(.sheet)는 위치만 잡고 z-index 를 주지 않아야 이 둘 위에 그려진다. */
+.paper {
+  position: relative;
+  z-index: 1;
+}
+.paper::before,
+.paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--pg-line);
+  border-radius: 4px;
+  background: var(--pg-ivory);
+}
+.paper::before {
+  transform: translate(8px, 10px) rotate(0.8deg);
+}
+.paper::after {
+  transform: translate(3px, 5px) rotate(-0.5deg);
+}
+.sheet {
+  position: relative;
+  padding: 32px;
+  border: 1px solid var(--pg-line);
+  border-radius: 4px;
+  background: var(--pg-paper);
+  box-shadow: 0 2px 8px rgba(52, 49, 47, 0.08);
+}
+
+/* 숨긴 묶음도 그려 둔다 — 성품인사를 고치다 다른 묶음을 봐도 고친 글이 남아야 한다. */
+.panel {
+  display: grid;
+  gap: 16px;
+}
+.panel[hidden] {
+  display: none;
+}
+.three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* 글은 왼쪽, 단추는 오른쪽. 좁으면 단추가 아래 줄로 내려간다. */
+.split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+}
+.split > div {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+/* 카드 글은 72자에서 꺾인다(Workspace .card p). 여기는 단추가 오른쪽 끝에 붙으므로 글이 그 앞까지 간다. */
+.split > div > p {
+  max-width: none;
+}
+.summary {
+  color: var(--pg-ink-soft);
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.head h2 {
+  margin-bottom: 0;
+}
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pg-cream);
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+}
+.saveRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .three,
+  .two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .tabs {
+    gap: 6px;
+    padding-left: 8px;
+  }
+  .tab {
+    padding: 10px 14px 22px;
+  }
+  .sheet {
+    padding: 20px;
+  }
+}
