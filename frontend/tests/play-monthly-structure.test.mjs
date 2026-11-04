@@ -56,7 +56,6 @@ const text = (node) =>
 const css = new Proxy({}, { get: (_, name) => String(name) });
 const withText = (tree, tag, wanted) =>
   all(tree).filter((n) => n.type === tag && text(n).includes(wanted));
-const withClass = (tree, name) => all(tree).filter((n) => n.props?.className?.includes?.(name));
 
 // 한 번 그릴 때마다 훅 칸을 순서대로 다시 읽는 대역. effect 는 deps 가 바뀔 때만 돈다.
 function harness() {

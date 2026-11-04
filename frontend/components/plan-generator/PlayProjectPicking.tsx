@@ -62,7 +62,9 @@ export default function PlayProjectPicking({
       onToggle={onToggle}
       onRemove={onRemove}
       onNext={next === null ? onArrange : () => onPeriod(next)}
-      nextLabel={next === null ? "문서 만들기 →" : `${playSeason(periods[next]).name} 고르러 가기 →`}
+      nextLabel={
+        next === null ? "문서 만들기 →" : `${playSeason(periods[next]).name} 고르러 가기 →`
+      }
       onFinishEarly={next === null ? undefined : onArrange}
     />
   );
