@@ -81,16 +81,31 @@ function messageFor(error: unknown) {
 export default function DocumentsPage() {
   const { data, error, save } = useWorkspace();
   const [entry] = useClientState(
-    () =>
-      typeof window === "undefined"
-        ? { date: "", classId: null, daily: false, assessment: false }
-        : {
-            ...routinesScope(window.location.search),
-            daily: new URLSearchParams(window.location.search).get("kind") === "dailyLog",
-            // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
-            assessment: new URLSearchParams(window.location.search).get("kind") === "assessment",
-          },
-    { date: "", classId: null as number | null, daily: false, assessment: false },
+    () => {
+      const blank = { date: "", classId: null, daily: false, assessment: false, weekly: null };
+      if (typeof window === "undefined") return blank;
+      const query = new URLSearchParams(window.location.search);
+      const kind = query.get("kind");
+      const day = (name: string) => {
+        const value = query.get(name) ?? "";
+        return validDate(value) ? value : "";
+      };
+      return {
+        ...routinesScope(window.location.search),
+        daily: kind === "dailyLog",
+        // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
+        assessment: kind === "assessment",
+        // 주간 기록 화면의 「주간 일지 만들기」가 여는 길. 보고 있던 주를 그대로 받는다.
+        weekly: kind === "weeklyLog" ? { start: day("start"), end: day("end") } : null,
+      };
+    },
+    {
+      date: "",
+      classId: null as number | null,
+      daily: false,
+      assessment: false,
+      weekly: null as { start: string; end: string } | null,
+    },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
   const [editingId, setEditingId] = useState("");
@@ -130,6 +145,16 @@ export default function DocumentsPage() {
     setChildId("");
     setStart(entry.date || today());
     setEnd(entry.date || today());
+    setSelected([]);
+  }
+  const [weeklyPrefilled, setWeeklyPrefilled] = useState(false);
+  if (entry.weekly && !weeklyPrefilled) {
+    setWeeklyPrefilled(true);
+    setMode("create");
+    setKind("weeklyLog");
+    setChildId("");
+    if (entry.weekly.start) setStart(entry.weekly.start);
+    if (entry.weekly.end) setEnd(entry.weekly.end);
     setSelected([]);
   }
   const [assessmentPrefilled, setAssessmentPrefilled] = useState(false);

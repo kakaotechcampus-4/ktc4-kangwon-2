@@ -137,12 +137,16 @@ export default function QuickRecordsPage() {
       title="주간 기록"
       description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다."
       action={
+        // 이 화면의 단위는 한 주다. 그래서 머리의 단추는 그 주의 주간 보육일지로 간다 —
+        // 하루치를 적는 길은 아래 「일과 적기」에 따로 있다.
         <Link
-          href="/"
+          href={`/documents?kind=weeklyLog&start=${weekStart}&end=${weekEnd}${
+            classServerId(classId) ? `&class_id=${classServerId(classId)}` : ""
+          }`}
           className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-line bg-primary px-4 text-xs font-semibold text-white shadow-pg-card hover:bg-primary-hover"
         >
           <Icon name="plus" className="h-4 w-4" />
-          기록 적기
+          주간 일지 만들기
         </Link>
       }
     >
