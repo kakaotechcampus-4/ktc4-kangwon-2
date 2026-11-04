@@ -90,7 +90,7 @@ from app.features.plans.schemas import (
     ValueChangeOut,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
@@ -134,7 +134,9 @@ def _error(code: int, error_code: str, message: str, fields: list[str]) -> HTTPE
     return HTTPException(code, detail={"code": error_code, "message": message, "fields": fields})
 
 
-def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> Plan:
+def _row(
+    session: Session, user: User, plan_id: int, read_only: bool = False, *, lock: bool = False
+) -> Plan:
     """남의 원 계획안은 없는 것과 같다 (shared/auth/ownership.py 와 같은 이유).
 
     **쓰는 요청은 `lock=True` 로 읽는다**(`SELECT … FOR UPDATE`). 본문 전체를 읽고 고쳐서 통째로
@@ -143,6 +145,9 @@ def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> P
     때(commit · 오류) 풀린다. 행 하나만 잡으므로 서로 기다리다 막히는 일은 없다.
 
     형식은 가르지 않는다 — 놀이 프로젝트형을 받는 경로마다 `format_of` 로 직접 가른다.
+
+    같은 원이어도 남의 반 계획안이면 반 검사를 거친다(ADR-059). 기본이 쓰기다 — 읽기만
+    `read_only=True`.
     """
     query = select(Plan).where(
         Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "annual"
@@ -153,6 +158,7 @@ def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> P
     )
     if row is None:
         raise _NOT_FOUND
+    require_own_class(session, user, int(row.classroom_ref), read_only=read_only)
     return row
 
 
@@ -514,8 +520,11 @@ def list_annual_plans(session: DbSession, user: CurrentUser, class_id: int | Non
     """
     query = select(Plan).where(Plan.center_id == user.center_id, Plan.kind == "annual")
     if class_id is not None:
-        require_own_class(session, user, class_id)
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Plan.classroom_ref == str(class_id))
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(Plan.classroom_ref.not_in(foreign_class_refs(user)))
     rows = session.scalars(query.order_by(Plan.created_at.desc(), Plan.id.desc())).all()
     return AnnualPlanListOut(
         items=[
@@ -538,7 +547,7 @@ def list_annual_plans(session: DbSession, user: CurrentUser, class_id: int | Non
     response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
 )
 def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, read_only=True)
     if format_of(row) == PLAY_PROJECT_FORMAT:
         repo = PostgresPlanRepository(
             session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
@@ -755,7 +764,7 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     **계획안 단위와 칸 단위를 같이 준다.** 생성·확정은 계획안에 남고 교사 수정은
     그 칸에 남는다. 계획안 것만 주면 "교사가 뭘 고쳤나"가 통째로 빠진다.
     """
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, read_only=True)
     if format_of(row) == PLAY_PROJECT_FORMAT:
         return play_project.audit_out(_play_plan(session, user, row))
     plan = _repo(session, user).get(PlanId(row.plan_ref))

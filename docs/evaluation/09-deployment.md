@@ -45,6 +45,8 @@ main 에 push  →  .github/workflows/deploy.yml
 - **크기로는 백업을 못 가른다.** gzip 은 입력이 없어도 20바이트짜리 올바른 파일을 만든다 — `backup.sh` 주석
 - **안 되는 백업은 없는 것보다 나쁘다.** 2026-10-14 에 복구를 해 봤고 오류 105줄이 나면서 아무것도 복구되지 않았다.
   그래서 `scripts/restore-check.sh` 가 생겼다 — `backup.sh` 머리말
+- **운영 백업으로 실제로 되돌릴 수 있다.** 2026-11-03 운영 서버 안에서 전날 백업(`ssuksak_20261101_181501.sql.gz`)을 버리는 DB 에 복구했다 — `restore-check ok`:
+  운영의 표가 전부 있고, alembic 이 운영과 같고(`c7a9e1b35d42`), 복구 DB 에 새 행을 넣는 게 성공한다(넣고 바로 되돌림). `scripts/restore-check.sh`
 
 ## 아직 아닌 것
 

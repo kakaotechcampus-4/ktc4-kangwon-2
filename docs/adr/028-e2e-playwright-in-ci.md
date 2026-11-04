@@ -15,7 +15,7 @@ CI 는 백엔드(pytest)와 화면(node:test · next build)을 따로 본다. �
 2. 스펙은 `frontend/e2e/` 에 둔다. `npm run e2e` 로 돌고, `npm test`(node:test)와 섞이지 않는다.
 3. CI 에 `e2e (playwright)` job 을 추가한다. postgres:15 서비스 · uvicorn(`LLM_MODE=mock`) ·
    `next start` 를 띄우고 MSW 를 끈 채 돌린다. 화면은 `FASTAPI_BASE_URL` rewrite 로 같은 출처 `/api` 를 탄다.
-4. 첫 스펙은 행복 경로 하나다 — 가입부터 「아이별 모아보기」 건수까지.
+4. 첫 스펙은 행복 경로 하나다 — 가입부터 「아이별 기록」 건수까지.
 
 ## 근거
 

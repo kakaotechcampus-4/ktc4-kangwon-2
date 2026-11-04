@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { formatKoreanDate } from "@/lib/greeting";
-import { useClientState } from "@/lib/hooks/use-client-state";
 import {
   loadClassSettings,
   primaryClassFor,
@@ -12,6 +10,7 @@ import {
 } from "@/lib/onboarding/settings";
 import { classServerId } from "@/lib/api/onboarding";
 import { routinesScope } from "@/lib/workspace/routines-route";
+import { Wordmark } from "./Wordmark";
 
 /** 사이드바 메뉴 이름과 같아야 한다 — 다르면 어디 있는지 되묻게 된다. */
 const PAGE_NAMES: [prefix: string, name: string][] = [
@@ -19,7 +18,7 @@ const PAGE_NAMES: [prefix: string, name: string][] = [
   ["/templates", "계획안"],
   ["/trends", "계획안"],
   ["/quick-records", "주간 기록"],
-  ["/records/children", "아이별 모아보기"],
+  ["/records/children", "아이별 기록"],
   ["/records", "관찰 기록"],
   ["/compare", "관찰 기록"],
   ["/documents", "문서 보관함"],
@@ -38,7 +37,7 @@ export default function WorkspaceTopBar() {
   const pathname = usePathname() ?? "/";
   const search = useSearchParams();
   const requestedClass = routinesScope(`?${search}`).classId;
-  const page = PAGE_NAMES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "우리 반";
+  const page = PAGE_NAMES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "홈";
   const className = useSyncExternalStore(
     subscribeClassSettings,
     () => {
@@ -51,8 +50,6 @@ export default function WorkspaceTopBar() {
     },
     () => "",
   );
-  const [today] = useClientState(() => formatKoreanDate(new Date()), "");
-
   return (
     <header className="sticky top-0 z-20 flex h-[60px] items-center justify-between border-b border-line bg-cream/90 px-4 backdrop-blur lg:px-8">
       <div className="flex items-center gap-3 text-[13px]">
@@ -67,8 +64,10 @@ export default function WorkspaceTopBar() {
       </div>
 
       <div className="flex items-center gap-3 text-[13px] text-ink-soft">
-        <span className="hidden md:inline">{today}</span>
-        <span aria-hidden="true" className="hidden h-6 border-l border-line md:inline" />
+        {/* 날짜는 바로 아래 손글씨 머리글에 크게 있다. 같은 날짜를 두 번 쓰는 대신
+            쌤플 표시를 작게 둔다 — 화면을 캡처해 나눌 때 어느 서비스인지 남는다 (PM 선택). */}
+        <Wordmark size="xs" label="쌤플 홈으로" className="hidden lg:inline-flex" />
+        <span aria-hidden="true" className="hidden h-6 border-l border-line lg:inline" />
         {/* 휴대폰에서도 보인다 — 사이드바 반 카드가 없는 폭에서 지금 반을 알려 주는 곳은 여기뿐이다 */}
         <span aria-label="상단 현재 반" className="max-w-[40vw] truncate">
           {className}

@@ -76,6 +76,11 @@ async function enterPilot(page: Page) {
   await page.locator("#auth-password").fill("pilot-password-1234");
   await page.getByLabel("비밀번호 확인").fill("pilot-password-1234");
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "가입을 완료했어요" })).toBeVisible();
+  await expect(page).toHaveURL(/\/signup$/);
+  await page.getByRole("link", { name: "메인화면으로 가기", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/onboarding\/center$/);
   await page.getByLabel("원명").fill("파일럿어린이집");
   await page.getByLabel("원장 이름").fill("가상원장");
@@ -296,7 +301,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
 
 test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현황 반영까지", async ({ page }, info) => {
   const user = await enterPilot(page);
-  await page.getByRole("link", { name: "오늘 일과 적기", exact: true }).click();
+  await page.getByRole("link", { name: "일과 작성하기", exact: true }).click();
   const dateInput = page.getByLabel("날짜", { exact: true });
   const yesterday = new Date((await dateInput.inputValue()) + "T12:00:00Z");
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
@@ -310,8 +315,10 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     await row.getByLabel(`${label} 시`, { exact: true }).selectOption(hour);
     await row.getByLabel(`${label} 분`, { exact: true }).selectOption("00");
   }
-  await row.getByLabel("활동계획").fill("자연물과 블록을 제공한다.");
-  await row.getByLabel("활동실행").fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
+  await row.getByLabel("하려던 것").fill("자연물과 블록을 제공한다.");
+  await row
+    .getByLabel("실제로 한 것")
+    .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
   await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   await page
     .getByRole("group", { name: "문서에 사용할 일과" })
@@ -355,16 +362,14 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await enterPilot(page);
   const fact = "블록 세 개를 쌓은 뒤 친구에게 같이 만들자고 말했다.";
   await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
-  // 적는 칸은 접혀 있다 — 목록이 먼저다.
-  await page.getByRole("button", { name: "＋ 새 관찰 기록 쓰기" }).click();
-  await page
-    .getByRole("combobox", { name: "담당 반", exact: true })
-    .selectOption({ label: "햇살반" });
-  await page.getByRole("combobox", { name: "아동", exact: true }).selectOption({ label: "가나다" });
-  await page.getByLabel("실제로 관찰한 사실").fill(fact);
-  await page.getByRole("button", { name: "관찰 기록 저장", exact: true }).click();
+  // 적는 칸은 늘 펴져 있고, 반은 사이드바가 고른다.
+  await page.getByRole("combobox", { name: "아이", exact: true }).selectOption({ label: "가나다" });
+  await page.getByLabel("본 대로 적기").fill(fact);
+  await page.getByRole("button", { name: "남기기", exact: true }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
-  await page.getByRole("link", { name: "관찰일지 만들기", exact: true }).click();
+  // 할 일은 그 줄을 눌러야 나온다 — 줄마다 단추를 세 개씩 두지 않는다.
+  await page.locator("article button").first().click();
+  await page.getByRole("link", { name: "이 기록으로 일지 만들기", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
   await page.screenshot({ path: info.outputPath("observation-selection.png"), fullPage: true });
   const response = page.waitForResponse(
@@ -406,13 +411,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
 
   // Read-only facts must lead back to a usable correction/review path.
   await page.getByRole("link", { name: "관찰 기록에서 고쳐 주세요 →", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "담당 반", exact: true })
-    .selectOption({ label: "햇살반" });
-  await page.getByRole("button", { name: "기록 수정", exact: true }).click();
+  await page.locator("article button").first().click();
+  await page.getByRole("button", { name: "고치기", exact: true }).click();
   const updatedFact = fact + " 놀이를 마친 뒤 블록을 바구니에 담았다.";
-  await page.getByLabel("실제로 관찰한 사실").fill(updatedFact);
-  await page.getByRole("button", { name: "수정 저장", exact: true }).click();
+  await page.getByLabel("본 대로 적기").fill(updatedFact);
+  await page.getByRole("button", { name: "고친 대로 저장", exact: true }).click();
   await expect(page.getByText("수정했어요.", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
   await openObservation(page, saved);
@@ -480,7 +483,7 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 진입한다", async
   ).toBeVisible();
   await expect(page.getByText(/아직 모인 자료가 없어요|에 모았어요/)).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("link", { name: "우리 반", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "홈", exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("mobile-trends.png"), fullPage: true });
 });
 

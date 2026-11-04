@@ -64,11 +64,10 @@ me       GET /api/auth/me                                               → 200 
 **`center_id` 가 null 이면 온보딩을 아직 안 끝냈다.** `POST /api/centers` 가 그 값을 채운다.
 **한 계정은 원 하나다** — 두 번째 요청은 `409 ALREADY_EXISTS` 다.
 
-**자기 원 것만 볼 수 있다.** 로그인만 확인하면 `class_id` 를 바꿔가며 남의 원 아동 명단을
-읽을 수 있다. **남의 것은 403 이 아니라 404 다** — 403 은 그 id 가 존재한다는 사실을 알려준다.
-
-> **「자기 반만」은 아직 아니다.** 원장도 봐야 하고 담임이 바뀌기도 해서 규칙을 먼저 정한다.
-> 지금은 원 단위까지다.
+**다른 원 · 없는 반은 404 다.** 그 id 가 존재하는지 알려주지 않는다(ADR-017 §6).
+**같은 원 다른 반은 주인 승인 뒤에 본다**([ADR-059](adr/059-class-owner-access-request.md) · §2-2).
+승인이 필요하면 `403 CLASS_ACCESS_REQUIRED`, 승인받아 보기만 되는 교사가 쓰려 하면
+`403 CLASS_READ_ONLY` 다. 둘 다 `fields: ["class_id"]`.
 
 ### 401 을 받으면 화면이 하는 일
 
@@ -127,6 +126,8 @@ me       GET /api/auth/me                                               → 200 
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
 | `INTERNAL_ERROR` | 500 | 예상하지 못한 서버 오류. 문구는 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」 고정이고 원인은 서버 기록에만 남긴다 (ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-19) |
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
+| `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
+| `CLASS_READ_ONLY` | 403 | 승인받아 보기만 된다. 고치기 · 확정 · 삭제는 주인만(§2-2) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at`) |
 
 **409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
@@ -242,6 +243,8 @@ me       GET /api/auth/me                                               → 200 
 
 `age_min` ≤ `age_max`, 둘 다 3~5. `child_count` 는 **선택**(null 허용, 양의 정수).
 
+**부른 계정이 반 주인이 된다.** 서버가 그 계정의 id 를 `teacher_id` 에 넣는다. request 로 받지 않는다(§2-2).
+
 **없는 `center_id` 면 `404 NOT_FOUND` 다.** 빈 목록(`{"items": []}`)과 구분한다 —
 같은 응답으로 돌려주면 FE 가 「반을 추가해 주세요」를 없는 원에도 띄운다.
 `GET /api/centers/{center_id}/classes` 도 같다.
@@ -310,6 +313,21 @@ me       GET /api/auth/me                                               → 200 
 
 **`GET /api/centers/{center_id}/classes`** → `{ "items": [...] }`
 
+각 item 에 **`my_access`** 를 담는다. 같은 원의 반은 열람 상태와 관계없이 목록에 보인다.
+
+| `my_access` | 뜻 |
+|---|---|
+| `OWNER` | 내가 만든 반 |
+| `OPEN` | 주인 없는 옛 반 |
+| `APPROVED` | 주인이 열람을 승인함 |
+| `PENDING` | 요청을 기다리는 중 |
+| `REJECTED` | 요청이 거절됨 |
+| `REVOKED` | 주인이 승인을 취소함 |
+| `NONE` | 남의 반, 요청 없음 |
+
+**읽기는 OWNER · OPEN · APPROVED, 쓰기는 OWNER · OPEN 이다**(§2-2).
+「우리 반」 거르기 · 배지 · 요청 상태는 이 칸으로 정한다. 「내 요청 목록」 API 는 따로 없다.
+
 **UI states**
 
 | | |
@@ -366,6 +384,8 @@ me       GET /api/auth/me                                               → 200 
 
 **`GET /api/classes/{class_id}/children`** → `{ "items": [...] }`
 
+**아동 명단 목록 · 발달 추적은 읽기 권한 필요 — §2-2.**
+
 > 목록 응답 봉투는 **`{ items }` 하나로 통일한다.** `items.length` 로 알 수 있는 `count` 를
 > 따로 보내지 않는다 — `child_count`(반의 목표 원아 수)와 이름이 비슷해 혼동된다.
 
@@ -379,7 +399,8 @@ me       GET /api/auth/me                                               → 200 
 - 반 아이마다 관찰 기록(§10) 수를 센다. 명단 순서이고, **기록이 없는 아이도 `total: 0` 으로 나온다.**
 - `by_domain` 은 5영역을 늘 다 담는다. 0 인 영역이 「덜 본 영역」이다.
 - **수만 센다. 발달 수준을 판정하지 않는다** (ADR-007). LLM 을 부르지 않는다.
-- 기록 본문은 내려주지 않는다. 한 아이 기록은 `GET /api/observations?child_id=` 로 받는다.
+- 기록 본문은 내려주지 않는다. 한 아이 기록은 `GET /api/observations?class_id=&child_id=` 로 받는다.
+  `class_id` 없이 부르면 승인받은 반이 빠진다(§2-2).
 
 **`DELETE /api/children/{id}`** → `204`. 오타 수정은 삭제 후 재등록이다.
 P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이름 수정(PATCH)은 P1 이다.
@@ -396,6 +417,131 @@ P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이
 **0명이어도 다음 단계로 간다.** 「나중에 입력할래요」 버튼이 있다.
 건너뛰면 메인 화면에 배너를 띄운다 — 문구는 *"관찰일지를 쓰려면 명단이 필요합니다"*.
 **계획안(P0)은 명단 없이도 정상 작동한다.** 지금 막힌 게 아니라는 뜻이 전달돼야 한다.
+
+---
+
+## 2-2. 같은 원 다른 반 열람 요청 — 반 주인이 승인한다 (ADR-059)   (구현됨)
+
+| 누가 | 읽기 · 내려받기 | 쓰기 | 반 목록에 보임 |
+|---|---|---|---|
+| 반 주인(`OWNER`) | 가능 | 가능 | 보임 |
+| 승인된 같은 원 교사(`APPROVED`) | 가능 | 불가 | 보임 |
+| 승인 없는 같은 원 교사(`NONE` · `PENDING` · `REJECTED` · `REVOKED`) | 불가 | 불가 | 보임 |
+| 다른 원 교사 | 404 | 404 | 안 보임 |
+
+**승인은 반 단위다.** 그 반 자료 전부와 앞으로 생길 자료를 본다. 보관함 다섯 종류 — 연간 ·
+월간(놀이 중심 월간 포함) · 주간 계획안, 보육일지 · 관찰일지(`/api/documents`) — 와
+아이 명단(`/api/classes/{id}/children*`) · 관찰 기록(`/api/observations`) · 일과 기록(`/api/routines`)이 대상이다.
+문서만 막으면 관찰 화면에서 같은 아이 실명을 볼 수 있다.
+
+### 반 단위 API 공통 규칙
+
+- **읽기는 OWNER · OPEN · APPROVED, 쓰기는 OWNER · OPEN 만 된다.** 읽기는 목록 · 단건 · 이력 ·
+  원재료 조회와 hwp/hwpx 내려받기다. 내려받기의 기존 확정 게이트 · 형식별 지원 범위는 그대로다.
+- **쓰기는 만들기 · 고치기 · 확정 · 확정 취소 · 재생성 · 재확정 · 삭제 · 가져오기 · 양식 override 변경이다.**
+  HTTP 메서드만으로 가르지 않는다. `/export/hwp` 는 파일을 그때 만들지만 읽기다(ADR-021 · ADR-039).
+- **같은 원 · 승인 없음은 `403 CLASS_ACCESS_REQUIRED`, 승인된 교사의 쓰기는 `403 CLASS_READ_ONLY` 다.**
+  둘 다 `fields: ["class_id"]`. 다른 원 · 없는 반은 `404 NOT_FOUND` 다.
+- **반 단위 자료 목록을 `class_id` 없이 부르면 OWNER · OPEN 반 것만 준다.** 다른 필터가 있어도 같다.
+  `class_id` 를 주면 그 반의 읽기 권한을 보고, 권한이 없으면 `403 CLASS_ACCESS_REQUIRED` 다.
+  승인된 반도 지정해야 본다. 다른 원 · 없는 반은 404 다.
+- 반 목록(§2)과 아래 `archive-summary` 는 예외다. **같은 원이면 열람 상태와 관계없이 준다.**
+
+### 요약 — `GET /api/classes/{class_id}/archive-summary`
+
+**Response** `200`
+
+```json
+{ "items": [
+    { "kind": "observation", "start": "2026-09-01", "end": "2026-09-30", "status": "CONFIRMED" },
+    { "kind": "annual", "start": "2026-03-01", "end": "2027-02-28", "status": "DRAFT" }
+] }
+```
+
+**제목 · 아이 이름 · 문서 id 는 주지 않는다.** 관찰일지 제목에도 아이 이름이 든다(§11).
+다른 원 · 없는 반은 `404 NOT_FOUND` 다. 자료가 없는 반은 `{ "items": [] }` 다.
+
+| 칸 | 값 |
+|---|---|
+| `kind` | 계획안은 `annual` · `monthly` · `weekly`(`backend/app/features/plans/models.py:32`). 놀이 중심 월간도 `monthly` 다. 문서는 `dailyLog` · `weeklyLog` · `observation` · `assessment`(`backend/app/features/documents/schemas.py:172` · `:211`) |
+| `start` · `end` | `YYYY-MM-DD`, 시간대 없음. 연간은 학년도 3월 1일 ~ 이듬해 2월 말, 월간(놀이 중심 월간 포함)은 그 달, 주간은 그 주, 문서는 문서의 `start` · `end` |
+| `status` | `DRAFT` · `CONFIRMED` |
+
+**`start` 내림차순이다.** 건수는 화면이 `items` 를 센다.
+
+### 요청 — `POST /api/classes/{class_id}/access-requests`
+
+**body 없음. Response** `201`
+
+```json
+{ "id": 1, "class_id": 2, "status": "PENDING",
+  "created_at": "2026-11-04T00:00:00Z", "updated_at": "2026-11-04T00:00:00Z" }
+```
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `NOT_FOUND` | 404 | 다른 원 · 없는 반 · 원 없는 계정 | `["class_id"]` |
+| `ALREADY_EXISTS` | 409 | 이미 읽을 수 있음(OWNER · OPEN · APPROVED) 또는 이미 기다리는 중(PENDING) | `["class_id"]` |
+
+**`class_access_requests` 는 `UNIQUE(class_id, requester_id)` 로 한 줄만 둔다.**
+거절(REJECTED) · 취소(REVOKED) 뒤 다시 요청하면 그 줄을 PENDING 으로 돌린다. 이때도 같은 모양의 201 이다.
+마지막 상태 · 시각만 남고 지난 거절 · 취소 이력은 남지 않는다. 이력이 필요해지면 이벤트 표를 따로 둔다.
+
+### 받은 요청 — `GET /api/access-requests/received`
+
+**내가 주인인 반에 온 요청 전부다. Response** `200`
+
+```json
+{ "items": [
+    { "id": 1, "class_id": 2, "class_name": "달님반", "requester_name": "이선생", "status": "PENDING",
+      "created_at": "2026-11-04T00:00:00Z", "updated_at": "2026-11-04T00:00:00Z" }
+] }
+```
+
+**PENDING 먼저, 그 안에서 `updated_at` 내림차순이다.** `requester_name` 은 요청한 계정의 이름(`users.name`)이다.
+상태는 PENDING · APPROVED · REJECTED · REVOKED 다. **화면 안 목록으로만 알린다. 메일은 보내지 않는다**(ADR-029).
+
+### 승인 · 거절 · 취소 — `PATCH /api/access-requests/{id}`
+
+**Request** — `status` 는 `APPROVED` · `REJECTED` · `REVOKED` 만 받는다. 다른 칸이 오면 `422 VALIDATION_FAILED` 다.
+
+```json
+{ "status": "APPROVED" }
+```
+
+| 지금 | 바꿀 수 있음 |
+|---|---|
+| `PENDING` | `APPROVED` · `REJECTED` |
+| `APPROVED` | `REVOKED` |
+
+**Response** `200` — 받은 요청 item 과 같은 모양으로 바뀐 줄을 돌려준다.
+그 밖의 전환(이미 처리된 요청 등)은 `409 STALE_WRITE`, `fields: ["status"]` 다.
+다른 화면이 먼저 바꿨으니 다시 불러온다. **내 반 요청이 아니거나 없으면 `404 NOT_FOUND` 다.**
+`created_at` · `updated_at` 은 UTC(`Z`)다.
+
+### 시간순 예시
+
+```
+다른 반 교사  POST  /api/classes/2/access-requests                → 201 PENDING
+반 주인      GET   /api/access-requests/received                 → 200 items 에 요청 1
+반 주인      PATCH /api/access-requests/1 {status: APPROVED}      → 200 APPROVED
+요청한 교사   GET   /api/documents/7                              → 200
+요청한 교사   PUT   /api/documents/7                              → 403 CLASS_READ_ONLY
+반 주인      PATCH /api/access-requests/1 {status: REVOKED}       → 200 REVOKED
+요청한 교사   GET   /api/documents/7                              → 403 CLASS_ACCESS_REQUIRED
+```
+
+문서 7 은 반 2 의 문서다.
+
+### 주인 없는 옛 반
+
+**이 결정 전에 만든 반의 `teacher_id` 는 NULL 로 둔다.** 주인을 채우지 않는다 — 누가 만들었는지 기록이 없다.
+`my_access` 는 OPEN 이고 같은 원 교사 모두 지금처럼 읽고 쓴다. 열람 요청은 필요 없다.
+
+### 이번에 없는 것
+
+원장 역할 · 담임 바꾸기 · 알림 메일 · 원 등록 전 다른 원 열람은 없다. 다른 원 열람은 팀이 따로 정한다.
+문서는 지금처럼 DB 에 두고 내려받을 때 만든다. **S3 파일 저장소를 붙이지 않는다.**
 
 ---
 
@@ -961,6 +1107,8 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 **단건** `GET /api/plans/annual/{id}` — 생성과 같은 형식. 형식에 따라 `months`(월별 주제형) 또는 `periods`(놀이 프로젝트형, §4)를 준다.
 
 **목록** `GET /api/plans/annual?class_id=1`
+
+**`class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.**
 
 ```json
 { "items": [
@@ -1667,7 +1815,7 @@ created_at · confirmed_at   ISO 8601.  confirmed_at 은 확정 전 null
 ] }
 ```
 
-요약만 담는다 — 칸은 단건이 준다. `class_id` 를 빼면 내 원 전체, 넣으면 그 반(남의 원 반이면 404).
+요약만 담는다 — 칸은 단건이 준다. `class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.
 정렬은 대상 달 오름차순. **놀이 중심 월간 행(`body.format == "PLAY_MONTHLY"`)은 형식으로 빼고 경고를 남기지 않는다** — 그 목록은 §9-7 이 준다(ADR-046 §3).
 
 ### 오류 — 생성
@@ -1919,10 +2067,11 @@ FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사�
 
 ### 공통
 
-- **로그인 필수**(`401 UNAUTHENTICATED`). 인가는 원 단위다 — 남의 원 · 남의 원 반 · 남의 원 Profile
-  은 없는 것과 같은 `404`(ADR-017).
-- **권한:** 원 소속 계정 누구나 바꿀 수 있다(ADR-034 §4, 원 ID C2.6 · C2-E · TP-05 `RESOLVED_FOR_P0`). 역할
-  구분은 없다. 포인터를 바꾸면 `changed_by`(users.id) · `changed_at` 이 남는다.
+- **로그인 필수**(`401 UNAUTHENTICATED`). 남의 원 · 남의 원 반 · 남의 원 Profile
+  은 없는 것과 같은 `404`(ADR-017). 같은 원 다른 반은 §2-2 를 따른다(ADR-059).
+- **권한:** 원 기본 포인터(③)는 원 소속 계정 누구나 바꿀 수 있다(ADR-034 §4, 원 ID C2.6 · C2-E · TP-05 `RESOLVED_FOR_P0`). 역할
+  구분은 없다. **반 override(④)는 §2-2 를 따른다** — 읽기는 OWNER · OPEN · APPROVED, 바꾸기는 OWNER · OPEN 만
+  (`403 CLASS_ACCESS_REQUIRED` · `403 CLASS_READ_ONLY`). 포인터를 바꾸면 `changed_by`(users.id) · `changed_at` 이 남는다.
 - **화면 흐름:** §9-2 해석(`GET /api/classes/{class_id}/template-profile`)이 `SELECTION_REQUIRED`
   이면 ① 기반 Template 목록 → ② 시작 → (사용자가 동의하면) ③ 원 기본 지정 또는 ④ 반 override →
   §9-2 해석을 다시 읽고 → 보여 준 정확한 `profile_ref` 로 §9-1 생성.
@@ -2099,8 +2248,9 @@ id        정수.  필수.  §9-1 의 id
 item_id   문자열.  선택.  주면 그 칸의 이력 + 계획안 단위 CONFIRMED 만 준다 (아래)
 ```
 
-- **로그인 필수**(`401 UNAUTHENTICATED`). 인가는 원 단위다 — 없는 id · 남의 원 계획안 · 월간이
+- **로그인 필수**(`401 UNAUTHENTICATED`). 없는 id · 남의 원 계획안 · 월간이
   아닌(연간) id 는 모두 같은 `404 ["id"]` 다. 셋을 가르지 않는다.
+  같은 원 다른 반 계획안은 §2-2 읽기 규칙을 따른다 — OWNER · OPEN · APPROVED 가 아니면 `403 CLASS_ACCESS_REQUIRED`.
 - **읽기만 한다.** 이력을 더하지 않고 계획안 본문 · `revision` · `updated_at` · 상태 · 칸 값을 바꾸지
   않는다.
 
@@ -2366,7 +2516,7 @@ DELETE /api/plans/weekly/{id}/cells/{item_id}/split?expected_revision=3
 
 - `week_id` 오름차순. 칸은 단건이 준다.
 - `month` 는 달력의 달 1 ~ 12 이고 **`class_id` 와 함께만** 받는다 — 반의 학년도가 연도를 정한다
-  (2026 학년도의 `month: 2` 는 2027-02, 월간 생성과 같은 규칙). 없으면 그 반 · 원 전체다.
+  (2026 학년도의 `month: 2` 는 2027-02, 월간 생성과 같은 규칙). `class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.
 
 ### 삭제 — `DELETE /api/plans/weekly/{id}`
 
@@ -2598,7 +2748,7 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 
 ### 목록 · 단건 · 삭제
 
-- **목록** `GET /api/plans/monthly/play?class_id=1` → `{ "items": [ { id, class_id, school_year, month, target_month, status, revision, created_at, confirmed_at } ] }`. 대상 달 오름차순. `class_id` 를 빼면 내 원 전체, 남의 원 반이면 404.
+- **목록** `GET /api/plans/monthly/play?class_id=1` → `{ "items": [ { id, class_id, school_year, month, target_month, status, revision, created_at, confirmed_at } ] }`. 대상 달 오름차순. `class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.
 - **단건** `GET /api/plans/monthly/play/{id}` → `200`, 위 응답.
 - **삭제** `DELETE /api/plans/monthly/play/{id}` → `204`. **`expected_revision` 을 받지 않는다**(기존 월간 삭제와 같다). 확정 전만 지우며 `status = 'DRAFT'` 조건이 붙은 한 문장의 DELETE 로 보장한다(지운 행이 0이면 다시 읽어 없음 · 남의 원은 404, 확정은 409). 확정본은 409 `GATE_BLOCKED` 「확정된 계획안은 지울 수 없습니다.」(월간과 같은 이유 — 반 · 달당 하나라 지우기가 없으면 다시 만들 길이 없다).
 
@@ -2792,7 +2942,7 @@ together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
 `fields: ["child_id"]`. 없는 반·아이와 남의 원 반·아이는 `NOT_FOUND` 404 다(「인증」).
 
 **조회** `GET /api/observations?class_id=1&child_id=5&from=2026-09-01&to=2026-09-30`
-→ `{ "items": [...] }`. 네 값 모두 선택이고, 없으면 교사가 접근 가능한 전체다.
+→ `{ "items": [...] }`. 네 값 모두 선택이다. `class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.
 **정렬은 `date` 내림차순 고정이다** — 화면이 최신순으로만 그린다.
 
 **수정** `PUT /api/observations/{id}` — `date` · `domain` · `context` · `fact` 만 받는다.
@@ -2858,6 +3008,7 @@ execution   활동실행 — 사실 층.  선택(저장은 비어도 된다).  �
   `class_id` 를 보내면 422 — 반이 바뀌면 다른 기록이다. 시간을 안 보내면 지워진다
 - **`GET /api/routines?class_id=&from=&to=`** 셋 다 선택. 정렬은 **날짜 오름차순, 하루 안에서는
   `position` · `start` · `id` 순**이다 — 종이의 행 순서다
+- **`class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.**
 - 남의 원 반 · 기록은 404 다
 
 **기록을 고치면 그걸 쓴 일일 보육일지가 `stale` 이 된다.** 일지는 근거 사본으로
@@ -3394,6 +3545,8 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 
 **`GET /api/documents` 는 `sections` · `sources` 를 담지 않는다.** 목록이라 무거워진다.
 단건 조회에서만 준다. 목록에는 `stale` · `status` · `sources_count` 를 담는다.
+
+**`class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.**
 
 | | |
 |---|---|

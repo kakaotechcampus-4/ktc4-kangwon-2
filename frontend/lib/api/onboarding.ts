@@ -4,7 +4,7 @@ import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
 import { createCenter, getCenter, joinCenter, updateCenter } from "./centers";
-import { createClass, getClasses } from "./classes";
+import { createClass, getClasses, isMyClass } from "./classes";
 import { createChild, getChildren, deleteChild } from "./children";
 import { normalizeProvince } from "../onboarding/regions";
 import { loadClassSettings, saveClassSettings } from "../onboarding/settings";
@@ -223,13 +223,20 @@ export async function adoptServerClasses(
    * 「연결은 있는데 목록에 없는 반」이 된다 — 그건 교사가 지운 반과 모양이 같아서
    * 다음부터 영영 안 들어온다. 그래서 **목록 먼저, 연결 나중**이다.
    */
-  persist?: (adopted: ClassroomEntry[]) => void,
+  persist?: (adopted: ClassroomEntry[], dropped: string[]) => void,
 ): Promise<ClassroomEntry[]> {
   const me = await getMe();
   if (!me.center_id) return [];
   const { items } = await getClasses(me.center_id);
   const links = readLinks();
   const linked = new Set(known.map((c) => links.classes[c.id]?.id).filter(Boolean));
+  // 이미 목록에 들어온 반이 그사이 남의 반이 됐으면 뺀다. 연결은 지우지 않는다 —
+  // 남아 있어야 아래 「연결은 있는데 목록에 없는 반」 규칙으로 다시 안 들어온다.
+  // 아래 조기 return 들보다 먼저 저장해야 어느 길로 끝나도 빠진다.
+  const dropped = known
+    .filter((c) => items.some((item) => item.id === links.classes[c.id]?.id && !isMyClass(item)))
+    .map((c) => c.id);
+  if (dropped.length) persist?.([], dropped);
   // 원 연결을 서버 값으로 만들어 둔다. 없으면 syncCenter 가 원을 새로 만들면서
   // links.classes · links.children 을 통째로 비운다.
   if (!links.center) links.center = { id: me.center_id, signature: ADOPTED };
@@ -258,7 +265,7 @@ export async function adoptServerClasses(
   const serverIds = new Map<string, number>();
   const adopted: ClassroomEntry[] = [];
   for (const item of items) {
-    if (linked.has(item.id) || retired.has(item.id)) continue;
+    if (linked.has(item.id) || retired.has(item.id) || !isMyClass(item)) continue;
     if (already.has(CLASS_PREFIX + item.id)) continue;
     // **연결은 있는데 목록에 없는 반은 교사가 지운 것이다.** removeClass 는 로컬 목록만
     // 지우고 연결은 남긴다. 여기서 다시 들이면 지운 반이 되살아난다.
@@ -313,7 +320,7 @@ export async function adoptServerClasses(
 
   // **목록 먼저, 연결 나중.** 중간에 끊기면 연결만 없는 상태인데, 로컬 id 가 서버 id 로
   // 정해져 있어서 기록 쪽은 같은 id 로 풀린다. 반대 순서로 끊기면 반이 영영 사라진다.
-  persist?.(filled);
+  persist?.(filled, dropped);
   saveLinks(links);
   return filled;
 }
@@ -355,12 +362,14 @@ export async function restoreFromServer(centerId: number): Promise<boolean> {
   };
   saveClassSettings(base);
   let restored = false;
-  await adoptServerClasses(kept, undefined, (rows) => {
+  await adoptServerClasses(kept, undefined, (rows, dropped) => {
     restored = rows.length > 0;
+    // 뺀 것만 있고 들인 반이 없으면 첫 설정을 끝낸 것이 아니다 — completedAt 을 넣지 않는다.
+    const classes = [...kept.filter((c) => !dropped.includes(c.id)), ...rows];
     saveClassSettings({
       ...base,
-      classes: [...kept, ...rows],
-      completedAt: new Date().toISOString(),
+      classes: classes.length ? classes : EMPTY_CLASS_SETTINGS.classes,
+      ...(restored && { completedAt: new Date().toISOString() }),
     });
   });
   return restored;

@@ -79,6 +79,8 @@ def test_모든_달과_연령을_소주제_호출_한번에_보낸다(monkeypatc
 
     def complete(system, user, **kwargs):
         calls.append(json.loads(user))
+        assert calls[-1]["prompt_version"] == "annual-subthemes-v3"
+        assert "월 주제가 담은 주요 대상과 경험을 목록 전체에서 유지" in system
         return json.dumps(
             {
                 "months": [

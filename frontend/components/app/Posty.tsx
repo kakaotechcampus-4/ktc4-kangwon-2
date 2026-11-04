@@ -19,7 +19,7 @@ export type PostyTone =
 
 /** 팔다리 각도. 상체는 그대로다. */
 export type PostyPose =
-  "stand" | "up" | "hand" | "point" | "wave" | "cheer" | "run" | "think" | "sit";
+  "stand" | "up" | "hand" | "point" | "wave" | "cheer" | "run" | "think" | "sit" | "sitWave";
 
 /** 표정. */
 export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think";
@@ -150,6 +150,17 @@ const POSE: Record<PostyPose, Pose> = {
     arms: [
       [2.4, 38, 0],
       [45.6, 38, 0],
+    ],
+    feet: [
+      [11.5, 49],
+      [36.5, 49],
+    ],
+    height: 56,
+  },
+  sitWave: {
+    arms: [
+      [2.4, 38, 0],
+      [45.6, 12, 4],
     ],
     feet: [
       [11.5, 49],

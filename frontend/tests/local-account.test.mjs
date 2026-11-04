@@ -19,8 +19,14 @@ registerHooks({
 const { stubAuthFetch } = await import("./auth-fixture.mjs");
 // 로그인·회원가입 판정이 서버로 갔다. 이 파일은 브라우저 저장소 동작만 본다.
 const stub = stubAuthFetch();
-const { registerAccount, verifyAccount, accountName, loginDestination, completeAccountOnboarding } =
-  await import("../lib/auth/local-account.ts");
+const {
+  registerAccount,
+  verifyAccount,
+  accountName,
+  onboardingDestination,
+  roomReady,
+  completeAccountOnboarding,
+} = await import("../lib/auth/local-account.ts");
 const { accountStorageKey, startDemoSession } = await import("../lib/auth/demo-session.ts");
 
 test("registration, credential checks, duplicate registration and safe password storage", async () => {
@@ -40,22 +46,35 @@ test("registration, credential checks, duplicate registration and safe password 
   };
   // 가입 전 남아 있던 반 설정은 새 계정의 온보드 완료로 간주하지 않는다.
   values.set("saessak.classSettings", JSON.stringify({ completedAt: "2026-09-01" }));
-  assert.equal(loginDestination(), "/onboarding/center");
+  assert.equal(roomReady(), false);
   await assert.rejects(registerAccount("", "bad", "short"));
   await registerAccount(" 민지 ", "Teacher@example.com", "demo-password-123");
-  assert.equal(loginDestination(), "/onboarding/center");
+  assert.equal(roomReady(), false);
   // 저장소에만 있던 계정이다. 판정이 서버로 갔으므로 서버도 안다고 쳐 준다.
   stub.seed("teacher@example.com", "demo-password-123");
   await verifyAccount("teacher@example.com", "demo-password-123");
   assert.equal(startDemoSession(), true);
   assert.equal(accountName(), "민지");
-  assert.equal(loginDestination(), "/onboarding/center");
+  assert.equal(onboardingDestination(), "/onboarding/center");
+  assert.equal(roomReady(), false);
   // 설정을 마치기 전에 재로그인해도 초기 설정으로 안내한다.
   // 저장소에만 있던 계정이다. 판정이 서버로 갔으므로 서버도 안다고 쳐 준다.
   stub.seed("teacher@example.com", "demo-password-123");
   await verifyAccount("teacher@example.com", "demo-password-123");
   assert.equal(startDemoSession(), true);
-  assert.equal(loginDestination(), "/onboarding/center");
+  assert.equal(onboardingDestination(), "/onboarding/center");
+  // 원 정보만 있고 반이 없으면 아직 메인 밖 메뉴를 열지 않는다.
+  values.set(
+    accountStorageKey("saessak.classSettings"),
+    JSON.stringify({
+      orgName: "기관",
+      directorName: "원장",
+      regionProvince: "서울특별시",
+      regionDistrict: "강남구",
+    }),
+  );
+  assert.equal(onboardingDestination(), "/onboarding/classes");
+  assert.equal(roomReady(), false);
   values.set(
     accountStorageKey("saessak.classSettings"),
     JSON.stringify({
@@ -71,7 +90,8 @@ test("registration, credential checks, duplicate registration and safe password 
   stub.seed("teacher@example.com", "demo-password-123");
   await verifyAccount("teacher@example.com", "demo-password-123");
   assert.equal(startDemoSession(), true);
-  assert.equal(loginDestination(), "/");
+  // 아동 명단은 없어도 원·반이 차면 준비된 것으로 본다.
+  assert.equal(roomReady(), true);
   await assert.rejects(verifyAccount("teacher@example.com", "wrong-password"));
   await assert.rejects(verifyAccount("other@example.com", "demo-password-123"));
   await assert.rejects(registerAccount("중복", "TEACHER@example.com", "demo-password-456"));
@@ -92,14 +112,15 @@ test("registration, credential checks, duplicate registration and safe password 
   await verifyAccount("other@example.com", "demo-password-456");
   assert.equal(startDemoSession(), true);
   assert.equal(accountName(), "다른 선생님");
-  assert.equal(loginDestination(), "/onboarding/center");
+  assert.equal(onboardingDestination(), "/onboarding/center");
+  assert.equal(roomReady(), false);
   assert.notEqual(accountStorageKey("saessak.classSettings"), firstKey);
   assert.equal(values.get(accountStorageKey("saessak.classSettings")), undefined);
   // 저장소에만 있던 계정이다. 판정이 서버로 갔으므로 서버도 안다고 쳐 준다.
   stub.seed("teacher@example.com", "demo-password-123");
   await verifyAccount("teacher@example.com", "demo-password-123");
   assert.equal(startDemoSession(), true);
-  assert.equal(loginDestination(), "/");
+  assert.equal(roomReady(), true);
   assert.equal(JSON.parse(values.get(accountStorageKey("saessak.classSettings"))).orgName, "기관");
   assert.equal(
     [...values.values()].some((value) => value.includes("demo-password-123")),
@@ -117,7 +138,7 @@ test("registration, credential checks, duplicate registration and safe password 
   assert.equal(startDemoSession(), true);
   assert.equal(values.get(firstKey), values.get("saessak.classSettings"));
   assert.equal(values.get(accountStorageKey("saessak.workspace.v1")), "legacy documents");
-  assert.equal(loginDestination(), "/onboarding/center");
+  assert.equal(onboardingDestination(), "/onboarding/center");
   delete globalThis.localStorage;
   delete globalThis.window;
 });
@@ -139,7 +160,7 @@ test("registration signs in with a mixed-case email and enters onboarding", asyn
   };
   await registerAccount(" 민지 ", " NewTeacher@Example.com ", "demo-password-123");
   assert.equal(startDemoSession(), true);
-  assert.equal(loginDestination(), "/onboarding/center");
+  assert.equal(onboardingDestination(), "/onboarding/center");
   delete globalThis.localStorage;
   delete globalThis.window;
 });

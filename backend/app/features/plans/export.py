@@ -101,7 +101,7 @@ def _learning(value: str) -> list[tuple[str, str, str]]:
 
 def _export_play_project(session, user, row, format: Format) -> Response:
     plan = _play_plan(session, user, row)
-    klass = require_own_class(session, user, int(plan.classroom_ref))
+    klass = require_own_class(session, user, int(plan.classroom_ref), True)
     periods = []
     for p in plan.periods:
         by_key = {c.row_key: c for c in p.candidates}
@@ -127,7 +127,7 @@ def export_plan(
     plan_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
 ) -> Response:
     """확정된 연간계획안을 내보낸다. 월간은 아래 별도 경로를 쓴다."""
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, True)  # 읽기 — 읽기 검사만
     if format_of(row) == PLAY_PROJECT_FORMAT:
         if row.status != "CONFIRMED":
             raise _PLAY_NOT_CONFIRMED
@@ -135,7 +135,7 @@ def export_plan(
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
     plan = _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
-    klass = require_own_class(session, user, plan.class_id)
+    klass = require_own_class(session, user, plan.class_id, True)
 
     title = f"{klass.name} {plan.school_year}학년도 연간 보육계획안"
     rows = [AnnualMonthRows(month.month, month.theme, month.sub_themes) for month in plan.months]
@@ -201,11 +201,11 @@ def export_monthly_plan(
     소방대피/재난대비 줄은 양식 개편 때까지 빈칸이다.
     양식에 자리가 없는 Section 이 오면 버리지 않고 멈춘다.
     """
-    row = _monthly_row(session, user, plan_id)
+    row = _monthly_row(session, user, plan_id, read_only=True)
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
     plan = _monthly_detail(session, user, plan_id)
-    klass = require_own_class(session, user, plan.class_id)
+    klass = require_own_class(session, user, plan.class_id, read_only=True)
 
     weeks = [week for week in plan.weeks if week.active]
     if len(weeks) not in MONTHLY_TEMPLATES:
@@ -314,11 +314,11 @@ def export_weekly_plan(
     박아두지 않는다** — Section 하나가 본문 한 줄이고, 이름은 계획안이 들고 온 `label` 이다.
     기간은 응답의 `display_end_date` 를 쓴다 — 토요일을 켠 원이면 토요일까지다.
     """
-    row = _weekly_row(session, user, plan_id)
+    row = _weekly_row(session, user, plan_id, read_only=True)
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
     plan = _weekly_detail(session, user, plan_id)
-    klass = require_own_class(session, user, plan.class_id)
+    klass = require_own_class(session, user, plan.class_id, read_only=True)
     # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
     core = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     ages = core.target_ages
