@@ -433,6 +433,8 @@ def create_document(
 
     # 근거를 불러와 사본 행을 만든다. 순서는 교사가 고른 순서 그대로다.
     copies: list[DocumentSource] = []
+    # 관찰 기록에 교사가 고른 누리과정 영역. 관찰일지 배움 칸을 그 영역의 내용에 잇는다.
+    domains: set[str] = set()
     if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
         # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
         # 교사는 고른 대로 만들어진 줄 안다.
@@ -563,6 +565,7 @@ def create_document(
             ):
                 fields.append(f"sources.{source_id}")
                 continue
+            domains.add(source.domain)
             copies.append(
                 DocumentSource(
                     source_kind="observation",
@@ -582,7 +585,7 @@ def create_document(
         for c in session.scalars(select(Child).where(Child.class_id == body.class_id))
     }
     try:
-        drafted = draft_sections(body.kind, facts, body.source_ids, children)
+        drafted = draft_sections(body.kind, facts, body.source_ids, children, sorted(domains))
     except LlmBudgetExceeded as exc:
         # 예산을 넘기면 키가 지워진다. 다시 눌러도 안 되니 「다시 시도」로 뭉치지 않는다 (§공통).
         raise _error(

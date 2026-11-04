@@ -633,7 +633,7 @@ test("후속 #6~11 — 실제 근거 비교·편집·단일 확인·원자적 �
     end: date,
     source_ids: routines.map((r) => r.id),
   });
-  expect(doc.generation.rule_version).toBe("v2-mock");
+  expect(doc.generation.rule_version).toBe("v3-mock");
   expect(doc.sections.every((s: { body: string }) => !s.body.startsWith("[mock]"))).toBe(true);
   const noteText = "교사가 이전에 작성한 검토 메모";
   await api(page, `/api/documents/${doc.id}`, "PUT", {
