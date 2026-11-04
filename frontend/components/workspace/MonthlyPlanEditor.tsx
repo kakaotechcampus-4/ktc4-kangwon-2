@@ -170,7 +170,6 @@ export default function MonthlyPlanEditor({
     : ((candidate && safety
         ? { section: safety, cell: candidate.cell }
         : cells.find((c) => c.cell.item_id === selected)) ?? null);
-  const blank = cells.some(({ cell }) => !cell.value.trim());
   // 안전교육 미배치 안내는 후보를 두는 방식일 때만 뜻이 있다.
   const notices = candidateMode ? plan.notices : [];
 
@@ -686,11 +685,6 @@ export default function MonthlyPlanEditor({
         <span className="flex items-center gap-3">
           <span role="status">{SAVE_LABEL[status]}</span>
           <PlanMemoNote plan={plan} />
-          {blank && (
-            <span role="status" title="확정을 막지 않아요" className="text-[#8a8178]">
-              빈 칸 있음
-            </span>
-          )}
         </span>
       }
       notice={
