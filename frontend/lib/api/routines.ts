@@ -105,6 +105,16 @@ export const listRoutines = (params: RoutineQuery = {}) =>
 export const listRoutinesOfDay = (classId: number, date: string) =>
   listRoutines({ class_id: classId, from: date, to: date });
 
+/**
+ * 그 사이에 **일과를 적은 날**만. 달력에 점을 찍는 데 쓴다 (S-J1).
+ *
+ * 줄까지는 필요 없고 날짜만 안다. 하루치 조회와 따로 두는 것은, 적는 화면이 한 번에
+ * 하루만 읽어야 하는데 달 전체 조회가 거기 섞이면 둘을 가를 수 없어서다.
+ */
+export const listRoutineDates = async (classId: number, from: string, to: string) => [
+  ...new Set((await listRoutines({ class_id: classId, from, to })).map((row) => row.date)),
+];
+
 /** 기존 S-J1 호출과 #164의 객체 호출을 모두 지원한다. */
 export function createRoutine(data: RoutineCreateInput): Promise<ApiRoutine>;
 export function createRoutine(classId: number, input: RoutineInput): Promise<ApiRoutine>;
@@ -238,22 +248,6 @@ export function routineFactText(row: Pick<ApiRoutine, "name" | "start" | "end" |
   const when = from || to ? ` ${from}~${to}` : "";
   return `[${row.name.trim()}${when}] ${row.execution.trim()}`;
 }
-/** 시각 선택 UI만 12시간제다. API의 24시간제·null 계약은 그대로다. */
-export function routineTimeFrom12(hour: string, minute: string, period: "AM" | "PM") {
-  if (!hour || !minute) return "";
-  const h = (Number(hour) % 12) + (period === "PM" ? 12 : 0);
-  return `${String(h).padStart(2, "0")}:${minute}`;
-}
-
-export function routineTimeParts12(value: string) {
-  const [hour, minute = "00"] = value.split(":");
-  return {
-    hour: hour ? String(Number(hour) % 12 || 12).padStart(2, "0") : "",
-    minute,
-    period: (Number(hour) >= 12 ? "PM" : "AM") as "AM" | "PM",
-  };
-}
-
 /** 명시적으로 요청한 경우만 사용한다. 같은 시각은 현재 상대 순서를 유지한다. */
 export function sortRoutinesByTime<T extends { start: string | null; end: string | null }>(
   rows: T[],

@@ -8,7 +8,10 @@ LLM 호출 자리는 `_generate` 하나다. 호출과 mock/real 분기는 `share
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
+
+from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 
 from app.shared.childCode import NameTable, SubstitutionError, mask, unmask
 from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
@@ -17,7 +20,9 @@ from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 # v2 (2026-10-15) — 거절 규칙 넷(교사가 안 한 개입 · 진단명/가정 판정 · 근거 없는 변화 ·
 #                  개인정보)과 분량(해석 2~4 · 지원 2~3문장)을 프롬프트에 넣었다.
 #                  올리지 않으면 v1 로 만든 문서와 구분이 안 된다.
-RULE_VERSION = "v2"
+# v3 (2026-11-04) — 관찰일지의 해석(종이의 「배움」 칸)을 교사가 고른 누리과정 영역의
+#                  내용범주 · 내용에 비추어 「배움」으로 쓰게 했다(멘토 12주차 리뷰).
+RULE_VERSION = "v3"
 # mock 초안임을 **본문 밖에서** 알린다. 예전에는 본문 앞에 `[mock]` 을 붙였는데, 교사가 읽는
 # 제출 문서에 시스템 글자가 섞였다. 그렇다고 아무 표시도 없으면 mock 을 실제 AI 로 보이게 한다.
 # **규칙 버전에서 파생한다** — 규칙이 바뀌었는데 mock 표식만 옛 버전이면 둘이 어긋난다.
@@ -65,6 +70,15 @@ SYSTEM_PROMPT = """너는 만 3~5세 유아반 어린이집 교사의 일지 작
 - 가족사 · 건강 · 그 밖의 개인정보. 교사가 사실에 적었어도 해석 · 지원으로 옮기지 않는다.
 - 「타고난 집중력」 「뛰어난 사회성」처럼 한 장면을 사람의 성질로 일반화하는 말.
 
+**관찰일지는 해석 칸이 종이에서 「배움」 칸이다.** kind 가 관찰일지면:
+
+- 해석에 사실을 다시 늘어놓지 않는다. 사실은 이미 사실 칸에 있다.
+  그 장면에서 아이가 **무엇을 경험하고 배우고 있는지**를 쓴다.
+- `curriculum` 이 오면 교사가 고른 누리과정 영역의 내용범주 · 내용이다. 사실에 드러난 것과
+  맞닿는 내용을 골라 그 말로 배움을 쓴다. 「(내용범주)의 '(내용)'을 경험한다」처럼 잇는다.
+  **목록에 없는 영역 · 내용범주 · 내용을 지어내지 않는다.** 맞닿는 것이 없으면 억지로 잇지 않는다.
+- 「~을 경험한다」 「~을 즐긴다」 「~하며 …을 알아 간다」처럼 배움으로 맺는다.
+
 **무엇을 눈여겨보나** — 받은 사실에 드러난 것만 고른다. 나이를 추측하지 않는다.
 
 ```
@@ -94,12 +108,17 @@ class DraftSection:
 
 
 def draft_sections(
-    kind: str, facts: list[str], source_ids: list[int], children: dict[str, str]
+    kind: str,
+    facts: list[str],
+    source_ids: list[int],
+    children: dict[str, str],
+    domains: Sequence[str] = (),
 ) -> list[DraftSection]:
     """해석 · 지원 두 칸을 만든다.
 
     `children` 은 이 반 아이들의 {실명: 가명} 이다.
     - 교사가 `fact` 에 반 친구 이름을 같이 적기도 해서 문서 대상 아이 한 명만으로는 부족하다.
+    `domains` 는 관찰 기록에 교사가 고른 누리과정 영역이다. 관찰일지 배움 칸의 근거가 된다.
     """
     try:
         table = NameTable(children)
@@ -107,14 +126,35 @@ def draft_sections(
     except SubstitutionError as exc:
         raise DraftFailed("아동 이름을 가명으로 바꾸지 못해 AI 를 부르지 않았습니다.") from exc
 
-    interpretation, support = _generate(kind, masked)
+    curriculum = _curriculum_for(domains) if kind == "observation" else []
+    interpretation, support = _generate(kind, masked, curriculum)
     return [
         DraftSection("해석", unmask(interpretation, table), list(source_ids)),
         DraftSection("지원", unmask(support, table), list(source_ids)),
     ]
 
 
-def _generate(kind: str, masked_facts: list[str]) -> tuple[str, str]:
+def _curriculum_for(domains: Sequence[str]) -> list[dict[str, str]]:
+    """그 영역의 누리과정 내용범주 · 내용 — 고시문 전사본(승인된 것)에서 그대로 꺼낸다.
+
+    못 읽으면 빈 목록이다. 배움 칸을 고시문에 잇는 것은 덤이라, 이것 때문에 초안을 막지 않는다.
+    """
+    if not domains:
+        return []
+    try:
+        catalog = v1_curriculum_catalog()
+    except (ValueError, OSError, KeyError, TypeError):
+        return []
+    return [
+        {"영역": c.domain, "내용범주": c.category, "내용": c.text}
+        for c in catalog.contents
+        if c.domain in domains
+    ]
+
+
+def _generate(
+    kind: str, masked_facts: list[str], curriculum: list[dict[str, str]] = ()
+) -> tuple[str, str]:
     """가명으로 바뀐 사실만 받는다. 여기서 실명을 볼 일이 없다."""
     label = KIND_LABELS[kind]
     if is_mock():
@@ -129,7 +169,11 @@ def _generate(kind: str, masked_facts: list[str]) -> tuple[str, str]:
     try:
         content = complete_json(
             SYSTEM_PROMPT,
-            json.dumps({"kind": label, "facts": masked_facts}, ensure_ascii=False),
+            json.dumps(
+                {"kind": label, "facts": masked_facts}
+                | ({"curriculum": list(curriculum)} if curriculum else {}),
+                ensure_ascii=False,
+            ),
         )
     except LlmUnavailable as exc:
         # 설정 문제는 교사가 고칠 수 없다. 원인을 감추지 않고 그대로 올린다.

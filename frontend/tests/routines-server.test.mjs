@@ -105,6 +105,12 @@ function browser({ rooms, primaryClassId, search = "", confirm = true } = {}) {
       return confirm;
     },
   };
+  // 시계 팝오버는 바깥 누르기 · Escape 를 document 에서 듣는다. 커서 옮기기도 여기로 온다.
+  globalThis.document = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    getElementById: () => null,
+  };
   if (rooms)
     classSettings.saveClassSettings({
       ...EMPTY_CLASS_SETTINGS,
@@ -360,7 +366,9 @@ function host() {
       prev?.cleanup?.();
       effects[index] = { deps: deps ?? [] };
       pending.push(() => {
-        effects[index].cleanup = fn();
+        // 큐에 넣은 뒤 그 줄이 사라졌을 수 있다 (날짜를 옮기면 줄이 통째로 바뀐다).
+        // React 도 사라진 컴포넌트의 effect 는 돌리지 않는다.
+        if (effects[index]) effects[index].cleanup = fn();
       });
     }
   };
@@ -464,9 +472,9 @@ test("AC6: 같은 문서를 바꾼 PUT·DELETE를 합치고 기존 stale은 따�
   };
   const view = page(t, api.api);
   await view.flush();
-  view.type(view.textareas()[1], "첫 실행 변경");
+  view.type(view.dones()[0], "첫 실행 변경");
   view.type(view.textareas()[3], "둘째 실행 변경");
-  view.rowButton(2, "줄 지우기").props.onClick();
+  view.rowButton(2, "일과 지우기").props.onClick();
   await view.flush();
   view.button("저장").props.onClick();
   await view.flush();
@@ -498,7 +506,7 @@ test("AC6: 부분 저장 실패는 성공 안내 없이 입력·영향 ID를 보
   };
   const view = page(t, api.api);
   await view.flush();
-  view.type(view.textareas()[1], "먼저 저장된 실행");
+  view.type(view.dones()[0], "먼저 저장된 실행");
   await addNamed(view, "재시도할 새 줄");
   view.button("저장").props.onClick();
   await view.flush();
@@ -542,7 +550,12 @@ function recorder({ rows = [], fail = null } = {}) {
         // 서버가 정하는 순서 그대로 — position · 시작 시간(없으면 뒤) · id (§10-1).
         return {
           items: store
-            .filter((r) => r.date === params.from && r.class_id === params.class_id)
+            .filter(
+              (r) =>
+                r.date >= params.from &&
+                r.date <= (params.to ?? params.from) &&
+                r.class_id === params.class_id,
+            )
             .map((r) => ({ ...r }))
             .sort(
               (a, b) =>
@@ -588,7 +601,12 @@ function page(
 ) {
   const confirms = browser({ rooms, primaryClassId, search, confirm });
   const pushed = [];
-  t.after(() => delete globalThis.window);
+  /** 「오늘 일지 만들기」가 넘긴 근거 목록. 화면을 떠나지 않으므로 `pushed` 로는 못 본다. */
+  const journals = [];
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
 
   const app = host();
   let mutations = routineMutationBarriers.get(api);
@@ -596,9 +614,24 @@ function page(
     mutations = createMutationBarrier();
     routineMutationBarriers.set(api, mutations);
   }
+  // 시계와 달력은 **진짜로** 컴파일한다. 스텁으로 두면 시간 칸과 날짜 단추가 트리에서
+  // 사라져, 「시간을 적었다」는 테스트가 아무것도 보지 못한 채 통과한다.
+  const clock = compile("../components/workspace/RoutineClock.tsx", {
+    "react/jsx-runtime": runtime,
+    react: app.react,
+    "./WorkspaceUI": { ws: {} },
+  });
+  const calendar = compile("../components/workspace/RoutineCalendar.tsx", {
+    "react/jsx-runtime": runtime,
+    "./WorkspaceUI": { ws: {} },
+  });
   const Page = compile("../components/workspace/RoutinesPage.tsx", {
     "react/jsx-runtime": runtime,
     react: app.react,
+    "./RoutineClock": clock,
+    "./RoutineCalendar": calendar,
+    // 포스티는 제 파일에서 본다. 여기서 보는 것은 고칠 줄 목록이다.
+    "@/components/app/Posty": { Posty: "posty" },
     "next/link": { default: "link" },
     "next/navigation": { useRouter: () => ({ push: (href) => pushed.push(href) }) },
     "@/lib/api/auth": { getMe: async () => ({ id: 1, center_id: 42 }) },
@@ -621,22 +654,41 @@ function page(
       deleteRoutine: api.remove,
       trackRoutineMutation: mutations.track,
       waitForRoutineScope: mutations.wait,
+      // 달력 점은 적는 화면의 하루치 조회와 따로다. 섞으면 「하루만 읽는다」를 못 센다.
+      listRoutineDates: async () => [],
+      routineLocalId: routines.routineLocalId,
       routineTime: routines.routineTime,
       routineTimeValue: routines.routineTimeValue,
       sortRoutinesByTime: routines.sortRoutinesByTime,
+    },
+    // 일지 칸 자체는 제 파일에서 본다. 여기서는 **근거로 무엇을 넘겼나**만 적어 둔다.
+    "./DailyJournalCard": {
+      __esModule: true,
+      default: "daily-journal",
+      useDailyJournal: () => ({
+        doc: null,
+        busy: false,
+        error: "",
+        make: async (ids) => void journals.push(ids),
+        off: true,
+      }),
     },
     "@/lib/workspace/model": {
       today: () => TODAY,
       validDate: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value),
     },
-    "./WorkspaceUI": { WorkspacePage: "page", Empty: "empty", Message: "message", ws: {} },
+    // 제목 옆 단추는 `action` 으로 간다. 글자 하나로 스텁을 두면 그 묶음이 트리에서
+    // 빠져(`all()` 은 children 만 내려간다) 저장 단추를 영영 못 찾는다.
+    "./WorkspaceUI": {
+      WorkspacePage: function WorkspacePage({ action, children }) {
+        return jsx("page", { children: [action, children] });
+      },
+      Empty: "empty",
+      Message: "message",
+      Notice: "notice",
+      ws: {},
+    },
     "./WorkspaceViewState": { WorkspaceViewState },
-    "./RoutineTimePicker": compile("../components/workspace/RoutineTimePicker.tsx", {
-      "react/jsx-runtime": runtime,
-      react: app.react,
-      "@/lib/api/routines": routines,
-      "./WorkspaceUI": { ws: {} },
-    }),
   }).default;
 
   const view = app.mount(Page);
@@ -644,9 +696,12 @@ function page(
 
   const find = (type) => all(view.tree()).filter((node) => node?.type === type);
   const labelled = (node) => String([node.props.children].flat().join(""));
+  /** 글자가 「×」뿐인 단추는 aria-label 이 이름이다. */
+  const named = (node) => labelled(node) + " " + (node.props["aria-label"] ?? "");
   return {
     confirms,
     pushed,
+    journals,
     unmount: app.cleanup,
     flush: view.flush,
     render: view.render,
@@ -660,51 +715,13 @@ function page(
       find("input")
         .filter((n) => n.props.maxLength === 50)
         .map((n) => n.props.value),
-    // 기존 사례는 24시간 값으로 지정하고 실제 피커의 세 컨트롤을 조작한다.
-    times: () =>
-      all(view.tree())
-        .filter((n) => n?.props?.role === "group")
-        .map((group, index) => ({
-          props: {
-            value: (() => {
-              const selects = all(group).filter((n) => n?.type === "select");
-              const toggle = all(group).find((n) => n?.props?.["aria-label"]?.endsWith("AM/PM"));
-              return routines.routineTimeFrom12(
-                selects[0].props.value,
-                selects[1].props.value,
-                toggle.props.children,
-              );
-            })(),
-            onChange: ({ target: { value } }) => {
-              const controls = () =>
-                all(all(view.tree()).filter((n) => n?.props?.role === "group")[index]);
-              if (!value) {
-                controls()
-                  .find((n) => n?.props?.["aria-label"]?.endsWith("시간 지우기"))
-                  .props.onClick();
-                view.render();
-                return;
-              }
-              const parts = routines.routineTimeParts12(value);
-              controls()
-                .filter((n) => n?.type === "select")[0]
-                .props.onChange({ target: { value: parts.hour } });
-              view.render();
-              controls()
-                .filter((n) => n?.type === "select")[1]
-                .props.onChange({ target: { value: parts.minute } });
-              view.render();
-              const toggle = controls().find((n) => n?.props?.["aria-label"]?.endsWith("AM/PM"));
-              if (toggle.props.children !== parts.period) {
-                toggle.props.onClick();
-                view.render();
-              }
-            },
-          },
-        })),
+    /** 시작 · 종료 한 칸씩. 줄 순서대로 start, end, start, end … 로 나온다. */
+    times: () => find("input").filter((node) => node.props.type === "time"),
     textareas: () => find("textarea"),
+    /** 줄마다 「실제로 한 것」 하나. 「계획한 것」은 접힌 칸 안에 따로 있다. */
+    dones: () => find("textarea").filter((n) => n.props["aria-label"] === "실제로 한 것"),
+    plans: () => find("textarea").filter((n) => n.props["aria-label"] === "계획한 것"),
     cards: () => find("article"),
-    handles: () => all(view.tree()).filter((node) => node?.props?.draggable !== undefined),
     empties: () => find("empty").map((node) => node.props.title),
     loading: () => all(view.tree()).some((node) => node?.props?.["aria-busy"] === "true"),
     errors: () => find("message").map((node) => String(node.props.children ?? "")),
@@ -712,38 +729,29 @@ function page(
       all(view.tree())
         .filter((part) => typeof part === "string")
         .join(" "),
-    anyButton: (label) => find("button").find((node) => labelled(node).includes(label)),
+    anyButton: (label) => find("button").find((node) => named(node).includes(label)),
     /** 그 줄 안의 버튼. 줄마다 같은 이름의 버튼이 있어 전체에서 찾으면 첫 줄만 눌린다. */
     rowButton: (index, label) =>
       all(find("article")[index]).find(
-        (node) => node?.type === "button" && labelled(node).includes(label),
+        (node) => node?.type === "button" && named(node).includes(label),
       ),
     button: (label) =>
-      find("button").find((node) => labelled(node).includes(label) && !node.props.disabled),
+      find("button").find((node) => named(node).includes(label) && !node.props.disabled),
     type: (node, value) => node.props.onChange({ target: { value } }),
   };
 }
 
 const fill = (view, index, value) => view.type(view.names()[index], value);
 
-/** 브라우저가 dragstart 에 들려 보내는 것. 담은 값을 그대로 읽을 수 있다. */
-const dragEvent = () => {
-  const data = {};
-  return {
-    currentTarget: {
-      closest: () => null,
-      getBoundingClientRect: () => ({ top: 0, height: 100 }),
-      contains: () => false,
-    },
-    clientX: 0,
-    clientY: 0,
-    dataTransfer: {
-      setData: (type, value) => (data[type] = value),
-      getData: (type) => data[type] ?? "",
-      data,
-    },
-  };
+const addNamed = async (view, name) => {
+  const index = view.names().length;
+  view.button("+ 줄 추가").props.onClick();
+  view.render();
+  fill(view, index, name);
+  await view.flush();
 };
+const reloadedNames = async (api) =>
+  (await api.api.list({ class_id: 3, from: TODAY, to: TODAY })).items.map((r) => r.name);
 
 // ── 주소 · 반 고르기 (S-J1 canonical route) ────────────────────────────────
 
@@ -757,9 +765,10 @@ test("주소의 날짜 · 반으로 연다 — 없으면 오늘과 주 반이다
     ],
   });
   await view.flush();
+  // 어제와 오늘을 한 번에 읽어 빈 날에 어제 하루를 깔아 준다.
   assert.deepEqual(api.only("list").at(-1).params, {
     class_id: 7,
-    from: "2026-10-02",
+    from: "2026-10-01",
     to: "2026-10-02",
   });
   assert.equal(view.dateInput().props.value, "2026-10-02");
@@ -769,7 +778,11 @@ test("주소에 아무것도 없으면 오늘 · 주 반이다", async (t) => {
   const api = recorder();
   const view = page(t, api.api);
   await view.flush();
-  assert.deepEqual(api.only("list").at(-1).params, { class_id: 3, from: TODAY, to: TODAY });
+  assert.deepEqual(api.only("list").at(-1).params, {
+    class_id: 3,
+    from: YESTERDAY,
+    to: TODAY,
+  });
 });
 
 test("주 반이 없으면 첫 반을 대신 고르지 않는다 — 고르라고 한다", async (t) => {
@@ -797,7 +810,11 @@ test("주 반이 없으면 첫 반을 대신 고르지 않는다 — 고르라�
     ],
   });
   await picked.flush();
-  assert.deepEqual(api.only("list").at(-1).params, { class_id: 7, from: TODAY, to: TODAY });
+  assert.deepEqual(api.only("list").at(-1).params, {
+    class_id: 7,
+    from: YESTERDAY,
+    to: TODAY,
+  });
 });
 
 test("주소의 반 번호가 목록에 없으면 첫 반으로 조용히 바꾸지 않는다", async (t) => {
@@ -811,17 +828,24 @@ test("주소의 반 번호가 목록에 없으면 첫 반으로 조용히 바꾸
 
 // ── 초안 모델 — 저장을 누르기 전에는 아무것도 안 보낸다 (FR-402) ───────────
 
-test("그날 적은 게 없으면 빈 줄 다섯 개를 깐다", async (t) => {
+test("그날 적은 게 없으면 기본 하루를 깐다 — 교사는 실제로 한 것만 적는다", async (t) => {
   const api = recorder();
   const view = page(t, api.api);
   await view.flush();
-  assert.equal(view.names().length, 5);
-  assert.deepEqual(view.nameValues(), ["", "", "", "", ""]);
-  assert.equal(view.textareas().length, 10, "줄마다 활동계획 · 활동실행 둘");
-  assert.deepEqual(view.empties(), [], "빈 줄을 깔았으니 「없어요」가 아니다");
+  assert.equal(view.names().length, 10);
+  assert.equal(view.nameValues()[0], "등원 및 통합보육");
+  assert.deepEqual(
+    view
+      .times()
+      .slice(0, 2)
+      .map((n) => n.props.value),
+    ["07:30", "09:00"],
+  );
+  assert.equal(view.dones().length, 10, "줄마다 「실제로 한 것」 하나");
+  assert.deepEqual(view.empties(), [], "하루를 깔았으니 「없어요」가 아니다");
 });
 
-test("이미 적은 줄이 있으면 빈 줄 다섯을 덧붙이지 않는다", async (t) => {
+test("이미 적은 줄이 있으면 기본 하루를 덧붙이지 않는다", async (t) => {
   const api = recorder({ rows: [row({ id: 1 }), row({ id: 2, name: "바깥놀이" })] });
   const view = page(t, api.api);
   await view.flush();
@@ -836,7 +860,7 @@ test("「+ 줄 추가」만 눌러서는 서버에 아무것도 가지 않는다
   view.render();
   view.button("+ 줄 추가").props.onClick();
   await view.flush();
-  assert.equal(view.names().length, 7);
+  assert.equal(view.names().length, 12, "기본 하루 열 줄에 둘을 더했다");
   assert.deepEqual(api.only("create"), [], "추가로 POST 하지 않는다");
 });
 
@@ -844,7 +868,7 @@ test("「줄 지우기」만 눌러서는 DELETE 하지 않는다 — 저장할 
   const api = recorder({ rows: [row({ id: 1 }), row({ id: 2, name: "바깥놀이" })] });
   const view = page(t, api.api);
   await view.flush();
-  view.rowButton(0, "줄 지우기").props.onClick();
+  view.rowButton(0, "일과 지우기").props.onClick();
   await view.flush();
   assert.deepEqual(view.nameValues(), ["바깥놀이"], "첫 줄이 화면에서 사라진다");
   assert.deepEqual(api.only("remove"), [], "저장 전에는 지우지 않는다");
@@ -863,7 +887,7 @@ test("지우고 저장하지 않고 나가면 서버 줄은 그대로다", async
   const api = recorder({ rows: [row({ id: 1 })] });
   const view = page(t, api.api);
   await view.flush();
-  view.button("줄 지우기").props.onClick();
+  view.button("일과 지우기").props.onClick();
   await view.flush();
   view.unmount();
   await settle();
@@ -871,26 +895,26 @@ test("지우고 저장하지 않고 나가면 서버 줄은 그대로다", async
   assert.equal(api.rows().length, 1);
 });
 
-test("통째로 빈 줄은 보내지 않고, 한 칸이라도 적힌 줄은 버리지 않는다", async (t) => {
+test("손대지 않은 줄은 보내지 않고, 손댄 줄은 깔아 둔 이름 · 시간과 함께 간다", async (t) => {
   const api = recorder();
   const view = page(t, api.api);
   await view.flush();
-  fill(view, 0, "등원");
+  view.type(view.dones()[0], "엄마와 인사하고 들어왔어요.");
   view.render();
-  view.type(view.times()[2], "10:00"); // 둘째 줄 시작 시간만
-  view.render();
-  fill(view, 1, "오전 간식");
+  view.type(view.times()[4], "09:30"); // 셋째 줄 시작 시간만 고친다
   await view.flush();
 
   view.button("저장").props.onClick();
   await view.flush();
   const made = api.only("create");
-  assert.equal(made.length, 2, "빈 줄 셋은 보내지 않는다");
+  assert.equal(made.length, 2, "손대지 않은 여덟 줄은 보내지 않는다");
   assert.deepEqual(
     made.map((c) => c.input.name),
-    ["등원", "오전 간식"],
+    ["등원 및 통합보육", "오전 실내놀이"],
   );
-  assert.equal(made[1].input.start, "10:00", "적은 시간이 같이 간다");
+  assert.equal(made[0].input.execution, "엄마와 인사하고 들어왔어요.");
+  assert.equal(made[0].input.start, "07:30", "깔아 둔 시간이 같이 간다");
+  assert.equal(made[1].input.start, "09:30", "고친 시간이 같이 간다");
 });
 
 test("일곱 줄을 한 번에 — 새 줄은 POST, 고친 줄은 PUT, 지운 줄은 DELETE", async (t) => {
@@ -904,7 +928,7 @@ test("일곱 줄을 한 번에 — 새 줄은 POST, 고친 줄은 PUT, 지운 �
   // 둘째(서버) 줄을 지우고, 첫째 줄 이름을 고치고, 새 줄 여섯을 채운다 → 일곱 줄.
   view.names()[1].props.onChange({ target: { value: "지울 줄" } });
   view.render();
-  view.rowButton(1, "줄 지우기").props.onClick();
+  view.rowButton(1, "일과 지우기").props.onClick();
   view.render();
   fill(view, 0, "등원 고침");
   view.render();
@@ -973,13 +997,13 @@ const COUNTEREXAMPLES = [
   ["이름만", (view) => fill(view, 0, "등원")],
   ["시작시간만", (view) => view.type(view.times()[0], "09:00")],
   ["끝시간만", (view) => view.type(view.times()[1], "09:30")],
-  ["활동계획만", (view) => view.type(view.textareas()[0], "자동차 굴리기")],
-  ["활동실행만", (view) => view.type(view.textareas()[1], "블록을 쌓았다")],
+  ["활동계획만", (view) => view.type(view.plans()[0], "자동차 굴리기")],
+  ["활동실행만", (view) => view.type(view.dones()[0], "블록을 쌓았다")],
   [
     "시간 + 활동실행",
     (view) => {
       view.type(view.times()[0], "09:00");
-      view.type(view.textareas()[1], "블록을 쌓았다");
+      view.type(view.dones()[0], "블록을 쌓았다");
     },
   ],
 ];
@@ -989,6 +1013,9 @@ for (const [label, write] of COUNTEREXAMPLES)
     const api = recorder();
     const view = page(t, api.api);
     await view.flush();
+    // 깔아 둔 하루에는 이름이 있다. 이름 없는 줄은 교사가 지워야 생긴다.
+    fill(view, 0, "");
+    view.render();
     write(view);
     await view.flush();
     view.button("저장").props.onClick();
@@ -1006,7 +1033,9 @@ test("활동실행만 적고 이름이 없으면 요청 0 · 그 줄에 안내 �
   const api = recorder();
   const view = page(t, api.api);
   await view.flush();
-  view.type(view.textareas()[1], "블록 3개로 길을 만들었다.");
+  fill(view, 0, ""); // 깔아 둔 이름을 지운다
+  view.render();
+  view.type(view.dones()[0], "블록 3개로 길을 만들었다.");
   await view.flush();
 
   view.button("저장").props.onClick();
@@ -1017,7 +1046,7 @@ test("활동실행만 적고 이름이 없으면 요청 0 · 그 줄에 안내 �
     "아무것도 보내지 않는다",
   );
   assert.ok(view.errors().some((text) => text.includes("일과 이름을 적어 주세요")));
-  assert.equal(view.textareas()[1].props.value, "블록 3개로 길을 만들었다.", "적은 글자가 남는다");
+  assert.equal(view.dones()[0].props.value, "블록 3개로 길을 만들었다.", "적은 글자가 남는다");
 });
 
 test("완전히 비운 줄은 저장 요청에서 제외하고 기존 줄 삭제는 명시적인 지우기로만 한다", async (t) => {
@@ -1028,7 +1057,7 @@ test("완전히 비운 줄은 저장 요청에서 제외하고 기존 줄 삭제
   view.type(view.times()[0], "");
   view.type(view.times()[1], "");
   view.type(view.textareas()[0], "");
-  view.type(view.textareas()[1], "");
+  view.type(view.dones()[0], "");
   await view.flush();
   view.button("저장").props.onClick();
   await view.flush();
@@ -1096,51 +1125,9 @@ test("일부만 성공하면 성공으로 쓰지 않고, 다시 눌러도 같은
   assert.equal(api.rows().filter((r) => r.name === "둘째").length, 1);
 });
 
-// ── 끌어서 순서 바꾸기 (S-J1) ──────────────────────────────────────────────
+// ── 하루를 깔아 둔다 (S-J1 · FR-403) ──────────────────────────────────────
 
-test("C 를 맨 앞으로 끌면 C A B 가 되고, 저장하면 그 순서가 position 으로 간다", async (t) => {
-  const api = recorder({
-    rows: [
-      row({ id: 1, name: "A", position: 0 }),
-      row({ id: 2, name: "B", position: 1 }),
-      row({ id: 3, name: "C", position: 2 }),
-    ],
-  });
-  const view = page(t, api.api);
-  await view.flush();
-  assert.deepEqual(view.nameValues(), ["A", "B", "C"]);
-
-  view.handles()[2].props.onDragStart(dragEvent());
-  view.render();
-  view.cards()[0].props.onDrop({ ...dragEvent(), preventDefault: () => {} });
-  view.render();
-  assert.deepEqual(view.nameValues(), ["C", "A", "B"]);
-
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.ok(api.only("update").length <= 2, "C 와 필요한 경계만 고치면 되는데 전부 보냈다");
-  assert.equal(api.only("create").length, 0);
-  assert.equal(api.only("remove").length, 0);
-  // 실제 GET 의 position · start NULLS LAST · id 정렬을 거쳐야 한다.
-  assert.deepEqual(
-    (await api.api.list({ class_id: 3, from: TODAY, to: TODAY })).items.map((r) => r.name),
-    ["C", "A", "B"],
-  );
-  assert.deepEqual(view.nameValues(), ["C", "A", "B"]);
-});
-
-test("키보드로도 순서를 바꿀 수 있다", async (t) => {
-  const api = recorder({ rows: [row({ id: 1, name: "A" }), row({ id: 2, name: "B" })] });
-  const view = page(t, api.api);
-  await view.flush();
-  view.button("↓").props.onClick();
-  view.render();
-  assert.deepEqual(view.nameValues(), ["B", "A"]);
-});
-
-// ── 어제 일과 불러오기 (FR-403) ────────────────────────────────────────────
-
-test("어제 일과는 시간과 이름만 가져오고, 누른다고 저장되지 않는다", async (t) => {
+test("그날이 비었으면 어제의 이름 · 시간을 깔고, 어제 적은 글은 옮기지 않는다", async (t) => {
   const api = recorder({
     rows: [
       row({
@@ -1157,13 +1144,11 @@ test("어제 일과는 시간과 이름만 가져오고, 누른다고 저장되�
   const view = page(t, api.api);
   await view.flush();
 
-  view.button("어제 일과 불러오기").props.onClick();
-  await view.flush();
-
+  // 어제와 오늘을 한 번에 읽는다. 「어제 일과 불러오기」 단추가 하던 일이다.
   assert.deepEqual(api.only("list").at(-1).params, {
     class_id: 3,
     from: YESTERDAY,
-    to: YESTERDAY,
+    to: TODAY,
   });
   assert.deepEqual(view.nameValues(), ["등원"]);
   assert.deepEqual(
@@ -1178,35 +1163,32 @@ test("어제 일과는 시간과 이름만 가져오고, 누른다고 저장되�
   assert.deepEqual(
     api.calls.filter((c) => c.op !== "list"),
     [],
-    "불러오기는 조회일 뿐이다",
+    "깔아 두는 것은 조회일 뿐이다",
   );
 });
 
-test("적던 줄이 있으면 덮어쓰기 전에 묻고, 아니라고 하면 그대로 둔다", async (t) => {
+test("깔아 둔 하루는 교사가 손대기 전까지 저장하지 않는다", async (t) => {
   const api = recorder({ rows: [row({ id: 11, date: YESTERDAY, name: "등원" })] });
-  const view = page(t, api.api, { confirm: false });
+  const view = page(t, api.api);
   await view.flush();
-  fill(view, 0, "적던 줄");
+  view.button("저장").props.onClick();
   await view.flush();
-
-  view.button("어제 일과 불러오기").props.onClick();
-  await view.flush();
-  assert.equal(view.confirms.length, 1);
-  assert.equal(view.nameValues()[0], "적던 줄");
+  assert.deepEqual(
+    api.calls.filter((c) => c.op !== "list"),
+    [],
+    "손대지 않은 하루를 서버에 쌓지 않는다",
+  );
 });
 
-test("어제 기록이 없으면 그렇다고 알린다", async (t) => {
+test("어제도 없으면 기본 하루를 깐다", async (t) => {
   const api = recorder();
   const view = page(t, api.api);
   await view.flush();
-  view.button("어제 일과 불러오기").props.onClick();
-  await view.flush();
-  assert.ok(view.errors().some((text) => text.includes("어제 적은 일과가 없어요")));
+  assert.equal(view.nameValues()[0], "등원 및 통합보육");
+  assert.equal(view.nameValues().at(-1), "귀가 및 통합보육");
 });
 
 // ── 오늘 일지 만들기 (S-J1 수락 기준 3 · 3-1 · 3-2) ────────────────────────
-
-const DAILY_LOG = `/documents?kind=dailyLog&class_id=3&date=${TODAY}`;
 
 test("저장하지 않은 활동실행만으로도 「오늘 일지 만들기」가 켜진다", async (t) => {
   const api = recorder();
@@ -1214,7 +1196,7 @@ test("저장하지 않은 활동실행만으로도 「오늘 일지 만들기」
   await view.flush();
   assert.equal(view.button("오늘 일지 만들기"), undefined, "아무것도 안 적었으면 꺼져 있다");
 
-  view.type(view.textareas()[1], "블록을 쌓았다");
+  view.type(view.dones()[0], "블록을 쌓았다");
   await view.flush();
   assert.ok(view.button("오늘 일지 만들기"), "저장 여부로 판단하지 않는다");
 });
@@ -1225,13 +1207,15 @@ test("먼저 저장하고 그 다음에 S-J2 로 간다", async (t) => {
   await view.flush();
   fill(view, 0, "오전 실내놀이");
   view.render();
-  view.type(view.textareas()[1], "블록을 쌓았다");
+  view.type(view.dones()[0], "블록을 쌓았다");
   await view.flush();
 
   view.button("오늘 일지 만들기").props.onClick();
   await view.flush();
   assert.equal(api.only("create").length, 1, "저장이 먼저다");
-  assert.deepEqual(view.pushed, [DAILY_LOG]);
+  // 방금 저장한 줄의 서버 번호가 그대로 일지의 근거가 된다. 다시 조회하지 않는다.
+  assert.deepEqual(view.journals, [[`routine:${api.rows()[0].id}`]]);
+  assert.deepEqual(view.pushed, [], "문서 보관함으로 보내지 않고 이 화면에서 연다");
 });
 
 test("저장이 실패하면 S-J2 로 가지 않고 적은 글자를 그대로 둔다", async (t) => {
@@ -1240,21 +1224,23 @@ test("저장이 실패하면 S-J2 로 가지 않고 적은 글자를 그대로 �
   await view.flush();
   fill(view, 0, "오전 실내놀이");
   view.render();
-  view.type(view.textareas()[1], "블록을 쌓았다");
+  view.type(view.dones()[0], "블록을 쌓았다");
   await view.flush();
 
   view.button("오늘 일지 만들기").props.onClick();
   await view.flush();
   assert.deepEqual(view.pushed, [], "이동하지 않는다");
   assert.equal(view.nameValues()[0], "오전 실내놀이");
-  assert.equal(view.textareas()[1].props.value, "블록을 쌓았다");
+  assert.equal(view.dones()[0].props.value, "블록을 쌓았다");
 });
 
 test("이름 없이 활동실행만 적었으면 그 줄에서 멈추고 넘어가지 않는다", async (t) => {
   const api = recorder();
   const view = page(t, api.api);
   await view.flush();
-  view.type(view.textareas()[1], "블록을 쌓았다");
+  fill(view, 0, ""); // 깔아 둔 이름을 지운다
+  view.render();
+  view.type(view.dones()[0], "블록을 쌓았다");
   await view.flush();
 
   view.button("오늘 일지 만들기").props.onClick();
@@ -1262,7 +1248,7 @@ test("이름 없이 활동실행만 적었으면 그 줄에서 멈추고 넘어�
   assert.deepEqual(view.pushed, []);
   assert.deepEqual(api.only("create"), []);
   assert.ok(view.errors().some((text) => text.includes("일과 이름을 적어 주세요")));
-  assert.equal(view.textareas()[1].props.value, "블록을 쌓았다");
+  assert.equal(view.dones()[0].props.value, "블록을 쌓았다");
 });
 
 test("두 번 눌러도 두 번 저장하거나 두 번 넘어가지 않는다", async (t) => {
@@ -1271,7 +1257,7 @@ test("두 번 눌러도 두 번 저장하거나 두 번 넘어가지 않는다",
   await view.flush();
   fill(view, 0, "오전 실내놀이");
   view.render();
-  view.type(view.textareas()[1], "블록을 쌓았다");
+  view.type(view.dones()[0], "블록을 쌓았다");
   await view.flush();
 
   const open = view.button("오늘 일지 만들기");
@@ -1279,7 +1265,7 @@ test("두 번 눌러도 두 번 저장하거나 두 번 넘어가지 않는다",
   open.props.onClick();
   await view.flush();
   assert.equal(api.only("create").length, 1);
-  assert.deepEqual(view.pushed, [DAILY_LOG]);
+  assert.equal(view.journals.length, 1, "일지도 한 번만 만든다");
 });
 
 // ── 늦게 온 응답 (기존 보호 장치 회귀) ─────────────────────────────────────
@@ -1303,8 +1289,12 @@ test("날짜를 바꾸면 그 날짜의 하루만 읽는다 — A → B → A �
   await view.flush();
   assert.deepEqual(view.nameValues(), ["A 의 일과"]);
   assert.deepEqual(
-    api.only("list").map((c) => c.params.from),
-    [TODAY, "2026-10-07", TODAY],
+    api.only("list").map((c) => [c.params.from, c.params.to]),
+    [
+      [YESTERDAY, TODAY],
+      [TODAY, "2026-10-07"],
+      [YESTERDAY, TODAY],
+    ],
   );
 });
 
@@ -1361,6 +1351,7 @@ test("P1-1 저장된 설정에 주 반이 없으면 어떤 helper 도 첫 반을
   // 계획안 · 사이드바 제목처럼 「아무 반이나 하나」로 충분한 곳은 그대로 둔다.
   assert.equal(classSettings.primaryClassFor(stored).id, CLASS_A.id);
   delete globalThis.window;
+  delete globalThis.document;
 });
 
 test("P1-1 주 반을 고르면 그 반이다", () => {
@@ -1369,6 +1360,7 @@ test("P1-1 주 반을 고르면 그 반이다", () => {
   assert.equal(classSettings.chosenClassFor(stored).id, CLASS_B.id);
   assert.equal(onboardingApi.classServerId(CLASS_B.id), 7);
   delete globalThis.window;
+  delete globalThis.document;
 });
 
 // ── P1-2 · 저장이 끝났을 때 아직 그 화면인가 ────────────────────────────────
@@ -1386,7 +1378,7 @@ async function heldSave(t, { press = "오늘 일지 만들기", ...options } = {
   await view.flush();
   fill(view, 0, "오전 실내놀이");
   view.render();
-  view.type(view.textareas()[1], "블록을 쌓았다");
+  view.type(view.dones()[0], "블록을 쌓았다");
   await view.flush();
   view.button(press).props.onClick();
   await view.flush();
@@ -1531,12 +1523,20 @@ function recordsPage(
   { rooms = [ROOM_A], settings = [CLASS_A], primaryClassId = CLASS_A.id } = {},
 ) {
   browser({ rooms: settings, primaryClassId });
-  t.after(() => delete globalThis.window);
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
   const app = host();
   const Page = compile("../components/workspace/RecordsPage.tsx", {
     "react/jsx-runtime": runtime,
     react: app.react,
     "next/link": { default: "link" },
+    // 그림들은 제 파일에서 본다. 여기서 보는 것은 길 · 저장이다.
+    "@/components/app/Posty": { Posty: "posty" },
+    "@/components/app/ChildPicker": { ChildShape: "child-shape" },
+    "@/components/app/icons": { Icon: "icon" },
+    "@/lib/workspace/child-mark": { markFor: () => ({ shape: 0, tone: 0 }) },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
@@ -1634,6 +1634,7 @@ test("P1 고른 반의 서버 번호를 모르면 주소를 만들지 않는다"
   // 아무 반도 안 골랐으면 날짜만 들고 가는 게 맞다 — 이건 다른 상태다.
   assert.equal(routinesRoute.routinesPath("", TODAY), `/routines?date=${TODAY}`);
   delete globalThis.window;
+  delete globalThis.document;
 });
 
 test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간다", async (t) => {
@@ -1690,6 +1691,95 @@ test("P1-2 저장을 기다리는 사이 날짜를 바꾸면 새 화면에 「�
   assert.equal(view.dateInput().props.value, "2026-10-07");
 });
 
+// ── 시간순 정렬과 겹침 ────────────────────────────────────────────────────
+// 줄을 끌어서 옮기는 길은 없다. 순서를 정하는 것은 시간 하나뿐이라, 시계를 닫는 순간
+// 그 자리에서 다시 줄을 세운다. 같은 시간을 두 일과가 쓰면 세우지 않고 알린다.
+
+/** 그 줄의 시계를 열어 값을 넣고 닫는다. 닫을 때 정렬 · 겹침 검사가 돈다. */
+async function setSpan(view, index, from, to) {
+  view.rowButton(index, "시계로 시간 고르기").props.onClick();
+  view.render();
+  const times = () => all(view.cards()[index]).filter((n) => n?.props?.type === "time");
+  if (from !== null) view.type(times()[0], from);
+  view.render();
+  if (to !== null) view.type(times()[1], to);
+  view.render();
+  view.rowButton(index, "닫기").props.onClick();
+  await view.flush();
+}
+
+test("시계를 닫으면 그 자리에서 시간순으로 다시 선다", async (t) => {
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "A", position: 0, start: "09:00:00", end: "10:00:00" }),
+      row({ id: 2, name: "B", position: 1, start: "11:00:00", end: "12:00:00" }),
+      row({ id: 3, name: "C", position: 2, start: "13:00:00", end: "14:00:00" }),
+    ],
+  });
+  const view = page(t, api.api);
+  await view.flush();
+  assert.deepEqual(view.nameValues(), ["A", "B", "C"]);
+
+  await setSpan(view, 2, "07:00", "08:00");
+  assert.deepEqual(view.nameValues(), ["C", "A", "B"], "시계를 닫았는데 자리를 바꾸지 않았다");
+
+  view.button("저장").props.onClick();
+  await view.flush();
+  // 화면 순서가 서버 번호와 거꾸로 섰으므로 번호를 다시 매긴다.
+  assert.deepEqual(await reloadedNames(api), ["C", "A", "B"]);
+});
+
+test("시간이 겹치면 줄을 세우지 않고 알린다", async (t) => {
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "앞 일과", position: 0, start: "09:00:00", end: "10:00:00" }),
+      row({ id: 2, name: "뒤 일과", position: 1, start: "11:00:00", end: "12:00:00" }),
+    ],
+  });
+  const view = page(t, api.api);
+  await view.flush();
+
+  await setSpan(view, 1, "09:30", null);
+  assert.ok(view.text().includes("시간이 겹쳐요"), view.text());
+  assert.deepEqual(view.nameValues(), ["앞 일과", "뒤 일과"], "겹친 채로 자리를 바꿨다");
+
+  // 겹친 채로 저장하지 않는다 — 이번에 시간을 바꾼 줄이라 돌려보낸다.
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(writes(api), [], "겹친 시간을 그대로 보냈다");
+
+  // 겹치지 않게 고치면 알림이 사라지고 저장된다.
+  await setSpan(view, 1, "10:30", null);
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(
+    writes(api).map((c) => [c.op, c.id, c.input.start]),
+    [["update", 2, "10:30"]],
+  );
+});
+
+test("깔아 둔 하루와 겹치는 것은 막지 않는다 — 저장되지 않는 줄이다", async (t) => {
+  // 그날도 어제도 비었다. 기본 하루 열 줄이 깔리고, 교사는 그중 한 줄만 적는다.
+  const api = recorder();
+  const view = page(t, api.api);
+  await view.flush();
+  assert.equal(view.cards().length, 10);
+
+  // 「오전 실내놀이」(09:20~10:40)를 앞 줄들과 겹치는 08:00~11:00 으로 늘린다.
+  view.type(view.dones()[2], "블록으로 길을 만들었다.");
+  await view.flush();
+  await setSpan(view, 2, "08:00", "11:00");
+  assert.equal(view.text().includes("시간이 겹쳐요"), false, view.text());
+
+  view.button("저장").props.onClick();
+  await view.flush();
+  assert.deepEqual(
+    writes(api).map((c) => [c.op, c.input.name, c.input.start, c.input.end]),
+    [["create", "오전 실내놀이", "08:00", "11:00"]],
+    "손대지 않은 줄과 겹친다고 저장을 막았다",
+  );
+});
+
 // ── P2 · 안 바꾼 순서는 번호를 고쳐 쓰지 않는다 ────────────────────────────
 
 const three = (positions) =>
@@ -1736,7 +1826,7 @@ test("P2 줄을 지워도 남은 줄의 번호를 공연히 고치지 않는다"
   const api = three([0, 0, 0]);
   const view = page(t, api.api);
   await view.flush();
-  view.rowButton(1, "줄 지우기").props.onClick();
+  view.rowButton(1, "일과 지우기").props.onClick();
   await view.flush();
 
   view.button("저장").props.onClick();
@@ -1771,329 +1861,6 @@ test("P2 맨 뒤에 줄을 더해도 기존 줄 번호를 고치지 않는다", 
   assert.deepEqual(view.nameValues(), ["A", "B", "C", "D"]);
 });
 
-test("P2 번호 공간이 없는 중간 삽입은 필요한 경계만 고친다", async (t) => {
-  const api = three([0, 0, 0]);
-  const view = page(t, api.api);
-  await view.flush();
-  view.button("+ 줄 추가").props.onClick();
-  view.render();
-  fill(view, 3, "NEW");
-  view.render();
-  // 맨 뒤의 새 줄을 둘째 자리로 끌어 온다 → A NEW B C
-  view.handles()[3].props.onDragStart(dragEvent());
-  view.render();
-  view.cards()[1].props.onDrop({ ...dragEvent(), preventDefault: () => {} });
-  await view.flush();
-  assert.deepEqual(view.nameValues(), ["A", "NEW", "B", "C"]);
-
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.equal(api.only("create").length, 1);
-  assert.equal(api.only("create")[0].input.name, "NEW");
-  assert.equal(api.only("remove").length, 0);
-  assert.ok(api.only("update").length <= 2, "A 는 그대로 두고 B/C 경계만 고치면 된다");
-  assert.equal(api.only("update").filter((c) => c.id === 1).length, 0, "앞의 A 까지 고쳤다");
-  assert.deepEqual(view.nameValues(), ["A", "NEW", "B", "C"], "다시 읽어도 그 순서다");
-  assert.deepEqual(
-    (await api.api.list({ class_id: 3, from: TODAY, to: TODAY })).items.map((r) => r.name),
-    ["A", "NEW", "B", "C"],
-  );
-});
-
-const addNamed = async (view, name) => {
-  const index = view.names().length;
-  view.button("+ 줄 추가").props.onClick();
-  view.render();
-  fill(view, index, name);
-  await view.flush();
-};
-const dragRow = async (view, from, to) => {
-  view.handles()[from].props.onDragStart(dragEvent());
-  view.render();
-  view
-    .cards()
-    [to].props.onDrop({ ...dragEvent(), clientY: from < to ? 80 : 20, preventDefault: () => {} });
-  await view.flush();
-};
-const reloadedNames = async (api) =>
-  (await api.api.list({ class_id: 3, from: TODAY, to: TODAY })).items.map((r) => r.name);
-
-test("P2 중간 삽입 A2/NEW/B5/C9 는 새 줄 POST 하나만 보낸다", async (t) => {
-  const api = three([2, 5, 9]);
-  const view = page(t, api.api);
-  await view.flush();
-  await addNamed(view, "NEW");
-  view.type(view.textareas()[6], "새 계획");
-  view.render();
-  view.type(view.textareas()[7], "새 실행");
-  await view.flush();
-  await dragRow(view, 3, 1);
-  assert.deepEqual(view.nameValues(), ["A", "NEW", "B", "C"]);
-  assert.deepEqual(writes(api), [], "초안을 옮기는 동안 mutation 이 나갔다");
-
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.deepEqual(
-    writes(api).map((c) => c.op),
-    ["create"],
-    "POST 외의 mutation 이 나갔다",
-  );
-  const created = api.only("create")[0];
-  assert.equal(created.class_id, 3);
-  assert.ok(created.input.position > 2 && created.input.position < 5);
-  assert.deepEqual(created.input, {
-    date: TODAY,
-    position: created.input.position,
-    start: null,
-    end: null,
-    name: "NEW",
-    plan: "새 계획",
-    execution: "새 실행",
-  });
-  for (const id of [1, 2, 3])
-    assert.equal(api.only("update").filter((c) => c.id === id).length, 0, `${id} 의 불필요 PUT`);
-  assert.deepEqual(
-    api
-      .rows()
-      .filter((r) => r.id <= 3)
-      .map((r) => r.position),
-    [2, 5, 9],
-  );
-  assert.deepEqual(await reloadedNames(api), ["A", "NEW", "B", "C"]);
-
-  const fresh = page(t, api.api);
-  await fresh.flush();
-  assert.deepEqual(fresh.nameValues(), ["A", "NEW", "B", "C"], "새 컴포넌트의 GET 순서");
-  const before = writes(api).length;
-  fresh.button("저장").props.onClick();
-  await fresh.flush();
-  assert.equal(writes(api).length, before, "방금 저장한 결과를 다시 PUT 했다");
-});
-
-for (const placement of ["append", "middle"])
-  test(`P2 ${placement} D POST 실패/E 성공 뒤 retry 는 D POST 하나뿐이다`, async (t) => {
-    const api = three([2, 5, 9]);
-    const create = api.api.create;
-    let failD = true;
-    api.api.create = async (class_id, input) => {
-      if (input.name === "D" && failD) {
-        api.calls.push({ op: "create", class_id, input });
-        throw new Error("D 만 만들지 못했어요");
-      }
-      return create(class_id, input);
-    };
-    const view = page(t, api.api);
-    await view.flush();
-    await addNamed(view, "D");
-    await addNamed(view, "E");
-    view.type(view.textareas()[6], "D 계획");
-    view.render();
-    view.type(view.textareas()[7], "D 실행");
-    view.render();
-    view.type(view.textareas()[8], "E 계획");
-    view.render();
-    view.type(view.textareas()[9], "E 실행");
-    await view.flush();
-    if (placement === "middle") {
-      await dragRow(view, 3, 1);
-      await dragRow(view, 4, 2);
-    }
-    const expected = placement === "middle" ? ["A", "D", "E", "B", "C"] : ["A", "B", "C", "D", "E"];
-    const beforeText = view.textareas().map((n) => n.props.value);
-
-    view.button("저장").props.onClick();
-    await view.flush();
-    assert.deepEqual(
-      api.only("create").map((c) => c.input.name),
-      ["D", "E"],
-    );
-    assert.equal(api.only("update").length, 0, "첫 저장부터 unchanged 행을 PUT 했다");
-    assert.equal(api.only("remove").length, 0);
-    assert.deepEqual(view.nameValues(), expected, "실패가 입력을 지웠다");
-    assert.deepEqual(
-      view.textareas().map((n) => n.props.value),
-      beforeText,
-    );
-    assert.ok(view.errors().some((text) => text.includes("D 만 만들지 못했어요")));
-    assert.equal(view.text().includes("저장했어요"), false);
-    const successfulE = api.rows().find((r) => r.name === "E");
-    assert.ok(successfulE && successfulE.id > 3, "E 의 server ID 가 없다");
-
-    // E 를 되돌리면 성공한 서버 baseline 으로 돌아와야 한다. id 가 없는 새 줄이면 빈 줄이 된다.
-    const eIndex = expected.indexOf("E");
-    fill(view, eIndex, "E 임시 수정");
-    await view.flush();
-    view.rowButton(eIndex, "되돌리기").props.onClick();
-    await view.flush();
-    assert.equal(
-      view.nameValues()[eIndex],
-      "E",
-      "성공 E 의 id/baseline 을 draft 에 reconcile 하지 않았다",
-    );
-    assert.deepEqual(
-      view.textareas().map((n) => n.props.value),
-      beforeText,
-    );
-
-    const beforeRetry = api.calls.length;
-    failD = false;
-    view.button("저장").props.onClick();
-    await view.flush();
-    const retry = api.calls.slice(beforeRetry).filter((c) => c.op !== "list");
-    assert.deepEqual(
-      retry.map((c) => c.op),
-      ["create"],
-      "실패 D 외의 요청을 다시 보냈다",
-    );
-    assert.equal(retry[0].class_id, 3);
-    assert.equal(retry[0].input.name, "D");
-    assert.equal(retry[0].input.plan, "D 계획");
-    assert.equal(retry[0].input.execution, "D 실행");
-    assert.equal(api.only("create").filter((c) => c.input.name === "E").length, 1);
-    assert.equal(api.only("update").filter((c) => c.id === successfulE.id).length, 0);
-    for (const id of [1, 2, 3])
-      assert.equal(api.only("update").filter((c) => c.id === id).length, 0);
-    assert.equal(api.rows().filter((r) => r.name === "D").length, 1);
-    assert.equal(api.rows().filter((r) => r.name === "E").length, 1);
-    assert.equal(api.rows().find((r) => r.name === "E").id, successfulE.id);
-    assert.deepEqual(await reloadedNames(api), expected);
-    assert.deepEqual(view.nameValues(), expected);
-  });
-
-test("P2 간격이 있는 기존 C 를 맨 앞으로 끌면 C 만 position PUT 한다", async (t) => {
-  const api = three([2, 5, 9]);
-  const view = page(t, api.api);
-  await view.flush();
-  await dragRow(view, 2, 0);
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.deepEqual(
-    writes(api).map((c) => [c.op, c.id]),
-    [["update", 3]],
-  );
-  assert.ok(api.only("update")[0].input.position < 2);
-  assert.deepEqual(
-    api
-      .rows()
-      .filter((r) => r.id !== 3)
-      .map((r) => r.position),
-    [2, 5],
-  );
-  assert.deepEqual(await reloadedNames(api), ["C", "A", "B"]);
-});
-
-test("P2 중간 간격에 두 새 줄을 넣어도 기존 행 PUT 은 없다", async (t) => {
-  const api = three([2, 5, 9]);
-  const view = page(t, api.api);
-  await view.flush();
-  await addNamed(view, "D");
-  await addNamed(view, "E");
-  await dragRow(view, 3, 1);
-  await dragRow(view, 4, 2);
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.deepEqual(
-    writes(api).map((c) => [c.op, c.input.name]),
-    [
-      ["create", "D"],
-      ["create", "E"],
-    ],
-  );
-  const positions = api.only("create").map((c) => c.input.position);
-  assert.ok(positions.every((position) => position > 2 && position < 5));
-  assert.deepEqual(await reloadedNames(api), ["A", "D", "E", "B", "C"]);
-});
-
-for (const fixture of [
-  { label: "인접 번호", positions: [2, 3, 9], newStart: "" },
-  { label: "같은 번호", positions: [5, 5, 5], newStart: "09:30" },
-])
-  test(`P2 ${fixture.label} 중간 삽입도 start/id 정렬로 표현되면 기존 PUT 은 없다`, async (t) => {
-    const api = recorder({
-      rows: ["A", "B", "C"].map((name, i) =>
-        row({
-          id: i + 1,
-          name,
-          position: fixture.positions[i],
-          start: ["09:00:00", "10:00:00", "11:00:00"][i],
-          end: null,
-        }),
-      ),
-    });
-    const view = page(t, api.api);
-    await view.flush();
-    await addNamed(view, "NEW");
-    if (fixture.newStart) {
-      view.type(view.times()[6], fixture.newStart);
-      await view.flush();
-    }
-    await dragRow(view, 3, 1);
-    view.button("저장").props.onClick();
-    await view.flush();
-    assert.deepEqual(
-      writes(api).map((c) => c.op),
-      ["create"],
-    );
-    assert.equal(api.only("create")[0].input.start, fixture.newStart || null);
-    assert.deepEqual(
-      api
-        .rows()
-        .filter((r) => r.id <= 3)
-        .map((r) => r.position),
-      fixture.positions,
-    );
-    assert.deepEqual(await reloadedNames(api), ["A", "NEW", "B", "C"]);
-  });
-
-test("P2 초가 있는 서버 행 사이에 분 입력을 삽입해도 기존 PUT 없이 실제 시간 정렬을 지킨다", async (t) => {
-  const api = recorder({
-    rows: [
-      row({ id: 1, name: "A", position: 2, start: "09:00:30", end: "10:00:30" }),
-      row({ id: 2, name: "B", position: 3, start: "09:00:40", end: "10:00:40" }),
-    ],
-  });
-  const view = page(t, api.api);
-  await view.flush();
-  assert.deepEqual(
-    view.times().map((node) => node.props.value),
-    ["09:00", "10:00", "09:00", "10:00"],
-  );
-  await addNamed(view, "NEW");
-  view.type(view.times()[4], "09:00");
-  await view.flush();
-  await dragRow(view, 2, 1);
-  assert.deepEqual(view.nameValues(), ["A", "NEW", "B"]);
-
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.deepEqual(
-    writes(api).map((c) => c.op),
-    ["create"],
-  );
-  assert.deepEqual(api.only("create")[0].input, {
-    date: TODAY,
-    position: 3,
-    start: "09:00",
-    end: null,
-    name: "NEW",
-    plan: "",
-    execution: "",
-  });
-  assert.equal(api.rows().find((r) => r.name === "NEW").start, "09:00:00");
-  assert.deepEqual(
-    api
-      .rows()
-      .filter((r) => r.id <= 2)
-      .map((r) => [r.id, r.position, r.start, r.end]),
-    [
-      [1, 2, "09:00:30", "10:00:30"],
-      [2, 3, "09:00:40", "10:00:40"],
-    ],
-  );
-  assert.deepEqual(await reloadedNames(api), ["A", "NEW", "B"]);
-  assert.deepEqual(view.nameValues(), ["A", "NEW", "B"]);
-});
-
 test("P2 다른 칸 수정과 position PUT 은 교사가 고치지 않은 서버의 초를 보존한다", async (t) => {
   const api = recorder({
     rows: [
@@ -2104,7 +1871,7 @@ test("P2 다른 칸 수정과 position PUT 은 교사가 고치지 않은 서버
   });
   const view = page(t, api.api);
   await view.flush();
-  view.type(view.textareas()[0], "A 계획 수정");
+  view.type(view.plans()[0], "A 계획 수정");
   await view.flush();
   view.button("저장").props.onClick();
   await view.flush();
@@ -2118,26 +1885,6 @@ test("P2 다른 칸 수정과 position PUT 은 교사가 고치지 않은 서버
   assert.equal(edited.start, "09:00:30");
   assert.equal(edited.end, "09:30:45");
   assert.equal("class_id" in edited, false);
-
-  const beforeDrag = api.calls.length;
-  await dragRow(view, 2, 0);
-  view.button("저장").props.onClick();
-  await view.flush();
-  const reordered = api.calls.slice(beforeDrag).filter((c) => c.op !== "list");
-  assert.deepEqual(
-    reordered.map((c) => [c.op, c.id]),
-    [["update", 3]],
-  );
-  assert.ok(reordered[0].input.position < 2);
-  assert.equal(reordered[0].input.start, "12:10:15");
-  assert.equal(reordered[0].input.end, "12:50:45");
-  assert.equal("class_id" in reordered[0].input, false);
-  assert.deepEqual(await reloadedNames(api), ["C", "A", "B"]);
-
-  const beforeNoop = writes(api).length;
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.equal(writes(api).length, beforeNoop, "보존된 초를 다음 저장에서 다시 고쳤다");
 });
 
 // ── 보고 있는 반 · 날짜를 주소에 적어 둔다 (P1-3 scope 동기화) ──────────────
@@ -2215,41 +1962,6 @@ test("주소의 반을 못 찾으면 주소를 고치지 않는다 — 새로고
 
 // ── 끌어서 옮기기 (AC4) ────────────────────────────────────────────────────
 
-test("dragstart 는 dataTransfer 에 담는다 — 담지 않으면 Firefox 는 끌기를 시작하지 않는다", async (t) => {
-  const view = page(
-    t,
-    recorder({ rows: [row({ id: 1, name: "A" }), row({ id: 2, name: "B" })] }).api,
-  );
-  await view.flush();
-  const event = dragEvent();
-  view.handles()[0].props.onDragStart(event);
-  assert.equal(event.dataTransfer.data["text/plain"], "0");
-});
-
-test("1번 줄을 4번 자리로 끌면 그 순서로 저장되고 다시 읽어도 그대로다", async (t) => {
-  const api = recorder({
-    rows: [
-      row({ id: 1, name: "A", position: 0 }),
-      row({ id: 2, name: "B", position: 1 }),
-      row({ id: 3, name: "C", position: 2 }),
-      row({ id: 4, name: "D", position: 3 }),
-    ],
-  });
-  const view = page(t, api.api);
-  await view.flush();
-  await dragRow(view, 0, 3);
-  assert.deepEqual(view.nameValues(), ["B", "C", "D", "A"]);
-
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.equal(api.only("create").length, 0);
-  assert.equal(api.only("remove").length, 0);
-  assert.deepEqual(await reloadedNames(api), ["B", "C", "D", "A"]);
-  assert.deepEqual(view.nameValues(), ["B", "C", "D", "A"]);
-});
-
-// ── S-J1 로 들어오는 길 — 기록 모아보기 · 우리 반 ─────────────────────────
-
 const hrefsOf = (view) =>
   all(view.tree())
     .filter((node) => node?.props?.href)
@@ -2273,19 +1985,37 @@ function quickRecordsPage(
 ) {
   const calls = [];
   browser({ rooms: settings, primaryClassId });
-  t.after(() => delete globalThis.window);
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
   const app = host();
-  const Page = compile("../components/workspace/QuickRecordsPage.tsx", {
+  const Page = compile("../components/workspace/WeeklyRecordsPage.tsx", {
     "react/jsx-runtime": runtime,
     react: app.react,
     "next/link": { default: "link" },
     "./WorkspaceUI": {
       WorkspacePage: "page",
       Message: "message",
+      Notice: "notice",
       useClasses: () => rooms,
       ws: {},
     },
     "@/components/app/icons": { Icon: "icon" },
+    "@/components/app/Posty": { Posty: "posty" },
+    // 이번 주 주간 일지 칸은 따로 테스트한다. 여기서는 자리만 둔다.
+    "./WeeklyJournalCard": {
+      default: "weekly-journal-card",
+      WeeklyJournalEditor: "weekly-journal-editor",
+      useWeeklyJournal: () => ({
+        doc: null,
+        sources: [],
+        draftDailies: [],
+        busy: false,
+        off: false,
+        make: () => {},
+      }),
+    },
     "@/lib/api/records": {
       listRecords: async (classId, period) => {
         calls.push({ op: "observations", classId, ...period });
@@ -2473,7 +2203,10 @@ function homePage(
   } = {},
 ) {
   browser({ rooms, primaryClassId, search });
-  t.after(() => delete globalThis.window);
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.document;
+  });
   const app = host();
   // 서버 반은 늦게 온다. 테스트가 도중에 바꿔 끼울 수 있게 상자로 둔다.
   const box = { classes };
@@ -3019,7 +2752,7 @@ test("후속 #2 기존 09:16:25는 다른 칸 수정·저장으로 반올림되�
   assert.equal(api.only("update")[0].input.end, "10:21:35");
 });
 
-test("후속 #5 명시적 시간 정렬과 수동 이동은 저장 전 요청 없이 입력·ID를 보존한다", async (t) => {
+test("후속 #5 저장 전에는 어떤 요청도 보내지 않고 입력·ID 를 그대로 들고 있는다", async (t) => {
   const api = recorder({
     rows: [
       row({ id: 1, name: "늦음", start: "11:00:00", end: "12:00:00", position: 0 }),
@@ -3030,24 +2763,20 @@ test("후속 #5 명시적 시간 정렬과 수동 이동은 저장 전 요청 �
   });
   const view = page(t, api.api);
   await view.flush();
-  assert.deepEqual(view.nameValues(), ["늦음", "빠름", "동률", "미입력"]);
-  view.type(view.textareas()[1], "저장 전 실행 수정");
-  view.render();
-  view.button("시간순 정렬").props.onClick();
-  await view.flush();
+  // 서버 번호가 아니라 시간이 순서를 정한다. 같은 시각이면 서버가 준 차례 그대로,
+  // 시간이 없는 줄은 맨 뒤다.
   assert.deepEqual(view.nameValues(), ["빠름", "동률", "늦음", "미입력"]);
+  view.type(view.dones()[0], "저장 전 실행 수정");
+  await view.flush();
   assert.equal(writes(api).length, 0);
   view.button("저장").props.onClick();
   await view.flush();
+  // 화면 순서가 서버 번호와 거꾸로 섰으므로 번호를 다시 매긴다 — 다시 읽어도 같은 순서다.
   assert.deepEqual(await reloadedNames(api), ["빠름", "동률", "늦음", "미입력"]);
-  assert.equal(api.rows().find((r) => r.id === 1).execution, "저장 전 실행 수정");
-  await dragRow(view, 0, 2);
-  view.button("저장").props.onClick();
-  await view.flush();
-  assert.deepEqual(await reloadedNames(api), ["동률", "늦음", "빠름", "미입력"]);
+  assert.equal(api.rows().find((r) => r.id === 2).execution, "저장 전 실행 수정");
 });
 
-test("후속 #5 같은 position에서 시각을 고쳐도 현재 카드 순서를 저장한다", async (t) => {
+test("번호가 겹친 지난 데이터는 시각을 고치면 그 시각이 순서를 정한다", async (t) => {
   const api = recorder({
     rows: [
       row({ id: 1, name: "A", position: 0, start: "09:00:00", end: null }),
@@ -3060,31 +2789,11 @@ test("후속 #5 같은 position에서 시각을 고쳐도 현재 카드 순서�
   await view.flush();
   view.button("저장").props.onClick();
   await view.flush();
-  assert.deepEqual(await reloadedNames(api), ["A", "B"]);
+  // position 이 둘 다 0 이라 서버는 start 로 가른다. 11:00 이 된 A 가 B 뒤로 간다.
+  assert.deepEqual(await reloadedNames(api), ["B", "A"]);
 });
 
-test("후속 #1 drag image는 핸들이 아닌 카드 전체를 사용하고 삽입 위치를 표시한다", async (t) => {
-  const api = recorder({ rows: [row({ id: 1 }), row({ id: 2 })] });
-  const view = page(t, api.api);
-  await view.flush();
-  const card = { getBoundingClientRect: () => ({ left: 5, top: 10 }) };
-  let image;
-  const event = dragEvent();
-  event.currentTarget.closest = () => card;
-  event.dataTransfer.setDragImage = (element) => {
-    image = element;
-  };
-  view.handles()[0].props.onDragStart(event);
-  view.render();
-  assert.equal(image, card);
-  assert.equal(view.cards()[0].props["data-dragging"], true);
-  view.cards()[1].props.onDragOver({ ...dragEvent(), clientY: 80, preventDefault() {} });
-  view.render();
-  assert.equal(view.cards()[1].props["data-insertion"], "after");
-  assert.equal(writes(api).length, 0);
-});
-
-test("후속 #5 명시적 정렬도 보존 중인 원본의 초를 비교한다", async (t) => {
+test("후속 #2 교사가 안 건드린 초는 다른 칸을 고쳐 저장해도 그대로다", async (t) => {
   const api = recorder({
     rows: [
       row({ id: 1, name: "늦은 초", position: 0, start: "09:16:40", end: "10:00:00" }),
@@ -3093,13 +2802,13 @@ test("후속 #5 명시적 정렬도 보존 중인 원본의 초를 비교한다"
   });
   const view = page(t, api.api);
   await view.flush();
-  view.button("시간순 정렬").props.onClick();
+  view.type(view.dones()[1], "실행 적음");
   await view.flush();
-  assert.deepEqual(view.nameValues(), ["이른 초", "늦은 초"]);
   view.button("저장").props.onClick();
   await view.flush();
-  assert.deepEqual(await reloadedNames(api), ["이른 초", "늦은 초"]);
+  assert.deepEqual(await reloadedNames(api), ["늦은 초", "이른 초"]);
   assert.equal(api.rows().find((r) => r.id === 1).start, "09:16:40");
+  assert.equal(api.rows().find((r) => r.id === 2).start, "09:16:25");
 });
 
 test("기록 모아보기 — 활동실행이 빈 일과는 계획을 실행처럼 띄우지 않는다", async (t) => {
@@ -3110,4 +2819,179 @@ test("기록 모아보기 — 활동실행이 빈 일과는 계획을 실행처�
   const text = view.text();
   assert.equal(text.includes("자동차 굴리기"), false, text);
   assert.ok(text.includes("실제로 한 것을 아직 적지 않았습니다."), text);
+});
+
+// ── 이번 주 주간 보육일지 칸 ──────────────────────────────────────────
+// 주간 일지의 근거는 관찰 기록이 아니다 (api-spec §11). 확정한 일일 보육일지가 기본이고,
+// 일일을 쓰지 않는 원만 그 주 일과 기록을 바로 받는다. 고른 쪽이 그대로 서버로 가야 한다.
+function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) {
+  const calls = [];
+  const app = host();
+  t.after(() => app.cleanup());
+  const Card = compile("../components/workspace/WeeklyJournalCard.tsx", {
+    "react/jsx-runtime": runtime,
+    react: app.react,
+    "next/link": { default: "link" },
+    "next/navigation": { useRouter: () => ({ push: (href) => calls.push({ op: "push", href }) }) },
+    "./WorkspaceUI": { Message: "message", ws: {} },
+    "@/components/app/Posty": { Posty: "posty" },
+    "./DailyJournalCard": {
+      journalMood: () => ({ pose: "stand", face: "base", tone: "note" }),
+    },
+    // 편집기 자체는 보관함 테스트가 본다. 여기서는 열렸는지만 본다.
+    "./DocumentEditor": { __esModule: true, default: "document-editor" },
+    "./use-server-document": {
+      useServerDocument: (id) => {
+        calls.push({ op: "edit", id });
+        return {
+          doc: id ? { id, sections: [] } : null,
+          status: "ready",
+          error: "",
+          server: undefined,
+        };
+      },
+    },
+    "@/lib/api/onboarding": { classServerId: (id) => (id === "class-1" ? 7 : null) },
+    "@/lib/api/routines": { routineLocalId: (id) => `routine-${id}` },
+    "@/lib/workspace/routines-route": { routinesPath: (_, date) => `/routines?date=${date}` },
+    "@/lib/api/documents": {
+      listDocuments: async (query) => {
+        calls.push({ op: "list", ...query });
+        return query.kind === "weeklyLog" ? weeklies : dailies;
+      },
+      createDocument: async (input) => {
+        calls.push({ op: "create", ...input });
+        return { id: "doc-99" };
+      },
+    },
+  });
+  // 화면과 같은 짝으로 띄운다 — 머리의 「주간 일지 만들기」와 아래 칸이 한 상태를 본다.
+  const view = app.mount(() => {
+    const state = Card.useWeeklyJournal({
+      classId: "class-1",
+      weekStart: "2026-11-02",
+      weekEnd: "2026-11-08",
+      routines: routineRows,
+    });
+    return jsx("div", {
+      children: [
+        jsx("button", {
+          disabled: !!state.doc || state.busy || !state.sources.length,
+          onClick: state.make,
+          children: "주간 일지 만들기",
+        }),
+        Card.default({
+          state,
+          className: "햇살반",
+          weekStart: "2026-11-02",
+          weekEnd: "2026-11-08",
+        }),
+        // 펴 놓은 일지는 오른쪽 칠판 밑에 따로 선다. 화면과 같이 둘 다 띄운다.
+        Card.WeeklyJournalEditor({ state }),
+      ],
+    });
+  });
+  return { view, calls, text: () => deepText(view.tree()) };
+}
+
+/** 머리의 「주간 일지 만들기」. 칸에는 이제 단추가 없다. */
+const makeButton = (view) =>
+  all(view.tree()).find((n) => n?.type === "button" && deepText(n).includes("주간 일지 만들기"));
+
+const draftWeekly = {
+  id: "doc-5",
+  start: "2026-11-02",
+  end: "2026-11-08",
+  status: "draft",
+  stale: false,
+};
+
+test("이번 주 주간 일지가 이미 있으면 만들기 대신 이어서 쓰기를 준다", async (t) => {
+  const card = journalCard(t, { weeklies: [draftWeekly] });
+  await card.view.flush();
+  assert.ok(card.text().includes("이어서 쓰기"), card.text());
+  assert.equal(makeButton(card.view).props.disabled, true);
+  assert.equal(
+    card.calls.some((c) => c.op === "create"),
+    false,
+  );
+});
+
+test("지난 주 일지는 이번 주 것으로 세지 않는다", async (t) => {
+  const card = journalCard(t, {
+    weeklies: [{ ...draftWeekly, id: "doc-4", start: "2026-10-26", end: "2026-11-01" }],
+  });
+  await card.view.flush();
+  assert.ok(card.text().includes("아직 만들지 않았어요."), card.text());
+});
+
+test("근거를 일과 기록으로 고르면 활동실행이 있는 일과만 그 종류로 보낸다", async (t) => {
+  const card = journalCard(t, {
+    routineRows: [
+      { id: 11, execution: "블록 길을 만들었다." },
+      { id: 12, execution: "" },
+      { id: 13, execution: "도토리를 모았다." },
+    ],
+  });
+  await card.view.flush();
+  const select = all(card.view.tree()).find((n) => n?.type === "select");
+  select.props.onChange({ target: { value: "routine" } });
+  await card.view.flush();
+  makeButton(card.view).props.onClick();
+  await card.view.flush();
+  const created = card.calls.find((c) => c.op === "create");
+  assert.equal(created.sourceKind, "routine");
+  assert.deepEqual(created.sourceIds, ["routine-11", "routine-13"]);
+  assert.equal(created.start, "2026-11-02");
+  assert.equal(created.end, "2026-11-08");
+});
+
+test("만든 일지는 문서 보관함으로 보내지 않고 이 화면에서 편집기를 연다", async (t) => {
+  const card = journalCard(t, {
+    dailies: [{ id: "doc-1", start: "2026-11-03", status: "confirmed" }],
+  });
+  await card.view.flush();
+  makeButton(card.view).props.onClick();
+  await card.view.flush();
+  assert.equal(
+    card.calls.some((c) => c.op === "push"),
+    false,
+  );
+  assert.ok(
+    card.calls.some((c) => c.op === "edit" && c.id === "doc-99"),
+    JSON.stringify(card.calls),
+  );
+  assert.ok(all(card.view.tree()).some((n) => n?.type === "document-editor"));
+});
+
+test("근거가 하나도 없으면 만들기를 막고 무엇이 없는지 말한다", async (t) => {
+  const card = journalCard(t);
+  await card.view.flush();
+  assert.equal(makeButton(card.view).props.disabled, true);
+  assert.ok(card.text().includes("확정한 일일 보육일지가 없습니다"), card.text());
+});
+
+test("초안인 일일 일지는 근거로 세지 않고, 확정하러 갈 길을 준다", async (t) => {
+  const card = journalCard(t, {
+    dailies: [
+      { id: "doc-1", start: "2026-11-03", status: "confirmed" },
+      { id: "doc-2", start: "2026-11-04", status: "draft" },
+    ],
+  });
+  await card.view.flush();
+  makeButton(card.view).props.onClick();
+  await card.view.flush();
+  // 근거는 확정본 하나뿐이다.
+  assert.deepEqual(card.calls.find((c) => c.op === "create").sourceIds, ["doc-1"]);
+});
+
+test("확정한 일일 일지가 없고 초안만 있으면 초안이라고 말하고 그날로 보낸다", async (t) => {
+  const card = journalCard(t, { dailies: [{ id: "doc-2", start: "2026-11-04", status: "draft" }] });
+  await card.view.flush();
+  assert.equal(makeButton(card.view).props.disabled, true);
+  assert.ok(card.text().includes("아직 초안이에요"), card.text());
+  const links = all(card.view.tree())
+    .filter((n) => n?.props?.href)
+    .map((n) => n.props.href);
+  assert.ok(links.includes("/routines?date=2026-11-04"), links.join(" , "));
 });

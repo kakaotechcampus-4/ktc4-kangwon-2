@@ -183,10 +183,31 @@ body {
 .postyWalk {
   animation: postyBob 0.36s ease-in-out infinite;
 }
+/* 손 흔드는 포스티. 쉬지 않고 흔들면 눈이 계속 끌려가서, 두 번 흔들고 쉰다. */
+@keyframes postyWave {
+  0%,
+  44%,
+  100% {
+    transform: rotate(0deg);
+  }
+  8%,
+  24% {
+    transform: rotate(-16deg);
+  }
+  16%,
+  32% {
+    transform: rotate(10deg);
+  }
+}
+.postyWave {
+  transform-box: view-box;
+  animation: postyWave 2.6s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .postySwingFront,
   .postySwingBack,
-  .postyWalk {
+  .postyWalk,
+  .postyWave {
     animation: none;
   }
 }

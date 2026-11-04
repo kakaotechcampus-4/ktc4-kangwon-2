@@ -52,6 +52,15 @@ async function enter(page: Page) {
   await page.getByRole("button", { name: "+ 추가", exact: true }).click();
   await page.getByRole("button", { name: "설정 완료", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  // 첫 화면이 서버 반 들여오기를 한 번 끝낼 때까지 기다린다. 그 전에 서버에 반을 더 만들면
+  // 그 반은 「예전에 버린 반」으로 적혀 다시 안 들어온다(adoptServerClasses 의 retired).
+  await page.waitForFunction(() =>
+    Object.keys(localStorage).some(
+      (key) =>
+        key.startsWith("saessak.apiLinks.v1:") &&
+        Array.isArray(JSON.parse(localStorage.getItem(key) ?? "{}").retired),
+    ),
+  );
   const me = await api(page, "/api/auth/me");
   const classes = await api(page, `/api/centers/${me.center_id}/classes`);
   const cls = classes.items.find((c: { name: string }) => c.name === "햇살반");

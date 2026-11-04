@@ -44,6 +44,15 @@ import {
 } from "./DocumentArchiveArt";
 import styles from "./DocumentArchive.module.css";
 import { PlanArchivePreview, type PlanPreviewTarget } from "./DocumentArchivePreview";
+import {
+  ACCESS_LABEL,
+  ForeignClassPanel,
+  ReceivedPanel,
+  useClassAccess,
+  type ForeignAccess,
+} from "./ClassAccessPanels";
+import type { ApiClass } from "@/lib/api/types";
+import type { ReceivedRequest } from "@/lib/api/class-access";
 
 /** 보관함이 목록에 그리는 일지 하나. 상세(sections · sources)는 열어야 온다 (§11). */
 export type ArchiveDoc = {
@@ -149,11 +158,12 @@ export default function DocumentArchiveView({
   // 생성 화면에서 돌아오면 선택된 문서에 맞춰 탐색도 시작한다.
   // 이후 목록 탐색은 이 상태를 그대로 쓰므로 다른 종류의 편집기가 끼어들지 않는다.
   const initialDoc = documents.find((d) => d.id === activeId && d.classId === classId);
-  const [type, setType] = useState<ArchiveType | null>(() => {
-    if (initialDoc?.kind === "observation") return "observation";
-    if (initialDoc?.kind === "dailyLog" || initialDoc?.kind === "weeklyLog") return "care";
+  const typeOf = (kind: string | undefined): ArchiveType | null => {
+    if (kind === "observation") return "observation";
+    if (kind === "dailyLog" || kind === "weeklyLog") return "care";
     return null;
-  });
+  };
+  const [type, setType] = useState<ArchiveType | null>(() => typeOf(initialDoc?.kind));
   const [day, setDay] = useState(() => initialDoc?.start ?? today());
   const [month, setMonth] = useState(() => monthOf(initialDoc?.start ?? today()));
   const [schoolYear, setSchoolYear] = useState(() => schoolYearOf(today()));
@@ -165,9 +175,27 @@ export default function DocumentArchiveView({
     initialDoc?.kind === "weeklyLog" ? "weeklyLog" : "dailyLog",
   );
   const [oldestFirst, setOldestFirst] = useState(false);
+  // 주소(`?id=`)로 바로 들어오면 첫 그림에는 목록이 아직 없어 위 초기값이 빈 칸으로 굳는다.
+  // 그 문서가 목록에 닿는 순간 한 번만 그 칸으로 맞춘다 — 안 그러면 문서를 열어 달라
+  // 했는데 「문서를 선택해 주세요」가 뜬다.
+  const [tunedTo, setTunedTo] = useState(initialDoc ? activeId : "");
+  if (initialDoc && tunedTo !== activeId) {
+    setTunedTo(activeId);
+    setType(typeOf(initialDoc.kind));
+    setDay(initialDoc.start);
+    setMonth(monthOf(initialDoc.start));
+    if (initialDoc.kind === "observation") setChildId(initialDoc.childId);
+    if (initialDoc.kind === "dailyLog" || initialDoc.kind === "weeklyLog")
+      setScope(initialDoc.kind);
+  }
   const [planPreview, setPlanPreview] = useState<PlanPreviewTarget | null>(null);
   const previewRef = useRef<HTMLElement>(null);
   const [mobileList, setMobileList] = useState(false);
+  // 같은 원 남의 반과 받은 열람 요청 (ADR-059). 고르면 오른쪽 본문 자리를 그 칸이 쓴다.
+  const access = useClassAccess();
+  const [foreign, setForeign] = useState<number | "received" | null>(null);
+  const foreignRoom =
+    typeof foreign === "number" ? access.others.find((c) => c.id === foreign) : undefined;
 
   const classroom = classes.find((c) => c.id === classId);
   const serverClassId = classId ? classServerId(classId) : null;
@@ -294,15 +322,41 @@ export default function DocumentArchiveView({
   const days = useMemo(() => weekDays(day), [day]);
   const sorted = <T,>(items: T[]) => (oldestFirst ? [...items].reverse() : items);
 
-  if (!classId || !classroom) {
+  const rail = (
+    <ClassRail
+      classes={classes}
+      classId={foreign === null ? classId : ""}
+      onPick={(id) => {
+        setForeign(null);
+        onPickClass(id);
+      }}
+      others={access.others}
+      received={access.received}
+      foreign={foreign}
+      onPickForeign={setForeign}
+    />
+  );
+  // 남의 반 · 받은 요청을 고르면 내 반 보관함 대신 그 칸이 선다.
+  const foreignBody =
+    foreign === "received" ? (
+      <ReceivedPanel items={access.received} onChanged={access.reload} />
+    ) : foreignRoom ? (
+      <ForeignClassPanel key={foreignRoom.id} room={foreignRoom} onChanged={access.reload} />
+    ) : null;
+
+  if (!classId || !classroom || foreign !== null) {
     return (
       <div className={styles.archive}>
-        <ClassRail classes={classes} classId={classId} onPick={onPickClass} />
+        {rail}
         <div className={styles.content}>
           {header}
-          <Blank art={<StartArt className={styles.blankArt} />} title="반을 선택해 주세요">
-            왼쪽에서 반을 선택하면 해당 반의 문서 보관함을 확인할 수 있어요.
-          </Blank>
+          {foreign !== null ? (
+            foreignBody
+          ) : (
+            <Blank art={<StartArt className={styles.blankArt} />} title="반을 선택해 주세요">
+              왼쪽에서 반을 선택하면 해당 반의 문서 보관함을 확인할 수 있어요.
+            </Blank>
+          )}
         </div>
       </div>
     );
@@ -764,7 +818,7 @@ export default function DocumentArchiveView({
 
   return (
     <div className={styles.archive}>
-      <ClassRail classes={classes} classId={classId} onPick={onPickClass} />
+      {rail}
       <div className={styles.content}>
         {header}
         {openDoc && editingId === openDoc.id ? (
@@ -1024,11 +1078,22 @@ function ClassRail({
   classes,
   classId,
   onPick,
+  others,
+  received,
+  foreign,
+  onPickForeign,
 }: {
   classes: ClassroomEntry[];
   classId: string;
   onPick: (id: string) => void;
+  /** 같은 원의 남의 반. 열람 상태(`my_access`)를 배지로 단다. */
+  others: ApiClass[];
+  /** 내 반에 온 열람 요청. 하나라도 있으면 「받은 요청」 칸을 연다. */
+  received: ReceivedRequest[];
+  foreign: number | "received" | null;
+  onPickForeign: (pick: number | "received") => void;
 }) {
+  const waiting = received.filter((r) => r.status === "PENDING").length;
   return (
     <aside className={styles.classRail} aria-label="반 선택">
       <div className={styles.railHead}>
@@ -1049,9 +1114,53 @@ function ClassRail({
               <Icon name="chevron" />
             </button>
           ))}
+          {received.length > 0 && (
+            <button
+              type="button"
+              className={styles.classCard}
+              aria-pressed={foreign === "received"}
+              onClick={() => onPickForeign("received")}
+            >
+              <span className={styles.grow}>받은 요청</span>
+              {waiting > 0 && (
+                <span className={styles.railCount} aria-label={`기다리는 요청 ${waiting}건`}>
+                  {waiting}
+                </span>
+              )}
+              <Icon name="bell" />
+            </button>
+          )}
         </div>
       ) : (
         <p className={styles.railEmpty}>등록된 반이 없어요. 설정에서 반을 먼저 만들어주세요.</p>
+      )}
+      {others.length > 0 && (
+        <>
+          <div className={styles.railHead}>
+            <Icon name="lock" />
+            같은 원 반
+          </div>
+          <p className={styles.railNote}>담임 선생님이 승인하면 문서를 볼 수 있어요.</p>
+          <div className={styles.classList}>
+            {others.map((c) => {
+              const state = (c.my_access ?? "NONE") as ForeignAccess;
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  className={styles.classCard}
+                  aria-pressed={foreign === c.id}
+                  onClick={() => onPickForeign(c.id)}
+                >
+                  <span className={styles.grow}>{c.name}</span>
+                  <span className={styles.railBadge} data-state={state}>
+                    {ACCESS_LABEL[state]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
       <SidebarDecor className={styles.decor} />
     </aside>

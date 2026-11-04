@@ -217,3 +217,87 @@ def test_등록한_증빙은_확정_취소와_수정이_된다(db_session):
 
     assert response.status_code == 200, response.text
     assert db_session.get(Document, created["id"]).status == "DRAFT"
+
+
+def test_확정을_취소한_증빙은_첨부_원문만_고쳐서_다시_확정한다(db_session):
+    """Codex 리뷰(#283): 3층 대조를 IMPORT 에도 걸어 확정 취소 뒤 고치거나 다시 확정할 수 없었다."""
+    _, klass, child = _center_class_child(db_session)
+    created = client.post("/api/documents/import", json=_payload(klass, child)).json()
+    undone = client.post(f"/api/documents/{created['id']}/unconfirm").json()
+
+    fixed = _ORIGINAL + " 오타를 고쳤다."
+    edit = client.put(
+        f"/api/documents/{created['id']}",
+        json={
+            "sections": [{"heading": "첨부 원문", "body": fixed}],
+            "updated_at": undone["updated_at"],
+        },
+    )
+    assert edit.status_code == 200, edit.text
+    assert [s["body"] for s in edit.json()["sections"]] == [fixed]
+
+    again = client.post(
+        f"/api/documents/{created['id']}/confirm",
+        json={"checks": {"fact": True, "interpretation": True, "support": True}},
+    )
+    assert again.status_code == 200, again.text
+    assert db_session.get(Document, created["id"]).status == "CONFIRMED"
+
+
+def test_증빙에_해석_칸을_끼워_넣거나_우리_문서에_첨부_원문을_만들_수_없다(db_session):
+    _, klass, child = _center_class_child(db_session)
+    created = client.post("/api/documents/import", json=_payload(klass, child)).json()
+    undone = client.post(f"/api/documents/{created['id']}/unconfirm").json()
+
+    response = client.put(
+        f"/api/documents/{created['id']}",
+        json={
+            "sections": [{"heading": "해석", "body": "AI 가 쓴 듯한 해석을 끼워 넣는다."}],
+            "updated_at": undone["updated_at"],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["fields"] == ["sections"]
+
+
+def test_증빙은_한글_파일로_다시_만들지_않는다(db_session):
+    """Codex 리뷰(#283): 해석 · 지원 칸이 없어 KeyError 로 500 이 났다. 409 로 막는다."""
+    _, klass, _child = _center_class_child(db_session)
+    start, _end = _recent_period()
+    created = client.post(
+        "/api/documents/import",
+        json=_payload(klass, None, kind="dailyLog", start=start, end=start, title="일지.hwp"),
+    )
+    assert created.status_code == 201, created.text
+
+    response = client.get(f"/api/documents/{created.json()['id']}/export/hwp")
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["fields"] == ["origin"]
+
+
+def test_증빙_제목은_200자_안에서_받는다(db_session):
+    """Codex 리뷰(#283): 200자를 넘는 파일 이름이 DB 에서 터져 500 이 났다."""
+    _, klass, child = _center_class_child(db_session)
+
+    response = client.post("/api/documents/import", json=_payload(klass, child, title="가" * 201))
+
+    assert response.status_code == 422, response.text
+    assert "title" in response.json()["error"]["fields"]
+
+
+def test_문서를_고칠_때도_제목은_200자_안이다(db_session):
+    _, klass, child = _center_class_child(db_session)
+    created = client.post("/api/documents/import", json=_payload(klass, child)).json()
+    undone = client.post(f"/api/documents/{created['id']}/unconfirm").json()
+
+    response = client.put(
+        f"/api/documents/{created['id']}",
+        json={
+            "title": "가" * 201,
+            "sections": [{"heading": "첨부 원문", "body": _ORIGINAL}],
+            "updated_at": undone["updated_at"],
+        },
+    )
+
+    assert response.status_code == 422, response.text

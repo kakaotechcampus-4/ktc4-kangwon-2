@@ -74,7 +74,8 @@ export default function DocumentArchivePreview({
   status: "loading" | "ready" | "error";
   error: string;
   onRetry: () => void;
-  onEdit: () => void;
+  /** 없으면 편집 단추를 그리지 않는다 — 승인받은 남의 반은 보기만 한다 (ADR-059). */
+  onEdit?: () => void;
 }) {
   if (status === "loading") return <p role="status">문서 미리보기를 불러오고 있어요.</p>;
   if (status === "error") return <PreviewError error={error} onRetry={onRetry} />;
@@ -102,9 +103,11 @@ export default function DocumentArchivePreview({
           <p>{document.reviewNote}</p>
         </section>
       )}
-      <button type="button" className={ws.primary} onClick={onEdit}>
-        {document.status === "confirmed" ? "문서 열기" : "편집하기"}
-      </button>
+      {onEdit && (
+        <button type="button" className={ws.primary} onClick={onEdit}>
+          {document.status === "confirmed" ? "문서 열기" : "편집하기"}
+        </button>
+      )}
     </>
   );
 }
@@ -118,6 +121,7 @@ export type PlanPreviewTarget = {
   period: string;
   periodKey: string;
   createdAt: string;
+  /** 비면 「문서 열기」를 그리지 않는다 — 승인받은 남의 반 계획안은 편집 화면으로 보내지 않는다. */
   href: string;
 };
 
@@ -214,9 +218,11 @@ export function PlanArchivePreview({ target }: { target: PlanPreviewTarget }) {
     <>
       <p className={ws.muted}>읽기 전용 · {DOCUMENT_KINDS[target.kind]}</p>
       <PreviewContent content={current.content} />
-      <Link className={ws.primary} href={target.href}>
-        문서 열기
-      </Link>
+      {target.href && (
+        <Link className={ws.primary} href={target.href}>
+          문서 열기
+        </Link>
+      )}
     </>
   );
 }

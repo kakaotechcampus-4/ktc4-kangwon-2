@@ -46,6 +46,12 @@ const TONE: Record<PostyTone, { paper: string; line: string; fold: string }> = {
 
 const INK = "var(--pg-ink)";
 
+/**
+ * 쪽지는 x 7~41 에 서지만 손은 그 밖으로 뻗는다 — `sit` 의 왼손 중심이 2.4,
+ * 손 반지름이 4.2 라 폭 48 짜리 틀에서는 끝이 잘렸다. 좌우로 이만큼 넓혀 둔다.
+ */
+const PAD = 4;
+
 /** 어깨·엉덩이는 쪽지에 붙어 있어 포즈가 달라도 자리가 같다. */
 const SHOULDER = { left: 7, right: 41, y: 28 };
 const HIP = { left: 18, right: 30, y: 43 };
@@ -298,6 +304,7 @@ export function Posty({
   size = 96,
   tape = false,
   walk = false,
+  wave = false,
   label,
   className,
   style,
@@ -315,6 +322,11 @@ export function Posty({
    * 「동작 줄이기」를 켠 교사에게는 멈춘 채로 선다.
    */
   walk?: boolean;
+  /**
+   * 든 오른팔을 흔든다 — 「여기요」 하고 부르는 손짓. 두 번 흔들고 잠깐 쉰다.
+   * 오른팔을 든 포즈(`wave` · `sitWave`)에만 쓴다. 「동작 줄이기」면 멈춰 있다.
+   */
+  wave?: boolean;
   label?: string | null;
   className?: string;
   style?: CSSProperties;
@@ -328,11 +340,12 @@ export function Posty({
   const hand = thin ? 5 : 4.2;
   const foot = thin ? 6 : 5.4;
   const swinging = walk && pose === "stand";
+  const waving = wave && (pose === "wave" || pose === "sitWave");
   return (
     <svg
-      viewBox={`0 0 48 ${height}`}
+      viewBox={`${-PAD} 0 ${48 + PAD * 2} ${height}`}
       width={size}
-      height={Math.round((size * height) / 48)}
+      height={Math.round((size * height) / (48 + PAD * 2))}
       className={[swinging ? "postyWalk" : "", className].filter(Boolean).join(" ") || undefined}
       style={style}
       role={spoken ? "img" : undefined}
@@ -340,7 +353,13 @@ export function Posty({
       aria-hidden={spoken ? undefined : true}
     >
       {arm(SHOULDER.left, arms[0], w, hand, swinging ? "postySwingBack" : undefined)}
-      {arm(SHOULDER.right, arms[1], w, hand, swinging ? "postySwingFront" : undefined)}
+      {arm(
+        SHOULDER.right,
+        arms[1],
+        w,
+        hand,
+        swinging ? "postySwingFront" : waving ? "postyWave" : undefined,
+      )}
       {leg(HIP.left, feet[0], false, w, foot, swinging ? "postySwingFront" : undefined)}
       {leg(HIP.right, feet[1], true, w, foot, swinging ? "postySwingBack" : undefined)}
       <path

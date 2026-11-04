@@ -58,7 +58,13 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         icon: "edit",
         match: (p) => p.startsWith("/routines"),
       },
-      { key: "quick", label: "주간 기록", short: "주간", href: "/quick-records", icon: "record" },
+      {
+        key: "quick",
+        label: "주간 기록",
+        short: "주간",
+        href: "/weekly-records",
+        icon: "record",
+      },
     ],
   },
   {
@@ -71,8 +77,20 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         icon: "plan",
         match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
       },
-      { key: "docs", label: "문서 보관함", short: "보관함", href: "/documents", icon: "doc" },
-      { key: "eval", label: "평가 점검", short: "평가", href: "/evaluation", icon: "eval" },
+      {
+        key: "docs",
+        label: "문서 보관함",
+        short: "보관함",
+        href: "/documents",
+        icon: "doc",
+      },
+      {
+        key: "eval",
+        label: "평가 점검",
+        short: "평가",
+        href: "/evaluation",
+        icon: "eval",
+      },
     ],
   },
 ];
@@ -405,11 +423,9 @@ function NavLink({
     >
       <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
       <span>{item.label}</span>
-      {active && (
-        <span aria-hidden="true" className="ml-auto hidden lg:inline font-display text-lg">
-          ↗
-        </span>
-      )}
+      {/* 지금 화면 표시. 전에는 ↗ 였는데 바깥 링크로 읽혔다(멘토 12주차 리뷰).
+          테이프로 붙여 둔 쪽지 한 장 — 아래 귀퉁이가 살짝 들려 있다. 움직이지 않는다. */}
+      {active && <NoteMark />}
     </Link>
   );
 }
@@ -540,5 +556,45 @@ function Tape() {
       aria-hidden="true"
       className="pointer-events-none absolute -top-3 right-3 h-[19px] w-16 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
     />
+  );
+}
+
+/** 메뉴 옆에 붙인 쪽지. 테이프 한 조각, 들린 귀퉁이와 그 밑 그림자. */
+function NoteMark() {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      aria-hidden="true"
+      focusable="false"
+      className="-my-2 ml-auto hidden h-8 w-8 shrink-0 -rotate-6 lg:block"
+    >
+      {/* 들린 귀퉁이 밑에 드리운 그림자 */}
+      <path
+        d="M8 29.5 22 28.8c3.2-.6 5.4-2.6 6-5.8"
+        fill="none"
+        stroke="rgba(0,0,0,0.28)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 6h22v15.5c0 3.4-2.3 5.9-6.2 6.7L5 28z"
+        fill="var(--pg-note)"
+        stroke="var(--pg-note-line)"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      {/* 들린 귀퉁이 — 뒷면이 비친다 */}
+      <path d="M27 21.5c-2.6.2-5 1.6-6.2 6.7 3.9-.8 6.2-3.3 6.2-6.7z" fill="var(--pg-note-fold)" />
+      <rect
+        x="10.5"
+        y="2.6"
+        width="11"
+        height="5"
+        rx="0.6"
+        fill="var(--pg-tape)"
+        opacity="0.92"
+        transform="rotate(-5 16 5)"
+      />
+    </svg>
   );
 }

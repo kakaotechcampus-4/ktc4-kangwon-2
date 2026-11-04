@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentUser } from "@/lib/api/auth";
 import {
   getEvaluationChecklist,
@@ -9,37 +9,15 @@ import {
   type EvaluationChecklist as Checklist,
   type SelfCheckIndicator,
 } from "@/lib/api/evaluation";
-import { useClientState } from "@/lib/hooks/use-client-state";
 import { Message, ws } from "./WorkspaceUI";
 import EvaluationAuto from "./EvaluationAuto";
 import EvaluationSelfCheck from "./EvaluationSelfCheck";
-import EvaluationFiles from "./EvaluationFiles";
-import {
-  TEACHER_DOCS,
-  readChecks,
-  withFound,
-  writeChecks,
-  type Scan,
-} from "@/lib/workspace/evaluation-files";
+import EvaluationSheet, { EvaluationToday, FoldMark, sheetRows } from "./EvaluationSheet";
+import { readChecks, withFound, writeChecks, type Scan } from "@/lib/workspace/evaluation-files";
 import styles from "./Evaluation.module.css";
 
-const TABS = ["docs", "files", "self"] as const;
-type Tab = (typeof TABS)[number];
-
-/** 고른 탭은 주소(?tab=)에 남긴다. 새로고침하거나 다른 화면에 다녀와도 같은 탭이 열린다. */
-function readTab(): Tab {
-  if (typeof window === "undefined") return "docs";
-  const tab = new URLSearchParams(window.location.search).get("tab");
-  return TABS.find((t) => t === tab) ?? "docs";
-}
-
 /** 지표와 자체평가 체크는 서버(api-spec §12)에서 온다. 이 브라우저에 두는 것은 서류 점검 체크(항목 id)뿐이다. */
-export default function EvaluationChecklist({
-  refresh,
-}: {
-  /** 화면 머리의 「현황 새로고침」이 올리는 수. 바뀌면 다시 불러온다. */
-  refresh: number;
-}) {
+export default function EvaluationChecklist() {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [centerId, setCenterId] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -50,9 +28,7 @@ export default function EvaluationChecklist({
   // 서류 점검 체크(항목 id 만). 원 · 학년도를 안 뒤에 이 브라우저에서 읽는다.
   const [fileChecks, setFileChecks] = useState<string[]>([]);
   const [reload, setReload] = useState(0);
-  const [tab, setTab] = useClientState<Tab>(readTab, "docs");
   const running = useRef(false);
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,7 +51,7 @@ export default function EvaluationChecklist({
       }
     })();
     return () => controller.abort();
-  }, [reload, refresh]);
+  }, [reload]);
 
   async function check(element: string, checked: boolean) {
     if (centerId === null || running.current) return;
@@ -120,28 +96,6 @@ export default function EvaluationChecklist({
     saveFileChecks(withFound(fileChecks, result));
   }
 
-  function choose(next: Tab) {
-    setTab(next);
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", next);
-    window.history.replaceState(null, "", url);
-  }
-
-  // 탭은 화살표 · Home · End 로 옮긴다(WAI-ARIA Tabs).
-  function moveTab(e: KeyboardEvent, index: number) {
-    const keys: Record<string, number> = {
-      ArrowRight: index + 1,
-      ArrowLeft: index - 1,
-      Home: 0,
-      End: TABS.length - 1,
-    };
-    if (!(e.key in keys)) return;
-    e.preventDefault();
-    const next = (keys[e.key] + TABS.length) % TABS.length;
-    choose(TABS[next]);
-    tabRefs.current[next]?.focus();
-  }
-
   if (!checklist) {
     return (
       <>
@@ -161,104 +115,62 @@ export default function EvaluationChecklist({
   const selfs = checklist.items.filter(
     (item): item is SelfCheckIndicator => item.kind === "SELF_CHECK",
   );
-  const supported = autos.filter((item) => item.verdict === "SUPPORTED").length;
   const checked = selfs.reduce((sum, item) => sum + item.progress.checked, 0);
   const total = selfs.reduce((sum, item) => sum + item.progress.total, 0);
-  // 서류 점검 칸은 체크리스트를 센다 — 이름으로 찾아 자동 체크한 것과 교사가 직접 체크한 것을 함께.
-  const filesDone = TEACHER_DOCS.filter((d) => fileChecks.includes(`doc:${d.id}`)).length;
-  // 다 채운 칸은 숫자 대신 「✓ 완료」. 아래 줄은 무엇을 채웠는지만 말한다 — 평가 통과가 아니다(ADR-022).
-  const DONE = "✓ 완료";
-  const tiles: Record<Tab, [label: string, value: string, sub: string]> = {
-    docs: [
-      "문서로 확인하는 평가항목",
-      autos.length && supported === autos.length ? DONE : `${supported} / ${autos.length}`,
-      autos.every((item) => item.verdict === "NONE")
-        ? "아직 확정된 문서가 없어요. 문서를 확정하면 여기서 세요"
-        : supported === autos.length
-          ? "기준 건수를 채웠어요"
-          : `보완 필요 ${autos.length - supported}개`,
-    ],
-    files: [
-      "서류 점검",
-      filesDone === TEACHER_DOCS.length ? DONE : `${filesDone} / ${TEACHER_DOCS.length}`,
-      filesDone === TEACHER_DOCS.length
-        ? "선생님 서류를 다 챙겼어요 · 내용은 직접 확인"
-        : `챙길 서류 ${TEACHER_DOCS.length - filesDone}개`,
-    ],
-    self: [
-      "자체평가",
-      total && checked === total ? DONE : `${checked} / ${total}`,
-      checked < total ? `확인할 평가요소 ${total - checked}개` : "모두 확인했어요",
-    ],
-  };
 
+  const rows = sheetRows(autos, scan, fileChecks);
+  const basis = `${checklist.school_year}학년도${autos[0] ? ` · ${autos[0].period.to}까지 확정한 문서 기준` : ""}`;
+
+  /*
+   * 화면은 서류 한 장이 중심이다. 평가 당일 교사가 꺼내는 단위가 서류여서다.
+   * 왼쪽에 「오늘 몇 가지가 비었나」와 폴더 고르기를 두고, 오른쪽에 서류 한 장을 편다 —
+   * 일과 기록 · 주간 기록과 같은 짜임이다. 평가항목별 보기와 자체평가는 접어 둔다.
+   */
   return (
-    <div className={ws.stack}>
-      <p className={styles.basis}>
-        {checklist.school_year}학년도
-        {autos[0] && ` · ${autos[0].period.to}까지 확정한 문서 기준`}
-      </p>
-      <Message error>{error}</Message>
-      <div role="tablist" aria-label="평가 점검 보기" className={styles.tabs}>
-        {TABS.map((id, index) => (
-          <button
-            key={id}
-            ref={(node) => {
-              tabRefs.current[index] = node;
-            }}
-            type="button"
-            role="tab"
-            id={`eval-tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`eval-panel-${id}`}
-            tabIndex={tab === id ? 0 : -1}
-            className={`${styles.tab} ${styles[id]}`}
-            onClick={() => choose(id)}
-            onKeyDown={(e) => moveTab(e, index)}
-          >
-            <span className={styles.tabLabel}>{tiles[id][0]}</span>
-            <span className={styles.tabValue}>{tiles[id][1]}</span>
-            <span className={styles.tabSub}>{tiles[id][2]}</span>
-          </button>
-        ))}
-      </div>
-      <div
-        role="tabpanel"
-        id="eval-panel-docs"
-        aria-labelledby="eval-tab-docs"
-        hidden={tab !== "docs"}
-      >
-        <EvaluationAuto items={autos} onImported={() => setReload((n) => n + 1)} />
-      </div>
-      <div
-        role="tabpanel"
-        id="eval-panel-files"
-        aria-labelledby="eval-tab-files"
-        hidden={tab !== "files"}
-      >
-        {centerId !== null && (
-          <EvaluationFiles
-            scan={scan}
-            onScan={scanned}
-            checks={fileChecks}
-            onToggle={(id, on) =>
-              saveFileChecks(on ? [...fileChecks, id] : fileChecks.filter((v) => v !== id))
-            }
-          />
-        )}
-      </div>
-      <div
-        role="tabpanel"
-        id="eval-panel-self"
-        aria-labelledby="eval-tab-self"
-        hidden={tab !== "self"}
-      >
-        <EvaluationSelfCheck
-          items={selfs}
-          savedAt={savedAt}
-          initiallyOpen={initiallyOpen}
-          onCheck={check}
+    <div className={`${ws.grid} ${styles.layout}`}>
+      <div className={ws.side}>
+        <EvaluationToday
+          rows={rows}
+          basis={basis}
+          scan={scan}
+          onScan={scanned}
+          onRecount={() => setReload((n) => n + 1)}
         />
+      </div>
+      <div className={ws.stack}>
+        <Message error>{error}</Message>
+        <EvaluationSheet
+          rows={rows}
+          scanned={!!scan}
+          checks={fileChecks}
+          onToggle={(id, on) =>
+            saveFileChecks(on ? [...fileChecks, id] : fileChecks.filter((v) => v !== id))
+          }
+          onImported={() => setReload((n) => n + 1)}
+        />
+        <details className={styles.fold} aria-label="평가항목별로 보기">
+          <summary>
+            <FoldMark />
+            평가항목별로 보기 · {autos.map((item) => item.indicator).join(" · ")}
+          </summary>
+          <div className={styles.foldBody}>
+            <EvaluationAuto items={autos} onImported={() => setReload((n) => n + 1)} />
+          </div>
+        </details>
+        <details className={styles.fold} aria-label="현장에서 보는 것 직접 확인">
+          <summary>
+            <FoldMark />
+            현장에서 보는 것 직접 확인 · {checked} / {total}
+          </summary>
+          <div className={styles.foldBody}>
+            <EvaluationSelfCheck
+              items={selfs}
+              savedAt={savedAt}
+              initiallyOpen={initiallyOpen}
+              onCheck={check}
+            />
+          </div>
+        </details>
       </div>
     </div>
   );

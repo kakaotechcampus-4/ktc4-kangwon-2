@@ -4,11 +4,26 @@ import { useState } from "react";
 import { DOCUMENT_KINDS, today, validPeriod } from "@/lib/workspace/model";
 import { importDocument, type EvidenceNotice } from "@/lib/api/documents";
 import { FORM_EXTENSIONS, parseForm, tableText } from "@/lib/api/forms";
-import { isUnauthenticated } from "@/lib/api/client";
+import { invalidFields, isUnauthenticated } from "@/lib/api/client";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { Message, useClasses, ws } from "./WorkspaceUI";
 import styles from "./Evaluation.module.css";
+
+/**
+ * 서버가 짚은 칸 → 교사가 읽을 말. 전에는 「입력값을 확인해주세요」 한 줄만 떠서 어느 칸이
+ * 틀렸는지 몰랐다(멘토 12주차 리뷰 · 평가 점검 2).
+ */
+const WHY: Record<string, string> = {
+  child_id: "영유아 평가는 아이를 한 명 골라야 해요.",
+  end: "일일 보육일지는 하루짜리예요. 날짜 하나만 골라 주세요.",
+  start: "시작일이 종료일보다 늦어요.",
+  body: "파일에서 글자를 읽지 못했어요. 스캔한 PDF 는 글자가 없어 읽을 수 없어요.",
+  title: "파일 이름이 너무 길어요. 200자 안으로 바꿔 주세요.",
+  class_id: "반을 다시 골라 주세요.",
+};
+/** DB 칸이 200자다. 파일 이름이 더 길면 앞부분만 제목으로 쓴다. */
+const TITLE_MAX = 200;
 
 /** 한글 파일은 서버(§8 parse)가, 나머지는 화면 서버(/api/templates/extract)가 글자를 뽑는다. */
 async function readText(file: File) {
@@ -50,6 +65,9 @@ export default function EvidenceImport({
   // 등록은 됐지만 교사가 알아야 하는 것 (§11). 막지 않고 알리기만 한다.
   const [notices, setNotices] = useState<EvidenceNotice[]>([]);
   const classroom = classes.find((c) => c.id === classId);
+  // 일일 보육일지는 하루 · 반 전체 문서, 영유아 평가는 아이 한 명의 문서다(§11). 칸도 그대로 맞춘다.
+  const daily = kind === "dailyLog";
+  const periodEnd = daily ? start : end;
 
   async function pick(file?: File) {
     if (!file) return;
@@ -68,8 +86,12 @@ export default function EvidenceImport({
   }
 
   async function register() {
-    if (!classroom || !text || !validPeriod(start, end) || !reviewed) {
+    if (!classroom || !text || !validPeriod(start, periodEnd) || !reviewed) {
       setMessage("반 · 작성 기간과 원문 확인 여부를 확인해주세요.");
+      return;
+    }
+    if (!daily && !childId) {
+      setMessage(WHY.child_id);
       return;
     }
     setBusy(true);
@@ -79,10 +101,10 @@ export default function EvidenceImport({
       const { notices } = await importDocument({
         kind,
         classId,
-        childId,
+        childId: daily ? "" : childId,
         start,
-        end,
-        title: filename,
+        end: periodEnd,
+        title: filename.slice(0, TITLE_MAX),
         body: text,
       });
       setNotices(notices);
@@ -95,12 +117,15 @@ export default function EvidenceImport({
       );
       onImported();
     } catch (e) {
+      const why = invalidFields(e, WHY);
       setMessage(
         isUnauthenticated(e)
           ? "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요."
-          : e instanceof Error
-            ? e.message
-            : "등록하지 못했어요.",
+          : why.length
+            ? why.join(" ")
+            : e instanceof Error
+              ? e.message
+              : "등록하지 못했어요.",
       );
     } finally {
       setBusy(false);
@@ -114,25 +139,27 @@ export default function EvidenceImport({
         않아요. 한글 파일은 표 안의 글만 읽어요. 등록했다고 평가 기준을 채운 것은 아니에요.
       </p>
       <div className={ws.row}>
+        {!daily && (
+          <label className={ws.field}>
+            아동
+            <select
+              value={childId}
+              onChange={(e) => {
+                setChildId(e.target.value);
+                setReviewed(false);
+              }}
+            >
+              <option value="">아이 고르기</option>
+              {classroom?.children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className={ws.field}>
-          아동
-          <select
-            value={childId}
-            onChange={(e) => {
-              setChildId(e.target.value);
-              setReviewed(false);
-            }}
-          >
-            <option value="">반 전체</option>
-            {classroom?.children.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={ws.field}>
-          시작일
+          {daily ? "날짜" : "시작일"}
           <input
             type="date"
             value={start}
@@ -142,17 +169,19 @@ export default function EvidenceImport({
             }}
           />
         </label>
-        <label className={ws.field}>
-          종료일
-          <input
-            type="date"
-            value={end}
-            onChange={(e) => {
-              setEnd(e.target.value);
-              setReviewed(false);
-            }}
-          />
-        </label>
+        {!daily && (
+          <label className={ws.field}>
+            종료일
+            <input
+              type="date"
+              value={end}
+              onChange={(e) => {
+                setEnd(e.target.value);
+                setReviewed(false);
+              }}
+            />
+          </label>
+        )}
       </div>
       <label className={ws.field}>
         파일 · 한글(HWP · HWPX) / PDF / DOCX / TXT / MD / CSV · 5MB

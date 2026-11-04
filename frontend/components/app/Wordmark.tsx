@@ -9,8 +9,10 @@ import Link from "next/link";
  * 왼쪽에 쓰던 ✳ 마크 자리에는 네모 칸용 **「S.」 아이콘**이 선다. 브라우저 탭·앱
  * 아이콘(`app/icon.svg`)과 같은 표시다 — 쌤플의 표시는 이 워드마크와 「S.」 둘뿐이다.
  *
- * 어두운 사이드바 위(`tone="rail"`)에서는 글자색만 바꾼다 — 밝은 타일을 깔면
- * 사이드바에 네모 하나가 더 생겨 메뉴보다 먼저 눈에 띈다.
+ * 어두운 사이드바 위(`tone="rail"`)에서도 보라를 쓴다. 다만 로고 보라
+ * (`--pg-primary-deep`)는 먹색 위에서 2.6:1 이라 읽히지 않아, 연보라
+ * (`--pg-primary-tint-line`, 8.6:1)를 쓴다. 밝은 타일은 깔지 않는다 — 사이드바에
+ * 네모 하나가 더 생겨 메뉴보다 먼저 눈에 띈다.
  */
 export function Wordmark({
   href = "/",
@@ -37,7 +39,7 @@ export function Wordmark({
         <span
           className={`block font-bold leading-none tracking-[-0.05em] ${
             big ? "text-[27px]" : tiny ? "text-[16px]" : "text-[23px]"
-          } ${rail ? "text-rail-ink" : "text-primary-deep"}`}
+          } ${rail ? "text-primary-tint-line" : "text-primary-deep"}`}
         >
           Ssample<span className="text-peach-strong">.</span>
         </span>
@@ -45,7 +47,7 @@ export function Wordmark({
           <span
             className={`block font-display font-bold leading-tight ${
               big ? "text-[17px]" : "text-[15px]"
-            } ${rail ? "text-rail-ink-soft" : "text-ink-soft"}`}
+            } ${rail ? "text-primary-tint-line" : "text-ink-soft"}`}
           >
             쌤플
           </span>
@@ -66,7 +68,7 @@ export function SsampleMark({ size = 34, tone }: { size?: number; tone?: "rail" 
   // 면(rail-card)과 같은 색을 쓰고 글자만 밝힌다.
   const skin =
     tone === "rail"
-      ? "border border-rail-card-line bg-rail-card text-rail-ink"
+      ? "border border-rail-card-line bg-rail-card text-primary-tint-line"
       : "bg-cream text-primary-deep";
   return (
     <span

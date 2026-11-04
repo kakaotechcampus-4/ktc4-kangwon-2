@@ -308,27 +308,23 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await dateInput.fill(yesterday.toISOString().slice(0, 10));
   const row = page.locator('[aria-label="일과 목록"] article').first();
   await row.getByLabel("일과 이름").fill("오전 실내놀이");
-  for (const [label, hour] of [
-    ["시작", "09"],
-    ["종료", "10"],
-  ]) {
-    await row.getByLabel(`${label} 시`, { exact: true }).selectOption(hour);
-    await row.getByLabel(`${label} 분`, { exact: true }).selectOption("00");
-  }
-  await row.getByLabel("하려던 것").fill("자연물과 블록을 제공한다.");
+  // 시작 · 종료 칸은 시계판과 함께 접혀 있다. 열고 고친 뒤 닫는다.
+  await row.getByRole("button", { name: /시계로 시간 고르기/ }).click();
+  // 깔아 둔 하루의 다른 줄과 겹치면 겹친 시간 알림이 저장을 막는다. 이 줄 자리(07:30~09:00) 안에서 고친다.
+  await row.getByLabel("시작 시간", { exact: true }).fill("07:40");
+  await row.getByLabel("종료 시간", { exact: true }).fill("08:50");
+  await row.getByRole("button", { name: "닫기", exact: true }).click();
+  // 「계획한 것」은 접혀 있다.
+  await row.locator("details").locator("summary").click();
+  await row.getByLabel("계획한 것").fill("자연물과 블록을 제공한다.");
   await row
     .getByLabel("실제로 한 것")
     .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
-  await page
-    .getByRole("group", { name: "문서에 사용할 일과" })
-    .getByRole("checkbox")
-    .first()
-    .check();
+  // 「오늘 일지 만들기」는 저장하고 이 화면에서 바로 초안을 만든다(보관함으로 가지 않는다).
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "초안 만들기", exact: true }).click();
+  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   const generated = await response;
   expect(generated.status()).toBe(201);
   const created = await generated.json();
@@ -336,7 +332,8 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     page.getByRole("link", { name: "일과 기록에서 고쳐 주세요 →", exact: true }),
   ).toHaveAttribute("href", /\/routines\?date=.*&class_id=\d+/);
   expect(created.child_id).toBeNull();
-  await reopenCreated(page, created);
+  // 일지는 칠판 밑에 바로 펼쳐진다. 그 자리에서 확정 · 내려받기까지 간다.
+  await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
   await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
   await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
@@ -347,6 +344,8 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     "유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.",
   ]);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
+  // 화면 본문은 서류 한 장이고, 평가항목별 보기는 접혀 있다.
+  await page.getByText(/^평가항목별로 보기/).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),
   ).toContainText("집계에 들어간 문서 1건");
@@ -435,22 +434,23 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
 }, info) => {
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
-  await page.getByRole("tab", { name: /^자체평가/ }).click();
+  // 현장에서 보는 19가지는 접혀 있다.
+  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
+  const selfCheck = page.getByRole("group", { name: "현장에서 보는 것 직접 확인" });
   // 안 끝난 첫 평가항목만 펼쳐져 있다. 접힌 평가항목을 하나씩 펼쳐 19개를 센다.
   // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다. 영역(section) 밖의 옛 사전점검 접기는 열지 않는다.
-  const closed = page
-    .getByRole("tabpanel", { name: /^자체평가/ })
-    .locator("section details:not([open]) > summary");
+  const closed = selfCheck.locator("section details:not([open]) > summary");
   while (await closed.count()) await closed.first().click();
-  await expect(page.getByRole("checkbox")).toHaveCount(19);
+  await expect(selfCheck.getByRole("checkbox")).toHaveCount(19);
   const checklist = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(checklist.items).toHaveLength(9);
   const first = checklist.items.find((item: { kind: string }) => item.kind === "SELF_CHECK")
     .elements[0];
-  const check = page.getByRole("checkbox").first();
+  const check = selfCheck.getByRole("checkbox").first();
   await check.check();
   await expect(page.getByText(/저장됨/)).toBeVisible();
   await page.reload();
+  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
   await expect(check).toBeChecked();
   const saved = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(

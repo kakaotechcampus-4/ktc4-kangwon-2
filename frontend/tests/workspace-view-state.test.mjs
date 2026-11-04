@@ -159,7 +159,10 @@ const between = (source, from, to) => {
 };
 
 test("관찰 기록 빈 상태 제목은 계약 문구 그대로다", () => {
-  assert.ok(records().includes('<Empty title="아직 남긴 기록이 없어요">'));
+  // 줄바꿈까지 맞추지 않는다 — `art` 같은 prop 이 붙으면 형식이 달라진다.
+  const source = records();
+  assert.ok(source.includes("<Empty"), "Empty 를 쓰지 않는다");
+  assert.ok(source.includes('title="아직 남긴 기록이 없어요"'), "계약 문구가 아니다");
 });
 
 test("두 화면이 로딩·빈 상태·오류를 직접 분기하지 않는다", () => {
@@ -362,6 +365,9 @@ function documentsHarness({
     "./DailyLogSources": { default: "daily-log-sources", __esModule: true },
     "./DocumentArchivePreview": { default: "preview", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
+    "./use-server-document": {
+      messageFor: (e) => (e instanceof Error ? e.message : "요청을 처리하지 못했어요."),
+    },
     // 보관함 탐색(반 → 종류 → 기간)은 자기 테스트가 따로 본다. 여기서는 목록과
     // 선택 문서 상세만 보므로, 넘겨받은 `detail` 만 그대로 그려 준다.
     "./DocumentArchiveView": {
@@ -551,6 +557,13 @@ test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 �
     "@/lib/api/monthly": {},
     "@/lib/api/weekly": {},
     "./DocumentArchivePreview": { PlanArchivePreview: "plan-preview" },
+    // 같은 원 남의 반은 제 파일이 본다. 여기서는 내 반 보관함만 그린다.
+    "./ClassAccessPanels": {
+      ACCESS_LABEL: {},
+      ForeignClassPanel: "foreign-class",
+      ReceivedPanel: "received-requests",
+      useClassAccess: () => ({ others: [], received: [], reload() {} }),
+    },
     "./WorkspaceUI": { Message: "message", ws: {} },
     "./DocumentArchiveArt": new Proxy({}, { get: () => "art" }),
     "./DocumentArchive.module.css": {

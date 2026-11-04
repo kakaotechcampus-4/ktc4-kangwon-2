@@ -17,7 +17,8 @@ const PAGE_NAMES: [prefix: string, name: string][] = [
   ["/plans", "계획안"],
   ["/templates", "계획안"],
   ["/trends", "계획안"],
-  ["/quick-records", "주간 기록"],
+  ["/routines", "일과 기록"],
+  ["/weekly-records", "주간 기록"],
   ["/records/children", "아이별 기록"],
   ["/records", "관찰 기록"],
   ["/compare", "관찰 기록"],
@@ -51,7 +52,7 @@ export default function WorkspaceTopBar() {
     () => "",
   );
   return (
-    <header className="sticky top-0 z-20 flex h-[60px] items-center justify-between border-b border-line bg-cream/90 px-4 backdrop-blur lg:px-8">
+    <header className="sticky top-0 z-20 flex h-[60px] items-center justify-between border-b border-line bg-cream px-4 lg:px-8">
       <div className="flex items-center gap-3 text-[13px]">
         <Link
           href="/"

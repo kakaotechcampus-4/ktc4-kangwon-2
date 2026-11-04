@@ -13,7 +13,7 @@ import {
   type SavedDocument,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
-import { isUnauthenticated, invalidFields } from "@/lib/api/client";
+import { invalidFields } from "@/lib/api/client";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import {
@@ -46,6 +46,7 @@ import DocumentEditor from "./DocumentEditor";
 import DocumentArchivePreview from "./DocumentArchivePreview";
 import DocumentArchiveView, { type ArchiveDoc } from "./DocumentArchiveView";
 import { createSelection } from "./document-selection";
+import { messageFor } from "./use-server-document";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -73,24 +74,44 @@ type Candidate = { id: string; date: string; label: string };
 /** 렌더마다 새 배열이 생기면 useMemo 가 매번 다시 돈다. */
 const NO_ROUTINES: RoutineLine[] = [];
 
-function messageFor(error: unknown) {
-  if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
-  return error instanceof Error ? error.message : "요청을 처리하지 못했어요.";
-}
-
 export default function DocumentsPage() {
   const { data, error, save } = useWorkspace();
   const [entry] = useClientState(
-    () =>
-      typeof window === "undefined"
-        ? { date: "", classId: null, daily: false, assessment: false }
-        : {
-            ...routinesScope(window.location.search),
-            daily: new URLSearchParams(window.location.search).get("kind") === "dailyLog",
-            // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
-            assessment: new URLSearchParams(window.location.search).get("kind") === "assessment",
-          },
-    { date: "", classId: null as number | null, daily: false, assessment: false },
+    () => {
+      const blank = {
+        date: "",
+        classId: null,
+        daily: false,
+        assessment: false,
+        weekly: null,
+        docId: "",
+      };
+      if (typeof window === "undefined") return blank;
+      const query = new URLSearchParams(window.location.search);
+      const kind = query.get("kind");
+      const day = (name: string) => {
+        const value = query.get(name) ?? "";
+        return validDate(value) ? value : "";
+      };
+      return {
+        ...routinesScope(window.location.search),
+        daily: kind === "dailyLog",
+        // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
+        assessment: kind === "assessment",
+        // 주간 기록 화면의 「주간 일지 만들기」가 여는 길. 보고 있던 주를 그대로 받는다.
+        weekly: kind === "weeklyLog" ? { start: day("start"), end: day("end") } : null,
+        // 다른 화면에서 문서 하나를 바로 열 때. 모르는 id 면 보관함을 연다.
+        docId: documentServerId(query.get("id") ?? "") === null ? "" : (query.get("id") as string),
+      };
+    },
+    {
+      date: "",
+      classId: null as number | null,
+      daily: false,
+      assessment: false,
+      weekly: null as { start: string; end: string } | null,
+      docId: "",
+    },
   );
   const [mode, setMode] = useState<"library" | "create">("library");
   const [editingId, setEditingId] = useState("");
@@ -132,6 +153,16 @@ export default function DocumentsPage() {
     setEnd(entry.date || today());
     setSelected([]);
   }
+  const [weeklyPrefilled, setWeeklyPrefilled] = useState(false);
+  if (entry.weekly && !weeklyPrefilled) {
+    setWeeklyPrefilled(true);
+    setMode("create");
+    setKind("weeklyLog");
+    setChildId("");
+    if (entry.weekly.start) setStart(entry.weekly.start);
+    if (entry.weekly.end) setEnd(entry.weekly.end);
+    setSelected([]);
+  }
   const [assessmentPrefilled, setAssessmentPrefilled] = useState(false);
   if (entry.assessment && !assessmentPrefilled) {
     setAssessmentPrefilled(true);
@@ -162,6 +193,14 @@ export default function DocumentsPage() {
   );
   const chosen = useSyncExternalStore(selection.subscribe, selection.get, selection.get);
   const active = chosen.active;
+
+  // 주소로 받은 문서를 한 번만 연다. select 는 바깥 저장소를 건드려 그리는 중에 부르지 않는다.
+  const openedFromUrl = useRef(false);
+  useEffect(() => {
+    if (!entry.docId || openedFromUrl.current) return;
+    openedFromUrl.current = true;
+    selection.select(entry.docId, documentServerId(entry.docId));
+  }, [entry.docId, selection]);
 
   useEffect(() => {
     const mine = ++latestList.current;

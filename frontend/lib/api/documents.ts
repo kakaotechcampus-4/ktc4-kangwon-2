@@ -1,5 +1,5 @@
 /** 일지 계열 문서 API (docs/api-spec.md §11). id 변환을 여기서 끝내고 화면에는 화면 id 만 준다. */
-import { apiRequest, ApiError } from "./client";
+import { apiRequest, errorCode } from "./client";
 import { downloadHwpx } from "./export";
 import {
   CLASS_PREFIX,
@@ -498,13 +498,7 @@ export async function reconfirmDocument(
 }
 
 /** 409 셋을 갈라 본다 — 같은 status 라도 교사가 할 일이 다르다. */
-function code(error: unknown): string | null {
-  if (!(error instanceof ApiError)) return null;
-  const body = error.body as { error?: { code?: unknown } } | null;
-  return typeof body === "object" && body !== null && typeof body.error?.code === "string"
-    ? body.error.code
-    : null;
-}
+const code = errorCode;
 export const isGateBlocked = (error: unknown) => code(error) === "GATE_BLOCKED";
 export const isAlreadyConfirmed = (error: unknown) => code(error) === "ALREADY_CONFIRMED";
 export const isStaleWrite = (error: unknown) => code(error) === "STALE_WRITE";
