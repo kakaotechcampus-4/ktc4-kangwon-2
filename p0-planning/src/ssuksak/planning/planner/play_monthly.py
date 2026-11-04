@@ -28,8 +28,8 @@ from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
 from .weekly import unsupported_facts
 
-PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v4"
-PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v4"
+PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v5"
+PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v5"
 CONTENT_MIN, CONTENT_MAX = 1, 3  # content ids per activity (first contract proposal)
 ACTIVITY_SECTIONS = ("together", "free_play")
 

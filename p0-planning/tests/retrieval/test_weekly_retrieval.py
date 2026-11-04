@@ -106,6 +106,25 @@ def test_at_most_two_per_institution_and_top_k():
     assert sum(record_id in {"ev_1", "ev_2", "ev_3"} for record_id in found) == 2
 
 
+def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
+    records = tuple(_record(f"ev_{i:02}", institution=f"I{i}") for i in range(12)) + (
+        _record("ev_99", text="놀이터 약속", institution="parent"),
+        _record("ev_80", month=10),
+        _record("ev_81", label="이야기 나누기"),
+        _record("ev_82", age_scope=()),
+        _record("ev_83", age_scope=(5,)),
+        _record("ev_84", quality=ExtractionQuality.NEEDS_REVIEW),
+    )
+    assert "ev_99" not in _search(records)
+    found = _search(records, preferred_refs=("ev_99", "ev_80", "ev_81", "ev_82", "ev_83", "ev_84"))
+    assert found[0] == "ev_99"
+    assert len(found) == 10
+    assert not set(found) & {"ev_80", "ev_81", "ev_82", "ev_83", "ev_84"}
+    assert _search(records) == _search(records, preferred_refs=())
+    same_source = tuple(_record(f"ev_{i:02}", institution="parent") for i in range(4))
+    assert len(_search(same_source, preferred_refs=("ev_00", "ev_01", "ev_02"))) == 2
+
+
 def test_mixed_age_requests_are_balanced_by_age():
     records = tuple(_record(f"ev_3{i}", age_scope=(3,), institution=f"T{i}") for i in range(3)) + tuple(
         _record(f"ev_4{i}", age_scope=(4,), institution=f"F{i}") for i in range(3)
