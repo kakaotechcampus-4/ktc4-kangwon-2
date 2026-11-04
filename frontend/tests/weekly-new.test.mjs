@@ -36,6 +36,7 @@ const sheet = load("../components/workspace/WeeklySheet.tsx", {
     Cell: ({ id, value }) => React.createElement("span", { "data-cell": id }, value),
     HEAD: "",
     LINE: "",
+    hu: (n) => n,
     Paper,
     TEACHER_HINT: "",
     period: () => "기간",

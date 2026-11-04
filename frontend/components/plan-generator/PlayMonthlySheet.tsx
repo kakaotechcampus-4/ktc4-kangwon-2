@@ -36,7 +36,7 @@ export const Cell = ({
   hint = "비어 있어요",
 }: Pick & { id: string; value: string; hint?: string }) => (
   <span
-    className={`block min-h-[1.5em] whitespace-pre-line px-1.5 py-1 ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
+    className={`block min-h-[1.5em] whitespace-pre-line px-[7px] py-[2px] ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
     data-cell={id}
     {...(onSelect && {
       role: "button",
@@ -64,7 +64,11 @@ export const Cell = ({
 );
 
 export const Band = ({ children }: { children: ReactNode }) => (
-  <div className={`${LINE} ${HATCH} py-1 text-center text-[12px] font-bold`}>[ {children} ]</div>
+  <div
+    className={`${LINE} ${HATCH} flex h-[24px] items-center justify-center text-[13px] font-bold`}
+  >
+    [ {children} ]
+  </div>
 );
 
 /** 주 머리 칸 — 주 색 띠 + 날짜. */
@@ -94,10 +98,14 @@ export const period = (weeks: { start_date: string; end_date: string }[]) =>
     : "";
 
 /**
- * 한 장 용지(폭 780px). `scale` 이 없으면 칸이 좁은 만큼만 줄이고 넓어도 키우지 않는다(확정본 · 크게 보기).
+ * 한 장 용지 — 한글 양식의 실제 크기(A4 59528 HWPUNIT, 연간과 같은 0.01433 px/HWPUNIT).
+ * 좌우 여백 4251 → 61px, 표 폭 50703 → 727px, 본문 9pt → 13px, 제목 22pt → 32px · 13pt → 19px.
+ * `scale` 이 없으면 칸이 좁은 만큼만 줄이고 넓어도 키우지 않는다(확정본 · 크게 보기).
  * 다듬기는 문서 배율 도구(`useSheetZoom`)의 배율을 넘긴다.
  */
-export const PAPER_WIDTH = 780;
+export const PAPER_WIDTH = 853;
+/** HWPUNIT → 화면 px. */
+export const hu = (n: number) => Math.round(n * 0.01433);
 /**
  * 표 칸의 빈 곳을 눌러도 그 칸의 글(Cell)을 고른다(월간 v1 · 놀이 월간 · 주간 공통).
  * 고를 수 있는 Cell(role=button)이 하나뿐인 td 만 — 확정본은 role 이 없어 그대로. 주간 `area` 가 붙은 칸은 그쪽이 받는다.
@@ -114,12 +122,15 @@ export function Paper({
   title,
   sub,
   scale: given,
+  head = 6250,
   children,
 }: {
   label: string;
   title: string;
   sub: string;
   scale?: number;
+  /** 제목 줄 높이(HWPUNIT) — 월간 6250 · 주간 4800. */
+  head?: number;
   children: ReactNode;
 }) {
   const box = useRef<HTMLElement>(null);
@@ -137,15 +148,18 @@ export function Paper({
     <section ref={box} aria-label={label} className="w-full min-w-0">
       <div style={{ zoom: given ?? scale }}>
         <article
-          className="mx-auto w-[780px] bg-white px-8 py-7 text-[12px] leading-snug text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)] [&_td:has([data-cell][role=button])]:cursor-pointer"
+          className="mx-auto w-[853px] bg-white px-[61px] py-[41px] text-[13px] leading-[1.2] text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)] [&_td:has([data-cell][role=button])]:cursor-pointer"
           onClick={pickByCell}
         >
-          <div className={`${LINE} ${HATCH} px-4 pb-1.5 pt-2.5 text-center`}>
-            <h2 className="m-0 text-[22px] font-bold tracking-[-0.5px]">{title}</h2>
-            <div className="text-right text-[13px]">{sub}</div>
+          <div
+            className={`${LINE} ${HATCH} flex flex-col justify-center px-[7px] text-center`}
+            style={{ height: hu(head) }}
+          >
+            <h2 className="m-0 text-[32px] font-bold leading-tight">{title}</h2>
+            <div className="text-right text-[19px] leading-tight">{sub}</div>
           </div>
           {children}
-          <p className="m-0 mt-2 bg-[#e6f3fc] px-3 py-1 text-center text-[10px] leading-snug text-[#3d3a36]">
+          <p className="m-0 mt-[12px] bg-[#e6f3fc] px-3 py-[3px] text-center text-[10px] leading-snug text-[#3d3a36]">
             *예상 놀이 방향은 [2019 개정 누리과정]의 목적에 따라 ‘유아 놀이 중심’ 활동이 진행 될 수
             있도록 융통성 있게 구성되었습니다.
             <br />

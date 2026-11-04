@@ -1057,6 +1057,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
       WeekHead: ({ week }) => jsx("th", { children: week.label }),
       LINE: "line",
       HEAD: "head",
+      hu: (n) => n,
       period: () => "",
       safetyCellId: (weekId) => "safety:" + weekId,
     },

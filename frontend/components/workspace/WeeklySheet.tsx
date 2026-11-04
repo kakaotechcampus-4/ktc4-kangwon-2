@@ -13,6 +13,7 @@ import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import {
   Cell,
   HATCH,
+  hu,
   Paper,
   TEACHER_HINT,
   period,
@@ -58,6 +59,22 @@ const LINE = "border border-[#bde9fd]";
 const HEAD = "bg-[#e1f2fe] font-bold text-[#2b2826]";
 const DAY = "bg-[#ffe0cc] font-bold text-[#2b2826]";
 
+/** 한글 양식(weekly_v1_mon_fri · mon_sat) 줄 높이(HWPUNIT). 요일 칸은 「활동」 줄. 모르는 칸은 가정 연계 높이. */
+const ROW_HU: Record<string, number> = {
+  theme: 2000,
+  focus: 2000,
+  goals: 3800,
+  indoor_play: 11000,
+  group_activity: 8000,
+  outdoor_play: 3900,
+  indoor_alternative: 3900,
+  basic_habit: 3000,
+  safety_education: 3400,
+  special_program: 4500,
+  event_schedule: 2700,
+  family_link: 3500,
+};
+const rowH = (key: string) => ({ height: hu(ROW_HU[key] ?? 3500) });
 /** 양식 줄 이름이 화면 이름과 다른 칸. */
 const ROW: Record<string, string> = { goals: "이번 주 목표", indoor_alternative: "실내 대체놀이" };
 
@@ -154,7 +171,7 @@ export default function WeeklySheet({
   const blocks: ReactNode[][] = [[], [], [], [], []];
   blocks[0].push(
     <tr key="period">
-      <th scope="row" className={`${LINE} ${HEAD} px-1 py-1.5`}>
+      <th scope="row" className={`${LINE} ${HEAD} px-1 py-[2px]`} style={{ height: hu(1800) }}>
         예상 기간
       </th>
       <td colSpan={span} className={`${LINE} px-1.5 py-1`}>
@@ -171,7 +188,8 @@ export default function WeeklySheet({
           <th
             colSpan={span + 1}
             scope="colgroup"
-            className={`${LINE} ${HATCH} py-1 text-[12px] font-bold`}
+            className={`${LINE} ${HATCH} text-[13px] font-bold`}
+            style={{ height: hu(key === "indoor_play" ? 1400 : 1650) }}
           >
             [ {BAND[key]} ]
           </th>
@@ -181,17 +199,17 @@ export default function WeeklySheet({
       const tree = key === "group_activity" && grids?.length === span ? grids : null;
       out.push(
         <tr key={"days:" + key}>
-          <th scope="col" className={`${LINE} ${HEAD} py-0.5`}>
+          <th scope="col" className={`${LINE} ${HEAD}`} style={{ height: hu(1800) }}>
             요일
           </th>
           {days.map((d) => (
-            <th key={d} scope="col" className={`${LINE} ${DAY} py-0.5`}>
+            <th key={d} scope="col" className={`${LINE} ${DAY}`}>
               {DAY_NAMES[d] ?? d}
             </th>
           ))}
         </tr>,
         <tr key={key}>
-          <th scope="row" className={`${LINE} ${HEAD} px-1 py-1.5`}>
+          <th scope="row" className={`${LINE} ${HEAD} px-1 py-[2px]`} style={rowH(key)}>
             {key === "group_activity" || key === "special_program"
               ? "활동"
               : sectionName(key, section.label)}
@@ -201,7 +219,7 @@ export default function WeeklySheet({
             return (
               <td
                 key={d}
-                className={`${LINE} h-[72px] align-top`}
+                className={`${LINE} align-top`}
                 {...area(tree ? tree[i].cell_id : cells.length === 1 ? cells[0].item_id : null)}
               >
                 {tree
@@ -215,7 +233,7 @@ export default function WeeklySheet({
     } else
       out.push(
         <tr key={key}>
-          <th scope="row" className={`${LINE} ${HEAD} px-1 py-1.5`}>
+          <th scope="row" className={`${LINE} ${HEAD} px-1 py-[2px]`} style={rowH(key)}>
             {ROW[key] ?? sectionName(key, section.label)}
           </th>
           <td
@@ -232,13 +250,13 @@ export default function WeeklySheet({
       );
   });
   return (
-    <Paper label="주간계획안 미리보기" title={title} sub={sub} scale={scale}>
+    <Paper label="주간계획안 미리보기" title={title} sub={sub} scale={scale} head={4800}>
       {blocks
         .filter((rows) => rows.length)
         .map((rows, i) => (
-          <table key={i} className="mt-2.5 w-full table-fixed border-collapse">
+          <table key={i} className="mt-[5px] w-full table-fixed border-collapse">
             <colgroup>
-              <col style={{ width: "15%" }} />
+              <col style={{ width: "16.67%" }} />
               {days.map((d) => (
                 <col key={d} />
               ))}
