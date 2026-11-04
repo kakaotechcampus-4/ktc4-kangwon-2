@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createDocument, listDocuments, type DocumentSummary } from "@/lib/api/documents";
 import { routineLocalId, type ApiRoutine } from "@/lib/api/routines";
 import { classServerId } from "@/lib/api/onboarding";
 import { Message } from "./WorkspaceUI";
 import { Icon } from "@/components/app/icons";
+import DocumentEditor from "./DocumentEditor";
+import { useServerDocument } from "./use-server-document";
 
 type From = "dailyLog" | "routine";
 
@@ -45,13 +45,14 @@ export function useWeeklyJournal({
   /** 그 주 일과 기록. 주간 기록 화면이 이미 받아 둔 것을 그대로 쓴다. */
   routines: ApiRoutine[];
 }) {
-  const router = useRouter();
   const [journal, setJournal] = useState<DocumentSummary | null | undefined>(undefined);
   const [dailyLogs, setDailyLogs] = useState<DocumentSummary[]>([]);
   const [from, setFrom] = useState<From>("dailyLog");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  // 펴 놓은 일지. 만들면 바로 펴고, 교사가 접으면 주간 띠가 다시 올라온다.
+  const [openId, setOpenId] = useState("");
 
   const serverClass = classServerId(classId);
 
@@ -96,7 +97,9 @@ export function useWeeklyJournal({
         sourceIds: sources,
         sourceKind: from,
       });
-      router.push(`/documents?id=${made.id}`);
+      setOpenId(made.id);
+      setReload((n) => n + 1);
+      setBusy(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "초안을 만들지 못했습니다.");
       setBusy(false);
@@ -114,6 +117,9 @@ export function useWeeklyJournal({
     busy,
     error,
     make,
+    openId,
+    open: (id: string) => setOpenId(id),
+    close: () => setOpenId(""),
     retry: () => setReload((n) => n + 1),
     /** 반을 서버에서 못 찾으면 이 화면에서 할 수 있는 일이 없다. */
     off: serverClass === null || !weekStart,
@@ -134,7 +140,14 @@ export default function WeeklyJournalCard({
   weekEnd: string;
 }) {
   const { doc: journal, from, setFrom, dailyLogs, routineSources, sources, busy, error } = state;
+  // 일지는 이 화면에서 끝까지 쓴다 — 문서 보관함은 다 쓴 문서가 쌓이는 곳이지 쓰는 곳이 아니다.
+  const edit = useServerDocument(state.openId, {
+    onChanged: state.retry,
+    // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
+    onRemoved: state.close,
+  });
   if (state.off) return null;
+  const open = !!state.openId;
 
   return (
     <section className="mb-6 rounded-sm border border-line bg-paper p-5 shadow-pg-card">
@@ -160,13 +173,14 @@ export default function WeeklyJournalCard({
         </div>
 
         {journal ? (
-          <Link
-            href={`/documents?id=${journal.id}`}
+          <button
+            type="button"
+            onClick={() => (open ? state.close() : state.open(journal.id))}
             className="inline-flex min-h-11 items-center gap-2 rounded-md border border-primary-tint-line bg-primary-tint px-3 text-xs font-semibold text-primary-ink"
           >
             <Icon name="doc" className="h-4 w-4" />
-            {journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
-          </Link>
+            {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
+          </button>
         ) : journal === null ? (
           <label className="flex items-center gap-2 text-xs text-ink-soft">
             근거
@@ -200,6 +214,23 @@ export default function WeeklyJournalCard({
           <button type="button" className="text-xs font-semibold text-primary" onClick={state.retry}>
             다시 불러오기
           </button>
+        </div>
+      )}
+
+      {open && (
+        <div className="mt-5 border-t border-line pt-5">
+          <Message error={edit.status === "error"}>
+            {edit.status === "error" ? edit.error : edit.status === "loading" ? "일지를 불러오는 중…" : ""}
+          </Message>
+          {edit.doc && (
+            <DocumentEditor
+              key={edit.doc.id}
+              initial={edit.doc}
+              server={edit.server}
+              /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
+              onSave={() => true}
+            />
+          )}
         </div>
       )}
     </section>

@@ -13,7 +13,7 @@ import {
   type SavedDocument,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
-import { isUnauthenticated, invalidFields } from "@/lib/api/client";
+import { invalidFields } from "@/lib/api/client";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import {
@@ -46,6 +46,7 @@ import DocumentEditor from "./DocumentEditor";
 import DocumentArchivePreview from "./DocumentArchivePreview";
 import DocumentArchiveView, { type ArchiveDoc } from "./DocumentArchiveView";
 import { createSelection } from "./document-selection";
+import { messageFor } from "./use-server-document";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -72,11 +73,6 @@ const FIELD_INPUT: Record<string, string> = {
 type Candidate = { id: string; date: string; label: string };
 /** 렌더마다 새 배열이 생기면 useMemo 가 매번 다시 돈다. */
 const NO_ROUTINES: RoutineLine[] = [];
-
-function messageFor(error: unknown) {
-  if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
-  return error instanceof Error ? error.message : "요청을 처리하지 못했어요.";
-}
 
 export default function DocumentsPage() {
   const { data, error, save } = useWorkspace();

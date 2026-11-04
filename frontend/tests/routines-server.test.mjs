@@ -3131,6 +3131,19 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
     "next/navigation": { useRouter: () => ({ push: (href) => calls.push({ op: "push", href }) }) },
     "./WorkspaceUI": { Message: "message" },
     "@/components/app/icons": { Icon: "icon" },
+    // 편집기 자체는 보관함 테스트가 본다. 여기서는 열렸는지만 본다.
+    "./DocumentEditor": { __esModule: true, default: "document-editor" },
+    "./use-server-document": {
+      useServerDocument: (id) => {
+        calls.push({ op: "edit", id });
+        return {
+          doc: id ? { id, sections: [] } : null,
+          status: "ready",
+          error: "",
+          server: undefined,
+        };
+      },
+    },
     "@/lib/api/onboarding": { classServerId: (id) => (id === "class-1" ? 7 : null) },
     "@/lib/api/routines": { routineLocalId: (id) => `routine-${id}` },
     "@/lib/api/documents": {
@@ -3220,7 +3233,16 @@ test("근거를 일과 기록으로 고르면 활동실행이 있는 일과만 �
   assert.deepEqual(created.sourceIds, ["routine-11", "routine-13"]);
   assert.equal(created.start, "2026-11-02");
   assert.equal(created.end, "2026-11-08");
-  assert.ok(card.calls.some((c) => c.op === "push" && c.href === "/documents?id=doc-99"));
+});
+
+test("만든 일지는 문서 보관함으로 보내지 않고 이 화면에서 편집기를 연다", async (t) => {
+  const card = journalCard(t, { dailies: [{ id: "doc-1", start: "2026-11-03" }] });
+  await card.view.flush();
+  makeButton(card.view).props.onClick();
+  await card.view.flush();
+  assert.equal(card.calls.some((c) => c.op === "push"), false);
+  assert.ok(card.calls.some((c) => c.op === "edit" && c.id === "doc-99"), JSON.stringify(card.calls));
+  assert.ok(all(card.view.tree()).some((n) => n?.type === "document-editor"));
 });
 
 test("근거가 하나도 없으면 만들기를 막고 무엇이 없는지 말한다", async (t) => {
