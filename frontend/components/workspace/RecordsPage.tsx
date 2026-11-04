@@ -282,144 +282,145 @@ export default function RecordsPage() {
           자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
       <Message>{message}</Message>
-      <div className={ws.stack}>
-        <section className={`${ws.card} ${ws.recordForm}`}>
-          <div className={ws.recordFormHead}>
-            <Posty pose="hand" face="base" tone="note" size={64} label={null} />
-            <div className={ws.recordFormWord}>
-              <h2 className={ws.recordFormTitle}>{editId ? "기록 고치기" : "오늘 본 것 적기"}</h2>
-              <p className={ws.recordFormLead}>
-                한 줄이면 됩니다. 쌓이면 일지와 발달 추적이 여기서 나옵니다.
-              </p>
+      {/* 왼쪽에 적고 오른쪽에 쌓인다 — 일과 기록 · 계획안과 같은 짜임이다.
+          폼을 화면 너비로 펴면 「본 대로 적기」 한 줄이 1,800px 로 늘어나 읽히지 않았고,
+          쌓인 기록은 폼 밑으로 밀려 스크롤해야 보였다. 폼은 따라 내려와 있어
+          오른쪽 기록을 「고치기」 하면 바로 옆에서 고친다. */}
+      <div className={`${ws.grid} ${ws.recordGrid}`}>
+        <div className={ws.side}>
+          <section className={`${ws.card} ${ws.recordForm}`}>
+            <div className={ws.recordFormHead}>
+              <Posty pose="hand" face="base" tone="note" size={56} label={null} />
+              <div className={ws.recordFormWord}>
+                <h2 className={ws.recordFormTitle}>{editId ? "기록 고치기" : "오늘 본 것 적기"}</h2>
+                <p className={ws.recordFormLead}>한 줄이면 됩니다. 쌓이면 일지가 됩니다.</p>
+              </div>
             </div>
-            <Link href="/onboarding" className={ws.recordWay}>
-              아이 등록하기
-            </Link>
-          </div>
-          {!classes.some((c) => c.children.length) ? (
-            <Empty title="먼저 아이를 등록해 주세요">
-              <Link href="/onboarding">아이 등록하기 →</Link>
-            </Empty>
-          ) : (
-            <form onSubmit={submit}>
-              {/* 요청 중에는 폼 전체가 잠긴다 — 보낸 값과 그 뒤 입력이 섞이지 않게. */}
-              <fieldset
-                className={ws.form}
-                disabled={pending}
-                style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
-              >
-                <div className={ws.row}>
+            {!classes.some((c) => c.children.length) ? (
+              <Empty title="먼저 아이를 등록해 주세요">
+                <Link href="/onboarding">아이 등록하기 →</Link>
+              </Empty>
+            ) : (
+              <form onSubmit={submit}>
+                {/* 요청 중에는 폼 전체가 잠긴다 — 보낸 값과 그 뒤 입력이 섞이지 않게. */}
+                <fieldset
+                  className={ws.form}
+                  disabled={pending}
+                  style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+                >
+                  <div className={ws.row}>
+                    <label className={ws.field}>
+                      아이
+                      <select
+                        required
+                        disabled={!!editId}
+                        value={childId}
+                        {...fieldErrorProps("childId", invalid)}
+                        onChange={(e) => {
+                          setChildId(e.target.value);
+                          clearInvalid("childId");
+                        }}
+                      >
+                        <option value="">아이 고르기</option>
+                        {classroom?.children.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                      <FieldError name="childId" invalid={invalid} />
+                    </label>
+                    <label className={ws.field}>
+                      날짜
+                      <input
+                        name="date"
+                        required
+                        type="date"
+                        max={today()}
+                        value={date}
+                        {...fieldErrorProps("date", invalid)}
+                        onChange={(e) => {
+                          setDate(e.target.value);
+                          clearInvalid("date");
+                        }}
+                      />
+                      <FieldError name="date" invalid={invalid} />
+                    </label>
+                    <label className={ws.field}>
+                      영역
+                      <select
+                        value={domain}
+                        {...fieldErrorProps("domain", invalid)}
+                        onChange={(e) => {
+                          setDomain(e.target.value);
+                          clearInvalid("domain");
+                        }}
+                      >
+                        {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
+                          <option key={d}>{d}</option>
+                        ))}
+                      </select>
+                      <FieldError name="domain" invalid={invalid} />
+                    </label>
+                  </div>
+                  {editId && <small>아이와 반은 고칠 수 없어요. 지우고 다시 적어 주세요.</small>}
                   <label className={ws.field}>
-                    아이
-                    <select
-                      required
-                      disabled={!!editId}
-                      value={childId}
-                      {...fieldErrorProps("childId", invalid)}
-                      onChange={(e) => {
-                        setChildId(e.target.value);
-                        clearInvalid("childId");
-                      }}
-                    >
-                      <option value="">아이 고르기</option>
-                      {classroom?.children.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <FieldError name="childId" invalid={invalid} />
-                  </label>
-                  <label className={ws.field}>
-                    날짜
+                    어디서 · 무슨 놀이
                     <input
-                      name="date"
-                      required
-                      type="date"
-                      max={today()}
-                      value={date}
-                      {...fieldErrorProps("date", invalid)}
+                      name="context"
+                      maxLength={CONTEXT_MAX}
+                      value={context}
+                      {...fieldErrorProps("context", invalid)}
                       onChange={(e) => {
-                        setDate(e.target.value);
-                        clearInvalid("date");
+                        setContext(e.target.value);
+                        clearInvalid("context");
                       }}
+                      placeholder="예: 오전 자유놀이 · 쌓기 영역"
                     />
-                    <FieldError name="date" invalid={invalid} />
+                    <small>
+                      {context.length} / {CONTEXT_MAX}자
+                    </small>
+                    <FieldError name="context" invalid={invalid} />
                   </label>
                   <label className={ws.field}>
-                    영역
-                    <select
-                      value={domain}
-                      {...fieldErrorProps("domain", invalid)}
+                    본 대로 적기
+                    <textarea
+                      required
+                      maxLength={5000}
+                      value={fact}
+                      {...fieldErrorProps("fact", invalid)}
                       onChange={(e) => {
-                        setDomain(e.target.value);
-                        clearInvalid("domain");
+                        setFact(e.target.value);
+                        clearInvalid("fact");
                       }}
-                    >
-                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
-                        <option key={d}>{d}</option>
-                      ))}
-                    </select>
-                    <FieldError name="domain" invalid={invalid} />
-                  </label>
-                </div>
-                {editId && <small>아이와 반은 고칠 수 없어요. 지우고 다시 적어 주세요.</small>}
-                <label className={ws.field}>
-                  어디서 · 무슨 놀이
-                  <input
-                    name="context"
-                    maxLength={CONTEXT_MAX}
-                    value={context}
-                    {...fieldErrorProps("context", invalid)}
-                    onChange={(e) => {
-                      setContext(e.target.value);
-                      clearInvalid("context");
-                    }}
-                    placeholder="예: 오전 자유놀이 · 쌓기 영역"
-                  />
-                  <small>
-                    {context.length} / {CONTEXT_MAX}자
-                  </small>
-                  <FieldError name="context" invalid={invalid} />
-                </label>
-                <label className={ws.field}>
-                  본 대로 적기
-                  <textarea
-                    required
-                    maxLength={5000}
-                    value={fact}
-                    {...fieldErrorProps("fact", invalid)}
-                    onChange={(e) => {
-                      setFact(e.target.value);
-                      clearInvalid("fact");
-                    }}
-                    placeholder={"예: 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다."}
-                  />
-                  {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
+                      placeholder={"예: 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다."}
+                    />
+                    {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                       그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다. */}
-                  <small className={ws.recordOrder}>
-                    <span className={ws.recordSteps} aria-label="적는 순서">
-                      {["상황", "행동", "반응", "교사 지원"].map((step) => (
-                        <b key={step}>{step}</b>
-                      ))}
-                    </span>
-                    순서로 적으면 일지가 잘 나와요. 다 적지 않아도 저장됩니다.
-                    <span className={ws.recordCount}>{fact.length} / 5,000자</span>
-                  </small>
-                  <FieldError name="fact" invalid={invalid} />
-                </label>
-                <div className={ws.actions}>
-                  <button className={ws.primary}>{editId ? "고친 대로 저장" : "남기기"}</button>
-                  {editId && (
-                    <button type="button" className={ws.secondary} onClick={cancelEdit}>
-                      그만두기
-                    </button>
-                  )}
-                </div>
-              </fieldset>
-            </form>
-          )}
-        </section>
+                    <small className={ws.recordOrder}>
+                      <span className={ws.recordSteps} aria-label="적는 순서">
+                        {["상황", "행동", "반응", "교사 지원"].map((step) => (
+                          <b key={step}>{step}</b>
+                        ))}
+                      </span>
+                      순서로 적으면 일지가 잘 나와요. 다 적지 않아도 저장됩니다.
+                      <span className={ws.recordCount}>{fact.length} / 5,000자</span>
+                    </small>
+                    <FieldError name="fact" invalid={invalid} />
+                  </label>
+                  <div className={ws.actions}>
+                    <button className={ws.primary}>{editId ? "고친 대로 저장" : "남기기"}</button>
+                    {editId && (
+                      <button type="button" className={ws.secondary} onClick={cancelEdit}>
+                        그만두기
+                      </button>
+                    )}
+                  </div>
+                </fieldset>
+              </form>
+            )}
+          </section>
+        </div>
         <section className={ws.stack}>
           <div className={ws.recordListHead}>
             <h2 className={ws.recordListTitle}>
@@ -427,6 +428,10 @@ export default function RecordsPage() {
             </h2>
             <span className={ws.recordWays}>
               <RoutinesLink classId={classId} date={date} />
+              {/* 아이 등록은 가끔 하는 일이라 적는 칸 머리에서 내렸다. 화면 밖으로 나가는 길은 여기 모은다. */}
+              <Link href="/onboarding" className={ws.recordWay}>
+                아이 등록 →
+              </Link>
               <Link href="/documents" className={ws.recordWay}>
                 문서 만들기 →
               </Link>

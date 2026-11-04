@@ -2149,3 +2149,37 @@ a.item {
   font-size: 13.5px;
   color: var(--pg-ink-soft);
 }
+
+/* ── 관찰 기록 좌우 짜임 — 왼쪽 적기, 오른쪽 쌓인 기록 ── */
+.recordGrid {
+  grid-template-columns: minmax(340px, 0.8fr) minmax(0, 1.25fr);
+}
+/* 좁은 칸이라 아이를 한 줄 다 쓰고, 날짜 · 영역을 그 밑에 나란히 둔다. */
+.recordForm .row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.recordForm .row > :first-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1100px) {
+  .recordGrid {
+    grid-template-columns: 1fr;
+  }
+}
+/* 왼쪽 칸은 화면 높이 안에 「남기기」까지 들어와야 한다. 머리와 칸 사이를 줄인다. */
+.recordGrid .recordForm {
+  padding: 22px 24px 24px;
+}
+.recordGrid .recordFormHead {
+  flex-wrap: nowrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.recordGrid .recordFormTitle {
+  font-size: 27px;
+}
+.recordGrid .recordForm textarea {
+  min-height: 118px;
+}
