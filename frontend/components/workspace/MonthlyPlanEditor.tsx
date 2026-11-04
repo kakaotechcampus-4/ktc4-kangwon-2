@@ -87,8 +87,10 @@ const ROW_HU: Record<string, number> = {
   safety_education: 5000,
   drill: 2700,
 };
+/** 목표 칸은 세로만 가운데(빈 칸 안내도 왼쪽). */
+const GOALS = "align-middle [&_[data-cell]]:justify-start";
 const rowH = (key: string) => ({ height: hu(ROW_HU[key] ?? 3600) });
-const HINT = "px-1.5 py-1 align-top text-[11px] text-[#8a8178]";
+const HINT = "px-1.5 py-1 text-center align-middle text-[11px] text-[#8a8178]";
 
 export default function MonthlyPlanEditor({
   plan,
@@ -535,7 +537,9 @@ export default function MonthlyPlanEditor({
                 <th scope="row" className={LABEL} style={rowH(section.section_key)}>
                   {sectionName(section.section_key, section.label)}
                 </th>
-                <td className={`${LINE} align-top`}>{one(section, at)}</td>
+                <td className={`${LINE} ${section.section_key === "goals" ? GOALS : "align-top"}`}>
+                  {one(section, at)}
+                </td>
               </tr>
             ) : (
               <tr key="period">

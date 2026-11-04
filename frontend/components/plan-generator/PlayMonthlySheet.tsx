@@ -36,7 +36,7 @@ export const Cell = ({
   hint = "비어 있어요",
 }: Pick & { id: string; value: string; hint?: string }) => (
   <span
-    className={`block min-h-[1.5em] whitespace-pre-line px-[7px] py-[2px] ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
+    className={`${!value.trim() && onSelect ? "flex items-center justify-center" : "block"} min-h-[1.5em] whitespace-pre-line px-[7px] py-[2px] ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
     data-cell={id}
     {...(onSelect && {
       role: "button",
@@ -55,6 +55,7 @@ export const Cell = ({
       value
     ) : (
       <span
+        data-hint
         className={`text-[11px] ${hint === TEACHER_HINT ? "text-[#8a8178]" : "text-[#c2473d]"}`}
       >
         {hint}
@@ -148,7 +149,7 @@ export function Paper({
     <section ref={box} aria-label={label} className="w-full min-w-0">
       <div style={{ zoom: given ?? scale }}>
         <article
-          className="mx-auto w-[853px] bg-white px-[61px] py-[41px] text-[13px] leading-[1.2] text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)] [&_td:has([data-cell][role=button])]:cursor-pointer"
+          className="mx-auto w-[853px] bg-white px-[61px] py-[41px] text-[13px] leading-[1.2] text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)] [&_td:has([data-cell][role=button])]:cursor-pointer [&_td:has([data-hint]):not(:has([data-area]))]:align-middle"
           onClick={pickByCell}
         >
           <div

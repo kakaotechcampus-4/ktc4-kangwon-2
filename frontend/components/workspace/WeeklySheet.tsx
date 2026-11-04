@@ -238,7 +238,7 @@ export default function WeeklySheet({
           </th>
           <td
             colSpan={span}
-            className={`${LINE} align-top`}
+            className={`${LINE} ${key === "goals" ? "align-middle [&_[data-cell]]:justify-start" : "align-top"}`}
             {...area(section.cells.length === 1 ? section.cells[0].item_id : null)}
           >
             {/* 후보형 실내 자유놀이는 주 전체 목록이 한 칸에 순서대로 들어간다. 나머지는 한 칸. */}
