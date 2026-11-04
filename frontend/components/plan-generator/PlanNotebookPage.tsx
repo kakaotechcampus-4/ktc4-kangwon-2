@@ -116,7 +116,10 @@ export default function PlanNotebookPage() {
         <Panel format="PLAY_PROJECT" skip={false} onSkip={setSkip} onImport={() => {}} />
       </div>
 
-      <section className="mt-6 flex flex-col gap-[14px] border-t border-[#e3ddd2] pt-6">
+      <section
+        data-tour="plans-continue"
+        className="mt-6 flex flex-col gap-[14px] border-t border-[#e3ddd2] pt-6"
+      >
         <div className="flex items-baseline gap-3">
           <h2 className="m-0 font-display text-[27px] font-bold leading-tight text-ink">
             이어서 하기
@@ -200,7 +203,10 @@ function Panel({
   const chip = v1 ? "bg-[#e8f1ea] text-[#3b5441]" : "bg-[#eee4f4] text-[#5e4b96]";
   const steps = v1 ? ["연간", "월간", "주간"] : ["연간", "월간"];
   return (
-    <section className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7">
+    <section
+      data-tour={v1 ? "plans-theme" : "plans-play"}
+      className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7"
+    >
       <Tape />
       {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}
       <details className="group absolute right-5 top-5 z-10">

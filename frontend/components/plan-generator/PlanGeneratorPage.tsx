@@ -22,6 +22,7 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
 import { Tape } from "@/components/workspace/WorkspaceUI";
+import { SlideTour } from "@/components/app/Tour";
 import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
@@ -214,6 +215,9 @@ function AnnualGenerator({ format }: { format: Format }) {
               </h1>
               <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
                 {look.name}
+              </span>
+              <span className="ml-auto">
+                <SlideTour format={format} />
               </span>
             </div>
           </div>
