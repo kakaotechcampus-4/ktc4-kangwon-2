@@ -119,7 +119,7 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
         : "아직 만들지 않았어요.";
 
   return (
-    <section className={`${ws.card} ${ws.journalCard}`}>
+    <section className={`${ws.card} ${ws.journalCard}`} data-tour="routines-journal">
       <h2 className={ws.journalTitle}>{day} 보육일지</h2>
       {/* 머리와 몸을 가르는 선. 달력 밑에 바로 붙어 있어 선이 없으면 한 덩어리로 읽힌다. */}
       <hr className={ws.journalRule} />
