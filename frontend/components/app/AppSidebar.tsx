@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useIsCompact } from "./compact-shell";
 import { setSidebarCollapsed, useSidebarCollapsed } from "./sidebar-collapse";
 import { Icon, type IconName } from "./icons";
-import { Posty, type PostyPose } from "./Posty";
+import { Posty } from "./Posty";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -27,8 +27,6 @@ interface NavItem {
   short?: string;
   href: string;
   icon: IconName;
-  /** 지금 화면이면 이름 오른쪽에 서는 포스티의 자세. 메뉴마다 다르다. */
-  pose: PostyPose;
   match?: (path: string) => boolean;
 }
 
@@ -38,7 +36,7 @@ interface NavItem {
  * 교사가 친 한 줄(기록)과 그것으로 만든 문서(보육일지·계획안)는 하는 일이 다른데,
  * 이름이 둘 다 「기록」·「문서」로 섞여 있어 어디서 무엇을 하는지 헷갈렸다.
  */
-const HOME: NavItem = { key: "home", label: "홈", href: "/", icon: "home", pose: "wave" };
+const HOME: NavItem = { key: "home", label: "홈", href: "/", icon: "home" };
 
 const GROUPS: { title: string; items: NavItem[] }[] = [
   {
@@ -50,7 +48,6 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "관찰",
         href: "/records",
         icon: "users",
-        pose: "think",
         match: (p) => p.startsWith("/records") || p === "/compare",
       },
       {
@@ -59,7 +56,6 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "일과",
         href: "/routines",
         icon: "edit",
-        pose: "run",
         match: (p) => p.startsWith("/routines"),
       },
       {
@@ -68,7 +64,6 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "주간",
         href: "/weekly-records",
         icon: "record",
-        pose: "point",
       },
     ],
   },
@@ -80,7 +75,6 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         label: "계획안",
         href: "/plans",
         icon: "plan",
-        pose: "hand",
         match: (p) => p.startsWith("/plans") || p === "/templates" || p === "/trends",
       },
       {
@@ -89,7 +83,6 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "보관함",
         href: "/documents",
         icon: "doc",
-        pose: "up",
       },
       {
         key: "eval",
@@ -97,7 +90,6 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         short: "평가",
         href: "/evaluation",
         icon: "eval",
-        pose: "cheer",
       },
     ],
   },
@@ -431,18 +423,9 @@ function NavLink({
     >
       <Icon name={item.icon} className="h-[17px] w-[17px] shrink-0" />
       <span>{item.label}</span>
-      {/* 지금 화면 표시. 전에는 ↗ 였는데 바깥 링크로 읽혔다(멘토 12주차 리뷰). 포스티가
-          메뉴마다 다른 자세로 콩콩 뛴다 — 홈은 손을 흔든다. */}
-      {active && (
-        <Posty
-          pose={item.pose}
-          size={32}
-          onDark
-          wave={item.pose === "wave"}
-          label={null}
-          className="postyHop -my-2 ml-auto hidden shrink-0 lg:block"
-        />
-      )}
+      {/* 지금 화면 표시. 전에는 ↗ 였는데 바깥 링크로 읽혔다(멘토 12주차 리뷰).
+          테이프로 붙여 둔 쪽지 한 장 — 아래 귀퉁이가 살짝 들려 있다. 움직이지 않는다. */}
+      {active && <NoteMark />}
     </Link>
   );
 }
@@ -573,5 +556,45 @@ function Tape() {
       aria-hidden="true"
       className="pointer-events-none absolute -top-3 right-3 h-[19px] w-16 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
     />
+  );
+}
+
+/** 메뉴 옆에 붙인 쪽지. 테이프 한 조각, 들린 귀퉁이와 그 밑 그림자. */
+function NoteMark() {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      aria-hidden="true"
+      focusable="false"
+      className="-my-2 ml-auto hidden h-8 w-8 shrink-0 -rotate-6 lg:block"
+    >
+      {/* 들린 귀퉁이 밑에 드리운 그림자 */}
+      <path
+        d="M8 29.5 22 28.8c3.2-.6 5.4-2.6 6-5.8"
+        fill="none"
+        stroke="rgba(0,0,0,0.28)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 6h22v15.5c0 3.4-2.3 5.9-6.2 6.7L5 28z"
+        fill="var(--pg-note)"
+        stroke="var(--pg-note-line)"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      {/* 들린 귀퉁이 — 뒷면이 비친다 */}
+      <path d="M27 21.5c-2.6.2-5 1.6-6.2 6.7 3.9-.8 6.2-3.3 6.2-6.7z" fill="var(--pg-note-fold)" />
+      <rect
+        x="10.5"
+        y="2.6"
+        width="11"
+        height="5"
+        rx="0.6"
+        fill="var(--pg-tape)"
+        opacity="0.92"
+        transform="rotate(-5 16 5)"
+      />
+    </svg>
   );
 }
