@@ -60,6 +60,7 @@ from ssuksak.planning.planner.contracts import ProposalParseError, ProposalRejec
 from app.db import get_session
 from app.features.plans import monthly_llm, play_project
 from app.features.plans import play_monthly_schemas as s
+from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
 from app.features.plans.models import Plan
 from app.features.plans.monthly_router import (
     _ALREADY_CONFIRMED,
@@ -83,7 +84,7 @@ from app.features.plans.play_project import ConfirmIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.router import _exception_chain
 from app.features.plans.runtime import SystemClock, UuidGenerator
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, memo_notices_out
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
@@ -164,6 +165,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
     center_id, class_id, class_name = user.center_id, klass.id, klass.name
+    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     school_year = klass.school_year
     month = _target_month(school_year, body.month)
     if _existing(session, center_id, class_id, month) is not None:
@@ -200,7 +202,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     use_case = play_monthly_generation(
         parent_repository=parents,
         plan_repository=InMemoryPlanRepository(),  # 운영 저장은 C 에서 한다
-        provider=provider,
+        provider=with_masked_memo(provider, body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
     )
@@ -213,9 +215,11 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
                 target_month=month,
                 emphasized_row_keys=tuple(body.emphasized_row_keys),
                 class_name=class_name,
+                teacher_memo=body.memo,
             )
         )
     except Exception as error:
+        raise_if_mask_failed(error)
         mapped = _generation_error(error)
         if mapped is None:
             raise
@@ -727,6 +731,8 @@ def _detail(
     parent = plan.parent
     return s.PlayMonthlyPlanOut(
         id=row.id,
+        memo=plan.teacher_memo,
+        memo_notices=memo_notices_out(plan),
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         month=plan.target_month.calendar_month,

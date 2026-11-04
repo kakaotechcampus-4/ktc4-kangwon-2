@@ -27,13 +27,13 @@ from ssuksak.planning.planner.parser import (
     monthly_response_schema,
 )
 from ssuksak.planning.planner.play_monthly import (
-    RESPONSE_SCHEMA as PLAY_MONTHLY_RESPONSE_SCHEMA,
+    play_monthly_response_schema,
 )
 from ssuksak.planning.planner.play_monthly import (
     PlayMonthlyRequest,
 )
 from ssuksak.planning.planner.play_project import (
-    RESPONSE_SCHEMA as PLAY_PROJECT_RESPONSE_SCHEMA,
+    play_project_response_schema,
 )
 from ssuksak.planning.planner.play_project import (
     PlayProjectRequest,
@@ -267,7 +267,7 @@ class EliceOpenAiMonthlyAdapter:
             request.system_prompt,
             request.user_content,
             schema_name="play_project_period_proposal",
-            schema=PLAY_PROJECT_RESPONSE_SCHEMA,
+            schema=play_project_response_schema(request),
             stream_cap=PLAY_PROJECT_MAX_COMPLETION_TOKENS,
         )
 
@@ -281,7 +281,7 @@ class EliceOpenAiMonthlyAdapter:
             request.system_prompt,
             request.user_content,
             schema_name="play_monthly_proposal",
-            schema=PLAY_MONTHLY_RESPONSE_SCHEMA,
+            schema=play_monthly_response_schema(request),
             stream_cap=PLAY_MONTHLY_MAX_COMPLETION_TOKENS,
         )
 

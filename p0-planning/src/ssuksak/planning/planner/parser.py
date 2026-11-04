@@ -10,6 +10,7 @@ from ..domain.errors import InvalidDomainValueError
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 from ..domain.monthly_template import RepeatBy
+from .teacher_memo import memo_properties, safety_request_properties
 from .contracts import (
     OUTDOOR_SECTION_KEY,
     CANDIDATE_PREFIXES,
@@ -211,7 +212,7 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
         request.reference_section_keys,
         pairs,
     )
-    return _object_schema(
+    return _with_memo(_object_schema(
         {
             "target_month": _STRING,
             "month_sections": {"type": "array", "items": month},
@@ -222,7 +223,23 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
                 ),
             },
         }
-    )
+    ), request.memo_addresses, request.safety_request_slots, tuple(w.value for w in request.expected_week_ids))
+
+
+def _with_memo(
+    schema: dict[str, Any],
+    addresses: tuple[str, ...] | None,
+    safety_slots: tuple[str, ...] | None = None,
+    week_ids: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """ADR-060: a request with a teacher memo also returns memo_applied / memo_skipped at the root,
+    and safety_requests when it lists statutory safety slots."""
+    if addresses is None:
+        return schema
+    properties = dict(schema["properties"], **memo_properties(addresses))
+    if safety_slots is not None:
+        properties.update(safety_request_properties(safety_slots, week_ids))
+    return _object_schema(properties)
 
 
 def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
@@ -239,7 +256,7 @@ def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
         else {}
     )
     week = request.target_week_id
-    return _object_schema(
+    return _with_memo(_object_schema(
         {
             "target_month": {"type": "string", "enum": [request.target_month.value]},
             "target_week_id": {"type": "null"}
@@ -249,7 +266,7 @@ def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
                 {request.target_section_key}, request, request.reference_section_keys, pairs
             ),
         }
-    )
+    ), request.memo_addresses)
 
 
 def _object(value: object, *, path: str, keys: frozenset[str]) -> dict[str, Any]:

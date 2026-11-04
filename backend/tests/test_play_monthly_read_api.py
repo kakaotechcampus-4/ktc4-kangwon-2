@@ -28,7 +28,7 @@ SINGLE_KEYS = {
     "format_version", "created_at", "confirmed_at", "target_ages", "weeks", "parent",
     "parent_changed", "theme",
     "rationale", "together", "free_play", "habits", "safety_candidates", "safety_weeks", "health",
-    "nutrition", "drill_candidates", "teacher_inputs", "notices",
+    "nutrition", "drill_candidates", "teacher_inputs", "notices", "memo", "memo_notices",
 }  # fmt: skip
 
 

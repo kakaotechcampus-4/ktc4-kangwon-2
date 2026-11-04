@@ -15,7 +15,7 @@ const json = (method: "PUT" | "POST", data: unknown, signal?: AbortSignal): Requ
 
 /** 지금은 항상 503 이다(생성 규칙이 서버에 아직 없다). 게이트는 통과한다 — 이미 있으면 409. */
 export const createPlayMonthly = (
-  data: { class_id: number; month: number; emphasized_row_keys: string[] },
+  data: { class_id: number; month: number; emphasized_row_keys: string[]; memo?: string },
   signal?: AbortSignal,
 ) => apiRequest<PlayMonthlyPlan>(BASE, json("POST", data, signal));
 /** 대상 달 오름차순 요약. 기존 월간은 들어 있지 않다. */
