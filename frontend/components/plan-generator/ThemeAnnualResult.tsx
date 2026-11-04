@@ -239,7 +239,9 @@ export default function ThemeAnnualResult({
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] text-[#5c5243]">{selected.month}월 생활주제</span>
+          <span className="font-display text-[20px] font-bold leading-tight">
+            {selected.month}월 생활주제
+          </span>
           <input
             className={INPUT}
             id={slotInputId({ month: selected.month, slot: "theme" })}
