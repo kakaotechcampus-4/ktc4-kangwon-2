@@ -12,17 +12,12 @@ import {
 import { Message, ws } from "./WorkspaceUI";
 import EvaluationAuto from "./EvaluationAuto";
 import EvaluationSelfCheck from "./EvaluationSelfCheck";
-import EvaluationSheet, { FoldMark } from "./EvaluationSheet";
+import EvaluationSheet, { EvaluationToday, FoldMark, sheetRows } from "./EvaluationSheet";
 import { readChecks, withFound, writeChecks, type Scan } from "@/lib/workspace/evaluation-files";
 import styles from "./Evaluation.module.css";
 
 /** 지표와 자체평가 체크는 서버(api-spec §12)에서 온다. 이 브라우저에 두는 것은 서류 점검 체크(항목 id)뿐이다. */
-export default function EvaluationChecklist({
-  refresh,
-}: {
-  /** 화면 머리의 「현황 새로고침」이 올리는 수. 바뀌면 다시 불러온다. */
-  refresh: number;
-}) {
+export default function EvaluationChecklist() {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [centerId, setCenterId] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -56,7 +51,7 @@ export default function EvaluationChecklist({
       }
     })();
     return () => controller.abort();
-  }, [reload, refresh]);
+  }, [reload]);
 
   async function check(element: string, checked: boolean) {
     if (centerId === null || running.current) return;
@@ -123,50 +118,60 @@ export default function EvaluationChecklist({
   const checked = selfs.reduce((sum, item) => sum + item.progress.checked, 0);
   const total = selfs.reduce((sum, item) => sum + item.progress.total, 0);
 
+  const rows = sheetRows(autos, scan, fileChecks);
+  const basis = `${checklist.school_year}학년도${autos[0] ? ` · ${autos[0].period.to}까지 확정한 문서 기준` : ""}`;
+
   /*
    * 화면은 서류 한 장이 중심이다. 평가 당일 교사가 꺼내는 단위가 서류여서다.
-   * 평가항목별로 보기와 자체평가는 접어 둔다 — 매달 보는 것이 아니라 원장이 물을 때 펴는 것이다.
+   * 왼쪽에 「오늘 몇 가지가 비었나」와 폴더 고르기를 두고, 오른쪽에 서류 한 장을 편다 —
+   * 일과 기록 · 주간 기록과 같은 짜임이다. 평가항목별 보기와 자체평가는 접어 둔다.
    */
   return (
-    <div className={ws.stack}>
-      <p className={styles.basis}>
-        {checklist.school_year}학년도
-        {autos[0] && ` · ${autos[0].period.to}까지 확정한 문서 기준`}
-      </p>
-      <Message error>{error}</Message>
-      <EvaluationSheet
-        autos={autos}
-        scan={scan}
-        onScan={scanned}
-        checks={fileChecks}
-        onToggle={(id, on) =>
-          saveFileChecks(on ? [...fileChecks, id] : fileChecks.filter((v) => v !== id))
-        }
-        onImported={() => setReload((n) => n + 1)}
-      />
-      <details className={styles.fold} aria-label="평가항목별로 보기">
-        <summary>
-          <FoldMark />
-          평가항목별로 보기 · {autos.map((item) => item.indicator).join(" · ")}
-        </summary>
-        <div className={styles.foldBody}>
-          <EvaluationAuto items={autos} onImported={() => setReload((n) => n + 1)} />
-        </div>
-      </details>
-      <details className={styles.fold} aria-label="현장에서 보는 것 직접 확인">
-        <summary>
-          <FoldMark />
-          현장에서 보는 것 직접 확인 · {checked} / {total}
-        </summary>
-        <div className={styles.foldBody}>
-          <EvaluationSelfCheck
-            items={selfs}
-            savedAt={savedAt}
-            initiallyOpen={initiallyOpen}
-            onCheck={check}
-          />
-        </div>
-      </details>
+    <div className={`${ws.grid} ${styles.layout}`}>
+      <div className={ws.side}>
+        <EvaluationToday
+          rows={rows}
+          basis={basis}
+          scan={scan}
+          onScan={scanned}
+          onRecount={() => setReload((n) => n + 1)}
+        />
+      </div>
+      <div className={ws.stack}>
+        <Message error>{error}</Message>
+        <EvaluationSheet
+          rows={rows}
+          scanned={!!scan}
+          checks={fileChecks}
+          onToggle={(id, on) =>
+            saveFileChecks(on ? [...fileChecks, id] : fileChecks.filter((v) => v !== id))
+          }
+          onImported={() => setReload((n) => n + 1)}
+        />
+        <details className={styles.fold} aria-label="평가항목별로 보기">
+          <summary>
+            <FoldMark />
+            평가항목별로 보기 · {autos.map((item) => item.indicator).join(" · ")}
+          </summary>
+          <div className={styles.foldBody}>
+            <EvaluationAuto items={autos} onImported={() => setReload((n) => n + 1)} />
+          </div>
+        </details>
+        <details className={styles.fold} aria-label="현장에서 보는 것 직접 확인">
+          <summary>
+            <FoldMark />
+            현장에서 보는 것 직접 확인 · {checked} / {total}
+          </summary>
+          <div className={styles.foldBody}>
+            <EvaluationSelfCheck
+              items={selfs}
+              savedAt={savedAt}
+              initiallyOpen={initiallyOpen}
+              onCheck={check}
+            />
+          </div>
+        </details>
+      </div>
     </div>
   );
 }

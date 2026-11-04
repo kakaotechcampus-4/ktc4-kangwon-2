@@ -135,9 +135,7 @@ function MineCell({ result, picked }: { result: DocResult | undefined; picked: b
   if (!picked) return <span className={styles.rowFaint}>—</span>;
   if (!result) return <span className={styles.rowFaint}>—</span>;
   return (
-    <span className={`${styles.chip} ${STATUS[result.status][1]}`}>
-      {STATUS[result.status][0]}
-    </span>
+    <span className={`${styles.chip} ${STATUS[result.status][1]}`}>{STATUS[result.status][0]}</span>
   );
 }
 
@@ -155,7 +153,8 @@ function Found({ doc, result }: { doc: TeacherDoc; result: DocResult | undefined
       <div className={styles.fileDetail}>
         <p>
           이름에 날짜 + {doc.keywords.join(" / ")}
-          <br />예: {doc.example}
+          <br />
+          예: {doc.example}
         </p>
         {result && result.missing.length > 0 && (
           <p>
@@ -182,29 +181,46 @@ function Found({ doc, result }: { doc: TeacherDoc; result: DocResult | undefined
   );
 }
 
+/** 서류 한 줄 — 쌤플 쪽 숫자, 폴더 검사 결과, 교사 체크를 한데 묶는다. 왼쪽 요약과 오른쪽 표가 같이 쓴다. */
+export type SheetRow = {
+  doc: TeacherDoc;
+  made: Made | null;
+  result: DocResult | undefined;
+  checked: boolean;
+  done: boolean;
+};
+
+export function sheetRows(autos: AutoIndicator[], scan: Scan | null, checks: string[]): SheetRow[] {
+  return TEACHER_DOCS.map((doc) => {
+    const made = madeInSsample(doc.id, autos);
+    const result = scan?.results.find((r) => r.id === doc.id);
+    const checked = checks.includes(`doc:${doc.id}`);
+    return { doc, made, result, checked, done: checked || made?.done === true };
+  });
+}
+
 /**
- * 평가 때 낼 서류 한 장.
+ * 왼쪽 칸 — 오늘 평가를 받는다면 몇 가지가 비었나, 그리고 폴더 고르기.
  *
- * **평가항목이 아니라 서류를 앞세운다.** 평가 당일 교사가 꺼내는 단위가 서류이기 때문이다.
- * 한 줄에 쌤플에서 만든 것과 선생님 컴퓨터에 있는 것을 나란히 두되, **열 이름으로 분명히 가른다** —
- * 쌤플 쪽은 확정한 문서를 센 것이고, 컴퓨터 쪽은 파일 **이름만** 본 것이라 뜻이 다르다(ADR-019 · ADR-045).
+ * 화면 머리 · 서류 표 머리 · 노란 띠가 세 겹으로 쌓여 표가 화면 아래로 밀렸고, 단추 둘이
+ * 오른쪽 끝에 따로 떠 있었다. 「지금 어디까지」와 「할 일 하나」를 왼쪽 칸에 모은다.
  */
-export default function EvaluationSheet({
-  autos,
+export function EvaluationToday({
+  rows,
+  basis,
   scan,
   onScan,
-  checks,
-  onToggle,
-  onImported,
+  onRecount,
 }: {
-  autos: AutoIndicator[];
+  rows: SheetRow[];
+  basis: string;
   scan: Scan | null;
   onScan: (scan: Scan) => void;
-  checks: string[];
-  onToggle: (id: string, on: boolean) => void;
-  onImported: () => void;
+  onRecount: () => void;
 }) {
   const input = useRef<HTMLInputElement | null>(null);
+  const counted = rows.filter((row) => !row.doc.optional);
+  const left = counted.filter((row) => !row.done).length;
 
   function pick(e: ChangeEvent<HTMLInputElement>) {
     const names = Array.from(e.target.files ?? [], (file) => file.name);
@@ -213,25 +229,58 @@ export default function EvaluationSheet({
     e.target.value = "";
   }
 
-  const rows = TEACHER_DOCS.map((doc) => {
-    const made = madeInSsample(doc.id, autos);
-    const result = scan?.results.find((r) => r.id === doc.id);
-    const checked = checks.includes(`doc:${doc.id}`);
-    return { doc, made, result, checked, done: checked || made?.done === true };
-  });
-  const left = rows.filter((row) => !row.done && !row.doc.optional).length;
-
   return (
-    <div className={ws.stack}>
-      <div className={styles.titleRow}>
-        <div>
-          <h2 className={styles.sheetTitle}>평가 때 낼 서류</h2>
-          <p className={ws.hint}>
-            쌤플에서 확정한 문서와 선생님 컴퓨터에 있는 파일을 한 장에서 봅니다. 폴더를 고르면 파일
-            <strong> 이름만 </strong>
-            읽습니다 — 파일을 열지도, 올리지도 않습니다.
+    <>
+      <section className={`${ws.card} ${styles.today}`} data-done={left ? undefined : true}>
+        <span aria-hidden="true" className={ws.tape} />
+        <p className={styles.todayEyebrow}>오늘 평가를 받는다면</p>
+        <div className={styles.todaySay}>
+          <Posty
+            pose={left ? "point" : "cheer"}
+            face={left ? "oh" : "done"}
+            tone={left ? "sun" : "sage"}
+            size={70}
+            label={null}
+          />
+          <p className={styles.leadTitle}>
+            {left ? (
+              <>
+                아직 <b>{left}가지</b>가 비어 있어요
+              </>
+            ) : (
+              "낼 서류를 다 챙겼어요"
+            )}
           </p>
         </div>
+        {/* 서류마다 한 칸. 몇 가지 중 몇 가지인지 글을 읽지 않아도 보인다. */}
+        <ol
+          className={styles.meter}
+          aria-label={`${counted.length}가지 중 ${counted.length - left}가지 챙김`}
+        >
+          {counted.map((row) => (
+            <li key={row.doc.id} data-done={row.done || undefined} title={row.doc.title} />
+          ))}
+        </ol>
+        <p className={styles.meterText}>
+          {counted.length}가지 중 <b>{counted.length - left}가지</b> 챙김
+        </p>
+        <p className={styles.leadNote}>
+          쌤플이 셀 수 있는 것만 셉니다. 센 것이 내용까지 확인해 준 것은 아닙니다.
+        </p>
+        <div className={styles.todayFoot}>
+          <span>{basis}</span>
+          <button type="button" className={styles.linkButton} onClick={onRecount}>
+            다시 세기
+          </button>
+        </div>
+      </section>
+
+      <section className={`${ws.card} ${styles.folder}`}>
+        <h2 className={styles.folderTitle}>내 컴퓨터 폴더</h2>
+        <p className={styles.folderLead}>
+          서류를 모아 둔 폴더를 고르면 파일 <strong>이름만</strong> 읽어 있는지 찾아요. 열지도,
+          올리지도 않아요.
+        </p>
         <button
           type="button"
           className={scan ? ws.secondary : ws.primary}
@@ -239,6 +288,11 @@ export default function EvaluationSheet({
         >
           {scan ? "폴더 다시 고르기" : "폴더 고르기"}
         </button>
+        {scan && (
+          <p className={styles.folderLead}>
+            파일 {scan.total}개를 봤어요 · 새로 고치면 사라지고 이름은 저장하지 않아요.
+          </p>
+        )}
         {/* webkitdirectory 는 React 타입에 없어 직접 단다. 아이폰 사파리는 폴더 선택을 못 한다. */}
         <input
           type="file"
@@ -250,48 +304,36 @@ export default function EvaluationSheet({
           }}
           onChange={pick}
         />
-      </div>
+      </section>
+    </>
+  );
+}
 
-      {/* 남은 것을 맨 위 한 줄로. 표를 끝까지 읽지 않아도 오늘 뭘 할지는 알 수 있어야 한다.
-          숫자 하나를 크게 놓았더니 「40px 짜리 5」가 무슨 뜻인지 옆 글을 읽어야 알았다.
-          포스티가 세는 쪽이 교사 눈에 먼저 닿는다. */}
-      <div className={styles.lead} data-done={left ? undefined : true}>
-        <Posty
-          pose={left ? "point" : "cheer"}
-          face={left ? "oh" : "done"}
-          tone={left ? "sun" : "sage"}
-          size={74}
-          label={null}
-        />
-        <div className={styles.leadWord}>
-          <p className={styles.leadTitle}>
-            {left ? (
-              <>
-                아직 <b>{left}가지</b>가 비어 있어요
-              </>
-            ) : (
-              "낼 서류를 다 챙겼어요"
-            )}
-          </p>
-          <p className={styles.leadNote}>
-            {left
-              ? "오늘 평가를 받는다면 그렇습니다. 쌤플이 셀 수 있는 것만 셉니다 — 센 것이 내용까지 확인해 준 것은 아닙니다."
-              : "쌤플이 셀 수 있는 것만 셉니다. 센 것이 내용까지 확인해 준 것은 아닙니다."}
-          </p>
-        </div>
-      </div>
-
+/**
+ * 평가 때 낼 서류 한 장.
+ *
+ * **평가항목이 아니라 서류를 앞세운다.** 평가 당일 교사가 꺼내는 단위가 서류이기 때문이다.
+ * 한 줄에 쌤플에서 만든 것과 선생님 컴퓨터에 있는 것을 나란히 두되, **이름표로 분명히 가른다** —
+ * 쌤플 쪽은 확정한 문서를 센 것이고, 컴퓨터 쪽은 파일 **이름만** 본 것이라 뜻이 다르다(ADR-019 · ADR-045).
+ */
+export default function EvaluationSheet({
+  rows,
+  scanned,
+  onToggle,
+  onImported,
+  checks,
+}: {
+  rows: SheetRow[];
+  /** 폴더를 골랐나. 고르기 전에는 컴퓨터 칸이 전부 「—」다. */
+  scanned: boolean;
+  onToggle: (id: string, on: boolean) => void;
+  onImported: () => void;
+  checks: string[];
+}) {
+  return (
+    <div className={ws.stack}>
       <section className={styles.sheet} aria-label="평가 때 낼 서류">
-        <div className={`${styles.row} ${styles.sheetHead}`}>
-          <span className={styles.rowState} aria-hidden="true" />
-          <span className={styles.colDoc}>서류</span>
-          <span className={styles.colMade}>쌤플에서 만든 것</span>
-          <span className={styles.colMine}>
-            내 컴퓨터에 있는 것
-            {!scan && <em className={styles.colHint}>폴더를 고르면 채워져요</em>}
-          </span>
-          <span className={styles.colAct} />
-        </div>
+        <h2 className={`${styles.sheetTitle} ${styles.sheetHeadline}`}>평가 때 낼 서류</h2>
 
         {rows.map(({ doc, made, result, checked, done }) => (
           <div key={doc.id} className={styles.row} data-done={done || undefined}>
@@ -305,19 +347,28 @@ export default function EvaluationSheet({
                 <span className={styles.docIndicator}>{indicatorOf(doc)}</span>
               </p>
               <p className={styles.docBasis}>{doc.basis.split(" · ").slice(1).join(" · ")}</p>
+              {/* 두 숫자는 뜻이 달라 이름표를 붙여 나란히 둔다. 좁은 칸에서 열 머리는 멀어진다. */}
+              <dl className={styles.facts}>
+                <div>
+                  <dt>쌤플에서 만든 것</dt>
+                  <dd>
+                    {made ? (
+                      <span className={made.done ? styles.madeDone : styles.madeShort}>
+                        {made.text}
+                      </span>
+                    ) : (
+                      <span className={styles.rowFaint}>만들지 않는 서류</span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>내 컴퓨터</dt>
+                  <dd>
+                    <MineCell result={result} picked={scanned} />
+                  </dd>
+                </div>
+              </dl>
               <Found doc={doc} result={result} />
-            </div>
-
-            <div className={styles.colMade}>
-              {made ? (
-                <span className={made.done ? styles.madeDone : styles.madeShort}>{made.text}</span>
-              ) : (
-                <span className={styles.rowFaint}>만들지 않는 서류</span>
-              )}
-            </div>
-
-            <div className={styles.colMine}>
-              <MineCell result={result} picked={!!scan} />
             </div>
 
             <div className={styles.colAct}>
@@ -349,9 +400,8 @@ export default function EvaluationSheet({
         ))}
 
         <p className={styles.sheetFoot}>
-          「내 컴퓨터에 있는 것」은 파일 <strong>이름만</strong> 본 결과입니다. 새로 고치면
-          사라지고, 이름은 어디에도 저장하지 않습니다.
-          {scan && ` · 파일 ${scan.total}개를 봤어요 · ${today()} 기준`}
+          「내 컴퓨터」는 파일 <strong>이름만</strong> 본 결과입니다. 새로 고치면 사라지고, 이름은
+          어디에도 저장하지 않습니다.
         </p>
       </section>
 

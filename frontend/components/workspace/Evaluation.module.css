@@ -1,23 +1,5 @@
 /* 평가 준비 화면 전용. 공통 Workspace.module.css 는 다른 화면도 쓰므로 여기 둔다. */
 
-/* 화면 머리 설명 바로 밑에 붙는 기준 한 줄. 머리의 아래 여백(28px)만큼 당긴다. 글자는 설명과 같은 크기. */
-.basis {
-  margin-top: -22px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--pg-ink-soft);
-}
-/* 「현황 새로고침」의 아래 끝을 기준 한 줄의 아래 끝에 맞춘다.
-   기준 한 줄은 머리 아래로 6px(28 − 22) 띄우고 18px 높이라, 버튼을 24px 내린다. */
-.refresh {
-  margin-bottom: -24px;
-}
-/* 좁은 화면에서는 버튼이 설명 아래 줄로 내려가므로 내리지 않는다 — 기준 한 줄과 겹친다. */
-@media (max-width: 768px) {
-  .refresh {
-    margin-bottom: 0;
-  }
-}
 
 .sectionTitle {
   font-size: 18px;
@@ -350,25 +332,6 @@
    평가항목이 아니라 서류를 앞세운 표. 한 줄에 쌤플 쪽 숫자와 내 컴퓨터 쪽 결과를
    나란히 두므로, 열 이름을 지우지 않는다 — 두 숫자의 뜻이 다르다(ADR-045). */
 
-/* 남은 가짓수 한 줄. 표를 끝까지 읽지 않아도 오늘 할 일은 알 수 있어야 한다. */
-.lead {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 22px;
-  border: 1px solid var(--pg-note-soft-line);
-  border-radius: 12px;
-  background: var(--pg-note-soft);
-}
-/* 다 챙기면 노란 「아직 남았다」 색을 그대로 둘 수 없다. */
-.lead[data-done] {
-  border-color: var(--pg-sage-line);
-  background: var(--pg-sage-tint);
-}
-.leadWord {
-  flex: 1;
-  min-width: 0;
-}
 /* 「5」 하나를 40px 로 놓았더니 그 숫자가 뭘 센 것인지 옆 글을 읽어야 알았다.
    세는 일은 글 안에서 하고, 눈이 먼저 닿는 자리는 포스티에게 준다. */
 .leadTitle {
@@ -381,7 +344,7 @@
 .leadTitle b {
   color: var(--pg-alert-ink);
 }
-.lead[data-done] .leadTitle {
+.today[data-done] .leadTitle {
   color: var(--pg-sage-ink);
 }
 .leadNote {
@@ -406,19 +369,8 @@
 .row + .row {
   border-top: 1px solid var(--pg-line);
 }
-.sheetHead {
-  align-items: center;
-  padding-top: 13px;
-  padding-bottom: 13px;
-  background: var(--pg-paper-warm);
-  border-bottom: 1px solid var(--pg-line);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--pg-ink-soft);
-}
 /* 챙긴 줄은 흐리게 두되 글자는 읽히게 둔다 — 지우지 않는다. */
-.row[data-done] .docTitle,
-.row[data-done] .colMade {
+.row[data-done] .docTitle {
   color: var(--pg-ink-soft);
 }
 
@@ -443,29 +395,9 @@
   width: 15px;
   height: 15px;
 }
-.sheetHead .rowState {
-  background: none;
-}
-/* 열 이름 밑에 붙는 한 줄. 여섯 줄에 같은 말을 되풀이하던 자리다. */
-.colHint {
-  display: block;
-  margin-top: 2px;
-  font-size: 11.5px;
-  font-weight: 400;
-  font-style: normal;
-  color: var(--pg-ink-hint);
-}
 .colDoc {
   flex: 1 1 0;
   min-width: 0;
-}
-.colMade {
-  flex: 0 0 128px;
-  font-size: 14px;
-  line-height: 1.6;
-}
-.colMine {
-  flex: 0 0 160px;
 }
 .colAct {
   display: flex;
@@ -581,10 +513,7 @@
 }
 
 @media (max-width: 900px) {
-  /* 좁아지면 한 줄을 세로로 쌓고, 숫자 두 칸에 열 이름을 붙여 둔다. */
-  .sheetHead {
-    display: none;
-  }
+  /* 좁아지면 할 일 단추를 서류 밑 줄로 내린다. */
   .row {
     flex-wrap: wrap;
     gap: 10px 16px;
@@ -592,24 +521,8 @@
   .colDoc {
     flex: 1 1 100%;
   }
-  .colMade::before {
-    content: "쌤플 · ";
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--pg-ink-soft);
-  }
-  .colMine::before {
-    content: "내 컴퓨터 · ";
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--pg-ink-soft);
-  }
-  .colMade,
-  .colMine,
   .colAct {
     flex: 1 1 auto;
-  }
-  .colAct {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -618,13 +531,6 @@
 }
 
 @media (max-width: 640px) {
-  .lead {
-    gap: 14px;
-    padding: 14px 16px;
-  }
-  .leadCount {
-    font-size: 30px;
-  }
   .row,
   .sheetFoot {
     padding-left: 16px;
@@ -635,4 +541,130 @@
     padding-left: 16px;
     padding-right: 16px;
   }
+}
+
+/* ── 좌우 짜임 — 왼쪽 「오늘」 요약 · 폴더, 오른쪽 서류 한 장 ── */
+.layout {
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+}
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+.today {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 24px 22px 18px;
+  border-color: var(--pg-note-soft-line);
+  background: var(--pg-note-soft);
+}
+.today[data-done] {
+  border-color: var(--pg-sage-line);
+  background: var(--pg-sage-tint);
+}
+.todayEyebrow {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--pg-ink-soft);
+}
+.todaySay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* 서류마다 한 칸. 챙긴 칸만 칠한다. */
+.meter {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 5px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.meter li {
+  height: 12px;
+  border: 1.5px solid var(--pg-ink);
+  border-radius: 3px;
+  background: var(--pg-paper);
+}
+.meter li[data-done] {
+  background: var(--pg-sage);
+}
+.meterText {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.meterText b {
+  color: var(--pg-ink);
+}
+.todayFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--pg-line);
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
+.folder {
+  display: grid;
+  gap: 10px;
+  padding: 20px 22px;
+}
+.folderTitle {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+}
+.folderLead {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--pg-ink-soft);
+}
+.sheetHeadline {
+  margin: 0;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--pg-line);
+  background: var(--pg-paper-warm);
+}
+/* 쌤플 쪽 숫자와 컴퓨터 쪽 결과. 이름표를 달아 나란히 둔다 — 뜻이 다른 두 숫자다. */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 8px 0 2px;
+}
+.facts > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.facts dt {
+  font-size: 12px;
+  color: var(--pg-ink-hint);
+}
+.facts dd {
+  margin: 0;
+  font-size: 14px;
+}
+/* 두 칸 다 `ws.card` 라 공통 `.card p`(15px · 줄높이 1.9)가 손글씨 제목까지 덮는다. 칸 안에서 다시 잡는다. */
+.today .leadTitle {
+  max-width: none;
+  font-size: 25px;
+  line-height: 1.25;
+}
+.today .todayEyebrow,
+.today .meterText,
+.today .leadNote,
+.folder .folderLead {
+  max-width: none;
+  font-size: 13px;
+  line-height: 1.7;
 }
