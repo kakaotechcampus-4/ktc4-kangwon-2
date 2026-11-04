@@ -39,10 +39,12 @@ import AnnualFrame, {
   POPOVER,
   UNCONFIRM,
   tabClass,
+  UndoRedo,
   useSheetZoom,
 } from "@/components/plan-generator/AnnualFrame";
 import { PAPER_WIDTH, type Pick } from "@/components/plan-generator/PlayMonthlySheet";
 import { useCompactShell } from "@/components/app/compact-shell";
+import { useCellHistory } from "./useCellHistory";
 import WeeklySheet from "./WeeklySheet";
 import WeeklyIndoorPlayPanel from "./WeeklyIndoorPlayPanel";
 import workspace from "./Workspace.module.css";
@@ -111,7 +113,10 @@ export default function WeeklyEditor({
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [asking, setAsking] = useState<"" | "confirm">("");
+  const [asking, setAsking] = useState<"" | "confirm" | "blank">("");
+  // 빈 칸 알림을 다시 누를 때마다 새로 그려 다시 흔든다.
+  const [nudge, setNudge] = useState(0);
+  const history = useCellHistory();
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   const [bump, setBump] = useState(0);
@@ -150,7 +155,6 @@ export default function WeeklyEditor({
   const gridCell = !!picked && grids.length > 0 && picked.section.section_key === "group_activity";
   // 후보형 실내 자유놀이 칸 — 목록에 넣고 · 빼고 · 순서를 바꾼다. AI 재생성은 없다(422).
   const indoorCell = !!picked && indoorSelection && picked.section.section_key === "indoor_play";
-  const theme = cells.find((c) => c.section.section_key === "theme")?.cell;
 
   const accept = (next: WeeklyPlan) => {
     latest.current = next;
@@ -167,7 +171,7 @@ export default function WeeklyEditor({
     return run;
   };
 
-  function saveCell(itemId: string, text: string) {
+  function saveCell(itemId: string, text: string, replay?: "undo" | "redo") {
     const settled = (changed: boolean) => {
       failed.current.delete(itemId);
       if (!mounted.current) return;
@@ -186,6 +190,9 @@ export default function WeeklyEditor({
       if (mounted.current) setStatus("saving");
       try {
         accept(await editWeeklyCell(cur.id, itemId, text, cur.revision));
+        history.record(itemId, now ?? "", text, replay);
+        // 되돌리기 · 다시 하기는 열린 입력창을 저장된 글로 다시 연다.
+        if (replay && mounted.current) setBump((n) => n + 1);
         settled(true);
       } catch (e) {
         if (isSaveConflict(e)) return conflict();
@@ -312,6 +319,16 @@ export default function WeeklyEditor({
     );
 
   const shown = (cell: WeeklyCell) => live[cell.item_id] ?? cell.value;
+  // 확정 전에 채워야 하는 칸(입력 중 글 포함). 선생님이 직접 쓰는 칸(행사 등)은 비워도 된다.
+  const blanks = cells.filter(({ cell }) => !cell.teacher_input && !shown(cell).trim());
+  /** 열린 입력창 글을 먼저 줄에 넣고, 그 저장까지 끝난 목록에서 한 걸음을 꺼내 다시 저장한다. */
+  const through = (direction: "undo" | "redo") => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    enqueue(async () => {
+      const step = history.pop(direction);
+      if (step) saveCell(step.itemId, step.text, direction);
+    }).catch(() => {});
+  };
   const dayOf = (cell: WeeklyCell) => (cell.day ? (DAY_NAMES[cell.day] ?? cell.day) : "");
   // 대·소집단활동 칸(후보가 있을 때) · 후보형 실내 자유놀이 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
   const select = (id: string) => {
@@ -636,15 +653,25 @@ export default function WeeklyEditor({
             className={BUTTON.primary}
             disabled={locked}
             onClick={() => {
-              // 놀이 주제가 비면 서버가 확정을 받지 않는다 — 그 칸으로 데려간다.
-              if (theme && !shown(theme).trim()) {
-                select(theme.item_id);
-                setProblem("놀이 주제를 적어야 확정할 수 있어요.");
-              } else setAsking("confirm");
+              // 빈 칸이 남으면(놀이 주제가 비면 서버도 확정을 받지 않는다) 흔들리는 알림으로 채우게 한다.
+              if (!blanks.length) return setAsking("confirm");
+              setAsking("blank");
+              setNudge((n) => n + 1);
             }}
           >
             {busy === "confirm" ? "확정하는 중…" : "확정하기"}
           </button>
+          {asking === "blank" && (
+            <div className={POPOVER}>
+              <PlayMonthlyConfirm
+                key={nudge}
+                shake
+                message="아직 빈칸이 남아있어요. 빈칸을 채운 뒤 확정해 주세요."
+                no="빈칸 채우기"
+                onNo={() => select(blanks[0].cell.item_id)}
+              />
+            </div>
+          )}
           {asking === "confirm" && (
             <div className={POPOVER}>
               <PlayMonthlyConfirm
@@ -666,6 +693,13 @@ export default function WeeklyEditor({
       docLabel={null}
       docHint={
         <div className="flex items-center gap-1">
+          <UndoRedo
+            disabled={locked}
+            canUndo={history.canUndo}
+            onUndo={() => through("undo")}
+            canRedo={history.canRedo}
+            onRedo={() => through("redo")}
+          />
           {sheetZoom.tools}
           <span className="ml-2">
             <BigView pages={1} render={() => docOf(still)} />

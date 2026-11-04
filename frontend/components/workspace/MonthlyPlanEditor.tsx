@@ -34,6 +34,7 @@ import AnnualFrame, {
   PlanDone,
   UNCONFIRM,
   tabClass,
+  UndoRedo,
   useSheetZoom,
 } from "@/components/plan-generator/AnnualFrame";
 import {
@@ -49,6 +50,7 @@ import {
   TEACHER_HINT,
 } from "@/components/plan-generator/PlayMonthlySheet";
 import { useCompactShell } from "@/components/app/compact-shell";
+import { useCellHistory } from "./useCellHistory";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
 
 const FINDINGS: Record<string, string> = {
@@ -118,7 +120,10 @@ export default function MonthlyPlanEditor({
   // 고른 칸. 안전교육 후보 줄은 주 주소(`safety:<주>`) — 같은 후보를 여러 주에 둘 수 있다.
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [asking, setAsking] = useState<"" | "confirm">("");
+  const [asking, setAsking] = useState<"" | "confirm" | "blank">("");
+  // 빈 칸 알림을 다시 누를 때마다 새로 그려 다시 흔든다.
+  const [nudge, setNudge] = useState(0);
+  const history = useCellHistory();
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   const [bumps, setBumps] = useState<Record<string, number>>({});
@@ -189,7 +194,7 @@ export default function MonthlyPlanEditor({
     return run;
   };
 
-  function saveCell(itemId: string, text: string) {
+  function saveCell(itemId: string, text: string, replay?: "undo" | "redo") {
     // 편집기는 다듬은 글을 저장한다.
     const drop = () =>
       setLive((d) =>
@@ -215,6 +220,9 @@ export default function MonthlyPlanEditor({
       if (mounted.current) setStatus("saving");
       try {
         accept(await editMonthlyCell(cur.id, itemId, text, cur.revision));
+        history.record(itemId, now ?? "", text, replay);
+        // 되돌리기 · 다시 하기는 열린 입력창을 저장된 글로 다시 연다.
+        if (replay && mounted.current) setBumps((b) => ({ ...b, [itemId]: (b[itemId] ?? 0) + 1 }));
         settled(true);
       } catch (e) {
         if (isSaveConflict(e)) return conflict();
@@ -228,6 +236,14 @@ export default function MonthlyPlanEditor({
       }
     }).catch(() => {});
   }
+  /** 열린 입력창 글을 먼저 줄에 넣고, 그 저장까지 끝난 목록에서 한 걸음을 꺼내 다시 저장한다. */
+  const through = (direction: "undo" | "redo") => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    enqueue(async () => {
+      const step = history.pop(direction);
+      if (step) saveCell(step.itemId, step.text, direction);
+    }).catch(() => {});
+  };
   const retry = () => failed.current.forEach((text, itemId) => saveCell(itemId, text));
 
   /** 열린 입력창을 닫아 마지막 글을 줄에 넣고 줄이 빌 때까지 기다린다. 못 저장한 칸이 남으면 false. */
@@ -318,6 +334,8 @@ export default function MonthlyPlanEditor({
   const drillCell = plan.sections.find((s) => s.section_key === "drill")?.cells[0];
   // 훈련 후보가 있으면 훈련 칸도 「AI 후보」 탭부터 (놀이 월간과 같다).
   const drillId = plan.drill_candidates.length > 0 ? drillCell?.item_id : undefined;
+  // 확정 전에 채워야 하는 칸(입력 중 글 포함). 후보로 두는 안전교육 주별 칸은 빼고 본다.
+  const blanks = cells.filter(({ cell }) => !shown(cell).trim());
   const stamp = (id: string) => `${bumps["*"] ?? 0}:${bumps[id] ?? 0}`;
   // 안전교육 줄 · 훈련 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
   const select = (id: string) => {
@@ -720,10 +738,25 @@ export default function MonthlyPlanEditor({
               type="button"
               className={BUTTON.primary}
               disabled={locked}
-              onClick={() => setAsking("confirm")}
+              onClick={() => {
+                if (!blanks.length) return setAsking("confirm");
+                setAsking("blank");
+                setNudge((n) => n + 1);
+              }}
             >
               {busy === "confirm" ? "확정하는 중…" : "확정하기"}
             </button>
+            {asking === "blank" && (
+              <div className="absolute right-0 top-full z-20 mt-2 w-[380px]">
+                <PlayMonthlyConfirm
+                  key={nudge}
+                  shake
+                  message="아직 빈칸이 남아있어요. 빈칸을 채운 뒤 확정해 주세요."
+                  no="빈칸 채우기"
+                  onNo={() => select(blanks[0].cell.item_id)}
+                />
+              </div>
+            )}
             {asking === "confirm" && (
               <div className="absolute right-0 top-full z-20 mt-2 w-[380px]">
                 <PlayMonthlyConfirm
@@ -746,6 +779,13 @@ export default function MonthlyPlanEditor({
       docLabel={null}
       docHint={
         <div className="flex items-center gap-1">
+          <UndoRedo
+            disabled={locked}
+            canUndo={history.canUndo}
+            onUndo={() => through("undo")}
+            canRedo={history.canRedo}
+            onRedo={() => through("redo")}
+          />
           {sheetZoom.tools}
           <span className="ml-2">
             <BigView pages={1} render={() => docOf(still)} />

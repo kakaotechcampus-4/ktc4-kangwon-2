@@ -2,20 +2,22 @@
 import { useEffect, useRef } from "react";
 import styles from "./PlayMonthlyStructure.module.css";
 
-/** 페이지 안 확인 상자(window.confirm 대신). 닫기는 부른 쪽이 정한다. */
+/** 페이지 안 확인 상자(window.confirm 대신). 닫기는 부른 쪽이 정한다. `yes` 가 없으면 단추 하나(알림), `shake` 면 열릴 때 살짝 흔든다. */
 export default function PlayMonthlyConfirm({
   message,
   yes,
   no = "아니요",
   disabled = false,
+  shake = false,
   onYes,
   onNo,
 }: {
   message: string;
-  yes: string;
+  yes?: string;
   no?: string;
   disabled?: boolean;
-  onYes: () => void;
+  shake?: boolean;
+  onYes?: () => void;
   onNo: () => void;
 }) {
   // 열릴 때 한 번만 「아니요」로 포커스를 옮기고, 닫히면 상자를 연 버튼으로 돌린다. 다시 그려도 포커스를 가져가지 않는다.
@@ -30,16 +32,18 @@ export default function PlayMonthlyConfirm({
     <div
       role="group"
       aria-label={message}
-      className={styles.confirm}
+      className={`${styles.confirm} ${shake ? styles.shake : ""}`}
       onKeyDown={(e) => e.key === "Escape" && onNo()}
     >
       <p>{message}</p>
       <button type="button" data-act="no" ref={noButton} onClick={onNo}>
         {no}
       </button>
-      <button type="button" data-act="yes" disabled={disabled} onClick={onYes}>
-        {yes}
-      </button>
+      {yes && (
+        <button type="button" data-act="yes" disabled={disabled} onClick={onYes}>
+          {yes}
+        </button>
+      )}
     </div>
   );
 }

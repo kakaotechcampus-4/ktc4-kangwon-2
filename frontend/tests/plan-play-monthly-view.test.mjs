@@ -1065,6 +1065,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     "@/components/plan-generator/AnnualFrame": frameModule,
     "@/components/app/compact-shell": shellModule,
     "./WorkspaceUI": { ws: css },
+    "./useCellHistory": compile("../components/workspace/useCellHistory.ts", { react: h.react }),
   });
   const props = {
     plan: server,
@@ -1108,6 +1109,31 @@ function openV1Editor(findings = [], setup = (p) => p) {
     tick: () => new Promise((done) => setTimeout(done, 0)),
   };
 }
+
+test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, 빈 칸이 남으면 확정 대신 흔들리는 알림을 띄운다", async () => {
+  const view = openV1Editor();
+  const settle = async () => {
+    await view.tick();
+    view.waits.shift().ok();
+    await view.tick();
+  };
+  const press = (name) => withText(view.render(), "button", name)[0].props.onClick();
+  view.editor().onSave("B");
+  await settle();
+  press("되돌리기");
+  await settle();
+  assert.equal(view.stored(), "A");
+  press("다시 하기");
+  await settle();
+  assert.deepEqual(view.sent, ["B", "A", "B"]);
+
+  view.editor().onDraft(" ");
+  press("확정하기");
+  const [ask] = node(view.render(), "ask");
+  assert.equal(ask.props.shake, true);
+  assert.equal(ask.props.yes, undefined);
+  assert.match(ask.props.message, /아직 빈칸이 남아있어요/);
+});
 
 test("v1 — 안전교육 검증 안내는 영어 서버 문구 대신 한국어로 보인다", () => {
   const finding = (code) => ({ code, section_key: "safety_education", message: "English " + code });

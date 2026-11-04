@@ -10,6 +10,29 @@
   border-radius: 20px;
   background: #fff;
 }
+/* 빈 칸 알림 — 열릴 때 살짝 흔든다. 움직임 줄이기 설정이면 흔들지 않는다. */
+.shake {
+  animation: shake 0.45s ease-in-out;
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shake {
+    animation: none;
+  }
+}
 .confirm p {
   flex-basis: 100%;
   margin: 0;
