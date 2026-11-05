@@ -130,7 +130,7 @@ export default function OnboardingLayout({
                 내용이 길면 그 아래로 밀린다. 서비스 이름일 뿐이라 화면 읽기에서는 뺀다. */}
             <p
               aria-hidden="true"
-              className="flex-none px-6 pb-5 font-display text-[27px] font-bold leading-[1.25] text-ink-soft sm:px-10 sm:pb-6"
+              className="flex-none px-6 pb-5 font-display text-[23px] font-bold leading-[1.25] text-ink-soft sm:px-10 sm:pb-6"
             >
               쌤의 계획이 쉬워지는 순간,
               <br />
