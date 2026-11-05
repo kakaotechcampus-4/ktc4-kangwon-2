@@ -127,7 +127,11 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
     assert len(provider.requests) == 2
     repaired = next(c for c in plan.activity_candidates if c.cell.section_key == section)
     assert repaired.cell.generation.rule_version == provider.requests[0].repair_prompt_version
-    from ssuksak.planning.planner.weekly import LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
+    from ssuksak.planning.planner.play_monthly import SYSTEM_PROMPT as PLAY_MONTHLY_PROMPT
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE
+    from ssuksak.planning.planner.weekly import CANDIDATE_DESCRIPTION_TONE, LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
+
+    assert NATURAL_PLAY_GUIDANCE in PLAY_MONTHLY_PROMPT
     for request in provider.requests:
         body = json.loads(request.user_content)
         body = body.get("original_request", body)
@@ -140,8 +144,11 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
         assert "설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다" in request.system_prompt
         assert "유형과 활동명만 읽어도 할 일이 떠올라야 한다" in request.system_prompt
         assert "서로 섞어 새 활동을 만들지 않는다" in request.system_prompt
-        assert "+activity-candidates-v4" in request.prompt_version
-        assert "+activity-candidates-v4" in request.repair_prompt_version
+        assert "+activity-candidates-v5" in request.prompt_version
+        assert "+activity-candidates-v5" in request.repair_prompt_version
+        assert request.system_prompt.count(NATURAL_PLAY_GUIDANCE) == 1
+        assert request.system_prompt.count(CANDIDATE_DESCRIPTION_TONE) == 1
+        assert "소리는 듣는 대상이며" not in request.system_prompt
         assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
         assert LINKED_WRITING_GUIDANCE in request.system_prompt
         assert "작품명과 익숙한 놀이명은 유지" in request.system_prompt
@@ -251,6 +258,11 @@ def test_real_title_omissions_repair_once_and_persistent_omissions_are_rejected(
             activity_basis=basis, required_name_terms=terms)),
         teacher_input_keys=frozenset(), parent_context=(("theme", "우리 원과 친구"),),
         evidence=((ref, text, "GROUP_ACTIVITY"),), reference_candidates=(), packet_fingerprint="")
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE
+    from ssuksak.planning.planner.weekly import CANDIDATE_DESCRIPTION_TONE
+
+    assert NATURAL_PLAY_GUIDANCE in request.system_prompt
+    assert CANDIDATE_DESCRIPTION_TONE in request.system_prompt
 
     class Drift(RequestAwareWeeklyLlm):
         def generate_weekly(self, current):

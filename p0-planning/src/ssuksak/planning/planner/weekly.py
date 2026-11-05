@@ -75,14 +75,17 @@ LINKED_OUTDOOR_INSTRUCTION = (
     "설명은 그 근거의 대상과 경험을 이번 주에 어떻게 살펴보거나 경험할지 합니다체 한 문장으로 풀어 쓴다. "
     "Catalog label 또는 부모 현재 값을 그대로 이어 쓰는 경우에는 이 설명을 덧붙이지 않는다. "
 )
+CANDIDATE_DESCRIPTION_TONE = (
+    "후보 설명은 합니다체 1~2문장으로 쓰며 해요체·한다체를 섞지 않는다. 재료를 나열하거나 발달 효과를 단정하지 않는다. "
+)
 LINKED_WRITING_GUIDANCE = (
     " 해당 주 부모 focus → 같은 주 놀이 → 실내대체 순서로 작성한다. 고르기 쉬운 놀이에 맞추려고 focus를 바꾸지 않는다. "
     "목표는 v1 월간처럼 중심 경험을 간결하게 묶되 이번 주의 범위로 좁힌다. "
     "놀이 이름은 기존 v1 월간처럼 대상과 경험이 보이는 짧고 익숙한 명사형으로 쓰며, 원 근거의 자연스러운 표현을 우선한다. "
     "뜻을 줄이려고 명사를 겹쳐 붙이거나 설명 말투인 '해요/해 봅니다'를 이름에 붙이지 않는다. "
     "실내놀이·대소집단 설명은 v2 놀이 설명과 같은 합니다체로, 유아가 탐색할 대상과 경험을 자연스럽게 쓴다. "
-    "후보 설명은 합니다체 1~2문장으로 쓰며 해요체·한다체를 섞지 않는다. 재료를 나열하거나 발달 효과를 단정하지 않는다. "
-    "근거가 짧은 활동명뿐이면 그 대상과 활동의 뜻을 풀어 쓴다. "
+    + CANDIDATE_DESCRIPTION_TONE
+    + "근거가 짧은 활동명뿐이면 그 대상과 활동의 뜻을 풀어 쓴다. "
     "설명을 구체화하려고 근거에 없는 새 재료·실험 비교 조건·진행 순서·정해진 결과물을 덧붙이지 않는다. "
     "실내놀이는 활동마다 줄을 나눠 '[역할놀이] - 활동명: 짧은 설명'처럼 쓴다. "
     "대괄호에는 근거 본문이나 함께 제공한 원문 영역 이름에서 확인되는 놀이 영역만 쓰고, "
@@ -361,7 +364,7 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
-    candidates = "+activity-candidates-v4" if any(t.activity_type is not None for t in targets) else ""
+    candidates = "+activity-candidates-v5" if any(t.activity_type is not None for t in targets) else ""
     if candidates:
         source_refs |= {t.section_key for t in targets if t.activity_type is not None}
     memo = _memo_addresses(targets) if teacher_memo else None
@@ -375,6 +378,8 @@ def build_weekly_request(
     if reference_wiring:
         system_prompt = system_prompt.replace(OUTDOOR_REFERENCE_INSTRUCTION, LINKED_OUTDOOR_INSTRUCTION)
         system_prompt += NATURAL_PLAY_GUIDANCE + LINKED_WRITING_GUIDANCE
+    elif candidates:
+        system_prompt += NATURAL_PLAY_GUIDANCE + CANDIDATE_DESCRIPTION_TONE
     if candidates:
         system_prompt += (
             " activity_type가 있는 target은 교사가 고를 한 주 활동 후보이며 요일에 배치하지 않는다. "
@@ -387,7 +392,6 @@ def build_weekly_request(
             "required_name_terms는 문서 이름에 남겨야 할 활동 정보이며 모두 포함한다. 설명도 activity_basis의 같은 활동을 다룬다. "
             "작품명과 익숙한 놀이명은 유지하고, 모든 제목에 같은 행동어를 억지로 붙이지 않는다. "
             "제목과 설명은 같은 활동을 뜻해야 하며, 근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다. "
-            "설명은 무엇을 말하고 듣고 만드는지 직접 쓰며, 관심이나 즐거움을 경험한다는 말만으로 마치지 않는다. 소리는 듣는 대상이며 소리가 들리는 모습처럼 시각 표현을 붙이지 않는다. "
             "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
             "같은 Section의 후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
             "indoor_play.candidate로 시작하는 target도 같은 형식의 실내 자유놀이 후보다. "
