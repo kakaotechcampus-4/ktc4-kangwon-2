@@ -157,7 +157,7 @@ export default function WeeklySheet({
           <div
             key={child.cell_id ?? child.split_id ?? i}
             style={{ flex: i === 0 ? ratio : 100 - ratio, minWidth: 0 }}
-            className={`flex flex-col [&>[data-cell]]:flex-1 ${
+            className={`flex flex-col [&>[data-cell]]:flex [&>[data-cell]]:flex-1 [&>[data-cell]]:flex-col [&>[data-cell]]:justify-center ${
               i ? (vertical ? "border-t border-[#cfe5f4]" : "border-l border-[#cfe5f4]") : ""
             }`}
             {...area(child.cell_id)}
@@ -219,7 +219,7 @@ export default function WeeklySheet({
             return (
               <td
                 key={d}
-                className={`${LINE} align-top`}
+                className={`${LINE} align-middle`}
                 {...area(tree ? tree[i].cell_id : cells.length === 1 ? cells[0].item_id : null)}
               >
                 {tree
@@ -238,7 +238,7 @@ export default function WeeklySheet({
           </th>
           <td
             colSpan={span}
-            className={`${LINE} ${key === "goals" ? "align-middle [&_[data-cell]]:justify-start" : "align-top"}`}
+            className={`${LINE} align-middle ${key === "goals" ? "[&_[data-cell]]:justify-start" : ""}`}
             {...area(section.cells.length === 1 ? section.cells[0].item_id : null)}
           >
             {/* 후보형 실내 자유놀이는 주 전체 목록이 한 칸에 순서대로 들어간다. 나머지는 한 칸. */}
