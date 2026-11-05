@@ -1,10 +1,10 @@
 {
-  "$schema_note": "P0 내부 Reference **Draft**다. 공개 API Schema가 아니며 runtime에 연결하지 않는다. 내용 생성물이 아니라 고시문 원문의 machine-readable transcription이다 — 원문에 없는 영역·범주·내용을 만들거나 문구를 다듬지 않는다.",
+  "$schema_note": "P0 내부 Reference다. 공개 API Schema가 아니며, 사람 승인(review) 뒤 runtime에 연결해 쓴다. 내용 생성물이 아니라 고시문 원문의 machine-readable transcription이다 — 원문에 없는 영역·범주·내용을 만들거나 문구를 다듬지 않는다.",
   "schema_version": "curriculum-reference.schema.v0",
   "catalog_id": "ssuksak.nuri-curriculum-content",
   "catalog_version": "nuri-curriculum-content-v0.1.0",
   "supersedes": null,
-  "draft": true,
+  "draft": false,
   "created_on": "2026-10-24",
   "locale": "ko-KR",
   "purpose": "놀이 프로젝트형 연간계획안의 「놀이를 통한 배움」 칸에서 Rule·LLM이 고를 수 있는 공식 내용 ID 집합. LLM은 content_id만 고르고, 영역·내용범주·내용 문장은 서버가 이 파일의 원문으로 붙인다.",
