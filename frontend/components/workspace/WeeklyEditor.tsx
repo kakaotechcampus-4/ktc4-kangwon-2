@@ -126,6 +126,8 @@ export default function WeeklyEditor({
   const [status, setStatus] = useState<keyof typeof SAVE_LABEL>("idle");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  // 머리줄 안내를 지우는 타이머 — 마지막 안내의 것만 남긴다(같은 문구가 이어져도 일찍 지우지 않는다).
+  const flash = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [problem, setProblem] = useState("");
   const edited = useEdited(plan);
   // 저장 줄 — 앞 요청이 끝나야 다음이 그 revision 으로 간다. 화면이 내려간 뒤에는 저장만 마친다.
@@ -183,7 +185,10 @@ export default function WeeklyEditor({
           ? Object.fromEntries(Object.entries(d).filter(([k]) => k !== itemId))
           : d,
       );
-      if (changed) setStatus(failed.current.size ? "failed" : "saved");
+      if (!changed) return;
+      setStatus(failed.current.size ? "failed" : "saved");
+      // 다시 저장해 모두 저장되면 실패 문구도 지운다.
+      if (!failed.current.size) setMessage("");
     };
     // 같은지는 보내기 직전에 본다 — 앞 저장이 끝난 뒤의 서버 값과 비교해야 마지막 입력을 버리지 않는다.
     enqueue(async () => {
@@ -202,6 +207,7 @@ export default function WeeklyEditor({
         failed.current.set(itemId, text);
         if (!mounted.current) return;
         setStatus("failed");
+        clearTimeout(flash.current);
         setMessage(
           "저장하지 못했어요. 쓴 글은 그대로 두었어요 — 「다시 저장」을 눌러 주세요. " +
             describe(e, ""),
@@ -247,7 +253,8 @@ export default function WeeklyEditor({
       setBump((b) => b + 1);
       setMessage(done);
       // 알림은 머리줄 저장 표시 자리에 잠깐 — 패널을 밀지 않고 저절로 사라진다.
-      setTimeout(() => mounted.current && setMessage((m) => (m === done ? "" : m)), 4000);
+      clearTimeout(flash.current);
+      flash.current = setTimeout(() => mounted.current && setMessage(""), 4000);
     } catch (e) {
       if (isSaveConflict(e)) return conflict();
       setProblem(describe(e, "처리하지 못했어요."));
@@ -662,7 +669,10 @@ export default function WeeklyEditor({
       lead={back}
       status={
         <span className="flex items-center gap-3">
-          <span role="status">{status !== "failed" && message ? message : SAVE_LABEL[status]}</span>
+          <span role="status">
+            {/* 저장 중 · 실패가 안내보다 먼저다. */}
+            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
+          </span>
           <PlanMemoNote plan={plan} />
         </span>
       }

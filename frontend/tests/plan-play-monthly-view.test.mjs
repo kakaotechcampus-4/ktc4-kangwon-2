@@ -1583,6 +1583,14 @@ test('v1 — 빈 후보(display_value "")도 칸을 그려 눌러 편집기를 �
       ["safety:W2", ""],
     ],
   );
+  // 빈 후보를 둔 주도 「법정 안전교육」 빈칸으로 센다(놀이 월간과 같다).
+  all(view.render())
+    .find((n) => n.props?.children === "확정하기")
+    .props.onClick();
+  const [blankRows] = node(view.render(), "blank-rows");
+  const safetyBlank = blankRows.props.rows.find((r) => r.key === "safety_education");
+  assert.equal(safetyBlank.count, 2);
+  assert.equal(safetyBlank.safety, true);
   safetyCells()[0].props.onSelect("safety:W1");
   view.tab("칸 편집");
   assert.equal(view.editor().label, "안전교육 후보 · 1주");

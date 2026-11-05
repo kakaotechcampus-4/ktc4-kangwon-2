@@ -132,6 +132,8 @@ export default function MonthlyPlanEditor({
   const [status, setStatus] = useState<keyof typeof SAVE_LABEL>("idle");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  // 머리줄 안내를 지우는 타이머 — 마지막 안내의 것만 남긴다(같은 문구가 이어져도 일찍 지우지 않는다).
+  const flash = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [problem, setProblem] = useState("");
   // 저장 줄 — 앞 요청이 끝나야 다음이 그 revision 으로 간다. 화면이 내려간 뒤에는 저장만 마친다.
   const queue = useRef<Promise<void>>(Promise.resolve());
@@ -209,7 +211,10 @@ export default function MonthlyPlanEditor({
       failed.current.delete(itemId);
       if (!mounted.current) return;
       drop();
-      if (changed) setStatus(failed.current.size ? "failed" : "saved");
+      if (!changed) return;
+      setStatus(failed.current.size ? "failed" : "saved");
+      // 다시 저장해 모두 저장되면 실패 문구도 지운다.
+      if (!failed.current.size) setMessage("");
     };
     // 같은지는 보내기 직전에 본다 — 앞 저장이 끝난 뒤의 서버 값과 비교해야 마지막 입력을 버리지 않는다.
     enqueue(async () => {
@@ -231,6 +236,7 @@ export default function MonthlyPlanEditor({
         failed.current.set(itemId, text);
         if (!mounted.current) return;
         setStatus("failed");
+        clearTimeout(flash.current);
         setMessage(
           "저장하지 못했어요. 쓴 글은 그대로 두었어요 — 「다시 저장」을 눌러 주세요. " +
             describe(e, ""),
@@ -304,7 +310,8 @@ export default function MonthlyPlanEditor({
       setBumps((b) => ({ ...b, "*": (b["*"] ?? 0) + 1 }));
       setMessage(done);
       // 알림은 머리줄 저장 표시 자리에 잠깐 — 패널을 밀지 않고 저절로 사라진다.
-      setTimeout(() => mounted.current && setMessage((m) => (m === done ? "" : m)), 4000);
+      clearTimeout(flash.current);
+      flash.current = setTimeout(() => mounted.current && setMessage(""), 4000);
       return next;
     } catch (e) {
       if (isSaveConflict(e)) return conflict();
@@ -339,18 +346,32 @@ export default function MonthlyPlanEditor({
   // 훈련 후보가 있으면 훈련 칸도 「AI 후보」 탭부터 (놀이 월간과 같다).
   const drillId = plan.drill_candidates.length > 0 ? drillCell?.item_id : undefined;
   // 확정 전에 알릴 빈 칸(입력 중 글 포함). 근거가 없어 비운 칸도 있어 알린 뒤 그대로 확정할 수 있다.
-  // 후보로 두는 안전교육 주별 칸은 빼고 본다.
+  // 후보로 두는 안전교육은 주마다 하나 — 후보를 안 놓았거나 놓은 후보 문장이 비면 빈칸이다(놀이 월간과 같다).
   const blanks = cells.filter(({ cell }) => !shown(cell).trim());
+  const safetyBlanks = candidateMode
+    ? plan.safety_weeks.filter((w) => {
+        const c = plan.safety_candidates.find((x) => x.cell.item_id === w.candidate_item_id);
+        return !c || !shown(c.cell).trim();
+      })
+    : [];
+  const total = cells.length + (candidateMode ? plan.safety_weeks.length : 0);
+  const blankCount = blanks.length + safetyBlanks.length;
   // 확정 확인은 한 번 — 남은 빈칸은 줄마다 세어 같은 상자에 보이고, 누르면 그 줄 첫 빈칸으로 간다.
   const blankRows = sections
-    .map((s) => ({ s, empty: blanks.filter((b) => b.section === s) }))
+    .map((s) => ({
+      s,
+      empty:
+        candidateMode && s.section_key === "safety_education"
+          ? safetyBlanks.map((w) => "safety:" + w.week_id)
+          : blanks.filter((b) => b.section === s).map((b) => b.cell.item_id),
+    }))
     .filter((r) => r.empty.length)
     .map(({ s, empty }) => ({
       key: s.section_key,
       label: sectionName(s.section_key, s.label),
       count: empty.length,
       safety: s.section_key === "safety_education",
-      onJump: () => select(empty[0].cell.item_id),
+      onJump: () => select(empty[0]),
     }));
   const hasAi = candidateMode || !!drillId;
   const stamp = (id: string) => `${bumps["*"] ?? 0}:${bumps[id] ?? 0}`;
@@ -382,13 +403,7 @@ export default function MonthlyPlanEditor({
   const editTab = (
     <div className="flex flex-col gap-4">
       {/* 처음 화면은 남은 할 일 — 채운 정도 · 줄마다 빈칸 수(누르면 그 칸으로) · 고치는 법. */}
-      {!where && (
-        <PanelOverview
-          filled={cells.length - blanks.length}
-          total={cells.length}
-          rows={blankRows}
-        />
-      )}
+      {!where && <PanelOverview filled={total - blankCount} total={total} rows={blankRows} />}
       {where && (
         <div className="flex items-end justify-between gap-3">
           <h2 className="m-0 text-[20px] font-bold leading-tight">{where}</h2>
@@ -543,7 +558,7 @@ export default function MonthlyPlanEditor({
     </button>
   );
   const askConfirm =
-    (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
+    (blankCount ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
     "확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 주간계획안을 만들게 돼요." +
     (notices.length ? ` 확인할 것 ${notices.length}개가 남았어요.` : "");
 
@@ -718,7 +733,10 @@ export default function MonthlyPlanEditor({
       lead={back}
       status={
         <span className="flex items-center gap-3">
-          <span role="status">{status !== "failed" && message ? message : SAVE_LABEL[status]}</span>
+          <span role="status">
+            {/* 저장 중 · 실패가 안내보다 먼저다. */}
+            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
+          </span>
           <PlanMemoNote plan={plan} />
         </span>
       }

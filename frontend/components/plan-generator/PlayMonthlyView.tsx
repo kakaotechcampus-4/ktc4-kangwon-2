@@ -596,7 +596,18 @@ function PlayMonthlyBody({
               "확정하면 확정을 풀기 전까지 고칠 수 없어요." +
               (plan.notices.length ? ` 확인할 것 ${plan.notices.length}개가 남았어요.` : "")
             }
-            blanks={<BlankRows rows={blankRows} />}
+            // 빈칸으로 가면 확정 창을 닫는다(주제형 월간 · 주간과 같다).
+            blanks={(close) => (
+              <BlankRows
+                rows={blankRows.map((r) => ({
+                  ...r,
+                  onJump: () => {
+                    close();
+                    r.onJump();
+                  },
+                }))}
+              />
+            )}
             whenIdle={save.whenIdle}
             freeze={() => {
               setFrozen(true);
