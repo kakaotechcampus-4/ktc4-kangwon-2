@@ -23,7 +23,7 @@ import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
 import { Tape } from "@/components/workspace/WorkspaceUI";
 import { SlideTour } from "@/components/app/Tour";
-import GenerationRing from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
 import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
@@ -86,6 +86,7 @@ function AnnualGenerator({ format }: { format: Format }) {
       : NO_ROOM;
   }, NO_ROOM);
   const [generating, setGenerating] = useState(false);
+  const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
@@ -104,6 +105,7 @@ function AnnualGenerator({ format }: { format: Format }) {
     const controller = new AbortController();
     controllerRef.current = controller;
     setGenerating(true);
+    setDone(false);
     setError("");
     setMemoProblem(null);
     setOccupied(null);
@@ -129,6 +131,8 @@ function AnnualGenerator({ format }: { format: Format }) {
       } catch (e) {
         console.warn("계획안 표시 정보 캐시 저장 실패", e);
       }
+      setDone(true);
+      await ringFinished();
       router.replace("/plans/annual/" + plan.id);
     } catch (e) {
       if (controller.signal.aborted) return;
@@ -167,7 +171,14 @@ function AnnualGenerator({ format }: { format: Format }) {
   if (generating)
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
-        <GenerationRing steps={[...look.steps]} onCancel={stop} />
+        <GenerationRing
+          kind={`annual:${format}`}
+          // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
+          expect={format === "PLAY_PROJECT" ? 180 : 20}
+          steps={[...look.steps]}
+          done={done}
+          onCancel={stop}
+        />
       </div>
     );
 
