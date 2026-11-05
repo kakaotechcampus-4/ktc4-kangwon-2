@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import OnboardingLayout from "./OnboardingLayout";
 import DoneScreen from "./DoneScreen";
@@ -224,30 +224,38 @@ function ClassCard({
   onChildren: () => void;
 }) {
   const consent = classroom.guardianConsent ? "받았어요" : "확인 안 함";
+  const detailId = useId();
   return (
     <section
       aria-label={`${classroom.className} 정보`}
       className="mb-3 overflow-hidden squircle [--r:16px] border border-line"
     >
-      <div className="flex items-center justify-between gap-2 px-[18px] pb-1 pt-4">
-        <h3 className="text-[17px] font-bold text-ink">{classroom.className}</h3>
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={`${classroom.className} 고치기`}
-          className="min-h-9 rounded-full border-[1.5px] border-primary-tint-line bg-primary-tint px-3.5 text-[13px] font-bold text-primary-ink hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-        >
-          고치기
-        </button>
-      </div>
-      <dl className="m-0 grid grid-cols-[112px_minmax(0,1fr)] gap-y-1.5 px-[18px] pb-3.5 pt-2 text-[15px]">
-        <dt className="text-ink-soft">연령</dt>
-        <dd className="m-0 text-ink">{ageSelectionLabel(selectedAgesFor(classroom))}</dd>
-        <dt className="text-ink-soft">담임</dt>
-        <dd className="m-0 text-ink">{classroom.teacherName}</dd>
-        <dt className="text-ink-soft">법정대리인 동의</dt>
-        <dd className="m-0 text-ink">{consent}</dd>
-      </dl>
+      {/* 원 정보 줄과 같은 모양 — 줄 전체가 단추이고 오른쪽 꺾쇠가 「누르면 고친다」를 알린다.
+          단추 이름은 「{반} 고치기」 그대로 두고(e2e 가 이 이름으로 찾는다), 연령 · 담임 · 동의는
+          aria-describedby 로 읽히게 한다. */}
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`${classroom.className} 고치기`}
+        aria-describedby={detailId}
+        className={rowClass}
+      >
+        <span className="flex-1">
+          <span className="block text-[17px] font-bold">{classroom.className}</span>
+          <span
+            id={detailId}
+            className="mt-2 grid grid-cols-[112px_minmax(0,1fr)] gap-y-1.5 text-[15px]"
+          >
+            <span className="text-ink-soft">연령</span>
+            <span>{ageSelectionLabel(selectedAgesFor(classroom))}</span>
+            <span className="text-ink-soft">담임</span>
+            <span>{classroom.teacherName}</span>
+            <span className="text-ink-soft">법정대리인 동의</span>
+            <span>{consent}</span>
+          </span>
+        </span>
+        <Chevron />
+      </button>
       {classroom.guardianConsent && (
         <button
           type="button"
