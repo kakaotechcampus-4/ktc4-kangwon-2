@@ -111,4 +111,5 @@ def weekly_section_evidence(
             for group in groups.values():
                 if group:
                     ordered.append(group.pop(0))
-    return apply_source_diversity(ordered, top_k=top_k, institution_cap=institution_cap)
+    # Human Decision 2026-11-05(하민): for candidate pools the source cap orders, it does not cut (ADR-054).
+    return apply_source_diversity(ordered, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
