@@ -164,6 +164,39 @@ export default function OnboardingLayout({
               />
               <feComposite in="d" in2="mask" operator="in" />
             </filter>
+            {/* 글자용 분필 결 — 선보다 덜 비틀고 덜 비운다. 더 세게 하면 이름이 안 읽힌다(시험 의견: 가독성).
+                글자 상자에 맞춰(objectBoundingBox) 잡으니 글자 길이가 달라도 된다. */}
+            <filter id="chalk-text" x="-5%" y="-15%" width="110%" height="130%">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.9"
+                numOctaves={2}
+                seed={3}
+                result="n"
+              />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="n"
+                scale={1.1}
+                xChannelSelector="R"
+                yChannelSelector="G"
+                result="d"
+              />
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="1.2"
+                numOctaves={2}
+                seed={8}
+                result="g"
+              />
+              <feColorMatrix
+                in="g"
+                type="matrix"
+                values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.1 1.75"
+                result="mask"
+              />
+              <feComposite in="d" in2="mask" operator="in" />
+            </filter>
           </svg>
 
           {footer && (

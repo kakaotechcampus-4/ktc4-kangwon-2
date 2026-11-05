@@ -7,7 +7,7 @@ import { ChalkLine } from "./FlowParts";
 const SEJONG = "세종특별자치시";
 
 /**
- * 칸 하나 = 칠판에 적은 이름. 손글씨체는 읽기 어렵다는 시험 의견이 있어 기본 글씨체로 쓴다.
+ * 칸 하나 = 칠판에 적은 이름. 손글씨체는 읽기 어렵다는 시험 의견이 있어 기본 글씨체로 쓰고, 분필 결만 입힌다.
  * 마우스를 올리면(키보드로 가도) 이름을 분필로 쓱 친 네모로 두른다(ChalkBox).
  * 네모는 글자 양옆으로 조금 더 나가되(-mx · px), 글자 자리는 다른 칸과 그대로 맞는다.
  */
@@ -191,7 +191,8 @@ export default function RegionSheet({
           {shown.map((e, i) => (
             <li key={e.key}>
               <button type="button" className={item} onClick={e.pick}>
-                {e.label}
+                {/* 이름은 분필로 쓴 듯한 결을 입힌다(#chalk-text). 네모(ChalkBox)는 따로 결을 받는다. */}
+                <span className="[filter:url(#chalk-text)]">{e.label}</span>
                 <ChalkBox index={i} />
               </button>
             </li>
