@@ -6,11 +6,12 @@ import { PROVINCE_OPTIONS, districtsFor } from "@/lib/onboarding/regions";
 const SEJONG = "세종특별자치시";
 
 /**
- * 칸 하나 = 칠판에 분필로 적은 이름. 마우스를 올리면(키보드로 가도) 노란 분필로 물결 밑줄이 그어진다.
+ * 칸 하나 = 칠판에 적은 이름. 손글씨체는 읽기 어렵다는 시험 의견이 있어 기본 글씨체로 쓴다.
+ * 마우스를 올리면(키보드로 가도) 노란 분필로 물결 밑줄이 그어진다.
  * 밑줄은 늘 있되 투명하다가 색만 바뀐다 — 줄이 생기고 사라져도 글자가 움직이지 않는다.
  */
 const item =
-  "flex min-h-12 w-full items-center px-1 text-left font-display text-[22px] font-bold leading-tight text-ink underline decoration-transparent decoration-wavy decoration-2 underline-offset-[7px] transition-[text-decoration-color] duration-150 hover:decoration-primary focus-visible:decoration-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none";
+  "flex min-h-12 w-full items-center px-1 text-left text-[18px] font-bold leading-tight text-ink underline decoration-transparent decoration-wavy decoration-2 underline-offset-[7px] transition-[text-decoration-color] duration-150 hover:decoration-primary focus-visible:decoration-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none";
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
@@ -47,7 +48,7 @@ export default function RegionSheet({
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-labelledby="region-sheet-title"
-      className="chalkboard m-0 mt-auto max-h-[80vh] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[640px] sm:[--r:0px]"
+      className="chalkboard m-0 mt-auto max-h-[80vh] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
     >
       <div aria-hidden="true" className="mx-auto mt-3 h-1 w-10 rounded-sm bg-line sm:hidden" />
       <div className="flex items-center gap-2 px-6 pb-4 pt-3 sm:pt-5">
