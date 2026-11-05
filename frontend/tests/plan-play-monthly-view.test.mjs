@@ -1054,9 +1054,28 @@ function openV1Editor(findings = [], setup = (p) => p) {
     safety_candidates: [],
     safety_weeks: [],
     drill_candidates: [],
+    teacher_tables: [
+      {
+        table_key: "event_schedule",
+        label: "행사 일정",
+        titles: [],
+        columns: [
+          {
+            cell: { item_id: "ev1", value: "", evidence: [], generation: null },
+            split_id: null,
+            axis: null,
+            ratio: null,
+            children: [],
+          },
+        ],
+        column_widths: [100],
+        height_mm: 12,
+      },
+    ],
     notices: [],
   });
   const sent = [];
+  const tableCalls = [];
   const edits = [];
   const placed = [];
   const copied = [];
@@ -1143,6 +1162,9 @@ function openV1Editor(findings = [], setup = (p) => p) {
         return server;
       },
       confirmMonthlyPlan: async () => server,
+      splitMonthlyTableCell: async (...a) => (tableCalls.push(["split", ...a]), server),
+      removeMonthlyTableCell: async (...a) => (tableCalls.push(["remove", ...a]), server),
+      resizeMonthlyTable: async (...a) => (tableCalls.push(["size", ...a]), server),
       regenerateMonthlyCell: async () => server,
       getMonthlyPlanAudit: (...a) => audit(...a),
       downloadMonthlyHwpx: () => {},
@@ -1199,6 +1221,19 @@ function openV1Editor(findings = [], setup = (p) => p) {
     "@/components/app/compact-shell": shellModule,
     "./WorkspaceUI": { ws: css },
     "./useCellHistory": compile("../components/workspace/useCellHistory.ts", { react: h.react }),
+    "./MonthlyTeacherTables": compile("../components/workspace/MonthlyTeacherTables.tsx", {
+      "@/lib/plan-generator/playMonthlyTimetable": compile(
+        "../lib/plan-generator/playMonthlyTimetable.ts",
+        {},
+      ),
+      "@/components/plan-generator/PlayMonthlySheet": {
+        Cell: (props) => jsx("cell", props),
+        Band: (props) => jsx("div", props),
+        LINE: "line",
+        hu: (n) => n,
+        TEACHER_HINT: "hint",
+      },
+    }),
   });
   const props = {
     plan: server,
@@ -1215,6 +1250,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     .props.onSelect("c1");
   return {
     sent,
+    tableCalls,
     edits,
     placed,
     copied,
@@ -1269,6 +1305,37 @@ test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, �
   const [rows] = node(view.render(), "blank-rows");
   assert.equal(rows.props.rows.length, 1);
   assert.equal(rows.props.rows[0].count, 1);
+});
+
+test("v1 — 행사 일정 칸을 눌러 쓰면 그 칸을 저장하고, 나누기 · 높이는 표 API 로 보낸다", async () => {
+  const view = openV1Editor();
+  view.pick("ev1");
+  assert.equal(view.editor().label, "행사 일정");
+  view.editor().onSave("운동회");
+  await view.tick();
+  view.waits.shift().ok();
+  await view.tick();
+  assert.deepEqual(view.edits.at(-1), [1, "ev1", "운동회", 1]);
+  const press = (name) => withText(view.render(), "button", name)[0].props.onClick();
+  // 열의 마지막 칸은 뺄 수 없다.
+  assert.ok(withText(view.render(), "button", "이 칸 빼기")[0].props.disabled);
+  press("위아래로 나누기");
+  await view.tick();
+  await view.tick();
+  view.pick("ev1");
+  withText(view.render(), "button", "+")
+    .find((b) => b.props["aria-label"] === "표 높이 키우기")
+    .props.onClick();
+  await view.tick();
+  await view.tick();
+  assert.deepEqual(
+    view.tableCalls.map((c) => c.slice(0, 3)),
+    [
+      ["split", 1, "ev1"],
+      ["size", 1, "event_schedule"],
+    ],
+  );
+  assert.deepEqual(view.tableCalls[1][3], { column_widths: [100], height_mm: 17 });
 });
 
 test("v1 — 안전교육 검증 안내는 영어 서버 문구 대신 한국어로 보인다", () => {

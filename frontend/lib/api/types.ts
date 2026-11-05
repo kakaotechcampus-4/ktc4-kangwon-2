@@ -518,6 +518,18 @@ export interface MonthlyCell {
   /** 훈련 문서 칸은 교사가 쓰거나 후보를 복사하기 전까지 null. 다른 칸은 늘 있다. */
   generation: MonthlyCellGeneration | null;
 }
+/** 주제형 월간의 교사 표 하나(Human Decision 2026-11-05). 나눔 트리는 놀이 월간 시간표와 같다. */
+export interface MonthlyTeacherTable {
+  table_key: "event_schedule" | "specialized_timetable" | "special_activity_timetable";
+  label: string;
+  /** 특성화 열 제목(열마다 하나, 나누지 않는다). 다른 표는 `[]`. */
+  titles: PlayMonthlyCell[];
+  columns: PlayMonthlyTimetablePart[];
+  /** 열마다 표 폭의 %. 정수 · 각 5 이상 · 합 100. */
+  column_widths: number[];
+  /** 10~80. */
+  height_mm: number;
+}
 /** 주 · Section · 칸 개수를 정하지 않는다 — 화면은 받은 만큼 그린다. */
 export interface MonthlyPlan extends PlanMemo {
   id: number;
@@ -573,6 +585,8 @@ export interface MonthlyPlan extends PlanMemo {
   };
   /** 훈련 후보. 훈련 칸이 없는 계획안은 `[]` 다. */
   drill_candidates: { topic_id: string; label: string; cell: MonthlyCell }[];
+  /** 행사 일정 · 특성화 시간표 · 특별활동 시간표, 늘 이 순서. 칸 글은 칸 편집(§9-3)으로 쓴다. */
+  teacher_tables: MonthlyTeacherTable[];
   /** 안전교육 후보. 기존 계획안은 `[]` 다 — 비어 있으면 화면은 후보 없이 주별 칸으로 고친다. */
   safety_candidates: {
     kind: "STATUTORY" | "SUPPLEMENTAL";
@@ -600,7 +614,9 @@ export interface MonthlyAuditEvent {
     | "ARRANGEMENT_CHANGED"
     | "CANDIDATE_COPIED"
     | "CONFIRMED"
-    | "UNCONFIRMED";
+    | "UNCONFIRMED"
+    /** 교사 표 나누기 · 빼기 · 크기(PLAN). 바뀐 내용은 이 목록에 싣지 않는다. */
+    | "TIMETABLE_CHANGED";
   /** ISO 8601, 시간대 포함. */
   occurred_at: string;
   /** PLAN 이면 아래 칸 위치 넷이 null 이다. */

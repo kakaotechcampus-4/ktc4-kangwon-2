@@ -7,8 +7,16 @@ import type {
   MonthlyCell,
   MonthlyPlan,
   MonthlyPlanSummary,
+  MonthlyTeacherTable,
   ReadyProfile,
 } from "../../lib/api/types";
+import {
+  leaf,
+  leaves,
+  removeLeaf,
+  splitLeaf,
+  withRatio,
+} from "../../lib/plan-generator/playMonthlyTimetable";
 
 /**
  * 월간계획안 목업 (docs/api-spec.md §9-1 · §9-3). 양식 설정은 template-profiles.ts 다.
@@ -241,6 +249,7 @@ export const addMonthly = (
       ],
       verification: { executed_rules: [RULE], findings: [] },
       drill_candidates: [],
+      teacher_tables: blankTeacherTables(id),
       // 놀이 월간 목업과 같은 후보 · 문장 · 근거. 주에는 아무것도 두지 않고 시작한다(서버와 같다).
       safety_candidates: SAFETY.map(([kind, category_id, topic_group, text, name], i) => ({
         kind: kind as "STATUTORY" | "SUPPLEMENTAL",
@@ -432,6 +441,110 @@ export const unconfirmMonthly = (id: number) =>
     audit.plan.push(event("UNCONFIRMED", nextStamp(audit)));
     return plan;
   });
+/**
+ * 교사 표 셋(Human Decision 2026-11-05) — 서버 `blank_teacher_tables` 와 같은 모양 · 같은 주소 규칙.
+ * 표를 넣기 전에 저장된 옛 목업 계획안도 같은 빈 표를 받는다.
+ */
+const TABLE_SHAPES = [
+  ["event_schedule", "행사 일정", 1, false, 12],
+  ["specialized_timetable", "특성화 시간표", 5, true, 14],
+  ["special_activity_timetable", "특별활동 시간표", 5, false, 21],
+] as const;
+const blankTableCell = (item_id: string) => ({
+  item_id,
+  value: "",
+  evidence: [],
+  generation: null,
+});
+export const blankTeacherTables = (planId: number): MonthlyTeacherTable[] =>
+  TABLE_SHAPES.map(([key, label, count, titled, height]) => {
+    const n = Array.from({ length: count }, (_, i) => i + 1);
+    return {
+      table_key: key,
+      label,
+      titles: titled ? n.map((i) => blankTableCell(`${planId}.${key}.title.${i}`)) : [],
+      columns: n.map((i) => leaf(blankTableCell(`${planId}.${key}.${i}.1`))),
+      column_widths: n.map(() => Math.floor(100 / count)),
+      height_mm: height,
+    };
+  });
+export const tablesOf = (p: MonthlyPlan) => p.teacher_tables ?? blankTeacherTables(p.id);
+export const findTableCell = (p: MonthlyPlan, itemId: string) =>
+  tablesOf(p)
+    .flatMap((table) =>
+      [...table.titles, ...table.columns.flatMap(leaves)].map((cell) => ({ table, cell })),
+    )
+    .find((c) => c.cell.item_id === itemId);
+/** 표 하나를 바꾼다. `change` 가 false 면(같은 크기) revision 그대로. */
+const changeTable = (
+  id: number,
+  pick: (tables: MonthlyTeacherTable[]) => MonthlyTeacherTable,
+  change: (table: MonthlyTeacherTable) => boolean,
+) =>
+  commit((db) => {
+    const plan = db.monthlyPlans.find((p) => p.id === id)!;
+    plan.teacher_tables = tablesOf(plan);
+    if (change(pick(plan.teacher_tables))) plan.revision += 1;
+    return plan;
+  });
+const holding = (itemId: string) => (tables: MonthlyTeacherTable[]) =>
+  tables.find((t) => JSON.stringify(t).includes(`"${itemId}"`))!;
+/** 표 칸 글은 교사만 쓴다 — 처음 쓰면 MANUAL. */
+export const editTableCell = (id: number, itemId: string, value: string) =>
+  commit((db) => {
+    const plan = db.monthlyPlans.find((p) => p.id === id)!;
+    plan.teacher_tables = tablesOf(plan);
+    const cell = findTableCell(plan, itemId)!.cell;
+    const audit = (db.monthlyAudit[id] ??= { plan: [], cells: {} });
+    (audit.cells[itemId] ??= []).push(
+      event("TEACHER_EDITED", nextStamp(audit), {
+        value_change: { before: cell.value, after: value },
+      }),
+    );
+    cell.value = value;
+    cell.generation ??= { method: "MANUAL", rule_id: null, rule_version: null };
+    plan.revision += 1;
+    return plan;
+  });
+export const splitTableCell = (id: number, itemId: string, axis: "VERTICAL" | "HORIZONTAL") =>
+  changeTable(id, holding(itemId), (table) => {
+    const at = table.columns.findIndex((c) => leaves(c).some((x) => x.item_id === itemId));
+    const n = Math.max(
+      ...leaves(table.columns[at]).map((c) => Number(c.item_id.split(".").at(-1)) || 0),
+    );
+    const added = blankTableCell(`${id}.${table.table_key}.${at + 1}.${n + 1}.${Date.now()}`);
+    table.columns[at] = splitLeaf(table.columns[at], itemId, axis, "split_" + added.item_id, added);
+    return true;
+  });
+export const removeTableCell = (id: number, itemId: string) =>
+  changeTable(id, holding(itemId), (table) => {
+    table.columns = table.columns.map((c) => removeLeaf(c, itemId));
+    return true;
+  });
+export const resizeTableSplit = (id: number, splitId: string, ratio: number) =>
+  changeTable(id, holding(splitId), (table) => {
+    const before = JSON.stringify(table.columns);
+    table.columns = table.columns.map((c) => withRatio(c, splitId, ratio));
+    return JSON.stringify(table.columns) !== before;
+  });
+export const resizeTable = (
+  id: number,
+  key: string,
+  size: { column_widths: number[]; height_mm: number },
+) =>
+  changeTable(
+    id,
+    (tables) => tables.find((t) => t.table_key === key)!,
+    (table) => {
+      if (
+        table.column_widths.join() === size.column_widths.join() &&
+        table.height_mm === size.height_mm
+      )
+        return false;
+      Object.assign(table, structuredClone(size));
+      return true;
+    },
+  );
 /** 서버 `candidate_display_value` — 「[교통안전] - 문장」 · 「[생활안전] - 문장」, 빈 문장은 "". */
 const LABELS = Object.fromEntries(SAFETY.map(([, category_id, , label]) => [category_id, label]));
 const shownSafety = (c: MonthlyPlan["safety_candidates"][number]) =>

@@ -22,7 +22,7 @@ HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -77,6 +77,14 @@ from ssuksak.planning.application.monthly_dto import (  # 공개 창구에 없�
     SafetyCandidatesSelector,
     UnconfirmMonthlyPlanCommand,
 )
+from ssuksak.planning.application.monthly_teacher_tables import (  # 공개 창구에 없다
+    RemoveMonthlyTableCell,
+    RemoveMonthlyTableCellCommand,
+    ResizeMonthlyTable,
+    ResizeMonthlyTableCommand,
+    SplitMonthlyTableCell,
+    SplitMonthlyTableCellCommand,
+)
 from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구에 없다
     PlaceMonthlySafety,
     PlaceMonthlySafetyCommand,
@@ -84,6 +92,7 @@ from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구
 )
 from ssuksak.planning.domain.play_monthly_plan import PLAY_MONTHLY_FORMAT  # 공개 창구에 없다
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
+from ssuksak.planning.domain.provenance import SplitAxis  # 공개 창구에 없다
 from ssuksak.planning.rules.safety_placement import candidate_display_value  # 공개 창구에 없다
 
 from app.db import get_session
@@ -114,11 +123,16 @@ from app.features.plans.monthly_schemas import (
     SafetyWeekIn,
     SafetyWeekOut,
     SectionOut,
+    TableCellOut,
+    TablePartOut,
+    TableSizeIn,
+    TeacherTableOut,
     TemplateRefOut,
     ValueChangeOut,
     VerificationOut,
     WeekOut,
 )
+from app.features.plans.play_monthly_schemas import SplitTimetableIn, TimetableRatioIn
 from app.features.plans.play_project import format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
@@ -836,6 +850,134 @@ def copy_drill_candidate(
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
+# ── 교사 표(행사 일정 · 특성화 · 특별활동) 나누기 · 빼기 · 크기 ─────────────────────────
+# Human Decision 2026-11-05(하민). 경로 · 본문은 놀이 월간(ADR-047)과 같은 모양이고, 칸 글은
+# 위 칸 편집(PUT cells)으로 쓴다. 표가 셋이라 표 크기만 `table_key` 를 더 받는다.
+
+_TABLE_ERRORS = {
+    "monthly_table_cell_not_found": _error(
+        404, "NOT_FOUND", "그 표 칸을 찾을 수 없습니다.", ["item_id"]
+    ),
+    "monthly_table_not_found": _error(404, "NOT_FOUND", "그 표를 찾을 수 없습니다.", ["table_key"]),
+    "timetable_boundary_not_found": _error(
+        404, "NOT_FOUND", "그 표 경계를 찾을 수 없습니다.", ["split_id"]
+    ),
+    "timetable_split_limit": _error(
+        422, "VALIDATION_FAILED", "한 칸은 네 번까지 나눌 수 있습니다.", ["item_id"]
+    ),
+    "timetable_last_cell": _error(
+        422,
+        "VALIDATION_FAILED",
+        "열의 마지막 칸은 뺄 수 없습니다. 글을 비워 주세요.",
+        ["item_id"],
+    ),
+    "timetable_width_limit": _error(
+        422, "VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.", []
+    ),
+    "invalid_timetable_size": _invalid("ratio"),
+}
+
+
+def _table_change(session, user, plan_id: int, expected_revision: int, run) -> MonthlyPlanOut:
+    """A · B · C 세 단계. 같은 크기면 Core 가 같은 계획안을 돌려주고 저장하지 않는다."""
+    plan = _read_draft(session, user, plan_id, expected_revision)
+    try:
+        changed = run(_drafts(plan), plan)
+    except InvalidStateTransitionError as error:  # 읽은 뒤 확정된 경우
+        raise _ALREADY_CONFIRMED from error
+    except MonthlyApplicationError as error:
+        if error.code in _TABLE_ERRORS:
+            raise _TABLE_ERRORS[error.code] from error
+        raise
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, expected_revision)
+
+
+@router.post("/{plan_id}/cells/{item_id}/split", response_model=MonthlyPlanOut)
+def split_table_cell(
+    plan_id: int, item_id: str, body: SplitTimetableIn, session: DbSession, user: CurrentUser
+):
+    """원래 칸(id · 글 · 이력)은 위 · 왼쪽에 남고 아래 · 오른쪽에 빈 새 칸이 50:50 으로 생긴다."""
+    item = _item_id(item_id)
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: SplitMonthlyTableCell(
+            plan_repository=drafts, id_generator=UuidGenerator(), clock=SystemClock()
+        ).execute(
+            SplitMonthlyTableCellCommand(plan.plan_id, _actor(user), item, SplitAxis(body.axis))
+        ),
+    )
+
+
+@router.delete("/{plan_id}/cells/{item_id}/split", response_model=MonthlyPlanOut)
+def remove_table_cell(
+    plan_id: int,
+    item_id: str,
+    session: DbSession,
+    user: CurrentUser,
+    expected_revision: Annotated[int, Query(ge=1)],
+):
+    """칸을 문서에서 뺀다. 형제 칸이 자리를 채우고, 뺀 칸은 이력과 함께 보관된다."""
+    item = _item_id(item_id)
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        expected_revision,
+        lambda drafts, plan: RemoveMonthlyTableCell(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(RemoveMonthlyTableCellCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+@router.put("/{plan_id}/timetable/splits/{split_id}", response_model=MonthlyPlanOut)
+def resize_table_split(
+    plan_id: int, split_id: str, body: TimetableRatioIn, session: DbSession, user: CurrentUser
+):
+    """경계 하나의 첫 갈래(위 · 왼쪽) 비율. 같은 값이면 200 · 무변경."""
+    try:
+        split = ItemId(split_id)
+    except InvalidDomainValueError as error:
+        raise _invalid("split_id") from error
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizeMonthlyTable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            ResizeMonthlyTableCommand(plan.plan_id, _actor(user), split_id=split, ratio=body.ratio)
+        ),
+    )
+
+
+@router.put("/{plan_id}/timetable/size", response_model=MonthlyPlanOut)
+def resize_table(plan_id: int, body: TableSizeIn, session: DbSession, user: CurrentUser):
+    """표 하나의 열 폭(합 100) · 높이(mm). 같은 값이면 200 · 무변경."""
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizeMonthlyTable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            ResizeMonthlyTableCommand(
+                plan.plan_id,
+                _actor(user),
+                table_key=body.table_key,
+                column_widths=tuple(body.column_widths),
+                height_mm=body.height_mm,
+            )
+        ),
+    )
+
+
 @router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=MonthlyPlanOut)
 def regenerate_monthly_cell(
     plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
@@ -1009,6 +1151,17 @@ def _detail(
             DrillCandidateOut(topic_id=c.topic_id, label=c.label, cell=_cell(c.cell))
             for c in plan.drill_candidates
         ],
+        teacher_tables=[
+            TeacherTableOut(
+                table_key=t.table_key,
+                label=t.source_label,
+                titles=[_table_cell(c) for c in t.titles],
+                columns=[_table_part(c) for c in t.columns],
+                column_widths=list(t.column_widths),
+                height_mm=t.height_mm,
+            )
+            for t in plan.tables
+        ],
         notices=[
             NoticeOut(code=notice.code, week_id=notice.week_id.value)
             for notice in monthly_safety_notices(plan)
@@ -1045,6 +1198,35 @@ def _detail(
         ),
         created_at=row.created_at,
         confirmed_at=row.confirmed_at,
+    )
+
+
+def _table_cell(cell) -> TableCellOut:
+    return TableCellOut(
+        item_id=cell.item_id.value,
+        value=cell.value,
+        evidence=[
+            EvidenceOut(
+                source_type=source.source_type.value,
+                source_id=source.source_id,
+                source_version=source.source_version,
+                effective_date=source.effective_date,
+                display_name=source.display_name,
+            )
+            for source in cell.evidence
+        ],
+        generation=None if cell.generation is None else _generation(cell.generation),
+    )
+
+
+def _table_part(node) -> TablePartOut:
+    if node.cell is not None:
+        return TablePartOut(cell=_table_cell(node.cell))
+    return TablePartOut(
+        split_id=node.split_id.value,
+        axis=node.axis.value,
+        ratio=node.ratio,
+        children=[_table_part(c) for c in node.children],
     )
 
 

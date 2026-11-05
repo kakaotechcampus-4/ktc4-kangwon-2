@@ -1407,6 +1407,66 @@ def test_confirm_requires_teacher_and_locks_all_later_mutations():
     assert harness.plans.save_count == saves_before
 
 
+def test_teacher_tables_are_blank_manual_splittable_and_locked_on_confirm():
+    """Human Decision 2026-11-05: 행사 일정 · 특성화 · 특별활동 are teacher-written split tables."""
+    from ssuksak.planning.application.monthly_teacher_tables import (
+        RemoveMonthlyTableCell,
+        RemoveMonthlyTableCellCommand,
+        ResizeMonthlyTable,
+        ResizeMonthlyTableCommand,
+        SplitMonthlyTableCell,
+        SplitMonthlyTableCellCommand,
+    )
+    from ssuksak.planning.domain.provenance import SplitAxis
+
+    harness = Harness()
+    draft = harness.generate().plan
+    assert draft.teacher_tables == () and draft.tables == harness.plans.get(draft.plan_id).tables
+    event, special = draft.tables[0], draft.tables[2]
+    assert all(c.value == "" and c.generation is None for t in draft.tables for c in t.cells())
+
+    edit = EditMonthlyPlanItem(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    )
+    cell = event.columns[0].cell
+    edited = edit.execute(EditMonthlyPlanItemCommand(draft.plan_id, cell.item_id, "운동회", TEACHER))
+    written = edited.table_cell(cell.item_id)[1]
+    assert (written.value, written.generation.method) == ("운동회", GenerationMethod.MANUAL)
+    assert [e.event_type for e in written.audit.events] == [AuditEventType.TEACHER_EDITED]
+    assert edited.sections == draft.sections
+
+    target = special.columns[1].cell.item_id
+    split = SplitMonthlyTableCell(plan_repository=harness.plans, id_generator=harness.ids, clock=harness.clock)
+    once = split.execute(SplitMonthlyTableCellCommand(draft.plan_id, TEACHER, target, SplitAxis.VERTICAL))
+    column = once.tables[2].columns[1]
+    assert column.children[0].cell.item_id == target
+    assert column.children[1].cell.semantic_key == "special_activity_timetable.2.2"
+    assert once.audit.events[-1].timetable_change.table_key == "special_activity_timetable"
+
+    resize = ResizeMonthlyTable(plan_repository=harness.plans, clock=harness.clock)
+    sized = resize.execute(ResizeMonthlyTableCommand(draft.plan_id, TEACHER, split_id=column.split_id, ratio=70))
+    assert sized.tables[2].columns[1].ratio == 70
+    again = ResizeMonthlyTableCommand(draft.plan_id, TEACHER, split_id=column.split_id, ratio=70)
+    assert resize.execute(again) is sized
+
+    remove = RemoveMonthlyTableCell(plan_repository=harness.plans, clock=harness.clock)
+    with pytest.raises(MonthlyApplicationError) as last:
+        remove.execute(RemoveMonthlyTableCellCommand(draft.plan_id, TEACHER, cell.item_id))
+    assert last.value.code == "timetable_last_cell"
+    added = column.children[1].cell
+    removed = remove.execute(RemoveMonthlyTableCellCommand(draft.plan_id, TEACHER, added.item_id))
+    assert removed.tables[2].columns[1].cell.item_id == target
+    assert removed.removed_table_cells == (added,)
+
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+    with pytest.raises(InvalidStateTransitionError):
+        split.execute(SplitMonthlyTableCellCommand(confirmed.plan_id, TEACHER, target, SplitAxis.HORIZONTAL))
+    with pytest.raises(InvalidStateTransitionError):
+        edit.execute(EditMonthlyPlanItemCommand(confirmed.plan_id, cell.item_id, "바꿈", TEACHER))
+
+
 class _CountingActivities:
     """Delegates to the JSON Activity repository and counts Catalog loads."""
 

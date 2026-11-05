@@ -137,6 +137,10 @@ test("client exports monthly and profile functions", () => {
     "listMonthlyPlans",
     "placeMonthlySafety",
     "regenerateMonthlyCell",
+    "removeMonthlyTableCell",
+    "resizeMonthlyTable",
+    "resizeMonthlyTableSplit",
+    "splitMonthlyTableCell",
     "unconfirmMonthlyPlan",
   ]);
   assert.deepEqual(Object.keys(profiles).sort(), [
@@ -546,4 +550,56 @@ test("검사 결과는 한글 한 줄씩 — 직접 쓴 바깥놀이 안내는 �
   assert.equal(safetyLines("[교통안전] - 길을 건너요."), "[교통안전]\n길을 건너요.");
   assert.equal(safetyLines("[생활안전] - a - b"), "[생활안전]\na - b");
   assert.equal(safetyLines("그냥 문장"), "그냥 문장");
+});
+
+test("교사 표(행사 일정 · 특성화 · 특별활동) — 쓰면 MANUAL, 나누고 크기 바꾸고 빼고, 확정본은 409", async () => {
+  const { klass, ref } = await confirmedClass();
+  const plan = await createMonthlyPlan({ class_id: klass.id, month: 9, profile_ref: ref });
+  assert.deepEqual(
+    plan.teacher_tables.map((t) => [t.table_key, t.columns.length, t.titles.length]),
+    [
+      ["event_schedule", 1, 0],
+      ["specialized_timetable", 5, 5],
+      ["special_activity_timetable", 5, 0],
+    ],
+  );
+  const event = plan.teacher_tables[0].columns[0].cell;
+  const written = await editMonthlyCell(plan.id, event.item_id, "9/12 운동회", 1);
+  const after = written.teacher_tables[0].columns[0].cell;
+  assert.equal(after.value, "9/12 운동회");
+  assert.equal(after.generation.method, "MANUAL");
+  assert.deepEqual(written.sections, plan.sections);
+
+  const day = written.teacher_tables[2].columns[0].cell.item_id;
+  await rejects(monthly.removeMonthlyTableCell(plan.id, day, 2), 422, "VALIDATION_FAILED", [
+    "item_id",
+  ]);
+  const split = await monthly.splitMonthlyTableCell(plan.id, day, "VERTICAL", 2);
+  const column = split.teacher_tables[2].columns[0];
+  assert.deepEqual(
+    [column.axis, column.ratio, column.children[0].cell.item_id],
+    ["VERTICAL", 50, day],
+  );
+  const ratio = await monthly.resizeMonthlyTableSplit(plan.id, column.split_id, 30, 3);
+  assert.equal(ratio.teacher_tables[2].columns[0].ratio, 30);
+  const same = await monthly.resizeMonthlyTableSplit(plan.id, column.split_id, 30, 4);
+  assert.equal(same.revision, 4);
+  const size = { column_widths: [100], height_mm: 30 };
+  const tall = await monthly.resizeMonthlyTable(plan.id, "event_schedule", size, 4);
+  assert.equal(tall.teacher_tables[0].height_mm, 30);
+  const added = column.children[1].cell.item_id;
+  const removed = await monthly.removeMonthlyTableCell(plan.id, added, 5);
+  assert.equal(removed.teacher_tables[2].columns[0].cell.item_id, day);
+
+  const done = await confirmMonthlyPlan(plan.id, 6);
+  await rejects(
+    monthly.splitMonthlyTableCell(plan.id, day, "HORIZONTAL", done.revision),
+    409,
+    "ALREADY_CONFIRMED",
+  );
+  await rejects(
+    editMonthlyCell(plan.id, event.item_id, "바꿈", done.revision),
+    409,
+    "ALREADY_CONFIRMED",
+  );
 });
