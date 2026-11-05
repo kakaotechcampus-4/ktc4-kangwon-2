@@ -46,6 +46,7 @@ import {
   placePlayMonthlySafety,
   playCells,
   removePlayMonthly,
+  orderPlayMonthlyActivities,
   removePlayMonthlyActivity,
   removePlayMonthlyTimetable,
   resizePlayMonthlySplit,
@@ -829,6 +830,32 @@ export const handlers = [
     // 같은 값은 422 — 빈 값 → 빈 값(공백만 든 칸 포함)도 같다.
     if (value === cell.value || !(value || cell.value.trim())) return invalid(["value"]);
     return HttpResponse.json(editPlayMonthlyCell(plan.id, itemId, value));
+  }),
+  http.put("*/api/plans/monthly/play/:id/activities/order", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.section !== "together" && b.section !== "free_play"
+        ? ["section"]
+        : Array.isArray(b.item_ids) &&
+            b.item_ids.every((i: unknown) => typeof i === "string" && i.trim())
+          ? []
+          : ["item_ids"],
+    );
+    if (b instanceof Response) return b;
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const section = b.section as "together" | "free_play";
+    const ids = b.item_ids as string[];
+    const rows = plan[section].map((a) => a.activity_id);
+    // 그 목록의 행을 빠짐없이 한 번씩.
+    if (
+      ids.length !== rows.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((i) => !rows.includes(i))
+    )
+      return invalid(["item_ids"]);
+    return HttpResponse.json(orderPlayMonthlyActivities(plan.id, section, ids));
   }),
   http.delete("*/api/plans/monthly/play/:id/activities/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "play-monthly-activity");

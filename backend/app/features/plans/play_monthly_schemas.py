@@ -65,6 +65,13 @@ class AddActivityIn(RevisionIn):
     section: Literal["together", "free_play"]
 
 
+class ActivityOrderIn(RevisionIn):
+    """한 목록의 줄(이름 칸 item_id)을 새 순서대로. 그 목록의 줄을 빠짐없이 한 번씩."""
+
+    section: Literal["together", "free_play"]
+    item_ids: list[StrictStr]
+
+
 class SplitTimetableIn(RevisionIn):
     axis: Literal["VERTICAL", "HORIZONTAL"]
 

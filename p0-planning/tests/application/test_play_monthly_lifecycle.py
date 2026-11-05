@@ -24,6 +24,8 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     EditPlayMonthlyCellCommand,
     EditPlayMonthlyContentIds,
     EditPlayMonthlyContentIdsCommand,
+    OrderPlayMonthlyActivities,
+    OrderPlayMonthlyActivitiesCommand,
     PlacePlayMonthlySafety,
     PlacePlayMonthlySafetyCommand,
     UnconfirmPlayMonthlyPlan,
@@ -511,6 +513,30 @@ def test_a_removed_row_leaves_the_document_but_stays_whole_in_the_archive():
         updated.add_activity("together", target, actor_id=TEACHER, occurred_at=NOW)  # archived ids stay taken
     confirmed = confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
     assert confirmed.removed_activities == updated.removed_activities
+
+
+def test_rows_are_reordered_within_one_section_only_and_the_same_order_writes_nothing():
+    """Human Decision 2026-11-05: drag a row within its own list; every row once."""
+    plan, plans, _, confirm = _draft()
+    order = OrderPlayMonthlyActivities(plan_repository=plans, clock=FixedClock(NOW))
+    rows = plan.together
+    ids = [a.cell.item_id for a in rows]
+    moved = [ids[1], ids[0], *ids[2:]]
+
+    updated = order.execute(OrderPlayMonthlyActivitiesCommand(plan.plan_id, TEACHER, "together", moved))
+
+    assert updated.together == (rows[1], rows[0], *rows[2:])
+    assert updated.free_play == plan.free_play
+    assert _arrangement(updated) == ("together", _ids(rows), _ids(updated.together))
+    assert order.execute(OrderPlayMonthlyActivitiesCommand(plan.plan_id, TEACHER, "together", moved)) is updated
+    for bad in (moved[:-1], [*moved, moved[0]], [*moved[:-1], plan.free_play[0].cell.item_id]):
+        with pytest.raises(PlayMonthlyLifecycleError) as error:
+            order.execute(OrderPlayMonthlyActivitiesCommand(plan.plan_id, TEACHER, "together", bad))
+        assert error.value.code == "invalid_activity_order"
+    assert plans.get(plan.plan_id) == updated
+    confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
+    with pytest.raises(InvalidStateTransitionError):
+        order.execute(OrderPlayMonthlyActivitiesCommand(plan.plan_id, TEACHER, "together", ids))
 
 
 def test_a_section_may_be_emptied_in_draft_but_confirm_needs_a_row():

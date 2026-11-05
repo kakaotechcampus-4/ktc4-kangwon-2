@@ -380,6 +380,19 @@ export const removePlayMonthlyActivity = (id: number, itemId: string) =>
     }
     return true;
   });
+/** 한 목록 안의 행 순서. 같은 순서면 그대로다(서버: 200 · 무변경). 검사는 핸들러가 먼저 한다. */
+export const orderPlayMonthlyActivities = (
+  id: number,
+  section: "together" | "free_play",
+  itemIds: string[],
+) =>
+  change(id, (p, log) => {
+    const before = p[section].map((a) => a.activity_id);
+    if (before.join() === itemIds.join()) return false;
+    p[section] = itemIds.map((itemId) => p[section].find((a) => a.activity_id === itemId)!);
+    log(arranged(section, before, itemIds));
+    return true;
+  });
 export const copyPlayMonthlyDrill = (id: number, itemId: string) =>
   change(id, (p, log) => {
     const from = p.drill_candidates.find((d) => d.cell.item_id === itemId)!.cell;

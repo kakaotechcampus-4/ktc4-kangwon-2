@@ -682,6 +682,23 @@ class PlayMonthlyPlan:
             **{section: (*rows, activity)},
         )
 
+    def order_activities(
+        self, section: str, name_item_ids: tuple[ItemId, ...], *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        """Put one section's rows in the given order (Human Decision 2026-11-05). Every row of that
+        section exactly once, nothing from the other; the same order is a no-op (no event)."""
+        self.ensure_mutable("order_activities")
+        rows = self._rows(section)
+        by_id = {a.cell.item_id: a for a in rows}
+        if len(name_item_ids) != len(rows) or set(name_item_ids) != set(by_id):
+            raise InvalidDomainValueError(f"The order must name every {section} row exactly once")
+        ordered = tuple(by_id[item_id] for item_id in name_item_ids)
+        if _row_ids(ordered) == _row_ids(rows):
+            return self
+        return self._arranged(
+            section, _row_ids(rows), _row_ids(ordered), actor_id, occurred_at, **{section: ordered}
+        )
+
     def remove_activity(
         self, name_item_id: ItemId, *, actor_id: ActorId, occurred_at: datetime
     ) -> PlayMonthlyPlan:

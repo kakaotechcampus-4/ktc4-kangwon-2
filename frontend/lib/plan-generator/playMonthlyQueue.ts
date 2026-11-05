@@ -2,6 +2,7 @@ import type { PlayMonthlyPlan, PlayMonthlyTimetableSize } from "../api/types";
 import { leaves, locate, removeLeaf, withRatio } from "./playMonthlyTimetable";
 
 type Axis = "VERTICAL" | "HORIZONTAL";
+export type PlaySection = "together" | "free_play";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "failed";
 
@@ -12,6 +13,8 @@ export type Job =
   /** `cellIds` 는 그 행의 이름 · 설명 칸 — 행이 사라지면 그 칸에 대한 대기 중 글은 버린다. */
   | { kind: "remove"; itemId: string; cellIds: string[] }
   | { kind: "copy"; itemId: string }
+  /** 한 목록 안의 행 순서(행 이름 칸 id 전부). */
+  | { kind: "order"; section: PlaySection; itemIds: string[] }
   // 특별활동 시간표. split · restore 는 새 id 를 서버가 정해 응답 뒤에 화면 · 되돌리기 목록을 맞춘다.
   /** `was` 는 다시 하기 — 예전 새 칸 · 경계 id 를 응답의 새 id 로 바꾼다. */
   | { kind: "split"; itemId: string; axis: Axis; was?: { newId: string; splitId: string } }
@@ -210,13 +213,23 @@ export const withSafety = (
   ),
 });
 
+/** 한 목록의 행을 `itemIds` 순서로. */
+export const withOrder = (
+  plan: PlayMonthlyPlan,
+  section: PlaySection,
+  itemIds: string[],
+): PlayMonthlyPlan => ({
+  ...plan,
+  [section]: itemIds.map((id) => plan[section].find((row) => row.activity_id === id)!),
+});
+
 export const withoutActivity = (plan: PlayMonthlyPlan, itemId: string): PlayMonthlyPlan => ({
   ...plan,
   together: plan.together.filter((row) => row.activity_id !== itemId),
   free_play: plan.free_play.filter((row) => row.activity_id !== itemId),
 });
 
-// ---- 되돌리기 · 다시 하기 (칸 글 · 안전 배치만, 30번) ----
+// ---- 되돌리기 · 다시 하기 (칸 글 · 안전 배치 · 행 순서 · 시간표, 30번) ----
 
 /** 형제가 칸 하나일 때만 되돌릴 수 있다. `first` 는 뺀 칸이 위 · 왼쪽이었는가. */
 export interface RemovedCell {
@@ -232,6 +245,7 @@ export interface RemovedCell {
 export type Step =
   | { kind: "cell"; itemId: string; before: string; after: string }
   | { kind: "safety"; weekId: string; before: string | null; after: string | null }
+  | { kind: "order"; section: PlaySection; before: string[]; after: string[] }
   | { kind: "ratio"; splitId: string; before: number; after: number }
   | { kind: "size"; before: PlayMonthlyTimetableSize; after: PlayMonthlyTimetableSize }
   | { kind: "split"; itemId: string; axis: Axis; newId: string; splitId: string }

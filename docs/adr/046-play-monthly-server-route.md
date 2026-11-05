@@ -180,3 +180,7 @@ GET    /api/plans/monthly/play/{id}/audit                                   이�
 ## 2026-11-02 자료 판 전환
 
 Evidence Store v0.2.0 개인정보 정제 묶음과 기존 분류 재결합을 `reviewer_ai_lead_001`이 승인했다. 위 Q4 답변의 소유 경계는 그대로이고, 현재 조립부 값은 `safety-evidence-classification-v0.3.0` · `safety-reference-quality-v0.2.0`이다. 자료 판은 `institution-evidence-ingestion-v0.2.0`이며 SHA는 저장소에서 읽는다. 월간 추가 분류 252건은 포함하지 않았다. 파일·승인·Golden 변경 범위는 [검토 기록](../evidence-store-v0-2-human-review.md)에 있다.
+
+## 2026-11-05 화면 피드백 (Human Decision 2026-11-05, 하민)
+
+- **행 순서 바꾸기** — 「월간 편집도 뷰에서 잡아끌면 이동할 수 있게」. 위 결정의 「되돌리기 · 순서 바꾸기는 없다」 중 순서 바꾸기를 연다. `PUT .../activities/order` 가 한 목록(함께 하는 활동 · 유아 예상 자유놀이) 안의 행 순서만 바꾸고, 목록을 건너 옮기지 않는다. 주간 실내놀이 순서(`indoor-plays/order`)와 같은 본문 · revision · `ARRANGEMENT_CHANGED` 규칙이다. 되돌리기는 화면의 몫이다(반대 순서를 다시 보낸다).

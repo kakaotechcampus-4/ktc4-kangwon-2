@@ -66,6 +66,21 @@ export const removePlayMonthlyActivity = (
       expectedRevision,
     { method: "DELETE", signal },
   );
+/**
+ * 한 목록(함께 하는 활동 · 자유놀이) 안의 행 순서. `itemIds` 는 그 목록 행의 `activity_id` 를 빠짐없이 한 번씩 —
+ * 아니면 422 `["item_ids"]`. 같은 순서면 200 · 무변경.
+ */
+export const orderPlayMonthlyActivities = (
+  id: number,
+  section: "together" | "free_play",
+  itemIds: string[],
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/activities/order",
+    json("PUT", { section, item_ids: itemIds, expected_revision: expectedRevision }, signal),
+  );
 /** 그 주에 둘 안전 후보. `null` 이면 비운다. 같은 입력이면 200 · 무변경(revision 그대로). */
 export const placePlayMonthlySafety = (
   id: number,

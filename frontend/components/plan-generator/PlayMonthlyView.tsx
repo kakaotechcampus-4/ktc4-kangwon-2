@@ -18,6 +18,7 @@ import {
   drillTarget,
   overlayCells,
   removal,
+  type PlaySection,
 } from "@/lib/plan-generator/playMonthlyQueue";
 import {
   CELL_MIN_WIDTH,
@@ -297,6 +298,16 @@ function PlayMonthlyBody({
     save.placeSafety(to, moved);
     save.placeSafety(from, other);
   };
+  // 행 끌어 옮기기 · 위로 · 아래로 — 같은 목록 안에서 끈 행을 놓은 행 자리에 넣는다. 되돌리기는 한 번.
+  const moveRow = (section: PlaySection, from: string, to: string) => {
+    const ids = plan[section].map((r) => r.activity_id).filter((id) => id !== from);
+    ids.splice(
+      plan[section].findIndex((r) => r.activity_id === to),
+      0,
+      from,
+    );
+    save.orderActivities(section, ids);
+  };
   const through = (direction: "undo" | "redo") => {
     if (!save[direction]()) return;
     setLive({});
@@ -443,6 +454,16 @@ function PlayMonthlyBody({
             전체 높이예요.
           </p>
         </div>
+      )}
+      {row && (
+        <RowOrder
+          rows={plan.together.includes(row) ? plan.together : plan.free_play}
+          row={row}
+          disabled={locked}
+          onMove={(to) =>
+            moveRow(plan.together.includes(row) ? "together" : "free_play", row.activity_id, to)
+          }
+        />
       )}
       {row && (
         <div className="border-t border-[#efeae2] pt-4">
@@ -639,6 +660,7 @@ function PlayMonthlyBody({
           onRatio={locked ? undefined : save.resizeSplit}
           onSize={locked ? undefined : save.resizeTable}
           onMoveSafety={locked ? undefined : moveSafety}
+          onMoveRow={locked ? undefined : moveRow}
         />
       </div>
     </AnnualFrame>
@@ -647,6 +669,43 @@ function PlayMonthlyBody({
 
 const TOOL =
   "flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 text-[13px] font-semibold disabled:opacity-40";
+/** 끌기의 키보드 대안 — 고른 행을 같은 목록 안에서 한 칸 위 · 아래로. */
+function RowOrder({
+  rows,
+  row,
+  disabled,
+  onMove,
+}: {
+  rows: PlayMonthlyPlan["together"];
+  row: PlayMonthlyPlan["together"][number];
+  disabled: boolean;
+  onMove: (toId: string) => void;
+}) {
+  const at = rows.indexOf(row);
+  const step = (delta: -1 | 1) => {
+    const to = rows[at + delta];
+    return (
+      <button
+        type="button"
+        className={`${TOOL} text-[#5e4b96] hover:bg-[#f6f1fb]`}
+        disabled={disabled || !to}
+        onClick={() => onMove(to.activity_id)}
+      >
+        {delta < 0 ? "↑ 위로 옮기기" : "↓ 아래로 옮기기"}
+      </button>
+    );
+  };
+  return (
+    <div role="group" aria-label="행 순서" className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex rounded-lg border border-[#ddd6ca] bg-white p-0.5">
+        {step(-1)}
+        {step(1)}
+      </div>
+      <span className="text-[13px] text-[#5c5243]">문서에서 행 왼쪽 위 손잡이를 끌어도 돼요.</span>
+    </div>
+  );
+}
+
 /** 16px 선 그림 — 칸 나누기 도구. */
 const icon = (d: string) => (
   <svg

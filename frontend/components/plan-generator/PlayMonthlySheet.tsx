@@ -23,6 +23,7 @@ import {
   tooNarrow,
   withRatio,
 } from "@/lib/plan-generator/playMonthlyTimetable";
+import type { PlaySection } from "@/lib/plan-generator/playMonthlyQueue";
 import { dropCells, liftCells, settle } from "./rowDrag";
 import { safetyTopic } from "./PlayMonthlySafetyPanel";
 
@@ -192,14 +193,63 @@ export function Paper({
 /** 안전교육 줄의 칸 주소 — 주마다 하나(같은 후보를 여러 주에 둘 수 있어 후보 id 로는 주를 모른다). */
 export const safetyCellId = (weekId: string) => "safety:" + weekId;
 const N = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+/** 행 순서를 끌어 바꾼다 — 같은 목록 안에서만. 끈 행을 놓은 행 자리에 넣는다. */
+type MoveRow = (section: PlaySection, fromId: string, toId: string) => void;
+/**
+ * 함께 하는 활동 · 자유놀이 목록. `onMove` 가 있으면 행 왼쪽 위 손잡이로 끌어 같은 목록 안에서 순서를 바꾼다
+ * (안전교육 칸 끌기와 같은 모양). 손으로 옮기기 어려우면 행을 눌러 「칸 편집」의 위로 · 아래로 단추를 쓴다.
+ */
 const Rows = ({
   rows,
   mark,
+  section,
+  onMove,
   ...at
-}: Pick & { rows: PlayMonthlyActivity[]; mark: (i: number) => string }) => (
+}: Pick & {
+  rows: PlayMonthlyActivity[];
+  mark: (i: number) => string;
+  section: PlaySection;
+  onMove?: MoveRow;
+}) => (
   <ol className="m-0 list-none p-0">
     {rows.map((row, i) => (
-      <li key={row.activity_id} className="flex items-start">
+      <li
+        key={row.activity_id}
+        data-play-row={row.activity_id}
+        className={`flex items-start ${onMove ? "group relative transition-[background-color,opacity] duration-200 [&[data-dragging]]:opacity-40 [&[data-drop]]:bg-[#efe7f8]" : ""}`}
+        {...(onMove && {
+          onDragOver: (event: DragEvent<HTMLElement>) => {
+            event.preventDefault();
+            event.currentTarget.dataset.drop = "";
+          },
+          onDragLeave: (event: DragEvent<HTMLElement>) => delete event.currentTarget.dataset.drop,
+          onDrop: (event: DragEvent<HTMLElement>) => {
+            event.preventDefault();
+            delete event.currentTarget.dataset.drop;
+            dropCells();
+            const from = event.dataTransfer.getData("text/plain");
+            // 다른 목록 · 안전교육 칸에서 끈 것은 받지 않는다.
+            if (from === row.activity_id || !rows.some((r) => r.activity_id === from)) return;
+            onMove(section, from, row.activity_id);
+            settle(`li[data-play-row="${CSS.escape(from)}"]`);
+          },
+        })}
+      >
+        {onMove && (
+          <span
+            draggable
+            aria-hidden="true"
+            title="끌어서 순서 바꾸기"
+            className="absolute left-0 top-0 z-10 cursor-grab rounded-br-md bg-[#7053a0] px-1 text-[10px] font-bold leading-[16px] text-white opacity-0 transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
+            onDragStart={(event) => {
+              const li = event.currentTarget.closest("li");
+              if (li) liftCells(event, [li], row.activity_id);
+            }}
+            onDragEnd={dropCells}
+          >
+            ⠿
+          </span>
+        )}
         <span aria-hidden="true" className="shrink-0 py-1 pl-1.5">
           {mark(i)}
         </span>
@@ -285,9 +335,12 @@ export default function PlayMonthlySheet({
   onRatio,
   onSize,
   onMoveSafety,
+  onMoveRow,
 }: {
   plan: PlayMonthlyPlan;
   className: string;
+  /** 함께 하는 활동 · 자유놀이 행을 같은 목록 안에서 끌어 옮긴다 — 다듬는 동안만. */
+  onMoveRow?: MoveRow;
   /** 안전교육 칸을 다른 주로 끌어 옮긴다(두 주를 맞바꾼다) — 다듬는 동안만. */
   onMoveSafety?: (fromWeekId: string, toWeekId: string) => void;
   /** 문서 배율(다듬기). 없으면 칸에 맞춰 줄이기만. */
@@ -378,10 +431,22 @@ export default function PlayMonthlySheet({
           </tr>
           <tr>
             <td className={`${LINE} p-0 align-top`}>
-              <Rows {...at} rows={plan.together} mark={(i) => N[i] ?? `${i + 1}.`} />
+              <Rows
+                {...at}
+                rows={plan.together}
+                mark={(i) => N[i] ?? `${i + 1}.`}
+                section="together"
+                onMove={onMoveRow}
+              />
             </td>
             <td className={`${LINE} p-0 align-top`}>
-              <Rows {...at} rows={plan.free_play} mark={() => "-"} />
+              <Rows
+                {...at}
+                rows={plan.free_play}
+                mark={() => "-"}
+                section="free_play"
+                onMove={onMoveRow}
+              />
             </td>
           </tr>
         </tbody>

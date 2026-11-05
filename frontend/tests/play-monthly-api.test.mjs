@@ -499,6 +499,34 @@ test("row delete takes the revision from the query and drops the row; a bad quer
   assert.equal((await pm.getPlayMonthly(id)).together.length, 5);
 });
 
+test("row order: one list only, every row once; the same order is 200 and untouched", async () => {
+  const { id, rev, plan } = await seeded();
+  const ids = plan.together.map((a) => a.activity_id);
+  const moved = [ids[1], ids[0], ...ids.slice(2)];
+  const done = await pm.orderPlayMonthlyActivities(id, "together", moved, rev);
+  assert.equal(done.revision, rev + 1);
+  assert.deepEqual(
+    done.together.map((a) => a.activity_id),
+    moved,
+  );
+  assert.deepEqual(done.free_play, plan.free_play);
+  const same = await pm.orderPlayMonthlyActivities(id, "together", moved, done.revision);
+  assert.equal(same.revision, done.revision);
+  for (const [section, bad] of [
+    ["together", ids.slice(1)],
+    ["together", [...ids, ids[0]]],
+    ["together", [...ids.slice(1), plan.free_play[0].activity_id]],
+    ["free_play", ids],
+  ])
+    await rejects(
+      pm.orderPlayMonthlyActivities(id, section, bad, done.revision),
+      422,
+      "VALIDATION_FAILED",
+      INVALID,
+      ["item_ids"],
+    );
+});
+
 test("missing and foreign ids are 404, a non-integer id is 422 on plan_id", async () => {
   await seeded();
   await rejects(pm.getPlayMonthly(999999), 404, "NOT_FOUND", NOT_FOUND, ["id"]);
