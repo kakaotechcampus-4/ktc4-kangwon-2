@@ -2726,6 +2726,10 @@ button.recordBlank:disabled {
   background: var(--pg-paper);
   color: var(--pg-ink);
 }
+.jrPeriod input,
+.jrPeriod input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
 .jrSources {
   display: grid;
   gap: 6px;

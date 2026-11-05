@@ -15,6 +15,7 @@ import { Posty } from "@/components/app/Posty";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
+import { openPicker } from "./RecordsPage";
 
 const NO_ENTRY = { childId: "", recordId: "" };
 
@@ -199,6 +200,7 @@ export default function ObservationJournalPage() {
                     <input
                       type="date"
                       aria-label="시작일"
+                      onClick={(e) => openPicker(e.currentTarget)}
                       value={start}
                       max={end || today()}
                       onChange={(e) => {
@@ -210,6 +212,7 @@ export default function ObservationJournalPage() {
                     <input
                       type="date"
                       aria-label="종료일"
+                      onClick={(e) => openPicker(e.currentTarget)}
                       value={end}
                       min={start}
                       max={today()}

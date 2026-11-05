@@ -742,8 +742,8 @@ export function subjectOf(name: string) {
   return `${given}${closed ? "이가" : "가"}`;
 }
 
-/** 날짜 빈칸을 누르면 달력을 연다. 못 여는 브라우저는 그대로 둔다 — 칸은 키보드로도 고칠 수 있다. */
-function openPicker(input: HTMLInputElement) {
+/** 날짜 칸을 누르면 달력을 연다. 못 여는 브라우저는 그대로 둔다 — 칸은 키보드로도 고칠 수 있다. */
+export function openPicker(input: HTMLInputElement) {
   try {
     input.showPicker();
   } catch {
