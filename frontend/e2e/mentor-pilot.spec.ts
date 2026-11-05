@@ -479,12 +479,9 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 진입한다", async
   await page.screenshot({ path: info.outputPath("mobile-trends.png"), fullPage: true });
 });
 
-test("멘토: 등록한 반을 마지막 확인에서 고치면 같은 반이 바뀌고, 아이가 있으면 동의는 못 끈다", async ({
-  page,
-}) => {
+test("멘토: 등록한 반 수정을 시도해도 새 반과 새 아동으로 바꾸지 않는다", async ({ page }) => {
   const user = await enterPilot(page);
   const before = await api(page, `/api/centers/${user.center_id}/classes`);
-  // 설정의 반 관리는 새 온보딩의 마지막 확인으로 간다(ADR-062).
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
   // 반 쪽지를 떼어 연다. 등록한 반은 고칠 칸 없이 글로만 보인다. 저장 길은 첫 설정 화면과 같다.
   await page.getByRole("button", { name: "반 · 담당 반 수정", exact: true }).click();
@@ -494,4 +491,33 @@ test("멘토: 등록한 반을 마지막 확인에서 고치면 같은 반이 �
   await note.getByRole("button", { name: "저장", exact: true }).click();
   await expect(note).toBeHidden();
   expect(await api(page, `/api/centers/${user.center_id}/classes`)).toEqual(before);
+});
+
+test("멘토: 등록한 반을 마지막 확인에서 고치면 같은 반이 바뀌고, 아이가 있으면 동의는 못 끈다", async ({
+  page,
+}) => {
+  const user = await enterPilot(page);
+  const before = await api(page, `/api/centers/${user.center_id}/classes`);
+  // 설정과 온보딩은 따로 돈다 — 마지막 확인은 주소로 바로 연다.
+  await page.goto("/onboarding/review");
+  await page.getByRole("button", { name: "햇살반 고치기", exact: true }).click();
+  await page.getByLabel("반 이름").fill("새싹반");
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByRole("region", { name: "새싹반 정보" })).toBeVisible();
+  // 새 반을 만들지 않고 같은 반의 이름만 바뀐다 — 아이와 기록이 그대로 붙어 있다.
+  const after = await api(page, `/api/centers/${user.center_id}/classes`);
+  expect(after.items.map((c: { id: number; name: string }) => [c.id, c.name])).toEqual(
+    before.items.map((c: { id: number }) => [c.id, "새싹반"]),
+  );
+
+  // 아이가 있는 반은 동의를 끌 수 없다 — 알림이 뜨고 체크는 그대로다.
+  await page.getByRole("button", { name: "새싹반 고치기", exact: true }).click();
+  const consent = page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.");
+  await consent.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "아이 명단이 있어 동의를 끌 수 없어요" }),
+  ).toBeVisible();
+  await expect(consent).toBeChecked();
+  await page.getByRole("button", { name: "이전", exact: true }).click();
+  await expect(page.getByRole("button", { name: "이대로 시작할게요", exact: true })).toBeVisible();
 });
