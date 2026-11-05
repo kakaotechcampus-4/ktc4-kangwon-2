@@ -512,7 +512,7 @@ export default function PlayMonthlySheet({
               소방대피/재난대비
             </th>
             <td colSpan={weeks.length} className={`${LINE} p-0 text-left`}>
-              {drill && <Cell {...at} hint={TEACHER_HINT} id={drill.item_id} value={drill.value} />}
+              {drill && <Cell {...at} id={drill.item_id} value={drill.value} />}
             </td>
           </tr>
           <tr>

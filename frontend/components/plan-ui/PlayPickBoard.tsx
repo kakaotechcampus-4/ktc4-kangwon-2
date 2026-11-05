@@ -209,10 +209,10 @@ export default function PlayPickBoard({
   );
 
   return (
-    <div className="flex w-full flex-col gap-4 text-[#2b2826] lg:h-[calc(100vh-210px)] lg:min-h-[520px] lg:flex-row">
+    <div className="flex w-full flex-col gap-4 text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-210px)] lg:min-h-[520px] lg:flex-row">
       <section
         aria-label={`${season} 놀이 후보`}
-        className={`max-h-[60vh] lg:max-h-none lg:w-[400px] lg:shrink-0 ${PANEL}`}
+        className={`max-h-[calc(60*var(--app-vh))] lg:max-h-none lg:w-[400px] lg:shrink-0 ${PANEL}`}
         style={{ borderTopColor: STRIP.a }}
       >
         <Head

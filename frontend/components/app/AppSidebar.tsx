@@ -161,7 +161,7 @@ export default function AppSidebar() {
       {collapsed && (
         <aside
           aria-label="주 메뉴"
-          className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-rail-line lg:py-4"
+          className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:[scrollbar-color:var(--pg-rail-card-line)_var(--pg-rail)] lg:border-r lg:border-rail-line lg:py-4"
         >
           {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
               브라우저 탭 아이콘(`app/icon.svg`)과 같은 표시다. */}
@@ -215,8 +215,8 @@ export default function AppSidebar() {
           // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
           // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
           // 그 스크롤바가 267px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).
-          // 자리를 늘 잡아 두면 스크롤바가 생기든 말든 폭이 그대로다.
-          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[267px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:border-r lg:border-rail-line lg:flex lg:flex-col " +
+          // 자리를 늘 잡아 두면 스크롤바가 생기든 말든 폭이 그대로다. 스크롤바는 사이드바 먹색에 맞춘다.
+          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[267px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:[scrollbar-color:var(--pg-rail-card-line)_var(--pg-rail)] lg:border-r lg:border-rail-line lg:flex lg:flex-col " +
           "fixed bottom-0 inset-x-0 flex flex-row border-t border-rail-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
         }
       >

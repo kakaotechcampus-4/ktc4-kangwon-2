@@ -10,7 +10,7 @@
   align-items: stretch;
   min-width: 0;
   /* 상단바가 60px 이다 (AppLayout 의 Suspense fallback 과 WorkspaceTopBar 가 같은 값). */
-  min-height: calc(100dvh - 60px);
+  min-height: calc(calc(100 * var(--app-dvh)) - 60px);
 }
 .archive button:disabled {
   opacity: 0.5;
@@ -45,7 +45,7 @@
   background: var(--pg-shell);
   padding: 20px 16px;
   /* 상단바 아래부터 화면 끝까지. */
-  height: calc(100vh - 60px);
+  height: calc(calc(100 * var(--app-vh)) - 60px);
   display: flex;
   flex-direction: column;
 }
@@ -978,7 +978,7 @@
     position: sticky;
     align-self: start;
     top: 80px;
-    max-height: calc(100vh - 100px);
+    max-height: calc(calc(100 * var(--app-vh)) - 100px);
     padding: 0 0 0 20px;
     border-top: 0;
     border-left: 1px solid var(--pg-line);
@@ -1012,10 +1012,10 @@
 /* 태블릿·모바일의 기존 하단 메뉴 높이를 빼고 남은 공간만 채운다. */
 @media (max-width: 1023px) {
   .archive {
-    min-height: calc(100dvh - 60px - 84px);
+    min-height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
   }
   .classRail {
-    height: calc(100dvh - 60px - 84px);
+    height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
   }
 }
 @media (max-width: 760px) {

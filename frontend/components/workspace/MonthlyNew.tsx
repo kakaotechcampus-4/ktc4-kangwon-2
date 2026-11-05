@@ -179,7 +179,7 @@ export function MonthlyNewView(props: {
   const { play, month, plans, inherit, focus, blocked, template, extras = [] } = props;
   const look = play ? LOOK.play : LOOK.theme;
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
       <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Tape />
         <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
@@ -376,9 +376,6 @@ export function MonthlyNewView(props: {
           aria-label="양식 미리보기"
           className="flex min-h-[420px] flex-col border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] p-3"
         >
-          <p className="m-0 mb-2 text-[13px] text-ink-soft">
-            양식 예시예요. 만들면 고른 달 · 반의 내용으로 채워져요.
-          </p>
           <div className="relative min-h-0 flex-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -601,7 +598,7 @@ export default function MonthlyNew({
 
   if (busy)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind={play ? "monthly:PLAY_PROJECT" : "monthly:MONTHLY_THEME"}
           // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형 40 · 33 · 43초(2026-11-05).

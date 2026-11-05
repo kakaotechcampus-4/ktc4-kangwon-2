@@ -377,6 +377,7 @@ export default function ThemeAnnualResult({
           <span>
             <BigView
               pages={1}
+              width={SHEET_WIDTH}
               render={() => <AnnualThemeSheet title={sheetTitle} months={sheetMonths} />}
             />
           </span>

@@ -237,7 +237,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
 
   if (busy)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind="weekly"
           // Sol 실측: 33초(2026-11-05).
@@ -254,7 +254,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
       <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Tape />
         <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">

@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import workspace from "@/components/workspace/Workspace.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
@@ -200,20 +192,6 @@ function takeDrop(event: DragEvent<HTMLElement>) {
   event.stopPropagation();
   delete event.currentTarget.dataset.drop;
   return event.dataTransfer.getData("text/plain");
-}
-
-// 크게 보기 창 안 문서 — 편집 문서와 같은 − · + · 맞춤.
-function BigSheet({ sheet }: { sheet: ReactNode }) {
-  const box = useRef<HTMLDivElement>(null);
-  const zoom = useSheetZoom(box, SHEET_WIDTH);
-  return (
-    <div ref={box}>
-      <div className="sticky top-0 z-10 mb-3 flex justify-end">{zoom.tools}</div>
-      <div style={{ zoom: zoom.percent / 100, width: SHEET_WIDTH }} className="mx-auto">
-        {sheet}
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -993,18 +971,15 @@ export default function PlayProjectResult({
           <span>
             <BigView
               pages={Math.ceil(plan.periods.length / 2)}
+              width={SHEET_WIDTH}
               dialog={bigDialog}
               render={(page) => (
-                <BigSheet
-                  sheet={
-                    <PlayProjectSheet
-                      plan={shown}
-                      className={className}
-                      picks={picks}
-                      periods={[page * 2, page * 2 + 1].filter((i) => i < plan.periods.length)}
-                      perPage={2}
-                    />
-                  }
+                <PlayProjectSheet
+                  plan={shown}
+                  className={className}
+                  picks={picks}
+                  periods={[page * 2, page * 2 + 1].filter((i) => i < plan.periods.length)}
+                  perPage={2}
                 />
               )}
             />

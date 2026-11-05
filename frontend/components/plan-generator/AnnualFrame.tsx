@@ -83,7 +83,7 @@ export default function AnnualFrame({
   children: ReactNode;
 }) {
   return (
-    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-10">
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:px-10">
       {/* 안내가 없으면 높이 0 — 연간 · 월간 · 주간 문서 틀이 같은 높이에서 시작한다. */}
       <div className="flex flex-col">
         {/* 제목 줄은 「무엇」(제목 · 형식)과 「할 일」(확정)만 — 저장 상태 · 요청 사항은 제목 아래 작은 줄로. */}
@@ -117,7 +117,7 @@ export default function AnnualFrame({
         )}
         <section
           aria-label="문서 미리보기"
-          className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
+          className="flex h-[calc(80*var(--app-vh))] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
           {/* 도구는 따로 띠를 두지 않고 책상(문서 바탕) 위에 얹는다 — 문서가 한 줄 더 위에서 시작한다. */}
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-3 text-sm">
@@ -257,14 +257,18 @@ export const POPOVER = "absolute right-0 top-full z-20 mt-2 w-[380px]";
 
 /**
  * 문서 크게 보기 — 따로 뜨는 읽기 전용 창. 쪽이 여럿이면 쪽을 골라 본다. Esc 로도 닫힌다.
- * 닫혀 있으면 문서를 그리지 않는다. 연간 · 월간이 같이 쓴다.
+ * 닫혀 있으면 문서를 그리지 않는다. 연간 · 월간 · 주간이 같이 쓴다.
+ * 문서 배율(− · + · 맞춤)은 「닫고 편집 계속하기」 옆에 둔다 — 화면마다 같은 자리(하민 2026-11-06).
  */
 export function BigView({
   pages,
+  width,
   render,
   dialog,
 }: {
   pages: number;
+  /** 문서 기준 폭(px) — 배율 「맞춤」이 이 폭을 창 폭에 맞춘다. */
+  width: number;
   render: (page: number) => ReactNode;
   /** 바깥에서 닫을 때(확정 실패로 패널을 열 때). */
   dialog?: RefObject<HTMLDialogElement | null>;
@@ -272,6 +276,8 @@ export function BigView({
   const own = useRef<HTMLDialogElement>(null);
   const ref = dialog ?? own;
   const [page, setPage] = useState<number | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const zoom = useSheetZoom(box, width, page);
   return (
     <>
       <button
@@ -289,7 +295,7 @@ export function BigView({
         ref={ref}
         aria-labelledby="big-view-title"
         onClose={() => setPage(null)}
-        className="m-auto h-[94vh] max-h-[94vh] w-[min(1100px,96vw)] max-w-none overflow-hidden rounded-[20px] bg-[#f3efe8] p-0 text-[#2b2826] backdrop:bg-black/40"
+        className="m-auto h-[calc(94*var(--app-vh))] max-h-[calc(94*var(--app-vh))] w-[min(1100px,calc(96*var(--app-vw)))] max-w-none overflow-hidden rounded-[20px] bg-[#f3efe8] p-0 text-[#2b2826] backdrop:bg-black/40"
       >
         {page !== null && (
           <div className="flex h-full flex-col">
@@ -319,12 +325,23 @@ export function BigView({
                   </div>
                 )}
               </div>
-              <button type="button" className={BUTTON.outline} onClick={() => ref.current?.close()}>
-                닫고 편집 계속하기 ×
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                {zoom.tools}
+                <button
+                  type="button"
+                  className={BUTTON.outline}
+                  onClick={() => ref.current?.close()}
+                >
+                  닫고 편집 계속하기 ×
+                </button>
+              </div>
             </header>
             <div id="big-view-page" className="min-h-0 flex-1 overflow-auto p-7">
-              {render(page)}
+              <div ref={box}>
+                <div style={{ zoom: zoom.percent / 100, width }} className="mx-auto">
+                  {render(page)}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -350,7 +367,7 @@ export function AnnualDone({ plan, pages }: { plan: AnnualPlanResponse; pages: R
       next={{
         href: "/plans/monthly",
         label: "월간계획안 만들기 →",
-        hint: "이 연간계획안을 바탕으로 만들어요",
+        hint: "이 연간 계획안과 연계돼요!",
       }}
     />
   );
@@ -424,7 +441,7 @@ export function PlanDone({
     setBusy(null);
   };
   return (
-    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-10">
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:px-10">
       <div className="flex flex-wrap items-center gap-3">
         <span
           aria-hidden="true"
@@ -439,7 +456,7 @@ export function PlanDone({
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <section
           aria-label={docLabel}
-          className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
+          className="flex h-[calc(80*var(--app-vh))] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
           {pages.length > 1 && (
             <div role="tablist" aria-label="쪽" className="flex gap-1.5 px-6 pt-4">
@@ -503,7 +520,7 @@ export function PlanDone({
             >
               {next.label}
             </Link>
-            <span className="text-[13px] text-ink-soft">{next.hint}</span>
+            <span className="font-display text-[16px] text-ink-soft">{next.hint}</span>
           </div>
           <Link
             href="/"

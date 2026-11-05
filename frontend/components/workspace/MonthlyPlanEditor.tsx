@@ -49,7 +49,6 @@ import {
   WeekHead,
   period,
   safetyCellId,
-  TEACHER_HINT,
 } from "@/components/plan-generator/PlayMonthlySheet";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { useCellHistory } from "./useCellHistory";
@@ -693,7 +692,7 @@ export default function MonthlyPlanEditor({
                     재난대비
                   </th>
                   <td colSpan={span} className={`${LINE} ${HINT}`}>
-                    {TEACHER_HINT}
+                    + 채우기
                   </td>
                 </tr>
               )}
@@ -812,7 +811,7 @@ export default function MonthlyPlanEditor({
           />
           {sheetZoom.tools}
           <span>
-            <BigView pages={1} render={() => docOf(still)} />
+            <BigView pages={1} width={PAPER_WIDTH} render={() => docOf(still)} />
           </span>
         </div>
       }

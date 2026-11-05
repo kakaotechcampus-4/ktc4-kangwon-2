@@ -1,4 +1,5 @@
 import type { DragEvent } from "react";
+import { appZoom } from "@/lib/appZoom";
 
 /**
  * 계획안 문서 안에서 끌어 순서 바꾸기(놀이 중심형 ⑤ · 월별 주제형 연간 공통).
@@ -27,7 +28,10 @@ export function liftCells(
   dropCells();
   const rects = cells.map((cell) => cell.getBoundingClientRect());
   // 문서 배율(zoom)을 복사본에도 준다 — 글자 크기가 같아 보이게.
-  const zoom = Number(cells[0].closest<HTMLElement>('[style*="zoom"]')?.style.zoom) || 1;
+  // 복사본은 body 에 붙어 화면 전체 배율(app)도 받으므로, 화면 좌표 · 크기를 그만큼 나눠 넣는다.
+  const app = appZoom();
+  const docZoom = Number(cells[0].closest<HTMLElement>('[style*="zoom"]')?.style.zoom) || 1;
+  const zoom = docZoom * app;
   const offset = axis === "y" ? event.clientY - rects[0].top : event.clientX - rects[0].left;
   const table = document.createElement("table");
   table.className = cells[0].closest("table")?.className ?? "";
@@ -42,7 +46,7 @@ export function liftCells(
   });
   table.append(row);
   Object.assign(table.style, {
-    zoom: String(zoom),
+    zoom: String(docZoom),
     width: `${rects.reduce((w, r) => w + r.width, 0) / zoom}px`,
     background: "#fff",
   });
@@ -50,8 +54,8 @@ export function liftCells(
   box.append(table);
   Object.assign(box.style, {
     position: "fixed",
-    left: `${rects[0].left}px`,
-    top: `${rects[0].top}px`,
+    left: `${rects[0].left / app}px`,
+    top: `${rects[0].top / app}px`,
     boxShadow: "0 12px 28px rgba(60,40,100,.28)",
     outline: "2px solid #7053a0",
     pointerEvents: "none",
@@ -60,8 +64,8 @@ export function liftCells(
   });
   document.body.append(box);
   const move = (e: globalThis.DragEvent) => {
-    if (axis === "y" && e.clientY) box.style.top = `${e.clientY - offset}px`;
-    if (axis === "x" && e.clientX) box.style.left = `${e.clientX - offset}px`;
+    if (axis === "y" && e.clientY) box.style.top = `${(e.clientY - offset) / app}px`;
+    if (axis === "x" && e.clientX) box.style.left = `${(e.clientX - offset) / app}px`;
   };
   document.addEventListener("dragover", move);
   cells.forEach((cell) => (cell.dataset.dragging = ""));

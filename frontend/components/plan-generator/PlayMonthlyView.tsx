@@ -601,7 +601,11 @@ function PlayMonthlyBody({
           />
           {sheetZoom.tools}
           <span>
-            <BigView pages={1} render={() => <PlayMonthlySheet plan={shown} />} />
+            <BigView
+              pages={1}
+              width={PAPER_WIDTH}
+              render={() => <PlayMonthlySheet plan={shown} />}
+            />
           </span>
         </div>
       }

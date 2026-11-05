@@ -25,8 +25,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ko" className={fontClassName}>
+    <html lang="ko" className={fontClassName} suppressHydrationWarning>
       <head>
+        {/* 1440 기준 비례 화면(시험) — 좁은 화면만 줄이고 넓은 화면은 키우지 않는다. 첫 그림 전에 넣어야 화면이 한 번 튀지 않는다 — globals.css 참고. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){function f(){var w=window.innerWidth;document.documentElement.style.setProperty("--app-zoom",String(w>=1024?Math.min(1,w/1440):1))}f();addEventListener("resize",f)})();`,
+          }}
+        />
         {/*
          * 글꼴은 구글 폰트에서 받는다. 여기 `<link>` 로 받는 이유가 있다.
          *

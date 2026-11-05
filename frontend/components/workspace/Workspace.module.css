@@ -936,7 +936,7 @@ a.item {
   align-content: start;
   position: sticky;
   top: 76px;
-  max-height: calc(100vh - 92px);
+  max-height: calc(calc(100 * var(--app-vh)) - 92px);
   overflow: auto;
 }
 .calendarCard {
@@ -1455,7 +1455,7 @@ a.item {
   gap: 10px;
   /* `left: 50%` 라 그냥 두면 화면 오른쪽 절반 너비에 맞춰 접힌다 — 글 길이만큼 편다. */
   width: max-content;
-  max-width: min(460px, calc(100vw - 32px));
+  max-width: min(460px, calc(calc(100 * var(--app-vw)) - 32px));
   margin: 0;
   padding: 13px 20px 13px 16px;
   border-radius: 999px;

@@ -170,7 +170,7 @@ function AnnualGenerator({ format }: { format: Format }) {
 
   if (generating)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind={`annual:${format}`}
           // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
@@ -183,7 +183,7 @@ function AnnualGenerator({ format }: { format: Format }) {
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
       {error && (
         <p
           role="alert"

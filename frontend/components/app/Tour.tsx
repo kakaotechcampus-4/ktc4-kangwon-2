@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { appZoom } from "@/lib/appZoom";
 import { Posty } from "./Posty";
 import styles from "./Tour.module.css";
 
@@ -330,11 +331,12 @@ export default function Tour() {
     const pad = step.pad ?? 8;
     const measure = () => {
       const box = el.getBoundingClientRect();
+      const z = appZoom();
       setHole({
-        top: box.top - pad,
-        left: box.left - pad,
-        width: box.width + pad * 2,
-        height: box.height + pad * 2,
+        top: box.top / z - pad,
+        left: box.left / z - pad,
+        width: box.width / z + pad * 2,
+        height: box.height / z + pad * 2,
       });
     };
     measure();
@@ -365,8 +367,8 @@ export default function Tour() {
   const last = index === steps.length - 1;
 
   // 칸을 가리지 않는 쪽에 둔다 — 아래 → 위 → 오른쪽 순. 다 좁으면(큰 칸) 화면 아래에 붙인다.
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = window.innerWidth / appZoom();
+  const vh = window.innerHeight / appZoom();
   const left = Math.min(Math.max(16, hole.left), vw - CARD - 16);
   const place =
     vh - (hole.top + hole.height) > 260

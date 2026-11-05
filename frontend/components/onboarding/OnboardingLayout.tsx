@@ -26,7 +26,9 @@ export default function OnboardingLayout({
   const [signedIn] = useClientState(() => !!readToken(), false);
   const home = signedIn ? "/" : "/welcome";
   return (
-    <div className={`${fontClassName} min-h-screen bg-cream px-5 py-6 font-body text-ink sm:px-8`}>
+    <div
+      className={`${fontClassName} min-h-[calc(100*var(--app-vh))] bg-cream px-5 py-6 font-body text-ink sm:px-8`}
+    >
       <header className="mx-auto flex max-w-[820px] items-center justify-between gap-3">
         <Wordmark href={home} label={signedIn ? "쌤플 메인으로" : "쌤플 소개로"} />
         {/* 첫 설정에서 빠져나갈 길. 전에는 주소창에 /logout 을 쳐야 했다 (#291) */}

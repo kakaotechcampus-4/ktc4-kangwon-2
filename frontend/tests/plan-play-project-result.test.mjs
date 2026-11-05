@@ -91,7 +91,9 @@ function plan() {
 const sheetHelpers = compile("../components/plan-generator/playProjectPagination.ts", {});
 const { default: Sheet } = compile("../components/plan-generator/PlayProjectSheet.tsx", {
   "./playProjectPagination": sheetHelpers,
-  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {}),
+  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {
+    "@/lib/appZoom": { appZoom: () => 1 },
+  }),
   "./PlayMonthlySheet": { HATCH: "hatch" },
 });
 // 입력창 대역 — 화면이 넘긴 값과 콜백만 본다. 입력창 규칙은 play-cell-editor.test.mjs 가 다룬다.

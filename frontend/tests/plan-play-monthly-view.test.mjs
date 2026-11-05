@@ -566,7 +566,9 @@ test("브라우저 저장소를 쓰지 않는다", () => {
 // ---- 문서 용지 (Sheet) ----
 // 용지가 쓰는 끌기 도구 · 안전교육 머리 이름(진짜 모듈).
 const sheetMods = {
-  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {}),
+  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {
+    "@/lib/appZoom": { appZoom: () => 1 },
+  }),
   "./PlayMonthlySafetyPanel": compile(
     "../components/plan-generator/PlayMonthlySafetyPanel.tsx",
     {},

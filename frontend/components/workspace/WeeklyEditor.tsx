@@ -731,7 +731,7 @@ export default function WeeklyEditor({
           />
           {sheetZoom.tools}
           <span>
-            <BigView pages={1} render={() => docOf(still)} />
+            <BigView pages={1} width={PAPER_WIDTH} render={() => docOf(still)} />
           </span>
         </div>
       }
