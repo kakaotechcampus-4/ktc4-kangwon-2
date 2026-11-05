@@ -336,3 +336,5 @@ Run `npm run e2e` for routines A-J and home K/L. Set `E2E_DATABASE_URL` and
 UI 체크박스 하나를 API checks 세 필드로 보내며, stale이어도 기존 확정 상태를 유지한다.
 근거 사본/현재 원본의 차이를 먼저 보여주고 모든 검증을 통과한 트랜잭션만 확정본을 바꾼다.
 시간순 정렬은 버튼으로만 실행하고 수동 position과 S-J2 체크 선택 순서를 보존한다.
+
+<!-- ci path filter test: 닫을 예정 -->
