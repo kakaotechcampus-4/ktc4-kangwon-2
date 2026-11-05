@@ -1,6 +1,7 @@
 """실제 PostgreSQL의 서로 다른 트랜잭션으로 반 잠금을 검증한다."""
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from threading import Barrier
 from types import SimpleNamespace
 
@@ -42,6 +43,8 @@ def test_concurrent_registration_preserves_the_whole_class(_schema, names):
             age_min=3,
             age_max=3,
             teacher_name="테스트",
+            # 동의 전 반에는 아이를 못 넣는다(§2-1). 이 테스트는 동시 등록을 본다.
+            consent_confirmed_at=datetime.now(UTC),
         )
         session.add(classroom)
         session.flush()

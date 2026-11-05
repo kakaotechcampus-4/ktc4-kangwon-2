@@ -12,6 +12,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.db import SessionLocal
 from app.features.auth.models import User
 from app.features.auth.router import router as auth_router
+from app.features.centers.router import classes_router
 from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
 from app.features.class_access.router import router as class_access_router
@@ -180,6 +181,7 @@ _authenticated = [Depends(_authenticated_user)]
 app.include_router(auth_router, prefix="/api")
 app.include_router(forms_router, prefix="/api")
 app.include_router(centers_router, prefix="/api", dependencies=_authenticated)
+app.include_router(classes_router, prefix="/api", dependencies=_authenticated)
 app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 app.include_router(class_access_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
