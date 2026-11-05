@@ -130,6 +130,28 @@ def test_missing_linked_indoor_evidence_stops_before_provider_and_save(monkeypat
     assert not provider.requests and len(harness.weekly_plans) == 0
 
 
+def test_parent_catalog_choice_survives_generated_description_but_not_teacher_rewrite():
+    from ssuksak.planning.application.generate_weekly_plan import _parent_activity
+    from ssuksak.planning.domain.provenance import EvidenceSource
+    from ssuksak.planning.planner.play_description import PLAY_DESCRIPTION_TAG
+
+    harness = WeeklyHarness()
+    parent = harness.monthly_parent(confirm=False, mode=LLM)
+    original = parent.section("outdoor_play").cell_for_week(WEEK)
+    catalog = harness.activities.get_catalog(ACTIVITY_CATALOG.catalog_id, ACTIVITY_CATALOG.catalog_version)
+    chosen = catalog.activities[0]
+    original = replace(original, value=chosen.label,
+                       evidence=(EvidenceSource(EvidenceSourceType.ACTIVITY_REFERENCE, chosen.activity_id, chosen.source_version),))
+    assert _parent_activity(original, catalog.activities) == chosen
+    described = replace(original, value=chosen.label + ": 자연의 모습을 살펴봅니다.",
+                        generation=replace(original.generation, rule_version=original.generation.rule_version + PLAY_DESCRIPTION_TAG))
+    assert _parent_activity(described, catalog.activities) == chosen
+    assert _parent_activity(replace(described, value="다른 놀이: 자연의 모습을 살펴봅니다."), catalog.activities) is None
+    edited = harness.edit_monthly(parent, item_id=original.item_id, value=described.value)
+    assert _parent_activity(replace(edited.section("outdoor_play").cell_for_week(WEEK),
+                                   evidence=described.evidence, generation=described.generation), catalog.activities) is None
+
+
 def test_day_composition_links_approved_context_and_parent_play_through_regeneration():
     harness = WeeklyHarness()
     parent = harness.monthly_parent(confirm=False, mode=LLM)

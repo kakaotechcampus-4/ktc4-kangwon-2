@@ -68,6 +68,7 @@ from ..planner.weekly import (
 )
 from ..retrieval.models import RetrievedEvidence
 from ..retrieval.weekly import activity_type, indoor_play_type, weekly_section_evidence
+from ..planner.play_description import PLAY_DESCRIPTION_TAG, valid_play_description
 from ..rules.monthly_activity_selection import (
     ActivitySelection,
     ActivitySelectionTrace,
@@ -831,7 +832,13 @@ def _parent_activity(
         if source.source_type is EvidenceSourceType.ACTIVITY_REFERENCE
     }
     return next(
-        (c for c in eligible if c.activity_id in referenced and c.label == cell.value), None
+        (c for c in eligible if c.activity_id in referenced and (
+            c.label == cell.value or (
+                cell.generation is not None and PLAY_DESCRIPTION_TAG in (cell.generation.rule_version or "")
+                and not cell.audit.current_value_teacher_edited()
+                and valid_play_description(cell.value, c.label)
+            )
+        )), None
     )
 
 

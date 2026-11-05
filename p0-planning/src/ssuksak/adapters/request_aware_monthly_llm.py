@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 from ssuksak.planning.domain.monthly_template import RepeatBy, SectionRole
+from ssuksak.planning.planner.play_description import describes_play
 from ssuksak.planning.planner.contracts import (
     DRILL_CANDIDATE_PREFIX,
     MONTHLY_MODEL,
@@ -89,14 +90,14 @@ class RequestAwareMonthlyLlm:
             if section_key == "outdoor_play" and index == 1:
                 return {
                     "section_key": section_key,
-                    "value": reference_label,
+                    "value": reference_label + (": 활동의 대상과 모습을 살펴보며 놀이합니다." if describes_play(request, section_key) else ""),
                     "unresolved": False,
                     "reference_id": reference_id,
                     "grounding_refs": [],
                 }
             return _cell(
                 section_key,
-                f"{index}주 {section_key}",
+                f"{index}주 {section_key}" + (": 자료에 있는 방법으로 놀이합니다." if describes_play(request, section_key) else ""),
                 grounding_ref_for(request, section_key),
             )
 
@@ -178,7 +179,7 @@ class RequestAwareMonthlyLlm:
             ),
             "section": _cell(
                 request.target_section_key,
-                f"다시 만든 {request.target_section_key}",
+                f"다시 만든 {request.target_section_key}" + (": 자료에 있는 방법으로 놀이합니다." if describes_play(request, request.target_section_key) else ""),
                 grounding_ref_for(request, request.target_section_key),
             ),
         }

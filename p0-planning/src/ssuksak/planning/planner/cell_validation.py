@@ -12,11 +12,13 @@ from .contracts import (
     MonthlyCellPlanningRequest,
     MonthlyCellProposal,
 )
+from .play_description import PLAY_DESCRIPTION_INVALID, describes_play, valid_play_description
 from .text_policy import normalize_visible_text, visible_text_violations
 from .validation import outdoor_age_unverifiable_refs, wrong_source_refs
 
 
 class CellValidationCode(str, Enum):
+    PLAY_DESCRIPTION_INVALID = PLAY_DESCRIPTION_INVALID
     PACKET_FINGERPRINT_MISMATCH = "PACKET_FINGERPRINT_MISMATCH"
     TARGET_MONTH_MISMATCH = "TARGET_MONTH_MISMATCH"
     TARGET_WEEK_MISMATCH = "TARGET_WEEK_MISMATCH"
@@ -122,6 +124,10 @@ def validate_monthly_cell_proposal(
         )
 
     reference_labels = request.reference_label_map
+    if describes_play(request, value.section_key) and not valid_play_description(
+        value.value, reference_labels.get(value.reference_id)
+    ):
+        fail(CellValidationCode.PLAY_DESCRIPTION_INVALID, "value")
     if value.reference_id is not None:
         expected = reference_labels.get(value.reference_id)
         if request.target_section_key not in request.reference_section_keys:
@@ -129,7 +135,7 @@ def validate_monthly_cell_proposal(
             fail(CellValidationCode.UNKNOWN_REFERENCE_ID, "reference_id", "REFERENCE_FORBIDDEN_FOR_SECTION")
         elif expected is None:
             fail(CellValidationCode.UNKNOWN_REFERENCE_ID, "reference_id")
-        elif normalize_visible_text(value.value) != normalize_visible_text(expected):
+        elif not describes_play(request, value.section_key) and normalize_visible_text(value.value) != normalize_visible_text(expected):
             fail(CellValidationCode.REFERENCE_VALUE_MISMATCH, "value")
     elif not value.grounding_refs:
         fail(

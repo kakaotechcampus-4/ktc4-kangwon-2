@@ -27,6 +27,7 @@ from .prompt import (
 )
 
 from .v1_guidance import V1_GUIDANCE
+from .play_description import PLAY_DESCRIPTION_TAG, PLAY_KEYS, with_play_descriptions
 
 MONTHLY_CELL_TASK = "monthly_cell_proposal"
 
@@ -138,17 +139,22 @@ def build_monthly_cell_request(
         }
     )
     contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
+    descriptions = contextual and target_section_key in PLAY_KEYS
     memo = (cell_address(target_week_id, target_section_key),) if packet.teacher_memo else None
     if memo is not None:
         body["teacher_memo"] = {"text": packet.teacher_memo, "addresses": list(memo)}
         body["response_contract"]["memo_applied"] = ["address"]
+    system_prompt = CELL_SYSTEM_PROMPT + (
+        V1_GUIDANCE + MONTHLY_V1_STYLE + MONTHLY_V1_CELL_CONTEXT if contextual else ""
+    ) + (TEACHER_MEMO_PROMPT if memo is not None else "")
+    if descriptions:
+        system_prompt = with_play_descriptions(system_prompt)
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
         prompt_version=(MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION)
+        + (PLAY_DESCRIPTION_TAG if descriptions else "")
         + (TEACHER_MEMO_PROMPT_TAG if memo is not None else ""),
-        system_prompt=CELL_SYSTEM_PROMPT + (
-            V1_GUIDANCE + MONTHLY_V1_STYLE + MONTHLY_V1_CELL_CONTEXT if contextual else ""
-        ) + (TEACHER_MEMO_PROMPT if memo is not None else ""),
+        system_prompt=system_prompt,
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         target_week_id=target_week_id,

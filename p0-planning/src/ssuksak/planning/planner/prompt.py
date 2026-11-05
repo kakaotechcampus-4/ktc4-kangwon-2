@@ -13,6 +13,7 @@ from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from ..domain.errors import InvalidDomainValueError
 from .indoor_alternative import INDOOR_ADAPTATION_GUIDANCE
+from .play_description import PLAY_DESCRIPTION_TAG, PLAY_KEYS, with_play_descriptions
 from .contracts import (
     MONTHLY_CONTEXT_PROMPT_VERSION,
     MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
@@ -459,10 +460,13 @@ def build_monthly_planning_request(
     )
     safety = packet.safety is not None
     contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
+    descriptions = contextual and any(section.section_key in PLAY_KEYS for section, _ in generation_targets(packet, snapshot))
     indoor = any(section.section_key == "indoor_alternative" for section, _ in generation_targets(packet, snapshot))
     version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
     if contextual:
         version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
+    if descriptions:
+        version += PLAY_DESCRIPTION_TAG
     if indoor:
         version += MONTHLY_INDOOR_PROMPT_TAG
     if packet.safety_candidates:
@@ -483,7 +487,7 @@ def build_monthly_planning_request(
     if safety_slots is not None:
         body["safety_request_slots"] = list(safety_slots)
         version += SAFETY_REQUESTS_PROMPT_TAG
-    return MonthlyPlanningRequest(
+    request = MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
         system_prompt=(
@@ -512,6 +516,7 @@ def build_monthly_planning_request(
         memo_addresses=memo,
         safety_request_slots=safety_slots,
     )
+    return replace(request, system_prompt=with_play_descriptions(request.system_prompt)) if descriptions else request
 
 
 def build_monthly_repair_request(

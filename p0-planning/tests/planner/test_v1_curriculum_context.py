@@ -20,6 +20,7 @@ from ssuksak.planning.planner.validation import validate_monthly_proposal
 from ssuksak.planning.planner.v1_guidance import curriculum_context
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.planner.service import MonthlyPlanner
+from ssuksak.planning.planner.play_description import PLAY_DESCRIPTION_TAG, valid_play_description
 from ssuksak.planning.planner.weekly import (
     WeeklyTarget,
     build_weekly_request,
@@ -59,8 +60,9 @@ def test_curriculum_is_versioned_context_without_new_allowed_cell_refs(
     assert packet_fingerprint(augmented) != packet_fingerprint(
         replace(augmented, parent_subthemes=("교사 확정값",))
     )
-    assert request.prompt_version == "monthly-planner-v23"
-    assert "120 to 160" not in request.system_prompt and MONTHLY_V1_STYLE in request.system_prompt
+    assert request.prompt_version == "monthly-planner-v23" + PLAY_DESCRIPTION_TAG
+    assert "120 to 160" not in request.system_prompt
+    assert "설명은 v2 놀이 설명과" in request.system_prompt
     assert "120 to 160" in original.system_prompt and MONTHLY_V1_STYLE not in original.system_prompt
     cell = build_monthly_cell_request(
         augmented,
@@ -103,7 +105,7 @@ def test_curriculum_ids_cannot_be_visible_or_used_as_grounding(packet, snapshot)
     )
     assert any(i.detail == "SOURCE_IDENTIFIER_LEAKAGE" for i in result.issues)
     repair = build_monthly_repair_request(request, json.dumps(payload), result.issues)
-    assert repair.prompt_version == "monthly-planner-repair-v18"
+    assert repair.prompt_version == "monthly-planner-repair-v18" + PLAY_DESCRIPTION_TAG
     assert "120 to 160" not in repair.system_prompt
     assert (
         json.loads(repair.user_content)["original_request"]["curriculum_context"]
@@ -150,10 +152,59 @@ def test_failed_context_repair_is_reported_once(packet, snapshot, caplog):
     with caplog.at_level("WARNING"), pytest.raises(ProposalRejectedError):
         MonthlyPlanner(provider).plan(packet, snapshot)
     assert len(provider.monthly_requests) == 2
-    assert provider.monthly_requests[-1].prompt_version == "monthly-planner-repair-v18"
+    assert provider.monthly_requests[-1].prompt_version == "monthly-planner-repair-v18" + PLAY_DESCRIPTION_TAG
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1
     assert warnings[0].startswith("Monthly LLM repair failed:")
+
+
+@pytest.mark.parametrize("first_shape", ["valid", "name_only", "wrong_catalog_name"])
+def test_monthly_catalog_description_survives_hydration_and_repair(packet, snapshot, first_shape):
+    from copy import deepcopy
+
+    packet = replace(packet, curriculum=v1_curriculum_catalog())
+    request = build_monthly_planning_request(packet, snapshot)
+    good = monthly_payload()
+    for week in good["weeks"]:
+        for cell in week["sections"]:
+            if cell["section_key"] == "outdoor_play":
+                name = request.reference_label_map.get(cell["reference_id"], cell["value"])
+                cell["value"] = name + ": 바람과 자연의 모습을 살펴봅니다."
+    first = deepcopy(good)
+    catalog = next(c for w in first["weeks"] for c in w["sections"] if c["reference_id"] is not None)
+    if first_shape == "name_only":
+        catalog["value"] = request.reference_label_map[catalog["reference_id"]]
+    elif first_shape == "wrong_catalog_name":
+        catalog["value"] = "전혀 다른 활동: 바람과 자연의 모습을 살펴봅니다."
+    provider = ScriptedMonthlyLlm(first, good)
+    outcome = MonthlyPlanner(provider).plan(packet, snapshot)
+    assert len(provider.monthly_requests) == (1 if first_shape == "valid" else 2)
+    for week in outcome.proposal.weeks:
+        for value in week.sections:
+            if value.section_key == "outdoor_play":
+                assert valid_play_description(value.value, request.reference_label_map.get(value.reference_id))
+                assert value.value.endswith("바람과 자연의 모습을 살펴봅니다.")
+    if first_shape != "valid":
+        assert all(fields == ("value",) for _, _, fields in provider.monthly_requests[-1].repair_targets)
+
+
+def test_monthly_outdoor_regeneration_checks_description_and_canonical_name(packet, snapshot):
+    from ssuksak.planning.planner.contracts import MonthlyCellProposal, ProposedSectionValue
+    from ssuksak.planning.planner.cell_validation import validate_monthly_cell_proposal
+
+    packet = replace(packet, curriculum=v1_curriculum_catalog())
+    request = build_monthly_cell_request(packet, snapshot, target_week_id=WeekId("2026-09-W1"),
+        target_section_key="outdoor_play", month_snapshot=snapshots())
+    assert PLAY_DESCRIPTION_TAG in request.prompt_version
+    ref, label = request.reference_labels[0]
+    for text, valid in ((label + ": 자연의 모습을 살펴봅니다.", True), (label, False),
+                        ("다른 놀이: 자연의 모습을 살펴봅니다.", False)):
+        proposal = MonthlyCellProposal(request.target_month, request.target_week_id,
+            ProposedSectionValue("outdoor_play", text, False, (), ref))
+        result = validate_monthly_cell_proposal(proposal, packet, request)
+        assert result.is_valid is valid
+        if not valid:
+            assert "PLAY_DESCRIPTION_INVALID" in result.codes
 
 
 def test_shared_safety_wording_keeps_specificity_and_avoids_amount_only_drug_warnings():

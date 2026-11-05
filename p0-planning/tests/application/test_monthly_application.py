@@ -114,6 +114,7 @@ from ssuksak.adapters.weekly_evidence_classification_repository import (
 )
 from ssuksak.planning.evidence.weekly_classification import WeeklySemanticClass
 from ssuksak.planning.planner.prompt import INDOOR_ALTERNATIVE_PROMPT
+from ssuksak.planning.planner.play_description import describes_play
 from ssuksak.planning.planner.contracts import (
     MONTHLY_CELL_PROMPT_VERSION,
     MONTHLY_INDOOR_PROMPT_TAG,
@@ -358,6 +359,10 @@ class RequestAwareMonthlyLlm:
                 )
             ],
         }
+        for week in payload["weeks"]:
+            for cell in week["sections"]:
+                if describes_play(request, cell["section_key"]):
+                    cell["value"] += ": 근거에 있는 활동 방법으로 놀이합니다."
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "monthly-1"
         )
@@ -370,7 +375,9 @@ class RequestAwareMonthlyLlm:
             "target_week_id": target_week_value(request),
             "section": {
                 "section_key": request.target_section_key,
-                "value": f"Regenerated {request.target_section_key} value",
+                "value": f"Regenerated {request.target_section_key} value" + (
+                    ": 근거에 있는 활동 방법으로 놀이합니다." if describes_play(request, request.target_section_key) else ""
+                ),
                 "unresolved": False,
                 "reference_id": None,
                 "grounding_refs": [grounding_ref],
