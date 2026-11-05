@@ -19,7 +19,8 @@ const iconButton =
  * 지역 고르개 — 칠판 위에 뜨는 작은 칠판, 이름은 분필로 적은 글씨. 휴대폰에서는 아래에서 올라오는 판,
  * 데스크톱에서는 나무테를 두른 가운데 판이다.
  * 시·도를 고르면 같은 자리의 목록이 그 시·도의 시·군·구로 바뀐다. 세종은 시·군·구가 없어 바로 끝난다.
- * 판 크기는 늘 같다(걸러서 이름이 줄어도 안 변한다). 위 검색칸에 이름이나 초성(예: ㅊㅊ)을 치면 목록이 걸러진다. 한 개만 남으면 Enter 로 고른다.
+ * 판 크기는 늘 같다(걸러서 이름이 줄어도 안 변한다). 열리면 검색칸에 커서가 있어 바로 이름이나
+ * 초성(예: ㅊㅊ)을 치면 목록이 걸러진다. 한 개만 남으면 Enter 로 고른다.
  * 네이티브 `<dialog>` 라서 포커스를 가두고 Esc 로 닫히며, 닫으면 눌렀던 단추로 포커스가 돌아간다.
  */
 export default function RegionSheet({
@@ -30,18 +31,23 @@ export default function RegionSheet({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const search = useRef<HTMLInputElement>(null);
   const [province, setProvince] = useState("");
   const [query, setQuery] = useState("");
 
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
+    // 열리자마자 바로 초성을 칠 수 있게 검색칸에 커서를 둔다(showModal 은 첫 단추에 포커스를 준다).
+    search.current?.focus();
   }, []);
 
   // 목록이 바뀌면 검색어는 비운다.
   function openProvince(value: string) {
     setProvince(value);
     setQuery("");
+    // 눌렀던 이름 단추는 목록과 함께 사라지므로 포커스를 검색칸으로 되돌린다.
+    search.current?.focus();
   }
   function pickProvince(value: string) {
     if (value === SEJONG) onPick(value, SEJONG);
@@ -126,6 +132,7 @@ export default function RegionSheet({
       />
       <div className="flex-none px-6 pb-3">
         <input
+          ref={search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
