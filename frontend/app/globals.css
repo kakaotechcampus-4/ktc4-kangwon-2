@@ -223,49 +223,6 @@ body {
   display: none;
 }
 
-/* 칠판 지우개 — 지역 고르개의 칸. 위는 색 손잡이(--eraser), 아래는 분필 가루가 묻은 펠트.
- * 모서리는 .squircle 로 준다. 누르면 판에 닿듯 내려앉고, 올리면 살짝 들린다. */
-.eraser {
-  position: relative;
-  overflow: hidden;
-  padding-bottom: 11px; /* 펠트 자리 */
-  background: var(--eraser, var(--pg-note));
-  color: var(--paper-ink);
-  box-shadow:
-    0 3px 0 rgba(0, 0, 0, 0.3),
-    0 6px 10px rgba(0, 0, 0, 0.22);
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease;
-}
-.eraser::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: 11px;
-  border-top: 1px solid rgba(0, 0, 0, 0.22);
-  background:
-    radial-gradient(4px 2px at 18% 45%, rgba(244, 241, 232, 0.6), transparent),
-    radial-gradient(5px 2px at 52% 60%, rgba(244, 241, 232, 0.45), transparent),
-    radial-gradient(4px 2px at 82% 38%, rgba(244, 241, 232, 0.55), transparent),
-    repeating-linear-gradient(90deg, #5d5955 0 2px, #4b4844 2px 4px);
-}
-.eraser:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 5px 0 rgba(0, 0, 0, 0.3),
-    0 10px 14px rgba(0, 0, 0, 0.24);
-}
-.eraser:active {
-  transform: translateY(1px);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
-}
-@media (prefers-reduced-motion: reduce) {
-  .eraser {
-    transition: none;
-  }
-}
-
 /* 칠판에 새 이름을 붓으로 칠하듯 — 왼쪽에서 오른쪽으로, 가장자리가 번지며 드러난다.
  * 마스크는 애니메이션 동안에만 건다. 끝난 뒤에도 남으면 키보드 포커스 선이 잘린다. */
 @keyframes brushIn {
