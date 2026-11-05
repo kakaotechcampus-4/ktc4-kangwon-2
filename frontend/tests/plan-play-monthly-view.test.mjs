@@ -247,6 +247,7 @@ function load() {
     "@/components/plan-ui/PlayPickBoard": esModule((props) => jsx("pickboard", props)),
     "./PlayMonthlyConfirm": {
       ...esModule((props) => jsx("ask", props)),
+      BLANK_LEAD: "남은 빈칸이 있어요. 비운 채로도 확정할 수 있어요.",
       BlankRows: (p) => jsx("blank-rows", p),
       PanelOverview: (p) => jsx("overview", p),
     },
@@ -1417,6 +1418,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     },
     "@/components/plan-generator/PlayMonthlyConfirm": {
       ...esModule((p) => jsx("ask", p)),
+      BLANK_LEAD: "남은 빈칸이 있어요. 비운 채로도 확정할 수 있어요.",
       BlankRows: (p) => jsx("blank-rows", p),
       PanelOverview: (p) => jsx("overview", p),
     },
@@ -1502,10 +1504,11 @@ test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, �
   view.editor().onDraft(" ");
   press("확정하기");
   const [ask] = node(view.render(), "ask");
-  assert.match(ask.props.message, /빈칸이 남아 있어요/);
-  // 근거가 없어 비운 칸도 있어 막지 않는다 — 같은 상자에서 바로 확정한다.
+  assert.equal(ask.props.title, "월간계획안을 확정할까요?");
+  // 근거가 없어 비운 칸도 있어 막지 않는다 — 같은 상자에서 바로 확정한다. 빈칸 안내는 목록 위 한 줄.
   assert.equal(ask.props.yes, "확정하기");
   const [rows] = node(view.render(), "blank-rows");
+  assert.match(rows.props.lead, /비운 채로도 확정할 수 있어요/);
   assert.equal(rows.props.rows.length, 1);
   assert.equal(rows.props.rows[0].count, 1);
 });
@@ -1973,7 +1976,7 @@ test("v1 — 확정은 페이지 안 확인을 거친 뒤에만 보낸다 · 칸
   const [ask] = asks();
   assert.match(
     ask.props.message,
-    /이 내용으로 주간계획안을 만들게 돼요\. 확인할 것 1개가 남았어요\.$/,
+    /^확인할 것 1개가 남았어요\.\n[^\n]+\n이 내용으로 주간계획안을 만들게 돼요\.$/,
   );
   assert.equal(ask.props.no, "더 다듬기");
   ask.props.onYes();

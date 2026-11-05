@@ -944,7 +944,10 @@ export default function PlayProjectResult({
             {asking && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm
-                  message="확정하면 고칠 수 없어요(고치려면 문서 보관함의 「수정하기」를 눌러요). 이 내용으로 월간계획안을 만들게 돼요."
+                  title="연간계획안을 확정할까요?"
+                  message={
+                    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요."
+                  }
                   yes={confirming ? "확정하는 중…" : "확정하기"}
                   no="더 다듬기"
                   disabled={confirming}

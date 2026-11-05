@@ -31,7 +31,10 @@ import PlayMonthlySafetyPanel, {
   DROP,
   dropTo,
 } from "@/components/plan-generator/PlayMonthlySafetyPanel";
-import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
+import PlayMonthlyConfirm, {
+  BLANK_LEAD,
+  BlankRows,
+} from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   BACK_BUTTON,
   BACK_ICON,
@@ -371,7 +374,6 @@ export default function MonthlyPlanEditor({
         return !c || !shown(c.cell).trim();
       })
     : [];
-  const blankCount = blanks.length + safetyBlanks.length;
   // 확정 확인은 한 번 — 남은 빈칸은 줄마다 세어 같은 상자에 보이고, 누르면 그 줄 첫 빈칸으로 간다.
   const blankRows = sections
     .map((s) => ({
@@ -664,9 +666,9 @@ export default function MonthlyPlanEditor({
     </button>
   );
   const askConfirm =
-    (blankCount ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-    "확정하면 고칠 수 없어요(고치려면 문서 보관함의 「수정하기」를 눌러요). 이 내용으로 주간계획안을 만들게 돼요." +
-    (notices.length ? ` 확인할 것 ${notices.length}개가 남았어요.` : "");
+    (notices.length ? `확인할 것 ${notices.length}개가 남았어요.\n` : "") +
+    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n" +
+    "이 내용으로 주간계획안을 만들게 돼요.";
 
   const docOf = (at: Pick, scale?: number) => (
     <Paper
@@ -825,6 +827,7 @@ export default function MonthlyPlanEditor({
             {asking === "confirm" && (
               <div className="absolute right-0 top-full z-20 mt-2 w-[380px]">
                 <PlayMonthlyConfirm
+                  title="월간계획안을 확정할까요?"
                   message={askConfirm}
                   yes="확정하기"
                   no="더 다듬기"
@@ -835,7 +838,7 @@ export default function MonthlyPlanEditor({
                   }}
                   onNo={() => setAsking("")}
                 >
-                  <BlankRows rows={blankRows} />
+                  <BlankRows rows={blankRows} lead={BLANK_LEAD} />
                 </PlayMonthlyConfirm>
               </div>
             )}

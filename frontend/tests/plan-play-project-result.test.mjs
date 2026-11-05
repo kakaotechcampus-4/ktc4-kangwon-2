@@ -310,7 +310,7 @@ test("confirm asks first, waits for the queue, then confirms with its revision",
   const dialog = all(render()).find((n) => n.type === "confirm-dialog");
   assert.equal(
     dialog.props.message,
-    "확정하면 고칠 수 없어요(고치려면 문서 보관함의 「수정하기」를 눌러요). 이 내용으로 월간계획안을 만들게 돼요.",
+    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요.",
   );
   assert.equal(dialog.props.no, "더 다듬기");
   await dialog.props.onYes();

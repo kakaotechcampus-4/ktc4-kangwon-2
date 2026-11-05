@@ -527,7 +527,7 @@ export function PlanDone({
             >
               {next.label}
             </Link>
-            <span className="font-display text-[16px] text-ink-soft">{next.hint}</span>
+            <span className="font-display text-[16px] font-bold text-ink-soft">{next.hint}</span>
           </div>
           <Link
             href="/"

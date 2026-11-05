@@ -32,7 +32,7 @@ import PlayMonthlyActivityPanel, {
   SECTION_LABEL,
   sectionCandidates,
 } from "./PlayMonthlyActivityPanel";
-import PlayMonthlyConfirm, { BlankRows } from "./PlayMonthlyConfirm";
+import PlayMonthlyConfirm, { BLANK_LEAD, BlankRows } from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
@@ -699,16 +699,15 @@ function PlayMonthlyBody({
             plan={plan}
             ask={
               (short.length
-                ? `함께 하는 활동 · 자유놀이는 AI 후보에서 ${plan.activity_pick}개씩 골라야 확정할 수 있어요. `
-                : blankRows.length
-                  ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. "
-                  : "") +
-              "확정하면 고칠 수 없어요. 고치려면 문서 보관함의 「수정하기」를 눌러요." +
-              (plan.notices.length ? ` 확인할 것 ${plan.notices.length}개가 남았어요.` : "")
+                ? `함께 하는 활동 · 자유놀이는 AI 후보에서 ${plan.activity_pick}개씩 골라야 확정할 수 있어요.\n`
+                : "") +
+              (plan.notices.length ? `확인할 것 ${plan.notices.length}개가 남았어요.\n` : "") +
+              "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요."
             }
             // 빈칸으로 가면 확정 창을 닫는다(주제형 월간 · 주간과 같다).
             blanks={(close) => (
               <BlankRows
+                lead={short.length ? "남은 빈칸이 있어요." : BLANK_LEAD}
                 rows={blankRows.map((r) => ({
                   ...r,
                   onJump: () => {
