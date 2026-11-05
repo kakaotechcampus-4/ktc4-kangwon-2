@@ -545,7 +545,7 @@ test("검사 결과는 한글 한 줄씩 — 직접 쓴 바깥놀이 안내는 �
     { code: "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", message: "Free-text outdoor play ..." },
     { code: "SOMETHING_NEW", message: "English" },
   ]);
-  assert.equal(lines.length, 2);
+  assert.equal(lines.length, 1); // 주간 사실 범위 안내도 띄우지 않는다(PM 2026-11-06)
   assert.ok(lines.every((t) => !/[a-z]/.test(t)));
   assert.equal(safetyLines("[교통안전] - 길을 건너요."), "[교통안전]\n길을 건너요.");
   assert.equal(safetyLines("[생활안전] - a - b"), "[생활안전]\na - b");

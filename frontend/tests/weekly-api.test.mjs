@@ -293,8 +293,16 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
     (name) =>
       name === "react/jsx-runtime"
         ? { jsx, jsxs: jsx }
-        : // 그 밖의 모듈은 class 문자열 (CARD · PUT 은 이름, BUTTON.quiet 는 「quiet」).
-          { CARD: "card", PUT: "put", BUTTON: new Proxy({}, { get: (_, key) => String(key) }) },
+        : // 그 밖의 모듈은 class 문자열 (SMALL 은 이름, BUTTON.quiet 는 「quiet」) · 끌기 받는 곳.
+          {
+            SMALL: "small",
+            DROP: "",
+            GRIP: null,
+            dropTo: (fn, prefix) => ({
+              drop: (data) => data.startsWith(prefix) && fn(data.slice(prefix.length)),
+            }),
+            BUTTON: new Proxy({}, { get: (_, key) => String(key) }),
+          },
     panelModule,
     panelModule.exports,
   );
@@ -348,20 +356,36 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   assert.equal(text(tree).includes("숨길 집단 후보"), false);
   const buttons = all(tree).filter((n) => n.type === "button");
   const byLabel = (label) => buttons.find((n) => n.props["aria-label"] === label);
-  // 넣은 후보는 서버가 옮겨 쓴 「[종류] - 이름」으로 알아본다(RUI-N01). 빼면 다시 「넣기」.
-  assert.equal(text(byLabel("이번 주 놀이에 넣기: 가게 놀이")), "넣음");
-  assert.equal(byLabel("이번 주 놀이에 넣기: 가게 놀이").props.disabled, true);
+  // 넣은 후보는 서버가 옮겨 쓴 「[종류] - 이름」으로 알아보고 후보 목록에서 뺀다(PM 2026-11-06). 빼면 다시 보인다.
+  assert.equal(byLabel("이번 주 놀이에 넣기: 가게 놀이"), undefined);
   const without = all(
     Panel({
       ...props,
       plan: { ...plan, sections: [{ section_key: "indoor_play", cells: selected.slice(1) }] },
     }),
-  ).find((n) => n.props?.["aria-label"] === "이번 주 놀이에 넣기: 가게 놀이");
-  assert.equal(text(without), "넣기");
-  byLabel("이번 주 놀이에 넣기: 가게 놀이").props.onClick();
-  byLabel("1번 놀이 아래로").props.onClick();
+  );
+  const put = without.find((n) => n.props?.["aria-label"] === "이번 주 놀이에 넣기: 가게 놀이");
+  assert.equal(text(put), "+ 넣기");
+  put.props.onClick();
   byLabel("1번 놀이 빼기").props.onClick();
-  assert.deepEqual(calls, ["candidate", ["two", "one"], "one"]);
+  // 점선 빈칸의 「+」 — 빈 줄이 없으면 직접 쓸 칸을 더한다.
+  byLabel("직접 쓸 놀이 더하기").props.onClick();
+  // 「+」로 더한 빈 줄도 목록에 보이고, 누르면 「칸 편집」으로 연다.
+  const blankRow = { item_id: "new", value: "" };
+  all(
+    Panel({
+      ...props,
+      onWrite: (id) => calls.push("write:" + id),
+      plan: { ...plan, sections: [{ section_key: "indoor_play", cells: [...selected, blankRow] }] },
+    }),
+  )
+    .find((n) => n.props?.["aria-label"] === "3번 놀이 직접 쓰기")
+    .props.onClick();
+  // 끌기 — 후보는 넣은 목록에, 넣은 줄은 다른 줄 자리로 · 후보 쪽에 놓으면 뺀다.
+  const drops = all(Panel(props)).filter((n) => n.props?.drop);
+  drops[0].props.drop("weekly-indoor:candidate");
+  drops[1].props.drop("weekly-indoor-row:two"); // 「one」 줄에 「two」를 놓는다
+  assert.deepEqual(calls, ["candidate", "one", null, "write:new", "candidate", ["two", "one"]]);
   assert.ok(
     all(Panel({ ...props, disabled: true }))
       .filter((n) => n.type === "button")

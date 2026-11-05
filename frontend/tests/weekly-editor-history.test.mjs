@@ -89,13 +89,22 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     operating_days: ["MON", "TUE", "WED", "THU", "FRI"],
     indoor_play_selection: true,
     activity_grids: [],
-    activity_candidates: [],
+    activity_candidates: [
+      {
+        section_key: "indoor_play",
+        activity_type: "쌓기",
+        name: "A",
+        description: "블록으로 탑을 쌓아요.",
+        cell: cell("k1", "A: 블록으로 탑을 쌓아요."),
+      },
+    ],
     // 서버 문구(영어)는 띄우지 않는다 — AI 칸마다 오는 같은 안내는 한 줄, 직접 쓴 바깥놀이 안내는 뺀다.
     verification: {
       findings: [
         { code: "WEEKLY_FACT_SCOPE_NOT_VERIFIED", message: "Dates, weekdays" },
         { code: "WEEKLY_FACT_SCOPE_NOT_VERIFIED", message: "Dates, weekdays" },
         { code: "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", message: "Free-text outdoor play" },
+        { code: "WEEKLY_SAFETY_PARENT_CITATION_INVALID", message: "Safety citation" },
       ],
     },
     sections: [
@@ -111,7 +120,7 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
         label: "자유놀이",
         visible: true,
         repeat_by: "NONE",
-        cells: [cell("i1", "A"), cell("i2", "다른 놀이")],
+        cells: [cell("i1", "[쌓기] - A"), cell("i2", "다른 놀이")],
       },
     ],
   };
@@ -170,6 +179,7 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     "@/components/plan-generator/PlayCellEditor": es((p) => jsx("editor", p)),
     "@/components/plan-generator/PlayMonthlyConfirm": {
       ...es((p) => jsx("ask", p)),
+      BLANK_LEAD: "",
       BlankRows: () => null,
       PanelOverview: () => null,
     },
@@ -200,13 +210,15 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     .filter((n) => n.type === "li")
     .map(content);
   assert.equal(notes.length, 1);
-  assert.match(notes[0], /자동으로 확인하지 못했어요/);
+  assert.match(notes[0], /안전교육 칸이 월간계획안의 안전교육과/); // 사실 범위 · 직접 쓴 바깥놀이 안내는 띄우지 않는다
   all(render())
     .find((n) => n.type === "sheet")
     .props.at.onSelect("i1");
   all(render())
     .find((n) => n.type === "button" && content(n) === "칸 편집")
     .props.onClick();
+  // 넣은 후보의 설명은 「칸 편집」에서 읽기만 한다(ADR-054 · 후보 목록에서는 숨긴다).
+  assert.ok(all(render()).some((n) => n.type === "p" && content(n) === "블록으로 탑을 쌓아요."));
   all(render())
     .find((n) => n.type === "editor")
     .props.onSave("B");
@@ -222,6 +234,8 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     plan.sections[1].cells.some((c) => c.item_id === "i1"),
     false,
   );
+  // 빼도 「AI 후보」 화면 그대로 — 옆 줄을 고른다.
+  assert.equal(all(render()).find((n) => n.type === "indoor").props.selected, "i2");
   // 뺀 칸의 걸음은 지워져 되돌릴 것이 없고, 없는 칸에 저장을 보내지 않는다.
   assert.equal(all(render()).find((n) => n.type === "history").props.canUndo, false);
   all(render())

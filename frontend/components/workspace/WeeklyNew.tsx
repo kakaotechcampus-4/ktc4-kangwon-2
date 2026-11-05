@@ -233,7 +233,8 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     }
   }
 
-  const label = week ? `${month}월 ${week.label}` : `${month}월`;
+  // 주 이름은 「11월 4주」처럼 달까지 붙어 온다.
+  const label = week ? week.label : `${month}월`;
 
   if (busy)
     return (

@@ -27,8 +27,11 @@ import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import { findingLines } from "@/lib/monthly/findings";
-import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
-import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
+import PlayMonthlyConfirm, {
+  BLANK_LEAD,
+  BlankRows,
+} from "@/components/plan-generator/PlayMonthlyConfirm";
+import { CARD, GRIP, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
   BACK_BUTTON,
   BACK_ICON,
@@ -43,7 +46,7 @@ import AnnualFrame, {
 import { PAPER_WIDTH, type Pick } from "@/components/plan-generator/PlayMonthlySheet";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { useCellHistory } from "./useCellHistory";
-import WeeklySheet from "./WeeklySheet";
+import WeeklySheet, { WEEKLY_ACTIVITY_DRAG } from "./WeeklySheet";
 import WeeklyIndoorPlayPanel from "./WeeklyIndoorPlayPanel";
 import workspace from "./Workspace.module.css";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
@@ -280,12 +283,23 @@ export default function WeeklyEditor({
       },
       "후보를 넣었어요.",
     );
+  // 문서 칸에 놓은 후보 — 빈 후보나 이미 그 글인 칸이면 넣지 않고 그 칸만 고른다.
+  const putDropped = (cellId: string, candidateId: string) => {
+    const c = candidates.find((x) => x.cell.item_id === candidateId);
+    const cell = cells.find((x) => x.cell.item_id === cellId)?.cell;
+    if (!c || !cell) return;
+    select(cellId);
+    if (c.cell.value.trim() && shown(cell).trim() !== `[${c.activity_type}] ${c.name}`)
+      void put(cellId, candidateId);
+  };
   const split = (cellId: string, axis: "VERTICAL" | "HORIZONTAL") =>
     afterSaves(
       "split",
       (cur) => splitWeeklyActivityCell(cur.id, cellId, axis, cur.revision),
       "칸을 나눴어요.",
     );
+  const indoorRows = (p: WeeklyPlan) =>
+    p.sections.find((x) => x.section_key === "indoor_play")?.cells ?? [];
   // 뺀 칸은 되돌리기 · 다시 저장 목록에서도 지운다(없는 칸에 저장을 되풀이하지 않게).
   const dropped = (itemId: string, next: WeeklyPlan) => {
     history.forget(itemId);
@@ -303,19 +317,17 @@ export default function WeeklyEditor({
       "indoor",
       async (cur) => {
         const next = await addWeeklyIndoorPlay(cur.id, candidateId, cur.revision);
-        // 직접 쓸 빈 줄은 「AI 후보」 목록에 안 보인다 — 바로 「칸 편집」에서 그 줄을 쓰게 한다.
+        // 직접 쓸 빈 줄은 「AI 후보」 목록에 빈칸으로 보인다 — 그 줄을 고르고 화면은 그대로(PM 2026-11-06).
         if (!candidateId) {
-          const ids = (p: WeeklyPlan) =>
-            p.sections.find((x) => x.section_key === "indoor_play")?.cells ?? [];
-          const added = ids(next).find((c) => !ids(cur).some((o) => o.item_id === c.item_id));
-          if (added) {
-            setSelected(added.item_id);
-            setTab("edit");
-          }
+          const added = indoorRows(next).find(
+            (c) => !indoorRows(cur).some((o) => o.item_id === c.item_id),
+          );
+          if (added) setSelected(added.item_id);
         }
         return next;
       },
-      candidateId ? "이번 주 놀이에 넣었어요." : "직접 쓸 놀이 칸을 더했어요.",
+      // 놀이를 넣은 것은 문서에 바로 보여 따로 알리지 않는다(PM 2026-11-06).
+      candidateId ? "" : "직접 쓸 놀이 칸을 더했어요.",
     );
   const orderIndoor = (ids: string[]) =>
     afterSaves(
@@ -323,14 +335,21 @@ export default function WeeklyEditor({
       (cur) => orderWeeklyIndoorPlays(cur.id, ids, cur.revision),
       "순서를 바꿨어요.",
     );
-  const removeIndoor = (itemId: string) => {
-    if (selected === itemId) setSelected(null);
-    return afterSaves(
+  // 고른 줄을 빼면 옆 줄을 골라 「AI 후보」 화면을 그대로 둔다 — 「칸 편집」으로 넘어가지 않는다(PM 2026-11-06).
+  const removeIndoor = (itemId: string) =>
+    afterSaves(
       "indoor",
-      async (cur) => dropped(itemId, await removeWeeklyIndoorPlay(cur.id, itemId, cur.revision)),
-      "이번 주 놀이에서 뺐어요.",
+      async (cur) => {
+        const next = dropped(itemId, await removeWeeklyIndoorPlay(cur.id, itemId, cur.revision));
+        if (selected === itemId) {
+          const at = indoorRows(cur).findIndex((c) => c.item_id === itemId);
+          const left = indoorRows(next);
+          setSelected(left[Math.min(at, left.length - 1)]?.item_id ?? null);
+        }
+        return next;
+      },
+      "",
     );
-  };
   const confirm = () =>
     afterSaves(
       "confirm",
@@ -378,11 +397,25 @@ export default function WeeklyEditor({
   const name = picked ? sectionName(picked.section.section_key, picked.section.label) : "";
   const where = picked ? (picked.cell.day ? `${dayOf(picked.cell)}요일 · ` : "") + name : "";
   const origin = picked ? originOf(picked.cell, edited) : "";
-  // 같은 요일에 칸이 여럿(나눈 칸)이면 「월 1」 · 「월 2」.
-  const dayLabel = (section: (typeof sections)[number], cell: WeeklyCell) => {
-    const same = section.cells.filter((c) => c.day === cell.day);
-    return dayOf(cell) + (same.length > 1 ? ` ${same.indexOf(cell) + 1}` : "");
+
+  // 넣은 후보의 설명 — 칸에는 「[종류] 이름」만 옮기고 설명은 읽기만 한다(ADR-054). 넣은 후보는 후보 목록에서
+  // 숨기므로 「칸 편집」에 보인다(PM 2026-11-06). 글이 그대로면 이름으로, 고쳤으면 같은 근거를 가진 후보 하나로 찾는다.
+  const sourceOf = (cell: WeeklyCell, key: string) => {
+    const text = shown(cell).trim();
+    const pool = allCandidates.filter(
+      (c) => (c.section_key ?? "group_activity") === key && c.name.trim(),
+    );
+    const named = pool.find((c) =>
+      [`[${c.activity_type}] - ${c.name}`, `[${c.activity_type}] ${c.name}`].includes(text),
+    );
+    if (named || !cell.evidence?.length) return named;
+    const same = pool.filter(
+      (c) => JSON.stringify(c.cell.evidence) === JSON.stringify(cell.evidence),
+    );
+    return same.length === 1 ? same[0] : undefined;
   };
+  const source = picked ? sourceOf(picked.cell, picked.section.section_key) : undefined;
+  const note = source ? source.description.trim() || source.cell.value.trim() : "";
 
   const editTab = (
     <div className="flex flex-col gap-4">
@@ -391,7 +424,8 @@ export default function WeeklyEditor({
         <>
           <div className="flex items-end justify-between gap-3">
             <div className="flex items-center gap-2">
-              <h2 className="m-0 text-[20px] font-bold leading-tight">{name}</h2>
+              {/* 요일은 문서에서 칸을 눌러 고른다 — 「요일 고르기」 단추는 두지 않는다(월간 「주 고르기」를 뺀 것과 같다). */}
+              <h2 className="m-0 text-[20px] font-bold leading-tight">{where}</h2>
               {origin && (
                 <span className="rounded-full bg-[#efeae2] px-2 py-0.5 text-[11px] font-bold text-[#5c5243]">
                   {origin}
@@ -399,21 +433,6 @@ export default function WeeklyEditor({
               )}
             </div>
           </div>
-          {picked.section.repeat_by === "DAY" && (
-            <div role="group" aria-label="요일 고르기" className="flex flex-wrap gap-1.5">
-              {picked.section.cells.map((c) => (
-                <button
-                  key={c.item_id}
-                  type="button"
-                  aria-pressed={c.item_id === picked.cell.item_id}
-                  className={`min-h-[36px] rounded-full border px-3.5 text-sm ${c.item_id === picked.cell.item_id ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#5e4b96]" : "border-[#ddd6ca] bg-white text-[#5c5243]"}`}
-                  onClick={() => select(c.item_id)}
-                >
-                  {dayLabel(picked.section, c)}
-                </button>
-              ))}
-            </div>
-          )}
           {/* 칸 이름은 위 제목에 한 번 — 입력창 이름표는 화면 읽기용으로만 남긴다(월간과 같은 입력창). */}
           <div
             className={`${workspace.field} [&_label]:sr-only [&_textarea]:min-h-[180px] [&_textarea]:text-base`}
@@ -438,6 +457,19 @@ export default function WeeklyEditor({
             <p className="m-0 text-[13px] text-[#5c5243]">
               선생님이 직접 쓰는 칸이에요. AI가 쓰지 않아요 — 비워 두어도 확정할 수 있어요.
             </p>
+          )}
+          {note && (
+            <section
+              aria-labelledby="weekly-cell-note"
+              className="flex flex-col gap-1.5 rounded-md bg-[#f7f4ee] p-3"
+            >
+              <h3 id="weekly-cell-note" className="m-0 text-[13px] font-bold text-ink">
+                놀이 설명
+              </h3>
+              <p className="m-0 whitespace-pre-line text-[14px] leading-relaxed text-[#2b2826]">
+                {note}
+              </p>
+            </section>
           )}
           {gridCell && (
             <div
@@ -510,6 +542,10 @@ export default function WeeklyEditor({
       onAdd={(id) => void addIndoor(id)}
       onOrder={(ids) => void orderIndoor(ids)}
       onRemove={(id) => void removeIndoor(id)}
+      onWrite={(id) => {
+        setSelected(id);
+        setTab("edit");
+      }}
     />
   ) : gridCell && candidates.length ? (
     <section aria-label="활동 후보" className="flex flex-col gap-4">
@@ -527,7 +563,16 @@ export default function WeeklyEditor({
           .map(({ c, here }) => {
             const text = c.cell.value.trim();
             return (
-              <li key={c.cell.item_id} className={`${CARD} ${here ? PICKED : "border-[#e8e2d8]"}`}>
+              <li
+                key={c.cell.item_id}
+                // 카드를 끌어 문서의 다른 요일 칸에 놓아도 넣는다(월간 안전교육 후보와 같다).
+                draggable={!locked && !!text}
+                onDragStart={(event) =>
+                  event.dataTransfer.setData("text/plain", WEEKLY_ACTIVITY_DRAG + c.cell.item_id)
+                }
+                className={`${CARD} ${!locked && text ? "cursor-grab active:cursor-grabbing" : ""} ${here ? PICKED : "border-[#e8e2d8]"}`}
+              >
+                {GRIP}
                 <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
                   <strong>[{c.activity_type}]</strong> {text || "(빈 후보)"}
                 </div>
@@ -589,7 +634,7 @@ export default function WeeklyEditor({
 
   const docOf = (at: Pick, scale?: number) => (
     <WeeklySheet
-      title={`${month}월 ${plan.week_period.label} 주간놀이계획안`}
+      title={`${plan.week_period.label} 주간놀이계획안`}
       sub={className}
       start={plan.week_period.start_date}
       end={plan.display_end_date}
@@ -599,9 +644,11 @@ export default function WeeklyEditor({
       at={at}
       shown={shown}
       scale={scale}
+      onPut={at === editing && !locked && candidates.length ? putDropped : undefined}
     />
   );
-  const title = `${month}월 ${plan.week_period.label} 주간계획안`;
+  // 주 이름은 서버가 「11월 4주」처럼 달까지 붙여 준다.
+  const title = `${plan.week_period.label} 주간계획안`;
   const back = (
     <button
       type="button"
@@ -696,10 +743,8 @@ export default function WeeklyEditor({
             {asking === "confirm" && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm
-                  message={
-                    (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-                    "확정하면 고칠 수 없어요(고치려면 문서 보관함의 「수정하기」를 눌러요). 확정한 주간은 한글 파일로 내려받을 수 있어요."
-                  }
+                  title="주간계획안을 확정할까요?"
+                  message="확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요."
                   yes="확정하기"
                   no="더 다듬기"
                   disabled={locked}
@@ -709,7 +754,7 @@ export default function WeeklyEditor({
                   }}
                   onNo={() => setAsking("")}
                 >
-                  <BlankRows rows={blankRows} />
+                  <BlankRows rows={blankRows} lead={BLANK_LEAD} />
                 </PlayMonthlyConfirm>
               </div>
             )}

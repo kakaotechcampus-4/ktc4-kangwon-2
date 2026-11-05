@@ -15,9 +15,8 @@ const TEXT: Record<string, string | null> = {
     "법정 안전교육 칸의 공식 교육 내용 근거를 확인하지 못했어요. 안전교육 내용을 확인해주세요.",
   SAFETY_SUPPLEMENTAL_GROUNDING_INVALID:
     "생활안전 칸의 참고 근거를 확인하지 못했어요. 안전교육 내용을 확인해주세요.",
-  // 주간 — AI 가 쓴 칸마다 하나씩 온다. 문장이 같아 한 번만 보인다.
-  WEEKLY_FACT_SCOPE_NOT_VERIFIED:
-    "AI가 쓴 글의 날짜 · 요일 · 시간은 확인했지만, 행사 이름 같은 다른 내용은 자동으로 확인하지 못했어요. 교사가 내용을 확인해주세요.",
+  // 주간 — AI 가 쓴 칸마다 오는 사실 범위 안내는 띄우지 않는다(PM 2026-11-06).
+  WEEKLY_FACT_SCOPE_NOT_VERIFIED: null,
   WEEKLY_SAFETY_PARENT_CITATION_INVALID:
     "안전교육 칸이 월간계획안의 안전교육과 이어지는지 확인하지 못했어요. 안전교육 내용을 확인해주세요.",
 };
