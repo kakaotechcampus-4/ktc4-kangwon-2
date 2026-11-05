@@ -377,7 +377,7 @@ function SayLines({ say }: { say: PostySay }) {
   return (
     <span
       aria-hidden="true"
-      className="relative block text-[15px] leading-[1.6] text-ink [filter:url(#chalk-text)]"
+      className="relative block text-[15px] font-medium leading-[1.6] text-ink [filter:url(#chalk-text)]"
     >
       {text.slice(0, shown)}
     </span>
