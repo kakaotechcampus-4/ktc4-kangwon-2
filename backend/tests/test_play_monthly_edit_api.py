@@ -179,6 +179,29 @@ def test_칸_글을_고치면_근거_생성방식은_그대로_TEACHER_EDITED_�
     )
 
 
+def test_제목_연령_반_예상기간_가운데_방향_칸도_칸_편집으로_고친다(world):
+    """Human Decision 2026-11-05 — 머리 · 방향 칸은 교사 글이다. 반 · 연령 · 달은 그대로다."""
+    plan, row = _play(world)
+    targets = [*plan.display.cells(), plan.direction]
+    for rev, cell in enumerate(targets, start=1):
+        response = client.put(
+            f"{URL}/{row.id}/cells/{cell.item_id.value}",
+            json={"value": f"고친 {cell.semantic_key}", "expected_revision": rev},
+        )
+        assert response.status_code == 200, response.json()
+    body = response.json()
+    assert [body["display"][k]["value"] for k in ("title", "age", "class_name", "period")] == [
+        f"고친 {c.semantic_key}" for c in plan.display.cells()
+    ]
+    assert body["direction"]["value"] == "고친 expected_play_direction"
+    assert (body["month"], body["target_ages"], body["class_id"]) == (
+        plan.target_month.calendar_month,
+        sorted(plan.target_ages),
+        int(plan.classroom_ref),
+    )
+    assert _last(_stored(world, row).display.title).event_type is AuditEventType.TEACHER_EDITED
+
+
 def test_빈_값으로_비울_수_있고_그_다음_빈_값은_422(world):
     plan, row = _play(world)
     url = f"{URL}/{row.id}/cells/{plan.theme.item_id.value}"

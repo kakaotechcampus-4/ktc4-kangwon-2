@@ -1,6 +1,7 @@
 import { read, commit, type Database } from "./store";
 import { annualFor, annualChanged, DRILLS, evidence, SAFETY } from "./monthly-plans";
 import { MOCK_USER_ID } from "./template-profiles";
+import { findClass } from "./classes";
 import type {
   PlayMonthlyActivity,
   PlayMonthlyAuditEvent,
@@ -176,6 +177,16 @@ export const addPlayMonthly = (
       ),
       together: rows("함께 놀이", "t.1"),
       free_play: rows("자유놀이", "t.3"),
+      direction: cell("봄 길을 걸어요", parentEv),
+      display: {
+        title: cell(month + "월 놀이계획안", []),
+        age: cell("만 4·5세", []),
+        class_name: cell(findClass(classId)?.name ?? "", []),
+        period: cell(
+          `${ym.replace("-", ".")}.01 ~ ${ym.replace("-", ".")}.${new Date(+ym.slice(0, 4), month, 0).getDate()}`,
+          [],
+        ),
+      },
       habits: [1, 2, 3, 4].map((w) => ({
         week_id: ym + "-W" + w,
         entry_id: "h" + w,
@@ -304,8 +315,13 @@ export const removePlayMonthly = (id: number) =>
 
 /** 계획안의 모든 칸. 이 목록에 없는 item_id 는 404 다. */
 export const playCells = (p: PlayMonthlyPlan): PlayMonthlyCell[] => [
+  p.display.title,
+  p.display.age,
+  p.display.class_name,
+  p.display.period,
   p.theme,
   p.rationale,
+  p.direction,
   ...[...p.together, ...p.free_play].flatMap((a) => [a.name, a.description]),
   ...p.habits.map((h) => h.cell),
   ...p.safety_candidates.map((c) => c.cell),

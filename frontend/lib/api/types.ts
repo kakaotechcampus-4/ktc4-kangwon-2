@@ -362,6 +362,15 @@ export interface PlayMonthlyPlan extends PlanMemo {
   rationale: PlayMonthlyCell;
   together: PlayMonthlyActivity[];
   free_play: PlayMonthlyActivity[];
+  /** 가운데 「예상되는 놀이 방향」 칸 — 처음엔 주제를 옮겨 둔다. */
+  direction: PlayMonthlyCell;
+  /** 문서 머리 — 제목 · 「만 n세」 · 반 이름 · 예상 기간. 화면과 한글 파일이 같은 값을 쓴다. */
+  display: {
+    title: PlayMonthlyCell;
+    age: PlayMonthlyCell;
+    class_name: PlayMonthlyCell;
+    period: PlayMonthlyCell;
+  };
   habits: { week_id: string; entry_id: string | null; cell: PlayMonthlyCell }[];
   safety_candidates: {
     kind: "STATUTORY" | "SUPPLEMENTAL";

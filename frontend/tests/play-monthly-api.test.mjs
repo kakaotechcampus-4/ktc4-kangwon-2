@@ -85,7 +85,7 @@ async function seeded(confirmed = false) {
 }
 
 test("single response has the captured key set, in every nested cell too", async () => {
-  const { id } = await seeded();
+  const { id, klass } = await seeded();
   const plan = await pm.getPlayMonthly(id);
   assert.deepEqual(
     Object.keys(plan).sort(),
@@ -93,6 +93,8 @@ test("single response has the captured key set, in every nested cell too", async
       "confirmed_at",
       "class_id",
       "created_at",
+      "direction",
+      "display",
       "drill_candidates",
       "format",
       "format_version",
@@ -123,6 +125,11 @@ test("single response has the captured key set, in every nested cell too", async
     ].sort(),
   );
   assert.deepEqual(Object.keys(plan.theme).sort(), ["evidence", "generation", "item_id", "value"]);
+  // 문서 머리 · 가운데 방향 칸 — 서버처럼 반 이름 · 그 달 1일~말일을 담는다.
+  assert.deepEqual(Object.keys(plan.display), ["title", "age", "class_name", "period"]);
+  assert.equal(plan.display.class_name.value, klass.name);
+  assert.equal(plan.display.period.value, "2026.11.01 ~ 2026.11.30");
+  assert.equal(plan.direction.value, plan.theme.value);
   assert.deepEqual(Object.keys(plan.together[0]).sort(), [
     "activity_id",
     "content_ids",

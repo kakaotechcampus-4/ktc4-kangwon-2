@@ -973,6 +973,13 @@ def _detail(
         rationale=_cell(plan.rationale),
         together=[_activity(a) for a in plan.together],
         free_play=[_activity(a) for a in plan.free_play],
+        direction=_cell(plan.direction),
+        display=s.DisplayOut(
+            title=_cell(plan.display.title),
+            age=_cell(plan.display.age),
+            class_name=_cell(plan.display.class_name),
+            period=_cell(plan.display.period),
+        ),
         habits=[
             s.HabitOut(week_id=h.week_id.value, entry_id=h.habit.entry_id, cell=_cell(h.habit.cell))
             for h in plan.habits

@@ -2758,6 +2758,9 @@ memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 
       "parent_item_id": "item_31" }
   ],
   "free_play": [ { "activity_id": "…", "name": { "…": "Cell" }, "description": { "…": "Cell" }, "content_ids": ["nuri2019.1.2.1"], "parent_item_id": null } ],
+  "direction": { "…": "Cell — 가운데 「예상되는 놀이 방향」. 처음엔 주제를 옮겨 둔다" },
+  "display": { "title": { "…": "Cell — 「11월 놀이계획안」" }, "age": { "…": "Cell — 「만 4·5세」" },
+               "class_name": { "…": "Cell — 반 이름" }, "period": { "…": "Cell — 「2026.11.01 ~ 2026.11.30」" } },
   "habits": [ { "week_id": "2026-09-W1", "entry_id": "…", "cell": { "…": "Cell" } } ],
   "safety_candidates": [
     { "kind": "STATUTORY", "category_id": "…", "topic_group": null, "cell": { "…": "Cell" } }
@@ -2802,7 +2805,7 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 
 | API | 본문 | 한다 |
 |---|---|---|
-| `PUT .../cells/{item_id}` | `{ "value": "…", "expected_revision": 3 }` | 그 칸의 글만 바꾼다. 어느 칸이든 `item_id` 로 고친다(주제 · 선정 이유 · 놀이 이름 · 설명 · 습관 · 안전 후보 · 건강 · 영양 · 훈련 후보 · 교사 입력 칸). `TEACHER_EDITED` |
+| `PUT .../cells/{item_id}` | `{ "value": "…", "expected_revision": 3 }` | 그 칸의 글만 바꾼다. 어느 칸이든 `item_id` 로 고친다(문서 머리 `display.*`(제목 · 「만 n세」 · 반 이름 · 예상 기간) · 가운데 놀이 방향 `direction` · 주제 · 선정 이유 · 놀이 이름 · 설명 · 습관 · 안전 후보 · 건강 · 영양 · 훈련 후보 · 교사 입력 칸). `TEACHER_EDITED` |
 | `PUT .../activities/{item_id}/content-ids` | `{ "content_ids": ["nuri2019.1.1.1"], "expected_revision": 3 }` | 그 놀이의 누리과정 연결을 바꾼다. 1~3개 · 중복 없음 · 그 계획안의 누리과정 판에 있는 ID. 생성 때 `CURRICULUM` 근거는 그대로이고 `TEACHER_EDITED`(`link_change`) 만 남는다 |
 | `POST .../activities` | `{ "section": "together", "expected_revision": 3 }` | 그 구간 맨 끝에 빈 행을 더한다. `section` 은 `together` · `free_play`. 새 칸은 쓰기 전까지 `generation: null`. `ARRANGEMENT_CHANGED` |
 | `DELETE .../activities/{item_id}?expected_revision=3` | 없음 | 행을 문서에서 뺀다. 이력에는 남고 id 는 다시 쓰지 않는다. 되돌리기는 없다. `ARRANGEMENT_CHANGED` |

@@ -145,8 +145,8 @@ export function Paper({
   children,
 }: {
   label: string;
-  title: string;
-  sub: string;
+  title: ReactNode;
+  sub: ReactNode;
   scale?: number;
   /** 제목 줄 높이(HWPUNIT) — 월간 6250 · 주간 4800. */
   head?: number;
@@ -328,7 +328,6 @@ function SafetyTd({
 
 export default function PlayMonthlySheet({
   plan,
-  className,
   selected,
   onSelect,
   scale,
@@ -338,7 +337,6 @@ export default function PlayMonthlySheet({
   onMoveRow,
 }: {
   plan: PlayMonthlyPlan;
-  className: string;
   /** 함께 하는 활동 · 자유놀이 행을 같은 목록 안에서 끌어 옮긴다 — 다듬는 동안만. */
   onMoveRow?: MoveRow;
   /** 안전교육 칸을 다른 주로 끌어 옮긴다(두 주를 맞바꾼다) — 다듬는 동안만. */
@@ -376,8 +374,17 @@ export default function PlayMonthlySheet({
   return (
     <Paper
       label="놀이 중심 월간계획안 미리보기"
-      title={`${plan.month}월 놀이계획안`}
-      sub={`만 ${plan.target_ages.join("·")}세 ${className}`.trim()}
+      title={<Cell {...at} id={plan.display.title.item_id} value={plan.display.title.value} />}
+      sub={
+        <div className="flex justify-end">
+          <Cell {...at} id={plan.display.age.item_id} value={plan.display.age.value} />
+          <Cell
+            {...at}
+            id={plan.display.class_name.item_id}
+            value={plan.display.class_name.value}
+          />
+        </div>
+      }
       scale={scale}
     >
       <table className="w-full table-fixed border-collapse">
@@ -398,7 +405,9 @@ export default function PlayMonthlySheet({
             <th scope="row" className={`${LINE} h-7 font-bold`}>
               예상 기간
             </th>
-            <td className={`${LINE} px-1.5`}>{period(weeks)}</td>
+            <td className={`${LINE} p-0`}>
+              <Cell {...at} id={plan.display.period.item_id} value={plan.display.period.value} />
+            </td>
           </tr>
           <tr>
             <th scope="row" className={`${LINE} font-bold`}>
@@ -422,8 +431,8 @@ export default function PlayMonthlySheet({
             <th scope="col" className={`${LINE} h-6 font-normal text-[#d0479a]`}>
               함께 하는 활동
             </th>
-            <td rowSpan={2} className={`${LINE} px-2 text-center font-bold`}>
-              {plan.theme.value}
+            <td rowSpan={2} className={`${LINE} p-0 text-center font-bold`}>
+              <Cell {...at} id={plan.direction.item_id} value={plan.direction.value} />
             </td>
             <th scope="col" className={`${LINE} font-normal text-[#d0479a]`}>
               유아 예상 자유놀이
