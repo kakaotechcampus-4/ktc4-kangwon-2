@@ -660,15 +660,7 @@ export default function WeeklyEditor({
       title={title}
       format="MONTHLY_THEME"
       lead={back}
-      status={
-        <span className="flex items-center gap-3">
-          <span role="status">
-            {/* 저장 중 · 실패가 안내보다 먼저다. */}
-            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
-          </span>
-          <PlanMemoNote plan={plan} />
-        </span>
-      }
+      status={<PlanMemoNote plan={plan} />}
       notice={
         <div className="flex flex-col gap-1 text-sm text-[#5c5243]">
           {notice}
@@ -696,38 +688,44 @@ export default function WeeklyEditor({
         </div>
       }
       actions={
-        <div className="relative">
-          <button
-            type="button"
-            className={BUTTON.primary}
-            disabled={locked}
-            // 남은 빈칸은 확인 상자에 함께 보인다. 근거가 없어 비운 칸도 있어 그대로 확정도 된다
-            // (꼭 필요한 칸 — 놀이 주제 등 — 은 서버가 확정을 거절한다).
-            onClick={() => setAsking("confirm")}
-          >
-            {busy === "confirm" ? "확정하는 중…" : "확정하기"}
-          </button>
-          {asking === "confirm" && (
-            <div className={POPOVER}>
-              <PlayMonthlyConfirm
-                message={
-                  (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-                  "확정하면 확정을 풀기 전까지 고칠 수 없어요. 확정한 주간은 한글 파일로 내려받을 수 있어요."
-                }
-                yes="확정하기"
-                no="더 다듬기"
-                disabled={locked}
-                onYes={() => {
-                  setAsking("");
-                  void confirm();
-                }}
-                onNo={() => setAsking("")}
-              >
-                <BlankRows rows={blankRows} />
-              </PlayMonthlyConfirm>
-            </div>
-          )}
-        </div>
+        <>
+          {/* 저장 상태는 제목 아래가 아니라 확정 버튼 옆에(월간과 같다). 저장 중 · 실패가 안내보다 먼저다. */}
+          <span role="status" className="text-[13px] text-ink-soft">
+            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
+          </span>
+          <div className="relative">
+            <button
+              type="button"
+              className={BUTTON.primary}
+              disabled={locked}
+              // 남은 빈칸은 확인 상자에 함께 보인다. 근거가 없어 비운 칸도 있어 그대로 확정도 된다
+              // (꼭 필요한 칸 — 놀이 주제 등 — 은 서버가 확정을 거절한다).
+              onClick={() => setAsking("confirm")}
+            >
+              {busy === "confirm" ? "확정하는 중…" : "확정하기"}
+            </button>
+            {asking === "confirm" && (
+              <div className={POPOVER}>
+                <PlayMonthlyConfirm
+                  message={
+                    (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
+                    "확정하면 확정을 풀기 전까지 고칠 수 없어요. 확정한 주간은 한글 파일로 내려받을 수 있어요."
+                  }
+                  yes="확정하기"
+                  no="더 다듬기"
+                  disabled={locked}
+                  onYes={() => {
+                    setAsking("");
+                    void confirm();
+                  }}
+                  onNo={() => setAsking("")}
+                >
+                  <BlankRows rows={blankRows} />
+                </PlayMonthlyConfirm>
+              </div>
+            )}
+          </div>
+        </>
       }
       aside={aside}
       docLabel={null}

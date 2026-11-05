@@ -723,15 +723,7 @@ export default function MonthlyPlanEditor({
       title={`${plan.month}월 월간계획안`}
       format="MONTHLY_THEME"
       lead={back}
-      status={
-        <span className="flex items-center gap-3">
-          <span role="status">
-            {/* 저장 중 · 실패가 안내보다 먼저다. */}
-            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
-          </span>
-          <PlanMemoNote plan={plan} />
-        </span>
-      }
+      status={<PlanMemoNote plan={plan} />}
       notice={
         <div className="flex flex-col gap-1 text-sm text-[#5c5243]">
           {notice}
@@ -760,6 +752,10 @@ export default function MonthlyPlanEditor({
       }
       actions={
         <>
+          {/* 저장 상태는 제목 아래가 아니라 확정 버튼 옆에(놀이 월간과 같다). 저장 중 · 실패가 안내보다 먼저다. */}
+          <span role="status" className="text-[13px] text-ink-soft">
+            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
+          </span>
           <div className="relative">
             <button
               type="button"
