@@ -345,12 +345,14 @@ test("edit: matching revision +1 and only the target cell changes", async () => 
     "expected_revision",
   ]);
   assert.deepEqual(await getMonthlyPlan(plan.id), edited);
-  // 안전교육 칸도 고칠 수 있고, 비우면 다시 「근거 필요」다.
+  // 후보 모드의 주별 안전교육 칸은 배치가 정한다 — 서버처럼 422 ["item_id"]. 후보 문장은 고칠 수 있다.
   const safety = cellOf(edited, "safety_education");
-  const filled = await editMonthlyCell(plan.id, safety.item_id, "교통안전", 2);
-  assert.equal(cellOf(filled, "safety_education").state, "FILLED");
-  const cleared = await editMonthlyCell(plan.id, safety.item_id, "", 3);
-  assert.equal(cellOf(cleared, "safety_education").state, "EMPTY_UNRESOLVED");
+  await rejects(editMonthlyCell(plan.id, safety.item_id, "교통안전", 2), 422, "VALIDATION_FAILED", [
+    "item_id",
+  ]);
+  const candidate = edited.safety_candidates[0].cell;
+  const rewritten = await editMonthlyCell(plan.id, candidate.item_id, "교통안전 약속", 2);
+  assert.equal(rewritten.safety_candidates[0].cell.value, "교통안전 약속");
 });
 
 test("revision body is strict: string and boolean are rejected", async () => {

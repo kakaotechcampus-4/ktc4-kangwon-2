@@ -1119,6 +1119,13 @@ export const handlers = [
     if (s) return s;
     const w = await cellWrite(request, String(params.id), String(params.itemId), true);
     if (w instanceof Response) return w;
+    // 후보 모드의 주별 안전교육 칸은 배치가 정한다 — 서버 Core 가 막는다(monthly_safety_cell_not_editable).
+    if (
+      w.plan.safety_candidates?.length &&
+      w.section.section_key === "safety_education" &&
+      !w.plan.safety_candidates.some((c) => c.cell.item_id === w.cell.item_id)
+    )
+      return failure("VALIDATION_FAILED", "이 칸은 고칠 수 없습니다.", "item_id");
     if (w.cell.value === w.b.value)
       return failure(
         "VALIDATION_FAILED",

@@ -326,8 +326,12 @@ const cellsOf = (plan: MonthlyPlan) => {
   const of = (key: string) => plan.sections.find((s) => s.section_key === key)!;
   return [
     ...plan.sections.flatMap((section) => section.cells.map((cell) => ({ section, cell }))),
-    ...plan.safety_candidates.map((c) => ({ section: of("safety_education"), cell: c.cell })),
-    ...plan.drill_candidates.map((d) => ({ section: of("drill"), cell: d.cell })),
+    // 후보를 넣기 전에 저장된 옛 목업 계획안에는 두 목록이 없다.
+    ...(plan.safety_candidates ?? []).map((c) => ({
+      section: of("safety_education"),
+      cell: c.cell,
+    })),
+    ...(plan.drill_candidates ?? []).map((d) => ({ section: of("drill"), cell: d.cell })),
   ];
 };
 export const findCell = (plan: MonthlyPlan, itemId: string) =>
@@ -474,7 +478,8 @@ export function listAudit(plan: MonthlyPlan, itemId: string | null): MonthlyAudi
   const at = (e: MockAuditEvent) => Date.parse(e.occurred_at);
   const keyed: { key: number[]; out: MonthlyAuditEvent }[] = [
     ...audit.plan
-      .filter((e) => itemId === null || e.type === "CONFIRMED")
+      // 칸 하나를 물어도 계획안 확정 · 확정 취소는 같이 준다(서버 get_monthly_audit).
+      .filter((e) => itemId === null || e.type === "CONFIRMED" || e.type === "UNCONFIRMED")
       .map((e, i) => ({
         key: [at(e), 0, 0, i],
         out: { ...placed(e), scope: "PLAN" as const },
