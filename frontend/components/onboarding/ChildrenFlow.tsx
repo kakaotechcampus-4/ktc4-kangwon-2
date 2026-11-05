@@ -136,7 +136,7 @@ export default function ChildrenFlow() {
           </p>
           {/* 이름을 누르면 지워진다는 것을 칠판 귀퉁이에 미리 적어 둔다 — 지우는 단추(✕)가 따로 없다. */}
           <p className="mb-2 font-display text-[18px] text-ink-soft">이름을 누르면 지워져요</p>
-          <KidChips items={classroom.children} onRemove={remove} />
+          <KidChips key={classroom.id} items={classroom.children} onRemove={remove} />
         </>
       )}
       {!consented && <Locked name={classroom.className} />}
@@ -282,6 +282,9 @@ function KidChips({
   onRemove: (child: ChildEntry) => Promise<void>;
 }) {
   const [error, setError] = useState("");
+  // 화면에 올 때 이미 있던 이름은 그냥 보이고, 그 뒤에 넣은 이름만 붓으로 칠하듯 나타난다.
+  // 반이 바뀌면 이 부품이 새로 만들어진다(부르는 쪽 key) — 그 반의 이름은 처음부터 있던 것이다.
+  const [first] = useState(() => new Set(items.map((c) => c.id)));
   if (!items.length) return <p className="text-[14px] text-ink-soft">아직 넣은 이름이 없어요.</p>;
 
   async function remove(child: ChildEntry) {
@@ -297,7 +300,7 @@ function KidChips({
     <>
       <ul className="flex flex-wrap gap-x-5 gap-y-1">
         {items.map((child) => (
-          <li key={child.id}>
+          <li key={child.id} className={first.has(child.id) ? undefined : "brushIn"}>
             {/* 칠판에 분필로 적은 이름. 누르면 지워진다 — 올리면 분필로 줄을 그어 미리 보여 준다. */}
             <button
               type="button"
