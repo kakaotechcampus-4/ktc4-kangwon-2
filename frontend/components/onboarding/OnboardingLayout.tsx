@@ -237,7 +237,19 @@ export default function OnboardingLayout({
                 result="gm"
               />
               <feComposite in="rough" in2="gm" operator="in" result="grainy" />
-              <feGaussianBlur in="grainy" stdDeviation={0.45} />
+              <feGaussianBlur in="grainy" stdDeviation={0.45} result="soft" />
+              {/* 둘레에 분필 가루가 뿌옇게 번진 듯 — 크게 흐린 사본을 옅게(45%) 깔고 그 위에 그림을 얹는다. */}
+              <feGaussianBlur in="soft" stdDeviation={3} result="halo" />
+              <feColorMatrix
+                in="halo"
+                type="matrix"
+                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.45 0"
+                result="dust"
+              />
+              <feMerge>
+                <feMergeNode in="dust" />
+                <feMergeNode in="soft" />
+              </feMerge>
             </filter>
             <filter id="chalk-text" x="-5%" y="-15%" width="110%" height="130%">
               <feTurbulence
