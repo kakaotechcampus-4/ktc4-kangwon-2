@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { expect, test, type Download, type Page } from "@playwright/test";
+import { completeOnboarding } from "./onboarding";
 
 /**
  * 보관함은 **반 → 관찰일지 → 아이 → 날짜** 로만 탐색한다.
@@ -81,20 +82,12 @@ async function enterPilot(page: Page) {
   await page.getByRole("link", { name: "메인화면으로 가기", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/onboarding");
-  await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByLabel("원명").fill("파일럿어린이집");
-  await page.getByLabel("원장 이름").fill("가상원장");
-  await page.getByLabel("시·도").selectOption("강원특별자치도");
-  await page.getByLabel("시·군·구").selectOption("춘천시");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("반 이름").fill("햇살반");
-  await page.getByLabel("만 4세", { exact: true }).check();
-  await page.getByLabel("담임 이름").fill("파일럿교사");
-  await page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.").check();
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("아동 추가").fill("가나다");
-  await page.getByRole("button", { name: "+ 추가", exact: true }).click();
-  await page.getByRole("button", { name: "설정 완료", exact: true }).click();
+  await completeOnboarding(page, {
+    center: "파일럿어린이집",
+    director: "가상원장",
+    teacher: "파일럿교사",
+    children: ["가나다"],
+  });
   // 홈의 h1 은 날짜라 매일 달라진다. 홈에만 있는 적는 칸 제목으로 「도착했나」를 본다.
   await expect(page.getByRole("heading", { name: "지금, 한 줄", exact: true })).toBeVisible();
   return api(page, "/api/auth/me");
@@ -466,15 +459,17 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 진입한다", async
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "설정", exact: true, level: 1 })).toBeVisible();
+  // 트렌드봇은 「기록 · 계획안」 묶음에 있다. 새로 열면 「우리 원」이 먼저 보인다.
+  const recordsTab = page.getByRole("tab", { name: "기록 · 계획안", exact: true });
+  await recordsTab.click();
   const trends = page.getByRole("checkbox", { name: "트렌드봇 사용", exact: true });
   await expect(trends).not.toBeChecked();
   await trends.click();
   await expect(trends).toBeChecked();
   await page.reload();
+  await recordsTab.click();
   await expect(trends).toBeChecked();
   expect((await api(page, `/api/centers/${user.center_id}/settings`)).trends_enabled).toBe(true);
-  await page.getByRole("button", { name: "초대 코드 만들기", exact: true }).click();
-  await expect(page.getByText(/초대 코드 [A-Z2-9]{10}/)).toBeVisible();
   await page.goto("/templates");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("양식");
   await page.goto("/trends");
@@ -491,12 +486,41 @@ test("멘토: 등록한 반 수정을 시도해도 새 반과 새 아동으로 �
   const user = await enterPilot(page);
   const before = await api(page, `/api/centers/${user.center_id}/classes`);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
-  await page.getByRole("link", { name: "반·담당 반 관리", exact: true }).click();
-  await expect(page.getByLabel("반 이름")).toHaveValue("햇살반");
-  await page.getByLabel("반 이름").fill("바꿀 수 없는 반 이름");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "기존 아동과 기록을 보호" }),
-  ).toBeVisible();
+  // 반 쪽지를 떼어 연다. 등록한 반은 고칠 칸 없이 글로만 보인다. 저장 길은 첫 설정 화면과 같다.
+  await page.getByRole("button", { name: "반 · 담당 반 수정", exact: true }).click();
+  const note = page.getByRole("dialog", { name: "반 · 담당 반" });
+  await expect(note.getByText("햇살반", { exact: true })).toBeVisible();
+  await expect(note.getByRole("textbox", { name: "반 이름" })).toHaveCount(0);
+  await note.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(note).toBeHidden();
   expect(await api(page, `/api/centers/${user.center_id}/classes`)).toEqual(before);
+});
+
+test("멘토: 등록한 반을 마지막 확인에서 고치면 같은 반이 바뀌고, 아이가 있으면 동의는 못 끈다", async ({
+  page,
+}) => {
+  const user = await enterPilot(page);
+  const before = await api(page, `/api/centers/${user.center_id}/classes`);
+  // 설정과 온보딩은 따로 돈다 — 마지막 확인은 주소로 바로 연다.
+  await page.goto("/onboarding/review");
+  await page.getByRole("button", { name: "햇살반 고치기", exact: true }).click();
+  await page.getByLabel("반 이름").fill("새싹반");
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByRole("region", { name: "새싹반 정보" })).toBeVisible();
+  // 새 반을 만들지 않고 같은 반의 이름만 바뀐다 — 아이와 기록이 그대로 붙어 있다.
+  const after = await api(page, `/api/centers/${user.center_id}/classes`);
+  expect(after.items.map((c: { id: number; name: string }) => [c.id, c.name])).toEqual(
+    before.items.map((c: { id: number }) => [c.id, "새싹반"]),
+  );
+
+  // 아이가 있는 반은 동의를 끌 수 없다 — 알림이 뜨고 체크는 그대로다.
+  await page.getByRole("button", { name: "새싹반 고치기", exact: true }).click();
+  const consent = page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.");
+  await consent.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "아이 명단이 있어 동의를 끌 수 없어요" }),
+  ).toBeVisible();
+  await expect(consent).toBeChecked();
+  await page.getByRole("button", { name: "이전", exact: true }).click();
+  await expect(page.getByRole("button", { name: "이대로 시작할게요", exact: true })).toBeVisible();
 });

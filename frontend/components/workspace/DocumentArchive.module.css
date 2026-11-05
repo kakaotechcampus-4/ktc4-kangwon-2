@@ -1,16 +1,22 @@
-/* 문서 보관함(S-J5) 전용. 전역 스타일과 다른 화면은 건드리지 않는다.
-   색은 쌤플 기준색만 쓴다 — Main #AFCDB5 · Point1 #F2B8A8 · Point2 #A9D8D0 · Dark #7EAD8B. */
+/* 문서 보관함(S-J5) 전용. 폰트·전역 토큰·메인 사이드바는 그대로 유지한다. */
 
-/* 전역 사이드바(232px) 오른쪽 전체를 쓴다. WorkspacePage 의 `.page`(max-width·가운데 정렬·
-   40px 좌우 여백)를 쓰지 않는 이유 — 그걸 쓰면 반 사이드바가 전역 사이드바에서 떨어진다. */
+/* 아이별 모아보기와 같은 배치: 제목이 맨 위 한 줄, 그 아래 왼쪽에 반 패널 · 오른쪽에 본문. */
 .archive {
   --archive-card-width: 300px;
   --archive-card-height: 260px;
-  display: flex;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  gap: 0 24px;
   min-width: 0;
   /* 상단바가 60px 이다 (AppLayout 의 Suspense fallback 과 WorkspaceTopBar 가 같은 값). */
   min-height: calc(calc(100 * var(--app-dvh)) - 60px);
+  padding: 24px 32px 36px;
+  background: radial-gradient(ellipse at 70% 0, #fffaf0 0, transparent 48%), #faf7f1;
+}
+.archive > .archiveHeading {
+  grid-column: 1 / -1;
 }
 .archive button:disabled {
   opacity: 0.5;
@@ -20,43 +26,57 @@
   outline: 2px solid var(--pg-primary);
   outline-offset: 3px;
 }
-/* 오른쪽 본문만 여백을 갖는다 — 왼쪽 사이드바는 경계에 딱 붙는다. */
+/* 본문은 화면 아래까지 늘어난다 — 안쪽 .split → .journal → .roster 가 이 높이를 나눠 쓴다.
+   (늘이지 않으면 아이를 고르기 전 관찰일지 칸이 내용만큼 쪼그라든다.) */
 .content {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  align-self: stretch;
   min-width: 0;
-  padding: 24px 32px 24px;
   color: var(--pg-ink);
 }
-
 /* ── 왼쪽 반 선택 (문서 보관함 안쪽에만 있다. 전역 사이드바와 별개다) ── */
+/* 아이별 모아보기의 아동 목록과 같은 패널. 스크롤해도 따라 내려온다. */
 .classRail {
   position: sticky;
-  top: 60px;
-  align-self: flex-start;
-  flex: 0 0 252px;
+  top: 80px;
   overflow: hidden;
-  /* 전역 사이드바에 바로 붙는다 — 왼쪽 테두리도 바깥 여백도 두지 않는다.
-     색은 전역 사이드바와 같은 셸 토큰이다. 둘이 한 벌로 보여야 한다. */
-  border: 0;
-  border-right: 1px solid var(--pg-shell-line);
-  border-radius: 0;
-  background: var(--pg-shell);
-  padding: 20px 16px;
-  /* 상단바 아래부터 화면 끝까지. */
-  height: calc(calc(100 * var(--app-vh)) - 60px);
+  border: 1px solid #cdc2ae;
+  border-radius: 5px;
+  background: var(--pg-paper);
+  padding: 16px 14px 0;
+  /* 상단바(60) · 위 여백(24) · 제목(122 + 간격 22) · 아래 여백(36)을 뺀 높이 —
+     첫 화면에서 스크롤 없이 패널 끝(아래 그림)까지 보인다. 아주 낮은 화면에서는 360px 을 지킨다. */
+  height: calc(calc(100 * var(--app-dvh)) - 264px);
+  min-height: 360px;
   display: flex;
   flex-direction: column;
 }
 .railHead {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 2px 4px 14px;
-  font-size: 14px;
+  margin: 10px 0 16px;
+  padding: 12px 15px;
+  border-radius: 20px;
+  background: #fff1d6;
+  font-size: 20px;
   font-weight: 700;
-  color: var(--pg-ink-soft);
+  color: var(--pg-ink);
+}
+/* 벽에 붙인 쪽지의 종이테이프. 반투명이어야 한다 — 꽉 찬 흰색은 종이를 덧댄 것처럼
+   보인다(plan-generator-tokens.css 의 --pg-tape 머리말). */
+.railHead::before {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 56px;
+  height: 17px;
+  transform: translateX(-50%) rotate(-3deg);
+  background: var(--pg-tape);
+  border: 1px solid rgb(255 255 255 / 67%);
+  content: "";
 }
 .railHead svg {
   width: 18px;
@@ -68,7 +88,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   /* 반이 많아지면 목록만 구른다. 잎사귀 그림은 아래에 그대로 남는다. */
   flex: 1 1 auto;
   min-height: 0;
@@ -81,7 +101,8 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 56px;
+  min-height: 49px;
+  flex-shrink: 0;
   padding: 10px 12px;
   text-align: left;
   font-size: 14px;
@@ -89,22 +110,25 @@
   color: var(--pg-ink);
   background: var(--pg-paper);
   border: 1px solid var(--pg-line);
-  border-radius: 6px;
+  border-radius: 23px;
   box-shadow: var(--pg-shadow-card);
   cursor: pointer;
 }
 .classCard:hover {
   background: var(--pg-shell-hover);
 }
-/* 고른 반에만 민트(세이지)를 쓴다 — 사이드바 전체를 칠하지 않는다. */
+/* 선택 표시는 기존 aria-pressed 상태만 따른다. */
 .classCard[aria-pressed="true"] {
-  background: var(--pg-sage-tint);
-  border-color: var(--pg-sage);
-  color: var(--pg-sage-ink);
+  background: #f0e6fb;
+  border-color: #d6bcec;
+  color: var(--pg-ink);
+  box-shadow:
+    inset 0 0 0 1px #e6d2f6,
+    1px 1px 0 #d6bcec;
   font-weight: 750;
 }
 .classCard[aria-pressed="true"] svg {
-  color: var(--pg-sage-ink);
+  color: #79618e;
 }
 .classCard .grow {
   flex: 1;
@@ -129,12 +153,35 @@
 }
 .decor {
   pointer-events: none;
-  position: absolute;
-  bottom: -40px;
-  left: -46px;
-  width: 240px;
-  height: 300px;
-  opacity: 0.28;
+  position: relative;
+  flex: 0 0 202px;
+  width: calc(100% + 28px);
+  height: 202px;
+  margin: 12px -14px 0;
+  opacity: 1;
+}
+
+.archiveHeading {
+  display: flex;
+  align-items: center;
+  margin-bottom: 22px;
+  min-height: 122px;
+}
+.headingText {
+  flex: 1;
+  min-width: 0;
+}
+.headingText > :first-child {
+  margin-bottom: 0;
+}
+.headingText h1 {
+  font-size: clamp(32px, 3vw, 44px);
+  line-height: 1.2;
+}
+.headingText p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #635c51;
 }
 
 /* ── 오른쪽 본문 ── */
@@ -196,78 +243,145 @@
 .typeGrid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 22px;
 }
 .typeCard {
+  /* 테이프와 찢긴 선(::before · ::after)이 이 칸을 기준으로 붙어야 한다.
+     없으면 둘이 화면 전체 폭으로 퍼진다. */
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 132px;
-  padding: 12px 8px;
-  border: 1px solid transparent;
-  border-radius: 14px;
-  background: #f2f8f3;
-  color: #23334b;
+  gap: 13px;
+  min-height: 148px;
+  padding: 20px 12px 18px;
+  /* 칸 색(--type-bg)과 선 색(--type-line)은 아래 data-type 별로 정한다. 찢긴 아래 선(::after)도 같은 두 색을 쓴다.
+     모서리를 각지게 해야 둥근 카드가 아니라 뜯어낸 종이로 읽힌다. */
+  --type-bg: #f2f8f3;
+  --type-line: #cdc2ae;
+  --type-press: #8f8470;
+  border: 1px solid var(--type-line);
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  background: var(--type-bg);
+  color: #2d302c;
+  box-shadow: none;
   cursor: pointer;
   text-align: center;
 }
+/* 작은 칸은 테이프 한 조각이다 — 두 조각을 붙이면 폭이 180px 라 서로 닿는다.
+   칸마다 같은 자리면 찍어낸 것으로 보여서 홀짝으로 좌우를 바꾼다. */
+.typeCard::before {
+  position: absolute;
+  top: -7px;
+  left: 0;
+  right: 0;
+  height: 15px;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(var(--pg-tape-paper), var(--pg-tape-paper)) 24% 0 / 52px 100%
+    no-repeat;
+}
+.typeCard:nth-child(even)::before {
+  background-position: 76% 0;
+}
+/* 찢긴 아래 선: 반원을 칸 색으로 채우고 바깥 1px 을 선 색으로 두른다. */
+.typeCard::after {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 7px;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(
+      circle at 50% 0,
+      var(--type-bg) 0 5px,
+      var(--type-line) 5px 6px,
+      #0000 6.5px
+    )
+    0 0 / 13px 7px repeat-x;
+}
 .typeCard strong {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.4px;
 }
 .typeCard small {
-  font-size: 12px;
-  line-height: 1.5;
-  color: #526478;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #50534e;
+}
+/* 그림을 위에 크게, 이름을 아래에. 그림 뒤에 흰 동그라미를 깔아 칸 색 위에서도 또렷하다. */
+.typeLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
 }
 .typeCard svg {
-  width: 38px;
-  height: 38px;
-  margin-bottom: 2px;
+  box-sizing: border-box;
+  width: 60px;
+  height: 60px;
+  padding: 13px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 62%);
+  flex-shrink: 0;
 }
 .typeCard[data-type="annual"] {
-  background: #f0f8f2;
+  --type-bg: #e6f5eb;
+  --type-line: #9ccbad;
+  --type-press: #5f9a74;
 }
 .typeCard[data-type="annual"] svg {
-  color: #70be9a;
+  color: #4b9c79;
 }
 .typeCard[data-type="monthly"] {
-  background: #fff4f1;
+  --type-bg: #fdecea;
+  --type-line: #e9b2aa;
+  --type-press: #d47e70;
 }
 .typeCard[data-type="monthly"] svg {
   color: #f08b7f;
 }
 .typeCard[data-type="weekly"] {
-  background: #f0f8fd;
+  --type-bg: #e6f2fd;
+  --type-line: #9fc4e6;
+  --type-press: #5f97cc;
 }
 .typeCard[data-type="weekly"] svg {
   color: #70b0e6;
 }
 .typeCard[data-type="care"] {
-  background: #fffbf0;
+  --type-bg: #fff4d9;
+  --type-line: #e3c98c;
+  --type-press: #c99a3e;
 }
 .typeCard[data-type="care"] svg {
   color: #edae51;
 }
 .typeCard[data-type="observation"] {
-  background: #f8f4ff;
+  --type-bg: #f3eafa;
+  --type-line: #c8b0e3;
+  --type-press: #9c7bcc;
 }
 .typeCard[data-type="observation"] svg {
   color: #b28de7;
 }
+/* 고른 칸은 같은 계열의 더 짙은 선을 두 겹(위·양옆)으로 두른다. */
 .typeCard[aria-pressed="true"] {
-  border-color: #7ead8b;
-  box-shadow: 0 3px 14px rgba(43, 65, 62, 0.06);
+  --type-line: var(--type-press);
+  box-shadow:
+    inset 1px 1px 0 var(--type-press),
+    inset -1px 0 0 var(--type-press);
 }
-.typeCard[data-type="monthly"][aria-pressed="true"] {
-  border-color: #f2b8a8;
-}
-.typeCard[data-type="weekly"][aria-pressed="true"] {
-  border-color: #a9d8d0;
+.typeCard:hover {
+  filter: brightness(0.985);
 }
 
 /* ── 빈 화면 ── */
@@ -314,6 +428,48 @@
   padding: 16px;
   min-width: 0;
 }
+/* ── 찢어낸 종이 (팀 디자인 3번, 큰 칸은 테이프를 뺐다) ─────────────────────
+   아이별 모아보기와 같은 규칙이다. 테두리·그림자 대신 찢긴 아래 선.
+   찢긴 선이 아래로 삐져나오므로 `overflow: hidden` 인 칸에는 붙이지 않는다.
+   문서를 고르기 전(안내 화면)과 고른 뒤(목록 화면)가 같은 종이여야 하므로
+   `.split` 전체에 건다 — 목록 화면만 둥근 상자로 남으면 종이가 끊긴다. */
+.panel,
+.split {
+  position: relative;
+  /* 아이별 모아보기의 큰 칸과 같은 선 (--tracking-panel-line). */
+  border: 1px solid #cdc2ae;
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  box-shadow: none;
+}
+/* 찢긴 선의 테두리: 한 치수 큰 반원을 선 색으로 깔고, 그 위에 칸 색 반원(::after)을 덮는다. */
+.panel::before,
+.split::before {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 8px;
+  content: "";
+  pointer-events: none;
+  background: #cdc2ae;
+  -webkit-mask: radial-gradient(circle at 50% 0, #000 0 7px, #0000 7.5px) 0 0 / 15px 8px repeat-x;
+  mask: radial-gradient(circle at 50% 0, #000 0 7px, #0000 7.5px) 0 0 / 15px 8px repeat-x;
+}
+.panel::after,
+.split::after {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 7px;
+  content: "";
+  pointer-events: none;
+  background: inherit;
+  -webkit-mask: radial-gradient(circle at 50% 0, #000 0 6px, #0000 6.5px) 0 0 / 15px 7px repeat-x;
+  mask: radial-gradient(circle at 50% 0, #000 0 6px, #0000 6.5px) 0 0 / 15px 7px repeat-x;
+}
+
 .panelHead {
   display: flex;
   align-items: center;
@@ -362,18 +518,19 @@
 .docCard {
   display: flex;
   flex-direction: column;
-}
-.docCard:hover {
-  border-color: #9fcfb5;
+  border-color: #cbd5cf;
 }
 /* 검토 중은 연한 살구, 확정은 연한 민트. 재검토는 확정 톤을 유지한 채 테두리만 다르다. */
 .docCard[data-state="draft"] {
   background: #fffaf7;
-  border-color: #f4d6cc;
+  border-color: #e5beaf;
 }
 .docCard[data-state="confirmed"] {
   background: #f8fbf9;
-  border-color: #cfe4d7;
+  border-color: #b6d1c1;
+}
+.docCard:hover {
+  border-color: #9fcfb5;
 }
 .cardAction {
   margin-top: 8px;
@@ -526,6 +683,44 @@
   color: #7d8b86;
   max-width: 85%;
   text-align: center;
+}
+
+/* 안쪽 패널은 이미 찢어낸 종이(.split) 위에 놓인다. 거기에 또 테이프를 붙이면
+   종이 한 장에 테이프가 두 겹으로 겹친다 — 바깥 한 장만 종이로 남긴다. */
+.split .panel::before,
+.split .panel::after {
+  content: none;
+}
+.split .panel {
+  border: 0;
+}
+
+/* 계획안 3종만 400×245 생성 카드를 공유한다. 좁은 목록에서는 같은 비율로 줄인다. */
+.planGrid {
+  /* 저장 카드의 기존 열 폭은 유지하고 생성 카드만 줄인다. */
+  --plan-card-column-width: 440px;
+  --plan-create-card-width: 400px;
+  --plan-create-card-height: 245px;
+  grid-template-columns: repeat(auto-fill, minmax(0, min(100%, var(--plan-card-column-width))));
+  grid-auto-rows: auto;
+  align-content: start;
+  align-items: start;
+}
+.planCreateCard {
+  width: min(100%, var(--plan-create-card-width));
+  min-width: 0;
+  max-width: var(--plan-create-card-width);
+  height: auto;
+  min-height: 0;
+  max-height: var(--plan-create-card-height);
+  aspect-ratio: 80 / 49;
+  align-self: start;
+  justify-self: start;
+  background: #f0faf4;
+  text-align: center;
+}
+.planCreateCard .plus {
+  flex: none;
 }
 
 /* ── 상태 배지 ── */
@@ -817,16 +1012,22 @@
 }
 
 /* ── 태블릿 ── */
-@media (max-width: 1100px) {
-  .classRail {
-    flex-basis: 204px;
-    padding: 16px 12px;
+@media (max-width: 1240px) {
+  .typeGrid {
+    grid-template-columns: repeat(5, minmax(156px, 1fr));
+    overflow-x: auto;
+    padding: 2px 1px 7px;
+    scrollbar-width: thin;
   }
-  .content {
+}
+@media (max-width: 1100px) {
+  .archive {
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 0 18px;
     padding: 18px 18px 40px;
   }
-  .typeCard small {
-    display: none;
+  .headingText p {
+    font-size: 14px;
   }
   .periodNav strong {
     min-width: 140px;
@@ -838,14 +1039,15 @@
   .archive {
     display: flex;
     flex-direction: column;
-  }
-  .content {
+    gap: 12px;
     padding: 14px 14px 32px;
   }
   .classRail {
     position: static;
     align-self: stretch;
     height: auto;
+    /* 넓은 화면의 세로 칸 최소 높이(360px)를 풀어야 가로 줄 아래에 빈 칸이 남지 않는다. */
+    min-height: 0;
     flex-basis: auto;
     border-right: 0;
     border-bottom: 1px solid var(--pg-shell-line);
@@ -868,27 +1070,63 @@
     min-height: 48px;
   }
   .classCard svg {
-    display: none;
+    display: block;
   }
   .decor {
     display: none;
   }
   .typeGrid {
-    grid-template-columns: repeat(5, minmax(104px, 1fr));
+    grid-template-columns: repeat(5, minmax(148px, 1fr));
     gap: 8px;
     overflow-x: auto;
     padding: 3px 3px 8px;
   }
   .typeCard {
-    min-height: 92px;
-    padding: 10px 6px;
+    min-height: 130px;
+    padding: 14px 8px;
   }
   .typeCard strong {
     font-size: 13px;
   }
+  /* 흰 동그라미 안 여백(13px)이 그대로면 28px 칸에 그림 자리가 2px 만 남아 점처럼 보인다.
+     넓은 화면(60px · 13px)과 같은 비율로 줄인다. */
   .typeCard svg {
-    width: 28px;
-    height: 28px;
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+  }
+  .typeLabel {
+    gap: 7px;
+  }
+  .typeCard small {
+    font-size: 12px;
+  }
+  .archiveHeading {
+    margin-bottom: 16px;
+    min-height: 100px;
+  }
+  .headingText h1 {
+    font-size: 32px;
+  }
+  .headingText p {
+    font-size: 13px;
+  }
+  .split[data-overview="true"] {
+    min-height: 410px;
+    padding: 20px 12px;
+  }
+  .split[data-overview="true"] .blank {
+    min-height: 360px;
+    gap: 15px;
+  }
+  .split[data-overview="true"] .blankArt {
+    width: 180px;
+  }
+  .split[data-overview="true"] .blank h3 {
+    font-size: 24px;
+  }
+  .split[data-overview="true"] .blank p {
+    font-size: 14px;
   }
   .panel {
     padding: 12px;
@@ -920,8 +1158,42 @@
   min-height: 0;
   padding: 20px;
   background: var(--pg-paper);
-  border: 1px solid var(--pg-line);
-  border-radius: 16px;
+}
+.split[data-overview="true"] {
+  min-height: 510px;
+  padding: 30px;
+}
+.split[data-overview="true"] .blank {
+  min-height: 430px;
+  gap: 18px;
+}
+.split[data-overview="true"] .blankArt {
+  width: 220px;
+}
+.split[data-overview="true"] .blank h3 {
+  position: relative;
+  isolation: isolate;
+  font-size: 28px;
+  font-weight: 750;
+}
+.split[data-overview="true"] .blank h3::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 3%;
+  right: 3%;
+  bottom: 0;
+  height: 7px;
+  border-radius: 6px;
+  background: #eadcf5;
+  transform: rotate(-1deg);
+}
+.split[data-overview="true"] .blank p {
+  max-width: 420px;
+  color: #686354;
+  font-size: 15px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
 }
 .browser {
   display: flex;
@@ -954,17 +1226,144 @@
 .previewPanel:focus {
   outline: none;
 }
+/* ── 문서 미리보기 (읽기 전용) ─────────────────────────────────────────
+   머리 쪽지 한 장 + 단락 카드. 사실 · 해석 · 지원은 왼쪽 띠 색으로 구분한다. */
+.previewContent {
+  display: grid;
+  gap: 12px;
+}
+.previewHead {
+  padding: 18px 20px 16px;
+  border: 1px solid var(--pg-paper-warm-line);
+  border-radius: 6px;
+  background: var(--pg-paper-warm);
+  box-shadow: var(--pg-shadow-card);
+}
+.previewMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.previewKind {
+  color: var(--pg-ink-soft);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.previewStatus {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.previewStatus[data-status="draft"] {
+  background: #fbe3dc;
+  color: #8f503f;
+}
+.previewStatus[data-status="confirmed"] {
+  background: var(--pg-success-tint);
+  color: var(--pg-success);
+}
 .previewContent h2 {
-  margin-top: 0;
+  margin: 10px 0 12px;
   font-size: 22px;
+  line-height: 1.4;
 }
-.previewContent h3 {
-  font-size: 16px;
-  margin: 20px 0 8px;
+.previewFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--pg-paper-warm-line);
+  font-size: 13px;
 }
-.previewContent p {
+.previewFacts div {
+  display: flex;
+  gap: 6px;
+}
+.previewFacts dt {
+  color: var(--pg-ink-soft);
+}
+.previewFacts dd {
+  margin: 0;
+  font-weight: 600;
+}
+.previewNotice {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.previewNotice[data-tone="warn"] {
+  background: #fbe3dc;
+  color: #8f503f;
+}
+.previewSection {
+  --tone: var(--pg-line);
+  padding: 14px 16px;
+  border: 1px solid var(--pg-line);
+  border-left: 4px solid var(--tone);
+  border-radius: 4px;
+  background: var(--pg-paper);
+}
+.previewSection[data-tone="fact"] {
+  --tone: #c2a36a;
+}
+.previewSection[data-tone="read"] {
+  --tone: #a48cc9;
+}
+.previewSection[data-tone="support"] {
+  --tone: #8fb39b;
+}
+.previewSection h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 750;
+}
+.previewSection h3::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+  content: "";
+}
+.previewSection p,
+.previewMemo p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.75;
   white-space: pre-wrap;
-  line-height: 1.7;
+  word-break: keep-all;
+}
+.previewSection .previewEmpty {
+  color: var(--pg-ink-soft);
+  font-size: 13.5px;
+}
+/* 검토 메모는 교사가 붙여 둔 쪽지처럼 보인다. */
+.previewMemo {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--pg-note-soft-line);
+  background: var(--pg-note-soft);
+  transform: rotate(-0.4deg);
+}
+.previewMemo h3 {
+  margin: 0 0 6px;
+  color: #6b5a2e;
+  font-size: 13px;
+}
+.previewActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 .docCard[aria-pressed="true"] {
   outline: 2px solid var(--pg-primary);
@@ -1015,7 +1414,7 @@
     min-height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
   }
   .classRail {
-    height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
+    height: calc(calc(100 * var(--app-dvh)) - 264px - 84px);
   }
 }
 @media (max-width: 760px) {
@@ -1145,7 +1544,7 @@
   border-color: #dfe5de;
 }
 .journalPanel .dayStrip {
-  grid-template-columns: repeat(7, minmax(108px, 1fr));
+  grid-template-columns: repeat(7, minmax(72px, 1fr));
   gap: 10px;
   margin-top: 18px;
   margin-bottom: 14px;
@@ -1169,7 +1568,7 @@
   border: 1px solid #f0ebe2;
   border-radius: 22px;
   background: #fff;
-  box-shadow: 0 3px 12px rgba(112, 92, 64, 0.04);
+  box-shadow: var(--pg-shadow-card);
   scroll-snap-align: start;
 }
 .journalPanel .day:hover {
@@ -1286,12 +1685,24 @@
     flex: 1;
     font-size: 13px;
   }
+  /* 미리보기를 열면 가운데 열이 460px 남짓이다. 한 주가 가로로 굴러가지 않게
+     칸을 좁히고 글자를 한 단계 줄인다 — 일곱 칸이 한눈에 보이는 게 먼저다. */
+  /* 최소 54px — 두 자리 날짜(「11.18」 17px ≈ 46px)가 칸 안에 7px 여유를 두고 들어간다.
+     460px 열에서도 7 × 54 + 간격 = 442px 라 일곱 칸이 한눈에 보인다. */
   .journalPanel .dayStrip {
+    grid-template-columns: repeat(7, minmax(54px, 1fr));
     padding: 8px;
     gap: 8px;
   }
   .journalPanel .day {
     min-height: 176px;
+    padding: 14px 4px 30px;
+  }
+  .journalPanel .day .date {
+    font-size: 17px;
+  }
+  .journalPanel .day .state {
+    font-size: 12px;
   }
   .journalPanel .periodDate {
     margin-left: auto;
@@ -1302,9 +1713,16 @@
 .classList + .railHead {
   margin-top: 22px;
 }
-/* 묶음이 둘이면 첫 목록이 남은 높이를 다 먹어 둘째 묶음이 바닥으로 밀린다. 내용만큼만 선다. */
+/* 묶음이 둘이면 첫 목록이 남은 높이를 다 먹어 둘째 묶음이 바닥으로 밀린다. 내용만큼만 선다.
+   줄어들지는 않는다 — 레일 높이가 고정이라 줄면 내 반 카드가 잘린다. 넘치면 둘째 목록이 구른다. */
 .classList:has(+ .railHead) {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+}
+/* 낮은 화면(레일 360px)에서도 같은 원 반 카드가 두 장은 보인다. 넘치면 아래 그림이 가려진다. */
+@media (min-width: 761px) {
+  .railNote + .classList {
+    min-height: 108px;
+  }
 }
 .railNote {
   margin: -8px 4px 10px;

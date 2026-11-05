@@ -45,6 +45,8 @@ const TONE: Record<PostyTone, { paper: string; line: string; fold: string }> = {
 };
 
 const INK = "var(--pg-ink)";
+/** 얼굴 선 · 눈. 기본은 팔다리와 같은 먹색이고, 분필 포스티처럼 얼굴만 다른 색이 필요하면 --pg-face 로 바꾼다. */
+const FACE_INK = "var(--pg-face, var(--pg-ink))";
 
 /**
  * 쪽지는 x 7~41 에 서지만 손은 그 밖으로 뻗는다 — `sit` 의 왼손 중심이 2.4,
@@ -237,11 +239,16 @@ function leg(
 
 /** 표정 — 쪽지 한가운데 앉는다. */
 function Face({ kind }: { kind: PostyFace }) {
-  const line = { stroke: INK, strokeWidth: 1.8, strokeLinecap: "round" as const, fill: "none" };
+  const line = {
+    stroke: FACE_INK,
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    fill: "none",
+  };
   const eyes = (cy: number) => (
     <>
-      <circle cx={18.6} cy={cy} r={2.2} fill={INK} />
-      <circle cx={29.4} cy={cy} r={2.2} fill={INK} />
+      <circle cx={18.6} cy={cy} r={2.2} fill={FACE_INK} />
+      <circle cx={29.4} cy={cy} r={2.2} fill={FACE_INK} />
     </>
   );
   if (kind === "done")

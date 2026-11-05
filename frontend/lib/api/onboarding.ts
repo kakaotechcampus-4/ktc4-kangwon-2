@@ -4,12 +4,14 @@ import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
 import { createCenter, getCenter, joinCenter, updateCenter } from "./centers";
-import { createClass, getClasses, isMyClass } from "./classes";
+import { createClass, getClasses, isMyClass, updateClass } from "./classes";
+import { listAnnualPlans } from "./plans";
+import type { ClassUpdate } from "./types";
 import { createChild, getChildren, deleteChild } from "./children";
 import { normalizeProvince } from "../onboarding/regions";
 import { loadClassSettings, saveClassSettings } from "../onboarding/settings";
 import { EMPTY_CLASS_SETTINGS } from "../onboarding/types";
-import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
+import type { ClassSettings, ClassroomEntry, ChildEntry, SelectedAge } from "../onboarding/types";
 /** 서버에서 받아온 연결이라는 표시. 화면이 그 내용을 들고 있지 않아 서명을 만들 수 없다. */
 const ADOPTED = "adopted";
 
@@ -193,6 +195,59 @@ function classPayload(c: ClassroomEntry) {
 }
 function classSignature(c: ClassroomEntry) {
   return JSON.stringify(classPayload(c));
+}
+
+/**
+ * 등록한 반을 고친다 (§2 반 수정). `syncClass` 는 만들기만 하므로 수정은 이 길로 간다.
+ *
+ * **성공하면 저장된 서명을 새 값으로 다시 쓴다.** 안 쓰면 계획안 화면이 부르는
+ * `syncClass` 가 서명 불일치를 「수정 미지원」으로 보고 던진다.
+ * 서버 오류(이름 중복 · 동의 끄기 막힘 · 422)는 그대로 던진다 — 화면이 코드로 갈라 본다.
+ */
+export async function saveClassEdit(
+  entry: ClassroomEntry,
+  patch: {
+    className?: string;
+    selectedAges?: SelectedAge[];
+    teacherName?: string;
+    guardianConsent?: boolean;
+  },
+): Promise<ClassroomEntry> {
+  const id = classServerId(entry.id);
+  if (!id) throw new Error("아직 서버에 등록되지 않은 반이에요. 반 정보를 먼저 저장해주세요.");
+  const body: ClassUpdate = {};
+  if (patch.className !== undefined) body.name = patch.className;
+  if (patch.teacherName !== undefined) body.teacher_name = patch.teacherName;
+  if (patch.guardianConsent !== undefined) body.consent_confirmed = patch.guardianConsent;
+  // 연령은 늘 두 값을 같이 보낸다. child_count 는 고치는 칸이 없다.
+  if (patch.selectedAges !== undefined) Object.assign(body, ageRangePayload(patch));
+  const updated = await updateClass(id, body);
+  const ages =
+    patch.selectedAges ??
+    (([3, 4, 5] as const).filter(
+      (a) => a >= updated.age_min && a <= updated.age_max,
+    ) as SelectedAge[]);
+  const next: ClassroomEntry = {
+    ...entry,
+    className: updated.name,
+    teacherName: updated.teacher_name,
+    selectedAges: [...ages],
+    // 사이드바는 ageGroup 을 읽는다. 연령이 하나일 때만 값이 있다.
+    ageGroup: ages.length === 1 ? (String(ages[0]) as ClassroomEntry["ageGroup"]) : "",
+    guardianConsent: updated.consent_confirmed_at !== null,
+    currentChildCount: updated.child_count ?? "",
+  };
+  // 서버가 이미 바뀐 뒤라 저장은 성공한 다음에만 한다.
+  const links = readLinks();
+  links.classes[entry.id] = { id, signature: classSignature(next) };
+  saveLinks(links);
+  return next;
+}
+/** 이 반에 연간계획안이 있나. 연령을 바꾸면 이미 만든 계획안은 그대로라는 안내를 띄울지 정한다. */
+export async function hasAnnualPlan(entry: ClassroomEntry): Promise<boolean> {
+  const id = classServerId(entry.id);
+  if (!id) return false;
+  return (await listAnnualPlans(id)).items.length > 0;
 }
 
 export async function syncClasses(settings: ClassSettings) {

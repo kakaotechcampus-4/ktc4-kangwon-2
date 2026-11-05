@@ -13,7 +13,7 @@ import {
   putCenterSettings,
 } from "./data/centers";
 import type { Greetings } from "../lib/api/centers";
-import { findClass, listClasses, addClass } from "./data/classes";
+import { findClass, listClasses, addClass, classNameTaken, patchClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
 import {
   findPlan,
@@ -127,6 +127,7 @@ import {
 import type {
   CenterInput,
   ClassInput,
+  ClassUpdate,
   PlanConfig,
   AnnualInput,
   MonthInput,
@@ -455,7 +456,50 @@ export const handlers = [
     if (Number(b.age_min) > Number(b.age_max)) return bad("age_min");
     if (b.child_count != null && (!integer(b.child_count) || Number(b.child_count) < 1))
       return bad("child_count");
-    return HttpResponse.json(addClass(id, b as unknown as ClassInput), { status: 201 });
+    if (classNameTaken(id, (b.name as string).trim()))
+      return failure("ALREADY_EXISTS", "같은 이름의 반이 이미 있습니다.", "name");
+    return HttpResponse.json(
+      addClass(id, { ...(b as unknown as ClassInput), name: (b.name as string).trim() }),
+      { status: 201 },
+    );
+  }),
+  // §2 반 수정. 서버처럼 보낸 칸만 바꾸고, 연령은 두 칸을 함께 받는다.
+  http.patch("*/api/classes/:classId", async ({ request, params }) => {
+    const s = await scenario(request, "class-update");
+    if (s) return s;
+    const id = Number(params.classId);
+    const current = findClass(id);
+    if (!current) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    const allowed = ["name", "age_min", "age_max", "teacher_name", "consent_confirmed"];
+    for (const k of Object.keys(b)) if (!allowed.includes(k)) return bad(k);
+    // 없거나 null 이면 안 보낸 것이다.
+    const sent = (k: string) => b[k] != null;
+    for (const k of ["name", "teacher_name"]) {
+      if (!sent(k)) continue;
+      if (!text(b[k]) || (b[k] as string).trim().length > 50) return bad(k);
+      b[k] = (b[k] as string).trim();
+    }
+    if (sent("age_min") !== sent("age_max"))
+      return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "age_min", "age_max");
+    if (sent("age_min")) {
+      const [lo, hi] = [b.age_min, b.age_max];
+      if (!integer(lo) || !integer(hi) || lo < 3 || hi > 5 || lo > hi)
+        return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "age_min", "age_max");
+    }
+    if (sent("consent_confirmed") && typeof b.consent_confirmed !== "boolean")
+      return bad("consent_confirmed");
+    // 아이 명단이 있는 반은 동의를 끌 수 없다. 막히면 같이 보낸 칸도 적용하지 않는다.
+    if (b.consent_confirmed === false && listChildren(id).length > 0)
+      return failure(
+        "GATE_BLOCKED",
+        "아이 명단이 있는 반은 동의를 끌 수 없습니다.",
+        "consent_confirmed",
+      );
+    if (typeof b.name === "string" && classNameTaken(current.center_id, b.name, id))
+      return failure("ALREADY_EXISTS", "같은 이름의 반이 이미 있습니다.", "name");
+    return HttpResponse.json(patchClass(id, b as ClassUpdate));
   }),
   http.get("*/api/centers/:centerId/classes", async ({ request, params }) => {
     const s = await scenario(request, "classes");
@@ -478,6 +522,13 @@ export const handlers = [
     if (!findClass(id)) return missing();
     const b = await body(request);
     if (!b || !text(b.name) || Object.keys(b).some((k) => k !== "name")) return bad("name");
+    const klass = findClass(id);
+    if (klass && !klass.consent_confirmed_at)
+      return failure(
+        "GATE_BLOCKED",
+        "법정대리인 동의를 확인한 반에만 아이를 넣을 수 있습니다.",
+        "class_id",
+      );
     return HttpResponse.json(addChild(id, b.name.trim()), { status: 201 });
   }),
   http.delete("*/api/children/:id", async ({ request, params }) => {

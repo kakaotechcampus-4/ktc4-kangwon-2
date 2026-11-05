@@ -122,6 +122,67 @@ class ClassCreate(BaseModel):
         return result
 
 
+class ClassUpdate(BaseModel):
+    """`PATCH /api/classes/{class_id}` 요청. **보낸 칸만 바꾼다** (docs/api-spec.md §2 반 수정).
+
+    `school_year` · `child_count` · `teacher_id` 는 칸이 없다 — `extra="forbid"` 가 422 로 막는다.
+    연령은 둘을 함께 보낸다. 하나만 바꾸면 다른 하나와의 관계를 서버가 못 본다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: PersonName | None = None
+    age_min: SelectedAge | None = None
+    age_max: SelectedAge | None = None
+    teacher_name: PersonName | None = None
+    consent_confirmed: bool | None = None
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def check_age_pair(
+        cls, data: Any, handler: ModelWrapValidatorHandler["ClassUpdate"]
+    ) -> "ClassUpdate":
+        errors = []
+        result = None
+        try:
+            result = handler(data)
+        except ValidationError as exc:
+            errors = exc.errors(include_url=False)
+            # 다른 칸이 실패해도 두 연령의 관계 오류는 함께 모은다 — 생성(ClassCreate)과 같다.
+            # 서버는 첫 오류에서 멈추지 않고 전부 돌려준다(api-spec 「공통」).
+            if not isinstance(data, dict):
+                raise
+            try:
+                low, high = TypeAdapter(
+                    tuple[SelectedAge | None, SelectedAge | None]
+                ).validate_python((data.get("age_min"), data.get("age_max")))
+            except ValidationError:
+                raise exc from None
+        else:
+            low, high = result.age_min, result.age_max
+
+        if (low is None) != (high is None):
+            reason = "age_min 과 age_max 는 함께 보낸다"
+        elif low is not None and low > high:
+            reason = "age_min 은 age_max 보다 클 수 없습니다."
+        else:
+            reason = None
+        if reason:
+            # 값 하나의 오류가 아니라 두 칸의 관계라서, 생성(ClassCreate)과 같이 두 칸 모두에 단다.
+            errors.extend(
+                {
+                    "type": "value_error",
+                    "loc": (field,),
+                    "input": value,
+                    "ctx": {"error": ValueError(reason)},
+                }
+                for field, value in (("age_min", low), ("age_max", high))
+            )
+        if errors:
+            raise ValidationError.from_exception_data(cls.__name__, errors)
+        return result
+
+
 class CenterResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

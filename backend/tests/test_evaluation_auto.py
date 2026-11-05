@@ -130,6 +130,8 @@ def _monthly(session, classroom, month, status="CONFIRMED"):
         classroom_ref=str(classroom.id),
         target_month=f"2026-{month:02d}",
         status=status,
+        class_name=classroom.name,
+        teacher_name=classroom.teacher_name,
         body={"target_month": {"calendar_year": 2026, "calendar_month": month}},
     )
     session.add(plan)

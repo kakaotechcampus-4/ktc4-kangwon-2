@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteAnnualPlan, getAnnualPlan, unconfirmAnnualPlan } from "@/lib/api/plans";
@@ -24,29 +24,70 @@ type Content = {
   classNote?: string;
 };
 
-/** 입력 요소나 변경 요청을 갖지 않는, 실제 조회 값만 그리는 본문. */
-export function PreviewContent({ content }: { content: Content }) {
+/** 단락 이름별 왼쪽 띠 색. 그 밖의 단락(계획안 칸 등)은 기본 선 색이다. */
+const SECTION_TONES: Record<string, string> = { 사실: "fact", 해석: "read", 지원: "support" };
+
+/** 입력 요소나 변경 요청을 갖지 않는, 실제 조회 값만 그리는 본문.
+ *  children 은 머리 쪽지 바로 아래에 붙는 안내(테스트 초안 · 근거 변경)다. */
+export function PreviewContent({
+  content,
+  kind,
+  children,
+}: {
+  content: Content;
+  kind: string;
+  children?: ReactNode;
+}) {
   return (
     <article className={styles.previewContent}>
-      <h2>{content.title}</h2>
-      <p>
-        {content.className}
-        {content.childName ? ` · ${content.childName}` : ""}
-      </p>
-      <p>{content.period}</p>
-      <p>
-        {content.status === "confirmed" ? "확정" : "검토 중"}
-        {content.createdAt ? ` · 작성 ${localDate(content.createdAt)}` : ""}
-      </p>
-      {!content.sections.some((s) => s.body.trim()) && <p>아직 작성된 본문이 없어요.</p>}
+      <header className={styles.previewHead}>
+        <div className={styles.previewMeta}>
+          <span className={styles.previewKind}>읽기 전용 · {kind}</span>
+          <span className={styles.previewStatus} data-status={content.status}>
+            {content.status === "confirmed" ? "확정" : "검토 중"}
+          </span>
+        </div>
+        <h2>{content.title}</h2>
+        <dl className={styles.previewFacts}>
+          <div>
+            <dt>{content.childName ? "반 · 아이" : "반"}</dt>
+            <dd>
+              {content.className}
+              {content.childName ? ` · ${content.childName}` : ""}
+            </dd>
+          </div>
+          <div>
+            <dt>기간</dt>
+            <dd>{content.period}</dd>
+          </div>
+          {content.createdAt && (
+            <div>
+              <dt>작성</dt>
+              <dd>{localDate(content.createdAt)}</dd>
+            </div>
+          )}
+        </dl>
+      </header>
+      {children}
+      {!content.sections.some((s) => s.body.trim()) && (
+        <p className={styles.previewNotice}>아직 작성된 본문이 없어요.</p>
+      )}
       {content.sections.map((section, i) => (
-        <section key={i}>
+        <section
+          key={i}
+          className={styles.previewSection}
+          data-tone={SECTION_TONES[section.heading]}
+        >
           <h3>{section.heading}</h3>
-          <p>{section.body || "아직 작성된 내용이 없어요."}</p>
+          {section.body ? (
+            <p>{section.body}</p>
+          ) : (
+            <p className={styles.previewEmpty}>아직 작성된 내용이 없어요.</p>
+          )}
         </section>
       ))}
       {content.classNote && (
-        <section>
+        <section className={styles.previewSection}>
           <h3>반 운영 특이사항</h3>
           <p>{content.classNote}</p>
         </section>
@@ -87,12 +128,8 @@ export default function DocumentArchivePreview({
     return <PreviewError error="문서가 삭제되었거나 목록이 변경되었어요." onRetry={onRetry} />;
   return (
     <>
-      <p className={ws.muted}>읽기 전용 · {DOCUMENT_KINDS[document.kind]}</p>
-      {document.mockDraft && <p>테스트 모드(mock)로 만든 초안이에요.</p>}
-      {"stale" in document && document.stale === true && (
-        <p>원본 근거가 변경되었어요. 문서를 열어 재검토해 주세요.</p>
-      )}
       <PreviewContent
+        kind={DOCUMENT_KINDS[document.kind]}
         content={{
           ...document,
           period:
@@ -100,17 +137,28 @@ export default function DocumentArchivePreview({
               ? document.start
               : `${document.start} ~ ${document.end}`,
         }}
-      />
+      >
+        {document.mockDraft && (
+          <p className={styles.previewNotice}>테스트 모드(mock)로 만든 초안이에요.</p>
+        )}
+        {"stale" in document && document.stale === true && (
+          <p className={styles.previewNotice} data-tone="warn">
+            원본 근거가 변경되었어요. 문서를 열어 재검토해 주세요.
+          </p>
+        )}
+      </PreviewContent>
       {document.reviewNote && (
-        <section>
+        <section className={styles.previewMemo}>
           <h3>검토 메모</h3>
           <p>{document.reviewNote}</p>
         </section>
       )}
       {onEdit && (
-        <button type="button" className={ws.primary} onClick={onEdit}>
-          {document.status === "confirmed" ? "문서 열기" : "편집하기"}
-        </button>
+        <div className={styles.previewActions}>
+          <button type="button" className={ws.primary} onClick={onEdit}>
+            {document.status === "confirmed" ? "문서 열기" : "편집하기"}
+          </button>
+        </div>
       )}
     </>
   );
@@ -307,12 +355,13 @@ export function PlanArchivePreview({
   if (!current.content) return null;
   return (
     <>
-      <p className={ws.muted}>읽기 전용 · {DOCUMENT_KINDS[target.kind]}</p>
-      <PreviewContent content={current.content} />
+      <PreviewContent kind={DOCUMENT_KINDS[target.kind]} content={current.content} />
       {target.href && (
-        <Link className={ws.primary} href={target.href}>
-          문서 열기
-        </Link>
+        <div className={styles.previewActions}>
+          <Link className={ws.primary} href={target.href}>
+            문서 열기
+          </Link>
+        </div>
       )}
       {onDeleted && target.href && current.content.status === "confirmed" && (
         <button type="button" className={ws.secondary} disabled={deleting} onClick={unconfirm}>

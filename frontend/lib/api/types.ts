@@ -50,6 +50,19 @@ export interface ClassInput {
   /** 법정대리인 동의 확인 체크박스. true 면 서버가 consent_confirmed_at 에 시각을 넣는다. */
   consent_confirmed?: boolean;
 }
+/**
+ * `PATCH /api/classes/{id}` 요청 (docs/api-spec.md §2 반 수정). 보낸 칸만 바뀐다.
+ *
+ * 연령은 `age_min` · `age_max` 를 **항상 같이** 보낸다 — 하나만 보내면 422 다.
+ * `child_count` 는 고치는 칸이 없어 보내지 않는다(보내면 422).
+ */
+export interface ClassUpdate {
+  name?: string;
+  age_min?: number;
+  age_max?: number;
+  teacher_name?: string;
+  consent_confirmed?: boolean;
+}
 /** `POST · GET /api/centers/{id}/classes` 응답. school_year 와 동의 시각은 서버가 채운다. */
 export interface ApiClass {
   id: number;

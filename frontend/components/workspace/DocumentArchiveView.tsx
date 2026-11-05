@@ -70,13 +70,47 @@ export type ArchiveDoc = {
 
 type ArchiveType = "annual" | "monthly" | "weekly" | "care" | "observation";
 
-const TYPES: { key: ArchiveType; name: string; desc: string; icon: IconName }[] = [
-  { key: "annual", name: "연간 계획안", desc: "한 해의 흐름을 잡아요.", icon: "nature" },
-  { key: "monthly", name: "월간 계획안", desc: "이달의 주제를 정해요.", icon: "plan" },
-  { key: "weekly", name: "주간 계획안", desc: "한 주의 놀이를 그려요.", icon: "art" },
-  { key: "care", name: "보육일지", desc: "하루 일과를 남겨요.", icon: "doc" },
-  { key: "observation", name: "관찰일지", desc: "아이의 순간을 적어요.", icon: "record" },
+/**
+ * 문서 종류 다섯. `icon` 이 숫자면 달력을 그리고 그 숫자가 안쪽 줄 수다.
+ *
+ * 계획안 셋은 **모두 같은 달력**이다 — 그림이 서로 다르면 한 묶음으로 안 읽힌다.
+ * 기간은 안쪽 줄 수로만 가른다(한 해 셋 · 한 달 둘 · 한 주 하나).
+ */
+/** icon 이 null 이면 계획안 달력이다 — 연간 · 월간 · 주간이 같은 그림을 쓴다. */
+const TYPES: { key: ArchiveType; name: string; icon: IconName | null }[] = [
+  { key: "annual", name: "연간 계획안", icon: null },
+  { key: "monthly", name: "월간 계획안", icon: null },
+  { key: "weekly", name: "주간 계획안", icon: null },
+  { key: "care", name: "보육일지", icon: "doc" },
+  { key: "observation", name: "관찰일지", icon: "record" },
 ];
+
+/** 달력 한 장 — 고리 둘, 머리 띠, 안쪽 한 줄. */
+function PlanCalendar() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M7 3v4m10-4v4M3 10h18" />
+      <path d="M7 15.5h1.5m3 0h1.5m3 0h1.5" />
+    </svg>
+  );
+}
+
+function ArchiveHeader({ children }: { children: ReactNode }) {
+  return (
+    <div className={styles.archiveHeading}>
+      <div className={styles.headingText}>{children}</div>
+    </div>
+  );
+}
 
 function StatusBadge({ state }: { state: ArchiveStatus }) {
   return (
@@ -367,9 +401,9 @@ export default function DocumentArchiveView({
   if (!classId || !classroom || foreign !== null) {
     return (
       <div className={styles.archive}>
+        <ArchiveHeader>{header}</ArchiveHeader>
         {rail}
         <div className={styles.content}>
-          {header}
           {foreign !== null ? (
             foreignBody
           ) : (
@@ -841,7 +875,6 @@ export default function DocumentArchiveView({
             key={t.key}
             className={styles.typeCard}
             data-type={t.key}
-            // 설명까지 이름에 섞이면 「보육일지 작성」 단추와 구분이 안 된다.
             aria-label={t.name}
             aria-pressed={type === t.key}
             onClick={() => {
@@ -850,9 +883,10 @@ export default function DocumentArchiveView({
               onCloseDetail();
             }}
           >
-            <Icon name={t.icon} />
-            <strong>{t.name}</strong>
-            <small>{t.desc}</small>
+            <span className={styles.typeLabel}>
+              {t.icon ? <Icon name={t.icon} /> : <PlanCalendar />}
+              <strong>{t.name}</strong>
+            </span>
           </button>
         ))}
       </div>
@@ -861,9 +895,9 @@ export default function DocumentArchiveView({
 
   return (
     <div className={styles.archive}>
+      <ArchiveHeader>{header}</ArchiveHeader>
       {rail}
       <div className={styles.content}>
-        {header}
         {openDoc && editingId === openDoc.id ? (
           <>
             <button
@@ -885,6 +919,7 @@ export default function DocumentArchiveView({
               className={styles.split}
               data-preview={Boolean(previewKey)}
               data-selected={Boolean(previewKey) && !mobileList}
+              data-overview={type === null}
             >
               <div className={styles.browser}>
                 {type === null && (
@@ -892,7 +927,7 @@ export default function DocumentArchiveView({
                     art={<OverviewArt className={styles.blankArt} />}
                     title="문서를 선택해 주세요"
                   >
-                    위의 문서 종류를 선택하면 해당 문서 목록을 확인할 수 있어요.
+                    위쪽의 문서 종류를 선택하면 저장된 문서를 확인할 수 있어요.
                   </Blank>
                 )}
                 {type === "annual" && annualView()}
@@ -950,7 +985,7 @@ function PlanGrid({
   sort: ReactNode;
 }) {
   return (
-    <section className={styles.panel}>
+    <section className={`${styles.panel} ${styles.planPanel}`}>
       <div className={styles.panelHead}>
         <div className={styles.panelHeadLeft}>
           <h3>{title}</h3>
@@ -961,9 +996,9 @@ function PlanGrid({
           {sort}
         </div>
       </div>
-      <div className={styles.docGrid}>
+      <div className={`${styles.docGrid} ${styles.planGrid}`}>
         {blocked ? (
-          <button type="button" className={styles.addCard} disabled>
+          <button type="button" className={`${styles.addCard} ${styles.planCreateCard}`} disabled>
             <span className={styles.plus}>
               <Icon name="plus" />
             </span>
@@ -971,7 +1006,7 @@ function PlanGrid({
             <span className={styles.addNote}>{blocked}</span>
           </button>
         ) : (
-          <Link className={styles.addCard} href={createHref}>
+          <Link className={`${styles.addCard} ${styles.planCreateCard}`} href={createHref}>
             <span className={styles.plus}>
               <Icon name="plus" />
             </span>
@@ -1140,10 +1175,7 @@ function ClassRail({
   const waiting = received.filter((r) => r.status === "PENDING").length;
   return (
     <aside className={styles.classRail} aria-label="반 선택">
-      <div className={styles.railHead}>
-        <Icon name="users" />
-        우리 반
-      </div>
+      <div className={styles.railHead}>우리 반</div>
       {classes.length ? (
         <div className={styles.classList}>
           {classes.map((c) => (
@@ -1154,6 +1186,7 @@ function ClassRail({
               aria-pressed={c.id === classId}
               onClick={() => onPick(c.id)}
             >
+              <Icon name="users" />
               <span className={styles.grow}>{c.className || "이름 없는 반"}</span>
               <Icon name="chevron" />
             </button>

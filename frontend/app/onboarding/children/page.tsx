@@ -1,5 +1,5 @@
-import OnboardingPage from "@/components/onboarding/OnboardingPage";
+import ChildrenFlow from "@/components/onboarding/ChildrenFlow";
 
 export default function Page() {
-  return <OnboardingPage step={3} />;
+  return <ChildrenFlow />;
 }

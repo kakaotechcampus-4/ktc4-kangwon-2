@@ -7,6 +7,7 @@
 """
 
 import logging
+from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Query, Response, status
@@ -800,11 +801,11 @@ def export_play_monthly_plan(
     )
     if daily_life is None:  # 계획안이 읽은 판이 없어졌다 — 습관 이름표를 지어낼 수 없다
         raise _UNAVAILABLE
-    content = fill_play_monthly(
-        PLAY_MONTHLY_TEMPLATE.read_bytes(), play_monthly_document(plan, daily_life)
-    )
-    klass = require_own_class(session, user, int(plan.classroom_ref), read_only=True)
-    title = f"{plan.target_month.calendar_month}월 놀이계획안 - {klass.name}"
+    require_own_class(session, user, int(plan.classroom_ref), read_only=True)
+    # 제목과 문서 머리 반 이름이 같은 값(확정 때 찍은 것)이어야 한다.
+    document = replace(play_monthly_document(plan, daily_life), class_name=row.class_name)
+    content = fill_play_monthly(PLAY_MONTHLY_TEMPLATE.read_bytes(), document)
+    title = f"{plan.target_month.calendar_month}월 놀이계획안 - {row.class_name}"
     return download(content, f"play-monthly-{row.id}", title, format)
 
 

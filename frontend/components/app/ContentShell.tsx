@@ -14,7 +14,10 @@ export default function ContentShell({ children }: { children: ReactNode }) {
   const pref = useSidebarCollapsed();
   const collapsed = pref ?? compact;
   return (
-    <div className={`min-w-0 pb-[84px] lg:pb-0 ${collapsed ? "lg:ml-[75px]" : "lg:ml-[267px]"}`}>
+    // 여닫을 때 사이드바와 같은 0.3초로 미끄러진다.
+    <div
+      className={`min-w-0 pb-[84px] lg:pb-0 lg:transition-[margin-left] lg:duration-300 lg:ease-out motion-reduce:transition-none ${collapsed ? "lg:ml-[75px]" : "lg:ml-[267px]"}`}
+    >
       {children}
     </div>
   );
