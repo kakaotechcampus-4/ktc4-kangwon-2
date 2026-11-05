@@ -1006,34 +1006,13 @@ def test_확정_전_월간계획안을_지우면_그_달을_다시_만들_수_�
     assert _create(world, month=9).status_code == 201
 
 
-def test_확정된_월간계획안은_지우지_못한다(world):
-    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+def test_확정된_월간계획안도_지우면_그_달을_다시_만들_수_있다(world):
+    """확정본도 지운다(ADR-062, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
     plan = _confirmed(world)
 
-    assert _error(client.delete(f"/api/plans/monthly/{plan['id']}"))[:2] == (409, "GATE_BLOCKED")
-    assert client.get(f"/api/plans/monthly/{plan['id']}").status_code == 200
-
-
-def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우지_않는다(world, db_session, monkeypatch):
-    """DRAFT 로 읽어도 삭제 직전에 확정되면 409 이고 확정본은 남는다(멘토 리뷰 #210)."""
-    _annual(world["class_a"])
-    plan_id = _create(world).json()["id"]
-    real = monthly_router._own_row
-    confirmed = False
-
-    def read_then_confirmed_elsewhere(session, user, current_id):
-        nonlocal confirmed
-        row = real(session, user, current_id)
-        if not confirmed:
-            confirmed = True
-            session.expunge(row)  # 삭제 요청은 DRAFT 로 읽은 값을 그대로 들고 간다
-            session.execute(update(Plan).where(Plan.id == current_id).values(status="CONFIRMED"))
-            session.commit()
-        return row
-
-    monkeypatch.setattr(monthly_router, "_own_row", read_then_confirmed_elsewhere)
-    assert _error(client.delete(f"/api/plans/monthly/{plan_id}")) == (409, "GATE_BLOCKED", [])
-    assert db_session.scalar(select(Plan.status).where(Plan.id == plan_id)) == "CONFIRMED"
+    assert client.delete(f"/api/plans/monthly/{plan['id']}").status_code == 204
+    assert client.get(f"/api/plans/monthly/{plan['id']}").status_code == 404
+    assert _create(world, month=9).status_code == 201
 
 
 def test_남의_원_월간계획안은_지울_수_없고_404(world):

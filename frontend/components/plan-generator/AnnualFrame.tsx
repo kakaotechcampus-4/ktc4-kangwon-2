@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
-import { downloadAnnualHwpx, unconfirmAnnualPlan } from "@/lib/api/plans";
+import { downloadAnnualHwpx } from "@/lib/api/plans";
 import type { ExportFormat } from "@/lib/api/export";
 import type { AnnualPlanResponse } from "@/lib/api/types";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
-import UnconfirmButton from "./UnconfirmButton";
 import { stepPlaySheetZoom, type SheetZoom } from "./playProjectPagination";
 import { Tape } from "@/components/workspace/WorkspaceUI";
 
@@ -336,20 +335,11 @@ export function BigView({
 
 /** 왼쪽 패널 안 「지금 고른 칸」 줄. */
 /**
- * ⑥ 확정 후. 문서 전체(읽기 전용) · PDF · 한글 내보내기 · 월간 만들기 · 홈 · 확정 취소.
+ * ⑥ 확정 후. 문서 전체(읽기 전용) · PDF · 한글 내보내기 · 월간 만들기 · 홈.
+ * 확정 취소는 없다 — 고치려면 문서 보관함에서 지우고 다시 만든다(ADR-062).
  * 월간 진입은 두 형식 다 `/plans/monthly` 다 — 놀이 중심형은 그 화면이 놀이 월간 만들기로 가른다.
  */
-export function AnnualDone({
-  plan,
-  pages,
-  onUnconfirmed,
-  onConflict,
-}: {
-  plan: AnnualPlanResponse;
-  pages: ReactNode[];
-  onUnconfirmed: (plan: AnnualPlanResponse) => void;
-  onConflict: () => void | Promise<void>;
-}) {
+export function AnnualDone({ plan, pages }: { plan: AnnualPlanResponse; pages: ReactNode[] }) {
   return (
     <PlanDone
       title={`${plan.school_year} 연간계획안을 확정했어요`}
@@ -362,17 +352,6 @@ export function AnnualDone({
         label: "월간계획안 만들기 →",
         hint: "이 연간계획안을 바탕으로 만들어요",
       }}
-      unconfirm={
-        <UnconfirmButton
-          message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 월간계획안은 그대로예요."
-          className={UNCONFIRM}
-          run={() =>
-            unconfirmAnnualPlan(plan.id, plan.format === "PLAY_PROJECT" ? plan.revision : undefined)
-          }
-          onDone={onUnconfirmed}
-          onConflict={onConflict}
-        />
-      }
     />
   );
 }
@@ -414,9 +393,7 @@ function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
   );
 }
 
-export const UNCONFIRM = "min-h-[44px] self-start rounded-md px-3 text-sm text-[#5c5243] underline";
-
-/** ⑥ · Ⓜ4 확정 후 틀 — 왼쪽 확정 문서(쪽이 여럿이면 쪽 번호) · 오른쪽 280px 내보내기 · 다음 단계 · 홈 · 확정 풀기. */
+/** ⑥ · Ⓜ4 확정 후 틀 — 왼쪽 확정 문서(쪽이 여럿이면 쪽 번호) · 오른쪽 280px 내보내기 · 다음 단계 · 홈 · 안내. */
 export function PlanDone({
   title,
   docLabel,
@@ -424,7 +401,7 @@ export function PlanDone({
   pages,
   download,
   next,
-  unconfirm,
+  notes,
 }: {
   title: string;
   docLabel: string;
@@ -434,7 +411,8 @@ export function PlanDone({
   download?: (format: ExportFormat) => Promise<void>;
   /** `onClick` 이 있으면 주소로 가지 않고 그것을 부른다(같은 주소 안에서 화면만 바꿀 때). */
   next: { href: string; label: string; hint: string; onClick?: () => void };
-  unconfirm: ReactNode;
+  /** 홈 아래 안내 줄(저장 · 오류 · 상위 계획안 바뀜). */
+  notes?: ReactNode;
 }) {
   const [page, setPage] = useState(0);
   const [exportMessage, setExportMessage] = useState("");
@@ -547,7 +525,7 @@ export function PlanDone({
             </svg>
             홈으로 가기
           </Link>
-          <div className="flex flex-col gap-2 text-[13px] text-[#5c5243]">{unconfirm}</div>
+          <div className="flex flex-col gap-2 text-[13px] text-[#5c5243]">{notes}</div>
         </aside>
       </div>
     </main>

@@ -15,7 +15,6 @@ import {
   downloadMonthlyHwpx,
   editMonthlyCell,
   placeMonthlySafety,
-  unconfirmMonthlyPlan,
 } from "@/lib/api/monthly";
 import { isSaveConflict } from "@/lib/api/plans";
 import type { MonthlyCell, MonthlyPlan } from "@/lib/api/types";
@@ -25,7 +24,6 @@ import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import workspace from "./Workspace.module.css";
 import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
-import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   BACK_BUTTON,
@@ -33,7 +31,6 @@ import AnnualFrame, {
   BigView,
   BUTTON,
   PlanDone,
-  UNCONFIRM,
   tabClass,
   UndoRedo,
   useSheetZoom,
@@ -320,7 +317,7 @@ export default function MonthlyPlanEditor({
     afterSaves(
       "confirm",
       (cur) => confirmMonthlyPlan(cur.id, cur.revision),
-      "확정했어요. 고치려면 확정을 풀어 주세요.",
+      "확정했어요. 고치려면 문서 보관함에서 지우고 다시 만들어 주세요.",
     );
 
   const weekLabel = (id: string | null) => weeks.find((w) => w.week_id === id)?.label ?? "";
@@ -552,7 +549,7 @@ export default function MonthlyPlanEditor({
   );
   const askConfirm =
     (blankCount ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-    "확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 주간계획안을 만들게 돼요." +
+    "확정하면 고칠 수 없어요(고치려면 문서 보관함에서 지우고 다시 만들어요). 이 내용으로 주간계획안을 만들게 돼요." +
     (notices.length ? ` 확인할 것 ${notices.length}개가 남았어요.` : "");
 
   const docOf = (at: Pick, scale?: number) => (
@@ -699,7 +696,7 @@ export default function MonthlyPlanEditor({
           label: "주간계획안 만들기 →",
           hint: `${plan.month}월 1주부터 이 월간을 바탕으로 만들어요`,
         }}
-        unconfirm={
+        notes={
           <>
             {notice}
             {problem && (
@@ -708,13 +705,6 @@ export default function MonthlyPlanEditor({
               </p>
             )}
             {message && <span role="status">{message}</span>}
-            <UnconfirmButton
-              message="확정을 풀면 다시 고칠 수 있어요. 이미 만든 주간계획안은 그대로예요."
-              className={UNCONFIRM}
-              run={() => unconfirmMonthlyPlan(latest.current.id, latest.current.revision)}
-              onDone={accept}
-              onConflict={conflict}
-            />
           </>
         }
       />

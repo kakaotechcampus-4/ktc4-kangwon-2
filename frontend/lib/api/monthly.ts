@@ -89,7 +89,7 @@ export const placeMonthlySafety = (
     ),
   );
 /** 이미 확정이면 revision 과 상관없이 200 — 재시도 · 더블클릭은 실패가 아니다. */
-/** 확정 전 월간계획안을 지운다. 그 달을 다시 만들려면 먼저 지워야 한다. 확정본은 409 다. */
+/** 월간계획안을 지운다(확정본도, ADR-062). 그 달을 다시 만들려면 먼저 지워야 한다. 주간이 딸려 있으면 409 `IN_USE`. */
 export const deleteMonthlyPlan = (id: number) =>
   apiRequest<void>("/api/plans/monthly/" + id, { method: "DELETE" });
 export const confirmMonthlyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>

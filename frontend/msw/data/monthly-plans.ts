@@ -423,6 +423,15 @@ export const confirmMonthly = (id: number) =>
     return plan;
   });
 
+/** 서버 `DELETE` 와 같다 — 확정본도 지우고(ADR-062), 이 월간으로 만든 주간이 있으면 「IN_USE」. */
+export const removeMonthly = (id: number) =>
+  commit((db): "IN_USE" | null => {
+    if (db.weeklyPlans.some((w) => w.parent.monthly_plan_id === id)) return "IN_USE";
+    db.monthlyPlans = db.monthlyPlans.filter((p) => p.id !== id);
+    delete db.monthlyAudit[id];
+    return null;
+  });
+
 /** 확정 취소. 값 · 이력은 그대로 두고 `UNCONFIRMED` 를 남긴다. 이미 초안이면 handler 가 먼저 막는다. */
 export const unconfirmMonthly = (id: number) =>
   commit((db) => {

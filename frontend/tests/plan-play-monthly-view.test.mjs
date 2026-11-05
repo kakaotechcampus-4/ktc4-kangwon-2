@@ -174,7 +174,6 @@ const frameModule = {
   AsideStrip: (p) => jsx("strip", p),
   BUTTON: css,
   tabClass: () => "tab",
-  UNCONFIRM: "unconfirm",
   POPOVER: "popover",
   BigView: (p) => jsx("bigview", p),
   useSheetZoom: () => ({ percent: 100, tools: null }),
@@ -195,7 +194,7 @@ const frameModule = {
           }),
       ],
     }),
-  // 확정 후 틀 대역 — 문서 쪽 · 다음 단계 · 확정 풀기를 한 나무에.
+  // 확정 후 틀 대역 — 문서 쪽 · 다음 단계 · 안내를 한 나무에.
   PlanDone: (p) =>
     jsx("done", {
       ...p,
@@ -203,7 +202,7 @@ const frameModule = {
         p.title,
         ...p.pages,
         jsx("a", { href: p.next.href, children: p.next.label }),
-        p.unconfirm,
+        p.notes,
       ],
     }),
 };
@@ -218,7 +217,6 @@ function load() {
     "@/lib/api/client": { ApiError: StubApiError },
     "@/lib/api/playMonthly": {
       getPlayMonthly: (id) => (calls.push(id), getResult()),
-      unconfirmPlayMonthly: (...a) => (calls.push(["unconfirm", ...a]), getResult()),
       downloadPlayMonthlyHwpx: async (...a) => calls.push(["export", ...a]),
     },
     "@/lib/hooks/use-play-monthly-save": { usePlayMonthlySave: saveStub },
@@ -239,7 +237,6 @@ function load() {
     "./PlayMonthlyDrillPanel": esModule((props) => jsx("drill", props)),
     "./PlayMonthlyRowRemove": esModule((props) => jsx("remove", props)),
     "./PlayMonthlyConfirmBar": esModule(barStub),
-    "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "./AnnualFrame": frameModule,
     "next/link": linkStub,
     "@/components/app/compact-shell": shellModule,
@@ -299,17 +296,11 @@ test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내�
   );
 });
 
-test("확정본의 [확정 취소]는 그 revision 으로 풀고 응답을 넘긴다 · 상위가 바뀌면 한 줄 안내", async () => {
+test("확정본에는 [확정 취소]가 없다(ADR-062) · 상위가 바뀌면 한 줄 안내", async () => {
   const done = fixture(true);
-  const { View, h, tree } = await open(done.id, async () => ({ ...done, parent_changed: true }));
+  const { tree } = await open(done.id, async () => ({ ...done, parent_changed: true }));
   assert.equal(withText(tree, "span", "상위 계획안이 바뀌었어요").length, 1);
-  const button = all(tree).find((n) => n.type === "unconfirm");
-  const draft = { ...done, status: "DRAFT", confirmed_at: null, revision: done.revision + 1 };
-  getResult = async () => draft;
-  button.props.onDone(await button.props.run());
-  assert.deepEqual(calls.at(-1), ["unconfirm", done.id, done.revision]);
-  // 이 대역은 key 로 다시 마운트하지 않으므로 초안 화면은 브라우저 확인 몫이다 — 여기서는 다시 그리기가 터지지 않는지만 본다.
-  assert.ok(h.render(View, { id: done.id }));
+  assert.equal(withText(tree, "button", "확정 취소").length, 0);
 });
 
 test("확정 바는 계획안 id 로 달고 저장 훅의 함수를 그대로 넘긴다 · 변경 이력 버튼은 없다", async () => {
@@ -1165,7 +1156,6 @@ function openV1Editor(findings = [], setup = (p) => p) {
     }),
     "@/components/plan-generator/PlayMonthlySafetyPanel": esModule((props) => jsx("safety", props)),
     "@/components/plan-generator/PlayMonthlyDrillPanel": esModule(DrillPanel),
-    "@/components/plan-generator/UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "@/components/plan-generator/PlayMonthlySheet": {
       Cell: (props) => jsx("cell", props),
       Paper: (props) => jsx("paper", props),

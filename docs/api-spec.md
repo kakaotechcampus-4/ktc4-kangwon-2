@@ -118,6 +118,7 @@ me       GET /api/auth/me                                               → 200 
 | `NOT_FOUND` | 404 | 대상 없음 |
 | `GATE_BLOCKED` | 409 | 앞 단계가 안 끝났다 — 층 게이트(연간 확정 전 월간 §9-1 · 월간 확정 전 주간 · §11 주간 보육일지) · 사람 승인 전 Template 으로 Profile 시작(§9-4) · 확정 전 내보내기(놀이 프로젝트형 DRAFT 포함, §9) · `stale` 문서 확정 · 놀이 프로젝트형을 부모로 기존 월간 생성(§9-1) · 연간 형식에 맞지 않는 수정 API 호출(§6 · §6-1) · 기존 월간 경로 ↔ 놀이 중심 월간 경로(§9-7)에 서로의 id · 놀이 중심 월간 아래 주간 생성(§9-6 · §9-7) |
 | `ALREADY_EXISTS` | 409 | 같은 대상에 이미 있음. 조회로 찾는다 |
+| `IN_USE` | 409 | 지우려는 계획안으로 만든 하위 계획안이 있다(연간 → 월간 · 월간 → 주간). 하위를 먼저 지운다(§9 「계획안 삭제」 · ADR-062) |
 | `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). **계획안에는 확정 취소가 없다**(ADR-030 PM-03) |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
@@ -1524,7 +1525,19 @@ GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현
 POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 W5a · 편집 · 재생성 · 확정 · 이력 W5b 구현됨)
 POST   /api/plans/monthly/play            놀이 중심 월간 — §9-7 (제안 · 구현 전. 목록 · 단건 · 칸 · 행 · 안전 배치 · 훈련 복사 · 확정 · 이력 모두 §9-7)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
+DELETE /api/plans/annual/{id}             연간 삭제 — 초안 · 확정본 모두 204. 그 반 · 학년도 월간이 있으면 409 IN_USE
+DELETE /api/plans/monthly/{id}            월간 삭제 — 초안 · 확정본 모두 204. 이 월간으로 만든 주간이 있으면 409 IN_USE
+DELETE /api/plans/monthly/play/{id}       놀이 중심 월간 삭제 — 초안 · 확정본 모두 204 (§9-7)
+DELETE /api/plans/weekly/{id}             주간 삭제 — 초안 · 확정본 모두 204 (§9-6)
 ```
+
+**계획안 삭제 (ADR-062, Human Decision 2026-11-05 하민).** 화면의 「확정 취소」를 없앴다 — 확정한 계획안을
+고치려면 문서 보관함에서 지우고 다시 만든다. 그래서 `DELETE` 는 **상태를 보지 않는다**(확정본도 `204`).
+`unconfirm` API(ADR-055)는 그대로 남는다. 막는 것은 하위뿐이다 — 연간은 그 반 · 학년도 월간이, 월간은
+그 월간을 부모(`parent_lineage`)로 든 주간이 있으면 409 `IN_USE`(`fields: []`), 하위를 먼저 지운다.
+부모 DELETE 는 부모 행을 `FOR UPDATE` 로 잠그고 하위를 보며, 하위 생성은 저장 직전에 부모 행을
+`FOR SHARE` 로 다시 본다 — 동시에 와도 부모 없는 하위가 저장되지 않는다(부모가 그 사이 지워졌거나
+확정이 풀렸으면 생성은 409 `GATE_BLOCKED`). 이력 · 근거는 본문 안에 있어 행과 함께 사라진다.
 
 **칸 수를 계약으로 정하지 않는다.** 「43칸」은 우리 기본 서식에서 센 수다. 칸 수는 양식 ·
 활성 주차 · 구역 구조가 정하므로 원이 올린 양식에 따라 달라진다. **화면은 서버가 준 만큼
@@ -2502,6 +2515,7 @@ memo       문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」).
 새 화면은 생성할 때 `activity_candidates: true`를 보낸다. 기존 요청·계획과 전역 양식 기본값은 그대로다.
 월·연령·승인 분류로 고른 대소집단 근거에서 월간 주제를 검색 순위에 반영하고 유형별로 후보를 최대 10개 만든다.
 같은 주 소주제와의 일치를 선택 조건으로 삼지 않는다. 주별 회전·중복 배제는 하지 않아 같은 달의 주들이 같은 후보 근거를 받을 수 있다.
+같은 출처 상한(2)은 후보를 자르지 않고 서로 다른 출처를 앞에 두는 순서로만 쓴다 — 남는 자리는 상한에 걸린 근거로 채운다(ADR-054, 2026-11-05).
 근거가 모자라면 적게 만들고, 교사가 고르기 전 요일 칸은 빈칸이다.
 
 상세 응답에는 아래 목록이 추가된다. 구판은 두 목록이 빈 배열이다.
@@ -2567,8 +2581,8 @@ DELETE /api/plans/weekly/{id}/cells/{item_id}/split?expected_revision=3
 
 ### 삭제 — `DELETE /api/plans/weekly/{id}`
 
-`204`. **확정 전(`DRAFT`)만 지운다** — 반 · 주당 하나라, 지우기가 없으면 마음에 안 드는 첫 초안을 다시 만들
-길이 없다(월간 DELETE 와 같은 이유). 확정본은 409 `GATE_BLOCKED`. 전체 재생성은 없다.
+`204`. **초안 · 확정본 모두 지운다**(ADR-062) — 반 · 주당 하나라, 지우기가 없으면 마음에 안 드는 첫 초안을 다시 만들
+길이 없다(월간 DELETE 와 같은 이유). 확정본을 고치려면 지우고 다시 만든다. 전체 재생성은 없다.
 
 ### 칸 편집 · 칸 재생성 · 확정 — 월간 §9-3 과 같다
 
@@ -2679,7 +2693,7 @@ DELETE /api/plans/weekly/{id}/indoor-plays/{item_id}?expected_revision=N
 POST   /api/plans/monthly/play                                              생성 → 201
 GET    /api/plans/monthly/play?class_id=1                                   목록
 GET    /api/plans/monthly/play/{id}                                         단건
-DELETE /api/plans/monthly/play/{id}                                         초안만 → 204 (revision 없음)
+DELETE /api/plans/monthly/play/{id}                                         초안 · 확정본 → 204 (revision 없음)
 PUT    /api/plans/monthly/play/{id}/cells/{item_id}                         칸 글
 PUT    /api/plans/monthly/play/{id}/activities/{item_id}/content-ids        누리과정 연결 바꾸기
 POST   /api/plans/monthly/play/{id}/activities                              행 추가 (together · free_play)
@@ -2802,7 +2816,7 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 
 - **목록** `GET /api/plans/monthly/play?class_id=1` → `{ "items": [ { id, class_id, school_year, month, target_month, status, revision, created_at, confirmed_at } ] }`. 대상 달 오름차순. `class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.
 - **단건** `GET /api/plans/monthly/play/{id}` → `200`, 위 응답.
-- **삭제** `DELETE /api/plans/monthly/play/{id}` → `204`. **`expected_revision` 을 받지 않는다**(기존 월간 삭제와 같다). 확정 전만 지우며 `status = 'DRAFT'` 조건이 붙은 한 문장의 DELETE 로 보장한다(지운 행이 0이면 다시 읽어 없음 · 남의 원은 404, 확정은 409). 확정본은 409 `GATE_BLOCKED` 「확정된 계획안은 지울 수 없습니다.」(월간과 같은 이유 — 반 · 달당 하나라 지우기가 없으면 다시 만들 길이 없다).
+- **삭제** `DELETE /api/plans/monthly/play/{id}` → `204`. **`expected_revision` 을 받지 않는다**(기존 월간 삭제와 같다). 초안 · 확정본 모두 지운다(ADR-062 — 확정본을 고치려면 지우고 다시 만든다. 반 · 달당 하나라 지우기가 없으면 다시 만들 길이 없다). 지운 행이 0이면(그 사이 사라짐) 404, 남의 원도 404. 놀이 월간 아래에는 주간이 없어 `IN_USE` 가 없다.
 
 ### 변경 API — 모두 `200` 에 단건 응답 전체
 
@@ -2932,7 +2946,6 @@ together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
 | `VALIDATION_FAILED` | 422 | 확정 조건 미충족(`play_monthly_incomplete`). 위치 키는 확정 절 | 예: `["theme", "together.item_3"]` |
 | `ALREADY_CONFIRMED` | 409 | 확정 뒤 변경(`InvalidStateTransitionError`). 확정 재호출은 예외 — 200 | `[]` |
 | `STALE_WRITE` | 409 | `expected_revision` 이 서버 값과 다르다(삭제는 쿼리) | `["expected_revision"]` |
-| `GATE_BLOCKED` | 409 | 확정된 계획안을 지우려 했다 | `[]` |
 | `INTERNAL_ERROR` | 500 | 서버가 Core 에 타입을 잘못 넘길 때만 나는 내부 오류: `invalid_item_id` · `invalid_plan_id` · `opaque_actor_required` | `[]` |
 
 ### 구현 경계 (문서 결함이 아니라 구현 검증 항목)

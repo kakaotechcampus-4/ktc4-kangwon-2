@@ -11,8 +11,9 @@ HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약
     B. Core 실행 — DB 없이. 부모 · Profile 은 메모리 저장소로 넘기고 저장도 메모리가 받는다
     C. 짧은 쓰기 — 중복을 다시 보고 Postgres 에 저장 · commit
 
-부모 CONFIRMED 와 READY 는 바뀌지 않는 값이라 A 와 C 사이에 달라지지 않는다. 같은 반 · 같은
-달 동시 요청은 C 의 부분 유일 인덱스가 최종으로 막는다.
+READY 는 바뀌지 않는 값이라 A 와 C 사이에 달라지지 않는다. 부모는 그 사이 확정이 풀리거나
+지워질 수 있어(ADR-055 · ADR-062) C 첫머리에 공유 잠금으로 다시 본다(`_lock_parent`). 같은 반 ·
+같은 달 동시 요청은 C 의 부분 유일 인덱스가 최종으로 막는다.
 
 **편집 · 재생성 · 확정도 같은 세 단계다**(결정 문서 12.10). 다른 점은 C 가 조건부 UPDATE 라는
 것 — 읽은 `expected_revision` 과 DRAFT 를 한 문장으로 보고 +1 한다. 그 사이 누가 바꿨으면
@@ -24,7 +25,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
@@ -211,7 +212,9 @@ _PROFILE_UNUSABLE_ERROR = _error(
 _PLAY_MONTHLY = _error(
     409, "GATE_BLOCKED", "놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.", []
 )
-_NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
+_IN_USE = _error(
+    409, "IN_USE", "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요.", []
+)
 
 
 def _is_play_monthly(row: Plan) -> bool:
@@ -270,6 +273,21 @@ def _generation_error(error: MonthlyApplicationError) -> HTTPException:
 
 def _gate(message: str) -> HTTPException:
     return _error(409, "GATE_BLOCKED", message, ["class_id"])
+
+
+def _lock_parent(session: Session, parent_id: int, message: str) -> None:
+    """생성의 C 단계 첫머리 — 부모가 아직 있고 CONFIRMED 인지 공유 잠금(`FOR SHARE`)으로 다시 본다.
+
+    부모 DELETE 는 부모 행을 `FOR UPDATE` 로 잡고 자식을 본다(ADR-062 — 확정본도 지운다).
+    겹치면 한쪽이 기다리고, 늦은 쪽이 상대 결과를 본다 — 부모 없는 자식이 저장되지 않는다.
+    """
+    locked = session.scalar(
+        select(Plan.id)
+        .where(Plan.id == parent_id, Plan.status == "CONFIRMED")
+        .with_for_update(read=True)
+    )
+    if locked is None:
+        raise _gate(message)
 
 
 @router.post("", response_model=MonthlyPlanOut, status_code=status.HTTP_201_CREATED)
@@ -359,6 +377,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         raise _generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS
     try:
@@ -440,30 +459,35 @@ def get_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """확정 전 월간계획안을 지운다. 연간과 같은 이유다 — 지울 길이 있어야 다시 만든다.
+    """월간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-062). 연간과 같은 이유다 — 지울
+    길이 있어야 다시 만든다.
 
     반 하나에 그 달 월간은 하나다(models.py 부분 유니크 인덱스). 만들기가 409 로 막히므로,
     지우기가 없으면 첫 초안이 마음에 안 들어도 그 달은 영영 다시 못 만든다.
 
-    **확정본은 안 지운다.** 제출 문서다.
+    **확정본도 지운다**(Human Decision 2026-11-05 하민). 화면의 확정 취소를 없앴다 — 고치려면
+    문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문 안에 있어 행과 함께 사라진다.
+
+    **이 월간으로 만든 주간이 있으면 안 지운다**(409 `IN_USE`). 주간은 이 월간을 부모로 들고
+    있다(`parent_lineage`). 확정 월간만 주간을 가질 수 있어서 전에는 확정본 금지가 이걸 막았다.
     """
     row = _own_row(session, user, plan_id)
-    if row.status == "CONFIRMED":
-        raise _NOT_DELETABLE
-    # **상태 확인과 삭제를 한 SQL 로 한다** (멘토 리뷰 #210, 주간과 같은 방식).
-    # 읽은 뒤 다른 요청이 확정하면, 읽은 값으로 지우는 순간 확정본이 사라진다 —
-    # DRAFT 일 때만 지워지게 조건을 건다.
-    deleted = session.execute(
-        delete(Plan).where(
-            Plan.id == row.id,
+    # **잠그고 자식을 본다**(연간 DELETE 와 같다). 주간 생성은 저장 직전에 이 행을 FOR SHARE 로
+    # 다시 본다 — 「주간 없음」을 본 DELETE 와 같은 순간에 주간이 저장되지 않는다.
+    if session.scalar(select(Plan.id).where(Plan.id == row.id).with_for_update()) is None:
+        raise _NOT_FOUND  # 그 사이 사라졌다
+    child = session.scalar(
+        select(Plan.id)
+        .where(
             Plan.center_id == user.center_id,
-            Plan.kind == "monthly",
-            Plan.status == "DRAFT",
+            Plan.kind == "weekly",
+            Plan.body["parent_lineage"]["parent_plan_id"]["value"].astext == row.plan_ref,
         )
-    ).rowcount
-    if not deleted:  # 0건이면 이 transaction 에서 바뀐 것이 없다 — 되돌릴 것도 없다
-        _own_row(session, user, plan_id)  # 그 사이 사라졌으면 404
-        raise _NOT_DELETABLE
+        .limit(1)
+    )
+    if child is not None:
+        raise _IN_USE
+    session.delete(row)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

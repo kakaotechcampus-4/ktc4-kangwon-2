@@ -482,37 +482,34 @@ def test_목록_남의_원_반은_404(world):
     assert response.status_code == 404
 
 
-def test_DRAFT_는_지우고_다시_만들_수_있다_확정본은_못_지운다(world, db_session):
+def test_DRAFT_도_확정본도_지우고_다시_만들_수_있다(world, db_session):
+    """확정본도 지운다(ADR-062, Human Decision 2026-11-05 하민)."""
     created = _create(world).json()
     assert client.delete(f"/api/plans/weekly/{created['id']}").status_code == 204
-    again = _create(world)
-    assert again.status_code == 201
+    again = _create(world).json()
+    confirmed = _confirm(again)
+    assert confirmed.status_code == 200, confirmed.text
 
-    db_session.execute(update(Plan).where(Plan.id == again.json()["id"]).values(status="CONFIRMED"))
-    assert _error(client.delete(f"/api/plans/weekly/{again.json()['id']}")) == (
-        409,
-        "GATE_BLOCKED",
-        [],
+    assert client.delete(f"/api/plans/weekly/{again['id']}").status_code == 204
+    assert client.get(f"/api/plans/weekly/{again['id']}").status_code == 404
+    assert _create(world).status_code == 201
+
+
+def test_주간이_딸린_월간은_확정본이어도_지우지_못하고_주간을_지우면_지운다(world):
+    """주간은 월간을 부모로 든다. 부모만 지우면 주간 조회가 깨진다(ADR-062)."""
+    monthly_id = world["monthly"]["id"]
+    weekly = _create(world).json()
+
+    response = client.delete(f"/api/plans/monthly/{monthly_id}")
+    assert _error(response) == (409, "IN_USE", [])
+    assert response.json()["error"]["message"] == (
+        "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요."
     )
+    assert client.get(f"/api/plans/monthly/{monthly_id}").status_code == 200
 
-
-def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우지_않는다(world, db_session, monkeypatch):
-    """읽기와 지우기 사이에 확정이 끼면 409 · 행이 남는다(Codex W5b-01 실제 경합 재현)."""
-    created = _create(world).json()
-    real = weekly_router._own_row
-
-    def read_then_confirmed_elsewhere(session, user, plan_id):
-        row = real(session, user, plan_id)
-        session.expunge(row)  # 삭제는 DRAFT 로 읽은 값을 그대로 들고 간다
-        # 다른 요청의 확정은 이미 commit 됐다 — 이 요청이 409 로 되돌려도 남아야 한다.
-        session.execute(update(Plan).where(Plan.id == plan_id).values(status="CONFIRMED"))
-        session.commit()
-        return row
-
-    monkeypatch.setattr(weekly_router, "_own_row", read_then_confirmed_elsewhere)
-    assert _error(client.delete(f"/api/plans/weekly/{created['id']}")) == (409, "GATE_BLOCKED", [])
-    # 확정본 행이 그대로 남는다(상태 칸만 바꿔 흉내 냈으므로 칸을 본다).
-    assert db_session.scalar(select(Plan.status).where(Plan.id == created["id"])) == "CONFIRMED"
+    assert client.delete(f"/api/plans/weekly/{weekly['id']}").status_code == 204
+    assert client.delete(f"/api/plans/monthly/{monthly_id}").status_code == 204
+    assert client.get(f"/api/plans/monthly/{monthly_id}").status_code == 404
 
 
 @pytest.mark.parametrize("code", ["opaque_actor_required", "repository_contract_violation"])

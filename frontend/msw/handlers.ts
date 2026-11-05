@@ -84,6 +84,7 @@ import {
   safetyView,
   targetMonthOf,
   unconfirmMonthly,
+  removeMonthly,
 } from "./data/monthly-plans";
 import {
   REGENERATABLE as WEEKLY_REGENERATABLE,
@@ -547,14 +548,8 @@ export const handlers = [
   http.delete("*/api/plans/annual/:id", ({ params }) => {
     const id = Number(params.id);
     if (!findPlan(id)) return annualMissing();
-    const blocked = removePlan(id);
-    if (blocked === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    if (blocked === "IN_USE")
-      return failure(
-        "GATE_BLOCKED",
-        "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.",
-      );
+    if (removePlan(id) === "IN_USE")
+      return failure("IN_USE", "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.");
     return new HttpResponse(null, { status: 204 });
   }),
   // 시험용 — 서버처럼 꺼져 있으면 없는 경로(404)다. 켜기: .env.local NEXT_PUBLIC_ALLOW_TEST_RESET=1
@@ -808,9 +803,7 @@ export const handlers = [
     if (s) return s;
     const plan = playOwn(String(params.id));
     if (plan instanceof Response) return plan;
-    if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    removePlayMonthly(plan.id);
+    removePlayMonthly(plan.id); // 확정본도 지운다(ADR-062)
     return new HttpResponse(null, { status: 204 });
   }),
   http.put("*/api/plans/monthly/play/:id/cells/:itemId", async ({ request, params }) => {
@@ -1130,6 +1123,16 @@ export const handlers = [
     const plan = myMonthly(Number(params.id));
     return plan ? HttpResponse.json(monthlyOut(plan)) : planMissing(Number(params.id));
   }),
+  // 확정본도 지운다(ADR-062). 이 월간으로 만든 주간이 있으면 409 IN_USE.
+  http.delete("*/api/plans/monthly/:id", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-delete");
+    if (s) return s;
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing(Number(params.id));
+    if (removeMonthly(plan.id) === "IN_USE")
+      return failure("IN_USE", "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요.");
+    return new HttpResponse(null, { status: 204 });
+  }),
   // 변경 이력 (§9-5). 소유를 먼저 본다 — 남의 계획안이면 item_id 를 보기 전에 404 ["id"].
   http.get("*/api/plans/monthly/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "monthly-audit");
@@ -1389,9 +1392,7 @@ export const handlers = [
     if (s) return s;
     const plan = myWeekly(Number(params.id));
     if (!plan) return weeklyMissing();
-    if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    removeWeekly(plan.id);
+    removeWeekly(plan.id); // 확정본도 지운다(ADR-062)
     return new HttpResponse(null, { status: 204 });
   }),
   // 월간 양식 설정 조회 (§9-2).

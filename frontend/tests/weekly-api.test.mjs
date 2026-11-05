@@ -23,8 +23,13 @@ const { createTemplateProfile } = await import("../lib/api/templateProfiles.ts")
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
 const { createAnnualPlan, confirmAnnualPlan } = await import("../lib/api/plans.ts");
-const { createMonthlyPlan, confirmMonthlyPlan, getMonthlyPlan, placeMonthlySafety } =
-  await import("../lib/api/monthly.ts");
+const {
+  createMonthlyPlan,
+  confirmMonthlyPlan,
+  getMonthlyPlan,
+  placeMonthlySafety,
+  deleteMonthlyPlan,
+} = await import("../lib/api/monthly.ts");
 const weekly = await import("../lib/api/weekly.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 const { SECTION_LABELS, sectionName } = await import("../lib/weekly/section-labels.ts");
@@ -467,7 +472,7 @@ test("토요일을 켜면 표시 기간이 하루 늘고 요일이 여섯이다"
   assert.notEqual(plan.display_end_date, plan.week_period.end_date);
 });
 
-test("확정하면 고칠 수 없고 지울 수도 없다 — 확정 취소가 없다", async () => {
+test("확정하면 고칠 수 없고, 지우는 것은 된다(ADR-062) · 주간이 딸린 월간은 409 IN_USE", async () => {
   const { klass, monthly } = await classWithMonthly();
   let plan = await weekly.createWeeklyPlan({
     class_id: klass.id,
@@ -480,7 +485,9 @@ test("확정하면 고칠 수 없고 지울 수도 없다 — 확정 취소가 �
     409,
     "ALREADY_CONFIRMED",
   );
-  await rejects(weekly.deleteWeeklyPlan(plan.id), 409, "GATE_BLOCKED");
+  await rejects(deleteMonthlyPlan(monthly.id), 409, "IN_USE");
+  await weekly.deleteWeeklyPlan(plan.id);
+  await deleteMonthlyPlan(monthly.id);
 });
 
 test("칸 이름표는 열두 칸을 모두 덮고, 월간의 옛 키(habits)는 쓰지 않는다", () => {

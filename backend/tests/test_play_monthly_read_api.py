@@ -335,38 +335,14 @@ def test_초안은_지워지고_204(world):
     assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is None
 
 
-def test_확정본은_409_이고_행이_남는다(world):
+def test_확정본도_지워지고_204(world):
+    """확정본도 지운다(ADR-062, Human Decision 2026-11-05 하민)."""
     _, row = _play(world, confirmed=True)
 
     response = client.delete(f"{URL}/{row.id}")
 
-    assert _error(response) == (409, "GATE_BLOCKED", [])
-    assert response.json()["error"]["message"] == "확정된 계획안은 지울 수 없습니다."
-    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is not None
-
-
-def test_읽은_뒤_확정되어도_DRAFT_조건이_확정본을_지키지_않게_막는다(world, monkeypatch):
-    from types import SimpleNamespace
-
-    from app.features.plans import play_monthly_router as router
-
-    _, row = _play(world, confirmed=True)
-    real, calls = router._own_row, []
-
-    def stale_first(session, user, plan_id):  # 첫 읽기는 아직 DRAFT 로 보였던 때다
-        calls.append(plan_id)
-        return (
-            SimpleNamespace(id=row.id, status="DRAFT")
-            if len(calls) == 1
-            else real(session, user, plan_id)
-        )
-
-    monkeypatch.setattr(router, "_own_row", stale_first)
-
-    response = client.delete(f"{URL}/{row.id}")
-
-    assert _error(response) == (409, "GATE_BLOCKED", [])
-    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is not None
+    assert (response.status_code, response.content) == (204, b"")
+    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is None
 
 
 def test_삭제_남의_원_없는_id_는_404_기존_월간은_409(world):

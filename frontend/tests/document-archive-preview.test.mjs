@@ -42,6 +42,9 @@ function harness(
   gateway = async () => {
     throw new Error("Unexpected API call");
   },
+  remove = async () => {
+    throw new Error("Unexpected delete");
+  },
 ) {
   const values = [];
   let cursor = 0;
@@ -71,9 +74,24 @@ function harness(
     },
     "next/link": { __esModule: true, default: "link" },
     "@/lib/workspace/model": model,
-    "@/lib/api/plans": { getAnnualPlan: (id, signal) => gateway("annual", id, signal) },
-    "@/lib/api/monthly": { getMonthlyPlan: (id, signal) => gateway("monthly", id, signal) },
-    "@/lib/api/weekly": { getWeeklyPlan: (id, signal) => gateway("weekly", id, signal) },
+    "@/lib/api/plans": {
+      getAnnualPlan: (id, signal) => gateway("annual", id, signal),
+      deleteAnnualPlan: (id) => remove("annual", id),
+    },
+    "@/lib/api/monthly": {
+      getMonthlyPlan: (id, signal) => gateway("monthly", id, signal),
+      deleteMonthlyPlan: (id) => remove("monthly", id),
+    },
+    "@/lib/api/playMonthly": {
+      getPlayMonthly: (id, signal) => gateway("play", id, signal),
+      deletePlayMonthly: (id) => remove("play", id),
+    },
+    "@/lib/api/weekly": {
+      getWeeklyPlan: (id, signal) => gateway("weekly", id, signal),
+      deleteWeeklyPlan: (id) => remove("weekly", id),
+    },
+    "@/lib/api/client": { errorCode: (e) => e?.code ?? null },
+    "@/components/plan-generator/PlayMonthlyConfirm": { __esModule: true, default: "ask" },
     "./WorkspaceUI": { ws: {} },
     "./DocumentArchive.module.css": { __esModule: true, default: {} },
   };
@@ -88,9 +106,9 @@ function harness(
   );
   return {
     ...m.exports,
-    render(target) {
+    render(target, onDeleted) {
       cursor = 0;
-      tree = m.exports.PlanArchivePreview({ target });
+      tree = m.exports.PlanArchivePreview({ target, onDeleted });
       return tree;
     },
     tree: () => tree,
@@ -339,4 +357,75 @@ test("계획안 진입 주소는 문서 ID·반·달/서버 주차를 검증하�
     "?plan_id=2&class_id=4&week_id=wrong",
   ])
     assert.equal(archivePlanEntry(q), null, q);
+});
+test("삭제는 onDeleted 가 있을 때만 · 확인을 거쳐 지우고 · 하위가 있으면 409 IN_USE 안내", async () => {
+  const removed = [];
+  let fail = null;
+  const h = harness(
+    async () => ({ ...annual(), status: "CONFIRMED" }),
+    async (kind, id) => {
+      removed.push([kind, id]);
+      if (fail) throw fail;
+    },
+  );
+  const t = target("annual");
+  h.render(t);
+  await settle();
+  // 남의 반(보기 전용)은 onDeleted 를 넘기지 않는다 — 단추가 없다.
+  assert.equal(
+    nodes(h.render(t)).some((n) => n.type === "button" && text(n) === "삭제"),
+    false,
+  );
+  let deleted = 0;
+  const del = () =>
+    nodes(h.render(t, () => deleted++)).find((n) => n.type === "button" && text(n) === "삭제");
+  del().props.onClick();
+  const ask = nodes(h.render(t, () => deleted++)).find((n) => n.type === "ask");
+  assert.equal(ask.props.message, "이 계획안을 지울까요? 되돌릴 수 없어요.");
+  fail = Object.assign(new Error("server"), { code: "IN_USE" });
+  await ask.props.onYes();
+  assert.match(text(h.render(t, () => deleted++)), /만든 월간계획안이 있어요/);
+  assert.equal(deleted, 0);
+  fail = null;
+  del().props.onClick();
+  await nodes(h.render(t, () => deleted++))
+    .find((n) => n.type === "ask")
+    .props.onYes();
+  assert.equal(deleted, 1);
+  assert.deepEqual(removed, [
+    ["annual", 1],
+    ["annual", 1],
+  ]);
+  h.unmount();
+});
+test("놀이 중심 월간은 놀이 월간 경로로 읽고 지운다", async () => {
+  const removed = [];
+  const h = harness(
+    async (kind, id) => ({
+      id,
+      class_id: 3,
+      status: "CONFIRMED",
+      kind,
+      theme: { value: "가을 숲 놀이" },
+      rationale: { value: "낙엽에 관심" },
+      together: [{ name: { value: "낙엽 모으기" }, description: { value: "함께 모은다" } }],
+      free_play: [],
+    }),
+    async (kind, id) => removed.push([kind, id]),
+  );
+  const t = { ...target("monthly"), play: true };
+  h.render(t);
+  await settle();
+  let deleted = 0;
+  const tree = h.render(t, () => deleted++);
+  assert.match(text(tree), /가을 숲 놀이/);
+  assert.match(text(tree), /함께 하는 활동 · 낙엽 모으기/);
+  nodes(tree)
+    .find((n) => n.type === "button" && text(n) === "삭제")
+    .props.onClick();
+  await nodes(h.render(t, () => deleted++))
+    .find((n) => n.type === "ask")
+    .props.onYes();
+  assert.deepEqual([removed, deleted], [[["play", 1]], 1]);
+  h.unmount();
 });

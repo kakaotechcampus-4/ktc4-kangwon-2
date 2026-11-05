@@ -8,6 +8,8 @@ export type ErrorCode =
   | "NOT_FOUND"
   | "GATE_BLOCKED"
   | "ALREADY_EXISTS"
+  // 지우려는 계획안으로 만든 하위가 있다(연간 → 월간 · 월간 → 주간, ADR-062).
+  | "IN_USE"
   | "ALREADY_CONFIRMED"
   | "STALE_WRITE"
   | "UNSUPPORTED_FILE_TYPE"
