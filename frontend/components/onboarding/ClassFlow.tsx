@@ -18,7 +18,7 @@ import { saveClassSettings } from "@/lib/onboarding/settings";
 import { accountName } from "@/lib/auth/local-account";
 import { isAlreadyExists } from "@/lib/api/client";
 import { syncClass, rememberConsent } from "@/lib/api/onboarding";
-import { childrenPathAfterAdd, isCompleteClass, withFromSettings } from "@/lib/onboarding/flow";
+import { childrenPathAfterAdd, isCompleteClass } from "@/lib/onboarding/flow";
 import {
   createEmptyClassroom,
   selectedAgesFor,
@@ -67,7 +67,7 @@ const skipsFour = (ages: SelectedAge[]) =>
 export default function ClassFlow() {
   const router = useRouter();
   const data = useOnboardingData("classes");
-  const { settings, error, setError, fromSettings, params } = data;
+  const { settings, error, setError, params } = data;
   const adding = params.get("add") === "1";
   const [q, setQ] = useState(0);
   // 담임 이름은 가입할 때 적은 이름을 먼저 넣어 둔다.
@@ -109,11 +109,7 @@ export default function ClassFlow() {
       await syncClass(next, entry);
       rememberConsent(next.classes);
       if (!saveClassSettings(next)) throw new Error("설정을 저장하지 못했어요.");
-      router.push(
-        adding
-          ? childrenPathAfterAdd(entry.id, fromSettings)
-          : withFromSettings("/onboarding/children", fromSettings),
-      );
+      router.push(adding ? childrenPathAfterAdd(entry.id) : "/onboarding/children");
     } catch (e) {
       if (isAlreadyExists(e)) {
         setNameError(NAME_TAKEN);
@@ -134,10 +130,7 @@ export default function ClassFlow() {
   function back() {
     setError("");
     if (q > 0) setQ(q - 1);
-    else
-      router.push(
-        withFromSettings(adding ? "/onboarding/review" : "/onboarding/center", fromSettings),
-      );
+    else router.push(adding ? "/onboarding/review" : "/onboarding/center");
   }
 
   if (!data.ready) return <LoadingLine />;

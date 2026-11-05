@@ -7,6 +7,7 @@ import type { AnnualPlanResponse } from "@/lib/api/types";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import UnconfirmButton from "./UnconfirmButton";
 import { stepPlaySheetZoom, type SheetZoom } from "./playProjectPagination";
+import { Tape } from "@/components/workspace/WorkspaceUI";
 
 /** ⑤ · ⑥ 공통 모양 (디자인 넘김 result-preview · done-preview). */
 const CHIP = {
@@ -14,23 +15,23 @@ const CHIP = {
   PLAY_PROJECT: ["놀이 중심형", "bg-[#eee4f4] text-[#5e4b96]"],
 } as const;
 export const BUTTON = {
-  quiet: "min-h-[44px] rounded-xl px-3 text-sm text-[#5c5243] disabled:opacity-40",
+  quiet: "min-h-[44px] rounded-md px-3 text-sm text-[#5c5243] disabled:opacity-40",
   outline:
-    "min-h-[44px] rounded-xl border border-line bg-paper px-4 text-sm font-bold text-[#5e4b96] shadow-pg-card transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none disabled:opacity-40",
+    "min-h-[44px] rounded-md border border-line bg-paper px-4 text-sm font-bold text-[#5e4b96] transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none disabled:opacity-40",
   primary:
-    "min-h-[44px] rounded-xl bg-[#7053a0] px-5 text-sm font-bold text-white disabled:opacity-40 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none",
+    "min-h-[44px] rounded-md bg-primary hover:bg-primary-hover px-5 text-sm font-bold text-white disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none",
   /** 패널 아래 가벼운 글자 버튼(「지우고 다시 만들기」). */
   plain: "min-h-[44px] text-sm text-[#5c5243] underline underline-offset-2 disabled:opacity-40",
 };
 export const tabClass = (active: boolean) =>
-  `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-[#8a8178]"}`;
+  `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-ink-soft"}`;
 /** 문서 위 쪽 · 구간 버튼. */
 export const pageClass = (active: boolean) =>
   `min-h-[34px] min-w-[52px] rounded-lg px-3 text-sm ${active ? "bg-[#efe8f7] font-bold text-[#5e4b96]" : "text-[#5c5243] hover:bg-[#f3efe8]"}`;
 
 /** 제목 옆 「←」 돌아가기 — 만들기 · 편집 화면이 같이 쓴다. 갈 곳 이름은 aria-label · title 로. */
 export const BACK_BUTTON =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-paper shadow-pg-card transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none text-[#2b2826] no-underline hover:bg-[#f7f4ee] disabled:opacity-40";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-line bg-paper transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none text-[#2b2826] no-underline hover:bg-[#f7f4ee] disabled:opacity-40";
 export const BACK_ICON = (
   <svg
     viewBox="0 0 24 24"
@@ -83,17 +84,25 @@ export default function AnnualFrame({
   children: ReactNode;
 }) {
   return (
-    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-7">
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-10">
       {/* 안내가 없으면 높이 0 — 연간 · 월간 · 주간 문서 틀이 같은 높이에서 시작한다. */}
       <div className="flex flex-col">
+        {/* 제목 줄은 「무엇」(제목 · 형식)과 「할 일」(확정)만 — 저장 상태 · 요청 사항은 제목 아래 작은 줄로. */}
         <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-3">
             {lead}
-            <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
-              {title}
-            </h1>
-            {chip(format)}
-            <span className="text-sm text-[#5c5243]">{status}</span>
+            <div className="flex min-w-0 flex-col">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="m-0 font-display text-[34px] font-bold leading-[1.15] text-ink">
+                  {title}
+                </h1>
+                {chip(format)}
+              </div>
+              {/* 빈 상태에도 높이를 잡아 둔다 — 「저장 중…」이 뜰 때 제목이 흔들리지 않게. */}
+              <span className="min-h-[20px] text-[13px] leading-[20px] text-ink-soft">
+                {status}
+              </span>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">{actions}</div>
         </div>
@@ -101,8 +110,9 @@ export default function AnnualFrame({
       </div>
       {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        {/* 편집 패널에는 장식(테이프)을 두지 않는다 — 훑어 읽기를 방해하지 않게. 완료 화면에만. */}
         {aside && (
-          <aside className="flex w-full shrink-0 flex-col border border-line bg-paper shadow-pg lg:w-[380px]">
+          <aside className="relative flex w-full shrink-0 flex-col border border-line bg-paper rounded-md lg:w-[380px]">
             {aside}
           </aside>
         )}
@@ -110,11 +120,12 @@ export default function AnnualFrame({
           aria-label="문서 미리보기"
           className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-shell-line bg-paper px-5 py-2.5 text-sm">
+          {/* 도구는 따로 띠를 두지 않고 책상(문서 바탕) 위에 얹는다 — 문서가 한 줄 더 위에서 시작한다. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-3 text-sm">
             <div className="font-bold">{docLabel}</div>
-            <div className="text-[#5c5243]">{docHint}</div>
+            <div className="ml-auto text-[#5c5243]">{docHint}</div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto p-6">{children}</div>
+          <div className="min-h-0 flex-1 overflow-auto px-6 pb-8 pt-4">{children}</div>
         </section>
       </div>
     </main>
@@ -124,8 +135,7 @@ export default function AnnualFrame({
 const ZOOM_BUTTON =
   "flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg px-2 text-sm text-[#5c5243] hover:bg-[#f3efe8] disabled:opacity-35 disabled:hover:bg-transparent";
 /** 문서 머리줄(편집 바)의 한 묶음 — 되돌리기 · 배율을 테두리로 나눈다. */
-const TOOL_GROUP =
-  "flex items-center gap-0.5 rounded-xl border border-line bg-paper p-0.5 shadow-pg-card";
+const TOOL_GROUP = "flex items-center gap-0.5 rounded-md border border-line bg-paper p-0.5";
 
 const UNDO_ICON = (
   <svg
@@ -267,7 +277,7 @@ export function BigView({
     <>
       <button
         type="button"
-        className="min-h-[38px] rounded-xl border border-line bg-paper shadow-pg-card transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none px-3 text-sm font-bold text-[#5e4b96] hover:bg-[#f6f1fb]"
+        className="min-h-[38px] rounded-md border border-line bg-paper transition-transform active:translate-x-[1px] active:translate-y-[2px] active:shadow-none px-3 text-sm font-bold text-[#5e4b96] hover:bg-[#f6f1fb]"
         aria-haspopup="dialog"
         onClick={() => {
           setPage(0);
@@ -404,7 +414,7 @@ function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
   );
 }
 
-export const UNCONFIRM = "min-h-[44px] self-start rounded-xl px-3 text-sm text-[#5c5243] underline";
+export const UNCONFIRM = "min-h-[44px] self-start rounded-md px-3 text-sm text-[#5c5243] underline";
 
 /** ⑥ · Ⓜ4 확정 후 틀 — 왼쪽 확정 문서(쪽이 여럿이면 쪽 번호) · 오른쪽 280px 내보내기 · 다음 단계 · 홈 · 확정 풀기. */
 export function PlanDone({
@@ -436,7 +446,7 @@ export function PlanDone({
     setBusy(null);
   };
   return (
-    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-7">
+    <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-10">
       <div className="flex flex-wrap items-center gap-3">
         <span
           aria-hidden="true"
@@ -444,9 +454,7 @@ export function PlanDone({
         >
           ✓
         </span>
-        <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
-          {title}
-        </h1>
+        <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">{title}</h1>
         {chip(format)}
       </div>
       {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
@@ -475,9 +483,10 @@ export function PlanDone({
             {pages[page]}
           </div>
         </section>
-        <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[280px]">
+        <aside className="relative flex w-full shrink-0 flex-col gap-3 lg:w-[280px]">
+          <Tape />
           {download && (
-            <div className="flex flex-col gap-2 border border-line bg-paper shadow-pg p-5">
+            <div className="flex flex-col gap-2 border border-line bg-paper rounded-md p-5">
               <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
               <div className="grid grid-cols-3 gap-2">
                 {(Object.keys(EXPORTS) as ExportFormat[]).map((format) => (
@@ -488,7 +497,7 @@ export function PlanDone({
                     title={EXPORTS[format].label}
                     disabled={hwpx.exporting}
                     onClick={() => void save(format)}
-                    className="flex aspect-square items-center justify-center rounded-xl border border-[#ddd6ca] bg-white hover:border-[#c5b7dd] hover:bg-[#f7f4ee] disabled:opacity-50"
+                    className="flex aspect-square items-center justify-center rounded-md border border-[#ddd6ca] bg-white hover:border-[#c5b7dd] hover:bg-[#f7f4ee] disabled:opacity-50"
                   >
                     <FileLogo format={format} busy={busy === format} />
                   </button>
@@ -501,7 +510,7 @@ export function PlanDone({
               )}
             </div>
           )}
-          <div className="flex flex-col gap-2 border border-line bg-paper shadow-pg p-5">
+          <div className="flex flex-col gap-2 border border-line bg-paper rounded-md p-5">
             <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">다음 단계</h2>
             <Link
               href={next.href}
@@ -512,15 +521,15 @@ export function PlanDone({
                   next.onClick?.();
                 })
               }
-              className="flex min-h-[56px] items-center justify-center rounded-xl bg-[#7053a0] text-[16px] font-bold text-white shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="flex min-h-[56px] items-center justify-center rounded-md bg-primary hover:bg-primary-hover text-[16px] font-bold text-white transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {next.label}
             </Link>
-            <span className="text-[13px] text-[#8a8178]">{next.hint}</span>
+            <span className="text-[13px] text-ink-soft">{next.hint}</span>
           </div>
           <Link
             href="/"
-            className="flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#2b2826] hover:bg-[#f7f4ee]"
+            className="flex min-h-[52px] items-center justify-center gap-2 rounded-md border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#2b2826] hover:bg-[#f7f4ee]"
           >
             <svg
               aria-hidden="true"

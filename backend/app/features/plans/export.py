@@ -101,7 +101,7 @@ def _learning(value: str) -> list[tuple[str, str, str]]:
 
 def _export_play_project(session, user, row, format: Format) -> Response:
     plan = _play_plan(session, user, row)
-    klass = require_own_class(session, user, int(plan.classroom_ref), True)
+    require_own_class(session, user, int(plan.classroom_ref), True)
     periods = []
     for p in plan.periods:
         by_key = {c.row_key: c for c in p.candidates}
@@ -115,7 +115,7 @@ def _export_play_project(session, user, row, format: Format) -> Response:
             for c in (by_key[key] for key in p.selected)
         ]
         periods.append(PlayPeriodRows(PLAY_PERIOD_LABELS[p.period.key], rows))
-    title = f"{plan.school_year} 연간놀이계획안 - {klass.name}"
+    title = f"{plan.school_year} 연간놀이계획안 - {row.class_name}"
     content = fill_play_project(
         (TEMPLATE_DIR / "play_project_annual.hwpx").read_bytes(), title, periods
     )
@@ -135,9 +135,9 @@ def export_plan(
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
     plan = _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
-    klass = require_own_class(session, user, plan.class_id, True)
+    require_own_class(session, user, plan.class_id, True)
 
-    title = f"{klass.name} {plan.school_year}학년도 연간 보육계획안"
+    title = f"{row.class_name} {plan.school_year}학년도 연간 보육계획안"
     rows = [AnnualMonthRows(month.month, month.theme, month.sub_themes) for month in plan.months]
     content = fill_annual_v1(
         (TEMPLATE_DIR / "annual_v1_weeks.hwpx").read_bytes(), title, plan.school_year, rows
@@ -205,7 +205,7 @@ def export_monthly_plan(
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
     plan = _monthly_detail(session, user, plan_id)
-    klass = require_own_class(session, user, plan.class_id, read_only=True)
+    require_own_class(session, user, plan.class_id, read_only=True)
 
     weeks = [week for week in plan.weeks if week.active]
     if len(weeks) not in MONTHLY_TEMPLATES:
@@ -233,11 +233,11 @@ def export_monthly_plan(
 
     # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
     ages = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref)).target_ages
-    title = f"{klass.name} {plan.target_month} 놀이계획안"
+    title = f"{row.class_name} {plan.target_month} 놀이계획안"
     content = _fill_form(
         (TEMPLATE_DIR / MONTHLY_TEMPLATES[len(weeks)]).read_bytes(),
         title,
-        (f"{plan.month}월 놀이계획안", f"{_ages_label(ages)} {klass.name}"),
+        (f"{plan.month}월 놀이계획안", f"{_ages_label(ages)} {row.class_name}"),
         texts,
         rows,
     )
@@ -318,13 +318,13 @@ def export_weekly_plan(
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
     plan = _weekly_detail(session, user, plan_id)
-    klass = require_own_class(session, user, plan.class_id, read_only=True)
+    require_own_class(session, user, plan.class_id, read_only=True)
     # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
     core = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     ages = core.target_ages
     if any(s.repeat_by is RepeatBy.DAY for s in core.template_snapshot.sections):
-        title = f"{klass.name} {plan.week_period.label} 주간계획안"
-        content = _fill_weekly_days(core, plan.display_end_date, klass.name, title)
+        title = f"{row.class_name} {plan.week_period.label} 주간계획안"
+        content = _fill_weekly_days(core, plan.display_end_date, row.class_name, title)
         if core.activity_grids:
             content = fill_weekly_activity_grid(content, core)
         return download(content, f"weekly-plan-{row.id}", title, format)
@@ -345,10 +345,10 @@ def export_weekly_plan(
     ]
     period = plan.week_period
     header = {
-        WEEKLY_CLASS_CELL: f"{klass.name} ({_ages_label(ages)})",
+        WEEKLY_CLASS_CELL: f"{row.class_name} ({_ages_label(ages)})",
         WEEKLY_PERIOD_CELL: f"{period.label} · {period.start_date} ~ {plan.display_end_date}",
     }
-    title = f"{klass.name} {period.label} 주간계획안"
+    title = f"{row.class_name} {period.label} 주간계획안"
     content = fill_grid(
         (TEMPLATE_DIR / "weekly.hwpx").read_bytes(),
         title,

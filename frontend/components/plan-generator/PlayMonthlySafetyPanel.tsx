@@ -9,9 +9,9 @@ type SafetyPlan = {
   safety_weeks: { week_id: string; candidate_item_id: string | null }[];
 };
 
-export const CARD = "flex items-center gap-3 rounded-xl border px-4 py-2.5";
+export const CARD = "flex items-center gap-3 rounded-md border px-4 py-2.5";
 /** 넣은 후보 카드 — 안전교육 · 훈련 · 주간 후보가 같이 쓴다. */
-export const PICKED = "border-[#7053a0] bg-[#f6f1fb] shadow-pg-card";
+export const PICKED = "border-[#7053a0] bg-[#f6f1fb]";
 export const PUT =
   "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96] disabled:opacity-40";
 
@@ -34,7 +34,7 @@ export default function PlayMonthlySafetyPanel({
   const here = plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id ?? null;
   return (
     <section aria-label="안전교육" className="flex flex-col gap-2">
-      <h2 className="m-0 flex items-center justify-between gap-2 font-display text-[20px] font-bold leading-tight">
+      <h2 className="m-0 flex items-center justify-between gap-2 text-[18px] font-bold leading-tight">
         {label(weekId)} 안전교육 후보
         {/* 우리 반 화면의 복숭아색 쪽지 안내처럼. */}
         {!here && (
@@ -61,7 +61,7 @@ export default function PlayMonthlySafetyPanel({
                   mine
                     ? PICKED
                     : elsewhere.length
-                      ? "border-dashed border-[#ddd6ca] text-[#8a8178]"
+                      ? "border-dashed border-[#ddd6ca] text-ink-soft"
                       : "border-[#e8e2d8]"
                 }`}
               >

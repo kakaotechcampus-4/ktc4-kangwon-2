@@ -7,7 +7,10 @@ import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import Link from "next/link";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   POPOVER,
@@ -38,7 +41,7 @@ const MAX_PICKS = 5;
 const SAVE_LABEL = {
   idle: "",
   saving: "저장 중…",
-  saved: "자동 저장됨",
+  saved: "저장됨",
   failed: "저장하지 못했어요",
   reloading: "최신 내용을 다시 불러오는 중…",
 };
@@ -147,11 +150,23 @@ function movedNotice(name: string, index: number) {
 }
 
 type LeftTab = "edit" | "picked";
-const ROW = "flex items-center justify-between gap-3 rounded-xl border border-[#e8e2d8] px-4 py-3";
 // 문서 기준 폭(A4 세로 비율). 「맞춤」은 이 폭을 문서 칸 폭에 맞춰 키우거나 줄인다.
 const SHEET_WIDTH = 794;
 const SMALL =
   "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] px-3 text-xs font-bold text-[#5e4b96] disabled:opacity-40";
+/** 끌어서 순서를 바꾸는 손잡이(점 여섯 개). */
+const GRIP = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 10 16"
+    width="10"
+    height="16"
+    className="shrink-0 text-[#b8ae9f]"
+    fill="currentColor"
+  >
+    {[2, 8, 14].map((y) => [2, 8].map((x) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.5" />))}
+  </svg>
+);
 
 /**
  * 놀이 중심형 연간: ④ 놀이 고르기 → ⑤ 다듬기(왼쪽 AI 후보 · 칸 편집, 오른쪽 문서). 확정본은 부모가 ⑥ 으로 그린다.
@@ -454,7 +469,7 @@ export default function PlayProjectResult({
       );
     return (
       <div className="flex flex-col gap-4">
-        <h2 className="m-0 font-display text-[24px] font-bold leading-tight">
+        <h2 className="m-0 text-[20px] font-bold leading-tight">
           {selectedCandidate.play_name.value}
         </h2>
         <div className="flex flex-wrap gap-1.5" aria-label="고칠 칸">
@@ -476,7 +491,7 @@ export default function PlayProjectResult({
         <div className="flex gap-2 border-t border-[#efeae2] pt-4">
           <button
             type="button"
-            className="min-h-[44px] flex-1 rounded-lg border border-[#e8e2d8] text-sm text-[#5c5243]"
+            className={BUTTON.quiet}
             onClick={() => toggleCandidate(selectedCandidate.row_key)}
           >
             문서에서 빼기
@@ -515,67 +530,102 @@ export default function PlayProjectResult({
   }
 
   // AI 후보: 문서에 넣은 놀이(순서 · 빼기)와 넣을 수 있는 나머지 후보(넣기).
+  // 고른 놀이는 번호 붙은 한 묶음(끌어서 순서), 나머지는 테두리 없는 목록 — 카드를 줄줄이 늘어놓지 않는다.
   function renderCandidates() {
+    const rest = period.candidates.filter((c) => !periodPicks.includes(c.row_key));
+    const full = periodPicks.length >= MAX_PICKS;
     return (
-      <div className="flex flex-col gap-2">
-        <h2
-          id={pickedHeadingId}
-          tabIndex={-1}
-          className="m-0 mb-1 font-display text-[20px] font-bold leading-tight"
-        >
-          {seasonLabel} 놀이
-        </h2>
-        {pickedCandidates.map((candidate, index) => (
-          <div
-            key={candidate.row_key}
-            className={`${ROW} cursor-grab bg-[#fbf9f5]`}
-            draggable
-            onDragStart={(event) => event.dataTransfer.setData("text/plain", candidate.row_key)}
+      <div className="flex flex-col gap-5">
+        <section className="flex flex-col gap-2">
+          <h2
+            id={pickedHeadingId}
+            tabIndex={-1}
+            className="m-0 flex items-baseline justify-between text-[18px] font-bold leading-tight"
           >
-            <button
-              type="button"
-              className="flex min-w-0 flex-col text-left"
-              onClick={() => selectCell(activePeriod, candidate.row_key, "play_name")}
-            >
-              <span className="text-[15px] font-bold">
-                <span className="mr-2 text-xs text-[#5e4b96]">{index + 1}</span>
-                {candidate.play_name.value}
-              </span>
-              <span className="truncate text-[13px] text-[#5c5243]">
-                {candidate.materials.value}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="min-h-[36px] shrink-0 text-xs text-[#5c5243] underline"
-              aria-label={`${candidate.play_name.value} 빼기`}
-              onClick={() => toggleCandidate(candidate.row_key)}
-            >
-              빼기
-            </button>
-          </div>
-        ))}
-        {period.candidates
-          .filter((candidate) => !periodPicks.includes(candidate.row_key))
-          .map((candidate) => (
-            <div key={candidate.row_key} className={ROW}>
-              <span className="flex min-w-0 flex-col">
-                <span className="text-[15px] font-bold">{candidate.play_name.value}</span>
-                <span className="truncate text-[13px] text-[#5c5243]">
-                  {candidate.materials.value}
-                </span>
-              </span>
-              <button
-                type="button"
-                className={SMALL}
-                aria-label={`${candidate.play_name.value} 넣기`}
-                disabled={periodPicks.length >= MAX_PICKS}
-                onClick={() => toggleCandidate(candidate.row_key)}
-              >
-                넣기
-              </button>
-            </div>
-          ))}
+            {seasonLabel} 놀이
+            <span className="text-[13px] font-normal text-ink-soft">
+              {periodPicks.length}/{MAX_PICKS} 골랐어요
+            </span>
+          </h2>
+          {pickedCandidates.length > 0 && (
+            <ol className="m-0 list-none divide-y divide-[#ece6dc] rounded-md border border-line bg-paper p-0">
+              {pickedCandidates.map((candidate, index) => (
+                <li
+                  key={candidate.row_key}
+                  className="flex cursor-grab items-center gap-2.5 py-2.5 pl-2 pr-3 hover:bg-[#fbf9f5]"
+                  draggable
+                  onDragStart={(event) =>
+                    event.dataTransfer.setData("text/plain", candidate.row_key)
+                  }
+                >
+                  {GRIP}
+                  <span
+                    aria-hidden="true"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#efe8f7] text-xs font-bold text-primary-ink"
+                  >
+                    {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 flex-col text-left"
+                    onClick={() => selectCell(activePeriod, candidate.row_key, "play_name")}
+                  >
+                    <span className="truncate text-[15px] font-bold">
+                      {candidate.play_name.value}
+                    </span>
+                    <span className="truncate text-[13px] text-ink-soft">
+                      {candidate.materials.value}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink"
+                    aria-label={`${candidate.play_name.value} 빼기`}
+                    onClick={() => toggleCandidate(candidate.row_key)}
+                  >
+                    빼기
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+        {rest.length > 0 && (
+          <section className="flex flex-col gap-1">
+            <h3 className="m-0 text-[15px] font-bold text-ink">다른 후보 {rest.length}개</h3>
+            <p className="m-0 mb-1 text-[13px] text-ink-soft">
+              {full
+                ? `${MAX_PICKS}개를 다 골랐어요. 다른 후보를 넣으려면 위에서 하나를 빼 주세요.`
+                : "넣으면 고른 놀이 맨 아래에 붙어요."}
+            </p>
+            <ul className="m-0 list-none divide-y divide-[#ece6dc] p-0">
+              {rest.map((candidate) => (
+                <li
+                  key={candidate.row_key}
+                  className="flex items-center justify-between gap-3 py-2.5"
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-[15px] font-bold">
+                      {candidate.play_name.value}
+                    </span>
+                    <span className="truncate text-[13px] text-ink-soft">
+                      {candidate.materials.value}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className={SMALL}
+                    aria-label={`${candidate.play_name.value} 넣기`}
+                    disabled={full}
+                    onClick={() => toggleCandidate(candidate.row_key)}
+                  >
+                    + 넣기
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     );
   }
@@ -635,7 +685,7 @@ export default function PlayProjectResult({
     <div
       role="tablist"
       aria-label="놀이 프로젝트 기간"
-      className="flex flex-wrap gap-0.5 rounded-xl border border-line bg-paper p-0.5 shadow-pg-card"
+      className="flex flex-wrap gap-0.5 rounded-md border border-line bg-paper p-0.5"
     >
       {plan.periods.map((item, index) => (
         <button
@@ -648,8 +698,12 @@ export default function PlayProjectResult({
           className={`${pageClass(activePeriod === index)} inline-flex items-center gap-1.5 ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
           onClick={() => goToPeriod(index)}
         >
-          {playSeason(item).name && <span>{playSeason(item).name}</span>}
-          <span className="text-[13px] font-normal opacity-75">{playSeason(item).months}</span>{" "}
+          {/* 문서 위 도구줄에 들어가 좁다 — 계절 이름이 있으면 달은 마우스를 올리면 보인다. */}
+          {playSeason(item).name ? (
+            <span title={playSeason(item).months}>{playSeason(item).name}</span>
+          ) : (
+            <span className="text-[13px] font-normal">{playSeason(item).months}</span>
+          )}{" "}
           <span
             className={`rounded-full px-1.5 text-xs font-bold ${lacking.includes(item.period_key) ? "bg-[#fdecea]" : "bg-[#f3efe8]"}`}
           >
@@ -667,13 +721,22 @@ export default function PlayProjectResult({
         {/* 정답지 ④: 제목 · 칩 · 안내 · 저장 상태 | 계절 탭 — 한 줄. */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+            {/* 편집 화면과 같은 ← 돌아가기. */}
+            <Link
+              href="/plans"
+              aria-label="돌아가기: 계획안"
+              title="계획안"
+              className={BACK_BUTTON}
+            >
+              {BACK_ICON}
+            </Link>
+            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
               놀이 고르기
             </h1>
             <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
               놀이 중심형
             </span>
-            <span role="status" className="text-[13px] text-[#8a8178]">
+            <span role="status" className="text-[13px] text-ink-soft">
               {SAVE_LABEL[saving.status]}
             </span>
             {saving.status === "failed" && (
@@ -686,7 +749,7 @@ export default function PlayProjectResult({
           <div
             role="tablist"
             aria-label="놀이 프로젝트 기간"
-            className="grid w-full grid-cols-2 gap-1 rounded-xl bg-[#ebe5db] p-1 md:flex md:w-auto"
+            className="grid w-full grid-cols-2 gap-1 rounded-md bg-[#ebe5db] p-1 md:flex md:w-auto"
           >
             {plan.periods.map((item, index) => {
               const count = picks[item.period_key]?.length ?? 0;
@@ -704,12 +767,12 @@ export default function PlayProjectResult({
                 >
                   <span className="font-bold">{playSeason(item).name}</span>
                   {playSeason(item).months && (
-                    <span className="text-xs font-normal text-[#8a8178]">
+                    <span className="text-xs font-normal text-ink-soft">
                       {playSeason(item).months}
                     </span>
                   )}
                   <span
-                    className={`text-xs ${count >= MAX_PICKS ? "font-bold text-[#3b5441]" : "text-[#8a8178]"}`}
+                    className={`text-xs ${count >= MAX_PICKS ? "font-bold text-[#3b5441]" : "text-ink-soft"}`}
                   >
                     {count >= MAX_PICKS ? `✓ ${count}/${MAX_PICKS}` : `${count}/${MAX_PICKS}`}
                   </span>
@@ -750,11 +813,6 @@ export default function PlayProjectResult({
             onClick={() => selectLeftTab(tab)}
           >
             {tab === "edit" ? "칸 편집" : "AI 후보"}
-            {tab === "picked" && (
-              <span className="ml-1.5 rounded-full bg-[#efeae2] px-2 py-0.5 text-xs text-[#5c5243]">
-                {period.candidates.length}
-              </span>
-            )}
           </button>
         ))}
       </div>
@@ -785,6 +843,11 @@ export default function PlayProjectResult({
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
       format={plan.format}
+      lead={
+        <Link href="/plans" aria-label="돌아가기: 계획안" title="계획안" className={BACK_BUTTON}>
+          {BACK_ICON}
+        </Link>
+      }
       status={
         <span className="flex items-center gap-3">
           {SAVE_LABEL[saving.status]}
@@ -815,7 +878,6 @@ export default function PlayProjectResult({
       }
       actions={
         <>
-          {periodTabs}
           <div className="relative">
             <button
               type="button"
@@ -867,7 +929,7 @@ export default function PlayProjectResult({
         </>
       }
       aside={aside}
-      docLabel={null}
+      docLabel={periodTabs}
       docHint={
         <div className="flex items-center gap-2">
           <UndoRedo

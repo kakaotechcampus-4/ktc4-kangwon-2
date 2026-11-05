@@ -21,10 +21,10 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER, planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import GenerationRing from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
-import { useClasses } from "./WorkspaceUI";
+import { Tape, useClasses } from "./WorkspaceUI";
 import WeeklySheet, { BLANK_SECTIONS } from "./WeeklySheet";
 
 type Monthlies = Record<number, { id: number; status: "DRAFT" | "CONFIRMED" }>;
@@ -82,6 +82,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
   const [detail, setDetail] = useState<MonthData | null>(null);
   const [weekId, setWeekId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -193,6 +194,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     const ctl = new AbortController();
     controller.current = ctl;
     setBusy(true);
+    setDone(false);
     setProblem("");
     setMemoProblem(null);
     try {
@@ -206,7 +208,10 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
         },
         ctl.signal,
       );
-      if (!ctl.signal.aborted) open(plan.id, week.week_id);
+      if (ctl.signal.aborted) return;
+      setDone(true);
+      await ringFinished();
+      open(plan.id, week.week_id);
     } catch (e) {
       // 취소했거나 새 요청이 시작됐으면 이 요청은 화면을 바꾸지 않는다(새 요청의 busy 도 풀지 않는다).
       const stale = () => ctl.signal.aborted || controller.current !== ctl;
@@ -234,7 +239,11 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
         <GenerationRing
+          kind="weekly"
+          // Sol 실측: 33초(2026-11-05).
+          expect={35}
           title={`${label} 주간계획안을 만들고 있어요`}
+          done={done}
           steps={[`${label} 놀이 이어받기`, "요일별 활동 나누기", "문서로 정리하기"]}
           onCancel={() => {
             controller.current?.abort();
@@ -245,9 +254,10 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-7 pb-6 pt-5 text-[#2b2826] lg:h-[calc(100vh-60px)]">
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto border border-line bg-paper shadow-pg px-7 py-6">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+      <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <Tape />
+        <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -263,7 +273,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-none text-primary-deep">
+              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 주간계획안 만들기
               </h1>
               <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
@@ -287,7 +297,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                     role="radio"
                     aria-checked={sel}
                     onClick={() => setMonth(m)}
-                    className={`flex min-h-[46px] flex-col items-center justify-center rounded-xl border text-[15px] leading-tight ${
+                    className={`flex min-h-[46px] flex-col items-center justify-center rounded-md border text-[15px] leading-tight ${
                       sel
                         ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#4a3780]"
                         : done
@@ -322,7 +332,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                       aria-checked={sel}
                       disabled={p?.status === "CONFIRMED"}
                       onClick={() => (p ? open(p.id, w.week_id) : setWeekId(w.week_id))}
-                      className={`flex min-h-[52px] items-center justify-between gap-2 rounded-xl border px-4 text-left text-[15px] ${
+                      className={`flex min-h-[52px] items-center justify-between gap-2 rounded-md border px-4 text-left text-[15px] ${
                         sel
                           ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#4a3780]"
                           : p?.status === "CONFIRMED"
@@ -356,7 +366,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
                   월간에서 이어받아요
                 </h2>
               </div>
-              <div className="rounded-xl bg-[#f7f4ee] px-4 py-3">
+              <div className="rounded-md bg-[#f7f4ee] px-4 py-3">
                 <div className="text-[17px] font-bold">{inherit.theme || "생활주제 없음"}</div>
                 <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[14px]">
                   {inherit.rows.map((r) => (
@@ -383,18 +393,19 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
           {problem && (
             <p
               role="alert"
-              className="m-0 rounded-xl bg-[#fbeaea] px-4 py-3 text-sm text-[#8a2f2f]"
+              className="m-0 rounded-md bg-[#fbeaea] px-4 py-3 text-sm text-[#8a2f2f]"
             >
               {problem}
             </p>
           )}
 
-          <div className="mt-auto flex shrink-0 flex-col gap-2">
+          {/* 만들기 단추는 화면 아래에 붙여 둔다 — 낮은 화면(1440×900)에서도 스크롤 없이 보이게. */}
+          <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 flex-col gap-2 bg-paper pb-1 pt-2">
             <button
               type="button"
               onClick={() => void create()}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-xl bg-[#7053a0] text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 shadow-pg-hard transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="min-h-[54px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {mine ? `${label} 주간계획안 열기` : `${label} 주간계획안 만들기`}
             </button>

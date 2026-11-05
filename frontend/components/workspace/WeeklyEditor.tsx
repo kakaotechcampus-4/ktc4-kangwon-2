@@ -27,7 +27,10 @@ import {
 import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
-import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
+import PlayMonthlyConfirm, {
+  BlankRows,
+  PanelOverview,
+} from "@/components/plan-generator/PlayMonthlyConfirm";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
@@ -113,9 +116,9 @@ export default function WeeklyEditor({
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
-  const [asking, setAsking] = useState<"" | "confirm" | "blank">("");
-  // 빈 칸 알림을 다시 누를 때마다 새로 그려 다시 흔든다.
-  const [nudge, setNudge] = useState(0);
+  const [asking, setAsking] = useState<"" | "confirm">("");
+  // 「이 칸 빼기」를 묻는 칸 — 글이 있는 칸은 되돌릴 수 없어 한 번 묻는다.
+  const [dropAsk, setDropAsk] = useState<string | null>(null);
   const history = useCellHistory();
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
@@ -123,6 +126,8 @@ export default function WeeklyEditor({
   const [status, setStatus] = useState<keyof typeof SAVE_LABEL>("idle");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  // 머리줄 안내를 지우는 타이머 — 마지막 안내의 것만 남긴다(같은 문구가 이어져도 일찍 지우지 않는다).
+  const flash = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [problem, setProblem] = useState("");
   const edited = useEdited(plan);
   // 저장 줄 — 앞 요청이 끝나야 다음이 그 revision 으로 간다. 화면이 내려간 뒤에는 저장만 마친다.
@@ -180,7 +185,10 @@ export default function WeeklyEditor({
           ? Object.fromEntries(Object.entries(d).filter(([k]) => k !== itemId))
           : d,
       );
-      if (changed) setStatus(failed.current.size ? "failed" : "saved");
+      if (!changed) return;
+      setStatus(failed.current.size ? "failed" : "saved");
+      // 다시 저장해 모두 저장되면 실패 문구도 지운다.
+      if (!failed.current.size) setMessage("");
     };
     // 같은지는 보내기 직전에 본다 — 앞 저장이 끝난 뒤의 서버 값과 비교해야 마지막 입력을 버리지 않는다.
     enqueue(async () => {
@@ -199,6 +207,7 @@ export default function WeeklyEditor({
         failed.current.set(itemId, text);
         if (!mounted.current) return;
         setStatus("failed");
+        clearTimeout(flash.current);
         setMessage(
           "저장하지 못했어요. 쓴 글은 그대로 두었어요 — 「다시 저장」을 눌러 주세요. " +
             describe(e, ""),
@@ -243,6 +252,9 @@ export default function WeeklyEditor({
       await enqueue(async () => accept(await job(latest.current)));
       setBump((b) => b + 1);
       setMessage(done);
+      // 알림은 머리줄 저장 표시 자리에 잠깐 — 패널을 밀지 않고 저절로 사라진다.
+      clearTimeout(flash.current);
+      flash.current = setTimeout(() => mounted.current && setMessage(""), 4000);
     } catch (e) {
       if (isSaveConflict(e)) return conflict();
       setProblem(describe(e, "처리하지 못했어요."));
@@ -263,7 +275,14 @@ export default function WeeklyEditor({
   const put = (cellId: string, candidateId: string) =>
     afterSaves(
       "copy",
-      (cur) => copyWeeklyActivity(cur.id, cellId, candidateId, cur.revision),
+      async (cur) => {
+        const next = await copyWeeklyActivity(cur.id, cellId, candidateId, cur.revision);
+        const text = (p: WeeklyPlan) =>
+          p.sections.flatMap((x) => x.cells).find((c) => c.item_id === cellId)?.value ?? "";
+        // 넣기도 칸 글 변경이라 되돌리기로 되돌린다(월간과 같다).
+        history.record(cellId, text(cur), text(next));
+        return next;
+      },
       "후보를 넣었어요.",
     );
   const split = (cellId: string, axis: "VERTICAL" | "HORIZONTAL") =>
@@ -321,12 +340,24 @@ export default function WeeklyEditor({
     afterSaves(
       "confirm",
       (cur) => confirmWeeklyPlan(cur.id, cur.revision),
-      "확정했어요. 이제 고칠 수 없어요.",
+      "확정했어요. 고치려면 확정을 풀어 주세요.",
     );
 
   const shown = (cell: WeeklyCell) => live[cell.item_id] ?? cell.value;
   // 확정 전에 알릴 빈 칸(입력 중 글 포함). 선생님이 직접 쓰는 칸(행사 등)은 빼고 본다.
   const blanks = cells.filter(({ cell }) => !cell.teacher_input && !shown(cell).trim());
+  const fillable = cells.filter(({ cell }) => !cell.teacher_input).length;
+  // 확정 확인은 한 번 — 남은 빈칸은 줄마다 세어 같은 상자에 보이고, 누르면 그 줄 첫 빈칸으로 간다.
+  const blankRows = sections
+    .map((s) => ({ s, empty: blanks.filter((b) => b.section === s) }))
+    .filter((r) => r.empty.length)
+    .map(({ s, empty }) => ({
+      key: s.section_key,
+      label: sectionName(s.section_key, s.label),
+      count: empty.length,
+      safety: s.section_key === "safety_education",
+      onJump: () => select(empty[0].cell.item_id),
+    }));
   /** 열린 입력창 글을 먼저 줄에 넣고, 그 저장까지 끝난 목록에서 한 걸음을 꺼내 다시 저장한다. */
   const through = (direction: "undo" | "redo") => {
     (document.activeElement as HTMLElement | null)?.blur();
@@ -361,29 +392,21 @@ export default function WeeklyEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
+      {/* 처음 화면은 남은 할 일 — 채운 정도 · 줄마다 빈칸 수(누르면 그 칸으로) · 고치는 법. */}
       {!picked && (
-        <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
+        <PanelOverview filled={fillable - blanks.length} total={fillable} rows={blankRows} />
       )}
       {picked && (
         <>
           <div className="flex items-end justify-between gap-3">
             <div className="flex items-center gap-2">
-              <h2 className="m-0 font-display text-[24px] font-bold leading-tight">{name}</h2>
+              <h2 className="m-0 text-[20px] font-bold leading-tight">{name}</h2>
               {origin && (
                 <span className="rounded-full bg-[#efeae2] px-2 py-0.5 text-[11px] font-bold text-[#5c5243]">
                   {origin}
                 </span>
               )}
             </div>
-            {/* 저장 상태를 입력창 가까이에도 — 읽어 주는 건 위 상태 줄(role=status) 하나. */}
-            {status !== "idle" && (
-              <span
-                aria-hidden="true"
-                className={`shrink-0 text-[13px] ${status === "failed" ? "font-bold text-[#a2492f]" : "text-[#8a8178]"}`}
-              >
-                {SAVE_LABEL[status]}
-              </span>
-            )}
           </div>
           {picked.section.repeat_by === "DAY" && (
             <div role="group" aria-label="요일 고르기" className="flex flex-wrap gap-1.5">
@@ -450,15 +473,37 @@ export default function WeeklyEditor({
               <button
                 type="button"
                 className={BUTTON.quiet}
+                // 흐린 까닭을 알린다 — 그날 칸이 하나뿐이면 뺄 수 없다.
+                title={
+                  picked.section.cells.filter((c) => c.day === picked.cell.day).length === 1
+                    ? "나눈 칸만 뺄 수 있어요"
+                    : undefined
+                }
                 disabled={
                   locked ||
                   picked.section.cells.filter((c) => c.day === picked.cell.day).length === 1
                 }
-                onClick={() => void remove(picked.cell.item_id)}
+                onClick={() => {
+                  const id = picked.cell.item_id;
+                  if ((live[id] ?? picked.cell.value)?.trim()) setDropAsk(id);
+                  else void remove(id);
+                }}
               >
                 이 칸 빼기
               </button>
             </div>
+          )}
+          {dropAsk === picked.cell.item_id && (
+            <PlayMonthlyConfirm
+              message="이 칸의 글이 문서에서 빠지고, 되돌릴 수 없어요. 뺄까요?"
+              yes="빼기"
+              disabled={locked}
+              onYes={() => {
+                setDropAsk(null);
+                void remove(picked.cell.item_id);
+              }}
+              onNo={() => setDropAsk(null)}
+            />
           )}
         </>
       )}
@@ -477,9 +522,7 @@ export default function WeeklyEditor({
     />
   ) : gridCell && candidates.length ? (
     <section aria-label="활동 후보" className="flex flex-col gap-4">
-      <h2 className="m-0 font-display text-[20px] font-bold leading-tight">
-        {where} 칸에 넣을 활동
-      </h2>
+      <h2 className="m-0 text-[18px] font-bold leading-tight">{where} 칸에 넣을 활동</h2>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {/* 넣은 후보는 맨 위로 — 안전교육 후보와 같다. 서버는 「[종류] 이름」으로 복사한다(weekly_activities.copy). */}
         {[...candidates]
@@ -523,28 +566,32 @@ export default function WeeklyEditor({
     </p>
   );
 
+  const hasAi = (grids.length > 0 && candidates.length > 0) || indoorSelection;
   const aside = (
     <>
-      <div
-        role="tablist"
-        aria-label="고치는 방법"
-        className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
-      >
-        {(["ai", "edit"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            className={tabClass(tab === key)}
-            onClick={() => setTab(key)}
-          >
-            {key === "ai" ? "AI 후보" : "칸 편집"}
-          </button>
-        ))}
-      </div>
+      {/* 넣을 후보가 없는 양식이면 탭 없이 칸 편집만 — 빈 「AI 후보」 탭을 두지 않는다. */}
+      {hasAi && (
+        <div
+          role="tablist"
+          aria-label="고치는 방법"
+          className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+        >
+          {(["ai", "edit"] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              className={tabClass(tab === key)}
+              onClick={() => setTab(key)}
+            >
+              {key === "ai" ? "AI 후보" : "칸 편집"}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
-        {tab === "ai" ? aiTab : editTab}
+        {hasAi && tab === "ai" ? aiTab : editTab}
       </div>
     </>
   );
@@ -622,7 +669,10 @@ export default function WeeklyEditor({
       lead={back}
       status={
         <span className="flex items-center gap-3">
-          <span role="status">{SAVE_LABEL[status]}</span>
+          <span role="status">
+            {/* 저장 중 · 실패가 안내보다 먼저다. */}
+            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
+          </span>
           <PlanMemoNote plan={plan} />
         </span>
       }
@@ -636,7 +686,7 @@ export default function WeeklyEditor({
           )}
           <div className="flex flex-wrap items-center gap-3">
             {plan.parent_changed && <span role="status">월간계획안이 바뀌었어요</span>}
-            <span role="status">{message}</span>
+            {status === "failed" && <span role="status">{message}</span>}
             {status === "failed" && (
               <button type="button" className={BUTTON.outline} disabled={locked} onClick={retry}>
                 다시 저장
@@ -658,33 +708,19 @@ export default function WeeklyEditor({
             type="button"
             className={BUTTON.primary}
             disabled={locked}
-            onClick={() => {
-              // 빈 칸이 남으면 흔들리는 알림으로 먼저 알린다. 근거가 없어 비운 칸도 있어 그대로 확정도 된다
-              // (꼭 필요한 칸 — 놀이 주제 등 — 은 서버가 확정을 거절한다).
-              if (!blanks.length) return setAsking("confirm");
-              setAsking("blank");
-              setNudge((n) => n + 1);
-            }}
+            // 남은 빈칸은 확인 상자에 함께 보인다. 근거가 없어 비운 칸도 있어 그대로 확정도 된다
+            // (꼭 필요한 칸 — 놀이 주제 등 — 은 서버가 확정을 거절한다).
+            onClick={() => setAsking("confirm")}
           >
             {busy === "confirm" ? "확정하는 중…" : "확정하기"}
           </button>
-          {asking === "blank" && (
-            <div className={POPOVER}>
-              <PlayMonthlyConfirm
-                key={nudge}
-                shake
-                message="아직 빈칸이 남아있어요. 채우지 않고 확정할 수도 있어요."
-                yes="그대로 확정"
-                onYes={() => setAsking("confirm")}
-                no="빈칸 채우기"
-                onNo={() => select(blanks[0].cell.item_id)}
-              />
-            </div>
-          )}
           {asking === "confirm" && (
             <div className={POPOVER}>
               <PlayMonthlyConfirm
-                message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 확정한 주간은 한글 파일로 내려받을 수 있어요."
+                message={
+                  (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
+                  "확정하면 확정을 풀기 전까지 고칠 수 없어요. 확정한 주간은 한글 파일로 내려받을 수 있어요."
+                }
                 yes="확정하기"
                 no="더 다듬기"
                 disabled={locked}
@@ -693,7 +729,9 @@ export default function WeeklyEditor({
                   void confirm();
                 }}
                 onNo={() => setAsking("")}
-              />
+              >
+                <BlankRows rows={blankRows} />
+              </PlayMonthlyConfirm>
             </div>
           )}
         </div>

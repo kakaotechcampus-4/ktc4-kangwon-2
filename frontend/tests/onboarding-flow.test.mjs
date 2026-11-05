@@ -24,53 +24,23 @@ const flow = await import("../lib/onboarding/flow.ts");
 const edit = await import("../lib/onboarding/classEdit.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 
-const params = (q) => new URLSearchParams(q);
-
 // ── 돌려보내기 ─────────────────────────────────────────────────────────────
 
-test("설정에서 들어오면 어느 온보딩 주소든 마지막 확인으로 간다", () => {
-  for (const route of ["center", "classes", "children"])
-    assert.equal(
-      flow.startupRedirect(route, "/onboarding/children", params("from=settings")),
-      "/onboarding/review?from=settings",
-      route,
-    );
-});
-
-test("마지막 확인 · 반 더 등록 · 아이 명단 고치기는 설정에서 와도 그 화면에 머문다", () => {
-  const dest = "/onboarding/children";
-  assert.equal(flow.startupRedirect("review", dest, params("from=settings")), null);
-  assert.equal(flow.startupRedirect("classes", dest, params("from=settings&add=1")), null);
-  assert.equal(flow.startupRedirect("children", dest, params("from=settings&back=review")), null);
-});
-
-test("설정을 거치지 않으면 돌려보내지 않는다", () => {
-  assert.equal(flow.startupRedirect("center", "/onboarding/children", params("")), null);
-});
-
 test("앞 단계가 비어 있으면 그 단계로 간다", () => {
-  assert.equal(
-    flow.startupRedirect("classes", "/onboarding/center", params("")),
-    "/onboarding/center",
-  );
-  assert.equal(
-    flow.startupRedirect("review", "/onboarding/classes", params("")),
-    "/onboarding/classes",
-  );
-  assert.equal(
-    flow.startupRedirect("children", "/onboarding/center", params("from=settings")),
-    "/onboarding/center",
-  );
+  assert.equal(flow.startupRedirect("classes", "/onboarding/center"), "/onboarding/center");
+  assert.equal(flow.startupRedirect("review", "/onboarding/classes"), "/onboarding/classes");
+  assert.equal(flow.startupRedirect("children", "/onboarding/center"), "/onboarding/center");
 });
 
-test("반을 등록하면 그 반의 아이 명단으로 가고 설정에서 왔다는 표시를 잇는다", () => {
+test("앞 단계가 다 찼으면 돌려보내지 않는다", () => {
+  assert.equal(flow.startupRedirect("center", "/onboarding/children"), null);
+  assert.equal(flow.startupRedirect("review", "/onboarding/children"), null);
+});
+
+test("반을 등록하면 그 반의 아이 명단으로 간다", () => {
   assert.equal(
-    flow.childrenPathAfterAdd("class-1", false),
+    flow.childrenPathAfterAdd("class-1"),
     "/onboarding/children?class=class-1&back=review",
-  );
-  assert.equal(
-    flow.childrenPathAfterAdd("class-1", true),
-    "/onboarding/children?class=class-1&back=review&from=settings",
   );
 });
 

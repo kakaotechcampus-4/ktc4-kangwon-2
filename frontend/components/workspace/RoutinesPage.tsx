@@ -28,7 +28,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { Posty } from "@/components/app/Posty";
-import { WorkspacePage, Empty, Message, Notice, ws } from "./WorkspaceUI";
+import { WorkspacePage, Empty, Message, Notice, Tape, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
@@ -1117,11 +1117,6 @@ function useMonthMarks(classId: number | null, month: string, visit: number) {
     };
   }, [classId, month, visit]);
   return marked;
-}
-
-/** 종이를 붙여 둔 테이프 한 조각. 첫 화면의 쪽지들과 같은 것이다. */
-function Tape() {
-  return <span aria-hidden="true" className={ws.tape} />;
 }
 
 /** 달력에서 오늘에 치는 동그라미. 한 바퀴를 덜 닫아 손으로 그은 자국으로 보인다. */

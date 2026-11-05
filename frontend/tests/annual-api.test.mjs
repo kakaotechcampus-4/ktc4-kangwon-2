@@ -163,6 +163,27 @@ test("one annual plan per class: 409 ALREADY_EXISTS · nothing added", async () 
   assert.equal(read().plans.length, 1);
 });
 
+test("봉투가 붙은 4xx 는 warn 으로 적는다 — 호출부가 처리하는 거절이 개발 오버레이를 띄우면 안 된다", async () => {
+  const klass = await newClass();
+  await createAnnualPlan({ class_id: klass.id, form_id: null, format: "MONTHLY_THEME" });
+  const lines = [];
+  const realError = console.error,
+    realWarn = console.warn;
+  console.error = (...a) => lines.push(["error", String(a[0])]);
+  console.warn = (...a) => lines.push(["warn", String(a[0])]);
+  try {
+    await createAnnualPlan({ class_id: klass.id, form_id: null, format: "MONTHLY_THEME" }).catch(
+      () => {},
+    );
+  } finally {
+    console.error = realError;
+    console.warn = realWarn;
+  }
+  const logged = lines.filter(([, text]) => text.includes("POST /api/plans/annual → 409"));
+  assert.equal(logged.length, 1, "한 줄은 남긴다 — 숨기지 않는다");
+  assert.equal(logged[0][0], "warn", "console.error 가 아니라 warn 이어야 한다");
+});
+
 test("format: 빠지거나 모르는 값 · PLAY_PROJECT+form_id 는 422 · 놀이 프로젝트 응답은 4구간 × 후보 10개", async () => {
   const klass = await newClass();
   await rejects(createAnnualPlan({ class_id: klass.id, form_id: null }), 422, "VALIDATION_FAILED", [

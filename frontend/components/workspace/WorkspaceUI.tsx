@@ -34,6 +34,10 @@ export function WorkspacePage({
     </main>
   );
 }
+/** 종이를 붙여 둔 테이프 한 조각. 기록 · 계획안 화면의 첫 판에 붙인다. 부모는 relative 여야 한다. */
+export function Tape() {
+  return <span aria-hidden="true" className={styles.tape} />;
+}
 export function Empty({
   title,
   children,

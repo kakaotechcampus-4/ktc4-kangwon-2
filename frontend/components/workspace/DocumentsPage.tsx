@@ -47,7 +47,11 @@ import DocumentArchivePreview from "./DocumentArchivePreview";
 import DocumentArchiveView, { type ArchiveDoc } from "./DocumentArchiveView";
 import { createSelection } from "./document-selection";
 import { messageFor } from "./use-server-document";
-import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
+import { Empty, Message, useClasses, ws } from "./WorkspaceUI";
+import { Icon } from "@/components/app/icons";
+import { ArchiveNoteArt } from "./DocumentArchiveArt";
+import { FlowerMeadow } from "./ChildTrackingArt";
+import creation from "./DocumentCreation.module.css";
 import {
   WorkspaceViewState,
   FieldError,
@@ -670,7 +674,7 @@ export default function DocumentsPage() {
       <div className={ws.pageHead}>
         <div>
           <h1>문서 보관함</h1>
-          <p>계획안과 일지를 한곳에서 확인하고 관리하세요.</p>
+          <p>계획안과 작성한 문서들이 차곡차곡 모여 있어요.</p>
         </div>
         {/* 보관함은 찾아보는 곳이다. 만들기는 종류별 화면 안의 작성 단추로만 한다. */}
       </div>
@@ -714,6 +718,8 @@ export default function DocumentsPage() {
           setChildId("");
           setSelected([]);
           setMessage("");
+          // 편집 중이던 문서가 반을 바꿨다 돌아왔을 때 다시 열리지 않게 한다.
+          setEditingId("");
           selection.select("", null);
         }}
         documents={archiveDocs}
@@ -747,16 +753,49 @@ export default function DocumentsPage() {
     );
 
   return (
-    <WorkspacePage
-      title="문서 보관함"
-      description="계획안과 일지를 한곳에서 확인하고 관리하세요."
-      action={modeButton}
-    >
+    <main className={`${ws.page} ${creation.page}`}>
+      <header className={`${ws.pageHead} ${creation.header}`}>
+        <ArchiveNoteArt className={creation.headerCharacter} />
+        <div className={creation.headerCopy}>
+          <h1>문서 보관함</h1>
+          <p>우리 반의 일과를 문서로 정리하고 안전하게 보관해요.</p>
+        </div>
+        {modeButton}
+        <svg
+          className={creation.headerLandscape}
+          viewBox="0 0 600 160"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M180 57q-9-16 8-22 3-21 23-19 18-2 23 18 21-2 22 14 0 12-15 12h-49q-9 0-12-3m185-7q-8-16 9-21 6-22 26-19 20-1 25 20 21-3 22 15 0 10-15 10h-55q-10 0-12-5"
+            fill="#fffdfa"
+          />
+          <path
+            d="M49 160q-4-24 24-24-2-28 27-29 20-26 43-2 27-9 35 17 30-1 32 38m99 0q-1-24 22-26 0-26 28-24 13-30 40-25 26-1 34 25 24-9 36 17 35-3 36 33"
+            fill="#e4eacb"
+          />
+          <path
+            d="m16 153-3-8m11 8 2-11m7 11 4-6"
+            stroke="#accb85"
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+        </svg>
+      </header>
       {notices}
-      <div className={ws.grid}>
-        <section className={ws.card}>
-          <h2>문서 작성 조건</h2>
-          <div className={ws.form}>
+      <div className={creation.grid}>
+        <section className={`${ws.card} ${creation.card}`}>
+          <div className={creation.cardHead}>
+            <span className={creation.cardIcon}>
+              <Icon name="record" />
+            </span>
+            <div>
+              <h2>문서 작성 조건</h2>
+              <p className={creation.cardDescription}>문서 종류, 담당 반, 날짜 등을 선택해요.</p>
+            </div>
+          </div>
+          <div className={`${ws.form} ${creation.form}`}>
             <label className={ws.field}>
               문서 종류
               <select
@@ -891,7 +930,7 @@ export default function DocumentsPage() {
                     : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
             </p>
             <button
-              className={ws.primary}
+              className={`${ws.primary} ${creation.generate}`}
               disabled={busy || !!blocked || listStatus !== "ready" || sourceStatus !== "ready"}
               onClick={generate}
             >
@@ -900,7 +939,7 @@ export default function DocumentsPage() {
             {blocked && <p className={ws.hint}>{blocked}</p>}
             {fromRoutines && routineHref && (
               <Link className={ws.link} href={routineHref}>
-                새 일과 기록 입력 →
+                새 일과 기록 열기 →
               </Link>
             )}
             {!fromRoutines && (
@@ -925,26 +964,40 @@ export default function DocumentsPage() {
           />
         )}
         {kind !== "dailyLog" && (
-          <section className={ws.card}>
-            <div className={ws.between}>
-              <h2>문서에 사용할 근거</h2>
-              <span className={ws.badge}>{sources.length}건 선택</span>
+          <section className={`${ws.card} ${creation.card} ${creation.evidenceCard}`}>
+            <div className={creation.cardHead}>
+              <span className={creation.cardIcon}>
+                <Icon name="doc" />
+              </span>
+              <div>
+                <h2>문서에 사용할 근거</h2>
+                <p className={creation.cardDescription}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
+              </div>
+              <span className={`${ws.badge} ${creation.count}`}>{sources.length}건 선택</span>
             </div>
-            <p className={ws.hint}>선택한 반·아동·기간의 기록만 표시됩니다.</p>
             <WorkspaceViewState
               status={sourceStatus}
               error={sourceError}
               loading="근거 기록을 불러오고 있어요."
               empty={
                 !candidates.length && (
-                  <Empty title="조건에 맞는 근거가 없어요">
-                    날짜를 변경하거나{" "}
-                    {fromRoutines
-                      ? "일과 기록을 먼저 입력해주세요."
-                      : kind === "weeklyLog"
-                        ? "일일 보육일지를 먼저 작성하고 확정해주세요."
-                        : "관찰 기록을 먼저 입력해주세요."}
-                  </Empty>
+                  // 일일 보육일지 쪽(DailyLogSources)과 같은 빈 화면이다. 한 화면에서 종류만
+                  // 바꿨는데 그림이 달라지면 다른 기능으로 읽힌다.
+                  <div className={`${ws.empty} ${creation.empty}`}>
+                    <div className={creation.emptyGarden} aria-hidden="true">
+                      <FlowerMeadow className={creation.emptyFlowers} />
+                      <ArchiveNoteArt tone="sage" className={creation.emptyCharacter} />
+                    </div>
+                    <h3>조건에 맞는 근거가 없어요</h3>
+                    <p>
+                      날짜를 변경하거나{" "}
+                      {fromRoutines
+                        ? "일과 기록을 먼저 입력해주세요."
+                        : kind === "weeklyLog"
+                          ? "일일 보육일지를 먼저 작성하고 확정해주세요."
+                          : "관찰 기록을 먼저 입력해주세요."}
+                    </p>
+                  </div>
                 )
               }
             >
@@ -985,6 +1038,6 @@ export default function DocumentsPage() {
           </section>
         )}
       </div>
-    </WorkspacePage>
+    </main>
   );
 }

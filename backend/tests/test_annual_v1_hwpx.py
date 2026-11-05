@@ -136,7 +136,9 @@ def test_product_export_route_uses_the_week_cell_template(monkeypatch):
 
     from app.features.plans import export
 
-    row = SimpleNamespace(id=1, status="CONFIRMED", plan_ref="annual_test", body={})
+    row = SimpleNamespace(
+        id=1, status="CONFIRMED", plan_ref="annual_test", body={}, class_name="햇살반"
+    )
     plan = SimpleNamespace(
         class_id=1,
         school_year=2026,

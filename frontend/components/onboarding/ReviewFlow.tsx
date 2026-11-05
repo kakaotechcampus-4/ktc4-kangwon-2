@@ -12,7 +12,7 @@ import { Notice } from "@/components/workspace/WorkspaceUI";
 import { completeAccountOnboarding } from "@/lib/auth/local-account";
 import { saveClassSettings, shownPrimaryId } from "@/lib/onboarding/settings";
 import { syncClasses, rememberConsent } from "@/lib/api/onboarding";
-import { finishedSettings, showsPrimarySelect, withFromSettings } from "@/lib/onboarding/flow";
+import { finishedSettings, showsPrimarySelect } from "@/lib/onboarding/flow";
 import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/onboarding/types";
 
 const WELCOME_KEY = "saessak.welcome";
@@ -24,7 +24,7 @@ type View =
 export default function ReviewFlow() {
   const router = useRouter();
   const data = useOnboardingData("review");
-  const { settings, commit, error, setError, fromSettings } = data;
+  const { settings, commit, error, setError } = data;
   const [view, setView] = useState<View>({ kind: "list" });
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,11 +59,6 @@ export default function ReviewFlow() {
       const finished = finishedSettings(settings);
       if (!saveClassSettings(finished) || !completeAccountOnboarding())
         throw new Error("설정을 저장하지 못했어요.");
-      // 설정에서 고치러 온 교사에게는 환영 인사를 다시 띄우지 않는다.
-      if (fromSettings) {
-        router.push("/settings");
-        return;
-      }
       try {
         sessionStorage.setItem(WELCOME_KEY, "1");
       } catch {}
@@ -115,12 +110,9 @@ export default function ReviewFlow() {
       </>
     );
 
-  const addPath = withFromSettings("/onboarding/classes?add=1", fromSettings);
+  const addPath = "/onboarding/classes?add=1";
   const childrenPath = (id: string) =>
-    withFromSettings(
-      `/onboarding/children?class=${encodeURIComponent(id)}&back=review`,
-      fromSettings,
-    );
+    `/onboarding/children?class=${encodeURIComponent(id)}&back=review`;
   const region = `${settings.regionProvince} ${settings.regionDistrict}`.trim();
 
   return (
@@ -130,7 +122,7 @@ export default function ReviewFlow() {
       progress={1}
       footer={
         <CtaButton disabled={busy || settings.classes.length === 0} onClick={() => void finish()}>
-          {fromSettings ? "설정으로 돌아가기" : "이대로 시작할게요"}
+          이대로 시작할게요
         </CtaButton>
       }
     >

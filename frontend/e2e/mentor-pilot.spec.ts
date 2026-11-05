@@ -190,11 +190,12 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await cell(0).click();
   await field.fill("친구와 함께 만드는 새로운 우리 반 놀이");
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
+  // 안전교육을 아직 놓지 않은 주는 빈칸으로 센다(c4cb083c) — 확정 창이 「빈칸이 남아 있어요」로 시작한다.
   await page
-    .getByRole("group", { name: /^확정하면/ })
+    .getByRole("group", { name: /확정하면 확정을 풀기 전까지/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
-  await expect(page.getByText("확정했어요. 이제 고칠 수 없어요.")).toBeVisible();
+  await expect(page.getByText("확정했어요. 고치려면 확정을 풀어 주세요.")).toBeVisible();
   // 확정 후 화면: 확정본 · 한글 내보내기 · 주간 만들기 · 홈.
   await expect(page.getByRole("heading", { name: /월 월간계획안을 확정했어요$/ })).toBeVisible();
   await expect(
@@ -455,15 +456,17 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 진입한다", async
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "설정", exact: true, level: 1 })).toBeVisible();
+  // 트렌드봇은 「기록 · 계획안」 묶음에 있다. 새로 열면 「우리 원」이 먼저 보인다.
+  const recordsTab = page.getByRole("tab", { name: "기록 · 계획안", exact: true });
+  await recordsTab.click();
   const trends = page.getByRole("checkbox", { name: "트렌드봇 사용", exact: true });
   await expect(trends).not.toBeChecked();
   await trends.click();
   await expect(trends).toBeChecked();
   await page.reload();
+  await recordsTab.click();
   await expect(trends).toBeChecked();
   expect((await api(page, `/api/centers/${user.center_id}/settings`)).trends_enabled).toBe(true);
-  await page.getByRole("button", { name: "초대 코드 만들기", exact: true }).click();
-  await expect(page.getByText(/초대 코드 [A-Z2-9]{10}/)).toBeVisible();
   await page.goto("/templates");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("양식");
   await page.goto("/trends");
@@ -483,27 +486,12 @@ test("멘토: 등록한 반을 마지막 확인에서 고치면 같은 반이 �
   const before = await api(page, `/api/centers/${user.center_id}/classes`);
   // 설정의 반 관리는 새 온보딩의 마지막 확인으로 간다(ADR-062).
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
-  await page.getByRole("link", { name: "반·담당 반 관리", exact: true }).click();
-  await expect(page).toHaveURL(/\/onboarding\/review\?from=settings$/);
-  await page.getByRole("button", { name: "햇살반 고치기", exact: true }).click();
-  await page.getByLabel("반 이름").fill("새싹반");
-  await page.getByRole("button", { name: "저장", exact: true }).click();
-  await expect(page.getByRole("region", { name: "새싹반 정보" })).toBeVisible();
-  // 새 반을 만들지 않고 같은 반의 이름만 바뀐다 — 아이와 기록이 그대로 붙어 있다.
-  const after = await api(page, `/api/centers/${user.center_id}/classes`);
-  expect(after.items.map((c: { id: number; name: string }) => [c.id, c.name])).toEqual(
-    before.items.map((c: { id: number }) => [c.id, "새싹반"]),
-  );
-
-  // 아이가 있는 반은 동의를 끌 수 없다 — 알림이 뜨고 체크는 그대로다.
-  await page.getByRole("button", { name: "새싹반 고치기", exact: true }).click();
-  const consent = page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.");
-  await consent.click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "아이 명단이 있어 동의를 끌 수 없어요" }),
-  ).toBeVisible();
-  await expect(consent).toBeChecked();
-  await page.getByRole("button", { name: "이전", exact: true }).click();
-  await page.getByRole("button", { name: "설정으로 돌아가기", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings$/);
+  // 반 쪽지를 떼어 연다. 등록한 반은 고칠 칸 없이 글로만 보인다. 저장 길은 첫 설정 화면과 같다.
+  await page.getByRole("button", { name: "반 · 담당 반 수정", exact: true }).click();
+  const note = page.getByRole("dialog", { name: "반 · 담당 반" });
+  await expect(note.getByText("햇살반", { exact: true })).toBeVisible();
+  await expect(note.getByRole("textbox", { name: "반 이름" })).toHaveCount(0);
+  await note.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(note).toBeHidden();
+  expect(await api(page, `/api/centers/${user.center_id}/classes`)).toEqual(before);
 });

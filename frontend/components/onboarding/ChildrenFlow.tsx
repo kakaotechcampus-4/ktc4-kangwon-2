@@ -18,7 +18,7 @@ import {
 } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
 import { addServerChild, removeServerChild } from "@/lib/api/onboarding";
-import { REVIEW_PATH, withFromSettings } from "@/lib/onboarding/flow";
+import { REVIEW_PATH } from "@/lib/onboarding/flow";
 import type { ChildEntry, ClassroomEntry } from "@/lib/onboarding/types";
 
 /** 받침이 있으면 「은」, 없으면 「는」. 반 · 아이 이름 뒤 조사를 맞춘다. */
@@ -32,7 +32,7 @@ function eunNeun(word: string) {
 export default function ChildrenFlow() {
   const router = useRouter();
   const data = useOnboardingData("children");
-  const { settings, commit, error, setError, fromSettings, params } = data;
+  const { settings, commit, error, setError, params } = data;
   const onlyId = params.get("class");
   const backToReview = params.get("back") === "review";
   const [index, setIndex] = useState(0);
@@ -40,7 +40,7 @@ export default function ChildrenFlow() {
 
   const classes = onlyId ? settings.classes.filter((c) => c.id === onlyId) : settings.classes;
   const classroom = classes[index];
-  const reviewPath = withFromSettings(REVIEW_PATH, fromSettings);
+  const reviewPath = REVIEW_PATH;
 
   function updateChildren(id: string, children: ClassroomEntry["children"]) {
     const next = {

@@ -46,7 +46,7 @@ export function PlanMemoField(props: {
         >
           요청 사항
         </label>
-        <span className="text-[13px] text-[#8a8178]">
+        <span className="text-[13px] text-ink-soft">
           {value.length}/{MEMO_MAX}자
         </span>
       </div>
@@ -58,7 +58,7 @@ export function PlanMemoField(props: {
         placeholder={props.placeholder}
         aria-invalid={!!props.error}
         aria-describedby={props.error ? "plan-memo-error" : undefined}
-        className="min-h-[96px] resize-none rounded-xl border border-[#ddd6ca] px-4 py-3 text-[15px] placeholder:text-[#8a8178]"
+        className="min-h-[96px] resize-none rounded-md border border-[#ddd6ca] px-4 py-3 text-[15px] placeholder:text-ink-hint"
       />
       {props.error && (
         <p id="plan-memo-error" role="alert" className="m-0 text-sm text-[#8a2f2f]">
@@ -94,7 +94,7 @@ export function PlanMemoNote({ plan }: { plan: PlanMemo }) {
       <summary className="cursor-pointer font-bold text-[#5e4b96]">
         요청 사항 있음{notices.length > 0 && ` · 반영 못한 요청 ${notices.length}`}
       </summary>
-      <div className="absolute right-0 z-20 mt-2 flex w-[min(360px,80vw)] flex-col gap-2 rounded-xl border border-[#e8e2d8] bg-white px-4 py-3 text-left text-sm font-normal text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.35)]">
+      <div className="absolute right-0 z-20 mt-2 flex w-[min(360px,80vw)] flex-col gap-2 rounded-md border border-[#e8e2d8] bg-white px-4 py-3 text-left text-sm font-normal text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.35)]">
         <p className="m-0 whitespace-pre-wrap">{memo}</p>
         {notices.length > 0 && (
           <div className="flex flex-col gap-1 border-t border-[#efe9df] pt-2">

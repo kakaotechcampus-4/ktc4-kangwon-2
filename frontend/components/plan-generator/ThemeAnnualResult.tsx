@@ -16,11 +16,13 @@ import {
   slotMismatch,
   slotRows,
 } from "@/lib/plan-generator/subThemeSlots";
+import Link from "next/link";
 import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
   BigView,
   BUTTON,
   POPOVER,
-  tabClass,
   UndoRedo,
   useSheetZoom,
 } from "./AnnualFrame";
@@ -32,7 +34,7 @@ type Draft = { theme: string; sub_themes: string[] };
 const SAVE_LABEL = {
   idle: "",
   saving: "저장 중…",
-  saved: "자동 저장됨",
+  saved: "저장됨",
   failed: "저장하지 못했어요",
 };
 const draftsOf = (plan: AnnualPlan) =>
@@ -46,7 +48,7 @@ const clean = (value: Draft): Draft => ({
 const same = (a: Draft, b: Draft) =>
   a.theme === b.theme && a.sub_themes.join("\n") === b.sub_themes.join("\n");
 const slotInputId = (slot: ThemeSlot) => `annual-slot-${slot.month}-${slot.slot}`;
-const INPUT = "rounded-xl border border-[#ddd6ca] px-3 py-2 text-[15px] leading-relaxed";
+const INPUT = "rounded-md border border-[#ddd6ca] px-3 py-2 text-[15px] leading-relaxed";
 
 /**
  * ⑤ 월별 주제형 다듬기. 왼쪽은 「칸 편집」 하나 — 생활주제와 주차별 소주제(글 고치기, 순서는 문서에서 끌어놓기).
@@ -250,14 +252,9 @@ export default function ThemeAnnualResult({
 
   const aside = (
     <>
-      <div className="flex gap-5 border-b border-[#efeae2] px-6 pt-2">
-        <span className={`${tabClass(true)} flex items-center`}>칸 편집</span>
-      </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         <label className="flex flex-col gap-1.5">
-          <span className="font-display text-[20px] font-bold leading-tight">
-            {selected.month}월 생활주제
-          </span>
+          <span className="text-[18px] font-bold leading-tight">{selected.month}월 생활주제</span>
           <input
             className={INPUT}
             id={slotInputId({ month: selected.month, slot: "theme" })}
@@ -268,7 +265,7 @@ export default function ThemeAnnualResult({
           />
         </label>
         <section className="flex flex-col gap-2" aria-label={`${selected.month}월 소주제`}>
-          <h2 className="m-0 font-display text-[20px] font-bold leading-tight">소주제</h2>
+          <h2 className="m-0 text-[18px] font-bold leading-tight">소주제</h2>
           {slotMismatch(draft.sub_themes, month.week_count) && (
             <p role="status" className="m-0 text-[13px] font-bold text-[#b3261e]">
               주마다 하나씩 — {month.week_count}개를 맞춰야 확정할 수 있어요.
@@ -304,6 +301,11 @@ export default function ThemeAnnualResult({
     <AnnualFrame
       title={`${plan.school_year} 연간계획안`}
       format={plan.format}
+      lead={
+        <Link href="/plans" aria-label="돌아가기: 계획안" title="계획안" className={BACK_BUTTON}>
+          {BACK_ICON}
+        </Link>
+      }
       status={
         <span className="flex items-center gap-3">
           {SAVE_LABEL[status]}

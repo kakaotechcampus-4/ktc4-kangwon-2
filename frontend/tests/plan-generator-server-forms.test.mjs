@@ -166,10 +166,16 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
     },
     "@/lib/onboarding/settings": settingsLib,
     "@/lib/onboarding/types": onboardingTypes,
-    "@/components/plan-ui/GenerationRing": { __esModule: true, default: "generation-ring" },
+    "@/components/plan-ui/GenerationRing": {
+      __esModule: true,
+      default: "generation-ring",
+      ringFinished: async () => {},
+    },
     "./PlanMemo": { PlanMemoField: () => null, memoError: () => null },
     "./AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
     "@/components/app/compact-shell": { useCompactShell: (on) => compact.push(on) },
+    "@/components/workspace/WorkspaceUI": { Tape: () => null },
+    "@/components/app/Tour": { SlideTour: () => null },
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)(
@@ -249,6 +255,7 @@ test("놀이 중심형은 form_id 를 보내지 않고, 만드는 동안 원형 
   // 진행률은 서버가 주지 않는다 — 넘기지 않으면 고리가 스스로 돈다.
   assert.equal(ring.props.progress, undefined);
   assert.deepEqual(ring.props.steps, ["놀이 떠올리기", "계절별로 나누기", "문서로 정리하기"]);
+  assert.equal(ring.props.done, false);
   release();
   await drain();
   assert.deepEqual(p.created().body, { class_id: 31, format: "PLAY_PROJECT" });

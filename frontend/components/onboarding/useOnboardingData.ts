@@ -17,9 +17,9 @@ import {
 } from "@/lib/api/onboarding";
 
 /** 저장된 설정과 돌려보낼 곳을 마운트 시 한 번만 읽는다(브라우저 전용, 서버에서는 빈 값). */
-function readStartup(route: OnboardingRoute, params: URLSearchParams) {
+function readStartup(route: OnboardingRoute) {
   const saved = loadClassSettings();
-  const redirectTo = startupRedirect(route, onboardingDestination(), params);
+  const redirectTo = startupRedirect(route, onboardingDestination());
   return {
     saved,
     redirectTo,
@@ -41,7 +41,7 @@ export function useOnboardingData(route: OnboardingRoute) {
   const router = useRouter();
   const params = useSearchParams();
   const hydrated = useHydrated();
-  const [startup] = useState(() => readStartup(route, params));
+  const [startup] = useState(() => readStartup(route));
   const [settings, setSettings] = useState<ClassSettings>(startup.settings);
   const [error, setError] = useState("");
   const [listLoaded, setListLoaded] = useState(false);
@@ -103,6 +103,5 @@ export function useOnboardingData(route: OnboardingRoute) {
     error,
     setError,
     params,
-    fromSettings: params.get("from") === "settings",
   };
 }
