@@ -1737,20 +1737,28 @@ a.item {
   line-height: 1.7;
   color: var(--pg-ink);
 }
-.recordWhere {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: auto;
-  font-size: 12.5px;
-  color: var(--pg-ink-soft);
+/* 카드의 영역 표시는 그림 하나 — 이름은 위 거르기 칩이 알려 준다 */
+.recordDomain[role="img"] {
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
 }
-.recordWhere::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--pg-ink-hint);
+/* 고르기 전에도 그림 색은 그 영역 색이라, 칩이 카드 그림의 이름표 노릇을 한다 */
+.recordFilter[data-tone="body"] svg {
+  color: var(--pg-alert-ink);
+}
+.recordFilter[data-tone="talk"] svg {
+  color: var(--pg-primary-ink);
+}
+.recordFilter[data-tone="social"] svg {
+  color: var(--pg-sun-ink);
+}
+.recordFilter[data-tone="art"] svg {
+  color: var(--pg-primary-deep);
+}
+.recordFilter[data-tone="nature"] svg {
+  color: var(--pg-sage-ink);
 }
 .recordActions {
   display: flex;
@@ -1896,11 +1904,6 @@ a.item {
   font-size: 13px;
   font-weight: 600;
   color: var(--pg-ink-soft);
-}
-.recordWays {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 /* 작은 밑줄 글씨라 오른쪽 끝에서 사라졌다. 다음에 갈 곳이라 단추 모양으로 세운다. */
 .recordWay {

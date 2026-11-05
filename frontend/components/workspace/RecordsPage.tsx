@@ -3,7 +3,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { today, validDate } from "@/lib/workspace/model";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
-import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -438,16 +437,10 @@ export default function RecordsPage() {
             <h2 className={ws.recordListTitle}>
               쌓인 기록 <span>{shown.length}건</span>
             </h2>
-            <span className={ws.recordWays}>
-              <RoutinesLink classId={classId} date={date} />
-              {/* 아이 등록은 가끔 하는 일이라 적는 칸 머리에서 내렸다. 화면 밖으로 나가는 길은 여기 모은다. */}
-              <Link href="/onboarding" className={ws.recordWay}>
-                아이 등록 →
-              </Link>
-              <Link href="/documents" className={ws.recordWay}>
-                문서 만들기 →
-              </Link>
-            </span>
+            {/* 일과 기록 · 아이 등록은 사이드바와 설정에 이미 있다. 여기서는 기록의 다음 걸음 하나만 둔다. */}
+            <Link href="/documents" className={ws.recordWay}>
+              관찰일지 만들기 →
+            </Link>
           </div>
           {/* 홈의 「이 아이 기록 보기」로 들어오면 목록이 한 아이만 남는다. 그 사실을 화면이
               말해 주지 않아서, 들어온 교사가 「제대로 찾아온 건가」를 알 수 없었다. */}
@@ -479,6 +472,7 @@ export default function RecordsPage() {
                 data-tone={DOMAIN_LOOK[name]?.tone}
                 onClick={() => setArea(name)}
               >
+                {name && <Icon name={DOMAIN_LOOK[name].icon} width={14} height={14} />}
                 {name || "전체"}
                 <span>{name ? (areaCounts.get(name) ?? 0) : counted.length}</span>
               </button>
@@ -496,22 +490,6 @@ export default function RecordsPage() {
         </section>
       </div>
     </WorkspacePage>
-  );
-}
-
-/**
- * 일과 기록으로 가는 길. 보고 있던 반·날짜를 그대로 들고 간다.
- *
- * **고른 반의 서버 번호를 모르면 보내지 않는다.** 날짜만 들려 보내면 S-J1 이 「반을 안 골랐다」로
- * 읽고 주 반을 연다 — 교사는 B 를 눌렀는데 A 가 열린다 (FR-405).
- */
-function RoutinesLink({ classId, date }: { classId: string; date: string }) {
-  const href = routinesPath(classId, date);
-  if (!href) return <small className={ws.hint}>{ROUTINES_UNMAPPED}</small>;
-  return (
-    <Link href={href} className={ws.recordWay}>
-      일과 기록 →
-    </Link>
   );
 }
 
@@ -610,15 +588,22 @@ function RecordItem({
             <ChildShape mark={markFor(record.childId)} size={15} />
           </span>
           <b>{record.childName}</b>
-          <span className={ws.recordDomain} data-tone={DOMAIN_LOOK[record.domain]?.tone}>
-            {DOMAIN_LOOK[record.domain] && (
-              <Icon name={DOMAIN_LOOK[record.domain].icon} width={13} height={13} />
-            )}
-            {record.domain}
-          </span>
+          {/* 영역 이름은 위 거르기 칩이 읽어 준다. 카드에는 그림과 색만 남겨 아이가 한 말이 먼저 보이게 한다. */}
+          {DOMAIN_LOOK[record.domain] ? (
+            <span
+              className={ws.recordDomain}
+              data-tone={DOMAIN_LOOK[record.domain].tone}
+              role="img"
+              aria-label={record.domain}
+              title={record.domain}
+            >
+              <Icon name={DOMAIN_LOOK[record.domain].icon} width={15} height={15} />
+            </span>
+          ) : (
+            <span className={ws.recordDomain}>{record.domain}</span>
+          )}
         </span>
         <span className={ws.recordFact}>{record.fact}</span>
-        {record.context && <span className={ws.recordWhere}>{record.context}</span>}
       </button>
       {open && (
         <div className={ws.recordActions}>

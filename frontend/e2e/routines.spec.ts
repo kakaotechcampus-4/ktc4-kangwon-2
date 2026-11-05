@@ -462,10 +462,8 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await switchClass(page, "달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toHaveCount(0);
-  // 사이드바 메뉴에도 「일과 기록」이 있다. 본문의 길만 본다.
-  const write = page.getByRole("main").getByRole("link", { name: "일과 기록 →", exact: true });
-  await expect(write).toHaveAttribute("href", `/routines?date=${date}&class_id=${other.id}`);
-  await write.click();
+  // 관찰 기록 본문의 「일과 기록 →」은 걷었다. 사이드바 메뉴로 가도 고른 반이 따라간다.
+  await page.getByRole("link", { name: "일과 기록", exact: true }).click();
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await page.getByLabel("날짜", { exact: true }).fill("2026-10-16");
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
