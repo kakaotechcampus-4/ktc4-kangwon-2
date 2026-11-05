@@ -179,19 +179,17 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
 }
 
 /**
- * 말풍선 글 — 굵은 앞 문구와 풀어 쓴 뒷 문구를 같은 크기 · 같은 글자색의 한 문단으로 잇는다
- * (포스티가 한 번에 말하는 것처럼). 글이 바뀌면 `key` 로 처음부터 다시 친다.
- * 아직 안 친 글자는 자리를 잡지 않는다(말풍선이 글과 함께 자란다). 가운데 맞춤이면 글자마다 줄이
- * 흔들려서 왼쪽 맞춤이다.
+ * 말풍선 글 — 앞 문구와 뒷 문구를 굵기 · 크기 · 글자색이 모두 같은 한 문단으로 잇는다
+ * (포스티가 한 번에 말하는 것처럼). 앞 문구는 늘 응원 한마디라 굵게 하면 덜 중요한 쪽이 눈에 띈다.
+ * 글이 바뀌면 `key` 로 처음부터 다시 친다. 아직 안 친 글자는 자리를 잡지 않는다(말풍선이 글과 함께
+ * 자란다). 가운데 맞춤이면 글자마다 줄이 흔들려서 왼쪽 맞춤이다.
  */
 function SayLines({ say }: { say: PostySay }) {
-  const shown = useTypewriter(say.title.length + say.body.length + 1);
-  // +1 은 앞 문구와 뒷 문구 사이 띄어쓰기 한 칸이다.
-  const bodyShown = shown - say.title.length - 1;
+  const text = `${say.title} ${say.body}`;
+  const shown = useTypewriter(text.length);
   return (
     <span aria-hidden="true" className="block text-[15px] leading-[1.6] text-ink">
-      <span className="font-bold">{say.title.slice(0, shown)}</span>
-      {bodyShown >= 0 && ` ${say.body.slice(0, bodyShown)}`}
+      {text.slice(0, shown)}
     </span>
   );
 }
