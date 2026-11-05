@@ -45,6 +45,10 @@ function harness(
   remove = async () => {
     throw new Error("Unexpected delete");
   },
+  unconfirm = async () => {
+    throw new Error("Unexpected unconfirm");
+  },
+  pushed = [],
 ) {
   const values = [];
   let cursor = 0;
@@ -73,22 +77,27 @@ function harness(
       },
     },
     "next/link": { __esModule: true, default: "link" },
+    "next/navigation": { useRouter: () => ({ push: (href) => pushed.push(href) }) },
     "@/lib/workspace/model": model,
     "@/lib/api/plans": {
       getAnnualPlan: (id, signal) => gateway("annual", id, signal),
       deleteAnnualPlan: (id) => remove("annual", id),
+      unconfirmAnnualPlan: (id, revision) => unconfirm("annual", id, revision),
     },
     "@/lib/api/monthly": {
       getMonthlyPlan: (id, signal) => gateway("monthly", id, signal),
       deleteMonthlyPlan: (id) => remove("monthly", id),
+      unconfirmMonthlyPlan: (id, revision) => unconfirm("monthly", id, revision),
     },
     "@/lib/api/playMonthly": {
       getPlayMonthly: (id, signal) => gateway("play", id, signal),
       deletePlayMonthly: (id) => remove("play", id),
+      unconfirmPlayMonthly: (id, revision) => unconfirm("play", id, revision),
     },
     "@/lib/api/weekly": {
       getWeeklyPlan: (id, signal) => gateway("weekly", id, signal),
       deleteWeeklyPlan: (id) => remove("weekly", id),
+      unconfirmWeeklyPlan: (id, revision) => unconfirm("weekly", id, revision),
     },
     "@/lib/api/client": { errorCode: (e) => e?.code ?? null },
     "@/components/plan-generator/PlayMonthlyConfirm": { __esModule: true, default: "ask" },
@@ -428,4 +437,33 @@ test("놀이 중심 월간은 놀이 월간 경로로 읽고 지운다", async (
     .props.onYes();
   assert.deepEqual([removed, deleted], [[["play", 1]], 1]);
   h.unmount();
+});
+test("확정본은 내 반 미리보기에서 확정을 풀고 편집 화면으로 간다 · 초안 · 남의 반은 단추가 없다", async () => {
+  const calls = [];
+  const pushed = [];
+  let status = "CONFIRMED";
+  const h = harness(
+    async (kind, id) => ({ id, class_id: 3, status, revision: 7, sections: [] }),
+    async () => {},
+    async (...args) => calls.push(args),
+    pushed,
+  );
+  const t = target("weekly");
+  h.render(t);
+  await settle();
+  const button = (onDeleted) =>
+    nodes(h.render(t, onDeleted)).find((n) => n.type === "button" && text(n) === "수정하기");
+  assert.equal(button(), undefined);
+  await button(() => {}).props.onClick();
+  assert.deepEqual([calls, pushed], [[["weekly", 1, 7]], ["/plans/weekly/1"]]);
+  h.unmount();
+  status = "DRAFT";
+  const d = harness(async (kind, id) => ({ id, class_id: 3, status, revision: 7, sections: [] }));
+  d.render(t);
+  await settle();
+  assert.equal(
+    nodes(d.render(t, () => {})).some((n) => text(n) === "수정하기"),
+    false,
+  );
+  d.unmount();
 });

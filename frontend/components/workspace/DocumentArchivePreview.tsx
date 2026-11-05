@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { deleteAnnualPlan, getAnnualPlan } from "@/lib/api/plans";
-import { deleteMonthlyPlan, getMonthlyPlan } from "@/lib/api/monthly";
-import { deletePlayMonthly, getPlayMonthly } from "@/lib/api/playMonthly";
-import { deleteWeeklyPlan, getWeeklyPlan } from "@/lib/api/weekly";
+import { useRouter } from "next/navigation";
+import { deleteAnnualPlan, getAnnualPlan, unconfirmAnnualPlan } from "@/lib/api/plans";
+import { deleteMonthlyPlan, getMonthlyPlan, unconfirmMonthlyPlan } from "@/lib/api/monthly";
+import { deletePlayMonthly, getPlayMonthly, unconfirmPlayMonthly } from "@/lib/api/playMonthly";
+import { deleteWeeklyPlan, getWeeklyPlan, unconfirmWeeklyPlan } from "@/lib/api/weekly";
 import { errorCode } from "@/lib/api/client";
 import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import { DOCUMENT_KINDS, localDate, type SavedDocument, type Section } from "@/lib/workspace/model";
@@ -136,6 +137,15 @@ function deletePlan(target: PlanPreviewTarget) {
   if (target.kind === "weekly") return deleteWeeklyPlan(target.id);
   return target.play ? deletePlayMonthly(target.id) : deleteMonthlyPlan(target.id);
 }
+/** 확정을 풀어 초안으로 되돌린다. 딸린 하위가 있어도 풀린다(하위는 부모 스냅샷을 그대로 가진다). */
+function unconfirmPlan(target: PlanPreviewTarget, revision: number | undefined) {
+  if (target.kind === "annual") return unconfirmAnnualPlan(target.id, revision);
+  if (revision === undefined) throw new Error("계획안 판이 없어요. 다시 열어 주세요.");
+  if (target.kind === "weekly") return unconfirmWeeklyPlan(target.id, revision);
+  return target.play
+    ? unconfirmPlayMonthly(target.id, revision)
+    : unconfirmMonthlyPlan(target.id, revision);
+}
 const IN_USE_MESSAGE: Record<PlanPreviewTarget["kind"], string> = {
   annual: "이 계획안으로 만든 월간계획안이 있어요. 먼저 지워주세요.",
   monthly: "이 계획안으로 만든 주간계획안이 있어요. 먼저 지워주세요.",
@@ -145,6 +155,7 @@ const IN_USE_MESSAGE: Record<PlanPreviewTarget["kind"], string> = {
 /**
  * 권한 검사는 기존 GET API가 한다. 이동/해제 뒤 늦은 응답은 버린다.
  * `onDeleted` 가 있으면 「삭제」를 그린다(상태 무관, 확정본도 — ADR-062). 남의 반은 넘기지 않는다.
+ * 확정본이고 편집 화면이 있으면 「수정하기」(누르면 확정을 풀고 편집 화면으로 간다)도 그린다 — 계획안 화면에는 확정 취소가 없다(ADR-062).
  */
 export function PlanArchivePreview({
   target,
@@ -154,13 +165,28 @@ export function PlanArchivePreview({
   onDeleted?: () => void;
 }) {
   const key = `${target.kind}:${target.classId}:${target.id}`;
-  const [request, setRequest] = useState<{ key: string; content?: Content; error?: string } | null>(
-    null,
-  );
+  const router = useRouter();
+  const [request, setRequest] = useState<{
+    key: string;
+    content?: Content;
+    revision?: number;
+    error?: string;
+  } | null>(null);
   const [retry, setRetry] = useState(0);
   const [asking, setAsking] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  async function unconfirm() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await unconfirmPlan(target, request?.revision);
+      router.push(target.href);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "확정을 풀지 못했어요.");
+      setDeleting(false);
+    }
+  }
   async function remove() {
     setDeleting(true);
     setDeleteError("");
@@ -246,6 +272,7 @@ export function PlanArchivePreview({
       if (live)
         setRequest({
           key,
+          revision: "revision" in plan ? plan.revision : undefined,
           content: {
             title: target.title,
             className: target.className,
@@ -286,6 +313,11 @@ export function PlanArchivePreview({
         <Link className={ws.primary} href={target.href}>
           문서 열기
         </Link>
+      )}
+      {onDeleted && target.href && current.content.status === "confirmed" && (
+        <button type="button" className={ws.secondary} disabled={deleting} onClick={unconfirm}>
+          수정하기
+        </button>
       )}
       {onDeleted && (
         <button

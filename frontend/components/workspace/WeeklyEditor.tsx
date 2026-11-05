@@ -335,7 +335,7 @@ export default function WeeklyEditor({
     afterSaves(
       "confirm",
       (cur) => confirmWeeklyPlan(cur.id, cur.revision),
-      "확정했어요. 고치려면 문서 보관함에서 지우고 다시 만들어 주세요.",
+      "확정했어요. 고치려면 문서 보관함의 「수정하기」를 눌러 주세요.",
     );
 
   const shown = (cell: WeeklyCell) => live[cell.item_id] ?? cell.value;
@@ -700,7 +700,7 @@ export default function WeeklyEditor({
                 <PlayMonthlyConfirm
                   message={
                     (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-                    "확정하면 고칠 수 없어요(고치려면 문서 보관함에서 지우고 다시 만들어요). 확정한 주간은 한글 파일로 내려받을 수 있어요."
+                    "확정하면 고칠 수 없어요(고치려면 문서 보관함의 「수정하기」를 눌러요). 확정한 주간은 한글 파일로 내려받을 수 있어요."
                   }
                   yes="확정하기"
                   no="더 다듬기"

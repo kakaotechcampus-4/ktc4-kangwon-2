@@ -556,7 +556,7 @@ function PlayMonthlyBody({
             plan={plan}
             ask={
               (blankRows.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-              "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 지우고 다시 만들어요." +
+              "확정하면 고칠 수 없어요. 고치려면 문서 보관함의 「수정하기」를 눌러요." +
               (plan.notices.length ? ` 확인할 것 ${plan.notices.length}개가 남았어요.` : "")
             }
             // 빈칸으로 가면 확정 창을 닫는다(주제형 월간 · 주간과 같다).
