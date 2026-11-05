@@ -30,8 +30,8 @@ const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평
  * 문서 보관함의 `DocumentEditor` 는 일지 · 계획안을 다 받는 범용이라 관찰일지에 맞춘
  * 모양을 줄 수 없다. 서버 동작(저장 · 확정 · 충돌)은 같은 `server` 한 벌을 쓴다.
  *
- * 고친 것이 있는데 화면을 떠나려 하면 가운데에 묻는다. 앱 안 이동(링크 · `data-leave`
- * 단추)만 잡을 수 있다 — 새로고침 · 탭 닫기는 브라우저 기본 창이 대신 묻는다.
+ * 고친 것이 있는데 화면을 떠나려 하면 가운데에 묻는다 — 링크 · 단추 · 브라우저 뒤로 가기
+ * 모두. 새로고침 · 탭 닫기는 브라우저 기본 창이 대신 묻는다 (`useLeaveGuard`).
  */
 export default function ObservationJournalEditor({
   initial,
@@ -114,7 +114,7 @@ export default function ObservationJournalEditor({
     void run(() => server.saveAndConfirm(doc.sections, "교사 사실·해석·지원 검토 완료"), "");
   }
 
-  const { dialog: leaveDialog, stay, go } = useLeaveGuard(dirty);
+  const { dialog: leaveDialog, stay, go, saveThenGo } = useLeaveGuard(dirty);
 
   return (
     <section className={ws.ojWrap} aria-label="관찰일지">
@@ -308,10 +308,7 @@ export default function ObservationJournalEditor({
             type="button"
             className={ws.primary}
             disabled={working}
-            onClick={async () => {
-              if (await save()) go();
-              else stay();
-            }}
+            onClick={() => saveThenGo(save)}
           >
             저장하고 나가기
           </button>
@@ -328,20 +325,46 @@ export default function ObservationJournalEditor({
 }
 
 /**
- * 고친 것이 있을 때 앱 안에서 떠나는 클릭을 붙잡는다.
+ * 고친 것이 있을 때 이 화면을 떠나려 하면 붙잡는다 — 어떻게 떠나든 같은 창을 띄운다.
  *
- * Next 앱 라우터에는 이동을 멈추는 훅이 없다. 그래서 **누르기 전에** 잡는다 — 문서 전체의
- * 링크(`a[href]`, 새 탭 · 내려받기 제외)와 `data-leave` 단추. 「나가기」를 고르면 막았던
- * 그 요소를 다시 누른다 — 링크면 Next 가, 단추면 원래 onClick 이 이어서 한다.
- * ponytail: 브라우저 뒤로 가기는 못 잡는다 — 잡아야 하면 history 에 한 칸을 끼우는 방식으로.
+ * - **앱 안 링크 · `data-leave` 단추**: 누르기 전에 잡는다(캡처 단계). Next 앱 라우터에는
+ *   이동을 멈추는 훅이 없다. 「나가기」를 고르면 막았던 그 요소를 다시 누른다.
+ * - **브라우저 뒤로 가기(마우스 · 키보드 · 스와이프)**: 고치기 시작할 때 history 에 같은
+ *   주소 한 칸을 끼워 둔다. 뒤로 가면 그 칸만 빠지므로 화면은 그대로고, 다시 끼운 뒤 묻는다.
+ *   「나가기」면 두 칸 뒤로 간다.
+ * - **새로고침 · 탭 닫기**: 브라우저가 직접 만든 창만 띄울 수 있다(`useUnsavedWarning`).
+ *
+ * 끼운 칸은 저장해서 고친 것이 없어지거나 「나가기」로 떠날 때 먼저 뺀다 — 남겨 두면
+ * 뒤로 가기를 한 번 더 눌러야 해서 고장으로 읽힌다.
  */
 function useLeaveGuard(dirty: boolean) {
   const dialog = useRef<HTMLDialogElement>(null);
   const held = useRef<HTMLElement | null>(null);
   const passing = useRef(false);
+  /** history 에 한 칸을 끼워 두었나. */
+  const armed = useRef(false);
+  /** 창을 뒤로 가기가 띄웠나. */
+  const viaBack = useRef(false);
+  /** 떠나는 중 — 그사이의 popstate · 칸 빼기를 건너뛴다. */
+  const leaving = useRef(false);
 
   useEffect(() => {
     if (!dirty) return;
+    const open = () => {
+      if (!dialog.current?.open) dialog.current?.showModal();
+    };
+    if (!armed.current) {
+      window.history.pushState(window.history.state, "", window.location.href);
+      armed.current = true;
+    }
+    const onBack = () => {
+      if (leaving.current) return;
+      // 끼워 둔 칸을 지나왔다. 다시 끼우고 묻는다.
+      window.history.pushState(window.history.state, "", window.location.href);
+      held.current = null;
+      viaBack.current = true;
+      open();
+    };
     const catchLeave = (event: MouseEvent) => {
       if (passing.current || event.defaultPrevented || event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -354,26 +377,72 @@ function useLeaveGuard(dirty: boolean) {
       event.preventDefault();
       event.stopPropagation();
       held.current = target;
-      dialog.current?.showModal();
+      viaBack.current = false;
+      open();
     };
+    window.addEventListener("popstate", onBack);
     document.addEventListener("click", catchLeave, true);
-    return () => document.removeEventListener("click", catchLeave, true);
+    return () => {
+      window.removeEventListener("popstate", onBack);
+      document.removeEventListener("click", catchLeave, true);
+    };
   }, [dirty]);
+
+  // 저장해서 고친 것이 없어졌다 — 끼워 둔 칸을 뺀다. 같은 주소라 화면은 그대로다.
+  useEffect(() => {
+    if (dirty || !armed.current || leaving.current) return;
+    armed.current = false;
+    window.history.back();
+  }, [dirty]);
+
+  function close() {
+    if (dialog.current?.open) dialog.current.close();
+  }
+  function go() {
+    const target = held.current;
+    const back = viaBack.current;
+    held.current = null;
+    viaBack.current = false;
+    leaving.current = true;
+    close();
+    if (back) {
+      // [앞 화면, 이 화면, 끼운 칸] 에서 앞 화면으로.
+      armed.current = false;
+      window.history.go(-2);
+      return;
+    }
+    const press = () => {
+      passing.current = true;
+      target?.click();
+      passing.current = false;
+      leaving.current = false;
+    };
+    if (!armed.current) return press();
+    // 끼운 칸을 먼저 빼고 나서 누른다 — 새 화면 뒤에 같은 주소가 두 칸 남지 않게.
+    armed.current = false;
+    window.addEventListener("popstate", () => setTimeout(press, 0), { once: true });
+    window.history.back();
+  }
 
   return {
     dialog,
     stay: () => {
       held.current = null;
-      if (dialog.current?.open) dialog.current.close();
+      viaBack.current = false;
+      close();
     },
-    go: () => {
-      const target = held.current;
-      held.current = null;
-      if (dialog.current?.open) dialog.current.close();
-      if (!target) return;
-      passing.current = true;
-      target.click();
-      passing.current = false;
+    go,
+    /** 저장하고 나가기. 저장하는 동안 「고친 것 없음」이 칸을 먼저 빼지 않게 막는다. */
+    saveThenGo: async (save: () => Promise<boolean>) => {
+      leaving.current = true;
+      const saved = await save();
+      leaving.current = false;
+      if (saved) go();
+      else {
+        held.current = null;
+        viaBack.current = false;
+        close();
+      }
     },
   };
 }
