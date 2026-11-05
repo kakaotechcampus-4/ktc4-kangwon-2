@@ -29,7 +29,7 @@ import {
   timetablePlace,
 } from "@/lib/plan-generator/playMonthlyTimetable";
 import PlayCellEditor from "./PlayCellEditor";
-import PlayMonthlyConfirm, { BlankRows } from "./PlayMonthlyConfirm";
+import PlayMonthlyConfirm, { BlankRows, PanelOverview } from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
@@ -316,7 +316,7 @@ function PlayMonthlyBody({
     const c = plan.safety_weeks.find((w) => w.week_id === id.slice(7))?.candidate_item_id;
     return !c || !cellValue(shown, c)?.trim();
   };
-  const blankRows = (
+  const groups = (
     [
       ["safety", "안전교육", plan.safety_weeks.map((w) => "safety:" + w.week_id)],
       ["theme", "놀이 주제", [plan.theme.item_id]],
@@ -327,9 +327,10 @@ function PlayMonthlyBody({
       ["health", "건강", [plan.health.cell.item_id]],
       ["nutrition", "영양", [plan.nutrition.cell.item_id]],
     ] as const
-  )
-    .map(([key, label, ids]) => ({ key, label, ids: ids.filter(empty) }))
-    .filter((r) => r.ids.length)
+  ).map(([key, label, ids]) => ({ key, label, all: ids.length, ids: ids.filter(empty) }));
+  const total = groups.reduce((n, g) => n + g.all, 0);
+  const blankRows = groups
+    .filter((g) => g.ids.length)
     .map(({ key, label, ids }) => ({
       key,
       label,
@@ -344,15 +345,11 @@ function PlayMonthlyBody({
   const editTab = (
     <div className="flex flex-col gap-4">
       {!selected && (
-        <>
-          <p className="m-0 text-sm text-ink-soft">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
-          {blankRows.length > 0 && (
-            <>
-              <h2 className="m-0 text-[18px] font-bold leading-tight">남은 빈칸</h2>
-              <BlankRows rows={blankRows} />
-            </>
-          )}
-        </>
+        <PanelOverview
+          filled={total - blankRows.reduce((n, r) => n + r.count, 0)}
+          total={total}
+          rows={blankRows}
+        />
       )}
       {selected && (
         <h2 className="m-0 text-[20px] font-bold leading-tight">

@@ -163,7 +163,7 @@ export function Paper({
     <section ref={box} aria-label={label} className="w-full min-w-0">
       <div style={{ zoom: given ?? scale }}>
         <article
-          className="mx-auto w-[853px] bg-white px-[61px] py-[41px] text-[13px] leading-[1.2] text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)] [&_td:has([data-cell][role=button])]:cursor-pointer [&_td:has([data-hint]):not(:has([data-area]))]:align-middle"
+          className="mx-auto w-[853px] bg-white px-[61px] py-[41px] text-[13px] leading-[1.2] text-[#2b2826] shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)] [&_td:has([data-cell][role=button])]:cursor-pointer [&_td:has([data-hint]):not(:has([data-area]))]:align-middle"
           onClick={pickByCell}
         >
           <div

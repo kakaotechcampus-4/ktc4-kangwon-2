@@ -83,3 +83,76 @@ export function BlankRows({
     </ul>
   );
 }
+
+/**
+ * 칸을 고르기 전 왼쪽 패널 — 얼마나 채웠는지 · 남은 빈칸(누르면 그 칸으로) · 고치는 법.
+ * 월간(주제형 · 놀이형) · 주간이 같이 쓴다.
+ */
+export function PanelOverview({
+  filled,
+  total,
+  rows,
+}: {
+  filled: number;
+  total: number;
+  rows: Parameters<typeof BlankRows>[0]["rows"];
+}) {
+  const done = total > 0 && filled >= total;
+  return (
+    <div className="flex flex-col gap-6">
+      <section aria-labelledby="overview-progress" className="flex flex-col gap-2.5">
+        <h2 id="overview-progress" className="m-0 text-[18px] font-bold leading-tight text-ink">
+          {done ? "빈칸을 다 채웠어요" : `칸 ${total}개 중 ${filled}개를 채웠어요`}
+        </h2>
+        <div
+          role="progressbar"
+          aria-label="채운 칸"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={filled}
+          className="h-2 overflow-hidden rounded-full bg-[#ece6dc]"
+        >
+          <div
+            className={`h-full rounded-full transition-[width] duration-500 ease-out ${done ? "bg-[#3b7a4b]" : "bg-primary"}`}
+            style={{ width: `${total ? (filled / total) * 100 : 0}%` }}
+          />
+        </div>
+        <p className="m-0 text-[13px] text-ink-soft">
+          {done
+            ? "문서를 한 번 훑어보고 확정해 주세요."
+            : "비운 칸이 있어도 확정할 수 있어요. 법정 안전교육은 꼭 확인해 주세요."}
+        </p>
+      </section>
+      {rows.length > 0 && (
+        <section aria-labelledby="overview-blanks" className="flex flex-col gap-2">
+          <h3 id="overview-blanks" className="m-0 text-[15px] font-bold text-ink">
+            남은 빈칸
+          </h3>
+          <BlankRows rows={rows} />
+        </section>
+      )}
+      <section aria-labelledby="overview-howto" className="flex flex-col gap-2">
+        <h3 id="overview-howto" className="m-0 text-[15px] font-bold text-ink">
+          고치는 법
+        </h3>
+        <ol className="m-0 flex list-none flex-col gap-2 p-0 text-sm text-ink-soft">
+          {[
+            "오른쪽 문서에서 고칠 칸을 눌러요.",
+            "여기에 열린 글상자에서 고치면 바로 저장돼요.",
+            "잘못 고쳤으면 문서 위 되돌리기로 돌아가요.",
+          ].map((text, i) => (
+            <li key={i} className="flex gap-2.5">
+              <span
+                aria-hidden="true"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#efe8f7] text-[11px] font-bold text-primary-ink"
+              >
+                {i + 1}
+              </span>
+              {text}
+            </li>
+          ))}
+        </ol>
+      </section>
+    </div>
+  );
+}

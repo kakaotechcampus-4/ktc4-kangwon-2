@@ -384,7 +384,7 @@ export function MonthlyNewView(props: {
             <img
               src={`/plan-formats/${look.image}.png`}
               alt={`${look.form} 예시`}
-              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
             />
           </div>
         </section>

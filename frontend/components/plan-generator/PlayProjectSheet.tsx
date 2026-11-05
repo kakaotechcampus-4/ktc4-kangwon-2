@@ -54,7 +54,7 @@ export default function PlayProjectSheet({
           <article
             key={page[0].period_key}
             aria-label={page.map((period) => period.label).join(" · ")}
-            className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+            className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
           >
             <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[28px] font-bold`}>
               {plan.school_year} 연간놀이계획안{className && ` - ${className}`}

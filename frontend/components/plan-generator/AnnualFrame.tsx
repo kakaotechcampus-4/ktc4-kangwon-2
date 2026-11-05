@@ -87,14 +87,22 @@ export default function AnnualFrame({
     <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)] lg:px-10">
       {/* 안내가 없으면 높이 0 — 연간 · 월간 · 주간 문서 틀이 같은 높이에서 시작한다. */}
       <div className="flex flex-col">
+        {/* 제목 줄은 「무엇」(제목 · 형식)과 「할 일」(확정)만 — 저장 상태 · 요청 사항은 제목 아래 작은 줄로. */}
         <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-3">
             {lead}
-            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
-              {title}
-            </h1>
-            {chip(format)}
-            <span className="text-sm text-[#5c5243]">{status}</span>
+            <div className="flex min-w-0 flex-col">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="m-0 font-display text-[34px] font-bold leading-[1.15] text-ink">
+                  {title}
+                </h1>
+                {chip(format)}
+              </div>
+              {/* 빈 상태에도 높이를 잡아 둔다 — 「저장 중…」이 뜰 때 제목이 흔들리지 않게. */}
+              <span className="min-h-[20px] text-[13px] leading-[20px] text-ink-soft">
+                {status}
+              </span>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">{actions}</div>
         </div>
@@ -112,11 +120,12 @@ export default function AnnualFrame({
           aria-label="문서 미리보기"
           className="flex h-[80vh] min-w-0 flex-1 flex-col overflow-hidden border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] lg:h-auto"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-shell-line bg-paper px-5 py-2.5 text-sm">
+          {/* 도구는 따로 띠를 두지 않고 책상(문서 바탕) 위에 얹는다 — 문서가 한 줄 더 위에서 시작한다. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-3 text-sm">
             <div className="font-bold">{docLabel}</div>
-            <div className="text-[#5c5243]">{docHint}</div>
+            <div className="ml-auto text-[#5c5243]">{docHint}</div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto p-6">{children}</div>
+          <div className="min-h-0 flex-1 overflow-auto px-6 pb-8 pt-4">{children}</div>
         </section>
       </div>
     </main>

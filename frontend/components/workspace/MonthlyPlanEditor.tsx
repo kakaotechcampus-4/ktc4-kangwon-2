@@ -25,7 +25,10 @@ import workspace from "./Workspace.module.css";
 import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
-import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
+import PlayMonthlyConfirm, {
+  BlankRows,
+  PanelOverview,
+} from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   BACK_BUTTON,
   BACK_ICON,
@@ -378,13 +381,13 @@ export default function MonthlyPlanEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
+      {/* 처음 화면은 남은 할 일 — 채운 정도 · 줄마다 빈칸 수(누르면 그 칸으로) · 고치는 법. */}
       {!where && (
-        <>
-          <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
-          {/* 처음 화면은 남은 할 일 — 줄마다 빈칸 수, 누르면 그 칸으로. */}
-          {blankRows.length > 0 && <h2 className="m-0 text-[15px] font-bold">남은 빈칸</h2>}
-          <BlankRows rows={blankRows} />
-        </>
+        <PanelOverview
+          filled={cells.length - blanks.length}
+          total={cells.length}
+          rows={blankRows}
+        />
       )}
       {where && (
         <div className="flex items-end justify-between gap-3">

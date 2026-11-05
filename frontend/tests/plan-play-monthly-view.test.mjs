@@ -228,7 +228,11 @@ function load() {
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
     "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
     "./PlayCellEditor": esModule(editorStub),
-    "./PlayMonthlyConfirm": esModule((props) => jsx("ask", props)),
+    "./PlayMonthlyConfirm": {
+      ...esModule((props) => jsx("ask", props)),
+      BlankRows: (p) => jsx("blank-rows", p),
+      PanelOverview: (p) => jsx("overview", p),
+    },
     "./PlayMonthlySheet": {
       __esModule: true,
       default: sheetStub,
@@ -709,7 +713,9 @@ test("문서의 칸을 누르면 그 칸이 강조되고 옆 패널에 빈 값�
   const props = { id: plan.id };
   const sheet = () => all(h.render(View, props)).find((n) => n.type === "sheet");
   assert.equal(sheet().props.selected, null);
-  assert.match(text(h.render(View, props)), /문서의 칸을 누르면/);
+  // 고르기 전 패널은 채운 정도 · 남은 빈칸 요약이다.
+  const overview = all(h.render(View, props)).find((n) => n.type === "overview");
+  assert.ok(overview.props.total >= overview.props.filled);
   sheet().props.onSelect(plan.theme.item_id);
   const tree = h.render(View, props);
   assert.equal(all(tree).find((n) => n.type === "sheet").props.selected, plan.theme.item_id);
@@ -1124,6 +1130,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     "@/components/plan-generator/PlayMonthlyConfirm": {
       ...esModule((p) => jsx("ask", p)),
       BlankRows: (p) => jsx("blank-rows", p),
+      PanelOverview: (p) => jsx("overview", p),
     },
     "@/components/plan-generator/AnnualFrame": frameModule,
     "@/components/app/compact-shell": shellModule,

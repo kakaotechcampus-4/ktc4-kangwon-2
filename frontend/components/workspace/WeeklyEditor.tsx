@@ -27,7 +27,10 @@ import {
 import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
-import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
+import PlayMonthlyConfirm, {
+  BlankRows,
+  PanelOverview,
+} from "@/components/plan-generator/PlayMonthlyConfirm";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
@@ -336,6 +339,7 @@ export default function WeeklyEditor({
   const shown = (cell: WeeklyCell) => live[cell.item_id] ?? cell.value;
   // 확정 전에 알릴 빈 칸(입력 중 글 포함). 선생님이 직접 쓰는 칸(행사 등)은 빼고 본다.
   const blanks = cells.filter(({ cell }) => !cell.teacher_input && !shown(cell).trim());
+  const fillable = cells.filter(({ cell }) => !cell.teacher_input).length;
   // 확정 확인은 한 번 — 남은 빈칸은 줄마다 세어 같은 상자에 보이고, 누르면 그 줄 첫 빈칸으로 간다.
   const blankRows = sections
     .map((s) => ({ s, empty: blanks.filter((b) => b.section === s) }))
@@ -381,13 +385,9 @@ export default function WeeklyEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
+      {/* 처음 화면은 남은 할 일 — 채운 정도 · 줄마다 빈칸 수(누르면 그 칸으로) · 고치는 법. */}
       {!picked && (
-        <>
-          <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
-          {/* 처음 화면은 남은 할 일 — 줄마다 빈칸 수, 누르면 그 칸으로. */}
-          {blankRows.length > 0 && <h2 className="m-0 text-[15px] font-bold">남은 빈칸</h2>}
-          <BlankRows rows={blankRows} />
-        </>
+        <PanelOverview filled={fillable - blanks.length} total={fillable} rows={blankRows} />
       )}
       {picked && (
         <>
