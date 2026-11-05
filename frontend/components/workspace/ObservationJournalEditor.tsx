@@ -1,0 +1,480 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import type { SavedDocument } from "@/lib/workspace/model";
+import { downloadDocumentHwpx, isStaleWrite } from "@/lib/api/documents";
+import type { ExportFormat } from "@/lib/api/export";
+import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
+import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
+import { Posty } from "@/components/app/Posty";
+import { Message, ws } from "./WorkspaceUI";
+import { serverIssues } from "./document-selection";
+import type { ServerDocumentActions } from "./DocumentEditor";
+
+const LAYERS = [
+  { heading: "해석", hint: "위 쪽지에서 읽을 수 있는 의미만 적어요." },
+  { heading: "지원", hint: "다음 놀이에서 교사가 할 일을 구체적으로 적어요." },
+] as const;
+
+/** 쪽지 색. 관찰 기록 화면의 영역 색과 같다. */
+const DOMAIN_TONE: Record<string, string> = {
+  "신체운동·건강": "body",
+  의사소통: "talk",
+  사회관계: "social",
+  예술경험: "art",
+  자연탐구: "nature",
+};
+
+/** 양식 맨 아래 칸 이름 (backend documents/export.py AXIS_TAIL). 2축 원은 「총평」이다. */
+const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평" : "종합해석");
+
+const FORMATS: { format: ExportFormat; label: string }[] = [
+  { format: "pdf", label: "PDF" },
+  { format: "hwpx", label: "한글 (hwpx)" },
+  { format: "hwp", label: "한글 97~2010 (hwp)" },
+];
+
+/**
+ * 관찰일지 한 편 — 초안은 **칠판 위 쪽지와 공책**(근거 쪽지를 보며 해석 · 지원을 고친다),
+ * 확정본은 **내려받을 양식 그대로의 종이**로 보여 준다.
+ *
+ * 문서 보관함의 `DocumentEditor` 는 일지 · 계획안을 다 받는 범용이라 관찰일지에 맞춘
+ * 모양을 줄 수 없다. 서버 동작(저장 · 확정 · 충돌)은 같은 `server` 한 벌을 쓴다.
+ *
+ * 고친 것이 있는데 화면을 떠나려 하면 가운데에 묻는다. 앱 안 이동(링크 · `data-leave`
+ * 단추)만 잡을 수 있다 — 새로고침 · 탭 닫기는 브라우저 기본 창이 대신 묻는다.
+ */
+export default function ObservationJournalEditor({
+  initial,
+  server,
+  domainOf,
+  domains,
+  onClose,
+}: {
+  initial: SavedDocument;
+  server: ServerDocumentActions;
+  /** 근거 기록 id → 영역. 관찰 기록 id 와 근거 id 가 같다. */
+  domainOf: (sourceId: string) => string;
+  domains: readonly string[];
+  onClose: () => void;
+}) {
+  const [baseline, setBaseline] = useState(initial);
+  const [doc, setDoc] = useState(initial);
+  const [checked, setChecked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [issues, setIssues] = useState<string[]>([]);
+  const [staleWrite, setStaleWrite] = useState(false);
+  const hwpx = useHwpxDownload(setMessage);
+  const working = busy || hwpx.exporting || server.pending;
+
+  const body = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";
+  const dirty =
+    doc.status !== "confirmed" &&
+    JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections);
+  useUnsavedWarning(dirty);
+
+  function edit(heading: string, text: string) {
+    setDoc((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) => (s.heading === heading ? { ...s, body: text } : s)),
+    }));
+    setChecked(false);
+    setIssues([]);
+  }
+
+  function adopt(next: SavedDocument, note: string) {
+    setBaseline(next);
+    setDoc(next);
+    setChecked(false);
+    setIssues([]);
+    setStaleWrite(false);
+    setMessage(note);
+  }
+
+  /** 서버 요청 하나. 실패하면 고친 글을 그대로 둔다. 성공하면 true. */
+  async function run(call: () => Promise<SavedDocument | null>, note: string) {
+    if (working) return false;
+    setBusy(true);
+    setMessage("");
+    try {
+      const next = await call();
+      if (next) adopt(next, note);
+      return true;
+    } catch (e) {
+      if (isStaleWrite(e)) setStaleWrite(true);
+      else setMessage(e instanceof Error ? e.message : "요청을 처리하지 못했어요.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const save = () => run(() => server.save(doc.sections, "교사 검토 전"), "초안을 저장했어요.");
+
+  function confirm() {
+    const blocking = serverIssues(doc);
+    if (blocking.length || !checked) {
+      setIssues(blocking);
+      setMessage(blocking.length ? "" : "쪽지와 대조했는지 먼저 체크해 주세요.");
+      return;
+    }
+    if (server.stale) {
+      setMessage("근거 기록이 바뀌었어요. 반영한 뒤 확정해 주세요.");
+      return;
+    }
+    void run(
+      () => server.saveAndConfirm(doc.sections, "교사 사실·해석·지원 검토 완료"),
+      "확정했어요. 이 모습 그대로 내려받아요.",
+    );
+  }
+
+  const { dialog: leaveDialog, stay, go } = useLeaveGuard(dirty);
+
+  return (
+    <section className={ws.ojWrap} aria-label="관찰일지">
+      <div className={ws.ojTop}>
+        <button type="button" className={ws.link} data-leave onClick={onClose}>
+          ← 관찰일지 목록
+        </button>
+        {doc.status === "confirmed" && (
+          <span className={ws.ojStep}>
+            <s>1 고치기</s> → <b>2 출력 미리보기</b>
+          </span>
+        )}
+      </div>
+
+      {staleWrite && (
+        <>
+          <Message error>
+            다른 곳에서 이 일지가 고쳐졌어요. 최신 내용을 불러온 뒤 다시 고쳐 주세요.
+          </Message>
+          <button
+            type="button"
+            className={ws.secondary}
+            disabled={working}
+            onClick={() => run(() => server.reload(), "최신 일지를 불러왔어요.")}
+          >
+            최신 일지 불러오기
+          </button>
+        </>
+      )}
+
+      {doc.status === "confirmed" ? (
+        <JournalSheet doc={doc} domainOf={domainOf} domains={domains}>
+          <Message>{message}</Message>
+          {server.stale && (
+            <Message error>
+              근거 기록이 바뀌어 내려받을 수 없어요. 다시 고치기를 눌러 반영해 주세요.
+            </Message>
+          )}
+          <div className={ws.ojExports} role="group" aria-label="내려받기">
+            {FORMATS.map(({ format, label }) => (
+              <button
+                key={format}
+                type="button"
+                className={format === "pdf" ? ws.primary : ws.secondary}
+                disabled={working || server.stale}
+                onClick={() =>
+                  hwpx.download(
+                    () => downloadDocumentHwpx(doc.id, format),
+                    `${label} 파일로 내려받았어요.`,
+                  )
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className={ws.link}
+            disabled={working}
+            onClick={() => run(() => server.unconfirm(), "확정을 풀었어요. 다시 고칠 수 있어요.")}
+          >
+            ← 다시 고치기 (확정 풀기)
+          </button>
+        </JournalSheet>
+      ) : (
+        <div className={`chalkboard ${ws.ojBoard}`}>
+          <header className={ws.ojHead}>
+            <h2>{doc.title}</h2>
+            <span>
+              {doc.className} · {periodLabel(doc.start, doc.end)}
+            </span>
+            {doc.origin === "ai" && <em>AI 초안</em>}
+            {server.stale && <em data-alert>근거가 바뀜</em>}
+          </header>
+          {doc.mockDraft && (
+            <p className={ws.ojChalk}>
+              테스트 모드(mock)로 만든 초안이에요. 실제 AI 결과가 아니니 다시 써 주세요.
+            </p>
+          )}
+
+          <ul className={ws.ojNotes} aria-label="근거 기록">
+            {doc.sources.map((s) => {
+              const domain = domainOf(s.id);
+              return (
+                <li key={s.id} data-tone={DOMAIN_TONE[domain]}>
+                  <small>
+                    {shortDate(s.date)}
+                    {domain && ` · ${domain}`}
+                  </small>
+                  {s.text}
+                </li>
+              );
+            })}
+          </ul>
+          <p className={ws.ojChalk}>
+            쪽지는 교사가 적은 원문이라 여기서 못 고쳐요.{" "}
+            <Link href="/records">관찰 기록에서 고치기 →</Link>
+          </p>
+          {server.stale && (
+            <div className={ws.ojStale}>
+              <p>근거 기록이 바뀌었어요. 바뀐 쪽지를 받아 온 뒤 해석 · 지원을 다시 봐 주세요.</p>
+              <button
+                type="button"
+                className={ws.secondary}
+                disabled={working}
+                onClick={() =>
+                  run(
+                    () => server.refresh(),
+                    "바뀐 근거를 받아 왔어요. 해석과 지원을 다시 봐 주세요.",
+                  )
+                }
+              >
+                바뀐 근거 반영하기
+              </button>
+            </div>
+          )}
+
+          <div className={ws.ojPads}>
+            {LAYERS.map(({ heading, hint }) => (
+              <label key={heading} className={ws.ojPad}>
+                <span>{heading}</span>
+                <small>{hint}</small>
+                <textarea
+                  aria-label={`${heading} 내용`}
+                  maxLength={15000}
+                  disabled={working}
+                  value={body(heading)}
+                  onChange={(e) => edit(heading, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+
+          {issues.length > 0 && <Message error>{issues.join("\n")}</Message>}
+          <Message>{message}</Message>
+          <footer className={ws.ojFoot}>
+            <label className={ws.ojCheck}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={working}
+                onChange={(e) => setChecked(e.target.checked)}
+              />
+              쪽지와 대조했어요 — 사실과 맞고, 해석 · 지원이 알맞아요
+            </label>
+            <button type="button" className={ws.ojSave} disabled={working || !dirty} onClick={save}>
+              {busy ? "저장하는 중…" : dirty ? "초안 저장" : "저장됨"}
+            </button>
+            <button
+              type="button"
+              className={ws.ojStamp}
+              disabled={working || !checked}
+              onClick={confirm}
+            >
+              <b>확정</b>
+              <small>출력 보기</small>
+            </button>
+          </footer>
+          <button
+            type="button"
+            className={ws.ojRemove}
+            disabled={working}
+            onClick={async () => {
+              if (!window.confirm("이 초안을 지울까요? 되돌릴 수 없어요.")) return;
+              try {
+                await server.remove();
+              } catch (e) {
+                setMessage(e instanceof Error ? e.message : "지우지 못했어요.");
+              }
+            }}
+          >
+            이 초안 지우기
+          </button>
+        </div>
+      )}
+
+      <dialog
+        ref={leaveDialog}
+        className={ws.ojLeave}
+        aria-labelledby="oj-leave-title"
+        onClose={stay}
+      >
+        <Posty pose="hand" face="oh" tone="note" size={78} label={null} />
+        <h3 id="oj-leave-title">잠깐만요!</h3>
+        <p>고친 내용이 사라져요.</p>
+        <div>
+          <button
+            type="button"
+            className={ws.primary}
+            disabled={working}
+            onClick={async () => {
+              if (await save()) go();
+              else stay();
+            }}
+          >
+            저장하고 나가기
+          </button>
+          <button type="button" className={ws.secondary} autoFocus onClick={stay}>
+            계속 쓰기
+          </button>
+          <button type="button" className={ws.link} onClick={go}>
+            저장 안 하고 나가기
+          </button>
+        </div>
+      </dialog>
+    </section>
+  );
+}
+
+/**
+ * 고친 것이 있을 때 앱 안에서 떠나는 클릭을 붙잡는다.
+ *
+ * Next 앱 라우터에는 이동을 멈추는 훅이 없다. 그래서 **누르기 전에** 잡는다 — 문서 전체의
+ * 링크(`a[href]`, 새 탭 · 내려받기 제외)와 `data-leave` 단추. 「나가기」를 고르면 막았던
+ * 그 요소를 다시 누른다 — 링크면 Next 가, 단추면 원래 onClick 이 이어서 한다.
+ * ponytail: 브라우저 뒤로 가기는 못 잡는다 — 잡아야 하면 history 에 한 칸을 끼우는 방식으로.
+ */
+function useLeaveGuard(dirty: boolean) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const held = useRef<HTMLElement | null>(null);
+  const passing = useRef(false);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const catchLeave = (event: MouseEvent) => {
+      if (passing.current || event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = (event.target as Element | null)?.closest<HTMLElement>(
+        'a[href]:not([target="_blank"]):not([download]), [data-leave]',
+      );
+      if (!target || dialog.current?.contains(target)) return;
+      if (target instanceof HTMLAnchorElement && target.getAttribute("href")?.startsWith("#"))
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      held.current = target;
+      dialog.current?.showModal();
+    };
+    document.addEventListener("click", catchLeave, true);
+    return () => document.removeEventListener("click", catchLeave, true);
+  }, [dirty]);
+
+  return {
+    dialog,
+    stay: () => {
+      held.current = null;
+      if (dialog.current?.open) dialog.current.close();
+    },
+    go: () => {
+      const target = held.current;
+      held.current = null;
+      if (dialog.current?.open) dialog.current.close();
+      if (!target) return;
+      passing.current = true;
+      target.click();
+      passing.current = false;
+    },
+  };
+}
+
+/** 확정본 — 내려받는 한글 양식과 같은 칸으로 그린다 (backend documents/export.py `_observation`). */
+function JournalSheet({
+  doc,
+  domainOf,
+  domains,
+  children,
+}: {
+  doc: SavedDocument;
+  domainOf: (sourceId: string) => string;
+  domains: readonly string[];
+  children: React.ReactNode;
+}) {
+  const sorted = [...doc.sources].sort((a, b) => a.date.localeCompare(b.date));
+  const rows = domains.map((domain) => ({
+    domain,
+    lines: sorted
+      .filter((s) => domainOf(s.id) === domain)
+      .map((s) => `(${shortNumber(s.date)}) ${s.text}`),
+  }));
+  const section = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";
+  return (
+    <div className={ws.ojPreview}>
+      <article className={ws.ojSheet} aria-label="출력 미리보기">
+        <h2>{doc.title}</h2>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">영역</th>
+              <th scope="col">관찰내용</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ domain, lines }) => (
+              <tr key={domain}>
+                <th scope="row">{domain}</th>
+                <td>
+                  {lines.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <th scope="row">{tailName(domains)}</th>
+              <td>
+                <p>▸ 배움) {section("해석")}</p>
+                <p>▸ 지원) {section("지원")}</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+      <aside className={ws.ojRail}>
+        <span className={ws.ojDone}>확정</span>
+        <h3>이렇게 출력돼요</h3>
+        <p>
+          {doc.childName} · {periodLabel(doc.start, doc.end)}
+          <br />
+          내려받는 파일도 이 칸 그대로예요.
+        </p>
+        {children}
+      </aside>
+    </div>
+  );
+}
+
+const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+const at = (date: string) => new Date(`${date}T00:00:00Z`);
+/** 「2026-11-03」 → 「11/3(화)」 */
+function shortDate(date: string) {
+  const d = at(date);
+  if (Number.isNaN(d.getTime())) return date;
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${WEEK[d.getUTCDay()]})`;
+}
+/** 「2026-11-03」 → 「11/3」 — 양식 칸의 머리. 서버와 같은 모양이다. */
+function shortNumber(date: string) {
+  const d = at(date);
+  return Number.isNaN(d.getTime()) ? date : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
+function periodLabel(start: string, end: string) {
+  const s = at(start),
+    e = at(end);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return `${start} ~ ${end}`;
+  const day = (d: Date) => `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`;
+  return start === end ? day(s) : `${day(s)} ~ ${day(e)}`;
+}

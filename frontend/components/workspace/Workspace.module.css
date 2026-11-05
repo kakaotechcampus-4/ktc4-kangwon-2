@@ -2902,3 +2902,437 @@ button.recordBlank:disabled {
   outline: 3px solid var(--pg-primary);
   outline-offset: 2px;
 }
+
+/* ── 관찰일지 한 편 (ObservationJournalEditor) ────────────────────────────
+ * 초안: 칠판 위에 근거 쪽지, 그 아래 공책 두 장(해석 · 지원), 확정은 도장.
+ * 확정본: 내려받을 한글 양식과 같은 칸의 종이 + 오른쪽 내려받기. */
+.ojWrap {
+  display: grid;
+  gap: 14px;
+}
+.ojTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ojStep {
+  font-size: 13.5px;
+  color: var(--pg-ink-soft);
+}
+.ojStep s {
+  text-decoration: none;
+  opacity: 0.7;
+}
+.ojStep b {
+  color: var(--pg-ink);
+}
+.ojBoard {
+  display: grid;
+  gap: 18px;
+  padding: 26px 28px 34px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+.ojHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  color: var(--pg-board-ink);
+}
+.ojHead h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.ojHead span {
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  color: var(--pg-board-ink-soft);
+}
+.ojHead em {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--pg-paper-warm);
+  border: 1px solid var(--pg-paper-warm-line);
+  color: var(--pg-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-style: normal;
+}
+.ojHead em + em,
+.ojHead em[data-alert] {
+  margin-left: 0;
+  background: var(--pg-alert-soft);
+  border-color: var(--pg-alert-soft-line);
+  color: var(--pg-alert-ink);
+}
+.ojChalk {
+  margin: -6px 0 0;
+  font-size: 13.5px;
+  color: var(--pg-board-ink-soft);
+}
+.ojChalk a {
+  color: var(--pg-note);
+  text-underline-offset: 3px;
+}
+.ojNotes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 20px;
+  margin: 0;
+  padding: 8px 0 0;
+  list-style: none;
+}
+.ojNotes li {
+  position: relative;
+  width: min(250px, 100%);
+  padding: 20px 16px 16px;
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  font-size: 14.5px;
+  line-height: 1.6;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.28);
+  transform: rotate(-1.4deg);
+}
+.ojNotes li:nth-child(even) {
+  transform: rotate(1.1deg);
+}
+/* 테이프 */
+.ojNotes li::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 64px;
+  height: 18px;
+  translate: -50% 0;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.ojNotes li[data-tone="body"] {
+  background: var(--pg-clay);
+}
+.ojNotes li[data-tone="talk"] {
+  background: var(--pg-primary-tint);
+}
+.ojNotes li[data-tone="social"] {
+  background: var(--pg-note);
+}
+.ojNotes li[data-tone="art"] {
+  background: var(--pg-plum);
+}
+.ojNotes li[data-tone="nature"] {
+  background: var(--pg-sage);
+}
+.ojNotes small {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.ojStale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--pg-alert-soft);
+  color: var(--pg-alert-ink);
+}
+.ojStale p {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 14px;
+}
+.ojPads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 18px;
+}
+/* 공책 한 장. 왼쪽 빨간 여백선 + 34px 줄 — 글줄 높이와 같아야 글자가 줄에 앉는다. */
+.ojPad {
+  display: grid;
+  gap: 2px;
+  padding: 16px 18px 14px 46px;
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, transparent 30px, var(--pg-alert) 30px 31.5px, transparent 31.5px),
+    var(--pg-paper-warm);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+}
+.ojPad span {
+  font-family: var(--font-display), sans-serif;
+  font-size: 23px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.ojPad small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+.ojPad textarea {
+  min-height: 204px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  resize: vertical;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 33px,
+    var(--pg-paper-warm-line) 33px 34px
+  );
+  font: inherit;
+  font-size: 15.5px;
+  line-height: 34px;
+  color: var(--pg-ink);
+}
+.ojPad textarea:focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 4px;
+}
+.ojFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 18px;
+}
+.ojCheck {
+  display: flex;
+  flex: 1 1 280px;
+  align-items: center;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--pg-board-ink);
+  cursor: pointer;
+}
+.ojCheck input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--pg-note);
+}
+.ojSave {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--pg-board-ink-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pg-board-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ojSave:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* 확정 도장. 체크 전에는 흐린 분필 동그라미, 체크하면 노란 도장. */
+.ojStamp {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  width: 104px;
+  height: 104px;
+  border: 3px dashed var(--pg-board-ink-soft);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pg-board-ink-soft);
+  rotate: -8deg;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+.ojStamp b {
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  line-height: 1;
+}
+.ojStamp small {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.ojStamp:not(:disabled) {
+  border: 3px double var(--pg-ink);
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.32);
+}
+.ojStamp:not(:disabled):hover {
+  transform: scale(1.05);
+}
+.ojStamp:disabled {
+  cursor: not-allowed;
+}
+.ojRemove {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  color: var(--pg-board-ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* 출력 미리보기 — A4 종이 비율의 한 장 + 오른쪽 내려받기 */
+.ojPreview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+  gap: 22px;
+}
+@media (max-width: 900px) {
+  .ojPreview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ojSheet {
+  padding: 46px 44px 56px;
+  background: var(--pg-paper);
+  border: 1px solid var(--pg-line);
+  box-shadow: 0 10px 24px rgba(52, 49, 47, 0.12);
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", var(--font-body), sans-serif;
+  color: #111;
+}
+@media (max-width: 600px) {
+  .ojSheet {
+    padding: 26px 16px 32px;
+  }
+}
+.ojSheet h2 {
+  margin: 0 0 22px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.ojSheet table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.ojSheet th,
+.ojSheet td {
+  border: 1px solid #222;
+  padding: 10px 12px;
+  vertical-align: top;
+}
+.ojSheet th {
+  width: 118px;
+  background: #f1f1f1;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+}
+.ojSheet thead th {
+  width: auto;
+}
+.ojSheet thead th:first-child {
+  width: 118px;
+}
+.ojSheet td {
+  min-height: 56px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ojSheet td p {
+  margin: 0;
+}
+.ojSheet td p + p {
+  margin-top: 8px;
+}
+.ojRail {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--pg-paper);
+  border: 1px solid var(--pg-line);
+}
+.ojRail h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+}
+.ojRail p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--pg-ink-soft);
+}
+.ojDone {
+  justify-self: start;
+  padding: 4px 14px;
+  border: 2.5px double var(--pg-alert-strong-line);
+  border-radius: 6px;
+  color: var(--pg-alert-strong-line);
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  rotate: -6deg;
+}
+.ojExports {
+  display: grid;
+  gap: 8px;
+}
+
+/* 나가기 경고 — 포스티가 든 노란 쪽지. 사라지는 것 한 줄만 빨갛게. */
+.ojLeave {
+  width: min(380px, calc(100vw - 32px));
+  padding: 26px 26px 20px;
+  border: 1.5px solid var(--pg-note-line);
+  border-radius: 6px;
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+  rotate: -1deg;
+}
+.ojLeave::backdrop {
+  background: rgba(43, 51, 46, 0.55);
+}
+.ojLeave h3 {
+  margin: 6px 0 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+}
+.ojLeave p {
+  margin: 0 0 18px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--pg-alert-ink);
+}
+.ojLeave > div {
+  display: grid;
+  gap: 8px;
+}
+.ojLeave > div > button {
+  min-height: 46px;
+}
+.ojLeave > :first-child {
+  display: block;
+  margin: 0 auto;
+}
+/* 「저장하고 나가기」가 제일 먼저 눈에 가야 한다 — 노란 쪽지 위 보라는 약하다. */
+.ojLeave > div > button:first-child {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
+}
+@media (max-width: 600px) {
+  .ojBoard {
+    padding: 22px 16px 28px;
+  }
+}

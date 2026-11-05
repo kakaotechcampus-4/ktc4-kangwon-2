@@ -13,7 +13,8 @@ import { markFor, weekStart } from "@/lib/workspace/child-mark";
 import { ChildNote } from "@/components/app/ChildPicker";
 import { Posty } from "@/components/app/Posty";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
-import DocumentEditor from "./DocumentEditor";
+import ObservationJournalEditor from "./ObservationJournalEditor";
+import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { useServerDocument } from "./use-server-document";
 import { openPicker } from "./RecordsPage";
 
@@ -164,129 +165,131 @@ export default function ObservationJournalPage() {
       action={back}
     >
       <Message error>{error}</Message>
-      <div className={`${ws.grid} ${ws.recordGrid}`}>
-        <div className={ws.side}>
-          <section className={`${ws.card} ${ws.jrSetup}`}>
-            {!classroom?.children.length ? (
-              <Empty title="먼저 아이를 등록해 주세요">
-                <Link href="/onboarding">아이 등록하기 →</Link>
-              </Empty>
-            ) : (
-              <>
-                <div className={ws.jrStep}>
-                  <h2 id="jr-kids">누구 관찰일지인가요?</h2>
-                  <div className={ws.recordKids} role="group" aria-labelledby="jr-kids">
-                    {classroom.children.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className={ws.recordKid}
-                        aria-pressed={c.id === childId}
-                        onClick={() => {
-                          setChildId(c.id);
-                          setLeft([]);
-                          setOpenId("");
-                        }}
-                      >
-                        <ChildNote name={c.name} mark={markFor(c.id)} size={24} />
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className={ws.jrStep}>
-                  <h2>기간</h2>
-                  <div className={ws.jrPeriod}>
-                    <input
-                      type="date"
-                      aria-label="시작일"
-                      onClick={(e) => openPicker(e.currentTarget)}
-                      value={start}
-                      max={end || today()}
-                      onChange={(e) => {
-                        setStart(e.target.value);
-                        setLeft([]);
-                      }}
-                    />
-                    <span aria-hidden="true">~</span>
-                    <input
-                      type="date"
-                      aria-label="종료일"
-                      onClick={(e) => openPicker(e.currentTarget)}
-                      value={end}
-                      min={start}
-                      max={today()}
-                      onChange={(e) => {
-                        setEnd(e.target.value);
-                        setLeft([]);
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className={ws.jrStep}>
-                  <h2>
-                    근거로 쓸 기록 <span>{child ? `${sources.length}건` : ""}</span>
-                  </h2>
-                  {!child ? (
-                    <p className={ws.hint}>아이를 고르면 그 아이 기록이 여기 모여요.</p>
-                  ) : records === null ? (
-                    <p className={ws.hint}>기록을 불러오고 있어요.</p>
-                  ) : !inRange.length ? (
-                    <p className={ws.hint}>
-                      이 기간에 {child.name} 기록이 없어요. 기간을 넓혀 보세요.
-                    </p>
-                  ) : (
-                    <ul className={ws.jrSources}>
-                      {inRange.map((r) => (
-                        <li key={r.id}>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={!left.includes(r.id)}
-                              onChange={(e) =>
-                                setLeft((prev) =>
-                                  e.target.checked
-                                    ? prev.filter((id) => id !== r.id)
-                                    : [...prev, r.id],
-                                )
-                              }
-                            />
-                            <span>
-                              <small>
-                                {shortDate(r.date)} · {r.domain}
-                              </small>
-                              {r.fact}
-                            </span>
-                          </label>
-                        </li>
+      {/* 일지를 펴면 화면 전체를 쓴다 — 칠판 위 쪽지 · 공책과 출력 미리보기가 좁은 칸에 안 들어간다. */}
+      {openId ? (
+        <JournalEditor
+          id={openId}
+          domainOf={(id) => records?.find((r) => r.id === id)?.domain ?? ""}
+          onChanged={() => setReload((n) => n + 1)}
+          onClose={() => setOpenId("")}
+        />
+      ) : (
+        <div className={`${ws.grid} ${ws.recordGrid}`}>
+          <div className={ws.side}>
+            <section className={`${ws.card} ${ws.jrSetup}`}>
+              {!classroom?.children.length ? (
+                <Empty title="먼저 아이를 등록해 주세요">
+                  <Link href="/onboarding">아이 등록하기 →</Link>
+                </Empty>
+              ) : (
+                <>
+                  <div className={ws.jrStep}>
+                    <h2 id="jr-kids">누구 관찰일지인가요?</h2>
+                    <div className={ws.recordKids} role="group" aria-labelledby="jr-kids">
+                      {classroom.children.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={ws.recordKid}
+                          aria-pressed={c.id === childId}
+                          onClick={() => {
+                            setChildId(c.id);
+                            setLeft([]);
+                            setOpenId("");
+                          }}
+                        >
+                          <ChildNote name={c.name} mark={markFor(c.id)} size={24} />
+                          {c.name}
+                        </button>
                       ))}
-                    </ul>
-                  )}
-                </div>
-                <div className={ws.jrMake}>
-                  {blocked && <small>{blocked}</small>}
-                  <button
-                    type="button"
-                    className={ws.primary}
-                    disabled={!!blocked || busy}
-                    onClick={make}
-                  >
-                    {busy ? "만드는 중…" : "초안 만들기"}
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        </div>
+                    </div>
+                  </div>
+                  <div className={ws.jrStep}>
+                    <h2>기간</h2>
+                    <div className={ws.jrPeriod}>
+                      <input
+                        type="date"
+                        aria-label="시작일"
+                        onClick={(e) => openPicker(e.currentTarget)}
+                        value={start}
+                        max={end || today()}
+                        onChange={(e) => {
+                          setStart(e.target.value);
+                          setLeft([]);
+                        }}
+                      />
+                      <span aria-hidden="true">~</span>
+                      <input
+                        type="date"
+                        aria-label="종료일"
+                        onClick={(e) => openPicker(e.currentTarget)}
+                        value={end}
+                        min={start}
+                        max={today()}
+                        onChange={(e) => {
+                          setEnd(e.target.value);
+                          setLeft([]);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className={ws.jrStep}>
+                    <h2>
+                      근거로 쓸 기록 <span>{child ? `${sources.length}건` : ""}</span>
+                    </h2>
+                    {!child ? (
+                      <p className={ws.hint}>아이를 고르면 그 아이 기록이 여기 모여요.</p>
+                    ) : records === null ? (
+                      <p className={ws.hint}>기록을 불러오고 있어요.</p>
+                    ) : !inRange.length ? (
+                      <p className={ws.hint}>
+                        이 기간에 {child.name} 기록이 없어요. 기간을 넓혀 보세요.
+                      </p>
+                    ) : (
+                      <ul className={ws.jrSources}>
+                        {inRange.map((r) => (
+                          <li key={r.id}>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={!left.includes(r.id)}
+                                onChange={(e) =>
+                                  setLeft((prev) =>
+                                    e.target.checked
+                                      ? prev.filter((id) => id !== r.id)
+                                      : [...prev, r.id],
+                                  )
+                                }
+                              />
+                              <span>
+                                <small>
+                                  {shortDate(r.date)} · {r.domain}
+                                </small>
+                                {r.fact}
+                              </span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className={ws.jrMake}>
+                    {blocked && <small>{blocked}</small>}
+                    <button
+                      type="button"
+                      className={ws.primary}
+                      disabled={!!blocked || busy}
+                      onClick={make}
+                    >
+                      {busy ? "만드는 중…" : "초안 만들기"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
 
-        <div className={ws.stack}>
-          {openId ? (
-            <JournalEditor
-              id={openId}
-              onChanged={() => setReload((n) => n + 1)}
-              onClose={() => setOpenId("")}
-            />
-          ) : (
+          <div className={ws.stack}>
             <section className={`${ws.card} ${ws.jrList}`}>
               <h2>{child ? `${child.name} 관찰일지` : "만든 관찰일지"}</h2>
               {!child ? (
@@ -315,40 +318,38 @@ export default function ObservationJournalPage() {
                 </ul>
               )}
             </section>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </WorkspacePage>
   );
 }
 
-/** 펴 놓은 관찰일지. 문서 보관함과 같은 편집기를 쓴다 — 서버에 바로 쓴다. */
+/** 펴 놓은 관찰일지. 서버에 바로 쓴다 — 저장 · 확정은 문서 보관함과 같은 한 벌이다. */
 function JournalEditor({
   id,
+  domainOf,
   onChanged,
   onClose,
 }: {
   id: string;
+  domainOf: (sourceId: string) => string;
   onChanged: () => void;
   onClose: () => void;
 }) {
   const edit = useServerDocument(id, { onChanged, onRemoved: onClose });
+  const domains = useObservationDomains();
+  if (edit.status === "error") return <Message error>{edit.error}</Message>;
+  if (!edit.doc || !edit.server) return <p className={ws.hint}>일지를 불러오는 중…</p>;
   return (
-    <section className={`${ws.card} ${ws.journalCard}`} aria-label="관찰일지">
-      <button type="button" className={ws.link} onClick={onClose}>
-        ← 관찰일지 목록
-      </button>
-      {edit.status === "loading" && <p className={ws.hint}>일지를 불러오는 중…</p>}
-      {edit.status === "error" && <Message error>{edit.error}</Message>}
-      {edit.doc && (
-        <DocumentEditor
-          key={edit.doc.id}
-          initial={edit.doc}
-          server={edit.server}
-          onSave={() => true}
-        />
-      )}
-    </section>
+    <ObservationJournalEditor
+      key={edit.doc.id}
+      initial={edit.doc}
+      server={edit.server}
+      domainOf={domainOf}
+      domains={domains}
+      onClose={onClose}
+    />
   );
 }
 
