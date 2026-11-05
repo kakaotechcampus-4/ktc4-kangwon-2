@@ -89,7 +89,7 @@ me       GET /api/auth/me                                               → 200 
 | `DEPENDENCY_UNAVAILABLE` | 503 | 서버에 키 · Redirect URI 가 없다 · 카카오에 닿지 못했다 |
 | `VALIDATION_FAILED` | 422 | `fields: ["code"]` 카카오가 코드를 거절(만료 · 이미 씀). 처음부터 다시 |
 | `VALIDATION_FAILED` | 422 | `fields: ["email"]` 카카오 계정 이메일이 없거나 검증 안 됨 |
-| `ALREADY_EXISTS` | 409 | 그 이메일 계정이 다른 카카오 계정과 이미 이어져 있다 |
+| `ALREADY_EXISTS` | 409 | 그 이메일 계정이 이미 다른 카카오 계정에 연결돼 있다 |
 
 **인가 코드는 한 번만 쓴다.** 같은 코드로 두 번 보내면 두 번째는 422 다 — 화면은 한 번만 보낸다.
 

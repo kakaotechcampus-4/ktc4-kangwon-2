@@ -160,7 +160,7 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
                 "code": "VALIDATION_FAILED",
-                "message": "카카오 로그인이 끝나지 않았습니다. 처음부터 다시 시도해 주세요.",
+                "message": "카카오 로그인 시간이 지났습니다. 처음부터 다시 시도해 주세요.",
                 "fields": ["code"],
             },
         ) from None
@@ -174,7 +174,7 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
                     "code": "VALIDATION_FAILED",
-                    "message": "카카오 계정의 이메일 제공에 동의해야 쌤플을 쓸 수 있습니다.",
+                    "message": "카카오 계정 이메일 제공에 동의해야 가입할 수 있습니다.",
                     "fields": ["email"],
                 },
             )
@@ -184,7 +184,9 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
                 status.HTTP_409_CONFLICT,
                 detail={
                     "code": "ALREADY_EXISTS",
-                    "message": "이 이메일은 다른 카카오 계정과 이미 이어져 있습니다.",
+                    "message": (
+                        "이 이메일은 다른 카카오 계정에 연결돼 있습니다. 이메일로 로그인해 주세요."
+                    ),
                     "fields": ["email"],
                 },
             )
