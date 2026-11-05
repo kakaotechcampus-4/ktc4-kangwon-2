@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Posty } from "@/components/app/Posty";
 import OnboardingLayout from "./OnboardingLayout";
@@ -275,7 +275,25 @@ function KidInput({
   );
 }
 
-/** 넣은 이름 — 알약 모양, × 로 뺀다. */
+/** 이름표가 떨어지는 시간. globals.css 의 tagFall 길이와 같아야 한다. */
+const FALL_MS = 700;
+const TILTS = ["-1.6deg", "1.3deg", "-0.8deg", "1.8deg"];
+/** 이름표 기울기는 아이 id 로 정한다 — 순서로 정하면 하나를 뗄 때마다 남은 쪽지가 다시 기운다. */
+const tiltOf = (id: string) =>
+  TILTS[[...id].reduce((sum, c) => sum + c.charCodeAt(0), 0) % TILTS.length];
+
+type Falling = { child: ChildEntry; index: number; animDone: boolean; settled: boolean };
+const without = (f: Record<string, Falling>, id: string) => {
+  const next = { ...f };
+  delete next[id];
+  return next;
+};
+
+/**
+ * 넣은 이름 — 칠판에 붙인 노란 이름표. 누르면 포스티가 떼어 가 떨어지며 사라진다.
+ * 서버에서 빼는 일은 누르자마자 한다(지금까지와 같다). 떨어지는 모습만 화면에 잠깐 더 남긴다 —
+ * items 에서 빠진 뒤에도 떨어지는 동안은 그 자리에 그리고, 서버가 실패하면 쪽지를 되돌린다.
+ */
 function KidChips({
   items,
   onRemove,
@@ -287,33 +305,64 @@ function KidChips({
   // 화면에 올 때 이미 있던 이름은 그냥 보이고, 그 뒤에 넣은 이름만 붓으로 칠하듯 나타난다.
   // 반이 바뀌면 이 부품이 새로 만들어진다(부르는 쪽 key) — 그 반의 이름은 처음부터 있던 것이다.
   const [first] = useState(() => new Set(items.map((c) => c.id)));
-  if (!items.length) return <p className="text-[14px] text-ink-soft">아직 넣은 이름이 없어요.</p>;
+  // 떼어지는 중인 이름표. 떨어지는 모습이 끝나고(animDone) 서버도 끝나야(settled) 지운다.
+  const [falling, setFalling] = useState<Record<string, Falling>>({});
 
-  async function remove(child: ChildEntry) {
+  const shown = [...items];
+  for (const f of Object.values(falling)) {
+    if (!shown.some((c) => c.id === f.child.id))
+      shown.splice(Math.min(f.index, shown.length), 0, f.child);
+  }
+  if (!shown.length) return <p className="text-[14px] text-ink-soft">아직 넣은 이름이 없어요.</p>;
+
+  function mark(id: string, part: "animDone" | "settled") {
+    setFalling((f) => {
+      if (!f[id]) return f;
+      const next = { ...f[id], [part]: true };
+      return next.animDone && next.settled ? without(f, id) : { ...f, [id]: next };
+    });
+  }
+
+  async function remove(child: ChildEntry, index: number) {
+    if (falling[child.id]) return;
     setError("");
+    setFalling((f) => ({ ...f, [child.id]: { child, index, animDone: false, settled: false } }));
+    // 「동작 줄이기」면 떨어지는 모습이 없어 기다리지 않는다.
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.setTimeout(() => mark(child.id, "animDone"), reduced ? 0 : FALL_MS);
     try {
       await onRemove(child);
+      mark(child.id, "settled");
     } catch (e) {
+      setFalling((f) => without(f, child.id));
       setError(e instanceof Error ? e.message : "빼지 못했어요.");
     }
   }
 
   return (
     <>
-      <ul className="flex flex-wrap gap-x-5 gap-y-1">
-        {items.map((child) => (
-          <li key={child.id} className={first.has(child.id) ? undefined : "brushIn"}>
-            {/* 칠판에 분필로 적은 이름. 누르면 지워진다 — 올리면 분필로 줄을 그어 미리 보여 준다. */}
-            <button
-              type="button"
-              aria-label={`${child.name} 명단에서 빼기`}
-              onClick={() => void remove(child)}
-              className="min-h-11 px-1 font-display text-[30px] font-bold leading-tight text-ink decoration-primary decoration-[3px] hover:line-through focus-visible:line-through focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              {child.name}
-            </button>
-          </li>
-        ))}
+      <ul className="flex flex-wrap gap-x-3 gap-y-5 pt-1">
+        {shown.map((child, i) => {
+          const leaving = Boolean(falling[child.id]);
+          return (
+            <li key={child.id} className={first.has(child.id) ? undefined : "brushIn"}>
+              <button
+                type="button"
+                aria-label={`${child.name} 명단에서 빼기`}
+                // 떼어지는 쪽지는 이미 명단에서 빠진 이름이다 — 읽히지도 눌리지도 않게 한다.
+                aria-hidden={leaving || undefined}
+                inert={leaving}
+                onClick={() => void remove(child, i)}
+                style={{ "--tilt": tiltOf(child.id) } as CSSProperties}
+                className={`nameTag ${leaving ? "tagFall" : ""} inline-flex min-h-11 items-center rounded-[3px] bg-note px-4 py-1.5 shadow-[0_2px_0_rgba(0,0,0,0.28),0_5px_10px_rgba(0,0,0,0.22)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`}
+              >
+                {/* 쪽지 위 글자는 칠판 분필이 아니라 원래 먹색(.paper). */}
+                <span className="paper text-[19px] font-bold leading-tight">{child.name}</span>
+                <Posty pose="hang" back size={30} label={null} className="tagPosty" />
+              </button>
+            </li>
+          );
+        })}
       </ul>
       <div className="mt-2">
         <ErrorLine>{error}</ErrorLine>
