@@ -82,6 +82,12 @@
   --pg-board-deep: #2b332e;
   --pg-board-ink: #f4f1e8; /* 분필 — 칠판 위에서 11:1 */
   --pg-board-ink-soft: #cfdcd4; /* 분필 보조 글씨 — 칠판 위에서 7:1 */
+  /* 칠판 나무 틀 · 분필 받침. 로그인 · 가입 칠판에만 쓴다 */
+  --pg-wood: #8f6d49;
+  --pg-wood-lit: #a5825b;
+  --pg-wood-deep: #6c5034;
+  /* 입력칸 테두리 — 흰 종이 위 3.3:1 (입력칸 경계 기준 3:1). --pg-line 은 1.4:1 이라 칸이 묻힌다 */
+  --pg-field-line: #968c7d;
   --pg-frame: #8c6d49;
   --pg-frame-lit: #9a7850;
   --pg-frame-side: #7b5f3f;

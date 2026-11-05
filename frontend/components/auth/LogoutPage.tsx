@@ -21,7 +21,15 @@ export default function LogoutPage() {
     startTransition(() => logout(false));
   }, [logout]);
   return (
-    <AuthFrame>
+    <AuthFrame
+      greeting={
+        <>
+          오늘도 수고하셨어요,
+          <br />
+          선생님.
+        </>
+      }
+    >
       {error ? (
         <>
           <p role="alert" className="text-sm text-peach-ink">
