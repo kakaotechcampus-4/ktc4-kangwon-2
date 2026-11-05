@@ -25,9 +25,8 @@ export async function completeOnboarding(
   const { className = "햇살반", ages = [4], consent = true, children = [] } = input;
   const next = page.getByRole("button", { name: "다음", exact: true });
 
-  // S1 원 정보 — 처음 들어오면 「처음 등록해요 / 초대 코드를 받았어요」 갈림길이 먼저 나온다.
+  // S1 원 정보 — 바로 첫 질문(원 이름)이다. 초대 코드로 들어오는 갈림길은 우선 뺐다.
   await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByRole("button", { name: /처음 등록해요/ }).click();
   await page.getByLabel("원 이름").fill(input.center);
   await next.click();
   await page.getByLabel("원장 이름").fill(input.director);
