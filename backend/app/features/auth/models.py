@@ -9,7 +9,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, LargeBinary, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, LargeBinary, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -27,6 +27,11 @@ class User(Base):
     # 해시와 salt 를 따로 둔다. 한 컬럼에 합치면 구분자 규칙을 우리가 또 만들어야 한다.
     password_hash: Mapped[bytes] = mapped_column(LargeBinary(64), comment="scrypt 해시")
     password_salt: Mapped[bytes] = mapped_column(LargeBinary(16), comment="계정마다 다르다")
+    kakao_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        unique=True,
+        comment="카카오 회원번호. 카카오로 로그인한 적이 있을 때만 채워진다 (ADR-063)",
+    )
     center_id: Mapped[int | None] = mapped_column(
         ForeignKey("centers.id"),
         index=True,
