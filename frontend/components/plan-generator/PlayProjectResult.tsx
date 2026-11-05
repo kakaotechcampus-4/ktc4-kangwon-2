@@ -13,6 +13,7 @@ import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import workspace from "@/components/workspace/Workspace.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
+import { MemoMark } from "@/components/plan-ui/PlayPickBoard";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 import Link from "next/link";
@@ -648,6 +649,7 @@ export default function PlayProjectResult({
                       {candidate.materials.value}
                     </span>
                   </button>
+                  {candidate.memo_applied && <MemoMark />}
                   <button
                     type="button"
                     className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink"
@@ -692,6 +694,7 @@ export default function PlayProjectResult({
                       {candidate.materials.value}
                     </span>
                   </span>
+                  {candidate.memo_applied && <MemoMark />}
                   <button
                     type="button"
                     className={SMALL}

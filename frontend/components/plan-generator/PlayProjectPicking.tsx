@@ -49,6 +49,7 @@ export default function PlayProjectPicking({
     materials: c.materials.value,
     support: c.support_direction.value,
     learning: c.learning.value.split("\n").filter((line) => line.trim()),
+    memoApplied: c.memo_applied,
   }));
   return (
     <PlayPickBoard

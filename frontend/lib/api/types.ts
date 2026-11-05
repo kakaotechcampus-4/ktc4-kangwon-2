@@ -278,6 +278,8 @@ export interface PlayProjectAnnualPlan extends PlanMemo {
     selected: string[];
     candidates: {
       row_key: string;
+      /** 이 후보가 요청 사항을 반영했는가. 카드의 작은 표시용이고 메모가 없으면 false. */
+      memo_applied: boolean;
       play_name: PlayCell;
       materials: PlayCell;
       support_direction: PlayCell;

@@ -158,6 +158,7 @@ function renderer(planValue, props = {}) {
       "./GenerationFlow.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./PlayProjectResult.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./PlayProjectPicking": esModule((p) => jsx("picking", p)),
+      "@/components/plan-ui/PlayPickBoard": { MemoMark: () => jsx("memo-mark", {}) },
       "./PlayProjectSheet": esModule(Sheet),
       "./PlayCellEditor": esModule(CellEditor),
       "./PlayMonthlyConfirm": esModule((p) => jsx("confirm-dialog", p)),
