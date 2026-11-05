@@ -92,8 +92,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     }
   }
   if (!response.ok) {
-    console.error("[API] " + method + " " + path + " → " + response.status, body);
-    throw new ApiError(response.status, body);
+    const error = new ApiError(response.status, body);
+    // 서버가 봉투(`{error:{code}}`)를 붙여 **의도대로 거절한** 4xx 는 호출부가 받아서
+    // 처리한다(예: 원이 이미 있다는 409). 그것을 console.error 로 적으면 Next 개발
+    // 오버레이가 뜬다. **숨기지는 않는다** — 같은 줄을 warn 으로 남기고 그대로 던진다.
+    const line = "[API] " + method + " " + path + " → " + response.status;
+    if (response.status < 500 && envelope(error) !== null) console.warn(line, body);
+    else console.error(line, body);
+    throw error;
   }
   return body as T;
 }

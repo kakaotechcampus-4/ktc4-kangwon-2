@@ -363,6 +363,10 @@ function documentsHarness({
     },
     "@/lib/onboarding/settings": { chosenClassFor: () => null, loadClassSettings: () => null },
     "./DailyLogSources": { default: "daily-log-sources", __esModule: true },
+    "@/components/app/icons": { Icon: "icon" },
+    "./DocumentArchiveArt": { ArchiveNoteArt: "archive-note-art" },
+    "./ChildTrackingArt": { FlowerMeadow: "flower-meadow" },
+    "./DocumentCreation.module.css": { default: {}, __esModule: true },
     "./DocumentArchivePreview": { default: "preview", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
     "./use-server-document": {

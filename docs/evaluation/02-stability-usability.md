@@ -51,6 +51,8 @@
 | 다른 브라우저로 로그인하면 첫 설정을 마친 교사도 첫 설정으로 가고 반이 빈 칸 | 첫 설정을 마쳤는지를 브라우저 기록으로만 봤다 | 이슈 #291 · `frontend/lib/api/onboarding.ts` `restoreFromServer` |
 | 서버 시각이 9시간 틀림 | `created_at` 이 UTC 인데 문자열을 잘랐다 | [CLAUDE.md](../../CLAUDE.md) §날짜·시각 |
 | 목업이 PATCH 를 받아줘 통과, 진짜 서버는 PUT | 코드를 보고 짐작하고 값을 안 봤다 | [CLAUDE.md](../../CLAUDE.md) §서버 값은 타입 말고 실제 응답을 본다 |
+| 휴대폰(390px) 보관함에서 반 목록 아래 빈 칸 · 종류 카드 아이콘이 점으로 보임 | 넓은 화면의 최소 높이 360px 와 아이콘 안 여백 13px 을 그대로 물려받았다 | `frontend/components/workspace/DocumentArchive.module.css` |
+| 휴대폰에서 두 자리 날짜(「11.18」)가 보육일지 주간 칸을 넘침 | 칸 최소 폭 52px 이 글자 46px 에 여백을 못 담았다 | `frontend/components/workspace/DocumentArchive.module.css` · `frontend/e2e/document-archive-layout.spec.ts` |
 
 세 번 같은 실수를 하고 **규칙으로 굳혔다** — 「한 번 찍어보고 쓴다」.
 
