@@ -134,7 +134,7 @@ def test_훈련_칸이_없는_계획은_후보가_비어_있고_복사하면_422
 
 
 def _held(drill) -> str:
-    return f"[{drill['label']}]\n{drill['cell']['value']}"
+    return f"[{drill['label']}] {drill['cell']['value']}"  # Human Decision 2026-11-06: one line
 
 
 def test_복사하면_칸에_후보_문장이_들어가고_RULE_ONLY_이고_revision_이_오른다(plan):

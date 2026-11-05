@@ -497,9 +497,9 @@ def test_훈련_후보를_복사하면_RULE_ONLY_drill_copy_이고_CANDIDATE_COP
     source = plan.drill_candidates[0].cell
     body = _call(row.id, plan, "drill").json()
     cell = next(t for t in body["teacher_inputs"] if t["key"] == "fire_disaster_drill")["cell"]
-    # 「[주제]」 다음 줄에 문장 — Human Decision 2026-11-05(하민).
+    # 「[주제] 문장」 한 줄 — Human Decision 2026-11-06(하민).
     assert (cell["value"], cell["generation"]["method"], cell["generation"]["rule_id"]) == (
-        f"[{plan.drill_candidates[0].label}]\n{source.value}",
+        f"[{plan.drill_candidates[0].label}] {source.value}",
         "RULE_ONLY",
         "play_monthly.drill_copy",
     )

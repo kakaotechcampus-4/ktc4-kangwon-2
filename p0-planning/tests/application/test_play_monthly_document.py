@@ -63,7 +63,7 @@ def test_a_draft_prints_kept_names_placed_safety_and_its_own_teacher_inputs():
     )
     assert doc.weeks[0].habit_label == "습관" and doc.weeks[2].habit == ""
     drill = plan.drill_candidates[2]
-    assert doc.drill == f"[{drill.label}]\n{drill.cell.value}"
+    assert doc.drill == f"[{drill.label}] {drill.cell.value}"  # Human Decision 2026-11-06: one line
     assert (doc.health, doc.nutrition) == (plan.health.cell.value, plan.nutrition.cell.value)
     assert (doc.birthdays, doc.home_connection) == ("생일 안내", "가정 안내")
     # Descriptions, unplaced candidates, the class notice and ids are never part of it.

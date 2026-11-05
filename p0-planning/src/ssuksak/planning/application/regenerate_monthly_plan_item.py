@@ -7,6 +7,7 @@ from dataclasses import replace
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
 from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ..domain.monthly_template import RepeatBy
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
@@ -341,6 +342,8 @@ def _month_snapshot(
         section
         for section in plan.sections
         if section.repeat_by is RepeatBy.WEEK
+        # ADR-066: hidden descriptions are not cell-regeneration context.
+        and section.section_key not in ACTIVITY_DETAIL_SECTION_KEYS.values()
     )
     return tuple(
         MonthlyCellSnapshot(

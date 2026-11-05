@@ -690,6 +690,7 @@ def test_rule_only_generation_assembles_complete_draft_and_saves_once():
         "outdoor_play",
         "safety_education",
         "focus",
+        "outdoor_play_detail",  # ADR-066: hidden, derived by the Core
     )
     assert len(plan.active_week_periods) == 5
     assert {
@@ -863,6 +864,7 @@ def test_llm_mode_uses_the_profile_structure_without_requiring_focus():
         "week_axis",
         "outdoor_play",
         "safety_education",
+        "outdoor_play_detail",
     )
     assert len(provider.monthly_requests) == 1
     assert harness.plans.save_count == 1
@@ -2329,6 +2331,7 @@ def test_indoor_alternative_is_generated_from_weekly_indoor_evidence(target_mont
     cells = plan.section("indoor_alternative").cells
     request = provider.monthly_requests[0]
     assert len(cells) == len(plan.active_week_periods) == {9: 5, 10: 4}[target_month.calendar_month]
+    assert [c.week_id for c in plan.section("indoor_alternative_detail").cells] == [c.week_id for c in cells]  # ADR-066
     assert request.prompt_version.endswith(MONTHLY_INDOOR_PROMPT_TAG)
     assert request.system_prompt.endswith(INDOOR_ALTERNATIVE_PROMPT)
     assert packets[0].lineage.weekly_classification_version == weekly.classification_version
@@ -2340,7 +2343,8 @@ def test_indoor_alternative_is_generated_from_weekly_indoor_evidence(target_mont
             weekly.class_of(records[source.source_id]) is WeeklySemanticClass.INDOOR_ALTERNATIVE for source in samples
         )
     # Requests without indoor_alternative keep their prompt version and bytes.
-    assert Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan.section("indoor_alternative") is None
+    off = Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan
+    assert off.section("indoor_alternative") is None and off.section("indoor_alternative_detail") is None  # ADR-066
     assert provider.monthly_requests[1].prompt_version == MONTHLY_PROMPT_VERSION
 
 
@@ -2869,7 +2873,7 @@ def test_generation_snapshot_comes_from_the_profile_not_the_approved_template():
     assert plan.template_ref == profile.base_template_ref
     assert [section.section_key for section in plan.template_snapshot.sections] == [
         section.section_key for section in profile.ordered_sections
-    ]
+    ] + ["outdoor_play_detail"]  # ADR-066
 
 
 # --- S-1: eight safety candidates, placed by the teacher -------------------------------------

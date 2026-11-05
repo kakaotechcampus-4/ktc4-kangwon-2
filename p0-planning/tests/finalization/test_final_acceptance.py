@@ -13,6 +13,7 @@ from ssuksak.adapters.institution_evidence_repository import (
 from ssuksak.planning.domain.monthly_constraint import CellState
 from ssuksak.planning.domain.monthly_plan import MonthlyGenerationMode
 from ssuksak.planning.domain.monthly_template import RepeatBy, SectionRole
+from ssuksak.planning.domain.monthly_template_snapshot import TemplateSnapshot
 from ssuksak.planning.domain.plan import PlanStatus
 from ssuksak.planning.domain.provenance import (
     AuditEventType,
@@ -134,8 +135,9 @@ def test_extended_profile_final_acceptance(ages, month):
     # Snapshot is the exact Profile contract; a hidden week_axis still drives the weeks.
     assert snapshot.profile_ref == EXTENDED_PROFILE
     assert [contract(section) for section in snapshot.sections] == [
-        contract(section) for section in profile.ordered_sections
-    ]
+        contract(section)
+        for section in TemplateSnapshot.from_profile(profile).with_activity_details().sections
+    ]  # ADR-066: the Profile plus the hidden activity detail Sections
     assert [section.section_key for section in plan.sections] == [
         section.section_key for section in snapshot.sections
     ]
@@ -150,7 +152,7 @@ def test_extended_profile_final_acceptance(ages, month):
     # Placement: weekly Sections have one cell per active week, merged ones a single week-less cell.
     placements = {section.section_key: section.repeat_by for section in plan.sections}
     assert {key for key, mode in placements.items() if mode is RepeatBy.WEEK} == {
-        "outdoor_play", "safety_education", "focus", "basic_habit"
+        "outdoor_play", "safety_education", "focus", "basic_habit", "outdoor_play_detail"
     }
     assert {
         key for key, mode in placements.items() if mode is RepeatBy.NONE
