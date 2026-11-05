@@ -56,6 +56,16 @@ async function enterArchive(page: Page) {
           ],
         }),
       );
+      // 화면의 반 id → 서버 반 번호 연결표. 없으면 classServerId 가 null 이라
+      // 보관함이 연간 목록을 비워 저장된 카드가 그려지지 않는다. CI 는 MSW 가 꺼져 키가 `backend` 다.
+      localStorage.setItem(
+        `saessak.apiLinks.v1:backend:${suffix}`,
+        JSON.stringify({
+          center: { id: center.id, signature: "qa" },
+          classes: { [classId]: { id: classroom.id, signature: "qa" } },
+          children: {},
+        }),
+      );
     },
     { center, classroom },
   );
