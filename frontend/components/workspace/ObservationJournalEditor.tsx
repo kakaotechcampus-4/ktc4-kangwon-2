@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import type { SavedDocument } from "@/lib/workspace/model";
 import { downloadDocumentHwpx, isStaleWrite } from "@/lib/api/documents";
 import type { ExportFormat } from "@/lib/api/export";
+import { EXPORTS, FileLogo } from "@/components/plan-generator/AnnualFrame";
+import { Icon } from "@/components/app/icons";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { Posty } from "@/components/app/Posty";
@@ -18,15 +20,8 @@ const LAYERS = [
   { heading: "지원", hint: "다음 놀이에서 교사가 할 일을 구체적으로 적어요." },
 ] as const;
 
-
 /** 양식 맨 아래 칸 이름 (backend documents/export.py AXIS_TAIL). 2축 원은 「총평」이다. */
 const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평" : "종합해석");
-
-const FORMATS: { format: ExportFormat; label: string }[] = [
-  { format: "pdf", label: "PDF" },
-  { format: "hwpx", label: "한글 (hwpx)" },
-  { format: "hwp", label: "한글 97~2010 (hwp)" },
-];
 
 /**
  * 관찰일지 한 편 — 초안은 **칠판 위 쪽지와 공책**(근거 쪽지를 보며 해석 · 지원을 고친다),
@@ -43,14 +38,12 @@ export default function ObservationJournalEditor({
   server,
   domainOf,
   domains,
-  onClose,
 }: {
   initial: SavedDocument;
   server: ServerDocumentActions;
   /** 근거 기록 id → 영역. 관찰 기록 id 와 근거 id 가 같다. */
   domainOf: (sourceId: string) => string;
   domains: readonly string[];
-  onClose: () => void;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -60,6 +53,7 @@ export default function ObservationJournalEditor({
   const [issues, setIssues] = useState<string[]>([]);
   const [staleWrite, setStaleWrite] = useState(false);
   const hwpx = useHwpxDownload(setMessage);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const working = busy || hwpx.exporting || server.pending;
 
   const body = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";
@@ -117,27 +111,13 @@ export default function ObservationJournalEditor({
       setMessage("근거 기록이 바뀌었어요. 반영한 뒤 확정해 주세요.");
       return;
     }
-    void run(
-      () => server.saveAndConfirm(doc.sections, "교사 사실·해석·지원 검토 완료"),
-      "확정했어요. 이 모습 그대로 내려받아요.",
-    );
+    void run(() => server.saveAndConfirm(doc.sections, "교사 사실·해석·지원 검토 완료"), "");
   }
 
   const { dialog: leaveDialog, stay, go } = useLeaveGuard(dirty);
 
   return (
     <section className={ws.ojWrap} aria-label="관찰일지">
-      <div className={ws.ojTop}>
-        <button type="button" className={ws.link} data-leave onClick={onClose}>
-          ← 관찰일지 목록
-        </button>
-        {doc.status === "confirmed" && (
-          <span className={ws.ojStep}>
-            <s>1 고치기</s> → <b>2 출력 미리보기</b>
-          </span>
-        )}
-      </div>
-
       {staleWrite && (
         <>
           <Message error>
@@ -156,37 +136,50 @@ export default function ObservationJournalEditor({
 
       {doc.status === "confirmed" ? (
         <JournalSheet doc={doc} domainOf={domainOf} domains={domains}>
-          <Message>{message}</Message>
           {server.stale && (
             <Message error>
               근거 기록이 바뀌어 내려받을 수 없어요. 다시 고치기를 눌러 반영해 주세요.
             </Message>
           )}
-          <div className={ws.ojExports} role="group" aria-label="내려받기">
-            {FORMATS.map(({ format, label }) => (
+          {/* 계획안 확정 화면(PlanDone)과 같은 파일 그림 단추 — 이름은 aria-label · title. */}
+          <h4 className={ws.ojExportHead}>내보내기</h4>
+          <div className={ws.ojExports} role="group" aria-label="내보내기">
+            {(Object.keys(EXPORTS) as ExportFormat[]).map((format) => (
               <button
                 key={format}
                 type="button"
-                className={format === "pdf" ? ws.primary : ws.secondary}
+                aria-label={EXPORTS[format].label}
+                title={EXPORTS[format].label}
                 disabled={working || server.stale}
-                onClick={() =>
-                  hwpx.download(
+                onClick={async () => {
+                  setExporting(format);
+                  await hwpx.download(
                     () => downloadDocumentHwpx(doc.id, format),
-                    `${label} 파일로 내려받았어요.`,
-                  )
-                }
+                    EXPORTS[format].done,
+                  );
+                  setExporting(null);
+                }}
               >
-                {label}
+                <FileLogo format={format} busy={exporting === format} />
               </button>
             ))}
           </div>
+          {message && (
+            <p role="status" className={ws.ojNote}>
+              {message}
+            </p>
+          )}
           <button
             type="button"
-            className={ws.link}
+            className={ws.ojRedo}
             disabled={working}
             onClick={() => run(() => server.unconfirm(), "확정을 풀었어요. 다시 고칠 수 있어요.")}
           >
-            ← 다시 고치기 (확정 풀기)
+            <Icon name="edit" width={17} height={17} />
+            <span>
+              <b>다시 고치기</b>
+              <small>확정을 풀고 칠판으로 돌아가요</small>
+            </span>
           </button>
         </JournalSheet>
       ) : (
@@ -440,10 +433,9 @@ function JournalSheet({
       <aside className={ws.ojRail}>
         <span className={ws.ojDone}>확정</span>
         <h3>이렇게 출력돼요</h3>
-        <p>
-          {doc.childName} · {periodLabel(doc.start, doc.end)}
-          <br />
-          내려받는 파일도 이 칸 그대로예요.
+        <p className={ws.ojWho}>
+          <b>{doc.childName}</b>
+          <span>{periodLabel(doc.start, doc.end)}</span>
         </p>
         {children}
       </aside>

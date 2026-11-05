@@ -2913,24 +2913,6 @@ button.recordBlank:disabled {
   display: grid;
   gap: 14px;
 }
-.ojTop {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.ojStep {
-  font-size: 13.5px;
-  color: var(--pg-ink-soft);
-}
-.ojStep s {
-  text-decoration: none;
-  opacity: 0.7;
-}
-.ojStep b {
-  color: var(--pg-ink);
-}
 .ojBoard {
   display: grid;
   gap: 18px;
@@ -3286,9 +3268,85 @@ button.recordBlank:disabled {
   font-weight: 700;
   rotate: -6deg;
 }
+.ojExportHead {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
 .ojExports {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+.ojExports button {
+  display: flex;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+  background: var(--pg-paper);
+  cursor: pointer;
+}
+.ojExports button:hover:not(:disabled) {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-shell, #f7f4ee);
+}
+.ojExports button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ojNote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+/* 확정본에서 다시 고치기 — 그림 · 굵은 이름 · 무슨 일이 생기는지 한 줄 */
+.ojRedo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px dashed var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper-warm);
+  color: var(--pg-ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.ojRedo:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--pg-ink-soft);
+}
+.ojRedo span {
+  display: grid;
+}
+.ojRedo b {
+  font-size: 15px;
+}
+.ojRedo small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+/* 누구 · 언제 — 손글씨 두 줄 */
+.ojWho {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  line-height: 1.15;
+}
+.ojWho b {
+  font-size: 30px;
+  color: var(--pg-ink);
+}
+.ojWho span {
+  font-size: 20px;
+  color: var(--pg-ink-soft);
 }
 
 /* 나가기 경고 — 포스티가 든 노란 쪽지. 사라지는 것 한 줄만 빨갛게. */

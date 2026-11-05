@@ -25,8 +25,6 @@ interface ClassData {
   children: ApiChildTracking[];
 }
 
-type Order = "need" | "name";
-
 const FAILED = "기록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 
 /** 관찰 기록 화면이 이미 받는 반·아동 필터만 전달한다. 실명이나 본문은 주소에 넣지 않는다. */
@@ -55,7 +53,6 @@ function byNeed(a: ApiChildTracking, b: ApiChildTracking) {
   }
   return a.name.localeCompare(b.name, "ko");
 }
-const byName = (a: ApiChildTracking, b: ApiChildTracking) => a.name.localeCompare(b.name, "ko");
 
 /**
  * 칠판 띠 한 줄. **가장 오래 비어 있는 아이에 맞춰 말을 고른다** — 모두 사흘 안에
@@ -105,7 +102,7 @@ export function boardLine(children: ApiChildTracking[], now: string) {
 }
 
 /**
- * 아이별 기록 — 쪽지 하나가 아이 한 명. 오래 비어 있는 아이가 먼저 보이고,
+ * 아이별 기록 — 쪽지 하나가 아이 한 명. 오래 비어 있는 아이가 먼저 온다(순서는 하나뿐이다),
  * 쪽지를 누르면 옆에 그 아이의 영역 칸과 날짜별 기록이 펼쳐진다.
  *
  * **조회만 한다.** 발달 수준을 판정하지 않는다 — 판정은 ADR-007 이 스펙아웃한 발달평가다.
@@ -119,7 +116,6 @@ export default function ChildTrackingPage() {
   const [classes, setClasses] = useState<ApiClass[] | null>(null);
   const [classData, setClassData] = useState<ClassData | null>(null);
   const [pickedChild, setPickedChild] = useState<number | null>(null);
-  const [order, setOrder] = useState<Order>("need");
   const [error, setError] = useState("");
   const domains = useObservationDomains();
 
@@ -157,14 +153,20 @@ export default function ChildTrackingPage() {
 
   const current = classData?.classId === classId ? classData : null;
   const now = today();
-  const sorted = current ? [...current.children].sort(order === "need" ? byNeed : byName) : [];
+  const sorted = current ? [...current.children].sort(byNeed) : [];
   const child = sorted.find((c) => c.child_id === pickedChild) ?? sorted[0] ?? null;
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <h1>아이별 기록</h1>
-        <p>쪽지 하나가 아이 한 명이에요. 누르면 그 아이 기록이 펼쳐져요.</p>
+        <div>
+          <h1>아이별 기록</h1>
+          <p>쪽지 하나가 아이 한 명이에요. 누르면 그 아이 기록이 펼쳐져요.</p>
+        </div>
+        {/* 관찰 기록 아래 화면이다. 관찰일지 만들기 화면과 같은 자리 · 같은 말로 돌아간다. */}
+        <Link href="/records" className={styles.back}>
+          ← 관찰 기록
+        </Link>
       </header>
       <Message error>{error}</Message>
       {/* 조회가 실패하면 로딩 안내를 함께 보여주지 않는다. */}
@@ -179,25 +181,6 @@ export default function ChildTrackingPage() {
       {!error && !!classes?.length && (
         <>
           {current && <Board kids={current.children} now={now} classId={classId} />}
-          <div className={styles.toolbar}>
-            <span>순서</span>
-            <div className={styles.seg} role="group" aria-label="쪽지 순서">
-              <button
-                type="button"
-                aria-pressed={order === "need"}
-                onClick={() => setOrder("need")}
-              >
-                오래 비어 있는 순
-              </button>
-              <button
-                type="button"
-                aria-pressed={order === "name"}
-                onClick={() => setOrder("name")}
-              >
-                이름순
-              </button>
-            </div>
-          </div>
           <div className={styles.workspace}>
             <Wall
               loaded={!!current}

@@ -374,10 +374,14 @@ test("아이를 바꾸면 늦게 온 이전 아이 응답은 무시한다", asyn
   assert.doesNotMatch(text(page.byClass("timeline")), /가아동/);
 });
 
-test("머리에 링크가 없고, 빈 아이의 작성 링크와 관찰일지 작성 링크는 그 아이로 간다", async (t) => {
+test("머리의 링크는 관찰 기록으로 가는 하나뿐이고, 작성 링크들은 그 아이로 간다", async (t) => {
   const page = harness(t, { children: [tracking(101, "가아동", nuriZeros)] });
   await page.mount();
-  assert.equal(nodes(page.header()).filter((node) => node?.type === "a").length, 0);
+  const headLinks = nodes(page.header()).filter((node) => node?.type === "a");
+  assert.deepEqual(
+    headLinks.map((a) => a.props.href),
+    ["/records"],
+  );
   const link = nodes(page.byClass("emptyState")).find((node) => node?.type === "a");
   assert.equal(text(link), "기록 적으러 가기 →");
   assert.equal(link.props.href, "/records?class=class-10&child=child-101");
@@ -386,7 +390,7 @@ test("머리에 링크가 없고, 빈 아이의 작성 링크와 관찰일지 �
   assert.equal(journal.props.href, "/records/journal?child=child-101");
 });
 
-test("오래 비어 있는 순이 기본 — 한 번도 없는 아이, 오래된 아이 순, 한 주 넘으면 D+", async (t) => {
+test("오래 비어 있는 순 — 한 번도 없는 아이, 오래된 아이 순, 한 주 넘으면 D+", async (t) => {
   const kids = [
     { ...tracking(1, "다아이", { 의사소통: 1 }), last_date: "2026-11-04" },
     { ...tracking(2, "나아이", { 의사소통: 1 }), last_date: "2026-10-22" },
@@ -397,12 +401,6 @@ test("오래 비어 있는 순이 기본 — 한 번도 없는 아이, 오래된
   const names = () => page.byClass("note").map((n) => n.props["aria-label"].split(" ·")[0]);
   assert.deepEqual(names(), ["가아이", "나아이", "다아이"]);
   assert.deepEqual(page.byClass("flag").map(text), ["기록 없음", "D+14"]);
-  page.button("이름순").props.onClick();
-  page.render();
-  assert.deepEqual(
-    names(),
-    ["가아이", "나아이", "다아이"].sort((a, b) => a.localeCompare(b, "ko")),
-  );
 });
 
 test("칠판 띠 말은 가장 오래 비어 있는 아이에 맞춘다", async (t) => {

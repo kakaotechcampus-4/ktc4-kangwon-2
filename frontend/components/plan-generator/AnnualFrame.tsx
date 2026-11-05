@@ -378,7 +378,7 @@ export function AnnualDone({
 }
 
 /** 내보내기 버튼 — 로고만 보이고 이름은 aria-label · title. */
-const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string }> = {
+export const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string }> = {
   pdf: { label: "PDF로 내려받기", done: "PDF로 내려받았어요.", color: "bg-[#d4483b]" },
   hwpx: {
     label: "한글 파일(hwpx)로 내려받기",
@@ -393,7 +393,7 @@ const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string
 };
 
 /** 접힌 귀퉁이가 있는 문서 모양 + 형식 이름 띠. 받는 중이면 띠가 「…」. */
-function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
+export function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
   return (
     <span aria-hidden="true" className="relative block h-12 w-10">
       <svg viewBox="0 0 40 48" className="absolute inset-0 h-full w-full">

@@ -146,7 +146,13 @@ export default function ObservationJournalPage() {
     }
   }
 
-  const back = (
+  // 뒤로 가는 단추는 하나 — 일지를 펴 두었으면 목록으로, 아니면 관찰 기록으로.
+  // 펴 둔 일지에 고친 것이 있으면 `data-leave` 를 편집기가 잡아 한 번 묻는다.
+  const back = openId ? (
+    <button type="button" className={ws.secondary} data-leave onClick={() => setOpenId("")}>
+      ← 관찰일지 목록
+    </button>
+  ) : (
     <Link href="/records" className={ws.secondary}>
       ← 관찰 기록
     </Link>
@@ -348,7 +354,6 @@ function JournalEditor({
       server={edit.server}
       domainOf={domainOf}
       domains={domains}
-      onClose={onClose}
     />
   );
 }
