@@ -250,6 +250,7 @@ def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world)
         "theme": "NONE",
         "week_axis": None,
         "outdoor_play": "WEEK",
+        "outdoor_play_detail": "WEEK",  # ADR-066 숨은 설명
         "safety_education": "WEEK",
         "focus": "WEEK",
     }
