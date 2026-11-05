@@ -312,13 +312,10 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
       <div className="flex h-[124px] w-full flex-none flex-col items-center justify-end">
         {say && (
           <div
-            className="paper relative max-w-full squircle [--r:16px] border border-line bg-paper px-4 py-3.5 text-left"
+            className="relative max-w-full px-4 py-3.5 text-left text-ink"
             style={{ wordBreak: "keep-all" }}
           >
-            <span
-              aria-hidden="true"
-              className="absolute -bottom-[7px] left-1/2 -ml-1.5 h-3 w-3 rotate-45 border-b border-r border-line bg-paper"
-            />
+            <ChalkBubble />
             {/* 한 글자씩 치는 글은 화면 읽기 프로그램이 글자마다 읽지 않도록 숨기고, 다 된 글을 따로 둔다. */}
             <span className="sr-only" aria-live={live ? "polite" : undefined}>
               {say.title} {say.body}
@@ -342,6 +339,33 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
 }
 
 /**
+ * 분필로 그린 말풍선 테두리 — 둥근 네모와 아래 가운데 꼬리를 한 획으로. 포스티와 같은 분필 결(#chalk-posty)이고,
+ * 안은 분필로 아주 옅게 문지른 정도라 흰 분필 글자가 칠판 위에서처럼 읽힌다. 말풍선이 글과 함께 자라므로
+ * 크기에 맞춰 늘어나되(preserveAspectRatio none) 선 굵기는 그대로다. 색은 말풍선 글자색(흰 분필)을 이어받는다.
+ */
+function ChalkBubble() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 240 90"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-x-0 top-0 h-[calc(100%+10px)] w-full overflow-visible"
+    >
+      <path
+        d="M16 2 H224 Q238 2 238 16 V66 Q238 80 224 80 H129 L120 89 L111 80 H16 Q2 80 2 66 V16 Q2 2 16 2 Z"
+        fill="currentColor"
+        fillOpacity={0.07}
+        stroke="currentColor"
+        strokeWidth={2.4}
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        filter="url(#chalk-posty)"
+      />
+    </svg>
+  );
+}
+
+/**
  * 말풍선 글 — 앞 문구와 뒷 문구를 굵기 · 크기 · 글자색이 모두 같은 한 문단으로 잇는다
  * (포스티가 한 번에 말하는 것처럼). 앞 문구는 늘 응원 한마디라 굵게 하면 덜 중요한 쪽이 눈에 띈다.
  * 글이 바뀌면 `key` 로 처음부터 다시 친다. 아직 안 친 글자는 자리를 잡지 않는다(말풍선이 글과 함께
@@ -351,7 +375,10 @@ function SayLines({ say }: { say: PostySay }) {
   const text = `${say.title} ${say.body}`;
   const shown = useTypewriter(text.length);
   return (
-    <span aria-hidden="true" className="block text-[15px] leading-[1.6] text-ink">
+    <span
+      aria-hidden="true"
+      className="relative block text-[15px] leading-[1.6] text-ink [filter:url(#chalk-text)]"
+    >
       {text.slice(0, shown)}
     </span>
   );
