@@ -25,6 +25,9 @@ jobs:
   #   문서만 바뀐 PR            → 아래 잡 전부 건너뜀
   #   frontend/ 만 바뀐 PR      → backend 잡 4개(ruff · alembic · pytest · docker) 건너뜀
   #   그 밖 · 판단할 수 없을 때  → 전부 돈다
+  # 이 잡이 실패해도 아래 잡은 전부 돈다(needs.changes.result). 건너뛴 잡은 GitHub 이 통과로 쳐서
+  # main 필수 검사(ruff · alembic · frontend)를 판정 실패 하나로 비켜 갈 수 있기 때문이다.
+  # --no-renames: 이름 바꾸기는 새 경로만 나와 backend/ 에서 docs/ 로 옮긴 PR 을 문서만으로 본다.
   # frontend/ 안의 .md 는 문서로 치지 않는다 — prettier 가 .md 도 검사한다.
   changes:
     name: changes
@@ -45,7 +48,7 @@ jobs:
           docs=false
           front=false
           if [ "$EVENT" = pull_request ] &&
-            files=$(git -c core.quotepath=off diff --name-only HEAD^1 HEAD) &&
+            files=$(git -c core.quotepath=off diff --no-renames --name-only HEAD^1 HEAD) &&
             [ -n "$files" ]; then
             docs=true
             front=true
@@ -69,7 +72,7 @@ jobs:
   backend:
     name: backend (ruff)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true')) }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -89,7 +92,7 @@ jobs:
   migration:
     name: backend (alembic check)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true')) }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -134,7 +137,7 @@ jobs:
   frontend:
     name: frontend (eslint · prettier · build)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -182,7 +185,7 @@ jobs:
   test:
     name: backend (pytest)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true')) }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -235,7 +238,7 @@ jobs:
   docker:
     name: backend (docker build)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.frontend_only != 'true')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -278,7 +281,7 @@ jobs:
   e2e:
     name: e2e (playwright)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
