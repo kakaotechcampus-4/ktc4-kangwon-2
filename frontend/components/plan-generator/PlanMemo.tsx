@@ -46,7 +46,7 @@ export function PlanMemoField(props: {
         >
           요청 사항
         </label>
-        <span className="text-[13px] text-[#8a8178]">
+        <span className="text-[13px] text-ink-soft">
           {value.length}/{MEMO_MAX}자
         </span>
       </div>
@@ -58,7 +58,7 @@ export function PlanMemoField(props: {
         placeholder={props.placeholder}
         aria-invalid={!!props.error}
         aria-describedby={props.error ? "plan-memo-error" : undefined}
-        className="min-h-[96px] resize-none rounded-md border border-[#ddd6ca] px-4 py-3 text-[15px] placeholder:text-[#8a8178]"
+        className="min-h-[96px] resize-none rounded-md border border-[#ddd6ca] px-4 py-3 text-[15px] placeholder:text-ink-hint"
       />
       {props.error && (
         <p id="plan-memo-error" role="alert" className="m-0 text-sm text-[#8a2f2f]">

@@ -129,7 +129,7 @@ export default function GenerationRing({
                 i === cur
                   ? "font-bold text-[#7053a0]"
                   : i < cur
-                    ? "text-[#8a8178]"
+                    ? "text-ink-soft"
                     : "text-[#c9c1b6]"
               }
             >

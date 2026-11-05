@@ -23,7 +23,7 @@ const { createTemplateProfile } = await import("../lib/api/templateProfiles.ts")
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
 const { createAnnualPlan, confirmAnnualPlan } = await import("../lib/api/plans.ts");
-const { createMonthlyPlan, confirmMonthlyPlan, getMonthlyPlan } =
+const { createMonthlyPlan, confirmMonthlyPlan, getMonthlyPlan, placeMonthlySafety } =
   await import("../lib/api/monthly.ts");
 const weekly = await import("../lib/api/weekly.ts");
 const { ApiError } = await import("../lib/api/client.ts");
@@ -375,6 +375,26 @@ test("G5 — 같은 반 같은 주는 한 번만 만든다", async () => {
     409,
     "ALREADY_EXISTS",
   );
+});
+
+test("안전교육은 월간에서 그 주에 놓은 후보를 복사한다 — 안 놓은 주는 빈칸", async () => {
+  const { klass, monthly: draft } = await classWithMonthly({ confirm: false });
+  const [w1, w2] = draft.weeks;
+  const source = draft.safety_candidates[0].cell;
+  let monthly = await placeMonthlySafety(draft.id, w1.week_id, source.item_id, draft.revision);
+  monthly = await confirmMonthlyPlan(monthly.id, monthly.revision);
+  const safety = (plan) => plan.sections.find((s) => s.section_key === "safety_education").cells[0];
+  const copied = safety(await weekly.createWeeklyPlan({ class_id: klass.id, week_id: w1.week_id }));
+  assert.equal(copied.value, monthly.safety_weeks[0].display_value);
+  assert.equal(copied.state, "FILLED");
+  assert.equal(copied.generation.method, "RULE_ONLY");
+  assert.equal(copied.generation.rule_id, "weekly.safety.parent_placement");
+  assert.deepEqual(copied.parent_snapshots, [
+    { parent_item_id: source.item_id, snapshot_value: source.value },
+  ]);
+  const blank = safety(await weekly.createWeeklyPlan({ class_id: klass.id, week_id: w2.week_id }));
+  assert.equal(blank.value, "");
+  assert.equal(blank.state, "EMPTY_UNRESOLVED");
 });
 
 test("Section 마다 칸이 하나다 — 주차 열이 없다", async () => {

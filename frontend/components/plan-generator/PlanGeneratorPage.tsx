@@ -285,7 +285,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             type="button"
             onClick={() => void generate()}
             disabled={!room.className}
-            className="mt-auto min-h-[56px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+            className="mt-auto min-h-[56px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간계획안 만들기
           </button>
@@ -301,7 +301,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             <img
               src={`/plan-formats/${look.image}.png`}
               alt={look.alt}
-              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
             />
           </div>
         </section>

@@ -399,12 +399,13 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
             </p>
           )}
 
-          <div className="mt-auto flex shrink-0 flex-col gap-2">
+          {/* 만들기 단추는 화면 아래에 붙여 둔다 — 낮은 화면(1440×900)에서도 스크롤 없이 보이게. */}
+          <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 flex-col gap-2 bg-paper pb-1 pt-2">
             <button
               type="button"
               onClick={() => void create()}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="min-h-[54px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {mine ? `${label} 주간계획안 열기` : `${label} 주간계획안 만들기`}
             </button>

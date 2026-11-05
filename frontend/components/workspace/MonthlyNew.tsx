@@ -329,7 +329,7 @@ export function MonthlyNewView(props: {
                           className="h-[18px] w-[18px] accent-[#7053a0]"
                         />
                         {sectionName(s.section_key, s.label)}
-                        <span className="ml-auto text-[12px] font-normal text-[#8a8178]">
+                        <span className="ml-auto text-[12px] font-normal text-ink-soft">
                           {s.repeat_by === "WEEK" ? "주마다" : "한 달에 한 번"}
                         </span>
                       </label>
@@ -358,12 +358,13 @@ export function MonthlyNewView(props: {
             </p>
           )}
 
-          <div className="mt-auto flex shrink-0 flex-col gap-2">
+          {/* 만들기 단추는 화면 아래에 붙여 둔다 — 낮은 화면(1440×900)에서도 스크롤 없이 보이게. */}
+          <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 flex-col gap-2 bg-paper pb-1 pt-2">
             <button
               type="button"
               onClick={props.onCreate}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="min-h-[54px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {plans[month] ? `${month}월 월간계획안 열기` : `${month}월 월간계획안 만들기`}
             </button>
@@ -375,12 +376,15 @@ export function MonthlyNewView(props: {
           aria-label="양식 미리보기"
           className="flex min-h-[420px] flex-col border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] p-3"
         >
+          <p className="m-0 mb-2 text-[13px] text-ink-soft">
+            양식 예시예요. 만들면 고른 달 · 반의 내용으로 채워져요.
+          </p>
           <div className="relative min-h-0 flex-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/plan-formats/${look.image}.png`}
               alt={`${look.form} 예시`}
-              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
             />
           </div>
         </section>
@@ -585,7 +589,13 @@ export default function MonthlyNew({
       setBusy(false);
       const memoMessage = memoError(e);
       if (memoMessage) setMemoProblem(memoMessage);
-      else setProblem(e instanceof Error ? e.message : "월간계획안을 만들지 못했어요.");
+      // 서버가 보낸 안내(ApiError)만 그대로 — 연결 끊김 같은 브라우저 오류 원문(영어)은 보이지 않는다.
+      else
+        setProblem(
+          e instanceof ApiError
+            ? e.message
+            : "월간계획안을 만들지 못했어요. 잠시 뒤 다시 해 주세요.",
+        );
     }
   }
 

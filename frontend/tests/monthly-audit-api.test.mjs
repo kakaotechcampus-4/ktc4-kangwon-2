@@ -30,6 +30,7 @@ const {
   editMonthlyCell,
   regenerateMonthlyCell,
   confirmMonthlyPlan,
+  unconfirmMonthlyPlan,
   getMonthlyPlanAudit,
 } = await import("../lib/api/monthly.ts");
 const {
@@ -104,8 +105,12 @@ const rejects = (promise, status, code, fields) =>
   });
 const cellOf = (plan, key, index = 0) =>
   plan.sections.find((s) => s.section_key === key).cells[index];
-const located = (plan) =>
-  plan.sections.flatMap((s) => s.cells.map((c) => [c.item_id, s.section_key, c.week_id]));
+// 서버(monthly_router get_monthly_audit)처럼 후보 칸은 Section 칸 다음 — 안전교육 · 훈련으로 적는다.
+const located = (plan) => [
+  ...plan.sections.flatMap((s) => s.cells.map((c) => [c.item_id, s.section_key, c.week_id])),
+  ...plan.safety_candidates.map((c) => [c.cell.item_id, "safety_education", null]),
+  ...plan.drill_candidates.map((d) => [d.cell.item_id, "drill", null]),
+];
 const types = (items) => items.map((i) => [i.type, i.scope]);
 
 /** 내 원(첫 원)의 반 · 확정된 연간 · READY Profile, 그리고 남의 원 월간 하나. */
@@ -391,7 +396,7 @@ test("first confirm records PLAN CONFIRMED; re-confirm (policy B) records nothin
 
 // ── F. item_id 고르기 ──────────────────────────────────────────────────────
 
-test("item_id filter: that cell + PLAN CONFIRMED only, never PLAN CREATED; unknown → 404", async () => {
+test("item_id filter: that cell + PLAN CONFIRMED · UNCONFIRMED only, never PLAN CREATED; unknown → 404", async () => {
   const w = await world();
   const plan = await monthly(w);
   const target = cellOf(plan, "focus", 0);
@@ -410,6 +415,12 @@ test("item_id filter: that cell + PLAN CONFIRMED only, never PLAN CREATED; unkno
   const confirmed = await audit(plan.id, target.item_id);
   assert.deepEqual(confirmed.slice(0, 2), draft);
   assert.deepEqual(types(confirmed.slice(2)), [["CONFIRMED", "PLAN"]]);
+  // 확정 취소도 계획안 이벤트로 같이 온다(서버 get_monthly_audit, ADR-055).
+  await unconfirmMonthlyPlan(plan.id, 4);
+  assert.deepEqual(types((await audit(plan.id, target.item_id)).slice(2)), [
+    ["CONFIRMED", "PLAN"],
+    ["UNCONFIRMED", "PLAN"],
+  ]);
 
   await rejects(getMonthlyPlanAudit(plan.id, "item_none"), 404, "NOT_FOUND", ["item_id"]);
   await rejects(getMonthlyPlanAudit(plan.id, ""), 404, "NOT_FOUND", ["item_id"]);
