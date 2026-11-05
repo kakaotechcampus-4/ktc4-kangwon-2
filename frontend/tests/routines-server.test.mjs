@@ -1608,7 +1608,7 @@ test("관찰 기록 본문에는 일과 기록으로 가는 길을 두지 않는
     view.links().filter((href) => href.startsWith("/routines")),
     [],
   );
-  assert.ok(view.links().includes("/documents"), view.links().join(" , "));
+  assert.ok(view.links().includes("/records/journal"), view.links().join(" , "));
 });
 
 test("P1-3 들고 간 주소를 S-J1 이 그대로 읽는다", () => {

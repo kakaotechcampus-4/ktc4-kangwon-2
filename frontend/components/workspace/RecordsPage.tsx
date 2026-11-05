@@ -6,7 +6,6 @@ import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
-import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { Posty } from "@/components/app/Posty";
@@ -113,6 +112,8 @@ export default function RecordsPage() {
   const [search, setSearch] = useState("");
   /** 목록을 거르는 영역. 빈 값이면 다섯 영역 전부다. */
   const [area, setArea] = useState("");
+  /** 목록을 거르는 날짜. 빈 값이면 모든 날이다. */
+  const [day, setDay] = useState("");
   /*
     적는 칸은 펴 둔다.
 
@@ -179,9 +180,11 @@ export default function RecordsPage() {
     () =>
       counted.filter(
         (r) =>
-          (!area || r.domain === area) && `${r.fact} ${r.childName} ${r.context}`.includes(search),
+          (!area || r.domain === area) &&
+          (!day || r.date === day) &&
+          `${r.fact} ${r.childName} ${r.context}`.includes(search),
       ),
-    [counted, search, area],
+    [counted, search, area, day],
   );
   /** 영역 칩에 붙는 숫자 — 지금 보고 있는 범위(반 · 아이)에서 센다. */
   const areaCounts = useMemo(() => {
@@ -284,11 +287,6 @@ export default function RecordsPage() {
     <WorkspacePage
       title="관찰 기록"
       description="아이의 말과 행동을 적어 둡니다. 적은 것으로 일지를 만듭니다."
-      action={
-        <Link href="/records/children" className={ws.secondary}>
-          아이별 기록
-        </Link>
-      }
     >
       {/* 반은 사이드바 맨 위에서 고른다. 화면 안에 또 두면 두 곳에서 같은 것을 고르게 되어
           어느 쪽이 이기는지 교사가 알 수 없다. */}
@@ -302,8 +300,24 @@ export default function RecordsPage() {
           오른쪽 기록을 「고치기」 하면 바로 옆에서 고친다. */}
       <div className={`${ws.grid} ${ws.recordGrid}`}>
         <div className={ws.side}>
+          {/* 왼쪽 · 오른쪽 머리를 같은 줄에 세운다 — 카드 안에 있던 제목이 오른쪽 「쌓인 기록」보다
+              한 칸 내려앉아 두 칸 높이가 어긋나 보였다. */}
+          <div className={ws.recordListHead}>
+            <h2 className={ws.recordListTitle}>{editId ? "기록 고치기" : "오늘 본 것 적기"}</h2>
+            {/* 기록하러 온 교사가 다음에 하려는 일이 관찰일지다. 목록 머리 작은 단추로는 눈에 안
+                띄었다. 적는 칸 바로 위, 화면을 열자마자 보이는 자리에 둔다. */}
+            <Link
+              className={ws.recordJournalLink}
+              href={
+                child
+                  ? `/records/journal?child=${encodeURIComponent(child.id)}`
+                  : "/records/journal"
+              }
+            >
+              관찰일지 만들기 →
+            </Link>
+          </div>
           <section className={`${ws.card} ${ws.recordForm}`} data-tour="records-form">
-            <h2 className={ws.recordFormTitle}>{editId ? "기록 고치기" : "오늘 본 것 적기"}</h2>
             {!classes.some((c) => c.children.length) ? (
               <Empty title="먼저 아이를 등록해 주세요">
                 <Link href="/onboarding">아이 등록하기 →</Link>
@@ -463,12 +477,9 @@ export default function RecordsPage() {
         </div>
         <section className={ws.stack} data-tour="records-list">
           <div className={ws.recordListHead}>
-            <h2 className={ws.recordListTitle}>
-              쌓인 기록 <span>{shown.length}건</span>
-            </h2>
-            {/* 일과 기록 · 아이 등록은 사이드바와 설정에 이미 있다. 여기서는 기록의 다음 걸음 하나만 둔다. */}
-            <Link href="/documents" className={ws.recordWay}>
-              관찰일지 만들기 →
+            <h2 className={ws.recordListTitle}>쌓인 기록</h2>
+            <Link href="/records/children" className={ws.recordWay}>
+              아이별 기록
             </Link>
           </div>
           {/* 홈의 「이 아이 기록 보기」로 들어오면 목록이 한 아이만 남는다. 그 사실을 화면이
@@ -481,16 +492,39 @@ export default function RecordsPage() {
               </button>
             </p>
           )}
-          <label className={ws.recordFind}>
-            <SearchMark />
-            <input
-              name="record_search"
-              aria-label="기록 찾기"
-              placeholder="아이 이름이나 적은 내용으로 찾기"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
+          <div className={ws.recordFindRow}>
+            <label className={ws.recordFind}>
+              <SearchMark />
+              <input
+                name="record_search"
+                aria-label="기록 찾기"
+                placeholder="아이 이름이나 적은 내용으로 찾기"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+            {/* 날짜로 거르기. 달력 그림을 누르면 달력이 열린다. */}
+            <span className={ws.recordDayPick} data-on={day ? "" : undefined}>
+              <CalendarMark />
+              {day && <span>{dateLabel(day)}</span>}
+              <input
+                type="date"
+                aria-label="날짜로 거르기"
+                max={today()}
+                value={day}
+                onClick={(e) => openPicker(e.currentTarget)}
+                onChange={(e) => setDay(e.target.value)}
+              />
+            </span>
+          </div>
+          {day && (
+            <p className={ws.between}>
+              <span className={ws.badge}>{dateLabel(day)} 기록만 보는 중</span>
+              <button type="button" className={ws.link} onClick={() => setDay("")}>
+                모든 날짜 보기 →
+              </button>
+            </p>
+          )}
           <div className={ws.recordFilters} role="group" aria-label="영역으로 거르기">
             {["", ...Object.keys(DOMAIN_LOOK)].map((name) => (
               <button
@@ -637,7 +671,7 @@ function RecordItem({
           {editable ? (
             <Link
               className={ws.secondary}
-              href={`/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}`}
+              href={`/records/journal?record=${encodeURIComponent(record.id)}`}
             >
               이 기록으로 일지 만들기
             </Link>
@@ -657,6 +691,25 @@ function RecordItem({
         </div>
       )}
     </article>
+  );
+}
+
+/** 날짜 거르기 단추의 달력. */
+function CalendarMark() {
+  return (
+    <svg
+      className={ws.recordFindMark}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="4" y="5.5" width="16" height="14" rx="2.5" />
+      <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
+    </svg>
   );
 }
 

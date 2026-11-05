@@ -23,38 +23,6 @@ async function openObservation(
     .click();
 }
 
-/** 생성한 문서의 날짜·아동·종류를 유지한 채 목록으로 돌아가 다시 연다. */
-async function reopenCreated(
-  page: Page,
-  doc: { title: string; kind: string; start: string; child_name: string | null },
-) {
-  await expect(page.getByRole("heading", { name: doc.title, exact: true, level: 2 })).toBeVisible();
-  await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
-  for (const name of ["연간 계획안", "월간 계획안", "주간 계획안", "보육일지", "관찰일지"])
-    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
-  await expect(page.getByLabel("날짜 선택")).toHaveValue(doc.start);
-  await expect(
-    page.getByRole("button", {
-      name: doc.kind === "observation" ? "관찰일지" : "보육일지",
-      exact: true,
-    }),
-  ).toHaveAttribute("aria-pressed", "true");
-  if (doc.kind === "observation")
-    await expect(page.getByRole("button", { name: doc.child_name!, exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-  else await expect(page.getByLabel("아동 이름 검색")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: new RegExp(doc.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
-    .click();
-  await page
-    .getByRole("complementary", { name: "문서 미리보기" })
-    .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
-    .click();
-  await expect(page.getByRole("heading", { name: doc.title, exact: true, level: 2 })).toBeVisible();
-}
-
 async function verifyHwpx(file: Download, path: string, expected: string[]) {
   expect(file.suggestedFilename()).toMatch(/\.hwpx$/);
   await file.saveAs(path);
@@ -368,7 +336,8 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   // 할 일은 그 줄을 눌러야 나온다 — 줄마다 단추를 세 개씩 두지 않는다.
   await page.locator("article button").first().click();
   await page.getByRole("link", { name: "이 기록으로 일지 만들기", exact: true }).click();
-  await expect(page).toHaveURL(/\/documents/);
+  // 관찰일지는 문서 보관함이 아니라 관찰 기록 아래에서 만든다.
+  await expect(page).toHaveURL(/\/records\/journal\?record=/);
   await page.screenshot({ path: info.outputPath("observation-selection.png"), fullPage: true });
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
@@ -380,7 +349,9 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await expect(page.getByRole("heading", { name: "사실", exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "사실 내용", exact: true })).toHaveCount(0);
   await expect(page.getByText(fact, { exact: true }).first()).toBeVisible();
-  await reopenCreated(page, created);
+  // 만든 일지는 보관함에도 쌓인다. 거기서 다시 열어 마저 쓴다.
+  await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
+  await openObservation(page, created);
   await page
     .getByRole("textbox", { name: "해석 내용", exact: true })
     .fill("블록을 쌓고 친구에게 함께 놀이할 것을 제안했다.");

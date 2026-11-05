@@ -390,10 +390,6 @@ test("늦게 온 옛 조회가 최신 목록을 덮지 않는다", () => {
 
 test("서버 기록의 id와 반을 관찰일지 생성 화면으로 넘긴다", () => {
   const source = page();
-  assert.ok(
-    source.includes(
-      "/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}",
-    ),
-  );
+  assert.ok(source.includes("/records/journal?record=${encodeURIComponent(record.id)}"));
   assert.ok(source.includes("이 기록으로 일지 만들기"));
 });

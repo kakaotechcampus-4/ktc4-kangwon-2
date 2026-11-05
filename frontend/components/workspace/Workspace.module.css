@@ -1805,14 +1805,6 @@ a.item {
 .recordForm {
   position: relative;
 }
-.recordFormTitle {
-  margin: 0 0 14px;
-  font-family: var(--font-display), sans-serif;
-  font-size: 29px;
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--pg-ink);
-}
 .recordWrite {
   display: grid;
   gap: 10px;
@@ -2081,6 +2073,8 @@ button.recordBlank:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* 왼쪽(제목만) · 오른쪽(제목 + 단추) 머리가 같은 높이라야 아래 칸 윗선이 맞는다 */
+  min-height: 40px;
 }
 .recordListTitle {
   display: flex;
@@ -2693,4 +2687,214 @@ button.recordBlank:disabled {
 .journalDays .link {
   margin-left: auto;
   font-size: 13px;
+}
+
+/* ── 관찰일지 만들기 (/records/journal) — 왼쪽 아이 · 기간 · 근거, 오른쪽 만든 일지 · 편집기 ── */
+.jrSetup {
+  display: grid;
+  gap: 22px;
+}
+.jrStep {
+  display: grid;
+  gap: 10px;
+}
+.jrStep h2,
+.jrList h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.jrStep h2 span {
+  margin-left: 4px;
+  font-size: 13px;
+  color: var(--pg-primary-ink);
+}
+.jrPeriod {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.jrPeriod input {
+  flex: 1 1 140px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+}
+.jrSources {
+  display: grid;
+  gap: 6px;
+  max-height: 360px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.jrSources label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  font-size: 14px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.jrSources label:has(input:checked) {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-ivory);
+}
+.jrSources input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  accent-color: var(--pg-primary);
+}
+.jrSources small {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.jrMake {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--pg-line);
+}
+.jrMake small {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.jrList {
+  display: grid;
+  gap: 14px;
+}
+.jrEmpty {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 4px;
+  color: var(--pg-ink-soft);
+}
+.jrEmpty p {
+  margin: 0;
+}
+.jrDocs {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.jrDocs button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  text-align: left;
+  cursor: pointer;
+}
+.jrDocs button:hover {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-ivory);
+}
+.jrDocs small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+
+/* 관찰 기록 왼쪽 머리의 관찰일지 길 — 이 화면에서 제일 진한 단추 */
+.recordJournalLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+.recordJournalLink:hover {
+  background: var(--pg-primary-hover);
+}
+.recordJournalLink:focus-visible {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+/* 찾기 칸 옆 날짜 거르기 */
+.recordFindRow {
+  display: flex;
+  gap: 8px;
+}
+.recordFindRow .recordFind {
+  flex: 1;
+  min-width: 0;
+}
+.recordDayPick {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.recordDayPick:hover {
+  border-color: var(--pg-primary-tint-line);
+}
+.recordDayPick[data-on] {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.recordDayPick .recordFindMark {
+  color: currentColor;
+}
+.recordDayPick input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.recordDayPick input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  cursor: pointer;
+}
+.recordDayPick:focus-within {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
 }
