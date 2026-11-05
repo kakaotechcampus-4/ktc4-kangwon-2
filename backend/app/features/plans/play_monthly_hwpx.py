@@ -136,7 +136,9 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
             WEEK_HABIT: [
                 f"[{w.habit_label}]\n{w.habit}" if w.habit_label else w.habit for w in doc.weeks
             ],
-            WEEK_SAFETY: [w.safety for w in doc.weeks],
+            WEEK_SAFETY: [
+                f"[{w.safety_label}]\n{w.safety}" if w.safety_label else w.safety for w in doc.weeks
+            ],
         },
     )
     _set_special_activity(table, doc.special_activity, doc.special_activity_size)

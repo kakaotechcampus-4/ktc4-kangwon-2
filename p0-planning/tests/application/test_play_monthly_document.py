@@ -34,6 +34,8 @@ def test_a_draft_prints_kept_names_placed_safety_and_its_own_teacher_inputs():
     plan = _edit(edit, plan, plan.free_play[0].cell, "물감\n 놀이")
     placed = plan.safety_candidates[3]
     plan = place.execute(PlacePlayMonthlySafetyCommand(plan.plan_id, TEACHER, plan.weeks[1].week_id, placed.cell.item_id))
+    life = plan.safety_candidates[6]  # SUPPLEMENTAL
+    plan = place.execute(PlacePlayMonthlySafetyCommand(plan.plan_id, TEACHER, plan.weeks[0].week_id, life.cell.item_id))
     plan = _copy(plans, plan, plan.drill_candidates[2])
     for key, value in (("class_birthdays", "생일 안내"), ("home_connection", "가정 안내"), ("class_notice", "반 공지 문장")):
         plan = _edit(edit, plan, _teacher_input(plan, key), value)
@@ -53,7 +55,9 @@ def test_a_draft_prints_kept_names_placed_safety_and_its_own_teacher_inputs():
         PlayMonthlyDocumentWeek(
             DAILY.get(h.habit.entry_id).label if i != 2 else "",
             h.habit.cell.value,
-            placed.cell.value if i == 1 else "",
+            {0: life.cell.value, 1: placed.cell.value}.get(i, ""),
+            # Printed above the sentence as on screen (Human Decision 2026-11-05, 하민).
+            {0: "생활안전", 1: "감염병·약물 예방"}.get(i, ""),
         )
         for i, h in enumerate(plan.habits)
     )
@@ -74,7 +78,7 @@ def test_a_fresh_draft_prints_blank_safety_drill_and_teacher_inputs():
     doc = play_monthly_document(plan, DAILY)
 
     assert len(doc.weeks) == len(plan.weeks)
-    assert {w.safety for w in doc.weeks} == {""}
+    assert {(w.safety, w.safety_label) for w in doc.weeks} == {("", "")}
     assert (doc.drill, doc.birthdays, doc.home_connection) == ("", "", "")
 
 
