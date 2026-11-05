@@ -190,7 +190,7 @@ export default function OnboardingLayout({
               <rect width="3" height="3" fill="var(--pg-primary)" fillOpacity={0.55} />
               <rect width="2.2" height="3" fill="var(--pg-primary)" />
             </pattern>
-            {/* 포스티 선 결 — 크게 출렁이고(낮은 주파수) 가장자리는 거칠게 비튼 뒤, 결 따라 군데군데 비우고 살짝 번지게 한다.
+            {/* 포스티 선 결 — 살짝 출렁이고(낮은 주파수) 가장자리를 조금 거칠게 비튼 뒤, 결 따라 군데군데 비우고 살짝 번지게 한다.
                 점처럼 고르게 비우면 모자이크처럼 보여서, 비우는 무늬를 한쪽으로 길게(0.35 · 0.6) 둔다. */}
             <filter id="chalk-posty" x="-10%" y="-10%" width="120%" height="120%">
               <feTurbulence
@@ -203,7 +203,7 @@ export default function OnboardingLayout({
               <feDisplacementMap
                 in="SourceGraphic"
                 in2="w"
-                scale={6}
+                scale={3.5}
                 xChannelSelector="R"
                 yChannelSelector="G"
                 result="wob"
@@ -218,7 +218,7 @@ export default function OnboardingLayout({
               <feDisplacementMap
                 in="wob"
                 in2="r"
-                scale={2.2}
+                scale={1.4}
                 xChannelSelector="R"
                 yChannelSelector="G"
                 result="rough"
@@ -233,11 +233,11 @@ export default function OnboardingLayout({
               <feColorMatrix
                 in="g"
                 type="matrix"
-                values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2 1.65"
+                values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -1.5 1.5"
                 result="gm"
               />
               <feComposite in="rough" in2="gm" operator="in" result="grainy" />
-              <feGaussianBlur in="grainy" stdDeviation={0.6} />
+              <feGaussianBlur in="grainy" stdDeviation={0.45} />
             </filter>
             <filter id="chalk-text" x="-5%" y="-15%" width="110%" height="130%">
               <feTurbulence
