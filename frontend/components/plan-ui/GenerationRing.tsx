@@ -2,7 +2,8 @@
 /**
  * AI 생성 중 화면 — 원형 (디자인 확정본).
  * - 가운데 캐릭터: /plan-ui/running-ssample.webp (투명 배경, 끊김 없는 루프)
- * - 서버는 진행률을 주지 않는다. 링은 「예상 시간」 동안 90% 까지 차고, 넘으면 아주 천천히 더 찬다.
+ * - 서버는 진행률을 주지 않는다. 링은 「예상 시간」에 90% 가 되도록 서서히 차고, 넘으면 99% 쪽으로
+ *   점점 느리게 다가간다(멈추지 않는다).
  *   예상 시간은 이 브라우저에서 같은 종류(`kind`)가 실제로 걸린 시간을 기억해 맞춘다. 처음엔 `expect`(초).
  * - 단계(steps)는 예상 시간을 고르게 나눠 한 번만 넘어간다.
  */
@@ -29,9 +30,12 @@ function remember(kind: string, seconds: number) {
   } catch {}
 }
 
-/** 지난 시간 `t` · 예상 `expect`(초) → 0~0.95. 예상 시간에 0.9, 그 뒤로는 0.95 를 넘지 않는다. */
+/**
+ * 지난 시간 `t` · 예상 `expect`(초) → 0~0.99. 예상의 절반에 약 62%, 예상 시간에 90%, 1.5배에 97%, 2배에 99%.
+ * 앞에서 확 차고 95% 에서 딱 멈추던 곡선 대신, 고르게 차다가 끝으로 갈수록 느려진다.
+ */
 export function ringProgress(t: number, expect: number) {
-  return Math.min(0.95, 1 - Math.exp((-2.3 * t) / expect));
+  return 0.99 * (1 - Math.exp(-2.4 * Math.pow(t / expect, 1.3)));
 }
 
 export default function GenerationRing({
