@@ -23,7 +23,6 @@ import AnnualFrame, {
   BigView,
   BUTTON,
   POPOVER,
-  tabClass,
   UndoRedo,
   useSheetZoom,
 } from "./AnnualFrame";
@@ -253,14 +252,9 @@ export default function ThemeAnnualResult({
 
   const aside = (
     <>
-      <div className="flex gap-5 border-b border-[#efeae2] px-6 pt-2">
-        <span className={`${tabClass(true)} flex items-center`}>칸 편집</span>
-      </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         <label className="flex flex-col gap-1.5">
-          <span className="font-display text-[20px] font-bold leading-tight">
-            {selected.month}월 생활주제
-          </span>
+          <span className="text-[18px] font-bold leading-tight">{selected.month}월 생활주제</span>
           <input
             className={INPUT}
             id={slotInputId({ month: selected.month, slot: "theme" })}
@@ -271,7 +265,7 @@ export default function ThemeAnnualResult({
           />
         </label>
         <section className="flex flex-col gap-2" aria-label={`${selected.month}월 소주제`}>
-          <h2 className="m-0 font-display text-[20px] font-bold leading-tight">소주제</h2>
+          <h2 className="m-0 text-[18px] font-bold leading-tight">소주제</h2>
           {slotMismatch(draft.sub_themes, month.week_count) && (
             <p role="status" className="m-0 text-[13px] font-bold text-[#b3261e]">
               주마다 하나씩 — {month.week_count}개를 맞춰야 확정할 수 있어요.

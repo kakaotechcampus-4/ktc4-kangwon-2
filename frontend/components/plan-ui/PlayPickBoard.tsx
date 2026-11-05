@@ -83,7 +83,7 @@ function Row({
           >
             {c.name}
           </span>
-          <span className="truncate text-[14px] text-[#8a8178]">{c.materials}</span>
+          <span className="truncate text-[14px] text-ink-soft">{c.materials}</span>
         </span>
       </button>
     </li>
@@ -125,7 +125,11 @@ function Detail({
         </dl>
       </div>
       {/* 오른쪽 [다음] 버튼과 같은 줄 — 두 판 모두 아래 여백 16px · 버튼 높이 50px. */}
-      <div className="flex justify-end p-4">
+      <div className="flex items-center justify-end gap-3 p-4">
+        {/* 흐린 까닭을 단추 옆에 — 다 골랐으면 하나를 빼야 바꿀 수 있다. */}
+        {!picked && full && (
+          <span className="text-[13px] text-ink-soft">다 골랐어요. 바꾸려면 하나를 빼 주세요.</span>
+        )}
         <button
           type="button"
           onClick={onToggle}
@@ -271,7 +275,7 @@ export default function PlayPickBoard({
                   id={`${idPrefix}-remove-${n}`}
                   onClick={() => onRemove(c.key, n)}
                   aria-label={`${c.name} 빼기`}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#8a8178] hover:bg-[#efeae2]"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft hover:bg-[#efeae2]"
                 >
                   ✕
                 </button>
