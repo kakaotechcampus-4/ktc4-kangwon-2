@@ -25,7 +25,7 @@ from app.main import app
 
 client = TestClient(app)
 URL = "/api/plans/monthly/play"
-KINDS = ("cell", "content", "add", "delete", "safety", "drill")
+KINDS = ("cell", "content", "add", "delete", "safety", "drill", "order")
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +62,10 @@ def _req(plan, kind, rev, *, item=None):
         return "POST", "/activities", {"json": {"section": "together", "expected_revision": rev}}
     if kind == "delete":
         return "DELETE", f"/activities/{item or name}", {"params": {"expected_revision": rev}}
+    if kind == "order":
+        ids = [a.cell.item_id.value for a in reversed(plan.together)]
+        body = {"section": "together", "item_ids": ids, "expected_revision": rev}
+        return "PUT", "/activities/order", {"json": body}
     if kind == "safety":
         cand = plan.safety_candidates[0].cell.item_id.value
         return (
@@ -173,6 +177,29 @@ def test_칸_글을_고치면_근거_생성방식은_그대로_TEACHER_EDITED_�
         before.value,
         "새 주제",
     )
+
+
+def test_제목_연령_반_예상기간_가운데_방향_칸도_칸_편집으로_고친다(world):
+    """Human Decision 2026-11-05 — 머리 · 방향 칸은 교사 글이다. 반 · 연령 · 달은 그대로다."""
+    plan, row = _play(world)
+    targets = [*plan.display.cells(), plan.direction]
+    for rev, cell in enumerate(targets, start=1):
+        response = client.put(
+            f"{URL}/{row.id}/cells/{cell.item_id.value}",
+            json={"value": f"고친 {cell.semantic_key}", "expected_revision": rev},
+        )
+        assert response.status_code == 200, response.json()
+    body = response.json()
+    assert [body["display"][k]["value"] for k in ("title", "age", "class_name", "period")] == [
+        f"고친 {c.semantic_key}" for c in plan.display.cells()
+    ]
+    assert body["direction"]["value"] == "고친 expected_play_direction"
+    assert (body["month"], body["target_ages"], body["class_id"]) == (
+        plan.target_month.calendar_month,
+        sorted(plan.target_ages),
+        int(plan.classroom_ref),
+    )
+    assert _last(_stored(world, row).display.title).event_type is AuditEventType.TEACHER_EDITED
 
 
 def test_빈_값으로_비울_수_있고_그_다음_빈_값은_422(world):
@@ -359,6 +386,50 @@ def test_행_추가_스키마_422(world):
     for body in ({"section": "both", "expected_revision": 1}, {"expected_revision": 1}):
         response = client.post(f"{URL}/{row.id}/activities", json=body)
         assert _error(response) == (422, "VALIDATION_FAILED", ["section"])
+
+
+def test_줄_순서를_바꾸면_그_목록만_바뀌고_ARRANGEMENT_CHANGED_가_남는다(world):
+    plan, row = _play(world)
+    ids = [a.cell.item_id.value for a in plan.together]
+    moved = [ids[1], ids[0], *ids[2:]]
+    url = f"{URL}/{row.id}/activities/order"
+    body = client.put(
+        url, json={"section": "together", "item_ids": moved, "expected_revision": 1}
+    ).json()
+    assert [a["activity_id"] for a in body["together"]] == moved and body["revision"] == 2
+    assert [a["activity_id"] for a in body["free_play"]] == [
+        a.cell.item_id.value for a in plan.free_play
+    ]
+    change = _last(_stored(world, row))
+    assert change.event_type is AuditEventType.ARRANGEMENT_CHANGED
+    assert (change.arrangement_change.before, change.arrangement_change.after) == (
+        tuple(ids),
+        tuple(moved),
+    )
+    # 같은 순서면 200 · 무변경
+    same = client.put(url, json={"section": "together", "item_ids": moved, "expected_revision": 2})
+    assert same.status_code == 200 and same.json()["revision"] == 2
+
+
+def test_줄_순서는_그_목록의_줄을_한_번씩_다_적어야_한다(world):
+    plan, row = _play(world)
+    ids = [a.cell.item_id.value for a in plan.together]
+    other = plan.free_play[0].cell.item_id.value
+    url = f"{URL}/{row.id}/activities/order"
+    for section, bad in (
+        ("together", ids[:-1]),
+        ("together", [*ids, ids[0]]),
+        ("together", [*ids[:-1], other]),
+        ("free_play", ids),
+    ):
+        body = {"section": section, "item_ids": bad, "expected_revision": 1}
+        assert _error(client.put(url, json=body)) == (422, "VALIDATION_FAILED", ["item_ids"])
+    for body, field in (
+        ({"section": "both", "item_ids": ids, "expected_revision": 1}, "section"),
+        ({"section": "together", "item_ids": [" "], "expected_revision": 1}, "item_ids"),
+    ):
+        assert _error(client.put(url, json=body)) == (422, "VALIDATION_FAILED", [field])
+    assert _row(world, row).revision == 1
 
 
 # ── 안전교육 주별 배치 ───────────────────────────────────────────────────────

@@ -65,6 +65,13 @@ class AddActivityIn(RevisionIn):
     section: Literal["together", "free_play"]
 
 
+class ActivityOrderIn(RevisionIn):
+    """한 목록의 줄(이름 칸 item_id)을 새 순서대로. 그 목록의 줄을 빠짐없이 한 번씩."""
+
+    section: Literal["together", "free_play"]
+    item_ids: list[StrictStr]
+
+
 class SplitTimetableIn(RevisionIn):
     axis: Literal["VERTICAL", "HORIZONTAL"]
 
@@ -195,6 +202,16 @@ class NoticeOut(BaseModel):
     week_id: str | None
 
 
+class DisplayOut(BaseModel):
+    """문서 머리 표시 칸(layout v0.2.0 D-2). 생성 때 한 번 옮겨 적고 그 뒤로는 교사 글이다.
+    빈 값도 된다. 고쳐도 반 · 연령 · 달 · 주는 바뀌지 않는다. 한글 내려받기가 같은 값을 쓴다."""
+
+    title: CellOut  # 「11월 놀이계획안」
+    age: CellOut  # 「만 4·5세」
+    class_name: CellOut
+    period: CellOut  # 「2026.11.01 ~ 2026.11.30」
+
+
 class PlayMonthlyPlanOut(BaseModel):
     id: int
     class_id: int
@@ -217,6 +234,9 @@ class PlayMonthlyPlanOut(BaseModel):
     rationale: CellOut
     together: list[ActivityOut]
     free_play: list[ActivityOut]
+    # 가운데 「예상되는 놀이 방향」 — 생성 때 주제를 옮겨 적은 뒤 따로 고친다(D-6).
+    direction: CellOut
+    display: DisplayOut
     habits: list[HabitOut]
     safety_candidates: list[SafetyCandidateOut]
     safety_weeks: list[SafetyWeekOut]

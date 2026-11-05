@@ -27,7 +27,8 @@ SINGLE_KEYS = {
     "id", "class_id", "school_year", "month", "target_month", "status", "revision", "format",
     "format_version", "created_at", "confirmed_at", "target_ages", "weeks", "parent",
     "parent_changed", "theme",
-    "rationale", "together", "free_play", "habits", "safety_candidates", "safety_weeks", "health",
+    "rationale", "together", "free_play", "direction", "display", "habits",
+    "safety_candidates", "safety_weeks", "health",
     "nutrition", "drill_candidates", "teacher_inputs", "specialized_timetable",
     "special_activity", "special_activity_size", "notices", "memo", "memo_notices",
 }  # fmt: skip
@@ -198,6 +199,14 @@ def test_단건은_계약_모양이고_싣지_않는_것은_없다(world):
     assert set(body["drill_candidates"][0]) == {"topic_id", "label", "cell"}
     assert set(body["teacher_inputs"][0]) == {"key", "cell"}
     assert all(set(n) == {"code", "week_id"} for n in body["notices"])
+    # 문서 머리 · 가운데 방향 칸 — 한글 내려받기와 같은 값(Human Decision 2026-11-05)
+    assert set(body["direction"]) == cell and body["direction"]["value"] == plan.direction.value
+    assert set(body["display"]) == {"title", "age", "class_name", "period"}
+    display = plan.display
+    assert [body["display"][k]["value"] for k in ("title", "age", "class_name", "period")] == [
+        c.value for c in display.cells()
+    ]
+    assert body["display"]["title"]["item_id"] == display.title.item_id.value
 
 
 def test_evidence_와_generation_은_세_축_규칙을_따른다(world):

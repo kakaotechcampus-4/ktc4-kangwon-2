@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useCompactShell } from "@/components/app/compact-shell";
 import workspace from "@/components/workspace/Workspace.module.css";
 import { ApiError } from "@/lib/api/client";
-import { getMe } from "@/lib/api/auth";
-import { getClasses } from "@/lib/api/classes";
 import {
   downloadPlayMonthlyHwpx,
   getPlayMonthly,
@@ -18,6 +16,7 @@ import {
   drillTarget,
   overlayCells,
   removal,
+  type PlaySection,
 } from "@/lib/plan-generator/playMonthlyQueue";
 import {
   CELL_MIN_WIDTH,
@@ -66,8 +65,13 @@ const INPUT_LABELS: Record<string, string> = {
 /** 고칠 수 있는 칸의 이름표. 놀이 행의 「설명」은 문서에 안 나와 행 이름을 누르면 패널에 함께 뜬다. */
 export function cellLabels(plan: PlayMonthlyPlan) {
   const labels: Record<string, string> = {
+    [plan.display.title.item_id]: "제목",
+    [plan.display.age.item_id]: "연령",
+    [plan.display.class_name.item_id]: "반 이름",
+    [plan.display.period.item_id]: "예상 기간",
     [plan.theme.item_id]: "놀이 주제",
     [plan.rationale.item_id]: "주제선정이유",
+    [plan.direction.item_id]: "예상되는 놀이 방향",
     [plan.health.cell.item_id]: "건강",
     [plan.nutrition.cell.item_id]: "영양",
   };
@@ -95,7 +99,6 @@ export default function PlayMonthlyView({ id }: { id: number }) {
     notice?: string;
     version?: number;
   } | null>(null);
-  const [names, setNames] = useState<{ classId: number; name: string } | null>(null);
   const [retry, setRetry] = useState(0);
   const key = id + ":" + retry;
   useEffect(() => {
@@ -143,22 +146,6 @@ export default function PlayMonthlyView({ id }: { id: number }) {
   const current = loaded?.key === key ? loaded : null;
   const plan = current?.plan ?? null;
   const error = valid ? (current?.error ?? "") : "올바른 계획안 주소가 아닙니다.";
-  // 반 이름은 읽기 전용 참고다. 계획안과 따로 받고, 늦거나 실패해도 문서는 먼저 그린다.
-  const classId = plan?.class_id;
-  useEffect(() => {
-    if (classId === undefined) return;
-    let live = true;
-    getMe()
-      .then((me) => (me.center_id ? getClasses(me.center_id) : { items: [] }))
-      .then(({ items }) => {
-        const name = items.find((c) => c.id === classId)?.name;
-        if (live && name) setNames({ classId, name });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [classId]);
   const box = (body: ReactNode) => (
     <main className="flex w-full flex-col gap-3 px-7 pb-6 pt-5 text-[#2b2826]">{body}</main>
   );
@@ -189,7 +176,6 @@ export default function PlayMonthlyView({ id }: { id: number }) {
     <PlayMonthlyBody
       key={key + ":" + (current?.version ?? 0)}
       initial={plan}
-      className={names?.classId === plan.class_id ? names.name : ""}
       notice={current?.notice}
       onConflict={reloadAfterConflict}
       onReplace={replace}
@@ -213,13 +199,11 @@ export function placeOf(plan: PlayMonthlyPlan, id: string) {
 
 function PlayMonthlyBody({
   initial,
-  className,
   notice,
   onConflict,
   onReplace,
 }: {
   initial: PlayMonthlyPlan;
-  className: string;
   notice?: string;
   onConflict: (partial?: boolean) => void;
   onReplace: (plan: PlayMonthlyPlan) => void;
@@ -296,6 +280,16 @@ function PlayMonthlyBody({
     const [moved, other] = [at(from), at(to)];
     save.placeSafety(to, moved);
     save.placeSafety(from, other);
+  };
+  // 행 끌어 옮기기 · 위로 · 아래로 — 같은 목록 안에서 끈 행을 놓은 행 자리에 넣는다. 되돌리기는 한 번.
+  const moveRow = (section: PlaySection, from: string, to: string) => {
+    const ids = plan[section].map((r) => r.activity_id).filter((id) => id !== from);
+    ids.splice(
+      plan[section].findIndex((r) => r.activity_id === to),
+      0,
+      from,
+    );
+    save.orderActivities(section, ids);
   };
   const through = (direction: "undo" | "redo") => {
     if (!save[direction]()) return;
@@ -445,6 +439,16 @@ function PlayMonthlyBody({
         </div>
       )}
       {row && (
+        <RowOrder
+          rows={plan.together.includes(row) ? plan.together : plan.free_play}
+          row={row}
+          disabled={locked}
+          onMove={(to) =>
+            moveRow(plan.together.includes(row) ? "together" : "free_play", row.activity_id, to)
+          }
+        />
+      )}
+      {row && (
         <div className="border-t border-[#efeae2] pt-4">
           <PlayMonthlyRowRemove
             activity={row}
@@ -521,7 +525,7 @@ function PlayMonthlyBody({
         download={(format) => downloadPlayMonthlyHwpx(plan.id, format)}
         docLabel="확정된 월간계획안"
         format="PLAY_PROJECT"
-        pages={[<PlayMonthlySheet key="sheet" plan={plan} className={className} />]}
+        pages={[<PlayMonthlySheet key="sheet" plan={plan} />]}
         next={{
           href: "/plans/monthly",
           label: `${(plan.month % 12) + 1}월 월간 만들기 →`,
@@ -621,10 +625,7 @@ function PlayMonthlyBody({
           />
           {sheetZoom.tools}
           <span>
-            <BigView
-              pages={1}
-              render={() => <PlayMonthlySheet plan={shown} className={className} />}
-            />
+            <BigView pages={1} render={() => <PlayMonthlySheet plan={shown} />} />
           </span>
         </div>
       }
@@ -634,11 +635,11 @@ function PlayMonthlyBody({
           plan={shown}
           selected={selected}
           onSelect={select}
-          className={className}
           scale={sheetZoom.percent / 100}
           onRatio={locked ? undefined : save.resizeSplit}
           onSize={locked ? undefined : save.resizeTable}
           onMoveSafety={locked ? undefined : moveSafety}
+          onMoveRow={locked ? undefined : moveRow}
         />
       </div>
     </AnnualFrame>
@@ -647,6 +648,43 @@ function PlayMonthlyBody({
 
 const TOOL =
   "flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 text-[13px] font-semibold disabled:opacity-40";
+/** 끌기의 키보드 대안 — 고른 행을 같은 목록 안에서 한 칸 위 · 아래로. */
+function RowOrder({
+  rows,
+  row,
+  disabled,
+  onMove,
+}: {
+  rows: PlayMonthlyPlan["together"];
+  row: PlayMonthlyPlan["together"][number];
+  disabled: boolean;
+  onMove: (toId: string) => void;
+}) {
+  const at = rows.indexOf(row);
+  const step = (delta: -1 | 1) => {
+    const to = rows[at + delta];
+    return (
+      <button
+        type="button"
+        className={`${TOOL} text-[#5e4b96] hover:bg-[#f6f1fb]`}
+        disabled={disabled || !to}
+        onClick={() => onMove(to.activity_id)}
+      >
+        {delta < 0 ? "↑ 위로 옮기기" : "↓ 아래로 옮기기"}
+      </button>
+    );
+  };
+  return (
+    <div role="group" aria-label="행 순서" className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex rounded-lg border border-[#ddd6ca] bg-white p-0.5">
+        {step(-1)}
+        {step(1)}
+      </div>
+      <span className="text-[13px] text-[#5c5243]">문서에서 행 왼쪽 위 손잡이를 끌어도 돼요.</span>
+    </div>
+  );
+}
+
 /** 16px 선 그림 — 칸 나누기 도구. */
 const icon = (d: string) => (
   <svg

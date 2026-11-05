@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   copyPlayMonthlyDrill,
   editPlayMonthlyCell,
+  orderPlayMonthlyActivities,
   placePlayMonthlySafety,
   removePlayMonthlyActivity,
   removePlayMonthlyCell,
@@ -27,6 +28,7 @@ import {
   remapHistory,
   removal,
   safetyOf,
+  withOrder,
   withSafety,
   withTimetableRatio,
   withTimetableSize,
@@ -36,6 +38,7 @@ import {
   type RemovedCell,
   type IdleResult,
   type Job,
+  type PlaySection,
   type SaveStatus,
   type Step,
 } from "@/lib/plan-generator/playMonthlyQueue";
@@ -46,6 +49,8 @@ export type PlayMonthlySave = {
   editCell(itemId: string, value: string): boolean;
   placeSafety(weekId: string, candidateItemId: string | null): void;
   removeActivity(itemId: string): void;
+  /** 한 목록 안의 행 순서(행 `activity_id` 전부, 새 순서). 되돌리기 목록에 쌓인다. */
+  orderActivities(section: PlaySection, itemIds: string[]): void;
   copyDrill(itemId: string): boolean;
   /** 특별활동 시간표. 나누기는 새 id 를 서버가 정해 응답 뒤에 화면이 바뀐다 — 그동안 `structuring`. */
   splitCell(itemId: string, axis: "VERTICAL" | "HORIZONTAL"): boolean;
@@ -76,6 +81,8 @@ function call(id: number, job: Job, revision: number): Promise<PlayMonthlyPlan> 
       return removePlayMonthlyActivity(id, job.itemId, revision);
     case "copy":
       return copyPlayMonthlyDrill(id, job.itemId, revision);
+    case "order":
+      return orderPlayMonthlyActivities(id, job.section, job.itemIds, revision);
     case "split":
       return splitPlayMonthlyCell(id, job.itemId, job.axis, revision);
     case "removeCell":
@@ -273,6 +280,11 @@ export function usePlayMonthlySave(
           { kind: "safety", weekId: step.weekId, candidateItemId: step[target] },
           withSafety(v, step.weekId, step[target]),
         ];
+      case "order":
+        return [
+          { kind: "order", section: step.section, itemIds: step[target] },
+          withOrder(v, step.section, step[target]),
+        ];
       case "ratio":
         return [
           { kind: "ratio", splitId: step.splitId, ratio: step[target] },
@@ -340,6 +352,16 @@ export function usePlayMonthlySave(
         withoutActivity(view.current, itemId),
         null,
       );
+    },
+    orderActivities: (section, itemIds) => {
+      const before = view.current[section].map((row) => row.activity_id);
+      if (before.join() === itemIds.join()) return;
+      submit({ kind: "order", section, itemIds }, withOrder(view.current, section, itemIds), {
+        kind: "order",
+        section,
+        before,
+        after: itemIds,
+      });
     },
     // 복사는 붙여 넣을 글을 알고 있으니 화면에 바로 입힌다(열린 입력창도 이 글로 다시 열린다).
     copyDrill: (itemId) => {

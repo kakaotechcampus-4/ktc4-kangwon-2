@@ -9,8 +9,11 @@
   records a TEACHER_EDITED event with a ``link_change`` only, so the play name does not count as
   teacher-edited text. The official content text is never stored; it is read from the Reference.
 - Rows (M2-D03, I-3): a teacher adds a blank row at the end of a section or deletes a row. The
-  deleted row is archived whole in the plan; ids are never reused; there is no undo or reorder.
+  deleted row is archived whole in the plan; ids are never reused; there is no undo command.
   A new row's cells start without generation and become MANUAL on their first write.
+- Row order (Human Decision 2026-11-05, 하민): a teacher reorders the rows of one section, never
+  across sections. The order names every row of that section once; the same order is a no-op.
+  It is an ARRANGEMENT_CHANGED event with the row ids before and after, like add and delete.
 - Safety (M2-D08, I-3): each week holds at most one kept candidate; a candidate may be reused
   across weeks; ``None`` clears the week. Rows and placement are ARRANGEMENT_CHANGED events.
 - Drill (M2-D17, I-4): a teacher copies one of the plan's drill candidates into the drill cell.
@@ -42,7 +45,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 
-from ..domain.errors import DomainError
+from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.play_monthly_plan import (
     DRILL_CELL_KEY,
@@ -108,6 +111,14 @@ class RemovePlayMonthlyActivityCommand:
     plan_id: PlanId
     actor_id: ActorId
     item_id: ItemId  # the play's name cell
+
+
+@dataclass(frozen=True, slots=True)
+class OrderPlayMonthlyActivitiesCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    section: str  # together · free_play
+    item_ids: Sequence[ItemId]  # the rows' name cells, in the new order
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,6 +331,26 @@ class RemovePlayMonthlyActivity:
             )
         updated = plan.remove_activity(command.item_id, actor_id=actor_id, occurred_at=self._clock.now())
         self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class OrderPlayMonthlyActivities:
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: OrderPlayMonthlyActivitiesCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("order")
+        actor_id = _require_actor(command.actor_id)
+        try:
+            updated = plan.order_activities(
+                command.section, tuple(command.item_ids), actor_id=actor_id, occurred_at=self._clock.now()
+            )
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("invalid_activity_order", str(error)) from error
+        if updated is not plan:
+            self._plans.save(updated.plan_id, updated)
         return updated
 
 

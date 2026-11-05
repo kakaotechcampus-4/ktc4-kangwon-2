@@ -63,9 +63,10 @@ function mount({
   drafting = false,
   failCopy = null,
   failCell = null,
+  freePlay = [],
 } = {}) {
   const gates = [];
-  let server = base();
+  let server = { ...base(), free_play: freePlay };
   const sent = [];
   const slots = [];
   let cursor = 0;
@@ -122,6 +123,10 @@ function mount({
     resizePlayMonthlySplit: async (id, splitId, ratio, rev) => {
       sent.push(["ratio", splitId, ratio, rev]);
       return bump(queueModule.withTimetableRatio(server, splitId, ratio));
+    },
+    orderPlayMonthlyActivities: async (id, section, itemIds, rev) => {
+      sent.push(["order", section, itemIds, rev]);
+      return bump(queueModule.withOrder(server, section, itemIds));
     },
     copyPlayMonthlyDrill: async (id, itemId, rev) => {
       sent.push(["copy", itemId, rev]);
@@ -279,6 +284,30 @@ test("same value as shown is not a step; blank is a value", async () => {
     [""],
   );
   assert.equal(m.render().canUndo, true);
+});
+
+test("row order shows at once and undo/redo send the order before and after", async () => {
+  const row = (id) => ({ activity_id: id, name: { item_id: id, value: id }, description: {} });
+  const m = mount({ freePlay: [row("a"), row("b"), row("c")] });
+  const order = () => m.shown.plan.free_play.map((r) => r.activity_id);
+  m.get().orderActivities("free_play", ["b", "a", "c"]);
+  assert.deepEqual(order(), ["b", "a", "c"]);
+  m.get().orderActivities("free_play", ["b", "a", "c"]); // 같은 순서는 걸음이 아니다
+  await tick();
+  m.render().undo();
+  assert.deepEqual(order(), ["a", "b", "c"]);
+  await tick();
+  m.render().redo();
+  await tick();
+  assert.deepEqual(
+    m.sent.map((s) => s.slice(0, 3)),
+    [
+      ["order", "free_play", ["b", "a", "c"]],
+      ["order", "free_play", ["a", "b", "c"]],
+      ["order", "free_play", ["b", "a", "c"]],
+    ],
+  );
+  assert.deepEqual(order(), ["b", "a", "c"]);
 });
 
 test("row removal and drill copy are not undoable and empty the undo list", async () => {

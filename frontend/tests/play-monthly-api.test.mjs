@@ -85,7 +85,7 @@ async function seeded(confirmed = false) {
 }
 
 test("single response has the captured key set, in every nested cell too", async () => {
-  const { id } = await seeded();
+  const { id, klass } = await seeded();
   const plan = await pm.getPlayMonthly(id);
   assert.deepEqual(
     Object.keys(plan).sort(),
@@ -93,6 +93,8 @@ test("single response has the captured key set, in every nested cell too", async
       "confirmed_at",
       "class_id",
       "created_at",
+      "direction",
+      "display",
       "drill_candidates",
       "format",
       "format_version",
@@ -123,6 +125,11 @@ test("single response has the captured key set, in every nested cell too", async
     ].sort(),
   );
   assert.deepEqual(Object.keys(plan.theme).sort(), ["evidence", "generation", "item_id", "value"]);
+  // 문서 머리 · 가운데 방향 칸 — 서버처럼 반 이름 · 그 달 1일~말일을 담는다.
+  assert.deepEqual(Object.keys(plan.display), ["title", "age", "class_name", "period"]);
+  assert.equal(plan.display.class_name.value, klass.name);
+  assert.equal(plan.display.period.value, "2026.11.01 ~ 2026.11.30");
+  assert.equal(plan.direction.value, plan.theme.value);
   assert.deepEqual(Object.keys(plan.together[0]).sort(), [
     "activity_id",
     "content_ids",
@@ -497,6 +504,34 @@ test("row delete takes the revision from the query and drops the row; a bad quer
     ["expected_revision"],
   );
   assert.equal((await pm.getPlayMonthly(id)).together.length, 5);
+});
+
+test("row order: one list only, every row once; the same order is 200 and untouched", async () => {
+  const { id, rev, plan } = await seeded();
+  const ids = plan.together.map((a) => a.activity_id);
+  const moved = [ids[1], ids[0], ...ids.slice(2)];
+  const done = await pm.orderPlayMonthlyActivities(id, "together", moved, rev);
+  assert.equal(done.revision, rev + 1);
+  assert.deepEqual(
+    done.together.map((a) => a.activity_id),
+    moved,
+  );
+  assert.deepEqual(done.free_play, plan.free_play);
+  const same = await pm.orderPlayMonthlyActivities(id, "together", moved, done.revision);
+  assert.equal(same.revision, done.revision);
+  for (const [section, bad] of [
+    ["together", ids.slice(1)],
+    ["together", [...ids, ids[0]]],
+    ["together", [...ids.slice(1), plan.free_play[0].activity_id]],
+    ["free_play", ids],
+  ])
+    await rejects(
+      pm.orderPlayMonthlyActivities(id, section, bad, done.revision),
+      422,
+      "VALIDATION_FAILED",
+      INVALID,
+      ["item_ids"],
+    );
 });
 
 test("missing and foreign ids are 404, a non-integer id is 422 on plan_id", async () => {

@@ -39,6 +39,8 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     EditPlayMonthlyCellCommand,
     EditPlayMonthlyContentIds,
     EditPlayMonthlyContentIdsCommand,
+    OrderPlayMonthlyActivities,
+    OrderPlayMonthlyActivitiesCommand,
     PlacePlayMonthlySafety,
     PlacePlayMonthlySafetyCommand,
     PlayMonthlyLifecycleError,
@@ -345,6 +347,7 @@ _LIFECYCLE_ERRORS = {
     ),
     "play_monthly_safety_candidate_not_found": _invalid("candidate_item_id"),
     "invalid_content_ids": _invalid("content_ids"),
+    "invalid_activity_order": _invalid("item_ids"),
     "play_monthly_drill_candidate_blank": _invalid("item_id"),
     "curriculum_reference_unavailable": _REFERENCE_UNAVAILABLE,
     # 특별활동 시간표(ADR-047). 한도 수치는 Core 가 정하고 문구는 교사가 고칠 방법을 말한다.
@@ -479,6 +482,25 @@ def add_activity(plan_id: int, body: s.AddActivityIn, session: DbSession, user: 
         lambda drafts, plan: AddPlayMonthlyActivity(
             plan_repository=drafts, id_generator=UuidGenerator(), clock=SystemClock()
         ).execute(AddPlayMonthlyActivityCommand(plan.plan_id, _actor(user), body.section)),
+    )
+
+
+@router.put("/{plan_id}/activities/order", response_model=s.PlayMonthlyPlanOut)
+def order_activities(plan_id: int, body: s.ActivityOrderIn, session: DbSession, user: CurrentUser):
+    """한 목록(함께 하는 활동 · 자유놀이) 안의 줄 순서(Human Decision 2026-11-05). 주간
+    `PUT /plans/weekly/{id}/indoor-plays/order` 와 같은 모양이다. 그 목록의 줄을 한 번씩 다 적어야
+    하고, 같은 순서면 200 · 무변경이다."""
+    items = tuple(_item(value, "item_ids") for value in body.item_ids)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: OrderPlayMonthlyActivities(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            OrderPlayMonthlyActivitiesCommand(plan.plan_id, _actor(user), body.section, items)
+        ),
     )
 
 
@@ -951,6 +973,13 @@ def _detail(
         rationale=_cell(plan.rationale),
         together=[_activity(a) for a in plan.together],
         free_play=[_activity(a) for a in plan.free_play],
+        direction=_cell(plan.direction),
+        display=s.DisplayOut(
+            title=_cell(plan.display.title),
+            age=_cell(plan.display.age),
+            class_name=_cell(plan.display.class_name),
+            period=_cell(plan.display.period),
+        ),
         habits=[
             s.HabitOut(week_id=h.week_id.value, entry_id=h.habit.entry_id, cell=_cell(h.habit.cell))
             for h in plan.habits

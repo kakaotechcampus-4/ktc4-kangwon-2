@@ -126,7 +126,6 @@ class StubApiError extends Error {
 }
 const calls = [];
 let getResult;
-let classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
 const sheetStub = (props) => jsx("sheet", props);
 const editorStub = (props) => jsx("editor", props);
 const saved = [];
@@ -217,8 +216,6 @@ function load() {
     "@/components/app/AppHeader": esModule(() => null),
     "@/components/workspace/Workspace.module.css": esModule(css),
     "@/lib/api/client": { ApiError: StubApiError },
-    "@/lib/api/auth": { getMe: async () => ({ center_id: 1 }) },
-    "@/lib/api/classes": { getClasses: () => classesResult() },
     "@/lib/api/playMonthly": {
       getPlayMonthly: (id) => (calls.push(id), getResult()),
       unconfirmPlayMonthly: (...a) => (calls.push(["unconfirm", ...a]), getResult()),
@@ -271,39 +268,16 @@ async function open(id, result) {
 }
 
 // ---- 읽기 화면 (View) ----
-test("계획안을 읽어 반 이름과 함께 문서 용지에 넘기고 초안 배지를 보인다", async () => {
+test("계획안을 읽어 문서 용지에 넘기고 초안 배지를 보인다 — 반 이름은 문서 머리 칸(display)에서 온다", async () => {
   const plan = fixture();
   const { View, h } = await open(plan.id, async () => plan);
   assert.deepEqual(calls, [plan.id]);
   const tree = await h.settle(View, { id: plan.id });
   const sheet = all(tree).find((n) => n.type === "sheet");
-  assert.equal(sheet.props.className, "해님반");
+  assert.equal(sheet.props.className, undefined);
   assert.equal(sheet.props.plan.id, plan.id);
   // 초안 표시는 「작성 중」 없이 저장 상태만(11-03 하민).
   assert.doesNotMatch(text(tree), /작성 중|확정됨/);
-});
-
-test("반 이름 조회가 끝나지 않아도 문서는 먼저 보이고, 나중에 오면 채워진다", async () => {
-  const plan = fixture();
-  let arrive;
-  classesResult = () => new Promise((done) => (arrive = done));
-  const { View, h } = await open(plan.id, async () => plan);
-  const props = { id: plan.id };
-  const sheetOf = (tree) => all(tree).find((n) => n.type === "sheet");
-  try {
-    assert.equal(sheetOf(h.render(View, props)).props.plan.id, plan.id);
-    assert.equal(sheetOf(h.render(View, props)).props.className, "");
-    arrive({ items: [{ id: 7, name: "해님반" }] });
-    await new Promise((done) => setTimeout(done, 0));
-    assert.equal(sheetOf(h.render(View, props)).props.className, "해님반");
-  } finally {
-    classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
-  }
-  // 실패하면 반 이름 칸만 빈다.
-  classesResult = async () => Promise.reject(new Error("x"));
-  const failed = await open(plan.id, async () => plan);
-  assert.equal(sheetOf(await failed.h.settle(failed.View, props)).props.className, "");
-  classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
 });
 
 test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내기는 있고 확정 · 이력 · 되돌리기 단추는 없다", async () => {
@@ -614,7 +588,7 @@ function sheetOf(plan, more = {}) {
     "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
     ...sheetMods,
   });
-  return h.render(Sheet, { plan, className: "해님반", ...more });
+  return h.render(Sheet, { plan, ...more });
 }
 const rowsOf = (tree, tag, th) =>
   all(tree).filter((n) => n.type === "tr" && withText(n, "th", th).length);
@@ -635,13 +609,27 @@ test("칸의 빈 곳(td)을 눌러도 그 칸 하나의 글을 고른다", () =>
   assert.equal(clicks, 1);
 });
 
-test("머리표 — 주제 · 기간 · 만 나이 · 반 이름 · 주제 선정 이유", () => {
-  const plan = fixture();
-  const t = text(sheetOf(plan));
+test("머리표 — 제목 · 만 나이 · 반 이름 · 기간은 문서 머리 칸(display), 가운데는 놀이 방향 칸이고 모두 누르는 칸이다", () => {
+  const plan = fixture(false, (p) => {
+    p.display.class_name.value = "해님반";
+    p.display.period.value = "2026.11.01 ~ 2026.11.30";
+    p.direction.value = "길에서 만난 봄";
+    return p;
+  });
+  const tree = sheetOf(plan, { onSelect: () => {} });
+  const t = text(tree);
   assert.match(t, /11월 놀이계획안/);
-  assert.match(t, /예상 기간\d{4}\.\d{2}\.\d{2} ~ \d{4}\.\d{2}\.\d{2}/);
-  for (const part of ["놀이 주제봄 길을 걸어요", "만 4·5세 해님반", "주제선정이유봄에는 바깥에서"])
+  assert.ok(t.includes("예상 기간2026.11.01 ~ 2026.11.30"));
+  for (const part of ["놀이 주제봄 길을 걸어요", "만 4·5세해님반", "주제선정이유봄에는 바깥에서"])
     assert.ok(t.includes(part), part);
+  assert.equal(text(all(tree).find((n) => n.props?.rowSpan === 2)), "길에서 만난 봄");
+  const ids = new Set(
+    all(tree)
+      .filter((n) => n.props?.role === "button")
+      .map((n) => n.props["data-cell"]),
+  );
+  for (const c of [plan.direction, ...Object.values(plan.display)])
+    assert.ok(ids.has(c.item_id), c.value);
 });
 
 test("놀이 방향 — 함께 5행 · 가운데 주제 · 자유놀이 5행", () => {
@@ -855,7 +843,6 @@ test("문서 용지 — onSelect 가 있으면 칸이 누르는 칸이 되고 �
   });
   const tree = h.render(Sheet, {
     plan,
-    className: "",
     selected: plan.theme.item_id,
     onSelect: (id) => picked.push(id),
   });
