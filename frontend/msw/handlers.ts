@@ -71,13 +71,16 @@ import {
   annualChanged,
   annualFor,
   confirmMonthly,
+  copyMonthlyDrill,
   editCell,
   findCell,
   findMonthly,
   findMonthlyFor,
   listAudit,
   listMonthly,
+  placeMonthlySafety,
   regenerateCell,
+  safetyView,
   targetMonthOf,
   unconfirmMonthly,
 } from "./data/monthly-plans";
@@ -1126,6 +1129,57 @@ export const handlers = [
       monthlyOut(editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key)),
     );
   }),
+  // 안전교육 놓기 · 훈련 후보 복사 — 서버 monthly_router 와 같은 순서 · 같은 오류다.
+  http.put("*/api/plans/monthly/:id/safety-weeks/:weekId", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-safety");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (!("candidate_item_id" in b)) return bad("candidate_item_id");
+    const candidate = b.candidate_item_id;
+    if (candidate !== null && (typeof candidate !== "string" || !candidate.trim()))
+      return invalid(["candidate_item_id"]);
+    if (badRevision(b)) return bad("expected_revision");
+    const weekId = decodeURIComponent(String(params.weekId));
+    if (!/^\d{4}-(0[1-9]|1[0-2])-W[1-9]\d?$/.test(weekId)) return invalid(["week_id"]);
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing(Number(params.id));
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    if (plan.revision !== b.expected_revision) return stale();
+    if (!plan.safety_candidates?.length)
+      return failure("VALIDATION_FAILED", "이 월간계획안에는 안전교육 후보가 없습니다.");
+    if (!plan.safety_weeks.some((w) => w.week_id === weekId))
+      return failure("NOT_FOUND", "그 주를 찾을 수 없습니다.", "week_id");
+    if (candidate !== null && !plan.safety_candidates.some((c) => c.cell.item_id === candidate))
+      return invalid(["candidate_item_id"]);
+    return HttpResponse.json(
+      monthlyOut(placeMonthlySafety(plan.id, weekId, candidate as string | null)),
+    );
+  }),
+  http.post(
+    "*/api/plans/monthly/:id/drill-candidates/:itemId/copy",
+    async ({ request, params }) => {
+      const s = await scenario(request, "monthly-drill");
+      if (s) return s;
+      const b = await body(request);
+      if (!b) return bad("body");
+      if (badRevision(b)) return bad("expected_revision");
+      const itemId = decodeURIComponent(String(params.itemId));
+      if (!itemId.trim()) return invalid(["item_id"]);
+      const plan = myMonthly(Number(params.id));
+      if (!plan) return planMissing(Number(params.id));
+      if (plan.status === "CONFIRMED")
+        return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+      if (plan.revision !== b.expected_revision) return stale();
+      if (!plan.sections.some((s) => s.section_key === "drill" && s.cells.length))
+        return failure("VALIDATION_FAILED", "이 월간계획안에는 소방대피 · 재난대비 칸이 없습니다.");
+      const drill = plan.drill_candidates?.find((d) => d.cell.item_id === itemId);
+      if (!drill) return failure("NOT_FOUND", "그 훈련 후보를 찾을 수 없습니다.", "item_id");
+      if (!drill.cell.value.trim()) return invalid(["item_id"]);
+      return HttpResponse.json(monthlyOut(copyMonthlyDrill(plan.id, itemId)));
+    },
+  ),
   // LLM 을 부르지 않는다 — 다음 revision 을 넣은 고정 문장으로 바꾼다.
   http.post("*/api/plans/monthly/:id/cells/:itemId/regenerate", async ({ request, params }) => {
     const s = await scenario(request, "monthly-regenerate", 1200);
@@ -1449,6 +1503,12 @@ const monthlyOut = (p: MonthlyPlan) => ({
   ...p,
   parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
   drill_candidates: p.drill_candidates ?? [],
+  // 옛 목업 저장본(후보 없음)도 그대로 읽힌다.
+  ...safetyView({
+    ...p,
+    safety_candidates: p.safety_candidates ?? [],
+    safety_weeks: p.safety_weeks ?? [],
+  }),
 });
 const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
 const weeklyMissing = () => failure("NOT_FOUND", "주간계획안을 찾을 수 없습니다.", "id");
