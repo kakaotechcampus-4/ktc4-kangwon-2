@@ -4,7 +4,8 @@ import { errorCode } from "@/lib/api/client";
 import { startKakaoLogin } from "@/lib/auth/kakao";
 
 /**
- * 카카오로 시작하기 (ADR-063). 처음 누르면 곧 가입이라 로그인 · 가입 화면 둘 다 맨 위에 둔다.
+ * 카카오로 시작하기 (ADR-063). 이메일 폼 아래 「또는」 뒤 두 번째 길이다.
+ * 처음 누르면 곧 가입이라 로그인 · 가입 화면 둘 다 같은 단추다.
  *
  * 색 · 심볼은 카카오 로그인 디자인 가이드를 따른다 — 바탕 #FEE500, 글자 · 심볼 검정 85%,
  * 말풍선 심볼은 모양을 바꾸지 않는다. 그래서 이 단추만 디자인 토큰 밖의 색을 쓴다.
@@ -23,7 +24,7 @@ export default function KakaoStart() {
     } catch (e) {
       setError(
         errorCode(e) === "DEPENDENCY_UNAVAILABLE"
-          ? "지금은 카카오로 로그인할 수 없어요. 아래 이메일로 로그인해주세요."
+          ? "지금은 카카오로 로그인할 수 없어요. 위 이메일로 로그인해주세요."
           : e instanceof Error
             ? e.message
             : "카카오로 가지 못했어요. 다시 시도해주세요.",
@@ -33,7 +34,7 @@ export default function KakaoStart() {
   }
 
   return (
-    <div className="mt-7">
+    <div>
       <button
         type="button"
         onClick={start}
@@ -43,7 +44,6 @@ export default function KakaoStart() {
         {busy ? <Spinner /> : <KakaoSymbol />}
         {busy ? "카카오로 가는 중…" : "카카오로 시작하기"}
       </button>
-      <p className="mt-2 text-center text-xs text-ink-soft">처음이면 바로 가입돼요.</p>
       {error && (
         <p
           role="alert"
