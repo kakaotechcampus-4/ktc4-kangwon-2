@@ -132,7 +132,7 @@ export default function RegionSheet({
             if (e.key === "Enter" && shown.length === 1) shown[0].pick();
           }}
           aria-label={province ? "시·군·구 찾기" : "시·도 찾기"}
-          placeholder="이름이나 초성으로 찾기 (예: ㄱㅅ)"
+          placeholder="이름이나 초성으로 찾기 (예: ㅅㅇ)"
           autoComplete="off"
           spellCheck={false}
           enterKeyHint="search"
