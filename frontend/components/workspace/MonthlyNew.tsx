@@ -586,8 +586,8 @@ export default function MonthlyNew({
       <div className="flex min-h-[calc(100vh-60px)]">
         <GenerationRing
           kind={play ? "monthly:PLAY_PROJECT" : "monthly:MONTHLY_THEME"}
-          // Sol 실측 한 번 약 28초(월간 v1, 2026-10-31).
-          expect={30}
+          // Sol 실측: 주제형 약 28초(2026-10-31) · 놀이 중심형 약 40초(2026-11-05).
+          expect={play ? 40 : 30}
           title={`${month}월 월간계획안을 만들고 있어요`}
           steps={
             play

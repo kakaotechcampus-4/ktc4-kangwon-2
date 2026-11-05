@@ -169,7 +169,8 @@ function AnnualGenerator({ format }: { format: Format }) {
       <div className="flex min-h-[calc(100vh-60px)]">
         <GenerationRing
           kind={`annual:${format}`}
-          expect={20}
+          // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
+          expect={format === "PLAY_PROJECT" ? 180 : 20}
           steps={[...look.steps]}
           onCancel={stop}
         />
