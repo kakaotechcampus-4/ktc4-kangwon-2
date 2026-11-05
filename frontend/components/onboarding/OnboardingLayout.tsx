@@ -166,6 +166,38 @@ export default function OnboardingLayout({
             </filter>
             {/* 글자용 분필 결 — 선보다 덜 비틀고 덜 비운다. 더 세게 하면 이름이 안 읽힌다(시험 의견: 가독성).
                 글자 상자에 맞춰(objectBoundingBox) 잡으니 글자 길이가 달라도 된다. */}
+            {/* 분필로 그린 포스티(.chalkPosty)용 — 글자보다 굵게 비틀어 손으로 그린 선처럼 보이게 한다. */}
+            <filter id="chalk-posty" x="-5%" y="-5%" width="110%" height="110%">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.8"
+                numOctaves={2}
+                seed={3}
+                result="n"
+              />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="n"
+                scale={2.2}
+                xChannelSelector="R"
+                yChannelSelector="G"
+                result="d"
+              />
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="1.1"
+                numOctaves={2}
+                seed={8}
+                result="g"
+              />
+              <feColorMatrix
+                in="g"
+                type="matrix"
+                values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.8"
+                result="mask"
+              />
+              <feComposite in="d" in2="mask" operator="in" />
+            </filter>
             <filter id="chalk-text" x="-5%" y="-15%" width="110%" height="130%">
               <feTurbulence
                 type="fractalNoise"
@@ -242,7 +274,16 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
           </div>
         )}
       </div>
-      <Posty pose="wave" tone="note" face="base" size={152} tape label="포스티가 손을 흔들어요" />
+      <Posty
+        pose="wave"
+        tone="note"
+        face="base"
+        size={152}
+        tape
+        label="포스티가 손을 흔들어요"
+        // 칠판에 분필로 그린 포스티(globals.css 의 .chalkPosty)
+        className="chalkPosty"
+      />
     </aside>
   );
 }

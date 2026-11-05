@@ -214,6 +214,18 @@ body {
   --pg-primary-tint: var(--paper-primary-tint);
   --pg-primary-tint-line: var(--paper-primary-tint-line);
 }
+/* 분필로 그린 포스티 — 오른쪽 칸의 포스티. 먹색 선은 흰 분필, 쪽지는 노란 분필로 옅게 칠하고 테두리는 노란 분필.
+ * 바로 위 .chalkPage svg 규칙(포스티 원래 색)을 이겨야 해서 svg.chalkPosty 로 건다.
+ * 분필 결은 OnboardingLayout 의 #chalk-posty 필터가 낸다. */
+.chalkPage svg.chalkPosty {
+  --pg-ink: var(--pg-board-ink);
+  --pg-note: color-mix(in srgb, var(--pg-primary) 42%, transparent);
+  --pg-note-line: var(--pg-primary);
+  --pg-note-fold: color-mix(in srgb, var(--pg-primary) 65%, transparent);
+  --pg-tape: color-mix(in srgb, var(--pg-board-ink) 45%, transparent);
+  --pg-paper-warm-line: color-mix(in srgb, var(--pg-board-ink) 70%, transparent);
+  filter: url(#chalk-posty);
+}
 /* 칠판 위에 뜨는 작은 판(지역 고르개). .chalkboard 의 position: relative 가 대화 상자의 fixed 를 덮지 않게 되돌린다.
  * 대화 상자는 넘치는 부분이 잘려 분필 받침은 달지 않는다. */
 .chalkPage dialog.chalkboard {
