@@ -133,6 +133,40 @@ def test_mixed_age_requests_are_balanced_by_age():
     assert sorted(record_id[3] for record_id in found) == ["3", "3", "4", "4"]
 
 
+@pytest.mark.parametrize("weekly_class,label,ref,text", [
+    (INDOOR, "쌓기", "ev_010245b6472d_p01_r00208_c05_i02", "우리 반에서 지켜야 할 약속"),
+    (WeeklySemanticClass.GROUP_ACTIVITY, "이야기 나누기", "ev_e5e84e83db52_p01_r00428_c01_i02", "파랑새반 약속!"),
+])
+def test_reviewed_unclear_sources_are_removed_before_candidate_ranking_only(weekly_class, label, ref, text):
+    reviewed = _record(ref, text=text, label=label, institution="reviewed")
+    clear = _record("ev_99", text="우리 반 놀잇감 책 만들기", label=label, institution="clear")
+    records = (reviewed, clear)
+    normal = _search(records, weekly_class=weekly_class, query_text="", top_k=20)
+    assert set(normal) == {r.record_id for r in records}
+    assert _search(records, weekly_class=weekly_class, query_text="", by_activity_type=True) == [clear.record_id]
+
+
+def test_candidate_source_review_is_not_a_word_length_or_genre_filter():
+    ref, text = "ev_e5e84e83db52_p01_r00428_c01_i02", "파랑새반 약속!"
+    records = (
+        _record(ref, text="우리 반 약속 카드 만들기", institution="changed"),
+        _record("ev_97", text=text, institution="unreviewed"),
+        _record("ev_98", text="책 만들기", institution="short"),
+    )
+    found = _search(records, by_activity_type=True, query_text="")
+    assert set(found) == {r.record_id for r in records}
+
+
+def test_reviewed_candidate_sources_match_the_unchanged_evidence_artifact():
+    from ssuksak.planning.retrieval.weekly import REVIEWED_UNCLEAR_ACTIVITY_SOURCES
+
+    records = {r.record_id: r for r in JsonInstitutionEvidenceRepository().get_store().records}
+    assert REVIEWED_UNCLEAR_ACTIVITY_SOURCES
+    for ref, text in REVIEWED_UNCLEAR_ACTIVITY_SOURCES:
+        assert records[ref].text == text
+        assert records[ref].month == 3
+
+
 def test_a_classification_for_another_store_is_refused():
     store = InMemoryInstitutionEvidenceRepository((_record("ev_1"),)).get_store()
     other = WeeklyEvidenceClassification(

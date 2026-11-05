@@ -130,13 +130,15 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
     from ssuksak.planning.planner.weekly import LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
     for request in provider.requests:
         assert "+monthly-linked-v7" in request.prompt_version
-        assert "허용 근거에 드러난 대상과 핵심 놀이 행동을 짧은 이름에도 남긴다" in request.system_prompt
-        assert "+activity-candidates-v2" in request.prompt_version
-        assert "+activity-candidates-v2" in request.repair_prompt_version
+        assert "설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다" in request.system_prompt
+        assert "유형과 활동명만 읽어도 할 일이 떠올라야 한다" in request.system_prompt
+        assert "서로 섞어 새 활동을 만들지 않는다" in request.system_prompt
+        assert "+activity-candidates-v3" in request.prompt_version
+        assert "+activity-candidates-v3" in request.repair_prompt_version
         assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
         assert LINKED_WRITING_GUIDANCE in request.system_prompt
-        assert "작품명과 역할놀이의 익숙한 이름은 자연스럽게 유지" in request.system_prompt
-        assert "이름과 설명 모두 근거에 없는 행동·재료·절차를 보태지 않는다" in request.system_prompt
+        assert "작품명과 익숙한 놀이명은 유지" in request.system_prompt
+        assert "근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다" in request.system_prompt
 
 
 def test_candidate_generation_and_repair_use_streaming_with_an_output_cap():

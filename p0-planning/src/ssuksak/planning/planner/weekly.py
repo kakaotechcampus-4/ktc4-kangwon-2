@@ -344,7 +344,7 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
-    candidates = "+activity-candidates-v2" if any(t.activity_type is not None for t in targets) else ""
+    candidates = "+activity-candidates-v3" if any(t.activity_type is not None for t in targets) else ""
     if candidates:
         source_refs |= {t.section_key for t in targets if t.activity_type is not None}
     memo = _memo_addresses(targets) if teacher_memo else None
@@ -362,10 +362,13 @@ def build_weekly_request(
         system_prompt += (
             " activity_type가 있는 target은 교사가 고를 한 주 활동 후보이며 요일에 배치하지 않는다. "
             "각 후보는 Rule이 정한 그 유형과 허용 근거로 짧은 활동명: 설명을 쓴다. 유형 이름은 value에 붙이지 않는다. "
-            "활동명은 문서에 단독으로 들어가므로, 허용 근거에 드러난 대상과 핵심 놀이 행동을 짧은 이름에도 남긴다. "
-            "근거의 행동을 설명에만 두고 활동명을 소재나 주제만 남도록 줄이지 않는다. "
-            "작품명과 역할놀이의 익숙한 이름은 자연스럽게 유지하고, 모든 제목에 같은 행동어를 억지로 붙이지 않는다. "
-            "이름과 설명 모두 근거에 없는 행동·재료·절차를 보태지 않는다. "
+            "먼저 허용 근거와 정해진 유형으로 유아가 무엇을 대상으로 무엇을 하는 활동인지 설명을 정하고, "
+            "그 설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다. 출력 형식은 활동명: 설명을 유지한다. "
+            "유형과 활동명만 읽어도 할 일이 떠올라야 한다. 나누기·탐색·알아보기 같은 말을 붙이는 것만으로 구체화하지 않는다. "
+            "이야기나누기는 이야기할 대상이나 상황을, 미술·과학은 표현하거나 살펴볼 대상과 근거에 있는 방식을 남긴다. "
+            "한 근거에 여러 활동이 있으면 정해진 유형에 해당하는 활동 하나를 분명히 골라 쓰며, 서로 섞어 새 활동을 만들지 않는다. "
+            "작품명과 익숙한 놀이명은 유지하고, 모든 제목에 같은 행동어를 억지로 붙이지 않는다. "
+            "제목과 설명은 같은 활동을 뜻해야 하며, 근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다. "
             "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
             "같은 Section의 후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
             "indoor_play.candidate로 시작하는 target도 같은 형식의 실내 자유놀이 후보다. "
