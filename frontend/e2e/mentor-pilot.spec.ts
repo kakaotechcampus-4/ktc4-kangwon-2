@@ -358,9 +358,12 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   const fact = "블록 세 개를 쌓은 뒤 친구에게 같이 만들자고 말했다.";
   await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
   // 적는 칸은 늘 펴져 있고, 반은 사이드바가 고른다.
-  await page.getByRole("combobox", { name: "아이", exact: true }).selectOption({ label: "가나다" });
+  await page
+    .getByRole("group", { name: "아이", exact: true })
+    .getByRole("button", { name: "가나다", exact: true })
+    .click();
   await page.getByLabel("본 대로 적기").fill(fact);
-  await page.getByRole("button", { name: "남기기", exact: true }).click();
+  await page.getByRole("button", { name: "기록하기", exact: true }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
   // 할 일은 그 줄을 눌러야 나온다 — 줄마다 단추를 세 개씩 두지 않는다.
   await page.locator("article button").first().click();

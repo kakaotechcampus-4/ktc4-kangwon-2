@@ -1534,9 +1534,9 @@ function recordsPage(
     "next/link": { default: "link" },
     // 그림들은 제 파일에서 본다. 여기서 보는 것은 길 · 저장이다.
     "@/components/app/Posty": { Posty: "posty" },
-    "@/components/app/ChildPicker": { ChildShape: "child-shape" },
+    "@/components/app/ChildPicker": { ChildNote: "child-note" },
     "@/components/app/icons": { Icon: "icon" },
-    "@/lib/workspace/child-mark": { markFor: () => ({ shape: 0, tone: 0 }) },
+    "@/lib/workspace/child-mark": { markFor: () => ({ tone: 0 }) },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
