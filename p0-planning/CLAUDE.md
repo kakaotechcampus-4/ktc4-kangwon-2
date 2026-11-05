@@ -25,7 +25,9 @@ whole project, and keeping two copies is how the two files drifted apart in 2026
 - A confirmed parent is required before creating a child plan: Yearly
   `CONFIRMED` before Monthly, Monthly `CONFIRMED` before Weekly. Weekly is only
   created through a Monthly plan; there is no Yearly-to-Weekly path (ADR-030 PM-04).
-- A `CONFIRMED` plan is read-only. Plans have no un-confirm (ADR-030 PM-03).
+- A `CONFIRMED` plan is read-only. Plan screens have no un-confirm; the teacher un-confirms
+  from the document archive (「수정하기」, back to `DRAFT`) or deletes and regenerates
+  (ADR-055 · ADR-062, Human Decision 2026-11-05).
 
 ## Rule / LLM boundary in this package
 
