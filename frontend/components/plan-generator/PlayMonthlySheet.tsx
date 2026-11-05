@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -22,6 +23,8 @@ import {
   tooNarrow,
   withRatio,
 } from "@/lib/plan-generator/playMonthlyTimetable";
+import { dropCells, liftCells, settle } from "./rowDrag";
+import { safetyTopic } from "./PlayMonthlySafetyPanel";
 
 /**
  * 월간 문서 용지 — 디자인 넘김 `monthly-docs.tsx`(내보내기 양식 모양)의 선 · 머리 색 · 주 색.
@@ -215,6 +218,64 @@ const Tagged = ({ tag, children }: { tag: string; children: ReactNode }) => (
   </div>
 );
 
+/**
+ * 안전교육 칸 하나. `onMove` 가 있으면 넣은 칸 왼쪽 위 손잡이로 끌어 다른 주 칸에 놓는다(놀이 중심형 연간 줄 끌기와 같은 모양).
+ * 손으로 옮기기 어려우면 칸을 눌러 「AI 후보」에서 넣고 뺀다.
+ */
+function SafetyTd({
+  weekId,
+  value,
+  weekIds,
+  onMove,
+  ...at
+}: Pick & {
+  weekId: string;
+  value: string;
+  weekIds: string[];
+  onMove?: (fromWeekId: string, toWeekId: string) => void;
+}) {
+  const drop = onMove && {
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.currentTarget.dataset.drop = "";
+    },
+    onDragLeave: (event: DragEvent<HTMLElement>) => delete event.currentTarget.dataset.drop,
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      delete event.currentTarget.dataset.drop;
+      dropCells();
+      const from = event.dataTransfer.getData("text/plain");
+      if (!weekIds.includes(from) || from === weekId) return;
+      onMove(from, weekId);
+      settle(`td[data-safety-week="${CSS.escape(weekId)}"]`);
+    },
+  };
+  return (
+    <td
+      data-safety-week={weekId}
+      className={`${LINE} p-0 ${onMove ? "group relative transition-[background-color,opacity] duration-200 [&[data-dragging]]:opacity-40 [&[data-drop]]:bg-[#efe7f8]" : ""}`}
+      {...drop}
+    >
+      {onMove && value && (
+        <span
+          draggable
+          aria-hidden="true"
+          title="끌어서 다른 주로 옮기기"
+          className="absolute left-0 top-0 z-10 cursor-grab rounded-br-md bg-[#7053a0] px-1 text-[10px] font-bold leading-[16px] text-white opacity-0 transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
+          onDragStart={(event) => {
+            const td = event.currentTarget.closest("td");
+            if (td) liftCells(event, [td], weekId, "x");
+          }}
+          onDragEnd={dropCells}
+        >
+          ⠿
+        </span>
+      )}
+      <Cell {...at} id={safetyCellId(weekId)} value={value} />
+    </td>
+  );
+}
+
 export default function PlayMonthlySheet({
   plan,
   className,
@@ -223,9 +284,12 @@ export default function PlayMonthlySheet({
   scale,
   onRatio,
   onSize,
+  onMoveSafety,
 }: {
   plan: PlayMonthlyPlan;
   className: string;
+  /** 안전교육 칸을 다른 주로 끌어 옮긴다(두 주를 맞바꾼다) — 다듬는 동안만. */
+  onMoveSafety?: (fromWeekId: string, toWeekId: string) => void;
   /** 문서 배율(다듬기). 없으면 칸에 맞춰 줄이기만. */
   scale?: number;
   /** 특별활동 시간표 경계 · 크기 — 다듬는 동안만. */
@@ -248,9 +312,11 @@ export default function PlayMonthlySheet({
       </tr>
     );
   };
+  // 「[교통안전]」 다음 줄에 문장. 빈 문장이면 빈칸(머리도 안 붙인다).
   const safetyText = (weekId: string) => {
     const picked = plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id;
-    return plan.safety_candidates.find((c) => c.cell.item_id === picked)?.cell.value ?? "";
+    const c = plan.safety_candidates.find((c) => c.cell.item_id === picked);
+    return c?.cell.value.trim() ? `[${safetyTopic(c)}]\n${c.cell.value}` : "";
   };
   const drill = teacher("fire_disaster_drill");
   const weeks = plan.weeks;
@@ -357,9 +423,14 @@ export default function PlayMonthlySheet({
               안전교육
             </th>
             {weeks.map((week) => (
-              <td key={week.week_id} className={`${LINE} p-0`}>
-                <Cell {...at} id={safetyCellId(week.week_id)} value={safetyText(week.week_id)} />
-              </td>
+              <SafetyTd
+                key={week.week_id}
+                weekId={week.week_id}
+                value={safetyText(week.week_id)}
+                weekIds={weeks.map((w) => w.week_id)}
+                onMove={onMoveSafety}
+                {...at}
+              />
             ))}
           </tr>
           <tr>

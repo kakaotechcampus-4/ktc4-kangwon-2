@@ -420,6 +420,14 @@ test("특별활동 칸을 고르면 나누기 · 빼기 단추가 훅에 잇고,
   const filled = plan.special_activity[0].children[0].children[0].cell.item_id;
   pick(view, filled);
   view = h.render(View, props);
+  // 나뉜 칸은 그 칸 몫의 크기를 5씩 바꾼다 — 첫 갈래면 비율이 그대로 는다.
+  const parent = plan.special_activity[0].children[0];
+  const what = parent.axis === "VERTICAL" ? "높이" : "너비";
+  assert.ok(text(view).includes(`이 칸 ${what}−${parent.ratio}%+`));
+  all(view)
+    .find((n) => n.props?.["aria-label"] === `이 칸 ${what} 키우기`)
+    .props.onClick();
+  assert.deepEqual(saved.pop(), ["ratio", parent.split_id, parent.ratio + 5]);
   button(view, "이 칸 빼기").props.onClick();
   view = h.render(View, props);
   const ask = all(view).find((n) => n.type === "ask");
@@ -455,6 +463,9 @@ test("안전교육 칸은 그 주 후보 패널, 소방대피 칸은 훈련 패�
     ["safety", weekId, null],
     ["copy", cand],
   ]);
+  // 저장 상태는 제목 아래(status)가 아니라 확정 버튼 옆(actions)에.
+  const frame = all(h.render(View, props)).find((n) => n.type === "frame");
+  assert.ok(all(frame.props.actions).some((n) => n.props?.role === "status"));
   // 두면 화면 계획안에 입혀진다.
   pick(h.render(View, props), "safety:" + weekId);
   node(h.render(View, props), "safety")[0].props.onPlace(weekId, cand);
@@ -462,6 +473,16 @@ test("안전교육 칸은 그 주 후보 패널, 소방대피 칸은 훈련 패�
     node(h.render(View, props), "safety")[0].props.plan.safety_weeks[0].candidate_item_id,
     cand,
   );
+  // 문서에서 끌어 빈 주로 옮기면 그 주에 두고 원래 주는 비운다(두 주 맞바꾸기).
+  saved.length = 0;
+  const other = plan.safety_weeks[1].week_id;
+  all(h.render(View, props))
+    .find((n) => n.type === "sheet")
+    .props.onMoveSafety(weekId, other);
+  assert.deepEqual(saved, [
+    ["safety", other, cand],
+    ["safety", weekId, null],
+  ]);
   // 행을 고르면 그 행 빼기 하나, 구역 이름이 붙는다.
   const free = plan.free_play.at(-1);
   pick(h.render(View, props), free.name.item_id);
@@ -578,11 +599,20 @@ test("브라우저 저장소를 쓰지 않는다", () => {
 });
 
 // ---- 문서 용지 (Sheet) ----
+// 용지가 쓰는 끌기 도구 · 안전교육 머리 이름(진짜 모듈).
+const sheetMods = {
+  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {}),
+  "./PlayMonthlySafetyPanel": compile(
+    "../components/plan-generator/PlayMonthlySafetyPanel.tsx",
+    {},
+  ),
+};
 function sheetOf(plan, more = {}) {
   const h = harness();
   const { default: Sheet } = compile("../components/plan-generator/PlayMonthlySheet.tsx", {
     react: { ...h.react, useEffect: () => {} },
     "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
+    ...sheetMods,
   });
   return h.render(Sheet, { plan, className: "해님반", ...more });
 }
@@ -624,7 +654,7 @@ test("놀이 방향 — 함께 5행 · 가운데 주제 · 자유놀이 5행", (
   assert.equal(text(all(tree).find((n) => n.props?.rowSpan === 2)), "봄 길을 걸어요");
 });
 
-test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교육은 둔 주만 글이 있다", () => {
+test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교육은 둔 주만 「[영역]」 다음 줄에 글이 있다", () => {
   const plan = fixture(false, (p) => {
     p.safety_weeks[1].candidate_item_id = p.safety_candidates[0].cell.item_id;
     return p;
@@ -642,7 +672,36 @@ test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교�
     ["합성 습관 1", "합성 습관 2", "합성 습관 3", "합성 습관 4"],
   );
   const safety = all(rowsOf(tree, "tr", "안전교육")[0]).filter((n) => n.type === "td");
-  assert.deepEqual(safety.map(text), ["", "성폭력 예방 약속을 함께 알아보아요", "", ""]);
+  assert.deepEqual(safety.map(text), [
+    "",
+    "[성폭력 예방]\n성폭력 예방 약속을 함께 알아보아요",
+    "",
+    "",
+  ]);
+  // 확정본 · 크게 보기(onMoveSafety 없음)에는 끌기 손잡이가 없다.
+  assert.equal(all(tree).filter((n) => n.props?.draggable).length, 0);
+});
+
+test("안전교육 칸 끌기 — 넣은 주에만 손잡이, 다른 주 칸에 놓으면 두 주를 넘긴다", () => {
+  const plan = fixture(false, (p) => {
+    p.safety_weeks[1].candidate_item_id = p.safety_candidates[0].cell.item_id;
+    return p;
+  });
+  const moves = [];
+  const tree = sheetOf(plan, { onSelect: () => {}, onMoveSafety: (...a) => moves.push(a) });
+  const tds = all(tree).filter((n) => n.props?.["data-safety-week"]);
+  assert.equal(all(tree).filter((n) => n.props?.draggable).length, 1);
+  globalThis.CSS ??= { escape: (v) => v };
+  const drop = (td, from) =>
+    td.props.onDrop({
+      preventDefault() {},
+      currentTarget: { dataset: {} },
+      dataTransfer: { getData: () => from },
+    });
+  drop(tds[3], plan.safety_weeks[1].week_id);
+  drop(tds[1], plan.safety_weeks[1].week_id); // 제자리
+  drop(tds[2], "다른 곳에서 끈 글"); // 주가 아니면 무시
+  assert.deepEqual(moves, [[plan.safety_weeks[1].week_id, plan.safety_weeks[3].week_id]]);
 });
 
 test("소방대피/재난대비는 가로로 합치고, 건강 · 영양 칸이 있다", () => {
@@ -713,9 +772,11 @@ test("문서의 칸을 누르면 그 칸이 강조되고 옆 패널에 빈 값�
   const props = { id: plan.id };
   const sheet = () => all(h.render(View, props)).find((n) => n.type === "sheet");
   assert.equal(sheet().props.selected, null);
-  // 고르기 전 패널은 채운 정도 · 남은 빈칸 요약이다.
-  const overview = all(h.render(View, props)).find((n) => n.type === "overview");
-  assert.ok(overview.props.total >= overview.props.filled);
+  // 고르기 전 패널은 한 줄 안내뿐 — 채운 칸 수 · 고치는 법은 없다.
+  const first = h.render(View, props);
+  assert.equal(all(first).filter((n) => n.type === "overview").length, 0);
+  assert.match(text(first), /문서에서 고칠 칸을 눌러 주세요/);
+  assert.doesNotMatch(text(first), /고치는 법|개 중/);
   sheet().props.onSelect(plan.theme.item_id);
   const tree = h.render(View, props);
   assert.equal(all(tree).find((n) => n.type === "sheet").props.selected, plan.theme.item_id);
@@ -790,6 +851,7 @@ test("문서 용지 — onSelect 가 있으면 칸이 누르는 칸이 되고 �
   const { default: Sheet } = compile("../components/plan-generator/PlayMonthlySheet.tsx", {
     react: { ...h.react, useEffect: () => {} },
     "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
+    ...sheetMods,
   });
   const tree = h.render(Sheet, {
     plan,
