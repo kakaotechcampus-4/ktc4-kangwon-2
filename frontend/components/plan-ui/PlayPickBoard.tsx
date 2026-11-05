@@ -24,8 +24,12 @@ export type PickCandidate = {
 
 /** 요청 사항을 반영한 후보의 작은 표시(Human Decision 2026-11-05). 글자 배지 대신 조용한 ✦. */
 export function MemoMark() {
+  // relative — 숨은 글자(sr-only, absolute)가 스크롤 상자를 빠져나가 페이지를 늘이지 않게.
   return (
-    <span title="요청을 반영한 놀이" className="shrink-0 text-[13px] leading-none text-[#7053a0]">
+    <span
+      title="요청을 반영한 놀이"
+      className="relative shrink-0 text-[13px] leading-none text-[#7053a0]"
+    >
       <span aria-hidden="true">✦</span>
       <span className="sr-only">요청을 반영한 놀이</span>
     </span>
