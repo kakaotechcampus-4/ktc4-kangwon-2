@@ -530,3 +530,20 @@ test("annual API still behaves the same next to the monthly mocks", async () => 
   );
   assert.equal(read().plans.length, 1);
 });
+
+test("검사 결과는 한글 한 줄씩 — 직접 쓴 바깥놀이 안내는 빼고 영어는 띄우지 않는다", async () => {
+  const { findingLines } = await import("../lib/monthly/findings.ts");
+  const { safetyLines } = await import("../lib/monthly/section-labels.ts");
+  const fact = { code: "WEEKLY_FACT_SCOPE_NOT_VERIFIED", message: "Dates, weekdays ..." };
+  const lines = findingLines([
+    fact,
+    fact,
+    { code: "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", message: "Free-text outdoor play ..." },
+    { code: "SOMETHING_NEW", message: "English" },
+  ]);
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((t) => !/[a-z]/.test(t)));
+  assert.equal(safetyLines("[교통안전] - 길을 건너요."), "[교통안전]\n길을 건너요.");
+  assert.equal(safetyLines("[생활안전] - a - b"), "[생활안전]\na - b");
+  assert.equal(safetyLines("그냥 문장"), "그냥 문장");
+});

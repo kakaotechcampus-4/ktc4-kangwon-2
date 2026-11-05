@@ -39,3 +39,6 @@ export const SECTION_LABELS: Record<string, string> = {
  */
 export const sectionName = (key: string, label?: string | null): string =>
   SECTION_LABELS[key] ?? label ?? key;
+
+/** 안전교육 칸 「[주제] - 내용」을 「[주제]」 아래 줄에 내용으로 — 놀이 월간과 같은 모양. */
+export const safetyLines = (text: string) => text.replace(/^(\[[^\]\n]+\]) - /, "$1\n");

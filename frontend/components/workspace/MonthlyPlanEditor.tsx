@@ -19,16 +19,14 @@ import {
 } from "@/lib/api/monthly";
 import { isSaveConflict } from "@/lib/api/plans";
 import type { MonthlyCell, MonthlyPlan } from "@/lib/api/types";
-import { sectionName } from "@/lib/monthly/section-labels";
+import { findingLines } from "@/lib/monthly/findings";
+import { safetyLines, sectionName } from "@/lib/monthly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import workspace from "./Workspace.module.css";
 import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
-import PlayMonthlyConfirm, {
-  BlankRows,
-  PanelOverview,
-} from "@/components/plan-generator/PlayMonthlyConfirm";
+import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   BACK_BUTTON,
   BACK_ICON,
@@ -56,21 +54,6 @@ import { useCompactShell } from "@/components/app/compact-shell";
 import { useCellHistory } from "./useCellHistory";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
 
-const FINDINGS: Record<string, string> = {
-  ACTIVITY_REFERENCE_NOT_VERIFIED:
-    "수정한 내용과 기존 참고 활동의 연결을 자동으로 확인하지 못했어요. 교사가 내용을 확인해주세요.",
-  ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED:
-    "직접 작성한 바깥놀이 문장의 연령 적합성은 자동으로 확인하지 못했어요. 교사가 내용을 확인해주세요.",
-  ACTIVITY_AGE_UNSUPPORTED:
-    "우리 반 연령을 모두 지원하지 않는 참고 활동이 있어요. 활동 내용과 대상 연령을 확인해주세요.",
-  // 안전교육 배치 검증(safety_placement). 서버 문구는 영어라 코드로 옮긴다.
-  SAFETY_ANNUAL_HOURS_NOT_VERIFIED:
-    "계획안에는 교육 시간이 없어 안전교육 연간 법정 시간은 자동으로 확인하지 못했어요. 실제 교육 시간은 따로 확인해주세요.",
-  SAFETY_OFFICIAL_GROUNDING_MISSING:
-    "법정 안전교육 칸의 공식 교육 내용 근거를 확인하지 못했어요. 안전교육 내용을 확인해주세요.",
-  SAFETY_SUPPLEMENTAL_GROUNDING_INVALID:
-    "생활안전 칸의 참고 근거를 확인하지 못했어요. 안전교육 내용을 확인해주세요.",
-};
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
 
 function describe(e: unknown, fallback: string): string {
@@ -354,7 +337,6 @@ export default function MonthlyPlanEditor({
         return !c || !shown(c.cell).trim();
       })
     : [];
-  const total = cells.length + (candidateMode ? plan.safety_weeks.length : 0);
   const blankCount = blanks.length + safetyBlanks.length;
   // 확정 확인은 한 번 — 남은 빈칸은 줄마다 세어 같은 상자에 보이고, 누르면 그 줄 첫 빈칸으로 간다.
   const blankRows = sections
@@ -391,9 +373,7 @@ export default function MonthlyPlanEditor({
       ? (picked.cell.week_id ? `${weekLabel(picked.cell.week_id)} · ` : "") +
         sectionName(picked.section.section_key, picked.section.label)
       : "";
-  const findings = [
-    ...new Map(plan.verification.findings.map((f) => [`${f.code}|${f.section_key}`, f])).values(),
-  ];
+  const findings = findingLines(plan.verification.findings);
   // 맨 앞 주별 아닌 칸(주제 · 목표 등)은 위 표, 나머지는 주별 표 — 순서는 양식 그대로.
   const head = sections.findIndex((s) => s.repeat_by === "WEEK");
   const top = head < 0 ? sections : sections.slice(0, head);
@@ -402,8 +382,6 @@ export default function MonthlyPlanEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
-      {/* 처음 화면은 남은 할 일 — 채운 정도 · 줄마다 빈칸 수(누르면 그 칸으로) · 고치는 법. */}
-      {!where && <PanelOverview filled={total - blankCount} total={total} rows={blankRows} />}
       {where && (
         <div className="flex items-end justify-between gap-3">
           <h2 className="m-0 text-[20px] font-bold leading-tight">{where}</h2>
@@ -530,14 +508,28 @@ export default function MonthlyPlanEditor({
               const sw = plan.safety_weeks.find((x) => x.week_id === w.week_id);
               return (
                 <td key={w.week_id} className={`${LINE} text-center align-middle`}>
-                  <Cell {...at} id={safetyCellId(w.week_id)} value={sw?.display_value ?? ""} />
+                  <Cell
+                    {...at}
+                    id={safetyCellId(w.week_id)}
+                    value={safetyLines(sw?.display_value ?? "")}
+                  />
                 </td>
               );
             }
             const cell = byWeek.get(w.week_id);
             return (
               <td key={w.week_id} className={`${LINE} text-center align-middle`}>
-                {cell && <Cell {...at} id={cell.item_id} value={shown(cell)} />}
+                {cell && (
+                  <Cell
+                    {...at}
+                    id={cell.item_id}
+                    value={
+                      section.section_key === "safety_education"
+                        ? safetyLines(shown(cell))
+                        : shown(cell)
+                    }
+                  />
+                )}
               </td>
             );
           })
@@ -760,7 +752,7 @@ export default function MonthlyPlanEditor({
           {findings.length > 0 && (
             <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[13px]">
               {findings.map((f, i) => (
-                <li key={i}>{FINDINGS[f.code] ?? f.message}</li>
+                <li key={i}>{f}</li>
               ))}
             </ul>
           )}

@@ -90,7 +90,14 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     indoor_play_selection: true,
     activity_grids: [],
     activity_candidates: [],
-    verification: { findings: [] },
+    // 서버 문구(영어)는 띄우지 않는다 — AI 칸마다 오는 같은 안내는 한 줄, 직접 쓴 바깥놀이 안내는 뺀다.
+    verification: {
+      findings: [
+        { code: "WEEKLY_FACT_SCOPE_NOT_VERIFIED", message: "Dates, weekdays" },
+        { code: "WEEKLY_FACT_SCOPE_NOT_VERIFIED", message: "Dates, weekdays" },
+        { code: "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", message: "Free-text outdoor play" },
+      ],
+    },
     sections: [
       {
         section_key: "theme",
@@ -159,6 +166,7 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
     "@/lib/api/weekly": api,
     "@/lib/weekly/section-labels": { DAY_NAMES: {}, sectionName: (k) => k },
+    "@/lib/monthly/findings": compile("../lib/monthly/findings.ts", {}),
     "@/components/plan-generator/PlayCellEditor": es((p) => jsx("editor", p)),
     "@/components/plan-generator/PlayMonthlyConfirm": {
       ...es((p) => jsx("ask", p)),
@@ -188,6 +196,11 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
   };
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
   globalThis.document = { activeElement: null };
+  const notes = all(render())
+    .filter((n) => n.type === "li")
+    .map(content);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /자동으로 확인하지 못했어요/);
   all(render())
     .find((n) => n.type === "sheet")
     .props.at.onSelect("i1");

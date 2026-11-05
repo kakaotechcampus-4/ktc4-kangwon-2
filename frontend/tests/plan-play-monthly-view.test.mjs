@@ -1086,7 +1086,8 @@ function openV1Editor(findings = [], setup = (p) => p) {
       downloadMonthlyHwpx: () => {},
     },
     "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
-    "@/lib/monthly/section-labels": { sectionName: (key) => key },
+    "@/lib/monthly/section-labels": { sectionName: (key) => key, safetyLines: (t) => t },
+    "@/lib/monthly/findings": compile("../lib/monthly/findings.ts", {}),
     "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
     "@/components/plan-generator/PlayCellEditor": esModule((p) => {
       const clear = () => {
