@@ -131,11 +131,11 @@ export default function ChildrenFlow() {
             classroom={classroom}
             onAdd={add}
           />
-          <p className="mt-6 text-[14px] font-bold text-ink-soft">
+          <p className="mt-6 font-display text-[27px] font-bold leading-tight text-ink">
             {classroom.className} · {count}명
           </p>
           {/* 이름을 누르면 지워진다는 것을 칠판 귀퉁이에 미리 적어 둔다 — 지우는 단추(✕)가 따로 없다. */}
-          <p className="mb-2 font-display text-[18px] text-ink-soft">이름을 누르면 지워져요</p>
+          <p className="mb-2 font-display text-[24px] text-ink-soft">이름을 누르면 지워져요</p>
           <KidChips key={classroom.id} items={classroom.children} onRemove={remove} />
         </>
       )}
@@ -306,7 +306,7 @@ function KidChips({
               type="button"
               aria-label={`${child.name} 명단에서 빼기`}
               onClick={() => void remove(child)}
-              className="min-h-11 px-1 font-display text-[26px] font-bold leading-tight text-ink decoration-primary decoration-[3px] hover:line-through focus-visible:line-through focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="min-h-11 px-1 font-display text-[30px] font-bold leading-tight text-ink decoration-primary decoration-[3px] hover:line-through focus-visible:line-through focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {child.name}
             </button>

@@ -46,7 +46,7 @@ export function Question({
         {title}
       </h1>
       {hint && (
-        <p className="mt-2.5 font-display text-[19px] leading-[1.5] text-ink-soft">{hint}</p>
+        <p className="mt-2.5 font-display text-[25px] leading-[1.5] text-ink-soft">{hint}</p>
       )}
     </div>
   );
@@ -86,10 +86,10 @@ const lineClass = (active: boolean) =>
     ? "border-primary text-[22px] sm:text-[24px]"
     : "border-line text-[17px] focus:border-primary focus-visible:border-primary");
 
-/** 칸 이름. 작은 회색 글자다. */
+/** 칸 이름. 칠판에 손으로 적은 글씨(손글씨체)다. */
 export function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: ReactNode }) {
   return (
-    <label htmlFor={htmlFor} className="text-[13px] font-medium text-ink-soft">
+    <label htmlFor={htmlFor} className="font-display text-[26px] font-bold leading-tight text-ink">
       {children}
     </label>
   );

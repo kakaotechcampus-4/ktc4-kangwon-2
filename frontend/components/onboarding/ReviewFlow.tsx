@@ -198,17 +198,24 @@ export default function ReviewFlow() {
 }
 
 function SectionTitle({ children }: { children: string }) {
-  return <h2 className="mb-2 text-[14px] font-bold text-ink-soft">{children}</h2>;
+  return (
+    <h2 className="mb-2 font-display text-[28px] font-bold leading-tight text-ink">{children}</h2>
+  );
 }
 
 const rowClass =
   "flex min-h-14 w-full items-center gap-3 bg-paper py-3 pl-[18px] pr-4 text-left text-ink hover:bg-ivory focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary";
 
+/** 반 카드 안의 칸 이름 — 칠판에 손으로 적은 글씨. */
+const dtClass = "font-display text-[23px] font-bold leading-tight text-ink";
+
 function Row({ label, value, onClick }: { label: string; value: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} aria-label={`${label} 고치기`} className={rowClass}>
-      <span className="w-[72px] flex-none text-[14px] text-ink-soft">{label}</span>
-      <span className="flex-1 text-[16px] font-semibold">{value || "-"}</span>
+      <span className="w-[112px] flex-none font-display text-[24px] font-bold leading-tight text-ink">
+        {label}
+      </span>
+      <span className="flex-1 text-[18px] font-semibold">{value || "-"}</span>
       <Chevron />
     </button>
   );
@@ -241,16 +248,16 @@ function ClassCard({
         className={rowClass}
       >
         <span className="flex-1">
-          <span className="block text-[17px] font-bold">{classroom.className}</span>
+          <span className="block text-[20px] font-bold">{classroom.className}</span>
           <span
             id={detailId}
-            className="mt-2 grid grid-cols-[112px_minmax(0,1fr)] gap-y-1.5 text-[15px]"
+            className="mt-2 grid grid-cols-[160px_minmax(0,1fr)] items-baseline gap-y-1.5 text-[17px]"
           >
-            <span className="text-ink-soft">연령</span>
+            <span className={dtClass}>연령</span>
             <span>{ageSelectionLabel(selectedAgesFor(classroom))}</span>
-            <span className="text-ink-soft">담임</span>
+            <span className={dtClass}>담임</span>
             <span>{classroom.teacherName}</span>
-            <span className="text-ink-soft">법정대리인 동의</span>
+            <span className={dtClass}>법정대리인 동의</span>
             <span>{consent}</span>
           </span>
         </span>
@@ -263,15 +270,15 @@ function ClassCard({
           aria-label={`${classroom.className} 아이 명단`}
           className={`${rowClass} border-t border-shell`}
         >
-          {/* 위 표(112px 칸)와 값의 시작을 맞춘다 — 줄 사이 간격(gap-3, 12px)만큼 뺀다. */}
-          <span className="w-[100px] flex-none text-[15px] text-ink-soft">아이 명단</span>
-          <span className="flex-1 text-[16px] font-semibold">{classroom.children.length}명</span>
+          {/* 위 표(160px 칸)와 값의 시작을 맞춘다 — 줄 사이 간격(gap-3, 12px)만큼 뺀다. */}
+          <span className={`w-[148px] flex-none ${dtClass}`}>아이 명단</span>
+          <span className="flex-1 text-[18px] font-semibold">{classroom.children.length}명</span>
           <Chevron />
         </button>
       )}
       {!classroom.guardianConsent && (
-        <p className="m-0 flex gap-3 border-t border-shell px-[18px] py-3.5 text-[15px] text-ink-soft">
-          <span className="w-[112px] flex-none">아이 명단</span>
+        <p className="m-0 flex gap-3 border-t border-shell px-[18px] py-3.5 text-[17px] text-ink-soft">
+          <span className={`w-[148px] flex-none ${dtClass}`}>아이 명단</span>
           <span>동의를 체크하면 넣을 수 있어요</span>
         </p>
       )}
