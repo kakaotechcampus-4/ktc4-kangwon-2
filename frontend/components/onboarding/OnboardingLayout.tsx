@@ -166,37 +166,78 @@ export default function OnboardingLayout({
             </filter>
             {/* 글자용 분필 결 — 선보다 덜 비틀고 덜 비운다. 더 세게 하면 이름이 안 읽힌다(시험 의견: 가독성).
                 글자 상자에 맞춰(objectBoundingBox) 잡으니 글자 길이가 달라도 된다. */}
-            {/* 분필로 그린 포스티(.chalkPosty)용 — 글자보다 굵게 비틀어 손으로 그린 선처럼 보이게 한다. */}
-            <filter id="chalk-posty" x="-5%" y="-5%" width="110%" height="110%">
+            {/* 분필로 그린 포스티(.chalkPosty) — 쪽지 몸은 노란 분필을 비스듬히 문질러 칠한 빗금으로 채운다.
+                굵기가 다른 획 셋을 한 무늬에 넣어 고르지 않게 하고, 획 사이로 칠판이 조금 비친다. */}
+            <pattern
+              id="chalk-hatch"
+              patternUnits="userSpaceOnUse"
+              width="7"
+              height="7"
+              patternTransform="rotate(-28)"
+            >
+              <rect width="7" height="7" fill="var(--pg-primary)" fillOpacity={0.4} />
+              <rect x="0" width="2.1" height="7" fill="var(--pg-primary)" />
+              <rect x="2.7" width="1.4" height="7" fill="var(--pg-primary)" fillOpacity={0.85} />
+              <rect x="4.6" width="1.9" height="7" fill="var(--pg-primary)" />
+            </pattern>
+            <pattern
+              id="chalk-hatch-fold"
+              patternUnits="userSpaceOnUse"
+              width="3"
+              height="3"
+              patternTransform="rotate(-35)"
+            >
+              <rect width="3" height="3" fill="var(--pg-primary)" fillOpacity={0.55} />
+              <rect width="2.2" height="3" fill="var(--pg-primary)" />
+            </pattern>
+            {/* 포스티 선 결 — 크게 출렁이고(낮은 주파수) 가장자리는 거칠게 비튼 뒤, 결 따라 군데군데 비우고 살짝 번지게 한다.
+                점처럼 고르게 비우면 모자이크처럼 보여서, 비우는 무늬를 한쪽으로 길게(0.35 · 0.6) 둔다. */}
+            <filter id="chalk-posty" x="-10%" y="-10%" width="120%" height="120%">
               <feTurbulence
                 type="fractalNoise"
-                baseFrequency="0.8"
+                baseFrequency="0.03"
                 numOctaves={2}
-                seed={3}
-                result="n"
+                seed={4}
+                result="w"
               />
               <feDisplacementMap
                 in="SourceGraphic"
-                in2="n"
-                scale={2.2}
+                in2="w"
+                scale={6}
                 xChannelSelector="R"
                 yChannelSelector="G"
-                result="d"
+                result="wob"
               />
               <feTurbulence
                 type="fractalNoise"
-                baseFrequency="1.1"
+                baseFrequency="0.9"
                 numOctaves={2}
-                seed={8}
+                seed={5}
+                result="r"
+              />
+              <feDisplacementMap
+                in="wob"
+                in2="r"
+                scale={2.2}
+                xChannelSelector="R"
+                yChannelSelector="G"
+                result="rough"
+              />
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.35 0.6"
+                numOctaves={3}
+                seed={11}
                 result="g"
               />
               <feColorMatrix
                 in="g"
                 type="matrix"
-                values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.8"
-                result="mask"
+                values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2 1.65"
+                result="gm"
               />
-              <feComposite in="d" in2="mask" operator="in" />
+              <feComposite in="rough" in2="gm" operator="in" result="grainy" />
+              <feGaussianBlur in="grainy" stdDeviation={0.6} />
             </filter>
             <filter id="chalk-text" x="-5%" y="-15%" width="110%" height="130%">
               <feTurbulence

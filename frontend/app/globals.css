@@ -214,14 +214,16 @@ body {
   --pg-primary-tint: var(--paper-primary-tint);
   --pg-primary-tint-line: var(--paper-primary-tint-line);
 }
-/* 분필로 그린 포스티 — 오른쪽 칸의 포스티. 먹색 선은 흰 분필, 쪽지는 노란 분필로 옅게 칠하고 테두리는 노란 분필.
+/* 분필로 그린 포스티 — 오른쪽 칸의 포스티. 팔다리는 흰 분필, 쪽지는 노란 분필 빗금으로 칠하고 테두리도 노란 분필.
+ * 얼굴은 칠판색이라 칠한 쪽지 위에서 지운 듯 보인다(흰 분필이면 노란 칠 위에서 안 보였다).
  * 바로 위 .chalkPage svg 규칙(포스티 원래 색)을 이겨야 해서 svg.chalkPosty 로 건다.
- * 분필 결은 OnboardingLayout 의 #chalk-posty 필터가 낸다. */
+ * 빗금 무늬(#chalk-hatch)와 분필 결(#chalk-posty)은 OnboardingLayout 에 있다. */
 .chalkPage svg.chalkPosty {
   --pg-ink: var(--pg-board-ink);
-  --pg-note: color-mix(in srgb, var(--pg-primary) 42%, transparent);
+  --pg-face: var(--pg-board-deep);
+  --pg-note: url(#chalk-hatch);
   --pg-note-line: var(--pg-primary);
-  --pg-note-fold: color-mix(in srgb, var(--pg-primary) 65%, transparent);
+  --pg-note-fold: url(#chalk-hatch-fold);
   --pg-tape: color-mix(in srgb, var(--pg-board-ink) 45%, transparent);
   --pg-paper-warm-line: color-mix(in srgb, var(--pg-board-ink) 70%, transparent);
   filter: url(#chalk-posty);
