@@ -9,7 +9,7 @@ import { selectedAgesFor } from "../onboarding/types";
 import { currentAccountEmail, hasDemoSession } from "./demo-session";
 import { accountKey, readAccount, readLegacyAccount, type Account } from "./account-store";
 import { loadClassSettings, sanitizeClassSettingsStorage } from "../onboarding/settings";
-import { login, signup } from "../api/auth";
+import { kakaoLogin, login, signup, type AuthResult } from "../api/auth";
 import { sanitizeBrowserChildMetadata } from "../privacy/browser-storage";
 function read(email = currentAccountEmail()): Account | null {
   return email ? readAccount(email) : null;
@@ -114,12 +114,23 @@ export async function verifyDevAccount(email: string, password: string) {
  * 브라우저 기록은 이름·온보딩 상태를 위해 없으면 만들어 둔다.
  */
 export async function verifyAccount(email: string, password: string): Promise<number | null> {
-  const normalized = email.trim().toLowerCase();
-  const result = await login(normalized, password);
-  let account = read(normalized);
+  return rememberSignIn(await login(email.trim().toLowerCase(), password));
+}
+
+/**
+ * 카카오 인가 코드로 로그인한다 (ADR-063). 이메일 로그인과 같은 브라우저 기록을 남긴다 —
+ * 열쇠가 서버가 돌려준 이메일이라, 같은 이메일로 가입했던 교사는 쓰던 반 설정을 그대로 본다.
+ */
+export async function verifyKakao(code: string): Promise<number | null> {
+  return rememberSignIn(await kakaoLogin(code));
+}
+
+function rememberSignIn(result: AuthResult): number | null {
+  const email = result.user.email.trim().toLowerCase();
+  let account = read(email);
   if (!account) {
-    account = { name: result.user.name, email: normalized };
-    localStorage.setItem(accountKey(normalized), JSON.stringify(account));
+    account = { name: result.user.name, email };
+    localStorage.setItem(accountKey(email), JSON.stringify(account));
   }
   finishSignIn(account);
   // 원이 있으면 화면이 서버 값으로 채운다 (#291) — 이 브라우저에 기록이 없을 수 있다.

@@ -55,6 +55,21 @@ export async function login(email: string, password: string): Promise<AuthResult
   return result;
 }
 
+/** 카카오 동의 화면 주소 (docs/api-spec.md §0-1). 서버에 키가 없으면 503 `DEPENDENCY_UNAVAILABLE`. */
+export const kakaoAuthorizeUrl = (state: string) =>
+  apiRequest<{ url: string }>(`/api/auth/kakao/authorize?state=${encodeURIComponent(state)}`);
+
+/** 카카오가 돌려준 인가 코드로 로그인한다. 처음이면 서버가 계정을 만든다 (ADR-063). */
+export async function kakaoLogin(code: string): Promise<AuthResult> {
+  const result = await apiRequest<AuthResult>("/api/auth/kakao", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  saveToken(result.token);
+  return result;
+}
+
 /**
  * 서버에 알리지 않는다. 토큰을 버리면 이 브라우저에서는 못 쓴다.
  *

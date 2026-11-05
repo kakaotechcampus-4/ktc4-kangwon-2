@@ -13,6 +13,7 @@ import {
 import { restoreFromServer } from "@/lib/api/onboarding";
 import { startDemoSession } from "@/lib/auth/demo-session";
 import AuthFrame from "./AuthFrame";
+import KakaoStart from "./KakaoStart";
 import s from "./AuthFrame.module.css";
 
 // 흰 종이 위 칸 — 테두리는 --pg-field-line(3.3:1). --pg-line 은 1.4:1 이라 칸이 안 보였다
@@ -31,6 +32,17 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   const [error, setError] = useState("");
   const [visible, setVisible] = useState(false);
   const [done, setDone] = useState(false);
+  // 로그인은 카카오 우선이라 이메일 칸을 접어 둔다(ADR-063). 가입 화면은 이메일로 가입하러 온 곳이라 펼쳐 둔다.
+  const [emailOpen, setEmailOpen] = useState(signup);
+  const emailInput = useRef<HTMLInputElement>(null);
+  const opened = useRef(false);
+  useEffect(() => {
+    if (emailOpen && opened.current) emailInput.current?.focus();
+  }, [emailOpen]);
+  function toggleEmail() {
+    opened.current = true;
+    setEmailOpen(!emailOpen);
+  }
   // 칠판 인사 · 할 일 목록이 보는 값. 제출은 여전히 FormData 로 읽는다
   const [typed, setTyped] = useState<Typed>({ name: "", email: "", password: "", confirm: "" });
   function track(event: FormEvent<HTMLFormElement>) {
@@ -129,7 +141,21 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
           ? "가입하면 바로 우리 원 · 반 설정으로 넘어가요."
           : "우리 반의 새로운 하루를 준비해 보세요."}
       </p>
-      <form noValidate onSubmit={submit} onChange={track} className="mt-7 space-y-5">
+      <KakaoStart />
+      <p aria-hidden="true" className="mt-5 flex items-center gap-3 text-xs text-ink-hint">
+        <span className="h-px flex-1 bg-[color:var(--pg-line)]" />
+        또는
+        <span className="h-px flex-1 bg-[color:var(--pg-line)]" />
+      </p>
+      {!signup && <EmailToggle open={emailOpen} onToggle={toggleEmail} />}
+      <form
+        id="email-form"
+        noValidate
+        hidden={!emailOpen}
+        onSubmit={submit}
+        onChange={track}
+        className="mt-5 space-y-5"
+      >
         {signup && (
           <label className={label}>
             선생님 이름
@@ -148,6 +174,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
           이메일
           <input
             className={input}
+            ref={emailInput}
             name="email"
             type="email"
             autoComplete="username"
@@ -215,6 +242,37 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
         </button>
       </form>
     </AuthFrame>
+  );
+}
+
+/** 「이메일로 로그인」 — 누르면 이메일 · 비밀번호 칸이 펼쳐진다 */
+function EmailToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls="email-form"
+      onClick={onToggle}
+      className="mx-auto mt-2 flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-ink hover:bg-primary-tint"
+    >
+      이메일로 로그인
+      <svg
+        viewBox="0 0 12 12"
+        width="12"
+        height="12"
+        aria-hidden="true"
+        className={`transition-transform ${open ? "rotate-180" : ""}`}
+      >
+        <path
+          d="M3 4.5 6 7.5 9 4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   );
 }
 
@@ -301,7 +359,7 @@ function SwitchNote({ signup }: { signup: boolean }) {
  * 반까지 들어오면 첫 설정을 끝낸 것으로 적는다. 로그인은 늘 메인(/)으로 간다 — 실패해도 이어 가고,
  * 그때는 메인에 닿아 다른 메뉴가 안내 카드를 보인다. 온보딩 1단계의 409 복구가 원을 다시 잇는다.
  */
-async function restoreRoom(centerId: number) {
+export async function restoreRoom(centerId: number) {
   try {
     if (await restoreFromServer(centerId)) completeAccountOnboarding();
   } catch {}
