@@ -136,7 +136,9 @@ export default function ChildrenFlow() {
           </p>
           {/* 이름을 누르면 지워진다는 것을 칠판 귀퉁이에 미리 적어 둔다 — 지우는 단추(✕)가 따로 없다. */}
           <p className="mb-2 font-display text-[24px] text-ink-soft">이름을 누르면 지워져요</p>
-          <KidChips key={classroom.id} items={classroom.children} onRemove={remove} />
+          {/* key 는 위 KidInput 과 겹치면 안 된다 — 같은 묶음 안에서 key 가 같으면 React 가 칸을
+              헷갈려, 반을 넘길 때마다 옛 입력칸이 남아 하나씩 늘어난다. */}
+          <KidChips key={`chips-${classroom.id}`} items={classroom.children} onRemove={remove} />
         </>
       )}
       {!consented && <Locked name={classroom.className} />}
