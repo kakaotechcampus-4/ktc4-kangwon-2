@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Posty } from "@/components/app/Posty";
-import { Typed, useTypewriter } from "./FlowParts";
+import { useTypewriter } from "./FlowParts";
 import { fontClassName } from "@/lib/fonts";
 import { readToken } from "@/lib/auth/token";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -143,45 +143,58 @@ export default function OnboardingLayout({
   );
 }
 
-/** 카드 오른쪽 칸 위쪽 — 손 흔드는 포스티와 말풍선. 아래쪽 버튼 자리는 OnboardingLayout 의 footer 다. */
+/**
+ * 카드 오른쪽 칸 위쪽 — 말풍선과 그 아래 손 흔드는 포스티. 아래쪽 버튼 자리는 OnboardingLayout 의 footer 다.
+ * 말풍선은 친 글자만큼만 자란다. 포스티가 따라 움직이지 않도록 말풍선 자리(`h-[124px]`, 가장 긴 문구인
+ * 4줄 높이)를 따로 잡고 그 아래쪽에 붙인다 — 글이 늘면 말풍선은 포스티 머리 위에서 위로 자란다.
+ */
 function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
   return (
     <aside
       aria-label="진행 안내"
-      className="hidden flex-col items-center border-l border-shell bg-ivory px-7 pt-14 md:col-start-2 md:row-start-1 md:flex"
+      className="hidden flex-col items-center gap-[18px] border-l border-shell bg-ivory px-7 pt-6 md:col-start-2 md:row-start-1 md:flex"
     >
+      <div className="flex h-[124px] w-full flex-none flex-col justify-end">
+        {say && (
+          <div
+            className="paper relative w-full squircle [--r:16px] border border-line bg-paper px-4 py-3.5 text-left"
+            style={{ wordBreak: "keep-all" }}
+          >
+            <span
+              aria-hidden="true"
+              className="absolute -bottom-[7px] left-1/2 -ml-1.5 h-3 w-3 rotate-45 border-b border-r border-line bg-paper"
+            />
+            {/* 한 글자씩 치는 글은 화면 읽기 프로그램이 글자마다 읽지 않도록 숨기고, 다 된 글을 따로 둔다. */}
+            <span className="sr-only" aria-live={live ? "polite" : undefined}>
+              {say.title} {say.body}
+            </span>
+            <SayLines key={say.title + say.body} say={say} />
+          </div>
+        )}
+      </div>
       <Posty pose="wave" tone="note" face="base" size={112} tape label="포스티가 손을 흔들어요" />
-      {say && (
-        <div
-          className="paper relative mt-[18px] w-full squircle [--r:16px] border border-line bg-paper px-4 py-3.5 text-center"
-          style={{ wordBreak: "keep-all" }}
-        >
-          <span
-            aria-hidden="true"
-            className="absolute -top-[7px] left-1/2 -ml-1.5 h-3 w-3 rotate-45 border-l border-t border-line bg-paper"
-          />
-          {/* 한 글자씩 치는 글은 화면 읽기 프로그램이 글자마다 읽지 않도록 숨기고, 다 된 글을 따로 둔다. */}
-          <span className="sr-only" aria-live={live ? "polite" : undefined}>
-            {say.title} {say.body}
-          </span>
-          <SayLines key={say.title + say.body} say={say} />
-        </div>
-      )}
     </aside>
   );
 }
 
-/** 말풍선 두 줄 — 굵은 줄을 다 친 뒤 풀어 쓴 줄을 친다. 글이 바뀌면 `key` 로 처음부터 다시 친다. */
+/**
+ * 말풍선 두 줄 — 굵은 줄을 다 친 뒤 풀어 쓴 줄을 친다. 글이 바뀌면 `key` 로 처음부터 다시 친다.
+ * 아직 안 친 글자는 자리를 잡지 않는다(말풍선이 글과 함께 자란다). 가운데 맞춤이면 글자마다 줄이
+ * 흔들려서 왼쪽 맞춤이다.
+ */
 function SayLines({ say }: { say: PostySay }) {
   const shown = useTypewriter(say.title.length + say.body.length);
+  const bodyShown = shown - say.title.length;
   return (
     <span aria-hidden="true" className="block">
       <span className="block text-[15px] font-bold leading-[1.6] text-ink">
-        <Typed text={say.title} shown={shown} />
+        {say.title.slice(0, shown)}
       </span>
-      <span className="mt-0.5 block text-[14px] leading-[1.6] text-ink-soft">
-        <Typed text={say.body} shown={shown - say.title.length} />
-      </span>
+      {bodyShown > 0 && (
+        <span className="mt-0.5 block text-[14px] leading-[1.6] text-ink-soft">
+          {say.body.slice(0, bodyShown)}
+        </span>
+      )}
     </span>
   );
 }
