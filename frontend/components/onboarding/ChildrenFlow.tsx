@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Posty } from "@/components/app/Posty";
 import OnboardingLayout from "./OnboardingLayout";
 import {
+  ChalkLine,
   CtaButton,
   ErrorLine,
   FieldLabel,
@@ -243,21 +244,24 @@ function KidInput({
       <div className="flex items-end gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <FieldLabel htmlFor={id}>아이 이름</FieldLabel>
-          <input
-            id={id}
-            type="text"
-            autoComplete="off"
-            autoFocus
-            value={draft}
-            placeholder="예: 가온"
-            aria-invalid={error ? true : undefined}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setError("");
-            }}
-            onKeyDown={(e) => onEnter(e, () => void submit())}
-            className="w-full border-0 border-b-2 border-primary bg-transparent pb-2.5 pt-1.5 text-[22px] font-semibold text-ink outline-none placeholder:text-ink-hint"
-          />
+          <div className="relative">
+            <input
+              id={id}
+              type="text"
+              autoComplete="off"
+              autoFocus
+              value={draft}
+              placeholder="예: 가온"
+              aria-invalid={error ? true : undefined}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setError("");
+              }}
+              onKeyDown={(e) => onEnter(e, () => void submit())}
+              className="w-full border-0 bg-transparent pb-2.5 pt-1.5 text-[22px] font-semibold text-ink outline-none placeholder:text-ink-hint"
+            />
+            <ChalkLine className="text-primary" />
+          </div>
         </div>
         <button
           type="button"

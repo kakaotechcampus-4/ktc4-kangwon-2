@@ -79,12 +79,40 @@ export function LoadingLine() {
   );
 }
 
-/** 밑줄 칸의 글자 크기 · 밑줄 색. 지금 묻는 칸은 크고 보라, 이미 답한 칸은 작고 회색(누르면 보라). */
+/** 밑줄 칸의 글자 크기. 지금 묻는 칸은 크고, 이미 답한 칸은 작다. 밑줄은 ChalkLine 이 긋는다. */
 const lineClass = (active: boolean) =>
-  "w-full border-0 border-b-2 bg-transparent pb-2.5 pt-1.5 font-semibold outline-none transition-colors " +
-  (active
-    ? "border-primary text-[22px] sm:text-[24px]"
-    : "border-line text-[17px] focus:border-primary focus-visible:border-primary");
+  "w-full border-0 bg-transparent pb-2.5 pt-1.5 font-semibold outline-none " +
+  (active ? "text-[22px] sm:text-[24px]" : "text-[17px]");
+
+/** 밑줄 색. 지금 묻는 칸은 노란 분필, 이미 답한 칸은 흐린 분필(누르면 노란 분필). 감싸는 쪽에 group 이 있어야 한다. */
+const lineColor = (active: boolean) =>
+  active ? "text-primary" : "text-line group-focus-within:text-primary";
+
+/**
+ * 칠판에 분필로 그은 밑줄. 감싸는 칸(relative)의 맨 아래에 깔린다. 색은 currentColor.
+ * 칸 너비만큼 늘어나도 굵기는 그대로이고(non-scaling-stroke), 분필 결은 OnboardingLayout 의 #chalk 필터가 낸다.
+ * 반듯한 직선은 높이가 0 이라 필터를 받지 못한다 — 그래서 아주 살짝 굽혀 긋는다.
+ */
+export function ChalkLine({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 4"
+      preserveAspectRatio="none"
+      className={`pointer-events-none absolute inset-x-0 -bottom-[2px] h-[5px] w-full overflow-visible transition-colors ${className}`}
+    >
+      <path
+        d="M0 2.4 Q30 1.2 55 2 T100 1.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        filter="url(#chalk)"
+      />
+    </svg>
+  );
+}
 
 /** 칸 이름. 칠판에 손으로 적은 글씨(손글씨체)다. */
 export function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: ReactNode }) {
@@ -111,14 +139,17 @@ export function LineField({
   return (
     <div className="mb-7 flex flex-col gap-1.5">
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <input
-        id={id}
-        type="text"
-        autoComplete="off"
-        aria-invalid={error ? true : undefined}
-        {...input}
-        className={`${lineClass(active)} text-ink placeholder:text-ink-hint`}
-      />
+      <div className="group relative">
+        <input
+          id={id}
+          type="text"
+          autoComplete="off"
+          aria-invalid={error ? true : undefined}
+          {...input}
+          className={`${lineClass(active)} text-ink placeholder:text-ink-hint`}
+        />
+        <ChalkLine className={lineColor(active)} />
+      </div>
       <ErrorLine>{error}</ErrorLine>
     </div>
   );
@@ -143,7 +174,7 @@ export function PickButton({
       id={id}
       type="button"
       onClick={onClick}
-      className={`${lineClass(active)} flex cursor-pointer items-center justify-between gap-3 text-left ${value ? "text-ink" : "text-ink-soft"}`}
+      className={`${lineClass(active)} group relative flex cursor-pointer items-center justify-between gap-3 text-left ${value ? "text-ink" : "text-ink-soft"}`}
     >
       <span>{value || placeholder}</span>
       <svg
@@ -160,6 +191,7 @@ export function PickButton({
       >
         <path d="M6 9l6 6 6-6" />
       </svg>
+      <ChalkLine className={lineColor(active)} />
     </button>
   );
 }

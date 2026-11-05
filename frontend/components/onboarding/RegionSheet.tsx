@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PROVINCE_OPTIONS, districtsFor, matchesRegion } from "@/lib/onboarding/regions";
+import { ChalkLine } from "./FlowParts";
 
 const SEJONG = "세종특별자치시";
 
@@ -22,7 +23,7 @@ const CHALK_BOXES = [
 
 /**
  * 분필로 친 네모. 칸 크기에 맞춰 늘어나도(preserveAspectRatio none) 선 굵기는 그대로이고
- * (non-scaling-stroke), 분필 가루처럼 끊기고 번진 결은 판 안의 #chalk-box 필터가 낸다.
+ * (non-scaling-stroke), 분필 가루처럼 끊기고 번진 결은 OnboardingLayout 의 #chalk 필터가 낸다.
  * 늘 그려 두고 투명하게 있다가, 칸에 마우스를 올리거나 키보드로 가면 보인다.
  */
 function ChalkBox({ index }: { index: number }) {
@@ -41,7 +42,7 @@ function ChalkBox({ index }: { index: number }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
-        filter="url(#chalk-box)"
+        filter="url(#chalk)"
       />
     </svg>
   );
@@ -104,40 +105,6 @@ export default function RegionSheet({
       aria-labelledby="region-sheet-title"
       className="chalkboard m-0 mt-auto h-[min(640px,85vh)] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink open:flex open:flex-col backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
     >
-      {/* ChalkBox 가 쓰는 분필 결 — 선을 살짝 비틀고(displacement), 가루처럼 군데군데 비운다(noise 를 알파로). */}
-      <svg aria-hidden="true" width="0" height="0" className="absolute">
-        <filter id="chalk-box" x="-10%" y="-20%" width="120%" height="140%">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.9"
-            numOctaves={2}
-            seed={3}
-            result="n"
-          />
-          <feDisplacementMap
-            in="SourceGraphic"
-            in2="n"
-            scale={1.6}
-            xChannelSelector="R"
-            yChannelSelector="G"
-            result="d"
-          />
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="1.4"
-            numOctaves={1}
-            seed={8}
-            result="g"
-          />
-          <feColorMatrix
-            in="g"
-            type="matrix"
-            values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.75"
-            result="mask"
-          />
-          <feComposite in="d" in2="mask" operator="in" />
-        </filter>
-      </svg>
       <div
         aria-hidden="true"
         className="mx-auto mt-3 h-1 w-10 flex-none rounded-sm bg-line sm:hidden"
@@ -198,7 +165,7 @@ export default function RegionSheet({
         aria-hidden="true"
         className="mx-6 mb-3 flex-none border-t-2 border-dashed border-line"
       />
-      <div className="flex-none px-6 pb-3">
+      <div className="group relative mx-6 mb-3 flex-none">
         <input
           ref={search}
           value={query}
@@ -211,8 +178,9 @@ export default function RegionSheet({
           autoComplete="off"
           spellCheck={false}
           enterKeyHint="search"
-          className="w-full border-b-2 border-line bg-transparent px-1 pb-2 pt-1 text-[17px] text-ink placeholder:text-ink-soft focus:border-primary focus:outline-none"
+          className="w-full bg-transparent px-1 pb-2 pt-1 text-[17px] text-ink placeholder:text-ink-soft focus:outline-none"
         />
+        <ChalkLine className="text-line group-focus-within:text-primary" />
       </div>
       {/* 판 크기는 고정이다 — 걸러서 이름이 줄어도 판이 오르내리지 않고, 넘치면 이 안에서만 스크롤된다. */}
       <div className="min-h-0 flex-1 overflow-y-auto">

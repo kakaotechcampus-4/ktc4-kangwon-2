@@ -130,6 +130,42 @@ export default function OnboardingLayout({
 
           {stage && <PostyPanel say={say} live={live} />}
 
+          {/* 분필 결 — 밑줄(ChalkLine)과 지역 고르개의 네모(ChalkBox)가 같이 쓴다. 선을 살짝 비틀고(displacement),
+              가루처럼 군데군데 비운다(noise 를 알파로). 영역은 두 쪽 viewBox(100×4 · 100×40)를 다 덮게 잡는다. */}
+          <svg aria-hidden="true" width="0" height="0" className="absolute">
+            <filter id="chalk" filterUnits="userSpaceOnUse" x="-5" y="-5" width="110" height="50">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.9"
+                numOctaves={2}
+                seed={3}
+                result="n"
+              />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="n"
+                scale={1.6}
+                xChannelSelector="R"
+                yChannelSelector="G"
+                result="d"
+              />
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="1.4"
+                numOctaves={1}
+                seed={8}
+                result="g"
+              />
+              <feColorMatrix
+                in="g"
+                type="matrix"
+                values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.75"
+                result="mask"
+              />
+              <feComposite in="d" in2="mask" operator="in" />
+            </filter>
+          </svg>
+
           {footer && (
             <div
               className={`sticky bottom-0 flex flex-none flex-col-reverse items-stretch gap-2 bg-paper px-6 pb-5 pt-3 sm:flex-row sm:items-center sm:justify-end sm:px-10 ${stage ? "md:static md:col-start-2 md:row-start-2 md:flex-col-reverse md:items-stretch md:justify-start md:border-l md:border-shell md:bg-ivory md:px-7 md:pb-8" : ""}`}
