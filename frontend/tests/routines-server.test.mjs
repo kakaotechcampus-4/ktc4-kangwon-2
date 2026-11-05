@@ -1596,27 +1596,19 @@ function recordsPage(
   };
 }
 
-test("P1-3 기록 모아보기에서 고른 반 · 날짜를 그대로 일과 기록으로 들고 간다", async (t) => {
-  const view = recordsPage(t);
+test("관찰 기록 본문에는 일과 기록으로 가는 길을 두지 않는다 — 사이드바 메뉴가 고른 반을 들고 간다", async (t) => {
+  const view = recordsPage(t, {
+    rooms: [ROOM_A, ROOM_B, ROOM_GHOST],
+    settings: [CLASS_A, CLASS_B, CLASS_GHOST],
+    primaryClassId: CLASS_GHOST.id,
+  });
   await view.flush();
-  view.openForm();
-  // 아직 반을 안 골랐다 — 날짜만 들고 간다. 아무 반이나 붙이지 않는다.
-  assert.ok(view.links().includes(`/routines?date=${TODAY}&class_id=3`), view.links().join(" , "));
-
-  view.type(view.selects()[0], CLASS_A.id);
-  view.render();
-  view.type(view.dateInput(), "2026-10-02");
-  await view.flush();
-
-  assert.ok(
-    view.links().includes("/routines?date=2026-10-02&class_id=3"),
-    `문맥을 잃었다: ${view.links().join(" , ")}`,
+  // 서버 번호를 모르는 반이어도 주 반(A)으로 들어가는 길이 생기지 않는다.
+  assert.deepEqual(
+    view.links().filter((href) => href.startsWith("/routines")),
+    [],
   );
-  assert.equal(
-    view.links().some((href) => href === "/routines" || href === "/records/routines"),
-    false,
-    "문맥 없는 옛 주소를 쓰지 않는다",
-  );
+  assert.ok(view.links().includes("/documents"), view.links().join(" , "));
 });
 
 test("P1-3 들고 간 주소를 S-J1 이 그대로 읽는다", () => {
@@ -1635,45 +1627,6 @@ test("P1 고른 반의 서버 번호를 모르면 주소를 만들지 않는다"
   assert.equal(routinesRoute.routinesPath("", TODAY), `/routines?date=${TODAY}`);
   delete globalThis.window;
   delete globalThis.document;
-});
-
-test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간다", async (t) => {
-  // 반은 사이드바가 정한다. B 반을 고른 교사의 화면이다.
-  const view = recordsPage(t, {
-    rooms: [ROOM_A, ROOM_B, ROOM_GHOST],
-    settings: [CLASS_A, CLASS_B, CLASS_GHOST],
-    primaryClassId: CLASS_B.id,
-  });
-  await view.flush();
-  // 적는 칸은 접혀 있다. 날짜 칸은 그 안에 있다.
-  view.openForm();
-  view.type(view.dateInput(), "2026-10-06");
-  await view.flush();
-  assert.ok(
-    view.links().includes("/routines?date=2026-10-06&class_id=7"),
-    view.links().join(" , "),
-  );
-});
-
-test("P1 CASE B — 고른 반의 서버 번호가 없으면 다른 반으로 보내지 않는다", async (t) => {
-  const view = recordsPage(t, {
-    rooms: [ROOM_A, ROOM_B, ROOM_GHOST],
-    settings: [CLASS_A, CLASS_B, CLASS_GHOST],
-    primaryClassId: CLASS_GHOST.id,
-  });
-  await view.flush();
-  // 적는 칸은 접혀 있다. 날짜 칸은 그 안에 있다.
-  view.openForm();
-  view.type(view.dateInput(), "2026-10-06");
-  await view.flush();
-
-  assert.deepEqual(
-    view.links().filter((href) => href.startsWith("/routines")),
-    [],
-    "주 반(A)으로 들어가는 길을 만들었다",
-  );
-  assert.match(view.text(), /일과 기록으로 갈 수 없어요/);
-  assert.equal(view.dateInput().props.value, "2026-10-06", "고른 날짜는 그대로 둔다");
 });
 
 test("P1-2 저장을 기다리는 사이 날짜를 바꾸면 새 화면에 「저장했어요」를 띄우지 않는다", async (t) => {
