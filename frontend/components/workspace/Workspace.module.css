@@ -1698,9 +1698,9 @@ a.item {
 }
 .recordDomain[data-tone="talk"],
 .recordFilter[data-tone="talk"][aria-pressed="true"] {
-  border-color: var(--pg-primary-tint-line);
-  background: var(--pg-primary-tint);
-  color: var(--pg-primary-ink);
+  border-color: var(--pg-sky-line);
+  background: var(--pg-sky);
+  color: var(--pg-sky-ink);
 }
 .recordDomain[data-tone="social"],
 .recordFilter[data-tone="social"][aria-pressed="true"] {
@@ -1738,7 +1738,7 @@ a.item {
   color: var(--pg-alert-ink);
 }
 .recordFilter[data-tone="talk"] svg {
-  color: var(--pg-primary-ink);
+  color: var(--pg-sky-ink);
 }
 .recordFilter[data-tone="social"] svg {
   color: var(--pg-sun-ink);
@@ -2024,7 +2024,7 @@ button.recordBlank:disabled {
   color: var(--pg-alert-ink);
 }
 .recordArea[data-tone="talk"] {
-  color: var(--pg-primary-ink);
+  color: var(--pg-sky-ink);
 }
 .recordArea[data-tone="social"] {
   color: var(--pg-sun-ink);
@@ -2041,6 +2041,9 @@ button.recordBlank:disabled {
 }
 .recordArea[aria-pressed="true"][data-tone="body"] {
   background: var(--pg-clay);
+}
+.recordArea[aria-pressed="true"][data-tone="talk"] {
+  background: var(--pg-sky);
 }
 .recordArea[aria-pressed="true"][data-tone="social"] {
   background: var(--pg-sun-tint);
@@ -3019,7 +3022,7 @@ button.recordBlank:disabled {
   background: var(--pg-clay);
 }
 .ojNotes li[data-tone="talk"] {
-  background: var(--pg-primary-tint);
+  background: var(--pg-sky);
 }
 .ojNotes li[data-tone="social"] {
   background: var(--pg-note);

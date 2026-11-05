@@ -8,6 +8,7 @@ import type { ExportFormat } from "@/lib/api/export";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { Posty } from "@/components/app/Posty";
+import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { Message, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
 import type { ServerDocumentActions } from "./DocumentEditor";
@@ -17,14 +18,6 @@ const LAYERS = [
   { heading: "지원", hint: "다음 놀이에서 교사가 할 일을 구체적으로 적어요." },
 ] as const;
 
-/** 쪽지 색. 관찰 기록 화면의 영역 색과 같다. */
-const DOMAIN_TONE: Record<string, string> = {
-  "신체운동·건강": "body",
-  의사소통: "talk",
-  사회관계: "social",
-  예술경험: "art",
-  자연탐구: "nature",
-};
 
 /** 양식 맨 아래 칸 이름 (backend documents/export.py AXIS_TAIL). 2축 원은 「총평」이다. */
 const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평" : "종합해석");
@@ -216,7 +209,7 @@ export default function ObservationJournalEditor({
             {doc.sources.map((s) => {
               const domain = domainOf(s.id);
               return (
-                <li key={s.id} data-tone={DOMAIN_TONE[domain]}>
+                <li key={s.id} data-tone={DOMAIN_LOOK[domain]?.tone}>
                   <small>
                     {shortDate(s.date)}
                     {domain && ` · ${domain}`}

@@ -9,6 +9,7 @@ import { test } from "node:test";
 import { createRequire, registerHooks } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+const domainLook = await import("../lib/workspace/domain-look.ts");
 
 registerHooks({
   resolve(spec, ctx, next) {
@@ -647,6 +648,7 @@ function page(
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
     "@/lib/api/routines": {
       listRoutines: async (...args) => (await api.list(...args)).items,
       createRoutine: api.create,
@@ -1541,6 +1543,7 @@ function recordsPage(
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/model": {
       today: () => TODAY,
@@ -1992,6 +1995,7 @@ function quickRecordsPage(
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
   }).default;
   const view = app.mount(Page);
   t.after(app.cleanup);
@@ -2189,6 +2193,7 @@ function homePage(
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
     "@/lib/hooks/use-dictation": {
       useDictation: () => ({ supported: false, listening: false, toggle: () => {} }),
     },
