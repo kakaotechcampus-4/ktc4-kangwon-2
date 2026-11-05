@@ -31,6 +31,7 @@ SINGLE_KEYS = {
     "safety_candidates", "safety_weeks", "health",
     "nutrition", "drill_candidates", "teacher_inputs", "specialized_timetable",
     "special_activity", "special_activity_size", "notices", "memo", "memo_notices",
+    "activity_pick", "activity_candidates", "activity_pool",
 }  # fmt: skip
 
 
@@ -238,7 +239,9 @@ def test_evidence_와_generation_은_세_축_규칙을_따른다(world):
 
 def test_annual_plan_id_는_연간_행의_정수_id(world):
     _, row = _play(world)
-    annual = world["session"].scalar(select(Plan).where(Plan.kind == "annual"))
+    annual = world["session"].scalar(
+        select(Plan).where(Plan.kind == "annual", Plan.center_id == world["mine"]["center"])
+    )
 
     parent = client.get(f"{URL}/{row.id}").json()["parent"]
 

@@ -90,6 +90,9 @@ test("single response has the captured key set, in every nested cell too", async
   assert.deepEqual(
     Object.keys(plan).sort(),
     [
+      "activity_candidates",
+      "activity_pick",
+      "activity_pool",
       "confirmed_at",
       "class_id",
       "created_at",
@@ -406,8 +409,8 @@ test("drill copy fills the fire drill input as RULE_ONLY, the same copy is untou
   const done = await pm.copyPlayMonthlyDrill(id, drill.item_id, rev);
   const cell = done.teacher_inputs[0].cell;
   assert.equal(done.revision, rev + 1);
-  // 서버처럼 「[주제]」 다음 줄에 문장(Human Decision 2026-11-05).
-  assert.equal(cell.value, `[${plan.drill_candidates[0].label}]\n${drill.value}`);
+  // 서버처럼 「[주제] 문장」 한 줄(Human Decision 2026-11-06).
+  assert.equal(cell.value, `[${plan.drill_candidates[0].label}] ${drill.value}`);
   assert.deepEqual(cell.evidence, drill.evidence);
   assert.deepEqual(cell.generation, {
     method: "RULE_ONLY",
@@ -439,7 +442,7 @@ test("copying a different candidate with the same sentence is a new copy (revisi
   const edited = await pm.editPlayMonthlyCell(id, b.cell.item_id, a.cell.value, first.revision);
   const second = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, edited.revision);
   assert.deepEqual([first.revision, edited.revision, second.revision], [rev + 1, rev + 2, rev + 3]);
-  assert.equal(second.teacher_inputs[0].cell.value, `[${b.label}]\n${a.cell.value}`);
+  assert.equal(second.teacher_inputs[0].cell.value, `[${b.label}] ${a.cell.value}`);
   assert.equal("copied_from" in second, false);
   const again = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, second.revision);
   assert.equal(again.revision, second.revision);
@@ -533,6 +536,53 @@ test("row order: one list only, every row once; the same order is 200 and untouc
       INVALID,
       ["item_ids"],
     );
+});
+
+test("AI candidates (ADR-065): pick to the list end, full is 422, delete goes back to the pool; habits swap", async () => {
+  const klass = await newClass();
+  const plan = addPlayMonthly(klass.id, false, 11, [], true);
+  const { id } = plan;
+  assert.deepEqual([plan.together, plan.free_play, plan.activity_pick], [[], [], 5]);
+  const together = plan.activity_pool.filter((a) => a.section === "together");
+  assert.equal(together.length, 8);
+  let p = plan;
+  for (const a of together.slice(0, 5))
+    p = await pm.pickPlayMonthlyActivity(id, a.activity_id, p.revision);
+  assert.deepEqual(
+    p.together.map((a) => a.activity_id),
+    together.slice(0, 5).map((a) => a.activity_id),
+  );
+  await rejects(
+    pm.pickPlayMonthlyActivity(id, together[5].activity_id, p.revision),
+    422,
+    "VALIDATION_FAILED",
+    "이미 다 골랐어요. 하나를 빼고 넣어 주세요.",
+    ["item_id"],
+  );
+  await rejects(
+    pm.pickPlayMonthlyActivity(id, together[0].activity_id, p.revision),
+    404,
+    "NOT_FOUND",
+    "그 후보를 찾을 수 없습니다.",
+    ["item_id"],
+  );
+  p = await pm.removePlayMonthlyActivity(id, together[1].activity_id, p.revision);
+  assert.equal(p.activity_pool[0].activity_id, together[1].activity_id); // 생성 순서 자리로
+  const ids = p.habits.map((h) => h.cell.item_id);
+  const swapped = [ids[1], ids[0], ...ids.slice(2)];
+  const moved = await pm.orderPlayMonthlyHabits(id, swapped, p.revision);
+  assert.equal(moved.revision, p.revision + 1);
+  assert.deepEqual(
+    moved.habits.map((h) => [h.week_id, h.cell.item_id]),
+    p.habits.map((h, i) => [h.week_id, swapped[i]]),
+  );
+  await rejects(
+    pm.orderPlayMonthlyHabits(id, ids.slice(1), moved.revision),
+    422,
+    "VALIDATION_FAILED",
+    INVALID,
+    ["item_ids"],
+  );
 });
 
 test("missing and foreign ids are 404, a non-integer id is 422 on plan_id", async () => {

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from play_monthly_factory import CURRICULUM, _Catalogs
+from play_monthly_factory import CURRICULUM, _Catalogs, with_room
 from sqlalchemy import select, update
 from ssuksak.planning import PlanId
 from ssuksak.planning.application.play_monthly_lifecycle import EditPlayMonthlyCell
@@ -104,7 +104,7 @@ def _last(cell):
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_성공하면_revision_이_하나_오르고_저장된다(world, kind):
-    plan, row = _play(world)
+    plan, row = _play(world, edit=with_room if kind == "add" else None)
     response = _call(row.id, plan, kind)
     assert response.status_code == 200, response.json()
     assert response.json()["revision"] == 2
@@ -334,7 +334,7 @@ def test_연결_스키마_422(world, ids):
 
 
 def test_행을_더하면_맨_끝에_빈_행이_붙고_새_칸은_generation_null(world):
-    plan, row = _play(world)
+    plan, row = _play(world, edit=with_room)
     body = client.post(
         f"{URL}/{row.id}/activities", json={"section": "free_play", "expected_revision": 1}
     ).json()
@@ -703,3 +703,31 @@ def test_확정한_놀이_월간은_나눈_모양대로_hwpx_로_내려받고_�
     pdf = client.get(f"{URL}/{row.id}/export/hwp?format=pdf")
     assert pdf.status_code == 200, pdf.text
     assert pdf.content[:4] == b"%PDF"
+
+
+def test_AI_후보는_빼면_후보로_돌아가고_다시_넣으면_끝에_붙고_습관은_주_사이를_옮긴다(world):
+    """ADR-065. factory 는 후보 8개씩 중 앞 5개를 넣어 둔다."""
+    plan, row = _play(world)
+    first, spare = plan.together[0].cell.item_id.value, plan.activity_pool[0].activity.cell.item_id
+    pick = f"{URL}/{row.id}/activities/{{}}/pick"
+    full = client.post(pick.format(spare.value), json={"expected_revision": 1})
+    assert _error(full) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert _error(client.post(pick.format("nope"), json={"expected_revision": 1}))[:2] == (
+        404,
+        "NOT_FOUND",
+    )
+
+    out = _call(row.id, plan, "delete", item=first).json()
+    assert first not in [a["activity_id"] for a in out["together"]]
+    assert out["activity_pool"][0]["activity_id"] == first  # 생성 순서 자리로
+    back = client.post(pick.format(first), json={"expected_revision": 2}).json()
+    assert (back["revision"], back["together"][-1]["activity_id"]) == (3, first)
+
+    ids = [h["cell"]["item_id"] for h in back["habits"]]
+    url = f"{URL}/{row.id}/habits/order"
+    moved = client.put(url, json={"item_ids": [ids[1], ids[0], *ids[2:]], "expected_revision": 3})
+    assert moved.status_code == 200, moved.json()
+    assert [h["cell"]["item_id"] for h in moved.json()["habits"]][:2] == [ids[1], ids[0]]
+    assert [h["week_id"] for h in moved.json()["habits"]] == [h["week_id"] for h in back["habits"]]
+    bad = client.put(url, json={"item_ids": ids[:-1], "expected_revision": 4})
+    assert _error(bad) == (422, "VALIDATION_FAILED", ["item_ids"])

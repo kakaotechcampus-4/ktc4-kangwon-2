@@ -600,9 +600,10 @@ export default function MonthlyNew({
     return (
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
-          kind={play ? "monthly:PLAY_PROJECT" : "monthly:MONTHLY_THEME"}
-          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형 40 · 33 · 43초(2026-11-05).
-          expect={play ? 40 : 35}
+          // 놀이 중심형은 활동 후보가 8개씩으로 늘어(ADR-065) 예전 기억을 버리려고 kind 를 바꿨다.
+          kind={play ? "monthly:PLAY_PROJECT:v0.3" : "monthly:MONTHLY_THEME"}
+          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형(후보 8개씩) 55.5 · 51.6 · 55.0초(2026-11-06).
+          expect={play ? 55 : 35}
           title={`${month}월 월간계획안을 만들고 있어요`}
           done={done}
           steps={

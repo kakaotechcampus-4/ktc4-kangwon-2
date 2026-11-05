@@ -17,7 +17,13 @@ from ..domain.play_project_plan import PlayPeriod
 from ..domain.teacher_memo import MemoNotice
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
-from .teacher_memo import TEACHER_MEMO_PROMPT, TEACHER_MEMO_PROMPT_TAG, memo_properties
+from .teacher_memo import (
+    CANDIDATE_MEMO_PROMPT,
+    CANDIDATE_MEMO_PROMPT_TAG,
+    TEACHER_MEMO_PROMPT,
+    TEACHER_MEMO_PROMPT_TAG,
+    memo_properties,
+)
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
 
@@ -166,8 +172,8 @@ def build_play_project_request(
     prompt_version, system_prompt = PLAY_PROJECT_PROMPT_VERSION, SYSTEM_PROMPT
     if memo is not None:  # rows answer in order, so row i is cand{i}
         payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
-        prompt_version += TEACHER_MEMO_PROMPT_TAG + PERIOD_MEMO_PROMPT_TAG
-        system_prompt += TEACHER_MEMO_PROMPT + PERIOD_MEMO_PROMPT
+        prompt_version += TEACHER_MEMO_PROMPT_TAG + PERIOD_MEMO_PROMPT_TAG + CANDIDATE_MEMO_PROMPT_TAG
+        system_prompt += TEACHER_MEMO_PROMPT + PERIOD_MEMO_PROMPT + CANDIDATE_MEMO_PROMPT
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayProjectRequest(
         prompt_version=prompt_version,

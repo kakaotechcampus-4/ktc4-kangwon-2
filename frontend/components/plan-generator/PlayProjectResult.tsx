@@ -876,9 +876,9 @@ export default function PlayProjectResult({
           {BACK_ICON}
         </Link>
       }
+      saved={SAVE_LABEL[saving.status]}
       status={
         <span className="flex items-center gap-3">
-          {SAVE_LABEL[saving.status]}
           <PlanMemoNote plan={plan} />
         </span>
       }

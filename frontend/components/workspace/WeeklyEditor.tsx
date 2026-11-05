@@ -651,6 +651,8 @@ export default function WeeklyEditor({
       title={title}
       format="MONTHLY_THEME"
       lead={back}
+      // 저장 중 · 실패가 안내보다 먼저다.
+      saved={status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
       status={<PlanMemoNote plan={plan} />}
       notice={
         <div className="flex flex-col gap-1 text-sm text-[#5c5243]">
@@ -680,10 +682,6 @@ export default function WeeklyEditor({
       }
       actions={
         <>
-          {/* 저장 상태는 제목 아래가 아니라 확정 버튼 옆에(월간과 같다). 저장 중 · 실패가 안내보다 먼저다. */}
-          <span role="status" className="text-[13px] text-ink-soft">
-            {status === "saving" || status === "failed" || !message ? SAVE_LABEL[status] : message}
-          </span>
           <div className="relative">
             <button
               type="button"

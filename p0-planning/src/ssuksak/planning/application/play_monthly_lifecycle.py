@@ -116,6 +116,20 @@ class RemovePlayMonthlyActivityCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class PickPlayMonthlyActivityCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_id: ItemId  # a pooled AI candidate's name cell
+
+
+@dataclass(frozen=True, slots=True)
+class OrderPlayMonthlyHabitsCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_ids: Sequence[ItemId]  # every habit cell, in the new week order
+
+
+@dataclass(frozen=True, slots=True)
 class OrderPlayMonthlyActivitiesCommand:
     plan_id: PlanId
     actor_id: ActorId
@@ -313,8 +327,55 @@ class AddPlayMonthlyActivity:
         name_id = self._ids.new_item_id()
         key = f"{command.section}.{name_id.value}"
         row = PlayActivity(blank(name_id, key), blank(self._ids.new_item_id(), f"{key}.description"), ())
-        updated = plan.add_activity(command.section, row, actor_id=actor_id, occurred_at=now)
+        try:
+            updated = plan.add_activity(command.section, row, actor_id=actor_id, occurred_at=now)
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("play_monthly_section_full", str(error)) from error
         self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class PickPlayMonthlyActivity:
+    """Put a pooled AI candidate into the document (layout v0.3.0, 2026-11-06)."""
+
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: PickPlayMonthlyActivityCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("pick")
+        actor_id = _require_actor(command.actor_id)
+        pooled = next((r for r in plan.activity_pool if r.activity.cell.item_id == command.item_id), None)
+        if pooled is None:
+            raise PlayMonthlyLifecycleError(
+                "play_monthly_candidate_not_found", f"PlayMonthlyPlan candidate not found: {command.item_id}"
+            )
+        try:
+            updated = plan.pick_activity(command.item_id, actor_id=actor_id, occurred_at=self._clock.now())
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("play_monthly_section_full", str(error)) from error
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class OrderPlayMonthlyHabits:
+    """Move habit cells between weeks (2026-11-06): the screen swaps two, the Core takes an order."""
+
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: OrderPlayMonthlyHabitsCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("order_habits")
+        actor_id = _require_actor(command.actor_id)
+        try:
+            updated = plan.order_habits(tuple(command.item_ids), actor_id=actor_id, occurred_at=self._clock.now())
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("invalid_habit_order", str(error)) from error
+        if updated is not plan:
+            self._plans.save(updated.plan_id, updated)
         return updated
 
 
@@ -600,10 +661,13 @@ def confirm_problems(plan: PlayMonthlyPlan) -> tuple[str, ...]:
     for name in ("theme", "rationale"):
         if not getattr(plan, name).value.strip():
             problems.append(f"{name}: blank")
+    pick = plan.layout.activity_pick
     for section in ("together", "free_play"):
         rows = getattr(plan, section)
         if not rows:
             problems.append(f"{section}: no rows")
+        elif pick is not None and len(rows) != pick:
+            problems.append(f"{section}: {len(rows)} of {pick} rows")
         for row in rows:
             where = f"{section}:{row.cell.item_id.value}"
             if not row.cell.value.strip():

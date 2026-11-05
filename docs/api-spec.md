@@ -2073,8 +2073,8 @@ item_id            문자열.  §9-1 drill_candidates[].cell.item_id.  형식이
 expected_revision  위와 같다
 ```
 
-- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸 값은 「[주제 label]」 다음 줄에 문장이다(안전교육 칸과 같은 모양,
-  Human Decision 2026-11-05(하민)). 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
+- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸 값은 「[주제 label] 문장」 한 줄이다(Human Decision
+  2026-11-06(하민) — 11-05 의 「다음 줄」을 바꿨다. 이미 복사한 칸은 그대로다). 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
   복사한 뒤 후보와 칸은 서로 따라가지 않는다. 성공하면 revision +1 · 변경 이력에 `CANDIDATE_COPIED`(§9-5) · §9-1 응답.
 - **같은 복사면 저장하지 않는다.** 칸이 이미 그 후보의 복사본이면 200 · 저장된 그대로(revision · 이력 그대로)다.
 - 복사한 칸은 기존 `PUT .../cells/{훈련 칸 item_id}`(§9-3 칸 편집)로 고칠 수 있다. **빈 훈련 칸에 교사가 처음 쓰면 `MANUAL`** 이다
@@ -2740,6 +2740,8 @@ PUT    /api/plans/monthly/play/{id}/cells/{item_id}                         칸 
 PUT    /api/plans/monthly/play/{id}/activities/{item_id}/content-ids        누리과정 연결 바꾸기
 POST   /api/plans/monthly/play/{id}/activities                              행 추가 (together · free_play)
 PUT    /api/plans/monthly/play/{id}/activities/order                        한 목록 안의 행 순서 (2026-11-05)
+POST   /api/plans/monthly/play/{id}/activities/{item_id}/pick               AI 후보를 문서에 넣기 (ADR-065)
+PUT    /api/plans/monthly/play/{id}/habits/order                            기본생활습관 주 옮기기 (ADR-065)
 DELETE /api/plans/monthly/play/{id}/activities/{item_id}?expected_revision= 행 삭제 → 200
 PUT    /api/plans/monthly/play/{id}/safety-weeks/{week_id}                  안전교육 주별 배치
 POST   /api/plans/monthly/play/{id}/drill-candidates/{item_id}/copy         훈련 후보 복사
@@ -2839,6 +2841,9 @@ memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 
 Cell = { item_id, value, evidence, generation }       §6-1 의 Cell 과 같다.  evidence · generation 의 모양은 §4
 generation            한 번도 쓰지 않은 교사 입력 칸은 null (Core: 쓴 적이 없으면 생성 방식이 없다)
 activity_id           그 행 이름 칸의 item_id 와 같다.  행 주소는 이 값이다
+activity_pick         layout v0.3.0 은 5 — 목록마다 문서에 둘 행 수(확정은 정확히 이만큼).  옛 계획안은 null (ADR-065)
+activity_candidates   AI 후보 이름 칸 id 의 생성 순서(두 목록, 각 8개).  옛 계획안은 []
+activity_pool         문서에 넣지 않은 AI 후보 — together · free_play 와 같은 모양에 section.  고치지 않는다.  새 계획안은 처음에 16개 전부
 content_ids           그 놀이에 지금 걸린 누리과정 내용 ID.  **응답은 0~3개** — 생성한 행은 1~3개이고 행 추가 직후의 빈 행은 0개다.  연결 바꾸기 요청과 확정 조건은 1~3개.  공식 문구는 저장하지 않는다(Reference 에서 읽는다)
                       name.evidence 의 CURRICULUM 은 만들 때의 연결이고 바뀌지 않는다
 parent_item_id        이 행이 부모 연간의 놀이 하나를 이은 것이면 그 놀이명 칸의 item_id.  아니면 null.  name.evidence 에 PARENT_PLAN 이 있을 때만 값이 있다
@@ -2867,10 +2872,12 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 | `PUT .../cells/{item_id}` | `{ "value": "…", "expected_revision": 3 }` | 그 칸의 글만 바꾼다. 어느 칸이든 `item_id` 로 고친다(문서 머리 `display.*`(제목 · 「만 n세」 · 반 이름 · 예상 기간) · 가운데 놀이 방향 `direction` · 주제 · 선정 이유 · 놀이 이름 · 설명 · 습관 · 안전 후보 · 건강 · 영양 · 훈련 후보 · 교사 입력 칸). `TEACHER_EDITED` |
 | `PUT .../activities/{item_id}/content-ids` | `{ "content_ids": ["nuri2019.1.1.1"], "expected_revision": 3 }` | 그 놀이의 누리과정 연결을 바꾼다. 1~3개 · 중복 없음 · 그 계획안의 누리과정 판에 있는 ID. 생성 때 `CURRICULUM` 근거는 그대로이고 `TEACHER_EDITED`(`link_change`) 만 남는다 |
 | `POST .../activities` | `{ "section": "together", "expected_revision": 3 }` | 그 구간 맨 끝에 빈 행을 더한다. `section` 은 `together` · `free_play`. 새 칸은 쓰기 전까지 `generation: null`. `ARRANGEMENT_CHANGED` |
-| `DELETE .../activities/{item_id}?expected_revision=3` | 없음 | 행을 문서에서 뺀다. 이력에는 남고 id 는 다시 쓰지 않는다. 되돌리기는 없다. `ARRANGEMENT_CHANGED` |
+| `DELETE .../activities/{item_id}?expected_revision=3` | 없음 | 행을 문서에서 뺀다. 이력에는 남고 id 는 다시 쓰지 않는다. 되돌리기는 없다. **AI 후보(layout v0.3.0)는 `activity_pool` 의 생성 순서 자리로 돌아가 다시 넣을 수 있다**(ADR-065). `ARRANGEMENT_CHANGED` |
+| `POST .../activities/{item_id}/pick` | `{ "expected_revision": 3 }` | `activity_pool` 의 AI 후보를 그 목록 끝에 넣는다(ADR-065). 목록이 이미 `activity_pick`(5)행이면 422 「이미 다 골랐어요. 하나를 빼고 넣어 주세요.」 `["item_id"]`, 후보 목록에 없으면 404. 행 더하기(`POST .../activities`)도 같은 한도다. `ARRANGEMENT_CHANGED` |
+| `PUT .../habits/order` | `{ "item_ids": ["item_7", "item_6", …], "expected_revision": 3 }` | 기본생활습관 칸을 주 사이에서 옮긴다(ADR-065). 습관 칸 `item_id` 를 **빠짐없이 한 번씩** 새 주 순서대로 — 아니면 422 `["item_ids"]`. 칸은 id · 근거 · 이력을 가진 채 통째로 옮긴다. 같은 순서면 `200` · 무변경. `ARRANGEMENT_CHANGED`(scope = `habits`) |
 | `PUT .../activities/order` | `{ "section": "together", "item_ids": ["item_5", "item_3"], "expected_revision": 3 }` | 한 목록(`together` · `free_play`) 안의 행 순서를 바꾼다(Human Decision 2026-11-05, 하민 — 문서 보기에서 끌어 옮기기). `item_ids` 는 그 목록 행의 `activity_id` 를 **빠짐없이 한 번씩** 새 순서대로 — 빠짐 · 중복 · 다른 목록의 행이면 422 `["item_ids"]`. 목록을 건너 옮기지 않는다. 같은 순서면 `200` · 무변경. `ARRANGEMENT_CHANGED`(scope = 목록, 앞뒤 id 순서). 주간 `PUT /api/plans/weekly/{id}/indoor-plays/order` 와 같은 모양이다 |
 | `PUT .../safety-weeks/{week_id}` | `{ "candidate_item_id": "item_41", "expected_revision": 3 }` | 그 주에 둘 안전 후보를 정한다. `null` 이면 비운다. **`candidate_item_id` 키는 필수이고 값만 null 일 수 있다** — 키가 없으면 422. `ARRANGEMENT_CHANGED` |
-| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거, 값은 「[주제 label]」 다음 줄에 문장 — 2026-11-05). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
+| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거, 값은 「[주제 label] 문장」 한 줄 — 2026-11-06). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
 
 ```
 value                 문자열.  필수.  앞뒤 공백을 털고 0~600자.  빈 값을 받는다(칸을 비운다).  600자 근거는 ADR-046 §6
@@ -2898,9 +2905,9 @@ DRAFT · revision 다름      STALE_WRITE 409.  아무것도 바꾸지 않는다
 이미 CONFIRMED             expected_revision 과 상관없이 200 · 저장된 그대로.  Core 를 다시 부르지 않는다
 ```
 
-- **확정 조건**(Core `confirm_problems`): 주제와 선정 이유가 비지 않고, `together` · `free_play` 에 각각 한 행 이상이며, 모든 행에 이름이 있고 누리과정이 1~3개 걸려 있다. **습관 · 안전 배치 · 건강 · 영양 · 교사 입력 칸이 비어도 확정된다**(`notices` 가 알려 줄 뿐).
+- **확정 조건**(Core `confirm_problems`): 주제와 선정 이유가 비지 않고, `together` · `free_play` 에 각각 한 행 이상(layout v0.3.0 은 정확히 `activity_pick` 행 — ADR-065)이며, 모든 행에 이름이 있고 누리과정이 1~3개 걸려 있다. **습관 · 안전 배치 · 건강 · 영양 · 교사 입력 칸이 비어도 확정된다**(`notices` 가 알려 줄 뿐).
 - 서버는 Core 확정을 부르고 **그 결과 본문 전체를 저장한다**(ADR-048 §4 와 같다 — 상태 칸만 바꾸면 계획안 단위 `CONFIRMED` 이벤트가 본문에 없다).
-- 부족하면 422 `VALIDATION_FAILED` 이고 `fields` 는 위치 키다(초안 — 하민 리뷰). Core 는 `theme: blank` · `rationale: blank` · `together: no rows` · `together:<item_id>: blank name` · `together:<item_id>: n content ids` 로 준다.
+- 부족하면 422 `VALIDATION_FAILED` 이고 `fields` 는 위치 키다(초안 — 하민 리뷰). Core 는 `theme: blank` · `rationale: blank` · `together: no rows` · `together: 4 of 5 rows` · `together:<item_id>: blank name` · `together:<item_id>: n content ids` 로 준다.
 
 ```
 theme · rationale            그 칸이 비었다

@@ -14,6 +14,10 @@ import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.planning.application.play_monthly_lifecycle import (
+    OrderPlayMonthlyHabits,
+    OrderPlayMonthlyHabitsCommand,
+    PickPlayMonthlyActivity,
+    PickPlayMonthlyActivityCommand,
     AddPlayMonthlyActivity,
     AddPlayMonthlyActivityCommand,
     ConfirmPlayMonthlyPlan,
@@ -61,9 +65,19 @@ def _draft():
     use_case, command, plans, *_ = _run()
     plan = use_case.execute(command)
     clock = FixedClock(NOW)
+    plan = _pick_five(plan, plans, clock)
     edit = EditPlayMonthlyCell(plan_repository=plans, clock=clock)
     confirm = ConfirmPlayMonthlyPlan(plan_repository=plans, clock=clock)
     return plan, plans, edit, confirm
+
+
+def _pick_five(plan, plans, clock):
+    """Layout v0.3.0 starts with every candidate in the pool; keep the first five per section."""
+    pick = PickPlayMonthlyActivity(plan_repository=plans, clock=clock)
+    for section in ("together", "free_play"):
+        for pooled in [r for r in plan.activity_pool if r.section == section][: 5 - len(getattr(plan, section))]:
+            plan = pick.execute(PickPlayMonthlyActivityCommand(plan.plan_id, TEACHER, pooled.activity.cell.item_id))
+    return plan
 
 
 def _edit(edit, plan, cell, value, actor=TEACHER):
@@ -241,18 +255,68 @@ def test_confirm_is_refused_without_the_required_content_and_saves_nothing(chang
     assert plans.save_count == saves and plans.get(plan.plan_id).status is PlanStatus.DRAFT
 
 
-def test_one_to_three_content_ids_and_a_single_row_per_section_are_enough():
+def test_one_to_three_content_ids_are_enough():
     plan, plans, _, confirm = _draft()
     plan = replace(
         plan,
-        together=(_with_content_ids(plan.together[0], 1),),
-        free_play=(_with_content_ids(plan.free_play[0], 3),),
+        together=(_with_content_ids(plan.together[0], 1), *plan.together[1:]),
+        free_play=(_with_content_ids(plan.free_play[0], 3), *plan.free_play[1:]),
     )
     plans.save(plan.plan_id, plan)
 
     confirmed = confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
 
     assert confirmed.status is PlanStatus.CONFIRMED
+
+
+def test_generation_pools_eight_candidates_and_confirm_needs_exactly_five_kept():
+    use_case, command, plans, *_ = _run()
+    generated = use_case.execute(command)
+    assert (generated.together, generated.free_play) == ((), ())
+    assert [r.section for r in generated.activity_pool] == ["together"] * 8 + ["free_play"] * 8
+    assert generated.activity_candidates == tuple(r.activity.cell.item_id for r in generated.activity_pool)
+
+    clock = FixedClock(NOW)
+    pick = PickPlayMonthlyActivity(plan_repository=plans, clock=clock)
+    chosen = generated.activity_pool[3]
+    picked = pick.execute(PickPlayMonthlyActivityCommand(generated.plan_id, TEACHER, chosen.activity.cell.item_id))
+    assert picked.together == (chosen.activity,) and chosen not in picked.activity_pool
+    assert _arrangement(picked) == ("together", (), _ids(picked.together))
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        pick.execute(PickPlayMonthlyActivityCommand(generated.plan_id, TEACHER, chosen.activity.cell.item_id))
+    assert error.value.code == "play_monthly_candidate_not_found"
+
+    plan = _pick_five(picked, plans, clock)
+    assert (len(plan.together), len(plan.free_play)) == (5, 5) and len(plan.activity_pool) == 6
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        pick.execute(PickPlayMonthlyActivityCommand(plan.plan_id, TEACHER, plan.activity_pool[0].activity.cell.item_id))
+    assert error.value.code == "play_monthly_section_full"
+
+    _, remove, _ = _arrange(plans)
+    four = remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, plan.together[0].cell.item_id))
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        ConfirmPlayMonthlyPlan(plan_repository=plans, clock=clock).execute(
+            ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)
+        )
+    assert error.value.problems == ("together: 4 of 5 rows",)
+    assert four.removed_activities == ()
+
+
+def test_habit_cells_move_whole_between_weeks():
+    plan, plans, *_ = _draft()
+    order = OrderPlayMonthlyHabits(plan_repository=plans, clock=FixedClock(NOW))
+    ids = [h.habit.cell.item_id for h in plan.habits]
+    swapped = [ids[1], ids[0], *ids[2:]]
+
+    updated = order.execute(OrderPlayMonthlyHabitsCommand(plan.plan_id, TEACHER, swapped))
+
+    assert [h.week_id for h in updated.habits] == [h.week_id for h in plan.habits]
+    assert (updated.habits[0].habit, updated.habits[1].habit) == (plan.habits[1].habit, plan.habits[0].habit)
+    assert _arrangement(updated) == ("habits", tuple(i.value for i in ids), tuple(i.value for i in swapped))
+    assert order.execute(OrderPlayMonthlyHabitsCommand(plan.plan_id, TEACHER, swapped)) == updated  # no-op
+    with pytest.raises(PlayMonthlyLifecycleError) as error:
+        order.execute(OrderPlayMonthlyHabitsCommand(plan.plan_id, TEACHER, ids[:-1]))
+    assert error.value.code == "invalid_habit_order"
 
 
 def test_a_confirmed_plan_refuses_edit_and_reconfirm():
@@ -465,7 +529,11 @@ def _ids(rows):
 
 def test_an_added_row_starts_blank_at_the_end_and_becomes_manual_when_written():
     plan, plans, edit, confirm = _draft()
-    add, *_ = _arrange(plans)
+    add, remove, _ = _arrange(plans)
+    with pytest.raises(PlayMonthlyLifecycleError) as error:  # five rows already kept
+        add.execute(AddPlayMonthlyActivityCommand(plan.plan_id, TEACHER, "free_play"))
+    assert error.value.code == "play_monthly_section_full"
+    plan = remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, plan.free_play[-1].cell.item_id))
 
     updated = add.execute(AddPlayMonthlyActivityCommand(plan.plan_id, TEACHER, "free_play"))
 
@@ -491,16 +559,17 @@ def test_an_added_row_starts_blank_at_the_end_and_becomes_manual_when_written():
     assert confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER)).status is PlanStatus.CONFIRMED
 
 
-def test_a_removed_row_leaves_the_document_but_stays_whole_in_the_archive():
+def test_a_removed_candidate_goes_back_to_the_pool_whole_and_a_teacher_row_to_the_archive():
     plan, plans, edit, confirm = _draft()
-    _, remove, _ = _arrange(plans)
+    add, remove, _ = _arrange(plans)
     edited = _edit(edit, plan, plan.together[1].description, "교사가 고친 설명")
     target = edited.together[1]
 
     updated = remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, target.cell.item_id))
 
     assert updated.together == edited.together[:1] + edited.together[2:]
-    assert updated.removed_activities == (RemovedActivity("together", target),)
+    assert updated.removed_activities == ()
+    assert updated.activity_pool[0] == RemovedActivity("together", target)  # generation order
     assert target.description.audit.events[-1].event_type is AuditEventType.TEACHER_EDITED
     assert _arrangement(updated) == ("together", _ids(edited.together), _ids(updated.together))
     assert not {target.cell.item_id, target.description.item_id} & {c.item_id for c in updated.cells()}
@@ -511,9 +580,16 @@ def test_a_removed_row_leaves_the_document_but_stays_whole_in_the_archive():
         remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, target.cell.item_id))
     assert error.value.code == "play_monthly_activity_not_found"
     with pytest.raises(InvalidDomainValueError):
-        updated.add_activity("together", target, actor_id=TEACHER, occurred_at=NOW)  # archived ids stay taken
+        updated.add_activity("together", target, actor_id=TEACHER, occurred_at=NOW)  # pooled ids stay taken
+
+    added = add.execute(AddPlayMonthlyActivityCommand(plan.plan_id, TEACHER, "together")).together[-1]
+    archived = remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, added.cell.item_id))
+    assert archived.removed_activities == (RemovedActivity("together", added),)
+    pick = PickPlayMonthlyActivity(plan_repository=plans, clock=FixedClock(NOW))
+    repicked = pick.execute(PickPlayMonthlyActivityCommand(plan.plan_id, TEACHER, target.cell.item_id))
+    assert repicked.together[-1] == target  # the teacher's edit came back with it
     confirmed = confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
-    assert confirmed.removed_activities == updated.removed_activities
+    assert confirmed.removed_activities == archived.removed_activities
 
 
 def test_rows_are_reordered_within_one_section_only_and_the_same_order_writes_nothing():
@@ -547,7 +623,8 @@ def test_a_section_may_be_emptied_in_draft_but_confirm_needs_a_row():
     for row in plan.together:
         updated = remove.execute(RemovePlayMonthlyActivityCommand(plan.plan_id, TEACHER, row.cell.item_id))
 
-    assert updated.together == () and len(updated.removed_activities) == len(plan.together)
+    assert updated.together == () and updated.removed_activities == ()
+    assert sum(r.section == "together" for r in updated.activity_pool) == 8
     with pytest.raises(PlayMonthlyLifecycleError) as error:
         confirm.execute(ConfirmPlayMonthlyPlanCommand(plan.plan_id, TEACHER))
     assert error.value.problems == ("together: no rows",)

@@ -306,9 +306,9 @@ export default function ThemeAnnualResult({
           {BACK_ICON}
         </Link>
       }
+      saved={SAVE_LABEL[status]}
       status={
         <span className="flex items-center gap-3">
-          {SAVE_LABEL[status]}
           <PlanMemoNote plan={plan} />
         </span>
       }

@@ -16,10 +16,12 @@ export default function PlayMonthlyDrillPanel({
   onCopy: (itemId: string) => void;
   disabled: boolean;
 }) {
-  // 「[주제]」 머리는 lib/monthly/section-labels 의 drillText 와 같은 모양이다.
+  // 「[주제] 문장」은 lib/monthly/section-labels 의 drillText 와 같은 모양. 11-06 전에 복사한 칸은 「[주제]」 다음 줄이다.
   const placed = (d: { label: string; cell: { value: string } }) =>
     !!current.trim() &&
-    [`[${d.label}]\n${d.cell.value}`.trim(), d.cell.value.trim()].includes(current.trim());
+    [`[${d.label}] ${d.cell.value}`, `[${d.label}]\n${d.cell.value}`, d.cell.value]
+      .map((s) => s.trim())
+      .includes(current.trim());
   return (
     <section aria-label="소방대피 훈련" className="flex flex-col gap-2">
       <h2 className="m-0 text-[18px] font-bold leading-tight">넣을 문구 고르기</h2>

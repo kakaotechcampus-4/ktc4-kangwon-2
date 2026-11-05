@@ -294,7 +294,10 @@ def test_a_teacher_memo_reaches_the_prompt_and_marks_only_the_rows_it_changed():
 
     (request,) = provider.requests
     # Human Decision 2026-11-05: the period-scoped memo rule rides on the memo tag.
-    assert request.prompt_version == PLAY_PROJECT_PROMPT_VERSION + "+teacher-memo-v1+period-memo-v1"
+    assert request.prompt_version == (
+        PLAY_PROJECT_PROMPT_VERSION + "+teacher-memo-v1+period-memo-v1+memo-share-v1"
+    )
+    assert "많아야 3개 후보에만" in request.system_prompt
     assert "다른 구간" in request.system_prompt
     assert reflected == ("물놀이를 많이",)
     assert json.loads(request.user_content)["teacher_memo"]["addresses"][:2] == ["cand1", "cand2"]

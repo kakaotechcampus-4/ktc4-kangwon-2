@@ -158,60 +158,68 @@ export default function AppSidebar() {
 
   return (
     <>
-      {collapsed && (
-        <aside
-          aria-label="주 메뉴"
-          className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:[scrollbar-color:var(--pg-rail-card-line)_var(--pg-rail)] lg:border-r lg:border-rail-line lg:py-4"
-        >
-          {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
+      <aside
+        aria-label="주 메뉴"
+        // 늘 그려 두고 보였다 숨겼다만 한다(PM 2026-11-06). 이 바와 넓은 메뉴는 아이콘 높이가 달라서, 겹쳐 흐리게
+        // 바꾸면 두 메뉴가 포개져 비치고, 사이에 틈을 두면 아이콘이 사라졌다 나와 깜빡인다. 그래서 한 번에 바꾼다 —
+        // 접을 때는 넓은 메뉴가 바 폭까지 다 잘려 들어간 끝(0.3초)에, 펼 때는 바로. 숨으면 탭·읽기에서도 빠진다.
+        className={`bg-rail z-40 hidden lg:transition-[visibility] motion-reduce:transition-none ${collapsed ? "lg:visible lg:delay-[270ms]" : "lg:invisible lg:duration-0"} lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:[scrollbar-color:var(--pg-rail-card-line)_var(--pg-rail)] lg:border-r lg:border-rail-line lg:py-4`}
+      >
+        {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
               브라우저 탭 아이콘(`app/icon.svg`)과 같은 표시다. */}
+        <Link
+          href="/"
+          aria-label="쌤플 홈으로"
+          className="flex h-11 w-11 items-center justify-center"
+        >
+          <SsampleMark size={32} tone="rail" />
+        </Link>
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          aria-expanded={false}
+          aria-label="메뉴 펼치기"
+          title="메뉴 펼치기"
+          className="mb-2 flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
+        >
+          <Icon name="panel" className="h-[18px] w-[18px]" />
+        </button>
+        {[HOME, ...GROUPS.flatMap((g) => g.items)].map((item) => (
           <Link
-            href="/"
-            aria-label="쌤플 홈으로"
-            className="flex h-11 w-11 items-center justify-center"
+            key={item.key}
+            href={item.href}
+            aria-label={item.label}
+            title={item.label}
+            aria-current={isActive(item) ? "page" : undefined}
+            className={`flex w-full flex-col items-center justify-center gap-[3px] rounded-md border py-1.5 text-[11px] font-medium ${isActive(item) ? activeStyle : "border-transparent text-rail-ink-soft hover:bg-rail-hover"}`}
           >
-            <SsampleMark size={32} tone="rail" />
+            <Icon name={item.icon} className="h-[17px] w-[17px]" />
+            <span>{item.short ?? item.label}</span>
           </Link>
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed(false)}
-            aria-expanded={false}
-            aria-label="메뉴 펼치기"
-            title="메뉴 펼치기"
-            className="mb-2 flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
-          >
-            <Icon name="panel" className="h-[18px] w-[18px]" />
-          </button>
-          {[HOME, ...GROUPS.flatMap((g) => g.items)].map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              aria-label={item.label}
-              title={item.label}
-              aria-current={isActive(item) ? "page" : undefined}
-              className={`flex w-full flex-col items-center justify-center gap-[3px] rounded-md border py-1.5 text-[11px] font-medium ${isActive(item) ? activeStyle : "border-transparent text-rail-ink-soft hover:bg-rail-hover"}`}
-            >
-              <Icon name={item.icon} className="h-[17px] w-[17px]" />
-              <span>{item.short ?? item.label}</span>
-            </Link>
-          ))}
-          <Link
-            href="/settings"
-            aria-label="설정"
-            title="설정"
-            className="mt-auto flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
-          >
-            <Icon name="settings" className="h-[18px] w-[18px]" />
-          </Link>
-        </aside>
-      )}
+        ))}
+        <Link
+          href="/settings"
+          aria-label="설정"
+          title="설정"
+          className="mt-auto flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
+        >
+          <Icon name="settings" className="h-[18px] w-[18px]" />
+        </Link>
+      </aside>
       <aside
         aria-label="주 메뉴"
         data-tour="nav"
         className={
           "bg-rail z-30 " +
           // 여닫기는 단추로만 한다. 마우스만 올려도 펼쳐지면 글 읽다가 지나가기만 해도 덮인다 (PM).
-          (collapsed ? "lg:hidden " : "") +
+          // 접을 때 휙 사라지지 않게(PM 2026-11-06): 내용은 그대로 둔 채 넓은 판이 커튼처럼 중간 폭을 지나 75px 까지
+          // 잘려 들어가고(0.3초), 끝에서 위 좁은 바로 바뀐다(visibility 는 끝에 바뀐다).
+          // 펼칠 때는 거꾸로 — 바로 넓은 메뉴로 바뀌고 75px 에서 넓어진다. 본문 여백도 같이 움직인다.
+          // visibility 를 전환에 넣으면 숨김→보임의 첫 프레임이 숨김이라 한 프레임 비어 보인다. 그래서 펼칠 때는 뺀다.
+          "lg:duration-300 lg:ease-out motion-reduce:transition-none " +
+          (collapsed
+            ? "lg:invisible lg:transition-[clip-path,visibility] lg:[clip-path:inset(0_192px_0_0)] "
+            : "lg:transition-[clip-path] lg:[clip-path:inset(0)] ") +
           // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
           // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
           // 그 스크롤바가 267px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).

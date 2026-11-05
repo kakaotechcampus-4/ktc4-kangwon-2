@@ -41,6 +41,10 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     EditPlayMonthlyContentIdsCommand,
     OrderPlayMonthlyActivities,
     OrderPlayMonthlyActivitiesCommand,
+    OrderPlayMonthlyHabits,
+    OrderPlayMonthlyHabitsCommand,
+    PickPlayMonthlyActivity,
+    PickPlayMonthlyActivityCommand,
     PlacePlayMonthlySafety,
     PlacePlayMonthlySafetyCommand,
     PlayMonthlyLifecycleError,
@@ -343,6 +347,13 @@ _LIFECYCLE_ERRORS = {
     "play_monthly_safety_candidate_not_found": _invalid("candidate_item_id"),
     "invalid_content_ids": _invalid("content_ids"),
     "invalid_activity_order": _invalid("item_ids"),
+    "invalid_habit_order": _invalid("item_ids"),
+    "play_monthly_candidate_not_found": _error(
+        404, "NOT_FOUND", "그 후보를 찾을 수 없습니다.", ["item_id"]
+    ),
+    "play_monthly_section_full": _error(
+        422, "VALIDATION_FAILED", "이미 다 골랐어요. 하나를 빼고 넣어 주세요.", ["item_id"]
+    ),
     "play_monthly_drill_candidate_blank": _invalid("item_id"),
     "curriculum_reference_unavailable": _REFERENCE_UNAVAILABLE,
     # 특별활동 시간표(ADR-047). 한도 수치는 Core 가 정하고 문구는 교사가 고칠 방법을 말한다.
@@ -496,6 +507,40 @@ def order_activities(plan_id: int, body: s.ActivityOrderIn, session: DbSession, 
         ).execute(
             OrderPlayMonthlyActivitiesCommand(plan.plan_id, _actor(user), body.section, items)
         ),
+    )
+
+
+@router.post("/{plan_id}/activities/{item_id}/pick", response_model=s.PlayMonthlyPlanOut)
+def pick_activity(
+    plan_id: int, item_id: str, body: s.RevisionIn, session: DbSession, user: CurrentUser
+):
+    """AI 후보 하나를 문서 그 목록 끝에 넣는다(layout v0.3.0). 뺄 때는 DELETE 와 같다 — AI 후보는
+    후보 목록으로 돌아간다."""
+    item = _item(item_id)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: PickPlayMonthlyActivity(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(PickPlayMonthlyActivityCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+@router.put("/{plan_id}/habits/order", response_model=s.PlayMonthlyPlanOut)
+def order_habits(plan_id: int, body: s.HabitOrderIn, session: DbSession, user: CurrentUser):
+    """기본생활습관 칸을 주 사이에서 옮긴다(2026-11-06). 화면은 두 주를 맞바꾸고, 같은 순서면
+    200 · 무변경이다."""
+    items = tuple(_item(value, "item_ids") for value in body.item_ids)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: OrderPlayMonthlyHabits(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(OrderPlayMonthlyHabitsCommand(plan.plan_id, _actor(user), items)),
     )
 
 
@@ -765,16 +810,19 @@ def export_play_monthly_plan(
 
 @router.get("/{plan_id}/audit", response_model=s.PlayMonthlyAuditOut)
 def get_play_monthly_audit(plan_id: int, session: DbSession, user: CurrentUser):
-    """저장된 이벤트를 읽기만 한다. 지운 행의 칸 이벤트도 싣는다."""
+    """저장된 이벤트를 읽기만 한다. 지운 행 · 후보 목록에 있는 행(ADR-065)의 칸 이벤트도 싣는다."""
     row = _own_row(session, user, plan_id, read_only=True)
     plan = _plan(_repo(session, user), row)
     removed = [
-        c for r in plan.removed_activities for c in (r.activity.cell, r.activity.description)
+        c
+        for r in (*plan.removed_activities, *plan.activity_pool)
+        for c in (r.activity.cell, r.activity.description)
     ]
     keyed = [
         ((e.occurred_at, 0, 0, i), _audit_event(e, False)) for i, e in enumerate(plan.audit.events)
     ]
-    # 활성 칸(응답 순서) → 지운 행의 칸(쌓인 순서). 한 칸 안에서는 저장 순서다.
+    # 활성 칸(응답 순서) → 지운 행의 칸(쌓인 순서) → 후보 목록의 칸(생성 순서).
+    # 한 칸 안에서는 저장 순서다.
     for position, cell in enumerate((*plan.cells(), *removed)):
         keyed += [
             ((e.occurred_at, 1, position, i), _audit_event(e, True))
@@ -968,6 +1016,12 @@ def _detail(
         rationale=_cell(plan.rationale),
         together=[_activity(a) for a in plan.together],
         free_play=[_activity(a) for a in plan.free_play],
+        activity_pick=plan.layout.activity_pick,
+        activity_candidates=[i.value for i in plan.activity_candidates],
+        activity_pool=[
+            s.PooledActivityOut(**_activity(r.activity).model_dump(), section=r.section)
+            for r in plan.activity_pool
+        ],
         direction=_cell(plan.direction),
         display=s.DisplayOut(
             title=_cell(plan.display.title),

@@ -81,6 +81,31 @@ export const orderPlayMonthlyActivities = (
     BASE + "/" + id + "/activities/order",
     json("PUT", { section, item_ids: itemIds, expected_revision: expectedRevision }, signal),
   );
+/**
+ * AI 후보(`activity_pool` 의 이름 칸 id) 하나를 그 목록 끝에 넣는다(ADR-065). 이미 다 골랐으면 422,
+ * 후보 목록에 없으면 404. 빼기는 `removePlayMonthlyActivity` — AI 후보는 후보 목록으로 돌아간다.
+ */
+export const pickPlayMonthlyActivity = (
+  id: number,
+  itemId: string,
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/activities/" + encodeURIComponent(itemId) + "/pick",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/** 기본생활습관 칸(item_id)을 새 주 순서대로 — 습관 칸을 빠짐없이 한 번씩. 같은 순서면 200 · 무변경. */
+export const orderPlayMonthlyHabits = (
+  id: number,
+  itemIds: string[],
+  expectedRevision: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<PlayMonthlyPlan>(
+    BASE + "/" + id + "/habits/order",
+    json("PUT", { item_ids: itemIds, expected_revision: expectedRevision }, signal),
+  );
 /** 그 주에 둘 안전 후보. `null` 이면 비운다. 같은 입력이면 200 · 무변경(revision 그대로). */
 export const placePlayMonthlySafety = (
   id: number,

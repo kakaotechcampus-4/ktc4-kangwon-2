@@ -60,6 +60,7 @@ export default function AnnualFrame({
   title,
   format,
   lead,
+  saved,
   status,
   actions,
   notice,
@@ -73,6 +74,9 @@ export default function AnnualFrame({
   format: Format;
   /** 제목 앞 (월간의 「←」 돌아가기). */
   lead?: ReactNode;
+  /** 저장 상태(「저장 중…」 · 「저장됨」) — 연간 · 월간 · 주간 모두 형식 표시(「놀이 중심형」) 바로 옆. */
+  saved?: ReactNode;
+  /** 제목 아래 작은 줄(요청 사항 등). */
   status: ReactNode;
   actions: ReactNode;
   notice?: ReactNode;
@@ -86,7 +90,7 @@ export default function AnnualFrame({
     <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:px-10">
       {/* 안내가 없으면 높이 0 — 연간 · 월간 · 주간 문서 틀이 같은 높이에서 시작한다. */}
       <div className="flex flex-col">
-        {/* 제목 줄은 「무엇」(제목 · 형식)과 「할 일」(확정)만 — 저장 상태 · 요청 사항은 제목 아래 작은 줄로. */}
+        {/* 제목 줄은 「무엇」(제목 · 형식 · 저장 상태)과 「할 일」(확정) — 요청 사항은 제목 아래 작은 줄로. */}
         <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             {lead}
@@ -96,8 +100,11 @@ export default function AnnualFrame({
                   {title}
                 </h1>
                 {chip(format)}
+                <span role="status" className="text-[13px] text-ink-soft">
+                  {saved}
+                </span>
               </div>
-              {/* 빈 상태에도 높이를 잡아 둔다 — 「저장 중…」이 뜰 때 제목이 흔들리지 않게. */}
+              {/* 빈 상태에도 높이를 잡아 둔다 — 요청 사항이 뜰 때 제목이 흔들리지 않게. */}
               <span className="min-h-[20px] text-[13px] leading-[20px] text-ink-soft">
                 {status}
               </span>

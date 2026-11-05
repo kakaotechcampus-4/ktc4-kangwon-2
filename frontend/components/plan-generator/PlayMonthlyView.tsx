@@ -27,6 +27,11 @@ import {
   withRatio,
 } from "@/lib/plan-generator/playMonthlyTimetable";
 import PlayCellEditor from "./PlayCellEditor";
+import PlayPickBoard from "@/components/plan-ui/PlayPickBoard";
+import PlayMonthlyActivityPanel, {
+  SECTION_LABEL,
+  sectionCandidates,
+} from "./PlayMonthlyActivityPanel";
 import PlayMonthlyConfirm, { BlankRows } from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
@@ -39,6 +44,7 @@ import AnnualFrame, {
   BigView,
   BUTTON,
   PlanDone,
+  pageClass,
   tabClass,
   UndoRedo,
   useSheetZoom,
@@ -199,6 +205,15 @@ function PlayMonthlyBody({
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
+  // 고를 수가 모자란 채로 열면 놀이 중심형 연간 「놀이 고르기」처럼 활동 고르기 판부터(ADR-065).
+  const [choosing, setChoosing] = useState<PlaySection | null>(() =>
+    initial.status === "DRAFT" && initial.activity_pick != null
+      ? ((["together", "free_play"] as const).find(
+          (s) => initial[s].length < initial.activity_pick!,
+        ) ?? null)
+      : null,
+  );
+  const [focus, setFocus] = useState<string | null>(null);
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   // 입력창을 다시 여는 번호 — "*" 는 전부(되돌리기 · 다시 하기), 칸 id 는 그 칸만(거절). 화면 번호(state)와 핸들러가 읽는 ref 를 같이 올린다.
@@ -267,6 +282,14 @@ function PlayMonthlyBody({
     save.placeSafety(to, moved);
     save.placeSafety(from, other);
   };
+  // 기본생활습관 칸 끌어 옮기기 — 두 주의 칸을 통째로 맞바꾼다. 되돌리기는 한 번.
+  const moveHabit = (from: string, to: string) => {
+    const ids = plan.habits.map((h) => h.cell.item_id);
+    const [a, b] = [from, to].map((w) => plan.habits.findIndex((h) => h.week_id === w));
+    if (a < 0 || b < 0) return;
+    [ids[a], ids[b]] = [ids[b], ids[a]];
+    save.orderHabits(ids);
+  };
   // 행 끌어 옮기기 · 위로 · 아래로 — 같은 목록 안에서 끈 행을 놓은 행 자리에 넣는다. 되돌리기는 한 번.
   const moveRow = (section: PlaySection, from: string, to: string) => {
     const ids = plan[section].map((r) => r.activity_id).filter((id) => id !== from);
@@ -292,8 +315,9 @@ function PlayMonthlyBody({
     }
   };
   const drillId = drillTarget(plan);
-  // 안전교육 줄 · 소방대피 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
+  // 「AI 후보에서 고르기」 칸은 고르기 판을 연다. 안전교육 줄 · 소방대피 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
   const select = (id: string) => {
+    if (id.startsWith("pick:")) return setChoosing(id.slice(5) as PlaySection);
     setSelected(id);
     setTab(id.startsWith("safety:") || id === drillId ? "ai" : "edit");
   };
@@ -303,6 +327,15 @@ function PlayMonthlyBody({
     : null;
   const rows = [...plan.together, ...plan.free_play];
   const row = rows.find((r) => r.name.item_id === selected);
+  // AI 후보에서 고르는 계획안(ADR-065): 그 목록의 행을 고르면 「AI 후보」에 그 목록 후보가 뜬다.
+  const picking = plan.activity_pick != null;
+  const pickSection: PlaySection | null =
+    picking && row ? (plan.together.includes(row) ? "together" : "free_play") : null;
+  // AI 후보 행은 빼면 후보로 돌아간다 — 「AI 후보」의 [빼기]를 쓰고, 되돌릴 수 없는 「이 활동 빼기」는 교사가 더한 행만.
+  const candidateRow = !!row && (plan.activity_candidates ?? []).includes(row.activity_id);
+  const short = picking
+    ? (["together", "free_play"] as const).filter((s) => plan[s].length !== plan.activity_pick)
+    : [];
   // 안전교육 줄은 그 주에 둔 후보 문장을 고친다(같은 후보를 둔 다른 주도 같이 바뀐다).
   const target = safetyWeek ? weekCandidate : selected;
   const editing = !confirmed && target && labels[target] ? [target] : [];
@@ -325,15 +358,24 @@ function PlayMonthlyBody({
       ["nutrition", "영양", [plan.nutrition.cell.item_id]],
     ] as const
   ).map(([key, label, ids]) => ({ key, label, ids: ids.filter(empty) }));
-  const blankRows = groups
-    .filter((g) => g.ids.length)
-    .map(({ key, label, ids }) => ({
-      key,
-      label,
-      count: ids.length,
-      safety: key === "safety",
-      onJump: () => select(ids[0]),
-    }));
+  const blankRows = [
+    // 고를 수가 모자란 목록 — 빈칸과 달리 이대로는 확정할 수 없다.
+    ...short.map((s) => ({
+      key: "pick:" + s,
+      label: `${SECTION_LABEL[s]} · AI 후보 고르기`,
+      count: Math.max(0, plan.activity_pick! - plan[s].length),
+      onJump: () => select("pick:" + s),
+    })),
+    ...groups
+      .filter((g) => g.ids.length)
+      .map(({ key, label, ids }) => ({
+        key,
+        label,
+        count: ids.length,
+        safety: key === "safety",
+        onJump: () => select(ids[0]),
+      })),
+  ];
   const parentPlay =
     row?.parent_item_id &&
     plan.parent.plays.find((p) => p.play_name_item_id === row.parent_item_id);
@@ -434,7 +476,12 @@ function PlayMonthlyBody({
           }
         />
       )}
-      {row && (
+      {row && candidateRow && (
+        <p className="m-0 border-t border-[#efeae2] pt-4 text-[13px] text-[#5c5243]">
+          AI 후보에서 고른 활동이에요. 빼려면 「AI 후보」에서 [빼기]를 눌러요 — 후보로 돌아가요.
+        </p>
+      )}
+      {row && !candidateRow && (
         <div className="border-t border-[#efeae2] pt-4">
           <PlayMonthlyRowRemove
             activity={row}
@@ -442,6 +489,7 @@ function PlayMonthlyBody({
             onRemove={save.removeActivity}
             disabled={locked}
             isLastInSection={
+              !picking &&
               (plan.together.includes(row) ? plan.together : plan.free_play).length === 1
             }
           />
@@ -454,6 +502,15 @@ function PlayMonthlyBody({
       plan={plan}
       weekId={safetyWeek}
       onPlace={save.placeSafety}
+      onWeek={(weekId) => select("safety:" + weekId)}
+      disabled={locked}
+    />
+  ) : pickSection ? (
+    <PlayMonthlyActivityPanel
+      plan={plan}
+      section={pickSection}
+      onPick={save.pickActivity}
+      onRemove={save.removeActivity}
       disabled={locked}
     />
   ) : selected && selected === drillId ? (
@@ -465,7 +522,9 @@ function PlayMonthlyBody({
     />
   ) : (
     <p className="m-0 text-sm text-[#5c5243]">
-      안전교육이나 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요.
+      {picking
+        ? "함께 하는 활동 · 자유놀이 · 안전교육 · 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."
+        : "안전교육이나 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."}
     </p>
   );
   const aside = (
@@ -526,11 +585,99 @@ function PlayMonthlyBody({
         }
       />
     );
+  if (choosing) {
+    const max = plan.activity_pick!;
+    const picked = plan[choosing].map((r) => r.activity_id);
+    const goTo = (s: PlaySection | null) => {
+      setFocus(null);
+      setChoosing(s);
+    };
+    const toggle = (id: string) => {
+      if (locked) return;
+      if (picked.includes(id)) save.removeActivity(id);
+      else save.pickActivity(id);
+    };
+    return (
+      <main className={workspace.page}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {back}
+            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+              활동 고르기
+            </h1>
+            <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
+              놀이 중심형
+            </span>
+            <span role="status" className="text-[13px] text-ink-soft">
+              {SAVE_LABEL[save.status]}
+            </span>
+            {save.status === "failed" && (
+              <button type="button" className={workspace.secondary} onClick={save.retry}>
+                다시 저장
+              </button>
+            )}
+          </div>
+          <div
+            role="tablist"
+            aria-label="고를 목록"
+            className="flex flex-wrap gap-0.5 rounded-md border border-line bg-paper p-0.5"
+          >
+            {(["together", "free_play"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="tab"
+                aria-selected={choosing === s}
+                className={`${pageClass(choosing === s)} inline-flex items-center gap-1.5`}
+                onClick={() => goTo(s)}
+              >
+                {SECTION_LABEL[s]}{" "}
+                <span className="rounded-full bg-[#f3efe8] px-1.5 text-xs font-bold">
+                  {plan[s].length}/{max}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {(notice || message) && (
+          <p role="status" className={workspace.notice}>
+            {notice || message}
+          </p>
+        )}
+        <PlayPickBoard
+          subject={SECTION_LABEL[choosing]}
+          pickLabel="이 활동 고르기"
+          max={max}
+          candidates={sectionCandidates(plan, choosing).map(({ row }) => ({
+            key: row.activity_id,
+            name: row.name.value.trim() || "(빈 후보)",
+            summary: row.description.value,
+            fields: [{ label: "설명", lines: [row.description.value] }],
+          }))}
+          picked={picked}
+          focus={focus}
+          idPrefix={`play-monthly-${plan.id}-pick`}
+          onFocus={setFocus}
+          onToggle={toggle}
+          onRemove={(id) => {
+            toggle(id);
+            document.getElementById(`play-monthly-${plan.id}-pick-heading`)?.focus();
+          }}
+          onNext={() => goTo(choosing === "together" ? "free_play" : null)}
+          nextLabel={
+            choosing === "together" ? `${SECTION_LABEL.free_play} 고르러 가기 →` : "문서 만들기 →"
+          }
+          onFinishEarly={choosing === "together" ? () => goTo(null) : undefined}
+        />
+      </main>
+    );
+  }
   return (
     <AnnualFrame
       title={`${plan.month}월 월간계획안`}
       format="PLAY_PROJECT"
       lead={back}
+      saved={SAVE_LABEL[save.status]}
       status={<PlanMemoNote plan={plan} />}
       notice={
         (notice || message || plan.parent_changed || save.status === "failed") && (
@@ -548,14 +695,14 @@ function PlayMonthlyBody({
       }
       actions={
         <>
-          {/* 저장 상태는 제목 아래가 아니라 확정 버튼 옆에. */}
-          <span role="status" className="text-[13px] text-ink-soft">
-            {SAVE_LABEL[save.status]}
-          </span>
           <PlayMonthlyConfirmBar
             plan={plan}
             ask={
-              (blankRows.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
+              (short.length
+                ? `함께 하는 활동 · 자유놀이는 AI 후보에서 ${plan.activity_pick}개씩 골라야 확정할 수 있어요. `
+                : blankRows.length
+                  ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. "
+                  : "") +
               "확정하면 고칠 수 없어요. 고치려면 문서 보관함의 「수정하기」를 눌러요." +
               (plan.notices.length ? ` 확인할 것 ${plan.notices.length}개가 남았어요.` : "")
             }
@@ -619,6 +766,8 @@ function PlayMonthlyBody({
           onRatio={locked ? undefined : save.resizeSplit}
           onSize={locked ? undefined : save.resizeTable}
           onMoveSafety={locked ? undefined : moveSafety}
+          onPlaceSafety={locked ? undefined : save.placeSafety}
+          onMoveHabit={locked ? undefined : moveHabit}
           onMoveRow={locked ? undefined : moveRow}
         />
       </div>

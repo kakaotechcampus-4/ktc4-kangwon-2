@@ -1,6 +1,6 @@
 "use client";
 /**
- * 놀이 고르기 (놀이 중심형, 생성 직후) — 디자인 확정본의 3패널.
+ * 놀이 고르기 (놀이 중심형, 생성 직후) — 디자인 확정본의 3패널. 놀이 중심형 월간의 활동 고르기도 같은 판을 쓴다(ADR-065).
  * 패널 구분: 위쪽 색 띠 + 연한 머리말. 왼쪽 후보는 한 장씩 테두리 카드. 선택 표시: 고른 것을 위로 모은다.
  *
  * 상호작용
@@ -8,16 +8,17 @@
  * - 고르기/빼기는 가운데 맨 아래 [이 놀이 고르기]/[✓ 골랐어요] 버튼 — 오른쪽 [다음] 버튼과 같은 높이.
  * - 오른쪽: 점선 칸 5개가 고른 순서대로 채워진다. ✕로 빼기. 계절당 최대 5개(서버 규칙).
  *
- * 계절 탭은 이 판 밖(PlayProjectResult)에 있다. 판은 지금 계절 하나만 그린다.
+ * 계절 탭(월간은 목록 탭)은 이 판 밖에 있다. 판은 지금 계절(목록) 하나만 그린다.
  */
 import type { ReactNode } from "react";
 
 export type PickCandidate = {
   key: string;
   name: string;
-  materials: string;
-  support: string;
-  learning: string[];
+  /** 왼쪽 줄의 둘째 줄(연간: 지원매체). */
+  summary: string;
+  /** 가운데 「자세히 보기」의 항목들 — 이름표와 줄. */
+  fields: { label: string; lines: string[] }[];
   /** 요청 사항을 반영한 후보 — 작은 표시만 단다. */
   memoApplied?: boolean;
 };
@@ -99,7 +100,7 @@ function Row({
           >
             {c.name}
           </span>
-          <span className="truncate text-[14px] text-ink-soft">{c.materials}</span>
+          <span className="truncate text-[14px] text-ink-soft">{c.summary}</span>
         </span>
         {c.memoApplied && <MemoMark />}
       </button>
@@ -111,11 +112,13 @@ function Detail({
   c,
   picked,
   full,
+  pickLabel,
   onToggle,
 }: {
   c: PickCandidate;
   picked: boolean;
   full: boolean;
+  pickLabel: string;
   onToggle: () => void;
 }) {
   return (
@@ -123,22 +126,16 @@ function Detail({
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-8 pb-4 pt-5">
         <h3 className="m-0 text-[24px] font-bold leading-snug tracking-[-0.4px]">{c.name}</h3>
         <dl className="m-0 flex max-w-[640px] flex-col gap-5">
-          <div className="flex flex-col gap-1.5">
-            <dt className="text-sm font-bold text-[#5c5243]">지원매체</dt>
-            <dd className="m-0 text-base">{c.materials}</dd>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <dt className="text-sm font-bold text-[#5c5243]">내용 및 지원 방향</dt>
-            <dd className="m-0 text-base leading-[1.75]">{c.support}</dd>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <dt className="text-sm font-bold text-[#5c5243]">놀이를 통한 배움</dt>
-            <dd className="m-0 flex flex-col gap-1 text-base">
-              {c.learning.map((line) => (
-                <span key={line}>{line}</span>
-              ))}
-            </dd>
-          </div>
+          {c.fields.map((f) => (
+            <div key={f.label} className="flex flex-col gap-1.5">
+              <dt className="text-sm font-bold text-[#5c5243]">{f.label}</dt>
+              <dd className="m-0 flex flex-col gap-1 text-base leading-[1.75]">
+                {f.lines.map((line, n) => (
+                  <span key={n}>{line}</span>
+                ))}
+              </dd>
+            </div>
+          ))}
         </dl>
       </div>
       {/* 오른쪽 [다음] 버튼과 같은 줄 — 두 판 모두 아래 여백 16px · 버튼 높이 50px. */}
@@ -154,7 +151,7 @@ function Detail({
           aria-pressed={picked}
           className={`min-h-[50px] rounded-xl px-8 text-[15px] font-bold disabled:opacity-40 ${picked ? "border border-[#c5b7dd] bg-[#f6f1fb] text-[#5e4b96]" : "bg-[#7053a0] text-white"}`}
         >
-          {picked ? "✓ 골랐어요" : "이 놀이 고르기"}
+          {picked ? "✓ 골랐어요" : pickLabel}
         </button>
       </div>
     </div>
@@ -162,7 +159,8 @@ function Detail({
 }
 
 export default function PlayPickBoard({
-  season,
+  subject,
+  pickLabel = "이 놀이 고르기",
   max,
   candidates,
   picked,
@@ -175,8 +173,9 @@ export default function PlayPickBoard({
   nextLabel,
   onFinishEarly,
 }: {
-  /** 지금 계절 이름. 예: "3월~5월" */
-  season: string;
+  /** 고르는 것의 이름 — 머리말에 쓴다. 예: "봄 놀이", "함께 하는 활동" */
+  subject: string;
+  pickLabel?: string;
   max: number;
   candidates: PickCandidate[];
   /** 고른 후보 key, 고른 순서 */
@@ -211,13 +210,13 @@ export default function PlayPickBoard({
   return (
     <div className="flex w-full flex-col gap-4 text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-210px)] lg:min-h-[520px] lg:flex-row">
       <section
-        aria-label={`${season} 놀이 후보`}
+        aria-label={`${subject} 후보`}
         className={`max-h-[calc(60*var(--app-vh))] lg:max-h-none lg:w-[400px] lg:shrink-0 ${PANEL}`}
         style={{ borderTopColor: STRIP.a }}
       >
         <Head
           tone="a"
-          title={`${season} 놀이 후보 ${candidates.length}`}
+          title={`${subject} 후보 ${candidates.length}`}
           extra={
             <span className="font-display text-[17px] font-bold text-[#5c5243]">
               누르면 자세히 보여요!
@@ -247,20 +246,21 @@ export default function PlayPickBoard({
             c={shown}
             picked={picked.includes(shown.key)}
             full={full}
+            pickLabel={pickLabel}
             onToggle={() => onToggle(shown.key)}
           />
         )}
       </section>
 
       <aside
-        aria-label={`고른 ${season} 놀이`}
+        aria-label={`고른 ${subject}`}
         className={`lg:w-[300px] lg:shrink-0 ${PANEL}`}
         style={{ borderTopColor: STRIP.c }}
       >
         <Head
           tone="c"
           id={`${idPrefix}-heading`}
-          title={`고른 ${season} 놀이`}
+          title={`고른 ${subject}`}
           extra={
             <span className={`text-[20px] font-bold ${full ? "text-[#3b5441]" : ""}`}>
               {picked.length}/{max}

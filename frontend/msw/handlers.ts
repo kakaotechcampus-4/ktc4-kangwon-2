@@ -47,6 +47,8 @@ import {
   playCells,
   removePlayMonthly,
   orderPlayMonthlyActivities,
+  orderPlayMonthlyHabits,
+  pickPlayMonthlyActivity,
   removePlayMonthlyActivity,
   removePlayMonthlyTimetable,
   resizePlayMonthlySplit,
@@ -782,7 +784,7 @@ export const handlers = [
           : null;
     if (gate) return failure("GATE_BLOCKED", gate, "class_id");
     // 서버는 생성한 초안을 201 로 준다. 목업은 고정 합성 데이터에 달 · 강조 놀이만 바꾼다.
-    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed), {
+    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed, true), {
       status: 201,
     });
   }),
@@ -856,6 +858,45 @@ export const handlers = [
     )
       return invalid(["item_ids"]);
     return HttpResponse.json(orderPlayMonthlyActivities(plan.id, section, ids));
+  }),
+  // ADR-065 — AI 후보 하나를 그 목록 끝에. 후보 목록에 없으면 404, 그 목록이 이미 다 찼으면 422.
+  http.post("*/api/plans/monthly/play/:id/activities/:itemId/pick", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => []);
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = plan.activity_pool?.find((a) => a.activity_id === itemId);
+    if (!found) return failure("NOT_FOUND", "그 후보를 찾을 수 없습니다.", "item_id");
+    if (plan[found.section].length >= (plan.activity_pick ?? 0))
+      return failure("VALIDATION_FAILED", "이미 다 골랐어요. 하나를 빼고 넣어 주세요.", "item_id");
+    return HttpResponse.json(pickPlayMonthlyActivity(plan.id, itemId));
+  }),
+  http.put("*/api/plans/monthly/play/:id/habits/order", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.item_ids) &&
+      b.item_ids.every((i: unknown) => typeof i === "string" && i.trim())
+        ? []
+        : ["item_ids"],
+    );
+    if (b instanceof Response) return b;
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const ids = b.item_ids as string[];
+    const cells = plan.habits.map((h) => h.cell.item_id);
+    // 습관 칸을 빠짐없이 한 번씩.
+    if (
+      ids.length !== cells.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((i) => !cells.includes(i))
+    )
+      return invalid(["item_ids"]);
+    return HttpResponse.json(orderPlayMonthlyHabits(plan.id, ids));
   }),
   http.delete("*/api/plans/monthly/play/:id/activities/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "play-monthly-activity");

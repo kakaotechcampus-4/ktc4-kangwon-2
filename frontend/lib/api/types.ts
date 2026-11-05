@@ -324,6 +324,7 @@ export interface PlayMonthlyActivity {
   content_ids: string[];
   parent_item_id: string | null;
 }
+export type PlayMonthlyPooledActivity = PlayMonthlyActivity & { section: "together" | "free_play" };
 /** 놀이 중심 월간 단건 응답 (api-spec §9-7). 변경 API 는 모두 이 전체를 돌려준다. */
 export interface PlayMonthlyPlan extends PlanMemo {
   id: number;
@@ -366,6 +367,14 @@ export interface PlayMonthlyPlan extends PlanMemo {
   rationale: PlayMonthlyCell;
   together: PlayMonthlyActivity[];
   free_play: PlayMonthlyActivity[];
+  /**
+   * 레이아웃 v0.3.0(ADR-065): AI 후보 8개씩 중 목록마다 정확히 이만큼 문서에 둔다. 옛 계획안은 null ·
+   * 빈 목록이다(생성한 행이 그대로 문서 행). `activity_candidates` 는 후보 이름 칸 id 의 생성 순서.
+   */
+  activity_pick?: number | null;
+  activity_candidates?: string[];
+  /** 문서에 넣지 않은 AI 후보 — 고르기 전에는 고칠 수 없다. */
+  activity_pool?: PlayMonthlyPooledActivity[];
   /** 가운데 「예상되는 놀이 방향」 칸 — 처음엔 주제를 옮겨 둔다. */
   direction: PlayMonthlyCell;
   /** 문서 머리 — 제목 · 「만 n세」 · 반 이름 · 예상 기간. 화면과 한글 파일이 같은 값을 쓴다. */

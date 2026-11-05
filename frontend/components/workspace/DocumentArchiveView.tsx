@@ -462,6 +462,7 @@ export default function DocumentArchiveView({
         .sort((a, b) => (a.target_month < b.target_month ? 1 : -1)),
     );
     const confirmedAnnual = annualOfClass.some((p) => p.status === "CONFIRMED");
+    const otherMonths = [...new Set(monthlyOfClass.map((p) => p.target_month))].sort();
     return (
       <>
         <PeriodNav
@@ -479,6 +480,22 @@ export default function DocumentArchiveView({
           }
         />
         {monthly?.error && <Message error>{monthly.error}</Message>}
+        {/* 이 달이 비었으면 계획안이 있는 달로 바로 간다 — 확정본이 다른 달에 있어 「없다」고 보이지 않게. */}
+        {!items.length && otherMonths.length > 0 && (
+          <Message>
+            이 달에는 월간계획안이 없어요. 있는 달:
+            {otherMonths.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className="ml-2 font-semibold underline underline-offset-2"
+                onClick={() => setMonth(m)}
+              >
+                {monthLabel(m)}
+              </button>
+            ))}
+          </Message>
+        )}
         <PlanGrid
           title="월간 계획안"
           count={items.length}
