@@ -463,15 +463,17 @@ test("멘토: 설정·기관 양식·트렌드봇 화면에 진입한다", async
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "설정", exact: true, level: 1 })).toBeVisible();
+  // 트렌드봇은 「기록 · 계획안」 묶음에 있다. 새로 열면 「우리 원」이 먼저 보인다.
+  const recordsTab = page.getByRole("tab", { name: "기록 · 계획안", exact: true });
+  await recordsTab.click();
   const trends = page.getByRole("checkbox", { name: "트렌드봇 사용", exact: true });
   await expect(trends).not.toBeChecked();
   await trends.click();
   await expect(trends).toBeChecked();
   await page.reload();
+  await recordsTab.click();
   await expect(trends).toBeChecked();
   expect((await api(page, `/api/centers/${user.center_id}/settings`)).trends_enabled).toBe(true);
-  await page.getByRole("button", { name: "초대 코드 만들기", exact: true }).click();
-  await expect(page.getByText(/초대 코드 [A-Z2-9]{10}/)).toBeVisible();
   await page.goto("/templates");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("양식");
   await page.goto("/trends");
@@ -488,12 +490,12 @@ test("멘토: 등록한 반 수정을 시도해도 새 반과 새 아동으로 �
   const user = await enterPilot(page);
   const before = await api(page, `/api/centers/${user.center_id}/classes`);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
-  await page.getByRole("link", { name: "반·담당 반 관리", exact: true }).click();
-  await expect(page.getByLabel("반 이름")).toHaveValue("햇살반");
-  await page.getByLabel("반 이름").fill("바꿀 수 없는 반 이름");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "기존 아동과 기록을 보호" }),
-  ).toBeVisible();
+  // 반 쪽지를 떼어 연다. 등록한 반은 고칠 칸 없이 글로만 보인다. 저장 길은 첫 설정 화면과 같다.
+  await page.getByRole("button", { name: "반 · 담당 반 수정", exact: true }).click();
+  const note = page.getByRole("dialog", { name: "반 · 담당 반" });
+  await expect(note.getByText("햇살반", { exact: true })).toBeVisible();
+  await expect(note.getByRole("textbox", { name: "반 이름" })).toHaveCount(0);
+  await note.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(note).toBeHidden();
   expect(await api(page, `/api/centers/${user.center_id}/classes`)).toEqual(before);
 });
