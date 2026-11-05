@@ -106,6 +106,8 @@ const projectPeriods = (planId: number): PlayProjectAnnualPlan["periods"] =>
       const number = index + 1;
       return {
         row_key: "cand" + number,
+        // 일부 후보(1 · 5 · 9번)는 요청을 반영했다고 둔다 — 메모가 없으면 detail 이 false 로 읽는다.
+        memo_applied: number % 4 === 1,
         play_name: projectCell(
           itemId(planId, periodIndex, number, 1),
           `${period.months[0]}~${period.months[period.months.length - 1]}월 함께하는 놀이 ${number}`,
@@ -185,7 +187,15 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
       status: p.status,
       format: p.format,
       format_version: p.format_version,
-      periods: p.periods.map((period) => ({ ...period, selected: period.selected ?? [] })),
+      periods: p.periods.map((period) => ({
+        ...period,
+        selected: period.selected ?? [],
+        // 서버처럼 메모가 없으면 항상 false. 이 키 전에 저장된 목업에는 없다.
+        candidates: period.candidates.map((c) => ({
+          ...c,
+          memo_applied: Boolean(p.memo) && (c.memo_applied ?? false),
+        })),
+      })),
       memo: p.memo,
       memo_notices: p.memo_notices,
     };

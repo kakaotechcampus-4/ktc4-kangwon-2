@@ -10,6 +10,7 @@ import type {
   PlayMonthlyTimetablePart,
   PlayMonthlyTimetableSize,
 } from "../../lib/api/types";
+import { drillText } from "../../lib/monthly/section-labels";
 import {
   leaf,
   leaves,
@@ -411,10 +412,11 @@ export const orderPlayMonthlyActivities = (
   });
 export const copyPlayMonthlyDrill = (id: number, itemId: string) =>
   change(id, (p, log) => {
-    const from = p.drill_candidates.find((d) => d.cell.item_id === itemId)!.cell;
+    const drill = p.drill_candidates.find((d) => d.cell.item_id === itemId)!;
+    const from = drill.cell;
     const to = p.teacher_inputs.find((t) => t.key === TEACHER_KEYS[0])!.cell;
     const copied = {
-      value: from.value,
+      value: drillText(drill),
       evidence: from.evidence,
       generation: { method: "RULE_ONLY", rule_id: DRILL_COPY, rule_version: p.format_version },
     };

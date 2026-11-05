@@ -42,3 +42,7 @@ export const sectionName = (key: string, label?: string | null): string =>
 
 /** 안전교육 칸 「[주제] - 내용」을 「[주제]」 아래 줄에 내용으로 — 놀이 월간과 같은 모양. */
 export const safetyLines = (text: string) => text.replace(/^(\[[^\]\n]+\]) - /, "$1\n");
+
+/** 넣은 훈련 칸의 글 — 서버처럼 「[주제]」 다음 줄에 문장(안전교육 칸과 같은 모양). */
+export const drillText = (d: { label: string; cell: { value: string } }) =>
+  `[${d.label}]\n${d.cell.value}`;

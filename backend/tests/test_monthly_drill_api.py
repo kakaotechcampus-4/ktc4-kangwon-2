@@ -133,6 +133,10 @@ def test_훈련_칸이_없는_계획은_후보가_비어_있고_복사하면_422
 # ── 복사 ──────────────────────────────────────────────────────────────────
 
 
+def _held(drill) -> str:
+    return f"[{drill['label']}]\n{drill['cell']['value']}"
+
+
 def test_복사하면_칸에_후보_문장이_들어가고_RULE_ONLY_이고_revision_이_오른다(plan):
     candidate = plan["drill_candidates"][0]["cell"]
 
@@ -141,7 +145,8 @@ def test_복사하면_칸에_후보_문장이_들어가고_RULE_ONLY_이고_revi
     assert response.status_code == 200, response.json()
     copied = response.json()
     cell = _drill_cell(copied)
-    assert cell["value"] == candidate["value"]
+    # 「[주제]」 다음 줄에 문장 — Human Decision 2026-11-05(하민).
+    assert cell["value"] == _held(plan["drill_candidates"][0])
     assert cell["generation"]["method"] == "RULE_ONLY"
     assert cell["evidence"] == candidate["evidence"]
     assert copied["revision"] == plan["revision"] + 1
@@ -289,7 +294,7 @@ def test_이력에_훈련_후보_칸_CREATED_와_복사의_copied_from_이_있�
     event = events[0]
     assert (event["scope"], event["item_id"], event["section_key"]) == ("CELL", drill_item, "drill")
     assert event["copied_from"] == candidate_id
-    assert event["value_change"] == {"before": "", "after": candidates[0]["cell"]["value"]}
+    assert event["value_change"] == {"before": "", "after": _held(candidates[0])}
     assert all(
         i["copied_from"] is None for i in _audit(plan["id"]) if i["type"] != "CANDIDATE_COPIED"
     )
@@ -322,7 +327,7 @@ def test_훈련_후보를_복사해도_내보낸_12행은_빈칸이다(seed, mon
     candidate = plan["drill_candidates"][0]["cell"]
     copied = _copy(plan["id"], candidate["item_id"], plan["revision"]).json()
     assert candidate["value"].strip()
-    assert _drill_cell(_get(plan["id"]))["value"] == candidate["value"]
+    assert _drill_cell(_get(plan["id"]))["value"] == _held(plan["drill_candidates"][0])
     assert _confirm(plan["id"], copied["revision"]).status_code == 200
 
     response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")

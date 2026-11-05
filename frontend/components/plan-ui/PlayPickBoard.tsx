@@ -18,7 +18,19 @@ export type PickCandidate = {
   materials: string;
   support: string;
   learning: string[];
+  /** 요청 사항을 반영한 후보 — 작은 표시만 단다. */
+  memoApplied?: boolean;
 };
+
+/** 요청 사항을 반영한 후보의 작은 표시(Human Decision 2026-11-05). 글자 배지 대신 조용한 ✦. */
+export function MemoMark() {
+  return (
+    <span title="요청을 반영한 놀이" className="shrink-0 text-[13px] leading-none text-[#7053a0]">
+      <span aria-hidden="true">✦</span>
+      <span className="sr-only">요청을 반영한 놀이</span>
+    </span>
+  );
+}
 
 const TONE = { a: "#49654f", b: "#5e4b96", c: "#705936" } as const;
 const TINT = { a: "#e8f1ea66", b: "#eee4f466", c: "#f8efdc66" } as const;
@@ -85,6 +97,7 @@ function Row({
           </span>
           <span className="truncate text-[14px] text-ink-soft">{c.materials}</span>
         </span>
+        {c.memoApplied && <MemoMark />}
       </button>
     </li>
   );

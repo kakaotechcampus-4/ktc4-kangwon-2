@@ -850,7 +850,7 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
     { "period_key": "m03_m05", "label": "3월~5월", "months": [3, 4, 5],
       "selected": [],
       "candidates": [
-        { "row_key": "cand1",
+        { "row_key": "cand1", "memo_applied": false,
           "play_name": { "item_id": "item_1", "value": "살랑살랑 봄바람을 느껴요",
                          "evidence": [],
                          "generation": { "method": "RULE_LLM", "rule_id": "play_project.generate",
@@ -884,6 +884,8 @@ periods[].selected             row_key 배열.  필수.  문서 배치 순서, D
                                새 계획안은 [].  후보 배열의 생성 순서는 바꾸지 않는다
 periods[].candidates           정확히 10개.  필수
 candidates[].row_key           cand1 … cand10.  생성 순서이고 뒤에 고르거나 순서를 바꿔도 안 바뀐다
+candidates[].memo_applied      불리언.  필수.  이 후보가 요청 사항(memo)을 반영했는가 — 카드 표시용(Human Decision 2026-11-05).
+                               메모가 없으면 항상 false.  고르기 · 배치에 쓰지 않는다.  play_name 칸의 「요청 사항」 근거에서 읽는다
 candidates[].play_name         Cell.  놀이명
 candidates[].materials         Cell.  지원매체
 candidates[].support_direction Cell.  내용 및 지원 방향 예상하기
@@ -2048,7 +2050,8 @@ item_id            문자열.  §9-1 drill_candidates[].cell.item_id.  형식이
 expected_revision  위와 같다
 ```
 
-- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
+- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸 값은 「[주제 label]」 다음 줄에 문장이다(안전교육 칸과 같은 모양,
+  Human Decision 2026-11-05(하민)). 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
   복사한 뒤 후보와 칸은 서로 따라가지 않는다. 성공하면 revision +1 · 변경 이력에 `CANDIDATE_COPIED`(§9-5) · §9-1 응답.
 - **같은 복사면 저장하지 않는다.** 칸이 이미 그 후보의 복사본이면 200 · 저장된 그대로(revision · 이력 그대로)다.
 - 복사한 칸은 기존 `PUT .../cells/{훈련 칸 item_id}`(§9-3 칸 편집)로 고칠 수 있다. **빈 훈련 칸에 교사가 처음 쓰면 `MANUAL`** 이다
@@ -2811,7 +2814,7 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 | `DELETE .../activities/{item_id}?expected_revision=3` | 없음 | 행을 문서에서 뺀다. 이력에는 남고 id 는 다시 쓰지 않는다. 되돌리기는 없다. `ARRANGEMENT_CHANGED` |
 | `PUT .../activities/order` | `{ "section": "together", "item_ids": ["item_5", "item_3"], "expected_revision": 3 }` | 한 목록(`together` · `free_play`) 안의 행 순서를 바꾼다(Human Decision 2026-11-05, 하민 — 문서 보기에서 끌어 옮기기). `item_ids` 는 그 목록 행의 `activity_id` 를 **빠짐없이 한 번씩** 새 순서대로 — 빠짐 · 중복 · 다른 목록의 행이면 422 `["item_ids"]`. 목록을 건너 옮기지 않는다. 같은 순서면 `200` · 무변경. `ARRANGEMENT_CHANGED`(scope = 목록, 앞뒤 id 순서). 주간 `PUT /api/plans/weekly/{id}/indoor-plays/order` 와 같은 모양이다 |
 | `PUT .../safety-weeks/{week_id}` | `{ "candidate_item_id": "item_41", "expected_revision": 3 }` | 그 주에 둘 안전 후보를 정한다. `null` 이면 비운다. **`candidate_item_id` 키는 필수이고 값만 null 일 수 있다** — 키가 없으면 422. `ARRANGEMENT_CHANGED` |
-| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
+| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거, 값은 「[주제 label]」 다음 줄에 문장 — 2026-11-05). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
 
 ```
 value                 문자열.  필수.  앞뒤 공백을 털고 0~600자.  빈 값을 받는다(칸을 비운다).  600자 근거는 ADR-046 §6

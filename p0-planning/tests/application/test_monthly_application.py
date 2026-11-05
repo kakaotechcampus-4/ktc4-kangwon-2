@@ -3051,7 +3051,10 @@ def test_drill_candidates_generate_a_blank_cell_then_teacher_writes_copies_edits
     copy = CopyMonthlyDrillCandidate(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
     copied = _cell(copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, first.cell.item_id, TEACHER)), "drill")
     event = copied.audit.events[-1]
-    assert (copied.value, copied.evidence, copied.generation) == (first.cell.value, first.cell.evidence, DRILL_COPY_GENERATION)
+    # Human Decision 2026-11-05: the copy keeps the topic — 「[주제]」 then the sentence.
+    assert (copied.value, copied.evidence, copied.generation) == (
+        f"[{first.label}]\n{first.cell.value}", first.cell.evidence, DRILL_COPY_GENERATION
+    )
     assert (event.event_type, event.copied_from) == (AuditEventType.CANDIDATE_COPIED, first.cell.item_id)
     assert event.generation_change.before.method is GenerationMethod.MANUAL
     saves = harness.plans.save_count

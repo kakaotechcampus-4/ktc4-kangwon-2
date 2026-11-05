@@ -406,7 +406,8 @@ test("drill copy fills the fire drill input as RULE_ONLY, the same copy is untou
   const done = await pm.copyPlayMonthlyDrill(id, drill.item_id, rev);
   const cell = done.teacher_inputs[0].cell;
   assert.equal(done.revision, rev + 1);
-  assert.equal(cell.value, drill.value);
+  // 서버처럼 「[주제]」 다음 줄에 문장(Human Decision 2026-11-05).
+  assert.equal(cell.value, `[${plan.drill_candidates[0].label}]\n${drill.value}`);
   assert.deepEqual(cell.evidence, drill.evidence);
   assert.deepEqual(cell.generation, {
     method: "RULE_ONLY",
@@ -438,7 +439,7 @@ test("copying a different candidate with the same sentence is a new copy (revisi
   const edited = await pm.editPlayMonthlyCell(id, b.cell.item_id, a.cell.value, first.revision);
   const second = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, edited.revision);
   assert.deepEqual([first.revision, edited.revision, second.revision], [rev + 1, rev + 2, rev + 3]);
-  assert.equal(second.teacher_inputs[0].cell.value, a.cell.value);
+  assert.equal(second.teacher_inputs[0].cell.value, `[${b.label}]\n${a.cell.value}`);
   assert.equal("copied_from" in second, false);
   const again = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, second.revision);
   assert.equal(again.revision, second.revision);

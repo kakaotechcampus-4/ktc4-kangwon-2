@@ -17,7 +17,8 @@
 - Safety (M2-D08, I-3): each week holds at most one kept candidate; a candidate may be reused
   across weeks; ``None`` clears the week. Rows and placement are ARRANGEMENT_CHANGED events.
 - Drill (M2-D17, I-4): a teacher copies one of the plan's drill candidates into the drill cell.
-  The cell takes the candidate's value and CURRICULUM evidence as it is at that moment and
+  The cell takes 「[topic label]」, a line break and the candidate's sentence (2026-11-05), and its
+  CURRICULUM evidence, as they are at that moment, and
   becomes RULE_ONLY (``play_monthly.drill_copy``); a CANDIDATE_COPIED event names the source.
   A later edit of either cell never changes the other, and an edit keeps RULE_ONLY.
 - Confirm (M2-D09 · I-6) needs a theme, a rationale, and in each play section at least one row,
@@ -45,6 +46,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 
+from ..domain.drill_topic_reference import drill_cell_value
 from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.play_monthly_plan import (
@@ -394,16 +396,18 @@ class CopyPlayMonthlyDrillCandidate:
         plan = _require_plan(self._plans, command.plan_id)
         plan.ensure_mutable("copy")
         actor_id = _require_actor(command.actor_id)
-        candidate = next(
-            (d.cell for d in plan.drill_candidates if d.cell.item_id == command.candidate_item_id), None
+        drill = next(
+            (d for d in plan.drill_candidates if d.cell.item_id == command.candidate_item_id), None
         )
-        if not isinstance(command.candidate_item_id, ItemId) or candidate is None:
+        if not isinstance(command.candidate_item_id, ItemId) or drill is None:
             raise PlayMonthlyLifecycleError(
                 "play_monthly_drill_candidate_not_found",
                 f"Drill candidate not found: {command.candidate_item_id}",
             )
+        candidate = drill.cell
         if not candidate.value.strip():
             raise PlayMonthlyLifecycleError("play_monthly_drill_candidate_blank", "The drill candidate is blank")
+        value = drill_cell_value(drill.label, candidate.value)
         cell = next(t for t in plan.teacher_inputs if t.semantic_key == DRILL_CELL_KEY)
         generation = plan.drill_copy_generation
         source = next(
@@ -412,7 +416,7 @@ class CopyPlayMonthlyDrillCandidate:
         )
         # Another candidate with the same sentence is still a new source, so it is recorded.
         if (cell.value, cell.evidence, cell.generation, source) == (
-            candidate.value, candidate.evidence, generation, candidate.item_id,
+            value, candidate.evidence, generation, candidate.item_id,
         ):
             return plan  # the cell already holds this copy
         event = AuditEvent(
@@ -421,7 +425,7 @@ class CopyPlayMonthlyDrillCandidate:
             plan_id=plan.plan_id,
             item_id=cell.item_id,
             actor_id=actor_id,
-            value_change=ValueChange(cell.value, candidate.value),
+            value_change=ValueChange(cell.value, value),
             generation_change=(
                 None if cell.generation is None else GenerationMethodChange(cell.generation, generation)
             ),
@@ -430,7 +434,7 @@ class CopyPlayMonthlyDrillCandidate:
         updated = plan.replace_cell(
             replace(
                 cell,
-                value=candidate.value,
+                value=value,
                 evidence=candidate.evidence,
                 generation=generation,
                 audit=cell.audit.append(event),

@@ -36,6 +36,7 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     RemovePlayMonthlyActivityCommand,
     play_monthly_notices,
 )
+from ssuksak.planning.domain.drill_topic_reference import drill_cell_value
 from ssuksak.planning.domain.errors import InvalidDomainValueError, InvalidStateTransitionError
 from ssuksak.planning.domain.identifiers import ActorId, ItemId, PlanId
 from ssuksak.planning.domain.plan import PlanStatus
@@ -643,6 +644,11 @@ def _drill(plan):
     return _teacher_input(plan, DRILL_CELL_KEY)
 
 
+def _held(candidate, sentence=None):
+    """Human Decision 2026-11-05: the copy keeps the topic — 「[주제]」 then the sentence."""
+    return drill_cell_value(candidate.label, candidate.cell.value if sentence is None else sentence)
+
+
 def test_a_copied_candidate_is_a_rule_only_snapshot_that_later_edits_never_link():
     plan, plans, edit, confirm = _draft()
     candidate = plan.drill_candidates[2]
@@ -654,13 +660,13 @@ def test_a_copied_candidate_is_a_rule_only_snapshot_that_later_edits_never_link(
         GenerationMethod.RULE_ONLY, rule_id="play_monthly.drill_copy", rule_version=plan.layout.layout_version
     )
     assert (cell.value, cell.evidence, cell.generation) == (
-        candidate.cell.value, candidate.cell.evidence, copy_generation,
+        _held(candidate), candidate.cell.evidence, copy_generation,
     )
     event = cell.audit.events[-1]
     assert (event.event_type, event.actor_id, event.copied_from) == (
         AuditEventType.CANDIDATE_COPIED, TEACHER, candidate.cell.item_id,
     )
-    assert event.value_change == ValueChange("", candidate.cell.value) and event.generation_change is None
+    assert event.value_change == ValueChange("", _held(candidate)) and event.generation_change is None
     assert copied.drill_candidates == plan.drill_candidates
 
     source_edited = _edit(edit, copied, candidate.cell, "후보를 고친 문장")
@@ -684,12 +690,12 @@ def test_copying_over_a_written_cell_records_the_method_change_and_the_new_sourc
 
     events = [e for e in _drill(replaced).audit if e.event_type is AuditEventType.CANDIDATE_COPIED]
     assert [e.copied_from for e in events] == [first.cell.item_id, second.cell.item_id]
-    assert events[0].value_change == ValueChange("교사가 직접 쓴 훈련", first.cell.value)
+    assert events[0].value_change == ValueChange("교사가 직접 쓴 훈련", _held(first))
     assert (events[0].generation_change.before, events[0].generation_change.after) == (
         manual, replaced.drill_copy_generation,
     )
-    assert events[1].value_change == ValueChange(first.cell.value, second.cell.value)
-    assert _drill(replaced).value == second.cell.value
+    assert events[1].value_change == ValueChange(_held(first), _held(second))
+    assert _drill(replaced).value == _held(second)
 
 
 def test_copying_the_held_candidate_again_writes_nothing():
@@ -777,5 +783,5 @@ def test_another_candidate_with_the_same_sentence_is_still_recorded_as_the_new_s
 
     event = _drill(switched).audit.events[-1]
     assert (event.event_type, event.copied_from) == (AuditEventType.CANDIDATE_COPIED, second.cell.item_id)
-    assert event.value_change == ValueChange(first.cell.value, first.cell.value)
+    assert event.value_change == ValueChange(_held(first), _held(second, first.cell.value))
     assert plans.save_count == saves + 1
