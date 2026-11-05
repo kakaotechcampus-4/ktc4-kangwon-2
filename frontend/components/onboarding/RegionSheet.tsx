@@ -99,7 +99,8 @@ export default function RegionSheet({
           </svg>
         </button>
       </div>
-      {province && <p className="-mt-2 mb-3.5 px-6 text-[14px] text-ink-soft">{province}</p>}
+      {/* 고른 시·도는 눈에 안 보이게 두고 화면 읽기 프로그램에만 알린다. */}
+      {province && <p className="sr-only">{province}</p>}
       {/* 제목과 아래 이름 목록을 가르는 분필 점선 */}
       <div aria-hidden="true" className="mx-6 mb-3 border-t-2 border-dashed border-line" />
       <ul
