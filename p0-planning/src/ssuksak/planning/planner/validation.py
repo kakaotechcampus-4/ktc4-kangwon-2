@@ -37,6 +37,7 @@ from .contracts import (
     ProposedSectionValue,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from .indoor_alternative import INDOOR_REQUIRED, INDOOR_ALTERNATIVE_TAG
 from .weekly import unsupported_facts
 
 
@@ -51,6 +52,7 @@ class ProposalValidationCode(str, Enum):
     SECTION_PLACEMENT_MISMATCH = "SECTION_PLACEMENT_MISMATCH"
     REQUIRED_SECTION_MISSING = "REQUIRED_SECTION_MISSING"
     UNRESOLVED_NOT_ALLOWED = "UNRESOLVED_NOT_ALLOWED"
+    INDOOR_ALTERNATIVE_REQUIRED = INDOOR_REQUIRED
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
     WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
@@ -296,11 +298,12 @@ def _canonical_values(
 
 # What each LLM-repairable finding needs to change in the cell it names (from the
 # validator branch that raises it). Every other field, and every cell no finding
-# names, keeps its pre-repair value; reference_id and unresolved are never repaired.
+# names, keeps its pre-repair value. Only the indoor-required finding can fill unresolved.
 # A code without an entry authorizes nothing, so its finding survives and fails closed.
 _VALUE = frozenset({"value"})
 _VALUE_AND_REFS = frozenset({"value", "grounding_refs"})
 REPAIR_MUTABLE_FIELDS: dict[ProposalValidationCode, frozenset[str]] = {
+    ProposalValidationCode.INDOOR_ALTERNATIVE_REQUIRED: frozenset({"value", "grounding_refs", "unresolved"}),
     ProposalValidationCode.SOURCE_TEXT_COPY: _VALUE,
     ProposalValidationCode.TEXT_POLICY: _VALUE,
     ProposalValidationCode.SAFETY_MULTIPLE_SENTENCES: _VALUE,
@@ -321,6 +324,8 @@ def repair_targets(
     """
     authorized: dict[tuple[str | None, str], set[str]] = {}
     for issue in issues:
+        if issue.code is ProposalValidationCode.INDOOR_ALTERNATIVE_REQUIRED and issue.field != "indoor_alternative":
+            continue
         authorized.setdefault((issue.week_id, issue.field), set()).update(REPAIR_MUTABLE_FIELDS.get(issue.code, ()))
     return tuple(
         (week_id, section_key, tuple(sorted(fields)))
@@ -650,6 +655,9 @@ def validate_monthly_proposal_grounding(
                     reason=problem.reason.value, expected=problem.expected, actual=problem.actual,
                 )
         if value.unresolved:
+            if value.section_key == "indoor_alternative" and INDOOR_ALTERNATIVE_TAG in request.prompt_version:
+                fail(ProposalValidationCode.INDOOR_ALTERNATIVE_REQUIRED, value.section_key, week_id=week_id)
+                continue
             if (
                 value.section_key not in {"safety_education", "indoor_alternative"}
                 or section.empty_value_policy

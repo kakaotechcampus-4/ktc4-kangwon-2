@@ -22,13 +22,14 @@ from .models import (
     ReferenceCandidate,
     RetrievalRequest,
 )
-from .ranking import apply_source_diversity, balance_by_age, fill_subtheme_gaps, ngrams, rank_records
+from .ranking import apply_source_diversity, balance_by_age, fill_subtheme_gaps, ngrams, rank_records, prefer_explicit_indoor_methods
 
 RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.3.0"
 # Versioned apart so packets without safety placement keep their lineage.
 SAFETY_RETRIEVAL_VERSION = "monthly-safety-retrieval-v0.4.0"
 # Tagged only on requests carrying annual subthemes with the goals block active; others keep v0.3.0.
 GOALS_SUBTHEME_FILL_TAG = "+goals-subtheme-fill-v1"
+INDOOR_METHOD_RETRIEVAL_TAG = "+indoor-method-v1"
 DEFAULT_TOP_K = {
     BlockName.INSTITUTION_MONTHLY_EVIDENCE: 12,
     BlockName.AGE_CONTRAST_EVIDENCE: 6,
@@ -112,6 +113,8 @@ class MonthlyEvidenceRetriever:
             query_grams=query_grams,
             allowed_tiers=tiers,
         )
+        if name is BlockName.INDOOR_ALTERNATIVE_EVIDENCE:
+            ranked = prefer_explicit_indoor_methods(ranked)
         ranked = balance_by_age(ranked, request.ages)
         limit = self._top_k[name]
         cap = self._cap if cap is None else cap
@@ -345,7 +348,7 @@ class MonthlyEvidenceRetriever:
                 GOALS_SUBTHEME_FILL_TAG
                 if request.subthemes and SemanticClass.GOALS in request.grounding_classes
                 else ""
-            ),
+            ) + (INDOOR_METHOD_RETRIEVAL_TAG if SemanticClass.INDOOR_ALTERNATIVE in request.grounding_classes else ""),
             activity_catalog_id=self._catalog.catalog_id if self._catalog else "",
             activity_catalog_version=self._catalog.catalog_version if self._catalog else "",
             evidence_classification_version=(

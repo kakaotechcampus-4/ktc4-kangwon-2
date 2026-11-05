@@ -539,6 +539,8 @@ def llm_context(
             store, classification_repository.get_classification(), parent, period.week_id, keys,
             focus_aware=linked, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
         )
+    if linked and any(s.section_key == "indoor_alternative" for s in snapshot.sections) and not classified.get("indoor_alternative"):
+        raise WeeklyApplicationError("weekly_reference_context_unavailable", "Eligible indoor method evidence is unavailable")
     daily_life = None
     if linked and daily_life_loader is not None:
         try:
@@ -576,9 +578,11 @@ def llm_cell_sources(
                 catalog.catalog_version, display_name=proposed.value,
             ),)
     elif key in context.classified:
-        # No parent counterpart (§7): only the chosen institution records.
+        # Indoor adaptations use the parent's experience and the institution's method separately.
         labels = {item.record_id: item.record.source_label for item in context.classified[key]}
-        cited = ()
+        cited = tuple(cell for source_key in (OUTDOOR_KEY, "indoor_alternative", "focus")
+                      if (cell := _parent_cell(parent, source_key, context.request.week_id)) is not None
+                      and cell.value.strip()) if key == "indoor_alternative" and context.request.reference_wiring else ()
         extra = tuple(
             EvidenceSource(
                 EvidenceSourceType.INSTITUTION_SAMPLE, ref, context.store_version, display_name=labels[ref]
@@ -686,6 +690,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
                 sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
                 by_activity_type=activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play",
                 preferred_refs=preferred,
+                explicit_indoor_methods=focus_aware and key == "indoor_alternative",
             ) if item.record.text
         )
         if items:

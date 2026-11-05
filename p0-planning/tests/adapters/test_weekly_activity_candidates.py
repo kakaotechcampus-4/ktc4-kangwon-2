@@ -125,7 +125,9 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version():
     for request in provider.requests:
         assert "+monthly-linked-v7" in request.prompt_version
         assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
-        assert LINKED_WRITING_GUIDANCE in request.system_prompt
+        assert LINKED_WRITING_GUIDANCE.replace(
+            "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+        ) in request.system_prompt
 
 
 def test_candidate_generation_and_repair_use_streaming_with_an_output_cap():

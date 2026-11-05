@@ -1,5 +1,7 @@
 # 06 · AI 품질
 
+- 실내대체는 방법이 명시된 적격 근거를 우선하고, 새 월간·연결형 주간의 빈 응답을 한 번 수리하며 부모 맥락과 방법 근거를 구분한다 — [ADR-050](../adr/050-monthly-v1-indoor-alternative.md) · `p0-planning/tests/application/test_monthly_application.py` · `p0-planning/tests/adapters/test_weekly_composition.py`. 실제 문장 품질은 별도 실측 전이다.
+
 **멘토 심사 기준(기술·개발 중심) ⑥ AI 품질 점검·개선 노력 — 5점**
 
 > 평가 기준·테스트셋으로 AI 응답 품질을 점검하고, 실패를 분석해 고친 기록이 있는가

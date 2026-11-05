@@ -11,6 +11,8 @@ from ..domain.monthly_template import RepeatBy, TemplateSection
 from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
+from ..domain.errors import InvalidDomainValueError
+from .indoor_alternative import INDOOR_ADAPTATION_GUIDANCE
 from .contracts import (
     MONTHLY_CONTEXT_PROMPT_VERSION,
     MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
@@ -111,10 +113,9 @@ same week's outdoor_play experience on a day the class stays inside; write the
 two cells of a week together as a pair. Do not write general indoor free play.
 Do not state that particular materials or spaces are available, and do not
 invent weather or claim that the activity was carried out.
-When no supplied grounding continues that week's outdoor_play, return that week's
-indoor_alternative with value "", unresolved true and no grounding_refs; do not
-borrow an unrelated activity or add a subject the cited text does not have.
-"""
+Write a short activity name, not a lesson script. Return unresolved=false and
+cite the supplied indoor evidence for the method used, including adaptations.
+""" + INDOOR_ADAPTATION_GUIDANCE
 
 # Appended only when the Context Packet carries safety_candidates (MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG).
 SAFETY_CANDIDATES_PROMPT = """safety_candidates lists this month's safety education candidates; a teacher
@@ -246,7 +247,7 @@ def generation_targets(
             # Only age-verifiable evidence; the schema enum enforces it.
             allowed = tuple(ref for ref in allowed if evidence[ref].age_match in AGE_VERIFIABLE_TIERS)
         if section.section_key == "indoor_alternative" and not allowed:
-            continue  # D-5: no evidence leaves its cells empty for the teacher
+            raise InvalidDomainValueError("Indoor alternatives need eligible indoor method evidence")
         if section.section_key == "safety_education":
             allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
             allowed += tuple(sorted(official_safety_refs(packet)))
@@ -553,6 +554,8 @@ def build_monthly_repair_request(
             ]
         },
     }
+    if any("unresolved" in fields for _, _, fields in targets):
+        body["response_contract"]["patches"][0]["unresolved"] = False
     base = request.prompt_version.split("+", 1)[0]  # tags keep their order after the repair version
     contextual = base in (MONTHLY_CONTEXT_PROMPT_VERSION, MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION)
     return replace(
@@ -563,7 +566,10 @@ def build_monthly_repair_request(
             MONTHLY_SAFETY_PROMPT_VERSION: MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
         }.get(base, MONTHLY_REPAIR_PROMPT_VERSION)
         + request.prompt_version[len(base):],
-        system_prompt=(_v1_goals(REPAIR_HEADER) if contextual else REPAIR_HEADER) + request.system_prompt,
+        system_prompt=(_v1_goals(REPAIR_HEADER) if contextual else REPAIR_HEADER) + request.system_prompt
+        + ("\nINDOOR_ALTERNATIVE_REQUIRED: fill only the named indoor cell, setting unresolved=false, "
+           "a concrete value and its allowed method grounding_refs.\n"
+           if any("unresolved" in fields for _, _, fields in targets) else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,
         memo_addresses=None,  # patches only; memo_applied came with the initial proposal

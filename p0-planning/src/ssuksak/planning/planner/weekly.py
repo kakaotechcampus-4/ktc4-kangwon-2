@@ -30,6 +30,7 @@ from .contracts import (
     is_compatible_monthly_model,
 )
 from .parser import _STRING, _object_schema, _refs_schema
+from .indoor_alternative import INDOOR_ADAPTATION_GUIDANCE, INDOOR_ALTERNATIVE_TAG, INDOOR_REQUIRED
 from .teacher_memo import (
     TEACHER_MEMO_PROMPT,
     TEACHER_MEMO_PROMPT_TAG,
@@ -129,6 +130,7 @@ class WeeklyIssueCode(str, Enum):
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
     WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
+    INDOOR_ALTERNATIVE_REQUIRED = INDOOR_REQUIRED
     REFERENCE_FORBIDDEN = "REFERENCE_FORBIDDEN"
     UNKNOWN_REFERENCE_ID = "UNKNOWN_REFERENCE_ID"
     REFERENCE_REQUIRED = "REFERENCE_REQUIRED"
@@ -147,6 +149,7 @@ REPAIRABLE = frozenset({
     WeeklyIssueCode.WRONG_SOURCE_GROUNDING,
     WeeklyIssueCode.UNSUPPORTED_FACT,
     WeeklyIssueCode.DAY_VALUE_REPEATED,
+    WeeklyIssueCode.INDOOR_ALTERNATIVE_REQUIRED,
 })
 
 
@@ -352,12 +355,25 @@ def build_weekly_request(
         body["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
         allowed += " " + teacher_memo  # the teacher's own facts (Q2), like teacher_facts
     linked = (REFERENCE_WIRING_SUFFIX if reference_wiring else "") + candidates
+    indoor = reference_wiring and any(t.section_key == "indoor_alternative" for t in targets)
+    if indoor:
+        linked += INDOOR_ALTERNATIVE_TAG
+        body["indoor_adaptation_policy"] = INDOOR_ALTERNATIVE_TAG.lstrip("+")
     if memo is not None:
         linked += TEACHER_MEMO_PROMPT_TAG
     system_prompt = SYSTEM_PROMPT
     if reference_wiring:
         system_prompt = system_prompt.replace(OUTDOOR_REFERENCE_INSTRUCTION, LINKED_OUTDOOR_INSTRUCTION)
         system_prompt += NATURAL_PLAY_GUIDANCE + LINKED_WRITING_GUIDANCE
+    if indoor:
+        system_prompt = system_prompt.replace(
+            "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+        )
+        system_prompt += INDOOR_ADAPTATION_GUIDANCE + (
+            " 실내대체 value는 '활동명: 설명'으로 쓴다. 설명은 합니다체 한 문장으로 "
+            "실내에서 무엇을 어떻게 하는지 밝히며 실제 근거에 있는 방법을 보존한다. "
+            "parent의 같은 주 indoor_alternative를 우선하되 모호한 '표현하기'만 반복하지 않는다. "
+        )
     if candidates:
         system_prompt += (
             " activity_type가 있는 target은 교사가 고를 한 주 활동 후보이며 요일에 배치하지 않는다. "
@@ -422,6 +438,8 @@ def cell_request(
     contextual = "curriculum_context" in body
     suffix = DAY_CELLS_SUFFIX if request.prompt_version.endswith(DAY_CELLS_SUFFIX) else ""
     linked = REFERENCE_WIRING_SUFFIX if request.reference_wiring else ""
+    if INDOOR_ALTERNATIVE_TAG in request.prompt_version:
+        linked += INDOOR_ALTERNATIVE_TAG
     memo = None
     if request.memo_addresses is not None:
         memo = (weekly_memo_address(section_key, day),)
@@ -501,7 +519,9 @@ def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
         branches.append(_object_schema({
             **fixed,
             "value": _STRING,
-            "unresolved": {"type": "boolean", "enum": [False]} if key == THEME_KEY else {"type": "boolean"},
+            "unresolved": {"type": "boolean", "enum": [False]}
+            if key == THEME_KEY or (key == "indoor_alternative" and INDOOR_ALTERNATIVE_TAG in request.prompt_version)
+            else {"type": "boolean"},
             "grounding_refs": refs,
             "reference_id": {"type": "null"},
         }))
@@ -700,6 +720,10 @@ def _value_issues(
 ) -> list[WeeklyIssue]:
     key = v.section_key
     issues: list[WeeklyIssue] = []
+    if key == "indoor_alternative" and INDOOR_ALTERNATIVE_TAG in request.prompt_version:
+        name, separator, description = v.value.partition(":")
+        if v.unresolved or not name.strip() or not separator or not description.strip():
+            return [WeeklyIssue(WeeklyIssueCode.INDOOR_ALTERNATIVE_REQUIRED, key)]
     if v.unresolved:
         if key == THEME_KEY:
             issues.append(WeeklyIssue(WeeklyIssueCode.THEME_REQUIRED, key))

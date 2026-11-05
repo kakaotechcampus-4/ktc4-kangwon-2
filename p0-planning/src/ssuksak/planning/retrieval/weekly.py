@@ -22,6 +22,7 @@ from .ranking import (
     balance_by_age,
     ngrams,
     rank_records,
+    prefer_explicit_indoor_methods,
 )
 
 WEEKLY_SECTION_TOP_K = 10  # the Monthly section block default
@@ -73,6 +74,7 @@ def weekly_section_evidence(
     sibling_focuses: tuple[str, ...] = (),
     by_activity_type: bool = False,
     preferred_refs: tuple[str, ...] = (),
+    explicit_indoor_methods: bool = False,
 ) -> tuple[RetrievedEvidence, ...]:
     """query_text: the parent theme and this week's focus, for the Korean 2-gram score."""
     classification.require_bound_to(store.content_sha256)
@@ -89,6 +91,8 @@ def weekly_section_evidence(
     ranked = rank_records(
         records, requested_ages=ages, query_grams=grams, allowed_tiers=AGE_VERIFIABLE_TIERS
     )
+    if explicit_indoor_methods and weekly_class is WeeklySemanticClass.INDOOR_ALTERNATIVE:
+        ranked = prefer_explicit_indoor_methods(ranked)
     ordered = balance_by_age(ranked, ages)
     # Keep a valid parent citation ahead of the top-k cutoff; never bypass the filters above.
     if preferred_refs:

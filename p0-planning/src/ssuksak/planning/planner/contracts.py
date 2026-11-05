@@ -21,6 +21,7 @@ from ..domain.monthly_template_snapshot import TemplateSnapshot
 from ..domain.teacher_memo import MemoNotice, SafetyRequest
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
+from .indoor_alternative import INDOOR_ALTERNATIVE_TAG
 
 MONTHLY_PROMPT_VERSION = "monthly-planner-v18"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v10"
@@ -37,7 +38,7 @@ MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v21"
 MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v21"
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
-MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v2"  # v2: a week may be unresolved
+MONTHLY_INDOOR_PROMPT_TAG = INDOOR_ALTERNATIVE_TAG
 # Appended when the Context Packet carries the eight safety candidates (S-1).
 MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v4"
 # A candidate is a month_sections entry keyed safety_education.<slot>; Template
