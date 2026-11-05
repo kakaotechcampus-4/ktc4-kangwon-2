@@ -19,7 +19,7 @@ const iconButton =
  * 지역 고르개 — 칠판 위에 뜨는 작은 칠판, 이름은 분필로 적은 글씨. 휴대폰에서는 아래에서 올라오는 판,
  * 데스크톱에서는 나무테를 두른 가운데 판이다.
  * 시·도를 고르면 같은 자리의 목록이 그 시·도의 시·군·구로 바뀐다. 세종은 시·군·구가 없어 바로 끝난다.
- * 위 검색칸에 이름이나 초성(예: ㅊㅊ)을 치면 목록이 걸러진다. 한 개만 남으면 Enter 로 고른다.
+ * 판 크기는 늘 같다(걸러서 이름이 줄어도 안 변한다). 위 검색칸에 이름이나 초성(예: ㅊㅊ)을 치면 목록이 걸러진다. 한 개만 남으면 Enter 로 고른다.
  * 네이티브 `<dialog>` 라서 포커스를 가두고 Esc 로 닫히며, 닫으면 눌렀던 단추로 포커스가 돌아간다.
  */
 export default function RegionSheet({
@@ -62,10 +62,13 @@ export default function RegionSheet({
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-labelledby="region-sheet-title"
-      className="chalkboard m-0 mt-auto max-h-[80vh] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
+      className="chalkboard m-0 mt-auto h-[min(640px,85vh)] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink open:flex open:flex-col backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
     >
-      <div aria-hidden="true" className="mx-auto mt-3 h-1 w-10 rounded-sm bg-line sm:hidden" />
-      <div className="flex items-center gap-2 px-6 pb-4 pt-3 sm:pt-5">
+      <div
+        aria-hidden="true"
+        className="mx-auto mt-3 h-1 w-10 flex-none rounded-sm bg-line sm:hidden"
+      />
+      <div className="flex flex-none items-center gap-2 px-6 pb-4 pt-3 sm:pt-5">
         {province && (
           <button
             type="button"
@@ -117,8 +120,11 @@ export default function RegionSheet({
       {/* 고른 시·도는 눈에 안 보이게 두고 화면 읽기 프로그램에만 알린다. */}
       {province && <p className="sr-only">{province}</p>}
       {/* 제목과 아래 이름 목록을 가르는 분필 점선 */}
-      <div aria-hidden="true" className="mx-6 mb-3 border-t-2 border-dashed border-line" />
-      <div className="px-6 pb-3">
+      <div
+        aria-hidden="true"
+        className="mx-6 mb-3 flex-none border-t-2 border-dashed border-line"
+      />
+      <div className="flex-none px-6 pb-3">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -133,23 +139,26 @@ export default function RegionSheet({
           className="w-full border-b-2 border-line bg-transparent px-1 pb-2 pt-1 text-[17px] text-ink placeholder:text-ink-soft focus:border-primary focus:outline-none"
         />
       </div>
-      <ul
-        className={`grid max-h-[60vh] gap-x-4 gap-y-1 overflow-y-auto px-6 pb-2 pt-1 ${province ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
-        style={{ wordBreak: "keep-all" }}
-      >
-        {shown.map((e) => (
-          <li key={e.key}>
-            <button type="button" className={item} onClick={e.pick}>
-              {e.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {shown.length === 0 && (
-        <p role="status" className="px-6 pb-2 text-[15px] text-ink-soft">
-          찾는 이름이 없어요. 다른 글자로 찾아보세요.
-        </p>
-      )}
+      {/* 판 크기는 고정이다 — 걸러서 이름이 줄어도 판이 오르내리지 않고, 넘치면 이 안에서만 스크롤된다. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <ul
+          className={`grid gap-x-4 gap-y-1 px-6 pb-2 pt-1 ${province ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
+          style={{ wordBreak: "keep-all" }}
+        >
+          {shown.map((e) => (
+            <li key={e.key}>
+              <button type="button" className={item} onClick={e.pick}>
+                {e.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {shown.length === 0 && (
+          <p role="status" className="px-6 pb-2 text-[15px] text-ink-soft">
+            찾는 이름이 없어요. 다른 글자로 찾아보세요.
+          </p>
+        )}
+      </div>
     </dialog>
   );
 }
