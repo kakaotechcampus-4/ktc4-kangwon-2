@@ -172,9 +172,26 @@ test("안전교육: [넣기]는 고른 주에 그 후보를, [빼기]는 null �
     (n) => act("place")(n) && n.props["aria-label"].endsWith("법정 3"),
   );
   click(h.render(C, { plan: plan(), weekId: "w1", onPlace, disabled: false }), act("clear"));
+  // 넣은 안전교육(놀이 고르기의 「고른 놀이」처럼): 주마다 한 칸, 넣은 주는 [영역] · ✕ 로 뺀다.
+  const placed = h.render(C, {
+    plan: plan({
+      safety_candidates: [
+        { kind: "STATUTORY", category_id: "traffic_safety", cell: cell("s2", "건너요") },
+      ],
+    }),
+    weekId: "w2",
+    onPlace,
+    disabled: false,
+  });
+  const list = all(placed).find((n) => n.props?.["aria-label"] === "넣은 안전교육");
+  assert.equal(all(list).filter((n) => n.type === "li").length, 3);
+  assert.ok(text(list).includes("[교통안전]건너요"));
+  assert.equal(all(list).filter(act("unplace")).length, 2);
+  click(placed, (n) => act("unplace")(n) && n.props["aria-label"].startsWith("3주"));
   assert.deepEqual(calls, [
     ["w2", "s3"],
     ["w1", null],
+    ["w3", null],
   ]);
   const tree = h.render(C, { plan: plan(), weekId: "w1", onPlace() {}, disabled: true });
   assert.ok(

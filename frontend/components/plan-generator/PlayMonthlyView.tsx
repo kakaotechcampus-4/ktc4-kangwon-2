@@ -22,14 +22,17 @@ import {
 import {
   CELL_MIN_WIDTH,
   MAX_DEPTH,
+  RATIO_RANGE,
   leaves,
   locate,
   narrowest,
   splitLeaf,
   timetablePlace,
+  tooNarrow,
+  withRatio,
 } from "@/lib/plan-generator/playMonthlyTimetable";
 import PlayCellEditor from "./PlayCellEditor";
-import PlayMonthlyConfirm, { BlankRows, PanelOverview } from "./PlayMonthlyConfirm";
+import PlayMonthlyConfirm, { BlankRows } from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
@@ -280,6 +283,20 @@ function PlayMonthlyBody({
     setAsking(false);
     if (save.removeCell(selected!)) setSelected(leaves(sibling)[0].item_id);
   };
+  // 글이 있거나 되돌릴 수 없으면(형제가 나뉜 묶음) 한 번 묻는다.
+  const askRemoveSlot = () => {
+    const text = cellValue(plan, selected!)?.trim();
+    if (text || removal(plan, selected!) === null) setAsking(true);
+    else removeSlot();
+  };
+  // 안전교육 칸 끌어 옮기기 — 두 주의 배치를 맞바꾼다(빈 주로 옮기면 원래 주는 빈다). 되돌리기는 두 번.
+  const moveSafety = (from: string, to: string) => {
+    const at = (weekId: string) =>
+      plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id ?? null;
+    const [moved, other] = [at(from), at(to)];
+    save.placeSafety(to, moved);
+    save.placeSafety(from, other);
+  };
   const through = (direction: "undo" | "redo") => {
     if (!save[direction]()) return;
     setLive({});
@@ -327,8 +344,7 @@ function PlayMonthlyBody({
       ["health", "건강", [plan.health.cell.item_id]],
       ["nutrition", "영양", [plan.nutrition.cell.item_id]],
     ] as const
-  ).map(([key, label, ids]) => ({ key, label, all: ids.length, ids: ids.filter(empty) }));
-  const total = groups.reduce((n, g) => n + g.all, 0);
+  ).map(([key, label, ids]) => ({ key, label, ids: ids.filter(empty) }));
   const blankRows = groups
     .filter((g) => g.ids.length)
     .map(({ key, label, ids }) => ({
@@ -344,13 +360,7 @@ function PlayMonthlyBody({
 
   const editTab = (
     <div className="flex flex-col gap-4">
-      {!selected && (
-        <PanelOverview
-          filled={total - blankRows.reduce((n, r) => n + r.count, 0)}
-          total={total}
-          rows={blankRows}
-        />
-      )}
+      {!selected && <p className="m-0 text-sm text-[#5c5243]">문서에서 고칠 칸을 눌러 주세요.</p>}
       {selected && (
         <h2 className="m-0 text-[20px] font-bold leading-tight">
           {/* 놀이 행은 문서 순서(함께 하는 활동 위→아래, 그다음 자유놀이)로 「n 번째 칸」. */}
@@ -404,42 +414,16 @@ function PlayMonthlyBody({
         <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
       )}
       {slot && (
-        <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
-          {/* 주간 대·소집단 칸 나누기와 같은 말 · 같은 버튼(WeeklyEditor). */}
-          <div role="group" aria-label="칸 나누기" className="flex flex-wrap gap-2">
-            {(["VERTICAL", "HORIZONTAL"] as const).map((axis) => {
-              const day = plan.special_activity[slot.day];
-              const width = plan.special_activity_size.column_widths[slot.day];
-              const cramped =
-                axis === "HORIZONTAL" &&
-                narrowest(splitLeaf(day, selected!, axis, "", slot.path.at(-1)!.cell!), width) <
-                  CELL_MIN_WIDTH;
-              return (
-                <button
-                  key={axis}
-                  type="button"
-                  className={BUTTON.outline}
-                  disabled={locked || slot.path.length - 1 >= MAX_DEPTH || cramped}
-                  onClick={() => save.splitCell(selected!, axis)}
-                >
-                  {axis === "VERTICAL" ? "위아래로 나누기" : "좌우로 나누기"}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className={BUTTON.quiet}
-              disabled={locked || slot.path.length === 1}
-              onClick={() => {
-                // 글이 있거나 되돌릴 수 없으면(형제가 나뉜 묶음) 한 번 묻는다.
-                const text = cellValue(plan, selected!)?.trim();
-                if (text || removal(plan, selected!) === null) setAsking(true);
-                else removeSlot();
-              }}
-            >
-              이 칸 빼기
-            </button>
-          </div>
+        <div className="flex flex-col gap-3 border-t border-[#efeae2] pt-4">
+          <SlotTools
+            plan={plan}
+            itemId={selected!}
+            slot={slot}
+            disabled={locked}
+            onSplit={(axis) => save.splitCell(selected!, axis)}
+            onRemove={askRemoveSlot}
+            onRatio={save.resizeSplit}
+          />
           {asking && (
             <PlayMonthlyConfirm
               message={
@@ -455,8 +439,8 @@ function PlayMonthlyBody({
             />
           )}
           <p className="m-0 text-[13px] text-[#5c5243]">
-            칸 경계선을 끌면 크기가 바뀌어요. 요일 머리의 오른쪽 선은 열 너비, 표 맨 아래 선은 전체
-            높이예요.
+            칸 경계선을 끌어도 크기가 바뀌어요. 요일 머리의 오른쪽 선은 열 너비, 표 맨 아래 선은
+            전체 높이예요.
           </p>
         </div>
       )}
@@ -567,12 +551,7 @@ function PlayMonthlyBody({
       title={`${plan.month}월 월간계획안`}
       format="PLAY_PROJECT"
       lead={back}
-      status={
-        <span className="flex items-center gap-3">
-          <span>{SAVE_LABEL[save.status]}</span>
-          <PlanMemoNote plan={plan} />
-        </span>
-      }
+      status={<PlanMemoNote plan={plan} />}
       notice={
         (notice || message || plan.parent_changed || save.status === "failed") && (
           <div className="flex flex-wrap items-center gap-3 text-sm text-[#5c5243]">
@@ -589,6 +568,10 @@ function PlayMonthlyBody({
       }
       actions={
         <>
+          {/* 저장 상태는 제목 아래가 아니라 확정 버튼 옆에. */}
+          <span role="status" className="text-[13px] text-ink-soft">
+            {SAVE_LABEL[save.status]}
+          </span>
           <PlayMonthlyConfirmBar
             plan={plan}
             ask={
@@ -655,8 +638,148 @@ function PlayMonthlyBody({
           scale={sheetZoom.percent / 100}
           onRatio={locked ? undefined : save.resizeSplit}
           onSize={locked ? undefined : save.resizeTable}
+          onMoveSafety={locked ? undefined : moveSafety}
         />
       </div>
     </AnnualFrame>
+  );
+}
+
+const TOOL =
+  "flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 text-[13px] font-semibold disabled:opacity-40";
+/** 16px 선 그림 — 칸 나누기 도구. */
+const icon = (d: string) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 16 16"
+    className="h-4 w-4 shrink-0"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+  >
+    <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+    <path d={d} />
+  </svg>
+);
+
+/**
+ * 특별활동 칸 도구 — 나누기 두 가지(한 묶음) · 빼기, 나뉜 칸이면 그 칸의 크기.
+ * 한도(깊이 · 칸 폭 3.5%)를 넘는 단추는 끈다. 최종 검사는 서버가 한다.
+ */
+function SlotTools({
+  plan,
+  itemId,
+  slot,
+  disabled,
+  onSplit,
+  onRemove,
+  onRatio,
+}: {
+  plan: PlayMonthlyPlan;
+  itemId: string;
+  slot: NonNullable<ReturnType<typeof locate>>;
+  disabled: boolean;
+  onSplit: (axis: "VERTICAL" | "HORIZONTAL") => void;
+  onRemove: () => void;
+  onRatio: (splitId: string, ratio: number) => void;
+}) {
+  const day = plan.special_activity[slot.day];
+  const width = plan.special_activity_size.column_widths[slot.day];
+  const cramped = (axis: "VERTICAL" | "HORIZONTAL") =>
+    axis === "HORIZONTAL" &&
+    narrowest(splitLeaf(day, itemId, axis, "", slot.path.at(-1)!.cell!), width) < CELL_MIN_WIDTH;
+  const parent = slot.path.at(-2);
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* 주간 대·소집단 칸 나누기와 같은 말(WeeklyEditor). */}
+        <div
+          role="group"
+          aria-label="칸 나누기"
+          className="inline-flex rounded-lg border border-[#ddd6ca] bg-white p-0.5"
+        >
+          {(["VERTICAL", "HORIZONTAL"] as const).map((axis) => (
+            <button
+              key={axis}
+              type="button"
+              className={`${TOOL} text-[#5e4b96] hover:bg-[#f6f1fb]`}
+              disabled={disabled || slot.path.length - 1 >= MAX_DEPTH || cramped(axis)}
+              onClick={() => onSplit(axis)}
+            >
+              {icon(axis === "VERTICAL" ? "M2 8h12" : "M8 2.5v11")}
+              {axis === "VERTICAL" ? "위아래로 나누기" : "좌우로 나누기"}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className={`${TOOL} text-[#a2492f] hover:bg-[#fbf0ec]`}
+          disabled={disabled || !parent}
+          onClick={onRemove}
+        >
+          {icon("M5.5 8h5")}이 칸 빼기
+        </button>
+      </div>
+      {parent && (
+        <SlotSize
+          plan={plan}
+          day={slot.day}
+          parent={parent}
+          first={parent.children[0] === slot.path.at(-1)}
+          disabled={disabled}
+          onRatio={onRatio}
+        />
+      )}
+    </>
+  );
+}
+
+/** 나뉜 칸의 크기 — 경계(`split_id`) 비율을 이 칸 쪽 몫으로 보여 주고 5씩 바꾼다(비율 10~90 · 칸 폭 3.5%). */
+function SlotSize({
+  plan,
+  day,
+  parent,
+  first,
+  disabled,
+  onRatio,
+}: {
+  plan: PlayMonthlyPlan;
+  day: number;
+  parent: PlayMonthlyPlan["special_activity"][number];
+  first: boolean;
+  disabled: boolean;
+  onRatio: (splitId: string, ratio: number) => void;
+}) {
+  const ratio = parent.ratio!;
+  const share = first ? ratio : 100 - ratio;
+  const what = parent.axis === "VERTICAL" ? "높이" : "너비";
+  const next = (delta: number) => (first ? ratio + delta : ratio - delta);
+  const ok = (r: number) =>
+    r >= RATIO_RANGE[0] &&
+    r <= RATIO_RANGE[1] &&
+    !tooNarrow(
+      plan.special_activity.map((d, i) => (i === day ? withRatio(d, parent.split_id!, r) : d)),
+      plan.special_activity_size.column_widths,
+    );
+  const step = (delta: number, label: string) => (
+    <button
+      type="button"
+      aria-label={`이 칸 ${what} ${label}`}
+      className="flex h-9 w-9 items-center justify-center rounded-md text-[18px] font-bold text-[#5e4b96] hover:bg-[#f6f1fb] disabled:opacity-40"
+      disabled={disabled || !ok(next(delta))}
+      onClick={() => onRatio(parent.split_id!, next(delta))}
+    >
+      {delta < 0 ? "−" : "+"}
+    </button>
+  );
+  return (
+    <div role="group" aria-label={`이 칸 ${what}`} className="flex items-center gap-3">
+      <span className="text-sm text-[#5c5243]">이 칸 {what}</span>
+      <div className="inline-flex items-center rounded-lg border border-[#ddd6ca] bg-white p-0.5">
+        {step(-5, "줄이기")}
+        <span className="min-w-[3.5em] text-center text-sm font-bold tabular-nums">{share}%</span>
+        {step(5, "키우기")}
+      </div>
+    </div>
   );
 }
