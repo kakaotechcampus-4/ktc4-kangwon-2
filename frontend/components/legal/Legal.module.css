@@ -1,0 +1,337 @@
+/* 약관 · 개인정보처리방침 — 읽는 화면. 색은 토큰만 쓴다. */
+
+.page {
+  min-height: 100vh;
+  background: var(--pg-cream);
+  color: var(--pg-ink);
+}
+.page ::selection {
+  background: var(--pg-note);
+}
+
+/* 머리: 워드마크 + 두 문서 전환 */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--pg-cream) 90%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--pg-line);
+}
+.topInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(1080px, 100% - 40px);
+  min-height: 64px;
+  margin-inline: auto;
+}
+.switch {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--pg-shell);
+  border: 1px solid var(--pg-shell-line);
+}
+.switchItem {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+  white-space: nowrap;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+.switchItem:hover {
+  color: var(--pg-ink);
+}
+.switchItem[aria-current="page"] {
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  box-shadow: 0 2px 6px -2px color-mix(in srgb, var(--pg-ink) 30%, transparent);
+}
+.switchItem:focus-visible,
+.toc a:focus-visible,
+.body a:focus-visible {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+@media (max-width: 520px) {
+  .switchItem {
+    padding: 0 11px;
+    font-size: 13px;
+  }
+}
+
+/* 목차 + 종이 */
+.layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+  width: min(1080px, 100% - 40px);
+  margin: 40px auto 0;
+}
+.toc {
+  position: sticky;
+  top: 96px;
+}
+.tocTitle {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.tocList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--pg-line);
+}
+.tocList a {
+  display: block;
+  margin-left: -2px;
+  padding: 7px 0 7px 14px;
+  border-left: 2px solid transparent;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--pg-ink-soft);
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.tocList a:hover {
+  color: var(--pg-ink);
+}
+.tocList a[aria-current="true"] {
+  border-left-color: var(--pg-primary);
+  color: var(--pg-ink);
+  font-weight: 700;
+}
+.tocNarrow {
+  display: none;
+}
+
+.paper {
+  min-width: 0;
+}
+.head {
+  padding: 44px 48px 36px;
+  border-radius: 16px;
+  background: var(--pg-paper);
+  box-shadow: var(--pg-shadow);
+}
+.title {
+  margin: 0;
+  font-family: var(--font-display), cursive;
+  font-size: clamp(34px, 4.4vw, 46px);
+  font-weight: 700;
+  line-height: 1.15;
+}
+.updated {
+  display: inline-block;
+  margin: 12px 0 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pg-shell);
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+
+/* 한눈에 보기 — 노란 쪽지 한 장 */
+.summary {
+  display: grid;
+  gap: 8px;
+  margin: 28px 0 0;
+  padding: 20px 22px;
+  list-style: none;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 4px 4px 14px 4px;
+  background: var(--pg-note-soft);
+}
+.summary li {
+  display: flex;
+  gap: 10px;
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.summary li::before {
+  content: "";
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--pg-success)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4'%3E%3Cpath d='m4 8 3 3 5-6'/%3E%3C/svg%3E")
+    center/11px no-repeat;
+}
+
+.body {
+  font-size: 17px;
+  line-height: 1.85;
+  color: var(--pg-ink);
+}
+/* 머리말 한 단락 — 제목 카드 바로 아래 */
+.body > p {
+  margin: 0;
+  padding: 26px 48px 0;
+  font-size: 16px;
+  color: var(--pg-ink-soft);
+}
+.body a {
+  color: var(--pg-primary-ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  overflow-wrap: anywhere;
+}
+.body strong {
+  font-weight: 700;
+  background: linear-gradient(transparent 62%, var(--pg-note) 62%);
+}
+.section {
+  margin-top: 18px;
+  padding: 30px 48px 34px;
+  border-radius: 16px;
+  background: var(--pg-paper);
+  box-shadow:
+    0 1px 0 var(--pg-line),
+    0 10px 26px -20px color-mix(in srgb, var(--pg-ink) 45%, transparent);
+  scroll-margin-top: 90px;
+}
+.body > p + .section {
+  margin-top: 26px;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--pg-line);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+.num {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.sectionBody {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  color: var(--pg-ink);
+}
+.sectionBody p {
+  margin: 0;
+}
+.sectionBody ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* 목록은 한 줄씩 구분선으로 나눈다 — 앞에 굵은 이름이 있으면 그 줄의 제목이 된다 */
+.sectionBody li {
+  position: relative;
+  padding: 13px 0 13px 22px;
+  border-bottom: 1px dashed var(--pg-line);
+}
+.sectionBody li:first-child {
+  padding-top: 2px;
+}
+.sectionBody li:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+.sectionBody li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: calc(13px + 0.8em);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pg-primary);
+}
+.sectionBody li:first-child::before {
+  top: calc(2px + 0.8em);
+}
+.sectionBody li > b {
+  display: block;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+
+/* 공용 꼬리말은 그대로 쓰고, 좁은 화면에서 화면 끝에 붙지 않게 바깥 여백만 준다. */
+.footer {
+  padding: 16px 20px 40px;
+}
+
+@media (max-width: 900px) {
+  .summary {
+    padding: 16px 16px;
+  }
+  .summary li {
+    font-size: 15px;
+  }
+  .layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .toc {
+    position: static;
+  }
+  .tocTitle,
+  .tocWide {
+    display: none;
+  }
+  .tocNarrow {
+    display: block;
+    padding: 12px 16px;
+    border: 1px solid var(--pg-line);
+    border-radius: 10px;
+    background: var(--pg-paper);
+  }
+  .tocNarrow summary {
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .tocNarrow .tocList {
+    margin-top: 10px;
+  }
+  .head {
+    padding: 28px 22px 26px;
+  }
+  .body {
+    font-size: 16px;
+  }
+  .body > p {
+    padding: 20px 6px 0;
+    font-size: 15px;
+  }
+  .section {
+    padding: 22px 20px 24px;
+  }
+  .heading {
+    font-size: 19px;
+  }
+}
