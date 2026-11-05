@@ -27,6 +27,7 @@ const { handlers } = await import("../msw/handlers.ts");
 const { resetTestData, read } = await import("../msw/data/store.ts");
 const { fixtureAccount, fixtureKey, fixtureSession } = await import("./auth-fixture.mjs");
 const onboarding = await import("../lib/api/onboarding.ts");
+const { errorCode, isAlreadyExists } = await import("../lib/api/client.ts");
 
 const server = setupServer(...handlers);
 const storageSnapshot = () => localStorage.snapshot() + sessionStorage.snapshot();
@@ -506,11 +507,17 @@ test("S3: 동의 여부를 아동 수로 뒤집지 않는다", async () => {
     // 동의했지만 아동이 0명 — 예전에는 여기서 false 로 뒤집혔다.
     assert.equal((await onboarding.loadServerChildren(consented)).guardianConsent, true);
 
-    // 동의가 없는 반은 아동이 있어도 true 가 되지 않는다.
-    await onboarding.addServerChild(notConsented, "가명아동");
+    // 동의 전 반에는 아동을 못 넣는다 (§2-1) — 서버가 GATE_BLOCKED 로 막는다.
+    await assert.rejects(
+      () => onboarding.addServerChild(notConsented, "가명아동"),
+      (e) => errorCode(e) === "GATE_BLOCKED",
+    );
+    // 동의한 반은 아동이 들어와도 true 그대로고, 동의 없는 반은 true 가 되지 않는다.
+    await onboarding.addServerChild(consented, "가명아동");
     const loaded = await onboarding.loadServerChildren(notConsented);
-    assert.equal(loaded.children.length, 1);
+    assert.equal(loaded.children.length, 0);
     assert.equal(loaded.guardianConsent, false);
+    assert.equal((await onboarding.loadServerChildren(consented)).guardianConsent, true);
   } finally {
     stop();
   }
@@ -596,3 +603,137 @@ raceDuringSwitch(
   }),
   (c) => onboarding.hydrateClassChildren({ ...SETTINGS, classes: [c] }),
 );
+
+test("E1: 반 이름을 고치면 서명이 새로 써져 이어지는 syncClass 가 던지지 않는다", async () => {
+  const stop = await start();
+  const rec = recorder();
+  try {
+    const c = classroom();
+    await onboarding.syncClass(SETTINGS, c);
+    const next = await onboarding.saveClassEdit(c, { className: "달님반" });
+    assert.equal(next.className, "달님반");
+    assert.equal(read().classes[0].name, "달님반");
+    // 계획안 화면이 부르는 syncClass — 서명이 맞으면 서버를 다시 부르지 않고 같은 id 를 돌려준다.
+    assert.equal(await onboarding.syncClass(SETTINGS, next), read().classes[0].id);
+    assert.equal(read().classes.length, 1);
+    const patch = rec.seen.find((r) => r.method === "PATCH");
+    assert.deepEqual(patch.body, { name: "달님반" });
+  } finally {
+    rec.stop();
+    stop();
+  }
+});
+
+test("E2: 연령은 항상 두 값으로 가고 child_count 는 안 간다 · 하나면 ageGroup 이 채워진다", async () => {
+  const stop = await start();
+  const rec = recorder();
+  try {
+    const c = classroom();
+    await onboarding.syncClass(SETTINGS, c);
+    const one = await onboarding.saveClassEdit(c, { selectedAges: [4] });
+    assert.equal(one.ageGroup, "4");
+    assert.deepEqual(one.selectedAges, [4]);
+    assert.equal(await onboarding.syncClass(SETTINGS, one), read().classes[0].id);
+    const multi = await onboarding.saveClassEdit(one, { selectedAges: [3, 5] });
+    assert.equal(multi.ageGroup, "");
+    const bodies = rec.seen.filter((r) => r.method === "PATCH").map((r) => r.body);
+    assert.deepEqual(bodies, [
+      { age_min: 4, age_max: 4 },
+      { age_min: 3, age_max: 5 },
+    ]);
+    for (const b of bodies) assert.equal("child_count" in b, false);
+  } finally {
+    rec.stop();
+    stop();
+  }
+});
+
+test("E3: 반 이름이 겹치면 ALREADY_EXISTS · 반 생성도 같다", async () => {
+  const stop = await start();
+  try {
+    const a = classroom();
+    const b = classroom({ id: "local-class-2", className: "별님반" });
+    await onboarding.syncClass(SETTINGS, a);
+    await onboarding.syncClass(SETTINGS, b);
+    await assert.rejects(
+      () => onboarding.saveClassEdit(b, { className: "햇님반" }),
+      isAlreadyExists,
+    );
+    assert.equal(read().classes[1].name, "별님반");
+    const dup = classroom({ id: "local-class-3" });
+    await assert.rejects(() => onboarding.syncClass(SETTINGS, dup), isAlreadyExists);
+  } finally {
+    stop();
+  }
+});
+
+test("E4: 아동이 있는 반의 동의 끄기는 GATE_BLOCKED 이고 아무것도 안 바뀐다", async () => {
+  const stop = await start();
+  try {
+    const c = classroom();
+    await onboarding.syncClass(SETTINGS, c);
+    await onboarding.addServerChild(c, "가명아동");
+    await assert.rejects(
+      () => onboarding.saveClassEdit(c, { guardianConsent: false, className: "달님반" }),
+      (e) => errorCode(e) === "GATE_BLOCKED",
+    );
+    assert.equal(read().classes[0].name, "햇님반");
+    assert.ok(read().classes[0].consent_confirmed_at);
+  } finally {
+    stop();
+  }
+});
+
+test("E5: 연결 안 된 반은 수정하지 못하고, 계획안이 없으면 hasAnnualPlan 은 false", async () => {
+  const stop = await start();
+  try {
+    const c = classroom();
+    await assert.rejects(() => onboarding.saveClassEdit(c, { className: "달님반" }), /먼저 저장/);
+    assert.equal(await onboarding.hasAnnualPlan(c), false);
+    await onboarding.syncClass(SETTINGS, c);
+    assert.equal(await onboarding.hasAnnualPlan(c), false);
+  } finally {
+    stop();
+  }
+});
+
+test("E6: 동의 전 반에 아동을 넣으면 GATE_BLOCKED, 동의를 켜면 들어간다", async () => {
+  const stop = await start();
+  try {
+    const c = classroom({ guardianConsent: false });
+    await onboarding.syncClass(SETTINGS, c);
+    await assert.rejects(
+      () => onboarding.addServerChild(c, "가명아동"),
+      (e) => errorCode(e) === "GATE_BLOCKED",
+    );
+    const on = await onboarding.saveClassEdit(c, { guardianConsent: true });
+    assert.equal(on.guardianConsent, true);
+    await onboarding.addServerChild(on, "가명아동");
+    assert.equal(read().children.length, 1);
+  } finally {
+    stop();
+  }
+});
+
+test("E7: 목업 반 수정은 null 을 「안 보냄」으로 보고 값을 지우지 않는다", async () => {
+  // 계약(§2 반 수정): 안 보낸 칸(없거나 null)은 그대로 둔다. 목업이 지우면 연동 때 엇갈린다.
+  const stop = await start();
+  try {
+    const c = classroom();
+    await onboarding.syncClass(SETTINGS, c);
+    const before = { ...read().classes[0] };
+    const res = await fetch(`http://localhost/api/classes/${before.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: null, age_min: null, age_max: null, teacher_name: null }),
+    });
+    assert.equal(res.status, 200);
+    const after = read().classes[0];
+    assert.deepEqual(
+      [after.name, after.age_min, after.age_max, after.teacher_name],
+      [before.name, before.age_min, before.age_max, before.teacher_name],
+    );
+  } finally {
+    stop();
+  }
+});

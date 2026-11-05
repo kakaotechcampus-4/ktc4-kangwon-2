@@ -93,3 +93,24 @@ export function districtsFor(province: string): readonly string[] {
     ? [...REGION_DISTRICTS[normalized]].sort(koreanOrder)
     : [];
 }
+
+const CHOSUNG = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+const isChosung = (c: string) => /^[ㄱ-ㅎ]$/.test(c);
+/** 한글 음절이면 그 초성, 아니면 글자 그대로. */
+const initialOf = (c: string) => {
+  const n = c.charCodeAt(0) - 0xac00;
+  return n >= 0 && n < 11172 ? CHOSUNG[Math.floor(n / 588)] : c;
+};
+
+/**
+ * 지역 이름이 검색어로 시작하는지. 검색어의 자음(ㄱ~ㅎ)은 그 자리 글자의 초성과 맞춘다.
+ * 「ㅊㅊ」 → 춘천시 · 충청북도, 「춘ㅊ」 → 춘천시, 「강」 → 강릉시 · 강원특별자치도. 빈 검색어는 다 맞는다.
+ * 이름 가운데서는 찾지 않는다 — 「ㅊ」 로 삼척시 · 평창군까지 걸리면 오히려 어지럽다.
+ */
+export function matchesRegion(name: string, query: string): boolean {
+  const chars = [...query.trim()];
+  return (
+    chars.length <= name.length &&
+    chars.every((c, i) => c === name[i] || (isChosung(c) && c === initialOf(name[i])))
+  );
+}

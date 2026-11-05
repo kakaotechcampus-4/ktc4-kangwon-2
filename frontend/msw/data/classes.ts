@@ -1,5 +1,5 @@
 import { read, commit } from "./store";
-import type { ApiClass, ClassInput } from "../../lib/api/types";
+import type { ApiClass, ClassInput, ClassUpdate } from "../../lib/api/types";
 
 /**
  * 학년도는 서버가 정한다 — 3월 시작이다 (docs/api-spec.md §2).
@@ -32,7 +32,31 @@ export const addClass = (id: number, data: ClassInput): ApiClass =>
       teacher_name: data.teacher_name,
       consent_confirmed_at: data.consent_confirmed ? now.toISOString() : null,
       created_at: now.toISOString(),
+      my_access: "OWNER",
     };
     db.classes.push(c);
+    return c;
+  });
+// 같은 원 · 같은 학년도에 같은 이름이 있나 (자기 자신은 뺀다).
+export const classNameTaken = (centerId: number, name: string, exceptId?: number) =>
+  read().classes.some(
+    (c) =>
+      c.center_id === centerId &&
+      c.school_year === schoolYearOf(new Date()) &&
+      c.name === name &&
+      c.id !== exceptId,
+  );
+export const patchClass = (id: number, patch: ClassUpdate): ApiClass =>
+  commit((db) => {
+    const c = db.classes.find((x) => x.id === id) as ApiClass;
+    // null 은 「안 보냄」이다(api-spec §2 반 수정) — 지우지 않고 그대로 둔다.
+    if (patch.name != null) c.name = patch.name;
+    if (patch.teacher_name != null) c.teacher_name = patch.teacher_name;
+    if (patch.age_min != null) c.age_min = patch.age_min;
+    if (patch.age_max != null) c.age_max = patch.age_max;
+    // 이미 있는 시각은 그대로 둔다. 체크박스 복원용이다.
+    if (patch.consent_confirmed === true && !c.consent_confirmed_at)
+      c.consent_confirmed_at = new Date().toISOString();
+    if (patch.consent_confirmed === false) c.consent_confirmed_at = null;
     return c;
   });
