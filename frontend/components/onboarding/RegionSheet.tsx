@@ -73,7 +73,10 @@ export default function RegionSheet({
             </svg>
           </button>
         )}
-        <h2 id="region-sheet-title" className="flex-1 font-display text-[26px] font-bold text-ink">
+        <h2
+          id="region-sheet-title"
+          className="flex-1 font-display text-[28px] font-bold leading-tight text-ink sm:text-[34px]"
+        >
           {province ? "시·군·구를 골라주세요" : "시·도를 골라주세요"}
         </h2>
         <button
@@ -97,6 +100,8 @@ export default function RegionSheet({
         </button>
       </div>
       {province && <p className="-mt-2 mb-3.5 px-6 text-[14px] text-ink-soft">{province}</p>}
+      {/* 제목과 아래 이름 목록을 가르는 분필 점선 */}
+      <div aria-hidden="true" className="mx-6 mb-3 border-t-2 border-dashed border-line" />
       <ul
         className={`grid max-h-[60vh] gap-x-4 gap-y-1 overflow-y-auto px-6 pb-2 pt-1 ${province ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
         style={{ wordBreak: "keep-all" }}
